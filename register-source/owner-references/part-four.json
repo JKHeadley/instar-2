@@ -176,33 +176,33 @@
       "id": "authorAndAppend",
       "module": {
         "path": "src/facts/index.ts",
-        "hash": "sha256:bc93e63f622f789537d5e455392e8888237ee97df3e1bd31974efb427c33aa05"
+        "hash": "sha256:f3f3ebf703f28e00294106a5a0b0505510f86d4b551d50de8494708a9c11e40a"
       },
       "artifact": {
         "path": "src/facts/store.ts",
-        "hash": "sha256:82e29c69fdddace66ec0655c1dd5d46db729570823f60786b41e8cf2015f829a"
+        "hash": "sha256:5953d79226ac943ce7b7aa0d6b803e12e683228cb747175a35341fd523bec4b1"
       }
     },
     {
       "id": "decode:Provenance",
       "module": {
         "path": "src/index.ts",
-        "hash": "sha256:80c9ab76c37b253a3b56623688d3fded95cc749339dc1869c1f44c7abcc57bec"
+        "hash": "sha256:157934f27fe9d5018d6888655e7fb18260c30e362531553088b16ca7aab2e45a"
       },
       "artifact": {
         "path": "src/decode/decode.ts",
-        "hash": "sha256:4d54739398abb1ee9878c460559d48e17f930cf5facd2ee24a5b18fe4a5bf738"
+        "hash": "sha256:d0b2cb572441d7b69c02d257aa0776fba70a226aefbaa975a9517ea1e10937d1"
       }
     },
     {
       "id": "decode:VerifiedPrincipal",
       "module": {
         "path": "src/index.ts",
-        "hash": "sha256:80c9ab76c37b253a3b56623688d3fded95cc749339dc1869c1f44c7abcc57bec"
+        "hash": "sha256:157934f27fe9d5018d6888655e7fb18260c30e362531553088b16ca7aab2e45a"
       },
       "artifact": {
         "path": "src/decode/decode.ts",
-        "hash": "sha256:4d54739398abb1ee9878c460559d48e17f930cf5facd2ee24a5b18fe4a5bf738"
+        "hash": "sha256:d0b2cb572441d7b69c02d257aa0776fba70a226aefbaa975a9517ea1e10937d1"
       }
     }
   ],

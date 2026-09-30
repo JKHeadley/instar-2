@@ -92,6 +92,24 @@ it('production boot storage: a second concurrent boot refuses the exact root lea
   refused(openProductionStorage(input), 'second concurrent boot'); first.close();
   value(openProductionStorage(input)).close();
 });
+it('production boot storage: cached reads still detect same-size ciphertext tampering', () => {
+  const input = storageInput(), store = value(openProductionStorage(input));
+  const wire = '{"contentHash":"one","body":{"value":"retained"}}';
+  try {
+    value(store.segment.append(wire, null));
+    const first = store.segment.read();
+    expect(store.segment.read()).toBe(first);
+    expect(Object.isFrozen(first[0])).toBe(true);
+    const path = join(input.root, 'facts.encrypted'), original = readFileSync(path, 'utf8');
+    const corrupt = JSON.parse(original);
+    corrupt.tag = (corrupt.tag[0] === '0' ? '1' : '0') + corrupt.tag.slice(1);
+    expect(JSON.stringify(corrupt).length).toBe(original.length);
+    writeFileSync(path, JSON.stringify(corrupt));
+    expect(() => store.segment.read()).toThrow();
+    writeFileSync(path, original);
+    expect(store.segment.read()).toBe(first);
+  } finally { store.close(); }
+});
 it('production boot storage: an unwritable root refuses before admission', () => {
   const input = storageInput(); chmodSync(input.root, 0o500);
   refused(openProductionStorage(input), 'not writable'); chmodSync(input.root, 0o700);

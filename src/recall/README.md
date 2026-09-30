@@ -41,6 +41,14 @@ await groundTurn({ text: incomingText, exclude: [{ conversation, messageId: inco
 // → Result<{ text, revealed, withheld, manifest }>
 ```
 
+A driver that already holds a bounded candidate set in memory (the preview journal's projection)
+selects through `composeRecall({ query, lexical, candidates, maxResults, stopped, reranker?, spend? })`.
+It fuses, by declared rank interleaving, an optional spend-gated semantic rerank of `rerankPool`, the
+driver's lexical order, and the derived-index order (query terms against each candidate's generated
+`cues`, write-side index material that ranks but is never evidence). It reports `coverage` and a
+`degraded` disposition while an indexable candidate lacks cues, so a miss there is a word-match miss,
+never evidence of absence. A charging reranker is called only with reserved spend and no stop.
+
 `reader = { context, store, stopped, reranker?, spend? }`. Put `grounding.text` into the model
 context as quoted history. It is wrapped in `<recalled-history>`, labelled as data rather than
 instructions, and its own closing tag cannot be forged from inside. `withheld` lists `factId`
@@ -98,7 +106,10 @@ participants. Recall itself never decides reveal.
   bind `spend` to part six's reservation.
 - **Conversation driver:** calling `captureExchange` on each admitted inbound message and each
   sent outbound message, and `groundTurn` before drafting, happens in the assembly's
-  context-delivery path.
+  context-delivery path. The preview journal already selects its memory recall and search through
+  `composeRecall` (lint NF-11 in `scripts/check-architecture.mjs` holds that), with cues written by
+  its supervised summary work and no semantic reranker bound (ordinary conversation's zero helper
+  budget, part twenty-one §7).
 - **Register:** the new module changes the source roster, so `generated/register.json` must be
   regenerated at a commit that includes it.
 

@@ -1,0 +1,629 @@
+import { expect, it } from 'vitest';
+import { mkdtempSync, realpathSync, rmSync } from 'node:fs';
+import { tmpdir } from 'node:os';
+import { join } from 'node:path';
+import { performance } from 'node:perf_hooks';
+import { spawnSync } from 'node:child_process';
+import { createJournalWorker, importChannelItems, openPreviewJournal, PREVIEW_RECALL_LIMIT, replyBody } from './journal-test-worker.js';
+import { bm25, terms } from '../../src/recall/lexical.js';
+import { auditPacket } from './journal-audit.mjs';
+import { SUBSCRIPTION_CONVERSATION_SYSTEM_PROMPT, subscriptionConversationPolicy } from '../../src/assembly/production-provider.js';
+
+const key = new Uint8Array(32).fill(9);
+const origin = () => realpathSync(mkdtempSync(join(tmpdir(), 'preview-people-')));
+const genesis = (maxBytes = 8000) => ({ kind: 'genesis' as const, bot: '12345678', chat: '7654321',
+  operator: '7654321', grant: 'grant:preview', configurationDigest: 'sha256:offline', expires: 9999999999999,
+  maxCalls: 400, maxReplies: 200, maxTurns: 200, maxBytes, cursor: 0 });
+const update = (id: number, text: string, from = 7654321) => ({ update_id: id,
+  message: { chat: { id: 7654321, type: 'private' }, from: { id: from }, text, date: 1790000000 + id * 60 } });
+const filler = (i: number) => `ordinary turn ${i}: the launch budget, errands and plans ${'x'.repeat(40)}`;
+
+/** An honest summarizer: it names people by quoting operator messages exactly. Extra
+ * proposals exercise the verbatim floor: a paraphrase, a name absent from its quote,
+ * the agent's own answer as a source, and a turn the packet never showed. */
+const summarizer = (names: readonly string[], bad = true) => (context: string) => {
+  const packet = JSON.parse(context) as { history: { user: string }[] };
+  const people = packet.history.flatMap(turn => names.filter(name => turn.user.includes(name))
+    .map(name => ({ name, quote: turn.user })));
+  if (bad) people.push({ name: 'Sam', quote: 'Sam personally told the agent the launch is cancelled.' },
+    { name: 'Priya', quote: packet.history[0]?.user ?? '' }, { name: 'Sam', quote: 'Sam agrees with you.' },
+    { name: 'Sam', quote: 'My cofounder Sam thinks the launch should slip to November.' });
+  // Fenced, as real models often answer; the runner reads the JSON inside.
+  return `\`\`\`json\n${JSON.stringify({ summary: 'Earlier turns covered the launch, errands and some people.', people })}\n\`\`\``;
+};
+
+function world(root: string, options: { names?: readonly string[]; bad?: boolean; plain?: boolean;
+  prepare?: (context: string) => void; summarize?: (context: string) => string; answer?: (question: string, context: string) => string;
+  reply?: (question: string, context: string) => string; maxBytes?: number } = {}) {
+  const journal = openPreviewJournal(join(root, 'journal.encrypted'), key, genesis(options.maxBytes));
+  const asked = new Map<string, string>();
+  const worker = createJournalWorker(journal, { now: () => 1790000000000, stopped: () => false,
+    prepareModel: input => { options.prepare?.(input.context); return input.context; },
+    model: async input => {
+      if (input.id.startsWith('summary:')) return options.plain ? 'A plain summary.' : options.summarize?.(input.context) ?? summarizer(options.names ?? ['Sam', 'Priya'], options.bad ?? true)(input.context);
+      asked.set(input.question, input.context); return options.answer?.(input.question, input.context)
+        ?? options.reply?.(input.question, input.context) ?? 'Noted. Sam agrees with you.';
+    },
+    send: async () => 1, checkOutbound: () => {} });
+  const say = async (id: number, text: string, from?: number) => {
+    worker.intake([update(id, text, from)]); await worker.drain(); await worker.summarizeIfNeeded();
+  };
+  /** Fillers until the question would really be answered from a summary with its person notes, as the live script does. */
+  const fillUntilRecall = async (next: number, question: string) => {
+    for (; next < 80; next++) {
+      const probe = worker.probe(question);
+      if (!('reason' in probe) && JSON.parse(probe.context).historyMode === 'summary-plus-recent'
+        && JSON.parse(probe.context).people) return next;
+      await say(next, filler(next));
+    }
+    throw Error('recall never reached');
+  };
+  return { journal, worker, asked, say, fillUntilRecall };
+}
+
+it('writes person notes only after replies, verbatim from operator messages, inside the shared attempt cap', async () => {
+  const root = origin();
+  try {
+    const w = world(root);
+    await w.say(1, 'My cofounder Sam thinks the launch should slip to November.');
+    expect(w.journal.view.people).toEqual([]);
+    let n = 2;
+    for (; !w.journal.view.summaries.length && n < 60; n++) await w.say(n, filler(n));
+    const view = w.journal.view;
+    expect(view.summaries.length).toBeGreaterThan(0);
+    expect(view.people).toEqual([{ name: 'Sam', source: 'telegram:12345678:update:1',
+      quote: 'My cofounder Sam thinks the launch should slip to November.' }]);
+    expect(view.calls).toBe(n - 1 + view.summaries.length);
+    expect(view.order.every(turn => turn.sent === 1)).toBe(true);
+    w.journal.close();
+  } finally { rmSync(root, { recursive: true, force: true }); }
+});
+
+it('recalls every note about a named person after compaction, keeps the operator as speaker, and survives restart', async () => {
+  const root = origin();
+  try {
+    let w = world(root);
+    await w.say(1, 'My cofounder Sam thinks the launch should slip to November.');
+    await w.say(2, 'Priya said she disagrees with Sam about the launch date.');
+    const question = "What is Sam's view on the launch budget, errands and plans?";
+    const n = await w.fillUntilRecall(3, question);
+    w.journal.close();
+    w = world(root);
+    expect(w.journal.view.people.map(note => note.name)).toEqual(['Sam', 'Sam', 'Priya']);
+    await w.say(n, question);
+    const packet = JSON.parse(w.asked.get(question)!);
+    expect(packet.historyMode).toBe('summary-plus-recent');
+    expect(packet.history.some((turn: { user: string }) => turn.user.includes('Sam'))).toBe(false);
+    expect(packet.people).toMatchObject([
+      { source: 'telegram:12345678:update:1', from: 'the operator (verified sender)', date: '2026-09-21T14:14Z',
+        message: 'My cofounder Sam thinks the launch should slip to November.',
+        mentions: [{ person: 'Sam', quote: 'My cofounder Sam thinks the launch should slip to November.' }] },
+      { source: 'telegram:12345678:update:2', from: 'the operator (verified sender)', date: '2026-09-21T14:15Z',
+        message: 'Priya said she disagrees with Sam about the launch date.',
+        mentions: [{ person: 'Sam', quote: 'Priya said she disagrees with Sam about the launch date.' }] }]);
+    expect(auditPacket(w.journal.view, w.journal.view.order.find(turn => turn.text === question)!, packet).findings).toEqual([]);
+    expect(packet.capability).toContain('did not say it unless from is that person');
+    // The named failure: word-match recall alone ranks the many launch-budget turns above both turns about Sam.
+    const covered = w.journal.view.order.filter(turn => turn.update < n);
+    expect(covered.length).toBeGreaterThan(PREVIEW_RECALL_LIMIT);
+    const ranked = bm25(terms(question), covered.map(turn => terms(`${turn.text} ${turn.answer ?? ''}`)))
+      .sort((a, b) => b.matched - a.matched || b.score - a.score).slice(0, PREVIEW_RECALL_LIMIT);
+    expect(ranked.map(hit => covered[hit.index]!.text).some(text => text.includes('Sam'))).toBe(false);
+    await w.say(n + 1, 'Remind me about the weather plans.');
+    expect(JSON.parse(w.asked.get('Remind me about the weather plans.')!).people).toBeUndefined();
+    w.journal.close();
+  } finally { rmSync(root, { recursive: true, force: true }); }
+});
+
+it('says who really spoke: a person\'s own authenticated message is theirs, a report about them is the operator\'s', async () => {
+  const root = origin();
+  try {
+    const w = world(root);
+    await w.say(1, 'Sam thinks the budget is fine.');
+    // A future group turn authenticated as Sam's own account (not admitted by this preview's intake).
+    w.journal.append({ kind: 'intake', id: 'telegram:12345678:update:2', update: 2, text: 'Sam here: the budget is too small.',
+      raw: JSON.stringify(update(2, 'Sam here: the budget is too small.', 555)), accepted: true, cursor: 3, at: 1790000000000 });
+    await w.worker.drain();
+    await w.say(await w.fillUntilRecall(3, 'What has Sam said?'), 'What has Sam said?');
+    const people = JSON.parse(w.asked.get('What has Sam said?')!).people;
+    expect(people.map((note: { from: string; message: string }) => [note.from, note.message])).toEqual([
+      ['the operator (verified sender)', 'Sam thinks the budget is fine.'],
+      ['Telegram user 555 (authenticated sender, not the operator)', 'Sam here: the budget is too small.']]);
+    expect(people.map((note: { sourceLabel: string }) => note.sourceLabel)).toEqual([
+      'conversation:operator/main chat/2026-09-21T14:14Z/#1',
+      'conversation:other sender/main chat/2026-09-21T14:15Z/#2']);
+    w.journal.close();
+  } finally { rmSync(root, { recursive: true, force: true }); }
+});
+
+it('keeps same-name people apart for the model and gives an unknown person nothing to invent from', async () => {
+  const root = origin();
+  try {
+    // As the real extraction prompt asks: each name exactly as written, no extra short aliases.
+    const w = world(root, { names: ['Sam Patel', 'Sam Ruiz'], bad: false });
+    await w.say(1, 'Sam Patel from accounting approved the budget.');
+    await w.say(2, 'Sam Ruiz, my neighbour, lent me a ladder.');
+    await w.say(3, 'My cofounder Sam thinks the launch should slip to November.');
+    const n = await w.fillUntilRecall(4, 'What did Sam do?');
+    expect(w.journal.view.people.map(note => note.name)).toEqual(['Sam Patel', 'Sam Ruiz']);
+    await w.say(n, 'What did Sam do?');
+    const packet = JSON.parse(w.asked.get('What did Sam do?')!);
+    // A partial name finds every note sharing a name word; the distinct quotes show two different Sams.
+    expect(packet.people.map((entry: { mentions: { person: string; quote: string }[] }) => entry.mentions)).toEqual([
+      [{ person: 'Sam Patel', quote: 'Sam Patel from accounting approved the budget.' }],
+      [{ person: 'Sam Ruiz', quote: 'Sam Ruiz, my neighbour, lent me a ladder.' }]]);
+    expect(packet.personMergeCandidates).toBeUndefined();
+    expect(packet.capability).toContain('The same or a partial name can mean different people');
+    await w.say(n + 1, 'Is Sam Ruiz the one from accounting?');
+    expect(JSON.parse(w.asked.get('Is Sam Ruiz the one from accounting?')!).people.length).toBe(2);
+    await w.say(n + 2, 'What did Oliver say about the launch?');
+    const unknown = JSON.parse(w.asked.get('What did Oliver say about the launch?')!);
+    expect(unknown.people).toBeUndefined();
+    expect(JSON.stringify(unknown)).not.toContain('Oliver said');
+    w.journal.close();
+  } finally { rmSync(root, { recursive: true, force: true }); }
+});
+
+it('offers John and Jon as separate sourced people after compaction and keeps their details available', async () => {
+  const root = origin();
+  try {
+    const w = world(root, { names: ['Jon Moss', 'John Vale'], bad: false });
+    await w.say(1, 'Jon Moss from design chose the amber cover.');
+    await w.say(2, 'John Vale from legal chose the green contract.');
+    const n = await w.fillUntilRecall(3, 'What did John choose?');
+    await w.say(n, 'What did John choose?');
+    const ambiguous = JSON.parse(w.asked.get('What did John choose?')!);
+    expect(ambiguous.people.map((item: { mentions: { person: string }[] }) => item.mentions[0]!.person))
+      .toEqual(['Jon Moss', 'John Vale']);
+    expect(ambiguous.personMerges).toBeUndefined();
+    expect(ambiguous.capability).toContain('ask one clarifying question');
+    await w.say(n + 1, 'What did John from legal choose?');
+    const specific = JSON.parse(w.asked.get('What did John from legal choose?')!);
+    expect(specific.people.some((item: { message: string }) => item.message.includes('green contract'))).toBe(true);
+    expect(specific.capability).toContain('answer about that person only');
+    w.journal.close();
+  } finally { rmSync(root, { recursive: true, force: true }); }
+});
+
+it('recalls an older cofounder by role or nickname without letting newer neighbours crowd out that Sam', async () => {
+  const root = origin();
+  try {
+    const w = world(root, { names: ['Sam'], bad: false, maxBytes: 16000 });
+    await w.say(1, 'My cofounder Sam goes by Sammy and chose the October launch.');
+    for (let id = 2; id <= 14; id++) await w.say(id, `My neighbour Sam lent me garden tool ${id}.`);
+    let next = 15;
+    for (; next < 80; next++) {
+      const probe = w.worker.probe('What did my cofounder choose?');
+      if (!('reason' in probe) && JSON.parse(probe.context).historyMode === 'summary-plus-recent') break;
+      await w.say(next, filler(next));
+    }
+    expect(next).toBeLessThan(80);
+    const sources = (question: string) => {
+      const probe = w.worker.probe(question);
+      if ('reason' in probe) throw Error(probe.reason);
+      return (JSON.parse(probe.context).people ?? []) as { source: string; message: string }[];
+    };
+    expect(sources('What did my cofounder choose?').map(item => item.source))
+      .toContain('telegram:12345678:update:1');
+    expect(sources('What did Sammy choose?').map(item => item.source))
+      .toContain('telegram:12345678:update:1');
+    expect(sources('What did cofounder Sam choose?').map(item => item.source))
+      .toContain('telegram:12345678:update:1');
+    const unnamed = sources('What did Sam do?');
+    expect(unnamed.map(item => item.source)).toContain('telegram:12345678:update:1');
+    expect(unnamed.some(item => item.message.includes('neighbour Sam'))).toBe(true);
+    expect(sources('What did neighbour Sam lend?').some(item => item.message.includes('neighbour Sam'))).toBe(true);
+    expect(sources('What did Oliver choose?')).toEqual([]);
+    expect(w.journal.view.personMerges).toEqual([]);
+    w.journal.close();
+  } finally { rmSync(root, { recursive: true, force: true }); }
+}, 30000);
+
+it.each(['forget', 'correct'] as const)('links only the confirmed pair across replay, then withdraws it on %s', async mode => {
+  const root = origin();
+  const summarize = (context: string) => {
+    const packet = JSON.parse(context) as { history: { user: string }[];
+      memoryRequest?: { message: string }; memoryCandidates?: { id: string; message: string }[] };
+    const people = packet.history.flatMap(({ user }) => {
+      const name = user.startsWith('Sam Ortiz is') ? 'Sam Ortiz' : user.startsWith('Sam Ruiz,') ? 'Sam Ruiz'
+        : user.startsWith('My cofounder Sam') ? 'Sam' : null;
+      return name ? [{ name, quote: user }]
+        : user.includes('Sam and Sam Ortiz') ? ['Sam', 'Sam Ortiz'].map(found => ({ name: found, quote: user })) : [];
+    });
+    const old = 'Actually, Sam and Sam Ortiz are the same person.';
+    const source = packet.memoryCandidates?.find(item => item.message === old)?.id;
+    const request = packet.memoryRequest?.message;
+    const memory = source && request?.includes('Sam and Sam Ortiz')
+      && (request.startsWith('Please forget') || request.includes('different people'))
+      ? [{ mode, source, quote: old,
+        ...(mode === 'correct' ? { replacement: 'Sam and Sam Ortiz are different people.' } : {}) }] : [];
+    return JSON.stringify({ summary: 'The operator mentioned three people named Sam.', people, memory });
+  };
+  const answer = (question: string, context: string) => {
+    const packet = JSON.parse(context) as { personMergeCandidates?: { left: number; right: number; leftName: string; rightName: string }[] };
+    if (question === 'Actually, Sam and Sam Ortiz are the same person.') {
+      const pair = packet.personMergeCandidates?.find(item => item.leftName === 'Sam' && item.rightName === 'Sam Ortiz');
+      if (!pair) throw Error('offered pair missing');
+      return JSON.stringify({ reply: 'I will treat those two notes as one person.', memory: [],
+        personMerges: [{ left: pair.left, right: pair.right, confirmation: question }] });
+    }
+    return 'I can ask whether those two notes refer to the same person.';
+  };
+  try {
+    let w = world(root, { summarize, answer, maxBytes: 10000 });
+    await w.say(1, 'My cofounder Sam prefers October.');
+    await w.say(2, 'Sam Ortiz is the cofounder who proposed October.');
+    await w.say(3, 'Sam Ruiz, my neighbour, lent me a ladder.');
+    const n = await w.fillUntilRecall(4, 'Are Sam and Sam Ortiz the same person?');
+    const before = w.worker.probe('Are Sam and Sam Ortiz the same person?');
+    if ('reason' in before) throw Error(before.reason);
+    const candidates = JSON.parse(before.context).personMergeCandidates;
+    expect(candidates).toContainEqual({ left: 0, right: 1, leftName: 'Sam', rightName: 'Sam Ortiz',
+      leftSource: 'telegram:12345678:update:1', rightSource: 'telegram:12345678:update:2',
+      confirmText: 'Actually, Sam and Sam Ortiz are the same person.' });
+    expect(candidates.some((pair: { left: number; right: number }) =>
+      [pair.left, pair.right].includes(0) && [pair.left, pair.right].includes(2))).toBe(true);
+    expect(w.journal.view.personMerges).toEqual([]);
+    await w.say(n, 'Are Sam and Sam Ortiz the same person?');
+    expect(w.journal.view.personMerges).toEqual([]);
+    await w.say(n + 1, 'Actually, Sam and Sam Ortiz are the same person.');
+    expect(w.journal.view.people.some(note => note.source === `telegram:12345678:update:${n}`)).toBe(true);
+    expect(w.journal.view.people.some(note => note.source === `telegram:12345678:update:${n + 1}`)).toBe(true);
+    expect(w.journal.view.personMerges).toMatchObject([{ left: 0, right: 1,
+      trigger: `telegram:12345678:update:${n + 1}` }]);
+    w.journal.close();
+    const status = spawnSync(process.execPath,
+      ['--no-warnings', '--loader', './scripts/slice-ts-loader.mjs', 'tests/preview/journal-agent.mjs', 'status', '--root', root],
+      { cwd: process.cwd(), env: { ...process.env, INSTAR_SECRET_PREVIEW_STORAGE_KEY: Buffer.from(key).toString('hex') },
+        encoding: 'utf8', timeout: 10000 });
+    expect(status.status, status.stderr).toBe(0);
+    expect(JSON.parse(status.stdout).personMerges).toMatchObject([{ left: 'Sam', right: 'Sam Ortiz',
+      triggerUpdate: n + 1 }]);
+    w = world(root, { summarize, answer, maxBytes: 10000 });
+    const linked = w.worker.probe('What does Ortiz think?');
+    if ('reason' in linked) throw Error(linked.reason);
+    const packet = JSON.parse(linked.context);
+    expect(packet.people.map((item: { source: string }) => item.source)).toContain('telegram:12345678:update:1');
+    expect(packet.people.map((item: { source: string }) => item.source)).toContain('telegram:12345678:update:2');
+    expect(packet.personMerges).toMatchObject([{ left: { name: 'Sam' }, right: { name: 'Sam Ortiz' } }]);
+    expect(packet.people.some((item: { mentions: { person: string }[] }) => item.mentions[0]?.person === 'Sam Ruiz')).toBe(false);
+    expect(w.journal.view.people.some(note => note.name === 'Sam Ruiz')).toBe(true);
+    const withdrawal = mode === 'forget' ? 'Please forget that Sam and Sam Ortiz are the same person.'
+      : 'Actually, Sam and Sam Ortiz are different people.';
+    await w.say(n + 2, withdrawal);
+    expect(w.journal.view.memory).toMatchObject([{ mode, source: `telegram:12345678:update:${n + 1}`,
+      quote: 'Actually, Sam and Sam Ortiz are the same person.' }]);
+    expect(w.journal.view.personMerges).toHaveLength(1); // historical evidence survives
+    const withdrawn = w.worker.probe('What does Ortiz think?');
+    if ('reason' in withdrawn) throw Error(withdrawn.reason);
+    const after = JSON.parse(withdrawn.context);
+    expect(after.people.map((item: { source: string }) => item.source)).not.toContain('telegram:12345678:update:1');
+    expect(after.people.map((item: { source: string }) => item.source)).toContain('telegram:12345678:update:2');
+    expect(after.personMerges).toBeUndefined();
+    const reconsider = w.worker.probe('Are Sam and Sam Ortiz the same person?');
+    if ('reason' in reconsider) throw Error(reconsider.reason);
+    expect(JSON.parse(reconsider.context).personMergeCandidates)
+      .toEqual(expect.arrayContaining([expect.objectContaining({ left: 0, right: 1 })]));
+    w.journal.close();
+    const inactive = spawnSync(process.execPath,
+      ['--no-warnings', '--loader', './scripts/slice-ts-loader.mjs', 'tests/preview/journal-agent.mjs', 'status', '--root', root],
+      { cwd: process.cwd(), env: { ...process.env, INSTAR_SECRET_PREVIEW_STORAGE_KEY: Buffer.from(key).toString('hex') },
+        encoding: 'utf8', timeout: 10000 });
+    expect(inactive.status, inactive.stderr).toBe(0);
+    expect(JSON.parse(inactive.stdout).personMerges).toEqual([]);
+    w = world(root, { summarize, answer, maxBytes: 10000 });
+    const replay = w.worker.probe('What does Ortiz think?');
+    if ('reason' in replay) throw Error(replay.reason);
+    expect(JSON.parse(replay.context).personMerges).toBeUndefined();
+    w.journal.close();
+  } finally { rmSync(root, { recursive: true, force: true }); }
+}, 30000);
+
+it.each(['Are Sam and Sam Ortiz the same person?', 'Actually, Sam and Sam Ortiz are not the same person.'])
+  ('rejects a model-proposed merge from %s and does not admit another sender as operator', async question => {
+  const root = origin();
+  try {
+    const w = world(root, { bad: false, maxBytes: 10000,
+      summarize: context => JSON.stringify({ summary: 'Sam and Sam Ortiz were mentioned.', memory: [],
+        people: (JSON.parse(context) as { history: { user: string }[] }).history.flatMap(({ user }) =>
+          user.startsWith('My cofounder Sam') ? [{ name: 'Sam', quote: user }]
+            : user.startsWith('Sam Ortiz is') ? [{ name: 'Sam Ortiz', quote: user }] : []) }),
+      answer: (question, context) => {
+        const pair = (JSON.parse(context) as { personMergeCandidates?: { left: number; right: number }[] })
+          .personMergeCandidates?.[0];
+        return pair ? JSON.stringify({ reply: 'Yes.', memory: [],
+          personMerges: [{ left: pair.left, right: pair.right, confirmation: question }] }) : 'Noted.';
+      } });
+    await w.say(1, 'My cofounder Sam prefers October.');
+    await w.say(2, 'Sam Ortiz is the cofounder who proposed October.');
+    const n = await w.fillUntilRecall(3, 'Are Sam and Sam Ortiz the same person?');
+    w.worker.intake([update(n, 'Actually, Sam and Sam Ortiz are the same person.', 555)]);
+    await w.worker.drain();
+    expect(w.journal.view.personMerges).toEqual([]);
+    expect(w.journal.view.order.find(turn => turn.update === n)?.accepted).toBe(false);
+    await w.say(n + 1, question);
+    expect(w.journal.view.personMerges).toEqual([]);
+    expect(w.journal.view.order.at(-1)?.held).toBe('memory correction pending');
+    w.journal.close();
+  } finally { rmSync(root, { recursive: true, force: true }); }
+}, 10000);
+
+it('does not offer one confirmation sentence for two different short-name notes', async () => {
+  const root = origin();
+  try {
+    const w = world(root, { bad: false,
+      summarize: context => JSON.stringify({ summary: 'Two different Sams and Sam Ortiz were mentioned.',
+        people: (JSON.parse(context) as { history: { user: string }[] }).history.flatMap(({ user }) =>
+          user.startsWith('My cofounder Sam') || user.startsWith('My neighbour Sam')
+            ? [{ name: 'Sam', quote: user }] : user.startsWith('Sam Ortiz is')
+              ? [{ name: 'Sam Ortiz', quote: user }] : []) }) });
+    await w.say(1, 'My cofounder Sam prefers October.');
+    await w.say(2, 'My neighbour Sam lent me a ladder.');
+    await w.say(3, 'Sam Ortiz is a cofounder.');
+    await w.fillUntilRecall(4, 'Are Sam and Sam Ortiz the same person?');
+    const probe = w.worker.probe('Are Sam and Sam Ortiz the same person?');
+    if ('reason' in probe) throw Error(probe.reason);
+    expect(JSON.parse(probe.context).personMergeCandidates).toBeUndefined();
+    expect(w.journal.view.personMerges).toEqual([]);
+    w.journal.close();
+  } finally { rmSync(root, { recursive: true, force: true }); }
+}, 10000);
+
+const sourceSummarizer = (context: string) => {
+  const history = (JSON.parse(context) as { history: { user: string }[] }).history;
+  const people = history.flatMap(({ user }) => {
+    if (user.startsWith('My cofounder Sam') || user.startsWith('My neighbour Sam')) return [{ name: 'Sam', quote: user }];
+    if (user.startsWith('Sam Ortiz is')) return [{ name: 'Sam Ortiz', quote: user }];
+    if (user === 'Actually, Sam and Sam Ortiz are the same person.' || user === 'Are Sam and Sam Ortiz the same person?')
+      return ['Sam', 'Sam Ortiz'].map(name => ({ name, quote: user }));
+    return [];
+  });
+  return JSON.stringify({ summary: 'The operator described people named Sam.', people, memory: [] });
+};
+const mergeAnswer = (question: string, context: string) => {
+  if (question !== 'Actually, Sam and Sam Ortiz are the same person.') return 'Noted.';
+  const pair = (JSON.parse(context) as { personMergeCandidates?: { left: number; right: number; confirmText: string }[] })
+    .personMergeCandidates?.find(item => item.confirmText === question);
+  return pair ? JSON.stringify({ reply: 'Understood.', memory: [],
+    personMerges: [{ left: pair.left, right: pair.right, confirmation: question }] }) : 'No unambiguous pair.';
+};
+
+it('links an introductory claim even when its source ends in a question', async () => {
+  const root = origin();
+  try {
+    // cbuild-2: the always-offered summary decision needs room beside the merge candidates (measured fit 7000; was 6000).
+    const w = world(root, { maxBytes: 7000, summarize: sourceSummarizer, answer: mergeAnswer });
+    await w.say(1, 'My cofounder Sam prefers October. Can you remember that?');
+    await w.say(2, 'Sam Ortiz is the cofounder who proposed October.');
+    const n = await w.fillUntilRecall(3, 'Are Sam and Sam Ortiz the same person?');
+    await w.say(n, 'Are Sam and Sam Ortiz the same person?');
+    await w.say(n + 1, 'Actually, Sam and Sam Ortiz are the same person.');
+    expect(w.journal.view.people.slice(0, 2).map(note => note.source))
+      .toEqual(['telegram:12345678:update:1', 'telegram:12345678:update:2']);
+    expect(w.journal.view.turns.get(`telegram:12345678:update:${n + 1}`)?.held).toBeUndefined();
+    expect(JSON.parse(w.asked.get('Actually, Sam and Sam Ortiz are the same person.')!).personMergeCandidates)
+      .toEqual(expect.arrayContaining([expect.objectContaining({ left: 0, right: 1 })]));
+    expect(w.journal.view.personMerges).toMatchObject([{ left: 0, right: 1,
+      trigger: `telegram:12345678:update:${n + 1}` }]);
+    w.journal.close();
+  } finally { rmSync(root, { recursive: true, force: true }); }
+}, 30000);
+
+it.each(['Can you remember that?', 'Please remember that.'])
+  ('keeps a distinct homonym ambiguous with ending: %s', async ending => {
+  const root = origin();
+  try {
+    const w = world(root, { maxBytes: 6000, summarize: sourceSummarizer, answer: mergeAnswer });
+    await w.say(1, 'My cofounder Sam prefers October.');
+    await w.say(2, 'Sam Ortiz is the cofounder who proposed October.');
+    await w.say(3, `My neighbour Sam lent me a ladder. ${ending}`);
+    const n = await w.fillUntilRecall(4, 'Are Sam and Sam Ortiz the same person?');
+    const probe = w.worker.probe('Are Sam and Sam Ortiz the same person?');
+    if ('reason' in probe) throw Error(probe.reason);
+    expect(w.journal.view.people.map(note => note.name)).toEqual(['Sam', 'Sam Ortiz', 'Sam']);
+    expect(JSON.parse(probe.context).personMergeCandidates).toBeUndefined();
+    await w.say(n, 'Are Sam and Sam Ortiz the same person?');
+    await w.say(n + 1, 'Actually, Sam and Sam Ortiz are the same person.');
+    expect(JSON.parse(w.asked.get('Actually, Sam and Sam Ortiz are the same person.')!).personMergeCandidates)
+      .toBeUndefined();
+    expect(w.journal.view.personMerges).toEqual([]);
+    w.journal.close();
+  } finally { rmSync(root, { recursive: true, force: true }); }
+}, 30000);
+
+it('carries two distinct people into the reply call and sends one short clarification for an unnamed Sam', async () => {
+  const root = origin();
+  try {
+    const instruction = 'If two active memory items match the question but disagree, or refer to different people or things, ask one short clarifying question';
+    expect(SUBSCRIPTION_CONVERSATION_SYSTEM_PROMPT).toContain(instruction);
+    const policy = subscriptionConversationPolicy('claude-opus-5-5');
+    expect(policy.args[policy.args.indexOf('--system-prompt') + 1]).toBe(SUBSCRIPTION_CONVERSATION_SYSTEM_PROMPT);
+    const w = world(root, { names: ['Sam Patel', 'Sam Ruiz'], bad: false, reply: (question, context) => {
+      if (question === 'What did Sam do?') {
+        const people = JSON.parse(context).people as { mentions: { person: string }[] }[];
+        expect(people.flatMap(item => item.mentions.map(note => note.person))).toEqual(['Sam Patel', 'Sam Ruiz']);
+        return 'Do you mean Sam Patel from accounting or Sam Ruiz, your neighbour?';
+      }
+      if (question === 'What did Sam Ruiz do?') return 'Sam Ruiz lent you a ladder.';
+      return 'Okay.';
+    } });
+    await w.say(1, 'Sam Patel from accounting approved the budget.');
+    await w.say(2, 'Sam Ruiz, my neighbour, lent me a ladder.');
+    const n = await w.fillUntilRecall(3, 'What did Sam do?');
+    await w.say(n, 'What did Sam do?');
+    const ambiguous = w.journal.view.order.at(-1)!;
+    // Rule 110: a first reply from a newly compacted context carries the fixed disclosure first.
+    expect(replyBody(ambiguous)).toBe('PREVIEW — Do you mean Sam Patel from accounting or Sam Ruiz, your neighbour?');
+    expect(ambiguous.intent?.match(/\?/gu)).toHaveLength(1);
+    expect(ambiguous.sent).toBe(1);
+    await w.say(n + 1, 'What did Sam Ruiz do?');
+    expect(replyBody(w.journal.view.order.at(-1)!)).toBe('PREVIEW — Sam Ruiz lent you a ladder.');
+    expect(w.journal.view.order.at(-1)?.sent).toBe(1);
+    w.journal.close();
+  } finally { rmSync(root, { recursive: true, force: true }); }
+});
+
+it('keeps disagreeing active facts in context for clarification and answers a question identifying one', async () => {
+  const root = origin();
+  try {
+    const w = world(root, { bad: false, reply: (question, context) => {
+      if (question === 'When is the Atlas launch?') {
+        const history = JSON.parse(context).history as { user: string }[];
+        expect(history.map(item => item.user)).toEqual([
+          'The Atlas launch is on October 8.', 'The Atlas launch is on November 12.']);
+        return 'Which Atlas launch date should I use, October 8 or November 12?';
+      }
+      if (question === 'What October date did I mention for Atlas?') return 'October 8.';
+      return 'Okay.';
+    } });
+    await w.say(1, 'The Atlas launch is on October 8.');
+    await w.say(2, 'The Atlas launch is on November 12.');
+    await w.say(3, 'When is the Atlas launch?');
+    expect(w.journal.view.order.at(-1)?.intent).toBe('PREVIEW — Which Atlas launch date should I use, October 8 or November 12?');
+    await w.say(4, 'What October date did I mention for Atlas?');
+    expect(w.journal.view.order.at(-1)?.intent).toBe('PREVIEW — October 8.');
+    expect(w.journal.view.replies).toBe(4);
+    w.journal.close();
+  } finally { rmSync(root, { recursive: true, force: true }); }
+});
+
+it('renders the whole source message, so an excerpt can never drop the context that negates it', async () => {
+  const root = origin();
+  try {
+    const message = 'Priya falsely claimed that Sam supports November; Sam actually wants October.';
+    // A careless selection: the excerpt alone would read as the opposite of what the operator said.
+    const w = world(root, { summarize: context => JSON.stringify({ summary: 'Earlier turns.',
+      people: (JSON.parse(context) as { history: { user: string }[] }).history.some(turn => turn.user === message)
+        ? [{ name: 'Sam', quote: 'Sam supports November' }, { name: 'Priya', quote: 'Priya falsely claimed' }] : [] }) });
+    await w.say(1, message);
+    const n = await w.fillUntilRecall(2, 'Which month does Sam support?');
+    expect(w.journal.view.people.map(note => note.quote)).toEqual(['Sam supports November', 'Priya falsely claimed']);
+    await w.say(n, 'Which month does Sam support?');
+    const packet = JSON.parse(w.asked.get('Which month does Sam support?')!);
+    expect(packet.historyMode).toBe('summary-plus-recent');
+    expect(packet.history.some((turn: { user: string }) => turn.user === message)).toBe(false);
+    expect(packet.people).toMatchObject([{ source: 'telegram:12345678:update:1', from: 'the operator (verified sender)', date: '2026-09-21T14:14Z', message,
+      mentions: [{ person: 'Sam', quote: 'Sam supports November' }] }]);
+    expect(packet.capability).toContain('Read a mention only within its whole message');
+    w.journal.close();
+  } finally { rmSync(root, { recursive: true, force: true }); }
+});
+
+it('carries a dated, sourced timeline from imported messages and caps it per person', async () => {
+  const root = origin();
+  try {
+    let w = world(root, { maxBytes: 16000 });
+    const account = 'agent@example.test';
+    const at = 1790000000000;
+    const items = Array.from({ length: 12 }, (_, i) => ({ source: 'conversation' as const, account,
+      id: `maya-${i + 1}`, from: 'Maya Chen <maya@example.test>', at: at + i * 60000,
+      text: `Shipment ${i + 1} is ready.` }));
+    expect(importChannelItems(w.journal, items, account, at)).toBe(12);
+    importChannelItems(w.journal, [{ source: 'conversation', account, id: 'first-name-only',
+      from: 'justin@example.test', at: at + 12 * 60000,
+      text: 'Maya denied ordering shipment 12.' }, { source: 'conversation', account, id: 'about-maya',
+      from: 'justin@example.test', at: at + 12 * 60000,
+      text: 'Maya Chen denied ordering shipment 12.' }], account, at);
+    await w.say(1, 'What did Maya say about shipments?');
+    const packet = JSON.parse(w.asked.get('What did Maya say about shipments?')!);
+    expect(packet.people).toHaveLength(10);
+    expect(packet.people.map((entry: { date: string }) => entry.date)).toEqual(
+      [...packet.people.map((entry: { date: string }) => entry.date)].sort());
+    expect(packet.people[0].sourceId).toMatch(/^channel-ref:[a-f0-9]{64}$/u);
+    expect(packet.people[0].date).toBe('2026-09-21T14:16Z');
+    expect(packet.people.at(-1)).toMatchObject({ source: 'conversation',
+      from: 'justin@example.test (export sender metadata, unverified)',
+      message: 'Maya Chen denied ordering shipment 12.',
+      mentions: [{ person: 'Maya Chen', quote: 'Maya Chen denied ordering shipment 12.' }] });
+    expect(packet.people.some((entry: { message: string }) => entry.message === 'Maya denied ordering shipment 12.'))
+      .toBe(false);
+    expect(packet.people.some((entry: { sourceId: string }) => entry.sourceId.includes('"maya-1"'))).toBe(false);
+    expect(packet.capability).toContain('short dated timeline');
+    w.journal.close();
+    w = world(root, { maxBytes: 16000 });
+    const replay = w.worker.probe('What did Maya say about shipments?');
+    expect('reason' in replay).toBe(false);
+    if ('reason' in replay) throw Error(replay.reason);
+    expect(JSON.parse(replay.context).people).toEqual(packet.people);
+    const surname = w.worker.probe('What did Chen say?');
+    expect('reason' in surname).toBe(false);
+    if ('reason' in surname) throw Error(surname.reason);
+    expect(JSON.parse(surname.context).people).toEqual(packet.people);
+    const unrelated = w.worker.probe('What did Oliver say?');
+    expect('reason' in unrelated).toBe(false);
+    if ('reason' in unrelated) throw Error(unrelated.reason);
+    expect(JSON.parse(unrelated.context).people).toBeUndefined();
+    w.journal.close();
+    const status = spawnSync(process.execPath,
+      ['--no-warnings', '--loader', './scripts/slice-ts-loader.mjs', 'tests/preview/journal-agent.mjs', 'status', '--root', root],
+      { cwd: process.cwd(), env: { ...process.env, INSTAR_SECRET_PREVIEW_STORAGE_KEY: Buffer.from(key).toString('hex') },
+        encoding: 'utf8', timeout: 10000 });
+    expect(status.status, status.stderr).toBe(0);
+    expect(JSON.parse(status.stdout).people).toContain('Maya Chen');
+  } finally { rmSync(root, { recursive: true, force: true }); }
+});
+
+it('keeps a plain summary and reports the missing people record; person notes give way before the context bound', async () => {
+  const root = origin();
+  try {
+    const w = world(root, { plain: true });
+    await w.say(1, 'My cofounder Sam thinks the launch should slip to November.');
+    for (let i = 2; !w.journal.view.summaries.length && i < 60; i++) await w.say(i, filler(i));
+    expect(w.journal.view.summaries.length).toBeGreaterThan(0);
+    expect(w.journal.view.people).toEqual([]);
+    expect(w.journal.view.order[0]?.text).toContain('Sam');
+    w.journal.close();
+    const status = spawnSync(process.execPath,
+      ['--no-warnings', '--loader', './scripts/slice-ts-loader.mjs', 'tests/preview/journal-agent.mjs', 'status', '--root', root],
+      { cwd: process.cwd(), env: { ...process.env, INSTAR_SECRET_PREVIEW_STORAGE_KEY: Buffer.from(key).toString('hex') },
+        encoding: 'utf8', timeout: 10000 });
+    expect(status.status).toBe(0);
+    const report = JSON.parse(status.stdout);
+    expect(report.summaries.every((summary: { people: number | null }) => summary.people === null)).toBe(true);
+    expect(report.people).toEqual([]);
+  } finally { rmSync(root, { recursive: true, force: true }); }
+  const tight = origin();
+  try {
+    // A prompt bound that cannot hold recalled turns drops them first; one that cannot hold person notes drops those next.
+    let refuse = '"recalled"';
+    const w = world(tight, { prepare: context => { if (context.includes(refuse)) throw Error('overflow'); } });
+    await w.say(1, 'My cofounder Sam thinks the launch should slip to November.');
+    const n = await w.fillUntilRecall(2, 'What does Sam think about the launch budget?');
+    await w.say(n, 'What does Sam think about the launch budget?');
+    const first = JSON.parse(w.asked.get('What does Sam think about the launch budget?')!);
+    expect(first.recalled).toBeUndefined();
+    expect(first.people.length).toBeGreaterThan(0);
+    refuse = '"people"';
+    await w.say(n + 1, 'What does Sam think, again?');
+    const second = JSON.parse(w.asked.get('What does Sam think, again?')!);
+    expect(second.people).toBeUndefined();
+    expect(second.historyMode).toBe('summary-plus-recent');
+    expect(w.journal.view.order.every(turn => turn.sent === 1)).toBe(true);
+    w.journal.close();
+  } finally { rmSync(tight, { recursive: true, force: true }); }
+});
+
+it('keeps per-turn non-model overhead flat through 200 turns with person notes and a restart', async () => {
+  const root = origin(), samples: number[] = [];
+  try {
+    let w = world(root, { bad: false });
+    for (let i = 1; i <= 200; i++) {
+      if (i === 100) { w.journal.close(); w = world(root, { bad: false }); }
+      const text = i % 10 === 1 ? `Sam ${i} reported that Priya wants item ${i} reviewed.`
+        : i === 199 ? 'What have Sam and Priya said?' : filler(i);
+      const start = performance.now();
+      await w.say(i, text);
+      samples.push(performance.now() - start);
+    }
+    const view = w.journal.view;
+    expect(view.order.every(turn => turn.sent === 1)).toBe(true);
+    expect(view.people.length).toBeGreaterThan(10);
+    expect(JSON.parse(w.asked.get('What have Sam and Priya said?')!).people.length).toBeGreaterThan(0);
+    const p95 = (values: number[]) => values.slice().sort((a, b) => a - b)[Math.ceil(values.length * .95) - 1]!;
+    const first = p95(samples.slice(0, 10)), last = p95(samples.slice(190));
+    process.stdout.write(`journal people 200 turns: non-model p95=${p95(samples).toFixed(1)} ms, first-ten=${first.toFixed(1)} ms, final-ten=${last.toFixed(1)} ms\n`);
+    expect(p95(samples)).toBeLessThanOrEqual(5000);
+    expect(last - first).toBeLessThanOrEqual(1000);
+    w.journal.close();
+  } finally { rmSync(root, { recursive: true, force: true }); }
+}, 120000);

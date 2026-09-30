@@ -16,7 +16,32 @@ const patterns: readonly RegExp[] = [
   /\b[Bb]earer\s+[A-Za-z0-9._~+/-]{16,}=*/g,
 ];
 // key = value / key: value for obviously secret-named keys; the key name stays readable.
-const assignment = /\b((?:api[_-]?key|access[_-]?token|auth[_-]?token|secret|password|passwd|private[_-]?key|client[_-]?secret|token)\s*[:=]\s*)(["']?)[^\s"']{6,}\2/gi;
+const assignment = /\b((?:api[_-]?key|access[_-]?token|auth[_-]?token|secret|password|passwd|private[_-]?key|client[_-]?secret|token)\s*[:=]\s*)(["']?)(?!\[redacted credential\](?=$|[\s,;.!?]))[^\s"']{6,}\2/gi;
+
+// One kind per pattern above, in the same order.
+const kinds = ['private-key', 'provider-api-key', 'github-token', 'github-pat', 'aws-access-key', 'slack-token',
+  'google-api-key', 'telegram-bot-token', 'jwt', 'bearer-token'] as const;
+
+export interface CredentialSpan { readonly start: number; readonly end: number; readonly kind: string }
+/** Rule 100: the exact credential spans redaction would remove, so intake can put each
+ * into custody before anything consumes the message. Overlaps keep the earliest, longest span. */
+export function credentialSpans(text: string): readonly CredentialSpan[] {
+  const found: CredentialSpan[] = [];
+  patterns.forEach((pattern, index) => {
+    for (const match of text.matchAll(new RegExp(pattern.source, pattern.flags))) {
+      const prefix = kinds[index] === 'bearer-token' ? /^[Bb]earer\s+/u.exec(match[0])![0].length : 0;
+      found.push({ start: match.index + prefix, end: match.index + match[0].length, kind: kinds[index]! });
+    }
+  });
+  for (const match of text.matchAll(new RegExp(assignment.source, assignment.flags))) {
+    const quote = match[2]!.length, start = match.index + match[1]!.length + quote;
+    found.push({ start, end: match.index + match[0].length - quote, kind: 'assigned-secret' });
+  }
+  const spans: CredentialSpan[] = [];
+  for (const span of found.sort((a, b) => a.start - b.start || b.end - a.end))
+    if (!spans.length || span.start >= spans.at(-1)!.end) spans.push(span);
+  return spans;
+}
 
 export const redactionMark = '[redacted credential]';
 export function redact(text: string): { readonly text: string; readonly count: number } {

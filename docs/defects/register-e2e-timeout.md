@@ -1,6 +1,6 @@
 # Defect: register e2e timeout (Rule 37 quarantine)
 
-**Status:** OPEN. This test is quarantined under Rule 37.
+**Status:** REPAIRED, quarantine removed (see Repair below). Kept as the record.
 **Owner:** the register test maintainer carrying `fix/register-e2e-flake`.
 **Opened:** 2026-09-24.
 **Governing ruling:** `.instar/lanes/astra-register-flake-ruling.md`, which follows MUST-FIX 2 of `.instar/lanes/astra-scope-freeze-class-ruling.md`.
@@ -26,6 +26,22 @@ All runs are six-worker parallel desk gates on unchanged test code. The logs are
 | Prior reviewer, single-case one-worker rerun | timed out | 120 s test budget, 10 s hook | 178.21 s total | recorded in `astra-scope-freeze-class-ruling.md` |
 
 The table includes both red and green evidence. These results establish unreliable test execution. They do not establish a register semantic defect, and they do not prove that CPU contention is the root cause.
+
+## Second quarantined case (cint-5, 2026-09-28)
+
+- **Case:** `P3-P5 R2 same pinned commit refuses with and without an ambient bridge, and resolves a committed bridge`, same file and describe block.
+- **Affected contract IDs:** P3-P5 R2 (the committed-source pin refuses an ambient bridge in both a dirty and a clean clone, and resolves a committed one; the wiring command scans the pin).
+- **Budget:** `60_000` ms, unchanged. The body, both refusal assertions, the committed positive control, the output equality and the wiring checks are retained behind the same literal `it.skip` title form.
+- **Evidence (integration tree `cint-5`, same commit):**
+
+| Run | Case result | Case duration | Notes |
+|---|---|---|---|
+| Preview gate, `nice -n 10`, `--maxWorkers 4`, load average 10–12 (`/tmp/cint5-gate3.log`) | timed out | 87,221 ms | the run also recorded one `[vitest-worker]: Timeout calling "onTaskUpdate"` runner error |
+| Same file alone, `nice -n 10`, load average about 10 | passed | 13,229 ms | the other four active cases passed in 10–39 s |
+
+- **Why it starves the worker:** the whole case is synchronous (`cpSync` of the repository, `execFileSync` git calls, four `spawnSync` register builds and two wiring runs, with no `await`). Under contention it held its fork worker's event loop for 87 s, longer than both its own 60 s budget and vitest's 60 s worker RPC timeout, which is the same mechanism `docs/defects/vitest-worker-rpc-timeouts.md` records for the earlier stage2-recovery cause.
+- **Coverage residue:** while skipped, the shipped CLI's ambient-bridge refusal and committed-bridge resolution are not executed end to end. `tests/register/shipped.test.ts` still covers the committed-inventory refusal of an uncommitted import in process, and the P3-NF-01/07/09 case still runs the actual CLI against committed outputs.
+- **Repair:** the same repair commitment above applies, plus running the case's children asynchronously so a slow host fails the budget cleanly instead of freezing the worker. Closure follows the same four steps.
 
 ## Coverage residue
 
@@ -53,3 +69,38 @@ Keep this record after closure, and add the repair revision and its evidence.
 ## Rollback
 
 Only this test stops executing, and no production path changes. If the repair regresses, revert it and restore this explicit quarantine with the defect reopened. Do not reinstate an unexplained red gate.
+
+## Repair (unit U7, branch `unit-u7`)
+
+The measurement asked for above was taken, and it found the cost where this record predicted
+it. `scripts/register-source.mjs:readCommit` launched one `git show` per selected source and
+per `src/**/*.ts` file — 258 subprocesses per invocation on this tree — and the case invokes
+`scripts/build-register.mjs` nineteen times against successive commits, so the case paid for
+roughly 4,900 git subprocesses.
+
+`readCommit` now reads every pinned blob through a single `git cat-file --batch`. `cat-file`
+emits the object's raw bytes, so the exact commit binding, the source bytes, the `\r\n`
+normalization, the roster checks and the `P3-NF-23` missing-source refusal are all unchanged,
+and no ambient working file is read. Measured on the WSL2 host, with the two forms compared in
+the same process against the same commit:
+
+| form | readCommit | output |
+|---|---:|---|
+| one `git show` per file | 3,362 ms / 3,744 ms | — |
+| one batched `git cat-file` | 205 ms / 166 ms | byte-identical to the per-file form |
+
+`node scripts/build-register.mjs --check` still reproduces the committed register generation
+hash, which is an independent check that the source bytes did not move.
+
+The `it.skip` and its reason are removed; the full assertion set, the positive controls, every
+refusal assertion, the cleanup and the 120,000 ms fixture budget are unchanged. The coverage
+residue named above is closed. Evidence is recorded in the unit report at
+`.instar/state/unit-u7.md`.
+
+**Batch cint-L4 (2026-09-29).** On the combined tree the un-quarantined case first failed for two
+reasons outside its subject, both from sources that landed after U7's base: the copied real
+`preview-subscription-claude` model doorway carries a wall-clock `verifiedAt`, which reads as a stale
+model map on the fixture clock (`--now 100`); and the R78/R84 capability-line check requires the
+fixture feature to carry one line in its module README. The fixture now moves the copied doorway's
+clock facts to the fixture epoch and gives the feature cases their README line (the other cases keep
+the README without it). Every case and assertion is unchanged; the case passes alone on cint-L4.

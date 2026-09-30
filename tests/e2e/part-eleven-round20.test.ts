@@ -24,7 +24,8 @@ it('round20 V16/V61/V62 lifecycle: live generation drift refuses without a durab
   expect(readFileSync(join(rejectedDirectory, 'segment.jsonl'), 'utf8')).not.toContain('intake-verified-act');
 });
 
-it('round20 V67/V68 lifecycle: fsync-backed history admits the exact revocation target and preserves other-target refusal', () => {
+// fsync-backed on whatever disk holds the temp root, so the budget covers a real disk, not only the RAM root.
+it('round20 V67/V68 lifecycle: fsync-backed history admits the exact revocation target and preserves other-target refusal', { timeout: 60000 }, () => {
   const acceptedDirectory = directory('target-accept'), intended = round20RevocationAdmission('intended', acceptedDirectory);
   expect(value(intended.fixture.port().admitVerifiedAct(intended.input)).kind).toBe('approved');
   expect(readFileSync(join(acceptedDirectory, 'segment.jsonl'), 'utf8')).toContain('intake-verified-act');

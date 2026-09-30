@@ -7,6 +7,7 @@ import { canonicalText, hashText, snapshot } from './canonical.js';
 import { schemaRegistry } from './schema.js';
 import { runBoundary } from './framework.js';
 import { causalClock, childContext, sealInContext, sessionFor, trustedIn } from './session.js';
+import { accountAssentRecordTypes, admittedAccountAssent, attestedClass, isExplicitYes, isRepositoryYes, verifiedYesRecordTypes } from './explicit-yes.js';
 
 type Obj = Record<string, T.Json>;
 function requireThat(condition: unknown, detail: string): asserts condition {
@@ -144,7 +145,7 @@ function decodeRecord<N extends keyof T.Inventory>(type: N, v: Obj, c: DecodeCon
       if (sessionFor(c)) {
         tagged(v, type, ['adapter', 'method', 'record', 'verifiedAt', 'machine', 'class', 'authenticated']);
         ref(v.adapter, c, 'adapter'); one(v.method, c.register.methods, 'method'); ref(v.machine, c, 'machine');
-        one(v.class, ['verified', 'channel-attested'], 'class');
+        one(v.class, ['verified', 'channel-attested', 'account-assented'], 'class');
         const record = obj(v.record); fields(record, ['reference', 'hash']); const reference = text(record.reference, 'record.reference');
         hash(record.hash, c, 'record.hash', reference);
         const authenticated = obj(v.authenticated); fields(authenticated, ['principal', 'recordType', 'payload']);
@@ -163,7 +164,7 @@ function decodeRecord<N extends keyof T.Inventory>(type: N, v: Obj, c: DecodeCon
       fields(raw, ['principal', 'recordType', 'payload']); const identity = obj(raw.principal); fields(identity, ['id', 'kind']);
       text(identity.id, 'principal.id'); one(identity.kind, ['person', 'agent', 'system'], 'principal.kind'); text(raw.recordType, 'recordType');
       const e = obj(v.evidence, 'authentication evidence');
-      let authClass: 'verified' | 'channel-attested';
+      let authClass: T.Provenance['class'];
       if (e.kind === 'signature') {
         fields(e, ['kind', 'keyId', 'signature']); const key = c.register.keys[text(e.keyId, 'keyId')];
         requireThat(key && key.methods.includes(String(v.method)) && key.adapters.includes(String(v.adapter)), 'key: unregistered for adapter/method');
@@ -179,7 +180,9 @@ function decodeRecord<N extends keyof T.Inventory>(type: N, v: Obj, c: DecodeCon
         authClass = 'verified';
       } else {
         fields(e, ['kind', 'authenticated']); one(e.kind, ['channel', 'fetched-record'], 'evidence.kind');
-        requireThat(e.authenticated === true, 'channel: unauthenticated or sender came from content'); authClass = 'channel-attested';
+        requireThat(e.authenticated === true, 'channel: unauthenticated or sender came from content'); authClass = attestedClass(String(raw.recordType));
+        // A record label alone never assigns account assent: the producer's admission of this exact record must be present.
+        if (authClass === 'account-assented' && !admittedAccountAssent(c.accountAssent, reference, record.hash as T.Hash)) authClass = 'channel-attested';
       }
       const { evidence: _e, ...rest } = v;
       return seal({ ...rest, class: authClass, authenticated: raw });
@@ -187,6 +190,7 @@ function decodeRecord<N extends keyof T.Inventory>(type: N, v: Obj, c: DecodeCon
     case 'VerifiedPrincipal': {
       tagged(v, type, ['id', 'kind'], ['provenance', 'standing', 'verifiedBy']);
       const p = provenance(c, v.standing !== undefined && v.standing !== 'requester');
+      requireThat(p.class !== 'account-assented', 'principal: an account-assented yes never produces a principal');
       if (v.standing !== undefined) one(v.standing, ['requester', 'operator', 'delegate'], 'standing');
       if (v.verifiedBy !== undefined) { one(v.verifiedBy, c.register.methods, 'verifiedBy'); requireThat(v.verifiedBy === p.method, 'verifiedBy: disagrees with provenance'); }
       const id = text(v.id, 'id'); const kind = one(v.kind, ['person', 'agent', 'system'], 'kind');
@@ -312,8 +316,14 @@ function decodeRecord<N extends keyof T.Inventory>(type: N, v: Obj, c: DecodeCon
     }
     case 'Authorization': {
       tagged(v, type, ['id', 'at', 'approver', 'under', 'action', 'artifact', 'base', 'kind', 'requestedBy', 'explicitYes', 'requestDigest']); text(v.id, 'id');
-      const p = provenance(c, true); requireThat(canonicalText(v.explicitYes) === canonicalText(p), 'explicitYes: provenance differs');
-      one(p.authenticated.recordType, ['review-approval', 'approval', 'signed-yes', 'dashboard-yes'], 'explicitYes.recordType');
+      const p = provenance(c, false); requireThat(canonicalText(v.explicitYes) === canonicalText(p), 'explicitYes: provenance differs');
+      one(p.authenticated.recordType, [...verifiedYesRecordTypes, ...accountAssentRecordTypes], 'explicitYes.recordType');
+      requireThat(isExplicitYes(p), 'provenance: verified required above requester (account-authenticated assent only under its enabled declaration and admitted request)');
+      // Live admission only; a historical session re-reads the class recorded when it was admitted.
+      if (p.class === 'account-assented' && !sessionFor(c)) {
+        const admitted = admittedAccountAssent(c.accountAssent, p.record.reference, p.record.hash);
+        requireThat(admitted && admitted.requestDigest === v.requestDigest && admitted.authorizationId === v.id, 'account assent: admission does not name this exact request');
+      }
       bound(v, p, ['explicitYes']);
       const approver = principal(v.approver, c); const requestedBy = principal(v.requestedBy, c); const at = clock(v.at, c);
       requireThat(approver.id === p.authenticated.principal.id && approver.kind === p.authenticated.principal.kind, 'approver: differs from authenticated record');
@@ -325,7 +335,7 @@ function decodeRecord<N extends keyof T.Inventory>(type: N, v: Obj, c: DecodeCon
       const policy = c.register.actions[aKind]!;
       if (policy.protected) {
         requireThat(approver.id !== requestedBy.id && approver.kind !== 'agent', 'protected: requester or agent cannot approve');
-        if (policy.repository) requireThat(p.authenticated.recordType === 'review-approval' || p.authenticated.recordType === 'approval', 'repository: requires approval or review record');
+        if (policy.repository) requireThat(isRepositoryYes(p), 'repository: requires approval or review record');
       }
       const kind = obj(v.kind); one(kind.kind, ['approval', 'waiver', 'grant'], 'kind');
       fields(kind, kind.kind === 'waiver' ? ['kind', 'rule'] : ['kind']);

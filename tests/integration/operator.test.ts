@@ -2,6 +2,7 @@ import { readFileSync } from 'node:fs';
 import { expect, it } from 'vitest';
 import { consumeResult } from '../../src/index.js';
 import { createOperatorSurface } from '../../src/operator/index.js';
+import { productionBindingHolds } from '../../src/assembly/production-holds.js';
 import { intakeFixture, route } from '../intake/fixtures.js';
 import { value } from '../fixtures.js';
 import { operatorFixture } from '../operator/fixture.js';
@@ -58,5 +59,6 @@ it('P11-NF-33 P11-NF-41 the full-port control preserves authenticated input thro
 it('P11-NF-51 P11-NF-52 mocks/screenshots cannot activate the production slice or the objective mobile floor', () => {
   const declarations = JSON.parse(readFileSync('src/operator/operator.declarations.json', 'utf8')) as { id: string; status: string }[];
   expect(declarations.find(row => row.id === 'operator-surfaces.source')?.status).toBe('dark');
-  expect(readFileSync('../../.instar/lanes/part-eleven-seam-request-assembly.md', 'utf8')).toContain('real platform delivery witness');
+  // The production slice stays held until a real platform delivery witness is bound (in-repo, not a desk file).
+  expect(productionBindingHolds).toContain('NON-EXECUTABLE-UNTIL-platform-delivery-witness');
 });

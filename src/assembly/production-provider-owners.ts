@@ -60,6 +60,7 @@ export function createProductionProviderOwners(input: ProductionProviderOwnersIn
           timeout: p.timeout });
         return { state: observed.state, bytes: observed.bytes, providerOperation: observed.providerOperation,
           usage: observed.usage, retryBlocked: observed.retryBlocked,
+          ...(observed.failure ? { failure: observed.failure } : {}),
           ...(observed.limitation ? { limitation: observed.limitation } : {}) } as ProviderObservation;
       }, p.authority, p.host.transport, p.boundary));
     const legacyJudgment = createJudgmentDoorway({ host: p.host, authority: p.authority,

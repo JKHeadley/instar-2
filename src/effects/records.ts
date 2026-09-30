@@ -134,6 +134,11 @@ export function definitionCheck(d: OperationDefinition, host: EffectHost): void 
     && d.generation === c.decode.register.generation.id, 'definition generation/feature/adapter mismatch');
   ensure(d.scopeDigest === encoded(host.scope).hash && d.speaker === host.principal.id, 'definition scope or speaker mismatch');
 }
+/** A provider call's complete submitted input may exceed one outbound message:
+ * the measured successive-turn preview envelope (system prompt plus canonical
+ * stdin, `production-provider.ts`). Every other operation keeps 4096 bytes. */
+export const PROVIDER_CALL_MAX_BYTES = 32768;
+
 export function nativeDefinitionCheck(d: NativeLaunchDefinition, host: EffectHost): void {
   live(host, d.feature);
   const c = host.current(d.feature), versions = walkVersions(c.versions);
@@ -290,7 +295,8 @@ function validate(r: EffectRecord, past: readonly FactEnvelope[], host: EffectHo
     ensure(found, `missing ${type} predecessor`); return found.record as Extract<EffectRecord, { type: N }>;
   };
   if (r.type === 'OperationDefinition') {
-    ensure(r.maxBytes > 0 && r.maxBytes <= 4096 && r.maxCharge >= 0 && r.timeout > 0 && r.lossModel.length > 0, 'finite operation bounds required');
+    ensure(r.maxBytes > 0 && r.maxBytes <= (r.feature === 'provider-call' ? PROVIDER_CALL_MAX_BYTES : 4096)
+      && r.maxCharge >= 0 && r.timeout > 0 && r.lossModel.length > 0, 'finite operation bounds required');
     ensure((r.durability === 'replicated' && r.replicas > 0) || (r.durability === 'local-durable' && r.replicas === 0), 'invalid durability demand');
     if (origin) definitionCheck(r, host);
   } else if (r.type === 'OutboundMessage') {

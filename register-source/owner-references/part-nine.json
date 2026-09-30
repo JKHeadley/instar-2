@@ -7,7 +7,7 @@
       "stage": "build",
       "artifact": {
         "path": "tests/verification/provider-response-assessment.test.ts",
-        "hash": "sha256:e6780f1ff342e17c1510c9fa3cb169f680c8c77a9f20768efc112d7ea60097ea"
+        "hash": "sha256:e70a95924932ade55954e0cac00896929571593551465009e8fb60706a404185"
       }
     },
     {
@@ -15,7 +15,7 @@
       "stage": "build",
       "artifact": {
         "path": "tests/verification/provider-response-assessment.test.ts",
-        "hash": "sha256:e6780f1ff342e17c1510c9fa3cb169f680c8c77a9f20768efc112d7ea60097ea"
+        "hash": "sha256:e70a95924932ade55954e0cac00896929571593551465009e8fb60706a404185"
       }
     },
     {
@@ -23,11 +23,163 @@
       "stage": "build",
       "artifact": {
         "path": "tests/verification/provider-response-assessment.test.ts",
-        "hash": "sha256:e6780f1ff342e17c1510c9fa3cb169f680c8c77a9f20768efc112d7ea60097ea"
+        "hash": "sha256:e70a95924932ade55954e0cac00896929571593551465009e8fb60706a404185"
+      }
+    },
+    {
+      "id": "P9-PREVIEW-restore-equality",
+      "stage": "build",
+      "artifact": {
+        "path": "tests/preview/proofs.test.ts",
+        "hash": "sha256:759bf84de31bc407412fca04e4ec2c5866e8ace759fe88195a51a2d1881c159b"
+      }
+    },
+    {
+      "id": "P9-PREVIEW-step-check-graduation",
+      "stage": "build",
+      "artifact": {
+        "path": "tests/preview/step-check.test.ts",
+        "hash": "sha256:c8ad600747f31deef4456ebcfd1da6675b0102f4ebf76a860ebaabd5cf040ed3"
       }
     }
   ],
-  "probes": [],
+  "probes": [
+    {
+      "id": "P9-PREVIEW-held-notice-delivered",
+      "cadence": 3600000,
+      "execution": "ci",
+      "artifact": {
+        "path": "tests/preview/proofs-launcher.test.ts",
+        "hash": "sha256:0f612d923ab4177bf66bfe532f120649059f6a17e82da5fef9c932f913c9d4df"
+      }
+    },
+    {
+      "id": "P9-PREVIEW-journal-restore",
+      "cadence": 21600000,
+      "execution": "ci",
+      "artifact": {
+        "path": "tests/preview/proofs-launcher.test.ts",
+        "hash": "sha256:0f612d923ab4177bf66bfe532f120649059f6a17e82da5fef9c932f913c9d4df"
+      }
+    },
+    {
+      "id": "P9-PREVIEW-provider-outcomes",
+      "cadence": 3600000,
+      "execution": "ci",
+      "artifact": {
+        "path": "tests/preview/proofs-launcher.test.ts",
+        "hash": "sha256:0f612d923ab4177bf66bfe532f120649059f6a17e82da5fef9c932f913c9d4df"
+      }
+    },
+    {
+      "id": "P9-PREVIEW-reminder-delivered",
+      "cadence": 3600000,
+      "execution": "ci",
+      "artifact": {
+        "path": "tests/preview/proofs-launcher.test.ts",
+        "hash": "sha256:0f612d923ab4177bf66bfe532f120649059f6a17e82da5fef9c932f913c9d4df"
+      }
+    },
+    {
+      "id": "P9-PREVIEW-reply-delivered",
+      "cadence": 3600000,
+      "execution": "ci",
+      "artifact": {
+        "path": "tests/preview/proofs-launcher.test.ts",
+        "hash": "sha256:0f612d923ab4177bf66bfe532f120649059f6a17e82da5fef9c932f913c9d4df"
+      }
+    },
+    {
+      "id": "P9-PREVIEW-reply-drain",
+      "cadence": 900000,
+      "execution": "ci",
+      "artifact": {
+        "path": "tests/preview/proofs-launcher.test.ts",
+        "hash": "sha256:0f612d923ab4177bf66bfe532f120649059f6a17e82da5fef9c932f913c9d4df"
+      }
+    },
+    {
+      "id": "P9-PREVIEW-reply-review-reached",
+      "cadence": 3600000,
+      "execution": "ci",
+      "artifact": {
+        "path": "tests/preview/proofs-launcher.test.ts",
+        "hash": "sha256:0f612d923ab4177bf66bfe532f120649059f6a17e82da5fef9c932f913c9d4df"
+      }
+    },
+    {
+      "id": "P9-PREVIEW-spend-cap-refusal",
+      "cadence": 3600000,
+      "execution": "ci",
+      "artifact": {
+        "path": "tests/preview/proofs-launcher.test.ts",
+        "hash": "sha256:0f612d923ab4177bf66bfe532f120649059f6a17e82da5fef9c932f913c9d4df"
+      }
+    },
+    {
+      "id": "P9-PREVIEW-startup",
+      "cadence": 2592000000,
+      "execution": "ci",
+      "artifact": {
+        "path": "tests/preview/proofs-launcher.test.ts",
+        "hash": "sha256:0f612d923ab4177bf66bfe532f120649059f6a17e82da5fef9c932f913c9d4df"
+      }
+    },
+    {
+      "id": "P9-PREVIEW-status-answered",
+      "cadence": 3600000,
+      "execution": "ci",
+      "artifact": {
+        "path": "tests/preview/proofs-launcher.test.ts",
+        "hash": "sha256:0f612d923ab4177bf66bfe532f120649059f6a17e82da5fef9c932f913c9d4df"
+      }
+    },
+    {
+      "id": "P9-PREVIEW-step-check-reached",
+      "cadence": 21600000,
+      "execution": "ci",
+      "artifact": {
+        "path": "tests/preview/proofs-launcher.test.ts",
+        "hash": "sha256:0f612d923ab4177bf66bfe532f120649059f6a17e82da5fef9c932f913c9d4df"
+      }
+    },
+    {
+      "id": "P9-PREVIEW-stop-honored",
+      "cadence": 86400000,
+      "execution": "ci",
+      "artifact": {
+        "path": "tests/preview/proofs-launcher.test.ts",
+        "hash": "sha256:0f612d923ab4177bf66bfe532f120649059f6a17e82da5fef9c932f913c9d4df"
+      }
+    },
+    {
+      "id": "P9-PREVIEW-store-agreements",
+      "cadence": 3600000,
+      "execution": "ci",
+      "artifact": {
+        "path": "tests/preview/proofs-launcher.test.ts",
+        "hash": "sha256:0f612d923ab4177bf66bfe532f120649059f6a17e82da5fef9c932f913c9d4df"
+      }
+    },
+    {
+      "id": "P9-PREVIEW-summary-checked",
+      "cadence": 21600000,
+      "execution": "ci",
+      "artifact": {
+        "path": "tests/preview/proofs-launcher.test.ts",
+        "hash": "sha256:0f612d923ab4177bf66bfe532f120649059f6a17e82da5fef9c932f913c9d4df"
+      }
+    },
+    {
+      "id": "P9-PREVIEW-telegram-identity",
+      "cadence": 21600000,
+      "execution": "ci",
+      "artifact": {
+        "path": "tests/preview/proofs-launcher.test.ts",
+        "hash": "sha256:0f612d923ab4177bf66bfe532f120649059f6a17e82da5fef9c932f913c9d4df"
+      }
+    }
+  ],
   "documents": [],
   "decoders": [
     {

@@ -1,4 +1,6 @@
-import { afterEach, expect, it } from 'vitest';
+import { afterEach, expect, it, vi } from 'vitest';
+// Each scenario is ~8-12s of synchronous owner work on a loaded host (existing pattern: model-provider-refusals).
+vi.setConfig({ testTimeout: 60_000 });
 // Yield between heavy fixtures so the runner's task-update IPC can flush (landed pattern,
 // tests/e2e/slice.test.ts): these scenarios are synchronous owner work for the whole file,
 // which otherwise starves the fork worker's channel past its fixed 60s RPC deadline.
@@ -20,6 +22,12 @@ import type { FactEnvelope } from '../../src/facts/index.js';
 import { privateKey } from '../facts/fixtures.js';
 import { verificationInput } from '../verification/fixture.js';
 
+// The afterEach yield above only runs BETWEEN cases. One scenario is a minute or more of
+// owner work in a single case, so the fork worker's channel stays starved for the whole
+// case and the run reports `Timeout calling "onTaskUpdate"` as an unhandled runner error
+// while the case itself is merely slow. Yield at the scenario's phase boundaries as well.
+// Scheduling only: no owner behaviour or assertion changes. Rule 37.
+const yieldTurn = () => new Promise<void>(done => setImmediate(done));
 const raw = (fact: FactEnvelope) => (fact.body as unknown as { record: Record<string, unknown> }).record;
 const reference = (fact: FactEnvelope) => ({ owner: 'part-two' as const, name: 'FactEnvelope' as const,
   id: fact.id, kind: fact.kind, schemaVersion: fact.schemaVersion, contentHash: fact.contentHash });
@@ -82,6 +90,7 @@ export async function runProviderAnswerReplyScenario(malformedDecision = false, 
 
   for (const predicate of (hook.unknown ? ['operation-occurred'] : ['operation-occurred', 'charge-settled', 'old-executor-quiescent']))
     f.evidence(observed.operation, request.digest, predicate, predicate === 'charge-settled' ? 3 : undefined);
+  await yieldTurn();
   const facts = f.all();
   const requestFact = facts.find(fact => fact.id === request.payload.request.id)!;
   const preparedFact = facts.find(fact => fact.id === request.payload.prepared.id)!;
@@ -137,12 +146,14 @@ export async function runProviderAnswerReplyScenario(malformedDecision = false, 
       { predicate: 'response-completeness', sources: [f.th.principal.id], minimumStrength: 'observation', requiredContract: 'response-contract' },
     ] }));
 
+  await yieldTurn();
   if (hook.beforeAssessment) return { f, api, responseAssessment, subject, observed, request, providerObservation,
     modelCalls: () => modelCalls };
   const assessment = value(api.assessResponse(observed.operation));
   expect(value(api.assessResponse(observed.operation))).toEqual(assessment);
   const settlement = value(api.settle(observed.operation, assessment));
   const accounting = value(f.six.settle(f.fence, settlement));
+  await yieldTurn();
   const settlementFact = f.all().find(fact => fact.kind === 'effect-provider-ProviderEffectSettlement'
     && raw(fact).id === settlement.id)!;
   const accountingFact = f.all().find(fact => fact.kind === 'transport-SettlementApplication'
@@ -162,6 +173,7 @@ export async function runProviderAnswerReplyScenario(malformedDecision = false, 
   expect(accepted.chargeSettled).toBe(!hook.unknown);
   expect(accepted.required).toContain(assessment.id);
 
+  await yieldTurn();
   const replyGraph = value(createRunGraph({ ...f.deps, acceptedAnswer: api }));
   const acceptanceFact = f.all().find(fact => fact.id === acceptance.id)!;
   const opening = { owner: 'part-two' as const, name: 'FactEnvelope' as const, id: acceptanceFact.id };
@@ -242,7 +254,7 @@ it.each(['submitted', 'raw-terminal', 'answer', 'receipt', 'Evidence'] as const)
       causalStanding(captureOwner, facts, false).decode));
     expect(historical.taint).toContain('evidence-unavailable');
     if (captureOwner.id === fact.id) expect(historical.fields.record).toEqual(record);
-  });
+  }, 30_000);
 
 it('preserves signed Nine assessment as unavailable history after original register retirement; current consumption refuses', async () => {
   const s = await runProviderAnswerReplyScenario(false, { beforeAssessment: true });
@@ -267,7 +279,7 @@ it('preserves signed Nine assessment as unavailable history after original regis
 
   s.f.generation('later-generation');
   refused(s.responseAssessment.consumeProviderResponseAssessment(assessment, s.subject, (view: unknown) => view));
-});
+}, 30_000);
 
 it('P10-SI-37 keeps a v1 occurrence assessment diagnostic-only when no answer evidence exists', async () => {
   const f = providerFixture({ route: { invoke: async (_bytes, bounds) => ({ state: 'complete',
@@ -283,7 +295,7 @@ it('P10-SI-37 keeps a v1 occurrence assessment diagnostic-only when no answer ev
     .toEqual(['occurrence', 'non-occurrence', 'quiescence', 'charge']);
   expect(value(f.api.settle(observed.operation, assessment)).outcome.kind).toBe('happened');
   refused(f.api.assessResponse(observed.operation), 'response assessment absent');
-});
+}, 30_000);
 
 it('P10-SI-17 P10-SI-37 retains unresolved exposure independently of a satisfied exact answer', async () => {
   const { accounting, settlement } = await runProviderAnswerReplyScenario(false, { unknown: true, beforeOpen: true });
@@ -301,7 +313,7 @@ it('P10-SI-37 reuses a still-current assessment after the clock advances and ref
   const saved = s.f.metadata[capture.reference];
   s.f.metadata[capture.reference] = { ...saved, status: 'missing', bytes: null };
   refused(s.responseAssessment.consumeProviderResponseAssessment(assessment, s.subject, (view: unknown) => view));
-});
+}, 30_000);
 
 it('P9-NF-65 P9-NF-66 refuses forged origin derivations and identity conflicts, then records one linked supersession', async () => {
   const s = await runProviderAnswerReplyScenario(false, { beforeAssessment: true });
@@ -331,7 +343,7 @@ it('P9-NF-65 refuses a forged historical assessment against the original signed 
       row.predicate === 'response-completeness' ? { ...row, verdict: 'contradicted', reason: 'invented history' } : row) };
   refused(decodeHistoricalVerificationRecord('VerificationAssessment', forged, { ...s.f.host.boundary,
     origin: fact, mode: 'historical', facts: { ...s.f.context, facts: s.f.all() } }, s.f.vh), 'signed origin');
-});
+}, 30_000);
 
 it('P10-SI-37 blocks a first reply after the genuine conversation obligation stops', async () => {
   const s = await runProviderAnswerReplyScenario(false, { beforeOpen: true });
@@ -359,7 +371,7 @@ it('P9-NF-66 derives insufficiency from raw tool_use despite caller success labe
   expect((record.predicates as any[]).filter(row => String(row.predicate).startsWith('response-'))
     .map(row => row.verdict)).toEqual(['insufficient', 'insufficient']);
   refused(s.responseAssessment.consumeProviderResponseAssessment(assessment, s.subject, (view: unknown) => view));
-});
+}, 30_000);
 
 it('P10-SI-37 reconstructs acceptance with its original signed Decision authority', async () => {
   const s = await runProviderAnswerReplyScenario(false, { beforeOpen: true });

@@ -189,3 +189,8 @@ fsync-backed isolated storage. The harness exits after capture, receipt, resolut
 and stop boundaries, then boots the same public port and rebuilds projections. It uses test
 credentials and is not part eleven's live-platform acceptance proof. `check-p4-contract-map.mjs`
 maps all 29 design checks to actual executed tests and explicit out-of-slice skips.
+
+## Capabilities
+
+- `intake-slice`: captures and receipts or holds every inbound message before any work; an uncertain arrival is kept.
+  Details: every inbound requester message is captured and receipted or held before any work, with an exact dedup, authentication, resolution and operator-stop brake; an uncertain arrival is kept, never discarded.

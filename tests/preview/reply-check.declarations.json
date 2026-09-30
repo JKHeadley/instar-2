@@ -1,0 +1,195 @@
+[
+  {
+    "type": "Declaration",
+    "schemaVersion": 1,
+    "id": "preview.reply-check.reviewReply",
+    "kind": "blocking sites",
+    "status": "live",
+    "requiredFacts": {
+      "authority": "block",
+      "rungs": [
+        {
+          "decidesAlone": "no",
+          "criticality": "Mandatory floors (Rules 4, 86): exact credential-shaped text never leaves; a candidate the contextual reviewer finds exposing a credential, deferring untracked work or declaring an unevidenced final cannot-do, and any answer whose declared deferral or blocker the runner refused, gets one bounded correction inside the shared 30-second loop deadline and the call cap. It is sent only when a contextual review of the corrected text clears those classes; otherwise the holding notice is sent in its place with the agent's answer to each objection recorded. When the review gives no verdict and Jev completed a credential flag, or the runner refused a declaration, nothing is sent and the turn stays held.",
+          "failDirection": "closed",
+          "preservesInput": "encrypted preview journal: the turn, its candidate, every check row, the correction and its review stay recorded; a held turn stays pending for raise-caps or recovery",
+          "model": "preview-subscription-claude"
+        },
+        {
+          "decidesAlone": "no",
+          "criticality": "Rule 86: every other objection, from Jev (a low-context filter), the contextual reviewer's per-rule findings or the deterministic link checks, is a signal. The agent answers each one once (accept, reject with a reason, or no decision) and may revise; the reply is sent once whether or not a verdict or answer arrived. When Jev or the contextual review is unavailable, or the shared deadline or call cap stops the loop, an advisory-only reply is still sent once with its unavailable status recorded (reachability to the operator fails open, Rule 95).",
+          "failDirection": "open",
+          "preservesInput": "encrypted preview journal: the Jev row, the review rows with their per-rule findings, the agent's dispositions and the reply intent stay recorded; unavailable releases are counted on status (reviewUnavailableReleases)",
+          "model": "preview-subscription-claude"
+        }
+      ],
+      "inspectedBy": "PREVIEW-REPLY-CHECK"
+    },
+    "profile": {
+      "type": "Profile",
+      "schemaVersion": 1,
+      "consequence": "control",
+      "reversibility": "reversible",
+      "reach": "user",
+      "surface": "chat",
+      "repeats": {
+        "kind": "no"
+      }
+    },
+    "standards": [
+      4,
+      14,
+      66,
+      86,
+      95
+    ],
+    "holds": []
+  },
+  {
+    "type": "Declaration",
+    "schemaVersion": 1,
+    "id": "preview.reply-check.parseReplyReviewVerdict",
+    "kind": "judgment points",
+    "status": "live",
+    "requiredFacts": {
+      "floor": {
+        "type": "ActionFloor",
+        "schemaVersion": 1,
+        "actions": [
+          "preview.reply.hold",
+          "preview.reply.release"
+        ],
+        "default": "preview.reply.hold"
+      },
+      "benchmark": "unmeasured"
+    },
+    "profile": {
+      "type": "Profile",
+      "schemaVersion": 1,
+      "consequence": "control",
+      "reversibility": "reversible",
+      "reach": "user",
+      "surface": "chat",
+      "repeats": {
+        "kind": "no"
+      }
+    },
+    "standards": [
+      57
+    ],
+    "holds": []
+  },
+  {
+    "type": "Declaration",
+    "schemaVersion": 1,
+    "id": "preview.reply-check.parseReplyRevision",
+    "kind": "judgment points",
+    "status": "live",
+    "requiredFacts": {
+      "floor": {
+        "type": "ActionFloor",
+        "schemaVersion": 1,
+        "actions": [
+          "preview.reply.release",
+          "preview.reply.revise"
+        ],
+        "default": "preview.reply.release"
+      },
+      "benchmark": "unmeasured"
+    },
+    "profile": {
+      "type": "Profile",
+      "schemaVersion": 1,
+      "consequence": "control",
+      "reversibility": "reversible",
+      "reach": "user",
+      "surface": "chat",
+      "repeats": {
+        "kind": "no"
+      }
+    },
+    "standards": [
+      57
+    ],
+    "holds": []
+  },
+  {
+    "type": "Declaration",
+    "schemaVersion": 1,
+    "id": "preview.reply-check.parseJevResponse",
+    "kind": "parsers",
+    "status": "live",
+    "requiredFacts": {
+      "fixture": "PREVIEW-CAPTURE-JEV-RESPONSE",
+      "authenticationClass": [
+        {
+          "stimulusType": "jev-verdict",
+          "class": "channel-attested"
+        }
+      ],
+      "eventIdAuthority": {
+        "mintedBy": "the runner: one request per reply check",
+        "uniquenessScope": "one reply-check attempt",
+        "replayWindow": 0,
+        "fallbackFingerprint": {
+          "policy": "none",
+          "basis": "the response is consumed only by the request that fetched it"
+        }
+      },
+      "ackPolicy": "never"
+    },
+    "profile": {
+      "type": "Profile",
+      "schemaVersion": 1,
+      "consequence": "data",
+      "reversibility": "reversible",
+      "reach": "internal",
+      "surface": "none",
+      "repeats": {
+        "kind": "no"
+      }
+    },
+    "standards": [
+      36
+    ],
+    "holds": [
+      {
+        "rule": 36,
+        "class": "held",
+        "evidence": {
+          "kind": "fixture",
+          "id": "PREVIEW-JEV-RESPONSE-ON-CAPTURE",
+          "stage": "build"
+        },
+        "semanticallyReviewed": "never"
+      }
+    ]
+  },
+  {
+    "type": "Declaration",
+    "schemaVersion": 1,
+    "id": "preview-subscription-claude",
+    "kind": "model doorways",
+    "status": "live",
+    "requiredFacts": {
+      "models": [
+        {
+          "id": "claude-sonnet-5",
+          "verifiedAt": 1790519680619,
+          "freshFor": 2885119381
+        }
+      ],
+      "billing": "subscription",
+      "subsidy": {
+        "ratio": 1,
+        "basis": "estimated",
+        "updatedAt": 1790519680619,
+        "freshFor": 2885119381
+      }
+    },
+    "standards": [
+      56
+    ],
+    "holds": []
+  }
+]

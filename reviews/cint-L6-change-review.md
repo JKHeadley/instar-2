@@ -1,0 +1,32 @@
+# Change review — cint-L6: merge main and the five wave-3 units onto the live build
+
+Subject base: 85b46430648ccb30cc58bac98ce0c03e9db821d4
+Review state: open
+Reviewed content: none
+Outcome: cint-L6 is the live build cint-L5 85b46430 plus origin/main 712a78a0 (the approved approval-gesture amendment, PR #139, docs only), then w3-crheads 8d26b57a, w3-awarecont 0f42c9d0, w3-jload e806c5df, w3-bootctx 4c2bd8a5 and w3-harnessload 98f80781, merged in that order. The main merge conflicted only in generated/ (resolved by regeneration); its owner-reference pin in register-source/owner-references/part-four.json auto-merged. The five unit merges were clean. The register was regenerated once after all merges (desk repin chain: 0 pins; desk owner-manifest rehash: 0 pins; build-register --replay). Four units carry their own records (reviews/w3-crheads-change-review.md, reviews/w3-awarecont-change-review.md, reviews/w3-jload-change-review.md, reviews/w3-bootctx-change-review.md). w3-harnessload shipped no record, so this record also reviews its commit 98f80781: the confined runner writes one readiness line on descriptor 3 once its own wall bound is armed; the launcher gives a confined child startMs (120 s) to report readiness and then its bound plus grace measured from that readiness, while a host tool keeps its spawn-measured bound; the reported original deadline includes startMs; and harness.declarations.json carries the recomputed self-hosting conformance digest of the changed harness bytes. The contract test still asserts exactly one provider call, and stop still latches before any launch.
+Affected rules: 2, 10, 34, 37, 42, 43, 44, 45, 47, 74, 107, 110, 116 (each unit's rules are reviewed in its own record; harnessload: 2 and 37 — the shipped self-host path bounds work by its contract, not a spawn-time guess; 116 — one readiness byte and one re-armed timer)
+Affected floors: secrets — unchanged; spend cap — unchanged (harnessload removes the second provider call a load-killed launch caused); stop — unchanged (stop latches before any launch, still asserted); no duplicate sends — unchanged (calls === 1 still asserted; the awareness case still asserts one re-ground delivery); durable intake — unchanged
+Operator questions: none
+Suggested tier: critical
+Declared tier: significant
+Tier rationale: merges of reviewed units and an approved docs amendment, generated output, and one unit commit (harnessload) reviewed here; it changes only the preview self-host launcher's backstop timing and its conformance digest; no system-prompt, provider-policy or invocationPolicyDigest change
+Side effects: change-review pass submits the runs at HEAD for every current record (crheads); the awareness and journal cases run again instead of being skipped (awarecont, jload); the installed production bin case runs again (bootctx); a slow OS admission of the confined runtime is no longer charged to the work, and a runtime that never reports readiness is killed at startMs instead of 25 s (harnessload); journal-assembled stays quarantined, its cause (scripts/resource-owner.mjs lim fork) recorded in docs/defects/preview-journal-load-timing-flake.md
+Undo and recovery: revert the six merge commits, the regeneration commit and this record; each unit record describes its own compatibility; reverting harnessload restores the 25 s spawn-measured backstop and the prior conformance digest together
+Multi-machine posture: single-machine preview runner and repository tooling only; no shared state changed
+Layer below: tests/preview/self-host-harness.mjs RUNNER_SOURCE wall bound (the runner still enforces its own deadline); deploy/macos/fixed-worker/worker.sb (unchanged); scripts/composition-digest.mjs compositionDigest (unchanged, recomputes the declared digest)
+Bug class: none
+Bug evidence: none
+Hook bypass: none
+Convergence: none
+Decision: cint-L6-harnessload-record | w3-harnessload shipped no Rule 74 record, so its commit is reviewed in this combine record rather than left uncovered or sent back, because the change is small and its PROGRESS carries the evidence on both sides | reported=/Users/dabombstudio/.instar/agents/echo/.instar/lanes/cint-L6-PROGRESS.md
+Prompt review: no prompt text changed; the system prompt is unchanged
+Deferral: generated/register.json:1 | not-a-deferral=generated register output quoting the rule book, not a commitment by this change
+Skip: tests/e2e/awareness-continuity.test.ts:22 | scope=runs only where tmux is available; the case is not quarantined, it is skipped only on a host without tmux
+
+Subject (42 paths): docs/00-the-policy-register.changelog.json, docs/00-the-policy-register.changelog.md, docs/00-the-policy-register.md, docs/00-the-purpose.changelog.json, docs/00-the-purpose.changelog.md, docs/00-the-purpose.md, docs/05-the-types.changelog.json, docs/05-the-types.changelog.md, docs/05-the-types.md, docs/08-the-intake.changelog.json, docs/08-the-intake.changelog.md, docs/08-the-intake.md, docs/13-the-verification-holders.changelog.json, docs/13-the-verification-holders.changelog.md, docs/13-the-verification-holders.md, docs/14-the-assembly.changelog.json, docs/14-the-assembly.changelog.md, docs/14-the-assembly.md, docs/15-the-operator-surfaces.changelog.json, docs/15-the-operator-surfaces.changelog.md, docs/15-the-operator-surfaces.md, docs/defects/awareness-continuity-respawn-flake.md, docs/defects/preview-journal-load-timing-flake.md, docs/defects/production-boot-public-entry-ctx.md, generated/capabilities.json, generated/capabilities.md, generated/coverage.md, generated/glossary.md, generated/register.json, generated/rules.md, generated/source.json, register-source/owner-references/part-four.json, register-source/owner-references/preview.json, scripts/check-change-review.mjs, src/assembly/harness.declarations.json, tests/assembly/production-boot-public-entry.test.ts, tests/e2e/awareness-continuity.test.ts, tests/preview/journal-audit.test.ts, tests/preview/journal-dated-memory.test.ts, tests/preview/native-harness-contract.test.ts, tests/preview/self-host-harness.mjs, tests/register/change-review-git.test.ts
+
+## Closing block
+
+simplestRobustRoute: merge main and the reviewed units, regenerate the register with the desk scripts, and review the one unrecorded unit commit here; nothing else
+80/20: 0 must-fix, 0 notes — merges, generated output, and one reviewed launcher-timing commit
+VERDICT: author submission; the independent verdict is recorded as a pass

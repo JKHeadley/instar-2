@@ -1,7 +1,7 @@
 # Rule coverage
 
-Register generation: sha256:7dfb0a48ac711b261c08633c78803f63fd45710798aa8762a4f91e837da1f071
-Source commit: c1aff17f4e6f25f80edff855dac0580c4d13db4c
+Register generation: sha256:215e998deb4d53026f5620f73b2f4ef5f3c0158b8cb4aea45007e8adbbb53f40
+Source commit: 0a8b855b06f7941ea09af358c02db3d04cf1c08e
 Extract vector: genesis:empty-extract
 Authority: shape-only; entering-force verification required at consumption.
 
@@ -9,10 +9,10 @@ Authority: shape-only; entering-force verification required at consumption.
 |---|---:|
 | held-reviewed | 0 |
 | held-unreviewed | 0 |
-| declared | 0 |
-| partial | 7 |
-| deferred | 0 |
-| gap | 112 |
+| declared | 3 |
+| partial | 22 |
+| deferred | 1 |
+| gap | 110 |
 
 {
   "rules": [
@@ -5846,7 +5846,12 @@ Authority: shape-only; entering-force verification required at consumption.
         98,
         99
       ],
-      "enforcedBy": []
+      "enforcedBy": [
+        "preview.model-json.parseModelJson",
+        "preview.reply-check.parseJevResponse",
+        "provider-failure-result-v1",
+        "telegram-intake-v1"
+      ]
     },
     {
       "number": 37,
@@ -6842,6 +6847,19 @@ Authority: shape-only; entering-force verification required at consumption.
         99
       ],
       "enforcedBy": [
+        "preview.durable-intake.restore",
+        "preview.durable-intake.startup",
+        "preview.durable-intake.store-agreements",
+        "preview.held-reply-notice.delivered",
+        "preview.reminders.delivered",
+        "preview.reply-review.reached",
+        "preview.reply.bot-identity",
+        "preview.reply.delivered",
+        "preview.reply.drained",
+        "preview.reply.provider-answers",
+        "preview.spend-cap.refusal",
+        "preview.status-pull.answered",
+        "preview.stop.honored",
         "rungraph.bound"
       ]
     },
@@ -13169,7 +13187,10 @@ Authority: shape-only; entering-force verification required at consumption.
         98,
         99
       ],
-      "enforcedBy": []
+      "enforcedBy": [
+        "preview.sentinel.reply-review",
+        "preview.sentinel.summary-review"
+      ]
     },
     {
       "number": 90,
@@ -14412,7 +14433,26 @@ Authority: shape-only; entering-force verification required at consumption.
       "enforcedBy": []
     }
   ],
-  "loops": [],
+  "loops": [
+    {
+      "id": "deferred:slack-intake-v1:36",
+      "rule": 36,
+      "holder": "slack-intake-v1",
+      "dueBy": 1793404800000,
+      "part": 4,
+      "owner": "echo (agent)",
+      "overdueAction": "Raise an operator attention item and capture genuine bytes, with personal content redacted, from the live trial."
+    },
+    {
+      "id": "deferred:telegram-intake-v1:36",
+      "rule": 36,
+      "holder": "telegram-intake-v1",
+      "dueBy": 1793404800000,
+      "part": 4,
+      "owner": "echo (agent)",
+      "overdueAction": "Raise an operator attention item and capture genuine bytes, with personal content redacted, from the live trial."
+    }
+  ],
   "prerequisites": [
     {
       "rule": 1,
@@ -14636,11 +14676,6 @@ Authority: shape-only; entering-force verification required at consumption.
     },
     {
       "rule": 35,
-      "owner": "part-three-bootstrap:operator-policy-prerequisite",
-      "required": "operator-approved gap deadline and standing route before entering force"
-    },
-    {
-      "rule": 36,
       "owner": "part-three-bootstrap:operator-policy-prerequisite",
       "required": "operator-approved gap deadline and standing route before entering force"
     },
@@ -14916,11 +14951,6 @@ Authority: shape-only; entering-force verification required at consumption.
     },
     {
       "rule": 89,
-      "owner": "part-three-bootstrap:operator-policy-prerequisite",
-      "required": "operator-approved gap deadline and standing route before entering force"
-    },
-    {
-      "rule": 9,
       "owner": "part-three-bootstrap:operator-policy-prerequisite",
       "required": "operator-approved gap deadline and standing route before entering force"
     },

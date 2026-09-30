@@ -17,7 +17,8 @@ import { closeSync, existsSync, fsyncSync, mkdirSync, openSync, readFileSync, re
 import { join } from 'node:path';
 
 import { authorizationRequestDigest, canonical, consumeResult, decode, decodeMeasurement, defineDecoder, deriveThrough } from '../dist/index.js';
-import { authorAndAppend, createFactStore, genesisHash, hashBytes, prepareSnapshot } from '../dist/facts/index.js';
+import { authorAndAppend, createFactStore, createRegisterLanding, createRegisterSpine, genesisHash, governedExtract, governingRecordKind,
+  hashBytes, prepareSnapshot } from '../dist/facts/index.js';
 import { decodeGenerationRecord, decodeShape, generateRegister, generationOf, loadRegister } from '../dist/register/index.js';
 import { createIntakePort, intakeFactSchemas, intakeStopRegistration, intakeVerifiedActFactSchemas, intakeVerifiedActRegistration,
   intakeWorkRegistration } from '../dist/intake/index.js';
@@ -28,7 +29,7 @@ import { consumeEffectSettlement, createEffectDoorway, createEffectSpine, create
 import { checkpoint, foldProjection, rebuildProjection, restoreCheckpoint, signCheckpoint, verifyRebuild } from '../dist/projections/index.js';
 import { assemblySchemas, bootProductionAssembly, createAssemblyRuntime, createAssemblySpine,
   inspectProductionAssemblyBindings, registerAssemblyBodies, createProductionGroundingReader,
-  createConfinedContextDeliveryDriver, createNativeHarnessAdapter, contextDeliveryIdFor } from '../dist/assembly/index.js';
+  createConfinedContextDeliveryDriver, createNativeHarnessAdapter, contextDeliveryIdFor, HARNESS_STALL_CLASSES } from '../dist/assembly/index.js';
 import { createOperatorSurface, minimalPlaneProjectionIds, minimalPlaneProjections,
   requiredMinimalDependencies } from '../dist/operator/index.js';
 import { createVerificationRuntime, createVerificationSpine, registerVerificationBodies,
@@ -662,6 +663,7 @@ export function bootSliceAssembly(home, config = sliceConfig(), ports = {}) {
     intake: join(home, 'intake-captures'), judgment: join(home, 'judgment-custody'),
     boots: join(home, 'boots.jsonl'), cuts: join(home, 'cuts.jsonl'), steps: join(home, 'steps.jsonl'),
     placement: join(home, 'placement.jsonl'), checkpoints: join(home, 'checkpoints'),
+    governing: join(home, 'governing'), governingPayloads: join(home, 'governing-payloads'), peerGoverningPayloads: join(home, 'peer-governing-payloads'),
   };
   for (const d of [paths.facts, paths.peer, paths.intake, paths.judgment, paths.checkpoints, paths.proofs]) mkdirSync(d, { recursive: true });
 
@@ -794,6 +796,13 @@ export function bootSliceAssembly(home, config = sliceConfig(), ports = {}) {
     capture: { reference: `capture:${id}`, hash: capture(`observed evidence bytes for ${id}`, `capture:${id}`) },
     strength: 'proof' }, decodeContext)));
 
+  // ------------------------------------------------------------ host results
+  const boundaryContext = { site: 'facts.admit', preserved: decodeContext.preserved, register: registerShape };
+  const result = run => deriveThrough(take(defineDecoder({ name: 'SliceHostResult', owner: 'part-ten', currentVersion: 1,
+    versions: { 1: { validate: v => ({ ok: true, value: v }) } }, migrations: {},
+    decodeCurrent: () => { try { return { ok: true, value: run() }; } catch (e) { return { ok: false, detail: String(e && e.message ? e.message : e) }; } } },
+  boundaryContext.preserved)), { type: 'SliceHostResult', schemaVersion: 1 }, boundaryContext);
+
   // --------------------------------------------------------------- the register
   const intakeDeclarations = JSON.parse(readFileSync('src/intake/port.declarations.json', 'utf8'));
   const runDeclarations = JSON.parse(readFileSync('src/rungraph/rungraph.declarations.json', 'utf8'));
@@ -823,40 +832,71 @@ export function bootSliceAssembly(home, config = sliceConfig(), ports = {}) {
       { provider: 'fixture', id: 'P5-NF-54' }, { provider: 'probe', id: 'P5-NF-55' }, { provider: 'decoder', id: 'decode:Profile' },
       ...['readProjection', 'authorAndAppend', 'decode:Provenance', 'decode:VerifiedPrincipal',
         'decodeRun', 'decodeRunStep', 'decodeRunTransition', 'decodeRunExit', 'decodeSessionGrounding'].map(id => ({ provider: 'decoder', id }))] };
-  const approvalReference = { owner: 'part-two', name: 'FactEnvelope', id: 'slice:register-approval' };
-  const extract = { type: 'ChainExtract', schemaVersion: 1,
-    vector: { owner: 'part-two', name: 'FactPositionVector', id: 'vector:genesis' },
-    rows: declarations.map(d => ({ id: d.id, version: `slice-version:${d.id}`, status: 'live', since: 'slice-installation',
-      supersedes: [], approvedIn: approvalReference, landedIn: 'slice-installation', base: 'slice-base', contentHash: hashOf(d) })) };
+  // Option (C) (plan #94): every declaration keeps a shape-only bootstrap row until an operator
+  // yes lands a governed version of it through `registerLanding`. The register's own governing
+  // records live in a dedicated durable segment, read BEFORE the fact log: decoding that log
+  // binds to the register generation, which these records decide. Its first fact (the recorded
+  // genesis grant, below) is the spine's genesis anchor.
+  const bootstrap = declarations.map(d => ({ id: d.id, contentHash: hashOf(d) }));
+  const governingContext = { site: 'facts.admit', preserved: decodeContext.preserved, decode: decodeContext,
+    schemas: [{ version: 1, machineScope: 'shared', standing: 'requester', action: 'work', scope, causallyBound: false,
+      requiredReferences: [], authority: 'none', kind: governingRecordKind,
+      fields: { role: { kind: 'text', maxLength: 16 }, hash: { kind: 'text', maxLength: 80 } } },
+    { version: 1, machineScope: 'shared', standing: 'requester', action: 'work', scope, causallyBound: false,
+      requiredReferences: [], authority: 'none', kind: 'genesis-grant',
+      fields: { grantId: { kind: 'text', maxLength: 1024 }, principalId: { kind: 'text', maxLength: 1024 },
+        grant: { kind: 'constitutional', type: 'StandingGrant' } } }],
+    keys: [{ id: 'host', machine: config.machine, publicKey: PUBLIC_KEY, from: { epoch: 0, position: 0 } }],
+    facts: [], grants: [], revocations: [], genesis: { hash: genesisHash, clock: genesisClock }, timeAnchors: [],
+    captures: {}, folded: {}, ownedBodies: [] };
+  const governingStore = createFactStore(governingContext, createTransportFileStorage(paths.governing, result));
+  const governingPayloads = createEffectFileCaptures([paths.governingPayloads, paths.peerGoverningPayloads], result);
+  const openLanding = anchor => createRegisterLanding({ context: governingContext, store: governingStore,
+    custody: { put: bytes => result(() => take(governingPayloads.capture(bytes)).hash),
+      get: hash => { const held = governingPayloads.captures[`effect-capture:${hash}`]; return held?.status === 'available' ? held.bytes : undefined; } },
+    author: { machine: config.machine, principal: json(observer), provenance: json(observer.provenance), privateKey: PRIVATE_KEY },
+    anchor, stalenessBoundMs: 1000000 });
+  const governingFacts = () => take(governingStore.read());
+  // Rule 2: the fact log is only ever written after this segment's first record, so a
+  // non-empty log beside an empty segment means the governing history was lost. Refuse.
+  if (!governingFacts().length && segmentSize() > 0) throw new Error('integrity: governing segment lost while the fact log exists');
+  // Rules 26/90: an approval landed through `registerLanding` is checked for standing at its own
+  // causal position, so the grant it is issued under must be a recorded fact in THIS segment's
+  // history. The installation's genesis grant (the same record the fact log carries) is written
+  // here once, as the segment's causal root, and restored into the context on every boot.
+  const governingGrant = () => governingFacts().find(f => f.kind === 'genesis-grant');
+  if (!governingGrant()) {
+    const grantContext = { ...governingContext, decode: { ...decodeContext, provenance: bindingGrant.source } };
+    take(authorAndAppend({ kind: 'genesis-grant', schemaVersion: 1, machine: config.machine,
+      principal: json(alice), provenance: json(bindingGrant.source), at: json(now()),
+      body: json({ grantId: bindingGrant.id, principalId: alice.id, grant: bindingGrant }), required: [] },
+    grantContext, createFactStore(grantContext, createTransportFileStorage(paths.governing, result)), PRIVATE_KEY));
+  }
+  governingContext.grants = [{ factId: governingGrant().id, grant: bindingGrant }];
+  const emptySpine = { anchor: '', versions: [], approvals: [], generations: [], stalenessBoundMs: 1000000 };
+  const headSpine = () => governingFacts().length ? take(openLanding(governingFacts()[0].id).spine()) : emptySpine;
+  const extract = take(governedExtract(headSpine(), { ...governingContext, facts: governingFacts() }, bootstrap));
   const registerInput = { commit: 'slice-commit:1', complete: true,
     sources: declarations.map(d => ({ declaration: d, path: 'scripts/slice-assembly.mjs', symbol: 'bootSliceAssembly' })),
     extract, instances: {} };
   const candidate = take(generateRegister(registerInput, registerContext));
   const registerGeneration = take(generationOf(candidate, registerContext));
-  const forceRecord = take(decodeGenerationRecord({ type: 'GenerationRecord', schemaVersion: 1, generation: registerGeneration, at: genesisClock }, registerContext));
+  const decodeRecord = record => decodeGenerationRecord(record, registerContext);
+  if (!headSpine().generations.some(g => bytesOf(g.record.generation) === bytesOf(registerGeneration))) {
+    const record = take(decodeGenerationRecord({ type: 'GenerationRecord', schemaVersion: 1, generation: registerGeneration, at: now() }, registerContext));
+    take(openLanding(governingFacts()[0]?.id ?? '').enterForce(json(record), json(now())));
+  }
+  const registerLanding = openLanding(governingFacts()[0].id);
+  const registerSpine = createRegisterSpine(take(registerLanding.spine()), { ...governingContext, facts: governingFacts() }, decodeRecord, bootstrap);
   const registerChecks = [];
-  const registerReply = payload => deriveThrough(take(defineDecoder({ name: 'SliceRegisterReply', owner: 'part-ten', currentVersion: 1,
-    versions: { 1: { validate: v => ({ ok: true, value: v }) } }, migrations: {}, decodeCurrent: () => ({ ok: true, value: payload }) },
-  registerContext.preserved)), { type: 'SliceRegisterReply', schemaVersion: 1 }, registerContext);
   const verifiedRegister = take(loadRegister(candidate, registerGeneration, registerContext, {
     owner: 'part-two',
-    verifyExtract(supplied) { registerChecks.push('extract');
-      if (bytesOf(supplied) !== bytesOf(candidate.extract)) throw new Error('slice extract mismatch');
-      return registerReply(approvalReference); },
-    enteringForce(generation) { registerChecks.push('force');
-      if (generation.id !== registerGeneration.id) throw new Error('slice generation mismatch');
-      return registerReply(forceRecord); },
-    isCurrent(vector) { registerChecks.push('current'); return registerReply(vector.id === candidate.extract.vector.id); },
-  }, genesisClock));
+    verifyExtract(supplied) { registerChecks.push('extract'); return registerSpine.verifyExtract(supplied); },
+    enteringForce(generation) { registerChecks.push('force'); return registerSpine.enteringForce(generation); },
+    isCurrent(vector, at) { registerChecks.push('current'); return registerSpine.isCurrent(vector, at); },
+  }, now()));
   const governance = { register: verifiedRegister, context: registerContext };
   Object.assign(registerShape, { generation: { owner: 'part-three', name: 'RegisterGeneration', id: registerGeneration.id } });
-
-  // ------------------------------------------------------------ host results
-  const boundaryContext = { site: 'facts.admit', preserved: decodeContext.preserved, register: registerShape };
-  const result = run => deriveThrough(take(defineDecoder({ name: 'SliceHostResult', owner: 'part-ten', currentVersion: 1,
-    versions: { 1: { validate: v => ({ ok: true, value: v }) } }, migrations: {},
-    decodeCurrent: () => { try { return { ok: true, value: run() }; } catch (e) { return { ok: false, detail: String(e && e.message ? e.message : e) }; } } },
-  boundaryContext.preserved)), { type: 'SliceHostResult', schemaVersion: 1 }, boundaryContext);
 
   // --------------------------------------------------------------- custody
   const fileCustody = createEffectFileCaptures([paths.captures, paths.peerCaptures], result);
@@ -1565,7 +1605,12 @@ export function bootSliceAssembly(home, config = sliceConfig(), ports = {}) {
         return { launch: launch.id, run: launch.run, incarnation, harness: 'slice-harness:1', artifactDigest: artifact,
           machine: config.machine, processIdentity };
       }) } });
-    const harness = createNativeHarnessAdapter({ id: 'slice-harness:1', artifact, platform: 'darwin-arm64',
+    // Rule 59: a slice fixture table; the slice exercises context delivery, not stall recovery.
+    const stallCoverage = { type: 'HarnessStallCoverage', harness: 'slice-harness:1', rows: HARNESS_STALL_CLASSES.map(stall => ({ stall,
+      detection: `slice fixture detection for ${stall}`, recovery: `slice fixture recovery for ${stall}`,
+      positive: { file: 'tests/assembly/stall-coverage.test.ts', title: `slice positive case ${stall}` },
+      failing: { file: 'tests/assembly/stall-coverage.test.ts', title: `slice failing case ${stall}` } })) };
+    const harness = createNativeHarnessAdapter({ id: 'slice-harness:1', artifact, platform: 'darwin-arm64', stallCoverage,
       conformance: 'AdapterConformance', context, clock: () => now().value, generation: () => registerShape.generation.id,
       contextDeliveryDriver: driver, driver: { owner: 'part-eight',
         launch: () => { throw new Error('harness launch is held; current worker process only'); },
@@ -2395,7 +2440,7 @@ export function bootSliceAssembly(home, config = sliceConfig(), ports = {}) {
 
   return Object.freeze({
     home, config, paths, bootIndex, incarnation, authorityIncarnation,
-    registerChecks, governance, decodeContext, factContext, boundaryContext, effectHost, judgmentHost, transportHost,
+    registerChecks, registerLanding, governance, decodeContext, factContext, boundaryContext, effectHost, judgmentHost, transportHost,
     alice, bob, observer, scope, floor, bindingGrant, approval, operationDefinition, governedVersions, authorityClosure,
     store, peerStore, replicas, custody, judgmentCustody, service, captureIndex,
     intake, transport, transportFacts, judgment, effects, runGraph, composeProductionGrounding, assessor, model,

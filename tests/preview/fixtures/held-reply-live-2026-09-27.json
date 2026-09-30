@@ -1,0 +1,13 @@
+{
+  "source": "desk policy-successor-evidence/live-status-capture.json and activation-renewal-evidence/live-status-capture.json, 2026-09-27",
+  "textPolicy": "Shape-preserving offline substitutions for personal codes, dates and test markers; update IDs and diagnostic metadata come from the saved desk status. The source did not retain candidate or reviewer text.",
+  "limits": { "maxCalls": 200, "maxReplies": 200, "maxTurns": 250, "maxBytes": 409600 },
+  "held": [
+    { "update": 969389576, "text": "Actually my gym locker code is 6428, not 2219.", "cause": "reply check unavailable", "workerShape": "ended uncertain answer, loss notice, unavailable review" },
+    { "update": 969389578, "text": "Test marker Cedar: my dentist appointment is on November 5 at 2 pm. Also, I prefer short replies.", "cause": "reply check unavailable", "workerShape": "ended uncertain answer, loss notice, unavailable review" },
+    { "update": 969389581, "text": "Test marker Willow: what is my gym locker code?", "cause": "reply check unavailable", "workerShape": "ended uncertain answer, loss notice, unavailable review" },
+    { "update": 969389583, "text": "Test marker Cedar: my gym locker code is 8637, please remember it.", "cause": "reply check unavailable", "workerShape": "output-cap answer failure, unavailable review", "reviewOutcome": { "role": "reply-review", "localLimit": "output-cap", "exitCode": 0, "outputTokens": 3617, "promptBytes": 79561 } }
+  ],
+  "unknownReviewCount": 3,
+  "unknownSendCount": 1
+}

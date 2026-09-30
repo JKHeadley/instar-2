@@ -71,6 +71,7 @@ it('retains the captured weekly limit in the provider receipt, turn, and reopene
     const receiptReference = c.sidecar.read().references.receipt;
     expect(receiptReference).toMatch(/^judgment-capture:sha256:[a-f0-9]{64}$/u);
     const receipt = JSON.parse(readFileSync(join(s.root, '.preview-stage2/captures', receiptReference.split(':').at(-1)), 'utf8'));
+    expect(receipt.state).toBe('rejected');
     expect(receipt.failure).toEqual({ failureClass: 'limit', resetHint: null, resetAt: 1790506800000 });
     expect(Object.values(s.state.read().turns)).toEqual([expect.objectContaining({ failureClass: 'limit', resetHint: null })]);
     expect(s.state.read().limitHoldUntil).toBe(now + 18000000);

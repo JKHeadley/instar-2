@@ -1,0 +1,24 @@
+[
+  {
+    "type": "Declaration",
+    "schemaVersion": 1,
+    "id": "preview.store-agreements.appendAgreement",
+    "kind": "stores",
+    "status": "live",
+    "requiredFacts": {
+      "growth": "unbounded",
+      "holdsAgentMemory": "no",
+      "machineScope": {
+        "kind": "machine-local",
+        "reason": "It appends each completed store-agreement check this runner performed; the checks compare stores on this machine only, and a reader keeps the latest verdict per agreement."
+      },
+      "agreesWith": []
+    },
+    "standards": [
+      7,
+      32,
+      33
+    ],
+    "holds": []
+  }
+]

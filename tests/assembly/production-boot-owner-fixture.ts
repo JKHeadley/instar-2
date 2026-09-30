@@ -58,6 +58,15 @@ export function createProductionBootOwnerFixture(storageFactory?: (f: ReturnType
   const assemblyHost: any = { machine: 'machine-a', principal: f.bob, scope: f.scope, boundary: { ...f.c, register: types.register },
     current: () => ({ facts: ctx, generation: types.register.generation.id, stopped, clock: now }) };
   const owners = prepareLiveInputOwners(f, types, () => now, () => stopped, () => ctx, harnessId, options.native, !!seed);
+  if (options.captureCustody) owners.host.capture = (bytes: string) => {
+    const hash = hashBytes(bytes), reference = `live-input-capture:${hash}`;
+    if (!options.captureCustody.preserve(reference, bytes)
+      || options.captureCustody.read(reference) !== bytes) throw Error('initial capture custody unavailable');
+    options.captureCheckpoint?.(reference);
+    ctx.captures[reference] = { hash, bytes, byteLength: Buffer.byteLength(bytes), status: 'available' };
+    types.captures[reference] = bytes;
+    return f.success({ reference, hash });
+  };
   const registration = value(runFactSchemas(c));
   ctx = { ...ctx, schemas: [...ctx.schemas, ...registration.schemas, ...assemblySchemas(assemblyHost), ...owners.schemas, ...productionSchemas(f).filter(s => !ctx.schemas.some(t => t.kind === s.kind))], ownedBodies: [...seed?.ownedBodies ?? [], ...registration.registrations, ...value(registerAssemblyBodies(assemblyHost)), ...owners.registrations] }; c = { ...c, facts: ctx };
   if (options.recovery) {
@@ -214,6 +223,7 @@ import { createEffectSpine, createEffectDoorway, createHarnessLiveInputExecution
 import { createTransportAuthority, createTransportSpine, transportSchemas, registerTransportBodies, decodeLoopPolicy } from '../../src/transport/index.js';
 import { assemblyInput } from './fixture.js';
 import { productionReferenceKinds } from './round8-extended-fixture.js';
+import { stallCoverageFixture } from './stall-coverage-fixture.js';
 
 function productionSchemas(f: any) {
   const identity = { id: { kind: 'text', maxLength: 2048 } };
@@ -334,18 +344,9 @@ function prepareLiveInputOwners(f: any, types: any, clock: any, stopped: any, co
           return connected;
         },
         prepare(message: any) {
-          const facts = value(store.read());
-          const ordinary = new Set(facts.filter((row: any) => row.kind === 'effect-EffectRequest'
-            && facts.some((message: any) => message.kind === 'effect-OutboundMessage'
-              && message.body.record?.id === row.body.record?.message
-              && message.body.record?.purpose === 'context-delivery'))
-            .map((row: any) => row.body.record.id));
-          const previous = value(transport.inspect()).filter((r: any) => r.record.type === 'AdmissionReservation'
-            && r.record.state === 'consumed' && ordinary.has(r.record.request));
-          for (const row of previous) {
-            const settled = value(transport.inspect()).some((r: any) => r.record.type === 'SettlementApplication' && r.record.operation === row.record.operation);
-            if (!settled) value(transport.settle(fence, value(api.settle(row.record.operation))));
-          }
+          // A previous consumed delivery without an accounting application keeps
+          // its Six reservation. Only the serving plan can settle it from current
+          // operation evidence; grounding the next run must not invent an Outcome.
           const run = { owner: 'part-five' as const, name: 'Run' as const, id: message.run };
           if (!value(transport.inspect()).some((r: any) => r.record.type === 'LoopRecord' && r.record.run === run.id))
             value(transport.schedule(`live-input-schedule:${message.id}`, fence, run, policy));
@@ -404,7 +405,7 @@ function installAssemblySupport(f: any, options: any) {
       liveProcess: { owner: 'part-ten', resolve: l => { f.owners.events.push('live-process'); return f.success({ launch: l.id, run: l.run,
         incarnation: l.incarnation, harness: l.harness, artifactDigest: l.artifactDigest, machine: l.machine, processIdentity: options.native ? options.native.io.current().identity : 'pid:42:start:1' }); } },
       execution: f.effects.executor });
-    const harness = createNativeHarnessAdapter({ id: f.harnessId, artifact: options.native ? options.native.io.current().artifact : launch.artifactDigest, platform: 'darwin-arm64', conformance: 'conformance:1',
+    const harness = createNativeHarnessAdapter({ id: f.harnessId, stallCoverage: stallCoverageFixture(f.harnessId), artifact: options.native ? options.native.io.current().artifact : launch.artifactDigest, platform: 'darwin-arm64', conformance: 'conformance:1',
       context, clock: () => f.deps.clock().value, generation: () => f.run.generation.id, contextDeliveryDriver: driver,
       driver: { owner: 'part-eight', launch: () => { throw Error('launch held; existing process instrument only'); },
         deliver: () => { throw Error('legacy delivery forbidden'); }, observe: () => { throw Error('legacy observation forbidden'); } } });

@@ -121,7 +121,10 @@ const proofFiles = [
   { file: 'tests/integration/scheduled-round13.test.ts', tokens: ['importLegacyScheduledJob(', 'expect('] },
   { file: 'tests/e2e/scheduled-round13.test.ts', tokens: ['spawnSync(', 'SIGKILL', 'expect('] },
 ];
-const laneDirectory = resolve(dirname(fileURLToPath(import.meta.url)), '../../../.instar/lanes');
+// The lane documents this check treats as authoritative are committed with the repository
+// (tests/scheduled/lane-evidence, refreshed from the design lane's agent home; see its README), so the
+// check reads the same pinned evidence on every machine instead of whatever one agent home holds.
+const laneDirectory = resolve(dirname(fileURLToPath(import.meta.url)), '../tests/scheduled/lane-evidence');
 const calendarRequest = 'design-19-scheduled-work-seam-request-calendar-adapter.md';
 const runAdmissionRequest = 'design-19-scheduled-work-seam-request-run-admission-production.md';
 const packageResourceRequest = 'design-19-scheduled-work-seam-request-package-resource-and-activity.md';

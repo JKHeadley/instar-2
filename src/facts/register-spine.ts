@@ -3,6 +3,7 @@
 // currency. Approval is the authority and is verified here as a recorded explicit yes;
 // landing is only a locator. Every association is bound to the signed envelope that recorded
 // its payload. Nothing here appends, approves, or mints a position.
+import { isExplicitYes } from '../index.js';
 import type { Clock, FactEnvelopeReference, Json, Result } from '../index.js';
 import { boundary, encoding, integer, object, requireFact, string, take } from './boundary.js';
 import type { ConflictClass, FactContext, FactEnvelope } from './contracts.js';
@@ -80,7 +81,30 @@ function positionOf(spine: GoverningSpine, context: FactContext, count: number):
   const anchor = genesisAnchor(spine, context);
   return count === 0 ? anchor : string(spine.versions[count - 1]!.factId, 'version.factId');
 }
-function extractionAt(spine: GoverningSpine, context: FactContext, count: number): ChainExtraction {
+/**
+ * Option (C) (plan #94): a declaration no operator yes has landed keeps a shape-only bootstrap
+ * row. It names no approval fact, only this marker, and the first governed version of the same
+ * id supersedes it, so the bootstrap row stays in history rather than being erased.
+ */
+export interface BootstrapRow { readonly id: string; readonly contentHash: string }
+export const bootstrapApproval = 'bootstrap:shape-only';
+const bootstrapVersion = (id: string) => `bootstrap:${id}`;
+function withBootstrap(rows: readonly Record<string, Json>[], bootstrap: readonly BootstrapRow[]): Record<string, Json>[] {
+  requireFact(new Set(bootstrap.map(b => b.id)).size === bootstrap.length, 'duplicate bootstrap row');
+  const governed = new Set(rows.map(r => r.id as string));
+  const ids = new Set(bootstrap.map(b => b.id));
+  const roots = rows.map(r => ids.has(r.id as string) && (r.supersedes as Json[]).length === 0
+    ? { ...r, supersedes: [bootstrapVersion(r.id as string)] } : r);
+  const shapeOnly = bootstrap.map(b => ({ id: b.id, version: bootstrapVersion(b.id), status: governed.has(b.id) ? 'superseded' : 'live',
+    since: 'installation-bootstrap', supersedes: [], approvedIn: { owner: 'part-two', name: 'FactEnvelope', id: bootstrapApproval },
+    landedIn: 'installation-bootstrap', base: 'installation-bootstrap', contentHash: b.contentHash }));
+  return [...roots, ...shapeOnly].sort((a, b) => (a.version as string) < (b.version as string) ? -1 : (a.version as string) > (b.version as string) ? 1 : 0);
+}
+function extractionAt(spine: GoverningSpine, context: FactContext, count: number, bootstrap: readonly BootstrapRow[] = []): ChainExtraction {
+  return { ...extractAt(spine, context, count, bootstrap), position: positionOf(spine, context, count) };
+}
+function extractAt(spine: GoverningSpine, context: FactContext, count: number,
+  bootstrap: readonly BootstrapRow[]): Omit<ChainExtraction, 'position'> {
   requireFact(Number.isSafeInteger(count) && count >= 0 && count <= spine.versions.length, 'position outside the recorded spine');
   requireFact(integer(spine.stalenessBoundMs, 'stalenessBoundMs') >= 0, 'declared staleness bound required');
   const recorded = spine.versions.slice(0, count);
@@ -90,9 +114,10 @@ function extractionAt(spine: GoverningSpine, context: FactContext, count: number
   for (const { factId, version } of recorded) {
     recordedBy(byId, factId, 'version', version, `version fact not recorded: ${factId}`);
     requireFact(byId.has(version.since), `entering-force fact not recorded: ${version.since}`, 'integrity');
-    // Verify the state, not the symbol: a merge event and a channel-attested record are not a yes.
+    // Verify the state, not the symbol: a merge event and a channel-attested record are not a yes;
+    // an account-assented yes counts only under its declaration (src/decode/explicit-yes.ts).
     const yes = version.approvedIn.explicitYes;
-    requireFact(yes.class === 'verified' && yes.authenticated.recordType !== 'merge',
+    requireFact(isExplicitYes(yes),
       `approvedIn must be a verified explicit yes, never a merge event: ${version.id}`, 'standing');
     recordedBy(byId, approvals.get(version.approvedIn.id), 'approval', version.approvedIn,
       `explicit-yes record not recorded for approval ${version.approvedIn.id}`, 'standing');
@@ -134,17 +159,24 @@ function extractionAt(spine: GoverningSpine, context: FactContext, count: number
       landedIn: v.landedIn!, base: v.base, contentHash: v.contentHash };
   }).sort((a, b) => a.version < b.version ? -1 : a.version > b.version ? 1 : 0);
   const vector = positionVector(recorded.map(r => r.factId));
-  return { vector, position: positionOf(spine, context, count), conflicts: walked.conflicts,
+  return { vector, conflicts: walked.conflicts,
     extract: { type: 'ChainExtract', schemaVersion: 1,
-      vector: { owner: 'part-two', name: 'FactPositionVector', id: vector }, rows } as unknown as Json };
+      vector: { owner: 'part-two', name: 'FactPositionVector', id: vector }, rows: withBootstrap(rows, bootstrap) } as unknown as Json };
 }
 /**
  * The actual extraction: the canonical chain extract the landing machinery mirrors beside the
  * register, derived from the verified spine rather than from git ancestry or a merge.
  */
 export function extractGovernedChain(spine: GoverningSpine, context: FactContext,
-  through: number = spine.versions.length): Result<ChainExtraction> {
-  return boundary('ChainExtraction', null, contextBoundary(context), () => extractionAt(spine, context, through));
+  through: number = spine.versions.length, bootstrap: readonly BootstrapRow[] = []): Result<ChainExtraction> {
+  return boundary('ChainExtraction', null, contextBoundary(context), () => extractionAt(spine, context, through, bootstrap));
+}
+/**
+ * The head extract alone, which needs no anchor: an installation computes its first register
+ * generation from it before the first governing record (its anchor) exists.
+ */
+export function governedExtract(spine: GoverningSpine, context: FactContext, bootstrap: readonly BootstrapRow[] = []): Result<Json> {
+  return boundary('ChainExtraction', null, contextBoundary(context), () => extractAt(spine, context, spine.versions.length, bootstrap).extract);
 }
 function anchorOf(record: Json) {
   const r = object(record);
@@ -160,7 +192,7 @@ function anchorOf(record: Json) {
  * question the spine cannot answer from them is refused, never softened into a yes.
  */
 export function createRegisterSpine<R>(spine: GoverningSpine, context: FactContext,
-  decodeRecord: (record: Json) => Result<R>): RegisterSpinePort<R> {
+  decodeRecord: (record: Json) => Result<R>, bootstrap: readonly BootstrapRow[] = []): RegisterSpinePort<R> {
   const byId = new Map(context.facts.map(f => [f.id, f]));
   const recordedGeneration = (g: RecordedGeneration) =>
     recordedBy(byId, g.factId, 'generation', g.record, `generation fact not recorded: ${g.factId}`);
@@ -177,7 +209,7 @@ export function createRegisterSpine<R>(spine: GoverningSpine, context: FactConte
       const id = string(object(supplied.vector!).id, 'extract.vector.id');
       const count = positions().get(id);
       requireFact(count !== undefined, 'extract vector names no recorded spine position', 'integrity');
-      const derived = extractionAt(spine, context, count);
+      const derived = extractionAt(spine, context, count, bootstrap);
       requireFact(encoding(supplied).bytes === encoding(derived.extract).bytes,
         'extract differs from the verified chain at its own position', 'integrity');
       return { owner: 'part-two', name: 'FactEnvelope', id: derived.position } as FactEnvelopeReference;

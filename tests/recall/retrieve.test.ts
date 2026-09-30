@@ -70,6 +70,21 @@ describe('recall — retrieval by meaning, bounded and offline', () => {
     expect(spent).toBe(paraphraseQueries.length);
   });
 
+  it('paraphrase reaches older zero-overlap evidence even when lexical matches fill every rerank slot', async () => {
+    const r = recallFixture(); const storage = r.memoryStorage(); const w = r.writer(storage);
+    // The oldest exchange is the paraphrase target; 30 newer exchanges all match the query's words.
+    value(captureExchange(r.exchange({ messageId: 'old', conversation: 'telegram:1', session: 's', speakerId: 'justin',
+      speakerName: 'Justin', speakerRole: 'user', text: 'My daughter has a piano recital on Friday.' }), r.at(1000), w));
+    for (let i = 0; i < 30; i++) value(captureExchange(r.exchange({ messageId: `n${i}`, conversation: 'telegram:1', session: 's',
+      speakerId: 'justin', speakerName: 'Justin', speakerRole: 'user', text: `Another kid performance note number ${i}.` }), r.at(2000 + i * 1000), w));
+    const rr = conceptReranker();
+    const out = value(await recall({ text: 'kid performance', bounds: { maxRerankCandidates: 10, maxResults: 3 } },
+      { context: r.fx.c, store: w.store, stopped: () => false, reranker: rr, spend: { reserve: () => true } }));
+    expect(rr.calls[0]).toHaveLength(10);
+    expect(rr.calls[0]!.some(text => text.includes('piano recital'))).toBe(true);
+    expect(out.hits[0]!.exchange.messageId).toBe('old');
+  });
+
   it('spend floor: no spend port or a refused reservation means no model call, lexical stands', async () => {
     const { reader } = loaded();
     const noPort = conceptReranker();
@@ -146,5 +161,38 @@ describe('recall — retrieval by meaning, bounded and offline', () => {
     value(captureExchange(r.exchange({ messageId: 'old', text: 'the gate code is blue' }), r.at(1000), w));
     value(captureExchange(r.exchange({ messageId: 'new', text: 'the gate code is blue' }), r.at(2000), w));
     expect(ids(await recall({ text: 'gate code' }, { context: r.fx.c, store: w.store, stopped: () => false }))).toEqual(['new', 'old']);
+  });
+});
+
+describe('composeRecall — the owner composition for in-memory drivers (Rule 11)', () => {
+  const candidates = [
+    { text: 'My bicycle lock code is 4471.', cues: ['bike', 'combination'], indexable: true },
+    ...Array.from({ length: 12 }, (_, i) => ({ text: `Bike ride notes ${i}`, cues: ['cycling'], indexable: true })),
+  ];
+  const lexical = Array.from({ length: 12 }, (_, i) => 12 - i);
+  it('derived cues reach a zero-overlap original past a full lexical list; without cues it stays out', async () => {
+    const { composeRecall } = await import('../../src/recall/index.js');
+    const withCues = composeRecall({ query: 'combination for my bike', lexical, candidates, maxResults: 5, stopped: () => false });
+    expect(withCues.order).toContain(0);
+    expect(withCues.order.slice(0, 2)).toEqual([12, 0]);
+    expect(withCues.disposition).toBe('complete');
+    const bare = composeRecall({ query: 'combination for my bike', lexical, maxResults: 5, stopped: () => false,
+      candidates: candidates.map(({ text, indexable }) => ({ text, indexable })) });
+    expect(bare.order).not.toContain(0);
+    expect(bare).toMatchObject({ disposition: 'degraded', coverage: { indexable: 13, indexed: 0 } });
+  });
+  it('a charging reranker needs reserved spend and no stop; a zero-charge one is local computation', async () => {
+    const { composeRecall } = await import('../../src/recall/index.js');
+    const rr = conceptReranker();
+    const base = { query: 'combination for my bike', lexical, maxResults: 5, reranker: rr,
+      candidates: candidates.map(({ text, indexable }) => ({ text, indexable })) };
+    expect(composeRecall({ ...base, stopped: () => false }).rerank).toBe('over-budget');
+    expect(composeRecall({ ...base, stopped: () => true, spend: { reserve: () => true } }).rerank).toBe('stopped');
+    expect(rr.calls).toHaveLength(0);
+    const used = composeRecall({ ...base, stopped: () => false, spend: { reserve: () => true } });
+    expect(used).toMatchObject({ rerank: 'used', charge: 1 });
+    expect(rr.calls).toHaveLength(1);
+    const local = composeRecall({ ...base, stopped: () => true, reranker: { ...rr, chargePerCall: 0, rerank: rr.rerank } });
+    expect(local.rerank).toBe('used');
   });
 });

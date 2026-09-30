@@ -9,8 +9,12 @@ import { createAwareness, createLabelledFakeRecall, type ConversationMessage, ty
 // @ts-expect-error physical JS host is intentionally outside the pure core
 import { createAwarenessIO } from '../../scripts/awareness-io.mjs';
 
-const tmux = '/opt/homebrew/bin/tmux';
-const available = spawnSync(tmux, ['-V'], { encoding: 'utf8' }).status === 0;
+// Resolve the real tmux instead of pinning one platform's install prefix: the hardcoded
+// Homebrew path made this case report itself skipped on every non-macOS host, so the
+// continuity proof silently did not run there. Rule 37.
+const tmux = ['/opt/homebrew/bin/tmux', '/usr/local/bin/tmux', '/usr/bin/tmux', 'tmux']
+  .find(candidate => spawnSync(candidate, ['-V'], { encoding: 'utf8' }).status === 0);
+const available = tmux !== undefined;
 const hook = resolve('scripts/session-hooks/grounding.mjs');
 const harness = resolve('tests/e2e/awareness-fake-harness.mjs');
 const sleep = (ms: number) => Atomics.wait(new Int32Array(new SharedArrayBuffer(4)), 0, 0, ms);
@@ -18,7 +22,7 @@ const sleep = (ms: number) => Atomics.wait(new Int32Array(new SharedArrayBuffer(
 it.skipIf(!available)('a compacted or respawned session comes back with identity, recent conversation and open work, and carries on', () => {
   const root = mkdtempSync(join(tmpdir(), 'instar20-awareness-e2e-'));
   const socket = `instar20-aw-${randomUUID().slice(0, 8)}`;
-  const t = (args: readonly string[]) => spawnSync(tmux, ['-L', socket, ...args], { encoding: 'utf8', timeout: 10_000 });
+  const t = (args: readonly string[]) => spawnSync(tmux!, ['-L', socket, ...args], { encoding: 'utf8', timeout: 10_000 });
   const io = createAwarenessIO({ stateDirectory: join(root, 'state'), inboxDirectory: join(root, 'inbox') });
   const claim = 'telegram:42';
   const now0 = Date.now();
@@ -74,23 +78,34 @@ it.skipIf(!available)('a compacted or respawned session comes back with identity
       ...env, process.execPath, harness]).status).toBe(0);
     return session;
   };
-  const waitFor = (session: string, needle: string) => {
+  const pane = (session: string) => t(['capture-pane', '-p', '-J', '-t', `=${session}:`, '-S', '-200']).stdout;
+  // The stand-in prints its marker (BOOTED / COMPACTED / REGROUNDED) BEFORE it answers, so
+  // seeing the marker is not seeing the answer. Wait, bounded, for the complete answer line
+  // that follows the LAST marker and return it; an answer from before the marker (or from a
+  // previous step still in scrollback) never counts. See docs/defects/awareness-continuity-respawn-flake.md.
+  const answerAfter = (session: string, marker: string) => {
+    let seen = '';
     for (let i = 0; i < 100; i++) {
-      if (t(['capture-pane', '-p', '-J', '-t', `=${session}:`, '-S', '-200']).stdout.includes(needle)) return;
+      seen = pane(session);
+      const at = seen.lastIndexOf(marker);
+      const answer = at < 0 ? undefined : seen.slice(at + marker.length).match(/\nCARRYING ON: (.*)\n❯/)?.[1];
+      if (answer !== undefined) return answer;
       sleep(50);
     }
-    throw new Error(`timed out waiting for ${needle}: ${t(['capture-pane', '-p', '-t', `=${session}:`]).stdout}`);
+    throw new Error(`timed out waiting for the answer after ${marker}: ${seen}`);
   };
   const context = (session: string) => existsSync(live.get(session)!.contextFile) ? readFileSync(live.get(session)!.contextFile, 'utf8') : '';
-  const expectGrounded = (session: string) => {
+  // Grounded = the delivered grounding is in the session's context AND the answer it gave
+  // after `marker` came from that grounding (the unanswered message), not from nothing.
+  const expectGrounded = (session: string, marker: string) => {
+    const answer = answerAfter(session, marker);
     const text = context(session);
     expect(text).toContain('I am Echo, builder of Instar. My operator is Justin.');
     expect(text).toContain('Port the compaction recovery to 2.0, please.');
     expect(text).toMatch(/UNANSWERED[\s\S]*does not ask me to repeat myself/);
     expect(text).toContain('report back once the continuity test passes');
     expect(text).toContain('crash watcher');
-    const pane = t(['capture-pane', '-p', '-J', '-t', `=${session}:`, '-S', '-200']).stdout;
-    expect(pane).toContain('CARRYING ON: Make sure a respawned session does not ask me to repeat myself.');
+    expect(answer).toBe('Make sure a respawned session does not ask me to repeat myself.');
   };
   const events = () => (io.readSignals() as { event: string; detail: string }[]).map(row => `${row.event}|${row.detail}`);
   try {
@@ -99,16 +114,14 @@ it.skipIf(!available)('a compacted or respawned session comes back with identity
 
     // 1. Fresh session: SessionStart(startup) grounds it.
     const first = launch(true);
-    waitFor(first, 'CARRYING ON');
-    expectGrounded(first);
+    expectGrounded(first, 'BOOTED hook=on');
     awareness.tick();
     expect(events().some(e => e.startsWith('grounding-verified|respawn'))).toBe(true);
 
     // 2. Compaction: the model's context is wiped; SessionStart(compact) restores it.
     t(['send-keys', '-t', `=${first}:`, '-l', '--', '/compact']);
     t(['send-keys', '-t', `=${first}:`, 'Enter']);
-    waitFor(first, 'COMPACTED');
-    expectGrounded(first);
+    expectGrounded(first, 'COMPACTED');
     sleep(20);
     awareness.tick();
     expect(events().some(e => e.startsWith('grounding-verified|compact'))).toBe(true);
@@ -118,8 +131,7 @@ it.skipIf(!available)('a compacted or respawned session comes back with identity
     live.delete(first);
     sleep(1_100); // a new tmux incarnation needs a distinct session_created second
     const second = launch(true);
-    waitFor(second, 'CARRYING ON');
-    expectGrounded(second);
+    expectGrounded(second, 'BOOTED hook=on');
     awareness.tick();
     expect(events().filter(e => e.startsWith('grounding-verified|respawn'))).toHaveLength(2);
 
@@ -128,12 +140,11 @@ it.skipIf(!available)('a compacted or respawned session comes back with identity
     live.delete(second);
     sleep(1_100);
     const third = launch(false);
-    waitFor(third, 'CARRYING ON: nothing known');
+    expect(answerAfter(third, 'BOOTED hook=off')).toBe('nothing known — would have to ask the user');
     expect(context(third)).toBe('');
     const regrounds = () => [awareness.tick(), (sleep(400), awareness.tick())].flatMap(r => r.actions).filter(a => a.kind === 'reground');
     expect(regrounds()).toHaveLength(1);
-    waitFor(third, 'REGROUNDED');
-    expectGrounded(third);
+    expectGrounded(third, 'REGROUNDED');
     sleep(20);
     awareness.tick();
     expect(events().some(e => e.startsWith('recovered-after-reground|respawn'))).toBe(true);

@@ -5,8 +5,9 @@ import { fileURLToPath, pathToFileURL } from 'node:url';
 import { decodeMeasurement, canonical, schemas } from '../dist/index.js';
 import { generateRegister, generationOf, renderRegister, invariantCoverage, implementedInvariants, decodeCheckRun,
   decodeGeneration, loadRegister, decodeExtract, generateAgainstParent, runRegisterChecks, planLandingCompletion } from '../dist/register/index.js';
-import { bootstrapDeclarations, bindColocatedDeclarations, buildContext, readCommit, value, bytes } from './register-source.mjs';
+import { bootstrapDeclarations, bindColocatedDeclarations, buildContext, readCommit, trailingInputs, value, bytes, isDeclarationSource, isActionSource, actionRegistry } from './register-source.mjs';
 import { checkWiring, scanSources } from './check-register-wiring.mjs';
+import { capabilityBriefing, checkShipped } from './register-shipped.mjs';
 import { loadOwnerReferences, mergeOwnerReferences } from './register-owner-references.mjs';
 import { ownerDocuments } from '../dist/register/owner-contracts.js';
 
@@ -28,7 +29,7 @@ function resolveBuildReferences(root, input, workflow, provider, shape, owner) {
       const entry = catalog?.find(e => e.id === reference.id);
       const artifact = entry?.artifact;
       if (!artifact || !input.files.includes(artifact.path)) throw new Error('unresolved captured source artifact for ' + reference.id);
-      const content = execFileSync('git', ['-C', root, 'show', `${input.commit}:${artifact.path}`], { encoding: 'utf8', maxBuffer: 16 * 1024 * 1024 });
+      const content = input.show(artifact.path);
       if (hash(content) !== artifact.hash) throw new Error('reference artifact hash differs: ' + reference.id);
       if (reference.provider === 'probe' && !(entry.cadence > 0)) throw new Error('probe requires cadence');
     } else {
@@ -78,14 +79,14 @@ export function build(root, commit, options = {}) {
     const conversion = workflow.conversion;
     if (!conversion || bytes(conversion.documents) !== bytes(corpus(input.sources)) || !Array.isArray(conversion.sources))
       throw new Error('Normal build requires committed conversion bound to source documents');
-    sources = [...conversion.sources, ...Object.entries(input.sources).filter(([p]) => p.endsWith('.declarations.json'))
+    sources = [...conversion.sources, ...Object.entries(input.sources).filter(([p]) => isDeclarationSource(p))
       .flatMap(([path, content]) => JSON.parse(content).map(declaration => ({ path, symbol: declaration.id, declaration })))];
     if (!options.provider || options.provider.owner !== 'part-two') throw new Error('P3-NF-21: normal build needs verified part-two provider');
     const numbers = [...input.sources['docs/01-the-rules.md'].matchAll(/^\| (\d+) \|/gm)].map(m => Number(m[1]));
     for (const n of numbers) if (sources.filter(s => s.declaration.kind === 'rules' && s.declaration.requiredFacts.number === n).length !== 1)
       throw new Error(`P3-NF-23: committed conversion omits/duplicates authoritative rule ${n}`);
   }
-  const conversion = { documents: corpus(input.sources), sources: sources.filter(s => !s.path.endsWith('.declarations.json')) };
+  const conversion = { documents: corpus(input.sources), sources: sources.filter(s => !isDeclarationSource(s.path)) };
   for (const binding of owner.documents) {
     const declared = sources.filter(s => s.declaration.id === binding.id);
     if (declared.length !== 1 || declared[0].declaration.kind !== 'governed documents'
@@ -97,7 +98,7 @@ export function build(root, commit, options = {}) {
     throw new Error(id + ' requires committed governed document binding');
   const scanned = scanSources(input.code, owner.decoders);
   sources = bindColocatedDeclarations(sources, scanned.constructs);
-  const context = { ...buildContext(shapeInput, sources, commit, nowValue), references: resolveBuildReferences(root, input, workflow, options.provider, shapeInput, owner),
+  const context = { ...buildContext(shapeInput, sources, commit, nowValue, actionRegistry(input.sources)), references: resolveBuildReferences(root, input, workflow, options.provider, shapeInput, owner),
     ...(options.provider?.types ? { authorityTypes: options.provider.types } : {}) };
   const now = value(decodeMeasurement('clock', { type: 'Measurement', schemaVersion: 1, subject: { kind: 'clock', instance: 'build-machine' },
     value: nowValue, unit: 'unix-ms', at: nowValue, by: 'register.generator' }, context.types));
@@ -133,6 +134,8 @@ export function build(root, commit, options = {}) {
   }
   const wiring = checkWiring(register, input.code, scanned);
   if (wiring.issues.length) throw new Error(wiring.issues.join('\n'));
+  const shipped = checkShipped(register, input.inventory, scanned.program, owner, input.show);
+  if (shipped.length) throw new Error(shipped.join('\n'));
   const observations = register.entries.filter(e => e.declaration.kind === 'blocking sites').flatMap(({ declaration: d }) => {
     const rungs = d.requiredFacts.rungs ?? [d.requiredFacts];
     const report = wiring.reports[Object.keys(input.code).indexOf(d.declaredBy.path)]?.scopes[d.declaredBy.symbol];
@@ -149,7 +152,8 @@ export function build(root, commit, options = {}) {
   const checked = value(runRegisterChecks(register, checks, context));
   const generation = value(generationOf(register, context));
   const outputs = value(renderRegister(register, generation, checked.terms, checked.graph, context));
-  return { input, register, generation, outputs, completion, conversion, graph: checked.graph,
+  const capabilities = { generation: generation.id, commit: register.commit, ...capabilityBriefing(register, input.inventory, input.show) };
+  return { input, register, generation, outputs, completion, conversion, graph: checked.graph, capabilities,
     authorityPrerequisites: checked.authorityPrerequisites, ownerArtifacts: owner.artifacts, metrics: {
     entries: register.entries.length, rules: checked.graph.rules.length, terms: register.entries.filter(e => e.declaration.kind === 'terms').length,
     warnings: checked.terms.warnings.length, prerequisites: checked.graph.prerequisites.length } };
@@ -172,12 +176,15 @@ export async function run(args, root = process.cwd()) {
   const result = build(root, commit, { mode, workflow, provider, ...(flag('--now') ? { now: Number(flag('--now')) } : {}) });
   const tracked = execFileSync('git', ['-C', root, 'ls-files'], { encoding: 'utf8' }).trim().split('\n');
   const live = tracked.filter(p => Object.hasOwn(result.input.sources, p) || p.startsWith('docs/rules/') && p.endsWith('.md')
-    || p.endsWith('.declarations.json') || p.startsWith('register-source/') && p.endsWith('.json')).sort();
+    || isDeclarationSource(p) || isActionSource(p) || p.startsWith('register-source/') && p.endsWith('.json')).sort();
   if (bytes(live) !== bytes(Object.keys(result.input.sources).sort())) throw new Error('P3-NF-23: source roster changed; regenerate from a new source commit');
   for (const [path, content] of Object.entries({ ...result.input.sources, ...result.input.code, ...result.ownerArtifacts })) if (readFileSync(resolve(root, path), 'utf8').replaceAll('\r\n', '\n') !== content)
     throw new Error(`P3-NF-01: source pin trails ${path}; commit source changes and regenerate`);
+  // Documentation, build and package inputs the build consumed (present or absent) are pinned too.
+  for (const path of trailingInputs(root, result.input.consumed))
+    throw new Error(`P3-NF-01: source pin trails ${path}; commit source changes and regenerate`);
   const files = { 'register.json': result.outputs.register, 'rules.md': result.outputs.ruleBook, 'glossary.md': result.outputs.glossary,
-    'capabilities.md': result.outputs.capabilities, 'coverage.md': result.outputs.coverage, 'shape.json': bytes(result.register.shape) + '\n',
+    'capabilities.md': result.outputs.capabilities, 'capabilities.json': JSON.stringify(result.capabilities, null, 2) + '\n', 'coverage.md': result.outputs.coverage, 'shape.json': bytes(result.register.shape) + '\n',
     'fact-schemas.json': bytes(result.register.shape.factSchemas) + '\n', 'conversion.json': bytes(result.conversion) + '\n',
     ...(result.completion ? { 'completion.json': bytes(result.completion) + '\n' } : {}),
     'source.json': JSON.stringify({ commit, generation: result.generation.id, authority: 'shape-only', mode,

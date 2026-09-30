@@ -1,0 +1,712 @@
+[
+  {
+    "type": "Declaration",
+    "schemaVersion": 1,
+    "id": "preview.rolling-summary",
+    "kind": "features",
+    "status": "live",
+    "requiredFacts": {
+      "metrics": [
+        "summaries",
+        "summaryChecks",
+        "lastSummaryFaithfulness",
+        "summaryPending"
+      ]
+    },
+    "profile": {
+      "type": "Profile",
+      "schemaVersion": 1,
+      "consequence": "data",
+      "reversibility": "costly",
+      "reach": "agent",
+      "surface": "none",
+      "repeats": {
+        "kind": "no"
+      }
+    },
+    "standards": [
+      7,
+      38,
+      39
+    ],
+    "holds": []
+  },
+  {
+    "type": "Declaration",
+    "schemaVersion": 1,
+    "id": "preview.coherence-check",
+    "kind": "features",
+    "status": "live",
+    "requiredFacts": {
+      "metrics": [
+        "coherence"
+      ]
+    },
+    "profile": {
+      "type": "Profile",
+      "schemaVersion": 1,
+      "consequence": "attention",
+      "reversibility": "reversible",
+      "reach": "agent",
+      "surface": "none",
+      "repeats": {
+        "kind": "no"
+      }
+    },
+    "standards": [
+      26,
+      39
+    ],
+    "holds": []
+  },
+  {
+    "type": "Declaration",
+    "schemaVersion": 1,
+    "id": "preview.step-check",
+    "kind": "features",
+    "status": "dark",
+    "requiredFacts": {
+      "metrics": [
+        "stepChecks"
+      ],
+      "gate": {
+        "test": "P9-PREVIEW-step-check-graduation",
+        "deadline": 1792022400000
+      }
+    },
+    "profile": {
+      "type": "Profile",
+      "schemaVersion": 1,
+      "consequence": "attention",
+      "reversibility": "reversible",
+      "reach": "agent",
+      "surface": "none",
+      "repeats": {
+        "kind": "no"
+      }
+    },
+    "standards": [
+      9,
+      38,
+      39,
+      73
+    ],
+    "holds": []
+  },
+  {
+    "type": "Declaration",
+    "schemaVersion": 1,
+    "id": "preview.reply.delivered",
+    "kind": "critical outcomes",
+    "status": "live",
+    "requiredFacts": {
+      "probe": "P9-PREVIEW-reply-delivered",
+      "cadence": 3600000
+    },
+    "profile": {
+      "type": "Profile",
+      "schemaVersion": 1,
+      "consequence": "external",
+      "reversibility": "irreversible",
+      "reach": "operator",
+      "surface": "chat",
+      "repeats": {
+        "kind": "no"
+      }
+    },
+    "standards": [
+      43
+    ],
+    "holds": [
+      {
+        "rule": 43,
+        "class": "partial",
+        "evidence": {
+          "kind": "probe",
+          "id": "P9-PREVIEW-reply-delivered",
+          "stage": "runtime"
+        },
+        "portion": "the runner reads Telegram's acceptance of the newest operator reply and its source time",
+        "remainder": "no canary traffic is authorized: the probe proves this outcome only from real operator traffic inside its freshness window, and reports unknown otherwise"
+      }
+    ]
+  },
+  {
+    "type": "Declaration",
+    "schemaVersion": 1,
+    "id": "preview.reply.bot-identity",
+    "kind": "critical outcomes",
+    "status": "live",
+    "requiredFacts": {
+      "probe": "P9-PREVIEW-telegram-identity",
+      "cadence": 21600000
+    },
+    "profile": {
+      "type": "Profile",
+      "schemaVersion": 1,
+      "consequence": "external",
+      "reversibility": "irreversible",
+      "reach": "operator",
+      "surface": "chat",
+      "repeats": {
+        "kind": "no"
+      }
+    },
+    "standards": [
+      43
+    ],
+    "holds": [
+      {
+        "rule": 43,
+        "class": "partial",
+        "evidence": {
+          "kind": "probe",
+          "id": "P9-PREVIEW-telegram-identity",
+          "stage": "runtime"
+        },
+        "portion": "a fresh authenticated getMe answer bound to the recorded bot",
+        "remainder": "bot identity is a precondition of delivery, not proof of it"
+      }
+    ]
+  },
+  {
+    "type": "Declaration",
+    "schemaVersion": 1,
+    "id": "preview.reply.drained",
+    "kind": "critical outcomes",
+    "status": "live",
+    "requiredFacts": {
+      "probe": "P9-PREVIEW-reply-drain",
+      "cadence": 900000
+    },
+    "profile": {
+      "type": "Profile",
+      "schemaVersion": 1,
+      "consequence": "external",
+      "reversibility": "irreversible",
+      "reach": "operator",
+      "surface": "chat",
+      "repeats": {
+        "kind": "no"
+      }
+    },
+    "standards": [
+      43
+    ],
+    "holds": [
+      {
+        "rule": 43,
+        "class": "partial",
+        "evidence": {
+          "kind": "probe",
+          "id": "P9-PREVIEW-reply-drain",
+          "stage": "runtime"
+        },
+        "portion": "accepted operator messages are settled or inside the drain limit",
+        "remainder": "a settled queue is not a delivery canary"
+      }
+    ]
+  },
+  {
+    "type": "Declaration",
+    "schemaVersion": 1,
+    "id": "preview.reply.provider-answers",
+    "kind": "critical outcomes",
+    "status": "live",
+    "requiredFacts": {
+      "probe": "P9-PREVIEW-provider-outcomes",
+      "cadence": 3600000
+    },
+    "profile": {
+      "type": "Profile",
+      "schemaVersion": 1,
+      "consequence": "external",
+      "reversibility": "irreversible",
+      "reach": "operator",
+      "surface": "chat",
+      "repeats": {
+        "kind": "no"
+      }
+    },
+    "standards": [
+      43
+    ],
+    "holds": [
+      {
+        "rule": 43,
+        "class": "partial",
+        "evidence": {
+          "kind": "probe",
+          "id": "P9-PREVIEW-provider-outcomes",
+          "stage": "runtime"
+        },
+        "portion": "answer-call outcomes recorded inside the freshness window",
+        "remainder": "no canary traffic is authorized: the probe proves this outcome only from real operator traffic inside its freshness window, and reports unknown otherwise"
+      }
+    ]
+  },
+  {
+    "type": "Declaration",
+    "schemaVersion": 1,
+    "id": "preview.reply-review.reached",
+    "kind": "critical outcomes",
+    "status": "live",
+    "requiredFacts": {
+      "probe": "P9-PREVIEW-reply-review-reached",
+      "cadence": 3600000
+    },
+    "profile": {
+      "type": "Profile",
+      "schemaVersion": 1,
+      "consequence": "external",
+      "reversibility": "irreversible",
+      "reach": "operator",
+      "surface": "chat",
+      "repeats": {
+        "kind": "no"
+      }
+    },
+    "standards": [
+      43
+    ],
+    "holds": [
+      {
+        "rule": 43,
+        "class": "partial",
+        "evidence": {
+          "kind": "probe",
+          "id": "P9-PREVIEW-reply-review-reached",
+          "stage": "runtime"
+        },
+        "portion": "every sent model answer carries a passing review recorded before its send",
+        "remainder": "the review's semantic quality is graded elsewhere, not by this probe"
+      }
+    ]
+  },
+  {
+    "type": "Declaration",
+    "schemaVersion": 1,
+    "id": "preview.held-reply-notice.delivered",
+    "kind": "critical outcomes",
+    "status": "live",
+    "requiredFacts": {
+      "probe": "P9-PREVIEW-held-notice-delivered",
+      "cadence": 3600000
+    },
+    "profile": {
+      "type": "Profile",
+      "schemaVersion": 1,
+      "consequence": "attention",
+      "reversibility": "irreversible",
+      "reach": "operator",
+      "surface": "chat",
+      "repeats": {
+        "kind": "no"
+      }
+    },
+    "standards": [
+      43
+    ],
+    "holds": [
+      {
+        "rule": 43,
+        "class": "partial",
+        "evidence": {
+          "kind": "probe",
+          "id": "P9-PREVIEW-held-notice-delivered",
+          "stage": "runtime"
+        },
+        "portion": "Telegram's acceptance of the newest held-reply notice and its source time",
+        "remainder": "no canary traffic is authorized: the probe proves this outcome only from real operator traffic inside its freshness window, and reports unknown otherwise"
+      }
+    ]
+  },
+  {
+    "type": "Declaration",
+    "schemaVersion": 1,
+    "id": "preview.reminders.delivered",
+    "kind": "critical outcomes",
+    "status": "live",
+    "requiredFacts": {
+      "probe": "P9-PREVIEW-reminder-delivered",
+      "cadence": 3600000
+    },
+    "profile": {
+      "type": "Profile",
+      "schemaVersion": 1,
+      "consequence": "external",
+      "reversibility": "irreversible",
+      "reach": "operator",
+      "surface": "chat",
+      "repeats": {
+        "kind": "no"
+      }
+    },
+    "standards": [
+      43
+    ],
+    "holds": [
+      {
+        "rule": 43,
+        "class": "partial",
+        "evidence": {
+          "kind": "probe",
+          "id": "P9-PREVIEW-reminder-delivered",
+          "stage": "runtime"
+        },
+        "portion": "Telegram's acceptance of the newest requested action's answer, and no requested action overdue",
+        "remainder": "no canary traffic is authorized: the probe proves this outcome only from real operator traffic inside its freshness window, and reports unknown otherwise"
+      }
+    ]
+  },
+  {
+    "type": "Declaration",
+    "schemaVersion": 1,
+    "id": "preview.status-pull.answered",
+    "kind": "critical outcomes",
+    "status": "live",
+    "requiredFacts": {
+      "probe": "P9-PREVIEW-status-answered",
+      "cadence": 3600000
+    },
+    "profile": {
+      "type": "Profile",
+      "schemaVersion": 1,
+      "consequence": "attention",
+      "reversibility": "irreversible",
+      "reach": "operator",
+      "surface": "chat",
+      "repeats": {
+        "kind": "no"
+      }
+    },
+    "standards": [
+      43
+    ],
+    "holds": [
+      {
+        "rule": 43,
+        "class": "partial",
+        "evidence": {
+          "kind": "probe",
+          "id": "P9-PREVIEW-status-answered",
+          "stage": "runtime"
+        },
+        "portion": "Telegram's acceptance of the newest status reply and its source time",
+        "remainder": "no canary traffic is authorized: the probe proves this outcome only from real operator traffic inside its freshness window, and reports unknown otherwise"
+      }
+    ]
+  },
+  {
+    "type": "Declaration",
+    "schemaVersion": 1,
+    "id": "preview.spend-cap.refusal",
+    "kind": "critical outcomes",
+    "status": "live",
+    "requiredFacts": {
+      "probe": "P9-PREVIEW-spend-cap-refusal",
+      "cadence": 3600000
+    },
+    "profile": {
+      "type": "Profile",
+      "schemaVersion": 1,
+      "consequence": "money",
+      "reversibility": "irreversible",
+      "reach": "operator",
+      "surface": "none",
+      "repeats": {
+        "kind": "no"
+      }
+    },
+    "standards": [
+      43
+    ],
+    "holds": [
+      {
+        "rule": 43,
+        "class": "partial",
+        "evidence": {
+          "kind": "probe",
+          "id": "P9-PREVIEW-spend-cap-refusal",
+          "stage": "runtime"
+        },
+        "portion": "used allowances never exceed their limits, and a reached limit held the work instead of spending",
+        "remainder": "the refusal is observed only once real use reaches an allowance; no test spend is authorized"
+      }
+    ]
+  },
+  {
+    "type": "Declaration",
+    "schemaVersion": 1,
+    "id": "preview.stop.honored",
+    "kind": "critical outcomes",
+    "status": "live",
+    "requiredFacts": {
+      "probe": "P9-PREVIEW-stop-honored",
+      "cadence": 86400000
+    },
+    "profile": {
+      "type": "Profile",
+      "schemaVersion": 1,
+      "consequence": "control",
+      "reversibility": "reversible",
+      "reach": "operator",
+      "surface": "none",
+      "repeats": {
+        "kind": "no"
+      }
+    },
+    "standards": [
+      43
+    ],
+    "holds": [
+      {
+        "rule": 43,
+        "class": "partial",
+        "evidence": {
+          "kind": "probe",
+          "id": "P9-PREVIEW-stop-honored",
+          "stage": "runtime"
+        },
+        "portion": "after a recorded stop latch, nothing was sent past it",
+        "remainder": "the runner does not run after a stop, so a latched stop is proven by the desk's recorded live proof"
+      }
+    ]
+  },
+  {
+    "type": "Declaration",
+    "schemaVersion": 1,
+    "id": "preview.durable-intake.restore",
+    "kind": "critical outcomes",
+    "status": "live",
+    "requiredFacts": {
+      "probe": "P9-PREVIEW-journal-restore",
+      "cadence": 21600000
+    },
+    "profile": {
+      "type": "Profile",
+      "schemaVersion": 1,
+      "consequence": "data",
+      "reversibility": "irreversible",
+      "reach": "agent",
+      "surface": "none",
+      "repeats": {
+        "kind": "no"
+      }
+    },
+    "standards": [
+      43
+    ],
+    "holds": [
+      {
+        "rule": 43,
+        "class": "partial",
+        "evidence": {
+          "kind": "probe",
+          "id": "P9-PREVIEW-journal-restore",
+          "stage": "runtime"
+        },
+        "portion": "a fresh read-only replay of the encrypted journal equals the live projection section by section",
+        "remainder": "a local replay comparison on this machine, not a remote backup or cross-machine restore"
+      }
+    ]
+  },
+  {
+    "type": "Declaration",
+    "schemaVersion": 1,
+    "id": "preview.durable-intake.store-agreements",
+    "kind": "critical outcomes",
+    "status": "live",
+    "requiredFacts": {
+      "probe": "P9-PREVIEW-store-agreements",
+      "cadence": 3600000
+    },
+    "profile": {
+      "type": "Profile",
+      "schemaVersion": 1,
+      "consequence": "data",
+      "reversibility": "irreversible",
+      "reach": "agent",
+      "surface": "none",
+      "repeats": {
+        "kind": "no"
+      }
+    },
+    "standards": [
+      33,
+      43
+    ],
+    "holds": [
+      {
+        "rule": 43,
+        "class": "partial",
+        "evidence": {
+          "kind": "probe",
+          "id": "P9-PREVIEW-store-agreements",
+          "stage": "runtime"
+        },
+        "portion": "every declared cross-store comparison runs at launch and on its cadence through the proof executor, and a disagreement with the authoritative store fails the plan",
+        "remainder": "detection on this machine only; comparisons across machines await the replication peer, and an unmeasurable comparison is reported, never counted as agreement"
+      }
+    ]
+  },
+  {
+    "type": "Declaration",
+    "schemaVersion": 1,
+    "id": "preview.durable-intake.startup",
+    "kind": "critical outcomes",
+    "status": "live",
+    "requiredFacts": {
+      "probe": "P9-PREVIEW-startup",
+      "cadence": 2592000000
+    },
+    "profile": {
+      "type": "Profile",
+      "schemaVersion": 1,
+      "consequence": "data",
+      "reversibility": "irreversible",
+      "reach": "agent",
+      "surface": "none",
+      "repeats": {
+        "kind": "no"
+      }
+    },
+    "standards": [
+      43
+    ],
+    "holds": [
+      {
+        "rule": 43,
+        "class": "partial",
+        "evidence": {
+          "kind": "probe",
+          "id": "P9-PREVIEW-startup",
+          "stage": "runtime"
+        },
+        "portion": "each launch records the authenticated bot identity over the replayed journal",
+        "remainder": "restart continuity beyond the replay is proven by the desk's restart live test"
+      }
+    ]
+  },
+  {
+    "type": "Declaration",
+    "schemaVersion": 1,
+    "id": "preview.sentinel.reply-review",
+    "kind": "sentinels",
+    "status": "live",
+    "requiredFacts": {
+      "freshnessProbe": "P9-PREVIEW-reply-review-reached",
+      "scope": "live",
+      "authority": "block",
+      "irreversibleMoment": "a reply sent to the operator's chat"
+    },
+    "profile": {
+      "type": "Profile",
+      "schemaVersion": 1,
+      "consequence": "attention",
+      "reversibility": "reversible",
+      "reach": "agent",
+      "surface": "none",
+      "repeats": {
+        "kind": "no"
+      }
+    },
+    "standards": [
+      9,
+      38
+    ],
+    "holds": [
+      {
+        "rule": 9,
+        "class": "partial",
+        "evidence": {
+          "kind": "probe",
+          "id": "P9-PREVIEW-reply-review-reached",
+          "stage": "runtime"
+        },
+        "portion": "its freshness probe reads the verdicts it recorded",
+        "remainder": "prepare-packet and cleanup are not reached by this reviewer"
+      }
+    ]
+  },
+  {
+    "type": "Declaration",
+    "schemaVersion": 1,
+    "id": "preview.sentinel.summary-review",
+    "kind": "sentinels",
+    "status": "live",
+    "requiredFacts": {
+      "freshnessProbe": "P9-PREVIEW-summary-checked",
+      "scope": "retrospective",
+      "authority": "signal"
+    },
+    "profile": {
+      "type": "Profile",
+      "schemaVersion": 1,
+      "consequence": "attention",
+      "reversibility": "reversible",
+      "reach": "agent",
+      "surface": "none",
+      "repeats": {
+        "kind": "no"
+      }
+    },
+    "standards": [
+      9,
+      38
+    ],
+    "holds": [
+      {
+        "rule": 9,
+        "class": "partial",
+        "evidence": {
+          "kind": "probe",
+          "id": "P9-PREVIEW-summary-checked",
+          "stage": "runtime"
+        },
+        "portion": "its freshness probe reads the verdicts it recorded",
+        "remainder": "requested summaries are reviewed by the reply reviewer, not this one"
+      }
+    ]
+  },
+  {
+    "type": "Declaration",
+    "schemaVersion": 1,
+    "id": "preview.sentinel.step-check",
+    "kind": "sentinels",
+    "status": "dark",
+    "requiredFacts": {
+      "freshnessProbe": "P9-PREVIEW-step-check-reached",
+      "scope": "retrospective",
+      "authority": "signal"
+    },
+    "profile": {
+      "type": "Profile",
+      "schemaVersion": 1,
+      "consequence": "attention",
+      "reversibility": "reversible",
+      "reach": "agent",
+      "surface": "none",
+      "repeats": {
+        "kind": "no"
+      }
+    },
+    "standards": [
+      9,
+      38
+    ],
+    "holds": [
+      {
+        "rule": 9,
+        "class": "partial",
+        "evidence": {
+          "kind": "probe",
+          "id": "P9-PREVIEW-step-check-reached",
+          "stage": "runtime"
+        },
+        "portion": "its freshness probe reads the verdicts it recorded",
+        "remainder": "dark: off by default; it validates completed answer, cleanup and summary steps only after they happen"
+      }
+    ]
+  }
+]

@@ -5,7 +5,9 @@ import { tmpdir } from 'node:os';
 import { expect, it } from 'vitest';
 import { installedFixtureHost, fixtureAdmissionNames } from './production-boot-installed-fixture.js';
 import { recordedCheckpoint } from './production-boot-checkpoint.js';
-import { value } from '../facts/fixtures.js';
+import { factsFixture, value } from '../facts/fixtures.js';
+import { openProductionStorageReader } from '../../src/assembly/production-storage.js';
+import { productionStorageIO } from '../../scripts/production-boot-io.mjs';
 it.each(['intake', 'run-opened'])(`public restart reconstructs the %s prefix without reauthoring; fixture-admitted: ${fixtureAdmissionNames}`, stage => {
   const root = realpathSync(mkdtempSync(join(tmpdir(), 'boot-recovery-')));
   const route = { provider: 'test-provider', model: 'model', route: 'route', disclosure: 'recorded provider',
@@ -20,4 +22,55 @@ it.each(['intake', 'run-opened'])(`public restart reconstructs the %s prefix wit
     expect(second.f.id).toBe(checkpoint.run);
     expect(second.calls).toEqual(['getMe']);
   } finally { second?.application.close(); first?.application.close(); rmSync(root, { recursive: true, force: true }); }
+}, 240000);
+
+it('fsyncs the initial capture before any fact can cite it when interrupted between writes', () => {
+  const root = realpathSync(mkdtempSync(join(tmpdir(), 'boot-initial-capture-cut-')));
+  const route = { provider: 'test-provider', model: 'model', route: 'route', disclosure: 'recorded provider',
+    automaticRetries: 0, environment: 'local-test', invoke: () => { throw Error('no provider during restart'); } };
+  let reference;
+  try {
+    expect(() => installedFixtureHost(root, route, { physicalCheckpoint: (point, evidence) => {
+      if (point === 'initial-capture-durable') { reference = evidence.reference; throw Error('injected between capture and fact'); }
+    } }).boot()).toThrow('injected between capture and fact');
+    const reader = value(openProductionStorageReader({ root, machine: 'machine-a',
+      key: new Uint8Array(32).fill(0x13), store: 'store:fact', context: factsFixture().c, io: productionStorageIO }));
+    try {
+      expect(reader.captures.read(reference)).not.toBeNull();
+      expect(JSON.stringify(reader.segment.read())).not.toContain(reference);
+    } finally { reader.close(); }
+  } finally { rmSync(root, { recursive: true, force: true }); }
+}, 240000);
+
+it('recovers a fact whose capture was durable before the fact but absent from the interrupted checkpoint', () => {
+  const root = realpathSync(mkdtempSync(join(tmpdir(), 'boot-capture-cut-')));
+  const route = { provider: 'test-provider', model: 'model', route: 'route', disclosure: 'recorded provider',
+    automaticRetries: 0, environment: 'local-test', invoke: () => { throw Error('no provider during restart'); } };
+  let first, second;
+  try {
+    first = installedFixtureHost(root, route).boot();
+    const checkpoint = recordedCheckpoint(first, 'capture-cut');
+    const reference = first.f.opening.body.capture.reference;
+    expect(first.storage.captures.read(reference)).not.toBeNull();
+    // Equivalent to interruption after capture + signed fact fsync, before the
+    // next checkpoint write: the fact is retained, this reference is absent.
+    checkpoint.captures = checkpoint.captures.filter(row => row !== reference);
+    first.application.close();
+    second = installedFixtureHost(root, route, { recovery: checkpoint }).boot();
+    expect(value(second.f.store.readForProjection()).entries.find(row => row.fact.id === first.f.opening.id)?.conflicts).toEqual([]);
+  } finally { second?.application.close(); first?.application.close(); rmSync(root, { recursive: true, force: true }); }
+}, 240000);
+
+it('refuses recovery when a checkpoint names capture bytes that custody cannot supply', () => {
+  const root = realpathSync(mkdtempSync(join(tmpdir(), 'boot-capture-absent-')));
+  const route = { provider: 'test-provider', model: 'model', route: 'route', disclosure: 'recorded provider',
+    automaticRetries: 0, environment: 'local-test', invoke: () => { throw Error('no provider during restart'); } };
+  const first = installedFixtureHost(root, route).boot();
+  try {
+    const checkpoint = recordedCheckpoint(first, 'capture-absent');
+    first.application.close();
+    checkpoint.captures.push('capture:missing-from-custody');
+    expect(() => installedFixtureHost(root, route, { recovery: checkpoint }).boot())
+      .toThrow('recovery capture absent: capture:missing-from-custody');
+  } finally { first.application.close(); rmSync(root, { recursive: true, force: true }); }
 }, 240000);

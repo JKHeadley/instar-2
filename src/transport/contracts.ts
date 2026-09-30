@@ -174,3 +174,47 @@ export interface TransportAuthority<S = never> {
   close(command: string, fence: FenceToken, operation: string): Result<AdmissionReservation>;
   settle(fence: FenceToken, settlement: S): Result<SettlementApplication>;
 }
+
+// ---- Composed multidomain resource admission (SEAM-LEDGER row 36, additive) ----
+// A domain's capacity is the operator's finite deployment policy, supplied by the
+// trusted host; the manifest names policies and never balances. Zero admits nothing.
+export type ResourceDimension = 'global' | 'installation' | 'framework' | 'account' | 'job-family' | 'job' | 'ancestor';
+export interface ResourceDemand {
+  readonly dimension: ResourceDimension; readonly domain: string; readonly resource: string;
+  readonly amount: number; readonly policy: string; readonly expectedPredecessor: string;
+}
+export interface ResourceAllocationSet extends Owned {
+  /** P1 owned-body framing, as on every Six record; the remaining fields are the grant's exact list. */
+  readonly type: 'ResourceAllocationSet'; readonly schemaVersion: 1;
+  readonly owner: 'part-six'; readonly id: string; readonly operation: string;
+  readonly request: string; readonly run: string; readonly fence: FenceToken;
+  readonly parentAllocation: string; readonly demands: readonly ResourceDemand[];
+  readonly prepared: readonly string[]; readonly committed: readonly string[];
+  readonly released: readonly string[];
+  readonly state: 'preparing' | 'committed' | 'closing' | 'closed';
+  readonly predecessor: string; readonly sourceVector: string;
+}
+/** One registered finite resource domain of the operator's deployment policy. */
+export interface ResourceDomainPolicy {
+  readonly domain: string; readonly dimension: Exclude<ResourceDimension, 'ancestor'>;
+  readonly resource: string; readonly capacity: number; readonly policy: string;
+}
+export interface ResourceSetHost extends TransportHost {
+  resourceDomains(): readonly ResourceDomainPolicy[];
+  /** Trusted resolver of an ordinary AdmissionReservation kept in its own single-run Six
+   * domain (docs/10: no cross-domain transaction is assumed atomic; each state is durable).
+   * Absent: the reservation must be in this authority's own domain. */
+  resolveReservation?(reference: OwnedReference<'part-six', 'AdmissionReservation'>):
+    Readonly<{ reservation: AdmissionReservation; fact: string; settlementUnresolved: boolean }> | undefined;
+}
+export interface ResourceSetAuthority {
+  reserveResourceSet(input: Readonly<{
+    command: string; fence: FenceToken;
+    request: OwnedReference<'part-eight', 'EffectRequest'>; run: RunReference;
+    parentAllocation: string; demands: readonly ResourceDemand[];
+  }>): Result<ResourceAllocationSet>;
+  attachResourceSet(reservation: OwnedReference<'part-six', 'AdmissionReservation'>,
+    allocationSet: OwnedReference<'part-six', 'ResourceAllocationSet'>): Result<AdmissionReservation>;
+  closeResourceSet(input: Readonly<{ command: string;
+    allocationSet: OwnedReference<'part-six', 'ResourceAllocationSet'>; settlement: string }>): Result<ResourceAllocationSet>;
+}

@@ -47,6 +47,7 @@ export function installIntakeOwnerFixture(root: string) {
  write('src/intake/records.ts', intakeRecords);
  write('src/intake/index.ts', "export { intakeDedupDefinition, intakeWorkRegistration, intakeStopRegistration } from './records.js';");
  write('src/intake/port.ts', intakePort);
+ write('src/intake/README.md', '# Intake owner fixture\n\nTest-only miniature Part Four owner; it declares no feature.\n');
  const declaration = (id: string, kind: string, requiredFacts: object, extra = {}) => ({ type: 'Declaration', schemaVersion: 1, id, kind, status: 'live', requiredFacts, standards: [], holds: [], ...extra });
  const profile = { type: 'Profile', schemaVersion: 1, consequence: 'none', reversibility: 'reversible', reach: 'internal', surface: 'none', repeats: { kind: 'no' } };
  write('src/intake/port.declarations.json', JSON.stringify([

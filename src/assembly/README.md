@@ -77,3 +77,8 @@ schema, source selection and class mapping; R6 wires the sampler and verifier in
 boot/composition with the real route framing and bounds; R7 joins per-turn hosting and
 live usefulness. The current preview/Eight envelopes cannot hold one grounded turn; the
 measured bound proposal is in the R5 progress handoff.
+
+## Capabilities
+
+- `harness-doorway-parity`: binds each supported harness and model doorway to certified code; the rest are marked unproven.
+  Details: binds each supported harness and model doorway to its certified code and runtime; the rest are marked unproven or unsupported.

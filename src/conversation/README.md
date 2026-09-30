@@ -7,3 +7,10 @@ The Slack parser, feature and irreversible ordinary reply are declared dark. The
 Rows 57 and 46 still hold stable event identity across changed delivery metadata and held receipt continuation. Rows 18 and 35 hold direction, organization permission and semantic ambient judgment. Row 45 holds new thread background grounding. The current positive is a single ordinary requester text or durable generic hold. No channel history, reactions, media, arbitrary channels, or second-worker capacity is installed.
 
 Multi-machine posture: both ports use the same shared fact store and conversation ownership. This preparation adds no machine-local authority or independent memory. Any future Slack reply with a replication demand requires a receipt from an independently failing peer; the one-machine local path stays held pending the approved closed-set amendment and current P-08 policy. Disabling the selection withdraws the socket surface while preserving captured and uncertain work.
+
+## Capabilities
+
+- `telegram-conversation-adapter`: long-polls the bound Telegram bot and hands one reply per admitted message to the effect doorway.
+  Details: receives Telegram updates by long polling from the bound bot, authenticates the sender and chat, and hands one ordinary reply per admitted message to the effect doorway; media, reactions, typing, edits and deletions are inhibited.
+- `slack-conversation-adapter`: receives Slack Socket Mode messages from one bound direct message or thread into intake; it is dark and has no live proof.
+- `slack-ordinary-reply`: prepares a plain-text Slack reply to the bound direct message or thread; it is dark and refuses to send.

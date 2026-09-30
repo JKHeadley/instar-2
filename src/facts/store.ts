@@ -59,6 +59,17 @@ export function createFactStore(context: FactContext, storage: SegmentStoragePor
   let revision = 0;
   let prefix = recovery.prefix;
   let cached: readonly FactEnvelope[] = [];
+  let verifiedRaw: readonly unknown[] = [];
+  const immutableRaw = new WeakSet<object>();
+  const isImmutable = (value: unknown): boolean => {
+    if (value === null || typeof value !== 'object') return true;
+    if (immutableRaw.has(value)) return true;
+    if (!Object.isFrozen(value)) return false;
+    const complete = Object.values(Object.getOwnPropertyDescriptors(value)).every(descriptor =>
+      'value' in descriptor && isImmutable(descriptor.value));
+    if (complete) immutableRaw.add(value);
+    return complete;
+  };
   let projectionMemo: { key: string; snapshot: FactSnapshot } | undefined;
   // Each admitted fact's status, kept from when it was derived (Occam cuts #1/#2; see extendSnapshot).
   const statuses: { running?: RunningSnapshot | undefined } = {};
@@ -69,7 +80,11 @@ export function createFactStore(context: FactContext, storage: SegmentStoragePor
     if (checkedContext !== prefixContext(context)) { revision++; cached = []; checkedContext = prefixContext(context); }
     if (prefix) { requireFact(prefixValid(prefix, context), 'prefix not verified under current context'); cached = prefix.facts; prefix = undefined; }
     requireFact(raw.length >= cached.length, 'stored verified prefix was truncated', 'integrity');
-    for (let i = 0; i < cached.length; i++) requireFact(jsonEqual(raw[i], cached[i]), 'stored verified prefix changed', 'integrity');
+    for (let i = 0; i < cached.length; i++) {
+      const frame = raw[i];
+      if (frame !== verifiedRaw[i] || !frame || typeof frame !== 'object' || !immutableRaw.has(frame))
+        requireFact(jsonEqual(frame, cached[i]), 'stored verified prefix changed', 'integrity');
+    }
     requireFact(raw.length - cached.length <= (recovery.verificationBudget ?? Number.MAX_SAFE_INTEGER), 'verification budget exhausted', 'budget-exhausted');
     const facts: FactEnvelope[] = [...cached];
     for (const input of raw.slice(cached.length)) {
@@ -77,6 +92,8 @@ export function createFactStore(context: FactContext, storage: SegmentStoragePor
       const fact = take(decodeEnvelope(input, at, 'replication')); extendsChain(fact, at); facts.push(fact); recovery.onVerified?.(fact);
     }
     cached = facts;
+    verifiedRaw = raw.slice(); // a private copy: an adapter may later reorder or replace slots in its own array
+    for (const row of raw) isImmutable(row);
     return facts;
   });
   const store: FactStorePort = Object.freeze({ read,

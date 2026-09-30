@@ -26,37 +26,50 @@ import { productionStorageIO, createProductionNativeContextIO } from '../../scri
 import { createProductionRunAdmission } from '../../src/transport/index.js';
 
 export const fixtureAdmissionNames = productionBindingHolds.join(', ');
+/** Recorded offline defaults are unchanged. A live-shaped caller (the preview
+ * successive adapter) may supply the configured bot identity, physical Telegram
+ * IO, declaration, SecretRef resolver and bounded judgment settings; it then
+ * never reads the recorded getMe/poll/send bytes. */
 export function installedFixtureHost(root, route, options = {}) {
-  const getMe = readFileSync('tests/assembly/telegram-recorded/getMe.json', 'utf8');
-  const poll = options.pollResponse ?? readFileSync('tests/assembly/telegram-recorded/poll-0.json', 'utf8');
-  const sent = readFileSync('tests/assembly/telegram-recorded/sendMessage.json', 'utf8');
-  const bot = JSON.parse(getMe).result, t = conversationFixture({ botId: String(bot.id), skipInitialAdmission: true });
+  const live = !!options.telegramIO || !!options.telegramIOFactory;
+  const getMe = live ? null : readFileSync('tests/assembly/telegram-recorded/getMe.json', 'utf8');
+  const poll = live ? null : options.pollResponse ?? readFileSync('tests/assembly/telegram-recorded/poll-0.json', 'utf8');
+  const sent = live ? null : readFileSync('tests/assembly/telegram-recorded/sendMessage.json', 'utf8');
+  const bot = options.bot ?? JSON.parse(getMe).result, t = conversationFixture({ botId: String(bot.id), skipInitialAdmission: true });
   const c = { ...t.intake.context.decode, site: t.intake.f.c.site, preserved: t.intake.f.c.preserved };
-  c.register = { ...c.register, generation: { ...c.register.generation, id: 'generation:fixture' } };
+  c.register = { ...c.register, generation: { ...c.register.generation, id: 'generation:fixture' },
+    entries: [...new Set([...c.register.entries, ...options.registerEntries ?? []])] };
   const secret = name => ({ type: 'SecretRef', schemaVersion: 1, vault: 'vault', name });
   const record = { type: 'ProductionInstallation', schemaVersion: 1, id: 'host', generation: c.register.generation.id,
     botDeclaration: 'phone-surface', providerRoute: 'route', machineIdentity: 'machine-a', storageRoot: root,
-    botCredential: t.declaration.token, providerCredential: secret('provider'), storageCredential: secret('storage') };
+    botCredential: t.declaration.token, providerCredential: secret('provider'), storageCredential: secret('storage'),
+    ...options.record };
   let underlyingAdmission, state;
   // Same landed Six fixture binding, constructed inside configure over the root.
   const admission = createProductionRunAdmission({ resolve: () => underlyingAdmission });
   const admittedDependencies = () => Object.fromEntries(requiredMinimalDependencies.map(name => [name, true]));
   const host = { context: c, storageIO: options.storageIO ?? productionStorageIO, storagePolicy: 'StoreCustodyPolicy',
     store: 'store:fact', repairOwner: 'operator', runAdmission: admission, missingBindings: [],
-    dependencies: admittedDependencies, resolveSecret: reference => reference.name === 'storage' ? '13'.repeat(32)
-      : reference.name === 'provider' ? 'synthetic-recorded-provider-credential' : '8820318295:synthetic_recorded_test_only_value',
+    dependencies: admittedDependencies, resolveSecret: options.resolveSecret ?? (reference => reference.name === 'storage' ? '13'.repeat(32)
+      : reference.name === 'provider' ? 'synthetic-recorded-provider-credential' : '8820318295:synthetic_recorded_test_only_value'),
     configure(installation, storage) {
       const initial = t.intake.context;
       Object.assign(initial, { ownedBodies: [value(intakeWorkRegistration(c, t.intake.deps.author.principal.id)),
         value(intakeStopRegistration(c, t.intake.deps.author.principal.id))] });
       const recovery = options.recovery ? { ...options.recovery,
-        captureBytes: Object.fromEntries(options.recovery.captures.map(reference => {
+        // The fact append and checkpoint are separate durable writes. A stop after
+        // the append leaves the checkpoint's capture list stale, while custody has
+        // already fsynced the bytes. Rebuild metadata from custody itself.
+        captureBytes: Object.fromEntries([...new Set([...options.recovery.captures,
+          ...storage.captures.references()])].map(reference => {
           const bytes = storage.captures.read(reference); if (bytes === null) throw Error(`recovery capture absent: ${reference}`);
           return [reference, bytes];
         })) } : undefined;
       const physical = createProductionNativeContextIO(storage.captures);
+      const hostFileArtifact = options.hostFileArtifact ?? physical.current().artifact;
+      const nativeArtifact = options.nativeArtifact?.(storage, hostFileArtifact) ?? hostFileArtifact;
       let nativeOrdinal = 0;
-      const nativeIO = { ...physical, consume(reference, bytes) {
+      const nativeIO = { ...physical, current: () => ({ ...physical.current(), artifact: nativeArtifact }), consume(reference, bytes) {
         const ordinal = ++nativeOrdinal;
         options.physicalCheckpoint?.(`native-before-consume-${ordinal}`, state);
         const result = physical.consume(reference, bytes);
@@ -64,6 +77,8 @@ export function installedFixtureHost(root, route, options = {}) {
         return result;
       } };
       const f = createProductionBootOwnerFixture(() => storage.segment, { minimal: true, deferred: true, recovery,
+        captureCustody: storage.captures,
+        captureCheckpoint: reference => options.physicalCheckpoint?.('initial-capture-durable', { reference }),
         prepareContext: recovery ? (context, assemblyHost, base) => {
           const dc = context.decode, boundary = { ...base.c, register: dc.register };
           const th = { ...assemblyHost, domain: 'conversation:1', incarnation: 'incarnation:one',
@@ -81,15 +96,21 @@ export function installedFixtureHost(root, route, options = {}) {
           context.migrations = providerEffectMigrations;
           const grantRoot = storage.segment.read().find(row => row.kind === 'note' && row.body.identity === 'installation-grant-root');
           if (grantRoot) context.grants.push({ factId: grantRoot.id, grant: t.intake.f.g });
+          // Retained Evidence must be resolvable before the first store read: a
+          // live answer's Decision cites turn-specific evidence, not only e1/e2.
+          for (const row of storage.segment.read().filter(row => row.kind === 'evidence-record'))
+            if (!base.evidence.some(e => e.id === row.body.evidence.id))
+              base.evidence.push(value(decode('Evidence', row.body.evidence, dc)));
         } : undefined,
         native: { captures: storage.captures, io: nativeIO },
         intake: { ...initial, facts: [], opening: undefined } });
       underlyingAdmission = createProductionRunAdmission({ authority: f.effects.transport, store: f.store, context: f.c });
       f.deps.admission = admission;
       const context = f.ctx, dc = context.decode, boundary = { ...f.c, register: dc.register };
+      for (const entry of options.registerEntries ?? []) if (!dc.register.entries.includes(entry)) dc.register.entries.push(entry);
       f.deps.context.evidenceSources.settlement = f.bob.provenance.adapter;
       const captures = value(createProductionJudgmentCaptures({ custody: storage.captures, context: boundary,
-        capacity: 1048576, metadata: context.captures, decodeCaptures: dc.captures }));
+        capacity: options.judgment?.captureCapacity ?? 1048576, metadata: context.captures, decodeCaptures: dc.captures }));
       for (const [reference, bytes] of Object.entries(dc.captures)) {
         context.captures[reference] ??= { bytes, hash: 'sha256:' + createHash('sha256').update(bytes).digest('hex'), byteLength: Buffer.byteLength(bytes), status: 'available' };
         storage.captures.preserve(reference, bytes);
@@ -99,7 +120,7 @@ export function installedFixtureHost(root, route, options = {}) {
         budget: 1000, monotonic: () => f.deps.clock().value,
         current: () => ({ ...f.owners.host.current(), generation: f.run.generation }) };
       const judgmentHost = { transport: th, point: 'judgment', floor: f.floor,
-        description: { owner: 'part-ten', provider: 'test-provider', model: 'model', route: 'route', automaticRetries: 0,
+        description: options.judgment?.description ?? { owner: 'part-ten', provider: 'test-provider', model: 'model', route: 'route', automaticRetries: 0,
           maxInputBytes: 4096, maxOutputBytes: 4096, maxCharge: 20, measured: false, basis: 'recorded HTTP provider' },
         refreshFacts: () => f.success(undefined) };
       const vh = { machine: f.host.machine, principal: f.host.principal, scope: f.host.scope, boundary,
@@ -126,9 +147,11 @@ export function installedFixtureHost(root, route, options = {}) {
       const runtime = createVerificationRuntime(vh, createVerificationSpine(vh, { context, privateKey }, f.store));
       const realAssessment = createEffectAssessmentPort(vh, runtime);
       Object.assign(f.effects.composition.assessment, realAssessment);
-      const declaration = { ...t.declaration, bot: { ...t.declaration.bot, username: `@${bot.username}` } };
+      const recordedDeclaration = { ...t.declaration, bot: { ...t.declaration.bot, username: `@${bot.username}` } };
+      const declaration = options.declaration ? options.declaration(recordedDeclaration) : recordedDeclaration;
       const identityPlan = value(t.verification.inspectCurrent()).find(row => row.record.type === 'VerificationPlan').record;
       const calls = [];
+      const physicalTelegram = options.telegramIOFactory ? options.telegramIOFactory(storage) : options.telegramIO;
       const telegramCaptures = { owner: 'part-ten', read: reference => storage.captures.read(reference), preserve: (reference, bytes) => {
         const saved = storage.captures.preserve(reference, bytes);
         if (saved && !reference.includes(':sealed-getMe:')) {
@@ -142,12 +165,17 @@ export function installedFixtureHost(root, route, options = {}) {
         resolveSecret: host.resolveSecret, captures: telegramCaptures, machine: 'machine-a', now: () => f.deps.clock(), freshFor: 50,
         identityEvidence: { verification: t.verification, plan: identityPlan.id,
           arm: identityPlan.arms.find(arm => arm.required).id, generation: 'generation:fixture' },
-        io: { invoke: request => {
+        io: live ? { invoke: (request, credential) => {
+          calls.push(request.method);
+          return physicalTelegram.invoke(request, credential);
+        } } : { invoke: request => {
           calls.push(request.method);
           if (request.method === 'sendMessage') options.physicalCheckpoint?.('reply-before-response', state);
           const reply = options.dynamicReplyResponse && request.method === 'sendMessage'
             ? JSON.stringify({ ...JSON.parse(sent), result: { ...JSON.parse(sent).result,
-              text: request.body.text, chat: { ...JSON.parse(sent).result.chat, id: Number(request.body.chat_id) },
+              // The Bot API returns the decoded text of an HTML-mode send, never the escaped request bytes.
+              text: request.body.text.replace(/&lt;/gu, '<').replace(/&gt;/gu, '>').replace(/&amp;/gu, '&'),
+              chat: { ...JSON.parse(sent).result.chat, id: Number(request.body.chat_id) },
               ...(request.body.message_thread_id ? { message_thread_id: request.body.message_thread_id } : {}),
               entities: [] } }) : sent;
           const response = { kind: 'response', status: 200,
@@ -196,7 +224,8 @@ export function installedFixtureHost(root, route, options = {}) {
           ...material.map(row => ({ class: row.body.class, reference: row.id, digest: row.contentHash }))];
         const accepted = (state?.contextHistory ?? []).filter(item => item.acceptedReply)
           .map(item => storage.captures.read(item.acceptedReply));
-        const message = f.effects.message(f.id, ['actual delivered Telegram input', ...accepted].join('\n'));
+        const message = f.effects.message(f.id, options.contextDeliveryText
+          ? options.contextDeliveryText(accepted) : ['actual delivered Telegram input', ...accepted].join('\n'));
         const wireMessage = value(decodeOutboundMessage({ ...message, sourceResult: f.opening.id,
           context: { input: { fact: f.opening.id, ...captureFor(f.opening) }, manifest } }, f.owners.host));
         const admitted = f.effects.prepare(wireMessage);
@@ -251,7 +280,8 @@ export function installedFixtureHost(root, route, options = {}) {
       const factId = id => value(f.runtime.inspect()).find(row => row.record.id === id).fact.id;
       const conformanceFact = factId(conformance.id), policyFact = factId(policy.id);
       const publicPorts = productionPublicPorts(binding.scope).map(row => row.port === 'HarnessAdapterPort' ? { ...row, artifact }
-        : row.port === 'ModelAdapterPort' ? { ...row, implementation: 'test-provider:model:route' }
+        : row.port === 'ModelAdapterPort' ? { ...row, implementation:
+          `${judgmentHost.description.provider}:${judgmentHost.description.model}:${judgmentHost.description.route}` }
         : row.port === 'PersistenceAdapterPort' ? { ...row, implementation: storage.persistence.id } : row);
       const manifest = value(f.runtime.record('AssemblyManifest', { ...assemblyInput('AssemblyManifest'), id: 'manifest:production',
         publicPorts, productionBindings: [binding], dependencyFacts: [conformanceFact, policyFact] }));
@@ -261,8 +291,9 @@ export function installedFixtureHost(root, route, options = {}) {
       const owners = { assembly: { ...f.composition, persistence: storage.persistence }, grounding: { ...grounding, scope: binding.scope },
         run: f.deps, intake, telegram: api, effect: f.effects.composition,
         provider: { judgment: { host: judgmentHost, boundary, authority: f.effects.transport, captures, store: f.store, context, privateKey,
-          settings: { automaticRetries: 0, maxTokens: 128 }, outputSchema: { type: 'Decision' }, maxTokens: 128,
-          maxCaptureBytes: 65536, timeout: 100, disclosure: 'recorded provider' }, verification: vh, route,
+          settings: options.judgment?.settings ?? { automaticRetries: 0, maxTokens: 128 }, outputSchema: { type: 'Decision' },
+          maxTokens: options.judgment?.settings?.maxTokens ?? 128, maxCaptureBytes: options.judgment?.maxCaptureBytes ?? 65536,
+          timeout: options.judgment?.timeout ?? 100, disclosure: options.judgment?.disclosure ?? 'recorded provider' }, verification: vh, route,
           effect: { host: f.owners.host, durability: f.effects.composition.durability, custody: f.effects.composition.custody, plan: 'boot-provider-plan' } },
         operator: { ...operator.composition, id: binding.surface.adapter.implementation }, bindings,
         names: { intake: 'intake:verified-act', run: 'run:graph', lease: 'lease:authority', judgment: 'judgment:doorway',

@@ -2,6 +2,8 @@ import { registerNativeContextHarness } from './grounding-capability.js';
 import { boundary, ensure, freeze, take } from './boundary.js';
 import { decodeHarnessObservation } from './records.js';
 import type { ConfinedContextDeliveryDriverPort } from './context-delivery.js';
+import { stallCoverageGaps } from './stall-coverage.js';
+import type { HarnessStallCoverage } from './stall-coverage.js';
 import type { AssemblyDecodeContext, ContextDeliverySpecification, HarnessAdapterPort, HarnessLaunchSpec, HarnessObservation } from './contracts.js';
 
 export interface NativeHarnessDriverPort {
@@ -15,11 +17,16 @@ export interface NativeHarnessDriverPort {
 
 export function createNativeHarnessAdapter(input: Readonly<{ id: string; artifact: string; platform: string; conformance: string;
   driver: NativeHarnessDriverPort; contextDeliveryDriver?: ConfinedContextDeliveryDriverPort;
+  /** Rule 59: the enumerated silent-stop table; an incomplete one refuses onboarding. */
+  stallCoverage: HarnessStallCoverage;
   context: AssemblyDecodeContext; clock: () => number; generation: () => string }>): HarnessAdapterPort {
   // Retain the certified driver and history even if caller configuration changes.
   input = Object.freeze({ ...input });
   const history = input.context.history;
   const { driver, context } = input; ensure(driver.owner === 'part-eight', 'native harness requires eight-owned operation driver');
+  const stallGaps = stallCoverageGaps(input.stallCoverage);
+  ensure(stallGaps.length === 0 && input.stallCoverage.harness === input.id,
+    `harness stall coverage incomplete: ${stallGaps.join('; ') || 'coverage names another harness'}`);
   const launches = new Map<string, { spec: HarnessLaunchSpec; processIdentity: string }>();
   const deliveries = new Map<string, ContextDeliverySpecification>(); let ordinal = 0;
   const observation = (spec: HarnessLaunchSpec, phase: HarnessObservation['phase'], evidence: string, detail: string, dependencies: readonly string[]): HarnessObservation =>

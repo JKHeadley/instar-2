@@ -12,3 +12,8 @@ export { consumeAcceptedProviderAnswer } from './provider-path.js';
 export type { AcceptedProviderAnswer } from './provider-path.js';
 
 export type { HarnessLiveInputExecutionPort } from './doorway.js';
+export { decodeInfrastructureNotice, infrastructureNoticeDigest, renderInfrastructureNotice } from './infrastructure-notice.js';
+export type { InfrastructureNotice, SelfHealFailure } from './infrastructure-notice.js';
+export { dispatchInfrastructureNotice } from './infrastructure-notice-driver.js';
+export type { InfrastructureNoticePorts, NoticeDispatch, NoticeLedgerEntry, NoticeRoute, NoticeSendObservation, NoticeState }
+  from './infrastructure-notice-driver.js';

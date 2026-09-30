@@ -14,6 +14,7 @@ import {privateKey} from '../facts/fixtures.js';
 import {assemblyInput} from '../assembly/fixture.js';
 import {assemblyRuntimeFixture} from '../assembly/round8-extended-fixture.js';
 import {installProduction,productionBindingSet,productionComposition} from '../assembly/production-fixture.js';
+import { stallCoverageFixture } from '../assembly/stall-coverage-fixture.js';
 const result=(r:any):any=>consumeResult(r,{Success:value=>({accepted:true,value}),Refused:r=>({accepted:false,detail:r.detail})});
 function makeDriver(f:any,runtime=f.runtime,counter={calls:0}) {
  return {counter,driver:createConfinedContextDeliveryDriver({history:f.history,runtime,context:f.c,clock:()=>100,
@@ -39,7 +40,7 @@ it('R5 F9 contract map must refuse named passing titles when the named behavior 
 });
 it('R6 F1 signed native observation reconstructs without local delivery or launch maps',()=>{
  const f=ten(),s=value(f.runtime.recordContextDelivery(f.spec())),accepted=value(f.driver.deliver(s,{operation:s.operation,claim:s.claim}));
- const fresh=createNativeHarnessAdapter({id:'native',artifact:f.launch.artifactDigest,platform:'fixture',conformance:'fixture',context:{...f.c,history:f.history},clock:()=>100,generation:()=>s.generation,contextDeliveryDriver:f.driver,
+ const fresh=createNativeHarnessAdapter({ id: 'native', stallCoverage: stallCoverageFixture('native'),artifact:f.launch.artifactDigest,platform:'fixture',conformance:'fixture',context:{...f.c,history:f.history},clock:()=>100,generation:()=>s.generation,contextDeliveryDriver:f.driver,
  driver:{owner:'part-eight',launch:()=>{throw Error('must not relaunch')},deliver:()=>{throw Error('must not use legacy deliver')},observe:()=>{throw Error('must not use legacy observe')}}});
  expect(result(fresh.observe({launch:s.launch,delivery:accepted.id,operation:s.operation}))).toMatchObject({accepted:true,value:{phase:'context-consumed'}});expect(f.calls()).toBe(1);
 });

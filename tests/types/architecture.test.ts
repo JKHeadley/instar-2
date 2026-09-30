@@ -31,6 +31,8 @@ const programs = Object.entries(fixtures).flatMap(([id, code]) => {
 });
 const sources = Object.fromEntries(programs.map(({ id, form, code }) => [`tests/lint-${id}-${form}.ts`, prelude + code]));
 sources['src/virtual-impure.ts'] = `import { readFileSync } from 'node:fs'; export function impure() { return [Date.now(), readFileSync('x'), fetch('https://example.invalid')]; }`;
+sources['tests/lint-detector-symbol.ts'] = `import { existsSync } from 'node:fs'; export const probe = () => existsSync('/tmp/marker') && Date.now() > 0;`;
+sources['tests/lint-detector-ports.ts'] = `export const probe = (ports: { read(): number }) => ports.read() > 0;`;
 sources['tests/lint-safe.ts'] = prelude + `
 import { consumeResult, consumeCapacity, consumeOutcome, readEvidence, retryPermission, resolveConflict } from '../src/index.js';
 export const handled = consumeResult(result, {
@@ -54,8 +56,54 @@ describe('architecture checks reject programs that compile', () => {
     const issues = lintProgram(program, ['src/virtual-impure.ts']);
     expect(issues.filter(i => i.rule === 'NF-52').length).toBeGreaterThanOrEqual(3);
   });
+  it('NF-26 holds a declared detector module to its observation ports (Rule 26, live runner)', () => {
+    const detectors = ['tests/lint-detector-symbol.ts', 'tests/lint-detector-ports.ts'];
+    const issues = lintProgram(program, detectors, detectors).filter(i => i.rule === 'NF-26');
+    expect(issues.filter(i => i.file.endsWith('lint-detector-symbol.ts')).length).toBeGreaterThanOrEqual(3);
+    expect(issues.filter(i => i.file.endsWith('lint-detector-ports.ts'))).toEqual([]);
+    // The same file is not a detector unless declared: the rule binds only named boundaries.
+    expect(lintProgram(program, ['tests/lint-detector-symbol.ts'], []).filter(i => i.rule === 'NF-26')).toEqual([]);
+  });
+  it('the live runner\'s proof module is a declared detector and passes', async () => {
+    const { DETECTOR_MODULES } = await import('../../scripts/check-architecture.mjs');
+    expect(DETECTOR_MODULES).toContain('tests/preview/proofs.ts');
+    expect(lintProgram(createProgram(), ['tests/preview/proofs.ts'])).toEqual([]);
+  });
   it('public doorways compile and are permitted when actually consumed', () => {
     expect(diagnostics.filter(d => d.file?.fileName.endsWith('tests/lint-safe.ts')).map(d => ts.flattenDiagnosticMessageText(d.messageText, '\n'))).toEqual([]);
     expect(lintProgram(program, ['tests/lint-safe.ts'])).toEqual([]);
+  });
+});
+
+describe('NF-10: intent-decision sites never branch on a literal meaning classifier (Rule 10)', () => {
+  it('flags a keyword-gated decision offer, search offer or promise reader, and passes the live runner', async () => {
+    const { lintIntentSites } = await import('../../scripts/check-architecture.mjs');
+    expect(lintIntentSites()).toEqual([]);
+    const flagged = lintIntentSites({
+      'tests/preview/journal.ts': [
+        'const summaryDecision = fromOperator(turn) && /\\b(?:summar|recap)/iu.test(turn.text);',
+        'const search = /\\bremember\\b/iu.test(turn.text) ? searchFor(turn) : undefined;',
+        'const packet = { ...(/\\bundo\\b/iu.test(text) ? { undoDecision: "x" } : {}), ...(ready ? { datedDecision: "y" } : {}) };',
+      ].join('\n'),
+      'tests/preview/agent-commitment.ts': 'export function promiseProposals(value: unknown, reply: string) { return /I will/u.test(reply); }',
+    }).map((issue: { rule: string; detail: string }) => `${issue.rule} ${issue.detail}`);
+    expect(flagged).toEqual(['NF-10 summaryDecision branches on a literal meaning classifier',
+      'NF-10 search branches on a literal meaning classifier', 'NF-10 undoDecision branches on a literal meaning classifier',
+      'NF-10 promiseProposals branches on a literal meaning classifier']);
+  });
+});
+
+describe('NF-11: every memory retrieval entry point selects through the recall owner (Rule 11)', () => {
+  it('flags a word-match-only entry point and an unlisted ranking site, and passes the live runner', async () => {
+    const { lintRetrievalSites } = await import('../../scripts/check-architecture.mjs');
+    expect(lintRetrievalSites()).toEqual([]);
+    const flagged = lintRetrievalSites({ 'tests/preview/journal.ts': [
+      'const ownedRecall = (q: string) => composeRecall({ query: q });',
+      'const recallFor = (turn: Turn) => selectRecall({ message: turn.text });',
+      'const searchFor = (turn: Turn) => ownedRecall(turn.text, selectRecall({ message: turn.text }));',
+      'const newRecall = (turn: Turn) => selectRecall({ message: turn.text });',
+    ].join('\n') }).map((issue: { rule: string; detail: string }) => `${issue.rule} ${issue.detail}`);
+    expect(flagged).toEqual(['NF-11 selectRecall in newRecall is an unlisted retrieval call site',
+      'NF-11 recallFor does not select through ownedRecall']);
   });
 });

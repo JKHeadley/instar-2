@@ -19,3 +19,12 @@ export { installedRunGovernanceSchemas, registerInstalledRunGovernanceBody, reco
 
 export { consumeAcceptedReplyOpening, acceptedReplyOpening, acceptedReplyPreviewText } from './accepted-reply.js';
 export type { AcceptedReplyOpening } from './accepted-reply.js';
+export { createDelegationLedger, foldDelegation, placeDelegation, childAuthority, offerKey, DELIVERY_STATES,
+  DELEGATION_FACT_KIND, delegationFactSchema, createFactDelegationStore } from './delegation.js';
+export type { DelegationAuthority, DelegationRequest, DelegationContract, DelegationRecord, DelegationResult, DelegationLedger,
+  DelegationStorePort, DelegationAppendReceipt, DelegationDurability, DeliveryEvidence, DeliveryState, EdgeView, RetryPlan,
+  CapabilityAdvertisement, PlacementDecision } from './delegation.js';
+export { createAgentEndpoint, createLocalAgentTransport, offerEnvelope, cancelEnvelope, resultEnvelope, resultFor, resultKey, sealEnvelope,
+  envelopeIntact, semanticDigest, evidenceFromReceipt } from './agent-transport.js';
+export type { AgentTransportPort, AgentTransportEnvelope, AgentEnvelopeKind, AgentEndpoint, EndpointReceipt, DelegatedWorker,
+  WorkerOutcome, SendMode, DelegatedRunAuthority } from './agent-transport.js';

@@ -93,13 +93,44 @@ or replacement stimulus is involved.
 
 ## Built scope and explicit residuals
 
-Designed, not yet built: delegation contracts; fan-out/collection; exhaustion
-runs; awaiting-authorization; agent-transport port beyond six's slice needs;
-summary/compaction continuity accounting; remote/nested traces; judgment attempt
-mapping; production real-surface assembly and production monitoring/supervision.
-Cancellation/unreachable exits and boundary-review loops are also not exposed.
-Operator-set ceilings are 32 children / depth 16 / 3 attempts (PR #22); actual
-slice depth is 1 and children are empty. Zero resource capacity remains zero.
+Built (Rule 114, `delegation.ts`): the durable recursive `DelegationContract`
+edge naming scope, owner, grant, budget, exit test, placement, transport,
+cancellation and result destination, appended before any offer exists; subset
+authority, ancestor budget, fan-out and depth limits at every level (ceilings
+32 children / depth 16, PR #22); capability-aware placement; exclusive receiver
+acceptance; witness-bound delivery evidence; single logical collection; cascading
+cancellation that stays owned until confirmed; late results after parent or
+worker loss; lookup-before-resubmit retry under the same semantic key. The
+receiving endpoint never decides authority itself: the host's Run owner supplies
+`DelegatedRunAuthority` (admit to a local run, current authority and reservation
+before every worker start, and the terminal RunExit with its spend). Expired or
+revoked work stays inhibited and owned; a parent's cancellation confirms no more
+than its descendants' settlement proves; an acceptance that did not achieve its
+replicated demand never starts work or claims custody; results and cancellations
+are admitted only from the authenticated contract party. Six's
+`AgentTransportPort` carries it over local delivery and the confidential
+Threadline reference adapter (`src/transport`: signed, sealed frames; the relay
+sees routing identifiers and ciphertext only).
+
+This is preparatory core, not Rule 114 closure: the Run decoder still refuses
+non-root depth, no production Run owner implements `DelegatedRunAuthority` yet,
+and no live surface delegates. P5-NF-14/19/21/30/31/33–37/40/41 therefore stay
+in the skipped residuals until a bounded delegation completes through the real
+Run owner.
+
+Built additively beside the legacy graph: `createRunClosureGraph`
+(`closure-service.ts`) admits signed `ExhaustionRecord` and unreachable
+`RunExit` records (`closure-records.ts`), and `readExit` reads completed,
+unreachable and cancelled exits. No live runner yet calls the closure API for
+cannot-do claims or escalation; that join is separate work.
+
+Designed, not yet built: awaiting-authorization; dispatch-review records;
+foreign-grant resolution through part four's intake; bounded transport queue
+backpressure; peer concurrence; summary/compaction continuity accounting;
+judgment attempt mapping; production real-surface assembly and production
+monitoring/supervision. Boundary-review loops are also not exposed. The live
+preview conversation path advertises no tools and so cannot delegate yet. Zero
+resource capacity remains zero.
 
 Tests exercise P1/P2/P3 public consumers, a real fsynced disk spine, a killed
 compiled-package worker, and controlled six/eight/nine/ten contract fixtures.
@@ -120,3 +151,8 @@ The build map reads actual test results and marks partial rows as partial.
 The scoped fold workload records fact count, pending count, conflict count and
 duration with a 5-second test budget; it is not a provider-latency assertion.
 Production probes, cadence and Tier-1 supervision remain eleven's assembly duty.
+
+## Capabilities
+
+- `rungraph-core`: records each run as signed facts and refuses a step outside its budget or grant.
+  Details: records each run's opening, grounding, steps, transitions and exit as signed facts, and refuses a step outside its declared budget or grant.

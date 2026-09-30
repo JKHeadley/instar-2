@@ -95,7 +95,7 @@ export interface AuthorityQueueView {
 export interface BindingView {
   readonly platform: string; readonly conversation: string; readonly platformIdentity: string;
   readonly operatorIdentity: string; readonly scope: Scope; readonly state: 'unbound' | 'bound' | 'stale' | 'conflict';
-  readonly provenanceClass: 'verified' | 'channel-attested' | 'missing'; readonly bindingFact: string | null;
+  readonly provenanceClass: 'verified' | 'channel-attested' | 'account-assented' | 'missing'; readonly bindingFact: string | null;
   readonly grantOrRevocation: string; readonly actions: readonly BindingSurfaceAction[];
   readonly competingClaims: readonly Readonly<{ fact: string; operator: string; provenance: string }>[];
   readonly credentialBindingCount: number; readonly exposesOtherConversations: false;

@@ -131,7 +131,10 @@ export function exactTelegramApiAcceptance(observation: ConversationFact, reques
     return response.ok === true && safeInteger(result.message_id) !== null
       && Number(result.message_id) > 0 && String(obj(result.chat).id) === target.chatId
       && (target.messageThreadId === null || result.message_thread_id === target.messageThreadId)
-      && result.text === record(message).text;
+      // Replies are sent with parse_mode HTML, so the Bot API returns the decoded
+      // text. Re-escaping it must reproduce the prepared escaped text exactly.
+      && typeof result.text === 'string' && result.text.replace(/&/gu, '&amp;').replace(/</gu, '&lt;')
+        .replace(/>/gu, '&gt;') === record(message).text;
   } catch { return false; }
 }
 
@@ -353,22 +356,41 @@ export async function runConversationDriver(application: ProductionApplication,
         start?.type === 'ServingRecord' ? operationFor(start.provider) : ''));
     }
   }
+  // One open idle attempt spans consecutive idle steps and polls: its start is
+  // written ahead (a crash is still recovered as an error), but continuous idle
+  // polling costs no journal records, so it cannot exhaust Six's bounded attempt
+  // and record budget. It opens only after a clean record, before expiry, and
+  // closes before any provider-bound attempt, on any error, and at loop exit.
+  let idleAttempt: string | null = null;
+  const closeIdle = () => {
+    const id = idleAttempt!; idleAttempt = null;
+    durable(progress!.port.result(`result:${id}`, progress!.fence, id, 'success', ''));
+  };
   const attempt = async <T>(phase: 'step' | 'poll', action: () => Promise<T> | T): Promise<T> => {
     if (!progress) return action();
-    const id = options.nextAttempt!();
-    if (!id || id.length > 256) throw new Error('conversation-driver: invalid attempt identity');
     const view = durable(progress.port.inspect());
     const planned = phase === 'step' && !view.slot ? turns(facts(), undefined, undefined,
       options.conversation).find(turn => turn.phase === 'admitted' && turn.providerRun
         && !view.retired.includes(turn.providerRun))?.providerRun : null;
     const provider = view.slot ?? planned ?? '';
-    durable(progress.port.start(`start:${id}`, progress.fence, id, provider));
+    const idle = provider === '' && view.consecutiveErrors === 0 && !!view.binding
+      && options.now() < view.binding.expires;
+    if (idleAttempt && !idle) closeIdle();
+    let id = idleAttempt;
+    if (!id) {
+      id = options.nextAttempt!();
+      if (!id || id.length > 256) throw new Error('conversation-driver: invalid attempt identity');
+      durable(progress.port.start(`start:${id}`, progress.fence, id, provider));
+      if (idle) idleAttempt = id;
+    }
     try {
       const value = await action();
-      durable(progress.port.result(`result:${id}`, progress.fence, id, 'success', operationFor(provider)));
+      if (idleAttempt !== id)
+        durable(progress.port.result(`result:${id}`, progress.fence, id, 'success', operationFor(provider)));
       return value;
     } catch (error) {
       if (durabilityFailed) throw error;
+      if (idleAttempt === id) idleAttempt = null;
       durable(progress.port.result(`result:${id}`, progress.fence, id, 'error', operationFor(provider)));
       throw error;
     }
@@ -386,8 +408,15 @@ export async function runConversationDriver(application: ProductionApplication,
       await attempt('poll', () => options.pollOnce());
       if (!progress) driver.noteSuccess();
       await options.yieldBoundary();
-    } catch {
-      if (durabilityFailed) throw new Error('conversation-driver: durable progress unavailable');
+    } catch (error) {
+      if (durabilityFailed) throw new Error('conversation-driver: durable progress unavailable', { cause: error });
+      // A failure outside attempt() (for example a boundary callback) must not leave an
+      // open idle span to be closed later as success; attempt() already closed its own.
+      if (idleAttempt) {
+        const id = idleAttempt; idleAttempt = null;
+        try { durable(progress!.port.result(`result:${id}`, progress!.fence, id, 'error', '')); }
+        catch (closeError) { throw new Error('conversation-driver: durable progress unavailable', { cause: closeError }); }
+      }
       if (phase === 'POLL' && !progress) driver.noteError();
       const errors = driver.errors();
       const backoffMs = stopped() ? 0 : Math.min(options.maxBackoffMs,
@@ -396,4 +425,5 @@ export async function runConversationDriver(application: ProductionApplication,
       if (backoffMs) await backoff(backoffMs, options, stopped);
     }
   }
+  if (idleAttempt) closeIdle();
 }

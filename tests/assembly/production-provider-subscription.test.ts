@@ -4,7 +4,10 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { afterEach, expect, it } from 'vitest';
 import { canonical, decode } from '../../src/index.js';
-import { createClaudeCodeSubscriptionRoute, subscriptionInvocationPolicy, SUBSCRIPTION_PREVIEW_SYSTEM_PROMPT, SUBSCRIPTION_PREVIEW_EXPIRY } from '../../src/assembly/production-provider.js';
+import { createClaudeCodeSubscriptionRoute, subscriptionInvocationPolicy, subscriptionConversationPolicy,
+  SUBSCRIPTION_CONVERSATION_FRAMING, SUBSCRIPTION_CONVERSATION_SYSTEM_PROMPT,
+  SUBSCRIPTION_PREVIEW_SYSTEM_PROMPT, SUBSCRIPTION_PREVIEW_EXPIRY, SUBSCRIPTION_THINKING_ENV, subscriptionPolicyFor,
+  validateSubscriptionActivation } from '../../src/assembly/production-provider.js';
 import type { SubscriptionActivationRecord } from '../../src/assembly/production-provider.js';
 import type { ProviderSubscriptionProfile } from '../../src/assembly/provider-credential-custodian.js';
 import { factsFixture, value } from '../facts/fixtures.js';
@@ -15,7 +18,7 @@ const roots: string[] = [];
 afterEach(() => { for (const root of roots.splice(0)) rmSync(root, { recursive: true, force: true }); });
 const hash = (value: unknown) => canonical(value).kind === 'Success' ?
   (canonical(value) as { kind: 'Success'; value: { hash: string } }).value.hash : '';
-function fixture(options: { status?: object; terminal?: string; pending?: boolean; resultBytes?: number; rawBytes?: number; tokens?: number; invalidUtf8?: boolean; malformedAuth?: boolean } = {}) {
+function fixture(options: { status?: object; terminal?: string; pending?: boolean; resultBytes?: number; rawBytes?: number; tokens?: number; invalidUtf8?: boolean; malformedAuth?: boolean; conversation?: boolean } = {}) {
   const f = factsFixture(), root = realpathSync(mkdtempSync(join(tmpdir(), 'subscription-offline-'))); roots.push(root);
   const home = join(root, 'home'), configDirectory = join(root, 'config'), workingDirectory = join(root, 'work');
   for (const path of [home, configDirectory, workingDirectory]) mkdirSync(path, { mode: 0o700 });
@@ -35,7 +38,7 @@ function fixture(options: { status?: object; terminal?: string; pending?: boolea
     appendFileSync(${JSON.stringify(report)},JSON.stringify({args:process.argv.slice(2),env:process.env,cwd:process.cwd(),stdin})+'\\n');
     if(process.argv[2]==='--version')process.stdout.write('2.1.280 (Claude Code)\\n');
     else if(process.argv[2]==='auth')process.stdout.write(${JSON.stringify(options.malformedAuth ? '{' : JSON.stringify(status))});
-    else if(process.argv.slice(2).filter(v=>v==='--system-prompt').length!==1 || process.argv[process.argv.indexOf('--system-prompt')+1]!==${JSON.stringify(SUBSCRIPTION_PREVIEW_SYSTEM_PROMPT)})process.exit(42);
+    else if(process.argv.slice(2).filter(v=>v==='--system-prompt').length!==1 || process.argv[process.argv.indexOf('--system-prompt')+1]!==${JSON.stringify(options.conversation ? SUBSCRIPTION_CONVERSATION_SYSTEM_PROMPT : SUBSCRIPTION_PREVIEW_SYSTEM_PROMPT)})process.exit(42);
     else ${options.pending ? 'setInterval(()=>{},1000)' : `process.stdout.write(Buffer.from(${JSON.stringify(raw.toString('base64'))},'base64'))`};\n`;
   writeFileSync(executable, source); chmodSync(executable, 0o700);
   let active = true;
@@ -52,7 +55,7 @@ function fixture(options: { status?: object; terminal?: string; pending?: boolea
     reference: profile.activationReference, waiver: 'synthetic-waiver', p11: 'synthetic-p11', reviewedHead: 'synthetic-head',
     trial: 'synthetic-trial', baseConfigurationDigest: hash('synthetic-config'), profileDigest: hash(profile),
     executable, artifact: profile.artifact, version: profile.version, model,
-    invocationPolicyDigest: hash(subscriptionInvocationPolicy(model)), expectedAccount: profile.expectedAccount,
+    invocationPolicyDigest: hash(options.conversation ? subscriptionConversationPolicy(model) : subscriptionInvocationPolicy(model)), expectedAccount: profile.expectedAccount,
     observedAccount: profile.expectedAccount, authSource: 'claude.ai', operatorAssertion: 'synthetic-disabled-extra-usage-assertion',
     assertedAt: 1, observer: 'synthetic-observer', observedAt: 2, method: 'synthetic-observation', safeCaptureReference: 'capture:synthetic',
     extraUsage: 'operator-asserted/unobservable', extraUsageReason: 'Synthetic account datum unavailable; assertion is actual basis',
@@ -64,7 +67,8 @@ function fixture(options: { status?: object; terminal?: string; pending?: boolea
       { ...f.ctx.decode, register: { ...f.ctx.decode.register, entries: [...f.ctx.decode.register.entries, 'preview'] } })),
     context: { ...f.ctx.decode, register: { ...f.ctx.decode.register, entries: [...f.ctx.decode.register.entries, 'preview'] },
       site: f.c.site, preserved: f.c.preserved }, profile, activation, io, now: () => 1000, active: () => active,
-    resolveProfile: () => { resolves++; return profile; }, adapterEvidenceContract: {
+    resolveProfile: () => { resolves++; return profile; },
+    ...(options.conversation ? { framing: SUBSCRIPTION_CONVERSATION_FRAMING as typeof SUBSCRIPTION_CONVERSATION_FRAMING } : {}), adapterEvidenceContract: {
       reference: activation.reference, version: activation.profileDigest, parserReference: 'claude-code-json-result', parserVersion: '1',
       endpoint: profile.loginProfileIdentity, account: profile.expectedAccount, credentialReference: profile.reference,
       controller: 'synthetic-recorder', sourceEvidence: ['synthetic-source'], terminalEvidence: 'synthetic-terminal',
@@ -89,10 +93,54 @@ it('spawns the synthetic subscription CLI with exact bytes, args and allowlisted
   expect(commands[2].args[commands[2].args.indexOf('--system-prompt') + 1]).toBe(SUBSCRIPTION_PREVIEW_SYSTEM_PROMPT);
   expect(commands[2].stdin).toBe('{"exact":"question 世界"}');
   expect(Object.keys(f.launched[2]!).sort()).toEqual(['PATH', 'HOME', 'CLAUDE_CONFIG_DIR', 'CLAUDE_CODE_MAX_RETRIES',
-    'CLAUDE_CODE_MAX_OUTPUT_TOKENS', 'CLAUDE_CODE_DISABLE_NONESSENTIAL_TRAFFIC'].sort());
+    'CLAUDE_CODE_MAX_OUTPUT_TOKENS', 'CLAUDE_CODE_DISABLE_NONESSENTIAL_TRAFFIC', 'MAX_THINKING_TOKENS'].sort());
   expect(Object.keys(commands[2].env).filter(key => key !== '__CF_USER_TEXT_ENCODING').sort()).toEqual(Object.keys(f.launched[2]!).sort());
   expect(commands[0].env).toEqual(commands[2].env); expect(commands[1].env).toEqual(commands[2].env);
   expect(commands[2].args).not.toContain('--max-budget-usd'); expect(commands[2].args).not.toContain('--bare');
+});
+
+// Live 2026-09-27: answer calls reached 8192 output tokens (thinking included) and
+// were held. MAX_THINKING_TOKENS=0 is the pinned CLI's env-only thinking-off control.
+// The conversation digest is int11's policy (reviewer-compact-call and related fields);
+// the live frozen14 build pins sha256:557a62fa…, so an int11 switch needs a new record.
+const RECORDED_DIGESTS = { 'preview-decision-system-v2': 'sha256:234293e8e209f210b23cdcf5322202065766dfe64f532f85bbea69486c0260b4',
+  // 2026-09-28 declaration-slot system prompt; its predecessor sha256:efe69876… (record v4) needs a policy successor.
+  [SUBSCRIPTION_CONVERSATION_FRAMING]: 'sha256:aced65e686a665f11a02d7480501170ad3e2f8664fa5858ec69f42374390374a' } as const;
+for (const conversation of [false, true]) it(`sends thinking off on the ${conversation ? 'conversation' : 'decision'} framing, args unchanged`, async () => {
+  const f = fixture({ conversation });
+  expect((await value(createClaudeCodeSubscriptionRoute(f.input)).invoke('request', f.bounds)).state).toBe('complete');
+  const model = f.commands().filter(row => row.args.includes('--print'));
+  expect(model).toHaveLength(1);
+  expect(model[0].env.MAX_THINKING_TOKENS).toBe('0'); expect(f.launched.at(-1)!.MAX_THINKING_TOKENS).toBe('0');
+  expect(model[0].env.CLAUDE_CODE_MAX_OUTPUT_TOKENS).toBe('2048');
+  expect(model[0].args).toEqual((conversation ? subscriptionConversationPolicy : subscriptionInvocationPolicy)(f.input.model).args);
+  expect(model[0].args.some((arg: string) => /thinking|effort/iu.test(arg))).toBe(false);
+});
+it('keeps both recorded activation policy digests; a policy-borne thinking field would void the activation', () => {
+  const f = fixture({ conversation: true }), model = 'claude-sonnet-5';
+  for (const [framing, digest] of Object.entries(RECORDED_DIGESTS)) {
+    const { policy } = subscriptionPolicyFor(model, framing as keyof typeof RECORDED_DIGESTS);
+    expect(hash(policy)).toBe(digest);
+    expect(Object.keys(policy)).not.toContain('MAX_THINKING_TOKENS');
+    expect(hash({ ...policy, ...SUBSCRIPTION_THINKING_ENV })).not.toBe(digest);
+  }
+  const live = { ...f.input.activation, model, invocationPolicyDigest: RECORDED_DIGESTS[SUBSCRIPTION_CONVERSATION_FRAMING] };
+  expect(() => validateSubscriptionActivation(live, f.input.profile, model, 1000, SUBSCRIPTION_CONVERSATION_FRAMING)).not.toThrow();
+  const moved = { ...live, invocationPolicyDigest: hash({ ...subscriptionConversationPolicy(model), ...SUBSCRIPTION_THINKING_ENV }) };
+  expect(() => validateSubscriptionActivation(moved, f.input.profile, model, 1000, SUBSCRIPTION_CONVERSATION_FRAMING))
+    .toThrow(/policy differs/u);
+});
+it('requires recorded cap authority to dispatch a conversation prompt above 32 KB', async () => {
+  const f = fixture({ conversation: true }), bytes = 'x'.repeat(40000);
+  expect((await value(createClaudeCodeSubscriptionRoute(f.input)).invoke(bytes, f.bounds)).state).toBe('uncertain');
+  expect(f.commands()).toHaveLength(0);
+  expect(createClaudeCodeSubscriptionRoute({ ...f.input, raisedPromptBytes: 131072 }).kind).toBe('Refused');
+  expect(createClaudeCodeSubscriptionRoute({ ...f.input, raisedPromptBytes: 1048577,
+    promptAuthority: 'Justin recorded cap frame' }).kind).toBe('Refused');
+  const route = value(createClaudeCodeSubscriptionRoute({ ...f.input, raisedPromptBytes: 131072,
+    promptAuthority: 'Justin recorded cap frame' }));
+  expect((await route.invoke(bytes, f.bounds)).state).toBe('complete');
+  expect(f.commands().at(-1)?.stdin).toBe(bytes);
 });
 for (const status of [{ loggedIn: false }, { authMethod: 'api_key' }, { authMethod: 'oauth_token' },
   { apiProvider: 'bedrock' }, { apiKeySource: 'ANTHROPIC_API_KEY' }, { subscriptionType: 'console' },
@@ -139,7 +187,7 @@ it('bounds a pending physical child and never retries', async () => {
 for (const size of [16384, 16385]) it(`checks extracted Decision ${size} at the byte boundary independently of schema`, async () => {
   const f = fixture({ resultBytes: size });
   const observation = await value(createClaudeCodeSubscriptionRoute(f.input)).invoke('request', f.bounds);
-  expect(observation.state).toBe(size === 16384 ? 'complete' : 'uncertain');
+  expect(observation.state).toBe(size === 16384 ? 'complete' : 'rejected');
   if (size === 16384) { expect(Buffer.byteLength(observation.bytes!)).toBe(size); expect(JSON.parse(observation.bytes!).type).toBe('Decision'); }
   expect(f.commands().filter(row => row.args.includes('--print'))).toHaveLength(1);
 });
@@ -152,8 +200,27 @@ for (const size of [65536, 65537]) it(`checks complete raw terminal ${size} with
 });
 for (const tokens of [2048, 2049]) it(`enforces ${tokens} observed output tokens`, async () => {
   const f = fixture({ tokens });
-  expect((await value(createClaudeCodeSubscriptionRoute(f.input)).invoke('request', f.bounds)).state).toBe(tokens === 2048 ? 'complete' : 'uncertain');
+  const observed = await value(createClaudeCodeSubscriptionRoute(f.input)).invoke('request', f.bounds);
+  expect(observed.state).toBe(tokens === 2048 ? 'complete' : 'uncertain');
+  expect(observed.usage.outputTokens).toBe(tokens);
   expect(f.commands().filter(row => row.args.includes('--print'))).toHaveLength(1);
+});
+it('keeps available usage on uncertain conversation results and leaves unavailable usage null', async () => {
+  for (const [terminal, outputTokens] of [
+    [JSON.stringify({ type: 'result', subtype: 'success', is_error: false, result: 'candidate',
+      session_id: 'synthetic-call', usage: { input_tokens: 10, output_tokens: 2049 } }), 2049],
+    [JSON.stringify({ type: 'result', subtype: 'error_max_turns', is_error: false,
+      session_id: 'synthetic-call', usage: { input_tokens: 10, output_tokens: 2048 } }), 2048],
+    [JSON.stringify({ type: 'result', subtype: 'success', is_error: false, result: 'candidate',
+      session_id: 'synthetic-call', usage: { input_tokens: 10, output_tokens: -1 } }), null],
+    ['{', null],
+  ] as const) {
+    const f = fixture({ conversation: true, terminal });
+    const observed = await value(createClaudeCodeSubscriptionRoute(f.input)).invoke('request', f.bounds);
+    expect(observed.state).toBe('uncertain');
+    expect(observed.usage.outputTokens).toBe(outputTokens);
+    expect(f.commands().filter(row => row.args.includes('--print'))).toHaveLength(1);
+  }
 });
 it('refuses invalid UTF-8 and malformed auth JSON with bounded uncertain outcomes', async () => {
   for (const options of [{ invalidUtf8: true }, { malformedAuth: true }]) {
@@ -189,6 +256,23 @@ it('refuses a changed auth account, parent-environment injection, or insufficien
     expect((await value(createClaudeCodeSubscriptionRoute(changed)).invoke('request', f.bounds)).state).toBe('uncertain');
     expect(f.commands().filter(row => row.args.includes('--print'))).toHaveLength(1);
   } finally { if (previous === undefined) delete process.env.ANTHROPIC_API_KEY; else process.env.ANTHROPIC_API_KEY = previous; }
+});
+
+it('spends preflight time inside the reply-review deadline and dispatches only with time left', async () => {
+  for (const preflightMs of [101, 1000, 29950]) {
+    const f = fixture({ conversation: true });
+    let clock = 1000;
+    const input = { ...f.input, now: () => clock, io: { ...f.input.io,
+      execute: async (command: any) => {
+        const result = await f.input.io.execute(command);
+        if (command.args[0] === 'auth') clock += preflightMs;
+        return result;
+      } } };
+    const route = value(createClaudeCodeSubscriptionRoute(input));
+    const result = await route.invoke('request', { ...f.bounds, deadline: 31000, timeout: 29900 });
+    expect(result.state).toBe(preflightMs < 29950 ? 'complete' : 'uncertain');
+    expect(f.commands()).toHaveLength(preflightMs < 29950 ? 3 : 2);
+  }
 });
 
 it('refuses cached remote/server policy and orphan signature files before any child', async () => {

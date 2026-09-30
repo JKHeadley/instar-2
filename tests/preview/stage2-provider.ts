@@ -1,8 +1,9 @@
 import { createHash } from 'node:crypto';
-import { canonical, decode } from '../../src/index.js';
-import { createClaudeCodeSubscriptionRoute, subscriptionInvocationPolicy, validateSubscriptionActivation,
-  SUBSCRIPTION_PREVIEW_EXPIRY, SUBSCRIPTION_PREVIEW_SYSTEM_PROMPT } from '../../src/assembly/production-provider.js';
-import type { SubscriptionActivationRecord } from '../../src/assembly/production-provider.js';
+import { decode } from '../../src/index.js';
+import { DEFAULT_SUBSCRIPTION_DOORWAY, subscriptionDoorway, subscriptionInvocationPolicy, subscriptionPolicyFor, validateSubscriptionActivation,
+  SUBSCRIPTION_PREVIEW_EXPIRY, SUBSCRIPTION_PREVIEW_SYSTEM_PROMPT, SUBSCRIPTION_CONVERSATION_FRAMING, SUBSCRIPTION_CONVERSATION_SYSTEM_PROMPT,
+  SUBSCRIPTION_CONVERSATION_MAX_PROMPT_BYTES } from '../../src/assembly/production-provider.js';
+import type { SubscriptionActivationRecord, SubscriptionDoorway, SubscriptionFraming } from '../../src/assembly/production-provider.js';
 import type { ProviderSubscriptionProfile } from '../../src/assembly/provider-credential-custodian.js';
 
 export const OWNER_WINDOW_MS = 300000;
@@ -10,11 +11,8 @@ export const STAGE2_SETTINGS = Object.freeze({ automaticRetries: 0, maxTokens: 2
 export const STAGE2_OUTPUT_SCHEMA = Object.freeze({ type: 'Decision' });
 export const STAGE2_ROUTE = 'preview-subscription';
 export const STAGE2_DISCLOSURE = 'Supervised unconfined subscription preview; charge and quiescence UNKNOWN';
-export function encoded(value: unknown) {
-  const result = canonical(value);
-  if (result.kind !== 'Success') throw new Error('preview: canonical encoding refused');
-  return result.value;
-}
+import { encoded } from './canonical.js';
+export { encoded };
 
 /** Application bindings and retained conversation are measured data. */
 export function decisionContext(bindings: unknown, selectedContext: readonly unknown[]): string {
@@ -27,14 +25,18 @@ export function submittedEnvelope(input: { provider: string; model: string; rout
   return encoded({ ...bindings, messages: [{ role: 'user', content: question }, { role: 'context', content: context }],
     attachments: [], tools: [], settings: STAGE2_SETTINGS, outputSchema: STAGE2_OUTPUT_SCHEMA });
 }
-export function inputMeasurements(question: string, context: string, submitted: string) {
-  const system = Buffer.byteLength(SUBSCRIPTION_PREVIEW_SYSTEM_PROMPT, 'utf8');
+/** The measured prompt envelope of a framing: its system prompt and its complete-prompt ceiling (the historical v2 default is unchanged). */
+const framed = (framing?: SubscriptionFraming) => framing === SUBSCRIPTION_CONVERSATION_FRAMING
+  ? { system: SUBSCRIPTION_CONVERSATION_SYSTEM_PROMPT, maximum: SUBSCRIPTION_CONVERSATION_MAX_PROMPT_BYTES }
+  : { system: SUBSCRIPTION_PREVIEW_SYSTEM_PROMPT, maximum: 4096 };
+export function inputMeasurements(question: string, context: string, submitted: string, framing?: SubscriptionFraming) {
+  const { system: prompt, maximum } = framed(framing), system = Buffer.byteLength(prompt, 'utf8');
   return Object.freeze({ system, prompt: system + Buffer.byteLength(submitted, 'utf8'), question: Buffer.byteLength(question), context: Buffer.byteLength(context),
-    submitted: Buffer.byteLength(submitted), maximum: 4096 });
+    submitted: Buffer.byteLength(submitted), maximum });
 }
-export function requireInputBound(question: string, context: string, submitted: string): void {
-  const lengths = inputMeasurements(question, context, submitted);
-  if (lengths.submitted > 4096 || lengths.prompt > 4096)
+export function requireInputBound(question: string, context: string, submitted: string, framing?: SubscriptionFraming): void {
+  const lengths = inputMeasurements(question, context, submitted, framing);
+  if (lengths.submitted > lengths.maximum || lengths.prompt > lengths.maximum)
     throw Object.assign(new Error('preview: complete input bound'), { previewBound: lengths });
 }
 /** Includes identities, sourceResult and escaping, not just the visible text. */
@@ -44,35 +46,37 @@ export function requireOutboundBound(message: unknown, maxBytes: number): string
     throw new Error('preview: complete outbound bound');
   return bytes;
 }
-export function stage2Description(model: string) {
-  const policy = subscriptionInvocationPolicy(model);
+export function stage2Description(model: string, framing?: SubscriptionFraming) {
+  const policy = subscriptionPolicyFor(model, framing).policy;
   return Object.freeze({ owner: 'part-ten' as const, provider: 'anthropic', model, route: STAGE2_ROUTE,
     automaticRetries: 0 as const, maxInputBytes: policy.maxInputBytes, maxOutputBytes: policy.maxOutputBytes,
     maxCharge: 0, measured: false, basis: 'Declared additional metered demand 0 under activation policy; actual charge and quiescence UNKNOWN' });
 }
 export function stage2Activation(input: { activation: SubscriptionActivationRecord; profile: ProviderSubscriptionProfile;
-  model: string; trial: string; configurationDigest: string; now: number }) {
-  validateSubscriptionActivation(input.activation, input.profile, input.model, input.now);
+  model: string; trial: string; configurationDigest: string; now: number; framing?: SubscriptionFraming }) {
+  validateSubscriptionActivation(input.activation, input.profile, input.model, input.now, input.framing);
   if (input.activation.trial !== input.trial || input.activation.baseConfigurationDigest !== input.configurationDigest
     || input.activation.expiresAt !== SUBSCRIPTION_PREVIEW_EXPIRY) throw new Error('preview: activation trial differs');
   return encoded(input.activation).hash;
 }
 /** Pure descriptor of already validated deployment bindings; no live authority. */
 export function stage2InvocationBinding(input: { activation: SubscriptionActivationRecord;
-  profile: ProviderSubscriptionProfile; model: string }) {
-  const invocationPolicy = subscriptionInvocationPolicy(input.model);
+  profile: ProviderSubscriptionProfile; model: string; framing?: SubscriptionFraming }) {
+  const { policy: invocationPolicy, system } = subscriptionPolicyFor(input.model, input.framing);
   return Object.freeze({ activationReference: input.activation.reference,
     activationDigest: encoded(input.activation).hash, profileDigest: encoded(input.profile).hash,
     invocationPolicyDigest: encoded(invocationPolicy).hash,
-    systemPromptDigest: `sha256:${createHash('sha256').update(SUBSCRIPTION_PREVIEW_SYSTEM_PROMPT, 'utf8').digest('hex')}`,
+    systemPromptDigest: `sha256:${createHash('sha256').update(system, 'utf8').digest('hex')}`,
     framing: invocationPolicy.framing, invocationPolicy });
 }
-export { createClaudeCodeSubscriptionRoute, subscriptionInvocationPolicy };
+export { subscriptionInvocationPolicy, subscriptionPolicyFor, SUBSCRIPTION_CONVERSATION_FRAMING };
 
 export function stage2RouteFactory(input: {
   activation: SubscriptionActivationRecord; profile: ProviderSubscriptionProfile; model: string;
   io: import('../../src/assembly/production-provider.js').SubscriptionProviderIO;
-  now: () => number; active: () => boolean;
+  now: () => number; active: () => boolean; framing?: SubscriptionFraming;
+  /** A registered doorway's route constructor (default: the default registered doorway's). */
+  create?: SubscriptionDoorway['create'];
 }) {
   return ({ evidence, context, current, deadline }: any) => {
     const p = input.profile, a = input.activation;
@@ -82,11 +86,14 @@ export function stage2RouteFactory(input: {
       provider: 'anthropic', model: input.model, route: STAGE2_ROUTE };
     const terminal = { version: a.profileDigest, parserReference: 'claude-code-json-result', parserVersion: '1',
       terminalReasonField: 'subtype', successfulFinalReplyReasons: ['success'] };
+    // The id names the exact contract value, so a re-recorded profile or activation
+    // gets its own evidence row instead of reusing one that states the old contract.
     const record = (predicate: string, value: unknown) => evidence(a.reference, encoded(value).hash, predicate, undefined,
-      { strength: 'attestation', claim: { subject: a.reference, predicate, value } }).id;
+      { id: `proof:${predicate}:${a.reference}:${encoded(value).hash}`, strength: 'attestation',
+        claim: { subject: a.reference, predicate, value } }).id;
     const sourceEvidence = record('provider-response-source-contract', source);
     const terminalEvidence = record('provider-response-terminal-contract', terminal);
-    const result = createClaudeCodeSubscriptionRoute({ ...input, io: { ...input.io, execute: command => {
+    const result = (input.create ?? subscriptionDoorway(DEFAULT_SUBSCRIPTION_DOORWAY).create)({ ...input, io: { ...input.io, execute: command => {
       if (!current() || !input.active() || input.now() + command.timeout > deadline) throw new Error('preview: provider current authority refused');
       return input.io.execute(command);
     } }, provider: 'anthropic', route: STAGE2_ROUTE,

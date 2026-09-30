@@ -6,7 +6,7 @@ import { ownerDocuments } from '../dist/register/owner-contracts.js';
 
 export const ownerManifestPath = 'register-source/owner-references.json';
 const hash = input => value(canonical(input)).hash;
-export const ownerManifestPaths = [ownerManifestPath, ...['part-four', 'part-five', 'part-seven', 'part-nine', 'part-ten', 'part-twelve']
+export const ownerManifestPaths = [ownerManifestPath, ...['part-four', 'part-five', 'part-seven', 'part-nine', 'part-ten', 'part-twelve', 'preview']
   .map(owner => `register-source/owner-references/${owner}.json`)];
 const owned = (namespace, names) => Object.fromEntries(names.map(id => [id, { module: `src/${namespace}/index.ts`, artifact: `src/${namespace}/records.ts` }]));
 const closureOwned = Object.fromEntries(['decodeExhaustionRecord', 'decodeUnreachableRunExit']
@@ -42,6 +42,8 @@ const partTenFixturePaths = {
   'P10-SI-24': ['tests/rungraph/provider-answer-reply.test.ts'],
   'P10-SI-37': ['tests/e2e/fixed-installation-reply.test.ts'],
 };
+const previewFixturePaths = { 'P9-PREVIEW-step-check-graduation': 'tests/preview/step-check.test.ts',
+  'P9-PREVIEW-restore-equality': 'tests/preview/proofs.test.ts' };
 const contracts = {
   'part-five': { decoders: { ...owned('rungraph', ['decodeRun', 'decodeRunStep', 'decodeRunTransition', 'decodeRunExit',
     'decodeSessionGrounding']), ...closureOwned,
@@ -72,9 +74,12 @@ const contracts = {
     ...Object.fromEntries(['decodeVerificationRecord', 'decodeVerificationRecordAtOrigin', 'decodeHistoricalVerificationRecord']
       .map(id => [id, { module: 'src/verification/index.ts', artifact: 'src/verification/records.ts' }])),
   },
-    fixture: id => ['P9-NF-64', 'P9-NF-65', 'P9-NF-66'].includes(id), probe: () => false,
-    test: (id, kind, path) => kind === 'fixture' && ['P9-NF-64', 'P9-NF-65', 'P9-NF-66'].includes(id)
-      && path === 'tests/verification/provider-response-assessment.test.ts' },
+    fixture: id => ['P9-NF-64', 'P9-NF-65', 'P9-NF-66'].includes(id) || Object.hasOwn(previewFixturePaths, id),
+    // The live runner's proof plans (tests/preview/proofs.ts), executed in CI through the real launcher.
+    probe: id => /^P9-PREVIEW-[a-z][a-z-]*$/.test(id) && !Object.hasOwn(previewFixturePaths, id),
+    test: (id, kind, path) => kind === 'fixture' ? ['P9-NF-64', 'P9-NF-65', 'P9-NF-66'].includes(id)
+      && path === 'tests/verification/provider-response-assessment.test.ts' || previewFixturePaths[id] === path
+      : path === 'tests/preview/proofs-launcher.test.ts' },
   'part-ten': { decoders: {
     ...Object.fromEntries(['decodeInstallationSelectionAtOrigin', 'decodeHistoricalInstallationSelection']
       .map(id => [id, { module: 'src/assembly/index.ts', artifact: 'src/assembly/installation-selection.ts' }])),
@@ -85,25 +90,33 @@ const contracts = {
     probe: () => false,
     test: (id, kind, path) => kind === 'fixture' && (partTenFixturePaths[id] ?? []).includes(path) },
   'part-twelve': { decoders: {},
+    capture: (id, path) => ['P12-TELEGRAM-REPLY-CAPTURE', 'P12-SLACK-ENVELOPE-CAPTURE'].includes(id) && path.startsWith('tests/conversation/fixtures/'),
     fixture: id => id === 'P12-NF-19' || id === 'P12-NF-28',
     probe: () => false,
     test: (id, kind, path) => kind === 'fixture' && (
       id === 'P12-NF-19' && path === 'tests/conversation/slack-preparation.test.ts'
       || id === 'P12-NF-28' && path === 'tests/conversation/slack-reply-hold.test.ts') },
+  // The shipped preview runner: its own gate/inspection tests and its reader captures.
+  preview: { decoders: {},
+    capture: (id, path) => /^PREVIEW-CAPTURE-[A-Z0-9-]+$/.test(id) && /^tests\/(?:preview\/fixtures|fixtures\/provider-failure|fixtures\/captures)\/[^/]+$/.test(path),
+    fixture: id => /^PREVIEW-[A-Z0-9-]+$/.test(id) && !id.startsWith('PREVIEW-CAPTURE-'), probe: () => false,
+    test: (id, kind, path) => kind === 'fixture' && (/^tests\/preview\/[a-z0-9-]+\.test\.ts$/.test(path)
+      // The provider-result parser's test on the preview's genuine Claude capture.
+      || id === 'PREVIEW-PROVIDER-FAILURE-ON-CAPTURE' && path === 'tests/assembly/provider-failure.test.ts') },
 };
 const exact = (v, keys) => {
   if (!v || typeof v !== 'object' || Array.isArray(v) || Object.keys(v).some(k => !keys.includes(k)) || keys.some(k => !Object.hasOwn(v, k)))
     throw new Error('invalid owner reference manifest fields');
 };
 export function loadOwnerReferences(root, input) {
-  const result = { references: [], catalog: { fixtures: [], probes: [] }, decoders: [], documents: [], artifacts: {} };
+  const result = { references: [], catalog: { fixtures: [], probes: [] }, decoders: [], documents: [], captures: [], artifacts: {} };
   const seen = new Set();
   for (const path of Object.keys(input.sources)) if (path.startsWith('register-source/owner-references/') && !ownerManifestPaths.includes(path))
     throw new Error('unknown owner manifest path ' + path);
   for (const manifestPath of ownerManifestPaths) {
   const raw = input.sources[manifestPath]; if (raw === undefined) continue;
   const manifest = JSON.parse(raw);
-  exact(manifest, ['schemaVersion', 'owner', 'fixtures', 'probes', 'decoders', 'documents']);
+  exact(manifest, ['schemaVersion', 'owner', 'fixtures', 'probes', 'decoders', 'documents', ...Object.hasOwn(manifest, 'captures') ? ['captures'] : []]);
   if (manifest.schemaVersion !== 1 || typeof manifest.owner !== 'string' || !Object.hasOwn(contracts, manifest.owner)) throw new Error('unknown reference owner/version');
   if (manifestPath !== ownerManifestPath && manifestPath !== `register-source/owner-references/${manifest.owner}.json`)
     throw new Error('owner manifest path disagrees with declared owner');
@@ -113,7 +126,7 @@ export function loadOwnerReferences(root, input) {
   const artifact = (a, path) => {
     exact(a, ['path', 'hash']);
     if (a.path !== path || !input.files.includes(path)) throw new Error('wrong-owner or missing artifact: ' + path);
-    const content = execFileSync('git', ['-C', root, 'show', `${input.commit}:${path}`], { encoding: 'utf8', maxBuffer: 16 * 1024 * 1024 });
+    const content = input.show ? input.show(path) : execFileSync('git', ['-C', root, 'show', `${input.commit}:${path}`], { encoding: 'utf8', maxBuffer: 16 * 1024 * 1024 });
     if (hash(content) !== a.hash) throw new Error('reference artifact hash differs: ' + path);
     result.artifacts[path] = content;
   };
@@ -147,6 +160,17 @@ export function loadOwnerReferences(root, input) {
     const binding = Object.hasOwn(ownerDocuments, row.id) && ownerDocuments[row.id];
     if (!binding || binding.owner !== manifest.owner) throw new Error('unknown owner governed document');
     artifact(row.artifact, binding.location); result.documents.push({ ...row, declarationPath: binding.declarationPath });
+  }
+  // Rule 36: the bytes a parser is tested against, and whether they were captured or typed.
+  const captures = manifest.captures ?? []; if (!Array.isArray(captures)) throw new Error('owner reference list required');
+  unique(captures, 'capture');
+  for (const row of captures) {
+    exact(row, ['id', 'origin', 'source', 'artifact']);
+    if (!contract.capture?.(row.id, row.artifact?.path) || !['captured', 'synthetic'].includes(row.origin) || typeof row.source !== 'string' || !row.source)
+      throw new Error('unknown owner capture, origin or source ' + row.id);
+    artifact(row.artifact, row.artifact.path);
+    result.captures.push(row); result.references.push({ provider: 'fixture', id: row.id, kind: 'captured-bytes' });
+    result.catalog.fixtures.push({ id: row.id, stage: 'build', artifact: row.artifact });
   }
   }
   return result;

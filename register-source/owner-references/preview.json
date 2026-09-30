@@ -1,0 +1,117 @@
+{
+  "schemaVersion": 1,
+  "owner": "preview",
+  "fixtures": [
+    {
+      "id": "PREVIEW-CONVERSATION",
+      "stage": "build",
+      "artifact": {
+        "path": "tests/preview/journal-agent.test.ts",
+        "hash": "sha256:b48cda37e7b94b5c347fce864ca635654debabc62db9f69d3169ee32d919a352"
+      }
+    },
+    {
+      "id": "PREVIEW-DURABLE-MEMORY",
+      "stage": "build",
+      "artifact": {
+        "path": "tests/preview/journal-memory-correction.test.ts",
+        "hash": "sha256:5518816fcf99b074a9e5d3ac729e95057d022fb45018b5a1853bb4203ab8463a"
+      }
+    },
+    {
+      "id": "PREVIEW-STATUS-COMMAND",
+      "stage": "build",
+      "artifact": {
+        "path": "tests/preview/status-command.test.ts",
+        "hash": "sha256:c344940cc7c7f40a38c0a62f8b25cd7a55b5a8f39efd205847f1434ef4e38d85"
+      }
+    },
+    {
+      "id": "PREVIEW-UPCOMING-DATE",
+      "stage": "build",
+      "artifact": {
+        "path": "tests/preview/journal-dated-memory.test.ts",
+        "hash": "sha256:86c6a1ba5c36b669c03e76390fbac84207cb395ea28008cdbf96616b4e921a66"
+      }
+    },
+    {
+      "id": "PREVIEW-REQUESTED-ACTIONS",
+      "stage": "build",
+      "artifact": {
+        "path": "tests/preview/journal-requested-action.test.ts",
+        "hash": "sha256:3b3e7795a955d0fb9890f53595725e63658d0f55a9881e85fb70566623a365e7"
+      }
+    },
+    {
+      "id": "PREVIEW-OWNED-OBLIGATIONS",
+      "stage": "build",
+      "artifact": {
+        "path": "tests/preview/journal-obligations.test.ts",
+        "hash": "sha256:3cf86dae9a48a0b4ef5a79bf1a8647b26b5e8042366912d3e7214b6a2def4c4b"
+      }
+    },
+    {
+      "id": "PREVIEW-TRIAL-GATES",
+      "stage": "build",
+      "artifact": {
+        "path": "tests/preview/journal-spend-cap.test.ts",
+        "hash": "sha256:6eb3011a39303be4dc25cd35d87e532acb6c36efa8094d70b6577df58b3e4c72"
+      }
+    },
+    {
+      "id": "PREVIEW-REPLY-CHECK",
+      "stage": "build",
+      "artifact": {
+        "path": "tests/preview/reply-check.test.ts",
+        "hash": "sha256:67390f72942200f48c5e25e812b9ff5073d3ba4262d378c44c67533e7ae45cd9"
+      }
+    },
+    {
+      "id": "PREVIEW-MODEL-JSON-ON-CAPTURE",
+      "stage": "build",
+      "artifact": {
+        "path": "tests/preview/model-json.test.ts",
+        "hash": "sha256:82fa887801b714f6e6d7a6f7a4634009549d319a7c0b84b7748fac1136cf85aa"
+      }
+    },
+    {
+      "id": "PREVIEW-PROVIDER-FAILURE-ON-CAPTURE",
+      "stage": "build",
+      "artifact": {
+        "path": "tests/assembly/provider-failure.test.ts",
+        "hash": "sha256:fcc4af811460a34a12653e6f9571a3ca3258c2395563008410aa036b41608d2b"
+      }
+    },
+    {
+      "id": "PREVIEW-JEV-RESPONSE-ON-CAPTURE",
+      "stage": "build",
+      "artifact": {
+        "path": "tests/preview/jev-response-capture.test.ts",
+        "hash": "sha256:3e7152fa92b15e99c06d6c964069577c2420713ceada9872d9023802fdadde28"
+      }
+    }
+  ],
+  "probes": [],
+  "decoders": [],
+  "documents": [],
+  "captures": [
+    {
+      "id": "PREVIEW-CAPTURE-CLAUDE-LIMIT-RESULT",
+      "origin": "captured",
+      "source": "Genuine Claude Code result captured 2026-09-24 from an account past its weekly quota; only session_id and uuid are redacted (tests/fixtures/provider-failure/README.md).",
+      "artifact": {
+        "path": "tests/fixtures/provider-failure/claude-limit-result.json",
+        "hash": "sha256:f1229eabd9f54947eea390f72a7a25e87d99136f1a12a303d53d08e210c0b929"
+      }
+    },
+    {
+      "id": "PREVIEW-CAPTURE-JEV-RESPONSE",
+      "origin": "captured",
+      "source": "Genuine TypeSafe System One (jev-1.13.0) response captured 2026-09-29 for one reply-check request; committed unchanged, with nothing to redact (tests/fixtures/captures/README.md).",
+      "artifact": {
+        "path": "tests/fixtures/captures/jev-response.json",
+        "hash": "sha256:7947a8a5797e9536bc795399f330cc0445591684d375e65db6aefa2655f5db59"
+      }
+    }
+  ]
+}
