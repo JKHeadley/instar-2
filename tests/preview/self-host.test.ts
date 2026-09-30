@@ -8,7 +8,7 @@ import { join } from 'node:path';
 import { resolveActivePackage } from '../../src/assembly/index.js';
 import { SELF_HOST_CONTEXT as context, doorwayProvider, selfHost } from './self-host.mjs';
 import { dispatchOwnedProvider, ownerStoreFacts, providerAttemptsOf, providerStores } from './self-host-owners.ts';
-import { createSelfHostHarness, latchStop, openRecordLog, readDurable, stoppedAt } from './self-host-harness.mjs';
+import { confinedRelease, createSelfHostHarness, latchStop, openRecordLog, readDurable, stoppedAt } from './self-host-harness.mjs';
 import { DOORWAY_CONFORMANCE } from './doorway-conformance.js';
 import { successiveWorld } from './successive-fixture.js';
 import { createPackageLifecycle } from './self-host-packages.mjs';
@@ -382,3 +382,17 @@ it('refuses a malformed plan and a file outside the package scope before running
     expect(active(root).kind).toBe('Refused');
   } finally { rmSync(root, { recursive: true, force: true }); }
 }, 240000);
+
+it('the confinement keeps every service lookup denied without reporting it, so the runtime never stalls at startup', () => {
+  // Reproducer (2026-09-29, cb7-r90): with a REPORTED mach-lookup denial, launchd stalled its reply to libSystem's
+  // startup user lookup and a confined runtime hung in dyld past its 25 s backstop (sampled in bootstrap_look_up),
+  // which failed the version-only-update restore above. The lookup stays denied; only the violation report goes.
+  const root = temp();
+  try {
+    const profile = readFileSync(confinedRelease(root).profile, 'utf8');
+    const rules = profile.split('\n').filter(line => !line.trimStart().startsWith(';'));
+    expect(rules.filter(line => line.includes('mach-lookup'))).toEqual(['(deny mach-lookup (with no-report))']);
+    expect(rules.some(line => /\(allow[^)]*mach-/u.test(line))).toBe(false);
+    expect(rules).toContain('(deny default)');
+  } finally { rmSync(root, { recursive: true, force: true }); }
+});
