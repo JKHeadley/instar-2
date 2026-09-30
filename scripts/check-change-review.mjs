@@ -329,7 +329,9 @@ function ci(file, runId) {
 function changeHeads(recordPath) {
   const entry = records().find(r => r.path === recordPath);
   if (!entry?.valid) throw Error(`${recordPath} is not a valid committed review record at HEAD`);
-  return { entry, heads: [...entry.range] };
+  // The heads landing judges this record over: its own range plus the candidate HEAD, so a
+  // record whose last edit precedes HEAD still gives `--submitted all` the runs made at HEAD.
+  return { entry, heads: [...new Set([...entry.range, headTree().head])] };
 }
 // The desk's exact-candidate records (lanes/<...>/candidate.json, review.json, gate.json).
 function deskRecords(dir) {

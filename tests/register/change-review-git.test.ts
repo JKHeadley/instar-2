@@ -308,6 +308,38 @@ describe('landing gate and the append-only evidence ledger (Rules 37, 74, 107, 1
     const landed = r.check('landing'); expect(landed.status).toBe(0); expect(landed.out).toContain('discharged by accepting pass');
     expect(ledgerRows(r.dir).filter(e => e.kind === 'pass')).toHaveLength(3);
   }, 120_000);
+  // Two current records: the older one's last edit precedes HEAD, where the gate runs.
+  const twoRecords = () => {
+    const s = setup();
+    const first = s.r.git('rev-parse', 'HEAD');
+    s.r.write('src/b.ts', 'export const b = 1;\n'); s.r.write('reviews/second.md', record(first)); s.r.commit('second change');
+    s.r.write('gate-mode', 'fail'); expect(s.r.check('run').status).toBe(1);
+    s.r.write('gate-mode', 'pass'); expect(s.r.check('run').status).toBe(0);
+    s.review('YES');
+    const [red, green] = ledgerRows(s.r.dir).filter(e => e.kind === 'suite');
+    return { ...s, red: red!.id as string, green: green!.id as string };
+  };
+  it('gives --submitted all the runs at HEAD for a record whose last edit precedes HEAD; the red run stays visible (Rules 37, 107)', () => {
+    const { r, artifact, red } = twoRecords();
+    for (const rec of ['reviews/change.md', 'reviews/second.md'])
+      expect(r.check('pass', rec, '--reviewer', 'astra', '--artifact', artifact, '--submitted', 'all').status).toBe(0);
+    for (const p of ledgerRows(r.dir).filter(e => e.kind === 'pass')) expect(p.submitted).toContain(red);
+    const held = r.check('landing'); expect(held.status).toBe(1);
+    expect(held.out).not.toContain('not submitted to it');
+    expect(held.out).toContain(`reviews/change.md: Rule 107: red evidence ${red} (suite`);
+    expect(held.out).toContain(`reviews/second.md: Rule 107: red evidence ${red} (suite`);
+    expect(r.check('classify', red, 'product-regression-fixed', 'fixed in the next tree').status).toBe(0);
+    const landed = r.check('landing'); expect(landed.out).toContain('change-review landing ACCEPTED'); expect(landed.status).toBe(0);
+  }, 120_000);
+  it('still refuses an explicit --submitted that omits the red run at HEAD (Rule 107)', () => {
+    const { r, artifact, red, green } = twoRecords();
+    expect(r.check('classify', red, 'product-regression-fixed', 'fixed in the next tree').status).toBe(0);
+    expect(r.check('pass', 'reviews/change.md', '--reviewer', 'astra', '--artifact', artifact, '--submitted', green).status).toBe(0);
+    expect(r.check('pass', 'reviews/second.md', '--reviewer', 'astra', '--artifact', artifact, '--submitted', 'all').status).toBe(0);
+    const refused = r.check('landing'); expect(refused.status).toBe(1);
+    expect(refused.out).toContain(`reviews/change.md: Rule 107: red evidence ${red} was produced before pass`);
+    expect(refused.out).not.toContain(`reviews/second.md: Rule 107: red evidence ${red} was produced before pass`);
+  }, 120_000);
   it("consumes the desk's candidate, review and gate records instead of a second certification step", () => {
     const { r, base, artifact, review } = setup();
     r.write('gate-mode', 'pass'); expect(r.check('run').status).toBe(0);
