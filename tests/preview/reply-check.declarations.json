@@ -10,16 +10,16 @@
       "rungs": [
         {
           "decidesAlone": "no",
-          "criticality": "A reply the operator reads cannot be unsent; a contextual reviewer judges it before release. When the review gives no verdict and Jev flagged a credential, Jev itself gave no completed verdict, or the spend cap refused the review, the reply is not sent.",
+          "criticality": "Mandatory floors (Rules 4, 86): exact credential-shaped text never leaves; a candidate the contextual reviewer finds exposing a credential, deferring untracked work or declaring an unevidenced final cannot-do, and any answer whose declared deferral or blocker the runner refused, gets one bounded correction inside the shared 30-second loop deadline and the call cap. It is sent only when a contextual review of the corrected text clears those classes; otherwise the holding notice is sent in its place with the agent's answer to each objection recorded. When the review gives no verdict and Jev completed a credential flag, or the runner refused a declaration, nothing is sent and the turn stays held.",
           "failDirection": "closed",
-          "preservesInput": "encrypted preview journal: the turn and its candidate reply stay held and pending",
+          "preservesInput": "encrypted preview journal: the turn, its candidate, every check row, the correction and its review stay recorded; a held turn stays pending for raise-caps or recovery",
           "model": "preview-subscription-claude"
         },
         {
           "decidesAlone": "no",
-          "criticality": "Rule 86: Jev is a low-context filter and may hold a reply alone only for a secret. When Jev completed with non-credential flags only and the contextual review was attempted but gave no verdict, those flags only signal and the reply is sent once (reachability to the operator fails open, Rule 95).",
+          "criticality": "Rule 86: every other objection, from Jev (a low-context filter), the contextual reviewer's per-rule findings or the deterministic link checks, is a signal. The agent answers each one once (accept, reject with a reason, or no decision) and may revise; the reply is sent once whether or not a verdict or answer arrived. When Jev or the contextual review is unavailable, or the shared deadline or call cap stops the loop, an advisory-only reply is still sent once with its unavailable status recorded (reachability to the operator fails open, Rule 95).",
           "failDirection": "open",
-          "preservesInput": "encrypted preview journal: the Jev row, the unavailable review row and the reply intent stay recorded; the release is counted on status (reviewUnavailableReleases)",
+          "preservesInput": "encrypted preview journal: the Jev row, the review rows with their per-rule findings, the agent's dispositions and the reply intent stay recorded; unavailable releases are counted on status (reviewUnavailableReleases)",
           "model": "preview-subscription-claude"
         }
       ],
@@ -59,7 +59,41 @@
           "preview.reply.hold",
           "preview.reply.release"
         ],
-        "default": "preview.reply.hold"
+        "default": "preview.reply.release"
+      },
+      "benchmark": "unmeasured"
+    },
+    "profile": {
+      "type": "Profile",
+      "schemaVersion": 1,
+      "consequence": "control",
+      "reversibility": "reversible",
+      "reach": "user",
+      "surface": "chat",
+      "repeats": {
+        "kind": "no"
+      }
+    },
+    "standards": [
+      57
+    ],
+    "holds": []
+  },
+  {
+    "type": "Declaration",
+    "schemaVersion": 1,
+    "id": "preview.reply-check.parseReplyRevision",
+    "kind": "judgment points",
+    "status": "live",
+    "requiredFacts": {
+      "floor": {
+        "type": "ActionFloor",
+        "schemaVersion": 1,
+        "actions": [
+          "preview.reply.release",
+          "preview.reply.revise"
+        ],
+        "default": "preview.reply.release"
       },
       "benchmark": "unmeasured"
     },

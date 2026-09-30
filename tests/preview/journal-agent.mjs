@@ -21,7 +21,7 @@ import { projectionDigest } from './journal.js';
 import { openPreviewJournal as openJournal, createJournalWorker, raiseJournalCaps, renewJournalExpiry, activationMatchesJournal, activePersonMerges, openQuestionCandidates, projectMemoryText, unansweredCue, reportJournalCap, unknownCallCounts, pendingUnknownCalls, replyTimings, reviewUnavailableReleases, MINIMAL_RESERVE, reserveTurnsUsed, reserveRepliesUsed, openRequests, actionWithdrawn, reminderDue, retrospectiveCases, openBlockers, openDirectives, declaredObligations, sendOutcomeCounts, sendOutcomeOf, unsentLabel, replyTarget, reminderOutcome, envelopeWriter, PREVIEW_LIVE_LIMITS, PREVIEW_JOURNAL_COMPACT_BYTES, activeMemoryConflicts, TOO_LONG_INPUT_NOTICE, TOO_LONG_REPLY_NOTICE , probeTurn, isJournalUpdate, withFormatReminder, concurrentWorkItem, latestOwnedLaunch } from './journal.js';
 import { createPreviewClock } from './clock.js';
 import { appendRun, heldNotices, heldRepliesToday, memoryHealthLine, readRuns, restartHandoff, selfState, selfStateBrief, selfStateSource, zoneFormatter } from './self-state.js';
-import { JEV_MODEL, jevQuestions, replyReviewContext, replyReviewQuestion, replyReviewRules, parseReplyReviewVerdict, replyReviewDiagnostics, parseJevResponse, replyRevisionQuestion, REVIEW_MALFORMED, REVIEW_FORMAT_REMINDER } from './reply-check.js';
+import { JEV_MODEL, jevQuestions, replyReviewContext, replyReviewQuestion, replyReviewRules, parseReplyReviewVerdict, replyReviewDiagnostics, parseJevResponse, replyRevisionQuestion, parseReplyRevision, REVIEW_MALFORMED, REVIEW_FORMAT_REMINDER } from './reply-check.js';
 import { interpretSummaryReview, SUMMARY_QUESTION } from './summary-check.js';
 import { assertLiveJudgment, decisionWithinFloor, modelCallRecord, sha256 } from './model-call-boundary.js';
 import { conclusionText, failureShapeOf, parseModelJson } from './model-json.js';
@@ -360,9 +360,11 @@ const recordShape = (path, role, layer, outcome, shape) => {
 const roleOf = id => id.endsWith(':reply-review') || id.endsWith(':revision-review') ? 'reply-review' : /^summary:.*:review$/u.test(id) ? 'summary-review'
   : /^retrospective:\d+$/u.test(id) ? 'retrospective' : 'answer';
 /** The registered live judgment a subscription call serves (model-call-boundary.ts). A revised
- * reply's held-class review is a reply review; the revision itself drafts an answer. A retrospective
- * pass is its own judgment; its benchmark reruns (`retrospective:N:rerun:I`) replay an answer. */
-const judgmentOf = id => id.endsWith(':reply-review') || id.endsWith(':revision-review') ? 'reply-review' : /^summary:.*:review$/u.test(id) ? 'summary-review'
+ * reply's held-class review is a reply review; the revision is the agent's own response to the
+ * objections, with its own floor. A retrospective pass is its own judgment; its benchmark reruns
+ * (`retrospective:N:rerun:I`) replay an answer. */
+const judgmentOf = id => id.endsWith(':reply-review') || id.endsWith(':revision-review') ? 'reply-review'
+  : id.endsWith(':reply-revision') ? 'reply-revision' : /^summary:.*:review$/u.test(id) ? 'summary-review'
   : /^summary:/u.test(id) ? 'summary' : /^retrospective:\d+$/u.test(id) ? 'retrospective' : 'answer';
 
 const contextOf = prompt => JSON.parse(JSON.parse(prompt).messages.find(m => m.role === 'context').content).packet;
@@ -1055,7 +1057,8 @@ async function main() {
       assertLiveJudgment(judgment, 'preview-subscription');
       const route = modelRoute(id), start = performance.now();
       const inputRef = judgment === 'answer' && journal.view.turns.get(id)?.prompt === prepared ? `reserve:${id}` : undefined;
-      const base = { id, judgment, route: 'preview-subscription', model: required(options, 'model'), input: prepared,
+      // Rule 58: the journal occurrence is the operation id itself (turn, operation or summary).
+      const base = { id, judgment, route: 'preview-subscription', model: required(options, 'model'), input: prepared, occurrence: id,
         ...(inputRef === undefined ? {} : { inputRef }) };
       let result;
       try { result = await route.invoke(prepared, invocation); }
@@ -1069,10 +1072,12 @@ async function main() {
           outputTokens: result.usage.outputTokens ?? null, charge: null } : null });
       return result;
     };
-    const callJev = async (judgment, state, questions, timeoutMs = 2000) => {
+    const callJev = async (judgment, state, questions, timeoutMs = 2000, occurrence) => {
       assertLiveJudgment(judgment, 'typesafe-jev');
       const start = performance.now(), body = JSON.stringify({ state, model: JEV_MODEL, questions });
-      const base = { id: `${judgment}:${sha256(body).slice(0, 16)}`, judgment, route: 'typesafe-jev', model: JEV_MODEL, input: body };
+      // The id is content-derived and repeats for identical requests; the occurrence names the turn it served.
+      const base = { id: `${judgment}:${sha256(body).slice(0, 16)}`, judgment, route: 'typesafe-jev', model: JEV_MODEL, input: body,
+        ...(typeof occurrence === 'string' && occurrence ? { occurrence } : {}) };
       let response, text;
       try {
         response = await fetch('https://api.typesafe.ai/v1/systemone', {
@@ -1174,8 +1179,8 @@ async function main() {
       summaryCheck: async evidence => (await callJev('jev-summary-faithfulness', evidence, SUMMARY_FAITHFULNESS_QUESTION)).value,
       replyCheck: {
         elapsedMs: () => performance.now(),
-        jev: (text, questions = jevQuestions, timeoutMs) => callJev(questions === SUMMARY_QUESTION ? 'jev-summary-integrity' : 'jev-reply-check',
-          text, questions, timeoutMs),
+        jev: (text, questions = jevQuestions, timeoutMs, occurrence) => callJev(questions === SUMMARY_QUESTION ? 'jev-summary-integrity' : 'jev-reply-check',
+          text, questions, timeoutMs, occurrence),
         escalate: async (text, id, originalPrompt, reviewRules, deadlineAt, operation, formatRetry) => {
 
           const start = performance.now();
@@ -1190,7 +1195,8 @@ async function main() {
           const writer = envelopeWriter(journal.systemWriter('reply-review', `${operationId}\n${context}`, wallNow()));
           const prepared = modelEnvelope({ question, context, id: operationId, ...(writer ? { writer } : {}) });
           // A revised candidate's held-class review is its own operation; the worker journals its result row.
-          const result = operation === 'revision' ? await invokeSubscription(prepared, operationId)
+          // The revised text's review shares the loop's one deadline (ruling 2 budget).
+          const result = operation === 'revision' ? await invokeSubscription(prepared, operationId, undefined, deadlineAt)
             : await invokeSubscription(prepared, operationId, id, deadlineAt);
           // A Decision-shape miss is a format miss like a malformed verdict line: the worker may re-ask it once.
           if (result.state === 'complete' && result.failureClass === 'malformed') throw Error(REVIEW_MALFORMED);
@@ -1199,7 +1205,8 @@ async function main() {
           // the whole-line pattern admits no surrounding text, so a written rejection
           // can never be discarded around it.
           let parsed;
-          try { parsed = parseReplyReviewVerdict(result.value); }
+          // Each selected rule gets its own line, conclusion and reason; a missing or added rule is a format miss.
+          try { parsed = parseReplyReviewVerdict(result.value, Object.keys(selectedRules)); }
           catch (error) { recordShape(shapesPath, 'reply-review', 'verdict', 'malformed', 'not-json'); throw error; }
           if (parsed.ruleIds.some(rule => !Object.hasOwn(selectedRules, rule))) {
             recordShape(shapesPath, 'reply-review', 'verdict', 'malformed', 'not-json');
@@ -1207,24 +1214,22 @@ async function main() {
           }
           return { verdict: parsed.verdict, ruleIds: parsed.ruleIds, confidence: null,
             latencyMs: Math.round(performance.now() - start), reason: parsed.reason,
-            usage: recordedUsage(result.usage) };
+            ...(parsed.findings ? { findings: parsed.findings } : {}), usage: recordedUsage(result.usage) };
         },
-        // The mind's one revision of an objected draft: same envelope and grounding packet as review.
-        revise: async ({ text, id, originalPrompt, ruleIds, reason }) => {
+        // The mind's one response to the objections on its draft: same envelope and grounding packet as review,
+        // one disposition per objection, inside the loop's shared deadline.
+        revise: async ({ text, id, originalPrompt, ruleIds, reason, objections = ruleIds, findings, deadlineAt }) => {
           const context = replyReviewContext(originalPrompt, text, ruleIds);
           // Rule 29: the revision input (the objected draft in its review context) is written by the runner.
           const writer = envelopeWriter(journal.systemWriter('reply-review', `${id}:reply-revision\n${context}`, wallNow()));
-          const prepared = modelEnvelope({ question: replyRevisionQuestion(ruleIds, reason), context, id: `${id}:reply-revision`,
+          const prepared = modelEnvelope({ question: replyRevisionQuestion(objections, reason, findings), context, id: `${id}:reply-revision`,
             ...(writer ? { writer } : {}) });
-          const result = await invokeSubscription(prepared, `${id}:reply-revision`);
+          const result = await invokeSubscription(prepared, `${id}:reply-revision`, undefined, deadlineAt);
           const usage = result.usage ? { usage: recordedUsage(result.usage) } : {};
           if (result.state === 'uncertain') return { state: 'uncertain', ...usage };
           if (result.state !== 'complete' || result.failureClass) return { state: 'rejected', ...usage };
-          let revised = result.value;
-          try { const parsed = JSON.parse(revised);
-            if (typeof parsed?.reply === 'string') revised = parsed.reply;
-            else if (typeof parsed?.reply?.answer === 'string') revised = parsed.reply.answer; } catch { /* plain revised text */ }
-          return { state: 'complete', text: revised, ...usage };
+          const answered = parseReplyRevision(result.value, objections);
+          return { state: 'complete', text: answered.text, dispositions: answered.dispositions, ...usage };
         },
         summaryReview: async (state, through) => {
           const start = performance.now();

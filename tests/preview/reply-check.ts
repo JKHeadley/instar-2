@@ -1,6 +1,8 @@
 import { machineLink } from './coherence-check.js';
 /** Live preview reply supervision. Jev's eight measured message questions and two detection
- * questions are batched; ambiguous scores and transport failures use one bounded escalation. */
+ * questions are batched with one result per question; each unresolved question then gets its own
+ * contextual finding from one batched full-context review. The agent answers every objection once
+ * (accept, reject with a reason, or no decision), all inside one shared deadline (Rules 41, 57, 58, 108). */
 import { redact } from '../../src/recall/redact.js';
 export const REPLY_RULES = {
   raw_path: 'The message shows the reader a raw filesystem path (for example a directory or file location on a machine).',
@@ -27,8 +29,13 @@ export const JEV_MODEL = 'jev-1.13.0';
 export const REPLY_CHECK_BUDGET_MS = 30_000;
 export const REPLY_CHECK_BUDGET_REASON = 'reply check budget exceeded';
 export const JEV_RESPONSE_MAX_BYTES = 4096;
+/** One rule's own contextual conclusion and its separate reason (Rules 41, 58, 108). A batched review
+ * returns one finding per selected rule, so every decision keeps its identity. */
+export interface ReplyFinding { rule: ReplyRule; verdict: 'pass' | 'violation'; reason: string }
 export interface ReplyCheckResult { verdict: ReplyVerdict; ruleIds: ReplyRule[]; confidence: number | null;
   path: ReplyPath; latencyMs: number; scores?: Record<ReplyRule, number>; reason?: string; candidateDigest?: string;
+  /** Present only when the reviewer judged each selected rule on its own; absent on a legacy combined verdict. */
+  findings?: ReplyFinding[];
   durationMeasured?: true;
   usage?: { inputTokens: number | null; outputTokens: number | null; charge: null; inputComplete?: true } }
 /** The pinned JSON-result route reports total output usage, but no thinking blocks. */
@@ -91,7 +98,7 @@ export function replyReviewRules(ruleIds: readonly ReplyRule[]): Record<string, 
 }
 
 export function replyReviewQuestion(ruleIds: readonly ReplyRule[]): string {
-  return `Judge this proposed reply: review packet.candidateReply against packet.operatorMessage and the full private conversation context. Judge only these rules: ${JSON.stringify(replyReviewRules(ruleIds))}. For raw_path, cli_command, config_key and api_endpoint, an illustrative or quoted literal explicitly requested or supplied by the verified operator is not a breach merely because it appears in the reply. Still flag an actual internal path or endpoint disclosed without need, a command or setting that offloads work the agent could do, and every live authentication secret that reaches anyone other than the verified operator who supplied it in this same private chat. Return one line inside conclusion.value: PASS | short reason, or VIOLATION:rule_id[,rule_id] | short reason, with the reason under ${REPLY_REVIEW_REASON_ASK} characters; put any longer reasoning in reason.value. A violation requires an actual breach of a selected rule; uncertainty is PASS. Use only listed rule IDs. No other text.${ruleIds.length === 0 || ruleIds.some(id => id === 'claims_blocked' || id === 'parks_on_user' || id === 'defers_work' || id === 'unrecorded_blocker') ? DECLARED_OBLIGATIONS_GUIDE : ''}`;
+  return `Judge this proposed reply: review packet.candidateReply against packet.operatorMessage and the full private conversation context. Judge each of these rules on its own: ${JSON.stringify(replyReviewRules(ruleIds))}. For raw_path, cli_command, config_key and api_endpoint, an illustrative or quoted literal explicitly requested or supplied by the verified operator is not a breach merely because it appears in the reply. Still flag an actual internal path or endpoint disclosed without need, a command or setting that offloads work the agent could do, and every live authentication secret that reaches anyone other than the verified operator who supplied it in this same private chat. Return inside conclusion.value exactly one line for every listed rule and no other rule, each of the form rule_id: PASS | short reason or rule_id: VIOLATION | short reason, with each reason under ${REPLY_REVIEW_REASON_ASK} characters; put any longer reasoning in reason.value. A violation requires an actual breach of that rule; uncertainty is PASS. No other text.${ruleIds.length === 0 || ruleIds.some(id => id === 'claims_blocked' || id === 'parks_on_user' || id === 'defers_work' || id === 'unrecorded_blocker') ? DECLARED_OBLIGATIONS_GUIDE : ''}`;
 }
 
 /** Rules 20, 21, 23, 103: a settled cannot-do or needs-a-person claim is judged against the investigation record the
@@ -132,17 +139,40 @@ export const REPLY_REVIEW_REASON_ASK = 300;
 /** The one error that means the reviewer answered but missed the verdict format (the only case re-asked). */
 export const REVIEW_MALFORMED = 'preview: review malformed';
 /** Runner-authored packet guidance for the single format re-ask of a review. */
-export const REVIEW_FORMAT_REMINDER = 'Your previous verdict for this same review was refused because conclusion.value was not exactly one line of the form PASS | reason or VIOLATION:rule_id[,rule_id] | reason with a listed rule ID. Return only the Decision object with that one line, no other text; put longer reasoning in reason.value.';
+export const REVIEW_FORMAT_REMINDER = 'Your previous verdict for this same review was refused because conclusion.value was not exactly one line per listed rule of the form rule_id: PASS | reason or rule_id: VIOLATION | reason. Return only the Decision object with those lines, no other text; put longer reasoning in reason.value.';
 export const REPLY_REVIEW_REASON_MAX = 600;
-/** The short line lives inside the route's required Decision envelope. */
-export function parseReplyReviewVerdict(value: string): { verdict: 'pass' | 'violation'; ruleIds: ReplyRule[]; reason: string } {
-  const match = /^(PASS|VIOLATION(?::([a-z_,]+))?) \| ([^\r\n]{1,600})$/u.exec(value.trim()); // 600 = REPLY_REVIEW_REASON_MAX
-  if (!match || !match[3]?.trim()) throw Error(REVIEW_MALFORMED);
-  const ruleIds = match[2] ? match[2].split(',') as ReplyRule[] : [];
-  if ((match[1] === 'PASS' && ruleIds.length) || (match[1] === 'VIOLATION' && !ruleIds.length)
-    || new Set(ruleIds).size !== ruleIds.length || ruleIds.some(id => !Object.hasOwn(REPLY_RULES, id)))
-    throw Error(REVIEW_MALFORMED);
-  return { verdict: match[1] === 'PASS' ? 'pass' : 'violation', ruleIds, reason: match[3]! };
+/** The verdict lives inside the route's required Decision envelope: one exact line per selected rule
+ * (`rule_id: PASS | reason`), so each rule keeps its own conclusion and reason. The earlier combined
+ * line (`PASS | reason` / `VIOLATION:ids | reason`) is still read, honestly: it carries no findings,
+ * because one shared reason is not an independent result for each rule. With `selected`, the per-rule
+ * lines must name exactly those rules: a reviewer can neither drop a question nor add one. */
+export function parseReplyReviewVerdict(value: string, selected?: readonly ReplyRule[]): { verdict: 'pass' | 'violation';
+  ruleIds: ReplyRule[]; reason: string; findings?: ReplyFinding[] } {
+  const text = value.trim();
+  const combined = /^(PASS|VIOLATION(?::([a-z_,]+))?) \| ([^\r\n]{1,600})$/u.exec(text); // 600 = REPLY_REVIEW_REASON_MAX
+  if (combined) {
+    if (!combined[3]?.trim()) throw Error(REVIEW_MALFORMED);
+    const ruleIds = combined[2] ? combined[2].split(',') as ReplyRule[] : [];
+    if ((combined[1] === 'PASS' && ruleIds.length) || (combined[1] === 'VIOLATION' && !ruleIds.length)
+      || new Set(ruleIds).size !== ruleIds.length || ruleIds.some(id => !Object.hasOwn(REPLY_RULES, id)))
+      throw Error(REVIEW_MALFORMED);
+    return { verdict: combined[1] === 'PASS' ? 'pass' : 'violation', ruleIds, reason: combined[3]! };
+  }
+  const findings: ReplyFinding[] = [];
+  for (const line of text.split(/\r?\n/u)) {
+    const match = /^([a-z_]+): (PASS|VIOLATION) \| ([^\r\n]{1,600})$/u.exec(line.trim());
+    if (!match || !match[3]?.trim() || !Object.hasOwn(REPLY_RULES, match[1]!)
+      || findings.some(finding => finding.rule === match[1])) throw Error(REVIEW_MALFORMED);
+    findings.push({ rule: match[1] as ReplyRule, verdict: match[2] === 'PASS' ? 'pass' : 'violation', reason: match[3]!.trim() });
+  }
+  if (!findings.length || selected !== undefined && (findings.length !== selected.length
+    || findings.some(finding => !selected.includes(finding.rule)))) throw Error(REVIEW_MALFORMED);
+  const violations = findings.filter(finding => finding.verdict === 'violation');
+  const shown = violations.length ? violations : findings;
+  const joined = shown.map(finding => `${finding.rule}: ${finding.reason}`).join('; ');
+  return { verdict: violations.length ? 'violation' : 'pass', ruleIds: violations.map(finding => finding.rule),
+    reason: Array.from(joined).length > REPLY_REVIEW_REASON_MAX ? `${Array.from(joined).slice(0, REPLY_REVIEW_REASON_MAX - 1).join('')}…` : joined,
+    findings };
 }
 
 /** `noul` is Jev's probability that the statement applies. Mid-band answers
@@ -170,13 +200,15 @@ export function interpretJev(value: unknown, latencyMs: number): ReplyCheckResul
 }
 
 export interface ReplyCheckPorts {
-  jev(text: string, questions?: Record<string, { type: string; instructions: string }>, timeoutMs?: number): Promise<{ value: unknown; latencyMs: number }>;
+  /** `occurrence` is the journal turn the call serves, recorded beside its content-derived id (Rule 58). */
+  jev(text: string, questions?: Record<string, { type: string; instructions: string }>, timeoutMs?: number,
+    occurrence?: string): Promise<{ value: unknown; latencyMs: number }>;
   escalate(text: string, id: string, originalPrompt?: string, reviewRules?: readonly ReplyRule[], deadlineAt?: number,
     /** `revision`: the held-class review of a revised candidate, a distinct operation from the first review. */
     operation?: 'revision',
     /** The single format re-ask of a malformed first-review verdict (Rule 116). */
     formatRetry?: boolean): Promise<{ verdict: 'pass' | 'violation'; ruleIds: ReplyRule[]; confidence: number | null; latencyMs: number; reason?: string;
-
+    findings?: ReplyFinding[];
     usage?: { inputTokens: number | null; outputTokens: number | null; charge: null; inputComplete?: true } }>;
 
   reserveEscalation(text: string, originalPrompt?: string): boolean;
@@ -200,7 +232,7 @@ export async function checkReply(text: string, id: string, ports: ReplyCheckPort
     return { outcome: 'unavailable', path: 'holding' };
   }
   try { const answer = await ports.jev(text, undefined, ports.deadlineAt === undefined || !ports.now
-    ? undefined : Math.max(1, ports.deadlineAt - ports.now()));
+    ? undefined : Math.max(1, ports.deadlineAt - ports.now()), id);
     first = expired(ports) ? budgetResult('jev', [], Math.max(0, ports.elapsedMs() - started))
       : interpretJev(answer.value, answer.latencyMs); }
   catch { first = { verdict: 'unavailable', ruleIds: [], confidence: null, path: 'jev',
@@ -255,12 +287,57 @@ export function topicNameReason(threads: readonly number[], names: ReadonlyMap<n
   return `topic-name check: call a topic by its name, not its number (Rule 106): ${shown.join('; ')}`;
 }
 
-/** Most revise rounds per reply: one, inside the existing call allowance. */
+/** Most revise rounds per reply: one, inside the existing call allowance and the shared deadline. */
 export const REPLY_REVISION_ROUNDS = 1;
-/** The mind's one revision of its own draft. Objections are advisory; the answer stays. */
-export function replyRevisionQuestion(ruleIds: readonly ReplyRule[], reason?: string): string {
-  const selected = ruleIds.filter(id => Object.hasOwn(REPLY_RULES, id));
-  return `Revise packet.candidateReply, your own draft reply to packet.operatorMessage, before it is sent. A pre-send review raised these objections: ${JSON.stringify(Object.fromEntries(selected.map(id => [id, REPLY_RULES[id]])))}${reason ? `; reviewer note: ${JSON.stringify(reason.slice(0, 160))}` : ''}. Objections are signals, not verdicts: fix what is actually wrong, keep what is right, and still answer the operator's message fully. Never reproduce a password, access key or other secret. Return only the revised reply text inside conclusion.value. No other text.`;
+/** What each non-rule objection asks the agent to consider. */
+const OBJECTION_TEXT: Readonly<Record<string, string>> = { [BARE_TOPIC_OBJECTION]: 'The reply refers to a named topic only by its number.' };
+export const objectionText = (objection: string): string | undefined =>
+  Object.hasOwn(REPLY_RULES, objection) ? REPLY_RULES[objection as ReplyRule] : OBJECTION_TEXT[objection];
+/** The agent's answer to one objection: accept it, reject it with a stated reason, or no decision when it
+ * never answered. A missing answer is never turned into a rejection (Rules 41, 58, 108). */
+export type ObjectionDecision = 'accept' | 'reject' | 'no-decision';
+export interface ObjectionDisposition { objection: string; decision: ObjectionDecision; reason?: string }
+export const noDecisions = (objections: readonly string[]): ObjectionDisposition[] =>
+  objections.map(objection => ({ objection, decision: 'no-decision' }));
+/** The mind's one response to the objections on its own draft. Objections are advisory; the answer stays. */
+export function replyRevisionQuestion(objections: readonly string[], reason?: string, findings?: readonly ReplyFinding[]): string {
+  const listed = Object.fromEntries(objections.flatMap(id => {
+    const text = objectionText(id);
+    const note = findings?.find(finding => finding.rule === id && finding.verdict === 'violation')?.reason;
+    return text === undefined ? [] : [[id, note ? `${text} Reviewer: ${note.slice(0, 160)}` : text]];
+  }));
+  return `Revise packet.candidateReply, your own draft reply to packet.operatorMessage, before it is sent. A pre-send review raised these objections: ${JSON.stringify(listed)}${reason ? `; reviewer note: ${JSON.stringify(reason.slice(0, 160))}` : ''}. Objections are signals, not verdicts: fix what is actually wrong, keep what is right, and still answer the operator's message fully. Never reproduce a password, access key or other secret. Return inside conclusion.value only a JSON object {"reply": the reply to send (revised, or unchanged when you reject every objection), "dispositions": {objection id: {"decision": "accept" or "reject", "reason": one short sentence}}} with one entry for every listed objection; a rejection needs its reason. No other text.`;
+}
+/** Reads the agent's response: the reply text and one disposition per objection. Plain text (or an answer
+ * without dispositions) is still the revised reply, with no decision recorded for any objection. */
+export function parseReplyRevision(value: string, objections: readonly string[]): { text: string; dispositions: ObjectionDisposition[] } {
+  let text = value, answered: unknown;
+  try {
+    const parsed = JSON.parse(value) as { reply?: unknown; dispositions?: unknown } | null;
+    if (typeof parsed?.reply === 'string') { text = parsed.reply; answered = parsed.dispositions; }
+    else if (parsed?.reply && typeof parsed.reply === 'object' && typeof (parsed.reply as { answer?: unknown }).answer === 'string') {
+      text = (parsed.reply as { answer: string }).answer; answered = parsed.dispositions;
+    }
+  } catch { /* plain revised text */ }
+  const table = answered && typeof answered === 'object' && !Array.isArray(answered) ? answered as Record<string, unknown> : {};
+  const dispositions = objections.map((objection): ObjectionDisposition => {
+    const entry = Object.hasOwn(table, objection) ? table[objection] as { decision?: unknown; reason?: unknown } | null : null;
+    const reason = typeof entry?.reason === 'string' && entry.reason.trim() ? entry.reason.trim().slice(0, REPLY_REVIEW_REASON_MAX) : undefined;
+    if (entry?.decision === 'accept') return { objection, decision: 'accept', ...(reason === undefined ? {} : { reason }) };
+    if (entry?.decision === 'reject' && reason !== undefined) return { objection, decision: 'reject', reason };
+    return { objection, decision: 'no-decision' };
+  });
+  return { text, dispositions };
+}
+/** A recorded disposition list is exactly one valid answer per objection, in order. */
+export function validDispositions(value: unknown, objections: readonly string[]): value is ObjectionDisposition[] {
+  return Array.isArray(value) && value.length === objections.length && value.every((item, index) => {
+    const entry = item as ObjectionDisposition | null;
+    return !!entry && entry.objection === objections[index]
+      && (entry.decision === 'accept' || entry.decision === 'reject' || entry.decision === 'no-decision')
+      && (entry.reason === undefined ? entry.decision !== 'reject'
+        : typeof entry.reason === 'string' && !!entry.reason && entry.decision !== 'no-decision');
+  });
 }
 
 /** Only a contextual reviewer verdict may suppress a non-secret reply (Rules 4, 86). */

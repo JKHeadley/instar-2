@@ -8,7 +8,7 @@ import { createJournalWorker, openPreviewJournal, openBlockers, openDirectives, 
   LOOP_REVISIT_MS, BLOCKER_RECHECK_MAX_MS, DIRECTIVE_SHARE } from './journal-test-worker.js';
 import { loopHealth, loopStatusLines, BACKLOG_AGE_LIMIT_MS } from './obligations.js';
 import { statusReply } from './status-command.js';
-import { DECLARED_OBLIGATIONS_GUIDE, HOLDING_REPLY, REPLY_RULES, replyReviewContext, replyReviewQuestion, type ReplyRule } from './reply-check.js';
+import { DECLARED_OBLIGATIONS_GUIDE, HOLDING_REPLY, REPLY_RULES, replyReviewContext, replyReviewQuestion, type ObjectionDisposition, type ReplyRule } from './reply-check.js';
 import { prepareJournalEnvelope } from './journal-envelope.js';
 import { redact } from '../../src/recall/redact.js';
 import { appendRun, readRuns } from './self-state.js';
@@ -27,7 +27,10 @@ const day = (at: number) => new Date(at).toISOString().slice(0, 10);
 
 type Answer = string | Record<string, unknown>;
 type Review = { jev?: (text: string) => Partial<Record<ReplyRule, number>>;
-  verdict?: (context: Record<string, unknown>) => 'pass' | 'violation' };
+  verdict?: (context: Record<string, unknown>) => 'pass' | 'violation';
+  /** The agent's one response to the objections on its draft (OR1). Absent: no revision round. */
+  revise?: (input: { text: string; objections?: string[] }) => Promise<{ state: 'complete' | 'rejected' | 'uncertain'; text?: string;
+    dispositions?: ObjectionDisposition[] }> };
 function world(root: string, options: { maxBytes?: number; maxCalls?: number; answer?: (question: string, context: string) => Answer;
   waitsOn?: boolean; work?: (context: Record<string, unknown>) => Answer | Promise<Answer>; review?: Review; stopped?: () => boolean;
   receipt?: (text: string) => boolean; nextUpdate?: number } = {}) {
@@ -50,8 +53,9 @@ function world(root: string, options: { maxBytes?: number; maxCalls?: number; an
         const context = JSON.parse(replyReviewContext(envelope, text, rules, declaredObligations(journal.view, id))) as Record<string, unknown>;
         reviews.push(context);
         const verdict = review.verdict?.(context) ?? 'pass';
-        return { verdict, ruleIds: verdict === 'pass' ? [] : [rules?.[0] ?? 'defers_work'], confidence: null, latencyMs: 0 };
-      } } } : {}),
+        return { verdict, ruleIds: verdict === 'pass' ? [] : [rules?.includes('defers_work') ? 'defers_work' : rules?.[0] ?? 'defers_work'],
+          confidence: null, latencyMs: 0 };
+      }, ...(review.revise ? { revise: review.revise } : {}) } } : {}),
     model: async input => {
       if (input.id.startsWith('obligation:')) {
         work.push(input.id);
@@ -546,6 +550,50 @@ it('never releases a deferral the runner cannot track on a text-only pass (Rule 
       // The sent reply and its durable commitment agree.
       expect(w.journal.view.commitments.filter(note => note.loop), label).toHaveLength(tracked);
       if (label === 'unmatched declaration') expect(loopStatusLines(w.journal.view, w.clock.now).join('\n')).toContain('Declared obligations I could not record: 1');
+      w.journal.close();
+    } finally { rmSync(root, { recursive: true, force: true }); }
+  }
+});
+
+// OR1 (ruling 2 section C; Rules 4, 6, 41, 57, 58, 86, 108): a candidate held by the obligation floor gets the same one
+// bounded correction as an advisory objection. The agent answers the objection; only a revalidated correction leaves.
+const DONE = 'I checked the invoice question: the March invoice was paid on the 4th, so nothing is owed.';
+it('gives a held deferral one bounded correction: a revalidated correction is sent, anything else stays held (Rules 4, 6, 86)', async () => {
+  for (const [label, correction, outcome] of [
+    ['correction clears the floor', { state: 'complete', text: DONE, dispositions: [{ objection: 'defers_work', decision: 'accept', reason: 'I can do it now.' }] }, 'sent'],
+    ['correction still defers', { state: 'complete', text: `${LATER} Promise.`, dispositions: [{ objection: 'defers_work', decision: 'reject', reason: 'It needs a later look.' }] }, 'held'],
+    ['agent keeps the draft unchanged', { state: 'complete', text: LATER, dispositions: [{ objection: 'defers_work', decision: 'reject', reason: 'The deferral is fine.' }] }, 'held'],
+    ['response unavailable', undefined, 'held'],
+  ] as const) {
+    const root = origin();
+    try {
+      const revisions: { text: string; objections?: string[] }[] = [];
+      const w = world(root, { maxBytes: 8400, answer: () => ({ reply: LATER }), review: {
+        jev: text => (text.includes('later today') ? { defers_work: 0.9 } : {}),
+        verdict: context => (String(context.candidateReply).includes('later today') ? 'violation' : 'pass'),
+        revise: async input => { revisions.push(input); if (!correction) throw Error('reviser unavailable');
+          return { ...correction, dispositions: [...correction.dispositions] }; } } });
+      await w.say(INVOICE);
+      const turn = w.journal.view.order[0]!;
+      expect(revisions, label).toHaveLength(1);
+      expect(revisions[0]!.objections, label).toEqual(['defers_work']);
+      // An identical draft is the agent's answer, not a new candidate: no second review of the same text.
+      expect(w.reviews, label).toHaveLength(label === 'agent keeps the draft unchanged' || !correction ? 1 : 2);
+      if (outcome === 'sent') {
+        expect(w.sent, label).toEqual([`PREVIEW — ${DONE}`]);
+        expect(turn.release, label).toMatchObject({ review: 'violation', objections: ['defers_work'], revised: true,
+          dispositions: [{ objection: 'defers_work', decision: 'accept', reason: 'I can do it now.' }] });
+        expect(turn.heldReview, label).toBeUndefined();
+      } else {
+        expect(w.sent, label).toHaveLength(1);
+        expect(w.sent[0], label).toContain(HOLDING_REPLY.replace(/^PREVIEW — /u, ''));
+        expect(w.sent.join('\n'), label).not.toContain('later today');
+        expect(turn.release, label).toBeUndefined();
+        // The agent's answer is recorded as given; an unavailable response is no decision, never a rejection.
+        expect(turn.heldReview, label).toEqual({ objections: ['defers_work'],
+          dispositions: correction ? correction.dispositions : [{ objection: 'defers_work', decision: 'no-decision' }] });
+      }
+      expect(w.journal.view.commitments.filter(note => note.loop), label).toHaveLength(0);
       w.journal.close();
     } finally { rmSync(root, { recursive: true, force: true }); }
   }
