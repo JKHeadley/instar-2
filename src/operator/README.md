@@ -22,3 +22,5 @@ one executable contract. The section-7 executable enters through Part Ten's prod
 uses its returned Part Four-through-Nine handles, and displays the independently witnessed result.
 Activation remains dark until an independently administered live phone verifier, semantic review,
 objective mobile floor, and real platform/provider evidence exist.
+
+`explicit-yes.ts` shapes the smallest production explicit yes: the verified operator account replying `yes <request id>` in the bound chat (recorded with the message id), or, where a P-05 grant lets the agent speak through that chat account, an APPROVED review by the pinned operator GitHub account on a pull request naming the request (recorded with the review id). Each yes is used once and must fall inside the request's lifetime. Part One's decoder admits it only under the `accountAuthenticatedAssent` declaration.
