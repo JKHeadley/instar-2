@@ -91,7 +91,8 @@ function extractionAt(spine: GoverningSpine, context: FactContext, count: number
   for (const { factId, version } of recorded) {
     recordedBy(byId, factId, 'version', version, `version fact not recorded: ${factId}`);
     requireFact(byId.has(version.since), `entering-force fact not recorded: ${version.since}`, 'integrity');
-    // Verify the state, not the symbol: a merge event and a channel-attested record are not a yes.
+    // Verify the state, not the symbol: a merge event and a channel-attested record are not a yes;
+    // an account-assented yes counts only under its declaration (src/decode/explicit-yes.ts).
     const yes = version.approvedIn.explicitYes;
     requireFact(isExplicitYes(yes),
       `approvedIn must be a verified explicit yes, never a merge event: ${version.id}`, 'standing');

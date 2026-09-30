@@ -6,9 +6,9 @@ import type { Provenance } from '../types/values.js';
 /** The yes a signature or independently administered verifier proves. */
 export const verifiedYesRecordTypes: readonly string[] = Object.freeze(['approval', 'review-approval', 'signed-yes', 'dashboard-yes']);
 /**
- * Account-authenticated assent: the verified operator account replying in the bound chat, or the
- * pinned operator GitHub account approving a review. The platform authenticates the account;
- * no key the operator alone holds signs it, so the record is channel-attested.
+ * Account-assented yes (the approval-gesture amendment's `account-assented` class): the operator
+ * account replying in its bound chat, or the operator account approving a host review. The named
+ * service authenticates the account; the package cannot re-check it, so it is never `verified`.
  */
 export const accountAssentRecordTypes: readonly string[] = Object.freeze(['operator-chat-yes', 'operator-review-approval']);
 
@@ -16,17 +16,22 @@ export const accountAssentRecordTypes: readonly string[] = Object.freeze(['opera
  * THE declaration the pending approval-gesture amendment enables. The constitution as written
  * (Purpose "an approval is signed by something the operator holds"; Part Eleven §2 "a successful
  * chat reply [is] never yes") does not accept account-authenticated assent, so it stays off until
- * that amendment is approved. Enabling it is this one edit, nowhere else.
+ * that amendment is approved. Enabling it is this one edit, nowhere else. While it is off an
+ * account-assent record decodes as plain `channel-attested` and completes nothing.
  */
 export const accountAuthenticatedAssent: Readonly<{ name: string; enabled: boolean; amendment: string }> =
   Object.freeze({ name: 'account-authenticated-assent', enabled: false, amendment: 'amend-approval-gesture' });
 
 type Declaration = Readonly<{ enabled: boolean }>;
-/** An explicit yes: a verified approval record, or declared account-authenticated assent. */
+/** The class of an authenticated-channel record: `account-assented` only for a declared account yes. */
+export function attestedClass(recordType: string, declaration: Declaration = accountAuthenticatedAssent): Provenance['class'] {
+  return declaration.enabled && accountAssentRecordTypes.includes(recordType) ? 'account-assented' : 'channel-attested';
+}
+/** An explicit yes: a verified approval record, or a declared account-assented yes. */
 export function isExplicitYes(p: Provenance, declaration: Declaration = accountAuthenticatedAssent): boolean {
   const recordType = p.authenticated.recordType;
   if (p.class === 'verified') return verifiedYesRecordTypes.includes(recordType);
-  return declaration.enabled && p.class === 'channel-attested' && accountAssentRecordTypes.includes(recordType);
+  return declaration.enabled && p.class === 'account-assented' && accountAssentRecordTypes.includes(recordType);
 }
 /** A repository action (a landing) needs an approval or review record, never a bare signed yes. */
 export function isRepositoryYes(p: Provenance, declaration: Declaration = accountAuthenticatedAssent): boolean {

@@ -7,7 +7,7 @@ import { canonicalText, hashText, snapshot } from './canonical.js';
 import { schemaRegistry } from './schema.js';
 import { runBoundary } from './framework.js';
 import { causalClock, childContext, sealInContext, sessionFor, trustedIn } from './session.js';
-import { accountAssentRecordTypes, isExplicitYes, isRepositoryYes, verifiedYesRecordTypes } from './explicit-yes.js';
+import { accountAssentRecordTypes, attestedClass, isExplicitYes, isRepositoryYes, verifiedYesRecordTypes } from './explicit-yes.js';
 
 type Obj = Record<string, T.Json>;
 function requireThat(condition: unknown, detail: string): asserts condition {
@@ -145,7 +145,7 @@ function decodeRecord<N extends keyof T.Inventory>(type: N, v: Obj, c: DecodeCon
       if (sessionFor(c)) {
         tagged(v, type, ['adapter', 'method', 'record', 'verifiedAt', 'machine', 'class', 'authenticated']);
         ref(v.adapter, c, 'adapter'); one(v.method, c.register.methods, 'method'); ref(v.machine, c, 'machine');
-        one(v.class, ['verified', 'channel-attested'], 'class');
+        one(v.class, ['verified', 'channel-attested', 'account-assented'], 'class');
         const record = obj(v.record); fields(record, ['reference', 'hash']); const reference = text(record.reference, 'record.reference');
         hash(record.hash, c, 'record.hash', reference);
         const authenticated = obj(v.authenticated); fields(authenticated, ['principal', 'recordType', 'payload']);
@@ -164,7 +164,7 @@ function decodeRecord<N extends keyof T.Inventory>(type: N, v: Obj, c: DecodeCon
       fields(raw, ['principal', 'recordType', 'payload']); const identity = obj(raw.principal); fields(identity, ['id', 'kind']);
       text(identity.id, 'principal.id'); one(identity.kind, ['person', 'agent', 'system'], 'principal.kind'); text(raw.recordType, 'recordType');
       const e = obj(v.evidence, 'authentication evidence');
-      let authClass: 'verified' | 'channel-attested';
+      let authClass: T.Provenance['class'];
       if (e.kind === 'signature') {
         fields(e, ['kind', 'keyId', 'signature']); const key = c.register.keys[text(e.keyId, 'keyId')];
         requireThat(key && key.methods.includes(String(v.method)) && key.adapters.includes(String(v.adapter)), 'key: unregistered for adapter/method');
@@ -180,7 +180,7 @@ function decodeRecord<N extends keyof T.Inventory>(type: N, v: Obj, c: DecodeCon
         authClass = 'verified';
       } else {
         fields(e, ['kind', 'authenticated']); one(e.kind, ['channel', 'fetched-record'], 'evidence.kind');
-        requireThat(e.authenticated === true, 'channel: unauthenticated or sender came from content'); authClass = 'channel-attested';
+        requireThat(e.authenticated === true, 'channel: unauthenticated or sender came from content'); authClass = attestedClass(String(raw.recordType));
       }
       const { evidence: _e, ...rest } = v;
       return seal({ ...rest, class: authClass, authenticated: raw });
@@ -188,6 +188,7 @@ function decodeRecord<N extends keyof T.Inventory>(type: N, v: Obj, c: DecodeCon
     case 'VerifiedPrincipal': {
       tagged(v, type, ['id', 'kind'], ['provenance', 'standing', 'verifiedBy']);
       const p = provenance(c, v.standing !== undefined && v.standing !== 'requester');
+      requireThat(p.class !== 'account-assented', 'principal: an account-assented yes never produces a principal');
       if (v.standing !== undefined) one(v.standing, ['requester', 'operator', 'delegate'], 'standing');
       if (v.verifiedBy !== undefined) { one(v.verifiedBy, c.register.methods, 'verifiedBy'); requireThat(v.verifiedBy === p.method, 'verifiedBy: disagrees with provenance'); }
       const id = text(v.id, 'id'); const kind = one(v.kind, ['person', 'agent', 'system'], 'kind');

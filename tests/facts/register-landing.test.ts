@@ -17,13 +17,15 @@ const assent = vi.hoisted(() => ({ enabled: true }));
 vi.mock('../../src/decode/explicit-yes.js', async importOriginal => {
   const actual = await importOriginal<typeof import('../../src/decode/explicit-yes.js')>();
   return { ...actual,
+    attestedClass: (recordType: string) => actual.attestedClass(recordType, assent),
     isExplicitYes: (p: Parameters<typeof actual.isExplicitYes>[0]) => actual.isExplicitYes(p, assent),
     isRepositoryYes: (p: Parameters<typeof actual.isRepositoryYes>[0]) => actual.isRepositoryYes(p, assent) };
 });
 
 const installation: ExplicitYesInstallation = { adapter: 'host', machine: 'machine-a',
-  chat: { method: 'telegram-sender', boundChatId: 'chat-operator', operatorAccountId: 'tg:alice' },
-  github: { method: 'github-review', repository: 'org/instar', operatorLogin: 'Alice-Op' }, agentSpeaksAsOperatorInChat: false };
+  chat: { method: 'telegram-sender', boundChatId: 'chat-operator', operatorAccountId: 'tg:alice', agentHoldsNoAccess: true },
+  github: { method: 'github-review', repository: 'org/instar', operatorLogin: 'Alice-Op', agentHoldsNoAccess: true },
+  agentSpeaksAsOperatorInChat: false };
 
 function setup() {
   assent.enabled = true;
@@ -47,13 +49,15 @@ function setup() {
     const action = { kind: 'merge', scope: f.scope };
     return { requestId, authorizationId: `authorization:${requestId}`, approver: f.alice, requestedBy: f.bob, under: f.g.id,
       action: action.kind, scope: f.scope, artifact, base: 'base:1', kind: { kind: 'approval' }, issuedAt: 50, expiresAt: 500,
+      chatMessageId: `msg:${requestId}`, head: `head:${requestId}`,
       requestDigest: authorizationRequestDigest({ approver: f.alice, action, artifact, base: 'base:1' }), ...overrides };
   }
   const chat = (requestId: string, messageId = '901', over: Record<string, unknown> = {}): ExplicitYesObservation =>
-    ({ kind: 'chat-reply', chatId: 'chat-operator', messageId, senderAccountId: 'tg:alice', text: `yes ${requestId}`, at: f.now, ...over }) as ExplicitYesObservation;
+    ({ kind: 'chat-reply', chatId: 'chat-operator', messageId, replyToMessageId: `msg:${requestId}`, senderAccountId: 'tg:alice',
+      text: 'yes', at: f.now, ...over }) as ExplicitYesObservation;
   const review = (requestId: string, reviewId = 'r-77', over: Record<string, unknown> = {}): ExplicitYesObservation =>
     ({ kind: 'github-review', repository: 'org/instar', pullRequest: 12, pullRequestBody: `Approval request: ${requestId}\n`,
-      reviewId, state: 'APPROVED', reviewerLogin: 'alice-op', at: f.now, ...over }) as ExplicitYesObservation;
+      reviewId, commitId: `head:${requestId}`, state: 'APPROVED', reviewerLogin: 'alice-op', at: f.now, ...over }) as ExplicitYesObservation;
   function authorize(req: ExplicitYesRequest, observation: ExplicitYesObservation, consumed: readonly string[] = [],
     install: ExplicitYesInstallation = installation) {
     const record = value(produceExplicitYes(req, install, observation, consumed, f.c));
@@ -71,7 +75,7 @@ it('a chat yes enters force, a review yes supersedes it, and both survive a rest
   const s = setup(), first = s.content('one'), second = s.content('two');
   const landing = s.open();
   const yes1 = value(s.authorize(s.request('req-1', first.hash), s.chat('req-1')));
-  expect(yes1.explicitYes.class).toBe('channel-attested');
+  expect(yes1.explicitYes.class).toBe('account-assented');
   expect(yes1.explicitYes.record.reference).toBe('telegram:chat:chat-operator:message:901');
   const v1 = value(landing.land(yes1, s.version('v1', first), s.f.scope, s.landing, s.f.now as unknown as Json));
   const extraction = value(extractGovernedChain(value(landing.spine()), { ...s.ctx, facts: s.factsNow() }));
@@ -127,7 +131,11 @@ it('the producer admits only the named request, from the pinned account, inside 
   value(produce(s.chat('req-1', '903', { text: '  Approve req-1 ' })));
   refused(produce(s.chat('req-1', '904', { chatId: 'chat-other' })), 'bound chat');
   refused(produce(s.chat('req-1', '905', { senderAccountId: 'tg:mallory' })), 'verified operator account');
-  for (const text of ['yes', 'yes req-2', 'no req-1', 'yes req-1 please', 'sure, req-1']) refused(produce(s.chat('req-1', '906', { text })), 'exactly');
+  refused(produce(s.chat('req-1', '907', { replyToMessageId: 'msg:req-2' })), 'own message');
+  refused(produce(s.chat('req-1', '908', { replyToMessageId: null })), 'own message');
+  refused(produce(s.chat('req-1'), installation, { ...req, chatMessageId: null }), 'own message');
+  refused(produce(s.chat('req-1'), { ...installation, chat: { ...installation.chat, agentHoldsNoAccess: false } }), 'P-02');
+  for (const text of ['yes req-2', 'no', 'no req-1', 'yes req-1 please', 'sure', 'yes!']) refused(produce(s.chat('req-1', '906', { text })), 'exactly');
   refused(produce(s.chat('req-1'), installation, { ...req, expiresAt: 99 }), 'lifetime');
   refused(produce(s.chat('req-1'), installation, { ...req, issuedAt: 101 }), 'lifetime');
   // Where the agent may speak through the operator's chat account, only the review path counts.
@@ -137,8 +145,28 @@ it('the producer admits only the named request, from the pinned account, inside 
   refused(produce(s.review('req-1', 'r-2', { reviewerLogin: 'EchoOfDawn' })), 'pinned operator GitHub');
   refused(produce(s.review('req-1', 'r-3', { pullRequestBody: 'Approval request: req-10' })), 'does not name');
   refused(produce(s.review('req-1', 'r-4', { repository: 'org/fork' })), 'pinned repository');
+  refused(produce(s.review('req-1', 'r-5', { commitId: 'head:moved' })), 'exact head');
+  refused(produce(s.review('req-1'), { ...installation, github: { ...installation.github!, agentHoldsNoAccess: false } }), 'P-02');
   refused(produce(s.review('req-1'), { ...installation, github: null }), 'no pinned operator GitHub');
   refused(produce(s.chat('req-1'), installation, { ...req, requestedBy: s.f.alice }), 'own request');
+});
+
+it('an account-assented yes never produces a principal; off, the same record is plain channel-attested', () => {
+  const s = setup();
+  const reply = { principal: { id: 'mallory', kind: 'person' }, recordType: 'operator-chat-yes', payload: { id: 'mallory', kind: 'person' } };
+  const bytes = value(canonical(reply)); s.f.capture(bytes.bytes, 'telegram:chat:chat-operator:message:999');
+  const input = { type: 'Provenance', schemaVersion: 1, adapter: 'host', method: 'telegram-sender',
+    record: { reference: 'telegram:chat:chat-operator:message:999', hash: bytes.hash }, verifiedAt: s.f.now, machine: 'machine-a',
+    evidence: { kind: 'channel', authenticated: true } };
+  const principal = (p: unknown) => decode('VerifiedPrincipal', { type: 'VerifiedPrincipal', schemaVersion: 1, id: 'mallory', kind: 'person' },
+    { ...s.f.ctx.decode, provenance: p as never });
+  const assented = value(decode('Provenance', input, s.f.ctx.decode));
+  expect(assented.class).toBe('account-assented');
+  refused(principal(assented), 'never produces a principal');
+  assent.enabled = false;
+  const attested = value(decode('Provenance', input, s.f.ctx.decode));
+  expect(attested.class).toBe('channel-attested');
+  value(principal(attested));
 });
 
 it('a lost governing payload is refused loudly on restart, never skipped', () => {
