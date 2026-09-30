@@ -193,7 +193,8 @@ describe('Rule 11 and G6: recall reaches a paraphrase by meaning through the rec
   /** What reached the prepared answer input as recalled originals. */
   const recalledIds = (packet: Packet) => (packet.recalled as { id?: string; user?: string }[] ?? []).map(item => `${item.id} ${item.user ?? ''}`);
 
-  it('a source indexed by the real summary pass is reached later through the real doorway under lexical-slot pressure', async () => {
+  // Two passes of 24+ durable turns each: the budget covers a real-disk temp root, not only the RAM root.
+  it('a source indexed by the real summary pass is reached later through the real doorway under lexical-slot pressure', { timeout: 60000 }, async () => {
     for (const indexed of [true, false]) {
       const { dir, journal, worker } = live(context => indexed && context.includes(targetId) ? [{ source: targetId, terms: cues }] : []);
       try {

@@ -152,7 +152,8 @@ setTimeout(() => { appendFileSync(process.argv[2], 'end ' + process.argv[3] + '\
   const owner = createResourceOwner(ceilings({ aggregate: { memoryBytes: 150 * 1024 * 1024, launches: 3 } }));
   await owner.attach({ priorityGate: shouldRunScheduledPriority });
   const answer = owner.execute(input(root, hold, [log, 'answer']), 'answer');
-  await settle(600);
+  // Poll for the elevation rather than sleep a fixed time: the child's own startup is load-dependent.
+  for (const deadline = Date.now() + 10000; owner.snapshot().usage.level === 'normal' && Date.now() < deadline;) await settle(50);
   expect(owner.snapshot().usage.level).not.toBe('normal');
   const maintenance = await owner.execute(input(root, hold, [log, 'maintenance']), 'maintenance');
   expect(maintenance).toMatchObject({ code: 0, limited: false });
