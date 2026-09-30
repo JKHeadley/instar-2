@@ -7,7 +7,9 @@
 // the only code that starts a process. Generated code runs inside Eight's shipped confinement
 // profile (deploy/macos/fixed-worker/worker.sb) with an empty environment, under a fixed runner whose
 // main thread enforces the wall bound itself: the child ends at its deadline even if this launcher
-// dies. Fixed-argv repository tools run on the host with a scrubbed environment plus only the
+// dies. The runner reports on its own channel the moment that bound is armed; the launcher's
+// backstop is measured from that readiness, not from the spawn, so the operating system's
+// admission of a freshly pinned runtime (unbounded under host load) is never charged to the work. Fixed-argv repository tools run on the host with a scrubbed environment plus only the
 // credentials the owner resolves, after their paths are resolved physically inside the granted
 // roots. This file owns process, clock and filesystem.
 import { randomUUID } from 'node:crypto';
@@ -24,7 +26,8 @@ import { SELF_HOST_HARNESS, SELF_HOST_STALL_COVERAGE } from './stall-coverage.js
 import { createSelfHostOwners } from './self-host-owners.ts';
 import { compositionClosure, compositionDigest, currentRuntime, fileDigest } from '../../scripts/composition-digest.mjs';
 
-export const CONFINEMENT_LIMITS = Object.freeze({ wallMs: 20000, memoryMb: 256, outputBytes: 4096, hostToolMs: 600000, graceMs: 5000 });
+// startMs bounds spawn-to-readiness only (a runtime that never starts); wallMs bounds the work from readiness.
+export const CONFINEMENT_LIMITS = Object.freeze({ wallMs: 20000, memoryMb: 256, outputBytes: 4096, hostToolMs: 600000, graceMs: 5000, startMs: 120000 });
 const WORKER_PROFILE = new URL('../../deploy/macos/fixed-worker/worker.sb', import.meta.url);
 const DECLARATIONS = new URL('../../src/assembly/harness.declarations.json', import.meta.url);
 const REPOSITORY = new URL('../../', import.meta.url);
@@ -92,10 +95,15 @@ export function selfHostCompositionEvidence(declarations = JSON.parse(readFileSy
     supported: digest !== null && declared === digest && runtime === running };
 }
 
-/** The confined runner: the fixed program the profile lets run. Its main thread holds the wall bound. */
+/**
+ * The confined runner: the fixed program the profile lets run. Its main thread holds the wall bound,
+ * and reports readiness on descriptor 3 (the launcher's readiness pipe) once that bound is armed.
+ */
 const RUNNER_SOURCE = `import { Worker } from 'node:worker_threads';
+import { closeSync, writeSync } from 'node:fs';
 const wallMs = Number(process.argv[2]);
 setTimeout(() => { process.stdout.write('\\n@expired\\n'); process.exit(124); }, wallMs);
+writeSync(3, '@ready\\n'); closeSync(3);
 let input = '';
 process.stdin.setEncoding('utf8');
 for await (const chunk of process.stdin) input += chunk;
@@ -194,7 +202,7 @@ const bootIdentity = () => `boot:${Math.round(Date.now() / 1000 - uptime())}`;
  * The physical release leaf the M1 service calls after its durable decision: it starts exactly the
  * plan recorded for the admitted operation, and reports what actually happened to that process.
  */
-function createReleaseLeaf({ release, resolvePlan, resolveCredential, bootId, wallMs }) {
+export function createReleaseLeaf({ release, resolvePlan, resolveCredential, bootId, wallMs, limits = CONFINEMENT_LIMITS }) {
   const processes = new Map(), byOperation = new Map();
   const limit = text => text.length > 1024 * 1024 ? text.slice(-1024 * 1024) : text;
   const start = (closure, identity) => {
@@ -202,9 +210,9 @@ function createReleaseLeaf({ release, resolvePlan, resolveCredential, bootId, wa
     let child, bound;
     if (plan.mode === 'confined') {
       bound = plan.wallMs;
-      child = spawn('/usr/bin/sandbox-exec', ['-f', release.profile, release.runtime, `--max-old-space-size=${CONFINEMENT_LIMITS.memoryMb}`,
-        release.runner, String(plan.wallMs), String(CONFINEMENT_LIMITS.memoryMb)],
-      { cwd: release.slot, env: {}, shell: false, detached: true, stdio: ['pipe', 'pipe', 'pipe'] });
+      child = spawn('/usr/bin/sandbox-exec', ['-f', release.profile, release.runtime, `--max-old-space-size=${limits.memoryMb}`,
+        release.runner, String(plan.wallMs), String(limits.memoryMb)],
+      { cwd: release.slot, env: {}, shell: false, detached: true, stdio: ['pipe', 'pipe', 'pipe', 'pipe'] });
     } else {
       for (const path of plan.paths) { const refusal = physicalScopeRefusal(path, plan.roots); if (refusal) throw Error(`self-host: ${refusal}`); }
       const env = { PATH: process.env.PATH ?? '', HOME: process.env.HOME ?? '', LANG: 'C.UTF-8', NO_COLOR: '1' };
@@ -213,7 +221,7 @@ function createReleaseLeaf({ release, resolvePlan, resolveCredential, bootId, wa
         if (!resolved) throw Error(`self-host: credential ${reference} is not resolvable by its owner`);
         env[resolved.env] = resolved.value;
       }
-      bound = CONFINEMENT_LIMITS.hostToolMs;
+      bound = limits.hostToolMs;
       const [command, ...rest] = plan.argv;
       child = spawn(command, rest, { cwd: plan.cwd, env, shell: false, detached: true, stdio: ['pipe', 'pipe', 'pipe'] });
     }
@@ -229,13 +237,22 @@ function createReleaseLeaf({ release, resolvePlan, resolveCredential, bootId, wa
       state.exit = { code, signal, expired: code === 124 && /(^|\n)@expired\n/u.test(state.stdout) || state.killedAtBound === true };
       done();
     }));
-    // The launcher's own backstop only; the confined child enforces its deadline itself.
-    state.backstop = setTimeout(() => { state.killedAtBound = true; try { process.kill(-child.pid, 'SIGKILL'); } catch { /* already gone */ } },
-      bound + CONFINEMENT_LIMITS.graceMs);
+    // The launcher's own backstop only; the confined child enforces its deadline itself. A confined child
+    // gets startMs to report readiness, then its bound plus grace from that readiness; a host tool's bound runs from spawn.
+    const kill = () => { state.killedAtBound = true; try { process.kill(-child.pid, 'SIGKILL'); } catch { /* already gone */ } };
+    const startup = plan.mode === 'confined' ? limits.startMs : 0;
+    if (startup) {
+      state.backstop = setTimeout(kill, startup);
+      child.stdio[3].on('error', () => {});
+      child.stdio[3].once('data', () => {
+        if (state.exit) return;
+        clearTimeout(state.backstop); state.backstop = setTimeout(kill, bound + limits.graceMs);
+      });
+    } else state.backstop = setTimeout(kill, bound + limits.graceMs);
     processes.set(identity, state); byOperation.set(closure.operation, state);
     return { uid: process.getuid(), pid: child.pid, processStartIdentity: { bootId, uniqueId: String(child.pid), startTicks: String(startTicks) },
-      originalDeadline: { ownerClockReference: 'clock:self-host-wall', ownerValidUntil: state.launchedAt + bound, bootId,
-        continuousTicks: String(startTicks + BigInt(bound) * 1_000_000n), timebaseNumer: '1', timebaseDenom: '1' },
+      originalDeadline: { ownerClockReference: 'clock:self-host-wall', ownerValidUntil: state.launchedAt + startup + bound, bootId,
+        continuousTicks: String(startTicks + BigInt(startup + bound) * 1_000_000n), timebaseNumer: '1', timebaseDenom: '1' },
       evidenceReferences: [`spawned:${child.pid}`, `plan:${closure.digest}`] };
   };
   const observe = identity => {

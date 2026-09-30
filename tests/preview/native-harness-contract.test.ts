@@ -7,7 +7,7 @@
 // architecture lint). The journal runner case is provider and conversation-restart evidence; its
 // tuple is declared unproven because it is not the shared full-port contract.
 import { describe, expect, it } from 'vitest';
-import { mkdtempSync, readFileSync, realpathSync, rmSync } from 'node:fs';
+import { mkdtempSync, readFileSync, realpathSync, rmSync, writeFileSync } from 'node:fs';
 import { spawnSync } from 'node:child_process';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
@@ -19,7 +19,7 @@ import { offlineProfile, successiveWorld } from './successive-fixture.js';
 import { encoded } from './canonical.js';
 import { cutoverHarness } from './journal-cutover-harness.mjs';
 import { SELF_HOST_CONTEXT, doorwayProvider, selfHost } from './self-host.mjs';
-import { createSelfHostHarness, latchStop, openRecordLog, readDurable, stoppedAt } from './self-host-harness.mjs';
+import { CONFINEMENT_LIMITS, confinedRelease, createReleaseLeaf, createSelfHostHarness, latchStop, openRecordLog, readDurable, stoppedAt } from './self-host-harness.mjs';
 import { dispatchOwnedProvider, ownerStoreFacts, providerAttemptsOf, providerStores } from './self-host-owners.ts';
 import { currentRuntime } from '../../scripts/composition-digest.mjs';
 import { hashBytes } from '../../src/facts/index.js';
@@ -214,3 +214,40 @@ describe.each(Object.keys(DOORWAY_CONFORMANCE))('doorway %s captured-frame route
     active = true;
   });
 });
+
+// Rules 2, 37 (D14 §9): the confined launch deadline is the work's bound, measured from the runner's
+// readiness (its own wall bound armed), never from the spawn: the operating system's admission of a
+// freshly pinned runtime takes unbounded time under host load and is not the work. Only startMs
+// bounds spawn-to-readiness. Each side is exercised with a stand-in runner inside the real confinement.
+it('the confined launch deadline runs from readiness, and a runner that never becomes ready is still ended', async () => {
+  const root = realpathSync(mkdtempSync(join(tmpdir(), 'native-deadline-')));
+  try {
+    const release = confinedRelease(root);
+    const launch = async (name, source, limits, wallMs) => {
+      writeFileSync(join(release.release, 'bin', `${name}.mjs`), source);
+      const leaf = createReleaseLeaf({ release: { ...release, runner: join(release.release, 'bin', `${name}.mjs`) }, bootId: 'boot:1', wallMs,
+        limits: { ...CONFINEMENT_LIMITS, ...limits }, resolvePlan: () => ({ plan: { mode: 'confined', wallMs } }) });
+      const began = performance.now();
+      leaf.start({ operation: name, digest: name }, name);
+      const state = leaf.byOperation.get(name);
+      state.child.stdin.end('');
+      await state.settled;
+      return { observed: leaf.observe(name), code: state.exit.code, elapsed: performance.now() - began };
+    };
+    const ready = "import { closeSync, writeSync } from 'node:fs'; writeSync(3, '@ready\\n'); closeSync(3);\n";
+    // A start slower than bound plus grace is not the work: the runner exits cleanly and is never killed.
+    const slow = await launch('slow-start', `Atomics.wait(new Int32Array(new SharedArrayBuffer(4)), 0, 0, 1500);\n${ready}process.exit(0);\n`,
+      { startMs: 60000, graceMs: 100 }, 300);
+    expect(slow).toMatchObject({ code: 0, observed: { state: 'exited', reason: 'worker-exit' } });
+    expect(slow.elapsed).toBeGreaterThan(1500);
+    // Ready work that overruns its bound is still ended at bound plus grace after readiness.
+    const overrun = await launch('overrun', `${ready}setInterval(() => {}, 1000);\n`, { startMs: 60000, graceMs: 100 }, 300);
+    expect(overrun).toMatchObject({ code: null, observed: { state: 'expired', reason: 'deadline' } });
+    expect(overrun.elapsed).toBeGreaterThanOrEqual(400);
+    expect(overrun.elapsed).toBeLessThan(60000);
+    // A runner that never reports readiness is ended at startMs.
+    const silent = await launch('never-ready', 'setInterval(() => {}, 1000);\n', { startMs: 1500, graceMs: 100 }, 300);
+    expect(silent).toMatchObject({ code: null, observed: { state: 'expired', reason: 'deadline' } });
+    expect(silent.elapsed).toBeGreaterThanOrEqual(1500);
+  } finally { rmSync(root, { recursive: true, force: true }); }
+}, 120000);
