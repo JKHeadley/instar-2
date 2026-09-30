@@ -7,7 +7,7 @@
       "stage": "build",
       "artifact": {
         "path": "tests/preview/journal-agent.test.ts",
-        "hash": "sha256:89bb7d3a129ea8b6b10f75eb00e2cb09ff5d54fcbcfe9044979eb4ba57a44f19"
+        "hash": "sha256:b48cda37e7b94b5c347fce864ca635654debabc62db9f69d3169ee32d919a352"
       }
     },
     {
@@ -63,7 +63,7 @@
       "stage": "build",
       "artifact": {
         "path": "tests/preview/reply-check.test.ts",
-        "hash": "sha256:d1ecc7ab375e6a8474069f9e70a515ef59245350ca3628939fd507ba06935f26"
+        "hash": "sha256:67390f72942200f48c5e25e812b9ff5073d3ba4262d378c44c67533e7ae45cd9"
       }
     },
     {
