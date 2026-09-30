@@ -285,6 +285,13 @@ it('gives the contextual reviewer the attached investigation record and the gove
   expect(JSON.parse(replyReviewContext(prompt, CLAIM, ['claims_blocked'])).declaredObligations).toBeUndefined();
   expect(replyReviewQuestion(['claims_blocked'])).toContain(DECLARED_OBLIGATIONS_GUIDE);
   expect(replyReviewQuestion(['credential'])).not.toContain(DECLARED_OBLIGATIONS_GUIDE);
+  // Plan #111: the settled records count, and the verdict word carries the conclusion. Live L9 (update 969389755) the
+  // reviewer wrote "unrecorded_blocker: VIOLATION | none — declaredObligations.blocker matches this exact claim".
+  expect(REPLY_RULES.unrecorded_blocker).toContain('packet.declaredObligations.settled');
+  expect(DECLARED_OBLIGATIONS_GUIDE).toContain('restating a settled limit needs no new record');
+  expect(DECLARED_OBLIGATIONS_GUIDE).toContain('VIOLATION only when one is not, with a reason quoting that claim');
+  for (const rules of [[], ['unrecorded_blocker'], ['credential']] as ReplyRule[][])
+    expect(replyReviewQuestion(rules)).toContain('A reason that finds no breach belongs on a PASS line.');
 });
 
 
@@ -669,6 +676,67 @@ it('sends a true can\'t-do answer once its correction declares the investigation
       const again = openPreviewJournal(w.path, key);
       expect(openBlockers(again.view).length, label).toBe(sends ? 1 : 0);
       again.close();
+    } finally { rmSync(root, { recursive: true, force: true }); }
+  }
+});
+
+// Plan #111 (live, L6 00:05 and L7 02:07, updates 969389707 and 969389730): a repeated "Can you <task> on the website
+// for me?" drew the real model's true can't-do answer restating a limit it had already settled (open blocker 4, then 8),
+// declaring no new record because the answer packet says never to renew one. The reviewer was shown only this reply's
+// own record, judged the restatement unrecorded, and the reply was held behind the notice. The settled record is now
+// part of what the reviewer judges against; a limit no open, current record covers is still held.
+const DMV_ASK = 'Can you renew my car registration on the website for me?';
+const DMV_CLAIM = 'I have no tools in this preview, so I can\'t browse or fill out forms on the DMV or state website.';
+const DMV_FIRST = `I can't do that. ${DMV_CLAIM} You'd need to renew your car registration yourself on the relevant government website, by phone, or in person.`;
+const DMV_AGAIN = 'No, I still can\'t — I have no tools in this preview, so I can\'t browse or fill out forms on the DMV or state website. You\'d need to renew your car registration yourself on the relevant government website, by phone, or in person.';
+const LIBRARY_CLAIM = 'I have no tools in this preview, so I can\'t browse or fill out forms on the library website.';
+it('judges a restated can\'t-do answer against the limit it already settled, and still holds one no current record covers (plan #111; Rules 20-23, 97, 99)', async () => {
+  // Stands in for the reviewer reading the guide: a final claim is recorded when this reply's blocker, or one settled
+  // entry, records the same limit (here: the same no-tools matter).
+  const matter = (text: string) => ['DMV', 'library'].find(word => text.includes(word));
+  const reviewer = { jev: (text: string) => (text.includes('can\'t browse') ? { unrecorded_blocker: 0.98 } : {}),
+    verdict: (context: Record<string, unknown>) => {
+      const declared = context.declaredObligations as { blocker: { claim: string; constraint: string } | null;
+        settled?: { claim: string; constraint: string }[] };
+      const records = [declared.blocker, ...(declared.settled ?? [])];
+      return (records.some(record => record?.constraint === 'no-tools' && matter(record.claim) === matter(String(context.candidateReply)))
+        ? 'pass' : 'violation') as 'pass' | 'violation';
+    } };
+  for (const [label, first, between, sends] of [
+    ['restated settled limit', { reply: DMV_FIRST, claim: DMV_CLAIM }, 'none', true],
+    ['settled limit on another matter', { reply: LIBRARY_CLAIM, claim: LIBRARY_CLAIM }, 'none', false],
+    ['settled limit since cleared', { reply: DMV_FIRST, claim: DMV_CLAIM }, 'cleared', false],
+    ['settled limit due for recheck', { reply: DMV_FIRST, claim: DMV_CLAIM }, 'due', false],
+  ] as const) {
+    const root = origin();
+    try {
+      const w = world(root, { maxBytes: 16000, review: reviewer, answer: question => question === 'First'
+        ? { reply: first.reply, blocker: blocker({ claim: first.claim, avenues: [{ avenue: 'browse the website', disposition: 'outside-standing',
+          evidence: 'externalTools' }], outsideAction: 'Do it yourself on the website.' }) }
+        : question === 'Bookings reopened, try again.' ? { reply: 'It is now possible.', blockerRechecks: [{ id: 0, outcome: 'cleared' }] }
+          // The real model's second answer: the settled limit restated, no new record declared.
+          : question === DMV_ASK ? DMV_AGAIN : 'Noted.' });
+      await w.say('First');
+      expect(openBlockers(w.journal.view), label).toHaveLength(1);
+      if (between === 'cleared') await w.say('Bookings reopened, try again.');
+      if (between === 'due') w.clock.now += 31 * DAY;
+      const before = w.reviews.length;
+      await w.say(DMV_ASK);
+      const turn = w.journal.view.order.find(item => item.text === DMV_ASK)!;
+      expect(w.reviews.length, label).toBe(before + 1);
+      expect(turn.answerBlocker, label).toBeUndefined();
+      // Live 969389730: the writer relied on a settled record of a different action (looking up a bill, not paying it).
+      if (between === 'none') expect(w.contexts.get(DMV_ASK), label).toContain('A settled blocker covers only its own claim');
+      if (sends) {
+        expect(w.sent.at(-1), label).toBe(`PREVIEW — ${DMV_AGAIN}`);
+        expect(turn.heldReview, label).toBeUndefined();
+      } else {
+        expect(w.sent.at(-1), label).toContain(HOLDING_REPLY.replace(/^PREVIEW — /u, ''));
+        expect(turn.heldReview?.objections, label).toEqual(['unrecorded_blocker']);
+      }
+      const settled = (w.reviews.at(-1)!.declaredObligations as { settled: { claim: string }[] }).settled;
+      expect(settled.map(item => item.claim), label).toEqual(between === 'none' ? [first.claim] : []);
+      w.journal.close();
     } finally { rmSync(root, { recursive: true, force: true }); }
   }
 });
