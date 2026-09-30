@@ -4,6 +4,12 @@ _Generated from `13-the-verification-holders.changelog.json` by `scripts/render-
 The document itself reads as a first version; every change to it is recorded here, newest first,
 each linked to the git change that made it (rule 91).
 
+## Revision 7 · 2026-09-29 · approved — Operator Justin (verified) approved the exact amendment wording with 'Yes' at 18:57 PDT 2026-09-29 in topic 102965 (message 2227093), relayed to the desk by the topic session and observer note #91: 'Instar may accept a recorded, one-use approval of an exact, unexpired request from an operator account held with a named service that the agent cannot use or administer, without a separate device signature or independent approval verifier, while independently enforced safeguards remain independently administered.' His 18:08 yes adopted the approval design (plan rows #91, #93).
+
+- **Repository protection accepts part one's `account-assented` review under P-02's host review route alongside a verified signed review record.** — Part nine literally required a signed review record, which would refuse the adopted GitHub path. _(lanes/astra-approval-necessity-ruling.md (section 4 decision sentence); LIVE-PATH-PLAN.md row #91; topic 102965, 18:08 PDT 2026-09-29)_
+
+Approved in: PR #139.
+
 ## Revision 6 · 2026-09-23 · approved — Astra Occam ruling supersedes the earlier Rule 116 P9-NF-67 proposal following Justin's 2026-09-23 adoption of the simplicity audit. Exact content approved by the operator in topic 52075 at 15:58Z 2026-09-24 ('approved'); merged as PR 116.
 
 - **Replace the proposed Rule 116 checker contract with simplestRobustRoute in the existing independent design and landing review; withdraw P9-NF-67 from the governing fixture and disposition tables.** — Semantic adequacy belongs to the existing reviewer; a separate simplicity classifier, checker or gate adds machinery without a distinct protection. _(astra-occam-standard-ruling.md section 1; earlier P9-NF-67 proposal remains recorded in astra-standard-skills-over-scripts-ruling.md)_

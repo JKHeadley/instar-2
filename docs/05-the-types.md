@@ -76,24 +76,43 @@ known identity from an authenticated channel, never from a name that appears in 
 with **requester** standing and nothing more; a name that appears in content, or a channel the
 adapter did not authenticate, produces an `UnresolvedInput`, never a principal. **Every value
 that confers or exercises standing above requester — a grant, a revocation, an authorization, an
-operator or delegate principal — decodes only from `verified` provenance.** The decoder then
+operator or delegate principal — decodes only from `verified` provenance, except the one-use
+explicit yes that `account-assented` provenance may carry, below.** The decoder then
 cross-checks every identity-bearing field in the bytes against the provenance and refuses on any
 disagreement.
 
 Exercise itself splits in two, and the wall above binds the half that changes the record of
 authority. An **authority-conferring exercise** — issuing or revoking a grant, minting an
 `Authorization`, changing a protected boundary, binding or re-binding a conversation — decodes
-only from `verified` provenance, always. A **directive exercise** — the day-to-day direction of
+only from `verified` provenance, except that an `account-assented` yes may complete one exact
+prepared request; binding or re-binding a conversation is `verified` always. A **directive exercise** — the day-to-day direction of
 work already within granted standing — may decode from `channel-attested` evidence *when and
 only when* a recorded, `verified`-provenance **conversation binding** already grants the
 standing being directed, and the attested evidence does exactly one job: it selects the bound
 principal within the bound scope. Attestation never establishes, widens, or transfers standing;
 a conversation without a binding yields requester standing and nothing more, exactly as above.
 
+One narrow third class carries the purpose's account-authenticated approval. A
+`channel-attested` reply decodes as **`account-assented`** when, and only when, every condition
+holds: it comes from the operator account that a recorded `verified`-provenance conversation
+binding names (the operator's own bound chat) or that the current P-02 policy names (a host
+review under the operator's account); the current P-02 policy records that the agent holds no
+session, credential, delegated sender or recovery path to that account; its own record binds it
+to one prepared, recorded authorization request (a reply to that request's message, or a review
+of that request's exact head), whose digest, action, scope, base and expiry it therefore
+answers; the request is unexpired and its base current; and the platform's message or review id
+has not been consumed before. Such a yes may complete exactly that request's `Authorization`,
+`StandingGrant` or `Revocation`, once. It never produces a principal, never binds or re-binds a
+conversation, supports no other value, and is never reported as `verified`: the package cannot
+re-check it, and the guarantee rests on the named service and the durable record of the reply.
+Wherever another part requires a `verified` explicit yes, an `account-assented` yes meeting
+these conditions satisfies it; every other `verified` requirement is unchanged.
+
 This is the honest shape of the guarantee. A faulty adapter can lie about what channel it
 authenticated, so the package does not promise to catch every lie; it promises that nothing the
 package cannot verify itself can mint operator or delegate standing, an authorization, or a
-revocation, and that requester standing rests on an attested authenticated channel, never on
+revocation, other than the one-use `account-assented` yes whose reliance on the named service
+is stated above, and that requester standing rests on an attested authenticated channel, never on
 content. Whether requester standing should also require package-verified evidence is put to the
 operator as an open question below.
 
@@ -104,7 +123,9 @@ fails to compile; the Provenance decoder is the only producer of a Provenance; a
 with an internally matching hash decodes as `channel-attested`, never `verified`; decoders for
 grants, revocations, authorizations, and non-requester principals refuse `channel-attested`
 provenance, refuse when the bytes disagree with the provenance, and refuse when no provenance is
-supplied; a sender from an unauthenticated channel or from content yields `UnresolvedInput`.
+supplied; they accept `account-assented` provenance only as the one-use explicit yes of its own
+request, a reply failing any of its conditions stays `channel-attested`, and a second use of the
+same message or review id refuses; a sender from an unauthenticated channel or from content yields `UnresolvedInput`.
 
 ### 2. Equality is declared, three ways
 
@@ -505,8 +526,10 @@ require an approval from a non-agent account before a change to a protected path
 the agent's account cannot change those rules, and the decoder's `explicitYes` provenance is
 that approval record in a form the package can mark `verified`: a host-signed delivery of the
 approval event, checked against the host's signing secret in the registered key set. A record
-the adapter merely fetched over the host's API is `channel-attested` and does not qualify, so
-the anchor stands only where the host signs its events. The agent then performs the merge,
+the adapter merely fetched over the host's API is `channel-attested` and does not qualify on its
+own, so the anchor stands where the host signs its events, or where P-02 selects the host review
+route and the fetched review decodes as `account-assented` under the construction convention's conditions, the
+branch rules still requiring that operator account's approval. The agent then performs the merge,
 exactly as rule 82 wants; the merge event proves nothing by itself and is not the record. For a **dashboard-governed artifact** or a
 **runtime artifact on the agent's own machine**, no such anchor exists: an agent with filesystem
 authority can edit the decoder, the list, or the artifact, and a probe that later notices the
@@ -538,9 +561,11 @@ measurement at verification, the machine that verified, and the class — `verif
 package re-checked the evidence itself (a signature against the registered key set, a host-signed
 delivery or event, a session token it minted), `channel-attested` when the adapter attests the
 value came through a channel it authenticated and the package cannot re-check it (a platform
-sender id; a fetched record, even with a matching hash). A principal, a grant, a revocation, and
+sender id; a fetched record, even with a matching hash), `account-assented` when such a reply
+meets the construction convention's one-use explicit-yes conditions. A principal, a grant, a revocation, and
 an authorization each carry one, and their decoders cross-check every identity-bearing field
-against it. Anything above requester standing requires `verified`. (Rules 28, 29, 98.)
+against it. Anything above requester standing requires `verified`, except the one-use explicit
+yes an `account-assented` provenance may carry. (Rules 28, 29, 98.)
 
 **Conflict.** The result of comparing two records with the same identity whose immutable
 fields disagree: both versions, their origins, and the fields that differ. It is a value, not an
@@ -856,7 +881,7 @@ term entries; until the register exists, they are defined here.
 | **scope** | noun | A closed set of registered places and action kinds where a standing, directive, or authorization applies. Compared by inclusion. |
 | **freshness** | field | The window after an observation during which its claim may be relied on. Never unbounded. |
 | **strength** | field | How an evidence claim was produced: `proof`, `observation`, `attestation`, or `inference`. An aggregate keeps the weakest. |
-| **provenance** | noun | Where an authority-bearing value came from, as decoded by the package from authentication evidence: the adapter, the method, the authenticated record and its capture hash, the time, the machine, and its class — `verified` when the package re-checked the evidence (a signature, a host-signed event, a token it minted), `channel-attested` when the adapter attests an authenticated channel the package cannot re-check. |
+| **provenance** | noun | Where an authority-bearing value came from, as decoded by the package from authentication evidence: the adapter, the method, the authenticated record and its capture hash, the time, the machine, and its class — `verified` when the package re-checked the evidence (a signature, a host-signed event, a token it minted), `channel-attested` when the adapter attests an authenticated channel the package cannot re-check, `account-assented` when such a reply meets the one-use explicit-yes conditions of the construction convention. |
 | **explicit-yes record** | noun | The authenticated record in which an approver said yes: a host's review-approval event, a dashboard action, a signed reply. A merge event is not one. An authorization decodes only from one. |
 | **conflict** | noun | Two records with the same identity whose immutable fields disagree. A value the fact spine records for a person to resolve, never a comparison result of true or false. |
 
