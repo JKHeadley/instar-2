@@ -1230,7 +1230,8 @@ async function main() {
         },
         summaryReview: async (state, through) => {
           const start = performance.now();
-          const question = 'Review this rolling summary against its full supplied conversation packet. Check every commitment, person, correction and dated item, and reject invented facts. Return only JSON {"verdict":"pass"|"violation","reason":string}. Pass only when coverage is faithful; uncertainty is a violation. Give a brief evidence-based reason.';
+          // Also the faithfulness cascade's stronger tier (observer #102): it decides what Jev left unsure.
+          const question = 'Review this rolling summary against its full supplied conversation packet. Check every commitment, person, correction and dated item, and reject invented facts. It also violates if it loses or contradicts a still-active fact, preference or person detail, or keeps a claim the operator corrected or asked to forget. Active memory records and open commitments are carried separately, so their absence from the prose alone is not loss, and greetings or repeated wording need not be kept. Return only JSON {"verdict":"pass"|"violation","reason":string}. Pass only when coverage is faithful; uncertainty is a violation. Give a brief evidence-based reason.';
           const id = `summary:${through}:review`;
           let prepared;
           try {
