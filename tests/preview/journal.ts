@@ -16,12 +16,12 @@ import { buildWorkIndex, detectOverlaps, workForTopic, type SessionActivity } fr
 import { MAX_RAISED_SUBSCRIPTION_PROMPT_BYTES, SUBSCRIPTION_CONVERSATION_SYSTEM_PROMPT, SUBSCRIPTION_PREVIEW_EXPIRY } from '../../src/assembly/production-provider.js';
 import { hasClaim, replaceClaim, supersedesCorrection } from './claim-match.mjs';
 import { checkReply as checkCoherenceOf, correctionNote, releaseFindings, COHERENCE_FINDING_LIMIT, type CoherenceFinding } from './coherence-check.js';
-import { checkReply, reviewReply, repeatsOperatorOnly, HOLDING_REPLY, jevRequestBody, JEV_RESPONSE_MAX_BYTES, REPLY_CHECK_BUDGET_MS, LINK_SHAPE_REASON, linkShapeRules, bareTopicReferences, topicNameReason, BARE_TOPIC_OBJECTION } from './reply-check.js';
+import { checkReply, reviewReply, repeatsOperatorOnly, HOLDING_REPLY, jevRequestBody, JEV_RESPONSE_MAX_BYTES, REPLY_CHECK_BUDGET_MS, REPLY_CHECK_BUDGET_REASON, LINK_SHAPE_REASON, linkShapeRules, bareTopicReferences, topicNameReason, BARE_TOPIC_OBJECTION, noDecisions, validDispositions } from './reply-check.js';
 import { parseDatedItem, restatedDatePhrase, dueState, selectDatedItems, withinNext48Hours, localParts, type DatedItem } from './dated-memory.js';
 import { isStatusCommand, isStopCommand, statusReply, STOP_CONFIRM_TEXT } from './status-command.js';
 import { fulfillmentProposals, legacyFulfillsReminder, promiseProposals, recordedPromises, type AgentPromise, type FulfillmentProposal, type PromiseProposal } from './agent-commitment.js';
 import { messageTime, zoneFormatter } from './self-state.js';
-import type { ReplyCheckResult, ReplyCheckPorts, ReplyDecision, ReplyReviewDiagnostics, ReplyRule } from './reply-check.js';
+import type { ObjectionDisposition, ReplyCheckResult, ReplyCheckPorts, ReplyDecision, ReplyFinding, ReplyReviewDiagnostics, ReplyRule } from './reply-check.js';
 import { SUMMARY_QUESTION, interpretSummaryJev, type SummaryCheckResult } from './summary-check.js';
 import { exactSummaryFaithfulness, interpretSummaryJev as interpretFaithfulnessJev, summaryFaithfulnessEvidence, summaryJevScore, summaryJevUsage } from './summary-faithfulness.js';
 
@@ -99,8 +99,19 @@ export const CREDENTIAL_SHAPE_NOTICE = 'PREVIEW — My answer contained text sha
 /** A reply released after a pre-send review that objected or could not decide (Rules 77, 86, 95).
  * The objections are signals recorded with the send, never a hold. */
 export interface ReplyRelease { review: 'violation' | 'unavailable'; objections: string[]; reason?: string; revised: boolean;
+  /** The agent's answer to each objection, in order: accept, reject with its reason, or no decision (Rules 41, 58,
+   * 108). Absent only on rows written before explicit dispositions; a reader treats that as not recorded. */
+  dispositions?: ObjectionDisposition[];
+  /** The agent was not asked for its response because the loop's shared deadline or the call cap left no room:
+   * recorded non-admission, never an answer (ruling 2 budget; Rules 55, 60). */
+  responseSkipped?: ResponseSkipped;
   /** Rule 106 over the exact text sent (after any revision and assembly): its digest and link findings. */
   final?: { digest: string; links: string[] } }
+/** A candidate kept back by a mandatory floor after its one bounded correction did not clear it: the holding notice
+ * was sent in its place, and the agent's answer to each objection is recorded here (Rules 4, 41, 86). */
+export interface ReplyHeld { objections: string[]; reason?: string; dispositions: ObjectionDisposition[]; responseSkipped?: ResponseSkipped }
+export type ResponseSkipped = 'deadline' | 'call cap';
+const RESPONSE_SKIPPED: readonly unknown[] = ['deadline', 'call cap'];
 export const SEARCH_GUIDANCE = ' memorySearch contains bounded, ranked evidence from this journal for the current question. Cite the source and date, present current values before superseded history, and report forgotten counts without content. A miss is not proof of absence; truncated means the citation list is incomplete. Imported sender metadata keeps its recorded provenance.';
 /** Rule 110 (run-graph §8 `ContinuityAccounting`). A summary frontier that replaces verbatim
  * history in an answer's context is a compaction, whether or not the last inbound message still
@@ -542,10 +553,16 @@ export type JournalRecord =
   | { kind: 'reply-review-state'; id: string; state: 'complete' | 'rejected' | 'uncertain'; diagnostics?: ReplyReviewDiagnostics; usage?: ModelUsage; at: number }
   /** One bounded revision of an objected draft, inside the existing call cap; no result is UNKNOWN, never repeated. */
   | { kind: 'reply-revision-reserve'; id: string; objections: string[]; maxInputTokens?: number; maxOutputTokens?: number; at: number }
-  | { kind: 'reply-revision'; id: string; state: 'complete' | 'rejected' | 'uncertain' | 'failed'; text?: string; usage?: ModelUsage; at: number }
+  | { kind: 'reply-revision'; id: string; state: 'complete' | 'rejected' | 'uncertain' | 'failed'; text?: string;
+    /** The agent's answer to each reserved objection, in order; only a complete revision carries it. */
+    dispositions?: ObjectionDisposition[];
+    /** The investigation record the correction declares for a cannot-do claim its answer left unrecorded (plan
+     * #104): admitted by the same checks as an answer's blocker, only when the answer admitted none. */
+    blocker?: ProposedBlocker; usage?: ModelUsage; at: number }
   /** One bounded held-class review of the revised text, inside the same call cap; no result is UNKNOWN, never repeated. */
   | { kind: 'reply-revision-review-reserve'; id: string; maxInputTokens?: number; maxOutputTokens?: number; at: number }
-  | { kind: 'reply-revision-review'; id: string; verdict: 'pass' | 'violation' | 'unavailable'; ruleIds: ReplyRule[]; reason?: string; usage?: ModelUsage; at: number }
+  | { kind: 'reply-revision-review'; id: string; verdict: 'pass' | 'violation' | 'unavailable'; ruleIds: ReplyRule[]; reason?: string;
+    findings?: ReplyFinding[]; usage?: ModelUsage; at: number }
   /** One bounded re-ask after a format miss (Rule 116): records the refused first call and reserves the second against the same cap. */
   /** A re-ask after a `malformed` answer. `undecided` (answer only) is read, never written: build cint-L5 128e8799 re-asked plain replies on canary copies. */
   | { kind: 'format-retry'; id: string; role: 'answer' | 'reply-review'; state?: 'complete'; failureClass?: 'malformed'; undecided?: true; usage?: ModelUsage; maxInputTokens?: number; maxOutputTokens?: number; at: number }
@@ -566,6 +583,8 @@ export type JournalRecord =
     reports?: string[];
     /** Present when a pre-send review objected or could not decide; the reply was released anyway. */
     release?: ReplyRelease;
+    /** Present when a mandatory floor kept the candidate back and this intent carries the holding notice. */
+    heldReview?: ReplyHeld;
     /** The prefilled operator request this reply carries (the stop confirmation). */
     approval?: ApprovalRequest;
     /** Open agent promises this reply carries out, as the model proposed them; absent on legacy rows. */
@@ -674,11 +693,13 @@ export interface Turn { id: string; update: number; text: string; raw: string; a
 
 
   wasHeld?: true; heldNoticeCoveredBy?: string; closedQuestions?: string[]; checked?: CoherenceFinding[]; checkFailed?: true; unlabeledRecall?: boolean;
-  replyChecks?: ReplyCheckResult[]; jevReserved?: boolean; jevReservedAt?: number; reviewReserved?: boolean; reviewState?: 'complete' | 'rejected' | 'uncertain'; answerRetried?: true; reviewRetried?: true; reviewDiagnostics?: ReplyReviewDiagnostics;
+  replyChecks?: ReplyCheckResult[]; jevReserved?: boolean; jevReservedAt?: number; reviewReserved?: boolean; reviewReservedAt?: number; reviewState?: 'complete' | 'rejected' | 'uncertain'; answerRetried?: true; reviewRetried?: true; reviewDiagnostics?: ReplyReviewDiagnostics;
   answerMs?: number; sendMs?: number; answerReason?: string;
   reviewCandidate?: string; reviewMentionedDates?: string[];
-  revisionReserved?: true; revision?: { state: 'complete' | 'rejected' | 'uncertain' | 'failed'; text?: string }; release?: ReplyRelease;
-  revisionReviewReserved?: true; revisionReview?: { verdict: 'pass' | 'violation' | 'unavailable'; ruleIds: ReplyRule[]; reason?: string };
+  revisionReserved?: true; revisionReservedAt?: number; revisionObjections?: string[];
+  revision?: { state: 'complete' | 'rejected' | 'uncertain' | 'failed'; text?: string; dispositions?: ObjectionDisposition[]; blocker?: ProposedBlocker };
+  release?: ReplyRelease; heldReview?: ReplyHeld;
+  revisionReviewReserved?: true; revisionReview?: { verdict: 'pass' | 'violation' | 'unavailable'; ruleIds: ReplyRule[]; reason?: string; findings?: ReplyFinding[] };
   /** Admitted by the minimal reserve past the ordinary turn allowance. */
   reserve?: true;
   /** The limited answer covering this message (`lead` names the turn that carries the send). */
@@ -1166,7 +1187,7 @@ const requestedBatchKey = (batch: number) => JSON.stringify(['requested', batch]
  * contextual review (Rules 6, 18, 20, 21, 23, 103). The review context redacts every string of it. */
 export const declaredObligations = (view: JournalView, id: string) => {
   const turn = view.turns.get(id);
-  return { blocker: turn?.answerBlocker ?? null, loops: turn?.answerLoops ?? [],
+  return { blocker: turn?.answerBlocker ?? turn?.revision?.blocker ?? null, loops: turn?.answerLoops ?? [],
     ...(turn?.answerRejected ? { rejected: turn.answerRejected } : {}), capabilities: PREVIEW_CAPABILITIES };
 };
 /** The most recent items whose JSON fits `bytes`, kept in their original order. */
@@ -1413,7 +1434,8 @@ function applyIntentObligations(view: JournalView, turn: Turn, row: Extract<Jour
   }
   if (row.blocker !== undefined) {
     // The answer frame validated its shape and range; the send must still quote it and precede its recheck.
-    if (turn.answerBlocker === undefined || !same(row.blocker, turn.answerBlocker) || !row.text.includes(row.blocker.claim)
+    const declared = turn.answerBlocker ?? turn.revision?.blocker;
+    if (declared === undefined || !same(row.blocker, declared) || !row.text.includes(row.blocker.claim)
       || row.blocker.recheckAt <= row.at) throw Error('preview journal: invalid blocker');
     view.blockers.push({ ...row.blocker, source: turn.id, at: row.at, rechecks: [] });
   }
@@ -1840,7 +1862,12 @@ function checkModelCall(row: ModelCallRecord): void {
   const judgment = LIVE_JUDGMENTS[row.judgment];
   if (!judgment || judgment.route !== row.route || !/^[a-f0-9]{64}$/u.test(row.inputSha256)
     || (row.input === undefined) === (row.inputRef === undefined) || !['complete', 'rejected', 'uncertain', 'failed'].includes(row.outcome)
-    || !Number.isSafeInteger(row.latencyMs) || row.latencyMs < 0 || (row.usage === null) !== (row.usageException !== undefined))
+    || !Number.isSafeInteger(row.latencyMs) || row.latencyMs < 0 || (row.usage === null) !== (row.usageException !== undefined)
+    || row.occurrence !== undefined && (typeof row.occurrence !== 'string' || !row.occurrence)
+    || [row.inputTransformations, row.outputTransformations].some(list => list !== undefined && (!Array.isArray(list)
+      || list.some(item => item !== 'credential-redacted' && item !== 'truncated')))
+    || row.replay !== undefined && (row.replay !== (row.inputTransformations?.length ? 'not-faithful' : 'faithful')
+      || row.inputTransformations === undefined || row.outputTransformations === undefined))
     throw Error('preview journal: model call record refused');
 }
 /** The exact act an outbound intent's signature covers. */
@@ -2448,7 +2475,7 @@ function project(view: JournalView, row: JournalRecord, system?: SystemCheck): v
       throw Error('preview journal: reply review prompt reference differs');
     reserveTokens(view, `review:${row.id}`, 'replyCheck', row.maxInputTokens ?? view.limits.maxBytes,
       row.maxOutputTokens ?? subscriptionOutputMaximum);
-    turn.reviewReserved = true; turn.reviewCandidate = row.candidate;
+    turn.reviewReserved = true; turn.reviewReservedAt = row.at; turn.reviewCandidate = row.candidate;
     if (row.mentionedDates !== undefined) turn.reviewMentionedDates = row.mentionedDates;
     view.calls++; return;
 
@@ -2459,13 +2486,18 @@ function project(view: JournalView, row: JournalRecord, system?: SystemCheck): v
       throw Error('preview journal: revision reservation order or cap');
     reserveTokens(view, `revision:${row.id}`, 'answer', row.maxInputTokens ?? view.limits.maxBytes,
       row.maxOutputTokens ?? subscriptionOutputMaximum);
-    turn.revisionReserved = true; view.calls++; return;
+    turn.revisionReserved = true; turn.revisionReservedAt = row.at; turn.revisionObjections = [...row.objections]; view.calls++; return;
   }
   if (row.kind === 'reply-revision') {
     if (!turn.revisionReserved || turn.revision !== undefined || turn.intent !== undefined
-      || (row.state === 'complete') !== (typeof row.text === 'string' && row.text.length > 0))
+      || (row.state === 'complete') !== (typeof row.text === 'string' && row.text.length > 0)
+      || row.dispositions !== undefined && (row.state !== 'complete' || !validDispositions(row.dispositions, turn.revisionObjections ?? []))
+      || row.blocker !== undefined && (row.state !== 'complete' || turn.answerBlocker !== undefined
+        || !validBlocker(row.blocker, turn.reservedAt ?? row.at) || !row.text!.includes(row.blocker.claim)))
       throw Error('preview journal: revision result order');
-    turn.revision = { state: row.state, ...(row.text === undefined ? {} : { text: row.text }) };
+    turn.revision = { state: row.state, ...(row.text === undefined ? {} : { text: row.text }),
+      ...(row.dispositions === undefined ? {} : { dispositions: row.dispositions.map(item => ({ ...item })) }),
+      ...(row.blocker === undefined ? {} : { blocker: row.blocker }) };
     if (row.state !== 'uncertain') settleTokens(view, `revision:${row.id}`, row.usage);
     return;
   }
@@ -2481,7 +2513,8 @@ function project(view: JournalView, row: JournalRecord, system?: SystemCheck): v
       || !['pass', 'violation', 'unavailable'].includes(row.verdict) || !Array.isArray(row.ruleIds)
       || row.ruleIds.some(rule => typeof rule !== 'string') || row.reason !== undefined && typeof row.reason !== 'string')
       throw Error('preview journal: revision review result order');
-    turn.revisionReview = { verdict: row.verdict, ruleIds: [...row.ruleIds], ...(row.reason === undefined ? {} : { reason: row.reason }) };
+    turn.revisionReview = { verdict: row.verdict, ruleIds: [...row.ruleIds], ...(row.reason === undefined ? {} : { reason: row.reason }),
+      ...(row.findings === undefined ? {} : { findings: row.findings.map(item => ({ ...item })) }) };
     if (row.verdict !== 'unavailable') settleTokens(view, `revision-review:${row.id}`, row.usage);
     return;
   }
@@ -2703,12 +2736,18 @@ function project(view: JournalView, row: JournalRecord, system?: SystemCheck): v
   if (row.kind === 'intent') { if (replyCandidate === undefined || turn.intent !== undefined || row.chat !== view.genesis.chat || row.thread !== turn.thread || row.update !== turn.update || row.grant !== view.genesis.grant
       || row.reminderOverflow !== undefined && row.reminders === undefined
       || row.release !== undefined && (!['violation', 'unavailable'].includes(row.release.review) || !Array.isArray(row.release.objections)
-        || typeof row.release.revised !== 'boolean' || row.release.revised && turn.revision?.state !== 'complete'))
+        || typeof row.release.revised !== 'boolean' || row.release.revised && turn.revision?.state !== 'complete'
+        || row.release.dispositions !== undefined && !validDispositions(row.release.dispositions, row.release.objections)
+        || row.release.responseSkipped !== undefined && !RESPONSE_SKIPPED.includes(row.release.responseSkipped))
+      || row.heldReview !== undefined && (row.release !== undefined || !Array.isArray(row.heldReview.objections)
+        || row.heldReview.objections.some(item => typeof item !== 'string') || !validDispositions(row.heldReview.dispositions, row.heldReview.objections)
+        || row.heldReview.responseSkipped !== undefined && !RESPONSE_SKIPPED.includes(row.heldReview.responseSkipped)))
       throw Error('preview journal: intent order');
     if (row.approval !== undefined && (!isStopCommand(turn.text) || !validApproval(view, turn.id, row.approval, 'stop', row.text)))
       throw Error('preview journal: stop request refused');
     turn.intent = row.text; turn.intentBody = row.body ?? row.text; view.replies++;
     if (row.release) turn.release = row.release;
+    if (row.heldReview) turn.heldReview = row.heldReview;
     if (row.approval) turn.approval = { ...row.approval };
     const conflict = view.conflicts.find(item => item.askedBy === (turn.askConflict ?? turn.id));
     if (conflict && row.text === `PREVIEW — ${conflictQuestion(conflict)}`) conflict.asked = true;
@@ -3277,8 +3316,12 @@ export interface PreviewPorts {
   replyCheck?: Pick<ReplyCheckPorts, 'jev' | 'escalate' | 'elapsedMs'> & { summaryReview?(state: string, through: number): Promise<{
     verdict: 'pass' | 'violation' | 'unavailable'; latencyMs: number; retryable?: true; usage?: ModelUsage }>;
     /** The mind's one revision of an objected draft (same model envelope as review). Absent: no revision round. */
-    revise?(input: { text: string; id: string; originalPrompt: string; ruleIds: ReplyRule[]; reason?: string }): Promise<{
-      state: 'complete' | 'rejected' | 'uncertain'; text?: string; usage?: ModelUsage }> };
+    revise?(input: { text: string; id: string; originalPrompt: string; ruleIds: ReplyRule[]; reason?: string;
+      /** Every objection the agent is asked to answer (rule ids and the deterministic link/topic objections). */
+      objections?: string[]; findings?: ReplyFinding[]; deadlineAt?: number }): Promise<{
+      state: 'complete' | 'rejected' | 'uncertain'; text?: string; dispositions?: ObjectionDisposition[];
+      /** The raw blocker the correction declared; the runner admits it only through the answer's checks. */
+      blocker?: unknown; usage?: ModelUsage }> };
   /** Uses the same pinned Jev route as reply supervision, only after exact preservation cannot decide. */
   summaryCheck?(evidence: string): Promise<unknown>;
 
@@ -5477,7 +5520,7 @@ export function createJournalWorker(journal: ReturnType<typeof openPreviewJourna
         }
         if (labels.length) reply += ` Upcoming: ${labels.join('; ')}.`;
         let mentionedKeys = mentioned.map(datedKey), heldBack = false;
-        let release: ReplyRelease | undefined;
+        let release: ReplyRelease | undefined, held: ReplyHeld | undefined;
         // Rule 106 before the send: the link-shape predicate over the model-written text, and a named
         // topic called only by its number, are signals.
         const usableRefs = (text: string) => {
@@ -5591,60 +5634,80 @@ export function createJournalWorker(journal: ReturnType<typeof openPreviewJourna
           }
           const linkOnly = decision === 'pass' && linkRules.length > 0;
           if (linkOnly) decision = 'violation';
-          if (holding) { reply = actionHeader === undefined ? disclosed(HOLDING_REPLY)
-            : `${actionHeader}\n${HOLDING_REPLY.replace(/^PREVIEW — /u, '')}`; heldBack = true; speaker = 'infrastructure'; }
-          else if (decision === 'violation' || decision === 'unavailable') {
+          if (decision === 'violation' || decision === 'unavailable') {
             const checkRow = linkOnly ? undefined : turn.replyChecks?.filter(item => item.candidateDigest === undefined
               || item.candidateDigest === candidateDigest).at(-1);
             const objections = [...new Set([...(credentialShape ? ['credential'] : []), ...(checkRow?.ruleIds ?? []), ...linkRules])];
             const reason = linkOnly ? linkReason : checkRow?.reason ?? (decision === 'violation' ? undefined
               : capRefused ? 'review not run: call cap reached' : 'review unavailable');
-            // One bounded revision round inside the existing call allowance; the mind decides
-            // what to change. An UNKNOWN revision is never repeated: the original is released.
+            // One shared deadline bounds the whole loop: checks, escalation, the agent's response and the
+            // review of its revision (ruling 2 section A budget; Rules 55, 60, 77). Past it, advisory
+            // objections are released with no decision and a held candidate stays held.
+            const loopDeadline = (turn.jevReservedAt ?? turn.reviewReservedAt ?? turn.revisionReservedAt ?? ports.now()) + REPLY_CHECK_BUDGET_MS;
+            const inTime = () => ports.now() < loopDeadline;
+            // One bounded revision round inside the existing call allowance; the mind decides what to change and
+            // answers each objection. An UNKNOWN revision is never repeated: the original is kept. A held
+            // candidate gets the same one bounded correction, then its required evidence is revalidated
+            // below; nothing the agent says releases a mandatory floor on its own (Rules 4, 57, 86).
             let revised: string | undefined;
             const originalPrompt = projectedReplyPrompt(turn.prompt) ?? reviewPrompt;
             if (decision === 'violation' && ports.replyCheck.revise && originalPrompt !== undefined) {
-              if (!turn.revisionReserved && journal.view.calls < journal.view.limits.maxCalls) {
+              if (!turn.revisionReserved && journal.view.calls < journal.view.limits.maxCalls && inTime()) {
                 gate();
                 journal.append({ kind: 'reply-revision-reserve', id: turn.id, objections,
                   maxInputTokens: journal.view.limits.maxBytes, maxOutputTokens: subscriptionOutputMaximum, at: ports.now() });
-                let outcome: Awaited<ReturnType<NonNullable<NonNullable<PreviewPorts['replyCheck']>['revise']>>> | { state: 'failed'; text?: undefined; usage?: undefined };
+                let outcome: Awaited<ReturnType<NonNullable<NonNullable<PreviewPorts['replyCheck']>['revise']>>> | { state: 'failed'; text?: undefined; usage?: undefined; dispositions?: undefined; blocker?: undefined };
                 // The draft is revised without its Rule 110 disclosure, which code adds back to the final text.
                 const draft = continuity ? reply.replace(`${continuity.disclosure} `, '') : reply;
                 try { outcome = await ports.replyCheck.revise({ text: redact(draft).text, id: turn.id, originalPrompt,
-                  ruleIds: objections as ReplyRule[], ...(reason === undefined ? {} : { reason }) }); }
+                  ruleIds: objections.filter(item => item !== BARE_TOPIC_OBJECTION) as ReplyRule[], objections,
+                  ...(checkRow?.findings ? { findings: checkRow.findings } : {}),
+                  ...(reason === undefined ? {} : { reason }), deadlineAt: loopDeadline }); }
                 catch { outcome = { state: 'failed' }; }
                 const text = outcome.state === 'complete' && typeof outcome.text === 'string' ? outcome.text.trim() : '';
+                const answered = text && validDispositions(outcome.dispositions, objections) ? outcome.dispositions : undefined;
+                // Plan #104: a real capability limit stated without its investigation record is corrected by
+                // declaring that record, not by hiding the limit. It is admitted exactly as an answer's blocker
+                // (same checks, quoted in the corrected text), only when the answer admitted none; anything
+                // else is dropped and the corrected text is judged without it.
+                const revisionAt = ports.now();
+                const proposedBlocker = text && turn.answerBlocker === undefined && outcome.blocker !== undefined
+                  ? obligationsFrom({ blocker: outcome.blocker }, turn, text, '{}', revisionAt).blocker : undefined;
                 journal.append({ kind: 'reply-revision', id: turn.id,
                   state: outcome.state === 'complete' && !text ? 'failed' : outcome.state, ...(text ? { text } : {}),
-                  ...(outcome.usage ? { usage: outcome.usage } : {}), at: ports.now() });
+                  ...(answered ? { dispositions: answered } : {}), ...(proposedBlocker ? { blocker: proposedBlocker } : {}),
+                  ...(outcome.usage ? { usage: outcome.usage } : {}), at: revisionAt });
               }
               if (turn.revision?.state === 'complete' && turn.revision.text) {
                 let body = turn.revision.text.replace(/^PREVIEW(?=$|[\s:—])(?:\s*[:—])?\s*/u, '');
                 if (continuity && body.startsWith(continuity.disclosure)) body = body.slice(continuity.disclosure.length).trimStart();
                 const candidate = actionHeader === undefined ? disclosed(`PREVIEW — ${body}`) : `${actionHeader}\n${body}`;
                 const encoded = encodeReply(candidate);
-                if (!redact(candidate).count && Buffer.byteLength(encoded) <= 4096 && Array.from(encoded).length <= 4096)
+                // The agent keeping its draft unchanged is its answer, not a new candidate: nothing to re-review.
+                // The same text with a newly declared investigation record is a new candidate (plan #104).
+                if ((candidate !== reply || turn.revision.blocker !== undefined) && !redact(candidate).count && Buffer.byteLength(encoded) <= 4096 && Array.from(encoded).length <= 4096)
                   revised = candidate;
               }
             }
             // Rules 6, 8: the revised text is a new candidate. It carries only the original answer's admitted
             // declarations (filtered against its text at the intent), so it is selected only when one bounded
             // contextual review of exactly this text, with that declared record, clears the held classes. No
-            // clearance inside the allowance (cap, failure, UNKNOWN, a held class) keeps the otherwise releasable
-            // original, or the credential notice when the original cannot leave. Other objections stay advisory.
+            // clearance inside the allowance (cap, deadline, failure, UNKNOWN, a held class) keeps the otherwise
+            // releasable original, the holding notice for a held candidate, or the credential notice when the
+            // original cannot leave. Other objections stay advisory.
             if (revised !== undefined) {
-              if (!turn.revisionReviewReserved && journal.view.calls < journal.view.limits.maxCalls) {
+              if (!turn.revisionReviewReserved && journal.view.calls < journal.view.limits.maxCalls && inTime()) {
                 gate();
                 journal.append({ kind: 'reply-revision-review-reserve', id: turn.id,
                   maxInputTokens: journal.view.limits.maxBytes, maxOutputTokens: subscriptionOutputMaximum, at: ports.now() });
-                let result: { verdict: 'pass' | 'violation' | 'unavailable'; ruleIds: ReplyRule[]; reason?: string; usage?: ModelUsage };
+                let result: { verdict: 'pass' | 'violation' | 'unavailable'; ruleIds: ReplyRule[]; reason?: string; findings?: ReplyFinding[]; usage?: ModelUsage };
                 try {
                   const reviewed = await ports.replyCheck.escalate(revised, turn.id, originalPrompt, REVIEW_HOLDING_RULES,
-                    undefined, 'revision');
+                    loopDeadline, 'revision');
                   result = { verdict: reviewed.verdict === 'pass' ? 'pass' : 'violation',
                     ruleIds: Array.isArray(reviewed.ruleIds) ? reviewed.ruleIds.filter(rule => typeof rule === 'string') : [],
                     ...(typeof reviewed.reason === 'string' ? { reason: reviewed.reason } : {}),
+                    ...(Array.isArray(reviewed.findings) ? { findings: reviewed.findings } : {}),
                     ...(reviewed.usage ? { usage: reviewed.usage } : {}) };
                 } catch { result = { verdict: 'unavailable', ruleIds: [] }; }
                 journal.append({ kind: 'reply-revision-review', id: turn.id, ...result, at: ports.now() });
@@ -5653,15 +5716,26 @@ export function createJournalWorker(journal: ReturnType<typeof openPreviewJourna
               if (!(check?.verdict === 'pass' || check?.verdict === 'violation'
                 && !check.ruleIds.some(rule => REVIEW_HOLDING_RULES.includes(rule)))) revised = undefined;
             }
+            const dispositions = turn.revision?.dispositions && validDispositions(turn.revision.dispositions, objections)
+              ? turn.revision.dispositions : noDecisions(objections);
+            const skipped: ResponseSkipped | undefined = decision === 'violation' && ports.replyCheck.revise && originalPrompt !== undefined
+              && !turn.revisionReserved ? !inTime() ? 'deadline' : journal.view.calls >= journal.view.limits.maxCalls ? 'call cap' : undefined : undefined;
+            const note = reason ?? (decision === 'unavailable' || inTime() ? undefined : REPLY_CHECK_BUDGET_REASON);
             if (revised !== undefined) { reply = revised; mentionedKeys = []; }
-            else if (credentialShape) {
+            else if (holding) {
+              reply = actionHeader === undefined ? disclosed(HOLDING_REPLY) : `${actionHeader}\n${HOLDING_REPLY.replace(/^PREVIEW — /u, '')}`;
+              heldBack = true; speaker = 'infrastructure';
+              held = { objections, ...(note === undefined ? {} : { reason: note }), dispositions, ...(skipped ? { responseSkipped: skipped } : {}) };
+            } else if (credentialShape) {
               reply = actionHeader === undefined ? disclosed(CREDENTIAL_SHAPE_NOTICE)
                 : `${actionHeader}\n${CREDENTIAL_SHAPE_NOTICE.replace(/^PREVIEW — /u, '')}`;
               heldBack = true; speaker = 'infrastructure';
             }
-            release = { review: decision, objections, ...(reason === undefined ? {} : { reason }), revised: revised !== undefined };
+            if (!held) release = { review: decision, objections, ...(note === undefined ? {} : { reason: note }),
+              revised: revised !== undefined, dispositions, ...(skipped ? { responseSkipped: skipped } : {}) };
           }
-        } else if (linkRules.length) release = { review: 'violation', objections: linkRules, reason: linkReason, revised: false };
+        } else if (linkRules.length) release = { review: 'violation', objections: linkRules, reason: linkReason, revised: false,
+          dispositions: noDecisions(linkRules) };
         gate();
         // Rules 57, 93: a due turn is rechecked just before its send intent: never sent once withdrawn, and
         // held back while a later operator turn that may withdraw one of its requests is unsettled.
@@ -5669,12 +5743,15 @@ export function createJournalWorker(journal: ReturnType<typeof openPreviewJourna
         if (Buffer.byteLength(reply) > 4096 || Array.from(reply).length > 4096) { journal.append({kind:'hold',id:turn.id,reason:'reply size',at:ports.now()}); continue; }
         // Rule 106 on the final candidate: a revision or assembly can introduce a link the first check
         // never saw. The findings are recorded against this exact text; they advise, never hold.
-        if (turn.answer !== undefined) {
+        if (turn.answer !== undefined && held === undefined) {
           const { rules: links, reason: finalReason } = usableRefs(reply);
           if (links.length) {
             const prior = release?.objections ?? [];
-            release = { ...(release ?? { review: 'violation' as const, reason: finalReason, revised: false }),
-              objections: [...new Set([...prior, ...links])],
+            const objections = [...new Set([...prior, ...links])];
+            // Findings on the final text arrive after the agent answered: each new one is recorded as no decision.
+            const answered = release?.dispositions ?? noDecisions(prior);
+            release = { ...(release ?? { review: 'violation' as const, reason: finalReason, revised: false }), objections,
+              dispositions: [...answered, ...noDecisions(objections.slice(prior.length))],
               final: { digest: createHash('sha256').update(reply).digest('hex'), links } };
           }
         }
@@ -5693,7 +5770,7 @@ export function createJournalWorker(journal: ReturnType<typeof openPreviewJourna
         journal.append({ kind: 'intent', id: turn.id, text: reply, body, chat: journal.view.genesis.chat, ...thread, provenance,
           ...(approval ? { approval } : {}),
           ...(reply === HOLDING_REPLY || heldBack || !mentionedKeys.length ? {} : { mentionedDates: mentionedKeys }),
-          ...(release === undefined ? {} : { release }),
+          ...(release === undefined ? {} : { release }), ...(held === undefined ? {} : { heldReview: held }),
           // A desk probe's reply stays auditable, but its promises never become operator commitments.
           promises: probeTurn(journal.view, turn) ? [] : recordedPromises(turn.proposedPromises ?? [], reply, turn.id, intentAt, ports.timeZone ?? 'America/Los_Angeles'),
           fulfills: probeTurn(journal.view, turn) ? [] : (turn.proposedFulfills ?? []).filter(item => reply.includes(item.quote)
@@ -5992,8 +6069,8 @@ export function createJournalWorker(journal: ReturnType<typeof openPreviewJourna
   const sentObligations = (turn: Turn, reply: string, at: number) => {
     const open = new Set(openBlockers(journal.view).map(item => item.id));
     const loops = turn.answerLoops?.filter(loop => reply.includes(loop.quote));
-    const blocker = turn.answerBlocker && reply.includes(turn.answerBlocker.claim) && turn.answerBlocker.recheckAt > at
-      ? turn.answerBlocker : undefined;
+    const declared = turn.answerBlocker ?? turn.revision?.blocker;
+    const blocker = declared && reply.includes(declared.claim) && declared.recheckAt > at ? declared : undefined;
     const rechecks = turn.answerRechecks?.every(item => open.has(item.id))
       ? turn.answerRechecks : undefined;
     const reports = turn.answerReports?.filter(key => reply.includes(journal.view.obligationWork[key]?.report?.text ?? '\u0000')
@@ -6614,7 +6691,7 @@ export function createJournalWorker(journal: ReturnType<typeof openPreviewJourna
         let jev: SummaryCheckResult;
         journal.append({ kind: 'summary-integrity-reserve', through, at: ports.now() });
         try {
-          const answer = await ports.replyCheck.jev(state, SUMMARY_QUESTION);
+          const answer = await ports.replyCheck.jev(state, SUMMARY_QUESTION, undefined, `summary:${through}`);
           jev = interpretSummaryJev(answer.value, answer.latencyMs);
         } catch {
           jev = { verdict: 'unavailable', path: 'jev', latencyMs: Math.max(0, ports.replyCheck.elapsedMs() - started) };

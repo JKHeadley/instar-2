@@ -3,7 +3,7 @@ import { expect, it } from 'vitest';
 import { mkdtempSync, readFileSync, realpathSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
-import { assertLiveJudgment, decisionWithinFloor, ENVELOPE_FLOOR, LIVE_JUDGMENTS, modelCallRecord, USAGE_EXCEPTIONS } from './model-call-boundary.js';
+import { assertLiveJudgment, decisionWithinFloor, ENVELOPE_FLOOR, LIVE_JUDGMENTS, modelCallRecord, replayEligibility, USAGE_EXCEPTIONS } from './model-call-boundary.js';
 import { openPreviewJournal } from './journal.js';
 import { prepareJournalEnvelope } from './journal-envelope.js';
 
@@ -76,13 +76,14 @@ it('real-model-shaped Decisions: the floor the system prompt asks the model to c
 
 it('every registered judgment names a route, a closed action space and a default inside it', () => {
   // Rule 57's enumeration, mirrored by the live-proof B7 criterion: the retrospective pass is registered.
-  expect(Object.keys(LIVE_JUDGMENTS)).toEqual(['answer', 'reply-review', 'summary', 'summary-review', 'jev-reply-check',
+  expect(Object.keys(LIVE_JUDGMENTS)).toEqual(['answer', 'reply-review', 'reply-revision', 'summary', 'summary-review', 'jev-reply-check',
     'jev-summary-integrity', 'jev-summary-faithfulness', 'retrospective', 'jev-step-check']);
   expect(() => assertLiveJudgment('retrospective', 'preview-subscription')).not.toThrow();
   for (const [name, judgment] of Object.entries(LIVE_JUDGMENTS)) {
     expect(['preview-subscription', 'typesafe-jev'], name).toContain(judgment.route);
     expect(judgment.actions as readonly string[], name).toContain(judgment.default);
     expect(judgment.invalid.length, name).toBeGreaterThan(10);
+    expect(['signal', 'mandatory'], name).toContain(judgment.authority);
   }
 });
 
@@ -127,4 +128,53 @@ it('the architecture check fails a provider call outside the boundary, including
   expect(lintShippedLauncher('/v/runner.mjs', (path: string) => files[path], (path: string) => path in files))
     .toMatchObject([{ rule: 'R41-R75', line: 1 }]);
   expect(lintShippedLauncher('tests/preview/journal-agent.mjs')).toEqual([]);
+});
+
+// OR1 (ruling 2 MUST-FIX 2, Rules 41, 58, least revelation): every record names the occurrence it served and
+// what was done to its bytes; only an exactly held input is offered as a faithful replay.
+it('records occurrence and transformations, and marks a redacted, truncated or legacy input as not faithfully replayable', () => {
+  const exact = modelCallRecord(call({ occurrence: 'turn:1:reply-review' }));
+  expect(exact).toMatchObject({ occurrence: 'turn:1:reply-review', inputTransformations: [], outputTransformations: [], replay: 'faithful' });
+  expect(replayEligibility(exact)).toEqual({ faithful: true, reason: 'exact inline input' });
+  expect(replayEligibility(modelCallRecord(call({ inputRef: 'reserve:turn:1' })))).toEqual({ faithful: true, reason: 'exact input by reference reserve:turn:1' });
+  const secret = 'sk-ant-api03-' + 'A'.repeat(90);
+  const redacted = modelCallRecord(call({ input: `key ${secret}`, output: `echo ${secret}` }));
+  expect(redacted).toMatchObject({ inputTransformations: ['credential-redacted'], outputTransformations: ['credential-redacted'], replay: 'not-faithful' });
+  const large = modelCallRecord(call({ input: 'x'.repeat(300 * 1024) }));
+  expect(large).toMatchObject({ inputTransformations: ['truncated'], replay: 'not-faithful' });
+  expect(replayEligibility(large)).toEqual({ faithful: false, reason: 'input truncated' });
+  // The digest still covers the original bytes, so a truncated record can be matched but never replayed as exact.
+  expect(large.inputSha256).not.toBe(modelCallRecord(call({ input: large.input! })).inputSha256);
+  // Identical Jev requests share a content-derived id; the occurrence tells the two turns apart.
+  const jev = (occurrence: string) => modelCallRecord(call({ id: 'jev-reply-check:abc', route: 'typesafe-jev', judgment: 'jev-reply-check', usage: null, occurrence }));
+  expect([jev('turn:1').occurrence, jev('turn:2').occurrence]).toEqual(['turn:1', 'turn:2']);
+  const { replay: _replay, inputTransformations: _in, outputTransformations: _out, ...legacy } = exact;
+  expect(replayEligibility(legacy)).toEqual({ faithful: false, reason: 'legacy record: transformations not recorded' });
+});
+
+it('the journal keeps a legacy model-call row readable and refuses a replay claim its transformations contradict', () => {
+  const root = realpathSync(mkdtempSync(join(tmpdir(), 'model-call-replay-')));
+  try {
+    const journal = openPreviewJournal(join(root, 'journal.encrypted'), new Uint8Array(32).fill(4), { kind: 'genesis', bot: '1', chat: '2', operator: '2', grant: 'g',
+      configurationDigest: 'sha256:x', expires: 9999999999999, maxCalls: 5, maxReplies: 5, maxTurns: 5, maxBytes: 32768, cursor: 0 });
+    const record = modelCallRecord(call({ occurrence: 'turn:1' }));
+    const { replay: _replay, inputTransformations: _in, outputTransformations: _out, ...legacy } = record;
+    journal.append(legacy);
+    journal.append(record);
+    expect(() => journal.append({ ...record, inputTransformations: ['truncated'] })).toThrow('model call record refused');
+    expect(() => journal.append({ ...record, replay: 'faithful', inputTransformations: ['credential-redacted'] })).toThrow('model call record refused');
+    expect(() => journal.append({ ...record, occurrence: '' })).toThrow('model call record refused');
+    expect(journal.view.modelCalls.total).toBe(2);
+    journal.close();
+  } finally { rmSync(root, { recursive: true, force: true }); }
+});
+
+it('declares each consumer\'s real fail direction: advisory review releases, mandatory floors hold, summary integrity never escalates', () => {
+  expect(LIVE_JUDGMENTS['reply-review']).toMatchObject({ authority: 'signal', default: 'clear' });
+  expect(LIVE_JUDGMENTS['reply-review'].invalid).toMatch(/advisory-only candidate is released.*mandatory floor stays held/u);
+  expect(LIVE_JUDGMENTS['reply-review'].mandatory).toMatch(/credential, defers_work or unrecorded_blocker/u);
+  expect(LIVE_JUDGMENTS['jev-reply-check'].actions).not.toContain('hold');
+  expect(LIVE_JUDGMENTS['jev-summary-integrity']).toMatchObject({ default: 'reject', authority: 'mandatory' });
+  expect(LIVE_JUDGMENTS['jev-summary-integrity'].invalid).toMatch(/there is no escalation/u);
+  expect(LIVE_JUDGMENTS['reply-revision']).toMatchObject({ default: 'keep', authority: 'signal' });
 });

@@ -9,6 +9,10 @@
     "preview.reply.release": {
       "protected": false,
       "repository": false
+    },
+    "preview.reply.revise": {
+      "protected": false,
+      "repository": false
     }
   }
 }
