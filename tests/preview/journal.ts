@@ -6198,10 +6198,20 @@ export function createJournalWorker(journal: ReturnType<typeof openPreviewJourna
     const changes: MemoryChange[] = [], seen = new Set<string>();
     const preferences = preferenceState();
     if (!trigger.accepted || !fromOperator(trigger) || proposed.length > 3) return undefined;
+    // Rule 7: on an ordinary (uncued, unedited) turn, re-proposing a preference already on file as a new one
+    // changes nothing, so it is dropped rather than refusing the whole decision (live canary-copy e2582787,
+    // update 969389782: the model re-stated the active two-sentence preference on a plain question and the
+    // operator got the undecided notice instead of the answer). A direct request keeps the strict check.
+    const activeQuotes = new Set([...preferences.active.values()].map(item => item.quote));
+    const ordinary = !trigger.editOf && !memoryCue(trigger) && !preferenceCue(trigger);
     for (const item of proposed.slice(0, 3)) {
       const { mode, source, quote, replacement, replies, summaryPassages, in: side } = (item ?? {}) as { mode?: unknown; source?: unknown; quote?: unknown;
         in?: unknown;
         replacement?: unknown; replies?: unknown; summaryPassages?: unknown };
+      if (ordinary && mode === 'prefer' && typeof quote === 'string' && activeQuotes.has(quote)
+        && (source === trigger.id || preferences.active.has(JSON.stringify([source, quote])))
+        && !redact(trigger.text).text.includes(quote)
+        && replacement === undefined && replies === undefined && summaryPassages === undefined && side === undefined) continue;
       const channelAlias = typeof source === 'string' && source.startsWith('channel-ref:')
         ? [...journal.view.channelItems.values()].find(candidate => publicMemoryId(channelMemoryId(candidate)) === source) : undefined;
       const rawSource = channelAlias ? channelMemoryId(channelAlias) : source;
