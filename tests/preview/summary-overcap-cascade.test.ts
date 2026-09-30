@@ -108,10 +108,11 @@ it('settles a writer result proven over the output cap and accepts a shorter spa
     expect(first?.text).toContain('probe-5f1ba73c');
     expect(w.log.filter(item => item !== 'jev-reply').slice(0, 4)).toEqual(['summary', 'summary', 'jev-faithfulness', 'review']);
     // Every later over-cap attempt is recorded with its reason and the pass stops within its bounds:
-    // no reservation is left UNKNOWN, and no span at or past a failed one from the same base is offered.
+    // no reservation is left UNKNOWN, and no span at or past a failed one from the same base is offered, except that
+    // the one-turn span (#482) keeps its second attempt: there is no shorter one.
     expect(w.journal.view.summaryReservations.size).toBe(0);
     expect(w.throughs.length).toBeLessThanOrEqual(8);
-    expect(w.throughs.slice(2)).toEqual([715672485, 715672484, 715672483, 715672482]);
+    expect(w.throughs.slice(2)).toEqual([715672485, 715672484, 715672483, 715672482, 715672482]);
     expect(w.journal.view.lastSummaryFailure?.reason).toBe(SUMMARY_OVER_CAP_REASON);
     // The room still answers.
     w.worker.intake([update(715672494, 'Remind me today at 2:55 pm to refill the bird feeder')]); await w.worker.drain();
@@ -121,7 +122,7 @@ it('settles a writer result proven over the output cap and accepts a shorter spa
     const reopened = openPreviewJournal(w.path, key);
     expect(reopened.view.summaries.map(item => item.through)).toEqual([715672481]);
     expect(reopened.view.summaryReservations.size).toBe(0);
-    expect(reopened.view.summaryOverCapFrontiers).toEqual([715672485, 715672484, 715672483, 715672482]);
+    expect(reopened.view.summaryOverCapFrontiers).toEqual([715672485, 715672484, 715672483, 715672482, 715672482]);
     reopened.close();
   } finally { w.close(); }
 });
@@ -188,10 +189,11 @@ it('refuses an over-cap settlement that has no outcome row behind it, and a stro
   const w = world([{ kind: 'result', recorded: WRITER_482 }], JEV, () => 'violation');
   try {
     await converse(w);
-    w.journal.append({ kind: 'summary-reserve', through: 715672479, maxOutputTokens: 2048, at: w.now() });
-    expect(() => w.journal.append({ kind: 'summary-failed', through: 715672479, state: 'rejected', failureClass: 'rejected',
+    // #479, the one-turn span, used both its attempts during the conversation; #480 has one left.
+    w.journal.append({ kind: 'summary-reserve', through: 715672480, maxOutputTokens: 2048, at: w.now() });
+    expect(() => w.journal.append({ kind: 'summary-failed', through: 715672480, state: 'rejected', failureClass: 'rejected',
       reason: SUMMARY_OVER_CAP_REASON, at: w.now() })).toThrow('over-cap summary without its outcome');
-    w.journal.append({ kind: 'summary-failed', through: 715672479, reason: 'summary faithfulness: undecided', state: 'complete', at: w.now() });
+    w.journal.append({ kind: 'summary-failed', through: 715672480, reason: 'summary faithfulness: undecided', state: 'complete', at: w.now() });
     await w.worker.summarizeIfNeeded(true);
     expect(w.log.filter(item => item !== 'jev-reply').slice(0, 3)).toEqual(['summary', 'jev-faithfulness', 'review']);
     expect(w.journal.view.summaries).toHaveLength(0);
