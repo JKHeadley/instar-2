@@ -92,8 +92,9 @@ approved: a value that confers standing above requester decodes only from `verif
 provenance; today's chat platforms give the adapter only `channel-attested` evidence per
 message. Three review rounds pressed the same point — an attested exercise of bound standing is
 still attested — and this bundle answers it the honest way: **part one is amended through its
-own version chain** with the exercise split (authority-conferring exercise: `verified` always;
-directive exercise: attested selection within a recorded `verified`-provenance binding, and
+own version chain** with the exercise split (authority-conferring exercise: `verified`, save that part one's one-use
+`account-assented` yes under P-02 may complete one exact prepared authorization, grant or
+revocation; directive exercise: attested selection within a recorded `verified`-provenance binding, and
 nothing more). Under the amended wall, the operator principal's provenance is the binding
 grant's, and the per-message evidence does one job only: it *selects* the already-bound
 principal within the already-granted scope. Prose never enters it; the message's attestation elevates nothing — it locates. And the
@@ -101,17 +102,27 @@ review pressed the composition one level deeper, rightly: exercising operator st
 an attested message is still attested exercise, so **the exercise itself is tiered**. A
 **binding act** — granting or revoking standing, minting an `Authorization`, changing a wall,
 re-binding a conversation — requires its own `verified`-provenance act (a PIN-gated or signed
-surface, a host review record); a chat message can *request* one, and the request routes like
-any beyond-standing ask. A **directive act** — day-to-day direction, priorities, the ordinary
-"proceed" — rides the binding: the bound operator directs the agent's own operating standing
+surface, a host review record) or, to complete one exact prepared `Authorization`,
+`StandingGrant` or `Revocation` (never a conversation binding or re-binding, never a wall change,
+and never an independently administered safeguard), part one's `account-assented` yes under policy P-02;
+otherwise a chat message can *request* one, and
+the request routes like any beyond-standing ask. A **directive act** — day-to-day direction,
+priorities, the ordinary "proceed" — rides the binding: the bound operator directs the agent's own operating standing
 through chat, which grants nothing and binds nothing beyond what part one's `Directive` type
 already carries. So the thing a stolen chat session can do is *steer* one conversation's
-already-granted work; it can never mint, widen, or approve. The
+already-granted work and, where P-02 admits `account-assented` replies, approve a request the
+agent already prepared for that operator. That approval is real authority: compromise of the
+approval account can mint a prepared `Authorization` or complete a prepared grant expansion or
+revocation, within the approver's own authority. What it can never do is manufacture a
+principal, bind or re-bind a conversation, substitute a scope other than the one prepared, or
+bypass a safeguard administered independently of the agent. The
 residual is named rather than implied away: **a platform bot-token takeover collapses every
 attestation on that transport**, so an attacker holding the token speaks as any bound sender —
 reaching every conversation whose bound principal is selectable through the compromised
 transport, each within its own binding's scope, their union and no more; and within that reach
-it can only steer already-granted work, because every binding act needs its own verified act.
+it can only steer already-granted work and approve requests already prepared for a bound
+operator where P-02 admits `account-assented` replies, the residual P-02 accepts, because every
+other binding act needs its own verified act.
 That bounded union — not "one conversation," and not "everything" — is the honest blast radius,
 and steering is not nothing: directed work exercises the agent's real operating standing, so a
 thief can cause real effects inside it (the effect doorway's profile gates and floors are what
@@ -120,7 +131,10 @@ intent may designate high-risk directive classes that require step-up verificati
 bound operator — a policy hook, not new machinery — and the transport token's revocation is the
 containment lever, with its blast radius (the bound-conversation count per transport) a
 registered measurement. And it is why the walls and the highest-stakes operator actions live on
-surfaces whose provenance the package itself verifies, never on chat attestation.
+surfaces whose provenance the package itself verifies, never on chat attestation alone — the
+sole exception being P-02's one-use `account-assented` yes to an exact prepared authorization,
+grant or revocation, whose reliance on the named service part one states and which never
+reaches a wall.
 
 **Rule — operator standing resolves only through a binding.** Rules 28 and 104; part one's
 provenance floor. **Check:** the standing resolution's operator arm consults the binding-grant
