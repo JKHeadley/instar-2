@@ -5301,7 +5301,7 @@
     "src/facts/stores.ts": "7925a27add05d99e53713db2b175af1a16caab03262bcf9af5d37fe5e22c9a26",
     "src/facts/verification.ts": "4032ed045bd344bf5d862c70e999b12a5391d85147acc8713998592814e339f1",
     "src/facts/version-chain.ts": "bf32f0dabe319d61bc84604714f769ba2e8dd688be5cebf09bca25a82fa43b03",
-    "src/index.ts": "cc65a848a01678dd5a3dea8320e6cb2dc6604404305a296d51d4f2283410e944",
+    "src/index.ts": "dc94f3479e79c8e1898e3ec11253642add1979d66e7def3c939dfcfe3a96cc72",
     "src/intake/boundary.ts": "3d3f2325e3ca3edc3f131e5e382104e5cd1b223661ace2cc8bd6d6a21e03b480",
     "src/intake/contracts.ts": "3e51cf3a2774e6ae9cbf01b40d6bc37b821468a428e6e66125c5ed10b5217b77",
     "src/intake/index.ts": "39238003978a713325282651956aabd67f9f6dc56e9defe46f5a8f654cdfb20b",
