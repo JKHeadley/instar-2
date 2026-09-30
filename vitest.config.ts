@@ -1,5 +1,6 @@
+import { readFileSync } from 'node:fs';
 import { availableParallelism } from 'node:os';
-import { defineConfig } from 'vitest/config';
+import { configDefaults, defineConfig } from 'vitest/config';
 
 // VITEST_SERIAL_GATE=1 is the exact serial comparator (one fork worker, no file
 // parallelism) without editing source between evidence runs; the transitional FINAL
@@ -10,9 +11,20 @@ const serialGate = process.env.VITEST_SERIAL_GATE === '1';
 // pressure, not a measured optimum for every runner.
 const workerLimit = Math.max(1, Math.min(6, Math.floor(availableParallelism() / 2)));
 
+// INSTAR_TEST_PLATFORM_SPLIT splits a full run across hosts by the checked-in list of macOS-only
+// test files: exclude-macos runs everything else (a Linux host), only-macos runs exactly the list
+// (a Mac). A piece passes when both halves pass. Unset or empty runs everything; any other value
+// refuses, so a typo never silently runs the wrong half.
+const split = process.env.INSTAR_TEST_PLATFORM_SPLIT || undefined;
+if (split !== undefined && split !== 'exclude-macos' && split !== 'only-macos')
+  throw new Error(`INSTAR_TEST_PLATFORM_SPLIT must be exclude-macos or only-macos, not ${JSON.stringify(split)}`);
+const macosOnly = split === undefined ? [] : readFileSync(new URL('./tests/platform/macos-only.txt', import.meta.url), 'utf8').split('\n')
+  .map(line => line.replace(/#.*/, '').trim()).filter(Boolean);
+
 export default defineConfig({
   test: {
-    include: ['tests/**/*.test.ts'],
+    include: split === 'only-macos' ? macosOnly : ['tests/**/*.test.ts'],
+    exclude: split === 'exclude-macos' ? [...configDefaults.exclude, ...macosOnly] : configDefaults.exclude,
     // test-tmp: before the fork pool starts, point TMPDIR at a per-run directory on RAM-
     // backed storage (removed at teardown) so test fsyncs never swamp the real disk.
     // INSTAR_TEST_REAL_DISK=1 opts out; `npm run test:durability` uses that to prove
