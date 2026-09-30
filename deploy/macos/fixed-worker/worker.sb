@@ -44,7 +44,10 @@
 ; Explicit denials kept visible for review (deny default already covers them).
 (deny process-fork)
 (deny network*)
-(deny mach-lookup)
+; Unreported: libSystem's user lookup at startup asks launchd for notifyd, and a
+; REPORTED denial made launchd stall the reply; the runtime then hung in dyld for
+; 25 s+ (measured 2026-09-29, sampled in bootstrap_look_up). Still denied.
+(deny mach-lookup (with no-report))
 (deny file-write*)
 (deny process-info* (with no-report))
 (deny signal)

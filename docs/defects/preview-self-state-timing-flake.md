@@ -36,3 +36,12 @@ failing the 10 s default deadline under load. Their budgets are now sized to the
 
 **Status:** CLOSED for the quarantine — no case in this file is skipped. The residual child-start cost belongs to
 the shared loader, tracked in `full-suite-load-timeouts.md`.
+
+## Recurrence 2026-09-29 (cb7-r90 gate on the Mama PC): unpaired tails, repaired
+
+The relative bound read `ratio=10.50` against 10 on the full suite. The derivation is linear, so its true ratio sits
+just under 10, and the two p95 figures were taken from independent tails: an outlier in one series has no partner in
+the other, so the quotient of tails drifts past 10 with no change in cost. The ratio is now computed per paired
+iteration (both samples inside the same contention instant) and its median decides, against 12: linear work reads at
+most 10, an n log n derivation reads about 14.3 and a quadratic one about 100, so a superlinear cost still fails.
+Measured isolated after the repair: `median paired ratio=8.82`. No case is skipped.

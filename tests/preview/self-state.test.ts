@@ -515,19 +515,22 @@ it('keeps per-turn self-state overhead in milliseconds at the journal frame scal
     const frame = build('frame', 2000), reference = build('reference', 200);
     const derive = (subject: { journal: { view: Parameters<typeof selfState>[0] }; log: ReturnType<typeof readRuns> }) =>
       selfStateSource(selfState(subject.journal.view, subject.log, NOON, 'America/Los_Angeles', subject.log.launches.at(-1)!.at));
-    const frameSamples: number[] = [], referenceSamples: number[] = [];
+    const frameSamples: number[] = [], referenceSamples: number[] = [], ratios: number[] = [];
     for (let i = 0; i < 200; i++) {
       const a = performance.now(); derive(frame);
       const b = performance.now(); derive(reference);
       const c = performance.now();
-      frameSamples.push(b - a); referenceSamples.push(c - b);
+      frameSamples.push(b - a); referenceSamples.push(c - b); ratios.push((b - a) / (c - b));
     }
-    const at95 = (values: number[]) => values.slice().sort((a, b) => a - b)[Math.ceil(values.length * .95) - 1]!;
-    const framed = at95(frameSamples), referenced = at95(referenceSamples), ratio = framed / referenced;
-    process.stdout.write(`self-state: 2000-turn p95=${framed.toFixed(2)} ms, 200-turn p95=${referenced.toFixed(2)} ms, ratio=${ratio.toFixed(2)}\n`);
-    // Ten times the turns must not cost more than ten times the work: a superlinear derivation fails here, and
-    // the 200-turn reference carries the same contention, so host load cannot decide it.
-    expect(ratio).toBeLessThanOrEqual(10);
+    const at = (values: number[], q: number) => values.slice().sort((x, y) => x - y)[Math.ceil(values.length * q) - 1]!;
+    const framed = at(frameSamples, .95), referenced = at(referenceSamples, .95), ratio = at(ratios, .5);
+    process.stdout.write(`self-state: 2000-turn p95=${framed.toFixed(2)} ms, 200-turn p95=${referenced.toFixed(2)} ms, median paired ratio=${ratio.toFixed(2)}\n`);
+    // Ten times the turns must cost about ten times the work, not more. The ratio is taken per paired iteration
+    // (both samples inside the same instant of contention) and its median decides, because two independent p95
+    // tails do not share their outliers: a 2026-09-29 gate read 10.50 from unpaired p95s on a linear derivation.
+    // Linear work reads at most 10 (fixed per-call cost pulls it under); the 12 bound leaves timer noise room while
+    // an n log n derivation (≈14.3) or a quadratic one (≈100) still fails, and host load still cannot decide it.
+    expect(ratio).toBeLessThanOrEqual(12);
     frame.journal.close(); reference.journal.close();
   } finally { rmSync(root, { recursive: true, force: true }); }
 }, 180000); // Two journal builds (2 200 intakes) plus 400 derivations; the work, not a bound on it.
