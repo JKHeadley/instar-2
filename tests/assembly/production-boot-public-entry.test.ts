@@ -34,8 +34,9 @@ it(`boots the public application before Telegram poll; fixture-admitted: ${fixtu
   } finally { built?.application.close(); rmSync(root, { recursive: true, force: true }); }
 }, 180000);
 
-// Rule 37 quarantine: see docs/defects/production-boot-public-entry-ctx.md
-it.skip(`installed bin boots the same public application and admits Four; fixture-admitted: ${fixtureAdmissionNames}`, async () => {
+// Regression for docs/defects/production-boot-public-entry-ctx.md (CLOSED): the bin host must
+// tolerate the reference-only initial-capture-durable checkpoint and still boot and admit Four.
+it(`installed bin boots the same public application and admits Four; fixture-admitted: ${fixtureAdmissionNames}`, async () => {
   const { spawn } = await import('node:child_process');
   const { writeFileSync, readFileSync } = await import('node:fs');
   const root = realpathSync(mkdtempSync(join(tmpdir(), 'production-bin-entry-')));
