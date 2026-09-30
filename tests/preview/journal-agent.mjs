@@ -1203,11 +1203,11 @@ async function main() {
           // A Decision-shape miss is a format miss like a malformed verdict line: the worker may re-ask it once.
           if (result.state === 'complete' && result.failureClass === 'malformed') throw Error(REVIEW_MALFORMED);
           if (result.state !== 'complete' || result.failureClass) throw Error('preview: reply review unavailable');
-          // The reply verdict is one exact line (PASS | reason / VIOLATION:ids | reason);
-          // the whole-line pattern admits no surrounding text, so a written rejection
-          // can never be discarded around it.
+          // The reply verdict is one exact line per selected rule (rule_id: PASS | reason); the whole-line
+          // pattern admits no surrounding text, so a written rejection can never be discarded around it.
           let parsed;
-          // Each selected rule gets its own line, conclusion and reason; a missing or added rule is a format miss.
+          // Each selected rule gets its own line, conclusion and reason; a missing or added rule, or the legacy
+          // combined line (one shared reason for every rule), is a format miss.
           try { parsed = parseReplyReviewVerdict(result.value, Object.keys(selectedRules)); }
           catch (error) { recordShape(shapesPath, 'reply-review', 'verdict', 'malformed', 'not-json'); throw error; }
           if (parsed.ruleIds.some(rule => !Object.hasOwn(selectedRules, rule))) {

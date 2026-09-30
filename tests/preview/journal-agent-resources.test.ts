@@ -7,7 +7,7 @@ import { spawn, spawnSync } from 'node:child_process';
 import { readFileSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { pathToFileURL } from 'node:url';
-import { successiveWorld, offlineProfile, OFFLINE_STORAGE_KEY, FIXTURE_DOORWAY } from './successive-fixture.js';
+import { successiveWorld, offlineProfile, OFFLINE_STORAGE_KEY, FIXTURE_DOORWAY, PER_RULE_PASS } from './successive-fixture.js';
 
 const TOKEN = 'ghp_' + 'Z9y8X7w6V5u4T3s2R1q0P9o8';
 
@@ -30,7 +30,8 @@ it('launches every model call through the resource owner and records resources, 
 const prepared = readFileSync(0, 'utf8');
 appendFileSync(process.argv[2], JSON.stringify(prepared) + '\\n');
 const envelope = JSON.parse(prepared), binding = JSON.parse(envelope.messages[1].content).bindings;
-const value = envelope.messages[0].content.startsWith('Judge this proposed reply') ? 'PASS | The reply stays within the rules.' : 'Noted.';
+${PER_RULE_PASS}
+const value = envelope.messages[0].content.startsWith('Judge this proposed reply') ? perRulePass(envelope.messages[0].content, 'The reply stays within the rules.') : 'Noted.';
 const decision = { type: 'Decision', schemaVersion: 1, id: 'resource-answer', at: binding.at, by: binding.by,
   conclusion: { subject: 'preview-stage2-answer', predicate: 'answer-text', value, evidence: binding.evidence },
   reason: { subject: 'question', predicate: 'answered', value: true, evidence: binding.evidence },

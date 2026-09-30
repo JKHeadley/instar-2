@@ -4,7 +4,7 @@ import { spawn, spawnSync } from 'node:child_process';
 import { existsSync, readFileSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { pathToFileURL } from 'node:url';
-import { successiveWorld, offlineProfile, OFFLINE_STORAGE_KEY, FIXTURE_DOORWAY } from './successive-fixture.js';
+import { successiveWorld, offlineProfile, OFFLINE_STORAGE_KEY, FIXTURE_DOORWAY, PER_RULE_PASS } from './successive-fixture.js';
 import { openPreviewJournal } from './journal.js';
 
 // The launcher runs on the real clock against a fixed fixture expiry, so a due credential reminder or a
@@ -93,12 +93,13 @@ it.each(['SIGINT','SIGTERM','SIGHUP'])('pauses on %s during synchronous idle pol
   writeFileSync(provider, `export { SUBSCRIPTION_CONVERSATION_FRAMING, subscriptionConversationPolicy,
   validateSubscriptionActivation } from ${JSON.stringify(pathToFileURL(join(process.cwd(),'src/assembly/production-provider.ts')).href)};
 ${FIXTURE_DOORWAY}
+${PER_RULE_PASS}
 export const createClaudeCodeSubscriptionRoute = () => ({kind:'Success',value:{invoke:async prepared => {
   const binding=JSON.parse(JSON.parse(prepared).messages[1].content).bindings;
-  const review=JSON.parse(prepared).messages[0].content.startsWith('Judge this proposed reply');
+  const asked=JSON.parse(prepared).messages[0].content, review=asked.startsWith('Judge this proposed reply');
   const decision={type:'Decision',schemaVersion:1,id:'resumed-answer',at:binding.at,by:binding.by,
     conclusion:{subject:'preview-stage2-answer',predicate:'answer-text',value:review
-      ? 'PASS | The reply stays within the rules.' : 'Resumed answer.',evidence:binding.evidence},
+      ? perRulePass(asked,'The reply stays within the rules.') : 'Resumed answer.',evidence:binding.evidence},
     reason:{subject:'question',predicate:'answered',value:true,evidence:binding.evidence},
     floor:{allowed:binding.floor,chosen:binding.floor.default}};
   return {state:'complete',bytes:JSON.stringify(decision),usage:{inputTokens:1,outputTokens:1}};
@@ -203,11 +204,12 @@ it.each([['echo', 0], ['drop-thread', 1]])('the real launcher answers a topic fr
   writeFileSync(provider, `export { SUBSCRIPTION_CONVERSATION_FRAMING, subscriptionConversationPolicy,
   validateSubscriptionActivation } from ${JSON.stringify(pathToFileURL(join(process.cwd(),'src/assembly/production-provider.ts')).href)};
 ${FIXTURE_DOORWAY}
+${PER_RULE_PASS}
 export const createClaudeCodeSubscriptionRoute = () => ({kind:'Success',value:{invoke:async prepared => {
   const envelope=JSON.parse(prepared), binding=JSON.parse(envelope.messages[1].content).bindings;
   const context=envelope.messages[1].content, asked=envelope.messages[0].content;
   const value=asked.startsWith('Judge this proposed reply')
-    ? 'PASS | The reply stays within the rules.'
+    ? perRulePass(asked,'The reply stays within the rules.')
     : asked.includes('What is my sister') ? (context.includes('Wren') && context.includes('main chat')
     ? 'Your sister is Wren; you told me in the main chat.' : 'I do not know.') : 'Noted.';
   const decision={type:'Decision',schemaVersion:1,id:'topic-answer',at:binding.at,by:binding.by,
@@ -280,11 +282,12 @@ it.each([
   writeFileSync(provider, `export { SUBSCRIPTION_CONVERSATION_FRAMING, subscriptionConversationPolicy,
   validateSubscriptionActivation } from ${JSON.stringify(pathToFileURL(join(process.cwd(),'src/assembly/production-provider.ts')).href)};
 ${FIXTURE_DOORWAY}
+${PER_RULE_PASS}
 const mode = ${JSON.stringify(mode)};
 export const createClaudeCodeSubscriptionRoute = () => ({kind:'Success',value:{invoke:async prepared => {
   const envelope=JSON.parse(prepared), binding=JSON.parse(envelope.messages[1].content).bindings;
   const review=envelope.messages[0].content.startsWith('Judge this proposed reply');
-  const verdict='PASS | The reply stays within the rules.';
+  const verdict=review ? perRulePass(envelope.messages[0].content,'The reply stays within the rules.') : '';
   const newline=mode === 'wrapped-crlf' ? '\\r\\n' : '\\n';
   const value=!review ? 'Noted.'
     : mode === 'verdict-contradicted' ? 'VIOLATION: the proposed reply exposes a credential. Do not send it. '+verdict

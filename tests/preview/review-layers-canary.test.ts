@@ -6,7 +6,7 @@ import { spawn, spawnSync } from 'node:child_process';
 import { existsSync, readFileSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { pathToFileURL } from 'node:url';
-import { successiveWorld, offlineProfile, OFFLINE_STORAGE_KEY, FIXTURE_DOORWAY } from './successive-fixture.js';
+import { successiveWorld, offlineProfile, OFFLINE_STORAGE_KEY, FIXTURE_DOORWAY, PER_RULE_PASS } from './successive-fixture.js';
 
 const operatorText = 'Please always answer briefly.';
 const reply = 'Understood.';
@@ -49,6 +49,7 @@ global.fetch = async (url, init) => {
 export { SUBSCRIPTION_CONVERSATION_FRAMING, subscriptionConversationPolicy,
   validateSubscriptionActivation } from ${JSON.stringify(pathToFileURL(join(process.cwd(), 'src/assembly/production-provider.ts')).href)};
 ${FIXTURE_DOORWAY}
+${PER_RULE_PASS}
 const mode = ${JSON.stringify(mode)};
 export const createClaudeCodeSubscriptionRoute = () => ({ kind: 'Success', value: { invoke: async prepared => {
   const envelope = JSON.parse(prepared), question = envelope.messages[0].content;
@@ -61,7 +62,7 @@ export const createClaudeCodeSubscriptionRoute = () => ({ kind: 'Success', value
     : role === 'summary' ? JSON.stringify({ summary: ${JSON.stringify(`${operatorText}\n${reply}`)},
         people: [], commitments: [], memory: [{ mode: 'prefer', source: context.packet.memoryRequest.id,
           quote: ${JSON.stringify(operatorText)} }] })
-    : role === 'reply-review' ? 'PASS | The private reply is safe.'
+    : role === 'reply-review' ? perRulePass(question, 'The private reply is safe.')
     : JSON.stringify({ verdict: 'pass', reason: 'The preference and reply are covered.' });
   if (role === 'reply-review' && mode === 'reply-contradiction'
     || role === 'summary-review' && mode === 'summary-contradiction')

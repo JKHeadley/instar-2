@@ -12,8 +12,10 @@ export const subscriptionDoorway = id => {
 export const createClaudeCodeSubscriptionRoute = () => ({ kind: 'Success', value: {
   invoke: async prepared => {
     const question = JSON.parse(prepared).messages[0].content;
+    // A live review answers one line per selected rule (the only form a new review accepts).
     const value = question.startsWith('Judge this proposed reply')
-      ? 'PASS | The answer repeats the operator\'s marker.' : 'Juniper is the marker.';
+      ? Object.keys(JSON.parse(/on its own: (\{.*?\})\. For raw_path/su.exec(question)[1]))
+        .map(id => `${id}: PASS | The answer repeats the operator's marker.`).join('\n') : 'Juniper is the marker.';
     return { state: 'complete', bytes: JSON.stringify({ type: 'Decision',
       conclusion: { subject: 'preview-stage2-answer', value } }),
       usage: { inputTokens: 1, outputTokens: 1, charge: null, inputComplete: true } };

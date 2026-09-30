@@ -177,4 +177,10 @@ it('declares each consumer\'s real fail direction: advisory review releases, man
   expect(LIVE_JUDGMENTS['jev-summary-integrity']).toMatchObject({ default: 'reject', authority: 'mandatory' });
   expect(LIVE_JUDGMENTS['jev-summary-integrity'].invalid).toMatch(/there is no escalation/u);
   expect(LIVE_JUDGMENTS['reply-revision']).toMatchObject({ default: 'keep', authority: 'signal' });
+  // The faithfulness cascade (journal.ts): undecided escalates to summary-review; only its pass records a summary.
+  expect(LIVE_JUDGMENTS['jev-summary-faithfulness']).toMatchObject({ default: 'reject', authority: 'mandatory' });
+  expect(LIVE_JUDGMENTS['jev-summary-faithfulness'].actions).toContain('escalate');
+  expect(LIVE_JUDGMENTS['jev-summary-faithfulness'].invalid).toMatch(/escalates once to summary-review.*pass alone accepts.*cannot be admitted.*not recorded.*UNKNOWN/u);
+  expect(LIVE_JUDGMENTS['summary-review']).toMatchObject({ default: 'reject', authority: 'mandatory' });
+  expect(LIVE_JUDGMENTS['summary-review'].invalid).toMatch(/not recorded.*only its pass accepts.*UNKNOWN/u);
 });
