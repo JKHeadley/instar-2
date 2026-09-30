@@ -36,3 +36,13 @@ failing the 10 s default deadline under load. Their budgets are now sized to the
 
 **Status:** CLOSED for the quarantine — no case in this file is skipped. The residual child-start cost belongs to
 the shared loader, tracked in `full-suite-load-timeouts.md`.
+
+## Follow-up 2026-09-29 (cint-L5 repair): ratio taken at the median, bound 20
+
+The full gate on cint-L5 failed the relative bound: p95 ratio 16.67 against 10. Isolated on this machine the same
+case reads 8.74-8.95. Two causes. First, the self-state formats every turn in its window, so its cost is linear and
+the expected ratio is about 10; a bound of exactly 10 had no headroom. Second, contention arrives in bursts, and the
+200-turn reference's p95 is its tenth-worst ~1 ms sample, so one burst there decides the p95 ratio. The ratio is now
+taken at the median of the 200 interleaved samples (p95 figures are still printed), and the bound is 20: 2x headroom
+over linear. Both sides were run: the real derivation reads a median ratio of 8.74; a temporary tenfold-cost frame
+derivation (the shape of a quadratic one) read 87.9 and failed. No case is skipped.

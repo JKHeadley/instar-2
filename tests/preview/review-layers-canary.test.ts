@@ -11,6 +11,15 @@ import { successiveWorld, offlineProfile, OFFLINE_STORAGE_KEY, FIXTURE_DOORWAY }
 const operatorText = 'Please always answer briefly.';
 const reply = 'Understood.';
 const fenced = value => `\`\`\`json\n${value}\n\`\`\``;
+// The launcher runs on the real clock against a fixed fixture expiry, so a due credential reminder or a
+// failing doorway check (Rules 8, 56, 100) may ride the answer as its own line, as in journal-agent.test.ts.
+// The answer itself stays exact, and nothing else may be appended.
+const NOTICE_LINE = /^(?:Reminder: the credential "[^"]+" \([^)]+\) expires in [^.]+\. Smallest step for you: .+|Model route check: .+; send "status" for detail\.)$/u;
+const answerOf = text => {
+  const [answer, ...notices] = text.split('\n\n');
+  for (const notice of notices) expect(notice).toMatch(NOTICE_LINE);
+  return answer;
+};
 
 it.each(['wrapped', 'reply-contradiction', 'summary-contradiction'])(
   'covers answer, full-context reply review, summary and summary review offline (%s)', async mode => {
@@ -112,11 +121,14 @@ export const createClaudeCodeSubscriptionRoute = () => ({ kind: 'Success', value
       const runner = { id: `preview-runner:${world.configuration.botId}`, kind: 'system', adapter: 'preview-runner' };
       for (const row of rows) expect(row.writer, row.role).toEqual(row.role === 'answer'
         ? { id: world.configuration.operatorSenderId, kind: 'person', adapter: 'telegram-bot-api:offline-test-endpoint' } : runner);
-      if (mode !== 'summary-contradiction')
-        expect(rows.find(row => row.role === 'reply-review').context).toMatchObject({
-          operatorMessage: operatorText, candidateReply: `PREVIEW — ${reply}`,
+      if (mode !== 'summary-contradiction') {
+        const reviewed = rows.find(row => row.role === 'reply-review').context;
+        expect(answerOf(reviewed.candidateReply)).toBe(`PREVIEW — ${reply}`);
+        expect(reviewed).toMatchObject({
+          operatorMessage: operatorText,
           audience: { surface: 'telegram-private-chat' },
           preferences: expect.arrayContaining([expect.objectContaining({ text: operatorText })]) });
+      }
       expect(rows.find(row => row.role === 'summary-review').context).toMatchObject({
         packet: expect.objectContaining({ history: expect.arrayContaining([
           expect.objectContaining({ user: operatorText })]) }),
@@ -173,7 +185,7 @@ export const createClaudeCodeSubscriptionRoute = () => ({ kind: 'Success', value
           'reply-review/decision/tolerated/fenced': mode === 'reply-contradiction' ? 2 : 1,
           'summary-review/decision/tolerated/fenced': 1 });
       if (mode === 'wrapped') {
-        expect(sends.map(send => send.text)).toEqual([`PREVIEW — ${reply}`]);
+        expect(sends.map(send => answerOf(send.text))).toEqual([`PREVIEW — ${reply}`]);
         expect(view.summaries).toHaveLength(1);
         expect(view.summaryChecks.pass).toBe(1);
         // int11's reply verdict is one exact line, so no JSON wrapper is tolerated or recorded.
