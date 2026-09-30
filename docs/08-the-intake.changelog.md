@@ -4,9 +4,11 @@ _Generated from `08-the-intake.changelog.json` by `scripts/render-changelog.mjs`
 The document itself reads as a first version; every change to it is recorded here, newest first,
 each linked to the git change that made it (rule 91).
 
-## Revision 7 · 2026-09-29 · draft — Operator Justin (verified) said 'yes' at 18:08 PDT 2026-09-29 in topic 102965 to the simpler approval design (plan of record LIVE-PATH-PLAN.md row #91, replacing step 6a), relayed to the desk; the Astra necessity ruling (lanes/astra-approval-necessity-ruling.md) found the constitution as written rejects it, so this is the amendment. Exact-content operator approval PENDING; not merged.
+## Revision 7 · 2026-09-29 · approved — Operator Justin (verified) approved the exact amendment wording with 'Yes' at 18:57 PDT 2026-09-29 in topic 102965 (message 2227093), relayed to the desk by the topic session and observer note #91: 'Instar may accept a recorded, one-use approval of an exact, unexpired request from an operator account held with a named service that the agent cannot use or administer, without a separate device signature or independent approval verifier, while independently enforced safeguards remain independently administered.' His 18:08 yes adopted the approval design (plan rows #91, #93).
 
 - **Binding acts other than a conversation binding or re-binding may also be completed by part one's `account-assented` yes to one exact prepared `Authorization`, `StandingGrant` or `Revocation`; the exercise split, the stolen-session and bot-token residuals, and the walls statement now say such a thief can approve those prepared authority changes (including a prepared authorization or grant expansion) within the approver's authority, but cannot manufacture a principal, change a conversation binding, substitute a scope, or bypass an independently administered safeguard.** — Part four must say the same thing as the amended part one and state the compromise residual truthfully (rules 45 and 26); the earlier 'can never mint or widen' sentence understated it. _(lanes/astra-approval-necessity-ruling.md (section 4 decision sentence); LIVE-PATH-PLAN.md row #91; topic 102965, 18:08 PDT 2026-09-29; Astra review round 1 MF1)_
+
+Approved in: PR #139.
 
 ## Revision 6 · 2026-09-04 · draft — operator review on PR #18; review desk round 5 (final) — internal: zero design findings for the third consecutive round; the two propagation sentences and the external's five editorial refinements folded
 

@@ -4,9 +4,11 @@ _Generated from `05-the-types.changelog.json` by `scripts/render-changelog.mjs` 
 The document itself reads as a first version; every change to it is recorded here, newest first,
 each linked to the git change that made it (rule 91).
 
-## Revision 8 · 2026-09-29 · draft — Operator Justin (verified) said 'yes' at 18:08 PDT 2026-09-29 in topic 102965 to the simpler approval design (plan of record LIVE-PATH-PLAN.md row #91, replacing step 6a), relayed to the desk; the Astra necessity ruling (lanes/astra-approval-necessity-ruling.md) found the constitution as written rejects it, so this is the amendment. Exact-content operator approval PENDING; not merged.
+## Revision 8 · 2026-09-29 · approved — Operator Justin (verified) approved the exact amendment wording with 'Yes' at 18:57 PDT 2026-09-29 in topic 102965 (message 2227093), relayed to the desk by the topic session and observer note #91: 'Instar may accept a recorded, one-use approval of an exact, unexpired request from an operator account held with a named service that the agent cannot use or administer, without a separate device signature or independent approval verifier, while independently enforced safeguards remain independently administered.' His 18:08 yes adopted the approval design (plan rows #91, #93).
 
 - **Add the `account-assented` provenance class: a channel-attested reply from the bound or P-02-named operator account, answering one prepared unexpired request with a current base, whose message or review id is unconsumed, may complete that request's Authorization, StandingGrant or Revocation once; it never produces a principal, never binds or re-binds, and is never reported as verified. Update the exercise split, honest-shape paragraph, no-open-constructors check, repository-anchor paragraph, Provenance supporting type and glossary entry to match.** — The purpose amendment needs one truthful place in the decoder contract; a named class keeps the evidence distinct from verified instead of relabelling channel evidence. _(lanes/astra-approval-necessity-ruling.md (section 4 decision sentence); LIVE-PATH-PLAN.md row #91; topic 102965, 18:08 PDT 2026-09-29)_
+
+Approved in: PR #139.
 
 ## Revision 7 · 2026-09-04 · draft — part-four bundle (atomic): approval fields are pending-landing and completed at the bundle's merge
 

@@ -2,10 +2,10 @@
   {
     "revision": 7,
     "date": "2026-09-29",
-    "status": "draft",
+    "status": "approved",
     "cause": {
       "kind": "conversation",
-      "note": "Operator Justin (verified) said 'yes' at 18:08 PDT 2026-09-29 in topic 102965 to the simpler approval design (plan of record LIVE-PATH-PLAN.md row #91, replacing step 6a), relayed to the desk; the Astra necessity ruling (lanes/astra-approval-necessity-ruling.md) found the constitution as written rejects it, so this is the amendment. Exact-content operator approval PENDING; not merged."
+      "note": "Operator Justin (verified) approved the exact amendment wording with 'Yes' at 18:57 PDT 2026-09-29 in topic 102965 (message 2227093), relayed to the desk by the topic session and observer note #91: 'Instar may accept a recorded, one-use approval of an exact, unexpired request from an operator account held with a named service that the agent cannot use or administer, without a separate device signature or independent approval verifier, while independently enforced safeguards remain independently administered.' His 18:08 yes adopted the approval design (plan rows #91, #93)."
     },
     "changes": [
       {
@@ -13,7 +13,11 @@
         "why": "Part four must say the same thing as the amended part one and state the compromise residual truthfully (rules 45 and 26); the earlier 'can never mint or widen' sentence understated it.",
         "ref": "lanes/astra-approval-necessity-ruling.md (section 4 decision sentence); LIVE-PATH-PLAN.md row #91; topic 102965, 18:08 PDT 2026-09-29; Astra review round 1 MF1"
       }
-    ]
+    ],
+    "approvedIn": {
+      "pr": 139,
+      "mergeCommit": null
+    }
   },
   {
     "revision": 6,
@@ -22,12 +26,12 @@
     "cause": {
       "kind": "review",
       "pr": 18,
-      "note": "review desk round 5 (final) \u2014 internal: zero design findings for the third consecutive round; the two propagation sentences and the external's five editorial refinements folded"
+      "note": "review desk round 5 (final) — internal: zero design findings for the third consecutive round; the two propagation sentences and the external's five editorial refinements folded"
     },
     "changes": [
       {
         "what": "ackPolicy propagated into the bundle enumeration and the contract suite; per-transport identity-evidence semantics on authenticationClass; honest judgment-hold costs as measured bounds; transport-native stop affordances; steering-severity containments (step-up policy hook, measured token blast radius); the replay probe labeled a regression check with part nine owning live canaries.",
-        "why": "Convergence residuals \u2014 no design consequence.",
+        "why": "Convergence residuals — no design consequence.",
         "ref": "review desk round 5"
       }
     ]
@@ -39,7 +43,7 @@
     "cause": {
       "kind": "review",
       "pr": 18,
-      "note": "review desk round 4 \u2014 internal design-clean; the stale composition framing removed"
+      "note": "review desk round 4 — internal design-clean; the stale composition framing removed"
     },
     "changes": [
       {
@@ -56,7 +60,7 @@
     "cause": {
       "kind": "review",
       "pr": 18,
-      "note": "review desk round 3 \u2014 internal design-clean; the part-one amendment executed"
+      "note": "review desk round 3 — internal design-clean; the part-one amendment executed"
     },
     "changes": [
       {
@@ -73,7 +77,7 @@
     "cause": {
       "kind": "review",
       "pr": 18,
-      "note": "review desk round 2 \u2014 all round-1 closures verified"
+      "note": "review desk round 2 — all round-1 closures verified"
     },
     "changes": [
       {
@@ -90,7 +94,7 @@
     "cause": {
       "kind": "review",
       "pr": 18,
-      "note": "review desk round 1 \u2014 ~36 findings, one critical: chat attestation standing in for authority"
+      "note": "review desk round 1 — ~36 findings, one critical: chat attestation standing in for authority"
     },
     "changes": [
       {
