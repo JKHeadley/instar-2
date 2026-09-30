@@ -2,13 +2,42 @@ import { expect, it } from 'vitest';
 import { appendFileSync, mkdtempSync, realpathSync, rmSync, statSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
-import { spawnSync } from 'node:child_process';
+import { spawn } from 'node:child_process';
+import { performance } from 'node:perf_hooks';
 import { auditJournal, auditPacket } from './journal-audit.mjs';
 import { createJournalWorker, importChannelItems, openPreviewJournal, probeTurn } from './journal-test-worker.js';
 import { memoryHealthLine } from './self-state.js';
 import { prepareJournalEnvelope } from './journal-envelope.js';
 
 const key = new Uint8Array(32).fill(41);
+
+// One journal-agent CLI child, awaited without blocking this worker (a spawnSync froze the worker's timers and
+// its runner RPC for the child's whole life). Its cost is almost all loader start-up: 0.4-1.0 s with the
+// transpile cache warm, 5.8 s cold at load 43, and up to ~50 s cold inside a loaded preview suite
+// (docs/defects/preview-journal-load-timing-flake.md, full-suite-load-timeouts.md). The watchdog is a hang
+// detector sized above that worst recorded start, never a bound on what a case asserts; a watchdog kill is
+// reported as status null, never as success, and every child's observed time is printed.
+const AGENT_WATCHDOG_MS = 120_000;
+const runAgent = (args: string[]) => new Promise<{ status: number | null; stdout: string; stderr: string }>(done => {
+  const began = performance.now();
+  const child = spawn(process.execPath,
+    ['--no-warnings', '--loader', './scripts/slice-ts-loader.mjs', 'tests/preview/journal-agent.mjs', ...args],
+    { cwd: process.cwd(), env: { ...process.env, INSTAR_SECRET_PREVIEW_STORAGE_KEY: Buffer.from(key).toString('hex') },
+      stdio: ['ignore', 'pipe', 'pipe'] });
+  let stdout = '', stderr = '', timedOut = false, settled = false;
+  child.stdout.setEncoding('utf8').on('data', (chunk: string) => { stdout += chunk; });
+  child.stderr.setEncoding('utf8').on('data', (chunk: string) => { stderr += chunk; });
+  const timer = setTimeout(() => { timedOut = true; child.kill('SIGKILL'); }, AGENT_WATCHDOG_MS);
+  const finish = (status: number | null) => {
+    if (settled) return;
+    settled = true; clearTimeout(timer);
+    process.stdout.write(`journal-agent ${args[0]} child: ${(performance.now() - began).toFixed(0)} ms\n`);
+    done({ status: timedOut ? null : status, stdout,
+      stderr: timedOut ? `${stderr}[timed out after ${AGENT_WATCHDOG_MS} ms]` : stderr });
+  };
+  child.once('error', () => finish(null));
+  child.once('close', code => finish(code));
+});
 const genesis = { kind: 'genesis' as const, bot: '12345678', chat: '7654321', operator: '7654321',
   grant: 'grant:preview', configurationDigest: 'sha256:offline', expires: 9999999999999,
   maxCalls: 20, maxReplies: 20, maxTurns: 20, maxBytes: 8000, cursor: 0 };
@@ -258,10 +287,7 @@ it('audits the recorded packet without emitting bodies and refuses lost provenan
     expect(auditPacket(journal.view, last, wrongImport).findings.map((item: { code: string }) => item.code)).toContain('channel-attribution');
     journal.close();
     const before = statSync(join(root, 'journal.encrypted')).size;
-    const cli = spawnSync(process.execPath,
-      ['--no-warnings', '--loader', './scripts/slice-ts-loader.mjs', 'tests/preview/journal-agent.mjs', 'audit', '--root', root],
-      { cwd: process.cwd(), env: { ...process.env, INSTAR_SECRET_PREVIEW_STORAGE_KEY: Buffer.from(key).toString('hex') },
-        encoding: 'utf8', timeout: 10000 });
+    const cli = await runAgent(['audit', '--root', root]);
     expect(cli.status, cli.stderr).toBe(0);
     expect(JSON.parse(cli.stdout).findings).toEqual([]);
     expect(cli.stdout).not.toContain('blue raven');
@@ -269,7 +295,7 @@ it('audits the recorded packet without emitting bodies and refuses lost provenan
     expect(cli.stdout).not.toContain('Sam sent the itinerary.');
     expect(statSync(join(root, 'journal.encrypted')).size).toBe(before);
   } finally { rmSync(root, { recursive: true, force: true }); }
-}, 10000);
+}, AGENT_WATCHDOG_MS + 30_000);
 
 it('requires an attributed person note and catches a reachable forgotten clause', () => {
   const root = realpathSync(mkdtempSync(join(tmpdir(), 'preview-audit-notes-')));
@@ -292,7 +318,7 @@ it('requires an attributed person note and catches a reachable forgotten clause'
   } finally { rmSync(root, { recursive: true, force: true }); }
 });
 
-it.skip('exits nonzero for a recorded packet without a verifiable provenance chain — SKIPPED: Rule 37 load-timing flake; docs/defects/preview-journal-load-timing-flake.md', () => {
+it('exits nonzero for a recorded packet without a verifiable provenance chain', async () => {
   const root = realpathSync(mkdtempSync(join(tmpdir(), 'preview-audit-refusal-')));
   try {
     const journal = openPreviewJournal(join(root, 'journal.encrypted'), key, genesis);
@@ -300,22 +326,16 @@ it.skip('exits nonzero for a recorded packet without a verifiable provenance cha
       raw: JSON.stringify(update(1, 'Private body marker.')), accepted: true, cursor: 2, at: 1790000000000 });
     journal.append({ kind: 'reserve', id: 'turn-1', prompt: 'unreadable-prompt', at: 1790000000000 });
     journal.close();
-    const cli = spawnSync(process.execPath,
-      ['--no-warnings', '--loader', './scripts/slice-ts-loader.mjs', 'tests/preview/journal-agent.mjs', 'audit', '--root', root],
-      { cwd: process.cwd(), env: { ...process.env, INSTAR_SECRET_PREVIEW_STORAGE_KEY: Buffer.from(key).toString('hex') },
-        encoding: 'utf8', timeout: 10000 });
+    const cli = await runAgent(['audit', '--root', root]);
     expect(cli.status).toBe(1);
     expect(JSON.parse(cli.stdout).findings).toEqual([{ code: 'recorded-prompt-unreadable', at: 'prompt' }]);
     expect(`${cli.stdout}${cli.stderr}`).not.toContain('Private body marker');
     appendFileSync(join(root, 'journal.encrypted'), Buffer.from([0, 0]));
-    const torn = spawnSync(process.execPath,
-      ['--no-warnings', '--loader', './scripts/slice-ts-loader.mjs', 'tests/preview/journal-agent.mjs', 'audit', '--root', root],
-      { cwd: process.cwd(), env: { ...process.env, INSTAR_SECRET_PREVIEW_STORAGE_KEY: Buffer.from(key).toString('hex') },
-        encoding: 'utf8', timeout: 10000 });
+    const torn = await runAgent(['audit', '--root', root]);
     expect(torn.status).toBe(1);
     expect(`${torn.stdout}${torn.stderr}`).not.toContain('Private body marker');
   } finally { rmSync(root, { recursive: true, force: true }); }
-});
+}, 2 * AGENT_WATCHDOG_MS + 30_000);
 
 it('audits a rolling summary when it is the latest model call', async () => {
   const root = realpathSync(mkdtempSync(join(tmpdir(), 'preview-audit-summary-')));
@@ -452,14 +472,11 @@ it('audits a recorded preference beside an imported source after replay', async 
     expect(auditPacket(journal.view, turn, missing).findings.map((item: { code: string }) => item.code))
       .toContain('preference-source');
     journal.close();
-    const cli = spawnSync(process.execPath,
-      ['--no-warnings', '--loader', './scripts/slice-ts-loader.mjs', 'tests/preview/journal-agent.mjs', 'audit', '--root', root],
-      { cwd: process.cwd(), env: { ...process.env, INSTAR_SECRET_PREVIEW_STORAGE_KEY: Buffer.from(key).toString('hex') },
-        encoding: 'utf8', timeout: 10000 });
+    const cli = await runAgent(['audit', '--root', root]);
     expect(cli.status, cli.stderr).toBe(0);
     expect(JSON.parse(cli.stdout).findings).toEqual([]);
   } finally { rmSync(root, { recursive: true, force: true }); }
-});
+}, AGENT_WATCHDOG_MS + 30_000);
 
 // Live shape (2026-09-29, update 969389612): a longer operator turn whose answer was lost set a reply style.
 // The active preference is offered back as a memory candidate carrying only its exact clause and no reply;

@@ -1,5 +1,6 @@
 import { expect, it } from 'vitest';
-import { spawnSync } from 'node:child_process';
+import { spawn } from 'node:child_process';
+import { performance } from 'node:perf_hooks';
 import { mkdtempSync, realpathSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
@@ -11,6 +12,34 @@ import { readFileSync } from 'node:fs';
 import { datedQuestionWindow, dueState, parseDatedItem, selectDatedItems, withinNext48Hours } from './dated-memory.js';
 
 const key = new Uint8Array(32).fill(23);
+
+// One journal-agent CLI child, awaited without blocking this worker (a spawnSync froze the worker's timers and
+// its runner RPC for the child's whole life). Its cost is almost all loader start-up: 0.4-1.0 s with the
+// transpile cache warm, 5.8 s cold at load 43, and up to ~50 s cold inside a loaded preview suite
+// (docs/defects/preview-journal-load-timing-flake.md, full-suite-load-timeouts.md). The watchdog is a hang
+// detector sized above that worst recorded start, never a bound on what a case asserts; a watchdog kill is
+// reported as status null, never as success, and every child's observed time is printed.
+const AGENT_WATCHDOG_MS = 120_000;
+const runAgent = (args: string[]) => new Promise<{ status: number | null; stdout: string; stderr: string }>(done => {
+  const began = performance.now();
+  const child = spawn(process.execPath,
+    ['--no-warnings', '--loader', './scripts/slice-ts-loader.mjs', 'tests/preview/journal-agent.mjs', ...args],
+    { cwd: process.cwd(), env: { ...process.env, INSTAR_SECRET_PREVIEW_STORAGE_KEY: Buffer.from(key).toString('hex') },
+      stdio: ['ignore', 'pipe', 'pipe'] });
+  let stdout = '', stderr = '', timedOut = false, settled = false;
+  child.stdout.setEncoding('utf8').on('data', (chunk: string) => { stdout += chunk; });
+  child.stderr.setEncoding('utf8').on('data', (chunk: string) => { stderr += chunk; });
+  const timer = setTimeout(() => { timedOut = true; child.kill('SIGKILL'); }, AGENT_WATCHDOG_MS);
+  const finish = (status: number | null) => {
+    if (settled) return;
+    settled = true; clearTimeout(timer);
+    process.stdout.write(`journal-agent ${args[0]} child: ${(performance.now() - began).toFixed(0)} ms\n`);
+    done({ status: timedOut ? null : status, stdout,
+      stderr: timedOut ? `${stderr}[timed out after ${AGENT_WATCHDOG_MS} ms]` : stderr });
+  };
+  child.once('error', () => finish(null));
+  child.once('close', code => finish(code));
+});
 const genesis = { kind: 'genesis' as const, bot: '12345678', chat: '7654321', operator: '7654321',
   grant: 'grant:dated', configurationDigest: 'sha256:dated', expires: 9999999999999,
   maxCalls: 30, maxReplies: 20, maxTurns: 20, maxBytes: 12000, cursor: 0 };
@@ -95,7 +124,7 @@ it('keeps weekly dates in their source zone and scopes next week by the current 
     .toMatchObject([{ day: '2026-10-06', queryDay: '2026-10-05', zone: 'Asia/Tokyo' }]);
 });
 
-it.skip('stores the Telegram turn-time date in the default operator zone and sends its absolute date once — SKIPPED: Rule 37 load-timing flake; docs/defects/preview-journal-load-timing-flake.md', async () => {
+it('stores the Telegram turn-time date in the default operator zone and sends its absolute date once', async () => {
   const root = realpathSync(mkdtempSync(join(tmpdir(), 'preview-relative-'))), path = join(root, 'journal.encrypted');
   try {
     let sends = 0, journal = openPreviewJournal(path, key, genesis);
@@ -124,18 +153,14 @@ it.skip('stores the Telegram turn-time date in the default operator zone and sen
     expect(sends).toBe(2);
     expect(journal.view.dated).toHaveLength(2);
     journal.close();
-    const status = (args: string[]) => spawnSync(process.execPath,
-      ['--no-warnings', '--loader', './scripts/slice-ts-loader.mjs', 'tests/preview/journal-agent.mjs',
-        'status', '--root', root, ...args],
-      { cwd: process.cwd(), env: { ...process.env, INSTAR_SECRET_PREVIEW_STORAGE_KEY: Buffer.from(key).toString('hex') },
-        encoding: 'utf8', timeout: 10000 });
-    const defaultStatus = status([]), utcStatus = status(['--time-zone', 'UTC']);
+    const status = (args: string[]) => runAgent(['status', '--root', root, ...args]);
+    const defaultStatus = await status([]), utcStatus = await status(['--time-zone', 'UTC']);
     expect(defaultStatus.status).toBe(0);
     expect(utcStatus.status).toBe(0);
     expect(JSON.parse(defaultStatus.stdout).self).toContain('time zone America/Los_Angeles');
     expect(JSON.parse(utcStatus.stdout).self).toContain('time zone UTC');
   } finally { rmSync(root, { recursive: true, force: true }); }
-});
+}, 2 * AGENT_WATCHDOG_MS + 30_000);
 
 it('keeps the answer and an ambiguous-hour question beside the verified date', async () => {
   const root = realpathSync(mkdtempSync(join(tmpdir(), 'preview-dated-answer-')));
@@ -350,14 +375,11 @@ it('keeps a missing date decision pending when the same turn saves a reply prefe
     if ('reason' in replayed) throw Error(replayed.reason);
     expect(JSON.parse(replayed.context).datedPending).toMatchObject([{ update: 1, message }]);
     journal.close();
-    const status = spawnSync(process.execPath,
-      ['--no-warnings', '--loader', './scripts/slice-ts-loader.mjs', 'tests/preview/journal-agent.mjs', 'status', '--root', root],
-      { cwd: process.cwd(), env: { ...process.env, INSTAR_SECRET_PREVIEW_STORAGE_KEY: Buffer.from(key).toString('hex') },
-        encoding: 'utf8', timeout: 10000 });
+    const status = await runAgent(['status', '--root', root]);
     expect(status.status, status.stderr).toBe(0);
     expect(JSON.parse(status.stdout).datedPending).toMatchObject([{ update: 1, message }]);
   } finally { rmSync(root, { recursive: true, force: true }); }
-});
+}, AGENT_WATCHDOG_MS + 30_000);
 
 it('gives the first verified turn a parseable reply, memory, preference and dated contract', async () => {
   const root = realpathSync(mkdtempSync(join(tmpdir(), 'preview-dated-first-contract-')));
