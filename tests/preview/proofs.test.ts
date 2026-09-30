@@ -4,7 +4,9 @@ import { mkdtempSync, realpathSync, writeFileSync, appendFileSync, mkdirSync } f
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { createJournalWorker, openPreviewJournal } from './journal-test-worker.js';
+import { CREDENTIAL_SHAPE_NOTICE } from './journal.js';
 import type { JournalView, Turn } from './journal.js';
+import { HOLDING_REPLY } from './reply-check.js';
 import { CRITICAL_PIPELINES, PREVIEW_PROOF_PLANS, executeProof, nextDuePlan, planVersion, projectionSections, proofPosture,
   stepCoverage, verificationPlanInput } from './proofs.js';
 import type { Observed, ProofPorts, ProofRecord } from './proofs.js';
@@ -320,9 +322,24 @@ describe('every critical pipeline step, over its complete population (Rule 38)',
     const on = coverage({ order: [reviewed], turns: new Map([['u1', reviewed]]), stepChecks }, { ...supervisors, stepCheck: true })['operator-reply']!;
     expect(row(on, 'cleanup').state).toBe('validated');
     expect(row(on, 'prepare-packet').state).toBe('missing');
-    // A violation is failed, not validated.
+    // A violation whose flagged text went out is failed, not validated.
     const flagged = turn('u1', { sent: 1, sentAt: T0, replyChecks: [{ verdict: 'violation', ruleIds: [], confidence: 1, path: 'holding', latencyMs: 0 }] });
     expect(row(coverage({ order: [flagged], turns: new Map([['u1', flagged]]) })['operator-reply']!, 'send').state).toBe('failed');
+  });
+  it('a violation whose answer was held is covered and stays a refusal: held, never failed or validated (Rules 38, 42)', () => {
+    const violation = [{ verdict: 'violation' as const, ruleIds: ['credential' as const], confidence: 1, path: 'subscription' as const, latencyMs: 1 }];
+    const held = turn('u1', { sent: 1, sentAt: T0, intent: HOLDING_REPLY, replyChecks: violation });
+    const notice = turn('u2', { sent: 2, sentAt: T0, intent: CREDENTIAL_SHAPE_NOTICE, replyChecks: violation });
+    const headed = turn('u3', { sent: 3, sentAt: T0, intent: `Reminder: call Sam\n${HOLDING_REPLY.replace(/^PREVIEW — /u, '')}`, replyChecks: violation });
+    const released = turn('u4', { sent: 4, sentAt: T0, replyChecks: violation });
+    const passed = turn('u5', { sent: 5, sentAt: T0, replyChecks: [{ verdict: 'pass', ruleIds: [], confidence: null, path: 'jev', latencyMs: 1 }] });
+    const of = (...turns: Turn[]) => coverage({ order: turns, turns: new Map(turns.map(t => [t.id, t])) })['operator-reply']!;
+    for (const step of ['answer', 'interpret', 'send'])
+      expect(row(of(held, notice, headed, passed), step)).toMatchObject({ population: 4, validated: 1, held: 3, failed: 0, missing: 0, state: 'held' });
+    // The neighbor across the boundary: the same verdict with the flagged answer sent is failed.
+    expect(row(of(held, released, passed), 'send')).toMatchObject({ validated: 1, held: 1, failed: 1, state: 'failed' });
+    // A held operation never hides an unreviewed one.
+    expect(row(of(held, turn('u6', { sent: 6, sentAt: T0 })), 'send')).toMatchObject({ held: 1, missing: 1, state: 'missing' });
   });
   it('no business step is exempt: every roster step names a supervisor, and an unobserved requested action is missing with its closed direction', () => {
     const due = turn('requested-action:0', { update: 1.0009765625, sent: 3, sentAt: T0, requestedAction: { items: [{ source: 'u1', quote: 'call Sam', when: 'at 5' }] } });

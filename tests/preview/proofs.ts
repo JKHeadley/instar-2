@@ -23,7 +23,8 @@ import { decodeVerificationRecord, deriveGuardPosture, deriveVerificationDue, me
 import type { GuardPosture, ProbePostureResolution, ProbeRecord, VerificationPlan } from '../../src/verification/index.js';
 import { isStatusCommand } from './status-command.js';
 import { loopHealth } from './obligations.js';
-import { durableProjection, packetDigest } from './journal.js';
+import { CREDENTIAL_SHAPE_NOTICE, durableProjection, packetDigest, replyBody } from './journal.js';
+import { HOLDING_REPLY } from './reply-check.js';
 import type { JournalView, Turn } from './journal.js';
 
 const MINUTE = 60_000, HOUR = 60 * MINUTE, DAY = 24 * HOUR;
@@ -486,17 +487,24 @@ export const CRITICAL_PIPELINES: Readonly<Record<string, Pipeline>> = Object.fre
     ] },
 });
 
-type StepState = 'validated' | 'failed' | 'unavailable' | 'missing';
+type StepState = 'validated' | 'held' | 'failed' | 'unavailable' | 'missing';
 interface Operation { id: string; states: Partial<Record<string, { state: StepState; attempt: string; resolution: string }>> }
 const verdictState = (verdict: string | undefined): StepState => verdict === 'pass' ? 'validated'
   : verdict === 'violation' || verdict === 'lost' ? 'failed' : verdict === undefined ? 'missing' : 'unavailable';
+/** The fixed notice that went out in place of a flagged answer: the answer itself never left (Rules 4, 86). */
+const heldNotice = (turn: Turn) => { const body = replyBody(turn);
+  return body !== undefined && [HOLDING_REPLY, CREDENTIAL_SHAPE_NOTICE].some(text => body === text
+    || body.endsWith(`\n${text.replace(/^PREVIEW — /u, '')}`)); };
 function stepState(view: JournalView, supervisor: Supervisor, key: string, supervisors: ProofPorts['supervisors']) {
   if (supervisor === 'reply-review') {
     if (!supervisors.replyReview) return null;
     const turn = view.turns.get(key), checks = turn?.replyChecks ?? [], last = checks.at(-1);
     const passed = checks.findIndex(check => check.verdict === 'pass');
+    // Rules 38 and 42: a violation whose answer was held is supervision that worked (covered), and it stays a
+    // refusal ('held'), never 'validated'. A violation whose flagged text went out is 'failed'.
+    const state = last?.verdict === 'violation' && turn && heldNotice(turn) ? 'held' as const : verdictState(last?.verdict);
     return passed >= 0 ? { state: 'validated' as const, attempt: `reply-check:${key}:${passed}`, resolution: 'pass' }
-      : last ? { state: verdictState(last.verdict), attempt: `reply-check:${key}:${checks.length - 1}`, resolution: last.verdict } : null;
+      : last ? { state, attempt: `reply-check:${key}:${checks.length - 1}`, resolution: last.verdict } : null;
   }
   if (supervisor === 'summary-review') {
     if (!supervisors.summaryReview) return null;
@@ -512,7 +520,8 @@ function operations(view: JournalView, pipeline: string, supervisors: ProofPorts
   const byTurn = (turn: Turn, steps: Record<string, [Supervisor, string][]>): Operation => ({ id: turn.id,
     states: Object.fromEntries(Object.entries(steps).map(([step, reach]) => {
       const seen = reach.map(([supervisor, key]) => stepState(view, supervisor, key, supervisors)).filter(item => item !== null);
-      const best = seen.find(item => item.state === 'validated') ?? seen.find(item => item.state === 'failed')
+      const best = seen.find(item => item.state === 'validated') ?? seen.find(item => item.state === 'held')
+        ?? seen.find(item => item.state === 'failed')
         ?? seen.find(item => item.state === 'unavailable') ?? seen[0];
       return [step, best];
     })) });
@@ -538,7 +547,8 @@ function operations(view: JournalView, pipeline: string, supervisors: ProofPorts
 export interface StepCoverageRow {
   boundary: string; supervisors: readonly Supervisor[];
   /** Operations (actual attempts) of this pipeline; each boundary is judged over all of them. */
-  population: number; validated: number; failed: number; unavailable: number; missing: number;
+  /** `held`: supervised, and the supervisor's refusal held the answer; covered, and still a refusal (Rule 42). */
+  population: number; validated: number; held: number; failed: number; unavailable: number; missing: number;
   state: StepState | 'no-population'; references: readonly string[];
 }
 /** Observed supervision per pipeline step over the complete population, through Nine's coverage function per
@@ -547,17 +557,18 @@ export function stepCoverage(view: JournalView, supervisors: ProofPorts['supervi
   return Object.fromEntries(Object.entries(CRITICAL_PIPELINES).map(([pipeline, declared]) => {
     const population = operations(view, pipeline, supervisors);
     const rows = declared.steps.map(step => {
-      const counts = { validated: 0, failed: 0, unavailable: 0, missing: 0 }, references: string[] = [];
+      const counts = { validated: 0, held: 0, failed: 0, unavailable: 0, missing: 0 }, references: string[] = [];
       for (const operation of population) {
         const seen = operation.states[step.step];
-        const [row] = supervisionCoverage([step.step], seen && seen.state !== 'failed' ? [{ boundary: step.step, state: seen.state === 'validated' ? 'validated' : 'unavailable',
+        const decided = seen?.state === 'failed' || seen?.state === 'held';
+        const [row] = supervisionCoverage([step.step], seen && !decided ? [{ boundary: step.step, state: seen.state === 'validated' ? 'validated' : 'unavailable',
           attempt: seen.attempt, resolution: seen.resolution, operation: operation.id, recursivelySupervisesOwnCall: false }] : []);
-        const state: StepState = seen?.state === 'failed' ? 'failed' : row!.state === 'validated' ? 'validated' : row!.state === 'unavailable' ? 'unavailable' : 'missing';
+        const state: StepState = decided ? seen.state : row!.state === 'validated' ? 'validated' : row!.state === 'unavailable' ? 'unavailable' : 'missing';
         counts[state]++;
         if (seen && references.length < 6) references.push(seen.attempt);
       }
       const state = population.length === 0 ? 'no-population' as const : counts.failed ? 'failed' as const
-        : counts.missing ? 'missing' as const : counts.unavailable ? 'unavailable' as const : 'validated' as const;
+        : counts.missing ? 'missing' as const : counts.unavailable ? 'unavailable' as const : counts.held ? 'held' as const : 'validated' as const;
       return { boundary: step.step, supervisors: step.supervisors, population: population.length, ...counts, state, references };
     });
     return [pipeline, { failureDirection: declared.failureDirection, owner: declared.owner, rows }];

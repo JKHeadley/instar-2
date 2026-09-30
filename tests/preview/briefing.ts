@@ -163,7 +163,7 @@ export function verifyMindRules(readSource: (path: string) => string): void {
  * for a reply after a context compaction (Rule 110). It rides beside the mind-held rules in the
  * trusted instruction message; the packet carries only the data (`continuity`, commitment ids). */
 export const ANSWER_PROTOCOL = [
-  'Answer protocol. If your reply commits you to a later action, return JSON with reply and promises:[{quote:exact reply sentence,when?:exact date phrase in it}]; '
+  'Answer protocol. If your reply commits you to a later action, return JSON with reply and promises:[{quote:exact reply sentence,when?:the date phrase copied word for word from that sentence, never converted}]; '
     + 'if it carries out an open commitment item with owner agent, add fulfilled:[{id,quote:exact reply excerpt}]. A conditional or quoted example is not a promise.',
   'If packet.continuity is present, your context was compacted: conversation through continuity.through is only in the summary. '
     + 'The application opens your reply with a fixed sentence disclosing that and the recorded state of continuity.lastInbound, the last message before this one; do not write that sentence yourself. '

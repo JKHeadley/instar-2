@@ -2,7 +2,7 @@ import { expect, it } from 'vitest';
 import { mkdtempSync, realpathSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
-import { createJournalWorker, openPreviewJournal, UNKNOWN_ANSWER_NOTICE } from './journal-test-worker.js';
+import { createJournalWorker, MEMORY_UNDECIDED_REPLY, openPreviewJournal, UNKNOWN_ANSWER_NOTICE } from './journal-test-worker.js';
 import { JEV_MODEL, REPLY_RULES } from './reply-check.js';
 
 // Astra int6 MUST-FIX 1: a pending memory correction held on an EARLIER ordinary turn
@@ -48,6 +48,9 @@ it('sends a later loss notice while an earlier ordinary turn is held for a pendi
     for (let i = 0; i < 4; i++) await worker.drain();
     expect(sends.filter(item => item.text.includes(UNKNOWN_ANSWER_NOTICE))).toHaveLength(1);
     expect(journal.view.order[1]?.noticeClass).toBe('unknown-answer');
-    expect(journal.view.order[2]?.intent).toBeUndefined(); // the correction's own turn stays held, unanswered
+    // The correction's own summary judgment came back unresolved on both bounded attempts, so it settles as
+    // undecided and is answered with the not-recorded notice instead of holding forever (the 2026-09-29 wedge fix).
+    expect(journal.view.order[2]).toMatchObject({ memoryPending: true, memoryUndecided: true });
+    expect(journal.view.order[2]?.intentBody).toBe(MEMORY_UNDECIDED_REPLY);
   } finally { journal?.close(); rmSync(root, { recursive: true, force: true }); }
 }, 30000);
