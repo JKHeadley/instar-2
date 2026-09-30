@@ -1229,7 +1229,8 @@ async function main() {
           if (result.state === 'uncertain') return { state: 'uncertain', ...usage };
           if (result.state !== 'complete' || result.failureClass) return { state: 'rejected', ...usage };
           const answered = parseReplyRevision(result.value, objections);
-          return { state: 'complete', text: answered.text, dispositions: answered.dispositions, ...usage };
+          return { state: 'complete', text: answered.text, dispositions: answered.dispositions,
+            ...(answered.blocker === undefined ? {} : { blocker: answered.blocker }), ...usage };
         },
         summaryReview: async (state, through) => {
           const start = performance.now();

@@ -1032,6 +1032,13 @@ it('reads the agent response per objection: accept, reject with a reason, otherw
   expect(validDispositions([{ objection: 'raw_path', decision: 'accept' }], ['raw_path', 'parks_on_user'])).toBe(false);
   expect(replyRevisionQuestion(objections)).toContain('"dispositions"');
   expect(replyRevisionQuestion(objections)).toContain('named topic only by its number');
+  // Plan #104: a cannot-do objection asks for the answer's own investigation record, carried back unvalidated.
+  expect(replyRevisionQuestion(objections)).not.toContain('"blocker"');
+  expect(replyRevisionQuestion(['unrecorded_blocker'])).toContain('"blocker": {"kind"');
+  const record = { kind: 'cannot-do', claim: 'I can’t pay it: I have no accounts.' };
+  expect(parseReplyRevision(JSON.stringify({ reply: 'I can’t pay it: I have no accounts.', dispositions: {}, blocker: record }),
+    ['unrecorded_blocker']).blocker).toEqual(record);
+  expect(parseReplyRevision('plain text', ['unrecorded_blocker']).blocker).toBeUndefined();
 });
 
 type Flow = { jev?: Record<string, number>; jevDown?: true; review?: 'pass' | 'violation' | 'down'; findings?: ReplyFinding[];

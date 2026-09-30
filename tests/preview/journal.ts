@@ -551,7 +551,10 @@ export type JournalRecord =
   | { kind: 'reply-revision-reserve'; id: string; objections: string[]; maxInputTokens?: number; maxOutputTokens?: number; at: number }
   | { kind: 'reply-revision'; id: string; state: 'complete' | 'rejected' | 'uncertain' | 'failed'; text?: string;
     /** The agent's answer to each reserved objection, in order; only a complete revision carries it. */
-    dispositions?: ObjectionDisposition[]; usage?: ModelUsage; at: number }
+    dispositions?: ObjectionDisposition[];
+    /** The investigation record the correction declares for a cannot-do claim its answer left unrecorded (plan
+     * #104): admitted by the same checks as an answer's blocker, only when the answer admitted none. */
+    blocker?: ProposedBlocker; usage?: ModelUsage; at: number }
   /** One bounded held-class review of the revised text, inside the same call cap; no result is UNKNOWN, never repeated. */
   | { kind: 'reply-revision-review-reserve'; id: string; maxInputTokens?: number; maxOutputTokens?: number; at: number }
   | { kind: 'reply-revision-review'; id: string; verdict: 'pass' | 'violation' | 'unavailable'; ruleIds: ReplyRule[]; reason?: string;
@@ -690,7 +693,7 @@ export interface Turn { id: string; update: number; text: string; raw: string; a
   answerMs?: number; sendMs?: number; answerReason?: string;
   reviewCandidate?: string; reviewMentionedDates?: string[];
   revisionReserved?: true; revisionReservedAt?: number; revisionObjections?: string[];
-  revision?: { state: 'complete' | 'rejected' | 'uncertain' | 'failed'; text?: string; dispositions?: ObjectionDisposition[] };
+  revision?: { state: 'complete' | 'rejected' | 'uncertain' | 'failed'; text?: string; dispositions?: ObjectionDisposition[]; blocker?: ProposedBlocker };
   release?: ReplyRelease; heldReview?: ReplyHeld;
   revisionReviewReserved?: true; revisionReview?: { verdict: 'pass' | 'violation' | 'unavailable'; ruleIds: ReplyRule[]; reason?: string; findings?: ReplyFinding[] };
   /** Admitted by the minimal reserve past the ordinary turn allowance. */
@@ -1180,7 +1183,7 @@ const requestedBatchKey = (batch: number) => JSON.stringify(['requested', batch]
  * contextual review (Rules 6, 18, 20, 21, 23, 103). The review context redacts every string of it. */
 export const declaredObligations = (view: JournalView, id: string) => {
   const turn = view.turns.get(id);
-  return { blocker: turn?.answerBlocker ?? null, loops: turn?.answerLoops ?? [],
+  return { blocker: turn?.answerBlocker ?? turn?.revision?.blocker ?? null, loops: turn?.answerLoops ?? [],
     ...(turn?.answerRejected ? { rejected: turn.answerRejected } : {}), capabilities: PREVIEW_CAPABILITIES };
 };
 /** The most recent items whose JSON fits `bytes`, kept in their original order. */
@@ -1427,7 +1430,8 @@ function applyIntentObligations(view: JournalView, turn: Turn, row: Extract<Jour
   }
   if (row.blocker !== undefined) {
     // The answer frame validated its shape and range; the send must still quote it and precede its recheck.
-    if (turn.answerBlocker === undefined || !same(row.blocker, turn.answerBlocker) || !row.text.includes(row.blocker.claim)
+    const declared = turn.answerBlocker ?? turn.revision?.blocker;
+    if (declared === undefined || !same(row.blocker, declared) || !row.text.includes(row.blocker.claim)
       || row.blocker.recheckAt <= row.at) throw Error('preview journal: invalid blocker');
     view.blockers.push({ ...row.blocker, source: turn.id, at: row.at, rechecks: [] });
   }
@@ -2469,10 +2473,13 @@ function project(view: JournalView, row: JournalRecord, system?: SystemCheck): v
   if (row.kind === 'reply-revision') {
     if (!turn.revisionReserved || turn.revision !== undefined || turn.intent !== undefined
       || (row.state === 'complete') !== (typeof row.text === 'string' && row.text.length > 0)
-      || row.dispositions !== undefined && (row.state !== 'complete' || !validDispositions(row.dispositions, turn.revisionObjections ?? [])))
+      || row.dispositions !== undefined && (row.state !== 'complete' || !validDispositions(row.dispositions, turn.revisionObjections ?? []))
+      || row.blocker !== undefined && (row.state !== 'complete' || turn.answerBlocker !== undefined
+        || !validBlocker(row.blocker, turn.reservedAt ?? row.at) || !row.text!.includes(row.blocker.claim)))
       throw Error('preview journal: revision result order');
     turn.revision = { state: row.state, ...(row.text === undefined ? {} : { text: row.text }),
-      ...(row.dispositions === undefined ? {} : { dispositions: row.dispositions.map(item => ({ ...item })) }) };
+      ...(row.dispositions === undefined ? {} : { dispositions: row.dispositions.map(item => ({ ...item })) }),
+      ...(row.blocker === undefined ? {} : { blocker: row.blocker }) };
     if (row.state !== 'uncertain') settleTokens(view, `revision:${row.id}`, row.usage);
     return;
   }
@@ -3294,7 +3301,9 @@ export interface PreviewPorts {
     revise?(input: { text: string; id: string; originalPrompt: string; ruleIds: ReplyRule[]; reason?: string;
       /** Every objection the agent is asked to answer (rule ids and the deterministic link/topic objections). */
       objections?: string[]; findings?: ReplyFinding[]; deadlineAt?: number }): Promise<{
-      state: 'complete' | 'rejected' | 'uncertain'; text?: string; dispositions?: ObjectionDisposition[]; usage?: ModelUsage }> };
+      state: 'complete' | 'rejected' | 'uncertain'; text?: string; dispositions?: ObjectionDisposition[];
+      /** The raw blocker the correction declared; the runner admits it only through the answer's checks. */
+      blocker?: unknown; usage?: ModelUsage }> };
   /** Uses the same pinned Jev route as reply supervision, only after exact preservation cannot decide. */
   summaryCheck?(evidence: string): Promise<unknown>;
 
@@ -5604,7 +5613,7 @@ export function createJournalWorker(journal: ReturnType<typeof openPreviewJourna
                 gate();
                 journal.append({ kind: 'reply-revision-reserve', id: turn.id, objections,
                   maxInputTokens: journal.view.limits.maxBytes, maxOutputTokens: subscriptionOutputMaximum, at: ports.now() });
-                let outcome: Awaited<ReturnType<NonNullable<NonNullable<PreviewPorts['replyCheck']>['revise']>>> | { state: 'failed'; text?: undefined; usage?: undefined; dispositions?: undefined };
+                let outcome: Awaited<ReturnType<NonNullable<NonNullable<PreviewPorts['replyCheck']>['revise']>>> | { state: 'failed'; text?: undefined; usage?: undefined; dispositions?: undefined; blocker?: undefined };
                 // The draft is revised without its Rule 110 disclosure, which code adds back to the final text.
                 const draft = continuity ? reply.replace(`${continuity.disclosure} `, '') : reply;
                 try { outcome = await ports.replyCheck.revise({ text: redact(draft).text, id: turn.id, originalPrompt,
@@ -5614,10 +5623,17 @@ export function createJournalWorker(journal: ReturnType<typeof openPreviewJourna
                 catch { outcome = { state: 'failed' }; }
                 const text = outcome.state === 'complete' && typeof outcome.text === 'string' ? outcome.text.trim() : '';
                 const answered = text && validDispositions(outcome.dispositions, objections) ? outcome.dispositions : undefined;
+                // Plan #104: a real capability limit stated without its investigation record is corrected by
+                // declaring that record, not by hiding the limit. It is admitted exactly as an answer's blocker
+                // (same checks, quoted in the corrected text), only when the answer admitted none; anything
+                // else is dropped and the corrected text is judged without it.
+                const revisionAt = ports.now();
+                const proposedBlocker = text && turn.answerBlocker === undefined && outcome.blocker !== undefined
+                  ? obligationsFrom({ blocker: outcome.blocker }, turn, text, '{}', revisionAt).blocker : undefined;
                 journal.append({ kind: 'reply-revision', id: turn.id,
                   state: outcome.state === 'complete' && !text ? 'failed' : outcome.state, ...(text ? { text } : {}),
-                  ...(answered ? { dispositions: answered } : {}),
-                  ...(outcome.usage ? { usage: outcome.usage } : {}), at: ports.now() });
+                  ...(answered ? { dispositions: answered } : {}), ...(proposedBlocker ? { blocker: proposedBlocker } : {}),
+                  ...(outcome.usage ? { usage: outcome.usage } : {}), at: revisionAt });
               }
               if (turn.revision?.state === 'complete' && turn.revision.text) {
                 let body = turn.revision.text.replace(/^PREVIEW(?=$|[\s:—])(?:\s*[:—])?\s*/u, '');
@@ -5625,7 +5641,8 @@ export function createJournalWorker(journal: ReturnType<typeof openPreviewJourna
                 const candidate = actionHeader === undefined ? disclosed(`PREVIEW — ${body}`) : `${actionHeader}\n${body}`;
                 const encoded = encodeReply(candidate);
                 // The agent keeping its draft unchanged is its answer, not a new candidate: nothing to re-review.
-                if (candidate !== reply && !redact(candidate).count && Buffer.byteLength(encoded) <= 4096 && Array.from(encoded).length <= 4096)
+                // The same text with a newly declared investigation record is a new candidate (plan #104).
+                if ((candidate !== reply || turn.revision.blocker !== undefined) && !redact(candidate).count && Buffer.byteLength(encoded) <= 4096 && Array.from(encoded).length <= 4096)
                   revised = candidate;
               }
             }
@@ -6009,8 +6026,8 @@ export function createJournalWorker(journal: ReturnType<typeof openPreviewJourna
   const sentObligations = (turn: Turn, reply: string, at: number) => {
     const open = new Set(openBlockers(journal.view).map(item => item.id));
     const loops = turn.answerLoops?.filter(loop => reply.includes(loop.quote));
-    const blocker = turn.answerBlocker && reply.includes(turn.answerBlocker.claim) && turn.answerBlocker.recheckAt > at
-      ? turn.answerBlocker : undefined;
+    const declared = turn.answerBlocker ?? turn.revision?.blocker;
+    const blocker = declared && reply.includes(declared.claim) && declared.recheckAt > at ? declared : undefined;
     const rechecks = turn.answerRechecks?.every(item => open.has(item.id))
       ? turn.answerRechecks : undefined;
     const reports = turn.answerReports?.filter(key => reply.includes(journal.view.obligationWork[key]?.report?.text ?? '\u0000')

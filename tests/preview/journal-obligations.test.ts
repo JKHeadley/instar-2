@@ -30,7 +30,7 @@ type Review = { jev?: (text: string) => Partial<Record<ReplyRule, number>>;
   verdict?: (context: Record<string, unknown>) => 'pass' | 'violation';
   /** The agent's one response to the objections on its draft (OR1). Absent: no revision round. */
   revise?: (input: { text: string; objections?: string[] }) => Promise<{ state: 'complete' | 'rejected' | 'uncertain'; text?: string;
-    dispositions?: ObjectionDisposition[] }> };
+    dispositions?: ObjectionDisposition[]; blocker?: unknown }> };
 function world(root: string, options: { maxBytes?: number; maxCalls?: number; answer?: (question: string, context: string) => Answer;
   waitsOn?: boolean; work?: (context: Record<string, unknown>) => Answer | Promise<Answer>; review?: Review; stopped?: () => boolean;
   receipt?: (text: string) => boolean; nextUpdate?: number } = {}) {
@@ -620,6 +620,55 @@ it('sends a final cannot-do claim only with its admitted investigation, judged b
       expect(w.sent.some(text => text.includes(CLAIM)), label).toBe(sends);
       expect(openBlockers(w.journal.view), label).toHaveLength(sends ? 1 : 0);
       w.journal.close();
+    } finally { rmSync(root, { recursive: true, force: true }); }
+  }
+});
+
+// Plan #104 (live, twice): "Can you pay my water bill on the website?" drew a plain, true can't-do answer that declared
+// no investigation record, and the reply check held it behind the holding notice. The held correction now lets the
+// agent keep the limit and declare its record; the runner admits it by the answer's own checks, the corrected
+// candidate is re-reviewed with it, and the sent reply records the blocker. A record the runner refuses stays held.
+it('sends a true can\'t-do answer once its correction declares the investigation, and records the blocker (plan #104; Rules 20, 21, 23, 86)', async () => {
+  const reviewer = { verdict: (context: Record<string, unknown>) =>
+    ((context.declaredObligations as { blocker: unknown }).blocker ? 'pass' : 'violation') as 'pass' | 'violation',
+  jev: (text: string) => (text.includes('can’t book') ? { unrecorded_blocker: 0.92 } : {}) };
+  const accept = [{ objection: 'unrecorded_blocker', decision: 'accept' as const, reason: 'The limit is real; I recorded why.' }];
+  for (const [label, declared, sends] of [
+    ['admitted investigation', blocker(), true],
+    ['ungoverned boundary', blocker({ constraint: 'my-own-rule' }), false],
+    ['claim not in the reply', blocker({ claim: 'I cannot do anything at all here.' }), false],
+    ['no record declared', undefined, false],
+  ] as const) {
+    const root = origin();
+    try {
+      const revisions: { objections?: string[] }[] = [];
+      const w = world(root, { maxBytes: 8400, answer: () => ({ reply: CLAIM }), review: { ...reviewer,
+        revise: async input => { revisions.push(input);
+          return { state: 'complete' as const, text: CLAIM, dispositions: accept, ...(declared ? { blocker: declared } : {}) }; } } });
+      await w.say('Can you book the dentist appointment on the website for me?');
+      const turn = w.journal.view.order[0]!;
+      expect(revisions, label).toHaveLength(1);
+      expect(revisions[0]!.objections, label).toEqual(['unrecorded_blocker']);
+      expect(w.sent, label).toHaveLength(1);
+      if (sends) {
+        expect(w.sent[0], label).toBe(`PREVIEW — ${CLAIM}`);
+        // The same words with a newly declared record are a new candidate: judged once more, with that record.
+        expect(w.reviews, label).toHaveLength(2);
+        expect((w.reviews[1]!.declaredObligations as { blocker: { claim: string } }).blocker.claim, label).toBe(CLAIM);
+        expect(openBlockers(w.journal.view), label).toMatchObject([{ note: { claim: CLAIM, constraint: 'no-tools' } }]);
+        expect(turn.release, label).toMatchObject({ review: 'violation', objections: ['unrecorded_blocker'], revised: true, dispositions: accept });
+        expect(turn.heldReview, label).toBeUndefined();
+      } else {
+        expect(w.sent[0], label).toContain(HOLDING_REPLY.replace(/^PREVIEW — /u, ''));
+        expect(turn.revision?.blocker, label).toBeUndefined();
+        expect(openBlockers(w.journal.view), label).toEqual([]);
+        expect(turn.heldReview, label).toEqual({ objections: ['unrecorded_blocker'], dispositions: accept });
+      }
+      w.journal.close();
+      // Replay: the admitted record survives a reopen exactly as it was sent.
+      const again = openPreviewJournal(w.path, key);
+      expect(openBlockers(again.view).length, label).toBe(sends ? 1 : 0);
+      again.close();
     } finally { rmSync(root, { recursive: true, force: true }); }
   }
 });

@@ -306,17 +306,22 @@ export function replyRevisionQuestion(objections: readonly string[], reason?: st
     const note = findings?.find(finding => finding.rule === id && finding.verdict === 'violation')?.reason;
     return text === undefined ? [] : [[id, note ? `${text} Reviewer: ${note.slice(0, 160)}` : text]];
   }));
-  return `Revise packet.candidateReply, your own draft reply to packet.operatorMessage, before it is sent. A pre-send review raised these objections: ${JSON.stringify(listed)}${reason ? `; reviewer note: ${JSON.stringify(reason.slice(0, 160))}` : ''}. Objections are signals, not verdicts: fix what is actually wrong, keep what is right, and still answer the operator's message fully. Never reproduce a password, access key or other secret. Return inside conclusion.value only a JSON object {"reply": the reply to send (revised, or unchanged when you reject every objection), "dispositions": {objection id: {"decision": "accept" or "reject", "reason": one short sentence}}} with one entry for every listed objection; a rejection needs its reason. No other text.`;
+  return `Revise packet.candidateReply, your own draft reply to packet.operatorMessage, before it is sent. A pre-send review raised these objections: ${JSON.stringify(listed)}${reason ? `; reviewer note: ${JSON.stringify(reason.slice(0, 160))}` : ''}. Objections are signals, not verdicts: fix what is actually wrong, keep what is right, and still answer the operator's message fully. Never reproduce a password, access key or other secret. Return inside conclusion.value only a JSON object {"reply": the reply to send (revised, or unchanged when you reject every objection), "dispositions": {objection id: {"decision": "accept" or "reject", "reason": one short sentence}}${objections.some(id => id === 'unrecorded_blocker' || id === 'claims_blocked') ? ', "blocker": optional investigation record' : ''}} with one entry for every listed objection; a rejection needs its reason.${objections.some(id => id === 'unrecorded_blocker' || id === 'claims_blocked') ? REVISION_BLOCKER_GUIDE : ''} No other text.`;
 }
+/** Plan #104: a true capability limit is kept and recorded, never talked away. The shape is the answer's own
+ * blocker declaration, admitted by the same runner checks. */
+export const REVISION_BLOCKER_GUIDE = ' If the limit is real (it survives every lawful avenue in packet.capabilities), keep saying so plainly and add "blocker": {"kind": "cannot-do" or "needs-human", "claim": a sentence of your reply copied word for word, "avenues": [{"avenue", "disposition": "outside-standing" or "inapplicable", "evidence": one packet.capabilities key such as "externalTools"}], "constraint": a governingConstraints key those capabilities support, "outsideAction": the smallest step a person must take, "recheck": "YYYY-MM-DD" within 90 days}. You have attempted nothing outside this reply, so never call an avenue tried. If the limit is not real, do the work or say what you can do instead.';
 /** Reads the agent's response: the reply text and one disposition per objection. Plain text (or an answer
  * without dispositions) is still the revised reply, with no decision recorded for any objection. */
-export function parseReplyRevision(value: string, objections: readonly string[]): { text: string; dispositions: ObjectionDisposition[] } {
-  let text = value, answered: unknown;
+export function parseReplyRevision(value: string, objections: readonly string[]): { text: string; dispositions: ObjectionDisposition[];
+  /** The raw declared investigation record, unvalidated: the runner alone decides whether it is admitted. */
+  blocker?: unknown } {
+  let text = value, answered: unknown, blocker: unknown;
   try {
-    const parsed = JSON.parse(value) as { reply?: unknown; dispositions?: unknown } | null;
-    if (typeof parsed?.reply === 'string') { text = parsed.reply; answered = parsed.dispositions; }
+    const parsed = JSON.parse(value) as { reply?: unknown; dispositions?: unknown; blocker?: unknown } | null;
+    if (typeof parsed?.reply === 'string') { text = parsed.reply; answered = parsed.dispositions; blocker = parsed.blocker; }
     else if (parsed?.reply && typeof parsed.reply === 'object' && typeof (parsed.reply as { answer?: unknown }).answer === 'string') {
-      text = (parsed.reply as { answer: string }).answer; answered = parsed.dispositions;
+      text = (parsed.reply as { answer: string }).answer; answered = parsed.dispositions; blocker = parsed.blocker;
     }
   } catch { /* plain revised text */ }
   const table = answered && typeof answered === 'object' && !Array.isArray(answered) ? answered as Record<string, unknown> : {};
@@ -327,7 +332,7 @@ export function parseReplyRevision(value: string, objections: readonly string[])
     if (entry?.decision === 'reject' && reason !== undefined) return { objection, decision: 'reject', reason };
     return { objection, decision: 'no-decision' };
   });
-  return { text, dispositions };
+  return { text, dispositions, ...(blocker && typeof blocker === 'object' ? { blocker } : {}) };
 }
 /** A recorded disposition list is exactly one valid answer per objection, in order. */
 export function validDispositions(value: unknown, objections: readonly string[]): value is ObjectionDisposition[] {
