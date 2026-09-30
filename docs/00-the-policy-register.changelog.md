@@ -4,6 +4,12 @@ _Generated from `00-the-policy-register.changelog.json` by `scripts/render-chang
 The document itself reads as a first version; every change to it is recorded here, newest first,
 each linked to the git change that made it (rule 91).
 
+## Revision 5 · 2026-09-29 · approved — Operator Justin (verified) approved the exact amendment wording with 'Yes' at 18:57 PDT 2026-09-29 in topic 102965 (message 2227093), relayed to the desk by the topic session and observer note #91: 'Instar may accept a recorded, one-use approval of an exact, unexpired request from an operator account held with a named service that the agent cannot use or administer, without a separate device signature or independent approval verifier, while independently enforced safeguards remain independently administered.' His 18:08 yes adopted the approval design (plan rows #91, #93).
+
+- **Rewrite P-02: by default an explicit operator yes is a reply from the verified operator account in their own bound chat, recorded with its message id, with no setup; where a recorded P-05 grant lets the agent speak through the owner's chat account, the yes is an Approve tap on a GitHub page under the operator's account, reached by a direct link sent each time, with the platform's normal account recovery; the residual (account or intake takeover can approve within bound authority) is named.** — The operator adopted this design verbatim; the prior device-factor default becomes an optional per-deployment route. _(lanes/astra-approval-necessity-ruling.md (section 4 decision sentence); LIVE-PATH-PLAN.md row #91; topic 102965, 18:08 PDT 2026-09-29)_
+
+Approved in: PR #139.
+
 ## Revision 4 · 2026-09-19 · draft — operator amendment requiring compatibility when only one machine is available
 
 - **Make P-08 select the accepted fixed-profile local-durable set for a single-machine installation and replicated(1) by default whenever a second machine is enrolled.** — A supported no-peer deployment needs an installation policy, while peer loss must never turn an installed replicated demand into local durability. _(`1b5ac4c`)_

@@ -432,7 +432,7 @@ must capture its real evidence and satisfy the row, or refuse the unsupported mo
 | External webhook/service callback | Host signature verified against registered material proves only signed fields; authenticated fetch without a re-checkable signature is channel-attested. Service identity never becomes the human author mentioned in payload. | Provider-minted id required for state-changing stimuli; fingerprint fallback only for declared informational/idempotent classes, with may-collapse warning. Credential/tenant changes break compatibility. Transport response follows declared protocol; no conversational ack, policy never. |
 | Scheduler/recovery/local IPC | Package-minted token or signed system/agent source, never merely loopback, uid text or process proximity. | Four's job/instant or incident identity; caller-bound replay scope. Observation/control input cannot impersonate a user. Admission record is the receipt, conversational ack never. |
 | Model provider | Verified only for fields covered by provider-origin evidence the decoder can recheck; ordinary fetched/returned unsigned response is channel-attested observation, model conclusion remains inference. | Seven's request/attempt plus provider response identity and capture digest; streams bind ordered chunks to one attempt. Account/model identity changes invalidate compatibility; no invented human sender. Ack never. |
-| Host review | Only original authenticated review evidence covering request digest, approver, artifact and base can support verified explicit yes; fetched records alone cannot. | Provider event id plus exact review/request identity; edits/retractions are new evidence. Forwarding preserves original signature without increasing its class. Ack never beyond protocol receipt. |
+| Host review | Only original authenticated review evidence covering request digest, approver, artifact and base can support verified explicit yes; fetched records alone cannot, except as part one's `account-assented` yes under P-02's host review route. | Provider event id plus exact review/request identity; edits/retractions are new evidence. Forwarding preserves original signature without increasing its class. Ack never beyond protocol receipt. |
 | Non-Threadline agent transport | Five's complete authenticated envelope and locally verified peer/key binding; discovery endpoint or relay receipt cannot prove peer authority. | Preserve five's semantic key and six's separate delivery-attempt/effect references; lookup has no create-if-missing. Bound-only authenticated protocol receipt. Threadline remains six's owned realization. |
 
 All rows preserve before interpretation using four's custody path. A conversation with no
@@ -652,14 +652,18 @@ and mandatory. No check proves the residual acceptable; the operator decides tha
 
 ---
 
-## 8. A host without signed reviews is refused as an approval anchor
+## 8. An unsigned host review is refused as an approval anchor unless account-assented
 
 **Rule — unsigned evidence cannot anchor a protected artifact.** Rules 28, 42, 82, 90,
 98 and part two's inherited duty 10.2; **checks: P10-NF-37/38/39**. The host adapter
 preserves the original review evidence through four, supplies it to one's Provenance decoder,
 and records its actual class. An authenticated fetch, matching body hash, agent signature
 on the fetched bytes, successful merge, green CI, or branch-rule presence does not make an
-unsigned host review verified. It remains channel-attested. Offering it as protected
+unsigned host review verified. It remains channel-attested, except that where current P-02
+policy selects the host review route, an approval by the operator account P-02 names, on the
+exact head of a prepared request, decodes as part one's one-use `account-assented` yes under its
+conditions; that is not verification, and the host's branch rules requiring that account's
+approval remain the independent enforcement. Offering any other unsigned review as protected
 approvedIn or explicitYes produces the existing `Refused` with reason standing, the protected
 anchor decoding site, failDirection closed and a custody-safe preserved reference. A valid
 signature missing signed approver/request/artifact/base binding likewise cannot construct
@@ -1011,7 +1015,7 @@ production initialization and actual confined adapters. Naming all three is not 
 | P10-NF-34 | key lifecycle | Key stored with replica, rewrap loses historical readability, last key destroyed as retention; separately recoverable epochs pass. |
 | P10-NF-35 | replication/access | Replica role exports local raw capture/secret, filtered stream hides segment gap or revocation implies erasure; permitted shared replication passes. |
 | P10-NF-36 | restore | Backup grant restores authority, unknown head becomes current or missing key called recovered; quarantined then verified restore passes. |
-| P10-NF-37 | approval decode | Unsigned/fetched/local-signed/merge evidence anchors protected artifact; complete genuine verified review passes. |
+| P10-NF-37 | approval decode | Unsigned/fetched/local-signed/merge evidence outside part one's `account-assented` conditions anchors protected artifact; complete genuine verified review, or the P-02-named account's review of the exact prepared head, passes. |
 | P10-NF-38 | integration | Refused anchor becomes warning/success in any downstream consumer; same Refused stays visible through activation/dispatch. |
 | P10-NF-39 | approval contract | Missing signed request/base, replayed yes or alternate surface launders old review; new exact verified act in supported class passes. |
 | P10-NF-40 | cross-part lifecycle | Any four-trace violates five/six/seven/eight/nine ownership, no-op assessment or missing evidence; real owner chain preserves outcomes and uncertainty. |

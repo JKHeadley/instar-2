@@ -1,5 +1,25 @@
 [
   {
+    "revision": 8,
+    "date": "2026-09-29",
+    "status": "approved",
+    "cause": {
+      "kind": "conversation",
+      "note": "Operator Justin (verified) approved the exact amendment wording with 'Yes' at 18:57 PDT 2026-09-29 in topic 102965 (message 2227093), relayed to the desk by the topic session and observer note #91: 'Instar may accept a recorded, one-use approval of an exact, unexpired request from an operator account held with a named service that the agent cannot use or administer, without a separate device signature or independent approval verifier, while independently enforced safeguards remain independently administered.' His 18:08 yes adopted the approval design (plan rows #91, #93)."
+    },
+    "changes": [
+      {
+        "what": "Add the `account-assented` provenance class: a channel-attested reply from the bound or P-02-named operator account, answering one prepared unexpired request with a current base, whose message or review id is unconsumed, may complete that request's Authorization, StandingGrant or Revocation once; it never produces a principal, never binds or re-binds, and is never reported as verified. Update the exercise split, honest-shape paragraph, no-open-constructors check, repository-anchor paragraph, Provenance supporting type and glossary entry to match.",
+        "why": "The purpose amendment needs one truthful place in the decoder contract; a named class keeps the evidence distinct from verified instead of relabelling channel evidence.",
+        "ref": "lanes/astra-approval-necessity-ruling.md (section 4 decision sentence); LIVE-PATH-PLAN.md row #91; topic 102965, 18:08 PDT 2026-09-29"
+      }
+    ],
+    "approvedIn": {
+      "pr": 139,
+      "mergeCommit": null
+    }
+  },
+  {
     "revision": 7,
     "date": "2026-09-04",
     "status": "draft",
@@ -11,7 +31,7 @@
     "changes": [
       {
         "what": "The provenance wall gains the exercise split: authority-conferring exercise decodes only from verified provenance, always; directive exercise may decode from channel-attested evidence only within a recorded verified-provenance conversation binding, where attestation selects and never establishes, widens, or transfers standing.",
-        "why": "Three part-four review rounds pressed the same point \u2014 an attested exercise of bound standing is still attested \u2014 and the honest answer is an amendment through this document's own chain, not a reading around its wall.",
+        "why": "Three part-four review rounds pressed the same point — an attested exercise of bound standing is still attested — and the honest answer is an amendment through this document's own chain, not a reading around its wall.",
         "ref": "part four, the conversation binding; review rounds 1-3"
       }
     ]
@@ -44,7 +64,7 @@
     "cause": {
       "kind": "review",
       "pr": 13,
-      "note": "review desk round 4 (final round) \u2014 independent Codex reviewer confirmed all round-3 closures; two findings above the line, both accepted"
+      "note": "review desk round 4 (final round) — independent Codex reviewer confirmed all round-3 closures; two findings above the line, both accepted"
     },
     "approvedIn": {
       "pr": 13,
@@ -70,7 +90,7 @@
     "cause": {
       "kind": "review",
       "pr": 13,
-      "note": "review desk round 3 \u2014 independent Codex reviewer, five findings above the severity line, all accepted"
+      "note": "review desk round 3 — independent Codex reviewer, five findings above the severity line, all accepted"
     },
     "approvedIn": {
       "pr": 13,
@@ -78,7 +98,7 @@
     },
     "changes": [
       {
-        "what": "Verified provenance now requires evidence the package re-checks against its registered key set \u2014 a signature, a host-signed delivery or event, a token it minted. A record the adapter fetched, even with a matching hash, is channel-attested; the repository anchor therefore stands only where the host signs its approval events. NF-73 covers a forged record with an internally matching hash.",
+        "what": "Verified provenance now requires evidence the package re-checks against its registered key set — a signature, a host-signed delivery or event, a token it minted. A record the adapter fetched, even with a matching hash, is channel-attested; the repository anchor therefore stands only where the host signs its approval events. NF-73 covers a forged record with an internally matching hash.",
         "why": "Hash agreement proves the bytes were not altered after the adapter produced them, not that the host produced them.",
         "ref": "review desk topic 66384, message 66440, finding 1"
       },
@@ -88,7 +108,7 @@
         "ref": "review desk topic 66384, message 66440, finding 2"
       },
       {
-        "what": "The Conflict resolution doorway takes the live StandingGrant under which the decision is made and refuses unless the grant is live, its scope covers the subject, and its standing suffices \u2014 operator standing for a conflict over a grant, revocation, authorization, or principal. NF-75 and NF-76 added.",
+        "what": "The Conflict resolution doorway takes the live StandingGrant under which the decision is made and refuses unless the grant is live, its scope covers the subject, and its standing suffices — operator standing for a conflict over a grant, revocation, authorization, or principal. NF-75 and NF-76 added.",
         "why": "Identity alone let any requester choose the authoritative side of a conflict, including one over operator identity.",
         "ref": "review desk topic 66384, message 66440, finding 3"
       },
@@ -111,7 +131,7 @@
     "cause": {
       "kind": "review",
       "pr": 13,
-      "note": "review desk round 2 \u2014 independent Codex reviewer, eight findings above the severity line, all accepted; five of them corrected overclaims introduced by the round-1 fixes"
+      "note": "review desk round 2 — independent Codex reviewer, eight findings above the severity line, all accepted; five of them corrected overclaims introduced by the round-1 fixes"
     },
     "approvedIn": {
       "pr": 13,
@@ -172,7 +192,7 @@
     "cause": {
       "kind": "review",
       "pr": 13,
-      "note": "review desk round 1 \u2014 independent Codex reviewer, seven findings above the severity line, all accepted"
+      "note": "review desk round 1 — independent Codex reviewer, seven findings above the severity line, all accepted"
     },
     "approvedIn": {
       "pr": 13,

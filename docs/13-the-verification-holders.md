@@ -660,8 +660,9 @@ Authorization through trusted pinned decoders, current grant/revocation state an
 its operational principal cannot amend enforced policy. It rejects agent-kind/self approval,
 channel-attested yes, stale base, substituted paths and replay against changed content. Agent
 work may propose bytes and request installation, but cannot complete approval. Repository
-protection separately requires the host's non-agent approval rules and verified signed review
-record; fetched records and merge events do not replace that anchor.
+protection separately requires the host's non-agent approval rules and a verified signed review
+record, or part one's `account-assented` review under P-02's host review route; other fetched
+records and merge events do not replace that anchor.
 
 **Rule — protected installation is recoverable without trusting a local success report.**
 **Checks: P9-NF-53/55**. Eight calls the broker through an admitted operation. The broker durably

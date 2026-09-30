@@ -12,7 +12,7 @@ Entries are numbered P-01 onward. "Default" is what ships. "Per deployment" stat
 
 **Value — P-01 deployment trust record.** Default: protected execution uses a small broker under an operator-controlled identity the agent cannot administer, and the operator accepts a written deployment record naming the machines, administrators, keys and the accepted residual risk of administrator or root loss. Per deployment: the operator names the custodian and signs the record.
 
-**Value — P-02 approval gesture.** Default: a protected approval is signed by a factor held on the operator's device, bound to the exact request the operator saw, with an independently verified recovery route that also works from a phone. Per deployment: the operator may name the device factor and the recovery route.
+**Value — P-02 approval gesture.** Default, for every deployment: an explicit operator yes is a reply from the verified operator account in the operator's own bound chat, recorded with the message id, with no setup. Where a recorded P-05 grant lets the agent speak through the owner's chat account, that reply cannot tell the operator from the agent, so the yes is instead an Approve tap on a GitHub page under the operator's account, reached by a direct link sent each time. Recovery is the platform's normal account recovery; GitHub account recovery covers a lost phone. No passkeys, no signing key, no repository setup. The accepted residual: whoever takes over that account, or the agent's own intake, can approve within the bound authority, not only steer it. Per deployment: the operator may instead name a signed device-factor route and its recovery.
 
 ## Disclosure (serves: least revelation)
 

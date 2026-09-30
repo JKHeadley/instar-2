@@ -4,6 +4,12 @@ _Generated from `00-the-purpose.changelog.json` by `scripts/render-changelog.mjs
 The document itself reads as a first version; every change to it is recorded here, newest first,
 each linked to the git change that made it (rule 91).
 
+## Revision 10 · 2026-09-29 · approved — Operator Justin (verified) approved the exact amendment wording with 'Yes' at 18:57 PDT 2026-09-29 in topic 102965 (message 2227093), relayed to the desk by the topic session and observer note #91: 'Instar may accept a recorded, one-use approval of an exact, unexpired request from an operator account held with a named service that the agent cannot use or administer, without a separate device signature or independent approval verifier, while independently enforced safeguards remain independently administered.' His 18:08 yes adopted the approval design (plan rows #91, #93).
+
+- **Amend 'the agent never administers its own safeguards' to admit a recorded, one-use approval of an exact, unexpired request from an operator account held with a named service the agent cannot use or administer, without a separate device signature or independent approval verifier, and extend its check to name the service, the absent agent access path and one-use consumption.** — The adopted approval design is account-authenticated, which the signed-only clause rejected; the ruling's sentence is the smallest principle that permits it while keeping independently enforced safeguards independently administered and the evidence class honest. _(lanes/astra-approval-necessity-ruling.md (section 4 decision sentence); LIVE-PATH-PLAN.md row #91; topic 102965, 18:08 PDT 2026-09-29)_
+
+Approved in: PR #139.
+
 ## Revision 9 · 2026-09-24 · draft — Bounded Slack second-channel constitutional amendment from astra-slack-closedset-ruling.md; operator approval PENDING; no merge or runtime activation.
 
 - **Add the bounded Slack ordinary-reply send to the one-machine profile’s accepted closed set.** — The same durable-cause, exact P-08 membership, accepted loss model and no-repeat safeguards can support the bound operator’s Slack conversation. _(astra-slack-closedset-ruling.md, Exact minimal governing edits and approval procedure (2026-09-24); approval PENDING)_
