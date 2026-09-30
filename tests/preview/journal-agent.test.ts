@@ -355,7 +355,7 @@ it('Rule 35: a test-endpoint composition refuses a production journal before tak
   expect(existsSync(join(root, 'runs.jsonl'))).toBe(false);
 });
 
-it('Rules 2, 42: a launch refused under the writer lease records its scrubbed reason; stderr stays terse', () => {
+it('Rules 2, 42: a launch refused under the writer lease records its scrubbed reason and stderr stays terse', () => {
   const world = successiveWorld(), root = join(world.directory, 'refused-launch');
   const journal = openPreviewJournal(join(root, 'journal.encrypted'), OFFLINE_STORAGE_KEY, { kind: 'genesis', origin: 'test',
     bot: '1001', chat: '2002', operator: '2002', grant: 'grant:refusal', configurationDigest: 'sha256:recorded',
