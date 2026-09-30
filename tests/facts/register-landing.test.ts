@@ -1,0 +1,159 @@
+// Plan #91: account-authenticated assent (chat reply / pinned operator review) produces the
+// explicit yes, the Part Two landing provider appends the governing records, and the verified
+// register spine answers from them — both sides of the one declaration, and across a restart.
+import { readFileSync } from 'node:fs';
+import { expect, it, vi } from 'vitest';
+import { authorizationRequestDigest, canonical, decode } from '../../src/index.js';
+import type { Hash, Json } from '../../src/index.js';
+import { accountAuthenticatedAssent } from '../../src/decode/explicit-yes.js';
+import { createFactStore, createRegisterLanding, createRegisterSpine, extractGovernedChain } from '../../src/facts/index.js';
+import type { FactEnvelope, GoverningPayloadCustody, SegmentStoragePort } from '../../src/facts/index.js';
+import { produceExplicitYes } from '../../src/operator/index.js';
+import type { ExplicitYesInstallation, ExplicitYesObservation, ExplicitYesRequest } from '../../src/operator/index.js';
+import { factsFixture, privateKey, refused, value } from './fixtures.js';
+
+// The shipped declaration stays off; this file exercises both of its sides.
+const assent = vi.hoisted(() => ({ enabled: true }));
+vi.mock('../../src/decode/explicit-yes.js', async importOriginal => {
+  const actual = await importOriginal<typeof import('../../src/decode/explicit-yes.js')>();
+  return { ...actual,
+    isExplicitYes: (p: Parameters<typeof actual.isExplicitYes>[0]) => actual.isExplicitYes(p, assent),
+    isRepositoryYes: (p: Parameters<typeof actual.isRepositoryYes>[0]) => actual.isRepositoryYes(p, assent) };
+});
+
+const installation: ExplicitYesInstallation = { adapter: 'host', machine: 'machine-a',
+  chat: { method: 'telegram-sender', boundChatId: 'chat-operator', operatorAccountId: 'tg:alice' },
+  github: { method: 'github-review', repository: 'org/instar', operatorLogin: 'Alice-Op' }, agentSpeaksAsOperatorInChat: false };
+
+function setup() {
+  assent.enabled = true;
+  const f = factsFixture();
+  const root = f.fact();
+  const ctx = { ...f.ctx, schemas: [...f.ctx.schemas, f.governingSchema], facts: [root], grants: [{ factId: root.id, grant: f.g }] };
+  const rows: string[] = [];
+  const storage: SegmentStoragePort = { owner: 'part-ten', read: () => rows.map(r => JSON.parse(r) as unknown),
+    append: bytes => { rows.push(bytes); return f.success({ kind: 'local-durable' as const }); } };
+  const payloads = new Map<string, string>();
+  const custody: GoverningPayloadCustody = {
+    put: bytes => { const hash = value(canonical(JSON.parse(bytes))).hash; payloads.set(hash, bytes); return f.success(hash); },
+    get: hash => payloads.get(hash) };
+  const open = () => createRegisterLanding({ context: ctx, store: createFactStore(ctx, storage), custody,
+    author: { machine: 'machine-a', principal: f.alice as unknown as Json, provenance: f.alice.provenance as unknown as Json, privateKey },
+    anchor: root.id, stalenessBoundMs: 1000 });
+  const landing = { owner: 'part-ten' as const, merges: ['merge-1', 'merge-2', 'merge-3'].map(commit =>
+    ({ commit, onMain: true, parentCount: 2, reviewedBase: 'base:1' })) };
+  function content(body: string) { const c = { id: 'store', body }; const e = value(canonical(c)); f.capture(e.bytes, e.hash); return { c, hash: e.hash as Hash }; }
+  function request(requestId: string, artifact: Hash, overrides: Partial<ExplicitYesRequest> = {}): ExplicitYesRequest {
+    const action = { kind: 'merge', scope: f.scope };
+    return { requestId, authorizationId: `authorization:${requestId}`, approver: f.alice, requestedBy: f.bob, under: f.g.id,
+      action: action.kind, scope: f.scope, artifact, base: 'base:1', kind: { kind: 'approval' }, issuedAt: 50, expiresAt: 500,
+      requestDigest: authorizationRequestDigest({ approver: f.alice, action, artifact, base: 'base:1' }), ...overrides };
+  }
+  const chat = (requestId: string, messageId = '901', over: Record<string, unknown> = {}): ExplicitYesObservation =>
+    ({ kind: 'chat-reply', chatId: 'chat-operator', messageId, senderAccountId: 'tg:alice', text: `yes ${requestId}`, at: f.now, ...over }) as ExplicitYesObservation;
+  const review = (requestId: string, reviewId = 'r-77', over: Record<string, unknown> = {}): ExplicitYesObservation =>
+    ({ kind: 'github-review', repository: 'org/instar', pullRequest: 12, pullRequestBody: `Approval request: ${requestId}\n`,
+      reviewId, state: 'APPROVED', reviewerLogin: 'alice-op', at: f.now, ...over }) as ExplicitYesObservation;
+  function authorize(req: ExplicitYesRequest, observation: ExplicitYesObservation, consumed: readonly string[] = [],
+    install: ExplicitYesInstallation = installation) {
+    const record = value(produceExplicitYes(req, install, observation, consumed, f.c));
+    f.capture(record.bytes, record.reference);
+    const p = value(decode('Provenance', record.provenance, f.ctx.decode));
+    return decode('Authorization', { type: 'Authorization', schemaVersion: 1, ...record.authorization, explicitYes: p }, { ...f.ctx.decode, provenance: p });
+  }
+  const version = (id: string, body: { c: Json; hash: Hash }, supersedes: readonly string[] = [], landedIn = 'merge-1') =>
+    ({ id, subject: 'store', content: body.c, contentHash: body.hash, supersedes, base: 'base:1', landedIn });
+  const factsNow = () => [root, ...rows.map(r => JSON.parse(r) as FactEnvelope)];
+  return { f, ctx, root, rows, payloads, open, landing, content, request, chat, review, authorize, version, factsNow };
+}
+
+it('a chat yes enters force, a review yes supersedes it, and both survive a restart', () => {
+  const s = setup(), first = s.content('one'), second = s.content('two');
+  const landing = s.open();
+  const yes1 = value(s.authorize(s.request('req-1', first.hash), s.chat('req-1')));
+  expect(yes1.explicitYes.class).toBe('channel-attested');
+  expect(yes1.explicitYes.record.reference).toBe('telegram:chat:chat-operator:message:901');
+  const v1 = value(landing.land(yes1, s.version('v1', first), s.f.scope, s.landing, s.f.now as unknown as Json));
+  const extraction = value(extractGovernedChain(value(landing.spine()), { ...s.ctx, facts: s.factsNow() }));
+  const generation = { type: 'GenerationRecord', schemaVersion: 1, at: s.f.clockRaw(100),
+    generation: { type: 'RegisterGeneration', schemaVersion: 1, id: `sha256:${'a'.repeat(64)}`, commit: 'commit:1',
+      vector: { owner: 'part-two', name: 'FactPositionVector', id: (extraction.extract as { vector: { id: string } }).vector.id } } } as unknown as Json;
+  value(landing.enterForce(generation, s.f.now as unknown as Json));
+
+  const yes2 = value(s.authorize(s.request('req-2', second.hash), s.review('req-2')));
+  expect(yes2.explicitYes.authenticated.recordType).toBe('operator-review-approval');
+  value(landing.land(yes2, s.version('v2', second, [v1.version.id], 'merge-2'), s.f.scope, s.landing, s.f.now as unknown as Json));
+
+  // Restart: a new store and provider over the same durable rows and custody.
+  const restarted = s.open(), spine = value(restarted.spine());
+  expect(spine.versions.map(v => v.version.id)).toEqual(['v1', 'v2']);
+  expect(spine.approvals).toHaveLength(2); expect(spine.generations).toHaveLength(1);
+  const context = { ...s.ctx, facts: s.factsNow() };
+  const rows = (value(extractGovernedChain(spine, context)).extract as { rows: { version: string; status: string }[] }).rows;
+  expect(rows.map(r => [r.version, r.status])).toEqual([['v1', 'superseded'], ['v2', 'live']]);
+  const port = createRegisterSpine(spine, context, record => s.f.success(record));
+  expect(value(port.verifyExtract(extraction.extract))).toEqual({ owner: 'part-two', name: 'FactEnvelope', id: v1.factId });
+  expect(value(port.enteringForce((generation as { generation: Json }).generation))).toEqual(generation);
+  expect(value(port.isCurrent({ owner: 'part-two', name: 'FactPositionVector', id: (extraction.extract as { vector: { id: string } }).vector.id }, s.f.clock(150)))).toBe(true);
+});
+
+it('the declaration off refuses both paths at Part One and the recorded spine at Part Two', () => {
+  const s = setup(), first = s.content('one');
+  const landing = s.open();
+  const yes = value(s.authorize(s.request('req-1', first.hash), s.chat('req-1')));
+  value(landing.land(yes, s.version('v1', first), s.f.scope, s.landing, s.f.now as unknown as Json));
+  assent.enabled = false;
+  refused(s.authorize(s.request('req-9', first.hash), s.chat('req-9', '902')), 'verified required');
+  refused(s.authorize(s.request('req-8', first.hash), s.review('req-8', 'r-78')), 'verified required');
+  refused(extractGovernedChain(value(s.open().spine()), { ...s.ctx, facts: s.factsNow() }), 'verified explicit yes');
+  refused(s.open().land(yes, s.version('v9', first, [], 'merge-3'), s.f.scope, s.landing, s.f.now as unknown as Json), 'explicit yes');
+});
+
+it('a yes is used once: the same chat message cannot land a second version', () => {
+  const s = setup(), first = s.content('one'), second = s.content('two');
+  const landing = s.open();
+  const yes = value(s.authorize(s.request('req-1', first.hash), s.chat('req-1')));
+  const v1 = value(landing.land(yes, s.version('v1', first), s.f.scope, s.landing, s.f.now as unknown as Json));
+  refused(landing.land(yes, s.version('v2', second, [v1.version.id], 'merge-2'), s.f.scope, s.landing, s.f.now as unknown as Json), 'already used');
+  // The producer refuses the consumed reference before any Authorization exists.
+  refused(produceExplicitYes(s.request('req-1', first.hash), installation, s.chat('req-1'),
+    [yes.explicitYes.record.reference], s.f.c), 'already used');
+});
+
+it('the producer admits only the named request, from the pinned account, inside its lifetime', () => {
+  const s = setup(), first = s.content('one'), req = s.request('req-1', first.hash);
+  const produce = (o: ExplicitYesObservation, install = installation, r = req) => produceExplicitYes(r, install, o, [], s.f.c);
+  value(produce(s.chat('req-1')));
+  value(produce(s.chat('req-1', '903', { text: '  Approve req-1 ' })));
+  refused(produce(s.chat('req-1', '904', { chatId: 'chat-other' })), 'bound chat');
+  refused(produce(s.chat('req-1', '905', { senderAccountId: 'tg:mallory' })), 'verified operator account');
+  for (const text of ['yes', 'yes req-2', 'no req-1', 'yes req-1 please', 'sure, req-1']) refused(produce(s.chat('req-1', '906', { text })), 'exactly');
+  refused(produce(s.chat('req-1'), installation, { ...req, expiresAt: 99 }), 'lifetime');
+  refused(produce(s.chat('req-1'), installation, { ...req, issuedAt: 101 }), 'lifetime');
+  // Where the agent may speak through the operator's chat account, only the review path counts.
+  refused(produce(s.chat('req-1'), { ...installation, agentSpeaksAsOperatorInChat: true }), 'P-05');
+  value(produce(s.review('req-1'), { ...installation, agentSpeaksAsOperatorInChat: true }));
+  refused(produce(s.review('req-1', 'r-1', { state: 'COMMENTED' })), 'not an approval');
+  refused(produce(s.review('req-1', 'r-2', { reviewerLogin: 'EchoOfDawn' })), 'pinned operator GitHub');
+  refused(produce(s.review('req-1', 'r-3', { pullRequestBody: 'Approval request: req-10' })), 'does not name');
+  refused(produce(s.review('req-1', 'r-4', { repository: 'org/fork' })), 'pinned repository');
+  refused(produce(s.review('req-1'), { ...installation, github: null }), 'no pinned operator GitHub');
+  refused(produce(s.chat('req-1'), installation, { ...req, requestedBy: s.f.alice }), 'own request');
+});
+
+it('a lost governing payload is refused loudly on restart, never skipped', () => {
+  const s = setup(), first = s.content('one');
+  const yes = value(s.authorize(s.request('req-1', first.hash), s.chat('req-1')));
+  value(s.open().land(yes, s.version('v1', first), s.f.scope, s.landing, s.f.now as unknown as Json));
+  s.payloads.clear();
+  refused(s.open().spine(), 'lost from custody');
+});
+
+it('the shipped declaration is off while Part Eleven still refuses a chat reply as a yes', () => {
+  const partEleven = readFileSync('docs/15-the-operator-surfaces.md', 'utf8').replace(/\s+/g, ' ');
+  const refusesChat = partEleven.includes('a successful chat reply are never yes');
+  // Enabling the declaration without the amendment (or amending without enabling) fails here.
+  expect(accountAuthenticatedAssent.enabled).toBe(!refusesChat);
+  expect(accountAuthenticatedAssent.name).toBe('account-authenticated-assent');
+});
+

@@ -7,6 +7,7 @@ import { canonicalText, hashText, snapshot } from './canonical.js';
 import { schemaRegistry } from './schema.js';
 import { runBoundary } from './framework.js';
 import { causalClock, childContext, sealInContext, sessionFor, trustedIn } from './session.js';
+import { accountAssentRecordTypes, isExplicitYes, isRepositoryYes, verifiedYesRecordTypes } from './explicit-yes.js';
 
 type Obj = Record<string, T.Json>;
 function requireThat(condition: unknown, detail: string): asserts condition {
@@ -312,8 +313,9 @@ function decodeRecord<N extends keyof T.Inventory>(type: N, v: Obj, c: DecodeCon
     }
     case 'Authorization': {
       tagged(v, type, ['id', 'at', 'approver', 'under', 'action', 'artifact', 'base', 'kind', 'requestedBy', 'explicitYes', 'requestDigest']); text(v.id, 'id');
-      const p = provenance(c, true); requireThat(canonicalText(v.explicitYes) === canonicalText(p), 'explicitYes: provenance differs');
-      one(p.authenticated.recordType, ['review-approval', 'approval', 'signed-yes', 'dashboard-yes'], 'explicitYes.recordType');
+      const p = provenance(c, false); requireThat(canonicalText(v.explicitYes) === canonicalText(p), 'explicitYes: provenance differs');
+      one(p.authenticated.recordType, [...verifiedYesRecordTypes, ...accountAssentRecordTypes], 'explicitYes.recordType');
+      requireThat(isExplicitYes(p), 'provenance: verified required above requester (account-authenticated assent only under its enabled declaration)');
       bound(v, p, ['explicitYes']);
       const approver = principal(v.approver, c); const requestedBy = principal(v.requestedBy, c); const at = clock(v.at, c);
       requireThat(approver.id === p.authenticated.principal.id && approver.kind === p.authenticated.principal.kind, 'approver: differs from authenticated record');
@@ -325,7 +327,7 @@ function decodeRecord<N extends keyof T.Inventory>(type: N, v: Obj, c: DecodeCon
       const policy = c.register.actions[aKind]!;
       if (policy.protected) {
         requireThat(approver.id !== requestedBy.id && approver.kind !== 'agent', 'protected: requester or agent cannot approve');
-        if (policy.repository) requireThat(p.authenticated.recordType === 'review-approval' || p.authenticated.recordType === 'approval', 'repository: requires approval or review record');
+        if (policy.repository) requireThat(isRepositoryYes(p), 'repository: requires approval or review record');
       }
       const kind = obj(v.kind); one(kind.kind, ['approval', 'waiver', 'grant'], 'kind');
       fields(kind, kind.kind === 'waiver' ? ['kind', 'rule'] : ['kind']);

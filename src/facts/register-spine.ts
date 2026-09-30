@@ -3,6 +3,7 @@
 // currency. Approval is the authority and is verified here as a recorded explicit yes;
 // landing is only a locator. Every association is bound to the signed envelope that recorded
 // its payload. Nothing here appends, approves, or mints a position.
+import { isExplicitYes } from '../index.js';
 import type { Clock, FactEnvelopeReference, Json, Result } from '../index.js';
 import { boundary, encoding, integer, object, requireFact, string, take } from './boundary.js';
 import type { ConflictClass, FactContext, FactEnvelope } from './contracts.js';
@@ -92,7 +93,7 @@ function extractionAt(spine: GoverningSpine, context: FactContext, count: number
     requireFact(byId.has(version.since), `entering-force fact not recorded: ${version.since}`, 'integrity');
     // Verify the state, not the symbol: a merge event and a channel-attested record are not a yes.
     const yes = version.approvedIn.explicitYes;
-    requireFact(yes.class === 'verified' && yes.authenticated.recordType !== 'merge',
+    requireFact(isExplicitYes(yes),
       `approvedIn must be a verified explicit yes, never a merge event: ${version.id}`, 'standing');
     recordedBy(byId, approvals.get(version.approvedIn.id), 'approval', version.approvedIn,
       `explicit-yes record not recorded for approval ${version.approvedIn.id}`, 'standing');

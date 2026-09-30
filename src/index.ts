@@ -6,6 +6,7 @@ export { compareMeasurements, isFresh, readEvidence, aggregateStrength, consumeO
 export type { AuthorizationValidity, ProfileExpression, ProfileTermsReadPort } from './types/operations.js';
 export { decode, decodeMeasurement, grantLiveness, scopeIncludes } from './decode/decode.js';
 export { decodeIntake } from './decode/intake.js';
+export { accountAuthenticatedAssent, accountAssentRecordTypes, verifiedYesRecordTypes, isExplicitYes, isRepositoryYes } from './decode/explicit-yes.js';
 export { canonical } from './decode/canonical.js';
 export { schemas } from './decode/schema.js';
 export { defineDecoder, deriveThrough } from './decode/framework.js';

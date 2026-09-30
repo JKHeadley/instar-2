@@ -8,6 +8,8 @@ export { RefusalStore, PendingSet } from './stores.js';
 export { decodeVersion, walkVersions } from './version-chain.js';
 export type { GovernedVersion, LandingReadPort } from './version-chain.js';
 export { createRegisterSpine, extractGovernedChain, governingRecordBody, governingRecordKind, positionVector } from './register-spine.js';
+export { createRegisterLanding } from './register-landing.js';
+export type { GoverningPayloadCustody, LandingVersionInput, RegisterLandingDeps, RegisterLandingPort } from './register-landing.js';
 export type { ChainExtraction, GoverningRecordRole, GoverningSpine, RecordedApproval, RecordedGeneration, RecordedVersion,
   RegisterSpinePort } from './register-spine.js';
 export { redactCapture, redactionReasons } from './captures.js';
