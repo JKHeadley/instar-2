@@ -23,7 +23,7 @@
     "build": "tsc -p tsconfig.build.json",
     "test": "vitest run",
     "test:affected": "node scripts/affected-tests.mjs",
-    "test:durability": "INSTAR_TEST_REAL_DISK=1 vitest run tests/assembly/production-boot-storage.test.ts tests/assembly/production-boot-storage-crash.test.ts tests/assembly/telegram-bot-api-round6.test.ts tests/e2e/session-restart-delivery.test.ts tests/unit/test-tmp-redirect.test.ts && INSTAR_TEST_REAL_DISK=1 vitest run tests/assembly/fixed-installation-live.test.ts -t 'native journal-sync flushes|native durable journal releases once'",
+    "test:durability": "INSTAR_TEST_REAL_DISK=1 node scripts/vitest-split-step.mjs tests/assembly/production-boot-storage.test.ts tests/assembly/production-boot-storage-crash.test.ts tests/assembly/telegram-bot-api-round6.test.ts tests/e2e/session-restart-delivery.test.ts tests/unit/test-tmp-redirect.test.ts && INSTAR_TEST_REAL_DISK=1 node scripts/vitest-split-step.mjs tests/assembly/fixed-installation-live.test.ts -t 'native journal-sync flushes|native durable journal releases once'",
     "pretest": "npm run build",
     "ci:local": "node scripts/ci-local.mjs",
     "test:all": "node scripts/check-change-review.mjs run",
