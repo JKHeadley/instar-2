@@ -1,0 +1,11 @@
+# Test files that exercise a macOS-only mechanism (seatbelt sandbox-exec, launchd, plutil, hdiutil,
+# BSD stat -f) or gate tests on darwin. INSTAR_TEST_PLATFORM_SPLIT=exclude-macos runs everything
+# else; only-macos runs exactly these. tests/platform/macos-only.test.ts keeps this list equal to
+# the detection in tests/platform/macos-only.mjs (`node tests/platform/macos-only.mjs` prints it).
+tests/assembly/fixed-installation-live.test.ts
+tests/assembly/fixed-worker-monitor-native.test.ts
+tests/integration/host-watch.test.ts
+tests/preview/native-harness-contract.test.ts
+tests/preview/self-host-tools.test.ts
+tests/preview/self-host.test.ts
+tests/types/shipped-clients.test.ts
