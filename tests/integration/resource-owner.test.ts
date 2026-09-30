@@ -629,6 +629,16 @@ it('hands the provider exactly the supplied variable names through the limit shi
   expect(JSON.parse((await owner.execute(given, 'answer')).stdout).keys).toEqual(['MARK', 'PATH', 'SHLVL']);
 });
 
+it('lowers the process limit without forking under it: a launch already at its limit still execs, and a later fork is refused', () => {
+  // A limit of 1 sits below every real user's process count: exactly the state a transport child
+  // reaches when other processes started after its headroom was counted. The shim must still exec
+  // (it once forked `$(ulimit -H)` after lowering the soft limit, so the send read UNKNOWN).
+  const launch = (executable: string, args: string[]) => execFileSync('/bin/sh', limitedFileArgv({ label: 'REQUEST', executable,
+    args, handles: 64, cpuSeconds: 5, processLimit: 1, env: { PATH: '/usr/bin:/bin' } }), { encoding: 'utf8', env: { PATH: '/usr/bin:/bin' } });
+  expect(launch('/bin/echo', ['launched']).trim()).toBe('launched');
+  expect(() => launch('/bin/sh', ['-c', '(/bin/echo forked); /bin/echo after'])).toThrow();
+});
+
 it('keeps the file shim identical to the one limit script, and holds the transport child\'s handles with argv[1] preserved', () => {
   expect(readFileSync(LIMIT_FILE, 'utf8')).toBe(LIMIT_FILE_TEXT);
   const root = dir();
