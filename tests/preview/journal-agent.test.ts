@@ -222,7 +222,7 @@ export const createClaudeCodeSubscriptionRoute = () => ({kind:'Success',value:{i
     return {url:${JSON.stringify(pathToFileURL(provider).href)},shortCircuit:true};
   return next(specifier,context);
 }\n`);
-  const endpoint = spawn(process.execPath, [join(process.cwd(), 'tests/preview/journal-poll-endpoint.mjs'), log, updates, mode],
+  const endpoint = spawn(process.execPath, [join(process.cwd(), 'tests/preview/journal-poll-endpoint.mjs'), log, updates, mode, 'long-poll'],
     {stdio:['ignore','pipe','pipe']});
   try {
     const port = await new Promise((done, fail) => {
@@ -238,7 +238,7 @@ export const createClaudeCodeSubscriptionRoute = () => ({kind:'Success',value:{i
       '--operator-sender-id',world.configuration.operatorSenderId,'--grant-reference',trial.id,
       '--configuration-digest',trial.configurationDigest,'--expires-at',String(trial.expiresAt),
       '--activation-record', activation, '--operator-records', join(world.directory, 'operator-records'),'--login-profile',profile,'--model',world.model,
-      '--bot-username',world.configuration.botUsername,'--max-cycles','3','--max-poll-seconds','1'],
+      '--bot-username',world.configuration.botUsername,'--max-cycles','4','--max-poll-seconds','1'],
       {cwd:process.cwd(),encoding:'utf8',timeout:20000,env});
     expect(run.status,run.stderr).toBe(0);
     const sends = readFileSync(`${log}.sends`,'utf8').trim().split('\n').map(line => JSON.parse(line));
