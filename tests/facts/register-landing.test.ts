@@ -156,4 +156,3 @@ it('the shipped declaration is off while Part Eleven still refuses a chat reply 
   expect(accountAuthenticatedAssent.enabled).toBe(!refusesChat);
   expect(accountAuthenticatedAssent.name).toBe('account-authenticated-assent');
 });
-
