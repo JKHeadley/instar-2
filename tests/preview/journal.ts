@@ -1503,8 +1503,9 @@ export const wallEpoch = (day: string, time: string, zone: string) => {
 };
 /** A runner-authored turn sorts after every earlier turn and before the next Telegram update. */
 const SYNTHETIC_UPDATE_STEP = 1 / 1024;
-/** "Everything before this turn": integer Telegram updates keep their old meaning. */
-const before = (update: number) => update - SYNTHETIC_UPDATE_STEP / 4;
+/** "Everything before this turn": integer Telegram updates keep their old meaning. The packet
+ * writer and its audit both bound history with this, so a due turn's own request stays in view. */
+export const before = (update: number) => update - SYNTHETIC_UPDATE_STEP / 4;
 /** The journal's update domain: a Telegram update id, or a synthetic update on the 1/1024 grid that a requested
  * action's due turn receives. One definition, read by every consumer that names an operation by its update. */
 export const isJournalUpdate = (value: unknown): value is number => typeof value === 'number' && Number.isFinite(value)

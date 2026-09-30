@@ -4,7 +4,8 @@
 // send, so each rides the next operator answer as ONE fixed line, the way finished
 // obligation work does. Each line carries a stable key; the journal records the keys an
 // answer carried, so delivery is derived from durable sent replies, never from memory.
-// A line is offered once: a later reminder stage or a new failing verdict is a new key.
+// A line is offered once: a later reminder stage, a renewed credential lifetime or a new failing
+// verdict is a new key.
 import type { DueReminder } from './secret-custody.js';
 import { doorwayFreshness, type DoorwayMap } from './doorway-map.js';
 
@@ -23,7 +24,9 @@ export function remainingText(ms: number): string {
   return `expires in ${parts.join(' ')}`;
 }
 
-export const credentialKey = (due: Pick<DueReminder, 'name' | 'stage'>) => `credential:${due.name}:${due.stage}`;
+/** Scoped to one credential lifetime (its expiry): a renewal under the same name starts undelivered. */
+export const credentialKey = (due: Pick<DueReminder, 'name' | 'expiresAt' | 'stage'>) =>
+  `credential:${due.name}:${due.expiresAt}:${due.stage}`;
 
 /** One line per due reminder stage, most urgent (earliest expiry) first. */
 export function credentialNotices(due: readonly DueReminder[], now: number): ReplyNotice[] {
@@ -66,10 +69,10 @@ export function dueWithDelivery(due: readonly DueReminder[], turns: readonly Not
   const delivered = deliveredNotices(turns);
   return due.map(item => {
     const stages = Array.from({ length: item.stage + 1 }, (_, stage) => stage)
-      .filter(stage => delivered.has(credentialKey({ name: item.name, stage })));
+      .filter(stage => delivered.has(credentialKey({ ...item, stage })));
     const last = stages.at(-1);
     return { ...item, delivered: last === undefined ? null
-      : { stage: last, at: delivered.get(credentialKey({ name: item.name, stage: last }))!, current: last === item.stage } };
+      : { stage: last, at: delivered.get(credentialKey({ ...item, stage: last }))!, current: last === item.stage } };
   });
 }
 

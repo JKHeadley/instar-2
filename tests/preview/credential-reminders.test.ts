@@ -47,10 +47,10 @@ it('makes the activation reminder due exactly at 7 days before expiry, not 1 ms 
     expect(dueCredentialReminders(custody.records(), T0 - 1)).toEqual([]);
     const due = dueCredentialReminders(custody.records(), T0);
     expect(due).toMatchObject([{ name: 'preview-activation', stage: 0, smallestHumanAction: ACTION }]);
-    expect(credentialNotices(due, T0)).toEqual([{ key: 'credential:preview-activation:0',
+    expect(credentialNotices(due, T0)).toEqual([{ key: `credential:preview-activation:${expiresAt}:0`,
       line: `Reminder: the credential "preview-activation" (activation act-7) expires in 7 days. Smallest step for you: ${ACTION}.` }]);
     expect(credentialNotices(dueCredentialReminders(custody.records(), expiresAt - 3 * DAY), expiresAt - 3 * DAY)[0]!.key)
-      .toBe('credential:preview-activation:1');
+      .toBe(`credential:preview-activation:${expiresAt}:1`);
   } finally { rmSync(root, { recursive: true, force: true }); }
 });
 
@@ -91,6 +91,40 @@ it('carries one reminder line on the next answer, never repeats it, and shows th
     w.journal.close();
     const reopened = openPreviewJournal(join(root, 'journal.encrypted'), key, genesis());
     expect(openReplyNotices(reopened.view.order, notices(), 'none')).toEqual([]);
+    reopened.close();
+  } finally { rmSync(root, { recursive: true, force: true }); }
+});
+
+it('starts a renewed credential lifetime undelivered: its next answer carries one reminder, then none, across a restart', async () => {
+  const root = origin();
+  try {
+    const custody = activation(root, T0 + 7 * DAY, () => w.clock.now);
+    const notices = () => credentialNotices(dueCredentialReminders(custody.records(), w.clock.now), w.clock.now);
+    const w = world(root, notices);
+    await w.say('Hello.');
+    expect(w.sent[0]).toContain('(activation act-7) expires in 7 days.');
+    // Renewed under the same name with a new expiry; the journal is reopened before the next answer.
+    w.clock.now = T0 + DAY;
+    custody.register({ name: 'preview-activation', kind: 'activation', custody: 'activation-record', identity: 'activation act-8',
+      recordedAt: w.clock.now, expiresAt: T0 + 8 * DAY, expirySource: 'activation-record', reminders: reminderSchedule(T0 + 8 * DAY),
+      renewal: { standing: 'none', smallestHumanAction: ACTION } });
+    expect(dueWithDelivery(dueCredentialReminders(custody.records(), w.clock.now), w.journal.view.order))
+      .toMatchObject([{ identity: 'activation act-8', stage: 0, delivered: null }]);
+    w.journal.close();
+    const reopened = openPreviewJournal(join(root, 'journal.encrypted'), key);
+    const clock = w.clock, sent: string[] = [];
+    const worker = createJournalWorker(reopened, { now: () => clock.now, stopped: () => false, timeZone: 'UTC',
+      prepareModel: input => input.context, replyNotices: notices, model: async () => JSON.stringify({ reply: 'Noted.', memory: [] }),
+      send: async input => { sent.push(input.text); return sent.length; }, checkOutbound: () => {} });
+    for (const [id, text] of [[2, 'Hello again.'], [3, 'And again.']] as const) {
+      worker.intake([{ update_id: id, message: { chat: { id: 7654321, type: 'private' }, from: { id: 7654321 }, text,
+        date: Math.floor(clock.now / 1000) } }]);
+      await worker.drain(); clock.now += HOUR;
+    }
+    expect(sent[0]).toContain('(activation act-8) expires in 7 days.');
+    expect(sent[1]).not.toContain('Reminder:');
+    expect(dueWithDelivery(dueCredentialReminders(custody.records(), clock.now), reopened.view.order))
+      .toMatchObject([{ identity: 'activation act-8', stage: 0, delivered: { stage: 0, at: T0 + DAY, current: true } }]);
     reopened.close();
   } finally { rmSync(root, { recursive: true, force: true }); }
 });

@@ -3,7 +3,30 @@ import { createHash } from 'node:crypto';
 import { isoMinute } from '../../src/recall/ground.js';
 import { statedFacts } from './memory-sentinel.js';
 import { hasClaim, replaceClaim, supersedesCorrection } from './claim-match.mjs';
-import { activePersonMerges, groundingHistory } from './journal.js';
+import { activePersonMerges, before, groundingHistory } from './journal.js';
+
+const RUNNER_SPEAKER = 'the runner, carrying out a request the operator made earlier (no operator authority)';
+/** A due turn is written by the verified scheduler, never by the operator (Rule 29). It traces to the
+ * operator turns that requested it: each recorded request names an earlier accepted operator turn that
+ * says the quoted words. Returns those source turns, or null when the trace does not hold. */
+export function requestedActionSources(view, turn) {
+  const due = turn?.requestedAction;
+  if (!turn?.accepted || !due || due.legacy !== undefined || !Array.isArray(due.items) || !due.items.length
+    || turn.writer?.kind !== 'system' || !turn.id.startsWith('requested-action:')) return null;
+  let raw;
+  try { raw = JSON.parse(turn.raw); } catch { return null; }
+  if (raw?.requestedAction !== turn.id) return null;
+  const sources = [];
+  for (const item of [...due.items, ...due.overflow ?? []]) {
+    const found = view.turns.get(item?.source);
+    let sender;
+    try { sender = JSON.parse(found?.raw)?.message?.from?.id; } catch { /* unverified */ }
+    if (!found?.accepted || found.requestedAction || found.update >= turn.update
+      || String(sender) !== view.genesis.operator || typeof item.quote !== 'string' || !found.text.includes(item.quote)) return null;
+    sources.push(found);
+  }
+  return sources;
+}
 
 // Audit the exact packet saved with the last model reservation. This file reads
 // the existing projection; it creates no memory store or model/effect path.
@@ -20,6 +43,10 @@ export function auditPacket(view, turn, packet, memoryCount = view.memory.length
   const source = (id, at) => {
     const found = view.turns.get(id);
     if (!found?.accepted || found.update >= turn.update) { fault('source-turn-absent', at); return null; }
+    if (found.requestedAction) {
+      if (!requestedActionSources(view, found)) fault('source-sender-unverified', at);
+      return found;
+    }
     let sender;
     try { sender = JSON.parse(found.raw)?.message?.from?.id; } catch { /* malformed raw is unverified */ }
     if (String(sender) !== view.genesis.operator) fault('source-sender-unverified', at);
@@ -38,6 +65,7 @@ export function auditPacket(view, turn, packet, memoryCount = view.memory.length
     return found ?? null;
   };
   const speaker = found => {
+    if (found.requestedAction) return RUNNER_SPEAKER;
     let sender;
     try { sender = JSON.parse(found.raw)?.message?.from?.id; } catch { /* invalid raw stays unattributed */ }
     return String(sender) === view.genesis.operator ? 'the operator (verified sender)'
@@ -107,7 +135,7 @@ export function auditPacket(view, turn, packet, memoryCount = view.memory.length
     else add('memory-summary', 'memorySummary', [{ kind: 'summary', through: record.through }]);
   }
   // The same selection the packet was built from: a desk probe or an edit's replaced original is never expected.
-  const expected = groundingHistory(view, turn.update - 1, summary?.through).map(item => item.id);
+  const expected = groundingHistory(view, before(turn.update), summary?.through).map(item => item.id);
   const history = list(packet.history, 'history');
   if (body(history.map(item => item?.id)) !== body(expected)) fault('history-coverage', 'history');
   for (const [n, item] of history.entries()) {
@@ -343,11 +371,19 @@ export function auditActiveMemory(view) {
     checkedOperators.set(id, link);
     return link;
   };
+  // A due turn is conversation the scheduler wrote; it links to the operator turns that requested it.
+  const conversation = (turn, at) => {
+    if (!turn.requestedAction) { const link = operator(turn.id, at); return link && [link]; }
+    const sources = requestedActionSources(view, turn);
+    if (!sources) { fault('requested-action-source-absent', at); return null; }
+    const links = sources.map(found => operator(found.id, at));
+    return links.every(Boolean) ? [{ kind: 'requested-action-turn', id: turn.id, update: turn.update }, ...links] : null;
+  };
   // Conversation history is memory even when no summary or derived note uses it.
   for (const [n, turn] of view.order.entries()) {
     if (!turn.accepted) continue;
-    const at = `conversation-turn[${n}]`, link = operator(turn.id, at);
-    if (link) add('conversation-turn', at, [link]);
+    const at = `conversation-turn[${n}]`, chain = conversation(turn, at);
+    if (chain) add('conversation-turn', at, chain);
   }
   const imported = (id, at) => {
     if (typeof id !== 'string' || !id.startsWith('channel:')) {
@@ -466,15 +502,15 @@ export function auditActiveMemory(view) {
   const summary = view.summaries.at(-1);
   if (summary) {
     const at = 'active-summary', covered = view.order.filter(turn => turn.accepted && turn.update <= summary.through);
-    const chain = covered
-      .map(turn => operator(turn.id, at)).filter(Boolean);
+    const traced = covered.map(turn => conversation(turn, at));
+    const chain = traced.filter(Boolean).flat();
     for (const id of view.channelItems.keys()) {
       if (view.channelItems.get(id).at > summary.at) continue;
       const link = imported(`channel:${id}`, at);
       if (link) chain.push(link);
     }
     if (!covered.length || !covered.some(turn => turn.update === summary.through)
-      || chain.filter(link => link.kind === 'operator-turn').length !== covered.length)
+      || traced.some(links => !links))
       fault('summary-unattributed', at);
     else add('summary', at, [{ kind: 'summary', through: summary.through }, ...chain]);
   }

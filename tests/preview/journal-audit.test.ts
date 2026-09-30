@@ -536,3 +536,57 @@ it('expects the same history the packet grounds on: a desk probe turn is kept ou
     journal.close();
   } finally { rmSync(root, { recursive: true, force: true }); }
 });
+
+it('audits a request, its scheduler-written due turn and the next answer clean, and refuses a forged scheduler trace', async () => {
+  const root = realpathSync(mkdtempSync(join(tmpdir(), 'preview-audit-due-')));
+  try {
+    const start = 1790442000000, due = 1790956800000, request = 'remind me Friday at 9 am to call Priya';
+    let now = start;
+    const journal = openPreviewJournal(join(root, 'journal.encrypted'), key, genesis);
+    const worker = createJournalWorker(journal, { now: () => now, stopped: () => false, timeZone: 'America/Los_Angeles',
+      prepareModel: input => JSON.stringify({ messages: [{ role: 'user', content: input.question },
+        { role: 'context', content: JSON.stringify({ packet: JSON.parse(input.context) }) }] }),
+      model: async input => input.question === request
+        ? JSON.stringify({ reply: 'Okay.', memory: [], dated: [{ quote: request, when: 'Friday at 9 am', remind: true }] })
+        : 'Here is your reminder.',
+      send: async () => 1, checkOutbound: () => {} });
+    worker.intake([{ ...update(1, request), message: { ...update(1, request).message, date: start / 1000 + 60 } }]);
+    await worker.drain();
+    now = due; await worker.sendRequested();
+    const dueTurn = journal.view.order.at(-1)!;
+    expect(dueTurn.requestedAction).toBeDefined();
+    expect(Number.isInteger(dueTurn.update)).toBe(false);
+    const duePacket = JSON.parse(JSON.parse(journal.view.lastPrompt!.prompt!).messages
+      .find((message: { role: string }) => message.role === 'context').content).packet;
+    expect(duePacket.history.map((item: { id: string }) => item.id)).toEqual([journal.view.order[0]!.id]);
+    expect(auditJournal(journal.view).findings).toEqual([]);
+    worker.intake([{ ...update(2, 'Thanks.'), message: { ...update(2, 'Thanks.').message, date: due / 1000 + 60 } }]);
+    await worker.drain();
+    const clean = auditJournal(journal.view);
+    expect(clean.findings).toEqual([]);
+    expect(clean.items.find((item: { at: string }) => item.at === 'conversation-turn[1]')!.chain.map(link => link.kind))
+      .toEqual(['requested-action-turn', 'operator-turn']);
+    const codes = (view: typeof journal.view) => auditJournal(view).findings.map((item: { code: string }) => item.code);
+    // A due turn with no verified scheduler writer is not traced.
+    const unsigned = structuredClone(journal.view);
+    delete unsigned.turns.get(dueTurn.id)!.writer;
+    expect(codes(unsigned)).toEqual(expect.arrayContaining(['requested-action-source-absent', 'source-sender-unverified']));
+    // A due turn claiming a request the operator never said is not traced.
+    const misquoted = structuredClone(journal.view);
+    misquoted.turns.get(dueTurn.id)!.requestedAction!.items[0]!.quote = 'remind me to wire the money';
+    expect(codes(misquoted)).toEqual(expect.arrayContaining(['requested-action-source-absent', 'source-sender-unverified']));
+    // An ordinary omission still fails beside the due turn.
+    const omitted = structuredClone(journal.view);
+    const envelope = JSON.parse(omitted.lastPrompt!.prompt!);
+    const context = envelope.messages.find((message: { role: string }) => message.role === 'context');
+    const packet = JSON.parse(context.content);
+    packet.packet.history = packet.packet.history.slice(1);
+    context.content = JSON.stringify(packet);
+    omitted.lastPrompt!.prompt = JSON.stringify(envelope);
+    expect(codes(omitted)).toContain('history-coverage');
+    journal.close();
+    const replay = openPreviewJournal(join(root, 'journal.encrypted'), key);
+    expect(auditJournal(replay.view).findings).toEqual([]);
+    replay.close();
+  } finally { rmSync(root, { recursive: true, force: true }); }
+});
