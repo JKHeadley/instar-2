@@ -16,7 +16,9 @@ const GUIDANCE = 300; // cint-23-occam re-measure (every packet lost the summary
 // cint-L4 group B repair (Rule 29): datedDecision now asks for the operator's date phrase word for word and
 // never converted, which adds exactly 149 JSON bytes to every dated packet; reverting only that string
 // restores the prior outcomes, so the window moves by +149.
-const GUIDANCE_L3 = GUIDANCE - 471 + 149;
+// w3-memcorr (Rule 7, live K13b): memoryDecision now states the exact memory item shape, which adds exactly 580
+// JSON bytes to every operator packet, so the window moves by +580.
+const GUIDANCE_L3 = GUIDANCE - 471 + 149 + 580;
 
 it('measures which memories survive a capped packet after 5,000 turns', () => {
   const root = realpathSync(mkdtempSync(join(tmpdir(), 'preview-packet-pressure-')));

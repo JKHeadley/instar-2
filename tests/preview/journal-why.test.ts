@@ -92,7 +92,7 @@ it('reports a missing historical packet instead of inventing a reason', async ()
 it('keeps answering honestly when the old packet cannot fit the reply bound', async () => {
   const root = realpathSync(mkdtempSync(join(tmpdir(), 'preview-why-bound-'))), path = join(root, 'journal.encrypted');
   try {
-    const journal = openPreviewJournal(path, key, { ...genesis, maxBytes: 3875 }); // midway in the measured window where the old packet cannot fit but the answer can (cint-L3b re-measure in 50-byte steps on the combined tree: 3500-4250; cint-23-occam, the summary decision removed: 3950-4750; cbuild-2 was ~4650-5300; before that ~3900-4600)
+    const journal = openPreviewJournal(path, key, { ...genesis, maxBytes: 4625 }); // midway in the measured window where the old packet cannot fit but the answer can (w3-memcorr, the memory item shape stated (Rule 7): 4250-5000 in 50-byte steps; cint-L3b re-measure in 50-byte steps on the combined tree: 3500-4250; cint-23-occam, the summary decision removed: 3950-4750; cbuild-2 was ~4650-5300; before that ~3900-4600)
     const seen: Record<string, unknown>[] = [];
     const worker = createJournalWorker(journal, { now: () => 1000, stopped: () => false,
       sources: [{ id: 'source:large', text: 'x'.repeat(450) }],

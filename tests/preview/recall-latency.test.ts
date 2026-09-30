@@ -93,7 +93,9 @@ it('profiles full turns at 2000 turns with every memory source', async () => {
     // capability list to the generated capability-note source (Rules 78, 84). Every other field equals cint-L2's.
     // cint-L4 group B re-pin (Rule 29): only datedDecision's `when` clause changed (the date phrase copied word for
     // word, never converted); reverting just that string reproduces cb0fa8dd…4baef8 exactly.
-    expect(packetHash).toBe('84c8b0fb750b077a6b28fe7397d5b3ae9f9067a9d31310245fae212673ddfea7');
+    // w3-memcorr re-pin (Rule 7, live K13b): only memoryDecision changed (it states the exact memory item shape);
+    // the base journal.ts on this same test reproduces 84c8b0fb…ddfea7 exactly.
+    expect(packetHash).toBe('439c568d50acc84e326b555a4b67e6d2ed72baf56107b01d5a23604b181411d0');
     process.stdout.write(`recall latency 2000 turns all memory: probe p95=${p95(samples).toFixed(2)} ms packet=${packetHash}\n`);
     const turnSamples: number[] = [];
     const intakeSamples: number[] = [], drainSamples: number[] = [], coherenceSamples: number[] = [];

@@ -95,8 +95,9 @@ it('measures labelled minimal recall on the actual bounded model packets', () =>
     // memory search, continuity note, index coverage and capability sentences (measured mean 11034).
     // cint-1 live repair: operator packets carry the capabilities the blocker evidence names, and the guide asks
     // for sentences copied from the reply. cint-L2 with the live repair merged: measured mean 11011 (occam's
-    // removals offset the repair's additions).
-    expect(result.packetBytesMean).toBeLessThanOrEqual(11110);
+    // removals offset the repair's additions). w3-memcorr: memoryDecision states the exact memory item shape on
+    // operator packets (Rule 7, live K13b; +580 bytes each): measured mean 11269.
+    expect(result.packetBytesMean).toBeLessThanOrEqual(11370);
     expect(rows.find(row => row.question.startsWith('Which clinic'))?.picked).toContain(0);
     const agenda = worker.probe('What should I know about upcoming plans?');
     if ('reason' in agenda) throw Error(agenda.reason);
