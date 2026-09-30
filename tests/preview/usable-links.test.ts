@@ -150,7 +150,7 @@ it('turns a bare topic number into a revision signal naming the topic, then send
       escalate: async (_text, _id, _prompt, _rules, _deadline, operation) => {
         if (operation !== 'revision') throw Error('no review needed');
         return { verdict: 'pass', ruleIds: [], confidence: null, latencyMs: 0 }; },
-      revise: async input => { expect(input.ruleIds).toEqual([BARE_TOPIC_OBJECTION]);
+      revise: async input => { expect(input.objections).toEqual([BARE_TOPIC_OBJECTION]); expect(input.ruleIds).toEqual([]);
         expect(input.reason).toBe(topicNameReason([12], new Map([[12, 'Travel plans']])));
         return { state: 'complete', text: 'They are in the blue folder, as you said in the "Travel plans" topic.' }; } },
     send: async input => { sent.push(input.expectedText); return sent.length; } });
