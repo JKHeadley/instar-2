@@ -6,7 +6,7 @@ import { interpretJev, JEV_MODEL, JEV_RESPONSE_MAX_BYTES, parseJevResponse } fro
 // captured 2026-09-29 for one reply-check request; see tests/fixtures/captures/README.md).
 const captured = readFileSync(new URL('../fixtures/captures/jev-response.json', import.meta.url), 'utf8');
 
-describe('Jev response reader on the genuine capture', () => {
+describe('PREVIEW-JEV-RESPONSE-ON-CAPTURE Jev response reader on the genuine capture', () => {
   it('reads every reply-check question, its score and the reported usage', () => {
     const value = parseJevResponse(captured) as { model: string; answers: Record<string, { type: string; noul: number }> };
     expect(value.model).toBe(JEV_MODEL);
