@@ -13,14 +13,14 @@ export const verifiedYesRecordTypes: readonly string[] = Object.freeze(['approva
 export const accountAssentRecordTypes: readonly string[] = Object.freeze(['operator-chat-yes', 'operator-review-approval']);
 
 /**
- * THE declaration the pending approval-gesture amendment enables. The constitution as written
- * (Purpose "an approval is signed by something the operator holds"; Part Eleven §2 "a successful
- * chat reply [is] never yes") does not accept account-authenticated assent, so it stays off until
- * that amendment is approved. Enabling it is this one edit, nowhere else. While it is off an
- * account-assent record decodes as plain `channel-attested` and completes nothing.
+ * THE declaration the approval-gesture amendment (PR #139) enabled. Purpose ("or Instar may accept
+ * a recorded, one-use approval of an exact, unexpired request from an operator account") and Part
+ * One's `account-assented` class make an account-authenticated yes constitutional. Turning it off
+ * again is this one edit, nowhere else: an account-assent record then decodes as plain
+ * `channel-attested` and completes nothing.
  */
 export const accountAuthenticatedAssent: Readonly<{ name: string; enabled: boolean; amendment: string }> =
-  Object.freeze({ name: 'account-authenticated-assent', enabled: false, amendment: 'amend-approval-gesture' });
+  Object.freeze({ name: 'account-authenticated-assent', enabled: true, amendment: 'amend-approval-gesture' });
 
 type Declaration = Readonly<{ enabled: boolean }>;
 /** The class of an authenticated-channel record: `account-assented` only for a declared account yes. */

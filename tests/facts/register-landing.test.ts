@@ -6,13 +6,13 @@ import { expect, it, vi } from 'vitest';
 import { authorizationRequestDigest, canonical, decode } from '../../src/index.js';
 import type { Hash, Json } from '../../src/index.js';
 import { accountAuthenticatedAssent } from '../../src/decode/explicit-yes.js';
-import { createFactStore, createRegisterLanding, createRegisterSpine, extractGovernedChain } from '../../src/facts/index.js';
+import { createFactStore, createRegisterLanding, createRegisterSpine, extractGovernedChain, governedExtract, positionVector } from '../../src/facts/index.js';
 import type { FactEnvelope, GoverningPayloadCustody, SegmentStoragePort } from '../../src/facts/index.js';
 import { produceExplicitYes } from '../../src/operator/index.js';
 import type { ExplicitYesInstallation, ExplicitYesObservation, ExplicitYesRequest } from '../../src/operator/index.js';
 import { factsFixture, privateKey, refused, value } from './fixtures.js';
 
-// The shipped declaration stays off; this file exercises both of its sides.
+// The shipped declaration is on (PR #139); this file exercises both of its sides.
 const assent = vi.hoisted(() => ({ enabled: true }));
 vi.mock('../../src/decode/explicit-yes.js', async importOriginal => {
   const actual = await importOriginal<typeof import('../../src/decode/explicit-yes.js')>();
@@ -177,10 +177,36 @@ it('a lost governing payload is refused loudly on restart, never skipped', () =>
   refused(s.open().spine(), 'lost from custody');
 });
 
-it('the shipped declaration is off while Part Eleven still refuses a chat reply as a yes', () => {
+it('option (C): a bootstrap row stays shape-only until the first governed version of its id supersedes it', () => {
+  const s = setup(), first = s.content('one');
+  const landing = s.open();
+  const boot = [{ id: 'store', contentHash: first.hash }, { id: 'other', contentHash: `sha256:${'b'.repeat(64)}` }];
+  type Rows = { vector: { id: string }; rows: { version: string; status: string; supersedes: string[]; approvedIn: { id: string } }[] };
+  const before = value(governedExtract(value(landing.spine()), { ...s.ctx, facts: s.factsNow() }, boot)) as unknown as Rows;
+  expect(before.vector.id).toBe(positionVector([]));
+  expect(before.rows.map(r => [r.version, r.status, r.approvedIn.id]))
+    .toEqual([['bootstrap:other', 'live', 'bootstrap:shape-only'], ['bootstrap:store', 'live', 'bootstrap:shape-only']]);
+
+  const yes = value(s.authorize(s.request('req-1', first.hash), s.chat('req-1')));
+  value(landing.land(yes, s.version('v1', first), s.f.scope, s.landing, s.f.now as unknown as Json));
+  const spine = value(landing.spine()), context = { ...s.ctx, facts: s.factsNow() };
+  const after = value(extractGovernedChain(spine, context, undefined, boot)).extract as unknown as Rows;
+  expect(after.rows.map(r => [r.version, r.status, r.supersedes]))
+    .toEqual([['bootstrap:other', 'live', []], ['bootstrap:store', 'superseded', []], ['v1', 'live', ['bootstrap:store']]]);
+  const port = createRegisterSpine(spine, context, record => s.f.success(record), boot);
+  value(port.verifyExtract(after));
+  // The other side: a replaced bootstrap row kept live, or bootstrap rows the spine was not given, refuse.
+  const forged = { ...after, rows: after.rows.map(r => r.version === 'bootstrap:store' ? { ...r, status: 'live' } : r) };
+  refused(port.verifyExtract(forged), 'differs from the verified chain');
+  refused(createRegisterSpine(spine, context, record => s.f.success(record)).verifyExtract(after), 'differs from the verified chain');
+});
+
+it('the shipped declaration is on while Part Eleven accepts an account-assented chat reply as a yes', () => {
   const partEleven = readFileSync('docs/15-the-operator-surfaces.md', 'utf8').replace(/\s+/g, ' ');
+  const acceptsAssent = partEleven.includes("a chat reply outside part one's `account-assented` conditions are never yes");
   const refusesChat = partEleven.includes('a successful chat reply are never yes');
-  // Enabling the declaration without the amendment (or amending without enabling) fails here.
-  expect(accountAuthenticatedAssent.enabled).toBe(!refusesChat);
+  // Disabling the declaration while the amendment stands (or reverting the amendment without disabling) fails here.
+  expect(acceptsAssent && !refusesChat).toBe(true);
+  expect(accountAuthenticatedAssent.enabled).toBe(acceptsAssent);
   expect(accountAuthenticatedAssent.name).toBe('account-authenticated-assent');
 });

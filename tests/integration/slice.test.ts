@@ -1,5 +1,5 @@
 import { afterAll, afterEach, it, expect } from 'vitest';
-import { existsSync, readFileSync, writeFileSync } from 'node:fs';
+import { existsSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { consumeResult } from '../../src/index.js';
 import type { Result } from '../../src/index.js';
@@ -34,6 +34,23 @@ it('P11-NF-43 P11-NF-49 the public boot path supplies real persistence, intake, 
   expect(a.service.journal().inbound).toHaveLength(1);
   expect((report as { settlement: { outcome: string } | null }).settlement?.outcome).toBe('happened');
   expect(PEER_STANDIN_ID).toContain('STAND-IN');
+}, 120000);
+
+it('P2-NF-38 option (C): declarations boot as shape-only bootstrap rows verified through the durable governing spine; a restart reuses it; its loss refuses', () => {
+  const a = sliceAssembly({ profile: 'reply' });
+  const spine = ok(a.registerLanding.spine()) as { versions: unknown[]; generations: unknown[] };
+  expect(spine.versions).toEqual([]);
+  expect(spine.generations).toHaveLength(1);
+  const rows = a.governance.register.extract.rows;
+  expect(rows.length).toBeGreaterThan(0);
+  expect(rows.every(r => r.version.startsWith('bootstrap:') && r.status === 'live' && r.approvedIn.id === 'bootstrap:shape-only')).toBe(true);
+  a.install();
+  const b = sliceAssembly({ profile: 'reply' }, a.home);
+  expect(b.registerChecks).toEqual(['extract', 'force', 'current']);
+  // The same generation is already in force: the restart appends no second record.
+  expect((ok(b.registerLanding.spine()) as { generations: unknown[] }).generations).toHaveLength(1);
+  rmSync(join(a.home, 'governing'), { recursive: true });
+  expect(() => sliceAssembly({ profile: 'reply' }, a.home)).toThrow('governing segment lost while the fact log exists');
 }, 120000);
 
 it('P11-NF-49 the independent assessment port is consulted, not a no-op: settlement refuses without its evidence', async () => {
