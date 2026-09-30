@@ -2311,6 +2311,23 @@ and a free call slot are still required. A correction whose deciding summary
 is UNKNOWN follows the existing `memory-undecided` path; the later summary
 does not silently turn that undecided request into a verified decision.
 
+A summary call is not UNKNOWN when its own physical outcome row proves that the
+writer finished successfully and only its output ran past the 2,048-token cap
+(`localLimit: output-cap`, exit 0, a `success` result frame). The provider still
+reports that attempt as uncertain, and the journal records it as such. The next summary
+pass then settles it as a failed attempt with the recorded reason `summary output over
+the cap`. That settlement carries the provider's reported usage. The pass then offers
+only a shorter span from the same base: no frontier at or past one that ran over the cap is
+offered again until a summary is accepted. The retry stays inside the pass's eight
+attempts and the shared call cap. A settlement row without that outcome row is refused. A call
+with no outcome row, or one without a finished result, stays UNKNOWN as above.
+`status.lastSummaryFailure` shows the reason of a failure newer than the last accepted
+summary. On the proof room (2026-09-30) all four summary calls after 03:03 ran over the cap
+(2,312 to 4,832 tokens). Each one floored every later span, and without an accepted summary
+each later span started at the first turn and only grew, so none ever reached Jev or the
+review. `summary-overcap-cascade.test.ts` replays those recorded outcomes, writer outputs
+and Jev verdicts.
+
 Live test script for Justin, on a separately authorized, isolated private-chat
 preview trial with spare call and turn slots provisioned **before** the fault:
 
@@ -2360,10 +2377,13 @@ open commitments and correction or forgetting decisions. Verbatim coverage
 without a recorded memory change passes deterministically. A paraphrase or any
 correction or forgetting decision is undecided by that
 exact check, so the runner asks the existing pinned Jev route with the prior
-summary, covered turns, recorded decisions and candidate. Only a confident Jev
-pass commits it. A lost or undecidable item records the candidate and evidence
-in the encrypted journal, keeps the prior summary, and leaves a visible
-`summary faithfulness: active memory item lost` or `summary faithfulness:
+summary, covered turns, recorded decisions and candidate. A confident Jev pass
+commits it and a confident loss refuses it. Jev's unsure band, or no Jev answer,
+escalates once to the full-context subscription review, whose pass commits and
+whose violation refuses (the confidence cascade, observer #102). A refused
+candidate is recorded with its evidence in the encrypted journal, keeps the prior
+summary, and leaves a visible `summary faithfulness: active memory item lost`,
+`summary faithfulness: full-context review found loss` or `summary faithfulness:
 undecided` hold. The existing two-attempt summary bound and shared subscription
 call cap remain. `status.lastSummaryFaithfulness` shows the path, verdict and score
 without showing memory text. This adds a Jev request only when exact preservation

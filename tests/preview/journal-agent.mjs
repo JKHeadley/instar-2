@@ -593,6 +593,13 @@ async function main() {
         : view.view.summaries.at(-1)?.faithfulness
           ? { through: view.view.summaries.at(-1).through, ...view.view.summaries.at(-1).faithfulness }
           : null,
+      // The recorded reason of a summary failure newer than the last accepted summary (a fixed phrase, never content),
+      // so a room that is not compacting says why: e.g. "summary output over the cap".
+      lastSummaryFailure: view.view.lastSummaryFailure
+        && view.view.lastSummaryFailure.at >= (view.view.summaries.at(-1)?.at ?? -1)
+        ? { through: view.view.lastSummaryFailure.through,
+          reason: view.view.lastSummaryFailure.reason ?? view.view.lastSummaryFailure.failureClass ?? 'failed' }
+        : null,
       packet: packetStatus(view.view),
       installation: (() => {
         const rows = installationRows(existsSync(runsPath) ? readFileSync(runsPath, 'utf8') : ''), last = rows.filter(row => row.codeDigest !== UNRECORDED).at(-1);

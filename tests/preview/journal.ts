@@ -73,6 +73,10 @@ export const SUMMARY_MAX_TURNS = 4;
 /** A byte-held turn is prepared again at least this often even when nothing that could make it fit changed. */
 export const HELD_REPREPARE_MS = 5 * 60_000;
 export const SUMMARY_TARGET_OUTPUT_TOKENS = 1024;
+/** A summary attempt whose physical outcome row proves a finished, successful result over the output cap.
+ * Nothing about it is unknown: the reply ended and was discarded for its length, so it is a failed attempt,
+ * and a later attempt from the same base takes a shorter span (live 2026-09-30: #483-#493, 2312-4832 tokens). */
+export const SUMMARY_OVER_CAP_REASON = 'summary output over the cap';
 // Leave room for the candidate reply and review question when Jev needs the
 // existing full-context subscription review. The answer packet is its input.
 const REPLY_REVIEW_HEADROOM_BYTES = 8192;
@@ -768,6 +772,10 @@ export interface JournalView { genesis: Extract<JournalRecord, {kind:'genesis'}>
   summaryCheckCounts: { pass: number; violation: number; unsure: number; unavailable: number }; lastSummaryCheck: SummaryCheckResult | null;
 
   lastSummaryFailure: Extract<JournalRecord, {kind:'summary-failed'}> | null;
+  /** Open summary reservations whose physical outcome row proves a complete, successful result over the output
+   * cap (settled as failed, never left UNKNOWN), and the frontiers so settled since the last accepted summary:
+   * no span that long or longer from the same base is offered again. */
+  summaryOverCap: { through: number; usage?: ModelUsage }[]; summaryOverCapFrontiers: number[];
 
   lastPrompt: { kind: 'answer'; id: string; prompt: string | null; memoryCount: number; summaryCount: number; closedCount: number }
     | { kind: 'summary'; through: number; prompt: string | null; memoryCount: number; summaryCount: number; closedCount: number } | null;
@@ -1037,6 +1045,7 @@ function restoreSnapshot(snapshot: Snapshot, genesis: JournalView['genesis']): J
     turns, order: saved.order.map(id => turns.get(id)!),
     heldTurns: new Set([...turns.values()].filter(turn => turn.held !== undefined)), channelItems: new Map(saved.channelItems.filter(([, item]) => (item.source as string) !== 'email')),
     summaryReservations: new Map(saved.summaryReservations), summaryFailures: new Map(saved.summaryFailures),
+    summaryOverCap: saved.summaryOverCap ?? [], summaryOverCapFrontiers: saved.summaryOverCapFrontiers ?? [],
     failureClasses: new Map(saved.failureClasses), providerStates: new Map(saved.providerStates), closed: new Map(saved.closed),
     capReports: new Set(saved.capReports ?? []), stepCheckCleanup: saved.stepCheckCleanup ?? false, stepChecks: new Map(saved.stepChecks ?? []),
     channelSources: new Map(saved.channelSources ?? []), channelSourceErrors: new Map(saved.channelSourceErrors ?? []),
@@ -2103,6 +2112,13 @@ function project(view: JournalView, row: JournalRecord, system?: SystemCheck): v
     if (o.resources?.cleanup === 'unresolved') view.callOutcomeCounts.set('cleanup-unresolved',
       (view.callOutcomeCounts.get('cleanup-unresolved') ?? 0) + 1);
     view.callOutcomes.push(row); if (view.callOutcomes.length > 10) view.callOutcomes.shift();
+    const summaryAttempt = row.role === 'summary' ? /^summary:(\d+)$/u.exec(row.id) : null;
+    if (summaryAttempt) {
+      const through = Number(summaryAttempt[1]);
+      view.summaryOverCap = view.summaryOverCap.filter(item => item.through !== through);
+      if (o.localLimit === 'output-cap' && o.exitCode === 0 && o.type === 'result' && o.subtype === 'success' && o.isError === false)
+        view.summaryOverCap.push({ through });
+    }
     return;
   }
   if (row.kind === 'import') {
@@ -2119,6 +2135,7 @@ function project(view: JournalView, row: JournalRecord, system?: SystemCheck): v
       row.maxOutputTokens ?? subscriptionOutputMaximum);
     view.summaryCandidates.delete(row.through); view.summaryChecks.delete(row.through); view.summaryFaithfulness.delete(row.through); view.summaryReviews.delete(row.through);
     view.summaryReservations.set(row.through, row.at); if (row.supervised) view.summaryRequired.add(row.through); view.calls++;
+    view.summaryOverCap = view.summaryOverCap.filter(item => item.through !== row.through);
     view.lastPrompt = { kind: 'summary', through: row.through, prompt: row.prompt ?? null, memoryCount: view.memory.length,
       summaryCount: view.summaries.length, closedCount: view.closed.size }; return;
   }
@@ -2201,7 +2218,12 @@ function project(view: JournalView, row: JournalRecord, system?: SystemCheck): v
 
   }
   if (row.kind === 'summary-failed') {
+    // Rule 26: an over-cap settlement stands only on the attempt's own physical outcome row.
+    if (row.reason === SUMMARY_OVER_CAP_REASON && !view.summaryOverCap.some(item => item.through === row.through))
+      throw Error('preview journal: over-cap summary without its outcome');
     if (!view.summaryReservations.delete(row.through)) throw Error('preview journal: failed summary without reservation');
+    view.summaryOverCap = view.summaryOverCap.filter(item => item.through !== row.through);
+    if (row.reason === SUMMARY_OVER_CAP_REASON) view.summaryOverCapFrontiers.push(row.through);
     if (row.memoryPendingFor !== undefined) {
       const trigger = view.turns.get(row.memoryPendingFor);
       if (!trigger?.accepted || trigger.update > row.through) throw Error('preview journal: failed summary trigger absent');
@@ -2218,6 +2240,9 @@ function project(view: JournalView, row: JournalRecord, system?: SystemCheck): v
   }
   if (row.kind === 'summary-uncertain') {
     if (!view.summaryReservations.has(row.through)) throw Error('preview journal: uncertain summary without reservation');
+    // The provider's reported usage of a proven over-cap attempt settles its tokens when the attempt is settled.
+    const proven = view.summaryOverCap.find(item => item.through === row.through);
+    if (proven && row.usage) proven.usage = row.usage;
     return;
   }
   if (row.kind === 'index-reserve') {
@@ -2247,6 +2272,7 @@ function project(view: JournalView, row: JournalRecord, system?: SystemCheck): v
       || !view.summaryChecks.get(row.through)?.some(check => check.verdict === 'pass')))
       throw Error('preview journal: unchecked summary');
     view.summaryReservations.delete(row.through);
+    view.summaryOverCap = view.summaryOverCap.filter(item => item.through !== row.through); view.summaryOverCapFrontiers = [];
     settleTokens(view, `summary:${String(row.through)}`, row.usage);
     if (row.reminderCancels !== undefined) {
       // A recovery decision for an unsettled operator turn: [] keeps every request.
@@ -2901,7 +2927,7 @@ export function openPreviewJournal(path: string, key: Uint8Array, initial?: Extr
       const { row } = decoded;
       if (!view) {
         if (row.kind !== 'genesis') throw Error('preview journal: genesis missing');
-        view = { genesis: row, cursor: row.cursor, clockFloor: 0, turns: new Map(), order: [], heldTurns: new Set(), awayEvents: [], channelItems: new Map(), channelSources: new Map(), channelSourceErrors: new Map(), calls: 0, replies: 0, stop: null, stopChallenges: [], waiting: [], tokenTotals: emptyTokenTotals(), tokenCalls: [], tokenCurrent: new Map(), limits: limitsOf(row), capAuthority: null, capRaisedAt: null, expires: row.expires, expiryAuthority: null, capReports: new Set(), stepCheckStarted: false, stepCheckCleanup: false, stepChecks: new Map(), indexOffered: [], indexConcepts: [], indexOpen: null, indexUnknown: [], summaries: [], summaryReservations: new Map(), summaryRequired: new Set(), summaryCandidates: new Map(), summaryChecks: new Map(), summaryFaithfulness: new Map(), summaryReviews: new Set(), summaryCheckCounts: { pass: 0, violation: 0, unsure: 0, unavailable: 0 }, lastSummaryCheck: null, summaryFailures: new Map(), lastSummaryFailure: null, lastPrompt: null, failureClasses: new Map(), providerStates: new Map(), callOutcomes: [], callOutcomeCounts: new Map(), sourceStop: null, imported: false, operatorEvents: [], people: [], personAttributes: [], personMerges: [], commitments: [], closed: new Map(), memory: [], dated: [], conflicts: [], directives: [], blockers: [], commitmentRefusals: 0, obligationWork: {}, rejectedObligations: 0, changeHistory: [], undos: [], mentionedDates: new Set(), reminders: new Map(), reminderGrant: null, reminderCancels: [], summaryGrants: [], questions: [], questionsReviewed: new Set(), corrections: [], jevChecks: 0, replyCheckCounts: { pass: 0, violation: 0, unsure: 0, unavailable: 0 }, replyCheckPaths: { jev: 0, subscription: 0, holding: 0, 'operator-echo': 0 }, lastReplyCheck: null, sendOutcomes: [], speakers: { agent: 0, infrastructure: 0 }, modelCalls: emptyModelCalls(), retroPasses: [] };
+        view = { genesis: row, cursor: row.cursor, clockFloor: 0, turns: new Map(), order: [], heldTurns: new Set(), awayEvents: [], channelItems: new Map(), channelSources: new Map(), channelSourceErrors: new Map(), calls: 0, replies: 0, stop: null, stopChallenges: [], waiting: [], tokenTotals: emptyTokenTotals(), tokenCalls: [], tokenCurrent: new Map(), limits: limitsOf(row), capAuthority: null, capRaisedAt: null, expires: row.expires, expiryAuthority: null, capReports: new Set(), stepCheckStarted: false, stepCheckCleanup: false, stepChecks: new Map(), indexOffered: [], indexConcepts: [], indexOpen: null, indexUnknown: [], summaries: [], summaryReservations: new Map(), summaryRequired: new Set(), summaryCandidates: new Map(), summaryChecks: new Map(), summaryFaithfulness: new Map(), summaryReviews: new Set(), summaryCheckCounts: { pass: 0, violation: 0, unsure: 0, unavailable: 0 }, lastSummaryCheck: null, summaryFailures: new Map(), lastSummaryFailure: null, summaryOverCap: [], summaryOverCapFrontiers: [], lastPrompt: null, failureClasses: new Map(), providerStates: new Map(), callOutcomes: [], callOutcomeCounts: new Map(), sourceStop: null, imported: false, operatorEvents: [], people: [], personAttributes: [], personMerges: [], commitments: [], closed: new Map(), memory: [], dated: [], conflicts: [], directives: [], blockers: [], commitmentRefusals: 0, obligationWork: {}, rejectedObligations: 0, changeHistory: [], undos: [], mentionedDates: new Set(), reminders: new Map(), reminderGrant: null, reminderCancels: [], summaryGrants: [], questions: [], questionsReviewed: new Set(), corrections: [], jevChecks: 0, replyCheckCounts: { pass: 0, violation: 0, unsure: 0, unavailable: 0 }, replyCheckPaths: { jev: 0, subscription: 0, holding: 0, 'operator-echo': 0 }, lastReplyCheck: null, sendOutcomes: [], speakers: { agent: 0, infrastructure: 0 }, modelCalls: emptyModelCalls(), retroPasses: [] };
         snapshotAllowed = true;
       } else if (row.kind === 'snapshot-start') {
         if (!snapshotAllowed || pendingSnapshot || row.version !== 1 || !Number.isSafeInteger(row.bytes) || row.bytes <= 0
@@ -3004,7 +3030,7 @@ export function openPreviewJournal(path: string, key: Uint8Array, initial?: Extr
       size = writeFrame(fd, row, key, size); fsyncSync(fd);
       if (row.kind === 'genesis') {
         if (view) throw Error('preview journal: duplicate genesis');
-        view = { genesis: row, cursor: row.cursor, clockFloor: 0, turns: new Map(), order: [], heldTurns: new Set(), awayEvents: [], channelItems: new Map(), channelSources: new Map(), channelSourceErrors: new Map(), calls: 0, replies: 0, stop: null, stopChallenges: [], waiting: [], tokenTotals: emptyTokenTotals(), tokenCalls: [], tokenCurrent: new Map(), limits: limitsOf(row), capAuthority: null, capRaisedAt: null, expires: row.expires, expiryAuthority: null, capReports: new Set(), stepCheckStarted: false, stepCheckCleanup: false, stepChecks: new Map(), indexOffered: [], indexConcepts: [], indexOpen: null, indexUnknown: [], summaries: [], summaryReservations: new Map(), summaryRequired: new Set(), summaryCandidates: new Map(), summaryChecks: new Map(), summaryFaithfulness: new Map(), summaryReviews: new Set(), summaryCheckCounts: { pass: 0, violation: 0, unsure: 0, unavailable: 0 }, lastSummaryCheck: null, summaryFailures: new Map(), lastSummaryFailure: null, lastPrompt: null, failureClasses: new Map(), providerStates: new Map(), callOutcomes: [], callOutcomeCounts: new Map(), sourceStop: null, imported: false, operatorEvents: [], people: [], personAttributes: [], personMerges: [], commitments: [], closed: new Map(), memory: [], dated: [], conflicts: [], directives: [], blockers: [], commitmentRefusals: 0, obligationWork: {}, rejectedObligations: 0, changeHistory: [], undos: [], mentionedDates: new Set(), reminders: new Map(), reminderGrant: null, reminderCancels: [], summaryGrants: [], questions: [], questionsReviewed: new Set(), corrections: [], jevChecks: 0, replyCheckCounts: { pass: 0, violation: 0, unsure: 0, unavailable: 0 }, replyCheckPaths: { jev: 0, subscription: 0, holding: 0, 'operator-echo': 0 }, lastReplyCheck: null, sendOutcomes: [], speakers: { agent: 0, infrastructure: 0 }, modelCalls: emptyModelCalls(), retroPasses: [] };
+        view = { genesis: row, cursor: row.cursor, clockFloor: 0, turns: new Map(), order: [], heldTurns: new Set(), awayEvents: [], channelItems: new Map(), channelSources: new Map(), channelSourceErrors: new Map(), calls: 0, replies: 0, stop: null, stopChallenges: [], waiting: [], tokenTotals: emptyTokenTotals(), tokenCalls: [], tokenCurrent: new Map(), limits: limitsOf(row), capAuthority: null, capRaisedAt: null, expires: row.expires, expiryAuthority: null, capReports: new Set(), stepCheckStarted: false, stepCheckCleanup: false, stepChecks: new Map(), indexOffered: [], indexConcepts: [], indexOpen: null, indexUnknown: [], summaries: [], summaryReservations: new Map(), summaryRequired: new Set(), summaryCandidates: new Map(), summaryChecks: new Map(), summaryFaithfulness: new Map(), summaryReviews: new Set(), summaryCheckCounts: { pass: 0, violation: 0, unsure: 0, unavailable: 0 }, lastSummaryCheck: null, summaryFailures: new Map(), lastSummaryFailure: null, summaryOverCap: [], summaryOverCapFrontiers: [], lastPrompt: null, failureClasses: new Map(), providerStates: new Map(), callOutcomes: [], callOutcomeCounts: new Map(), sourceStop: null, imported: false, operatorEvents: [], people: [], personAttributes: [], personMerges: [], commitments: [], closed: new Map(), memory: [], dated: [], conflicts: [], directives: [], blockers: [], commitmentRefusals: 0, obligationWork: {}, rejectedObligations: 0, changeHistory: [], undos: [], mentionedDates: new Set(), reminders: new Map(), reminderGrant: null, reminderCancels: [], summaryGrants: [], questions: [], questionsReviewed: new Set(), corrections: [], jevChecks: 0, replyCheckCounts: { pass: 0, violation: 0, unsure: 0, unavailable: 0 }, replyCheckPaths: { jev: 0, subscription: 0, holding: 0, 'operator-echo': 0 }, lastReplyCheck: null, sendOutcomes: [], speakers: { agent: 0, infrastructure: 0 }, modelCalls: emptyModelCalls(), retroPasses: [] };
       } else project(view!, row, systemCheck);
       boundary?.(`after:${row.kind}`);
       if (row.kind !== 'genesis' && size > Math.max(compactBytes, snapshotBase * 2)) compact();
@@ -6266,6 +6292,18 @@ export function createJournalWorker(journal: ReturnType<typeof openPreviewJourna
     const last = memoryRequest ?? journal.view.order.filter(turn => turn.sent).at(-1);
     if (!last) return;
     if (!force && !memoryRequest && isStatusCommand(last.text)) return;
+    // An attempt the provider called uncertain but whose own outcome row proves a finished, successful result over
+    // the output cap is settled as failed (reason recorded), never left UNKNOWN: an UNKNOWN frontier waits out the
+    // recovery delay and then floors every later span, and with no summary accepted each later span starts at the
+    // beginning and only grows (live 2026-09-30: #483, #487, #491, #493 at 2312-4832 tokens; the review cascade was
+    // never reached).
+    const settleOverCap = () => {
+      for (const { through, usage } of [...journal.view.summaryOverCap])
+        if (journal.view.summaryReservations.has(through))
+          journal.append({ kind: 'summary-failed', through, state: 'rejected', failureClass: 'rejected',
+            reason: SUMMARY_OVER_CAP_REASON, ...(usage ? { usage } : {}), at: ports.now() });
+    };
+    settleOverCap();
     const unknown = journal.view.summaryReservations;
     if (unknown.size) {
       const now = elapsed();
@@ -6348,6 +6386,7 @@ export function createJournalWorker(journal: ReturnType<typeof openPreviewJourna
     // bound one pass; the next worker cycle can continue from the last summary.
     let summarized = false;
     for (let attempt = 0; attempt < 8; attempt++) {
+      settleOverCap();
       const previous = summaryFor(last.update)?.through ?? -1;
       if (previous >= last.update || journal.view.calls >= journal.view.limits.maxCalls - (force ? 1 : 0)) return;
       const pending = journal.view.order.filter(turn => turn.accepted && turn.update > previous && turn.update <= last.update);
@@ -6377,7 +6416,10 @@ export function createJournalWorker(journal: ReturnType<typeof openPreviewJourna
       // Recovery dispatches only frontiers later than every UNKNOWN charge (below), so those are not offered
       // either: a window of four at or before one (live 2026-09-30, #483 past the output cap) chose nothing.
       const unknownFloor = Math.max(-1, ...unknown.keys());
-      const open = pending.filter(turn => (journal.view.summaryFailures.get(turn.update) ?? 0) < 2 && turn.update > unknownFloor);
+      // A span from this base that ran over the output cap is too long; only a shorter one is offered next.
+      const overCapCeiling = Math.min(Number.MAX_SAFE_INTEGER, ...journal.view.summaryOverCapFrontiers.filter(through => through > previous));
+      const open = pending.filter(turn => (journal.view.summaryFailures.get(turn.update) ?? 0) < 2 && turn.update > unknownFloor
+        && turn.update < overCapCeiling);
       if (pending.length && !open.length) return;
       for (const turn of open.slice(0, SUMMARY_MAX_TURNS)) {
         const candidate = packetFor(turn.update, true, [], [], [], turn.thread, true);
@@ -6498,7 +6540,10 @@ export function createJournalWorker(journal: ReturnType<typeof openPreviewJourna
       catch { return; } // outcome UNKNOWN; preserve the reservation
       if (typeof summary !== 'string' && 'state' in summary && summary.state === 'uncertain') {
         journal.append({kind:'summary-uncertain',through,state:'uncertain',
-          ...('usage' in summary && summary.usage ? { usage: summary.usage } : {}),at:ports.now()}); return;
+          ...('usage' in summary && summary.usage ? { usage: summary.usage } : {}),at:ports.now()});
+        // Proven over the cap: the next attempt settles it and takes a shorter span, inside this pass's bounds.
+        if (journal.view.summaryOverCap.some(item => item.through === through)) continue;
+        return;
       }
       if (typeof summary !== 'string' && 'failureClass' in summary) {
         journal.append({kind:'summary-failed',through,state:summary.state,failureClass:summary.failureClass,
