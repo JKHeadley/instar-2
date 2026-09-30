@@ -23,6 +23,8 @@ export interface RunEnd { unfinished?: number;
   inhibited?: string;
   /** An existing worker that lost the conversation fence and retired. */
   retired?: string;
+  /** This launch was refused before it launched, while it held the root's writer lease: the scrubbed refusal. */
+  refused?: string;
   /** Rule 33: the journal projection digest at this exit, so the exit claim is comparable only at that frontier. */
   frontier?: string }
 export interface RunLog { launches: ({ at: number; pid?: number; exit?: number; reason?: string } & RunEnd)[]; unreadable: number;
@@ -76,9 +78,10 @@ export function readRuns(path: string): RunLog {
       if (Number.isSafeInteger(row.unfinished) && row.unfinished! >= 0) entry.unfinished = row.unfinished!;
       if (row.revival === 'queued' || row.revival === 'inhibited' || row.revival === 'none') entry.revival = row.revival;
       if (Number.isSafeInteger(row.nextWorkAt)) entry.nextWorkAt = row.nextWorkAt!;
-      const extra = row as { inhibited?: unknown; retired?: unknown; frontier?: unknown };
+      const extra = row as { inhibited?: unknown; retired?: unknown; refused?: unknown; frontier?: unknown };
       if (typeof extra.inhibited === 'string') entry.inhibited = extra.inhibited;
       if (typeof extra.retired === 'string') entry.retired = extra.retired;
+      if (typeof extra.refused === 'string') entry.refused = extra.refused;
       if (typeof extra.frontier === 'string' && /^[a-f0-9]{64}$/.test(extra.frontier)) entry.frontier = extra.frontier;
       const nonowner = (row as { nonowner?: { machine?: unknown; since?: unknown } }).nonowner;
       if (nonowner && typeof nonowner === 'object') entry.nonowner = { machine: typeof nonowner.machine === 'string' ? nonowner.machine : null,

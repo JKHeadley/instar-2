@@ -554,6 +554,7 @@ async function main() {
         probePid: pid => process.kill(pid, 0), now });
       // Stranded (signal only): every current ownership record is assessed, with or without waiting input.
       const waiting = view.view.order.filter(turn => turn.accepted && turn.intent === undefined && turn.sent === undefined).length;
+      const refusals = log.launches.filter(run => run.refused), lastRefusal = refusals.at(-1);
       const report = { cursor: view.view.cursor, turns: view.view.order.length,
       ownership: { ...ownership, holder: ownership.holder && { machine: ownership.holder.machine, since: ownership.holder.since,
         thisRoot: ownership.holder.root === root }, topology },
@@ -563,6 +564,7 @@ async function main() {
       duplicateLaunchesRefused: refusedLaunches(ownersDirectory(), g.bot, g.chat),
       workersRetired: log.launches.filter(run => run.retired).length,
       inhibitedLaunches: log.launches.filter(run => run.inhibited).length,
+      startupRefusals: { count: refusals.length, last: lastRefusal ? { at: lastRefusal.at, reason: lastRefusal.refused } : null },
       storeAgreements: agreementStatus(agreementsPath, now),
       channelItems: view.view.channelItems.size,
       channelSources: Object.fromEntries(['telegram', 'slack'].map(source => [source, {
@@ -916,7 +918,7 @@ async function main() {
     } finally { capJournal?.close(); storage.close(); }
     return;
   }
-  let journal, worker, signalled = false, signalName = null, launchedAt = null, endReason = null, runs = null, pressureUnknown = false;
+  let journal, worker, signalled = false, signalName = null, launchedAt = null, endReason = null, runs = null, pressureUnknown = false, startupFailure = null;
   let handoff = null, reservedAtLaunch = new Set(), ownerClaim = null, installation = null, installUpdate = null;
   // Rules 9/43: the durable proof log and the executor's in-memory copy of it for this launch.
   let proofRecords = [], proofLaunch = null, proofBackoffUntil = 0, proofPorts = null, proofStoreFailed = false;
@@ -1552,9 +1554,17 @@ async function main() {
         ...(journal.view.limits.maxBytes > subscriptionConversationPolicy(options.model).maxPromptBytes
           ? { raisedPromptBytes: journal.view.limits.maxBytes, promptAuthority: journal.view.capAuthority } : {}) }));
     }
-  } catch (error) { if (!signalled) throw error; }
+  } catch (error) { if (!signalled) { startupFailure = error; throw error; } }
   finally {
     try {
+      // Rules 2, 42: a launch refused before it launched is still a launch with a recorded end. The
+      // scrubbed reason is written while this process holds the root's writer lease (a composition or
+      // lease refusal never reaches here, so it writes nothing); stderr and the fixed `reason` stay terse.
+      if (launchedAt === null && startupFailure !== null) try {
+        const at = wallNow(), detail = redact(String(startupFailure?.message ?? startupFailure)).text.split('\n')[0].slice(0, 240);
+        appendRun(runsPath, { v: 1, launch: at, pid: process.pid });
+        appendRun(runsPath, { v: 1, launch: at, exit: wallNow(), reason: 'refused before launch', refused: detail || 'unknown' });
+      } catch { /* the refusal still exits non-zero; only its record is lost */ }
       if (journal && !journal.view.stop && !journal.readOnly && wallNow() >= journal.view.expires)
         journal.append({ kind: 'stop', reason: 'trial expired', at: wallNow() });
       if (launchedAt !== null) {

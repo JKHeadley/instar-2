@@ -351,4 +351,34 @@ it('Rule 35: a test-endpoint composition refuses a production journal before tak
   expect(run.status).toBe(1);
   expect(readFileSync(path).equals(before)).toBe(true);
   expect(existsSync(join(root, '.writer'))).toBe(false);
+  // Refused before the writer lease: no startup-refusal record is written into the production root either.
+  expect(existsSync(join(root, 'runs.jsonl'))).toBe(false);
 });
+
+it('Rules 2, 42: a launch refused under the writer lease records its scrubbed reason; stderr stays terse', () => {
+  const world = successiveWorld(), root = join(world.directory, 'refused-launch');
+  const journal = openPreviewJournal(join(root, 'journal.encrypted'), OFFLINE_STORAGE_KEY, { kind: 'genesis', origin: 'test',
+    bot: '1001', chat: '2002', operator: '2002', grant: 'grant:refusal', configurationDigest: 'sha256:recorded',
+    expires: 9999999999999, maxCalls: 4, maxReplies: 4, maxTurns: 4, maxBytes: 32768, cursor: 0 });
+  journal.close();
+  const env = { ...process.env, INSTAR_SECRET_PREVIEW_STORAGE_KEY: Buffer.from(OFFLINE_STORAGE_KEY).toString('hex'),
+    INSTAR_SECRET_PREVIEW_TELEGRAM_BOT_TOKEN: '12345678:AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA',
+    INSTAR_PREVIEW_TEST_TELEGRAM_ENDPOINT: 'http://127.0.0.1:9', INSTAR_CONVERSATION_OWNERS: join(world.directory, 'owners') };
+  const run = spawnSync(process.execPath, ['--no-warnings', '--loader', './scripts/slice-ts-loader.mjs',
+    'tests/preview/journal-agent.mjs', 'run', '--root', root, '--bot-id', '1001', '--chat-id', '2002',
+    '--operator-sender-id', '2002', '--grant-reference', 'grant:refusal', '--configuration-digest', 'sha256:different',
+    '--expires-at', '9999999999999', '--max-calls', '4', '--max-replies', '4', '--max-turns', '4'],
+  { cwd: process.cwd(), encoding: 'utf8', timeout: 20000, env });
+  expect(run.status).toBe(1);
+  expect(run.stderr).toContain('details suppressed');
+  expect(run.stderr).not.toContain('configuration-digest');
+  const rows = readFileSync(join(root, 'runs.jsonl'), 'utf8').split('\n').filter(Boolean).map(line => JSON.parse(line));
+  expect(rows).toHaveLength(2);
+  expect(rows[1]).toEqual({ v: 1, launch: rows[0].launch, exit: expect.any(Number), reason: 'refused before launch',
+    refused: 'preview: configuration-digest differs from journal' });
+  // The lease is released after the record, so the next launch is not refused as a concurrent boot.
+  expect(existsSync(join(root, '.writer', '.boot-lease'))).toBe(false);
+  const status = JSON.parse(spawnSync(process.execPath, ['--no-warnings', '--loader', './scripts/slice-ts-loader.mjs',
+    'tests/preview/journal-agent.mjs', 'status', '--root', root], { cwd: process.cwd(), env, encoding: 'utf8', timeout: 20000 }).stdout);
+  expect(status.startupRefusals).toEqual({ count: 1, last: { at: rows[0].launch, reason: 'preview: configuration-digest differs from journal' } });
+}, 30000);
