@@ -78,15 +78,17 @@ const UNKNOWN = Symbol('unknown');
 // keeping its pid, process group and descendants under the ceiling. The hard
 // limit matters: runtimes such as Node raise their own soft file limit to the hard
 // limit at startup. The process limit is lowered last, because the shell's own
-// command substitutions fork. The shell's own variables (PWD, SHLVL, OLDPWD) are
+// command substitutions fork; within one limit both values are read before either is
+// lowered, so no substitution forks under a lowered process limit (a count that rose
+// since it was read made that fork fail: a sent message read UNKNOWN). The shell's own variables (PWD, SHLVL, OLDPWD) are
 // removed by env(1), which execs in place, unless the caller supplied them.
 const SHELL_VARIABLES = Object.freeze(['PWD', 'SHLVL', 'OLDPWD']);
 const LIMIT_SCRIPT = [
   'if [ "$5" = gate ]; then read -r go <&3 || exit 125; [ "$go" = go ] || exit 125; exec 3<&-; fi',
   'lim() {',
   '  s=$(ulimit -S "$1") || exit 125',
-  '  if [ "$s" = unlimited ] || [ "$s" -gt "$2" ]; then ulimit -S "$1" "$2" || exit 125; fi',
   '  h=$(ulimit -H "$1") || exit 125',
+  '  if [ "$s" = unlimited ] || [ "$s" -gt "$2" ]; then ulimit -S "$1" "$2" || exit 125; fi',
   '  if [ "$h" = unlimited ] || [ "$h" -gt "$2" ]; then ulimit -H "$1" "$2" || exit 125; fi',
   '}',
   'lim -n "$1"; lim -t "$2"; if [ -n "$3" ]; then lim -u "$3"; fi',
