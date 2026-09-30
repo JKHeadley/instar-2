@@ -1,5 +1,21 @@
 [
   {
+    "revision": 8,
+    "date": "2026-09-29",
+    "status": "draft",
+    "cause": {
+      "kind": "conversation",
+      "note": "Operator Justin (verified) said 'yes' at 18:08 PDT 2026-09-29 in topic 102965 to the simpler approval design (plan of record LIVE-PATH-PLAN.md row #91, replacing step 6a), relayed to the desk; the Astra necessity ruling (lanes/astra-approval-necessity-ruling.md) found the constitution as written rejects it, so this is the amendment. Exact-content operator approval PENDING; not merged."
+    },
+    "changes": [
+      {
+        "what": "Add the `account-assented` provenance class: a channel-attested reply from the bound or P-02-named operator account, answering one prepared unexpired request with a current base, whose message or review id is unconsumed, may complete that request's Authorization, StandingGrant or Revocation once; it never produces a principal, never binds or re-binds, and is never reported as verified. Update the exercise split, honest-shape paragraph, no-open-constructors check, repository-anchor paragraph, Provenance supporting type and glossary entry to match.",
+        "why": "The purpose amendment needs one truthful place in the decoder contract; a named class keeps the evidence distinct from verified instead of relabelling channel evidence.",
+        "ref": "lanes/astra-approval-necessity-ruling.md (section 4 decision sentence); LIVE-PATH-PLAN.md row #91; topic 102965, 18:08 PDT 2026-09-29"
+      }
+    ]
+  },
+  {
     "revision": 7,
     "date": "2026-09-04",
     "status": "draft",

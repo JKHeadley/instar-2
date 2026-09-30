@@ -1,5 +1,21 @@
 [
   {
+    "revision": 10,
+    "date": "2026-09-29",
+    "status": "draft",
+    "cause": {
+      "kind": "conversation",
+      "note": "Operator Justin (verified) said 'yes' at 18:08 PDT 2026-09-29 in topic 102965 to the simpler approval design (plan of record LIVE-PATH-PLAN.md row #91, replacing step 6a), relayed to the desk; the Astra necessity ruling (lanes/astra-approval-necessity-ruling.md) found the constitution as written rejects it, so this is the amendment. Exact-content operator approval PENDING; not merged."
+    },
+    "changes": [
+      {
+        "what": "Amend 'the agent never administers its own safeguards' to admit a recorded, one-use approval of an exact, unexpired request from an operator account held with a named service the agent cannot use or administer, without a separate device signature or independent approval verifier, and extend its check to name the service, the absent agent access path and one-use consumption.",
+        "why": "The adopted approval design is account-authenticated, which the signed-only clause rejected; the ruling's sentence is the smallest principle that permits it while keeping independently enforced safeguards independently administered and the evidence class honest.",
+        "ref": "lanes/astra-approval-necessity-ruling.md (section 4 decision sentence); LIVE-PATH-PLAN.md row #91; topic 102965, 18:08 PDT 2026-09-29"
+      }
+    ]
+  },
+  {
     "revision": 9,
     "date": "2026-09-24",
     "status": "draft",

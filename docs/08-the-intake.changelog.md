@@ -4,6 +4,10 @@ _Generated from `08-the-intake.changelog.json` by `scripts/render-changelog.mjs`
 The document itself reads as a first version; every change to it is recorded here, newest first,
 each linked to the git change that made it (rule 91).
 
+## Revision 7 · 2026-09-29 · draft — Operator Justin (verified) said 'yes' at 18:08 PDT 2026-09-29 in topic 102965 to the simpler approval design (plan of record LIVE-PATH-PLAN.md row #91, replacing step 6a), relayed to the desk; the Astra necessity ruling (lanes/astra-approval-necessity-ruling.md) found the constitution as written rejects it, so this is the amendment. Exact-content operator approval PENDING; not merged.
+
+- **Binding acts may also be completed by part one's `account-assented` yes for one exact prepared request other than a binding, and the stolen-session and bot-token residual sentences now say such a thief can approve already-prepared requests where P-02 admits it.** — Part four's literal statement that chat can never approve would otherwise contradict the amended part one (rule 45: consumers move with the source). _(lanes/astra-approval-necessity-ruling.md (section 4 decision sentence); LIVE-PATH-PLAN.md row #91; topic 102965, 18:08 PDT 2026-09-29)_
+
 ## Revision 6 · 2026-09-04 · draft — operator review on PR #18; review desk round 5 (final) — internal: zero design findings for the third consecutive round; the two propagation sentences and the external's five editorial refinements folded
 
 - **ackPolicy propagated into the bundle enumeration and the contract suite; per-transport identity-evidence semantics on authenticationClass; honest judgment-hold costs as measured bounds; transport-native stop affordances; steering-severity containments (step-up policy hook, measured token blast radius); the replay probe labeled a regression check with part nine owning live canaries.** — Convergence residuals — no design consequence. _(review desk round 5)_

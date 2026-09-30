@@ -4,6 +4,10 @@ _Generated from `14-the-assembly.changelog.json` by `scripts/render-changelog.mj
 The document itself reads as a first version; every change to it is recorded here, newest first,
 each linked to the git change that made it (rule 91).
 
+## Revision 20 · 2026-09-29 · draft — Operator Justin (verified) said 'yes' at 18:08 PDT 2026-09-29 in topic 102965 to the simpler approval design (plan of record LIVE-PATH-PLAN.md row #91, replacing step 6a), relayed to the desk; the Astra necessity ruling (lanes/astra-approval-necessity-ruling.md) found the constitution as written rejects it, so this is the amendment. Exact-content operator approval PENDING; not merged.
+
+- **Section 8 (retitled) lets an approval by the P-02-named operator account on the exact head of a prepared request decode as part one's `account-assented` yes, with the host's branch rules as the independent enforcement; the host-review adapter row and P10-NF-37 match.** — Part Ten reserved changing the verified-origin requirement to constitutional approval; this is that amendment, limited to what the GitHub path needs. _(lanes/astra-approval-necessity-ruling.md (section 4 decision sentence); LIVE-PATH-PLAN.md row #91; topic 102965, 18:08 PDT 2026-09-29)_
+
 ## Revision 19 · 2026-09-24 · draft — Bounded Slack second-channel constitutional amendment from astra-slack-closedset-ruling.md; operator approval PENDING; no merge or runtime activation.
 
 - **Select at most one additional bound Slack DM or thread in the fixed profile, and include Slack in its operation, evidence and loss-model descriptions.** — The installation must admit the second platform while retaining one machine, voter, worker, shared resource limits and the same verified operator and audience. _(astra-slack-closedset-ruling.md, Exact minimal governing edits and approval procedure (2026-09-24); approval PENDING)_

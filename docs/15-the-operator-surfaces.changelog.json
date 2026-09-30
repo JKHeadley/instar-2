@@ -1,5 +1,21 @@
 [
   {
+    "revision": 7,
+    "date": "2026-09-29",
+    "status": "draft",
+    "cause": {
+      "kind": "conversation",
+      "note": "Operator Justin (verified) said 'yes' at 18:08 PDT 2026-09-29 in topic 102965 to the simpler approval design (plan of record LIVE-PATH-PLAN.md row #91, replacing step 6a), relayed to the desk; the Astra necessity ruling (lanes/astra-approval-necessity-ruling.md) found the constitution as written rejects it, so this is the amendment. Exact-content operator approval PENDING; not merged."
+    },
+    "changes": [
+      {
+        "what": "Section 2: authority may return as part one's one-use `account-assented` yes; P-02's bound chat or GitHub review page is a registered surface; that yes needs no separate challenge or verifier; a chat reply is refused only outside the account-assented conditions; an account-assented surface selects no verifier.",
+        "why": "The adopted P-02 gesture must be a surface section 2 can complete, without weakening refusal of other channel-attested confirmation.",
+        "ref": "lanes/astra-approval-necessity-ruling.md (section 4 decision sentence); LIVE-PATH-PLAN.md row #91; topic 102965, 18:08 PDT 2026-09-29"
+      }
+    ]
+  },
+  {
     "revision": 6,
     "date": "2026-09-28",
     "status": "approved",

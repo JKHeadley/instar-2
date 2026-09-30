@@ -4,6 +4,10 @@ _Generated from `00-the-policy-register.changelog.json` by `scripts/render-chang
 The document itself reads as a first version; every change to it is recorded here, newest first,
 each linked to the git change that made it (rule 91).
 
+## Revision 5 · 2026-09-29 · draft — Operator Justin (verified) said 'yes' at 18:08 PDT 2026-09-29 in topic 102965 to the simpler approval design (plan of record LIVE-PATH-PLAN.md row #91, replacing step 6a), relayed to the desk; the Astra necessity ruling (lanes/astra-approval-necessity-ruling.md) found the constitution as written rejects it, so this is the amendment. Exact-content operator approval PENDING; not merged.
+
+- **Rewrite P-02: by default an explicit operator yes is a reply from the verified operator account in their own bound chat, recorded with its message id, with no setup; where a recorded P-05 grant lets the agent speak through the owner's chat account, the yes is an Approve tap on a GitHub page under the operator's account, reached by a direct link sent each time, with the platform's normal account recovery; the residual (account or intake takeover can approve within bound authority) is named.** — The operator adopted this design verbatim; the prior device-factor default becomes an optional per-deployment route. _(lanes/astra-approval-necessity-ruling.md (section 4 decision sentence); LIVE-PATH-PLAN.md row #91; topic 102965, 18:08 PDT 2026-09-29)_
+
 ## Revision 4 · 2026-09-19 · draft — operator amendment requiring compatibility when only one machine is available
 
 - **Make P-08 select the accepted fixed-profile local-durable set for a single-machine installation and replicated(1) by default whenever a second machine is enrolled.** — A supported no-peer deployment needs an installation policy, while peer loss must never turn an installed replicated demand into local durability. _(`1b5ac4c`)_

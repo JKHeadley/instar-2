@@ -1,5 +1,21 @@
 [
   {
+    "revision": 20,
+    "date": "2026-09-29",
+    "status": "draft",
+    "cause": {
+      "kind": "conversation",
+      "note": "Operator Justin (verified) said 'yes' at 18:08 PDT 2026-09-29 in topic 102965 to the simpler approval design (plan of record LIVE-PATH-PLAN.md row #91, replacing step 6a), relayed to the desk; the Astra necessity ruling (lanes/astra-approval-necessity-ruling.md) found the constitution as written rejects it, so this is the amendment. Exact-content operator approval PENDING; not merged."
+    },
+    "changes": [
+      {
+        "what": "Section 8 (retitled) lets an approval by the P-02-named operator account on the exact head of a prepared request decode as part one's `account-assented` yes, with the host's branch rules as the independent enforcement; the host-review adapter row and P10-NF-37 match.",
+        "why": "Part Ten reserved changing the verified-origin requirement to constitutional approval; this is that amendment, limited to what the GitHub path needs.",
+        "ref": "lanes/astra-approval-necessity-ruling.md (section 4 decision sentence); LIVE-PATH-PLAN.md row #91; topic 102965, 18:08 PDT 2026-09-29"
+      }
+    ]
+  },
+  {
     "revision": 19,
     "date": "2026-09-24",
     "status": "draft",

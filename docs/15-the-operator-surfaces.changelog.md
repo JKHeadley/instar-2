@@ -4,6 +4,10 @@ _Generated from `15-the-operator-surfaces.changelog.json` by `scripts/render-cha
 The document itself reads as a first version; every change to it is recorded here, newest first,
 each linked to the git change that made it (rule 91).
 
+## Revision 7 · 2026-09-29 · draft — Operator Justin (verified) said 'yes' at 18:08 PDT 2026-09-29 in topic 102965 to the simpler approval design (plan of record LIVE-PATH-PLAN.md row #91, replacing step 6a), relayed to the desk; the Astra necessity ruling (lanes/astra-approval-necessity-ruling.md) found the constitution as written rejects it, so this is the amendment. Exact-content operator approval PENDING; not merged.
+
+- **Section 2: authority may return as part one's one-use `account-assented` yes; P-02's bound chat or GitHub review page is a registered surface; that yes needs no separate challenge or verifier; a chat reply is refused only outside the account-assented conditions; an account-assented surface selects no verifier.** — The adopted P-02 gesture must be a surface section 2 can complete, without weakening refusal of other channel-attested confirmation. _(lanes/astra-approval-necessity-ruling.md (section 4 decision sentence); LIVE-PATH-PLAN.md row #91; topic 102965, 18:08 PDT 2026-09-29)_
+
 ## Revision 6 · 2026-09-28 · approved — Operator's standing direction in topic 52075 at 09:09 PDT 2026-09-28 ('For the 2.0 work the only thing I need to approve are changes to the constitution'): design parts need no separate operator approval; this part is approved as written.
 
 - **Mark the design approved as written.** — Only changes to the constitution require the operator; design parts implement it and are approved on the operator's standing direction. _(topic-52075-2026-09-28T16:09Z)_

@@ -101,17 +101,21 @@ review pressed the composition one level deeper, rightly: exercising operator st
 an attested message is still attested exercise, so **the exercise itself is tiered**. A
 **binding act** — granting or revoking standing, minting an `Authorization`, changing a wall,
 re-binding a conversation — requires its own `verified`-provenance act (a PIN-gated or signed
-surface, a host review record); a chat message can *request* one, and the request routes like
-any beyond-standing ask. A **directive act** — day-to-day direction, priorities, the ordinary
-"proceed" — rides the binding: the bound operator directs the agent's own operating standing
+surface, a host review record) or, for one exact prepared request other than a binding, part
+one's `account-assented` yes under policy P-02; otherwise a chat message can *request* one, and
+the request routes like any beyond-standing ask. A **directive act** — day-to-day direction,
+priorities, the ordinary "proceed" — rides the binding: the bound operator directs the agent's own operating standing
 through chat, which grants nothing and binds nothing beyond what part one's `Directive` type
 already carries. So the thing a stolen chat session can do is *steer* one conversation's
-already-granted work; it can never mint, widen, or approve. The
+already-granted work and, where P-02 admits `account-assented` replies, approve a request the
+agent already prepared for that operator; it can never mint or widen. The
 residual is named rather than implied away: **a platform bot-token takeover collapses every
 attestation on that transport**, so an attacker holding the token speaks as any bound sender —
 reaching every conversation whose bound principal is selectable through the compromised
 transport, each within its own binding's scope, their union and no more; and within that reach
-it can only steer already-granted work, because every binding act needs its own verified act.
+it can only steer already-granted work and approve requests already prepared for a bound
+operator where P-02 admits `account-assented` replies, the residual P-02 accepts, because every
+other binding act needs its own verified act.
 That bounded union — not "one conversation," and not "everything" — is the honest blast radius,
 and steering is not nothing: directed work exercises the agent's real operating standing, so a
 thief can cause real effects inside it (the effect doorway's profile gates and floors are what

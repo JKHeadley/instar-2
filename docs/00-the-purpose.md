@@ -79,10 +79,17 @@ questions, never a single deployment's answer. The review desk refuses convergen
 question carries none of the four dispositions.
 
 **Rule — the agent never administers its own safeguards.** Protection, approval and the keys
-behind them run under an authority the agent cannot alter, impersonate or replace; an approval
-is signed by something the operator holds and the agent does not. **Check:** every
+behind them run under an authority the agent cannot alter, impersonate or replace. An approval
+is signed by something the operator holds and the agent does not, or Instar may accept a
+recorded, one-use approval of an exact, unexpired request from an operator account held with a
+named service that the agent cannot use or administer, without a separate device signature or
+independent approval verifier, while independently enforced safeguards remain independently
+administered. That second form rests on the named service and the durable record of the reply;
+it is never reported as signed or independently verified evidence. **Check:** every
 protected-execution and approval design names the custodian identity and shows the agent has no
-administrative path to it.
+administrative path to it; an account-authenticated approval design also names the service,
+shows the agent holds no session, credential or recovery path to that account, and consumes
+each approval once against its exact request.
 
 **Rule — least revelation.** No action reveals a relationship, an identity or a fact beyond what
 the recipient's verified standing permits, and never by accident: an acknowledgement, a receipt,

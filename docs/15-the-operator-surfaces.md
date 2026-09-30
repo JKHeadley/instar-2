@@ -48,8 +48,11 @@ for approval from also deciding that its own approval path is protected.
 **Rule — authority completes only on a registered verified surface.** Rules 28, 79, 82, 89, 98,
 104 and 106; **checks: P11-NF-04–09**. Every operator action that can grant, revoke, waive,
 re-bind, change protected content, or authorize an irreversible operation is presented by a
-registered surface adapter and returns through part four's intake port as a verified act. Chat may
-request and link to the action; channel attestation cannot complete it. The action uses part one's
+registered surface adapter and returns through part four's intake port as a verified act or as
+part one's one-use `account-assented` yes. Chat may request and link to the action; channel
+attestation alone cannot complete it. Under policy P-02 the registered surface is the operator's
+own bound chat or, where a P-05 grant lets the agent speak through that chat account, a GitHub
+review page under the operator's account reached by a direct link. The action uses part one's
 existing `Authorization`, `StandingGrant`, or `Revocation` shape and names the exact request,
 principal, scope, action set, artifact/base digests, expiry where the owning type permits one, and
 current register generation.
@@ -66,10 +69,13 @@ terminal or desktop-only detour.
 **Rule — explicit yes binds one immutable subject.** Rules 82, 94, 98, 101 and 109; **checks:
 P11-NF-07–11**. The final confirmation repeats the action, affected subject, scope, audience,
 cost/irreversibility class, current base and expiry. Its challenge is unpredictable, single-use,
-short-lived, audience-bound, and signed or PIN-gated by an independently administered verifier.
-The returned act binds the exact request digest. Replayed proof, moved base, altered rendering,
-changed scope, expired challenge, wrong operator or channel-attested confirmation refuses. Silence,
-page view, link click, biometric unlock alone, and a successful chat reply are never yes.
+short-lived, audience-bound, and signed or PIN-gated by an independently administered verifier;
+an `account-assented` yes needs no separate challenge or verifier, because part one binds it to
+the one prepared request it answers and consumes its message or review id once. The returned
+act binds the exact request digest. Replayed proof, moved base, altered rendering, changed scope,
+expired challenge, wrong operator or channel-attested confirmation refuses. Silence, page view,
+link click, biometric unlock alone, and a chat reply outside part one's `account-assented`
+conditions are never yes.
 
 **Rule — verifier selection and verifier readiness are separate.** Owner: Eleven for the
 surface verdict, Nine for the independently administered service and evidence, and Ten for the
@@ -79,7 +85,9 @@ surface becomes ready only when current Nine evidence also binds its clock, `iss
 operations, one-use challenge, expiry and replay protection to that subject. A selection string,
 installer assertion, empty probe list or agent-administered service refuses. The positive
 neighbor joins the same selection to a current independently signed challenge execution and live
-probe evidence. A prepared selection remains useful while the readiness hold stays visible.
+probe evidence. An `account-assented` surface selects no verifier; it is ready when part one's
+conditions can be met for the named account. A prepared selection remains useful while the
+readiness hold stays visible.
 
 **Rule — the surface cannot certify itself.** Rules 26, 82 and 98; **checks: P11-NF-10–13**.
 Part nine's external protection broker verifies the authorization with pinned decoders and current

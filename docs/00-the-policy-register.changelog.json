@@ -1,5 +1,21 @@
 [
   {
+    "revision": 5,
+    "date": "2026-09-29",
+    "status": "draft",
+    "cause": {
+      "kind": "conversation",
+      "note": "Operator Justin (verified) said 'yes' at 18:08 PDT 2026-09-29 in topic 102965 to the simpler approval design (plan of record LIVE-PATH-PLAN.md row #91, replacing step 6a), relayed to the desk; the Astra necessity ruling (lanes/astra-approval-necessity-ruling.md) found the constitution as written rejects it, so this is the amendment. Exact-content operator approval PENDING; not merged."
+    },
+    "changes": [
+      {
+        "what": "Rewrite P-02: by default an explicit operator yes is a reply from the verified operator account in their own bound chat, recorded with its message id, with no setup; where a recorded P-05 grant lets the agent speak through the owner's chat account, the yes is an Approve tap on a GitHub page under the operator's account, reached by a direct link sent each time, with the platform's normal account recovery; the residual (account or intake takeover can approve within bound authority) is named.",
+        "why": "The operator adopted this design verbatim; the prior device-factor default becomes an optional per-deployment route.",
+        "ref": "lanes/astra-approval-necessity-ruling.md (section 4 decision sentence); LIVE-PATH-PLAN.md row #91; topic 102965, 18:08 PDT 2026-09-29"
+      }
+    ]
+  },
+  {
     "revision": 4,
     "date": "2026-09-19",
     "status": "draft",
