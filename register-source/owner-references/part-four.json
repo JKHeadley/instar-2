@@ -191,7 +191,7 @@
       },
       "artifact": {
         "path": "src/decode/decode.ts",
-        "hash": "sha256:87ba421de8a4a173da0303a165aab497f48760a6fca3844fefba569f840fab72"
+        "hash": "sha256:d0b2cb572441d7b69c02d257aa0776fba70a226aefbaa975a9517ea1e10937d1"
       }
     },
     {
@@ -202,7 +202,7 @@
       },
       "artifact": {
         "path": "src/decode/decode.ts",
-        "hash": "sha256:87ba421de8a4a173da0303a165aab497f48760a6fca3844fefba569f840fab72"
+        "hash": "sha256:d0b2cb572441d7b69c02d257aa0776fba70a226aefbaa975a9517ea1e10937d1"
       }
     }
   ],
