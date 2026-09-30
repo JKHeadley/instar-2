@@ -5248,9 +5248,17 @@ export function createJournalWorker(journal: ReturnType<typeof openPreviewJourna
                 if (parsed.memory === undefined && !turn.memoryUndecided
                   && (!(memoryCue(turn) || preferenceCue(turn))
                     || journal.view.summaries.some(item => item.memoryFor?.includes(turn.id)))) memory = [];
+                // Rule 19: an ordinary (uncued, unedited, unsettled) turn whose decision proposes no
+                // memory change and calls its target unresolved is an empty decision; the model's
+                // own answer is sent and nothing is written. Direct requests stay held.
+                const uncuedUnresolved = parsed.memoryDisposition === 'unresolved' && !turn.memoryUndecided
+                  && !turn.editOf && !memoryCue(turn) && !preferenceCue(turn)
+                  && !journal.view.summaries.some(item => item.memoryFor?.includes(turn.id))
+                  && (parsed.memory === undefined || Array.isArray(parsed.memory) && parsed.memory.length === 0);
+                if (uncuedUnresolved) memory = [];
                 if (Array.isArray(parsed.personMerges)) personMerges = personMergesFrom(parsed.personMerges, turn,
                   decision.personMergeCandidates ?? []);
-                if (memory === undefined || parsed.memoryDisposition === 'unresolved'
+                if (memory === undefined || parsed.memoryDisposition === 'unresolved' && !uncuedUnresolved
                   || parsed.personMerges !== undefined && personMerges === undefined) invalidMemory = true;
                 if (parsed.conflict !== undefined || parsed.resolveConflict !== undefined) {
                   const pair = parsed.conflict === undefined ? undefined : conflictFrom(parsed.conflict, turn, new Set([...offered, turn.id,
