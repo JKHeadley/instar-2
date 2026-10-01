@@ -1161,7 +1161,7 @@ it('retries a definitely failed summary and an overflow-held turn automatically'
   } finally { rmSync(root, { recursive: true, force: true }); }
 });
 
-it.each(['summary', 'failed', 'preflight', 'last-call'] as const)('grounds over-budget history before any summary; route=%s', async route => {
+it.each(['summary', 'failed', 'preflight', 'last-call'] as const)('answers over-budget history: with a summary when one can be made, with the oldest set aside when not; route=%s', async route => {
   const root = origin();
   try {
     const journal = openPreviewJournal(join(root, 'journal.encrypted'), key,
@@ -1195,38 +1195,37 @@ it.each(['summary', 'failed', 'preflight', 'last-call'] as const)('grounds over-
       send: async () => 2, checkOutbound: () => {} });
     worker.intake([update(2, 'What was the name?')]); await worker.drain();
     const turn = journal.view.order[1]!;
-    if (route !== 'summary') {
-      expect(turn.sent).toBeUndefined();
-      expect(turn.held).toBe('summary unavailable: prompt overflow');
-      expect(seen.some(item => item.id === turn.id)).toBe(false);
-      expect(journal.view.summaryReservations.size).toBe(0);
-      if (route === 'last-call') {
-        expect(summaryAttempts).toBe(0);
-        expect(journal.view.calls).toBe(1);
-      } else if (route === 'preflight') {
-        await worker.drain(); await worker.drain();
-        expect(summaryPrepares).toBe(1);
-        expect(summaryAttempts).toBe(0);
-        expect(turn.held).toBe('summary unavailable: prompt overflow');
-      } else {
-        expect(journal.view.summaryFailures.get(1)).toBe(1);
-        const status = spawnSync(process.execPath,
-          ['--no-warnings','--loader','./scripts/slice-ts-loader.mjs','tests/preview/journal-agent.mjs','status','--root',root],
-          {cwd:process.cwd(),env:{...process.env,INSTAR_SECRET_PREVIEW_STORAGE_KEY:Buffer.from(key).toString('hex')},encoding:'utf8',timeout:10000});
-        expect(status.status).toBe(0);
-        expect(JSON.parse(status.stdout).holds).toContainEqual({ update: 2,
-          notice: 'This reply is held because the conversation is too large to process right now; a summary may let it resume.' });
-        await worker.drain();
-        expect(summaryAttempts).toBe(2);
-      }
-    }
-    if (route === 'summary' || route === 'failed') {
-      expect(turn.sent).toBe(2);
-      expect(turn.held).toBeUndefined();
-      const packet = JSON.parse(seen.find(item => item.id === turn.id)!.context);
+    // Every route answers now. A summary is still preferred and still asked for first; where one cannot be made,
+    // the reachability floor sets the over-budget history aside rather than holding the reply (Rules 15, 95).
+    expect(turn.sent).toBe(2);
+    expect(turn.held).toBeUndefined();
+    expect(journal.view.summaryReservations.size).toBe(0);
+    const packet = JSON.parse(seen.find(item => item.id === turn.id)!.context) as { historyMode: string;
+      summary?: { text: string }; historySetAside?: { count: number; through: number } };
+    if (route === 'summary') {
+      // The summary carries the over-budget message, so no history has to be set aside at all.
       expect(packet.historyMode).toBe('summary-plus-recent');
-      expect(packet.summary.text).toContain('ORCHID');
-      expect(journal.view.calls).toBe(route === 'failed' ? 4 : 3);
+      expect(packet.summary!.text).toContain('ORCHID');
+      expect(packet.historySetAside).toBeUndefined();
+      expect(journal.view.calls).toBe(3);
+    } else {
+      // No summary could be made on this pass: the writer refused it (failed), its prompt could not be prepared
+      // (preflight), or the call allowance left no room to ask (last-call). The answer goes out either way, with
+      // the gap stated in the packet and the message itself untouched in the journal.
+      expect(packet.historyMode).toBe('complete');
+      expect(packet.historySetAside).toEqual({ count: 1, through: 1, note: expect.stringContaining('kept and still searchable') });
+      // The spend floor is unchanged: no extra call is spent to answer with less, and a refused span keeps its
+      // second attempt for a later pass rather than being burned here.
+      expect(journal.view.calls).toBe(route === 'failed' ? 3 : 2);
+      expect(summaryAttempts).toBe(route === 'failed' ? 1 : 0);
+      expect(summaryPrepares).toBe(route === 'last-call' ? 0 : 1);
+      if (route === 'failed') expect(journal.view.summaryFailures.get(1)).toBe(1);
+      // The plain-English held notice is not owed: nothing is held.
+      const status = spawnSync(process.execPath,
+        ['--no-warnings','--loader','./scripts/slice-ts-loader.mjs','tests/preview/journal-agent.mjs','status','--root',root],
+        {cwd:process.cwd(),env:{...process.env,INSTAR_SECRET_PREVIEW_STORAGE_KEY:Buffer.from(key).toString('hex')},encoding:'utf8',timeout:10000});
+      expect(status.status).toBe(0);
+      expect((JSON.parse(status.stdout) as { holds: unknown[] }).holds).toEqual([]);
     }
     expect(journal.view.order[0]?.text).toContain('ORCHID');
     journal.close();

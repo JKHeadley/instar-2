@@ -4785,9 +4785,9 @@ export function createJournalWorker(journal: ReturnType<typeof openPreviewJourna
     }
     return variants;
   };
-  /** One preparation attempt at one history floor. `setAside` is the floor itself; it is published to the
-   * closure so every packet variant of this attempt discloses the same set-aside (see `historySetAside`). */
-  const preparedAt = (turn: Turn, includeRecorded: boolean, setAside: number) => {
+  /** One preparation attempt at one history floor. `setAside` defaults to no floor, so an ordinary call behaves
+   * exactly as before and also clears any floor a previous attempt published (see `historySetAside`). */
+  const preparedFor = (turn: Turn, includeRecorded = true, setAside = -1) => {
     historySetAside = setAside;
     const question = redact(turn.text).text;
     // Rules 9, 96, 114: the concurrent owned-work view is read once per preparation, never per packet variant.
@@ -5096,13 +5096,10 @@ export function createJournalWorker(journal: ReturnType<typeof openPreviewJourna
         dropped.push({ kind: next.kind, source: next.key, reason: 'packet or prepared prompt byte envelope' });
       }
     }
-    if (includeRecorded && provenanceCue(turn.text)) return preparedAt(turn, false, setAside);
+    if (includeRecorded && provenanceCue(turn.text)) return preparedFor(turn, false, setAside);
     return { reason: promptFit ? 'prompt overflow' : 'context overflow',
       ...(measuredPromptOverflow && !preparationUnavailable ? { measuredPromptOverflow: true } : {}) };
 
-  };
-  const preparedFor = (turn: Turn, includeRecorded = true) => {
-    try { return preparedAt(turn, includeRecorded, -1); } finally { historySetAside = -1; }
   };
   /** The reachability floor (Rules 2, 15, 95, 96), reached only after the ordinary preparation and a forced
    * rolling summary have both failed on bytes -- so the summary keeps its chance to cover the history properly,
@@ -5113,13 +5110,14 @@ export function createJournalWorker(journal: ReturnType<typeof openPreviewJourna
    * the conversation's length. */
   const preparedWithFloor = (turn: Turn) => {
     try {
-      let setAside = -1, attempt = preparedAt(turn, true, setAside);
+      let setAside = -1, attempt = preparedFor(turn, true, setAside);
       for (;;) {
         const carried = groundingHistory(journal.view, before(turn.update)).filter(item => item.update > setAside);
         if (!('reason' in attempt) || !carried.length) return attempt;
         setAside = carried[Math.ceil(carried.length / 2) - 1]!.update;
-        attempt = preparedAt(turn, true, setAside);
+        attempt = preparedFor(turn, true, setAside);
       }
+      // Every other caller passes no floor, which also clears one; this restores it for a path that threw.
     } finally { historySetAside = -1; }
   };
   /** A created due turn still on its way to one send intent. A reservation with no recorded outcome outside a
