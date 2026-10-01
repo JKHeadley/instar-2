@@ -1,6 +1,8 @@
 import { checkProductionGroundingAssemblyEvidence } from './check-assembly-contracts.mjs';
-import { readFileSync } from 'node:fs';
+import { localHalfReport } from './split-report.mjs';
+import { readFileSync, realpathSync } from 'node:fs';
 import { relative } from 'node:path';
+import { fileURLToPath } from 'node:url';
 
 const design = readFileSync('docs/09-the-run-graph.md', 'utf8');
 const expected = new Set([...design.matchAll(/^\| (P5-NF-\d+) \|/gm)].map(m => m[1]));
@@ -69,7 +71,9 @@ for (const [id, requiredFile] of requiredSeamEvidence) {
     throw new Error(`${id}: required passing evidence absent from ${requiredFile}`);
 }
 
-checkProductionGroundingAssemblyEvidence(report);
+// Grounding binds to one real Vitest process, so under a split it reads the local half; the
+// coverage rows above read the whole report. Unsplit, both are the same report.
+checkProductionGroundingAssemblyEvidence(localHalfReport(report, realpathSync(fileURLToPath(new URL('..', import.meta.url)))).report);
 if (productionGroundingRunGraphContract.held !== 'NON-EXECUTABLE-UNTIL-live-path-unit-compaction')
   throw new Error('compaction hold name changed');
 

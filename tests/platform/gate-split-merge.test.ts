@@ -168,6 +168,22 @@ describe('the single-process arms keep reading the local half', () => {
     expect(got.otherHalfFiles).toEqual([`${root}/tests/platform/macos-only.test.ts`]);
   });
 
+  // The grounding arm accepts a report only when one real process receipt carries its exact digest;
+  // each half's process wrote a receipt for its own report, and nothing ever ran the merge.
+  it('P5 hands the grounding arm the local half, whose digest a real half receipt matches; the merge matches none', () => {
+    const [a, b] = [fixture('half-a'), fixture('half-b')];
+    const root = rootOf(a);
+    const { report: merged } = mergeHalfReports([half(a, 'only-macos', root), half(b, 'exclude-macos', root)],
+      { root, revision: REVISION, expectedFiles: relativeFiles(fixture('unsplit')) });
+    const receipts = new Set([a, b].map(report => reportDigest(report)));
+    const grounded = localHalfReport(merged as Report, root, () => JSON.stringify(b)).report;
+    expect(receipts.has(reportDigest(grounded))).toBe(true);
+    expect(receipts.has(reportDigest(merged))).toBe(false);
+    const p5 = readFileSync('scripts/check-p5-contract-map.mjs', 'utf8');
+    expect(p5).toMatch(/checkProductionGroundingAssemblyEvidence\(localHalfReport\(report, /);
+    expect(p5).not.toMatch(/checkProductionGroundingAssemblyEvidence\(report\)/);
+  });
+
   it('refuses a local-half file that is not the half the merge was built from', () => {
     const [a, b] = [fixture('half-a'), fixture('half-b')];
     const root = rootOf(a);

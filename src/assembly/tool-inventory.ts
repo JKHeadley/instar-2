@@ -65,7 +65,7 @@ export const DEVELOPMENT_TOOLS: readonly DevelopmentTool[] = freeze([
     params: { pattern: path('scripts/check-[a-z0-9-]+\\.mjs'), max: 1 }, packageScripts: [], grants: [], feature: 'self-hosting' },
   // Merges a split run's two half reports and runs the report-reading checks once over the whole suite.
   { id: 'split-report-checks', phase: 'review', run: { kind: 'process', argv: ['node', 'scripts/split-checks.mjs'] },
-    params: { pattern: path('[A-Za-z0-9_./-]+\\.json'), max: 2 }, packageScripts: ['test:split-checks'], grants: [], feature: 'self-hosting' },
+    params: { pattern: path('[A-Za-z0-9_.-][A-Za-z0-9_./-]*\\.json'), max: 2 }, packageScripts: ['test:split-checks'], grants: [], feature: 'self-hosting' },
   { id: 'register-check', phase: 'review', run: { kind: 'process', argv: ['node', 'scripts/build-register.mjs', '--check'] }, params: null,
     packageScripts: ['register:check'], grants: [], feature: 'self-hosting' },
   { id: 'register-generate', phase: 'package', run: { kind: 'process', argv: ['node', 'scripts/build-register.mjs'] }, params: null,

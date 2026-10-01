@@ -24,6 +24,13 @@ it('admits a registered tool with scoped parameters and refuses anything wider (
   refused(admitToolProposal({ operation: 'unit-test', params: ['../../etc/passwd.test.ts'] }, [], f.c), 'outside its scope');
   refused(admitToolProposal({ operation: 'unit-test', params: ['--reporter=../x.test.ts'] }, [], f.c), 'outside its scope');
   refused(admitToolProposal({ operation: 'typecheck', params: ['--listFiles'] }, [], f.c), 'no parameters');
+  // The split-report merge reads repository-relative half reports only: an absolute path names no
+  // scoped run path, so it would escape every physical scope check.
+  expect(value(admitToolProposal({ operation: 'split-report-checks', params: ['reports/a.json', 'b.json'] }, [], f.c)).run)
+    .toEqual({ kind: 'process', credentials: [], paths: [], argv: ['node', 'scripts/split-checks.mjs', 'reports/a.json', 'b.json'] });
+  refused(admitToolProposal({ operation: 'split-report-checks', params: ['/private/tmp/a.json', '/private/tmp/b.json'] }, [], f.c), 'outside its scope');
+  refused(admitToolProposal({ operation: 'split-report-checks', params: ['reports/a.json', '/private/tmp/b.json'] }, [], f.c), 'outside its scope');
+  refused(admitToolProposal({ operation: 'split-report-checks', params: ['../a.json', 'b.json'] }, [], f.c), 'outside its scope');
   refused(admitToolProposal({ operation: 'journal-migrate', params: [] }, [], f.c), 'requires operator-storage-key');
   refused(admitToolProposal({ operation: 'journal-migrate', params: [] }, ['operator-storage-key'], f.c), 'subcommand not registered');
   // Typed options: scoped paths inside the owner's roots, the credential named by reference only.
