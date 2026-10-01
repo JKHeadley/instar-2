@@ -475,7 +475,7 @@ const replyReviewDirection = (): 'open' | 'closed' => {
 };
 export const CRITICAL_PIPELINES: Readonly<Record<string, Pipeline>> = Object.freeze({
   'operator-reply': { failureDirection: replyReviewDirection(),
-    owner: 'reply review objections are advisory signals recorded with the send, so an unavailable review and every non-mandatory objection release the reply (Rules 77, 86, 95); only the mandatory floors hold it — the credential shape wall, a credential named by a check, a review naming an untracked deferral or an unevidenced cannot-do claim, and a runner-refused obligation declaration; the step supervisor observes intake, preparation, answer and cleanup',
+    owner: 'reply review objections are advisory signals recorded with the send, so an unavailable review and every non-mandatory objection release the reply (Rules 77, 86, 95); only the mandatory floors withhold anything, and each withholds only what it named — the credential shape wall and a credential named by a check withhold the whole reply behind a fixed notice, while a review naming an untracked deferral or an unevidenced cannot-do claim removes the sentences carrying that claim and sends the rest, with the removal and any unlocated claim recorded (plan #215); a runner-refused obligation declaration forces the contextual review and holds the turn only while that review cannot decide; the step supervisor observes intake, preparation, answer and cleanup',
     steps: [
       { step: 'intake', supervisors: ['step-check'] },
       { step: 'prepare-packet', supervisors: ['step-check'] },
@@ -485,7 +485,7 @@ export const CRITICAL_PIPELINES: Readonly<Record<string, Pipeline>> = Object.fre
       { step: 'cleanup', supervisors: ['step-check'] },
     ] },
   'requested-action': { failureDirection: replyReviewDirection(),
-    owner: 'the step supervisor validates due selection and preparation before the model call; its reply runs the same pre-send reply review, so an unavailable review and every non-mandatory objection release it and only the mandatory floors hold it (Rules 77, 86, 95)',
+    owner: 'the step supervisor validates due selection and preparation before the model call; its reply runs the same pre-send reply review, so an unavailable review and every non-mandatory objection release it, and only the mandatory floors withhold anything — each withholding only the content it named (Rules 4, 77, 86, 95)',
     steps: [
       { step: 'select-due', supervisors: ['step-check'] },
       { step: 'prepare-packet', supervisors: ['step-check'] },
@@ -504,10 +504,13 @@ type StepState = 'validated' | 'held' | 'failed' | 'unavailable' | 'missing';
 interface Operation { id: string; states: Partial<Record<string, { state: StepState; attempt: string; resolution: string }>> }
 const verdictState = (verdict: string | undefined): StepState => verdict === 'pass' ? 'validated'
   : verdict === 'violation' || verdict === 'lost' ? 'failed' : verdict === undefined ? 'missing' : 'unavailable';
-/** The fixed notice that went out in place of a flagged answer: the answer itself never left (Rules 4, 86). */
+/** The flagged content did not leave. Either the fixed notice went out in place of the answer (Rules 4, 86), or
+ * the claim-scoped floor removed the sentences the review named and sent the rest (plan #215): in both cases the
+ * named content never reached the operator, which is supervision working rather than failing. */
 const heldNotice = (turn: Turn) => { const body = replyBody(turn);
-  return body !== undefined && [HOLDING_REPLY, CREDENTIAL_SHAPE_NOTICE].some(text => body === text
-    || body.endsWith(`\n${text.replace(/^PREVIEW — /u, '')}`)); };
+  return (turn.release?.withheld?.removed.length ?? 0) > 0
+    || (body !== undefined && [HOLDING_REPLY, CREDENTIAL_SHAPE_NOTICE].some(text => body === text
+      || body.endsWith(`\n${text.replace(/^PREVIEW — /u, '')}`))); };
 function stepState(view: JournalView, supervisor: Supervisor, key: string, supervisors: ProofPorts['supervisors']) {
   if (supervisor === 'reply-review') {
     if (!supervisors.replyReview) return null;
