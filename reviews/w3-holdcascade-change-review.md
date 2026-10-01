@@ -24,7 +24,7 @@ Prompt finding: 849db3a6296a | protocol-literal | the runner's fixed reply when 
 Prompt finding: bd01de21286a | protocol-literal | the packet instruction to cite sourceLabel, retained verbatim; the hallucination-rate test checks the instruction is carried (unchanged here)
 Prompt finding: fb5fa7e706c8 | protocol-literal | the packet instruction for questions about what the operator said, retained verbatim; the test checks the instruction is carried (unchanged here)
 
-Subject (6 paths): reviews/w3-holdcascade-change-review.md, tests/preview/format-retry.test.ts, tests/preview/held-cascade-replay.test.ts, tests/preview/journal-summary-crash.test.ts, tests/preview/journal.ts, tests/preview/reply-check.ts
+Subject (7 paths): reviews/w3-holdcascade-change-review.md, tests/preview/format-retry.test.ts, tests/preview/held-cascade-replay.test.ts, tests/preview/journal-summary-crash.test.ts, tests/preview/journal.ts, tests/preview/reply-check.ts, tests/preview/review-layers-canary.test.ts
 
 ## Closing block
 
