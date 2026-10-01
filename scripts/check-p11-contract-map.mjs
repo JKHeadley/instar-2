@@ -1,10 +1,11 @@
 import { productionBindingHolds } from '../dist/assembly/production-holds.js';
 import { bootRecoveryEvidenceFiles, checkBootRecoveryCoverage } from './check-boot-conversation-evidence.mjs';
 import { productionGroundingSourceDigest } from './check-assembly-contracts.mjs';
+import { localHalfReport } from './split-report.mjs';
 // Every P11-NF identifier in docs/15 resolves to an executed check. Dispositions
 // remain partial until the independently administered live phone/provider evidence
 // and the independent live phone/provider evidence named in src/operator/README.md is present.
-import { readFileSync, readdirSync } from 'node:fs';
+import { readFileSync, readdirSync, realpathSync } from 'node:fs';
 import { relative, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import ts from 'typescript';
@@ -122,8 +123,13 @@ if (process.argv[1] && resolve(process.argv[1]) === fileURLToPath(import.meta.ur
   const issues = inspectOperatorCore(sources); if (issues.length) throw new Error(issues.join('\n'));
   const declarations = JSON.parse(readFileSync('src/operator/operator.declarations.json', 'utf8'));
   if (!declarations.length || declarations.some(row => row.status !== 'dark' || row.holds?.length)) throw new Error('operator declarations falsely claim held/live activation');
+  // The run's report as given — under a split, the merge of both halves. The boot arm binds to one
+  // real Vitest process and its own host's receipts, so it reads the local half and is told which
+  // files the other half ran; unsplit, both are the same report and nothing changes.
   const report = JSON.parse(readFileSync('.test-results.json', 'utf8'));
-  checkBootRecoveryCoverage(report, productionGroundingSourceDigest());
+  const here = realpathSync(fileURLToPath(new URL('..', import.meta.url)));
+  const { report: localHalf, otherHalfFiles } = localHalfReport(report, here);
+  checkBootRecoveryCoverage(localHalf, productionGroundingSourceDigest(), otherHalfFiles);
   const held = checkP11HeldCases(report);
   const rows = checkP11Coverage(report);
   console.log('| Check | Status | Executed test files |'); console.log('|---|---|---|');

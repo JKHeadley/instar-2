@@ -58,7 +58,8 @@ export function reachedMechanism(root, file, read = path => readFileSync(join(ro
   return null;
 }
 
-function testFiles(root, dir = 'tests') {
+/** Every test file under tests/, relative to root — the set an unsplit run includes. */
+export function testFiles(root, dir = 'tests') {
   const out = [];
   for (const entry of readdirSync(join(root, dir), { withFileTypes: true })) {
     const rel = `${dir}/${entry.name}`;

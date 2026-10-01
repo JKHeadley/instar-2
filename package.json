@@ -27,7 +27,8 @@
     "pretest": "npm run build",
     "ci:local": "node scripts/ci-local.mjs",
     "test:all": "node scripts/check-change-review.mjs run",
-    "test:gate": "npm run typecheck && npm run build && node scripts/run-kill-schedule.mjs && node scripts/warm-slice-ts-cache.mjs && vitest run --reporter=default --reporter=json --outputFile=.test-results.json && npm run test:durability && node scripts/check-change-review.mjs check && npm run lint && node scripts/check-contract-map.mjs && node scripts/check-p2-contract-map.mjs && node scripts/check-register-contract-map.mjs && node scripts/check-p4-contract-map.mjs && node scripts/check-transport-contracts.mjs && node scripts/check-effect-contracts.mjs && node scripts/check-p5-contract-map.mjs && node scripts/check-judgment-contracts.mjs && node scripts/check-verification-contracts.mjs && node scripts/check-assembly-contracts.mjs && node scripts/check-p11-contract-map.mjs && npm run register:check",
+    "test:split-checks": "node scripts/split-checks.mjs",
+    "test:gate": "npm run typecheck && npm run build && node scripts/run-kill-schedule.mjs && node scripts/warm-slice-ts-cache.mjs && vitest run --reporter=default --reporter=json --outputFile=.test-results.json && npm run test:durability && node scripts/check-change-review.mjs check && npm run lint && node scripts/gate-report-checks.mjs && npm run register:check",
     "lint": "node scripts/check-architecture.mjs && node scripts/check-register-wiring.mjs",
     "register:generate": "npm run build && node scripts/build-register.mjs",
     "register:check": "node scripts/build-register.mjs --check"
