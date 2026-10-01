@@ -8,6 +8,8 @@ import { join } from 'node:path';
 import { createJournalWorker, openPreviewJournal, sendOutcomeCounts, MODEL_FAILURE_REPLY } from './journal-test-worker.js';
 import { outboundSigner, settleSendOutcome, type SendOutcome } from './outbound-provenance.js';
 import { classifyTelegramSend } from './telegram-send-outcome.mjs';
+import { createServer } from 'node:net';
+import { createProductionTelegramIO } from '../../scripts/production-boot-io.mjs';
 
 const key = new Uint8Array(32).fill(7);
 const genesis = { kind: 'genesis' as const, bot: '12345678', chat: '7654321', operator: '7654321', grant: 'grant:preview',
@@ -139,4 +141,41 @@ it('classifies Telegram replies: 4xx ok:false refuses, transport or 5xx is unkno
     .toMatchObject({ kind: 'unknown' });
   expect(settleSendOutcome(null)).toEqual({ kind: 'unknown', reason: 'no receipt' });
   expect(settleSendOutcome(7)).toEqual({ kind: 'accepted', message: 7 });
+});
+
+// w3-sendstall (2026-09-30 17:39, update 969389787): the live reply's sendMessage settled as
+// {"outcome":"unknown","reason":"transport transport"} - the bridge's failure stage was dropped, so the
+// one lost reply could not be told apart as a connection that never opened, a child that died, or a
+// body that never arrived. The reason now keeps the bridge's own closed stage name.
+it('an uncertain send keeps the bridge stage in its recorded reason (the 17:39 "transport transport" row)', () => {
+  const expected = { chat: '7', expectedText: 'hi' };
+  // The recorded row's shape stays readable: no stage reported, no stage invented.
+  expect(classifyTelegramSend({ kind: 'uncertain', limitation: 'transport' }, expected))
+    .toEqual({ kind: 'unknown', reason: 'transport transport' });
+  for (const stage of ['resolver', 'child-exit', 'fetch-timeout', 'fetch-failure', 'body-read', 'invalid-response',
+    'scan-policy', 'scan-budget', 'sealed-capture'])
+    expect(classifyTelegramSend({ kind: 'uncertain', limitation: 'transport', stage }, expected))
+      .toEqual({ kind: 'unknown', reason: `transport transport at ${stage}` });
+  // Only the bridge's closed stage names are recorded, never free text from a reply.
+  expect(classifyTelegramSend({ kind: 'uncertain', limitation: 'transport', stage: 'token 123:abc' }, expected))
+    .toEqual({ kind: 'unknown', reason: 'transport transport' });
+});
+
+it('the real bridge child, refused a connection, records the send as unknown at fetch-failure', { timeout: 30000 }, async () => {
+  const dir = root();
+  try {
+    // A port that was just free: nothing listens, so the real fetch is refused before any request is written.
+    const probe = createServer();
+    await new Promise<void>(done => probe.listen(0, '127.0.0.1', done));
+    const address = probe.address();
+    if (!address || typeof address === 'string') throw Error('probe port unbound');
+    await new Promise<void>(done => probe.close(() => done()));
+    const telegram = createProductionTelegramIO(join(dir, '.writer'), { preserve: () => true, read: () => null },
+      `http://127.0.0.1:${address.port}`);
+    const reply = telegram.invoke({ method: 'sendMessage', body: { chat_id: '7', text: 'hi', parse_mode: 'HTML' }, timeoutMs: 5000 },
+      '12345678:AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA');
+    expect(reply).toEqual({ kind: 'uncertain', limitation: 'transport', stage: 'fetch-failure' });
+    expect(classifyTelegramSend(reply, { chat: '7', expectedText: 'hi' }))
+      .toEqual({ kind: 'unknown', reason: 'transport transport at fetch-failure' });
+  } finally { rmSync(dir, { recursive: true, force: true }); }
 });
