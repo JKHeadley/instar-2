@@ -28,13 +28,19 @@ function trial(summaryAvailable: boolean) {
     chat: '7654321', operator: '7654321', grant: 'grant:preview', configurationDigest: 'sha256:offline',
     expires: 9_999_999_999_999, maxCalls: 160, maxReplies: 40, maxTurns: 40, maxBytes: 32768, cursor: 0 });
   const answers: number[] = [], summaries: number[] = [];
+  /** Every answer-call packet, so what the reachability floor set aside can be read back. */
+  const packets: { id: string; packet: { historySetAside?: { count: number; through: number } } }[] = [];
   const worker = createJournalWorker(journal, { now: () => now, stopped: () => false, sources: () => sources,
     prepareModel: input => prepareJournalEnvelope(input, 'claude-opus-5-5', journal.view.genesis.grant,
       now, journal.view.limits.maxBytes),
     model: async input => {
       if (!input.id.startsWith('summary:')) {
         answers.push(Number(input.id.split(':').at(-1)));
-        if (answers.at(-1) === 35) expect(input.context).toContain(marker(1));
+        packets.push({ id: input.id, packet: JSON.parse(input.context) as { historySetAside?: { count: number; through: number } } });
+        // With faithful summaries the first fact is still carried at turn 35. Without them nothing can carry it,
+        // and the reachability floor sets it aside rather than ending the chat; the packet says so, the journal
+        // keeps the message, and recall/memorySearch reach it when the operator asks (summary-overcap-frontier-stall).
+        if (summaryAvailable && answers.at(-1) === 35) expect(input.context).toContain(marker(1));
         return JSON.stringify({ reply: `The preview can answer question ${answers.at(-1)} using its current sources.`, memory: [], dated: [] });
       }
       summaries.push(Number(input.id.split(':').at(-1)));
@@ -54,7 +60,7 @@ function trial(summaryAvailable: boolean) {
         noul: facts.every(fact => transition.candidateSummary.includes(fact)) ? 0.01 : 0.99 } } };
     },
     send: async () => journal.view.replies + 1, checkOutbound: () => {} });
-  return { root, journal, worker, answers, summaries };
+  return { root, journal, worker, answers, summaries, packets };
 }
 
 it('answers 40 successive 285-character questions under 32 KiB with faithful rolling summaries', async () => {
@@ -78,28 +84,35 @@ it('answers 40 successive 285-character questions under 32 KiB with faithful rol
   } finally { run.journal.close(); rmSync(run.root, { recursive: true, force: true }); }
 }, 120000);
 
-it('keeps an overflowing accepted turn visibly held when a faithful summary is unavailable', async () => {
-  // int11's long-input contract: once no faithful summary can make room, the overflowing
-  // turn gets one honest bounded notice (never a model call on it, never a summary commit).
+it('keeps answering past the byte bound when no faithful summary is available, with the oldest history set aside', async () => {
+  // int11's long-input contract belongs to a long MESSAGE. A long CONVERSATION is a different cause and no longer
+  // ends the chat: when no faithful summary can make room, the reachability floor sets the oldest history aside --
+  // disclosed, still in the journal -- instead of noticing the turn as too long to process (Rules 2, 15, 95).
   const run = trial(false);
   try {
     for (let n = 1; n <= 40; n++) {
       run.worker.intake([update(n)]);
       await run.worker.drain();
       await run.worker.summarizeIfNeeded();
-      if (run.journal.view.order.at(-1)?.noticeClass === 'too-long-input') break;
+      const turn = run.journal.view.order.at(-1)!;
+      expect(turn.sent, `turn ${n}: ${turn.held ?? turn.noticeClass ?? ''}`).toBeDefined();
+      expect(turn.noticeClass, `turn ${n}`).toBeUndefined();
+      expect(turn.held, `turn ${n}`).toBeUndefined();
     }
-    const held = run.journal.view.order.at(-1)!;
-    expect(held.accepted).toBe(true);
-    expect(held.text).toBe(question(held.update));
-    expect(held.noticeClass).toBe('too-long-input');
-    expect(held.reserved).toBe(false);
+    // The writer was asked and refused every time, so no summary exists; the floor does not pretend otherwise.
     expect(run.summaries.length).toBeGreaterThan(0);
     expect(run.journal.view.summaries).toHaveLength(0);
+    // It did engage, and said so in the packet with the count that is missing from it.
+    const floored = run.packets.filter(item => item.packet.historySetAside !== undefined);
+    expect(floored.length).toBeGreaterThan(0);
+    expect(floored.at(-1)!.packet.historySetAside!.count).toBeGreaterThan(0);
+    // Nothing was deleted: the earliest message is still in the journal verbatim, before and after a replay.
+    const first = run.journal.view.order[0]!;
+    expect(first.text).toBe(question(1));
     run.journal.close();
     const replay = openPreviewJournal(join(run.root, 'journal.encrypted'), key);
-    expect(replay.view.order.at(-1)?.text).toBe(held.text);
-    expect(replay.view.order.at(-1)?.noticeClass).toBe('too-long-input');
+    expect(replay.view.order[0]?.text).toBe(question(1));
+    expect(replay.view.order.filter(turn => turn.accepted && turn.sent === undefined)).toEqual([]);
     replay.close();
   } finally { run.journal.close(); rmSync(run.root, { recursive: true, force: true }); }
 }, 120000);

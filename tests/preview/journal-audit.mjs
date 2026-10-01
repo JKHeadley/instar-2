@@ -135,9 +135,15 @@ export function auditPacket(view, turn, packet, memoryCount = view.memory.length
     else add('memory-summary', 'memorySummary', [{ kind: 'summary', through: record.through }]);
   }
   // The same selection the packet was built from: a desk probe or an edit's replaced original is never expected.
-  const expected = groundingHistory(view, before(turn.update), summary?.through).map(item => item.id);
+  // The reachability floor may also have set aside the oldest turns; when it did, the packet must SAY so and the
+  // disclosed count must be exactly what is missing (Rules 2, 9). An undisclosed gap is a history-coverage fault.
+  const carried = groundingHistory(view, before(turn.update), summary?.through);
+  const setAside = Number.isSafeInteger(packet.historySetAside?.through) ? packet.historySetAside.through : -1;
+  const expected = carried.filter(item => item.update > setAside).map(item => item.id);
   const history = list(packet.history, 'history');
   if (body(history.map(item => item?.id)) !== body(expected)) fault('history-coverage', 'history');
+  if (packet.historySetAside !== undefined && packet.historySetAside?.count !== carried.length - expected.length)
+    fault('history-set-aside-count', 'historySetAside');
   for (const [n, item] of history.entries()) {
     const at = `history[${n}]`, found = source(item?.id, at);
     if (found) {

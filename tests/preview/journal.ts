@@ -3624,6 +3624,15 @@ export function createJournalWorker(journal: ReturnType<typeof openPreviewJourna
       catch { /* refused by the journal (for example a new UNKNOWN call): stays approved-unapplied, visible */ }
     }
   };
+  /** The reachability floor (Rules 2, 15, 95, 96). Verbatim history is the one block that grows without bound
+   * behind a frontier that is not moving, and a prompt that cannot be built at all holds the reply -- which is
+   * the agent made unreachable by its own growth (live 2026-09-30 proof room: 210 turns behind a stuck frontier,
+   * 398189 of 409600 bytes, "the conversation is too large to process right now"). One preparation attempt may
+   * set a floor: grounding turns at or below it are SET ASIDE from the packet, never from the journal -- recall
+   * and memory search still reach them, the packet discloses the count, and the reply's reserve row records it.
+   * `packetFor` and `recallFor` read this so every variant of one attempt carries the same disclosed set-aside;
+   * `preparedFor` is synchronous, so no other work can observe it, and it restores -1 before returning. */
+  let historySetAside = -1;
   const summaryFor = (through: number) => journal.view.summaries.filter(item => item.through <= through).at(-1);
   /** Rule 110: the continuity owed by `turn`'s reply when its context was compacted through `through`:
    * none once a reply whose delivery Telegram confirmed has accounted for that frontier. An account
@@ -3718,8 +3727,11 @@ export function createJournalWorker(journal: ReturnType<typeof openPreviewJourna
   /** Original turns the summary already covers, chosen by the memory sentinel
    * for the new message: its words, the turn it continues, the summary
    * sentences it touches and any day it names. Best first; empty when nothing relates. */
-  const recallFor = (turn: Turn, summary: NonNullable<ReturnType<typeof summaryFor>>) => {
-    const older = journal.view.order.filter(item => remembered(item) && !sizeRefused(item) && item.update <= summary.through);
+  const recallFor = (turn: Turn, summary: { through: number; text: string }) => {
+    // Recall covers what verbatim history does not: the summarized prefix, and anything the reachability floor
+    // set aside above it. Without this second clause a set-aside turn would be in neither block (Rule 2).
+    const older = journal.view.order.filter(item => remembered(item) && !sizeRefused(item)
+      && item.update <= Math.max(summary.through, historySetAside));
     // A brief interruption does not erase the subject of a follow-up. Keep this
     // bounded so unrelated older turns cannot dominate the current question.
     const previous = journal.view.order.filter(item => remembered(item) && !sizeRefused(item) && item.update < turn.update).slice(-3)
@@ -4489,7 +4501,9 @@ export function createJournalWorker(journal: ReturnType<typeof openPreviewJourna
     const summary = compact ? summaryFor(through) : undefined;
     const superseded = new Set(journal.view.order.filter(item => item.accepted && item.editOf && item.update <= through)
       .map(item => item.replaces!));
-    const earlier = groundingHistory(journal.view, through, summary?.through);
+    const carriedHistory = groundingHistory(journal.view, through, summary?.through);
+    const earlier = carriedHistory.filter(item => item.update > historySetAside);
+    const historySetAsideCount = carriedHistory.length - earlier.length;
     const undecidedAll = journal.view.order.filter(item => item.editOf && item.memoryUndecided && item.update <= through)
       .map((item): { previous?: string; current: string; state: string } => ({ previous: clean(redact(journal.view.turns.get(item.replaces!)!.text).text, true, item.replaces),
         current: clean(redact(item.text).text, true, item.id),
@@ -4744,7 +4758,11 @@ export function createJournalWorker(journal: ReturnType<typeof openPreviewJourna
       ...(corrections.length ? { corrections } : {}), ...(undecidedEdits.length ? { undecidedEdits, ...(moreUndecidedEdits ? { moreUndecidedEdits } : {}) } : {}), ...(openQuestions.length ? { openQuestions } : {}), ...(contradictions.length ? { contradictions } : {}), ...(commitments.length ? { commitments } : {}), ...(people.length ? { people } : {}), ...(lastNamedPerson ? { lastNamedPerson } : {}),
       ...(personMergeCandidates.length ? { personMergeCandidates } : {}), ...(personMerges.length ? { personMerges } : {}),
       ...(personAttributes.length ? { personAttributes } : {}),
-      ...(recall.length ? { recalled: recall } : {}), ...(channelMemory.length ? { channelMemory } : {}), ...(search ? { memorySearch: search } : {}), history,
+      ...(recall.length ? { recalled: recall } : {}), ...(channelMemory.length ? { channelMemory } : {}), ...(search ? { memorySearch: search } : {}),
+      // Rule 2: the gap is stated, counted and audited, never papered over. These messages are still in the
+      // journal; recall and memorySearch above reach them, so an answer that needs one asks or names the gap.
+      ...(historySetAsideCount ? { historySetAside: { count: historySetAsideCount, through: historySetAside,
+        note: 'Older messages of this conversation are not shown verbatim here: they did not fit this prompt. They are kept and still searchable, and recalled/memorySearch may already carry the relevant ones. If an answer needs one that is not here, say so plainly or ask, and never state the gap as something that did not happen.' } } : {}), history,
       ...(labelAll || question === undefined ? {} : { replyProvenance: replyProvenanceFor(question, includeRecorded) }) });
 
     return packet;
@@ -4767,7 +4785,10 @@ export function createJournalWorker(journal: ReturnType<typeof openPreviewJourna
     }
     return variants;
   };
-  const preparedFor = (turn: Turn, includeRecorded = true) => {
+  /** One preparation attempt at one history floor. `setAside` is the floor itself; it is published to the
+   * closure so every packet variant of this attempt discloses the same set-aside (see `historySetAside`). */
+  const preparedAt = (turn: Turn, includeRecorded: boolean, setAside: number) => {
+    historySetAside = setAside;
     const question = redact(turn.text).text;
     // Rules 9, 96, 114: the concurrent owned-work view is read once per preparation, never per packet variant.
     const concurrentWork = fromOperator(turn) ? ports.concurrentWork?.() ?? null : null;
@@ -4791,7 +4812,8 @@ export function createJournalWorker(journal: ReturnType<typeof openPreviewJourna
       ports.timeZone ?? 'UTC', PREVIEW_RECALL_LIMIT);
     // Minimum complete-history fields alone can exceed the packet cap.
     const minimumHistoryItemBytes = Buffer.byteLength('{"user":"","answer":"","outcome":""}');
-    const completeTooLarge = journal.view.order.reduce((count, item) => count + Number(remembered(item) && !sizeRefused(item) && item.update < turn.update), 0)
+    const completeTooLarge = journal.view.order.reduce((count, item) => count + Number(remembered(item) && !sizeRefused(item)
+      && item.update < turn.update && item.update > setAside), 0)
       * minimumHistoryItemBytes > journal.view.limits.maxBytes;
 
     // Rules 10 and 11: bounded memory search is offered to every verified operator message,
@@ -4881,8 +4903,13 @@ export function createJournalWorker(journal: ReturnType<typeof openPreviewJourna
       // Optional evidence cannot make the complete unsummarized history smaller.
       if (!compact && smallest(completePacket!)
         > journal.view.limits.maxBytes) continue;
-      const recalled = said ? said.indices.map(index => older[index]!).filter(item => !summary || item.update <= summary.through)
-        : summary ? recallFor(turn, summary) : [];
+      // With no summary, verbatim history used to be the only path to an older turn -- so a turn the floor set
+      // aside would have been in no block at all. Recall is offered against the floor itself in that case, which
+      // is what makes "nothing is lost, it is still reachable" true rather than a hope (Rule 2).
+      const recalled = said ? said.indices.map(index => older[index]!).filter(item => !summary
+        || item.update <= Math.max(summary.through, setAside))
+        : summary ? recallFor(turn, summary)
+          : setAside >= 0 ? recallFor(turn, { through: setAside, text: '' }) : [];
       const channels = channelFor(turn, summary?.text);
       const candidateChannels = channelFor(turn, summary?.text, false);
       const named = peopleFor(turn.text, summary?.through ?? -1);
@@ -4951,7 +4978,12 @@ export function createJournalWorker(journal: ReturnType<typeof openPreviewJourna
       const value = (item: Optional) => Number(questionTies.has(item.signal)) * 2 + Number(referenced.has(item.signal));
       const dropOrder = optional.sort((a, b) => b.rank - a.rank || value(a) - value(b) || a.match - b.match
         || a.recent - b.recent || a.key.localeCompare(b.key));
-      const kept = new Set(optional), dropped: PacketDrop[] = [];
+      // Rule 2 / Rule 9: the floor leaves a proof artifact on the reply itself. `reserve` keeps `packetDropped`
+      // durably, so "how did this answer come to be prepared without those turns" is answerable after a restart.
+      const setAsideTurn = journal.view.order.filter(item => item.accepted && item.update <= setAside).at(-1);
+      const kept = new Set(optional), dropped: PacketDrop[] = setAside < 0 || !setAsideTurn ? []
+        : [{ kind: 'history', source: setAsideTurn.id,
+          reason: 'verbatim history yielded last to the byte envelope; the journal keeps these turns and recall reaches them' }];
       for (let step = 0; step <= dropOrder.length; step++) {
         const has = (kind: Optional['kind'], index: number) => optional.some(item => kept.has(item) && item.kind === kind && item.index === index);
         const flagged = pending.filter((_, index) => has('correction', index));
@@ -5030,6 +5062,7 @@ export function createJournalWorker(journal: ReturnType<typeof openPreviewJourna
               summaryThrough: packet.summary?.through ?? (packet.memorySummary ? summaryFor(before(turn.update))?.through ?? null : null),
               ...(packet.summary ? { compactedThrough: packet.summary.through } : {}),
               history: journal.view.order.filter(item => remembered(item) && item.update < turn.update
+                && item.update > setAside
                 && (!packet.summary || item.update > packet.summary.through)).map(item => item.id),
               recalled: selectedRecall.filter(item => !new Set([...shownPeople.map(note => note.source),
                 ...shownOpen.map(item => item.turn?.id)].filter(Boolean)).has(item.id)).map(item => item.id),
@@ -5063,10 +5096,31 @@ export function createJournalWorker(journal: ReturnType<typeof openPreviewJourna
         dropped.push({ kind: next.kind, source: next.key, reason: 'packet or prepared prompt byte envelope' });
       }
     }
-    if (includeRecorded && provenanceCue(turn.text)) return preparedFor(turn, false);
+    if (includeRecorded && provenanceCue(turn.text)) return preparedAt(turn, false, setAside);
     return { reason: promptFit ? 'prompt overflow' : 'context overflow',
       ...(measuredPromptOverflow && !preparationUnavailable ? { measuredPromptOverflow: true } : {}) };
 
+  };
+  const preparedFor = (turn: Turn, includeRecorded = true) => {
+    try { return preparedAt(turn, includeRecorded, -1); } finally { historySetAside = -1; }
+  };
+  /** The reachability floor (Rules 2, 15, 95, 96), reached only after the ordinary preparation and a forced
+   * rolling summary have both failed on bytes -- so the summary keeps its chance to cover the history properly,
+   * and this is what happens when it cannot. Verbatim history yields last: each step sets aside the older half of
+   * what is still carried and runs the whole selection again. Arithmetic decides, never a model; each step
+   * strictly raises the floor, so it terminates within log2(history) steps and ends with the incoming message
+   * alone. The message itself being too long is the one size refusal left, and it belongs to the message, not to
+   * the conversation's length. */
+  const preparedWithFloor = (turn: Turn) => {
+    try {
+      let setAside = -1, attempt = preparedAt(turn, true, setAside);
+      for (;;) {
+        const carried = groundingHistory(journal.view, before(turn.update)).filter(item => item.update > setAside);
+        if (!('reason' in attempt) || !carried.length) return attempt;
+        setAside = carried[Math.ceil(carried.length / 2) - 1]!.update;
+        attempt = preparedAt(turn, true, setAside);
+      }
+    } finally { historySetAside = -1; }
   };
   /** A created due turn still on its way to one send intent. A reservation with no recorded outcome outside a
    * running call is an orphaned UNKNOWN: never repeated, and it holds nothing. */
@@ -5233,6 +5287,10 @@ export function createJournalWorker(journal: ReturnType<typeof openPreviewJourna
             await summarizeIfNeeded(true);
             selected = preparedFor(turn);
           }
+          // The summary had its chance and the prompt still cannot be built: history itself yields (Rule 95's
+          // open side -- reachability to the operator). A size hold here would be the agent made unreachable by
+          // its own growth, which is the whole wedge this closes.
+          if ('reason' in selected) selected = preparedWithFloor(turn);
           if ('reason' in selected && (selected.measuredPromptOverflow
             || selected.reason === 'context overflow' && (journal.view.limits.maxBytes >= 4096
               || journal.view.limits.maxReplies > 1))) {
@@ -6434,6 +6492,11 @@ export function createJournalWorker(journal: ReturnType<typeof openPreviewJourna
     // Each pass advances the durable frontier in oldest-first prefixes. Eight calls
     // bound one pass; the next worker cycle can continue from the last summary.
     let summarized = false;
+    // A writer that keeps over-producing must not spend the whole model-call allowance on summaries and starve
+    // replies (live 2026-09-30: seven consecutive spans past the output cap). Four over-cap attempts end the pass --
+    // the most one pass spent before this change -- so per-pass summary spend is unchanged; the next pass continues
+    // from what they settled, and an accepted summary earns the budget back.
+    let overCapAttempts = 0;
     for (let attempt = 0; attempt < 8; attempt++) {
       settleOverCap();
       const previous = summaryFor(last.update)?.through ?? -1;
@@ -6468,11 +6531,24 @@ export function createJournalWorker(journal: ReturnType<typeof openPreviewJourna
       // Recovery dispatches only frontiers later than every UNKNOWN charge (below), so those are not offered
       // either: a window of four at or before one (live 2026-09-30, #483 past the output cap) chose nothing.
       const unknownFloor = Math.max(-1, ...unknown.keys());
-      // A span from this base that ran over the output cap is too long; only a shorter one is offered next.
-      const overCapCeiling = Math.min(Number.MAX_SAFE_INTEGER, ...journal.view.summaryOverCapFrontiers.filter(through => through > previous));
-      // The shortest span (one turn) keeps its second attempt under that ceiling: there is no shorter one to offer.
-      const open = pending.filter(turn => summarySpanFailures(journal.view, turn.update) < 2 && turn.update > unknownFloor
-        && (turn.update < overCapCeiling || turn === pending[0]));
+      // A span from this base that ran over the output cap is too long; only a shorter one is offered next. The
+      // ceiling counts only over-cap frontiers that still have an attempt left: once the lowest one has used both,
+      // nothing shorter can ever be offered, and keeping the ceiling ends every later summary for good (live
+      // 2026-09-30 proof room: the one-turn span #715672791 went over the cap twice, the frontier never moved again
+      // across 210 later turns, the packet reached 398189 of 409600 bytes and replies were held "the conversation is
+      // too large"). A released ceiling loses no coverage: a span is (previous, through], so a LATER frontier carries
+      // those same turns rather than skipping them.
+      const overCapOpen = journal.view.summaryOverCapFrontiers
+        .filter(through => through > previous && summarySpanFailures(journal.view, through) < 2);
+      const overCapCeiling = Math.min(Number.MAX_SAFE_INTEGER, ...overCapOpen);
+      const withBudget = pending.filter(turn => summarySpanFailures(journal.view, turn.update) < 2 && turn.update > unknownFloor);
+      const shorter = withBudget.filter(turn => turn.update < overCapCeiling);
+      // No shorter span is left: the ceiling span itself takes its remaining attempt, asking for strictly less
+      // (below) — the shortest span (one turn) reaches its second attempt this way. When even the ceiling is spent
+      // the ceiling is gone, and the ordinary budget decides: every pending span, including later ones.
+      const open = shorter.length ? shorter
+        : overCapCeiling < Number.MAX_SAFE_INTEGER ? withBudget.filter(turn => turn.update === overCapCeiling)
+          : withBudget;
       if (pending.length && !open.length) return;
       for (const turn of open.slice(0, SUMMARY_MAX_TURNS)) {
         const candidate = packetFor(turn.update, true, [], [], [], turn.thread, true);
@@ -6507,7 +6583,14 @@ export function createJournalWorker(journal: ReturnType<typeof openPreviewJourna
         // including when prompt overflow sends selection to a smaller prefix.
         if ([...unknown.keys()].some(frontier => through <= frontier)) continue;
         if (summarySpanFailures(journal.view, through) >= 2) continue;
-        const closable = openFor(through, 50).map(({ id, note, turn: source }) => ({ id, sourceLabel: turnLabel(source!), in: note.in, quote: note.quote }));
+        // This exact span already ran over the output cap, so its remaining attempt asks for strictly less to answer:
+        // the offered blocks (open commitments, unanswered candidates, non-required memory candidates, the index
+        // backlog) are what the answer has to carry back. Repeating the identical request is the one retry that
+        // cannot succeed, and the live rooms spent an attempt on it twice (#715672485 and #715672791, both attempts
+        // byte-identical). Each dropped block is offered again by a later summary, so nothing is lost; a required
+        // memory decision is never dropped.
+        const overCapRetry = journal.view.summaryOverCapFrontiers.includes(through);
+        const closable = overCapRetry ? [] : openFor(through, 50).map(({ id, note, turn: source }) => ({ id, sourceLabel: turnLabel(source!), in: note.in, quote: note.quote }));
         const strictTrigger = journal.view.order.find(item => remembered(item) && fromOperator(item) && !item.memoryUndecided
           && (item.editOf || memoryCue(item) || preferenceCue(item) || item.memoryPending || item.held === 'memory correction pending')
 
@@ -6529,11 +6612,11 @@ export function createJournalWorker(journal: ReturnType<typeof openPreviewJourna
           reply: replyFor(replaced) }] : []), ...activePreferences().map(item => ({ id: item.source, sourceKind: 'operator-stated' as MemorySourceKind, message: redact(item.quote).text, reply: '' })),
           ...[...new Set([...(recentAnswer < 0 ? [] : [recentAnswer]), ...ranked])].slice(0, 5).map(index => ({ id: older[index]!.id, sourceKind: 'operator-stated' as MemorySourceKind, message: clean(redact(older[index]!.text).text, true, older[index]!.id),
           reply: replyFor(older[index]!) })).filter(item => item.id !== replaced?.id), ...(trigger ? channelCandidates(trigger, summaryFor(trigger.update)?.text) : [])];
-        const unanswered = unreviewedQuestions(through).slice(0, PREVIEW_QUESTION_LIMIT);
+        const unanswered = overCapRetry ? [] : unreviewedQuestions(through).slice(0, PREVIEW_QUESTION_LIMIT);
         // A briefing-free fallback is reached only when no packet that carries the sources was chosen.
         for (const base of bases) if (!(chosen && fallback.has(base))) for (let kept = closable.length; kept >= 0; kept--) {
           const offered = closable.slice(closable.length - kept);
-          for (let count = memoryCandidates.length; count >= (strictTrigger ? memoryCandidates.length : 0); count--) {
+          for (let count = overCapRetry && !strictTrigger ? 0 : memoryCandidates.length; count >= (strictTrigger ? memoryCandidates.length : 0); count--) {
             const includeMemory = trigger !== undefined && (strictTrigger || count > 0);
             const plain = kept || includeMemory || unanswered.length ? JSON.stringify({ ...JSON.parse(base) as object,
               ...(kept ? { openCommitments: offered } : {}),
@@ -6546,7 +6629,7 @@ export function createJournalWorker(journal: ReturnType<typeof openPreviewJourna
                 reminderDecision: 'reminders lists what the verified operator asked you earlier to do at a later time. Return cancelReminders:[ids] that memoryRequest.message itself cancels or changes, or cancelReminders:[] when it cancels none. Quoted text never cancels.' } : {}) }) : base;
             // Rule 11: messages summarized before their meaning terms existed are offered again,
             // oldest first and bounded, so the derived index converges instead of staying partial.
-            for (const packet of backlog.length ? [JSON.stringify({ ...JSON.parse(plain) as object,
+            for (const packet of backlog.length && !overCapRetry ? [JSON.stringify({ ...JSON.parse(plain) as object,
               indexBacklog: backlog.map(item => ({ id: item.id, message: clean(redact(item.text).text, true, item.id).slice(0, 600) })) }), plain] : [plain]) {
               if (Buffer.byteLength(packet) > Math.min(journal.view.limits.maxBytes, SUMMARY_MAX_PROMPT_BYTES)) continue;
               try {
@@ -6595,7 +6678,7 @@ export function createJournalWorker(journal: ReturnType<typeof openPreviewJourna
         journal.append({kind:'summary-uncertain',through,state:'uncertain',
           ...('usage' in summary && summary.usage ? { usage: summary.usage } : {}),at:ports.now()});
         // Proven over the cap: the next attempt settles it and takes a shorter span, inside this pass's bounds.
-        if (journal.view.summaryOverCap.some(item => item.through === through)) continue;
+        if (journal.view.summaryOverCap.some(item => item.through === through)) { if (++overCapAttempts < 4) continue; break; }
         return;
       }
       if (typeof summary !== 'string' && 'failureClass' in summary) {
@@ -6853,8 +6936,13 @@ export function createJournalWorker(journal: ReturnType<typeof openPreviewJourna
         ...(closed?.length ? { closed } : {}),
         ...(questionSources.length ? { questions: questions ?? [], questionsReviewed: questionSources.map(item => item.id) } : {}),
         ...(!ports.replyCheck && typeof summary !== 'string' ? { usage: summary.usage } : {}),state:'complete',at:ports.now()});
+      overCapAttempts = 0;
 
     }
+    // A pass that uses its whole attempt bound still settles the last attempt its own outcome row proved over the
+    // cap: leaving it as a reservation would make it an UNKNOWN charge that floors every later span until the next
+    // pass settles it.
+    settleOverCap();
   };
   let summaryJob: Promise<void> | null = null;
   const summarizeIfNeeded = async (force = false): Promise<void> => {

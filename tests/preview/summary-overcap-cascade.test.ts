@@ -107,12 +107,17 @@ it('settles a writer result proven over the output cap and accepts a shorter spa
     expect(first?.faithfulness).toEqual({ path: 'subscription', verdict: 'pass', score: null });
     expect(first?.text).toContain('probe-5f1ba73c');
     expect(w.log.filter(item => item !== 'jev-reply').slice(0, 4)).toEqual(['summary', 'summary', 'jev-faithfulness', 'review']);
-    // Every later over-cap attempt is recorded with its reason and the pass stops within its bounds:
-    // no reservation is left UNKNOWN, and no span at or past a failed one from the same base is offered, except that
-    // the one-turn span (#482) keeps its second attempt: there is no shorter one.
+    // Every later over-cap attempt is recorded with its reason and no reservation is left UNKNOWN. The spans below
+    // the ceiling are walked downward (#485 to #482, the one-turn span, which keeps its second attempt because there
+    // is no shorter one); then each span that still has an attempt takes it, asking for strictly less; and once no
+    // over-cap span has budget left the ceiling is gone, so the next window (#489 down to #486) is offered. Before
+    // this change the walk stopped at the spent one-turn span and no span was ever offered again.
     expect(w.journal.view.summaryReservations.size).toBe(0);
-    expect(w.throughs.length).toBeLessThanOrEqual(8);
-    expect(w.throughs.slice(2)).toEqual([715672485, 715672484, 715672483, 715672482, 715672482]);
+    expect(w.throughs.slice(2)).toEqual([715672485, 715672484, 715672483, 715672482, 715672482,
+      715672483, 715672484, 715672485, 715672489, 715672488, 715672487, 715672486]);
+    // No budget is widened: from this base every span still has at most its two attempts.
+    expect([...new Set(w.journal.view.summarySpanFailures)]
+      .every(through => w.journal.view.summarySpanFailures.filter(item => item === through).length <= 2)).toBe(true);
     expect(w.journal.view.lastSummaryFailure?.reason).toBe(SUMMARY_OVER_CAP_REASON);
     // The room still answers.
     w.worker.intake([update(715672494, 'Remind me today at 2:55 pm to refill the bird feeder')]); await w.worker.drain();
@@ -122,7 +127,8 @@ it('settles a writer result proven over the output cap and accepts a shorter spa
     const reopened = openPreviewJournal(w.path, key);
     expect(reopened.view.summaries.map(item => item.through)).toEqual([715672481]);
     expect(reopened.view.summaryReservations.size).toBe(0);
-    expect(reopened.view.summaryOverCapFrontiers).toEqual([715672485, 715672484, 715672483, 715672482, 715672482]);
+    expect(reopened.view.summaryOverCapFrontiers).toEqual([715672485, 715672484, 715672483, 715672482, 715672482,
+      715672483, 715672484, 715672485, 715672489, 715672488, 715672487, 715672486]);
     reopened.close();
   } finally { w.close(); }
 });
@@ -155,12 +161,14 @@ it('recovers the live journal state: four UNKNOWN over-cap reservations settle a
 
     for (const turn of late) { w.worker.intake([update(turn.update, turn.text)]); await w.worker.drain(); w.tick(60_000); }
     await w.worker.summarizeIfNeeded(true);
-    // Each proven over-cap attempt is settled with its reason; #482 and #483 are spent, so the span ends at #481.
+    // Each proven over-cap attempt is settled with its reason. #482 and #483 are spent, and #483 -- spent -- no longer
+    // sets the ceiling: the lowest over-cap span with an attempt left is #487, so the largest untried prefix below it
+    // (#484) is offered. Before this change the dead #483 held the ceiling and the span could only end at #481.
     // The envelope is refused as malformed without a judge; the retry's summary is left undecided by Jev (0.30)
     // and reaches the stronger review, which accepts it.
     expect(overCapSettled(w).slice(0, 4)).toEqual([715672483, 715672487, 715672491, 715672493]);
-    expect(w.throughs.slice(0, 2)).toEqual([715672481, 715672481]);
-    expect(w.journal.view.summaries[0]?.through).toBe(715672481);
+    expect(w.throughs.slice(0, 2)).toEqual([715672484, 715672484]);
+    expect(w.journal.view.summaries[0]?.through).toBe(715672484);
     expect(w.journal.view.summaries[0]?.faithfulness).toEqual({ path: 'subscription', verdict: 'pass', score: null });
     expect(w.log.filter(item => item !== 'jev-reply').slice(0, 4)).toEqual(['summary', 'summary', 'jev-faithfulness', 'review']);
     expect(w.journal.view.summaryReservations.size).toBe(0);

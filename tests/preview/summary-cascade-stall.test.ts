@@ -125,7 +125,7 @@ it('the recorded stall: from base #484 a frontier is offered again and a summary
   } finally { w.close(); }
 });
 
-it('a one-turn span keeps its second attempt under the over-cap ceiling, then the pass stops within its bound', async () => {
+it('a one-turn span keeps its second attempt under the over-cap ceiling, and a spent ceiling stops nothing', async () => {
   const w = world([]); // every writer call returns one of the room's recorded over-cap results
   try {
     w.replayLiveRoom();
@@ -135,10 +135,14 @@ it('a one-turn span keeps its second attempt under the over-cap ceiling, then th
     expect(w.journal.view.summaryReservations.size).toBe(0);
     expect(w.journal.view.lastSummaryFailure?.reason).toBe(SUMMARY_OVER_CAP_REASON);
     expect(w.journal.view.summaries.at(-1)?.through).toBe(715672484);
-    // The other side of the budget: from the same base a span that used its two attempts is not offered again,
-    // and the journal refuses a third reservation of it.
+    // The spent one-turn span no longer ends every later summary (live 2026-09-30/10-01 proof room, where that state
+    // at #715672791 stopped the frontier for 210 updates). The next pass gives each span that still has an attempt
+    // its remaining one, shortest first (#486, #487), then the next ones up (#488, #489).
     await w.worker.summarizeIfNeeded(true);
-    expect(w.throughs).toHaveLength(4);
+    expect(w.throughs.slice(4)).toEqual([715672486, 715672487, 715672488, 715672489]);
+    // The other side of the budget: a span that used its two attempts is not offered again, and the journal refuses
+    // a third reservation of it.
+    expect(w.throughs.filter(through => through === 715672485)).toHaveLength(2);
     expect(() => w.journal.append({ kind: 'summary-reserve', through: 715672485, maxOutputTokens: 2048, at: START + 1e9 }))
       .toThrow('repeated summary reservation');
   } finally { w.close(); }
