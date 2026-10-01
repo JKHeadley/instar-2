@@ -341,7 +341,9 @@ export const createClaudeCodeSubscriptionRoute = () => ({kind:'Success',value:{i
     expect(run.status,run.stderr).toBe(0);
     const sends = existsSync(`${log}.sends`) ? readFileSync(`${log}.sends`,'utf8').trim().split('\n').map(line => JSON.parse(line)) : [];
     // A contradicted review is unavailable, never a pass and never a veto (Rules 77, 86, 95).
-    expect(sends.some(send => answerOf(send.text) === 'PREVIEW — Noted.')).toBe(mode !== 'answer-two-objects');
+    // An answer that stays malformed after its one re-ask is never sent; every other mode still answers.
+    expect(sends.some(send => answerOf(send.text) === 'PREVIEW — Noted.')).toBe(
+      !['answer-two-objects', 'answer-list-wrapped', 'answer-prose-wrong-fields'].includes(mode));
     const status = JSON.parse(spawnSync(process.execPath,
       ['--no-warnings','--loader','./scripts/slice-ts-loader.mjs','tests/preview/journal-agent.mjs','status','--root',root],
       {cwd:process.cwd(),env,encoding:'utf8',timeout:10000}).stdout);
