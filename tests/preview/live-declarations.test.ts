@@ -16,9 +16,11 @@ import { SUBSCRIPTION_CONVERSATION_SYSTEM_PROMPT } from '../../src/assembly/prod
 const fixture = JSON.parse(readFileSync(new URL('./fixtures/live-declarations-2026-09-28.json', import.meta.url), 'utf8')) as {
   operatorMessages: string[]; current: { answers: string[]; reviews: string[] };
   fixed: { answers: string[]; reviews: string[] }; fixedResidualProse: string };
-/** Exactly what the runner's invokeSubscription hands the worker, or null where it records `malformed`. */
-const runnerText = (raw: string): string | null => {
-  const parsed = parseModelJson(raw);
+/** Exactly what the runner's invokeSubscription hands the worker, or null where it records `malformed`.
+ * `wrapped` is the runner's per-consumer fail direction: the answer side accepts one complete object
+ * inside surrounding text, every gate keeps the narrow reading. */
+const runnerText = (raw: string, wrapped: 'accept' | 'refuse' = 'accept'): string | null => {
+  const parsed = parseModelJson(raw, { wrapped });
   if (!parsed.ok) return null;
   const decision = parsed.value as { type?: unknown; conclusion?: { subject?: unknown; value?: unknown } };
   return decision.type === 'Decision' && decision.conclusion?.subject === 'preview-stage2-answer'
@@ -30,12 +32,23 @@ const conclusionOf = (raw: string): unknown => {
   return (parsed.value as { conclusion: { value: unknown } }).conclusion.value;
 };
 
-it('keeps refusing prose around a Decision, and the fixed prompt yields bare Decisions for every live turn', () => {
-  // Live answer 4 and three live reviews wrote reasoning before the object: a contrary judgment could live there.
-  expect(parseModelJson(fixture.current.answers[3]!)).toMatchObject({ ok: false });
-  expect(runnerText(fixture.current.answers[3]!)).toBeNull();
-  for (const review of fixture.current.reviews.slice(1)) expect(parseModelJson(review)).toMatchObject({ ok: false, shape: 'prose-wrapped' });
-  expect(runnerText(fixture.fixedResidualProse)).toBeNull();
+it('answers the real prose-wrapped live outputs, keeps refusing prose around a review verdict, and still reads every bare Decision', () => {
+  // Real recorded claude-sonnet-5 bytes (fixture provenance above). Live answer 4 wrote its reasoning before a
+  // whole fence, and `fixedResidualProse` before a bare object: both are answers, so the runner now reads them
+  // (Rules 15, 77) and the operator gets the answer the model did produce.
+  for (const raw of [fixture.current.answers[3]!, fixture.fixedResidualProse]) {
+    expect(parseModelJson(raw, { wrapped: 'accept' })).toMatchObject({ ok: true, shape: 'prose-wrapped' });
+    const answer = runnerText(raw);
+    expect(typeof answer).toBe('string');
+    // The wrapper is discarded, never spoken: none of its leading reasoning reaches the answer text.
+    expect(answer).not.toContain(raw.slice(0, 60));
+  }
+  // The three live reviews also wrote reasoning before the object — and a review IS the gate, so a contrary
+  // judgment in that prose must never be dropped. Its fail direction is unchanged (Rule 95).
+  for (const review of fixture.current.reviews.slice(1)) {
+    expect(parseModelJson(review)).toMatchObject({ ok: false, shape: 'prose-wrapped' });
+    expect(runnerText(review, 'refuse')).toBeNull();
+  }
   for (const raw of [...fixture.fixed.answers, ...fixture.fixed.reviews])
     expect(parseModelJson(raw)).toMatchObject({ ok: true, shape: 'bare' });
 });
@@ -45,7 +58,7 @@ it('hands the worker a plain reply or the {reply, ...fields} object as JSON text
   expect(JSON.parse(conclusionText({ reply: 'Hi.', openLoops: [] })!)).toEqual({ reply: 'Hi.', openLoops: [] });
   for (const value of [null, undefined, 3, true, ['a'], [{ reply: 'x' }]]) expect(conclusionText(value)).toBeNull();
   // The live declarations were real but unreachable: frozen18 put them in reason.value beside a plain-string reply.
-  const current = fixture.current.answers.slice(0, 3).map(runnerText);
+  const current = fixture.current.answers.slice(0, 3).map(raw => runnerText(raw));
   expect(current.every(text => typeof text === 'string' && !text.trimStart().startsWith('{'))).toBe(true);
   const fixed = fixture.fixed.answers.map(raw => JSON.parse(runnerText(raw)!) as Record<string, unknown>);
   expect(fixed[0]).toHaveProperty('directives');
@@ -110,7 +123,7 @@ async function drive(answers: (string | null)[]) {
 }
 
 it('reproduces the live failure: the current prompt\'s real outputs record no directive and no blocker', async () => {
-  const run = await drive(fixture.current.answers.slice(0, 3).map(runnerText));
+  const run = await drive(fixture.current.answers.slice(0, 3).map(raw => runnerText(raw)));
   try {
     expect(openDirectives(run.journal.view)).toEqual([]);
     expect(openBlockers(run.journal.view)).toEqual([]);
@@ -119,7 +132,7 @@ it('reproduces the live failure: the current prompt\'s real outputs record no di
 });
 
 it('records the real model\'s directive and cannot-do blockers under the fixed prompt, and answers the conflict question', async () => {
-  const run = await drive(fixture.fixed.answers.map(runnerText));
+  const run = await drive(fixture.fixed.answers.map(raw => runnerText(raw)));
   try {
     expect(run.contexts[0]).toMatchObject({ capabilities: PREVIEW_CAPABILITIES });
     expect(openDirectives(run.journal.view).map(item => item.note.quote)).toEqual([fixture.operatorMessages[0]]);

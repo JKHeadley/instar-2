@@ -1,12 +1,23 @@
 /** Narrow extraction of exactly one JSON object from model text. With thinking
- * off the model sometimes wraps its JSON in a code fence; this accepts one object
- * only when it is the whole text or the sole content of one ```json or ``` fence
- * that is itself the whole response (whitespace outside). Surrounding prose is
- * never discarded: it may state a judgment that contradicts the object, so any
- * other wrapper stays malformed and keeps its held outcome. The returned shape is
- * content-free, so it may be counted in status without storing model text.
- * Callers keep every shape check they already apply after parsing. */
-export type ModelJsonShape = 'bare' | 'fenced';
+ * off the model sometimes wraps its JSON in a code fence, or writes its reasoning
+ * before the object; this accepts one object when it is the whole text or the sole
+ * content of one ```json or ``` fence that is itself the whole response (whitespace
+ * outside), and — only for a caller that passes `wrapped: 'accept'` — when it is the
+ * one complete object inside surrounding text.
+ *
+ * Discarding a wrapper is a per-consumer decision, never a global one (Rule 95: a gate
+ * declares which way it fails). A gate's own verdict keeps the narrow reading, because
+ * prose beside it may state a judgment that contradicts the object — a written rejection
+ * around a pass object must never be dropped. A consumer whose output is itself reviewed
+ * downstream before it can reach a person fails the other way: refusing a wrapped answer
+ * the model did produce costs the operator their answer (Rules 15 and 77), so it accepts
+ * the one object and never reads the wrapper. The default is `refuse`.
+ *
+ * The returned shape is content-free, so it may be counted in status without storing
+ * model text. Callers keep every shape check they already apply after parsing. */
+export type ModelJsonShape = 'bare' | 'fenced' | 'prose-wrapped';
+/** Whether this consumer may discard text around one complete object (see above). */
+export type ModelJsonWrapped = 'accept' | 'refuse';
 export type ModelJsonMalformedShape = 'fenced' | 'prose-wrapped' | 'multiple-objects' | 'truncated' | 'not-json';
 export type ModelJsonResult =
   | { ok: true; value: Record<string, unknown>; shape: ModelJsonShape }
@@ -44,7 +55,7 @@ export type ModelJsonFailureShape = ModelJsonMalformedShape | `${ModelJsonShape}
 export const failureShapeOf = (result: ModelJsonResult): ModelJsonFailureShape =>
   result.ok ? `${result.shape}-wrong-fields` : result.shape;
 
-export function parseModelJson(text: string): ModelJsonResult {
+export function parseModelJson(text: string, options: { wrapped?: ModelJsonWrapped } = {}): ModelJsonResult {
   const trimmed = text.trim();
   let whole: unknown;
   try { whole = JSON.parse(trimmed); } catch { whole = undefined; }
@@ -58,19 +69,30 @@ export function parseModelJson(text: string): ModelJsonResult {
     try { inner = JSON.parse((fence[1] ?? '').trim()); } catch { inner = undefined; }
     if (isObject(inner)) return { ok: true, value: inner, shape: 'fenced' };
   }
-  // Refused: classify content-free for diagnostics only; nothing here is accepted.
   const { spans, open } = topLevelObjects(trimmed);
   if (open) return { ok: false, shape: 'truncated' };
   if (spans.length > 1) return { ok: false, shape: 'multiple-objects' };
-  const outside = spans.reduce((rest, span) => rest.replace(span, ''), trimmed);
+  const span = spans[0];
+  const outside = spans.reduce((rest, part) => rest.replace(part, ''), trimmed);
+  // One complete object inside text a tolerant consumer may discard. The residual must carry no
+  // JSON structure at all: a `[` or `]` around it means the model wrote a list, so this object is
+  // one element of an unknown number (`[{a}]`), or the response was cut inside that list (`[{a}`),
+  // and a stray `{` or `}` means a second object began. Either way what the model decided is not
+  // this object alone, and the simpler "one balanced object anywhere" rule cannot tell them apart.
+  if (options.wrapped === 'accept' && span !== undefined && !/[[\]{}]/u.test(outside)) {
+    const value = parseObject(span);
+    if (value) return { ok: true, value, shape: 'prose-wrapped' };
+  }
+  // Refused: classify content-free for diagnostics only; nothing here is accepted.
   if (fence || outside.includes('```')) return { ok: false, shape: 'fenced' };
-  return { ok: false, shape: spans.length === 1 ? 'prose-wrapped' : 'not-json' };
+  return { ok: false, shape: span === undefined ? 'not-json' : 'prose-wrapped' };
 }
 
 /** The text the runner hands the journal worker for a Decision's conclusion.value: the string itself, or a plain
  * object (the conversation protocol's {reply, ...decision fields}, or a runner task's JSON answer) re-serialized as
- * JSON text for the worker's existing validators. Any other value (null, array, number) is refused as null. The whole
- * response was already exactly one Decision object (parseModelJson), so nothing outside it is ever read. */
+ * JSON text for the worker's existing validators. Any other value (null, array, number) is refused as null. The
+ * response already yielded exactly one Decision object (parseModelJson), and only that object's own fields are read:
+ * any text the response wrapped it in was discarded there and never reaches this value. */
 export function conclusionText(value: unknown): string | null {
   if (typeof value === 'string') return value;
   return isObject(value) ? JSON.stringify(value) : null;

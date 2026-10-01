@@ -268,6 +268,15 @@ it.each([
     { role: 'reply-review', layer: 'decision', shape: 'prose-wrapped' }, {}],
   ['answer-two-objects', { 'answer/decision/malformed/multiple-objects': 2 },
     { role: 'answer', layer: 'decision', shape: 'multiple-objects' }, { malformed: 2 }],
+  // The live 2026-10-01 k6 failure: the answer model wrote its reasoning before the Decision. The answer side
+  // reads the one object and answers (Rules 15, 77); the shape is counted as tolerated, never hidden.
+  ['answer-prose-wrapped', { 'answer/decision/tolerated/prose-wrapped': 1 }, null, {}],
+  // Still ambiguous for the answer side too: a list could have held any number of objects, so it stays malformed.
+  ['answer-list-wrapped', { 'answer/decision/malformed/prose-wrapped': 2 },
+    { role: 'answer', layer: 'decision', shape: 'prose-wrapped' }, { malformed: 2 }],
+  // Accepted as one object, then refused by the same field checks an unwrapped Decision passes.
+  ['answer-prose-wrong-fields', { 'answer/decision/malformed/prose-wrapped-wrong-fields': 2 },
+    { role: 'answer', layer: 'decision', shape: 'prose-wrapped-wrong-fields' }, { malformed: 2 }],
   ['verdict-second-line', { 'reply-review/verdict/malformed/not-json': 2 },
     { role: 'reply-review', layer: 'verdict', shape: 'not-json' }, {}],
 ])('the real launcher accepts a whole-response Decision fence, never passes contradicting review text, still answers, and says why (%s)', async (mode, counts, last, failures) => {
@@ -296,7 +305,11 @@ export const createClaudeCodeSubscriptionRoute = () => ({kind:'Success',value:{i
     conclusion:{subject:'preview-stage2-answer',predicate:'answer-text',value,evidence:binding.evidence},
     reason:{subject:'question',predicate:'answered',value:true,evidence:binding.evidence},
     floor:{allowed:binding.floor,chosen:binding.floor.default}});
+  const prose='Looking at the history, there is one thing to check first. ';
   const bytes=mode === 'decision-contradicted' && review ? 'VIOLATION: this reply must not be sent. '+decision
+    : mode === 'answer-prose-wrapped' && !review ? prose+decision
+    : mode === 'answer-list-wrapped' && !review ? prose+'['+decision+']'
+    : mode === 'answer-prose-wrong-fields' && !review ? prose+JSON.stringify({type:'Other',conclusion:{subject:'preview-stage2-answer',value}})
     : mode === 'wrapped' || mode === 'wrapped-crlf' ? (review ? '\\u0060\\u0060\\u0060'+newline+decision+newline+'\\u0060\\u0060\\u0060' : '\\u0060\\u0060\\u0060json'+newline+decision+newline+'\\u0060\\u0060\\u0060')
     : mode === 'answer-two-objects' && !review ? decision+'\\n'+decision : decision;
   return {state:'complete',bytes,usage:{inputTokens:1,outputTokens:1}};

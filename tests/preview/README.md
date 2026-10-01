@@ -791,9 +791,10 @@ permitted neighbor:
 | Fixture | Recorded failure | Regression boundary |
 |---|---|---|
 | F01 thinking overflow | Review output filled the shared 2,048-token allowance before a verdict. | Thinking remains disabled in the route; an over-cap reviewer result stays charged and held after replay, while a capped result can complete. The synthetic result does not reveal thinking tokens. |
-| F02 wrapped JSON | A complete fenced Decision was held as malformed. | Bare and whole-response LF/CRLF fences parse; prose, extra objects, and a real redacted Claude limit-result capture do not. The CRLF fence itself is a synthetic boundary because failed raw model text is not retained. |
+| F02 wrapped JSON | A complete fenced Decision was held as malformed. | Bare and whole-response LF/CRLF fences parse for every consumer; extra objects and a real redacted Claude limit-result capture do not, and prose around the object does not for a gate. The CRLF fence itself is a synthetic boundary: the live root that produced it is not readable from the machine running this catalog. |
 | F03 contradicting review prose | A PASS object appeared beside written rejection. | A lone PASS line or whole fence parses; rejecting prose around it cannot authorize a send. |
 | F04 too-long notice | An input or answer exceeded a preview limit. | A short reply sends whole; oversized input and answer send their fixed notices, never a prefix. The answer notice does not repeat after replay. |
+| F06 prose-wrapped answer | Both answer attempts put the Decision inside reasoning, so a plain question got "I couldn't produce an answer" (live 2026-10-01 12:38 PDT, k6 update 969389879). | Replaying real recorded prose-wrapped and prose-plus-fence answers: the answer side reads the one object and answers, while a gate still refuses them; a list wrapper, a cut object and wrong fields stay malformed. |
 | F05 held-item crowding | Many held turns competed for packet space. | The relevant older item reaches the bounded ten-item packet; excess items stay outside it. The answer model still judges relevance. |
 
 Run only this catalog and the parser unit test after a catalog change:
@@ -2082,20 +2083,33 @@ Subscription reply reviews also record their returned provider state.
 The inner reply-review verdict is one exact line (`PASS | reason` or
 `VIOLATION:rule_id[,rule_id] | reason`); the whole-line pattern admits no other
 text, so a malformed line is counted as `reply-review/verdict/malformed/not-json`.
-Model JSON (the outer Decision and the inner summary-review verdict) is accepted when it is exactly one object: the whole text, or the sole
-content of one ```json or ``` fence that is itself the whole response. Prose
 Model JSON (the outer Decision and the inner reply-review or summary-review
 verdict) is accepted when it is exactly one object: the whole text, or the sole
 content of one ```json or ``` fence that is itself the whole response. Fence
-line endings may be LF or CRLF, including a mix of the two. Prose
-around the JSON is never discarded, because it may state a judgment (such as a
-rejection) that contradicts the object; such text and every other wrapper stays
-malformed under the held outcome, and every field check still applies. `status`
+line endings may be LF or CRLF, including a mix of the two.
+Whether text *around* that one object may be discarded is decided per consumer,
+not globally (Rule 95). The answer side — the answer, a reply revision and the
+summary writer, which `roleOf` folds into `answer` — accepts one complete object
+inside surrounding text and never reads the wrapper, because its own output is
+reviewed again before it can reach the operator, and refusing it costs the
+operator an answer the model did produce (Rules 15, 77: the live 2026-10-01 k6
+turn was answered "I couldn't produce an answer" twice for this reason alone).
+Every gate here — a reply or summary review verdict, and the retrospective —
+keeps the narrow reading, because prose beside a verdict may state a rejection
+that contradicts the object and no later review would catch it. Acceptance needs
+exactly one object and no other JSON structure outside it: a `[`, `]` or stray
+brace in the residual means a list of unknown length or a second object began,
+so it stays malformed, as do two objects, a cut object, and an object that fails
+the same field checks an unwrapped one passes. `status`
 reports `modelJsonShapes`: content-free counts keyed `role/layer/outcome/shape`
-(shapes `bare`, `fenced`, and for refusals `prose-wrapped`, `multiple-objects`, `truncated`, `not-json`,
+(shapes `bare`, `fenced`, `prose-wrapped`, and for refusals `fenced`, `prose-wrapped`,
+`multiple-objects`, `truncated`, `not-json`,
 or `<wrapper>-wrong-fields` when the JSON parsed but failed its checks), plus the
 last malformed one, from a plaintext sidecar `model-json-shapes.json` outside
-the journal. It never holds model text and never feeds an outcome.
+the journal. It never holds model text and never feeds an outcome. The raw bytes
+themselves stay in the journal's own `model-call` record (`output`, redacted and
+length-bounded by `modelCallRecord`, kept by `retainedEvidence` through
+compaction), so a refused shape is replayable from the root that produced it.
 Both LF and CRLF line endings are accepted for a whole-response fence. A CRLF
 fence containing one valid review verdict now reaches the existing field checks;
 prose before or after it, including prose that contradicts a PASS object, still
@@ -2106,8 +2120,12 @@ by class using the same `callOutcomeCounts`, `lastCallOutcomes` and
 `modelJsonShapes` shapes as status. The fixed fixture is a regression benchmark,
 not a measurement of the live incident frequency. Justin's supervised
 operator-channel procedure is [held-reply-reduction-live-test.md](live-tests-archive/held-reply-reduction-live-test.md).
-The journal never stores the failed model's raw output. To exercise this path in
-an isolated trial, follow [journal-model-failure-live-test.md](journal-model-failure-live-test.md).
+A call that never returned (a provider error or timeout) records no output at
+all. A call that *completed* and then missed its format does record its raw
+bytes, in its `model-call` record's `output`, redacted and length-bounded, so a
+refused shape can be replayed from the root that produced it; the
+`model-json-shapes.json` sidecar beside it stays content-free. To exercise this
+path in an isolated trial, follow [journal-model-failure-live-test.md](journal-model-failure-live-test.md).
 
 Each actual subscription CLI model invocation (answer, summary, or reply review)
 now appends one content-free physical outcome to the same encrypted journal before

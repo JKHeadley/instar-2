@@ -360,6 +360,17 @@ const recordShape = (path, role, layer, outcome, shape) => {
 };
 const roleOf = id => id.endsWith(':reply-review') || id.endsWith(':revision-review') ? 'reply-review' : /^summary:.*:review$/u.test(id) ? 'summary-review'
   : /^retrospective:\d+$/u.test(id) ? 'retrospective' : 'answer';
+/** Rule 95, the fail direction of this consumer: may text around one complete Decision object be
+ * discarded? The answer side says yes — the answer, a reply revision and the summary writer, which
+ * `roleOf` folds into `answer`. Their output is reviewed again (the reply review, the faithfulness
+ * cascade) before any of it can reach the operator, so dropping a wrapper skips no gate, while
+ * refusing it costs the operator the answer the model did produce (Rules 15 and 77: the live 2026-10-01
+ * k6 turn was answered "I couldn't produce an answer" twice for this reason alone). Every other role
+ * here IS a gate — a reply or summary review verdict, or the internal retrospective — and keeps the
+ * narrow reading, because prose beside a verdict may be a written rejection that must not be dropped
+ * and no later review would catch it. Nothing branches on what the text means, only on which consumer asked.
+ */
+const wrappedPolicyOf = role => role === 'answer' ? 'accept' : 'refuse';
 /** The registered live judgment a subscription call serves (model-call-boundary.ts). A revised
  * reply's held-class review is a reply review; the revision is the agent's own response to the
  * objections, with its own floor. A retrospective pass is its own judgment; its benchmark reruns
@@ -1127,15 +1138,17 @@ async function main() {
       if (result.state === 'rejected') return { state: 'rejected', failureClass: 'rejected', usage: result.usage };
       if (result.state !== 'complete') throw Error('preview: model outcome unknown');
       if (!result.bytes) return { state: 'complete', failureClass: 'empty', usage: result.usage };
-      const extracted = parseModelJson(result.bytes), decision = extracted.ok ? extracted.value : null;
+      const role = roleOf(id);
+      // A wrapped object passes exactly the checks below that an unwrapped one does; only the wrapper is dropped.
+      const extracted = parseModelJson(result.bytes, { wrapped: wrappedPolicyOf(role) }), decision = extracted.ok ? extracted.value : null;
       // Rule 57: a returned floor may only echo the envelope's own; it never defines or widens it.
       const value = decision?.type === 'Decision' && decision.conclusion?.subject === 'preview-stage2-answer'
         && decisionWithinFloor(decision) ? conclusionText(decision.conclusion.value) : null;
       if (value === null) {
-        recordShape(shapesPath, roleOf(id), 'decision', 'malformed', failureShapeOf(extracted));
+        recordShape(shapesPath, role, 'decision', 'malformed', failureShapeOf(extracted));
         return { state: 'complete', failureClass: 'malformed', usage: result.usage };
       }
-      if (extracted.shape !== 'bare') recordShape(shapesPath, roleOf(id), 'decision', 'tolerated', extracted.shape);
+      if (extracted.shape !== 'bare') recordShape(shapesPath, role, 'decision', 'tolerated', extracted.shape);
       if (!value.trim()) return { state: 'complete', failureClass: 'empty', usage: result.usage };
       // Rule 108: the stated reason is recorded beside the conclusion (build 8).
       const reasonValue = decision.reason?.value;
