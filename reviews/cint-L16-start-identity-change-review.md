@@ -14,8 +14,8 @@ Side effects: recorded and compared start identities use single spaces; a ledger
 Undo and recovery: revert the fix commit, the conformance re-declaration, the register regeneration and this record
 Multi-machine posture: machine-local: each host's resource owner reads its own processes
 Layer below: reviews/cint-L16-summary-direction-change-review.md (the base, carried)
-Bug class: date-dependent identity mismatch between two readings of the same ps field
-Bug evidence: gate run at 4839a934 (8 failures in resource-owner.test.ts on 2026-10-01); targeted re-run before the fix reproduced 8 failures, after the fix 30 passed
+Bug class: integration
+Bug evidence: date-dependent identity mismatch between two readings of the same ps field; gate run at 4839a934 (8 failures in resource-owner.test.ts on 2026-10-01); targeted re-run before the fix reproduced 8 failures, after the fix 30 passed
 Hook bypass: none
 Convergence: none
 Prompt review: no prompt text changed
