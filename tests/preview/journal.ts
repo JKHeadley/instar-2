@@ -6209,19 +6209,18 @@ export function createJournalWorker(journal: ReturnType<typeof openPreviewJourna
     const changes: MemoryChange[] = [], seen = new Set<string>();
     const preferences = preferenceState();
     if (!trigger.accepted || !fromOperator(trigger) || proposed.length > 3) return undefined;
-    // Rule 7: on an ordinary (uncued, unedited) turn, re-proposing a preference already on file as a new one
-    // changes nothing, so it is dropped rather than refusing the whole decision (live canary-copy e2582787,
-    // update 969389782: the model re-stated the active two-sentence preference on a plain question and the
-    // operator got the undecided notice instead of the answer). A direct request keeps the strict check.
-    const activeQuotes = new Set([...preferences.active.values()].map(item => item.quote));
+    // Rules 7/10: a prefer item that cites an offered preference record by its own source and exact quote is the
+    // model's contextual decision that the preference on file stands unchanged, so it is a no-op rather than a
+    // refusal of the whole decision (live canary-copy e2582787, updates 969389758/969389759/969389782). An item
+    // that instead names this turn as the source of a clause this turn does not contain leaves open whether a change
+    // was requested, so it keeps the strict check and the turn stays pending (Rule 85). The cue/edit test only narrows.
     const ordinary = !trigger.editOf && !memoryCue(trigger) && !preferenceCue(trigger);
     for (const item of proposed.slice(0, 3)) {
       const { mode, source, quote, replacement, replies, summaryPassages, in: side } = (item ?? {}) as { mode?: unknown; source?: unknown; quote?: unknown;
         in?: unknown;
         replacement?: unknown; replies?: unknown; summaryPassages?: unknown };
-      if (ordinary && mode === 'prefer' && typeof quote === 'string' && activeQuotes.has(quote)
-        && (source === trigger.id || preferences.active.has(JSON.stringify([source, quote])))
-        && !redact(trigger.text).text.includes(quote)
+      if (ordinary && mode === 'prefer' && typeof source === 'string' && source !== trigger.id && offered.has(source)
+        && typeof quote === 'string' && preferences.active.has(JSON.stringify([source, quote]))
         && replacement === undefined && replies === undefined && summaryPassages === undefined && side === undefined) continue;
       const channelAlias = typeof source === 'string' && source.startsWith('channel-ref:')
         ? [...journal.view.channelItems.values()].find(candidate => publicMemoryId(channelMemoryId(candidate)) === source) : undefined;

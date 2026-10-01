@@ -113,8 +113,8 @@ const echoRun = async (second: string, proposal: (id: string, first: string) => 
   return result;
 };
 
-it('answers a plain question whose decision re-states a preference already on file (recorded shape)', async () => {
-  const result = await echoRun(marker, id => [{ mode: 'prefer', source: id, quote: preference }]);
+it('answers a plain question whose decision re-states the preference under its original source (recorded shape)', async () => {
+  const result = await echoRun(marker, (_id, first) => [{ mode: 'prefer', source: first, quote: preference }]);
   expect(result.preferences).toBe(1);
   expect(result.sends).toHaveLength(2);
   expect(result.sends[1]).toContain('probe-a678998b');
@@ -124,13 +124,25 @@ it('answers a plain question whose decision re-states a preference already on fi
   expect(result.memoryAfter).toBe(result.memoryBefore);
 }, 10000);
 
-it('answers a plain question whose decision re-states the preference under its original source (recorded shape)', async () => {
-  const result = await echoRun(marker, (_id, first) => [{ mode: 'prefer', source: first, quote: preference }]);
-  expect(result.sends[1]).toContain('probe-a678998b');
-  expect(result.turn.held).toBeUndefined();
-  expect(result.turn.memoryPending).toBeUndefined();
+// The 1-of-8 recorded shape names this turn as the source of a clause it does not contain. That leaves open whether a
+// change was requested, so it stays pending exactly as before (Rule 85): a missing keyword cue never settles it.
+it('keeps pending a plain question whose decision attributes the on-file preference to this turn (recorded shape)', async () => {
+  const result = await echoRun(marker, id => [{ mode: 'prefer', source: id, quote: preference }]);
+  expect(result.sends.some(text => text.includes('probe-a678998b'))).toBe(false);
+  expect(result.turn.memoryPending).toBe(true);
   expect(result.memoryAfter).toBe(result.memoryBefore);
 }, 10000);
+
+// Review boundary (Rules 10/85): equivalent direct changes, with and without a lexical cue, are never silently sent as
+// a success reply while the memory stays unchanged.
+for (const change of ['Could you give detailed answers from now on?', 'Please give detailed answers from now on.']) {
+  it(`keeps pending a direct preference change whose decision quotes the old preference: ${change}`, async () => {
+    const result = await echoRun(change, id => [{ mode: 'prefer', source: id, quote: preference }]);
+    expect(result.turn.memoryPending).toBe(true);
+    expect(result.sends.slice(1).every(text => text.includes(MEMORY_UNDECIDED_REPLY))).toBe(true);
+    expect(result.memoryAfter).toBe(result.memoryBefore);
+  }, 10000);
+}
 
 it('still refuses a plain question whose prefer item is not on file and not in the message', async () => {
   const result = await echoRun(marker, id => [{ mode: 'prefer', source: id, quote: 'Always answer me in French, please.' }]);
