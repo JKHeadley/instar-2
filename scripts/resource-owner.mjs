@@ -129,6 +129,9 @@ export function hostQuery(file, args) {
     } catch { resolve(null); }
   });
 }
+/** One canonical start identity: ps pads a single-digit day ("Oct  1"), the census row collapses it,
+ * so every reading and every recorded start compares in the collapsed form. */
+export const startIdentity = start => typeof start === 'string' ? start.trim().split(/\s+/u).join(' ') : start;
 const pids = text => text === null ? null : text.split(/\s+/u).filter(Boolean).map(Number).filter(Number.isSafeInteger);
 export { cpuMilliseconds } from './process-inventory.mjs';
 
@@ -493,7 +496,7 @@ export function createResourceOwner(initialCeilings = RESOURCE_CEILINGS) {
   /** A process's start evidence; `null` when it does not exist, `UNKNOWN` when the query failed. */
   async function startEvidence(pid) {
     const text = await query('/bin/ps', ['-o', 'lstart=', '-p', String(pid)]);
-    return text === null ? UNKNOWN : text.trim() || null;
+    return text === null ? UNKNOWN : startIdentity(text) || null;
   }
   /** The kernel process limit of the user ID: its current process count plus the launch ceiling.
    * Its subject is the user ID (every process of that user counts), never the launched tree. */
@@ -668,12 +671,12 @@ export function createResourceOwner(initialCeilings = RESOURCE_CEILINGS) {
     try { rows = readLedger(); } catch { orphans = [{ launch: null, state: 'unknown', reason: 'ledger unreadable' }]; return; }
     const closed = [], judged = [];
     for (const [id, row] of Object.entries(rows)) {
-      const members = Object.entries(row?.members ?? {}).map(([pid, start]) => [Number(pid), start]);
-      if (Number.isSafeInteger(row?.pid) && !members.some(([pid]) => pid === row.pid)) members.push([row.pid, row.start ?? null]);
+      const members = Object.entries(row?.members ?? {}).map(([pid, start]) => [Number(pid), startIdentity(start)]);
+      if (Number.isSafeInteger(row?.pid) && !members.some(([pid]) => pid === row.pid)) members.push([row.pid, startIdentity(row.start) ?? null]);
       // A live owner (the same incarnation still running, or unknown) owns its launch: never ours to judge.
       const owner = row?.owner;
       const ownerNow = owner && Number.isSafeInteger(owner.pid) ? await startEvidence(owner.pid) : null;
-      if (ownerNow === UNKNOWN || owner && typeof owner.start === 'string' && ownerNow === owner.start) {
+      if (ownerNow === UNKNOWN || owner && typeof owner.start === 'string' && ownerNow === startIdentity(owner.start)) {
         orphans.push({ launch: id, state: ownerNow === UNKNOWN ? 'unknown' : 'live-owner', owner: owner.pid }); continue;
       }
       let surviving = 0, unknown = 0;
@@ -692,7 +695,7 @@ export function createResourceOwner(initialCeilings = RESOURCE_CEILINGS) {
     // is found by the same working-area join; observation only, so it keeps the row.
     const roots = judged.filter(j => Number.isSafeInteger(j.row?.pid)).map(j => ({ id: j.id, pid: j.row.pid,
       known: new Map(j.members.filter(([, start]) => typeof start === 'string')), workingArea: typeof j.row.workingArea === 'string'
-        ? j.row.workingArea : null, start: typeof j.row.start === 'string' ? j.row.start : null }));
+        ? j.row.workingArea : null, start: typeof j.row.start === 'string' ? startIdentity(j.row.start) : null }));
     let escaped = null;
     if (roots.length) {
       let snapshot = null, ten = null;

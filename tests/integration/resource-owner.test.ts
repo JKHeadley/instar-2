@@ -6,7 +6,7 @@ import { tmpdir } from 'node:os';
 import { dirname, join } from 'node:path';
 import { afterEach, expect, it } from 'vitest';
 // @ts-expect-error The physical host remains JavaScript.
-import { createResourceOwner, RESOURCE_CEILINGS, readResourceOutcomes, hostQuery, cpuMilliseconds, LIMIT_FILE, LIMIT_FILE_TEXT, limitedFileArgv, HOST_BOUNDS } from '../../scripts/resource-owner.mjs';
+import { createResourceOwner, RESOURCE_CEILINGS, readResourceOutcomes, hostQuery, cpuMilliseconds, LIMIT_FILE, LIMIT_FILE_TEXT, limitedFileArgv, HOST_BOUNDS, startIdentity } from '../../scripts/resource-owner.mjs';
 import { shouldRunScheduledPriority } from '../../src/scheduled/shedding.js';
 import { createHostResourceAllocation } from '../preview/six-host-resources.js';
 
@@ -735,4 +735,12 @@ it('returns a Six set whose launch has no durable row as never-launched: the row
   const after = six(root);
   await createResourceOwner(ceilings()).attach({ ledgerPath, allocation: after });
   expect(after.open()).toHaveLength(1);
+});
+
+it('reads a single-digit-day start as the same incarnation the census records, and a different start as different', () => {
+  // ps pads "Oct  1"; the census row collapses whitespace. Both must name one incarnation.
+  expect(startIdentity('Thu Oct  1 00:29:51 2026    ')).toBe('Thu Oct 1 00:29:51 2026');
+  expect(startIdentity('Wed Sep 30 23:59:59 2026')).toBe('Wed Sep 30 23:59:59 2026');
+  expect(startIdentity('Thu Oct  1 00:29:51 2026')).not.toBe(startIdentity('Thu Oct  1 00:29:52 2026'));
+  expect(startIdentity(null)).toBe(null);
 });
