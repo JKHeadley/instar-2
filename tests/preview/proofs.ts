@@ -492,7 +492,8 @@ export const CRITICAL_PIPELINES: Readonly<Record<string, Pipeline>> = Object.fre
       { step: 'answer', supervisors: ['reply-review', 'step-check'] },
       { step: 'send', supervisors: ['reply-review'] },
     ] },
-  'rolling-summary': { failureDirection: 'open', owner: 'the faithfulness verdict is recorded with each commit',
+  'rolling-summary': { failureDirection: 'closed',
+    owner: 'committing derived memory is integrity (Rule 95): only a passing faithfulness review commits a summary, so an unavailable or rejecting review preserves the candidate without committing it, and the verdict is recorded with each commit',
     steps: [
       { step: 'summarize', supervisors: ['summary-review', 'step-check'] },
       { step: 'commit-summary', supervisors: ['summary-review'] },

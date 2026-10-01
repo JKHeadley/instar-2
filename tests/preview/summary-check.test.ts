@@ -11,6 +11,7 @@ import { spawnSync } from 'node:child_process';
 import { createDecipheriv } from 'node:crypto';
 import { brotliDecompressSync } from 'node:zlib';
 import type { JournalRecord } from './journal.js';
+import { stepCoverage } from './proofs.js';
 
 const key = new Uint8Array(32).fill(31);
 const genesis = (maxCalls = 12) => ({ kind: 'genesis' as const, bot: '12345678', chat: '7654321', operator: '7654321',
@@ -180,6 +181,9 @@ it('retries a definite subscription failure without accepting the candidate', as
     expect(run.journal.view.summaryFailures.get(1)).toBe(1);
     expect(run.journal.view.summaryReservations.size).toBe(0);
     expect(run.journal.view.summaryCheckCounts.unavailable).toBe(1);
+    expect(run.journal.view.summaryCandidates.size).toBe(1);
+    // Rule 95: the declared direction matches what the worker just did — nothing committed, candidate kept.
+    expect(stepCoverage(run.journal.view, { replyReview: true, summaryReview: true, stepCheck: false })['rolling-summary']!.failureDirection).toBe('closed');
     run.journal.close();
   } finally { rmSync(run.root, { recursive: true, force: true }); }
 });
