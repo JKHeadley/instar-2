@@ -9,7 +9,6 @@ import { createJournalWorker, openPreviewJournal, sendOutcomeCounts, MODEL_FAILU
 import { outboundSigner, settleSendOutcome, type SendOutcome } from './outbound-provenance.js';
 import { classifyTelegramSend } from './telegram-send-outcome.mjs';
 import { createServer } from 'node:net';
-import { createProductionTelegramIO } from '../../scripts/production-boot-io.mjs';
 
 const key = new Uint8Array(32).fill(7);
 const genesis = { kind: 'genesis' as const, bot: '12345678', chat: '7654321', operator: '7654321', grant: 'grant:preview',
@@ -170,6 +169,10 @@ it('the real bridge child, refused a connection, records the send as unknown at 
     const address = probe.address();
     if (!address || typeof address === 'string') throw Error('probe port unbound');
     await new Promise<void>(done => probe.close(() => done()));
+    // The production transport module (untyped .mjs), loaded as the runner loads it.
+    const { createProductionTelegramIO } = await import(new URL('../../scripts/production-boot-io.mjs', import.meta.url).href) as {
+      createProductionTelegramIO: (root: string, captures: { preserve(): boolean; read(): null }, testEndpoint: string) =>
+        { invoke(input: unknown, credential: string): unknown } };
     const telegram = createProductionTelegramIO(join(dir, '.writer'), { preserve: () => true, read: () => null },
       `http://127.0.0.1:${address.port}`);
     const reply = telegram.invoke({ method: 'sendMessage', body: { chat_id: '7', text: 'hi', parse_mode: 'HTML' }, timeoutMs: 5000 },
