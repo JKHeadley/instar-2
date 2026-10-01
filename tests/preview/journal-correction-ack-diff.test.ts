@@ -3,7 +3,7 @@ import { mkdtempSync, realpathSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 // Fixtures substitute the model and Jev (int11's faithfulness check runs before a summary commits).
-import { createJournalWorker, openPreviewJournal } from './journal-test-worker.js';
+import { createJournalWorker, openPreviewJournal, withoutCorrectedHistory } from './journal-test-worker.js';
 
 const key = new Uint8Array(32).fill(41);
 const genesis = { kind: 'genesis' as const, bot: '12345678', chat: '7654321', operator: '7654321',
@@ -39,7 +39,7 @@ it('names a validated correction old to new once, and withholds its old clause f
     expect(sends).toHaveLength(2);
     const next = worker.probe('Where does the trail start?');
     if ('reason' in next) throw Error(next.reason);
-    expect(next.context).not.toContain('East Pier');
+    expect(withoutCorrectedHistory(next.context)).not.toContain('East Pier');
     journal.close();
   } finally { rmSync(root, { recursive: true, force: true }); }
 });

@@ -3,6 +3,7 @@ import { mkdtempSync, realpathSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { activeMemoryConflicts, createJournalWorker, openPreviewJournal } from './journal.js';
+import { withoutCorrectedHistory } from './journal-test-worker.js';
 
 const key = new Uint8Array(32).fill(41);
 const genesis = { kind: 'genesis' as const, bot: '12345678', chat: '7654321', operator: '7654321',
@@ -80,7 +81,7 @@ it('asks once about two active birthday claims, then records the operator choice
     worker.intake([update(5, 'When is my birthday?')]); await worker.drain();
     expect(sends.filter(text => text.includes('Which is right?'))).toHaveLength(1);
     expect(sends.at(-1)).toContain('March 2.');
-    expect(contexts.at(-1)).not.toContain(second);
+    expect(withoutCorrectedHistory(contexts.at(-1)!)).not.toContain(second);
     worker.intake([update(6, 'Check that disagreement again.')]); await worker.drain();
     expect(sends.filter(text => text.includes('Which is right?'))).toHaveLength(1);
     expect(journal.view.conflicts).toHaveLength(1);

@@ -2,7 +2,7 @@ import { expect, it } from 'vitest';
 import { mkdtempSync, realpathSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
-import { createJournalWorker, importChannelItems, openPreviewJournal } from './journal-test-worker.js';
+import { createJournalWorker, importChannelItems, openPreviewJournal, withoutCorrectedHistory } from './journal-test-worker.js';
 import { REPLY_RULES } from './reply-check.js';
 
 const key = new Uint8Array(32).fill(29);
@@ -40,7 +40,9 @@ it('answers a verified operator from dated bounded memory, marks corrections, co
           expect(corrected.date).toBe('2026-09-21T14:14Z');
           expect(corrected.correctedAt).toBe('2026-09-21T14:16Z');
           expect(corrected.quote).toContain('green drawer');
-          expect(input.context).not.toContain('blue drawer');
+          // Rule 7: the corrected-away value is labelled history only; forgetting still withholds.
+          expect(corrected.was).toBe('Sam keeps the cedar map in the blue drawer.');
+          expect(withoutCorrectedHistory(input.context)).not.toContain('blue drawer');
           expect(input.context).not.toContain('morning report');
           return `I remember: ${corrected.quote} (${corrected.source}, ${corrected.date}; corrected by ${corrected.correctedBy}, ${corrected.correctedAt}). ${packet.memorySearch.forgotten} related item forgotten.`;
         }
@@ -120,7 +122,9 @@ it.each([
     expect(search.items).toHaveLength(1);
     expect(search.items[0].quote).toContain(scenario.visible);
     expect(search.items[0].quote).not.toContain(scenario.hidden);
-    expect(probe.context).not.toContain(scenario.hidden);
+    expect(withoutCorrectedHistory(probe.context)).not.toContain(scenario.hidden);
+    // A live correction keeps its old value as labelled history; a forgotten replacement withholds it too.
+    expect(search.items[0].was).toBe(scenario.mode === 'correct' ? 'Sam keeps the cedar map in the green drawer.' : undefined);
     if (scenario.mode === 'correct') {
       expect(search.items[0]).toMatchObject({ source: 'turn 2', status: 'corrected', correctedBy: 'turn 3' });
       expect(packet.memory).toMatchObject([{ mode: 'corrected', replacement: 'Sam keeps the cedar map in the red drawer.' }]);

@@ -588,7 +588,7 @@ it('briefs every turn with only the facts a reply must not contradict, agreeing 
     expect(brief).toContain('Model attempts: 2 of 2 used, 0 left.');
     expect(brief).toContain('Exhausted: model attempts.');
     expect(brief).toContain('Open: held replies 1; replies held today 1; all other obligation counts are 0.');
-    expect(brief).toContain('original audit record remains');
+    expect(brief).toContain('a corrected fact stays recallable only as labelled earlier history; both keep their original audit record');
     expect(brief).toContain('This run started 2026-09-26 18:00 UTC; uptime 1h 0m.');
     // Every fact line the brief shares with the full status is identical there (one computation).
     for (const line of ['Operator messages received: 3 today, 3 in this trial (including the one being answered now).',
