@@ -1,7 +1,7 @@
 import { createHash } from 'node:crypto';
 import { readFileSync } from 'node:fs';
 import { redact } from '../../src/recall/redact.js';
-import { SUBSCRIPTION_CONVERSATION_SYSTEM_PROMPT } from '../../src/assembly/production-provider.js';
+import { SUBSCRIPTION_CONVERSATION_SYSTEM_PROMPT, SUBSCRIPTION_MAX_OUTPUT_TOKENS } from '../../src/assembly/production-provider.js';
 import { consumeResult } from '../../src/index.js';
 import type { Authorization, Result } from '../../src/index.js';
 import { decodeVerificationRecord } from '../../src/verification/records.js';
@@ -67,6 +67,62 @@ export const RETRO_RERUN_ATTEMPTS = 2;
 /** P-10 default recurrence window for presenting a derived standing-grant candidate. */
 export const P10_RECURRENCE_WINDOW_MS = 30 * 24 * 3_600_000;
 export const retroCallReserve = (maxCalls: number) => Math.max(4, Math.ceil(maxCalls * 0.2));
+
+/** The answer's own bound. The provider refuses a result frame reporting more than
+ * SUBSCRIPTION_MAX_OUTPUT_TOKENS of output and retains that outcome as uncertain, so a pass whose answer
+ * cannot fit the bound can never complete however often it runs: live 2026-09-29 to 10-01 every pass
+ * recorded `unknown: model outcome uncertain`, and the same bound produced 18 of 18 `summary-uncertain`
+ * rows over frames of 2229-8192 output tokens. The packet bound above limits what the review READS; this
+ * limits what it is asked to WRITE. Bytes per output token is measured, not assumed: the two verbatim live
+ * model outputs on record (proofroom-memory-misfire-715672853-2026-09-30, updates 715672779 and 715672853)
+ * are 1616 bytes at 600 output tokens and 2119 at 716, i.e. 2.69 and 2.96, so 2.7 is the conservative side.
+ * The reserve is the room left between the budget the plan bounds its cases to and the cap the provider
+ * enforces: it holds the findings and feedback dispositions, which exist only when the review finds something
+ * and so cannot be planned for, plus a model that writes somewhat longer than the question asks. */
+export const RETRO_ANSWER_BYTES_PER_TOKEN = 2.7;
+export const RETRO_ANSWER_RESERVE = 0.85;
+export const RETRO_ANSWER_BUDGET_BYTES = Math.floor(SUBSCRIPTION_MAX_OUTPUT_TOKENS * RETRO_ANSWER_BYTES_PER_TOKEN * RETRO_ANSWER_RESERVE);
+/** Per-field answer lengths the question asks for, and the measured cost of the rows every pass must write
+ * whatever its cases are: one duty row per duty, one judgement per gravity well, and the efficiency summary. */
+export const RETRO_NOTE_CHARS = 40;
+export const RETRO_WELL_NOTE_CHARS = 30;
+export const RETRO_EFFICIENCY_CHARS = 120;
+export const RETRO_OUTCOME_REASON_CHARS = 100;
+/** Each over-the-cap pass halves the next pass's answer budget, down to a floor of one case, so a wrong
+ * estimate converges on an ask that fits instead of repeating an impossible one (Rule 24). */
+export const RETRO_ANSWER_NARROW_STEPS = 3;
+/** The named, settled reason for a pass whose own call outcome proves its answer ran over the output cap. */
+export const RETRO_OVER_CAP_REASON = 'review output over the cap';
+
+/** The structural cost of the row each category owes beyond its id: a grade for a decision or verdict, a
+ * standing-grant review for an authorization, a closure for an open item, a comparison for a rerun. A message
+ * or a repair owes only its place in `inspected`. */
+const ANSWER_ROW_BYTES: Record<CaseCategory, number> = { message: 0, repair: 0,
+  decision: 210 + RETRO_OUTCOME_REASON_CHARS, verdict: 210 + RETRO_OUTCOME_REASON_CHARS,
+  authorization: 60, open: 80, rerun: 60 + RETRO_OUTCOME_REASON_CHARS };
+/** Whether that row names its case again, so the id is paid for twice. */
+const ANSWER_ROW_NAMES_CASE: Record<CaseCategory, boolean> = { message: false, repair: false,
+  decision: true, verdict: true, authorization: true, open: true, rerun: true };
+/** A conservative estimate of the answer a pass over these cases must write, at the lengths the question
+ * asks for. Ids are measured, not assumed: a live id (`answer:telegram:<bot>:update:<n>`) is far longer than
+ * a fixture's. Findings and feedback dispositions are not estimated because they exist only when the review
+ * finds something; RETRO_ANSWER_RESERVE is their room, and a pass that still runs over narrows the next one. */
+export function estimatedAnswerBytes(cases: readonly RetroCase[]): number {
+  const fixed = RETROSPECTIVE_DUTIES.length * (70 + RETRO_NOTE_CHARS)
+    + GRAVITY_WELLS.length * (75 + RETRO_WELL_NOTE_CHARS) + 30 + RETRO_EFFICIENCY_CHARS + 170;
+  return cases.reduce((total, item) => total + item.id.length + 4
+    + (ANSWER_ROW_NAMES_CASE[item.category] ? item.id.length + 10 : 0) + ANSWER_ROW_BYTES[item.category], fixed);
+}
+/** This pass's answer budget: the bound, narrowed once per consecutive pass already settled over the cap. */
+export function retroAnswerBudget(passes: readonly Pick<RetroPass, 'state' | 'reason'>[]): number {
+  let overCap = 0;
+  for (let index = passes.length - 1; index >= 0; index--) {
+    const pass = passes[index]!;
+    if (pass.state !== 'failed' || pass.reason !== RETRO_OVER_CAP_REASON) break;
+    overCap++;
+  }
+  return Math.floor(RETRO_ANSWER_BUDGET_BYTES / 2 ** Math.min(overCap, RETRO_ANSWER_NARROW_STEPS));
+}
 
 export type CaseCategory = 'message' | 'decision' | 'verdict' | 'repair' | 'authorization' | 'open' | 'rerun';
 /** `seq` is the position of the case's turn in journal order: "later" means a larger seq, never a clock reading.
@@ -370,10 +426,16 @@ export function retrospectivePlan(view: JournalView, population: readonly RetroC
   const reruns = rerunReady.slice(0, Math.min(RETRO_RERUN_MAX, spare - 1)).map(row => row.case);
   const prior = priorContext(view, population);
   const cases: RetroCase[] = [], omitted: { case: string; reason: string }[] = [];
+  // Two bounds, not one: the packet bound on what the review reads, and the answer bound on what it is asked
+  // to write. An ask over the provider's output cap can never be answered, so a case that would push the
+  // answer past the budget is deferred (it stays owed) exactly as an oversize packet case is.
+  const answerBudget = retroAnswerBudget(view.retroPasses);
   for (const { item } of owed) {
     const trial = packetOf([...cases, item], view, contextDigest, population, evidence);
-    if (cases.length < RETRO_MAX_CASES && Buffer.byteLength(trial) <= RETRO_MAX_STATE_BYTES) cases.push(item);
-    else omitted.push({ case: item.id, reason: 'bound: deferred to a later pass' });
+    if (cases.length < RETRO_MAX_CASES && Buffer.byteLength(trial) <= RETRO_MAX_STATE_BYTES
+      && estimatedAnswerBytes([...cases, item]) <= answerBudget) cases.push(item);
+    else omitted.push({ case: item.id, reason: estimatedAnswerBytes([...cases, item]) > answerBudget
+      ? 'bound: answer budget, deferred to a later pass' : 'bound: deferred to a later pass' });
   }
   if (!cases.length && !reruns.length) return null;
   const state = packetOf(cases, view, contextDigest, population, evidence);
@@ -442,6 +504,7 @@ export const RETROSPECTIVE_QUESTION = [
   'benchmark-divergence: for every rerun:... case compare the answer under the current reply configuration with the original answer and its graded outcome: consistent, improved, regressed or unverifiable, with a reason.',
   'closures: for open:... cases, evaluate the outcome of the owned work: improved (with evidence from actual later messages, answers, verdicts or repairs — never the open item itself), not-improved, or pending.',
   'Every finding needs refs, summary and a disposition: {"owner":"agent"|"operator","next":"..."} or {"declined":"reason"}.',
+  `Your whole answer must fit ${String(RETRO_ANSWER_BUDGET_BYTES)} bytes of JSON: an answer over the route's output cap is refused and this pass records nothing. Be brief everywhere and write no text outside the JSON: keep each duty note to one short sentence (at most ${String(RETRO_NOTE_CHARS)} characters), each gravity-well note to at most ${String(RETRO_WELL_NOTE_CHARS)} characters, the efficiency summary to at most ${String(RETRO_EFFICIENCY_CHARS)}, and each outcome, finding, comparison and closure reason to at most ${String(RETRO_OUTCOME_REASON_CHARS)}. If the answer would still not fit, omit the cases you have not reached with the reason "answer budget" rather than shortening the duty, gravity-well or grade rows you owe: an omitted case stays owed for a later pass.`,
   'Return only JSON: {"inspected":[case ids],"omitted":[{"case":id,"reason":text}],"duties":[{"duty":duty,"disposition":"inspected"|"unavailable","note":text}],"gravityWells":[{"well":id,"observed":bool,"refs":[],"note":text}],"efficiency":{"summary":text},"findings":[{"duty":duty,"refs":[],"summary":text,"recurs":[],"rootCause":text,"structuralRemedy":{},"disposition":{}}],"grades":[{"case":id,"conclusion":{"assessment":"supported|contradicted|unverifiable|not-applicable","evidence":[]},"reason":{"assessment":"supported|contradicted|unverifiable|not-applicable","evidence":[]},"outcome":{"assessment":"met|unmet|pending|unverifiable|not-applicable","reason":text,"evidence":[]},"observations":[{"by":"operator|agent","kind":"complied|overrode","ref":ref}],"rederivation":{},"promote":text}],"feedback":[{"case":id,"classification":text,"disposition":text,"owner":text,"next":text,"reason":text,"duplicateOf":ref,"improvementOf":id,"evidence":[]}],"authorizations":[{"case":id,"candidate":bool,"recurrences":[],"excerpt":text}],"comparisons":[{"case":id,"verdict":text,"reason":text}],"closures":[{"finding":id,"outcome":text,"evidence":[]}]}',
 ].join('\n');
 

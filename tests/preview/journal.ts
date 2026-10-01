@@ -37,7 +37,7 @@ import type { IndependentSurfaceVerifierPort, MinimalDependency, SurfaceChalleng
 import { authenticateTelegramSender, principalBoundToUpdate, systemWriters, verifiedAtIntake, TELEGRAM_ADAPTER, testOriginWriter, writerBoundToRaw, writerRecord, type SystemMethod, type WriteOrigin, type WriterRecord } from './intake-principal.js';
 import { LIVE_JUDGMENTS, type ModelCallRecord } from './model-call-boundary.js';
 import { outboundSigner, settleSendOutcome, type OutboundProvenance, type OutboundSubject, type SendOutcome, type Speaker } from './outbound-provenance.js';
-import { retrospectivePlan, retrospectivePopulation, validateRetrospective, replyContextDigest, type RetroPass, type RetroSiblingEvidence } from './retrospective.js';
+import { retrospectivePlan, retrospectivePopulation, validateRetrospective, replyContextDigest, RETRO_OVER_CAP_REASON, type RetroPass, type RetroSiblingEvidence } from './retrospective.js';
 import { openReplyNotices, validAnswerNotices, type ReplyNotice } from './credential-reminders.js';
 
 
@@ -349,6 +349,17 @@ const emptyTokenTotals = (): TokenTotals => Object.fromEntries(tokenKinds.map(ki
   [kind, { calls: 0, inputTokens: 0, outputTokens: 0, unknownCalls: 0 }])) as TokenTotals;
 const subscriptionOutputMaximum = 2048;
 const jevOutputMaximum = JEV_RESPONSE_MAX_BYTES;
+/** Whether a call's own recorded physical outcome proves an ended process whose final result frame reported
+ * more output than the route's cap. The exit code and the error flag are not the proof (live #496 ended exit 1
+ * with an is_error frame after 8192 output tokens); an ended call with a result frame and `output-cap` is. */
+const overCapCall = (view: JournalView, id: string): boolean => {
+  for (let index = view.callOutcomes.length - 1; index >= 0; index--) {
+    const row = view.callOutcomes[index]!;
+    if (row.id !== id) continue;
+    return row.outcome.localLimit === 'output-cap' && row.outcome.exitCode !== null && row.outcome.type === 'result';
+  }
+  return false;
+};
 export interface CallOutcome { exitCode: number | null; localLimit: 'timeout' | 'size' | 'output-cap' | 'memory' | 'processes' | 'cpu' | 'aggregate' | 'capacity' | null;
   elapsedMs: number; type: 'result' | 'other' | null; subtype: 'success' | 'error_max_turns' | 'error_during_execution' | 'error_max_budget_usd' | 'other' | null;
   isError: boolean | null; outputTokens: number | null; promptBytes: number; resources?: LaunchResources }
@@ -7180,7 +7191,18 @@ export function createJournalWorker(journal: ReturnType<typeof openPreviewJourna
       try { gate(); answer = await ports.retrospect(plan.state, `retrospective:${String(pass)}`); }
       catch { journal.append({ kind: 'retro', pass, state: 'unknown', reason: 'model call failed or was stopped; outcome unknown', at: ports.now() }); return; }
       const usage = answer.usage ? { usage: answer.usage } : {};
-      if (answer.state === 'uncertain') { journal.append({ kind: 'retro', pass, state: 'unknown', reason: 'model outcome uncertain', ...usage, at: ports.now() }); return; }
+      // The provider retains uncertainty for a refused frame, so an answer over the route's output cap arrives
+      // here as 'uncertain'. When this pass's own outcome row proves an ended call with a final result frame over
+      // that cap, it is a settled failure with a named reason, not an unknown outcome: the next pass narrows its
+      // ask (the summary's proven over-cap path) instead of repeating an ask that cannot be answered. Live
+      // 2026-09-29 to 10-01 every pass recorded UNKNOWN here, which is why no review ever ran. Either way the
+      // pass records no grade, finding or candidate and every case stays owed.
+      if (answer.state === 'uncertain') {
+        const overCap = overCapCall(journal.view, `retrospective:${String(pass)}`);
+        journal.append({ kind: 'retro', pass, state: overCap ? 'failed' : 'unknown',
+          reason: overCap ? RETRO_OVER_CAP_REASON : 'model outcome uncertain', ...usage, at: ports.now() });
+        return;
+      }
       if (!('value' in answer)) { journal.append({ kind: 'retro', pass, state: 'failed', reason: `model ${answer.failureClass ?? answer.state}`, ...usage, at: ports.now() }); return; }
       let result;
       try { result = validateRetrospective(JSON.parse(answer.value.trim().replace(/^```(?:json)?\s*|\s*```$/gu, '')), plan, journal.view, pass, ports.now(), contextDigest); }
