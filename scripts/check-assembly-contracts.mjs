@@ -1,5 +1,6 @@
 import { productionBindingHolds } from '../dist/assembly/production-holds.js';
 import { bootRecoveryEvidenceFiles, checkBootRecoveryCoverage } from './check-boot-conversation-evidence.mjs';
+import { localHalfReport } from './split-report.mjs';
 import { createHash } from 'node:crypto';
 import { execFileSync } from 'node:child_process';
 import { readFileSync, readdirSync, realpathSync, existsSync, writeFileSync, mkdirSync } from 'node:fs';
@@ -325,11 +326,17 @@ if (process.argv[1] && resolve(process.argv[1]) === fileURLToPath(import.meta.ur
   const declarations = JSON.parse(readFileSync('src/assembly/assembly.declarations.json', 'utf8'));
   if (!declarations.some(row => row.id === 'assembly.contract' && row.status === 'dark') || !declarations.some(row => row.id === 'assembly.source' && row.status === 'dark') || declarations.some(row => row.holds?.length))
     throw new Error('assembly declarations falsely claim live/held activation');
-  const rows = checkAssemblyCoverage(JSON.parse(readFileSync('.test-results.json', 'utf8')));
+  // Coverage asks a whole-suite question, so it reads the run's report as given — under a split that
+  // is the merge of both halves. The grounding and boot arms bind to one real Vitest process and to
+  // artifacts only its own host wrote, so they read the local half; unsplit, both are the same report.
+  const whole = JSON.parse(readFileSync('.test-results.json', 'utf8'));
+  const here = realpathSync(fileURLToPath(new URL('..', import.meta.url)));
+  const { report: localHalf, otherHalfFiles } = localHalfReport(whole, here);
+  const rows = checkAssemblyCoverage(whole);
   for (const row of rows) console.log(`${row.id}: ${row.status}; ${row.tests.length} executed fixtures; ${row.reason}`);
-  const grounding = checkProductionGroundingAssemblyEvidence(JSON.parse(readFileSync('.test-results.json', 'utf8')));
-  checkBootRecoveryCoverage(JSON.parse(readFileSync('.test-results.json', 'utf8')), productionGroundingSourceDigest());
-  const mutations = exerciseProductionGroundingEvidence(JSON.parse(readFileSync('.test-results.json', 'utf8')));
+  const grounding = checkProductionGroundingAssemblyEvidence(structuredClone(localHalf));
+  checkBootRecoveryCoverage(structuredClone(localHalf), productionGroundingSourceDigest(), otherHalfFiles);
+  const mutations = exerciseProductionGroundingEvidence(structuredClone(localHalf));
   console.log(`production grounding F9: ${mutations.length} counterfeit evidence mutations refused`);
   console.log(`production grounding executable: ${grounding.executable.join(', ')}; held: ${grounding.held}; compatibility: ${grounding.compatibilityOnly}`);
 }

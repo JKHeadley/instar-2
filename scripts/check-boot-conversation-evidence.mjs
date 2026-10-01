@@ -162,13 +162,18 @@ function checkReceipt(receipt, shard, file, sourceDigest, revision, bin, report,
     } else equal(row.replyAccounted, null, 'no substituted reply-accounted proof');
   }
 }
-export function checkBootRecoveryCoverage(report, sourceDigest) {
+// `report` is one real Vitest main process's report: every arm below binds to that process's exit
+// and to receipts only its own host wrote. Under INSTAR_TEST_PLATFORM_SPLIT that process ran half
+// the checkout, so the other half's test files are supplied separately (scripts/split-report.mjs)
+// and count only toward the whole-checkout file set. Unsplit callers pass none and nothing changes.
+export function checkBootRecoveryCoverage(report, sourceDigest, otherHalfFiles = []) {
   fail(digest(sourceDigest), 'caller must supply current source digest');
   fail(report.success === true && report.numFailedTests === 0 && report.numFailedTestSuites === 0
     && !report.numRuntimeErrorTestSuites && !report.unhandledErrors?.length && !report.errors?.length
     && finite(report.startTime) && Array.isArray(report.testResults), 'successful full actual Vitest report required');
   const expectedFiles = allTestFiles().sort();
-  equal(multiset(report.testResults.map(file => rootedFile(file.name))), multiset(expectedFiles), 'full checkout test file multiset (focused reports cannot qualify)');
+  const ranFiles = [...report.testResults.map(file => file.name), ...otherHalfFiles].map(rootedFile);
+  equal(multiset(ranFiles), multiset(expectedFiles), 'full checkout test file multiset (focused reports cannot qualify)');
   const tests = report.testResults.flatMap(file => file.assertionResults ?? []);
   fail(report.testResults.every(file => file.status === 'passed' && !file.message)
     && tests.every(test => ['passed', 'skipped', 'pending', 'todo'].includes(test.status) && !test.failureMessages?.length), 'report contains failed/unfinished evidence');
