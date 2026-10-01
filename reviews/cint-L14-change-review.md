@@ -13,9 +13,9 @@ Tier rationale: the combine carries three reviewed units with clean merges and a
 Side effects: as recorded in the three carried records (an uncertain send's reason carries the bridge stage; a split gate run is merged or refused; an unsure-band credential flag with an unavailable review is released with the objection recorded); none added by the merge
 Undo and recovery: revert the three merge commits, the register regeneration and this record; see each unit's record for its own undo notes
 Multi-machine posture: as in the carried records: the preview runner is machine-local; the split gate halves run on two hosts and are merged on one, with process-level evidence never carried between hosts
-Layer below: reviews/cint-L13-change-review.md (the base, carried); reviews/w3-sendstall-change-review.md, reviews/w3-splitmerge-change-review.md and reviews/w3-holdcascade-change-review.md (carried)
+Layer below: reviews/cint-L13-change-review.md (the base, carried); reviews/w3-sendstall-change-review.md, reviews/w3-splitmerge-change-review.md and reviews/w3-holdcascade-change-review.md (carried); w3-sendstall's own bug evidence (reproducer tests/preview/journal-send-outcome.test.ts, live lanes/w3-sendstall-evidence/timeline.txt) stays in its carried record
 Bug class: live-path
-Bug evidence: carried from reviews/w3-sendstall-change-review.md (update 969389787 send-outcome) and reviews/w3-holdcascade-change-review.md (update 969389800 held as reply check unavailable)
+Bug evidence: reproducer=tests/preview/held-cascade-replay.test.ts; live=/Users/dabombstudio/.instar/agents/echo/.instar/lanes/w3-holdcascade-evidence-969389800.json
 Hook bypass: none
 Convergence: none
 Prompt review: no prompt text changed by the merge; the three existing journal.ts protocol literals are dispositioned as in the carried records
