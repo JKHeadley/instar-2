@@ -1,7 +1,9 @@
 #!/bin/bash
 # Fixed M4-L worker provisioning (M5). Modes: inspect, accounts-only,
 # accounts-rollback (the inert stage); stage (build a content-addressed monitor
-# release, unprivileged, never installs); install, uninstall, verify.
+# release, unprivileged, never installs); install, uninstall, verify;
+# admin-command (print the operator's one root command, unprivileged) and
+# admin-install (what that command runs from the verified custody copy).
 #
 # Every mutating mode is a DRY RUN unless --apply is given. --apply requires
 # root, a live host (never a synthetic inventory), explicit reviewed inputs and
@@ -33,6 +35,8 @@ readonly SERVICE=/Library/Instar2/m4-launch/service.json
 readonly KEY=/Library/Instar2/m4-launch/keys/receipt.key
 readonly PUB=/Library/Instar2/m4-launch/keys/receipt.pub
 readonly JOURNAL=/private/var/db/instar2-worker/journal
+readonly BREAKER=/private/var/db/instar2-worker/supervisor-restarts
+readonly SELF_IN_RELEASE=scripts/provision-fixed-native-worker.sh
 readonly LABEL=ai.instar.worker-monitor
 readonly ID_LOW=450
 readonly ID_HIGH=499
@@ -46,7 +50,7 @@ MODE=${1:-}
 [ -n "$MODE" ] || die "usage: $0 inspect|accounts-only|accounts-rollback|stage|install|verify|uninstall [options]"
 shift
 APPLY=0 INVENTORY= UID_ARG= GID_ARG= DIGEST_ARG= AGENT_USER=${SUDO_USER:-${USER:-}}
-OUT= RUNTIME= RELEASE= INSTALLATION= MACHINE= CPU= MEMORY= NOFILE= LIFETIME= MAX_LIFETIME=
+OUT= RUNTIME= RELEASE= INSTALLATION= MACHINE= CPU= MEMORY= NOFILE= LIFETIME= MAX_LIFETIME= REVIEWED=
 while [ $# -gt 0 ]; do
   case "$1" in
     --apply) APPLY=1 ;;
@@ -65,6 +69,7 @@ while [ $# -gt 0 ]; do
     --nofile) [ $# -ge 2 ] || die "--nofile needs a number"; NOFILE=$2; shift ;;
     --lifetime-ms) [ $# -ge 2 ] || die "--lifetime-ms needs a number"; LIFETIME=$2; shift ;;
     --max-lifetime-ms) [ $# -ge 2 ] || die "--max-lifetime-ms needs a number"; MAX_LIFETIME=$2; shift ;;
+    --reviewed-release) [ $# -ge 2 ] || die "--reviewed-release needs sha256:<digest>"; REVIEWED=$2; shift ;;
     *) die "unknown option: $1" ;;
   esac
   shift
@@ -76,7 +81,7 @@ case "$AGENT_USER" in ''|*[!A-Za-z0-9_.-]*) die "agent user must be a plain acco
 
 # ---- inventory: live host or a synthetic key=value file (dry run only) ----
 OS_NAME= OS_VERSION= OS_BUILD= ARCH= USER_LIST= GROUP_LIST= AGENT_GROUPS= WORKER_PROCS=0 INSTALLED_RELEASE=
-WORKER_ATTRS= PATHS= USER_NAMED=no GROUP_NAMED=no
+WORKER_ATTRS= PATHS= USER_NAMED=no GROUP_NAMED=no SERVICE_STATE=absent
 if [ -n "$INVENTORY" ]; then
   [ "$APPLY" = 0 ] || die "--apply never accepts a synthetic inventory"
   [ -f "$INVENTORY" ] && [ ! -L "$INVENTORY" ] || die "inventory file unreadable"
@@ -88,6 +93,7 @@ if [ -n "$INVENTORY" ]; then
       agent_groups) AGENT_GROUPS=$value ;; worker_procs) WORKER_PROCS=$value ;;
       worker_attrs) WORKER_ATTRS=$value ;;
       installed_release) INSTALLED_RELEASE=$value ;;
+      service_state) SERVICE_STATE=$value ;;
       path) PATHS="$PATHS$value
 " ;;
       ''|'#'*) ;;
@@ -118,7 +124,7 @@ else
       "$(id -Gn "$WORKER" 2>/dev/null | tr ' ' '+')")
     WORKER_PROCS=$( { pgrep -U "$WORKER" 2>/dev/null || [ "$?" -eq 1 ]; } | wc -l | tr -d ' ')
   fi
-  for spec in $DIRS "$RUNDIR:-" "$PLIST:-" "$LEDGER:-" "$CONF:-" "$SERVICE:-" "$KEY:-" "$PUB:-" "$JOURNAL:-"; do
+  for spec in $DIRS "$RUNDIR:-" "$PLIST:-" "$LEDGER:-" "$CONF:-" "$SERVICE:-" "$KEY:-" "$PUB:-" "$JOURNAL:-" "$BREAKER:-"; do
     p=${spec%%:*}
     if [ -L "$p" ]; then PATHS="$PATHS$p|symlink|-|-|-
 "
@@ -127,6 +133,10 @@ else
     fi
   done
   if [ -f "$CONF" ] && [ ! -L "$CONF" ]; then INSTALLED_RELEASE=$(awk -F= '$1=="release_dir"{print $2; exit}' "$CONF"); fi
+  # The service's launchd state: 0 loaded, 113 "could not find service" (absent);
+  # anything else is a failed query, never read as absence.
+  rc=0; /bin/launchctl print "system/$LABEL" >/dev/null 2>&1 || rc=$?
+  case "$rc" in 0) SERVICE_STATE=loaded ;; 113) SERVICE_STATE=absent ;; *) SERVICE_STATE="query-failed:$rc" ;; esac
   SOURCE=live
 fi
 
@@ -160,6 +170,7 @@ print_inventory() {
   note "inventory.agent.user=$AGENT_USER"
   note "inventory.agent.groups=${AGENT_GROUPS:-unknown}"
   note "inventory.agent.admin=$AGENT_ADMIN"
+  note "inventory.monitor.service=$SERVICE_STATE"
   if [ "$AGENT_ADMIN" = yes ]; then
     note "inventory.ADMIN=HOLD: agent principal is an administrator; the monitor prevention claim stays unavailable until administration is separated (not changed by this script)"
   fi
@@ -239,16 +250,26 @@ run_line() {
     ledger) printf 'uid=%s\ngid=%s\n' "${2#uid=}" "${3#gid=}" > "$LEDGER" && /bin/chmod 0600 "$LEDGER" ;;
     rmdir) /bin/rmdir "$2" ;;
     rm-ledger) /bin/rm -f "$LEDGER" ;;
-    copy-release)
-      [ ! -e "$3" ] && /bin/mkdir -m 0755 "$3" && /usr/bin/ditto --noextattr --noqtn "$2" "$3" \
-        && /usr/sbin/chown -R root:wheel "$3" && /bin/chmod -R u=rwX,go=rX "$3" \
-        && (check_release "$3") ;;   # the copied bytes, not the reviewed source path, must match the name
+    place-release) # $2 = release digest; the source is --release, which check_release already verified
+      dest="$RELEASES/$2"
+      if [ "$RELEASE" = "$dest" ]; then custody_ok "$dest" && (check_release "$dest")   # already in custody
+      else
+        [ ! -e "$dest" ] && /bin/mkdir -m 0700 "$dest" && /usr/bin/ditto --noextattr --noqtn "$RELEASE" "$dest" \
+          && [ -z "$(/usr/bin/find "$dest" ! -type f ! -type d -print -quit)" ] \
+          && /usr/sbin/chown -R root:wheel "$dest" && /bin/chmod -R u=rwX,go=rX "$dest" \
+          && (check_release "$dest")   # the copied bytes, not the reviewed source path, must match the name
+      fi ;;
     write-file)
       [ ! -e "$2" ] && printf '%s' "$4" | /usr/bin/xxd -r -p > "$2.new" && /usr/sbin/chown root:wheel "$2.new" \
         && /bin/chmod "$3" "$2.new" && /bin/mv -n "$2.new" "$2" && [ ! -e "$2.new" ] ;;
-    keygen) "$2/runtime/node" "$2/scripts/fixed-native-worker-monitor.mjs" keygen "$3" "$4" ;;
-    journal-init) "$2/runtime/node" "$2/scripts/fixed-native-worker-monitor.mjs" journal-init "$3" "$4" "$5" "$6" \
-      "$2/bin/instar-worker-enforcer" ;;
+    # Keys and the journal are history: kept when present (a retry after a partial
+    # install, or a reinstall), created once otherwise. Presence is read at run time
+    # because an unprivileged dry run cannot see inside their root-only folders.
+    keygen) if [ -e "$3" ] || [ -L "$3" ]; then [ -f "$3" ] && [ ! -L "$3" ] && [ -f "$4" ] && [ ! -L "$4" ]
+            else "$2/runtime/node" "$2/scripts/fixed-native-worker-monitor.mjs" keygen "$3" "$4"; fi ;;
+    journal-init) if [ -e "$3" ] || [ -L "$3" ]; then [ -f "$3" ] && [ ! -L "$3" ]
+      else "$2/runtime/node" "$2/scripts/fixed-native-worker-monitor.mjs" journal-init "$3" "$4" "$5" "$6" \
+        "$2/bin/instar-worker-enforcer"; fi ;;
     launchctl-bootstrap) /bin/launchctl bootstrap system "$2" ;;
     launchctl-bootout) /bin/launchctl bootout "system/$LABEL" ;;
     rm-file) [ -f "$2" ] && [ ! -L "$2" ] && /bin/rm -f "$2" ;;
@@ -257,16 +278,18 @@ run_line() {
   esac
 }
 
+RECOVERY="run accounts-rollback to undo created items"
 execute_plan() {
   plan=$1
   digest=$(printf '%s\n' "$plan" | plan_digest)
   note "plan.digest=sha256:$digest"
+  note "plan.recovery=if a step fails: $RECOVERY"
   printf '%s\n' "$plan" | while IFS= read -r line; do note "plan.step=$line"; done
   if [ "$APPLY" = 0 ]; then note "result=dry-run (nothing changed)"; return 0; fi
   [ "$(id -u)" = 0 ] || die "--apply must be run by the operator's administrative path as root"
   [ "$DIGEST_ARG" = "sha256:$digest" ] || die "--plan-digest does not match the reviewed plan"
   printf '%s\n' "$plan" | while IFS= read -r line; do
-    run_line "$line" || { echo "FAILED at: $line (run accounts-rollback to undo created items)" >&2; exit 3; }
+    run_line "$line" || { echo "FAILED at: $line (nothing after it ran; $RECOVERY)" >&2; exit 3; }
   done
   note "result=applied"
 }
@@ -347,8 +370,9 @@ verify_accounts() {
 
 # ---- stage: build one content-addressed monitor release (unprivileged) ----
 # The release holds the enforcer (built with the recorded command), the pinned
-# runtime, the monitor module and the compiled owner code it imports, the profile
-# and plist templates, and the accepted per-slot limits. Its name is the SHA-256
+# runtime, the monitor module and the compiled owner code it imports, this
+# installer (so the release digest also binds the code that installs it), the
+# profile and plist templates, and the accepted per-slot limits. Its name is the SHA-256
 # of its MANIFEST, which lists the SHA-256 of every file.
 limit_ok() { isnum "$2" && [ "$2" -ge "$3" ] && [ "$2" -le "$4" ] || die "$1 must be a number in $3-$4"; }
 stage_release() {
@@ -372,7 +396,7 @@ stage_release() {
     "$repo/scripts/fixed-native-worker-enforcer.c" || die "enforcer build failed"
   /bin/cp "$RUNTIME" "$tmp/runtime/node"
   /bin/chmod 0755 "$tmp/runtime/node" "$tmp/bin/instar-worker-enforcer"
-  /bin/cp "$repo/scripts/fixed-native-worker-monitor.mjs" "$tmp/scripts/"
+  /bin/cp "$repo/scripts/fixed-native-worker-monitor.mjs" "$repo/$SELF_IN_RELEASE" "$tmp/scripts/"
   /bin/cp -R "$repo/dist" "$tmp/dist"
   /bin/cp "$repo/deploy/macos/fixed-worker/worker.sb" "$repo/deploy/macos/fixed-worker/ai.instar.worker-monitor.plist" "$tmp/templates/"
   printf 'cpu_seconds=%s\nmemory_mib=%s\nnofile=%s\nlifetime_ms=%s\nmax_lifetime_ms=%s\n' \
@@ -405,13 +429,25 @@ check_release() { # check_release <dir>: content matches its name and its manife
   [ "$listed" = "$present" ] || die "release holds files its MANIFEST does not list"
 }
 limit_of() { awk -F= -v k="$2" '$1==k{print $2; exit}' "$1/limits.conf"; }
+# Protected custody: a release directory under the root-owned releases folder,
+# owned by root, not writable by group/other, with no link or special file inside
+# (a link would let its target change after its hash was checked).
+custody_ok() {
+  case "$1" in "$RELEASES"/[0-9a-f]*) ;; *) return 1 ;; esac
+  [ -d "$1" ] && [ ! -L "$1" ] && [ "$(stat -f '%Su:%Sg:%Lp' "$1")" = root:wheel:755 ] \
+    && [ -z "$(/usr/bin/find "$1" ! -type f ! -type d -print -quit)" ] \
+    && [ -z "$(/usr/bin/find "$1" ! -user root -print -quit)" ] \
+    && [ -z "$(/usr/bin/find "$1" -perm -g+w -print -quit)" ] && [ -z "$(/usr/bin/find "$1" -perm -o+w -print -quit)" ]
+}
 materialize_profile() { sed -e "s#@RELEASE_DIR@#$2#g" -e "s#@SLOT_DIR@#$SLOT#g" "$1/templates/worker.sb"; }
 materialize_plist() { sed -e "s#@RELEASE_DIR@#$2#g" "$1/templates/ai.instar.worker-monitor.plist"; }
 
 install_plan() {
   [ -n "$WORKER_UID" ] && [ -n "$WORKER_GID" ] && [ -n "$(pathrow "$LEDGER")" ] || die "install: the accounts stage is not provisioned; run accounts-only and verify first"
   [ "$WORKER_UID" -ge $ID_LOW ] && [ "$WORKER_UID" -le $ID_HIGH ] || die "install: worker uid outside the hidden range"
-  for p in $PLIST $CONF $SERVICE; do [ -z "$(pathrow "$p")" ] || die "install: already present: $p (uninstall first)"; done
+  for p in $PLIST $CONF $SERVICE $BREAKER; do [ -z "$(pathrow "$p")" ] || die "install: already present: $p (uninstall first)"; done
+  case "$SERVICE_STATE" in absent) ;; loaded) die "install: the service is already loaded (uninstall first)" ;;
+    *) die "install: the service state could not be read ($SERVICE_STATE); nothing is planned" ;; esac
   [ -n "$RELEASE" ] || die "install needs --release <staged release directory>"
   token --installation "$INSTALLATION"; token --machine "$MACHINE"
   check_release "$RELEASE"
@@ -431,25 +467,43 @@ install_plan() {
     "$(manifest_sha "$RELEASE" dist/assembly/production-native-context.js)" \
     "$(printf '%s\n' "$conf" | sha)" "$(printf '%s\n' "$profile" | sha)" "$digest" \
     "$INSTALLATION" "$JOURNAL" "$INSTALLATION" "$INSTALLATION" "$MACHINE" "$INSTALLATION" "$life" "$MACHINE" "$KEY")
-  echo "copy-release $RELEASE $rel"
+  echo "place-release $digest"
   echo "write-file $rel/worker.sb 0644 $(printf '%s\n' "$profile" | hexof)"
   echo "write-file $CONF 0644 $(printf '%s\n' "$conf" | hexof)"
-  if [ -z "$(pathrow "$KEY")" ]; then echo "keygen $rel $KEY $PUB"; fi
+  echo "keygen $rel $KEY $PUB"
   echo "write-file $SERVICE 0644 $(printf '%s' "$service" | hexof)"
-  if [ -z "$(pathrow "$JOURNAL")" ]; then echo "journal-init $rel $JOURNAL $INSTALLATION $MACHINE journal:$INSTALLATION"; fi
+  echo "journal-init $rel $JOURNAL $INSTALLATION $MACHINE journal:$INSTALLATION"
   echo "write-file $PLIST 0644 $(materialize_plist "$RELEASE" "$rel" | hexof)"
   echo "launchctl-bootstrap $PLIST"
 }
 
-# Keys and the journal are history: uninstall never removes them.
+# Keys and the journal are history: uninstall never removes them. It also reverses
+# a partial install: whatever of the plist, service.json, installation.conf, the
+# restart record and the release is present is removed, and the service is booted
+# out only when launchd reports it loaded. A release with no installation.conf (a
+# custody copy, or an install that stopped before writing it) is named with
+# --release. An unreadable service state plans nothing.
 uninstall_plan() {
-  [ -n "$(pathrow "$PLIST")" ] || die "uninstall: the monitor is not installed"
-  case "$INSTALLED_RELEASE" in "$RELEASES"/[0-9a-f]*) ;; *) die "uninstall: installed release unreadable from $CONF" ;; esac
-  echo "launchctl-bootout"
-  echo "rm-file $PLIST"
-  echo "rm-file $SERVICE"
-  echo "rm-file $CONF"
-  echo "rm-release $INSTALLED_RELEASE"
+  rel=
+  case "$INSTALLED_RELEASE" in '') ;; "$RELEASES"/[0-9a-f]*) rel=$INSTALLED_RELEASE ;;
+    *) die "uninstall: installed release unreadable from $CONF" ;; esac
+  if [ -n "$RELEASE" ]; then
+    name=${RELEASE#"$RELEASES"/}
+    case "$name" in "$RELEASE"|*[!0-9a-f]*|'') die "uninstall: --release must be $RELEASES/<release digest>" ;; esac
+    [ -z "$rel" ] || [ "$rel" = "$RELEASE" ] || die "uninstall: --release differs from the release named in $CONF ($rel)"
+    rel=$RELEASE
+  fi
+  if [ -n "$rel" ] && [ "$SOURCE" = live ] && [ ! -d "$rel" ]; then rel=; fi
+  case "$SERVICE_STATE" in loaded|absent) ;;
+    *) die "uninstall: the service state could not be read ($SERVICE_STATE); nothing is planned. Retry; if it persists, read it with: sudo /bin/launchctl print system/$LABEL" ;; esac
+  plist=$(pathrow "$PLIST") service=$(pathrow "$SERVICE") conf=$(pathrow "$CONF") breaker=$(pathrow "$BREAKER")
+  [ "$SERVICE_STATE" = loaded ] || [ -n "$plist$service$conf$breaker$rel" ] || die "uninstall: the monitor is not installed"
+  [ "$SERVICE_STATE" = absent ] || echo "launchctl-bootout"
+  [ -z "$plist" ] || echo "rm-file $PLIST"
+  [ -z "$service" ] || echo "rm-file $SERVICE"
+  [ -z "$conf" ] || echo "rm-file $CONF"
+  [ -z "$breaker" ] || echo "rm-file $BREAKER"
+  [ -z "$rel" ] || echo "rm-release $rel"
 }
 
 verify_monitor() {
@@ -467,11 +521,111 @@ verify_monitor() {
     mcheck profile "$(materialize_profile "$rel" "$rel" | sha)" "$(sha < "$rel/worker.sb")"
     mcheck service-state "$(/bin/launchctl print "system/$LABEL" 2>/dev/null | awk '$1=="state"{print $3; exit}')" running
     mcheck control-socket "$([ -S "$RUNDIR/control.sock" ] && stat -f '%Su' "$RUNDIR/control.sock")" root
-    note "verify.monitor.native-feasibility=operator step: sudo $rel/bin/instar-worker-enforcer feasibility all $rel/worker.sb <empty scratch dir> $rel/runtime/node $WORKER_UID $WORKER_GID (every case must PASS; memory is verifiable only here)"
+    note "verify.monitor.native-feasibility=run by admin-install before activation (every case must PASS, memory at the installed bound); it cannot be run unprivileged"
   fi
+  # The restart breaker: absent before the first start, a count while recovering, `terminal` once settled.
+  breaker=$( [ "$SOURCE" = live ] && [ -r "$BREAKER" ] && [ ! -L "$BREAKER" ] && /usr/bin/head -c 16 "$BREAKER" | tr -d '\n' || true)
+  case "$breaker" in
+    terminal) note "verify.monitor.restart-breaker=FAIL (terminal: the supervisor failed 5 consecutive starts and stopped restarting; inspect, then uninstall and reinstall)"; mbad=1 ;;
+    ''|[0-9]) note "verify.monitor.restart-breaker=ok (${breaker:-unread}/5 consecutive unstable starts)" ;;
+    *) note "verify.monitor.restart-breaker=FAIL (unreadable record)"; mbad=1 ;;
+  esac
   note "verify.monitor.production-launch=refusing until the installed owner reader inputs exist (lane A capacity, R6 allocation, R4/R6 store and watermark)"
   [ "$mbad" = 0 ] && note "verify.monitor=ok" && return 0
   note "verify.monitor=FAIL"; return 1
+}
+
+# ---- the operator's one administrative command ----
+# admin-command (unprivileged) prints ONE root command built only from fixed system
+# tools. It is the only code root runs before verification: it copies the staged
+# release into protected custody under the root-owned releases folder, refuses any
+# link or special file in the copy, and checks the copy's MANIFEST against the
+# independently recorded reviewed release digest and every file against that
+# MANIFEST. Only then does it run the installer from the verified copy (the release
+# digest binds the installer, the enforcer, the runtime and every template), and
+# nothing from the agent-writable checkout ever runs as root.
+custody_command() { # custody_command <staged dir> <digest> <installer args...>
+  src=$1 d=$2; shift 2
+  r="$RELEASES/$d"
+  printf "sudo /usr/bin/env -i /bin/bash -c 'set -euo pipefail; umask 022; D=%s; S=%s; R=%s; " "$d" "$src" "$r"
+  printf 'if [ ! -e "$R" ]; then /bin/mkdir -m 0700 "$R"; /usr/bin/ditto --noextattr --noqtn "$S" "$R"; fi; '
+  printf '[ -d "$R" ] && [ ! -L "$R" ] && [ -z "$(/usr/bin/find "$R" ! -type f ! -type d -print -quit)" ] || { echo "REFUSED: the custody copy $R holds a link or special file; nothing was run. Remove it: sudo /bin/rm -R $R" >&2; exit 2; }; '
+  printf '/usr/sbin/chown -R root:wheel "$R"; /bin/chmod -R u=rwX,go=rX "$R"; '
+  printf '[ "$(/usr/bin/shasum -a 256 < "$R/MANIFEST" | /usr/bin/cut -c1-64)" = "$D" ] && (cd "$R" && /usr/bin/shasum -a 256 -s -c MANIFEST) || { echo "REFUSED: the custody copy $R does not match the reviewed release sha256:$D; nothing was run. Remove it: sudo /bin/rm -R $R" >&2; exit 2; }; '
+  printf 'exec /bin/bash "$R/%s" admin-install --release "$R"' "$SELF_IN_RELEASE"
+  for a in "$@"; do printf ' %s' "$a"; done
+  printf " --apply'\n"
+}
+plain() { case "$2" in ''|*[!A-Za-z0-9/._@+=:-]*) die "$1 must be plain characters for the one command" ;; esac; }
+admin_command() {
+  [ "$APPLY" = 0 ] || die "admin-command only prints; the operator runs the printed command"
+  [ -n "$RELEASE" ] || die "admin-command needs --release <staged release directory>"
+  check_release "$RELEASE"
+  d=$(basename "$RELEASE")
+  [ "$REVIEWED" = "sha256:$d" ] || die "admin-command: --reviewed-release must be the independently recorded reviewed digest, and it must name this staged release (sha256:$d)"
+  case "$DIGEST_ARG" in sha256:[0-9a-f]*) [ ${#DIGEST_ARG} = 71 ] || die "--plan-digest must be sha256:<64 hex>" ;;
+    *) die "admin-command needs the reviewed install --plan-digest" ;; esac
+  token --installation "$INSTALLATION"; token --machine "$MACHINE"
+  plain --release "$RELEASE"; plain --installation "$INSTALLATION"; plain --machine "$MACHINE"
+  note "admin.release=sha256:$d"
+  note "admin.custody=$RELEASES/$d"
+  note "admin.command=$(custody_command "$RELEASE" "$d" --installation "$INSTALLATION" --machine "$MACHINE" \
+    --agent-user "$AGENT_USER" --plan-digest "$DIGEST_ARG")"
+  note "admin.recovery=if it stops, its last lines name what remains; remove it with: sudo /bin/bash $RELEASES/$d/$SELF_IN_RELEASE uninstall --release $RELEASES/$d --agent-user $AGENT_USER (dry run), then the same with --apply --plan-digest <printed digest>"
+}
+
+# admin-install: run as root from the verified custody copy only. Order: verify
+# itself and its release in custody; check the reviewed install plan digest; run
+# every native feasibility case as the installed worker account at the installed
+# memory bound (any FAIL or UNVERIFIED stops before anything else is written);
+# install; verify the live end state. Without --apply it previews the same order.
+admin_install() {
+  note "admin.installer=$0"
+  [ -n "$RELEASE" ] || die "admin-install needs --release"
+  check_release "$RELEASE"
+  d=$(basename "$RELEASE")
+  mem=$(limit_of "$RELEASE" memory_mib)
+  case "$mem" in ''|*[!0-9]*) die "admin-install: release memory limit unreadable" ;; esac
+  [ "${#mem}" -le 7 ] && [ "$mem" -ge 16 ] && [ "$mem" -le 1048576 ] || die "admin-install: release memory limit out of range"
+  RECOVERY="nothing was activated; reverse what was written with: sudo /bin/bash $RELEASES/$d/$SELF_IN_RELEASE uninstall --release $RELEASES/$d --agent-user $AGENT_USER (dry run, then --apply --plan-digest <printed digest>); keys and journal are kept"
+  plan=$(install_plan)
+  pd=$(printf '%s\n' "$plan" | plan_digest)
+  note "admin.release=sha256:$d"
+  note "admin.recovery=$RECOVERY"
+  note "admin.step=1 custody: the release and this installer verified in $RELEASES/$d"
+  note "admin.step=2 plan: install plan.digest=sha256:$pd must equal the reviewed --plan-digest"
+  note "admin.step=3 feasibility: every native case as uid $WORKER_UID gid $WORKER_GID at the installed ${mem}MiB bound; any non-PASS stops"
+  note "admin.step=4 install: the reviewed plan"
+  note "admin.step=5 verify: the live end state"
+  if [ "$AGENT_ADMIN" = yes ]; then
+    note "admin.custody-separation=HOLD: the agent account is an administrator, so this installation does not establish independent administration (P-01); the worker's ceilings hold against the worker, not against the agent"
+  fi
+  if [ "$APPLY" = 0 ]; then note "result=dry-run (nothing changed)"; return 0; fi
+  [ "$(id -u)" = 0 ] || die "admin-install --apply runs only as root, from the operator's one command"
+  [ "$SOURCE" = live ] || die "admin-install --apply needs the live host"
+  self=$(cd "$(dirname "$0")/.." && pwd -P)
+  [ "$self" = "$RELEASE" ] && [ "$RELEASE" = "$RELEASES/$d" ] && custody_ok "$RELEASE" \
+    || die "admin-install must run from its own verified release in protected custody ($RELEASES/$d); nothing was run. $RECOVERY"
+  [ "$DIGEST_ARG" = "sha256:$pd" ] || die "--plan-digest does not match this host's install plan (sha256:$pd); nothing was installed. $RECOVERY"
+  fz=$(/usr/bin/mktemp -d /private/tmp/instar-feasibility.XXXXXX)
+  /bin/chmod 0755 "$fz"
+  materialize_profile "$RELEASE" "$RELEASE" > "$fz/worker.sb"
+  /bin/chmod 0644 "$fz/worker.sb"
+  /bin/mkdir -m 0700 "$fz/scratch"
+  /usr/sbin/chown "$WORKER_UID:$WORKER_GID" "$fz/scratch"
+  frc=0
+  (cd "$fz" && "$RELEASE/bin/instar-worker-enforcer" feasibility all "$fz/worker.sb" "$fz/scratch" "$RELEASE/runtime/node" \
+    "$WORKER_UID" "$WORKER_GID" "$mem") || frc=$?
+  /bin/rm -R "$fz"
+  [ "$frc" = 0 ] || die "admin-install: a native feasibility case did not PASS (above); nothing was installed. $RECOVERY"
+  execute_plan "$plan"
+  i=0
+  until /bin/launchctl print "system/$LABEL" 2>/dev/null | awk '$1=="state"{f=($3=="running")} END{exit f?0:1}' \
+        && [ -S "$RUNDIR/control.sock" ]; do
+    i=$((i + 1)); [ "$i" -le 30 ] || break; /bin/sleep 1
+  done
+  /bin/bash "$0" verify --agent-user "$AGENT_USER" || die "admin-install: the installed monitor did not verify (above). The service may be stopping on its restart breaker. $RECOVERY"
+  note "admin.result=installed and verified"
 }
 
 case "$MODE" in
@@ -480,7 +634,13 @@ case "$MODE" in
   accounts-rollback) print_inventory; plan=$(rollback_plan); execute_plan "$plan" ;;
   verify) print_inventory; verify_accounts ;;
   stage) stage_release ;;
-  install) print_inventory; plan=$(install_plan); execute_plan "$plan" ;;
-  uninstall) print_inventory; plan=$(uninstall_plan); execute_plan "$plan" ;;
+  install) print_inventory; plan=$(install_plan)
+    RECOVERY="nothing was activated; reverse what was written with uninstall (dry run, then --apply --plan-digest; add --release $RELEASES/<digest> when installation.conf was not written); keys and journal are kept"
+    execute_plan "$plan" ;;
+  uninstall) print_inventory; plan=$(uninstall_plan)
+    RECOVERY="the steps before it completed; read the state with verify, then rerun uninstall (it plans only what remains)"
+    execute_plan "$plan" ;;
+  admin-command) admin_command ;;
+  admin-install) print_inventory; admin_install ;;
   *) die "unknown mode: $MODE" ;;
 esac
