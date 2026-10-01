@@ -10,6 +10,11 @@ import { createHmac, randomBytes } from 'node:crypto';
 import { refusal, success } from '../../src/types/internal.js';
 export * from './journal.js';
 
+/** A packet without its labelled corrected-away history (memorySearch `was`, Rule 7). Every other part of
+ * the packet must still withhold a corrected or forgotten clause. */
+export const withoutCorrectedHistory = (context: string) =>
+  JSON.stringify(JSON.parse(context), (key, value: unknown) => key === 'was' ? undefined : value);
+
 const faithful = { model: 'jev-1.13.0', answers: { lost_memory: { type: 'noul', noul: 0.01 } } };
 export const previewTestContext = { site: 'preview.journal', preserved: 'preview:host', register: {
   generation: { owner: 'part-three', name: 'RegisterGeneration', id: 'preview:register' },

@@ -3,6 +3,7 @@ import { mkdtempSync, realpathSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { createJournalWorker, openPreviewJournal } from './journal.js';
+import { withoutCorrectedHistory } from './journal-test-worker.js';
 import { prepareJournalEnvelope } from './journal-envelope.js';
 
 const key = new Uint8Array(32).fill(31);
@@ -62,8 +63,8 @@ it('replays a source-dated inventory of people, correction, forgotten marker, co
       text: 'Sam works in design.' });
     expect(items.find(item => item.kind === 'channel')).toMatchObject({ from: 'sam@example.test', date: '2026-09-21T14:15Z' });
     expect(packet.inventory.truncated).toBe(false);
-    expect(JSON.stringify(packet)).not.toContain('3310');
-    expect(JSON.stringify(packet)).not.toContain('Sam works in sales.');
+    expect(withoutCorrectedHistory(JSON.stringify(packet))).not.toContain('3310');
+    expect(withoutCorrectedHistory(JSON.stringify(packet))).not.toContain('Sam works in sales.');
     expect(packet.capability).toContain('lexical miss is never evidence');
     expect(packetFor(workerFor(journal), 'What do you know about me?').inventory.items.length).toBeGreaterThan(0);
     expect(packetFor(workerFor(journal), 'How is the weather?').inventory).toBeUndefined();

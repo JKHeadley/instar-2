@@ -75,7 +75,7 @@ it('puts a current, labelled desk report into every turn packet within the conte
       expect(sources.find(source => source.id === 'capability-note')?.text).toContain('correct or forget a fact');
       // The per-turn self-state is the brief; memory's standing description rides the capability note above.
       expect(sources.find(source => source.id === 'self-state')?.text).toContain('Operator messages received:');
-      expect(sources.find(source => source.id === 'self-state')?.text).toContain('original audit record remains');
+      expect(sources.find(source => source.id === 'self-state')?.text).toContain('both keep their original audit record');
       expect(sources.find(source => source.id === 'self-state')?.text).not.toContain('Memory health:');
     }
     expect(desk(world.seen[0]!.context).text).toContain('building.');

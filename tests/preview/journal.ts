@@ -126,6 +126,10 @@ export interface ReplyHeld { objections: string[]; reason?: string; dispositions
 export type ResponseSkipped = 'deadline' | 'call cap';
 const RESPONSE_SKIPPED: readonly unknown[] = ['deadline', 'call cap'];
 export const SEARCH_GUIDANCE = ' memorySearch contains bounded, ranked evidence from this journal for the current question. Cite the source and date, present current values before superseded history, and report forgotten counts without content. A miss is not proof of absence; truncated means the citation list is incomplete. Imported sender metadata keeps its recorded provenance.';
+/** Rides only with a corrected item that carries its corrected-away value (Rule 7). */
+export const CORRECTED_HISTORY_GUIDANCE = ' A corrected item\'s was is the earlier value the operator corrected away: history, never current; give it, marked corrected, when asked what it was before.';
+const searchGuidance = (items: readonly { was?: string }[]) =>
+  `${SEARCH_GUIDANCE}${items.some(item => item.was !== undefined) ? CORRECTED_HISTORY_GUIDANCE : ''}`;
 /** Rule 110 (run-graph §8 `ContinuityAccounting`). A summary frontier that replaces verbatim
  * history in an answer's context is a compaction, whether or not the last inbound message still
  * fits verbatim. The first reply sent after it opens with a fixed disclosure composed from the
@@ -4415,7 +4419,7 @@ export function createJournalWorker(journal: ReturnType<typeof openPreviewJourna
     let forgotten = 0;
     let truncated = false;
     const items: Array<{ source: string; date: string; conversation?: string; status: 'current' | 'corrected' | 'superseded';
-      quote: string; correctedBy?: string; correctedAt?: string }> = [];
+      quote: string; was?: string; correctedBy?: string; correctedAt?: string }> = [];
     for (const index of ranked) {
       const source = sources[index]!;
       const changes = journal.view.memory.filter(change => change.in !== 'reply' && change.source === source.id);
@@ -4444,9 +4448,15 @@ export function createJournalWorker(journal: ReturnType<typeof openPreviewJourna
       const quote = imported && !correction
         ? clean(redact(imported.text).text, true, source.id).trim()
         : clean(correction ? correction.replacement! : source.text, true, source.id);
+      // Rule 7: a correction archives the old value as labelled history while its replacement is live; forgetting
+      // withholds it. The old clause still passes every other change, so a separately forgotten clause stays withheld.
+      const was = correction && clean(correction.replacement!, true, source.id) === correction.replacement
+        ? projectMemoryClause({ ...journal.view, memory: journal.view.memory.filter(change => change !== correction) },
+          correction.quote, source.id) : undefined;
       items.push({ source: source.source, date: source.date,
         ...(source.conversation ? { conversation: source.conversation } : {}),
         status: correction ? 'corrected' : 'current', quote: redact(quote).text.slice(0, 1000),
+        ...(was === undefined ? {} : { was: redact(was).text.slice(0, 1000) }),
         ...(trigger ? { correctedBy: `turn ${trigger.update}`, correctedAt: dated(trigger) } : {}) });
     }
     return { items, forgotten, truncated };
@@ -4678,7 +4688,7 @@ export function createJournalWorker(journal: ReturnType<typeof openPreviewJourna
         + (people.length ? ' people is a short dated timeline. people offers whole earlier messages by a matching or nearby name, or, when no name matches, by related source wording; these are candidates, not identity matches. from is the authenticated sender. Read a mention only within its whole message, including any denial. A person named in a message did not say it unless from is that person; an operator report is still the operator\'s words. The same or a partial name can mean different people; nearby spellings can too. If multiple people fit and the question lacks a distinguishing detail, ask one clarifying question. If a detail identifies one, answer about that person only. Absence here proves nothing.' : '')
         + (personAttributes.length ? ' personAttributes gives dated, direct operator reports of changing job, city, partner and pet. Only status current is a current value; historical and ended values must never be stated as current. Compare newer history turns before answering. List the dated earlier values when asked for history. A shared name does not establish identity. Bounded omissions are not proof of absence.' : '')
         + (inventory ? ' inventory is a bounded journal-derived selection for a possible memory question. Every item names its source and date; a forgotten item is only a withheld marker, never its content. Report limits and uncertainty honestly. A selection or lexical miss is never evidence that nothing else exists. Channel entries retain their recorded provenance.' : '')
-        + (search ? SEARCH_GUIDANCE : '')
+        + (search ? searchGuidance(search.items) : '')
         + (contradictions.length ? ' contradictions quotes two sourced statements with the same literal subject and different values. This is a narrow signal, not a verdict. Judge both statements in context. If the newer verified operator statement updates the same fact, return memory mode update with the exact earlier quote and exact newer quote; answer with the current value first and mention the dated change when relevant. If they are unrelated or ambiguous, return memory:[] and ask only if needed.' : '')
         + (personMergeCandidates.length ? ' personMergeCandidates are possible links between two particular notes, not identity facts. Ask the operator whether the specific people are the same when relevant. Never assume a link or combine homonyms from a shared name.' : '')
         + (personMerges.length ? ' personMerges records links the verified operator explicitly confirmed between particular notes. Other people with the same name remain separate.' : '')
@@ -4819,7 +4829,7 @@ export function createJournalWorker(journal: ReturnType<typeof openPreviewJourna
         for (const [key, value] of Object.entries(packet)) {
           if (key === 'history') out.memorySearch = { items: search.items.slice(0, count), forgotten: search.forgotten,
             truncated: search.truncated || count < search.items.length };
-          out[key] = key === 'capability' ? `${String(value)}${SEARCH_GUIDANCE}` : value;
+          out[key] = key === 'capability' ? `${String(value)}${searchGuidance(search.items.slice(0, count))}` : value;
         }
         return JSON.stringify(out);
       });

@@ -338,7 +338,7 @@ export function selfStateBrief(view: JournalView, runs: RunLog, now: number, tim
       ['UNKNOWN model calls', unknownCalls], ['UNKNOWN sends', unknownSends], ['summary calls in flight or unknown', summaryPending],
       ['unresolved memory corrections', corrections]]),
     `Requested actions sent: ${String(requestsToday)} today, ${String(requestSends.length)} in this trial. Summaries: ${String(view.summaries.length)}.`,
-    `Memory: ${String(view.memory.length)} validated changes; a corrected or forgotten fact is withheld from later packets, but its original audit record remains.`,
+    `Memory: ${String(view.memory.length)} validated changes; a forgotten fact is withheld from later packets; a corrected fact stays recallable only as labelled earlier history; both keep their original audit record.`,
     ...runLines(runs, now, format, current),
     'Not shown here: memory health, tokens, failures, hold reasons, retrospective detail (in the runner\'s read-only status record).',
   ].filter(Boolean).join('\n');

@@ -2,7 +2,7 @@
 import { mkdtempSync, realpathSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
-import { createJournalWorker, openPreviewJournal } from './journal-test-worker.js';
+import { createJournalWorker, openPreviewJournal, withoutCorrectedHistory } from './journal-test-worker.js';
 import { conversation, scenes } from './realistic-recall-fixture.js';
 
 const key = new Uint8Array(32).fill(74);
@@ -91,7 +91,9 @@ export async function runRealisticRecall(): Promise<RealisticResult> {
         const packet = JSON.parse(context) as { historyMode: string; summary?: { text: string }; recalled?: { user: string }[];
           history?: { user: string }[]; memory?: unknown[] };
         const neededPresent = scene.forget ? null : context.includes(scene.fact);
-        const staleAbsent = scene.old ? !context.includes(scene.old) : scene.forget ? !context.includes(scene.fact) : null;
+        // A corrected-away clause may appear only as labelled history (memorySearch `was`, Rule 7).
+        const current = withoutCorrectedHistory(context);
+        const staleAbsent = scene.old ? !current.includes(scene.old) : scene.forget ? !context.includes(scene.fact) : null;
         const observedMiss = staleAbsent === false ? 'stale clause present'
           : neededPresent === false ? 'needed clause absent' : null;
         cases.push({ id: `${scene.id}/${variant + 1}`, topic: scene.topic,
