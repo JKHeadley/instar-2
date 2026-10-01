@@ -23,7 +23,7 @@ import { decodeVerificationRecord, deriveGuardPosture, deriveVerificationDue, me
 import type { GuardPosture, ProbePostureResolution, ProbeRecord, VerificationPlan } from '../../src/verification/index.js';
 import { isStatusCommand } from './status-command.js';
 import { loopHealth } from './obligations.js';
-import { CREDENTIAL_SHAPE_NOTICE, durableProjection, packetDigest, replyBody } from './journal.js';
+import { CREDENTIAL_SHAPE_NOTICE, PREVIEW_LIVE_GATES, durableProjection, packetDigest, replyBody } from './journal.js';
 import { HOLDING_REPLY } from './reply-check.js';
 import type { JournalView, Turn } from './journal.js';
 
@@ -461,9 +461,21 @@ export function executeProof(plan: ProofPlan, ports: ProofPorts, generation: str
 export interface PipelineStep { step: string; supervisors: readonly Supervisor[] }
 export type Supervisor = 'reply-review' | 'summary-review' | 'step-check';
 export interface Pipeline { failureDirection: 'open' | 'closed'; steps: readonly PipelineStep[]; owner: string }
+/** Rule 95 is declared per consumer, so a pipeline whose send is gated by the pre-send reply review takes that
+ * gate's direction from the one live gate table rather than restating it. Restating it is how the two drifted:
+ * the table said open (Rules 77, 86, 95 — reachability to the operator) while this roster said closed, and the
+ * behaviour released replies without a review pass. A renamed gate fails the build here rather than silently
+ * defaulting. Only the mandatory floors named in `owner` hold a candidate, and each is its own closed gate in
+ * that same table. */
+const REPLY_REVIEW_GATE = 'pre-send reply review (Jev and full-context)';
+const replyReviewDirection = (): 'open' | 'closed' => {
+  const gate = PREVIEW_LIVE_GATES.find(entry => entry.gate === REPLY_REVIEW_GATE);
+  if (gate === undefined) throw Error(`preview proofs: no live gate named ${REPLY_REVIEW_GATE}`);
+  return gate.fails;
+};
 export const CRITICAL_PIPELINES: Readonly<Record<string, Pipeline>> = Object.freeze({
-  'operator-reply': { failureDirection: 'closed',
-    owner: 'reply review holds the send without a pass; the step supervisor observes intake, preparation, answer and cleanup',
+  'operator-reply': { failureDirection: replyReviewDirection(),
+    owner: 'reply review objections are advisory signals recorded with the send, so an unavailable review and every non-mandatory objection release the reply (Rules 77, 86, 95); only the mandatory floors hold it — the credential shape wall, a credential named by a check, a review naming an untracked deferral or an unevidenced cannot-do claim, and a runner-refused obligation declaration; the step supervisor observes intake, preparation, answer and cleanup',
     steps: [
       { step: 'intake', supervisors: ['step-check'] },
       { step: 'prepare-packet', supervisors: ['step-check'] },
@@ -472,8 +484,8 @@ export const CRITICAL_PIPELINES: Readonly<Record<string, Pipeline>> = Object.fre
       { step: 'send', supervisors: ['reply-review'] },
       { step: 'cleanup', supervisors: ['step-check'] },
     ] },
-  'requested-action': { failureDirection: 'closed',
-    owner: 'the step supervisor validates due selection and preparation before the model call; reply review holds the send without a pass',
+  'requested-action': { failureDirection: replyReviewDirection(),
+    owner: 'the step supervisor validates due selection and preparation before the model call; its reply runs the same pre-send reply review, so an unavailable review and every non-mandatory objection release it and only the mandatory floors hold it (Rules 77, 86, 95)',
     steps: [
       { step: 'select-due', supervisors: ['step-check'] },
       { step: 'prepare-packet', supervisors: ['step-check'] },
