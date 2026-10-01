@@ -5307,7 +5307,7 @@ export function createJournalWorker(journal: ReturnType<typeof openPreviewJourna
               conflict: Pick<MemoryConflict, 'first' | 'second'> | undefined,
               askConflict: string | undefined,
               resolveConflict: { askedBy: string; winner: string } | undefined, requested: boolean[] = [],
-              reminderCancels: string[] | undefined, invalidCancel = false, decided = false,
+              reminderCancels: string[] | undefined, invalidCancel = false, decided = false, ownReplyEcho = false,
               obligations: AnswerObligations = {}, promises: PromiseProposal[] = [], fulfills: FulfillmentProposal[] = [];
             if (output.trim()) try {
               const parsed = JSON.parse(output) as { reply?: unknown; memory?: unknown; memoryDisposition?: unknown; dated?: unknown; undo?: unknown; personMerges?: unknown; personAttributes?: unknown; closedQuestions?: unknown; memoryList?: unknown; lastNamedPerson?: unknown;
@@ -5381,9 +5381,18 @@ export function createJournalWorker(journal: ReturnType<typeof openPreviewJourna
                 if (Array.isArray(parsed.closedQuestions) && parsed.closedQuestions.length <= PREVIEW_QUESTION_LIMIT
                   && parsed.closedQuestions.every(id => typeof id === 'string' && listedQuestions.has(id)))
                   closedQuestions = [...new Set(parsed.closedQuestions as string[])];
-                if (Array.isArray(parsed.memory)) memory = journal.view.summaries.some(item => item.memoryFor?.includes(turn.id))
-                  ? [] : memoryFrom(parsed.memory, turn, offered, decision.memorySummary?.text ?? decision.summary?.text,
-                    updateEvidence);
+                if (Array.isArray(parsed.memory)) {
+                  // Live proof room 715672853 (cint-L13): on a plain question the model added a prefer item, sourced to this
+                  // turn, whose quote is a clause of its own reply and not of the operator's message. The agent's own words
+                  // are no evidence of an operator request (Rules 2, 85), so on an uncued, unedited turn that item is set
+                  // aside instead of refusing the whole decision; the answer is sent and says plainly that nothing was saved.
+                  const proposals = !turn.editOf && !memoryCue(turn) && !preferenceCue(turn)
+                    ? parsed.memory.filter(item => !echoesOwnReply(item, turn, answerText)) : parsed.memory;
+                  ownReplyEcho = proposals.length < parsed.memory.length;
+                  memory = journal.view.summaries.some(item => item.memoryFor?.includes(turn.id))
+                    ? [] : memoryFrom(proposals, turn, offered, decision.memorySummary?.text ?? decision.summary?.text,
+                      updateEvidence);
+                }
                 // A missing optional decision on an ordinary reply is an empty
                 // decision. Direct correction/preference requests still require
                 // a decision unless the earlier summary already settled them.
@@ -5472,6 +5481,9 @@ export function createJournalWorker(journal: ReturnType<typeof openPreviewJourna
               text = `${text.trim()}\n\nNo change was recorded to your open request${unchanged.length > 1 ? 's' : ''} ${listed}; `
                 + `${unchanged.length > 1 ? 'they still stand' : 'it still stands'}. If you meant to cancel or change one, please say so again.`;
             }
+            // Rule 2: a set-aside echo never reads as a saved change; if a change was meant, the operator is asked again.
+            if (ownReplyEcho && !invalidMemory && memory?.length === 0 && text.trim() && fromOperator(turn) && !probe && !turn.requestedAction)
+              text = `${text.trim()}\n\nNo memory or preference change was saved from this message. If you meant to change one, please say it again.`;
             if (invalidCancel && !invalidMemory) text = `${text.trim()} I could not tell which request to cancel, so none was cancelled.`.trim();
             else if (reminderCancels?.length && !invalidMemory) text = `${text.trim()} Cancelled request: ${reminderCancels.map(key =>
               `"${journal.view.dated.find(item => datedKey(item) === key)!.quote}"`).join('; ')}.`.trim();
@@ -6212,6 +6224,13 @@ export function createJournalWorker(journal: ReturnType<typeof openPreviewJourna
       if (source) closures.push({ id, source: source.id, quote });
     }
     return closures;
+  };
+  /** A prefer item naming this turn whose quote occurs in the decision's own reply but not in the operator's message. */
+  const echoesOwnReply = (item: unknown, trigger: Turn, reply: string) => {
+    if (!item || typeof item !== 'object' || Array.isArray(item)) return false;
+    const { mode, source, quote, ...rest } = item as { mode?: unknown; source?: unknown; quote?: unknown };
+    return mode === 'prefer' && source === trigger.id && Object.keys(rest).length === 0 && typeof quote === 'string'
+      && quote.trim().length >= 8 && reply.includes(quote) && !redact(trigger.text).text.includes(quote);
   };
   const memoryFrom = (proposed: unknown[], trigger: Turn, offered: ReadonlySet<string>, offeredSummary?: string,
     updateEvidence: readonly { id: string; message: string }[] = []): MemoryChange[] | undefined => {
