@@ -292,6 +292,7 @@ const briefingDigest = () => briefingDigestOf([...sourcePacket(path => readFileS
 const timeZoneOf = options => { const zone = options['time-zone'] ?? 'America/Los_Angeles'; zoneFormatter(zone); return zone; };
 /** Recall metadata and labels, never static sources or history text. */
 const recallView = packet => ({ historyMode: packet.historyMode, summaryThrough: packet.summary?.through ?? null, summarySourceKind: packet.summary?.sourceKind ?? null,
+  historySetAside: packet.historySetAside ? { count: packet.historySetAside.count, through: packet.historySetAside.through } : null,
   replyTo: packet.replyTo ?? null,
   people: packet.people ?? [], personAttributes: packet.personAttributes ?? [], personMergeCandidates: packet.personMergeCandidates ?? [], personMerges: packet.personMerges ?? [], commitments: packet.commitments ?? [], openQuestions: packet.openQuestions ?? [], channelMemory: packet.channelMemory ?? [], memory: packet.memory ?? [],
   lastNamedPerson: packet.lastNamedPerson ?? null,

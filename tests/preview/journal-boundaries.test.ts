@@ -464,4 +464,41 @@ describe('Rule 110: the first reply sent from a compacted context discloses it a
       journal.close();
     } finally { rmSync(dir, { recursive: true, force: true }); }
   });
+  it('replay binds a set-aside account to its truthful wording, never the summary wording', () => {
+    // The reachability floor's set-aside is a Rule 110 frontier too, but nothing summarized it (Rule 26).
+    const summaryWords = continuityDisclosure('#30, x', 29, 'addressed', 'Telegram message 30');
+    const setAsideWords = continuityDisclosure('#30, x', 29, 'addressed', 'Telegram message 30', 'set-aside');
+    expect(setAsideWords).toMatch(/no longer fits in my view; it is kept and I can search it, but it is not summarized/u);
+    const id = 'telegram:12345678:update:31';
+    /** One fresh journal per case: a refused row leaves its in-memory view unusable. */
+    const attempt = (account: { disclosure: string; basis?: 'set-aside' }, check: (path: string) => void) => {
+      const dir = root();
+      try {
+        const path = join(dir, 'journal.encrypted');
+        const journal = openPreviewJournal(path, key, genesis(7000));
+        seedAnswered(journal, garden);
+        seed(journal, ['Hello again']);
+        journal.append({ kind: 'reserve', id, grounding: { packetSha256: 'p', summaryThrough: null, setAsideThrough: 29, history: [], recalled: [],
+          people: [], commitments: [], channelItems: [], corrections: [], memoryChanges: [], memoryCandidates: [] }, at });
+        journal.append({ kind: 'answer', id, text: 'Hi!', state: 'complete', at });
+        const before = journal.view.turns.get('telegram:12345678:update:30')!;
+        const text = withDisclosure('PREVIEW — Hi!', account.disclosure);
+        try {
+          journal.append({ kind: 'intent', id, text, chat: '7654321', update: 31, grant: 'grant:preview',
+            continuity: { prePauseInbound: before.id, capture: createHash('sha256').update(before.raw).digest('hex'), summarizedThrough: 29,
+              grounding: 'p', disposition: 'addressed', reference: 'Telegram message 30', ...account,
+              replyDigest: createHash('sha256').update(text).digest('hex') }, at });
+        } finally { journal.close(); }
+        check(path);
+      } finally { rmSync(dir, { recursive: true, force: true }); }
+    };
+    expect(() => attempt({ disclosure: summaryWords }, () => {})).toThrow('continuity account refused');
+    expect(() => attempt({ disclosure: setAsideWords }, () => {})).toThrow('continuity account refused');
+    expect(() => attempt({ basis: 'set-aside', disclosure: summaryWords }, () => {})).toThrow('continuity account refused');
+    attempt({ basis: 'set-aside', disclosure: setAsideWords }, path => {
+      const reopened = openPreviewJournal(path, key);
+      expect(reopened.view.turns.get(id)!.continuity).toMatchObject({ basis: 'set-aside', summarizedThrough: 29, disclosure: setAsideWords });
+      reopened.close();
+    });
+  });
 });

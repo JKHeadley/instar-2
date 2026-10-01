@@ -4,6 +4,7 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { createJournalWorker, openPreviewJournal, reachedJournalCap, SUMMARY_OVER_CAP_REASON,
   type CallOutcome } from './journal.js';
+import { auditPacket } from './journal-audit.mjs';
 
 // Live proof room, 2026-09-30/10-01 (group A's long-chat run, 23:16-01:16 PDT, builds cint-L15 then cint-L16).
 // `summaryThrough` stuck at #715672790 with `lastSummaryFailure` {through: 715672791, reason: "summary output over
@@ -186,6 +187,24 @@ it('the floor: no reply is held for size, and the turns it set aside stay recall
     const shown = (floored.at(-1)!.packet.history as { id: string }[]).length;
     expect(disclosure.count + shown)
       .toBe(w.journal.view.order.filter(turn => turn.accepted && turn.update < Number(floored.at(-1)!.id.split(':').at(-1))).length);
+    // Rule 26: a floored packet never claims complete history, and the packet audit accepts exactly what it shows.
+    for (const item of floored) {
+      expect(item.packet.historyMode).toBe('recent-only');
+      expect(auditPacket(w.journal.view, w.journal.view.turns.get(item.id)!, item.packet).findings).toEqual([]);
+    }
+    // Rule 110: the first floored reply accounts for the set-aside like a summary frontier, in truthful words: the
+    // grounding names the frontier, the model is told, and the reply actually SENT opens with the disclosure and
+    // the real disposition of the last inbound before it.
+    const first = w.journal.view.turns.get(floored[0]!.id)!;
+    const firstAside = floored[0]!.packet.historySetAside as { through: number };
+    expect(first.grounding?.setAsideThrough).toBe(firstAside.through);
+    expect(first.grounding?.compactedThrough).toBeUndefined();
+    expect(floored[0]!.packet.continuity).toMatchObject({ through: firstAside.through, basis: 'set-aside', state: 'addressed' });
+    expect(first.continuity).toMatchObject({ summarizedThrough: firstAside.through, basis: 'set-aside', disposition: 'addressed' });
+    expect(first.intent!.startsWith(`PREVIEW — Earlier conversation up to #${String(firstAside.through)} no longer fits in my view; `
+      + 'it is kept and I can search it, but it is not summarized; your previous message (')).toBe(true);
+    expect(first.intent).not.toMatch(/is now summarized/u);
+    const firstContinuity = first.continuity;
     // And the reply's own durable record names the floor, so a restart can still answer how it was prepared.
     const reserved = w.journal.view.order.filter(turn => turn.packetDropped?.some(drop => drop.kind === 'history'));
     expect(reserved.length).toBeGreaterThan(0);
@@ -211,6 +230,7 @@ it('the floor: no reply is held for size, and the turns it set aside stay recall
     const reopened = openPreviewJournal(w.path, key);
     expect(reopened.view.order.filter(turn => turn.sent !== undefined).map(turn => turn.update)).toEqual(sent);
     expect(reopened.view.turns.get('telegram:12345678:update:1')?.text).toBe(MARKER_TURN.text);
+    expect(reopened.view.turns.get(first.id)?.continuity).toEqual(firstContinuity);
     reopened.close();
   } finally { w.close(); }
 });
