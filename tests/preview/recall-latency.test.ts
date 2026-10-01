@@ -50,7 +50,11 @@ it('profiles full turns at 2000 turns with every memory source', async () => {
     expect('context' in compact && JSON.parse(compact.context).historyMode).toBe('summary-plus-recent');
     view.limits.maxBytes = 32768;
     const summary = view.summaries.pop()!;
-    expect(worker.probe('What did Sam say about the cedar project?')).toEqual({ reason: 'context overflow' });
+    // Without the summary, complete history no longer fits: like a real turn, the probe reaches the floor and
+    // says so (recent-only, with the set-aside counted), rather than reporting a size hold (Rules 26, 95).
+    const floored = worker.probe('What did Sam say about the cedar project?');
+    expect('context' in floored && JSON.parse(floored.context)).toMatchObject({ historyMode: 'recent-only',
+      historySetAside: { count: expect.any(Number) } });
     view.summaries.push(summary);
     const samples: number[] = [];
     let packetHash = '';

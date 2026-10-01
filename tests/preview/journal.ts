@@ -137,12 +137,20 @@ const searchGuidance = (items: readonly { was?: string }[]) =>
  * the account, bound to the digest of the text actually sent (holding and size notices too). */
 export const CONTINUITY_DISPOSITIONS = ['addressed', 'superseded', 'pending'] as const;
 export interface ContinuityAccount { prePauseInbound: string; capture: string; summarizedThrough: number; grounding: string;
-  disposition: typeof CONTINUITY_DISPOSITIONS[number]; reference: string; disclosure: string; replyDigest: string }
-const continuityHead = (through: number) => `Earlier conversation up to #${through} is now summarized for me; your previous message (`;
+  disposition: typeof CONTINUITY_DISPOSITIONS[number]; reference: string; disclosure: string; replyDigest: string;
+  /** Present when the frontier is the reachability floor's set-aside, not a summary: those messages are kept and
+   * searchable but were neither summarized nor shown (Rule 26), and `summarizedThrough` then names that frontier. */
+  basis?: 'set-aside' }
+/** How a context lost verbatim history before `through`: a summary, or the floor setting the oldest aside unsummarized. */
+export type ContinuityBasis = 'summary' | 'set-aside';
+const continuityHead = (through: number, basis: ContinuityBasis = 'summary') => basis === 'set-aside'
+  ? `Earlier conversation up to #${through} no longer fits in my view; it is kept and I can search it, but it is not summarized; your previous message (`
+  : `Earlier conversation up to #${through} is now summarized for me; your previous message (`;
 const continuityTail = (disposition: ContinuityAccount['disposition'], reference: string) =>
   `) ${disposition === 'addressed' ? 'was answered' : disposition === 'superseded' ? `was replaced by ${reference}` : `is still open (${reference})`}.`;
-export const continuityDisclosure = (label: string, through: number, disposition: ContinuityAccount['disposition'], reference: string) =>
-  `${continuityHead(through)}${label}${continuityTail(disposition, reference)}`;
+export const continuityDisclosure = (label: string, through: number, disposition: ContinuityAccount['disposition'], reference: string,
+  basis: ContinuityBasis = 'summary') =>
+  `${continuityHead(through, basis)}${label}${continuityTail(disposition, reference)}`;
 /** A turn's sent reply without its Rule 110 disclosure (for measurement of the answer itself). */
 export const replyBody = (turn: { intent?: string; continuity?: ContinuityAccount }) =>
   turn.intent === undefined || !turn.continuity ? turn.intent : turn.intent.replace(`${turn.continuity.disclosure} `, '');
@@ -483,9 +491,18 @@ interface LegacySummaryGrant { id: string; source: string }
  * append-only journal projections; the digest binds this list to the packet bytes. */
 export interface ReplyGrounding { packetSha256: string; summaryThrough: number | null;
   /** The summary frontier that replaced verbatim history in this context (absent for complete history). */
-  compactedThrough?: number; history: string[]; recalled: string[];
+  compactedThrough?: number;
+  /** The reachability floor's set-aside frontier: older history neither summarized nor shown (absent when none). */
+  setAsideThrough?: number; history: string[]; recalled: string[];
   people: string[]; commitments: number[]; channelItems: string[]; corrections: string[];
   memoryChanges: number[]; memoryCandidates: string[] }
+/** Rule 110: the frontier below which this context lost verbatim history, and how. The set-aside floor always lies
+ * above a summary's frontier (it only removes history the summary left verbatim), so the higher one is the account. */
+export const continuityFrontier = (grounding: Pick<ReplyGrounding, 'compactedThrough' | 'setAsideThrough'> | undefined):
+  { through: number; basis: ContinuityBasis } | undefined =>
+  grounding?.setAsideThrough !== undefined && (grounding.compactedThrough === undefined || grounding.setAsideThrough > grounding.compactedThrough)
+    ? { through: grounding.setAsideThrough, basis: 'set-aside' }
+    : grounding?.compactedThrough !== undefined ? { through: grounding.compactedThrough, basis: 'summary' } : undefined;
 
 export interface MemoryConflict { first: { source: string; quote: string }; second: { source: string; quote: string };
   askedBy: string; asked: boolean; answeredBy?: string; winner?: string }
@@ -2632,8 +2649,8 @@ function project(view: JournalView, row: JournalRecord, system?: SystemCheck): v
   if (row.kind === 'reserve') { if (turn.reserved) throw Error('preview journal: repeated reservation');
     reserveTokens(view, `answer:${row.id}`, 'answer', row.maxInputTokens ?? view.limits.maxBytes,
       row.maxOutputTokens ?? subscriptionOutputMaximum);
-    if (row.grounding?.compactedThrough !== undefined && (!Number.isSafeInteger(row.grounding.compactedThrough)
-      || row.grounding.compactedThrough >= turn.update)) throw Error('preview journal: compacted grounding order');
+    for (const frontier of [row.grounding?.compactedThrough, row.grounding?.setAsideThrough])
+      if (frontier !== undefined && (!Number.isSafeInteger(frontier) || frontier >= turn.update)) throw Error('preview journal: compacted grounding order');
     turn.reserved = true; turn.reservedAt = row.at; if (row.prompt !== undefined) turn.prompt = row.prompt;
     if (view.stepCheckBusiness && turn.requestedAction === undefined) view.stepChecks.set(`prepare:${row.id}`, {});
     if (row.grounding) turn.grounding = row.grounding; if (row.packetDropped !== undefined) turn.packetDropped = row.packetDropped; if (row.packetLimit !== undefined) turn.packetLimit = row.packetLimit; const hits = promptRecallHits(row.prompt);
@@ -2828,13 +2845,14 @@ function project(view: JournalView, row: JournalRecord, system?: SystemCheck): v
     if (row.continuity !== undefined) {
       // The account binds the exact pre-pause capture, the reply's own compacted grounding and the
       // text actually sent; the disclosure is that reply's first sentence.
-      const account = row.continuity, before = view.turns.get(account.prePauseInbound);
+      const account = row.continuity, before = view.turns.get(account.prePauseInbound), frontier = continuityFrontier(turn.grounding);
       if (!before || before.update >= turn.update || turn.requestedAction || !Number.isSafeInteger(account.summarizedThrough)
-        || account.summarizedThrough >= turn.update || turn.grounding?.compactedThrough !== account.summarizedThrough
-        || account.grounding !== turn.grounding.packetSha256
+        || account.summarizedThrough >= turn.update || !frontier || frontier.through !== account.summarizedThrough
+        || (account.basis ?? 'summary') !== frontier.basis || account.basis !== undefined && account.basis !== 'set-aside'
+        || account.grounding !== turn.grounding!.packetSha256
         || account.capture !== createHash('sha256').update(before.raw).digest('hex')
         || !CONTINUITY_DISPOSITIONS.includes(account.disposition) || !account.reference
-        || !account.disclosure.startsWith(continuityHead(account.summarizedThrough))
+        || !account.disclosure.startsWith(continuityHead(account.summarizedThrough, frontier.basis))
         || !account.disclosure.endsWith(continuityTail(account.disposition, account.reference))
         || !row.text.startsWith(withDisclosure('PREVIEW — ', account.disclosure).trimEnd())
         || account.replyDigest !== createHash('sha256').update(row.text).digest('hex'))
@@ -3652,7 +3670,7 @@ export function createJournalWorker(journal: ReturnType<typeof openPreviewJourna
    * whose send stayed UNKNOWN retires nothing: the next reply carries that episode's pre-pause
    * message forward (the UNKNOWN send itself is never replayed). Everything comes from journal
    * evidence about the exact last inbound before the pause, never from the model's recollection. */
-  const continuityFor = (turn: Turn, through: number) => {
+  const continuityFor = (turn: Turn, through: number, basis: ContinuityBasis = 'summary') => {
     if (turn.requestedAction) return undefined;
     const confirmed = journal.view.order.filter(item => item.continuity && item.sent !== undefined)
       .reduce((max, item) => Math.max(max, item.continuity!.summarizedThrough), -1);
@@ -3675,7 +3693,7 @@ export function createJournalWorker(journal: ReturnType<typeof openPreviewJourna
           : before.intent !== undefined ? ['pending', 'my reply to it was prepared but its delivery is unconfirmed']
             : ['pending', before.held ? `held: ${before.held}` : 'no reply from me yet'];
     const label = `#${before.update}, ${dated(before)}`;
-    return { before, label, disposition, reference, disclosure: continuityDisclosure(label, through, disposition, reference) };
+    return { before, label, disposition, reference, basis, disclosure: continuityDisclosure(label, through, disposition, reference, basis) };
   };
   /** Rule 11: meaning terms the summary work recorded for each operator message (the derived index).
    * The recall owner ranks by them beside the original words, so a paraphrase with no shared word
@@ -4738,7 +4756,7 @@ export function createJournalWorker(journal: ReturnType<typeof openPreviewJourna
             && (item.quote.includes(change.quote) || change.quote.includes(item.quote)))).map(item => ({ source: item.source,
           sourceKind: 'operator-stated' as MemorySourceKind,
           sourceLabel: turnLabel(journal.view.turns.get(item.source)!), quote: clean(redact(item.quote).text, true, item.source) })) } : {}) } }
-        : { historyMode: 'complete' }),
+        : historySetAsideCount ? { historyMode: 'recent-only' } : { historyMode: 'complete' }),
       ...(journal.view.memory.length ? { memory: journal.view.memory.flatMap((change, index):
         Array<{ sourceKind: MemorySourceKind; mode: string; source: string; sourceLabel: string; trigger: string; reason?: string; replacement?: string }> => {
         if (change.mode === 'prefer' || preferences.lineage.has(JSON.stringify([change.source, change.quote]))) return [];
@@ -4837,16 +4855,20 @@ export function createJournalWorker(journal: ReturnType<typeof openPreviewJourna
 
     const unresolved = openQuestionCandidates(journal.view).filter(note => journal.view.turns.get(note.source)!.update < turn.update);
     const previous = journal.view.order.filter(item => remembered(item) && !sizeRefused(item) && item.update < turn.update).at(-1);
-    // Rule 110: a summary frontier not yet accounted by a sent reply replaces verbatim history in this
-    // context, so this is a compaction whether or not the last inbound still fits verbatim. The
+    // Rule 110: a summary frontier (or the floor's set-aside) not yet accounted by a sent reply replaces verbatim
+    // history in this context, so this is a compaction whether or not the last inbound still fits verbatim. The
     // model is told; the application writes the disclosure into the reply it sends (continuityFor).
-    const continuityNotes = new Map<number, { continuity: { through: number; lastInbound: string; state: ContinuityAccount['disposition'] } } | undefined>();
-    const continuityNote = (through: number) => {
-      if (!continuityNotes.has(through)) {
-        const account = continuityFor(turn, through);
-        continuityNotes.set(through, account ? { continuity: { through, lastInbound: account.before.id, state: account.disposition } } : undefined);
+    // The floor's set-aside is the same kind of loss, named truthfully as unsummarized (basis set-aside).
+    const continuityNotes = new Map<string, { continuity: { through: number; lastInbound: string; state: ContinuityAccount['disposition'];
+      basis?: 'set-aside' } } | undefined>();
+    const continuityNote = (through: number, basis: ContinuityBasis = 'summary') => {
+      const key = `${basis}:${through}`;
+      if (!continuityNotes.has(key)) {
+        const account = continuityFor(turn, through, basis);
+        continuityNotes.set(key, account ? { continuity: { through, lastInbound: account.before.id, state: account.disposition,
+          ...(basis === 'set-aside' ? { basis } : {}) } } : undefined);
       }
-      return continuityNotes.get(through);
+      return continuityNotes.get(key);
     };
     const related = selectRecall({ message: turn.text, now: ports.now(), limit: PREVIEW_QUESTION_LIMIT - 2,
       ...(previous ? { previous: `${clean(previous.text, true)} ${replyFor(previous)}` } : {}),
@@ -5022,10 +5044,13 @@ export function createJournalWorker(journal: ReturnType<typeof openPreviewJourna
           message: clean(redact(item.text).text, true).trim().slice(0, 1000), reply: '' }))];
         for (const datedBase of datedVariants(base)) {
         const installedUpdate = fromOperator(turn) ? ports.installedUpdate?.() ?? null : null;
+        const setAsideBase = (JSON.parse(datedBase) as { historySetAside?: { through: number } }).historySetAside;
+        const lost = continuityFrontier({ ...(compact && summary ? { compactedThrough: summary.through } : {}),
+          ...(setAsideBase ? { setAsideThrough: setAsideBase.through } : {}) });
         const fullContext = JSON.stringify({ ...JSON.parse(datedBase) as object,
           ...(installedUpdate ? { installedUpdate } : {}),
           ...(concurrentWork ? { concurrentWork } : {}),
-          ...(compact && summary ? continuityNote(summary.through) ?? {} : {}),
+          ...(lost ? continuityNote(lost.through, lost.basis) ?? {} : {}),
           // Rule 11: how much of the summarized history recall can reach by meaning, not only by words.
           ...(compact && summary ? { meaningIndexCoverage: meaningCoverage(summary.through) } : {}),
           // Update mode and new conflicts can only cite an offered candidate or contradiction, so their guidance rides with those.
@@ -5067,6 +5092,7 @@ export function createJournalWorker(journal: ReturnType<typeof openPreviewJourna
                 Math.floor(journal.view.limits.maxBytes / 4)) > journal.view.limits.maxBytes)
               throw Error('preview: reply review headroom');
             const packet = JSON.parse(context) as { summary?: { through: number }; memorySummary?: { text: string }; history?: unknown[];
+              historySetAside?: { through: number };
               recalled?: unknown[]; people?: unknown[]; commitments?: { items: { id: number }[] }[];
               channelMemory?: unknown[]; corrections?: unknown[]; memory?: unknown[]; memoryCandidates?: { id: string }[] };
             const shownPeople = named.filter((_, index) => has('person', index));
@@ -5074,6 +5100,7 @@ export function createJournalWorker(journal: ReturnType<typeof openPreviewJourna
             const grounding: ReplyGrounding = { packetSha256: createHash('sha256').update(context).digest('hex'),
               summaryThrough: packet.summary?.through ?? (packet.memorySummary ? summaryFor(before(turn.update))?.through ?? null : null),
               ...(packet.summary ? { compactedThrough: packet.summary.through } : {}),
+              ...(packet.historySetAside ? { setAsideThrough: packet.historySetAside.through } : {}),
               history: journal.view.order.filter(item => remembered(item) && item.update < turn.update
                 && item.update > setAside
                 && (!packet.summary || item.update > packet.summary.through)).map(item => item.id),
@@ -5638,8 +5665,8 @@ export function createJournalWorker(journal: ReturnType<typeof openPreviewJourna
             : `PREVIEW — ${turn.answer?.replace(/^PREVIEW(?=$|[\s:—])(?:\s*[:—])?\s*/u, '') ?? UNKNOWN_ANSWER_NOTICE}`);
         // Rule 110: the first reply sent from a compacted context opens with the fixed disclosure, on
         // whatever text is finally sent (answer, loss, size or holding notice), and the intent records it.
-        const continuity = turn.grounding?.compactedThrough === undefined ? undefined
-          : continuityFor(turn, turn.grounding.compactedThrough);
+        const frontier = continuityFrontier(turn.grounding);
+        const continuity = frontier === undefined ? undefined : continuityFor(turn, frontier.through, frontier.basis);
         const disclosed = (text: string) => continuity ? withDisclosure(text, continuity.disclosure) : text;
         reply = disclosed(reply);
         // Rule 89: fixed runner notices speak as infrastructure; the agent's own answers speak as the agent.
@@ -5938,7 +5965,8 @@ export function createJournalWorker(journal: ReturnType<typeof openPreviewJourna
             && journal.view.commitments[item.id]!.source !== turn.id).map(item => item.id),
           ...(heldBack || reply === HOLDING_REPLY ? {} : sentObligations(turn, reply, intentAt)),
           ...(continuity && turn.grounding ? { continuity: { prePauseInbound: continuity.before.id,
-            capture: createHash('sha256').update(continuity.before.raw).digest('hex'), summarizedThrough: turn.grounding.compactedThrough!,
+            capture: createHash('sha256').update(continuity.before.raw).digest('hex'), summarizedThrough: frontier!.through,
+            ...(frontier!.basis === 'set-aside' ? { basis: 'set-aside' as const } : {}),
             grounding: turn.grounding.packetSha256, disposition: continuity.disposition, reference: continuity.reference,
             disclosure: continuity.disclosure, replyDigest: createHash('sha256').update(reply).digest('hex') } } : {}),
           update: turn.update, grant: journal.view.genesis.grant, at: intentAt });
@@ -7248,14 +7276,16 @@ export function createJournalWorker(journal: ReturnType<typeof openPreviewJourna
       return true;
     } finally { working = false; }
   };
-  /** Read-only: the packet a next message with this text would get now. No append, no call. */
+  /** Read-only: the packet a next message with this text would get now. No append, no call. Like a real turn, it
+   * reaches the reachability floor when the prompt cannot otherwise be built (no summary is attempted here). */
   const probe = (text: string) => {
     const last = journal.view.order.at(-1);
     const update = (last?.update ?? -1) + 1;
-    return preparedFor({ id: `telegram:${journal.view.genesis.bot}:update:${update}`, update, text,
-
+    const turn: Turn = { id: `telegram:${journal.view.genesis.bot}:update:${update}`, update, text,
       raw: JSON.stringify({ message: { from: { id: journal.view.genesis.operator } } }), accepted: true,
-      at: ports.now(), reserved: false });
+      at: ports.now(), reserved: false };
+    const selected = preparedFor(turn);
+    return 'reason' in selected ? preparedWithFloor(turn) : selected;
   };
   /** The minimal path's own step, run by the host between polls without waiting on an ordinary drain
    * that may be blocked on a model: confirmed stops, verified raises, then limited answers (Rule 15). */

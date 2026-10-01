@@ -128,7 +128,8 @@ export function auditPacket(view, turn, packet, memoryCount = view.memory.length
         ...view.order.filter(item => item.accepted && item.update <= record.through)
           .map(item => ({ kind: 'source-turn', id: item.id, update: item.update }))]);
     }
-  } else if (packet.historyMode !== 'complete' || summary !== undefined) fault('history-mode-invalid', 'summary');
+  } else if (summary !== undefined || packet.historyMode !== (packet.historySetAside === undefined ? 'complete' : 'recent-only'))
+    fault('history-mode-invalid', 'summary');
   if (packet.memorySummary !== undefined) {
     const record = recordedSummaries.at(-1);
     if (!record || packet.memorySummary?.text !== clean(record.text)) fault('memory-summary-source', 'memorySummary');

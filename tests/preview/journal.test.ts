@@ -1212,8 +1212,11 @@ it.each(['summary', 'failed', 'preflight', 'last-call'] as const)('answers over-
       // No summary could be made on this pass: the writer refused it (failed), its prompt could not be prepared
       // (preflight), or the call allowance left no room to ask (last-call). The answer goes out either way, with
       // the gap stated in the packet and the message itself untouched in the journal.
-      expect(packet.historyMode).toBe('complete');
+      expect(packet.historyMode).toBe('recent-only');
       expect(packet.historySetAside).toEqual({ count: 1, through: 1, note: expect.stringContaining('kept and still searchable') });
+      // Rule 110: the sent reply accounts for the set-aside truthfully (kept, unsummarized) and the last inbound's outcome.
+      expect(turn.continuity).toMatchObject({ summarizedThrough: 1, basis: 'set-aside', disposition: 'addressed' });
+      expect(turn.intent).toMatch(/^PREVIEW — Earlier conversation up to #1 no longer fits in my view; it is kept and I can search it, but it is not summarized; /u);
       // The spend floor is unchanged: no extra call is spent to answer with less, and a refused span keeps its
       // second attempt for a later pass rather than being burned here.
       expect(journal.view.calls).toBe(route === 'failed' ? 3 : 2);
@@ -1231,6 +1234,25 @@ it.each(['summary', 'failed', 'preflight', 'last-call'] as const)('answers over-
     journal.close();
   } finally { rmSync(root, { recursive: true, force: true }); }
 });
+
+it('the documented inspect view states a floor set-aside, never complete history (Rule 26)', () => {
+  const root = realpathSync(mkdtempSync(join(tmpdir(), 'preview-floor-inspect-')));
+  try {
+    const journal = openPreviewJournal(join(root, 'journal.encrypted'), key, { ...genesis(), maxBytes: 32768 });
+    const id = 'telegram:12345678:update:1', text = `ORCHID ${'a'.repeat(30000)}`;
+    journal.append({ kind: 'intake', id, update: 1, text, accepted: true, cursor: 2, at: 1000,
+      raw: JSON.stringify({ update_id: 1, message: { chat: { id: 7654321, type: 'private' }, from: { id: 7654321 }, text, date: 1790000000 } }) });
+    journal.append({ kind: 'reserve', id, at: 1000 });
+    journal.append({ kind: 'answer', id, text: 'Noted.', state: 'complete', memory: [], at: 1000 });
+    journal.close();
+    const child = spawnSync(process.execPath, ['--no-warnings', '--loader', './scripts/slice-ts-loader.mjs',
+      'tests/preview/journal-agent.mjs', 'inspect', '--root', root, '--text', 'What was the name?', '--model', 'claude-opus-5-5'],
+      { cwd: process.cwd(), encoding: 'utf8', timeout: 20000, env: { ...process.env, INSTAR_SECRET_PREVIEW_STORAGE_KEY: Buffer.from(key).toString('hex') } });
+    expect(child.status, child.stderr).toBe(0);
+    expect((JSON.parse(child.stdout) as { next: unknown }).next).toMatchObject({ historyMode: 'recent-only', summaryThrough: null,
+      historySetAside: { count: 1, through: 1 } });
+  } finally { rmSync(root, { recursive: true, force: true }); }
+}, 25000);
 
 it('summarizes and answers with pending corrections and a commitment before any summary exists', async () => {
   const root = origin();
