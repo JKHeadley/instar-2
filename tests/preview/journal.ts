@@ -19,7 +19,7 @@ import { checkReply as checkCoherenceOf, correctionNote, releaseFindings, COHERE
 import { checkReply, reviewReply, repeatsOperatorOnly, HOLDING_REPLY, jevRequestBody, JEV_RESPONSE_MAX_BYTES, REPLY_CHECK_BUDGET_MS, REPLY_CHECK_BUDGET_REASON, LINK_SHAPE_REASON, linkShapeRules, bareTopicReferences, topicNameReason, BARE_TOPIC_OBJECTION, noDecisions, validDispositions, jevConfidentCredential } from './reply-check.js';
 import { parseDatedItem, restatedDatePhrase, dueState, selectDatedItems, withinNext48Hours, localParts, type DatedItem } from './dated-memory.js';
 import { isStatusCommand, isStopCommand, statusReply, STOP_CONFIRM_TEXT } from './status-command.js';
-import { fulfillmentProposals, legacyFulfillsReminder, promiseProposals, recordedPromises, type AgentPromise, type FulfillmentProposal, type PromiseProposal } from './agent-commitment.js';
+import { AGENT_PROMISE_LIMIT, fulfillmentProposals, fulfillmentSupported, legacyFulfillsReminder, promiseProposals, recordedPromises, type AgentPromise, type FulfillmentProposal, type PromiseProposal } from './agent-commitment.js';
 import { messageTime, zoneFormatter } from './self-state.js';
 import type { ObjectionDisposition, ReplyCheckResult, ReplyCheckPorts, ReplyDecision, ReplyFinding, ReplyReviewDiagnostics, ReplyRule } from './reply-check.js';
 import { SUMMARY_QUESTION, interpretSummaryJev, type SummaryCheckResult } from './summary-check.js';
@@ -454,7 +454,9 @@ export interface ObligationWork { attempts: number; last: number; lastSlot: numb
    * only by that reply's sent receipt. A bound result with no receipt is UNKNOWN: visible, unresolved, never resent. */
   report?: { text: string; at: number; boundTo?: string; delivered?: string } }
 /** Declared obligations an answer proposed that failed admission; they force the full contextual review. */
-export interface RejectedObligations { loops?: number; blocker?: true; rechecks?: true }
+export interface RejectedObligations { loops?: number; blocker?: true; rechecks?: true;
+  /** Fulfillment claims the one support rule refused, kept visible instead of dropped (Rules 2, 10). */
+  fulfills?: number }
 interface CommitmentSource { id: number; source: string; quote: string }
 /** A later operator message, quoted exactly, that says commitment `id` is done, withdrawn or no longer needed. */
 export interface CommitmentClosure { id: number; source: string; quote: string }
@@ -2684,11 +2686,19 @@ function project(view: JournalView, row: JournalRecord, system?: SystemCheck): v
       || !row.lastNamedPerson || Buffer.byteLength(row.lastNamedPerson) > 100 || !turn.accepted
       || !turn.text.includes(row.lastNamedPerson))) throw Error('preview journal: unsupported person cue');
     turn.answer = row.text; if (row.reason !== undefined) turn.answerReason = row.reason;
-    if (row.promises?.some(item => !row.text.includes(item.quote) || (item.when !== undefined && !item.quote.includes(item.when)))
-      || row.fulfills?.some(item => !row.text.includes(item.quote) || !view.commitments[item.id]?.agentPromise))
+    if (row.promises?.some(item => !row.text.includes(item.quote) || (item.when !== undefined && !item.quote.includes(item.when))))
       throw Error('preview journal: unsupported promise proposal');
     if (row.promises?.length) turn.proposedPromises = row.promises;
-    if (row.fulfills?.length) turn.proposedFulfills = row.fulfills;
+    // A model's fulfillment claim is a claim, not authority (Rule 10). The writer decides it with the same
+    // `fulfillmentSupported` rule before it appends, so a row written by this build carries only supported
+    // claims. A row written before the two shared that rule (build 30bda628, 2026-10-01) can carry one the
+    // rule refuses: it is dropped as a claim here — it never closes a commitment — and counted with the other
+    // refused declarations, so it is neither silently lost (Rule 2) nor able to make the journal unreadable.
+    if (row.fulfills?.length) {
+      const supported = row.fulfills.filter(item => fulfillmentSupported(item, row.text, view.commitments));
+      if (supported.length) turn.proposedFulfills = supported;
+      view.rejectedObligations += row.fulfills.length - supported.length;
+    }
     if (row.latencyMs !== undefined) turn.answerMs = row.latencyMs;
     if (row.unlabeledRecall) turn.unlabeledRecall = true;
     if (view.stepCheckStarted && !row.failureClass) view.stepChecks.set(`answer:${row.id}`, {});
@@ -2702,11 +2712,12 @@ function project(view: JournalView, row: JournalRecord, system?: SystemCheck): v
     if (row.blockerRechecks !== undefined) { if (!validRechecks(view, row.blockerRechecks)) throw Error('preview journal: invalid blocker recheck');
       turn.answerRechecks = row.blockerRechecks; }
     if (row.rejected !== undefined) {
-      const { loops = 0, blocker, rechecks } = row.rejected;
+      const { loops = 0, blocker, rechecks, fulfills = 0 } = row.rejected;
       if (!Number.isSafeInteger(loops) || loops < 0 || loops > 50 || blocker !== undefined && blocker !== true || rechecks !== undefined && rechecks !== true
-        || Object.keys(row.rejected).some(key => key !== 'loops' && key !== 'blocker' && key !== 'rechecks')
-        || loops + (blocker ? 1 : 0) + (rechecks ? 1 : 0) === 0) throw Error('preview journal: invalid rejected obligations');
-      turn.answerRejected = row.rejected; view.rejectedObligations += loops + (blocker ? 1 : 0) + (rechecks ? 1 : 0);
+        || !Number.isSafeInteger(fulfills) || fulfills < 0 || fulfills > AGENT_PROMISE_LIMIT
+        || Object.keys(row.rejected).some(key => key !== 'loops' && key !== 'blocker' && key !== 'rechecks' && key !== 'fulfills')
+        || loops + (blocker ? 1 : 0) + (rechecks ? 1 : 0) + fulfills === 0) throw Error('preview journal: invalid rejected obligations');
+      turn.answerRejected = row.rejected; view.rejectedObligations += loops + (blocker ? 1 : 0) + (rechecks ? 1 : 0) + fulfills;
     }
     if (row.reports !== undefined) {
       if (!Array.isArray(row.reports) || !row.reports.length || new Set(row.reports).size !== row.reports.length
@@ -5366,7 +5377,8 @@ export function createJournalWorker(journal: ReturnType<typeof openPreviewJourna
               askConflict: string | undefined,
               resolveConflict: { askedBy: string; winner: string } | undefined, requested: boolean[] = [],
               reminderCancels: string[] | undefined, invalidCancel = false, decided = false, ownReplyEcho = false,
-              obligations: AnswerObligations = {}, promises: PromiseProposal[] = [], fulfills: FulfillmentProposal[] = [];
+              obligations: AnswerObligations = {}, promises: PromiseProposal[] = [], fulfills: FulfillmentProposal[] = [],
+              refusedFulfills = 0;
             if (output.trim()) try {
               const parsed = JSON.parse(output) as { reply?: unknown; memory?: unknown; memoryDisposition?: unknown; dated?: unknown; undo?: unknown; personMerges?: unknown; personAttributes?: unknown; closedQuestions?: unknown; memoryList?: unknown; lastNamedPerson?: unknown;
                 conflict?: unknown; resolveConflict?: unknown; cancelReminders?: unknown;
@@ -5402,14 +5414,20 @@ export function createJournalWorker(journal: ReturnType<typeof openPreviewJourna
                       ...(proposed.summaryPassages === undefined ? {} : { summaryPassages: proposed.summaryPassages }) };
                   else invalidUndo = true;
                 }
-                // Rule 10: the model reads whether its reply promises or carries out a promise;
-                // code keeps only exact quotes of this reply and offered open promise ids.
+                // Rule 10: the model reads whether its reply promises or carries out a promise; code keeps
+                // only exact quotes of this reply, ids this packet actually offered, and — by the one shared
+                // support rule the replay also applies — commitments this reply may carry out at all.
                 const offeredPromises = new Set(((JSON.parse(context) as { commitments?: { items?: { id?: number; owner?: string }[] }[] })
                   .commitments ?? []).flatMap(group => group.items ?? []).filter(item => item.owner === 'agent' && Number.isSafeInteger(item.id))
                   .map(item => item.id!));
                 const answerText = replyAnswer ?? (typeof replyValue === 'string' ? replyValue : '');
                 promises = promiseProposals(parsed.promises, answerText) ?? [];
-                fulfills = fulfillmentProposals(parsed.fulfilled, answerText, offeredPromises) ?? [];
+                const proposed = fulfillmentProposals(parsed.fulfilled, answerText,
+                  item => offeredPromises.has(item.id) && fulfillmentSupported(item, answerText, journal.view.commitments));
+                fulfills = proposed ?? [];
+                // Rules 2, 10: a claim the support rule refuses is recorded as refused, never dropped in silence.
+                if (proposed === undefined) refusedFulfills = Math.min(AGENT_PROMISE_LIMIT,
+                  Math.max(1, Array.isArray(parsed.fulfilled) ? parsed.fulfilled.length : 1));
                 if (parsed.dated !== undefined) dated = datedFrom(parsed.dated, turn);
                 if (parsed.dated !== undefined && dated === undefined) invalidDate = true;
                 if (parsed.personAttributes !== undefined) {
@@ -5568,7 +5586,15 @@ export function createJournalWorker(journal: ReturnType<typeof openPreviewJourna
                 text = `${text.trimEnd()}\n\n${next.line}`; notices.push(next);
               }
             }
-            journal.append({ kind: 'answer', id: turn.id, text: text.trim() ? text : MODEL_FAILURE_REPLY,
+            // The claims are decided one last time against the reply exactly as it is written, by the same
+            // rule the replay reads it back with; anything the final text no longer carries is counted refused.
+            const written = text.trim() ? text : MODEL_FAILURE_REPLY;
+            const keptFulfills = text.trim()
+              ? fulfills.filter(item => fulfillmentSupported(item, written, journal.view.commitments)) : [];
+            const refusedDeclarations = Math.min(AGENT_PROMISE_LIMIT, refusedFulfills + fulfills.length - keptFulfills.length);
+            const rejectedNow: RejectedObligations = { ...obligations.rejected,
+              ...(refusedDeclarations ? { fulfills: refusedDeclarations } : {}) };
+            journal.append({ kind: 'answer', id: turn.id, text: written,
               state: 'complete', ...(text.trim() ? {} : { failureClass: 'empty' as const }),
               ...(memory === undefined ? {} : { memory }), ...(closedQuestions?.length ? { closedQuestions } : {}), ...(personMerges?.length ? { personMerges } : {}), ...(personAttributes?.length ? { personAttributes } : {}), ...(dated === undefined ? {} : { dated }),
               ...(reminderCancels?.length ? { reminderCancels } : {}),
@@ -5581,10 +5607,10 @@ export function createJournalWorker(journal: ReturnType<typeof openPreviewJourna
               ...(obligations.loops?.length ? { loops: obligations.loops } : {}),
               ...(obligations.blocker ? { blocker: obligations.blocker } : {}),
               ...(obligations.blockerRechecks?.length ? { blockerRechecks: obligations.blockerRechecks } : {}),
-              ...(obligations.rejected ? { rejected: obligations.rejected } : {}), ...(reports.length ? { reports } : {}),
+              ...(Object.keys(rejectedNow).length ? { rejected: rejectedNow } : {}), ...(reports.length ? { reports } : {}),
               ...(notices.length ? { notices } : {}),
               ...(promises.length && text.trim() ? { promises: promises.filter(item => text.includes(item.quote)) } : {}),
-              ...(fulfills.length && text.trim() ? { fulfills: fulfills.filter(item => text.includes(item.quote)) } : {}),
+              ...(keptFulfills.length ? { fulfills: keptFulfills } : {}),
               ...(fromOperator(turn) && !probe && dated === undefined ? { datedPending: true as const } : {}),
               ...(invalidMemory ? { memoryPending: true as const } : {}),
               ...(text.trim() && unlabeledRecall(context, text) ? { unlabeledRecall: true } : {}),
