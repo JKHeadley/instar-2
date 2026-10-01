@@ -1,5 +1,6 @@
 import { expect, it } from 'vitest';
-import { fulfillmentProposals, legacyFulfillsReminder, promiseProposals, recordedPromises } from './agent-commitment.js';
+import { fulfillmentProposals, fulfillmentSupported, legacyFulfillsReminder, promiseProposals, recordedPromises,
+  type FulfillmentProposal } from './agent-commitment.js';
 
 const at = 1790000000000;
 const source = 'telegram:12345678:update:1';
@@ -28,11 +29,26 @@ it('refuses invented, oversized or unbounded proposals and a date phrase outside
 
 it('accepts a fulfillment only for an offered open promise id and an exact reply excerpt', () => {
   const reply = 'Here is the dentist reminder you asked for: call them before noon.';
-  const offered = new Set([4]);
-  expect(fulfillmentProposals([{ id: 4, quote: 'call them before noon' }], reply, offered)).toEqual([{ id: 4, quote: 'call them before noon' }]);
-  expect(fulfillmentProposals([{ id: 5, quote: 'call them before noon' }], reply, offered)).toBeUndefined();
-  expect(fulfillmentProposals([{ id: 4, quote: 'call them after noon' }], reply, offered)).toBeUndefined();
-  expect(fulfillmentProposals(undefined, reply, offered)).toEqual([]);
+  // The caller's narrowing the runner uses: an id this packet offered, and the shared support rule.
+  const commitments = [{}, {}, {}, {}, { agentPromise: { quote: 'I’ll remind you.' } }, {}];
+  const offered = new Set([4, 5]);
+  const supported = (item: FulfillmentProposal) => offered.has(item.id) && fulfillmentSupported(item, reply, commitments);
+  expect(fulfillmentProposals([{ id: 4, quote: 'call them before noon' }], reply, supported)).toEqual([{ id: 4, quote: 'call them before noon' }]);
+  // Offered, but not a commitment this reply may carry out: the exact drift that bricked a journal.
+  expect(fulfillmentProposals([{ id: 5, quote: 'call them before noon' }], reply, supported)).toBeUndefined();
+  expect(fulfillmentProposals([{ id: 6, quote: 'call them before noon' }], reply, supported)).toBeUndefined();
+  expect(fulfillmentProposals([{ id: 4, quote: 'call them after noon' }], reply, supported)).toBeUndefined();
+  expect(fulfillmentProposals(undefined, reply, supported)).toEqual([]);
+});
+
+it('decides a fulfillment claim by one rule: an exact quote of the reply and the agent\'s own promise', () => {
+  const reply = 'Reminder: take a short walk — you asked for this nudge at 5:22 am today.';
+  const commitments = [{ waitsOn: 'nothing' }, { agentPromise: { quote: 'I’ll remind you to walk.' } }];
+  // A commitment the operator asked for is not the agent's promise, whatever the reply quotes.
+  expect(fulfillmentSupported({ id: 0, quote: reply }, reply, commitments)).toBe(false);
+  expect(fulfillmentSupported({ id: 1, quote: reply }, reply, commitments)).toBe(true);
+  expect(fulfillmentSupported({ id: 1, quote: 'a line the reply never says' }, reply, commitments)).toBe(false);
+  expect(fulfillmentSupported({ id: 7, quote: reply }, reply, commitments)).toBe(false);
 });
 
 it('keeps the legacy closure rule only for replaying journal rows written under it', () => {

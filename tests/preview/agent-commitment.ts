@@ -29,14 +29,31 @@ export function promiseProposals(value: unknown, reply: string): PromiseProposal
   }
   return found;
 }
-/** Validated fulfillment proposals against the ids of open agent promises offered to the model. */
-export function fulfillmentProposals(value: unknown, reply: string, offered: ReadonlySet<number>): FulfillmentProposal[] | undefined {
+/** The one rule deciding whether a reply may carry out commitment `id`: the commitment is a promise the
+ * agent itself made. A commitment the operator asked for — a reminder to them — is not the agent's promise,
+ * so a reply delivering it settles that reminder through its own path, never as a fulfillment claim. */
+export const fulfillableCommitment = (commitments: readonly { agentPromise?: unknown }[], id: number): boolean =>
+  commitments[id]?.agentPromise !== undefined;
+
+/** The whole support rule for one fulfillment claim: the reply as written still quotes it, and it names a
+ * commitment this reply may carry out. The writer applies this before it appends an answer row and the
+ * replay applies it when it reads that row back, so the two cannot drift. They did drift once: the writer
+ * offered every agent-OWNED commitment while the replay accepted only agent PROMISES, so one delivered
+ * reminder wrote a row the replay refused and made a whole journal unreadable (build 30bda628, 2026-10-01). */
+export const fulfillmentSupported = (item: FulfillmentProposal, reply: string,
+  commitments: readonly { agentPromise?: unknown }[]): boolean =>
+  reply.includes(item.quote) && fulfillableCommitment(commitments, item.id);
+
+/** Validated fulfillment proposals from one answer, or undefined when the proposal is malformed or claims
+ * anything `supported` refuses. `supported` is the caller's own narrowing of `fulfillmentSupported`. */
+export function fulfillmentProposals(value: unknown, reply: string,
+  supported: (item: FulfillmentProposal) => boolean): FulfillmentProposal[] | undefined {
   if (value === undefined) return [];
   if (!Array.isArray(value) || value.length > AGENT_PROMISE_LIMIT) return undefined;
   const found: FulfillmentProposal[] = [];
   for (const item of value as { id?: unknown; quote?: unknown }[]) {
-    if (!item || typeof item !== 'object' || !Number.isSafeInteger(item.id) || !offered.has(item.id as number)
-      || !exactClause(item.quote, reply)) return undefined;
+    if (!item || typeof item !== 'object' || !Number.isSafeInteger(item.id) || !exactClause(item.quote, reply)
+      || !supported({ id: item.id as number, quote: item.quote as string })) return undefined;
     if (!found.some(saved => saved.id === item.id)) found.push({ id: item.id as number, quote: item.quote as string });
   }
   return found;
