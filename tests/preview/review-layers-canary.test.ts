@@ -193,9 +193,11 @@ export const createClaudeCodeSubscriptionRoute = () => ({ kind: 'Success', value
         expect(Object.keys(view.modelJsonShapes.counts).filter(key => key.startsWith('reply-review/verdict'))).toEqual([]);
       } else {
         // A contradicted reply review is unavailable, never a pass nor a veto (Rules 77, 86, 95). This canary's
-        // Jev is unsure (0.5) on every rule, credential included, so with no review verdict Rule 86's secrets
-        // exception holds the reply (cint-2 keeps cint-1's hold); nothing is sent.
-        expect(sends).toHaveLength(0);
+        // Jev is unsure (0.5) on every rule, credential included: below Jev's confident credential line, so with
+        // no review verdict the reply is sent once with the unavailable review recorded (plan #102). The summary
+        // contradiction keeps its own hold, and nothing is sent there.
+        if (mode === 'reply-contradiction') expect(sends.map(send => answerOf(send.text))).toEqual([`PREVIEW — ${reply}`]);
+        else expect(sends).toHaveLength(0);
         expect(view.modelJsonShapes.counts).toMatchObject({
           [mode === 'reply-contradiction' ? 'reply-review/verdict/malformed/not-json'
             : 'summary-review/verdict/malformed/prose-wrapped']:

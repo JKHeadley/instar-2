@@ -84,6 +84,14 @@ const rules = Object.keys(REPLY_RULES) as ReplyRule[];
 const positiveLine: Record<ReplyRule, number> = { raw_path: 0.85, cli_command: 0.85,
   config_key: 0.85, credential: 0.70, api_endpoint: 0.85, quits_on_self: 0.70,
   claims_blocked: 0.85, parks_on_user: 0.85, defers_work: 0.85, unrecorded_blocker: 0.85 };
+/** Plan #102's cascade: Jev decides the secrets class alone only at or above its credential line. Its unsure band
+ * escalates, and an escalation that yields no verdict leaves no confident secret finding (Rules 77, 86, 95). The
+ * recorded score decides; a legacy row without scores counts its credential violation as confident. */
+export function jevConfidentCredential(check: ReplyCheckResult): boolean {
+  if (check.path !== 'jev' || !check.ruleIds.includes('credential')) return false;
+  const score = check.scores?.credential;
+  return score === undefined ? check.verdict === 'violation' : score >= positiveLine.credential;
+}
 export const jevQuestions = Object.fromEntries(rules.map(id => [id, { type: 'noul', instructions: JEV_INSTRUCTIONS[id] ?? REPLY_RULES[id] }]));
 export const jevRequestBody = (text: string): string => JSON.stringify({ state: text, model: JEV_MODEL, questions: jevQuestions });
 export function parseJevResponse(body: string): unknown {

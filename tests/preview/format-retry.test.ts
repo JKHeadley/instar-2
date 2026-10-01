@@ -126,13 +126,17 @@ it('re-asks a malformed review verdict once under the same cap, then releases th
   } finally { r.close(); }
 });
 
-it('holds the reply when the review misses its format twice', async () => {
+// Plan #102: Jev's 0.57 credential score is its unsure band, so a review that misses its format twice leaves no
+// verdict and no confident secret finding: the reply is answered with the flag recorded, never held.
+it('answers with the flag recorded when the review misses its format twice on an unsure credential score', async () => {
   const r = await run({ maxCalls: 4, answers: ['Pack light layers.'], reviews: ['malformed', 'malformed'] });
   try {
     expect(r.retryFlags).toEqual([undefined, true]);
     expect(r.journal.view.calls).toBe(3);
-    expect(r.sent).toEqual([]);
-    expect(r.turn.held).toBe('reply check unavailable');
+    expect(r.sent).toHaveLength(1);
+    expect(r.sent[0]).toContain('Pack light layers.');
+    expect(r.turn.held).toBeUndefined();
+    expect(r.turn.release).toMatchObject({ review: 'unavailable', objections: ['credential'] });
   } finally { r.close(); }
 });
 
@@ -142,7 +146,8 @@ it('makes no review re-ask when the call cap is exhausted', async () => {
     expect(r.retryFlags).toEqual([undefined]);
     expect(r.journal.view.calls).toBe(2);
     expect(r.turn.reviewRetried).toBeUndefined();
-    expect(r.sent).toEqual([]);
+    expect(r.sent).toHaveLength(1);
+    expect(r.turn.release).toMatchObject({ review: 'unavailable', objections: ['credential'] });
   } finally { r.close(); }
 });
 
