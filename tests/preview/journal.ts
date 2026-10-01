@@ -16,7 +16,7 @@ import { buildWorkIndex, detectOverlaps, workForTopic, type SessionActivity } fr
 import { MAX_RAISED_SUBSCRIPTION_PROMPT_BYTES, SUBSCRIPTION_CONVERSATION_SYSTEM_PROMPT, SUBSCRIPTION_PREVIEW_EXPIRY } from '../../src/assembly/production-provider.js';
 import { hasClaim, replaceClaim, supersedesCorrection } from './claim-match.mjs';
 import { checkReply as checkCoherenceOf, correctionNote, releaseFindings, COHERENCE_FINDING_LIMIT, type CoherenceFinding } from './coherence-check.js';
-import { checkReply, reviewReply, repeatsOperatorOnly, HOLDING_REPLY, jevRequestBody, JEV_RESPONSE_MAX_BYTES, REPLY_CHECK_BUDGET_MS, REPLY_CHECK_BUDGET_REASON, LINK_SHAPE_REASON, linkShapeRules, bareTopicReferences, topicNameReason, BARE_TOPIC_OBJECTION, noDecisions, validDispositions, jevConfidentCredential } from './reply-check.js';
+import { checkReply, reviewReply, repeatsOperatorOnly, HOLDING_REPLY, jevRequestBody, JEV_RESPONSE_MAX_BYTES, REPLY_CHECK_BUDGET_MS, REPLY_CHECK_BUDGET_REASON, LINK_SHAPE_REASON, linkShapeRules, bareTopicReferences, topicNameReason, BARE_TOPIC_OBJECTION, noDecisions, validDispositions, jevConfidentCredential, CLAIM_SCOPED_RULES, quotedSpans, exciseNamedClaims, substantiveReply } from './reply-check.js';
 import { parseDatedItem, restatedDatePhrase, dueState, selectDatedItems, withinNext48Hours, localParts, type DatedItem } from './dated-memory.js';
 import { isStatusCommand, isStopCommand, statusReply, STOP_CONFIRM_TEXT } from './status-command.js';
 import { AGENT_PROMISE_LIMIT, fulfillableCommitment, fulfillmentProposals, fulfillmentSupported, legacyFulfillsReminder, promiseProposals, recordedPromises, type AgentPromise, type FulfillmentProposal, type PromiseProposal } from './agent-commitment.js';
@@ -119,10 +119,25 @@ export interface ReplyRelease { review: 'violation' | 'unavailable'; objections:
    * recorded non-admission, never an answer (ruling 2 budget; Rules 55, 60). */
   responseSkipped?: ResponseSkipped;
   /** Rule 106 over the exact text sent (after any revision and assembly): its digest and link findings. */
-  final?: { digest: string; links: string[] } }
+  final?: { digest: string; links: string[] };
+  /** The claim-scoped floor's record (plan #215; Rules 2, 42): `rules` are the floor rules a full-context review
+   * named on this candidate, `removed` each sentence removed because it carried a named claim, and `unlocated`
+   * each named claim no sentence carried. An unlocated claim releases the answer unchanged and is counted, so a
+   * floor that could not point at content never silently withholds one and never silently lets one pass. */
+  withheld?: ClaimWithheld }
+/** What the claim-scoped floor removed, and what it could not locate. */
+export interface ClaimWithheld { rules: string[]; removed: string[]; unlocated: string[] }
+const validWithheld = (value: unknown): boolean => {
+  const record = value as { rules?: unknown; removed?: unknown; unlocated?: unknown } | null;
+  const strings = (list: unknown) => Array.isArray(list) && list.every(item => typeof item === 'string' && !!item);
+  return !!record && Object.keys(record).length === 3 && strings(record.rules) && strings(record.removed) && strings(record.unlocated);
+};
 /** A candidate kept back by a mandatory floor after its one bounded correction did not clear it: the holding notice
  * was sent in its place, and the agent's answer to each objection is recorded here (Rules 4, 41, 86). */
-export interface ReplyHeld { objections: string[]; reason?: string; dispositions: ObjectionDisposition[]; responseSkipped?: ResponseSkipped }
+export interface ReplyHeld { objections: string[]; reason?: string; dispositions: ObjectionDisposition[]; responseSkipped?: ResponseSkipped;
+  /** Present when the claim-scoped floor ran and nothing substantive survived the removal: the named claim WAS
+   * the whole answer, so the notice stands in for no surviving content (plan #215). */
+  withheld?: ClaimWithheld }
 export type ResponseSkipped = 'deadline' | 'call cap';
 const RESPONSE_SKIPPED: readonly unknown[] = ['deadline', 'call cap'];
 export const SEARCH_GUIDANCE = ' memorySearch contains bounded, ranked evidence from this journal for the current question. Cite the source and date, present current values before superseded history, and report forgotten counts without content. A miss is not proof of absence; truncated means the citation list is incomplete. Imported sender metadata keeps its recorded provenance.';
@@ -169,7 +184,7 @@ export const PREVIEW_LIVE_GATES = Object.freeze([
   { gate: 'link shape before send', fails: 'open', preserves: 'signal on the send record', basis: 'Rules 86, 106' },
   { gate: 'credential shape before send', fails: 'closed', preserves: 'candidate and message; honest notice sent', basis: 'Rule 4 secret floor (shape, not proof of liveness)' },
   { gate: 'credential named by a check (Jev with no review verdict, or a review violation)', fails: 'closed', preserves: 'candidate and message; holding reply sent, or a reply-check hold', basis: 'Rule 86 secrets exception' },
-  { gate: 'untracked deferral or unevidenced cannot-do claim (full-context review)', fails: 'closed', preserves: 'candidate, answer and its declared record; holding reply sent, or a reply-check hold', basis: 'Rules 6, 20, 21, 23 (build 4); Rule 86 full-context gate' },
+  { gate: 'untracked deferral or unevidenced cannot-do claim (full-context review)', fails: 'closed', preserves: 'candidate, answer and its declared record; when the review names a claim, only the sentences carrying it are removed and the remainder goes out with the removal recorded; the holding reply stands in only when nothing substantive survives, and a reply-check hold when the review could not decide at all', basis: 'Rules 6, 20, 21, 23 (build 4); Rule 86 full-context gate; Rules 4, 77, 95 scope it to the content it named' },
   { gate: 'operator stop and trial expiry', fails: 'closed', preserves: 'journal and queued input; a stop act on the independent surface stays there until consumed', basis: 'Rule 4 emergency stop; governed expiry; Eleven §4' },
   { gate: 'model call cap', fails: 'closed', preserves: 'held message; limited answer from the reserve', basis: 'Rule 4 spend floor; Rule 15' },
   { gate: 'ordinary reply and turn caps', fails: 'open', preserves: 'input via the minimal reserve', basis: 'Rule 15' },
@@ -912,17 +927,45 @@ const jevNonSecretFlags = (turn: Turn, candidateDigest?: string): ReplyRule[] | 
 export const REVIEW_HOLDING_RULES: readonly ReplyRule[] = Object.freeze(['credential', 'defers_work', 'unrecorded_blocker']);
 const jevCredentialFlag = (turn: Turn, candidateDigest: string): boolean => (turn.replyChecks ?? []).some(check =>
   jevConfidentCredential(check) && (check.candidateDigest === undefined || check.candidateDigest === candidateDigest));
-const reviewHoldingFlag = (turn: Turn, candidateDigest: string): boolean => {
+/** The holding rules the last contextual review of this exact candidate named, with the per-rule findings that
+ * carry each one's quoted claim (Rules 41, 108: a conclusion and its reason stay separate claims). */
+const reviewHoldingFindings = (turn: Turn, candidateDigest: string): { rules: ReplyRule[]; findings: ReplyFinding[] } => {
   const review = [...(turn.replyChecks ?? [])].reverse().find(check => check.path !== 'jev' && check.verdict === 'violation'
     && (check.candidateDigest === undefined || check.candidateDigest === candidateDigest));
-  return review?.ruleIds.some(rule => REVIEW_HOLDING_RULES.includes(rule)) === true;
+  return { rules: (review?.ruleIds ?? []).filter(rule => REVIEW_HOLDING_RULES.includes(rule)),
+    findings: (review?.findings ?? []).filter(finding => finding.verdict === 'violation' && CLAIM_SCOPED_RULES.includes(finding.rule)) };
 };
+const reviewHoldingFlag = (turn: Turn, candidateDigest: string): boolean =>
+  reviewHoldingFindings(turn, candidateDigest).rules.length > 0;
+/** The credential floors inside the held classes (Rules 4, 86). These alone may withhold a WHOLE reply, because
+ * what they name is the reply's fitness to leave at all rather than one claim inside it. */
+const credentialHeldClass = (turn: Turn, candidateDigest: string): boolean =>
+  jevCredentialFlag(turn, candidateDigest) || reviewHoldingFindings(turn, candidateDigest).rules.includes('credential');
 /** Build 4's obligation floor (Rules 6, 20, 21, 23) against reachability (Rules 77, 86, 95): only a refused deferral,
  * blocker or recheck forces the contextual review and its mandatory hold. A refused fulfillment claim has already
  * lost its one authority (it closes no commitment), so it stays a counted signal and its reply takes the ordinary
  * review route: an unavailable review cannot silence a reply over it. */
 const refusedObligation = (turn: Turn): boolean =>
   Boolean(turn.answerRejected?.loops || turn.answerRejected?.blocker || turn.answerRejected?.rechecks);
+/** Content-free status: what the claim-scoped floor did (plan #215). `trimmed` counts answers sent with the named
+ * sentences removed, `sentencesRemoved` those sentences, `heldWithNothingLeft` the answers that were ENTIRELY the
+ * named claim (notice sent), and `unlocatedClaims` the named claims no sentence carried, which released the answer
+ * unchanged. A rising `unlocatedClaims` means reviewers are not quoting their claims, not that the floor is idle. */
+export function claimScopedWithholds(view: JournalView): { trimmed: number; sentencesRemoved: number;
+  heldWithNothingLeft: number; unlocatedClaims: number; byRule: Partial<Record<ReplyRule, number>> } {
+  const byRule: Partial<Record<ReplyRule, number>> = {};
+  let trimmed = 0, sentencesRemoved = 0, heldWithNothingLeft = 0, unlocatedClaims = 0;
+  for (const turn of view.order) {
+    const record = turn.release?.withheld ?? turn.heldReview?.withheld;
+    if (!record) continue;
+    if (record.removed.length) { if (turn.heldReview?.withheld) heldWithNothingLeft++; else trimmed++; }
+    sentencesRemoved += record.removed.length;
+    unlocatedClaims += record.unlocated.length;
+    for (const rule of record.rules) if (REVIEW_HOLDING_RULES.includes(rule as ReplyRule))
+      byRule[rule as ReplyRule] = (byRule[rule as ReplyRule] ?? 0) + 1;
+  }
+  return { trimmed, sentencesRemoved, heldWithNothingLeft, unlocatedClaims, byRule };
+}
 /** Content-free status: replies sent on Jev's non-secret flags while the review was unavailable. */
 export function reviewUnavailableReleases(view: JournalView): { total: number; byRule: Partial<Record<ReplyRule, number>> } {
   const byRule: Partial<Record<ReplyRule, number>> = {};
@@ -2842,10 +2885,12 @@ function project(view: JournalView, row: JournalRecord, system?: SystemCheck): v
       || row.release !== undefined && (!['violation', 'unavailable'].includes(row.release.review) || !Array.isArray(row.release.objections)
         || typeof row.release.revised !== 'boolean' || row.release.revised && turn.revision?.state !== 'complete'
         || row.release.dispositions !== undefined && !validDispositions(row.release.dispositions, row.release.objections)
-        || row.release.responseSkipped !== undefined && !RESPONSE_SKIPPED.includes(row.release.responseSkipped))
+        || row.release.responseSkipped !== undefined && !RESPONSE_SKIPPED.includes(row.release.responseSkipped)
+        || row.release.withheld !== undefined && !validWithheld(row.release.withheld))
       || row.heldReview !== undefined && (row.release !== undefined || !Array.isArray(row.heldReview.objections)
         || row.heldReview.objections.some(item => typeof item !== 'string') || !validDispositions(row.heldReview.dispositions, row.heldReview.objections)
-        || row.heldReview.responseSkipped !== undefined && !RESPONSE_SKIPPED.includes(row.heldReview.responseSkipped)))
+        || row.heldReview.responseSkipped !== undefined && !RESPONSE_SKIPPED.includes(row.heldReview.responseSkipped)
+        || row.heldReview.withheld !== undefined && !validWithheld(row.heldReview.withheld)))
       throw Error('preview journal: intent order');
     if (row.approval !== undefined && (!isStopCommand(turn.text) || !validApproval(view, turn.id, row.approval, 'stop', row.text)))
       throw Error('preview journal: stop request refused');
@@ -5923,23 +5968,50 @@ export function createJournalWorker(journal: ReturnType<typeof openPreviewJourna
               if (!(check?.verdict === 'pass' || check?.verdict === 'violation'
                 && !check.ruleIds.some(rule => REVIEW_HOLDING_RULES.includes(rule)))) revised = undefined;
             }
+            // THE CLAIM-SCOPED FLOOR (plan #215; Rules 2, 4, 42, 77, 86, 95): a gate withholds only what it
+            // NAMED. The two credential floors keep the whole-reply notice, because what they name is the reply's
+            // fitness to leave at all. A full-context objection on an untracked deferral or an unevidenced
+            // cannot-do claim names CONTENT, and its reason quotes that claim, so the sentences carrying the claim
+            // are removed from the reviewed candidate and the rest of the answer is sent. Nothing is paraphrased,
+            // rewritten or added, and no further call is made: this is deterministic enforcement of the recorded
+            // judgment, not a second judgment. What was removed, and any named claim no sentence carried, is
+            // recorded with the send and counted, so neither a withholding nor a pass is silent.
+            let withheld: ClaimWithheld | undefined, scoped: string | undefined, nothingLeft = false;
+            if (revised === undefined && holding && !credentialHeldClass(turn, candidateDigest)) {
+              const named = reviewHoldingFindings(turn, candidateDigest);
+              const claims = named.findings.flatMap(finding => quotedSpans(finding.reason));
+              const stripped = (actionHeader === undefined ? reply : reply.slice(actionHeader.length + 1))
+                .replace(/^PREVIEW(?=$|[\s:—])(?:\s*[:—])?\s*/u, '');
+              const body = continuity && stripped.startsWith(continuity.disclosure)
+                ? stripped.slice(continuity.disclosure.length).trimStart() : stripped;
+              const cut = exciseNamedClaims(body, claims);
+              withheld = { rules: named.rules, removed: cut.removed, unlocated: cut.unlocated };
+              if (cut.removed.length) {
+                const candidate = actionHeader === undefined ? disclosed(`PREVIEW — ${cut.text}`) : `${actionHeader}\n${cut.text}`;
+                if (substantiveReply(cut.text) && !redact(candidate).count && fits(candidate) && fits(encodeReply(candidate))) scoped = candidate;
+                else nothingLeft = true;
+              }
+            }
             const dispositions = turn.revision?.dispositions && validDispositions(turn.revision.dispositions, objections)
               ? turn.revision.dispositions : noDecisions(objections);
             const skipped: ResponseSkipped | undefined = decision === 'violation' && ports.replyCheck.revise && originalPrompt !== undefined
               && !turn.revisionReserved ? !inTime() ? 'deadline' : journal.view.calls >= journal.view.limits.maxCalls ? 'call cap' : undefined : undefined;
             const note = reason ?? (decision === 'unavailable' || inTime() ? undefined : REPLY_CHECK_BUDGET_REASON);
             if (revised !== undefined) { reply = revised; mentionedKeys = []; }
-            else if (holding) {
+            else if (scoped !== undefined) { reply = scoped; mentionedKeys = []; }
+            else if (holding && (nothingLeft || withheld === undefined)) {
               reply = actionHeader === undefined ? disclosed(HOLDING_REPLY) : `${actionHeader}\n${HOLDING_REPLY.replace(/^PREVIEW — /u, '')}`;
               heldBack = true; speaker = 'infrastructure';
-              held = { objections, ...(note === undefined ? {} : { reason: note }), dispositions, ...(skipped ? { responseSkipped: skipped } : {}) };
+              held = { objections, ...(note === undefined ? {} : { reason: note }), dispositions, ...(skipped ? { responseSkipped: skipped } : {}),
+                ...(withheld === undefined ? {} : { withheld }) };
             } else if (credentialShape) {
               reply = actionHeader === undefined ? disclosed(CREDENTIAL_SHAPE_NOTICE)
                 : `${actionHeader}\n${CREDENTIAL_SHAPE_NOTICE.replace(/^PREVIEW — /u, '')}`;
               heldBack = true; speaker = 'infrastructure';
             }
             if (!held) release = { review: decision, objections, ...(note === undefined ? {} : { reason: note }),
-              revised: revised !== undefined, dispositions, ...(skipped ? { responseSkipped: skipped } : {}) };
+              revised: revised !== undefined, dispositions, ...(skipped ? { responseSkipped: skipped } : {}),
+              ...(withheld === undefined ? {} : { withheld }) };
           }
         } else if (linkRules.length) release = { review: 'violation', objections: linkRules, reason: linkReason, revised: false,
           dispositions: noDecisions(linkRules) };

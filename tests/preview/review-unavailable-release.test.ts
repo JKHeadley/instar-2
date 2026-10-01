@@ -112,11 +112,17 @@ it('an ordinary review violation is released with its objection; a review naming
   await withJournal(async path => {
     const sent: string[] = [];
     const journal = openPreviewJournal(path, key, genesis());
+    // As live, the violation quotes the claim it objects to. Here that claim is the whole one-sentence answer,
+    // so nothing survives the claim-scoped removal and the notice stands in for no surviving content (plan #215).
     const worker = createJournalWorker(journal, ports(sent, jevFlags('defers_work'), async () =>
-      ({ verdict: 'violation' as const, ruleIds: ['defers_work'], reason: 'defers without a record', confidence: null, latencyMs: 0 })));
+      ({ verdict: 'violation' as const, ruleIds: ['defers_work'], reason: 'defers without a record', confidence: null, latencyMs: 0,
+        findings: [{ rule: 'defers_work' as const, verdict: 'violation' as const,
+          reason: `The reply promises "${CANDIDATE.replace(/^PREVIEW — /u, '')}" and declaredObligations.loops is empty.` }] })));
     worker.intake([update(1, 'Remind me on Friday at 9')]); await worker.drain();
     expect(sent).toEqual([HOLDING_REPLY]);
     expect(journal.view.order[0]?.release).toBeUndefined();
+    expect(journal.view.order[0]?.heldReview?.withheld)
+      .toEqual({ rules: ['defers_work'], removed: [CANDIDATE.replace(/^PREVIEW — /u, '')], unlocated: [] });
     journal.close();
   });
 });

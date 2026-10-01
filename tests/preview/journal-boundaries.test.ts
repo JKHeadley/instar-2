@@ -339,8 +339,11 @@ describe('Rule 110: the first reply sent from a compacted context discloses it a
     } finally { rmSync(tooLong.dir, { recursive: true, force: true }); }
     const held = setup(7000, errands, () => 'An answer the review holds.', {
       replyCheck: { elapsedMs: () => 1, jev: async () => { throw Error('Jev unavailable'); },
-        // cint-2: an ordinary objection is advisory (build 3); an untracked deferral still holds (build 4).
-        escalate: async () => ({ verdict: 'violation' as const, ruleIds: ['defers_work'], confidence: null, latencyMs: 1 }) } });
+        // cint-2: an ordinary objection is advisory (build 3); an untracked deferral still holds (build 4). Plan
+        // #215: the violation quotes its claim, and here that claim is the whole answer, so the notice stands.
+        escalate: async () => ({ verdict: 'violation' as const, ruleIds: ['defers_work'], confidence: null, latencyMs: 1,
+          findings: [{ rule: 'defers_work' as const, verdict: 'violation' as const,
+            reason: 'The reply promises "An answer the review holds." and declaredObligations.loops is empty.' }] }) } });
     try {
       summarize(held.journal, 30, 'Errands and a plumber quote question.');
       held.worker.intake([update(31, 'Hello again')]); await held.worker.drain();

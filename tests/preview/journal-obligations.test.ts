@@ -8,7 +8,7 @@ import { createJournalWorker, openPreviewJournal, openBlockers, openDirectives, 
   LOOP_REVISIT_MS, BLOCKER_RECHECK_MAX_MS, DIRECTIVE_SHARE } from './journal-test-worker.js';
 import { loopHealth, loopStatusLines, BACKLOG_AGE_LIMIT_MS } from './obligations.js';
 import { statusReply } from './status-command.js';
-import { DECLARED_OBLIGATIONS_GUIDE, HOLDING_REPLY, REPLY_RULES, replyReviewContext, replyReviewQuestion, type ObjectionDisposition, type ReplyRule } from './reply-check.js';
+import { DECLARED_OBLIGATIONS_GUIDE, HOLDING_REPLY, REPLY_RULES, replySegments, replyReviewContext, replyReviewQuestion, type ObjectionDisposition, type ReplyRule } from './reply-check.js';
 import { prepareJournalEnvelope } from './journal-envelope.js';
 import { redact } from '../../src/recall/redact.js';
 import { appendRun, readRuns } from './self-state.js';
@@ -53,8 +53,13 @@ function world(root: string, options: { maxBytes?: number; maxCalls?: number; an
         const context = JSON.parse(replyReviewContext(envelope, text, rules, declaredObligations(journal.view, id, clock.now))) as Record<string, unknown>;
         reviews.push(context);
         const verdict = review.verdict?.(context) ?? 'pass';
-        return { verdict, ruleIds: verdict === 'pass' ? [] : [rules?.includes('defers_work') ? 'defers_work' : rules?.[0] ?? 'defers_work'],
-          confidence: null, latencyMs: 0 };
+        const named: ReplyRule[] = verdict === 'pass' ? [] : [rules?.includes('defers_work') ? 'defers_work' : rules?.[0] ?? 'defers_work'];
+        // As live: a violation names its rule AND quotes the claim it objects to (the review question requires
+        // it, and the claim-scoped floor reads that quote). The first sentence is what the live reviewer quoted.
+        const claim = (replySegments(text)[0]?.text ?? text).replace(/^PREVIEW — /u, '');
+        return { verdict, ruleIds: named, confidence: null, latencyMs: 0,
+          findings: named.map(rule => ({ rule, verdict: 'violation' as const,
+            reason: `The reply states "${claim}" and declaredObligations records no ${rule === 'defers_work' ? 'loop' : 'blocker'} for it.` })) };
       }, ...(review.revise ? { revise: review.revise } : {}) } } : {}),
     model: async input => {
       if (input.id.startsWith('obligation:')) {
@@ -598,8 +603,11 @@ it('gives a held deferral one bounded correction: a revalidated correction is se
         expect(w.sent.join('\n'), label).not.toContain('later today');
         expect(turn.release, label).toBeUndefined();
         // The agent's answer is recorded as given; an unavailable response is no decision, never a rejection.
+        // Plan #215: the whole answer WAS the named deferral, so nothing survived the claim-scoped removal and the
+        // notice stands in for no surviving content — recorded, so this case is countable rather than silent.
         expect(turn.heldReview, label).toEqual({ objections: ['defers_work'],
-          dispositions: correction ? correction.dispositions : [{ objection: 'defers_work', decision: 'no-decision' }] });
+          dispositions: correction ? correction.dispositions : [{ objection: 'defers_work', decision: 'no-decision' }],
+          withheld: { rules: ['defers_work'], removed: [LATER], unlocated: [] } });
       }
       expect(w.journal.view.commitments.filter(note => note.loop), label).toHaveLength(0);
       w.journal.close();
@@ -670,7 +678,9 @@ it('sends a true can\'t-do answer once its correction declares the investigation
         expect(w.sent[0], label).toContain(HOLDING_REPLY.replace(/^PREVIEW — /u, ''));
         expect(turn.revision?.blocker, label).toBeUndefined();
         expect(openBlockers(w.journal.view), label).toEqual([]);
-        expect(turn.heldReview, label).toEqual({ objections: ['unrecorded_blocker'], dispositions: accept });
+        // Plan #215: the claim was the whole answer, so the notice stands in for nothing surviving.
+        expect(turn.heldReview, label).toEqual({ objections: ['unrecorded_blocker'], dispositions: accept,
+          withheld: { rules: ['unrecorded_blocker'], removed: [CLAIM], unlocated: [] } });
       }
       w.journal.close();
       // Replay: the admitted record survives a reopen exactly as it was sent.
@@ -738,8 +748,16 @@ it('judges a restated can\'t-do answer against the limit it already settled, and
         expect(w.sent.at(-1), label).toBe(`PREVIEW — ${DMV_AGAIN}`);
         expect(turn.heldReview, label).toBeUndefined();
       } else {
-        expect(w.sent.at(-1), label).toContain(HOLDING_REPLY.replace(/^PREVIEW — /u, ''));
-        expect(turn.heldReview?.objections, label).toEqual(['unrecorded_blocker']);
+        // Plan #215: an unevidenced restatement no longer silences the whole answer. The sentence carrying the
+        // claim the review named is removed and the rest — what the operator can actually do — is sent.
+        expect(w.sent.at(-1), label).not.toContain(HOLDING_REPLY.replace(/^PREVIEW — /u, ''));
+        expect(w.sent.at(-1), label).not.toContain('I still can\'t');
+        expect(w.sent.at(-1), label).toContain('You\'d need to renew your car registration yourself');
+        expect(turn.heldReview, label).toBeUndefined();
+        expect(turn.release?.objections, label).toEqual(['unrecorded_blocker']);
+        expect(turn.release?.withheld?.rules, label).toEqual(['unrecorded_blocker']);
+        expect(turn.release?.withheld?.removed, label).toEqual([DMV_AGAIN.split('. ')[0] + '.']);
+        expect(turn.release?.withheld?.unlocated, label).toEqual([]);
       }
       const settled = (w.reviews.at(-1)!.declaredObligations as { settled: { claim: string }[] }).settled;
       expect(settled.map(item => item.claim), label).toEqual(between === 'none' || between === 'queued-fresh' ? [first.claim] : []);

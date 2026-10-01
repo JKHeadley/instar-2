@@ -394,3 +394,114 @@ export async function reviewReply(text: string, id: string, ports: ReplyCheckPor
     return { outcome: 'unavailable', path: 'subscription' };
   }
 }
+
+/** THE CLAIM-SCOPED FLOOR (plan #215; Rules 2, 4, 42, 77, 86, 95).
+ *
+ * A gate withholds only what it named. The two credential floors may withhold a whole reply, because what they
+ * name IS the reply's fitness to leave; every other pre-send objection names CONTENT, and so may remove only that
+ * content. The measured defect this closes: on 2026-10-01, 5 of 62 operator turns ended with the holding notice and
+ * no answer, because a review violation on `defers_work` / `unrecorded_blocker` replaced the whole answer whenever
+ * the one revision round did not clear it (and its own review could not run inside the shared 30 s budget).
+ *
+ * The review question already requires a violation reason to quote the offending claim, so the claim is located
+ * exactly in the reviewed text and the sentences carrying it are removed. Code removes only what the reviewer
+ * named — nothing is paraphrased, rewritten or added — so this is deterministic enforcement of a recorded
+ * judgment (Rule 4), not a second judgment, and it needs no further model call. */
+export const CLAIM_SCOPED_RULES: readonly ReplyRule[] = Object.freeze(['defers_work', 'unrecorded_blocker']);
+/** Shortest named claim acted on. Below this a span is a fragment ("later", "a deferral"), not a claim, so it
+ * names nothing. The live recorded claim `I'll summarize then` is 19 characters, which sets the bound. */
+export const CLAIM_MATCH_MIN = 12;
+/** A reason is length-bounded, so a long claim can arrive truncated. Its opening run then locates the sentence,
+ * but only a run long enough to be unambiguous — a short claim must match outright. */
+export const CLAIM_PREFIX_MIN = 24;
+/** Least visible text that still answers the operator. Below it nothing substantive survived the removal. */
+export const SUBSTANTIVE_MIN = 24;
+
+const quoteFolds: readonly [RegExp, string][] = [[/[\u2018\u2019\u02bc\u2032]/gu, "'"],
+  [/[\u201c\u201d\u2033]/gu, '"'], [/[\u2010-\u2015]/gu, '-'], [/\s+/gu, ' ']];
+/** Quote style, dash style and spacing differ between a reviewer's quote and the reply it quotes; meaning does not. */
+export const foldClaim = (text: string): string =>
+  quoteFolds.reduce((result, [pattern, replacement]) => result.replace(pattern, replacement), text)
+    .replace(/\u2026+$/u, '').trim().toLowerCase();
+
+/** The spans a reviewer put in quotes. An apostrophe between two letters ("I'll", "can't") never opens or closes
+ * a span: the live reason `Reply promises 'I'll summarize then' (future work)` must yield the whole promise, not
+ * the single letter before the apostrophe inside it. */
+export function quotedSpans(reason: string): string[] {
+  const found: string[] = [];
+  const letter = /\p{L}|\p{N}/u;
+  const pairs: readonly [string, string][] = [['"', '"'], ['\u201c', '\u201d']];
+  for (const [open, close] of pairs) {
+    let at = reason.indexOf(open);
+    while (at >= 0) {
+      const end = reason.indexOf(close, at + 1);
+      if (end < 0) break;
+      found.push(reason.slice(at + 1, end));
+      at = reason.indexOf(open, end + 1);
+    }
+  }
+  for (const mark of ["'", '\u2018']) {
+    const closer = mark === "'" ? "'" : '\u2019';
+    let at = 0;
+    while (at < reason.length) {
+      const open = reason.indexOf(mark, at);
+      if (open < 0) break;
+      const before = reason[open - 1];
+      if (before !== undefined && letter.test(before)) { at = open + 1; continue; }
+      let end = -1;
+      for (let scan = reason.indexOf(closer, open + 1); scan >= 0; scan = reason.indexOf(closer, scan + 1)) {
+        const after = reason[scan + 1];
+        if (after !== undefined && letter.test(after)) continue;
+        end = scan; break;
+      }
+      if (end < 0) break;
+      found.push(reason.slice(open + 1, end));
+      at = end + 1;
+    }
+  }
+  return found.map(span => span.trim()).filter(span => span.length >= CLAIM_MATCH_MIN);
+}
+
+/** Sentence segments of a reply, each with the separator that followed it, so what is kept re-joins unchanged. */
+export function replySegments(text: string): { text: string; separator: string }[] {
+  const segments: { text: string; separator: string }[] = [];
+  let start = 0;
+  for (const match of text.matchAll(/(?<=[.!?\u2026])\s+|\n+/gu)) {
+    const at = match.index ?? 0;
+    segments.push({ text: text.slice(start, at), separator: match[0] });
+    start = at + match[0].length;
+  }
+  if (start < text.length) segments.push({ text: text.slice(start), separator: '' });
+  return segments;
+}
+
+/** True when this segment carries the named claim: it contains the claim, the claim spans it, or the claim's
+ * opening run appears in it (a reason is length-bounded, so a long claim arrives truncated). */
+export function segmentCarries(segment: string, claim: string): boolean {
+  const text = foldClaim(segment), named = foldClaim(claim);
+  if (named.length < CLAIM_MATCH_MIN) return false;
+  if (text.includes(named)) return true;
+  if (text.length >= CLAIM_PREFIX_MIN && named.includes(text)) return true;
+  return named.length > CLAIM_PREFIX_MIN && text.includes(named.slice(0, CLAIM_PREFIX_MIN));
+}
+
+/** What survived, what was removed, and every named claim no sentence carried. Nothing is ever silently
+ * dropped: an unlocated claim is reported to the caller, which records and counts it (Rules 2, 42). */
+export interface ClaimExcision { text: string; removed: string[]; unlocated: string[] }
+export function exciseNamedClaims(body: string, claims: readonly string[]): ClaimExcision {
+  const segments = replySegments(body);
+  const named = [...new Set(claims.map(claim => claim.trim()).filter(Boolean))];
+  const cut = new Set<number>(), located = new Set<string>();
+  for (const claim of named) for (const [index, segment] of segments.entries())
+    if (segmentCarries(segment.text, claim)) { cut.add(index); located.add(claim); }
+  const kept = segments.filter((_, index) => !cut.has(index));
+  let text = '';
+  for (const [index, segment] of kept.entries())
+    text += (index === 0 ? '' : kept[index - 1]!.separator.includes('\n') ? '\n' : ' ') + segment.text.trim();
+  return { text: text.trim(), removed: segments.filter((_, index) => cut.has(index)).map(segment => segment.text.trim()),
+    unlocated: named.filter(claim => !located.has(claim)) };
+}
+
+/** Enough text left to answer the operator at all. Below this the named claim WAS the whole answer, and the
+ * holding notice is the honest reply rather than a notice standing in for content that survived. */
+export const substantiveReply = (text: string): boolean => text.trim().length >= SUBSTANTIVE_MIN;
