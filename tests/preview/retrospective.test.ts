@@ -69,6 +69,19 @@ function world(options: { calls?: number; duringCall?: (id: string, journal: Ret
   return { root, path, journal, worker, states, contexts, modelIds, advance: (ms: number) => { now += ms; }, at: () => now,
     answerWith: (fn: (state: string) => string) => { reply = fn; }, modelAnswer: (value: unknown) => { answer = value; },
     retrospect: () => worker.retrospect(DIGEST),
+    /** Runs passes until nothing more is owed. One pass's answer must fit the route's output cap, so a test
+     * that needs every owed case reviewed needs more than one pass: the hourly cadence while enough is owed,
+     * then the design's other route, age, for the tail below the message threshold. Bounded. */
+    drain: async (rounds = 20) => {
+      let ran = 0;
+      const due = () => retrospectivePlan(journal.view, retrospectiveCases(journal.view), now, DIGEST);
+      for (let round = 0; round < rounds; round++) {
+        if (!due()) { now += RETRO_STALE_CASE_MS; if (!due()) return ran; }
+        await worker.retrospect(DIGEST); ran++;
+        now += RETRO_MIN_INTERVAL_MS;
+      }
+      return ran;
+    },
     converse: async (texts: string[]) => { worker.intake(texts.map(text => update(next++, text, now))); await worker.drain(); },
     done: () => { try { journal.close(); } catch { /* closed by the test */ } rmSync(root, { recursive: true, force: true }); } };
 }
@@ -102,15 +115,18 @@ describe('retrospective review: delivery, bounds and durability', () => {
       w.advance(RETRO_MIN_INTERVAL_MS);
       await w.retrospect();
       expect(w.states).toHaveLength(2);
-      // One final correction: not due at once, due once it has waited a day (never stranded).
+      // One final correction, with the backlog already reviewed: not due at once, due once it has waited a day
+      // (never stranded). The backlog needs more than one pass because each pass's answer must fit the cap.
+      await w.drain();
+      const reviewed = w.states.length;
       await w.converse(['No, that was wrong.']);
       w.advance(RETRO_MIN_INTERVAL_MS);
       await w.retrospect();
-      expect(w.states).toHaveLength(2);
+      expect(w.states).toHaveLength(reviewed);
       w.advance(RETRO_STALE_CASE_MS);
       await w.retrospect();
-      expect(w.states).toHaveLength(3);
-      expect(casesOf(w.states[2]!).map(item => item.id)).toContain(`turn:${turnId(21)}`);
+      expect(w.states).toHaveLength(reviewed + 1);
+      expect(casesOf(w.states.at(-1)!).map(item => item.id)).toContain(`turn:${turnId(21)}`);
     } finally { w.done(); }
     const tight = world({ calls: 13 });
     try {
@@ -167,8 +183,10 @@ describe('MUST-FIX 1: actual inspected/omitted accounting', () => {
       expect(pass.state).toBe('complete');
       const population = retrospectiveCases(w.journal.view).map(item => item.id);
       expect(owedIds(w.journal.view)).toEqual(population);
-      expect(passAccounting(pass)).toMatchObject({ inspected: 0, omitted: pass.cases.length, eligible: pass.cases.length, complete: true });
-      expect(retrospectiveStatusLine(w.journal.view)).toContain(`inspected 0 of ${String(pass.cases.length)}`);
+      // The accounting population is this pass's own: the cases it was given plus the ones it deferred itself.
+      const eligible = pass.cases.length + pass.omitted.length;
+      expect(passAccounting(pass)).toMatchObject({ inspected: 0, omitted: eligible, eligible, complete: true });
+      expect(retrospectiveStatusLine(w.journal.view)).toContain(`inspected 0 of ${String(eligible)}`);
       w.journal.close();
       const replay = openPreviewJournal(w.path, key, undefined, undefined, true);
       expect(owedIds(replay.view)).toEqual(population);
@@ -180,9 +198,12 @@ describe('MUST-FIX 1: actual inspected/omitted accounting', () => {
       ok.answerWith(state => answerFor(state, { grades: casesOf(state).filter(item => item.category === 'decision').map(item => ({ case: item.id,
         conclusion: { assessment: 'not-applicable', evidence: [] }, reason: { assessment: 'not-applicable', evidence: [] },
         outcome: { assessment: 'not-applicable', reason: 'an acknowledgement', evidence: [] }, observations: [] })) }));
-      await ok.retrospect();
+      await ok.drain();
       expect(owedIds(ok.journal.view)).toEqual([]);
-      expect(passAccounting(ok.journal.view.retroPasses[0]!)).toMatchObject({ inspected: 20, omitted: 0, complete: true });
+      const inspected = ok.journal.view.retroPasses.reduce((total, pass) => total + (pass.result?.inspected.length ?? 0), 0);
+      expect(inspected).toBe(20);
+      for (const pass of ok.journal.view.retroPasses)
+        expect(passAccounting(pass)).toMatchObject({ omitted: pass.omitted.length, complete: true });
     } finally { ok.done(); }
   });
 
@@ -200,16 +221,21 @@ describe('MUST-FIX 2: owed work makes progress without new conversation', () => 
   it('re-presents an open improvement item a day later with no new messages', async () => {
     const w = world();
     try {
-      await w.converse(words.slice(0, 10));
+      // Four messages, due on age: a conversation one pass can review whole, so what is owed afterwards is only
+      // the work the pass itself opened (one pass's answer has to fit the route's output cap).
+      await w.converse(words.slice(0, 4));
+      w.advance(RETRO_STALE_CASE_MS);
       w.answerWith(state => answerFor(state, { findings: [{ duty: 'waste', refs: [casesOf(state)[0]!.id], summary: 'Repair needed',
         disposition: { owner: 'agent', next: 'Evaluate the repair' } }] }));
       await w.retrospect();
       const view = w.journal.view;
+      expect(view.retroPasses[0]).toMatchObject({ state: 'complete' });
+      expect(view.retroPasses[0]!.omitted).toEqual([]);
       expect(retrospectivePlan(view, retrospectiveCases(view), w.at() + RETRO_MIN_INTERVAL_MS, DIGEST)).toBeNull();
       const plan = retrospectivePlan(view, retrospectiveCases(view), w.at() + RETRO_STALE_CASE_MS, DIGEST);
       expect(plan?.cases.map(item => item.id)).toEqual(['open:retro:0:0']);
       // Seven days on, the still-pending grades are re-presented too, so they can be closed rather than stranded.
-      expect(retrospectivePlan(view, retrospectiveCases(view), w.at() + RETRO_PENDING_RECHECK_MS, DIGEST)?.cases.length).toBe(11);
+      expect(retrospectivePlan(view, retrospectiveCases(view), w.at() + RETRO_PENDING_RECHECK_MS, DIGEST)?.cases.length).toBe(5);
     } finally { w.done(); }
   });
 
@@ -219,7 +245,9 @@ describe('MUST-FIX 2: owed work makes progress without new conversation', () => 
       await w.converse(words.slice(0, 10));
       await w.retrospect();
       const answer = `answer:${turnId(1)}`;
-      expect(pendingGrades(w.journal.view).length).toBe(10);
+      // Every decision this pass graded is pending; the oldest answer is among them (cases are taken oldest first).
+      expect(pendingGrades(w.journal.view).length).toBe(w.journal.view.retroPasses[0]!.result!.grades.length);
+      expect(latestGrades(w.journal.view).get(answer)?.grade.outcome.assessment).toBe('pending');
       expect(owedIds(w.journal.view)).not.toContain(answer);
       for (let round = 0; round < 4; round++) {
         await w.converse([`later ${String(round)}`]);
@@ -246,7 +274,10 @@ describe('MUST-FIX 3: feedback follow-through and proof', () => {
   it('turns owned feedback into one open improvement item delivered to the next reply, closed only by later evidence', async () => {
     const w = world();
     try {
-      await w.converse(['What is 2+2?', 'Your replies are too long, keep them to two sentences.', ...words.slice(2, 10)]);
+      // Two messages, due on age: a conversation one pass reviews whole, so the later pass that verifies the
+      // improvement is given the very records it must cite (one pass's answer has to fit the route's output cap).
+      await w.converse(['What is 2+2?', 'Your replies are too long, keep them to two sentences.']);
+      w.advance(RETRO_STALE_CASE_MS);
       w.answerWith(state => answerFor(state, { feedback: [{ case: `turn:${turnId(2)}`, classification: 'reply length',
         disposition: 'improvement-owned', owner: 'agent', next: 'Use exactly two sentences.' }] }));
       await w.retrospect();
@@ -256,22 +287,22 @@ describe('MUST-FIX 3: feedback follow-through and proof', () => {
       await w.converse(['How are the answers now?']);
       expect(w.contexts.at(-1)).toContain('Use exactly two sentences.');
       // Verified improvement needs the item it proves and later evidence; prose alone is refused.
-      await w.converse(['Much better, thanks.', ...words.slice(11, 20)]);
-      w.advance(RETRO_MIN_INTERVAL_MS);
+      await w.converse(['Much better, thanks.']);
+      w.advance(RETRO_STALE_CASE_MS);
       w.answerWith(state => answerFor(state, { feedback: [{ case: `turn:${turnId(2)}`, classification: 'reply length',
         disposition: 'verified-improvement', reason: 'I fixed it' }] }));
       await w.retrospect();
       expect(w.journal.view.retroPasses[1]).toMatchObject({ state: 'failed', reason: expect.stringContaining('names the open improvement item') });
       expect(openFindings(w.journal.view)).toHaveLength(1);
-      w.advance(6 * 3_600_000);
+      w.advance(RETRO_FAILURE_BACKOFF_MS);
       w.answerWith(state => answerFor(state, { feedback: [{ case: `turn:${turnId(2)}`, classification: 'reply length',
-        disposition: 'verified-improvement', improvementOf: 'open:retro:0:feedback:0', evidence: [`turn:${turnId(12)}`] }] }));
+        disposition: 'verified-improvement', improvementOf: 'open:retro:0:feedback:0', evidence: [`turn:${turnId(4)}`] }] }));
       await w.retrospect();
       expect(w.journal.view.retroPasses[2]?.state).toBe('complete');
       expect(openFindings(w.journal.view)).toHaveLength(0);
       expect(feedbackDispositions(w.journal.view).find(item => item.case === `turn:${turnId(2)}`)).toMatchObject({ disposition: 'verified-improvement',
-        evidence: [`turn:${turnId(12)}`] });
-      expect(w.journal.view.retroPasses[2]?.result?.closures).toEqual([{ finding: 'retro:0:feedback:0', outcome: 'improved', evidence: [`turn:${turnId(12)}`] }]);
+        evidence: [`turn:${turnId(4)}`] });
+      expect(w.journal.view.retroPasses[2]?.result?.closures).toEqual([{ finding: 'retro:0:feedback:0', outcome: 'improved', evidence: [`turn:${turnId(4)}`] }]);
     } finally { w.done(); }
   });
 
@@ -600,7 +631,8 @@ describe('Repair round 2 R2: every settled assessment stays reachable for reasse
     try {
       await w.converse(['Which bus should I take?', ...words.slice(1)]);
       w.answerWith(state => answerFor(state, { grades: settled(casesOf(state)) }));
-      await w.retrospect();
+      // Settling all twenty answers takes several passes: one pass's answer has to fit the route's output cap.
+      await w.drain();
       const old = `answer:${turnId(1)}`;
       expect(latestGrades(w.journal.view).get(old)?.grade.outcome.assessment).toBe('unverifiable');
       await w.converse(['The bus you recommended in my first question never came.']);
@@ -614,7 +646,7 @@ describe('Repair round 2 R2: every settled assessment stays reachable for reasse
         reason: { assessment: 'not-applicable', evidence: [] }, outcome: { assessment: 'unmet', reason: 'bus never arrived', evidence: [`turn:${turnId(21)}`] }, observations: [] };
       w.answerWith(state => answerFor(state, { grades: [...settled(casesOf(state)), regrade] }));
       await w.retrospect();
-      expect(w.journal.view.retroPasses[1]?.state).toBe('complete');
+      expect(w.journal.view.retroPasses.at(-1)?.state).toBe('complete');
       expect(latestGrades(w.journal.view).get(old)?.grade).toMatchObject({ reassessment: true, outcome: { assessment: 'unmet' } });
     } finally { w.done(); }
   });
@@ -626,9 +658,8 @@ describe('Repair round 2 R2: every settled assessment stays reachable for reasse
         await w.converse(long.slice(at, at + 19));
         w.advance(RETRO_STALE_CASE_MS);
         w.answerWith(state => answerFor(state, { grades: settled(casesOf(state)) }));
-        for (let round = 0; round < 3 && retrospectivePlan(w.journal.view, retrospectiveCases(w.journal.view), w.at(), DIGEST); round++) {
-          await w.retrospect(); w.advance(RETRO_MIN_INTERVAL_MS);
-        }
+        // However many passes it takes: each pass's answer has to fit the route's output cap.
+        await w.drain();
       }
       expect(pendingGrades(w.journal.view)).toHaveLength(0);
       const settledIds = [...latestGrades(w.journal.view).keys()];
@@ -795,7 +826,9 @@ describe('Repair round 3 MUST-FIX A: an older reassessment keeps its separately 
     try {
       await w.converse(['Which bus should I take?', ...words.slice(1)]);
       w.answerWith(state => answerFor(state, { grades: settled(casesOf(state)) }));
-      await w.retrospect();
+      // Settling all twenty answers takes several passes: one pass's answer has to fit the route's output cap.
+      await w.drain();
+      const settledPasses = w.journal.view.retroPasses.length;
       const old = `answer:${turnId(1)}`;
       expect(w.journal.view.order[0]?.answerReason).toBe('The bus operates on Monday.');
       expect(latestGrades(w.journal.view).get(old)?.grade.reason.assessment).toBe('unverifiable');
@@ -814,7 +847,7 @@ describe('Repair round 3 MUST-FIX A: an older reassessment keeps its separately 
       // A reassessment cannot claim no reason was ever stated: the record says one was.
       w.answerWith(state => answerFor(state, { grades: [...settled(casesOf(state)), regrade({ assessment: 'not-applicable', evidence: [] })] }));
       await w.retrospect();
-      expect(failedReason(w, 1)).toContain('stated reason is assessed separately');
+      expect(failedReason(w, settledPasses)).toContain('stated reason is assessed separately');
       expect(latestGrades(w.journal.view).get(old)?.grade.outcome.assessment).toBe('unverifiable');
       // A real assessment of that reason is accepted, with the model's own refutation and re-derivation.
       w.advance(RETRO_FAILURE_BACKOFF_MS);
@@ -822,7 +855,7 @@ describe('Repair round 3 MUST-FIX A: an older reassessment keeps its separately 
         regrade({ assessment: 'contradicted', evidence: [`turn:${turnId(21)}`] },
           { rederivation: { conclusion: 'changed', reason: 'The Monday timetable did not apply that day.' } })] }));
       await w.retrospect();
-      expect(w.journal.view.retroPasses[2]?.state).toBe('complete');
+      expect(w.journal.view.retroPasses.at(-1)?.state).toBe('complete');
       expect(latestGrades(w.journal.view).get(old)?.grade).toMatchObject({ reassessment: true,
         reason: { assessment: 'contradicted' }, rederivation: { conclusion: 'changed' } });
     } finally { w.done(); }
@@ -841,7 +874,9 @@ describe('Repair round 3 MUST-FIX B: accumulated waiver evidence never stops a r
       const plan = retrospectivePlan(w.journal.view, population, w.at(), DIGEST, evidence);
       expect(plan).not.toBeNull();
       expect(Buffer.byteLength(plan!.state)).toBeLessThanOrEqual(RETRO_MAX_STATE_BYTES);
-      expect(plan!.cases).toHaveLength(population.length);
+      // The waiver evidence crowds nothing out: the same cases are planned with it as without it.
+      expect(plan!.cases.map(item => item.id))
+        .toEqual(retrospectivePlan(w.journal.view, population, w.at(), DIGEST)!.cases.map(item => item.id));
       type Waiver = { summary: { waivers: number; linkedActs: number; actsWithoutPriorWaiver: string[];
         counts: { unusedWaivers: number; actsWithoutPriorWaiver: number };
         notShown: { actsWithoutPriorWaiver: number } }; acts: { id: string }[]; notShown: { acts: number } };
@@ -858,7 +893,7 @@ describe('Repair round 3 MUST-FIX B: accumulated waiver evidence never stops a r
       expect(Buffer.byteLength(JSON.stringify(first))).toBeLessThanOrEqual(RETRO_WAIVER_BYTES);
       // The worker itself produces the pass, with the owed message and answer cases inspected.
       w.answerWith(state => answerFor(state, { grades: settled(casesOf(state)) }));
-      await w.retrospect();
+      await w.drain();
       expect(w.journal.view.retroPasses[0]).toMatchObject({ state: 'complete' });
       expect(owedIds(w.journal.view)).toHaveLength(0);
       // Deferred act rows stay reachable: the next pass's packet shows a later page of them.
@@ -900,9 +935,10 @@ describe('Repair round 3 MUST-FIX B: accumulated waiver evidence never stops a r
       const population = retrospectiveCases(w.journal.view);
       const plan = retrospectivePlan(w.journal.view, population, w.at(), DIGEST, evidence);
       expect(plan).not.toBeNull();
-      expect(plan!.cases).toHaveLength(population.length);
+      expect(plan!.cases.map(item => item.id))
+        .toEqual(retrospectivePlan(w.journal.view, population, w.at(), DIGEST)!.cases.map(item => item.id));
       w.answerWith(state => answerFor(state, { grades: settled(casesOf(state)) }));
-      await w.retrospect();
+      await w.drain();
       expect(w.journal.view.retroPasses[0]).toMatchObject({ state: 'complete' });
       expect(owedIds(w.journal.view)).toHaveLength(0);
     } finally { w.done(); }
