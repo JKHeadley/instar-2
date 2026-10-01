@@ -10,7 +10,7 @@ Operator questions: none
 Suggested tier: significant
 Declared tier: significant
 Tier rationale: only the recorded reason string of an already-unknown send changes; classification kinds, send path and retries are untouched
-Side effects: new send-outcome rows carry " at <stage>" after "transport <limitation>"; old rows replay unchanged
+Side effects: the regression test loads the untyped production transport module dynamically (typed at the call site); new send-outcome rows carry " at <stage>" after "transport <limitation>"; old rows replay unchanged
 Undo and recovery: revert this commit; no persistent shape changes (the reason is free text already)
 Multi-machine posture: none; per-journal classification, the same on every host
 Layer below: src/assembly/telegram-bot-api-bridge.mjs uncertain() stage names and scripts/production-boot-io.mjs settle (unchanged)
