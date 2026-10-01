@@ -16,7 +16,7 @@ import { buildWorkIndex, detectOverlaps, workForTopic, type SessionActivity } fr
 import { MAX_RAISED_SUBSCRIPTION_PROMPT_BYTES, SUBSCRIPTION_CONVERSATION_SYSTEM_PROMPT, SUBSCRIPTION_PREVIEW_EXPIRY } from '../../src/assembly/production-provider.js';
 import { hasClaim, replaceClaim, supersedesCorrection } from './claim-match.mjs';
 import { checkReply as checkCoherenceOf, correctionNote, releaseFindings, COHERENCE_FINDING_LIMIT, type CoherenceFinding } from './coherence-check.js';
-import { checkReply, reviewReply, repeatsOperatorOnly, HOLDING_REPLY, jevRequestBody, JEV_RESPONSE_MAX_BYTES, REPLY_CHECK_BUDGET_MS, REPLY_CHECK_BUDGET_REASON, LINK_SHAPE_REASON, linkShapeRules, bareTopicReferences, topicNameReason, BARE_TOPIC_OBJECTION, noDecisions, validDispositions } from './reply-check.js';
+import { checkReply, reviewReply, repeatsOperatorOnly, HOLDING_REPLY, jevRequestBody, JEV_RESPONSE_MAX_BYTES, REPLY_CHECK_BUDGET_MS, REPLY_CHECK_BUDGET_REASON, LINK_SHAPE_REASON, linkShapeRules, bareTopicReferences, topicNameReason, BARE_TOPIC_OBJECTION, noDecisions, validDispositions, jevConfidentCredential } from './reply-check.js';
 import { parseDatedItem, restatedDatePhrase, dueState, selectDatedItems, withinNext48Hours, localParts, type DatedItem } from './dated-memory.js';
 import { isStatusCommand, isStopCommand, statusReply, STOP_CONFIRM_TEXT } from './status-command.js';
 import { fulfillmentProposals, legacyFulfillsReminder, promiseProposals, recordedPromises, type AgentPromise, type FulfillmentProposal, type PromiseProposal } from './agent-commitment.js';
@@ -868,16 +868,15 @@ const jevNonSecretFlags = (turn: Turn, candidateDigest?: string): ReplyRule[] | 
   if (checks.some(check => check.path !== 'jev' && check.verdict === 'violation')) return undefined;
   const jev = [...checks].reverse().find(check => check.path === 'jev' && (check.verdict === 'violation' || check.verdict === 'unsure')
     && (candidateDigest === undefined || check.candidateDigest === candidateDigest));
-  return jev?.ruleIds.length && !jev.ruleIds.includes('credential') ? jev.ruleIds : undefined;
+  return jev?.ruleIds.length && !jevConfidentCredential(jev) ? jev.ruleIds : undefined;
 };
-/** Rule 86 secrets exception: Jev's completed credential flag on this candidate keeps the reply held when no
- * review verdict exists. A contextual review violation naming a rule in `REVIEW_HOLDING_RULES` still holds:
+/** Rule 86 secrets exception: Jev's confident credential flag on this candidate keeps the reply held when no
+ * review verdict exists; its unsure band escalated, and an UNKNOWN escalation leaves only a signal (plan #102). A contextual review violation naming a rule in `REVIEW_HOLDING_RULES` still holds:
  * the secret exception, and build 4's obligation floor for an untracked deferral or an unevidenced final
  * cannot-do claim (Rules 6, 20, 21, 23). Every other objection is an advisory signal (Rules 4, 77, 86, 95). */
 export const REVIEW_HOLDING_RULES: readonly ReplyRule[] = Object.freeze(['credential', 'defers_work', 'unrecorded_blocker']);
 const jevCredentialFlag = (turn: Turn, candidateDigest: string): boolean => (turn.replyChecks ?? []).some(check =>
-  check.path === 'jev' && (check.verdict === 'violation' || check.verdict === 'unsure') && check.ruleIds.includes('credential')
-  && (check.candidateDigest === undefined || check.candidateDigest === candidateDigest));
+  jevConfidentCredential(check) && (check.candidateDigest === undefined || check.candidateDigest === candidateDigest));
 const reviewHoldingFlag = (turn: Turn, candidateDigest: string): boolean => {
   const review = [...(turn.replyChecks ?? [])].reverse().find(check => check.path !== 'jev' && check.verdict === 'violation'
     && (check.candidateDigest === undefined || check.candidateDigest === candidateDigest));
