@@ -107,8 +107,9 @@ export function mergeHalfReports(halves, context) {
     else if (CONCAT.includes(key)) merged[key] = [...(a[key] ?? []), ...(b[key] ?? [])];
     else refuse(`unknown report field ${JSON.stringify(key)}: teach the merge how it combines`);
   }
-  // Rebased to this checkout so the whole-suite checks resolve every file the same way they do
-  // in an unsplit run; the half each file came from stays recorded in instarSplit below.
+  // testResults is in CONCAT above only so the loop recognizes the key rather than refusing it as
+  // unknown; the value is replaced here, rebased to this checkout so the whole-suite checks resolve
+  // every file the same way they do in an unsplit run. Which half ran it stays in instarSplit below.
   merged.testResults = withFiles.flatMap(half => (half.report.testResults ?? [])
     .map(file => ({ ...file, name: join(root, relative(half.provenance.root, file.name)) })))
     .sort((x, y) => x.name.localeCompare(y.name));
