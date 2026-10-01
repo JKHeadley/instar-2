@@ -3630,8 +3630,10 @@ export function createJournalWorker(journal: ReturnType<typeof openPreviewJourna
    * 398189 of 409600 bytes, "the conversation is too large to process right now"). One preparation attempt may
    * set a floor: grounding turns at or below it are SET ASIDE from the packet, never from the journal -- recall
    * and memory search still reach them, the packet discloses the count, and the reply's reserve row records it.
-   * `packetFor` and `recallFor` read this so every variant of one attempt carries the same disclosed set-aside;
-   * `preparedFor` is synchronous, so no other work can observe it, and it restores -1 before returning. */
+   * `packetFor` and `recallFor` read this so every variant of one attempt carries the same disclosed set-aside.
+   * `preparedFor` is synchronous and publishes its own `setAside` at entry -- which defaults to -1, so any
+   * ordinary call also clears a floor an earlier attempt left -- and `preparedWithFloor` restores -1 when its
+   * walk ends, including on a throw. Nothing else reads it, so the summary pass can never see a stale floor. */
   let historySetAside = -1;
   const summaryFor = (through: number) => journal.view.summaries.filter(item => item.through <= through).at(-1);
   /** Rule 110: the continuity owed by `turn`'s reply when its context was compacted through `through`:
