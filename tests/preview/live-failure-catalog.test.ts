@@ -4,7 +4,7 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { SUBSCRIPTION_THINKING_ENV, subscriptionConversationPolicy } from '../../src/assembly/production-provider.js';
 import { createJournalWorker, openPreviewJournal, openQuestionCandidates, TOO_LONG_INPUT_NOTICE, TOO_LONG_REPLY_NOTICE } from './journal-test-worker.js';
-import { parseModelJson } from './model-json.js';
+import { failureShapeOf, parseModelJson } from './model-json.js';
 import { parseReplyReviewVerdict, replyReviewDiagnostics } from './reply-check.js';
 
 // Each named case is a replayable boundary from the live preview record. The
@@ -71,6 +71,26 @@ it('F03 contradicting review prose: a PASS is valid alone, never after a written
   expect(parseModelJson(`VIOLATION:credential | Do not send. ${pass}`)).toEqual({ ok: false, shape: 'prose-wrapped' });
   expect(parseModelJson(`${fence}json\n${pass}\n${fence}\nVIOLATION:credential | Do not send.`))
     .toEqual({ ok: false, shape: 'fenced' });
+});
+
+it('F06 prose-wrapped answer: the answer side reads one wrapped object; a list, a cut object and wrong fields do not', () => {
+  // Live failure (2026-10-01 12:38 PDT, k6 update 969389879, "what is my padlock code now?"): both answer
+  // attempts wrapped the Decision in reasoning, status counted answer/decision/malformed/prose-wrapped twice,
+  // and the operator was told "I couldn't produce an answer to that." That turn's own raw bytes stay in its
+  // journal's model-call records, which this machine cannot read; the replay below uses the recorded real-model
+  // answers of 2026-09-28, which carry the same two wrappers through the same route.
+  const fixture = JSON.parse(readFileSync(new URL('./fixtures/live-declarations-2026-09-28.json', import.meta.url), 'utf8')) as
+    { current: { answers: string[] }; fixedResidualProse: string };
+  for (const raw of [fixture.current.answers[3]!, fixture.fixedResidualProse]) {
+    expect(parseModelJson(raw)).toMatchObject({ ok: false });                 // a gate's verdict: unchanged
+    expect(parseModelJson(raw, { wrapped: 'accept' })).toMatchObject({ ok: true, shape: 'prose-wrapped' });
+  }
+  const at = fixture.fixedResidualProse.indexOf('{"type"');
+  const prose = fixture.fixedResidualProse.slice(0, at), object = fixture.fixedResidualProse.slice(at);
+  for (const [input, shape] of [[`${prose}[${object}]`, 'prose-wrapped'], [`${prose}${object.slice(0, -1)}`, 'truncated'],
+    [`${prose}${object}\n${object}`, 'multiple-objects']] as const)
+    expect(parseModelJson(input, { wrapped: 'accept' })).toEqual({ ok: false, shape });
+  expect(failureShapeOf(parseModelJson(`${prose}{"type":"Other"}`, { wrapped: 'accept' }))).toBe('prose-wrapped-wrong-fields');
 });
 
 it('F04 too-long notice: a short answer sends whole; an oversized answer sends one fixed notice across replay', async () => {

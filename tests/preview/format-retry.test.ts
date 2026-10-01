@@ -179,16 +179,19 @@ it('refuses a format-retry record that no reserved, unanswered turn can carry', 
   } finally { r.close(); }
 });
 
-it('recovers the real residual: the model\'s actual prose answer to the conflict turn, then its real bare answer', async () => {
+it('re-asks a format miss and sends the model\'s real bare answer, while the real prose residual needs no re-ask', async () => {
   const fixture = JSON.parse(readFileSync(new URL('./fixtures/live-declarations-2026-09-28.json', import.meta.url), 'utf8')) as {
     fixed: { answers: string[] }; fixedResidualProse: string };
-  const runnerText = (raw: string): string | null => {
-    const parsed = parseModelJson(raw);
+  const runnerText = (raw: string, wrapped: 'accept' | 'refuse' = 'accept'): string | null => {
+    const parsed = parseModelJson(raw, { wrapped });
     const decision = parsed.ok ? parsed.value as { type?: unknown; conclusion?: { subject?: unknown; value?: unknown } } : null;
     return decision?.type === 'Decision' && decision.conclusion?.subject === 'preview-stage2-answer'
       ? conclusionText(decision.conclusion.value) : null;
   };
-  expect(runnerText(fixture.fixedResidualProse)).toBeNull();          // the runner refuses it as malformed
+  // This real residual was refused for its leading prose. The answer side now reads it (Rules 15, 77), so this
+  // shape costs no re-ask; a gate still refuses it. The retry below is driven by a shape still malformed either way.
+  expect(runnerText(fixture.fixedResidualProse)).not.toBeNull();
+  expect(runnerText(fixture.fixedResidualProse, 'refuse')).toBeNull();
   const retried = runnerText(fixture.fixed.answers[3]!)!;
   const r = await run({ maxCalls: 4, answers: [malformed, retried] });
   try {

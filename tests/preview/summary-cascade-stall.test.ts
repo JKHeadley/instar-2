@@ -40,7 +40,8 @@ const update = (id: number, text: string) => ({ update_id: id,
 
 /** What the live subscription port hands the worker for a complete result (journal-agent invokeSubscription). */
 function livePort(raw: string, usage: ModelUsage) {
-  const extracted = parseModelJson(raw), decision = extracted.ok ? extracted.value as { type?: unknown; floor?: unknown; conclusion?: { subject?: unknown; value?: unknown } } : null;
+  // The answer side (an answer, a reply revision, the summary writer) discards text around one object; a gate does not.
+  const extracted = parseModelJson(raw, { wrapped: 'accept' }), decision = extracted.ok ? extracted.value as { type?: unknown; floor?: unknown; conclusion?: { subject?: unknown; value?: unknown } } : null;
   const value = decision?.type === 'Decision' && decision.conclusion?.subject === 'preview-stage2-answer'
     && decisionWithinFloor(decision) ? conclusionText(decision.conclusion.value) : null;
   return value === null ? { state: 'complete' as const, failureClass: 'malformed' as const, usage } : { state: 'complete' as const, value, text: value, usage };
