@@ -4,8 +4,9 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { createJournalWorker, openPreviewJournal, retrospectiveCases, type JournalView } from './journal.js';
 import { GRAVITY_WELLS, RETROSPECTIVE_DUTIES, RETRO_ANSWER_BUDGET_BYTES, RETRO_ANSWER_BYTES_PER_TOKEN,
-  RETRO_EFFICIENCY_CHARS, RETRO_NOTE_CHARS, RETRO_OUTCOME_REASON_CHARS, RETRO_OVER_CAP_REASON, RETRO_STALE_CASE_MS,
-  RETRO_WELL_NOTE_CHARS, disciplineSource, eligibleCases, estimatedAnswerBytes, retroAnswerBudget, type RetroCase } from './retrospective.js';
+  RETRO_ANSWER_NARROW_STEPS, RETRO_EFFICIENCY_CHARS, RETRO_FAILURE_BACKOFF_MS, RETRO_NOTE_CHARS, RETRO_OUTCOME_REASON_CHARS,
+  RETRO_OVER_CAP_REASON, RETRO_STALE_CASE_MS, RETRO_WELL_NOTE_CHARS, disciplineSource, eligibleCases, estimatedAnswerBytes,
+  retroAnswerBudget, type RetroCase } from './retrospective.js';
 import { SUBSCRIPTION_MAX_OUTPUT_TOKENS } from '../../src/assembly/production-provider.js';
 
 /** The live line's own record of this failure: the 2026-09-29 proof room, where every model answer over the
@@ -63,22 +64,26 @@ function answerAtAskedLengths(state: string, findings = 1) {
 
 function world() {
   const root = realpathSync(mkdtempSync(join(tmpdir(), 'retro-overcap-')));
-  const journal = openPreviewJournal(join(root, 'journal.encrypted'), key, genesis);
+  const path = join(root, 'journal.encrypted');
+  let journal = openPreviewJournal(path, key, genesis);
   let now = start, next = 1;
   const states: string[] = [];
   let answer: (state: string, id: string) => Awaited<ReturnType<NonNullable<Parameters<typeof createJournalWorker>[1]['retrospect']>>>
     = state => ({ state: 'complete', value: answerAtAskedLengths(state), usage: { inputTokens: 100, outputTokens: 50, charge: null, inputComplete: true } });
-  const worker = createJournalWorker(journal, { now: () => now, stopped: () => false, timeZone: 'America/Los_Angeles',
-    sources: () => [disciplineSource(journal.view)],
+  const workerOn = (opened: typeof journal) => createJournalWorker(opened, { now: () => now, stopped: () => false, timeZone: 'America/Los_Angeles',
+    sources: () => [disciplineSource(opened.view)],
     model: async (input: { id: string }) => input.id.startsWith('summary:')
       ? JSON.stringify({ summary: 'The operator chatted about the preview.', people: [], memory: [], commitments: [], questions: [] })
       : JSON.stringify({ reply: 'Noted — here is a reply of ordinary length for this preview conversation.', memory: [], dated: [] }),
     send: async () => 7, checkOutbound: () => {},
     retrospect: async (state: string, id: string) => { states.push(state); return answer(state, id); } });
-  return { journal, worker, states, at: () => now, advance: (ms: number) => { now += ms; },
+  let worker = workerOn(journal);
+  return { get journal() { return journal; }, states, at: () => now, advance: (ms: number) => { now += ms; },
     answerWith: (fn: typeof answer) => { answer = fn; },
     retrospect: () => worker.retrospect(DIGEST),
     converse: async (texts: string[]) => { worker.intake(texts.map(text => update(next++, text, now))); await worker.drain(); },
+    /** A restart: the journal is closed and read again from its own file, with a new worker over it. */
+    reopen: () => { journal.close(); journal = openPreviewJournal(path, key); worker = workerOn(journal); },
     done: () => { try { journal.close(); } catch { /* closed */ } rmSync(root, { recursive: true, force: true }); } };
 }
 const owed = (view: JournalView, now: number) => eligibleCases(view, retrospectiveCases(view), now).map(item => item.id);
@@ -119,8 +124,80 @@ it('settles a pass whose own outcome row proves an over-cap answer as failed wit
     expect(pass.result).toBeUndefined();
     // The declared fail direction for this consumer: no grade, finding or candidate, every case still owed.
     expect(owed(w.journal.view, w.at())).toEqual(expect.arrayContaining(before));
-    // And the next pass asks for less, rather than repeating an ask that cannot be answered.
-    expect(retroAnswerBudget(w.journal.view.retroPasses)).toBe(Math.floor(RETRO_ANSWER_BUDGET_BYTES / 2));
+    // And the next pass asks for less, rather than repeating an ask that cannot be answered: the room for case
+    // rows halves, while the rows every pass owes keep their place, so the narrowed ask can still hold cases.
+    const fixed = estimatedAnswerBytes([]);
+    expect(retroAnswerBudget(w.journal.view.retroPasses)).toBe(fixed + Math.floor((RETRO_ANSWER_BUDGET_BYTES - fixed) / 2));
+    // Not before the failure backoff: the failed pass is not repeated early.
+    w.advance(RETRO_FAILURE_BACKOFF_MS - 1);
+    await w.retrospect();
+    expect(w.journal.view.retroPasses.length).toBe(1);
+    expect(w.states.length).toBe(1);
+    // Past the backoff the narrower pass actually runs, and completes when its answer fits the cap.
+    let asked = '';
+    w.answerWith(state => { asked = answerAtAskedLengths(state);
+      return { state: 'complete', value: asked, usage: { inputTokens: 17164, outputTokens: Math.round(Buffer.byteLength(asked) / RETRO_ANSWER_BYTES_PER_TOKEN), charge: null, inputComplete: true } }; });
+    w.advance(1);
+    await w.retrospect();
+    expect(w.states.length).toBe(2);
+    const second = w.journal.view.retroPasses.at(-1)!;
+    expect(second.pass).toBe(1);
+    expect(second.state).toBe('complete');
+    expect(second.cases.length).toBeGreaterThan(0);
+    expect(second.cases.length).toBeLessThan(pass.cases.length);
+    expect(Buffer.byteLength(asked)).toBeLessThan(Buffer.byteLength(answerAtAskedLengths(w.states[0]!)));
+    // The debt drains: what the smaller pass inspected is no longer owed, and what it deferred still is.
+    const after = owed(w.journal.view, w.at());
+    expect(after.length).toBeLessThan(before.length);
+    for (const row of second.omitted) expect(after).toContain(row.case);
+    // A completed pass ends the narrowing: the next one is planned against the whole bound again.
+    expect(retroAnswerBudget(w.journal.view.retroPasses)).toBe(RETRO_ANSWER_BUDGET_BYTES);
+  } finally { w.done(); }
+});
+
+it('keeps planning at least one case however many passes in a row ran over the cap, and survives a restart', async () => {
+  const w = world();
+  try {
+    await w.converse(messages);
+    const before = owed(w.journal.view, w.at());
+    w.answerWith((_state, id) => {
+      w.journal.append({ kind: 'call-outcome', id, role: 'model', outcome: overCapOutcome(2312), at: w.at() } as never);
+      return { state: 'uncertain', usage: uncertainUsage(2312) };
+    });
+    const fixed = estimatedAnswerBytes([]);
+    const asked: number[] = [];
+    // Two passes deeper than the narrowing goes: the ask shrinks to one case and then holds there.
+    for (let round = 0; round <= RETRO_ANSWER_NARROW_STEPS + 2; round++) {
+      await w.retrospect();
+      expect(w.journal.view.retroPasses.length).toBe(round + 1);
+      const pass = w.journal.view.retroPasses.at(-1)!;
+      expect(pass.reason).toBe(RETRO_OVER_CAP_REASON);
+      expect(pass.cases.length).toBeGreaterThan(0);
+      asked.push(pass.cases.length);
+      // The budget never reaches the rows every pass owes, so the narrowing only ever removes cases.
+      expect(retroAnswerBudget(w.journal.view.retroPasses)).toBeGreaterThan(fixed);
+      w.advance(RETRO_FAILURE_BACKOFF_MS);
+    }
+    for (let index = 1; index < asked.length; index++) expect(asked[index]!).toBeLessThanOrEqual(asked[index - 1]!);
+    expect(asked[0]!).toBeGreaterThan(1);
+    expect(asked.at(-1)).toBe(1);
+    expect(retroAnswerBudget(w.journal.view.retroPasses))
+      .toBe(fixed + Math.floor((RETRO_ANSWER_BUDGET_BYTES - fixed) / 2 ** RETRO_ANSWER_NARROW_STEPS));
+    // Every failed pass stays truthful and every case stays owed.
+    expect(owed(w.journal.view, w.at())).toEqual(expect.arrayContaining(before));
+    // The narrowing is read from the journal's own records, so a restart neither loses it nor strands the debt:
+    // the reopened journal plans the same one-case pass, and that pass completes when its answer fits.
+    const narrowed = retroAnswerBudget(w.journal.view.retroPasses), passes = w.journal.view.retroPasses.length;
+    w.reopen();
+    expect(w.journal.view.retroPasses.length).toBe(passes);
+    expect(retroAnswerBudget(w.journal.view.retroPasses)).toBe(narrowed);
+    w.answerWith(state => ({ state: 'complete', value: answerAtAskedLengths(state),
+      usage: { inputTokens: 100, outputTokens: 50, charge: null, inputComplete: true } }));
+    await w.retrospect();
+    const last = w.journal.view.retroPasses.at(-1)!;
+    expect(last.state).toBe('complete');
+    expect(last.cases.length).toBe(1);
+    expect(owed(w.journal.view, w.at())).not.toContain(last.cases[0]);
   } finally { w.done(); }
 });
 

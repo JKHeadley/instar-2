@@ -88,8 +88,10 @@ export const RETRO_NOTE_CHARS = 40;
 export const RETRO_WELL_NOTE_CHARS = 30;
 export const RETRO_EFFICIENCY_CHARS = 120;
 export const RETRO_OUTCOME_REASON_CHARS = 100;
-/** Each over-the-cap pass halves the next pass's answer budget, down to a floor of one case, so a wrong
- * estimate converges on an ask that fits instead of repeating an impossible one (Rule 24). */
+/** Each over-the-cap pass halves the room the next pass has for its CASE rows, never the rows every pass
+ * owes whatever its cases are, down to a floor of one case, so a wrong estimate converges on an ask that
+ * fits instead of repeating an impossible one (Rule 24). Halving the whole budget instead put it under the
+ * fixed rows alone, so no case could ever fit and no further pass was ever planned. */
 export const RETRO_ANSWER_NARROW_STEPS = 3;
 /** The named, settled reason for a pass whose own call outcome proves its answer ran over the output cap. */
 export const RETRO_OVER_CAP_REASON = 'review output over the cap';
@@ -113,7 +115,9 @@ export function estimatedAnswerBytes(cases: readonly RetroCase[]): number {
   return cases.reduce((total, item) => total + item.id.length + 4
     + (ANSWER_ROW_NAMES_CASE[item.category] ? item.id.length + 10 : 0) + ANSWER_ROW_BYTES[item.category], fixed);
 }
-/** This pass's answer budget: the bound, narrowed once per consecutive pass already settled over the cap. */
+/** This pass's answer budget: the rows every pass owes, plus the room for case rows, which is halved once per
+ * consecutive pass already settled over the cap. It never drops to or below the fixed rows, so the narrowing
+ * can only ever remove cases. */
 export function retroAnswerBudget(passes: readonly Pick<RetroPass, 'state' | 'reason'>[]): number {
   let overCap = 0;
   for (let index = passes.length - 1; index >= 0; index--) {
@@ -121,7 +125,8 @@ export function retroAnswerBudget(passes: readonly Pick<RetroPass, 'state' | 're
     if (pass.state !== 'failed' || pass.reason !== RETRO_OVER_CAP_REASON) break;
     overCap++;
   }
-  return Math.floor(RETRO_ANSWER_BUDGET_BYTES / 2 ** Math.min(overCap, RETRO_ANSWER_NARROW_STEPS));
+  const fixed = estimatedAnswerBytes([]);
+  return fixed + Math.floor((RETRO_ANSWER_BUDGET_BYTES - fixed) / 2 ** Math.min(overCap, RETRO_ANSWER_NARROW_STEPS));
 }
 
 export type CaseCategory = 'message' | 'decision' | 'verdict' | 'repair' | 'authorization' | 'open' | 'rerun';
@@ -429,9 +434,13 @@ export function retrospectivePlan(view: JournalView, population: readonly RetroC
   // Two bounds, not one: the packet bound on what the review reads, and the answer bound on what it is asked
   // to write. An ask over the provider's output cap can never be answered, so a case that would push the
   // answer past the budget is deferred (it stays owed) exactly as an oversize packet case is.
-  const answerBudget = retroAnswerBudget(view.retroPasses);
+  // The floor of one case: the first case of a pass is held to the whole bound, not the narrowed one, so the
+  // deepest narrowing still asks about one case rather than none. Without it a narrowed pass with no case that
+  // fits would plan nothing, record nothing, and so never widen again: the owed cases could not drain.
+  const narrowed = retroAnswerBudget(view.retroPasses);
   for (const { item } of owed) {
     const trial = packetOf([...cases, item], view, contextDigest, population, evidence);
+    const answerBudget = cases.length ? narrowed : RETRO_ANSWER_BUDGET_BYTES;
     if (cases.length < RETRO_MAX_CASES && Buffer.byteLength(trial) <= RETRO_MAX_STATE_BYTES
       && estimatedAnswerBytes([...cases, item]) <= answerBudget) cases.push(item);
     else omitted.push({ case: item.id, reason: estimatedAnswerBytes([...cases, item]) > answerBudget
