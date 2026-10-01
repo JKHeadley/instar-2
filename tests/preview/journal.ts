@@ -19,7 +19,7 @@ import { checkReply as checkCoherenceOf, correctionNote, releaseFindings, COHERE
 import { checkReply, reviewReply, repeatsOperatorOnly, HOLDING_REPLY, jevRequestBody, JEV_RESPONSE_MAX_BYTES, REPLY_CHECK_BUDGET_MS, REPLY_CHECK_BUDGET_REASON, LINK_SHAPE_REASON, linkShapeRules, bareTopicReferences, topicNameReason, BARE_TOPIC_OBJECTION, noDecisions, validDispositions, jevConfidentCredential } from './reply-check.js';
 import { parseDatedItem, restatedDatePhrase, dueState, selectDatedItems, withinNext48Hours, localParts, type DatedItem } from './dated-memory.js';
 import { isStatusCommand, isStopCommand, statusReply, STOP_CONFIRM_TEXT } from './status-command.js';
-import { AGENT_PROMISE_LIMIT, fulfillmentProposals, fulfillmentSupported, legacyFulfillsReminder, promiseProposals, recordedPromises, type AgentPromise, type FulfillmentProposal, type PromiseProposal } from './agent-commitment.js';
+import { AGENT_PROMISE_LIMIT, fulfillableCommitment, fulfillmentProposals, fulfillmentSupported, legacyFulfillsReminder, promiseProposals, recordedPromises, type AgentPromise, type FulfillmentProposal, type PromiseProposal } from './agent-commitment.js';
 import { messageTime, zoneFormatter } from './self-state.js';
 import type { ObjectionDisposition, ReplyCheckResult, ReplyCheckPorts, ReplyDecision, ReplyFinding, ReplyReviewDiagnostics, ReplyRule } from './reply-check.js';
 import { SUMMARY_QUESTION, interpretSummaryJev, type SummaryCheckResult } from './summary-check.js';
@@ -2822,7 +2822,9 @@ function project(view: JournalView, row: JournalRecord, system?: SystemCheck): v
     if (conflict && row.text === `PREVIEW — ${conflictQuestion(conflict)}`) conflict.asked = true;
     if (row.promises?.some(promise => !row.text.includes(promise.quote) || promise.owner !== 'agent'
       || promise.waitsOn !== 'next-relevant-reply')) throw Error('preview journal: invalid agent promise');
-    if (row.fulfills?.some(id => !view.commitments[id]?.agentPromise || view.commitments[id]!.source === turn.id))
+    // The same `fulfillableCommitment` rule the answer frame uses, so the one load-bearing condition is never
+    // spelled a second way. The intent row carries ids only, so its quote was checked on the answer it came from.
+    if (row.fulfills?.some(id => !fulfillableCommitment(view.commitments, id) || view.commitments[id]!.source === turn.id))
       throw Error('preview journal: invalid promise fulfillment');
     if (row.fulfills !== undefined) turn.intentFulfills = row.fulfills;
     if (row.continuity !== undefined) {
@@ -5876,7 +5878,7 @@ export function createJournalWorker(journal: ReturnType<typeof openPreviewJourna
           // A desk probe's reply stays auditable, but its promises never become operator commitments.
           promises: probeTurn(journal.view, turn) ? [] : recordedPromises(turn.proposedPromises ?? [], reply, turn.id, intentAt, ports.timeZone ?? 'America/Los_Angeles'),
           fulfills: probeTurn(journal.view, turn) ? [] : (turn.proposedFulfills ?? []).filter(item => reply.includes(item.quote)
-            && journal.view.commitments[item.id]?.agentPromise && !journal.view.closed.has(item.id)
+            && fulfillableCommitment(journal.view.commitments, item.id) && !journal.view.closed.has(item.id)
             && journal.view.commitments[item.id]!.source !== turn.id).map(item => item.id),
           ...(heldBack || reply === HOLDING_REPLY ? {} : sentObligations(turn, reply, intentAt)),
           ...(continuity && turn.grounding ? { continuity: { prePauseInbound: continuity.before.id,
