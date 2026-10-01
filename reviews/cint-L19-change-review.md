@@ -35,5 +35,5 @@ Subject (13 paths): generated/capabilities.json, generated/capabilities.md, gene
 ## Closing block
 
 simplestRobustRoute: merge the reviewed unit as it is, run the standard desk tools, and re-declare the conformance digest the lint names after re-running its contract; no checker edit and no new mechanism
-80/20: 0 must-fixes, 1 note (targeted tests only; tests/preview/successive.test.ts, which the unit could not run under WSL, is left to the full gate elsewhere)
+80/20: 0 must-fixes, 1 note (targeted tests only, no full suite; tests/preview/successive.test.ts, which the unit could not run under WSL, passed 14/14 here, and the twelve files the unit saw fail only under WSL passed here)
 VERDICT: author submission; the independent verdict is recorded as a pass
