@@ -6,7 +6,10 @@
 //
 // Every report here is bytes a real vitest run wrote, including a real Mac half; see
 // tests/platform/fixtures/README.md for where each came from.
-import { readFileSync } from 'node:fs';
+import { spawnSync } from 'node:child_process';
+import { existsSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
+import { tmpdir } from 'node:os';
+import { join, resolve } from 'node:path';
 import { describe, expect, it } from 'vitest';
 import { REPORT_CHECKS, halfProvenance, planReportChecks, runCommands } from '../../scripts/gate-report-checks.mjs';
 import { LOCAL_HALF_REPORT, halfSidecar, localHalfReport, mergeHalfReports, reportDigest } from '../../scripts/split-report.mjs';
@@ -260,5 +263,52 @@ describe('the gate step', () => {
       .toEqual({ split: 'only-macos', root: '/checkout', revision: REVISION, reportDigest: reportDigest(a), reportStart: a.startTime });
     expect(halfSidecar('.test-results.json')).toBe('.test-results.half.json');
     expect(halfSidecar('/lane/only-macos/test-results.json')).toBe('/lane/only-macos/test-results.half.json');
+  });
+});
+
+// `npm run test:all` records its gate run in the evidence ledger as scope 'full'. The command is
+// fixed but the environment is not: under a split, `npm run test:gate` runs half the suite, and now
+// that the whole-suite checks hand off to the merge, that half exits 0. So the full-gate driver must
+// refuse under a split rather than record half a suite as a complete, successful full gate.
+describe('the full-gate driver refuses a split run', () => {
+  const CHECKER = resolve('scripts/check-change-review.mjs');
+  const base: NodeJS.ProcessEnv = { ...process.env, GIT_CONFIG_GLOBAL: '/dev/null', GIT_CONFIG_NOSYSTEM: '1' };
+  delete base.INSTAR_TEST_PLATFORM_SPLIT;
+
+  /**
+   * `check-change-review.mjs run` with its ledger pointed at a throwaway file and an `npm` ahead of
+   * the real one that exits 1. The shim matters in both directions: it keeps the test from launching
+   * the hours-long real gate, and it means a refusal that stopped working would be visible here as a
+   * recorded run rather than as a test that never finishes.
+   */
+  function runDriver(split: string | undefined): { status: number | null; stderr: string; entries: { kind: string; scope: string; complete?: boolean }[] } {
+    const dir = mkdtempSync(join(tmpdir(), 'split-gate-'));
+    try {
+      const ledger = join(dir, 'evidence.jsonl');
+      writeFileSync(join(dir, 'npm'), '#!/bin/sh\nexit 1\n', { mode: 0o755 });
+      const env: NodeJS.ProcessEnv = { ...base, INSTAR_CHANGE_EVIDENCE: ledger, PATH: `${dir}:${process.env.PATH ?? ''}` };
+      if (split !== undefined) env.INSTAR_TEST_PLATFORM_SPLIT = split;
+      const run = spawnSync(process.execPath, [CHECKER, 'run'], { encoding: 'utf8', env });
+      const text = existsSync(ledger) ? readFileSync(ledger, 'utf8').trim() : '';
+      return { status: run.status, stderr: run.stderr, entries: text ? text.split('\n').filter(Boolean).map(line => JSON.parse(line)) : [] };
+    } finally { rmSync(dir, { recursive: true, force: true }); }
+  }
+
+  it('refuses under either split and records nothing', () => {
+    for (const split of ['exclude-macos', 'only-macos']) {
+      const got = runDriver(split);
+      expect(got.status).toBe(2);
+      expect(got.stderr).toContain(`refusing to run the whole gate under INSTAR_TEST_PLATFORM_SPLIT=${split}`);
+      expect(got.stderr).toContain('npm run test:split-checks');
+      expect(got.entries).toEqual([]); // the refusal comes before the run-start, so half a suite is never recorded
+    }
+  });
+
+  it('the neighbour it must accept: with no split it records the run as the full gate', () => {
+    const got = runDriver(undefined);
+    expect(got.stderr).not.toContain('refusing to run the whole gate');
+    expect(got.entries.map(entry => entry.kind)).toEqual(['run-start', 'suite']);
+    expect(got.entries.every(entry => entry.scope === 'full')).toBe(true);
+    expect(got.entries[1]?.complete).toBe(false); // the shimmed gate left no report
   });
 });

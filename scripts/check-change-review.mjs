@@ -285,10 +285,21 @@ const headTree = () => ({ head: git('rev-parse', 'HEAD'), tree: git('rev-parse',
     || lines(git('ls-files', '--others', '--exclude-standard', '--', 'src', 'tests', 'scripts', 'bin', 'docs', 'package.json')).length > 0 });
 
 // The whole gate, bound to the subject captured when it starts. The command is fixed, so a
-// caller cannot label a partial or stale report as the full gate.
+// caller cannot label a partial or stale report as the full gate — but the environment is not
+// fixed, and INSTAR_TEST_PLATFORM_SPLIT makes `npm run test:gate` run half the suite. Since the
+// whole-suite checks hand off to the merge under a split (scripts/gate-report-checks.mjs), that
+// half exits 0, so without this refusal a half-suite report would be recorded as scope 'full',
+// complete and successful. The full gate under a split is both halves plus the merge.
 const GATE = ['run', 'test:gate'];
 const RESULTS = '.test-results.json';
 function gateRun() {
+  const split = process.env.INSTAR_TEST_PLATFORM_SPLIT || undefined;
+  if (split !== undefined) {
+    console.error(`change-review: refusing to run the whole gate under INSTAR_TEST_PLATFORM_SPLIT=${split}: that runs half the suite, `
+      + 'and half a suite is not the full gate. Run each half\'s `npm run test:gate`, then '
+      + '`npm run test:split-checks -- <half-a.json> <half-b.json>` in the exclude-macos checkout.');
+    return 2;
+  }
   const runId = randomUUID(); const start = headTree();
   // No evidence-producing work runs before its start is durable: a start that cannot be
   // recorded refuses the run, so a result can never be produced and then silently lost.
