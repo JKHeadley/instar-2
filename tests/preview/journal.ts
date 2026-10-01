@@ -461,7 +461,8 @@ export interface ObligationWork { attempts: number; last: number; lastSlot: numb
   /** `boundTo` is the reply whose durable intent carries the result (it is never attached again); `delivered` is set
    * only by that reply's sent receipt. A bound result with no receipt is UNKNOWN: visible, unresolved, never resent. */
   report?: { text: string; at: number; boundTo?: string; delivered?: string } }
-/** Declared obligations an answer proposed that failed admission; they force the full contextual review. */
+/** Declarations an answer proposed that failed admission. A refused deferral, blocker or recheck forces the full
+ * contextual review (`refusedObligation`); a refused fulfillment claim is only counted. */
 export interface RejectedObligations { loops?: number; blocker?: true; rechecks?: true;
   /** Fulfillment claims the one support rule refused, kept visible instead of dropped (Rules 2, 10). */
   fulfills?: number }
@@ -905,6 +906,12 @@ const reviewHoldingFlag = (turn: Turn, candidateDigest: string): boolean => {
     && (check.candidateDigest === undefined || check.candidateDigest === candidateDigest));
   return review?.ruleIds.some(rule => REVIEW_HOLDING_RULES.includes(rule)) === true;
 };
+/** Build 4's obligation floor (Rules 6, 20, 21, 23) against reachability (Rules 77, 86, 95): only a refused deferral,
+ * blocker or recheck forces the contextual review and its mandatory hold. A refused fulfillment claim has already
+ * lost its one authority (it closes no commitment), so it stays a counted signal and its reply takes the ordinary
+ * review route: an unavailable review cannot silence a reply over it. */
+const refusedObligation = (turn: Turn): boolean =>
+  Boolean(turn.answerRejected?.loops || turn.answerRejected?.blocker || turn.answerRejected?.rechecks);
 /** Content-free status: replies sent on Jev's non-secret flags while the review was unavailable. */
 export function reviewUnavailableReleases(view: JournalView): { total: number; byRule: Partial<Record<ReplyRule, number>> } {
   const byRule: Partial<Record<ReplyRule, number>> = {};
@@ -5749,7 +5756,7 @@ export function createJournalWorker(journal: ReturnType<typeof openPreviewJourna
             if (!previous) journal.append({ kind: 'reply-check', id: turn.id, result: { verdict: 'violation',
               ruleIds: ['credential'], confidence: 1, path: 'holding', latencyMs: 0, candidateDigest }, at: ports.now() });
             decision = 'violation';
-          } else if (!previous && !turn.jevReserved && !turn.reviewReserved && !turn.noticeClass && !turn.answerRejected && fromOperator(turn)
+          } else if (!previous && !turn.jevReserved && !turn.reviewReserved && !turn.noticeClass && !refusedObligation(turn) && fromOperator(turn)
             && repeatsOperatorOnly(reply, journal.view.order.filter(item => item.accepted && item.update <= turn.update
               && fromOperator(item)).map(item => redact(item.text).text))) {
             // The operator's own words back to the operator skip Jev and the review; the
@@ -5789,7 +5796,7 @@ export function createJournalWorker(journal: ReturnType<typeof openPreviewJourna
             let checked: ReplyDecision;
             // Rules 6, 20, 23: a deferral or blocker the answer identified but the runner refused is never
             // released on Jev's text-only pass; the contextual reviewer judges it with the declared record.
-            if (turn.answerRejected && !turn.jevReserved) checked = await reviewReply(reply, turn.id, checkPorts, [], reviewPrompt);
+            if (refusedObligation(turn) && !turn.jevReserved) checked = await reviewReply(reply, turn.id, checkPorts, [], reviewPrompt);
             else if (turn.jevReserved) {
               if (!previous) checkPorts.record({ verdict: 'unavailable', ruleIds: [], confidence: null, path: 'jev', latencyMs: 0 });
               // Older durable Jev verdicts omitted uncertain rules when another rule was positive.
@@ -5812,8 +5819,8 @@ export function createJournalWorker(journal: ReturnType<typeof openPreviewJourna
           // and any answer whose declared deferral or blocker the runner refused, unless its review passed.
           // Every other objection, and an unavailable review, is a signal released with the reply below.
           const holding = !credentialShape && (decision === 'unavailable'
-            ? jevCredentialFlag(turn, candidateDigest) || turn.answerRejected !== undefined
-            : decision === 'violation' && (reviewHoldingFlag(turn, candidateDigest) || turn.answerRejected !== undefined));
+            ? jevCredentialFlag(turn, candidateDigest) || refusedObligation(turn)
+            : decision === 'violation' && (reviewHoldingFlag(turn, candidateDigest) || refusedObligation(turn)));
           if (holding && decision === 'unavailable') {
             // A refused review reservation waits on `raise-caps` like any call-cap hold.
             journal.append({ kind: 'hold', id: turn.id, reason: capRefused ? 'call cap'

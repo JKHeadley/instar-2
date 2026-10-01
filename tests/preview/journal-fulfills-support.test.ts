@@ -13,6 +13,7 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { spawnSync } from 'node:child_process';
 import { createJournalWorker, openPreviewJournal } from './journal-test-worker.js';
+import { REPLY_RULES } from './reply-check.js';
 
 const recorded = JSON.parse(readFileSync(new URL('./fixtures/proofroom-fulfills-715673050-2026-10-01.json', import.meta.url), 'utf8')) as {
   update: number; text: string; fulfills: { id: number; quote: string }[]; commitment: { id: number; agentPromise: null } };
@@ -111,6 +112,55 @@ it('refuses the claim at the writer, still delivers the reminder, counts it, and
     expect(seen.obligations.rejectedDeclarations).toBe(1);
     expect(seen.commitments.open).toBeGreaterThan(0);
   } finally { rmSync(root, { recursive: true, force: true }); }
+});
+
+it('a refused fulfillment claim alone never holds the reply when the reviewer is down; a refused deferral still does', async () => {
+  // Rules 77, 86, 95: the recorded row's text and claim, answered to the operator with reply review wired: Jev
+  // passes every rule in its recorded answer shape, and the contextual reviewer is unavailable.
+  for (const deferral of [false, true]) {
+    const root = origin();
+    try {
+      const calls = { jev: 0, reviews: 0, sends: 0 };
+      const journal = openPreviewJournal(join(root, 'journal.encrypted'), key, { ...genesis, maxBytes: 32768 });
+      const worker = createJournalWorker(journal, { now: () => start, stopped: () => false, timeZone: 'America/Los_Angeles',
+        prepareModel: input => input.context,
+        model: async () => JSON.stringify({ reply: DELIVERY, promises: [], fulfilled: recorded.fulfills,
+          ...(deferral ? { openLoops: [{ kind: 'deferral', quote: 'A clause that was never in this reply.', waitsOn: 'nothing' }] } : {}) }),
+        send: async () => ++calls.sends, checkOutbound: () => {},
+        replyCheck: { elapsedMs: () => 0,
+          jev: async () => { calls.jev++; return { value: { model: 'jev-1.13.0', answers: Object.fromEntries(
+            Object.keys(REPLY_RULES).map(id => [id, { type: 'noul', noul: 0.01 }])) }, latencyMs: 1 }; },
+          escalate: async () => { calls.reviews++; throw Error('preview: reply review unavailable'); } } });
+      worker.intake([update(1, 'Please give me the short walk reminder now.')]);
+      await worker.drain();
+      const turn = journal.view.order[0]!;
+      // Either way the claim is refused, counted, and closes nothing.
+      expect(turn.answer).toBe(DELIVERY);
+      expect(turn.proposedFulfills).toBeUndefined();
+      expect(journal.view.closed.size).toBe(0);
+      if (!deferral) {
+        // The ordinary route: Jev passes it, no paid review is forced, and the reply goes out once.
+        expect(turn.answerRejected).toEqual({ fulfills: 1 });
+        expect(journal.view.rejectedObligations).toBe(1);
+        expect(turn.replyChecks?.map(row => [row.path, row.verdict])).toEqual([['jev', 'pass']]);
+        expect(calls).toEqual({ jev: 1, reviews: 0, sends: 1 });
+        expect(turn.held).toBeUndefined();
+        expect(turn.sent).toBe(1);
+        expect(turn.intent).toContain(QUOTE);
+      } else {
+        // Build 4's floor is untouched: a refused deferral skips Jev, needs the review, and stays held without it.
+        expect(turn.answerRejected).toEqual({ loops: 1, fulfills: 1 });
+        expect(journal.view.rejectedObligations).toBe(2);
+        expect(calls.jev).toBe(0);
+        expect(calls.reviews).toBeGreaterThan(0);
+        expect(turn.replyChecks?.at(-1)).toEqual(expect.objectContaining({ path: 'subscription', verdict: 'unavailable' }));
+        expect(turn.held).toBe('reply check unavailable');
+        expect(turn.sent).toBeUndefined();
+        expect(calls.sends).toBe(0);
+      }
+      journal.close();
+    } finally { rmSync(root, { recursive: true, force: true }); }
+  }
 });
 
 it('replays a journal already holding the refused claim: ignored as a claim, counted, still readable', async () => {

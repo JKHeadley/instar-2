@@ -141,6 +141,6 @@ export function loopStatusLines(view: JournalView, now: number): string[] {
     `Overdue: ${health.overdueCheckIns} check-ins, ${health.overdueRechecks} blocker rechecks, ${health.overdueRequests} requested actions; corrections awaiting your next message: ${health.correctionsWaiting}.`,
     ...(health.undeclared || health.refusedCommitments
       ? [`Commitments without a declared dependency: ${health.undeclared} open (older records), ${health.refusedCommitments} refused at creation.`] : []),
-    ...(health.rejectedDeclarations ? [`Declared obligations I could not record: ${health.rejectedDeclarations} (each sent only after a full review).`] : []),
+    ...(health.rejectedDeclarations ? [`Declared obligations I could not record: ${health.rejectedDeclarations} (a refused deferral or limit is sent only after a full review; a refused completion claim closes nothing).`] : []),
   ];
 }
