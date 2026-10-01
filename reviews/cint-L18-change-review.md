@@ -1,0 +1,33 @@
+# Change review — cint-L18: cint-L17 plus w3-fulfills
+
+Subject base: 859e49e0833e66af2394b4fed1e8cdf19ddb1da7
+Review state: open
+Reviewed content: none
+Outcome: The next live build is cint-L17 (859e49e0) with origin/w3-fulfills (01ef6426) merged by an ordinary merge (434eb68e). w3-fulfills was built on cint-L16, so the merge was a true merge; it applied with no conflict, and nothing was edited by hand. w3-fulfills makes the answer writer and the replay share one support rule for a model's fulfillment claim (`fulfillmentSupported`). The writer refuses an unsupported claim before it appends, records it as `rejected.fulfills` and counts it, and still sends the reply in full. The replay disbelieves and counts such a claim on an existing row instead of refusing the whole journal, so one delivered reminder can no longer make a conversation unreadable (the proof room's 05:24 refusal "unsupported promise proposal"). The desk chain ran as recorded for cint-L17. The inventory repin refreshed nothing, tsc built clean, and the owner-reference rehash refreshed nothing. The register was regenerated with --replay at 434eb68e, giving ea1bb130. The unit's report lives on the Mama PC, and its three Decision lines named a Mama PC path. The desk downloaded the report (HTTP 200, 219 lines, ends READY 01ef6426), which names all three decision ids, and placed it unchanged at lanes/w3-fulfills-PROGRESS.md. Only the three reported= paths in the unit's record were repointed there (cb372d99). The unit's record is otherwise carried intact. The unit's report discloses under Rule 101 that its two commits were made with the hook path disabled, because the pre-commit full gate cannot finish on WSL2 (R105 darwin certification and the desk-owned register pin). Those checks run here on the Studio, as listed below.
+Affected rules: 74 (this record; the w3-fulfills record carried), 102 (w3-fulfills's three decisions reported: its Mama PC report is placed unchanged at lanes/w3-fulfills-PROGRESS.md and its reported= lines are repointed there), 101 (the unit's hook-path bypass was disclosed in its report at the time; this desk run made no bypass, and the gate's checks run here), 2, 10, 15, 42, 83, 8 and 37 (as in the carried record), 69 and 90 (register regenerated from committed sources with --replay, never hand-merged), 106 (the unit's recorded-shape replay of update 715673050.0009766 re-run on the merged tree), 116
+Affected floors: secrets — unchanged (the refused claim records a count, never the quote); spend cap — unchanged (no extra model call); stop — unchanged; no duplicate sends — unchanged (the delivery still sends exactly one reply; the refusal never retries or re-sends it); durable intake — unchanged in shape apart from one bounded optional count on an existing field, and an already-written row no longer makes the journal unreadable
+Operator questions: none
+Suggested tier: critical
+Declared tier: significant
+Tier rationale: the combine carries one reviewed preview unit, declared significant in its own record, plus the register regeneration and the reported= repoint. The merge changes no decision logic, send, intake, approval or authority path beyond what that record reviewed.
+Side effects: as recorded in the carried record. A fulfillment claim against a commitment that is not the agent's own promise no longer closes it and no longer reaches the journal. A journal already holding such a claim now opens and replays, with the claim ignored and counted. The merge adds no side effects.
+Undo and recovery: revert the w3-fulfills commits, the register regeneration, the reported= repoint and this record; the unit's record has its own undo notes (a journal this build writes may carry `rejected.fulfills`, which an older build refuses as an unknown key)
+Multi-machine posture: machine-local, as in the carried record: the single preview runner
+Layer below: reviews/cint-L17-change-review.md (the base, carried); reviews/w3-fulfills-change-review.md (carried)
+Bug class: live-path
+Bug evidence: reproducer=tests/preview/journal-fulfills-support.test.ts; live=tests/preview/fixtures/proofroom-fulfills-715673050-2026-10-01.json
+Hook bypass: none
+Convergence: none
+Prompt review: no prompt text changed by the merge or by the carried unit
+Prompt finding: 849db3a6296a | protocol-literal | an existing fixed reply literal in journal.ts, unchanged by this change (as dispositioned in the carried record)
+Prompt finding: bd01de21286a | protocol-literal | existing capability-guidance wording in journal.ts, unchanged by this change (as dispositioned in the carried record)
+Prompt finding: fb5fa7e706c8 | protocol-literal | existing capability-guidance wording in journal.ts, unchanged by this change (as dispositioned in the carried record)
+Deferral: generated/register.json:1 | not-a-deferral=generated register output quoting the rule book, not a commitment by this change
+
+Subject (12 paths): generated/capabilities.json, generated/capabilities.md, generated/coverage.md, generated/glossary.md, generated/register.json, generated/rules.md, generated/source.json, tests/preview/agent-commitment.test.ts, tests/preview/agent-commitment.ts, tests/preview/fixtures/proofroom-fulfills-715673050-2026-10-01.json, tests/preview/journal-fulfills-support.test.ts, tests/preview/journal.ts
+
+## Closing block
+
+simplestRobustRoute: merge the reviewed unit as it is and run the standard desk tools; no checker edit and no new mechanism
+80/20: 0 must-fixes, 1 note (targeted tests only; the full gate runs elsewhere)
+VERDICT: author submission; the independent verdict is recorded as a pass
