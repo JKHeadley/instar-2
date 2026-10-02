@@ -62,7 +62,11 @@ const key = new Uint8Array(32).fill(53);
 const START = Date.UTC(2026, 9, 2, 8, 9);
 const genesis = { kind: 'genesis' as const, bot: '8989505249', chat: '7812716706', operator: '7812716706',
   grant: 'grant:reminder-words', configurationDigest: 'sha256:reminder-words', expires: Date.UTC(2026, 9, 10),
-  maxCalls: 40, maxReplies: 20, maxTurns: 20, maxBytes: 12000, cursor: 0 };
+  maxCalls: 40, maxReplies: 20, maxTurns: 20, maxBytes: 40000, cursor: 0 };
+/** The real composed sources from this checkout, so each packet below carries the briefing the live
+ * runner sends -- the half of the fault that lived in the always-sent text, not in the code. */
+const liveSources = () => sourcePacket(readSource, SOURCE_PINS,
+  { providerAttempts: genesis.maxCalls, expiresAt: genesis.expires }).sources;
 const update = (id: number, text: string) => ({ update_id: id,
   message: { chat: { id: 7812716706, type: 'private' }, from: { id: 7812716706 }, text,
     date: Math.floor(START / 1000) + id * 60 } });
@@ -74,6 +78,7 @@ const offered = (input: Input) => (JSON.parse(input.context) as { reminders?: Re
 function world(root: string, decide: (input: Input) => string) {
   const state = { now: START, sent: [] as string[] };
   const ports = { now: () => state.now, stopped: () => false, timeZone: 'America/Los_Angeles',
+    sources: liveSources,
     model: async (input: Input) => input.id.startsWith('summary:')
       ? JSON.stringify({ summary: 'The operator asked for reminders.', people: [], memory: [], commitments: [], questions: [] })
       : decide(input),
@@ -180,8 +185,11 @@ it('leaves an undated promise unsettled without any denial in what the model is 
     worker.intake([update(1, recorded('a5').message)]); await worker.drain();
     expect(openRequests(journal.view)).toHaveLength(0);
     expect(state.sent).toHaveLength(1);
+    const packets = seen.join('\n');
+    // The capability note really is in what the model was given, and it no longer denies the capability.
+    expect(packets).toContain('- preview-requested-actions: ');
     for (const denial of ['no scheduler', 'no scheduled work', 'unprompted', 'background process'])
-      expect(seen.join('\n'), denial).not.toContain(denial);
+      expect(packets, denial).not.toContain(denial);
     expect(recorded('a5').reply).toContain('I have no scheduler or background process');
     journal.close();
   } finally { rmSync(root, { recursive: true, force: true }); }
