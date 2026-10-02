@@ -4,9 +4,9 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { createJournalWorker, openPreviewJournal, retrospectiveCases, type JournalView } from './journal.js';
 import { GRAVITY_WELLS, RETROSPECTIVE_DUTIES, RETRO_ANSWER_BUDGET_BYTES, RETRO_ANSWER_BYTES_PER_TOKEN,
-  RETRO_ANSWER_NARROW_STEPS, RETRO_EFFICIENCY_CHARS, RETRO_FAILURE_BACKOFF_MS, RETRO_NOTE_CHARS, RETRO_OUTCOME_REASON_CHARS,
-  RETRO_OVER_CAP_REASON, RETRO_STALE_CASE_MS, RETRO_WELL_NOTE_CHARS, disciplineSource, eligibleCases, estimatedAnswerBytes,
-  retroAnswerBudget, type RetroCase } from './retrospective.js';
+  RETRO_ANSWER_NARROW_STEPS, RETRO_EFFICIENCY_CHARS, RETRO_FAILURE_BACKOFF_MS, RETRO_MIN_INTERVAL_MS,
+  RETRO_OUTCOME_REASON_CHARS, RETRO_OVER_CAP_REASON, RETRO_STALE_CASE_MS, disciplineSource,
+  eligibleCases, estimatedAnswerBytes, measuredAnswerBudget, retroAnswerBudget, type RetroCase } from './retrospective.js';
 import { SUBSCRIPTION_MAX_OUTPUT_TOKENS } from '../../src/assembly/production-provider.js';
 
 /** The live line's own record of this failure: the 2026-09-29 proof room, where every model answer over the
@@ -51,9 +51,8 @@ function answerAtAskedLengths(state: string, findings = 1) {
   const cases = (JSON.parse(state) as { cases: RetroCase[] }).cases;
   const graded = cases.filter(item => item.category === 'decision' || item.category === 'verdict');
   return JSON.stringify({ inspected: cases.map(item => item.id), omitted: [],
-    duties: RETROSPECTIVE_DUTIES.map(duty => ({ duty, disposition: 'inspected', note: pad(RETRO_NOTE_CHARS) })),
-    gravityWells: GRAVITY_WELLS.map(well => ({ well: well.id, observed: false, refs: [], note: pad(RETRO_WELL_NOTE_CHARS) })),
-    efficiency: { summary: pad(RETRO_EFFICIENCY_CHARS) },
+    duties: 'n'.repeat(RETROSPECTIVE_DUTIES.length), wells: GRAVITY_WELLS.map(() => 0),
+    eff: pad(RETRO_EFFICIENCY_CHARS),
     findings: Array.from({ length: findings }, () => ({ duty: 'waste', refs: [cases[0]!.id],
       summary: pad(RETRO_OUTCOME_REASON_CHARS), disposition: { owner: 'agent', next: pad(RETRO_OUTCOME_REASON_CHARS) } })),
     feedback: [], closures: [], authorizations: [], comparisons: [],
@@ -124,16 +123,26 @@ it('settles a pass whose own outcome row proves an over-cap answer as failed wit
     expect(pass.result).toBeUndefined();
     // The declared fail direction for this consumer: no grade, finding or candidate, every case still owed.
     expect(owed(w.journal.view, w.at())).toEqual(expect.arrayContaining(before));
-    // And the next pass asks for less, rather than repeating an ask that cannot be answered: the room for case
-    // rows halves, while the rows every pass owes keep their place, so the narrowed ask can still hold cases.
+    // And the next pass asks for less, rather than repeating an ask that cannot be answered. It is sized from what
+    // this answer really cost — the 2312 output tokens its own frame reported — rather than from a fixed fraction
+    // of the estimate, which is what makes it fit in one step (retrospective-measured-narrowing.test.ts).
     const fixed = estimatedAnswerBytes([]);
-    expect(retroAnswerBudget(w.journal.view.retroPasses)).toBe(fixed + Math.floor((RETRO_ANSWER_BUDGET_BYTES - fixed) / 2));
-    // Not before the failure backoff: the failed pass is not repeated early.
-    w.advance(RETRO_FAILURE_BACKOFF_MS - 1);
+    expect(pass.outputTokens).toBe(2312);
+    const narrowed = retroAnswerBudget(w.journal.view.retroPasses);
+    expect(narrowed).toBe(measuredAnswerBudget(pass));
+    expect(narrowed).toBeLessThan(pass.estimatedAnswerBytes!);
+    expect(narrowed).toBeGreaterThan(fixed);
+    // Not necessarily below one fallback halving. Now the fixed part is bounded, a gentle overrun like this one
+    // earns MORE room than the halving at depth one would have taken, and that is the measurement doing its job:
+    // the halving is a fallback for a pass with nothing to measure, never a ceiling on a real measurement.
+    expect(narrowed).toBeGreaterThan(fixed + Math.floor((RETRO_ANSWER_BUDGET_BYTES - fixed) / 2));
+    // Not immediately: the ordinary minimum interval between passes still holds. It does not wait the full
+    // unknown-failure backoff, because this failure's cause is settled and the narrower ask is already computed.
+    w.advance(RETRO_MIN_INTERVAL_MS - 1);
     await w.retrospect();
     expect(w.journal.view.retroPasses.length).toBe(1);
     expect(w.states.length).toBe(1);
-    // Past the backoff the narrower pass actually runs, and completes when its answer fits the cap.
+    // Past that interval the narrower pass actually runs, and completes when its answer fits the cap.
     let asked = '';
     w.answerWith(state => { asked = answerAtAskedLengths(state);
       return { state: 'complete', value: asked, usage: { inputTokens: 17164, outputTokens: Math.round(Buffer.byteLength(asked) / RETRO_ANSWER_BYTES_PER_TOKEN), charge: null, inputComplete: true } }; });
@@ -165,24 +174,35 @@ it('keeps planning at least one case however many passes in a row ran over the c
       return { state: 'uncertain', usage: uncertainUsage(2312) };
     });
     const fixed = estimatedAnswerBytes([]);
-    const asked: number[] = [];
-    // Two passes deeper than the narrowing goes: the ask shrinks to one case and then holds there.
-    for (let round = 0; round <= RETRO_ANSWER_NARROW_STEPS + 2; round++) {
+    const asked: number[] = [], budgets: number[] = [];
+    // Run until the budget stops moving, bounded. Each measured step takes about a quarter off the room.
+    for (let round = 0; round < 20; round++) {
       await w.retrospect();
       expect(w.journal.view.retroPasses.length).toBe(round + 1);
       const pass = w.journal.view.retroPasses.at(-1)!;
       expect(pass.reason).toBe(RETRO_OVER_CAP_REASON);
-      expect(pass.cases.length).toBeGreaterThan(0);
+      expect(pass.cases.length).toBeGreaterThan(0);        // the floor of one case, every round, however deep
       asked.push(pass.cases.length);
-      // The budget never reaches the rows every pass owes, so the narrowing only ever removes cases.
-      expect(retroAnswerBudget(w.journal.view.retroPasses)).toBeGreaterThan(fixed);
+      // The budget never reports less room than the rows every pass owes, so the narrowing only ever removes
+      // cases; the floor of one case lives in the planner, which holds a pass's first case to the whole bound.
+      const budget = retroAnswerBudget(w.journal.view.retroPasses);
+      expect(budget).toBeGreaterThanOrEqual(fixed);
+      budgets.push(budget);
       w.advance(RETRO_FAILURE_BACKOFF_MS);
+      if (budgets.length > 1 && budget === budgets.at(-2)) break;
     }
-    for (let index = 1; index < asked.length; index++) expect(asked[index]!).toBeLessThanOrEqual(asked[index - 1]!);
+    // The BUDGET is what narrows monotonically. The case COUNT is not monotone and must not be asserted to be:
+    // every six hours of backoff makes more owed work eligible, and a cheap message case costs a fraction of a
+    // graded decision, so a smaller budget can still buy more cases than the pass before it.
+    for (let index = 1; index < budgets.length; index++) expect(budgets[index]!).toBeLessThanOrEqual(budgets[index - 1]!);
+    expect(budgets.length).toBeLessThan(20);                 // it settles, it does not narrow for ever
     expect(asked[0]!).toBeGreaterThan(1);
+    // Where it settles is the floor of ONE case, not the bare RETRO_ANSWER_FIXED_BYTES floor: a pass's first case
+    // is always admitted at the whole bound, so the budget a one-case pass measures is self-consistent and holds
+    // there. The floor itself is the arithmetic's backstop below that, never the resting state.
     expect(asked.at(-1)).toBe(1);
-    expect(retroAnswerBudget(w.journal.view.retroPasses))
-      .toBe(fixed + Math.floor((RETRO_ANSWER_BUDGET_BYTES - fixed) / 2 ** RETRO_ANSWER_NARROW_STEPS));
+    expect(budgets.at(-1)).toBeGreaterThan(fixed);
+    expect(budgets.at(-1)).toBeLessThan(estimatedAnswerBytes([]) + RETRO_ANSWER_BUDGET_BYTES);
     // Every failed pass stays truthful and every case stays owed.
     expect(owed(w.journal.view, w.at())).toEqual(expect.arrayContaining(before));
     // The narrowing is read from the journal's own records, so a restart neither loses it nor strands the debt:
