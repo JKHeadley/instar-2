@@ -584,6 +584,17 @@ const overCapCall = (view: JournalView, id: string): boolean => {
   }
   return false;
 };
+/** Whether the latest recorded physical outcome of this answer's calls proves a process the local timeout ended and
+ * whose cleanup was confirmed: the one uncertain outcome a replacement may follow (docs/09, live 2026-10-02 S and A). */
+const timedOutCall = (view: JournalView, id: string): boolean => {
+  for (let index = view.callOutcomes.length - 1; index >= 0; index--) {
+    const row = view.callOutcomes[index]!;
+    if (row.id !== id || row.role !== 'model') continue;
+    return row.outcome.localLimit === 'timeout'
+      && (row.outcome.resources?.cleanup === 'verified' || row.outcome.resources?.cleanup === 'unconfined');
+  }
+  return false;
+};
 export interface CallOutcome { exitCode: number | null; localLimit: 'timeout' | 'size' | 'output-cap' | 'memory' | 'processes' | 'cpu' | 'aggregate' | 'capacity' | null;
   elapsedMs: number; type: 'result' | 'other' | null; subtype: 'success' | 'error_max_turns' | 'error_during_execution' | 'error_max_budget_usd' | 'other' | null;
   isError: boolean | null; outputTokens: number | null; promptBytes: number; resources?: LaunchResources }
@@ -895,6 +906,9 @@ export type JournalRecord =
   | { kind: 'lookup'; id: string; words: string[]; found: string[]; prompt?: string; grounding?: ReplyGrounding; packetDropped?: PacketDrop[];
     usage?: ModelUsage; maxInputTokens?: number; maxOutputTokens?: number; at: number }
   | { kind: 'format-retry'; id: string; role: 'answer' | 'reply-review'; state?: 'complete'; failureClass?: 'malformed'; undecided?: true; usage?: ModelUsage; maxInputTokens?: number; maxOutputTokens?: number; at: number }
+  /** The one replacement of an answer call that ended at the local timeout (docs/09: a replacement takes separate
+   * capacity). The timed-out call stays UNKNOWN and charged; the replacement is reserved under the same cap. */
+  | { kind: 'answer-replace'; id: string; state: 'uncertain'; usage?: ModelUsage; latencyMs?: number; maxInputTokens?: number; maxOutputTokens?: number; at: number }
   | { kind: 'call-outcome'; id: string; role: 'model' | 'summary' | 'reply-review'; outcome: CallOutcome; at: number }
 
 
@@ -1031,7 +1045,7 @@ export interface Turn { id: string; update: number; text: string; raw: string; a
 
 
   wasHeld?: true; heldNoticeCoveredBy?: string; closedQuestions?: string[]; checked?: CoherenceFinding[]; checkFailed?: true; unlabeledRecall?: boolean;
-  replyChecks?: ReplyCheckResult[]; jevReserved?: boolean; jevReservedAt?: number; reviewReserved?: boolean; reviewReservedAt?: number; reviewState?: 'complete' | 'rejected' | 'uncertain'; answerRetried?: true; lookup?: { words: string[]; found: string[] }; reviewRetried?: true; reviewDiagnostics?: ReplyReviewDiagnostics;
+  replyChecks?: ReplyCheckResult[]; jevReserved?: boolean; jevReservedAt?: number; reviewReserved?: boolean; reviewReservedAt?: number; reviewState?: 'complete' | 'rejected' | 'uncertain'; answerRetried?: true; answerReplaced?: true; lookup?: { words: string[]; found: string[] }; reviewRetried?: true; reviewDiagnostics?: ReplyReviewDiagnostics;
   answerMs?: number; sendMs?: number; answerReason?: string;
   reviewCandidate?: string; reviewMentionedDates?: string[];
   revisionReserved?: true; revisionReservedAt?: number; revisionObjections?: string[];
@@ -2053,8 +2067,10 @@ const capKey = (reason: 'calls' | 'replies' | 'turns' | 'bytes', limit: number, 
 /** Reservations spend once, even when their external outcome is unknown. */
 /** Each still-UNKNOWN call by a stable key; unknownCallCounts is its per-kind size. */
 export function unknownCallKeys(view: JournalView) {
-  const answers = view.order.filter(turn => turn.reserved && (turn.modelState === 'uncertain' || turn.answer === undefined))
-    .map(turn => `answer:${turn.id}`);
+  const answers = [...view.order.filter(turn => turn.reserved && (turn.modelState === 'uncertain' || turn.answer === undefined))
+    .map(turn => `answer:${turn.id}`),
+    // A replaced timed-out call stays UNKNOWN under its own key whatever its replacement concludes.
+    ...view.order.filter(turn => turn.answerReplaced).map(turn => `answer-replaced:${turn.id}`)];
   const summaries = [...view.summaryReservations.keys()].map(through => `summary:${String(through)}`);
   const reviews = [...view.order.filter(turn => turn.reviewReserved && turn.reviewState !== 'complete' && turn.reviewState !== 'rejected'
     && !turn.replyChecks?.some(check => check.path === 'subscription' && (check.verdict === 'pass' || check.verdict === 'violation')))
@@ -3095,6 +3111,18 @@ function project(view: JournalView, row: JournalRecord, system?: SystemCheck, ad
     } else throw Error('preview journal: format retry order or cap');
     view.calls++; return;
   }
+  if (row.kind === 'answer-replace') {
+    // docs/09 "a reservation survives uncertain execution": the timed-out call keeps its full reservation (never
+    // settled here), and its replacement takes separate capacity under the same cap, once per turn (Rule 55).
+    if (!turn.reserved || turn.answer !== undefined || turn.modelState !== undefined || turn.intent !== undefined
+      || turn.answerReplaced || row.state !== 'uncertain' || view.calls >= view.limits.maxCalls || !timedOutCall(view, row.id))
+      throw Error('preview journal: answer replacement order or cap');
+    const timedOut = view.tokenCurrent.get(`answer:${row.id}`);
+    if (timedOut !== undefined) { view.tokenCurrent.delete(`answer:${row.id}`); view.tokenCurrent.set(`answer-replaced:${row.id}`, timedOut); }
+    reserveTokens(view, `answer:${row.id}`, 'answer', row.maxInputTokens ?? view.limits.maxBytes,
+      row.maxOutputTokens ?? subscriptionOutputMaximum);
+    turn.answerReplaced = true; view.calls++; return;
+  }
   if (row.kind === 'lookup') {
     // Rules 55, 75: one lookup per turn, before any outcome or send; its second answer call is a counted, token-reserved
     // call under the same cap. The searched phrases are bounded data and every found source is an earlier turn.
@@ -3598,7 +3626,7 @@ export function openPreviewJournal(path: string, key: Uint8Array, initial?: Extr
         || (row.kind === 'limited-intent' && row.approval?.action !== 'stop' && reserveRepliesUsed(view, row.at) >= MINIMAL_RESERVE.replies)
         || ((row.kind === 'reserve' || row.kind === 'summary-reserve' || row.kind === 'index-reserve' || row.kind === 'reply-review-reserve'
           || row.kind === 'reply-revision-reserve' || row.kind === 'reply-revision-review-reserve' || row.kind === 'format-retry' || row.kind === 'lookup'
-          || row.kind === 'retro-reserve' || row.kind === 'retro-rerun-reserve')
+          || row.kind === 'answer-replace' || row.kind === 'retro-reserve' || row.kind === 'retro-rerun-reserve')
           && view.calls >= view.limits.maxCalls)
         || (row.kind === 'intent' && view.replies >= view.limits.maxReplies)
         || (row.kind === 'reply-jev-reserve' && view.jevChecks >= view.limits.maxReplies)))
@@ -6028,9 +6056,31 @@ export function createJournalWorker(journal: ReturnType<typeof openPreviewJourna
               ...(retryPrepared === undefined ? {} : { prepared: retryPrepared }) }); }
             catch { return false; }
           };
+          // docs/09, live 2026-10-02 (S update 6230861 after its lookup, A update 6230665, S update 6230832): an answer
+          // call the local timeout ended stays UNKNOWN and charged, and the turn asks once more under the same cap, on
+          // the same packet, before any send. Only a recorded timeout with confirmed cleanup qualifies; any other
+          // UNKNOWN outcome, or a second one, keeps the loss notice. Returns false when the replacement's own outcome
+          // is unknown (its reservation then stays UNKNOWN).
+          const replaceTimedOut = async (given: Answer): Promise<Answer | false> => {
+            if (typeof given === 'string' || !('state' in given) || given.state !== 'uncertain' || turn.answerReplaced
+              || !timedOutCall(journal.view, turn.id) || halted()
+              || journal.view.calls >= journal.view.limits.maxCalls - (ports.replyCheck ? 1 : 0)) return given;
+            journal.append({ kind: 'answer-replace', id: turn.id, state: 'uncertain',
+              ...('usage' in given && given.usage ? { usage: given.usage } : {}), latencyMs: duration(answerStarted),
+              maxInputTokens: journal.view.limits.maxBytes, maxOutputTokens: subscriptionOutputMaximum, at: ports.now() }); gate();
+            try { return await ports.model({ question, context, id: turn.id, ...(prepared === undefined ? {} : { prepared }) }); }
+            catch { return false; }
+          };
+          /** One answer call's settled result: a timed-out call replaced once, then a format miss re-asked once. */
+          const settled = async (given: Answer): Promise<Answer | false> => {
+            const replaced = await replaceTimedOut(given);
+            if (replaced === false) return false;
+            const reasked = await formatReask(replaced);
+            return reasked === false ? false : replaceTimedOut(reasked);
+          };
           const answerText = (given: Answer) => typeof given === 'string' ? given : 'text' in given ? given.text : undefined;
-          const first = await formatReask(answer);
-          if (first === false) continue; // the retry reservation remains UNKNOWN
+          const first = await settled(answer);
+          if (first === false) continue; // the retry or replacement reservation remains UNKNOWN
           answer = first;
           // Rule 11 (Part 21 §2): the answer model may ask for ONE memory lookup instead of replying. Its phrases are
           // data: bounded, redacted like any packet field, and used only as a search query. The second answer call is
@@ -6059,7 +6109,7 @@ export function createJournalWorker(journal: ReturnType<typeof openPreviewJourna
               let second: Answer | false;
               try { second = await ports.model({ question, context, id: turn.id, ...(prepared === undefined ? {} : { prepared }) }); }
               catch { continue; } // the lookup's reservation remains UNKNOWN; it is never repeated
-              second = await formatReask(second);
+              second = await settled(second);
               if (second === false) continue;
               answer = second;
             }
@@ -6260,7 +6310,11 @@ export function createJournalWorker(journal: ReturnType<typeof openPreviewJourna
                       replacement: chosen.quote, trigger: turn.id }];
                   } else { text = 'I could not verify that memory conflict decision. Please restate which fact is right.'; memory = []; }
                 }
-                if (parsed.memoryList === true && fromOperator(turn) && !probeTurn(journal.view, turn) && !invalidMemory && !invalidDate)
+                // Rule 11, live 2026-10-02 S update 6230862: a turn whose model ran its one lookup asked about one earlier
+                // thing, and the reply to that lookup must use it or say it was searched for and not found. The list of
+                // saved items answers "what do you remember about me", never that question, so it does not replace it.
+                if (parsed.memoryList === true && fromOperator(turn) && !probeTurn(journal.view, turn) && !invalidMemory && !invalidDate
+                  && !turn.lookup)
                   text = memoryList(memory, dated);
               } else if (parsed && (parsed.memory !== undefined || parsed.memoryDisposition !== undefined || parsed.dated !== undefined || parsed.personMerges !== undefined || parsed.undo !== undefined)) invalidMemory = true;
             } catch { /* Legacy plain reply. */ }
