@@ -2,7 +2,7 @@
   "name": "@instar/constitutional-types",
   "version": "0.1.0",
   "private": true,
-  "instar": { "launchers": ["bin/instar-production.mjs", "scripts/host-watch.mjs", "tests/preview/agent.mjs", "tests/preview/journal-agent.mjs"] },
+  "instar": { "launchers": ["bin/instar-production.mjs", "scripts/host-watch.mjs", "tests/preview/agent.mjs", "tests/preview/conversation-authority-server.mjs", "tests/preview/journal-agent.mjs"] },
   "type": "module",
   "exports": {
     ".": { "types": "./dist/index.d.ts", "default": "./dist/index.js" },
