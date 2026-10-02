@@ -964,6 +964,8 @@ export interface JournalView { genesis: Extract<JournalRecord, {kind:'genesis'}>
   /** One entry per failed summary attempt since the last accepted summary: a frontier's two-attempt budget is per
    * span, and a new base makes every later frontier a different, shorter span (`summaryFailures` keeps the totals). */
   summarySpanFailures: number[];
+  /** Replay only: repeated answer reservations an earlier build wrote and its own projection refused (never applied). */
+  refusedReserveRows?: number;
 
   lastPrompt: { kind: 'answer'; id: string; prompt: string | null; memoryCount: number; summaryCount: number; closedCount: number }
     | { kind: 'summary'; through: number; prompt: string | null; memoryCount: number; summaryCount: number; closedCount: number } | null;
@@ -2134,7 +2136,8 @@ export function outboundSubjectOf(row: Extract<JournalRecord, { kind: 'intent' |
 type SystemCheck = (writer: WriterRecord | undefined, method: SystemMethod, occurrence: string) => boolean;
 /** The exact occurrence the scheduler writer signs for one due turn: its id and the requests it carries. */
 export const requestOccurrence = (id: string, items: readonly ReminderRef[]) => JSON.stringify([id, items.map(reminderKey)]);
-function project(view: JournalView, row: JournalRecord, system?: SystemCheck): void {
+/** `admission` is 'replay' only while a stored journal is read back; every new record projects as 'new'. */
+function project(view: JournalView, row: JournalRecord, system?: SystemCheck, admission: 'new' | 'replay' = 'new'): void {
   if ('at' in row) view.clockFloor = Math.max(view.clockFloor, row.at);
   if (row.kind === 'hold') {
     for (let index = view.awayEvents.length - 1; index >= 0; index--) {
@@ -2338,7 +2341,7 @@ function project(view: JournalView, row: JournalRecord, system?: SystemCheck): v
     if (o.resources?.cleanup === 'unresolved') view.callOutcomeCounts.set('cleanup-unresolved',
       (view.callOutcomeCounts.get('cleanup-unresolved') ?? 0) + 1);
     view.callOutcomes.push(row); if (view.callOutcomes.length > 10) view.callOutcomes.shift();
-    const summaryAttempt = row.role === 'summary' ? /^summary:(\d+)$/u.exec(row.id) : null;
+    const summaryAttempt = row.role === 'summary' ? /^summary:(\d+(?:\.\d+)?)$/u.exec(row.id) : null;
     if (summaryAttempt) {
       const through = Number(summaryAttempt[1]);
       view.summaryOverCap = view.summaryOverCap.filter(item => item.through !== through);
@@ -2861,11 +2864,22 @@ function project(view: JournalView, row: JournalRecord, system?: SystemCheck): v
   if (row.kind === 'reserve' || row.kind === 'intent') {
     delete turn.held; delete turn.heldSince; view.heldTurns.delete(turn);
   }
-  if (row.kind === 'reserve') { if (turn.reserved) throw Error('preview journal: repeated reservation');
+  if (row.kind === 'reserve') {
+    // A grounding frontier is a turn's update: a Telegram update or a due turn's synthetic one (a summary may end on
+    // a fired reminder). Checked before anything is reserved, so a refused row changes nothing.
+    const frontiers = [row.grounding?.compactedThrough, row.grounding?.setAsideThrough];
+    if (turn.reserved) {
+      // Replay only: builds before this fix wrote a reserve whose synthetic frontier their own projection then
+      // refused, and re-wrote it every pass (proof room 2, 2026-10-02). None took effect, no call followed, and the
+      // first now stands; each later copy is counted, never applied. A new writer's repeat is still refused.
+      if (admission === 'replay' && turn.answer === undefined && turn.modelState === undefined
+        && frontiers.some(frontier => frontier !== undefined && !Number.isSafeInteger(frontier))) { view.refusedReserveRows = (view.refusedReserveRows ?? 0) + 1; return; }
+      throw Error('preview journal: repeated reservation');
+    }
+    for (const frontier of frontiers)
+      if (frontier !== undefined && (!isJournalUpdate(frontier) || frontier >= turn.update)) throw Error('preview journal: compacted grounding order');
     reserveTokens(view, `answer:${row.id}`, 'answer', row.maxInputTokens ?? view.limits.maxBytes,
       row.maxOutputTokens ?? subscriptionOutputMaximum);
-    for (const frontier of [row.grounding?.compactedThrough, row.grounding?.setAsideThrough])
-      if (frontier !== undefined && (!Number.isSafeInteger(frontier) || frontier >= turn.update)) throw Error('preview journal: compacted grounding order');
     turn.reserved = true; turn.reservedAt = row.at; if (row.prompt !== undefined) turn.prompt = row.prompt;
     if (view.stepCheckBusiness && turn.requestedAction === undefined) view.stepChecks.set(`prepare:${row.id}`, {});
     if (row.grounding) turn.grounding = row.grounding; if (row.packetDropped !== undefined) turn.packetDropped = row.packetDropped; if (row.packetLimit !== undefined) turn.packetLimit = row.packetLimit; const hits = promptRecallHits(row.prompt);
@@ -3067,7 +3081,7 @@ function project(view: JournalView, row: JournalRecord, system?: SystemCheck): v
       // (`spoken: false`) records the same accounting and the reply must NOT open with it.
       const account = row.continuity, before = view.turns.get(account.prePauseInbound), frontier = continuityFrontier(turn.grounding);
       const opens = row.text.startsWith(withDisclosure('PREVIEW — ', account.disclosure).trimEnd());
-      if (!before || before.update >= turn.update || turn.requestedAction || !Number.isSafeInteger(account.summarizedThrough)
+      if (!before || before.update >= turn.update || turn.requestedAction || !isJournalUpdate(account.summarizedThrough)
         || account.summarizedThrough >= turn.update || !frontier || frontier.through !== account.summarizedThrough
         || (account.basis ?? 'summary') !== frontier.basis || account.basis !== undefined && account.basis !== 'set-aside'
         || account.spoken !== undefined && account.spoken !== false
@@ -3230,7 +3244,7 @@ export function openPreviewJournal(path: string, key: Uint8Array, initial?: Extr
       } else {
         if (pendingSnapshot) throw Error('preview journal: interrupted snapshot');
         snapshotAllowed = false;
-        project(view, row, systemCheck);
+        project(view, row, systemCheck, 'replay');
       }
       offset = decoded.end;
 
@@ -3304,6 +3318,9 @@ export function openPreviewJournal(path: string, key: Uint8Array, initial?: Extr
         if (!capReportAllowed(view!, row)
           || view!.capReports.has(capKey(row.reason, row.limit, row.level))) throw Error('preview journal: cap report order');
       }
+      // Every record is projected onto a copy first: a record the journal's own reader would refuse never reaches
+      // the file, and a refused record leaves the live projection untouched (Rule 2; proof room 2, 2026-10-02).
+      if (view && row.kind !== 'genesis') project(structuredClone(view), row, systemCheck);
       boundary?.(`before:${row.kind}`);
       size = writeFrame(fd, row, key, size); fsyncSync(fd);
       if (row.kind === 'genesis') {

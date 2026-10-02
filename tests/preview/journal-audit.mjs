@@ -3,7 +3,7 @@ import { createHash } from 'node:crypto';
 import { isoMinute } from '../../src/recall/ground.js';
 import { statedFacts } from './memory-sentinel.js';
 import { hasClaim, replaceClaim, supersedesCorrection } from './claim-match.mjs';
-import { activePersonMerges, before, groundingHistory } from './journal.js';
+import { activePersonMerges, before, groundingHistory, isJournalUpdate } from './journal.js';
 
 const RUNNER_SPEAKER = 'the runner, carrying out a request the operator made earlier (no operator authority)';
 /** A due turn is written by the verified scheduler, never by the operator (Rule 29). It traces to the
@@ -139,7 +139,7 @@ export function auditPacket(view, turn, packet, memoryCount = view.memory.length
   // The reachability floor may also have set aside the oldest turns; when it did, the packet must SAY so and the
   // disclosed count must be exactly what is missing (Rules 2, 9). An undisclosed gap is a history-coverage fault.
   const carried = groundingHistory(view, before(turn.update), summary?.through);
-  const setAside = Number.isSafeInteger(packet.historySetAside?.through) ? packet.historySetAside.through : -1;
+  const setAside = isJournalUpdate(packet.historySetAside?.through) ? packet.historySetAside.through : -1;
   const expected = carried.filter(item => item.update > setAside).map(item => item.id);
   const history = list(packet.history, 'history');
   if (body(history.map(item => item?.id)) !== body(expected)) fault('history-coverage', 'history');
