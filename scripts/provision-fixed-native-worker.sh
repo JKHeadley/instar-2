@@ -33,7 +33,10 @@ readonly LEDGER=/Library/Instar2/.accounts-ledger
 readonly CONF=/Library/Instar2/m4-launch/installation.conf
 readonly SERVICE=/Library/Instar2/m4-launch/service.json
 readonly KEY=/Library/Instar2/m4-launch/keys/receipt.key
-readonly PUB=/Library/Instar2/m4-launch/keys/receipt.pub
+# The public half is the agent-side owner's receipt trust reference (S8), so it sits
+# beside service.json in the world-traversable package folder; the keys folder is
+# root-only (0700) and the agent account cannot enter it.
+readonly PUB=/Library/Instar2/m4-launch/receipt.pub
 readonly JOURNAL=/private/var/db/instar2-worker/journal
 readonly BREAKER=/private/var/db/instar2-worker/supervisor-restarts
 readonly SELF_IN_RELEASE=scripts/provision-fixed-native-worker.sh
@@ -513,6 +516,7 @@ verify_monitor() {
   mcheck conf "$(pathrow "$CONF")" "$CONF|Regular File|root|wheel|644"
   mcheck service "$(pathrow "$SERVICE")" "$SERVICE|Regular File|root|wheel|644"
   mcheck key "$(pathrow "$KEY")" "$KEY|Regular File|root|wheel|600"
+  mcheck receipt-pub "$(pathrow "$PUB")" "$PUB|Regular File|root|wheel|644"
   mcheck journal "$(pathrow "$JOURNAL")" "$JOURNAL|Regular File|root|wheel|600"
   if [ "$SOURCE" = live ]; then
     rel=$INSTALLED_RELEASE
