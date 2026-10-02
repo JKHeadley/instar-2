@@ -1,5 +1,21 @@
 [
   {
+    "revision": 11,
+    "date": "2026-10-02",
+    "status": "draft",
+    "cause": {
+      "kind": "conversation",
+      "note": "Operator amendment 2026-10-02: an operator may accept, by a recorded statement naming the account and installation, approvals from an account the agent can also use; disclosed, revocable; the agent's duty not to approve as the operator stated as a value. Operator direction: topic 102965 messages 121802 and 121804; exact wording ruled by the reviewer 12:22; exact-content approval pending at the time of this commit."
+    },
+    "changes": [
+      {
+        "what": "Amend 'the agent never administers its own safeguards' to carry one named exception: an operator may explicitly accept, in a recorded statement naming the account and installation, that approvals from an account the agent can also use count as the operator's yes. The exception changes only the approval-account access requirement; independently enforced safeguards stay independently administered, every approval taken under it carries the shared-access disclosure wherever it is recorded, displayed or exported, and the operator may withdraw the acceptance at any time. Extend the check to accept either the absent-access showing or a citation of the current recorded acceptance, and to require the withdrawal check and the disclosure. Add the value that the operator's approval remains the operator's act — with shared account access a duty, not an independently verified guarantee.",
+        "why": "The operator decided the approval rule stays the default but that he may override the agent-cannot-use-the-account requirement by a recorded acceptance; the exception is the smallest principle that permits it while keeping the loss of independence disclosed, revocable and never reported as verified.",
+        "ref": "Operator direction: topic 102965, messages 121802 and 121804, 2026-10-02 12:10 PDT; reviewer wording ruling 2026-10-02 12:22; exact-content operator approval PENDING"
+      }
+    ]
+  },
+  {
     "revision": 10,
     "date": "2026-09-29",
     "status": "approved",

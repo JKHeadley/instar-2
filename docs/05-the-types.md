@@ -97,16 +97,18 @@ One narrow third class carries the purpose's account-authenticated approval. A
 holds: it comes from the operator account that a recorded `verified`-provenance conversation
 binding names (the operator's own bound chat) or that the current P-02 policy names (a host
 review under the operator's account); the current P-02 policy records that the agent holds no
-session, credential, delegated sender or recovery path to that account; its own record binds it
-to one prepared, recorded authorization request (a reply to that request's message, or a review
-of that request's exact head), whose digest, action, scope, base and expiry it therefore
-answers; the request is unexpired and its base current; and the platform's message or review id
-has not been consumed before. Such a yes may complete exactly that request's `Authorization`,
-`StandingGrant` or `Revocation`, once. It never produces a principal, never binds or re-binds a
-conversation, supports no other value, and is never reported as `verified`: the package cannot
-re-check it, and the guarantee rests on the named service and the durable record of the reply.
-Wherever another part requires a `verified` explicit yes, an `account-assented` yes meeting
-these conditions satisfies it; every other `verified` requirement is unchanged.
+session, credential, delegated sender or recovery path to that account, or cites the operator's
+current recorded acceptance of that access under the purpose's approval-account exception; its
+own record binds it to one prepared, recorded authorization request (a reply to that request's
+message, or a review of that request's exact head), whose digest, action, scope, base and
+expiry it therefore answers; the request is unexpired and its base current; and the platform's
+message or review id has not been consumed before. Such a yes may complete exactly that
+request's `Authorization`, `StandingGrant` or `Revocation`, once. It never produces a
+principal, never binds or re-binds a conversation, supports no other value, and is never
+reported as `verified`: the package cannot re-check it, and the guarantee rests on the named
+service and the durable record of the reply. Wherever another part requires a `verified`
+explicit yes, an `account-assented` yes meeting these conditions satisfies it; every other
+`verified` requirement is unchanged.
 
 This is the honest shape of the guarantee. A faulty adapter can lie about what channel it
 authenticated, so the package does not promise to catch every lie; it promises that nothing the
