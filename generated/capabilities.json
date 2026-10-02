@@ -1,6 +1,6 @@
 {
-  "generation": "sha256:6cc3a0f72eb0f5c2bc0363511abb10124d7557de9bf6b3eff312d4cf39f53515",
-  "commit": "c63f48c2ad6e72926317b9d2b94eb6708828fd98",
+  "generation": "sha256:14ff24df86a0e6f9fa760a0e5883bc0f9f33011a3f0e8b649244f5128e3c8f0c",
+  "commit": "38fe08614cb6cabe22bf97b4be052ae4c67dc40a",
   "launchers": {
     "bin/instar-production.mjs": [
       {
@@ -388,6 +388,136 @@
         "status": "dark",
         "module": "src/conversation",
         "availability": "switched-off",
+        "userFacing": true,
+        "text": "long-polls the bound Telegram bot and hands one reply per admitted message to the effect doorway."
+      }
+    ],
+    "tests/preview/conversation-authority-server.mjs": [
+      {
+        "id": "harness-doorway-parity",
+        "status": "live",
+        "module": "src/assembly",
+        "availability": "not-loaded",
+        "userFacing": false,
+        "text": "binds each supported harness and model doorway to certified code; the rest are marked unproven."
+      },
+      {
+        "id": "intake-slice",
+        "status": "live",
+        "module": "src/intake",
+        "availability": "not-loaded",
+        "userFacing": false,
+        "text": "captures and receipts or holds every inbound message before any work; an uncertain arrival is kept."
+      },
+      {
+        "id": "preview-conversation",
+        "status": "dark",
+        "module": "tests/preview",
+        "availability": "not-loaded",
+        "userFacing": true,
+        "text": "answers the operator in their private Telegram chat and topics, one PREVIEW-prefixed reply per admitted message."
+      },
+      {
+        "id": "preview-durable-memory",
+        "status": "dark",
+        "module": "tests/preview",
+        "availability": "not-loaded",
+        "userFacing": true,
+        "text": "an encrypted local journal of messages, summaries and memory that survives restarts; the operator can correct or forget a fact."
+      },
+      {
+        "id": "preview-owned-obligations",
+        "status": "dark",
+        "module": "tests/preview",
+        "availability": "not-loaded",
+        "userFacing": true,
+        "text": "keeps standing instructions and works the promises its replies leave open, holding results for the next message."
+      },
+      {
+        "id": "preview-requested-actions",
+        "status": "dark",
+        "module": "tests/preview",
+        "availability": "not-loaded",
+        "userFacing": true,
+        "text": "an explicit request for a settled later day and time (a reminder, say) is answered once then, quoting it."
+      },
+      {
+        "id": "preview-status-command",
+        "status": "dark",
+        "module": "tests/preview",
+        "availability": "not-loaded",
+        "userFacing": true,
+        "text": "\"status\" and \"how are you doing\" are answered from the journal without a model call."
+      },
+      {
+        "id": "preview-upcoming-date-mention",
+        "status": "dark",
+        "module": "tests/preview",
+        "availability": "not-loaded",
+        "userFacing": true,
+        "text": "a saved date within 48 hours can get one short mention in the next reply."
+      },
+      {
+        "id": "preview.coherence-check",
+        "status": "live",
+        "module": "tests/preview",
+        "availability": "not-loaded",
+        "userFacing": false,
+        "text": "checks each reply against remembered earlier turns without a model call."
+      },
+      {
+        "id": "preview.rolling-summary",
+        "status": "live",
+        "module": "tests/preview",
+        "availability": "not-loaded",
+        "userFacing": false,
+        "text": "keeps a faithfulness-checked rolling summary of earlier turns."
+      },
+      {
+        "id": "preview.step-check",
+        "status": "dark",
+        "module": "tests/preview",
+        "availability": "not-loaded",
+        "userFacing": false,
+        "text": "off unless launched with it; independently checks each business step and changes nothing."
+      },
+      {
+        "id": "register-tooling",
+        "status": "live",
+        "module": "src/register",
+        "availability": "not-loaded",
+        "userFacing": false,
+        "text": "generates the register, rule book, glossary and this briefing from the declarations in code."
+      },
+      {
+        "id": "rungraph-core",
+        "status": "dark",
+        "module": "src/rungraph",
+        "availability": "not-loaded",
+        "userFacing": true,
+        "text": "records each run as signed facts and refuses a step outside its budget or grant."
+      },
+      {
+        "id": "slack-conversation-adapter",
+        "status": "dark",
+        "module": "src/conversation",
+        "availability": "not-loaded",
+        "userFacing": true,
+        "text": "receives Slack Socket Mode messages from one bound direct message or thread into intake; it is dark and has no live proof."
+      },
+      {
+        "id": "slack-ordinary-reply",
+        "status": "dark",
+        "module": "src/conversation",
+        "availability": "not-loaded",
+        "userFacing": true,
+        "text": "prepares a plain-text Slack reply to the bound direct message or thread; it is dark and refuses to send."
+      },
+      {
+        "id": "telegram-conversation-adapter",
+        "status": "dark",
+        "module": "src/conversation",
+        "availability": "not-loaded",
         "userFacing": true,
         "text": "long-polls the bound Telegram bot and hands one reply per admitted message to the effect doorway."
       }
