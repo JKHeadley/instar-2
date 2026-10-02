@@ -3354,3 +3354,26 @@ npx vitest run tests/preview/probe-traffic-replay.test.ts --configLoader=runner
 ```
 
 The supervised procedure is [probe-traffic-live-test.md](live-tests-archive/probe-traffic-live-test.md).
+
+### One conversation on two machines (journal runner)
+
+Off unless asked for: the single-machine launch is unchanged. With `--machine-posture multi-machine
+--conversation-authority URL --replica-listen HOST:PORT --replica-peer URL --owner-machine NAME` (and the shared
+secret bound as `INSTAR_SECRET_PREVIEW_AUTHORITY_SECRET`) two runners serve one conversation with one voice:
+
+- One shared authority (`conversation-authority-server.mjs`, on one machine) issues the conversation lease, one
+  dispatch-claim per send, and the settled Telegram cursor. Only the lease holder polls or sends.
+- The lease holder's journal bytes are copied to the other machine and acknowledged (`journal-replication.ts`).
+  A send or a model call waits until the acknowledgement covers the journal through its own record: the purpose
+  document's `replicated(1)` default. With the other machine away, messages are still read, but nothing is spent or sent;
+  the reason is on stderr, in `status` (`sharedHistory.replication`) and in the supervisor's service observation.
+- A machine that takes the conversation over continues from the newest copy it holds. Its own older journal is
+  kept as `journal.encrypted.set-aside-<epoch>`. Exactly one machine is seeded (`--journal-lineage seed`) on the
+  first start; a machine with no enrolled history never serves.
+
+```sh
+npx vitest run tests/preview/two-machine-runner.test.ts tests/preview/two-machine-floors.test.ts \
+  tests/preview/journal-replication.test.ts tests/preview/two-machine-serving.test.ts --configLoader=runner
+```
+
+The supervised procedure on two real machines is [two-machine-live-test.md](two-machine-live-test.md).

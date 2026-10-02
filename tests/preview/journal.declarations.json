@@ -221,7 +221,7 @@
       "holdsAgentMemory": "yes",
       "machineScope": {
         "kind": "machine-local",
-        "reason": "Single-machine supported installation (P-08): the preview trial runs on one machine with no enrolled peer, so no replica exists; cross-machine sharing of this store is not built. Compaction writes a verified replacement that retains every original record."
+        "reason": "Single-machine supported installation (P-08): with one machine and no enrolled peer no replica exists. When a second machine is enrolled (the runner's multi-machine posture) this file stays the lease holder's working journal and its sealed bytes are replicated to the other machine and acknowledged before any send (tests/preview/journal-replication.ts). Compaction writes a verified replacement that retains every original record."
       },
       "agreesWith": []
     },
