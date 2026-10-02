@@ -401,6 +401,10 @@ it('the dispatch gate: replicated first, then one claim; a claimed, stale or unr
     let checks = 0;
     expect(await dispatch.admit('reply:c', () => ++checks > 3 ? 'stopped before dispatch' : null)).toEqual({ kind: 'refused', reason: 'stopped before dispatch' });
     expect(net.asked.slice(asked).filter(request => request.op === 'claim')).toHaveLength(0);
+    // The same demand for a provider call: it waits while the peer is away and ends only with the caller's own reason.
+    let asks = 0;
+    expect(await dispatch.replicated(() => ++asks > 3 ? 'stopped' : null)).toBe('stopped');
+    expect(asks).toBeGreaterThan(3);
     expect(view().claims).toBe(2);
     expect(dispatch.waiting).toBe(0);
     // The cursor does not pass an update the peer does not hold; once it holds it, the cursor moves.
@@ -409,6 +413,7 @@ it('the dispatch gate: replicated first, then one claim; a claimed, stale or unr
     expect(view().cursor).toBe(0);
     wire.state.up = true;
     time.now += 60_000; await lease.hold();
+    expect(await dispatch.replicated(go)).toBe(null);
     expect(await dispatch.admit('reply:c', go)).toBe(null);
     expect(await dispatch.settle(token, 12)).toBe(12);
     expect(dispatch.cursor).toBe(12);

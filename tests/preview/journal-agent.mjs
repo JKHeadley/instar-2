@@ -1122,6 +1122,7 @@ async function main() {
           ? 'The other machine holds the whole journal.' : `Waiting for it now (${status.reason}).`}`; },
       // The minimal path is awaited by the poll loop: its wait is bounded so reading and stop stay reachable (Rule 15).
       admit: (target, refusal) => dispatch.admit(target, refusal, target.startsWith('limited:') ? 10_000 : undefined),
+      replicated: refusal => dispatch.replicated(refusal),
       outcome: (target, kind) => dispatch.outcome(target, kind),
       /** A clean end: the last journal bytes go to the other machine, then the lease is handed back so it can take over at once. */
       async stop() {
@@ -1232,8 +1233,14 @@ async function main() {
     // input, output, actual route, outcome, latency and usage (or its written exception) is
     // durably journaled before any caller reads the result; an unregistered judgment refuses.
     const recordModelCall = entry => journal.append(modelCallRecord({ ...entry, at: wallNow() }));
+    // replicated(1): a provider call is an irreversible act too. On two machines its reservation row (already in the
+    // journal) is acknowledged by the other machine before the call launches; until then the call waits. It ends
+    // only in the states that already end a call: a stop, the expiry, or a lost conversation.
+    const peerHolds = async () => await shared.replicated(() => workerStop.value || existsSync(stopPath)
+      || wallNow() >= journal.view.expires || journal.view.stop || !ownerHeld() ? 'stopped' : null) === null;
     const callSubscription = async (judgment, prepared, id, invocation) => {
       assertLiveJudgment(judgment, 'preview-subscription');
+      if (shared !== null && !await peerHolds()) throw Error('preview: activation stopped');
       const route = modelRoute(id), start = performance.now();
       const inputRef = judgment === 'answer' && journal.view.turns.get(id)?.prompt === prepared ? `reserve:${id}` : undefined;
       // Rule 58: the journal occurrence is the operation id itself (turn, operation or summary).
@@ -1253,6 +1260,7 @@ async function main() {
     };
     const callJev = async (judgment, state, questions, timeoutMs = 2000, occurrence) => {
       assertLiveJudgment(judgment, 'typesafe-jev');
+      if (shared !== null && !await peerHolds()) throw Error('preview: Jev unavailable');
       const start = performance.now(), body = JSON.stringify({ state, model: JEV_MODEL, questions });
       // The id is content-derived and repeats for identical requests; the occurrence names the turn it served.
       const base = { id: `${judgment}:${sha256(body).slice(0, 16)}`, judgment, route: 'typesafe-jev', model: JEV_MODEL, input: body,

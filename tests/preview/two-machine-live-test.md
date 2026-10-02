@@ -4,7 +4,7 @@ Status: plan, runnable. Decision D1 is taken as (a), the constitutional default,
 
 **D1(a), in one paragraph.** The purpose document says that once a second machine is enrolled, `replicated(1)` is the default demand for a reply, and that falling back to local durability when the peer is lost refuses. So a reply is sent only after the other machine has acknowledged the journal through that reply's record. When one machine is really gone, the survivor takes the conversation over with the history, keeps reading messages, and its replies **wait** until the other machine is back. No waiver is taken. A survivor that replies alone would be a change to the constitution, which only the operator can make.
 
-Recorded coverage of every check here already exists on real runner processes on one host: `tests/preview/two-machine-runner.test.ts` (two runners, one real authority process, real HTTP), with `tests/preview/journal-replication.test.ts` and `tests/preview/two-machine-serving.test.ts` underneath. This plan proves the same behaviour across two real machines, a real network and real Telegram.
+Recorded coverage of every check here already exists on real runner processes on one host: `tests/preview/two-machine-runner.test.ts` and `two-machine-floors.test.ts` (two runners, one real authority process, real HTTP), with `tests/preview/journal-replication.test.ts` and `tests/preview/two-machine-serving.test.ts` underneath. This plan proves the same behaviour across two real machines, a real network and real Telegram.
 
 ## What runs where
 
@@ -92,12 +92,12 @@ PASS and FAIL are exactly as in Phase 1. Any FAIL stops the phase. Both runners 
 - A transient Telegram `409 Conflict` on one poll during a handover. The previous owner's last long-poll (at most 5 s) overlaps the new owner's first. The runner's existing conflict handling retries.
 - A reply whose send was claimed but whose outcome never reached the authority stays in `unresolved` and is never sent again. That is the honest unknown (design 10 §4). It is a FAIL only if the user received two replies.
 - While its peer is away, the owner reads at most 100 waiting messages (one Telegram page); more wait at Telegram until the peer returns. The stop command on the machine and the stop page still work.
-- A reply whose model call had already started when the peer went away waits at the send. If that owner is also restarted before the peer returns, that one reply is recorded as refused in its journal and is not sent later.
+- A turn that was already in progress when the peer went away waits at its next model call or at the send. If that owner is also restarted before the peer returns, that one turn's call or reply is recorded as stopped or refused in its journal and is not repeated.
 
 ## Honest limits of this proof
 
 - Failover in both directions needs three voters (design 10 §2); this proves the one-voter shape, where losing the authority machine means silence until it is back.
 - With one of two machines gone, the survivor reads but does not reply. That is D1(a): the constitutional default has an availability price.
 - The wait is visible on the pull surfaces (stderr, status, the run log, the host supervisor's service observation), not in the chat: a notice in the chat is itself a send, and it would need the same acknowledgement.
-- The provider call is gated one step more loosely than the send: ordinary work starts only while the other machine holds the whole journal, but the call's own reservation row is not acknowledged before that call starts. See the builder's report for the named follow-up.
+- Model calls obey the same demand as sends: ordinary work starts only while the other machine holds the whole journal, and each call waits until its own reservation row is acknowledged.
 - The peer's acknowledgement is authenticated by the two machines' shared secret. Per-machine signing keys belong to the full transport (design 10), not to this preview.

@@ -344,6 +344,9 @@ export type DispatchOutcome = Readonly<{ kind: 'refused' | 'unknown'; reason: st
 export interface ReplicatedDispatch {
   /** The dispatch gate, immediately before a physical send: null admits it; anything else is its closed outcome. */
   admit(target: string, refusal: () => string | null, maxWaitMs?: number): Promise<DispatchOutcome | null>;
+  /** The same demand for a provider call (its reservation row is in the journal): null once the peer holds the
+   * journal as of now; otherwise the refusal `refusal()` names. No claim: a call is not a conversation send. */
+  replicated(refusal: () => string | null): Promise<string | null>;
   /** Records what happened to an admitted send; an unreachable authority is retried by `flush`. */
   outcome(target: string, kind: 'accepted' | 'refused' | 'unknown'): Promise<void>;
   /** Retries outcomes the authority has not recorded yet. */
@@ -386,6 +389,12 @@ export function createReplicatedDispatch(input: Readonly<{ authority: AuthorityC
           await input.sleep(Math.min(5000, 250 * 2 ** Math.min(attempt, 5)));
         }
       } finally { waiting -= 1; }
+    },
+    async replicated(refusal: () => string | null): Promise<string | null> {
+      waiting += 1;
+      try { return await awaitReplicated({ token: input.shipper.token(), shipper: input.shipper, refusal, sleep: input.sleep,
+        elapsed: input.elapsed, ...(input.waiting ? { waiting: input.waiting } : {}) }); }
+      finally { waiting -= 1; }
     },
     async outcome(target: string, kind: 'accepted' | 'refused' | 'unknown'): Promise<void> {
       const held = claims.get(target);
