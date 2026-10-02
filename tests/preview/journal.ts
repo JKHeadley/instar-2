@@ -1065,8 +1065,9 @@ export interface JournalView { genesis: Extract<JournalRecord, {kind:'genesis'}>
    * span, and a new base makes every later frontier a different, shorter span (`summaryFailures` keeps the totals). */
   summarySpanFailures: number[];
   /** Failed attempts from the current base made under SUMMARY_FORMAT, and whether each asked too much (over the cap
-   * or over the answer bound). The attempt budget and the over-cap brake read only these. */
-  summaryFormatFailures: { through: number; overCap: boolean }[];
+   * or over the answer bound). The attempt budget and the over-cap brake read only these. Each entry carries the
+   * format it was made under, so a snapshot saves that with it and a later build restores only its own (below). */
+  summaryFormatFailures: { through: number; overCap: boolean; format: number }[];
   /** Replay only: repeated answer reservations an earlier build wrote and its own projection refused (never applied). */
   refusedReserveRows?: number;
 
@@ -1391,8 +1392,12 @@ function restoreSnapshot(snapshot: Snapshot, genesis: JournalView['genesis']): J
     summaryReservations: new Map(saved.summaryReservations), summaryFailures: new Map(saved.summaryFailures),
     summaryOverCap: saved.summaryOverCap ?? [], summaryOverCapFrontiers: saved.summaryOverCapFrontiers ?? [],
     summarySpanFailures: saved.summarySpanFailures ?? [],
-    // A snapshot from an older build carries no format-scoped failures: its attempts were made under an older format.
-    summaryFormatFailures: saved.summaryFormatFailures ?? [],
+    // Only failures made under this build's format are restored, the same test replay applies to the raw rows: a
+    // snapshot is the same history in another shape and must not keep a brake replay would drop (Rule 44). The
+    // cint-L28 build saved its format-2 entries without a format, so an entry without one is format 2; a snapshot
+    // from before that carries no list at all.
+    summaryFormatFailures: (saved.summaryFormatFailures ?? [])
+      .filter(failed => ((failed as { format?: number }).format ?? 2) === SUMMARY_FORMAT),
     failureClasses: new Map(saved.failureClasses), providerStates: new Map(saved.providerStates), closed: new Map(saved.closed),
     capReports: new Set(saved.capReports ?? []), stepCheckCleanup: saved.stepCheckCleanup ?? false, stepChecks: new Map(saved.stepChecks ?? []),
     channelSources: new Map(saved.channelSources ?? []), channelSourceErrors: new Map(saved.channelSourceErrors ?? []),
@@ -2584,7 +2589,7 @@ function project(view: JournalView, row: JournalRecord, system?: SystemCheck, ad
     if (row.state !== 'uncertain') settleTokens(view, `summary:${String(row.through)}`, row.usage);
     const failures = (view.summaryFailures.get(row.through) ?? 0) + 1;
     view.summaryFailures.set(row.through, failures); view.summarySpanFailures.push(row.through);
-    if (row.format === SUMMARY_FORMAT) view.summaryFormatFailures.push({ through: row.through,
+    if (row.format === SUMMARY_FORMAT) view.summaryFormatFailures.push({ through: row.through, format: row.format,
       overCap: row.reason === SUMMARY_OVER_CAP_REASON || row.reason === SUMMARY_OVER_BOUND_REASON });
     // A `summary faithfulness:` hold waits for an accepted summary covering the turn (below). Once a frontier has
     // used its retries no summary at it can ever be accepted, so that wait is a latch: on the proof room of
