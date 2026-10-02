@@ -149,7 +149,9 @@ it('drains an accepted memory question when the ordinary envelope fits but even 
     // cint-L2's text; the window moves to pass 13339-13749 (cint-5 alone measured the same shift, 452 bytes, as 8650 → 8200).
     // w3-memcorr: the answer guidance now states the exact memory item shape (Rule 7, live K13b); re-measured in
     // 10-byte steps: pass 14170-14570, fail 14160 and 14580.
-    const g = { ...genesis, maxBytes: 14370 }; // midway in the shifted window between the two bounds
+    // w3-longchat: the answer protocol's compaction and meaning-coverage sentences grew by 55 bytes (Rules 11, 110);
+    // re-measured in 10-byte steps: pass 14240-14640, fail 14230 and 14650.
+    const g = { ...genesis, maxBytes: 14440 }; // midway in the shifted window between the two bounds
     const journal = openPreviewJournal(join(directory, 'journal.encrypted'), key, g);
     const question = 'What do you know about me? Context: '.padEnd(2500, 'x');
     const full = workerFor(journal).probe(question);

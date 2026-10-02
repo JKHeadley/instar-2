@@ -6,7 +6,8 @@ import { describe, expect, it } from 'vitest';
 import { mkdtempSync, realpathSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
-import { createJournalWorker, INDEX_BACKLOG_LIMIT, openPreviewJournal, raiseJournalCaps, unknownCallCounts } from './journal.js';
+import { createJournalWorker, INDEX_ATTEMPT_LIMIT, INDEX_BACKLOG_LIMIT, meaningIndexStatus, openPreviewJournal,
+  raiseJournalCaps, unknownCallCounts } from './journal.js';
 
 const key = new Uint8Array(32).fill(53), at = 1790000000000;
 const genesis = () => ({ kind: 'genesis' as const, bot: '12345678', chat: '7654321', operator: '7654321',
@@ -66,6 +67,9 @@ describe('Rule 11: the meaning index backfills summaries written before build 2'
       // Before: every summarized message lacks terms, and the paraphrase shares no word with the fact.
       const before = probe();
       expect(before.meaningIndexCoverage).toEqual({ summarizedMessages: older, meaningIndexed: 0, disposition: 'degraded' });
+      // The inspection surface names the owed work itself, not just a count of what was reached.
+      expect(meaningIndexStatus(journal.view, older)).toMatchObject({ owed: older,
+        pendingUpdates: Array.from({ length: older }, (_, index) => index + 1) });
       expect(reached(before)).toBe(false);
 
       const turn = async (id: number) => {
@@ -87,7 +91,9 @@ describe('Rule 11: the meaning index backfills summaries written before build 2'
 
       const after = probe();
       const coverage = after.meaningIndexCoverage!;
+      // Complete coverage reports no pending work at all.
       expect(coverage).toEqual({ summarizedMessages: older, meaningIndexed: older, disposition: 'complete' });
+      expect(meaningIndexStatus(journal.view, older)).toMatchObject({ owed: 0, pendingUpdates: [] });
       expect(reached(after)).toBe(true);
 
       // Rule 110: only the pre-existing frontier (#12, never yet accounted) is disclosed, once, on the
@@ -110,7 +116,56 @@ describe('Rule 11: the meaning index backfills summaries written before build 2'
     } finally { rmSync(dir, { recursive: true, force: true }); }
   });
 
-  it('offers each source once, only in full batches, when the model returns no terms, and refuses out-of-order index records', async () => {
+  it('offers the partial remainder too, retries an omission once, then stops offering and says so', async () => {
+    const dir = realpathSync(mkdtempSync(join(tmpdir(), 'preview-backfill-')));
+    // Twelve is one full batch of eight plus a remainder of four: before this change the remainder was
+    // never offered here at all, because only a full batch ran, and the summary that was supposed to
+    // carry the backlog only runs when history grows again (live 2026-10-01: seven stranded of a hundred).
+    const older = 12, path = join(dir, 'journal.encrypted');
+    try {
+      const journal = preBuild2(path, older);
+      let indexCalls = 0;
+      const offers: string[][] = [];
+      const worker = createJournalWorker(journal, { now: () => at + 100_000, stopped: () => false, send: async input => input.update, checkOutbound: () => {},
+        model: async input => {
+          if (input.id.startsWith('summary:index:')) { indexCalls++;
+            offers.push((JSON.parse(input.context) as { indexBacklog: { id: string }[] }).indexBacklog.map(item => item.id));
+            return 'no terms here'; }
+          return input.id.startsWith('summary:') ? JSON.stringify({ summary: 'The operator rides often.', people: [], questions: [], memory: [] }) : 'Noted.';
+        } });
+      const calls = journal.view.calls;
+      const probe = () => {
+        const result = worker.probe('What is the combination for my bike?');
+        if (!('context' in result)) throw Error('probe held');
+        return (JSON.parse(result.context) as Packet).meaningIndexCoverage!;
+      };
+      for (let id = older + 1; id <= older + 4; id++) {
+        worker.intake([update(id, `Short check-in ${id}.`)]); await worker.drain(); await worker.summarizeIfNeeded();
+      }
+      // Every source is offered, remainder included: a full batch then the four, twice over.
+      expect(offers.map(batch => batch.length)).toEqual([INDEX_BACKLOG_LIMIT, 4, INDEX_BACKLOG_LIMIT, 4]);
+      expect(indexCalls).toBe(2 * INDEX_ATTEMPT_LIMIT);
+      expect(journal.view.calls - calls).toBe(2 * INDEX_ATTEMPT_LIMIT + 4);
+      expect(journal.view.indexConcepts).toEqual([]);
+      // Each source twice and no more: the attempts are spent, so later passes offer nothing.
+      expect(journal.view.indexOffered).toHaveLength(older * INDEX_ATTEMPT_LIMIT);
+      expect(new Set(journal.view.indexOffered).size).toBe(older);
+      // No pass offers the same source twice; the retry waits for the next pass.
+      expect(offers[0]!.some(id => offers[1]!.includes(id))).toBe(false);
+      expect(offers[0]).toEqual(offers[2]);
+      // Still degraded, and now honest that the attempts are used rather than that the work is owed.
+      expect(probe()).toEqual({ summarizedMessages: older, meaningIndexed: 0, disposition: 'degraded' });
+      expect(meaningIndexStatus(journal.view, older)).toMatchObject({ owed: 0,
+        pendingUpdates: Array.from({ length: older }, (_, index) => index + 1) });
+
+      expect(() => journal.append({ kind: 'meaning-index', concepts: [], at: at + 200_000 })).toThrow('unsupported meaning terms');
+      expect(() => journal.append({ kind: 'index-reserve', sources: [targetId], maxInputTokens: 10, maxOutputTokens: 10, at: at + 200_000 }))
+        .toThrow('index reservation refused');
+      journal.close();
+    } finally { rmSync(dir, { recursive: true, force: true }); }
+  });
+
+  it('a source whose terms arrive is offered once, never retried', async () => {
     const dir = realpathSync(mkdtempSync(join(tmpdir(), 'preview-backfill-')));
     const older = 12, path = join(dir, 'journal.encrypted');
     try {
@@ -118,22 +173,22 @@ describe('Rule 11: the meaning index backfills summaries written before build 2'
       let indexCalls = 0;
       const worker = createJournalWorker(journal, { now: () => at + 100_000, stopped: () => false, send: async input => input.update, checkOutbound: () => {},
         model: async input => {
-          if (input.id.startsWith('summary:index:')) { indexCalls++; return 'no terms here'; }
-          return input.id.startsWith('summary:') ? JSON.stringify({ summary: 'The operator rides often.', people: [], questions: [], memory: [] }) : 'Noted.';
+          if (!input.id.startsWith('summary:index:')) return input.id.startsWith('summary:')
+            ? JSON.stringify({ summary: 'The operator rides often.', people: [], questions: [], memory: [] }) : 'Noted.';
+          indexCalls++;
+          const backlog = (JSON.parse(input.context) as { indexBacklog: { id: string }[] }).indexBacklog;
+          return JSON.stringify({ concepts: backlog.map(item => ({ source: item.id, terms: item.id === targetId ? cues : ['cycling'] })) });
         } });
-      const calls = journal.view.calls;
       for (let id = older + 1; id <= older + 4; id++) {
         worker.intake([update(id, `Short check-in ${id}.`)]); await worker.drain(); await worker.summarizeIfNeeded();
       }
-      // One full batch of eight; the remaining four wait for a due summary, which offers the backlog.
-      expect(indexCalls).toBe(1);
-      expect(journal.view.calls - calls).toBe(1 + 4);
-      expect(journal.view.indexConcepts).toEqual([]);
-      expect(journal.view.indexOffered).toHaveLength(INDEX_BACKLOG_LIMIT);
-
-      expect(() => journal.append({ kind: 'meaning-index', concepts: [], at: at + 200_000 })).toThrow('unsupported meaning terms');
-      expect(() => journal.append({ kind: 'index-reserve', sources: [targetId], maxInputTokens: 10, maxOutputTokens: 10, at: at + 200_000 }))
-        .toThrow('index reservation refused');
+      // The positive neighbour of the retry: terms arrived, so the remainder converges in two calls and stops.
+      expect(indexCalls).toBe(2);
+      expect(journal.view.indexOffered).toHaveLength(older);
+      const result = worker.probe('What is the combination for my bike?');
+      if (!('context' in result)) throw Error('probe held');
+      expect((JSON.parse(result.context) as Packet).meaningIndexCoverage)
+        .toEqual({ summarizedMessages: older, meaningIndexed: older, disposition: 'complete' });
       journal.close();
     } finally { rmSync(dir, { recursive: true, force: true }); }
   });
@@ -161,11 +216,14 @@ describe('Rule 11: the meaning index backfills summaries written before build 2'
       journal.close(); journal = openPreviewJournal(path, key);
       expect(unknownCallCounts(journal.view)).toMatchObject({ index: 1, total: 1 });
 
-      // A later batch completes. That conclusive result is not counted, and it does not retire the earlier unknown.
+      // A later pass completes. Its sources include the lost batch's: Part 21 §6 requires a terminated
+      // derivation to be recomputed, never skipped, and indexing the same message again is idempotent.
+      // The lost CALL is still never replayed -- its reservation stays charged and its outcome UNKNOWN.
       await worker(false).summarizeIfNeeded();
-      expect(indexCalls).toBe(2);
+      expect(indexCalls).toBe(3);
       expect(journal.view.indexOpen).toBeNull();
-      expect(journal.view.indexOffered).toHaveLength(older);
+      expect(journal.view.indexOffered).toHaveLength(older + INDEX_BACKLOG_LIMIT);
+      expect(new Set(journal.view.indexOffered).size).toBe(older);
       expect(unknownCallCounts(journal.view)).toMatchObject({ index: 1, total: 1 });
 
       // Compaction and reopening preserve it, so the shared cap-raise refusal still applies.
