@@ -60,7 +60,7 @@ function callModel(prepared: string): string {
 }
 
 /** One scenario on a fresh review-route root; `answer` supplies the operator turn's answer. */
-async function scenario(name: Scenario, now: number, answer: (prepared: string) => string) {
+async function scenario(name: Scenario, now: number, answer: (prepared: string) => string, delay = 0) {
   const root = realpathSync(mkdtempSync(join(tmpdir(), 'preview-review-yes-live-')));
   try {
     const g = { kind: 'genesis' as const, bot: '12345678', chat: String(OPERATOR), operator: String(OPERATOR), grant: TRIAL,
@@ -102,6 +102,7 @@ async function scenario(name: Scenario, now: number, answer: (prepared: string) 
       reviews.push({ id: '901', state: 'APPROVED', commitId: HEAD, login: 'JKHeadley', submittedAt: new Date(now).toISOString() });
       await worker.minimal();
     }
+    now += delay;
     operatorTurn = true;
     await say(2, (sent.at(-1)?.id ?? 100) + 1, MESSAGES[name]);
     const turn = journal.view.order.at(-1)!;
@@ -176,6 +177,13 @@ it('replays every recorded real answer on the review route: the path fires where
       expect(result.requests, label).toEqual([expect.objectContaining({ approved: true, applied: true })]);
       expect(result.maxCalls, label).toBe(80);
       expect(result.operatorAction, label).toBeUndefined();
+      // The same recorded report, delivered more than an hour after the approval, still carries the disclosure: request
+      // expiry limits consumption, never the truthful description of an approval (Purpose, the approval-account exception).
+      const late = await scenario(item.scenario, item.now, () => item.raw, 3_600_001);
+      expect(late.prompt, `${label} delayed`).toContain(SHARED_ACCESS_NOTE);
+      expect(late.reply, `${label} delayed`).toContain('it went through');
+      expect(late.reply, `${label} delayed`).toMatch(new RegExp(`approved through your GitHub account; note: ${SHARED_ACCESS_NOTE}\\.$`, 'u'));
+      expect(late.requests, `${label} delayed`).toEqual([expect.objectContaining({ approved: true, applied: true })]);
     }
   }
 }, 60_000);

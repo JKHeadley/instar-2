@@ -2399,12 +2399,17 @@ export function operatorRequestsReport(view: JournalView, now: number) {
     refusals: item.refusals.map(refusal => refusal.detail) }));
 }
 /** Purpose (the approval-account exception): an applied approval admitted under the operator's acceptance of shared account
- * access stays in the packet for the operator's messages received within an hour of it, and every answer to such a message
- * carries the disclosure (`approvalDisclosureText`), so a later status report displays it too, not only the completion line. */
-export function disclosedApproval(view: JournalView, turn: Turn): OperatorRequestState | undefined {
+ * access stays in the packet, with its disclosure, for as long as it is the latest request, whatever its age; request expiry
+ * bounds when an approval can be consumed, never how long it must be truthfully described. */
+export function disclosedApproval(view: JournalView): OperatorRequestState | undefined {
   const state = view.operatorRequests.at(-1);
-  return state?.approved?.sharedAccess && state.applied && turn.at <= state.approved.at + OPERATOR_REQUEST_MS ? state : undefined;
+  return state?.approved?.sharedAccess && state.applied ? state : undefined;
 }
+/** Whether this answer reports that approval, so it must carry the disclosure (`approvalDisclosureText`): every answer within
+ * the request's hour, and afterwards any answer that names the request or speaks of an approval. An unrelated later answer
+ * need not repeat it. */
+export const reportsApproval = (state: OperatorRequestState, reply: string, at: number) =>
+  at <= state.approved!.at + OPERATOR_REQUEST_MS || reply.includes(state.request.id) || /approv/iu.test(reply.replace(/^PREVIEW — /u, ''));
 export const approvalDisclosureText = (state: OperatorRequestState) =>
   `Request ${state.request.id} was approved through your GitHub account; note: ${SHARED_ACCESS_NOTE}.`;
 /** A disclosure is exactly the shape the admission writes, with the fixed note. */
@@ -5448,7 +5453,7 @@ export function createJournalWorker(journal: ReturnType<typeof openPreviewJourna
       || requestState.refusals.some(item => item.turn === question!.id));
     // An approval that never applied (a crash between its two frames) stays visible until a later request replaces it.
     const operatorRequest = requestState && (answeredHere || requestState.approved !== undefined && !requestState.applied
-      || disclosedApproval(journal.view, question!) === requestState
+      || disclosedApproval(journal.view) === requestState
       || requestState.message !== undefined && !requestState.superseded && !requestState.approved && now <= requestState.request.expiresAt) ? { id: requestState.request.id, action: requestState.request.action,
       ...(requestState.request.limits ? { limits: requestState.request.limits } : { trialEnd: isoMinute(requestState.request.expires!) }),
       state: requestState.approved ? `${requestState.applied ? 'approved by the operator and applied' : 'approved by the operator, not applied yet'}${
@@ -6889,10 +6894,10 @@ export function createJournalWorker(journal: ReturnType<typeof openPreviewJourna
         const offer = heldBack || reply === HOLDING_REPLY || turn.answer === undefined ? undefined : await operatorOffer(turn, ports.now());
         if (offer) reply = `${reply.trimEnd()}\n\n${offer.text}`;
         // The approval-account exception: an answer whose packet showed an approval under shared account access displays
-        // it, so it carries the disclosure, once, whatever the model wrote.
+        // it, so an answer reporting it carries the disclosure, once, whatever the model wrote and however old the approval.
         const shown = heldBack || reply === HOLDING_REPLY || turn.answer === undefined || !fromOperator(turn) ? undefined
-          : disclosedApproval(journal.view, turn);
-        if (shown && !reply.includes(SHARED_ACCESS_NOTE)) reply = `${reply.trimEnd()}\n\n${approvalDisclosureText(shown)}`;
+          : disclosedApproval(journal.view);
+        if (shown && reportsApproval(shown, reply, turn.at) && !reply.includes(SHARED_ACCESS_NOTE)) reply = `${reply.trimEnd()}\n\n${approvalDisclosureText(shown)}`;
         const body = encodeReply(reply);
         if (Buffer.byteLength(body) > 4096 || Array.from(body).length > 4096) {
           journal.append({kind:'hold',id:turn.id,reason:'encoded reply size',at:ports.now()}); continue;

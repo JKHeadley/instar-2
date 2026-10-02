@@ -238,9 +238,11 @@ it('shows no disclosure on the no-access route', () => withRoot(async path => {
   h.journal.close();
 }));
 
-it('displays the disclosure on a later answer that reports the approval, within its hour, and never on the no-access route', () => withRoot(async path => {
+it('displays the disclosure on a later answer that reports the approval, whatever its age, and never on the no-access route', () => withRoot(async path => {
   // Purpose (the approval-account exception): the status answer after the completion line displays the approval too.
-  const h = harness(path, { current: installation() });
+  const reported = (question: string) => JSON.stringify({ memory: [], ...(question.includes('more calls') ? raise
+    : { reply: question.includes('approved') ? 'Yes, that was approved and your limit is raised.' : 'ok' }) });
+  const h = harness(path, { current: installation() }, reported);
   await ask(h);
   approve(h); h.tick(10); await h.worker.minimal();
   const done = h.journal.view.operatorRequests.at(-1)!;
@@ -248,17 +250,26 @@ it('displays the disclosure on a later answer that reports the approval, within 
   h.worker.intake([message(3, h.sent.at(-1)!.id + 1, 'did that go through?')]); await h.worker.drain();
   expect(h.sent.at(-1)!.text).toContain('ok');
   expect(h.sent.at(-1)!.text).toContain(approvalDisclosureText(done));
-  // Past the hour it is no longer shown, and no answer carries the note.
+  // Past the hour the approval is still reported truthfully: an answer reporting it carries the note, and an unrelated
+  // answer need not repeat it.
   h.tick(3_600_001);
-  h.worker.intake([message(4, h.sent.at(-1)!.id + 1, 'and now?')]); await h.worker.drain();
+  h.worker.intake([message(4, h.sent.at(-1)!.id + 1, 'was my raise approved?')]); await h.worker.drain();
+  expect(h.sent.at(-1)!.text).toContain('approved and your limit is raised');
+  expect(h.sent.at(-1)!.text).toContain(approvalDisclosureText(done));
+  h.worker.intake([message(5, h.sent.at(-1)!.id + 1, 'and the weather?')]); await h.worker.drain();
+  expect(h.sent.at(-1)!.text).toContain('ok');
   expect(h.sent.at(-1)!.text).not.toContain(SHARED_ACCESS_NOTE);
   h.journal.close();
-  // The no-access neighbor: the same status answer carries no disclosure.
-  const plain = harness(path.replace('journal.encrypted', 'plain.encrypted'), { current: noAccess() });
+  // The no-access neighbor: the same status answers, within and past the hour, carry no disclosure.
+  const plain = harness(path.replace('journal.encrypted', 'plain.encrypted'), { current: noAccess() }, reported);
   await ask(plain);
   approve(plain); plain.tick(10); await plain.worker.minimal();
   expect(plain.journal.view.operatorRequests.at(-1)!.applied).toBe(true);
   plain.worker.intake([message(3, plain.sent.at(-1)!.id + 1, 'did that go through?')]); await plain.worker.drain();
+  expect(plain.sent.at(-1)!.text).not.toContain(SHARED_ACCESS_NOTE);
+  plain.tick(3_600_001);
+  plain.worker.intake([message(4, plain.sent.at(-1)!.id + 1, 'was my raise approved?')]); await plain.worker.drain();
+  expect(plain.sent.at(-1)!.text).toContain('approved and your limit is raised');
   expect(plain.sent.at(-1)!.text).not.toContain(SHARED_ACCESS_NOTE);
   plain.journal.close();
 }));
