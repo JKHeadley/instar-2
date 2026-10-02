@@ -81,6 +81,9 @@ export const SUMMARY_MAX_PROMPT_BYTES = 96 * 1024;
 export const summaryPromptBytes = (maxBytes: number) =>
   Math.min(SUMMARY_MAX_PROMPT_BYTES, Math.max(SUMMARY_START_BYTES, Math.floor(maxBytes * 3 / 4)));
 export const SUMMARY_MAX_TURNS = 4;
+/** Summary attempts one pass makes at most, so one pass advances the frontier by at most
+ * SUMMARY_PASS_ATTEMPTS * SUMMARY_MAX_TURNS turns. */
+export const SUMMARY_PASS_ATTEMPTS = 8;
 /** A byte-held turn is prepared again at least this often even when nothing that could make it fit changed. */
 export const HELD_REPREPARE_MS = 5 * 60_000;
 export const SUMMARY_TARGET_OUTPUT_TOKENS = 1024;
@@ -813,7 +816,7 @@ export type JournalRecord =
    * source is offered here at most once; an unanswered reservation stays charged and is never repeated. */
   | { kind: 'index-reserve'; sources: string[]; maxInputTokens: number; maxOutputTokens: number; at: number }
   | { kind: 'meaning-index'; concepts: SummaryConcept[]; usage?: ModelUsage; at: number }
-  | { kind: 'memory-undecided'; id: string; reason: 'summary-uncertain' | 'summary-failed'; at: number }
+  | { kind: 'memory-undecided'; id: string; reason: 'summary-uncertain' | 'summary-failed' | 'summary-behind'; at: number }
   | { kind: 'summary'; through: number; text: string; memoryItems?: SummaryMemoryItem[];
     /** Meaning terms for summarized operator messages (Rule 11): a retrieval index, never shown as fact. */
     concepts?: SummaryConcept[]; people?: PersonNote[]; personAttributes?: PersonAttribute[]; memoryFor?: string[]; memory?: MemoryChange[];
@@ -4278,6 +4281,19 @@ export function createJournalWorker(journal: ReturnType<typeof openPreviewJourna
         && (turn.held === 'summary oversized turn' || turn.held === 'summary preflight unavailable'))))
       journal.append({ kind: 'memory-undecided', id: request.id, reason: 'summary-failed', at: ports.now() });
   };
+  /** A request whose span lies more than one summary pass past the frontier is settled undecided at once instead of
+   * driving the whole catch-up synchronously: its reply, and every reply queued behind it, would otherwise wait for
+   * every pass before it (Rule 15). Justin's root goes live 328 turns behind: a correction there would wait about 80
+   * summary calls, 30-60 minutes. The answer may still decide it (w3-correctionstall), and the background passes
+   * catch the frontier up beside the poll loop. Within one pass the request is still decided by its own summary. */
+  const settleBehind = () => {
+    for (let request = pendingMemory(); request; request = pendingMemory()) {
+      const previous = summaryFor(request.update)?.through ?? -1;
+      const behind = journal.view.order.filter(turn => turn.accepted && turn.update > previous && turn.update <= request!.update).length;
+      if (behind <= SUMMARY_PASS_ATTEMPTS * SUMMARY_MAX_TURNS) return;
+      journal.append({ kind: 'memory-undecided', id: request.id, reason: 'summary-behind', at: ports.now() });
+    }
+  };
   const datedFrom = (proposed: unknown, turn: Turn): DatedItem[] | undefined => {
     if (!Array.isArray(proposed) || proposed.length > 3 || !turn.accepted || !fromOperator(turn)) return undefined;
     const items: DatedItem[] = [];
@@ -5464,6 +5480,7 @@ export function createJournalWorker(journal: ReturnType<typeof openPreviewJourna
         // even if a later correction still holds ordinary answers.
         if (pendingMemory() && turn.modelState !== 'uncertain' && turn.noticeClass !== 'too-long-input'
           && !isStatusCommand(turn.text)) {
+          settleBehind();
           // A batch can need more than one summary frontier before the edit is
           // reached. Finish each durable prefix before considering later replies.
           for (let attempt = 0; pendingMemory() && attempt < journal.view.order.length; attempt++) {
@@ -6233,6 +6250,7 @@ export function createJournalWorker(journal: ReturnType<typeof openPreviewJourna
       // held-notice rows still replay; no new held notice is ever pushed.
       if (!due) await answerLimited();
       // Edits consume the existing summary judgment, never the reply doorway.
+      if (!due && pendingMemory()?.editOf) settleBehind();
       if (!due && pendingMemory()?.editOf) { await summarizeIfNeeded(true); settleExhaustedEdit(); }
     } finally { working = false; }
   };
@@ -6808,7 +6826,7 @@ export function createJournalWorker(journal: ReturnType<typeof openPreviewJourna
     // Rule 11: a source the writer omitted is offered again, but on a later pass, never twice inside one.
     // Repeating the identical request immediately is the one retry that cannot succeed.
     const offeredThisPass = new Set<string>();
-    for (let attempt = 0; attempt < 8; attempt++) {
+    for (let attempt = 0; attempt < SUMMARY_PASS_ATTEMPTS; attempt++) {
       settleOverCap();
       const previous = summaryFor(last.update)?.through ?? -1;
       if (previous >= last.update || journal.view.calls >= journal.view.limits.maxCalls - (force ? 1 : 0)) return;

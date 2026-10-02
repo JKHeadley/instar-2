@@ -2336,6 +2336,15 @@ and a free call slot are still required. A correction whose deciding summary
 is UNKNOWN follows the existing `memory-undecided` path; the later summary
 does not silently turn that undecided request into a verified decision.
 
+The background pass runs after every poll cycle's ordinary drain, with or without a new
+message, so a root far behind its summary frontier catches up pass after pass (each at most
+eight attempts) while the operator is silent; an incoming message is answered beside the
+pass in flight, and the next pass starts only after that drain. A correction, preference or
+edit whose span lies more than one pass past the frontier (over 32 unsummarized turns) does
+not drive the catch-up synchronously before its reply: it is recorded `memory-undecided`
+(`summary-behind`) at once and answered, and its own answer may still decide it. Within one
+pass it is decided by its own summary as before (`summary-fit.test.ts`).
+
 A summary call is not UNKNOWN when its own physical outcome row proves that the
 writer's call ended and its output ran past the 2,048-token cap
 (`localLimit: output-cap`: the process ended with an exit code and a final result frame
