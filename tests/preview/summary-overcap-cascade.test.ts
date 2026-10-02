@@ -184,12 +184,14 @@ it('keeps an UNKNOWN that has no proof: no outcome row, or the recorded no-resul
     try {
       await converse(w);
       await w.worker.summarizeIfNeeded(true);
-      // Its reservation is kept (charge UNKNOWN), it is never settled or re-dispatched, and no later span reaches back.
+      // Its reservation is kept (charge UNKNOWN) and it is never settled or re-dispatched. Past its recovery pause it no
+      // longer floors other spans (w3-summaryfit: as a floor it stalled a live chat for good), so a later summary may
+      // end before it, but never at it.
       expect(w.throughs[0]).toBe(715672482);
       expect(w.journal.view.summaryReservations.has(715672482)).toBe(true);
       expect(overCapSettled(w)).not.toContain(715672482);
-      expect(w.throughs.slice(1).every(through => through > 715672482)).toBe(true);
-      expect(w.journal.view.summaries.every(summary => summary.through > 715672482)).toBe(true);
+      expect(w.throughs.filter(through => through === 715672482)).toHaveLength(1);
+      expect(w.journal.view.summaries.some(summary => summary.through === 715672482)).toBe(false);
     } finally { w.close(); }
   }
 });

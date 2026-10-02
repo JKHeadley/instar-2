@@ -5,11 +5,11 @@ import { join } from 'node:path';
 import { performance } from 'node:perf_hooks';
 import { spawn, spawnSync } from 'node:child_process';
 import { createJournalWorker, openPreviewJournal, raiseJournalCaps, MODEL_FAILURE_REPLY, UNKNOWN_ANSWER_NOTICE,
-  SUMMARY_UNKNOWN_RECOVERY_MS, SUMMARY_MAX_PROMPT_BYTES, SUMMARY_MAX_TURNS, SUMMARY_TARGET_OUTPUT_TOKENS } from './journal-test-worker.js';
+  SUMMARY_UNKNOWN_RECOVERY_MS, SUMMARY_MAX_PROMPT_BYTES, SUMMARY_MAX_TURNS, SUMMARY_TARGET_OUTPUT_TOKENS, summaryPromptBytes } from './journal-test-worker.js';
 import { INDEX_ATTEMPT_LIMIT, INDEX_BACKLOG_LIMIT, TOO_LONG_INPUT_NOTICE } from './journal.js';
 
 import { prepareJournalEnvelope } from './journal-envelope.js';
-import { SUBSCRIPTION_CONVERSATION_SYSTEM_PROMPT, subscriptionConversationPolicy } from '../../src/assembly/production-provider.js';
+import { SUBSCRIPTION_CONVERSATION_SYSTEM_PROMPT } from '../../src/assembly/production-provider.js';
 import { openProductionStorage } from '../../src/assembly/production-storage.js';
 // The physical host is an ESM script; this test checks its runtime contract.
 // @ts-ignore no declaration for the host script
@@ -815,7 +815,10 @@ it('bounds each rolling chunk by measured prepared prompt bytes and reported out
     expect(measurements.length).toBeGreaterThan(1);
     expect(measurements.every(item => item.historyTurns <= SUMMARY_MAX_TURNS
       && item.promptBytes <= SUMMARY_MAX_PROMPT_BYTES && item.outputTokens <= SUMMARY_TARGET_OUTPUT_TOKENS)).toBe(true);
-    expect(Math.max(...measurements.map(item => item.promptBytes))).toBeLessThan(subscriptionConversationPolicy('claude-opus-5-5').maxPromptBytes);
+    // A raised root raises the provider's prompt bound to its own limit (the launcher's raisedPromptBytes); the summary
+    // ceiling is three quarters of it.
+    expect(Math.max(...measurements.map(item => item.promptBytes))).toBeLessThanOrEqual(summaryPromptBytes(journal.view.limits.maxBytes));
+    expect(summaryPromptBytes(journal.view.limits.maxBytes)).toBeLessThan(journal.view.limits.maxBytes);
     expect(journal.view.summaries.map(item => item.usage?.outputTokens)).toEqual(measurements.map(item => item.outputTokens));
     expect(journal.view.order[0]?.text).toContain('turn 1:');
     journal.close();
@@ -1084,7 +1087,7 @@ it('waits again after a second UNKNOWN summary and never spends beyond the call 
   } finally { rmSync(root, { recursive: true, force: true }); }
 });
 
-it('does not fall back behind an UNKNOWN frontier when the later prompt overflows', async () => {
+it('never re-dispatches an UNKNOWN frontier, and past its recovery pause it no longer floors other spans', async () => {
   const root = origin();
   try {
     const journal = openPreviewJournal(join(root, 'journal.encrypted'), key,
@@ -1104,15 +1107,19 @@ it('does not fall back behind an UNKNOWN frontier when the later prompt overflow
     now += SUMMARY_UNKNOWN_RECOVERY_MS;
     const calls = journal.view.calls;
     await worker.summarizeIfNeeded(true);
+    // The later prompt overflows; the span before the UNKNOWN is summarized instead of waiting for a later frontier,
+    // which a prompt that only grows with its span could never offer (w3-summaryfit). The UNKNOWN keeps its charge.
     expect(prepared).toContain('summary:3');
-    expect(summaries).toEqual([]);
-    expect(journal.view.calls).toBe(calls);
+    expect(prepared).not.toContain('summary:2');
+    expect(summaries).toEqual(['summary:1']);
+    expect(journal.view.calls).toBe(calls + 1);
     expect(journal.view.summaryReservations.has(2)).toBe(true);
     worker.intake([update(4)]); await worker.drain();
     await worker.summarizeIfNeeded(true);
-    expect(summaries).toEqual(['summary:4']);
-    expect(journal.view.summaries.map(item => item.through)).toEqual([4]);
+    expect(summaries).toEqual(['summary:1', 'summary:4']);
+    expect(journal.view.summaries.map(item => item.through)).toEqual([1, 4]);
     expect(journal.view.summaryReservations.has(2)).toBe(true);
+    expect(prepared).not.toContain('summary:2');
     journal.close();
   } finally { rmSync(root, { recursive: true, force: true }); }
 });

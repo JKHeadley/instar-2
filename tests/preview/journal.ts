@@ -67,9 +67,23 @@ export const PREVIEW_CORRECTION_LIMIT = 3;
 export const PREVIEW_UNDECIDED_LIMIT = 5;
 /** An UNKNOWN summary keeps its charge; a distinct later frontier may start after this pause. */
 export const SUMMARY_UNKNOWN_RECOVERY_MS = 60_000;
-/** Leave room under the 32 KiB provider prompt and 2048-token output ceilings. */
-export const SUMMARY_MAX_PROMPT_BYTES = 24 * 1024;
+/** History size at which rolling summaries start, and the summary prompt ceiling first sized under a 32 KiB limit. */
+export const SUMMARY_START_BYTES = 24 * 1024;
+/** The rolling-summary prompt ceiling: three quarters of the context limit, at least SUMMARY_START_BYTES and at most
+ * 96 KiB (its packet also stays within the limit itself). A fixed 24 KiB stopped tracking a raised limit and could not
+ * hold the carried summary's own accept bounds (text at most 8 KiB, at most 20 memory items of 300 bytes) beside the
+ * packet's fixed parts and one turn: at 409600 bytes the summary stalled for good once the carried summary grew (live
+ * 2026-10-01 proof room 2: the smallest summary prompt was 25272 bytes, so no summary call was ever made again).
+ * Those bounds plus a 4096-character message with a 4096-byte reply measure 62561 bytes on a root with no open lists
+ * (summary-fit.test.ts); 96 KiB leaves about 34 KiB for the bounded lists a live root also carries (reminders, unresolved
+ * edits, corrections, preferences). */
+export const SUMMARY_MAX_PROMPT_BYTES = 96 * 1024;
+export const summaryPromptBytes = (maxBytes: number) =>
+  Math.min(SUMMARY_MAX_PROMPT_BYTES, Math.max(SUMMARY_START_BYTES, Math.floor(maxBytes * 3 / 4)));
 export const SUMMARY_MAX_TURNS = 4;
+/** Summary attempts one pass makes at most, so one pass advances the frontier by at most
+ * SUMMARY_PASS_ATTEMPTS * SUMMARY_MAX_TURNS turns. */
+export const SUMMARY_PASS_ATTEMPTS = 8;
 /** A byte-held turn is prepared again at least this often even when nothing that could make it fit changed. */
 export const HELD_REPREPARE_MS = 5 * 60_000;
 export const SUMMARY_TARGET_OUTPUT_TOKENS = 1024;
@@ -802,7 +816,7 @@ export type JournalRecord =
    * source is offered here at most once; an unanswered reservation stays charged and is never repeated. */
   | { kind: 'index-reserve'; sources: string[]; maxInputTokens: number; maxOutputTokens: number; at: number }
   | { kind: 'meaning-index'; concepts: SummaryConcept[]; usage?: ModelUsage; at: number }
-  | { kind: 'memory-undecided'; id: string; reason: 'summary-uncertain' | 'summary-failed'; at: number }
+  | { kind: 'memory-undecided'; id: string; reason: 'summary-uncertain' | 'summary-failed' | 'summary-behind'; at: number }
   | { kind: 'summary'; through: number; text: string; memoryItems?: SummaryMemoryItem[];
     /** Meaning terms for summarized operator messages (Rule 11): a retrieval index, never shown as fact. */
     concepts?: SummaryConcept[]; people?: PersonNote[]; personAttributes?: PersonAttribute[]; memoryFor?: string[]; memory?: MemoryChange[];
@@ -4258,8 +4272,27 @@ export function createJournalWorker(journal: ReturnType<typeof openPreviewJourna
     // cued correction ("Actually, cancel ...") alike. Settled as undecided, it releases ordinary answers,
     // so one exhausted frontier never holds every later turn: a keyword cue only schedules judgment (Rule 10), and
     // the operator channel keeps being answered (Rules 14, 15; the durable-intake and answer floors).
-    if (request && journal.view.summarySpanFailures.some(through => through > previous && summarySpanFailures(journal.view, through) >= 2))
+    // A span the summary prompt cannot hold fails the same way before any call: its preflight refusal is held on the
+    // span's first turn, with no failure row and no reservation, so nothing else would ever settle the request (live
+    // 2026-10-01 proof room 2, update 6230467: the carried summary had outgrown the 24 KiB summary prompt, and
+    // "Actually, cancel the bird feeder one." waited 24 minutes with no reply, no call and its reminder unfired).
+    if (request && (journal.view.summarySpanFailures.some(through => through > previous && summarySpanFailures(journal.view, through) >= 2)
+      || journal.view.order.some(turn => turn.update > previous && turn.update <= request.update
+        && (turn.held === 'summary oversized turn' || turn.held === 'summary preflight unavailable'))))
       journal.append({ kind: 'memory-undecided', id: request.id, reason: 'summary-failed', at: ports.now() });
+  };
+  /** A request whose span lies more than one summary pass past the frontier is settled undecided at once instead of
+   * driving the whole catch-up synchronously: its reply, and every reply queued behind it, would otherwise wait for
+   * every pass before it (Rule 15). Justin's root goes live 328 turns behind: a correction there would wait about 80
+   * summary calls, 30-60 minutes. The answer may still decide it (w3-correctionstall), and the background passes
+   * catch the frontier up beside the poll loop. Within one pass the request is still decided by its own summary. */
+  const settleBehind = () => {
+    for (let request = pendingMemory(); request; request = pendingMemory()) {
+      const previous = summaryFor(request.update)?.through ?? -1;
+      const behind = journal.view.order.filter(turn => turn.accepted && turn.update > previous && turn.update <= request!.update).length;
+      if (behind <= SUMMARY_PASS_ATTEMPTS * SUMMARY_MAX_TURNS) return;
+      journal.append({ kind: 'memory-undecided', id: request.id, reason: 'summary-behind', at: ports.now() });
+    }
   };
   const datedFrom = (proposed: unknown, turn: Turn): DatedItem[] | undefined => {
     if (!Array.isArray(proposed) || proposed.length > 3 || !turn.accepted || !fromOperator(turn)) return undefined;
@@ -5447,6 +5480,7 @@ export function createJournalWorker(journal: ReturnType<typeof openPreviewJourna
         // even if a later correction still holds ordinary answers.
         if (pendingMemory() && turn.modelState !== 'uncertain' && turn.noticeClass !== 'too-long-input'
           && !isStatusCommand(turn.text)) {
+          settleBehind();
           // A batch can need more than one summary frontier before the edit is
           // reached. Finish each durable prefix before considering later replies.
           for (let attempt = 0; pendingMemory() && attempt < journal.view.order.length; attempt++) {
@@ -5479,6 +5513,13 @@ export function createJournalWorker(journal: ReturnType<typeof openPreviewJourna
           delete turn.held; delete turn.heldSince;
         }
         if (turn.held === 'earlier turn pending' && !blockedEarlier) { delete turn.held; delete turn.heldSince; }
+        // A request settled undecided because its own span cannot be summarized: that preflight refusal concerns the
+        // summary frontier, not this reply, whose packet is prepared on its own (an earlier turn held the same way was
+        // already answered). Keeping it would leave the operator's message with no reply (Rule 15; Rule 95's open side).
+        if (turn.memoryUndecided && turn.answer === undefined
+          && (turn.held === 'summary oversized turn' || turn.held === 'summary preflight unavailable')) {
+          delete turn.held; delete turn.heldSince; journal.view.heldTurns.delete(turn);
+        }
         const priorHold = turn.held;
         if (turn.held?.startsWith('summary unavailable:') || turn.held === 'prompt overflow' || turn.held === 'context overflow') {
           const key = heldFitKey();
@@ -6209,6 +6250,7 @@ export function createJournalWorker(journal: ReturnType<typeof openPreviewJourna
       // held-notice rows still replay; no new held notice is ever pushed.
       if (!due) await answerLimited();
       // Edits consume the existing summary judgment, never the reply doorway.
+      if (!due && pendingMemory()?.editOf) settleBehind();
       if (!due && pendingMemory()?.editOf) { await summarizeIfNeeded(true); settleExhaustedEdit(); }
     } finally { working = false; }
   };
@@ -6675,6 +6717,8 @@ export function createJournalWorker(journal: ReturnType<typeof openPreviewJourna
   /** Derived work shares the reply call cap. At most two attempts for one
    * frontier; a failed result stays visible while originals remain durable. */
   const summaryPreflightBlocked = new Set<string>();
+  const summaryLimit = () => summaryPromptBytes(journal.view.limits.maxBytes);
+  const summaryPacketLimit = () => Math.min(journal.view.limits.maxBytes, summaryLimit());
   const runSummary = async (force: boolean) => {
     const memoryRequest = pendingMemory();
     const last = memoryRequest ?? journal.view.order.filter(turn => turn.sent).at(-1);
@@ -6741,14 +6785,14 @@ export function createJournalWorker(journal: ReturnType<typeof openPreviewJourna
     const indexOnly = async (items: Turn[]): Promise<boolean> => {
       const packet = JSON.stringify({ indexBacklog: items.map(item => ({ id: item.id, message: clean(redact(item.text).text, true, item.id).slice(0, 600) })) });
       const id = `summary:index:${String(journal.view.indexOffered.length)}`;
-      if (Buffer.byteLength(packet) > Math.min(journal.view.limits.maxBytes, SUMMARY_MAX_PROMPT_BYTES)) return false;
+      if (Buffer.byteLength(packet) > summaryPacketLimit()) return false;
       let prepared: string | undefined;
       try {
         // Rule 29: the index input is written by the runner, a verified system principal.
         const writer = envelopeWriter(journal.systemWriter('rolling-summary', `${id}\n${packet}`, ports.now()));
         prepared = ports.prepareModel?.({ question: indexQuestion, context: packet, id, ...(writer ? { writer } : {}) });
       } catch { return false; }
-      if (prepared !== undefined && Buffer.byteLength(prepared) + Buffer.byteLength(SUBSCRIPTION_CONVERSATION_SYSTEM_PROMPT) > SUMMARY_MAX_PROMPT_BYTES) return false;
+      if (prepared !== undefined && Buffer.byteLength(prepared) + Buffer.byteLength(SUBSCRIPTION_CONVERSATION_SYSTEM_PROMPT) > summaryLimit()) return false;
       gate();
       journal.append({ kind: 'index-reserve', sources: items.map(item => item.id), maxInputTokens: journal.view.limits.maxBytes,
         maxOutputTokens: subscriptionOutputMaximum, at: ports.now() });
@@ -6782,7 +6826,7 @@ export function createJournalWorker(journal: ReturnType<typeof openPreviewJourna
     // Rule 11: a source the writer omitted is offered again, but on a later pass, never twice inside one.
     // Repeating the identical request immediately is the one retry that cannot succeed.
     const offeredThisPass = new Set<string>();
-    for (let attempt = 0; attempt < 8; attempt++) {
+    for (let attempt = 0; attempt < SUMMARY_PASS_ATTEMPTS; attempt++) {
       settleOverCap();
       const previous = summaryFor(last.update)?.through ?? -1;
       if (previous >= last.update || journal.view.calls >= journal.view.limits.maxCalls - (force ? 1 : 0)) return;
@@ -6794,7 +6838,7 @@ export function createJournalWorker(journal: ReturnType<typeof openPreviewJourna
       // The answer envelope, source briefing and next operator message also use
       // the 32 KiB packet allowance. Start rolling before the history alone
       // consumes that headroom; the existing summary path remains bounded.
-      if (!force && !unreviewedQuestions(last.update).length && smallest(full) < Math.min(Math.floor(journal.view.limits.maxBytes * .45), SUMMARY_MAX_PROMPT_BYTES)) {
+      if (!force && !unreviewedQuestions(last.update).length && smallest(full) < Math.min(Math.floor(journal.view.limits.maxBytes * .45), SUMMARY_START_BYTES)) {
         // Rule 11: messages summarized before their meaning terms existed (Part 21 §6) would
         // otherwise wait for history to grow; index them without summarizing anything new. A summary
         // that just ran was already asked for these terms, so indexing waits for a later call.
@@ -6820,9 +6864,11 @@ export function createJournalWorker(journal: ReturnType<typeof openPreviewJourna
       // ceiling, so nothing was offered and every later turn stayed held).
       // The bounded next action is another span, never the end of every later summary: one undecided span
       // (live 2026-09-29, Jev 0.16) must not leave a long chat without any summary until it overflows.
-      // Recovery dispatches only frontiers later than every UNKNOWN charge (below), so those are not offered
-      // either: a window of four at or before one (live 2026-09-30, #483 past the output cap) chose nothing.
-      const unknownFloor = Math.max(-1, ...unknown.keys());
+      // An UNKNOWN frontier keeps its reservation and charge and is never dispatched again, but past its recovery pause
+      // it no longer floors other spans. As a floor it made the shortest offerable span run from the last accepted
+      // summary to past the UNKNOWN, which only grows: with no summary yet that was every turn since the start, and the
+      // conversation never summarized again (live 2026-09-26 21:25 to 2026-10-02, Justin's preview: one UNKNOWN at
+      // update 969389576, then 328 turns, no summary call, 263 KB per answer call).
       // A span from this base that ran over the output cap is too long; only a shorter one is offered next. The
       // ceiling counts only over-cap frontiers that still have an attempt left: once the lowest one has used both,
       // nothing shorter can ever be offered, and keeping the ceiling ends every later summary for good (live
@@ -6833,7 +6879,7 @@ export function createJournalWorker(journal: ReturnType<typeof openPreviewJourna
       const overCapOpen = journal.view.summaryOverCapFrontiers
         .filter(through => through > previous && summarySpanFailures(journal.view, through) < 2);
       const overCapCeiling = Math.min(Number.MAX_SAFE_INTEGER, ...overCapOpen);
-      const withBudget = pending.filter(turn => summarySpanFailures(journal.view, turn.update) < 2 && turn.update > unknownFloor);
+      const withBudget = pending.filter(turn => summarySpanFailures(journal.view, turn.update) < 2 && !unknown.has(turn.update));
       const shorter = withBudget.filter(turn => turn.update < overCapCeiling);
       // No shorter span is left: the ceiling span itself takes its remaining attempt, asking for strictly less
       // (below) — the shortest span (one turn) reaches its second attempt this way. When even the ceiling is spent
@@ -6851,7 +6897,7 @@ export function createJournalWorker(journal: ReturnType<typeof openPreviewJourna
         const dated = datedVariants(candidate);
         const withoutSources = (base: string) => { const { sources: _sources, ...rest } = JSON.parse(base) as { sources?: unknown }; return JSON.stringify(rest); };
         const fallback = dated.filter(base => 'sources' in (JSON.parse(base) as object)).map(withoutSources);
-        const bases = [...dated, ...fallback].filter(base => Buffer.byteLength(base) <= Math.min(journal.view.limits.maxBytes, SUMMARY_MAX_PROMPT_BYTES));
+        const bases = [...dated, ...fallback].filter(base => Buffer.byteLength(base) <= summaryPacketLimit());
         if (!bases.length) break;
         candidates.push({ turn, bases, fallback: new Set(fallback) });
       }
@@ -6871,9 +6917,6 @@ export function createJournalWorker(journal: ReturnType<typeof openPreviewJourna
       // prepared envelope needs more room than the packet itself.
       for (const { turn, bases, fallback } of candidates.reverse()) {
         const through = turn.update;
-        // Recovery may only dispatch a frontier later than every UNKNOWN charge,
-        // including when prompt overflow sends selection to a smaller prefix.
-        if ([...unknown.keys()].some(frontier => through <= frontier)) continue;
         if (summarySpanFailures(journal.view, through) >= 2) continue;
         // This exact span already ran over the output cap, so its remaining attempt asks for strictly less to answer:
         // the offered blocks (open commitments, unanswered candidates, non-required memory candidates, the index
@@ -6923,12 +6966,12 @@ export function createJournalWorker(journal: ReturnType<typeof openPreviewJourna
             // oldest first and bounded, so the derived index converges instead of staying partial.
             for (const packet of backlog.length && !overCapRetry ? [JSON.stringify({ ...JSON.parse(plain) as object,
               indexBacklog: backlog.map(item => ({ id: item.id, message: clean(redact(item.text).text, true, item.id).slice(0, 600) })) }), plain] : [plain]) {
-              if (Buffer.byteLength(packet) > Math.min(journal.view.limits.maxBytes, SUMMARY_MAX_PROMPT_BYTES)) continue;
+              if (Buffer.byteLength(packet) > summaryPacketLimit()) continue;
               try {
                 // Rule 29: the rolling summary's input is written by the runner, a verified system principal.
                 const writer = envelopeWriter(journal.systemWriter('rolling-summary', `summary:${through}\n${packet}`, ports.now()));
                 const prepared = ports.prepareModel?.({ question: summaryQuestion, context: packet, id: `summary:${through}`, ...(writer ? { writer } : {}) });
-                if (prepared !== undefined && Buffer.byteLength(prepared) + Buffer.byteLength(SUBSCRIPTION_CONVERSATION_SYSTEM_PROMPT) > SUMMARY_MAX_PROMPT_BYTES) {
+                if (prepared !== undefined && Buffer.byteLength(prepared) + Buffer.byteLength(SUBSCRIPTION_CONVERSATION_SYSTEM_PROMPT) > summaryLimit()) {
                   oversizedPrompt = true; continue;
                 }
                 chosen = { through, packet, ...(prepared === undefined ? {} : { prepared }), offered,
