@@ -62,6 +62,13 @@ const world = (journal: Journal, write: (input: Input) => object, clock = { now:
   return { worker, calls, prepared, sentBytes, clock };
 };
 const plain = () => ({ summary: 'The operator kept a running log of ordinary errands and garden notes.' });
+/** A carried summary as an older build accepted it, before this build's prose bound (w3-summarybound): its prose up
+ * to that build's 8192 bytes. This build never writes one; it still has to summarize past one. */
+const carryOld = (journal: Journal, through: number, summary: string, memoryItems: { source: string; quote: string }[]) => {
+  journal.append({ kind: 'summary-reserve', through, maxInputTokens: 409600, maxOutputTokens: 2048, at: at + through });
+  journal.append({ kind: 'summary', through, text: summary, ...(memoryItems.length ? { memoryItems } : {}),
+    faithfulness: { path: 'exact', verdict: 'pass', score: null }, state: 'complete', at: at + through });
+};
 
 // The recorded size distribution of Justin's root: mostly short messages (46-100 bytes), replies of 70-700 bytes,
 // and an occasional long message or reply (largest 3892 and 4141 bytes).
@@ -131,8 +138,8 @@ it('advances past a carried summary of the size that stopped proof room 2', asyn
     const big = () => ({ summary: Array.from({ length: 60 }, (_, i) => `Garden log ${String(i + 1)} recorded steady bean rows, dawn watering and one retied stake.`)
       .join(' ').slice(0, 4100),
     memoryItems: [1, 2, 3, 4].flatMap(n => Array.from({ length: 5 }, (_, i) => ({ source: idOf(n), quote: `${row(i + 1)}${row(i + 2)}`.trim() }))) });
-    const w = world(journal, big);
-    await w.worker.summarizeIfNeeded(true);
+    carryOld(journal, 4, big().summary, big().memoryItems);
+    const w = world(journal, plain);
     const carried = journal.view.summaries.at(-1)!;
     expect(carried.through).toBe(4);
     expect(Buffer.byteLength(carried.text)).toBeGreaterThan(3214);
@@ -152,7 +159,8 @@ it('advances past a carried summary of the size that stopped proof room 2', asyn
 }, 60000);
 
 it('bounds the summary prompt for every carried summary up to its accept bound and one maximum-size turn', async () => {
-  // The carried summary's own accept bounds: prose at most 8192 bytes, at most 20 memory items of 300 bytes. The turn:
+  // The carried summary's accept bounds before w3-summarybound: prose at most 8192 bytes, at most 20 memory items of
+  // 300 bytes, carried as an older build accepted them; this build rewrites that prose within its own bound. The turn:
   // a 4096-character message (ASCII, and 3-byte characters at 12288 bytes) with a 4096-byte reply.
   const clause = (n: number, i: number) => `Note ${String(n)}.${String(i)}: the "shed" key is under the blue pot; ${'details kept exactly. '.repeat(13)}`.slice(0, 300);
   const prose = (bytes: number) => `The operator said "keep this", and noted:\n${'A dated fact with its "source" and exact unit, 12 kg. '.repeat(160)}`.slice(0, bytes);
@@ -169,8 +177,8 @@ it('bounds the summary prompt for every carried summary up to its accept bound a
       for (let n = 1; n <= 4; n++) turn(journal, n, Array.from({ length: 5 }, (_, i) => clause(n, i)).join(' '), `PREVIEW — Kept note ${String(n)}.`);
       const carried = () => ({ summary: textBytes ? prose(textBytes) : 'Notes kept.',
         memoryItems: [1, 2, 3, 4].flatMap(n => Array.from({ length: 5 }, (_, i) => ({ source: idOf(n), quote: clause(n, i) }))).slice(0, items) });
-      const w = world(journal, carried);
-      await w.worker.summarizeIfNeeded(true);
+      carryOld(journal, 4, carried().summary, carried().memoryItems);
+      const w = world(journal, plain);
       expect(journal.view.summaries.at(-1)!.through).toBe(4);
       expect(journal.view.summaries.at(-1)!.memoryItems?.length ?? 0).toBe(items);
       if (textBytes) expect(Buffer.byteLength(journal.view.summaries.at(-1)!.text)).toBeGreaterThanOrEqual(textBytes - 2);

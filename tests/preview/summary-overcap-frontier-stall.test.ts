@@ -140,17 +140,15 @@ it('a writer always past the output cap stays bounded per pass, and no attempt i
   const w = world(() => true);
   try {
     await w.fill(1, 14);
-    // Four over-cap attempts end a pass (the most one pass spent before this change), so per-pass summary spend is
-    // unchanged. Live, the pass offered 1-4, then their second attempts, then the one-turn span twice. Spans 5 and 6
-    // only exist here because the reachability floor keeps answering past the point the old build held: a held turn
-    // is unsettled, and an unsettled turn is never a pending span.
-    expect(w.throughs).toEqual([4, 3, 2, 1, 1, 2, 3, 4, 6, 5, 5, 6]);
-    // Each span keeps exactly its two attempts, over-cap included: no budget is widened.
-    expect([...w.journal.view.summaryFailures.values()].every(count => count === 2)).toBe(true);
+    // Four over-cap attempts end a pass, so per-pass summary spend is unchanged: the pass offered 1-4, then the
+    // one-turn span's reduced retry on the next pass.
+    expect(w.throughs).toEqual([4, 3, 2, 1, 1]);
+    // No span takes more than its two attempts: no budget is widened.
+    expect([...w.journal.view.summaryFailures.values()].every(count => count <= 2)).toBe(true);
     // Every one is settled from its own outcome row: none is left as an UNKNOWN charge that would floor later spans.
     expect(w.journal.view.summaryReservations.size).toBe(0);
     expect(w.journal.view.summaryOverCap).toEqual([]);
-    expect(w.journal.view.summaryOverCapFrontiers).toHaveLength(12);
+    expect(w.journal.view.summaryOverCapFrontiers).toHaveLength(5);
     // The property: no summary is possible at all, and still not one reply is held for size (Rules 15, 95).
     expect(w.heldForSummary()).toEqual([]);
     expect(w.journal.view.order.filter(turn => turn.accepted && turn.sent === undefined)).toEqual([]);

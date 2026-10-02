@@ -2,7 +2,7 @@ import { expect, it } from 'vitest';
 import { mkdtempSync, readFileSync, realpathSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
-import { createJournalWorker, openPreviewJournal, SUMMARY_OVER_CAP_REASON, type CallOutcome } from './journal.js';
+import { createJournalWorker, openPreviewJournal, summaryStoppedAt, SUMMARY_FORMAT, SUMMARY_OVER_CAP_REASON, type CallOutcome } from './journal.js';
 import { decisionWithinFloor } from './model-call-boundary.js';
 import { conclusionText, parseModelJson } from './model-json.js';
 import { JEV_MODEL, parseJevResponse, REPLY_RULES } from './reply-check.js';
@@ -110,12 +110,12 @@ it('settles a writer result proven over the output cap and accepts a shorter spa
     expect(w.log.filter(item => item !== 'jev-reply').slice(0, 4)).toEqual(['summary', 'summary', 'jev-faithfulness', 'review']);
     // Every later over-cap attempt is recorded with its reason and no reservation is left UNKNOWN. The spans below
     // the ceiling are walked downward (#485 to #482, the one-turn span, which keeps its second attempt because there
-    // is no shorter one); then each span that still has an attempt takes it, asking for strictly less; and once no
-    // over-cap span has budget left the ceiling is gone, so the next window (#489 down to #486) is offered. Before
-    // this change the walk stopped at the spent one-turn span and no span was ever offered again.
+    // is no shorter one). Both attempts at the one-turn span ran over the cap, and every later span from base #481
+    // contains it, so nothing more is offered from that base (Rule 55; w3-summarybound). Releasing the ceiling here
+    // walked on through #483-#489, two calls a frontier, as Justin's preview did for 69 calls on 2026-10-02.
     expect(w.journal.view.summaryReservations.size).toBe(0);
-    expect(w.throughs.slice(2)).toEqual([715672485, 715672484, 715672483, 715672482, 715672482,
-      715672483, 715672484, 715672485, 715672489, 715672488, 715672487, 715672486]);
+    expect(w.throughs.slice(2)).toEqual([715672485, 715672484, 715672483, 715672482, 715672482]);
+    expect(summaryStoppedAt(w.journal.view)).toBe(715672482);
     // No budget is widened: from this base every span still has at most its two attempts.
     expect([...new Set(w.journal.view.summarySpanFailures)]
       .every(through => w.journal.view.summarySpanFailures.filter(item => item === through).length <= 2)).toBe(true);
@@ -128,8 +128,8 @@ it('settles a writer result proven over the output cap and accepts a shorter spa
     const reopened = openPreviewJournal(w.path, key);
     expect(reopened.view.summaries.map(item => item.through)).toEqual([715672481]);
     expect(reopened.view.summaryReservations.size).toBe(0);
-    expect(reopened.view.summaryOverCapFrontiers).toEqual([715672485, 715672484, 715672483, 715672482, 715672482,
-      715672483, 715672484, 715672485, 715672489, 715672488, 715672487, 715672486]);
+    expect(reopened.view.summaryOverCapFrontiers).toEqual([715672485, 715672484, 715672483, 715672482, 715672482]);
+    expect(summaryStoppedAt(reopened.view)).toBe(715672482);
     reopened.close();
   } finally { w.close(); }
 });
@@ -148,7 +148,8 @@ it('recovers the live journal state: four UNKNOWN over-cap reservations settle a
       maxInputTokens: 409600, maxOutputTokens: 2048, at: w.now() });
     for (const through of [715672482, 715672482, 715672483]) {
       reserve(through);
-      w.journal.append({ kind: 'summary-failed', through, reason: 'summary faithfulness: undecided', state: 'complete', at: w.now() });
+      // Stamped with the current format, as this build writes its own failures (an older build's would not count).
+      w.journal.append({ kind: 'summary-failed', format: SUMMARY_FORMAT, through, reason: 'summary faithfulness: undecided', state: 'complete', at: w.now() });
     }
     for (const item of OVER_CAP) {
       reserve(item.through);

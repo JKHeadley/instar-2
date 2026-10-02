@@ -2348,7 +2348,9 @@ reservation remains unresolved even after the later summary succeeds; `status`
 still refuses a cap raise while it exists. The pause is a lower bound between
 uncertain summary calls; a reservation inherited on restart waits a full 60 seconds from
 reopening because prior process elapsed time cannot be established. A later accepted turn
-and a free call slot are still required. A correction whose deciding summary
+and a free call slot are still required. Past the pause, an UNKNOWN at or past the pass's target
+(a pending memory request below it, for instance) does not stop the pass; only the UNKNOWN
+frontier itself is never offered again. A correction whose deciding summary
 is UNKNOWN follows the existing `memory-undecided` path; the later summary
 does not silently turn that undecided request into a verified decision.
 
@@ -2379,6 +2381,28 @@ summary. On the proof room (2026-09-30) all four summary calls after 03:03 ran o
 each later span started at the first turn and only grew, so none ever reached Jev or the
 review. `summary-overcap-cascade.test.ts` replays those recorded outcomes, writer outputs
 and Jev verdicts.
+
+Every bound an accepted summary must meet is derived from that 2,048-token cap, so a faithful
+answer always fits: at the measured floor of 2.4 bytes per output token (88 recorded outputs on
+Justin's root, 2.44 to 3.08) the cap is 4,915 bytes. Of that, 800 bytes are allowed for the
+Decision envelope (measured at most 725) and 800 for the reasoning, which the summary question
+limits to one sentence of 200 characters (the real model wrote 354 to 753 bytes with that wording,
+against a median of 1,888 before it). The rolling summary's prose, the one part every call
+re-emits whatever its span, is bounded at two fifths of the rest, 1,326 bytes; the remainder carries
+the span's own lists, which shrink with the span down to one turn. Carried memory items are kept by
+the code and never re-emitted. Prose over the bound is refused as `summary answer over its bound`,
+the same class as an over-cap attempt. A carried summary an older build accepted at up to 8 KiB is
+rewritten condensed within the bound by the next call; every original turn stays in the journal
+and the meaning index. Once both attempts at a span asked too much (the full request and the
+reduced retry), no span from that base is offered again, because every later span contains it
+(Rule 55); `status.summaryStoppedAt` names that frontier, and replies keep being answered by the
+history floor. A span spent partly on a content failure never had its reduced retry and releases
+as before. Each summary failure records the summary format it was made under (`format`); only
+failures under the current format spend a span's two attempts or set the brake, so a build that
+changes what a summary is asked may retry spans an older build exhausted. Before this, a released
+ceiling walked forward through ever longer spans from one base, two calls each: Justin's preview
+spent 69 summary calls from frontier 969389761 on 2026-10-02 with none accepted
+(`summary-bound.test.ts`).
 
 Live test script for Justin, on a separately authorized, isolated private-chat
 preview trial with spare call and turn slots provisioned **before** the fault:

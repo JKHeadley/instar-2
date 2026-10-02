@@ -2,7 +2,7 @@ import { expect, it } from 'vitest';
 import { mkdtempSync, readFileSync, realpathSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
-import { createJournalWorker, openPreviewJournal, SUMMARY_OVER_CAP_REASON, type CallOutcome, type JournalRecord } from './journal.js';
+import { createJournalWorker, openPreviewJournal, summaryStoppedAt, SUMMARY_FORMAT, SUMMARY_OVER_CAP_REASON, type CallOutcome, type JournalRecord } from './journal.js';
 import { decisionWithinFloor } from './model-call-boundary.js';
 import { conclusionText, parseModelJson } from './model-json.js';
 import { JEV_MODEL, parseJevResponse, REPLY_RULES } from './reply-check.js';
@@ -84,9 +84,11 @@ function world(writer: Step[]) {
     send: async input => input.update, checkOutbound: () => {} });
   let open = true;
   return { path, journal, worker, throughs, log,
-    /** The room's recorded rows in their journal order, then half an hour later (past the UNKNOWN recovery delay). */
+    /** The room's recorded rows in their journal order, then half an hour later (past the UNKNOWN recovery delay).
+     * Its failures are stamped with the current summary format, as this build writes them: an older build's failures
+     * would not spend this build's attempts (SUMMARY_FORMAT), and this file proves the selection under one format. */
     replayLiveRoom: () => {
-      for (const row of fixture.rows) journal.append(row);
+      for (const row of fixture.rows) journal.append(row.kind === 'summary-failed' ? { ...row, format: SUMMARY_FORMAT } : row);
       clock = fixture.rows.at(-1)!.at - START + 30 * 60_000;
     },
     closeJournal: () => { if (open) journal.close(); open = false; },
@@ -126,7 +128,7 @@ it('the recorded stall: from base #484 a frontier is offered again and a summary
   } finally { w.close(); }
 });
 
-it('a one-turn span keeps its second attempt under the over-cap ceiling, and a spent ceiling stops nothing', async () => {
+it('a one-turn span keeps its second attempt under the over-cap ceiling, and a spent ceiling stops the base', async () => {
   const w = world([]); // every writer call returns one of the room's recorded over-cap results
   try {
     w.replayLiveRoom();
@@ -136,11 +138,12 @@ it('a one-turn span keeps its second attempt under the over-cap ceiling, and a s
     expect(w.journal.view.summaryReservations.size).toBe(0);
     expect(w.journal.view.lastSummaryFailure?.reason).toBe(SUMMARY_OVER_CAP_REASON);
     expect(w.journal.view.summaries.at(-1)?.through).toBe(715672484);
-    // The spent one-turn span no longer ends every later summary (live 2026-09-30/10-01 proof room, where that state
-    // at #715672791 stopped the frontier for 210 updates). The next pass gives each span that still has an attempt
-    // its remaining one, shortest first (#486, #487), then the next ones up (#488, #489).
+    // The spent one-turn span is contained in every later span from base #484, so nothing more is offered from it
+    // (Rule 55; w3-summarybound). Releasing the ceiling here walked forward two calls per frontier for as long as turns
+    // arrived (live 2026-10-02, Justin's preview: 69 calls from one base). Replies are answered by the history floor.
+    expect(summaryStoppedAt(w.journal.view)).toBe(715672485);
     await w.worker.summarizeIfNeeded(true);
-    expect(w.throughs.slice(4)).toEqual([715672486, 715672487, 715672488, 715672489]);
+    expect(w.throughs).toHaveLength(4);
     // The other side of the budget: a span that used its two attempts is not offered again, and the journal refuses
     // a third reservation of it.
     expect(w.throughs.filter(through => through === 715672485)).toHaveLength(2);

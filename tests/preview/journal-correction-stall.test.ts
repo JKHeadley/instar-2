@@ -74,7 +74,7 @@ const world = (root: string, opts: { bigSummary: boolean; decides: boolean }, cl
     checkOutbound: () => {},
     send: async (value: { expectedText: string }) => { sent.push(value.expectedText); return sent.length; } };
   const journal = first ? openPreviewJournal(join(root, 'journal.encrypted'), key, genesis) : openPreviewJournal(join(root, 'journal.encrypted'), key);
-  return { journal, worker: createJournalWorker(journal, ports), calls, sent, offered };
+  return { journal, worker: createJournalWorker(journal, ports), calls, sent, offered, opts };
 };
 const tmp = (name: string) => realpathSync(mkdtempSync(join(tmpdir(), `preview-correction-stall-${name}-`)));
 const pushes = (sent: string[]) => sent.filter(text => text.startsWith('PREVIEW — You asked on'));
@@ -84,7 +84,15 @@ const turnOf = (w: ReturnType<typeof world>, text: string) => w.journal.view.ord
  * garden log, then the two reminder messages. */
 const liveShape = async (w: ReturnType<typeof world>) => {
   for (let n = 1; n <= 3; n++) { w.worker.intake([update(n, gardenLog(n))]); await w.worker.drain(); }
-  await w.worker.summarizeIfNeeded(true);
+  if (w.opts.bigSummary) {
+    // The live carried summary, as the older build accepted it: its prose (8150 bytes) is past this build's prose
+    // bound (w3-summarybound), which this build would never write but still has to carry.
+    const text = Array.from({ length: 60 }, (_, i) => `Garden log ${i + 1} recorded steady bean rows, dawn watering and one retied stake.`).join(' ').slice(0, 8150);
+    const memoryItems = [1, 2, 3].flatMap(n => Array.from({ length: 7 }, (_, i) => ({ source: `telegram:8989505249:update:${n}`, quote: row(i + 1).trim() })));
+    w.journal.append({ kind: 'summary-reserve', through: 3, maxInputTokens: genesis.maxBytes, maxOutputTokens: 2048, at: start });
+    w.journal.append({ kind: 'summary', through: 3, text, memoryItems, faithfulness: { path: 'exact', verdict: 'pass', score: null },
+      state: 'complete', at: start });
+  } else await w.worker.summarizeIfNeeded(true);
   expect(w.journal.view.summaries).toHaveLength(1);
   w.worker.intake([update(4, gardenLog(4))]); await w.worker.drain();
   w.worker.intake([update(5, ra1)]); await w.worker.drain();
