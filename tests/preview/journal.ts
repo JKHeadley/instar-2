@@ -95,12 +95,14 @@ export const replyReviewReserveFor = (maxBytes: number) => Math.min(REPLY_REVIEW
  * chosen by hand here could drift below the real parts, so `default-context-floor.test.ts` re-measures
  * the live answer path at the default limit and fails when they outgrow what it allows. Re-measured at
  * cint-L24 (23013 -> 23083): w3-longchat's incomplete-search and continuity wording added 70 bytes to the
- * standing instruction message; the packet and the scaffold are unchanged. */
-export const PREVIEW_FIXED_PROMPT_BYTES = 23_083;
+ * standing instruction message; the packet and the scaffold are unchanged. Re-measured at w3-reminderwords
+ * (23083 -> 23056): the capability note lost 27 bytes net -- the reminder line gained 21 and the blanket
+ * later-time denial, the module-documentation pointer and two words of the switched-off line went. */
+export const PREVIEW_FIXED_PROMPT_BYTES = 23_056;
 /** The smallest context limit at which one ordinary turn fits with its reply review beside it: the least
  * limit L with `L - replyReviewReserveFor(L) >= PREVIEW_FIXED_PROMPT_BYTES`. Derived from that inequality
  * rather than picked (conservative by one byte where the quarter reserve binds: the exact least value for
- * 23083 is 30777 and this gives 30778). A limit below this cannot serve its own first turn, however little
+ * 23056 is 30741 and this gives 30742). A limit below this cannot serve its own first turn, however little
  * the conversation holds, so no summary or set-aside can recover it -- which is why the doorways that set a
  * limit refuse one below it instead of letting an unservable root be created. */
 export const PREVIEW_MIN_SERVABLE_CONTEXT_BYTES = Math.ceil(PREVIEW_FIXED_PROMPT_BYTES * 4 / 3) < REPLY_REVIEW_HEADROOM_BYTES * 4
