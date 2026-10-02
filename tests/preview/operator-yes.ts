@@ -7,7 +7,7 @@
 //      refuses a chat yes wherever a recorded P-05 grant lets the agent speak as the operator in that chat.
 // Pure: no clock, no I/O. The journal supplies the state and records every request and decision.
 import { createHash } from 'node:crypto';
-import { produceExplicitYes } from '../../src/operator/explicit-yes.js';
+import { githubAccountAccess, produceExplicitYes, SHARED_ACCESS_NOTE } from '../../src/operator/explicit-yes.js';
 import type { ExplicitYesInstallation, ExplicitYesRecord, ExplicitYesRequest } from '../../src/operator/explicit-yes.js';
 import { consumeResult } from '../../src/index.js';
 import type { BoundaryContext, Clock, Hash, Scope, VerifiedPrincipal } from '../../src/index.js';
@@ -114,24 +114,38 @@ export function wellFormedRequest(request: unknown, carrier: string, grant: stri
 }
 
 const minute = (at: number) => `${new Date(at).toISOString().slice(0, 16).replace('T', ' ')} UTC`;
+const requestChange = (request: OperatorRequest, current: { limits: CapLimits; expires: number }) => request.action === 'raise-caps'
+  ? KEYS.filter(key => request.limits![key] !== current.limits[key]).map(key =>
+    `the ${LIMIT_NAMES[key][0]} allowance from ${current.limits[key]} to ${request.limits![key]} (${request.limits![key] - current.limits[key]} more ${LIMIT_NAMES[key][1]})`).join(' and ')
+  : `this trial's end from ${minute(current.expires)} to ${minute(request.expires!)}`;
+const requestHead = (request: OperatorRequest, current: { limits: CapLimits; expires: number }) =>
+  `Request ${request.id}: ${request.action === 'raise-caps' ? 'raise' : 'extend'} ${requestChange(request, current)}. `;
 /** The fixed, plain request the operator reads (Rule 82): the exact change, how to approve, and when it lapses. */
 export function operatorRequestText(request: OperatorRequest, current: { limits: CapLimits; expires: number }): string {
-  const change = request.action === 'raise-caps'
-    ? KEYS.filter(key => request.limits![key] !== current.limits[key]).map(key =>
-      `the ${LIMIT_NAMES[key][0]} allowance from ${current.limits[key]} to ${request.limits![key]} (${request.limits![key] - current.limits[key]} more ${LIMIT_NAMES[key][1]})`).join(' and ')
-    : `this trial's end from ${minute(current.expires)} to ${minute(request.expires!)}`;
-  return `Request ${request.id}: ${request.action === 'raise-caps' ? 'raise' : 'extend'} ${change}. `
-    + `To approve, reply "yes" as your next message here; anything else changes nothing. This request lapses at ${minute(request.expiresAt)}.`;
+  return `${requestHead(request, current)}To approve, reply "yes" as your next message here; anything else changes nothing. `
+    + `This request lapses at ${minute(request.expiresAt)}.`;
+}
+/** The same request where the yes is the operator's GitHub review (P-05): the direct link to approve it (Rule 106). */
+export function operatorReviewRequestText(request: OperatorRequest, current: { limits: CapLimits; expires: number }, link: string): string {
+  return `${requestHead(request, current)}To approve, open ${link} and approve the pull request (Review changes, then Approve); `
+    + `anything else changes nothing. This request lapses at ${minute(request.expiresAt)}.`;
+}
+/** The fixed line the operator receives when a review-approved request completes. Under an operator acceptance of
+ * shared account access it carries the disclosure (Purpose, the approval-account exception), written once. */
+export function operatorResultText(request: OperatorRequest, before: { limits: CapLimits; expires: number }, shared: boolean): string {
+  return `Request ${request.id} is done: ${request.action === 'raise-caps' ? 'raised' : 'extended'} ${requestChange(request, before)}, `
+    + `approved through your GitHub account${shared ? `; note: ${SHARED_ACCESS_NOTE}` : ''}.`;
 }
 /** The fixed line when a proposal is out of bounds or not proposable: what was asked and why not. */
 export const operatorRefusalText = (action: OperatorAction, reason: string) =>
   `I can't propose that ${action === 'raise-caps' ? 'limit raise' : 'renewal'}: ${reason}. Nothing changed.`;
 
-/** Where an explicit yes can come from on this root, and why not when it cannot (Rule 3: no false claim). */
+/** Where an explicit yes can come from on this root, and why not when it cannot (Rule 3: no false claim). `acceptance`
+ * names the account an operator acceptance covers and whether it is current (absent on the no-access route). */
 export interface ExplicitYesStatus { connected: boolean; chat: { admissible: boolean; reason?: string };
-  review: { admissible: boolean; reason?: string } }
-export function explicitYesStatus(installation: ExplicitYesInstallation | undefined, bound: { chat: string; operator: string },
-  review: { connected: boolean } = { connected: false }): ExplicitYesStatus {
+  review: { admissible: boolean; reason?: string; breakerOpen?: boolean; acceptance?: { account: string; current: boolean; disclosure?: string } } }
+export function explicitYesStatus(installation: ExplicitYesInstallation | undefined, bound: { chat: string; operator: string; trial?: string },
+  review: { connected: boolean; breakerOpen?: boolean } = { connected: false }): ExplicitYesStatus {
   if (!installation) return { connected: false, chat: { admissible: false, reason: 'no explicit-yes installation record is configured' },
     review: { admissible: false, reason: 'no explicit-yes installation record is configured' } };
   const chat = installation.agentSpeaksAsOperatorInChat
@@ -139,12 +153,16 @@ export function explicitYesStatus(installation: ExplicitYesInstallation | undefi
     : !installation.chat.agentHoldsNoAccess ? 'no P-02 record that the agent holds no access to the operator chat account'
       : installation.chat.boundChatId !== bound.chat || installation.chat.operatorAccountId !== bound.operator
         ? 'the installation record names a different chat or operator account than this trial' : undefined;
-  const github = installation.github;
-  const reviewReason = !github ? 'no pinned operator GitHub account is installed'
-    : !github.agentHoldsNoAccess ? 'no P-02 record that the agent holds no access to the operator GitHub account'
+  const access = githubAccountAccess(installation), acceptance = installation.github?.acceptance ?? null;
+  const reviewReason = access.kind === 'refused' ? access.detail
+    : bound.trial !== undefined && installation.installation !== undefined && installation.installation !== bound.trial
+      ? 'the installation record names a different trial than this one'
       : !review.connected ? 'the GitHub review source is not connected on this root' : undefined;
+  const accepted = acceptance === null ? {} : { acceptance: { account: acceptance.account, current: access.kind === 'accepted',
+    ...(access.kind === 'accepted' ? { disclosure: SHARED_ACCESS_NOTE } : {}) } };
   return { connected: true, chat: chat === undefined ? { admissible: true } : { admissible: false, reason: chat },
-    review: reviewReason === undefined ? { admissible: true } : { admissible: false, reason: reviewReason } };
+    review: { admissible: reviewReason === undefined, ...(reviewReason === undefined ? {} : { reason: reviewReason }),
+      ...(review.breakerOpen ? { breakerOpen: true } : {}), ...accepted } };
 }
 
 /** One operator message as the binding reads it: its Telegram ids, edit state and text. */
@@ -182,6 +200,18 @@ export function admitChatYes(input: { request: OperatorRequest; message: number;
   return consumeResult<ExplicitYesRecord, Verdict>(produceExplicitYes(yes, input.installation, observation, input.consumed, input.context), {
     Success: record => ({ kind: 'approved', record }), Refused: refusal => ({ kind: 'refused', detail: refusal.detail }) });
 }
-/** The authority a completed request writes on its caps or expiry row; the reference is the consumed yes. */
-export const operatorYesAuthority = (requestId: string, reference: string) => `operator-yes:${requestId}:${reference}`;
-export const OPERATOR_YES_AUTHORITY = /^operator-yes:([0-9a-f]{16}):(.+)$/u;
+/** The authority a completed request writes on its caps or expiry row; the reference is the consumed yes. A yes admitted
+ * under an operator acceptance of shared account access carries the disclosure into that history (Rule 90). */
+export const operatorYesAuthority = (requestId: string, reference: string, shared = false) =>
+  `operator-yes:${requestId}:${reference}${shared ? ` [shared-access: ${SHARED_ACCESS_NOTE}]` : ''}`;
+export const OPERATOR_YES_AUTHORITY = /^operator-yes:([0-9a-f]{16}):(\S+)(?: \[shared-access: [^\]]+\])?$/u;
+/** The live surface of the two declared operator actions on this root (Rules 3, 79): the phone route an explicit yes can
+ * really come from now, or the declarations' host command line where none is admissible. Never claimed ahead of the facts. */
+export function operatorActionSurface(status: Partial<ExplicitYesStatus> | undefined): { raiseCaps: string; renewExpiry: string } {
+  const host = 'host command line on the trial machine (journal-agent.mjs)';
+  const route = status?.chat?.admissible ? 'phone: the operator replies "yes" to the exact request in the bound chat'
+    : status?.review?.admissible ? `phone: the operator approves the exact request's GitHub pull request at the link sent in chat${
+      status.review.acceptance?.current ? ` (note: ${SHARED_ACCESS_NOTE})` : ''}` : null;
+  return { raiseCaps: route ?? host,
+    renewExpiry: route === null ? host : `${route}, once the reviewed activation for the new trial end is installed (--renewal-activation); until then ${host}` };
+}

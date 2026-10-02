@@ -43,14 +43,56 @@ export interface ExplicitYesRequest {
   /** Unix-ms lifetime of the request; a yes outside it is refused. */
   readonly issuedAt: number; readonly expiresAt: number;
 }
+/**
+ * The operator's recorded acceptance (Purpose, the approval-account exception) that approvals from one account count
+ * as the operator's yes on one installation although the agent can also use that account. `operatorMessages` are the
+ * references of the operator's own recorded words; `withdrawn` is when a recorded withdrawal took effect, or null.
+ */
+export interface OperatorAcceptance {
+  readonly account: string; readonly installation: string; readonly operatorMessages: readonly string[];
+  /** Unix ms. */
+  readonly acceptedAt: number; readonly withdrawn: number | null;
+}
+/** The shared-access disclosure, written once: carried wherever an approval admitted under an acceptance is recorded,
+ * displayed or exported. */
+export const SHARED_ACCESS_NOTE = 'I can also use that account, so the account alone does not show who approved';
+/** What an approval admitted under an acceptance records about it (absent on the no-access route). */
+export interface SharedAccessDisclosure {
+  readonly account: string; readonly installation: string; readonly acceptedAt: number; readonly note: string;
+}
 /** Installed, pinned facts about where a yes may come from. */
 export interface ExplicitYesInstallation {
   readonly adapter: string; readonly machine: string;
+  /** This installation's identity, which an operator acceptance must name. */
+  readonly installation?: string;
   /** `agentHoldsNoAccess` is the current P-02 record for that account (no session, credential, delegated sender or recovery path). */
   readonly chat: Readonly<{ method: string; boundChatId: string; operatorAccountId: string; agentHoldsNoAccess: boolean }>;
-  readonly github: Readonly<{ method: string; repository: string; operatorLogin: string; agentHoldsNoAccess: boolean }> | null;
+  /** `acceptance`: the operator's recorded acceptance of the agent's access to this account, the alternative to the
+   * no-access fact. Exactly one of the two may hold; neither is ever defaulted. */
+  readonly github: Readonly<{ method: string; repository: string; operatorLogin: string; agentHoldsNoAccess: boolean;
+    acceptance?: OperatorAcceptance | null }> | null;
   /** True when a recorded P-05 grant lets the agent speak through the operator's chat account. */
   readonly agentSpeaksAsOperatorInChat: boolean;
+}
+/** How the agent's relation to the GitHub approving account is established right now, or why it is not: the P-02
+ * no-access fact, or a current (unwithdrawn) acceptance naming this account and installation. `at`, when given, is the
+ * approval's time, which must not predate the acceptance. */
+export type ApprovalAccountAccess = { kind: 'no-access' } | { kind: 'accepted'; acceptance: OperatorAcceptance } | { kind: 'refused'; detail: string };
+export function githubAccountAccess(installation: ExplicitYesInstallation, at?: number): ApprovalAccountAccess {
+  const github = installation.github;
+  if (!github) return { kind: 'refused', detail: 'no pinned operator GitHub account is installed' };
+  const acceptance = github.acceptance ?? null;
+  if (acceptance === null)
+    return github.agentHoldsNoAccess ? { kind: 'no-access' }
+      : { kind: 'refused', detail: 'no P-02 record that the agent holds no access to the operator GitHub account' };
+  if (acceptance.withdrawn !== null) return { kind: 'refused', detail: 'the operator withdrew the acceptance of the agent\'s access to the approving account' };
+  if (github.agentHoldsNoAccess) return { kind: 'refused', detail: 'the installation record both says the agent holds no access and records an acceptance of that access' };
+  if (acceptance.account.toLowerCase() !== github.operatorLogin.toLowerCase()) return { kind: 'refused', detail: 'the operator acceptance names another account' };
+  if (!installation.installation || acceptance.installation !== installation.installation)
+    return { kind: 'refused', detail: 'the operator acceptance names another installation' };
+  if (!acceptance.operatorMessages.length) return { kind: 'refused', detail: 'the operator acceptance cites no recorded operator words' };
+  if (at !== undefined && at < acceptance.acceptedAt) return { kind: 'refused', detail: 'the approval predates the operator acceptance' };
+  return { kind: 'accepted', acceptance };
 }
 export type ExplicitYesObservation =
   | Readonly<{ kind: 'chat-reply'; chatId: string; messageId: string; replyToMessageId: string | null;
@@ -65,6 +107,8 @@ export interface ExplicitYesRecord {
   readonly authorization: Readonly<Record<string, Json>>;
   /** The one-use admission the decoder requires (`DecodeContext.accountAssent`) before it grants account assent. */
   readonly admission: AccountAssentAdmission;
+  /** Present exactly when the yes was admitted under an operator acceptance of shared account access. */
+  readonly sharedAccess: SharedAccessDisclosure | null;
 }
 
 export const chatYesReference = (chatId: string, messageId: string) => `telegram:chat:${chatId}:message:${messageId}`;
@@ -86,7 +130,9 @@ function admit(condition: unknown, detail: string): asserts condition {
  * THE single route that admits an account-assented yes (plan #91; Part Eleven §2): the operator
  * account's reply in the bound chat to the request's own message, or, where a P-05 grant lets the
  * agent speak through that chat account, the pinned operator GitHub account APPROVING a review of
- * the request's exact head on a pull request naming the request. Each needs the P-02 record, falls
+ * the request's exact head on a pull request naming the request. Each needs the P-02 record (for the GitHub account,
+ * alternatively the operator's current recorded acceptance of the agent's access, which then rides the record as
+ * `sharedAccess` with the fixed disclosure: Purpose, the approval-account exception), falls
  * inside the request's lifetime and is used once. Only after every check does it seal the one-use
  * `AccountAssentAdmission` the decoder requires; the raw admission constructor is not exported, so
  * no caller can issue account assent without these checks. Throws the refusal detail.
@@ -96,6 +142,7 @@ export function admitExplicitYes(request: ExplicitYesRequest, installation: Expl
   admit(request.approver.kind === 'person', 'the approver must be a person');
   admit(request.approver.id !== request.requestedBy.id, 'the requester cannot approve its own request');
   let reference: string, method: string, recordType: string, evidence: ProvenanceInput['evidence'];
+  let sharedAccess: SharedAccessDisclosure | null = null;
   if (observation.kind === 'chat-reply') {
     admit(!installation.agentSpeaksAsOperatorInChat,
       'a P-05 grant lets the agent speak as the operator in chat, so a chat reply is not the operator\'s yes; use the review path');
@@ -109,7 +156,10 @@ export function admitExplicitYes(request: ExplicitYesRequest, installation: Expl
   } else {
     const github = installation.github;
     admit(github, 'no pinned operator GitHub account is installed');
-    admit(github.agentHoldsNoAccess, 'no P-02 record that the agent holds no access to the operator GitHub account');
+    const access = githubAccountAccess(installation, observation.at.value);
+    admit(access.kind !== 'refused', access.kind === 'refused' ? access.detail : '');
+    if (access.kind === 'accepted') sharedAccess = { account: access.acceptance.account, installation: access.acceptance.installation,
+      acceptedAt: access.acceptance.acceptedAt, note: SHARED_ACCESS_NOTE };
     admit(observation.repository === github.repository, 'review is not on the pinned repository');
     admit(request.head !== null && observation.commitId === request.head, 'review does not cover the request\'s exact head');
     admit(observation.state === 'APPROVED', 'review is not an approval');
@@ -126,13 +176,14 @@ export function admitExplicitYes(request: ExplicitYesRequest, installation: Expl
     action: { kind: request.action, scope: request.scope }, artifact: request.artifact, base: request.base,
     kind: request.kind, requestedBy: request.requestedBy, requestDigest: request.requestDigest,
   } as unknown as Record<string, Json>;
-  const encoded = consumeResult(canonical({ principal: { id: request.approver.id, kind: request.approver.kind }, recordType, payload: authorization }),
+  const encoded = consumeResult(canonical({ principal: { id: request.approver.id, kind: request.approver.kind }, recordType, payload: authorization,
+    ...(sharedAccess === null ? {} : { sharedAccess: sharedAccess as unknown as Json }) }),
     { Success: value => value, Refused: refused => { throw new Error(`explicit yes: ${refused.detail}`); } });
   const provenance: ProvenanceInput = { type: 'Provenance', schemaVersion: 1, adapter: installation.adapter, method,
     record: { reference, hash: encoded.hash }, verifiedAt: observation.at, machine: installation.machine, evidence };
   const admission: AccountAssentAdmission = seal({ type: 'AccountAssentAdmission', reference, recordHash: encoded.hash,
     requestId: request.requestId, requestDigest: request.requestDigest, authorizationId: request.authorizationId });
-  return { reference, bytes: encoded.bytes, hash: encoded.hash, provenance, authorization, admission };
+  return { reference, bytes: encoded.bytes, hash: encoded.hash, provenance, authorization, admission, sharedAccess };
 }
 /** The issued admission for this exact record (reference and hash), or undefined. */
 export function admittedAccountAssent(admissions: readonly AccountAssentAdmission[] | undefined, reference: string, recordHash: Hash): AccountAssentAdmission | undefined {

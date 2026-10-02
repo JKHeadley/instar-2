@@ -36,7 +36,7 @@ function fakeClient() {
   const client: GitHubReviewClient = {
     async openRequest(input) { opened.push(input); pull.body = input.body; return { number: 17, head: HEAD }; },
     async pullRequest() { polls++; if (failing) { failing--; throw Error('network'); } return { ...pull }; },
-    async reviews() { return [...reviews]; } };
+    async reviews() { return [...reviews]; }, async closeRequest() { /* not exercised here */ } };
   return { client, opened, reviews, pull, fail: (n: number) => { failing = n; }, polls: () => polls };
 }
 async function setup(options: { install?: ExplicitYesInstallation; repository?: string; request?: OperatorRequest } = {}) {

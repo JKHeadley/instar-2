@@ -18,7 +18,7 @@ import { admitPreviewHarness, PREVIEW_JOURNAL_HARNESS, PREVIEW_JOURNAL_STALL_COV
 import { UNRECORDED, briefingDigestOf, codeDigestOf, installedCodeOf, installationRows, installationStatusLines, installedUpdateFrom, updateDelivery,
   updatePacketItem } from './installation.js';
 import { projectionDigest, summaryStoppedAt } from './journal.js';
-import { openPreviewJournal as openJournal, createJournalWorker, raiseJournalCaps, renewJournalExpiry, activationMatchesJournal, activePersonMerges, openQuestionCandidates, projectMemoryText, unansweredCue, reportJournalCap, unknownCallCounts, pendingUnknownCalls, replyTimings, reviewUnavailableReleases, claimScopedWithholds, MINIMAL_RESERVE, reserveTurnsUsed, reserveRepliesUsed, openRequests, actionWithdrawn, reminderDue, retrospectiveCases, openBlockers, openDirectives, declaredObligations, sendOutcomeCounts, sendOutcomeOf, unsentLabel, replyTarget, reminderOutcome, envelopeWriter, PREVIEW_LIVE_LIMITS, unservableContextReason, PREVIEW_JOURNAL_COMPACT_BYTES, activeMemoryConflicts, TOO_LONG_INPUT_NOTICE, TOO_LONG_REPLY_NOTICE , probeTurn, isJournalUpdate, withFormatReminder, concurrentWorkItem, latestOwnedLaunch, meaningIndexStatus, LIMITED_ANSWER_OPERATION, MISSING_INSTALLATION_POLICY } from './journal.js';
+import { openPreviewJournal as openJournal, createJournalWorker, raiseJournalCaps, renewJournalExpiry, activationMatchesJournal, activePersonMerges, openQuestionCandidates, projectMemoryText, unansweredCue, reportJournalCap, unknownCallCounts, pendingUnknownCalls, replyTimings, reviewUnavailableReleases, claimScopedWithholds, MINIMAL_RESERVE, reserveTurnsUsed, reserveRepliesUsed, openRequests, actionWithdrawn, reminderDue, operatorRequestsReport, retrospectiveCases, openBlockers, openDirectives, declaredObligations, sendOutcomeCounts, sendOutcomeOf, unsentLabel, replyTarget, reminderOutcome, envelopeWriter, PREVIEW_LIVE_LIMITS, unservableContextReason, PREVIEW_JOURNAL_COMPACT_BYTES, activeMemoryConflicts, TOO_LONG_INPUT_NOTICE, TOO_LONG_REPLY_NOTICE , probeTurn, isJournalUpdate, withFormatReminder, concurrentWorkItem, latestOwnedLaunch, meaningIndexStatus, LIMITED_ANSWER_OPERATION, MISSING_INSTALLATION_POLICY } from './journal.js';
 import { createPreviewClock } from './clock.js';
 import { appendRun, heldNotices, heldRepliesToday, memoryHealthLine, readRuns, restartHandoff, selfState, selfStateBrief, selfStateSource, zoneFormatter } from './self-state.js';
 import { JEV_MODEL, jevQuestions, replyReviewContext, replyReviewQuestion, replyReviewRules, parseReplyReviewVerdict, replyReviewDiagnostics, parseJevResponse, replyRevisionQuestion, parseReplyRevision, REVIEW_MALFORMED, REVIEW_FORMAT_REMINDER } from './reply-check.js';
@@ -47,6 +47,10 @@ import { createLeaseHolder } from './two-machine-serving.js';
 import { adoptReceivedCopy, connectReplicaPeer, createJournalShipper, createReplicatedDispatch, openReplicaStore, serveReplicaStore,
   sharedHistoryStatus, takeoverEligibility } from './journal-replication.js';
 import { createApprovalSurfaceClient } from './approval-surface-client.mjs';
+import { parseExplicitYesInstallation } from './explicit-yes-installation.js';
+import { createGitHubReviewClient } from './github-review-client.js';
+import { createReviewYesSource } from './review-yes-source.js';
+import { explicitYesStatus, operatorActionSurface } from './operator-yes.js';
 import { hostResources, HOST_IDENTITY, RESOURCE_CEILINGS } from '../../scripts/resource-owner.mjs';
 import { createHostResourceAllocation } from './six-host-resources.js';
 import { shouldRunScheduledPriority } from '../../src/scheduled/shedding.js';
@@ -109,6 +113,41 @@ const approvalSurfaceOf = options => {
   if (given.length !== 3) throw Error('preview: --approval-store, --approval-outbox and --approval-operator-uid go together');
   return createApprovalSurfaceClient({ store: options['approval-store'], outbox: options['approval-outbox'],
     operatorUid: number(options['approval-operator-uid'], 'approval-operator-uid', 0), now: wallNow });
+};
+// Plan #91; Purpose, the approval-account exception: the desk-written explicit-yes installation record. A malformed
+// record refuses the launch; afterwards it is read afresh on every use, so a withdrawal the desk records on the
+// operator's word stops consumption from the next poll (an unreadable record admits nothing).
+const explicitYesInstallationOf = options => {
+  const path = options['explicit-yes-installation'];
+  if (path === undefined) return null;
+  if (!path.startsWith('/')) throw Error('preview: --explicit-yes-installation must be an absolute path');
+  parseExplicitYesInstallation(readFileSync(path, 'utf8'));
+  return () => { try { return parseExplicitYesInstallation(readFileSync(path, 'utf8')); } catch { return undefined; } };
+};
+/** The agent's OWN GitHub token for opening request pull requests; never the operator's. Host-bound, never an argument. */
+const githubToken = () => {
+  const value = process.env.INSTAR_SECRET_PREVIEW_GITHUB_TOKEN;
+  if (!value || /\s/u.test(value)) throw Error('preview: GitHub SecretRef unavailable'); return value;
+};
+/** The GitHub review source (P-05 route), connected only with the installation record and a request repository. */
+const reviewSourceOf = (options, installation) => {
+  const repository = options['review-repository'];
+  if (repository === undefined) return null;
+  if (!installation) throw Error('preview: --review-repository needs --explicit-yes-installation');
+  return createReviewYesSource({ installation, repository, context, now: wallNow,
+    client: createGitHubReviewClient({ token: githubToken(), http: globalThis.fetch.bind(globalThis), signal: ms => AbortSignal.timeout(ms) }) });
+};
+/** The reviewed activation a renewal may name (`--renewal-activation`), validated exactly as `renew-expiry` validates it;
+ * its digest when it is valid now and ends at `expires`, else null. */
+const renewalActivationOf = (options, view) => expires => {
+  const path = options['renewal-activation'];
+  if (path === undefined) return null;
+  const bytes = readFileSync(path, 'utf8'), activation = JSON.parse(bytes), now = wallNow();
+  const profile = Object.freeze(JSON.parse(readFileSync(required(options, 'login-profile'), 'utf8')));
+  validateSubscriptionActivation(activation, profile, required(options, 'model'), now, SUBSCRIPTION_CONVERSATION_FRAMING);
+  requireAuthority(options, activation, path, view(), now);
+  if (activation.expiresAt !== expires || !activationMatchesJournal(view(), activation, expires)) return null;
+  return `sha256:${createHash('sha256').update(bytes, 'utf8').digest('hex')}`;
 };
 const required = (options, name) => { if (!options[name]) throw Error(`preview: missing --${name}`); return options[name]; };
 const number = (value, name, minimum = 1, maximum = Number.MAX_SAFE_INTEGER) => {
@@ -757,6 +796,20 @@ async function main() {
           return recorded === null ? null : { ...recorded, registerInstalledNow: registerGeneration(),
             registerCurrent: recorded.register !== null && recorded.register === registerGeneration() };
         })() },
+      // Plan #91: where an explicit yes can come from on this root (chat, or the operator's GitHub review), whether an
+      // operator acceptance of shared account access is current, the two operator actions' live surface, and the recent
+      // requests, each approval admitted under an acceptance carrying the shared-access disclosure.
+      ...(() => {
+        let explicitYes;
+        try {
+          const install = explicitYesInstallationOf(options)?.();
+          explicitYes = explicitYesStatus(install, { chat: g.chat, operator: g.operator, trial: g.grant },
+            { connected: options['review-repository'] !== undefined && Boolean(process.env.INSTAR_SECRET_PREVIEW_GITHUB_TOKEN) });
+          if (options['explicit-yes-installation'] !== undefined && install === undefined) explicitYes = { ...explicitYes, reason: 'the installation record is unreadable' };
+        } catch (error) { explicitYes = { connected: false, error: error instanceof Error ? error.message : 'invalid' }; }
+        return { explicitYes, operatorActionSurface: operatorActionSurface(explicitYes),
+          operatorRequests: operatorRequestsReport(view.view, now) };
+      })(),
       // The independent approval page: whether it is installed and can approve now (a passkey is enrolled).
       approvalSurface: (() => { try { return approvalSurfaceOf(options)?.status() ?? { installed: false }; }
         catch (error) { return { installed: false, reason: error instanceof Error ? error.message : 'invalid' }; } })(),
@@ -922,7 +975,8 @@ async function main() {
           model: refuse, send: refuse, checkOutbound: refuse }).probe(options.text);
         next = 'reason' in probe ? { held: probe.reason } : recallView(JSON.parse(probe.context));
       }
-      process.stdout.write(`${redact(JSON.stringify({ last: last ? { update: last.update, answered: last.answer !== undefined,
+      process.stdout.write(`${redact(JSON.stringify({ operatorRequests: operatorRequestsReport(view.view, wallNow()),
+        last: last ? { update: last.update, answered: last.answer !== undefined,
         instructions: instructionsOf(last.prompt), writer: writerOf(last.prompt), ...recallView(contextOf(last.prompt)) } : null,
         reply: reply?.intent ? { update: reply.update, text: reply.intent, telegramMessageId: reply.sent ?? null,
           ...(() => { const settled = sendOutcomeOf(view.view, replyTarget(reply), reply.sent);
@@ -1426,7 +1480,10 @@ async function main() {
         : 'Past a cap: each kept message gets one limited answer from the reserve.'];
     };
     const approvalSurface = approvalSurfaceOf(options);
-    worker = createJournalWorker(journal, { ...(approvalSurface ? { approvalSurface } : {}), now: wallNow, elapsed: clock.elapsed, origin, stopped: () => workerStop.value || existsSync(stopPath) || !ownerHeld(), timeZone: timeZoneOf(options),
+    const yesInstallation = explicitYesInstallationOf(options), reviewSource = reviewSourceOf(options, yesInstallation);
+    const explicitYes = yesInstallation ? { context, installation: yesInstallation, ...(reviewSource ? { review: reviewSource } : {}),
+      renewalActivation: renewalActivationOf(options, () => journal.view) } : null;
+    worker = createJournalWorker(journal, { ...(approvalSurface ? { approvalSurface } : {}), ...(explicitYes ? { explicitYes } : {}), now: wallNow, elapsed: clock.elapsed, origin, stopped: () => workerStop.value || existsSync(stopPath) || !ownerHeld(), timeZone: timeZoneOf(options),
       sources: turnSources(root, options, journal.view, () => runs, () => launchedAt ?? undefined,
         () => journal.view.order.some(turn => turn.reserved && !reservedAtLaunch.has(turn.id)) ? null : handoff),
       prepareModel: modelEnvelope,

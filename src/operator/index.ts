@@ -5,5 +5,5 @@ export { requiredMinimalDependencies, evaluateMinimalPath, minimalResponse } fro
 export { operatorSeams, validateSeamInventory, resolveFailureTrace } from './seams.js';
 export { productionSwitchOnPosture } from './production-switch-on.js';
 export type { ProductionSwitchOnPosture } from './production-switch-on.js';
-export { produceExplicitYes, chatYesReference, reviewYesReference } from './explicit-yes.js';
-export type { ExplicitYesRequest, ExplicitYesInstallation, ExplicitYesObservation, ExplicitYesRecord } from './explicit-yes.js';
+export { produceExplicitYes, chatYesReference, reviewYesReference, githubAccountAccess, SHARED_ACCESS_NOTE } from './explicit-yes.js';
+export type { ExplicitYesRequest, ExplicitYesInstallation, ExplicitYesObservation, ExplicitYesRecord, OperatorAcceptance, SharedAccessDisclosure, ApprovalAccountAccess } from './explicit-yes.js';

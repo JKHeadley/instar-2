@@ -3141,8 +3141,30 @@ Rules 4, 14, 15, 52, 53, 77, 79, 80, 82, 86, 87, 88, 95 and 106 on the live runn
   pinned login on the exact head completes it once; a missing, COMMENTED or CHANGES_REQUESTED review,
   another login, a stale head, a lapsed request, another request or a reused review refuses. Without
   the installed P-02 fact for the GitHub account it opens nothing and `status()` names the missing
-  fact. Neither source is connected by `journal-agent.mjs` yet (plan rows #290, #293), so a live root
-  still raises and renews at the host command line, and the two declarations keep saying so.
+  fact. The launcher connects it (plan rows #297, #307): `run` and `status` take
+  `--explicit-yes-installation /ABS/record.json` (an `ExplicitYesInstallation` v1, read strictly by
+  `explicit-yes-installation.ts`; every fact is required, none defaulted) and `--review-repository
+  OWNER/REPO`; the request pull requests are opened with the agent's OWN token from
+  `INSTAR_SECRET_PREVIEW_GITHUB_TOKEN` through `github-review-client.ts`, whose five operations
+  (open, read, list reviews, close) include none that submits a review. For the GitHub account the
+  record holds EITHER the P-02 fact that the agent holds no access, OR the operator's recorded
+  acceptance of the agent's access (Purpose, the approval-account exception, PR #144):
+  `{account, installation, operatorMessages, acceptedAt, withdrawn}`. Where chat cannot carry the
+  yes and the review source is admissible, the worker opens the request's pull request before the
+  reply and puts its direct link on it; `minimal()` polls its reviews, judges each review id once
+  (`operator-review` rows), applies an approval once, closes a lapsed or superseded request's pull
+  request (`operator-review-closed`), and sends one fixed completion line
+  (`operator-result-intent`/`-sent`). Every approval admitted under an acceptance carries the
+  shared-access disclosure (`SHARED_ACCESS_NOTE`, written once in `src/decode/explicit-yes.ts`) in
+  its recorded bytes, its journal row, the caps or expiry authority string, the completion line,
+  the mind's request state, and `status`/`inspect` (`operatorRequests`). The record is read afresh
+  on every use, so a withdrawal the desk records stops consumption from the next poll; an applied
+  effect stands. `status` reports `explicitYes` (chat, review with `acceptance {account, current}`)
+  and `operatorActionSurface`, which names the phone route only while a source is really
+  admissible on this root and otherwise the host command line the two declarations name. A renewal
+  is proposable only with `--renewal-activation /ABS/activation.json` (validated as `renew-expiry`
+  validates it). A capped limited answer still carries a request only where the chat yes is
+  admissible.
 - **Supervised incidents (Rules 15, 88; P-14).** `scripts/host-watch.mjs` with
   `{"mode":"journal", "alerts": {"grant": "..."}}` restarts the runner after a failed exit with
   bounded backoff. After three consecutive failed restarts it records one incident episode with the
