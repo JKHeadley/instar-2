@@ -305,10 +305,17 @@ describe('Rule 110: the first reply sent from a compacted context discloses it a
       expect(turn.continuity).toMatchObject({ prePauseInbound: 'telegram:12345678:update:30', summarizedThrough: 29,
         disposition: 'addressed', reference: 'Telegram message 30', grounding: turn.grounding!.packetSha256 });
       expect(sent[0]!.startsWith(`PREVIEW — ${turn.continuity!.disclosure} `)).toBe(true);
-      // The next reply from the same frontier owes nothing more.
+      // The next reply owes no sentence: the seam and that message are already disclosed and answered.
+      // The packet still tells the model its context is compacted, and the record is still written --
+      // silently, so what the reply accounted for stays inspectable.
       worker.intake([update(32, 'And one more thing')]); await worker.drain();
       expect(sent[1]).toBe('PREVIEW — Hi!');
-      expect(probe(worker, 'Hello').continuity).toBeUndefined();
+      expect(probe(worker, 'Hello').continuity).toEqual({ through: 29, lastInbound: 'telegram:12345678:update:32', state: 'addressed' });
+      const silent = journal.view.turns.get('telegram:12345678:update:32')!;
+      expect(silent.continuity).toMatchObject({ spoken: false, prePauseInbound: 'telegram:12345678:update:31',
+        summarizedThrough: 29, disposition: 'addressed' });
+      expect(silent.continuity!.replyDigest).toBe(createHash('sha256').update(silent.intent!).digest('hex'));
+      expect(silent.intent!.includes('is now summarized for me')).toBe(false);
       journal.close();
       const reopened = openPreviewJournal(join(dir, 'journal.encrypted'), key);
       expect(reopened.view.turns.get('telegram:12345678:update:31')!.continuity?.disposition).toBe('addressed');

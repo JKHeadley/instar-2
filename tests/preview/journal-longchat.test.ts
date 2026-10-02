@@ -6,6 +6,9 @@
  *    write-side indexer only ran on a full batch of eight. The answer then told the operator there was
  *    no record of it -- which Part 21 §2 forbids for a degraded recall ("never claim unavailable history
  *    was empty") and Rule 11 forbids outright ("a keyword miss is not evidence something isn't there").
+ * B. Fifty-one of a hundred and fourteen replies opened with the same compaction sentence, because the
+ *    rolling summary advanced its frontier on every one of them (all fifty-one carried a distinct
+ *    summarizedThrough). Rule 110 asks the FIRST reply after a compaction to disclose and account.
  *
  * The recorded shapes replayed here come from tests/preview/fixtures/proofroom2-longchat-2026-10-01.json,
  * taken verbatim from that room's inspect surfaces. The model and Telegram are stubs. */
@@ -13,7 +16,9 @@ import { describe, expect, it } from 'vitest';
 import { mkdtempSync, readFileSync, realpathSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
-import { createJournalWorker, INDEX_ATTEMPT_LIMIT, INDEX_BACKLOG_LIMIT, meaningIndexStatus, openPreviewJournal } from './journal.js';
+import { createHash } from 'node:crypto';
+import { continuityDisclosure, continuitySpoken, createJournalWorker, INDEX_ATTEMPT_LIMIT, INDEX_BACKLOG_LIMIT,
+  meaningIndexStatus, openPreviewJournal, type ContinuityAccount } from './journal.js';
 import { ANSWER_INSTRUCTIONS } from './briefing.js';
 
 const key = new Uint8Array(32).fill(54), at = 1790000000000;
@@ -26,7 +31,11 @@ const root = () => realpathSync(mkdtempSync(join(tmpdir(), 'preview-longchat-'))
 
 interface Recorded { fact: { update: number; message: string };
   recallQuestion: { message: string; summaryThrough: number; pendingUpdates: number[]; deliveredReply: string;
-    coverage: { summarizedMessages: number; meaningIndexed: number; disposition: string } } }
+    coverage: { summarizedMessages: number; meaningIndexed: number; disposition: string } };
+  disclosures: { fillRepliesObserved: number; fillRepliesOpeningWithDisclosure: number;
+    distinctSummarizedThroughAmongThem: number; dispositions: { addressed: number; pending: number };
+    samples: { label: string; deliveredReply: string; continuity: ContinuityAccount;
+      replyDigestMatchesSentText: boolean }[] } }
 const recorded = JSON.parse(readFileSync(join(import.meta.dirname, 'fixtures/proofroom2-longchat-2026-10-01.json'), 'utf8')) as Recorded;
 
 type Coverage = { summarizedMessages: number; meaningIndexed: number; disposition: string };
@@ -155,5 +164,157 @@ describe('Rule 11: a message the indexer skipped is retried and named, never sil
     // The instruction now states the gap and the prohibition, delivered as instructions rather than packet bytes.
     expect(ANSWER_INSTRUCTIONS).toContain('not finding something is never evidence it was not said');
     expect(ANSWER_INSTRUCTIONS).toContain('Say your search of the earlier conversation is incomplete rather than that there is no record of it');
+    // And the disclosure sentence is the application's to add, only when one is owed.
+    expect(ANSWER_INSTRUCTIONS).toContain('adds a fixed sentence disclosing that when one is owed; never write it yourself');
+  });
+});
+
+describe('Rule 110: the compaction sentence is said when it tells the operator something', () => {
+  it('says it once over a rolling frontier that advances every turn, and records every turn either way', async () => {
+    const dir = root(), path = join(dir, 'journal.encrypted');
+    try {
+      // 16384 bytes keeps this bounded on a loaded machine; the proof room launched 32768, and the shape
+      // under test -- a frontier that advances as the chat grows -- is the same at either size. Driven live the
+      // governing seam here is the reachability floor's set-aside rather than the room's summary frontier;
+      // the defect is the same either way, because the old gate asked only whether THIS frontier had been
+      // accounted and both frontiers advance as the chat grows. The room's own summary-basis accounts are
+      // replayed against the predicate in the next test.
+      const journal = openPreviewJournal(join(dir, 'journal.encrypted'), key, genesis(16384));
+      const sent: string[] = [];
+      const worker = createJournalWorker(journal, { now: () => at + 100_000, stopped: () => false,
+        send: async input => { sent.push(input.expectedText); return sent.length + 100; }, checkOutbound: () => {},
+        model: async input => input.id.startsWith('summary:')
+          ? JSON.stringify({ summary: 'The operator keeps a garden log.', people: [], questions: [], memory: [] }) : 'Noted.' });
+      for (let id = 1; id <= 36; id++) {
+        worker.intake([update(id, `Garden log ${id}: ${'rows looked steady today, watered at dawn. '.repeat(19)}`)]);
+        await worker.drain(); await worker.summarizeIfNeeded();
+      }
+      const compacted = journal.view.order.filter(turn => turn.continuity !== undefined);
+      const spoken = compacted.filter(turn => turn.continuity!.spoken !== false);
+      // The frontier advanced past every earlier one on most of these turns. That set is exactly what the
+      // old rule spoke on -- it disclosed while "this frontier is not yet accounted" -- and it is why the
+      // room sent fifty-one copies of the same sentence.
+      expect(compacted.length).toBeGreaterThan(10);
+      let highest = -1, advanced = 0;
+      for (const turn of compacted) if (turn.continuity!.summarizedThrough > highest)
+        { highest = turn.continuity!.summarizedThrough; advanced++; }
+      expect(advanced).toBeGreaterThan(10);
+      // Said exactly once, by the first reply from a compacted context.
+      expect(spoken).toHaveLength(1);
+      expect(spoken[0]!.update).toBe(compacted[0]!.update);
+      expect(spoken[0]!.intent!.startsWith(`PREVIEW — ${spoken[0]!.continuity!.disclosure} `)).toBe(true);
+      // One seam throughout, so no basis change was owed a second sentence; exactly one went out.
+      expect(new Set(compacted.map(turn => turn.continuity!.basis ?? 'summary')).size).toBe(1);
+      expect(sent.filter(text => text.startsWith('PREVIEW — Earlier conversation up to #'))).toHaveLength(1);
+      // Each turn's own flag is what the predicate decides from the last sentence actually delivered.
+      let delivered: ContinuityAccount | undefined;
+      for (const turn of compacted) {
+        const account = turn.continuity!;
+        expect(account.spoken !== false).toBe(continuitySpoken(delivered,
+          { disposition: account.disposition, basis: account.basis ?? 'summary', disclosure: account.disclosure }, false));
+        if (account.spoken !== false && turn.sent !== undefined) delivered = account;
+      }
+      // Rule 2: nothing is lost by going quiet. Every compacted reply still records what it accounted for,
+      // bound to the text actually sent, and a silent one carries no sentence in that text.
+      for (const turn of compacted) {
+        expect(turn.continuity!.replyDigest).toBe(createHash('sha256').update(turn.intent!).digest('hex'));
+        expect(turn.continuity!.prePauseInbound).toBeTruthy();
+        expect(turn.intent!.includes(turn.continuity!.disclosure)).toBe(turn.continuity!.spoken !== false);
+      }
+      expect(compacted.slice(1).every(turn => turn.continuity!.spoken === false)).toBe(true);
+      // The model is still told its context was compacted on every one of those turns.
+      const probed = worker.probe('And one more thing');
+      if (!('context' in probed)) throw Error('probe held');
+      expect((JSON.parse(probed.context) as Packet).continuity).toMatchObject({ state: 'addressed' });
+
+      const records = compacted.map(turn => [turn.id, turn.continuity] as const);
+      journal.close();
+      const reopened = openPreviewJournal(path, key);
+      for (const [id, account] of records) expect(reopened.view.turns.get(id)!.continuity).toEqual(account);
+      reopened.close();
+    } finally { rmSync(dir, { recursive: true, force: true }); }
+  }, 30000);
+
+  it('both sides of each spoken condition, including the dispositions the room recorded', () => {
+    const summary = { disposition: 'addressed' as const, basis: 'summary' as const,
+      disclosure: continuityDisclosure('#31, x', 29, 'addressed', 'Telegram message 31') };
+    const first = { disclosure: continuityDisclosure('#30, x', 29, 'addressed', 'Telegram message 30') };
+    // Nothing said yet: say it. Already said and the message is answered: do not say it again.
+    expect(continuitySpoken(undefined, summary, false)).toBe(true);
+    expect(continuitySpoken(first, summary, false)).toBe(false);
+    // A pre-pause message that is still open or was replaced is material, so it is said.
+    for (const disposition of ['pending', 'superseded'] as const)
+      expect(continuitySpoken(first, { ...summary, disposition,
+        disclosure: continuityDisclosure('#31, x', 29, disposition, 'held: call cap') }, false)).toBe(true);
+    // The kind of seam changed: a kept-but-unsummarized prefix is a different claim, so it is said.
+    expect(continuitySpoken(first, { ...summary, basis: 'set-aside',
+      disclosure: continuityDisclosure('#31, x', 29, 'addressed', 'Telegram message 31', 'set-aside') }, false)).toBe(true);
+    expect(continuitySpoken({ ...first, basis: 'set-aside' }, { ...summary, basis: 'set-aside',
+      disclosure: continuityDisclosure('#31, x', 29, 'addressed', 'Telegram message 31', 'set-aside') }, false)).toBe(false);
+    // A spoken disclosure whose send stayed UNKNOWN is said again: the operator may never have seen it.
+    expect(continuitySpoken(first, summary, true)).toBe(true);
+    // Never the same words twice running, whatever else holds.
+    expect(continuitySpoken({ disclosure: summary.disclosure }, summary, true)).toBe(false);
+
+    // The room's recorded accounts, replayed through the predicate against the one before them.
+    const samples = recorded.disclosures.samples;
+    expect(samples.every(item => item.replyDigestMatchesSentText)).toBe(true);
+    const [fill27, fill28, fill80] = samples;
+    // Each of the fifty-one carried a distinct frontier, which is why the old rule kept speaking.
+    expect(recorded.disclosures.distinctSummarizedThroughAmongThem).toBe(recorded.disclosures.fillRepliesOpeningWithDisclosure);
+    expect(fill27!.continuity.disposition).toBe('addressed');
+    expect(continuitySpoken(undefined, { ...fill27!.continuity, basis: 'summary' }, false)).toBe(true);
+    // fill-28 repeated the sentence for an already-answered message: now silent.
+    expect(fill28!.deliveredReply.startsWith(`PREVIEW — ${fill28!.continuity.disclosure}`)).toBe(true);
+    expect(continuitySpoken(fill27!.continuity, { ...fill28!.continuity, basis: 'summary' }, false)).toBe(false);
+    // fill-80's held message was genuinely open: it still speaks.
+    expect(fill80!.continuity.disposition).toBe('pending');
+    expect(continuitySpoken(fill27!.continuity, { ...fill80!.continuity, basis: 'summary' }, false)).toBe(true);
+    // Fifty-one spoken of a hundred and fourteen replies becomes the first plus the one open message.
+    expect(recorded.disclosures.dispositions.addressed + recorded.disclosures.dispositions.pending)
+      .toBe(recorded.disclosures.fillRepliesOpeningWithDisclosure);
+  });
+
+  it('replay refuses a silent account whose reply opens with the sentence, and a spoken one whose reply does not', () => {
+    const id = 'telegram:12345678:update:31';
+    const disclosure = continuityDisclosure('#30, x', 29, 'addressed', 'Telegram message 30');
+    /** One fresh journal per case: a refused row leaves its in-memory view unusable. */
+    const attempt = (spoken: boolean, text: string, check: (run: () => void, read: () => ContinuityAccount | undefined) => void) => {
+      const dir = root();
+      try {
+        const journal = openPreviewJournal(join(dir, 'journal.encrypted'), key, genesis(7000));
+        const texts = Array.from({ length: 30 }, (_, i) => `Update ${i}: ${'garden '.repeat(240)}`);
+        for (const text of [...texts, 'Hello again']) {
+          const turn = journal.view.order.length + 1, item = `telegram:12345678:update:${turn}`;
+          journal.append({ kind: 'intake', id: item, update: turn, text, raw: JSON.stringify(update(turn, text)),
+            accepted: true, cursor: turn + 1, at: at + turn });
+          if (turn > 30) continue;
+          journal.append({ kind: 'reserve', id: item, at: at + turn });
+          journal.append({ kind: 'answer', id: item, text: 'Noted.', state: 'complete', at: at + turn });
+          journal.append({ kind: 'intent', id: item, text: 'PREVIEW — Noted.', chat: '7654321', update: turn, grant: 'grant:preview', at: at + turn });
+          journal.append({ kind: 'sent', id: item, message: turn, at: at + turn });
+        }
+        journal.append({ kind: 'summary-reserve', through: 29, at });
+        journal.append({ kind: 'summary', through: 29, text: 'Garden.', at });
+        journal.append({ kind: 'reserve', id, grounding: { packetSha256: 'p', summaryThrough: 29, compactedThrough: 29,
+          history: [], recalled: [], people: [], commitments: [], channelItems: [], corrections: [], memoryChanges: [], memoryCandidates: [] }, at });
+        journal.append({ kind: 'answer', id, text: 'Hi!', state: 'complete', at });
+        const before = journal.view.turns.get('telegram:12345678:update:30')!;
+        const run = () => journal.append({ kind: 'intent', id, text, chat: '7654321', update: 31, grant: 'grant:preview',
+          continuity: { prePauseInbound: before.id, capture: createHash('sha256').update(before.raw).digest('hex'),
+            summarizedThrough: 29, grounding: 'p', disposition: 'addressed', reference: 'Telegram message 30', disclosure,
+            ...(spoken ? {} : { spoken: false as const }),
+            replyDigest: createHash('sha256').update(text).digest('hex') }, at });
+        check(run, () => journal.view.turns.get(id)!.continuity);
+        journal.close();
+      } finally { rmSync(dir, { recursive: true, force: true }); }
+    };
+    // A silent account whose reply does open with the sentence, and a spoken one whose reply does not:
+    // both would make the record disagree with what the operator read, so replay refuses each.
+    attempt(false, `PREVIEW — ${disclosure} Hi!`, run => expect(run).toThrow('continuity account refused'));
+    attempt(true, 'PREVIEW — Hi!', run => expect(run).toThrow('continuity account refused'));
+    // The matching pair of each is accepted.
+    attempt(false, 'PREVIEW — Hi!', (run, read) => { run(); expect(read()?.spoken).toBe(false); });
+    attempt(true, `PREVIEW — ${disclosure} Hi!`, (run, read) => { run(); expect(read()?.spoken).toBeUndefined(); });
   });
 });

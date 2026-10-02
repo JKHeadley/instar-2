@@ -140,7 +140,11 @@ export interface ContinuityAccount { prePauseInbound: string; capture: string; s
   disposition: typeof CONTINUITY_DISPOSITIONS[number]; reference: string; disclosure: string; replyDigest: string;
   /** Present when the frontier is the reachability floor's set-aside, not a summary: those messages are kept and
    * searchable but were neither summarized nor shown (Rule 26), and `summarizedThrough` then names that frontier. */
-  basis?: 'set-aside' }
+  basis?: 'set-aside';
+  /** `false` when this account was recorded without speaking its sentence: the seam and the accounted message
+   * were already disclosed, and the sentence would carry nothing new (Rules 110, 77). The record is kept per
+   * turn either way, so what the reply accounted for stays inspectable; only the prose is withheld. */
+  spoken?: false }
 /** How a context lost verbatim history before `through`: a summary, or the floor setting the oldest aside unsummarized. */
 export type ContinuityBasis = 'summary' | 'set-aside';
 const continuityHead = (through: number, basis: ContinuityBasis = 'summary') => basis === 'set-aside'
@@ -151,9 +155,26 @@ const continuityTail = (disposition: ContinuityAccount['disposition'], reference
 export const continuityDisclosure = (label: string, through: number, disposition: ContinuityAccount['disposition'], reference: string,
   basis: ContinuityBasis = 'summary') =>
   `${continuityHead(through, basis)}${label}${continuityTail(disposition, reference)}`;
-/** A turn's sent reply without its Rule 110 disclosure (for measurement of the answer itself). */
+/** Rule 110: whether this reply says its disclosure out loud, given the last one it actually delivered.
+ * `last` is the most recent spoken account whose send Telegram confirmed, absent when none ever was.
+ * `unresolved` is true when a spoken disclosure's send stayed UNKNOWN, so the operator may never have
+ * seen it. A rolling summary advances its frontier on nearly every turn, so "this frontier is not yet
+ * accounted" made the sentence repeat on nearly every reply. It is said when it tells the operator
+ * something they do not already have: the first time this context lost verbatim history, when the
+ * accounted message is not already answered, when the kind of seam changed (a summarized prefix and a
+ * kept-but-unsummarized one are different claims about what can still be reached), or when the last one
+ * may not have arrived -- and never twice running with the same words. */
+export const continuitySpoken = (last: { disclosure: string; basis?: 'set-aside' } | undefined,
+  account: { disposition: ContinuityAccount['disposition']; basis: ContinuityBasis; disclosure: string },
+  unresolved: boolean) =>
+  (last === undefined || unresolved || account.disposition !== 'addressed'
+    || (last.basis ?? 'summary') !== account.basis)
+  && account.disclosure !== last?.disclosure;
+/** A turn's sent reply without its Rule 110 disclosure (for measurement of the answer itself).
+ * A silently recorded account never prefixed the text, so nothing is stripped from it. */
 export const replyBody = (turn: { intent?: string; continuity?: ContinuityAccount }) =>
-  turn.intent === undefined || !turn.continuity ? turn.intent : turn.intent.replace(`${turn.continuity.disclosure} `, '');
+  turn.intent === undefined || !turn.continuity || turn.continuity.spoken === false
+    ? turn.intent : turn.intent.replace(`${turn.continuity.disclosure} `, '');
 /** The reply with the disclosure as its first sentence, after the surface marker. */
 export const withDisclosure = (reply: string, disclosure: string) =>
   reply.startsWith('PREVIEW — ') ? `PREVIEW — ${disclosure} ${reply.slice('PREVIEW — '.length)}` : `${disclosure} ${reply}`;
@@ -2896,17 +2917,20 @@ function project(view: JournalView, row: JournalRecord, system?: SystemCheck): v
     if (row.fulfills !== undefined) turn.intentFulfills = row.fulfills;
     if (row.continuity !== undefined) {
       // The account binds the exact pre-pause capture, the reply's own compacted grounding and the
-      // text actually sent; the disclosure is that reply's first sentence.
+      // text actually sent. A spoken account's disclosure is that reply's first sentence; a silent one
+      // (`spoken: false`) records the same accounting and the reply must NOT open with it.
       const account = row.continuity, before = view.turns.get(account.prePauseInbound), frontier = continuityFrontier(turn.grounding);
+      const opens = row.text.startsWith(withDisclosure('PREVIEW — ', account.disclosure).trimEnd());
       if (!before || before.update >= turn.update || turn.requestedAction || !Number.isSafeInteger(account.summarizedThrough)
         || account.summarizedThrough >= turn.update || !frontier || frontier.through !== account.summarizedThrough
         || (account.basis ?? 'summary') !== frontier.basis || account.basis !== undefined && account.basis !== 'set-aside'
+        || account.spoken !== undefined && account.spoken !== false
         || account.grounding !== turn.grounding!.packetSha256
         || account.capture !== createHash('sha256').update(before.raw).digest('hex')
         || !CONTINUITY_DISPOSITIONS.includes(account.disposition) || !account.reference
         || !account.disclosure.startsWith(continuityHead(account.summarizedThrough, frontier.basis))
         || !account.disclosure.endsWith(continuityTail(account.disposition, account.reference))
-        || !row.text.startsWith(withDisclosure('PREVIEW — ', account.disclosure).trimEnd())
+        || opens === (account.spoken === false)
         || account.replyDigest !== createHash('sha256').update(row.text).digest('hex'))
         throw Error('preview journal: continuity account refused');
       turn.continuity = account;
@@ -3717,18 +3741,28 @@ export function createJournalWorker(journal: ReturnType<typeof openPreviewJourna
    * walk ends, including on a throw. Nothing else reads it, so the summary pass can never see a stale floor. */
   let historySetAside = -1;
   const summaryFor = (through: number) => journal.view.summaries.filter(item => item.through <= through).at(-1);
-  /** Rule 110: the continuity owed by `turn`'s reply when its context was compacted through `through`:
-   * none once a reply whose delivery Telegram confirmed has accounted for that frontier. An account
-   * whose send stayed UNKNOWN retires nothing: the next reply carries that episode's pre-pause
-   * message forward (the UNKNOWN send itself is never replayed). Everything comes from journal
-   * evidence about the exact last inbound before the pause, never from the model's recollection. */
+  /** Rule 110: the continuity `turn`'s reply accounts for when its context was compacted through
+   * `through`. Every such reply records the account, so what it accounted for stays inspectable; the
+   * `spoken` flag decides whether its sentence is also said to the operator.
+   *
+   * A rolling summary moves its frontier on nearly every turn, so "disclose while this frontier is
+   * unaccounted" meant disclosing on nearly every turn: 50 of the last 66 replies in the 2026-10-01
+   * proof room opened with the same sentence about a message that had already been answered. Rule 110
+   * asks the FIRST reply after a compaction to say so and account for the last inbound before the
+   * pause (Part 17 §6 binds `ContinuityAccounting` to that first reply), and Rule 77 puts the
+   * operator's experience above internal caution. `continuitySpoken` holds when the sentence is said.
+   * An account whose send stayed UNKNOWN retires nothing: the next reply carries that episode's
+   * pre-pause message forward and says it again (the UNKNOWN send itself is never replayed).
+   * Everything comes from journal evidence about the exact last inbound before the pause, never from
+   * the model's recollection. */
   const continuityFor = (turn: Turn, through: number, basis: ContinuityBasis = 'summary') => {
     if (turn.requestedAction) return undefined;
-    const confirmed = journal.view.order.filter(item => item.continuity && item.sent !== undefined)
-      .reduce((max, item) => Math.max(max, item.continuity!.summarizedThrough), -1);
-    if (confirmed >= through) return undefined;
-    const unresolved = journal.view.order.find(item => item.continuity && item.sent === undefined
-      && item.update < turn.update && item.continuity.summarizedThrough > confirmed);
+    // Only a spoken disclosure discharges the obligation; a silently recorded account promised nothing.
+    const said = journal.view.order.filter(item => item.continuity?.spoken !== false && item.continuity
+      && item.update < turn.update);
+    const lastSaid = said.filter(item => item.sent !== undefined).at(-1);
+    const confirmed = lastSaid?.continuity!.summarizedThrough ?? -1;
+    const unresolved = said.find(item => item.sent === undefined && item.continuity!.summarizedThrough > confirmed);
     const before = unresolved ? journal.view.turns.get(unresolved.continuity!.prePauseInbound)
       : journal.view.order.filter(item => item.accepted && !item.requestedAction && item.update < turn.update).at(-1);
     if (!before) return undefined;
@@ -3745,7 +3779,9 @@ export function createJournalWorker(journal: ReturnType<typeof openPreviewJourna
           : before.intent !== undefined ? ['pending', 'my reply to it was prepared but its delivery is unconfirmed']
             : ['pending', before.held ? `held: ${before.held}` : 'no reply from me yet'];
     const label = `#${before.update}, ${dated(before)}`;
-    return { before, label, disposition, reference, basis, disclosure: continuityDisclosure(label, through, disposition, reference, basis) };
+    const disclosure = continuityDisclosure(label, through, disposition, reference, basis);
+    const spoken = continuitySpoken(lastSaid?.continuity, { disposition, basis, disclosure }, unresolved !== undefined);
+    return { before, label, disposition, reference, basis, disclosure, spoken };
   };
   const meaningIndex = () => meaningTermsIndex(journal.view);
   /** How many times the write-side indexer has already offered one source its terms (Rule 11). */
@@ -5708,11 +5744,12 @@ export function createJournalWorker(journal: ReturnType<typeof openPreviewJourna
           : turn.memoryPending && turn.memoryUndecided ? MEMORY_UNDECIDED_REPLY
           : memoryAcknowledgement(turn) ?? (turn.memoryPending ? 'PREVIEW — I reviewed your memory request.'
             : `PREVIEW — ${turn.answer?.replace(/^PREVIEW(?=$|[\s:—])(?:\s*[:—])?\s*/u, '') ?? UNKNOWN_ANSWER_NOTICE}`);
-        // Rule 110: the first reply sent from a compacted context opens with the fixed disclosure, on
-        // whatever text is finally sent (answer, loss, size or holding notice), and the intent records it.
+        // Rule 110: a reply sent from a compacted context records its continuity account, and opens with the
+        // fixed disclosure when that sentence is owed, on whatever text is finally sent (answer, loss, size or
+        // holding notice). A silent account changes no text; its record still binds the text actually sent.
         const frontier = continuityFrontier(turn.grounding);
         const continuity = frontier === undefined ? undefined : continuityFor(turn, frontier.through, frontier.basis);
-        const disclosed = (text: string) => continuity ? withDisclosure(text, continuity.disclosure) : text;
+        const disclosed = (text: string) => continuity?.spoken ? withDisclosure(text, continuity.disclosure) : text;
         reply = disclosed(reply);
         // Rule 89: fixed runner notices speak as infrastructure; the agent's own answers speak as the agent.
         let speaker: Speaker = turn.noticeClass !== undefined || turn.answer === undefined || turn.answer === MODEL_FAILURE_REPLY
@@ -5890,7 +5927,7 @@ export function createJournalWorker(journal: ReturnType<typeof openPreviewJourna
                   maxInputTokens: journal.view.limits.maxBytes, maxOutputTokens: subscriptionOutputMaximum, at: ports.now() });
                 let outcome: Awaited<ReturnType<NonNullable<NonNullable<PreviewPorts['replyCheck']>['revise']>>> | { state: 'failed'; text?: undefined; usage?: undefined; dispositions?: undefined; blocker?: undefined };
                 // The draft is revised without its Rule 110 disclosure, which code adds back to the final text.
-                const draft = continuity ? reply.replace(`${continuity.disclosure} `, '') : reply;
+                const draft = continuity?.spoken ? reply.replace(`${continuity.disclosure} `, '') : reply;
                 try { outcome = await ports.replyCheck.revise({ text: redact(draft).text, id: turn.id, originalPrompt,
                   ruleIds: objections.filter(item => item !== BARE_TOPIC_OBJECTION) as ReplyRule[], objections,
                   ...(checkRow?.findings ? { findings: checkRow.findings } : {}),
@@ -6013,7 +6050,8 @@ export function createJournalWorker(journal: ReturnType<typeof openPreviewJourna
             capture: createHash('sha256').update(continuity.before.raw).digest('hex'), summarizedThrough: frontier!.through,
             ...(frontier!.basis === 'set-aside' ? { basis: 'set-aside' as const } : {}),
             grounding: turn.grounding.packetSha256, disposition: continuity.disposition, reference: continuity.reference,
-            disclosure: continuity.disclosure, replyDigest: createHash('sha256').update(reply).digest('hex') } } : {}),
+            disclosure: continuity.disclosure, ...(continuity.spoken ? {} : { spoken: false as const }),
+            replyDigest: createHash('sha256').update(reply).digest('hex') } } : {}),
           update: turn.update, grant: journal.view.genesis.grant, at: intentAt });
         gate();
         const sendStarted = elapsedMs();
