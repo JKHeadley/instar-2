@@ -17,7 +17,7 @@ import { SOURCE_PINS, sourcePacket, deskStatusSource, readDeskStatus, verifyMind
 import { admitPreviewHarness, PREVIEW_JOURNAL_HARNESS, PREVIEW_JOURNAL_STALL_COVERAGE } from './stall-coverage.js';
 import { UNRECORDED, briefingDigestOf, codeDigestOf, installedCodeOf, installationRows, installationStatusLines, installedUpdateFrom, updateDelivery,
   updatePacketItem } from './installation.js';
-import { projectionDigest, summaryStoppedAt } from './journal.js';
+import { projectionDigest, summaryStoppedAt, loopRevisitMs, LOOP_REVISIT_MIN_MS, LOOP_REVISIT_MAX_MS } from './journal.js';
 import { openPreviewJournal as openJournal, createJournalWorker, raiseJournalCaps, renewJournalExpiry, activationMatchesJournal, activePersonMerges, openQuestionCandidates, projectMemoryText, unansweredCue, reportJournalCap, unknownCallCounts, pendingUnknownCalls, replyTimings, reviewUnavailableReleases, claimScopedWithholds, MINIMAL_RESERVE, reserveTurnsUsed, reserveRepliesUsed, openRequests, actionWithdrawn, reminderDue, operatorRequestsReport, retrospectiveCases, openBlockers, openDirectives, declaredObligations, sendOutcomeCounts, sendOutcomeOf, unsentLabel, replyTarget, reminderOutcome, envelopeWriter, PREVIEW_LIVE_LIMITS, unservableContextReason, PREVIEW_JOURNAL_COMPACT_BYTES, activeMemoryConflicts, TOO_LONG_INPUT_NOTICE, TOO_LONG_REPLY_NOTICE , probeTurn, isJournalUpdate, withFormatReminder, concurrentWorkItem, latestOwnedLaunch, meaningIndexStatus, LIMITED_ANSWER_OPERATION, MISSING_INSTALLATION_POLICY } from './journal.js';
 import { createPreviewClock } from './clock.js';
 import { appendRun, heldNotices, heldRepliesToday, memoryHealthLine, readRuns, restartHandoff, selfState, selfStateBrief, selfStateSource, zoneFormatter } from './self-state.js';
@@ -1276,6 +1276,12 @@ async function main() {
     // to recover it, so genesis refuses the limit here rather than discovering it mid-conversation.
     const genesisRefusal = !existsSync(journalPath) ? unservableContextReason(maxBytes) : null;
     if (genesisRefusal) throw Error(`preview: ${genesisRefusal}`);
+    // Rules 8, 92: a root may carry its own open-loop resurfacing cadence, settled at genesis and fixed for its
+    // life (no command moves it). Omitted keeps the 24-hour default, so every existing root is untouched. The
+    // bounds are the journal's own; a non-integer or out-of-range value refuses the launch here, before any write.
+    const revisitMinutes = options['loop-revisit-minutes'] === undefined ? undefined
+      : number(options['loop-revisit-minutes'], 'loop-revisit-minutes',
+        LOOP_REVISIT_MIN_MS / 60_000, LOOP_REVISIT_MAX_MS / 60_000);
     // Rule 35: the trusted composition origin. Only the fixed offline test token on a loopback
     // endpoint is a test composition; it may write only a test-origin store, and a production
     // store refuses it (and any test-origin identity) at the journal's write boundary.
@@ -1287,7 +1293,8 @@ async function main() {
       kind: 'genesis', bot: required(options, 'bot-id'), chat: required(options, 'chat-id'), ...(origin === 'test' ? { origin } : {}),
       operator: required(options, 'operator-sender-id'), grant: required(options, 'grant-reference'),
       configurationDigest: required(options, 'configuration-digest'), expires: expiry(required(options, 'expires-at')),
-      maxCalls, maxReplies, maxTurns, maxBytes, cursor: 0 };
+      maxCalls, maxReplies, maxTurns, maxBytes, cursor: 0,
+      ...(revisitMinutes === undefined ? {} : { loopRevisitMs: revisitMinutes * 60_000 }) };
     if (multi) {
       shared = await enterShared(initial);
       if (shared === null) return;
@@ -1323,6 +1330,10 @@ async function main() {
       ['max-context-bytes', maxBytes, g.maxBytes, journal.view.limits.maxBytes]])
       if (options[name] && supplied !== original && supplied !== current)
         throw Error(`preview: ${name} differs from journal`);
+    // The cadence belongs to the root, not to the launch: a later launch may repeat the root's own value and
+    // nothing else. This is what makes it unchangeable after genesis — there is no other writer for it.
+    if (revisitMinutes !== undefined && revisitMinutes * 60_000 !== loopRevisitMs(journal.view))
+      throw Error('preview: loop-revisit-minutes differs from journal');
     if (g.importSource !== undefined && !journal.view.imported) throw Error('preview: migration incomplete');
     if (String(number(g.bot, 'bot-id')) !== g.bot || String(number(g.chat, 'chat-id')) !== g.chat
       || g.chat !== g.operator) throw Error('preview: private operator binding differs');
