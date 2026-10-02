@@ -8,7 +8,8 @@ import { readFileSync } from 'node:fs';
 import { conclusionText, parseModelJson } from './model-json.js';
 import { decisionWithinFloor } from './model-call-boundary.js';
 import { createJournalWorker, openPreviewJournal, operatorRequestsReport, previewTestContext, projectionDigest } from './journal-test-worker.js';
-import { approvalDisclosureText } from './journal.js';
+import { approvalDisclosureText, replyReviewReserveFor } from './journal.js';
+import { SUBSCRIPTION_CONVERSATION_SYSTEM_PROMPT } from '../../src/assembly/production-provider.js';
 import { APPROVAL_REPORT, JEV_MODEL, jevQuestions } from './reply-check.js';
 import { operatorActionSurface, operatorResultText, operatorYesAuthority, explicitYesStatus } from './operator-yes.js';
 import { createReviewYesSource, type GitHubReview, type GitHubReviewClient } from './review-yes-source.js';
@@ -157,7 +158,7 @@ type ModelAnswer = string | { state: 'complete'; text: string; usage: Usage } | 
 type JevQuestions = Record<string, { type: string; instructions: string }> | undefined;
 type Reviewer = { asked: JevQuestions[]; report: (text: string) => number | undefined; late?: number };
 const harness = (path: string, install: { current: ExplicitYesInstallation }, model?: (question: string) => ModelAnswer, start = 1000,
-  g: typeof genesis = genesis, reviewer?: Reviewer) => {
+  g: typeof genesis = genesis, reviewer?: Reviewer, prepared?: { bytes?: number }) => {
   const sent: { text: string; id: number }[] = [];
   let now = start, next = 100, calls = 0;
   const github = fakeGitHub();
@@ -165,6 +166,10 @@ const harness = (path: string, install: { current: ExplicitYesInstallation }, mo
     context: previewTestContext, now: () => now, brakes: { initialMs: 1, maxMs: 4, breakerAfter: 3 } });
   const journal = openPreviewJournal(path, key, g);
   const worker = createJournalWorker(journal, { now: () => now, stopped: () => false, checkOutbound: () => {},
+    // An answer's prepared prompt of a set size (the parts no floor rung can shed); summaries and other passes unchanged.
+    ...(prepared ? { prepareModel: (input: { id: string; question: string; context: string }) => prepared.bytes !== undefined
+      && input.id.startsWith('telegram:') ? `${input.id}:${'x'.repeat(prepared.bytes - input.id.length - 1)}`
+      : `${input.question}\n${input.context}` } : {}),
     model: async (input: { question: string }) => { calls++; return model ? model(input.question)
       : JSON.stringify({ memory: [], ...(input.question.includes('more calls') ? raise : { reply: 'ok' }) }); },
     explicitYes: { context: previewTestContext, installation: () => install.current, review },
@@ -336,6 +341,44 @@ it('carries the disclosure on a later answer when no reviewer runs at all (fail 
   h.worker.intake([message(3, h.sent.at(-1)!.id + 1, 'and the weather?')]); await h.worker.drain();
   expect(h.sent.at(-1)!.text).toContain('ok');
   expect(h.sent.at(-1)!.text).toContain(approvalDisclosureText(done));
+  h.journal.close();
+}));
+
+it('carries the disclosure on the floor\'s last rung when the reply review cannot run, and still honours a readable no there', () => withRoot(async path => {
+  // w3-defaultroot meets the approval-account exception: at the default 32768 bytes an answer whose prepared prompt fits
+  // the limit but not the reply-review reserve is answered on the last rung with the reserve waived. The disclosure
+  // decision is unchanged there: only the reviewer's readable "no" on the exact text omits the note, so a review that
+  // cannot run (Jev and the contextual review both unavailable) carries it.
+  const system = Buffer.byteLength(SUBSCRIPTION_CONVERSATION_SYSTEM_PROMPT);
+  const pastReserve = genesis.maxBytes - system - replyReviewReserveFor(genesis.maxBytes) + 737;
+  expect(pastReserve + system).toBeLessThanOrEqual(genesis.maxBytes);
+  expect(pastReserve + system + replyReviewReserveFor(genesis.maxBytes)).toBeGreaterThan(genesis.maxBytes);
+  const reviewer: Reviewer = { asked: [], report: () => 0.02 };
+  const prepared: { bytes?: number } = {};
+  const h = harness(path, { current: installation() }, undefined, 1000, genesis, reviewer, prepared);
+  await ask(h);
+  approve(h); h.tick(10); await h.worker.minimal();
+  const done = h.journal.view.operatorRequests.at(-1)!;
+  expect(done.applied).toBe(true);
+  prepared.bytes = pastReserve;
+  // The review cannot run: Jev throws and the contextual review (this harness's escalate) throws.
+  reviewer.report = () => { throw Error('reviewer unavailable'); };
+  h.worker.intake([message(3, h.sent.at(-1)!.id + 1, 'and the weather?')]); await h.worker.drain();
+  const unavailable = h.journal.view.order.at(-1)!;
+  expect(unavailable.held).toBeUndefined();
+  expect(unavailable.noticeClass).toBeUndefined();
+  expect(unavailable.replyChecks?.find(check => check.path === 'jev')).toMatchObject({ verdict: 'unavailable',
+    approvalReport: { request: done.request.id, answer: 'unreadable' } });
+  expect(h.sent.at(-1)!.text).toContain('ok');
+  expect(h.sent.at(-1)!.text).toContain(approvalDisclosureText(done));
+  // The neighbor on the same rung: the reviewer runs and reads "no" on this exact text, so the note is omitted.
+  reviewer.report = () => 0.02;
+  h.worker.intake([message(4, h.sent.at(-1)!.id + 1, 'and tomorrow?')]); await h.worker.drain();
+  const judged = h.journal.view.order.at(-1)!;
+  expect(judged.held).toBeUndefined();
+  expect(judged.replyChecks?.find(check => check.path === 'jev')?.approvalReport).toEqual({ request: done.request.id, answer: 'no', noul: 0.02 });
+  expect(h.sent.at(-1)!.text).toContain('ok');
+  expect(h.sent.at(-1)!.text).not.toContain(SHARED_ACCESS_NOTE);
   h.journal.close();
 }));
 
