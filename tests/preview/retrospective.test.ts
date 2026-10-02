@@ -4,7 +4,7 @@ import { mkdtempSync, realpathSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { createJournalWorker, openPreviewJournal, retrospectiveCases, type JournalView } from './journal.js';
-import { GRAVITY_WELLS, RETRO_FAILURE_BACKOFF_MS, RETRO_MIN_INTERVAL_MS, RETRO_PENDING_RECHECK_MS, RETRO_STALE_CASE_MS, RETROSPECTIVE_DUTIES, RETROSPECTIVE_QUESTION,
+import { GRAVITY_WELLS, RETRO_DUTY_CODES, RETRO_FAILURE_BACKOFF_MS, RETRO_MIN_INTERVAL_MS, RETRO_PENDING_RECHECK_MS, RETRO_STALE_CASE_MS, RETROSPECTIVE_DUTIES, RETROSPECTIVE_QUESTION,
   WAIVER_EVIDENCE_UNAVAILABLE, benchmarkReruns, disciplineSource, eligibleCases, feedbackDispositions, feedbackRecordOf, latestGrades,
   openFindings, passAccounting, pendingGrades, promotedCases, replyContextDigest, rerunDispositions, retrospectivePlan, retrospectivePopulation,
   retrospectiveStatusLine, standingGrantCandidates, validateRetrospective, waiverPacket, RETRO_MAX_STATE_BYTES, RETRO_WAIVER_BYTES,
@@ -26,9 +26,9 @@ type Case = { id: string; category: string; reason?: string };
 /** A complete, valid review answer for whatever cases the pass supplied. */
 function body(cases: Case[], extra: Record<string, unknown> = {}) {
   return { inspected: cases.map(item => item.id), omitted: [],
-    duties: RETROSPECTIVE_DUTIES.map(duty => ({ duty, disposition: 'inspected', note: 'checked; nothing found' })),
-    gravityWells: GRAVITY_WELLS.map(well => ({ well: well.id, observed: false, refs: [], note: 'not seen' })),
-    efficiency: { summary: 'No wasted attempts found in this window.' },
+    duties: 'n'.repeat(RETROSPECTIVE_DUTIES.length),
+    wells: GRAVITY_WELLS.map(() => 0),
+    eff: 'No wasted attempts found in this window.',
     findings: [], feedback: [], closures: [],
     grades: cases.filter(item => item.category === 'decision' || item.category === 'verdict').map(item => ({ case: item.id,
       conclusion: { assessment: 'unverifiable', evidence: [] }, reason: { assessment: item.reason ? 'unverifiable' : 'not-applicable', evidence: [] },
@@ -425,10 +425,15 @@ describe('MUST-FIX 5: authorization scope and cross-pass recurrence', () => {
       await w.converse(['remind me Friday to water the plants on Friday, please']);
       w.advance(RETRO_STALE_CASE_MS);
       let prior: string[] = [];
+      // How many cases one pass can supply is a budget question, so the second authorization may be deferred to
+      // the pass after next. The answer handles either: it reviews the authorization when the pass carries one.
       w.answerWith(state => { prior = (JSON.parse(state) as { priorAuthorizations: { id: string }[] }).priorAuthorizations.map(item => item.id);
-        const second = casesOf(state).find(item => item.category === 'authorization')!;
-        return answerFor(state, { authorizations: [{ case: second.id, candidate: true, recurrences: [first.id] }] }); });
-      await w.retrospect();
+        const second = casesOf(state).find(item => item.category === 'authorization');
+        return answerFor(state, second ? { authorizations: [{ case: second.id, candidate: true, recurrences: [first.id] }] } : {}); });
+      for (let round = 0; round < 4 && !standingGrantCandidates(w.journal.view).some(item => item.presentable); round++) {
+        await w.retrospect();
+        w.advance(RETRO_MIN_INTERVAL_MS);
+      }
       expect(prior).toContain(first.id);
       const presented = standingGrantCandidates(w.journal.view).filter(item => item.presentable);
       expect(presented).toHaveLength(1);
@@ -439,13 +444,15 @@ describe('MUST-FIX 5: authorization scope and cross-pass recurrence', () => {
 });
 
 describe('MUST-FIX 6: every duty accounted, sibling evidence through a typed seam', () => {
-  it('refuses a missing duty disposition and records waiver recurrence unavailable without producer evidence', async () => {
+  it('refuses a duties string that does not cover every duty, and records waiver recurrence unavailable without producer evidence', async () => {
     const w = world();
     try {
       await w.converse(words.slice(0, 10));
-      w.answerWith(state => { const answer = body(casesOf(state)); answer.duties = answer.duties.filter(item => item.duty !== 'workaround'); return JSON.stringify(answer); });
+      // The compact shape's own accounting: one character per duty, in order. A string one character short
+      // accounts for one duty fewer, and is refused exactly as a missing duty row was.
+      w.answerWith(state => JSON.stringify({ ...body(casesOf(state)), duties: 'n'.repeat(RETROSPECTIVE_DUTIES.length - 1) }));
       await w.retrospect();
-      expect(w.journal.view.retroPasses[0]).toMatchObject({ state: 'failed', reason: expect.stringContaining('duty workaround') });
+      expect(w.journal.view.retroPasses[0]).toMatchObject({ state: 'failed', reason: expect.stringContaining('one character per duty') });
       expect(owedIds(w.journal.view).length).toBe(retrospectiveCases(w.journal.view).length);
       w.advance(6 * 3_600_000);
       let packet: { waiverEvidence: unknown } | undefined;
@@ -794,8 +801,9 @@ it('Repair round 2 R6: status exposes duty notes, finding root causes and feedba
   const w = world();
   try {
     await w.converse(words.slice(0, 10));
-    w.answerWith(state => answerFor(state, { grades: settled(casesOf(state)),
-      duties: RETROSPECTIVE_DUTIES.map(duty => ({ duty, disposition: 'inspected', note: duty === 'workaround' ? 'no repeated manual step' : 'checked' })),
+    // A `f` at the recurrence position, corroborated by the recurrence finding below; `n` everywhere else.
+    const withRecurrence = RETROSPECTIVE_DUTIES.map(duty => duty === 'recurrence' ? 'f' : 'n').join('');
+    w.answerWith(state => answerFor(state, { grades: settled(casesOf(state)), duties: withRecurrence,
       findings: [{ duty: 'recurrence', refs: [`turn:${turnId(3)}`], recurs: [`turn:${turnId(1)}`], summary: 'Same slip twice.',
         rootCause: 'The packet omits the earlier correction.', structuralRemedy: { remove: 'restating corrections' }, disposition: { owner: 'agent', next: 'Carry corrections.' } }],
       feedback: [{ case: `turn:${turnId(2)}`, classification: 'length', disposition: 'improvement-owned', owner: 'agent', next: 'Be brief.' }] }));
@@ -811,7 +819,8 @@ it('Repair round 2 R6: status exposes duty notes, finding root causes and feedba
       { cwd: process.cwd(), env: { ...process.env, INSTAR_SECRET_PREVIEW_STORAGE_KEY: Buffer.from(key).toString('hex') }, encoding: 'utf8' });
     expect(status.status, status.stderr).toBe(0);
     const retro = JSON.parse(status.stdout).retrospective;
-    expect(retro.passes[0].duties.find((row: { duty: string }) => row.duty === 'workaround')).toEqual({ duty: 'workaround', disposition: 'inspected', note: 'no repeated manual step' });
+    expect(retro.passes[0].duties.find((row: { duty: string }) => row.duty === 'workaround')).toEqual({ duty: 'workaround', disposition: 'inspected', note: RETRO_DUTY_CODES.n });
+    expect(retro.passes[0].duties.find((row: { duty: string }) => row.duty === 'recurrence')).toEqual({ duty: 'recurrence', disposition: 'inspected', note: RETRO_DUTY_CODES.f });
     expect(retro.passes[0].findings.find((row: { duty: string }) => row.duty === 'recurrence'))
       .toMatchObject({ rootCause: 'The packet omits the earlier correction.', structuralRemedy: { remove: 'restating corrections' } });
     expect(retro.feedbackDispositions).toEqual([expect.objectContaining({ case: `turn:${turnId(2)}`, disposition: 'verified-improvement', evidence: [`turn:${turnId(11)}`] })]);

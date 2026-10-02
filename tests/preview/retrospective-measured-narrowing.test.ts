@@ -4,8 +4,8 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { createJournalWorker, openPreviewJournal, retrospectiveCases, type JournalView } from './journal.js';
 import { GRAVITY_WELLS, RETROSPECTIVE_DUTIES, RETRO_ANSWER_BUDGET_BYTES, RETRO_ANSWER_BYTES_PER_TOKEN,
-  RETRO_ANSWER_NARROW_STEPS, RETRO_EFFICIENCY_CHARS, RETRO_FAILURE_BACKOFF_MS, RETRO_MIN_INTERVAL_MS, RETRO_NOTE_CHARS,
-  RETRO_OUTCOME_REASON_CHARS, RETRO_OVER_CAP_REASON, RETRO_WELL_NOTE_CHARS, disciplineSource, eligibleCases,
+  RETRO_ANSWER_NARROW_STEPS, RETRO_EFFICIENCY_CHARS, RETRO_FAILURE_BACKOFF_MS, RETRO_MIN_INTERVAL_MS,
+  RETRO_OUTCOME_REASON_CHARS, RETRO_OVER_CAP_REASON, disciplineSource, eligibleCases,
   estimatedAnswerBytes, measuredAnswerBudget, retroAnswerBudget, type CaseCategory, type RetroCase } from './retrospective.js';
 import { SUBSCRIPTION_MAX_OUTPUT_TOKENS } from '../../src/assembly/production-provider.js';
 
@@ -65,62 +65,66 @@ it('names the gap the live record proves: the ask is budgeted in bytes and judge
   // The answer the live run recorded for an ask that size cost MORE THAN FOUR TIMES the tokens the byte estimate
   // charges for it — the gap is in the whole answer's scale, not in the bytes-per-token conversion.
   expect(LIVE.pass10OutputTokens / (pass10Estimate / RETRO_ANSWER_BYTES_PER_TOKEN)).toBeGreaterThan(4);
-  // And the case rows are the smaller half of that ask: the rows every pass owes, whatever its cases are, carry
-  // most of it. Which is why halving the CASE room cannot converge — emptied of every case, the ask it reaches is
-  // still over the cap at the rate the live answer was really written to.
-  expect(FIXED / pass10Estimate).toBeGreaterThan(0.5);
+  // The rows every pass owes used to be the LARGER half of that ask — 2595 of about 3630 bytes — which is why
+  // halving the CASE room could not converge: emptied of every case, the ask it reached was still over the cap.
+  // w3-retrocompact bounded that part by construction, so it is now a small fraction of the ask and costs far
+  // less than the cap on its own even at the worst rate ever recorded. Both sides of that change are asserted
+  // here, because this file's whole subject is the join between the two.
+  expect(FIXED / pass10Estimate).toBeLessThan(0.15);   // 299 of 2461 bytes, where it was 2595 of about 3630
   const perPlannedByte = LIVE.pass10OutputTokens / pass10Estimate;
-  expect(FIXED * perPlannedByte).toBeGreaterThan(SUBSCRIPTION_MAX_OUTPUT_TOKENS);
+  expect(FIXED * perPlannedByte).toBeLessThan(SUBSCRIPTION_MAX_OUTPUT_TOKENS);
+  // Both sides of the change, at that same measured rate: the fixed part as it was — 2595 bytes of duty objects,
+  // gravity-well objects and an efficiency object — exceeded the cap on its own, which is what made the live
+  // journal answerable at no number of cases. The compact fixed part does not.
+  expect(2595 * perPlannedByte).toBeGreaterThan(SUBSCRIPTION_MAX_OUTPUT_TOKENS);
 });
 
-it('sizes the next ask from the failed pass own measurement, and reaches a fitting ask in ONE step wherever one exists', () => {
+it('sizes the next ask from the failed pass own measurement, and reaches a fitting ask in ONE step at EVERY recorded rate', () => {
   const planned = estimatedAnswerBytes(planAt(RETRO_ANSWER_BUDGET_BYTES));
-  const oneHalving = retroAnswerBudget([overCap(undefined, undefined)]);
   const fitting: number[] = [];
   for (const tokens of recordedOverCapTokens) {
     const next = retroAnswerBudget([overCap(planned, tokens)]);
     const perPlannedByte = tokens / planned;                   // what this pass measured, per byte it planned
     const cases = planAt(next);
     expect(next).toBeLessThan(planned);                        // a measurement can only ever narrow
-    expect(next).toBeLessThanOrEqual(oneHalving);              // and never by less than one halving would
     expect(next).toBeGreaterThanOrEqual(FIXED);                // never below the rows every pass owes
     expect(cases.length).toBeGreaterThan(0);                   // the floor of one case is kept throughout
     // The next ask, priced at the very rate the failed answer was written at.
-    const wouldCost = estimatedAnswerBytes(cases) * perPlannedByte;
-    if (wouldCost <= SUBSCRIPTION_MAX_OUTPUT_TOKENS) fitting.push(tokens);
-    // Where it still does not fit, the budget has reached its floor: no number of cases removed makes the ask
-    // answerable, because the rows every pass owes exceed the cap on their own at that rate. The sizing says so
-    // honestly rather than claiming to have fixed a cap the narrowing cannot reach.
-    else { expect(next).toBe(FIXED); expect(cases.length).toBe(1);
-      expect(FIXED * perPlannedByte).toBeGreaterThan(SUBSCRIPTION_MAX_OUTPUT_TOKENS * 0.99); }
+    if (estimatedAnswerBytes(cases) * perPlannedByte <= SUBSCRIPTION_MAX_OUTPUT_TOKENS) fitting.push(tokens);
   }
-  // Exactly where the boundary falls on the recorded evidence: the ten gentlest overruns are answerable after one
-  // measured step; the eight largest are not answerable at any number of cases.
-  expect([...fitting].sort((a, b) => a - b)).toEqual([...recordedOverCapTokens].sort((a, b) => a - b).slice(0, 10));
-  // The live measurement is on the far side of it: 8192 tokens for a score-of-cases ask leaves no ask that fits.
-  const livePlanned = estimatedAnswerBytes(planAt(oneHalving));
-  expect(retroAnswerBudget([overCap(livePlanned, LIVE.pass10OutputTokens)])).toBe(FIXED);
+  // Where the boundary falls now the fixed part is bounded: EVERY recorded overrun, from the gentlest 2229 to the
+  // provider's own 8192 ceiling, reaches an answerable ask after one measured step. Before w3-retrocompact only
+  // the ten gentlest did, and the eight largest — the live 8192 among them — fitted at NO number of cases.
+  expect([...fitting].sort((a, b) => a - b)).toEqual([...recordedOverCapTokens].sort((a, b) => a - b));
+  // The live measurement, which used to be on the far side of it, included: its next ask is above the floor and
+  // the ask it buys fits. 8192 is the largest frame the provider can report, so no real measurement reaches the
+  // floor any more — the floor stays as the arithmetic's own backstop, not as a state the live line can hit.
+  const liveNext = retroAnswerBudget([overCap(planned, LIVE.pass10OutputTokens)]);
+  expect(liveNext).toBeGreaterThan(FIXED);
+  expect(estimatedAnswerBytes(planAt(liveNext)) * (LIVE.pass10OutputTokens / planned))
+    .toBeLessThanOrEqual(SUBSCRIPTION_MAX_OUTPUT_TOKENS);
 });
 
-it('converges where the fixed halving never does, which is the whole complaint', () => {
+it('converges in ONE step where the fixed halving needs every step it has, which is the whole complaint', () => {
   const planned = estimatedAnswerBytes(planAt(RETRO_ANSWER_BUDGET_BYTES));
-  // A recorded overrun in the middle of the range. Every ask the halving can ever reach, including the floor it
-  // only arrives at after RETRO_ANSWER_NARROW_STEPS failures — a full day of wall clock at six hours each — is
-  // still over the cap at the rate this answer was really written to.
-  const tokens = 3592;
-  expect(recordedOverCapTokens).toContain(tokens);
+  // The live measurement, the worst rate the provider can even report. With the fixed part bounded the halving
+  // does eventually reach an answerable ask — but only at its deepest step, which costs RETRO_ANSWER_NARROW_STEPS
+  // failures at six hours each, where the measurement reaches one on the first attempt at the ordinary interval.
+  const tokens = LIVE.pass10OutputTokens;
   const perPlannedByte = tokens / planned;
   const halvingSteps = Array.from({ length: RETRO_ANSWER_NARROW_STEPS + 2 }, (_, index) =>
     planAt(retroAnswerBudget(Array.from({ length: index + 1 }, () => overCap(undefined, undefined)))));
-  for (const step of halvingSteps)
+  // Neither of the first two halvings is enough at this rate; the third is, and the fourth adds nothing.
+  for (const step of halvingSteps.slice(0, RETRO_ANSWER_NARROW_STEPS - 1))
     expect(estimatedAnswerBytes(step) * perPlannedByte).toBeGreaterThan(SUBSCRIPTION_MAX_OUTPUT_TOKENS);
+  expect(estimatedAnswerBytes(halvingSteps[RETRO_ANSWER_NARROW_STEPS - 1]!) * perPlannedByte)
+    .toBeLessThanOrEqual(SUBSCRIPTION_MAX_OUTPUT_TOKENS);
   expect(halvingSteps.at(-1)!.length).toBe(halvingSteps[RETRO_ANSWER_NARROW_STEPS - 1]!.length);  // it bottoms out
   expect(RETRO_ANSWER_NARROW_STEPS * RETRO_FAILURE_BACKOFF_MS).toBeGreaterThanOrEqual(LIVE.periodMs * 3);
   // The measurement reaches a fitting ask on the first attempt after the failure, at the ordinary interval.
   const measuredStep = planAt(retroAnswerBudget([overCap(planned, tokens)]));
-  expect(measuredStep.length).toBeLessThan(halvingSteps.at(-1)!.length);
   expect(estimatedAnswerBytes(measuredStep) * perPlannedByte).toBeLessThanOrEqual(SUBSCRIPTION_MAX_OUTPUT_TOKENS);
-  expect(RETRO_MIN_INTERVAL_MS * RETRO_ANSWER_NARROW_STEPS).toBeLessThan(RETRO_FAILURE_BACKOFF_MS);
+  expect(RETRO_MIN_INTERVAL_MS).toBeLessThan(RETRO_ANSWER_NARROW_STEPS * RETRO_FAILURE_BACKOFF_MS);
 });
 
 it('falls back to the halving where there is nothing to measure, and a pass that measured nothing can never widen the ask back out', () => {
@@ -142,7 +146,12 @@ it('falls back to the halving where there is nothing to measure, and a pass that
   // The unmeasured pass halves at the depth it really sits at — two — rather than starting over from the whole
   // bound and handing back more room than the measurement before it already proved too large.
   expect(mixed).toBe(FIXED + Math.floor((RETRO_ANSWER_BUDGET_BYTES - FIXED) / 4));
-  expect(retroAnswerBudget([overCap(undefined, undefined), overCap(planned, 2229)])).toBe(measured);
+  // The other order: the SMALLEST budget any pass in the tail earns is the one used, whichever pass that is. Here
+  // it is the unmeasured halving at depth one, because this gentle overrun's own measurement earns MORE room than
+  // that halving already took — the rule is "smallest of the tail", never "the measurement wins".
+  const halvingAtOne = FIXED + Math.floor((RETRO_ANSWER_BUDGET_BYTES - FIXED) / 2);
+  expect(measured).toBeGreaterThan(halvingAtOne);
+  expect(retroAnswerBudget([overCap(undefined, undefined), overCap(planned, 2229)])).toBe(halvingAtOne);
   // A complete pass ends the narrowing, and a genuinely unknown outcome never starts it.
   expect(retroAnswerBudget([overCap(planned, 2229), { state: 'complete' }])).toBe(RETRO_ANSWER_BUDGET_BYTES);
   expect(retroAnswerBudget([{ state: 'unknown', reason: 'model outcome uncertain' }])).toBe(RETRO_ANSWER_BUDGET_BYTES);
@@ -165,9 +174,8 @@ function answerAtAskedLengths(state: string) {
   const cases = (JSON.parse(state) as { cases: RetroCase[] }).cases;
   const graded = cases.filter(item => item.category === 'decision' || item.category === 'verdict');
   return JSON.stringify({ inspected: cases.map(item => item.id), omitted: [],
-    duties: RETROSPECTIVE_DUTIES.map(duty => ({ duty, disposition: 'inspected', note: pad(RETRO_NOTE_CHARS) })),
-    gravityWells: GRAVITY_WELLS.map(well => ({ well: well.id, observed: false, refs: [], note: pad(RETRO_WELL_NOTE_CHARS) })),
-    efficiency: { summary: pad(RETRO_EFFICIENCY_CHARS) }, findings: [], feedback: [], closures: [], authorizations: [],
+    duties: 'n'.repeat(RETROSPECTIVE_DUTIES.length), wells: GRAVITY_WELLS.map(() => 0),
+    eff: pad(RETRO_EFFICIENCY_CHARS), findings: [], feedback: [], closures: [], authorizations: [],
     comparisons: [], grades: graded.map(item => ({ case: item.id, conclusion: { assessment: 'unverifiable', evidence: [] },
       reason: { assessment: item.reason === undefined ? 'not-applicable' : 'unverifiable', evidence: [] },
       outcome: { assessment: 'pending', reason: pad(RETRO_OUTCOME_REASON_CHARS), evidence: [] }, observations: [] })) });
@@ -266,24 +274,43 @@ it('retries a settled over-cap pass at the ordinary interval while the ask is st
   } finally { w.done(); }
 });
 
-it('the other side: a measurement that leaves no ask that fits waits the full backoff instead of burning a call an hour', async () => {
+it('the other side: an ask that has stopped shrinking waits the full backoff instead of burning a call an hour', async () => {
   const w = world();
   try {
     await w.converse(messages);
-    // The live measurement: the rows every pass owes exceed the cap on their own, so the budget reaches its floor
-    // and the next ask cannot be made smaller. One case is still asked about; the cadence returns to the backoff.
-    w.answerOverCapAt(LIVE.pass10OutputTokens);
+    // The reachable other side, now the fixed part is bounded. The live line's own unmeasured shape: passes 0-8
+    // and pass 10 on Justin's preview recorded no estimate at all, so they fall back to the halving — and the
+    // halving bottoms out at RETRO_ANSWER_NARROW_STEPS. Once it has, the next ask is no smaller than the last
+    // pass's, nothing about the repair has changed, and the cadence returns to the unknown-failure backoff.
+    // (With the fixed part at RETRO_ANSWER_FIXED_BYTES the FLOOR itself is no longer reachable from a real
+    // measurement: 8192 output tokens is the largest frame the provider can report, and a budget sized from it
+    // still lands above the floor — asserted in the pure test above.)
+    const noEstimate = () => { w.answerWith((_state, id) => {
+      w.journal.append({ kind: 'call-outcome', id, role: 'model', outcome: overCapOutcome(8192), at: w.at() } as never);
+      return { state: 'uncertain' as const };
+    }); };
+    for (let round = 0; round <= RETRO_ANSWER_NARROW_STEPS; round++) {
+      noEstimate();
+      await w.retrospect();
+      w.advance(RETRO_FAILURE_BACKOFF_MS);
+    }
+    const passes = w.journal.view.retroPasses;
+    expect(passes.length).toBe(RETRO_ANSWER_NARROW_STEPS + 1);
+    for (const pass of passes) expect(pass.reason).toBe(RETRO_OVER_CAP_REASON);
+    // Bottomed out: the budget is the deepest halving, and the last pass asked at exactly that budget, so the
+    // next ask is not smaller.
+    const bottom = FIXED + Math.floor((RETRO_ANSWER_BUDGET_BYTES - FIXED) / 2 ** RETRO_ANSWER_NARROW_STEPS);
+    expect(retroAnswerBudget(passes)).toBe(bottom);
+    // So the ordinary interval is NOT enough any more: the cadence is the unknown-failure backoff again.
+    const settled = passes.length;
+    w.advance(-RETRO_FAILURE_BACKOFF_MS + RETRO_MIN_INTERVAL_MS);
+    noEstimate();
     await w.retrospect();
-    expect(retroAnswerBudget(w.journal.view.retroPasses)).toBe(FIXED);
-    w.advance(RETRO_FAILURE_BACKOFF_MS - 1);
+    expect(w.journal.view.retroPasses.length).toBe(settled);
+    w.advance(RETRO_FAILURE_BACKOFF_MS - RETRO_MIN_INTERVAL_MS);
     await w.retrospect();
-    expect(w.journal.view.retroPasses.length).toBe(1);
-    w.advance(1);
-    await w.retrospect();
-    expect(w.journal.view.retroPasses.length).toBe(2);
-    const second = w.journal.view.retroPasses.at(-1)!;
-    expect(second.cases.length).toBe(1);
-    expect(second.reason).toBe(RETRO_OVER_CAP_REASON);
+    expect(w.journal.view.retroPasses.length).toBe(settled + 1);
+    expect(w.journal.view.retroPasses.at(-1)!.cases.length).toBeGreaterThan(0);
   } finally { w.done(); }
 });
 

@@ -1,0 +1,611 @@
+{
+ "source": "The compact retrospective answer shape introduced by w3-retrocompact (branch w3-retrocompact, base w3-retrofit fa3ae0d8). HONESTY ABOUT PROVENANCE, field by field. Everything under `recorded` is copied from real journals and is quoted verbatim: `recorded.liveRetrospective` from the proof run I-live-20261001-195320 over Justin's preview (.instar/lanes/pipeline/live-proof/results/I-live-20261001-195320/status-i-end.json, read 2026-10-02 on the Mama PC through the Studio read-only file route); `recorded.jsonShapes` is that same file's `modelJsonShapes.counts`, the malformed classes the live line really produced; `recorded.bytesPerToken` is the two verbatim live model outputs in tests/preview/fixtures/proofroom-memory-misfire-715672853-2026-09-30.json (updates 715672779 and 715672853), measured, which is where RETRO_ANSWER_BYTES_PER_TOKEN comes from. Everything under `answers` is AUTHORED, not recorded, and cannot be otherwise: no model has ever been asked for the compact shape, because this unit introduces it. What the authored shapes are checked against is recorded — the malformed ones reproduce the recorded classes above, and the over-long one is paired with the recorded over-cap frames in proofroom-summary-cascade-stall-2026-09-30.json.",
+ "recorded": {
+  "liveRetrospective": {
+   "note": "All 11 retrospective calls the live line ever made hit the route output cap. Passes 0-8 were recorded \"unknown: model outcome uncertain\" before the over-cap classifier existed; 9 and 10 \"failed: review output over the cap\".",
+   "modelCallsByJudgmentRetrospective": 11,
+   "callOutcomeCountsOutputCap": 11,
+   "passes": [
+    {
+     "pass": 9,
+     "supplied": 37,
+     "eligible": 702,
+     "state": "failed",
+     "reason": "review output over the cap"
+    },
+    {
+     "pass": 10,
+     "supplied": 23,
+     "eligible": 735,
+     "state": "failed",
+     "reason": "review output over the cap"
+    }
+   ],
+   "lastCall": {
+    "id": "retrospective:10",
+    "judgment": "retrospective",
+    "route": "preview-subscription",
+    "outcome": "uncertain",
+    "usage": {
+     "inputTokens": 53198,
+     "outputTokens": 8192,
+     "charge": null
+    }
+   },
+   "providerOutputCap": 2048
+  },
+  "jsonShapes": {
+   "answer/decision/tolerated/fenced": 7,
+   "answer/decision/malformed/fenced": 2,
+   "reply-review/verdict/malformed/not-json": 4,
+   "reply-review/decision/malformed/fenced": 1,
+   "reply-review/decision/malformed/prose-wrapped": 1,
+   "answer/decision/malformed/bare-wrong-fields": 12,
+   "reply-review/decision/malformed/bare-wrong-fields": 4,
+   "answer/decision/malformed/prose-wrapped": 11
+  },
+  "bytesPerToken": [
+   {
+    "update": 715672779,
+    "bytes": 1616,
+    "outputTokens": 600
+   },
+   {
+    "update": 715672853,
+    "bytes": 2119,
+    "outputTokens": 716
+   }
+  ]
+ },
+ "answers": {
+  "compactFixed": {
+   "duties": "nnnnnnnnnnnnnn",
+   "wells": [
+    0,
+    0,
+    0,
+    0,
+    0,
+    0,
+    0
+   ],
+   "eff": "No wasted calls, repeated questions or held work in this window."
+  },
+  "verboseFixedAtAskedLengths": {
+   "duties": [
+    {
+     "duty": "gravity-well",
+     "disposition": "inspected",
+     "note": "checked checked checked checked checked "
+    },
+    {
+     "duty": "unsupported-reversal",
+     "disposition": "inspected",
+     "note": "checked checked checked checked checked "
+    },
+    {
+     "duty": "recurrence",
+     "disposition": "inspected",
+     "note": "checked checked checked checked checked "
+    },
+    {
+     "duty": "removable-attention",
+     "disposition": "inspected",
+     "note": "checked checked checked checked checked "
+    },
+    {
+     "duty": "workaround",
+     "disposition": "inspected",
+     "note": "checked checked checked checked checked "
+    },
+    {
+     "duty": "waste",
+     "disposition": "inspected",
+     "note": "checked checked checked checked checked "
+    },
+    {
+     "duty": "outcome",
+     "disposition": "inspected",
+     "note": "checked checked checked checked checked "
+    },
+    {
+     "duty": "feedback",
+     "disposition": "inspected",
+     "note": "checked checked checked checked checked "
+    },
+    {
+     "duty": "standing-grant",
+     "disposition": "inspected",
+     "note": "checked checked checked checked checked "
+    },
+    {
+     "duty": "refuted-reason",
+     "disposition": "inspected",
+     "note": "checked checked checked checked checked "
+    },
+    {
+     "duty": "waiver-recurrence",
+     "disposition": "inspected",
+     "note": "checked checked checked checked checked "
+    },
+    {
+     "duty": "process-tier",
+     "disposition": "inspected",
+     "note": "checked checked checked checked checked "
+    },
+    {
+     "duty": "proportionality",
+     "disposition": "inspected",
+     "note": "checked checked checked checked checked "
+    },
+    {
+     "duty": "benchmark-divergence",
+     "disposition": "inspected",
+     "note": "checked checked checked checked checked "
+    }
+   ],
+   "gravityWells": [
+    {
+     "well": "capitulation",
+     "observed": false,
+     "refs": [],
+     "note": "not seen not seen not seen not"
+    },
+    {
+     "well": "false-completion",
+     "observed": false,
+     "refs": [],
+     "note": "not seen not seen not seen not"
+    },
+    {
+     "well": "invented-memory",
+     "observed": false,
+     "refs": [],
+     "note": "not seen not seen not seen not"
+    },
+    {
+     "well": "false-certainty",
+     "observed": false,
+     "refs": [],
+     "note": "not seen not seen not seen not"
+    },
+    {
+     "well": "sycophancy",
+     "observed": false,
+     "refs": [],
+     "note": "not seen not seen not seen not"
+    },
+    {
+     "well": "needless-deferral",
+     "observed": false,
+     "refs": [],
+     "note": "not seen not seen not seen not"
+    },
+    {
+     "well": "fatigue-stop",
+     "observed": false,
+     "refs": [],
+     "note": "not seen not seen not seen not"
+    }
+   ],
+   "efficiency": {
+    "summary": "no waste found in this window no waste found in this window no waste found in this window no waste found in this window "
+   }
+  },
+  "verboseFixedAtAcceptedLengths": {
+   "duties": [
+    {
+     "duty": "gravity-well",
+     "disposition": "inspected",
+     "note": "checked this duty against every supplied case and the earlier findings checked this duty against every supplied case and the earlier findings checked this duty against every supplied case and the earlier findings checked this duty against every supplied case and the earlier findings checked this duty against every supplied case and the earlier findings checked this duty against every supplied case and the earlier findings checked this duty against every supplied case and the earlier findings che"
+    },
+    {
+     "duty": "unsupported-reversal",
+     "disposition": "inspected",
+     "note": "checked this duty against every supplied case and the earlier findings checked this duty against every supplied case and the earlier findings checked this duty against every supplied case and the earlier findings checked this duty against every supplied case and the earlier findings checked this duty against every supplied case and the earlier findings checked this duty against every supplied case and the earlier findings checked this duty against every supplied case and the earlier findings che"
+    },
+    {
+     "duty": "recurrence",
+     "disposition": "inspected",
+     "note": "checked this duty against every supplied case and the earlier findings checked this duty against every supplied case and the earlier findings checked this duty against every supplied case and the earlier findings checked this duty against every supplied case and the earlier findings checked this duty against every supplied case and the earlier findings checked this duty against every supplied case and the earlier findings checked this duty against every supplied case and the earlier findings che"
+    },
+    {
+     "duty": "removable-attention",
+     "disposition": "inspected",
+     "note": "checked this duty against every supplied case and the earlier findings checked this duty against every supplied case and the earlier findings checked this duty against every supplied case and the earlier findings checked this duty against every supplied case and the earlier findings checked this duty against every supplied case and the earlier findings checked this duty against every supplied case and the earlier findings checked this duty against every supplied case and the earlier findings che"
+    },
+    {
+     "duty": "workaround",
+     "disposition": "inspected",
+     "note": "checked this duty against every supplied case and the earlier findings checked this duty against every supplied case and the earlier findings checked this duty against every supplied case and the earlier findings checked this duty against every supplied case and the earlier findings checked this duty against every supplied case and the earlier findings checked this duty against every supplied case and the earlier findings checked this duty against every supplied case and the earlier findings che"
+    },
+    {
+     "duty": "waste",
+     "disposition": "inspected",
+     "note": "checked this duty against every supplied case and the earlier findings checked this duty against every supplied case and the earlier findings checked this duty against every supplied case and the earlier findings checked this duty against every supplied case and the earlier findings checked this duty against every supplied case and the earlier findings checked this duty against every supplied case and the earlier findings checked this duty against every supplied case and the earlier findings che"
+    },
+    {
+     "duty": "outcome",
+     "disposition": "inspected",
+     "note": "checked this duty against every supplied case and the earlier findings checked this duty against every supplied case and the earlier findings checked this duty against every supplied case and the earlier findings checked this duty against every supplied case and the earlier findings checked this duty against every supplied case and the earlier findings checked this duty against every supplied case and the earlier findings checked this duty against every supplied case and the earlier findings che"
+    },
+    {
+     "duty": "feedback",
+     "disposition": "inspected",
+     "note": "checked this duty against every supplied case and the earlier findings checked this duty against every supplied case and the earlier findings checked this duty against every supplied case and the earlier findings checked this duty against every supplied case and the earlier findings checked this duty against every supplied case and the earlier findings checked this duty against every supplied case and the earlier findings checked this duty against every supplied case and the earlier findings che"
+    },
+    {
+     "duty": "standing-grant",
+     "disposition": "inspected",
+     "note": "checked this duty against every supplied case and the earlier findings checked this duty against every supplied case and the earlier findings checked this duty against every supplied case and the earlier findings checked this duty against every supplied case and the earlier findings checked this duty against every supplied case and the earlier findings checked this duty against every supplied case and the earlier findings checked this duty against every supplied case and the earlier findings che"
+    },
+    {
+     "duty": "refuted-reason",
+     "disposition": "inspected",
+     "note": "checked this duty against every supplied case and the earlier findings checked this duty against every supplied case and the earlier findings checked this duty against every supplied case and the earlier findings checked this duty against every supplied case and the earlier findings checked this duty against every supplied case and the earlier findings checked this duty against every supplied case and the earlier findings checked this duty against every supplied case and the earlier findings che"
+    },
+    {
+     "duty": "waiver-recurrence",
+     "disposition": "inspected",
+     "note": "checked this duty against every supplied case and the earlier findings checked this duty against every supplied case and the earlier findings checked this duty against every supplied case and the earlier findings checked this duty against every supplied case and the earlier findings checked this duty against every supplied case and the earlier findings checked this duty against every supplied case and the earlier findings checked this duty against every supplied case and the earlier findings che"
+    },
+    {
+     "duty": "process-tier",
+     "disposition": "inspected",
+     "note": "checked this duty against every supplied case and the earlier findings checked this duty against every supplied case and the earlier findings checked this duty against every supplied case and the earlier findings checked this duty against every supplied case and the earlier findings checked this duty against every supplied case and the earlier findings checked this duty against every supplied case and the earlier findings checked this duty against every supplied case and the earlier findings che"
+    },
+    {
+     "duty": "proportionality",
+     "disposition": "inspected",
+     "note": "checked this duty against every supplied case and the earlier findings checked this duty against every supplied case and the earlier findings checked this duty against every supplied case and the earlier findings checked this duty against every supplied case and the earlier findings checked this duty against every supplied case and the earlier findings checked this duty against every supplied case and the earlier findings checked this duty against every supplied case and the earlier findings che"
+    },
+    {
+     "duty": "benchmark-divergence",
+     "disposition": "inspected",
+     "note": "checked this duty against every supplied case and the earlier findings checked this duty against every supplied case and the earlier findings checked this duty against every supplied case and the earlier findings checked this duty against every supplied case and the earlier findings checked this duty against every supplied case and the earlier findings checked this duty against every supplied case and the earlier findings checked this duty against every supplied case and the earlier findings che"
+    }
+   ],
+   "gravityWells": [
+    {
+     "well": "capitulation",
+     "observed": false,
+     "refs": [],
+     "note": "looked for this pattern across every case in the window looked for this pattern across every case in the window looked for this pattern across every case in the window looked for this pattern across every case in the window looked for this pattern across every case in the window looked for this pattern across every case in the window looked for this pattern across every case in the window looked for this pattern across every case in the window looked for this pattern across every case in the win"
+    },
+    {
+     "well": "false-completion",
+     "observed": false,
+     "refs": [],
+     "note": "looked for this pattern across every case in the window looked for this pattern across every case in the window looked for this pattern across every case in the window looked for this pattern across every case in the window looked for this pattern across every case in the window looked for this pattern across every case in the window looked for this pattern across every case in the window looked for this pattern across every case in the window looked for this pattern across every case in the win"
+    },
+    {
+     "well": "invented-memory",
+     "observed": false,
+     "refs": [],
+     "note": "looked for this pattern across every case in the window looked for this pattern across every case in the window looked for this pattern across every case in the window looked for this pattern across every case in the window looked for this pattern across every case in the window looked for this pattern across every case in the window looked for this pattern across every case in the window looked for this pattern across every case in the window looked for this pattern across every case in the win"
+    },
+    {
+     "well": "false-certainty",
+     "observed": false,
+     "refs": [],
+     "note": "looked for this pattern across every case in the window looked for this pattern across every case in the window looked for this pattern across every case in the window looked for this pattern across every case in the window looked for this pattern across every case in the window looked for this pattern across every case in the window looked for this pattern across every case in the window looked for this pattern across every case in the window looked for this pattern across every case in the win"
+    },
+    {
+     "well": "sycophancy",
+     "observed": false,
+     "refs": [],
+     "note": "looked for this pattern across every case in the window looked for this pattern across every case in the window looked for this pattern across every case in the window looked for this pattern across every case in the window looked for this pattern across every case in the window looked for this pattern across every case in the window looked for this pattern across every case in the window looked for this pattern across every case in the window looked for this pattern across every case in the win"
+    },
+    {
+     "well": "needless-deferral",
+     "observed": false,
+     "refs": [],
+     "note": "looked for this pattern across every case in the window looked for this pattern across every case in the window looked for this pattern across every case in the window looked for this pattern across every case in the window looked for this pattern across every case in the window looked for this pattern across every case in the window looked for this pattern across every case in the window looked for this pattern across every case in the window looked for this pattern across every case in the win"
+    },
+    {
+     "well": "fatigue-stop",
+     "observed": false,
+     "refs": [],
+     "note": "looked for this pattern across every case in the window looked for this pattern across every case in the window looked for this pattern across every case in the window looked for this pattern across every case in the window looked for this pattern across every case in the window looked for this pattern across every case in the window looked for this pattern across every case in the window looked for this pattern across every case in the window looked for this pattern across every case in the win"
+    }
+   ],
+   "efficiency": {
+    "summary": "no wasted calls, repeated questions, redundant replies or held work no wasted calls, repeated questions, redundant replies or held work no wasted calls, repeated questions, redundant replies or held work no wasted calls, repeated questions, redundant replies or held work no wasted calls, repeated questions, redundant replies or held work no wasted calls, repeated questions, redundant replies or held work no wasted calls, repeated questions, redundant replies or held work no wasted calls, repeated questions, redundant replies or held work no wasted calls, repeated questions, redundant replies or held work no wasted calls, repeated questions, redundant replies or held work no wasted calls, repeated questions, redundant replies or held work no wasted calls, repeated questions, redundant replies or held work no wasted calls, repeated questions, redundant replies or held work no wasted calls, repeated questions, redundant replies or held work no wasted calls, repeated questions, redundant r"
+   }
+  },
+  "malformedFixed": [
+   {
+    "why": "duties is still the verbose array, not one character per duty (the pre-compaction shape)",
+    "part": {
+     "duties": [
+      {
+       "duty": "gravity-well",
+       "disposition": "inspected",
+       "note": "checked"
+      },
+      {
+       "duty": "unsupported-reversal",
+       "disposition": "inspected",
+       "note": "checked"
+      },
+      {
+       "duty": "recurrence",
+       "disposition": "inspected",
+       "note": "checked"
+      },
+      {
+       "duty": "removable-attention",
+       "disposition": "inspected",
+       "note": "checked"
+      },
+      {
+       "duty": "workaround",
+       "disposition": "inspected",
+       "note": "checked"
+      },
+      {
+       "duty": "waste",
+       "disposition": "inspected",
+       "note": "checked"
+      },
+      {
+       "duty": "outcome",
+       "disposition": "inspected",
+       "note": "checked"
+      },
+      {
+       "duty": "feedback",
+       "disposition": "inspected",
+       "note": "checked"
+      },
+      {
+       "duty": "standing-grant",
+       "disposition": "inspected",
+       "note": "checked"
+      },
+      {
+       "duty": "refuted-reason",
+       "disposition": "inspected",
+       "note": "checked"
+      },
+      {
+       "duty": "waiver-recurrence",
+       "disposition": "inspected",
+       "note": "checked"
+      },
+      {
+       "duty": "process-tier",
+       "disposition": "inspected",
+       "note": "checked"
+      },
+      {
+       "duty": "proportionality",
+       "disposition": "inspected",
+       "note": "checked"
+      },
+      {
+       "duty": "benchmark-divergence",
+       "disposition": "inspected",
+       "note": "checked"
+      }
+     ],
+     "wells": [
+      0,
+      0,
+      0,
+      0,
+      0,
+      0,
+      0
+     ],
+     "eff": "none"
+    }
+   },
+   {
+    "why": "duties is one character short, so one duty is unaccounted for",
+    "part": {
+     "duties": "nnnnnnnnnnnnn",
+     "wells": [
+      0,
+      0,
+      0,
+      0,
+      0,
+      0,
+      0
+     ],
+     "eff": "none"
+    }
+   },
+   {
+    "why": "duties carries a character outside the verdict alphabet",
+    "part": {
+     "duties": "nnnnnnnnnnnnnx",
+     "wells": [
+      0,
+      0,
+      0,
+      0,
+      0,
+      0,
+      0
+     ],
+     "eff": "none"
+    }
+   },
+   {
+    "why": "wells is the verbose array of objects, not one entry per well",
+    "part": {
+     "duties": "nnnnnnnnnnnnnn",
+     "wells": [
+      {
+       "well": "capitulation",
+       "observed": false,
+       "refs": []
+      },
+      {
+       "well": "false-completion",
+       "observed": false,
+       "refs": []
+      },
+      {
+       "well": "invented-memory",
+       "observed": false,
+       "refs": []
+      },
+      {
+       "well": "false-certainty",
+       "observed": false,
+       "refs": []
+      },
+      {
+       "well": "sycophancy",
+       "observed": false,
+       "refs": []
+      },
+      {
+       "well": "needless-deferral",
+       "observed": false,
+       "refs": []
+      },
+      {
+       "well": "fatigue-stop",
+       "observed": false,
+       "refs": []
+      }
+     ],
+     "eff": "none"
+    }
+   },
+   {
+    "why": "wells has one entry too few",
+    "part": {
+     "duties": "nnnnnnnnnnnnnn",
+     "wells": [
+      0,
+      0,
+      0,
+      0,
+      0,
+      0
+     ],
+     "eff": "none"
+    }
+   },
+   {
+    "why": "a well is marked observed with an empty ref list, so nothing evidences it",
+    "part": {
+     "duties": "nnnnnnnnnnnnnn",
+     "wells": [
+      [],
+      0,
+      0,
+      0,
+      0,
+      0,
+      0
+     ],
+     "eff": "none"
+    }
+   },
+   {
+    "why": "a well entry is neither 0 nor a ref list",
+    "part": {
+     "duties": "nnnnnnnnnnnnnn",
+     "wells": [
+      true,
+      0,
+      0,
+      0,
+      0,
+      0,
+      0
+     ],
+     "eff": "none"
+    }
+   },
+   {
+    "why": "the efficiency sentence Rule 51 requires is missing",
+    "part": {
+     "duties": "nnnnnnnnnnnnnn",
+     "wells": [
+      0,
+      0,
+      0,
+      0,
+      0,
+      0,
+      0
+     ]
+    }
+   },
+   {
+    "why": "a duty claims a finding (f) the answer does not contain",
+    "part": {
+     "duties": "fnnnnnnnnnnnnn",
+     "wells": [
+      0,
+      0,
+      0,
+      0,
+      0,
+      0,
+      0
+     ],
+     "eff": "none"
+    }
+   },
+   {
+    "why": "a duty whose producer evidence IS present is declared unavailable (u)",
+    "part": {
+     "duties": "unnnnnnnnnnnnn",
+     "wells": [
+      0,
+      0,
+      0,
+      0,
+      0,
+      0,
+      0
+     ],
+     "eff": "none"
+    }
+   }
+  ],
+  "overLongFixed": {
+   "duties": "nnnnnnnnnnnnnn",
+   "wells": [
+    0,
+    0,
+    0,
+    0,
+    0,
+    0,
+    0
+   ],
+   "eff": "this efficiency summary runs far past the length the question states for it this efficiency summary runs far past the length the question states for it this efficiency summary runs far past the length the question states for it this efficiency summary runs far past the length the question states for it this efficiency summary runs far past the length the question states for it this efficiency summary runs far past the length the question states for it this efficiency summary runs far past the length the question states for it this efficiency summary runs far past the length the question states for it this efficiency summary runs far past the length the question states for it this efficiency summary runs far past the length the question states for it this efficiency summary runs far past the length the question states for it this efficiency summary runs far past the length the question states for it this efficiency summary runs far past the length the question states for it this efficiency summary runs far past the length the question states for it this efficiency summary runs far past the length the question states for it this efficiency summary runs far past the length the question states for it this efficiency summary runs far past the length the question states for it this efficiency summary runs far past the length the question states for it this efficiency summary runs far past the length the question states for it this efficiency summary runs far past the length the question states for it this efficiency summary runs far past the length the question states for it this efficiency summary runs far past the length the question states for it this efficiency summary runs far past the length the question states for it this efficiency summary runs far past the length the question states for it this efficiency summary runs far past the length the question states for it this efficiency summary runs far past the length the question states for it this efficiency summary runs far past the length the question states for it this efficiency summary runs far past the length the question states for it this efficiency summary runs far past the length the question states for it this efficiency summary runs far past the length the question states for it this efficiency summary runs far past the length the question states for it this efficiency summary runs far past the length the question states for it this efficiency summary runs far past the length the question states for it this efficiency summary runs far past the length the question states for it this efficiency summary runs far past the length the question states for it this efficiency summary runs far past the length the question states for it this efficiency summary runs far past the length the question states for it this efficiency summary runs far past the length the question states for it this efficiency summary runs far past the length the question states for it this efficiency summary runs far past the length the question states for it this efficiency summary runs far past the length the question states for it this efficiency summary runs far past the length the question states for it this efficiency summary runs far past the length the question states for it this efficiency summary runs far past the length the question states for it this efficiency summary runs far past the length the question states for it this efficiency summary runs far past the length the question states for it this efficiency summary runs far past the length the question states for it this efficiency summary runs far past the length the question states for it this efficiency summary runs far past the length the question states for it this efficiency summary runs far past the length the question states for it this efficiency summary runs far past the length the question states for it this efficiency summary runs far past the length the question states for it this efficiency summary runs far past the length"
+  },
+  "wireShapes": [
+   {
+    "class": "prose-wrapped",
+    "recordedCount": 11,
+    "body": "Here is my review of the recent conversation:\n\n{\"duties\":\"nnnnnnnnnnnnnn\"}\n\nI hope that helps."
+   },
+   {
+    "class": "bare-wrong-fields",
+    "recordedCount": 12,
+    "body": "{\"review\":\"nothing found\",\"duty_rows\":14,\"wells_checked\":7}"
+   },
+   {
+    "class": "fenced",
+    "recordedCount": 9,
+    "note": "the worker strips a leading/trailing fence before decoding, so a fenced compact answer decodes"
+   },
+   {
+    "class": "not-json",
+    "recordedCount": 4,
+    "body": "I reviewed the recent conversation and found nothing that needs changing."
+   }
+  ]
+ }
+}
