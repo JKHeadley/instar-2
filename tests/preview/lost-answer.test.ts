@@ -146,6 +146,22 @@ describe('fault 1: a recall the local timeout interrupted is answered, not lost 
       } finally { replayed.close(); }
     } finally { r.close(); }
   });
+
+  it('keeps the replacement through a compaction snapshot: still UNKNOWN, and a second replacement is refused', async () => {
+    const r = await turn([{ uncertain: true, outcome: timedOutA }, { text: factReply }]);
+    try {
+      const before = { calls: r.journal.view.calls, unknown: pendingUnknownCalls(r.journal.view) };
+      r.journal.compact();
+      const reopened = r.reopen();
+      try {
+        expect(reopened.view.calls).toBe(before.calls);
+        expect(pendingUnknownCalls(reopened.view)).toEqual([`answer-replaced:${questionId}`]);
+        expect(reopened.view.turns.get(questionId)!.answerReplaced).toBe(true);
+        expect(() => reopened.append({ kind: 'answer-replace', id: questionId, state: 'uncertain', at: 1790000009000 }))
+          .toThrow(/answer replacement order or cap/u);
+      } finally { reopened.close(); }
+    } finally { r.close(); }
+  });
 });
 
 describe('fault 1, the other side of each boundary: when no replacement is made', () => {
