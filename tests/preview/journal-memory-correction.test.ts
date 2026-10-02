@@ -188,7 +188,14 @@ it('keeps a correction beside a delivered lost-answer notice across replay', asy
     const packet = JSON.parse(next.context);
     expect(packet.memory).toMatchObject([{ mode: 'corrected', replacement: 'the cedar trail starts at West Pier.' }]);
     expect(packet.memory[0].sourceLabel).toMatch(/^correction:operator\/main chat\/.+\/#\d+$/u);
-    expect(next.context).not.toContain('East Pier');
+    // The corrected-away value never appears as a current value. Its one permitted appearance is as labelled
+    // history: the `was` of a corrected memorySearch item (Rule 7, w3-k13a), which this 8000-byte packet carries
+    // once the guidance is short enough for the optional search block to fit (it did not before w3-fixedtrim).
+    const searched = (packet.memorySearch?.items ?? []) as { status: string; quote: string; was?: string }[];
+    for (const item of searched.filter(entry => entry.was?.includes('East Pier')))
+      expect(item).toMatchObject({ status: 'corrected', quote: 'the cedar trail starts at West Pier.' });
+    expect(JSON.stringify({ ...packet, memorySearch: packet.memorySearch && { ...packet.memorySearch,
+      items: searched.map(({ was: _was, ...rest }) => rest) } })).not.toContain('East Pier');
     const lost = packet.history.find((item: { notice?: string }) => item.notice === UNKNOWN_ANSWER_NOTICE);
     expect(lost).toMatchObject({ answer: null, notice: UNKNOWN_ANSWER_NOTICE, outcome: 'loss notice delivered; model UNKNOWN' });
     expect(lost.user).toContain('[withheld: operator correction or forgetting]');
