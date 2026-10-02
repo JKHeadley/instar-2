@@ -284,7 +284,15 @@ it('carries the raise in the capped limited answer; the yes raises it and the he
   expect(journal.view.limits.maxCalls).toBe(2);
   await worker.drain();
   expect(questions).toHaveLength(2);
-  journal.close();
+  // cint-L30: the limited answer's request row and its applied raise reopen from a compaction snapshot unchanged.
+  const before = projectionDigest(journal.view), requests = JSON.stringify(journal.view.operatorRequests);
+  journal.compact(); journal.close();
+  const reopened = openPreviewJournal(path, key);
+  expect(projectionDigest(reopened.view)).toBe(before);
+  expect(JSON.stringify(reopened.view.operatorRequests)).toBe(requests);
+  expect(latest(reopened)!.via).toBe('limited');
+  expect(reopened.view.limits.maxCalls).toBe(2);
+  reopened.close();
 }));
 
 it('renews the trial end to the reviewed expiry on a yes, and refuses a renewal with no reviewed activation installed', () => withRoot(async path => {
@@ -298,7 +306,15 @@ it('renews the trial end to the reviewed expiry on a yes, and refuses a renewal 
   worker.intake([message(2, request.message! + 1, 'yes')]);
   expect(journal.view.expires).toBe(SUBSCRIPTION_PREVIEW_EXPIRY);
   expect(journal.view.expiryAuthority).toBe(operatorYesAuthority(request.request.id, latest(journal)!.approved!.reference));
-  journal.close();
+  // cint-L30: the renewal request, its approval and the applied expiry reopen from a compaction snapshot unchanged.
+  const before = projectionDigest(journal.view), authority = journal.view.expiryAuthority;
+  journal.compact(); journal.close();
+  const reopened = openPreviewJournal(path, key);
+  expect(projectionDigest(reopened.view)).toBe(before);
+  expect(reopened.view.expires).toBe(SUBSCRIPTION_PREVIEW_EXPIRY);
+  expect(reopened.view.expiryAuthority).toBe(authority);
+  expect(latest(reopened)!.applied).toBe(true);
+  reopened.close();
   const missing = harness(path.replace('journal.encrypted', 'missing.encrypted'), { clock: now, genesis: { expires: end }, activation: null, answer: renew });
   missing.worker.intake([message(1, 50, 'please extend the trial')]); await missing.worker.drain();
   expect(missing.sent.at(-1)!.text).toContain('not installed on this machine yet');
