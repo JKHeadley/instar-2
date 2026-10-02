@@ -37,6 +37,8 @@ export interface ReplyCheckResult { verdict: ReplyVerdict; ruleIds: ReplyRule[];
   /** Present only when the reviewer judged each selected rule on its own; absent on a legacy combined verdict. */
   findings?: ReplyFinding[];
   durationMeasured?: true;
+  /** Present only on a Jev check that was asked the approval-report question. */
+  approvalReport?: ApprovalReport;
   usage?: { inputTokens: number | null; outputTokens: number | null; charge: null; inputComplete?: true } }
 /** The pinned JSON-result route reports total output usage, but no thinking blocks. */
 export interface ReplyReviewDiagnostics { outputTokens: number | null; thinkingPresent: 'unobservable' }
@@ -93,7 +95,31 @@ export function jevConfidentCredential(check: ReplyCheckResult): boolean {
   return score === undefined ? check.verdict === 'violation' : score >= positiveLine.credential;
 }
 export const jevQuestions = Object.fromEntries(rules.map(id => [id, { type: 'noul', instructions: JEV_INSTRUCTIONS[id] ?? REPLY_RULES[id] }]));
-export const jevRequestBody = (text: string): string => JSON.stringify({ state: text, model: JEV_MODEL, questions: jevQuestions });
+export const jevRequestBody = (text: string, approval?: ApprovalFacts): string =>
+  JSON.stringify({ state: text, model: JEV_MODEL, questions: approval ? approvalQuestions(approval) : jevQuestions });
+
+/** The approval-account exception (Purpose): whether this reply tells the operator about an approval that came through
+ * an account the agent can also use is a question of meaning, so the reviewer that already judges every model-written
+ * reply answers it, in the same batched call, and only where such an approval exists: no new call, and no keyword test (Rule 10). Every
+ * other reply's request is byte-for-byte unchanged. */
+export const APPROVAL_REPORT = 'approval_report';
+export interface ApprovalFacts { request: string; change: string }
+export const approvalQuestions = (facts: ApprovalFacts) => ({ ...jevQuestions, [APPROVAL_REPORT]: { type: 'noul',
+  instructions: `The message tells the reader about request ${facts.request}, which ${facts.change} and was approved through the reader's GitHub account, an account the writer can also use: it reports that approval, the request's outcome, or the resulting change itself.` } });
+/** The structured answer recorded with the reply, on Jev's established confident lines (`interpretStepJev`,
+ * `interpretSummaryJev`): at or below 0.15 a confident no, at or above 0.85 a yes, between them undecided. Only the
+ * confident no lets the runner omit the disclosure; yes, undecided, and an unreadable or absent answer all carry it.
+ * Measured on the real reviewer (fixtures/approval-report-jev-2026-10-02.json): the captured report and the paraphrase
+ * scored 0.19-0.28 (undecided, so the note rides) and an unrelated answer 0.02 (no). */
+export const APPROVAL_REPORT_NO = 0.15, APPROVAL_REPORT_YES = 0.85;
+export interface ApprovalReport { request: string; answer: 'yes' | 'no' | 'undecided' | 'unreadable'; noul?: number }
+export function readApprovalReport(value: unknown, request: string): ApprovalReport {
+  const answer = (value as { answers?: Record<string, { type?: unknown; noul?: unknown }> } | null)?.answers?.[APPROVAL_REPORT];
+  const noul = answer?.type === 'noul' ? answer.noul : undefined;
+  return typeof noul === 'number' && Number.isFinite(noul) && noul >= 0 && noul <= 1
+    ? { request, answer: noul <= APPROVAL_REPORT_NO ? 'no' : noul >= APPROVAL_REPORT_YES ? 'yes' : 'undecided', noul }
+    : { request, answer: 'unreadable' };
+}
 export function parseJevResponse(body: string): unknown {
   if (Buffer.byteLength(body) > JEV_RESPONSE_MAX_BYTES) throw Error('preview: Jev response too large');
   return JSON.parse(body);
@@ -233,21 +259,23 @@ const expired = (ports: ReplyCheckPorts) => ports.deadlineAt !== undefined && po
 const budgetResult = (path: ReplyPath, ruleIds: ReplyRule[], latencyMs: number): ReplyCheckResult =>
   ({ verdict: 'unavailable', ruleIds, confidence: null, path, latencyMs, reason: REPLY_CHECK_BUDGET_REASON });
 export async function checkReply(text: string, id: string, ports: ReplyCheckPorts,
-  originalPrompt?: string): Promise<ReplyDecision> {
+  originalPrompt?: string, approval?: ApprovalFacts): Promise<ReplyDecision> {
   let first: ReplyCheckResult;
   const started = ports.elapsedMs();
   if (expired(ports)) {
     ports.record(budgetResult('holding', [], 0));
     return { outcome: 'unavailable', path: 'holding' };
   }
-  try { const answer = await ports.jev(text, undefined, ports.deadlineAt === undefined || !ports.now
+  let report: ApprovalReport | undefined = approval && { request: approval.request, answer: 'unreadable' };
+  try { const answer = await ports.jev(text, approval ? approvalQuestions(approval) : undefined, ports.deadlineAt === undefined || !ports.now
     ? undefined : Math.max(1, ports.deadlineAt - ports.now()), id);
     first = expired(ports) ? budgetResult('jev', [], Math.max(0, ports.elapsedMs() - started))
-      : interpretJev(answer.value, answer.latencyMs); }
+      : interpretJev(answer.value, answer.latencyMs);
+    if (approval && !expired(ports)) report = readApprovalReport(answer.value, approval.request); }
   catch { first = { verdict: 'unavailable', ruleIds: [], confidence: null, path: 'jev',
     latencyMs: Math.max(0, ports.elapsedMs() - started),
     ...(expired(ports) ? { reason: REPLY_CHECK_BUDGET_REASON } : {}) }; }
-  ports.record(first);
+  ports.record(report ? { ...first, approvalReport: report } : first);
   if (expired(ports)) return { outcome: 'unavailable', path: 'jev' };
   if (first.verdict === 'pass') return { outcome: 'pass', path: 'jev' };
   return reviewReply(text, id, ports, first.ruleIds, originalPrompt);

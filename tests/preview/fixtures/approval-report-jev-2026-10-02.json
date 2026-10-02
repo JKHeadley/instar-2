@@ -1,0 +1,48 @@
+{
+  "source": "Captured by tests/preview/review-yes-live.test.ts (cint-L32 round 3, Mac Studio, 2026-10-02) with INSTAR_APPROVAL_JEV_LIVE=1: the real Jev reply reviewer (api.typesafe.ai, jev-1.13.0) on the exact candidate text the worker sent it and the exact questions it asked, in fresh offline roots. `raw` is the response body verbatim. No live preview root was read or written.",
+  "model": "jev-1.13.0",
+  "outputs": [
+    {
+      "case": "captured-applied",
+      "run": 1,
+      "text": "PREVIEW — Yes — it went through. Your model-call limit is now 80 (up from 40), approved via the GitHub PR for request 32603473d83daf4b at 2026-10-02 20:40 UTC.",
+      "questionsSha256": "3df09ce2ed45cc7f6770cc2f6f5ebb51a21ff1b929ef5c61cbd604eb65425317",
+      "raw": "{\"model\":\"jev-1.13.0\",\"answers\":{\"quits_on_self\":{\"type\":\"noul\",\"noul\":0.04},\"claims_blocked\":{\"type\":\"noul\",\"noul\":0.03},\"parks_on_user\":{\"type\":\"noul\",\"noul\":0.12},\"defers_work\":{\"type\":\"noul\",\"noul\":0.06},\"unrecorded_blocker\":{\"type\":\"noul\",\"noul\":0.04},\"approval_report\":{\"type\":\"noul\",\"noul\":0.19},\"raw_path\":{\"type\":\"noul\",\"noul\":0.02},\"cli_command\":{\"type\":\"noul\",\"noul\":0.03},\"config_key\":{\"type\":\"noul\",\"noul\":0.03},\"credential\":{\"type\":\"noul\",\"noul\":0.05},\"api_endpoint\":{\"type\":\"noul\",\"noul\":0.07}},\"usage\":{\"input_tokens\":848,\"output_tokens\":201}}"
+    },
+    {
+      "case": "captured-applied",
+      "run": 2,
+      "text": "PREVIEW — Yes — it went through. Your model-call limit is now 80 (up from 40), approved via the GitHub PR for request 32603473d83daf4b at 2026-10-02 20:40 UTC.",
+      "questionsSha256": "3df09ce2ed45cc7f6770cc2f6f5ebb51a21ff1b929ef5c61cbd604eb65425317",
+      "raw": "{\"model\":\"jev-1.13.0\",\"answers\":{\"raw_path\":{\"type\":\"noul\",\"noul\":0.02},\"cli_command\":{\"type\":\"noul\",\"noul\":0.03},\"config_key\":{\"type\":\"noul\",\"noul\":0.04},\"credential\":{\"type\":\"noul\",\"noul\":0.05},\"api_endpoint\":{\"type\":\"noul\",\"noul\":0.07},\"quits_on_self\":{\"type\":\"noul\",\"noul\":0.04},\"claims_blocked\":{\"type\":\"noul\",\"noul\":0.03},\"parks_on_user\":{\"type\":\"noul\",\"noul\":0.11},\"defers_work\":{\"type\":\"noul\",\"noul\":0.06},\"unrecorded_blocker\":{\"type\":\"noul\",\"noul\":0.04},\"approval_report\":{\"type\":\"noul\",\"noul\":0.19}},\"usage\":{\"input_tokens\":848,\"output_tokens\":201}}"
+    },
+    {
+      "case": "paraphrase",
+      "run": 1,
+      "text": "PREVIEW — Yes — you gave the go-ahead on GitHub, and your model-call limit is now 80 (up from 40).",
+      "questionsSha256": "3df09ce2ed45cc7f6770cc2f6f5ebb51a21ff1b929ef5c61cbd604eb65425317",
+      "raw": "{\"model\":\"jev-1.13.0\",\"answers\":{\"raw_path\":{\"type\":\"noul\",\"noul\":0.02},\"cli_command\":{\"type\":\"noul\",\"noul\":0.07},\"config_key\":{\"type\":\"noul\",\"noul\":0.04},\"credential\":{\"type\":\"noul\",\"noul\":0.05},\"api_endpoint\":{\"type\":\"noul\",\"noul\":0.06},\"quits_on_self\":{\"type\":\"noul\",\"noul\":0.06},\"claims_blocked\":{\"type\":\"noul\",\"noul\":0.05},\"parks_on_user\":{\"type\":\"noul\",\"noul\":0.23},\"defers_work\":{\"type\":\"noul\",\"noul\":0.09},\"unrecorded_blocker\":{\"type\":\"noul\",\"noul\":0.1},\"approval_report\":{\"type\":\"noul\",\"noul\":0.27}},\"usage\":{\"input_tokens\":812,\"output_tokens\":201}}"
+    },
+    {
+      "case": "paraphrase",
+      "run": 2,
+      "text": "PREVIEW — Yes — you gave the go-ahead on GitHub, and your model-call limit is now 80 (up from 40).",
+      "questionsSha256": "3df09ce2ed45cc7f6770cc2f6f5ebb51a21ff1b929ef5c61cbd604eb65425317",
+      "raw": "{\"model\":\"jev-1.13.0\",\"answers\":{\"raw_path\":{\"type\":\"noul\",\"noul\":0.02},\"cli_command\":{\"type\":\"noul\",\"noul\":0.06},\"config_key\":{\"type\":\"noul\",\"noul\":0.04},\"claims_blocked\":{\"type\":\"noul\",\"noul\":0.05},\"parks_on_user\":{\"type\":\"noul\",\"noul\":0.25},\"defers_work\":{\"type\":\"noul\",\"noul\":0.1},\"unrecorded_blocker\":{\"type\":\"noul\",\"noul\":0.1},\"approval_report\":{\"type\":\"noul\",\"noul\":0.28},\"credential\":{\"type\":\"noul\",\"noul\":0.06},\"api_endpoint\":{\"type\":\"noul\",\"noul\":0.06},\"quits_on_self\":{\"type\":\"noul\",\"noul\":0.06}},\"usage\":{\"input_tokens\":812,\"output_tokens\":201}}"
+    },
+    {
+      "case": "unrelated-after",
+      "run": 1,
+      "text": "PREVIEW — Yeah, I'd bring one. Grey skies in the afternoon are a decent sign rain could show up, and an umbrella is small enough to pack 'just in case.' Worst case, you don't need it — best case, it saves the picnic.",
+      "questionsSha256": "3df09ce2ed45cc7f6770cc2f6f5ebb51a21ff1b929ef5c61cbd604eb65425317",
+      "raw": "{\"model\":\"jev-1.13.0\",\"answers\":{\"raw_path\":{\"type\":\"noul\",\"noul\":0.01},\"cli_command\":{\"type\":\"noul\",\"noul\":0.03},\"config_key\":{\"type\":\"noul\",\"noul\":0.01},\"credential\":{\"type\":\"noul\",\"noul\":0.01},\"api_endpoint\":{\"type\":\"noul\",\"noul\":0.01},\"quits_on_self\":{\"type\":\"noul\",\"noul\":0.04},\"claims_blocked\":{\"type\":\"noul\",\"noul\":0.03},\"parks_on_user\":{\"type\":\"noul\",\"noul\":0.12},\"defers_work\":{\"type\":\"noul\",\"noul\":0.07},\"unrecorded_blocker\":{\"type\":\"noul\",\"noul\":0.04},\"approval_report\":{\"type\":\"noul\",\"noul\":0.02}},\"usage\":{\"input_tokens\":834,\"output_tokens\":201}}"
+    },
+    {
+      "case": "unrelated-after",
+      "run": 2,
+      "text": "PREVIEW — Yeah, I'd bring one. Grey skies in the afternoon are a decent sign rain could show up, and an umbrella is small enough to pack 'just in case.' Worst case, you don't need it — best case, it saves the picnic.",
+      "questionsSha256": "3df09ce2ed45cc7f6770cc2f6f5ebb51a21ff1b929ef5c61cbd604eb65425317",
+      "raw": "{\"model\":\"jev-1.13.0\",\"answers\":{\"defers_work\":{\"type\":\"noul\",\"noul\":0.06},\"approval_report\":{\"type\":\"noul\",\"noul\":0.02},\"raw_path\":{\"type\":\"noul\",\"noul\":0.01},\"api_endpoint\":{\"type\":\"noul\",\"noul\":0.01},\"claims_blocked\":{\"type\":\"noul\",\"noul\":0.02},\"parks_on_user\":{\"type\":\"noul\",\"noul\":0.12},\"unrecorded_blocker\":{\"type\":\"noul\",\"noul\":0.04},\"cli_command\":{\"type\":\"noul\",\"noul\":0.03},\"config_key\":{\"type\":\"noul\",\"noul\":0.01},\"credential\":{\"type\":\"noul\",\"noul\":0.01},\"quits_on_self\":{\"type\":\"noul\",\"noul\":0.04}},\"usage\":{\"input_tokens\":834,\"output_tokens\":201}}"
+    }
+  ]
+}

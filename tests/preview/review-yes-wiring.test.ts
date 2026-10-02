@@ -9,6 +9,7 @@ import { conclusionText, parseModelJson } from './model-json.js';
 import { decisionWithinFloor } from './model-call-boundary.js';
 import { createJournalWorker, openPreviewJournal, operatorRequestsReport, previewTestContext, projectionDigest } from './journal-test-worker.js';
 import { approvalDisclosureText } from './journal.js';
+import { APPROVAL_REPORT, JEV_MODEL, jevQuestions } from './reply-check.js';
 import { operatorActionSurface, operatorResultText, operatorYesAuthority, explicitYesStatus } from './operator-yes.js';
 import { createReviewYesSource, type GitHubReview, type GitHubReviewClient } from './review-yes-source.js';
 import { createGitHubReviewClient } from './github-review-client.js';
@@ -151,8 +152,12 @@ function fakeGitHub() {
 }
 type Usage = { inputTokens: null; outputTokens: null; charge: null };
 type ModelAnswer = string | { state: 'complete'; text: string; usage: Usage } | { state: 'complete'; failureClass: 'malformed'; usage: Usage };
+/** The reply reviewer (Jev) as the worker calls it: every reply rule clears, and the approval-report question, when it
+ * is asked at all, is answered by `report` (a probability, `undefined` for an answer without it, or a thrown error). */
+type JevQuestions = Record<string, { type: string; instructions: string }> | undefined;
+type Reviewer = { asked: JevQuestions[]; report: (text: string) => number | undefined; late?: number };
 const harness = (path: string, install: { current: ExplicitYesInstallation }, model?: (question: string) => ModelAnswer, start = 1000,
-  g: typeof genesis = genesis) => {
+  g: typeof genesis = genesis, reviewer?: Reviewer) => {
   const sent: { text: string; id: number }[] = [];
   let now = start, next = 100, calls = 0;
   const github = fakeGitHub();
@@ -163,7 +168,16 @@ const harness = (path: string, install: { current: ExplicitYesInstallation }, mo
     model: async (input: { question: string }) => { calls++; return model ? model(input.question)
       : JSON.stringify({ memory: [], ...(input.question.includes('more calls') ? raise : { reply: 'ok' }) }); },
     explicitYes: { context: previewTestContext, installation: () => install.current, review },
-    send: async (input: { expectedText: string }) => { next += 1; sent.push({ text: input.expectedText, id: next }); return next; } });
+    send: async (input: { expectedText: string }) => { next += 1; sent.push({ text: input.expectedText, id: next }); return next; },
+    ...(reviewer ? { replyCheck: { elapsedMs: () => now,
+      escalate: async () => { throw Error('no contextual review in this harness'); },
+      jev: async (text: string, questions?: JevQuestions) => {
+        reviewer.asked.push(questions);
+        // A late answer: the shared reply-check deadline passes before it arrives.
+        if (reviewer.late !== undefined) now += reviewer.late;
+        const noul = questions && APPROVAL_REPORT in questions ? reviewer.report(text) : undefined;
+        return { latencyMs: 5, value: { model: JEV_MODEL, answers: { ...Object.fromEntries(Object.keys(jevQuestions).map(id => [id, { type: 'noul', noul: 0.01 }])),
+          ...(noul === undefined ? {} : { [APPROVAL_REPORT]: { type: 'noul', noul } }) } } }; } } } : {}) });
   return { journal, worker, sent, github, tick: (ms: number) => { now += ms; }, calls: () => calls };
 };
 const withRoot = async (run: (path: string) => Promise<void>) => {
@@ -238,40 +252,91 @@ it('shows no disclosure on the no-access route', () => withRoot(async path => {
   h.journal.close();
 }));
 
-it('displays the disclosure on a later answer that reports the approval, whatever its age, and never on the no-access route', () => withRoot(async path => {
-  // Purpose (the approval-account exception): the status answer after the completion line displays the approval too.
+it('asks the reply reviewer whether an answer reports a shared-access approval, and omits the note only on its readable no', () => withRoot(async path => {
+  // Purpose (the approval-account exception): whether an answer reports the approval is a judgment of meaning, made by the
+  // reviewer that already checks every model-written reply, in the same call; it fails toward disclosure.
+  const PARAPHRASE = 'Yes — you gave the go-ahead on GitHub, and your model-call limit is now 80 (up from 40).';
   const reported = (question: string) => JSON.stringify({ memory: [], ...(question.includes('more calls') ? raise
-    : { reply: question.includes('approved') ? 'Yes, that was approved and your limit is raised.' : 'ok' }) });
-  const h = harness(path, { current: installation() }, reported);
+    : { reply: question.includes('approved') ? 'Yes, that was approved and your limit is raised.'
+      : question.includes('go-ahead') ? PARAPHRASE : 'Grey skies often mean rain, so an umbrella is a sensible thing to pack.' }) });
+  // The stub reviewer's own meaning test: the umbrella answer reports nothing; anything else here reports the approval.
+  const reviewer: Reviewer = { asked: [], report: text => text.includes('umbrella') ? 0.02 : 0.93 };
+  const h = harness(path, { current: installation() }, reported, 1000, genesis, reviewer);
   await ask(h);
+  // Before any approval the reviewer is asked exactly the standing questions: the request bytes are unchanged.
+  expect(reviewer.asked.every(questions => questions === undefined)).toBe(true);
   approve(h); h.tick(10); await h.worker.minimal();
   const done = h.journal.view.operatorRequests.at(-1)!;
   expect(done.applied).toBe(true);
-  h.worker.intake([message(3, h.sent.at(-1)!.id + 1, 'did that go through?')]); await h.worker.drain();
-  expect(h.sent.at(-1)!.text).toContain('ok');
-  expect(h.sent.at(-1)!.text).toContain(approvalDisclosureText(done));
-  // Past the hour the approval is still reported truthfully: an answer reporting it carries the note, and an unrelated
-  // answer need not repeat it.
-  h.tick(3_600_001);
-  h.worker.intake([message(4, h.sent.at(-1)!.id + 1, 'was my raise approved?')]); await h.worker.drain();
+  const facts = () => reviewer.asked.at(-1)?.[APPROVAL_REPORT]?.instructions ?? '';
+  const recorded = () => h.journal.view.order.at(-1)!.replyChecks?.find(check => check.path === 'jev')?.approvalReport;
+  // The status answer reporting the approval: the reviewer says yes, with the facts it needs, and the note rides once.
+  h.worker.intake([message(3, h.sent.at(-1)!.id + 1, 'was my raise approved?')]); await h.worker.drain();
+  expect(facts()).toContain(done.request.id);
+  expect(facts()).toContain('model-call allowance to 10');
+  expect(facts()).toContain('an account the writer can also use');
+  expect(recorded()).toEqual({ request: done.request.id, answer: 'yes', noul: 0.93 });
   expect(h.sent.at(-1)!.text).toContain('approved and your limit is raised');
+  expect(h.sent.at(-1)!.text.split(SHARED_ACCESS_NOTE)).toHaveLength(2);
   expect(h.sent.at(-1)!.text).toContain(approvalDisclosureText(done));
-  h.worker.intake([message(5, h.sent.at(-1)!.id + 1, 'and the weather?')]); await h.worker.drain();
-  expect(h.sent.at(-1)!.text).toContain('ok');
+  // Past the request's hour, the paraphrase naming neither the request nor an approval: decided by the reviewer's yes.
+  h.tick(3_600_001);
+  h.worker.intake([message(4, h.sent.at(-1)!.id + 1, 'did I give the go-ahead?')]); await h.worker.drain();
+  expect(recorded()).toMatchObject({ answer: 'yes' });
+  expect(h.sent.at(-1)!.text).toContain(PARAPHRASE);
+  expect(h.sent.at(-1)!.text).toContain(approvalDisclosureText(done));
+  // An unrelated answer after the approval: the reviewer's readable no, recorded with the reply, and no note.
+  h.worker.intake([message(5, h.sent.at(-1)!.id + 1, 'should I bring an umbrella?')]); await h.worker.drain();
+  expect(recorded()).toEqual({ request: done.request.id, answer: 'no', noul: 0.02 });
+  expect(h.sent.at(-1)!.text).toContain('umbrella');
   expect(h.sent.at(-1)!.text).not.toContain(SHARED_ACCESS_NOTE);
+  // The same unrelated answer when the reviewer cannot tell (between its confident lines): the note rides.
+  reviewer.report = () => 0.3;
+  h.worker.intake([message(6, h.sent.at(-1)!.id + 1, 'is an umbrella overkill?')]); await h.worker.drain();
+  expect(recorded()).toEqual({ request: done.request.id, answer: 'undecided', noul: 0.3 });
+  expect(h.sent.at(-1)!.text).toContain(approvalDisclosureText(done));
+  // The same unrelated answer when the reviewer's answer cannot be read: the note rides.
+  reviewer.report = () => undefined;
+  h.worker.intake([message(7, h.sent.at(-1)!.id + 1, 'and tomorrow, an umbrella?')]); await h.worker.drain();
+  expect(recorded()).toEqual({ request: done.request.id, answer: 'unreadable' });
+  expect(h.sent.at(-1)!.text).toContain(approvalDisclosureText(done));
+  // A review timeout: its "no" arrives after the shared deadline, so nothing readable decided this text, and the note rides.
+  reviewer.report = () => 0.02; reviewer.late = 30_001;
+  h.worker.intake([message(8, h.sent.at(-1)!.id + 1, 'umbrella for the weekend?')]); await h.worker.drain();
+  expect(recorded()).toEqual({ request: done.request.id, answer: 'unreadable' });
+  expect(h.sent.at(-1)!.text).toContain('umbrella');
+  expect(h.sent.at(-1)!.text).toContain(approvalDisclosureText(done));
   h.journal.close();
-  // The no-access neighbor: the same status answers, within and past the hour, carry no disclosure.
-  const plain = harness(path.replace('journal.encrypted', 'plain.encrypted'), { current: noAccess() }, reported);
+  // The no-access neighbor: the same answers, within and past the hour, never carry the note, and the reviewer is never
+  // asked the extra question (no extra bytes, no extra cost).
+  const plainReviewer: Reviewer = { asked: [], report: () => 0.93 };
+  const plain = harness(path.replace('journal.encrypted', 'plain.encrypted'), { current: noAccess() }, reported, 1000, genesis, plainReviewer);
   await ask(plain);
   approve(plain); plain.tick(10); await plain.worker.minimal();
   expect(plain.journal.view.operatorRequests.at(-1)!.applied).toBe(true);
-  plain.worker.intake([message(3, plain.sent.at(-1)!.id + 1, 'did that go through?')]); await plain.worker.drain();
-  expect(plain.sent.at(-1)!.text).not.toContain(SHARED_ACCESS_NOTE);
-  plain.tick(3_600_001);
-  plain.worker.intake([message(4, plain.sent.at(-1)!.id + 1, 'was my raise approved?')]); await plain.worker.drain();
+  plain.worker.intake([message(3, plain.sent.at(-1)!.id + 1, 'was my raise approved?')]); await plain.worker.drain();
   expect(plain.sent.at(-1)!.text).toContain('approved and your limit is raised');
   expect(plain.sent.at(-1)!.text).not.toContain(SHARED_ACCESS_NOTE);
+  plain.tick(3_600_001);
+  plain.worker.intake([message(4, plain.sent.at(-1)!.id + 1, 'did I give the go-ahead?')]); await plain.worker.drain();
+  expect(plain.sent.at(-1)!.text).toContain(PARAPHRASE);
+  expect(plain.sent.at(-1)!.text).not.toContain(SHARED_ACCESS_NOTE);
+  expect(plainReviewer.asked.length).toBeGreaterThanOrEqual(3);
+  expect(plainReviewer.asked.every(questions => questions === undefined)).toBe(true);
+  expect(plain.journal.view.order.flatMap(turn => turn.replyChecks ?? []).some(check => check.approvalReport)).toBe(false);
   plain.journal.close();
+}));
+
+it('carries the disclosure on a later answer when no reviewer runs at all (fail toward disclosure)', () => withRoot(async path => {
+  const h = harness(path, { current: installation() });
+  await ask(h);
+  approve(h); h.tick(10); await h.worker.minimal();
+  const done = h.journal.view.operatorRequests.at(-1)!;
+  h.tick(3_600_001);
+  h.worker.intake([message(3, h.sent.at(-1)!.id + 1, 'and the weather?')]); await h.worker.drain();
+  expect(h.sent.at(-1)!.text).toContain('ok');
+  expect(h.sent.at(-1)!.text).toContain(approvalDisclosureText(done));
+  h.journal.close();
 }));
 
 it('carries the review request on a capped limited answer, and applies the approval once with no model call (Rules 15, 79, 82)', () => withRoot(async path => {
