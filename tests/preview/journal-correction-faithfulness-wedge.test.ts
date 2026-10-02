@@ -2,7 +2,7 @@ import { expect, it } from 'vitest';
 import { mkdtempSync, realpathSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
-import { createJournalWorker, openPreviewJournal, summarySpanFailures } from './journal-test-worker.js';
+import { MEMORY_UNDECIDED_REPLY, createJournalWorker, openPreviewJournal, summarySpanFailures } from './journal-test-worker.js';
 import { loopHealth } from './obligations.js';
 
 // The proof room of 2026-10-01 (room two, proofroom2-small, 32,768-byte context, 18:40-19:02 PDT, live build
@@ -91,6 +91,21 @@ it('answers every turn after a memory correction whose record can never be compl
     expect(health.inhibition).toBeNull();
     // Nothing withheld still carries a hold that withholds it.
     expect(w.journal.view.order.filter(turn => turn.held !== undefined && turn.sent === undefined)).toEqual([]);
+
+    // Answered is not enough: the operator must be told nothing false about the correction that did not land. A
+    // turn whose memory change was never recorded gets the fixed not-recorded notice, never the model's confident
+    // "Changed X -> Y" claim; and every change a sent reply does claim is one the journal actually holds
+    // (Rules 2, 85: a request that could not be recorded is reported as not recorded, not quietly asserted).
+    const recorded = new Set(w.journal.view.memory.map(change => change.replacement));
+    let claims = 0;
+    for (const turn of w.journal.view.order) {
+      const body = turn.intentBody ?? '';
+      if (turn.memoryUndecided) expect(body.startsWith('PREVIEW — Changed')).toBe(false);
+      const claimed = /^PREVIEW — Changed .* (?:->|\u2192) (.*)$/u.exec(body)?.[1];
+      if (claimed !== undefined) { claims++; expect([turn.update, recorded.has(claimed)]).toEqual([turn.update, true]); }
+    }
+    expect(claims).toBeGreaterThan(0); // the clause above is not vacuous: real change claims were sent
+    expect(w.journal.view.order.some(turn => turn.memoryUndecided && turn.intentBody === MEMORY_UNDECIDED_REPLY)).toBe(true);
 
     // The correction's own safeguard is intact: the refused summary is not committed, and every packet built after
     // the correction landed withholds the corrected clause instead of restating it.
