@@ -21,6 +21,11 @@ Convergence: none
 Decision: D-auth-single-voter | single-voter authority on one machine rather than two voters (two voters need both for any commit and give no failover at all, §2) or three (the brief excludes a third machine) | reported=/Users/dabombstudio/.instar/agents/echo/.instar/lanes/w3-twomachine-PROGRESS.md
 Decision: D-intake-by-telegram | intake durability across a handover comes from Telegram's own unconfirmed-update retention plus a shared settled cursor, rather than copying message text to the authority | reported=/Users/dabombstudio/.instar/agents/echo/.instar/lanes/w3-twomachine-PROGRESS.md
 Decision: D-claim-key | dispatch-claims are keyed by send-target string (a reply is update:<id>) so the runner's other send kinds can use the same gate | reported=/Users/dabombstudio/.instar/agents/echo/.instar/lanes/w3-twomachine-PROGRESS.md
+Prompt review: no prompt text changed by this unit. The authority and serving modules send nothing to a model. tests/preview/journal.ts and the fixed-installation files enter this record's range only through the cint-L22 merges of w3-correctionwedge and w3-confinefix, reviewed in their own records; this unit changes no prompt, question, policy or framing, and no fixture phrase was copied into prompt text.
+Prompt finding: 3c4b8fdd526e | protocol-literal | the reader's refusal reason, asserted verbatim by its test; no model reads it, and this change does not touch either line (as dispositioned in the carried w3-confinefix record; it enters this record's range only through the cint-L22 merge)
+Prompt finding: 849db3a6296a | protocol-literal | an existing fixed reply literal in journal.ts, unchanged by this unit (as dispositioned in the carried records)
+Prompt finding: bd01de21286a | protocol-literal | existing capability-guidance wording in journal.ts, unchanged by this unit (as dispositioned in the carried records)
+Prompt finding: fb5fa7e706c8 | protocol-literal | existing answer-guidance wording in journal.ts, unchanged by this unit (as dispositioned in the carried records)
 
 Subject (5 paths): tests/preview/conversation-authority.declarations.json, tests/preview/conversation-authority.ts, tests/preview/two-machine-live-test.md, tests/preview/two-machine-serving.test.ts, tests/preview/two-machine-serving.ts
 

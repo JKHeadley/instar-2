@@ -24,6 +24,7 @@ Prompt review: no prompt text changed; the model's summary and answer protocols 
 Prompt finding: 849db3a6296a | protocol-literal | the runner's fixed reply when no memory is saved; an existing literal in journal.ts, unchanged by this change, and the memory-list test asserts that fixed text
 Prompt finding: bd01de21286a | protocol-literal | existing capability-guidance wording in journal.ts, unchanged by this change; the hallucination-rate test checks it is carried
 Prompt finding: fb5fa7e706c8 | protocol-literal | existing answer-guidance wording for questions about what the operator said, unchanged by this change; the hallucination-rate test checks it is carried
+Prompt finding: 3c4b8fdd526e | protocol-literal | the reader's refusal reason, asserted verbatim by its test; no model reads it, and this change does not touch either line (as dispositioned in the carried w3-confinefix record; it enters this record's range only through the cint-L22 merge)
 
 ## Closing block
 
