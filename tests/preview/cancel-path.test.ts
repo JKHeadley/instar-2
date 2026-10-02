@@ -184,13 +184,20 @@ it('asks which when the withdrawal matches two open requests, and holds none of 
     // And it says plainly that nothing was cancelled, naming what still stands.
     expect(w.sent.at(-1)!).toContain('Your open requests still stand and will be sent at their time:');
     expect(openRequests(w.journal.view).map(item => item.quote)).toEqual([EARLIER, FEEDER, PLUMBER]);
-    // The live failure: none of these ever fired. All three do now.
-    clock.now = DUE_650;
-    for (let pass = 0; pass < 4; pass++) { await w.worker.drain(); await w.worker.sendRequested(); }
-    expect(pushes(w.sent).join('\n')).toContain(EARLIER);
-    expect(pushes(w.sent).join('\n')).toContain(FEEDER);
-    expect(pushes(w.sent).join('\n')).toContain('call the plumber');
+    // The verdict is a durable journal row, not a memory flag: it is still there after a restart, with
+    // every request still open (Rule 2; the durable-intake floor).
     w.journal.close();
+    const after = world(root, { answer: () => { throw Error('no answer call expected after restart'); } }, clock, false);
+    expect(turnOf(after, CANCEL).reminderDecided).toBe(true);
+    expect(after.journal.view.reminderCancels).toHaveLength(0);
+    expect(openRequests(after.journal.view).map(item => item.quote)).toEqual([EARLIER, FEEDER, PLUMBER]);
+    // The live failure: none of these ever fired. All three do now, on the restarted root.
+    clock.now = DUE_650;
+    for (let pass = 0; pass < 4; pass++) { await after.worker.drain(); await after.worker.sendRequested(); }
+    expect(pushes(after.sent).join('\n')).toContain(EARLIER);
+    expect(pushes(after.sent).join('\n')).toContain(FEEDER);
+    expect(pushes(after.sent).join('\n')).toContain('call the plumber');
+    after.journal.close();
   } finally { rmSync(root, { recursive: true, force: true }); }
 }, 60000);
 
