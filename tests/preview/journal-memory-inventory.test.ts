@@ -153,7 +153,9 @@ it('drains an accepted memory question when the ordinary envelope fits but even 
     // re-measured in 10-byte steps: pass 14240-14640, fail 14230 and 14650.
     // w3-recallrank: the answer protocol's one lookup sentence grew the envelope by 284 bytes (Rule 11);
     // re-measured in 10-byte steps: pass 14520-14930, fail 14510 and 14940.
-    const g = { ...genesis, maxBytes: 14720 }; // midway in the shifted window between the two bounds
+    // cint-L27: merged with w3-reminderwords and the three trims that pay for the lookup sentence; re-measured in
+    // 10-byte steps: pass 14310-14710, fail 14300 and 14720.
+    const g = { ...genesis, maxBytes: 14510 }; // midway in the shifted window between the two bounds
     const journal = openPreviewJournal(join(directory, 'journal.encrypted'), key, g);
     const question = 'What do you know about me? Context: '.padEnd(2500, 'x');
     const full = workerFor(journal).probe(question);

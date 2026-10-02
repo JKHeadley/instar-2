@@ -64,7 +64,9 @@ const world = (root: string, opts: { bigSummary: boolean; decides: boolean }, cl
         // Undecided: the answer gives no memory decision for a cued correction, the shape the runner holds as pending.
         return opts.decides
           ? JSON.stringify({ reply: 'Done, the bird feeder reminder is cancelled.', memory: [], dated: [],
-            cancelReminders: listed.filter(item => item.quote.includes(target)).map(item => item.id) })
+            // cint-L27: the answer path admits a cancellation only against the operator's own withdrawing words
+            // (w3-reminderwords); the summary path above keeps its ids-only shape.
+            cancelReminders: listed.filter(item => item.quote.includes(target)).map(item => ({ id: item.id, quote: `cancel the ${target} one` })) })
           : JSON.stringify({ reply: 'Okay.', dated: [] });
       }
       return JSON.stringify({ reply: `Noted: ${input.question.slice(0, 40)}`, memory: [], dated: [] });
