@@ -1,5 +1,21 @@
 [
   {
+    "revision": 9,
+    "date": "2026-10-02",
+    "status": "draft",
+    "cause": {
+      "kind": "conversation",
+      "note": "Operator amendment 2026-10-02: an operator may accept, by a recorded statement naming the account and installation, approvals from an account the agent can also use; disclosed, revocable; the agent's duty not to approve as the operator stated as a value. Operator direction: topic 102965 messages 121802 and 121804; exact wording ruled by the reviewer 12:22; exact-content approval pending at the time of this commit."
+    },
+    "changes": [
+      {
+        "what": "Widen one `account-assented` condition to match the amended purpose: the current P-02 policy records that the agent holds no session, credential, delegated sender or recovery path to that account, OR cites the operator's current recorded acceptance of that access under the purpose's approval-account exception. Every other condition of the class is unchanged.",
+        "why": "The decoder contract repeated the absent-access requirement the purpose now admits an exception to; without this the amended rule and the type document would contradict each other.",
+        "ref": "Operator direction: topic 102965, messages 121802 and 121804, 2026-10-02 12:10 PDT; reviewer wording ruling 2026-10-02 12:22; exact-content operator approval PENDING"
+      }
+    ]
+  },
+  {
     "revision": 8,
     "date": "2026-09-29",
     "status": "approved",
