@@ -2326,6 +2326,16 @@ function project(view: JournalView, row: JournalRecord, system?: SystemCheck): v
     if (row.state !== 'uncertain') settleTokens(view, `summary:${String(row.through)}`, row.usage);
     const failures = (view.summaryFailures.get(row.through) ?? 0) + 1;
     view.summaryFailures.set(row.through, failures); view.summarySpanFailures.push(row.through);
+    // A `summary faithfulness:` hold waits for an accepted summary covering the turn (below). Once a frontier has
+    // used its retries no summary at it can ever be accepted, so that wait is a latch: on the proof room of
+    // 2026-10-01 one unfinishable correction left every later turn unanswered for 22 minutes. The objection names a
+    // summary candidate, never an operator turn, so an exhausted frontier releases those turns to the ordinary
+    // answer path (Rules 15, 77; Rule 95's open side -- reachability to the operator fails open). The candidate is
+    // still refused and uncommitted, and the packet still withholds the corrected clause, so nothing stale returns.
+    if (summarySpanFailures(view, row.through) >= 2)
+      for (const turn of view.heldTurns) if (turn.update <= row.through && turn.held?.startsWith('summary faithfulness:')) {
+        delete turn.held; delete turn.heldSince; view.heldTurns.delete(turn);
+      }
     if (view.stepCheckStarted && row.output !== undefined)
       view.stepChecks.set(`summary-failed:${row.through}:${failures}`, { output: row.output });
     view.lastSummaryFailure = row;
