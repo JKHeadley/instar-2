@@ -83,17 +83,19 @@ const REPLY_REVIEW_HEADROOM_BYTES = 8192;
 /** The room a context limit must leave beside one turn's prompt for that turn's reply review. */
 export const replyReviewReserveFor = (maxBytes: number) => Math.min(REPLY_REVIEW_HEADROOM_BYTES, Math.floor(maxBytes / 4));
 /** The prompt parts every ordinary answer turn carries, whatever the conversation holds: the subscription
- * system prompt (3039), the standing instruction message (4309), the request envelope's own canonical
+ * system prompt (3039), the standing instruction message (4379), the request envelope's own canonical
  * scaffold (1507), and the minimum packet (14158: the pinned source briefing, the decision guidance, the
  * concurrent-work view, the audience and the clock), with the desk report at its cut bound -- the largest
  * shape that is always sent. Measured on this build from a fresh root's first ordinary turn; a number
  * chosen by hand here could drift below the real parts, so `default-context-floor.test.ts` re-measures
- * the live answer path at the default limit and fails when they outgrow what it allows. */
-export const PREVIEW_FIXED_PROMPT_BYTES = 23_013;
+ * the live answer path at the default limit and fails when they outgrow what it allows. Re-measured at
+ * cint-L24 (23013 -> 23083): w3-longchat's incomplete-search and continuity wording added 70 bytes to the
+ * standing instruction message; the packet and the scaffold are unchanged. */
+export const PREVIEW_FIXED_PROMPT_BYTES = 23_083;
 /** The smallest context limit at which one ordinary turn fits with its reply review beside it: the least
  * limit L with `L - replyReviewReserveFor(L) >= PREVIEW_FIXED_PROMPT_BYTES`. Derived from that inequality
  * rather than picked (conservative by one byte where the quarter reserve binds: the exact least value for
- * 23013 is 30683 and this gives 30684). A limit below this cannot serve its own first turn, however little
+ * 23083 is 30777 and this gives 30778). A limit below this cannot serve its own first turn, however little
  * the conversation holds, so no summary or set-aside can recover it -- which is why the doorways that set a
  * limit refuse one below it instead of letting an unservable root be created. */
 export const PREVIEW_MIN_SERVABLE_CONTEXT_BYTES = Math.ceil(PREVIEW_FIXED_PROMPT_BYTES * 4 / 3) < REPLY_REVIEW_HEADROOM_BYTES * 4
