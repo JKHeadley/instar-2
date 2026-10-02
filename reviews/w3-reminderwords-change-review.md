@@ -14,7 +14,7 @@ Side effects: a message that asks for a second reminder at a time already taken 
 Undo and recovery: revert the edits in tests/preview/briefing.ts, tests/preview/journal.ts, tests/preview/README.md, register-source/owner-references/preview.json and the three test files, delete tests/preview/reminder-words.test.ts and its fixture, and regenerate the register. Nothing is stored differently, so no journal migrates either way. Reverting only the validator while keeping the guidance would leave the model told to cite a quote that code ignores; reverting only the guidance would leave it uninstructed about a quote code requires — revert both together or neither.
 Multi-machine posture: single-machine preview runner; no shared, replicated or leased state touched. The capability note is a property of the revision, identical on every machine.
 Layer below: the packet byte envelope (limits.maxBytes), prepareJournalEnvelope's prompt bound and the reply-review headroom — all unchanged; this change only makes the always-sent parts smaller. SUBSCRIPTION_CONVERSATION_SYSTEM_PROMPT and the pinned purpose excerpts are unchanged (read to confirm the system prompt's "no tools and cannot act beyond this answer" is consistent with the new wording: the runner brings the request back as its own turn, so the later answer IS that turn's answer).
-Bug class: prompt
+Bug class: user-facing
 Bug evidence: reproducer=tests/preview/reminder-words.test.ts
 Hook bypass: none
 Convergence: none
