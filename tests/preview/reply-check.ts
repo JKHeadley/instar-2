@@ -411,11 +411,8 @@ export const CLAIM_SCOPED_RULES: readonly ReplyRule[] = Object.freeze(['defers_w
 /** Shortest named claim acted on. Below this a span is a fragment ("later", "a deferral"), not a claim, so it
  * names nothing. The live recorded claim `I'll summarize then` is 19 characters, which sets the bound. */
 export const CLAIM_MATCH_MIN = 12;
-/** A reason is length-bounded, so a long claim can arrive truncated. Its opening run then locates the sentence,
- * but only a run long enough to be unambiguous — a short claim must match outright. */
+/** A sentence the claim spans whole is carried by it only when that sentence is long enough to be unambiguous. */
 export const CLAIM_PREFIX_MIN = 24;
-/** Least visible text that still answers the operator. Below it nothing substantive survived the removal. */
-export const SUBSTANTIVE_MIN = 24;
 
 const quoteFolds: readonly [RegExp, string][] = [[/[\u2018\u2019\u02bc\u2032]/gu, "'"],
   [/[\u201c\u201d\u2033]/gu, '"'], [/[\u2010-\u2015]/gu, '-'], [/\s+/gu, ' ']];
@@ -475,14 +472,14 @@ export function replySegments(text: string): { text: string; separator: string }
   return segments;
 }
 
-/** True when this segment carries the named claim: it contains the claim, the claim spans it, or the claim's
- * opening run appears in it (a reason is length-bounded, so a long claim arrives truncated). */
+/** True when this segment carries the named claim: it contains the whole quoted claim, or the claim spans it.
+ * A truncated quote ("… next mess…") still matches through its available text, ellipsis folded away; a shared
+ * opening alone never does, because the rest of a complete quote may name a different sentence (Rules 4, 86). */
 export function segmentCarries(segment: string, claim: string): boolean {
   const text = foldClaim(segment), named = foldClaim(claim);
   if (named.length < CLAIM_MATCH_MIN) return false;
   if (text.includes(named)) return true;
-  if (text.length >= CLAIM_PREFIX_MIN && named.includes(text)) return true;
-  return named.length > CLAIM_PREFIX_MIN && text.includes(named.slice(0, CLAIM_PREFIX_MIN));
+  return text.length >= CLAIM_PREFIX_MIN && named.includes(text);
 }
 
 /** What survived, what was removed, and every named claim no sentence carried. Nothing is ever silently
@@ -502,6 +499,7 @@ export function exciseNamedClaims(body: string, claims: readonly string[]): Clai
     unlocated: named.filter(claim => !located.has(claim)) };
 }
 
-/** Enough text left to answer the operator at all. Below this the named claim WAS the whole answer, and the
- * holding notice is the honest reply rather than a notice standing in for content that survived. */
-export const substantiveReply = (text: string): boolean => text.trim().length >= SUBSTANTIVE_MIN;
+/** Any text left after the removal is sent: only the reviewer's named claim is withheld, never the answer around
+ * it, however short ("At 7 PM."). Only an empty remainder means the claim WAS the whole answer, and then the
+ * holding notice is the honest reply (Rules 4, 77, 86). */
+export const substantiveReply = (text: string): boolean => text.trim().length > 0;

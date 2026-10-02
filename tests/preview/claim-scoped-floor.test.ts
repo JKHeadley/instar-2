@@ -204,6 +204,26 @@ it('the degenerate case: when the named claim IS the whole answer, the notice st
   expect(withholds).toMatchObject({ trimmed: 0, heldWithNothingLeft: 1, sentencesRemoved: 1 });
 });
 
+it('the neighbor: a short complete answer survives the removal and is sent, not replaced by the notice (Rules 4, 77)', async () => {
+  const claim = 'I will check your other appointments tomorrow and report back.';
+  const { sends, release, withholds } = await replay({ operator: 'What time is the meeting?', answer: `At 7 PM. ${claim}`,
+    review: { verdict: 'violation', ruleIds: ['defers_work'],
+      findings: [{ rule: 'defers_work', verdict: 'violation', reason: `The promise "${claim}" is not recorded.` }] } });
+  expect(sends).toEqual(['PREVIEW — At 7 PM.']);
+  expect(release?.withheld).toEqual({ rules: ['defers_work'], removed: [claim], unlocated: [] });
+  expect(withholds).toMatchObject({ trimmed: 1, heldWithNothingLeft: 0, sentencesRemoved: 1 });
+});
+
+it('a complete quote removes only its own sentence, never a different one sharing its opening (Rules 4, 86)', async () => {
+  const kept = 'The recorded reminder is due tomorrow.';
+  const claim = 'The recorded reminder is missing, but I will create it later.';
+  const { sends, release } = await replay({ operator: 'What is recorded?', answer: `${kept} ${claim} You can read the existing entry here.`,
+    review: { verdict: 'violation', ruleIds: ['defers_work'],
+      findings: [{ rule: 'defers_work', verdict: 'violation', reason: `The promise "${claim}" has no recorded loop.` }] } });
+  expect(sends).toEqual([`PREVIEW — ${kept} You can read the existing entry here.`]);
+  expect(release?.withheld?.removed).toEqual([claim]);
+});
+
 it('an objection whose reason quotes no claim releases the answer unchanged and records the floor (Rules 4, 77, 95)', async () => {
   const { sends, release, withholds } = await replay({ operator: K2_OPERATOR, answer: K2_ANSWER,
     review: { verdict: 'violation', ruleIds: ['defers_work'], reason: 'defers_work: the deferral is not recorded.',
@@ -261,7 +281,7 @@ it('locates a claim across apostrophe and dash styles, and refuses a span too sh
   expect(segmentCarries(K2_DEFERRAL, 'one-time action')).toBe(true);
   expect(segmentCarries(K2_DEFERRAL, 'once when')).toBe(false);
   expect(quotedSpans('defers_work: promises "later".')).toEqual([]);
-  // A truncated claim still locates its sentence by its opening run.
+  // A truncated claim still locates its sentence by its available text, the ellipsis folded away.
   expect(segmentCarries(K2_DEFERRAL, 'log it as a one-time action, acting on it once when you next mess…')).toBe(true);
 });
 
@@ -272,7 +292,11 @@ it('removes only whole sentences, keeps the rest in order, and reports what it c
   expect(cut.removed).toEqual(['I will do it later and report back.']);
   expect(cut.unlocated).toEqual(['a claim that is not in this reply at all']);
   expect(substantiveReply(cut.text)).toBe(true);
-  expect(substantiveReply('Yes.')).toBe(false);
+  // Any surviving text is an answer; only an empty remainder means the claim was the whole reply.
+  expect(substantiveReply('Yes.')).toBe(true);
+  expect(substantiveReply('  ')).toBe(false);
+  // A shared opening is not identity: a complete quote never takes a different sentence with it.
+  expect(segmentCarries('The recorded reminder is due tomorrow.', 'The recorded reminder is missing, but I will create it later.')).toBe(false);
   // A newline between kept sentences survives as a newline; a removed run collapses to one space.
   const lines = exciseNamedClaims('Keep this first line here.\nI will do it later and report back.\nKeep this last line.',
     ['I will do it later and report back']);
