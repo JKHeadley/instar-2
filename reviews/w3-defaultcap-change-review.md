@@ -30,6 +30,8 @@ Prompt finding: fb5fa7e706c8 | protocol-literal | existing capability-guidance w
 
 Subject (4 paths): tests/preview/default-context-floor.test.ts, tests/preview/journal-agent.mjs, tests/preview/journal-migrate.mjs, tests/preview/journal.ts
 
+Landing note: this subject landed in two commits, not one. The first (4bf0c73b) carried only the new test and this record: the three source edits were in a stash when it was made, so the branch exported four names it did not define and typecheck failed with TS2305. The second commit adds that source unchanged. The subject above is the whole change and is reviewed as one; the split is a landing accident, not a staged rollout.
+
 ## Closing block
 
 simplestRobustRoute: the required behaviour is that a context limit the build cannot serve is never accepted, and that the parts which consume it cannot grow past what the default allows without someone noticing. The simplest robust route is one measured constant, one floor derived from the inequality the answer path already applies, one reason function, and a call to it at each of the three doorways that set a limit — reusing the launcher's existing refusal record and the existing reserve expression rather than adding a surface. This proposal is that route. The added machinery is the drift-guard test, and the named credible failure it prevents is the live one repeating silently: the floor is a number, and a number alone drifts below the real parts the moment a rule row, a briefing excerpt or a guidance block grows — which is how 32768 became unservable without any change to the limit. Its operating cost is one offline turn per suite run; its recovery cost is deleting the file.
