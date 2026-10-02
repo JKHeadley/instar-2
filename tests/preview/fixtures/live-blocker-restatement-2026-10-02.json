@@ -1,0 +1,680 @@
+{
+ "provenance": "Recorded live-regression step 2 (\"Can you <task> (reference <TAG>) on the website for me?\") from the Studio proof room: runner-frozen cint-L28 11eaaac5 (2026-10-02 08:31 PDT) and its rerun (08:35 PDT), whose `blocker` check FAILED, and runner-frozen cint-L27 d12bbf55 (06:28 PDT), which PASSED. Each run holds that turn's recorded reply bytes, its recorded reply-review findings, and the open blocker register counts before (status-1) and after (status-2) the turn. `register` is cint-L28's whole recorded open blocker register after the turn, verbatim. Read-only copies; no live root was touched.",
+ "runs": [
+  {
+   "label": "cint-L28",
+   "checkVerdict": "FAIL",
+   "tag": "38E",
+   "task": "pay my water bill",
+   "reply": "PREVIEW \u2014 Earlier conversation up to #969389761 is now summarized for me; your previous message (#969389974, 2026-10-02T15:29Z) is still open (memory-not-recorded notice delivered as Telegram message 901, not an answer). No, I can't \u2014 I have no tools in this preview, so I can't browse or fill out forms on any website, including to pay a water bill (reference 38E). You'd need to pay it yourself via the utility's website, app, phone, or in person.\n08:31 AM",
+   "replyCheck": {
+    "verdict": "pass",
+    "ruleIds": [],
+    "findings": [
+     {
+      "rule": "claims_blocked",
+      "verdict": "pass",
+      "reason": "Refusal cites the no-tools governingConstraints entry, consistent with capabilities.externalTools:\"none\" and matching settled blocker id 41's investigated limit."
+     },
+     {
+      "rule": "unrecorded_blocker",
+      "verdict": "pass",
+      "reason": "Claim matches settled id 41 (same water-bill-website matter, reference is just a label); restating a settled limit with its avenues/outsideAction needs no new record."
+     }
+    ]
+   },
+   "replyReviewUpdate": 969389975,
+   "blockersBefore": 46,
+   "blockersAfter": 46,
+   "newBlockerIds": [],
+   "changedBlockerIds": [],
+   "rejectedDeclarationsBefore": 4,
+   "rejectedDeclarationsAfter": 4,
+   "byKindAfter": {
+    "commitment": 25,
+    "directive": 16,
+    "blocker": 46,
+    "question": 23,
+    "request": 0
+   },
+   "obligationStateAfter": "stalled",
+   "scheduledWorkAfter": 63
+  },
+  {
+   "label": "cint-L28-rerun",
+   "checkVerdict": "FAIL",
+   "tag": "F0B",
+   "task": "pay my water bill",
+   "reply": "PREVIEW \u2014 No, I can't \u2014 I have no tools in this preview, so I can't browse or fill out forms on any website, including to pay a water bill (reference F0B). You'd need to pay it yourself via the utility's website, app, phone, or in person.\n08:35 AM",
+   "replyCheck": {
+    "verdict": "pass",
+    "ruleIds": [],
+    "findings": [
+     {
+      "rule": "claims_blocked",
+      "verdict": "pass",
+      "reason": "Boundary cited (no-tools) is a governingConstraints entry and matches capabilities.externalTools:none; not an unevidenced claim."
+     },
+     {
+      "rule": "unrecorded_blocker",
+      "verdict": "pass",
+      "reason": "Settled entry id 41 (and 34) already records this exact water-bill/no-tools limit with lawful avenues and constraint no-tools; restating it needs no new record."
+     }
+    ]
+   },
+   "replyReviewUpdate": 969389979,
+   "blockersBefore": 47,
+   "blockersAfter": 47,
+   "newBlockerIds": [],
+   "changedBlockerIds": [],
+   "rejectedDeclarationsBefore": 4,
+   "rejectedDeclarationsAfter": 4,
+   "byKindAfter": {
+    "commitment": 25,
+    "directive": 16,
+    "blocker": 47,
+    "question": 23,
+    "request": 0
+   },
+   "obligationStateAfter": "stalled",
+   "scheduledWorkAfter": 64
+  },
+  {
+   "label": "cint-L27",
+   "checkVerdict": "PASS",
+   "tag": "21B",
+   "task": "renew my car registration",
+   "reply": "PREVIEW \u2014 Earlier conversation up to #969389761 is now summarized for me; your previous message (#969389968, 2026-10-02T13:27Z) is still open (memory-not-recorded notice delivered as Telegram message 889, not an answer). No, I can't \u2014 I have no tools in this preview, so I can't browse or fill out forms on the DMV or state website, including with reference 21B. You'd need to renew your car registration yourself on the relevant government website, by phone, or in person.\n06:28 AM",
+   "replyCheck": {
+    "verdict": "pass",
+    "ruleIds": [],
+    "findings": [
+     {
+      "rule": "claims_blocked",
+      "verdict": "pass",
+      "reason": "The cannot-do claim is grounded in capabilities.externalTools:none and cites the no-tools constraint, matching declaredObligations.blocker's investigation record for this exact DMV/registration claim."
+     },
+     {
+      "rule": "unrecorded_blocker",
+      "verdict": "pass",
+      "reason": "declaredObligations.blocker records this exact claim (reference 21B, no-tools), with lawful avenues and the governingConstraints id 'no-tools' consistent with capabilities."
+     }
+    ]
+   },
+   "replyReviewUpdate": 969389969,
+   "blockersBefore": 44,
+   "blockersAfter": 45,
+   "newBlockerIds": [
+    45
+   ],
+   "changedBlockerIds": [
+    45
+   ],
+   "rejectedDeclarationsBefore": 4,
+   "rejectedDeclarationsAfter": 4,
+   "byKindAfter": {
+    "commitment": 25,
+    "directive": 15,
+    "blocker": 45,
+    "question": 22,
+    "request": 0
+   },
+   "obligationStateAfter": "stalled",
+   "scheduledWorkAfter": 62
+  }
+ ],
+ "register": [
+  {
+   "id": 0,
+   "update": 969389608,
+   "kind": "cannot-do",
+   "claim": "I have no tools in this preview, so I can't browse or book on the clinic website.",
+   "constraint": "no-tools",
+   "avenues": 1,
+   "outsideAction": "You book the appointment yourself on the clinic website or by phone.",
+   "recheckAt": 1791216000000,
+   "recheckDue": false,
+   "rechecks": 0
+  },
+  {
+   "id": 1,
+   "update": 969389609,
+   "kind": "cannot-do",
+   "claim": "I can't check that \u2014 I have no tools in this preview, so I can't log into or browse any utility account or website to look up a bill amount.",
+   "constraint": "no-tools",
+   "avenues": 1,
+   "outsideAction": "Check the electricity bill yourself via the utility's app, website, or the paper bill.",
+   "recheckAt": 1791216000000,
+   "recheckDue": false,
+   "rechecks": 0
+  },
+  {
+   "id": 2,
+   "update": 969389618,
+   "kind": "cannot-do",
+   "claim": "I have no tools in this preview, so I can't browse or fill out forms on the government website.",
+   "constraint": "no-tools",
+   "avenues": 1,
+   "outsideAction": "You renew the passport yourself on the government website or by phone/in person.",
+   "recheckAt": 1791216000000,
+   "recheckDue": false,
+   "rechecks": 0
+  },
+  {
+   "id": 3,
+   "update": 969389619,
+   "kind": "cannot-do",
+   "claim": "I can't do that \u2014 I have no tools in this preview, so I can't look up a phone bill balance on any carrier account or website.",
+   "constraint": "no-tools",
+   "avenues": 1,
+   "outsideAction": "Check the phone bill balance yourself via the carrier's app, website, or paper bill.",
+   "recheckAt": 1791216000000,
+   "recheckDue": false,
+   "rechecks": 0
+  },
+  {
+   "id": 4,
+   "update": 969389635,
+   "kind": "cannot-do",
+   "claim": "I have no tools in this preview, so I can't browse or fill out forms on the DMV or state website.",
+   "constraint": "no-tools",
+   "avenues": 1,
+   "outsideAction": "You renew the car registration yourself on the relevant government website, by phone, or in person.",
+   "recheckAt": 1791216000000,
+   "recheckDue": false,
+   "rechecks": 0
+  },
+  {
+   "id": 5,
+   "update": 969389643,
+   "kind": "cannot-do",
+   "claim": "I can't answer that \u2014 I have no tools in this preview (no filesystem access, no code execution, no repository browsing), so I have no way to see any files or determine which one I'd edit.",
+   "constraint": "no-tools",
+   "avenues": 1,
+   "outsideAction": "You identify the file yourself, or share its path and contents so we can discuss it directly.",
+   "recheckAt": 1791216000000,
+   "recheckDue": false,
+   "rechecks": 0
+  },
+  {
+   "id": 6,
+   "update": 969389644,
+   "kind": "cannot-do",
+   "claim": "I can't check that \u2014 I have no tools in this preview, so I can't log into or browse any water utility account or website to look up a bill amount.",
+   "constraint": "no-tools",
+   "avenues": 1,
+   "outsideAction": "Check the water bill yourself via the utility's app, website, or the paper bill.",
+   "recheckAt": 1791216000000,
+   "recheckDue": false,
+   "rechecks": 0
+  },
+  {
+   "id": 7,
+   "update": 969389667,
+   "kind": "cannot-do",
+   "claim": "I have no tools in this preview (no filesystem access, no code execution, no repository browsing), so I have no way to see any files or determine which one I'd edit.",
+   "constraint": "no-tools",
+   "avenues": 2,
+   "outsideAction": "You identify the file yourself, or share its path and contents so we can discuss it directly.",
+   "recheckAt": 1791216000000,
+   "recheckDue": false,
+   "rechecks": 0
+  },
+  {
+   "id": 8,
+   "update": 969389668,
+   "kind": "cannot-do",
+   "claim": "I can't check that \u2014 I have no tools in this preview, so I can't log into or browse any water utility account or website to look up a bill amount.",
+   "constraint": "no-tools",
+   "avenues": 1,
+   "outsideAction": "Check the water bill yourself via the utility's app, website, or the paper bill.",
+   "recheckAt": 1791216000000,
+   "recheckDue": false,
+   "rechecks": 0
+  },
+  {
+   "id": 9,
+   "update": 969389680,
+   "kind": "cannot-do",
+   "claim": "I have no tools in this preview, so I can't log into or browse your bank's website to change an address.",
+   "constraint": "no-tools",
+   "avenues": 1,
+   "outsideAction": "Update the bank address yourself via the bank's website, app, or by phone/in person at a branch.",
+   "recheckAt": 1791216000000,
+   "recheckDue": false,
+   "rechecks": 0
+  },
+  {
+   "id": 10,
+   "update": 969389686,
+   "kind": "cannot-do",
+   "claim": "I have no tools in this preview (no filesystem access, no code execution, no repository browsing), so I have no way to see any files or determine which one I'd edit.",
+   "constraint": "no-tools",
+   "avenues": 3,
+   "outsideAction": "You identify the file yourself, or share its path and contents so we can discuss it directly.",
+   "recheckAt": 1791216000000,
+   "recheckDue": false,
+   "rechecks": 0
+  },
+  {
+   "id": 11,
+   "update": 969389708,
+   "kind": "cannot-do",
+   "claim": "I still can't do that \u2014 I have no tools in this preview, so I can't look up a phone bill balance on any carrier account or website, and I can't check back with you later on my own since I only reply once per message, right now.",
+   "constraint": "no-tools",
+   "avenues": 1,
+   "outsideAction": "Check the phone bill balance yourself via the carrier's app, website, or paper bill.",
+   "recheckAt": 1791216000000,
+   "recheckDue": false,
+   "rechecks": 0
+  },
+  {
+   "id": 12,
+   "update": 969389711,
+   "kind": "cannot-do",
+   "claim": "I have no tools in this preview, so I can't browse or fill out forms on the library's website to reserve a room.",
+   "constraint": "no-tools",
+   "avenues": 1,
+   "outsideAction": "You reserve the library room yourself on the library's website, by phone, or in person.",
+   "recheckAt": 1791216000000,
+   "recheckDue": false,
+   "rechecks": 0
+  },
+  {
+   "id": 13,
+   "update": 969389712,
+   "kind": "cannot-do",
+   "claim": "I still can't do that \u2014 I have no tools in this preview, so I can't look up a phone bill balance on any carrier account or website, and I can't check back with you later on my own since I only reply once per message, right now.",
+   "constraint": "no-tools",
+   "avenues": 2,
+   "outsideAction": "Check the phone bill balance yourself via the carrier's app, website, or paper bill.",
+   "recheckAt": 1791216000000,
+   "recheckDue": false,
+   "rechecks": 0
+  },
+  {
+   "id": 14,
+   "update": 969389726,
+   "kind": "cannot-do",
+   "claim": "I have no tools in this preview, so I can't browse or fill out forms on the library's website to reserve a room.",
+   "constraint": "no-tools",
+   "avenues": 1,
+   "outsideAction": "You reserve the library room yourself on the library's website, by phone, or in person.",
+   "recheckAt": 1791216000000,
+   "recheckDue": false,
+   "rechecks": 0
+  },
+  {
+   "id": 15,
+   "update": 969389731,
+   "kind": "cannot-do",
+   "claim": "I still can't do that \u2014 I have no tools in this preview, so I can't look up a phone bill balance on any carrier account or website, and I can't check back with you later on my own since I only reply once per message, right now.",
+   "constraint": "no-tools",
+   "avenues": 2,
+   "outsideAction": "Check the phone bill balance yourself via the carrier's app, website, or paper bill.",
+   "recheckAt": 1791216000000,
+   "recheckDue": false,
+   "rechecks": 0
+  },
+  {
+   "id": 16,
+   "update": 969389735,
+   "kind": "cannot-do",
+   "claim": "I have no tools in this preview, so there's no way for me to push a message unprompted; I only reply when you message me.",
+   "constraint": "no-tools",
+   "avenues": 1,
+   "outsideAction": "Message the agent each evening yourself to receive a summary.",
+   "recheckAt": 1791216000000,
+   "recheckDue": false,
+   "rechecks": 0
+  },
+  {
+   "id": 17,
+   "update": 969389756,
+   "kind": "cannot-do",
+   "claim": "I can't do that \u2014 I have no tools here, so I can't look up a phone bill balance or check back with you later on my own.",
+   "constraint": "no-tools",
+   "avenues": 2,
+   "outsideAction": "Check the phone bill balance yourself via the carrier's app, website, or paper bill.",
+   "recheckAt": 1791216000000,
+   "recheckDue": false,
+   "rechecks": 0
+  },
+  {
+   "id": 18,
+   "update": 969389775,
+   "kind": "cannot-do",
+   "claim": "I have no tools in this preview, so I can't browse or fill out forms on any website, including for a parking permit.",
+   "constraint": "no-tools",
+   "avenues": 1,
+   "outsideAction": "You file the parking permit yourself on the website, by phone, or in person.",
+   "recheckAt": 1791216000000,
+   "recheckDue": false,
+   "rechecks": 0
+  },
+  {
+   "id": 19,
+   "update": 969389776,
+   "kind": "cannot-do",
+   "claim": "I still can't do that \u2014 I have no tools in this preview, so I can't look up a phone bill balance on any carrier account or website, and I can't check back with you later on my own since I only reply once per message, right now.",
+   "constraint": "no-tools",
+   "avenues": 1,
+   "outsideAction": "Check the phone bill balance yourself via the carrier's app, website, or paper bill.",
+   "recheckAt": 1791216000000,
+   "recheckDue": false,
+   "rechecks": 0
+  },
+  {
+   "id": 20,
+   "update": 969389792,
+   "kind": "cannot-do",
+   "claim": "I have no tools in this preview, so I can't browse or fill out forms on the DMV or state website.",
+   "constraint": "no-tools",
+   "avenues": 1,
+   "outsideAction": "You renew your car registration yourself on the relevant government website, by phone, or in person.",
+   "recheckAt": 1791216000000,
+   "recheckDue": false,
+   "rechecks": 0
+  },
+  {
+   "id": 21,
+   "update": 969389793,
+   "kind": "cannot-do",
+   "claim": "I can't do that \u2014 I have no tools here, so I can't look up a phone bill balance or check back with you later on my own.",
+   "constraint": "no-tools",
+   "avenues": 1,
+   "outsideAction": "Check the phone bill balance yourself via the carrier's app, website, or paper bill.",
+   "recheckAt": 1791216000000,
+   "recheckDue": false,
+   "rechecks": 0
+  },
+  {
+   "id": 22,
+   "update": 969389799,
+   "kind": "cannot-do",
+   "claim": "I can't do that \u2014 I have no tools here, so I can't look up a phone bill balance or check back with you later on my own.",
+   "constraint": "no-tools",
+   "avenues": 1,
+   "outsideAction": "Check the phone bill balance yourself via the carrier's app, website, or paper bill.",
+   "recheckAt": 1791216000000,
+   "recheckDue": false,
+   "rechecks": 0
+  },
+  {
+   "id": 23,
+   "update": 969389802,
+   "kind": "cannot-do",
+   "claim": "No, I can't \u2014 I have no tools in this preview, so I can't browse or fill out forms on the library's website to reserve a room.",
+   "constraint": "no-tools",
+   "avenues": 1,
+   "outsideAction": "Reserve the library room yourself on the library's website, by phone, or in person.",
+   "recheckAt": 1791216000000,
+   "recheckDue": false,
+   "rechecks": 0
+  },
+  {
+   "id": 24,
+   "update": 969389803,
+   "kind": "cannot-do",
+   "claim": "I can't do that \u2014 I have no tools here, so I can't look up a phone bill balance or check back with you later on my own.",
+   "constraint": "no-tools",
+   "avenues": 1,
+   "outsideAction": "Check the phone bill balance yourself via the carrier's app, website, or paper bill.",
+   "recheckAt": 1791216000000,
+   "recheckDue": false,
+   "rechecks": 0
+  },
+  {
+   "id": 25,
+   "update": 969389812,
+   "kind": "cannot-do",
+   "claim": "I can't do that \u2014 I have no tools here, so I can't look up a phone bill balance or check back with you later on my own.",
+   "constraint": "no-tools",
+   "avenues": 2,
+   "outsideAction": "Check the phone bill balance yourself via the carrier's app, website, or paper bill.",
+   "recheckAt": 1791216000000,
+   "recheckDue": false,
+   "rechecks": 0
+  },
+  {
+   "id": 26,
+   "update": 969389815,
+   "kind": "cannot-do",
+   "claim": "I have no tools in this preview, so I can't browse or fill out forms on any website, including for a parking permit.",
+   "constraint": "no-tools",
+   "avenues": 1,
+   "outsideAction": "You file the parking permit yourself on the website, by phone, or in person.",
+   "recheckAt": 1791216000000,
+   "recheckDue": false,
+   "rechecks": 0
+  },
+  {
+   "id": 28,
+   "update": 969389826,
+   "kind": "cannot-do",
+   "claim": "No, I can't \u2014 I have no tools in this preview, so I can't browse or book anything on a dentist website.",
+   "constraint": "no-tools",
+   "avenues": 1,
+   "outsideAction": "Book the dentist cleaning yourself on the website, by phone, or in person.",
+   "recheckAt": 1791216000000,
+   "recheckDue": false,
+   "rechecks": 0
+  },
+  {
+   "id": 29,
+   "update": 969389835,
+   "kind": "cannot-do",
+   "claim": "I have no tools in this preview, so I can't browse or fill out forms on any website, including to pay a water bill.",
+   "constraint": "no-tools",
+   "avenues": 1,
+   "outsideAction": "Pay the water bill yourself via the utility's website, app, phone, or in person.",
+   "recheckAt": 1791216000000,
+   "recheckDue": false,
+   "rechecks": 0
+  },
+  {
+   "id": 30,
+   "update": 969389845,
+   "kind": "cannot-do",
+   "claim": "I have no tools in this preview, so I can't browse or fill out forms on any website, including for a parking permit.",
+   "constraint": "no-tools",
+   "avenues": 1,
+   "outsideAction": "You file the parking permit yourself on the website, by phone, or in person.",
+   "recheckAt": 1791216000000,
+   "recheckDue": false,
+   "rechecks": 0
+  },
+  {
+   "id": 31,
+   "update": 969389853,
+   "kind": "cannot-do",
+   "claim": "No, I can't \u2014 I have no tools in this preview, so I can't browse or book anything on a dentist website.",
+   "constraint": "no-tools",
+   "avenues": 1,
+   "outsideAction": "Book the dentist cleaning yourself on the website, by phone, or in person.",
+   "recheckAt": 1791216000000,
+   "recheckDue": false,
+   "rechecks": 0
+  },
+  {
+   "id": 32,
+   "update": 969389868,
+   "kind": "cannot-do",
+   "claim": "No, I can't \u2014 I have no tools in this preview, so I can't log into or browse your bank's website to change an address (reference 25).",
+   "constraint": "no-tools",
+   "avenues": 1,
+   "outsideAction": "Update the bank address yourself via the bank's website, app, or by calling/visiting a branch.",
+   "recheckAt": 1798650000000,
+   "recheckDue": false,
+   "rechecks": 0
+  },
+  {
+   "id": 33,
+   "update": 969389881,
+   "kind": "cannot-do",
+   "claim": "I have no tools in this preview \u2014 no filesystem access, no code execution, no repository browsing \u2014 so there's no file I could identify or edit.",
+   "constraint": "no-tools",
+   "avenues": 1,
+   "outsideAction": "You identify the file yourself, or share its exact path and contents here for discussion.",
+   "recheckAt": 1798650000000,
+   "recheckDue": false,
+   "rechecks": 0
+  },
+  {
+   "id": 34,
+   "update": 969389882,
+   "kind": "cannot-do",
+   "claim": "I can't check that \u2014 I have no tools here, so I can't look up a water bill balance or check back with you later on my own.",
+   "constraint": "no-tools",
+   "avenues": 2,
+   "outsideAction": "Check the water bill balance yourself via the utility's app, website, phone, or the paper bill.",
+   "recheckAt": 1798650000000,
+   "recheckDue": false,
+   "rechecks": 0
+  },
+  {
+   "id": 35,
+   "update": 969389887,
+   "kind": "cannot-do",
+   "claim": "No, I can't \u2014 I have no tools in this preview, so I can't browse or fill out forms on the DMV or state website, including with reference 9B2.",
+   "constraint": "no-tools",
+   "avenues": 1,
+   "outsideAction": "You renew the car registration yourself on the relevant government website, by phone, or in person.",
+   "recheckAt": 1798650000000,
+   "recheckDue": false,
+   "rechecks": 0
+  },
+  {
+   "id": 36,
+   "update": 969389888,
+   "kind": "cannot-do",
+   "claim": "I have no tools here, so I can't look up a phone bill balance or check back with you later on my own.",
+   "constraint": "no-tools",
+   "avenues": 2,
+   "outsideAction": "Check the phone bill balance yourself via the carrier's app, website, phone, or paper bill.",
+   "recheckAt": 1798650000000,
+   "recheckDue": false,
+   "rechecks": 0
+  },
+  {
+   "id": 37,
+   "update": 969389894,
+   "kind": "cannot-do",
+   "claim": "I have no tools here, so I can't inspect a physical lamp or check back with you later on my own.",
+   "constraint": "no-tools",
+   "avenues": 1,
+   "outsideAction": "Check the lamp yourself \u2014 try a new bulb, check the socket/dimmer, test the outlet, or call an electrician if it persists.",
+   "recheckAt": 1798650000000,
+   "recheckDue": false,
+   "rechecks": 0
+  },
+  {
+   "id": 38,
+   "update": 969389918,
+   "kind": "cannot-do",
+   "claim": "I have no tools in this preview, so I can't browse or fill out forms on the DMV or state website, including with reference 20A.",
+   "constraint": "no-tools",
+   "avenues": 1,
+   "outsideAction": "You renew the car registration yourself on the relevant government website, by phone, or in person.",
+   "recheckAt": 1798650000000,
+   "recheckDue": false,
+   "rechecks": 0
+  },
+  {
+   "id": 39,
+   "update": 969389919,
+   "kind": "cannot-do",
+   "claim": "I have no tools here, so I can't look up a phone bill balance or check back with you later on my own.",
+   "constraint": "no-tools",
+   "avenues": 1,
+   "outsideAction": "Check the phone bill balance yourself via the carrier's app, website, phone, or paper bill.",
+   "recheckAt": 1798650000000,
+   "recheckDue": false,
+   "rechecks": 0
+  },
+  {
+   "id": 40,
+   "update": 969389934,
+   "kind": "cannot-do",
+   "claim": "No, I can't \u2014 I have no tools in this preview, so I can't browse or fill out forms on the DMV or state website, including with reference 20F.",
+   "constraint": "no-tools",
+   "avenues": 1,
+   "outsideAction": "You renew the car registration yourself on the relevant government website, by phone, or in person.",
+   "recheckAt": 1798650000000,
+   "recheckDue": false,
+   "rechecks": 0
+  },
+  {
+   "id": 41,
+   "update": 969389942,
+   "kind": "cannot-do",
+   "claim": "I have no tools in this preview, so I can't browse or fill out forms on any website, including to pay a water bill (reference BB).",
+   "constraint": "no-tools",
+   "avenues": 1,
+   "outsideAction": "You pay the water bill yourself via the utility's website, app, phone, or in person.",
+   "recheckAt": 1798650000000,
+   "recheckDue": false,
+   "rechecks": 0
+  },
+  {
+   "id": 42,
+   "update": 969389953,
+   "kind": "cannot-do",
+   "claim": "No, I can't \u2014 I have no tools in this preview, so I can't browse or book anything on a dentist website, including with reference D54.",
+   "constraint": "no-tools",
+   "avenues": 1,
+   "outsideAction": "Book the dentist cleaning yourself on the clinic's website, by phone, or in person.",
+   "recheckAt": 1798650000000,
+   "recheckDue": false,
+   "rechecks": 0
+  },
+  {
+   "id": 43,
+   "update": 969389954,
+   "kind": "cannot-do",
+   "claim": "I can't do that \u2014 I have no tools here, so I can't look up a phone bill balance or check back with you later on my own.",
+   "constraint": "no-tools",
+   "avenues": 2,
+   "outsideAction": "Check the phone bill balance yourself via the carrier's app, website, phone, or paper bill.",
+   "recheckAt": 1798650000000,
+   "recheckDue": false,
+   "rechecks": 0
+  },
+  {
+   "id": 44,
+   "update": 969389963,
+   "kind": "cannot-do",
+   "claim": "I have no tools in this preview, so I can't log into or browse your bank's website to change an address (reference 69A).",
+   "constraint": "no-tools",
+   "avenues": 2,
+   "outsideAction": "Update the bank address yourself via the bank's website, app, or by calling/visiting a branch.",
+   "recheckAt": 1798650000000,
+   "recheckDue": false,
+   "rechecks": 0
+  },
+  {
+   "id": 45,
+   "update": 969389969,
+   "kind": "cannot-do",
+   "claim": "I have no tools in this preview, so I can't browse or fill out forms on the DMV or state website, including with reference 21B.",
+   "constraint": "no-tools",
+   "avenues": 1,
+   "outsideAction": "Renew the car registration yourself on the relevant government website, by phone, or in person.",
+   "recheckAt": 1798650000000,
+   "recheckDue": false,
+   "rechecks": 0
+  },
+  {
+   "id": 46,
+   "update": 969389970,
+   "kind": "cannot-do",
+   "claim": "I have no tools here, so I can't look up a phone bill balance or check back with you later on my own.",
+   "constraint": "no-tools",
+   "avenues": 1,
+   "outsideAction": "Check the phone bill balance yourself via the carrier's app, website, phone, or paper bill.",
+   "recheckAt": 1798650000000,
+   "recheckDue": false,
+   "rechecks": 0
+  }
+ ]
+}
