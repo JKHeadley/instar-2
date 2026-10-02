@@ -173,6 +173,8 @@ export const ANSWER_PROTOCOL = [
     + 'If that message is still open, address it or say what remains open; never imply recall the evidence lacks.',
   'If packet.meaningIndexCoverage.disposition is "degraded", some summarized messages are findable only by their exact words: not finding something is never evidence it was not said. '
     + 'Say your search of the earlier conversation is incomplete rather than that there is no record of it.',
+  'If packet.memoryLookup is "offered" and the packet does not show what the message asks about, do not answer that it is missing or unknown yet: '
+    + 'return only {"lookup":[up to 6 short phrases in the words the stored message likely used]}. You are asked once more with what it found.',
 ].join('\n');
 /** The exact instruction content of every answer call, identical before and after compaction (Rule 47). */
 export const ANSWER_INSTRUCTIONS = `${MIND_INSTRUCTIONS}\n${ANSWER_PROTOCOL}`;

@@ -3,14 +3,16 @@ import { mkdtempSync, realpathSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { createJournalWorker, openPreviewJournal, withoutCorrectedHistory } from './journal-test-worker.js';
-import { conversation, scenes } from './realistic-recall-fixture.js';
+import { conversation, recordedParaphrase, scenes } from './realistic-recall-fixture.js';
 
 const key = new Uint8Array(32).fill(74);
 const now = 1_790_000_000_000;
 const bot = '12345678';
 const operator = '7654321';
 const facts = scenes.flatMap(scene => [scene.fact, ...(scene.old ? [scene.old] : [])]);
-const updates = conversation();
+const paraphrase = recordedParaphrase();
+// The diary, then the recorded fact and three unrelated turns, so the fact is summarized like everything else.
+const updates = [...conversation(), paraphrase.fact, ...paraphrase.after];
 
 function summary(context: string): string {
   const packet = JSON.parse(context) as { summary?: { text: string }; history: { user: string }[];
@@ -37,10 +39,13 @@ function update(id: number, text: string) {
 }
 
 export interface RealisticCase {
-  id: string; topic: string; scenarioCategory: 'named question' | 'reworded follow-up' | 'correction chain' | 'pronoun' | 'date';
+  id: string; topic: string; scenarioCategory: 'named question' | 'reworded follow-up' | 'correction chain' | 'pronoun' | 'date' | 'recorded paraphrase';
   question: string; expectedCurrentAnswer: string; sourceTurn: number; correctionTurn?: number;
   packetBytes: number; neededPresent: boolean | null; staleAbsent: boolean | null; actualVisibleAnswer: string;
   observedMiss: 'needed clause absent' | 'stale clause present' | null; historyMode: string;
+  /** Recorded paraphrase only: whether the first packet (before the one lookup) already carried the fact, and the
+   * search phrases the recorded real answer asked for. */
+  firstPacketPresent?: boolean; lookup?: string[];
 }
 export interface RealisticResult { turns: number; questions: number; positiveCases: number; neededPresent: number;
   exclusionCases: number; staleAbsent: number;
@@ -54,9 +59,14 @@ export async function runRealisticRecall(): Promise<RealisticResult> {
     grant: 'grant:offline-realistic-recall', configurationDigest: 'sha256:offline-realistic-recall',
     expires: now + 1_000_000, maxCalls: 1200, maxReplies: 400, maxTurns: 400, maxBytes: 24000, cursor: 0 };
   let journal = openPreviewJournal(path, key, genesis);
+  // Scripted answers for the one turn that runs the real answer path (the recorded paraphrase), and what it was shown.
+  const script: string[] = [], shown: string[] = [];
   const ports = { now: () => now, stopped: () => false,
-    model: async (input: { id: string; question: string; context: string }) => input.id.startsWith('summary:')
-      ? summary(input.context) : JSON.stringify({ reply: 'Noted.', memory: [], dated: [] }),
+    model: async (input: { id: string; question: string; context: string }) => {
+      if (input.id.startsWith('summary:')) return summary(input.context);
+      shown.push(input.context);
+      return script.shift() ?? JSON.stringify({ reply: 'Noted.', memory: [], dated: [] });
+    },
     send: async () => 1, checkOutbound: () => {} };
   let worker = createJournalWorker(journal, ports);
   try {
@@ -120,6 +130,22 @@ export async function runRealisticRecall(): Promise<RealisticResult> {
           }
         }
       }
+    }
+    // The recorded paraphrase runs the real answer path: the recorded real answer asks for a lookup, and the
+    // packet of the second call is what is measured. Its first packet is recorded too, so the miss stays visible.
+    {
+      const id = updates.length + scenes.length * 2 + 1, turnId = `telegram:${bot}:update:${id}`;
+      script.push(paraphrase.lookupAnswer); shown.length = 0;
+      worker.intake([update(id, paraphrase.question)]);
+      await worker.drain();
+      const first = shown[0] ?? '', context = shown[1] ?? first;
+      const neededPresent = shown.length === 2 && context.includes(paraphrase.fact);
+      cases.push({ id: 'recorded-paraphrase/1', topic: 'errand', scenarioCategory: 'recorded paraphrase', question: paraphrase.question,
+        expectedCurrentAnswer: paraphrase.fact, sourceTurn: conversation().length + 1, packetBytes: Buffer.byteLength(context),
+        neededPresent, staleAbsent: null, actualVisibleAnswer: neededPresent ? paraphrase.fact : 'UNKNOWN',
+        observedMiss: neededPresent ? null : 'needed clause absent',
+        historyMode: (JSON.parse(context || '{}') as { historyMode?: string }).historyMode ?? 'none',
+        firstPacketPresent: first.includes(paraphrase.fact), lookup: journal.view.turns.get(turnId)?.lookup?.words ?? [] });
     }
     const misses = cases.filter(item => item.observedMiss !== null);
     const result = { turns: updates.length, questions: cases.length,

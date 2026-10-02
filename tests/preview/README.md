@@ -2077,7 +2077,23 @@ not a provider retry: it is a separate call, recorded as a `format-retry` journa
 keeps the first call's failure class and usage, and it reserves against the same call cap.
 It is skipped when that cap is reached, the stop latch holds or the trial has expired, and
 it always precedes any send. A second miss gets the fixed reply, or for a review the held
-outcome, as before. `status` reports
+outcome, as before. An answer turn may also make one memory lookup (Rule 11). Where older
+turns are summarized, the turn is the verified operator's and the call cap has room for a
+second answer call beside the reply review's reserved one, the packet carries
+`memoryLookup: "offered"` and the answer protocol tells the model what that means: when the
+packet does not show what the message asks about, it returns only `{"lookup":[...]}` (up to
+six short phrases) instead of a reply. The runner searches the summarized turns once with
+those phrases, through the same recall as the question, puts what it finds first among
+`recalled`, and asks again; the second packet's `memoryLookup` names the searched phrases
+and how many found turns it quotes. The phrases are data: bounded, redacted like any packet
+field, and used only as a search query. The lookup is a `lookup` journal row that settles
+the first call's usage, reserves the second under the same cap and replaces the turn's
+saved prompt and grounding with the second packet, so the reply review reads what the
+answer read. There is one per turn; it is skipped when the cap is reached, the stop latch
+holds or the trial has expired; nothing is sent between the two calls; and an unknown
+second call stays UNKNOWN and is never repeated. A lookup request that cannot run, or a
+second request after the one that ran, gets a fixed runner reply saying that the search
+did not happen or did not settle it, and that this is not proof it was never said. `status` reports
 `modelFailureClasses` and `modelResultStates`; `self` includes the same counts.
 Subscription reply reviews also record their returned provider state.
 The inner reply-review verdict is one exact line (`PASS | reason` or

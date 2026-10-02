@@ -57,13 +57,13 @@ it('profiles full turns at 2000 turns with every memory source', async () => {
       historySetAside: { count: expect.any(Number) } });
     view.summaries.push(summary);
     const samples: number[] = [];
-    let packetHash = '';
+    let packetHash = '', packetText = '';
     for (let i = 0; i < 30; i++) {
       const start = performance.now();
       const result = worker.probe('What did Sam say about the cedar project?');
       samples.push(performance.now() - start);
       expect('context' in result).toBe(true);
-      if ('context' in result) packetHash = createHash('sha256').update(result.context).digest('hex');
+      if ('context' in result) { packetText = result.context; packetHash = createHash('sha256').update(result.context).digest('hex'); }
     }
     // int12 re-pin: person-attribute instructions, people-facts relevance selection, and relevance-gated
     // conflict/fact-update/held/exact-unit guidance changed this packet. Simplify re-pin: every retained
@@ -103,7 +103,14 @@ it('profiles full turns at 2000 turns with every memory source', async () => {
     // field on both builds -- the key set is identical, nothing added and nothing lost, and exactly four fields
     // changed, all by wording only: capability (it no longer repeats what the capability-note source itself states),
     // and datedDecision, memoryDecision and obligationDecision (shorter wording, same fields and same decisions).
-    expect(packetHash).toBe('be687bb0634f5c52ae3c7706861326e412e2502c01a358d13bb4f99159fb4587');
+    // w3-recallrank re-pin (Rule 11): this summarized operator packet now carries `memoryLookup: "offered"`.
+    // Nothing else changed: without that one field the packet is the prior pin, which is checked here.
+    const withoutLookup = JSON.parse(packetText) as Record<string, unknown>;
+    expect(withoutLookup.memoryLookup).toBe('offered');
+    delete withoutLookup.memoryLookup;
+    expect(createHash('sha256').update(JSON.stringify(withoutLookup)).digest('hex'))
+      .toBe('be687bb0634f5c52ae3c7706861326e412e2502c01a358d13bb4f99159fb4587');
+    expect(packetHash).toBe('PENDING');
     process.stdout.write(`recall latency 2000 turns all memory: probe p95=${p95(samples).toFixed(2)} ms packet=${packetHash}\n`);
     const turnSamples: number[] = [];
     const intakeSamples: number[] = [], drainSamples: number[] = [], coherenceSamples: number[] = [];

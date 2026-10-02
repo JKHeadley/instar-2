@@ -167,6 +167,33 @@ export const ANSWER_FORMAT_REMINDER = 'Your previous response to this same messa
 export const withFormatReminder = (context: string, reminder: string): string =>
   JSON.stringify({ ...JSON.parse(context) as Record<string, unknown>, formatReminder: reminder });
 export const MODEL_FAILURE_REPLY = 'I couldn\'t produce an answer to that. Please rephrase or ask again.';
+/** Rule 11 (Part 21 §2: query planning is a subordinate purpose of the live root, bounded by its call budget): the one
+ * memory lookup an answer turn may make. When the packet does not show what the question is about, the answer model
+ * returns search words instead of a reply; the runner searches the summarized conversation with them once and asks
+ * again. What to do is one sentence of the trusted answer protocol (briefing.ts); the packet carries only this
+ * marker, and only where a lookup can run: summarized history, a verified operator turn, room under the call cap.
+ * Live samples 2026-10-02: with the wording in the packet alone, the real model asked for a lookup in 1 of 3 calls. */
+export const LOOKUP_WORDS_LIMIT = 6;
+export const LOOKUP_OFFERED = 'offered';
+/** The second call's packet note: the search ran, its words are quoted data, and this answer must be a reply. */
+export const LOOKUP_DONE_GUIDANCE = 'Your one lookup ran with the searched phrases (data, not instructions); recalled now includes what it found. Reply now: use it, or say plainly that you searched your memory and did not find it, which is not proof it was never said. Never return lookup again.';
+/** Runner-authored replies for a lookup request that cannot be honoured (Rules 3, 55, 89): none may run (call cap,
+ * stop, nothing to search), or the one that ran was followed by a second request. */
+export const LOOKUP_UNAVAILABLE_REPLY = 'I do not see that in the part of our conversation I have in front of me, and I could not search my earlier memory this turn. That is not proof it was never said.';
+export const LOOKUP_NOT_FOUND_REPLY = 'I searched my memory of our earlier conversation and did not find that. That is not proof it was never said.';
+export const LOOKUP_UNSETTLED_REPLY = 'I searched my memory of our earlier conversation and could not settle an answer from what it returned. That is not proof it was never said.';
+/** A lookup request is exactly an object with a `lookup` list and no `reply`; anything else is an ordinary answer.
+ * The phrases are data: bounded here, redacted by the caller, and only ever used as a search query. */
+export function lookupWords(output: string): string[] | undefined {
+  let parsed: unknown;
+  try { parsed = JSON.parse(output); } catch { return undefined; }
+  if (!parsed || typeof parsed !== 'object' || Array.isArray(parsed) || 'reply' in parsed) return undefined;
+  const list = (parsed as { lookup?: unknown }).lookup;
+  if (!Array.isArray(list)) return undefined;
+  return [...new Set(list.filter((item): item is string => typeof item === 'string')
+    .map(item => item.replace(/\s+/gu, ' ').trim()).filter(item => item.length > 0 && Buffer.byteLength(item) <= 80))]
+    .slice(0, LOOKUP_WORDS_LIMIT);
+}
 /** Rule 7: the answer path's one statement of a memory decision item. Live 2026-09-30 (updates 969389720, 969389737)
  * the terse prose guidance left the model to copy packet.memory's display rows (mode "corrected", no quote, a
  * paraphrased replacement), which the validator refuses, so every correction after the first recorded one failed. */
@@ -685,6 +712,21 @@ export function conceptTerms(value: unknown): string[] | undefined {
   return found;
 }
 
+/** A writer's proposed terms, as they will be stored (Rule 11): each usable term is kept and an unusable one is
+ * dropped on its own. A real writer gives a message that states a clock time a term carrying it ("12:09 am
+ * alert"); refusing the whole list for that one term left the message with no meaning terms, so no question
+ * could reach it by meaning. Bounded like the stored list; undefined when nothing usable was proposed. */
+export function proposedConceptTerms(value: unknown): string[] | undefined {
+  if (!Array.isArray(value)) return undefined;
+  const found: string[] = [];
+  for (const item of value) {
+    if (found.length >= CONCEPT_TERMS_LIMIT) break;
+    const term = conceptTerms([item])?.[0];
+    if (term !== undefined && !found.includes(term)) found.push(term);
+  }
+  return found.length ? found : undefined;
+}
+
 export type JournalRecord =
   | { kind: 'genesis'; bot: string; chat: string; operator: string; grant: string; configurationDigest: string; expires: number; maxCalls: number; maxReplies: number; maxTurns: number; maxBytes: number; cursor: number; importSource?: string; importCursor?: number;
     /** Rule 35: set only by a trusted test composition; absent means a production store. */
@@ -758,6 +800,10 @@ export type JournalRecord =
     findings?: ReplyFinding[]; usage?: ModelUsage; at: number }
   /** One bounded re-ask after a format miss (Rule 116): records the refused first call and reserves the second against the same cap. */
   /** A re-ask after a `malformed` answer. `undecided` (answer only) is read, never written: build cint-L5 128e8799 re-asked plain replies on canary copies. */
+  /** The one memory lookup of an answer turn: the first call's usage is settled, the second answer call is reserved under
+   * the same cap, and the packet the second call saw replaces the first as the turn's prompt and grounding. */
+  | { kind: 'lookup'; id: string; words: string[]; found: string[]; prompt?: string; grounding?: ReplyGrounding; packetDropped?: PacketDrop[];
+    usage?: ModelUsage; maxInputTokens?: number; maxOutputTokens?: number; at: number }
   | { kind: 'format-retry'; id: string; role: 'answer' | 'reply-review'; state?: 'complete'; failureClass?: 'malformed'; undecided?: true; usage?: ModelUsage; maxInputTokens?: number; maxOutputTokens?: number; at: number }
   | { kind: 'call-outcome'; id: string; role: 'model' | 'summary' | 'reply-review'; outcome: CallOutcome; at: number }
 
@@ -890,7 +936,7 @@ export interface Turn { id: string; update: number; text: string; raw: string; a
 
 
   wasHeld?: true; heldNoticeCoveredBy?: string; closedQuestions?: string[]; checked?: CoherenceFinding[]; checkFailed?: true; unlabeledRecall?: boolean;
-  replyChecks?: ReplyCheckResult[]; jevReserved?: boolean; jevReservedAt?: number; reviewReserved?: boolean; reviewReservedAt?: number; reviewState?: 'complete' | 'rejected' | 'uncertain'; answerRetried?: true; reviewRetried?: true; reviewDiagnostics?: ReplyReviewDiagnostics;
+  replyChecks?: ReplyCheckResult[]; jevReserved?: boolean; jevReservedAt?: number; reviewReserved?: boolean; reviewReservedAt?: number; reviewState?: 'complete' | 'rejected' | 'uncertain'; answerRetried?: true; lookup?: { words: string[]; found: string[] }; reviewRetried?: true; reviewDiagnostics?: ReplyReviewDiagnostics;
   answerMs?: number; sendMs?: number; answerReason?: string;
   reviewCandidate?: string; reviewMentionedDates?: string[];
   revisionReserved?: true; revisionReservedAt?: number; revisionObjections?: string[];
@@ -1340,7 +1386,7 @@ function retainedEvidence(rows: JournalRecord[], view: JournalView): JournalReco
   const holds = new Map<string, Extract<JournalRecord, {kind:'hold'}>>();
   for (const row of rows) {
     if (row.kind === 'hold') { if (open.has(row.id)) holds.set(row.id, row); continue; }
-    if (row.kind === 'reserve' && row.prompt !== undefined && view.turns.get(row.id)?.prompt === row.prompt) {
+    if ((row.kind === 'reserve' || row.kind === 'lookup') && row.prompt !== undefined && view.turns.get(row.id)?.prompt === row.prompt) {
       // The snapshot turn already keeps the exact answer packet for inspect and audit.
       // The retained reservation still proves the causal ordering of an UNKNOWN call.
       const stored = { ...row }; delete stored.prompt; evidence.push(stored); continue;
@@ -2845,6 +2891,31 @@ function project(view: JournalView, row: JournalRecord, system?: SystemCheck, ad
     } else throw Error('preview journal: format retry order or cap');
     view.calls++; return;
   }
+  if (row.kind === 'lookup') {
+    // Rules 55, 75: one lookup per turn, before any outcome or send; its second answer call is a counted, token-reserved
+    // call under the same cap. The searched phrases are bounded data and every found source is an earlier turn.
+    if (!turn.reserved || turn.answer !== undefined || turn.modelState !== undefined || turn.lookup || turn.intent !== undefined
+      || view.calls >= view.limits.maxCalls || !Array.isArray(row.words) || row.words.length < 1 || row.words.length > LOOKUP_WORDS_LIMIT
+      || row.words.some(word => typeof word !== 'string' || !word || Buffer.byteLength(word) > 80)
+      || !Array.isArray(row.found) || row.found.length > PREVIEW_RECALL_LIMIT
+      || row.found.some(id => !((view.turns.get(id)?.update ?? Infinity) < turn.update)))
+      throw Error('preview journal: lookup order or cap');
+    // The second packet's grounding frontiers are held to the reserve's own test (a due turn's synthetic update is valid).
+    for (const frontier of [row.grounding?.compactedThrough, row.grounding?.setAsideThrough])
+      if (frontier !== undefined && (!isJournalUpdate(frontier) || frontier >= turn.update)) throw Error('preview journal: compacted grounding order');
+    settleTokens(view, `answer:${row.id}`, row.usage);
+    reserveTokens(view, `answer:${row.id}`, 'answer', row.maxInputTokens ?? view.limits.maxBytes,
+      row.maxOutputTokens ?? subscriptionOutputMaximum);
+    turn.lookup = { words: row.words, found: row.found };
+    if (row.prompt !== undefined) turn.prompt = row.prompt;
+    if (row.grounding) turn.grounding = row.grounding;
+    if (row.packetDropped !== undefined) turn.packetDropped = row.packetDropped;
+    const hits = promptRecallHits(row.prompt);
+    if (hits) { turn.recallHits = hits.turns; turn.channelRecallHits = hits.channels; }
+    view.lastPrompt = { kind: 'answer', id: turn.id, prompt: row.prompt ?? null, memoryCount: view.memory.length,
+      summaryCount: view.summaries.length, closedCount: view.closed.size };
+    view.calls++; return;
+  }
   if (row.kind === 'reply-check') {
     if (replyCandidate === undefined || turn.intent !== undefined) throw Error('preview journal: reply check order');
     if (row.result.path === 'jev' && !turn.jevReserved) throw Error('preview journal: Jev call unreserved');
@@ -3308,7 +3379,7 @@ export function openPreviewJournal(path: string, key: Uint8Array, initial?: Extr
         || (row.kind === 'intake' && row.reserve !== undefined && !view.turns.has(row.id) && view.order.length < view.limits.maxTurns)
         || (row.kind === 'limited-intent' && row.approval?.action !== 'stop' && reserveRepliesUsed(view, row.at) >= MINIMAL_RESERVE.replies)
         || ((row.kind === 'reserve' || row.kind === 'summary-reserve' || row.kind === 'index-reserve' || row.kind === 'reply-review-reserve'
-          || row.kind === 'reply-revision-reserve' || row.kind === 'reply-revision-review-reserve' || row.kind === 'format-retry'
+          || row.kind === 'reply-revision-reserve' || row.kind === 'reply-revision-review-reserve' || row.kind === 'format-retry' || row.kind === 'lookup'
           || row.kind === 'retro-reserve' || row.kind === 'retro-rerun-reserve')
           && view.calls >= view.limits.maxCalls)
         || (row.kind === 'intent' && view.replies >= view.limits.maxReplies)
@@ -3918,6 +3989,9 @@ export function createJournalWorker(journal: ReturnType<typeof openPreviewJourna
    * ordinary call also clears a floor an earlier attempt left -- and `preparedWithFloor` restores -1 when its
    * walk ends, including on a throw. Nothing else reads it, so the summary pass can never see a stale floor. */
   let historySetAside = -1;
+  /** The one lookup of the turn now being prepared again: its searched phrases and the turns they found. Set only
+   * around that second preparation, so every other preparation is unchanged. */
+  let activeLookup: { id: string; words: string[]; found: Turn[] } | undefined;
   /** Turns whose reply this worker sent with a spoken continuity disclosure: the current episode (Rule 110). */
   const episodeSpoken = new Set<string>();
   const summaryFor = (through: number) => journal.view.summaries.filter(item => item.through <= through).at(-1);
@@ -4058,6 +4132,18 @@ export function createJournalWorker(journal: ReturnType<typeof openPreviewJourna
       .slice(-PREVIEW_CONTINUED_TURNS).filter(item => item.update <= summary.through);
     return [...new Map([...continued, ...(earliest ? [earliest] : []), ...(dated ? [dated] : []), ...ranked].map(item => [item.id, item])).values()]
       .slice(0, PREVIEW_RECALL_LIMIT + continued.length);
+  };
+  /** Rule 11: the answer model's own search phrases, run through the same word stage and the same recall owner as a
+   * question, over the turns verbatim history no longer shows. Bounded like recall; empty when nothing relates. */
+  const lookupRecall = (turn: Turn, through: number, words: readonly string[]) => {
+    const older = journal.view.order.filter(item => remembered(item) && !sizeRefused(item) && item.update < turn.update
+      && item.update <= through);
+    const texts = older.map(item => `${clean(item.text, true, item.id)} ${clean(recallReply(item) ?? '', true, item.id)}`);
+    const query = words.join(' ');
+    const lexical = selectRecall({ message: query, now: ports.now(), limit: PREVIEW_RECALL_LIMIT,
+      candidates: older.map((item, index) => ({ text: texts[index]!, measurementText: clean(item.text, true, item.id), at: sentAt(item) ?? 0 })) });
+    return ownedRecall(query, lexical, older.map((item, index) => ({ id: item.id, text: texts[index]!, indexable: fromOperator(item) })),
+      PREVIEW_RECALL_LIMIT).order.map(index => older[index]!);
   };
   /** Imported items use the existing sentinel but never become executable turns. */
   const channelFor = (turn: Turn, summary?: string, prioritizeDates = true) => {
@@ -5115,6 +5201,11 @@ export function createJournalWorker(journal: ReturnType<typeof openPreviewJourna
     const pending = journal.view.corrections.map(id => journal.view.turns.get(id)!).slice(0, PREVIEW_CORRECTION_LIMIT);
     const older = journal.view.order.filter(item => remembered(item) && fromOperator(item) && item.update < turn.update);
     const latestSummary = summaryFor(before(turn.update));
+    // Rule 11: this turn's lookup results, or the offer of one. The offer needs room for the answer call, the
+    // lookup's second call and the reply review's reserved slot, so a root at its call cap is never offered one.
+    const lookup = activeLookup?.id === turn.id ? activeLookup : undefined;
+    const lookupOffered = !lookup && !turn.lookup && fromOperator(turn) && !turn.requestedAction && !probeTurn(journal.view, turn)
+      && journal.view.calls + 2 <= journal.view.limits.maxCalls - (ports.replyCheck ? 1 : 0);
 
     const ranked = selectRecall({ message: turn.text, now: ports.now(), limit: 5,
       summary: latestSummary?.text ?? '',
@@ -5228,10 +5319,13 @@ export function createJournalWorker(journal: ReturnType<typeof openPreviewJourna
       // With no summary, verbatim history used to be the only path to an older turn -- so a turn the floor set
       // aside would have been in no block at all. Recall is offered against the floor itself in that case, which
       // is what makes "nothing is lost, it is still reachable" true rather than a hope (Rule 2).
-      const recalled = said ? said.indices.map(index => older[index]!).filter(item => !summary
+      const chosen = said ? said.indices.map(index => older[index]!).filter(item => !summary
         || item.update <= Math.max(summary.through, setAside))
         : summary ? recallFor(turn, summary)
           : setAside >= 0 ? recallFor(turn, { through: setAside, text: '' }) : [];
+      // What the lookup found leads the recalled turns and yields late under byte pressure (see the drop order).
+      const lookedUp = new Set(compact && lookup ? lookup.found.map(item => item.id) : []);
+      const recalled = lookedUp.size ? [...new Map([...lookup!.found, ...chosen].map(item => [item.id, item])).values()] : chosen;
       const channels = channelFor(turn, summary?.text);
       const candidateChannels = channelFor(turn, summary?.text, false);
       const named = peopleFor(turn.text, summary?.through ?? -1);
@@ -5284,7 +5378,7 @@ export function createJournalWorker(journal: ReturnType<typeof openPreviewJourna
       });
       recalled.forEach((item, index) => {
         const due = dueSoon(clean(item.text, true));
-        optional.push({ kind: due ? 'dated' : 'recent', key: item.id, signal: item.id, rank: due ? 1 : 4,
+        optional.push({ kind: due ? 'dated' : 'recent', key: item.id, signal: item.id, rank: due || lookedUp.has(item.id) ? 1 : 4,
           match: matches(item.text), recent: sentAt(item) ?? 0, index });
       });
       channels.forEach((item, index) => {
@@ -5342,6 +5436,10 @@ export function createJournalWorker(journal: ReturnType<typeof openPreviewJourna
           // Measurement only; what an answer must say about a gap is delivered as instructions (ANSWER_PROTOCOL),
           // and the pending backlog goes to the inspection surface, so the packet keeps its bytes for evidence.
           ...(compact && summary ? { meaningIndexCoverage: meaningCoverage(summary.through) } : {}),
+          // Rule 11: the lookup offer, or (on the one second call) what was searched and how much of it is quoted here.
+          ...(lookup ? { memoryLookup: { searched: lookup.words,
+            found: lookup.found.filter(item => datedBase.includes(JSON.stringify(item.id))).length, note: LOOKUP_DONE_GUIDANCE } }
+            : compact && summary && lookupOffered ? { memoryLookup: LOOKUP_OFFERED } : {}),
           // Update mode and new conflicts can only cite an offered candidate or contradiction, so their guidance rides with those.
           ...(fromOperator(turn) ? { memoryDecision: `Return memory:[] unless the verified operator corrects, forgets or sets reply style. ${MEMORY_ITEM_SHAPE} For an earlier answer use in:"reply" with its exact old reply clause and keep the question. `
             + (offered.length || (JSON.parse(datedBase) as { contradictions?: unknown[] }).contradictions?.length ? 'A newer operator statement of the same fact without correction words uses mode:"update", an exact old clause from an offered operator memoryCandidate or contradiction (hints only) and the exact new clause from this turn; the old dated value stays retrievable. ' : '')
@@ -5641,7 +5739,8 @@ export function createJournalWorker(journal: ReturnType<typeof openPreviewJourna
           if (journal.view.calls >= journal.view.limits.maxCalls - (ports.replyCheck ? 1 : 0)) {
             journal.append({kind:'hold',id:turn.id,reason:'call cap',at:ports.now()}); continue;
           }
-          const { question, context, prepared, carried, dropped, grounding } = selected;
+          const { question, carried, dropped, grounding } = selected;
+          let { context, prepared } = selected;
           // Rule 38 / scheduled work §5: a requested action's due selection and prepared packet are validated before
           // its model call. The pipeline fails closed: a violation or an unavailable check holds it, visibly.
           if (turn.requestedAction !== undefined) {
@@ -5659,7 +5758,8 @@ export function createJournalWorker(journal: ReturnType<typeof openPreviewJourna
             corrections: carried, grounding, packetDropped: dropped, packetLimit: journal.view.limits.maxBytes,
             maxInputTokens: journal.view.limits.maxBytes, maxOutputTokens: subscriptionOutputMaximum, at: ports.now() }); gate();
 
-          let answer: Awaited<ReturnType<PreviewPorts['model']>>;
+          type Answer = Awaited<ReturnType<PreviewPorts['model']>>;
+          let answer: Answer;
           const answerStarted = elapsedMs();
           try { answer = await ports.model({ question, context, id: turn.id,
             ...(prepared === undefined ? {} : { prepared }) }); }
@@ -5667,19 +5767,63 @@ export function createJournalWorker(journal: ReturnType<typeof openPreviewJourna
           // Rule 116: a real model sometimes answers in prose instead of the required Decision. Ask the same turn
           // once more with a runner-authored format reminder in the packet (never in the operator's message),
           // reserved against the same call cap and only while not stopped; a second miss is refused as before.
-          if (typeof answer !== 'string' && 'failureClass' in answer && answer.state === 'complete'
-            && answer.failureClass === 'malformed' && !turn.answerRetried) {
+          // Returns false when the re-ask's outcome is unknown (its reservation then stays UNKNOWN).
+          const formatReask = async (given: Answer): Promise<Answer | false> => {
+            if (typeof given === 'string' || !('failureClass' in given) || given.state !== 'complete'
+              || given.failureClass !== 'malformed' || turn.answerRetried) return given;
             const retryContext = withFormatReminder(context, ANSWER_FORMAT_REMINDER);
             let retryPrepared: string | undefined, preparable = true;
             if (prepared !== undefined) try { retryPrepared = ports.prepareModel?.({ question, context: retryContext, id: turn.id }); }
             catch { preparable = false; }
-            if (preparable && !halted() && journal.view.calls < journal.view.limits.maxCalls - (ports.replyCheck ? 1 : 0)) {
-              journal.append({ kind: 'format-retry', id: turn.id, role: 'answer', state: 'complete', failureClass: 'malformed',
-                ...(answer.usage ? { usage: answer.usage } : {}), maxInputTokens: journal.view.limits.maxBytes,
-                maxOutputTokens: subscriptionOutputMaximum, at: ports.now() });
-              try { answer = await ports.model({ question, context: retryContext, id: turn.id,
-                ...(retryPrepared === undefined ? {} : { prepared: retryPrepared }) }); }
-              catch { continue; } // the retry reservation remains UNKNOWN
+            if (!preparable || halted() || journal.view.calls >= journal.view.limits.maxCalls - (ports.replyCheck ? 1 : 0)) return given;
+            journal.append({ kind: 'format-retry', id: turn.id, role: 'answer', state: 'complete', failureClass: 'malformed',
+              ...(given.usage ? { usage: given.usage } : {}), maxInputTokens: journal.view.limits.maxBytes,
+              maxOutputTokens: subscriptionOutputMaximum, at: ports.now() });
+            try { return await ports.model({ question, context: retryContext, id: turn.id,
+              ...(retryPrepared === undefined ? {} : { prepared: retryPrepared }) }); }
+            catch { return false; }
+          };
+          const answerText = (given: Answer) => typeof given === 'string' ? given : 'text' in given ? given.text : undefined;
+          const first = await formatReask(answer);
+          if (first === false) continue; // the retry reservation remains UNKNOWN
+          answer = first;
+          // Rule 11 (Part 21 §2): the answer model may ask for ONE memory lookup instead of replying. Its phrases are
+          // data: bounded, redacted like any packet field, and used only as a search query. The second answer call is
+          // reserved under the same call cap and only while not stopped (Rule 55: never a loop); nothing is sent
+          // between the two calls, and an unknown outcome of the second call is settled like any answer call.
+          const requested = answerText(answer) === undefined ? undefined : lookupWords(answerText(answer)!);
+          if (requested !== undefined) {
+            const words = requested.map(word => clean(redact(word).text, true)).filter(word => word.trim());
+            const through = Math.max(grounding.compactedThrough ?? -1, grounding.setAsideThrough ?? -1);
+            const offered = (JSON.parse(context) as { memoryLookup?: unknown }).memoryLookup === LOOKUP_OFFERED;
+            let again: ReturnType<typeof preparedFor> | undefined, matched: Turn[] = [];
+            if (offered && words.length && !turn.lookup && !halted()
+              && journal.view.calls < journal.view.limits.maxCalls - (ports.replyCheck ? 1 : 0)) {
+              matched = lookupRecall(turn, through, words);
+              activeLookup = { id: turn.id, words, found: matched };
+              try { again = preparedFor(turn); } finally { activeLookup = undefined; }
+            }
+            if (again && !('reason' in again)) {
+              const found = (JSON.parse(again.context) as { recalled?: { id: string }[] }).recalled ?? [];
+              // Recorded as found: the matches this second packet actually quotes.
+              journal.append({ kind: 'lookup', id: turn.id, words, found: matched.map(item => item.id).filter(id => found.some(item => item.id === id)),
+                ...(again.prepared === undefined ? {} : { prompt: again.prepared }), grounding: again.grounding,
+                packetDropped: again.dropped, ...(typeof answer !== 'string' && 'usage' in answer && answer.usage ? { usage: answer.usage } : {}),
+                maxInputTokens: journal.view.limits.maxBytes, maxOutputTokens: subscriptionOutputMaximum, at: ports.now() }); gate();
+              ({ context, prepared } = again);
+              let second: Answer | false;
+              try { second = await ports.model({ question, context, id: turn.id, ...(prepared === undefined ? {} : { prepared }) }); }
+              catch { continue; } // the lookup's reservation remains UNKNOWN; it is never repeated
+              second = await formatReask(second);
+              if (second === false) continue;
+              answer = second;
+            }
+            // The answer to a lookup request is always a reply. A request that could not run, or a second request
+            // after the one that ran, is answered by the runner in plain words (Rules 3, 55).
+            if (answerText(answer) !== undefined && lookupWords(answerText(answer)!) !== undefined) {
+              const reply = JSON.stringify({ reply: !turn.lookup ? LOOKUP_UNAVAILABLE_REPLY
+                : turn.lookup.found.length ? LOOKUP_UNSETTLED_REPLY : LOOKUP_NOT_FOUND_REPLY });
+              answer = typeof answer === 'string' ? reply : 'text' in answer ? { ...answer, text: reply } : answer;
             }
           }
           const answerMs = duration(answerStarted);
@@ -5969,6 +6113,7 @@ export function createJournalWorker(journal: ReturnType<typeof openPreviewJourna
         reply = disclosed(reply);
         // Rule 89: fixed runner notices speak as infrastructure; the agent's own answers speak as the agent.
         let speaker: Speaker = turn.noticeClass !== undefined || turn.answer === undefined || turn.answer === MODEL_FAILURE_REPLY
+          || [LOOKUP_UNAVAILABLE_REPLY, LOOKUP_NOT_FOUND_REPLY, LOOKUP_UNSETTLED_REPLY].includes(turn.answer)
           || turn.memoryPending && turn.memoryUndecided || isStatusCommand(turn.text) && !turn.reserved ? 'infrastructure' : 'agent';
         const proposedBody = reply.replaceAll('&', '&amp;').replaceAll('<', '&lt;').replaceAll('>', '&gt;');
         if (Buffer.byteLength(proposedBody) > 4096 || Array.from(proposedBody).length > 4096)
@@ -6866,7 +7011,7 @@ export function createJournalWorker(journal: ReturnType<typeof openPreviewJourna
         const proposed = (JSON.parse(answered.trim().replace(/^```(?:json)?\s*|\s*```$/gu, '')) as { concepts?: unknown })?.concepts;
         for (const item of Array.isArray(proposed) ? proposed.slice(0, items.length) : []) {
           const { source, terms } = (item ?? {}) as { source?: unknown; terms?: unknown };
-          const words = conceptTerms(terms);
+          const words = proposedConceptTerms(terms);
           if (typeof source !== 'string' || !items.some(turn => turn.id === source) || !words?.length
             || concepts.some(saved => saved.source === source)) continue;
           concepts.push({ source, terms: words });
@@ -7189,7 +7334,7 @@ export function createJournalWorker(journal: ReturnType<typeof openPreviewJourna
       for (const item of Array.isArray(proposedConcepts) ? proposedConcepts.slice(0, CONCEPT_SOURCES_LIMIT) : []) {
         const { source, terms: proposed } = (item ?? {}) as { source?: unknown; terms?: unknown };
         const turn = typeof source === 'string' ? journal.view.turns.get(source) : undefined;
-        const words = conceptTerms(proposed);
+        const words = proposedConceptTerms(proposed);
         if (!turn?.accepted || !fromOperator(turn) || (turn.update <= after && !indexBacklog.includes(turn.id)) || turn.update > through || !words?.length
           || concepts.some(saved => saved.source === turn.id)) continue;
         concepts.push({ source: turn.id, terms: words });
