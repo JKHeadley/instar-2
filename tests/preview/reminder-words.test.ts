@@ -149,12 +149,14 @@ it('cancels exactly the request the operator withdrew, by their own words, and l
 /** Both sides of the quote check itself, on one withdrawing message: words the operator really wrote are
  * admitted; a span the agent made up, or a bare id with no words at all, is not. Code checks only whose
  * words they are -- what they mean stays the model's to read (Rule 10). */
-it.each([
-  ['the operator\'s own words', (id: string) => [{ id, quote: 'cancel the bird feeder one' }], true],
-  ['words from the agent\'s own reply', (id: string) => [{ id, quote: 'This replaces the bird feeder reminder' }], false],
-  ['a bare id with no words', (id: string) => [id], false],
-  ['a span too short to be a quote', (id: string) => [{ id, quote: 'one' }], false],
-])('admits a withdrawal cited as %s: %s', async (_name, cite, admitted) => {
+type Citation = { name: string; cite: (id: string) => (string | { id: string; quote: string })[]; admitted: boolean };
+const CITATIONS: Citation[] = [
+  { name: 'the operator\'s own words', admitted: true, cite: id => [{ id, quote: 'cancel the bird feeder one' }] },
+  { name: 'words from the agent\'s own reply', admitted: false, cite: id => [{ id, quote: 'This replaces the bird feeder reminder' }] },
+  { name: 'a bare id with no words', admitted: false, cite: id => [id] },
+  { name: 'a span too short to be a quote', admitted: false, cite: id => [{ id, quote: 'one' }] },
+];
+it.each(CITATIONS)('admits a withdrawal cited as $name: $admitted', async ({ cite, admitted }) => {
   const root = tmp('cite');
   try {
     const { state, journal, worker } = world(root, input => input.question === FEEDER
