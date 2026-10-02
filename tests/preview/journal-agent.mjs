@@ -85,7 +85,7 @@ import { auditJournal } from './journal-audit.mjs';
 import { memoryReport } from './memory-export.js';
 
 import { stepQuestions } from './step-check.js';
-import { RETROSPECTIVE_QUESTION, benchmarkReruns, disciplineSource, feedbackDispositions, latestGrades, openFindings, owedCases, passAccounting, pendingGrades, promotedCases, replyContextDigest, rerunDispositions, rerunsDue, standingGrantCandidates } from './retrospective.js';
+import { RETROSPECTIVE_QUESTION, benchmarkReruns, disciplineSource, feedbackDispositions, latestGrades, openFindings, owedCases, passAccounting, pendingGrades, promotedCases, replyContextDigest, rerunDispositions, rerunsDue, retroAnswerBudget, standingGrantCandidates } from './retrospective.js';
 
 
 
@@ -475,7 +475,9 @@ const retrospectiveView = (view, now) => { const digest = replyContextDigest(vie
   const grades = [...latestGrades(view).values()];
   return { passes: view.retroPasses.map(pass => ({ pass: pass.pass, at: pass.at,
     state: pass.state ?? 'in-flight-or-unknown', reason: pass.reason ?? null, eligible: pass.eligible,
-    supplied: pass.cases.length, deferredByBound: pass.omitted.length,
+    supplied: pass.cases.length, deferredByBound: Math.max(0, pass.eligible - pass.cases.length),
+    namedDeferrals: pass.omitted.length,
+    estimatedAnswerBytes: pass.estimatedAnswerBytes ?? null, outputTokens: pass.outputTokens ?? null,
     inspected: pass.result ? pass.result.inspected.length : null, omittedByReview: pass.result ? pass.result.omitted.length : null,
     accounting: passAccounting(pass), efficiency: pass.result?.efficiency.summary ?? null,
     duties: pass.result?.duties.map(item => ({ duty: item.duty, disposition: item.disposition, note: item.note })) ?? [],
@@ -500,7 +502,17 @@ const retrospectiveView = (view, now) => { const digest = replyContextDigest(vie
       .map(category => [category, owed.filter(row => row.item.category === category).length])),
       oldestSince: owed.reduce((min, row) => Math.min(min, row.since), Number.MAX_SAFE_INTEGER) === Number.MAX_SAFE_INTEGER ? null
         : owed.reduce((min, row) => Math.min(min, row.since), Number.MAX_SAFE_INTEGER) }; })(),
-  contextDigest: digest, routeSelection: 'unmeasured' }; };
+  contextDigest: digest, answerBudget: retroAnswerBudget(view.retroPasses),
+  // The DOORWAY/MODEL routing label (docs/01 lesson 5: a routing choice no benchmark backs is labelled
+  // unmeasured). One route, no benchmark behind it, so it stays 'unmeasured' — this field is NOT about the
+  // answer budget, and overloading it would make a reader checking that arm read a measured routing choice
+  // where there is none.
+  routeSelection: 'unmeasured',
+  // The answer BUDGET's route, under its own name: 'measured' once a completed pass recorded both its estimate
+  // and what its answer really cost, 'start' while this root has measured nothing and asks at the small start.
+  answerBudgetRoute: view.retroPasses.some(pass => pass.state === 'complete'
+    && typeof pass.estimatedAnswerBytes === 'number' && typeof pass.outputTokens === 'number')
+    ? 'measured' : 'start' }; };
 const stepCheckView = view => ({ total: view.stepChecks.size,
   unchecked: [...view.stepChecks.values()].filter(item => !item.reserved).length,
   verdicts: [...view.stepChecks].map(([step, item]) => ({ step,

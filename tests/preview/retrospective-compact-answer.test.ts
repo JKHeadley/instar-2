@@ -3,7 +3,7 @@ import { mkdtempSync, readFileSync, realpathSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { createJournalWorker, openPreviewJournal, retrospectiveCases, type JournalView } from './journal.js';
-import { GRAVITY_WELLS, RETROSPECTIVE_DUTIES, RETROSPECTIVE_QUESTION, RETRO_ANSWER_BUDGET_BYTES,
+import { GRAVITY_WELLS, RETROSPECTIVE_DUTIES, RETROSPECTIVE_QUESTION, RETRO_ANSWER_BUDGET_BYTES, RETRO_DUTY_UNINSPECTED_NOTE,
   RETRO_ANSWER_BYTES_PER_TOKEN, RETRO_DUTY_CODES, RETRO_EFFICIENCY_CHARS, RETRO_FAILURE_BACKOFF_MS,
   RETRO_MIN_INTERVAL_MS, RETRO_OUTCOME_REASON_CHARS, RETRO_OVER_CAP_REASON, RETRO_WELL_NOTES,
   WAIVER_EVIDENCE_UNAVAILABLE, disciplineSource, eligibleCases, estimatedAnswerBytes, retroAnswerBudget,
@@ -27,7 +27,7 @@ const FIXTURE = JSON.parse(readFileSync(new URL('./fixtures/retrospective-compac
       jsonShapes: Record<string, number>; bytesPerToken: { update: number; bytes: number; outputTokens: number }[] };
     answers: { compactFixed: Record<string, unknown>; verboseFixedAtAskedLengths: Record<string, unknown>;
       verboseFixedAtAcceptedLengths: Record<string, unknown>; overLongFixed: Record<string, unknown>;
-      malformedFixed: { why: string; part: Record<string, unknown> }[];
+      malformedFixed: { why: string; part: Record<string, unknown>; recordedUnavailable?: true }[];
       wireShapes: { class: string; recordedCount: number; body?: string }[] } };
 const bytes = (value: unknown) => Buffer.byteLength(JSON.stringify(value));
 /** The 18 recorded physical over-cap frames of the 2026-09-29 proof room, as output counts. */
@@ -71,10 +71,15 @@ it('grounds the token arithmetic in the two verbatim live model outputs rather t
   const ratios = FIXTURE.recorded.bytesPerToken.map(row => row.bytes / row.outputTokens);
   expect(ratios.length).toBe(2);
   for (const ratio of ratios) expect(ratio).toBeGreaterThan(2.6);
-  // 2.7 sits at the low end of the two measured ratios, which is the conservative side: a LOWER bytes-per-token
-  // figure charges MORE tokens for the same bytes, so the budget aims further inside the cap.
-  expect(RETRO_ANSWER_BYTES_PER_TOKEN).toBeLessThan(Math.max(...ratios));
-  expect(RETRO_ANSWER_BYTES_PER_TOKEN).toBeCloseTo(Math.min(...ratios), 1);
+  // Those two ratios are REPLY outputs, and a reply's output IS its answer text. The retrospective answer is
+  // not: the route's system prompt puts the model's reasoning in the Decision's reason.value, so the output the
+  // cap counts carries that reasoning beside the answer. Measured on four real retrospective calls (plan #289,
+  // fixtures/retrospective-live-failures-2026-10-02.json, grounded in retrospective-first-pass-fit.test.ts), the
+  // planned answer costs 1.576 to 2.173 bytes per output token — well under a reply's. The constant is therefore
+  // far BELOW these reply ratios, which is the conservative side: a lower figure charges MORE tokens for the same
+  // bytes, so the budget aims further inside the cap.
+  expect(RETRO_ANSWER_BYTES_PER_TOKEN).toBeLessThan(Math.min(...ratios));
+  expect(RETRO_ANSWER_BYTES_PER_TOKEN).toBeGreaterThan(1);
   // The live record this unit exists for: every retrospective call ever made on that line hit the output cap,
   // including the one that supplied only 23 cases where the one before it supplied 37. Halving the case rows did
   // not help, because the fixed part — constant across both — carried most of the cost.
@@ -98,14 +103,24 @@ it('reaches an answerable ask at EVERY recorded over-cap rate, including the liv
     return taken;
   };
   const planned = estimatedAnswerBytes(planAt(RETRO_ANSWER_BUDGET_BYTES));
+  let atTheFloor = 0;
   for (const tokens of [...recordedOverCapTokens, FIXTURE.recorded.liveRetrospective.lastCall.usage.outputTokens]) {
     const next = retroAnswerBudget([{ state: 'failed', reason: RETRO_OVER_CAP_REASON,
       estimatedAnswerBytes: planned, outputTokens: tokens }]);
+    // It always narrows, and it always still asks about at least one case.
+    expect(next, String(tokens)).toBeLessThan(planned);
     const cases = planAt(next);
-    expect(cases.length).toBeGreaterThan(0);
-    // Priced at the rate that very answer was written to, the next ask fits — in one measured step.
-    expect(estimatedAnswerBytes(cases) * (tokens / planned)).toBeLessThanOrEqual(SUBSCRIPTION_MAX_OUTPUT_TOKENS);
+    expect(cases.length, String(tokens)).toBeGreaterThan(0);
+    // Priced at the rate that very answer was written to, a next ask of more than one case fits — in one measured
+    // step. Where the rate is so extreme that not even the planner's one-case floor would fit, the pass is at
+    // that floor, its ask cannot shrink further, and the cadence returns to the failure backoff rather than
+    // spending a call an hour on an identical ask (asserted in retrospective-measured-narrowing.test.ts).
+    if (cases.length > 1) expect(estimatedAnswerBytes(cases) * (tokens / planned), String(tokens))
+      .toBeLessThanOrEqual(SUBSCRIPTION_MAX_OUTPUT_TOKENS);
+    else atTheFloor++;
   }
+  // Honest count: most recorded rates reach an answerable multi-case ask; the extreme ones reach the floor.
+  expect(atTheFloor).toBeLessThan(recordedOverCapTokens.length);
   // The other side, at the live rate: with the fixed part as it was — 2595 bytes of duty objects, gravity-well
   // objects and an efficiency object — those same rows cost more than the whole cap on their own, so no number of
   // cases could be removed to make the answer fit. That is exactly what w3-retrofit measured and could not close.
@@ -291,18 +306,28 @@ it('lets the plan, never the answer, decide an unavailable duty: u is refused wh
     expect(pass.result!.duties[waiverIndex], code).toMatchObject({ duty: 'waiver-recurrence',
       disposition: 'unavailable', note: WAIVER_EVIDENCE_UNAVAILABLE });
   }
-  // Evidence supplied: `u` is refused, because the answer cannot declare unavailable what the plan handed it.
-  const refused = await onePass(state => complete(compactAnswer(state, { duties: codes('u') })), withWaivers);
-  expect(refused.pass).toMatchObject({ state: 'failed',
-    reason: expect.stringContaining('has evidence and cannot be unavailable') });
-  expect(refused.stillOwed).toEqual(expect.arrayContaining(refused.before));
+  // Evidence supplied: the answer still cannot declare the duty INSPECTED, so `u` records it UNAVAILABLE with a
+  // note saying its evidence was present. Changed by plan #289 (w3-retrolive): it used to refuse the whole pass,
+  // and the second real model call of 2026-10-02 died exactly there with an answer that fitted the output cap —
+  // a bookkeeping character cost an hour of real review. The floor is intact: the duty is NOT inspected, so a
+  // pass that shirks a duty is visible as a duty it did not discharge rather than hidden behind a refusal.
+  const reported = await onePass(state => complete(compactAnswer(state, { duties: codes('u') })), withWaivers);
+  expect(reported.pass).toMatchObject({ state: 'complete' });
+  expect(reported.pass.result!.duties[waiverIndex]).toMatchObject({ duty: 'waiver-recurrence',
+    disposition: 'unavailable', note: RETRO_DUTY_UNINSPECTED_NOTE });
+  expect(reported.pass.result!.duties.filter(row => row.disposition === 'inspected'))
+    .toHaveLength(RETROSPECTIVE_DUTIES.length - 1);
   const accepted = await onePass(state => complete(compactAnswer(state, { duties: codes('n') })), withWaivers);
   expect(accepted.pass.result!.duties[waiverIndex]).toMatchObject({ disposition: 'inspected', note: RETRO_DUTY_CODES.n });
 });
 
 it('fails closed on every malformed compact fixed part in the fixture, and keeps every case owed', async () => {
-  expect(FIXTURE.answers.malformedFixed.length).toBeGreaterThanOrEqual(10);
-  for (const { why, part } of FIXTURE.answers.malformedFixed) {
+  // One fixture entry is no longer malformed — a `u` at a duty whose evidence is present now records that duty
+  // unavailable instead of refusing the pass (see the test above) — and it carries `recordedUnavailable`, so
+  // the fail-closed set stays at ten rather than quietly shrinking to nine.
+  const failClosed = FIXTURE.answers.malformedFixed.filter(row => row.recordedUnavailable !== true);
+  expect(failClosed.length).toBeGreaterThanOrEqual(10);
+  for (const { why, part } of failClosed) {
     // The malformed fixed part REPLACES the well-formed one, so each case carries exactly one defect.
     const { pass, before, stillOwed } = await onePass(state => complete(JSON.stringify({
       ...JSON.parse(compactAnswer(state)) as Record<string, unknown>,
