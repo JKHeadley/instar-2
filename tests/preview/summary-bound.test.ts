@@ -1,5 +1,5 @@
 import { expect, it } from 'vitest';
-import { mkdtempSync, readFileSync, realpathSync, rmSync } from 'node:fs';
+import { copyFileSync, mkdtempSync, readFileSync, realpathSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { SUBSCRIPTION_MAX_OUTPUT_TOKENS } from '../../src/assembly/production-provider.js';
@@ -393,5 +393,69 @@ it('a root carrying the live format-2 failures advances on the next pass; the sa
     const reopened = openPreviewJournal(w.path, key);
     expect(summaryStoppedAt(reopened.view)).toBeNull();
     reopened.close();
+  } finally { rmSync(join(w.path, '..'), { recursive: true, force: true }); }
+});
+
+/** The next forced summary pass over a journal file, as a restarted process runs it: how many summary calls it made,
+ * the frontier it reached and where it is stopped. */
+async function nextPass(path: string) {
+  const journal = openPreviewJournal(path, key);
+  let calls = 0;
+  try {
+    const worker = createJournalWorker(journal, { now: () => START + 60_000, elapsed: () => 60_000, stopped: () => false,
+      prepareModel: input => JSON.stringify(input),
+      model: async () => { calls++; return JSON.stringify({ summary: 'The operator sent six notes.', people: [], commitments: [],
+        memory: [], questions: [], memoryItems: [], concepts: [] }); },
+      summaryCheck: async () => ({ model: 'jev-1.13.0', answers: { lost_memory: { type: 'noul', noul: 0.01 } } }),
+      send: async () => { throw new Error('unexpected send'); }, checkOutbound: () => {} });
+    await worker.summarizeIfNeeded(true);
+    return { calls, frontier: journal.view.summaries.at(-1)?.through ?? null, stoppedAt: summaryStoppedAt(journal.view) };
+  } finally { journal.close(); }
+}
+
+// cint-L29 review, MUST-FIX 1. The two fixtures are one history written by the real cint-L28 build (11eaaac5, format
+// 2): six answered turns and two over-bound refusals at frontier 1, braked there. One is the raw rows; the other is
+// the same journal after that build's own compaction, whose snapshot saved the two failures without a format.
+it('a cint-L28 snapshot gives up its format-2 brake exactly as the raw rows do', async () => {
+  const root = realpathSync(mkdtempSync(join(tmpdir(), 'preview-summary-format-')));
+  try {
+    const results: Record<string, unknown> = {};
+    for (const shape of ['raw', 'compacted']) {
+      const path = join(root, `${shape}.encrypted`);
+      copyFileSync(new URL(`./fixtures/summary-format-L28-${shape}.encrypted`, import.meta.url), path);
+      const bytes = readFileSync(path);
+      const opened = openPreviewJournal(path, key, undefined, undefined, true, undefined, true);
+      const before = { stoppedAt: summaryStoppedAt(opened.view), failures: opened.view.summaryFormatFailures,
+        calls: opened.view.calls, replies: opened.view.replies, turns: opened.view.order.length };
+      opened.close();
+      expect(readFileSync(path).equals(bytes)).toBe(true);
+      results[shape] = { before, next: await nextPass(path) };
+    }
+    expect(results.raw).toEqual({ before: { stoppedAt: null, failures: [], calls: 8, replies: 6, turns: 6 },
+      next: { calls: 2, frontier: 6, stoppedAt: null } });
+    expect(results.compacted).toEqual(results.raw);
+  } finally { rmSync(root, { recursive: true, force: true }); }
+});
+
+it('failures made under this format still brake after compaction and reopen', async () => {
+  const w = world('measured', 409600);
+  try {
+    await w.fill(1, 6);
+    for (let attempt = 0; attempt < 2; attempt++) {
+      w.journal.append({ kind: 'summary-reserve', through: 1, maxInputTokens: 409600, maxOutputTokens: 2048, at: START });
+      w.journal.append({ kind: 'summary-failed', format: SUMMARY_FORMAT, through: 1, state: 'complete', failureClass: 'malformed',
+        reason: SUMMARY_OVER_BOUND_REASON, at: START });
+    }
+    const saved = [{ through: 1, overCap: true, format: SUMMARY_FORMAT }, { through: 1, overCap: true, format: SUMMARY_FORMAT }];
+    expect(w.journal.view.summaryFormatFailures).toEqual(saved);
+    expect(summaryStoppedAt(w.journal.view)).toBe(1);
+    w.journal.compact();
+    w.journal.close();
+    const reopened = openPreviewJournal(w.path, key, undefined, undefined, true);
+    expect(reopened.view.summaryFormatFailures).toEqual(saved);
+    expect(summaryStoppedAt(reopened.view)).toBe(1);
+    reopened.close();
+    // Spent: the restarted pass makes no call at all.
+    expect(await nextPass(w.path)).toEqual({ calls: 0, frontier: null, stoppedAt: 1 });
   } finally { rmSync(join(w.path, '..'), { recursive: true, force: true }); }
 });

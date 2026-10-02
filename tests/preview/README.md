@@ -2410,7 +2410,10 @@ as before. Each summary failure records the summary format it was made under (`f
 failures under the current format spend a span's two attempts or set the brake, so a build that
 changes what a summary is asked, or how its answer is read and accepted, may retry spans an older
 build exhausted. Format 3 (the target no longer a refusal line, `reply` read as prose) is how
-Justin's root, braked at 969389763 under format 2, advances on its next pass with no hand step. Before this, a released
+Justin's root, braked at 969389763 under format 2, advances on its next pass with no hand step. A
+compacted snapshot saves each failure with its format and restores only the current format's, so
+the same history gives the same brake as raw rows or as a snapshot; a cint-L28 snapshot saved its
+format-2 failures unstamped and they are read as format 2. Before this, a released
 ceiling walked forward through ever longer spans from one base, two calls each: Justin's preview
 spent 77 summary calls from frontier 969389761 on 2026-10-02 (69 over the cap) with none accepted
 (`summary-bound.test.ts`).
