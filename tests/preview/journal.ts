@@ -4258,7 +4258,13 @@ export function createJournalWorker(journal: ReturnType<typeof openPreviewJourna
     // cued correction ("Actually, cancel ...") alike. Settled as undecided, it releases ordinary answers,
     // so one exhausted frontier never holds every later turn: a keyword cue only schedules judgment (Rule 10), and
     // the operator channel keeps being answered (Rules 14, 15; the durable-intake and answer floors).
-    if (request && journal.view.summarySpanFailures.some(through => through > previous && summarySpanFailures(journal.view, through) >= 2))
+    // A span the summary prompt cannot hold fails the same way before any call: its preflight refusal is held on the
+    // span's first turn, with no failure row and no reservation, so nothing else would ever settle the request (live
+    // 2026-10-01 proof room 2, update 6230467: the carried summary had outgrown the 24 KiB summary prompt, and
+    // "Actually, cancel the bird feeder one." waited 24 minutes with no reply, no call and its reminder unfired).
+    if (request && (journal.view.summarySpanFailures.some(through => through > previous && summarySpanFailures(journal.view, through) >= 2)
+      || journal.view.order.some(turn => turn.update > previous && turn.update <= request.update
+        && (turn.held === 'summary oversized turn' || turn.held === 'summary preflight unavailable'))))
       journal.append({ kind: 'memory-undecided', id: request.id, reason: 'summary-failed', at: ports.now() });
   };
   const datedFrom = (proposed: unknown, turn: Turn): DatedItem[] | undefined => {
@@ -5479,6 +5485,13 @@ export function createJournalWorker(journal: ReturnType<typeof openPreviewJourna
           delete turn.held; delete turn.heldSince;
         }
         if (turn.held === 'earlier turn pending' && !blockedEarlier) { delete turn.held; delete turn.heldSince; }
+        // A request settled undecided because its own span cannot be summarized: that preflight refusal concerns the
+        // summary frontier, not this reply, whose packet is prepared on its own (an earlier turn held the same way was
+        // already answered). Keeping it would leave the operator's message with no reply (Rule 15; Rule 95's open side).
+        if (turn.memoryUndecided && turn.answer === undefined
+          && (turn.held === 'summary oversized turn' || turn.held === 'summary preflight unavailable')) {
+          delete turn.held; delete turn.heldSince; journal.view.heldTurns.delete(turn);
+        }
         const priorHold = turn.held;
         if (turn.held?.startsWith('summary unavailable:') || turn.held === 'prompt overflow' || turn.held === 'context overflow') {
           const key = heldFitKey();
