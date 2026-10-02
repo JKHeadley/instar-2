@@ -1,12 +1,35 @@
 import type { BoundaryContext, Result } from '../index.js';
 import { operatorBoundary, requireOperator } from './boundary.js';
-import type { MinimalDependency, MinimalPathState } from './contracts.js';
+import type { InstalledShape, MinimalDependency, MinimalPathState } from './contracts.js';
 
 export const requiredMinimalDependencies = Object.freeze<readonly MinimalDependency[]>(['local-facts', 'register', 'identity-keys', 'clock',
   'lease', 'fence', 'replication-peer', 'conversation-binding', 'route', 'delivery-evidence']);
 
+const filled = (value: unknown): value is string => typeof value === 'string' && value.trim().length > 0;
+/** Eleven §5: the single-machine shape carries no peer dependency, but only under the exact current
+ * P-08 policy. The policy must bind this installation, profile and loss model, demand the full causal
+ * prefix, hold the response's operation in its accepted closed set, and the local-durable segment that
+ * carries that prefix must be admitted. A missing or stale policy, or an operation outside the set,
+ * leaves the peer required; the shape alone omits nothing. */
+function peerOmitted(shape: InstalledShape | undefined, admitted: Readonly<Record<MinimalDependency, boolean>>): boolean {
+  if (shape === undefined || shape.kind === 'peer-backed') return false;
+  requireOperator(shape.kind === 'single-machine' && filled(shape.installation) && filled(shape.profile)
+    && filled(shape.lossModel) && filled(shape.operation), 'P11-NF-36: installed shape is malformed');
+  requireOperator(admitted['replication-peer'] !== true,
+    'P11-NF-36: a single-machine shape cannot report an admitted replication peer');
+  const policy = shape.policy;
+  if (policy === null) return false;
+  requireOperator(typeof policy === 'object' && Array.isArray(policy.operations)
+    && policy.operations.every(operation => filled(operation)), 'P11-NF-36: installation policy is malformed');
+  return policy.policy === 'P-08' && filled(policy.acceptance) && policy.installation === shape.installation
+    && policy.profile === shape.profile && policy.lossModel === shape.lossModel && policy.causalPrefix === 'full'
+    && policy.operations.includes(shape.operation) && admitted['local-facts'] === true;
+}
+
 export function evaluateMinimalPath(input: Readonly<{ admitted: Readonly<Record<MinimalDependency, boolean>>;
-  ordinaryUnavailable: readonly string[]; inputPreserved: boolean; repairOwner: string; maximumExposure: number }>,
+  ordinaryUnavailable: readonly string[]; inputPreserved: boolean; repairOwner: string; maximumExposure: number;
+  /** The installed shape (Eleven §5). Absent means peer-backed: `replication-peer` is required. */
+  shape?: InstalledShape }>,
 context: BoundaryContext): Result<MinimalPathState> {
   return operatorBoundary('MinimalPathAdmission', context, () => {
     requireOperator(typeof input.inputPreserved === 'boolean', 'P11-NF-33/38: preservation must be a boolean');
@@ -20,7 +43,9 @@ context: BoundaryContext): Result<MinimalPathState> {
     requireOperator(typeof input.repairOwner === 'string' && input.repairOwner.trim().length > 0
       && Number.isSafeInteger(input.maximumExposure) && input.maximumExposure >= 0,
       'P11-NF-35/38: outage requires an owner and retained finite exposure');
-    const missing = requiredMinimalDependencies.filter(dependency => input.admitted[dependency] !== true);
+    const omitPeer = peerOmitted(input.shape, input.admitted);
+    const missing = requiredMinimalDependencies.filter(dependency => input.admitted[dependency] !== true
+      && !(omitPeer && dependency === 'replication-peer'));
     return Object.freeze({ admitted: missing.length === 0, missing: Object.freeze(missing),
       ordinaryUnavailable: Object.freeze([...input.ordinaryUnavailable]), responseEligible: missing.length === 0,
       preserved: true, repairOwner: input.repairOwner, maximumExposure: input.maximumExposure, replayCount: 0 as const });

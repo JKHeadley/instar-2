@@ -2922,14 +2922,54 @@ Rules 4, 14, 15, 52, 53, 77, 79, 80, 82, 86, 87, 88, 95 and 106 on the live runn
   Limited answers are fixed text grouped per conversation, with no model call.
 
   Whether the minimal path may speak is Part Eleven's own verdict (`evaluateMinimalPath`/
-  `minimalResponse` in `src/operator/live.ts`) over what the host actually observes. The live runner
-  reports the register generation, lease, fence and `replication-peer` as **not admitted**. The
-  installed register, the exclusive lease/fence and the signed P-08 single-machine installation
-  policy are not in this preview, and the activation record is not that evidence (Rule 26). So on
-  the live runner limited answers are **inhibited**: each message stays preserved, an owned outage
-  names the missing dependencies (`minimal-outage`, `status.minimalReserve.outages`), and an exact
-  `/stop` latches at once, since the brake needs no reply. The admitted behavior is proven offline
-  with an installed owner. Ordinary work runs beside the poll loop and is never awaited by it. A
+  `minimalResponse` in `src/operator/live.ts`) over what the host actually observes (Rule 26); the
+  activation record never stands in for an observation. The live runner observes:
+  - `register`: the register generation it read at launch (`generated/source.json`) is still the
+    installed one. This is Ten's rule for that dependency. A checkout switched under a running
+    process reports it missing until the runner is restarted.
+  - `lease` and `fence`: this runner's exclusive conversation claim (Rule 63), re-verified against
+    its durable owner record at the verdict. The send seam consumes the same fence again before
+    dispatch.
+  - `replication-peer`: never observed. The runner serves only the single-machine posture, and
+    Eleven §5 omits the peer on a single machine only under the operator's accepted P-08 policy.
+    The runner passes Eleven the installed shape (`minimal.shape`): the trial, the fixed profile
+    `SINGLE_MACHINE_PROFILE` (its closed operation set, the full causal-prefix requirement and the
+    permanent-machine-loss model) and the acceptance it resolved at launch, if any. Eleven omits
+    the peer only when that policy binds this trial and profile and holds the limited answer's
+    operation (`telegram:ordinary-reply`). The shape alone omits nothing.
+
+  **Single-machine acceptance (P-08).** The acceptance is one entry in the desk's sealed authority
+  record (`activation-authority.json`, see "Activation renewal"), beside the grants and waivers:
+
+  ```json
+  "installationPolicies": [{ "id": "p08-single-machine", "policy": "P-08", "shape": "single-machine",
+    "grantor": "OPERATOR_TELEGRAM_ID", "words": "THE OPERATOR'S EXACT MESSAGE",
+    "source": { "kind": "telegram-message", "topicId": N, "messageId": M }, "acceptedAt": EPOCH_MS_OF_THAT_MESSAGE,
+    "subject": { "trial": "TRIAL_ID", "profile": "single-machine-v1", "profileDigest": "sha256:…" } }]
+  ```
+
+  `profileDigest` is `singleMachineProfileDigest()` for this build. The operator's one step is one
+  message accepting the profile as presented: provider calls and reply-only Telegram and Slack
+  sends run from one machine with no peer copy; if that machine is lost for good, the records
+  needed to reconstruct a paid call or a send can be lost with it, and an earlier effect whose
+  outcome is unknown cannot safely be repeated. The desk then adds the entry, seals the record with
+  `seal-authority`, and restarts the runner. The entry resolves only as the desk's sealed
+  disposition, for this trial and the current profile digest, to that authenticated operator
+  message with its exact words and time (`resolveInstallationPolicy`, through
+  `--operator-records`). A revocation naming its `id` withdraws it. Its standing is the trial's
+  other recorded authority: an account-authenticated operator message under the desk's seal. It is
+  not a device-signed or independently verified approval, and `status` says so. A changed
+  operation set or loss model changes the digest, so an older acceptance stops resolving.
+
+  Without a resolving acceptance the launch still serves, and says on stderr that limited answers
+  are inhibited and why. Past a cap each message stays preserved, an owned outage names what is
+  missing (`minimal-outage`; `installation-policy` for the acceptance), and
+  `status.minimalReserve` reports the outage with its repair and the installed shape the launch
+  recorded (`installation`). The chat `status` reply carries one line saying whether a message
+  past a cap would get its limited answer, and what clears it if not. No notice is pushed for the
+  outage: a reply in the chat is the very operation that is not admitted, and the preview has no
+  admitted infrastructure-notice effect (see "Supervised incidents"). An exact `/stop` latches at
+  once, since the brake needs no reply. Ordinary work runs beside the poll loop and is never awaited by it. A
   failed ordinary pass no longer ends the run: the minimal path answers at once (reason `worker`)
   and the ordinary pass is retried with backoff; eight consecutive failures open the breaker and end
   the run for the host supervisor. Without the independent approval page (next item), a chat

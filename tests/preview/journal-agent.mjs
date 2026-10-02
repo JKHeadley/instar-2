@@ -18,7 +18,7 @@ import { admitPreviewHarness, PREVIEW_JOURNAL_HARNESS, PREVIEW_JOURNAL_STALL_COV
 import { UNRECORDED, briefingDigestOf, codeDigestOf, installedCodeOf, installationRows, installationStatusLines, installedUpdateFrom, updateDelivery,
   updatePacketItem } from './installation.js';
 import { projectionDigest } from './journal.js';
-import { openPreviewJournal as openJournal, createJournalWorker, raiseJournalCaps, renewJournalExpiry, activationMatchesJournal, activePersonMerges, openQuestionCandidates, projectMemoryText, unansweredCue, reportJournalCap, unknownCallCounts, pendingUnknownCalls, replyTimings, reviewUnavailableReleases, claimScopedWithholds, MINIMAL_RESERVE, reserveTurnsUsed, reserveRepliesUsed, openRequests, actionWithdrawn, reminderDue, retrospectiveCases, openBlockers, openDirectives, declaredObligations, sendOutcomeCounts, sendOutcomeOf, unsentLabel, replyTarget, reminderOutcome, envelopeWriter, PREVIEW_LIVE_LIMITS, PREVIEW_JOURNAL_COMPACT_BYTES, activeMemoryConflicts, TOO_LONG_INPUT_NOTICE, TOO_LONG_REPLY_NOTICE , probeTurn, isJournalUpdate, withFormatReminder, concurrentWorkItem, latestOwnedLaunch } from './journal.js';
+import { openPreviewJournal as openJournal, createJournalWorker, raiseJournalCaps, renewJournalExpiry, activationMatchesJournal, activePersonMerges, openQuestionCandidates, projectMemoryText, unansweredCue, reportJournalCap, unknownCallCounts, pendingUnknownCalls, replyTimings, reviewUnavailableReleases, claimScopedWithholds, MINIMAL_RESERVE, reserveTurnsUsed, reserveRepliesUsed, openRequests, actionWithdrawn, reminderDue, retrospectiveCases, openBlockers, openDirectives, declaredObligations, sendOutcomeCounts, sendOutcomeOf, unsentLabel, replyTarget, reminderOutcome, envelopeWriter, PREVIEW_LIVE_LIMITS, PREVIEW_JOURNAL_COMPACT_BYTES, activeMemoryConflicts, TOO_LONG_INPUT_NOTICE, TOO_LONG_REPLY_NOTICE , probeTurn, isJournalUpdate, withFormatReminder, concurrentWorkItem, latestOwnedLaunch, LIMITED_ANSWER_OPERATION, MISSING_INSTALLATION_POLICY } from './journal.js';
 import { createPreviewClock } from './clock.js';
 import { appendRun, heldNotices, heldRepliesToday, memoryHealthLine, readRuns, restartHandoff, selfState, selfStateBrief, selfStateSource, zoneFormatter } from './self-state.js';
 import { JEV_MODEL, jevQuestions, replyReviewContext, replyReviewQuestion, replyReviewRules, parseReplyReviewVerdict, replyReviewDiagnostics, parseJevResponse, replyRevisionQuestion, parseReplyRevision, REVIEW_MALFORMED, REVIEW_FORMAT_REMINDER } from './reply-check.js';
@@ -34,7 +34,7 @@ import { agentState, importStorePass } from './channel-source.mjs';
 import { exhaustedPollReason } from './poll-failure-reason.mjs';
 import { loopHealth } from './obligations.js';
 import { classifyTelegramSend } from './telegram-send-outcome.mjs';
-import { authoritySealKey, resolveActivationAuthority, sealAuthorityRecord } from './activation-authority.js';
+import { authoritySealKey, resolveActivationAuthority, resolveInstallationPolicy, sealAuthorityRecord, singleMachineProfileDigest, SINGLE_MACHINE_PROFILE } from './activation-authority.js';
 import { deriveProfile } from '../../src/index.js';
 import { PREVIEW_PROOF_PLANS, executeProof, nextDuePlan, probeId, proofPosture, stepCoverage } from './proofs.js';
 import { capabilityRows, previewInventory, proofStatusLines, resolveLiveProof } from './capabilities.js';
@@ -178,6 +178,41 @@ const requireAuthority = (options, activation, activationPath, view, now) => {
     operatorRecords(options['operator-records']), authoritySealKey(key()));
   if (resolution.kind !== 'resolved') throw Error(`preview: ${resolution.reason}`);
   return resolution;
+};
+/** P-08 (Purpose; Eleven §5): this trial's single-machine acceptance, resolved from the same sealed
+ * authority record as the activation. Its absence never refuses a launch; it only leaves the minimal
+ * path's peer question unsettled, so limited answers stay inhibited and the outage names it. */
+const installationPolicyOf = (options, activation, activationPath, view, now) => {
+  const path = options['authority-record'] ?? join(dirname(resolve(activationPath)), 'activation-authority.json');
+  let record = null;
+  try { record = JSON.parse(readFileSync(path, 'utf8')); } catch { record = null; }
+  try { return resolveInstallationPolicy(activation.trial, record, view.genesis.operator, now,
+    operatorRecords(options['operator-records']), authoritySealKey(key())); }
+  catch { return { kind: 'refused', reason: 'the authority record could not be resolved' }; }
+};
+/** The installed register generation, read from the checkout now. Ten's rule for the `register`
+ * dependency (src/assembly/production.ts): the generation the live process holds equals the current one. */
+const registerGeneration = () => {
+  try { const generation = JSON.parse(readFileSync(resolve(process.cwd(), 'generated/source.json'), 'utf8')).generation;
+    return typeof generation === 'string' && generation ? generation : null; } catch { return null; }
+};
+/** What clears each missing minimal dependency, for the operator's pull surface (Rules 15, 82). */
+const MINIMAL_REPAIR = Object.freeze({
+  [MISSING_INSTALLATION_POLICY]: 'the operator accepts the single-machine profile once (P-08); the desk records that message in the sealed authority record and restarts the runner (README: single-machine acceptance)',
+  register: 'restart the runner: the installed register generation is unreadable or changed since this launch',
+  lease: 'this runner does not hold the conversation; the owning runner answers, or the next launch claims it',
+  fence: 'this runner lost the conversation fence; the next launch reclaims it',
+  route: 'the Telegram route is failing; it recovers when a poll succeeds' });
+const minimalRepair = missing => missing.map(item => MINIMAL_REPAIR[item] ?? `restore ${item}`).join('; ');
+/** The launch's recorded minimal-path posture: the latest launch row that carries one. */
+const minimalPathOf = runsText => {
+  let found = null;
+  for (const line of runsText.split('\n')) {
+    if (!line.includes('"minimalPath"')) continue;
+    try { const row = JSON.parse(line); if (row?.v === 1 && row.minimalPath && typeof row.minimalPath === 'object') found = { launch: row.launch, ...row.minimalPath }; }
+    catch { /* a fragment still being appended */ }
+  }
+  return found;
 };
 const take = result => { if (result.kind !== 'Success') throw Error(`preview: adapter refused ${result.detail ?? ''}`); return result.value; };
 const secretRef = name => ({ type: 'SecretRef', schemaVersion: 1, vault: 'preview', name });
@@ -677,7 +712,15 @@ async function main() {
               ...(settled.kind === 'refused' ? { refusal: settled.reason } : {}) }; })() })),
         // An owned outage: the message is preserved and the named required dependency was missing.
         outages: view.view.order.filter(t => t.minimalOutage && t.limited === undefined).map(t => ({ update: t.update,
-          missing: t.minimalOutage.missing, since: t.minimalOutage.at })) },
+          missing: t.minimalOutage.missing, since: t.minimalOutage.at, repair: minimalRepair(t.minimalOutage.missing) })),
+        // The installed shape the last launch recorded: whether the single-machine profile (P-08) is accepted,
+        // and whether the register generation it launched with is still the installed one.
+        installation: (() => {
+          let recorded = null;
+          try { recorded = minimalPathOf(existsSync(runsPath) ? readFileSync(runsPath, 'utf8') : ''); } catch { recorded = null; }
+          return recorded === null ? null : { ...recorded, registerInstalledNow: registerGeneration(),
+            registerCurrent: recorded.register !== null && recorded.register === registerGeneration() };
+        })() },
       // The independent approval page: whether it is installed and can approve now (a passkey is enrolled).
       approvalSurface: (() => { try { return approvalSurfaceOf(options)?.status() ?? { installed: false }; }
         catch (error) { return { installed: false, reason: error instanceof Error ? error.message : 'invalid' }; } })(),
@@ -941,6 +984,8 @@ async function main() {
   }
   let journal, worker, signalled = false, signalName = null, launchedAt = null, endReason = null, runs = null, pressureUnknown = false, startupFailure = null;
   let handoff = null, reservedAtLaunch = new Set(), ownerClaim = null, installation = null, installUpdate = null;
+  // Rule 15 / Eleven §5: the installed shape's evidence, set once the activation is validated at launch.
+  let installationPolicy = { kind: 'refused', reason: 'the activation is not validated yet' }, registerAtLaunch = null;
   // Rules 9/43: the durable proof log and the executor's in-memory copy of it for this launch.
   let proofRecords = [], proofLaunch = null, proofBackoffUntil = 0, proofPorts = null, proofStoreFailed = false;
   // Rule 63: the conversation fence. Losing it stops new work; an effect never dispatches without it.
@@ -1169,6 +1214,13 @@ async function main() {
       return [`Serving: this runner on ${ownerMachine} owns this conversation (claimed ${Math.max(0, Math.round((wallNow() - ownerClaim.holder.since) / 60000))} min ago); ${refused} duplicate launch(es) refused on this machine.`,
         agreementLine(agreementsPath, wallNow())];
     };
+    // Rule 15, pull surface: whether a message past an ordinary cap would get its limited answer, and what clears it if not.
+    const minimalLines = () => {
+      let missing = ['minimal-path-owner'];
+      try { missing = worker.minimalMissing(); } catch { /* reported as unavailable below */ }
+      return [missing.length ? `Past a cap: limited answers are not available (missing: ${missing.join(', ')}). Messages are kept. To clear: ${minimalRepair(missing)}.`
+        : 'Past a cap: each kept message gets one limited answer from the reserve.'];
+    };
     const approvalSurface = approvalSurfaceOf(options);
     worker = createJournalWorker(journal, { ...(approvalSurface ? { approvalSurface } : {}), now: wallNow, elapsed: clock.elapsed, origin, stopped: () => workerStop.value || existsSync(stopPath) || !ownerHeld(), timeZone: timeZoneOf(options),
       sources: turnSources(root, options, journal.view, () => runs, () => launchedAt ?? undefined,
@@ -1277,17 +1329,26 @@ async function main() {
         return { ...result, ...(result.usage ? { usage: recordedUsage(result.usage) } : {}) };
       } } : {}),
       // Status pull lines: proof posture (Rule 43), then conversation ownership and store checks (Rules 63, 33).
-      statusExtra: () => [...proofLines(), ...ownerLines()],
+      statusExtra: () => [...proofLines(), ...ownerLines(), ...minimalLines()],
       // Part Eleven's minimal-path owner decides (src/operator/live.ts); the host reports only what it
-      // actually observes (Rule 26). The register generation, the exclusive lease/fence and the P-08
-      // installation policy that settles `replication-peer` for the single-machine shape are not
-      // installed in this preview (N1), and the activation record is not that evidence, so they are
-      // reported missing: the minimal path stays inhibited with preserved input and an owned outage,
-      // and an exact /stop still latches at once. Nothing here is a caller flag.
-      minimal: { context, dependencies: () => ({ 'local-facts': !journal.readOnly && !journal.view.stop, register: false,
-        'identity-keys': identityVerified, clock: Number.isSafeInteger(wallNow()), lease: false, fence: false,
+      // actually observes (Rule 26), never the activation record standing in for it.
+      //   register: the register generation this launch read is still the installed one (Ten's rule).
+      //   lease, fence: this runner's exclusive conversation claim (Rule 63), re-verified against its
+      //     durable owner record now; the send seam consumes the same fence again before dispatch.
+      //   replication-peer: never observed here. This is the single-machine shape, so Eleven omits the
+      //     peer only under the operator's accepted P-08 policy (`shape`), resolved at launch from the
+      //     sealed authority record; without it the peer stays required and the outage names the policy.
+      minimal: { context, dependencies: () => ({ 'local-facts': !journal.readOnly && !journal.view.stop,
+        register: registerAtLaunch !== null && registerGeneration() === registerAtLaunch,
+        'identity-keys': identityVerified, clock: Number.isSafeInteger(wallNow()),
+        lease: ownerClaim?.owner === true, fence: ownerClaim?.owner === true && ownerClaim.verify(),
         'replication-peer': false, 'conversation-binding': Boolean(journal.view.genesis.chat && journal.view.genesis.operator),
-        route: identityVerified && routeHealthy, 'delivery-evidence': identityVerified }) },
+        route: identityVerified && routeHealthy, 'delivery-evidence': identityVerified }),
+      shape: () => ({ kind: 'single-machine', installation: journal.view.genesis.grant, profile: SINGLE_MACHINE_PROFILE.id,
+        lossModel: singleMachineProfileDigest(), operation: LIMITED_ANSWER_OPERATION,
+        policy: installationPolicy.kind !== 'resolved' ? null : { policy: 'P-08', installation: installationPolicy.trial,
+          profile: installationPolicy.profile, operations: SINGLE_MACHINE_PROFILE.operations, causalPrefix: SINGLE_MACHINE_PROFILE.causalPrefix,
+          lossModel: installationPolicy.profileDigest, acceptance: installationPolicy.acceptance } }) },
       // The operator's phone: a pressed Approve/Decline button is cleared with a short toast.
       acknowledge: (callbackId, text) => {
         physical.invoke({ token: secretRef('telegram-bot-token'), method: 'answerCallbackQuery',
@@ -1317,6 +1378,9 @@ async function main() {
     validateSubscriptionActivation(activation, profile, required(options, 'model'), wallNow(), SUBSCRIPTION_CONVERSATION_FRAMING);
     requireAuthority(options, activation, activationPath, journal.view, wallNow());
     if (!activationMatchesJournal(journal.view, activation)) throw Error('preview: activation differs from journal');
+    installationPolicy = installationPolicyOf(options, activation, activationPath, journal.view, wallNow());
+    registerAtLaunch = registerGeneration();
+    if (installationPolicy.kind !== 'resolved') process.stderr.write(`preview: limited answers past a cap are inhibited: ${installationPolicy.reason}\n`);
     // Rule 56: the installed routes' exact model ids, merged into the durable map.
     doorwayMapPath = doorwaysPath;
     writeDoorwayMap(doorwaysPath, standingDoorwayCheck(installDoorways(readDoorwayMap(doorwaysPath), [
@@ -1387,7 +1451,11 @@ async function main() {
     let priorRuns = null;
     try { priorRuns = existsSync(runsPath) ? readFileSync(runsPath, 'utf8') : ''; } catch { /* readRuns reports readFailed */ }
     if (priorRuns !== null) installUpdate = installedUpdateFrom(installationRows(priorRuns), installation, launchedAt);
-    appendRun(runsPath, { v: 1, launch: launchedAt, pid: process.pid, install: installation, work: { conversation: conversationOf(g) } });
+    appendRun(runsPath, { v: 1, launch: launchedAt, pid: process.pid, install: installation, work: { conversation: conversationOf(g) },
+      minimalPath: { shape: 'single-machine', register: registerAtLaunch, policy: installationPolicy.kind === 'resolved'
+        ? { state: 'accepted', id: installationPolicy.id, acceptance: installationPolicy.acceptance, acceptedAt: installationPolicy.acceptedAt,
+          profile: installationPolicy.profile, standing: 'account-authenticated operator message under the desk\'s seal; not device-signed' }
+        : { state: 'not-accepted', reason: installationPolicy.reason } } });
     runs = readRuns(runsPath);
     // Rule 55: unrecoverable poll pressure fails the launcher closed; unavailable history never becomes a fresh episode.
     if (runs.readFailed) { endReason = 'run log unreadable'; pressureUnknown = true; throw Error('preview: run log unreadable'); }
