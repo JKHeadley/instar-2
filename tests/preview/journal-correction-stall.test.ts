@@ -11,12 +11,15 @@ import { prepareJournalEnvelope } from './journal-envelope.js';
 // preflight refusal was held on that turn. "Actually, cancel the bird feeder one." (update 6230467) then waited with
 // no reply, no model call, no summary failure and no reservation, and the 11:36 pm reminder it may have cancelled
 // never fired (Rules 2, 10, 15, 57, 93, 95). The texts below are the recorded messages; the prompt envelope is the
-// launcher's real one, so the preflight refusal is the real one.
+// launcher's real one, so the preflight refusal is the real one. The summary prompt ceiling is now three quarters of the
+// context limit (w3-summaryfit): under the room's own 409600 bytes it is 64 KiB and that span is summarized
+// (summary-fit.test.ts). This file keeps proving the settle path for a span that cannot be prepared, so its root uses
+// a 32 KiB limit, whose ceiling is the 24 KiB the room had.
 const key = new Uint8Array(32).fill(43);
 const start = Date.UTC(2026, 9, 2, 6, 0); // 23:00 in Los Angeles on 2026-10-01.
 const genesis = { kind: 'genesis' as const, bot: '8989505249', chat: '7812716706', operator: '7812716706',
   grant: 'grant:correction-stall', configurationDigest: 'sha256:correction-stall', expires: Date.UTC(2026, 9, 10),
-  maxCalls: 400, maxReplies: 200, maxTurns: 200, maxBytes: 409600, cursor: 0 };
+  maxCalls: 400, maxReplies: 200, maxTurns: 200, maxBytes: 32768, cursor: 0 };
 const update = (id: number, text: string) => ({ update_id: id,
   message: { chat: { id: 7812716706, type: 'private' }, from: { id: 7812716706 }, text, date: Math.floor(start / 1000) + id * 60 } });
 // The recorded filler shape: 1500 bytes, cut off partway through row 11.

@@ -2225,11 +2225,16 @@ summary synchronously. If summarization fails, the turn stays held with a
 visible reason until a covering summary succeeds. The full-history choice
 uses the complete system, packet and prepared prompt bound.
 Each summary covers at most four oldest unsummarized turns. Its exact prepared
-stdin plus the subscription system prompt must fit 24 KiB, leaving 8 KiB below
-the provider's 32 KiB prompt policy. The request asks for a complete JSON result
+stdin plus the subscription system prompt must fit the summary ceiling: three
+quarters of the context limit, at least 24 KiB (8 KiB below the provider's default
+32 KiB prompt policy) and at most 96 KiB. A raised limit raises the provider's prompt
+bound with it. The carried summary at its own accept bounds (8 KiB of prose, 20 memory
+items of 300 bytes), the packet's fixed parts and one turn of a 4096-character message
+with a 4096-byte reply measure about 61 KiB, so a pass can always advance by one turn,
+with room left for open reminders, corrections and preferences (`summary-fit.test.ts`). The request asks for a complete JSON result
 within 1024 output tokens, half the provider's 2048-token cap. The worker tries
 shorter prefixes when optional memory fields or envelope framing use the room,
-then extends from the saved summary. The 24 KiB threshold also starts background
+then extends from the saved summary. A 24 KiB history threshold also starts background
 summarization after a reply when a raised general context limit is larger.
 One pass makes at most eight attempts under the same call cap. An oversized single
 turn is shown as a hold in `status`, with its original still in the journal.
@@ -2307,7 +2312,7 @@ The exclusive writer prevents two processes on this machine; it is not a second
 independently failing replica.
 
 The rolling summary starts when the unsummarized packet reaches 45% of the
-configured context limit (or the existing 24 KiB summary ceiling), leaving room
+configured context limit (or 24 KiB, whichever is smaller), leaving room
 for the answer envelope, briefing, desk report and next question before 32 KiB
 is reached. Its existing four-turn chunks, call cap, stop, expiry, supervision,
 and synchronous overflow fallback remain in force. The offline
@@ -2319,8 +2324,10 @@ held with its original intake. Justin's private-chat procedure is
 
 An UNKNOWN summary reservation remains charged and visible in `summaryPending`.
 It is never retried at its recorded update frontier. After 60 seconds of actual elapsed
-time from every outstanding UNKNOWN summary reservation, a new summary can cover a
-different, later update frontier under the same finite call cap. The earlier
+time from every outstanding UNKNOWN summary reservation, a new summary can cover any
+different update frontier, earlier or later, under the same finite call cap. (Requiring a
+later one made the shortest span run from the last accepted summary to past the UNKNOWN,
+which only grows; Justin's preview never summarized again after one UNKNOWN.) The earlier
 reservation remains unresolved even after the later summary succeeds; `status`
 still refuses a cap raise while it exists. The pause is a lower bound between
 uncertain summary calls; a reservation inherited on restart waits a full 60 seconds from
