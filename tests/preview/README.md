@@ -1925,7 +1925,8 @@ the earlier source and exact old clause. Replay rebuilds the active set from the
 old actions and source messages remain as evidence. Each clause can be changed independently,
 including when one message supplied several preferences. Retiring a clause withholds its
 historical source without masking a new operator turn that uses the same words. Saving a
-preference leaves that turn's reply and commitments intact. `inspect --text` shows the active
+preference leaves that turn's reply and commitments intact. A clause stated again is one active
+preference, carried from its latest statement; every statement stays recorded. `inspect --text` shows the active
 preferences in the next packet. No second store or model call type is involved.
 The conversation prompt explicitly applies active, validated `packet.preferences` to
 answer length and detail on later replies. A direct request in the current operator
@@ -2337,6 +2338,14 @@ with pinned briefing and a near-limit desk report: all 40 receive replies with
 a faithful summary stub; a rejected summary leaves the overflowing turn visibly
 held with its original intake. Justin's private-chat procedure is
 [long-conversation-headroom-live-test.md](live-tests-archive/long-conversation-headroom-live-test.md).
+
+When a turn still cannot be prepared after the forced summary, the reachability floor sets
+earlier turns aside half at a time (the journal keeps them and recall reaches them). On its
+last rung, with every earlier turn set aside, the reply-review reserve yields too: the turn is
+answered, and a review that is then too large to build is recorded unavailable and the reply
+released. Only a turn that still cannot fit gets the size notice; none is held. A fresh root at
+the default 32768 bytes reaches that rung within a few short messages
+(`default-root-conversation.test.ts` replays room two's recorded shapes; `floor-last-rung.test.ts`).
 
 An UNKNOWN summary reservation remains charged and visible in `summaryPending`.
 It is never retried at its recorded update frontier. After 60 seconds of actual elapsed
