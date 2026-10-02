@@ -1,0 +1,37 @@
+# Change review — cint-L33: cint-L32 (repair round 1) plus w3-loopcadence
+
+Subject base: d59d2973fdcd871b0552ab1ec55803d6e69f3c04
+Review state: open
+Reviewed content: none
+Outcome: Plan rows #313 and #318. cint-L33 is origin/cint-L32 at its repair-round-1 head d59d2973 (approval disclosure on status, the capped review request, truthful retrospective status; reviews/cint-L32-change-review.md and reviews/cint-L32-repair1-change-review.md stay as they are) with one ordinary merge of origin/w3-loopcadence 9f4a8138 (a37337e8). The unit makes the open-loop revisit interval a per-root value recorded at genesis: default 24 hours, bounds 10 minutes to 24 hours, set only by --loop-revisit-minutes on the genesis launch, never changeable later, shown in status as obligations.revisitMinutes. That lets proof group D prove Rules 8, 22, 46, 64, 92, 97 and 102 on a fresh 15-minute root in minutes instead of a day. The desk will use the option only on fresh proof roots; the operator's root and the two standing proof rooms keep the 24-hour default, which they cannot change. The merge did not conflict: the repair's hunks in tests/preview/journal.ts (the limited-answer path, operator requests) and tests/preview/retrospective.ts do not overlap the unit's (genesis, the obligation schedule, the answer path's revisit check), and `git show --remerge-diff` of the merge is empty. origin/main d4a3170d is an ancestor of this build.
+Affected rules: as in the carried records — 2, 8, 46, 64, 92, 97, 102, 116 from reviews/w3-loopcadence-change-review.md, and those of reviews/cint-L32-change-review.md and reviews/cint-L32-repair1-change-review.md; here 2 (the interval rides genesis through a compaction snapshot and reopen, tested on the merged tree), 44 (a root without the field opens and schedules exactly as before, shown against journals written by both 4addcb06 and the repaired base d59d2973), 66, 69, 90 (the register is replayed, not hand-edited), 74 (this record), 101, 116
+Affected floors: secrets — unchanged (a duration only; nothing leaves the machine); spend cap — a short-interval root brings its scheduled work round sooner and so can spend its allowance faster, bounded by the unchanged cap and reply reserve and by the 10-minute floor; no existing root's spend changes, and the desk uses the option only on fresh proof roots; stop — unchanged; no duplicate sends — unchanged (the send path, bound-report rule and receipt settle are untouched); durable intake — no record kind added; one optional genesis field, written once and compared byte for byte by the snapshot restore. Always-sent answer bytes stay 22,959 (default-context-floor.test.ts 4/4).
+Operator questions: none
+Suggested tier: critical
+Declared tier: critical
+Tier rationale: the base cint-L32 is critical; the combine takes the highest carried tier. The unit's own declared tier (significant) is carried unchanged in its record.
+Side effects: as recorded in the carried records. Here: none beyond the unit's own — a root created with --loop-revisit-minutes N resurfaces and schedules its open loops every N minutes and reports revisitMinutes N; a root created without it is unchanged in every respect and reports 1440.
+Undo and recovery: revert the merge a37337e8 and the replay commit to return to cint-L32 d59d2973. A journal whose genesis names an interval opens under the older build as a default root (the unknown field is ignored), the safe direction, as the unit's record says.
+Multi-machine posture: machine-local preview runner, as each carried record declares. The interval lives in genesis, which the snapshot comparison requires to be identical, so two machines reading one root read one interval. The desk changes are generated files only.
+Layer below: reviews/cint-L32-change-review.md and reviews/cint-L32-repair1-change-review.md (the base, with every record they carry); reviews/w3-loopcadence-change-review.md (carried unchanged; its five Decision reports already cite /Users/dabombstudio/.instar/agents/echo/.instar/lanes/w3-loopcadence-PROGRESS.md, so no repoint was needed). The R105 self-host conformance declaration (src/assembly/harness.declarations.json) still matches: native-harness-contract passes 9/9 on the merged tree without a re-declaration.
+Bug class: integration
+Bug evidence: reproducer=tests/preview/journal-loop-cadence.test.ts
+Hook bypass: none (plain commits and an ordinary merge; core.hooksPath is unset and the hooks directory holds only .sample files). The carried records each record their own.
+Convergence: none
+Decision: cint-L33-merge | merged origin/w3-loopcadence into origin/cint-L32 d59d2973 with one ordinary merge; it did not conflict (remerge diff empty), so the unit's reviewed bytes and the repair's bytes both land unchanged | reported=/Users/dabombstudio/.instar/agents/echo/.instar/lanes/cint-L33-PROGRESS.md
+Decision: cint-L33-existing-root-on-repaired-base | the unit proves "an existing root is untouched" against a journal written by 4addcb06; on the merged tree the same test also passed once with the base set to the repaired head d59d2973 (a temporary edit, reverted, not committed), so a root the live-candidate base writes reads as the 24-hour default with an identical schedule | reported=/Users/dabombstudio/.instar/agents/echo/.instar/lanes/cint-L33-PROGRESS.md
+Decision: cint-L33-proof-roots-only | the desk uses --loop-revisit-minutes only on fresh proof roots; the operator's root and the two standing proof rooms keep the 24-hour default, which no later launch can change | reported=/Users/dabombstudio/.instar/agents/echo/.instar/lanes/cint-L33-PROGRESS.md
+Prompt review: no model-facing text changes. The unit's journal.ts hunks are a genesis field, an accessor, bounds and arithmetic; the answer instructions, packet, summary, obligation-work and review questions are byte-identical, and the always-sent bytes stay 22,959.
+Prompt finding: 0c0c2c5478e2 | protocol-literal | a refusal detail of the admission, matched by its own test; not prompt text (as in the carried record)
+Prompt finding: 849db3a6296a | protocol-literal | an existing fixed reply literal in journal.ts, unchanged by this change (as in the carried record)
+Prompt finding: bd01de21286a | protocol-literal | existing capability-guidance wording in journal.ts, unchanged by this change (as in the carried record)
+Prompt finding: fb5fa7e706c8 | protocol-literal | existing capability-guidance wording in journal.ts, unchanged by this change (as in the carried record)
+Deferral: generated/register.json:1 | not-a-deferral=generated register output quoting the rule book, not a commitment by this change
+
+Subject (14 paths): generated/capabilities.json, generated/capabilities.md, generated/coverage.md, generated/glossary.md, generated/register.json, generated/rules.md, generated/source.json, reviews/cint-L33-change-review.md, reviews/w3-loopcadence-change-review.md, tests/preview/journal-agent.mjs, tests/preview/journal-loop-cadence.test.ts, tests/preview/journal.ts, tests/preview/loop-cadence-fixture.mjs, tests/preview/obligations.ts
+
+## Closing block
+
+simplestRobustRoute: merge the reviewed unit onto the repaired base as it is and run the standard desk tools; this is that route. Nothing was added beyond the replay and this record; no wording, constant, bound or test was changed.
+80/20: 0 must-fixes, 1 note (targeted tests only, no full suite; the pipeline runs it)
+VERDICT: author submission; the independent verdict is recorded as a pass
