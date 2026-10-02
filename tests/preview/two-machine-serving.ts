@@ -8,9 +8,12 @@
  *      only ever confirm updates that were already settled (a stale poller loses nothing);
  *   3. per update, in order: prepare the reply locally, take the one-use dispatch-claim under the
  *      current fence, send once, record the outcome, then settle the cursor past the update.
- * A non-owner never polls and never sends (Rule 63): Telegram itself keeps the input until the
- * owner settles it. An update another epoch already claimed is never re-sent, even when its outcome
- * is unknown (design 10 §4: absence is not proof); it is settled and reported as unresolved.
+ * A non-owner never polls and never sends (Rule 63): Telegram redelivers an unsettled update, but
+ * only within its own bounded retention (at most 24 hours), so this is bounded platform redelivery,
+ * not durable intake; durable custody of captured input is a runner-wiring prerequisite. An
+ * update already claimed (by another epoch or by this runner itself) is never re-sent, even when
+ * its outcome is unknown (design 10 §4: absence is not proof); it is settled and reported as
+ * unresolved.
  *
  * Local inhibition: the runner stops treating itself as owner one margin before the term it last
  * renewed would end on its OWN monotonic clock, measured from when it asked. Safety never depends
@@ -89,7 +92,7 @@ export function createSharedServing<U extends ServingUpdate>(input: Readonly<{ a
       for (const update of [...updates].sort((a, b) => a.update_id - b.update_id)) {
         if (update.update_id < cursor) continue;
         const owned = fence;
-        if (!owned || !holds()) return report('lease lapsed mid-batch; the rest waits at Telegram', true, 'standby');
+        if (!owned || !holds()) return report('lease lapsed mid-batch; the rest waits at Telegram (bounded retention)', true, 'standby');
         const text = await input.ports.prepare(update);
         if (text !== null) {
           const key = `update:${update.update_id}`;

@@ -2986,7 +2986,16 @@ function project(view: JournalView, row: JournalRecord, system?: SystemCheck): v
       throw Error('preview journal: send timing order');
     turn.sendMs = row.latencyMs;
   }
-  if (row.kind === 'hold') {
+  // The faithfulness branches append their hold AFTER the `summary-failed` row that may exhaust the frontier, so
+  // the `summary-failed` release would be undone by the very next row. A summary-faithfulness hold waits on nothing
+  // when its frontier can no longer retry, or when the turn's memory request is already settled undecided (no
+  // summary is forced for it again, so in a short chat none would ever come). Either way it does not inhibit the
+  // turn, live or in replay (Rules 15, 77, 95). The refused summary stays refused and the corrected clause withheld.
+  if (row.kind === 'hold' && row.reason.startsWith('summary faithfulness:')
+    && (summarySpanFailures(view, turn.update) >= 2 || turn.memoryUndecided)) {
+    // As before, this hold supersedes the turn's earlier hold, and the exhausted frontier releases it at once.
+    delete turn.held; delete turn.heldSince; view.heldTurns.delete(turn); turn.wasHeld = true;
+  } else if (row.kind === 'hold') {
     if (heldNoticeReason(row.reason)) {
       const holds = view.awayEvents.filter(event => event.kind === 'hold' && event.id === turn.id);
       let since = row.at;
@@ -3000,7 +3009,10 @@ function project(view: JournalView, row: JournalRecord, system?: SystemCheck): v
   if (row.kind === 'memory-undecided') {
     if (!turn.accepted || turn.memoryUndecided) throw Error('preview journal: memory undecided order');
     turn.memoryUndecided = true;
-    if (turn.held === 'memory correction pending') { delete turn.held; delete turn.heldSince; view.heldTurns.delete(turn); }
+    // Both holds waited for the summary that would decide this request; it is now settled as undecided.
+    if (turn.held === 'memory correction pending' || turn.held?.startsWith('summary faithfulness:')) {
+      delete turn.held; delete turn.heldSince; view.heldTurns.delete(turn);
+    }
   }
 }
 

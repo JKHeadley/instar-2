@@ -9,6 +9,10 @@
  * machines' runners reach it, the local one over loopback. If the NON-authority machine goes away
  * the authority machine takes over after one term; if the authority machine goes away nothing is
  * admitted anywhere and input waits at Telegram (§9: preserve and queue, never a second voice).
+ * That wait is BOUNDED: Telegram keeps an unconfirmed update for at most 24 hours, whatever the
+ * offset, so an outage longer than that loses input that no cursor can recover. Durable custody of
+ * captured input (and its reconciliation across a handover) is a prerequisite of runner wiring,
+ * owned by the existing intake/journal; this module does not provide it.
  * Symmetric failover needs three voters (§2) and is not built here.
  *
  * Shared truth (one append-only, hash-chained, fsynced log on the authority machine):
@@ -160,12 +164,10 @@ export function openConversationAuthority(input: Readonly<{ path: string; conver
         if (!fenceOk(request.fence) || !text(request.key, 200)) return { ok: false, reason: 'invalid' };
         if (!current(request.fence, now)) return { ok: false, reason: 'stale', holder: view(now).holder };
         const prior = claims.get(request.key);
-        if (prior) {
-          // A lost acknowledgement: the same claimant gets its original answer back, once, while still current.
-          if (prior.state === 'claimed' && prior.epoch === request.fence.epoch && prior.incarnation === request.fence.incarnation)
-            return { ok: true, state: 'claimed' };
-          return { ok: false, reason: 'already-claimed', state: prior.state };
-        }
+        // A claim is consumed once, including by its own claimant: a repeated claim after a lost
+        // acknowledgement or a lost outcome is never fresh send authority (no duplicate sends). The
+        // claimant's lost acknowledgement stays visible as an unresolved claim, honestly unknown.
+        if (prior) return { ok: false, reason: 'already-claimed', state: prior.state };
         append({ t: 'claim', epoch, incarnation: request.fence.incarnation, key: request.key });
         return { ok: true, state: 'claimed' };
       }

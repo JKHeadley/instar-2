@@ -1,9 +1,11 @@
 # Two-machine live proof (proof group T): Rules 31 and 63 on the Mac Studio and the Laptop
 
-Status: plan. It cannot run until two preconditions hold:
+Status: plan. It cannot run until three preconditions hold:
 
 1. **Operator decision D1** (below) is recorded.
 2. **Runner wiring unit** has landed. It connects `tests/preview/journal-agent.mjs` to the shared conversation authority (`tests/preview/conversation-authority.ts`) and the serving step (`tests/preview/two-machine-serving.ts`), and adds the authority launcher. The flags named here are that unit's interface: `--machine-posture multi-machine`, `--conversation-authority URL`, `--authority-secret` (a SecretRef bound to `INSTAR_SECRET_PREVIEW_AUTHORITY_SECRET`), and `--owner-machine NAME`.
+
+3. **Durable captured-input custody** is wired alongside D1 and history grounding. Telegram keeps an unconfirmed update for at most 24 hours regardless of the unadvanced offset (Bot API, "Getting updates"), so the shared settled cursor gives only bounded platform redelivery. Durable custody of captured input, and its reconciliation across a handover, comes from the existing intake/journal owner when the runner is wired. A bounded trial here is evidence for handover within that window, never general durable-intake proof.
 
 Recorded coverage already exists for every check here: `tests/preview/two-machine-serving.test.ts` drives the same authority and serving step on a fake clock and a fake Telegram. This plan proves the same behaviour across two real machines, a real network and real Telegram.
 

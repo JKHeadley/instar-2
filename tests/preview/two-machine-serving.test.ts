@@ -166,6 +166,38 @@ describe('one conversation, two machines', () => {
     expect((await studio.tick())).toMatchObject({ sent: [], skipped: [id], settled: id + 1 });
     expect(w.repliesPer(id)).toBe(1);
   });
+  it('a lost outcome AND a lost settle never let the same owner send the update twice', async () => {
+    const w = world();
+    let settleAttempts = 0;
+    const client = localAuthorityClient(w.authority);
+    const flaky: AuthorityClient = { request: async r =>
+      r.op === 'outcome' || (r.op === 'settle' && settleAttempts++ === 0) ? { ok: false, reason: 'unreachable' } : client.request(r) };
+    const studio = w.runner('studio', flaky);
+    const id = w.say('once');
+    expect((await studio.tick()).sent).toEqual([id]);
+    w.clock.t += 1_000;
+    expect((await studio.tick())).toMatchObject({ sent: [], skipped: [id], settled: id + 1 });
+    expect(w.repliesPer(id)).toBe(1);
+    expect(w.authority.handle({ op: 'read' })).toMatchObject({ view: { unresolved: [`update:${id}`] } });
+  });
+
+  it('a lost claim acknowledgement sends nothing and leaves the update honestly unresolved', async () => {
+    const w = world();
+    let claimLost = true;
+    const client = localAuthorityClient(w.authority);
+    const flaky: AuthorityClient = { request: async r => {
+      const answer = await client.request(r);
+      if (r.op === 'claim' && claimLost) { claimLost = false; return { ok: false, reason: 'unreachable' }; }
+      return answer;
+    } };
+    const studio = w.runner('studio', flaky);
+    const id = w.say('once');
+    expect((await studio.tick())).toMatchObject({ role: 'inhibited', sent: [] });
+    w.clock.t += 1_000;
+    expect((await studio.tick())).toMatchObject({ sent: [], skipped: [id], settled: id + 1 });
+    expect(w.repliesPer(id)).toBe(0);
+    expect(w.authority.handle({ op: 'read' })).toMatchObject({ view: { unresolved: [`update:${id}`] } });
+  });
 });
 
 describe('the authority itself', () => {
@@ -177,7 +209,8 @@ describe('the authority itself', () => {
     // The same epoch presented by another incarnation is not the fence.
     expect(w.authority.handle({ op: 'claim', fence: { epoch: 1, incarnation: 'studio:1' }, key: 'update:5' })).toMatchObject({ ok: false, reason: 'stale' });
     expect(w.authority.handle({ op: 'claim', fence: { epoch: 1, incarnation: 'laptop:1' }, key: 'update:5' })).toMatchObject({ ok: true });
-    expect(w.authority.handle({ op: 'claim', fence: { epoch: 1, incarnation: 'laptop:1' }, key: 'update:5' })).toMatchObject({ ok: true, state: 'claimed' });
+    // Consumed once: the claimant asking again (a lost acknowledgement) is not handed a second send.
+    expect(w.authority.handle({ op: 'claim', fence: { epoch: 1, incarnation: 'laptop:1' }, key: 'update:5' })).toMatchObject({ ok: false, reason: 'already-claimed', state: 'claimed' });
     w.authority.close();
     // Restart: the recorded lease is held for one full term from the restart, then the epoch advances, never resets.
     const reopened = w.open();

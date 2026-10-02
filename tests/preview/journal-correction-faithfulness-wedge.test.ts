@@ -101,6 +101,26 @@ it('answers every turn after a memory correction whose record can never be compl
   } finally { rmSync(root, { recursive: true, force: true }); }
 }, 60000);
 
+// Every shorter conversation too: four messages left update 6230417 held behind its exhausted frontier, five and
+// six left two and three turns unanswered (Astra's natural-prefix reproduction of cint-L22).
+it.each([4, 5, 6, 7])('answers every turn of the %i-message prefix, live and on replay', async count => {
+  const root = tmp(`prefix-${String(count)}`);
+  try {
+    let w = world(root);
+    for (let n = 1; n <= count; n++) { w.worker.intake([update(6230413 + n, note(n))]); await w.worker.drain(); }
+    for (let again = 0; again < 4; again++) await w.worker.drain();
+    expect(w.journal.view.order.filter(turn => turn.sent === undefined).map(turn => [turn.update, turn.held ?? null])).toEqual([]);
+    expect(loopHealth(w.journal.view, start + 60 * 60_000)).toMatchObject({ unansweredTurns: 0, inhibition: null });
+    expect(w.journal.view.summaries).toEqual([]);
+    const held = w.journal.view.order.map(turn => [turn.update, turn.held ?? null]);
+    w.journal.close();
+    // Replay of the recorded rows (including each hold written after an exhausting failure) gives the same view.
+    w = world(root, false);
+    expect(w.journal.view.order.map(turn => [turn.update, turn.held ?? null])).toEqual(held);
+    w.journal.close();
+  } finally { rmSync(root, { recursive: true, force: true }); }
+}, 60000);
+
 it('keeps the frontier turn held while the summary can still be retried', async () => {
   const root = tmp('retryable');
   try {
@@ -130,6 +150,11 @@ it('keeps the frontier turn held while the summary can still be retried', async 
     journal.append({ kind: 'summary-failed', through: 6230415, state: 'complete', failureClass: 'malformed',
       reason: REASON, at: start });
     expect(summarySpanFailures(journal.view, 6230415)).toBe(2);
+    expect(frontier.held).toBeUndefined();
+    expect(journal.view.heldTurns.has(frontier)).toBe(false);
+    // Both faithfulness branches append their hold AFTER that `summary-failed` row; at an exhausted frontier the
+    // hold waits on nothing, so it must not re-establish the latch.
+    journal.append({ kind: 'hold', id: frontier.id, reason: REASON, at: start });
     expect(frontier.held).toBeUndefined();
     expect(journal.view.heldTurns.has(frontier)).toBe(false);
     // The refused candidates are still refused: no summary was accepted, so none of them carries the stale clause.
