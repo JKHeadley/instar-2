@@ -13,8 +13,8 @@ import { admitExplicitYes } from '../index.js';
 import type { BoundaryContext, ExplicitYesInstallation, ExplicitYesObservation, ExplicitYesRecord, ExplicitYesRequest, Result } from '../index.js';
 import { OperatorFailure, operatorBoundary } from './boundary.js';
 
-export { chatYesReference, reviewYesReference } from '../index.js';
-export type { ExplicitYesInstallation, ExplicitYesObservation, ExplicitYesRecord, ExplicitYesRequest } from '../index.js';
+export { chatYesReference, reviewYesReference, githubAccountAccess, SHARED_ACCESS_NOTE } from '../index.js';
+export type { ExplicitYesInstallation, ExplicitYesObservation, ExplicitYesRecord, ExplicitYesRequest, OperatorAcceptance, SharedAccessDisclosure, ApprovalAccountAccess } from '../index.js';
 
 export function produceExplicitYes(request: ExplicitYesRequest, installation: ExplicitYesInstallation,
   observation: ExplicitYesObservation, consumed: readonly string[], context: BoundaryContext): Result<ExplicitYesRecord> {

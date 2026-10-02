@@ -5,9 +5,11 @@
 // passkey, no signing key. The network lives in the injected client; this module is pure apart from the client and
 // the clock it is handed. It decides nothing itself: every yes goes through the single admission
 // (`produceExplicitYes`), which needs the installed P-02 fact that the agent holds no session, credential or recovery
-// path on the approving account, and refuses without it. The consumed-reference ledger is the caller's durable store
+// path on the approving account, or the operator's current recorded acceptance of the agent's access to it (Purpose,
+// the approval-account exception), and refuses without either. The installation record is read afresh on every
+// call, so a recorded withdrawal stops consumption from the next poll. The consumed-reference ledger is the caller's durable store
 // (the encrypted journal in the root), passed in as `consumed`, so a review is used once.
-import { produceExplicitYes, reviewYesReference } from '../../src/operator/explicit-yes.js';
+import { githubAccountAccess, produceExplicitYes, reviewYesReference } from '../../src/operator/explicit-yes.js';
 import type { ExplicitYesInstallation, ExplicitYesObservation, ExplicitYesRecord, ExplicitYesRequest } from '../../src/operator/explicit-yes.js';
 import { consumeResult } from '../../src/index.js';
 import type { BoundaryContext, Clock, Scope, VerifiedPrincipal } from '../../src/index.js';
@@ -22,6 +24,9 @@ export interface GitHubReviewClient {
   pullRequest(repository: string, number: number): Promise<{ body: string; head: string }>;
   /** Every review submitted on it, in GitHub's order. */
   reviews(repository: string, number: number): Promise<readonly GitHubReview[]>;
+  /** Closes a request pull request that lapsed or was superseded. There is deliberately no operation that submits a
+   * review: the agent never approves as the operator (Purpose, Value: the operator's approval remains the operator's act). */
+  closeRequest(repository: string, number: number): Promise<void>;
 }
 export interface GitHubReview { id: string | number; state: string; commitId: string; login: string; submittedAt: string }
 /** A request issued as a pull request: what a review must cover and where the operator approves it. */
@@ -35,7 +40,8 @@ export function reviewSourceRefusal(installation: ExplicitYesInstallation | unde
   const github = installation?.github;
   if (!installation) return 'no explicit-yes installation record is configured';
   if (!github) return 'no pinned operator GitHub account is installed';
-  if (!github.agentHoldsNoAccess) return 'no P-02 record that the agent holds no access to the operator GitHub account';
+  const access = githubAccountAccess(installation);
+  if (access.kind === 'refused') return access.detail;
   if (!repository || !/^[A-Za-z0-9_.-]+\/[A-Za-z0-9_.-]+$/u.test(repository)) return 'no request repository is configured';
   if (repository.toLowerCase() !== github.repository.toLowerCase()) return 'the request repository is not the pinned repository';
   return null;
@@ -54,11 +60,16 @@ const clock = (at: number) => ({ type: 'Measurement', schemaVersion: 1, subject:
   value: at, unit: 'unix-ms', at, by: 'preview-review' }) as unknown as Clock;
 const parsedAt = (value: string) => { const at = Date.parse(value); return Number.isSafeInteger(at) && at > 0 ? at : null; };
 
-export function createReviewYesSource(options: { client: GitHubReviewClient; installation: ExplicitYesInstallation | undefined;
+export type ReviewYesSource = ReturnType<typeof createReviewYesSource>;
+export function createReviewYesSource(options: { client: GitHubReviewClient;
+  /** The installation record, or a reader of it called afresh each time (a withdrawal then takes effect at once). */
+  installation: ExplicitYesInstallation | undefined | (() => ExplicitYesInstallation | undefined);
   repository: string | undefined; context: BoundaryContext; now(): number; brakes?: ReviewPollBrakes }) {
   const brakes = options.brakes ?? REVIEW_POLL_BRAKES;
   const polls = new Map<string, { due: number; wait: number; failures: number; open: boolean }>();
-  const refusal = () => reviewSourceRefusal(options.installation, options.repository);
+  const installation = () => { try { return typeof options.installation === 'function' ? options.installation() : options.installation; }
+    catch { return undefined; } };
+  const refusal = () => reviewSourceRefusal(installation(), options.repository);
   return Object.freeze({
     /** Where this source stands: admissible, or the exact missing fact; and any open breaker. */
     status() {
@@ -105,6 +116,11 @@ export function createReviewYesSource(options: { client: GitHubReviewClient; ins
     },
     /** Re-arms a braked poll (an operator or desk act, never automatic). */
     reset(requestId: string) { polls.delete(requestId); },
+    /** Closes a lapsed or superseded request's pull request; true once GitHub took it. */
+    async close(issued: IssuedReviewRequest): Promise<boolean> {
+      try { await options.client.closeRequest(issued.repository, issued.pullRequest); polls.delete(issued.requestId); return true; }
+      catch { return false; }
+    },
     /** The single admission for one observed review of this exact request. The action is the request's own, so a
      * review cannot approve a different action; a reused review is refused by `consumed`. */
     verify(input: { request: OperatorRequest; issued: IssuedReviewRequest; observation: ExplicitYesObservation; grant: string; chat: string;
@@ -112,14 +128,15 @@ export function createReviewYesSource(options: { client: GitHubReviewClient; ins
       { kind: 'approved'; record: ExplicitYesRecord } | { kind: 'refused'; detail: string } {
       const { request, issued } = input;
       if (issued.requestId !== request.id) return { kind: 'refused', detail: 'the pull request belongs to a different request' };
-      if (!options.installation) return { kind: 'refused', detail: 'no explicit-yes installation record is configured' };
+      const installed = installation();
+      if (!installed) return { kind: 'refused', detail: 'no explicit-yes installation record is configured' };
       const yes: ExplicitYesRequest = { requestId: request.id, requestDigest: request.digest, authorizationId: `authorization:${request.id}`,
         approver: input.approver, requestedBy: input.requestedBy, under: input.grant, action: request.action,
         scope: { type: 'Scope', schemaVersion: 1, kind: 'conversation', members: [input.chat] } as unknown as Scope,
         artifact: request.digest, base: request.base, kind: { kind: 'approval' }, chatMessageId: null, head: issued.head,
         issuedAt: request.issuedAt, expiresAt: request.expiresAt };
       type Verdict = { kind: 'approved'; record: ExplicitYesRecord } | { kind: 'refused'; detail: string };
-      return consumeResult<ExplicitYesRecord, Verdict>(produceExplicitYes(yes, options.installation, input.observation, input.consumed, options.context), {
+      return consumeResult<ExplicitYesRecord, Verdict>(produceExplicitYes(yes, installed, input.observation, input.consumed, options.context), {
         Success: record => ({ kind: 'approved', record }), Refused: refused => ({ kind: 'refused', detail: refused.detail }) });
     },
   });
