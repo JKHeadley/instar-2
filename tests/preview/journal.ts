@@ -5280,8 +5280,9 @@ export function createJournalWorker(journal: ReturnType<typeof openPreviewJourna
     const requestState = question === undefined || !fromOperator(question) ? undefined : journal.view.operatorRequests.at(-1);
     const answeredHere = requestState !== undefined && (requestState.approved?.turn === question!.id
       || requestState.refusals.some(item => item.turn === question!.id));
-    const operatorRequest = requestState && (answeredHere || requestState.message !== undefined && !requestState.superseded
-      && !requestState.approved && now <= requestState.request.expiresAt) ? { id: requestState.request.id, action: requestState.request.action,
+    // An approval that never applied (a crash between its two frames) stays visible until a later request replaces it.
+    const operatorRequest = requestState && (answeredHere || requestState.approved !== undefined && !requestState.applied
+      || requestState.message !== undefined && !requestState.superseded && !requestState.approved && now <= requestState.request.expiresAt) ? { id: requestState.request.id, action: requestState.request.action,
       ...(requestState.request.limits ? { limits: requestState.request.limits } : { trialEnd: isoMinute(requestState.request.expires!) }),
       state: requestState.approved ? requestState.applied ? 'approved by the operator and applied' : 'approved by the operator, not applied yet'
         : answeredHere ? `not approved: ${requestState.refusals.find(item => item.turn === question!.id)!.detail}`

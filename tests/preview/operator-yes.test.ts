@@ -325,3 +325,30 @@ it('sends request and refusal lines the live outbound secret check passes unchan
   for (const line of [operatorRefusalText('raise-caps', CHAT_YES_UNAVAILABLE), OPERATOR_ACTION_UNREAD])
     expect(redact(line).count, line).toBe(0);
 });
+
+it('keeps an approval that a crash left unapplied visible to the mind, and never applies it from journal rows', () => withRoot(async path => {
+  let crash = true;
+  const journal0 = openPreviewJournal(path, key, genesis(), stage => { if (crash && stage === 'before:caps') { crash = false; throw Error('crash'); } });
+  const contexts: string[] = [], sent: number[] = [];
+  const ports = { now: () => 1000, stopped: () => false, checkOutbound: () => {},
+    model: async (input: { question: string; context: string }) => { contexts.push(input.context);
+      return JSON.stringify({ reply: 'ok', memory: [], ...(input.question.includes('more calls') ? { operatorAction: raise.operatorAction } : {}) }); },
+    explicitYes: { context: previewTestContext, installation: installation(), renewalActivation: () => ACTIVATION },
+    send: async () => { sent.push(200 + sent.length); return sent.at(-1)!; } };
+  const worker = createJournalWorker(journal0, ports);
+  worker.intake([message(1, 50, 'more calls please')]); await worker.drain();
+  const open = journal0.view.operatorRequests.at(-1)!;
+  // The approval frame lands; the caps frame does not (the apply swallows the crash, as a journal refusal).
+  worker.intake([message(2, open.message! + 1, 'yes')]);
+  expect(journal0.view.operatorRequests.at(-1)?.approved).toBeDefined();
+  expect(journal0.view.limits.maxCalls).toBe(6);
+  journal0.close();
+  const reopened = openPreviewJournal(path, key);
+  expect(reopened.view.operatorRequests.at(-1)?.applied).toBeUndefined();
+  const resumed = createJournalWorker(reopened, ports);
+  await resumed.drain();
+  expect(reopened.view.limits.maxCalls).toBe(6);
+  const told = JSON.parse(contexts.at(-1)!) as { operatorRequest?: { state: string } };
+  expect(told.operatorRequest?.state).toBe('approved by the operator, not applied yet');
+  reopened.close();
+}));
