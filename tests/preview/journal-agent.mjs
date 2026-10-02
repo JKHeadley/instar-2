@@ -1187,7 +1187,7 @@ async function main() {
       /** A clean end: the last journal bytes go to the other machine, then the lease is handed back so it can take over at once. */
       async stop() {
         clearInterval(renewTimer);
-        try { if (shipper && lease.fence()) await shipper.pump(); } catch { /* the successor continues from the acknowledged copy */ }
+        try { if (shipper && lease.fence()) await shipper.drain(); } catch { /* the successor continues from the acknowledged copy */ }
         try { await lease.release(); } catch { /* the term ends it */ }
       } };
   };

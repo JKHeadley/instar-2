@@ -4,7 +4,7 @@
  * Only the Telegram port and the model route are the file-backed fixtures every runner process test uses.
  * D1(a): a reply waits until the other machine acknowledged its record; it is never sent on local durability. */
 import { expect, it } from 'vitest';
-import { existsSync, readFileSync } from 'node:fs';
+import { existsSync, readFileSync, statSync } from 'node:fs';
 import { join } from 'node:path';
 import { cutoverHarness } from './journal-cutover-harness.mjs';
 import { readRuns } from './self-state.js';
@@ -70,13 +70,22 @@ it('the owner machine is lost: the other machine takes over WITH the history, ho
   t.harness.setUpdates([message(t.world, 1, 'What is the marker? Juniper.')]);
   await until('the first reply', () => t.sends().length === 1);
   await until('the shared cursor passes it', async () => (await t.view()).cursor === 2);
+  // The cursor passes an update once its intake record is replicated; the send's receipt is written after Telegram
+  // accepts it and reaches the standby on a later pump. Lost before that, the survivor holds the intent without its
+  // receipt and honestly reports it UNKNOWN (Rule 42), never re-sent. This case loses the owner after the whole
+  // first exchange, receipt included, is in the copy the standby acknowledged.
+  await until('the owner recorded the receipt', async () => (await t.status('studio'))?.sendOutcomes?.accepted === 1);
+  await until('the standby holds the whole journal', () => {
+    const held = JSON.parse(readFileSync(join(t.rootOf('laptop'), 'replica', 'copy-state.json'), 'utf8'));
+    return held.size === statSync(join(t.rootOf('studio'), 'journal.encrypted')).size;
+  });
 
   // The owner machine is gone without a word (SIGKILL by exact PID). After one term the standby takes the lease
   // and continues from the copy it acknowledged: the first exchange is in ITS journal now.
   await t.stop(studio, 'SIGKILL');
   await until('the standby takes over with the history', () => laptop.output.stderr.includes('owner: epoch 2; history adopted'), 60000);
   await until('the adopted journal is readable', async () => (await t.status('laptop'))?.turns === 1);
-  expect(await t.status('laptop')).toMatchObject({ turns: 1, replies: 1,
+  expect(await t.status('laptop')).toMatchObject({ turns: 1, replies: 1, unknownSends: 0,
     sharedHistory: { lineage: { epoch: 2, adopted: { machine: 'studio', epoch: 1 } } } });
 
   // Its peer is gone, so it reads the next message and holds the reply (D1(a)): no reply on local durability.

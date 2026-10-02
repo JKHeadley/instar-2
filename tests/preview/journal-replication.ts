@@ -221,6 +221,10 @@ export type PeerStatus = Readonly<{ current: boolean; reason: string; acknowledg
 export interface JournalShipper {
   /** Send what the peer lacks. Never throws; a failure is the status reason. */
   pump(): Promise<void>;
+  /** A clean end: pump until the peer holds the whole journal as of this call, at most `rounds` attempts. One
+   * `pump()` is not enough: it may return a run already in flight, or nothing inside the backoff an earlier
+   * failure set, or fail once on a slow peer; the successor would then adopt a copy without the last records. */
+  drain(rounds?: number): Promise<boolean>;
   /** The journal as of now. */
   token(): ReplicationToken;
   /** True when the peer's complete copy holds every byte of the token (or a later generation's whole file). */
@@ -309,9 +313,16 @@ export function createJournalShipper(input: Readonly<{ path: string; size: () =>
   };
   const covers = (token: ReplicationToken) => acknowledged !== null
     && (acknowledged.generation > token.generation || acknowledged.generation === token.generation && acknowledged.size >= token.size);
+  const pump = () => busy ??= run().catch(error => { failed(error instanceof Error ? error.message : 'send failed'); }).finally(() => { busy = null; });
+  const token = () => { refresh(); return Object.freeze({ generation, size: input.size() }); };
   return Object.freeze({
-    pump: () => busy ??= run().catch(error => { failed(error instanceof Error ? error.message : 'send failed'); }).finally(() => { busy = null; }),
-    token: () => { refresh(); return Object.freeze({ generation, size: input.size() }); },
+    pump, token,
+    async drain(rounds = 3) {
+      const whole = token();
+      // Rule 55's backoff guards a serving loop; a clean end makes its few bounded attempts now.
+      for (let round = 0; round < rounds && !covers(whole); round++) { await busy; retryAt = 0; await pump(); }
+      return covers(whole);
+    },
     covers,
     status(freshMs: number): PeerStatus {
       const journalBytes = input.size(), whole = covers({ generation, size: journalBytes });

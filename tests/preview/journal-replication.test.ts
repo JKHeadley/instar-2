@@ -129,6 +129,42 @@ it('a lost peer is never covered and never a fallback: the gate waits, a bounded
   } finally { rmSync(dir, { recursive: true, force: true }); }
 });
 
+it('a clean end drains: the last records reach the other machine even inside a backoff or after one failed request; a peer that stays gone ends it after a bounded number of attempts', async () => {
+  const dir = place();
+  try {
+    const owner = machine(join(dir, 'studio')), store = storeAt(join(dir, 'laptop')), wire = link(store);
+    const { shipper } = shipping(owner, wire.client);
+    await owner.exchange(10);
+    await shipper.pump();
+    // One request fails (a slow peer timing out), then the owner records its last exchange and ends.
+    wire.state.up = false;
+    await shipper.pump();
+    wire.state.up = true;
+    await owner.exchange(11);
+    const whole = shipper.token();
+    // The old single pump at a clean end: inside the backoff it sends nothing, and the successor would adopt a copy without the last records.
+    const asked = wire.state.requests.length;
+    await shipper.pump();
+    expect(wire.state.requests.length).toBe(asked);
+    expect(shipper.covers(whole)).toBe(false);
+    // The drain ships them, so the copy replays to the same history as the owner's journal.
+    expect(await shipper.drain()).toBe(true);
+    expect(shipper.covers(whole)).toBe(true);
+    expect(viewOf(store.copyPath)).toBe(projectionDigest(owner.journal.view));
+    // Already covered: a drain asks nothing.
+    const settled = wire.state.requests.length;
+    expect(await shipper.drain()).toBe(true);
+    expect(wire.state.requests.length).toBe(settled);
+    // A peer that stays gone: the drain reports it and stops after its bounded attempts; it never spins.
+    await owner.exchange(12);
+    let attempts = 0;
+    const gone = shipping(owner, { request: async () => { attempts++; return { ok: false, reason: 'unreachable' }; } });
+    expect(await gone.shipper.drain(3)).toBe(false);
+    expect(attempts).toBe(3);
+    owner.journal.close();
+  } finally { rmSync(dir, { recursive: true, force: true }); }
+});
+
 it('a compacted journal is re-sent whole: the old copy stays the copy until the new one is complete, and earlier tokens are covered by it', async () => {
   const dir = place();
   try {
