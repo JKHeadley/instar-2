@@ -166,14 +166,19 @@ it('decides a later cancel while the frontier is stuck on an earlier answered tu
     expect(w.offered).toEqual([[ra1, ra1b]]);
     expect(openRequests(w.journal.view).map(item => item.quote)).toEqual([ra1]);
     expect(w.sent.at(-1)).toContain('Cancelled request');
+    // cint-L27 (w3-cancelpath): the cancel named the bird bath and only that. The bird-feeder request it did
+    // not withdraw stands and falls due. It used to be held for good by the cancel's own undecided memory
+    // state, so a withdrawal of one request silently killed every earlier one (Rules 2, 57, 93, 95).
     clock.now = Date.UTC(2026, 9, 2, 6, 50);
-    await w.worker.drain(); await w.worker.sendRequested();
-    expect(pushes(w.sent)).toEqual([]);
+    await w.worker.drain(); await w.worker.sendRequested(); await w.worker.sendRequested();
+    expect(pushes(w.sent)).toHaveLength(1);
+    expect(pushes(w.sent)[0]).toContain(ra1);
+    expect(pushes(w.sent)[0]).not.toContain('bird bath');
     w.journal.close();
   } finally { rmSync(root, { recursive: true, force: true }); }
 }, 60000);
 
-it('records an undecidable cancel as undecided with the plain notice; the earlier request stays held and a later one fires', async () => {
+it('records an undecidable cancel as undecided with the plain notice, and every request it did not withdraw still fires', async () => {
   const root = tmp('undecided');
   try {
     const clock = { now: start + 20 * 60_000 };
@@ -187,12 +192,16 @@ it('records an undecidable cancel as undecided with the plain notice; the earlie
     w.worker.intake([update(10, walk)]); await w.worker.drain();
     expect(turnOf(w, walk).intent).toBeDefined();
     expect(openRequests(w.journal.view).map(item => item.quote)).toEqual([ra1, ra1b, walk]);
-    clock.now = Date.UTC(2026, 9, 2, 6, 51); // past both due minutes
+    clock.now = Date.UTC(2026, 9, 2, 6, 51); // past every due minute
     await w.worker.drain(); await w.worker.sendRequested(); await w.worker.sendRequested();
-    // The request made before the undecided cancel may have been withdrawn: it stays held. The later one fires once.
+    // A request made before the cancel may have been withdrawn, so it waits for the cancel's own reply -- and
+    // no longer than that. Nothing was withdrawn here, so every request the operator really made falls due,
+    // in one grouped notice (Rules 2, 52, 57, 93, 95). cint-L27 (w3-cancelpath): before, only the request
+    // made AFTER the cancel ever fired, and the two earlier ones died with it.
     expect(pushes(w.sent)).toHaveLength(1);
     expect(pushes(w.sent)[0]).toContain(walk);
-    expect(pushes(w.sent)[0]).not.toContain('bird bath');
+    expect(pushes(w.sent)[0]).toContain('bird bath');
+    expect(pushes(w.sent)[0]).toContain('bird feeder');
     w.journal.close();
   } finally { rmSync(root, { recursive: true, force: true }); }
 }, 60000);
