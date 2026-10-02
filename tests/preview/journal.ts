@@ -5857,7 +5857,7 @@ export function createJournalWorker(journal: ReturnType<typeof openPreviewJourna
               askConflict: string | undefined,
               resolveConflict: { askedBy: string; winner: string } | undefined, requested: boolean[] = [],
               reminderCancels: string[] | undefined, invalidCancel = false, decided = false, ownReplyEcho = false,
-              cancelRefusal: 'unlisted' | 'no-withdrawal' | undefined,
+              cancelRefusal: 'unlisted' | 'unverified' | undefined,
               obligations: AnswerObligations = {}, promises: PromiseProposal[] = [], fulfills: FulfillmentProposal[] = [],
               refusedFulfills = 0;
             if (output.trim()) try {
@@ -5939,8 +5939,9 @@ export function createJournalWorker(journal: ReturnType<typeof openPreviewJourna
                     reminderCancels = [...new Set(cited.map(item => item!.id))].map(id => offered.get(id)!);
                   else { invalidCancel = true;
                     // Rule 2: the two refusals are different facts, so the operator is told which one happened.
+                    // Rule 10: a citation that fails the quote check proves only that, never that nothing was withdrawn.
                     cancelRefusal = cited.every(item => item !== undefined) && cited.some(item => !listed.has(item!.id) || !offered.has(item!.id))
-                      ? 'unlisted' : 'no-withdrawal'; }
+                      ? 'unlisted' : 'unverified'; }
                 }
                 obligations = obligationsFrom(parsed, turn, text, context, decisionAt);
                 const decision = JSON.parse(context) as { memoryCandidates?: { id: string; message: string }[];
@@ -6059,8 +6060,8 @@ export function createJournalWorker(journal: ReturnType<typeof openPreviewJourna
             // Rule 2: a set-aside echo never reads as a saved change; if a change was meant, the operator is asked again.
             if (ownReplyEcho && !invalidMemory && memory?.length === 0 && text.trim() && fromOperator(turn) && !probe && !turn.requestedAction)
               text = `${text.trim()}\n\nNo memory or preference change was saved from this message. If you meant to change one, please say it again.`;
-            if (invalidCancel && !invalidMemory) text = `${text.trim()} ${cancelRefusal === 'no-withdrawal'
-              ? 'Nothing in that message withdrew a request, so none was cancelled; your open requests still stand.'
+            if (invalidCancel && !invalidMemory) text = `${text.trim()} ${cancelRefusal === 'unverified'
+              ? 'I couldn\'t verify that cancellation, so no request was cancelled; your open requests still stand.'
               : 'I could not tell which request to cancel, so none was cancelled.'}`.trim();
             else if (reminderCancels?.length && !invalidMemory) text = `${text.trim()} Cancelled request: ${reminderCancels.map(key =>
               `"${journal.view.dated.find(item => datedKey(item) === key)!.quote}"`).join('; ')}.`.trim();

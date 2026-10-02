@@ -114,7 +114,7 @@ it('refuses a cancellation the operator never asked for: an "also" request adds 
     expect(openRequests(journal.view).map(item => item.quote)).toEqual([FEEDER, PLUMBER]);
     expect(journal.view.reminderCancels).toHaveLength(0);
     // Rule 2: the refusal is said, in its own words, not folded into the unclear-id one.
-    expect(state.sent.at(-1)!).toContain('Nothing in that message withdrew a request, so none was cancelled');
+    expect(state.sent.at(-1)!).toContain('I couldn\'t verify that cancellation, so no request was cancelled; your open requests still stand.');
     expect(state.sent.at(-1)!).not.toContain('I could not tell which request to cancel');
     // And what the live reply said instead, for the record.
     expect(recorded('ra2').reply).toContain('This replaces the bird feeder reminder for that same time slot');
@@ -167,7 +167,7 @@ it.each(CITATIONS)('admits a withdrawal cited as $name: $admitted', async ({ cit
     worker.intake([update(2, 'Actually, cancel the bird feeder one.')]); await worker.drain();
     expect(openRequests(journal.view)).toHaveLength(admitted ? 0 : 1);
     expect(state.sent.at(-1)!).toContain(admitted ? 'Cancelled request:'
-      : 'Nothing in that message withdrew a request, so none was cancelled');
+      : 'I couldn\'t verify that cancellation, so no request was cancelled; your open requests still stand.');
     journal.close();
   } finally { rmSync(root, { recursive: true, force: true }); }
 });
