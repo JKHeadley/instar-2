@@ -11,7 +11,7 @@ Suggested tier: critical
 Declared tier: significant
 Tier rationale: model-facing acceptance and reader change in the summary path, with a format bump that re-opens spans an earlier format exhausted; bounded by the unchanged brake and per-frontier budget.
 Side effects: summaries may be kept at up to the ceiling (on Justin's root about 1.1-1.6 KB measured); the next pass's question asks for the condensed rewrite. Answer packets carry the summary, which they were sized for at 8 KiB before cint-L28. A cint-L28 runner reopening a journal this build wrote may refuse its replay once this build reserves a frontier L28 had exhausted under format 2 (same caution as before: keep a pre-run copy).
-Undo and recovery: revert f871941b, its register replay and this record, and replay the register. Rows this build wrote carry format 3, which older builds ignore for their budgets.
+Undo and recovery: revert f871941b and 2c78e0a2, their register replays (0ff64694, 1cae43be) and this record, and replay the register. Rows this build wrote carry format 3, which older builds ignore for their budgets.
 Multi-machine posture: unchanged; machine-local preview runner, the same reducer replays the same rows on a takeover.
 Layer below: summaryStoppedAt / summaryBraking and the format-scoped attempt budget, read and unchanged; the content refusals (memoryDisposition unresolved, invalid memory action) unchanged and now reached for the `reply` shape too.
 Bug class: integration
