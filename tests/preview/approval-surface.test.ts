@@ -48,8 +48,9 @@ const genesis = { kind: 'genesis' as const, bot: '12345678', chat: '7654321', op
   configurationDigest: 'sha256:offline', expires: 9999999999999, maxCalls: 1, maxReplies: 8, maxTurns: 8, maxBytes: 32768, cursor: 0 };
 const message = (id: number, text: string) => ({ update_id: id,
   message: { message_id: id, chat: { id: 7654321, type: 'private' }, from: { id: 7654321 }, text } });
-// The live runner's posture: register, lease/fence and the P-08 join are not installed, so the chat's
-// limited answer stays inhibited (build 3). The approval page must still carry the request.
+// A host whose minimal path is not admitted (a missing register generation, lease/fence, or the
+// single-machine P-08 policy not yet accepted): the chat's limited answer stays inhibited. The approval
+// page must still carry the request.
 const liveDependencies = () => ({ ...admittedDependencies(), register: false, lease: false, fence: false, 'replication-peer': false });
 
 function setup() {

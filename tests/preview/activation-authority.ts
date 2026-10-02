@@ -52,8 +52,27 @@ export interface ActivationGrant { id: string; grantor: string; grantee: string;
   renewal?: { maxExtensionMs: number; latestExpiresAt: number } }
 export interface ActivationWaiver { reference: string; rules: readonly string[]; grantor: string; recordedAt: number; source: OperatorMessageRef; words: string }
 export interface ActivationRevocation { grantId: string; at: number; by: string; source: string }
+/** P-08 (Purpose: "a single-machine installation is a supported deployment shape"; Eleven §5): the fixed
+ * profile a single-machine installation's operator accepts once, as a whole: its closed local-durable
+ * operation set, the full causal-prefix requirement and the permanent-machine-loss model. A change to any
+ * of them is a different profile, so an earlier acceptance no longer binds it. */
+export const SINGLE_MACHINE_PROFILE = Object.freeze({ id: 'single-machine-v1',
+  operations: Object.freeze(['provider-call', 'telegram:ordinary-reply', 'slack:ordinary-reply']), causalPrefix: 'full' as const,
+  lossModel: 'Permanent loss of the machine can destroy the authority, work, captures, observations and accounting evidence '
+    + 'needed to reconstruct a paid call or send; no peer survives; and an unknown earlier effect cannot safely be repeated '
+    + 'from memory or a new installation.' });
+/** The operator's recorded acceptance of that profile for one trial: the exact words and the authenticated
+ * message they came from. It has the standing of the trial's other recorded authority (an account-authenticated
+ * operator message under the desk's seal); it is never a device-signed or independently verified approval. */
+export interface InstallationPolicyAcceptance { id: string; policy: 'P-08'; shape: 'single-machine'; grantor: string; words: string;
+  source: OperatorMessageRef; acceptedAt: number; subject: { trial: string; profile: string; profileDigest: string } }
+export type InstallationPolicyResolution =
+  | { kind: 'resolved'; id: string; trial: string; acceptance: string; acceptedAt: number; profile: string; profileDigest: string; digest: string }
+  | { kind: 'refused'; reason: string };
 export interface ActivationAuthorityRecord { type: 'PreviewActivationAuthority'; schemaVersion: 1;
   grants: readonly ActivationGrant[]; waivers: readonly ActivationWaiver[]; revocations: readonly ActivationRevocation[];
+  /** P-08 acceptances; absent on a record sealed before the single-machine profile was presented. */
+  installationPolicies?: readonly InstallationPolicyAcceptance[];
   /** The desk's seal over every other field: `hmac-sha256:<hex>` under the trial's seal key. */
   seal?: string }
 export type AuthorityResolution =
@@ -180,4 +199,35 @@ export function resolveActivationAuthority(activation: ActivationFacts, record: 
     && PREVIEW_ACTIVATION_DEPARTURES.every(rule => w.rules.includes(rule)));
   if (!waiver) return refuse('the activation waiver does not resolve to a prior operator waiver of the rules this preview departs from');
   return { kind: 'resolved', action, grant: bounded[0]!.id, waiver: waiver.reference, digest: authorityDigest(record) };
+}
+
+/** Digest of the fixed single-machine profile: the subject an acceptance must name exactly. */
+export const singleMachineProfileDigest = (): string => authorityDigest(SINGLE_MACHINE_PROFILE);
+/** Resolves this trial's P-08 single-machine acceptance from the desk's sealed authority record. It resolves
+ * only an unrevoked entry for this trial and the current profile digest whose words and time are the
+ * operator's authenticated message, exactly. Nothing else settles the peer question (Rules 26, 28, 94). */
+export function resolveInstallationPolicy(trial: string, record: unknown, operator: string, now: number,
+  records: OperatorMessageRecords | null, sealKey: Uint8Array | null): InstallationPolicyResolution {
+  const refuse = (reason: string): InstallationPolicyResolution => ({ kind: 'refused', reason });
+  const r = record as Partial<ActivationAuthorityRecord> | null;
+  if (r?.type !== 'PreviewActivationAuthority' || r.schemaVersion !== 1 || !Array.isArray(r.grants) || !Array.isArray(r.waivers)
+    || !Array.isArray(r.revocations)) return refuse('authority record absent or malformed');
+  if (!sealed(r as Record<string, unknown>, sealKey)) return refuse('the authority record is not the desk\'s sealed disposition for this trial');
+  if (!text(trial) || !time(now)) return refuse('installation or time is not known');
+  const entries = Array.isArray(r.installationPolicies) ? r.installationPolicies : [];
+  const named = entries.filter(p => p && text(p.id) && p.policy === 'P-08' && p.shape === 'single-machine' && p.grantor === operator
+    && text(p.words) && time(p.acceptedAt) && p.acceptedAt <= now && p.subject?.trial === trial);
+  if (!named.length) return refuse('no operator acceptance of the single-machine profile (P-08) is recorded for this trial');
+  const digest = singleMachineProfileDigest();
+  const current = named.filter(p => p.subject.profile === SINGLE_MACHINE_PROFILE.id && p.subject.profileDigest === digest);
+  if (!current.length) return refuse('the recorded acceptance covers a different profile, operation set or loss model; a new acceptance is required');
+  const sourced = current.filter(p => authentic(p.source, p.words, p.acceptedAt, operator, records));
+  if (!sourced.length) return refuse('the recorded acceptance does not resolve to an authenticated operator message with its exact words and time');
+  const revoked = (id: string) => r.revocations!.some(v => v && v.grantId === id && time(v.at) && v.at <= now && v.by === operator && text(v.source));
+  const accepted = sourced.find(p => !revoked(p.id));
+  if (!accepted) return refuse('the recorded single-machine acceptance is revoked');
+  // What the operator accepted, as recorded: the verdict compares it with what is installed now.
+  return { kind: 'resolved', id: accepted.id, trial: accepted.subject.trial,
+    acceptance: `telegram:topic:${accepted.source.topicId}:message:${accepted.source.messageId}`, acceptedAt: accepted.acceptedAt,
+    profile: accepted.subject.profile, profileDigest: accepted.subject.profileDigest, digest: authorityDigest(record) };
 }

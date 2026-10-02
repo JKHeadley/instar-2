@@ -2,7 +2,7 @@ import { expect, it } from 'vitest';
 import { hashBytes } from '../../src/facts/index.js';
 import { evaluateGenesisReplay, evaluateMinimalPath, minimalPlaneProjectionIds, minimalPlaneProjections, minimalResponse,
   operatorSeams, requiredMinimalDependencies, resolveFailureTrace, validateSeamInventory } from '../../src/operator/index.js';
-import type { MinimalDependency, ReplaySample } from '../../src/operator/index.js';
+import type { InstalledShape, MinimalDependency, ReplaySample, SingleMachinePolicy } from '../../src/operator/index.js';
 import { value } from '../fixtures.js';
 import { operatorFixture } from './fixture.js';
 
@@ -109,6 +109,66 @@ it('P11-NF-36 P11-NF-37 P11-NF-38 each missing required dependency yields preser
     expect(state.missing).toEqual([dependency]);
     expect(x.detail(minimalResponse(state, { attributable: true, pending: [], blocked: [], uncertain: [], emergencyStop: false }, x.f.c))).toContain(dependency);
   }
+});
+
+const p08: SingleMachinePolicy = { policy: 'P-08', installation: 'installation:one', profile: 'single-machine-v1',
+  operations: ['provider-call', 'telegram:ordinary-reply'], causalPrefix: 'full', lossModel: 'sha256:loss', acceptance: 'acceptance:1' };
+const single = (change: Partial<Extract<InstalledShape, { kind: 'single-machine' }>> = {}): InstalledShape => ({ kind: 'single-machine',
+  installation: 'installation:one', profile: 'single-machine-v1', lossModel: 'sha256:loss', operation: 'telegram:ordinary-reply',
+  policy: p08, ...change });
+const verdict = (admitted: Record<MinimalDependency, boolean>, shape?: InstalledShape) => {
+  const x = operatorFixture();
+  return { x, result: evaluateMinimalPath({ admitted, ordinaryUnavailable: [], inputPreserved: true, repairOwner: 'minimal-repair',
+    maximumExposure: 6, ...(shape ? { shape } : {}) }, x.f.c) };
+};
+
+it('P11-NF-33 P11-NF-36 a single-machine installation under its exact current P-08 policy carries no peer dependency and may respond', () => {
+  const { x, result } = verdict(dependencies(['replication-peer']), single()), state = value(result);
+  expect(state).toMatchObject({ admitted: true, responseEligible: true, missing: [], preserved: true, maximumExposure: 6, replayCount: 0 });
+  expect(value(minimalResponse(state, { attributable: true, pending: ['ordinary run'], blocked: [], uncertain: [], emergencyStop: false }, x.f.c)))
+    .toContain('Limited response');
+});
+
+it('P11-NF-36 the single-machine shape alone omits nothing: a missing, stale or out-of-set policy leaves the peer required', () => {
+  const refusedShapes: [string, InstalledShape | undefined][] = [
+    ['no shape supplied (peer-backed)', undefined],
+    ['declared peer-backed', { kind: 'peer-backed' }],
+    ['no policy', single({ policy: null })],
+    ['policy for another installation', single({ policy: { ...p08, installation: 'installation:two' } })],
+    ['policy for another profile', single({ policy: { ...p08, profile: 'single-machine-v0' } })],
+    ['stale loss model', single({ lossModel: 'sha256:newer-loss' })],
+    ['operation outside the accepted set', single({ operation: 'telegram:send-photo' })],
+    ['partial causal prefix', single({ policy: { ...p08, causalPrefix: 'partial' as 'full' } })],
+    ['no acceptance reference', single({ policy: { ...p08, acceptance: ' ' } })],
+    ['another policy', single({ policy: { ...p08, policy: 'P-07' as 'P-08' } })],
+  ];
+  for (const [name, shape] of refusedShapes) {
+    const { x, result } = verdict(dependencies(['replication-peer']), shape), state = value(result);
+    expect(state.missing, name).toEqual(['replication-peer']);
+    expect(state.responseEligible, name).toBe(false);
+    expect(x.detail(minimalResponse(state, { attributable: true, pending: [], blocked: [], uncertain: [], emergencyStop: false }, x.f.c)), name)
+      .toContain('replication-peer');
+  }
+});
+
+it('P11-NF-36 P11-NF-37 the accepted single-machine policy changes no other dependency, and needs the local-durable segment', () => {
+  for (const dependency of requiredMinimalDependencies.filter(name => name !== 'replication-peer')) {
+    const state = value(verdict(dependencies(['replication-peer', dependency]), single()).result);
+    // Without the local-durable segment the causal prefix cannot be local, so the peer is not omitted either.
+    expect(state.missing).toEqual(dependency === 'local-facts' ? ['local-facts', 'replication-peer'] : [dependency]);
+    expect(state.responseEligible).toBe(false);
+  }
+});
+
+it('P11-NF-36 a contradictory or malformed installed shape refuses the verdict instead of admitting it', () => {
+  const peer = verdict(dependencies(), single());
+  expect(peer.x.detail(peer.result)).toContain('single-machine shape cannot report an admitted replication peer');
+  const blank = verdict(dependencies(['replication-peer']), single({ installation: ' ' }));
+  expect(blank.x.detail(blank.result)).toContain('installed shape is malformed');
+  const unknown = verdict(dependencies(['replication-peer']), { kind: 'standalone' } as unknown as InstalledShape);
+  expect(unknown.x.detail(unknown.result)).toContain('installed shape is malformed');
+  const operations = verdict(dependencies(['replication-peer']), single({ policy: { ...p08, operations: 'telegram:ordinary-reply' as unknown as string[] } }));
+  expect(operations.x.detail(operations.result)).toContain('installation policy is malformed');
 });
 
 it('P11-NF-34 P11-NF-36 a caller cannot self-admit a minimal response by changing responseEligible', () => {

@@ -4,7 +4,8 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { createJournalWorker, openPreviewJournal, raiseJournalCaps, MINIMAL_RESERVE, MINIMAL_POLL_LIMIT, UNLINKED_EDIT_FLAG,
   UNREADABLE_OPERATOR_MESSAGE, limitedAnswerText, PREVIEW_LIVE_GATES, admittedDependencies, MINIMAL_WORKER_WAIT_MS,
-  independentSurface, STOP_PAGE_BUTTON, STOP_CHALLENGE_MS, MINIMAL_WAITING_UPDATES } from './journal-test-worker.js';
+  independentSurface, STOP_PAGE_BUTTON, STOP_CHALLENGE_MS, MINIMAL_WAITING_UPDATES, LIMITED_ANSWER_OPERATION,
+  MISSING_INSTALLATION_POLICY } from './journal-test-worker.js';
 import { STOP_CONFIRM_TEXT } from './status-command.js';
 
 const key = new Uint8Array(32).fill(71);
@@ -266,6 +267,44 @@ it('a missing required dependency leaves the message preserved with an owned out
   expect(replay.view.stop).toBe('operator');
   expect(sends).toHaveLength(2);
   replay.close();
+}));
+
+it('single-machine shape (Eleven §5): the kept message waits on the accepted P-08 policy, is answered once when it is recorded, and each other dependency still inhibits', () => withRoot(async path => {
+  const sends: Marked[] = [], calls: string[] = [];
+  const context = (await import('./journal-test-worker.js')).previewTestContext;
+  // The live host's observation: no peer exists on one machine; the policy is what the join resolved.
+  const observed: Record<string, boolean> = { ...admittedDependencies(), 'replication-peer': false };
+  const accepted = { policy: 'P-08' as const, installation: 'grant:preview', profile: 'single-machine-v1', operations: ['provider-call', LIMITED_ANSWER_OPERATION],
+    causalPrefix: 'full' as const, lossModel: 'sha256:profile', acceptance: 'telegram:topic:1:message:3' };
+  let policy: typeof accepted | null = null;
+  const minimal = { context, dependencies: () => ({ ...observed }) as ReturnType<typeof admittedDependencies>,
+    shape: () => ({ kind: 'single-machine' as const, installation: 'grant:preview', profile: 'single-machine-v1', lossModel: 'sha256:profile',
+      operation: LIMITED_ANSWER_OPERATION, policy }) };
+  const journal = openPreviewJournal(path, key, genesis({ maxTurns: 1 }));
+  const worker = createJournalWorker(journal, { ...ports(() => 1000, sends, calls), send: marked(sends), minimal });
+  worker.intake([message(1, 'one')]); await worker.drain();
+  worker.intake([message(2, 'Are you there?')]);
+  await worker.minimal(); await worker.minimal();
+  // No accepted policy: nothing is sent, the message is kept, and the outage names the policy (not a peer nobody can supply).
+  expect(sends).toHaveLength(1);
+  expect(journal.view.order[1]?.text).toBe('Are you there?');
+  expect(journal.view.order[1]?.minimalOutage?.missing).toEqual([MISSING_INSTALLATION_POLICY]);
+  expect(worker.minimalMissing()).toEqual([MISSING_INSTALLATION_POLICY]);
+  // A policy accepted for another installation, or without this operation in its set, settles nothing.
+  policy = { ...accepted, installation: 'grant:another' }; await worker.minimal();
+  policy = { ...accepted, operations: ['provider-call'] }; await worker.minimal();
+  expect(sends).toHaveLength(1);
+  // The accepted policy alone never covers another missing dependency: the lease still inhibits.
+  policy = accepted; observed.lease = false; await worker.minimal();
+  expect(sends).toHaveLength(1);
+  expect(journal.view.order[1]?.minimalOutage?.missing).toEqual(['lease']);
+  // Everything required is observed and the policy is accepted: one limited answer, never a second.
+  observed.lease = true; await worker.minimal(); await worker.minimal();
+  expect(sends).toHaveLength(2);
+  expect(sends[1]!.text.startsWith(limitedAnswerText(journal.view, 'turns', 1))).toBe(true);
+  expect(calls).toHaveLength(1);
+  expect(worker.minimalMissing()).toEqual([]);
+  journal.close();
 }));
 
 it('with no minimal-path owner installed nothing is admitted: the real worker never speaks from the reserve', () => withRoot(async path => {

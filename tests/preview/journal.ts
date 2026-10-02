@@ -33,7 +33,7 @@ import type { ExhaustionAvenue } from '../../src/rungraph/index.js';
 import { consumeResult } from '../../src/index.js';
 import type { BoundaryContext, Hash, RegisterGenerationReference, Result, Scope } from '../../src/index.js';
 import { evaluateMinimalPath, minimalResponse } from '../../src/operator/live.js';
-import type { IndependentSurfaceVerifierPort, MinimalDependency, SurfaceChallenge, VerifiedSurfaceProof } from '../../src/operator/contracts.js';
+import type { IndependentSurfaceVerifierPort, InstalledShape, MinimalDependency, SurfaceChallenge, VerifiedSurfaceProof } from '../../src/operator/contracts.js';
 import { authenticateTelegramSender, principalBoundToUpdate, systemWriters, verifiedAtIntake, TELEGRAM_ADAPTER, testOriginWriter, writerBoundToRaw, writerRecord, type SystemMethod, type WriteOrigin, type WriterRecord } from './intake-principal.js';
 import { LIVE_JUDGMENTS, type ModelCallRecord } from './model-call-boundary.js';
 import { outboundSigner, settleSendOutcome, type OutboundProvenance, type OutboundSubject, type SendOutcome, type Speaker } from './outbound-provenance.js';
@@ -229,6 +229,11 @@ export const MINIMAL_RESERVE = Object.freeze({ turns: 240, replies: 6, windowMs:
 export const MINIMAL_WAITING_UPDATES = 1000;
 /** Updates read per poll at every capacity level, so presses behind a waiting message are still seen. */
 export const MINIMAL_POLL_LIMIT = 100;
+/** The outage name for a single-machine installation whose P-08 policy is not accepted (or is stale):
+ * the peer dependency it would settle stays required (Eleven §5). */
+export const MISSING_INSTALLATION_POLICY = 'installation-policy';
+/** The operation the limited answer uses: the ordinary reply send, with that operation's durability demand. */
+export const LIMITED_ANSWER_OPERATION = 'telegram:ordinary-reply';
 /** How long an operator message waits on a busy ordinary worker before the minimal path answers it
  * (Rule 77's timely answer; Eleven §5). A stop never waits. */
 export const MINIMAL_WORKER_WAIT_MS = 120_000;
@@ -3535,7 +3540,10 @@ export interface PreviewPorts {
   acknowledge?(callbackId: string, text: string): void;
   /** Part Eleven's minimal-path owner inputs (Rule 15, §5): its boundary context and the host's current
    * observation of each required dependency. Absent: the minimal path is never admitted. */
-  minimal?: { context: BoundaryContext; dependencies(): Readonly<Record<MinimalDependency, boolean>> };
+  minimal?: { context: BoundaryContext; dependencies(): Readonly<Record<MinimalDependency, boolean>>;
+    /** The installed shape the verdict consumes (Eleven §5): on a single machine, the P-08 policy the
+     * host resolved, if any. Absent means peer-backed, where `replication-peer` is required. */
+    shape?(): InstalledShape };
   /** The independently administered approval surface (Part Nine's verifier port). A cap raise completes
    * only with its verified act; absent, no raise is completable from chat (Purpose; Rules 79, 82, 98). */
   approvalSurface?: { verifier: IndependentSurfaceVerifierPort; link(challenge: SurfaceChallenge): string | null;
@@ -6185,13 +6193,15 @@ export function createJournalWorker(journal: ReturnType<typeof openPreviewJourna
     const minimal = ports.minimal;
     if (!minimal) return ['minimal-path-owner'];
     let admitted: Readonly<Record<MinimalDependency, boolean>>;
-    try { admitted = minimal.dependencies(); } catch { return ['dependency-observation']; }
+    let shape: InstalledShape | undefined;
+    try { admitted = minimal.dependencies(); shape = minimal.shape?.(); } catch { return ['dependency-observation']; }
     let missing: string[] = ['minimal-path-owner'];
     const refused = (result: Result<unknown>) => consumeResult(result, { Success: () => null, Refused: refusal => refusal.detail });
     consumeResult(evaluateMinimalPath({ admitted, ordinaryUnavailable: ['ordinary allowance'], inputPreserved: true,
-      repairOwner: 'operator approval', maximumExposure: MINIMAL_RESERVE.replies }, minimal.context), {
+      repairOwner: 'operator approval', maximumExposure: MINIMAL_RESERVE.replies, ...(shape ? { shape } : {}) }, minimal.context), {
       Success: state => {
-        missing = [...state.missing];
+        // On a single machine no peer can be supplied: what is missing is the accepted P-08 policy.
+        missing = state.missing.map(item => item === 'replication-peer' && shape?.kind === 'single-machine' ? MISSING_INSTALLATION_POLICY : item);
         if (missing.length) return;
         const detail = refused(minimalResponse(state, { attributable: true, pending: ['preserved operator message'],
           blocked: [], uncertain: [], emergencyStop: false }, minimal.context));
@@ -7489,7 +7499,7 @@ export function createJournalWorker(journal: ReturnType<typeof openPreviewJourna
   /** The minimal path's own step, run by the host between polls without waiting on an ordinary drain
    * that may be blocked on a model: confirmed stops, verified raises, then limited answers (Rule 15). */
   const minimal = async () => { gate(); completeApprovals(); if (journal.view.stop !== null) return; ensureStopChallenge(); await answerLimited(); };
-  return { intake, drain, minimal, stopPage, intakeHeld: () => intakeHeld, readAhead: () => readAhead, sendRequested, workObligations, summarizeIfNeeded, checkCoherence, gate, pollGate, pollLimit, startStepChecks, checkSteps, retrospect, probe,
+  return { intake, drain, minimal, minimalMissing, stopPage, intakeHeld: () => intakeHeld, readAhead: () => readAhead, sendRequested, workObligations, summarizeIfNeeded, checkCoherence, gate, pollGate, pollLimit, startStepChecks, checkSteps, retrospect, probe,
 
     stop: (reason: string) => { if (reason !== 'operator') throw Error('preview: only operator stop is permanent');
       journal.append({kind:'stop', reason, at:ports.now()}); } };
