@@ -4,9 +4,9 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { createJournalWorker, openPreviewJournal, retrospectiveCases, type JournalView } from './journal.js';
 import { GRAVITY_WELLS, RETROSPECTIVE_DUTIES, RETRO_ANSWER_BUDGET_BYTES, RETRO_ANSWER_BYTES_PER_TOKEN,
-  RETRO_ANSWER_NARROW_STEPS, RETRO_EFFICIENCY_CHARS, RETRO_FAILURE_BACKOFF_MS, RETRO_NOTE_CHARS, RETRO_OUTCOME_REASON_CHARS,
-  RETRO_OVER_CAP_REASON, RETRO_STALE_CASE_MS, RETRO_WELL_NOTE_CHARS, disciplineSource, eligibleCases, estimatedAnswerBytes,
-  retroAnswerBudget, type RetroCase } from './retrospective.js';
+  RETRO_ANSWER_NARROW_STEPS, RETRO_EFFICIENCY_CHARS, RETRO_FAILURE_BACKOFF_MS, RETRO_MIN_INTERVAL_MS, RETRO_NOTE_CHARS,
+  RETRO_OUTCOME_REASON_CHARS, RETRO_OVER_CAP_REASON, RETRO_STALE_CASE_MS, RETRO_WELL_NOTE_CHARS, disciplineSource,
+  eligibleCases, estimatedAnswerBytes, measuredAnswerBudget, retroAnswerBudget, type RetroCase } from './retrospective.js';
 import { SUBSCRIPTION_MAX_OUTPUT_TOKENS } from '../../src/assembly/production-provider.js';
 
 /** The live line's own record of this failure: the 2026-09-29 proof room, where every model answer over the
@@ -124,16 +124,22 @@ it('settles a pass whose own outcome row proves an over-cap answer as failed wit
     expect(pass.result).toBeUndefined();
     // The declared fail direction for this consumer: no grade, finding or candidate, every case still owed.
     expect(owed(w.journal.view, w.at())).toEqual(expect.arrayContaining(before));
-    // And the next pass asks for less, rather than repeating an ask that cannot be answered: the room for case
-    // rows halves, while the rows every pass owes keep their place, so the narrowed ask can still hold cases.
+    // And the next pass asks for less, rather than repeating an ask that cannot be answered. It is sized from what
+    // this answer really cost — the 2312 output tokens its own frame reported — rather than from a fixed fraction
+    // of the estimate, which is what makes it fit in one step (retrospective-measured-narrowing.test.ts).
     const fixed = estimatedAnswerBytes([]);
-    expect(retroAnswerBudget(w.journal.view.retroPasses)).toBe(fixed + Math.floor((RETRO_ANSWER_BUDGET_BYTES - fixed) / 2));
-    // Not before the failure backoff: the failed pass is not repeated early.
-    w.advance(RETRO_FAILURE_BACKOFF_MS - 1);
+    expect(pass.outputTokens).toBe(2312);
+    const narrowed = retroAnswerBudget(w.journal.view.retroPasses);
+    expect(narrowed).toBe(measuredAnswerBudget(pass));
+    expect(narrowed).toBeLessThan(fixed + Math.floor((RETRO_ANSWER_BUDGET_BYTES - fixed) / 2));
+    expect(narrowed).toBeGreaterThan(fixed);
+    // Not immediately: the ordinary minimum interval between passes still holds. It does not wait the full
+    // unknown-failure backoff, because this failure's cause is settled and the narrower ask is already computed.
+    w.advance(RETRO_MIN_INTERVAL_MS - 1);
     await w.retrospect();
     expect(w.journal.view.retroPasses.length).toBe(1);
     expect(w.states.length).toBe(1);
-    // Past the backoff the narrower pass actually runs, and completes when its answer fits the cap.
+    // Past that interval the narrower pass actually runs, and completes when its answer fits the cap.
     let asked = '';
     w.answerWith(state => { asked = answerAtAskedLengths(state);
       return { state: 'complete', value: asked, usage: { inputTokens: 17164, outputTokens: Math.round(Buffer.byteLength(asked) / RETRO_ANSWER_BYTES_PER_TOKEN), charge: null, inputComplete: true } }; });
@@ -174,15 +180,18 @@ it('keeps planning at least one case however many passes in a row ran over the c
       expect(pass.reason).toBe(RETRO_OVER_CAP_REASON);
       expect(pass.cases.length).toBeGreaterThan(0);
       asked.push(pass.cases.length);
-      // The budget never reaches the rows every pass owes, so the narrowing only ever removes cases.
-      expect(retroAnswerBudget(w.journal.view.retroPasses)).toBeGreaterThan(fixed);
+      // The budget never reports less room than the rows every pass owes, so the narrowing only ever removes
+      // cases; the floor of one case lives in the planner, which holds a pass's first case to the whole bound.
+      expect(retroAnswerBudget(w.journal.view.retroPasses)).toBeGreaterThanOrEqual(fixed);
       w.advance(RETRO_FAILURE_BACKOFF_MS);
     }
     for (let index = 1; index < asked.length; index++) expect(asked[index]!).toBeLessThanOrEqual(asked[index - 1]!);
     expect(asked[0]!).toBeGreaterThan(1);
     expect(asked.at(-1)).toBe(1);
-    expect(retroAnswerBudget(w.journal.view.retroPasses))
-      .toBe(fixed + Math.floor((RETRO_ANSWER_BUDGET_BYTES - fixed) / 2 ** RETRO_ANSWER_NARROW_STEPS));
+    // Measured from a 2312-token answer, the budget reaches its floor — the rows every pass owes — well before
+    // the fallback halving's deepest step would, which is why the ask is already down to one case.
+    expect(retroAnswerBudget(w.journal.view.retroPasses)).toBe(fixed);
+    expect(fixed).toBeLessThan(fixed + Math.floor((RETRO_ANSWER_BUDGET_BYTES - fixed) / 2 ** RETRO_ANSWER_NARROW_STEPS));
     // Every failed pass stays truthful and every case stays owed.
     expect(owed(w.journal.view, w.at())).toEqual(expect.arrayContaining(before));
     // The narrowing is read from the journal's own records, so a restart neither loses it nor strands the debt:

@@ -734,7 +734,11 @@ export type JournalRecord =
   | { kind: 'coherence'; id: string; findings: CoherenceFinding[]; failed?: true; at: number }
   /** One bounded retrospective pass: its exact case population, then its validated result (or refusal/UNKNOWN). */
   | { kind: 'retro-reserve'; pass: number; turnsSeen: number; cases: string[]; omitted: { case: string; reason: string }[]; eligible: number;
-    packetSha256: string; contextDigest: string; at: number }
+    packetSha256: string; contextDigest: string;
+    /** What the plan estimated this pass's answer would cost. Kept so that, if the answer runs over the route's
+     * output cap, the next ask is sized from what this estimate really cost. Absent on rows written before it
+     * was recorded, which fall back to the halving. */
+    estimatedAnswerBytes?: number; at: number }
   | { kind: 'retro'; pass: number; state: 'complete' | 'failed' | 'unknown'; result?: RetroPass['result']; reason?: string; usage?: ModelUsage; at: number }
   /** One bounded benchmark rerun of a promoted case under the current reply configuration, inside its pass. */
   | { kind: 'retro-rerun-reserve'; pass: number; index: number; case: string; contextDigest: string; at: number }
@@ -2417,12 +2421,15 @@ function project(view: JournalView, row: JournalRecord, system?: SystemCheck): v
   }
   if (row.kind === 'retro-reserve') {
     const last = view.retroPasses.at(-1);
+    // A nonsense estimate would misbudget every later pass, so it is refused rather than carried.
     if (row.pass !== view.retroPasses.length || last?.state === undefined && last !== undefined
+      || row.estimatedAnswerBytes !== undefined && (!Number.isSafeInteger(row.estimatedAnswerBytes) || row.estimatedAnswerBytes <= 0)
       || view.calls >= view.limits.maxCalls) throw Error('preview journal: retrospective reservation order or cap');
     reserveTokens(view, `retrospective:${String(row.pass)}`, 'summary', view.limits.maxBytes, subscriptionOutputMaximum);
     view.calls++;
     view.retroPasses.push({ pass: row.pass, at: row.at, turnsSeen: row.turnsSeen, cases: row.cases, omitted: row.omitted, eligible: row.eligible,
-      packetSha256: row.packetSha256, contextDigest: row.contextDigest });
+      packetSha256: row.packetSha256, contextDigest: row.contextDigest,
+      ...(row.estimatedAnswerBytes === undefined ? {} : { estimatedAnswerBytes: row.estimatedAnswerBytes }) });
     return;
   }
   if (row.kind === 'retro') {
@@ -2432,6 +2439,11 @@ function project(view: JournalView, row: JournalRecord, system?: SystemCheck): v
       throw Error('preview journal: retrospective result order');
     settleTokens(view, `retrospective:${String(row.pass)}`, row.usage);
     pass.state = row.state; pass.completedAt = row.at;
+    // The call's own usage record of what the answer really cost, kept with the pass: the ten-row outcome window
+    // that proved the over-cap classification is evicted by ordinary traffic long before the next pass is planned,
+    // and the next ask has to be sized from this number hours later. An unrecorded count stays unrecorded: a pass
+    // with no measurement falls back to the halving rather than being budgeted from a number nobody observed.
+    if (typeof row.usage?.outputTokens === 'number') pass.outputTokens = row.usage.outputTokens;
     if (row.result) pass.result = row.result;
     if (row.reason !== undefined) pass.reason = row.reason;
     return;
@@ -7241,7 +7253,7 @@ export function createJournalWorker(journal: ReturnType<typeof openPreviewJourna
       gate();
       const pass = journal.view.retroPasses.length;
       journal.append({ kind: 'retro-reserve', pass, turnsSeen: journal.view.order.length, cases: plan.cases.map(item => item.id), omitted: plan.omitted,
-        eligible: plan.eligible, packetSha256: plan.packetSha256, contextDigest, at: ports.now() });
+        eligible: plan.eligible, packetSha256: plan.packetSha256, contextDigest, estimatedAnswerBytes: plan.estimatedAnswerBytes, at: ports.now() });
       // Benchmark reruns: the promoted case's original question through the live reply assembly, as of that turn.
       for (const [index, target] of plan.reruns.entries()) {
         const id = `retrospective:${String(pass)}:rerun:${String(index)}`;

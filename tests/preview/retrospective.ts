@@ -88,10 +88,14 @@ export const RETRO_NOTE_CHARS = 40;
 export const RETRO_WELL_NOTE_CHARS = 30;
 export const RETRO_EFFICIENCY_CHARS = 120;
 export const RETRO_OUTCOME_REASON_CHARS = 100;
-/** Each over-the-cap pass halves the room the next pass has for its CASE rows, never the rows every pass
- * owes whatever its cases are, down to a floor of one case, so a wrong estimate converges on an ask that
- * fits instead of repeating an impossible one (Rule 24). Halving the whole budget instead put it under the
- * fixed rows alone, so no case could ever fit and no further pass was ever planned. */
+/** The fallback narrowing, for an over-cap pass that measured nothing: halve the room the next pass has for its
+ * CASE rows, never the rows every pass owes whatever its cases are, so a wrong estimate still converges on an ask
+ * that fits instead of repeating an impossible one (Rule 24). Halving the whole budget instead put it under the
+ * fixed rows alone, so no case could ever fit and no further pass was ever planned. A fixed fraction converges
+ * far too slowly to be useful when the estimate is wrong by a multiple: live 2026-10-01 the first over-cap pass
+ * asked about 37 cases and the second, after one halving, still asked about 23 and still ran over, each attempt
+ * costing six hours. `measuredAnswerBudget` is the ordinary route now; this holds only where there is nothing
+ * to measure from. */
 export const RETRO_ANSWER_NARROW_STEPS = 3;
 /** The named, settled reason for a pass whose own call outcome proves its answer ran over the output cap. */
 export const RETRO_OVER_CAP_REASON = 'review output over the cap';
@@ -115,18 +119,49 @@ export function estimatedAnswerBytes(cases: readonly RetroCase[]): number {
   return cases.reduce((total, item) => total + item.id.length + 4
     + (ANSWER_ROW_NAMES_CASE[item.category] ? item.id.length + 10 : 0) + ANSWER_ROW_BYTES[item.category], fixed);
 }
-/** This pass's answer budget: the rows every pass owes, plus the room for case rows, which is halved once per
- * consecutive pass already settled over the cap. It never drops to or below the fixed rows, so the narrowing
- * can only ever remove cases. */
-export function retroAnswerBudget(passes: readonly Pick<RetroPass, 'state' | 'reason'>[]): number {
-  let overCap = 0;
-  for (let index = passes.length - 1; index >= 0; index--) {
-    const pass = passes[index]!;
-    if (pass.state !== 'failed' || pass.reason !== RETRO_OVER_CAP_REASON) break;
-    overCap++;
-  }
+/** The budget this over-cap pass's own two recorded numbers earn the next one, or null when it recorded nothing
+ * to measure from. Both are on the pass itself, so a restart reads them with the pass record rather than from the
+ * ten-row outcome window, which an active conversation evicts long before the next pass is planned (Rule 2).
+ *
+ * The estimate is in bytes and the cap is in tokens, and the measurement is the only thing that joins them: the
+ * pass planned `estimatedAnswerBytes` bytes and the answer really cost `outputTokens` tokens, so the review
+ * writes one token per `estimatedAnswerBytes / outputTokens` planned bytes — the review's own ratio, not the
+ * prose ratio RETRO_ANSWER_BYTES_PER_TOKEN assumes. Budgeting the next ask at that measured ratio is what makes
+ * it fit in ONE step. The target is the same budget the plan already aims at, so its reserve carries over.
+ *
+ * It can only narrow: over the cap means `outputTokens` exceeded the cap, the target is the cap less its reserve,
+ * so the result is always below the estimate the failed pass planned at, and the pass after it plans at or below
+ * that. Nothing here raises the route's output cap. */
+export function measuredAnswerBudget(pass: Pick<RetroPass, 'estimatedAnswerBytes' | 'outputTokens'>): number | null {
+  const planned = pass.estimatedAnswerBytes, produced = pass.outputTokens;
+  if (planned === undefined || produced === undefined
+    || !Number.isSafeInteger(planned) || !Number.isSafeInteger(produced) || planned <= 0 || produced <= 0) return null;
+  return Math.floor(RETRO_ANSWER_BUDGET_BYTES * planned / (RETRO_ANSWER_BYTES_PER_TOKEN * produced));
+}
+/** This pass's answer budget: the whole bound unless the passes immediately before it ran over the cap, in which
+ * case the smallest budget any of them earns — each from its own measurement where it has one, and from the
+ * fallback halving at its depth where it does not. The smallest, so a pass that measured nothing can never widen
+ * the ask back out past what an older measurement already proved too large. It never reports less room than the
+ * rows every pass owes; the floor of one case lives in the planner, which holds a pass's first case to the whole
+ * bound, so however far this narrows a pass still asks about one case rather than none. */
+export function retroAnswerBudget(passes: readonly Pick<RetroPass, 'state' | 'reason' | 'estimatedAnswerBytes' | 'outputTokens'>[]): number {
   const fixed = estimatedAnswerBytes([]);
-  return fixed + Math.floor((RETRO_ANSWER_BUDGET_BYTES - fixed) / 2 ** Math.min(overCap, RETRO_ANSWER_NARROW_STEPS));
+  let tail = 0;
+  while (tail < passes.length) {
+    const pass = passes[passes.length - 1 - tail]!;
+    if (pass.state !== 'failed' || pass.reason !== RETRO_OVER_CAP_REASON) break;
+    tail++;
+  }
+  if (!tail) return RETRO_ANSWER_BUDGET_BYTES;
+  // Depth is counted from the OLDEST of the consecutive over-cap passes, so an unmeasured pass that followed a
+  // measured one halves beyond the depth it actually sits at rather than starting over from the whole bound.
+  let budget = RETRO_ANSWER_BUDGET_BYTES;
+  for (let depth = 1; depth <= tail; depth++) {
+    const pass = passes[passes.length - tail + depth - 1]!;
+    budget = Math.min(budget, measuredAnswerBudget(pass)
+      ?? fixed + Math.floor((RETRO_ANSWER_BUDGET_BYTES - fixed) / 2 ** Math.min(depth, RETRO_ANSWER_NARROW_STEPS)));
+  }
+  return Math.max(fixed, budget);
 }
 
 export type CaseCategory = 'message' | 'decision' | 'verdict' | 'repair' | 'authorization' | 'open' | 'rerun';
@@ -172,6 +207,10 @@ export interface RetroRerun { index: number; case: string; contextDigest: string
   state?: 'complete' | 'failed' | 'unknown'; answer?: string; reason?: string; completedAt?: number }
 export interface RetroPass { pass: number; at: number; turnsSeen: number; cases: string[]; omitted: { case: string; reason: string }[];
   eligible: number; packetSha256: string; contextDigest: string;
+  /** What the plan estimated this pass's answer would cost, and what the call's own usage record says it really
+   * cost in output tokens. The pair is the measurement `measuredAnswerBudget` sizes the next ask from. Both are
+   * absent on a pass recorded before they were kept, which falls back to the halving. */
+  estimatedAnswerBytes?: number; outputTokens?: number;
   state?: 'complete' | 'failed' | 'unknown'; result?: RetroResult; reason?: string; completedAt?: number; reruns?: RetroRerun[] }
 
 /** Evidence other builds own and hand to this consumer. Absent evidence leaves its duty recorded unavailable. */
@@ -408,7 +447,10 @@ export function rerunDispositions(view: JournalView, contextDigest: string): { c
 }
 
 export interface RetrospectivePlan { cases: RetroCase[]; omitted: { case: string; reason: string }[]; eligible: number; state: string; packetSha256: string;
-  prior: PriorContext; waiverAvailable: boolean; waiverRefs: string[]; reruns: string[] }
+  prior: PriorContext; waiverAvailable: boolean; waiverRefs: string[]; reruns: string[];
+  /** Recorded with the pass, so that if its answer runs over the cap the next ask can be sized from what this
+   * estimate really cost rather than from a fixed fraction of it. */
+  estimatedAnswerBytes: number }
 /** `reason` says whether the case carries a separately recorded reason of its own (Rule 108), so a
  * reassessment is held to the same presence check as a first grade. */
 interface PriorContext { grades: { id: string; seq: number; reason: boolean }[]; authorizations: string[] }
@@ -421,7 +463,19 @@ export function retrospectivePlan(view: JournalView, population: readonly RetroC
   if (spare < 1) return null;
   const last = view.retroPasses.at(-1);
   if (last && last.state === undefined) return null;
-  if (last && now - last.at < (last.state === 'complete' ? RETRO_MIN_INTERVAL_MS : RETRO_FAILURE_BACKOFF_MS)) return null;
+  const narrowed = retroAnswerBudget(view.retroPasses);
+  // An over-cap failure is the only failure whose cause is settled and whose repair is already computed: the ask
+  // was too large, and the next one is strictly smaller. Nothing about the provider is in doubt, so it waits the
+  // ordinary minimum interval between passes rather than the unknown-failure backoff that exists for a cause
+  // nobody has established. It stays inside the spend admission checked above and asks for a strictly cheaper
+  // call than the one that failed. The moment the ask stops shrinking — the measurement earns no reduction, or the
+  // budget has reached the floor of the rows every pass owes, below which it cannot go — the backoff applies
+  // again, so a pass that cannot narrow further is retried at the slow cadence instead of burning a call an hour
+  // on an ask that will not change.
+  const narrowedFurther = last?.state === 'failed' && last.reason === RETRO_OVER_CAP_REASON
+    && last.estimatedAnswerBytes !== undefined && narrowed < last.estimatedAnswerBytes
+    && narrowed > estimatedAnswerBytes([]);
+  if (last && now - last.at < (last.state === 'complete' || narrowedFurther ? RETRO_MIN_INTERVAL_MS : RETRO_FAILURE_BACKOFF_MS)) return null;
   const owed = owedCases(view, population, now);
   const due = rerunsDue(view, contextDigest);
   // A failed or UNKNOWN rerun spends its remaining permitted attempt after the failure backoff, as a new attempt.
@@ -437,7 +491,6 @@ export function retrospectivePlan(view: JournalView, population: readonly RetroC
   // The floor of one case: the first case of a pass is held to the whole bound, not the narrowed one, so the
   // deepest narrowing still asks about one case rather than none. Without it a narrowed pass with no case that
   // fits would plan nothing, record nothing, and so never widen again: the owed cases could not drain.
-  const narrowed = retroAnswerBudget(view.retroPasses);
   for (const { item } of owed) {
     const trial = packetOf([...cases, item], view, contextDigest, population, evidence);
     const answerBudget = cases.length ? narrowed : RETRO_ANSWER_BUDGET_BYTES;
@@ -448,7 +501,8 @@ export function retrospectivePlan(view: JournalView, population: readonly RetroC
   }
   if (!cases.length && !reruns.length) return null;
   const state = packetOf(cases, view, contextDigest, population, evidence);
-  return { cases, omitted, eligible: owed.length, state, packetSha256: `sha256:${createHash('sha256').update(state).digest('hex')}`,
+  return { cases, omitted, eligible: owed.length, state, estimatedAnswerBytes: estimatedAnswerBytes(cases),
+    packetSha256: `sha256:${createHash('sha256').update(state).digest('hex')}`,
     prior: { grades: [...prior.grades, ...prior.index].map(row => ({ id: row.case, seq: row.seq, reason: row.reason !== undefined })), authorizations: prior.authorizations.map(row => row.id) },
     waiverAvailable: evidence.waivers !== undefined, waiverRefs: waiverPacket(evidence, view.retroPasses.length)?.refs ?? [], reruns };
 }
