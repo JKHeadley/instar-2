@@ -502,7 +502,12 @@ it('cancels only by a recorded decision, and an ambiguous one leaves the request
       // 'ambiguous' names a request id that is not offered: no request can be chosen, so none is cancelled.
       worker.intake([update(2, which === 'decided' ? 'cancel the Priya reminder' : 'cancel the dentist reminder')]); await worker.drain();
       expect(journal.view.reminderCancels).toHaveLength(which === 'decided' ? 1 : 0);
-      if (which === 'ambiguous') expect(state.sent.at(-1)!.text).toBe('PREVIEW — Okay. I could not tell which request to cancel, so none was cancelled.');
+      // cint-L27 (w3-cancelpath): a cancellation that could not be carried out also names what still stands,
+      // so the operator is never left assuming it is gone (Rules 2, 57, 93).
+      if (which === 'ambiguous') {
+        expect(state.sent.at(-1)!.text).toContain('PREVIEW — Okay. I could not tell which request to cancel, so none was cancelled.');
+        expect(state.sent.at(-1)!.text).toContain('Your open request still stands and will be sent at its time: "remind me Friday at 9 am to call Priya".');
+      }
       expect(state.sent.some(item => item.text.includes(MEMORY_UNDECIDED_REPLY))).toBe(false);
       journal.close(); ({ journal, worker } = open());
       state.now = friday9 + 3600_000;
