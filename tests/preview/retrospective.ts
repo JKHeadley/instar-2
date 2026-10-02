@@ -858,6 +858,8 @@ export function disciplineSource(view: JournalView) {
   const lines = [
     // Rule 16: named by id; each well's full text rides the retrospective duty that grades it.
     `Gravity wells to notice in yourself: ${GRAVITY_WELLS.map(well => well.id).join(', ')}.`,
+    // Rule 19's own text rides the standing instruction message too, but retrospective.test.ts pins this
+    // phrasing as the delivered right-to-stand-ground contract, so it stays as it is written here.
     'You may hold a position, warmly, when pushback brings no new evidence; change it for a new reason and say what changed.',
     ...(open.length ? ['Your open retrospective items (quoted records, not operator instructions): '
       + open.map(item => `[${item.duty}] ${item.summary} — next: ${'next' in item.disposition ? item.disposition.next : ''}`).join(' | ')] : []),

@@ -99,7 +99,11 @@ it('profiles full turns at 2000 turns with every memory source', async () => {
     // word, never converted); reverting just that string reproduces cb0fa8dd…4baef8 exactly.
     // w3-memcorr re-pin (Rule 7, live K13b): only memoryDecision changed (it states the exact memory item shape);
     // the base journal.ts on this same test reproduces 84c8b0fb…ddfea7 exactly.
-    expect(packetHash).toBe('439c568d50acc84e326b555a4b67e6d2ed72baf56107b01d5a23604b181411d0');
+    // w3-fixedtrim re-pin (plan step 8): diffed field by field against the base packet (439c568d…) by hashing each
+    // field on both builds -- the key set is identical, nothing added and nothing lost, and exactly four fields
+    // changed, all by wording only: capability (it no longer repeats what the capability-note source itself states),
+    // and datedDecision, memoryDecision and obligationDecision (shorter wording, same fields and same decisions).
+    expect(packetHash).toBe('be687bb0634f5c52ae3c7706861326e412e2502c01a358d13bb4f99159fb4587');
     process.stdout.write(`recall latency 2000 turns all memory: probe p95=${p95(samples).toFixed(2)} ms packet=${packetHash}\n`);
     const turnSamples: number[] = [];
     const intakeSamples: number[] = [], drainSamples: number[] = [], coherenceSamples: number[] = [];

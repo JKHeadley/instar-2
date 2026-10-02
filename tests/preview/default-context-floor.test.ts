@@ -9,8 +9,10 @@ import { disciplineSource } from './retrospective.js';
 import { readRuns, selfStateBrief, selfStateSource } from './self-state.js';
 import { prepareJournalEnvelope } from './journal-envelope.js';
 import { PREVIEW_FIXED_PROMPT_BYTES, PREVIEW_LIVE_LIMITS, PREVIEW_MIN_SERVABLE_CONTEXT_BYTES,
-  concurrentWorkItem, createJournalWorker, openPreviewJournal, replyReviewReserveFor,
+  PREVIEW_MIN_TURN_HEADROOM_BYTES, PREVIEW_REPLY_BOUND_BYTES, REPLY_REVIEW_FIXED_BYTES,
+  concurrentWorkItem, createJournalWorker, declaredObligations, openPreviewJournal, replyReviewReserveFor,
   unservableContextReason } from './journal.js';
+import { jevQuestions, replyReviewContext, replyReviewQuestion } from './reply-check.js';
 import { SUBSCRIPTION_CONVERSATION_SYSTEM_PROMPT } from '../../src/assembly/production-provider.js';
 import { OFFLINE_STORAGE_KEY, offlineProfile, successiveWorld } from './successive-fixture.js';
 
@@ -62,7 +64,11 @@ async function firstTurn(maxBytes: number) {
       },
       summaryCheck: async () => ({ model: 'jev-1.13.0', answers: { lost_memory: { type: 'noul', noul: 0.01 } } }),
       send: async () => 1, checkOutbound: () => {},
-      replyCheck: { elapsedMs: () => 100, jev: async () => ({ value: { answers: {} }, latencyMs: 10 }),
+      replyCheck: { elapsedMs: () => 100,
+        // Answers whichever question set it is given (the reply rules, or the summary-integrity question),
+        // so the reply review and the summary's own checks are both real rather than silently unavailable.
+        jev: async (_text, questions) => ({ value: { model: 'jev-1.13.0', answers: Object.fromEntries(
+          Object.keys(questions ?? jevQuestions).map(id => [id, { type: 'noul', noul: 0.01 }])) }, latencyMs: 10 }),
         escalate: async () => ({ verdict: 'pass', ruleIds: [], confidence: null, latencyMs: 10 }) } });
     worker.intake([{ update_id: 1, message: { chat: { id: 7654321, type: 'private' }, from: { id: 7654321 },
       date: Math.floor(now / 1000), text: 'What is the state of the preview right now?' } }]);
@@ -71,22 +77,37 @@ async function firstTurn(maxBytes: number) {
     const turn = journal.view.order.at(-1)!;
     const total = (row: { prepared: string } | undefined) => row === undefined ? null
       : bytes(row.prepared) + bytes(SUBSCRIPTION_CONVERSATION_SYSTEM_PROMPT);
+    // What the reply review of THIS turn would really send: the same answer prompt rebuilt as the review's
+    // own input, with a candidate reply at the send path's own bound. This is what the reserve must cover.
+    const reviewTotal = answer === undefined ? null
+      : bytes(prepareJournalEnvelope({ question: replyReviewQuestion([]),
+        context: replyReviewContext(answer.prepared, 'x'.repeat(PREVIEW_REPLY_BOUND_BYTES), [],
+          declaredObligations(journal.view, turn.id, now)), id: `${turn.id}:reply-review`,
+        writer: { id: 'runner', kind: 'system', adapter: 'preview' } }, 'claude-opus-5-5',
+      journal.view.genesis.grant, now, 10_000_000)) + bytes(SUBSCRIPTION_CONVERSATION_SYSTEM_PROMPT);
+    const deskText = answer === undefined ? '' : ((JSON.parse(answer.context) as
+      { sources?: { id: string; text: string }[] }).sources ?? []).find(item => item.id === 'desk-status')?.text ?? '';
     const result = { sent: turn.sent !== undefined, held: turn.held, notice: turn.noticeClass,
-      answerTotal: total(answer), summaryTotal: total(summary),
+      answerTotal: total(answer), summaryTotal: total(summary), reviewTotal,
+      deskCut: deskText.includes('[cut for space'),
       keys: answer === undefined ? [] : Object.keys(JSON.parse(answer.context) as object) };
     journal.close();
     return result;
   } finally { rmSync(root, { recursive: true, force: true }); }
 }
 
-it('keeps the always-sent prompt parts inside what the default context limit allows', async () => {
-  const limit = PREVIEW_LIVE_LIMITS.contextBytes;
-  const measured = await firstTurn(limit);
-  // The first ordinary turn is answered by the model, not turned into a size notice.
+it('keeps the always-sent prompt parts inside what the measured floor allows, with its reply review beside them', async () => {
+  // Measured at the floor, not at the default: there the room is exactly the fixed parts, so the ladder is
+  // forced to the shape that is ALWAYS present -- desk report at its cut bound, obligation guide intact --
+  // which is what `PREVIEW_FIXED_PROMPT_BYTES` records. At the default the whole desk report now fits
+  // instead (the second test below), so measuring there would measure a variable shape.
+  const floor = PREVIEW_MIN_SERVABLE_CONTEXT_BYTES;
+  const measured = await firstTurn(floor);
   expect(measured.sent).toBe(true);
   expect(measured.held).toBeUndefined();
   expect(measured.notice).toBeUndefined();
   expect(measured.answerTotal).not.toBeNull();
+  expect(measured.deskCut).toBe(true);
   // Nothing the ladder can drop was dropped: the briefing, the decision guidance and the
   // concurrent-work row are all still there, so this is the whole always-sent shape.
   for (const required of ['sources', 'obligationDecision', 'governingConstraints', 'capabilities',
@@ -96,14 +117,49 @@ it('keeps the always-sent prompt parts inside what the default context limit all
   // prompt, rule row, briefing excerpt or guidance block pushes the real parts past it, this fails
   // here rather than in a live chat that answers once and goes quiet. A trim lowers the constant.
   expect(measured.answerTotal!).toBeLessThanOrEqual(PREVIEW_FIXED_PROMPT_BYTES);
-  // And the parts must fit beside the reply review's own room at the default limit.
-  expect(PREVIEW_FIXED_PROMPT_BYTES).toBeLessThanOrEqual(limit - replyReviewReserveFor(limit));
-  // A summary step for that same turn also fits, so a conversation can be compacted at the default.
+  // And the parts must fit beside the reply review's own room at the floor, by the same inequality the
+  // answer path applies.
+  expect(PREVIEW_FIXED_PROMPT_BYTES).toBeLessThanOrEqual(floor - replyReviewReserveFor(floor));
+  // The reserve is sized from what the review really needs, so the review of THIS turn -- with a candidate
+  // reply at the send path's own bound -- fits in the room the reserve sets aside. This is the half the flat
+  // 8192 only guessed at: measured here, it is 6845 (4096 reply bound + 2749 review-only parts).
+  expect(measured.reviewTotal).not.toBeNull();
+  expect(measured.reviewTotal! - measured.answerTotal!).toBeLessThanOrEqual(replyReviewReserveFor(floor));
+  expect(measured.reviewTotal! - measured.answerTotal!)
+    .toBeLessThanOrEqual(PREVIEW_REPLY_BOUND_BYTES + REPLY_REVIEW_FIXED_BYTES);
+  // Both halves of the reserve are real, not padding: a review with a bound-length reply needs more than
+  // the review-only parts alone, so neither addend can be dropped.
+  expect(measured.reviewTotal! - measured.answerTotal!).toBeGreaterThan(REPLY_REVIEW_FIXED_BYTES);
+  // A summary step for that same turn also fits, so a conversation can be compacted at the floor.
   expect(measured.summaryTotal).not.toBeNull();
-  expect(measured.summaryTotal!).toBeLessThanOrEqual(limit - replyReviewReserveFor(limit));
+  expect(measured.summaryTotal!).toBeLessThanOrEqual(floor - replyReviewReserveFor(floor));
   // The default is admissible: at or above the floor, and within the approved live bound.
-  expect(PREVIEW_MIN_SERVABLE_CONTEXT_BYTES).toBeLessThanOrEqual(limit);
-  expect(unservableContextReason(limit)).toBeNull();
+  expect(PREVIEW_MIN_SERVABLE_CONTEXT_BYTES).toBeLessThanOrEqual(PREVIEW_LIVE_LIMITS.contextBytes);
+  expect(unservableContextReason(PREVIEW_LIVE_LIMITS.contextBytes)).toBeNull();
+}, 60_000);
+
+it('leaves a fresh root at the default limit real room for the message and its history', async () => {
+  // The repair's measurable claim. Before: 32768 - 8192 reserve - 23013 parts = 1563 bytes for the operator's
+  // message and ALL of its history, and the packet dropped the obligation guide from the third turn onward.
+  // After: 32768 - 6845 - 22682 = 3241, and the whole desk report fits at the first turn as well.
+  const limit = PREVIEW_LIVE_LIMITS.contextBytes;
+  const headroom = limit - replyReviewReserveFor(limit) - PREVIEW_FIXED_PROMPT_BYTES;
+  expect(headroom).toBeGreaterThanOrEqual(PREVIEW_MIN_TURN_HEADROOM_BYTES);
+  // The reserve is the derived one, not a quarter of the limit: at 32768 the quarter is 8192 and this is less.
+  expect(replyReviewReserveFor(limit)).toBe(PREVIEW_REPLY_BOUND_BYTES + REPLY_REVIEW_FIXED_BYTES);
+  expect(replyReviewReserveFor(limit)).toBeLessThan(Math.floor(limit / 4));
+  // The quarter still binds on a small root, so a tiny limit is not handed a reserve larger than itself.
+  expect(replyReviewReserveFor(4096)).toBe(1024);
+  // And the real turn at the default is answered with the full shape, the whole desk report included.
+  const measured = await firstTurn(limit);
+  expect(measured.sent).toBe(true);
+  expect(measured.held).toBeUndefined();
+  expect(measured.notice).toBeUndefined();
+  expect(measured.deskCut).toBe(false);
+  for (const required of ['sources', 'obligationDecision', 'governingConstraints', 'capabilities',
+    'memoryDecision', 'datedDecision', 'concurrentWork', 'audience'])
+    expect(measured.keys, required).toContain(required);
+  expect(measured.answerTotal!).toBeLessThanOrEqual(limit - replyReviewReserveFor(limit));
 }, 60_000);
 
 it('states the floor from the measured parts and refuses a limit below it on both sides', async () => {

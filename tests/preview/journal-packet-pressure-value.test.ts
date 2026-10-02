@@ -18,7 +18,10 @@ const GUIDANCE = 300; // cint-23-occam re-measure (every packet lost the summary
 // restores the prior outcomes, so the window moves by +149.
 // w3-memcorr (Rule 7, live K13b): memoryDecision now states the exact memory item shape, which adds exactly 580
 // JSON bytes to every operator packet, so the window moves by +580.
-const GUIDANCE_L3 = GUIDANCE - 471 + 149 + 580;
+// w3-fixedtrim (plan step 8): the capability guidance no longer repeats what the capability-note source itself
+// states, and obligationDecision is worded shorter with the same fields and the same decisions. Measured on this
+// exact packet shape, that removes 69 JSON bytes (4623 -> 4554 for the two-item packet), so the window moves by -69.
+const GUIDANCE_L3 = GUIDANCE - 471 + 149 + 580 - 69;
 
 it('measures which memories survive a capped packet after 5,000 turns', () => {
   const root = realpathSync(mkdtempSync(join(tmpdir(), 'preview-packet-pressure-')));
