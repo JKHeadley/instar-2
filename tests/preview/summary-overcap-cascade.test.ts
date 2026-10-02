@@ -112,7 +112,7 @@ it('settles a writer result proven over the output cap and accepts a shorter spa
     // the ceiling are walked downward (#485 to #482, the one-turn span, which keeps its second attempt because there
     // is no shorter one). Both attempts at the one-turn span ran over the cap, and every later span from base #481
     // contains it, so nothing more is offered from that base (Rule 55; w3-summarybound). Releasing the ceiling here
-    // walked on through #483-#489, two calls a frontier, as Justin's preview did for 69 calls on 2026-10-02.
+    // walked on through #483-#489, two calls a frontier, as Justin's preview did for 77 calls on 2026-10-02.
     expect(w.journal.view.summaryReservations.size).toBe(0);
     expect(w.throughs.slice(2)).toEqual([715672485, 715672484, 715672483, 715672482, 715672482]);
     expect(summaryStoppedAt(w.journal.view)).toBe(715672482);

@@ -100,7 +100,7 @@ export const SUMMARY_OVER_CAP_REASON = 'summary output over the cap';
  * SUBSCRIPTION_MAX_OUTPUT_TOKENS (the CLI stops there and the over-cap reply is discarded). Every bound an accepted
  * summary must meet is derived from that cap, so a faithful answer at the bound always fits with margin. Measured on
  * Justin's root (88 recorded summary outputs, 2026-09-26 to 2026-10-02): 2.44 to 3.08 bytes per output token, the
- * envelope without its reasoning 456 to 725 bytes. Live 2026-10-02 04:56-05:51 PDT, 69 summary calls from one base,
+ * envelope without its reasoning 456 to 725 bytes. Live 2026-10-02 04:56-05:51 PDT, 77 summary calls from one base (69 over the cap),
  * none accepted: the reasoning field (median 1888 bytes, up to 3626) and a span grown to seven turns ran past the cap,
  * while the carried summary was 2166 bytes. */
 export const SUMMARY_BYTES_PER_TOKEN = 2.4;
@@ -7176,7 +7176,7 @@ export function createJournalWorker(journal: ReturnType<typeof openPreviewJourna
       // ceiling asked too much, nothing is offered from this base (Rule 55): a span is (previous, through], so every
       // later span contains it and asks at least as much again. Releasing that ceiling walked forward from one base
       // through ever longer spans, two calls each, for as long as turns arrived (live 2026-10-02 04:56-05:51 PDT,
-      // Justin's preview: 69 summary calls from base 969389761, spans grown to seven turns, 79-112K input tokens and up
+      // Justin's preview: 77 summary calls from base 969389761, spans grown to seven turns, 79-112K input tokens and up
       // to 8192 output tokens per call, none accepted). A ceiling span spent partly on a content failure never had its
       // reduced retry, so it releases as before (w3-summarystall). Replies are not held meanwhile: the history floor
       // answers past any stopped frontier. Only failures under the current SUMMARY_FORMAT count: a build that changes

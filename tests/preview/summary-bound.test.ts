@@ -8,8 +8,8 @@ import { createJournalWorker, openPreviewJournal, summaryStoppedAt, SUMMARY_BYTE
   SUMMARY_TEXT_MAX_BYTES, type CallOutcome } from './journal.js';
 import { conclusionText, parseModelJson } from './model-json.js';
 
-// Plan row #282 (w3-summarybound). Live on Justin's preview (build cint-L27 d12bbf55), 2026-10-02 04:56-05:51 PDT: 69
-// summary calls from one base (frontier 969389761), none accepted; 13.6M input tokens spent on summaries in total.
+// Plan row #282 (w3-summarybound). Live on Justin's preview (build cint-L27 d12bbf55), 2026-10-02 04:56-05:51 PDT: 77
+// summary calls from one base (frontier 969389761), 69 of them over the cap, none accepted; 13.6M input tokens spent on summaries in total.
 // Read from a copy of his root:
 // - the carried summary was 2166 bytes, far under its old 8192-byte bound; the output ran past the 2048-token cap
 //   because the Decision's reasoning (median 1888 bytes, up to 3626) and the answer together fill about 5 KB at 2.44 to

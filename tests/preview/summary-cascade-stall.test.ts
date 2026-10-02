@@ -140,7 +140,7 @@ it('a one-turn span keeps its second attempt under the over-cap ceiling, and a s
     expect(w.journal.view.summaries.at(-1)?.through).toBe(715672484);
     // The spent one-turn span is contained in every later span from base #484, so nothing more is offered from it
     // (Rule 55; w3-summarybound). Releasing the ceiling here walked forward two calls per frontier for as long as turns
-    // arrived (live 2026-10-02, Justin's preview: 69 calls from one base). Replies are answered by the history floor.
+    // arrived (live 2026-10-02, Justin's preview: 77 calls from one base). Replies are answered by the history floor.
     expect(summaryStoppedAt(w.journal.view)).toBe(715672485);
     await w.worker.summarizeIfNeeded(true);
     expect(w.throughs).toHaveLength(4);

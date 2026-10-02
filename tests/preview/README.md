@@ -2401,7 +2401,7 @@ as before. Each summary failure records the summary format it was made under (`f
 failures under the current format spend a span's two attempts or set the brake, so a build that
 changes what a summary is asked may retry spans an older build exhausted. Before this, a released
 ceiling walked forward through ever longer spans from one base, two calls each: Justin's preview
-spent 69 summary calls from frontier 969389761 on 2026-10-02 with none accepted
+spent 77 summary calls from frontier 969389761 on 2026-10-02 (69 over the cap) with none accepted
 (`summary-bound.test.ts`).
 
 Live test script for Justin, on a separately authorized, isolated private-chat
