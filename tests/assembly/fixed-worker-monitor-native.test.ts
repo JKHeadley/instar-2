@@ -501,7 +501,8 @@ it.runIf(darwin)('stage builds one reproducible content-addressed release; insta
     expect(provisionRun(args, [...accountsHost, 'service_state=query-failed:5']).err).toContain('could not be read');
     expect(provisionRun(args, [...accountsHost, 'path=/private/var/db/instar2-worker/supervisor-restarts|Regular File|root|wheel|600']).err)
       .toContain('already present: /private/var/db/instar2-worker/supervisor-restarts');
-    expect(plan.out).toMatch(/plan\.recovery=if a step fails: nothing was activated; reverse what was written with uninstall/);
+    expect(plan.out).toMatch(/plan\.recovery=if a step fails: earlier steps may have completed and the service may be loaded; inspect the state with verify, then reverse it with uninstall/);
+    expect(plan.out).not.toContain('nothing was activated');
     expect(plan.out).not.toContain('accounts-rollback');
     writeFileSync(join(staged, 'scripts', 'fixed-native-worker-monitor.mjs'), '// replaced\n');
     expect(provisionRun(args, accountsHost).err).toContain('release content does not match its MANIFEST');
@@ -701,6 +702,8 @@ it.runIf(darwin)('admin-install runs feasibility before it installs, refuses wit
     const install = provisionRun(['install', ...args.slice(1)], accountsHost);
     expect(preview.out).toContain(`plan.digest=${field(install.out, 'plan.digest')} must equal`);
     expect(field(preview.out, 'admin.recovery')).toContain(`uninstall --release /Library/Instar2/m4-launch/releases/${field(stage.out, 'stage.release')}`);
+    // A failure after the plan ran may leave the service loaded, so recovery never claims nothing was activated.
+    expect(field(preview.out, 'admin.recovery')).toMatch(/^earlier steps may have completed and the service may be loaded; inspect the state with verify/);
     expect(preview.out).not.toContain('admin.custody-separation=HOLD');
     const admin = provisionRun(args, accountsHost.map(r => r === 'agent_groups=staff' ? 'agent_groups=staff,admin' : r));
     expect(admin.out).toContain('admin.custody-separation=HOLD');
