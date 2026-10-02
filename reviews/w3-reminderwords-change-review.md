@@ -15,7 +15,7 @@ Undo and recovery: revert the edits in tests/preview/briefing.ts, tests/preview/
 Multi-machine posture: single-machine preview runner; no shared, replicated or leased state touched. The capability note is a property of the revision, identical on every machine.
 Layer below: the packet byte envelope (limits.maxBytes), prepareJournalEnvelope's prompt bound and the reply-review headroom — all unchanged; this change only makes the always-sent parts smaller. SUBSCRIPTION_CONVERSATION_SYSTEM_PROMPT and the pinned purpose excerpts are unchanged (read to confirm the system prompt's "no tools and cannot act beyond this answer" is consistent with the new wording: the runner brings the request back as its own turn, so the later answer IS that turn's answer).
 Bug class: user-facing
-Bug evidence: reproducer=tests/preview/reminder-words.test.ts
+Bug evidence: reproducer=tests/preview/reminder-words.test.ts; live=tests/preview/fixtures/reminderwords-live-2026-10-02.json
 Hook bypass: none
 Convergence: none
 Decision: w3-reminderwords-quote-not-keyword | the validator needed a check that a declared cancellation rests on the operator's withdrawal, without a keyword list (Rule 10); chose the exact-quote pattern the decision protocol already uses for promises, fulfilments and memory — the model names the withdrawing words, code checks only that they are the operator's — over a literal-phrase matcher (banned by Rule 10) and over refusing every same-turn cancel-plus-request pair (refuses the legitimate one-message change too) | reported=/Users/dabombstudio/.instar/agents/echo/.instar/lanes/w3-reminderwords-PROGRESS.md
