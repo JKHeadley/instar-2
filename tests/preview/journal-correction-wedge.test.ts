@@ -40,8 +40,10 @@ const world = (root: string, summaryAnswers: boolean, clock = { now: start + 20 
         return JSON.stringify({ reply: 'Okay, 12:30 pm today.', memory: [], dated: [{ quote: feeder, when: 'today at 12:30 pm', remind: true }] });
       if (input.question === cancel) {
         const listed = (JSON.parse(input.context) as { reminders?: { id: string; quote: string }[] }).reminders ?? [];
+        // The answer path now admits a cancellation only against the operator's own withdrawing words.
         return JSON.stringify({ reply: 'Okay.', memory: [], dated: [],
-          cancelReminders: listed.filter(item => item.quote.includes('bird feeder')).map(item => item.id) });
+          cancelReminders: listed.filter(item => item.quote.includes('bird feeder'))
+            .map(item => ({ id: item.id, quote: 'cancel the bird feeder one' })) });
       }
       return JSON.stringify({ reply: `Answered: ${input.question}`, memory: [], dated: [] });
     },
