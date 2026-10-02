@@ -347,6 +347,8 @@ const recallView = packet => ({ historyMode: packet.historyMode, summaryThrough:
   openConflicts: packet.openConflicts ?? [],
   inventory: packet.inventory ?? null,
   memorySearch: packet.memorySearch ?? { items: [], forgotten: 0 },
+  // Rule 11: the one lookup's offer ("offered") or, on its second packet, what was searched and how many were found.
+  memoryLookup: packet.memoryLookup ?? null,
   meaningIndexCoverage: packet.meaningIndexCoverage ?? null,
   continuity: packet.continuity ?? null,
 

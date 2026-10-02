@@ -1,0 +1,300 @@
+{
+  "about": "Recorded shapes of unit w3-lostanswer (plan row #304), copied verbatim from lanes/pipeline/live-proof/results/lostanswer-evidence-20261002/ (Studio, read-only). Model text that the evidence does not carry is absent here, never invented.",
+  "lostAfterLookup": {
+    "source": "status-s-q-late.json lastCallOutcomes; inspect-s-q-late.json; reply-s-q-late.json",
+    "update": 6230861,
+    "question": "Where did I say I keep the extra thing that unlocks the hut in the woods?",
+    "factUpdate": 6230825,
+    "recalledIds": [
+      "telegram:8989505249:update:6230825",
+      "telegram:8989505249:update:6230827",
+      "telegram:8989505249:update:6230843",
+      "telegram:8989505249:update:6230851",
+      "telegram:8989505249:update:6230858",
+      "telegram:8989505249:update:6230859"
+    ],
+    "callOutcomes": [
+      {
+        "id": "telegram:8989505249:update:6230861",
+        "role": "model",
+        "exitCode": 0,
+        "localLimit": null,
+        "elapsedMs": 8165,
+        "type": "result",
+        "subtype": "success",
+        "isError": false,
+        "outputTokens": 597,
+        "promptBytes": 42119,
+        "resources": {
+          "enforcement": {
+            "cpuPerProcess": "hard",
+            "handlesPerProcess": "hard",
+            "processGrowth": "sampled",
+            "treeHandles": "unsupported",
+            "memory": "sampled",
+            "treeCpu": "sampled"
+          },
+          "uidProcesses": {
+            "state": "hard",
+            "subject": "uid:501",
+            "limit": 534
+          },
+          "admission": {
+            "work": "answer",
+            "concurrent": 1,
+            "waitedMs": 469
+          },
+          "peakMemoryBytes": 200474624,
+          "peakProcesses": 1,
+          "treeCpuMilliseconds": 290,
+          "census": "complete",
+          "leakedDescendants": 0,
+          "cleanup": "verified",
+          "membership": "working-area-joined",
+          "allocation": {
+            "set": "allocation:sha256:d579228714c22c9398cfa1a166dfed8fe35b575f2d43b6a23a8edeaeafa57aed",
+            "state": "returned"
+          }
+        },
+        "at": 1790968129118
+      },
+      {
+        "id": "telegram:8989505249:update:6230861",
+        "role": "model",
+        "exitCode": null,
+        "localLimit": "timeout",
+        "elapsedMs": 120954,
+        "type": null,
+        "subtype": null,
+        "isError": null,
+        "outputTokens": null,
+        "promptBytes": 42898,
+        "resources": {
+          "enforcement": {
+            "cpuPerProcess": "hard",
+            "handlesPerProcess": "hard",
+            "processGrowth": "sampled",
+            "treeHandles": "unsupported",
+            "memory": "sampled",
+            "treeCpu": "sampled"
+          },
+          "uidProcesses": {
+            "state": "hard",
+            "subject": "uid:501",
+            "limit": 534
+          },
+          "admission": {
+            "work": "answer",
+            "concurrent": 1,
+            "waitedMs": 420
+          },
+          "peakMemoryBytes": 200884224,
+          "peakProcesses": 1,
+          "treeCpuMilliseconds": 470,
+          "census": "complete",
+          "leakedDescendants": 0,
+          "cleanup": "verified",
+          "membership": "working-area-joined",
+          "allocation": {
+            "set": "allocation:sha256:cbcfef897f1da143d7ad992cd17d2830a541593892a402bfd113d18e218f55fa",
+            "state": "returned"
+          }
+        },
+        "at": 1790968252463
+      }
+    ],
+    "malformedBefore": {
+      "malformed": 9
+    },
+    "malformedAfter": {
+      "malformed": 9
+    },
+    "modelJsonShapes": null,
+    "delivered": "PREVIEW — I lost my answer to that message. Please send it again.",
+    "harness": {
+      "reply": "PREVIEW — I lost my answer to that message. Please send it again.",
+      "messages": 1,
+      "seconds": 162,
+      "source": "journal",
+      "update": 6230861
+    },
+    "replyCheck": {
+      "verdict": "violation",
+      "ruleIds": [
+        "quits_on_self",
+        "parks_on_user"
+      ]
+    }
+  },
+  "lostFirstCall": {
+    "source": "A-status-a5.json lastCallOutcomes; A-inspect-a5.json; A-reply-a5.json",
+    "update": 6230665,
+    "callOutcomes": [
+      {
+        "id": "telegram:8989505249:update:6230665",
+        "role": "model",
+        "exitCode": null,
+        "localLimit": "timeout",
+        "elapsedMs": 120712,
+        "type": null,
+        "subtype": null,
+        "isError": null,
+        "outputTokens": null,
+        "promptBytes": 26016,
+        "resources": {
+          "enforcement": {
+            "cpuPerProcess": "hard",
+            "handlesPerProcess": "hard",
+            "processGrowth": "sampled",
+            "treeHandles": "unsupported",
+            "memory": "sampled",
+            "treeCpu": "sampled"
+          },
+          "uidProcesses": {
+            "state": "hard",
+            "subject": "uid:501",
+            "limit": 541
+          },
+          "admission": {
+            "work": "answer",
+            "concurrent": 1,
+            "waitedMs": 312
+          },
+          "peakMemoryBytes": 201326592,
+          "peakProcesses": 1,
+          "treeCpuMilliseconds": 520,
+          "census": "complete",
+          "leakedDescendants": 0,
+          "cleanup": "verified",
+          "membership": "working-area-joined",
+          "allocation": {
+            "set": "allocation:sha256:c8b926aaa9bc117da6e098d847a13249eca4ec0fc311099f2baa6485fa3d4dbb",
+            "state": "returned"
+          }
+        },
+        "at": 1790956296915
+      }
+    ],
+    "delivered": "PREVIEW — I lost my answer to that message. Please send it again.",
+    "harness": {
+      "reply": "PREVIEW — I lost my answer to that message. Please send it again.",
+      "messages": 1,
+      "seconds": 153,
+      "source": "journal",
+      "update": 6230665
+    }
+  },
+  "listReplacedAnswer": {
+    "source": "status-s-q-never.json lastCallOutcomes; inspect-s-q-never.json; reply-s-q-never.json",
+    "update": 6230862,
+    "question": "What name did I give you for my sister's horse?",
+    "callOutcomes": [
+      {
+        "id": "telegram:8989505249:update:6230862",
+        "role": "model",
+        "exitCode": 0,
+        "localLimit": null,
+        "elapsedMs": 7327,
+        "type": "result",
+        "subtype": "success",
+        "isError": false,
+        "outputTokens": 535,
+        "promptBytes": 46036,
+        "resources": {
+          "enforcement": {
+            "cpuPerProcess": "hard",
+            "handlesPerProcess": "hard",
+            "processGrowth": "sampled",
+            "treeHandles": "unsupported",
+            "memory": "sampled",
+            "treeCpu": "sampled"
+          },
+          "uidProcesses": {
+            "state": "hard",
+            "subject": "uid:501",
+            "limit": 546
+          },
+          "admission": {
+            "work": "answer",
+            "concurrent": 1,
+            "waitedMs": 402
+          },
+          "peakMemoryBytes": 200900608,
+          "peakProcesses": 1,
+          "treeCpuMilliseconds": 260,
+          "census": "complete",
+          "leakedDescendants": 0,
+          "cleanup": "verified",
+          "membership": "working-area-joined",
+          "allocation": {
+            "set": "allocation:sha256:1228603f06a3cc207f2adcb5460581d4175b261fd95b2d298fd1aa81aa3185dd",
+            "state": "returned"
+          }
+        },
+        "at": 1790968309533
+      },
+      {
+        "id": "telegram:8989505249:update:6230862",
+        "role": "model",
+        "exitCode": 0,
+        "localLimit": null,
+        "elapsedMs": 9654,
+        "type": "result",
+        "subtype": "success",
+        "isError": false,
+        "outputTokens": 703,
+        "promptBytes": 46423,
+        "resources": {
+          "enforcement": {
+            "cpuPerProcess": "hard",
+            "handlesPerProcess": "hard",
+            "processGrowth": "sampled",
+            "treeHandles": "unsupported",
+            "memory": "sampled",
+            "treeCpu": "sampled"
+          },
+          "uidProcesses": {
+            "state": "hard",
+            "subject": "uid:501",
+            "limit": 545
+          },
+          "admission": {
+            "work": "answer",
+            "concurrent": 1,
+            "waitedMs": 459
+          },
+          "peakMemoryBytes": 201129984,
+          "peakProcesses": 1,
+          "treeCpuMilliseconds": 270,
+          "census": "complete",
+          "leakedDescendants": 0,
+          "cleanup": "verified",
+          "membership": "working-area-joined",
+          "allocation": {
+            "set": "allocation:sha256:a7ab475513aa60d4badb5a161e1fdfa05d4150427c1078503cf0677b38bc5e26",
+            "state": "returned"
+          }
+        },
+        "at": 1790968321329
+      }
+    ],
+    "memoryLookupProjected": null,
+    "answerReason": "The operator asked what name they gave for their sister's horse. I already ran my one memoryLookup with phrases targeting this exact fact (sister's horse name, etc.), and memoryLookup.found:3 — but the actual recalled results returned are all garden log entries and unrelated memory items (dentist, cat, sourdough starter, lost hut-key answer). Nothing in recalled, memoryCandidates, memorySearch, or the summary's memoryItems list mentions a sister, a horse, or any name for one. The summary's memoryItems list is fairly detailed (book club, cat, recycling, library card, tyre pressure, ring, pottery, shoes, flight gate, piano tuner, sourdough starter, garage remote, first car, choir room, fern, clock, farmers market, chess treasurer, cabin key, cousin's city) and contains no horse/sister entry either. Since I've already used my single lookup and it did not surface this fact, I cannot return another lookup request. I must say plainly I searched and did not find it, per the capability guidanc",
+    "delivered": "PREVIEW — Earlier conversation up to #6230859 is now summarized for me; your previous message (#6230861, 2026-10-02T19:08Z) is still open (loss notice delivered; model UNKNOWN as Telegram message 1131, not an answer). I have no active saved memory items about you in this preview journal.",
+    "outcome": "send-unknown",
+    "continuity": {
+      "prePauseInbound": "telegram:8989505249:update:6230861",
+      "capture": "7b2844109353b03d8e91097253ff6cea6bc30acb6dc304a8376dc8d871629934",
+      "summarizedThrough": 6230859,
+      "grounding": "9fa5415a0ae0977e683005e31a68d7e95677ed79c60ed0ad2ff9559d410123d7",
+      "disposition": "pending",
+      "reference": "loss notice delivered; model UNKNOWN as Telegram message 1131, not an answer",
+      "disclosure": "Earlier conversation up to #6230859 is now summarized for me; your previous message (#6230861, 2026-10-02T19:08Z) is still open (loss notice delivered; model UNKNOWN as Telegram message 1131, not an answer).",
+      "replyDigest": "5c19a0a917db8dd5345965c66fb9bf4c474c40aee498897a8da18a9d8fdf0044"
+    },
+    "harness": {
+      "noReply": "timeout",
+      "source": "journal"
+    }
+  }
+}
