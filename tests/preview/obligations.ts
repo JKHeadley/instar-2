@@ -2,7 +2,7 @@
  * (Rules 8, 46, 64, 68, 83, 92, 93, 99). Nothing here is stored beside the journal: replay
  * rebuilds it exactly, and every item stays open until a recorded cause closes it. */
 import { dueState } from './dated-memory.js';
-import { LOOP_REVISIT_MS, commitmentOpen, commitmentWaitsOn, loopRevisits, obligationCapacity, obligationSchedule, openBlockers,
+import { commitmentOpen, commitmentWaitsOn, loopRevisitMs, loopRevisits, obligationCapacity, obligationSchedule, openBlockers,
   openDirectives, openQuestionCandidates, openRequests, probeTurn, wallEpoch, type JournalView, type Turn } from './journal.js';
 
 /** Measured engineering defaults (Rule 46/64): accepted work older than this, or no forward
@@ -21,12 +21,12 @@ const settled = (view: JournalView, turn: Turn) => turn.intent !== undefined || 
 
 /** Every open obligation, oldest first. A closure, completion, supersession or clearing recheck is the only exit. */
 export function openLoops(view: JournalView, now: number): OpenLoop[] {
-  const loops: OpenLoop[] = [], revisits = loopRevisits(view);
+  const loops: OpenLoop[] = [], revisits = loopRevisits(view), revisit = loopRevisitMs(view);
   view.commitments.forEach((note, id) => {
     const source = view.turns.get(note.source);
     if (!source || !commitmentOpen(view, id)) return;
     const waitsOn = commitmentWaitsOn(view, id);
-    const nextAt = (revisits.get(id) ?? source.at) + LOOP_REVISIT_MS;
+    const nextAt = (revisits.get(id) ?? source.at) + revisit;
     const defect: LoopDefect | undefined = note.agentPromise?.due && dueState(note.agentPromise.due, now) === 'overdue'
       ? 'overdue-check-in' : waitsOn === undefined ? 'undeclared-dependency' : undefined;
     loops.push({ kind: 'commitment', id: `commitment:${id}`, source: note.source, owner: note.owner ?? note.agentPromise?.owner ?? 'agent',
@@ -53,6 +53,8 @@ export function openLoops(view: JournalView, now: number): OpenLoop[] {
 }
 
 export interface LoopHealth { open: number; byKind: Record<LoopKind, number>; revisitDue: number;
+  /** This root's own resurfacing cadence in whole minutes (Rules 8, 92), so a reader never assumes one. */
+  revisitMinutes: number;
   overdueCheckIns: number; overdueRechecks: number; overdueRequests: number; undeclared: number; refusedCommitments: number;
   /** Accepted work not yet done: unanswered operator turns plus obligation work steps due now. */
   unfinished: number; unansweredTurns: number; dueWork: number;
@@ -103,6 +105,7 @@ export function loopHealth(view: JournalView, now: number): LoopHealth {
         : oldestTurn?.held !== undefined ? `held: ${oldestTurn.held}`
           : due.length && !obligationCapacity(view) ? 'model-call capacity reserved for replies' : null);
   return { open: loops.length, byKind, revisitDue: loops.filter(loop => loop.revisitDue && loop.kind === 'commitment').length,
+    revisitMinutes: Math.round(loopRevisitMs(view) / 60_000),
     overdueCheckIns: loops.filter(loop => loop.defect === 'overdue-check-in').length,
     overdueRechecks: loops.filter(loop => loop.defect === 'overdue-recheck').length,
     overdueRequests: loops.filter(loop => loop.defect === 'overdue-request').length,

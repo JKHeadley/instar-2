@@ -706,8 +706,20 @@ export interface BlockerRecheck { id: number; outcome: 'cleared' }
 export const DIRECTIVE_SHARE = 0.35;
 /** A settled blocker is re-verified at most this long after it is recorded or last rechecked. */
 export const BLOCKER_RECHECK_MAX_MS = 90 * 86_400_000;
-/** An open loop is resurfaced to the agent at least this often, whether or not a later message relates to it. */
+/** An open loop is resurfaced to the agent at least this often, whether or not a later message relates to it.
+ * This is the default a root keeps when its genesis names no interval of its own. */
 export const LOOP_REVISIT_MS = 24 * 3_600_000;
+/** The shortest revisit interval a root may be created with: below this the cadence costs more model calls
+ * than the loop it carries is worth. The longest is the default itself — Rule 8 is a floor on resurfacing,
+ * so a root may bring its loops back sooner, never later. */
+export const LOOP_REVISIT_MIN_MS = 10 * 60_000;
+export const LOOP_REVISIT_MAX_MS = LOOP_REVISIT_MS;
+/** Whether a genesis-supplied revisit interval is admissible: a whole number of milliseconds in range. */
+export const validLoopRevisitMs = (value: unknown): value is number => Number.isSafeInteger(value)
+  && (value as number) >= LOOP_REVISIT_MIN_MS && (value as number) <= LOOP_REVISIT_MAX_MS;
+/** This root's revisit interval: the one its genesis recorded, else the default. Read from genesis only, so it
+ * is identical after a restart, a snapshot reopen and on a second machine, and no later record can move it. */
+export const loopRevisitMs = (view: JournalView): number => view.genesis.loopRevisitMs ?? LOOP_REVISIT_MS;
 /** What one scheduled work step concluded. `uncertain` closes a start whose result was lost to a crash:
  * that slot is never repeated, and the next cadence slot is a new bounded attempt. */
 export type ObligationOutcome = 'report' | 'continue' | 'waiting' | 'still-blocked' | 'cleared' | 'failed' | 'uncertain';
@@ -833,6 +845,9 @@ export function proposedConceptTerms(value: unknown): string[] | undefined {
 
 export type JournalRecord =
   | { kind: 'genesis'; bot: string; chat: string; operator: string; grant: string; configurationDigest: string; expires: number; maxCalls: number; maxReplies: number; maxTurns: number; maxBytes: number; cursor: number; importSource?: string; importCursor?: number;
+    /** Rules 8, 92: this root's own open-loop revisit interval, fixed for its life. Absent keeps
+     * `LOOP_REVISIT_MS`, so every root created before this field behaves exactly as it did. */
+    loopRevisitMs?: number;
     /** Rule 35: set only by a trusted test composition; absent means a production store. */
     origin?: 'test' }
   | { kind: 'intake'; id: string; update: number; text: string; raw: string; accepted: boolean; cursor: number; at: number; thread?: number; editOf?: string; replaces?: string; custody?: IntakeCustody;
@@ -1753,8 +1768,9 @@ const attachableReport = (work: ObligationWork | undefined) => pendingReport(wor
 export function obligationSchedule(view: JournalView): { key: string; kind: 'commitment' | 'blocker'; id: number; slot: number;
   inFlight: boolean; awaitingDelivery: boolean; deliveryUnknown: boolean }[] {
   const items: ReturnType<typeof obligationSchedule> = [];
+  const revisit = loopRevisitMs(view);
   const next = (key: string, first: number) => { const work = view.obligationWork[key];
-    return Math.max(first, work ? work.last + LOOP_REVISIT_MS : first); };
+    return Math.max(first, work ? work.last + revisit : first); };
   view.commitments.forEach((note, id) => {
     const source = view.turns.get(note.source), key = `commitment:${id}`, work = view.obligationWork[key];
     if (!commitmentOpen(view, id) || !source || !operatorTurn(view, source) || !(note.owner === 'agent' || note.agentPromise)) return;
@@ -1764,11 +1780,11 @@ export function obligationSchedule(view: JournalView): { key: string; kind: 'com
     // revisit cadence. The work result stays the one current account of the dependency until a later result replaces it.
     // An interrupted (uncertain) reassessment keeps that dependency and retries on the revisit cadence, never at once.
     const resume = work?.waitsOn !== undefined && work.inFlight === undefined ? work.waitsOn === 'operator'
-      ? Math.max(work.lastSlot + 1, work.outcome === 'uncertain' ? work.last + LOOP_REVISIT_MS : 0,
+      ? Math.max(work.lastSlot + 1, work.outcome === 'uncertain' ? work.last + revisit : 0,
         view.order.slice(work.turnsSeen ?? view.order.length)
           .find(turn => verifiedOperatorTurn(view, turn) && !probeTurn(view, turn))?.at ?? Infinity)
-      : work.last + LOOP_REVISIT_MS : undefined;
-    const first = waits === 'nothing' ? source.at + LOOP_REVISIT_MS
+      : work.last + revisit : undefined;
+    const first = waits === 'nothing' ? source.at + revisit
       : waits === 'date' && due?.day ? wallEpoch(due.day, due.time ?? '09:00', due.zone) : undefined;
     // A started step stays scheduled whatever dependency its predecessor left, so interrupted-start recovery owns it.
     if (work?.inFlight === undefined && first === undefined && resume === undefined && !pendingReport(work)) return;
@@ -3824,6 +3840,10 @@ export function openPreviewJournal(path: string, key: Uint8Array, initial?: Extr
         || (initial.importSource !== undefined && (!initial.importSource || initial.cursor !== 0
           || !Number.isSafeInteger(initial.importCursor) || initial.importCursor! < 0)))
         throw Error('preview journal: invalid genesis');
+      // Rules 8, 92: a root's own revisit cadence is admitted only within its bounds, and only here — the
+      // interval enters the store with genesis or not at all, so nothing later can move it.
+      if (initial.loopRevisitMs !== undefined && !validLoopRevisitMs(initial.loopRevisitMs))
+        throw Error(`preview journal: revisit interval outside ${String(LOOP_REVISIT_MIN_MS)}..${String(LOOP_REVISIT_MAX_MS)} ms`);
       append(initial);
     }
     if (!readOnly && size > Math.max(compactBytes, snapshotBase * 2)) compact();
@@ -5722,8 +5742,9 @@ export function createJournalWorker(journal: ReturnType<typeof openPreviewJourna
       const asksPromises = /\b(?:promise|promised|commitment|commitments|anything open|what(?:'s| is) open)\b/iu.test(turn.text);
       // Rule 8: an open loop not carried for a whole cadence resurfaces with this turn,
       // whether or not the new message relates to it; the model still judges what it means now.
-      const revisits = loopRevisits(journal.view), revisitAt = ports.now();
-      const revisitDue = (item: Open) => revisitAt - (revisits.get(item.id) ?? sentAt(item.turn!) ?? item.turn!.at) >= LOOP_REVISIT_MS;
+      // The cadence is this root's own (Rule 92), read from its genesis, never a build-wide constant.
+      const revisits = loopRevisits(journal.view), revisitAt = ports.now(), revisitEvery = loopRevisitMs(journal.view);
+      const revisitDue = (item: Open) => revisitAt - (revisits.get(item.id) ?? sentAt(item.turn!) ?? item.turn!.at) >= revisitEvery;
       const agentRelated = openFor(before(turn.update), journal.view.commitments.length)
         .filter(item => (item.note.agentPromise || item.note.loop) && (item.due
           || asksPromises || topicTerms(item.note.quote).some(term => asked.has(term))) || revisitDue(item));
