@@ -29,20 +29,22 @@ import type { Server } from 'node:http';
 import { dirname } from 'node:path';
 
 export type Fence = Readonly<{ epoch: number; incarnation: string }>;
-export type ClaimState = 'claimed' | 'sent' | 'unknown';
+/** `refused` is a definite refusal by the platform: nothing was delivered (Rule 42). */
+export type ClaimState = 'claimed' | 'sent' | 'unknown' | 'refused';
+export type ClaimOutcome = Exclude<ClaimState, 'claimed'>;
 export type AuthorityRecord =
   | { t: 'genesis'; conversation: string; termMs: number }
   | { t: 'acquire'; epoch: number; machine: string; incarnation: string }
   | { t: 'expire'; epoch: number }
   | { t: 'release'; epoch: number }
   | { t: 'claim'; epoch: number; incarnation: string; key: string }
-  | { t: 'outcome'; key: string; state: 'sent' | 'unknown' }
+  | { t: 'outcome'; key: string; state: ClaimOutcome }
   | { t: 'settle'; epoch: number; cursor: number };
 export type AuthorityRequest =
   | { op: 'acquire'; machine: string; incarnation: string }
   | { op: 'renew' | 'release'; fence: Fence }
   | { op: 'claim'; fence: Fence; key: string }
-  | { op: 'outcome'; fence: Fence; key: string; state: 'sent' | 'unknown' }
+  | { op: 'outcome'; fence: Fence; key: string; state: ClaimOutcome }
   | { op: 'settle'; fence: Fence; cursor: number }
   | { op: 'read' };
 export type Holder = Readonly<{ epoch: number; machine: string; incarnation: string }>;
@@ -171,7 +173,7 @@ export function openConversationAuthority(input: Readonly<{ path: string; conver
       }
       case 'outcome': {
         // An admitted in-flight dispatch reports its outcome even after its lease is gone (design 10 §4).
-        if (!fenceOk(request.fence) || !text(request.key, 200) || (request.state !== 'sent' && request.state !== 'unknown'))
+        if (!fenceOk(request.fence) || !text(request.key, 200) || !['sent', 'unknown', 'refused'].includes(request.state))
           return { ok: false, reason: 'invalid' };
         const claim = claims.get(request.key);
         if (!claim || claim.epoch !== request.fence.epoch || claim.incarnation !== request.fence.incarnation)

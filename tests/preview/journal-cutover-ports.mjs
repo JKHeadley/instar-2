@@ -44,7 +44,8 @@ export function createProductionTelegramIO() {
           return { kind: 'response', status: 409, bytes: '{"ok":false}' };
         }
       }
-      log({ kind: 'poll', outcome: 'accepted', role: 'live', offset: input.body.offset });
+      // The role is the launching test's name for this runner (`live` unless it names two machines).
+      log({ kind: 'poll', outcome: 'accepted', role: process.env.INSTAR_PREVIEW_CUTOVER_ROLE ?? 'live', offset: input.body.offset });
       const updates = JSON.parse(readFileSync(join(directory, 'updates.json'), 'utf8'))
         .filter(row => row.update_id >= input.body.offset).slice(0, input.body.limit);
       return { kind: 'response', status: 200, bytes: JSON.stringify({ ok: true, result: updates }) };

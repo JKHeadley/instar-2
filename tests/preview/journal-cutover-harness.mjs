@@ -69,9 +69,21 @@ export function cutoverHarness(world, profile, childEnv = {}) {
   /** Any non-run command against an arbitrary root (e.g. a copy), with the live role's key and no poller. */
   const commandOn = (root, command, extraArgs = []) => collect(spawn(process.execPath, [...args, command, '--root', root, ...extraArgs],
     { cwd: process.cwd(), env: env('live'), stdio: ['ignore', 'pipe', 'pipe'] }), 30000);
+  /** Any runner on any root, under a named role, as a child the test drives (two machines on one host). */
+  const startRunner = (root, role, cycles, extraArgs = [], extraEnv = {}) => {
+    const child = spawn(process.execPath, [...launchArgs(root, role, cycles), ...extraArgs],
+      { cwd: process.cwd(), env: { ...env(role), ...extraEnv }, stdio: ['ignore', 'pipe', 'pipe'] });
+    const output = { stdout: '', stderr: '' };
+    child.stdout.setEncoding('utf8').on('data', chunk => { output.stdout += chunk; });
+    child.stderr.setEncoding('utf8').on('data', chunk => { output.stderr += chunk; });
+    return { child, output, exited: new Promise(done => child.once('close', (status, signal) => done({ status, signal }))) };
+  };
+  /** The status command against any root, under any role's environment. */
+  const statusOn = (root, extraEnv = {}) => collect(spawn(process.execPath, [...args, 'status', '--root', root],
+    { cwd: process.cwd(), env: { ...env('live'), ...extraEnv }, stdio: ['ignore', 'pipe', 'pipe'] }), 30000);
   const setUpdates = updates => writeFileSync(join(directory, 'updates.json'), JSON.stringify(updates));
   const setConflicts = count => writeFileSync(join(directory, 'conflicts-remaining'), String(count));
   const calls = () => readFileSync(join(directory, 'telegram.jsonl'), 'utf8').trim().split('\n').filter(Boolean).map(JSON.parse);
   return { directory, canaryRoot, liveRoot, startCanary, launchLive, startLive, status, waitForOverlap,
-    stopCanary, releaseOverlap, setUpdates, setConflicts, calls, runLive, statusOf, commandOn };
+    stopCanary, releaseOverlap, setUpdates, setConflicts, calls, runLive, statusOf, commandOn, startRunner, statusOn };
 }

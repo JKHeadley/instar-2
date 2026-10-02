@@ -1,7 +1,7 @@
 #!/usr/bin/env node
 // Small, machine-local preview launcher. Only this file owns process, clock and
 // physical ports. The worker owns all durable conversation/effect transitions.
-import { createHash } from 'node:crypto';
+import { createHash, randomBytes } from 'node:crypto';
 import { execFileSync } from 'node:child_process';
 import { existsSync, lstatSync, mkdirSync, readdirSync, readFileSync, realpathSync, renameSync, writeFileSync } from 'node:fs';
 import { dirname, resolve, join } from 'node:path';
@@ -42,6 +42,10 @@ import { appendProof, readProofs } from './proof-log.js';
 import { hostname, homedir } from 'node:os';
 import { assessStranded, claimConversation, observeConversationOwner, recordRefusal, refusedLaunches, SUPPORTED_POSTURE } from './conversation-owner.js';
 import { agreementLine, agreementStatus, runDueAgreements } from './store-agreements.js';
+import { connectConversationAuthority } from './conversation-authority.js';
+import { createLeaseHolder } from './two-machine-serving.js';
+import { adoptReceivedCopy, connectReplicaPeer, createJournalShipper, createReplicatedDispatch, openReplicaStore, serveReplicaStore,
+  sharedHistoryStatus, takeoverEligibility } from './journal-replication.js';
 import { createApprovalSurfaceClient } from './approval-surface-client.mjs';
 import { hostResources, HOST_IDENTITY, RESOURCE_CEILINGS } from '../../scripts/resource-owner.mjs';
 import { createHostResourceAllocation } from './six-host-resources.js';
@@ -123,6 +127,12 @@ const key = () => {
 const token = () => {
   const value = process.env.INSTAR_SECRET_PREVIEW_TELEGRAM_BOT_TOKEN;
   if (!value || !/^[0-9]+:[A-Za-z0-9_-]{20,}$/.test(value)) throw Error('preview: Telegram SecretRef unavailable');
+  return value;
+};
+/** The two machines' shared secret (authority face and journal acknowledgements). Host-bound, never an argument, never logged. */
+const authoritySecret = () => {
+  const value = process.env.INSTAR_SECRET_PREVIEW_AUTHORITY_SECRET;
+  if (!value || value.length < 16) throw Error('preview: authority SecretRef unavailable');
   return value;
 };
 const typesafeKey = () => {
@@ -508,7 +518,15 @@ async function main() {
   // Rule 113: the declared multi-machine posture. Only single-machine has a conversation authority today.
   const posture = options['machine-posture'] ?? process.env.INSTAR_MACHINE_POSTURE ?? 'single-machine';
   if (posture !== 'single-machine' && posture !== 'multi-machine') throw Error('preview: machine-posture must be single-machine or multi-machine');
-  const topology = { posture, supported: posture === SUPPORTED_POSTURE, authority: 'host-local conversation lease (this machine only)',
+  // A multi-machine posture is served only with a shared conversation authority; without one it stays inhibited.
+  const authorityUrl = options['conversation-authority'] ?? null;
+  if (authorityUrl !== null && posture !== 'multi-machine') throw Error('preview: --conversation-authority needs --machine-posture multi-machine');
+  const multi = posture === 'multi-machine' && authorityUrl !== null;
+  if (options['journal-lineage'] !== undefined && (options['journal-lineage'] !== 'seed' || !multi))
+    throw Error('preview: --journal-lineage is only seed, and only with a shared conversation authority');
+  const topology = multi ? { posture, supported: true,
+    authority: 'shared conversation authority (one voter); the journal is replicated to the other machine and every send waits for its acknowledgement' }
+    : { posture, supported: posture === SUPPORTED_POSTURE, authority: 'host-local conversation lease (this machine only)',
     ...(posture === SUPPORTED_POSTURE ? {} : { reason: 'no shared conversation authority exists for a multi-machine posture; this runner does not serve it' }) };
   const resourcesPath = join(root, 'resources.json');
   const launchesPath = join(root, 'owned-launches.json');
@@ -580,6 +598,8 @@ async function main() {
       inhibitedLaunches: log.launches.filter(run => run.inhibited).length,
       startupRefusals: { count: refusals.length, last: lastRefusal ? { at: lastRefusal.at, reason: lastRefusal.refused } : null },
       storeAgreements: agreementStatus(agreementsPath, now),
+      // Two machines (Rules 2, 32): this root's place in the shared history; absent on a root that never had one.
+      ...(sharedView => sharedView ? { sharedHistory: sharedView } : {})(sharedHistoryStatus(root, journalPath)),
       channelItems: view.view.channelItems.size,
       channelSources: Object.fromEntries(['telegram', 'slack'].map(source => [source, {
         ...(view.view.channelSources.get(source) ?? { offset: 0, scanned: 0, imported: 0, skipped: 0 }),
@@ -953,8 +973,10 @@ async function main() {
     return agreementStatus(agreementsPath, wallNow()).map(row => ({ id: row.id, at: row.lastCheckedAt, agree: row.agree }));
   };
   let retiredReason = null;
+  // Rules 31, 63: on two machines the conversation is also fenced by the shared authority's lease (null on one machine).
+  let shared = null;
   const ownerHeld = () => {
-    if (ownerClaim?.owner && ownerClaim.verify()) return true;
+    if (ownerClaim?.owner && ownerClaim.verify() && (shared === null || shared.lease.fence() !== null)) return true;
     if (ownerClaim?.owner) { endReason ??= 'conversation ownership lost'; retiredReason ??= 'conversation ownership lost'; workerStop.value = true; }
     return false;
   };
@@ -977,6 +999,137 @@ async function main() {
   const workerStop = { value: false };
   const signal = name => { signalled = true; signalName ??= name; workerStop.value = true; };
   process.once('SIGINT', signal); process.once('SIGTERM', signal); process.once('SIGHUP', signal);
+  // Rules 31, 63, 113 and the purpose's replicated(1) default: the two-machine conversation. This runner first
+  // stands by (it receives the owner's journal bytes and neither polls nor sends). It serves only once the one
+  // shared authority grants it the lease AND it holds the newest history; then every send waits until the other
+  // machine acknowledged the journal through that send's intent. Returns null when this launch ended without serving.
+  const PEER_FRESH_MS = 20_000;
+  const enterShared = async genesis => {
+    const secret = authoritySecret(), conversation = conversationOf(genesis);
+    const listen = required(options, 'replica-listen'), colon = listen.lastIndexOf(':');
+    if (colon <= 0) throw Error('preview: --replica-listen is host:port');
+    const peer = connectReplicaPeer({ url: required(options, 'replica-peer'), token: secret, conversation, timeoutMs: 5000 });
+    const authority = connectConversationAuthority({ url: authorityUrl, token: secret, conversation, timeoutMs: 5000 });
+    const lease = createLeaseHolder({ authority, machine: ownerMachine,
+      incarnation: `${ownerMachine}:${process.pid}:${randomBytes(8).toString('hex')}`, monotonic: () => performance.now() });
+    const store = openReplicaStore({ directory: join(root, 'replica'), conversation, machine: ownerMachine, secret });
+    const server = await serveReplicaStore({ store, token: secret, host: listen.slice(0, colon), port: number(listen.slice(colon + 1), 'replica-listen', 0, 65535) });
+    const closeServer = () => new Promise(done => { server.close(() => done()); server.closeAllConnections?.(); });
+    // The lease is renewed on its own timer from the moment it is granted, so a slow startup does not let it lapse.
+    const renewTimer = setInterval(() => { lease.renew().catch(() => {}); }, 1000);
+    renewTimer.unref?.();
+    const limit = number(options['max-cycles'] ?? '1000', 'max-cycles', 1, 1_000_000), standbyAt = wallNow();
+    let said = null, waited = false, role = { role: 'standby', reason: 'starting' }, fence = null, takeover = null, view = null, fatal = false;
+    const say = line => { if (line !== said) { said = line; process.stderr.write(`preview: ${line}\n`); } };
+    for (let tick = 0; tick < limit && !signalled && !existsSync(stopPath); tick++) {
+      hostBeat();
+      const able = takeoverEligibility({ root, store });
+      let may = able.eligible;
+      if (!may && able.seedable && options['journal-lineage'] === 'seed') {
+        // Seeding is for the first lease ever: only while the authority has never issued one.
+        const read = await authority.request({ op: 'read' });
+        may = read.ok && read.view?.epoch === 0;
+      }
+      role = may ? await lease.hold() : { role: 'standby', reason: able.reason };
+      let pause = Math.min(2000, Math.max(200, role.retryMs ?? 2000));
+      if (role.role === 'owner') {
+        fence = lease.fence();
+        // The owner accepts no more of the other machine's bytes: what it holds now is what it takes over from.
+        store.seal();
+        takeover = !fence ? { ok: false, reason: 'the lease lapsed before takeover' } : adoptReceivedCopy({ root, journalPath, store,
+          epoch: fence.epoch, seed: options['journal-lineage'] === 'seed', verify: path => {
+            // The full replay is the check: a copy that does not replay, or belongs to another conversation, is refused.
+            const copy = openJournal(path, key(), undefined, undefined, true);
+            try { const g = copy.view.genesis;
+              if (g.bot !== genesis.bot || g.chat !== genesis.chat || g.operator !== genesis.operator) throw Error('another conversation'); }
+            finally { copy.close(); }
+          } });
+        if (!takeover.ok) {
+          // History that cannot be established needs a person: this launch ends now instead of taking the lease again and again.
+          await lease.release();
+          role = { role: 'inhibited', reason: takeover.reason }; fence = null; fatal = true;
+          break;
+        }
+        // The history is in place; the settled cursor is read while the lease lasts. Without it this launch ends and the next continues.
+        while (!view && lease.fence() && !signalled && !existsSync(stopPath)) {
+          const read = await authority.request({ op: 'read' });
+          if (read.ok && read.view) view = read.view; else await delay(500);
+        }
+        if (!view) { await lease.release(); role = { role: 'inhibited', reason: 'the settled cursor could not be read' }; fence = null; }
+        break;
+      }
+      if (!waited) { waited = true; appendRun(runsPath, { v: 1, launch: standbyAt, pid: process.pid }); }
+      say(role.role === 'standby' ? `standby: ${role.reason}; not polling, not sending`
+        : `inhibited: ${role.reason}; nothing is polled or sent`);
+      for (const until = clock.elapsed() + pause; !signalled && !existsSync(stopPath) && clock.elapsed() < until;)
+        await delay(Math.min(100, Math.max(1, until - clock.elapsed())));
+    }
+    // From here this machine is the owner or is leaving: either way it accepts no more of the other machine's bytes.
+    store.seal(); await closeServer();
+    if (!fence || !view) {
+      clearInterval(renewTimer);
+      const paused = signalName !== null || existsSync(stopPath);
+      if (!waited) appendRun(runsPath, { v: 1, launch: standbyAt, pid: process.pid });
+      // A standby that reached its cycle limit is still wanted (it holds the copy and is the failover): the host
+      // supervisor relaunches it (`queued`). A stop, a signal pause or unestablishable history is not relaunched.
+      appendRun(runsPath, { v: 1, launch: standbyAt, exit: wallNow(), reason: signalName ? `paused by signal ${signalName}`
+        : existsSync(stopPath) ? 'operator stop latched' : fatal ? `inhibited: ${role.reason}` : `standby: ${role.reason}`,
+        revival: paused || fatal ? 'inhibited' : 'queued',
+        ...(fatal ? { inhibited: role.reason } : { nonowner: { machine: null, since: null } }) });
+      if (fatal && !signalled) {
+        process.stderr.write(`preview: inhibited: ${role.reason}; nothing was polled or sent\n`);
+        process.exitCode = 4;
+      }
+      return null;
+    }
+    if (waited) appendRun(runsPath, { v: 1, launch: standbyAt, exit: wallNow(),
+      reason: `standby ended: this runner acquired the conversation (epoch ${fence.epoch}; history ${takeover.how})`, revival: 'queued',
+      nonowner: { machine: null, since: null } });
+    say(`owner: epoch ${fence.epoch}; history ${takeover.how}${takeover.setAside ? ` (this machine's older journal set aside as ${takeover.setAside})` : ''}`);
+    const replicationPath = join(root, 'replication.json');
+    let shipper = null, dispatch = null, sharedJournal = null, settle = null, peerCurrent = null;
+    const report = () => {
+      const status = shipper.status(PEER_FRESH_MS);
+      if (status.current === peerCurrent) return status.current;
+      peerCurrent = status.current;
+      // Rule 15 (say plainly why it waits): the wait is never a fallback to local durability, and it is visible on the pull surfaces.
+      say(status.current ? 'the other machine acknowledged the journal; replies are sent'
+        : `replies wait for the other machine to acknowledge the journal (${status.reason}); nothing is sent on local durability`);
+      try { durablePreviewWrite(replicationPath, { v: 1, at: wallNow(), epoch: fence.epoch, peerCurrent, reason: status.reason,
+        acknowledgedBytes: status.acknowledgedBytes, journalBytes: status.journalBytes, settledCursor: dispatch.cursor, waitingSends: dispatch.waiting }); }
+      catch { /* evidence only; the gate itself never depends on this file */ }
+      return status.current;
+    };
+    return { lease, epoch: fence.epoch, takeover,
+      get cursor() { return dispatch ? dispatch.cursor : view.cursor; },
+      start(journal) {
+        sharedJournal = journal;
+        shipper = createJournalShipper({ path: journalPath, size: () => journal.size, peer, conversation, machine: ownerMachine, secret,
+          epoch: () => lease.fence()?.epoch ?? null, monotonic: () => performance.now() });
+        dispatch = createReplicatedDispatch({ authority, lease, shipper, cursor: view.cursor, sleep: delay, elapsed: () => performance.now(), waiting: report });
+      },
+      /** One bounded step per cycle: unrecorded outcomes, the journal's new bytes, then the settled cursor. */
+      async sync() {
+        await dispatch.flush();
+        await shipper.pump();
+        if (settle) await dispatch.settle(settle.token, settle.cursor);
+        report();
+      },
+      noteIntake() { if (sharedJournal.view.cursor > dispatch.cursor) settle = { token: shipper.token(), cursor: sharedJournal.view.cursor }; },
+      peerCurrent: () => report(),
+      line: () => { const status = shipper.status(PEER_FRESH_MS);
+        return `Two machines: this runner holds the conversation (lease epoch ${fence.epoch}); every reply waits until the other machine has acknowledged its record. ${status.current
+          ? 'The other machine holds the whole journal.' : `Waiting for it now (${status.reason}).`}`; },
+      // The minimal path is awaited by the poll loop: its wait is bounded so reading and stop stay reachable (Rule 15).
+      admit: (target, refusal) => dispatch.admit(target, refusal, target.startsWith('limited:') ? 10_000 : undefined),
+      outcome: (target, kind) => dispatch.outcome(target, kind),
+      /** A clean end: the last journal bytes go to the other machine, then the lease is handed back so it can take over at once. */
+      async stop() {
+        clearInterval(renewTimer);
+        try { if (shipper && lease.fence()) await shipper.pump(); } catch { /* the successor continues from the acknowledged copy */ }
+        try { await lease.release(); } catch { /* the term ends it */ }
+      } };
+  };
   try {
     const maxCalls = number(options['max-calls'] ?? '16', 'max-calls');
     const maxReplies = number(options['max-replies'] ?? '16', 'max-replies');
@@ -997,7 +1150,12 @@ async function main() {
       operator: required(options, 'operator-sender-id'), grant: required(options, 'grant-reference'),
       configurationDigest: required(options, 'configuration-digest'), expires: expiry(required(options, 'expires-at')),
       maxCalls, maxReplies, maxTurns, maxBytes, cursor: 0 };
+    if (multi) {
+      shared = await enterShared(initial);
+      if (shared === null) return;
+    }
     journal = openPreviewJournal(journalPath, key(), initial, undefined, false, undefined, false, origin);
+    shared?.start(journal);
     const g = journal.view.genesis;
     // Rules 60 and 61: this process's one resource owner, with the constitutional
     // measurement, priority-brake and incarnation owners as its decision ports.
@@ -1167,7 +1325,7 @@ async function main() {
     const ownerLines = () => {
       const refused = refusedLaunches(ownersDirectory(), g.bot, g.chat);
       return [`Serving: this runner on ${ownerMachine} owns this conversation (claimed ${Math.max(0, Math.round((wallNow() - ownerClaim.holder.since) / 60000))} min ago); ${refused} duplicate launch(es) refused on this machine.`,
-        agreementLine(agreementsPath, wallNow())];
+        agreementLine(agreementsPath, wallNow()), ...(shared ? [shared.line()] : [])];
     };
     const approvalSurface = approvalSurfaceOf(options);
     worker = createJournalWorker(journal, { ...(approvalSurface ? { approvalSurface } : {}), now: wallNow, elapsed: clock.elapsed, origin, stopped: () => workerStop.value || existsSync(stopPath) || !ownerHeld(), timeZone: timeZoneOf(options),
@@ -1303,11 +1461,22 @@ async function main() {
         // Rule 63: the fence is consumed immediately before dispatch. Without it nothing is sent: a definite
         // refusal (Rule 42), never repeated.
         if (!ownerHeld()) return { kind: 'refused', reason: 'conversation ownership lost before dispatch' };
-        const reply = physical.invoke({ token: secretRef('telegram-bot-token'), method: 'sendMessage',
-          body: { chat_id: chat, text, parse_mode: 'HTML', ...(thread === undefined ? {} : { message_thread_id: thread }),
-            ...(replyMarkup === undefined ? {} : { reply_markup: replyMarkup }) },
-          timeoutMs: 30000 }, token());
-        return classifyTelegramSend(reply, { chat, expectedText, ...(thread === undefined ? {} : { thread }) });
+        if (shared) {
+          // replicated(1): the journal through this send's signed intent is on the other machine, and the one
+          // dispatch-claim for this target is taken, immediately before the physical send. Until then it waits.
+          const refused = await shared.admit(target, () => workerStop.value || existsSync(stopPath) || wallNow() >= journal.view.expires || journal.view.stop
+            ? 'stopped before dispatch' : !ownerHeld() ? 'conversation ownership lost before dispatch' : null);
+          if (refused !== null) return refused;
+        }
+        let outcome = { kind: 'unknown', reason: 'send port failed' };
+        try {
+          const reply = physical.invoke({ token: secretRef('telegram-bot-token'), method: 'sendMessage',
+            body: { chat_id: chat, text, parse_mode: 'HTML', ...(thread === undefined ? {} : { message_thread_id: thread }),
+              ...(replyMarkup === undefined ? {} : { reply_markup: replyMarkup }) },
+            timeoutMs: 30000 }, token());
+          outcome = classifyTelegramSend(reply, { chat, expectedText, ...(thread === undefined ? {} : { thread }) });
+          return outcome;
+        } finally { if (shared) await shared.outcome(target, outcome.kind); }
       } });
     if (existsSync(stopPath)) throw Error('preview: stop latched');
     const activationPath = required(options, 'activation-record');
@@ -1458,6 +1627,9 @@ async function main() {
         if (drainFailures >= 8) drainError ??= error;
       }).then(summarizeLater).finally(() => { drainJob = null; });
     };
+    // Two machines: ordinary work (model calls, replies, reminders) starts only while the other machine holds the
+    // whole journal, so nothing is spent or prepared on local durability while the peer is away. Input is still read.
+    const ordinary = run => { if (shared === null || shared.peerCurrent()) background(run); };
     // A message past every bound waits at Telegram; later presses behind it are re-read after this pause.
     const waitHeld = async () => {
       const until = clock.elapsed() + 3000;
@@ -1472,6 +1644,12 @@ async function main() {
       const unrestored = failedPolls > 0 || conflictedPolls > 0;
       serviceBeat(!journal.view.stop && wallNow() < journal.view.expires && !unrestored, journal.view.stop ? 'stop latched'
         : unrestored ? (conflictedPolls ? 'Telegram reports another poller' : 'polling Telegram is failing') : 'serving');
+      if (shared) {
+        await shared.sync();
+        // The same checks as the top of the cycle: a stop or a lost lease during the exchange ends it here, cleanly.
+        if (signalled || workerStop.value || existsSync(stopPath) || journal.view.stop || !ownerHeld()) break;
+        if (!shared.peerCurrent()) serviceBeat(false, 'waiting for the other machine to acknowledge the journal');
+      }
       if (sourceState) for (const source of ['telegram', 'slack']) {
         try {
           importSource(journal, sourceState, source, () => workerStop.value || existsSync(stopPath));
@@ -1485,7 +1663,7 @@ async function main() {
       if (journal.view.stop) break;
       // Rules 8, 22, 92, 99: the scheduled consumer of due obligation work, one bounded step per tick,
       // runs after the ordinary drain inside the same background job, so it never blocks the minimal path.
-      background(async () => {
+      ordinary(async () => {
         await worker.drain();
         try { await worker.workObligations(); } catch { /* a stop or expiry ends the step; its start stays durable */ }
       });
@@ -1502,7 +1680,8 @@ async function main() {
       // timers and exit events for up to its whole long-poll timeout (live 2026-09-29).
       const poll = physical.poll ? (input, credential) => physical.poll(input, credential) : (input, credential) => physical.invoke(input, credential);
       try { result = await poll({ token: secretRef('telegram-bot-token'), method: 'getUpdates',
-        body: { offset: journal.view.cursor, limit: pollLimit,
+        // Two machines: Telegram is asked from the SHARED settled cursor, so it keeps every update the other machine lacks.
+        body: { offset: shared ? shared.cursor : journal.view.cursor, limit: pollLimit,
           timeout: number(options['max-poll-seconds'] ?? '5', 'max-poll-seconds', 1, 5),
           allowed_updates: ['message', 'edited_message', 'callback_query'] },
         timeoutMs: 12000 }, token()); }
@@ -1520,20 +1699,27 @@ async function main() {
       if (failedPolls || conflictedPolls) appendRun(runsPath, { v: 1, launch: launchedAt, poll: 'restored', at: wallNow() });
       if (failedPolls || conflictedPolls) serviceBeat(!journal.view.stop && wallNow() < journal.view.expires, 'poll restored');
       failedPolls = 0; conflictedPolls = 0; routeHealthy = true;
-      worker.intake(updates.result);
+      // Updates this journal already recorded come back until the shared cursor passes them; only the new ones are taken.
+      const batch = shared ? updates.result.filter(update => !(update?.update_id < journal.view.cursor)) : updates.result;
+      worker.intake(batch);
       // An approved phone stop latches in the journal; the loop ends without another effect.
       if (journal.view.stop) break;
+      if (shared) {
+        shared.noteIntake(); await shared.sync();
+        if (signalled || workerStop.value || existsSync(stopPath) || journal.view.stop || !ownerHeld()) break;
+      }
       // A full held page was preserved and passed: read the rest of the backlog now, so an exact /stop
       // behind it latches before any further processing (Rule 4; bounded by the waiting store).
-      if (worker.readAhead() && updates.result.length >= pollLimit) continue;
+      if (worker.readAhead() && batch.length >= pollLimit) continue;
       await worker.minimal();
       if (journal.view.stop) break;
       // Reminders go out only after a successful poll returned nothing new and no ordinary drain is
       // running: every operator message already waiting (a cancellation included) has been read and
       // settled first. A failed poll, a backlog or a cap leaves them pending.
-      background(() => updates.result.length === 0 ? worker.sendRequested() : worker.drain());
+      ordinary(() => batch.length === 0 ? worker.sendRequested() : worker.drain());
       reportCap();
-      if (worker.intakeHeld()) await waitHeld();
+      // Rule 55: while the other machine is away the unsettled updates return at once; re-read after the same pause.
+      if (worker.intakeHeld() || shared && batch.length === 0 && updates.result.length > 0) await waitHeld();
 
     }
     // The bounded shutdown awaits (provider timeouts) are progress, not a hang.
@@ -1609,7 +1795,8 @@ async function main() {
           // Every still-owned item counts: a result waiting for the next message and a dependency awaiting the
           // operator need a live runner as much as due or scheduled work does.
           const remaining = health ? health.ownedWork : 0;
-          if (health) end = { unfinished: health.unfinished, revival: remaining === 0 ? 'none' : inhibited ? 'inhibited' : 'queued',
+          // Two machines: an owner that ends (its cycle limit, a lost lease) is wanted back as the standby and the peer copy.
+          if (health) end = { unfinished: health.unfinished, revival: remaining === 0 && !multi ? 'none' : inhibited ? 'inhibited' : 'queued',
             ...(health.nextWorkAt === null ? {} : { nextWorkAt: health.nextWorkAt }),
             // Rule 33: the exact journal frontier this claim describes.
             frontier: projectionDigest(journal.view) };
@@ -1618,6 +1805,7 @@ async function main() {
         try { appendRun(runsPath, { v: 1, launch: launchedAt, exit: wallNow(), reason, ...end }); } catch { /* the next launch reports an unrecorded end */ }
       }
     } finally {
+      if (shared) await shared.stop();
       journal?.close(); storage.close(); if (ownerClaim?.owner) ownerClaim.release(); process.removeListener('SIGINT', signal); process.removeListener('SIGTERM', signal); process.removeListener('SIGHUP', signal);
     }
   }

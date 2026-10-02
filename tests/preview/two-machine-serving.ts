@@ -32,12 +32,24 @@ export type TickReport = Readonly<{ role: ServingRole; reason: string; polled: b
   skipped: readonly number[]; settled: number | null }>;
 export interface SharedServing { tick(): Promise<TickReport>; fence(): Fence | null; release(): Promise<void> }
 
-export function createSharedServing<U extends ServingUpdate>(input: Readonly<{ authority: AuthorityClient; machine: string;
-  incarnation: string; monotonic: () => number; marginFraction?: number; ports: ServingPorts<U> }>): SharedServing {
+export type LeaseRole = Readonly<{ role: ServingRole; reason: string; retryMs?: number }>;
+export interface LeaseHolder {
+  /** Acquire when nothing is held, otherwise renew when a third of the term has passed. */
+  hold(): Promise<LeaseRole>;
+  /** Renew only: a runner that already serves never takes a NEW epoch mid-flight; a lost lease stays lost. */
+  renew(): Promise<LeaseRole>;
+  /** The current fence, or null once the local term (minus its margin) has run out. */
+  fence(): Fence | null;
+  /** Forget the fence locally (the authority refused it as stale). */
+  drop(): void;
+  release(): Promise<void>;
+}
+
+/** The lease side of the serving step, shared with the journal runner (Rule 63: one definition of "holds"). */
+export function createLeaseHolder(input: Readonly<{ authority: AuthorityClient; machine: string; incarnation: string;
+  monotonic: () => number; marginFraction?: number }>): LeaseHolder {
   const margin = input.marginFraction ?? 1 / 3;
-  let fence: Fence | null = null, deadline = 0, renewAt = 0;
-  // Outcomes of admitted sends whose recording did not reach the authority yet; retried first every tick.
-  const pendingOutcomes: { fence: Fence; key: string; state: 'sent' | 'unknown' }[] = [];
+  let fence: Fence | null = null, deadline = 0, renewAt = 0, busy: Promise<LeaseRole> | null = null;
   const holds = () => fence !== null && input.monotonic() < deadline;
   const drop = () => { fence = null; };
   const granted = (asked: number, answer: AuthorityAnswer) => {
@@ -45,30 +57,43 @@ export function createSharedServing<U extends ServingUpdate>(input: Readonly<{ a
     deadline = asked + answer.termMs * (1 - margin); renewAt = asked + answer.termMs / 3;
     return true;
   };
-  const hold = async (): Promise<{ role: ServingRole; reason: string }> => {
-    if (fence && holds()) {
-      if (input.monotonic() < renewAt) return { role: 'owner', reason: 'lease current' };
-      const asked = input.monotonic(), answer = await input.authority.request({ op: 'renew', fence });
-      if (granted(asked, answer)) return { role: 'owner', reason: 'lease renewed' };
-      if (!answer.ok && answer.reason === 'unreachable') {
-        // Keep the remaining local term; it lapses on its own if the authority stays unreachable.
-        return holds() ? { role: 'owner', reason: 'renewal unreachable; term still current' } : (drop(), { role: 'inhibited', reason: 'authority unreachable' });
-      }
-      drop();
-      return { role: 'standby', reason: 'lease lost' };
+  const renew = async (): Promise<LeaseRole> => {
+    if (!fence || !holds()) { drop(); return { role: 'standby', reason: 'lease lost' }; }
+    if (input.monotonic() < renewAt) return { role: 'owner', reason: 'lease current' };
+    const asked = input.monotonic(), answer = await input.authority.request({ op: 'renew', fence });
+    if (granted(asked, answer)) return { role: 'owner', reason: 'lease renewed' };
+    if (!answer.ok && answer.reason === 'unreachable') {
+      // Keep the remaining local term; it lapses on its own if the authority stays unreachable.
+      return holds() ? { role: 'owner', reason: 'renewal unreachable; term still current' } : (drop(), { role: 'inhibited', reason: 'authority unreachable' });
     }
+    drop();
+    return { role: 'standby', reason: 'lease lost' };
+  };
+  const hold = async (): Promise<LeaseRole> => {
+    if (fence && holds()) return renew();
     drop();
     const asked = input.monotonic();
     const answer = await input.authority.request({ op: 'acquire', machine: input.machine, incarnation: input.incarnation });
     if (granted(asked, answer) && answer.ok && answer.fence) { fence = answer.fence; return { role: 'owner', reason: `acquired epoch ${answer.fence.epoch}` }; }
-    if (!answer.ok && answer.reason === 'held') return { role: 'standby', reason: `held by ${answer.holder?.machine ?? 'another runner'}` };
+    if (!answer.ok && answer.reason === 'held') return { role: 'standby', reason: `held by ${answer.holder?.machine ?? 'another runner'}`,
+      ...(answer.remainingMs === undefined ? {} : { retryMs: answer.remainingMs }) };
     return { role: 'inhibited', reason: answer.ok ? 'acquire answered without a fence' : `authority ${answer.reason}` };
   };
+  /** One request at a time: a timer and a loop may both ask. */
+  const once = (run: () => Promise<LeaseRole>) => busy ??= run().finally(() => { busy = null; });
+  return Object.freeze({ hold: () => once(hold), renew: () => once(renew), fence: () => (holds() ? fence : null), drop,
+    async release() { if (fence) { const owned = fence; drop(); await input.authority.request({ op: 'release', fence: owned }); } } });
+}
+
+export function createSharedServing<U extends ServingUpdate>(input: Readonly<{ authority: AuthorityClient; machine: string;
+  incarnation: string; monotonic: () => number; marginFraction?: number; ports: ServingPorts<U> }>): SharedServing {
+  const lease = createLeaseHolder(input);
+  // Outcomes of admitted sends whose recording did not reach the authority yet; retried first every tick.
+  const pendingOutcomes: { fence: Fence; key: string; state: 'sent' | 'unknown' }[] = [];
+  const holds = () => lease.fence() !== null, drop = lease.drop, hold = lease.hold;
   return Object.freeze({
-    fence: () => (holds() ? fence : null),
-    async release() {
-      if (fence) { const owned = fence; drop(); await input.authority.request({ op: 'release', fence: owned }); }
-    },
+    fence: lease.fence,
+    release: lease.release,
     async tick(): Promise<TickReport> {
       const sent: number[] = [], skipped: number[] = [];
       let settled: number | null = null;
@@ -88,8 +113,8 @@ export function createSharedServing<U extends ServingUpdate>(input: Readonly<{ a
       if (updates === null) return report('poll failed', true);
       for (const update of [...updates].sort((a, b) => a.update_id - b.update_id)) {
         if (update.update_id < cursor) continue;
-        const owned = fence;
-        if (!owned || !holds()) return report('lease lapsed mid-batch; the rest waits at Telegram', true, 'standby');
+        const owned = lease.fence();
+        if (!owned) return report('lease lapsed mid-batch; the rest waits at Telegram', true, 'standby');
         const text = await input.ports.prepare(update);
         if (text !== null) {
           const key = `update:${update.update_id}`;
