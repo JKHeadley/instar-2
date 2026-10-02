@@ -80,6 +80,35 @@ export const SUMMARY_OVER_CAP_REASON = 'summary output over the cap';
 // Leave room for the candidate reply and review question when Jev needs the
 // existing full-context subscription review. The answer packet is its input.
 const REPLY_REVIEW_HEADROOM_BYTES = 8192;
+/** The room a context limit must leave beside one turn's prompt for that turn's reply review. */
+export const replyReviewReserveFor = (maxBytes: number) => Math.min(REPLY_REVIEW_HEADROOM_BYTES, Math.floor(maxBytes / 4));
+/** The prompt parts every ordinary answer turn carries, whatever the conversation holds: the subscription
+ * system prompt (3039), the standing instruction message (4309), the request envelope's own canonical
+ * scaffold (1507), and the minimum packet (14158: the pinned source briefing, the decision guidance, the
+ * concurrent-work view, the audience and the clock), with the desk report at its cut bound -- the largest
+ * shape that is always sent. Measured on this build from a fresh root's first ordinary turn; a number
+ * chosen by hand here could drift below the real parts, so `default-context-floor.test.ts` re-measures
+ * the live answer path at the default limit and fails when they outgrow what it allows. */
+export const PREVIEW_FIXED_PROMPT_BYTES = 23_013;
+/** The smallest context limit at which one ordinary turn fits with its reply review beside it: the least
+ * limit L with `L - replyReviewReserveFor(L) >= PREVIEW_FIXED_PROMPT_BYTES`. Derived from that inequality
+ * rather than picked (conservative by one byte where the quarter reserve binds: the exact least value for
+ * 23013 is 30683 and this gives 30684). A limit below this cannot serve its own first turn, however little
+ * the conversation holds, so no summary or set-aside can recover it -- which is why the doorways that set a
+ * limit refuse one below it instead of letting an unservable root be created. */
+export const PREVIEW_MIN_SERVABLE_CONTEXT_BYTES = Math.ceil(PREVIEW_FIXED_PROMPT_BYTES * 4 / 3) < REPLY_REVIEW_HEADROOM_BYTES * 4
+  ? Math.ceil(PREVIEW_FIXED_PROMPT_BYTES * 4 / 3) : PREVIEW_FIXED_PROMPT_BYTES + REPLY_REVIEW_HEADROOM_BYTES;
+/** The plain reason a doorway gives for a context limit that cannot serve one ordinary turn, or null when
+ * it can. Rule 95's fail direction: creating or re-declaring a root is a change, so this fails closed at
+ * the doorway -- the reachability cost of refusing there is one named, actionable message, while admitting
+ * it is an agent that answers once and then goes quiet (live 2026-10-01, room two at 32768: one reply, then
+ * twelve turns held "summary unavailable: prompt overflow"). */
+export const unservableContextReason = (maxBytes: number): string | null =>
+  Number.isSafeInteger(maxBytes) && maxBytes >= PREVIEW_MIN_SERVABLE_CONTEXT_BYTES ? null
+    : `max-context-bytes ${String(maxBytes)} cannot serve one ordinary turn; pass at least`
+      + ` ${String(PREVIEW_MIN_SERVABLE_CONTEXT_BYTES)}. The parts every answer carries (the system prompt, the`
+      + ` standing instructions, the request envelope and the minimum packet) measure`
+      + ` ${String(PREVIEW_FIXED_PROMPT_BYTES)} bytes, and the reply review needs its own room beside them.`;
 /** Most journal-derived inventory entries offered with an operator memory question. */
 export const PREVIEW_INVENTORY_LIMIT = 20;
 /** The recorded reason of a pre-send step the bounded supervisor could not judge because its call budget is spent. */
@@ -5153,8 +5182,7 @@ export function createJournalWorker(journal: ReturnType<typeof openPreviewJourna
             const prepared = ports.prepareModel?.({ question, context, id: turn.id, ...(writer ? { writer } : {}) });
             if (ports.replyCheck && prepared !== undefined
               && Buffer.byteLength(prepared) + Buffer.byteLength(SUBSCRIPTION_CONVERSATION_SYSTEM_PROMPT)
-                + Math.min(REPLY_REVIEW_HEADROOM_BYTES,
-                Math.floor(journal.view.limits.maxBytes / 4)) > journal.view.limits.maxBytes)
+                + replyReviewReserveFor(journal.view.limits.maxBytes) > journal.view.limits.maxBytes)
               throw Error('preview: reply review headroom');
             const packet = JSON.parse(context) as { summary?: { through: number }; memorySummary?: { text: string }; history?: unknown[];
               historySetAside?: { through: number };

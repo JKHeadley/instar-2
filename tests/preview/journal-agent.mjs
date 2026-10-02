@@ -18,7 +18,7 @@ import { admitPreviewHarness, PREVIEW_JOURNAL_HARNESS, PREVIEW_JOURNAL_STALL_COV
 import { UNRECORDED, briefingDigestOf, codeDigestOf, installedCodeOf, installationRows, installationStatusLines, installedUpdateFrom, updateDelivery,
   updatePacketItem } from './installation.js';
 import { projectionDigest } from './journal.js';
-import { openPreviewJournal as openJournal, createJournalWorker, raiseJournalCaps, renewJournalExpiry, activationMatchesJournal, activePersonMerges, openQuestionCandidates, projectMemoryText, unansweredCue, reportJournalCap, unknownCallCounts, pendingUnknownCalls, replyTimings, reviewUnavailableReleases, claimScopedWithholds, MINIMAL_RESERVE, reserveTurnsUsed, reserveRepliesUsed, openRequests, actionWithdrawn, reminderDue, retrospectiveCases, openBlockers, openDirectives, declaredObligations, sendOutcomeCounts, sendOutcomeOf, unsentLabel, replyTarget, reminderOutcome, envelopeWriter, PREVIEW_LIVE_LIMITS, PREVIEW_JOURNAL_COMPACT_BYTES, activeMemoryConflicts, TOO_LONG_INPUT_NOTICE, TOO_LONG_REPLY_NOTICE , probeTurn, isJournalUpdate, withFormatReminder, concurrentWorkItem, latestOwnedLaunch } from './journal.js';
+import { openPreviewJournal as openJournal, createJournalWorker, raiseJournalCaps, renewJournalExpiry, activationMatchesJournal, activePersonMerges, openQuestionCandidates, projectMemoryText, unansweredCue, reportJournalCap, unknownCallCounts, pendingUnknownCalls, replyTimings, reviewUnavailableReleases, claimScopedWithholds, MINIMAL_RESERVE, reserveTurnsUsed, reserveRepliesUsed, openRequests, actionWithdrawn, reminderDue, retrospectiveCases, openBlockers, openDirectives, declaredObligations, sendOutcomeCounts, sendOutcomeOf, unsentLabel, replyTarget, reminderOutcome, envelopeWriter, PREVIEW_LIVE_LIMITS, unservableContextReason, PREVIEW_JOURNAL_COMPACT_BYTES, activeMemoryConflicts, TOO_LONG_INPUT_NOTICE, TOO_LONG_REPLY_NOTICE , probeTurn, isJournalUpdate, withFormatReminder, concurrentWorkItem, latestOwnedLaunch } from './journal.js';
 import { createPreviewClock } from './clock.js';
 import { appendRun, heldNotices, heldRepliesToday, memoryHealthLine, readRuns, restartHandoff, selfState, selfStateBrief, selfStateSource, zoneFormatter } from './self-state.js';
 import { JEV_MODEL, jevQuestions, replyReviewContext, replyReviewQuestion, replyReviewRules, parseReplyReviewVerdict, replyReviewDiagnostics, parseJevResponse, replyRevisionQuestion, parseReplyRevision, REVIEW_MALFORMED, REVIEW_FORMAT_REMINDER } from './reply-check.js';
@@ -931,10 +931,16 @@ async function main() {
         throw Error('preview: --write-off-unknown must be true');
       const writeOff = options['write-off-unknown'] === 'true' ? pendingUnknownCalls(capJournal.view) : [];
       if (options['write-off-unknown'] === 'true' && !writeOff.length) throw Error('preview: no pending UNKNOWN call to write off');
+      const raisedBytes = number(options['max-context-bytes'] ?? String(capJournal.view.limits.maxBytes), 'max-context-bytes');
+      // A re-declared limit below the measured floor leaves a root that cannot serve its own next turn.
+      // Raising the other caps on such a root does not make it answer, so this doorway refuses and names
+      // the flag and value that would: the operator can raise bytes in this same command.
+      const raiseRefusal = unservableContextReason(raisedBytes);
+      if (raiseRefusal) throw Error(`preview: ${raiseRefusal}`);
       raiseJournalCaps(capJournal, { ...(writeOff.length ? { writeOff } : {}), maxCalls: number(options['max-calls'] ?? String(capJournal.view.limits.maxCalls), 'max-calls'),
         maxReplies: number(options['max-replies'] ?? String(capJournal.view.limits.maxReplies), 'max-replies'),
         maxTurns: number(options['max-turns'] ?? String(capJournal.view.limits.maxTurns), 'max-turns'),
-        maxBytes: number(options['max-context-bytes'] ?? String(capJournal.view.limits.maxBytes), 'max-context-bytes'),
+        maxBytes: raisedBytes,
         authority: required(options, 'authority'), at: wallNow() });
     } finally { capJournal?.close(); storage.close(); }
     return;
@@ -981,10 +987,17 @@ async function main() {
     const maxCalls = number(options['max-calls'] ?? '16', 'max-calls');
     const maxReplies = number(options['max-replies'] ?? '16', 'max-replies');
     const maxTurns = number(options['max-turns'] ?? '20', 'max-turns');
-    const maxBytes = number(options['max-context-bytes'] ?? '32768', 'max-context-bytes');
+    // The default is the approved live bound itself, not a second number beside it: the measured fixed
+    // parts already take most of it, so a lower default cannot serve a fresh root's first turn.
+    const maxBytes = number(options['max-context-bytes'] ?? String(PREVIEW_LIVE_LIMITS.contextBytes), 'max-context-bytes');
     if (!existsSync(journalPath) && (maxCalls > PREVIEW_LIVE_LIMITS.calls || maxReplies > PREVIEW_LIVE_LIMITS.replies
       || maxTurns > PREVIEW_LIVE_LIMITS.turns || maxBytes > PREVIEW_LIVE_LIMITS.contextBytes))
       throw Error('preview: live allowance outside approved bound');
+    // Rule 15's declared bound has to be one the build can serve. A root created below the measured floor
+    // answers at most its first turn and then holds every reply for size, with no summary or set-aside able
+    // to recover it, so genesis refuses the limit here rather than discovering it mid-conversation.
+    const genesisRefusal = !existsSync(journalPath) ? unservableContextReason(maxBytes) : null;
+    if (genesisRefusal) throw Error(`preview: ${genesisRefusal}`);
     // Rule 35: the trusted composition origin. Only the fixed offline test token on a loopback
     // endpoint is a test composition; it may write only a test-origin store, and a production
     // store refuses it (and any test-origin identity) at the journal's write boundary.
