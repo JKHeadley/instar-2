@@ -642,6 +642,21 @@ export function conceptTerms(value: unknown): string[] | undefined {
   return found;
 }
 
+/** A writer's proposed terms, as they will be stored (Rule 11): each usable term is kept and an unusable one is
+ * dropped on its own. A real writer gives a message that states a clock time a term carrying it ("12:09 am
+ * alert"); refusing the whole list for that one term left the message with no meaning terms, so no question
+ * could reach it by meaning. Bounded like the stored list; undefined when nothing usable was proposed. */
+export function proposedConceptTerms(value: unknown): string[] | undefined {
+  if (!Array.isArray(value)) return undefined;
+  const found: string[] = [];
+  for (const item of value) {
+    if (found.length >= CONCEPT_TERMS_LIMIT) break;
+    const term = conceptTerms([item])?.[0];
+    if (term !== undefined && !found.includes(term)) found.push(term);
+  }
+  return found.length ? found : undefined;
+}
+
 export type JournalRecord =
   | { kind: 'genesis'; bot: string; chat: string; operator: string; grant: string; configurationDigest: string; expires: number; maxCalls: number; maxReplies: number; maxTurns: number; maxBytes: number; cursor: number; importSource?: string; importCursor?: number;
     /** Rule 35: set only by a trusted test composition; absent means a production store. */
@@ -6762,7 +6777,7 @@ export function createJournalWorker(journal: ReturnType<typeof openPreviewJourna
         const proposed = (JSON.parse(answered.trim().replace(/^```(?:json)?\s*|\s*```$/gu, '')) as { concepts?: unknown })?.concepts;
         for (const item of Array.isArray(proposed) ? proposed.slice(0, items.length) : []) {
           const { source, terms } = (item ?? {}) as { source?: unknown; terms?: unknown };
-          const words = conceptTerms(terms);
+          const words = proposedConceptTerms(terms);
           if (typeof source !== 'string' || !items.some(turn => turn.id === source) || !words?.length
             || concepts.some(saved => saved.source === source)) continue;
           concepts.push({ source, terms: words });
@@ -7086,7 +7101,7 @@ export function createJournalWorker(journal: ReturnType<typeof openPreviewJourna
       for (const item of Array.isArray(proposedConcepts) ? proposedConcepts.slice(0, CONCEPT_SOURCES_LIMIT) : []) {
         const { source, terms: proposed } = (item ?? {}) as { source?: unknown; terms?: unknown };
         const turn = typeof source === 'string' ? journal.view.turns.get(source) : undefined;
-        const words = conceptTerms(proposed);
+        const words = proposedConceptTerms(proposed);
         if (!turn?.accepted || !fromOperator(turn) || (turn.update <= after && !indexBacklog.includes(turn.id)) || turn.update > through || !words?.length
           || concepts.some(saved => saved.source === turn.id)) continue;
         concepts.push({ source: turn.id, terms: words });
