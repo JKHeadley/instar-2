@@ -437,6 +437,20 @@ it('the dispatch gate: replicated first, then one claim; a claimed, stale or unr
     expect(slept).toBeGreaterThan(0);
     await dispatch.outcome('reply:d', 'accepted');
 
+    // The claimant's own acknowledgement is lost: the authority records the claim but the answer never arrives, so the
+    // gate asks again under the same fence. The repeated claim is already-claimed, never fresh send authority (no second send).
+    let lostAck = true;
+    const lossy: AuthorityClient = { request: async request => {
+      const answer = await authority.request(request);
+      if (request.op === 'claim' && lostAck) { lostAck = false; return { ok: false, reason: 'unreachable' }; }
+      return answer;
+    } };
+    const own = createReplicatedDispatch({ authority: lossy, lease, shipper, cursor: 12, sleep, elapsed: () => time.now });
+    expect(await own.admit('reply:h', go)).toEqual({ kind: 'unknown', reason: 'another runner already claimed this send (claimed); it is not sent again' });
+    expect(view().unresolved).toContain('reply:h');
+    // The claimant never learned it was admitted, so its outcome stays unknown, recorded as such (closed, never sent).
+    expect(log.handle({ op: 'outcome', fence: lease.fence()!, key: 'reply:h', state: 'unknown' })).toMatchObject({ ok: true });
+
     // Another runner already claimed the target: never sent again, and reported as unknown rather than refused.
     log.handle({ op: 'claim', fence: lease.fence()!, key: 'reply:e' });
     const other = createReplicatedDispatch({ authority, lease: { fence: () => ({ epoch: lease.fence()!.epoch, incarnation: 'studio:1' }), drop: () => undefined },
