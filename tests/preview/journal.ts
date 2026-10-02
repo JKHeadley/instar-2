@@ -97,8 +97,9 @@ export const SUMMARY_TARGET_OUTPUT_TOKENS = 1024;
  * and a later attempt from the same base takes a shorter span (live 2026-09-30: #483-#493, 2312-4832 tokens). */
 export const SUMMARY_OVER_CAP_REASON = 'summary output over the cap';
 /** The summary call's whole output, Decision envelope and reasoning included, is capped at
- * SUBSCRIPTION_MAX_OUTPUT_TOKENS (the CLI stops there and the over-cap reply is discarded). Every bound an accepted
- * summary must meet is derived from that cap, so a faithful answer at the bound always fits with margin. Measured on
+ * SUBSCRIPTION_MAX_OUTPUT_TOKENS (the CLI stops there and the over-cap reply is discarded). The summary's allowances
+ * are sized from that cap by measurement, not guaranteed: the reasoning and the span's lists have no whole-output
+ * acceptance bound, so when the estimate misses, the provider cap and the over-cap brake are the protection. Measured on
  * Justin's root (88 recorded summary outputs, 2026-09-26 to 2026-10-02): 2.44 to 3.08 bytes per output token, the
  * envelope without its reasoning 456 to 725 bytes. Live 2026-10-02 04:56-05:51 PDT, 77 summary calls from one base (69 over the cap),
  * none accepted: the reasoning field (median 1888 bytes, up to 3626) and a span grown to seven turns ran past the cap,
@@ -7014,6 +7015,9 @@ export function createJournalWorker(journal: ReturnType<typeof openPreviewJourna
   const summaryPreflightBlocked = new Set<string>();
   const summaryLimit = () => summaryPromptBytes(journal.view.limits.maxBytes);
   const summaryPacketLimit = () => Math.min(journal.view.limits.maxBytes, summaryLimit());
+  /** The summary prose bound in UTF-8 bytes: the question states this number in this unit and acceptance enforces it,
+   * so a writer obeying the question is never refused for the length it was told to keep. */
+  const summaryTextBound = () => Math.min(SUMMARY_TEXT_MAX_BYTES, Math.floor(journal.view.limits.maxBytes / 4));
   const runSummary = async (force: boolean) => {
     const memoryRequest = pendingMemory();
     const last = memoryRequest ?? journal.view.order.filter(turn => turn.sent).at(-1);
@@ -7072,7 +7076,7 @@ export function createJournalWorker(journal: ReturnType<typeof openPreviewJourna
       + 'For each memory action, include replies: ids of memoryCandidates whose reply repeats or restates the old fact, including short answers, and summaryPassages: exact passages of the prior summary that express the old fact; leave unrelated material alone. '
       + 'Return memory: [] when no direct request applies; set memoryDisposition: "unresolved" when a direct request has no identifiable source. '
       + `Keep the complete JSON response within ${SUMMARY_TARGET_OUTPUT_TOKENS} output tokens; use concise summary prose and exact short quotes. `
-      + `Write reason.value as one sentence of at most ${SUMMARY_REASON_CHARS} characters. Keep the summary prose within ${SUMMARY_TEXT_MAX_BYTES} characters; longer prose is refused. `
+      + `Write reason.value as one sentence of at most ${SUMMARY_REASON_CHARS} characters. Keep the summary prose within ${String(summaryTextBound())} bytes of UTF-8: a plain ASCII character is one byte, an accented or non-Latin character two to four, so non-ASCII prose holds fewer characters; longer prose is refused. `
       + 'If the packet\'s summary.text is longer than that, rewrite it condensed within the bound, keeping every fact, commitment and open question it holds; memoryItems already keep the exact facts. '
       + 'For unansweredCandidates, judge each candidate by the full conversation: its reply only triggered review. Return questions: [{"source": candidate id, "quote": exact question excerpt from that operator message}] only when it really left an operator question unanswered. Return questions: [] when none. '
       + 'Return memoryItems: [{"source": history item id, "quote": exact short factual clause from that operator message}] for new active facts worth keeping. Existing summary.memoryItems are already retained by source; do not repeat or paraphrase them in summary prose. A correction replaces its old item and forgetting removes it. '
@@ -7393,7 +7397,7 @@ export function createJournalWorker(journal: ReturnType<typeof openPreviewJourna
       }
       // The prose bound: a rewrite that did not condense the carried summary asked too much, whatever the span, so it is
       // the over-bound class and the over-cap brake applies to it.
-      if (Buffer.byteLength(summaryText) > Math.min(SUMMARY_TEXT_MAX_BYTES, Math.floor(journal.view.limits.maxBytes / 4))) {
+      if (Buffer.byteLength(summaryText) > summaryTextBound()) {
         journal.append({kind:'summary-failed',format:SUMMARY_FORMAT,through,state:'complete',failureClass:'malformed',
           reason:SUMMARY_OVER_BOUND_REASON,...(trigger && (strictMemory || memory?.length) ? { memoryPendingFor: trigger.id } : {}),
           ...failedOutput, ...(typeof summary === 'string' ? {} : { usage: summary.usage }),at:ports.now()});

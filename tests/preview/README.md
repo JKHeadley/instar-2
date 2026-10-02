@@ -2382,13 +2382,18 @@ each later span started at the first turn and only grew, so none ever reached Je
 review. `summary-overcap-cascade.test.ts` replays those recorded outcomes, writer outputs
 and Jev verdicts.
 
-Every bound an accepted summary must meet is derived from that 2,048-token cap, so a faithful
-answer always fits: at the measured floor of 2.4 bytes per output token (88 recorded outputs on
-Justin's root, 2.44 to 3.08) the cap is 4,915 bytes. Of that, 800 bytes are allowed for the
+The summary's allowances are sized from that 2,048-token cap by measurement, not guaranteed:
+at the measured floor of 2.4 bytes per output token (88 recorded outputs on Justin's root, 2.44
+to 3.08; the tests check three recorded real outputs against it) the cap is 4,915 bytes. The
+reasoning and the span's lists have no whole-output acceptance bound, so when the estimate
+misses, the provider cap and the over-cap brake below are the protection. Of the 4,915 bytes, 800 are allowed for the
 Decision envelope (measured at most 725) and 800 for the reasoning, which the summary question
 limits to one sentence of 200 characters (the real model wrote 354 to 753 bytes with that wording,
 against a median of 1,888 before it). The rolling summary's prose, the one part every call
-re-emits whatever its span, is bounded at two fifths of the rest, 1,326 bytes; the remainder carries
+re-emits whatever its span, is bounded at two fifths of the rest, 1,326 bytes. The question states
+that bound in UTF-8 bytes, the unit acceptance measures, so non-ASCII prose that obeys it is never
+refused for its length (a bound stated in characters would refuse 800 accented letters, 1,600
+bytes, and brake the frontier). The remainder carries
 the span's own lists, which shrink with the span down to one turn. Carried memory items are kept by
 the code and never re-emitted. Prose over the bound is refused as `summary answer over its bound`,
 the same class as an over-cap attempt. A carried summary an older build accepted at up to 8 KiB is

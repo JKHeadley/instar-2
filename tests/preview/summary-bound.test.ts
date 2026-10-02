@@ -47,7 +47,7 @@ const filler = (id: number) => `Note ${String(id)}: ${'the shed holds rakes, twi
  * reasons at the recorded median length unless asked for one sentence (then at the longest length measured with
  * that wording). An answer whose output would pass the cap at the floor bytes per token ends like the recorded
  * over-cap calls: their outcome row first, then an uncertain result. */
-type Writer = 'measured' | 'always-over' | 'ignores-bound' | { real: string[] };
+type Writer = 'measured' | 'always-over' | 'ignores-bound' | 'non-ascii' | { real: string[] };
 function world(writer: Writer, maxBytes = 9000) {
   const root = realpathSync(mkdtempSync(join(tmpdir(), 'preview-summary-bound-')));
   const path = join(root, 'journal.encrypted');
@@ -70,9 +70,12 @@ function world(writer: Writer, maxBytes = 9000) {
         commitments: [], memory: [], questions: [], memoryItems: [], concepts: [] });
       if (typeof writer === 'object') return answerOf(writer.real.shift() ?? '');
       const carried = (JSON.parse(input.context) as { summary?: { text?: string } }).summary?.text ?? '';
-      const bound = /Keep the summary prose within (\d+) characters/u.exec(input.question)?.[1];
-      const prose = `${carried} Then more notes about the shed.`;
-      const summary = bound ? prose.slice(-Number(bound)) : prose;
+      const bound = /Keep the summary prose within (\d+) bytes of UTF-8/u.exec(input.question)?.[1];
+      if (writer === 'non-ascii' && Number(bound) !== SUMMARY_TEXT_MAX_BYTES) throw new Error(`stated prose bound ${String(bound)} is not the enforced ${String(SUMMARY_TEXT_MAX_BYTES)} bytes`);
+      // The non-ASCII writer fills the stated bound exactly in the stated unit: two-byte letters, one ASCII byte if odd.
+      const summary = writer === 'non-ascii' ? 'é'.repeat(Number(bound) >> 1) + 'x'.repeat(Number(bound) & 1)
+        : bound ? Buffer.from(`${carried} Then more notes about the shed.`).subarray(-Number(bound)).toString('utf8').replace(/^\uFFFD+/u, '')
+        : `${carried} Then more notes about the shed.`;
       const answer = JSON.stringify({ summary, people: [], commitments: [], memory: [], questions: [], memoryItems: [], concepts: [] });
       const reasoning = /Write reason\.value as one sentence/u.test(input.question)
         ? Math.max(...fixture.realOutputs.map(item => Buffer.byteLength(decision(item.result).reason.value)))
@@ -204,6 +207,20 @@ it('prose over its bound is refused as asking too much: a shorter span next, the
     expect(summaryStoppedAt(w.journal.view)).toBe(1);
     await w.fill(15, 30);
     expect(w.throughs).toHaveLength(5);
+    expect(w.unanswered()).toEqual([]);
+  } finally { w.close(); }
+});
+
+it('the prose bound is stated in the unit it is enforced in: non-ASCII prose at the stated bound is accepted', async () => {
+  const w = world('non-ascii');
+  try {
+    await w.fill(1, 40);
+    // At the bound exactly, 663 two-byte letters: accepted, and the frontier reaches the head without a brake.
+    expect(Buffer.byteLength(w.journal.view.summaries.at(-1)!.text)).toBe(SUMMARY_TEXT_MAX_BYTES);
+    expect(w.journal.view.summaries.at(-1)!.text.length).toBeLessThan(SUMMARY_TEXT_MAX_BYTES);
+    expect(summaryStoppedAt(w.journal.view)).toBeNull();
+    expect(w.frontier()).toBeGreaterThanOrEqual(36);
+    expect(w.journal.view.lastSummaryFailure).toBeNull();
     expect(w.unanswered()).toEqual([]);
   } finally { w.close(); }
 });
