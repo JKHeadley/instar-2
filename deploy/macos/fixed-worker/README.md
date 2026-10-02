@@ -189,14 +189,14 @@ never run `--apply`.
    memory bound and stops on any non-PASS, applies the plan, waits for the service and runs `verify`.
    Nothing from the agent-writable checkout ever runs as root. `admin-install` without `--apply` previews
    the same order unprivileged.
-4. `verify` — read-only: file owners and modes, the release against its manifest, the materialized
+4. `verify` — read-only: file owners and modes (including the agent-readable receipt public key), the release against its manifest, the materialized
    profile, the service running, the root-owned control socket and the restart record.
 5. `uninstall` (dry run, then `--apply --plan-digest`) reverses a full **or partial** installation: it
    removes whichever of the plist, service.json, installation.conf, the restart record and the release
    are present, and boots the service out only when launchd reports it loaded (a failed bootstrap
    leaves nothing to boot out). A release with no installation.conf (the custody copy, or an install that
    stopped before writing it) is named with `--release /Library/Instar2/m4-launch/releases/<release>`.
-   When launchd cannot be queried it plans nothing rather than guess. The receipt key and the journal
+   When launchd cannot be queried it plans nothing rather than guess. The receipt key pair (both halves) and the journal
    are kept (history is never deleted); `accounts-rollback` still refuses until the monitor is
    uninstalled. A failed step names what to run next: for stage 2 that is `uninstall`, never
    `accounts-rollback`.
@@ -224,7 +224,7 @@ against the agent, and `admin-install` says so.
   - lane A capacity authority (impl-r1-m3i), and R6's genuine worker/control allocation (`workerCapacityInstance`);
   - the R4/R6 installed store/context/authority composition for the reader, and its installed owner watermark;
   - the administrator's feasibility run proving the memory case on the installed host (unprovable unprivileged);
-  - the owner's trust reference for receipts (the installed `keys/receipt.pub`, key id `key:<installation>`) wired into S8's `trust()`;
+  - the owner's trust reference for receipts (the installed `/Library/Instar2/m4-launch/receipt.pub`, key id `key:<installation>`) wired into S8's `trust()`. The public key is installed beside `service.json`, not in the root-only `keys` folder (0700), because the agent-side owner reads it as the agent account;
   - the production composition call site (M4-L-S7/S9 grants) that builds the channel adapter over
     `createAttachedWorkerChannel` and binds the worker's delivery reference (today `native-context:<launch operation>`)
     to the exact admitted context delivery.

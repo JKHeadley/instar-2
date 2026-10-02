@@ -483,6 +483,10 @@ it.runIf(darwin)('stage builds one reproducible content-addressed release; insta
     expect(steps).toEqual(['plan.step=place-release', 'plan.step=write-file', 'plan.step=write-file', 'plan.step=keygen',
       'plan.step=write-file', 'plan.step=journal-init', 'plan.step=write-file', 'plan.step=launchctl-bootstrap']);
     expect(plan.out).toContain(`plan.step=place-release ${release}\n`);       // source path is not part of the plan
+    // The receipt public key is the agent-side owner's trust reference (S8), so it lands
+    // beside service.json in the world-traversable package folder, never inside the
+    // root-only (0700) keys folder the agent account cannot enter.
+    expect(plan.out).toContain(`plan.step=keygen ${rel} /Library/Instar2/m4-launch/keys/receipt.key /Library/Instar2/m4-launch/receipt.pub\n`);
     expect(field(provisionRun(args, accountsHost).out, 'plan.digest')).toBe(field(plan.out, 'plan.digest'));
     // Refusals: synthetic --apply, missing inputs, unprovisioned accounts, tampered release, existing key kept.
     expect(provisionRun([...args, '--apply'], accountsHost).err).toContain('never accepts a synthetic inventory');
@@ -497,7 +501,8 @@ it.runIf(darwin)('stage builds one reproducible content-addressed release; insta
     expect(provisionRun(args, [...accountsHost, 'service_state=query-failed:5']).err).toContain('could not be read');
     expect(provisionRun(args, [...accountsHost, 'path=/private/var/db/instar2-worker/supervisor-restarts|Regular File|root|wheel|600']).err)
       .toContain('already present: /private/var/db/instar2-worker/supervisor-restarts');
-    expect(plan.out).toMatch(/plan\.recovery=if a step fails: nothing was activated; reverse what was written with uninstall/);
+    expect(plan.out).toMatch(/plan\.recovery=if a step fails: earlier steps may have completed and the service may be loaded; inspect the state with verify, then reverse it with uninstall/);
+    expect(plan.out).not.toContain('nothing was activated');
     expect(plan.out).not.toContain('accounts-rollback');
     writeFileSync(join(staged, 'scripts', 'fixed-native-worker-monitor.mjs'), '// replaced\n');
     expect(provisionRun(args, accountsHost).err).toContain('release content does not match its MANIFEST');
@@ -511,6 +516,7 @@ it('uninstall removes only the installed release and its files, never keys or jo
     '/Library/Instar2/m4-launch/installation.conf|Regular File|root|wheel|644',
     '/Library/Instar2/m4-launch/service.json|Regular File|root|wheel|644',
     '/Library/Instar2/m4-launch/keys/receipt.key|Regular File|root|wheel|600',
+    '/Library/Instar2/m4-launch/receipt.pub|Regular File|root|wheel|644',
     '/private/var/db/instar2-worker/journal|Regular File|root|wheel|600'].map(row => `path=${row}`)];
   const plan = provisionRun(['uninstall'], installed);
   expect(plan.status, plan.err).toBe(0);
@@ -523,6 +529,14 @@ it('uninstall removes only the installed release and its files, never keys or jo
   const verified = provisionRun(['verify'], installed);
   expect(verified.status).toBe(0);
   expect(verified.out).toContain('verify.monitor=ok');
+  expect(verified.out).toContain('verify.monitor.receipt-pub=ok');
+  // The agent-side trust reference must exist and be readable by the agent account.
+  for (const broken of [installed.filter(row => !row.includes('receipt.pub')),
+    installed.map(row => row.replace('receipt.pub|Regular File|root|wheel|644', 'receipt.pub|Regular File|root|wheel|600'))]) {
+    const out = provisionRun(['verify'], broken);
+    expect(out.status).toBe(1);
+    expect(out.out).toContain('verify.monitor.receipt-pub=FAIL');
+  }
   expect(verified.out).toContain('verify.monitor.production-launch=refusing');
   const loose = provisionRun(['verify'], installed.map(row => row.replace('installation.conf|Regular File|root|wheel|644',
     'installation.conf|Regular File|root|wheel|666')));
@@ -688,6 +702,8 @@ it.runIf(darwin)('admin-install runs feasibility before it installs, refuses wit
     const install = provisionRun(['install', ...args.slice(1)], accountsHost);
     expect(preview.out).toContain(`plan.digest=${field(install.out, 'plan.digest')} must equal`);
     expect(field(preview.out, 'admin.recovery')).toContain(`uninstall --release /Library/Instar2/m4-launch/releases/${field(stage.out, 'stage.release')}`);
+    // A failure after the plan ran may leave the service loaded, so recovery never claims nothing was activated.
+    expect(field(preview.out, 'admin.recovery')).toMatch(/^earlier steps may have completed and the service may be loaded; inspect the state with verify/);
     expect(preview.out).not.toContain('admin.custody-separation=HOLD');
     const admin = provisionRun(args, accountsHost.map(r => r === 'agent_groups=staff' ? 'agent_groups=staff,admin' : r));
     expect(admin.out).toContain('admin.custody-separation=HOLD');

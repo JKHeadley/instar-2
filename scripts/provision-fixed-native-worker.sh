@@ -33,7 +33,10 @@ readonly LEDGER=/Library/Instar2/.accounts-ledger
 readonly CONF=/Library/Instar2/m4-launch/installation.conf
 readonly SERVICE=/Library/Instar2/m4-launch/service.json
 readonly KEY=/Library/Instar2/m4-launch/keys/receipt.key
-readonly PUB=/Library/Instar2/m4-launch/keys/receipt.pub
+# The public half is the agent-side owner's receipt trust reference (S8), so it sits
+# beside service.json in the world-traversable package folder; the keys folder is
+# root-only (0700) and the agent account cannot enter it.
+readonly PUB=/Library/Instar2/m4-launch/receipt.pub
 readonly JOURNAL=/private/var/db/instar2-worker/journal
 readonly BREAKER=/private/var/db/instar2-worker/supervisor-restarts
 readonly SELF_IN_RELEASE=scripts/provision-fixed-native-worker.sh
@@ -513,6 +516,7 @@ verify_monitor() {
   mcheck conf "$(pathrow "$CONF")" "$CONF|Regular File|root|wheel|644"
   mcheck service "$(pathrow "$SERVICE")" "$SERVICE|Regular File|root|wheel|644"
   mcheck key "$(pathrow "$KEY")" "$KEY|Regular File|root|wheel|600"
+  mcheck receipt-pub "$(pathrow "$PUB")" "$PUB|Regular File|root|wheel|644"
   mcheck journal "$(pathrow "$JOURNAL")" "$JOURNAL|Regular File|root|wheel|600"
   if [ "$SOURCE" = live ]; then
     rel=$INSTALLED_RELEASE
@@ -587,7 +591,7 @@ admin_install() {
   mem=$(limit_of "$RELEASE" memory_mib)
   case "$mem" in ''|*[!0-9]*) die "admin-install: release memory limit unreadable" ;; esac
   [ "${#mem}" -le 7 ] && [ "$mem" -ge 16 ] && [ "$mem" -le 1048576 ] || die "admin-install: release memory limit out of range"
-  RECOVERY="nothing was activated; reverse what was written with: sudo /bin/bash $RELEASES/$d/$SELF_IN_RELEASE uninstall --release $RELEASES/$d --agent-user $AGENT_USER (dry run, then --apply --plan-digest <printed digest>); keys and journal are kept"
+  RECOVERY="earlier steps may have completed and the service may be loaded; inspect the state with verify, then reverse it with: sudo /bin/bash $RELEASES/$d/$SELF_IN_RELEASE uninstall --release $RELEASES/$d --agent-user $AGENT_USER (dry run, then --apply --plan-digest <printed digest>); keys and journal are kept"
   plan=$(install_plan)
   pd=$(printf '%s\n' "$plan" | plan_digest)
   note "admin.release=sha256:$d"
@@ -605,8 +609,8 @@ admin_install() {
   [ "$SOURCE" = live ] || die "admin-install --apply needs the live host"
   self=$(cd "$(dirname "$0")/.." && pwd -P)
   [ "$self" = "$RELEASE" ] && [ "$RELEASE" = "$RELEASES/$d" ] && custody_ok "$RELEASE" \
-    || die "admin-install must run from its own verified release in protected custody ($RELEASES/$d); nothing was run. $RECOVERY"
-  [ "$DIGEST_ARG" = "sha256:$pd" ] || die "--plan-digest does not match this host's install plan (sha256:$pd); nothing was installed. $RECOVERY"
+    || die "admin-install must run from its own verified release in protected custody ($RELEASES/$d); nothing was run."
+  [ "$DIGEST_ARG" = "sha256:$pd" ] || die "--plan-digest does not match this host's install plan (sha256:$pd); nothing was installed."
   fz=$(/usr/bin/mktemp -d /private/tmp/instar-feasibility.XXXXXX)
   /bin/chmod 0755 "$fz"
   materialize_profile "$RELEASE" "$RELEASE" > "$fz/worker.sb"
@@ -617,7 +621,7 @@ admin_install() {
   (cd "$fz" && "$RELEASE/bin/instar-worker-enforcer" feasibility all "$fz/worker.sb" "$fz/scratch" "$RELEASE/runtime/node" \
     "$WORKER_UID" "$WORKER_GID" "$mem") || frc=$?
   /bin/rm -R "$fz"
-  [ "$frc" = 0 ] || die "admin-install: a native feasibility case did not PASS (above); nothing was installed. $RECOVERY"
+  [ "$frc" = 0 ] || die "admin-install: a native feasibility case did not PASS (above); nothing was installed."
   execute_plan "$plan"
   i=0
   until /bin/launchctl print "system/$LABEL" 2>/dev/null | awk '$1=="state"{f=($3=="running")} END{exit f?0:1}' \
@@ -635,7 +639,7 @@ case "$MODE" in
   verify) print_inventory; verify_accounts ;;
   stage) stage_release ;;
   install) print_inventory; plan=$(install_plan)
-    RECOVERY="nothing was activated; reverse what was written with uninstall (dry run, then --apply --plan-digest; add --release $RELEASES/<digest> when installation.conf was not written); keys and journal are kept"
+    RECOVERY="earlier steps may have completed and the service may be loaded; inspect the state with verify, then reverse it with uninstall (dry run, then --apply --plan-digest; add --release $RELEASES/<digest> when installation.conf was not written); keys and journal are kept"
     execute_plan "$plan" ;;
   uninstall) print_inventory; plan=$(uninstall_plan)
     RECOVERY="the steps before it completed; read the state with verify, then rerun uninstall (it plans only what remains)"
