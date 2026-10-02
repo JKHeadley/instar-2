@@ -19,7 +19,7 @@ Bug evidence: reproducer=tests/preview/summary-bound.test.ts
 Hook bypass: none
 Convergence: none
 Decision: summarybound-target-not-refusal | option (b): the stated prose size is a target, acceptance refuses only past the existing packet ceiling, and the next pass condenses; option (a), a larger derived refusal line, was not chosen because the live prose is not what drove the cap (an answer with 1132-byte prose ran to 3926 tokens) and any line just above one sample repeats this failure | reported=/Users/dabombstudio/.instar/agents/echo/.instar/lanes/w3-summarybound-PROGRESS.md
-Decision: summarybound-reply-is-prose | read non-JSON `reply` as the summary prose with its sibling fields, the shape three of thirteen real answers used | reported=/Users/dabombstudio/.instar/agents/echo/.instar/lanes/w3-summarybound-PROGRESS.md
+Decision: summarybound-reply-is-prose | read non-JSON `reply` as the summary prose with its sibling fields, the shape four of eleven readable real answers used | reported=/Users/dabombstudio/.instar/agents/echo/.instar/lanes/w3-summarybound-PROGRESS.md
 Decision: summarybound-format-3 | the existing changed-input mechanism un-brakes his root; no journal rewrite, no one-time step | reported=/Users/dabombstudio/.instar/agents/echo/.instar/lanes/w3-summarybound-PROGRESS.md
 Prompt review: "longer prose is refused" is replaced by "that keeps the whole answer inside its output limit", "within the bound" by "within that size", and "Put the summary prose in the summary field." is added. Run on the real model on Justin's copy (6 calls): one accepted answer, prose in `summary`; one of the six still used `reply`, now read.
 Prompt finding: 849db3a6296a | protocol-literal | an existing fixed reply literal in journal.ts, unchanged by this change
@@ -35,5 +35,5 @@ Subject (11 paths): generated/capabilities.json, generated/capabilities.md, gene
 ## Closing block
 
 simplestRobustRoute: the required behavior is that an answer the output cap admitted is not refused for prose length, while the cap and the packet stay protected. The simplest robust route keeps the existing target in the question, refuses only at the existing packet ceiling, reads the `reply` shape the real model writes, and bumps the existing format id so the recorded brake is a changed input.
-80/20: 0 must-fix, 2 notes — content refusals (memoryDisposition "unresolved" on requests that are not memory requests, invented preference quotes) refused 9 of 13 real answers and will slow catch-up; the real model ran past the 2048-token cap on 3 of 13 calls, not driven by the prose.
+80/20: 0 must-fix, 2 notes — content refusals (memoryDisposition "unresolved" on requests that are not memory requests, invented preference quotes) refused 8 of the 10 real answers that ended within the cap and will slow catch-up; the real model ran past the 2048-token cap on 3 of 13 calls, not driven by the prose.
 VERDICT: author submission; the independent verdict is recorded as a pass

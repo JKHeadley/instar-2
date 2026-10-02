@@ -2395,13 +2395,13 @@ states that target in UTF-8 bytes, so non-ASCII prose that obeys it fits. The re
 the span's own lists, which shrink with the span down to one turn. Carried memory items are kept by
 the code and never re-emitted. The target is not a refusal line: the output cap is the real limit,
 and an answer that ended within it already fits. On cint-L28 the real writer's prose came back at
-1,132 to 1,583 bytes (13 answers on Justin's root, 7 past 1,326) in answers of 855 to 1,792 output
-tokens; refusing three of them as over the bound braked his summary 220 updates behind. Acceptance
+956 to 1,583 bytes (11 readable answers on Justin's root, 6 past 1,326) in answers of 855 to 1,792
+output tokens; refusing three of them as over the bound braked his summary 220 updates behind. Acceptance
 now refuses prose only past the carried-summary ceiling every answer packet is sized for, min(8 KiB,
 a quarter of the context limit), as `summary answer over its bound`, the same class as an over-cap
 attempt. Prose between the target and the ceiling is accepted, and the next call is asked to rewrite
 it condensed within the target; every original turn stays in the journal and the meaning index.
-Prose the model writes in `reply` beside the other fields (three of those 13 answers) is read as the
+Prose the model writes in `reply` beside the other fields (four of those 11 answers) is read as the
 summary; the old reader measured the whole answer as the prose and never read its memoryDisposition. Once both attempts at a span asked too much (the full request and the
 reduced retry), no span from that base is offered again, because every later span contains it
 (Rule 55); `status.summaryStoppedAt` names that frontier, and replies keep being answered by the
