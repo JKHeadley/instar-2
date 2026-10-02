@@ -47,12 +47,15 @@ export function capabilityBriefing(readSource: (path: string) => string,
   const off = features.filter(f => f.availability === 'switched-off');
   return { generation, commit, text: [
     'This is a private Instar 2.0 PREVIEW trial in the operator\'s direct Telegram chat and its topics. '
-      + 'Capabilities below are one-line summaries generated from this installation\'s register; '
-      + 'full descriptions are in each module\'s documentation, current state in the status reply.',
+      + 'Capabilities below are one-line summaries from this installation\'s register; current state in the status reply.',
     'What you can do for the operator here:', ...available.filter(f => f.userFacing).map(item),
     'Internal machinery running under you:', ...available.filter(f => !f.userFacing).map(item),
-    ...off.length ? [`Present in the code but switched off here, so not available: ${off.map(f => f.id).join(', ')}.`] : [],
-    'Nothing unlisted is available: no tools, browsing, running code or acting outside this chat, and no scheduled work, nudges or other unprompted messages.',
+    ...off.length ? [`In the code but switched off here, so not available: ${off.map(f => f.id).join(', ')}.`] : [],
+    // Live 2026-10-02 (room two, build e26a8c1b): this line used to end "and no scheduled work, nudges or other
+    // unprompted messages", which denies `preview-requested-actions` listed two lines above it. The reply to
+    // "Remind me today at 1:25 am" opened "I can't actually do this one - I have no scheduler" and then carried
+    // the runner's own "I will act on this once at ..." receipt. A blanket denial may never contradict the list.
+    'Nothing unlisted is available: no tools, browsing, running code or acting outside this chat, and no message you start yourself beyond the listed answers to later-time requests.',
     trial].join('\n') };
 }
 /** Reads each excerpt exactly from the repository, verifying the pinned digest. */

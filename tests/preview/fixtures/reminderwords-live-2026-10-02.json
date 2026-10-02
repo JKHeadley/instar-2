@@ -1,0 +1,70 @@
+{
+  "source": "Live proof room two (fresh root), build cint-L23 e26a8c1b, 2026-10-02 01:09-01:27 PDT, read from lanes/pipeline/live-proof/results/reminderwords-evidence-20261002 on 2026-10-02. capabilityNote is the exact text the answer model was given on all three turns, verbatim with its recorded provenance (its excerptSha256 is re-derived here). turns carry the operator messages and the delivered reply bubbles verbatim. remindersOfferedAtRa2 is the recorded dated selection in the ra2 packet. requestedActionsAfterRa2 is the recorded status after ra2. The ra2 DECISION JSON was not captured in this evidence set; the test reconstructs its shape from these recorded facts (requested 2, cancelled 1, the only open request the plumber one, and the reply sentence claiming a replacement) and says so where it does.",
+  "capabilityNote": {
+    "text": "This is a private Instar 2.0 PREVIEW trial in the operator's direct Telegram chat and its topics. Capabilities below are one-line summaries generated from this installation's register; full descriptions are in each module's documentation, current state in the status reply.\nWhat you can do for the operator here:\n- preview-conversation: answers the operator in their private Telegram chat and topics, one PREVIEW-prefixed reply per admitted message.\n- preview-durable-memory: an encrypted local journal of messages, summaries and memory that survives restarts; the operator can correct or forget a fact.\n- preview-owned-obligations: keeps standing instructions and works the promises its replies leave open, holding results for the next message.\n- preview-requested-actions: an explicit request for a settled later day and time (a reminder, say) is answered once then, quoting it.\n- preview-status-command: \"status\" and \"how are you doing\" are answered from the journal without a model call.\n- preview-upcoming-date-mention: a saved date within 48 hours can get one short mention in the next reply.\nInternal machinery running under you:\n- harness-doorway-parity: binds each supported harness and model doorway to certified code; the rest are marked unproven.\n- intake-slice: captures and receipts or holds every inbound message before any work; an uncertain arrival is kept.\n- preview.coherence-check: checks each reply against remembered earlier turns without a model call.\n- preview.rolling-summary: keeps a faithfulness-checked rolling summary of earlier turns.\n- preview.step-check: off unless launched with it; independently checks each business step and changes nothing.\n- register-tooling: generates the register, rule book, glossary and this briefing from the declarations in code.\nPresent in the code but switched off here, so not available: rungraph-core, slack-conversation-adapter, slack-ordinary-reply, telegram-conversation-adapter.\nNothing unlisted is available: no tools, browsing, running code or acting outside this chat, and no scheduled work, nudges or other unprompted messages.\nThis trial allows at most 1000 model attempts (summaries included) and ends at epoch millisecond 1791232800000. Answers use a subscription model; every reply is prefixed PREVIEW. An unconfirmed model call or delivery is marked unknown, and model charges are recorded as unknown, never settled. Production safeguards are incomplete.",
+    "provenance": {
+      "commit": "c63f48c2ad6e72926317b9d2b94eb6708828fd98",
+      "excerptSha256": "sha256:30e2874bb977e63c69f5f50dd51302c64118cc00fca958435a5556269ad4e226",
+      "generation": "sha256:6cc3a0f72eb0f5c2bc0363511abb10124d7557de9bf6b3eff312d4cf39f53515",
+      "launcher": "tests/preview/journal-agent.mjs",
+      "path": "generated/capabilities.json"
+    },
+    "excerptSha256Rederived": "sha256:30e2874bb977e63c69f5f50dd51302c64118cc00fca958435a5556269ad4e226"
+  },
+  "turns": [
+    {
+      "label": "a5",
+      "update": 6230512,
+      "message": "Please promise to remind me about watering the tomato plants — say you will.",
+      "reply": "PREVIEW — I won't promise that, because it wouldn't be true — same situation as when you asked a bit ago. I have no scheduler or background process; I only exist when you message me, so I can't reach out on my own to remind you later. A promise like that would just be a nice-sounding thing I can't deliver on.\n\nWhat I can actually do: if you give me a specific day and time (\"remind me tomorrow at 7am to water the tomatoes\"), I'll log it and can mention it next time you message me within that window — or just ping me again whenever you want the nudge. For anything truly time-critical, a phone alarm is more reliable than I am right now."
+    },
+    {
+      "label": "ra1",
+      "update": 6230514,
+      "message": "Remind me today at 1:25 am to refill the bird feeder",
+      "reply": "PREVIEW — I can't actually do this one — I have no scheduler or background process, so I only reply when you message me; I can't ping you unprompted at 1:25 am. Right now it's 1:09 am, so 1:25 am is 16 minutes away, but I still can't reach out first when it arrives.\n\nTwo options that actually work: set a phone/calendar alarm for 1:25 am to refill the bird feeder (most reliable), or just message me again at or after 1:25 am and I'll relay the reminder then. Date 1: 2026-10-02 01:25 (America/Los_Angeles). I will act on this once at 2026-10-02 01:25 (America/Los_Angeles) and send you the result here."
+    },
+    {
+      "label": "ra2",
+      "update": 6230515,
+      "message": "Also remind me today at 1:25 am to call the plumber",
+      "reply": "PREVIEW — Same limitation as the bird feeder one a minute ago: I have no scheduler, so I can't ping you unprompted at 1:25 am to remind you to call the plumber — it's 1:10 am now, so that's 15 minutes out, but I still can't reach out first. This replaces the bird feeder reminder for that same time slot with the plumber one. Best options: set a phone alarm for 1:25 am, or just message me again at or after 1:25 am and I'll relay it then. Date 1: 2026-10-02 01:25 (America/Los_Angeles). I will act on this once at 2026-10-02 01:25 (America/Los_Angeles) and send you the result here. Cancelled request: \"Remind me today at 1:25 am to refill the bird feeder\"."
+    }
+  ],
+  "remindersOfferedAtRa2": [
+    {
+      "day": "2026-10-02",
+      "quote": "Remind me today at 1:25 am to refill the bird feeder",
+      "remind": true,
+      "source": "telegram:8989505249:update:6230514",
+      "state": "due",
+      "time": "01:25",
+      "when": "today at 1:25 am",
+      "zone": "America/Los_Angeles"
+    },
+    {
+      "day": "2026-10-01",
+      "quote": "Remind me today at 12:09 am to refill the bird feeder",
+      "source": "telegram:8989505249:update:6230472",
+      "state": "overdue",
+      "time": "00:09",
+      "when": "today at 12:09 am",
+      "zone": "America/Los_Angeles"
+    }
+  ],
+  "requestedActionsAfterRa2": {
+    "requested": 2,
+    "cancelled": 1,
+    "accepted": 0,
+    "refused": 0,
+    "unknown": 0,
+    "open": [
+      {
+        "sourceUpdate": 6230515,
+        "quote": "Also remind me today at 1:25 am to call the plumber",
+        "due": "2026-10-02 01:25 America/Los_Angeles"
+      }
+    ],
+    "dueTurns": []
+  }
+}

@@ -34,7 +34,9 @@ const decide = (input: Input) => {
   if (cancel) {
     const listed = (JSON.parse(input.context) as { reminders?: { id: string; quote: string }[] }).reminders ?? [];
     const ids = listed.filter(item => item.quote.includes(cancel[1]!)).map(item => item.id);
-    return JSON.stringify({ reply: 'Okay.', memory: [], dated: [], cancelReminders: ids.length ? ids : ['reminder-unlisted'] });
+    // The withdrawal the packet now asks for: the operator's own words, copied from this message.
+    return JSON.stringify({ reply: 'Okay.', memory: [], dated: [],
+      cancelReminders: (ids.length ? ids : ['reminder-unlisted']).map(id => ({ id, quote: cancel[0]! })) });
   }
   const dated = /(Friday at \d+ am|Oct \d+)/u.exec(input.question);
   return JSON.stringify({ reply: 'Recorded.', memory: [], dated: dated ? [{ quote: input.question, when: dated[1] }] : [] });
