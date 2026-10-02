@@ -7,9 +7,11 @@ import { disciplineSource } from './retrospective.js';
 import { selfStateBrief, selfStateSource } from './self-state.js';
 import { prepareJournalEnvelope } from './journal-envelope.js';
 import { MEMORY_ITEM_SHAPE, PREVIEW_LIVE_LIMITS, PREVIEW_MIN_TURN_HEADROOM_BYTES,
-  concurrentWorkItem, createJournalWorker, openPreviewJournal, replyReviewReserveFor, summaryPromptBytes } from './journal.js';
+  concurrentWorkItem, createJournalWorker, declaredObligations, openPreviewJournal, replyReviewReserveFor,
+  summaryPromptBytes } from './journal.js';
 import { SUBSCRIPTION_CONVERSATION_SYSTEM_PROMPT } from '../../src/assembly/production-provider.js';
-import { jevQuestions } from './reply-check.js';
+import { jevQuestions, replyReviewContext, replyReviewQuestion } from './reply-check.js';
+import type { ReplyFinding } from './reply-check.js';
 import { decisionWithinFloor } from './model-call-boundary.js';
 import { conclusionText, parseModelJson } from './model-json.js';
 
@@ -44,6 +46,12 @@ const misfire = JSON.parse(readFileSync(new URL('./fixtures/proofroom-memory-mis
   import.meta.url), 'utf8')) as { genesis: { bot: string; chat: string; operator: string; grant: string;
     configurationDigest: string }; turns: Recorded[] };
 const [RECORDED_PREFERENCE, RECORDED_CAPABILITY_QUESTION] = misfire.turns as [Recorded, Recorded];
+/** A live root's recorded shapes, replayed in place of the stub model and reply checks. */
+type LiveShape = { now: number; timeZone: string; model: string; concurrentWork: object; runtimeSources: readonly object[];
+  replyNotices: () => readonly { key: string; line: string }[];
+  answer: (id: string, context: string) => string;
+  jevScore: (rule: string, text: string) => number;
+  review: (id: string) => { verdict: 'pass'; ruleIds: never[]; reason: string; findings: ReplyFinding[] } };
 /** What the live subscription port hands the worker for a complete result (journal-agent invokeSubscription). */
 function livePort(raw: string, usage: ModelUsage) {
   const extracted = parseModelJson(raw, { wrapped: 'accept' });
@@ -64,8 +72,9 @@ async function conversation(maxBytes: number, texts: readonly string[],
   identity: { bot: string; chat: string; operator: string; grant: string; configurationDigest: string }
     = { bot: '12345678', chat: '7654321', operator: '7654321', grant: 'grant:preview',
       configurationDigest: 'sha256:offline' },
-  updateIds?: readonly number[]) {
+  updateIds?: readonly number[], live?: LiveShape) {
   const root = realpathSync(mkdtempSync(join(tmpdir(), 'preview-default-root-')));
+  const at = live?.now ?? now;
   try {
     const journal = openPreviewJournal(join(root, 'journal.encrypted'), key, { kind: 'genesis', ...identity,
       // Context bytes are the launcher's default; only the spend allowance is raised (see the header note).
@@ -75,17 +84,29 @@ async function conversation(maxBytes: number, texts: readonly string[],
     const runs = { launches: [{ at: now - 60_000, pid: 1 }], exits: [] };
     const desk = { text: `# desk\n${'Preview work remains a supervised private chat trial with a reviewed activation.\n'.repeat(40)}`,
       modifiedAt: now };
-    const sources = () => [...briefing, disciplineSource(journal.view),
-      selfStateSource(selfStateBrief(journal.view, runs as never, now, 'UTC', now - 60_000)),
-      deskStatusSource(desk, now, DESK_PATH)];
+    const sources = () => live ? [...briefing, disciplineSource(journal.view), ...live.runtimeSources] as typeof briefing
+      : [...briefing, disciplineSource(journal.view),
+        selfStateSource(selfStateBrief(journal.view, runs as never, now, 'UTC', now - 60_000)),
+        deskStatusSource(desk, now, DESK_PATH)];
     const answerPackets: string[] = [], answerSizes: number[] = [], summarySizes: number[] = [];
-    const worker = createJournalWorker(journal, { now: () => now, stopped: () => false, sources,
-      prepareModel: input => prepareJournalEnvelope(input, 'claude-opus-5-5', journal.view.genesis.grant, now,
-        journal.view.limits.maxBytes),
-      concurrentWork: () => concurrentWorkItem({ now, others: [], scanned: 1, truncated: false, unreadable: 0,
+    const answerModel = live?.model ?? 'claude-opus-5-5';
+    const prepareModel = (input: { question: string; context: string; id: string }) =>
+      prepareJournalEnvelope(input, answerModel, journal.view.genesis.grant, at, journal.view.limits.maxBytes);
+    const reviews: { id: string; built: boolean }[] = [];
+    const worker = createJournalWorker(journal, { now: () => at, stopped: () => false, sources,
+      ...(live ? { timeZone: live.timeZone, replyNotices: live.replyNotices } : {}),
+      prepareModel,
+      concurrentWork: () => live?.concurrentWork ?? concurrentWorkItem({ now, others: [], scanned: 1, truncated: false, unreadable: 0,
         current: { owner: 'preview-root', launch: now - 60_000,
           conversation: `telegram/bot-${identity.bot}/chat-${identity.chat}` } }),
       model: async input => {
+        if (live) {
+          const size = bytes(String(input.prepared ?? '')) + bytes(SUBSCRIPTION_CONVERSATION_SYSTEM_PROMPT);
+          const packet = JSON.parse(input.context) as { audience?: unknown };
+          if (input.id.startsWith('summary:')) summarySizes.push(size);
+          else if (packet.audience) { answerPackets.push(input.context); answerSizes.push(size); }
+          return live.answer(input.id, input.context);
+        }
         const size = bytes(String(input.prepared ?? '')) + bytes(SUBSCRIPTION_CONVERSATION_SYSTEM_PROMPT);
         if (input.id.startsWith('summary:')) {
           summarySizes.push(size);
@@ -110,14 +131,26 @@ async function conversation(maxBytes: number, texts: readonly string[],
       summaryCheck: async () => ({ model: 'jev-1.13.0', answers: { lost_memory: { type: 'noul', noul: 0.01 } } }),
       send: async () => journal.view.replies + 1, checkOutbound: () => {},
       replyCheck: { elapsedMs: () => 100,
-        jev: async (_text, questions) => ({ value: { model: 'jev-1.13.0', answers: Object.fromEntries(
-          Object.keys(questions ?? jevQuestions).map(id => [id, { type: 'noul', noul: 0.01 }])) }, latencyMs: 10 }),
-        escalate: async () => ({ verdict: 'pass', ruleIds: [], confidence: null, latencyMs: 10 }) } });
+        jev: async (text, questions) => ({ value: { model: 'jev-1.13.0', answers: Object.fromEntries(
+          Object.keys(questions ?? jevQuestions).map(id => [id, { type: 'noul',
+            noul: questions === undefined || questions === jevQuestions ? live?.jevScore(id, text) ?? 0.01 : 0.01 }])) }, latencyMs: 10 }),
+        // The live escalation builds the full-context review prompt before it calls the model, and a prompt over
+        // the limit throws there (journal-agent's escalate -> modelEnvelope). Built here the same way, so a review
+        // that cannot fit is the real unavailable outcome rather than a stub that always passes.
+        escalate: async (text, id, originalPrompt, reviewRules) => {
+          if (!live) return { verdict: 'pass', ruleIds: [], confidence: null, latencyMs: 10 };
+          const context = replyReviewContext(String(originalPrompt), text, reviewRules,
+            declaredObligations(journal.view, id, at));
+          try { prepareModel({ question: replyReviewQuestion(reviewRules ?? []), context, id: `${id}:reply-review` }); }
+          catch (error) { reviews.push({ id, built: false }); throw error; }
+          reviews.push({ id, built: true });
+          return { ...live.review(id), confidence: null, latencyMs: 10 };
+        } } });
     const report: TurnReport[] = [];
     for (const [index, text] of texts.entries()) {
       worker.intake([{ update_id: updateIds?.[index] ?? index + 1,
         message: { chat: { id: Number(identity.chat), type: 'private' }, from: { id: Number(identity.operator) },
-          date: Math.floor(now / 1000) + index, text } }]);
+          date: Math.floor(at / 1000) + index, text } }]);
       await worker.drain();
       await worker.summarizeIfNeeded();
       const turn = journal.view.order.at(-1)!;
@@ -125,7 +158,8 @@ async function conversation(maxBytes: number, texts: readonly string[],
       report.push({ n: index + 1, sent: turn.sent !== undefined, held: turn.held, notice: turn.noticeClass,
         answerTotal: answerSizes.at(-1) ?? 0, keys: Object.keys(packet), setAside: 'historySetAside' in packet });
     }
-    const result = { report, summarySizes, answerPackets: [...answerPackets],
+    const result = { report, summarySizes, answerPackets: [...answerPackets], reviews,
+      preferStatements: journal.view.memory.filter(item => item.mode === 'prefer').length,
       summaries: journal.view.summaries.map(item => item.text),
       preferences: journal.view.memory.filter(item => item.mode === 'prefer').map(item => item.quote),
       firstText: journal.view.order[0]?.text };
@@ -216,3 +250,108 @@ it('leaves the measured headroom the twenty-turn conversation needs', () => {
   expect(limit - replyReviewReserveFor(limit)).toBeGreaterThan(limit - Math.floor(limit / 4));
   expect(PREVIEW_MIN_TURN_HEADROOM_BYTES).toBeGreaterThan(0);
 });
+
+/** Live 2026-10-02 (build cint-L29): room two on a FRESH root at the shipped default 32768 bytes answered three
+ * short garden notes and then no message at all -- turns 10, replies 3, nothing held, no failure class, the runner
+ * alive and idle. The parts every turn carries left 97 bytes on the third turn; the fourth also carried the reply
+ * preference the operator had now stated twice and the undo guidance for that change, and its smallest prepared
+ * prompt (every earlier turn set aside) was 23830 bytes against 23093 beside the reply-review reserve. The floor
+ * could shed nothing more, so the turn was re-held every five minutes for good. The test above passed twenty turns
+ * because its stub model records no preference and returns no notice; this one replays the root's own recorded
+ * shapes (observer #106): the real answer decisions (a `prefer` memory item on each note, a dated item, the
+ * credential reminder the runner appends), the live concurrent-work row, the recorded summary prose and items,
+ * the recorded Jev reply-check scores (every one `unsure`, so each reply went to the full-context review, built
+ * here exactly as the live escalation builds it) and the recorded review verdicts. */
+type RecordedRoot = { genesis: { bot: string; chat: string; operator: string; grant: string; configurationDigest: string };
+  maxBytes: number; at: number; turns: { update: number; text: string }[];
+  answers: { update: number; modelReply: string; memory: { mode: string; quote: string }[];
+    dated: { quote: string; when: string; zone: string; day: string }[] }[];
+  notice: { key: string; line: string }; concurrentWork: object; runtimeSources: object[];
+  summaries: { through: number; commitments: { in: string; quote: string; owner: string; waitsOn: string }[] }[];
+  summaryReviews: { reason: string }[];
+  replyChecks: { update: number; jevScores: Record<string, number>; review: { findings: ReplyFinding[] } }[];
+  measured: { smallestPreparedPromptBytes: number; preparedPromptBytesLeftBesideReviewReserve: number } };
+const room2 = JSON.parse(readFileSync(new URL('./fixtures/defaultroot-proofroom2-rule40-2026-10-02.json', import.meta.url),
+  'utf8')) as RecordedRoot;
+/** The live sender's note, exactly: the recorded ten are reproduced by it (asserted below), and turns 11-20 continue it. */
+const gardenLog = (n: number) => `Garden log ${String(n)}: today I checked bed ${String(n)}, watered for ${String(n + 4)} minutes, `
+  + 'pulled a few weeds near the fence and noted that the soil looked a little dry by the afternoon. No reply needed beyond ok.';
+const room2Id = (update: number) => `telegram:${room2.genesis.bot}:update:${String(update)}`;
+
+function room2Shapes(): LiveShape {
+  let jevCalls = 0;
+  const recordedFor = <T extends { update: number }>(rows: readonly T[], update: number) =>
+    rows.find(row => row.update === update) ?? rows.at(-1)!;
+  return { now: room2.at, timeZone: 'America/Los_Angeles', model: 'claude-sonnet-5', concurrentWork: room2.concurrentWork,
+    // The two runner-computed sources as the live runner sent them (the briefing itself is this checkout's).
+    runtimeSources: room2.runtimeSources,
+    replyNotices: () => [room2.notice],
+    answer: (id, context) => {
+      const packet = JSON.parse(context) as { audience?: unknown; summary?: { text: string };
+        history?: { id: string; user: string; date: string }[] };
+      if (id.startsWith('summary:') && id.endsWith(':review'))
+        return JSON.stringify({ verdict: 'pass', reason: room2.summaryReviews.at(-1)!.reason });
+      if (id.startsWith('summary:')) {
+        // The recorded summary's shape: prose in the recorded wording, one memory item and one concept entry per
+        // note in the span (the recorded quotes are the note less its label and its reply instruction), and the
+        // recorded commitment while the credential reminder is in the span.
+        const span = packet.history ?? [];
+        const quote = (text: string) => text.replace(/^Garden log \d+: /u, '').replace(/\. No reply needed beyond ok\.$/u, '');
+        const prose = ['Summary: Operator posted garden logs in main chat, each saying no reply needed beyond ok, and I replied Ok each time (all accepted by Telegram).',
+          ...span.map(item => { const n = /Garden log (\d+)/u.exec(item.user)?.[1] ?? '?';
+            return `Log ${n} (${item.date}, #${item.id.split(':').at(-1)!}): bed ${n}, watered for ${String(Number(n) + 4)} minutes, weeds pulled near the fence, soil a little dry by the afternoon.`; })].join(' ');
+        return JSON.stringify({ summary: prose, people: [], memory: [], questions: [],
+          memoryItems: span.map(item => ({ source: item.id, quote: quote(item.user) })),
+          concepts: span.map(item => ({ source: item.id, terms: ['garden log', `bed ${/Garden log (\d+)/u.exec(item.user)?.[1] ?? ''}`,
+            'watering', 'weeding', 'soil moisture'] })),
+          commitments: span.some(item => item.id === room2Id(room2.turns[0]!.update))
+            ? room2.summaries[0]!.commitments.map(item => ({ ...item, source: room2Id(room2.turns[0]!.update) })) : [] });
+      }
+      if (!packet.audience) return JSON.stringify({ reply: 'Nothing further to report on that.', memory: [], dated: [] });
+      // The recorded decision for the recorded update; every later note gets the third note's (a `prefer` item).
+      const update = Number(id.split(':').at(-1)), recorded = recordedFor(room2.answers, update);
+      const text = gardenLog(update - room2.turns[0]!.update + 1);
+      return JSON.stringify({ reply: recorded.modelReply,
+        memory: recorded.memory.map(item => ({ mode: item.mode, source: id, quote: item.quote })),
+        dated: recorded.dated.map(item => ({ source: id, quote: text.replace(/ No reply needed beyond ok\.$/u, ''),
+          when: item.when, zone: item.zone, day: item.day })) });
+    },
+    jevScore: rule => room2.replyChecks[Math.min(Math.floor(jevCalls++ / Object.keys(jevQuestions).length),
+      room2.replyChecks.length - 1)]!.jevScores[rule] ?? 0.01,
+    review: id => { const findings = recordedFor(room2.replyChecks, Number(id.split(':').at(-1))).review.findings;
+      return { verdict: 'pass', ruleIds: [], reason: findings.map(item => `${item.rule}: ${item.reason}`).join('\n'), findings }; } };
+}
+
+it('keeps answering a default-size root through the live recorded shapes that silenced room two', async () => {
+  const limit = PREVIEW_LIVE_LIMITS.contextBytes;
+  expect(room2.maxBytes).toBe(limit);
+  expect(room2.turns.map(turn => turn.text)).toEqual(room2.turns.map((_, index) => gardenLog(index + 1)));
+  const first = room2.turns[0]!.update;
+  const run = await conversation(limit, Array.from({ length: 20 }, (_, index) => gardenLog(index + 1)), new Map(),
+    room2.genesis, Array.from({ length: 20 }, (_, index) => first + index), room2Shapes());
+  for (const turn of run.report) {
+    expect(turn.sent, `turn ${String(turn.n)}: held ${turn.held ?? '-'} notice ${turn.notice ?? '-'}`).toBe(true);
+    expect(turn.held, `turn ${String(turn.n)}`).toBeUndefined();
+    expect(turn.notice, `turn ${String(turn.n)}`).toBeUndefined();
+  }
+  // A fresh root's first turn fits beside the reply-review reserve; within a few notes the parts every turn
+  // carries no longer do (live, from the fourth note on).
+  const room = limit - replyReviewReserveFor(limit);
+  expect(run.report[0]!.answerTotal).toBeLessThanOrEqual(room);
+  const lastRung = run.report.filter(turn => turn.answerTotal > room);
+  expect(lastRung.length).toBeGreaterThan(0);
+  expect(lastRung.every(turn => turn.setAside)).toBe(true);
+  for (const turn of run.report) expect(turn.answerTotal, `turn ${String(turn.n)}`).toBeLessThanOrEqual(limit);
+  // Every recorded Jev verdict was unsure, so every reply went to the full-context review. The reserve sizes the
+  // review for a 4096-byte reply; with the recorded short replies a last-rung turn's review still builds and runs,
+  // so yielding the reserve did not turn these reviews into unavailable ones.
+  expect(run.reviews.length).toBe(20);
+  expect(run.reviews.filter(review => !review.built)).toEqual([]);
+  // The operator stated the same reply preference on every note: each statement stays recorded (Rule 7), and the
+  // packet carries it once.
+  expect(run.preferStatements).toBeGreaterThanOrEqual(18);
+  const lastPacket = JSON.parse(run.answerPackets.at(-1)!) as { preferences?: unknown[]; memoryCandidates?: { id: string }[] };
+  expect(lastPacket.preferences).toHaveLength(1);
+  // Nothing was deleted: the first note is still in the journal verbatim.
+  expect(run.firstText).toBe(gardenLog(1));
+}, 300_000);

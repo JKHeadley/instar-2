@@ -1375,14 +1375,19 @@ const memoryPreferenceState = (view: JournalView, changes: readonly MemoryChange
     else if (change.mode === 'correct' && change.replacement !== undefined && lineage.has(key))
       lineage.add(JSON.stringify([change.trigger, change.replacement]));
   }
+  // The same clause stated again is one active preference, carried from its latest statement: each restatement
+  // used to ride every later packet twice (preferences and memoryCandidates), so a root whose operator repeats a
+  // reply style grew its always-sent parts by about 210 bytes a turn (live 2026-10-02, proofroom2-rule40-20261002).
+  // Every statement stays in the memory and change history and in the lineage (Rule 7).
+  const activate = (key: string, source: string, quote: string) => {
+    for (const [held, item] of active) if (item.quote === quote) active.delete(held);
+    active.set(key, { source, quote }); lineage.add(key);
+  };
   for (const change of changes) {
     const key = JSON.stringify([change.source, change.quote]);
-    if (change.mode === 'prefer') { active.set(key, { source: change.source, quote: change.quote }); lineage.add(key); }
-    else if (active.delete(key) && change.mode === 'correct') {
-      const replacementKey = JSON.stringify([change.trigger, change.replacement]);
-      active.set(replacementKey, { source: change.trigger, quote: change.replacement! });
-      lineage.add(replacementKey);
-    }
+    if (change.mode === 'prefer') activate(key, change.source, change.quote);
+    else if (active.delete(key) && change.mode === 'correct')
+      activate(JSON.stringify([change.trigger, change.replacement]), change.trigger, change.replacement!);
   }
   return { active, lineage };
 };
@@ -4376,6 +4381,8 @@ export function createJournalWorker(journal: ReturnType<typeof openPreviewJourna
    * ordinary call also clears a floor an earlier attempt left -- and `preparedWithFloor` restores -1 when its
    * walk ends, including on a throw. Nothing else reads it, so the summary pass can never see a stale floor. */
   let historySetAside = -1;
+  /** Set only on the reachability floor's last rung (preparedWithFloor): the reply-review reserve yields. */
+  let reviewReserveWaived = false;
   /** The one lookup of the turn now being prepared again: its searched phrases and the turns they found. Set only
    * around that second preparation, so every other preparation is unchanged. */
   let activeLookup: { id: string; words: string[]; found: Turn[] } | undefined;
@@ -5885,7 +5892,7 @@ export function createJournalWorker(journal: ReturnType<typeof openPreviewJourna
           try {
             const writer = sessionWriterOf(journal.view, turn);
             const prepared = ports.prepareModel?.({ question, context, id: turn.id, ...(writer ? { writer } : {}) });
-            if (ports.replyCheck && prepared !== undefined
+            if (ports.replyCheck && !reviewReserveWaived && prepared !== undefined
               && Buffer.byteLength(prepared) + Buffer.byteLength(SUBSCRIPTION_CONVERSATION_SYSTEM_PROMPT)
                 + replyReviewReserveFor(journal.view.limits.maxBytes) > journal.view.limits.maxBytes)
               throw Error('preview: reply review headroom');
@@ -5951,12 +5958,23 @@ export function createJournalWorker(journal: ReturnType<typeof openPreviewJourna
       let setAside = -1, attempt = preparedFor(turn, true, setAside);
       for (;;) {
         const carried = groundingHistory(journal.view, before(turn.update)).filter(item => item.update > setAside);
-        if (!('reason' in attempt) || !carried.length) return attempt;
+        if (!('reason' in attempt)) return attempt;
+        if (!carried.length) break;
         setAside = carried[Math.ceil(carried.length / 2) - 1]!.update;
         attempt = preparedFor(turn, true, setAside);
       }
+      // The last rung: with every earlier turn set aside, what is left is this message and the parts every turn
+      // carries, and no summary or later pass can make those smaller. The reply-review reserve yields here, so
+      // the turn is answered and its review, if it is then too large to build, is recorded unavailable and the
+      // reply released (Rules 86, 95), the same as any review that will not fit. Holding instead re-prepared the
+      // same packet every HELD_REPREPARE_MS for good and the operator heard nothing: live 2026-10-02, a fresh
+      // root at the default 32768 bytes answered three messages and then none (proofroom2-rule40-20261002,
+      // update 6230924: smallest prepared prompt 23830 bytes against 23093 left beside the reserve). If even
+      // this cannot fit, every variant overflowed on measured bytes and the caller sends the size notice.
+      reviewReserveWaived = true;
+      return preparedFor(turn, true, setAside);
       // Every other caller passes no floor, which also clears one; this restores it for a path that threw.
-    } finally { historySetAside = -1; }
+    } finally { historySetAside = -1; reviewReserveWaived = false; }
   };
   /** A created due turn still on its way to one send intent. A reservation with no recorded outcome outside a
    * running call is an orphaned UNKNOWN: never repeated, and it holds nothing. */
