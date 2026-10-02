@@ -344,6 +344,9 @@ export async function awaitReplicated(input: Readonly<{ token: ReplicationToken;
     const refused = input.refusal();
     if (refused !== null) return refused;
     await input.shipper.pump();
+    // A stop, expiry or ownership loss that arrived during the pump is known now: it refuses before admission.
+    const late = input.refusal();
+    if (late !== null) return late;
     if (input.shipper.covers(input.token)) return null;
     if (input.maxWaitMs !== undefined && input.elapsed() - started >= input.maxWaitMs) return REPLICATION_UNMET;
     input.waiting?.();

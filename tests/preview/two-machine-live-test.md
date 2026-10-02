@@ -87,7 +87,15 @@ PASS: its first role line matches the authority view.
 
 This phase runs only after Phase 1 passes in full, with his explicit trial grant and synthetic non-sensitive messages. The Studio's existing preview root is the seeded machine (`--journal-lineage seed` on its first multi-machine start), so its journal becomes the shared history. The Laptop root starts empty and receives the copy. Repeat T0, T1, T2 and T3 only. T2 and T3 deliberately make the agent silent for a minute; T5 to T7 take it offline for longer, so the desk schedules those only with his agreement.
 
-PASS and FAIL are exactly as in Phase 1. Any FAIL stops the phase. Both runners are stopped by PID, and the single-machine runner is restored by relaunching the Studio runner with `--machine-posture single-machine` and without the authority flags. That path is unchanged, and it uses the Studio's `journal.encrypted` as it stands.
+PASS and FAIL are exactly as in Phase 1. Any FAIL stops the phase, and the single-machine runner is restored as follows.
+
+**Rollback to one machine.** Single-machine startup reads the root's own `journal.encrypted` and never adopts the copy in `replica/`. After T3 the Laptop is the owner, so the Studio's own journal is older than the shared history; restarting it alone as it stands would resume old history and old call/send accounting, after Telegram was already allowed to drop the newer input. So the Studio first takes the newest history back through the ordinary verified hand-back:
+
+1. If the Studio runner is not the owner, make it the owner. Keep it running as the standby (start it with its usual multi-machine flags if it is down) and stop the current owner by its exact PID with `SIGTERM`. Its clean end sends the journal's last bytes and hands the lease back. PASS when the Studio's stderr says `owner: epoch N; history adopted` with `lineage.adopted` naming the previous owner.
+2. Verify the Studio root holds the newest accepted state. Its status (`journal-agent.mjs status --root …`) must show the same `turns`, `replies`, `calls` and `sendOutcomes` as the previous owner's last status, and the authority view's `cursor` must equal its `sharedHistory.replication.settledCursor`.
+3. Only then stop the Studio runner (`SIGTERM`, exact PID), the Laptop runner and the authority, all by PID. Relaunch the Studio runner with `--machine-posture single-machine` and without the authority or replica flags. That path is unchanged, and it now uses a `journal.encrypted` that holds the whole history.
+
+If step 1 or step 2 cannot be established (the owner died without a clean end, the Studio's copy is damaged or behind, or any count differs), **do not start a single-machine runner on either root.** Leave both roots as they are, including every `replica/` copy and set-aside journal, keep the agent silent, and hand the state to the desk. Restarting an older root would be a quiet loss of accepted input and of spend accounting (Rules 31, 45).
 
 ## Expected and not a failure
 
