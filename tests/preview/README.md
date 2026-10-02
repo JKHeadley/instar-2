@@ -3111,6 +3111,32 @@ Rules 4, 14, 15, 52, 53, 77, 79, 80, 82, 86, 87, 88, 95 and 106 on the live runn
   --approval-outbox /ABS/RUNNER_OUTBOX --approval-operator-uid UID_OF_THAT_USER`; `status
   .approvalSurface` then reads `{ installed: true, ready: true, page, passkeys }`. A store owned by
   the runner's own identity is refused (`installed: false`).
+- **Operator actions by explicit yes (Rules 28, 79, 82, 98; plan #91; `operator-yes.ts`).** The
+  two declared operator actions, `raise-caps` and `renew-expiry`, can be requested in chat and
+  completed by the verified operator's explicit yes, with no setup. The worker port is
+  `explicitYes: { context, installation, renewalActivation? }`: `installation` is the pinned
+  `ExplicitYesInstallation` record (the P-02 facts and whether a P-05 grant lets the agent speak as
+  the operator in the bound chat); `renewalActivation(expires)` returns the reviewed activation
+  record's digest for the new trial end when the host has one. The answer model may return
+  `operatorAction` (`{action:"raise-caps",limits:{maxCalls|maxReplies|maxTurns: number or "step"}}`
+  or `{action:"renew-expiry"}`); the guidance rides the packet only near a limit (the cap report's
+  80%), within 48 hours of the trial end, or while a request is open, so a fresh root's always-sent
+  bytes are unchanged. The runner, never the model, writes ONE exact request inside the governed
+  bounds (one raise adds at most the trial's original amount to a limit; a renewal names only
+  `SUBSCRIPTION_PREVIEW_EXPIRY` and needs the reviewed activation installed), with its own id,
+  digest and one-hour lifetime, and appends its fixed wording to the reply; an out-of-bounds or
+  unproposable request is answered with why not. A capped limited answer carries the raise the same
+  way when no independent approval page is installed. The verified operator's message that answers
+  the open request (a Telegram reply to it, or the operator's next message in that conversation) is
+  judged once by the single admission (`produceExplicitYes`): exactly `yes` or `approve` completes
+  it, the caps or expiry frame records `operator-yes:<request>:<reference>`, and the chat-yes
+  reference is consumed once. Anything else (an ambiguous answer, a later message, an edit, another
+  sender, an expired or superseded request, a moved base) changes nothing; a judged non-yes is
+  recorded as `operator-yes` refused. Where the installation record says the agent can speak as the
+  operator in chat (P-05), no request is proposed in chat and the single admission refuses a chat
+  yes. Not built yet: the GitHub review source (the P-05 deployment's route), the launch options and
+  status field that configure the port in `journal-agent.mjs`, so a live root still raises and
+  renews at the host command line, and the two declarations keep saying so.
 - **Supervised incidents (Rules 15, 88; P-14).** `scripts/host-watch.mjs` with
   `{"mode":"journal", "alerts": {"grant": "..."}}` restarts the runner after a failed exit with
   bounded backoff. After three consecutive failed restarts it records one incident episode with the
