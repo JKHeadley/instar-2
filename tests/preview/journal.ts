@@ -39,6 +39,11 @@ import { LIVE_JUDGMENTS, type ModelCallRecord } from './model-call-boundary.js';
 import { outboundSigner, settleSendOutcome, type OutboundProvenance, type OutboundSubject, type SendOutcome, type Speaker } from './outbound-provenance.js';
 import { retrospectivePlan, retrospectivePopulation, validateRetrospective, replyContextDigest, RETRO_OVER_CAP_REASON, type RetroPass, type RetroSiblingEvidence } from './retrospective.js';
 import { openReplyNotices, validAnswerNotices, type ReplyNotice } from './credential-reminders.js';
+import { admitChatYes, chatBinding, explicitYesStatus, operatorRefusalText, operatorRequestText, operatorYesAuthority, parseOperatorAction,
+  proposeOperatorRequest, wellFormedRequest, OPERATOR_YES_AUTHORITY, type ChatCandidate, type OperatorActionProposal, type OperatorRequest,
+  type ProposalState } from './operator-yes.js';
+import { chatYesReference } from '../../src/operator/explicit-yes.js';
+import type { ExplicitYesInstallation } from '../../src/operator/explicit-yes.js';
 
 
 
@@ -406,6 +411,11 @@ export interface ApprovalRequest { id: string; action: 'raise-caps' | 'stop'; ba
   /** A raise completes only through this challenge, issued by the independently administered verifier
    * (Part Nine's port) for exactly this request; a Telegram press can never complete it. */
   challenge?: SurfaceChallenge }
+/** One proposed operator request: the reply (or limited answer) that carried it, the Telegram message it was sent
+ * as, and what the operator's messages decided. A later request supersedes an undecided earlier one. */
+export interface OperatorRequestState { request: OperatorRequest; carrier: string; via: 'reply' | 'limited'; thread: number | null;
+  message?: number; superseded?: true; approved?: { turn: string; reference: string; hash: string; at: number }; applied?: true;
+  refusals: { turn: string; detail: string }[] }
 /** What a raise completion consumed: the verifier's one-use proof, bound to the exact challenge. */
 export interface VerifiedApproval { challenge: string; principal: string; receipt: string }
 /** The operator's act submitted on the independent approval surface (never through the agent's chat). */
@@ -446,6 +456,24 @@ export const RAISE_LINK_HINT = 'Open the approval page below to approve it, or t
 export const RAISE_SURFACE_HINT = 'Approve it on your approval page, or tap Decline.';
 export const STOP_PAGE_BUTTON = 'Stop page';
 export const RAISE_NEEDS_SURFACE = 'A raise is approved on your approval page, not here. Nothing changed.';
+/** Why a request is not proposed where the installation record says the agent can speak as the operator in chat (P-05). */
+export const CHAT_YES_UNAVAILABLE = 'on this setup I can also send messages as you in this chat, so a "yes" here would not prove it came from you';
+/** Rules 10, 82: how the mind proposes one of the two declared operator actions; the runner writes the request. */
+export const OPERATOR_ACTION_GUIDANCE = ' If the verified operator asks to raise this trial\'s limits or extend its end, return JSON with reply and operatorAction:{action:"raise-caps",limits:{maxCalls|maxReplies|maxTurns: the number they named, or "step" for the usual increase}} or {action:"renew-expiry"}. The exact request, or why not, is added below your reply for them to approve; introduce it in plain words and never say it is done.';
+/** When the proposal guidance rides the packet: a limit at the cap report's own "near" level (80% used), or the trial
+ * ending within two days. A fresh root's always-sent bytes are unchanged (default-context-floor.test.ts). */
+export const OPERATOR_ACTION_NEAR_END_MS = 48 * 3_600_000;
+export function limitsNear(view: JournalView, now: number): boolean {
+  const near = (used: number, limit: number) => limit > 0 && used >= limit - Math.floor(limit / 5);
+  return near(view.calls, view.limits.maxCalls) || near(view.replies, view.limits.maxReplies)
+    || near(view.order.length, view.limits.maxTurns) || view.expires - now <= OPERATOR_ACTION_NEAR_END_MS;
+}
+/** Sent only while a request is open or was just answered (Rule 98: only an explicit yes approves). */
+export const OPERATOR_REQUEST_GUIDANCE = ' operatorRequest is your proposed request and the runner\'s verdict on the operator\'s answer. Only the runner applies it, on a plain yes. Report its state as shown; never claim a change it does not show. If not approved, say nothing changed and that replying just "yes" approves it.';
+/** Why not, where no explicit-yes source is configured on this root at all. */
+export const NO_YES_SOURCE = 'on this setup that approval is still given at the host, not in this chat';
+/** Said when the answer named an operator action the runner could not read exactly (Rule 2: never dropped in silence). */
+export const OPERATOR_ACTION_UNREAD = 'I could not form that request exactly, so nothing was proposed. Please ask again.';
 /** The preview's register generation, named in every challenge it asks the verifier to issue. */
 export const PREVIEW_REGISTER_GENERATION = Object.freeze({ owner: 'part-three', name: 'RegisterGeneration',
   id: 'preview:register' }) as RegisterGenerationReference;
@@ -793,6 +821,8 @@ export type JournalRecord =
   /** One limited, truthful answer covering the listed unanswered messages in one conversation (Rule 15). */
   | { kind: 'limited-intent'; id: string; covers: string[]; reason: LimitedReason; text: string; chat: string; thread?: number; grant: string;
     approval?: ApprovalRequest;
+    /** The exact raise this limited answer asks the operator to approve with an explicit yes (Rules 79, 82). */
+    operatorRequest?: OperatorRequest;
     /** Rule 89: the fixed limited answer is signed as infrastructure; absent only on legacy rows. */
     provenance?: OutboundProvenance; at: number }
   /** The verified operator's button press on a prefilled request; its raw Telegram update is kept. */
@@ -805,6 +835,10 @@ export type JournalRecord =
    * admitted: the request exists on the operator's own surface, not in the conversation (Eleven §2). */
   | { kind: 'approval-request'; id: string; reason: RaiseReason; approval: ApprovalRequest; at: number }
   | { kind: 'limited-sent'; id: string; message: number; at: number }
+  /** The verified operator's message answering an open operator request (`id` is that message's turn): the single
+   * explicit-yes admission's verdict. `approved` consumes `reference` once; `refused` changes nothing (Rules 28, 98). */
+  | { kind: 'operator-yes'; id: string; request: string; binding: 'reply' | 'next'; outcome: 'approved' | 'refused';
+    reference?: string; hash?: string; detail?: string; at: number }
   | { kind: 'channel-item'; item: ChannelItem; at: number }
   | { kind: 'channel-source-cursor'; source: 'telegram' | 'slack'; cursor: ChannelSourceCursor; reset?: true; at: number }
   | { kind: 'channel-source-error'; source: 'telegram' | 'slack'; error: string | null; at: number }
@@ -828,6 +862,8 @@ export type JournalRecord =
     notices?: ReplyNotice[];
     /** Model-proposed promises and fulfillments, validated as exact quotes of this answer (Rule 10). */
     promises?: PromiseProposal[]; fulfills?: FulfillmentProposal[];
+    /** The operator action the model read this verified operator message as asking for (Rules 10, 82). */
+    operatorAction?: OperatorActionProposal;
     at: number }
   | { kind: 'status-answer'; id: string; text: string; prompt: string; at: number }
   | { kind: 'model-uncertain'; id: string; state: 'uncertain'; usage?: ModelUsage; latencyMs?: number; at: number }
@@ -880,6 +916,8 @@ export type JournalRecord =
     heldReview?: ReplyHeld;
     /** The prefilled operator request this reply carries (the stop confirmation). */
     approval?: ApprovalRequest;
+    /** The exact operator request this reply proposes, approved only by an explicit yes (Rules 79, 82, 98). */
+    operatorRequest?: OperatorRequest;
     /** Open agent promises this reply carries out, as the model proposed them; absent on legacy rows. */
     fulfills?: number[];
     /** Rule 110: the first reply after a compaction accounts for the last inbound before the pause. */
@@ -1021,6 +1059,8 @@ export interface Turn { id: string; update: number; text: string; raw: string; a
   answerRejected?: RejectedObligations; answerReports?: string[]; answerNotices?: ReplyNotice[];
   /** Validated model proposals from the answer, and the fulfillments recorded with the reply intent. */
   proposedPromises?: PromiseProposal[]; proposedFulfills?: FulfillmentProposal[]; intentFulfills?: number[];
+  /** The operator action this turn's answer proposed; its reply carries the exact request or the refusal. */
+  operatorAction?: OperatorActionProposal;
   /** Rule 110: the continuity account the send intent recorded for this reply. */
   continuity?: ContinuityAccount }
 
@@ -1045,6 +1085,8 @@ export interface JournalView { genesis: Extract<JournalRecord, {kind:'genesis'}>
   limits: { maxCalls: number; maxReplies: number; maxTurns: number; maxBytes: number }; capAuthority: string | null; capRaisedAt: number | null;
   /** Effective trial end: genesis.expires until an `expiry` renewal frame extends it. */
   expires: number; expiryAuthority: string | null;
+  /** Rules 79, 82, 98: every operator request a sent reply or limited answer proposed, with its explicit-yes verdicts. */
+  operatorRequests: OperatorRequestState[];
   capReports: Set<string>;
   /** Rule 11 index-only work: every offer of a source (one entry per offer, so a source appears up to
    * `INDEX_ATTEMPT_LIMIT` times), terms admitted, the reservation awaiting its result, and earlier
@@ -1381,7 +1423,7 @@ function restoreSnapshot(snapshot: Snapshot, genesis: JournalView['genesis']): J
     throw Error('preview journal: snapshot turn index differs');
   const legacyFloor = snapshot.retained.reduce((max, row) => 'at' in row ? Math.max(max, row.at) : max, 0);
   const clockFloor = saved.clockFloor ?? saved.turns.reduce((max, [, turn]) => Math.max(max, turn.at), legacyFloor);
-  const view: JournalView = { ...saved, personAttributes: saved.personAttributes ?? [], clockFloor, expires: saved.expires ?? genesis.expires, expiryAuthority: saved.expiryAuthority ?? null,
+  const view: JournalView = { ...saved, personAttributes: saved.personAttributes ?? [], clockFloor, expires: saved.expires ?? genesis.expires, expiryAuthority: saved.expiryAuthority ?? null, operatorRequests: saved.operatorRequests ?? [],
     tokenTotals: saved.tokenTotals ?? emptyTokenTotals(), tokenCalls: saved.tokenCalls ?? [],
     replyCheckPaths: { ...saved.replyCheckPaths, 'operator-echo': saved.replyCheckPaths?.['operator-echo'] ?? 0 },
     changeHistory: saved.changeHistory ?? [], undos: saved.undos ?? [],
@@ -2278,6 +2320,59 @@ type SystemCheck = (writer: WriterRecord | undefined, method: SystemMethod, occu
 /** The exact occurrence the scheduler writer signs for one due turn: its id and the requests it carries. */
 export const requestOccurrence = (id: string, items: readonly ReminderRef[]) => JSON.stringify([id, items.map(reminderKey)]);
 /** `admission` is 'replay' only while a stored journal is read back; every new record projects as 'new'. */
+/** Rules 79, 82: a proposed request is recorded only exactly as issued, against the current base, and only with
+ * the fixed request text in the very message that carries it. It supersedes any undecided earlier request. */
+function addOperatorRequest(view: JournalView, request: OperatorRequest, carrier: string, via: OperatorRequestState['via'],
+  thread: number | null, text: string, at: number): void {
+  if (!wellFormedRequest(request, carrier, view.genesis.grant) || request.base !== approvalBase(view) || view.stop !== null
+    || request.issuedAt > at || request.expiresAt > view.expires || view.operatorRequests.some(item => item.request.id === request.id)
+    || !text.includes(operatorRequestText(request, { limits: view.limits, expires: view.expires }))
+    || request.action === 'raise-caps' && (['maxCalls', 'maxReplies', 'maxTurns'] as const).some(key => request.limits![key] < view.limits[key])
+    || request.action === 'renew-expiry' && !(request.expires! > view.expires))
+    throw Error('preview journal: operator request refused');
+  for (const item of view.operatorRequests) if (!item.approved) item.superseded = true;
+  view.operatorRequests.push({ request: { ...request, ...(request.limits ? { limits: { ...request.limits } } : {}) }, carrier, via, thread, refusals: [] });
+}
+function sentOperatorRequest(view: JournalView, carrier: string, via: OperatorRequestState['via'], message: number): void {
+  const state = view.operatorRequests.find(item => item.carrier === carrier && item.via === via && item.message === undefined);
+  if (state) state.message = message;
+}
+/** The Telegram message id of a recorded operator turn, or null. */
+export function turnMessageId(turn: Turn): number | null {
+  try { const raw = JSON.parse(turn.raw) as TelegramUpdate, id = (raw.edited_message ?? raw.message)?.message_id;
+    return Number.isSafeInteger(id) && id! > 0 ? id! : null; } catch { return null; }
+}
+/** The explicit-yes verdict on one verified operator message for one sent, undecided request (Rules 28, 98). An
+ * approval names the chat-yes reference of exactly that message and consumes it once; a refusal changes nothing. */
+function decideOperatorRequest(view: JournalView, turn: Turn, row: Extract<JournalRecord, { kind: 'operator-yes' }>): void {
+  const state = view.operatorRequests.find(item => item.request.id === row.request), message = turnMessageId(turn);
+  if (!state || state.message === undefined || state.approved || state.superseded || !verifiedOperatorTurn(view, turn)
+    || message === null || (row.binding !== 'reply' && row.binding !== 'next') || state.refusals.some(item => item.turn === turn.id))
+    throw Error('preview journal: operator yes order');
+  if (row.outcome === 'approved') {
+    const reference = chatYesReference(view.genesis.chat, String(message));
+    if (row.reference !== reference || typeof row.hash !== 'string' || !/^sha256:[a-f0-9]{64}$/u.test(row.hash) || row.at > state.request.expiresAt
+      || state.request.base !== approvalBase(view) || view.stop !== null
+      || view.operatorRequests.some(item => item.approved?.reference === reference)) throw Error('preview journal: operator yes refused');
+    state.approved = { turn: turn.id, reference, hash: row.hash, at: row.at };
+    return;
+  }
+  if (row.outcome !== 'refused' || typeof row.detail !== 'string' || !row.detail || Buffer.byteLength(row.detail) > 1024 || row.reference !== undefined)
+    throw Error('preview journal: operator yes refusal malformed');
+  state.refusals.push({ turn: turn.id, detail: row.detail });
+}
+/** A caps or expiry frame written under an explicit yes applies exactly the approved request, once, at its base. */
+function applyOperatorYes(view: JournalView, authority: string, action: OperatorRequest['action'],
+  values: { limits?: OperatorRequest['limits']; expires?: number; bytesUnchanged?: boolean }): void {
+  const yes = OPERATOR_YES_AUTHORITY.exec(authority);
+  if (!yes) return;
+  const state = view.operatorRequests.find(item => item.request.id === yes[1]);
+  if (!state?.approved || state.applied || state.approved.reference !== yes[2] || state.request.action !== action
+    || state.request.base !== approvalBase(view) || authority !== operatorYesAuthority(state.request.id, state.approved.reference)
+    || (action === 'raise-caps' ? (['maxCalls', 'maxReplies', 'maxTurns'] as const).some(key => state.request.limits?.[key] !== values.limits?.[key]) || values.bytesUnchanged !== true
+      : state.request.expires !== values.expires)) throw Error('preview journal: operator yes application refused');
+  state.applied = true;
+}
 function project(view: JournalView, row: JournalRecord, system?: SystemCheck, admission: 'new' | 'replay' = 'new'): void {
   if ('at' in row) view.clockFloor = Math.max(view.clockFloor, row.at);
   if (row.kind === 'hold') {
@@ -2308,10 +2403,13 @@ function project(view: JournalView, row: JournalRecord, system?: SystemCheck, ad
   }
   if (row.kind === 'expiry') {
     checkExpiry(view, row, 'replay');
+    applyOperatorYes(view, row.authority, 'renew-expiry', { expires: row.expires });
     view.expires = row.expires; view.expiryAuthority = row.authority; return;
   }
   if (row.kind === 'caps') {
     checkCaps(view, row, 'replay');
+    applyOperatorYes(view, row.authority, 'raise-caps', { limits: { maxCalls: row.maxCalls, maxReplies: row.maxReplies, maxTurns: row.maxTurns },
+      bytesUnchanged: (row.maxBytes ?? view.limits.maxBytes) === view.limits.maxBytes && row.writeOff === undefined });
     view.limits = { maxCalls: row.maxCalls, maxReplies: row.maxReplies, maxTurns: row.maxTurns, maxBytes: row.maxBytes ?? view.limits.maxBytes };
     view.capAuthority = row.authority; view.capRaisedAt = row.at;
     if (row.writeOff !== undefined) view.writtenOff = [...view.writtenOff ?? [], ...row.writeOff];
@@ -2816,6 +2914,7 @@ function project(view: JournalView, row: JournalRecord, system?: SystemCheck, ad
   }
   const turn = view.turns.get(row.id);
   if (!turn) throw Error('preview journal: orphan effect');
+  if (row.kind === 'operator-yes') { decideOperatorRequest(view, turn, row); return; }
   if (row.kind === 'held-notice-intent') {
     const lastNotice = lastHeldNoticeAt(view, row.id);
     const heldCount = view.order.filter(item => item.accepted && item.held !== undefined && item.intent === undefined).length;
@@ -2854,6 +2953,11 @@ function project(view: JournalView, row: JournalRecord, system?: SystemCheck, ad
         || !validApproval(view, row.id, row.approval, 'stop', row.text)
         : !validApproval(view, row.id, row.approval, 'raise-caps', row.text, row.reason)))
       throw Error('preview journal: limited answer order or reserve');
+    if (row.operatorRequest !== undefined) {
+      if (row.approval !== undefined || row.reason === 'worker' || row.operatorRequest.action !== 'raise-caps')
+        throw Error('preview journal: limited operator request refused');
+      addOperatorRequest(view, row.operatorRequest, row.id, 'limited', row.thread ?? null, row.text, row.at);
+    }
     for (const item of covered as Turn[]) item.limited = { text: row.text, at: row.at, lead: row.id, reason: row.reason };
     if (row.approval) turn.approval = { ...row.approval };
     return;
@@ -2895,7 +2999,7 @@ function project(view: JournalView, row: JournalRecord, system?: SystemCheck, ad
   if (row.kind === 'limited-sent') {
     if (turn.limited?.lead !== turn.id || turn.limitedSent !== undefined || !Number.isSafeInteger(row.message) || row.message <= 0)
       throw Error('preview journal: limited answer receipt order');
-    turn.limitedSent = row.message; return;
+    turn.limitedSent = row.message; sentOperatorRequest(view, row.id, 'limited', row.message); return;
   }
   const replyCandidate = turn.answer ?? (turn.noticeClass === 'unknown-answer' ? UNKNOWN_ANSWER_NOTICE
     : turn.noticeClass === 'too-long-input' ? TOO_LONG_INPUT_NOTICE : undefined);
@@ -3100,6 +3204,12 @@ function project(view: JournalView, row: JournalRecord, system?: SystemCheck, ad
       || !row.lastNamedPerson || Buffer.byteLength(row.lastNamedPerson) > 100 || !turn.accepted
       || !turn.text.includes(row.lastNamedPerson))) throw Error('preview journal: unsupported person cue');
     turn.answer = row.text; if (row.reason !== undefined) turn.answerReason = row.reason;
+    if (row.operatorAction !== undefined) {
+      if (!verifiedOperatorTurn(view, turn) || turn.requestedAction !== undefined
+        || JSON.stringify(parseOperatorAction(row.operatorAction)) !== JSON.stringify(row.operatorAction))
+        throw Error('preview journal: operator action proposal refused');
+      turn.operatorAction = row.operatorAction;
+    }
     if (row.promises?.some(item => !row.text.includes(item.quote) || (item.when !== undefined && !item.quote.includes(item.when))))
       throw Error('preview journal: unsupported promise proposal');
     if (row.promises?.length) turn.proposedPromises = row.promises;
@@ -3230,6 +3340,10 @@ function project(view: JournalView, row: JournalRecord, system?: SystemCheck, ad
       throw Error('preview journal: intent order');
     if (row.approval !== undefined && (!isStopCommand(turn.text) || !validApproval(view, turn.id, row.approval, 'stop', row.text)))
       throw Error('preview journal: stop request refused');
+    if (row.operatorRequest !== undefined) {
+      if (turn.operatorAction?.action !== row.operatorRequest.action) throw Error('preview journal: operator request without proposal');
+      addOperatorRequest(view, row.operatorRequest, turn.id, 'reply', turn.thread ?? null, row.text, row.at);
+    }
     turn.intent = row.text; turn.intentBody = row.body ?? row.text; view.replies++;
     if (row.release) turn.release = row.release;
     if (row.heldReview) turn.heldReview = row.heldReview;
@@ -3290,7 +3404,7 @@ function project(view: JournalView, row: JournalRecord, system?: SystemCheck, ad
   if (row.kind === 'sent') { if (turn.intent === undefined || turn.sent !== undefined
       || row.latencyMs !== undefined && (turn.sendMs !== undefined || !Number.isSafeInteger(row.latencyMs) || row.latencyMs < 0))
       throw Error('preview journal: receipt order');
-    turn.sent = row.message; turn.sentAt = row.at;
+    turn.sent = row.message; turn.sentAt = row.at; sentOperatorRequest(view, turn.id, 'reply', row.message);
     if (row.latencyMs !== undefined) turn.sendMs = row.latencyMs;
     const grouped = turn.reminderBatch === undefined ? undefined : view.reminders.get(requestedBatchKey(turn.reminderBatch));
     if (grouped) { grouped.sent = row.message; grouped.sentAt = row.at; }
@@ -3387,7 +3501,7 @@ export function openPreviewJournal(path: string, key: Uint8Array, initial?: Extr
       const { row } = decoded;
       if (!view) {
         if (row.kind !== 'genesis') throw Error('preview journal: genesis missing');
-        view = { genesis: row, cursor: row.cursor, clockFloor: 0, turns: new Map(), order: [], heldTurns: new Set(), awayEvents: [], channelItems: new Map(), channelSources: new Map(), channelSourceErrors: new Map(), calls: 0, replies: 0, stop: null, stopChallenges: [], waiting: [], tokenTotals: emptyTokenTotals(), tokenCalls: [], tokenCurrent: new Map(), limits: limitsOf(row), capAuthority: null, capRaisedAt: null, expires: row.expires, expiryAuthority: null, capReports: new Set(), stepCheckStarted: false, stepCheckCleanup: false, stepChecks: new Map(), indexOffered: [], indexConcepts: [], indexOpen: null, indexUnknown: [], summaries: [], summaryReservations: new Map(), summaryRequired: new Set(), summaryCandidates: new Map(), summaryChecks: new Map(), summaryFaithfulness: new Map(), summaryReviews: new Set(), summaryCheckCounts: { pass: 0, violation: 0, unsure: 0, unavailable: 0 }, lastSummaryCheck: null, summaryFailures: new Map(), lastSummaryFailure: null, summaryOverCap: [], summaryOverCapFrontiers: [], summarySpanFailures: [], summaryFormatFailures: [], lastPrompt: null, failureClasses: new Map(), providerStates: new Map(), callOutcomes: [], callOutcomeCounts: new Map(), sourceStop: null, imported: false, operatorEvents: [], people: [], personAttributes: [], personMerges: [], commitments: [], closed: new Map(), memory: [], dated: [], conflicts: [], directives: [], blockers: [], commitmentRefusals: 0, obligationWork: {}, rejectedObligations: 0, changeHistory: [], undos: [], mentionedDates: new Set(), reminders: new Map(), reminderGrant: null, reminderCancels: [], summaryGrants: [], questions: [], questionsReviewed: new Set(), corrections: [], jevChecks: 0, replyCheckCounts: { pass: 0, violation: 0, unsure: 0, unavailable: 0 }, replyCheckPaths: { jev: 0, subscription: 0, holding: 0, 'operator-echo': 0 }, lastReplyCheck: null, sendOutcomes: [], speakers: { agent: 0, infrastructure: 0 }, modelCalls: emptyModelCalls(), retroPasses: [] };
+        view = { genesis: row, cursor: row.cursor, clockFloor: 0, turns: new Map(), order: [], heldTurns: new Set(), awayEvents: [], channelItems: new Map(), channelSources: new Map(), channelSourceErrors: new Map(), calls: 0, replies: 0, stop: null, stopChallenges: [], waiting: [], tokenTotals: emptyTokenTotals(), tokenCalls: [], tokenCurrent: new Map(), limits: limitsOf(row), capAuthority: null, capRaisedAt: null, expires: row.expires, expiryAuthority: null, operatorRequests: [], capReports: new Set(), stepCheckStarted: false, stepCheckCleanup: false, stepChecks: new Map(), indexOffered: [], indexConcepts: [], indexOpen: null, indexUnknown: [], summaries: [], summaryReservations: new Map(), summaryRequired: new Set(), summaryCandidates: new Map(), summaryChecks: new Map(), summaryFaithfulness: new Map(), summaryReviews: new Set(), summaryCheckCounts: { pass: 0, violation: 0, unsure: 0, unavailable: 0 }, lastSummaryCheck: null, summaryFailures: new Map(), lastSummaryFailure: null, summaryOverCap: [], summaryOverCapFrontiers: [], summarySpanFailures: [], summaryFormatFailures: [], lastPrompt: null, failureClasses: new Map(), providerStates: new Map(), callOutcomes: [], callOutcomeCounts: new Map(), sourceStop: null, imported: false, operatorEvents: [], people: [], personAttributes: [], personMerges: [], commitments: [], closed: new Map(), memory: [], dated: [], conflicts: [], directives: [], blockers: [], commitmentRefusals: 0, obligationWork: {}, rejectedObligations: 0, changeHistory: [], undos: [], mentionedDates: new Set(), reminders: new Map(), reminderGrant: null, reminderCancels: [], summaryGrants: [], questions: [], questionsReviewed: new Set(), corrections: [], jevChecks: 0, replyCheckCounts: { pass: 0, violation: 0, unsure: 0, unavailable: 0 }, replyCheckPaths: { jev: 0, subscription: 0, holding: 0, 'operator-echo': 0 }, lastReplyCheck: null, sendOutcomes: [], speakers: { agent: 0, infrastructure: 0 }, modelCalls: emptyModelCalls(), retroPasses: [] };
         snapshotAllowed = true;
       } else if (row.kind === 'snapshot-start') {
         if (!snapshotAllowed || pendingSnapshot || row.version !== 1 || !Number.isSafeInteger(row.bytes) || row.bytes <= 0
@@ -3493,7 +3607,7 @@ export function openPreviewJournal(path: string, key: Uint8Array, initial?: Extr
       size = writeFrame(fd, row, key, size); fsyncSync(fd);
       if (row.kind === 'genesis') {
         if (view) throw Error('preview journal: duplicate genesis');
-        view = { genesis: row, cursor: row.cursor, clockFloor: 0, turns: new Map(), order: [], heldTurns: new Set(), awayEvents: [], channelItems: new Map(), channelSources: new Map(), channelSourceErrors: new Map(), calls: 0, replies: 0, stop: null, stopChallenges: [], waiting: [], tokenTotals: emptyTokenTotals(), tokenCalls: [], tokenCurrent: new Map(), limits: limitsOf(row), capAuthority: null, capRaisedAt: null, expires: row.expires, expiryAuthority: null, capReports: new Set(), stepCheckStarted: false, stepCheckCleanup: false, stepChecks: new Map(), indexOffered: [], indexConcepts: [], indexOpen: null, indexUnknown: [], summaries: [], summaryReservations: new Map(), summaryRequired: new Set(), summaryCandidates: new Map(), summaryChecks: new Map(), summaryFaithfulness: new Map(), summaryReviews: new Set(), summaryCheckCounts: { pass: 0, violation: 0, unsure: 0, unavailable: 0 }, lastSummaryCheck: null, summaryFailures: new Map(), lastSummaryFailure: null, summaryOverCap: [], summaryOverCapFrontiers: [], summarySpanFailures: [], summaryFormatFailures: [], lastPrompt: null, failureClasses: new Map(), providerStates: new Map(), callOutcomes: [], callOutcomeCounts: new Map(), sourceStop: null, imported: false, operatorEvents: [], people: [], personAttributes: [], personMerges: [], commitments: [], closed: new Map(), memory: [], dated: [], conflicts: [], directives: [], blockers: [], commitmentRefusals: 0, obligationWork: {}, rejectedObligations: 0, changeHistory: [], undos: [], mentionedDates: new Set(), reminders: new Map(), reminderGrant: null, reminderCancels: [], summaryGrants: [], questions: [], questionsReviewed: new Set(), corrections: [], jevChecks: 0, replyCheckCounts: { pass: 0, violation: 0, unsure: 0, unavailable: 0 }, replyCheckPaths: { jev: 0, subscription: 0, holding: 0, 'operator-echo': 0 }, lastReplyCheck: null, sendOutcomes: [], speakers: { agent: 0, infrastructure: 0 }, modelCalls: emptyModelCalls(), retroPasses: [] };
+        view = { genesis: row, cursor: row.cursor, clockFloor: 0, turns: new Map(), order: [], heldTurns: new Set(), awayEvents: [], channelItems: new Map(), channelSources: new Map(), channelSourceErrors: new Map(), calls: 0, replies: 0, stop: null, stopChallenges: [], waiting: [], tokenTotals: emptyTokenTotals(), tokenCalls: [], tokenCurrent: new Map(), limits: limitsOf(row), capAuthority: null, capRaisedAt: null, expires: row.expires, expiryAuthority: null, operatorRequests: [], capReports: new Set(), stepCheckStarted: false, stepCheckCleanup: false, stepChecks: new Map(), indexOffered: [], indexConcepts: [], indexOpen: null, indexUnknown: [], summaries: [], summaryReservations: new Map(), summaryRequired: new Set(), summaryCandidates: new Map(), summaryChecks: new Map(), summaryFaithfulness: new Map(), summaryReviews: new Set(), summaryCheckCounts: { pass: 0, violation: 0, unsure: 0, unavailable: 0 }, lastSummaryCheck: null, summaryFailures: new Map(), lastSummaryFailure: null, summaryOverCap: [], summaryOverCapFrontiers: [], summarySpanFailures: [], summaryFormatFailures: [], lastPrompt: null, failureClasses: new Map(), providerStates: new Map(), callOutcomes: [], callOutcomeCounts: new Map(), sourceStop: null, imported: false, operatorEvents: [], people: [], personAttributes: [], personMerges: [], commitments: [], closed: new Map(), memory: [], dated: [], conflicts: [], directives: [], blockers: [], commitmentRefusals: 0, obligationWork: {}, rejectedObligations: 0, changeHistory: [], undos: [], mentionedDates: new Set(), reminders: new Map(), reminderGrant: null, reminderCancels: [], summaryGrants: [], questions: [], questionsReviewed: new Set(), corrections: [], jevChecks: 0, replyCheckCounts: { pass: 0, violation: 0, unsure: 0, unavailable: 0 }, replyCheckPaths: { jev: 0, subscription: 0, holding: 0, 'operator-echo': 0 }, lastReplyCheck: null, sendOutcomes: [], speakers: { agent: 0, infrastructure: 0 }, modelCalls: emptyModelCalls(), retroPasses: [] };
       } else project(view!, row, systemCheck);
       boundary?.(`after:${row.kind}`);
       if (row.kind !== 'genesis' && size > Math.max(compactBytes, snapshotBase * 2)) compact();
@@ -3822,6 +3936,11 @@ export interface PreviewPorts {
     /** The exact wording a raise will show, handed to the surface before its challenge is issued; the
      * surface renders it only if it is the fixed template and hashes to the rendering digest. */
     wording?(renderingDigest: Hash, text: string): void };
+  /** Rules 79, 82, 98 (plan #91): the explicit-yes source for the two declared operator actions, raise-caps and
+   * renew-expiry. `installation` is the pinned record of where a yes may come from (the P-02 and P-05 facts);
+   * `renewalActivation` returns the reviewed activation record's digest for a new trial end when the host has one.
+   * Absent: no operator request is proposed in chat, and an asked-for one is answered with why not. */
+  explicitYes?: { context: BoundaryContext; installation: ExplicitYesInstallation; renewalActivation?(expires: number): string | null };
   replyCheck?: Pick<ReplyCheckPorts, 'jev' | 'escalate' | 'elapsedMs'> & { summaryReview?(state: string, through: number): Promise<{
     verdict: 'pass' | 'violation' | 'unavailable'; latencyMs: number; retryable?: true; usage?: ModelUsage }>;
     /** The mind's one revision of an objected draft (same model envelope as review). Absent: no revision round. */
@@ -3982,6 +4101,7 @@ export function createJournalWorker(journal: ReturnType<typeof openPreviewJourna
         ...(accepted && parsed.thread !== undefined ? { thread: parsed.thread } : {}),
         ...(editOf === undefined || replaces === undefined ? {} : { editOf, replaces }),
         ...(reserve ? { reserve: true as const } : {}) });
+      if (accepted) answerOperatorRequest(parsed.id, update, principal);
     }
     intakeHeld = held;
     // A held page that moved the cursor may have more backlog behind it: the runner reads on at once.
@@ -5172,6 +5292,17 @@ export function createJournalWorker(journal: ReturnType<typeof openPreviewJourna
     const blockerItems = awayFor === undefined ? [] : recentWithin(openBlockers(journal.view).map(({ id, note }) => ({ id, kind: note.kind,
       claim: clean(redact(note.claim).text, true), constraint: note.constraint, outsideAction: clean(redact(note.outsideAction).text, true),
       recheck: localStamp(note.recheckAt, zone).slice(0, 10), recheckDue: now >= note.recheckAt })), BLOCKER_ITEMS_BYTES);
+    // Rules 79, 82, 98: the open operator request, or the verdict on this very message's answer to one.
+    const requestState = question === undefined || !fromOperator(question) ? undefined : journal.view.operatorRequests.at(-1);
+    const answeredHere = requestState !== undefined && (requestState.approved?.turn === question!.id
+      || requestState.refusals.some(item => item.turn === question!.id));
+    // An approval that never applied (a crash between its two frames) stays visible until a later request replaces it.
+    const operatorRequest = requestState && (answeredHere || requestState.approved !== undefined && !requestState.applied
+      || requestState.message !== undefined && !requestState.superseded && !requestState.approved && now <= requestState.request.expiresAt) ? { id: requestState.request.id, action: requestState.request.action,
+      ...(requestState.request.limits ? { limits: requestState.request.limits } : { trialEnd: isoMinute(requestState.request.expires!) }),
+      state: requestState.approved ? requestState.applied ? 'approved by the operator and applied' : 'approved by the operator, not applied yet'
+        : answeredHere ? `not approved: ${requestState.refusals.find(item => item.turn === question!.id)!.detail}`
+          : 'open, waiting for the operator\'s plain yes' } : undefined;
     const packet = JSON.stringify({ now, clock: { utc: new Date(now).toISOString(), zone, day: localDay,
       time: `${String(local.hour).padStart(2, '0')}:${String(local.minute).padStart(2, '0')}`,
       weekday: new Intl.DateTimeFormat('en-US', { timeZone: zone, weekday: 'long' }).format(now) },
@@ -5187,6 +5318,8 @@ export function createJournalWorker(journal: ReturnType<typeof openPreviewJourna
           || journal.view.awayEvents.some(event => event.kind === 'hold' && now - event.at < 26 * 3_600_000) ? ' History may show a held answer or a fixed held notice as delivery state; do not narrate a past hold or repeat its notice in an ordinary reply. The runner sends any due held notice on its fixed path. Explain a hold when the operator asks about it.' : '')
         + (/[$€£¥]\s?\p{Nd}|\p{Nd}\s?(?:%|°|\p{L})/u.test([question?.text ?? '', summary?.text ?? '', ...shownTurns.map(item => item.text), ...channels.map(item => ` ${item.text}`)].join(' '))
           ? ' When recalling a measured fact, copy its exact number and unit from an original history, recalled, or channelMemory quote. Do not round, convert, omit, or invent the unit. If only a summary gives an approximate value, say the exact value is unknown.' : '')
+        + (ports.explicitYes && (operatorRequest || limitsNear(journal.view, now)) ? OPERATOR_ACTION_GUIDANCE : '')
+        + (operatorRequest ? OPERATOR_REQUEST_GUIDANCE : '')
         + (summary || journal.view.summaries.length ? sourceTrustInstruction : '')
         + (due.length || selectedDated.window ? ' dated is a bounded selection of operator dates; only an item with remind:true is something the operator asked you to do at that time. datedScope is a calendar priority hint, not the meaning of the question; dated may include nearby dates outside it. Interpret the question yourself using the shown dates. moreDated counts candidate occurrences omitted by the item or byte cap; absence is not proof that an item does not exist. Do not claim a complete list when moreDated is positive. State absolute YYYY-MM-DD dates and zones, and ask about unresolved dates.' : '')
         + (due.length ? ' dated holds upcoming, due, overdue and unresolved operator dates; only an item with remind:true is something the operator asked you to do at that time. Resolve relative dates in the operator zone; next Friday means the Friday of the following calendar week. State absolute YYYY-MM-DD dates and ask about unresolved dates.' : '')
@@ -5215,6 +5348,7 @@ export function createJournalWorker(journal: ReturnType<typeof openPreviewJourna
         + (undecidedEdits.length ? ' undecidedEdits records revisions and operator corrections whose fact change could not be judged. Use the current revision or correction and treat any conflicting prior claim as uncertain. moreUndecidedEdits counts older unresolved items omitted by the bound; an earlier claim they may concern is uncertain too.' : '')
         + (labelAll ? ' Every history item names the conversation of this private chat it was said in, with its date.'
           : crossed ? ' Items with a conversation field were said by the same operator in another conversation of this private chat, named there with its date; the operator is the only audience of every conversation, so they are your shared memory and may be used here.' : ''),
+      ...(operatorRequest ? { operatorRequest } : {}),
       ...(pendingReminders.length ? { reminders: pendingReminders.map(item => ({ id: reminderId(item),
         quote: clean(redact(item.quote).text, true), due: `${reminderDue(item)} ${item.zone}` })) } : {}),
       audience: { surface: 'telegram-private-chat', chat: journal.view.genesis.chat,
@@ -5944,12 +6078,12 @@ export function createJournalWorker(journal: ReturnType<typeof openPreviewJourna
               reminderCancels: string[] | undefined, invalidCancel = false, decided = false, ownReplyEcho = false,
               cancelRefusal: 'unlisted' | 'unverified' | undefined,
               obligations: AnswerObligations = {}, promises: PromiseProposal[] = [], fulfills: FulfillmentProposal[] = [],
-              refusedFulfills = 0;
+              refusedFulfills = 0, operatorAction: OperatorActionProposal | undefined, unreadAction = false;
             if (output.trim()) try {
               const parsed = JSON.parse(output) as { reply?: unknown; memory?: unknown; memoryDisposition?: unknown; dated?: unknown; undo?: unknown; personMerges?: unknown; personAttributes?: unknown; closedQuestions?: unknown; memoryList?: unknown; lastNamedPerson?: unknown;
                 conflict?: unknown; resolveConflict?: unknown; cancelReminders?: unknown;
                 directives?: unknown; closeDirectives?: unknown; openLoops?: unknown; blocker?: unknown; blockerRechecks?: unknown;
-                promises?: unknown; fulfilled?: unknown };
+                promises?: unknown; fulfilled?: unknown; operatorAction?: unknown };
               const replyValue = parsed?.reply;
               const replyAnswer = replyValue && typeof replyValue === 'object' && !Array.isArray(replyValue)
                 && 'answer' in replyValue && typeof replyValue.answer === 'string' ? replyValue.answer : undefined;
@@ -6029,6 +6163,12 @@ export function createJournalWorker(journal: ReturnType<typeof openPreviewJourna
                       ? 'unlisted' : 'unverified'; }
                 }
                 obligations = obligationsFrom(parsed, turn, text, context, decisionAt);
+                // Rules 10, 82: the model reads whether the verified operator asked for a limit raise or a renewal; the
+                // runner, never the model, writes the exact request from the governed bounds when the reply is sent.
+                if (parsed.operatorAction !== undefined && fromOperator(turn)) {
+                  operatorAction = parseOperatorAction(parsed.operatorAction);
+                  unreadAction = operatorAction === undefined;
+                }
                 const decision = JSON.parse(context) as { memoryCandidates?: { id: string; message: string }[];
                   contradictions?: ReturnType<typeof contradictionFor>;
                   memorySummary?: { text: string }; summary?: { text: string };
@@ -6102,7 +6242,7 @@ export function createJournalWorker(journal: ReturnType<typeof openPreviewJourna
             } catch { /* Legacy plain reply. */ }
             // A runner-authored due turn carries no operator authority: only its reply text is used.
             if (turn.requestedAction) { const { directives: _admitted, directiveClosures: _closed, invalidDirective: _invalid, ...agentSide } = obligations;
-              obligations = agentSide;
+              obligations = agentSide; operatorAction = undefined; unreadAction = false;
               memory = undefined; dated = undefined; personMerges = undefined; personAttributes = undefined; undo = undefined;
               conflict = undefined; askConflict = undefined; resolveConflict = undefined; lastNamedPerson = undefined;
               closedQuestions = undefined; reminderCancels = undefined;
@@ -6113,7 +6253,7 @@ export function createJournalWorker(journal: ReturnType<typeof openPreviewJourna
             // A desk probe's decision is answered, but it never writes operator memory, dates, question
             // closures or any other operator-authority record.
             const probe = probeTurn(journal.view, turn);
-            if (probe) { obligations = {};
+            if (probe) { obligations = {}; operatorAction = undefined; unreadAction = false;
               invalidMemory = false; invalidDate = false; memory = []; dated = []; personMerges = undefined; personAttributes = undefined;
               undo = undefined; closedQuestions = undefined; conflict = undefined; askConflict = undefined; resolveConflict = undefined;
               lastNamedPerson = undefined; reminderCancels = undefined; invalidCancel = false; cancelRefusal = undefined; }
@@ -6153,6 +6293,7 @@ export function createJournalWorker(journal: ReturnType<typeof openPreviewJourna
             if (obligations.invalidDirective) text = `${text.trim()} I could not record that standing instruction exactly, so I have not saved it. Please restate it.`;
             else if (obligations.directivesFull) text = `${text.trim()} I have not saved that standing instruction: the ones I already hold fill the space I keep for them in every answer. Tell me which one is done or replaced, and I will save this one.`;
             else for (const item of obligations.directives ?? []) text = `${text.trim()} Standing instruction saved until you say it is done or replace it: "${item.quote}".`;
+            if (unreadAction && text.trim()) text = `${text.trim()} ${OPERATOR_ACTION_UNREAD}`;
             if (invalidUndo) { text = 'I could not undo that memory change. Only the most recent change within ten minutes can be undone.';
               memory = []; dated = []; undo = undefined; invalidMemory = false; }
             // Rules 8, 92: completed obligation work rides the operator's next answer, the only send the grant allows.
@@ -6198,6 +6339,7 @@ export function createJournalWorker(journal: ReturnType<typeof openPreviewJourna
               ...(notices.length ? { notices } : {}),
               ...(promises.length && text.trim() ? { promises: promises.filter(item => text.includes(item.quote)) } : {}),
               ...(keptFulfills.length ? { fulfills: keptFulfills } : {}),
+              ...(operatorAction && text.trim() ? { operatorAction } : {}),
               ...(fromOperator(turn) && !probe && dated === undefined ? { datedPending: true as const } : {}),
               ...(invalidMemory ? { memoryPending: true as const } : {}),
               ...(text.trim() && unlabeledRecall(context, text) ? { unlabeledRecall: true } : {}),
@@ -6532,6 +6674,10 @@ export function createJournalWorker(journal: ReturnType<typeof openPreviewJourna
               final: { digest: createHash('sha256').update(reply).digest('hex'), links } };
           }
         }
+        // Rules 79, 82: the operator action this answer proposed rides the reply as one fixed line: the exact request
+        // (approved only by the operator's explicit yes) or why it cannot be proposed. Never on a held or notice reply.
+        const offer = heldBack || reply === HOLDING_REPLY || turn.answer === undefined ? undefined : operatorOffer(turn, ports.now());
+        if (offer) reply = `${reply.trimEnd()}\n\n${offer.text}`;
         const body = encodeReply(reply);
         if (Buffer.byteLength(body) > 4096 || Array.from(body).length > 4096) {
           journal.append({kind:'hold',id:turn.id,reason:'encoded reply size',at:ports.now()}); continue;
@@ -6545,7 +6691,7 @@ export function createJournalWorker(journal: ReturnType<typeof openPreviewJourna
           ? { id: approvalId(turn.id, 'stop', stopBase), action: 'stop', base: stopBase } : undefined;
         const provenance = journal.signOutbound(speaker, { target: `reply:${turn.id}`, chat: journal.view.genesis.chat, ...thread, body });
         journal.append({ kind: 'intent', id: turn.id, text: reply, body, chat: journal.view.genesis.chat, ...thread, provenance,
-          ...(approval ? { approval } : {}),
+          ...(approval ? { approval } : {}), ...(offer?.request ? { operatorRequest: offer.request } : {}),
           ...(reply === HOLDING_REPLY || heldBack || !mentionedKeys.length ? {} : { mentionedDates: mentionedKeys }),
           ...(release === undefined ? {} : { release }), ...(held === undefined ? {} : { heldReview: held }),
           // A desk probe's reply stays auditable, but its promises never become operator commitments.
@@ -6616,6 +6762,88 @@ export function createJournalWorker(journal: ReturnType<typeof openPreviewJourna
       },
       Refused: refusal => { missing = [refusal.detail]; } });
     return missing;
+  };
+  /** Rules 79, 82: the governed facts an operator request is bounded by, read now. */
+  const proposalState = (): ProposalState => {
+    const view = journal.view, g = view.genesis;
+    let renewal: string | null = null;
+    try { renewal = ports.explicitYes?.renewalActivation?.(SUBSCRIPTION_PREVIEW_EXPIRY) ?? null; } catch { renewal = null; }
+    return { limits: { maxCalls: view.limits.maxCalls, maxReplies: view.limits.maxReplies, maxTurns: view.limits.maxTurns },
+      used: { maxCalls: view.calls, maxReplies: view.replies, maxTurns: view.order.length },
+      step: { maxCalls: g.maxCalls, maxReplies: g.maxReplies, maxTurns: g.maxTurns }, expires: view.expires,
+      governedExpiry: SUBSCRIPTION_PREVIEW_EXPIRY,
+      renewalActivation: typeof renewal === 'string' && /^sha256:[a-f0-9]{64}$/u.test(renewal) ? renewal : null,
+      unknownCalls: pendingUnknownCalls(view).length, stopped: view.stop !== null, grant: g.grant, base: approvalBase(view) };
+  };
+  const yesStatus = () => explicitYesStatus(ports.explicitYes?.installation,
+    { chat: journal.view.genesis.chat, operator: journal.view.genesis.operator });
+  /** The fixed line a reply carries for the operator action its answer proposed: the exact request, or why not. */
+  const operatorOffer = (turn: Turn, now: number): { text: string; request?: OperatorRequest } | undefined => {
+    const proposal = turn.operatorAction;
+    if (!proposal || journal.view.stop !== null) return undefined;
+    if (!ports.explicitYes) return { text: operatorRefusalText(proposal.action, NO_YES_SOURCE) };
+    if (!yesStatus().chat.admissible) return { text: operatorRefusalText(proposal.action, CHAT_YES_UNAVAILABLE) };
+    const result = proposeOperatorRequest(proposalState(), proposal, turn.id, now);
+    return result.kind === 'refused' ? { text: operatorRefusalText(proposal.action, result.reason) }
+      : { text: operatorRequestText(result.request, journal.view), request: result.request };
+  };
+  /** The undecided, sent request still answerable now at the current base, if any (one at a time). */
+  const openOperatorRequest = (now: number) => journal.view.operatorRequests.filter(item => item.message !== undefined
+    && !item.superseded && !item.approved && now <= item.request.expiresAt && item.request.base === approvalBase(journal.view)).at(-1);
+  /** The raise a capped limited answer asks for with an explicit yes, when no independent surface carries it. */
+  const limitedOperatorRequest = (lead: Turn, reason: RaiseReason): OperatorRequest | undefined => {
+    const now = ports.now();
+    if (ports.approvalSurface || !yesStatus().chat.admissible || openOperatorRequest(now)) return undefined;
+    const result = proposeOperatorRequest(proposalState(), { action: 'raise-caps', limits: proposedLimits(journal.view, reason) }, lead.id, now);
+    return result.kind === 'request' ? result.request : undefined;
+  };
+  /** Applies an approved request exactly once. A journal refusal (for example a new UNKNOWN call) leaves it approved
+   * and unapplied, visible in status; it is never retried from journal rows alone. */
+  const applyOperatorRequest = (id: string) => {
+    const state = journal.view.operatorRequests.find(item => item.request.id === id);
+    if (!state?.approved || state.applied) return;
+    const authority = operatorYesAuthority(id, state.approved.reference), at = ports.now(), request = state.request;
+    try {
+      if (request.action === 'raise-caps') raiseJournalCaps(journal, { ...request.limits!, authority, at });
+      else {
+        const activation = ports.explicitYes?.renewalActivation?.(request.expires!) ?? null;
+        if (typeof activation === 'string' && /^sha256:[a-f0-9]{64}$/u.test(activation))
+          renewJournalExpiry(journal, { expires: request.expires!, activation, authority, at });
+      }
+    } catch { /* stays approved and unapplied, visible */ }
+  };
+  /** Rules 28, 29, 98: the verified operator's message that answers the open request (a Telegram reply to it, or the
+   * next message after it) is judged once by the single explicit-yes admission. A plain yes completes the request; any
+   * other answer is recorded as not approved and changes nothing. A message that answers no request is not judged. */
+  const answerOperatorRequest = (turnId: string, update: TelegramUpdate, principal: VerifiedPrincipal | null) => {
+    const port = ports.explicitYes, view = journal.view, turn = view.turns.get(turnId), message = update.edited_message ?? update.message;
+    if (!port || !turn || !message || !principal || journal.readOnly || view.stop !== null || !verifiedOperatorTurn(view, turn)) return;
+    const state = view.operatorRequests.filter(item => item.message !== undefined && !item.superseded && !item.approved).at(-1);
+    const messageId = turnMessageId(turn);
+    if (!state || messageId === null) return;
+    const candidate: ChatCandidate = { chatId: String(message.chat?.id), messageId, replyTo: message.reply_to_message?.message_id ?? null,
+      senderId: String(message.from?.id), thread: turn.thread ?? null, edited: update.edited_message !== undefined, text: turn.text, at: ports.now() };
+    const others = view.order.filter(item => item !== turn && verifiedOperatorTurn(view, item)).flatMap(item => {
+      const id = turnMessageId(item); return id === null ? [] : [{ messageId: id, thread: item.thread ?? null }]; });
+    const binding = chatBinding({ message: state.message!, thread: state.thread }, candidate, others);
+    if (binding === null) return;
+    const request = state.request, now = candidate.at;
+    let verdict: ReturnType<typeof admitChatYes>;
+    if (now > request.expiresAt) verdict = { kind: 'refused', detail: 'this request has lapsed' };
+    else if (request.base !== approvalBase(view)) verdict = { kind: 'refused', detail: 'the limits or the trial changed after this request was made' };
+    else {
+      const requestedBy = journal.systemWriter('operator-request', `${request.id}\n${request.digest}`, request.issuedAt);
+      verdict = requestedBy === null ? { kind: 'refused', detail: 'the runner could not establish itself as the requester' }
+        : admitChatYes({ request, message: state.message!, grant: view.genesis.grant, chat: view.genesis.chat, installation: port.installation,
+          approver: principal, requestedBy, candidate, context: port.context,
+          consumed: view.operatorRequests.flatMap(item => item.approved ? [item.approved.reference] : []) });
+    }
+    try {
+      journal.append({ kind: 'operator-yes', id: turn.id, request: request.id, binding, at: now, ...(verdict.kind === 'approved'
+        ? { outcome: 'approved' as const, reference: verdict.record.reference, hash: verdict.record.hash }
+        : { outcome: 'refused' as const, detail: verdict.detail.slice(0, 1000) }) });
+    } catch { return; }
+    if (verdict.kind === 'approved') applyOperatorRequest(request.id);
   };
   /** A raise request exists only with a challenge the independent verifier issued for its exact subject. */
   const issueRaise = (lead: Turn, reason: RaiseReason): ApprovalRequest | undefined => {
@@ -6720,14 +6948,17 @@ export function createJournalWorker(journal: ReturnType<typeof openPreviewJourna
       const approval: ApprovalRequest | undefined = group.stop ? { id: approvalId(lead.id, 'stop', base), action: 'stop', base }
         : group.reason === 'worker' || openApproval(journal.view, 'raise-caps', ports.now()) ? undefined : issueRaise(lead, group.reason);
       const link = approval?.challenge ? approvalLink(approval.challenge) : null;
+      const yesRequest = group.stop || approval !== undefined || group.reason === 'worker' ? undefined : limitedOperatorRequest(lead, group.reason);
       const text = group.stop ? `PREVIEW — ${STOP_CONFIRM_TEXT}` : `${limitedAnswerText(journal.view, group.reason, group.turns.length)}${approval
-        && group.reason !== 'worker' ? `\n\n${approvalRequestText(journal.view, group.reason)} ${link ? RAISE_LINK_HINT : RAISE_SURFACE_HINT}` : ''}`;
+        && group.reason !== 'worker' ? `\n\n${approvalRequestText(journal.view, group.reason)} ${link ? RAISE_LINK_HINT : RAISE_SURFACE_HINT}` : ''}${
+        yesRequest ? `\n\n${operatorRequestText(yesRequest, journal.view)}` : ''}`;
       ports.checkOutbound(text);
       const thread = group.thread === undefined ? {} : { thread: group.thread };
       // Rule 89: the fixed limited answer speaks as infrastructure, signed over exactly what is sent.
       const provenance = journal.signOutbound('infrastructure', { target: `limited:${lead.id}`, chat: journal.view.genesis.chat, ...thread, body: text });
       journal.append({ kind: 'limited-intent', id: lead.id, covers: group.turns.map(turn => turn.id), reason: group.reason,
-        text, chat: journal.view.genesis.chat, ...thread, grant: journal.view.genesis.grant, ...(approval ? { approval } : {}), provenance, at: ports.now() });
+        text, chat: journal.view.genesis.chat, ...thread, grant: journal.view.genesis.grant, ...(approval ? { approval } : {}),
+        ...(yesRequest ? { operatorRequest: yesRequest } : {}), provenance, at: ports.now() });
       gate();
       const markup = withStopPage(approval === undefined ? undefined : approval.action === 'stop' ? approvalMarkup(approval.id) : raiseMarkup(approval.id, link));
       // A refused or UNKNOWN limited answer is recorded by the dispatch and never repeated (Rule 42).
