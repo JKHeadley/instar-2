@@ -2,7 +2,7 @@ import { expect, it } from 'vitest';
 import { mkdtempSync, readFileSync, realpathSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
-import { createJournalWorker, MEMORY_UNDECIDED_REPLY, openPreviewJournal, openRequests } from './journal-test-worker.js';
+import { createJournalWorker, MEMORY_UNDECIDED_REPLY, openPreviewJournal, openRequests, projectionDigest } from './journal-test-worker.js';
 
 /** Why this file exists. Plan row #284. Live 2026-10-02 06:31-06:55 PDT, proof room two on build cint-L27
  * d12bbf55, proof check RA3: the operator still could not cancel a reminder, and after trying, his other
@@ -196,6 +196,34 @@ it('asks which when the withdrawal matches two open requests, and holds none of 
     for (let pass = 0; pass < 4; pass++) { await after.worker.drain(); await after.worker.sendRequested(); }
     expect(pushes(after.sent).join('\n')).toContain(EARLIER);
     expect(pushes(after.sent).join('\n')).toContain(FEEDER);
+    expect(pushes(after.sent).join('\n')).toContain('call the plumber');
+    after.journal.close();
+  } finally { rmSync(root, { recursive: true, force: true }); }
+}, 60000);
+
+/** cint-L30 (cint-L26's validate-before-write path, cint-L29's snapshot handling): the recorded empty verdict is
+ * written through the same append path, kept by a compaction snapshot, and read back from it on reopen. */
+it('keeps the recorded empty withdrawal verdict through a compaction snapshot and a reopen', async () => {
+  const root = tmp('two-compact');
+  try {
+    const clock = { now: START };
+    const w = world(root, { answer: () => JSON.stringify({ reply: 'Which bird feeder request should I cancel?',
+      memory: [], dated: [], cancelReminders: [] }) }, clock);
+    const id = await liveShape(w, [EARLIER]);
+    await withdraw(w, id);
+    expect(turnOf(w, CANCEL).reminderDecided).toBe(true);
+    const before = projectionDigest(w.journal.view);
+    w.journal.compact(); w.journal.close();
+    const after = world(root, { answer: () => { throw Error('no answer call expected after reopen'); } }, clock, false);
+    // The reopened projection is the compacted one, field for field, and carries the verdict.
+    expect(projectionDigest(after.journal.view)).toBe(before);
+    expect(turnOf(after, CANCEL).reminderDecided).toBe(true);
+    expect(after.journal.view.reminderCancels).toHaveLength(0);
+    expect(openRequests(after.journal.view).map(item => item.quote)).toEqual([EARLIER, FEEDER, PLUMBER]);
+    // The verdict still releases every request: all three fire at their time, with no model call.
+    clock.now = DUE_650;
+    for (let pass = 0; pass < 4; pass++) { await after.worker.drain(); await after.worker.sendRequested(); }
+    expect(pushes(after.sent).join('\n')).toContain(EARLIER);
     expect(pushes(after.sent).join('\n')).toContain('call the plumber');
     after.journal.close();
   } finally { rmSync(root, { recursive: true, force: true }); }

@@ -3,7 +3,7 @@ import { mkdtempSync, realpathSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { createJournalWorker, openPreviewJournal, previewTestContext, limitedAnswerText } from './journal-test-worker.js';
-import { CHAT_YES_UNAVAILABLE, OPERATOR_ACTION_UNREAD, raiseJournalCaps } from './journal.js';
+import { CHAT_YES_UNAVAILABLE, OPERATOR_ACTION_UNREAD, projectionDigest, raiseJournalCaps } from './journal.js';
 import { chatBinding, explicitYesStatus, operatorRefusalText, operatorRequestText, operatorYesAuthority, parseOperatorAction,
   proposeOperatorRequest, wellFormedRequest, type ChatCandidate, type ProposalState } from './operator-yes.js';
 import { produceExplicitYes } from '../../src/operator/explicit-yes.js';
@@ -176,6 +176,32 @@ it('proposes the exact raise in the reply; the operator\'s next plain yes applie
   expect(() => replay.append({ kind: 'operator-yes', id: replay.view.order.at(-1)!.id, request: proposed.request.id, binding: 'next',
     outcome: 'approved', reference: decided.approved!.reference, hash: decided.approved!.hash, at: 2000 })).toThrow('operator yes order');
   replay.close();
+}));
+
+// cint-L30 (cint-L26's validate-before-write path, cint-L29's snapshot handling): each new row kind -- the
+// proposed request, a refused and an approved operator-yes, and the caps frame applied under it -- is written
+// through the journal's own append, kept by a compaction snapshot, and read back from it on reopen.
+it('keeps the request, its refused and approved verdicts and the applied raise through a compaction snapshot', () => withRoot(async path => {
+  const { journal, worker } = harness(path, { answer: asking });
+  worker.intake([message(1, 50, 'can I have more calls please')]); await worker.drain();
+  const proposed = latest(journal)!;
+  worker.intake([message(2, proposed.message! + 1, 'sure, go ahead I guess', { reply_to_message: { message_id: proposed.message } })]);
+  worker.intake([message(3, proposed.message! + 2, 'yes', { reply_to_message: { message_id: proposed.message } })]);
+  const decided = latest(journal)!;
+  expect(decided.refusals).toHaveLength(1);
+  expect(decided.applied).toBe(true);
+  expect(journal.view.limits.maxCalls).toBe(10);
+  const before = projectionDigest(journal.view), requests = JSON.stringify(journal.view.operatorRequests);
+  journal.compact(); journal.close();
+  const reopened = openPreviewJournal(path, key);
+  expect(projectionDigest(reopened.view)).toBe(before);
+  expect(JSON.stringify(reopened.view.operatorRequests)).toBe(requests);
+  expect(reopened.view.limits.maxCalls).toBe(10);
+  expect(reopened.view.capAuthority).toBe(operatorYesAuthority(proposed.request.id, decided.approved!.reference));
+  // The consumed yes is still spent after the snapshot: its reuse is refused by the journal itself.
+  expect(() => reopened.append({ kind: 'operator-yes', id: reopened.view.order.at(-1)!.id, request: proposed.request.id, binding: 'next',
+    outcome: 'approved', reference: decided.approved!.reference, hash: decided.approved!.hash, at: 2000 })).toThrow('operator yes order');
+  reopened.close();
 }));
 
 it('takes nothing else as the yes: an ambiguous answer, a later message, an expired or superseded request, another sender', () => withRoot(async path => {
