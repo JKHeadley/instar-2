@@ -40,7 +40,7 @@ function world() {
   const repliesPer = (update: number) => sends.filter(s => s.update === update).length;
   return { root, path, clock, authority, open, say, runner, sends, polls, pending, repliesPer };
 }
-const deferred = () => { let release!: () => void; const promise = new Promise<void>(done => { release = done; }); return { promise, release }; };
+const gate = () => { let release!: () => void; const promise = new Promise<void>(done => { release = done; }); return { promise, release }; };
 
 describe('one conversation, two machines', () => {
   it('two runners give exactly one reply per message; the standby never polls or sends', async () => {
@@ -57,7 +57,7 @@ describe('one conversation, two machines', () => {
 
   it('owner stops mid-turn BEFORE the claim: the other machine takes over and replies once, nothing lost', async () => {
     const w = world();
-    const hang = deferred();
+    const hang = gate();
     const laptop = w.runner('laptop', localAuthorityClient(w.authority), { prepare: () => hang.promise.then(() => 'never') });
     const studio = w.runner('studio', localAuthorityClient(w.authority));
     const id = w.say('hello');
@@ -74,7 +74,7 @@ describe('one conversation, two machines', () => {
 
   it('owner stops AFTER the claim, before the send: no duplicate; the update stays visibly unresolved; later messages flow', async () => {
     const w = world();
-    const hang = deferred();
+    const hang = gate();
     const laptop = w.runner('laptop', localAuthorityClient(w.authority), { send: () => hang.promise.then(() => 'sent' as const) });
     const studio = w.runner('studio', localAuthorityClient(w.authority));
     const first = w.say('first');
@@ -91,7 +91,7 @@ describe('one conversation, two machines', () => {
 
   it('an in-flight send admitted before the handover completes once; the successor does not repeat it', async () => {
     const w = world();
-    const hang = deferred();
+    const hang = gate();
     const laptop = w.runner('laptop', localAuthorityClient(w.authority), { send: () => hang.promise.then(() => 'sent' as const) });
     const studio = w.runner('studio', localAuthorityClient(w.authority));
     const id = w.say('in flight');
