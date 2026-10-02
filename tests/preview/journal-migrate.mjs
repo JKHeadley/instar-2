@@ -6,7 +6,7 @@
 import { createCipheriv, createDecipheriv, createHash, randomBytes } from 'node:crypto';
 import { closeSync, existsSync, fsyncSync, lstatSync, mkdirSync, openSync, readFileSync, readdirSync, realpathSync, writeFileSync } from 'node:fs';
 import { dirname, join, resolve } from 'node:path';
-import { openPreviewJournal, PREVIEW_LIVE_LIMITS } from './journal.js';
+import { openPreviewJournal, PREVIEW_LIVE_LIMITS, unservableContextReason } from './journal.js';
 import { durablePreviewWrite } from './state.js';
 import { openProductionStorage } from '../../src/assembly/production-storage.js';
 import { productionStorageIO } from '../../scripts/production-boot-io.mjs';
@@ -212,10 +212,14 @@ try {
   const { command, options } = args(process.argv.slice(2)), keyBytes = key();
   if (command === 'export') {
     const maxCalls = Number(options['max-calls'] ?? 16), maxReplies = Number(options['max-replies'] ?? 16);
-    const maxBytes = Number(options['max-context-bytes'] ?? 32768);
+    const maxBytes = Number(options['max-context-bytes'] ?? PREVIEW_LIVE_LIMITS.contextBytes);
     if (![maxCalls,maxReplies,maxBytes].every(value => Number.isSafeInteger(value) && value > 0)
       || maxCalls > PREVIEW_LIVE_LIMITS.calls || maxReplies > PREVIEW_LIVE_LIMITS.replies
       || maxBytes > PREVIEW_LIVE_LIMITS.contextBytes) throw Error('migration allowance outside approved bound');
+    // The same floor as genesis: migration is the third doorway that creates a root, and an imported
+    // root below it is unservable in exactly the same way.
+    const migrationRefusal = unservableContextReason(maxBytes);
+    if (migrationRefusal) throw Error(migrationRefusal);
     const manifest = exportOld(need(options, 'old-root'), { key: keyBytes, bot: need(options, 'bot-id'),
       chat: need(options, 'chat-id'), operator: need(options, 'operator-sender-id'),
       maxCalls, maxReplies, maxBytes });
