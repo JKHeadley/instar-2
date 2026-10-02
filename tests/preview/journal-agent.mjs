@@ -503,9 +503,15 @@ const retrospectiveView = (view, now) => { const digest = replyContextDigest(vie
       oldestSince: owed.reduce((min, row) => Math.min(min, row.since), Number.MAX_SAFE_INTEGER) === Number.MAX_SAFE_INTEGER ? null
         : owed.reduce((min, row) => Math.min(min, row.since), Number.MAX_SAFE_INTEGER) }; })(),
   contextDigest: digest, answerBudget: retroAnswerBudget(view.retroPasses),
-  // Derived, not asserted: 'measured' once any pass recorded both its estimate and what its answer really cost,
-  // 'start' while no pass on this root has, which is the small first ask.
-  routeSelection: view.retroPasses.some(pass => typeof pass.estimatedAnswerBytes === 'number' && typeof pass.outputTokens === 'number')
+  // The DOORWAY/MODEL routing label (docs/01 lesson 5: a routing choice no benchmark backs is labelled
+  // unmeasured). One route, no benchmark behind it, so it stays 'unmeasured' — this field is NOT about the
+  // answer budget, and overloading it would make a reader checking that arm read a measured routing choice
+  // where there is none.
+  routeSelection: 'unmeasured',
+  // The answer BUDGET's route, under its own name: 'measured' once a completed pass recorded both its estimate
+  // and what its answer really cost, 'start' while this root has measured nothing and asks at the small start.
+  answerBudgetRoute: view.retroPasses.some(pass => pass.state === 'complete'
+    && typeof pass.estimatedAnswerBytes === 'number' && typeof pass.outputTokens === 'number')
     ? 'measured' : 'start' }; };
 const stepCheckView = view => ({ total: view.stepChecks.size,
   unchecked: [...view.stepChecks.values()].filter(item => !item.reserved).length,
