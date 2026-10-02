@@ -18,9 +18,9 @@ Bug class: none
 Bug evidence: none
 Hook bypass: none
 Convergence: none
-Decision: D-auth-single-voter | single-voter authority on one machine rather than two voters (two voters need both for any commit and give no failover at all, §2) or three (the brief excludes a third machine) | reported=/Users/justin/.instar/agents/echo/.instar/state/w3-twomachine.md
-Decision: D-intake-by-telegram | intake durability across a handover comes from Telegram's own unconfirmed-update retention plus a shared settled cursor, rather than copying message text to the authority | reported=/Users/justin/.instar/agents/echo/.instar/state/w3-twomachine.md
-Decision: D-claim-key | dispatch-claims are keyed by send-target string (a reply is update:<id>) so the runner's other send kinds can use the same gate | reported=/Users/justin/.instar/agents/echo/.instar/state/w3-twomachine.md
+Decision: D-auth-single-voter | single-voter authority on one machine rather than two voters (two voters need both for any commit and give no failover at all, §2) or three (the brief excludes a third machine) | reported=/Users/dabombstudio/.instar/agents/echo/.instar/lanes/w3-twomachine-PROGRESS.md
+Decision: D-intake-by-telegram | intake durability across a handover comes from Telegram's own unconfirmed-update retention plus a shared settled cursor, rather than copying message text to the authority | reported=/Users/dabombstudio/.instar/agents/echo/.instar/lanes/w3-twomachine-PROGRESS.md
+Decision: D-claim-key | dispatch-claims are keyed by send-target string (a reply is update:<id>) so the runner's other send kinds can use the same gate | reported=/Users/dabombstudio/.instar/agents/echo/.instar/lanes/w3-twomachine-PROGRESS.md
 
 Subject (5 paths): tests/preview/conversation-authority.declarations.json, tests/preview/conversation-authority.ts, tests/preview/two-machine-live-test.md, tests/preview/two-machine-serving.test.ts, tests/preview/two-machine-serving.ts
 
