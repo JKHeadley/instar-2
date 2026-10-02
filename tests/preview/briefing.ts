@@ -24,9 +24,12 @@ export const CAPABILITY_LAUNCHER = 'tests/preview/journal-agent.mjs';
 type BriefedFeature = { id: string; status: string; availability: string; userFacing: boolean; text: string | null };
 export function capabilityBriefing(readSource: (path: string) => string,
   limits: { providerAttempts: number; expiresAt: number }, launcher = CAPABILITY_LAUNCHER) {
-  const trial = `This trial allows at most ${limits.providerAttempts} model attempts (summaries included) and ends at epoch millisecond ${limits.expiresAt}. `
-    + 'Answers use a subscription model; every reply is prefixed PREVIEW. An unconfirmed model call or delivery is marked unknown, '
-    + 'and model charges are recorded as unknown, never settled. Production safeguards are incomplete.';
+  // Rule 116: every fact here is kept and only the wording is shorter. The note's own private-PREVIEW-chat
+  // and no-tools sentences are deliberately NOT trimmed: the live answer model quotes the no-tools sentence
+  // as its blocker avenue evidence (fixtures/live-declarations-2026-09-28.json) and journal-awareness pins it.
+  const trial = `This trial allows at most ${limits.providerAttempts} model attempts (summaries included), ending at epoch millisecond ${limits.expiresAt}. `
+    + 'A subscription model answers; replies are prefixed PREVIEW. An unconfirmed call or delivery is marked unknown, '
+    + 'and model charges are recorded unknown, never settled. Production safeguards are incomplete.';
   let generation = 'unavailable', commit = 'unavailable', features: BriefedFeature[] | undefined;
   try {
     const data = JSON.parse(readSource(CAPABILITY_BRIEFING_PATH)) as { generation?: unknown; commit?: unknown; launchers?: Record<string, unknown> };
