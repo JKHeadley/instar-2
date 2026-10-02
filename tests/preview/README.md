@@ -3134,9 +3134,15 @@ Rules 4, 14, 15, 52, 53, 77, 79, 80, 82, 86, 87, 88, 95 and 106 on the live runn
   sender, an expired or superseded request, a moved base) changes nothing; a judged non-yes is
   recorded as `operator-yes` refused. Where the installation record says the agent can speak as the
   operator in chat (P-05), no request is proposed in chat and the single admission refuses a chat
-  yes. Not built yet: the GitHub review source (the P-05 deployment's route), the launch options and
-  status field that configure the port in `journal-agent.mjs`, so a live root still raises and
-  renews at the host command line, and the two declarations keep saying so.
+  yes. That deployment's route is the GitHub review source (`review-yes-source.ts`): over an
+  injected client it opens one pull request whose body names the request (`issue`), links straight
+  to its Files page (`link`), polls its reviews with a widening wait and a breaker (`acts`, Rule 55)
+  and admits a review only through the same single admission (`verify`): an APPROVED review by the
+  pinned login on the exact head completes it once; a missing, COMMENTED or CHANGES_REQUESTED review,
+  another login, a stale head, a lapsed request, another request or a reused review refuses. Without
+  the installed P-02 fact for the GitHub account it opens nothing and `status()` names the missing
+  fact. Neither source is connected by `journal-agent.mjs` yet (plan rows #290, #293), so a live root
+  still raises and renews at the host command line, and the two declarations keep saying so.
 - **Supervised incidents (Rules 15, 88; P-14).** `scripts/host-watch.mjs` with
   `{"mode":"journal", "alerts": {"grant": "..."}}` restarts the runner after a failed exit with
   bounded backoff. After three consecutive failed restarts it records one incident episode with the
