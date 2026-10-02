@@ -6,7 +6,7 @@ import { performance } from 'node:perf_hooks';
 import { spawn, spawnSync } from 'node:child_process';
 import { createJournalWorker, openPreviewJournal, raiseJournalCaps, MODEL_FAILURE_REPLY, UNKNOWN_ANSWER_NOTICE,
   SUMMARY_UNKNOWN_RECOVERY_MS, SUMMARY_MAX_PROMPT_BYTES, SUMMARY_MAX_TURNS, SUMMARY_TARGET_OUTPUT_TOKENS } from './journal-test-worker.js';
-import { INDEX_BACKLOG_LIMIT, TOO_LONG_INPUT_NOTICE } from './journal.js';
+import { INDEX_ATTEMPT_LIMIT, INDEX_BACKLOG_LIMIT, TOO_LONG_INPUT_NOTICE } from './journal.js';
 
 import { prepareJournalEnvelope } from './journal-envelope.js';
 import { SUBSCRIPTION_CONVERSATION_SYSTEM_PROMPT, subscriptionConversationPolicy } from '../../src/assembly/production-provider.js';
@@ -1385,11 +1385,12 @@ it('recalls an original turn far beyond the envelope across a restart in a 200-t
   const root = origin(), samples: number[] = [];
   const fact = 'The locker combination is QUASAR-7731.';
   const initial = { ...genesis(), maxCalls: 400, maxReplies: 200, maxTurns: 200, maxBytes: 8192 };
-  let asked: string | undefined, early: string | undefined;
+  let asked: string | undefined, early: string | undefined, indexCalls = 0;
   const open = () => {
     const journal = openPreviewJournal(join(root, 'journal.encrypted'), key);
     const worker = createJournalWorker(journal, { now: () => 1790000000000, stopped: () => false,
       model: async input => {
+        if (input.id.startsWith('summary:index:')) indexCalls++;
         if (input.id.startsWith('summary:')) return 'An ordinary conversation about weather, errands and plans.';
         if (input.question.includes('locker combination')) asked = input.context;
         if (input.id === 'telegram:12345678:update:6') early = input.context;
@@ -1416,10 +1417,12 @@ it('recalls an original turn far beyond the envelope across a restart in a 200-t
     expect(view.order[4]?.text).toBe(fact);
     expect(view.summaries.length).toBeGreaterThan(1);
     expect(view.summaries.every(summary => !summary.text.includes('QUASAR'))).toBe(true);
-    // Rule 11: this model returns no meaning terms, so summarized messages are also offered to the
-    // index-only call, once each and only in full batches (one call per eight messages).
-    expect(view.indexOffered.length % INDEX_BACKLOG_LIMIT).toBe(0);
-    expect(view.calls).toBe(200 + view.summaries.length + view.indexOffered.length / INDEX_BACKLOG_LIMIT);
+    // Rule 11: this model returns no meaning terms, so summarized messages are offered to the index-only
+    // call -- a full batch of eight where one is available, a smaller remainder otherwise, and each source
+    // at most INDEX_ATTEMPT_LIMIT times (w3-longchat: a remainder under eight used to be stranded for good).
+    expect(view.indexOffered.length).toBeLessThanOrEqual(new Set(view.indexOffered).size * INDEX_ATTEMPT_LIMIT);
+    expect(indexCalls).toBeGreaterThan(view.indexOffered.length / INDEX_BACKLOG_LIMIT - 1);
+    expect(view.calls).toBe(200 + view.summaries.length + indexCalls);
     expect(JSON.parse(early!)).toMatchObject({ historyMode: 'complete' });
     expect(JSON.parse(early!).recalled).toBeUndefined();
     expect(early).toContain('QUASAR-7731');
