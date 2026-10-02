@@ -121,6 +121,17 @@ it('a lost peer is never covered and never a fallback: the gate waits, a bounded
     expect(shipper.covers(token)).toBe(true);
     // Covered at once: no wait, no notice.
     expect(await awaitReplicated({ token, shipper, refusal: () => null, sleep: async () => { throw Error('must not wait'); }, elapsed: () => 0 })).toBe(null);
+    // A stop that arrives while the (successful) pump is in flight refuses: coverage alone never admits past it.
+    let stopped = false, pumps = 0;
+    const stopping = { covers: shipper.covers, pump: async () => { pumps++; await shipper.pump(); stopped = true; } };
+    expect(await awaitReplicated({ token, shipper: stopping, refusal: () => stopped ? 'stopped during replication' : null,
+      sleep: async () => { throw Error('must not wait'); }, elapsed: () => 0 })).toBe('stopped during replication');
+    expect(pumps).toBe(1);
+    expect(shipper.covers(token)).toBe(true);
+    // Its neighbour: the same successful pump with no stop admits.
+    const quiet = { covers: shipper.covers, pump: async () => { await shipper.pump(); } };
+    expect(await awaitReplicated({ token, shipper: quiet, refusal: () => null,
+      sleep: async () => { throw Error('must not wait'); }, elapsed: () => 0 })).toBe(null);
     // Freshness: a peer that acknowledged everything but has been silent since is not "current".
     expect(shipper.status(1000).current).toBe(true);
     clock.now += 5000;
