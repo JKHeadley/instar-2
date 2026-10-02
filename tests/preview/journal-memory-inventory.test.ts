@@ -151,7 +151,9 @@ it('drains an accepted memory question when the ordinary envelope fits but even 
     // 10-byte steps: pass 14170-14570, fail 14160 and 14580.
     // w3-longchat: the answer protocol's compaction and meaning-coverage sentences grew by 55 bytes (Rules 11, 110);
     // re-measured in 10-byte steps: pass 14240-14640, fail 14230 and 14650.
-    const g = { ...genesis, maxBytes: 14440 }; // midway in the shifted window between the two bounds
+    // w3-recallrank: the answer protocol's one lookup sentence grew the envelope by 284 bytes (Rule 11);
+    // re-measured in 10-byte steps: pass 14520-14930, fail 14510 and 14940.
+    const g = { ...genesis, maxBytes: 14720 }; // midway in the shifted window between the two bounds
     const journal = openPreviewJournal(join(directory, 'journal.encrypted'), key, g);
     const question = 'What do you know about me? Context: '.padEnd(2500, 'x');
     const full = workerFor(journal).probe(question);

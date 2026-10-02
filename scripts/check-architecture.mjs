@@ -160,7 +160,7 @@ export function lintIntentSites(sources = Object.fromEntries(Object.keys(INTENT_
  * word-match only. */
 export const RETRIEVAL_SITES = Object.freeze({
   'tests/preview/journal.ts': { owner: 'composeRecall', adapter: 'ownedRecall', rankers: ['selectRecall', 'selectSaidTurns'],
-    entryPoints: ['recallFor', 'searchFor'],
+    entryPoints: ['recallFor', 'searchFor', 'lookupRecall'],
     // Bounded advisory offers the model judges: imports, open items, reply provenance, dated turns, summary candidates.
     advisory: ['channelFor', 'relatedOpenFor', 'replyProvenanceFor', 'preparedFor', 'runSummary'] },
 });

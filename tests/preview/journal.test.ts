@@ -715,7 +715,8 @@ it('falls back to a current summary when the complete prepared prompt overflows,
     expect(full).toBeGreaterThan(0);
     // cint-2: cbuild-4's obligation guide and cbuild-2's summary decision and search ride this compact packet together (measured 10514).
     // cint-L2 with the live repair's capabilities key merged: measured 10491 (occam's removals offset the addition).
-    expect(compact).toBeLessThan(10752);
+    // w3-recallrank: the lookup marker (`memoryLookup:"offered"`, 25 bytes) rides this compact operator packet: measured 10774.
+    expect(compact).toBeLessThan(10800);
     expect(invoked).toBe(1);
     expect(journal.view.order[2]?.sent).toBe(1);
     journal.append({kind:'hold',id:'telegram:12345678:update:2',reason:'review needed',at:1000});

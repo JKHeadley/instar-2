@@ -57,13 +57,13 @@ it('profiles full turns at 2000 turns with every memory source', async () => {
       historySetAside: { count: expect.any(Number) } });
     view.summaries.push(summary);
     const samples: number[] = [];
-    let packetHash = '';
+    let packetHash = '', packetText = '';
     for (let i = 0; i < 30; i++) {
       const start = performance.now();
       const result = worker.probe('What did Sam say about the cedar project?');
       samples.push(performance.now() - start);
       expect('context' in result).toBe(true);
-      if ('context' in result) packetHash = createHash('sha256').update(result.context).digest('hex');
+      if ('context' in result) { packetText = result.context; packetHash = createHash('sha256').update(result.context).digest('hex'); }
     }
     // int12 re-pin: person-attribute instructions, people-facts relevance selection, and relevance-gated
     // conflict/fact-update/held/exact-unit guidance changed this packet. Simplify re-pin: every retained
@@ -99,7 +99,14 @@ it('profiles full turns at 2000 turns with every memory source', async () => {
     // word, never converted); reverting just that string reproduces cb0fa8dd…4baef8 exactly.
     // w3-memcorr re-pin (Rule 7, live K13b): only memoryDecision changed (it states the exact memory item shape);
     // the base journal.ts on this same test reproduces 84c8b0fb…ddfea7 exactly.
-    expect(packetHash).toBe('439c568d50acc84e326b555a4b67e6d2ed72baf56107b01d5a23604b181411d0');
+    // w3-recallrank re-pin (Rule 11): this summarized operator packet now carries `memoryLookup: "offered"`.
+    // Nothing else changed: without that one field the packet is the prior pin, which is checked here.
+    const withoutLookup = JSON.parse(packetText) as Record<string, unknown>;
+    expect(withoutLookup.memoryLookup).toBe('offered');
+    delete withoutLookup.memoryLookup;
+    expect(createHash('sha256').update(JSON.stringify(withoutLookup)).digest('hex'))
+      .toBe('439c568d50acc84e326b555a4b67e6d2ed72baf56107b01d5a23604b181411d0');
+    expect(packetHash).toBe('7e4b7c627206ee02fd512c7d30f40eb7a85a65e70b9a7e48dbb2c2e4576ae963');
     process.stdout.write(`recall latency 2000 turns all memory: probe p95=${p95(samples).toFixed(2)} ms packet=${packetHash}\n`);
     const turnSamples: number[] = [];
     const intakeSamples: number[] = [], drainSamples: number[] = [], coherenceSamples: number[] = [];
