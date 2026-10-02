@@ -556,9 +556,26 @@
     }
    },
    {
-    "why": "a duty whose producer evidence IS present is declared unavailable (u)",
+    "why": "a duty whose producer evidence IS present is declared unavailable (u). Reclassified by plan #289 (w3-retrolive): this no longer fails closed. The answer still cannot declare the duty INSPECTED, so the duty is recorded unavailable with a note saying its evidence was present, and the rest of the pass stands. The second real model call of 2026-10-02 died on exactly this row with an answer that fitted the output cap.",
+    "recordedUnavailable": true,
     "part": {
      "duties": "unnnnnnnnnnnnn",
+     "wells": [
+      0,
+      0,
+      0,
+      0,
+      0,
+      0,
+      0
+     ],
+     "eff": "none"
+    }
+   },
+   {
+    "why": "duties is a number, not a string of one verdict character per duty (added by plan #289 to keep ten fail-closed fixed parts after the u case above was reclassified)",
+    "part": {
+     "duties": 14,
      "wells": [
       0,
       0,

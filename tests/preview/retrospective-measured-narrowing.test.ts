@@ -3,7 +3,7 @@ import { mkdtempSync, readFileSync, realpathSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { createJournalWorker, openPreviewJournal, retrospectiveCases, type JournalView } from './journal.js';
-import { GRAVITY_WELLS, RETROSPECTIVE_DUTIES, RETRO_ANSWER_BUDGET_BYTES, RETRO_ANSWER_BYTES_PER_TOKEN,
+import { GRAVITY_WELLS, RETROSPECTIVE_DUTIES, RETRO_ANSWER_BUDGET_BYTES, RETRO_ANSWER_GROWTH, RETRO_ANSWER_START_BYTES, RETRO_ANSWER_BYTES_PER_TOKEN,
   RETRO_ANSWER_NARROW_STEPS, RETRO_EFFICIENCY_CHARS, RETRO_FAILURE_BACKOFF_MS, RETRO_MIN_INTERVAL_MS,
   RETRO_OUTCOME_REASON_CHARS, RETRO_OVER_CAP_REASON, disciplineSource, eligibleCases,
   estimatedAnswerBytes, measuredAnswerBudget, retroAnswerBudget, type CaseCategory, type RetroCase } from './retrospective.js';
@@ -70,7 +70,12 @@ it('names the gap the live record proves: the ask is budgeted in bytes and judge
   // w3-retrocompact bounded that part by construction, so it is now a small fraction of the ask and costs far
   // less than the cap on its own even at the worst rate ever recorded. Both sides of that change are asserted
   // here, because this file's whole subject is the join between the two.
-  expect(FIXED / pass10Estimate).toBeLessThan(0.15);   // 299 of 2461 bytes, where it was 2595 of about 3630
+  // 299 bytes of the once-halved ask, where it was 2595 of about 3630 (71%). The share is larger than it was
+  // when this was first measured only because the ask itself is smaller: plan #289 corrected the bytes-per-token
+  // figure for this call's own frame, which cut the whole bound, so the same 299 bytes is a bigger slice of a
+  // smaller ask — and still a quarter of it rather than three quarters.
+  expect(FIXED / pass10Estimate).toBeLessThan(0.25);
+  expect(FIXED / pass10Estimate).toBeLessThan(2595 / 3630 / 2);
   const perPlannedByte = LIVE.pass10OutputTokens / pass10Estimate;
   expect(FIXED * perPlannedByte).toBeLessThan(SUBSCRIPTION_MAX_OUTPUT_TOKENS);
   // Both sides of the change, at that same measured rate: the fixed part as it was — 2595 bytes of duty objects,
@@ -152,10 +157,18 @@ it('falls back to the halving where there is nothing to measure, and a pass that
   const halvingAtOne = FIXED + Math.floor((RETRO_ANSWER_BUDGET_BYTES - FIXED) / 2);
   expect(measured).toBeGreaterThan(halvingAtOne);
   expect(retroAnswerBudget([overCap(undefined, undefined), overCap(planned, 2229)])).toBe(halvingAtOne);
-  // A complete pass ends the narrowing, and a genuinely unknown outcome never starts it.
-  expect(retroAnswerBudget([overCap(planned, 2229), { state: 'complete' }])).toBe(RETRO_ANSWER_BUDGET_BYTES);
-  expect(retroAnswerBudget([{ state: 'unknown', reason: 'model outcome uncertain' }])).toBe(RETRO_ANSWER_BUDGET_BYTES);
-  expect(retroAnswerBudget([])).toBe(RETRO_ANSWER_BUDGET_BYTES);
+  // A complete pass ends the narrowing, and a genuinely unknown outcome never starts it. Changed by plan #289
+  // (w3-retrolive): "ends the narrowing" no longer means "back to the whole bound". A root with nothing measured
+  // asks at the small start, and while an over-cap pass stands unanswered by any completed measurement its proven
+  // ceiling still holds — a complete pass that recorded no numbers of its own disproves nothing about the size
+  // that was refused. A complete pass WITH a measurement does supersede it (asserted below).
+  expect(retroAnswerBudget([overCap(planned, 2229), { state: 'complete' }]))
+    .toBe(Math.min(RETRO_ANSWER_START_BYTES, measuredAnswerBudget(overCap(planned, 2229))!));
+  expect(retroAnswerBudget([{ state: 'unknown', reason: 'model outcome uncertain' }])).toBe(RETRO_ANSWER_START_BYTES);
+  expect(retroAnswerBudget([])).toBe(RETRO_ANSWER_START_BYTES);
+  // A completed measurement is the authority from then on, bounded by one doubling of its own ask and the bound.
+  const after = { state: 'complete' as const, estimatedAnswerBytes: 1200, outputTokens: 200 };
+  expect(retroAnswerBudget([overCap(planned, 2229), after])).toBe(1200 * RETRO_ANSWER_GROWTH);
 });
 
 // --- the wired path: a real journal, a real worker, the recorded over-cap shapes replayed through it -----------
@@ -323,7 +336,8 @@ it('an unknown outcome keeps the backoff and starts no narrowing, measurement or
     await w.retrospect();
     const pass = w.journal.view.retroPasses.at(-1)!;
     expect(pass.state).toBe('unknown');
-    expect(retroAnswerBudget(w.journal.view.retroPasses)).toBe(RETRO_ANSWER_BUDGET_BYTES);
+    // Unchanged: this root has measured nothing, so the ask stays the small start it already used.
+    expect(retroAnswerBudget(w.journal.view.retroPasses)).toBe(RETRO_ANSWER_START_BYTES);
     w.advance(RETRO_MIN_INTERVAL_MS);
     await w.retrospect();
     expect(w.journal.view.retroPasses.length).toBe(1);

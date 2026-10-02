@@ -3,7 +3,7 @@ import { mkdtempSync, readFileSync, realpathSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { createJournalWorker, openPreviewJournal, retrospectiveCases, type JournalView } from './journal.js';
-import { GRAVITY_WELLS, RETROSPECTIVE_DUTIES, RETRO_ANSWER_BUDGET_BYTES, RETRO_ANSWER_BYTES_PER_TOKEN,
+import { GRAVITY_WELLS, RETROSPECTIVE_DUTIES, RETRO_ANSWER_BUDGET_BYTES, RETRO_ANSWER_BYTES_PER_TOKEN, RETRO_ANSWER_GROWTH, RETRO_ANSWER_START_BYTES,
   RETRO_ANSWER_NARROW_STEPS, RETRO_EFFICIENCY_CHARS, RETRO_FAILURE_BACKOFF_MS, RETRO_MIN_INTERVAL_MS,
   RETRO_OUTCOME_REASON_CHARS, RETRO_OVER_CAP_REASON, RETRO_STALE_CASE_MS, disciplineSource,
   eligibleCases, estimatedAnswerBytes, measuredAnswerBudget, retroAnswerBudget, type RetroCase } from './retrospective.js';
@@ -132,10 +132,12 @@ it('settles a pass whose own outcome row proves an over-cap answer as failed wit
     expect(narrowed).toBe(measuredAnswerBudget(pass));
     expect(narrowed).toBeLessThan(pass.estimatedAnswerBytes!);
     expect(narrowed).toBeGreaterThan(fixed);
-    // Not necessarily below one fallback halving. Now the fixed part is bounded, a gentle overrun like this one
-    // earns MORE room than the halving at depth one would have taken, and that is the measurement doing its job:
-    // the halving is a fallback for a pass with nothing to measure, never a ceiling on a real measurement.
-    expect(narrowed).toBeGreaterThan(fixed + Math.floor((RETRO_ANSWER_BUDGET_BYTES - fixed) / 2));
+    // The measurement is the authority, not the fallback halving: with the first ask sized small (plan #289) a
+    // gentle overrun like this one earns LESS room than the depth-one halving would have handed back, where from
+    // the whole bound it earned more. Either way the halving is a fallback for a pass with nothing to measure,
+    // never a ceiling on a real measurement — so the claim asserted here is the measurement's own invariant.
+    expect(narrowed).toBe(Math.floor(RETRO_ANSWER_BUDGET_BYTES * pass.estimatedAnswerBytes!
+      / (RETRO_ANSWER_BYTES_PER_TOKEN * pass.outputTokens!)));
     // Not immediately: the ordinary minimum interval between passes still holds. It does not wait the full
     // unknown-failure backoff, because this failure's cause is settled and the narrower ask is already computed.
     w.advance(RETRO_MIN_INTERVAL_MS - 1);
@@ -159,8 +161,16 @@ it('settles a pass whose own outcome row proves an over-cap answer as failed wit
     const after = owed(w.journal.view, w.at());
     expect(after.length).toBeLessThan(before.length);
     for (const row of second.omitted) expect(after).toContain(row.case);
-    // A completed pass ends the narrowing: the next one is planned against the whole bound again.
-    expect(retroAnswerBudget(w.journal.view.retroPasses)).toBe(RETRO_ANSWER_BUDGET_BYTES);
+    // A completed pass ends the narrowing: the next one is planned from that pass's OWN measurement, widened by
+    // at most one doubling of the ask it just answered (plan #289), rather than jumping back to the whole bound —
+    // which is the jump that made the live line pay a failed call, and an interval, for every step back down.
+    const completed = w.journal.view.retroPasses.at(-1)!;
+    expect(completed.state).toBe('complete');
+    expect(retroAnswerBudget(w.journal.view.retroPasses))
+      .toBe(Math.min(RETRO_ANSWER_BUDGET_BYTES, completed.estimatedAnswerBytes! * RETRO_ANSWER_GROWTH,
+        Math.floor(RETRO_ANSWER_BUDGET_BYTES * completed.estimatedAnswerBytes!
+          / (RETRO_ANSWER_BYTES_PER_TOKEN * completed.outputTokens!))));
+    expect(retroAnswerBudget(w.journal.view.retroPasses)).toBeGreaterThan(retroAnswerBudget(w.journal.view.retroPasses.slice(0, -1)));
   } finally { w.done(); }
 });
 
@@ -243,7 +253,9 @@ it('still records a genuinely unknown outcome as unknown when no outcome row pro
     const pass = w.journal.view.retroPasses.at(-1)!;
     expect(pass.state).toBe('unknown');
     expect(pass.reason).toBe('model outcome uncertain');
-    expect(retroAnswerBudget(w.journal.view.retroPasses)).toBe(RETRO_ANSWER_BUDGET_BYTES);
+    // Unchanged, which is what "no narrowing" means: this root has still measured nothing, so the next ask is
+    // the same small start it already used (plan #289 sized a first ask small rather than at the whole bound).
+    expect(retroAnswerBudget(w.journal.view.retroPasses)).toBe(RETRO_ANSWER_START_BYTES);
   } finally { w.done(); }
 });
 

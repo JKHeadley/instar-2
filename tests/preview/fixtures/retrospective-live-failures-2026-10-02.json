@@ -1,0 +1,351 @@
+{
+ "source": "The three live retrospective failures recorded on 2026-10-02, after the compact answer shape went live (w3-retrocompact, live from cint-L25). PROVENANCE, field by field. Everything under `recorded` is copied verbatim from real journals through the Studio read-only file route on 2026-10-02 from the Mama PC: `recorded.justinRoot` is the retrospective projection of .instar/lanes/pipeline/live-proof/results/retrolive-evidence-20261002/justin-retrospective-status.json (Justin's preview root, passes 0-13); `recorded.freshRoot` is the same projection of room2-fresh-root-retrospective-status.json (proof room two's fresh root, its very first pass at 09:28); `recorded.proofChecks` are the FAIL lines of group-I.out, group-O.out and group-P.out from the same directory. Nothing here is authored: every number, state and reason string is the live record. The answers replayed against these shapes in retrospective-first-pass-fit.test.ts are authored, because no model has been asked for the shape this unit introduces, and the first live pass is its real proof.",
+ "recorded": {
+  "justinRoot": {
+   "passes": [
+    {
+     "pass": 0,
+     "at": 1790693091206,
+     "state": "unknown",
+     "reason": "model outcome uncertain",
+     "eligible": 109,
+     "supplied": 40,
+     "deferredByBound": 69,
+     "inspected": null,
+     "omittedByReview": null,
+     "accounting": null,
+     "efficiency": null
+    },
+    {
+     "pass": 1,
+     "at": 1790714695707,
+     "state": "unknown",
+     "reason": "model outcome uncertain",
+     "eligible": 203,
+     "supplied": 40,
+     "deferredByBound": 163,
+     "inspected": null,
+     "omittedByReview": null,
+     "accounting": null,
+     "efficiency": null
+    },
+    {
+     "pass": 2,
+     "at": 1790736299656,
+     "state": "unknown",
+     "reason": "model outcome uncertain",
+     "eligible": 242,
+     "supplied": 40,
+     "deferredByBound": 202,
+     "inspected": null,
+     "omittedByReview": null,
+     "accounting": null,
+     "efficiency": null
+    },
+    {
+     "pass": 3,
+     "at": 1790757899961,
+     "state": "unknown",
+     "reason": "model outcome uncertain",
+     "eligible": 337,
+     "supplied": 40,
+     "deferredByBound": 297,
+     "inspected": null,
+     "omittedByReview": null,
+     "accounting": null,
+     "efficiency": null
+    },
+    {
+     "pass": 4,
+     "at": 1790779505326,
+     "state": "unknown",
+     "reason": "model outcome uncertain",
+     "eligible": 393,
+     "supplied": 40,
+     "deferredByBound": 353,
+     "inspected": null,
+     "omittedByReview": null,
+     "accounting": null,
+     "efficiency": null
+    },
+    {
+     "pass": 5,
+     "at": 1790801106522,
+     "state": "unknown",
+     "reason": "model outcome uncertain",
+     "eligible": 436,
+     "supplied": 40,
+     "deferredByBound": 396,
+     "inspected": null,
+     "omittedByReview": null,
+     "accounting": null,
+     "efficiency": null
+    },
+    {
+     "pass": 6,
+     "at": 1790822711210,
+     "state": "unknown",
+     "reason": "model outcome uncertain",
+     "eligible": 503,
+     "supplied": 40,
+     "deferredByBound": 463,
+     "inspected": null,
+     "omittedByReview": null,
+     "accounting": null,
+     "efficiency": null
+    },
+    {
+     "pass": 7,
+     "at": 1790844311921,
+     "state": "unknown",
+     "reason": "model outcome uncertain",
+     "eligible": 565,
+     "supplied": 40,
+     "deferredByBound": 525,
+     "inspected": null,
+     "omittedByReview": null,
+     "accounting": null,
+     "efficiency": null
+    },
+    {
+     "pass": 8,
+     "at": 1790865914129,
+     "state": "unknown",
+     "reason": "model outcome uncertain",
+     "eligible": 565,
+     "supplied": 40,
+     "deferredByBound": 525,
+     "inspected": null,
+     "omittedByReview": null,
+     "accounting": null,
+     "efficiency": null
+    },
+    {
+     "pass": 9,
+     "at": 1790887518252,
+     "state": "failed",
+     "reason": "review output over the cap",
+     "eligible": 702,
+     "supplied": 37,
+     "deferredByBound": 665,
+     "inspected": null,
+     "omittedByReview": null,
+     "accounting": null,
+     "efficiency": null
+    },
+    {
+     "pass": 10,
+     "at": 1790909120477,
+     "state": "failed",
+     "reason": "review output over the cap",
+     "eligible": 735,
+     "supplied": 23,
+     "deferredByBound": 712,
+     "inspected": null,
+     "omittedByReview": null,
+     "accounting": null,
+     "efficiency": null
+    },
+    {
+     "pass": 11,
+     "at": 1790930725806,
+     "state": "failed",
+     "reason": "review output over the cap",
+     "eligible": 784,
+     "supplied": 11,
+     "deferredByBound": 773,
+     "inspected": null,
+     "omittedByReview": null,
+     "accounting": null,
+     "efficiency": null
+    },
+    {
+     "pass": 12,
+     "at": 1790952329556,
+     "state": "failed",
+     "reason": "review output over the cap",
+     "eligible": 953,
+     "supplied": 13,
+     "deferredByBound": 940,
+     "inspected": null,
+     "omittedByReview": null,
+     "accounting": null,
+     "efficiency": null
+    },
+    {
+     "pass": 13,
+     "at": 1790955932017,
+     "state": "failed",
+     "reason": "retrospective: review record refused by its verification decoder: bounded array required",
+     "eligible": 980,
+     "supplied": 2,
+     "deferredByBound": 978,
+     "inspected": null,
+     "omittedByReview": null,
+     "accounting": null,
+     "efficiency": null
+    }
+   ],
+   "owed": {
+    "cases": 980,
+    "byCategory": {
+     "message": 353,
+     "decision": 313,
+     "verdict": 167,
+     "repair": 144,
+     "authorization": 3,
+     "open": 0,
+     "rerun": 0
+    },
+    "oldestSince": 0
+   },
+   "routeSelection": "unmeasured",
+   "callOutcomeCounts": {
+    "total": 846,
+    "role:model": 343,
+    "output-cap": 162,
+    "role:reply-review": 187,
+    "result-frame": 668,
+    "no-result-frame": 6,
+    "result-error-frame": 2,
+    "timeout": 8,
+    "role:summary": 316
+   }
+  },
+  "freshRoot": {
+   "passes": [
+    {
+     "pass": 0,
+     "at": 1790958532340,
+     "state": "failed",
+     "reason": "review output over the cap",
+     "eligible": 36,
+     "supplied": 22,
+     "deferredByBound": 14,
+     "inspected": null,
+     "omittedByReview": null,
+     "accounting": null,
+     "efficiency": null
+    }
+   ],
+   "owed": {
+    "cases": 72,
+    "byCategory": {
+     "message": 26,
+     "decision": 26,
+     "verdict": 10,
+     "repair": 8,
+     "authorization": 2,
+     "open": 0,
+     "rerun": 0
+    },
+    "oldestSince": 1790956064879
+   },
+   "routeSelection": "unmeasured",
+   "callOutcomeCounts": {
+    "total": 56,
+    "role:model": 27,
+    "result-frame": 51,
+    "role:reply-review": 19,
+    "timeout": 3,
+    "role:summary": 10,
+    "output-cap": 1,
+    "result-error-frame": 1
+   }
+  },
+  "proofChecks": [
+   "I1a FAIL rules: 16,51,58,9 \u2014 the new pass is complete, inspected = supplied (or the difference in omittedByReview and still owed), accounting.complete true, efficiency a sentence",
+   "I1b FAIL rules: 16,51,58,9 \u2014 duties has 14 rows; waiver-recurrence unavailable (or inspected since R3) and all others inspected",
+   "I1c FAIL rules: 51,9 \u2014 Rule 51's proof in the status JSON: the self-state line reads 'Retrospective review: N completed pass(es) \u2026 inspected \u2026 efficiency duty ran'",
+   "I1d FAIL rules: 51,9 \u2014 the 'What is your status?' reply mentions 'Retrospective review: \u2026 completed pass(es) \u2026 inspected \u2026 efficiency duty ran'",
+   "O24a FAIL rules: 24 \u2014 every completed retrospective pass inspected the recurrence duty, and each recurrence finding names what it repeats, a root cause and an owner",
+   "O24b FAIL rules: 24 \u2014 the retrospective validator: a recurrence with what it repeats, a root cause and an owner is kept; without recurs, with a declined (unowned) disposition, without a root cause, or citing an unknown record the pass is refused",
+   "P50a FAIL rules: 50 \u2014 offline (W's validateRetrospective): a complete pass records workaround and removable-attention as inspected, and a sourced workaround finding becomes an owned candidate",
+   "P50b FAIL rules: 50 \u2014 offline: a pass that skips the workaround duty, skips the removable-attention duty, or proposes a workaround with no source refs is refused",
+   "P50c FAIL rules: 50 \u2014 live: the latest complete retrospective pass inspected workaround and removable-attention"
+  ],
+  "liveIdShapes": {
+   "note": "Live case ids, taken from the live journal's own id grammar (tests/preview/fixtures/proofroom-memory-misfire-715672853-2026-09-30.json carries update 715672853 of bot 8475132199). A fixture id is far shorter, which is why this estimate must be measured against live-length ids.",
+   "message": "turn:telegram:8475132199:update:715672853",
+   "decision": "answer:telegram:8475132199:update:715672853",
+   "verdict": "verdict:telegram:8475132199:update:715672853:0"
+  },
+  "liveModelRuns": {
+   "note": "Four REAL retrospective calls through the production prepared ask (prepareJournalEnvelope + the subscription conversation policy's own argv and system prompt), on this unit's fixture root, claude-sonnet-4-5, 2026-10-02 on the Mama PC. Driven by scripts/retro-live-model-run.mjs; the verbatim prepared prompt, provider frame and extracted answer of each call are kept beside this branch's report. `plannedBytes` is the pass's own estimatedAnswerBytes, `outputTokens` the provider frame's own count (what the route's output cap counts), `answerBytes` the extracted Decision conclusion, and `frameBytes` the whole Decision text. The frame carries the model's reasoning in reason.value beside the answer, which is why plannedBytes per output token is far below a reply's bytes per token. HONESTY: three of the four fitted the route's output cap and one did not \u2014 run4 call 2 reported 2133 output tokens against a cap of 2048. It was planned at 3459 bytes under the old reply-measured ratio, and that run's provider stub did not enforce the cap, so the pass recorded complete where the real route would have refused the frame. It is the calibration datum for the corrected ratio, not a success.",
+   "calls": [
+    {
+     "run": "run1",
+     "call": 1,
+     "plannedBytes": 1685,
+     "outputTokens": 1069,
+     "answerBytes": 1731,
+     "frameBytes": 3251,
+     "state": "complete"
+    },
+    {
+     "run": "run3",
+     "call": 1,
+     "plannedBytes": 2312,
+     "outputTokens": 1064,
+     "answerBytes": 1789,
+     "frameBytes": 3774,
+     "state": "complete"
+    },
+    {
+     "run": "run4",
+     "call": 1,
+     "plannedBytes": 2312,
+     "outputTokens": 1161,
+     "answerBytes": 2275,
+     "frameBytes": 3930,
+     "state": "complete"
+    },
+    {
+     "run": "run4",
+     "call": 2,
+     "plannedBytes": 3459,
+     "outputTokens": 2133,
+     "answerBytes": 4409,
+     "frameBytes": 7576,
+     "state": "complete",
+     "overTheRouteCap": true
+    }
+   ],
+   "refusedBeforeTheRowIsolation": [
+    {
+     "run": "run2",
+     "call": 1,
+     "plannedBytes": 2312,
+     "outputTokens": 1314,
+     "answerBytes": 2582,
+     "reason": "retrospective: a graded outcome needs later evidence"
+    },
+    {
+     "run": "run2",
+     "call": 2,
+     "plannedBytes": 3043,
+     "outputTokens": 1227,
+     "answerBytes": 2438,
+     "reason": "retrospective: duty process-tier has evidence and cannot be unavailable"
+    }
+   ]
+  }
+ },
+ "failures": {
+  "overCapFirstAsk": {
+   "roots": [
+    "justinRoot pass 12 (13 cases supplied, 953 eligible)",
+    "freshRoot pass 0 (22 cases supplied, 36 eligible)"
+   ],
+   "reason": "review output over the cap"
+  },
+  "unaccountedCase": {
+   "root": "proof room two pass 2 at 07:28 (9 cases supplied)",
+   "reason": "retrospective: a case is neither inspected nor omitted, or both"
+  },
+  "boundedArray": {
+   "root": "justinRoot pass 13 (2 cases supplied, 978 deferred by bound, 980 eligible)",
+   "reason": "retrospective: review record refused by its verification decoder: bounded array required"
+  }
+ }
+}
