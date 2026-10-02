@@ -235,6 +235,54 @@ describe('Rule 110: the compaction sentence is said when it tells the operator s
     } finally { rmSync(dir, { recursive: true, force: true }); }
   }, 30000);
 
+  it('a resume into newly compacted history says it once more; the same run then stays quiet', async () => {
+    // Astra cint-L23 MUST-FIX 1: a disclosure an earlier run delivered silenced the first one after a later
+    // compaction, close, reopen and a day's pause. Quiet repetition belongs to one continuous run.
+    const dir = root(), path = join(dir, 'journal.encrypted');
+    let journal = openPreviewJournal(path, key, genesis());
+    const sent: string[] = [];
+    const ports = (now: number) => ({ now: () => now, stopped: () => false, checkOutbound: () => {},
+      send: async (input: { expectedText: string }) => { sent.push(input.expectedText); return sent.length + 100; },
+      model: async () => 'Noted.' });
+    try {
+      for (let n = 1; n <= 30; n++) {
+        const id = `telegram:12345678:update:${n}`, text = `Garden ${n}: ${'watered plants, mulch stayed damp. '.repeat(190)}`;
+        journal.append({ kind: 'intake', id, update: n, text, raw: JSON.stringify(update(n, text)), accepted: true, cursor: n + 1, at: at + n });
+        journal.append({ kind: 'reserve', id, at: at + n });
+        journal.append({ kind: 'answer', id, text: 'Noted.', state: 'complete', at: at + n });
+        journal.append({ kind: 'intent', id, text: 'PREVIEW — Noted.', chat: '7654321', update: n, grant: 'grant:preview', at: at + n });
+        journal.append({ kind: 'sent', id, message: n, at: at + n });
+      }
+      journal.append({ kind: 'summary-reserve', through: 29, at });
+      journal.append({ kind: 'summary', through: 29, text: 'The operator keeps a garden log.', at });
+      let worker = createJournalWorker(journal, ports(at + 100_000));
+      worker.intake([update(31, 'How is the garden?')]); await worker.drain();
+      expect(sent.at(-1)).toMatch(/^PREVIEW — Earlier conversation up to #29 is now summarized for me;/u);
+      journal.append({ kind: 'summary-reserve', through: 31, at: at + 1 });
+      journal.append({ kind: 'summary', through: 31, text: 'The operator keeps a garden log and asked how it is.', at: at + 1 });
+      journal.close();
+      journal = openPreviewJournal(path, key);
+      worker = createJournalWorker(journal, ports(at + 86_400_000));
+      worker.intake([update(32, 'Hello again after the pause.')]); await worker.drain();
+      const resumed = journal.view.turns.get('telegram:12345678:update:32')!;
+      expect(resumed.continuity).toMatchObject({ summarizedThrough: 31, prePauseInbound: 'telegram:12345678:update:31',
+        disposition: 'addressed' });
+      expect(resumed.continuity!.spoken).toBeUndefined();
+      expect(sent.at(-1)).toBe(`PREVIEW — ${resumed.continuity!.disclosure} Noted.`);
+      // The neighbour: the next routine reply of the same run, over the same frontier, stays quiet.
+      worker.intake([update(33, 'And the tomatoes?')]); await worker.drain();
+      expect(journal.view.turns.get('telegram:12345678:update:33')!.continuity!.spoken).toBe(false);
+      expect(sent.at(-1)).toBe('PREVIEW — Noted.');
+      // A resume with no newer frontier than the one already said is not newly compacted history: quiet.
+      journal.close();
+      journal = openPreviewJournal(path, key);
+      worker = createJournalWorker(journal, ports(at + 2 * 86_400_000));
+      worker.intake([update(34, 'Back once more.')]); await worker.drain();
+      expect(journal.view.turns.get('telegram:12345678:update:34')!.continuity!.spoken).toBe(false);
+      expect(sent.at(-1)).toBe('PREVIEW — Noted.');
+    } finally { journal.close(); rmSync(dir, { recursive: true, force: true }); }
+  }, 30000);
+
   it('both sides of each spoken condition, including the dispositions the room recorded', () => {
     const summary = { disposition: 'addressed' as const, basis: 'summary' as const,
       disclosure: continuityDisclosure('#31, x', 29, 'addressed', 'Telegram message 31') };

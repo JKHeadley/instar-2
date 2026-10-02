@@ -3815,6 +3815,8 @@ export function createJournalWorker(journal: ReturnType<typeof openPreviewJourna
    * ordinary call also clears a floor an earlier attempt left -- and `preparedWithFloor` restores -1 when its
    * walk ends, including on a throw. Nothing else reads it, so the summary pass can never see a stale floor. */
   let historySetAside = -1;
+  /** Turns whose reply this worker sent with a spoken continuity disclosure: the current episode (Rule 110). */
+  const episodeSpoken = new Set<string>();
   const summaryFor = (through: number) => journal.view.summaries.filter(item => item.through <= through).at(-1);
   /** Rule 110: the continuity `turn`'s reply accounts for when its context was compacted through
    * `through`. Every such reply records the account, so what it accounted for stays inspectable; the
@@ -3855,7 +3857,14 @@ export function createJournalWorker(journal: ReturnType<typeof openPreviewJourna
             : ['pending', before.held ? `held: ${before.held}` : 'no reply from me yet'];
     const label = `#${before.update}, ${dated(before)}`;
     const disclosure = continuityDisclosure(label, through, disposition, reference, basis);
-    const spoken = continuitySpoken(lastSaid?.continuity, { disposition, basis, disclosure }, unresolved !== undefined);
+    // Quiet repetition is scoped to one continuous episode: this worker's run. A disclosure an earlier run
+    // delivered does not cover history compacted since, so the first reply after a resume into a newer frontier
+    // says it again (a changed seam is already spoken by `continuitySpoken`); later routine replies of this run
+    // stay quiet (Rule 110).
+    const prior = lastSaid?.continuity;
+    const carried = prior && !episodeSpoken.has(lastSaid!.id)
+      && through > prior.summarizedThrough ? undefined : prior;
+    const spoken = continuitySpoken(carried, { disposition, basis, disclosure }, unresolved !== undefined);
     return { before, label, disposition, reference, basis, disclosure, spoken };
   };
   const meaningIndex = () => meaningTermsIndex(journal.view);
@@ -5824,6 +5833,7 @@ export function createJournalWorker(journal: ReturnType<typeof openPreviewJourna
         // holding notice). A silent account changes no text; its record still binds the text actually sent.
         const frontier = continuityFrontier(turn.grounding);
         const continuity = frontier === undefined ? undefined : continuityFor(turn, frontier.through, frontier.basis);
+        if (continuity?.spoken) episodeSpoken.add(turn.id);
         const disclosed = (text: string) => continuity?.spoken ? withDisclosure(text, continuity.disclosure) : text;
         reply = disclosed(reply);
         // Rule 89: fixed runner notices speak as infrastructure; the agent's own answers speak as the agent.
