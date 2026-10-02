@@ -46,8 +46,7 @@ export function capabilityBriefing(readSource: (path: string) => string,
   const available = features.filter(f => f.availability === 'available');
   const off = features.filter(f => f.availability === 'switched-off');
   return { generation, commit, text: [
-    'This is a private Instar 2.0 PREVIEW trial in the operator\'s direct Telegram chat and its topics. '
-      + 'Capabilities below are one-line summaries from this installation\'s register; current state in the status reply.',
+    'This is a private Instar 2.0 PREVIEW trial in the operator\'s direct Telegram chat and its topics.',
     'What you can do for the operator here:', ...available.filter(f => f.userFacing).map(item),
     'Internal machinery running under you:', ...available.filter(f => !f.userFacing).map(item),
     ...off.length ? [`In the code but switched off here, so not available: ${off.map(f => f.id).join(', ')}.`] : [],
@@ -174,10 +173,9 @@ export const ANSWER_PROTOCOL = [
   'If packet.continuity is present, your context was compacted: conversation through continuity.through is only in the summary, and continuity.lastInbound is the last message before this one. '
     + 'The application adds a fixed sentence disclosing that when one is owed; never write it yourself. '
     + 'If that message is still open, address it or say what remains open; never imply recall the evidence lacks.',
-  'If packet.meaningIndexCoverage.disposition is "degraded", some summarized messages are findable only by their exact words: not finding something is never evidence it was not said. '
-    + 'Say your search of the earlier conversation is incomplete rather than that there is no record of it.',
+  'If packet.meaningIndexCoverage.disposition is "degraded", some summarized messages are findable only by their exact words: not finding something is never evidence it was not said.',
   'If packet.memoryLookup is "offered" and the packet does not show what the message asks about, do not answer that it is missing or unknown yet: '
-    + 'return only {"lookup":[up to 6 short phrases in the words the stored message likely used]}. You are asked once more with what it found.',
+    + 'return only {"lookup":[up to 6 short phrases in the words the stored message likely used]}.',
 ].join('\n');
 /** The exact instruction content of every answer call, identical before and after compaction (Rule 47). */
 export const ANSWER_INSTRUCTIONS = `${MIND_INSTRUCTIONS}\n${ANSWER_PROTOCOL}`;

@@ -108,8 +108,11 @@ export const PREVIEW_REPLY_BOUND_BYTES = 4096;
  * guard's measured review-minus-answer delta with a bound-length reply is 6775 = 4096 + 2679 exactly.
  * Re-measured at cint-L25 (2749 -> 2679): cint-L23's w3-longchat wording made the instruction message 70
  * bytes longer, and a review call does not carry that message, so its extra parts are 70 bytes smaller.
+ * Re-measured at cint-L27 (2679 -> 2540): the instruction message is 139 bytes longer (w3-recallrank's lookup
+ * sentence, +284, less the two trims that paid for it in the protocol, -145), so the review-only parts are
+ * 139 bytes smaller; the measured review-minus-answer delta is 6636 = 4096 + 2540.
  * `default-context-floor.test.ts` re-measures the real review prompt and fails if it outgrows this. */
-export const REPLY_REVIEW_FIXED_BYTES = 2679;
+export const REPLY_REVIEW_FIXED_BYTES = 2540;
 /** The room one turn's prompt must leave beside it for that turn's reply review, derived from the two
  * parts above rather than being a flat quarter of the limit. The flat 8192 it replaces was a quarter of
  * the approved 32768 default, which left 1.5 KiB for the operator's message and all of its history
@@ -128,12 +131,17 @@ export const replyReviewReserveFor = (maxBytes: number) =>
  * the live answer path at the floor and fails when they outgrow what it allows. Re-measured at cint-L25
  * (22889 -> 22959): this unit's trims (-124) on top of cint-L24's measurement (23083), whose instruction
  * message carries w3-longchat's wording (+70 against the 4309 this unit first measured). The instruction
- * message cancels against the reserve above, so the room for the message and its history is unchanged. */
+ * message cancels against the reserve above, so the room for the message and its history is unchanged.
+ * Re-measured at cint-L27, unchanged at 22959: w3-recallrank's lookup sentence (+284) and w3-reminderwords'
+ * capability-note rewording (-27 net, +21 in its regenerated reminder line) are paid for by three trims (-257):
+ * the protocol's "say your search is incomplete" sentence and the lookup sentence's "asked once more" tail
+ * (the one lookup now covers both, recorded real answers in lanes/cint-L27-PROGRESS.md), and the capability
+ * note's header sentence, whose two facts the status-command and register-tooling lines already state. */
 export const PREVIEW_FIXED_PROMPT_BYTES = 22_959;
 /** The room a context limit must still leave for the operator's own message and its history once the fixed
  * parts and the reply-review reserve are taken. At the approved 32768 default this was 1563 bytes, and the
  * packet had to drop the obligation guide from the third turn of a fresh root onward -- measured, not
- * predicted; it is now 3034. This floor is just under that: roughly 3 KiB, which carries an ordinary short
+ * predicted; it was 3034 at cint-L25 and is 3173 at cint-L27 (32768 - 6636 - 22959). This floor is just under that: roughly 3 KiB, which carries an ordinary short
  * message and its growing history far enough into a twenty-turn conversation for the guide to survive the
  * opening turns and for no reply to be held for size (`default-root-conversation.test.ts` drives that
  * conversation; `default-context-floor.test.ts` measures the real headroom against this number). */
@@ -141,7 +149,7 @@ export const PREVIEW_MIN_TURN_HEADROOM_BYTES = 3000;
 /** The smallest context limit at which one ordinary turn fits with its reply review beside it: the least
  * limit L with `L - replyReviewReserveFor(L) >= PREVIEW_FIXED_PROMPT_BYTES`. Derived from that inequality
  * rather than picked: with the reserve now sized from its own parts the quarter term no longer binds at this
- * scale, so the sum below is exact (29734 = 22959 + 4096 + 2679). A limit below this cannot serve its own first turn, however little
+ * scale, so the sum below is exact (29595 = 22959 + 4096 + 2540). A limit below this cannot serve its own first turn, however little
  * the conversation holds, so no summary or set-aside can recover it -- which is why the doorways that set a
  * limit refuse one below it instead of letting an unservable root be created. */
 export const PREVIEW_MIN_SERVABLE_CONTEXT_BYTES = Math.ceil(PREVIEW_FIXED_PROMPT_BYTES * 4 / 3)

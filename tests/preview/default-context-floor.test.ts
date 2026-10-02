@@ -122,7 +122,7 @@ it('keeps the always-sent prompt parts inside what the measured floor allows, wi
   expect(PREVIEW_FIXED_PROMPT_BYTES).toBeLessThanOrEqual(floor - replyReviewReserveFor(floor));
   // The reserve is sized from what the review really needs, so the review of THIS turn -- with a candidate
   // reply at the send path's own bound -- fits in the room the reserve sets aside. This is the half the flat
-  // 8192 only guessed at: measured here, it is 6775 (4096 reply bound + 2679 review-only parts).
+  // 8192 only guessed at: measured here, it is 6636 (4096 reply bound + 2540 review-only parts; 6775 at cint-L25).
   expect(measured.reviewTotal).not.toBeNull();
   expect(measured.reviewTotal! - measured.answerTotal!).toBeLessThanOrEqual(replyReviewReserveFor(floor));
   expect(measured.reviewTotal! - measured.answerTotal!)
@@ -141,7 +141,8 @@ it('keeps the always-sent prompt parts inside what the measured floor allows, wi
 it('leaves a fresh root at the default limit real room for the message and its history', async () => {
   // The repair's measurable claim. Before: 32768 - 8192 reserve - 23013 parts = 1563 bytes for the operator's
   // message and ALL of its history, and the packet dropped the obligation guide from the third turn onward.
-  // After (re-measured at cint-L25): 32768 - 6775 - 22959 = 3034, and the whole desk report fits at the first turn.
+  // After (re-measured at cint-L25): 32768 - 6775 - 22959 = 3034; at cint-L27 32768 - 6636 - 22959 = 3173. The whole
+  // desk report fits at the first turn.
   const limit = PREVIEW_LIVE_LIMITS.contextBytes;
   const headroom = limit - replyReviewReserveFor(limit) - PREVIEW_FIXED_PROMPT_BYTES;
   expect(headroom).toBeGreaterThanOrEqual(PREVIEW_MIN_TURN_HEADROOM_BYTES);

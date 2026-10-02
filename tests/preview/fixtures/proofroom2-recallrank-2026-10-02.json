@@ -259,5 +259,90 @@
     ]
    }
   ]
+ },
+ "cintL27Samples": {
+  "note": "Real answer-model output, verbatim, on the cint-L27 merged tree after its three trims (the protocol's incomplete-search sentence, the lookup sentence's 'asked once more' tail, the capability note's header sentence). Each call was the product's own prepared answer envelope (prepareJournalEnvelope, 409600-byte room) for this fixture's room, sent to claude-sonnet-5 through the claude CLI 2.1.287 on the Studio with subscriptionConversationPolicy's arguments and MAX_THINKING_TOKENS=0, 2026-10-02. 8 calls in all; a calls list stops where the scratch run's budget for that sample ended. Nothing here came from a live room.",
+  "samples": [
+   {
+    "label": "paraphrase1",
+    "question": "What number opens the little hut where I keep my rakes?",
+    "indexSample": "B",
+    "expect": "lookup, then the fact (both calls of one turn)",
+    "calls": [
+     {
+      "raw": "{\"type\":\"Decision\",\"schemaVersion\":1,\"id\":\"telegram:12345678:update:6230509\",\"reason\":{\"subject\":\"preview-stage2-answer\",\"predicate\":\"derivation\",\"value\":\"The operator asked for the lock code to the shed/hut holding the rakes. Scanning the offered context: history (garden logs #6230505-508), recalled (garden logs and one meta-question), and memoryCandidates (more garden logs) — none contain any mention of a hut, shed, lock, code, PIN, or rakes. The summary only states 'The operator keeps a daily garden log and asked for reminders,' which is an inference and doesn't support this specific fact either. Per capability guidance, I must not answer 'I don't know from this journal' prematurely if memoryLookup is 'offered' and the packet doesn't show what's asked about — in that case the protocol requires returning only a lookup object with short phrases to search for. Since nothing here shows a hut code, and memoryLookup is offered, the correct response is a lookup request rather than a direct 'unknown' answer.\",\"evidence\":[\"telegram:12345678:update:6230509\"]},\"conclusion\":{\"subject\":\"preview-stage2-answer\",\"predicate\":\"answer-text\",\"value\":{\"lookup\":[\"hut code\",\"rake shed code\",\"shed lock combination\",\"gate code for rakes\",\"tool shed number\"]},\"evidence\":[\"telegram:12345678:update:6230509\"]},\"floor\":{\"allowed\":{\"actions\":[\"work\"],\"default\":\"work\",\"schemaVersion\":1,\"type\":\"ActionFloor\"},\"chosen\":\"work\"}}",
+      "promptBytes": 78544
+     },
+     {
+      "raw": "{\"type\":\"Decision\",\"schemaVersion\":1,\"id\":\"telegram:12345678:update:6230509\",\"at\":1790007000000,\"by\":{\"judgment\":\"judgment\",\"model\":\"claude-sonnet-5\",\"route\":\"preview-subscription\"},\"reason\":{\"subject\":\"preview-stage2-answer\",\"predicate\":\"derive-reply\",\"value\":\"The operator asks for the code that opens the hut where rakes are kept. Checking recalled: turn 6230474 states plainly 'My garden shed padlock code is 2958.' This is operator-stated, a direct, specific fact matching 'hut' as a garden shed and 'rakes' as garden tools stored there. The memoryLookup search for 'hut code', 'rake shed code', 'shed lock combination', etc. found this via recalled (memoryLookup.found:2, and recalled includes the 6230474 entry). No conflicting shed/hut code appears anywhere in history, memoryCandidates, or recalled — the garden logs are irrelevant routine notes, not codes. There's only one shed mentioned, so no ambiguity requiring a clarifying question. I can answer directly and confidently, citing the source per capability guidance (operator-stated fact, exact quote). No correction/forget/prefer signal here, so memory:[]. This is a plain informational reply, not a dated event, directive, or promise — no obligations fields apply. No blocker applies since I have the answer.\",\"evidence\":[\"telegram:12345678:update:6230509\"]},\"conclusion\":{\"subject\":\"preview-stage2-answer\",\"predicate\":\"answer-text\",\"value\":{\"reply\":\"The code is 2958 — you told me earlier: \\\"My garden shed padlock code is 2958.\\\"\",\"memory\":[]},\"evidence\":[\"telegram:12345678:update:6230509\"]},\"floor\":{\"allowed\":{\"actions\":[\"work\"],\"default\":\"work\",\"schemaVersion\":1,\"type\":\"ActionFloor\"},\"chosen\":\"work\"}}",
+      "promptBytes": 79647
+     }
+    ]
+   },
+   {
+    "label": "paraphrase2",
+    "question": "What number opens the little hut where I keep my rakes?",
+    "indexSample": "B",
+    "expect": "lookup (first call only)",
+    "calls": [
+     {
+      "raw": "{\"type\":\"Decision\",\"schemaVersion\":1,\"id\":\"telegram:12345678:update:6230509\",\"at\":1790007000000,\"by\":{\"judgment\":\"judgment\",\"model\":\"claude-sonnet-5\",\"route\":\"preview-subscription\"},\"reason\":{\"subject\":\"preview-stage2-answer\",\"predicate\":\"derive-answer\",\"value\":\"The operator asks for a number (a code) that opens a shed/hut where rakes are kept. Nothing in history, recalled, or memoryCandidates mentions a hut, shed, lock code, or any numeric code at all — those entries are all garden log notes about carrots, tomatoes, beans, basil, and marigolds being watered. The summary also only mentions a daily garden log and reminders, no lock code. Per memoryLookup:offered guidance: since the packet does not show what the message asks about, I must not say it's missing/unknown; I should return a lookup object with short phrases likely used in the original message, such as terms about the shed/hut code or combination.\",\"evidence\":[\"telegram:12345678:update:6230509\"]},\"conclusion\":{\"subject\":\"preview-stage2-answer\",\"predicate\":\"answer-text\",\"value\":{\"lookup\":[\"hut code\",\"shed combination\",\"rake shed lock\",\"gate code for tool shed\",\"padlock number\",\"lock combination for hut\"]},\"evidence\":[\"telegram:12345678:update:6230509\"]},\"floor\":{\"allowed\":[\"work\"],\"chosen\":\"work\"}}",
+      "promptBytes": 78544
+     }
+    ]
+   },
+   {
+    "label": "paraphrase3",
+    "question": "What number opens the little hut where I keep my rakes?",
+    "indexSample": "B",
+    "expect": "lookup (first call only)",
+    "calls": [
+     {
+      "raw": "{\"type\":\"Decision\",\"schemaVersion\":1,\"id\":\"telegram:12345678:update:6230509\",\"at\":1790007000000,\"by\":{\"judgment\":\"judgment\",\"model\":\"claude-sonnet-5\",\"route\":\"preview-subscription\"},\"reason\":{\"subject\":\"preview-stage2-answer\",\"predicate\":\"derivation\",\"value\":\"The operator asks for a numeric code to a rake shed. None of the history, memoryCandidates, or recalled entries mention a hut, shed, rakes, or any access code — they are all garden log entries about carrots, tomatoes, beans, basil, and marigolds being watered, with no code or number for a structure. The summary also only mentions garden logging and reminders, nothing about a hut or code. Per memoryLookup:\\\"offered\\\" guidance, since the packet does not show what this message asks about, I must not answer that it is missing or unknown yet — I should return only a lookup object with short phrases in words the stored message likely used, to search further before concluding absence.\",\"evidence\":[\"telegram:12345678:update:6230509\"]},\"conclusion\":{\"subject\":\"preview-stage2-answer\",\"predicate\":\"answer-text\",\"value\":{\"lookup\":[\"hut code\",\"rake shed combination\",\"shed lock number\",\"garden shed code\",\"rakes stored\",\"hut number\"]},\"evidence\":[\"telegram:12345678:update:6230509\"]},\"floor\":{\"allowed\":[\"work\"],\"chosen\":\"work\"}}",
+      "promptBytes": 78544
+     }
+    ]
+   },
+   {
+    "label": "never-said",
+    "question": "What did I say my sister's middle name is?",
+    "indexSample": "B",
+    "expect": "lookup that finds nothing, then the honest reply (both calls of one turn)",
+    "calls": [
+     {
+      "raw": "{\"type\":\"Decision\",\"schemaVersion\":1,\"id\":\"telegram:12345678:update:6230509\",\"reason\":{\"subject\":\"preview-stage2-answer\",\"predicate\":\"derivation\",\"value\":\"The operator asked what they said their sister's middle name is. Reviewing all offered evidence: history contains four garden log messages (rows of carrots, tomatoes, beans, basil — all routine watering notes), recalled contains four more garden log entries (basil, beans, basil, beans), and the summary says only 'The operator keeps a daily garden log and asked for reminders.' None of this touches a sister, a family member, or any name at all. The capability note says to state a remembered detail only when the offered journal evidence supports that exact detail, and otherwise to say I don't know from this journal, never that the operator did not say it. Since meaningIndexCoverage is degraded, not finding this in the visible excerpts isn't proof it was never said — but memoryLookup is 'offered' and the packet doesn't show what this message asks about, so per the final instruction I should return only a lookup object with short phrases likely used in the original message, rather than asserting unknown. No memory correction/forget/prefer applies, no dated event, no directive, no blocker — this is a plain memory-lookup case that resolves via the lookup mechanism.\",\"evidence\":[\"telegram:12345678:update:6230509\"]},\"conclusion\":{\"subject\":\"preview-stage2-answer\",\"predicate\":\"answer-text\",\"value\":{\"lookup\":[\"sister's middle name\",\"my sister is named\",\"sister named\"]},\"evidence\":[\"telegram:12345678:update:6230509\"]},\"floor\":{\"allowed\":[\"work\"],\"chosen\":\"work\"}}",
+      "promptBytes": 74090
+     },
+     {
+      "raw": "{\"type\":\"Decision\",\"schemaVersion\":1,\"id\":\"telegram:12345678:update:6230509\",\"at\":1790007000000,\"by\":{\"judgment\":\"judgment\",\"model\":\"claude-sonnet-5\",\"route\":\"preview-subscription\"},\"reason\":{\"subject\":\"preview-stage2-answer\",\"predicate\":\"derivation\",\"value\":\"The operator asked what they said their sister's middle name is. I performed my one memory lookup with phrases like 'sister's middle name', 'my sister is named', 'sister named', and it returned found:0 — nothing matched. The recalled items and history are all garden log entries about rows of carrots, tomatoes, beans, and basil; none mention a sister or any middle name at all. The summary also only mentions a daily garden log and reminders, with no mention of family members. There is no sourceLabel or operator-stated evidence supporting any claim about a sister's middle name. Per the capability note, I must not say the operator never said it — only that I don't know from this journal, since the lookup found nothing and nothing in the offered context supports that exact detail. This is a direct reply to a memory question with no correction, forget, or preference being set, so memory:[] is appropriate, and since it's a memoryList-eligible verified operator memory question but I have nothing to list, I return the plain negative finding.\",\"evidence\":[\"telegram:12345678:update:6230509\"]},\"conclusion\":{\"subject\":\"preview-stage2-answer\",\"predicate\":\"answer-text\",\"value\":{\"reply\":\"I don't know from this journal — I searched and found nothing about a sister's middle name, or any mention of a sister at all. That's not proof it was never said, just that I can't find it here.\",\"memory\":[],\"dated\":[],\"lastNamedPerson\":null,\"personAttributes\":[]},\"evidence\":[\"telegram:12345678:update:6230509\"]},\"floor\":{\"allowed\":[\"work\"],\"chosen\":\"work\"}}",
+      "promptBytes": 74444
+     }
+    ]
+   },
+   {
+    "label": "answered",
+    "question": "What number opens the little hut where I keep my rakes?",
+    "indexSample": "A",
+    "expect": "no lookup: the packet already recalls the fact (index sample A)",
+    "calls": [
+     {
+      "raw": "{\"type\":\"Decision\",\"schemaVersion\":1,\"id\":\"telegram:12345678:update:6230509\",\"reason\":{\"subject\":\"preview-stage2-answer\",\"predicate\":\"derivation\",\"value\":\"The operator asked for the number that opens the hut where rakes are kept. Checking recalled memory: one entry from 2026-09-21T22:07Z states 'My garden shed padlock code is 2958.' This is an operator-stated fact (sourceKind: operator-stated), directly on point — a garden shed is a plausible match for 'little hut where I keep my rakes,' and this is the only code-like fact offered anywhere in context or recalled. There is no second, conflicting code candidate for a hut/shed in memoryCandidates, recalled, or history, so no disambiguation question is needed. I can state this plainly since it's operator-stated, not inferred. I should cite the source per capability guidance. No directives, dated events, promises, or memory corrections apply here — this is a plain factual recall question, so the answer format is the plain object with 'reply' per the memory/dated guidance only if applicable; since this is not a correction/forget/prefer situation, memory:[] is appropriate, and no dated/directive/openLoops/blocker fields apply.\",\"evidence\":[\"telegram:12345678:update:6230509\"]},\"conclusion\":{\"subject\":\"preview-stage2-answer\",\"predicate\":\"answer-text\",\"value\":\"The code is 2958 — that's what you gave me for the garden shed padlock (2026-09-21).\",\"evidence\":[\"telegram:12345678:update:6230509\"]},\"floor\":{\"allowed\":[\"work\"],\"chosen\":\"work\"}}",
+      "promptBytes": 72137
+     }
+    ]
+   },
+   {
+    "label": "unrelated",
+    "question": "What is 17 times 3?",
+    "indexSample": "B",
+    "expect": "no lookup: the question needs nothing from memory",
+    "calls": [
+     {
+      "raw": "{\"type\":\"Decision\",\"schemaVersion\":1,\"id\":\"telegram:12345678:update:6230509\",\"at\":1790007000000,\"by\":{\"judgment\":\"judgment\",\"model\":\"claude-sonnet-5\",\"route\":\"preview-subscription\"},\"reason\":{\"subject\":\"preview-stage2-answer\",\"predicate\":\"derive-answer\",\"value\":\"The operator's current message is a simple, self-contained arithmetic question: 17 times 3. This does not depend on any of the history, recalled items, or memory candidates (which are all unrelated garden log entries). No memory correction, forgetting, preference-setting, dated event, directive, or openLoop applies here, and there is no conflict to resolve. I should just answer directly. 17 * 3 = 51. No clarifying question is needed since the question is unambiguous. No promises, directives, or blockers are implicated by this reply.\",\"value_computation\":\"17*3=51\",\"evidence\":[\"telegram:12345678:update:6230509\"]},\"conclusion\":{\"subject\":\"preview-stage2-answer\",\"predicate\":\"answer-text\",\"value\":\"17 times 3 is 51.\",\"evidence\":[\"telegram:12345678:update:6230509\"]},\"floor\":{\"allowed\":{\"actions\":[\"work\"],\"default\":\"work\",\"schemaVersion\":1,\"type\":\"ActionFloor\"},\"chosen\":\"work\"}}",
+      "promptBytes": 84924
+     }
+    ]
+   }
+  ]
  }
 }

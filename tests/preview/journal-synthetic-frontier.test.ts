@@ -147,3 +147,74 @@ it('opens a journal an earlier build damaged: the first reservation stands and i
     writer.close();
   } finally { rmSync(root, { recursive: true, force: true }); }
 });
+
+it('runs a lookup turn after a summary that ends on a fired reminder: the lookup row passes project-before-write and replays', async () => {
+  // cint-L27: w3-recallrank's `lookup` row carries the second packet's grounding, so it meets the same synthetic
+  // frontier as the reserve; its reducer holds it to the reserve's own test and compares update ids numerically.
+  const root = tmp();
+  try {
+    const state = { now: start, sent: [] as string[] };
+    const path = join(root, 'journal.encrypted');
+    const asked = 'who was it I wanted to ring?';
+    const inputs: { question: string; context: string }[] = [];
+    const ports = { now: () => state.now, stopped: () => false, timeZone: 'America/Los_Angeles', checkOutbound: () => {},
+      model: async (input: Input & { context: string }) => {
+        if (input.question !== asked) return decide(input);
+        inputs.push({ question: input.question, context: input.context });
+        return inputs.length === 1 ? JSON.stringify({ lookup: ['call Priya', 'remind me Friday'] })
+          : JSON.stringify({ reply: 'You wanted to call Priya.', memory: [], dated: [] });
+      },
+      send: async (value: { expectedText: string }) => { state.sent.push(value.expectedText); return state.sent.length; } };
+    const journal = openPreviewJournal(path, key, genesis);
+    const worker = createJournalWorker(journal, ports);
+    const long = (n: number) => `Background note ${n}: ${'the garden plan covers tomatoes, beans and the north fence. '.repeat(70)}`;
+    worker.intake([update(1, long(1)), update(2, long(2)), update(3, priya)]); await worker.drain();
+    state.now = friday9; await worker.sendRequested();
+    const due = journal.view.order.find(turn => turn.requestedAction)!;
+    expect(due.update).toBe(3 + 1 / 1024);
+    journal.append({ kind: 'summary-reserve', through: due.update, at: state.now });
+    journal.append({ kind: 'summary', through: due.update, text: 'The operator keeps garden notes.', at: state.now });
+    state.now = friday9 + 60_000;
+    worker.intake([update(4, asked)]); await worker.drain();
+    const next = journal.view.turns.get(journal.view.order.at(-1)!.id)!;
+    expect(next.update).toBe(4);
+    expect(inputs).toHaveLength(2);
+    expect((JSON.parse(inputs[0]!.context) as { memoryLookup?: unknown }).memoryLookup).toBe('offered');
+    expect(next.lookup?.words).toEqual(['call Priya', 'remind me Friday']);
+    expect(next.lookup!.found.length).toBeGreaterThan(0);
+    expect(next.grounding?.compactedThrough).toBe(due.update);
+    expect(next.sent).toBeDefined();
+    expect(state.sent.at(-1)).toBe('PREVIEW — You wanted to call Priya.');
+    journal.close();
+    const reopened = openPreviewJournal(path, key);
+    expect(reopened.view.turns.get(next.id)?.lookup).toEqual(next.lookup);
+    expect(reopened.view.turns.get(next.id)?.grounding?.compactedThrough).toBe(due.update);
+    expect(reopened.view.refusedReserveRows).toBeUndefined();
+    reopened.close();
+  } finally { rmSync(root, { recursive: true, force: true }); }
+});
+
+it('holds a lookup row\'s grounding frontier to the reserve\'s test: a synthetic update passes, off-grid or not-earlier is refused before the write', async () => {
+  const root = tmp();
+  try {
+    const { journal, path, due } = await summaryOnDueTurn(root);
+    const turn = journal.view.order.at(-1)!;
+    const grounding = (compactedThrough: number) => ({ compactedThrough, history: [], recalled: [] });
+    journal.append({ kind: 'reserve', id: turn.id, grounding: grounding(due.update), at: friday9 + 120_000 } as unknown as JournalRecord);
+    const size = statSync(path).size, calls = journal.view.calls;
+    const lookup = (compactedThrough: number) => ({ kind: 'lookup', id: turn.id, words: ['call Priya'], found: [due.id],
+      grounding: grounding(compactedThrough), usage: { inputTokens: 10, outputTokens: 5, charge: null }, at: friday9 + 180_000 }) as unknown as JournalRecord;
+    for (const bad of [turn.update, due.update + 0.1]) {
+      expect(() => journal.append(lookup(bad))).toThrow('preview journal: compacted grounding order');
+      expect(statSync(path).size).toBe(size);
+      expect(journal.view.turns.get(turn.id)?.lookup).toBeUndefined();
+    }
+    journal.append(lookup(due.update));
+    expect(journal.view.turns.get(turn.id)?.lookup).toEqual({ words: ['call Priya'], found: [due.id] });
+    expect(journal.view.calls).toBe(calls + 1);
+    journal.close();
+    const reopened = openPreviewJournal(path, key);
+    expect(reopened.view.turns.get(turn.id)?.grounding?.compactedThrough).toBe(due.update);
+    reopened.close();
+  } finally { rmSync(root, { recursive: true, force: true }); }
+});

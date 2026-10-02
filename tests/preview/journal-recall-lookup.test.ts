@@ -163,6 +163,45 @@ describe('Rule 11: the recorded paraphrase, answered through one lookup (recorde
   });
 });
 
+describe('Rule 11: the trimmed wording, replayed with real answers recorded on the cint-L27 tree', () => {
+  // cint-L27 removed the protocol's "say your search is incomplete" sentence and this sentence's "asked once more"
+  // tail to pay for it. These are verbatim claude-sonnet-5 answers to this room's prepared envelopes on that tree.
+  const l27 = (fixture as unknown as { cintL27Samples: { samples: LookupSample[] } }).cintL27Samples.samples;
+  const at27 = (label: string) => l27.find(item => item.label === label)!;
+  it('still asks for a lookup on the recorded paraphrase, and the lookup still reaches the fact', async () => {
+    const reply = decoded(at27('paraphrase1').calls[1]!.raw);
+    for (const label of ['paraphrase1', 'paraphrase2', 'paraphrase3']) {
+      const first = decoded(at27(label).calls[0]!.raw), words = lookupWords(first)!;
+      expect(words.length).toBeGreaterThan(0);
+      const r = await turn({ label: 'B', answers: [first, reply] });
+      try {
+        expect(r.asked.lookup!.words).toEqual(words);
+        expect(r.asked.lookup!.found).toContain(factId);
+        expect(r.sent).toHaveLength(1);
+        expect(r.sent[0]).toContain('2958');
+      } finally { r.close(); }
+    }
+  }, 120_000);
+  it('still ends a never-said question in the honest searched-not-found reply', async () => {
+    const sample = at27('never-said');
+    const first = decoded(sample.calls[0]!.raw), second = decoded(sample.calls[1]!.raw);
+    const r = await turn({ text: sample.question, answers: [first, second] });
+    try {
+      expect(r.asked.lookup).toEqual({ words: lookupWords(first), found: [] });
+      expect(r.sent).toHaveLength(1);
+      expect(r.sent[0]).toContain('searched');
+      expect(r.sent[0]).toContain('not proof it was never said');
+      expect(r.sent[0]).not.toContain('2958');
+    } finally { r.close(); }
+  });
+  it('still makes no lookup where none is needed', () => {
+    expect(lookupWords(decoded(at27('answered').calls[0]!.raw))).toBeUndefined();
+    expect(decoded(at27('answered').calls[0]!.raw)).toContain('2958');
+    expect(lookupWords(decoded(at27('unrelated').calls[0]!.raw))).toBeUndefined();
+    expect(decoded(at27('unrelated').calls[0]!.raw)).toContain('51');
+  });
+});
+
 describe('Rule 11: the lookup\'s bounds and floors', () => {
   const words = ['garden shed padlock code', 'lock combination'];
   const reply = 'The code is 2958.';

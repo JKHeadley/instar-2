@@ -104,13 +104,15 @@ it('profiles full turns at 2000 turns with every memory source', async () => {
     // changed, all by wording only: capability (it no longer repeats what the capability-note source itself states),
     // and datedDecision, memoryDecision and obligationDecision (shorter wording, same fields and same decisions).
     // w3-recallrank re-pin (Rule 11): this summarized operator packet now carries `memoryLookup: "offered"`.
-    // Nothing else changed: without that one field the packet is the prior pin, which is checked here.
+    // cint-L27 re-pin: without that one field the packet differs from the prior pin (be687bb0…) in exactly one field,
+    // `capability`, whose commitments guidance lost " or scheduler" (w3-reminderwords: the runner does answer a
+    // dated request at its time). Diffed field by field against the cint-L26 packet; nothing else changed.
     const withoutLookup = JSON.parse(packetText) as Record<string, unknown>;
     expect(withoutLookup.memoryLookup).toBe('offered');
     delete withoutLookup.memoryLookup;
     expect(createHash('sha256').update(JSON.stringify(withoutLookup)).digest('hex'))
-      .toBe('be687bb0634f5c52ae3c7706861326e412e2502c01a358d13bb4f99159fb4587');
-    expect(packetHash).toBe('PENDING');
+      .toBe('73561b154bd8f8beb2293480dfaae38b3cb08acba815d365faf35e35a0410374');
+    expect(packetHash).toBe('33ce2cbbd0aab1cc7e9de31f07c16bc6e2062149781fb4e3a40f1142628489fa');
     process.stdout.write(`recall latency 2000 turns all memory: probe p95=${p95(samples).toFixed(2)} ms packet=${packetHash}\n`);
     const turnSamples: number[] = [];
     const intakeSamples: number[] = [], drainSamples: number[] = [], coherenceSamples: number[] = [];
