@@ -5,7 +5,7 @@ import { join } from 'node:path';
 import { SUBSCRIPTION_MAX_OUTPUT_TOKENS } from '../../src/assembly/production-provider.js';
 import { createJournalWorker, openPreviewJournal, summaryStoppedAt, SUMMARY_BYTES_PER_TOKEN, SUMMARY_ENVELOPE_BYTES,
   SUMMARY_FORMAT, SUMMARY_OUTPUT_BYTES, SUMMARY_OVER_BOUND_REASON, SUMMARY_OVER_CAP_REASON, SUMMARY_REASON_BYTES,
-  SUMMARY_TEXT_MAX_BYTES, type CallOutcome } from './journal.js';
+  SUMMARY_TEXT_CEILING_BYTES, SUMMARY_TEXT_MAX_BYTES, type CallOutcome } from './journal.js';
 import { conclusionText, parseModelJson } from './model-json.js';
 
 // Plan row #282 (w3-summarybound). Live on Justin's preview (build cint-L27 d12bbf55), 2026-10-02 04:56-05:51 PDT: 77
@@ -47,7 +47,7 @@ const filler = (id: number) => `Note ${String(id)}: ${'the shed holds rakes, twi
  * reasons at the recorded median length unless asked for one sentence (then at the longest length measured with
  * that wording). An answer whose output would pass the cap at the floor bytes per token ends like the recorded
  * over-cap calls: their outcome row first, then an uncertain result. */
-type Writer = 'measured' | 'always-over' | 'ignores-bound' | 'non-ascii' | { real: string[] };
+type Writer = 'measured' | 'always-over' | 'past-ceiling' | 'over-target' | 'non-ascii' | { real: string[] };
 function world(writer: Writer, maxBytes = 9000) {
   const root = realpathSync(mkdtempSync(join(tmpdir(), 'preview-summary-bound-')));
   const path = join(root, 'journal.encrypted');
@@ -65,9 +65,13 @@ function world(writer: Writer, maxBytes = 9000) {
       if (!input.id.startsWith('summary:')) return 'Noted.';
       throughs.push(Number(input.id.slice(8)));
       if (writer === 'always-over') return overCap(input.id);
-      // Under the cap, but prose past the bound: the shape an unchanged old answer would have.
-      if (writer === 'ignores-bound') return JSON.stringify({ summary: 'Shed notes, kept at length. '.repeat(80), people: [],
-        commitments: [], memory: [], questions: [], memoryItems: [], concepts: [] });
+      // Under the cap, but prose past the ceiling every answer packet is sized for.
+      if (writer === 'past-ceiling') return JSON.stringify({ summary: 'x'.repeat(Math.min(SUMMARY_TEXT_CEILING_BYTES, maxBytes >> 2) + 1),
+        people: [], commitments: [], memory: [], questions: [], memoryItems: [], concepts: [] });
+      // The live writer of 2026-10-02: prose a little past the stated target (1418 bytes against 1326), the whole answer
+      // well inside the cap.
+      if (writer === 'over-target') return JSON.stringify({ summary: 's'.repeat(SUMMARY_TEXT_MAX_BYTES + 92),
+        people: [], commitments: [], memory: [], questions: [], memoryItems: [], concepts: [] });
       if (typeof writer === 'object') return answerOf(writer.real.shift() ?? '');
       const carried = (JSON.parse(input.context) as { summary?: { text?: string } }).summary?.text ?? '';
       const bound = /Keep the summary prose within (\d+) bytes of UTF-8/u.exec(input.question)?.[1];
@@ -196,8 +200,8 @@ it('a changed summary format is a changed input: spans an older build exhausted 
   } finally { w.close(); }
 });
 
-it('prose over its bound is refused as asking too much: a shorter span next, then the brake', async () => {
-  const w = world('ignores-bound');
+it('prose past the packet ceiling is refused as asking too much: a shorter span next, then the brake', async () => {
+  const w = world('past-ceiling');
   try {
     await w.fill(1, 14);
     expect(w.journal.view.summaries).toEqual([]);
@@ -272,4 +276,122 @@ it('a memory request below an UNKNOWN frontier is still summarized once the reco
     expect(w.throughs).not.toContain(9);
     expect(w.journal.view.summaryReservations.has(9)).toBe(true);
   } finally { w.close(); }
+});
+
+// Follow-up (plan row #287). Live on Justin's root on cint-L28, 2026-10-02 08:30-08:33 PDT: seven summary calls from the
+// base 969389761, none accepted, and the brake stopped his summary at 969389763 for good. Six ended within the output cap
+// (855-1705 tokens); three were refused as "summary answer over its bound". Verbatim, from his root's model-call rows.
+type LiveAttempt = { id: string; through: number; outcome: CallOutcome & { outputTokens: number; promptBytes: number };
+  recordedFailure: { format: number; failureClass: string; reason?: string; memoryPending: boolean }; output: string | null };
+const live = (JSON.parse(readFileSync(new URL('./fixtures/justin-summary-bound-L28-2026-10-02.json', import.meta.url), 'utf8')) as
+  { attempts: LiveAttempt[] }).attempts;
+const liveValue = (attempt: LiveAttempt) => decision(attempt.output!).conclusion.value as Record<string, unknown>;
+const liveProse = (attempt: LiveAttempt) => {
+  const value = liveValue(attempt);
+  return String(typeof value.summary === 'string' ? value.summary : value.reply);
+};
+
+it('the live cint-L28 attempts: within the cap, prose a little past the target, and the old measure was wrong', () => {
+  expect(live.map(item => item.through)).toEqual([969389765, 969389765, 969389764, 969389763, 969389762, 969389762, 969389763]);
+  const overBound = live.filter(item => item.recordedFailure.reason === SUMMARY_OVER_BOUND_REASON);
+  expect(overBound.map(item => item.id)).toEqual(['summary:969389764', 'summary:969389762', 'summary:969389763']);
+  // The one over the cap left no output; every other ended within it, at 42% to 83% of it.
+  const ended = live.filter(item => item.output !== null);
+  expect(live.filter(item => item.output === null).map(item => item.outcome.localLimit)).toEqual(['output-cap']);
+  for (const item of ended) expect(item.outcome.outputTokens).toBeLessThan(SUBSCRIPTION_MAX_OUTPUT_TOKENS * 0.85);
+  // The real prose: 1293 to 1418 bytes where the writer wrote at length, against a stated target of 1326.
+  expect(ended.map(item => Buffer.byteLength(liveProse(item)))).toEqual([1338, 1293, 1418, 956, 1386, 1132]);
+  expect(Math.max(...ended.map(item => Buffer.byteLength(liveProse(item))))).toBeLessThan(SUMMARY_TEXT_CEILING_BYTES);
+  // Two of the three refusals wrote the prose in `reply` beside the other fields: the old reader measured the whole
+  // answer (3469 and 2037 bytes) as the prose, and never read their memoryDisposition.
+  const inReply = overBound.filter(item => typeof liveValue(item).summary !== 'string');
+  expect(inReply.map(item => Buffer.byteLength(JSON.stringify(liveValue(item))))).toEqual([3469, 2037]);
+  expect(inReply.map(item => Buffer.byteLength(liveProse(item)))).toEqual([1418, 1132]);
+});
+
+it('the live cint-L28 answers through this build: none refused for prose length; the one without a content fault is accepted', async () => {
+  // Justin's update ids, synthetic text; each real answer offered as the first answer from his base, as on his root.
+  const ids = [969389760, 969389761, 969389762, 969389763, 969389764, 969389765];
+  const outcomes: string[] = [];
+  for (const attempt of live.filter(item => item.output !== null)) {
+    const w = world({ real: [attempt.output!] }, 409600);
+    try {
+      for (const id of ids) { w.worker.intake([update(id, filler(id))]); await w.worker.drain(); }
+      w.carry(969389761, 2166);
+      await w.worker.summarizeIfNeeded(true);
+      const first = w.throughs[0]!;
+      const accepted = w.journal.view.summaries.find(item => item.through === first);
+      const failure = w.journal.view.summaryFormatFailures.find(item => item.through === first);
+      expect(w.journal.view.lastSummaryFailure?.reason).not.toBe(SUMMARY_OVER_BOUND_REASON);
+      if (liveValue(attempt).memoryDisposition === 'unresolved') {
+        // Refused by the existing content rule, now read from the `reply` shape too: not the asked-too-much class.
+        expect(accepted).toBeUndefined();
+        expect(failure?.overCap).toBe(false);
+        outcomes.push('content');
+      } else {
+        // summary:969389762's second answer (1386 bytes, 1366 tokens) and the plain `reply`-only answer: accepted as
+        // written, the frontier advances, and the prose kept is the prose, never the whole answer.
+        expect(accepted?.text).toBe(liveProse(attempt));
+        expect(w.frontier()).toBe(first);
+        expect(summaryStoppedAt(w.journal.view)).toBeNull();
+        outcomes.push('accepted');
+      }
+    } finally { w.close(); }
+  }
+  expect(outcomes).toEqual(['content', 'accepted', 'content', 'content', 'accepted', 'content']);
+});
+
+it('prose past the stated target and inside the cap is accepted: the frontier reaches the head, no brake', async () => {
+  const w = world('over-target');
+  try {
+    await w.fill(1, 40);
+    expect(Buffer.byteLength(w.journal.view.summaries.at(-1)!.text)).toBe(SUMMARY_TEXT_MAX_BYTES + 92);
+    expect(w.frontier()).toBeGreaterThanOrEqual(36);
+    expect(w.journal.view.lastSummaryFailure).toBeNull();
+    expect(summaryStoppedAt(w.journal.view)).toBeNull();
+    expect(w.unanswered()).toEqual([]);
+  } finally { w.close(); }
+});
+
+it('a root carrying the live format-2 failures advances on the next pass; the same rows under this format still brake', async () => {
+  const failures = (w: ReturnType<typeof world>, format: number) => {
+    // His rows from cint-L28, frontier 1 standing for 969389761: 5 twice for content, 4 over the bound, 3 over the cap
+    // then over the bound, 2 for content then over the bound.
+    for (const [through, reason] of [[5, null], [5, null], [4, SUMMARY_OVER_BOUND_REASON], [3, SUMMARY_OVER_CAP_REASON],
+      [2, null], [2, SUMMARY_OVER_BOUND_REASON], [3, SUMMARY_OVER_BOUND_REASON]] as const) {
+      w.journal.append({ kind: 'summary-reserve', through, maxInputTokens: 409600, maxOutputTokens: 2048, at: START });
+      if (reason === SUMMARY_OVER_CAP_REASON) {
+        w.journal.append({ kind: 'call-outcome', id: `summary:${String(through)}`, role: 'summary', outcome: OVER_CAP[0]!.outcome, at: START });
+        w.journal.append({ kind: 'summary-uncertain', through, state: 'uncertain', usage: OVER_CAP[0]!.usage, at: START });
+        w.journal.append({ kind: 'summary-failed', format, through, state: 'rejected', failureClass: 'rejected', reason, usage: OVER_CAP[0]!.usage, at: START });
+      } else w.journal.append({ kind: 'summary-failed', format, through, state: 'complete', failureClass: 'malformed',
+        ...(reason ? { reason } : {}), at: START });
+    }
+  };
+  const current = world('measured', 409600);
+  try {
+    await current.fill(1, 6);
+    current.carry(1, 2166);
+    failures(current, SUMMARY_FORMAT);
+    // Under one format these rows are his brake: both attempts at 3 asked too much.
+    expect(summaryStoppedAt(current.journal.view)).toBe(3);
+  } finally { current.close(); }
+  const w = world('measured', 409600);
+  try {
+    await w.fill(1, 6);
+    w.carry(1, 2166);
+    failures(w, 2);
+    expect(SUMMARY_FORMAT).toBe(3);
+    expect(summaryStoppedAt(w.journal.view)).toBeNull();
+    // No hand step: the next pass is offered the spans again under this format and the frontier advances.
+    await w.worker.summarizeIfNeeded(true);
+    expect(w.frontier()!).toBeGreaterThan(1);
+    expect(w.journal.view.summaryFormatFailures).toEqual([]);
+    expect(w.unanswered()).toEqual([]);
+    // Restart: the old rows still do not brake this build.
+    w.journal.close();
+    const reopened = openPreviewJournal(w.path, key);
+    expect(summaryStoppedAt(reopened.view)).toBeNull();
+    reopened.close();
+  } finally { rmSync(join(w.path, '..'), { recursive: true, force: true }); }
 });

@@ -119,15 +119,23 @@ export const SUMMARY_REASON_BYTES = 800;
  * older build's) is rewritten condensed within it; its exact facts stay in memoryItems and every original turn stays in
  * the journal and the meaning index (Rule 7). */
 export const SUMMARY_TEXT_MAX_BYTES = Math.floor((SUMMARY_OUTPUT_BYTES - SUMMARY_ENVELOPE_BYTES - SUMMARY_REASON_BYTES) * 2 / 5);
+/** SUMMARY_TEXT_MAX_BYTES is the size the question asks for, not a refusal line: the output cap is the real limit, and
+ * an answer that ended within it already fits. Live on Justin's root 2026-10-02 08:30-08:33 PDT (cint-L28) the real
+ * writer's prose came back at 1338, 1386 and 1418 bytes against 1326, in answers of 855-1705 output tokens (42-83% of
+ * the cap); refusing them as over the bound braked his summary for good 220 updates behind. Acceptance refuses prose
+ * only past the carried-summary ceiling every answer packet is sized for (the bound before cint-L28), and a summary
+ * kept longer than the target is condensed by the next pass, whose question asks for exactly that. */
+export const SUMMARY_TEXT_CEILING_BYTES = 8192;
 /** Meaning terms the summary question asks for per message: the index accepts up to CONCEPT_TERMS_LIMIT, and a summary
  * names one entry per operator message in its span, so the summary asks for half to stay inside its answer bound. */
 export const SUMMARY_CONCEPT_TERMS = 6;
 /** The summary answer format. Recorded on every summary failure written by this build: an attempt budget or an
  * over-cap brake is spent only by failures made under the current format, so a build that changes what a summary is
- * asked is a changed input and may try a span an older build exhausted. */
-export const SUMMARY_FORMAT = 2;
-/** Summary prose over SUMMARY_TEXT_MAX_BYTES: the answer asked too much, the same class as an over-cap attempt, so a
- * shorter span is offered next and the over-cap brake applies. */
+ * asked, or how its answer is read and accepted, is a changed input and may try a span an older build exhausted.
+ * 3: the prose target is no longer a refusal line, and prose written in `reply` beside the other fields is read. */
+export const SUMMARY_FORMAT = 3;
+/** Summary prose over SUMMARY_TEXT_CEILING_BYTES: the answer asked too much, the same class as an over-cap attempt, so
+ * a shorter span is offered next and the over-cap brake applies. */
 export const SUMMARY_OVER_BOUND_REASON = 'summary answer over its bound';
 /** One Telegram reply's byte bound, the same value the send path refuses above. A review's input
  * carries exactly one candidate reply, so this is that part's whole worst case. */
@@ -7015,9 +7023,11 @@ export function createJournalWorker(journal: ReturnType<typeof openPreviewJourna
   const summaryPreflightBlocked = new Set<string>();
   const summaryLimit = () => summaryPromptBytes(journal.view.limits.maxBytes);
   const summaryPacketLimit = () => Math.min(journal.view.limits.maxBytes, summaryLimit());
-  /** The summary prose bound in UTF-8 bytes: the question states this number in this unit and acceptance enforces it,
-   * so a writer obeying the question is never refused for the length it was told to keep. */
+  /** The summary prose target in UTF-8 bytes, the size the question asks for and states in that unit. */
   const summaryTextBound = () => Math.min(SUMMARY_TEXT_MAX_BYTES, Math.floor(journal.view.limits.maxBytes / 4));
+  /** The prose acceptance refuses past: the carried summary every answer packet is sized for. Never below the target,
+   * so a writer obeying the question is never refused for the length it was told to keep. */
+  const summaryTextCeiling = () => Math.min(SUMMARY_TEXT_CEILING_BYTES, Math.floor(journal.view.limits.maxBytes / 4));
   const runSummary = async (force: boolean) => {
     const memoryRequest = pendingMemory();
     const last = memoryRequest ?? journal.view.order.filter(turn => turn.sent).at(-1);
@@ -7076,8 +7086,8 @@ export function createJournalWorker(journal: ReturnType<typeof openPreviewJourna
       + 'For each memory action, include replies: ids of memoryCandidates whose reply repeats or restates the old fact, including short answers, and summaryPassages: exact passages of the prior summary that express the old fact; leave unrelated material alone. '
       + 'Return memory: [] when no direct request applies; set memoryDisposition: "unresolved" when a direct request has no identifiable source. '
       + `Keep the complete JSON response within ${SUMMARY_TARGET_OUTPUT_TOKENS} output tokens; use concise summary prose and exact short quotes. `
-      + `Write reason.value as one sentence of at most ${SUMMARY_REASON_CHARS} characters. Keep the summary prose within ${String(summaryTextBound())} bytes of UTF-8: a plain ASCII character is one byte, an accented or non-Latin character two to four, so non-ASCII prose holds fewer characters; longer prose is refused. `
-      + 'If the packet\'s summary.text is longer than that, rewrite it condensed within the bound, keeping every fact, commitment and open question it holds; memoryItems already keep the exact facts. '
+      + `Write reason.value as one sentence of at most ${SUMMARY_REASON_CHARS} characters. Put the summary prose in the summary field. Keep the summary prose within ${String(summaryTextBound())} bytes of UTF-8: a plain ASCII character is one byte, an accented or non-Latin character two to four, so non-ASCII prose holds fewer characters; that keeps the whole answer inside its output limit. `
+      + 'If the packet\'s summary.text is longer than that, rewrite it condensed within that size, keeping every fact, commitment and open question it holds; memoryItems already keep the exact facts. '
       + 'For unansweredCandidates, judge each candidate by the full conversation: its reply only triggered review. Return questions: [{"source": candidate id, "quote": exact question excerpt from that operator message}] only when it really left an operator question unanswered. Return questions: [] when none. '
       + 'Return memoryItems: [{"source": history item id, "quote": exact short factual clause from that operator message}] for new active facts worth keeping. Existing summary.memoryItems are already retained by source; do not repeat or paraphrase them in summary prose. A correction replaces its old item and forgetting removes it. '
       + `Return concepts: [{"source": history item id of an operator message, "terms": up to ${SUMMARY_CONCEPT_TERMS} lowercase words or short phrases someone could later use to ask about that message by meaning (synonyms, category names, paraphrases), beyond its own words}] for each operator message in history and each indexBacklog item. They only help find the original message later and are never shown as facts.`;
@@ -7343,10 +7353,16 @@ export function createJournalWorker(journal: ReturnType<typeof openPreviewJourna
         // The shared system prompt tells the model to wrap decision fields as {"reply": ...} when a memory
         // decision applies; a real summary answer (live 2026-09-30) came back as {"reply":"<summary JSON>"}.
         // Unwrapped here, so its fields (memoryDisposition included) are read and the judges see the summary prose.
+        // Live 2026-10-02 (cint-L28, summary:969389764 and the second summary:969389763) the prose came back as `reply`
+        // beside the other fields; JSON.parse of that prose threw, so the whole object was measured as the prose and
+        // its memoryDisposition was never read. Prose that is not JSON is the summary, its siblings the fields.
         if (typeof parsed?.summary !== 'string' && parsed?.reply !== undefined) {
-          const inner: unknown = typeof parsed.reply === 'string' ? JSON.parse(parsed.reply) : parsed.reply;
+          let inner: unknown = parsed.reply;
+          if (typeof inner === 'string') try { inner = JSON.parse(inner); } catch { inner = undefined; }
           if (inner && typeof inner === 'object' && typeof (inner as SummaryAnswer).summary === 'string') parsed = inner as SummaryAnswer;
+          else if (typeof parsed.reply === 'string') parsed = { ...parsed, summary: parsed.reply };
         }
+        if (typeof parsed?.summary === 'string') summaryText = parsed.summary;
         unresolvedMemory = parsed?.memoryDisposition === 'unresolved';
         attemptedMemory = parsed?.memory !== undefined && (!Array.isArray(parsed.memory) || parsed.memory.length > 0);
         attemptedAttributes = parsed?.personAttributes !== undefined;
@@ -7395,9 +7411,10 @@ export function createJournalWorker(journal: ReturnType<typeof openPreviewJourna
         if (affected) journal.append({kind:'hold',id:affected.id,reason,...failedOutput, at:ports.now()});
         return;
       }
-      // The prose bound: a rewrite that did not condense the carried summary asked too much, whatever the span, so it is
-      // the over-bound class and the over-cap brake applies to it.
-      if (Buffer.byteLength(summaryText) > summaryTextBound()) {
+      // The prose ceiling: past the carried size every packet is sized for, a rewrite asked too much whatever the span,
+      // so it is the over-bound class and the over-cap brake applies. Prose between the target and the ceiling is
+      // accepted: the answer ended within the output cap, and the next pass is asked to condense it.
+      if (Buffer.byteLength(summaryText) > summaryTextCeiling()) {
         journal.append({kind:'summary-failed',format:SUMMARY_FORMAT,through,state:'complete',failureClass:'malformed',
           reason:SUMMARY_OVER_BOUND_REASON,...(trigger && (strictMemory || memory?.length) ? { memoryPendingFor: trigger.id } : {}),
           ...failedOutput, ...(typeof summary === 'string' ? {} : { usage: summary.usage }),at:ports.now()});

@@ -2390,21 +2390,27 @@ misses, the provider cap and the over-cap brake below are the protection. Of the
 Decision envelope (measured at most 725) and 800 for the reasoning, which the summary question
 limits to one sentence of 200 characters (the real model wrote 354 to 753 bytes with that wording,
 against a median of 1,888 before it). The rolling summary's prose, the one part every call
-re-emits whatever its span, is bounded at two fifths of the rest, 1,326 bytes. The question states
-that bound in UTF-8 bytes, the unit acceptance measures, so non-ASCII prose that obeys it is never
-refused for its length (a bound stated in characters would refuse 800 accented letters, 1,600
-bytes, and brake the frontier). The remainder carries
+re-emits whatever its span, is asked to stay within two fifths of the rest, 1,326 bytes. The question
+states that target in UTF-8 bytes, so non-ASCII prose that obeys it fits. The remainder carries
 the span's own lists, which shrink with the span down to one turn. Carried memory items are kept by
-the code and never re-emitted. Prose over the bound is refused as `summary answer over its bound`,
-the same class as an over-cap attempt. A carried summary an older build accepted at up to 8 KiB is
-rewritten condensed within the bound by the next call; every original turn stays in the journal
-and the meaning index. Once both attempts at a span asked too much (the full request and the
+the code and never re-emitted. The target is not a refusal line: the output cap is the real limit,
+and an answer that ended within it already fits. On cint-L28 the real writer's prose came back at
+1,132 to 1,583 bytes (13 answers on Justin's root, 7 past 1,326) in answers of 855 to 1,792 output
+tokens; refusing three of them as over the bound braked his summary 220 updates behind. Acceptance
+now refuses prose only past the carried-summary ceiling every answer packet is sized for, min(8 KiB,
+a quarter of the context limit), as `summary answer over its bound`, the same class as an over-cap
+attempt. Prose between the target and the ceiling is accepted, and the next call is asked to rewrite
+it condensed within the target; every original turn stays in the journal and the meaning index.
+Prose the model writes in `reply` beside the other fields (three of those 13 answers) is read as the
+summary; the old reader measured the whole answer as the prose and never read its memoryDisposition. Once both attempts at a span asked too much (the full request and the
 reduced retry), no span from that base is offered again, because every later span contains it
 (Rule 55); `status.summaryStoppedAt` names that frontier, and replies keep being answered by the
 history floor. A span spent partly on a content failure never had its reduced retry and releases
 as before. Each summary failure records the summary format it was made under (`format`); only
 failures under the current format spend a span's two attempts or set the brake, so a build that
-changes what a summary is asked may retry spans an older build exhausted. Before this, a released
+changes what a summary is asked, or how its answer is read and accepted, may retry spans an older
+build exhausted. Format 3 (the target no longer a refusal line, `reply` read as prose) is how
+Justin's root, braked at 969389763 under format 2, advances on its next pass with no hand step. Before this, a released
 ceiling walked forward through ever longer spans from one base, two calls each: Justin's preview
 spent 77 summary calls from frontier 969389761 on 2026-10-02 (69 over the cap) with none accepted
 (`summary-bound.test.ts`).

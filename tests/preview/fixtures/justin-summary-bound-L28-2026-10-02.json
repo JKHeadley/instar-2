@@ -1,0 +1,198 @@
+{
+ "source": "Justin preview root runner-2026-09-26, journal rows 3075-3144, build cint-L28 (w3-summarybound 11eaaac5), 2026-10-02 08:30:28-08:33:24 PDT; read from a copy, outputs verbatim (model-call rows), content: desk probe facts only",
+ "attempts": [
+  {
+   "id": "summary:969389765",
+   "through": 969389765,
+   "outcome": {
+    "exitCode": 0,
+    "localLimit": null,
+    "elapsedMs": 16151,
+    "type": "result",
+    "subtype": "success",
+    "isError": false,
+    "outputTokens": 1307,
+    "promptBytes": 42543
+   },
+   "recordedFailure": {
+    "format": 2,
+    "state": "complete",
+    "failureClass": "malformed",
+    "memoryPending": true,
+    "usage": {
+     "inputTokens": 19489,
+     "outputTokens": 1307,
+     "charge": null,
+     "inputComplete": true
+    }
+   },
+   "output": "{\"type\":\"Decision\",\"schemaVersion\":1,\"id\":\"preview-stage2-summary-969389765\",\"at\":1790955028605,\"by\":{\"judgment\":\"judgment\",\"model\":\"claude-sonnet-5\",\"route\":\"preview-subscription\"},\"reason\":{\"subject\":\"preview-stage2-summary-task\",\"predicate\":\"derive-summary-json\",\"value\":\"Condensed prior summary within byte bound, preserved all memoryCandidates/memoryItems by source without restating facts, found no direct memoryRequest preference/correction/forget clause in '17 × 3?' so memory=[], listed Sam as the only named other person per history conversation.main-chat 2026-09-26T20:57Z, kept the one open commitment about evening summaries (waitsOn external, unresolved question), and added concepts for the current math question.\",\"evidence\":[\"summary:969389765\"]},\"conclusion\":{\"subject\":\"preview-stage2-answer\",\"predicate\":\"answer-text\",\"value\":{\"reply\":\"17 × 3 = 51.\",\"summary\":\"Carried forward facts: gym locker code 5521 (2026-09-27); bike lock combination 7734 (2026-09-27); garden shed padlock, most recent correction (2026-10-01T20:17Z) sets padlock P-131330's code to 2093; cofounder Sam reportedly favors a November launch delay, per operator report 2026-09-26; garden plan of tomatoes, beans, squash and herbs along the south fence (2026-09-26); standing list signatures: grocery \\\"— E\\\", moving \\\"— 6C\\\", ski \\\"— 25\\\", hiking \\\"— 48B\\\"; reply-length preference of two sentences. On 2026-09-30 operator asked \\\"Can you send me a summary every evening?\\\" (#969389760), unresolved - no scheduled/unprompted messages are available per the capability note, but that was never stated to the operator. At 15:41Z operator sent a correction (#969389761) whose specific content is withheld from this packet; cannot state what changed. In main chat 2026-09-30T15:42Z operator corrected: \\\"the code for my padlock P-082150 is 2093.\\\" At 15:43Z operator asked what the P-082150 code was before; Instar's reply was a malformed failure notice, not an answer. At 15:44Z operator asked what self-deceptions Instar watches for; Instar answered: capitulation, false-completion, invented-memory, false-certainty, sycophancy, needless-deferral, fatigue-stop. At 15:45Z operator asked \\\"What is 17 × 3?\\\"; Instar answered 17 × 3 = 51.\",\"memory\":[],\"memoryDisposition\":\"unresolved\",\"people\":[{\"name\":\"Sam\",\"source\":\"telegram:8820318295:update:969389561\",\"quote\":\"My cofounder Sam thinks we should delay the launch to November\"}],\"personAttributes\":[],\"commitments\":[{\"in\":\"message\",\"quote\":\"Can you send me a summary every evening?\",\"waitsOn\":\"external\"}],\"closed\":[],\"questions\":[{\"source\":\"telegram:8820318295:update:969389760\",\"quote\":\"Can you send me a summary every evening?\"}],\"memoryItems\":[],\"concepts\":[{\"source\":\"telegram:8820318295:update:969389762\",\"terms\":[\"padlock code correction\",\"combination update\",\"lock code change\"]},{\"source\":\"telegram:8820318295:update:969389763\",\"terms\":[\"previous code\",\"prior combination\",\"old padlock value\"]},{\"source\":\"telegram:8820318295:update:969389764\",\"terms\":[\"self-monitoring\",\"known failure modes\",\"ai blind spots\",\"bias checklist\"]},{\"source\":\"telegram:8820318295:update:969389765\",\"terms\":[\"multiplication\",\"arithmetic check\",\"math question\"]}]},\"evidence\":[\"summary:969389765\"]},\"floor\":{\"allowed\":{\"actions\":[\"work\"],\"default\":\"work\",\"schemaVersion\":1,\"type\":\"ActionFloor\"},\"chosen\":\"work\"}}"
+  },
+  {
+   "id": "summary:969389765",
+   "through": 969389765,
+   "outcome": {
+    "exitCode": 0,
+    "localLimit": null,
+    "elapsedMs": 8367,
+    "type": "result",
+    "subtype": "success",
+    "isError": false,
+    "outputTokens": 855,
+    "promptBytes": 42543
+   },
+   "recordedFailure": {
+    "format": 2,
+    "state": "complete",
+    "failureClass": "malformed",
+    "memoryPending": true,
+    "usage": {
+     "inputTokens": 19489,
+     "outputTokens": 855,
+     "charge": null,
+     "inputComplete": true
+    }
+   },
+   "output": "{\"type\":\"Decision\",\"schemaVersion\":1,\"id\":\"preview-stage2-summary-969389765\",\"at\":1790955069047,\"by\":{\"judgment\":\"judgment\",\"model\":\"claude-sonnet-5\",\"route\":\"preview-subscription\"},\"reason\":{\"subject\":\"preview-stage2-summary\",\"predicate\":\"compose-rationale\",\"value\":\"Condensed prior summary within byte bound, preserved all exact quantitative/factual quotes, logged the padlock correction, the two malformed/failed turns, and the new math fact, with no durable preference change triggered by this math question.\",\"evidence\":[\"summary:969389765\"]},\"conclusion\":{\"subject\":\"preview-stage2-answer\",\"predicate\":\"answer-text\",\"value\":{\"reply\":\"Summary (main chat, through 2026-09-30T15:45Z): gym locker code 5521 (2026-09-27); bike lock combination 7734 (2026-09-27); garden shed padlock P-131330 code corrected to 2093 (2026-10-01T20:17Z, superseding earlier padlock codes); cofounder Sam reportedly favors a November launch delay (operator's report, 2026-09-26); garden plan: tomatoes, beans, squash, herbs along south fence (2026-09-26); standing signatures: grocery lists \\\"— E\\\", moving lists \\\"— 6C\\\", ski lists \\\"— 25\\\", hiking lists \\\"— 48B\\\"; reply-length preference of two sentences. 2026-09-30T15:42Z: operator sent \\\"Correction: the code for my padlock P-082150 is 2093.\\\" (Telegram accepted). 2026-09-30T15:43Z: operator asked what the P-082150 code was before; this turn failed with a malformed model-failure notice, so the prior code remains unknown from this journal. 2026-09-30T15:44Z: operator asked what self-deceptions Instar watches for; answered with the seven gravity wells (capitulation, false-completion, invented-memory, false-certainty, sycophancy, needless-deferral, fatigue-stop). 2026-09-30T15:45Z: operator asked \\\"What is 17 × 3?\\\"; answered \\\"17 × 3 = 51.\\\" Open question: whether recurring evening summaries are possible remains unresolved (operator asked 2026-09-30T15:40Z, not yet substantively answered).\"},\"evidence\":[\"summary:969389765\"]},\"floor\":{\"allowed\":{\"actions\":[\"work\"],\"default\":\"work\",\"schemaVersion\":1,\"type\":\"ActionFloor\"},\"chosen\":\"work\"}}"
+  },
+  {
+   "id": "summary:969389764",
+   "through": 969389764,
+   "outcome": {
+    "exitCode": 0,
+    "localLimit": null,
+    "elapsedMs": 19198,
+    "type": "result",
+    "subtype": "success",
+    "isError": false,
+    "outputTokens": 1705,
+    "promptBytes": 43549
+   },
+   "recordedFailure": {
+    "format": 2,
+    "state": "complete",
+    "failureClass": "malformed",
+    "reason": "summary answer over its bound",
+    "memoryPending": false,
+    "usage": {
+     "inputTokens": 19538,
+     "outputTokens": 1705,
+     "charge": null,
+     "inputComplete": true
+    }
+   },
+   "output": "{\"type\":\"Decision\",\"schemaVersion\":1,\"id\":\"preview-stage2-answer:969389764\",\"at\":1790955079631,\"by\":{\"judgment\":\"judgment\",\"model\":\"claude-sonnet-5\",\"route\":\"preview-subscription\"},\"reason\":{\"subject\":\"preview-stage2-answer\",\"predicate\":\"build-summary\",\"value\":\"The memoryRequest #969389764 asks a self-reflective question with no durable-fact preference, correction, or forget clause, so memory stays []; the prior summary's padlock-correction sentence was withheld from this packet so it cannot be repeated, the evening-summary question remains open per history and undecidedEdits, and I compiled people, personAttributes, commitments, closed, questions, memoryItems, and concepts strictly from exact quotes in history/summary/indexBacklog while condensing summary prose within the byte bound.\",\"evidence\":[\"summary:969389764\"]},\"conclusion\":{\"subject\":\"preview-stage2-answer\",\"predicate\":\"answer-text\",\"value\":{\"reply\":\"Carried forward: gym locker code 5521 (2026-09-27); bike lock combination 7734 (2026-09-27); garden shed padlock code history, most recent correction (2026-10-01T20:17Z) sets padlock P-131330's code to 2093; cofounder Sam reportedly favors a November launch delay, per operator's report on 2026-09-26; garden plan of tomatoes, beans, squash and herbs along the south fence (2026-09-26); standing list signatures: grocery \\\"— E\\\", moving \\\"— 6C\\\", ski \\\"— 25\\\", hiking \\\"— 48B\\\"; reply-length preference of two sentences. In main chat on 2026-09-30, the operator asked \\\"Can you send me a summary every evening?\\\" (#969389760) — unresolved whether recurring evening summaries are possible; a held notice was later delivered after a review violation. Also on 2026-09-30 (15:41Z, #969389761) the operator sent a correction whose content is withheld from this packet. On 2026-09-30T15:42Z (main chat) the operator said \\\"Correction: the code for my padlock P-082150 is 2093.\\\" (reply withheld). At 15:43Z the operator asked what the padlock P-082150 code was before; Instar's reply was a malformed model-failure notice, so that question went unanswered. At 15:44Z the operator asked what self-deceptions Instar watches for; Instar answered listing capitulation, false-completion, invented-memory, false-certainty, sycophancy, needless-deferral, and fatigue-stop, noting these aren't fixed once but must be noticed each turn.\",\"memory\":[],\"memoryDisposition\":\"unresolved\",\"people\":[{\"name\":\"Sam\",\"source\":\"telegram:8820318295:update:969389561\",\"quote\":\"My cofounder Sam thinks we should delay the launch to November\"}],\"personAttributes\":[],\"commitments\":[{\"in\":\"message\",\"quote\":\"Can you send me a summary every evening?\",\"waitsOn\":\"external\"}],\"closed\":[],\"questions\":[{\"source\":\"telegram:8820318295:update:969389760\",\"quote\":\"Can you send me a summary every evening?\"},{\"source\":\"telegram:8820318295:update:969389763\",\"quote\":\"What was the code for my padlock P-082150 before?\"}],\"memoryItems\":[],\"concepts\":[{\"source\":\"telegram:8820318295:update:969389762\",\"terms\":[\"padlock code change\",\"lock combination update\",\"security code correction\",\"p-082150\"]},{\"source\":\"telegram:8820318295:update:969389763\",\"terms\":[\"previous padlock code\",\"old lock combination\",\"password history\",\"p-082150\"]},{\"source\":\"telegram:8820318295:update:969389764\",\"terms\":[\"self-deception\",\"cognitive bias\",\"training failure modes\",\"gravity wells\",\"honesty check\",\"model blind spots\"]},{\"source\":\"telegram:8820318295:update:969389651\",\"terms\":[\"bird feeder reminder\",\"scheduled task\",\"one-time alert\",\"morning reminder\"]},{\"source\":\"telegram:8820318295:update:969389669\",\"terms\":[\"walk reminder\",\"scheduled task\",\"afternoon alert\"]},{\"source\":\"telegram:8820318295:update:969389688\",\"terms\":[\"walk reminder\",\"evening alert\",\"scheduled task\"]},{\"source\":\"telegram:8820318295:update:969389692\",\"terms\":[\"status check\",\"system health\",\"runner state\"]},{\"source\":\"telegram:8820318295:update:969389693\",\"terms\":[\"capabilities question\",\"tool limits\",\"what can you do\",\"feature list\"]},{\"source\":\"telegram:8820318295:update:969389694\",\"terms\":[\"tracking requests\",\"follow-up memory\",\"delayed check\",\"task persistence\"]},{\"source\":\"telegram:8820318295:update:969389695\",\"terms\":[\"recurring report\",\"nightly summary\",\"scheduled message\",\"daily recap\"]},{\"source\":\"telegram:8820318295:update:969389696\",\"terms\":[\"shed lock code\",\"security combination\",\"test fact\",\"padlock number\"]}]},\"evidence\":[\"summary:969389764\"]},\"floor\":{\"allowed\":{\"actions\":[\"work\"],\"default\":\"work\",\"schemaVersion\":1,\"type\":\"ActionFloor\"},\"chosen\":\"work\"}}"
+  },
+  {
+   "id": "summary:969389763",
+   "through": 969389763,
+   "outcome": {
+    "exitCode": 0,
+    "localLimit": "output-cap",
+    "elapsedMs": 27859,
+    "type": "result",
+    "subtype": "success",
+    "isError": false,
+    "outputTokens": 2084,
+    "promptBytes": 54671
+   },
+   "recordedFailure": {
+    "format": 2,
+    "state": "rejected",
+    "failureClass": "rejected",
+    "reason": "summary output over the cap",
+    "memoryPending": false,
+    "usage": {
+     "inputTokens": 49143,
+     "outputTokens": 2084,
+     "charge": null,
+     "inputComplete": true
+    }
+   },
+   "output": null
+  },
+  {
+   "id": "summary:969389762",
+   "through": 969389762,
+   "outcome": {
+    "exitCode": 0,
+    "localLimit": null,
+    "elapsedMs": 11145,
+    "type": "result",
+    "subtype": "success",
+    "isError": false,
+    "outputTokens": 1192,
+    "promptBytes": 46819
+   },
+   "recordedFailure": {
+    "format": 2,
+    "state": "complete",
+    "failureClass": "malformed",
+    "memoryPending": true,
+    "usage": {
+     "inputTokens": 20687,
+     "outputTokens": 1192,
+     "charge": null,
+     "inputComplete": true
+    }
+   },
+   "output": "{\"type\":\"Decision\",\"schemaVersion\":1,\"id\":\"preview-stage2-answer:969389762-summary\",\"at\":1790955129636,\"by\":{\"judgment\":\"judgment\",\"model\":\"claude-sonnet-5\",\"route\":\"preview-subscription\"},\"reason\":{\"subject\":\"preview-stage2-answer\",\"predicate\":\"derive-summary\",\"value\":\"The memoryRequest at #969389762 is a correction stating padlock P-082150's code is 2093; the matching old factual clause is in memoryCandidates #969389761 whose message/reply are withheld, so I cannot quote an exact old clause to correct against — I must mark this memory request as unresolved per the unresolved-source rule, and instead build the summary from visible facts (gym locker 5521, bike lock 7734, padlock P-131330 corrected to 2093 as of 2026-10-01T20:17Z, cofounder Sam's reported November preference, garden plan, standing list signatures, two-sentence reply preference, and the open evening-summary question), listing people (Sam) and open commitments, while keeping prose within the byte bound.\",\"evidence\":[\"summary:969389762\"]},\"conclusion\":{\"subject\":\"preview-stage2-answer\",\"predicate\":\"answer-text\",\"value\":{\"summary\":\"Carried forward: gym locker code 5521 (2026-09-27, op); bike lock combo 7734 (2026-09-27, op). Padlock codes were corrected multiple times across 2026-09-30 to 2026-10-01; most recent visible correction (2026-10-01T20:17Z) sets padlock P-131330's code to 2093. A further correction at #969389762 (2026-09-30T15:42Z, main chat) claims padlock P-082150's code is 2093, but the fact it corrects is withheld, so I can't confirm what changed. Operator reports (2026-09-26) that cofounder Sam thinks launch should delay to November. Garden plan (2026-09-26): tomatoes, beans, squash, herbs along south fence. Standing list signatures: grocery '— E', moving '— 6C', ski '— 25', hiking '— 48B'. Operator preference: keep replies to two sentences. Open question (2026-09-30, unresolved): operator asked for a nightly summary; capability notes suggest no scheduled/unprompted messages are available in this preview, but that wasn't confirmed to the operator.\",\"memory\":[],\"memoryDisposition\":\"unresolved\",\"people\":[{\"name\":\"Sam\",\"source\":\"telegram:8820318295:update:969389561\",\"quote\":\"My cofounder Sam thinks we should delay the launch to November\"}],\"personAttributes\":[],\"commitments\":[{\"in\":\"message\",\"quote\":\"Can you send me a summary every evening?\",\"waitsOn\":\"external\"},{\"in\":\"message\",\"quote\":\"Can you check what I owe on the electricity bill and get back to me later?\",\"waitsOn\":\"external\"},{\"in\":\"message\",\"quote\":\"Can you look up my phone bill balance and tell me later?\",\"waitsOn\":\"external\"},{\"in\":\"message\",\"quote\":\"Can you reserve a library room on the website for me?\",\"waitsOn\":\"external\"}],\"closed\":[],\"questions\":[{\"source\":\"telegram:8820318295:update:969389760\",\"quote\":\"Can you send me a summary every evening?\"}],\"memoryItems\":[],\"concepts\":[{\"source\":\"telegram:8820318295:update:969389762\",\"terms\":[\"padlock code\",\"correction\",\"P-082150\",\"security code\",\"lock combination\"]}]},\"evidence\":[\"summary:969389762\"]},\"floor\":{\"allowed\":[\"work\"],\"chosen\":\"work\"}}"
+  },
+  {
+   "id": "summary:969389762",
+   "through": 969389762,
+   "outcome": {
+    "exitCode": 0,
+    "localLimit": null,
+    "elapsedMs": 16462,
+    "type": "result",
+    "subtype": "success",
+    "isError": false,
+    "outputTokens": 1366,
+    "promptBytes": 46819
+   },
+   "recordedFailure": {
+    "format": 2,
+    "state": "complete",
+    "failureClass": "malformed",
+    "reason": "summary answer over its bound",
+    "memoryPending": false,
+    "usage": {
+     "inputTokens": 20687,
+     "outputTokens": 1366,
+     "charge": null,
+     "inputComplete": true
+    }
+   },
+   "output": "{\"type\":\"Decision\",\"schemaVersion\":1,\"id\":\"preview-stage2-summary-969389762\",\"at\":1790955169443,\"by\":{\"judgment\":\"judgment\",\"model\":\"claude-sonnet-5\",\"route\":\"preview-subscription\"},\"reason\":{\"subject\":\"preview-stage2-summary\",\"predicate\":\"compose-summary\",\"value\":\"The memoryRequest at #969389762 corrects padlock P-082150's code to 2093, but no earlier source states a prior code for P-082150, so I treat this as a new active fact rather than a correction with an identifiable old clause, and compile the rest of the summary from history, memoryCandidates, openCommitments and prior summary text, keeping exact quoted numbers/units, listing named people (Sam via operator report, Echo as sender of self-test messages), preserving open commitments and the unresolved evening-summary question, and condensing prose to stay within the byte bound.\",\"evidence\":[\"summary:969389762\"]},\"conclusion\":{\"subject\":\"preview-stage2-answer\",\"predicate\":\"answer-text\",\"value\":{\"summary\":\"Earlier facts carried forward: gym locker code 5521 (2026-09-27); bike lock combination 7734 (2026-09-27); garden shed padlock code history, most recent correction (2026-10-01T20:17Z) sets padlock P-131330's code to 2093; cofounder Sam reportedly favors a November launch delay per operator's report (2026-09-26); garden plan of tomatoes, beans, squash and herbs along the south fence (2026-09-26); standing list signatures: grocery \\\"— E\\\", moving \\\"— 6C\\\", ski \\\"— 25\\\", hiking \\\"— 48B\\\"; reply-length preference of two sentences. On 2026-09-30T15:42Z (main chat) the operator sent a correction: \\\"Correction: the code for my padlock P-082150 is 2093.\\\" No earlier source gives a prior code for P-082150, so this is recorded as a new fact. The evening-summary request from 2026-09-30T15:40Z (\\\"Can you send me a summary every evening?\\\") remains unanswered/unresolved — capability notes suggest no scheduled/unprompted messages are available in this preview, but this was not confirmed to the operator. Echo sent several self-test word messages through the operator's account (test words: lighthouse, marigold, juniper, sapphire, cobalt, saffron, tangerine, juniperberry) asking Instar to remember them. The operator asked Instar to check the electricity bill and phone bill balance and report back later, and asked about reserving a library room — all still open per openCommitments.\",\"memory\":[],\"memoryItems\":[{\"source\":\"telegram:8820318295:update:969389761\",\"quote\":\"the code for my padlock P-082150 is 2093\"}],\"people\":[{\"name\":\"Sam\",\"source\":\"telegram:8820318295:update:969389561\",\"quote\":\"My cofounder Sam thinks we should delay the launch to November\"},{\"name\":\"Echo\",\"source\":\"telegram:8820318295:update:969389546\",\"quote\":\"Self-test from Echo, sent through your account for a live check: my test word is lighthouse. Please remember it.\"}],\"personAttributes\":[],\"commitments\":[{\"in\":\"message\",\"quote\":\"Can you send me a summary every evening?\",\"waitsOn\":\"external\"},{\"in\":\"message\",\"quote\":\"Can you check what I owe on the electricity bill and get back to me later?\",\"waitsOn\":\"external\"},{\"in\":\"message\",\"quote\":\"Can you look up my phone bill balance and tell me later?\",\"waitsOn\":\"external\"},{\"in\":\"message\",\"quote\":\"Can you reserve a library room on the website for me?\",\"waitsOn\":\"external\"}],\"closed\":[],\"questions\":[{\"source\":\"telegram:8820318295:update:969389760\",\"quote\":\"Can you send me a summary every evening?\"}],\"concepts\":[{\"source\":\"telegram:8820318295:update:969389762\",\"terms\":[\"padlock code\",\"lock combination correction\",\"security code\",\"access code\",\"P-082150\",\"padlock update\"]}]},\"evidence\":[\"summary:969389762\"]},\"floor\":{\"allowed\":[\"work\"],\"chosen\":\"work\"}}"
+  },
+  {
+   "id": "summary:969389763",
+   "through": 969389763,
+   "outcome": {
+    "exitCode": 0,
+    "localLimit": null,
+    "elapsedMs": 13870,
+    "type": "result",
+    "subtype": "success",
+    "isError": false,
+    "outputTokens": 1107,
+    "promptBytes": 32164
+   },
+   "recordedFailure": {
+    "format": 2,
+    "state": "complete",
+    "failureClass": "malformed",
+    "reason": "summary answer over its bound",
+    "memoryPending": false,
+    "usage": {
+     "inputTokens": 14771,
+     "outputTokens": 1107,
+     "charge": null,
+     "inputComplete": true
+    }
+   },
+   "output": "{\"type\":\"Decision\",\"schemaVersion\":1,\"id\":\"preview-stage2-summary-969389763\",\"at\":1790955187951,\"by\":{\"judgment\":\"judgment\",\"model\":\"claude-sonnet-5\",\"route\":\"preview-subscription\"},\"reason\":{\"subject\":\"preview-stage2-summary\",\"predicate\":\"compose-summary\",\"value\":\"Condensed prior summary within byte bound, preserved all memoryItems by reference, carried forward the unresolved 'evening summary' question and withheld-correction note, added no new memory/people/personAttributes since none appear in new history, and listed the two new history items (padlock correction and the follow-up question about the prior code) as commitments/questions where applicable.\",\"evidence\":[\"summary:969389763\"]},\"conclusion\":{\"subject\":\"preview-stage2-answer\",\"predicate\":\"answer-text\",\"value\":{\"reply\":\"Summary: Earlier facts carried forward: gym locker code 5521 (2026-09-27); bike lock combination 7734 (2026-09-27); garden shed padlock code history, most recently corrected to padlock P-131330 code 2093 (2026-10-01T20:17Z); cofounder Sam reportedly favors a November launch delay per operator's report (2026-09-26); garden plan of tomatoes, beans, squash and herbs along the south fence (2026-09-26); standing signatures: grocery lists \\\"— E\\\", moving lists \\\"— 6C\\\", ski lists \\\"— 25\\\", hiking lists \\\"— 48B\\\"; reply-length preference of two sentences. Unresolved: operator's 2026-09-30T15:40Z question \\\"Can you send me a summary every evening?\\\" never got a substantive answer—whether recurring evening summaries are possible is still open. On 2026-09-30T15:42Z the operator sent correction #969389762: \\\"Correction: the code for my padlock P-082150 is 2093.\\\" On 2026-09-30T15:43Z (#969389763) the operator asked \\\"What was the code for my padlock P-082150 before?\\\" — Instar's reply was a model failure notice (\\\"I couldn't produce an answer to that. Please rephrase or ask again.\\\"), so this question was never actually answered.\",\"memory\":[],\"memoryDisposition\":\"unresolved\",\"people\":[{\"name\":\"Sam\",\"source\":\"telegram:8820318295:update:969389561\",\"quote\":\"My cofounder Sam thinks we should delay the launch to November\"}],\"personAttributes\":[],\"commitments\":[{\"in\":\"message\",\"quote\":\"Can you send me a summary every evening?\",\"waitsOn\":\"external\"}],\"closed\":[],\"questions\":[{\"source\":\"telegram:8820318295:update:969389763\",\"quote\":\"What was the code for my padlock P-082150 before?\"}],\"memoryItems\":[{\"source\":\"telegram:8820318295:update:969389762\",\"quote\":\"the code for my padlock P-082150 is 2093\"}],\"concepts\":[{\"source\":\"telegram:8820318295:update:969389762\",\"terms\":[\"padlock code correction\",\"lock combination update\",\"P-082150\",\"security code change\"]},{\"source\":\"telegram:8820318295:update:969389763\",\"terms\":[\"previous padlock code\",\"old lock combination\",\"P-082150 history\",\"prior code lookup\"]}]},\"evidence\":[\"summary:969389763\"]},\"floor\":{\"allowed\":[\"work\"],\"chosen\":\"work\"}}"
+  }
+ ]
+}
