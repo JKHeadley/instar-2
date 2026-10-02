@@ -8,6 +8,7 @@ import { readFileSync } from 'node:fs';
 import { conclusionText, parseModelJson } from './model-json.js';
 import { decisionWithinFloor } from './model-call-boundary.js';
 import { createJournalWorker, openPreviewJournal, operatorRequestsReport, previewTestContext, projectionDigest } from './journal-test-worker.js';
+import { approvalDisclosureText } from './journal.js';
 import { operatorActionSurface, operatorResultText, operatorYesAuthority, explicitYesStatus } from './operator-yes.js';
 import { createReviewYesSource, type GitHubReview, type GitHubReviewClient } from './review-yes-source.js';
 import { createGitHubReviewClient } from './github-review-client.js';
@@ -150,19 +151,20 @@ function fakeGitHub() {
 }
 type Usage = { inputTokens: null; outputTokens: null; charge: null };
 type ModelAnswer = string | { state: 'complete'; text: string; usage: Usage } | { state: 'complete'; failureClass: 'malformed'; usage: Usage };
-const harness = (path: string, install: { current: ExplicitYesInstallation }, model?: (question: string) => ModelAnswer, start = 1000) => {
+const harness = (path: string, install: { current: ExplicitYesInstallation }, model?: (question: string) => ModelAnswer, start = 1000,
+  g: typeof genesis = genesis) => {
   const sent: { text: string; id: number }[] = [];
-  let now = start, next = 100;
+  let now = start, next = 100, calls = 0;
   const github = fakeGitHub();
   const review = createReviewYesSource({ client: github.client, installation: () => install.current, repository: REPO,
     context: previewTestContext, now: () => now, brakes: { initialMs: 1, maxMs: 4, breakerAfter: 3 } });
-  const journal = openPreviewJournal(path, key, genesis);
+  const journal = openPreviewJournal(path, key, g);
   const worker = createJournalWorker(journal, { now: () => now, stopped: () => false, checkOutbound: () => {},
-    model: async (input: { question: string }) => model ? model(input.question)
-      : JSON.stringify({ memory: [], ...(input.question.includes('more calls') ? raise : { reply: 'ok' }) }),
+    model: async (input: { question: string }) => { calls++; return model ? model(input.question)
+      : JSON.stringify({ memory: [], ...(input.question.includes('more calls') ? raise : { reply: 'ok' }) }); },
     explicitYes: { context: previewTestContext, installation: () => install.current, review },
     send: async (input: { expectedText: string }) => { next += 1; sent.push({ text: input.expectedText, id: next }); return next; } });
-  return { journal, worker, sent, github, tick: (ms: number) => { now += ms; } };
+  return { journal, worker, sent, github, tick: (ms: number) => { now += ms; }, calls: () => calls };
 };
 const withRoot = async (run: (path: string) => Promise<void>) => {
   const root = realpathSync(mkdtempSync(join(tmpdir(), 'preview-review-yes-')));
@@ -233,6 +235,61 @@ it('shows no disclosure on the no-access route', () => withRoot(async path => {
   expect(operatorRequestsReport(h.journal.view, 2000).at(-1)).not.toHaveProperty('sharedAccess');
   expect(explicitYesStatus(noAccess(), { chat: genesis.chat, operator: genesis.operator, trial: TRIAL }, { connected: true }).review)
     .toEqual({ admissible: true });
+  h.journal.close();
+}));
+
+it('displays the disclosure on a later answer that reports the approval, within its hour, and never on the no-access route', () => withRoot(async path => {
+  // Purpose (the approval-account exception): the status answer after the completion line displays the approval too.
+  const h = harness(path, { current: installation() });
+  await ask(h);
+  approve(h); h.tick(10); await h.worker.minimal();
+  const done = h.journal.view.operatorRequests.at(-1)!;
+  expect(done.applied).toBe(true);
+  h.worker.intake([message(3, h.sent.at(-1)!.id + 1, 'did that go through?')]); await h.worker.drain();
+  expect(h.sent.at(-1)!.text).toContain('ok');
+  expect(h.sent.at(-1)!.text).toContain(approvalDisclosureText(done));
+  // Past the hour it is no longer shown, and no answer carries the note.
+  h.tick(3_600_001);
+  h.worker.intake([message(4, h.sent.at(-1)!.id + 1, 'and now?')]); await h.worker.drain();
+  expect(h.sent.at(-1)!.text).not.toContain(SHARED_ACCESS_NOTE);
+  h.journal.close();
+  // The no-access neighbor: the same status answer carries no disclosure.
+  const plain = harness(path.replace('journal.encrypted', 'plain.encrypted'), { current: noAccess() });
+  await ask(plain);
+  approve(plain); plain.tick(10); await plain.worker.minimal();
+  expect(plain.journal.view.operatorRequests.at(-1)!.applied).toBe(true);
+  plain.worker.intake([message(3, plain.sent.at(-1)!.id + 1, 'did that go through?')]); await plain.worker.drain();
+  expect(plain.sent.at(-1)!.text).not.toContain(SHARED_ACCESS_NOTE);
+  plain.journal.close();
+}));
+
+it('carries the review request on a capped limited answer, and applies the approval once with no model call (Rules 15, 79, 82)', () => withRoot(async path => {
+  const h = harness(path, { current: installation() }, undefined, 1000, { ...genesis, maxTurns: 1 });
+  h.worker.intake([message(1, 50, 'Hello')]); await h.worker.drain(); await h.worker.minimal();
+  const calls = h.calls();
+  h.worker.intake([message(2, h.sent.at(-1)!.id + 1, 'can I have more calls please')]); await h.worker.drain(); await h.worker.minimal();
+  expect(h.calls()).toBe(calls);
+  const request = h.journal.view.operatorRequests.at(-1)!;
+  expect(request).toMatchObject({ via: 'limited', review: { repository: REPO, pullRequest: 41, head: HEAD } });
+  expect(request.message).toBe(h.sent.at(-1)!.id);
+  expect(h.github.opened).toHaveLength(1);
+  expect(h.sent.at(-1)!.text).toContain('allowance');
+  expect(h.sent.at(-1)!.text).toContain(`open https://github.com/${REPO}/pull/41/files and approve the pull request`);
+  // The row with its review reference survives a compaction snapshot.
+  const requests = JSON.stringify(h.journal.view.operatorRequests);
+  h.journal.compact();
+  expect(JSON.stringify(h.journal.view.operatorRequests)).toBe(requests);
+  approve(h); h.tick(10); await h.worker.minimal();
+  expect(h.journal.view.limits.maxTurns).toBe(request.request.limits!.maxTurns);
+  expect(h.journal.view.limits.maxTurns).toBeGreaterThan(1);
+  expect(h.journal.view.operatorRequests.at(-1)!.applied).toBe(true);
+  expect(h.sent.some(item => item.text.includes(`Request ${request.request.id} is done`) && item.text.includes(SHARED_ACCESS_NOTE))).toBe(true);
+  // A later poll applies nothing again.
+  const count = h.sent.length, limits = JSON.stringify(h.journal.view.limits);
+  h.tick(10); await h.worker.minimal();
+  expect(JSON.stringify(h.journal.view.limits)).toBe(limits);
+  expect(h.sent.filter(item => item.text.includes(`Request ${request.request.id} is done`))).toHaveLength(1);
+  expect(h.sent.length).toBe(count);
   h.journal.close();
 }));
 

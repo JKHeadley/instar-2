@@ -40,7 +40,7 @@ import { outboundSigner, settleSendOutcome, type OutboundProvenance, type Outbou
 import { retrospectivePlan, retrospectivePopulation, validateRetrospective, replyContextDigest, RETRO_OVER_CAP_REASON, type RetroPass, type RetroSiblingEvidence } from './retrospective.js';
 import { openReplyNotices, validAnswerNotices, type ReplyNotice } from './credential-reminders.js';
 import { admitChatYes, chatBinding, explicitYesStatus, operatorRefusalText, operatorRequestText, operatorResultText, operatorReviewRequestText,
-  operatorYesAuthority, parseOperatorAction, proposeOperatorRequest, wellFormedRequest, OPERATOR_YES_AUTHORITY, type ChatCandidate,
+  operatorYesAuthority, parseOperatorAction, proposeOperatorRequest, wellFormedRequest, OPERATOR_REQUEST_MS, OPERATOR_YES_AUTHORITY, type ChatCandidate,
   type ExplicitYesStatus, type OperatorActionProposal, type OperatorRequest, type ProposalState } from './operator-yes.js';
 import { chatYesReference, reviewYesReference, SHARED_ACCESS_NOTE } from '../../src/operator/explicit-yes.js';
 import type { ExplicitYesInstallation, SharedAccessDisclosure } from '../../src/operator/explicit-yes.js';
@@ -845,6 +845,8 @@ export type JournalRecord =
     approval?: ApprovalRequest;
     /** The exact raise this limited answer asks the operator to approve with an explicit yes (Rules 79, 82). */
     operatorRequest?: OperatorRequest;
+    /** Where that yes is the operator's GitHub review (P-05): the request's pull request, opened before this answer. */
+    operatorReview?: OperatorReviewRef;
     /** Rule 89: the fixed limited answer is signed as infrastructure; absent only on legacy rows. */
     provenance?: OutboundProvenance; at: number }
   /** The verified operator's button press on a prefilled request; its raw Telegram update is kept. */
@@ -2371,7 +2373,7 @@ function addOperatorRequest(view: JournalView, request: OperatorRequest, carrier
   const current = { limits: view.limits, expires: view.expires };
   if (!wellFormedRequest(request, carrier, view.genesis.grant) || request.base !== approvalBase(view) || view.stop !== null
     || request.issuedAt > at || request.expiresAt > view.expires || view.operatorRequests.some(item => item.request.id === request.id)
-    || review !== undefined && (via !== 'reply' || !/^[A-Za-z0-9_.-]+\/[A-Za-z0-9_.-]+$/u.test(review.repository)
+    || review !== undefined && (!/^[A-Za-z0-9_.-]+\/[A-Za-z0-9_.-]+$/u.test(review.repository)
       || !Number.isSafeInteger(review.pullRequest) || review.pullRequest <= 0 || !/^[0-9a-f]{40}$/u.test(review.head))
     || !text.includes(review === undefined ? operatorRequestText(request, current)
       : operatorReviewRequestText(request, current, reviewLink(review.repository, review.pullRequest)))
@@ -2396,6 +2398,15 @@ export function operatorRequestsReport(view: JournalView, now: number) {
       return settled.kind === 'accepted' ? 'api-accepted' : settled.kind; })() } : {}),
     refusals: item.refusals.map(refusal => refusal.detail) }));
 }
+/** Purpose (the approval-account exception): an applied approval admitted under the operator's acceptance of shared account
+ * access stays in the packet for the operator's messages received within an hour of it, and every answer to such a message
+ * carries the disclosure (`approvalDisclosureText`), so a later status report displays it too, not only the completion line. */
+export function disclosedApproval(view: JournalView, turn: Turn): OperatorRequestState | undefined {
+  const state = view.operatorRequests.at(-1);
+  return state?.approved?.sharedAccess && state.applied && turn.at <= state.approved.at + OPERATOR_REQUEST_MS ? state : undefined;
+}
+export const approvalDisclosureText = (state: OperatorRequestState) =>
+  `Request ${state.request.id} was approved through your GitHub account; note: ${SHARED_ACCESS_NOTE}.`;
 /** A disclosure is exactly the shape the admission writes, with the fixed note. */
 const validDisclosure = (d: SharedAccessDisclosure | undefined) => d === undefined || d !== null && typeof d === 'object'
   && Object.keys(d).sort().join() === 'acceptedAt,account,installation,note' && typeof d.account === 'string' && !!d.account
@@ -3067,8 +3078,8 @@ function project(view: JournalView, row: JournalRecord, system?: SystemCheck, ad
     if (row.operatorRequest !== undefined) {
       if (row.approval !== undefined || row.reason === 'worker' || row.operatorRequest.action !== 'raise-caps')
         throw Error('preview journal: limited operator request refused');
-      addOperatorRequest(view, row.operatorRequest, row.id, 'limited', row.thread ?? null, row.text, row.at);
-    }
+      addOperatorRequest(view, row.operatorRequest, row.id, 'limited', row.thread ?? null, row.text, row.at, row.operatorReview);
+    } else if (row.operatorReview !== undefined) throw Error('preview journal: operator review without request');
     for (const item of covered as Turn[]) item.limited = { text: row.text, at: row.at, lead: row.id, reason: row.reason };
     if (row.approval) turn.approval = { ...row.approval };
     return;
@@ -5437,6 +5448,7 @@ export function createJournalWorker(journal: ReturnType<typeof openPreviewJourna
       || requestState.refusals.some(item => item.turn === question!.id));
     // An approval that never applied (a crash between its two frames) stays visible until a later request replaces it.
     const operatorRequest = requestState && (answeredHere || requestState.approved !== undefined && !requestState.applied
+      || disclosedApproval(journal.view, question!) === requestState
       || requestState.message !== undefined && !requestState.superseded && !requestState.approved && now <= requestState.request.expiresAt) ? { id: requestState.request.id, action: requestState.request.action,
       ...(requestState.request.limits ? { limits: requestState.request.limits } : { trialEnd: isoMinute(requestState.request.expires!) }),
       state: requestState.approved ? `${requestState.applied ? 'approved by the operator and applied' : 'approved by the operator, not applied yet'}${
@@ -6876,6 +6888,11 @@ export function createJournalWorker(journal: ReturnType<typeof openPreviewJourna
         // (approved only by the operator's explicit yes) or why it cannot be proposed. Never on a held or notice reply.
         const offer = heldBack || reply === HOLDING_REPLY || turn.answer === undefined ? undefined : await operatorOffer(turn, ports.now());
         if (offer) reply = `${reply.trimEnd()}\n\n${offer.text}`;
+        // The approval-account exception: an answer whose packet showed an approval under shared account access displays
+        // it, so it carries the disclosure, once, whatever the model wrote.
+        const shown = heldBack || reply === HOLDING_REPLY || turn.answer === undefined || !fromOperator(turn) ? undefined
+          : disclosedApproval(journal.view, turn);
+        if (shown && !reply.includes(SHARED_ACCESS_NOTE)) reply = `${reply.trimEnd()}\n\n${approvalDisclosureText(shown)}`;
         const body = encodeReply(reply);
         if (Buffer.byteLength(body) > 4096 || Array.from(body).length > 4096) {
           journal.append({kind:'hold',id:turn.id,reason:'encoded reply size',at:ports.now()}); continue;
@@ -6988,15 +7005,23 @@ export function createJournalWorker(journal: ReturnType<typeof openPreviewJourna
   const operatorOffer = async (turn: Turn, now: number): Promise<{ text: string; request?: OperatorRequest; review?: OperatorReviewRef } | undefined> => {
     const proposal = turn.operatorAction;
     if (!proposal || journal.view.stop !== null) return undefined;
-    if (!ports.explicitYes) return { text: operatorRefusalText(proposal.action, NO_YES_SOURCE) };
+    const issued = await issueOperatorRequest(proposal, turn.id, now);
+    return 'refused' in issued ? { text: operatorRefusalText(proposal.action, issued.refused) } : issued;
+  };
+  /** One bounded request for a proposal, on whichever explicit-yes route is admissible now: a chat yes, or (P-05) the
+   * operator's review of the request's pull request, opened first so the line carries its direct link. Shared by an
+   * ordinary reply and a capped limited answer (Rules 15, 79, 82). */
+  const issueOperatorRequest = async (proposal: OperatorActionProposal, carrier: string, now: number)
+    : Promise<{ refused: string } | { text: string; request: OperatorRequest; review?: OperatorReviewRef }> => {
+    if (!ports.explicitYes) return { refused: NO_YES_SOURCE };
     const status = yesStatus(), source = ports.explicitYes.review;
     const viaReview = !status.chat.admissible && status.review.admissible && source !== undefined;
-    if (!status.chat.admissible && !viaReview) return { text: operatorRefusalText(proposal.action, CHAT_YES_UNAVAILABLE) };
-    const result = proposeOperatorRequest(proposalState(), proposal, turn.id, now);
-    if (result.kind === 'refused') return { text: operatorRefusalText(proposal.action, result.reason) };
+    if (!status.chat.admissible && !viaReview) return { refused: CHAT_YES_UNAVAILABLE };
+    const result = proposeOperatorRequest(proposalState(), proposal, carrier, now);
+    if (result.kind === 'refused') return { refused: result.reason };
     if (!viaReview) return { text: operatorRequestText(result.request, journal.view), request: result.request };
     const issued = await source!.issue(result.request, operatorRequestText(result.request, journal.view));
-    if (issued.kind === 'refused') return { text: operatorRefusalText(proposal.action, `the approval page could not be opened (${issued.reason})`) };
+    if (issued.kind === 'refused') return { refused: `the approval page could not be opened (${issued.reason})` };
     const review = { repository: issued.issued.repository, pullRequest: issued.issued.pullRequest, head: issued.issued.head };
     return { text: operatorReviewRequestText(result.request, journal.view, issued.issued.link), request: result.request, review };
   };
@@ -7004,11 +7029,16 @@ export function createJournalWorker(journal: ReturnType<typeof openPreviewJourna
   const openOperatorRequest = (now: number) => journal.view.operatorRequests.filter(item => item.message !== undefined
     && !item.superseded && !item.approved && now <= item.request.expiresAt && item.request.base === approvalBase(journal.view)).at(-1);
   /** The raise a capped limited answer asks for with an explicit yes, when no independent surface carries it. */
-  const limitedOperatorRequest = (lead: Turn, reason: RaiseReason): OperatorRequest | undefined => {
+  const limitedOperatorRequest = async (lead: Turn, reason: RaiseReason) => {
     const now = ports.now();
-    if (ports.approvalSurface || !yesStatus().chat.admissible || openOperatorRequest(now)) return undefined;
-    const result = proposeOperatorRequest(proposalState(), { action: 'raise-caps', limits: proposedLimits(journal.view, reason) }, lead.id, now);
-    return result.kind === 'request' ? result.request : undefined;
+    if (ports.approvalSurface || openOperatorRequest(now)) return undefined;
+    // One raise adds at most one step per allowance (the bounded proposal); where the recorded reserve turns exceed even
+    // that, the step is still the raise that answers the oldest waiting message.
+    const view = journal.view, proposed = proposedLimits(view, reason), g = view.genesis;
+    const limits = { maxCalls: Math.min(proposed.maxCalls, view.limits.maxCalls + g.maxCalls),
+      maxReplies: Math.min(proposed.maxReplies, view.limits.maxReplies + g.maxReplies), maxTurns: Math.min(proposed.maxTurns, view.limits.maxTurns + g.maxTurns) };
+    const issued = await issueOperatorRequest({ action: 'raise-caps', limits }, lead.id, now);
+    return 'refused' in issued ? undefined : issued;
   };
   /** Applies an approved request exactly once. A journal refusal (for example a new UNKNOWN call) leaves it approved
    * and unapplied, visible in status; it is never retried from journal rows alone. */
@@ -7223,17 +7253,18 @@ export function createJournalWorker(journal: ReturnType<typeof openPreviewJourna
       const approval: ApprovalRequest | undefined = group.stop ? { id: approvalId(lead.id, 'stop', base), action: 'stop', base }
         : group.reason === 'worker' || openApproval(journal.view, 'raise-caps', ports.now()) ? undefined : issueRaise(lead, group.reason);
       const link = approval?.challenge ? approvalLink(approval.challenge) : null;
-      const yesRequest = group.stop || approval !== undefined || group.reason === 'worker' ? undefined : limitedOperatorRequest(lead, group.reason);
+      const yesRequest = group.stop || approval !== undefined || group.reason === 'worker' ? undefined : await limitedOperatorRequest(lead, group.reason);
       const text = group.stop ? `PREVIEW — ${STOP_CONFIRM_TEXT}` : `${limitedAnswerText(journal.view, group.reason, group.turns.length)}${approval
         && group.reason !== 'worker' ? `\n\n${approvalRequestText(journal.view, group.reason)} ${link ? RAISE_LINK_HINT : RAISE_SURFACE_HINT}` : ''}${
-        yesRequest ? `\n\n${operatorRequestText(yesRequest, journal.view)}` : ''}`;
+        yesRequest ? `\n\n${yesRequest.text}` : ''}`;
       ports.checkOutbound(text);
       const thread = group.thread === undefined ? {} : { thread: group.thread };
       // Rule 89: the fixed limited answer speaks as infrastructure, signed over exactly what is sent.
       const provenance = journal.signOutbound('infrastructure', { target: `limited:${lead.id}`, chat: journal.view.genesis.chat, ...thread, body: text });
       journal.append({ kind: 'limited-intent', id: lead.id, covers: group.turns.map(turn => turn.id), reason: group.reason,
         text, chat: journal.view.genesis.chat, ...thread, grant: journal.view.genesis.grant, ...(approval ? { approval } : {}),
-        ...(yesRequest ? { operatorRequest: yesRequest } : {}), provenance, at: ports.now() });
+        ...(yesRequest ? { operatorRequest: yesRequest.request } : {}), ...(yesRequest?.review ? { operatorReview: yesRequest.review } : {}),
+        provenance, at: ports.now() });
       gate();
       const markup = withStopPage(approval === undefined ? undefined : approval.action === 'stop' ? approvalMarkup(approval.id) : raiseMarkup(approval.id, link));
       // A refused or UNKNOWN limited answer is recorded by the dispatch and never repeated (Rule 42).

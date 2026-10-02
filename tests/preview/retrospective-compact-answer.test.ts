@@ -6,7 +6,7 @@ import { createJournalWorker, openPreviewJournal, retrospectiveCases, type Journ
 import { GRAVITY_WELLS, RETROSPECTIVE_DUTIES, RETROSPECTIVE_QUESTION, RETRO_ANSWER_BUDGET_BYTES, RETRO_DUTY_UNINSPECTED_NOTE,
   RETRO_ANSWER_BYTES_PER_TOKEN, RETRO_DUTY_CODES, RETRO_EFFICIENCY_CHARS, RETRO_FAILURE_BACKOFF_MS,
   RETRO_MIN_INTERVAL_MS, RETRO_OUTCOME_REASON_CHARS, RETRO_OVER_CAP_REASON, RETRO_WELL_NOTES,
-  WAIVER_EVIDENCE_UNAVAILABLE, disciplineSource, eligibleCases, estimatedAnswerBytes, retroAnswerBudget,
+  WAIVER_EVIDENCE_UNAVAILABLE, disciplineSource, eligibleCases, estimatedAnswerBytes, retroAnswerBudget, retrospectiveStatusLine,
   type RetroCase } from './retrospective.js';
 import { SUBSCRIPTION_MAX_OUTPUT_TOKENS } from '../../src/assembly/production-provider.js';
 
@@ -214,7 +214,7 @@ async function onePass(answer: (state: string, id: string) => Answer, options: P
     const before = owed(w.journal.view, w.at());
     w.answerWith(answer);
     await w.retrospect();
-    return { pass: w.journal.view.retroPasses[0]!, before, stillOwed: owed(w.journal.view, w.at()) };
+    return { pass: w.journal.view.retroPasses[0]!, before, stillOwed: owed(w.journal.view, w.at()), status: retrospectiveStatusLine(w.journal.view) };
   } finally { w.done(); }
 }
 
@@ -319,6 +319,24 @@ it('lets the plan, never the answer, decide an unavailable duty: u is refused wh
     .toHaveLength(RETROSPECTIVE_DUTIES.length - 1);
   const accepted = await onePass(state => complete(compactAnswer(state, { duties: codes('n') })), withWaivers);
   expect(accepted.pass.result!.duties[waiverIndex]).toMatchObject({ disposition: 'inspected', note: RETRO_DUTY_CODES.n });
+});
+
+it('reports each duty by its recorded disposition in status: an uninspected efficiency duty never reads as having run (Rules 9, 26, 42, 45)', async () => {
+  const marked = new Set(['workaround', 'waste']);
+  const codes = (code: string) => RETROSPECTIVE_DUTIES.map(duty => marked.has(duty) ? code : 'n').join('');
+  // Available but reported `u`: not inspected, and its evidence was not lacking.
+  const shirked = await onePass(state => complete(compactAnswer(state, { duties: codes('u') })));
+  expect(shirked.pass.state).toBe('complete');
+  expect(shirked.status).toContain('(efficiency duty not inspected: ');
+  expect(shirked.status).not.toContain('efficiency duty ran');
+  expect(shirked.status).toContain('duties not inspected although their evidence was present: workaround, waste');
+  // Genuinely unavailable (no waiver producer): still reported as lacking evidence, and only that duty.
+  expect(shirked.status).toContain('duties not inspected for lack of evidence: waiver-recurrence;');
+  // The inspected neighbor: the efficiency duty ran, and nothing is reported uninspected with its evidence present.
+  const done = await onePass(state => complete(compactAnswer(state, { duties: codes('n') })));
+  expect(done.status).toContain('(efficiency duty ran: ');
+  expect(done.status).not.toContain('although their evidence was present');
+  expect(done.status).toContain('duties not inspected for lack of evidence: waiver-recurrence;');
 });
 
 it('fails closed on every malformed compact fixed part in the fixture, and keeps every case owed', async () => {

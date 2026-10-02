@@ -167,9 +167,12 @@ it('replays every recorded real answer on the review route: the path fires where
       expect(result.operatorAction, label).toBeUndefined();
     }
     if (item.scenario === 'status-applied') {
-      // An applied request leaves the packet's operatorRequest; the model sees the completion line, note included, in history.
-      expect(result.prompt, label).not.toContain(OPERATOR_REVIEW_REQUEST_GUIDANCE.trim().slice(0, 60));
+      // The applied approval stays in the packet with its disclosure for an hour, and the delivered status report displays
+      // it with the disclosure even though this recorded answer did not write it (Purpose, the approval-account exception).
+      // The answer was captured against the earlier packet; the runner, not the model, adds the disclosure line.
       expect(result.prompt, label).toContain(SHARED_ACCESS_NOTE);
+      expect(result.reply, label).toContain('it went through');
+      expect(result.reply, label).toMatch(new RegExp(`approved through your GitHub account; note: ${SHARED_ACCESS_NOTE}\\.$`, 'u'));
       expect(result.requests, label).toEqual([expect.objectContaining({ approved: true, applied: true })]);
       expect(result.maxCalls, label).toBe(80);
       expect(result.operatorAction, label).toBeUndefined();

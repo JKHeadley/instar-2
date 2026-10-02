@@ -1109,9 +1109,15 @@ export function retrospectiveStatusLine(view: JournalView, contextDigest?: strin
   const standing = contextDigest ? rerunDispositions(view, contextDigest) : [];
   const due = standing.filter(row => row.disposition === 'due').length, exhausted = standing.filter(row => row.disposition === 'exhausted').length;
   const accounting = last ? passAccounting(last) : null;
-  const unavailable = last?.result!.duties.filter(item => item.disposition === 'unavailable').map(item => item.duty) ?? [];
+  // Rules 9, 26, 42: each duty is reported by its recorded disposition. A duty reported unavailable although its evidence
+  // was present was not inspected, and its evidence was not lacking; the efficiency duty (waste) ran only if inspected.
+  const duties = last?.result!.duties ?? [];
+  const uninspected = duties.filter(item => item.disposition === 'unavailable' && item.note === RETRO_DUTY_UNINSPECTED_NOTE).map(item => item.duty);
+  const unavailable = duties.filter(item => item.disposition === 'unavailable' && item.note !== RETRO_DUTY_UNINSPECTED_NOTE).map(item => item.duty);
+  const efficiencyRan = duties.some(item => item.duty === 'waste' && item.disposition === 'inspected');
   return `Retrospective review: ${String(done.length)} completed pass(es)${failed ? `, ${String(failed)} refused` : ''}${unknown ? `, ${String(unknown)} with UNKNOWN outcome` : ''}`
-    + (last ? `; last at epoch ms ${String(last.completedAt ?? last.at)} inspected ${String(last.result!.inspected.length)} of ${String(accounting?.eligible ?? 0)} case(s) and deferred ${String(accounting?.omitted ?? 0)} (efficiency duty ran: ${last.result!.efficiency.summary.slice(0, 120)})`
+    + (last ? `; last at epoch ms ${String(last.completedAt ?? last.at)} inspected ${String(last.result!.inspected.length)} of ${String(accounting?.eligible ?? 0)} case(s) and deferred ${String(accounting?.omitted ?? 0)} (efficiency duty ${efficiencyRan ? 'ran' : 'not inspected'}: ${last.result!.efficiency.summary.slice(0, 120)})`
+      + (uninspected.length ? `; duties not inspected although their evidence was present: ${uninspected.join(', ')}` : '')
       + (unavailable.length ? `; duties not inspected for lack of evidence: ${unavailable.join(', ')}` : '') : '')
     + `; open improvement items ${String(openFindings(view).length)}; pending grades ${String(pendingGrades(view).length)}; feedback dispositions ${String(feedbackDispositions(view).length)}`
     + `; standing-grant candidates ${String(candidates.length)} (${String(candidates.filter(item => item.presentable).length)} recurring, shown per P-10; none grants anything until the operator approves)`
