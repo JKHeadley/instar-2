@@ -16,7 +16,7 @@ import { buildWorkIndex, detectOverlaps, workForTopic, type SessionActivity } fr
 import { MAX_RAISED_SUBSCRIPTION_PROMPT_BYTES, SUBSCRIPTION_CONVERSATION_SYSTEM_PROMPT, SUBSCRIPTION_MAX_OUTPUT_TOKENS, SUBSCRIPTION_PREVIEW_EXPIRY } from '../../src/assembly/production-provider.js';
 import { hasClaim, replaceClaim, supersedesCorrection } from './claim-match.mjs';
 import { checkReply as checkCoherenceOf, correctionNote, releaseFindings, COHERENCE_FINDING_LIMIT, type CoherenceFinding } from './coherence-check.js';
-import { checkReply, reviewReply, repeatsOperatorOnly, HOLDING_REPLY, jevRequestBody, JEV_RESPONSE_MAX_BYTES, REPLY_CHECK_BUDGET_MS, REPLY_CHECK_BUDGET_REASON, LINK_SHAPE_REASON, linkShapeRules, bareTopicReferences, topicNameReason, BARE_TOPIC_OBJECTION, noDecisions, validDispositions, jevConfidentCredential, CLAIM_SCOPED_RULES, quotedSpans, exciseNamedClaims, substantiveReply } from './reply-check.js';
+import { checkReply, reviewReply, repeatsOperatorOnly, HOLDING_REPLY, jevRequestBody, JEV_RESPONSE_MAX_BYTES, REPLY_CHECK_BUDGET_MS, REPLY_CHECK_BUDGET_REASON, LINK_SHAPE_REASON, linkShapeRules, bareTopicReferences, topicNameReason, BARE_TOPIC_OBJECTION, noDecisions, validDispositions, jevConfidentCredential, CLAIM_SCOPED_RULES, quotedSpans, exciseNamedClaims, substantiveReply, type ApprovalFacts } from './reply-check.js';
 import { parseDatedItem, restatedDatePhrase, dueState, selectDatedItems, withinNext48Hours, localParts, type DatedItem } from './dated-memory.js';
 import { isStatusCommand, isStopCommand, statusReply, STOP_CONFIRM_TEXT } from './status-command.js';
 import { AGENT_PROMISE_LIMIT, fulfillableCommitment, fulfillmentProposals, fulfillmentSupported, legacyFulfillsReminder, promiseProposals, recordedPromises, type AgentPromise, type FulfillmentProposal, type PromiseProposal } from './agent-commitment.js';
@@ -40,7 +40,7 @@ import { outboundSigner, settleSendOutcome, type OutboundProvenance, type Outbou
 import { retrospectivePlan, retrospectivePopulation, validateRetrospective, replyContextDigest, RETRO_OVER_CAP_REASON, type RetroPass, type RetroSiblingEvidence } from './retrospective.js';
 import { openReplyNotices, validAnswerNotices, type ReplyNotice } from './credential-reminders.js';
 import { admitChatYes, chatBinding, explicitYesStatus, operatorRefusalText, operatorRequestText, operatorResultText, operatorReviewRequestText,
-  operatorYesAuthority, parseOperatorAction, proposeOperatorRequest, wellFormedRequest, OPERATOR_REQUEST_MS, OPERATOR_YES_AUTHORITY, type ChatCandidate,
+  operatorRequestTarget, operatorYesAuthority, parseOperatorAction, proposeOperatorRequest, wellFormedRequest, OPERATOR_YES_AUTHORITY, type ChatCandidate,
   type ExplicitYesStatus, type OperatorActionProposal, type OperatorRequest, type ProposalState } from './operator-yes.js';
 import { chatYesReference, reviewYesReference, SHARED_ACCESS_NOTE } from '../../src/operator/explicit-yes.js';
 import type { ExplicitYesInstallation, SharedAccessDisclosure } from '../../src/operator/explicit-yes.js';
@@ -2414,13 +2414,19 @@ export function operatorRequestsReport(view: JournalView, now: number) {
       return settled.kind === 'accepted' ? 'api-accepted' : settled.kind; })() } : {}),
     refusals: item.refusals.map(refusal => refusal.detail) }));
 }
-/** Purpose (the approval-account exception): an applied approval admitted under the operator's acceptance of shared account
- * access stays in the packet for the operator's messages received within an hour of it, and every answer to such a message
- * carries the disclosure (`approvalDisclosureText`), so a later status report displays it too, not only the completion line. */
-export function disclosedApproval(view: JournalView, turn: Turn): OperatorRequestState | undefined {
-  const state = view.operatorRequests.at(-1);
-  return state?.approved?.sharedAccess && state.applied && turn.at <= state.approved.at + OPERATOR_REQUEST_MS ? state : undefined;
+/** Purpose (the approval-account exception): the latest applied approval admitted under an acceptance of shared account
+ * access, current or since withdrawn, whatever its age. The packet shows it while it is the latest request; request expiry
+ * bounds when an approval can be consumed, never how long it must be truthfully described. */
+export function disclosedApproval(view: JournalView): OperatorRequestState | undefined {
+  for (let index = view.operatorRequests.length - 1; index >= 0; index--) {
+    const state = view.operatorRequests[index]!;
+    if (state.approved?.sharedAccess && state.applied) return state;
+  }
+  return undefined;
 }
+/** The facts the reply reviewer needs to judge whether an answer reports that approval (`approvalQuestions`). */
+export const approvalFacts = (state: OperatorRequestState): ApprovalFacts =>
+  ({ request: state.request.id, change: operatorRequestTarget(state.request) });
 export const approvalDisclosureText = (state: OperatorRequestState) =>
   `Request ${state.request.id} was approved through your GitHub account; note: ${SHARED_ACCESS_NOTE}.`;
 /** A disclosure is exactly the shape the admission writes, with the fixed note. */
@@ -5468,7 +5474,7 @@ export function createJournalWorker(journal: ReturnType<typeof openPreviewJourna
       || requestState.refusals.some(item => item.turn === question!.id));
     // An approval that never applied (a crash between its two frames) stays visible until a later request replaces it.
     const operatorRequest = requestState && (answeredHere || requestState.approved !== undefined && !requestState.applied
-      || disclosedApproval(journal.view, question!) === requestState
+      || disclosedApproval(journal.view) === requestState
       || requestState.message !== undefined && !requestState.superseded && !requestState.approved && now <= requestState.request.expiresAt) ? { id: requestState.request.id, action: requestState.request.action,
       ...(requestState.request.limits ? { limits: requestState.request.limits } : { trialEnd: isoMinute(requestState.request.expires!) }),
       state: requestState.approved ? `${requestState.applied ? 'approved by the operator and applied' : 'approved by the operator, not applied yet'}${
@@ -6733,9 +6739,13 @@ export function createJournalWorker(journal: ReturnType<typeof openPreviewJourna
               if (!previous) checkPorts.record({ verdict: 'unavailable', ruleIds: [], confidence: null, path: 'holding', latencyMs: 0 });
               checked = await reviewReply(reply, turn.id, checkPorts, [], reviewPrompt);
             } else {
+              // The approval-account exception: only where an answer to the operator may report a shared-access approval
+              // does the same Jev call carry the one extra question; every other request is unchanged.
+              const shared = fromOperator(turn) ? disclosedApproval(journal.view) : undefined;
+              const facts = shared && approvalFacts(shared);
               journal.append({ kind: 'reply-jev-reserve', id: turn.id,
-                maxInputTokens: Buffer.byteLength(jevRequestBody(reply)), maxOutputTokens: jevOutputMaximum, at: ports.now() });
-              checked = await checkReply(reply, turn.id, checkPorts, reviewPrompt);
+                maxInputTokens: Buffer.byteLength(jevRequestBody(reply, facts)), maxOutputTokens: jevOutputMaximum, at: ports.now() });
+              checked = await checkReply(reply, turn.id, checkPorts, reviewPrompt, facts);
 
             }
             decision = checked.outcome; capRefused = checked.capRefused === true;
@@ -6905,15 +6915,23 @@ export function createJournalWorker(journal: ReturnType<typeof openPreviewJourna
               final: { digest: createHash('sha256').update(reply).digest('hex'), links } };
           }
         }
+        // The reviewer's answer on whether this exact text reports a shared-access approval is read before any fixed
+        // line is added: it judged this text, and a revised or shortened text it never saw has no answer.
+        const reviewedDigest = createHash('sha256').update(reply).digest('hex');
         // Rules 79, 82: the operator action this answer proposed rides the reply as one fixed line: the exact request
         // (approved only by the operator's explicit yes) or why it cannot be proposed. Never on a held or notice reply.
         const offer = heldBack || reply === HOLDING_REPLY || turn.answer === undefined ? undefined : await operatorOffer(turn, ports.now());
         if (offer) reply = `${reply.trimEnd()}\n\n${offer.text}`;
-        // The approval-account exception: an answer whose packet showed an approval under shared account access displays
-        // it, so it carries the disclosure, once, whatever the model wrote.
+        // The approval-account exception: an answer that reports an approval taken under shared account access carries the
+        // disclosure, once, however old the approval. Whether it reports it is the reply reviewer's judgment of meaning
+        // (`approvalQuestions`), failing toward disclosure: only its readable "no" on this exact text omits the line;
+        // its "yes", an unavailable, timed-out or unreadable answer, or no answer at all carries it.
         const shown = heldBack || reply === HOLDING_REPLY || turn.answer === undefined || !fromOperator(turn) ? undefined
-          : disclosedApproval(journal.view, turn);
-        if (shown && !reply.includes(SHARED_ACCESS_NOTE)) reply = `${reply.trimEnd()}\n\n${approvalDisclosureText(shown)}`;
+          : disclosedApproval(journal.view);
+        const reportedNo = shown !== undefined && (turn.replyChecks ?? []).some(check => check.path === 'jev'
+          && check.candidateDigest === reviewedDigest && check.approvalReport?.request === shown.request.id
+          && check.approvalReport.answer === 'no');
+        if (shown && !reportedNo && !reply.includes(SHARED_ACCESS_NOTE)) reply = `${reply.trimEnd()}\n\n${approvalDisclosureText(shown)}`;
         const body = encodeReply(reply);
         if (Buffer.byteLength(body) > 4096 || Array.from(body).length > 4096) {
           journal.append({kind:'hold',id:turn.id,reason:'encoded reply size',at:ports.now()}); continue;

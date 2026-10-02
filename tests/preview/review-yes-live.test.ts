@@ -13,6 +13,7 @@ import { decisionWithinFloor } from './model-call-boundary.js';
 import { createReviewYesSource, type GitHubReview, type GitHubReviewClient } from './review-yes-source.js';
 import { subscriptionConversationPolicy } from '../../src/assembly/production-provider.js';
 import { SHARED_ACCESS_NOTE } from '../../src/operator/explicit-yes.js';
+import { APPROVAL_REPORT, JEV_MODEL, jevQuestions } from './reply-check.js';
 import type { ExplicitYesInstallation } from '../../src/operator/explicit-yes.js';
 
 // cint-L32 (plan rows #306, #307; observer #106): w3-yeswire changed model-facing text on the P-05 review route -- the
@@ -59,8 +60,14 @@ function callModel(prepared: string): string {
   return frame.result;
 }
 
+type JevQuestions = Record<string, { type: string; instructions: string }> | undefined;
+/** The reply reviewer the worker calls on the measured turn; setup turns before any approval get a plain all-clear. */
+type JevPort = (text: string, questions: JevQuestions) => Promise<unknown>;
+const allClear = (questions: JevQuestions) => ({ model: JEV_MODEL,
+  answers: Object.fromEntries(Object.keys(questions ?? jevQuestions).map(id => [id, { type: 'noul', noul: 0.01 }])) });
 /** One scenario on a fresh review-route root; `answer` supplies the operator turn's answer. */
-async function scenario(name: Scenario, now: number, answer: (prepared: string) => string) {
+async function scenario(name: Scenario, now: number, answer: (prepared: string) => string, delay = 0,
+  extra: { message?: string; jev?: JevPort } = {}) {
   const root = realpathSync(mkdtempSync(join(tmpdir(), 'preview-review-yes-live-')));
   try {
     const g = { kind: 'genesis' as const, bot: '12345678', chat: String(OPERATOR), operator: String(OPERATOR), grant: TRIAL,
@@ -90,7 +97,10 @@ async function scenario(name: Scenario, now: number, answer: (prepared: string) 
         prompts.push(String(input.prepared ?? ''));
         return livePort(answer(String(input.prepared ?? '')));
       },
-      send: async input => { next += 1; sent.push({ text: input.expectedText, id: next }); return next; }, checkOutbound: () => {} });
+      send: async input => { next += 1; sent.push({ text: input.expectedText, id: next }); return next; }, checkOutbound: () => {},
+      ...(extra.jev ? { replyCheck: { elapsedMs: () => now, escalate: async () => { throw Error('no contextual review here'); },
+        jev: async (text: string, questions?: JevQuestions) => ({ latencyMs: 1,
+          value: questions && APPROVAL_REPORT in questions ? await extra.jev!(text, questions) : allClear(questions) }) } } : {}) });
     const say = async (update: number, messageId: number, text: string) => {
       worker.intake([{ update_id: update, message: { message_id: messageId, chat: { id: OPERATOR, type: 'private' }, from: { id: OPERATOR },
         text, date: Math.floor(now / 1000) } }]);
@@ -102,13 +112,15 @@ async function scenario(name: Scenario, now: number, answer: (prepared: string) 
       reviews.push({ id: '901', state: 'APPROVED', commitId: HEAD, login: 'JKHeadley', submittedAt: new Date(now).toISOString() });
       await worker.minimal();
     }
+    now += delay;
     operatorTurn = true;
-    await say(2, (sent.at(-1)?.id ?? 100) + 1, MESSAGES[name]);
+    await say(2, (sent.at(-1)?.id ?? 100) + 1, extra.message ?? MESSAGES[name]);
     const turn = journal.view.order.at(-1)!;
     const result = { prompt: prompts.at(-1) ?? '', reply: sent.at(-1)?.text ?? '', operatorAction: turn.operatorAction, opened: opened.length,
       requests: journal.view.operatorRequests.map(item => ({ action: item.request.action, limits: item.request.limits, review: item.review !== undefined,
         approved: item.approved !== undefined, applied: item.applied === true, refusals: item.refusals.length })),
-      maxCalls: journal.view.limits.maxCalls, held: turn.held };
+      maxCalls: journal.view.limits.maxCalls, held: turn.held,
+      approvalReport: turn.replyChecks?.find(check => check.path === 'jev')?.approvalReport };
     journal.close();
     return result;
   } finally { rmSync(root, { recursive: true, force: true }); }
@@ -176,6 +188,84 @@ it('replays every recorded real answer on the review route: the path fires where
       expect(result.requests, label).toEqual([expect.objectContaining({ approved: true, applied: true })]);
       expect(result.maxCalls, label).toBe(80);
       expect(result.operatorAction, label).toBeUndefined();
+      // The same recorded report, delivered more than an hour after the approval, still carries the disclosure: request
+      // expiry limits consumption, never the truthful description of an approval (Purpose, the approval-account exception).
+      const late = await scenario(item.scenario, item.now, () => item.raw, 3_600_001);
+      expect(late.prompt, `${label} delayed`).toContain(SHARED_ACCESS_NOTE);
+      expect(late.reply, `${label} delayed`).toContain('it went through');
+      expect(late.reply, `${label} delayed`).toMatch(new RegExp(`approved through your GitHub account; note: ${SHARED_ACCESS_NOTE}\\.$`, 'u'));
+      expect(late.requests, `${label} delayed`).toEqual([expect.objectContaining({ approved: true, applied: true })]);
+    }
+  }
+}, 60_000);
+
+// The approval-account exception decided by meaning (cint-L32 round 3; observer #106). Whether a delivered answer reports
+// the shared-access approval is asked of the real reply reviewer (Jev, the call that already checks every model-written
+// reply), in the same batched request, only when such an approval exists. The gated capture ran that real reviewer twice
+// on each of three prepared candidates and stored its response bodies verbatim: the captured status-applied answer above;
+// the paraphrase "Yes — you gave the go-ahead on GitHub, and your model-call limit is now 80 (up from 40)" (a written
+// boundary case, not a model sample) delivered 3,600,001 ms after the approval; and the captured real "unrelated" answer
+// delivered after the approval. Measured: the two reports scored 0.19 and 0.27-0.28 (undecided, the note rides), the
+// unrelated answer 0.02 both times (a confident no, no note). Re-capture: INSTAR_APPROVAL_JEV_LIVE=1 with INSTAR_SECRET_PREVIEW_TYPESAFE_KEY supplied.
+const JEV_FIXTURE = resolve(process.cwd(), 'tests/preview/fixtures/approval-report-jev-2026-10-02.json');
+type JevCase = 'captured-applied' | 'paraphrase' | 'unrelated-after';
+type JevRecorded = { case: JevCase; run: number; text: string; questionsSha256: string; raw: string };
+const PARAPHRASE = 'Yes — you gave the go-ahead on GitHub, and your model-call limit is now 80 (up from 40).';
+const applied = recorded.find(item => item.scenario === 'status-applied');
+const unrelatedAnswer = recorded.find(item => item.scenario === 'unrelated');
+/** The three prepared candidates, each in the status-applied setup (a shared-access approval applied). */
+function jevCase(name: JevCase, jev: JevPort) {
+  const raw = name === 'paraphrase' ? JSON.stringify({ ...JSON.parse(applied!.raw), conclusion: { ...JSON.parse(applied!.raw).conclusion, value: PARAPHRASE } })
+    : name === 'unrelated-after' ? unrelatedAnswer!.raw : applied!.raw;
+  return scenario('status-applied', applied!.now, () => raw, name === 'paraphrase' ? 3_600_001 : 0,
+    { jev, ...(name === 'unrelated-after' ? { message: unrelatedAnswer!.message } : {}) });
+}
+const jevLive = process.env.INSTAR_APPROVAL_JEV_LIVE === '1';
+it.skipIf(!jevLive)('captures the real reply reviewer on the approval-report question (at most six calls)', async () => {
+  const key = process.env.INSTAR_SECRET_PREVIEW_TYPESAFE_KEY;
+  expect(key, 'the TypeSafe key binding is required').toBeTruthy();
+  const outputs: JevRecorded[] = [];
+  for (const name of ['captured-applied', 'paraphrase', 'unrelated-after'] as const) for (const run of [1, 2]) {
+    await jevCase(name, async (text, questions) => {
+      const response = await fetch('https://api.typesafe.ai/v1/systemone', { method: 'POST', signal: AbortSignal.timeout(10_000),
+        headers: { Authorization: `Bearer ${key!}`, 'Content-Type': 'application/json' },
+        body: JSON.stringify({ state: text, model: JEV_MODEL, questions }) });
+      const raw = await response.text();
+      outputs.push({ case: name, run, text, questionsSha256: createHash('sha256').update(JSON.stringify(questions)).digest('hex'), raw });
+      return JSON.parse(raw) as unknown;
+    });
+  }
+  expect(outputs).toHaveLength(6);
+  writeFileSync(JEV_FIXTURE, `${JSON.stringify({ source: JEV_FIXTURE_SOURCE, model: JEV_MODEL, outputs }, null, 2)}\n`);
+}, 120_000);
+const JEV_FIXTURE_SOURCE = 'Captured by tests/preview/review-yes-live.test.ts (cint-L32 round 3, Mac Studio, 2026-10-02) with '
+  + 'INSTAR_APPROVAL_JEV_LIVE=1: the real Jev reply reviewer (api.typesafe.ai, jev-1.13.0) on the exact candidate text the worker '
+  + 'sent it and the exact questions it asked, in fresh offline roots. `raw` is the response body verbatim. No live preview root '
+  + 'was read or written.';
+
+const jevRecorded = existsSync(JEV_FIXTURE) ? (JSON.parse(readFileSync(JEV_FIXTURE, 'utf8')) as { outputs: JevRecorded[] }).outputs : [];
+it('replays the real reviewer: the note rides unless it answered a confident no', async () => {
+  expect(jevRecorded).toHaveLength(6);
+  for (const item of jevRecorded) {
+    const label = `${item.case} run ${item.run}`;
+    const result = await jevCase(item.case, async (text, questions) => {
+      // A strict replay: the worker asks exactly what the real reviewer was asked.
+      expect(text, label).toBe(item.text);
+      expect(createHash('sha256').update(JSON.stringify(questions)).digest('hex'), label).toBe(item.questionsSha256);
+      return JSON.parse(item.raw) as unknown;
+    });
+    expect(result.held, label).toBeUndefined();
+    expect(result.prompt, label).toContain(SHARED_ACCESS_NOTE);
+    if (item.case === 'unrelated-after') {
+      expect(result.approvalReport, label).toMatchObject({ answer: 'no' });
+      expect(result.reply, label).toContain('umbrella');
+      expect(result.reply, label).not.toContain(SHARED_ACCESS_NOTE);
+    } else {
+      // The real reviewer could not tell on these reports (0.19-0.28, between its confident lines), so the runner fails
+      // toward disclosure: the note rides. It was confident only that the unrelated answer reports nothing.
+      expect(result.approvalReport, label).toMatchObject({ answer: 'undecided' });
+      expect(result.reply, label).toContain(item.case === 'paraphrase' ? PARAPHRASE : 'it went through');
+      expect(result.reply, label).toMatch(new RegExp(`approved through your GitHub account; note: ${SHARED_ACCESS_NOTE}\\.$`, 'u'));
     }
   }
 }, 60_000);

@@ -130,6 +130,10 @@ export function operatorReviewRequestText(request: OperatorRequest, current: { l
   return `${requestHead(request, current)}To approve, open ${link} and approve the pull request (Review changes, then Approve); `
     + `anything else changes nothing. This request lapses at ${minute(request.expiresAt)}.`;
 }
+/** What an applied request set, from the request alone: the facts the approval-report question names. */
+export const operatorRequestTarget = (request: OperatorRequest): string => request.action === 'raise-caps'
+  ? `set the ${KEYS.map(key => `${LIMIT_NAMES[key][0]} allowance to ${request.limits![key]}`).join(', the ')}`
+  : `extended this trial's end to ${minute(request.expires!)}`;
 /** The fixed line the operator receives when a review-approved request completes. Under an operator acceptance of
  * shared account access it carries the disclosure (Purpose, the approval-account exception), written once. */
 export function operatorResultText(request: OperatorRequest, before: { limits: CapLimits; expires: number }, shared: boolean): string {
