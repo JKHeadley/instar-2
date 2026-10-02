@@ -10,7 +10,7 @@ Three results are reported separately per Mac, and none is claimed by this file:
 | Result | Meaning | Status |
 |---|---|---|
 | account prepared | inert hidden account + empty root-owned folders exist and `verify` passes | available (this stage) |
-| monitor installed | reviewed content-addressed release, keys, journal and LaunchDaemon installed; `verify` passes | **held**: the package, its dry run and verification exist; installation is the operator's (P-01), and the memory case must PASS in the administrator's feasibility run first |
+| monitor installed | reviewed content-addressed release, keys, journal and LaunchDaemon installed; `verify` passes | **held**: the package, its dry run, the one administrative command and verification exist; installation is the operator's (P-01), and the command runs every feasibility case, memory included, and stops on any non-PASS before installing |
 | confined launch verified | a genuine owner-admitted launch ran under the monitor and Nine accepted the evidence | refusing: owner reader inputs unavailable (see "Owner integration") |
 
 ## Stage 1 — inert account (accounts-only)
@@ -100,8 +100,10 @@ child is its own traced child under the worker identity. Then:
 | processes | `RLIMIT_NPROC=1` for the worker account, plus the profile's `process-fork` denial | kernel |
 | files, scratch, core | `RLIMIT_NOFILE`, `RLIMIT_FSIZE=0`, `RLIMIT_CORE=0`, profile denies every write | kernel, sandbox |
 | supervisor liveness | 50 ms heartbeat; a lapse over 250 ms or a closed link ends the worker | guard |
-| owner liveness | once the owner attaches its channel, the heartbeat flows only while its last successful authority check is within 250 ms | supervisor stops the heartbeat, guard ends the worker |
+| owner liveness | once the owner attaches its channel, the heartbeat flows only while its last successful authority check is within 250 ms, and the guard ends the worker 250 ms after its last beat. The stated bound from the last successful authority check to termination is therefore **600 ms** (two serial 250 ms timers plus beat slack), and the supervisor enforces it itself: past it, it kills its own guard. Before the owner attaches (the loading phase), beats flow regardless of owner progress and only the immutable lifetime bounds the launch; that is a finite, accounted phase, not owner-authority proof | supervisor stops the heartbeat, guard ends the worker; supervisor backstop |
 | guard death | the kernel kills a traced process whose tracer exits | kernel |
+| guard stopped or stalled | the supervisor's slot loop watches its own unreaped guard child: a stopped guard, a launch 250 ms past its deadline, or an owner past the 600 ms bound gets the guard killed, and the kernel then kills the traced worker | supervisor |
+| supervisor restarts | launchd restarts the supervisor only after an unsuccessful exit (`KeepAlive` `SuccessfulExit=false`). Each start is counted in the root-only record `/private/var/db/instar2-worker/supervisor-restarts` before anything else runs; a run that stays up 60 s resets it. After 5 consecutive unstable starts the record becomes `terminal` and every later start exits 0, so launchd stops: the failure settles instead of restarting forever. An unusable record is also terminal | supervisor, launchd |
 | channel bytes | 2 MiB relay budget per launch (both directions), on top of the adapter's own limits | supervisor |
 
 No PID lookup kill exists anywhere: a parent's kill of its own unreaped child cannot reach another
@@ -123,12 +125,15 @@ profile, NOT installed-host evidence):
 | task, task-runtime | PASS: the guard's deadline kill ends the original worker after bootstrap → sandbox-exec → enforcer / node |
 | escape | PASS: `setsid`/`setpgid` from inside refuse (the worker leads its own session) |
 | guard: supervisor-kill, supervisor-stop, guard-kill, deadline | PASS (worker ended after about 5, 144, 10 and 500 ms) |
+| guard: guard-stop, guard-backstop | PASS (2026-10-01): a stopped guard is killed by its supervisor and the worker ends (about 40 ms); the backstop bounds hold on both sides |
+| memory-consumes, memory-attribution | PASS (2026-10-01): the `-O2` probe's 64 MiB touch shows in the kernel's footprint (the earlier probe's allocation was removed by the optimizer: 1.4 MB resident for a "1024 MiB" touch); the verdict rejects an outside SIGKILL (kernel exit detail 0), the guard's deadline (30) and lapse (31) kills, a memory setup failure (34), a refusal and a finished run |
 | nowrite, permitted-read, network, children, limit-raise | PASS |
 | gate, gate-refused | PASS: no heartbeat ends the worker within the lapse; an identity mismatch refuses before release |
-| memory | **UNVERIFIED (requires root)**. Unprivileged, the Jetsam spawn attribute is silently ignored (a child with a 256 MiB fatal limit touched 1 GiB) and `memorystatus_control` returns EPERM; the unprivileged guard therefore refuses before release. `RLIMIT_AS` is not used: the kernel rejects values below about 412 GiB. Unprivileged per-task CPU monitors are also not used: they are reset by exec and refused (EPERM) for another process. |
+| memory | **UNVERIFIED (requires root)**. As the administrator the case passes only when a worker touching twice the installed bound is ended by SIGKILL whose kernel exit detail names a memorystatus kill (`NOTE_EXIT_MEMORY`), not by its guard, with a below-limit control (a quarter of the bound) finishing with its consumption verified, and the pinned runtime crossing the bound the same way (`memory-runtime`). Unprivileged, the Jetsam spawn attribute is silently ignored (a child with a 256 MiB fatal limit touched 1 GiB) and `memorystatus_control` returns EPERM; the unprivileged guard therefore refuses before release. `RLIMIT_AS` is not used: the kernel rejects values below about 412 GiB. Unprivileged per-task CPU monitors are also not used: they are reset by exec and refused (EPERM) for another process. |
 
-The memory case can only be proven by the administrator's run, which names the worker account:
-`sudo <release>/bin/instar-worker-enforcer feasibility all <release>/worker.sb <empty scratch dir> <release>/runtime/node <worker uid> <worker gid>`.
+The memory case can only be proven by the administrator's run, which names the worker account and
+the installed bound: `feasibility all <profile> <scratch> <runtime> <worker uid> <worker gid> <memory_mib>`.
+`admin-install` runs exactly that, from the verified custody copy, before it writes anything else.
 Every case, memory included, must PASS there before the monitor may be relied on. The limit
 readback makes a wrong command number or a silently ignored limit refuse, not run unbounded.
 
@@ -142,8 +147,8 @@ readback makes a wrong command number or a silently ignored limit refuse, not ru
 - It starts the owner decision service (`<release>/runtime/node <release>/scripts/fixed-native-worker-monitor.mjs service`)
   on a private link and waits for `READY`; the service refuses unless its bindings in
   `/Library/Instar2/m4-launch/service.json`, its signing key and its established journal are owned by
-  its account and not writable by others. Any later service failure ends the supervisor (launchd
-  restarts it; every guard ends its worker on the closed link).
+  its account and not writable by others. Any later service failure ends the supervisor (every guard
+  ends its worker on the closed link; launchd restarts it within the restart breaker above).
 - The control socket accepts only the configured agent account. A frame is relayed to the service; the
   service's native release leaf (`createNativeRelease`) asks the supervisor to `START` the worker with the
   launch identity, the fixed handle and delivery reference and the installed lifetime (clamped to
@@ -164,21 +169,44 @@ never run `--apply`.
    templates and the accepted limits into `<dir>/<release>`, where `<release>` is the SHA-256 of its
    `MANIFEST` (the SHA-256 of every file). Re-staging the same inputs gives the same name. The limits
    have no defaults: they are the approved installation allocation.
-2. `install --release <dir>/<release> --installation <id> --machine <id>` — dry run. It refuses unless the
-   accounts stage is provisioned, nothing of the monitor is installed, and the staged release matches its
-   name and manifest with no extra file. The plan embeds the exact bytes of the profile, installation.conf,
-   service.json and plist, so `plan.digest` binds content: copy the release, write its profile, write
-   installation.conf, create the receipt key (kept if it exists), write service.json, create the
-   established journal (kept if it exists), write the plist, bootstrap the service.
-3. After the operator's yes, through the administrative path:
-   `sudo scripts/provision-fixed-native-worker.sh install --release … --installation … --machine … --apply --plan-digest sha256:…`.
-   The copy step re-checks the copied bytes against the release name.
+2. `install --release <dir>/<release> --installation <id> --machine <id> --agent-user <account>` — dry run.
+   It refuses unless the accounts stage is provisioned, nothing of the monitor is installed or loaded,
+   no restart record remains, and the staged release matches its name and manifest with no extra file.
+   The plan embeds the exact bytes of the profile, installation.conf, service.json and plist, so
+   `plan.digest` binds content: place the release in custody, write its profile, write
+   installation.conf, create the receipt key, write service.json, create the established journal, write
+   the plist, bootstrap the service. The key and the journal are kept if present (decided when the step
+   runs), so the digest does not depend on root-only folders a dry run cannot see.
+3. `admin-command --release <dir>/<release> --reviewed-release sha256:<release> --installation <id>
+   --machine <id> --agent-user <account> --plan-digest sha256:…` prints **the operator's one command**.
+   The reviewed release digest must come from the independent review record, not from the builder. The
+   command is fixed system tools only until verification: it copies the staged release into
+   `/Library/Instar2/m4-launch/releases/<release>` (root-owned, created 0700), refuses any link or special
+   file in the copy, makes it root-owned, and checks the copy's `MANIFEST` against the reviewed digest and
+   every file against the `MANIFEST`. Only then does it run the installer **from the verified copy** (the
+   release digest binds the installer itself): `admin-install` checks it runs from that custody copy,
+   checks the install plan digest, runs every feasibility case as the worker account at the installed
+   memory bound and stops on any non-PASS, applies the plan, waits for the service and runs `verify`.
+   Nothing from the agent-writable checkout ever runs as root. `admin-install` without `--apply` previews
+   the same order unprivileged.
 4. `verify` — read-only: file owners and modes, the release against its manifest, the materialized
-   profile, the service running and the root-owned control socket; then it prints the administrator's
-   feasibility command above.
-5. `uninstall` (dry run, then `--apply --plan-digest`): stop the service and remove the plist, service.json,
-   installation.conf and the installed release. The receipt key and the journal are kept (history is
-   never deleted); `accounts-rollback` still refuses until the monitor is uninstalled.
+   profile, the service running, the root-owned control socket and the restart record.
+5. `uninstall` (dry run, then `--apply --plan-digest`) reverses a full **or partial** installation: it
+   removes whichever of the plist, service.json, installation.conf, the restart record and the release
+   are present, and boots the service out only when launchd reports it loaded (a failed bootstrap
+   leaves nothing to boot out). A release with no installation.conf (the custody copy, or an install that
+   stopped before writing it) is named with `--release /Library/Instar2/m4-launch/releases/<release>`.
+   When launchd cannot be queried it plans nothing rather than guess. The receipt key and the journal
+   are kept (history is never deleted); `accounts-rollback` still refuses until the monitor is
+   uninstalled. A failed step names what to run next: for stage 2 that is `uninstall`, never
+   `accounts-rollback`.
+
+What only the operator's root run can prove (never the builder's): the memory crossing and its
+control at the installed bound, both feasibility runs as the worker account, the custody copy owned
+by root, the plan applied, the supervisor's restart breaker under launchd itself, and `verify` on the
+live end state. **Independent administration is not established by any of this**: while the agent
+account is an administrator (`ADMIN=HOLD`), the worker's ceilings hold against the worker, not
+against the agent, and `admin-install` says so.
 
 ## Owner integration (source only, refusing in production)
 

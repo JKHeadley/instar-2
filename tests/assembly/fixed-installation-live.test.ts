@@ -450,9 +450,11 @@ it.runIf(darwin)('native enforcer compiles warning-free and the confined chain d
       expect(lines[name], name).toMatch(/^PASS /);
     const unknown = spawnSync(enforcer, ['stop'], { encoding: 'utf8' });
     expect(unknown.status).toBe(2);
+    // The release build run unprivileged cannot keep its root-only restart record, so it
+    // settles (exit 0: launchd would not restart it) before reading anything else.
     const supervise = spawnSync(enforcer, ['supervise'], { encoding: 'utf8' });
-    expect(supervise.status).toBe(78);
-    expect(supervise.stderr).toContain('owner bindings unavailable; refusing');
+    expect(supervise.status).toBe(process.getuid!() === 0 ? 78 : 0);
+    expect(supervise.stderr).toContain(process.getuid!() === 0 ? 'owner bindings unavailable; refusing' : 'restart breaker open');
   } finally { rmSync(dir, { recursive: true, force: true }); }
 }, 60_000);
 
