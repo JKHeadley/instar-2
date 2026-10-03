@@ -149,18 +149,34 @@ export function webReadHost(url) {
 
 /** Ports a shell network request may reach: the web's own (http 80, https 443). */
 export const EGRESS_PORTS = Object.freeze({ 'http:': 80, 'https:': 443 });
-/** What one shell HTTP request does, read from its method and path alone (never its body or the words of the command):
- * `read` for GET and HEAD and for git's fetch negotiation (a POST to `…/git-upload-pack`, which only asks for objects),
- * `write` for everything else. A push is a write from its first request: git's push discovery
- * (`…/info/refs?service=git-receive-pack`) and its upload (`…/git-receive-pack`). */
-export function egressRequestKind(method, target) {
+/** The repository a git smart-HTTP fetch request addresses (scheme, host and path before git's own suffix), or null:
+ * git's fetch discovery (`GET …/info/refs?service=git-upload-pack`) and its negotiation (`POST …/git-upload-pack`). */
+export function gitUploadPackBase(method, target) {
+  const verb = String(method ?? '').toUpperCase();
+  let url; try { url = new URL(String(target)); } catch { return null; }
+  if (verb === 'GET' && url.pathname.endsWith('/info/refs') && url.searchParams.get('service') === 'git-upload-pack')
+    return `${url.origin}${url.pathname.slice(0, -'/info/refs'.length)}`;
+  if (verb === 'POST' && url.pathname.endsWith('/git-upload-pack') && url.search === '')
+    return `${url.origin}${url.pathname.slice(0, -'/git-upload-pack'.length)}`;
+  return null;
+}
+/** The content types that establish a git fetch (smart HTTP): the server's discovery answer and the client's request. */
+export const GIT_UPLOAD_PACK_TYPES = Object.freeze({ advertisement: 'application/x-git-upload-pack-advertisement',
+  request: 'application/x-git-upload-pack-request' });
+/** What one shell HTTP request does, read from its method and path (never its body or the words of the command):
+ * `read` for GET and HEAD, `write` for everything else, with one established exception: git's fetch negotiation (a POST
+ * to `…/git-upload-pack`, which only asks for objects) is a read when `gitFetch` is true, which the checkpoint sets only
+ * after that same repository answered this turn's discovery as a git server (its upload-pack advertisement) and the
+ * POST itself declares git's request type. A path ending `/git-upload-pack` alone proves nothing. A push is a write from
+ * its first request: git's push discovery (`…/info/refs?service=git-receive-pack`) and its upload (`…/git-receive-pack`). */
+export function egressRequestKind(method, target, gitFetch = false) {
   const verb = String(method ?? '').toUpperCase();
   let url; try { url = new URL(String(target)); } catch { return 'write'; }
   const path = url.pathname;
   if (path.endsWith('/git-receive-pack') || (path.endsWith('/info/refs') && url.searchParams.get('service') === 'git-receive-pack'))
     return 'write';
   if (verb === 'GET' || verb === 'HEAD') return 'read';
-  if (verb === 'POST' && path.endsWith('/git-upload-pack')) return 'read';
+  if (verb === 'POST' && gitFetch === true && gitUploadPackBase(verb, url.href) !== null) return 'read';
   return 'write';
 }
 /**
@@ -168,7 +184,8 @@ export function egressRequestKind(method, target) {
  * nothing but that checkpoint, which terminates TLS under the turn's own ephemeral authority and so sees each request's
  * method and full URL. `request` is {method, url} (absolute http(s) URL); `addresses` the target's addresses as the
  * checkpoint itself resolved them (the checkpoint then connects only to an address it checked); `operations` the installed
- * profile's registered operations. A read of a public host on the web's ports is ordinary work; anything else that is
+ * profile's registered operations. `request.gitFetch` is the checkpoint's own finding that a POST continues an established
+ * git fetch (egressRequestKind). A read of a public host on the web's ports is ordinary work; anything else that is
  * well-formed is a network write for the effect doorway, which refuses it unless the profile registers `tool:network-write`.
  * Returns {decision, reason, kind?}.
  */
@@ -181,7 +198,7 @@ export function admitEgress(request, addresses, operations) {
   if (port !== EGRESS_PORTS[url.protocol]) return deny(`shell network refused: port ${String(port)} is not the web's ${url.protocol} port`, 'scope');
   if (!Array.isArray(addresses) || addresses.length === 0) return deny(`shell network refused: ${target.host} did not resolve`, 'scope');
   if (!addresses.every(publicAddress)) return deny(`shell network refused: ${target.host} resolves to a non-public address`, 'scope');
-  if (egressRequestKind(request.method, request.url) === 'read')
+  if (egressRequestKind(request.method, request.url, request.gitFetch === true) === 'read')
     return { decision: 'allow', reason: `shell network read (${String(request.method).toUpperCase()}) of a public host`, kind: 'network-read' };
   const admitted = admitToolEffect('network-write', operations);
   return admitted.admitted ? { decision: 'allow', reason: admitted.reason, kind: 'network-write' } : deny(admitted.reason, 'network-write');
@@ -288,7 +305,7 @@ const excerpt = value => { const text = typeof value === 'string' ? value : JSON
  */
 export function toolTrace(lines) {
   const calls = [], admitted = new Map(), children = [], started = [], egress = [], requests = new Map();
-  let egressErrors = 0;
+  let egressErrors = 0, egressBudgetSpent = false;
   let consistent = true, malformed = 0;
   for (const line of lines) {
     let row; try { row = JSON.parse(line); } catch { malformed++; continue; }
@@ -315,6 +332,9 @@ export function toolTrace(lines) {
     } else if (row?.phase === 'egress-error') {
       // A request the checkpoint closed on an internal error (counted, so the loss is visible in the trace).
       egressErrors++;
+    } else if (row?.phase === 'egress-budget') {
+      // The turn's request budget ran out: later requests were refused without rows of their own.
+      egressBudgetSpent = true;
     } else if (row?.phase === 'egress-done' && requests.has(row.rid)) {
       Object.assign(requests.get(row.rid), { status: row.status ?? null, down: row.down ?? 0, up: row.up ?? 0 });
     } else if (row?.phase === 'child-start' && typeof row.agent === 'string') started.push(row.agent);
@@ -329,6 +349,6 @@ export function toolTrace(lines) {
     edge.started = edge.agent !== null && starts.includes(edge.agent);
     edge.stopped = edge.agent !== null && stops.has(edge.agent);
   }
-  return { calls, children, egress, egressErrors, consistent: consistent && malformed === 0,
+  return { calls, children, egress, egressErrors, ...(egressBudgetSpent ? { egressBudgetSpent } : {}), consistent: consistent && malformed === 0,
     admitted: calls.filter(call => call.decision === 'allow').length, refused: calls.filter(call => call.decision !== 'allow').length };
 }

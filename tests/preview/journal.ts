@@ -1069,7 +1069,9 @@ export type JournalRecord =
        * request its egress checkpoint decided, in order (the first EGRESS_KEPT; the rest counted in `egressOmitted`). */
       network?: string; egress?: ToolEgressRequest[]; egressOmitted?: number;
       /** Requests the checkpoint closed on an internal error (each recorded in the turn's admission record). */
-      egressErrors?: number; at: number }
+      egressErrors?: number;
+      /** The turn's request budget ran out: later requests were refused without rows of their own. */
+      egressBudgetSpent?: true; at: number }
   | { kind: 'legacy-reply'; at: number }
   | { kind: 'import'; source: string; remainingCalls: number; remainingReplies: number; oldStop: string; at: number }
   | { kind: 'summary-reserve'; through: number; prompt?: string; supervised?: true; maxInputTokens?: number; maxOutputTokens?: number; at: number }

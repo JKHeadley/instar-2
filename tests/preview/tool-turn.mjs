@@ -228,7 +228,8 @@ function traceRow({ id, attempt, trace, authority, ended, redactText, workspace,
     // Rule 41: every shell network request the checkpoint decided, its decision and outcome (`network` says whether the
     // checkpoint ran: `checkpoint`, `none`, or `unavailable: <reason>` when the shell ran offline).
     ...(network !== null ? { network, egress: egress.slice(0, EGRESS_KEPT).map(row => ({ ...row, url: redactText(row.url) })),
-      egressOmitted: Math.max(0, egress.length - EGRESS_KEPT), ...(trace.egressErrors ? { egressErrors: trace.egressErrors } : {}) } : {}),
+      egressOmitted: Math.max(0, egress.length - EGRESS_KEPT), ...(trace.egressErrors ? { egressErrors: trace.egressErrors } : {}),
+      ...(trace.egressBudgetSpent ? { egressBudgetSpent: true } : {}) } : {}),
     calls: trace.calls.slice(0, 64).map(call => ({ ...call, input: redactText(call.input),
       result: call.result === null ? null : redactText(call.result) })),
     // `parent` is the turn that owns the edge and its reservation; `parentAgent` the subagent that started it (null: the turn).

@@ -8,20 +8,23 @@
 // of public hosts on the web's ports are ordinary work; every other request is a network write for the effect doorway,
 // refused unless the installed profile registers it. The checkpoint resolves each name itself and connects only to an
 // address it checked, so a name cannot point a command at this machine or its network. Every decision is appended to the
-// turn's admission record before the request goes anywhere. Bounds: concurrent requests, bytes each way, an idle timeout
-// per request, and the process's own lifetime; nothing outlives the turn.
+// turn's admission record, flushed to disk, before the request goes anywhere; a record that cannot be written refuses the
+// request. Bounds: one request budget for tunnels and requests alike (each HTTPS tunnel takes its slot before any name is
+// resolved, certificate minted or socket kept, so certificates and OpenSSL runs are bounded by it too), open tunnels and
+// open requests, bytes each way, an idle timeout per request and tunnel, and the process's own lifetime; past the budget a
+// refusal is answered without a row of its own (one row says the budget ran out). Nothing outlives the turn.
 // It adds nothing: no credential, cookie or header of its own goes upstream; a command's request is forwarded as it came,
 // minus hop-by-hop and proxy headers.
 import { execFile } from 'node:child_process';
 import { lookup } from 'node:dns/promises';
-import { appendFileSync, mkdirSync, readFileSync, writeFileSync } from 'node:fs';
+import { closeSync, constants, fsyncSync, mkdirSync, openSync, readFileSync, writeFileSync, writeSync } from 'node:fs';
 import { createServer, request as httpRequest } from 'node:http';
 import { request as httpsRequest } from 'node:https';
 import { isIP } from 'node:net';
 import { join } from 'node:path';
 import { createSecureContext, TLSSocket } from 'node:tls';
 import { promisify } from 'node:util';
-import { admitEgress, EGRESS_PORTS, RECORD_EXCERPT_CHARS, webReadHost } from './tool-admission.mjs';
+import { admitEgress, EGRESS_PORTS, GIT_UPLOAD_PACK_TYPES, gitUploadPackBase, RECORD_EXCERPT_CHARS, webReadHost } from './tool-admission.mjs';
 
 const run = promisify(execFile);
 const OPENSSL = '/usr/bin/openssl';
@@ -38,7 +41,16 @@ process.on('uncaughtException', fail); process.on('unhandledRejection', fail);
 const config = JSON.parse(readFileSync(join(stateDirectory, 'config.json'), 'utf8'));
 if (!config.egress || typeof config.egress.ca !== 'string') throw Error('no egress configuration');
 const operations = Array.isArray(config.operations) ? config.operations : [];
-const record = row => appendFileSync(join(stateDirectory, 'admission.jsonl'), `${JSON.stringify(row)}\n`, { mode: 0o600 });
+// The admission record: one append-only descriptor for the turn, each row flushed to disk before the act it records (and the
+// directory entry flushed once, when the record is new). A failed write throws, and the request it was for is not sent.
+const admissionPath = join(stateDirectory, 'admission.jsonl');
+const admission = openSync(admissionPath, constants.O_WRONLY | constants.O_APPEND | constants.O_CREAT | constants.O_NOFOLLOW, 0o600);
+{ const dir = openSync(stateDirectory, 'r'); try { fsyncSync(dir); } finally { closeSync(dir); } }
+const record = row => {
+  const line = Buffer.from(`${JSON.stringify(row)}\n`);
+  let written = 0; while (written < line.length) written += writeSync(admission, line, written);
+  fsyncSync(admission);
+};
 const clip = text => (text.length > RECORD_EXCERPT_CHARS ? `${text.slice(0, RECORD_EXCERPT_CHARS)}…` : text);
 
 // The turn's authority: an EC key and a self-signed certificate valid for one day, minted here. The key and the leaf key
@@ -76,28 +88,42 @@ async function resolve(host) {
   try { return (await lookup(host, { all: true, verbatim: true })).map(entry => entry.address); } catch { return null; }
 }
 
-let active = 0, requests = 0, down = 0, up = 0;
+let active = 0, tunnels = 0, requests = 0, down = 0, up = 0;
+/** The next request id, or null past the turn's request budget (the first refusal past it is recorded, later ones are not). */
+const budget = reason => {
+  const rid = ++requests;
+  if (rid <= EGRESS_LIMITS.maxRequests) return rid;
+  if (rid === EGRESS_LIMITS.maxRequests + 1) try { record({ phase: 'egress-budget', rid, reason }); } catch { /* refused either way */ }
+  return null;
+};
+const OVER_BUDGET = `shell network refused: per-turn request bound ${EGRESS_LIMITS.maxRequests}`;
+/** Repositories whose discovery this turn answered as a git server: a POST negotiating a fetch from one is a read. */
+const gitRepositories = new Set();
+const mediaType = value => String(value ?? '').split(';')[0].trim().toLowerCase();
 const refuse = (res, rid, status, reason) => {
   const body = `Instar egress checkpoint refused this request: ${reason}\n`;
   res.writeHead(status, { 'content-type': 'text/plain; charset=utf-8', 'content-length': Buffer.byteLength(body),
     'x-instar-refusal': reason.replace(/[^\x20-\x7e]/gu, '?').slice(0, 512), connection: 'close' });
   res.end(body);
-  record({ phase: 'egress-done', rid, status, down: 0, up: 0 });
+  if (rid !== null) record({ phase: 'egress-done', rid, status, down: 0, up: 0 });
 };
 
 /** One request: decided and recorded, then forwarded to the checked address or refused with its reason. */
 async function handle(req, res, tunnel) {
-  const rid = ++requests;
+  const rid = budget(OVER_BUDGET);
+  if (rid === null) { refuse(res, null, 403, OVER_BUDGET); return; }
   const url = tunnel ? `https://${isIP(tunnel.host) === 6 ? `[${tunnel.host}]` : tunnel.host}${tunnel.port === 443 ? '' : `:${tunnel.port}`}${req.url}` : String(req.url);
   const target = webReadHost(url);
   const addresses = tunnel ? tunnel.addresses : target.host === null ? null : await resolve(target.host);
-  let decision = admitEgress({ method: req.method, url }, addresses, operations);
+  const repository = gitUploadPackBase(req.method, url);
+  const gitFetch = String(req.method).toUpperCase() === 'POST' && repository !== null && gitRepositories.has(repository)
+    && mediaType(req.headers['content-type']) === GIT_UPLOAD_PACK_TYPES.request;
+  let decision = admitEgress({ method: req.method, url, gitFetch }, addresses, operations);
   if (decision.decision === 'allow' && req.headers.upgrade) decision = { decision: 'deny', reason: 'shell network refused: protocol upgrade', kind: 'scope' };
-  if (decision.decision === 'allow' && rid > EGRESS_LIMITS.maxRequests)
-    decision = { decision: 'deny', reason: `shell network refused: per-turn request bound ${EGRESS_LIMITS.maxRequests}`, kind: 'budget' };
   if (decision.decision === 'allow' && active >= EGRESS_LIMITS.maxConcurrent)
     decision = { decision: 'deny', reason: `shell network refused: ${EGRESS_LIMITS.maxConcurrent} requests already open`, kind: 'budget' };
-  // The record is durable before anything leaves this machine (an act follows its recorded cause).
+  // The record is on disk before anything leaves this machine (an act follows its recorded cause); if it cannot be written
+  // this throws and the request is closed unsent.
   record({ phase: 'egress', rid, method: String(req.method), url: clip(url), addresses: (addresses ?? []).slice(0, 8),
     decision: decision.decision, reason: decision.reason, ...(decision.kind ? { kind: decision.kind } : {}) });
   if (decision.decision !== 'allow') { refuse(res, rid, 403, decision.reason); return; }
@@ -106,7 +132,8 @@ async function handle(req, res, tunnel) {
   for (const [name, value] of Object.entries(req.headers)) if (!HOP.has(name) && !name.startsWith('proxy-')) headers[name] = value;
   active++;
   let settled = false, sent = 0, received = 0;
-  const finish = status => { if (settled) return; settled = true; active--; record({ phase: 'egress-done', rid, status, down: received, up: sent }); };
+  // The outcome row follows the act; if it cannot be written the next request's own record refuses that request.
+  const finish = status => { if (settled) return; settled = true; active--; try { record({ phase: 'egress-done', rid, status, down: received, up: sent }); } catch { /* recorded loss */ } };
   const upstream = (https ? httpsRequest : httpRequest)({ host: addresses[0], port: Number(parsed.port || EGRESS_PORTS[parsed.protocol]),
     method: req.method, path: `${parsed.pathname}${parsed.search}`, headers, ...(https ? { servername: isIP(target.host) ? undefined : target.host } : {}),
     timeout: EGRESS_LIMITS.idleMs, agent: false });
@@ -118,6 +145,9 @@ async function handle(req, res, tunnel) {
     finish(502);
   });
   upstream.on('response', response => {
+    // git's discovery answered as a git server establishes this repository for the fetch that follows.
+    if (repository !== null && String(req.method).toUpperCase() === 'GET' && response.statusCode === 200
+      && mediaType(response.headers['content-type']) === GIT_UPLOAD_PACK_TYPES.advertisement) gitRepositories.add(repository);
     const out = {};
     for (const [name, value] of Object.entries(response.headers)) if (!HOP.has(name)) out[name] = value;
     res.writeHead(response.statusCode ?? 502, out);
@@ -139,12 +169,33 @@ async function handle(req, res, tunnel) {
 }
 
 // An unexpected error fails that one request (closed, recorded), never the checkpoint: the turn keeps its network.
-const failRequest = (res, error) => { res.destroy(); record({ phase: 'egress-error', error: clip(String(error?.message ?? error)) }); };
+const failRequest = (res, error) => {
+  res.destroy();
+  try { record({ phase: 'egress-error', error: clip(String(error?.message ?? error)) }); } catch { /* the record itself failed: nothing was sent */ }
+};
 const plain = createServer((req, res) => { handle(req, res, null).catch(error => failRequest(res, error)); });
 const inner = createServer((req, res) => { handle(req, res, req.socket.tunnel).catch(error => failRequest(res, error)); });
 for (const server of [plain, inner]) { server.keepAliveTimeout = EGRESS_LIMITS.idleMs; server.headersTimeout = EGRESS_LIMITS.idleMs; }
 // HTTPS: the tunnel's host is checked and pinned before the tunnel opens; each request inside it is then decided on its own.
 plain.on('connect', (req, socket) => {
+  // The tunnel takes its slots first: one from the turn's request budget and one open-tunnel slot, released when it closes.
+  const rid = budget(OVER_BUDGET);
+  const deny = (reason, row) => {
+    if (row) try { record(row); } catch { socket.destroy(); return; }
+    socket.end(`HTTP/1.1 403 Forbidden\r\ncontent-type: text/plain\r\nx-instar-refusal: ${reason.replace(/[^\x20-\x7e]/gu, '?').slice(0, 512)}\r\n`
+      + `connection: close\r\n\r\nInstar egress checkpoint refused this connection: ${reason}\n`);
+  };
+  socket.on('error', () => socket.destroy());
+  if (rid === null) { deny(OVER_BUDGET, null); return; }
+  if (tunnels >= EGRESS_LIMITS.maxConcurrent) {
+    const reason = `shell network refused: ${EGRESS_LIMITS.maxConcurrent} tunnels already open`;
+    deny(reason, { phase: 'egress', rid, method: 'CONNECT', url: clip(`https://${String(req.url)}/`), addresses: [], decision: 'deny', reason, kind: 'budget' });
+    return;
+  }
+  tunnels++;
+  let released = false;
+  socket.once('close', () => { if (!released) { released = true; tunnels--; } });
+  socket.setTimeout(EGRESS_LIMITS.idleMs, () => socket.destroy());
   (async () => {
     const [host, portText] = String(req.url).split(/:(?=\d+$)/u);
     const port = Number(portText);
@@ -155,20 +206,19 @@ plain.on('connect', (req, socket) => {
     const check = admitEgress({ method: 'CONNECT', url: `https://${literal}:${port}/` }, addresses, ['tool:network-write']);
     if (port !== 443 || check.decision !== 'allow') {
       const reason = port !== 443 ? `shell network refused: port ${String(port)} is not the web's https: port` : check.reason;
-      record({ phase: 'egress', rid: ++requests, method: 'CONNECT', url: clip(`https://${literal}:${String(port)}/`), addresses: (addresses ?? []).slice(0, 8),
+      deny(reason, { phase: 'egress', rid, method: 'CONNECT', url: clip(`https://${literal}:${String(port)}/`), addresses: (addresses ?? []).slice(0, 8),
         decision: 'deny', reason, kind: 'scope' });
-      socket.end(`HTTP/1.1 403 Forbidden\r\ncontent-type: text/plain\r\nx-instar-refusal: ${reason.replace(/[^\x20-\x7e]/gu, '?').slice(0, 512)}\r\n`
-        + `connection: close\r\n\r\nInstar egress checkpoint refused this connection: ${reason}\n`);
       return;
     }
+    if (socket.destroyed) return;
     const secureContext = await contextFor(name);
+    if (socket.destroyed) return;
     socket.write('HTTP/1.1 200 Connection established\r\n\r\n');
     const tls = new TLSSocket(socket, { isServer: true, secureContext, ALPNProtocols: ['http/1.1'] });
     tls.tunnel = { host: name, port, addresses };
     tls.on('error', () => tls.destroy());
     inner.emit('connection', tls);
   })().catch(() => socket.destroy());
-  socket.on('error', () => socket.destroy());
 });
 
 const listen = (server, host, port) => new Promise((done, failed) => { server.once('error', failed); server.listen(port, host, () => done(server.address().port)); });
