@@ -65,6 +65,8 @@ export function patchPaths(text) {
 /** Tools that start another agent thread (a subagent): Claude Code's, and Codex 0.156.1's as its hook names it
  * (recorded live 2026-10-03, fixtures/codex-capabilities-2026-10-03). Each one becomes a durable child edge first. */
 export const DELEGATION_TOOLS = Object.freeze(['Agent', 'Task', 'spawn_agent', 'collaborationspawn_agent']);
+/** The harness's wait on its own subagents: its completed outcome is the evidence an asynchronous spawn's edge closes on. */
+export const DELEGATION_WAIT_TOOLS = Object.freeze(['collaborationwait_agent']);
 /** Reads from the network: Claude Code's fetch and search, and Codex's web search (`webrun` to its hook). */
 export const NETWORK_READ_TOOLS = Object.freeze(['WebFetch', 'WebSearch', 'webrun']);
 /** The harness's own planning, output-reading and subagent-handling tools: no effect outside the step. A subagent

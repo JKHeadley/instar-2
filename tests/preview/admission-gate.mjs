@@ -8,9 +8,12 @@
 //   upstream. Each call takes one unit of the claim's reserved allowance first; a call that finds none left is refused
 //   here and never dispatched. A closed claim, or a held stop, refuses every call, so a child that outlives its step
 //   cannot spend.
-// - Admission. The tool hook asks here before a delegation or a consequential tool runs. A delegation is recorded
-//   durably as a child edge of the claim's own edge before the subagent starts, and closed when its result returns;
-//   a consequential tool passes the effect owner (`createToolEffectOwner`) with its exact operation and input.
+// - Admission. The tool hook asks here before EVERY tool call of a gated step runs, so a closed claim or a held stop
+//   refuses ordinary work too, not only model calls. A delegation is recorded durably as a child edge of the claim's own
+//   edge before the subagent starts, and closed only on evidence of its result: a synchronous delegation's returned
+//   result, or, for an asynchronous spawn (whose immediate return is only the child's handle), the harness's own wait
+//   reporting that child finished. A consequential tool passes the effect owner (`createToolEffectOwner`) with its
+//   exact operation and input.
 //
 // Credentials pass through in the child's own request headers and are neither read nor kept here. The server binds
 // 127.0.0.1 only and serves only paths under its random secret, so another local process cannot spend a claim.
@@ -26,6 +29,11 @@ export const MODEL_UPSTREAMS = Object.freeze({ 'claude-code': Object.freeze({ ho
 const UNCOUNTED = Object.freeze([/^\/v1\/messages\/count_tokens(?:\?|$)/u]);
 const claimPattern = /^[A-Za-z0-9][A-Za-z0-9._-]{0,120}$/u;
 const MAX_ADMIT_BYTES = 262144;
+/** Delegation tools whose return is the new child's handle, never its result (Codex 0.156.1, recorded 2026-10-03). */
+const ASYNC_SPAWN_TOOLS = Object.freeze(['spawn_agent', 'collaborationspawn_agent']);
+/** A tool excerpt as the hook sends it (JSON text, possibly of a JSON string): its value, unwrapped; null if unreadable. */
+const unwrap = text => { let value = text; for (let depth = 0; depth < 3 && typeof value === 'string'; depth++) {
+  try { value = JSON.parse(value); } catch { return depth === 0 ? null : value; } } return value; };
 
 /** A stable rendering of a tool input: object keys sorted at every depth, so one operation has one digest. */
 export const canonical = value => Array.isArray(value) ? `[${value.map(canonical).join(',')}]`
@@ -82,10 +90,37 @@ export async function createAdmissionGate({ append, effects, stopped, now, upstr
   const admit = (state, call) => {
     const tool = String(call.tool_name ?? ''), id = String(call.tool_use_id ?? '');
     if (!/^[A-Za-z0-9._:-]{1,200}$/u.test(id)) return { decision: 'deny', reason: 'admission: exact tool call identity required' };
+    if (call.kind === 'tool') return { decision: 'allow', reason: 'admission: the step is open and no stop is held' };
+    if (call.kind === 'wait') {
+      // The harness's own wait on its children. Only a wait that finished (not timed out) is evidence, and only for the
+      // children it names by handle, or, naming none, for the single asynchronous child outstanding. Anything else
+      // leaves the edges open for the parent to settle as uncertain.
+      const result = unwrap(call.result_excerpt);
+      if (!result || typeof result !== 'object' || result.timed_out !== false) return { decision: 'allow', reason: 'wait: no completion evidence' };
+      const waiting = [...state.delegations.entries()].filter(([, row]) => row.open && row.async);
+      const evidence = `${JSON.stringify(unwrap(call.input_excerpt))}\n${JSON.stringify(result)}`;
+      const named = waiting.filter(([, row]) => row.handles.some(handle => evidence.includes(JSON.stringify(handle))));
+      const finished = named.length > 0 ? named : waiting.length === 1 ? waiting : [];
+      for (const [, row] of finished) {
+        append(nestedSessionWorkClose(row.edge, 'complete', 'the harness reported the delegated agent finished (its wait completed)',
+          `tool-result:${id}`, null, now()));
+        row.open = false;
+      }
+      return { decision: 'allow', reason: `wait: ${finished.length} delegated agent(s) finished` };
+    }
     if (call.kind === 'delegation') {
       if (call.phase === 'post') {
         const open = state.delegations.get(id);
         if (open?.open) {
+          // An asynchronous spawn returns the child's handle, not its result: the edge stays open, holding the handle,
+          // until the harness's wait reports the child finished (or the parent closes it as uncertain).
+          if (ASYNC_SPAWN_TOOLS.includes(tool) || call.background === true) {
+            const handle = unwrap(call.result_excerpt), input = unwrap(call.input_excerpt);
+            open.async = true;
+            open.handles = [handle?.task_name, handle?.agent_id, handle?.id, input?.task_name]
+              .filter(value => typeof value === 'string' && value.length > 0);
+            return { decision: 'allow', reason: `delegation started (${open.handles.join(', ') || 'no handle'}); its edge stays open until its result` };
+          }
           append(nestedSessionWorkClose(open.edge, 'complete', 'the delegated agent returned its result to its parent',
             `tool-result:${id}`, Number.isSafeInteger(call.result_bytes) ? call.result_bytes : null, now()));
           open.open = false;
@@ -95,7 +130,7 @@ export async function createAdmissionGate({ append, effects, stopped, now, upstr
       if (state.delegations.has(id)) return { decision: 'deny', reason: 'admission: this delegation was already admitted' };
       const edge = nestedSessionWorkEdge(state.edge, { id, tool }, now());
       try { append(edge); } catch { return { decision: 'deny', reason: 'admission: the delegation edge could not be recorded' }; }
-      state.delegations.set(id, { edge, open: true });
+      state.delegations.set(id, { edge, open: true, async: false, handles: [] });
       return { decision: 'allow', reason: `delegation recorded as ${edge.id}: the subagent's calls and tools pass this same checkpoint` };
     }
     if (call.kind === 'effect') {
@@ -116,7 +151,11 @@ export async function createAdmissionGate({ append, effects, stopped, now, upstr
     const match = /^\/([0-9a-f]{32})\/([^/]+)(\/.*)?$/u.exec(req.url ?? '');
     if (!match || match[1] !== secret) { req.resume(); return reply(res, 404, { error: 'not found' }); }
     const state = claims.get(match[2]), rest = match[3] ?? '/';
-    if (!state || state.closed || stopped()) { req.resume(); return refuseModel(res, 'instar: this step is closed or stopped; nothing is dispatched'); }
+    if (!state || state.closed || stopped()) {
+      req.resume();
+      return rest === '/admit' ? reply(res, 200, { decision: 'deny', reason: 'admission: this step is closed or a stop is held; nothing runs' })
+        : refuseModel(res, 'instar: this step is closed or stopped; nothing is dispatched');
+    }
     if (rest === '/admit') {
       let body = '';
       req.setEncoding('utf8');

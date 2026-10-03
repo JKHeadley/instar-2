@@ -31,7 +31,7 @@ afterEach(async () => {
 const sandboxWorks = spawnSync('/usr/bin/sandbox-exec', ['-p', '(version 1)(allow default)', '/usr/bin/true']).status === 0;
 type Row = { type: string; id: string; state?: string; parent?: string; drawsOn?: string; operation?: string };
 
-async function step(options: { maxCalls?: number; operations?: readonly string[] } = {}) {
+async function step(options: { maxCalls?: number; operations?: readonly string[]; stopped?: () => boolean } = {}) {
   const root = realpathSync(mkdtempSync(join(tmpdir(), 'session-admission-'))); roots.push(root);
   const ws = join(root, 'ws'), outside = join(root, 'outside'), base = join(root, 'admission');
   for (const dir of [ws, outside]) mkdirSync(dir, { recursive: true, mode: 0o700 });
@@ -39,7 +39,7 @@ async function step(options: { maxCalls?: number; operations?: readonly string[]
   const claim = 'session-work-0123456789abcdef0123456789abcdef';
   const rows: Row[] = [], prepared = new Set<string>();
   const append = (row: Row) => { rows.push(row); if (row.type === 'SessionWorkEffect' && row.state === 'prepared') prepared.add(row.id); };
-  const gate = await createAdmissionGate({ append, stopped: () => false, now: () => 1_000,
+  const gate = await createAdmissionGate({ append, stopped: options.stopped ?? (() => false), now: () => 1_000,
     effects: createToolEffectOwner({ operations: options.operations ?? [], append, stopped: () => false, now: () => 1_000,
       prepared: (id: string) => prepared.has(id) }) });
   gates.push(gate);
@@ -121,6 +121,64 @@ it('a delegation whose return is interrupted keeps its open edge: the obligation
   expect((await hook(s.state, call('Agent', { prompt: 'z' }, 'toolu_after'))).decision).toBe('deny');
 });
 
+it('an asynchronous spawn acknowledgement is not completion: the edge stays open until the child\'s result', async () => {
+  const spawned = JSON.parse(readFileSync(join(CAPABILITIES, 'hook-input.jsonl'), 'utf8').split('\n')
+    .find(line => line.includes('"PostToolUse"') && line.includes('collaborationspawn_agent'))!);
+  const post = (s: Awaited<ReturnType<typeof step>>, tool_name: string, id: string, tool_response: unknown, tool_input: object = {}) =>
+    hook(s.state, JSON.stringify({ tool_name, tool_use_id: id, tool_input, tool_response }), 'post');
+  // The recorded spawn handle, and then the parent ends with no wait: the child is still outstanding at its close.
+  const lost = await step();
+  expect((await hook(lost.state, call('collaborationspawn_agent', spawned.tool_input, 'call_spawn'))).decision).toBe('allow');
+  await post(lost, 'collaborationspawn_agent', 'call_spawn', spawned.tool_response, spawned.tool_input);
+  expect(lost.rows.filter(row => row.type === 'SessionWorkEdgeClose')).toEqual([]);
+  expect(lost.gate.close(lost.claim).openDelegations.map((edge: SessionWorkEdge) => edge.id)).toEqual([`${lost.edge.id}:delegated:call_spawn`]);
+  // A wait that timed out is no evidence; one that completed naming the child's handle closes exactly that child.
+  const named = await step();
+  for (const id of ['call_a', 'call_b']) {
+    expect((await hook(named.state, call('collaborationspawn_agent', { task_name: id }, id))).decision).toBe('allow');
+    await post(named, 'collaborationspawn_agent', id, JSON.stringify({ task_name: `/root/${id}` }), { task_name: id });
+  }
+  await post(named, 'collaborationwait_agent', 'call_w1', JSON.stringify({ message: 'Wait timed out.', timed_out: true }), { timeout_ms: 1 });
+  expect(named.gate.state(named.claim).openDelegations).toHaveLength(2);
+  // Untargeted with two outstanding: which one finished is unknown, so neither closes.
+  await post(named, 'collaborationwait_agent', 'call_w2', JSON.stringify({ message: 'Wait completed.', timed_out: false }), { timeout_ms: 1 });
+  expect(named.gate.state(named.claim).openDelegations).toHaveLength(2);
+  await post(named, 'collaborationwait_agent', 'call_w3', JSON.stringify({ message: 'Wait completed.', timed_out: false }),
+    { targets: ['/root/call_b'] });
+  expect(named.gate.state(named.claim).openDelegations.map((edge: SessionWorkEdge) => edge.child)).toEqual(['delegated:call_a']);
+  expect(named.rows.filter(row => row.type === 'SessionWorkEdgeClose')).toEqual([expect.objectContaining({ state: 'complete',
+    id: `${named.edge.id}:delegated:call_b:close` })]);
+  // A synchronous delegation's return is its result and closes at once; a background one is only a launch.
+  const claude = await step();
+  expect((await hook(claude.state, call('Agent', { prompt: 'x' }, 'toolu_sync'))).decision).toBe('allow');
+  expect((await hook(claude.state, call('Agent', { prompt: 'y', run_in_background: true }, 'toolu_bg'))).decision).toBe('allow');
+  await post(claude, 'Agent', 'toolu_sync', { content: 'the answer' }, { prompt: 'x' });
+  await post(claude, 'Agent', 'toolu_bg', { content: 'Async agent launched' }, { prompt: 'y', run_in_background: true });
+  expect(claude.gate.state(claude.claim).openDelegations.map((edge: SessionWorkEdge) => edge.child)).toEqual(['delegated:toolu_bg']);
+});
+
+it('every tool, ordinary work included, runs only while the claim is open and no stop is held', async () => {
+  const ordinary = (s: Awaited<ReturnType<typeof step>>) => [call('Write', { file_path: join(s.ws, 'w.txt'), content: 'x' }, 'w'),
+    call('Bash', { command: 'ls' }, 'b'), call('webrun', { search_query: [{ q: 'x' }] }, 'n'), call('Read', { file_path: join(s.ws, 'in.txt') }, 'r')];
+  const open = await step();
+  for (const input of ordinary(open)) expect((await hook(open.state, input)).decision).toBe('allow');
+  // The admitted shell keeps its confined rewrite.
+  expect((await hook(open.state, call('Bash', { command: 'ls' }, 'b2'))).command).toMatch(/^\/usr\/bin\/sandbox-exec -f /u);
+  open.gate.close(open.claim);
+  for (const input of ordinary(open)) expect((await hook(open.state, input)).decision).toBe('deny');
+  expect(recordOf(open.state)).toContain('this step is closed or a stop is held');
+  // A held stop refuses the same ordinary work with the claim still open.
+  let stop = false;
+  const stopping = await step({ stopped: () => stop });
+  expect((await hook(stopping.state, ordinary(stopping)[0]!)).decision).toBe('allow');
+  stop = true;
+  for (const input of [...ordinary(stopping), call('Agent', { prompt: 'x' }, 'a')]) expect((await hook(stopping.state, input)).decision).toBe('deny');
+  // An unreachable checkpoint refuses rather than admits.
+  const gone = await step();
+  await gone.gate.stop(); gates.splice(gates.indexOf(gone.gate), 1);
+  expect((await hook(gone.state, ordinary(gone)[3]!)).decision).toBe('deny');
+});
+
 it('the effect owner admits only the exact registered operation, records it before dispatch, and never prepares it twice', async () => {
   // A category is never authority: `tool:mcp` registers nothing for an MCP tool.
   const category = await step({ operations: ['tool:mcp'] });
@@ -189,17 +247,23 @@ it('replays the hook inputs live Codex 0.156.1 sessions sent (Rule 106): shell, 
     ['Bash', 'allow', true], ['Bash', 'allow', true], ['Bash', 'allow', true]]);
   // The capabilities a live Codex turn used, through the same hook and checkpoint, pre and post in recorded order.
   const capabilities = readFileSync(join(CAPABILITIES, 'hook-input.jsonl'), 'utf8').split('\n').filter(Boolean);
-  const verdicts: [string, string][] = [];
+  const verdicts: [string, string][] = [], outstanding: [string, number][] = [];
   for (const line of capabilities) {
     const row = JSON.parse(line.replaceAll('/tmp/cxprobe2/ws', s.ws));
     if (row.hook_event_name === 'PreToolUse') verdicts.push([row.tool_name, (await hook(s.state, JSON.stringify(row))).decision]);
     // A refused call never runs, so the harness sends no PostToolUse for it (the recording admitted it).
-    else if (verdicts.at(-1)?.[1] === 'allow') await hook(s.state, JSON.stringify(row), 'post');
+    else if (verdicts.at(-1)?.[1] === 'allow') {
+      await hook(s.state, JSON.stringify(row), 'post');
+      outstanding.push([row.tool_name, s.gate.state(s.claim).openDelegations.length]);
+    }
   }
   expect(verdicts).toEqual([['webrun', 'allow'], ['collaborationspawn_agent', 'allow'], ['collaborationwait_agent', 'allow'],
     ['mcp__threadline__threadline_agents', 'deny'], ['mcp__threadline__threadline_send', 'deny']]);
-  // The recorded spawn became a child edge, closed complete by its recorded PostToolUse.
+  // The recorded spawn's PostToolUse is only the child's handle ({"task_name":"/root/ok_reply"}): its edge stays open.
+  // The recorded wait that completed (timed_out false) with that single child outstanding is what closes it.
+  expect(outstanding).toEqual([['webrun', 0], ['collaborationspawn_agent', 1], ['collaborationwait_agent', 0]]);
   expect(s.rows.map(row => [row.type, row.state ?? null])).toEqual([['SessionWorkEdge', null], ['SessionWorkEdgeClose', 'complete']]);
+  expect(s.rows[1]).toMatchObject({ evidence: 'tool-result:call_McVGoNHDozaCOCs25B4TET7r' });
   // The recorded PostToolUse inputs pair with their calls by the same id, so the trace is consistent.
   expect(toolTrace(recordOf(s.state).split('\n').filter(Boolean)).consistent).toBe(true);
 });
