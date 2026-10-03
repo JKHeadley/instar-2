@@ -11,8 +11,17 @@ export interface PromiseProposal { quote: string; when?: string }
 export interface FulfillmentProposal { id: number; quote: string }
 export const AGENT_PROMISE_LIMIT = 5;
 
-const exactClause = (value: unknown, within: string) => typeof value === 'string' && value.trim() === value
-  && value.length >= 3 && Buffer.byteLength(value) <= 500 && within.includes(value);
+/** A fulfilment quote is bounded by the reply it must appear in, not by the sentence bound a promise
+ * quote carries: a longer verbatim excerpt is MORE constrained, not less, and a sendable reply is at most
+ * 4096 bytes (the send path's own ceiling). Live 2026-10-03 (room two, A-proofroom2-20261003-022222, check
+ * A5b) a delivered promise stayed open; the live answer row was not readable, so its exact cause is
+ * UNCONFIRMED. Real claude-sonnet-5 calls on the recorded packet showed one answer shape that this bound
+ * decided: the whole reply quoted as the excerpt closed the promise at 413 bytes and was refused at 526, so
+ * the reply's length alone decided whether a fulfilment was recorded (the live reply body was 610 bytes). */
+export const REPLY_EXCERPT_LIMIT = 4096;
+
+const exactClause = (value: unknown, within: string, limit = 500) => typeof value === 'string' && value.trim() === value
+  && value.length >= 3 && Buffer.byteLength(value) <= limit && within.includes(value);
 
 /** Validated promise proposals from one answer, or undefined when the proposal is malformed. */
 export function promiseProposals(value: unknown, reply: string): PromiseProposal[] | undefined {
@@ -52,7 +61,8 @@ export function fulfillmentProposals(value: unknown, reply: string,
   if (!Array.isArray(value) || value.length > AGENT_PROMISE_LIMIT) return undefined;
   const found: FulfillmentProposal[] = [];
   for (const item of value as { id?: unknown; quote?: unknown }[]) {
-    if (!item || typeof item !== 'object' || !Number.isSafeInteger(item.id) || !exactClause(item.quote, reply)
+    if (!item || typeof item !== 'object' || !Number.isSafeInteger(item.id)
+      || !exactClause(item.quote, reply, REPLY_EXCERPT_LIMIT)
       || !supported({ id: item.id as number, quote: item.quote as string })) return undefined;
     if (!found.some(saved => saved.id === item.id)) found.push({ id: item.id as number, quote: item.quote as string });
   }
