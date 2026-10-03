@@ -10,7 +10,7 @@ import { openProductionStorage } from '../../src/assembly/production-storage.js'
 import { DEFAULT_SUBSCRIPTION_DOORWAY, subscriptionDoorway, SUBSCRIPTION_CONVERSATION_FRAMING,
   subscriptionConversationPolicy, SUBSCRIPTION_PREVIEW_EXPIRY, validateSubscriptionActivation,
   SUBSCRIPTION_TOOLS_FRAMING, SUBSCRIPTION_TOOLS_SYSTEM_PROMPT, subscriptionToolsPolicy } from '../../src/assembly/production-provider.js';
-import { runToolTurn, toolStatusLines, toolTurnEligible, toolTurnFits } from './tool-turn.mjs';
+import { runToolTurn, toolPacketFits, toolStatusLines, toolTurnEligible } from './tool-turn.mjs';
 import { redact } from '../../src/recall/redact.js';
 import { durablePreviewWrite } from './durable-write.js';
 import { prepareJournalEnvelope } from './journal-envelope.js';
@@ -1524,8 +1524,9 @@ async function main() {
       sources: turnSources(root, options, journal.view, () => runs, () => launchedAt ?? undefined,
         () => journal.view.order.some(turn => turn.reserved && !reservedAtLaunch.has(turn.id)) ? null : handoff),
       prepareModel: modelEnvelope,
-      // Part Thirteen §9: the packet names the tools exactly when the model call will run on the tool route.
-      toolRoute: id => toolsActive() && toolTurnEligible(id) && toolTurnFits(journal.view),
+      // Part Thirteen §9: the packet names the tools exactly when the model call will run on the tool route. The packet
+      // is built before the answer's `reserve` or the work's `obligation-start` counts its base call, so that call is added here.
+      toolRoute: id => toolsActive() && toolTurnEligible(id) && toolPacketFits(journal.view),
       // Rule 44: an installed update rides operator packets until a sent answer's recorded prompt carried it.
       installedUpdate: () => installUpdate && !updateDelivery(installUpdate, journal.view.order) ? updatePacketItem(installUpdate) : null,
       // Rules 8, 56, 100: due credential reminder stages and a failing doorway check ride the next answer as one line.

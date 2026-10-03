@@ -127,8 +127,11 @@ export function pruneToolTurns(root, keep = TOOL_TURNS_KEPT, detach = detachScra
  * recorded excerpts.
  */
 /** Whether the call allowance holds a tool turn's whole liability. The packet that names the tools and the turn's own
- * reservation use this one predicate, so an answer is told it has tools only when its turn will run with them. */
-export const toolTurnFits = view => view.calls + SUBSCRIPTION_TOOL_LIMITS.maxTurns - 1 <= view.limits.maxCalls;
+ * reservation use this one predicate, so an answer is told it has tools only when its turn will run with them. The packet
+ * is prepared before its base call is reserved, so it passes that call as `unreserved`; dispatch runs after it. */
+export const toolTurnFits = (view, unreserved = 0) => view.calls + unreserved + SUBSCRIPTION_TOOL_LIMITS.maxTurns - 1 <= view.limits.maxCalls;
+/** The packet's side of `toolTurnFits`: its own base call is not reserved yet when it is prepared. */
+export const toolPacketFits = view => toolTurnFits(view, 1);
 
 export async function runToolTurn({ journal, root, id, prepared, promptLimit, deniedRoots, operations, invoke, fallback, now, redactText,
   scratch = attachScratch, detach = detachScratch }) {

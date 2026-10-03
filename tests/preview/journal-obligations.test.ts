@@ -6,7 +6,10 @@ import { spawnSync } from 'node:child_process';
 import { join } from 'node:path';
 import { createJournalWorker, openPreviewJournal, openBlockers, openDirectives, declaredObligations, dueObligationWork, obligationSchedule,
   LOOP_REVISIT_MS, BLOCKER_RECHECK_MAX_MS, DIRECTIVE_SHARE, OBLIGATION_WORK_QUESTION, OBLIGATION_WORK_QUESTION_TOOLS, previewCapabilities,
-  TOOL_ATTEMPTS_MEANING } from './journal-test-worker.js';
+  TOOL_ATTEMPTS_MEANING, TOOL_ATTEMPTS_PARTIAL_MEANING, TOOL_ATTEMPTS_REVIEWED } from './journal-test-worker.js';
+// @ts-expect-error The runner side stays plain JavaScript.
+import { toolPacketFits, toolTurnFits } from './tool-turn.mjs';
+import { SUBSCRIPTION_TOOL_LIMITS } from '../../src/assembly/production-provider.js';
 // @ts-expect-error Plain JavaScript.
 import { toolTrace } from './tool-admission.mjs';
 import { loopHealth, loopStatusLines, BACKLOG_AGE_LIMIT_MS } from './obligations.js';
@@ -938,4 +941,89 @@ it('tells scheduled work and the reply review what the call actually had: no too
     expect(declaredObligations(reopened.view, toolTurn!, w.clock.now).toolAttempts?.calls).toHaveLength(3);
     reopened.close();
   } finally { rmSync(root, { recursive: true, force: true }); }
+});
+
+it('names tools in the packet exactly when its dispatch, after the base call is reserved, runs them: answers and scheduled work at seven and eight remaining calls (review round 2, finding 1)', async () => {
+  const extra = SUBSCRIPTION_TOOL_LIMITS.maxTurns - 1;
+  type Seen = { packet: string; dispatch: boolean };
+  const tools = (context: string | Record<string, unknown>) =>
+    ((typeof context === 'string' ? JSON.parse(context) : context) as { capabilities: { externalTools: string } }).capabilities.externalTools;
+  // Answers: the packet is prepared before `reserve`, the tool turn's own check runs after it.
+  for (const remaining of [extra, extra + 1]) {
+    const root = origin();
+    try {
+      const seen: Seen[] = [];
+      const holder: { view?: Parameters<typeof toolTurnFits>[0] } = {};
+      const w = world(root, { maxCalls: remaining, toolRoute: () => toolPacketFits(holder.view),
+        answer: (_question, context) => { seen.push({ packet: tools(context), dispatch: toolTurnFits(holder.view) }); return 'Fine.'; } });
+      holder.view = w.journal.view;
+      expect(w.journal.view.calls).toBe(0);
+      await w.say(INVOICE);
+      const expected = remaining > extra;
+      expect(seen).toEqual([{ packet: expected ? 'as listed' : 'none', dispatch: expected }]);
+      w.journal.close();
+    } finally { rmSync(root, { recursive: true, force: true }); }
+  }
+  // Scheduled work: the packet is prepared before `obligation-start` counts its call. The calls an earlier answer used
+  // are measured first, so the cap leaves exactly seven or eight at the moment the work's packet is prepared.
+  const probe = origin();
+  let used: number;
+  try {
+    const w = world(probe, { answer: question => question === INVOICE ? { reply: LATER, openLoops: [{ kind: 'deferral', quote: LATER, waitsOn: 'nothing' }] } : 'Fine.' });
+    await w.say(INVOICE); used = w.journal.view.calls; w.journal.close();
+  } finally { rmSync(probe, { recursive: true, force: true }); }
+  for (const remaining of [extra, extra + 1]) {
+    const root = origin();
+    try {
+      const seen: Seen[] = [];
+      const holder: { view?: Parameters<typeof toolTurnFits>[0] } = {};
+      const w = world(root, { maxCalls: used + remaining, toolRoute: id => id.startsWith('obligation:') && toolPacketFits(holder.view),
+        answer: question => question === INVOICE ? { reply: LATER, openLoops: [{ kind: 'deferral', quote: LATER, waitsOn: 'nothing' }] } : 'Fine.',
+        work: context => { seen.push({ packet: tools(context), dispatch: toolTurnFits(holder.view) }); return { outcome: 'continue', note: 'Still working.' }; } });
+      holder.view = w.journal.view;
+      await w.say(INVOICE);
+      expect(w.journal.view.calls).toBe(used);
+      w.clock.now += LOOP_REVISIT_MS + 60_000;
+      expect(await w.worker.workObligations()).toBe(true);
+      const expected = remaining > extra;
+      expect(seen).toEqual([{ packet: expected ? 'as listed' : 'none', dispatch: expected }]);
+      w.journal.close();
+    } finally { rmSync(root, { recursive: true, force: true }); }
+  }
+});
+
+it('tells the reply review when its tool-call excerpt is incomplete, so a result from an omitted call is not read as unsupported (review round 2, finding 2)', async () => {
+  for (const count of [TOOL_ATTEMPTS_REVIEWED, TOOL_ATTEMPTS_REVIEWED + 1]) {
+    const root = origin();
+    try {
+      const w = world(root);
+      await w.say('Run the steps and report the last result.');
+      const id = w.journal.view.order[0]!.id;
+      const calls = Array.from({ length: count }, (_, i) => ({ n: i + 1, tool: 'Bash', input: `echo ${i + 1}`, decision: 'allow',
+        reason: 'sandboxed', result: i === count - 1 ? 'FINAL_RESULT' : String(i + 1) }));
+      w.journal.append({ kind: 'tool-turn', phase: 'reserved', id, attempt: 0, calls: SUBSCRIPTION_TOOL_LIMITS.maxTurns - 1, at: w.clock.now });
+      w.journal.append({ kind: 'tool-turn', phase: 'trace', id, attempt: 0, consistent: true, workspaceBytes: 0, at: w.clock.now, calls });
+      const read = (view: typeof w.journal.view) => declaredObligations(view, id, w.clock.now).toolAttempts as
+        { meaning: string; calls: { result: string | null }[]; omitted?: number };
+      const check = (attempts: ReturnType<typeof read>) => {
+        expect(attempts.calls).toHaveLength(TOOL_ATTEMPTS_REVIEWED);
+        if (count === TOOL_ATTEMPTS_REVIEWED) {
+          // Complete: the exhaustive reading holds, and the reported result is in it.
+          expect(attempts).toMatchObject({ meaning: TOOL_ATTEMPTS_MEANING });
+          expect(attempts.omitted).toBeUndefined();
+          expect(JSON.stringify(attempts.calls)).toContain('FINAL_RESULT');
+        } else {
+          // Incomplete: the review is told how many calls it cannot see and that absence proves nothing.
+          expect(attempts).toMatchObject({ meaning: TOOL_ATTEMPTS_PARTIAL_MEANING, omitted: 1 });
+          expect(JSON.stringify(attempts.calls)).not.toContain('FINAL_RESULT');
+          expect(attempts.meaning).not.toContain('The only tool calls');
+        }
+      };
+      check(read(w.journal.view));
+      w.journal.close();
+      const reopened = openPreviewJournal(w.path, key);
+      check(read(reopened.view));
+      reopened.close();
+    } finally { rmSync(root, { recursive: true, force: true }); }
+  }
 });
