@@ -160,7 +160,7 @@ export function gitUploadPackBase(method, target) {
     return `${url.origin}${url.pathname.slice(0, -'/git-upload-pack'.length)}`;
   return null;
 }
-/** The content types that establish a git fetch (smart HTTP): the server's discovery answer and the client's request. */
+/** The content types that establish a git smart-HTTP fetch: the server's discovery answer and the client's request. */
 export const GIT_UPLOAD_PACK_TYPES = Object.freeze({ advertisement: 'application/x-git-upload-pack-advertisement',
   request: 'application/x-git-upload-pack-request' });
 /** What one shell HTTP request does, read from its method and path (never its body or the words of the command):
@@ -185,7 +185,7 @@ export function egressRequestKind(method, target, gitFetch = false) {
  * method and full URL. `request` is {method, url} (absolute http(s) URL); `addresses` the target's addresses as the
  * checkpoint itself resolved them (the checkpoint then connects only to an address it checked); `operations` the installed
  * profile's registered operations. `request.gitFetch` is the checkpoint's own finding that a POST continues an established
- * git fetch (egressRequestKind). A read of a public host on the web's ports is ordinary work; anything else that is
+ * git fetch, as egressRequestKind reads it. A read of a public host on the web's ports is ordinary work; anything else that is
  * well-formed is a network write for the effect doorway, which refuses it unless the profile registers `tool:network-write`.
  * Returns {decision, reason, kind?}.
  */
