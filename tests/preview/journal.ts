@@ -6454,6 +6454,13 @@ export function createJournalWorker(journal: ReturnType<typeof openPreviewJourna
                 if (parsed.memory === undefined && !turn.memoryUndecided
                   && (!(memoryCue(turn) || preferenceCue(turn))
                     || journal.view.summaries.some(item => item.memoryFor?.includes(turn.id)))) memory = [];
+                // Rules 10, 57: on a turn whose memory question was given up on, a decision that reads the message as
+                // withdrawing a listed request has said what the message does; its omitted memory field is the empty
+                // decision, so the withdrawal is applied or refused on its own quote check instead of being wiped with
+                // it. Live 2026-10-02 (room two, cint-L33 08220af9, RA3): "Actually, cancel the bird feeder one." was
+                // answered with the right id and a quote copied from it, and no memory field; nothing was cancelled.
+                if (parsed.memory === undefined && turn.memoryUndecided && fromOperator(turn)
+                  && Array.isArray(parsed.cancelReminders) && parsed.cancelReminders.length > 0) memory = [];
                 // Rule 19: an ordinary (uncued, unedited, unsettled) turn whose decision proposes no
                 // memory change and calls its target unresolved is an empty decision; the model's
                 // own answer is sent and nothing is written. Direct requests stay held.

@@ -1,0 +1,91 @@
+{
+ "source": "proof room two, group A, build cint-L33 08220af9, 2026-10-02 22:15 PDT (failing run, plan row #351). Read-only from a copy of the recorded root journal and the group-A-fail capture; group-A-pass is the 19:15 PDT run on the same build.",
+ "turns": [
+  {
+   "label": "ra1",
+   "update": 6231116,
+   "message": "Remind me today at 10:34 pm to refill the bird feeder",
+   "reply": "PREVIEW — Got it — I'll remind you today at 10:34 pm to refill the bird feeder. Date 1: 2026-10-02 22:34 (America/Los_Angeles). I will act on this once at 2026-10-02 22:34 (America/Los_Angeles) and send you the result here."
+  },
+  {
+   "label": "ra2",
+   "update": 6231117,
+   "message": "Also remind me today at 10:34 pm to call the plumber",
+   "reply": "PREVIEW — Got it — I'll also remind you today at 10:34 pm to call the plumber. That's a separate reminder from the bird-feeder one already set for the same time, so you'll get two pings at 10:34 pm. Date 1: 2026-10-02 22:34 (America/Los_Angeles). I will act on this once at 2026-10-02 22:34 (America/Los_Angeles) and send you the result here. Upcoming: Remind me today at 10:34 pm to refill the bird feeder (2026-10-02 22:34)."
+  },
+  {
+   "label": "ra3",
+   "update": 6231118,
+   "message": "Actually, cancel the bird feeder one.",
+   "reply": "PREVIEW — Please send it again. Upcoming: Also remind me today at 10:34 pm to call the plumber (2026-10-02 22:34)."
+  }
+ ],
+ "summaryOutputsAtRa3": [
+  {
+   "summary": "Main chat, 2026-10-03T05:15Z (#6231112): Operator asked if memory/code or live judgment wins. Instar: judgment (Mind) wins over stored memory/code (Body); exceptions where code alone decides: secret custody, spend/call caps, stop latch, trial expiry, duplicate-send prevention, durable intake. Noted credential \"preview-activation\" expires in 2 days 15 h, asked operator to approve renewal.\n\n2026-10-03T05:16Z (#6231113): Operator asked about commitments; Instar reported none open.\n\n2026-10-03T05:17Z (#6231114): Operator had Instar promise three tomato-watering tips next reply.\n\n2026-10-03T05:18Z (#6231115): Instar gave the three tips: (1) water deeply/infrequently, ~1-2 inches/week; (2) water at base in morning, avoid wetting leaves; (3) keep moisture consistent (mulch) to prevent blossom end rot/cracking. Closed #6231114.\n\n2026-10-02T22:18 PDT (#6231116): Operator asked for a reminder today at 10:34 pm to refill the bird feeder. Instar set it.\n\n2026-10-02T22:19 PDT (#6231117): Operator asked for a second reminder, same time, to call the plumber. Instar set it, noting two separate pings at 10:34 pm.\n\n2026-10-02T22:20 PDT (#6231118): Operator said \"Actually, cancel the bird feeder one.\" This withdraws the bird-feeder reminder (#6231116); the plumber reminder (#6231117) remains open and unresolved."
+  },
+  {
+   "reply": "Cancelled the bird feeder reminder. The plumber call reminder for 10:34 pm today stays active.",
+   "cancelReminders": [
+    {
+     "id": "reminder-c55ad3832d",
+     "quote": "Actually, cancel the bird feeder one."
+    }
+   ],
+   "summary": "2026-10-03T05:15Z (#6231112): Operator asked whether stored memory/code or live judgment wins. Instar: judgment (Mind) wins over stored memory/code (Body); exceptions where code alone decides: secret custody, spend/call caps, stop latch, trial expiry, duplicate-send prevention, durable intake. Noted credential \"preview-activation\" (preview-s2-activation-v2-2026-09-23) expires in 2 days 15 h.\n\n2026-10-03T05:16Z (#6231113): Operator asked about open commitments; Instar reported none at that time.\n\n2026-10-03T05:17Z (#6231114): Operator told Instar to promise three tomato-watering tips in its next reply. Instar promised this.\n\n2026-10-03T05:18Z (#6231115): Operator said proceed. Instar gave three tips: (1) water deeply and infrequently, about 1-2 inches per week; (2) water at the base in the morning, avoid wetting leaves; (3) keep moisture consistent (mulch helps) to prevent blossom end rot/cracking. Closed #6231114.\n\n2026-10-02T22:18 PDT (#6231116): Operator asked for a reminder today at 10:34 pm to refill the bird feeder. Instar set it.\n\n2026-10-02T22:19 PDT (#6231117): Operator asked for a second reminder, same time, to call the plumber. Instar set it as separate, noting two pings at 10:34 pm.\n\n2026-10-02T22:20 PDT (#6231118): Operator cancelled the bird feeder reminder. Plumber reminder remains open/pending."
+  }
+ ],
+ "answerOutputAtRa3": {
+  "value": {
+   "reply": "Done — I've cancelled the reminder to refill the bird feeder. Your other reminder for 10:34 pm tonight, to call the plumber, is still on.",
+   "cancelReminders": [
+    {
+     "id": "reminder-c55ad3832d",
+     "quote": "cancel the bird feeder one"
+    }
+   ]
+  },
+  "reason": "The operator says 'cancel the bird feeder one.' There are two due reminders at 2026-10-02 22:34: reminder-c55ad3832d (refill the bird feeder) and reminder-a32e21624f (call the plumber). The operator's words clearly withdraw the bird-feeder one by its distinguishing subject, not the plumber one. This is an explicit cancellation referencing a specific request, so cancelReminders should include that id with a quote of the words that withdraw it, copied exactly from this message: 'cancel the bird feeder one'. The plumber reminder is unaffected and remains active. I should confirm cancellation and note the plumber reminder still stands for 10:34 pm. No new memory, directive, or dated item is created by this message beyond the cancellation itself. No promises are made in this reply (I'm not committing to a future action beyond what's already scheduled for the plumber reminder, which was already promised earlier). No corrections apply to this new reply. No clarifying question is needed since 'bird feeder' uniquely identifies reminder-c55ad3832d among the two pending reminders."
+ },
+ "answerRowAtRa3": {
+  "text": "Done — I've cancelled the reminder to refill the bird feeder. Your other reminder for 10:34 pm tonight, to call the plumber, is still on.",
+  "state": "complete",
+  "datedPending": true,
+  "memoryPending": true
+ },
+ "passRunRa3": {
+  "update": 6231059,
+  "message": "Actually, cancel the bird feeder one.",
+  "reply": "PREVIEW — Done — I've cancelled the 7:34 pm reminder to refill the bird feeder. The other one, reminding you at 7:34 pm to call the plumber, is still set. Cancelled request: \"Remind me today at 7:34 pm to refill the bird feeder\". Upcoming: Also remind me today at 7:34 pm to call the plumber (2026-10-02 19:34)."
+ },
+ "memoryUndecidedAtRa3": {
+  "reason": "summary-failed"
+ },
+ "reviewCandidateAtRa3": "PREVIEW — I couldn't record that memory change. Please send it again. Upcoming: Also remind me today at 10:34 pm to call the plumber (2026-10-02 22:34).",
+ "intentAtRa3": "PREVIEW — Please send it again. Upcoming: Also remind me today at 10:34 pm to call the plumber (2026-10-02 22:34).",
+ "statusAfterRa3": {
+  "summaryThrough": 6231115,
+  "lastSummaryFailure": {
+   "through": 6231118,
+   "reason": "malformed"
+  },
+  "modelFailureClasses": {
+   "malformed": 2
+  }
+ },
+ "requestedActionsAfterRa4": {
+  "requested": 2,
+  "cancelled": 0,
+  "accepted": 1,
+  "refused": 0,
+  "unknown": 0,
+  "open": [],
+  "dueTurns": [
+   {
+    "update": 6231118.0009765625,
+    "requests": 2,
+    "state": "accepted"
+   }
+  ]
+ }
+}
