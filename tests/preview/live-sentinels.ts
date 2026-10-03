@@ -239,17 +239,18 @@ export function createOrdinaryLane(ports: { elapsed(): number; peerCurrent(): bo
 }
 export type OrdinaryLane = ReturnType<typeof createOrdinaryLane>;
 
-/** One runner cycle's ordinary job with the sentinels riding it (plan #402). The tick runs only while the lane would
- * admit work right now, and every step it requests (pushed into `requested` by its ports, after its record) runs inside
- * that same admitted job, after the cycle's drain. A lane that is busy, backing off or waiting on the peer defers the
- * tick: nothing is recorded, so nothing counts as an attempted recovery or a failed self-heal. A failed drain still lets
- * the requested steps run, and then fails the job (its backoff unchanged). Returns whether the job was admitted. */
+/** One runner cycle's ordinary job with the sentinels riding it (plan #402). The tick runs first inside the job the
+ * lane has already admitted, so admission precedes the tick's own record: its append cannot revoke the admission (with
+ * two machines the peer is current only while it holds the journal's whole length). Every step the tick requests
+ * (pushed into `requested` by its ports, after its record) runs inside that same job, after the cycle's drain. A lane
+ * that is busy, backing off or waiting on the peer defers the tick: nothing is recorded, so nothing counts as an
+ * attempted recovery or a failed self-heal. A failed drain still lets the requested steps run, and then fails the job
+ * (its backoff unchanged). Returns whether the job was admitted. */
 export function sentinelCycle(lane: OrdinaryLane, input: { tick(): void; requested: (() => Promise<unknown>)[];
   drain(): Promise<unknown>; after(): Promise<unknown> }): boolean {
-  if (!lane.admissible()) return false;
-  try { input.tick(); } catch { /* silence: a failed tick requests nothing beyond what it recorded */ }
-  const steps = input.requested.splice(0);
   return lane.submit(async () => {
+    try { input.tick(); } catch { /* silence: a failed tick requests nothing beyond what it recorded */ }
+    const steps = input.requested.splice(0);
     let failure: { error: unknown } | null = null;
     try { await input.drain(); } catch (error) { failure = { error }; }
     for (const step of steps) try { await step(); } catch { /* the sentinel observes the outcome on its next tick */ }

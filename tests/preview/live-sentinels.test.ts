@@ -9,6 +9,7 @@ import { SENTINEL_FAMILIES, type SentinelFamily } from './sentinel-record.js';
 import { defaultSentinelConfig } from '../../src/awareness/sentinel.js';
 import { defaultPresenceConfig } from '../../src/sentinels/presence.js';
 import { defaultPromiseConfig } from '../../src/sentinels/promise.js';
+import { createJournalShipper, localReplicaClient, openReplicaStore } from './journal-replication.js';
 
 // Recorded live shapes (Rule 106 / observer #106): the four held turns of 2026-09-27, update ids and texts verbatim.
 const recorded = JSON.parse(readFileSync(new URL('./fixtures/held-reply-live-2026-09-27.json', import.meta.url), 'utf8')) as {
@@ -154,6 +155,47 @@ it('wiring: a recovery the context sentinel records runs inside the admitted ord
     for (let i = 0; i < 2; i++) { world.clock.now += 600_000; cycle(); await lane.settle(); }
     expect(recoveries.length).toBe(sentinelReport(world.journal.view).context?.recoveries);
     expect(requested).toEqual([]);
+  } finally { world.close(); }
+});
+
+it('wiring, two machines: the tick\'s own record cannot revoke its admission; the requested self-heal runs before any holding note', async () => {
+  const live = recorded.held.find(item => item.cause === 'reply check unavailable')!;
+  const world = harness({ families: ['presence'] });
+  try {
+    world.worker.intake([update(live.update, live.text)]);
+    const id = world.journal.view.order[0]!.id;
+    world.journal.append({ kind: 'hold', id, reason: live.cause, at: world.clock.now });
+    // The real shipper and replica store: the peer is current only while it holds the journal's whole length,
+    // so any sentinel frame appended before the lane's admission check would decline the job.
+    const store = openReplicaStore({ directory: join(world.root, 'replica'), conversation: 'telegram/bot-12345678/chat-7654321',
+      machine: 'laptop', secret: 'sentinel-wiring-secret-0123456789' });
+    const shipper = createJournalShipper({ path: world.path, size: () => world.journal.size, peer: localReplicaClient(store),
+      conversation: 'telegram/bot-12345678/chat-7654321', machine: 'studio', secret: 'sentinel-wiring-secret-0123456789',
+      epoch: () => 1, monotonic: () => world.clock.now });
+    const requested: (() => Promise<unknown>)[] = [], healed: string[] = [];
+    const lane = createOrdinaryLane({ elapsed: () => world.clock.now, peerCurrent: () => shipper.status(60_000).current, after: () => {} });
+    const sentinels = createLiveSentinels(world.journal, { now: () => world.clock.now, startedAt: START, stopped: () => false,
+      families: new Set(['presence']), reground: () => {}, recoverContext: () => {}, actOnPromise: () => {},
+      selfHeal: turn => requested.push(async () => { healed.push(turn); }) });
+    const cycle = async () => {
+      expect(await shipper.drain()).toBe(true);
+      expect(shipper.status(60_000).current).toBe(true);
+      const admitted = sentinelCycle(lane, { tick: () => { sentinels.tick(); }, requested, drain: async () => {}, after: async () => {} });
+      await lane.settle();
+      return admitted;
+    };
+    world.clock.now += defaultPresenceConfig.thresholdMs;
+    expect(await cycle()).toBe(true);
+    // The recorded self-heal request executed inside the same admitted job; nothing is left queued.
+    expect(sentinelReport(world.journal.view).presence.selfHealRequested).toBe(1);
+    expect(healed).toEqual([id]);
+    expect(requested).toEqual([]);
+    expect(sentinelReport(world.journal.view).presence.holdingNoteDue).toEqual([]);
+    world.clock.now += defaultPresenceConfig.healWindowMs;
+    expect(await cycle()).toBe(true);
+    expect(sentinelReport(world.journal.view).presence.holdingNoteDue).toEqual([id]);
+    // Exactly one self-heal was recorded and exactly one executed, before the note fell due.
+    expect(healed).toEqual([id]);
   } finally { world.close(); }
 });
 
