@@ -49,8 +49,7 @@ export function reviewSourceRefusal(installation: ExplicitYesInstallation | unde
 /** The fixed request file and pull request text; the body names the request id, as the admission requires. */
 export function reviewRequestContent(request: OperatorRequest, text: string) {
   const branch = `instar-request-${request.id}`, path = `requests/${request.id}.md`;
-  const body = `Approval request ${request.id}\n\n${text}\n\nApprove this pull request's review to approve the request. `
-    + 'Anything else changes nothing. Merging is not needed.';
+  const body = `Approval request ${request.id}\n\n${text}\n\nMerging is not needed.`;
   const content = `# Request ${request.id}\n\n${text}\n\nRequest digest: ${request.digest}\n`;
   return { branch, path, title: `Approve request ${request.id}`, body, content };
 }

@@ -3142,16 +3142,22 @@ Rules 4, 14, 15, 52, 53, 77, 79, 80, 82, 86, 87, 88, 95 and 106 on the live runn
   reply with the fixed "nothing was proposed" line, so the reply never announces a request that does not
   exist); the guidance rides the packet whenever an explicit-yes source is
   admissible on the root, so an ask is answerable at any time (621 bytes of text, 639 on the prepared
-  envelope); where the port is configured but no source is admissible, only near a limit (the cap
+  envelope), together with a route sentence (405 bytes) saying that proposing is how the change is
+  made, so the reply never claims it cannot raise or extend (plan #371); where the port is configured but no source is admissible, only near a limit (the cap
   report's 80%), within 48 hours of the trial end, or while a request is open, so the answer carries
   the runner's why-not. A root with no port sends none of it. The runner, never the model, writes ONE exact request inside the governed
   bounds (one raise adds at most the larger of the trial's original and current allowance, so at most
   doubles a limit; a renewal names only
   `SUBSCRIPTION_PREVIEW_EXPIRY` and needs the reviewed activation installed), with its own id,
-  digest and one-hour lifetime, and appends its fixed wording to the reply; an out-of-bounds or
+  digest and one-hour lifetime, and appends its fixed wording to the reply. One request per action may
+  be open at a time (plan #371; rows carry `requestScope: 'action'`, while a legacy row without it
+  superseded every undecided request): a raise and a renewal can be approved together, a new request
+  supersedes only an undecided one of the same action, a raise applied by its approval carries an
+  open renewal forward to the moved base (any other base move still stales it), and the packet shows
+  the other action's open request as `otherOperatorRequest`; an out-of-bounds or
   unproposable request is answered with why not. A capped limited answer carries the raise the same
   way when no independent approval page is installed. The verified operator's message that answers
-  the open request (a Telegram reply to it, or the operator's next message in that conversation) is
+  an open request (a Telegram reply to it, else the operator's next message after the latest request) is
   judged once by the single admission (`produceExplicitYes`): exactly `yes` or `approve` completes
   it, the caps or expiry frame records `operator-yes:<request>:<reference>`, and the chat-yes
   reference is consumed once. Anything else (an ambiguous answer, a later message, an edit, another
@@ -3159,7 +3165,8 @@ Rules 4, 14, 15, 52, 53, 77, 79, 80, 82, 86, 87, 88, 95 and 106 on the live runn
   recorded as `operator-yes` refused. Where the installation record says the agent can speak as the
   operator in chat (P-05), no request is proposed in chat and the single admission refuses a chat
   yes. That deployment's route is the GitHub review source (`review-yes-source.ts`): over an
-  injected client it opens one pull request whose body names the request (`issue`), links straight
+  injected client it opens one pull request whose body names the request and only the review route
+  (never a chat yes, which is not admissible there) (`issue`), links straight
   to its Files page (`link`), polls its reviews with a widening wait and a breaker (`acts`, Rule 55)
   and admits a review only through the same single admission (`verify`): an APPROVED review by the
   pinned login on the exact head completes it once; a missing, COMMENTED or CHANGES_REQUESTED review,
@@ -3175,7 +3182,7 @@ Rules 4, 14, 15, 52, 53, 77, 79, 80, 82, 86, 87, 88, 95 and 106 on the live runn
   acceptance of the agent's access (Purpose, the approval-account exception, PR #144):
   `{account, installation, operatorMessages, acceptedAt, withdrawn}`. Where chat cannot carry the
   yes and the review source is admissible, the worker opens the request's pull request before the
-  reply and puts its direct link on it; `minimal()` polls its reviews, judges each review id once
+  reply and puts its direct link on it; `minimal()` polls the reviews of every open request, judges each review id once
   (`operator-review` rows), applies an approval once, closes a lapsed or superseded request's pull
   request (`operator-review-closed`), and sends one fixed completion line
   (`operator-result-intent`/`-sent`). Every approval admitted under an acceptance carries the

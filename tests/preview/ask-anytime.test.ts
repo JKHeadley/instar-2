@@ -5,7 +5,7 @@ import { existsSync, mkdtempSync, readFileSync, realpathSync, rmSync, writeFileS
 import { tmpdir } from 'node:os';
 import { join, resolve } from 'node:path';
 import { createJournalWorker, limitsNear, openPreviewJournal, previewTestContext, NO_YES_SOURCE,
-  OPERATOR_ACTION_GUIDANCE } from './journal-test-worker.js';
+  OPERATOR_ACTION_GUIDANCE, OPERATOR_ROUTE_GUIDANCE } from './journal-test-worker.js';
 import { explicitYesStatus } from './operator-yes.js';
 import { prepareJournalEnvelope } from './journal-envelope.js';
 import { SOURCE_PINS, sourcePacket } from './briefing.js';
@@ -108,6 +108,9 @@ it('sends the proposal guidance on an admissible root far from every limit, and 
   // The chat route counts as admissible too.
   const chat = await turnOn({ installation: chatRoute, expiresIn: FAR, message: ASK });
   expect(count(chat.capability, OPERATOR_ACTION_GUIDANCE)).toBe(1);
+  // Plan #371 (Rule 3): where a route is admissible, the answer is told the proposal is how the change is made.
+  expect(count(review.capability, OPERATOR_ROUTE_GUIDANCE)).toBe(1);
+  expect(count(chat.capability, OPERATOR_ROUTE_GUIDANCE)).toBe(1);
   // The other side: a port configured but no source admissible (withdrawn acceptance), far from every limit: absent.
   const shut = await turnOn({ installation: withdrawn, expiresIn: FAR, message: ASK });
   expect(explicitYesStatus(withdrawn, { chat: String(OPERATOR), operator: String(OPERATOR), trial: TRIAL }, { connected: true }).review.admissible).toBe(false);
@@ -116,12 +119,17 @@ it('sends the proposal guidance on an admissible root far from every limit, and 
   const shutNear = await turnOn({ installation: withdrawn, expiresIn: NEAR_END, message: ASK });
   expect(shutNear.near).toBe(true);
   expect(count(shutNear.capability, OPERATOR_ACTION_GUIDANCE)).toBe(1);
-  // Bytes: the admissible root differs from the no-port root by exactly the guidance (one root, same message, same clock):
-  // 621 bytes of text, 639 on the prepared envelope, where the packet is JSON inside JSON and each of its 6 quotes costs 3.
+  // ...and the route sentence never rides where no route is admissible, so it cannot contradict the why-not.
+  expect(shut.capability).not.toContain(OPERATOR_ROUTE_GUIDANCE.trim());
+  expect(shutNear.capability).not.toContain(OPERATOR_ROUTE_GUIDANCE.trim());
+  // Bytes: the admissible root differs from the no-port root by exactly the two sentences (one root, same message, same
+  // clock): 621 + 405 bytes of text, 1,044 on the prepared envelope, where the packet is JSON inside JSON and each of the
+  // proposal guidance's 6 quotes costs 3 (the route sentence has none).
   const added = Buffer.byteLength(review.prompt) - Buffer.byteLength(none.prompt);
   expect(Buffer.byteLength(OPERATOR_ACTION_GUIDANCE)).toBe(621);
-  expect(added).toBe(Buffer.byteLength(JSON.stringify(JSON.stringify(OPERATOR_ACTION_GUIDANCE))) - 6);
-  expect(added).toBe(639);
+  expect(Buffer.byteLength(OPERATOR_ROUTE_GUIDANCE)).toBe(405);
+  expect(added).toBe(Buffer.byteLength(JSON.stringify(JSON.stringify(OPERATOR_ACTION_GUIDANCE + OPERATOR_ROUTE_GUIDANCE))) - 6);
+  expect(added).toBe(1044);
 }, 60_000);
 
 it('a proposed raise on an admissible root far from every limit opens one request; without a source the reply says why not', async () => {

@@ -39,7 +39,7 @@ import { LIVE_JUDGMENTS, type ModelCallRecord } from './model-call-boundary.js';
 import { outboundSigner, settleSendOutcome, type OutboundProvenance, type OutboundSubject, type SendOutcome, type SettledSendOutcome, type Speaker } from './outbound-provenance.js';
 import { retrospectivePlan, retrospectivePopulation, validateRetrospective, replyContextDigest, RETRO_OVER_CAP_REASON, type RetroPass, type RetroSiblingEvidence } from './retrospective.js';
 import { openReplyNotices, validAnswerNotices, type ReplyNotice } from './credential-reminders.js';
-import { admitChatYes, chatBinding, explicitYesStatus, operatorRefusalText, operatorRequestText, operatorResultText, operatorReviewRequestText,
+import { admitChatYes, chatBinding, explicitYesStatus, operatorRefusalText, operatorRequestText, operatorResultText, operatorReviewBodyText, operatorReviewRequestText,
   operatorRequestTarget, operatorYesAuthority, parseOperatorAction, proposeOperatorRequest, wellFormedRequest, OPERATOR_YES_AUTHORITY, type ChatCandidate,
   type ExplicitYesStatus, type OperatorActionProposal, type OperatorRequest, type ProposalState } from './operator-yes.js';
 import { chatYesReference, reviewYesReference, SHARED_ACCESS_NOTE } from '../../src/operator/explicit-yes.js';
@@ -416,6 +416,12 @@ export interface ApprovalRequest { id: string; action: 'raise-caps' | 'stop'; ba
  * as, and what the operator's messages decided. A later request supersedes an undecided earlier one. */
 export interface OperatorRequestState { request: OperatorRequest; carrier: string; via: 'reply' | 'limited'; thread: number | null;
   message?: number; superseded?: true;
+  /** `action`: recorded under one-open-request-per-action (plan #371): a later request supersedes only an undecided request of
+   * the same action. Absent on legacy rows, whose later request superseded every undecided one. */
+  scope?: 'action';
+  /** The base this request is now bound to, when an operator-approved raise of a sibling request moved the base after it was
+   * issued (a renewal does not depend on the limits). Absent means `request.base`. */
+  liveBase?: string;
   /** `sharedAccess`: the yes was admitted under the operator's acceptance of shared account access; the disclosure rides it. */
   approved?: { turn: string; reference: string; hash: string; at: number; sharedAccess?: SharedAccessDisclosure }; applied?: true;
   refusals: { turn: string; detail: string }[];
@@ -471,6 +477,12 @@ export const CHAT_YES_UNAVAILABLE = 'on this setup I can also send messages as y
  * 2026-10-03 (update 969390031, plan #362): with no field offered for the end, the model wrote the end the operator named
  * as `requestedEnd`, which the exact reader refuses; the renewal has one reviewed end, so no end field is asked for. */
 export const OPERATOR_ACTION_GUIDANCE = ' If the verified operator asks to raise this trial\'s limits or extend its end, return JSON with reply and operatorAction:{action:"raise-caps",limits:{maxCalls|maxReplies|maxTurns: the number they named, or "step" for the usual increase}} or exactly {action:"renew-expiry"} with no other field (the runner fills in the one reviewed end, whatever end they named). Return operatorAction even while an operatorRequest is shown: operatorRequest is the runner\'s record, never a field you return. The exact request, or why not, is added below your reply for them to approve; introduce it in plain words and never say it is done.';
+/** Rule 3 (plan #371): where an explicit-yes route is admissible, proposing the request IS how the change is made. Live
+ * 2026-10-03 (update 969390038): the model opened "I still can't raise my own model-call limit ... no authority or tools",
+ * then proposed the raise below it. Sent only while a route is admissible, so it never contradicts a why-not. */
+export const OPERATOR_ROUTE_GUIDANCE = ' Proposing it is how you make this change: returning operatorAction opens the exact request, and only their approval applies it. Never say you cannot raise the limits or extend the end, lack the authority or tools, or need standing authorization or an automatic rule; if an earlier reply said so, it was wrong, so say so briefly. Return operatorAction whenever they ask, even if an earlier request lapsed.';
+/** Plan #371: one request per action may be open, so a raise and a renewal can be approved together. */
+export const OTHER_OPERATOR_REQUEST_GUIDANCE = ' otherOperatorRequest is your other open request, for the other action, in the same form; it stays open alongside operatorRequest and is approved separately.';
 /** When the proposal guidance rides the packet: whenever an explicit-yes source is admissible on this root (an
  * explicit ask is answerable at any time), or, where the port is configured but inadmissible, a limit at the cap
  * report's own "near" level (80% used) or the trial ending within two days, so the answer carries the honest why-not.
@@ -866,6 +878,8 @@ export type JournalRecord =
     operatorRequest?: OperatorRequest;
     /** Where that yes is the operator's GitHub review (P-05): the request's pull request, opened before this answer. */
     operatorReview?: OperatorReviewRef;
+    /** Present on every new request row: it supersedes only an undecided request of the same action (plan #371). */
+    requestScope?: 'action';
     /** Rule 89: the fixed limited answer is signed as infrastructure; absent only on legacy rows. */
     provenance?: OutboundProvenance; at: number }
   /** The verified operator's button press on a prefilled request; its raw Telegram update is kept. */
@@ -975,6 +989,8 @@ export type JournalRecord =
     operatorRequest?: OperatorRequest;
     /** Where that yes is the operator's GitHub review: the request's pull request, opened before this reply. */
     operatorReview?: OperatorReviewRef;
+    /** Present on every new request row: it supersedes only an undecided request of the same action (plan #371). */
+    requestScope?: 'action';
     /** Open agent promises this reply carries out, as the model proposed them; absent on legacy rows. */
     fulfills?: number[];
     /** Rule 110: the first reply after a compaction accounts for the last inbound before the pause. */
@@ -2407,7 +2423,7 @@ export const requestOccurrence = (id: string, items: readonly ReminderRef[]) => 
 /** Rules 79, 82: a proposed request is recorded only exactly as issued, against the current base, and only with
  * the fixed request text in the very message that carries it. It supersedes any undecided earlier request. */
 function addOperatorRequest(view: JournalView, request: OperatorRequest, carrier: string, via: OperatorRequestState['via'],
-  thread: number | null, text: string, at: number, review?: OperatorReviewRef): void {
+  thread: number | null, text: string, at: number, review?: OperatorReviewRef, scope?: unknown): void {
   const current = { limits: view.limits, expires: view.expires };
   if (!wellFormedRequest(request, carrier, view.genesis.grant) || request.base !== approvalBase(view) || view.stop !== null
     || request.issuedAt > at || request.expiresAt > view.expires || view.operatorRequests.some(item => item.request.id === request.id)
@@ -2416,12 +2432,15 @@ function addOperatorRequest(view: JournalView, request: OperatorRequest, carrier
     || !text.includes(review === undefined ? operatorRequestText(request, current)
       : operatorReviewRequestText(request, current, reviewLink(review.repository, review.pullRequest)))
     || request.action === 'raise-caps' && (['maxCalls', 'maxReplies', 'maxTurns'] as const).some(key => request.limits![key] < view.limits[key])
-    || request.action === 'renew-expiry' && !(request.expires! > view.expires))
+    || request.action === 'renew-expiry' && !(request.expires! > view.expires) || scope !== undefined && scope !== 'action')
     throw Error('preview journal: operator request refused');
-  for (const item of view.operatorRequests) if (!item.approved) item.superseded = true;
+  for (const item of view.operatorRequests) if (!item.approved && (scope === undefined || item.request.action === request.action)) item.superseded = true;
   view.operatorRequests.push({ request: { ...request, ...(request.limits ? { limits: { ...request.limits } } : {}) }, carrier, via, thread, refusals: [],
+    ...(scope === 'action' ? { scope: 'action' as const } : {}),
     ...(review === undefined ? {} : { review: { ...review }, reviewsSeen: [] }) });
 }
+/** The base an operator request is bound to now (its own, unless a sibling's approved raise carried it forward). */
+export const requestBase = (state: OperatorRequestState) => state.liveBase ?? state.request.base;
 /** Status and inspect (Purpose, the approval-account exception): each recent operator request's route and state, the
  * consumed yes, and wherever it was admitted under an acceptance of shared account access, the disclosure. */
 export function operatorRequestsReport(view: JournalView, now: number) {
@@ -2465,7 +2484,7 @@ function decideOperatorReview(view: JournalView, row: Extract<JournalRecord, { k
   if (row.outcome === 'approved') {
     const reference = reviewYesReference(state.review.repository, row.review);
     if (row.reference !== reference || typeof row.hash !== 'string' || !/^sha256:[a-f0-9]{64}$/u.test(row.hash) || row.at > state.request.expiresAt
-      || state.request.base !== approvalBase(view) || view.stop !== null || !validDisclosure(row.sharedAccess) || row.detail !== undefined
+      || requestBase(state) !== approvalBase(view) || view.stop !== null || !validDisclosure(row.sharedAccess) || row.detail !== undefined
       || view.operatorRequests.some(item => item.approved?.reference === reference)) throw Error('preview journal: operator review refused');
     state.approved = { turn: state.carrier, reference, hash: row.hash, at: row.at, ...(row.sharedAccess ? { sharedAccess: { ...row.sharedAccess } } : {}) };
   } else if (row.outcome !== 'refused' || typeof row.detail !== 'string' || !row.detail || Buffer.byteLength(row.detail) > 1024
@@ -2477,7 +2496,7 @@ function decideOperatorReview(view: JournalView, row: Extract<JournalRecord, { k
 function closeOperatorReview(view: JournalView, row: Extract<JournalRecord, { kind: 'operator-review-closed' }>): void {
   const state = view.operatorRequests.find(item => item.request.id === row.request);
   if (!state?.review || state.reviewClosed || state.approved
-    || !(state.superseded || row.at > state.request.expiresAt || state.request.base !== approvalBase(view) || view.stop !== null))
+    || !(state.superseded || row.at > state.request.expiresAt || requestBase(state) !== approvalBase(view) || view.stop !== null))
     throw Error('preview journal: operator review close order');
   state.reviewClosed = true;
 }
@@ -2509,7 +2528,7 @@ function decideOperatorRequest(view: JournalView, turn: Turn, row: Extract<Journ
   if (row.outcome === 'approved') {
     const reference = chatYesReference(view.genesis.chat, String(message));
     if (row.reference !== reference || typeof row.hash !== 'string' || !/^sha256:[a-f0-9]{64}$/u.test(row.hash) || row.at > state.request.expiresAt
-      || state.request.base !== approvalBase(view) || view.stop !== null
+      || requestBase(state) !== approvalBase(view) || view.stop !== null
       || view.operatorRequests.some(item => item.approved?.reference === reference)) throw Error('preview journal: operator yes refused');
     state.approved = { turn: turn.id, reference, hash: row.hash, at: row.at };
     return;
@@ -2520,16 +2539,17 @@ function decideOperatorRequest(view: JournalView, turn: Turn, row: Extract<Journ
 }
 /** A caps or expiry frame written under an explicit yes applies exactly the approved request, once, at its base. */
 function applyOperatorYes(view: JournalView, authority: string, action: OperatorRequest['action'],
-  values: { limits?: OperatorRequest['limits']; expires?: number; bytesUnchanged?: boolean }): void {
+  values: { limits?: OperatorRequest['limits']; expires?: number; bytesUnchanged?: boolean }): boolean {
   const yes = OPERATOR_YES_AUTHORITY.exec(authority);
-  if (!yes) return;
+  if (!yes) return false;
   const state = view.operatorRequests.find(item => item.request.id === yes[1]);
   if (!state?.approved || state.applied || state.approved.reference !== yes[2] || state.request.action !== action
-    || state.request.base !== approvalBase(view)
+    || requestBase(state) !== approvalBase(view)
     || authority !== operatorYesAuthority(state.request.id, state.approved.reference, state.approved.sharedAccess !== undefined)
     || (action === 'raise-caps' ? (['maxCalls', 'maxReplies', 'maxTurns'] as const).some(key => state.request.limits?.[key] !== values.limits?.[key]) || values.bytesUnchanged !== true
       : state.request.expires !== values.expires)) throw Error('preview journal: operator yes application refused');
   state.applied = true;
+  return true;
 }
 function project(view: JournalView, row: JournalRecord, system?: SystemCheck, admission: 'new' | 'replay' = 'new'): void {
   if ('at' in row) view.clockFloor = Math.max(view.clockFloor, row.at);
@@ -2566,9 +2586,14 @@ function project(view: JournalView, row: JournalRecord, system?: SystemCheck, ad
   }
   if (row.kind === 'caps') {
     checkCaps(view, row, 'replay');
-    applyOperatorYes(view, row.authority, 'raise-caps', { limits: { maxCalls: row.maxCalls, maxReplies: row.maxReplies, maxTurns: row.maxTurns },
+    const before = approvalBase(view);
+    const approvedRaise = applyOperatorYes(view, row.authority, 'raise-caps', { limits: { maxCalls: row.maxCalls, maxReplies: row.maxReplies, maxTurns: row.maxTurns },
       bytesUnchanged: (row.maxBytes ?? view.limits.maxBytes) === view.limits.maxBytes && row.writeOff === undefined });
     view.limits = { maxCalls: row.maxCalls, maxReplies: row.maxReplies, maxTurns: row.maxTurns, maxBytes: row.maxBytes ?? view.limits.maxBytes };
+    // Plan #371: an operator-approved raise does not stale an open renewal recorded under one-request-per-action; a renewal
+    // names only the trial's end, which a raise leaves unchanged. Any other base move (a host raise, a stop) still stales it.
+    if (approvedRaise) for (const item of view.operatorRequests) if (item.scope === 'action' && item.request.action === 'renew-expiry'
+      && !item.approved && !item.superseded && requestBase(item) === before) item.liveBase = approvalBase(view);
     view.capAuthority = row.authority; view.capRaisedAt = row.at;
     if (row.writeOff !== undefined) view.writtenOff = [...view.writtenOff ?? [], ...row.writeOff];
     // A raise completed through the independent verifier marks its request applied. (The earlier
@@ -3122,8 +3147,8 @@ function project(view: JournalView, row: JournalRecord, system?: SystemCheck, ad
     if (row.operatorRequest !== undefined) {
       if (row.approval !== undefined || row.reason === 'worker' || row.operatorRequest.action !== 'raise-caps')
         throw Error('preview journal: limited operator request refused');
-      addOperatorRequest(view, row.operatorRequest, row.id, 'limited', row.thread ?? null, row.text, row.at, row.operatorReview);
-    } else if (row.operatorReview !== undefined) throw Error('preview journal: operator review without request');
+      addOperatorRequest(view, row.operatorRequest, row.id, 'limited', row.thread ?? null, row.text, row.at, row.operatorReview, row.requestScope);
+    } else if (row.operatorReview !== undefined || row.requestScope !== undefined) throw Error('preview journal: operator review without request');
     for (const item of covered as Turn[]) item.limited = { text: row.text, at: row.at, lead: row.id, reason: row.reason };
     if (row.approval) turn.approval = { ...row.approval };
     return;
@@ -3522,10 +3547,11 @@ function project(view: JournalView, row: JournalRecord, system?: SystemCheck, ad
       throw Error('preview journal: intent order');
     if (row.approval !== undefined && (!isStopCommand(turn.text) || !validApproval(view, turn.id, row.approval, 'stop', row.text)))
       throw Error('preview journal: stop request refused');
-    if (row.operatorReview !== undefined && row.operatorRequest === undefined) throw Error('preview journal: operator review without request');
+    if ((row.operatorReview !== undefined || row.requestScope !== undefined) && row.operatorRequest === undefined)
+      throw Error('preview journal: operator review without request');
     if (row.operatorRequest !== undefined) {
       if (turn.operatorAction?.action !== row.operatorRequest.action) throw Error('preview journal: operator request without proposal');
-      addOperatorRequest(view, row.operatorRequest, turn.id, 'reply', turn.thread ?? null, row.text, row.at, row.operatorReview);
+      addOperatorRequest(view, row.operatorRequest, turn.id, 'reply', turn.thread ?? null, row.text, row.at, row.operatorReview, row.requestScope);
     }
     turn.intent = row.text; turn.intentBody = row.body ?? row.text; view.replies++;
     if (row.release) turn.release = row.release;
@@ -5516,6 +5542,14 @@ export function createJournalWorker(journal: ReturnType<typeof openPreviewJourna
         : answeredHere ? `not approved: ${requestState.refusals.find(item => item.turn === question!.id)!.detail}`
           : requestState.review ? `open, waiting for the operator to approve it at ${reviewLink(requestState.review.repository, requestState.review.pullRequest)}; a chat "yes" does not approve it`
             : 'open, waiting for the operator\'s plain yes' } : undefined;
+    // Plan #371: a request for the other action may be open alongside; it is shown so the answer accounts for both.
+    const otherState = operatorRequest && fromOperator(question!) ? journal.view.operatorRequests.filter(item => item !== requestState
+      && item.request.action !== requestState!.request.action && item.message !== undefined && !item.superseded && !item.approved
+      && now <= item.request.expiresAt && requestBase(item) === approvalBase(journal.view)).at(-1) : undefined;
+    const otherOperatorRequest = otherState ? { id: otherState.request.id, action: otherState.request.action,
+      ...(otherState.request.limits ? { limits: otherState.request.limits } : { trialEnd: isoMinute(otherState.request.expires!) }),
+      state: otherState.review ? `open, waiting for the operator to approve it at ${reviewLink(otherState.review.repository, otherState.review.pullRequest)}; a chat "yes" does not approve it`
+        : 'open, waiting for the operator\'s plain yes' } : undefined;
     const packet = JSON.stringify({ now, clock: { utc: new Date(now).toISOString(), zone, day: localDay,
       time: `${String(local.hour).padStart(2, '0')}:${String(local.minute).padStart(2, '0')}`,
       weekday: new Intl.DateTimeFormat('en-US', { timeZone: zone, weekday: 'long' }).format(now) },
@@ -5532,7 +5566,9 @@ export function createJournalWorker(journal: ReturnType<typeof openPreviewJourna
         + (/[$€£¥]\s?\p{Nd}|\p{Nd}\s?(?:%|°|\p{L})/u.test([question?.text ?? '', summary?.text ?? '', ...shownTurns.map(item => item.text), ...channels.map(item => ` ${item.text}`)].join(' '))
           ? ' When recalling a measured fact, copy its exact number and unit from an original history, recalled, or channelMemory quote. Do not round, convert, omit, or invent the unit. If only a summary gives an approximate value, say the exact value is unknown.' : '')
         + (ports.explicitYes && (operatorRequest || yesRouteAdmissible() || limitsNear(journal.view, now)) ? OPERATOR_ACTION_GUIDANCE : '')
+        + (ports.explicitYes && yesRouteAdmissible() ? OPERATOR_ROUTE_GUIDANCE : '')
         + (operatorRequest ? requestState?.review ? OPERATOR_REVIEW_REQUEST_GUIDANCE : OPERATOR_REQUEST_GUIDANCE : '')
+        + (otherOperatorRequest ? OTHER_OPERATOR_REQUEST_GUIDANCE : '')
         + (summary || journal.view.summaries.length ? sourceTrustInstruction : '')
         + (due.length || selectedDated.window ? ' dated is a bounded selection of operator dates; only an item with remind:true is something the operator asked you to do at that time. datedScope is a calendar priority hint, not the meaning of the question; dated may include nearby dates outside it. Interpret the question yourself using the shown dates. moreDated counts candidate occurrences omitted by the item or byte cap; absence is not proof that an item does not exist. Do not claim a complete list when moreDated is positive. State absolute YYYY-MM-DD dates and zones, and ask about unresolved dates.' : '')
         + (due.length ? ' dated holds upcoming, due, overdue and unresolved operator dates; only an item with remind:true is something the operator asked you to do at that time. Resolve relative dates in the operator zone; next Friday means the Friday of the following calendar week. State absolute YYYY-MM-DD dates and ask about unresolved dates.' : '')
@@ -5561,7 +5597,7 @@ export function createJournalWorker(journal: ReturnType<typeof openPreviewJourna
         + (undecidedEdits.length ? ' undecidedEdits records revisions and operator corrections whose fact change could not be judged. Use the current revision or correction and treat any conflicting prior claim as uncertain. moreUndecidedEdits counts older unresolved items omitted by the bound; an earlier claim they may concern is uncertain too.' : '')
         + (labelAll ? ' Every history item names the conversation of this private chat it was said in, with its date.'
           : crossed ? ' Items with a conversation field were said by the same operator in another conversation of this private chat, named there with its date; the operator is the only audience of every conversation, so they are your shared memory and may be used here.' : ''),
-      ...(operatorRequest ? { operatorRequest } : {}),
+      ...(operatorRequest ? { operatorRequest } : {}), ...(otherOperatorRequest ? { otherOperatorRequest } : {}),
       ...(pendingReminders.length ? { reminders: pendingReminders.map(item => ({ id: reminderId(item),
         quote: clean(redact(item.quote).text, true), due: `${reminderDue(item)} ${item.zone}` })) } : {}),
       audience: { surface: 'telegram-private-chat', chat: journal.view.genesis.chat,
@@ -7002,7 +7038,7 @@ export function createJournalWorker(journal: ReturnType<typeof openPreviewJourna
           ? { id: approvalId(turn.id, 'stop', stopBase), action: 'stop', base: stopBase } : undefined;
         const provenance = journal.signOutbound(speaker, { target: `reply:${turn.id}`, chat: journal.view.genesis.chat, ...thread, body });
         journal.append({ kind: 'intent', id: turn.id, text: reply, body, chat: journal.view.genesis.chat, ...thread, provenance,
-          ...(approval ? { approval } : {}), ...(offer?.request ? { operatorRequest: offer.request } : {}),
+          ...(approval ? { approval } : {}), ...(offer?.request ? { operatorRequest: offer.request, requestScope: 'action' as const } : {}),
           ...(offer?.request && offer.review ? { operatorReview: offer.review } : {}),
           ...(reply === HOLDING_REPLY || heldBack || !mentionedKeys.length ? {} : { mentionedDates: mentionedKeys }),
           ...(release === undefined ? {} : { release }), ...(held === undefined ? {} : { heldReview: held }),
@@ -7120,18 +7156,18 @@ export function createJournalWorker(journal: ReturnType<typeof openPreviewJourna
     const result = proposeOperatorRequest(proposalState(), proposal, carrier, now);
     if (result.kind === 'refused') return { refused: result.reason };
     if (!viaReview) return { text: operatorRequestText(result.request, journal.view), request: result.request };
-    const issued = await source!.issue(result.request, operatorRequestText(result.request, journal.view));
+    const issued = await source!.issue(result.request, operatorReviewBodyText(result.request, journal.view));
     if (issued.kind === 'refused') return { refused: `the approval page could not be opened (${issued.reason})` };
     const review = { repository: issued.issued.repository, pullRequest: issued.issued.pullRequest, head: issued.issued.head };
     return { text: operatorReviewRequestText(result.request, journal.view, issued.issued.link), request: result.request, review };
   };
-  /** The undecided, sent request still answerable now at the current base, if any (one at a time). */
-  const openOperatorRequest = (now: number) => journal.view.operatorRequests.filter(item => item.message !== undefined
-    && !item.superseded && !item.approved && now <= item.request.expiresAt && item.request.base === approvalBase(journal.view)).at(-1);
+  /** The undecided, sent requests still answerable now at the current base: at most one per action (plan #371). */
+  const openOperatorRequests = (now: number) => journal.view.operatorRequests.filter(item => item.message !== undefined
+    && !item.superseded && !item.approved && now <= item.request.expiresAt && requestBase(item) === approvalBase(journal.view));
   /** The raise a capped limited answer asks for with an explicit yes, when no independent surface carries it. */
   const limitedOperatorRequest = async (lead: Turn, reason: RaiseReason) => {
     const now = ports.now();
-    if (ports.approvalSurface || openOperatorRequest(now)) return undefined;
+    if (ports.approvalSurface || openOperatorRequests(now).some(item => item.request.action === 'raise-caps')) return undefined;
     // One raise adds at most one step per allowance (the bounded proposal); where the recorded reserve turns exceed even
     // that, the step is still the raise that answers the oldest waiting message.
     const view = journal.view, proposed = proposedLimits(view, reason), g = view.genesis;
@@ -7161,19 +7197,24 @@ export function createJournalWorker(journal: ReturnType<typeof openPreviewJourna
   const answerOperatorRequest = (turnId: string, update: TelegramUpdate, principal: VerifiedPrincipal | null) => {
     const port = ports.explicitYes, view = journal.view, turn = view.turns.get(turnId), message = update.edited_message ?? update.message;
     if (!port || !turn || !message || !principal || journal.readOnly || view.stop !== null || !verifiedOperatorTurn(view, turn)) return;
-    const state = view.operatorRequests.filter(item => item.message !== undefined && !item.superseded && !item.approved).at(-1);
     const messageId = turnMessageId(turn);
-    if (!state || messageId === null) return;
+    if (messageId === null) return;
     const candidate: ChatCandidate = { chatId: String(message.chat?.id), messageId, replyTo: message.reply_to_message?.message_id ?? null,
       senderId: String(message.from?.id), thread: turn.thread ?? null, edited: update.edited_message !== undefined, text: turn.text, at: ports.now() };
     const others = view.order.filter(item => item !== turn && verifiedOperatorTurn(view, item)).flatMap(item => {
       const id = turnMessageId(item); return id === null ? [] : [{ messageId: id, thread: item.thread ?? null }]; });
-    const binding = chatBinding({ message: state.message!, thread: state.thread }, candidate, others);
-    if (binding === null) return;
+    // Plan #371: with one open request per action, a message answers at most one: the request it replies to, else the latest
+    // request it is the next message after. It is never applied to a request it does not bind to.
+    const bound = view.operatorRequests.filter(item => item.message !== undefined && !item.superseded && !item.approved)
+      .map(item => ({ state: item, binding: chatBinding({ message: item.message!, thread: item.thread }, candidate, others) }))
+      .filter(item => item.binding !== null);
+    const chosen = bound.find(item => item.binding === 'reply') ?? bound.at(-1);
+    if (!chosen) return;
+    const state = chosen.state, binding = chosen.binding!;
     const request = state.request, now = candidate.at;
     let verdict: ReturnType<typeof admitChatYes>;
     if (now > request.expiresAt) verdict = { kind: 'refused', detail: 'this request has lapsed' };
-    else if (request.base !== approvalBase(view)) verdict = { kind: 'refused', detail: 'the limits or the trial changed after this request was made' };
+    else if (requestBase(state) !== approvalBase(view)) verdict = { kind: 'refused', detail: 'the limits or the trial changed after this request was made' };
     else {
       const requestedBy = journal.systemWriter('operator-request', `${request.id}\n${request.digest}`, request.issuedAt);
       verdict = requestedBy === null ? { kind: 'refused', detail: 'the runner could not establish itself as the requester' }
@@ -7198,39 +7239,43 @@ export function createJournalWorker(journal: ReturnType<typeof openPreviewJourna
     if (!port || !source || journal.readOnly || journal.view.stop !== null) return;
     const now = ports.now(), view = journal.view;
     for (const state of view.operatorRequests.filter(item => item.review && !item.reviewClosed && !item.approved
-      && (item.superseded || now > item.request.expiresAt || item.request.base !== approvalBase(view)))) {
+      && (item.superseded || now > item.request.expiresAt || requestBase(item) !== approvalBase(view)))) {
       gate();
       if (await source.close({ requestId: state.request.id, ...state.review!, link: reviewLink(state.review!.repository, state.review!.pullRequest) }))
         try { journal.append({ kind: 'operator-review-closed', request: state.request.id, at: ports.now() }); } catch { /* closed at GitHub; recorded next time */ }
     }
-    const state = view.operatorRequests.filter(item => item.review && item.message !== undefined && !item.superseded && !item.approved
-      && !item.reviewClosed && now <= item.request.expiresAt && item.request.base === approvalBase(view)).at(-1);
-    if (!state || !yesStatus().review.admissible) return;
-    const issued = { requestId: state.request.id, ...state.review!, link: reviewLink(state.review!.repository, state.review!.pullRequest) };
-    const observations = await source.acts(issued);
-    gate();
-    const carrier = journal.view.turns.get(state.carrier);
-    let approver: VerifiedPrincipal | null = null;
-    try { approver = carrier && verifiedOperatorTurn(journal.view, carrier)
-      ? authenticateTelegramSender(JSON.parse(carrier.raw), ports.origin ?? 'production', carrier.at) : null; } catch { approver = null; }
-    const requestedBy = journal.systemWriter('operator-request', `${state.request.id}\n${state.request.digest}`, state.request.issuedAt);
-    if (!approver || !requestedBy) return;
-    for (const observation of observations ?? []) {
-      if (observation.kind !== 'github-review' || state.reviewsSeen?.includes(observation.reviewId) || !/^[0-9]{1,20}$/u.test(observation.reviewId)) continue;
+    // Plan #371: every open request is polled, at most one per action; each review binds only its own request.
+    const open = (state: OperatorRequestState) => state.review !== undefined && state.message !== undefined && !state.superseded && !state.approved
+      && !state.reviewClosed && ports.now() <= state.request.expiresAt && requestBase(state) === approvalBase(journal.view);
+    for (const state of view.operatorRequests.filter(open)) {
+      if (!open(state)) continue;
       if (!yesStatus().review.admissible) return;
-      const verdict = source.verify({ request: state.request, issued, observation, grant: journal.view.genesis.grant, chat: journal.view.genesis.chat,
-        approver, requestedBy, consumed: journal.view.operatorRequests.flatMap(item => item.approved ? [item.approved.reference] : []) });
-      try {
-        journal.append({ kind: 'operator-review', request: state.request.id, review: observation.reviewId, at: ports.now(), ...(verdict.kind === 'approved'
-          ? { outcome: 'approved' as const, reference: verdict.record.reference, hash: verdict.record.hash,
-            ...(verdict.record.sharedAccess ? { sharedAccess: verdict.record.sharedAccess } : {}) }
-          : { outcome: 'refused' as const, detail: verdict.detail.slice(0, 1000) }) });
-      } catch { return; }
-      if (verdict.kind !== 'approved') continue;
-      const before = { limits: { ...journal.view.limits }, expires: journal.view.expires };
-      applyOperatorRequest(state.request.id);
-      await sendOperatorResult(state.request.id, before);
-      return;
+      const issued = { requestId: state.request.id, ...state.review!, link: reviewLink(state.review!.repository, state.review!.pullRequest) };
+      const observations = await source.acts(issued);
+      gate();
+      const carrier = journal.view.turns.get(state.carrier);
+      let approver: VerifiedPrincipal | null = null;
+      try { approver = carrier && verifiedOperatorTurn(journal.view, carrier)
+        ? authenticateTelegramSender(JSON.parse(carrier.raw), ports.origin ?? 'production', carrier.at) : null; } catch { approver = null; }
+      const requestedBy = journal.systemWriter('operator-request', `${state.request.id}\n${state.request.digest}`, state.request.issuedAt);
+      if (!approver || !requestedBy) continue;
+      for (const observation of observations ?? []) {
+        if (observation.kind !== 'github-review' || state.reviewsSeen?.includes(observation.reviewId) || !/^[0-9]{1,20}$/u.test(observation.reviewId)) continue;
+        if (!yesStatus().review.admissible) return;
+        const verdict = source.verify({ request: state.request, issued, observation, grant: journal.view.genesis.grant, chat: journal.view.genesis.chat,
+          approver, requestedBy, consumed: journal.view.operatorRequests.flatMap(item => item.approved ? [item.approved.reference] : []) });
+        try {
+          journal.append({ kind: 'operator-review', request: state.request.id, review: observation.reviewId, at: ports.now(), ...(verdict.kind === 'approved'
+            ? { outcome: 'approved' as const, reference: verdict.record.reference, hash: verdict.record.hash,
+              ...(verdict.record.sharedAccess ? { sharedAccess: verdict.record.sharedAccess } : {}) }
+            : { outcome: 'refused' as const, detail: verdict.detail.slice(0, 1000) }) });
+        } catch { return; }
+        if (verdict.kind !== 'approved') continue;
+        const before = { limits: { ...journal.view.limits }, expires: journal.view.expires };
+        applyOperatorRequest(state.request.id);
+        await sendOperatorResult(state.request.id, before);
+        break;
+      }
     }
   };
   /** The fixed completion line after a review-approved request applied (Rule 89: signed as infrastructure). An UNKNOWN
@@ -7363,7 +7408,7 @@ export function createJournalWorker(journal: ReturnType<typeof openPreviewJourna
       const provenance = journal.signOutbound('infrastructure', { target: `limited:${lead.id}`, chat: journal.view.genesis.chat, ...thread, body: text });
       journal.append({ kind: 'limited-intent', id: lead.id, covers: group.turns.map(turn => turn.id), reason: group.reason,
         text, chat: journal.view.genesis.chat, ...thread, grant: journal.view.genesis.grant, ...(approval ? { approval } : {}),
-        ...(yesRequest ? { operatorRequest: yesRequest.request } : {}), ...(yesRequest?.review ? { operatorReview: yesRequest.review } : {}),
+        ...(yesRequest ? { operatorRequest: yesRequest.request, requestScope: 'action' as const } : {}), ...(yesRequest?.review ? { operatorReview: yesRequest.review } : {}),
         provenance, at: ports.now() });
       gate();
       const markup = withStopPage(approval === undefined ? undefined : approval.action === 'stop' ? approvalMarkup(approval.id) : raiseMarkup(approval.id, link));

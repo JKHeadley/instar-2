@@ -132,6 +132,12 @@ export function operatorReviewRequestText(request: OperatorRequest, current: { l
   return `${requestHead(request, current)}To approve, open ${link} and approve the pull request (Review changes, then Approve); `
     + `anything else changes nothing. This request lapses at ${minute(request.expiresAt)}.`;
 }
+/** The text of the request's own pull request and request file (P-05 route; plan #371). It names only the route that
+ * approves it, the pull request's review: on this route a chat yes is not admissible, so it never mentions one. */
+export function operatorReviewBodyText(request: OperatorRequest, current: { limits: CapLimits; expires: number }): string {
+  return `${requestHead(request, current)}To approve, approve this pull request (Review changes, then Approve); anything else `
+    + `changes nothing. This request lapses at ${minute(request.expiresAt)}.`;
+}
 /** What an applied request set, from the request alone: the facts the approval-report question names. */
 export const operatorRequestTarget = (request: OperatorRequest): string => request.action === 'raise-caps'
   ? `set the ${KEYS.map(key => `${LIMIT_NAMES[key][0]} allowance to ${request.limits![key]}`).join(', the ')}`
