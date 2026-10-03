@@ -28,7 +28,7 @@
 //   and its network, which the shell's sandbox already closes.
 import { basename, dirname, join, resolve, sep } from 'node:path';
 import { isIP } from 'node:net';
-import { admitEffect, decodeEffectPolicy, DEFAULT_EFFECT_POLICY, toolEffectProposal } from './effect-doorway.mjs';
+import { admitEffect, decodeEffectPolicy, DEFAULT_EFFECT_POLICY, toolEffectProposal, UNAVAILABLE_EFFECT_POLICY } from './effect-doorway.mjs';
 
 const SHELL_SAFE_PATH = /^\/[A-Za-z0-9_./@-]+$/u;
 /** Prepended to every admitted shell command. Claude Code 2.1.280 exports its own messaging inbox
@@ -65,13 +65,27 @@ export const RECORD_EXCERPT_CHARS = 4096;
 /** The effect doorway's admission for a tool call's proposal, under the turn's config: its effect policy (absent:
  * nothing outward by default), the register's irreversible term and the installation's accepted closed operation set. */
 export function admitToolEffect(proposal, config, now) {
-  const policy = config.effectPolicy === undefined ? DEFAULT_EFFECT_POLICY : decodeEffectPolicy(config.effectPolicy);
-  return admitEffect(proposal, policy, config.operations ?? [], { ...(config.irreversibleTerm ? { irreversibleTerm: config.irreversibleTerm } : {}), now });
+  const options = { ...(config.irreversibleTerm ? { irreversibleTerm: config.irreversibleTerm } : {}), now };
+  let policy;
+  try { policy = config.effectPolicy === undefined ? DEFAULT_EFFECT_POLICY : decodeEffectPolicy(config.effectPolicy); }
+  catch (error) {
+    // A configured policy that cannot be read is not "no policy": its restrictions and grants are unknown, so the
+    // proposal is treated as policy-sensitive with no grant and refused, with the reason recorded (fail closed).
+    const why = config.effectPolicy?.type === UNAVAILABLE_EFFECT_POLICY ? String(config.effectPolicy.reason ?? 'unavailable')
+      : String(error?.message ?? error);
+    const verdict = admitEffect(proposal, { ...DEFAULT_EFFECT_POLICY, policySensitive: [proposal.effect] }, config.operations ?? [], options);
+    const admits = 'the installed effect policy becoming readable again, so current policy can be established';
+    return { ...verdict, admitted: false, disposition: 'refused', admits,
+      reason: `effect doorway refused ${proposal.effect}${proposal.target ? ` (${proposal.target})` : ''}: the installed effect policy is `
+        + `unavailable (${why}), so whether it is policy-sensitive cannot be established. What would admit it: ${admits}. Nothing was `
+        + 'done; tell the user plainly that this step was refused, why, and what would admit it.' };
+  }
+  return admitEffect(proposal, policy, config.operations ?? [], options);
 }
 
 /** Whether the turn's effect policy registers this proposal's effect (and target) or marks the effect, its target or a
  * matter it registers policy-sensitive: then the doorway, not the tool's ordinary class, decides it (the purpose's
- * policy-sensitive test). A policy that does not decode names nothing here; the doorway call itself then fails closed. */
+ * policy-sensitive test). A policy that does not decode (or is marked unavailable) names everything here, so the doorway refuses it. */
 function policyNames(config, proposal) {
   if (config.effectPolicy === undefined || proposal === null) return false;
   let policy; try { policy = decodeEffectPolicy(config.effectPolicy); } catch { return true; }

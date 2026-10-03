@@ -15,6 +15,8 @@ import { afterEach, expect, it } from 'vitest';
 // @ts-expect-error The hook and its decision stay plain JavaScript: the harness runs them without a loader.
 import { admitToolCall, admitToolEffect, publicAddress, toolShellPrefix, toolTrace, webReadHost } from './tool-admission.mjs';
 import { SINGLE_MACHINE_PROFILE } from './activation-authority.js';
+// @ts-expect-error The doorway stays plain JavaScript, like the hook.
+import { currentEffectPolicy } from './effect-doorway.mjs';
 
 const HOOK = join(__dirname, 'tool-admission-hook.mjs');
 const SPIKE = join(__dirname, 'fixtures/tool-turn/spike-cab6b51d');
@@ -294,6 +296,42 @@ it('admits an MCP tool as ordinary work only when the root lists it as a read; e
   // A policy that names something else leaves the read ordinary.
   expect(admitToolCall({ tool_name: 'mcp__dummy__lookup', tool_input: { key: 'a' } }, { ...sensitive, effectPolicy: { ...sensitive.effectPolicy,
     policySensitive: ['mcp__other__lookup'] } }, 1, fs, 1, 0)).toEqual({ decision: 'allow', reason: 'MCP read the root configuration lists', kind: 'mcp-read' });
+});
+
+it('keeps an installed policy\'s restrictions when the runner cannot reread it: the policy-sensitive reads stay refused, ordinary work stays admitted', () => {
+  // The runner rereads its configured --effect-policy at each tool turn (currentEffectPolicy). A policy valid at launch that
+  // is mid-rewrite, malformed or removed must not become "no policy": that admitted a marked read with no doorway decision.
+  const { ws, state, root } = turn();
+  const policyPath = join(root, 'effect-policy.json');
+  writeFileSync(policyPath, JSON.stringify({ type: 'PreviewEffectPolicy', resourceLevelUsd: 0, policySensitive: ['1.1.1.1', 'mcp__dummy__lookup'],
+    registered: [], grants: [] }));
+  const base = JSON.parse(readFileSync(join(state, 'config.json'), 'utf8'));
+  const install = () => writeFileSync(join(state, 'config.json'), JSON.stringify({ ...base, mcpReads: ['mcp__dummy__lookup'],
+    effectPolicy: currentEffectPolicy(() => readFileSync(policyPath, 'utf8')) }));
+  const calls = { web: j('WebFetch', { url: 'https://1.1.1.1/x', prompt: 'x' }), mcp: j('mcp__dummy__lookup', { key: 'a' }),
+    read: j('Read', { file_path: `${ws}/in.txt` }) };
+  const decide = () => Object.fromEntries(Object.entries(calls).map(([name, input]) => [name, hook(state, input).decision]));
+  install();
+  expect(decide()).toEqual({ web: 'deny', mcp: 'deny', read: 'allow' });
+  for (const lose of [() => writeFileSync(policyPath, '{"type":"PreviewEffectPolicy",'), () => rmSync(policyPath)]) {
+    lose(); install();
+    expect(JSON.parse(readFileSync(join(state, 'config.json'), 'utf8')).effectPolicy).toMatchObject({ type: 'PreviewEffectPolicyUnavailable' });
+    expect(decide()).toEqual({ web: 'deny', mcp: 'deny', read: 'allow' });
+  }
+  // Each refusal is a recorded doorway decision naming the unavailable policy.
+  const rows = readFileSync(join(state, 'admission.jsonl'), 'utf8').trim().split('\n').map(line => JSON.parse(line))
+    .filter(row => row.phase === 'pre' && row.tool !== 'Read').slice(-2);
+  for (const row of rows) expect(row).toMatchObject({ decision: 'deny', doorway: { disposition: 'refused', tests: { policySensitive: true } },
+    reason: expect.stringContaining('the installed effect policy is unavailable (it cannot be read (ENOENT))') });
+  // The other side: with no policy configured at all, the listed MCP read and the public web read are ordinary work.
+  writeFileSync(join(state, 'config.json'), JSON.stringify({ ...base, mcpReads: ['mcp__dummy__lookup'] }));
+  expect(decide()).toEqual({ web: 'allow', mcp: 'allow', read: 'allow' });
+  // And once the policy reads again, a grant in it admits the marked web read through the doorway.
+  writeFileSync(policyPath, JSON.stringify({ type: 'PreviewEffectPolicy', resourceLevelUsd: 0, policySensitive: ['1.1.1.1'], registered: [],
+    grants: [{ id: 'g-web', effect: 'tool:network', target: '1.1.1.1', approves: ['scope', 'policySensitive'], source: 'telegram:102965:121996',
+      custodian: 'desk', recovery: 'remove the grant' }] }));
+  install();
+  expect(hook(state, calls.web).decision).toBe('allow');
 });
 
 it('admits the registered subagent type per slot of one shared budget, from the turn or from a subagent (Rule 114), in the foreground, and records each start, stop and parent as an edge', () => {

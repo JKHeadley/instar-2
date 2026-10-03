@@ -13,7 +13,7 @@ import { DEFAULT_SUBSCRIPTION_DOORWAY, subscriptionDoorway, SUBSCRIPTION_CONVERS
 import { readRootMcp, reconcileToolTurns, runToolTurn, toolPacketFits, toolStatusLines, toolTurnEligible, TOOL_NOTICE_MAX_BYTES,
   TOOLS_DEFAULT_ACTIVATION } from './tool-turn.mjs';
 import { encoded } from '../../src/assembly/boundary.js';
-import { decodeEffectPolicy, DEFAULT_EFFECT_POLICY, effectDoorwayStatusLines, refusedEffectNotices } from './effect-doorway.mjs';
+import { decodeEffectPolicy, DEFAULT_EFFECT_POLICY, effectDoorwayStatusLines, refusedEffectNotices, currentEffectPolicy } from './effect-doorway.mjs';
 import { redact } from '../../src/recall/redact.js';
 import { durablePreviewWrite } from './durable-write.js';
 import { prepareJournalEnvelope, withWorkspaceNotice } from './journal-envelope.js';
@@ -1831,7 +1831,9 @@ async function main() {
     const effectPolicyPath = options['effect-policy'];
     if (effectPolicyPath !== undefined) {
       decodeEffectPolicy(JSON.parse(readFileSync(effectPolicyPath, 'utf8')));
-      effectPolicyOf = () => { try { return decodeEffectPolicy(JSON.parse(readFileSync(effectPolicyPath, 'utf8'))); } catch { return DEFAULT_EFFECT_POLICY; } };
+      // A configured policy that cannot be reread is unavailable, never the empty default: the hook refuses every proposal
+      // that could reach the doorway until it reads again (its restrictions must not lapse while it is being rewritten).
+      effectPolicyOf = () => currentEffectPolicy(() => readFileSync(effectPolicyPath, 'utf8'));
     }
     // Rule 114: a tool turn a crash interrupted has its hook record journaled now, before any new turn (and its retention
     // pass) can run; until it is, retention keeps that directory. No tool turn of this runner is live yet.
