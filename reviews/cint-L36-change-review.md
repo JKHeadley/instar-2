@@ -21,6 +21,11 @@ Convergence: none
 Decision: cint-L36-merge | merged origin/w3-askanytime (c9a0c15d) onto origin/cint-L35 30f297ce with an ordinary merge; the unit's files and w3-retrolive2's are disjoint, the remerge diff is empty, and the unit's reviewed bytes land unchanged | reported=/Users/dabombstudio/.instar/agents/echo/.instar/lanes/cint-L36-PROGRESS.md
 Decision: cint-L36-desk | desk chain as cint-L35 records it: repin 0, tsc 0, rehash 0 pins, register replay at c9a0c15d (303ac2fa); build-register --check true | reported=/Users/dabombstudio/.instar/agents/echo/.instar/lanes/cint-L36-PROGRESS.md
 Prompt review: the only model-facing change is the carried unit's condition (reviewed in reviews/w3-askanytime-change-review.md); the merge adds no hunk of its own and no prompt text changes. Always-sent bytes on a default root are unchanged (+0); +397 text / +415 envelope bytes on a root with an admissible source. The unit's four recorded real-model answers replay through the live port's extraction on the merged tree.
+Prompt finding: 849db3a6296a | protocol-literal | an existing fixed reply literal in journal.ts, unchanged by this change
+Prompt finding: bd01de21286a | protocol-literal | existing capability-guidance wording in journal.ts, unchanged by this change
+Prompt finding: fb5fa7e706c8 | protocol-literal | existing capability-guidance wording in journal.ts, unchanged by this change
+Skip: tests/preview/ask-anytime.test.ts:216 | scope=the live-copy replay runs only where a copy of the live root and the storage key are bound; it never reads the live root
+Skip: tests/preview/ask-anytime.test.ts:253 | scope=the real-model capture runs only on explicit INSTAR_ASKANYTIME_LIVE=1; its outputs are recorded and always replayed
 
 Subject (14 paths): generated/capabilities.json, generated/capabilities.md, generated/coverage.md, generated/glossary.md, generated/register.json, generated/rules.md, generated/source.json, reviews/cint-L36-change-review.md, reviews/w3-askanytime-change-review.md, tests/preview/README.md, tests/preview/ask-anytime.test.ts, tests/preview/fixtures/ask-anytime-live-2026-10-02.json, tests/preview/journal.ts, tests/preview/operator-yes.test.ts
 
