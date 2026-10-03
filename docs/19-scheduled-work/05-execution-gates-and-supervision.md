@@ -113,4 +113,12 @@ and its obligations durable. A completion marker or transport receipt proves onl
 Part five decides progression and closure from accepted results. Handoff prose is a claim to
 re-resolve against signed history, never the source of current schedule, authority or completion.
 
+**Rule — every delegated session has its run edge; a subprocess has its owner.** Rules 60, 68 and
+114; **checks:** `tests/assembly/production-provider-tools.test.ts` (no delegating tool in the
+preview's tool launch) and P15-NF-21. Every delegated session or agent, including one started inside
+a turn, has the Rule 114 durable parent-child edge. Ordinary subprocesses remain owned by their
+enclosing execution. Durable work survives disposable turns and resumes only under current scope,
+ownership and resource authority. The preview's tool turn delegates nothing: its launch removes every
+subagent and workflow tool, so the commands it runs are ordinary subprocesses of that turn's launch.
+
 ---

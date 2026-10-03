@@ -1,0 +1,9 @@
+{
+  "sandbox": {
+    "enabled": true, "failIfUnavailable": true, "autoAllowBashIfSandboxed": true, "allowUnsandboxedCommands": false,
+    "network": { "allowedDomains": ["example.com"] },
+    "filesystem": { "allowWrite": ["/Users/dabombstudio/.instar/agents/echo/.worktrees/w4-toolsreal/scratch/w4-toolsreal-r6/runs/r6-baseline/ws"], "denyRead": ["/Users/Shared/instar-preview-s2/config", "/Users/dabombstudio/.instar/agents/echo/.worktrees/w4-toolsreal/scratch/w4-toolsreal-r6/runs", "/Users", "/Volumes"], "allowRead": ["/Users/dabombstudio/.instar/agents/echo/.worktrees/w4-toolsreal/scratch/w4-toolsreal-r6/runs/r6-baseline/ws"] }
+  },
+  "permissions": { "allow": ["Bash", "Read", "Write", "Edit", "Glob", "Grep"], "deny": ["Read(//Users/Shared/instar-preview-s2/config/**)", "Edit(//Users/Shared/instar-preview-s2/config/**)", "Agent", "Task"] },
+  "hooks": { "PreToolUse": [ { "matcher": "*", "hooks": [ { "type": "command", "command": "/usr/local/bin/node /Users/dabombstudio/.instar/agents/echo/.worktrees/w4-toolsreal/scratch/w4-toolsreal-r6/admit.mjs /Users/dabombstudio/.instar/agents/echo/.worktrees/w4-toolsreal/scratch/w4-toolsreal-r6/runs/r6-baseline/state /Users/dabombstudio/.instar/agents/echo/.worktrees/w4-toolsreal/scratch/w4-toolsreal-r6/runs/r6-baseline/ws 6 enforce" } ] } ] }
+}

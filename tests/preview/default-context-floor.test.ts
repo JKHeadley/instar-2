@@ -11,9 +11,10 @@ import { prepareJournalEnvelope } from './journal-envelope.js';
 import { PREVIEW_FIXED_PROMPT_BYTES, PREVIEW_LIVE_LIMITS, PREVIEW_MIN_SERVABLE_CONTEXT_BYTES,
   PREVIEW_MIN_TURN_HEADROOM_BYTES, PREVIEW_REPLY_BOUND_BYTES, REPLY_REVIEW_FIXED_BYTES,
   concurrentWorkItem, createJournalWorker, declaredObligations, openPreviewJournal, replyReviewReserveFor,
+  OBLIGATION_DECISION, OBLIGATION_DECISION_TOOLS, previewCapabilities,
   unservableContextReason } from './journal.js';
 import { jevQuestions, replyReviewContext, replyReviewQuestion } from './reply-check.js';
-import { SUBSCRIPTION_CONVERSATION_SYSTEM_PROMPT } from '../../src/assembly/production-provider.js';
+import { SUBSCRIPTION_CONVERSATION_SYSTEM_PROMPT, SUBSCRIPTION_TOOLS_SYSTEM_PROMPT } from '../../src/assembly/production-provider.js';
 import { OFFLINE_STORAGE_KEY, offlineProfile, successiveWorld } from './successive-fixture.js';
 
 /** Why this file exists: live 2026-10-01, room two was created at the launcher's then-default
@@ -31,7 +32,7 @@ const DESK_PATH = '/offline/desk-status.md';
 
 /** One fresh root, one ordinary operator turn, the real briefing from this checkout, reply review wired
  * and the concurrent-work row a live runner always sends. Returns what the provider would receive. */
-async function firstTurn(maxBytes: number) {
+async function firstTurn(maxBytes: number, tools = false) {
   const root = realpathSync(mkdtempSync(join(tmpdir(), 'preview-default-floor-')));
   try {
     const journal = openPreviewJournal(join(root, 'journal.encrypted'), key, { kind: 'genesis', bot: '12345678',
@@ -39,7 +40,7 @@ async function firstTurn(maxBytes: number) {
       expires: 9_999_999_999_999, maxCalls: PREVIEW_LIVE_LIMITS.calls, maxReplies: PREVIEW_LIVE_LIMITS.replies,
       maxTurns: PREVIEW_LIVE_LIMITS.turns, maxBytes, cursor: 0 });
     const briefing = sourcePacket(path => readFileSync(resolve(process.cwd(), path), 'utf8'), SOURCE_PINS,
-      { providerAttempts: journal.view.limits.maxCalls, expiresAt: journal.view.expires }).sources;
+      { providerAttempts: journal.view.limits.maxCalls, expiresAt: journal.view.expires, tools }).sources;
     const runs = { launches: [{ at: now - 60_000, pid: 1 }], exits: [] };
     // Larger than its cut bound, so the measured shape is the one every answer carries under pressure.
     const desk = { text: `# desk\n${'Preview work remains a supervised private chat trial with a reviewed activation.\n'.repeat(40)}`,
@@ -52,6 +53,7 @@ async function firstTurn(maxBytes: number) {
     const worker = createJournalWorker(journal, { now: () => now, stopped: () => false, sources,
       prepareModel: input => prepareJournalEnvelope(input, 'claude-opus-5-5', journal.view.genesis.grant, now,
         journal.view.limits.maxBytes),
+      toolRoute: () => tools,
       concurrentWork: () => concurrentWorkItem({ now, others: [], scanned: 1, truncated: false, unreadable: 0,
         current: { owner: 'preview-root', launch: now - 60_000, conversation: 'telegram/bot-12345678/chat-7654321' } }),
       model: async input => {
@@ -76,7 +78,7 @@ async function firstTurn(maxBytes: number) {
     await worker.summarizeIfNeeded(true);
     const turn = journal.view.order.at(-1)!;
     const total = (row: { prepared: string } | undefined) => row === undefined ? null
-      : bytes(row.prepared) + bytes(SUBSCRIPTION_CONVERSATION_SYSTEM_PROMPT);
+      : bytes(row.prepared) + bytes(tools ? SUBSCRIPTION_TOOLS_SYSTEM_PROMPT : SUBSCRIPTION_CONVERSATION_SYSTEM_PROMPT);
     // What the reply review of THIS turn would really send: the same answer prompt rebuilt as the review's
     // own input, with a candidate reply at the send path's own bound. This is what the reserve must cover.
     const reviewTotal = answer === undefined ? null
@@ -90,7 +92,9 @@ async function firstTurn(maxBytes: number) {
     const result = { sent: turn.sent !== undefined, held: turn.held, notice: turn.noticeClass,
       answerTotal: total(answer), summaryTotal: total(summary), reviewTotal,
       deskCut: deskText.includes('[cut for space'),
-      keys: answer === undefined ? [] : Object.keys(JSON.parse(answer.context) as object) };
+      keys: answer === undefined ? [] : Object.keys(JSON.parse(answer.context) as object),
+      packet: answer === undefined ? null : JSON.parse(answer.context) as { capabilities?: { externalTools?: string };
+        obligationDecision?: string; governingConstraints?: Record<string, string> } };
     journal.close();
     return result;
   } finally { rmSync(root, { recursive: true, force: true }); }
@@ -236,3 +240,34 @@ export const createProductionTelegramIO = () => ({ invoke(input) {
     .toBe(PREVIEW_LIVE_LIMITS.contextBytes);
   rmSync(world.directory, { recursive: true, force: true });
 }, 180_000);
+
+it('keeps a tool turn\'s always-sent parts inside the same measured floor (Part Thirteen §9, docs/17-harness-adapters)', async () => {
+  // The tool briefing line replaces the no-tools line at no more bytes, so the packet ladder keeps the whole
+  // always-sent shape at the floor. The tool system prompt is longer than the conversation one (measured:
+  // SYSTEM_GROWTH below); the tool route's room is max(maxBytes, the policy's 32768), so at the floor the
+  // prompt still fits with room to spare, and above it the runner's envelope reserves the difference.
+  const floor = PREVIEW_MIN_SERVABLE_CONTEXT_BYTES;
+  const plain = await firstTurn(floor), tools = await firstTurn(floor, true);
+  expect(tools.sent).toBe(true);
+  for (const required of ['sources', 'obligationDecision', 'governingConstraints', 'capabilities',
+    'memoryDecision', 'datedDecision', 'concurrentWork', 'audience'])
+    expect(tools.keys, required).toContain(required);
+  const growth = bytes(SUBSCRIPTION_TOOLS_SYSTEM_PROMPT) - bytes(SUBSCRIPTION_CONVERSATION_SYSTEM_PROMPT);
+  // 603 at w4-toolsreal round 0; +20 when the sentence stopped claiming deletes are refused (they are inside the scratch volume).
+  expect(growth).toBe(623);
+  // The packet names what the call really has (review round 1, finding 5): the text-only route keeps the no-tools read and
+  // its "attempted nothing" guidance; the tool route says the tools are as listed and that only its recorded calls ran.
+  expect(plain.packet?.capabilities?.externalTools).toBe('none');
+  expect(plain.packet?.obligationDecision).toBe(OBLIGATION_DECISION);
+  expect(plain.packet?.governingConstraints?.['no-tools']).toBe('no external tools or accounts');
+  expect(tools.packet?.capabilities).toEqual(previewCapabilities(true));
+  expect(tools.packet?.capabilities?.externalTools).toBe('as listed');
+  expect(tools.packet?.obligationDecision).toBe(OBLIGATION_DECISION_TOOLS);
+  expect(tools.packet?.obligationDecision).not.toContain('You attempted nothing outside this reply');
+  expect(tools.packet?.governingConstraints?.['no-tools']).toBe('only listed tools; no accounts');
+  const plainPacket = plain.answerTotal! - bytes(SUBSCRIPTION_CONVERSATION_SYSTEM_PROMPT);
+  const toolsPacket = tools.answerTotal! - bytes(SUBSCRIPTION_TOOLS_SYSTEM_PROMPT);
+  expect(toolsPacket).toBeLessThanOrEqual(plainPacket);
+  expect(tools.answerTotal!).toBeLessThanOrEqual(PREVIEW_FIXED_PROMPT_BYTES + growth);
+  expect(tools.answerTotal!).toBeLessThanOrEqual(Math.max(floor, 32768));
+}, 60_000);

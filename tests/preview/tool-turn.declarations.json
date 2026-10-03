@@ -1,0 +1,25 @@
+[
+  {
+    "type": "Declaration",
+    "schemaVersion": 1,
+    "id": "preview.tool-turn.prepareToolTurn",
+    "kind": "stores",
+    "status": "live",
+    "requiredFacts": {
+      "growth": "deletes",
+      "holdsAgentMemory": "no",
+      "machineScope": {
+        "kind": "machine-local",
+        "reason": "Rule 113: one tool turn's scratch on this machine, never shared or resumed: its fixed-size volume (workspace and temporary files) is unmounted and its image removed after the turn, and only the newest 16 turn directories (the admission hook's config, call slots and record) are kept; the journal's tool-turn rows are the durable record."
+      },
+      "agreesWith": []
+    },
+    "standards": [
+      7,
+      32,
+      60,
+      113
+    ],
+    "holds": []
+  }
+]
