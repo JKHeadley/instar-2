@@ -420,7 +420,7 @@
     "recordedUnavailable": true
    },
    {
-    "why": "duties carries a character outside the verdict alphabet",
+    "why": "duties carries a character outside the verdict alphabet. Reclassified by plan #412 (w3-retrocut): a malformed fixed part no longer fails the pass; the duties field cannot be read, so every duty is recorded not inspected.",
     "part": {
      "duties": "nnnnnnnnnnnnnx",
      "wells": [
@@ -433,10 +433,12 @@
       0
      ],
      "eff": "none"
-    }
+    },
+    "recordedUnavailable": true,
+    "duty": "all"
    },
    {
-    "why": "wells is the verbose array of objects, not one entry per well",
+    "why": "wells is the verbose array of objects, not one entry per well. Reclassified by plan #412 (w3-retrocut): a malformed fixed part no longer fails the pass; only its own duty (gravity-well) is recorded not inspected, with the reason.",
     "part": {
      "duties": "nnnnnnnnnnnnnn",
      "wells": [
@@ -477,10 +479,12 @@
       }
      ],
      "eff": "none"
-    }
+    },
+    "recordedUnavailable": true,
+    "duty": "gravity-well"
    },
    {
-    "why": "wells has one entry too few",
+    "why": "wells has one entry too few. Reclassified by plan #412 (w3-retrocut): a malformed fixed part no longer fails the pass; only its own duty (gravity-well) is recorded not inspected, with the reason.",
     "part": {
      "duties": "nnnnnnnnnnnnnn",
      "wells": [
@@ -492,10 +496,12 @@
       0
      ],
      "eff": "none"
-    }
+    },
+    "recordedUnavailable": true,
+    "duty": "gravity-well"
    },
    {
-    "why": "a well is marked observed with an empty ref list, so nothing evidences it",
+    "why": "a well is marked observed with an empty ref list, so nothing evidences it. Reclassified by plan #412 (w3-retrocut): a malformed fixed part no longer fails the pass; only its own duty (gravity-well) is recorded not inspected, with the reason.",
     "part": {
      "duties": "nnnnnnnnnnnnnn",
      "wells": [
@@ -508,10 +514,12 @@
       0
      ],
      "eff": "none"
-    }
+    },
+    "recordedUnavailable": true,
+    "duty": "gravity-well"
    },
    {
-    "why": "a well entry is neither 0 nor a ref list",
+    "why": "a well entry is neither 0 nor a ref list. Reclassified by plan #412 (w3-retrocut): a malformed fixed part no longer fails the pass; only its own duty (gravity-well) is recorded not inspected, with the reason.",
     "part": {
      "duties": "nnnnnnnnnnnnnn",
      "wells": [
@@ -524,10 +532,12 @@
       0
      ],
      "eff": "none"
-    }
+    },
+    "recordedUnavailable": true,
+    "duty": "gravity-well"
    },
    {
-    "why": "the efficiency sentence Rule 51 requires is missing",
+    "why": "the efficiency sentence Rule 51 requires is missing. Reclassified by plan #412 (w3-retrocut): a malformed fixed part no longer fails the pass; only its own duty (waste) is recorded not inspected, with the reason.",
     "part": {
      "duties": "nnnnnnnnnnnnnn",
      "wells": [
@@ -539,7 +549,9 @@
       0,
       0
      ]
-    }
+    },
+    "recordedUnavailable": true,
+    "duty": "waste"
    },
    {
     "why": "a duty claims a finding (f) the answer does not contain. Reclassified by plan #339 (w3-retrolive2): this no longer fails closed. The claim behind the f is not in the answer, so the duty is recorded unavailable (not inspected) with RETRO_DUTY_UNCORROBORATED_NOTE, and the rest of the pass stands. Live room two's first pass under cint-L33 died on exactly this row ('duty outcome claims a finding this answer does not contain') with an answer that fitted the output cap.",
@@ -593,7 +605,7 @@
     "recordedUnavailable": true
    },
    {
-    "why": "the efficiency sentence Rule 51 requires is a number, not a sentence (added by plan #382 to replace the three duties rows it reclassified: a fixed-part field whose own type the validator still refuses)",
+    "why": "the efficiency sentence Rule 51 requires is a number, not a sentence (added by plan #382 to replace the three duties rows it reclassified: a fixed-part field whose own type the validator still refuses). Reclassified by plan #412 (w3-retrocut): a malformed fixed part no longer fails the pass; only its own duty (waste) is recorded not inspected, with the reason.",
     "part": {
      "duties": "nnnnnnnnnnnnnn",
      "wells": [
@@ -606,15 +618,19 @@
       0
      ],
      "eff": 3
-    }
+    },
+    "recordedUnavailable": true,
+    "duty": "waste"
    },
    {
-    "why": "wells is a number, not one entry per gravity well (added by plan #382, same reason)",
+    "why": "wells is a number, not one entry per gravity well (added by plan #382, same reason). Reclassified by plan #412 (w3-retrocut): a malformed fixed part no longer fails the pass; only its own duty (gravity-well) is recorded not inspected, with the reason.",
     "part": {
      "duties": "nnnnnnnnnnnnnn",
      "wells": 7,
      "eff": "none"
-    }
+    },
+    "recordedUnavailable": true,
+    "duty": "gravity-well"
    }
   ],
   "overLongFixed": {

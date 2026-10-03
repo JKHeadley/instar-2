@@ -103,9 +103,13 @@ describe('the live pass-0 refusal of room two under cint-L37: an unreadable duti
     expect(result.duties[at('gravity-well')]).toEqual({ duty: 'gravity-well', disposition: 'inspected', note: RETRO_DUTY_CODES.n });
   });
 
-  it('a character outside the verdict alphabet still refuses the whole pass: a different test, with no recorded instance', () => {
+  it('a character outside the verdict alphabet makes the duties string unreadable, like a mis-counted one (changed by plan #412)', () => {
+    // It used to refuse the whole pass. No position of such a string can be trusted, so it is the same unreadable
+    // field: every duty recorded not inspected, and the rest of the pass stands.
     const duties = `${'n'.repeat(RETROSPECTIVE_DUTIES.length - 1)}x`;
-    expect(() => validate({ ...answerOf(4), duties })).toThrow('retrospective: duty benchmark-divergence has no verdict');
+    const result = validate({ ...answerOf(4), duties });
+    expect(result.duties.filter(row => row.disposition === 'inspected')).toEqual([]);
+    expect(result.duties.every(row => row.note === RETRO_DUTIES_UNREADABLE_NOTE || row.duty === 'waiver-recurrence')).toBe(true);
   });
 
   it('states the id-list shape in the question the model is given, and what a mis-spelt id costs', () => {

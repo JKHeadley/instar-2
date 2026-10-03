@@ -7,7 +7,7 @@ import { GRAVITY_WELLS, RETROSPECTIVE_DUTIES, RETRO_ANSWER_BUDGET_BYTES, RETRO_A
   RETRO_ANSWER_GRADE_REFS, RETRO_ANSWER_GROWTH, RETRO_ANSWER_START_BYTES, RETRO_CLASSIFICATION_CHARS,
   RETRO_EFFICIENCY_CHARS, RETRO_FEEDBACK_OWNER_CHARS, RETRO_MAX_OMITTED_ROWS, RETRO_MIN_INTERVAL_MS,
   RETRO_OUTCOME_REASON_CHARS, RETRO_OVER_CAP_REASON, RETRO_UNACCOUNTED_REASON, disciplineSource, eligibleCases,
-  estimatedAnswerBytes, retroAnswerBudget, reviewRecordOf, validateRetrospective, type RetroCase } from './retrospective.js';
+  estimatedAnswerBytes, retroAnswerBudget, reviewRecordOf, rowMissingReason, validateRetrospective, type RetroCase } from './retrospective.js';
 import { SUBSCRIPTION_MAX_OUTPUT_TOKENS } from '../../src/assembly/production-provider.js';
 
 /** The three live retrospective failures of 2026-10-02, recorded AFTER the compact answer shape went live, so
@@ -134,18 +134,20 @@ it('prices the feedback row a recorded correction MUST owe, and the validator re
     disposition: 'improvement-owned', owner: pad(RETRO_FEEDBACK_OWNER_CHARS), next: pad(RETRO_OUTCOME_REASON_CHARS) }));
   // The row is real work the answer cannot leave out, so the estimate must charge for it.
   expect(estimatedAnswerBytes([correction]) - estimatedAnswerBytes([plain])).toBeGreaterThanOrEqual(feedbackRow);
-  // Both sides of the requirement, against the live validator: without the row the pass is refused...
+  // Both sides of the requirement, against the live validator: without the row the case is not inspected (changed
+  // by plan #412: it is recorded omitted and stays owed, where it used to refuse the whole pass)...
   const view = { retroPasses: [], dated: [], turns: new Map() } as unknown as JournalView;
   const body = (feedback: unknown[]) => ({ inspected: [correction.id], omitted: [],
     duties: 'n'.repeat(RETROSPECTIVE_DUTIES.length), wells: GRAVITY_WELLS.map(() => 0), eff: 'nothing wasted',
     findings: [], grades: [], feedback, authorizations: [], comparisons: [], closures: [] });
-  expect(() => validateRetrospective(body([]), { cases: [correction] }, view, 1))
-    .toThrow('retrospective: a recorded correction received no feedback disposition');
-  // ...and with it the pass stands, and the row is clipped at the length the question states for it.
+  expect(validateRetrospective(body([]), { cases: [correction] }, view, 1))
+    .toMatchObject({ inspected: [], omitted: [{ case: correction.id, reason: rowMissingReason('feedback') }] });
+  // ...and with it the case is inspected, and the row is clipped at the length the question states for it.
   const result = validateRetrospective(body([{ case: correction.id, classification: pad(RETRO_CLASSIFICATION_CHARS + 50),
     disposition: 'improvement-owned', owner: pad(RETRO_FEEDBACK_OWNER_CHARS), next: pad(RETRO_OUTCOME_REASON_CHARS) }]),
   { cases: [correction] }, view, 1);
   expect(result.feedback).toHaveLength(1);
+  expect(result.inspected).toEqual([correction.id]);
   expect(result.feedback[0]!.classification).toHaveLength(RETRO_CLASSIFICATION_CHARS);
 });
 

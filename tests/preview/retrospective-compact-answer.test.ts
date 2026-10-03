@@ -3,7 +3,7 @@ import { mkdtempSync, readFileSync, realpathSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { createJournalWorker, openPreviewJournal, retrospectiveCases, type JournalView } from './journal.js';
-import { GRAVITY_WELLS, RETROSPECTIVE_DUTIES, RETROSPECTIVE_QUESTION, RETRO_ANSWER_BUDGET_BYTES, RETRO_DUTY_UNCORROBORATED_NOTE, RETRO_DUTY_UNINSPECTED_NOTE,
+import { GRAVITY_WELLS, RETROSPECTIVE_DUTIES, RETROSPECTIVE_QUESTION, RETRO_ANSWER_BUDGET_BYTES, RETRO_DUTY_PART_UNREADABLE_NOTE, RETRO_DUTY_UNCORROBORATED_NOTE, RETRO_DUTY_UNINSPECTED_NOTE,
   RETRO_ANSWER_BYTES_PER_TOKEN, RETRO_DUTY_CODES, RETRO_EFFICIENCY_CHARS, RETRO_FAILURE_BACKOFF_MS,
   RETRO_MIN_INTERVAL_MS, RETRO_OUTCOME_REASON_CHARS, RETRO_OVER_CAP_REASON, RETRO_WELL_NOTES,
   WAIVER_EVIDENCE_UNAVAILABLE, disciplineSource, dutyLeftUninspected, eligibleCases, estimatedAnswerBytes, retroAnswerBudget, retrospectiveStatusLine,
@@ -248,17 +248,19 @@ it('decodes the compact answer into exactly the records every downstream reader 
   } finally { w.done(); }
 });
 
-it('records a well as observed from its refs alone, and still refuses an observed well with nothing evidencing it', async () => {
+it('records a well as observed from its refs alone, and never records an observed well with nothing evidencing it', async () => {
   const observed = (refs: (state: string) => unknown) => (state: string) => complete(compactAnswer(state,
     { wells: [refs(state), ...GRAVITY_WELLS.slice(1).map(() => 0)],
       duties: 'f' + 'n'.repeat(RETROSPECTIVE_DUTIES.length - 1) }));
-  // An observed well with an empty ref list is refused: nothing evidences it.
+  // An observed well with an empty ref list is refused: nothing evidences it. Changed by plan #412: the refusal
+  // records the gravity-well duty NOT inspected with the reason, no well at all, and the rest of the pass stands.
   const empty = await onePass(observed(() => []));
-  expect(empty.pass).toMatchObject({ state: 'failed', reason: expect.stringContaining('needs refs') });
-  expect(empty.stillOwed).toEqual(expect.arrayContaining(empty.before));
+  expect(empty.pass.state).toBe('complete');
+  expect(empty.pass.result!.gravityWells).toEqual([]);
+  expect(empty.pass.result!.duties[0]).toMatchObject({ duty: 'gravity-well', disposition: 'unavailable', note: expect.stringContaining('needs refs') });
   // A ref the context never showed is refused too, exactly as it was in the verbose shape.
   const unknown = await onePass(observed(() => ['answer:telegram:8994258214:update:999999999']));
-  expect(unknown.pass).toMatchObject({ state: 'failed', reason: expect.stringContaining('unknown record') });
+  expect(unknown.pass.result!.duties[0]).toMatchObject({ duty: 'gravity-well', disposition: 'unavailable', note: expect.stringContaining('unknown record') });
   // With a real ref from the pass's own context it is recorded observed — and that observed well is what
   // corroborates the `f` at the gravity-well duty, whose output is the wells row rather than a finding.
   let first = '';
@@ -344,26 +346,33 @@ it('reports each duty by its recorded disposition in status: an uninspected effi
   expect(done.status).toContain('duties not inspected for lack of evidence: waiver-recurrence;');
 });
 
-it('fails closed on every malformed compact fixed part in the fixture, and keeps every case owed', async () => {
-  // Five fixture entries are no longer malformed, each carrying `recordedUnavailable`: a `u` at a duty whose
-  // evidence is present (plan #289), an `f` at a duty the answer holds no finding for (plan #339), and — plan
-  // #382 — the three whose `duties` field cannot be read per position at all (the verbose array, one character
-  // short, a number). Each records the duty or duties unavailable instead of refusing the pass; the neighbour
-  // test below drives the three new ones. Two genuinely malformed fixed parts were added in their place (`eff`
-  // as a number, `wells` as a number), so the fail-closed set is the eight that remain rather than quietly
-  // shrinking to six.
-  const failClosed = FIXTURE.answers.malformedFixed.filter(row => row.recordedUnavailable !== true);
-  expect(failClosed.length).toBe(8);
-  for (const { why, part } of failClosed) {
+it('records each malformed compact fixed part on its own duty and keeps the rest of the pass (plan #412)', async () => {
+  // Changed by plan #412 (w3-retrocut): these eight fixed parts used to fail the whole pass, discarding every case
+  // the review graded over one field. Now each records only the duty it belongs to NOT inspected, with the reason:
+  // a malformed wells row the gravity-well duty, a missing or non-sentence eff the waste (efficiency) duty, and a
+  // duties string with a character outside the alphabet every duty, because no position of it can be trusted.
+  // Rule 9's floor is what is asserted: the affected duty is never recorded inspected.
+  const reclassified = FIXTURE.answers.malformedFixed.filter(row => 'duty' in row) as { why: string; part: Record<string, unknown>; duty: string }[];
+  expect(reclassified.length).toBe(8);
+  for (const { why, part, duty } of reclassified) {
     // The malformed fixed part REPLACES the well-formed one, so each case carries exactly one defect.
     const { pass, before, stillOwed } = await onePass(state => complete(JSON.stringify({
       ...JSON.parse(compactAnswer(state)) as Record<string, unknown>,
       duties: undefined, wells: undefined, eff: undefined, ...part })));
     expect(before.length, why).toBeGreaterThan(0);
-    expect(pass.state, why).toBe('failed');
-    expect(pass.result, why).toBeUndefined();
-    // The declared fail direction, unchanged by the compaction: no grade, no finding, every case still owed.
-    expect(stillOwed, why).toEqual(expect.arrayContaining(before));
+    expect(pass.state, why).toBe('complete');
+    const notInspected = pass.result!.duties.filter(row => row.disposition !== 'inspected').map(row => row.duty);
+    if (duty === 'all') {
+      expect(notInspected, why).toEqual([...RETROSPECTIVE_DUTIES]);
+      // A pass that discharged no duty retires no case (Rule 8).
+      expect(stillOwed, why).toEqual(expect.arrayContaining(before));
+    } else {
+      expect(notInspected.sort(), why).toEqual([duty, 'waiver-recurrence'].sort());
+      expect(pass.result!.duties.find(row => row.duty === duty)!.note.startsWith(`${RETRO_DUTY_PART_UNREADABLE_NOTE} (`), why).toBe(true);
+      expect(pass.result!.inspected.length, why).toBe(pass.cases.length);
+    }
+    if (duty === 'gravity-well') expect(pass.result!.gravityWells, why).toEqual([]);
+    if (duty === 'waste') expect(pass.result!.efficiency.summary, why).toBe('');
   }
 });
 
@@ -396,6 +405,7 @@ it('fails closed on the recorded malformed wire shapes, and decodes a fenced com
     expect(FIXTURE.recorded.jsonShapes[`answer/decision/malformed/${shape.class}`]
       ?? FIXTURE.recorded.jsonShapes[`reply-review/verdict/malformed/${shape.class}`], shape.class).toBe(shape.recordedCount);
     const { pass, before, stillOwed } = await onePass(() => complete(shape.body!));
+    // A pass-level failure: no answer to classify (not JSON, or an object with no inspected list).
     expect(pass.state, shape.class).toBe('failed');
     expect(stillOwed, shape.class).toEqual(expect.arrayContaining(before));
   }
