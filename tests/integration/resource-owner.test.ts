@@ -226,6 +226,41 @@ it('recovery observes an orphan without signalling it, keeps a live owner\'s row
   }
 });
 
+it('recovery joins a sandboxed launch row by its recorded sandbox: a root-cwd survivor keeps the row and debit; only proved absence returns it', async () => {
+  // Host observations are injected (no real process is launched or signalled); the owner, inventory decoder and joins are real.
+  const start = 'Sat Oct 3 15:00:00 2026', childStart = 'Sat Oct 3 15:00:01 2026';
+  const recoverWith = async (survivor: 'inside' | 'root-cwd' | 'gone', sandbox: 'observed' | 'unreadable') => {
+    const root = dir(), area = join(root, 'scratch'), ledgerPath = join(root, 'launches.json');
+    const closes: string[] = [];
+    writeFileSync(ledgerPath, JSON.stringify({ version: 1, launches: { native: { pid: 41001, start, owner: { pid: 41000, start },
+      members: { 41001: start }, workingArea: area, sandboxArea: area, allocation: 'native-set' } } }));
+    const query = async (file: string, args: string[]) => {
+      if (file === '/bin/sh') return '256\n1024\nunlimited\nunlimited\n1024\n2048\n';
+      if (file === '/bin/ps' && args[0] === '-U') return survivor === 'gone' ? '' : `41002 1 41002 501 4096 0:00.10 S ${childStart} /bin/sleep 60\n`;
+      if (file === '/bin/ps' && args[0] === '-o') return args.at(-1) === '41002' && survivor !== 'gone' ? childStart : '';
+      if (file === '/usr/sbin/lsof') return `p41002\nn${survivor === 'inside' ? area : '/'}\n`;
+      if (file === '/usr/bin/python3') return sandbox === 'observed' ? '41002 in 0\n' : '';
+      throw Error(`unexpected query ${file}`);
+    };
+    const owner = createResourceOwner(ceilings());
+    await owner.attach({ ledgerPath, query, allocation: { close: (_set: string, cause: string) => { closes.push(cause); return { ok: true }; }, open: () => [] } });
+    return { orphans: owner.snapshot().orphans, rows: Object.keys(JSON.parse(readFileSync(ledgerPath, 'utf8')).launches), closes };
+  };
+  // Inside the working area, and outside it (daemonized to /) but inside the launch's sandbox: both survive.
+  for (const survivor of ['inside', 'root-cwd'] as const) {
+    const seen = await recoverWith(survivor, 'observed');
+    expect(seen.orphans).toMatchObject([{ launch: 'native', state: 'surviving', unrecorded: 1 }]);
+    expect(seen.rows).toEqual(['native']); expect(seen.closes).toEqual([]);
+  }
+  // A root-cwd survivor whose sandbox membership cannot be read is unknown: the row and debit stay.
+  const unread = await recoverWith('root-cwd', 'unreadable');
+  expect(unread.orphans).toMatchObject([{ launch: 'native', state: 'unknown' }]);
+  expect(unread.rows).toEqual(['native']); expect(unread.closes).toEqual([]);
+  // Genuinely gone: the row closes and the debit returns once, citing recovery.
+  const gone = await recoverWith('gone', 'observed');
+  expect(gone.orphans).toEqual([]); expect(gone.rows).toEqual([]); expect(gone.closes).toEqual(['recovery-observed-gone:native']);
+});
+
 it('records launch evidence durably before the provider runs, and never runs a launch it could not record', { timeout: 30000 }, async () => {
   const root = dir(), ledgerPath = join(root, 'owned-launches.json'), marker = join(root, 'ran');
   // The provider reads the ledger as its first act: its own row must already be there.

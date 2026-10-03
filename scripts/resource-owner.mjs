@@ -295,7 +295,8 @@ export function createResourceOwner(initialCeilings = RESOURCE_CEILINGS) {
       if (!rows[lease.id]) {
         if (!extra.cleanup) return;
         rows[lease.id] = { pid: lease.pid, start: lease.known.get(lease.pid) ?? null, owner: attached?.owner ?? null,
-          enforcement: lease.enforcement, uidProcesses: lease.uidProcesses };
+          enforcement: lease.enforcement, uidProcesses: lease.uidProcesses, workingArea: lease.workingArea ?? null,
+          sandboxArea: lease.sandboxArea ?? null };
       }
       Object.assign(rows[lease.id], { members: Object.fromEntries(lease.known), ...extra },
         lease.recordingFailures ? { recording: 'repaired', recordingFailures: lease.recordingFailures } : {});
@@ -391,7 +392,10 @@ export function createResourceOwner(initialCeilings = RESOURCE_CEILINGS) {
    * incarnation, group, ancestry and private working area. `complete`, `partial` (census or
    * candidate bound reached: examined/omitted counted) or `failed` (a refused read): a partial
    * or failed census never reads as empty. */
-  async function census(leases) {
+  async function census(leases) { return joinRoots(leases.filter(l => l.pid).map(rootOf)); }
+  /** The one membership join, shared by live cleanup and restart recovery: a recovered root carries the
+   * same working-area and sandbox declarations its launch row recorded, so recovery joins exactly as live does. */
+  async function joinRoots(roots) {
     let snapshot, ten;
     // An owner module that cannot load is a failed census (unknown), never an empty one.
     try { ten = await loadTenOwner(); snapshot = await inventory.census(); }
@@ -399,7 +403,6 @@ export function createResourceOwner(initialCeilings = RESOURCE_CEILINGS) {
       members: null, rows: null }; }
     const { launchMembership, joinWorkingArea, joinSandbox } = ten;
     if (snapshot.status === 'failed') return { state: 'failed', snapshot, members: null, rows: null };
-    const roots = leases.filter(l => l.pid).map(rootOf);
     const { members, candidates } = launchMembership(snapshot, roots, process.pid);
     const joined = new Map(members);
     const read = candidates.slice(0, ceilings.candidateLimit ?? RESOURCE_CEILINGS.candidateLimit);
@@ -632,7 +635,7 @@ export function createResourceOwner(initialCeilings = RESOURCE_CEILINGS) {
         try {
           ledger(rows => { rows[lease.id] = { pid: lease.pid, start, owner: attached?.owner ?? null,
             members: Object.fromEntries(lease.known), enforcement: lease.enforcement, uidProcesses: lease.uidProcesses,
-            workingArea: lease.workingArea, allocation: lease.allocation?.set ?? null }; });
+            workingArea: lease.workingArea, sandboxArea: lease.sandboxArea, allocation: lease.allocation?.set ?? null }; });
         } catch {
           // The gate never opened, so the provider never ran: the Six debit returns now.
           closeAllocation(`never-launched:${lease.id}`);
@@ -740,26 +743,21 @@ export function createResourceOwner(initialCeilings = RESOURCE_CEILINGS) {
       judged.push({ id, row, members, surviving, unknown });
     }
     // An unrecorded escapee of a dead launch (it detached before any census and its owner died)
-    // is found by the same working-area join; observation only, so it keeps the row.
+    // is found by the same working-area and sandbox joins live cleanup uses; observation only, so it keeps the row.
+    const area = value => typeof value === 'string' ? value : null;
     const roots = judged.filter(j => Number.isSafeInteger(j.row?.pid)).map(j => ({ id: j.id, pid: j.row.pid,
-      known: new Map(j.members.filter(([, start]) => typeof start === 'string')), workingArea: typeof j.row.workingArea === 'string'
-        ? j.row.workingArea : null, start: typeof j.row.start === 'string' ? startIdentity(j.row.start) : null }));
+      known: new Map(j.members.filter(([, start]) => typeof start === 'string')), workingArea: area(j.row.workingArea),
+      sandboxArea: area(j.row.sandboxArea), start: typeof j.row.start === 'string' ? startIdentity(j.row.start) : null }));
     let escaped = null;
     if (roots.length) {
-      let snapshot = null, ten = null;
-      try { ten = await loadTenOwner(); snapshot = await inventory.census(); } catch { snapshot = null; }
-      const { launchMembership, joinWorkingArea } = ten ?? {};
-      if (snapshot?.status === 'complete') {
-        const { members, candidates } = launchMembership(snapshot, roots, process.pid);
-        const all = new Map(members), read = candidates.slice(0, ceilings.candidateLimit ?? RESOURCE_CEILINGS.candidateLimit);
-        const cwds = read.length ? await inventory.workingDirectories(read) : new Map();
-        if (read.length) for (const [pid, m] of joinWorkingArea(snapshot, roots, read, cwds)) all.set(pid, m);
-        const unread = await unreadCandidates(snapshot, read, cwds);
+      let joined = null;
+      try { joined = await joinRoots(roots); } catch { joined = null; }
+      // Anything short of a complete census (a partial read, an unread working directory or an unreadable
+      // sandbox reading) leaves membership unknown, so every row stays.
+      if (joined?.state === 'complete') {
         escaped = new Map();
-        const rowsByPid = new Map(snapshot.processes.map(p => [p.pid, p]));
-        for (const [pid, m] of all) if (!rowsByPid.get(pid)?.zombie && !roots.find(r => r.id === m.launch)?.known.has(pid))
+        for (const [pid, m] of joined.members) if (!joined.rows.get(pid)?.zombie && !roots.find(r => r.id === m.launch)?.known.has(pid))
           escaped.set(m.launch, (escaped.get(m.launch) ?? 0) + 1);
-        if (read.length < candidates.length || unread) escaped = null;
       }
     }
     for (const { id, members, surviving, unknown } of judged) {
