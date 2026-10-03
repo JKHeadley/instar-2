@@ -3,7 +3,7 @@ import { mkdtempSync, readFileSync, realpathSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { createJournalWorker, openPreviewJournal, retrospectiveCases, type JournalView } from './journal.js';
-import { GRAVITY_WELLS, RETROSPECTIVE_DUTIES, RETROSPECTIVE_QUESTION, RETRO_ANSWER_BUDGET_BYTES, RETRO_DUTY_UNINSPECTED_NOTE,
+import { GRAVITY_WELLS, RETROSPECTIVE_DUTIES, RETROSPECTIVE_QUESTION, RETRO_ANSWER_BUDGET_BYTES, RETRO_DUTY_UNCORROBORATED_NOTE, RETRO_DUTY_UNINSPECTED_NOTE,
   RETRO_ANSWER_BYTES_PER_TOKEN, RETRO_DUTY_CODES, RETRO_EFFICIENCY_CHARS, RETRO_FAILURE_BACKOFF_MS,
   RETRO_MIN_INTERVAL_MS, RETRO_OUTCOME_REASON_CHARS, RETRO_OVER_CAP_REASON, RETRO_WELL_NOTES,
   WAIVER_EVIDENCE_UNAVAILABLE, disciplineSource, eligibleCases, estimatedAnswerBytes, retroAnswerBudget, retrospectiveStatusLine,
@@ -269,18 +269,23 @@ it('records a well as observed from its refs alone, and still refuses an observe
   expect(real.pass.result!.duties[0]).toMatchObject({ duty: 'gravity-well', disposition: 'inspected', note: RETRO_DUTY_CODES.f });
 });
 
-it('accepts a corroborated f and refuses an uncorroborated one, which is more than the prose note it replaces ever carried', async () => {
+it('accepts a corroborated f and records an uncorroborated one NOT inspected, which is more than the prose note it replaces ever carried', async () => {
   const recurrenceIndex = RETROSPECTIVE_DUTIES.indexOf('recurrence');
   const codes = (code: string) => RETROSPECTIVE_DUTIES.map((_, index) => index === recurrenceIndex ? code : 'n').join('');
   const recurrence = (state: string, remedy: Record<string, string>) => { const cases = casesOf(state);
     return [{ duty: 'recurrence', refs: [cases[0]!.id], recurs: [cases[1]!.id], summary: 'The same slip twice.',
       rootCause: 'The packet omits the earlier correction.', structuralRemedy: remedy,
       disposition: { owner: 'agent', next: 'Carry corrections forward.' } }]; };
-  // `f` with no finding of that duty in the answer: refused, and every case stays owed.
+  // `f` with no finding of that duty in the answer. Changed by plan #339 (w3-retrolive2): it used to refuse the
+  // whole pass, and live room two's first pass under cint-L33 died exactly there on an answer that fitted the cap.
+  // The floor is intact: the duty is NOT recorded inspected, because the claim behind its `f` is not in the
+  // answer; the rest of the pass stands.
   const bare = await onePass(state => complete(compactAnswer(state, { duties: codes('f') })));
-  expect(bare.pass).toMatchObject({ state: 'failed',
-    reason: expect.stringContaining('claims a finding this answer does not contain') });
-  expect(bare.stillOwed).toEqual(expect.arrayContaining(bare.before));
+  expect(bare.pass.state).toBe('complete');
+  expect(bare.pass.result!.duties[recurrenceIndex]).toEqual({ duty: 'recurrence', disposition: 'unavailable',
+    note: RETRO_DUTY_UNCORROBORATED_NOTE });
+  expect(bare.pass.result!.findings).toEqual([]);
+  expect(bare.status).toContain('duties not inspected although their evidence was present: recurrence');
   // The same `f` with the recurrence finding really present: accepted, recorded as the found verdict.
   const backed = await onePass(state => complete(compactAnswer(state,
     { duties: codes('f'), findings: recurrence(state, { remove: 'restating corrections' }) })));
@@ -340,11 +345,12 @@ it('reports each duty by its recorded disposition in status: an uninspected effi
 });
 
 it('fails closed on every malformed compact fixed part in the fixture, and keeps every case owed', async () => {
-  // One fixture entry is no longer malformed — a `u` at a duty whose evidence is present now records that duty
-  // unavailable instead of refusing the pass (see the test above) — and it carries `recordedUnavailable`, so
-  // the fail-closed set stays at ten rather than quietly shrinking to nine.
+  // Two fixture entries are no longer malformed — a `u` at a duty whose evidence is present (plan #289), and an
+  // `f` at a duty the answer holds no finding for (plan #339) now each record that duty unavailable instead of
+  // refusing the pass (see the tests above) — and both carry `recordedUnavailable`, so the fail-closed set is
+  // exactly the nine that remain rather than quietly shrinking further.
   const failClosed = FIXTURE.answers.malformedFixed.filter(row => row.recordedUnavailable !== true);
-  expect(failClosed.length).toBeGreaterThanOrEqual(10);
+  expect(failClosed.length).toBe(9);
   for (const { why, part } of failClosed) {
     // The malformed fixed part REPLACES the well-formed one, so each case carries exactly one defect.
     const { pass, before, stillOwed } = await onePass(state => complete(JSON.stringify({
