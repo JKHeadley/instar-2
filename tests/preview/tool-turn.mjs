@@ -186,7 +186,12 @@ export const WORKSPACE_STALE_NOTE = 'WORKSPACE-STALE.txt';
 /** How many held files a note names (each name clipped), so the note, which is also delivered in the turn's input, stays
  * within its bound (NOTICE_TEXT_MAX). */
 const STALE_NAMED = 16;
-const named = paths => `${paths.slice(0, STALE_NAMED).map(path => path.length > 96 ? `${path.slice(0, 93)}...` : path).join(', ')}`
+/** A held file's name can itself hold a forgotten clause, so the note masks every forgotten quote in the names it gives
+ * (the accurate paths stay in the mark only); the agent still finds the file by the rest of its name. */
+const FORGOTTEN_MASK = '[forgotten]';
+const named = (paths, quotes) => `${paths.slice(0, STALE_NAMED)
+  .map(path => quotes.reduce((name, quote) => quote.length ? name.split(quote).join(FORGOTTEN_MASK) : name, path))
+  .map(path => path.length > 96 ? `${path.slice(0, 93)}...` : path).join(', ')}`
   + `${paths.length > STALE_NAMED ? ` and ${String(paths.length - STALE_NAMED)} more` : ''}`;
 /** The room a turn's packet keeps for the workspace notice delivered with it (the stale and lost notes, both bounded): the
  * notice's own text is held to three quarters of it, the rest covers its escaping inside the packet's JSON. */
@@ -289,7 +294,7 @@ export function reconcileWorkspace({ mounted, workspace, tmp, used, quotes, limi
   if (held.length || unchecked) writeFileSync(note, 'Some of this workspace may still disagree with this conversation\'s memory: it has '
     + 'since forgotten or corrected statements these files may still hold. The memory is the authority; do not rely on them '
     + 'for anything it no longer holds, and rewrite them without it if you use them. The check repeats every turn until it '
-    + `completes.\n${held.length ? `Files that still hold such a statement and were not changed automatically (kept intact): ${named(held)}\n` : ''}`
+    + `completes.\n${held.length ? `Files that still hold such a statement and were not changed automatically (kept intact): ${named(held, quotes)}\n` : ''}`
     + `${unchecked ? 'Part of the workspace has not been checked yet (past this turn\'s bound); the next turn continues.\n' : ''}`, { mode: 0o600 });
   else rmSync(note, { force: true });
   if (lost) writeFileSync(join(workspace, WORKSPACE_LOST_NOTE), 'This conversation\'s earlier workspace was lost: its volume was '

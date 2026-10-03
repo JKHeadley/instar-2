@@ -447,13 +447,15 @@ it('delivers the workspace notice in the turn\'s own input while reconciliation 
     const packet = JSON.parse(envelope.messages.find(message => message.role === 'context')!.content).packet as { workspace?: string };
     notices.push(packet.workspace ?? null);
     const memo = join(seen.workspace, 'memo.dat');
-    if (input.question === fact) writeFileSync(memo, `${fact}\n`);
+    // A neighbor whose very name holds the forgotten clause: the notice names it without repeating the clause.
+    const named = join(seen.workspace, `${fact}json`);
+    if (input.question === fact) { writeFileSync(memo, `${fact}\n`); writeFileSync(named, `{"note":"${fact}"}`); }
     if (input.question.startsWith('Please stop remembering')) {
       const source = JSON.parse(input.context).memoryCandidates?.find((item: { message: string }) => item.message.includes(fact));
       return { state: 'complete', value: JSON.stringify({ reply: 'Done.', memory: [{ mode: 'forget', source: source.id, quote: fact }] }) };
     }
     // The agent, told which file may disagree, rewrites it with its own tools.
-    if (input.question === 'Tidy the workspace.') writeFileSync(memo, 'cleared\n');
+    if (input.question === 'Tidy the workspace.') { writeFileSync(memo, 'cleared\n'); writeFileSync(named, '{"note":"cleared"}'); }
     return { state: 'complete', value: 'Noted.' };
   });
   w.worker.intake([w.update(1, fact)]); await w.worker.drain();
@@ -464,6 +466,7 @@ it('delivers the workspace notice in the turn\'s own input while reconciliation 
   expect(notices.slice(0, 2)).toEqual([null, null]);
   expect(notices[2]).toContain('ws/memo.dat');
   expect(notices[2]).toContain('memory is the authority');
+  expect(notices[2]).toContain('ws/[forgotten]json');
   expect(notices[2]).not.toContain('4417');
   // After the agent's rewrite the check completes and the next turn's input carries no notice.
   expect(notices[3]).toBeNull();
