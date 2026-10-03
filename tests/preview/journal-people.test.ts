@@ -394,7 +394,9 @@ it('links an introductory claim even when its source ends in a question', async 
     // cbuild-2: the always-offered summary decision needs room beside the merge candidates (measured fit 7000; was 6000).
     // w3-longchat: the answer protocol's compaction and meaning-coverage sentences grew by 55 bytes (Rules 11, 110),
     // and the merge candidates were the block that yielded; re-measured in 10-byte steps, fit 7030, fail 7010.
-    const w = world(root, { maxBytes: 7100, summarize: sourceSummarizer, answer: mergeAnswer });
+    // cint-L40 (w3-retrocluster, Rule 19): the 130-byte pushback sentence rides once an answer is in history; the merge
+    // candidates yield again. Re-measured in 10-byte steps, fit 7110, fail 7100; the same 70 bytes of headroom kept.
+    const w = world(root, { maxBytes: 7180, summarize: sourceSummarizer, answer: mergeAnswer });
     await w.say(1, 'My cofounder Sam prefers October. Can you remember that?');
     await w.say(2, 'Sam Ortiz is the cofounder who proposed October.');
     const n = await w.fillUntilRecall(3, 'Are Sam and Sam Ortiz the same person?');

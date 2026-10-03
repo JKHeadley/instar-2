@@ -107,12 +107,16 @@ it('profiles full turns at 2000 turns with every memory source', async () => {
     // cint-L27 re-pin: without that one field the packet differs from the prior pin (be687bb0…) in exactly one field,
     // `capability`, whose commitments guidance lost " or scheduler" (w3-reminderwords: the runner does answer a
     // dated request at its time). Diffed field by field against the cint-L26 packet; nothing else changed.
+    // cint-L40 re-pin (w3-retrocluster d3692b4c, Rule 19): diffed field by field against the prior packet, only
+    // `capability` changed, 3471 -> 3600 bytes, by exactly the one added sentence (a message disputing an answer in
+    // history is pushback: say where you stand first), which rides because this fixture's history shows answers.
+    // Removing just that sentence reproduces 73561b15…410374 and 33ce2cbb…8489fa exactly.
     const withoutLookup = JSON.parse(packetText) as Record<string, unknown>;
     expect(withoutLookup.memoryLookup).toBe('offered');
     delete withoutLookup.memoryLookup;
     expect(createHash('sha256').update(JSON.stringify(withoutLookup)).digest('hex'))
-      .toBe('73561b154bd8f8beb2293480dfaae38b3cb08acba815d365faf35e35a0410374');
-    expect(packetHash).toBe('33ce2cbbd0aab1cc7e9de31f07c16bc6e2062149781fb4e3a40f1142628489fa');
+      .toBe('ba3aa17df87dc968588bccd91a14f8e3fab572eb075ba4dafecb8e7ef7cb6eb7');
+    expect(packetHash).toBe('e7bf7b78829d9e76743e5081297ea49aeeea211ebcb5ccdcc8af24f110a10f07');
     process.stdout.write(`recall latency 2000 turns all memory: probe p95=${p95(samples).toFixed(2)} ms packet=${packetHash}\n`);
     const turnSamples: number[] = [];
     const intakeSamples: number[] = [], drainSamples: number[] = [], coherenceSamples: number[] = [];
