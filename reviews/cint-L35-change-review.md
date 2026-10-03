@@ -23,6 +23,29 @@ Decision: cint-L35-base-repair | origin/cint-L34 moved to fbb36b22 (a tsc typing
 Decision: cint-L35-proof-checks | the desk's live-proof checks O24b and P50b assert whole-pass refusals the unit replaces with row drops and not-inspected duties; they are named to the reviewer for the desk to update and are not changed by this build | reported=/Users/dabombstudio/.instar/agents/echo/.instar/lanes/cint-L35-PROGRESS.md
 Prompt review: the only model-facing change is the carried unit's two sentences in RETROSPECTIVE_QUESTION (reviewed in reviews/w3-retrolive2-change-review.md); the merges add no hunk of their own. Measured on the merged tree the question is 9,427 bytes (was 9,142); it is sent only with a retrospective pass, not with every answer; the always-sent answer bytes are unchanged and within 22,959. The unit's five recorded real-model answers replay through the merged validator (retrospective-live-failures-2 8/8).
 Deferral: generated/register.json:1 | not-a-deferral=generated register output quoting the rule book, not a commitment by this change
+Deferral: tests/preview/fixtures/retrospective-live-failures-2-2026-10-02.json:160 | not-a-deferral=the recorded live pass 0's own bound-deferral reason ("bound: answer budget, deferred to a later pass"), quoted verbatim from the journal as test data
+Deferral: tests/preview/fixtures/retrospective-live-failures-2-2026-10-02.json:164 | not-a-deferral=the same recorded bound-deferral reason, next row of the live pass's omitted list
+Deferral: tests/preview/fixtures/retrospective-live-failures-2-2026-10-02.json:168 | not-a-deferral=the same recorded bound-deferral reason, next row of the live pass's omitted list
+Deferral: tests/preview/fixtures/retrospective-live-failures-2-2026-10-02.json:172 | not-a-deferral=the same recorded bound-deferral reason, next row of the live pass's omitted list
+Deferral: tests/preview/fixtures/retrospective-live-failures-2-2026-10-02.json:176 | not-a-deferral=the same recorded bound-deferral reason, next row of the live pass's omitted list
+Deferral: tests/preview/fixtures/retrospective-live-failures-2-2026-10-02.json:180 | not-a-deferral=the same recorded bound-deferral reason, next row of the live pass's omitted list
+Deferral: tests/preview/fixtures/retrospective-live-failures-2-2026-10-02.json:184 | not-a-deferral=the same recorded bound-deferral reason, next row of the live pass's omitted list
+Deferral: tests/preview/fixtures/retrospective-live-failures-2-2026-10-02.json:188 | not-a-deferral=the same recorded bound-deferral reason, next row of the live pass's omitted list
+Deferral: tests/preview/fixtures/retrospective-live-failures-2-2026-10-02.json:192 | not-a-deferral=the same recorded bound-deferral reason, next row of the live pass's omitted list
+Deferral: tests/preview/fixtures/retrospective-live-failures-2-2026-10-02.json:196 | not-a-deferral=the same recorded bound-deferral reason, next row of the live pass's omitted list
+Deferral: tests/preview/fixtures/retrospective-live-failures-2-2026-10-02.json:200 | not-a-deferral=the same recorded bound-deferral reason, next row of the live pass's omitted list
+Deferral: tests/preview/fixtures/retrospective-live-failures-2-2026-10-02.json:204 | not-a-deferral=the same recorded bound-deferral reason, next row of the live pass's omitted list
+Deferral: tests/preview/fixtures/retrospective-live-failures-2-2026-10-02.json:208 | not-a-deferral=the same recorded bound-deferral reason, next row of the live pass's omitted list
+Deferral: tests/preview/fixtures/retrospective-live-failures-2-2026-10-02.json:212 | not-a-deferral=the same recorded bound-deferral reason, next row of the live pass's omitted list
+Deferral: tests/preview/fixtures/retrospective-live-failures-2-2026-10-02.json:216 | not-a-deferral=the same recorded bound-deferral reason, next row of the live pass's omitted list
+Deferral: tests/preview/fixtures/retrospective-live-failures-2-2026-10-02.json:220 | not-a-deferral=the same recorded bound-deferral reason, next row of the live pass's omitted list
+Deferral: tests/preview/fixtures/retrospective-live-failures-2-2026-10-02.json:224 | not-a-deferral=the same recorded bound-deferral reason, next row of the live pass's omitted list
+Deferral: tests/preview/fixtures/retrospective-live-failures-2-2026-10-02.json:228 | not-a-deferral=the same recorded bound-deferral reason, next row of the live pass's omitted list
+Deferral: tests/preview/fixtures/retrospective-live-failures-2-2026-10-02.json:232 | not-a-deferral=the same recorded bound-deferral reason, next row of the live pass's omitted list
+Deferral: tests/preview/fixtures/retrospective-live-failures-2-2026-10-02.json:236 | not-a-deferral=the same recorded bound-deferral reason, next row of the live pass's omitted list
+Deferral: tests/preview/fixtures/retrospective-live-failures-2-2026-10-02.json:240 | not-a-deferral=the same recorded bound-deferral reason, last row of the live pass's omitted list
+Deferral: tests/preview/fixtures/retrospective-live-failures-2-2026-10-02.json:295 | not-a-deferral=a verbatim real-model answer (call 5), recorded test data; its wording is the model's, not a commitment of this change
+Deferral: tests/preview/retrospective.ts:894 | not-a-deferral=a comment explaining that a finding row names no case to defer, using the planner's existing vocabulary for an owed case
 
 Subject (15 paths): generated/capabilities.json, generated/capabilities.md, generated/coverage.md, generated/glossary.md, generated/register.json, generated/rules.md, generated/source.json, reviews/cint-L35-change-review.md, reviews/w3-retrolive2-change-review.md, tests/preview/fixtures/retrospective-compact-answer-2026-10-02.json, tests/preview/fixtures/retrospective-live-failures-2-2026-10-02.json, tests/preview/retrospective-compact-answer.test.ts, tests/preview/retrospective-live-failures-2.test.ts, tests/preview/retrospective.test.ts, tests/preview/retrospective.ts
 
