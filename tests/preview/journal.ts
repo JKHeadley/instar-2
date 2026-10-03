@@ -469,8 +469,10 @@ export const RAISE_NEEDS_SURFACE = 'A raise is approved on your approval page, n
 export const CHAT_YES_UNAVAILABLE = 'on this setup I can also send messages as you in this chat, so a "yes" here would not prove it came from you';
 /** Rules 10, 82: how the mind proposes one of the two declared operator actions; the runner writes the request. */
 export const OPERATOR_ACTION_GUIDANCE = ' If the verified operator asks to raise this trial\'s limits or extend its end, return JSON with reply and operatorAction:{action:"raise-caps",limits:{maxCalls|maxReplies|maxTurns: the number they named, or "step" for the usual increase}} or {action:"renew-expiry"}. The exact request, or why not, is added below your reply for them to approve; introduce it in plain words and never say it is done.';
-/** When the proposal guidance rides the packet: a limit at the cap report's own "near" level (80% used), or the trial
- * ending within two days. A fresh root's always-sent bytes are unchanged (default-context-floor.test.ts). */
+/** When the proposal guidance rides the packet: whenever an explicit-yes source is admissible on this root (an
+ * explicit ask is answerable at any time), or, where the port is configured but inadmissible, a limit at the cap
+ * report's own "near" level (80% used) or the trial ending within two days, so the answer carries the honest why-not.
+ * A root with no explicit-yes port sends none of it (default-context-floor.test.ts). */
 export const OPERATOR_ACTION_NEAR_END_MS = 48 * 3_600_000;
 export function limitsNear(view: JournalView, now: number): boolean {
   const near = (used: number, limit: number) => limit > 0 && used >= limit - Math.floor(limit / 5);
@@ -5527,7 +5529,7 @@ export function createJournalWorker(journal: ReturnType<typeof openPreviewJourna
           || journal.view.awayEvents.some(event => event.kind === 'hold' && now - event.at < 26 * 3_600_000) ? ' History may show a held answer or a fixed held notice as delivery state; do not narrate a past hold or repeat its notice in an ordinary reply. The runner sends any due held notice on its fixed path. Explain a hold when the operator asks about it.' : '')
         + (/[$€£¥]\s?\p{Nd}|\p{Nd}\s?(?:%|°|\p{L})/u.test([question?.text ?? '', summary?.text ?? '', ...shownTurns.map(item => item.text), ...channels.map(item => ` ${item.text}`)].join(' '))
           ? ' When recalling a measured fact, copy its exact number and unit from an original history, recalled, or channelMemory quote. Do not round, convert, omit, or invent the unit. If only a summary gives an approximate value, say the exact value is unknown.' : '')
-        + (ports.explicitYes && (operatorRequest || limitsNear(journal.view, now)) ? OPERATOR_ACTION_GUIDANCE : '')
+        + (ports.explicitYes && (operatorRequest || yesRouteAdmissible() || limitsNear(journal.view, now)) ? OPERATOR_ACTION_GUIDANCE : '')
         + (operatorRequest ? requestState?.review ? OPERATOR_REVIEW_REQUEST_GUIDANCE : OPERATOR_REQUEST_GUIDANCE : '')
         + (summary || journal.view.summaries.length ? sourceTrustInstruction : '')
         + (due.length || selectedDated.window ? ' dated is a bounded selection of operator dates; only an item with remind:true is something the operator asked you to do at that time. datedScope is a calendar priority hint, not the meaning of the question; dated may include nearby dates outside it. Interpret the question yourself using the shown dates. moreDated counts candidate occurrences omitted by the item or byte cap; absence is not proof that an item does not exist. Do not claim a complete list when moreDated is positive. State absolute YYYY-MM-DD dates and zones, and ask about unresolved dates.' : '')
@@ -7079,6 +7081,9 @@ export function createJournalWorker(journal: ReturnType<typeof openPreviewJourna
   const yesStatus = (): ExplicitYesStatus => explicitYesStatus(installNow(),
     { chat: journal.view.genesis.chat, operator: journal.view.genesis.operator, trial: journal.view.genesis.grant },
     { connected: ports.explicitYes?.review !== undefined, breakerOpen: ports.explicitYes?.review?.status().breakerOpen !== undefined });
+  /** Live 2026-10-02 (update 969390017): an explicit ask far from every limit got no proposal guidance, and the answer
+   * said the limit could not be raised. Wherever a source is admissible the operator may ask at any time (Rules 3, 79). */
+  const yesRouteAdmissible = (): boolean => { const status = yesStatus(); return status.chat.admissible || status.review.admissible; };
   /** The fixed line a reply carries for the operator action its answer proposed: the exact request, or why not. Where
    * a chat yes cannot be the operator's (P-05) and the review source is admissible, the request's pull request is
    * opened first and the reply carries its direct link. */
