@@ -49,9 +49,10 @@ function harness(path: string, result: SendOutcome[]) {
   const ports = { now: () => now, stopped: () => false, checkOutbound: () => {},
     model: async () => JSON.stringify({ memory: [], reply: 'I can ask.', operatorAction: { action: 'renew-expiry' } }),
     explicitYes: { context: previewTestContext, installation: () => install, review, renewalActivation: () => ACTIVATION },
-    send: async (input: { target: string; expectedText: string }) => {
-      sends.push({ target: input.target, text: input.expectedText });
-      if (input.target.startsWith('operator-result:') && result.length) return result.shift()!;
+    send: async (input: { target?: string; expectedText: string }) => {
+      const target = input.target ?? '';
+      sends.push({ target, text: input.expectedText });
+      if (target.startsWith('operator-result:') && result.length) return result.shift()!;
       next += 1; return next; } };
   const worker = createJournalWorker(journal, ports);
   const approve = async () => {
@@ -112,7 +113,7 @@ it('records a second proof as refused, keeps it through a compaction snapshot, a
   expect(JSON.stringify(operatorRequestsReport(reopened.view, START + 100))).toBe(report);
   // A worker on the reopened journal never sends the settled line again.
   const sends: string[] = [];
-  const worker = createJournalWorker(reopened, { ...h.ports, send: async (input: { target: string }) => { sends.push(input.target); return 999; } });
+  const worker = createJournalWorker(reopened, { ...h.ports, send: async (input: { target?: string }) => { sends.push(input.target ?? ''); return 999; } });
   await worker.minimal(); await worker.drain();
   expect(sends.filter(target => target.startsWith('operator-result:'))).toEqual([]);
   reopened.close();
