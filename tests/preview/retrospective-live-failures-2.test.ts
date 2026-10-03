@@ -2,7 +2,8 @@ import { describe, expect, it } from 'vitest';
 import { createHash } from 'node:crypto';
 import { readFileSync } from 'node:fs';
 import type { JournalView } from './journal.js';
-import { RETROSPECTIVE_DUTIES, RETRO_DUTY_CODES, RETRO_DUTY_UNCORROBORATED_NOTE, WAIVER_EVIDENCE_UNAVAILABLE,
+import { RETROSPECTIVE_DUTIES, RETRO_DUTY_CODES, RETRO_DUTY_FINDING_REFUSED_NOTE, RETRO_DUTY_UNCORROBORATED_NOTE,
+  RETRO_DUTY_UNINSPECTED_NOTE, WAIVER_EVIDENCE_UNAVAILABLE,
   dutyLeftUninspected, validateRetrospective, type RetroCase, type RetrospectivePlan } from './retrospective.js';
 
 /** Plan row #339 (w3-retrolive2). Room two's first pass under cint-L33 was refused with 'duty outcome claims a
@@ -91,6 +92,40 @@ describe('the live pass-0 refusal of room two under cint-L33, replayed on its ow
     expect(two.duties[at('feedback')]).toEqual({ duty: 'feedback', disposition: 'unavailable', note: RETRO_DUTY_UNCORROBORATED_NOTE });
     // Call 3's `f` at workaround has nothing behind it either.
     expect(validate(answerOf(3)).duties[at('workaround')]).toEqual({ duty: 'workaround', disposition: 'unavailable', note: RETRO_DUTY_UNCORROBORATED_NOTE });
+  });
+
+  it('keeps the refused row\'s reason whatever code its duty carries, and never records that duty unqualified clean (Rule 42)', () => {
+    // Astra, cint-L35 round 1: call 3's recorded empty-`recurs` row, with ONLY the recurrence code changed. On n the
+    // duty used to read "inspected; nothing found" with the refusal gone; on u the reason vanished too.
+    const refused = '(finding row refused: a recurrence names what it repeats)';
+    const withCode = (code: string) => { const answer = answerOf(3);
+      const codes = answer.duties as string; return { ...answer, duties: codes.slice(0, at('recurrence')) + code + codes.slice(at('recurrence') + 1) }; };
+    const n = validate(withCode('n'));
+    expect(n.duties[at('recurrence')]).toEqual({ duty: 'recurrence', disposition: 'unavailable', note: `${RETRO_DUTY_FINDING_REFUSED_NOTE} ${refused}` });
+    expect(dutyLeftUninspected(n.duties[at('recurrence')]!)).toBe(true);
+    const u = validate(withCode('u'));
+    expect(u.duties[at('recurrence')]).toEqual({ duty: 'recurrence', disposition: 'unavailable', note: `${RETRO_DUTY_UNINSPECTED_NOTE} ${refused}` });
+    expect(dutyLeftUninspected(u.duties[at('recurrence')]!)).toBe(true);
+    // The rest of each pass stands as on f.
+    for (const result of [n, u]) expect(result.findings.some(row => row.duty === 'recurrence')).toBe(false);
+    // A valid recurrence beside the refused one keeps the duty inspected, qualified by the refusal; the valid row is recorded.
+    const answer = answerOf(3);
+    const bad = (answer.findings as { duty: string }[]).find(row => row.duty === 'recurrence')!;
+    const mixed = validate({ ...answer, findings: [...answer.findings as unknown[], { ...bad, recurs: ['turn:telegram:8989505249:update:6231055'] }] });
+    expect(mixed.findings.map(row => row.duty)).toEqual(['recurrence']);
+    expect(mixed.duties[at('recurrence')]).toEqual({ duty: 'recurrence', disposition: 'inspected', note: `${RETRO_DUTY_CODES.f} ${refused}` });
+    // The other side: with nothing refused, n stays clean.
+    const clean = answerOf(3);
+    const cleanCodes = clean.duties as string;
+    const ok = validate({ ...clean, findings: (clean.findings as { duty: string }[]).filter(row => row.duty !== 'recurrence'),
+      duties: cleanCodes.slice(0, at('recurrence')) + 'n' + cleanCodes.slice(at('recurrence') + 1) });
+    expect(ok.duties[at('recurrence')]).toEqual({ duty: 'recurrence', disposition: 'inspected', note: RETRO_DUTY_CODES.n });
+  });
+
+  it('a malformed finding naming no known duty still refuses the whole pass: there is no duty to record it on', () => {
+    const answer = answerOf(3);
+    const bad = (answer.findings as { duty: string }[]).find(row => row.duty === 'recurrence')!;
+    expect(() => validate({ ...answer, findings: [...answer.findings as unknown[], { ...bad, duty: 'not-a-duty' }] })).toThrow(/duty/u);
   });
 
   it('the other side: the same recurrence finding naming an earlier record it repeats is kept and its duty inspected', () => {

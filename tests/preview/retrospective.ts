@@ -159,9 +159,15 @@ export const RETRO_DUTY_UNINSPECTED_NOTE = 'reported unavailable although its ev
  * packet each marked one or two duties `f` with no finding behind them (Rules 2, 9, 95). The refused row's own
  * reason, when there was one, is appended so the status reader can say why. */
 export const RETRO_DUTY_UNCORROBORATED_NOTE = 'marked as having a finding this answer does not contain; not inspected';
-/** Whether a duty row records a duty the answer left uninspected although its evidence was present. */
+/** The note a duty carries when a finding of that duty was refused under its own rules and none of that duty
+ * survived, whatever code the answer gave it. A refused row is a drop (Rule 42), so its reason is recorded on the
+ * duty it names; an `n` beside it used to record the duty "inspected; nothing found" with the refusal gone, and
+ * a `u`, or another valid finding of the same duty, erased the reason the same way (Astra, cint-L35 round 1). */
+export const RETRO_DUTY_FINDING_REFUSED_NOTE = 'a finding of this duty was refused under its own rules; not inspected';
+/** Whether a duty row records a duty the answer left uninspected although its evidence was present. A refused
+ * row's reason may follow the note in parentheses. */
 export const dutyLeftUninspected = (row: { disposition: string; note: string }) => row.disposition === 'unavailable'
-  && (row.note === RETRO_DUTY_UNINSPECTED_NOTE || row.note.startsWith(RETRO_DUTY_UNCORROBORATED_NOTE));
+  && [RETRO_DUTY_UNINSPECTED_NOTE, RETRO_DUTY_UNCORROBORATED_NOTE, RETRO_DUTY_FINDING_REFUSED_NOTE].some(note => row.note.startsWith(note));
 /** Rule 55: the ask on a root with nothing to measure from starts SMALL and WIDENS from that root's own
  * measurement, instead of starting at the whole bound and narrowing after a failure. Starting wide costs a model
  * call and the interval before the next attempt for every step down, and it is what live 2026-10-02 paid: a FRESH
@@ -891,9 +897,9 @@ export function validateRetrospective(raw: unknown, plan: Pick<RetrospectivePlan
     return finding;
   };
   // A finding row that breaks its own rules is dropped, never recorded, and the rest of the pass stands — the same
-  // isolation a grade or feedback row already gets. A finding names no case to defer: what it leaves behind is a
-  // duty marked `f` with nothing to show for it, which the corroboration check below records NOT inspected with the
-  // row's own refusal reason. Two of three real-model replays of live room two's pass-0 packet (2026-10-02) filed a
+  // isolation a grade or feedback row already gets. A finding names no case to defer, so its refusal reason is
+  // recorded on the duty it names, whatever code that duty carries (below); a row naming no known duty has nowhere
+  // honest to record it and still refuses the whole pass. Two of three real-model replays of live room two's pass-0 packet (2026-10-02) filed a
   // recurrence with an empty `recurs` on a root with no earlier finding to repeat, and each such row used to refuse
   // the whole pass ('a recurrence names what it repeats'). The id keeps the row's own index, so it names the row.
   const findings: RetroFinding[] = [];
@@ -902,7 +908,8 @@ export function validateRetrospective(raw: unknown, plan: Pick<RetrospectivePlan
     try { findings.push(findingRow(row, index)); }
     catch (error) {
       const duty = (row as { duty?: unknown } | null)?.duty;
-      if (typeof duty === 'string' && (RETROSPECTIVE_DUTIES as readonly string[]).includes(duty) && !refusedFindings.has(duty as RetrospectiveDuty))
+      if (typeof duty !== 'string' || !(RETROSPECTIVE_DUTIES as readonly string[]).includes(duty)) throw error;
+      if (!refusedFindings.has(duty as RetrospectiveDuty))
         refusedFindings.set(duty as RetrospectiveDuty, rowRefusedReason('finding', error instanceof Error ? error.message.replace('retrospective: ', '') : 'unreadable'));
     }
   }
@@ -1079,8 +1086,20 @@ export function validateRetrospective(raw: unknown, plan: Pick<RetrospectivePlan
     && !findings.some(item => item.duty === duty)
     && !(duty === 'gravity-well' && gravityWells.some(row => row.observed))) {
     const refused = refusedFindings.get(duty);
+    if (refused) refusedFindings.delete(duty);
     duties[index] = { duty, disposition: 'unavailable', note: clip(refused ? `${RETRO_DUTY_UNCORROBORATED_NOTE} (${refused})`
       : RETRO_DUTY_UNCORROBORATED_NOTE, RETRO_OUTCOME_REASON_CHARS * 2) };
+  }
+  // Every other refused finding keeps its reason on its duty too (Rule 42: a drop is a disposition). An inspected
+  // duty with no surviving finding of its own is NOT recorded clean on the answer's `n`: the row the answer did
+  // write for it was refused, so it is recorded not inspected. One that still holds a valid finding stays
+  // inspected, qualified by the refusal; an unavailable duty keeps its disposition and gains the reason.
+  for (const [duty, refused] of refusedFindings) {
+    const index = RETROSPECTIVE_DUTIES.indexOf(duty), row = duties[index]!;
+    const bare = row.disposition === 'inspected' && !findings.some(item => item.duty === duty)
+      && !(duty === 'gravity-well' && gravityWells.some(well => well.observed));
+    duties[index] = { duty, disposition: bare ? 'unavailable' : row.disposition,
+      note: clip(`${bare ? RETRO_DUTY_FINDING_REFUSED_NOTE : row.note} (${refused})`, RETRO_OUTCOME_REASON_CHARS * 2) };
   }
   // Settled last, because a refused row above moves its case from inspected to omitted.
   const inspected = claimed.filter(id => !omittedIds.has(id));
