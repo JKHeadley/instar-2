@@ -10,13 +10,18 @@
       "holdsAgentMemory": "no",
       "machineScope": {
         "kind": "machine-local",
-        "reason": "Rule 113: one root's tool working state on this machine, never shared or resumed elsewhere. Each conversation keeps one fixed-size volume (128 MB; at most 4 conversations per root, a further one's turns run in a fresh one-turn volume removed after the turn), mounted only during a turn; its files persist for later turns of that conversation and are never deleted to make room. Its kept harness session (MF5) is a cache of the journal: the runner's session record beside the volume and the harness transcript in the login profile's projects directory, rotated (old transcript removed) whenever the authority, harness, model or a journal fact changes, at 6 turns or 512 KiB, on a compaction, a loss or an interrupted turn, and ended (removed) at a stop, withdrawal or failed turn. Only the newest 16 turn directories (the admission hook's config, call and subagent slots, record, and the copy of the root's MCP launch configuration) are kept; the journal's tool-turn rows are the durable record. On failover nothing moves: the new machine's turns start a new workspace and session from the journal."
+        "reason": "Rule 113: one root's tool working state on this machine, never shared or resumed elsewhere. Each conversation keeps one fixed-size volume (128 MB; at most 4 conversations per root, a further one's turns run in a fresh one-turn volume removed after the turn), mounted only during a turn; its files persist for later turns of that conversation and are never deleted to make room. Its kept harness session (MF5) is a cache of the journal: the runner's session record beside the volume and the harness transcript in the login profile's projects directory, rotated (old transcript removed) whenever the authority, harness, model or a journal fact changes, at 6 turns or 512 KiB, on a compaction, a loss or an interrupted turn, and ended (removed) at a stop, withdrawal or failed turn; a new session removes every earlier session file of the conversation's projects directory, so a lost record strands none. The workspace holds working notes, never the agent's memory of record: before a turn's tools run, every clause the journal forgot or corrected is removed from its files, and a workspace the journal shows used that comes back empty and unmarked is recorded as lost, never resumed against. Only the newest 16 turn directories (the admission hook's config, call and subagent slots, record, and the copy of the root's MCP launch configuration) are kept; the journal's tool-turn rows are the durable record. On failover nothing moves: the new machine's turns start a new workspace and session from the journal."
       },
       "agreesWith": [
         {
           "store": "preview.journal.openPreviewJournal",
           "invariant": "a kept harness session is resumed only while its recorded journal-facts digest, tools authority, harness and model equal the current ones; any difference, a loss or an unclean turn starts a new session grounded from the journal, and every turn's input is the current journal packet",
           "check": "P13-PREVIEW-kept-session-subordinate (tests/preview/tool-persist.test.ts)"
+        },
+        {
+          "store": "preview.journal.openPreviewJournal",
+          "invariant": "a kept workspace never hands a tool a clause the journal has forgotten or corrected: before any tool of a turn runs, every such clause changed since the volume last saw the journal's memory is removed from the workspace's files (files without one untouched); and a workspace the journal records earlier turns in that is found empty and unmarked is journaled as lost and its session is not resumed",
+          "check": "P13-PREVIEW-workspace-subordinate (tests/preview/tool-persist.test.ts)"
         }
       ]
     },

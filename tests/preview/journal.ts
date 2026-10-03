@@ -1064,7 +1064,7 @@ export type JournalRecord =
       mcp?: { servers: string[]; reads: number; digest: string }; workspace?: ToolWorkspaceRow; at: number }
   | { kind: 'tool-turn'; phase: 'refused'; id: string; reason: 'call cap' | 'prompt size'; at: number }
   | { kind: 'tool-turn'; phase: 'trace'; id: string; attempt: number; calls: ToolTraceCall[]; consistent: boolean;
-      edges?: ToolChildEdge[]; workspaceBytes: number | null; session?: ToolSessionRow; at: number }
+      edges?: ToolChildEdge[]; workspaceBytes: number | null; session?: ToolSessionRow; volume?: ToolVolumeRow; at: number }
   | { kind: 'legacy-reply'; at: number }
   | { kind: 'import'; source: string; remainingCalls: number; remainingReplies: number; oldStop: string; at: number }
   | { kind: 'summary-reserve'; through: number; prompt?: string; supervised?: true; maxInputTokens?: number; maxOutputTokens?: number; at: number }
@@ -2625,7 +2625,13 @@ export interface ToolTurnStats { invocations: number; reservedCalls: number; ref
   /** MF5: how the conversation's kept harness session was used (absent until a turn kept one). */
   sessions?: { resumed: number; fresh: number; changed: number; lost: number; bounded: number; ended: number };
   /** Rule 60: turns of a conversation past the root's kept workspaces, run in a fresh one-turn workspace (absent until one). */
-  overflow?: number }
+  overflow?: number;
+  /** Rule 33 / constraint 2: the kept workspaces this journal's turns used (keys), turns that found theirs lost and started
+   * from an empty replacement, and files that had a forgotten or corrected clause removed (each absent until it happens). */
+  workspaces?: string[]; workspacesLost?: number; reconciledFiles?: number }
+/** What a turn found in its kept workspace before any tool ran: whether its volume was lost (the journal names earlier
+ * turns there, the volume came back empty and unmarked), and how many files had forgotten or corrected clauses removed. */
+export interface ToolVolumeRow { lost: boolean; reconciled: number }
 /** The conversation's workspace a tool turn used: `kept` (its persistent workspace) or not (past the root's bound of kept
  * workspaces, a fresh one-turn workspace, recorded so the overflow is never silent, Rule 2). */
 export interface ToolWorkspaceRow { key: string; kept: boolean }
@@ -2663,7 +2669,8 @@ function projectToolTurn(view: JournalView, row: Extract<JournalRecord, { kind: 
       throw Error('preview journal: tool turn workspace');
     view.calls += row.calls;
     view.toolTurns = { ...stats, invocations: stats.invocations + 1, reservedCalls: stats.reservedCalls + row.calls, open: [...stats.open, key],
-      ...(w?.kept === false ? { overflow: (stats.overflow ?? 0) + 1 } : {}) };
+      ...(w?.kept === false ? { overflow: (stats.overflow ?? 0) + 1 } : {}),
+      ...(w?.kept === true && !(stats.workspaces ?? []).includes(w.key) ? { workspaces: [...(stats.workspaces ?? []), w.key] } : {}) };
     return;
   }
   if (row.phase === 'refused') {
@@ -2701,13 +2708,18 @@ function projectToolTurn(view: JournalView, row: Extract<JournalRecord, { kind: 
     lost: prior.lost + Number(kept.mode === 'new' && /^(?:lost|interrupted)\b/u.test(kept.reason)),
     bounded: prior.bounded + Number(kept.mode === 'new' && SESSION_BOUNDED.includes(kept.reason)),
     ended: prior.ended + Number(!kept.kept) }))(stats.sessions ?? emptySessionStats());
+  const volume = row.volume;
+  if (volume !== undefined && (typeof volume.lost !== 'boolean' || !Number.isSafeInteger(volume.reconciled) || volume.reconciled < 0))
+    throw Error('preview journal: tool turn volume');
   const count = (state: string) => edges.filter(edge => edge.state === state).length;
   const children = edges.length || stats.children ? { started: (stats.children?.started ?? 0) + edges.length,
     returned: (stats.children?.returned ?? 0) + count('returned'), cancelled: (stats.children?.cancelled ?? 0) + count('cancelled'),
     unknown: (stats.children?.unknown ?? 0) + count('unknown') } : undefined;
   view.toolTurns = { ...stats, toolCalls: stats.toolCalls + admitted, toolRefusals: stats.toolRefusals + row.calls.length - admitted,
     inconsistent: stats.inconsistent + Number(!row.consistent), open: stats.open.filter(item => item !== key), ...(children ? { children } : {}),
-    ...(sessions ? { sessions } : {}) };
+    ...(sessions ? { sessions } : {}),
+    ...(volume?.lost ? { workspacesLost: (stats.workspacesLost ?? 0) + 1 } : {}),
+    ...(volume?.reconciled ? { reconciledFiles: (stats.reconciledFiles ?? 0) + volume.reconciled } : {}) };
 }
 const emptySessionStats = () => ({ resumed: 0, fresh: 0, changed: 0, lost: 0, bounded: 0, ended: 0 });
 function project(view: JournalView, row: JournalRecord, system?: SystemCheck, admission: 'new' | 'replay' = 'new'): void {

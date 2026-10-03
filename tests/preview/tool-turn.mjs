@@ -172,6 +172,59 @@ export function conversationWorkspace(root, conversation, keep = TOOL_WORKSPACES
   return { key, directory, name: `itw-${key}` };
 }
 
+/** The journal's forgotten and corrected clauses (Rule 33: the journal is the authority on what the agent knows): the
+ * quote of every `forget` and `correct` memory change, those under four characters excluded so a stray word is never
+ * stripped from unrelated notes. A kept workspace must not hand back what the journal no longer holds. */
+export const forgottenQuotes = view => [...new Set((view.memory ?? []).filter(change => change.mode === 'forget' || change.mode === 'correct')
+  .map(change => String(change.quote).trim()).filter(quote => quote.length >= 4))].sort();
+const VOLUME_MARK = 'kept.json';
+/** The note a replacement workspace carries, so the turn that finds it is told plainly what was lost (constraint 2). */
+export const WORKSPACE_LOST_NOTE = 'WORKSPACE-LOST.txt';
+const strip = (buffer, needle) => {
+  const parts = []; let from = 0, at;
+  while ((at = buffer.indexOf(needle, from)) >= 0) { parts.push(buffer.subarray(from, at)); from = at + needle.length; }
+  if (!parts.length) return null;
+  parts.push(buffer.subarray(from));
+  return Buffer.concat(parts);
+};
+/** Removes every forgotten or corrected clause from the regular files under `dirs` (bounded walk, symlinks not followed);
+ * files without one are left byte-for-byte. Returns how many files changed. */
+export function removeForgotten(dirs, quotes, limit = 10000) {
+  const needles = quotes.map(quote => Buffer.from(quote, 'utf8'));
+  let changed = 0, seen = 0;
+  const walk = dir => {
+    for (const name of readdirSync(dir)) {
+      if (++seen > limit) return;
+      const path = join(dir, name), stat = lstatSync(path);
+      if (stat.isDirectory()) { walk(path); continue; }
+      if (!stat.isFile()) continue;
+      const original = readFileSync(path);
+      let next = original;
+      for (const needle of needles) next = strip(next, needle) ?? next;
+      if (next !== original) { writeFileSync(path, next); changed++; }
+    }
+  };
+  for (const dir of dirs) try { walk(dir); } catch { /* an unreadable directory holds nothing a tool can read either */ }
+  return changed;
+}
+/** Reconciles a mounted kept workspace with the journal before any tool of the turn can read it. `used` says whether the
+ * journal records an earlier turn in this workspace: then a volume without its mark and with an empty workspace is a lost
+ * volume (its image gone), not a first allocation, and the replacement carries a note saying so. Whenever the journal's
+ * forgotten clauses changed since the volume last saw them, they are removed from its files. */
+export function reconcileWorkspace({ mounted, workspace, tmp, used, quotes }) {
+  const mark = join(mounted, VOLUME_MARK);
+  let recorded = null;
+  try { recorded = JSON.parse(readFileSync(mark, 'utf8')); } catch { recorded = null; }
+  const lost = used && recorded === null && readdirSync(workspace).length === 0;
+  const forgotten = digestOf(JSON.stringify(quotes));
+  const reconciled = recorded?.forgotten !== forgotten && quotes.length ? removeForgotten([workspace, tmp], quotes) : 0;
+  if (lost) writeFileSync(join(workspace, WORKSPACE_LOST_NOTE), 'This conversation\'s earlier workspace was lost: its volume was '
+    + `missing when this turn started. Files written on earlier turns are gone; this workspace started empty. `
+    + 'The conversation\'s journal still holds every answer and tool trace.\n', { mode: 0o600 });
+  writeFileSync(mark, JSON.stringify({ v: 1, forgotten }), { mode: 0o600 });
+  return { lost, reconciled };
+}
+
 /** The kept harness session (MF5): a disposable cache of one conversation's harness context, subordinate to the journal.
  * It is resumed only while it is bound to the same tools authority, harness and model, and the journal's facts it may
  * hold are unchanged; any correction, forgetting, undo, closure, grant change or stop rotates it, as do its bounds, a
@@ -203,6 +256,21 @@ export function removeSessionFiles(store, workspace, id) {
   rmSync(transcript.slice(0, -'.jsonl'.length), { recursive: true, force: true });
   return true;
 }
+/** Removes every harness session file of one workspace's projects directory (UUID-named transcripts and their subagent
+ * directories, nothing else). The workspace path is the conversation's own (`itw-<key>`), so these are exactly its kept
+ * sessions; used when a new session starts, so a session whose record was lost is never stranded outside retention. */
+export function removeWorkspaceSessions(store, workspace) {
+  if (typeof store !== 'string' || typeof workspace !== 'string') return 0;
+  const directory = dirname(sessionTranscript(store, workspace, 'x'));
+  let names;
+  try { names = readdirSync(directory); } catch { return 0; }
+  let removed = 0;
+  for (const name of names) {
+    const id = name.endsWith('.jsonl') ? name.slice(0, -'.jsonl'.length) : name;
+    if (SESSION_ID.test(id)) { rmSync(join(directory, name), { recursive: true, force: true }); removed++; }
+  }
+  return removed;
+}
 /** The kept-session record of a workspace: `present` (with its value), `absent`, or `unreadable` (treated as lost). */
 export function readSession(dir) {
   let text;
@@ -221,8 +289,10 @@ function writeSession(dir, value) {
 /** What this turn does with the conversation's kept session: resume it, or start a new one with the reason the old one
  * (if any) was not resumed. Pure apart from the transcript reads, which are bounded by the size limit. */
 export function planSession({ record, binding, facts, store, workspace, stat = path => statSync(path).size,
-  read = path => readFileSync(path, 'utf8'), newId = randomUUID }) {
+  read = path => readFileSync(path, 'utf8'), newId = randomUUID, volumeLost = false }) {
   const fresh = (reason, previous = null) => ({ id: newId(), resume: false, reason, turn: 1, previous });
+  // A session is never resumed against a replacement of the workspace it worked in.
+  if (volumeLost) return fresh('lost: the workspace volume is missing', record.state === 'present' ? record.value : null);
   if (record.state === 'absent') return fresh('new');
   if (record.state === 'unreadable') return fresh('lost: the session record is unreadable');
   const r = record.value, previous = r;
@@ -301,20 +371,28 @@ export async function runToolTurn({ journal, root, id, prepared, promptLimit, de
   const kept = space.directory !== null;
   // The facts the kept session may be grounded with are read now, before the turn's own answer changes any of them.
   const facts = session && kept ? sessionFactsDigest(journal.view) : null;
+  // Whether the journal records an earlier turn in this workspace (read before this turn's own reservation adds it), and
+  // the clauses it has forgotten or corrected, which the workspace must not keep handing back.
+  const used = kept && (journal.view.toolTurns?.workspaces ?? []).includes(space.key);
+  const quotes = kept ? forgottenQuotes(journal.view) : [];
   // Rule 114: the edge's authority and budget share are durable before dispatch, with the turn's whole liability.
   journal.append({ kind: 'tool-turn', phase: 'reserved', id, attempt, calls: extra + children * SUBSCRIPTION_TOOL_LIMITS.childMaxTurns,
     delegation: { children, turnsEach: SUBSCRIPTION_TOOL_LIMITS.childMaxTurns, type: SUBSCRIPTION_SUBAGENT_TYPE, authority },
     ...(mcp ? { mcp: { servers: Object.keys(mcp.servers), reads: mcp.reads.length, digest: mcp.digest } } : {}),
     workspace: { key: space.key, kept }, at: now() });
-  let turn = null, result, failure = null, plan = null;
+  let turn = null, result, failure = null, plan = null, volume = null;
   try {
     turn = prepareToolTurn({ root, operation: id, attempt, operations, children, mcp, scratch, volume: kept ? space : null });
+    if (kept) volume = reconcileWorkspace({ mounted: turn.scratch, workspace: turn.workspace, tmp: join(turn.scratch, 'tmp'), used, quotes });
     if (session && kept) {
       // MF5: the session is resumed only when nothing it may hold has changed; otherwise the old one's files go before a
       // new one starts, and the record naming it is written (open) before dispatch, so a crash leaves it `interrupted`.
       const record = readSession(space.directory);
-      plan = planSession({ record, binding: `${authority} ${session.harness}`, facts, store: session.store, workspace: turn.workspace });
+      plan = planSession({ record, binding: `${authority} ${session.harness}`, facts, store: session.store, workspace: turn.workspace,
+        volumeLost: volume.lost });
+      // Rule 60: a new session removes every earlier one of this workspace, including any whose record was lost.
       if (plan.previous) removeSessionFiles(session.store, plan.previous.workspace, plan.previous.id);
+      if (!plan.resume) removeWorkspaceSessions(session.store, turn.workspace);
       writeSession(space.directory, { v: 1, id: plan.id, binding: `${authority} ${session.harness}`, facts, workspace: turn.workspace,
         turns: plan.turn, open: true, at: now() });
     }
@@ -349,6 +427,7 @@ export async function runToolTurn({ journal, root, id, prepared, promptLimit, de
       transport: 'claude-code Agent tool', resultDestination: 'the parent turn\'s tool result', cancellation: 'ends with the turn\'s process group',
       state: edge.state === 'returned' ? 'returned' : ended, result: edge.result === null ? null : redactText(edge.result) })),
     workspaceBytes: turn ? workspaceBytes(turn.workspace) : null,
+    ...(volume ? { volume } : {}),
     ...(plan ? { session: { id: plan.id, mode: plan.resume ? 'resume' : 'new', reason: plan.reason, turn: plan.turn,
       kept: ending.ended === null, ...(ending.ended === null ? {} : { ended: ending.ended }), transcriptBytes: ending.transcriptBytes } } : {}),
     at: now() });
@@ -379,5 +458,8 @@ export function toolStatusLines(view, enabled, off = null) {
       + `changed a fact or the authority changed, ${sessions.lost} after a loss or an interrupted turn, ${sessions.bounded} at its size or turn bound); `
       + `${sessions.ended} ended at a stop, withdrawal or failed turn.`] : []),
     ...(stats.overflow ? [`Workspaces: this root keeps ${String(TOOL_WORKSPACES_KEPT)}; ${stats.overflow} turns of further conversations ran in a fresh `
-      + 'one-turn workspace without a kept session.'] : [])];
+      + 'one-turn workspace without a kept session.'] : []),
+    ...(stats.workspacesLost ? [`Workspace lost: ${stats.workspacesLost} turns found this conversation's kept workspace missing; its earlier files are `
+      + 'gone and it started again empty (the journal still holds every answer and tool trace).'] : []),
+    ...(stats.reconciledFiles ? [`Workspace kept in step with memory: ${stats.reconciledFiles} files had a forgotten or corrected statement removed.`] : [])];
 }

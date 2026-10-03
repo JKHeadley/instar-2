@@ -1,5 +1,21 @@
 [
   {
+    "revision": 6,
+    "date": "2026-10-03",
+    "status": "draft",
+    "cause": {
+      "kind": "draft",
+      "note": "Unit w4-persist repair, review round 1 (Astra, VERDICT NO): the kept workspace made subordinate to the journal like the kept session, lost session records cleaned within bounds, and a lost workspace volume told apart from a first allocation. No constitution change."
+    },
+    "changes": [
+      {
+        "what": "§9 persistent-workspace rule: a new session removes every earlier session file of the conversation's projects directory; before a turn's tools run, clauses the journal forgot or corrected are removed from the workspace's files; a workspace the journal shows used that comes back empty and unmarked is recorded as lost, never resumed against, and its replacement carries a note.",
+        "why": "Review round 1 findings 1-3: a forgotten fact stayed readable in a saved note, a lost session record stranded transcripts outside retention, and a lost volume was silently treated as a first allocation.",
+        "ref": "lanes/w4-persist-PROGRESS.md (Pipeline repair); LIVE-PATH-PLAN.md row #400"
+      }
+    ]
+  },
+  {
     "revision": 5,
     "date": "2026-10-03",
     "status": "draft",

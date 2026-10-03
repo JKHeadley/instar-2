@@ -121,7 +121,14 @@ transcript, on a compaction (the harness's own automatic compaction and its own 
 its transcript or record is missing or unreadable, and after a turn that never settled; it ends, its
 transcript removed at once, when a turn is stopped, withdrawn or fails, or runs a tool without its
 admission record. A loss is detected before dispatch and survived: the next turn starts a new
-session grounded from the journal, and the workspace's files are unaffected. Workspace, session
+session grounded from the journal, and the workspace's files are unaffected. A new session removes
+every earlier session file of the conversation's own projects directory, so a session whose record was
+lost is never stranded outside these bounds. The workspace is a consumer of the journal's facts too:
+before any tool of a turn runs, every clause the journal has forgotten or corrected since the volume
+last saw its memory is removed from the workspace's files, and a file without one is left untouched.
+A workspace the journal shows earlier turns in that comes back empty and unmarked is a lost volume, not
+a first allocation: the turn never resumes a session against it, records the loss (the operator's
+status shows it) and leaves a note in the replacement saying the earlier files are gone. Workspace, session
 record and transcript (in the login profile's projects directory) are machine-local; on another
 machine a conversation starts a new workspace and session from the journal, and nothing resumes
 across machines. The pinned harness counts the reported cost of a resumed session cumulatively, so

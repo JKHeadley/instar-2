@@ -15,7 +15,7 @@ import { conclusionText, parseModelJson } from './model-json.js';
 import { SINGLE_MACHINE_PROFILE } from './activation-authority.js';
 import { subscriptionSessionArgs, subscriptionToolsPolicy, SUBSCRIPTION_TOOL_SESSION_ENV } from '../../src/assembly/production-provider.js';
 // @ts-expect-error The runner side stays plain JavaScript.
-import { conversationWorkspace, detachScratch, planSession, readSession, removeSessionFiles, runToolTurn, sessionFactsDigest, sessionTranscript, TOOL_SESSION_LIMITS, TOOL_WORKSPACES_KEPT } from './tool-turn.mjs';
+import { conversationWorkspace, detachScratch, forgottenQuotes, planSession, readSession, reconcileWorkspace, removeSessionFiles, removeWorkspaceSessions, runToolTurn, sessionFactsDigest, sessionTranscript, toolStatusLines, TOOL_SESSION_LIMITS, TOOL_WORKSPACES_KEPT, WORKSPACE_LOST_NOTE } from './tool-turn.mjs';
 
 const key = new Uint8Array(32).fill(5);
 const roots: string[] = [];
@@ -230,6 +230,126 @@ it('survives the loss of the session: a missing transcript, an unreadable record
   writeFileSync(join(space.directory, 'session.json'), JSON.stringify({ ...record, open: true }));
   expect((await run(4)).session).toMatchObject({ resume: false, reason: 'interrupted: the last turn did not settle' });
   expect(traceSession(journal)).toMatchObject({ fresh: 4, lost: 3, resumed: 0 });
+  journal.close();
+});
+
+it('keeps transcripts bounded when the session record is lost: a missing or unreadable record never strands the old session', async () => {
+  const root = dir(), store = join(root, 'projects'), journal = openPreviewJournal(join(root, 'journal.encrypted'), key, genesis());
+  const harness = standInHarness(store);
+  const run = (update: number) => runToolTurn(turnOptions(journal, root, store, (turn: Turn) => harness.invoke(turn, `m${update}`),
+    { id: `telegram:12345678:update:${update}` }));
+  const space = conversationWorkspace(root, '12345678:7654321');
+  await run(1);
+  const ws = realpathSync(join(space.directory, 'vol', 'ws')), projects = join(sessionTranscript(store, ws, harness.seen[0]!.session!.id), '..');
+  // A subagent directory beside the transcript, and an unrelated file the cleanup must leave alone.
+  mkdirSync(join(projects, harness.seen[0]!.session!.id, 'subagents'), { recursive: true });
+  writeFileSync(join(projects, 'notes.md'), 'unrelated');
+  for (const [index, loss] of ['unreadable', 'missing', 'unreadable'].entries()) {
+    if (loss === 'missing') rmSync(join(space.directory, 'session.json')); else writeFileSync(join(space.directory, 'session.json'), '{not json');
+    expect((await run(index + 2)).session).toMatchObject({ resume: false, reason: loss === 'missing' ? 'new' : 'lost: the session record is unreadable' });
+  }
+  // Four turns, three record losses: only the current session's transcript remains, no subagent directory is stranded.
+  const left = readdirSync(projects).sort();
+  expect(left).toEqual([`${harness.seen.at(-1)!.session!.id}.jsonl`, 'notes.md'].sort());
+  // The neighbour: a resumed turn keeps its own transcript.
+  expect((await run(5)).session).toMatchObject({ resume: true });
+  expect(readdirSync(projects)).toHaveLength(2);
+  journal.close();
+});
+
+it('removes only UUID-named session files of the workspace\'s own projects directory', () => {
+  const root = dir(), store = join(root, 'projects'), ws = '/private/tmp/itw-0123456789ab/ws', id = '0f4c2b1e-8d7a-4c3b-9e2f-1a2b3c4d5e6f';
+  const transcript = sessionTranscript(store, ws, id), other = sessionTranscript(store, '/private/tmp/itw-ba9876543210/ws', id);
+  for (const path of [transcript, other]) { mkdirSync(path.slice(0, -'.jsonl'.length), { recursive: true }); writeFileSync(path, 'x'); }
+  writeFileSync(join(transcript, '..', 'memo.jsonl'), 'y');
+  expect(removeWorkspaceSessions(store, ws)).toBe(2);
+  expect(readdirSync(join(transcript, '..'))).toEqual(['memo.jsonl']);
+  expect(existsSync(other)).toBe(true);
+  expect(removeWorkspaceSessions(store, '/private/tmp/itw-none/ws')).toBe(0);
+});
+
+it('removes a forgotten fact from the kept workspace before any later turn can read it, and leaves unrelated files untouched', async () => {
+  const fact = 'My locker code is 4417.';
+  const reads: { note: string | null; other: string | null }[] = [];
+  const w = toolWorld((input, seen) => {
+    const note = join(seen.workspace, 'note.txt'), other = join(seen.workspace, 'groceries.txt');
+    reads.push({ note: existsSync(note) ? readFileSync(note, 'utf8') : null, other: existsSync(other) ? readFileSync(other, 'utf8') : null });
+    if (input.question === fact) { writeFileSync(note, `Saved: ${fact}\nAlso: bring the blue folder.\n`); writeFileSync(other, 'milk, eggs\n'); }
+    if (input.question.startsWith('Please stop remembering')) {
+      const source = JSON.parse(input.context).memoryCandidates?.find((item: { message: string }) => item.message.includes(fact));
+      return { state: 'complete', value: JSON.stringify({ reply: 'Done.', memory: [{ mode: 'forget', source: source.id, quote: fact }] }) };
+    }
+    return { state: 'complete', value: 'Noted.' };
+  });
+  w.worker.intake([w.update(1, fact)]); await w.worker.drain();
+  w.worker.intake([w.update(2, `Please stop remembering this fact: ${fact}`)]); await w.worker.drain();
+  w.worker.intake([w.update(3, 'What is my locker code?')]); await w.worker.drain();
+  // The positive neighbour: until the forget was recorded the note held the fact.
+  expect(reads[1]!.note).toContain('4417');
+  // After it: the note no longer holds the forgotten clause, keeps the rest, and the unrelated file is byte-for-byte unchanged.
+  expect(reads[2]!.note).not.toContain('4417');
+  expect(reads[2]!.note).toContain('bring the blue folder');
+  expect(reads[2]!.other).toBe('milk, eggs\n');
+  expect(w.journal.view.toolTurns?.reconciledFiles).toBe(1);
+  expect(toolStatusLines(w.journal.view, true).join('\n')).toContain('1 files had a forgotten or corrected statement removed');
+  // Replay reaches the same projection.
+  const reopened = openPreviewJournal(join(w.root, 'journal.encrypted'), key);
+  expect(reopened.view.toolTurns).toEqual(w.journal.view.toolTurns);
+  reopened.close(); w.journal.close();
+});
+
+it('reconciles a corrected clause too, only once per change, and never a preference or a too-short quote', () => {
+  const root = dir(), mounted = join(root, 'vol'), workspace = join(mounted, 'ws'), tmp = join(mounted, 'tmp');
+  mkdirSync(workspace, { recursive: true }); mkdirSync(tmp);
+  writeFileSync(join(workspace, 'plan.md'), 'The meeting is on Tuesday at noon. Keep replies short.');
+  writeFileSync(join(tmp, 'scratch'), 'meeting is on Tuesday at noon');
+  writeFileSync(join(workspace, 'keep.txt'), 'abc');
+  const view = { memory: [{ mode: 'correct', source: 's', quote: 'The meeting is on Tuesday at noon.', trigger: 't', replacement: 'Wednesday' },
+    { mode: 'prefer', source: 's', quote: 'Keep replies short.', trigger: 't' }, { mode: 'forget', source: 's', quote: 'abc', trigger: 't' }] };
+  const quotes = forgottenQuotes(view);
+  expect(quotes).toEqual(['The meeting is on Tuesday at noon.']);
+  expect(reconcileWorkspace({ mounted, workspace, tmp, used: false, quotes })).toEqual({ lost: false, reconciled: 1 });
+  expect(readFileSync(join(workspace, 'plan.md'), 'utf8')).toBe(' Keep replies short.');
+  expect(readFileSync(join(tmp, 'scratch'), 'utf8')).toBe('meeting is on Tuesday at noon');
+  expect(readFileSync(join(workspace, 'keep.txt'), 'utf8')).toBe('abc');
+  // Unchanged memory: the files are not walked again (a re-added clause stays until the journal changes).
+  writeFileSync(join(workspace, 'plan.md'), 'The meeting is on Tuesday at noon.');
+  expect(reconcileWorkspace({ mounted, workspace, tmp, used: true, quotes })).toEqual({ lost: false, reconciled: 0 });
+});
+
+it('detects a lost kept workspace from the journal\'s history: a first allocation is not a loss, a vanished volume is', async () => {
+  const root = dir(), store = join(root, 'projects'), journal = openPreviewJournal(join(root, 'journal.encrypted'), key, genesis());
+  const notes: (string | null)[] = [];
+  const harness = standInHarness(store, turn => {
+    const note = join(turn.workspace, 'note.txt'), lost = join(turn.workspace, WORKSPACE_LOST_NOTE);
+    notes.push(existsSync(lost) ? readFileSync(lost, 'utf8') : null);
+    if (!existsSync(note)) writeFileSync(note, 'kiwi-7731');
+    return { state: 'complete', value: 'Done.' };
+  });
+  const run = (update: number) => runToolTurn(turnOptions(journal, root, store, (turn: Turn) => harness.invoke(turn, `m${update}`),
+    { id: `telegram:12345678:update:${update}` }));
+  // First allocation: no loss, no note.
+  expect((await run(1)).session).toMatchObject({ resume: false, reason: 'new' });
+  expect((await run(2)).session).toMatchObject({ resume: true });
+  const space = conversationWorkspace(root, '12345678:7654321'), first = harness.seen[0]!.session!.id;
+  const ws = realpathSync(join(space.directory, 'vol', 'ws'));
+  // The volume disappears (its image deleted); the record and the transcript survive.
+  rmSync(join(space.directory, 'vol'), { recursive: true });
+  expect(existsSync(join(space.directory, 'session.json'))).toBe(true);
+  const after = await run(3);
+  // Never resumed against the empty replacement: a new session, the old transcript gone, the loss journaled and told.
+  expect(after.session).toMatchObject({ resume: false, reason: 'lost: the workspace volume is missing' });
+  expect(existsSync(sessionTranscript(store, ws, first))).toBe(false);
+  expect(notes).toEqual([null, null, expect.stringContaining('earlier workspace was lost')]);
+  expect(journal.view.toolTurns).toMatchObject({ workspacesLost: 1, sessions: { lost: 1 } });
+  expect(toolStatusLines(journal.view, true).join('\n')).toContain('Workspace lost: 1 turns');
+  // The replacement is kept from then on: the next turn is not another loss.
+  expect((await run(4)).session).toMatchObject({ resume: true });
+  expect(journal.view.toolTurns?.workspacesLost).toBe(1);
+  // Another conversation's first turn in the same root is a first allocation, not a loss.
+  await runToolTurn(turnOptions(journal, root, store, (turn: Turn) => harness.invoke(turn, 'other'),
+    { id: 'telegram:12345678:update:5', conversation: 'telegram/bot-1/chat-2' }));
+  expect(journal.view.toolTurns?.workspacesLost).toBe(1);
   journal.close();
 });
 
