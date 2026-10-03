@@ -8,7 +8,7 @@ import { dirname, resolve, join } from 'node:path';
 import { createProductionTelegramIO, createSubscriptionProviderIO, productionStorageIO } from '../../scripts/production-boot-io.mjs';
 import { openProductionStorage } from '../../src/assembly/production-storage.js';
 import { DEFAULT_SUBSCRIPTION_DOORWAY, subscriptionDoorway, SUBSCRIPTION_CONVERSATION_FRAMING,
-  subscriptionConversationPolicy, validateSubscriptionActivation } from '../../src/assembly/production-provider.js';
+  subscriptionConversationPolicy, SUBSCRIPTION_PREVIEW_EXPIRY, validateSubscriptionActivation } from '../../src/assembly/production-provider.js';
 import { redact } from '../../src/recall/redact.js';
 import { durablePreviewWrite } from './durable-write.js';
 import { prepareJournalEnvelope } from './journal-envelope.js';
@@ -807,7 +807,14 @@ async function main() {
             { connected: options['review-repository'] !== undefined && Boolean(process.env.INSTAR_SECRET_PREVIEW_GITHUB_TOKEN) });
           if (options['explicit-yes-installation'] !== undefined && install === undefined) explicitYes = { ...explicitYes, reason: 'the installation record is unreadable' };
         } catch (error) { explicitYes = { connected: false, error: error instanceof Error ? error.message : 'invalid' }; }
-        return { explicitYes, operatorActionSurface: operatorActionSurface(explicitYes),
+        // Rule 79: renewal is a phone action only while the installed renewal record validates now exactly as `run`
+        // validates it (same function), for a trial end later than this journal's. Any refusal keeps the host wording.
+        let renewalInstalled = false;
+        try {
+          renewalInstalled = SUBSCRIPTION_PREVIEW_EXPIRY > view.view.expires
+            && renewalActivationOf(options, () => view.view)(SUBSCRIPTION_PREVIEW_EXPIRY) !== null;
+        } catch { renewalInstalled = false; }
+        return { explicitYes, operatorActionSurface: operatorActionSurface(explicitYes, renewalInstalled),
           operatorRequests: operatorRequestsReport(view.view, now) };
       })(),
       // The independent approval page: whether it is installed and can approve now (a passkey is enrolled).
