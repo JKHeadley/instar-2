@@ -4,7 +4,7 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { createJournalWorker, limitedAnswerText, openPreviewJournal, openRequests } from './journal-test-worker.js';
 import { statusReply } from './status-command.js';
-import { createLiveSentinels, sentinelReport, sentinelStatusLines, type LiveSentinelPorts } from './live-sentinels.js';
+import { createLiveSentinels, createOrdinaryLane, sentinelCycle, sentinelReport, sentinelStatusLines, type LiveSentinelPorts } from './live-sentinels.js';
 import { SENTINEL_FAMILIES, type SentinelFamily } from './sentinel-record.js';
 import { defaultSentinelConfig } from '../../src/awareness/sentinel.js';
 import { defaultPresenceConfig } from '../../src/sentinels/presence.js';
@@ -42,8 +42,8 @@ function harness(options: { families?: SentinelFamily[]; model?: (input: { id: s
   let sentinels = createLiveSentinels(journal, sentinelPorts());
   return { root, path, clock, sent, effects, get journal() { return journal; }, get worker() { return worker; },
     get sentinels() { return sentinels; },
-    reopen() { journal.close(); journal = openPreviewJournal(path, key); worker = createJournalWorker(journal, workerPorts as never);
-      sentinels = createLiveSentinels(journal, sentinelPorts()); },
+    reopen(extra: { presenceNotes?: boolean } = {}) { journal.close(); journal = openPreviewJournal(path, key);
+      worker = createJournalWorker(journal, { ...workerPorts, ...extra } as never); sentinels = createLiveSentinels(journal, sentinelPorts()); },
     close() { journal.close(); } };
 }
 
@@ -121,6 +121,90 @@ it('context: input too long for its context is handed to the summary pass, bound
     world.sentinels.tick();
     expect(world.effects).toHaveLength(2);
   } finally { world.close(); }
+});
+
+it('wiring: a recovery the context sentinel records runs inside the admitted ordinary job; a busy lane defers the tick', async () => {
+  const world = harness({ families: ['context'] });
+  try {
+    world.worker.intake([update(1, `Please read all of this: ${'lorem ipsum '.repeat(2000)}`)]);
+    await world.worker.drain();
+    expect(world.journal.view.order[0]?.noticeClass).toBe('too-long-input');
+    // The runner's real lane and cycle; the recovery port queues the forced summary pass exactly as the runner does.
+    const requested: (() => Promise<unknown>)[] = [], recoveries: string[] = [];
+    const lane = createOrdinaryLane({ elapsed: () => world.clock.now, peerCurrent: () => true, after: () => {} });
+    const sentinels = createLiveSentinels(world.journal, { now: () => world.clock.now, startedAt: START, stopped: () => false,
+      families: new Set(['context']), reground: () => requested.push(() => world.worker.drain()),
+      recoverContext: operation => requested.push(async () => { recoveries.push(operation); await world.worker.summarizeIfNeeded(true); }),
+      selfHeal: () => {}, actOnPromise: () => {} });
+    const cycle = () => sentinelCycle(lane, { tick: () => { sentinels.tick(); }, requested, drain: () => world.worker.drain(),
+      after: async () => {} });
+    // A busy neighbour holds the lane: the tick is deferred, so nothing is recorded and nothing counts as attempted.
+    let release!: () => void;
+    expect(lane.submit(() => new Promise<void>(done => { release = done; }))).toBe(true);
+    expect(cycle()).toBe(false);
+    expect(world.journal.view.sentinels).toBeUndefined();
+    expect(requested).toEqual([]);
+    release(); await lane.settle();
+    // Admitted: the recorded recovery executes inside this cycle's job, after its drain.
+    expect(cycle()).toBe(true);
+    await lane.settle();
+    expect(recoveries).toEqual([expect.stringMatching(/^awareness-recover:journal-context:1:/u)]);
+    expect(sentinelReport(world.journal.view).context?.recoveries).toBe(1);
+    // Each later recorded recovery executes too: never more recorded attempts than executed ones.
+    for (let i = 0; i < 2; i++) { world.clock.now += 600_000; cycle(); await lane.settle(); }
+    expect(recoveries.length).toBe(sentinelReport(world.journal.view).context?.recoveries);
+    expect(requested).toEqual([]);
+  } finally { world.close(); }
+});
+
+it('wiring: a backing-off or peer-waiting lane defers the tick; a failed drain still runs the requested step', async () => {
+  const world = harness({ families: ['context'] });
+  try {
+    world.worker.intake([update(1, `Please read all of this: ${'lorem ipsum '.repeat(2000)}`)]);
+    await world.worker.drain();
+    let peer = false;
+    const requested: (() => Promise<unknown>)[] = [], ran: string[] = [];
+    const lane = createOrdinaryLane({ elapsed: () => world.clock.now, peerCurrent: () => peer, after: () => {} });
+    const sentinels = createLiveSentinels(world.journal, { now: () => world.clock.now, startedAt: START, stopped: () => false,
+      families: new Set(['context']), reground: () => requested.push(async () => { ran.push('reground'); }),
+      recoverContext: () => requested.push(async () => { ran.push('recover'); }), selfHeal: () => {}, actOnPromise: () => {} });
+    const cycle = (drain: () => Promise<unknown>) => sentinelCycle(lane, { tick: () => { sentinels.tick(); }, requested, drain,
+      after: async () => { ran.push('after'); } });
+    expect(cycle(async () => {})).toBe(false);
+    expect(world.journal.view.sentinels).toBeUndefined();
+    peer = true;
+    expect(cycle(async () => { throw Error('drain failed'); })).toBe(true);
+    await lane.settle();
+    expect(ran).toEqual(['recover']);
+    // The failure backs the lane off: the next cycle is deferred and records nothing new.
+    const counts = { ...world.journal.view.sentinels!.counts };
+    world.clock.now += 500;
+    expect(cycle(async () => {})).toBe(false);
+    expect(world.journal.view.sentinels!.counts).toEqual(counts);
+  } finally { world.close(); }
+});
+
+it('presence off-switch: a holding note already marked due is not sent after a restart with presence disabled', async () => {
+  const live = recorded.held.find(item => item.cause === 'reply check unavailable')!;
+  for (const enabled of [false, true]) {
+    const world = harness({ families: ['presence'] });
+    try {
+      world.worker.intake([update(live.update, live.text)]);
+      const id = world.journal.view.order[0]!.id;
+      world.journal.append({ kind: 'hold', id, reason: live.cause, at: world.clock.now });
+      world.clock.now += defaultPresenceConfig.thresholdMs;
+      world.sentinels.tick();
+      world.clock.now += defaultPresenceConfig.healWindowMs;
+      world.sentinels.tick();
+      expect(sentinelReport(world.journal.view).presence.holdingNoteDue).toEqual([id]);
+      world.reopen({ presenceNotes: enabled });
+      await world.worker.minimal();
+      expect(world.sent).toEqual(enabled ? [limitedAnswerText(world.journal.view, 'worker', 1)] : []);
+      // The saved decision stays for audit either way (a later enabled tick closes it once answered).
+      expect(sentinelReport(world.journal.view).presence.holdingNoteDue).toEqual([id]);
+      expect(world.journal.view.order[0]?.limited?.reason).toBe(enabled ? 'worker' : undefined);
+    } finally { world.close(); }
+  }
 });
 
 it('presence: a held recorded live turn gets one self-heal, then one honest infrastructure holding note', async () => {

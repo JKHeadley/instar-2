@@ -62,7 +62,7 @@ import { doorwayFreshness, installDoorways, observeExchange, readDoorwayMap, sta
 import { createSecretCustody, dueCredentialReminders, reminderSchedule } from './secret-custody.js';
 import { credentialNotices, doorwayNotices, dueWithDelivery } from './credential-reminders.js';
 import { journalCapacity, packetCapacity } from './capacity-outcome.js';
-import { createLiveSentinels, sentinelReport } from './live-sentinels.js';
+import { createLiveSentinels, createOrdinaryLane, sentinelCycle, sentinelReport } from './live-sentinels.js';
 import { SENTINEL_FAMILIES } from './sentinel-record.js';
 
 const clock = createPreviewClock(() => Date.now(), () => performance.now());
@@ -1582,6 +1582,7 @@ async function main() {
       ...(requestHours === undefined ? {} : { requestWindowMs: requestHours * 3_600_000 }),
       renewalActivation: renewalActivationOf(options, () => journal.view), retractProposal: () => readRetractProposal(retractPath) } : null;
     worker = createJournalWorker(journal, { ...(approvalSurface ? { approvalSurface } : {}), ...(explicitYes ? { explicitYes } : {}), now: wallNow, elapsed: clock.elapsed, origin, stopped: () => workerStop.value || existsSync(stopPath) || !ownerHeld(), timeZone: timeZoneOf(options),
+      presenceNotes: sentinelFamilies.has('presence'),
       sources: turnSources(root, options, journal.view, () => runs, () => launchedAt ?? undefined,
         () => journal.view.order.some(turn => turn.reserved && !reservedAtLaunch.has(turn.id)) ? null : handoff),
       prepareModel: modelEnvelope,
@@ -1903,18 +1904,10 @@ async function main() {
     // ordinary pass no longer ends the process: the minimal path keeps reading and answering (reason
     // `worker`) while the ordinary pass is retried with backoff; eight consecutive failures open the
     // breaker and end the run for the host supervisor (Rules 15, 55; Eleven §5's ordinary-worker cut).
-    let drainJob = null, drainError = null, drainFailures = 0, drainRetryAt = 0;
-    const background = run => {
-      if (drainJob || clock.elapsed() < drainRetryAt) return;
-      drainJob = run().then(() => { drainFailures = 0; }, error => {
-        drainFailures++;
-        drainRetryAt = clock.elapsed() + Math.min(300_000, 1000 * 2 ** Math.min(drainFailures - 1, 9));
-        if (drainFailures >= 8) drainError ??= error;
-      }).then(summarizeLater).finally(() => { drainJob = null; });
-    };
     // Two machines: ordinary work (model calls, replies, reminders) starts only while the other machine holds the
     // whole journal, so nothing is spent or prepared on local durability while the peer is away. Input is still read.
-    const ordinary = run => { if (shared === null || shared.peerCurrent()) background(run); };
+    const lane = createOrdinaryLane({ elapsed: clock.elapsed, peerCurrent: () => shared === null || shared.peerCurrent(), after: summarizeLater });
+    const ordinary = run => { lane.submit(run); };
     // A message past every bound waits at Telegram; later presses behind it are re-read after this pause.
     const waitHeld = async () => {
       const until = clock.elapsed() + 3000;
@@ -1928,17 +1921,17 @@ async function main() {
       if (activationMatchesJournal(journal.view, activation)) return false;
       endReason = 'activation renewed: restart on the renewed record'; return true;
     };
-    // Part 18 (plan #402): the live sentinels run on this loop's own cycle and request only the runner's own bounded steps.
+    // Part 18 (plan #402): the live sentinels run on this loop's own cycle and request only the runner's own bounded
+    // steps. A requested step is queued and run inside the cycle's admitted ordinary job (sentinelCycle), never
+    // resubmitted to the busy lane, where it would be silently declined.
+    const sentinelSteps = [];
     const sentinels = createLiveSentinels(journal, { now: wallNow, startedAt: launchedAt, families: sentinelFamilies,
       stopped: () => signalled || workerStop.value || existsSync(stopPath) || !ownerHeld(),
-      reground: () => ordinary(() => worker.drain()),
-      recoverContext: () => ordinary(() => worker.summarizeIfNeeded(true)),
-      selfHeal: () => ordinary(() => worker.drain()),
-      actOnPromise: id => ordinary(async () => {
-        await worker.drain();
-        if (id.startsWith('request:')) await worker.sendRequested(); else await worker.workObligations();
-      }) });
-    const sentinelTick = () => { if (sentinelFamilies.size && !journal.readOnly) try { sentinels.tick(); } catch { /* silence: a failed tick requests nothing */ } };
+      reground: () => sentinelSteps.push(() => worker.drain()),
+      recoverContext: () => sentinelSteps.push(() => worker.summarizeIfNeeded(true)),
+      selfHeal: () => sentinelSteps.push(() => worker.drain()),
+      actOnPromise: id => sentinelSteps.push(() => id.startsWith('request:') ? worker.sendRequested() : worker.workObligations()) });
+    const sentinelTick = () => { if (sentinelFamilies.size && !journal.readOnly) sentinels.tick(); };
     for (let i = 0; i < cycles && !signalled; i++) {
       if (i > 0) await new Promise(done => setImmediate(done));
       if (signalled || workerStop.value || existsSync(stopPath) || journal.view.stop || !ownerHeld()) break;
@@ -1960,20 +1953,20 @@ async function main() {
           if (workerStop.value || existsSync(stopPath)) break;
         }
       }
-      if (drainError) throw drainError;
+      if (lane.error()) throw lane.error();
       worker.gate(); await worker.minimal();
       // A stop given on the independent surface latches here, before any poll or ordinary pass.
       if (journal.view.stop) break;
       if (renewedAway()) break;
       // Rules 8, 22, 92, 99: the scheduled consumer of due obligation work, one bounded step per tick,
       // runs after the ordinary drain inside the same background job, so it never blocks the minimal path.
-      ordinary(async () => {
-        await worker.drain();
-        try { await worker.workObligations(); } catch { /* a stop or expiry ends the step; its start stays durable */ }
-      });
-      worker.gate();
+      // The sentinels tick only when that job is admitted, and their requested steps run inside it after the drain.
       // A holding note the presence sentinel marks due goes out at the minimal path's next step after the poll.
-      sentinelTick();
+      sentinelCycle(lane, { tick: sentinelTick, requested: sentinelSteps, drain: () => worker.drain(),
+        after: async () => {
+          try { await worker.workObligations(); } catch { /* a stop or expiry ends the step; its start stays durable */ }
+        } });
+      worker.gate();
       reportCap();
       runDueProof();
       checkDoorways();
@@ -2034,8 +2027,8 @@ async function main() {
     // The bounded shutdown awaits (provider timeouts) are progress, not a hang.
     const tailBeat = setInterval(hostBeat, 5000);
     try {
-      await drainJob;
-      if (drainError && !signalled) throw drainError;
+      await lane.settle();
+      if (lane.error() && !signalled) throw lane.error();
       await summaryJob;
       await stepJob;
       await retroJob;

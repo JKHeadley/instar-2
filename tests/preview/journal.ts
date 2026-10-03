@@ -4359,6 +4359,9 @@ export function concurrentWorkItem(input: { now: number; current: { owner: strin
 
 export interface PreviewPorts {
   now(): number; stopped(): boolean;
+  /** Part 18: whether the presence sentinel is enabled this launch (its off-switch); absent means enabled. A disabled
+   * family keeps its recorded decisions for audit, but a holding note it marked due earlier no longer goes out. */
+  presenceNotes?: boolean;
   /** Extra lines for the fixed status reply, supplied by the runner (ownership, store checks). */
   statusLines?(): readonly string[];
   /** Rule 44: the runner's installed update, carried into operator packets until a sent answer included it. */
@@ -7387,7 +7390,7 @@ export function createJournalWorker(journal: ReturnType<typeof openPreviewJourna
     if (capped) return capped;
     // Part 18 §6: the presence sentinel marked this message's holding note due after its self-heal request failed.
     // Only causes the fixed worker wording states truthfully qualify: a check that could not decide, or nothing at all.
-    const presence = presenceNoteDue(journal.view.sentinels, turn.id) && turn.noticeClass === undefined
+    const presence = ports.presenceNotes !== false && presenceNoteDue(journal.view.sentinels, turn.id) && turn.noticeClass === undefined
       && turn.modelState !== 'uncertain' && (turn.held === undefined || PRESENCE_NOTE_HOLDS.has(turn.held));
     if (turn.held !== undefined) return presence ? 'worker' : null;
     if (ordinaryFailedSince !== null || presence) return 'worker';

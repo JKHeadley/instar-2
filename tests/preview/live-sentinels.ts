@@ -219,3 +219,41 @@ export function sentinelStatusLines(view: JournalView): string[] {
     `Sentinels: context ${episode ? `${episode.kind} episode ${episode.status}` : 'no episode'}; presence watching ${report.presence.watching} unanswered (${report.presence.holdingNoteDue.length} holding note${report.presence.holdingNoteDue.length === 1 ? '' : 's'} due); promises ${report.promise.overdueReported.length} overdue reported, ${report.promise.waiting.length} waiting on someone else, ${report.promise.workRequested} with work requested.`,
   ];
 }
+
+/** The runner's one ordinary job (Rule 15): ordinary work runs beside the poll loop, one job at a time, never awaited
+ * by it. A failed job backs off exponentially (capped at five minutes) and eight consecutive failures latch the error
+ * that ends the run for the host supervisor (Rule 55). With two machines, work starts only while the peer is current. */
+export function createOrdinaryLane(ports: { elapsed(): number; peerCurrent(): boolean; after(): unknown }) {
+  let job: Promise<void> | null = null, error: unknown = null, failures = 0, retryAt = 0;
+  const admissible = () => job === null && ports.elapsed() >= retryAt && ports.peerCurrent();
+  const submit = (run: () => Promise<unknown>): boolean => {
+    if (!admissible()) return false;
+    job = run().then(() => { failures = 0; }, failed => {
+      failures++;
+      retryAt = ports.elapsed() + Math.min(300_000, 1000 * 2 ** Math.min(failures - 1, 9));
+      if (failures >= 8) error ??= failed;
+    }).then(() => { ports.after(); }).finally(() => { job = null; });
+    return true;
+  };
+  return { admissible, submit, settle: async () => { await job; }, error: () => error };
+}
+export type OrdinaryLane = ReturnType<typeof createOrdinaryLane>;
+
+/** One runner cycle's ordinary job with the sentinels riding it (plan #402). The tick runs only while the lane would
+ * admit work right now, and every step it requests (pushed into `requested` by its ports, after its record) runs inside
+ * that same admitted job, after the cycle's drain. A lane that is busy, backing off or waiting on the peer defers the
+ * tick: nothing is recorded, so nothing counts as an attempted recovery or a failed self-heal. A failed drain still lets
+ * the requested steps run, and then fails the job (its backoff unchanged). Returns whether the job was admitted. */
+export function sentinelCycle(lane: OrdinaryLane, input: { tick(): void; requested: (() => Promise<unknown>)[];
+  drain(): Promise<unknown>; after(): Promise<unknown> }): boolean {
+  if (!lane.admissible()) return false;
+  try { input.tick(); } catch { /* silence: a failed tick requests nothing beyond what it recorded */ }
+  const steps = input.requested.splice(0);
+  return lane.submit(async () => {
+    let failure: { error: unknown } | null = null;
+    try { await input.drain(); } catch (error) { failure = { error }; }
+    for (const step of steps) try { await step(); } catch { /* the sentinel observes the outcome on its next tick */ }
+    if (failure) throw failure.error;
+    await input.after();
+  });
+}
