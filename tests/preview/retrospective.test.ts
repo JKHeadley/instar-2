@@ -495,7 +495,8 @@ describe('MUST-FIX 6: every duty accounted, sibling evidence through a typed sea
       // character after the drop onto the wrong duty, so no position can be attributed: every duty is now
       // recorded uninspected with RETRO_DUTIES_UNREADABLE_NOTE and the rest of the pass stands. The floor that
       // matters is unchanged and asserted below — not one duty is recorded inspected.
-      w.answerWith(state => JSON.stringify({ ...body(casesOf(state)), duties: 'n'.repeat(RETROSPECTIVE_DUTIES.length - 1) }));
+      let first: RetroCase[] = [];
+      w.answerWith(state => { first = casesOf(state); return JSON.stringify({ ...body(first), duties: 'n'.repeat(RETROSPECTIVE_DUTIES.length - 1) }); });
       await w.retrospect();
       const short = w.journal.view.retroPasses[0]!;
       expect(short).toMatchObject({ state: 'complete' });
@@ -506,12 +507,20 @@ describe('MUST-FIX 6: every duty accounted, sibling evidence through a typed sea
       // The plan still decides availability: waiver-recurrence keeps its own unavailable reason.
       expect(short.result!.duties.find(item => item.duty === 'waiver-recurrence')).toMatchObject({ note: WAIVER_EVIDENCE_UNAVAILABLE });
       expect(retrospectiveStatusLine(w.journal.view)).toContain('duties not inspected although their evidence was present');
+      // Plan #382 round 1 (Astra): that pass discharged no duty, so it retires none of its cases — the next pass is
+      // due on them again and is asked about them, and a readable inspection there is what clears them.
+      expect(first.length).toBeGreaterThan(0);
+      w.advance(RETRO_STALE_CASE_MS);
+      let second: RetroCase[] = [];
+      w.answerWith(state => { second = casesOf(state); return answerFor(state); });
+      await w.retrospect();
+      expect(w.journal.view.retroPasses[1]).toMatchObject({ state: 'complete' });
+      expect(second.map(item => item.id)).toEqual(expect.arrayContaining(first.map(item => item.id)));
     } finally { w.done(); }
   });
 
-  // The second half of the test above, in its own world: that pass now COMPLETES, so the short-duties pass no
-  // longer leaves its own cases owed for a following pass to ask about. The waiver half never depended on the
-  // refusal, only on a pass whose answer the validator reads per position.
+  // The second half of the test above, in its own world: the waiver half never depended on the short-duties pass,
+  // only on a pass whose answer the validator can read.
   it('records waiver recurrence unavailable without producer evidence, and every other duty inspected', async () => {
     const w = world();
     try {

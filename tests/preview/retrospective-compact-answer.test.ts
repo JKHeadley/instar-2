@@ -133,8 +133,8 @@ it('states the compact shape and its hard budget in the question the model is ac
   expect(RETROSPECTIVE_QUESTION).toContain('HARD OUTPUT BUDGET');
   expect(RETROSPECTIVE_QUESTION).toContain(String(RETRO_ANSWER_BUDGET_BYTES));
   expect(RETROSPECTIVE_QUESTION).toContain(String(estimatedAnswerBytes([])));
-  // One character per duty, one entry per well, one bounded sentence — named with their real counts and lengths.
-  expect(RETROSPECTIVE_QUESTION).toContain(`ONE STRING of exactly ${String(RETROSPECTIVE_DUTIES.length)} characters`);
+  // One uninspected-duty id list, one entry per well, one bounded sentence — named with their real counts and lengths.
+  expect(RETROSPECTIVE_QUESTION).toContain('uninspected: ONE ARRAY of the duty ids');
   expect(RETROSPECTIVE_QUESTION).toContain(`ONE ARRAY of exactly ${String(GRAVITY_WELLS.length)} entries`);
   expect(RETROSPECTIVE_QUESTION).toContain(`at most ${String(RETRO_EFFICIENCY_CHARS)} characters`);
   expect(RETROSPECTIVE_QUESTION).toContain(`at most ${String(RETRO_OUTCOME_REASON_CHARS)}`);
