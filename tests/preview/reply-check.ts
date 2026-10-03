@@ -517,6 +517,16 @@ export const foldClaim = (text: string): string =>
  * a span: the live reason `Reply promises 'I'll summarize then' (future work)` must yield the whole promise, not
  * the single letter before the apostrophe inside it. */
 export function quotedSpans(reason: string): string[] {
+  return allQuotedSpans(reason).filter(span => span.length >= CLAIM_MATCH_MIN);
+}
+/** The claims a finding names in this reply: every quoted span long enough to be a claim, and a shorter quote only
+ * where it is exactly one whole sentence of the reply ("Code: 5521."), which names that sentence unambiguously. A
+ * short fragment of a longer sentence stays unnamed (least revelation; Rules 4, 42, 86). */
+export function namedClaimsIn(reason: string, body: string): string[] {
+  const whole = new Set(replySegments(body).map(segment => foldClaim(segment.text)).filter(Boolean));
+  return allQuotedSpans(reason).filter(span => span.length >= CLAIM_MATCH_MIN || whole.has(foldClaim(span)));
+}
+function allQuotedSpans(reason: string): string[] {
   const found: string[] = [];
   const letter = /\p{L}|\p{N}/u;
   const pairs: readonly [string, string][] = [['"', '"'], ['\u201c', '\u201d']];
@@ -548,7 +558,7 @@ export function quotedSpans(reason: string): string[] {
       at = end + 1;
     }
   }
-  return found.map(span => span.trim()).filter(span => span.length >= CLAIM_MATCH_MIN);
+  return found.map(span => span.trim()).filter(Boolean);
 }
 
 /** Sentence segments of a reply, each with the separator that followed it, so what is kept re-joins unchanged. */
@@ -564,12 +574,13 @@ export function replySegments(text: string): { text: string; separator: string }
   return segments;
 }
 
-/** True when this segment carries the named claim: it contains the whole quoted claim, or the claim spans it.
+/** True when this segment carries the named claim: it contains the whole quoted claim, or the claim spans it. A
+ * claim shorter than a claim fragment carries a segment only when it is that whole segment, exactly.
  * A truncated quote ("… next mess…") still matches through its available text, ellipsis folded away; a shared
  * opening alone never does, because the rest of a complete quote may name a different sentence (Rules 4, 86). */
 export function segmentCarries(segment: string, claim: string): boolean {
   const text = foldClaim(segment), named = foldClaim(claim);
-  if (named.length < CLAIM_MATCH_MIN) return false;
+  if (named.length < CLAIM_MATCH_MIN) return named.length > 0 && text === named;
   if (text.includes(named)) return true;
   if (text.length >= CLAIM_PREFIX_MIN && named.includes(text)) return true;
   return elidedClaimIn(text, named);

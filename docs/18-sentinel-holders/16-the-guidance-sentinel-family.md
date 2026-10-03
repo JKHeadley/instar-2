@@ -43,8 +43,9 @@ accept, reject with a stated reason, or no decision. No guidance member holds a 
 whole-reply floor is the credential wall, which belongs to the reply review. The review's claim-scoped
 floor removes only a sentence the full-context reviewer named verbatim as an untracked deferral, an
 unevidenced cannot-do, or a private detail revealed to an audience not entitled to it (Rule 4's
-deterministic enforcement of a recorded judgment, with Rule 86's full-context authority). An unavailable
-review releases the reply with its objections recorded as unconfirmed, never as a veto.
+deterministic enforcement of a recorded judgment, with Rule 86's full-context authority). On the operator's
+own chat an unavailable review releases the reply with its objections recorded as unconfirmed, never as a veto;
+for any other audience the next rule declares its own fail direction (Rule 95).
 
 **Rule — who reads a reply bounds what it reveals.** The purpose's least revelation; Rules 4, 10, 28,
 57, 86, 93, 95 and 116; **checks: P14-NF-76/77/78**. The audience is read from the answer packet the reply
@@ -60,7 +61,13 @@ the detail, for example by saying the operator can ask for it in their own priva
 The finding goes to the agent's one response round; the agent's discreet rewrite is sent only when the
 revision review, which also asks the audience question for that audience, clears every held class. Without
 a cleared rewrite, the named sentence is removed and the rest is sent, and a reply that was only the private
-detail becomes the holding note. A confidence the operator gives ("keep that between us") is a standing
+detail becomes the holding note. A reviewer's quote shorter than a claim fragment names a sentence only when it
+is that whole sentence ("Code: 5521."), so a short revealing sentence is removed while a short fragment of a longer
+sentence names nothing. For such an audience a reply is released only on a completed full-context review: the
+operator-echo shortcut and a Jev-only pass, including one recorded before an interrupted review, never stand in
+for it, and a review that did not complete (unavailable, call cap, shared deadline) sends the content-free
+holding note with the draft kept in the journal, since permission to disclose was never established (the
+purpose's least revelation; Rules 57, 95). A confidence the operator gives ("keep that between us") is a standing
 instruction, so the existing directive record keeps it durably: an exact clause of the operator's own message,
 carried in every later answer packet and closed only by supersession or completion (Rule 93), with no new store.
 Live secrets stay the credential rule and the exact credential wall, which read the reply text alone and
@@ -107,9 +114,9 @@ question selection:
 
 **Value — honest limits.** The live path has one audience: all 410 reviewed replies on the recorded live
 journal went to the operator's private chat, so the audience question has never run live, and its group
-proof re-addresses recorded packets. Its fail direction is the reply review's existing one: an unavailable
-review releases the reply with the objection unconfirmed. Rule 95 makes the fail direction a declaration of
-each consumer, so a consumer that adds a shared audience declares its own. The sensitivity member has no
+proof re-addresses recorded packets. Rule 95 makes the fail direction a declaration of each consumer: on the
+operator's own chat it is the reply review's existing release with the objection unconfirmed; for a shared
+audience it is the holding note, so an outage there costs an answer, never a disclosure. The sensitivity member has no
 retrospective arm yet; its live verdicts are measured like every member's. The context questions reach only replies the full-context review sees: on
 the recorded live journal that review ran on 207 of 410 reviewed replies. A reply Jev clears is covered
 by the retrospective arms, not live; asking Jev a context question on every reply would widen live

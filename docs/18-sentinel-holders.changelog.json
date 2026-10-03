@@ -22,6 +22,11 @@
         "what": "Section 16's recorded-proof table and honest limits cover the member; section 13 gains P14-NF-76 to P14-NF-78; section 14 records the disposition of the 1.x credential wall and principal-coherence guard.",
         "why": "Every new rule names executable checks with a positive neighbor, and the live path's single audience is stated rather than implied.",
         "ref": "lanes/w4-sensitivity-PROGRESS.md"
+      },
+      {
+        "what": "Unit review repair (Astra, round 1): for an audience other than the verified operator alone, a reply is released only on a completed full-context review. The operator-echo shortcut and a Jev-only or interrupted pass no longer stand in for it; an unavailable review, a refused reservation or the shared deadline sends the content-free holding note with the draft kept; a short reviewer quote that is exactly one whole sentence names and removes that sentence. The operator's own chat is unchanged.",
+        "why": "The unit review reproduced three disclosures at the checkpoint: a short quoted sentence survived a confirmed violation, an echo of the operator's earlier private words skipped the audience review, and the shared-audience path released the private draft when its review was unavailable (purpose's least revelation; Rules 57, 95).",
+        "ref": "lanes/w4-sensitivity-PROGRESS.md (Pipeline repair); tests/preview/sensitivity.test.ts"
       }
     ]
   },

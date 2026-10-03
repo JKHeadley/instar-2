@@ -14,7 +14,7 @@ import { readFileSync, writeFileSync } from 'node:fs';
 import { resolve } from 'node:path';
 import { GUIDANCE_FAMILY, guidanceVerdicts } from './guidance.js';
 import { AUDIENCE_RULES, CLAIM_SCOPED_RULES, CONTEXT_RULES, JEV_MODEL, OPERATOR_PRIVATE_SURFACE, REPLY_RULES, checkReply,
-  exciseNamedClaims, guidanceReviewRules, jevQuestions, parseReplyReviewVerdict, parseReplyRevision, quotedSpans,
+  exciseNamedClaims, guidanceReviewRules, jevQuestions, parseReplyReviewVerdict, parseReplyRevision, quotedSpans, namedClaimsIn,
   replyReviewContext, replyReviewQuestion, replyRevisionQuestion, sharedAudience, type ReplyCheckPorts, type ReplyFinding,
   type ReplyRule } from './reply-check.js';
 import { REVIEW_HOLDING_RULES, revisionReviewRules, type Turn } from './journal.js';
@@ -237,6 +237,140 @@ describe('P14-NF-77: wired on the live worker path (recorded model outputs, real
     expect(sends).toEqual(['PREVIEW — The gym is open until 10 PM tonight.']);
     expect(durable.release?.withheld?.removed.join(' ')).toContain('5521');
     expect(guidanceVerdicts([durable]).find(item => item.member === 'sensitivity')).toMatchObject({ verdict: 'fired', landing: 'excised' });
+  });
+});
+
+describe('P14-NF-77: a shared audience is released only on a completed review (unit review repair, constructed both-sides probes)', () => {
+  // The real journal and worker; only the prepared packet's audience is re-addressed to a group (or left as the operator's
+  // private chat for the control). Transport is a recording stub. Constructed inputs: Astra's unit-review probes.
+  const JEV_RULES = ['raw_path', 'cli_command', 'config_key', 'credential', 'api_endpoint', 'quits_on_self',
+    'claims_blocked', 'parks_on_user', 'defers_work', 'unrecorded_blocker'];
+  type Review = 'violation' | 'pass' | 'throw';
+  const runGroup = async (answer: string, options: { review?: Review; shared?: boolean; seedPrivate?: boolean; maxCalls?: number;
+    jevScores?: Record<string, number>; lateJev?: boolean; crashAfterReserve?: boolean; quote?: string } = {}) => {
+    const { mkdtempSync, realpathSync, rmSync } = await import('node:fs');
+    const { tmpdir } = await import('node:os');
+    const { join } = await import('node:path');
+    const { openPreviewJournal, createJournalWorker } = await import('./journal.js');
+    const { prepareJournalEnvelope } = await import('./journal-envelope.js');
+    const { REPLY_CHECK_BUDGET_MS } = await import('./reply-check.js');
+    const review = options.review ?? 'violation', shared = options.shared ?? true;
+    const root = realpathSync(mkdtempSync(join(tmpdir(), 'preview-sensitivity-group-')));
+    const path = join(root, 'journal.encrypted'), key = new Uint8Array(32).fill(17);
+    let now = 1790000000000, sharing = !options.seedPrivate, crash = options.crashAfterReserve === true;
+    const sends: string[] = [], escalations: ReplyRule[][] = [];
+    const ports = (): Parameters<typeof createJournalWorker>[1] => ({ now: () => now, stopped: () => false,
+      prepareModel: input => {
+        const envelope = JSON.parse(prepareJournalEnvelope(input, 'claude-sonnet-5', 'grant:preview', now)) as { messages: { role: string; content: string }[] };
+        const context = envelope.messages.find(message => message.role === 'context')!;
+        const value = JSON.parse(context.content) as { packet: { audience: Record<string, unknown> } };
+        if (sharing && shared) value.packet.audience = GROUP(value.packet.audience);
+        context.content = JSON.stringify(value);
+        return JSON.stringify(envelope);
+      },
+      model: async () => sharing ? answer : 'Understood.', checkOutbound: () => {},
+      send: async input => { sends.push(input.expectedText); return sends.length; },
+      replyCheck: { elapsedMs: () => 0,
+        jev: async () => {
+          if (options.lateJev) now += REPLY_CHECK_BUDGET_MS + 1;
+          return { value: { model: JEV_MODEL, answers: Object.fromEntries(JEV_RULES.map(rule =>
+            [rule, { type: 'noul', noul: options.jevScores?.[rule] ?? 0.02 }])) }, latencyMs: 0 };
+        },
+        escalate: async (_text, _id, _prompt, rules) => {
+          escalations.push([...(rules ?? [])]);
+          if (review === 'throw') throw new Error('preview: reply review unavailable');
+          if (review === 'pass') return { verdict: 'pass', ruleIds: [], confidence: null, latencyMs: 0 };
+          const reason = `The private detail is revealed: "${options.quote ?? answer}"`;
+          return { verdict: 'violation', ruleIds: ['sensitive_disclosure'] as ReplyRule[], confidence: null, latencyMs: 0, reason,
+            findings: [{ rule: 'sensitive_disclosure', verdict: 'violation', reason }] as ReplyFinding[] };
+        },
+        revise: async () => ({ state: 'uncertain' }) } });
+    const genesis = { kind: 'genesis' as const, bot: '12345678', chat: '7654321', operator: '7654321', grant: 'grant:preview',
+      configurationDigest: 'sha256:offline', expires: 9999999999999, maxCalls: options.maxCalls ?? 6, maxReplies: 3, maxTurns: 3,
+      maxBytes: 32768, cursor: 0 };
+    try {
+      let journal = openPreviewJournal(path, key, genesis, stage => {
+        if (crash && stage === 'after:reply-review-reserve') { crash = false; throw Error('crash after the review reservation'); }
+      });
+      let worker = createJournalWorker(journal, ports());
+      if (options.seedPrivate) {
+        worker.intake([{ update_id: 1, message: { chat: { id: 7654321, type: 'private' }, from: { id: 7654321 }, text: 'My locker code is 5521.' } }]);
+        await worker.drain();
+        sends.length = 0; sharing = true;
+      }
+      worker.intake([{ update_id: 2, message: { chat: { id: 7654321, type: 'private' }, from: { id: 7654321 }, text: 'What is my locker code?' } }]);
+      if (options.crashAfterReserve) {
+        await expect(worker.drain()).rejects.toThrow('crash after the review reservation');
+        journal.close();
+        journal = openPreviewJournal(path, key);
+        worker = createJournalWorker(journal, ports());
+      }
+      await worker.drain();
+      const last = journal.view.order.at(-1)!;
+      journal.close();
+      return { sends, escalations, turn: last };
+    } finally { rmSync(root, { recursive: true, force: true }); }
+  };
+  const HOLDING = 'PREVIEW — I need to check that answer before I can send it.';
+
+  it('a short exact quoted sentence is removed after a confirmed violation; the long sentence is the control', async () => {
+    const short = await runGroup('Code: 5521.');
+    expect(short.sends).toEqual([HOLDING]);
+    expect(short.turn.heldReview?.withheld).toMatchObject({ rules: ['sensitive_disclosure'], removed: ['Code: 5521.'], unlocated: [] });
+    const long = await runGroup('Your locker code is 5521.');
+    expect(long.sends).toEqual([HOLDING]);
+    expect(long.turn.heldReview?.withheld?.removed).toEqual(['Your locker code is 5521.']);
+    const mixed = await runGroup('Code: 5521.\nThe gym is open until 10 PM tonight.', { quote: 'Code: 5521.' });
+    expect(mixed.sends).toEqual(['PREVIEW — The gym is open until 10 PM tonight.']);
+  });
+  it('a short quote names only a whole sentence: a fragment of a longer sentence stays unnamed (both sides)', () => {
+    expect(namedClaimsIn('reveals "Code: 5521."', 'Code: 5521. The gym is open.')).toEqual(['Code: 5521.']);
+    expect(namedClaimsIn('reveals "5521"', 'Your locker code is 5521.')).toEqual([]);
+    expect(namedClaimsIn('promises "later".', 'I will do it later.')).toEqual([]);
+    expect(namedClaimsIn('promises "I\'ll summarize then"', 'Fine. I\'ll summarize then.')).toEqual(['I\'ll summarize then']);
+    expect(exciseNamedClaims('Code: 5521. The gym is open.', ['Code: 5521.'])).toMatchObject({ text: 'The gym is open.', removed: ['Code: 5521.'] });
+    expect(exciseNamedClaims('Your locker code is 5521.', ['5521']).removed).toEqual([]);
+  });
+  it('an echo of the operator\'s earlier private words goes to the review for a shared audience; private chat keeps the echo', async () => {
+    const group = await runGroup('Your locker code is 5521.', { seedPrivate: true });
+    expect(group.escalations).toHaveLength(1);
+    expect(group.escalations[0]).toContain('sensitive_disclosure');
+    expect(group.turn.replyChecks?.some(check => check.path === 'operator-echo')).toBe(false);
+    expect(group.sends).toEqual([HOLDING]);
+    const own = await runGroup('Your locker code is 5521.', { seedPrivate: true, shared: false });
+    expect(own.escalations).toHaveLength(0);
+    expect(own.turn.replyChecks?.at(-1)?.path).toBe('operator-echo');
+    expect(own.sends).toEqual(['PREVIEW — Your locker code is 5521.']);
+  });
+  it('an unavailable review sends the content-free holding note to a shared audience; the operator\'s chat keeps its release', async () => {
+    const group = await runGroup('Your locker code is 5521.', { review: 'throw' });
+    expect(group.sends).toEqual([HOLDING]);
+    expect(group.turn.heldReview).toMatchObject({ reason: 'review unavailable' });
+    expect(group.turn.answer).toContain('5521');
+    const own = await runGroup('Your locker code is 5521.', { review: 'throw', shared: false, jevScores: { raw_path: 0.6 } });
+    expect(own.escalations).toHaveLength(1);
+    expect(own.sends).toEqual(['PREVIEW — Your locker code is 5521.']);
+    expect(own.turn.release?.review).toBe('unavailable');
+  });
+  it('an exhausted call cap or the shared deadline is the same: no disclosure without a completed review', async () => {
+    // The call cap: a refused review reservation is the same `unavailable` decision the worker holds above (the worker
+    // keeps headroom for the review after the answer call, so the refusal is driven at the check itself).
+    const data = fixture(), jev = data.turns.private.replyChecks.find(check => check.path === 'jev')!;
+    const refused: ReplyCheckPorts = { jev: async () => ({ value: jevAnswer(jev), latencyMs: 1 }),
+      escalate: async () => { throw Error('never called'); }, reserveEscalation: () => false, record: () => undefined, elapsedMs: () => 0 };
+    expect(await checkReply(`PREVIEW — ${data.turns.private.answer}`, 'turn', refused, envelopeWith(GROUP(data.turns.private.audience))))
+      .toEqual({ outcome: 'unavailable', path: 'holding', capRefused: true });
+    const late = await runGroup('Your locker code is 5521.', { lateJev: true });
+    expect(late.escalations).toHaveLength(0);
+    expect(late.sends).toEqual([HOLDING]);
+    const ordinary = await runGroup('Stretch for ten minutes after your workout.', { review: 'pass' });
+    expect(ordinary.sends).toEqual(['PREVIEW — Stretch for ten minutes after your workout.']);
+  });
+  it('a Jev pass interrupted before its review completes is not a completed review for a shared audience', async () => {
+    const group = await runGroup('Your locker code is 5521.', { crashAfterReserve: true });
+    expect(group.sends).toEqual([HOLDING]);
+    const own = await runGroup('Your locker code is 5521.', { crashAfterReserve: true, shared: false, jevScores: { raw_path: 0.6 } });
+    expect(own.sends).toEqual(['PREVIEW — Your locker code is 5521.']);
   });
 });
 
