@@ -147,7 +147,7 @@ it('an approved retraction hides exactly the listed turns from every store, keep
   const w = await seeded(path);
   expect(stores(w)).toEqual(BEFORE);
   expect(retractRefusal(w.journal.view, [...DESK, 99])).toContain('update 99 is not an accepted message');
-  w.propose({ updates: DESK, reason: 'desk and test traffic sent through your account', proposedAt: w.clock.now });
+  w.propose({ updates: DESK, reason: 'checks the build desk sent while proving the runner', proposedAt: w.clock.now });
   await w.worker.minimal();
   const request = w.journal.view.operatorRequests.at(-1)!;
   expect(request).toMatchObject({ via: 'retract', request: { action: 'retract-turns', updates: DESK } });
@@ -196,7 +196,7 @@ it('an approved retraction hides exactly the listed turns from every store, keep
 
 it('a later summary pass rebuilds without the retracted turns or the retired summary text', () => withRoot(async path => {
   const w = await seeded(path);
-  w.propose({ updates: DESK, reason: 'desk and test traffic sent through your account', proposedAt: w.clock.now });
+  w.propose({ updates: DESK, reason: 'checks the build desk sent while proving the runner', proposedAt: w.clock.now });
   await w.worker.minimal();
   await w.say(9, 'yes');
   expect(liveSummaries(w.journal.view)).toEqual([]);
@@ -218,7 +218,7 @@ it('a later summary pass rebuilds without the retracted turns or the retired sum
 
 it('an unapproved, refused or lapsed request changes nothing', () => withRoot(async path => {
   const w = await seeded(path);
-  w.propose({ updates: DESK, reason: 'desk and test traffic sent through your account', proposedAt: w.clock.now });
+  w.propose({ updates: DESK, reason: 'checks the build desk sent while proving the runner', proposedAt: w.clock.now });
   await w.worker.minimal();
   const first = w.journal.view.operatorRequests.at(-1)!;
   // Silence is never consent (Rule 98).
@@ -246,7 +246,7 @@ it('an unapproved, refused or lapsed request changes nothing', () => withRoot(as
 it('a retraction is never applied from chat: no model proposal, no chat text, no forged row, and no chat yes under P-05', () => withRoot(async path => {
   const w = await seeded(path, { install: installation({ agentSpeaksAsOperatorInChat: true }) });
   // Under P-05 (the agent can speak as the operator in chat) with no review source, no route is admissible: nothing is sent.
-  w.propose({ updates: DESK, reason: 'desk and test traffic sent through your account', proposedAt: w.clock.now });
+  w.propose({ updates: DESK, reason: 'checks the build desk sent while proving the runner', proposedAt: w.clock.now });
   await w.worker.minimal();
   expect(w.journal.view.operatorRequests).toEqual([]);
   // A chat message asking for it, and a yes, change nothing.
@@ -256,7 +256,7 @@ it('a retraction is never applied from chat: no model proposal, no chat text, no
   expect(stores(w)).toEqual(BEFORE);
   // The journal itself refuses a retract row without an approved request's consumed yes.
   for (const authority of ['chat', 'operator', operatorYesAuthority('0123456789abcdef', `telegram:chat:${CHAT}:message:999`)])
-    expect(() => w.journal.append({ kind: 'retract', request: '0123456789abcdef', updates: DESK, reason: 'desk and test traffic sent through your account',
+    expect(() => w.journal.append({ kind: 'retract', request: '0123456789abcdef', updates: DESK, reason: 'checks the build desk sent while proving the runner',
       authority, at: w.clock.now })).toThrow('retract refused');
   // A request row needs the runner's infrastructure signature and a desk carrier: chat-shaped rows are refused.
   const made = proposeRetractRequest({ expires: genesis.expires, stopped: false, grant: genesis.grant, base: 'b'.repeat(16) }, DESK, 'desk test traffic', 'reply:x', w.clock.now);
@@ -269,7 +269,7 @@ it('a retraction is never applied from chat: no model proposal, no chat text, no
 it('in a chat-admissible root, a yes from chat still applies only the runner-issued request, and outside operator hours nothing is sent', () => withRoot(async path => {
   const w = await seeded(path);
   w.clock.now = Date.UTC(2026, 9, 4, 2, 0);
-  w.propose({ updates: DESK, reason: 'desk and test traffic sent through your account', proposedAt: w.clock.now });
+  w.propose({ updates: DESK, reason: 'checks the build desk sent while proving the runner', proposedAt: w.clock.now });
   const before = w.sent.length;
   await w.worker.minimal();
   expect(w.sent.length).toBe(before);
@@ -277,11 +277,11 @@ it('in a chat-admissible root, a yes from chat still applies only the runner-iss
   // A list naming the operator's own message is refusable by construction: they decline, and nothing changes.
   w.clock.now = Date.UTC(2026, 9, 4, 10, 0);
   const withOwn = [...DESK, 6].sort((a, b) => a - b);
-  w.propose({ updates: withOwn, reason: 'desk and test traffic sent through your account', proposedAt: w.clock.now });
+  w.propose({ updates: withOwn, reason: 'checks the build desk sent while proving the runner', proposedAt: w.clock.now });
   await w.worker.minimal();
   expect(w.journal.view.operatorRequests.at(-1)!.request.updates).toEqual(withOwn);
   expect(w.journal.view.operatorRequests.at(-1)!.carrier).toBe(retractCarrier({ updates: withOwn,
-    reason: 'desk and test traffic sent through your account', proposedAt: w.clock.now }));
+    reason: 'checks the build desk sent while proving the runner', proposedAt: w.clock.now }));
   await w.say(9, 'no, update 6 was mine');
   expect(w.journal.view.retracted).toBeUndefined();
   expect(stores(w)).toEqual(BEFORE);
@@ -298,7 +298,7 @@ it('on the GitHub-review route (P-05) the page lists every id, a chat yes change
       acceptance: { account: 'JKHeadley', installation: genesis.grant, operatorMessages: ['telegram:chat:7654321:message:1'], acceptedAt: 500, withdrawn: null } } });
   const w = await seeded(path, { install, review: now => createReviewYesSource({ client, installation: install, repository: REPO,
     context: previewTestContext, now, brakes: { initialMs: 1, maxMs: 4, breakerAfter: 3 } }) });
-  w.propose({ updates: DESK, reason: 'desk and test traffic sent through your account', proposedAt: w.clock.now });
+  w.propose({ updates: DESK, reason: 'checks the build desk sent while proving the runner', proposedAt: w.clock.now });
   await w.worker.minimal();
   const request = w.journal.view.operatorRequests.at(-1)!;
   expect(request.review).toEqual({ repository: REPO, pullRequest: 41, head: HEAD });
