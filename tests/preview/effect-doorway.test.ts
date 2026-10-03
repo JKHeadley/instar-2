@@ -120,6 +120,10 @@ it('decodes only a closed effect policy: every grant names its source, custodian
   expect(() => policy({ registered: [{ effect: 'tool:mcp', consequence: 'data', reversibility: 'sometimes', reach: 'agent', costUsd: 0, source: 's' }] }))
     .toThrow(/registration/u);
   expect(() => policy({ resourceLevelUsd: -1 })).toThrow(/resourceLevelUsd/u);
+  // The runner hands a decoded policy (or the default) to the hook's config, where it is decoded again: both round-trip.
+  const decoded = policy({ grants: [grant({})], policySensitive: ['bank.example'] });
+  expect(decodeEffectPolicy(JSON.parse(JSON.stringify(decoded)))).toEqual(decoded);
+  expect(decodeEffectPolicy(JSON.parse(JSON.stringify(DEFAULT_EFFECT_POLICY)))).toEqual(DEFAULT_EFFECT_POLICY);
 });
 
 it('routes only the tools that could make a consequential effect', () => {
@@ -232,7 +236,7 @@ it('one tool turn on a scratch root: an ordinary write is admitted with no doorw
     return journal;
   };
   // Default policy (nothing outward): the unsandboxed shell reaches the doorway and is refused.
-  const refused = await turnOnce(undefined, { tool_name: 'Bash', tool_input: { command: 'echo outside', dangerouslyDisableSandbox: true } });
+  const refused = await turnOnce(DEFAULT_EFFECT_POLICY, { tool_name: 'Bash', tool_input: { command: 'echo outside', dangerouslyDisableSandbox: true } });
   const trace = refused.view.toolTurns;
   expect(trace).toMatchObject({ toolCalls: 1, toolRefusals: 1, inconsistent: 0, open: [] });
   expect(refused.view.effectDoorway).toMatchObject({ proposed: 1, ordinary: 0, granted: 0, closedSet: 0, refused: 1 });
@@ -254,8 +258,9 @@ it('one tool turn on a scratch root: an ordinary write is admitted with no doorw
   // Replay reaches the same projection.
   expect(open(lastRoot).view.effectDoorway).toEqual(refused.view.effectDoorway);
   // The other side: under a recorded scope grant for example.com, a web read reaches the doorway and is admitted as ordinary.
-  const admitted = await turnOnce({ type: 'PreviewEffectPolicy', resourceLevelUsd: 0, policySensitive: [], registered: [],
-    grants: [grant({ target: 'example.com' })] }, { tool_name: 'WebFetch', tool_input: { url: 'https://example.com/', prompt: 'title' } });
+  // The runner passes the policy it decoded (journal-agent.mjs effectPolicyOf), which the hook decodes again.
+  const admitted = await turnOnce(policy({ grants: [grant({ target: 'example.com' })] }),
+    { tool_name: 'WebFetch', tool_input: { url: 'https://example.com/', prompt: 'title' } });
   expect(admitted.view.toolTurns).toMatchObject({ toolCalls: 2, toolRefusals: 0, inconsistent: 0 });
   expect(admitted.view.effectDoorway).toMatchObject({ proposed: 1, ordinary: 1, refused: 0 });
   expect(refusedEffectNotices(admitted.view.effectDoorway!.recent, id)).toEqual([]);

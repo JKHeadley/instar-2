@@ -40,7 +40,7 @@ export const TOOL_EFFECT_DEFAULTS = Object.freeze({
   'tool:network': Object.freeze({ consequence: 'external', reversibility: 'reversible', reach: 'world', costUsd: 0 }) });
 
 /** Nothing outward by default: no grant, no registration, a zero resource level and nothing marked sensitive. */
-export const DEFAULT_EFFECT_POLICY = Object.freeze({ resourceLevelUsd: 0, policySensitive: Object.freeze([]),
+export const DEFAULT_EFFECT_POLICY = Object.freeze({ type: 'PreviewEffectPolicy', resourceLevelUsd: 0, policySensitive: Object.freeze([]),
   registered: Object.freeze([]), grants: Object.freeze([]) });
 
 const text = (value, max = 256) => typeof value === 'string' && value.length > 0 && value.length <= max;
@@ -77,7 +77,8 @@ export function decodeEffectPolicy(value) {
       || (grant.expiresAt !== undefined && !Number.isSafeInteger(grant.expiresAt))) fail(`grant ${String(grant?.id)}`);
     return Object.freeze({ ...grant, approves: Object.freeze([...grant.approves]) });
   });
-  return Object.freeze({ resourceLevelUsd: value.resourceLevelUsd, policySensitive: Object.freeze([...value.policySensitive]),
+  // The decoded policy keeps its type, so the runner can hand it on to the hook's config and the hook decodes it again.
+  return Object.freeze({ type: 'PreviewEffectPolicy', resourceLevelUsd: value.resourceLevelUsd, policySensitive: Object.freeze([...value.policySensitive]),
     registered: Object.freeze(registered), grants: Object.freeze(grants) });
 }
 
