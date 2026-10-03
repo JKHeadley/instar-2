@@ -28,54 +28,79 @@ Missing strong context-consumption evidence may leave only a confined advisory m
 submission, built-in tools, or any other effect path cannot be confined to the public doors, the
 tested mode is unsupported; advisory supplies no Claude-specific waiver.
 
-**Rule — the preview runs ordinary scoped tools through the reused harness under its demonstrated
-boundary.** Rules 1, 4, 41, 60, 68, 75, 84, 89, 100, 113, 114 and 116, and the purpose's rules on
-safeguards, nothing outward by default, consequential effects and irreversible acts; **checks:**
+**Rule — the preview runs the full tool set through the reused harness under its demonstrated
+boundary: ordinary work runs, and every consequential effect goes to the effect doorway.** Rules 1, 4,
+41, 60, 68, 75, 84, 89, 100, 113, 114 and 116, and the purpose's rules on safeguards, nothing outward by
+default, consequential effects and irreversible acts; **checks:**
 `tests/assembly/production-provider-tools.test.ts`, `tests/preview/tool-admission.test.ts`,
-`tests/preview/effect-doorway.test.ts`, `tests/preview/tool-turn.test.ts`, `tests/preview/tool-turn-replay.test.ts` and the gated live run
-`tests/integration/tool-turn-live.test.ts`. The preview may run an answer or a scheduled work step as
-one Claude Code invocation that has exactly Read, Write, Edit, Glob, Grep and Bash, through the
-existing provider path. Each tool's scope, finite resource bounds and durable cause are enforced
-before dispatch. A mandatory deny-by-default PreToolUse admission hook admits only file operations
-physically contained in the turn's new private workspace and sandboxed commands; it never judges a
-command by the words it contains, and admits ordinary in-workspace work without a doorway call. It sends
-every tool that could make a consequential effect (an MCP or web tool, an unsandboxed command) to the
-effect doorway, which admits or refuses it by the purpose's four consequential-effect tests under Part
-Twelve's live-path tool rule. The harness sandbox is where a command's reach is enforced: reads are refused from the
-filesystem root down except the turn's scratch volume and the system files commands need to run;
-writes reach only that volume; there is no network, no unix socket and no signal to another process.
-The workspace and every temporary file of the shell and the harness live on that fixed-size volume, so a
-turn's whole storage is finite and cannot consume the journal's disk. The per-step tool-call count is
-allocated atomically, so overlapping calls cannot exceed it. The launch has a clean environment; the
-harness's own messaging socket and token are removed from every command; and no subagent, workflow,
-web, MCP, scheduling or messaging tool exists. Neither `--bare` nor `--safe-mode` is used, because
-both skip settings hooks, and managed policy that could disable hooks refuses the turn. Arbitrary-code
-execution is admitted only inside this demonstrated boundary of hook, sandbox and clean environment
-together, which prevents access to secrets, safeguards and unadmitted effects. The boundary rests on
-recorded runs of the pinned artifact in which each part was shown necessary; it is not this part's
-governed confinement and is never reported as governed or protected. A separate operating-system
-identity is one other implementation of such a boundary, not its definition. A tool turn's whole
-liability, its model-turn bound, is reserved against the operator's call cap before dispatch and
-retained; its tool-call count, turn bound, timeout and the resource owner's process, memory and CPU
-ceilings are finite; the harness budget flag is only a backstop, one turn's margin below its ceiling,
-because the harness checks it after a turn. Tool results and current journal context ground the turn,
-every tool call and result is journaled, and the final answer returns through the existing reply
-review and send paths. Ordinary standing-covered work requires no repeated human approval. Review and
-summary calls keep their text-only policy. A preview label grants no exception to these floors.
+`tests/preview/effect-doorway.test.ts`, `tests/preview/tool-turn.test.ts`, `tests/preview/tool-turn-replay.test.ts`,
+`tests/preview/tools-default.test.ts`, `tests/integration/resource-owner.test.ts` and the gated live
+runs `tests/integration/tool-turn-live.test.ts` and `tests/integration/tool-turn-full-live.test.ts`.
+The preview may run an answer or a scheduled work step as one Claude Code invocation, through the
+existing provider path, with the pinned harness's whole built-in tool set, plus the MCP servers the
+root's own configuration names. No tool is left out to hold a safeguard: each tool's scope, finite
+resource bounds and durable cause are enforced per call before dispatch. A mandatory PreToolUse
+admission hook decides every call, and fails closed on any error. It admits ordinary work: file operations physically contained in the
+turn's new private workspace, workspace search, sandboxed commands (never judged by the words they
+contain), a web read (WebFetch issues only a GET) of a host whose every resolved address is public,
+a web search, an MCP tool the root's configuration lists as a read, the harness's own bookkeeping, a
+worktree inside the workspace, and a subagent of the one registered type, started by the turn or by
+another subagent, within the turn's one reserved subagent budget. It sends every effect that could be
+consequential to the effect doorway, which admits or refuses it by the purpose's four
+consequential-effect tests under Part Twelve's live-path tool rule: an MCP tool not listed as a read (acting in a third-party account), an unsandboxed command,
+a monitor command (not shown to run inside the sandbox), a send outside the conversation, a scheduled
+or remote trigger, a design sync to a third-party account. A web read or listed MCP read whose effect or target the
+operator's effect policy registers or marks policy-sensitive goes to the doorway as well. It refuses for budget a tool that may start
+agents whose number or model turns the turn cannot reserve before dispatch (a workflow script, a
+skill that may fork). A web read of a loopback, private, link-local or local-name target is refused,
+because it reaches this machine and its network rather than the world. A tool the adapter has not
+classified is refused. The harness sandbox is where a command's reach is enforced: reads
+are refused from the filesystem root down except the turn's scratch volume and the system files
+commands need to run; writes reach only that volume; there is no network, so no command can write to
+the network, no unix socket and no signal to another process. The workspace and every temporary file
+of the shell and the harness live on that fixed-size volume, so a turn's whole storage is finite and
+cannot consume the journal's disk. The per-step tool-call count, shared by the turn and its subagents,
+is allocated atomically, so overlapping calls cannot exceed it. The launch has a clean environment;
+the harness's own messaging socket and token are removed from every command; an MCP server's launch
+configuration, with any credential it carries, lies in the turn's admission state, which no tool can
+read; and a workflow, scheduling, remote-trigger, monitor or messaging call is decided by the hook as
+above. Neither
+`--bare` nor `--safe-mode` is used, because both skip settings hooks, and managed policy that could
+disable hooks refuses the turn. Arbitrary-code execution is admitted only inside this demonstrated
+boundary of hook, sandbox and clean environment together, which prevents access to secrets,
+safeguards and unadmitted effects. The boundary rests on recorded runs of the pinned artifact in
+which each part was shown necessary; it is not this part's governed confinement and is never reported
+as governed or protected. A separate operating-system identity is one other implementation of such a
+boundary, not its definition. A tool turn's whole liability, its model-turn bound and each reserved
+subagent's turn bound, is reserved against the operator's call cap before dispatch and retained; a
+subagent budget is taken only from allowance beyond the turn and one further plain tool turn, so it
+never costs the next answer its tools. Its tool-call count, turn bounds, timeout and the resource
+owner's process, memory and CPU ceilings are finite; the harness budget flag is only a backstop, one
+turn's margin below its ceiling, because the harness checks it after a turn. Tool results and current
+journal context ground the turn, every tool call, result and subagent edge is journaled, and the final
+answer returns through the existing reply review and send paths. Ordinary standing-covered work
+requires no repeated human approval. Review and summary calls keep their text-only policy. A preview
+label grants no exception to these floors.
 
-**Rule — a tool grant names its scope and is withdrawn by the same record.** Rules 4, 60 and 82, and
-the purpose's rules on nothing outward by default and irreversible acts; **checks:**
-`tests/preview/tool-turn.test.ts` (stop by process group) and the gated live stop case. The grant is a
-reviewed activation record bound to the tool policy's digest and resolved from the trial's sealed
-authority. It names the capabilities (the tool list), the scope (one fresh workspace per turn), the
-custodian and the recovery obligation. It does not replace exact operation admission or change the
-installed durability profile. Withdrawal, by changing or removing the record, prevents further tool
-dispatch; it, the operator's stop and expiry end a live turn within the declared cancellation bound:
-the stop is observed within 25 milliseconds, the launch's own process group is killed by its exact
-process id, and quiescence is verified within two seconds. Credential-bearing accounts and
-consequential effects remain behind admitted adapters. No harness session persists; each workspace
-is machine-local scratch, never shared or resumed, and the journal is the sole durable copy of
-accepted work.
+**Rule — tools are on by default under the operator's recorded grant, which names their scope and is
+withdrawn by the same record.** Rules 4, 60, 82 and 104, and the purpose's rules on nothing outward by
+default and irreversible acts; **checks:** `tests/preview/tools-default.test.ts`,
+`tests/preview/tool-turn.test.ts` (stop by process group), `tests/integration/resource-owner.test.ts`
+and the gated live stop cases. The grant is the operator's recorded yes for the tool policy, held in
+the trial's sealed authority. Under it, a root's launch derives the tools activation record from its
+conversation activation, changing only the policy digest, and keeps it in the root; no further desk
+step is needed, and with no resolving grant every answer is text only and status says why. A record
+the desk writes may be named instead. The record names the capabilities (the tool list and the root's
+MCP servers), the scope (one fresh workspace per turn), the custodian and the recovery obligation. It
+does not replace exact operation admission or change the installed durability profile. Tools are
+refusable at launch, and withdrawn by changing or removing the record or by a change of the sealed
+authority under which the grant no longer resolves; withdrawal prevents further tool dispatch, and it,
+the operator's stop and expiry end a live turn and its subagents within the declared cancellation
+bound: the stop is observed within 25 milliseconds, the launch's own process group is killed by its
+exact process id, every cleanup census reclaims each member it finds, and quiescence is verified
+within two seconds. Credential-bearing accounts and consequential effects remain behind admitted
+adapters. No harness session persists; each workspace is machine-local scratch, never shared or
+resumed, and the journal is the sole durable copy of accepted work.
 
 **Rule — Codex activation has the identical bar.** Rules 34, 41, 47, 59 and 75; **checks:
 P13-NF-16/23/35/44**. The conformance run must show actual submitted context, correlated lifecycle

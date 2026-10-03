@@ -9,11 +9,11 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { afterEach, expect, it } from 'vitest';
 import { openPreviewJournal } from './journal.js';
-import { SUBSCRIPTION_TOOL_LIMITS, SUBSCRIPTION_TOOL_NAMES, SUBSCRIPTION_TOOLS_SYSTEM_PROMPT } from '../../src/assembly/production-provider.js';
+import { SUBSCRIPTION_SUBAGENT_TYPE, SUBSCRIPTION_TOOL_LIMITS, SUBSCRIPTION_TOOL_NAMES, SUBSCRIPTION_TOOLS_SYSTEM_PROMPT } from '../../src/assembly/production-provider.js';
 import { SINGLE_MACHINE_PROFILE } from './activation-authority.js';
 import { capabilityBriefing, TOOLS_BRIEFING } from './briefing.js';
 // @ts-expect-error The runner side stays plain JavaScript.
-import { attachScratch, detachScratch, prepareToolTurn, pruneToolTurns, readToolTrace, runToolTurn, scratchMounted, toolStatusLines, toolTurnEligible, toolTurnFits, workspaceBytes, TOOL_HOOK_SCRIPT } from './tool-turn.mjs';
+import { attachScratch, detachScratch, openToolTurnSlugs, prepareToolTurn, pruneToolTurns, readRootMcp, readToolTrace, reconcileToolTurns, runToolTurn, scratchMounted, toolChildrenFit, toolStatusLines, toolTurnEligible, toolTurnFits, workspaceBytes, TOOL_HOOK_SCRIPT } from './tool-turn.mjs';
 // @ts-expect-error The physical host remains JavaScript.
 import { createResourceOwner } from '../../scripts/resource-owner.mjs';
 
@@ -66,7 +66,8 @@ it('allocates a private, empty workspace and a separate admission state per turn
   expect(turn.stateDirectory.startsWith(turn.scratch)).toBe(false);
   expect(JSON.parse(readFileSync(join(turn.stateDirectory, 'config.json'), 'utf8'))).toEqual({ workspace: turn.workspace,
     tmp: join(turn.scratch, 'tmp'), maxCalls: SUBSCRIPTION_TOOL_LIMITS.maxToolCalls, maxWriteBytes: SUBSCRIPTION_TOOL_LIMITS.maxWriteBytes,
-    operations: [...SINGLE_MACHINE_PROFILE.operations] });
+    operations: [...SINGLE_MACHINE_PROFILE.operations], children: { max: 0, type: SUBSCRIPTION_SUBAGENT_TYPE }, mcpReads: [], authority: 'unrecorded' });
+  expect(turn.mcp).toBeUndefined();
   expect(turn.hook).toEqual({ node: process.execPath, script: TOOL_HOOK_SCRIPT });
   // The same attempt is never reused: a repeat allocation refuses rather than sharing a workspace.
   expect(() => prepareToolTurn({ root, operation: 'telegram:1:update:2', attempt: 0, operations: [], scratch: plainScratch })).toThrow();
@@ -122,12 +123,13 @@ it('runs tools only for answer turns and scheduled work, never for reviews, summ
     'retrospective:3', 'retrospective:3:rerun:0', 'index:1']) expect(toolTurnEligible(id)).toBe(false);
 });
 
-it('tells the agent and the operator exactly which tools exist, and that MCP, subagents, web search and network do not', () => {
+it('tells the agent and the operator exactly which tools exist and where outward effects go, and says why tools are off', () => {
   const read = () => JSON.stringify({ generation: 'g', commit: 'c', launchers: { 'tests/preview/journal-agent.mjs': [] } });
   const withTools = capabilityBriefing(read, { providerAttempts: 50, expiresAt: 1, tools: true }).text;
   expect(withTools).toContain(TOOLS_BRIEFING);
-  for (const name of SUBSCRIPTION_TOOL_NAMES) expect(TOOLS_BRIEFING).toContain(name);
-  expect(TOOLS_BRIEFING).toMatch(/no MCP, subagents, web or network/u);
+  // It describes the capability, never a hand-picked list: the whole set is offered and each call is decided at the hook.
+  expect(TOOLS_BRIEFING).toMatch(/^Tools: full Claude Code set \(files, shell, web reads, nested subagents\) and root MCP; outward effects via the doorway/u);
+  for (const name of SUBSCRIPTION_TOOL_NAMES) expect(TOOLS_BRIEFING).not.toContain(name);
   // No longer than the no-tools line it replaces: the floor packet has no slack.
   expect(Buffer.byteLength(TOOLS_BRIEFING)).toBeLessThanOrEqual(Buffer.byteLength('Nothing unlisted is available: no tools, browsing, running code '
     + 'or acting outside this chat, and no message you start yourself beyond the listed answers to later-time requests.'));
@@ -139,10 +141,16 @@ it('tells the agent and the operator exactly which tools exist, and that MCP, su
   expect(fallback).toContain(TOOLS_BRIEFING); expect(fallback).not.toContain('You have no tools');
   const view = { toolTurns: { invocations: 2, reservedCalls: 14, refusedCap: 1, toolCalls: 5, toolRefusals: 2, inconsistent: 0, open: [] } };
   expect(toolStatusLines(view, true)).toEqual([
-    'Tools: Read, Write, Edit, Glob, Grep, Bash, in a private per-turn workspace; no MCP servers, subagents, web search or network.',
+    `Tools: the harness's full built-in set (${SUBSCRIPTION_TOOL_NAMES.length} tools, each call decided at the admission hook) and the root's `
+      + 'MCP servers, in a private per-turn workspace; shell sandboxed without network; web reads only; subagents may delegate within the '
+      + 'turn\'s budget; consequential effects go through the effect doorway.',
     'Tool turns: 2 run (14 model attempts reserved for them), 5 tool calls admitted, 2 refused, 1 turns answered without tools because the call allowance was short.']);
   expect(toolStatusLines({ toolTurns: { ...view.toolTurns, open: ['x#3'] } }, true)[1]).toContain('1 without a recorded trace yet');
+  expect(toolStatusLines({ toolTurns: { ...view.toolTurns, children: { started: 3, returned: 1, cancelled: 1, unknown: 1 } } }, true)[1])
+    .toContain('3 subagents started (1 returned, 1 cancelled, 1 unknown)');
   expect(toolStatusLines(view, false)).toEqual([]);
+  // Default on: when no grant resolves, status says tools are off and why, instead of saying nothing.
+  expect(toolStatusLines(view, false, 'refused at launch with --tools off')).toEqual(['Tools: off (refused at launch with --tools off); answers are text only.']);
 });
 
 it('ends a live turn on stop by its own process group, descendants included, within the declared bound', { timeout: 20000 }, async () => {
@@ -218,5 +226,127 @@ it('runs one tool turn: refuses to the text-only answer on a short allowance or 
   root = dir(); journal = journalAt(root, 50);
   await expect(runToolTurn(base(journal, root, async () => { throw Error('launch failed'); }))).rejects.toThrow('launch failed');
   expect(journal.view.toolTurns).toMatchObject({ invocations: 1, open: [] });
-  expect(journal.view.calls).toBe(extra);
+  // A 50-call allowance holds the turn and both subagents' whole budgets, so all of it is reserved.
+  expect(journal.view.calls).toBe(extra + SUBSCRIPTION_TOOL_LIMITS.maxChildren * SUBSCRIPTION_TOOL_LIMITS.childMaxTurns);
+});
+
+it('reserves each subagent\'s whole budget with the turn, as far as the allowance holds it, and records every edge and how it ended', async () => {
+  const extra = SUBSCRIPTION_TOOL_LIMITS.maxTurns - 1, each = SUBSCRIPTION_TOOL_LIMITS.childMaxTurns, id = 'telegram:12345678:update:11';
+  // Both sides of each budget share: a child is reserved only beyond this turn and one further plain tool turn (2 * extra + 1).
+  const kept = 2 * extra + 1;
+  expect([toolChildrenFit(journalAt(dir(), kept + each - 1).view), toolChildrenFit(journalAt(dir(), kept + each).view),
+    toolChildrenFit(journalAt(dir(), kept + 2 * each - 1).view), toolChildrenFit(journalAt(dir(), kept + 2 * each).view),
+    toolChildrenFit(journalAt(dir(), 1000).view)]).toEqual([0, 1, 1, 2, SUBSCRIPTION_TOOL_LIMITS.maxChildren]);
+  const turnWith = async (maxCalls: number, rows: string[], stopped: boolean) => {
+    const root = dir(), journal = journalAt(root, maxCalls), appended: Record<string, unknown>[] = [];
+    const spied = { get view() { return journal.view; }, append: (row: never) => { appended.push(row); return journal.append(row); } } as unknown as typeof journal;
+    let config: Record<string, unknown> = {};
+    await runToolTurn({ journal: spied, root, id, prepared: '{}', promptLimit: 32768, deniedRoots: [root], operations: SINGLE_MACHINE_PROFILE.operations,
+      now: () => 10, redactText: (text: string) => text, fallback: async () => ({ result: 'text-only' }), scratch: plainScratch, detach: keepDetached,
+      authority: 'activation-ref sha256:tools', stopped: () => stopped,
+      invoke: async (turn: { stateDirectory: string }) => {
+        config = JSON.parse(readFileSync(join(turn.stateDirectory, 'config.json'), 'utf8'));
+        writeFileSync(join(turn.stateDirectory, 'admission.jsonl'), rows.join('\n')); return 'answer'; } }).catch(() => null);
+    return { journal, appended, config };
+  };
+  const agent = (tid: string, child: number, by?: string) => JSON.stringify({ phase: 'pre', id: tid, n: child, tool: 'Agent', input: '{}',
+    decision: 'allow', reason: 'r', kind: 'subagent', child, ...(by ? { agent: by } : {}) });
+  const start = (agentId: string) => JSON.stringify({ phase: 'child-start', agent: agentId, type: 'worker' });
+  // One child returned; the one it started in turn (Rule 114: a subagent delegates within the same reservation) was cut off
+  // by the operator's stop.
+  const stoppedTurn = await turnWith(1000, [agent('t1', 1), start('a1'), agent('t2', 2, 'a1'), start('a2'),
+    JSON.stringify({ phase: 'post', id: 't1', tool: 'Agent', result: '"42"', agent: 'a1' })], true);
+  expect(stoppedTurn.config.children).toEqual({ max: 2, type: SUBSCRIPTION_SUBAGENT_TYPE });
+  expect(stoppedTurn.appended[0]).toMatchObject({ phase: 'reserved', calls: extra + 2 * each,
+    delegation: { children: 2, turnsEach: each, type: SUBSCRIPTION_SUBAGENT_TYPE, authority: 'activation-ref sha256:tools' } });
+  const edges = (stoppedTurn.appended[1] as { edges: Record<string, unknown>[] }).edges;
+  expect(edges.map(edge => [edge.child, edge.agent, edge.state])).toEqual([['t1', 'a1', 'returned'], ['t2', 'a2', 'cancelled']]);
+  expect(edges[0]).toMatchObject({ parent: `${id}#0`, authority: 'activation-ref sha256:tools', budget: { modelTurns: each },
+    exitTest: expect.any(String), placement: expect.any(String), transport: 'claude-code Agent tool', resultDestination: expect.any(String),
+    cancellation: expect.any(String), result: '"42"', parentAgent: null });
+  expect(edges[1]).toMatchObject({ parent: `${id}#0`, parentAgent: 'a1', resultDestination: 'the tool result of subagent a1', state: 'cancelled' });
+  expect(stoppedTurn.journal.view.toolTurns?.children).toEqual({ started: 2, returned: 1, cancelled: 1, unknown: 0 });
+  // Without a stop, a child with no result is unknown, never cancelled or returned.
+  const crashed = await turnWith(1000, [agent('t1', 1), start('a1')], false);
+  expect((crashed.appended[1] as { edges: { state: string }[] }).edges.map(edge => edge.state)).toEqual(['unknown']);
+  // A short allowance reserves no child: the hook is told zero, so Agent refuses for budget.
+  const short = await turnWith(extra, [], false);
+  expect(short.config.children).toEqual({ max: 0, type: SUBSCRIPTION_SUBAGENT_TYPE });
+  expect(short.appended[0]).toMatchObject({ calls: extra, delegation: { children: 0 } });
+  // The journal refuses an edge for another turn and a delegation the reservation does not cover.
+  const j = journalAt(dir(), 1000);
+  expect(() => j.append({ kind: 'tool-turn', phase: 'reserved', id, attempt: 0, calls: 7, at: 1,
+    delegation: { children: 2, turnsEach: 4, type: 'worker', authority: 'a' } } as never)).toThrow(/delegation/u);
+  j.append({ kind: 'tool-turn', phase: 'reserved', id, attempt: 0, calls: 15, at: 1, delegation: { children: 2, turnsEach: 4, type: 'worker', authority: 'a' } } as never);
+  expect(() => j.append({ kind: 'tool-turn', phase: 'trace', id, attempt: 0, consistent: true, workspaceBytes: 0, calls: [], at: 2,
+    edges: [{ child: 't', agent: null, parent: 'other#0', state: 'returned' }] } as never)).toThrow(/edges/u);
+  expect(() => j.append({ kind: 'tool-turn', phase: 'trace', id, attempt: 0, consistent: true, workspaceBytes: 0, calls: [], at: 2,
+    edges: [{ child: 't', agent: null, parent: `${id}#0`, parentAgent: 7, state: 'returned' }] } as never)).toThrow(/edges/u);
+  j.append({ kind: 'tool-turn', phase: 'trace', id, attempt: 0, consistent: true, workspaceBytes: 0, calls: [], at: 2,
+    edges: [{ child: 't', agent: 'a2', parent: `${id}#0`, parentAgent: 'a1', state: 'returned' }] } as never);
+  expect(j.view.toolTurns?.children).toEqual({ started: 1, returned: 1, cancelled: 0, unknown: 0 });
+});
+
+it('keeps an interrupted turn\'s hook record past retention and journals its child edges as unknown at the next launch (Rule 114)', async () => {
+  const root = dir(), id = 'telegram:12345678:update:21', authority = 'activation-ref sha256:tools';
+  const journal = journalAt(root, 1000);
+  // A crash after the hook synced an admitted Agent call and its child start, before the trace was journaled: the
+  // reservation is durable and open, the turn directory holds the only record of the child.
+  journal.append({ kind: 'tool-turn', phase: 'reserved', id, attempt: 0, calls: 15, at: 1,
+    delegation: { children: 2, turnsEach: SUBSCRIPTION_TOOL_LIMITS.childMaxTurns, type: SUBSCRIPTION_SUBAGENT_TYPE, authority } } as never);
+  const crashed = prepareToolTurn({ root, operation: id, attempt: 0, operations: SINGLE_MACHINE_PROFILE.operations, children: 2,
+    scratch: plainScratch, authority });
+  writeFileSync(join(crashed.stateDirectory, 'admission.jsonl'), [
+    JSON.stringify({ phase: 'pre', id: 't1', n: 1, tool: 'Agent', input: '{}', decision: 'allow', reason: 'r', kind: 'subagent', child: 1 }),
+    JSON.stringify({ phase: 'child-start', agent: 'a1', type: SUBSCRIPTION_SUBAGENT_TYPE })].join('\n') + '\n');
+  utimesSync(crashed.directory, 1, 1);
+  // Sixteen newer finished turns: retention would remove the oldest, but never the one the journal still holds open.
+  const base = join(root, 'tool-turns');
+  for (let n = 0; n < 16; n++) mkdirSync(join(base, `newer-${String(n)}`));
+  const reopened = journalAt(root, 1000);
+  expect(pruneToolTurns(root, 16, keepDetached, openToolTurnSlugs(reopened.view))).toEqual({ removed: 0, failed: 0 });
+  expect(existsSync(join(crashed.stateDirectory, 'admission.jsonl'))).toBe(true);
+  // The next launch journals it: the admitted call, the child edge under its recorded authority, outcome unknown (never re-run).
+  expect(reconcileToolTurns({ journal: reopened, root, redactText: (text: string) => text, now: () => 50 })).toEqual([`${id}#0`]);
+  expect(reopened.view.toolTurns).toMatchObject({ open: [], toolCalls: 1, children: { started: 1, returned: 0, cancelled: 0, unknown: 1 } });
+  const replayed = journalAt(root, 1000);
+  expect(replayed.view.toolTurns).toEqual(reopened.view.toolTurns);
+  // Journaled, it is ordinary history again, and retention may remove it.
+  expect(pruneToolTurns(root, 16, keepDetached, openToolTurnSlugs(replayed.view))).toEqual({ removed: 1, failed: 0 });
+  expect(existsSync(crashed.directory)).toBe(false);
+  // A reconcile is idempotent, and an open turn whose directory did not survive stays open (its outcome unknown).
+  expect(reconcileToolTurns({ journal: replayed, root, redactText: (text: string) => text, now: () => 60 })).toEqual([]);
+  replayed.append({ kind: 'tool-turn', phase: 'reserved', id, attempt: 1, calls: 7, at: 61 });
+  expect(reconcileToolTurns({ journal: replayed, root, redactText: (text: string) => text, now: () => 62 })).toEqual([]);
+  expect(replayed.view.toolTurns?.open).toEqual([`${id}#1`]);
+  // The normal-completion neighbour: a finished turn journals its own trace and closes nothing else.
+  const fresh = dir(), done = journalAt(fresh, 1000);
+  await runToolTurn({ journal: done, root: fresh, id, prepared: '{}', promptLimit: 32768, deniedRoots: [fresh], operations: SINGLE_MACHINE_PROFILE.operations,
+    now: () => 10, redactText: (text: string) => text, fallback: async () => ({ result: 'text-only' }), scratch: plainScratch, detach: keepDetached,
+    authority, invoke: async () => 'answer' });
+  expect(done.view.toolTurns?.open).toEqual([]);
+  expect(reconcileToolTurns({ journal: done, root: fresh, redactText: (text: string) => text, now: () => 11 })).toEqual([]);
+});
+
+it('reads the root\'s MCP configuration: absent is none, malformed refuses, and its servers and credentials stay in the admission state', () => {
+  const root = dir();
+  expect(readRootMcp(root)).toBeNull();
+  for (const bad of ['{', '{"mcpServers":[]}', '{"mcpServers":{"a b":{"command":"/x"}}}', '{"mcpServers":{"a":{}}}',
+    '{"mcpServers":{"a":{"command":"/x"}},"reads":["mcp__b__t"]}']) {
+    writeFileSync(join(root, 'mcp.json'), bad);
+    expect(() => readRootMcp(root)).toThrow();
+  }
+  writeFileSync(join(root, 'mcp.json'), '{"mcpServers":{}}');
+  expect(readRootMcp(root)).toBeNull();
+  const config = { mcpServers: { dummy: { command: '/usr/bin/true', env: { TOKEN: 'DUMMY-NOT-A-SECRET' } } }, reads: ['mcp__dummy__lookup'] };
+  writeFileSync(join(root, 'mcp.json'), JSON.stringify(config));
+  const mcp = readRootMcp(root);
+  expect(mcp).toMatchObject({ servers: config.mcpServers, reads: config.reads, digest: expect.stringMatching(/^sha256:/u) });
+  const turn = prepareToolTurn({ root, operation: 'telegram:1:update:9', attempt: 0, operations: [], mcp, scratch: plainScratch });
+  expect(turn.mcp).toEqual({ config: join(turn.stateDirectory, 'mcp.json'), servers: ['dummy'] });
+  expect(lstatSync(turn.mcp.config).mode & 0o777).toBe(0o600);
+  expect(JSON.parse(readFileSync(turn.mcp.config, 'utf8'))).toEqual({ mcpServers: config.mcpServers });
+  expect(JSON.parse(readFileSync(join(turn.stateDirectory, 'config.json'), 'utf8')).mcpReads).toEqual(['mcp__dummy__lookup']);
+  // The credential never lands where a tool can reach: not in the workspace or the scratch volume.
+  expect(JSON.stringify(readdirSync(turn.scratch, { recursive: true }))).not.toContain('mcp');
 });

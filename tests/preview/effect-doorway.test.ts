@@ -172,23 +172,22 @@ it('replays the recorded tool calls of real harness runs through the real hook: 
     expect(r.status).toBe(0);
   });
   for (const row of admissionRows(state)) {
-    const consequential = toolEffectProposal(row.tool, JSON.parse(row.input)) !== null;
+    // A web read is ordinary work under the tools grant (w4-toolsfull) unless the effect policy names it; this replay runs
+    // with no policy, so the doorway fires on every other proposal and never on a web read.
+    const webRead = row.tool === 'WebFetch' || row.tool === 'WebSearch';
+    const consequential = toolEffectProposal(row.tool, JSON.parse(row.input)) !== null && !webRead;
     expect([row.tool, row.doorway !== undefined]).toEqual([row.tool, consequential]);
+    // The spike's real WebFetch calls (example.org): a public host, so admitted as a web read, or refused for scope by the
+    // hook's own resolution when the name does not resolve here; never the doorway's.
+    if (webRead) expect([row.tool, row.kind]).toEqual([row.tool, row.decision === 'allow' ? 'network-read' : 'scope']);
     if (row.doorway && row.tool === 'Bash') {
       doorway++;
       // The live turn's unsandboxed command: refused on three tests, with what would admit it.
       expect(row).toMatchObject({ decision: 'deny', kind: 'unsandboxed', doorway: { effect: 'tool:unsandboxed', disposition: 'refused',
         tests: { irreversible: true, resources: true, scope: true, policySensitive: false } } });
-    } else if (row.doorway) {
-      doorway++;
-      // The spike's real WebFetch calls (example.org): refused because they reach outside the granted scope.
-      expect(row).toMatchObject({ tool: 'WebFetch', decision: 'deny', kind: 'network',
-        doorway: { effect: 'tool:network', target: 'example.org', disposition: 'refused',
-          tests: { irreversible: false, resources: false, scope: true, policySensitive: false } } });
-      expect(row.reason).toMatch(/^effect doorway refused tool:network \(example\.org\): it is consequential because it reaches outside the scope/u);
     } else ordinary++;
   }
-  expect([recorded.length, doorway, ordinary]).toEqual([recorded.length, 3, recorded.length - 3]);
+  expect([recorded.length, doorway, ordinary]).toEqual([recorded.length, 1, recorded.length - 1]);
   // The live doorway turn: the recorded hook decision is what the replay reaches, and the model's recorded answer reported the
   // refusal and what would admit it; the refusal notice for that turn is one line the journal accepts below such an answer.
   const live = JSON.parse(readFileSync(join(__dirname, 'fixtures/tool-turn/live-2026-10-03/doorway.json'), 'utf8'));
@@ -257,10 +256,13 @@ it('one tool turn on a scratch root: an ordinary write is admitted with no doorw
   expect(status).toMatch(/refused: tool:unsandboxed — tests held: irreversible, resources, scope\./u);
   // Replay reaches the same projection.
   expect(open(lastRoot).view.effectDoorway).toEqual(refused.view.effectDoorway);
-  // The other side: under a recorded scope grant for example.com, a web read reaches the doorway and is admitted as ordinary.
-  // The runner passes the policy it decoded (journal-agent.mjs effectPolicyOf), which the hook decodes again.
-  const admitted = await turnOnce(policy({ grants: [grant({ target: 'example.com' })] }),
-    { tool_name: 'WebFetch', tool_input: { url: 'https://example.com/', prompt: 'title' } });
+  // The other side: a web read the operator's policy registers reaches the doorway (w4-toolsfull makes an unnamed public web
+  // read ordinary without it), and under a recorded scope grant for that host it is admitted as ordinary. A literal public
+  // address keeps the hook's own name resolution out of the test. The runner passes the policy it decoded
+  // (journal-agent.mjs effectPolicyOf), which the hook decodes again.
+  const admitted = await turnOnce(policy({ grants: [grant({ target: '93.184.215.14' })], registered: [{ effect: 'tool:network',
+    target: '93.184.215.14', consequence: 'external', reversibility: 'reversible', reach: 'world', costUsd: 0, source: 'telegram:102965:121996' }] }),
+    { tool_name: 'WebFetch', tool_input: { url: 'https://93.184.215.14/', prompt: 'title' } });
   expect(admitted.view.toolTurns).toMatchObject({ toolCalls: 2, toolRefusals: 0, inconsistent: 0 });
   expect(admitted.view.effectDoorway).toMatchObject({ proposed: 1, ordinary: 1, refused: 0 });
   expect(refusedEffectNotices(admitted.view.effectDoorway!.recent, id)).toEqual([]);

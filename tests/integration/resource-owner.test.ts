@@ -332,6 +332,35 @@ const c = spawn('/bin/sleep', ['20'], { detached: true, stdio: 'ignore' }); c.un
   } finally { try { process.kill(survivor, 'SIGKILL'); } catch { /* ended */ } }
 });
 
+it('reclaims a member that first appears in a later cleanup census, instead of waiting on it and leaving it running', { timeout: 30000 }, async () => {
+  // Live 2026-10-03 (w4-toolsfull stop-child): a stopped tool turn's subagent shell had forked `sleep 60` just after the
+  // first cleanup census (which saw the shell); the old cleanup only waited on later censuses, so the sleeper outlived the
+  // stop. Here the first census that could see the second child is made to miss it once, exactly as that race did: it sees
+  // the first child only. The reclaiming census must still end the second.
+  const root = dir(), pids = join(root, 'pids');
+  const escape = script(root, 'escape.mjs', `import { spawn } from 'node:child_process'; import { writeFileSync } from 'node:fs';
+const a = spawn('/bin/sleep', ['20'], { detached: true, stdio: 'ignore' }), b = spawn('/bin/sleep', ['20'], { detached: true, stdio: 'ignore' });
+a.unref(); b.unref(); writeFileSync(process.argv[2], a.pid + ' ' + b.pid);`);
+  let hidden = 0;
+  const query = async (file: string, args: string[]) => {
+    const text = await hostQuery(file, args);
+    if (args[0] !== '-U' || typeof text !== 'string' || hidden || !existsSync(pids)) return text;
+    const late = readFileSync(pids, 'utf8').trim().split(' ')[1];
+    const lines = text.split('\n'), kept = lines.filter(line => line.trim().split(/\s+/u)[0] !== late);
+    if (kept.length !== lines.length) hidden = 1;
+    return kept.join('\n');
+  };
+  const owner = createResourceOwner({ ...ceilings(), sampleMs: 60000 });
+  await owner.attach({ ledgerPath: join(root, 'owned-launches.json'), allocation: six(root), query });
+  const result = await owner.execute(input(root, escape, [pids]), 'maintenance');
+  const [first, second] = readFileSync(pids, 'utf8').trim().split(' ').map(Number);
+  try {
+    expect(hidden).toBe(1);
+    expect([alive(first!), alive(second!)]).toEqual([false, false]);
+    expect(result.resources).toMatchObject({ leakedDescendants: 2, cleanup: 'verified', membership: 'working-area-joined' });
+  } finally { for (const pid of [first, second]) try { process.kill(pid!, 'SIGKILL'); } catch { /* ended */ } }
+});
+
 it('an unreadable working directory of a live candidate is unknown membership: cleanup stays unresolved and the debit reserved', { timeout: 30000 }, async () => {
   const root = dir(), ledgerPath = join(root, 'owned-launches.json'), pids = join(root, 'pids');
   const escape = script(root, 'escape.mjs', `import { spawn } from 'node:child_process'; import { writeFileSync } from 'node:fs';

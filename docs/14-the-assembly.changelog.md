@@ -4,6 +4,10 @@ _Generated from `14-the-assembly.changelog.json` by `scripts/render-changelog.mj
 The document itself reads as a first version; every change to it is recorded here, newest first,
 each linked to the git change that made it (rule 91).
 
+## Revision 22 · 2026-10-03 · draft — Unit w4-toolsfull (plan row #395): operator direction, Justin, topic 102965 message 121996, 10:15 PDT 2026-10-03, recorded as a Rule 104 standing grant: tools on by default with the full Claude Code tool set, consequential effects through the effect doorway, every subagent a Rule 114 edge. No constitution change.
+
+- **Operator question 2: the preview's tools are on by default under the operator's recorded grant, run under Part Thirteen's demonstrated boundary, and send every consequential effect to the effect doorway.** — The full tool set replaces the scoped first slice; the statement that the boundary is not §4 confinement and waives no floor is unchanged. _(lanes/w4-toolsfull-PROGRESS.md; lanes/astra-fulltool-ruling.md (MF2-MF7 floors); LIVE-PATH-PLAN.md row #395)_
+
 ## Revision 21 · 2026-10-03 · draft — Unit w4-toolsreal: the full-tool ruling's replacement text, adapted to the reuse route (Justin 2026-10-02 00:43, topic 102965 message 121912; desk decision 2026-10-01 17:49, message 121586). No constitution change.
 
 - **Operator question 2 states that the preview's ordinary scoped tools are supported ordinary work under Part Thirteen's demonstrated boundary (admission hook, harness sandbox, clean environment), which is not §4 confinement and grants no governed or protected status.** — Replaces the proposed full-tool exception the ruling rejected (MF2, MF3); no preview label waives a floor. _(lanes/astra-fulltool-ruling.md (replacement text); lanes/w4-toolsreuse-PROGRESS.md (proven configuration); lanes/w4-toolsreal-PROGRESS.md; LIVE-PATH-PLAN.md rows #358, #363, #367)_

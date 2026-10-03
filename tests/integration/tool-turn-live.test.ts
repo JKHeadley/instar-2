@@ -29,7 +29,8 @@ import { runToolTurn, scratchMounted } from '../preview/tool-turn.mjs';
 const LIVE = process.env.INSTAR_TOOL_TURN_LIVE_TEST === '1';
 const PROFILE = '/Users/Shared/instar-preview-s2/profile-v2.json';
 const MODEL = 'claude-sonnet-5';
-const RECORD = join(__dirname, '../preview/fixtures/tool-turn/live-2026-10-03');
+// INSTAR_TOOL_TURN_RECORD names another fixture folder (a later re-run beside the original record, never over it).
+const RECORD = join(__dirname, '../preview/fixtures/tool-turn', process.env.INSTAR_TOOL_TURN_RECORD ?? 'live-2026-10-03');
 const scratch = LIVE ? realpathSync(mkdtempSync('/private/tmp/tool-turn-live-')) : '';
 // A canary outside the scratch root, the workspace and every listed denial: another session's temporary file.
 const neighbour = LIVE ? realpathSync(mkdtempSync(join(tmpdir(), 'w4-other-'))) : '';

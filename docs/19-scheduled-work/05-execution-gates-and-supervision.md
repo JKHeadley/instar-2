@@ -114,11 +114,24 @@ Part five decides progression and closure from accepted results. Handoff prose i
 re-resolve against signed history, never the source of current schedule, authority or completion.
 
 **Rule — every delegated session has its run edge; a subprocess has its owner.** Rules 60, 68 and
-114; **checks:** `tests/assembly/production-provider-tools.test.ts` (no delegating tool in the
-preview's tool launch) and P15-NF-21. Every delegated session or agent, including one started inside
-a turn, has the Rule 114 durable parent-child edge. Ordinary subprocesses remain owned by their
-enclosing execution. Durable work survives disposable turns and resumes only under current scope,
-ownership and resource authority. The preview's tool turn delegates nothing: its launch removes every
-subagent and workflow tool, so the commands it runs are ordinary subprocesses of that turn's launch.
+114; **checks:** `tests/preview/tool-turn.test.ts`, `tests/preview/tool-admission.test.ts`,
+`tests/assembly/production-provider-tools.test.ts`, the gated live runs in
+`tests/integration/tool-turn-full-live.test.ts`, and P15-NF-21. Every delegated session or agent,
+including one started inside a turn, has the Rule 114 durable parent-child edge. Ordinary subprocesses
+remain owned by their enclosing execution. Durable work survives disposable turns and resumes only
+under current scope, ownership and resource authority. The preview's tool turn may start subagents of
+one registered type, in the foreground, each bounded in model turns and sharing the turn's tool-call
+count, and a subagent may start its own within the same budget, so the delegation's shape is chosen
+for the work; the turn's one reserved budget covers every subagent at any depth. A workflow or a skill
+that may start agents whose number or model turns cannot be reserved before dispatch is refused for
+budget at the admission hook. The turn's reservation, durable before dispatch, carries the
+delegation's authority and its whole budget share. Each child's start and stop are recorded on the
+machine before it acts, and the turn's journaled trace carries one edge per child: the parent turn
+that owns its reservation, the subagent that started it when not the turn itself, the child, the
+authority, the budget, the exit test (its final message returns as the tool result to whoever started it),
+the placement (the turn's own harness process on this machine), the transport, the result destination
+and the cancellation (the turn's process group). An edge ends returned, or cancelled when the
+operator's stop or a withdrawal ended the turn, or unknown; it is never silently dropped. The commands
+the turn and its children run are ordinary subprocesses of that turn's launch.
 
 ---

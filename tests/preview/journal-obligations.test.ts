@@ -908,7 +908,7 @@ it('tells scheduled work and the reply review what the call actually had: no too
       expect(w.workQuestions).toEqual([tools ? OBLIGATION_WORK_QUESTION_TOOLS : OBLIGATION_WORK_QUESTION]);
       expect(contexts[0]!.capabilities).toEqual(previewCapabilities(tools));
       expect((contexts[0]!.governingConstraints as Record<string, string>)['no-tools'])
-        .toBe(tools ? 'only listed tools; no accounts' : 'no external tools or accounts');
+        .toBe(tools ? 'listed tools; no account writes' : 'no external tools or accounts');
       if (tools) {
         expect(w.workQuestions[0]).not.toContain('you have no external tools');
         expect(w.workQuestions[0]).not.toContain('You have attempted nothing outside this step');
