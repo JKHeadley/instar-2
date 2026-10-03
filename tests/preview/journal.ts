@@ -2481,8 +2481,8 @@ function addOperatorRequest(view: JournalView, request: OperatorRequest, carrier
     || request.issuedAt > at || request.expiresAt > view.expires || view.operatorRequests.some(item => item.request.id === request.id)
     || review !== undefined && (!/^[A-Za-z0-9_.-]+\/[A-Za-z0-9_.-]+$/u.test(review.repository)
       || !Number.isSafeInteger(review.pullRequest) || review.pullRequest <= 0 || !/^[0-9a-f]{40}$/u.test(review.head))
-    || !text.includes(review === undefined ? operatorRequestText(request, current)
-      : operatorReviewRequestText(request, current, reviewLink(review.repository, review.pullRequest)))
+    || !text.includes(review === undefined ? operatorRequestText(request, current, null)
+      : operatorReviewRequestText(request, current, reviewLink(review.repository, review.pullRequest), null))
     || request.action === 'raise-caps' && (['maxCalls', 'maxReplies', 'maxTurns'] as const).some(key => request.limits![key] < view.limits[key])
     || request.action === 'renew-expiry' && !(request.expires! > view.expires) || scope !== undefined && scope !== 'action')
     throw Error('preview journal: operator request refused');
@@ -4271,7 +4271,10 @@ export interface PreviewPorts {
     installation: ExplicitYesInstallation | (() => ExplicitYesInstallation | undefined);
     /** The GitHub review source (P-05 route), connected by the launcher with the agent's own token; absent: not connected. */
     review?: ReviewYesSource;
-    renewalActivation?(expires: number): string | null };
+    renewalActivation?(expires: number): string | null;
+    /** How long a request stays answerable (plan #373; default OPERATOR_REQUEST_MS, at most OPERATOR_REQUEST_MAX_MS),
+     * never past the trial's current end. */
+    requestWindowMs?: number };
   replyCheck?: Pick<ReplyCheckPorts, 'jev' | 'escalate' | 'elapsedMs'> & { summaryReview?(state: string, through: number): Promise<{
     verdict: 'pass' | 'violation' | 'unavailable'; latencyMs: number; retryable?: true; usage?: ModelUsage }>;
     /** The mind's one revision of an objected draft (same model envelope as review). Absent: no revision round. */
@@ -7288,13 +7291,13 @@ export function createJournalWorker(journal: ReturnType<typeof openPreviewJourna
     const status = yesStatus(), source = ports.explicitYes.review;
     const viaReview = !status.chat.admissible && status.review.admissible && source !== undefined;
     if (!status.chat.admissible && !viaReview) return { refused: CHAT_YES_UNAVAILABLE };
-    const result = proposeOperatorRequest(proposalState(), proposal, carrier, now);
+    const result = proposeOperatorRequest(proposalState(), proposal, carrier, now, ports.explicitYes.requestWindowMs);
     if (result.kind === 'refused') return { refused: result.reason };
-    if (!viaReview) return { text: operatorRequestText(result.request, journal.view), request: result.request };
-    const issued = await source!.issue(result.request, operatorReviewBodyText(result.request, journal.view));
+    if (!viaReview) return { text: operatorRequestText(result.request, journal.view, ports.timeZone), request: result.request };
+    const issued = await source!.issue(result.request, operatorReviewBodyText(result.request, journal.view, ports.timeZone));
     if (issued.kind === 'refused') return { refused: `the approval page could not be opened (${issued.reason})` };
     const review = { repository: issued.issued.repository, pullRequest: issued.issued.pullRequest, head: issued.issued.head };
-    return { text: operatorReviewRequestText(result.request, journal.view, issued.issued.link), request: result.request, review };
+    return { text: operatorReviewRequestText(result.request, journal.view, issued.issued.link, ports.timeZone), request: result.request, review };
   };
   /** The undecided, sent requests still answerable now at the current base: at most one per action (plan #371). */
   const openOperatorRequests = (now: number) => journal.view.operatorRequests.filter(item => item.message !== undefined

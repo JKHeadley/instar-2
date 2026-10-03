@@ -5,7 +5,7 @@ import { join } from 'node:path';
 import { createJournalWorker, openPreviewJournal, previewTestContext, limitedAnswerText } from './journal-test-worker.js';
 import { CHAT_YES_UNAVAILABLE, OPERATOR_ACTION_UNREAD, projectionDigest, raiseJournalCaps } from './journal.js';
 import { chatBinding, explicitYesStatus, operatorActionSurface, operatorRefusalText, operatorRequestText, operatorYesAuthority, parseOperatorAction,
-  proposeOperatorRequest, wellFormedRequest, type ChatCandidate, type ProposalState } from './operator-yes.js';
+  proposeOperatorRequest, wellFormedRequest, OPERATOR_REQUEST_MS, type ChatCandidate, type ProposalState } from './operator-yes.js';
 import { produceExplicitYes } from '../../src/operator/explicit-yes.js';
 import type { ExplicitYesInstallation } from '../../src/operator/explicit-yes.js';
 import { SUBSCRIPTION_PREVIEW_EXPIRY } from '../../src/assembly/production-provider.js';
@@ -69,10 +69,10 @@ it('reads only the exact proposal shape, and bounds every request by the governe
   expect(inside.kind).toBe('request');
   if (inside.kind !== 'request') return;
   expect(inside.request.limits).toEqual({ maxCalls: 12, maxReplies: 8, maxTurns: 8 });
-  // A request never outlives the trial: here the trial ends first; with a later end it lapses after an hour.
+  // A request never outlives the trial: here the trial ends first; with a later end it lapses after the window (plan #373).
   expect(inside.request.expiresAt).toBe(2000_000);
-  const hour = proposeOperatorRequest(state({ expires: 9_000_000 }), { action: 'raise-caps' }, 'turn-1', 500);
-  expect(hour.kind === 'request' && hour.request.expiresAt).toBe(500 + 3_600_000);
+  const window = proposeOperatorRequest(state({ expires: 900_000_000 }), { action: 'raise-caps' }, 'turn-1', 500);
+  expect(window.kind === 'request' && window.request.expiresAt).toBe(500 + OPERATOR_REQUEST_MS);
   expect(wellFormedRequest(inside.request, 'turn-1', 'grant:preview')).toBe(true);
   expect(wellFormedRequest({ ...inside.request, limits: { ...inside.request.limits!, maxCalls: 13 } }, 'turn-1', 'grant:preview')).toBe(false);
   expect(wellFormedRequest(inside.request, 'turn-2', 'grant:preview')).toBe(false);
@@ -231,7 +231,7 @@ it('takes nothing else as the yes: an ambiguous answer, a later message, an expi
   worker.intake([message(6, second.message! + 1, 'yes', { reply_to_message: { message_id: first.message } })]);
   expect(journal.view.limits.maxCalls).toBe(6);
   // The yes after its lapse is refused as lapsed (reply-to the current request).
-  tick(3_600_001);
+  tick(OPERATOR_REQUEST_MS + 1);
   worker.intake([message(7, second.message! + 2, 'yes', { reply_to_message: { message_id: second.message } })]);
   expect(journal.view.limits.maxCalls).toBe(6);
   expect(latest(journal)!.refusals.at(-1)?.detail).toBe('this request has lapsed');

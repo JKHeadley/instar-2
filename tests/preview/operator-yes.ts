@@ -35,8 +35,12 @@ export interface ProposalState { limits: CapLimits; used: CapLimits; step: CapLi
   renewalActivation: string | null;
   unknownCalls: number; stopped: boolean; grant: string; base: string }
 
-/** How long a request may be answered: the same hour the independent-surface challenge always had. */
-export const OPERATOR_REQUEST_MS = 3_600_000;
+/** How long a request may be answered by default (plan #373): long enough for a phone tap the next morning. Live
+ * 2026-10-03: two requests issued with the old one-hour window lapsed unseen overnight. A request never outlives the
+ * governing deadline, the trial's current end (the end a renewal extends, the end a raise lives within). */
+export const OPERATOR_REQUEST_MS = 18 * 3_600_000;
+/** The longest window a root may configure, and the longest lifetime a recorded request may carry on replay. */
+export const OPERATOR_REQUEST_MAX_MS = 48 * 3_600_000;
 const LIMIT_NAMES: Record<keyof CapLimits, [string, string]> = {
   maxCalls: ['model-call', 'model calls'], maxReplies: ['reply', 'replies'], maxTurns: ['message', 'messages'] };
 const KEYS = ['maxCalls', 'maxReplies', 'maxTurns'] as const;
@@ -73,12 +77,14 @@ const nearest = (state: ProposalState): keyof CapLimits => KEYS.reduce((best, ke
   state.used[key] / state.limits[key] > state.used[best] / state.limits[best] ? key : best, 'maxCalls' as keyof CapLimits);
 
 /** The one exact request for a proposal, or the plain reason it cannot be proposed. */
-export function proposeOperatorRequest(state: ProposalState, proposal: OperatorActionProposal, carrier: string, now: number):
+export function proposeOperatorRequest(state: ProposalState, proposal: OperatorActionProposal, carrier: string, now: number,
+  windowMs = OPERATOR_REQUEST_MS):
   { kind: 'request'; request: OperatorRequest } | { kind: 'refused'; reason: string } {
   const refused = (reason: string) => ({ kind: 'refused' as const, reason });
   if (state.stopped) return refused('this trial is stopped');
   if (now >= state.expires) return refused('this trial has ended');
-  const lifetime = { issuedAt: now, expiresAt: Math.min(state.expires, now + OPERATOR_REQUEST_MS) };
+  if (!Number.isSafeInteger(windowMs) || windowMs <= 0 || windowMs > OPERATOR_REQUEST_MAX_MS) throw Error('preview: operator request window out of bounds');
+  const lifetime = { issuedAt: now, expiresAt: Math.min(state.expires, now + windowMs) };
   if (proposal.action === 'raise-caps') {
     if (state.unknownCalls > 0) return refused('a model call\'s outcome is still unknown, so no raise can be recorded until it is settled');
     const asked = proposal.limits ?? { [nearest(state)]: 'step' as const };
@@ -109,13 +115,23 @@ export function wellFormedRequest(request: unknown, carrier: string, grant: stri
   const r = request as OperatorRequest;
   if (!r || typeof r !== 'object' || (r.action !== 'raise-caps' && r.action !== 'renew-expiry') || typeof r.base !== 'string'
     || r.id !== operatorRequestId(carrier, r.action, r.base) || !Number.isSafeInteger(r.issuedAt) || !Number.isSafeInteger(r.expiresAt)
-    || r.expiresAt <= r.issuedAt || r.expiresAt - r.issuedAt > OPERATOR_REQUEST_MS) return false;
+    || r.expiresAt <= r.issuedAt || r.expiresAt - r.issuedAt > OPERATOR_REQUEST_MAX_MS) return false;
   if (r.action === 'raise-caps' ? r.expires !== undefined || !r.limits || KEYS.some(key => !Number.isSafeInteger(r.limits![key]) || r.limits![key] <= 0)
     || Object.keys(r.limits).length !== KEYS.length : r.limits !== undefined || !Number.isSafeInteger(r.expires)) return false;
   return r.digest === operatorRequestDigest(r, grant);
 }
 
 const minute = (at: number) => `${new Date(at).toISOString().slice(0, 16).replace('T', ' ')} UTC`;
+/** What follows the UTC lapse sentence (plan #373): the same instant in the operator's own time zone where the root
+ * knows it, and, where the trial's end cut the window short, that it is that end. Never part of the replayed request
+ * text, which stays the UTC sentence alone, so earlier recorded requests replay unchanged. */
+export function operatorLapseDetail(request: OperatorRequest, current: { expires: number }, zone?: string): string {
+  const parts: string[] = [];
+  if (zone !== undefined && zone !== 'UTC') parts.push(`${new Intl.DateTimeFormat('en-US', { timeZone: zone, weekday: 'short', month: 'short',
+    day: 'numeric', hour: '2-digit', minute: '2-digit', hourCycle: 'h23', timeZoneName: 'short' }).format(request.expiresAt)} your time (${zone})`);
+  if (request.expiresAt === current.expires) parts.push('the trial\'s current end, which a request cannot outlast');
+  return parts.length ? ` That is ${parts.join(', and ')}.` : '';
+}
 const requestChange = (request: OperatorRequest, current: { limits: CapLimits; expires: number }) => request.action === 'raise-caps'
   ? KEYS.filter(key => request.limits![key] !== current.limits[key]).map(key =>
     `the ${LIMIT_NAMES[key][0]} allowance from ${current.limits[key]} to ${request.limits![key]} (${request.limits![key] - current.limits[key]} more ${LIMIT_NAMES[key][1]})`).join(' and ')
@@ -123,20 +139,20 @@ const requestChange = (request: OperatorRequest, current: { limits: CapLimits; e
 const requestHead = (request: OperatorRequest, current: { limits: CapLimits; expires: number }) =>
   `Request ${request.id}: ${request.action === 'raise-caps' ? 'raise' : 'extend'} ${requestChange(request, current)}. `;
 /** The fixed, plain request the operator reads (Rule 82): the exact change, how to approve, and when it lapses. */
-export function operatorRequestText(request: OperatorRequest, current: { limits: CapLimits; expires: number }): string {
+export function operatorRequestText(request: OperatorRequest, current: { limits: CapLimits; expires: number }, zone?: string | null): string {
   return `${requestHead(request, current)}To approve, reply "yes" as your next message here; anything else changes nothing. `
-    + `This request lapses at ${minute(request.expiresAt)}.`;
+    + `This request lapses at ${minute(request.expiresAt)}.${zone === null ? '' : operatorLapseDetail(request, current, zone)}`;
 }
 /** The same request where the yes is the operator's GitHub review (P-05): the direct link to approve it (Rule 106). */
-export function operatorReviewRequestText(request: OperatorRequest, current: { limits: CapLimits; expires: number }, link: string): string {
+export function operatorReviewRequestText(request: OperatorRequest, current: { limits: CapLimits; expires: number }, link: string, zone?: string | null): string {
   return `${requestHead(request, current)}To approve, open ${link} and approve the pull request (Review changes, then Approve); `
-    + `anything else changes nothing. This request lapses at ${minute(request.expiresAt)}.`;
+    + `anything else changes nothing. This request lapses at ${minute(request.expiresAt)}.${zone === null ? '' : operatorLapseDetail(request, current, zone)}`;
 }
 /** The text of the request's own pull request and request file (P-05 route; plan #371). It names only the route that
  * approves it, the pull request's review: on this route a chat yes is not admissible, so it never mentions one. */
-export function operatorReviewBodyText(request: OperatorRequest, current: { limits: CapLimits; expires: number }): string {
+export function operatorReviewBodyText(request: OperatorRequest, current: { limits: CapLimits; expires: number }, zone?: string): string {
   return `${requestHead(request, current)}To approve, approve this pull request (Review changes, then Approve); anything else `
-    + `changes nothing. This request lapses at ${minute(request.expiresAt)}.`;
+    + `changes nothing. This request lapses at ${minute(request.expiresAt)}.${operatorLapseDetail(request, current, zone)}`;
 }
 /** What an applied request set, from the request alone: the facts the approval-report question names. */
 export const operatorRequestTarget = (request: OperatorRequest): string => request.action === 'raise-caps'

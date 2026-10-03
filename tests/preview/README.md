@@ -3149,7 +3149,13 @@ Rules 4, 14, 15, 52, 53, 77, 79, 80, 82, 86, 87, 88, 95 and 106 on the live runn
   bounds (one raise adds at most the larger of the trial's original and current allowance, so at most
   doubles a limit; a renewal names only
   `SUBSCRIPTION_PREVIEW_EXPIRY` and needs the reviewed activation installed), with its own id,
-  digest and one-hour lifetime, and appends its fixed wording to the reply. One request per action may
+  digest and lifetime, and appends its fixed wording to the reply. A request stays answerable for 18
+  hours by default (plan #373; the old one hour lapsed requests unseen overnight), configurable on the
+  root with `run --operator-request-hours N` (1 to 48), and never past the trial's current end (the end
+  a renewal extends and a raise lives within); the reply, the pull request body and the request file
+  state the lapse in UTC, then in the operator's local time from `--time-zone`, and say when the
+  trial's end cut the window short. Replay checks only the UTC sentence, so earlier recorded requests
+  (one-hour, UTC-only) replay unchanged. One request per action may
   be open at a time (plan #371; rows carry `requestScope: 'action'`, while a legacy row without it
   superseded every undecided request): a raise and a renewal can be approved together, a new request
   supersedes only an undecided one of the same action, a raise applied by its approval carries an

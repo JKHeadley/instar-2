@@ -52,7 +52,7 @@ import { createApprovalSurfaceClient } from './approval-surface-client.mjs';
 import { parseExplicitYesInstallation } from './explicit-yes-installation.js';
 import { createGitHubReviewClient } from './github-review-client.js';
 import { createReviewYesSource } from './review-yes-source.js';
-import { explicitYesStatus, operatorActionSurface } from './operator-yes.js';
+import { explicitYesStatus, operatorActionSurface, OPERATOR_REQUEST_MAX_MS } from './operator-yes.js';
 import { hostResources, HOST_IDENTITY, RESOURCE_CEILINGS } from '../../scripts/resource-owner.mjs';
 import { createHostResourceAllocation } from './six-host-resources.js';
 import { shouldRunScheduledPriority } from '../../src/scheduled/shedding.js';
@@ -1519,7 +1519,11 @@ async function main() {
     };
     const approvalSurface = approvalSurfaceOf(options);
     const yesInstallation = explicitYesInstallationOf(options), reviewSource = reviewSourceOf(options, yesInstallation);
+    // Plan #373: how long an operator request stays answerable (default 18 hours), never past the trial's current end.
+    const requestHours = options['operator-request-hours'] === undefined ? undefined
+      : number(options['operator-request-hours'], 'operator-request-hours', 1, OPERATOR_REQUEST_MAX_MS / 3_600_000);
     const explicitYes = yesInstallation ? { context, installation: yesInstallation, ...(reviewSource ? { review: reviewSource } : {}),
+      ...(requestHours === undefined ? {} : { requestWindowMs: requestHours * 3_600_000 }),
       renewalActivation: renewalActivationOf(options, () => journal.view) } : null;
     worker = createJournalWorker(journal, { ...(approvalSurface ? { approvalSurface } : {}), ...(explicitYes ? { explicitYes } : {}), now: wallNow, elapsed: clock.elapsed, origin, stopped: () => workerStop.value || existsSync(stopPath) || !ownerHeld(), timeZone: timeZoneOf(options),
       sources: turnSources(root, options, journal.view, () => runs, () => launchedAt ?? undefined,
