@@ -3137,9 +3137,11 @@ Rules 4, 14, 15, 52, 53, 77, 79, 80, 82, 86, 87, 88, 95 and 106 on the live runn
   the operator in the bound chat); `renewalActivation(expires)` returns the reviewed activation
   record's digest for the new trial end when the host has one. The answer model may return
   `operatorAction` (`{action:"raise-caps",limits:{maxCalls|maxReplies|maxTurns: number or "step"}}`
-  or `{action:"renew-expiry"}`); the guidance rides the packet only near a limit (the cap report's
-  80%), within 48 hours of the trial end, or while a request is open, so a fresh root's always-sent
-  bytes are unchanged. The runner, never the model, writes ONE exact request inside the governed
+  or `{action:"renew-expiry"}`); the guidance rides the packet whenever an explicit-yes source is
+  admissible on the root, so an ask is answerable at any time (397 bytes of text, 415 on the prepared
+  envelope); where the port is configured but no source is admissible, only near a limit (the cap
+  report's 80%), within 48 hours of the trial end, or while a request is open, so the answer carries
+  the runner's why-not. A root with no port sends none of it. The runner, never the model, writes ONE exact request inside the governed
   bounds (one raise adds at most the trial's original amount to a limit; a renewal names only
   `SUBSCRIPTION_PREVIEW_EXPIRY` and needs the reviewed activation installed), with its own id,
   digest and one-hour lifetime, and appends its fixed wording to the reply; an out-of-bounds or

@@ -143,8 +143,9 @@ it('says which source is admissible and why not, and keeps the P-05 chat refusal
 it('proposes the exact raise in the reply; the operator\'s next plain yes applies it once, and it survives replay', () => withRoot(async path => {
   const { journal, worker, sent, contexts } = harness(path, { answer: asking });
   worker.intake([message(1, 50, 'can I have more calls please')]); await worker.drain();
-  // Far from every limit, the proposal guidance is not in the packet (the always-sent bytes do not grow).
-  expect(contexts[0]).not.toContain('operatorAction');
+  // Far from every limit, the proposal guidance is in the packet: an admissible source makes an ask answerable at any
+  // time (plan row #349; live 2026-10-02 update 969390016 answered a false cannot-do without it).
+  expect(contexts[0]).toContain('operatorAction');
   const proposed = latest(journal)!;
   expect(proposed.request.limits).toEqual({ maxCalls: 10, maxReplies: 8, maxTurns: 8 });
   expect(sent.at(-1)!.text).toContain(operatorRequestText(proposed.request, { limits: { maxCalls: 6, maxReplies: 8, maxTurns: 8 }, expires: 9999999999999 }));
@@ -337,8 +338,14 @@ it('refuses a caps or expiry row that claims an explicit yes the journal never a
   journal.close();
 }));
 
-it('offers the proposal guidance only near a limit or the trial end, or while a request is open', () => withRoot(async path => {
-  const near = harness(path, { genesis: { maxCalls: 5 } });
+it('offers the proposal guidance whenever a source is admissible; configured but inadmissible, only near a limit or the end', () => withRoot(async path => {
+  // An admissible source (the chat route here): the guidance rides on the first message, far from every limit.
+  const open = harness(path.replace('journal.encrypted', 'open.encrypted'), { genesis: { maxCalls: 5 } });
+  open.worker.intake([message(1, 50, 'hello')]); await open.worker.drain();
+  expect(open.contexts[0]).toContain('operatorAction');
+  open.journal.close();
+  // Configured but no source admissible (P-05, no review source): only near a limit, so the answer carries the why-not.
+  const near = harness(path, { genesis: { maxCalls: 5 }, install: installation({ agentSpeaksAsOperatorInChat: true }) });
   near.worker.intake([message(1, 50, 'hello')]); await near.worker.drain();
   expect(near.contexts[0]).not.toContain('operatorAction');
   for (let index = 2; index <= 4; index++) { near.worker.intake([message(index, near.sent.at(-1)!.id + 1, `message ${index}`)]); await near.worker.drain(); }
