@@ -10,7 +10,8 @@ import { openProductionStorage } from '../../src/assembly/production-storage.js'
 import { DEFAULT_SUBSCRIPTION_DOORWAY, subscriptionDoorway, SUBSCRIPTION_CONVERSATION_FRAMING,
   subscriptionConversationPolicy, SUBSCRIPTION_PREVIEW_EXPIRY, validateSubscriptionActivation,
   SUBSCRIPTION_TOOLS_FRAMING, SUBSCRIPTION_TOOLS_SYSTEM_PROMPT, subscriptionToolsPolicy } from '../../src/assembly/production-provider.js';
-import { runToolTurn, toolPacketFits, toolStatusLines, toolTurnEligible } from './tool-turn.mjs';
+import { readRootMcp, runToolTurn, toolPacketFits, toolStatusLines, toolTurnEligible, TOOLS_DEFAULT_ACTIVATION } from './tool-turn.mjs';
+import { encoded } from '../../src/assembly/boundary.js';
 import { redact } from '../../src/recall/redact.js';
 import { durablePreviewWrite } from './durable-write.js';
 import { prepareJournalEnvelope } from './journal-envelope.js';
@@ -230,6 +231,12 @@ const requireAuthority = (options, activation, activationPath, view, now) => {
   if (resolution.kind !== 'resolved') throw Error(`preview: ${resolution.reason}`);
   return resolution;
 };
+/** Part Thirteen §9: writes the tools activation a root's launch derived under the operator's recorded grant, whole (write
+ * then rename), owner-only. It is the live withdrawal handle; the sealed authority it resolves from records the grant. */
+const writeToolsDefaultActivation = (path, bytes) => {
+  writeFileSync(`${path}.tmp`, bytes, { mode: 0o600 });
+  renameSync(`${path}.tmp`, path);
+};
 /** P-08 (Purpose; Eleven §5): this trial's single-machine acceptance, resolved from the same sealed
  * authority record as the activation. Its absence never refuses a launch; it only leaves the minimal
  * path's peer question unsettled, so limited answers stay inhibited and the outage names it. */
@@ -311,15 +318,18 @@ const capabilityReport = (joined, reading, log, status, now) => capabilityRows(j
 /** The exact sources every live turn carries; shared by run and the read-only inspect probe.
  * The self-state is recomputed at each turn from the journal and the run log; the desk's
  * report (optional) covers only other work. */
-const turnSources = (root, options, view, runs, current = () => undefined, handoff = () => null) => {
+const turnSources = (root, options, view, runs, current = () => undefined, handoff = () => null,
+  toolsOn = () => options['tools-activation'] !== undefined) => {
   // The standing mind-held instructions ride every prepared envelope; a changed rule book refuses launch.
   verifyMindRules(path => readFileSync(resolve(process.cwd(), path), 'utf8'));
-  const ordinarySources = sourcePacket(path => readFileSync(resolve(process.cwd(), path), 'utf8'), SOURCE_PINS,
-    { providerAttempts: view.limits.maxCalls, expiresAt: view.expires, tools: options['tools-activation'] !== undefined }).sources;
+  // Both briefings are built once; each turn carries the one that matches whether its tools are on now (default on,
+  // withdrawn when the record is removed or its grant no longer resolves).
+  const packets = new Map([true, false].map(tools => [tools, sourcePacket(path => readFileSync(resolve(process.cwd(), path), 'utf8'), SOURCE_PINS,
+    { providerAttempts: view.limits.maxCalls, expiresAt: view.expires, tools }).sources]));
   const deskStatusPath = resolve(options['desk-status'] ?? join(root, 'desk-status.md'));
   return turn => {
     const now = wallNow(), log = runs();
-    const sources = ordinarySources;
+    const sources = packets.get(Boolean(toolsOn()));
     const desk = deskStatusSource(readDeskStatus(deskStatusPath), now, deskStatusPath);
     const note = handoff();
     return [...sources, disciplineSource(view), selfStateSource(selfStateBrief(view, log, now, timeZoneOf(options), current())), desk, ...(note ? [note] : [])];
@@ -1134,7 +1144,7 @@ async function main() {
   // Rule 55: poll-failure pressure is episode state; every attempt that changes it is durable in the run log
   // before the loop continues, so neither a relaunch nor a crash resets it.
   let failedPolls = 0, conflictedPolls = 0;
-  let identityVerified = false, routeHealthy = true, active = null, toolsActive = () => false, toolsRecord = null;
+  let identityVerified = false, routeHealthy = true, active = null, toolsActive = () => false, toolsRecord = null, toolsOff = null;
   const workerStop = { value: false };
   const signal = name => { signalled = true; signalName ??= name; workerStop.value = true; };
   process.once('SIGINT', signal); process.once('SIGTERM', signal); process.once('SIGHUP', signal);
@@ -1491,7 +1501,9 @@ async function main() {
     };
     // Part Thirteen §9 (docs/17-harness-adapters): an eligible answer or work step runs as one scoped-tool turn (tool-turn.mjs runToolTurn).
     const invokeTools = async (prepared, id) => (await runToolTurn({ journal, root, id, prepared,
-      promptLimit: toolPromptLimit(),
+      promptLimit: toolPromptLimit(), mcp: readRootMcp(root),
+      authority: `${toolsRecord.reference} ${toolsRecord.invocationPolicyDigest}`,
+      stopped: () => workerStop.value || existsSync(stopPath) || journal.view.stop !== null || !toolsActive(),
       deniedRoots: [realpathSync(root), profile.home, profile.configDirectory, profile.workingDirectory],
       operations: SINGLE_MACHINE_PROFILE.operations, now: wallNow, redactText: text => redact(text).text,
       fallback: async () => ({ result: await invokeSubscription(prepared, id) }),
@@ -1527,7 +1539,7 @@ async function main() {
       renewalActivation: renewalActivationOf(options, () => journal.view) } : null;
     worker = createJournalWorker(journal, { ...(approvalSurface ? { approvalSurface } : {}), ...(explicitYes ? { explicitYes } : {}), now: wallNow, elapsed: clock.elapsed, origin, stopped: () => workerStop.value || existsSync(stopPath) || !ownerHeld(), timeZone: timeZoneOf(options),
       sources: turnSources(root, options, journal.view, () => runs, () => launchedAt ?? undefined,
-        () => journal.view.order.some(turn => turn.reserved && !reservedAtLaunch.has(turn.id)) ? null : handoff),
+        () => journal.view.order.some(turn => turn.reserved && !reservedAtLaunch.has(turn.id)) ? null : handoff, () => toolsActive()),
       prepareModel: modelEnvelope,
       // Part Thirteen §9: the packet names the tools exactly when the model call will run on the tool route. The packet
       // is built before the answer's `reserve` or the work's `obligation-start` counts its base call, so that call is added here.
@@ -1547,7 +1559,8 @@ async function main() {
         current: { owner: root.split('/').at(-1), launch: launchedAt, conversation: conversationOf(journal.view.genesis) }, ...ownedActivity(root) }),
       statusLines: () => [...installation ? installationStatusLines(installation, launchedAt, (() => { try { return installedCode(); } catch { return null; } })(),
         installUpdate, installUpdate && updateDelivery(installUpdate, journal.view.order), timeZoneOf(options)) : [],
-        ...toolStatusLines(journal.view, toolsActive())],
+        ...toolStatusLines(journal.view, toolsActive(), toolsOff ?? (toolsRecord
+          ? 'withdrawn since launch: the activation record changed or its grant no longer resolves' : null))],
       checkOutbound: text => { if (redact(text).count) throw Error('preview: outbound secret refused'); },
       secrets: custody,
       model: async ({ id, prepared }) => {
@@ -1696,17 +1709,60 @@ async function main() {
     validateSubscriptionActivation(activation, profile, required(options, 'model'), wallNow(), SUBSCRIPTION_CONVERSATION_FRAMING, journal.view.expires);
     requireAuthority(options, activation, activationPath, journal.view, wallNow());
     if (!activationMatchesJournal(journal.view, activation)) throw Error('preview: activation differs from journal');
-    // Part Thirteen §9 (docs/17-harness-adapters): the scoped-tool answer route exists only under its own reviewed activation record,
-    // bound to the tools policy digest and resolved from the same sealed authority. Absent, every answer is
-    // text-only. Changing or removing the file withdraws it: no new tool turn starts, and a live one ends.
-    const toolsActivationPath = options['tools-activation'];
-    if (toolsActivationPath !== undefined) {
-      const toolsBytes = readFileSync(toolsActivationPath, 'utf8'), toolsActivation = JSON.parse(toolsBytes);
+    // Part Thirteen §9 (docs/17-harness-adapters): tools are on by default. The tool route runs under its own activation
+    // record, bound to the tools policy digest and resolved from the same sealed authority (the operator's recorded grant).
+    // `--tools-activation PATH` names a record the desk wrote; without it the runner derives one from this conversation
+    // activation (every field the same, the tools policy digest in place of the conversation one) and keeps it only when
+    // the sealed authority resolves it, writing it to the root as the live withdrawal handle. `--tools off` refuses tools.
+    // Changing or removing the file withdraws them: no new tool turn starts, and a live one ends. Revoking the grant
+    // withdraws them durably. With no resolving grant every answer is text only, and status says why.
+    const toolsMode = options.tools ?? 'default';
+    if (toolsMode !== 'default' && toolsMode !== 'off') throw Error('preview: --tools must be default or off');
+    if (options['tools-activation'] !== undefined && toolsMode === 'off') throw Error('preview: --tools off contradicts --tools-activation');
+    const adoptTools = (toolsActivationPath, toolsBytes) => {
+      const toolsActivation = JSON.parse(toolsBytes);
       validateSubscriptionActivation(toolsActivation, profile, required(options, 'model'), wallNow(), SUBSCRIPTION_TOOLS_FRAMING, journal.view.expires);
       requireAuthority(options, toolsActivation, toolsActivationPath, journal.view, wallNow());
       if (!activationMatchesJournal(journal.view, toolsActivation)) throw Error('preview: tool activation differs from journal');
-      toolsRecord = toolsActivation;
-      toolsActive = () => { try { return readFileSync(toolsActivationPath, 'utf8') === toolsBytes; } catch { return false; } };
+      return toolsActivation;
+    };
+    // A revoked or changed grant withdraws tools live: whenever the sealed authority's bytes change, the record is resolved
+    // again, and a refusal ends tools (no new tool turn, and a live one stops) until a later launch resolves them.
+    const authorityPathOf = recordPath => options['authority-record'] ?? join(dirname(resolve(recordPath)), 'activation-authority.json');
+    const stillGranted = (toolsActivationPath, toolsBytes) => {
+      let seen = null, granted = true;
+      return () => {
+        let bytes = null;
+        try { bytes = readFileSync(authorityPathOf(toolsActivationPath), 'utf8'); } catch { bytes = null; }
+        if (bytes === seen) return granted;
+        seen = bytes;
+        try { adoptTools(toolsActivationPath, toolsBytes); granted = true; } catch { granted = false; }
+        return granted;
+      };
+    };
+    if (options['tools-activation'] !== undefined) {
+      const toolsActivationPath = options['tools-activation'];
+      const toolsBytes = readFileSync(toolsActivationPath, 'utf8');
+      toolsRecord = adoptTools(toolsActivationPath, toolsBytes);
+      const granted = stillGranted(toolsActivationPath, toolsBytes);
+      toolsActive = () => { try { return readFileSync(toolsActivationPath, 'utf8') === toolsBytes && granted(); } catch { return false; } };
+    } else if (toolsMode === 'off') toolsOff = 'refused at launch with --tools off';
+    else {
+      const toolsActivationPath = join(root, TOOLS_DEFAULT_ACTIVATION);
+      const toolsBytes = `${JSON.stringify({ ...activation, invocationPolicyDigest: encoded(subscriptionToolsPolicy(required(options, 'model'))).hash }, null, 2)}\n`;
+      try {
+        // The authority is resolved against the record's would-be path, so the sealed record beside the activation governs it.
+        toolsRecord = adoptTools(activationPath, toolsBytes);
+        let current = null;
+        try { current = readFileSync(toolsActivationPath, 'utf8'); } catch { current = null; }
+        if (current !== toolsBytes) writeToolsDefaultActivation(toolsActivationPath, toolsBytes);
+        const granted = stillGranted(activationPath, toolsBytes);
+        toolsActive = () => { try { return readFileSync(toolsActivationPath, 'utf8') === toolsBytes && granted(); } catch { return false; } };
+      } catch (error) {
+        toolsRecord = null;
+        toolsOff = `no recorded operator grant resolves the tools policy: ${String(error?.message ?? error).replace(/^preview: /u, '')}`;
+        process.stderr.write(`preview: tools off: ${toolsOff}; answers are text only\n`);
+      }
     }
     installationPolicy = installationPolicyOf(options, activation, activationPath, journal.view, wallNow());
     registerAtLaunch = registerGeneration();
@@ -1775,7 +1831,7 @@ async function main() {
     const cycles = number(options['max-cycles'] ?? '1000', 'max-cycles', 1, 1_000_000);
     // The run log is durable before the first poll; the self-state reads it from memory each turn.
     launchedAt = wallNow();
-    installation = { ...installedCode(), briefingDigest: briefingDigest(options['tools-activation'] !== undefined), harness: PREVIEW_JOURNAL_HARNESS,
+    installation = { ...installedCode(), briefingDigest: briefingDigest(toolsActive()), harness: PREVIEW_JOURNAL_HARNESS,
       stallClasses: PREVIEW_JOURNAL_STALL_COVERAGE.rows.length, doorway: options.doorway ?? DEFAULT_SUBSCRIPTION_DOORWAY };
     // An unreadable run log is refused by the Rule 55 check below, after this launch's row is appended.
     let priorRuns = null;

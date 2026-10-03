@@ -521,35 +521,33 @@ export function createResourceOwner(initialCeilings = RESOURCE_CEILINGS) {
     }
     return mine;
   }
-  /** Observed quiescence: a complete census shows no live member of this launch, within a bounded wait. */
-  async function quiescent(lease) {
-    for (let attempt = 0; attempt < 20; attempt++) {
-      const living = await liveMembers(lease);
-      if (living === null) return false;
-      if (!living.length) return true;
-      await new Promise(done => setTimeout(done, 100));
-    }
-    return false;
-  }
   /** After the provider exits: every live member of this launch (one that left the group, and one
    * that detached before any sample but stayed in the private working area, included) is recorded
-   * durably and then reclaimed by the live owner of this launch. Returns how many were left behind
-   * and whether any remain unverified. */
+   * durably and then reclaimed by the live owner of this launch. Every census in the bounded wait
+   * reclaims what it finds: a member can first appear after an earlier census (a shell that forked
+   * its command just before it was signalled), and waiting on it would leave it running. Quiescence
+   * is a complete census that finds none. Returns how many were left behind and whether any remain
+   * unverified. */
   async function cleanupTree(lease) {
-    let leaked = 0, unresolved = lease.recording === 'incomplete';
-    const living = await liveMembers(lease);
-    if (living === null) unresolved = true;
-    else if (living.length) {
+    let unresolved = lease.recording === 'incomplete', quiet = false;
+    const reclaimed = new Set();
+    for (let attempt = 0; attempt < 20 && !quiet; attempt++) {
+      const living = await liveMembers(lease);
+      if (living === null) { unresolved = true; break; }
+      if (!living.length) { quiet = true; break; }
       let discovered = false;
       for (const [pid, start] of living) if (!lease.known.has(pid)) { lease.known.set(pid, start); discovered = true; }
       // Ownership evidence is durable before any signal, so a failed signal leaves it recoverable.
       if (discovered) recordMembers(lease);
       if (lease.pid) kill(-lease.pid);
-      for (const [pid] of living) { if (kill(pid) === 'denied') unresolved = true; leaked++; }
+      for (const [pid] of living) { if (kill(pid) === 'denied') unresolved = true; reclaimed.add(pid); }
+      if (unresolved) break;
+      await new Promise(done => setTimeout(done, 100));
     }
     // A signal attempt is not quiescence: every member must be observed gone in a complete census.
-    if (!unresolved && !await quiescent(lease)) unresolved = true;
+    if (!quiet) unresolved = true;
     if (unresolved) counters.cleanupUnresolved++;
+    const leaked = reclaimed.size;
     if (leaked) {
       counters.leakedDescendants += leaked;
       record({ kind: 'leaked-descendants', work: lease.work, processes: leaked });

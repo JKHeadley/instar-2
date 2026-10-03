@@ -1,5 +1,21 @@
 [
   {
+    "revision": 4,
+    "date": "2026-10-03",
+    "status": "draft",
+    "cause": {
+      "kind": "draft",
+      "note": "Unit w4-toolsfull (plan row #395): operator direction, Justin, topic 102965 message 121996, 10:15 PDT 2026-10-03, recorded as a Rule 104 standing grant: tools on by default with the full Claude Code tool set, consequential effects through the effect doorway, every subagent a Rule 114 edge. No constitution change."
+    },
+    "changes": [
+      {
+        "what": "§5 delegated-session rule: the preview's tool turn may start bounded subagents of one registered type; the delegation's authority and budget are durable with the reservation, each child's start and stop are recorded before it acts, and the journaled trace carries one Rule 114 edge per child ending returned, cancelled or unknown.",
+        "why": "Sub-agents are now part of the full tool set (MF6 satisfied by recorded edges instead of removal).",
+        "ref": "lanes/w4-toolsfull-PROGRESS.md; lanes/astra-fulltool-ruling.md (MF2-MF7 floors); LIVE-PATH-PLAN.md row #395"
+      }
+    ]
+  },
+  {
     "revision": 3,
     "date": "2026-10-03",
     "status": "draft",

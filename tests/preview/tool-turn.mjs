@@ -7,10 +7,12 @@ import { createHash, randomBytes } from 'node:crypto';
 import { chmodSync, lstatSync, mkdirSync, readdirSync, readFileSync, readlinkSync, realpathSync, rmdirSync, rmSync, symlinkSync, writeFileSync } from 'node:fs';
 import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
-import { SUBSCRIPTION_TOOL_LIMITS, SUBSCRIPTION_TOOL_NAMES, SUBSCRIPTION_TOOLS_SYSTEM_PROMPT } from '../../src/assembly/production-provider.js';
+import { SUBSCRIPTION_SUBAGENT_TYPE, SUBSCRIPTION_TOOL_LIMITS, SUBSCRIPTION_TOOL_NAMES, SUBSCRIPTION_TOOLS_SYSTEM_PROMPT } from '../../src/assembly/production-provider.js';
 import { toolTrace } from './tool-admission.mjs';
 
 export const TOOL_TURNS_DIRECTORY = 'tool-turns';
+/** Where a root keeps the tools activation the runner derived by default (its live withdrawal handle; machine-local). */
+export const TOOLS_DEFAULT_ACTIVATION = 'tools-activation.json';
 /** Finished turn directories kept for inspection; older ones are removed (the journal keeps their trace). */
 export const TOOL_TURNS_KEPT = 16;
 export const TOOL_HOOK_SCRIPT = join(dirname(fileURLToPath(import.meta.url)), 'tool-admission-hook.mjs');
@@ -61,8 +63,10 @@ export function detachScratch(turn) {
 }
 
 /** Allocates a fresh turn: `<root>/tool-turns/<digest>-<attempt>/state` and the turn's scratch volume holding `ws` and
- * `tmp`, all 0700 (`scratch` mounts it; tests may pass a stand-in), and the hook's config. */
-export function prepareToolTurn({ root, operation, attempt, operations, node = process.execPath, scratch = attachScratch }) {
+ * `tmp`, all 0700 (`scratch` mounts it; tests may pass a stand-in), and the hook's config. `children` is the number of
+ * subagents this turn's reservation covers; `mcp` is the root's MCP configuration ({servers, reads}) or null. The
+ * servers' launch configuration is written into the state directory, which no tool can read. */
+export function prepareToolTurn({ root, operation, attempt, operations, children = 0, mcp = null, node = process.execPath, scratch = attachScratch }) {
   const base = join(realpathSync(root), TOOL_TURNS_DIRECTORY);
   mkdirSync(base, { recursive: true, mode: 0o700 });
   const slug = `${createHash('sha256').update(operation, 'utf8').digest('hex').slice(0, 16)}-${String(attempt)}`;
@@ -73,9 +77,38 @@ export function prepareToolTurn({ root, operation, attempt, operations, node = p
   mkdirSync(join(volume, 'ws'), { mode: 0o700 }); mkdirSync(join(volume, 'tmp'), { mode: 0o700 });
   const workspace = realpathSync(join(volume, 'ws')), tmp = realpathSync(join(volume, 'tmp'));
   const stateDirectory = realpathSync(join(turn, 'state'));
+  const servers = mcp ? Object.keys(mcp.servers) : [];
   writeFileSync(join(stateDirectory, 'config.json'), JSON.stringify({ workspace, tmp, maxCalls: SUBSCRIPTION_TOOL_LIMITS.maxToolCalls,
-    maxWriteBytes: SUBSCRIPTION_TOOL_LIMITS.maxWriteBytes, operations: [...operations] }), { mode: 0o600 });
-  return { slug, directory: turn, scratch: volume, workspace, stateDirectory, hook: { node, script: TOOL_HOOK_SCRIPT } };
+    maxWriteBytes: SUBSCRIPTION_TOOL_LIMITS.maxWriteBytes, operations: [...operations],
+    children: { max: children, type: SUBSCRIPTION_SUBAGENT_TYPE }, mcpReads: mcp ? [...mcp.reads] : [] }), { mode: 0o600 });
+  let mcpTurn;
+  if (servers.length) {
+    writeFileSync(join(stateDirectory, 'mcp.json'), JSON.stringify({ mcpServers: mcp.servers }), { mode: 0o600 });
+    mcpTurn = { config: join(stateDirectory, 'mcp.json'), servers };
+  }
+  return { slug, directory: turn, scratch: volume, workspace, stateDirectory, hook: { node, script: TOOL_HOOK_SCRIPT },
+    ...(mcpTurn ? { mcp: mcpTurn } : {}) };
+}
+
+/** The root's MCP configuration, read from `<root>/mcp.json` (the operator's file; absent means no MCP servers):
+ * `{"mcpServers": {name: {command, args?, env?}}, "reads": ["mcp__name__tool", ...]}`. A tool the file lists in `reads`
+ * is ordinary work; every other MCP tool is a consequential effect for the effect doorway. A malformed file refuses
+ * (thrown) rather than guessing. Credentials in `env` stay in this file and in the turn's admission state, both
+ * outside every path a tool can read. */
+export const TOOL_MCP_CONFIG = 'mcp.json';
+export function readRootMcp(root, read = path => readFileSync(path, 'utf8')) {
+  let text;
+  try { text = read(join(root, TOOL_MCP_CONFIG)); } catch (error) { if (error?.code === 'ENOENT') return null; throw error; }
+  const data = JSON.parse(text), servers = data?.mcpServers;
+  if (!servers || typeof servers !== 'object' || Array.isArray(servers)) throw Error('preview: root MCP configuration has no mcpServers object');
+  const names = Object.keys(servers);
+  if (!names.length) return null;
+  if (!names.every(name => /^[A-Za-z0-9_-]{1,64}$/u.test(name) && servers[name] && typeof servers[name].command === 'string'))
+    throw Error('preview: root MCP server names must be plain and each must name a command');
+  const reads = data.reads ?? [];
+  if (!Array.isArray(reads) || !reads.every(tool => typeof tool === 'string' && names.some(name => tool.startsWith(`mcp__${name}__`))))
+    throw Error('preview: root MCP reads must name tools of the configured servers');
+  return { servers, reads, digest: `sha256:${createHash('sha256').update(text, 'utf8').digest('hex')}` };
 }
 
 /** The trace of one finished turn, read from the hook's record. An absent record is an empty trace. */
@@ -132,24 +165,48 @@ export function pruneToolTurns(root, keep = TOOL_TURNS_KEPT, detach = detachScra
 export const toolTurnFits = (view, unreserved = 0) => view.calls + unreserved + SUBSCRIPTION_TOOL_LIMITS.maxTurns - 1 <= view.limits.maxCalls;
 /** The packet's side of `toolTurnFits`: its own base call is not reserved yet when it is prepared. */
 export const toolPacketFits = view => toolTurnFits(view, 1);
+/** How many subagents the allowance holds (Rule 114 budget share): each reserves its whole `childMaxTurns` before dispatch,
+ * taken only from allowance beyond this turn's own liability AND one further plain tool turn (its base call and its
+ * liability), so a subagent budget never costs the next answer (a format re-ask, a replacement, the next message) its
+ * tools. Zero means the turn runs with tools but the hook refuses Agent for budget. */
+export const toolChildrenFit = (view, unreserved = 0) => Math.max(0, Math.min(SUBSCRIPTION_TOOL_LIMITS.maxChildren,
+  Math.floor((view.limits.maxCalls - view.calls - unreserved - 2 * (SUBSCRIPTION_TOOL_LIMITS.maxTurns - 1) - 1)
+    / SUBSCRIPTION_TOOL_LIMITS.childMaxTurns)));
 
+/**
+ * One tool turn. `authority` names the activation the tools run under (its reference and tools policy digest); each
+ * subagent edge carries it. `mcp` is `readRootMcp(root)`. `stopped()` reports whether the operator's stop or a withdrawal
+ * ended the turn, so an edge without a result is recorded `cancelled` (else `unknown`).
+ */
 export async function runToolTurn({ journal, root, id, prepared, promptLimit, deniedRoots, operations, invoke, fallback, now, redactText,
-  scratch = attachScratch, detach = detachScratch }) {
+  authority = 'unrecorded', mcp = null, stopped = () => false, scratch = attachScratch, detach = detachScratch }) {
   const extra = SUBSCRIPTION_TOOL_LIMITS.maxTurns - 1;
   const refuse = reason => { journal.append({ kind: 'tool-turn', phase: 'refused', id, reason, at: now() }); return fallback(); };
   if (!toolTurnFits(journal.view)) return refuse('call cap');
   if (Buffer.byteLength(prepared) + Buffer.byteLength(SUBSCRIPTION_TOOLS_SYSTEM_PROMPT) > promptLimit) return refuse('prompt size');
   const attempt = journal.view.toolTurns?.invocations ?? 0;
-  journal.append({ kind: 'tool-turn', phase: 'reserved', id, attempt, calls: extra, at: now() });
+  const children = toolChildrenFit(journal.view);
+  // Rule 114: the edge's authority and budget share are durable before dispatch, with the turn's whole liability.
+  journal.append({ kind: 'tool-turn', phase: 'reserved', id, attempt, calls: extra + children * SUBSCRIPTION_TOOL_LIMITS.childMaxTurns,
+    delegation: { children, turnsEach: SUBSCRIPTION_TOOL_LIMITS.childMaxTurns, type: SUBSCRIPTION_SUBAGENT_TYPE, authority },
+    ...(mcp ? { mcp: { servers: Object.keys(mcp.servers), reads: mcp.reads.length, digest: mcp.digest } } : {}), at: now() });
   let turn = null, result, failure = null;
   try {
-    turn = prepareToolTurn({ root, operation: id, attempt, operations, scratch });
-    result = await invoke({ scratch: turn.scratch, workspace: turn.workspace, stateDirectory: turn.stateDirectory, hook: turn.hook, deniedRoots });
+    turn = prepareToolTurn({ root, operation: id, attempt, operations, children, mcp, scratch });
+    result = await invoke({ scratch: turn.scratch, workspace: turn.workspace, stateDirectory: turn.stateDirectory, hook: turn.hook, deniedRoots,
+      ...(turn.mcp ? { mcp: turn.mcp } : {}) });
   } catch (error) { failure = error; }
-  const trace = turn ? readToolTrace(turn.stateDirectory) : { calls: [], consistent: true };
+  const trace = turn ? readToolTrace(turn.stateDirectory) : { calls: [], children: [], consistent: true };
+  const ended = stopped() ? 'cancelled' : 'unknown';
   journal.append({ kind: 'tool-turn', phase: 'trace', id, attempt, consistent: trace.consistent,
     calls: trace.calls.slice(0, 64).map(call => ({ ...call, input: redactText(call.input),
       result: call.result === null ? null : redactText(call.result) })),
+    edges: trace.children.slice(0, SUBSCRIPTION_TOOL_LIMITS.maxChildren).map(edge => ({ child: edge.toolUse, agent: edge.agent,
+      parent: `${id}#${String(attempt)}`, authority, budget: { modelTurns: SUBSCRIPTION_TOOL_LIMITS.childMaxTurns,
+        toolCalls: `shared ${String(SUBSCRIPTION_TOOL_LIMITS.maxToolCalls)} per turn` },
+      exitTest: 'returns its final message as the subagent tool result', placement: 'in the turn\'s harness process on this machine',
+      transport: 'claude-code Agent tool', resultDestination: 'the parent turn\'s tool result', cancellation: 'ends with the turn\'s process group',
+      state: edge.state === 'returned' ? 'returned' : ended, result: edge.result === null ? null : redactText(edge.result) })),
     workspaceBytes: turn ? workspaceBytes(turn.workspace) : null, at: now() });
   // The workspace is scratch: nothing reads it after the turn, so its volume goes now (a failed unmount is retried by prune).
   if (turn) detach(turn.directory);
@@ -160,13 +217,15 @@ export async function runToolTurn({ journal, root, id, prepared, promptLimit, de
 }
 
 /** Truthful status lines for the operator's status reply (Rule 84): which tools exist, and what they did.
- * Without a tool activation the briefing already says there are no tools, and status adds nothing. */
-export function toolStatusLines(view, enabled) {
-  if (!enabled) return [];
+ * Without a tool activation the briefing already says there are no tools; `off` names why the default did not turn them on. */
+export function toolStatusLines(view, enabled, off = null) {
+  if (!enabled) return off ? [`Tools: off (${off}); answers are text only.`] : [];
   const stats = view.toolTurns ?? { invocations: 0, reservedCalls: 0, refusedCap: 0, toolCalls: 0, toolRefusals: 0, inconsistent: 0, open: [] };
-  return [`Tools: ${SUBSCRIPTION_TOOL_NAMES.join(', ')}, in a private per-turn workspace; no MCP servers, subagents, web search or network.`,
+  return [`Tools: ${SUBSCRIPTION_TOOL_NAMES.join(', ')} and the root's MCP servers, in a private per-turn workspace; shell sandboxed without `
+      + 'network; web reads only; consequential effects go through the effect doorway.',
     `Tool turns: ${stats.invocations} run (${stats.reservedCalls} model attempts reserved for them), ${stats.toolCalls} tool calls admitted, `
       + `${stats.toolRefusals} refused, ${stats.refusedCap} turns answered without tools because the call allowance was short`
+      + `${stats.children ? `, ${stats.children.started} subagents started (${stats.children.returned} returned, ${stats.children.cancelled} cancelled, ${stats.children.unknown} unknown)` : ''}`
       + `${stats.refusedPrompt ? `, ${stats.refusedPrompt} because the packet left no room for the tool instructions` : ''}`
       + `${stats.inconsistent ? `, ${stats.inconsistent} turns refused because a tool ran without its admission record` : ''}`
       + `${stats.open?.length ? `, ${stats.open.length} without a recorded trace yet (running now, or interrupted with an unknown outcome)` : ''}.`];

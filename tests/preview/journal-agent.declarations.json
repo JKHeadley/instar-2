@@ -19,5 +19,27 @@
       32
     ],
     "holds": []
+  },
+  {
+    "type": "Declaration",
+    "schemaVersion": 1,
+    "id": "preview.journal-agent.writeToolsDefaultActivation",
+    "kind": "stores",
+    "status": "live",
+    "requiredFacts": {
+      "growth": "deletes",
+      "holdsAgentMemory": "no",
+      "machineScope": {
+        "kind": "machine-local",
+        "reason": "Rule 113: the tools activation this root's launch derived under the operator's recorded grant, one file in the root replaced whole (write then rename) when its bytes change, never shared; it is the live withdrawal handle, and the sealed authority it resolves from is the record of the grant."
+      },
+      "agreesWith": []
+    },
+    "standards": [
+      7,
+      32,
+      113
+    ],
+    "holds": []
   }
 ]

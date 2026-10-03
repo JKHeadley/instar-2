@@ -72,8 +72,8 @@ it('the guide distinguishes describing a listed limit from declining asked work,
   expect(sources.find(source => source.id === 'capability-note')!.text).toContain('Nothing unlisted is available: no tools, browsing');
   const tools = sourcePacket(path => readFileSync(resolve(process.cwd(), path), 'utf8'), SOURCE_PINS,
     { providerAttempts: 1, expiresAt: 1, tools: true }).sources.find(source => source.id === 'capability-note')!.text;
-  expect(tools).toContain('Tools: only Read, Write, Edit, Glob, Grep, Bash');
-  expect(tools).toContain('no MCP, subagents, web or network');
+  expect(tools).toContain('Tools: Read, Write, Edit, Glob, Grep, Bash, WebFetch, WebSearch, Agent, root MCP');
+  expect(tools).toContain('outward effects via the doorway');
 });
 
 it('on the tools route the review packet is route-true, and the same two sides hold (recorded real reviews)', () => {
@@ -92,14 +92,20 @@ it('on the tools route the review packet is route-true, and the same two sides h
     expect(packet.governingConstraints, input).toEqual(governingConstraints(true));
     expect(packet.obligationDecision, input).toBe(OBLIGATION_DECISION_TOOLS);
     expect(packet.declaredObligations.toolAttempts, input).toEqual({ meaning: TOOL_ATTEMPTS_MEANING, calls: [] });
-    expect(packet.sources.find(source => source.id === 'capability-note')!.text, input).toContain('Tools: only Read, Write, Edit, Glob, Grep, Bash');
+    expect(packet.sources.find(source => source.id === 'capability-note')!.text, input).toContain('Tools: Read, Write, Edit, Glob, Grep, Bash, WebFetch, WebSearch, Agent, root MCP');
     expect(JSON.parse(read(output)).modelUsage, output).toHaveProperty('claude-sonnet-5');
   }
   const described = parseReplyReviewVerdict(decision('call7-review-tools-route-new-guide.json').conclusion.value, flagged);
   expect(described.verdict).toBe('pass');
   expect(described.ruleIds).toEqual([]);
+  // Declining asked work stays a violation. With the full tool set (w4-toolsfull, re-recorded 2026-10-03) WebFetch is
+  // listed, so the reviewer also judges the decline a false cannot-do (claims_blocked) and cites the listed tool.
   const declined = finding('call8-review-tools-route-decline-new-guide.json', 'unrecorded_blocker');
   expect(declined.verdict).toBe('violation');
+  expect(declined.reason).toMatch(/WebFetch/u);
+  expect(finding('call8-review-tools-route-decline-new-guide.json', 'claims_blocked').verdict).toBe('violation');
+  // This recorded verdict quotes no sentence of the reply, so the claim-scoped cut locates nothing; such a verdict is
+  // answered by the revision path, not by a cut (the earlier recording quoted the sentence and the cut removed it).
   const decline = "I can't browse or fetch web pages from this chat, so I can't get that page title for you.";
-  expect(exciseNamedClaims(decline, quotedSpans(declined.reason)).text).toBe('');
+  expect(exciseNamedClaims(decline, quotedSpans(declined.reason))).toEqual({ text: decline, removed: [], unlocated: [] });
 });

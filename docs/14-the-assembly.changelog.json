@@ -1,5 +1,21 @@
 [
   {
+    "revision": 22,
+    "date": "2026-10-03",
+    "status": "draft",
+    "cause": {
+      "kind": "draft",
+      "note": "Unit w4-toolsfull (plan row #395): operator direction, Justin, topic 102965 message 121996, 10:15 PDT 2026-10-03, recorded as a Rule 104 standing grant: tools on by default with the full Claude Code tool set, consequential effects through the effect doorway, every subagent a Rule 114 edge. No constitution change."
+    },
+    "changes": [
+      {
+        "what": "Operator question 2: the preview's tools are on by default under the operator's recorded grant, run under Part Thirteen's demonstrated boundary, and send every consequential effect to the effect doorway.",
+        "why": "The full tool set replaces the scoped first slice; the statement that the boundary is not §4 confinement and waives no floor is unchanged.",
+        "ref": "lanes/w4-toolsfull-PROGRESS.md; lanes/astra-fulltool-ruling.md (MF2-MF7 floors); LIVE-PATH-PLAN.md row #395"
+      }
+    ]
+  },
+  {
     "revision": 21,
     "date": "2026-10-03",
     "status": "draft",

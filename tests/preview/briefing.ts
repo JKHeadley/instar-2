@@ -23,12 +23,12 @@ export const SOURCE_EXCERPTS = Object.freeze([
 export const CAPABILITY_BRIEFING_PATH = 'generated/capabilities.json';
 export const CAPABILITY_LAUNCHER = 'tests/preview/journal-agent.mjs';
 type BriefedFeature = { id: string; status: string; availability: string; userFacing: boolean; text: string | null };
-/** Part Thirteen §9 (docs/17-harness-adapters): with a tool activation installed, the closing line names exactly the tool list the tool
- * policy launches with (generated from it, Rule 84) and the surfaces that do not exist. It replaces the
- * no-tools line at no more than that line's 176 bytes: the floor packet carries no slack (default-context-floor).
- * The tool turn's own system message carries the detail. Without an activation the no-tools lines stay byte for byte. */
-export const TOOLS_BRIEFING = `Tools: only ${SUBSCRIPTION_TOOL_NAMES.join(', ')}, in a fresh workspace on granted turns; `
-  + 'no MCP, subagents, web or network; no self-started message beyond later-time answers.';
+/** Part Thirteen §9 (docs/17-harness-adapters): with tools on (the default under a resolving grant), the closing line names exactly
+ * the tool list the tool policy launches with (generated from it, Rule 84), the root's MCP servers, and where outward effects go.
+ * It replaces the no-tools line at no more than that line's 176 bytes: the floor packet carries no slack (default-context-floor).
+ * The tool turn's own system message carries the detail. Without tools the no-tools lines stay byte for byte. */
+export const TOOLS_BRIEFING = `Tools: ${SUBSCRIPTION_TOOL_NAMES.join(', ')}, root MCP; outward effects via the doorway; `
+  + 'no self-started message beyond later-time answers.';
 export function capabilityBriefing(readSource: (path: string) => string,
   limits: { providerAttempts: number; expiresAt: number; tools?: boolean }, launcher = CAPABILITY_LAUNCHER) {
   // Rule 116: every fact here is kept and only the wording is shorter. The note's own private-PREVIEW-chat

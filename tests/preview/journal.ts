@@ -694,8 +694,9 @@ export type PreviewCapability = keyof typeof PREVIEW_CAPABILITIES;
  * entry and its constraint wording differ; the keys stay the same evidence keys, so a blocker is judged as before. The
  * tools themselves are named once, by the capability note's Tools line (TOOLS_BRIEFING, generated from
  * SUBSCRIPTION_TOOL_NAMES); "as listed" points there, because the floor packet has no bytes to name them twice. */
-export const PREVIEW_TOOL_CAPABILITIES = Object.freeze({ ...PREVIEW_CAPABILITIES, externalTools: 'as listed' });
-const GOVERNING_CONSTRAINTS_WITH_TOOLS = Object.freeze({ ...GOVERNING_CONSTRAINTS, 'no-tools': 'only listed tools; no accounts' });
+// With tools, accounts are reachable only through the root's MCP reads; every account write is the effect doorway's.
+export const PREVIEW_TOOL_CAPABILITIES = Object.freeze({ ...PREVIEW_CAPABILITIES, externalTools: 'as listed', accounts: 'no writes' });
+const GOVERNING_CONSTRAINTS_WITH_TOOLS = Object.freeze({ ...GOVERNING_CONSTRAINTS, 'no-tools': 'listed tools; no account writes' });
 /** The capability read and the governing constraints for a call, from the route it actually runs on. */
 export const previewCapabilities = (tools: boolean) => tools ? PREVIEW_TOOL_CAPABILITIES : PREVIEW_CAPABILITIES;
 export const governingConstraints = (tools: boolean) => tools ? GOVERNING_CONSTRAINTS_WITH_TOOLS : GOVERNING_CONSTRAINTS;
@@ -1059,10 +1060,11 @@ export type JournalRecord =
   /** A tool turn (Part Thirteen §9, docs/17-harness-adapters): its whole liability (`calls` model attempts beyond the answer's own
    * reservation) is reserved before dispatch and retained; a short allowance answers without tools; the
    * trace records each tool call, its admission and its result after the turn. */
-  | { kind: 'tool-turn'; phase: 'reserved'; id: string; attempt: number; calls: number; at: number }
+  | { kind: 'tool-turn'; phase: 'reserved'; id: string; attempt: number; calls: number; delegation?: ToolDelegation;
+      mcp?: { servers: string[]; reads: number; digest: string }; at: number }
   | { kind: 'tool-turn'; phase: 'refused'; id: string; reason: 'call cap' | 'prompt size'; at: number }
   | { kind: 'tool-turn'; phase: 'trace'; id: string; attempt: number; calls: ToolTraceCall[]; consistent: boolean;
-      workspaceBytes: number | null; at: number }
+      edges?: ToolChildEdge[]; workspaceBytes: number | null; at: number }
   | { kind: 'legacy-reply'; at: number }
   | { kind: 'import'; source: string; remainingCalls: number; remainingReplies: number; oldStop: string; at: number }
   | { kind: 'summary-reserve'; through: number; prompt?: string; supervised?: true; maxInputTokens?: number; maxOutputTokens?: number; at: number }
@@ -2617,7 +2619,15 @@ export const TOOL_ATTEMPTS_PARTIAL_MEANING = 'The first tool calls this reply\'s
   + 'call, so its absence here does not show that the call or result did not happen.';
 const attemptExcerpt = (text: string) => text.length > TOOL_ATTEMPT_EXCERPT_CHARS ? `${text.slice(0, TOOL_ATTEMPT_EXCERPT_CHARS)}…` : text;
 export interface ToolTurnStats { invocations: number; reservedCalls: number; refusedCap: number; refusedPrompt?: number; toolCalls: number;
-  toolRefusals: number; inconsistent: number; open: string[] }
+  toolRefusals: number; inconsistent: number; open: string[];
+  /** Rule 114: subagent edges the traces recorded, by how each ended (absent until a turn started one). */
+  children?: { started: number; returned: number; cancelled: number; unknown: number } }
+/** Rule 114: a tool turn's delegation authority and budget share, durable with its reservation before dispatch. */
+export interface ToolDelegation { children: number; turnsEach: number; type: string; authority: string }
+/** Rule 114: one subagent a tool turn started, as a durable parent-child edge. */
+export interface ToolChildEdge { child: string; agent: string | null; parent: string; authority: string;
+  budget: { modelTurns: number; toolCalls: string }; exitTest: string; placement: string; transport: string;
+  resultDestination: string; cancellation: string; state: 'returned' | 'cancelled' | 'unknown'; result: string | null }
 /** Rules 60, 75 and MF4: a tool turn reserves its whole model-attempt liability before dispatch, and the
  * reservation is never released (the subscription charge is unknown). A trace closes exactly one open turn. */
 function projectToolTurn(view: JournalView, row: Extract<JournalRecord, { kind: 'tool-turn' }>): void {
@@ -2630,6 +2640,11 @@ function projectToolTurn(view: JournalView, row: Extract<JournalRecord, { kind: 
   if (row.phase === 'reserved') {
     if (!Number.isSafeInteger(row.attempt) || row.attempt < 0 || !Number.isSafeInteger(row.calls) || row.calls < 0
       || view.calls + row.calls > view.limits.maxCalls || stats.open.includes(key)) throw Error('preview journal: tool turn reservation or cap');
+    // The reservation covers the delegated children's whole budget: an edge can never spend past it.
+    const d = row.delegation;
+    if (d !== undefined && (!Number.isSafeInteger(d.children) || d.children < 0 || !Number.isSafeInteger(d.turnsEach) || d.turnsEach < 1
+      || !boundedText(d.type, 1, 64) || !boundedText(d.authority, 1, 1024) || d.children * d.turnsEach > row.calls))
+      throw Error('preview journal: tool turn delegation');
     view.calls += row.calls;
     view.toolTurns = { ...stats, invocations: stats.invocations + 1, reservedCalls: stats.reservedCalls + row.calls, open: [...stats.open, key] };
     return;
@@ -2643,6 +2658,10 @@ function projectToolTurn(view: JournalView, row: Extract<JournalRecord, { kind: 
   if (row.phase !== 'trace' || !stats.open.includes(key) || !Array.isArray(row.calls) || row.calls.length > 64
     || typeof row.consistent !== 'boolean' || !(row.workspaceBytes === null || Number.isSafeInteger(row.workspaceBytes) && row.workspaceBytes >= 0))
     throw Error('preview journal: tool trace order');
+  const edges = row.edges ?? [];
+  if (!Array.isArray(edges) || edges.length > 8 || !edges.every(edge => edge && boundedText(edge.child, 1, 256)
+    && edge.parent === key && ['returned', 'cancelled', 'unknown'].includes(edge.state)))
+    throw Error('preview journal: tool turn edges');
   const admitted = row.calls.filter(call => call.decision === 'allow').length;
   const turn = view.turns.get(row.id);
   if (turn) {
@@ -2653,8 +2672,12 @@ function projectToolTurn(view: JournalView, row: Extract<JournalRecord, { kind: 
       decision: String(call.decision), input: attemptExcerpt(String(call.input)), result: call.result === null ? null : attemptExcerpt(String(call.result)) }))];
     turn.toolAttemptsOmitted = (turn.toolAttemptsOmitted ?? 0) + row.calls.length - Math.min(room, row.calls.length);
   }
+  const count = (state: string) => edges.filter(edge => edge.state === state).length;
+  const children = edges.length || stats.children ? { started: (stats.children?.started ?? 0) + edges.length,
+    returned: (stats.children?.returned ?? 0) + count('returned'), cancelled: (stats.children?.cancelled ?? 0) + count('cancelled'),
+    unknown: (stats.children?.unknown ?? 0) + count('unknown') } : undefined;
   view.toolTurns = { ...stats, toolCalls: stats.toolCalls + admitted, toolRefusals: stats.toolRefusals + row.calls.length - admitted,
-    inconsistent: stats.inconsistent + Number(!row.consistent), open: stats.open.filter(item => item !== key) };
+    inconsistent: stats.inconsistent + Number(!row.consistent), open: stats.open.filter(item => item !== key), ...(children ? { children } : {}) };
 }
 function project(view: JournalView, row: JournalRecord, system?: SystemCheck, admission: 'new' | 'replay' = 'new'): void {
   if ('at' in row) view.clockFloor = Math.max(view.clockFloor, row.at);

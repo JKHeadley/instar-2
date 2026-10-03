@@ -1,5 +1,21 @@
 [
   {
+    "revision": 4,
+    "date": "2026-10-03",
+    "status": "draft",
+    "cause": {
+      "kind": "draft",
+      "note": "Unit w4-toolsfull (plan row #395): operator direction, Justin, topic 102965 message 121996, 10:15 PDT 2026-10-03, recorded as a Rule 104 standing grant: tools on by default with the full Claude Code tool set, consequential effects through the effect doorway, every subagent a Rule 114 edge. No constitution change."
+    },
+    "changes": [
+      {
+        "what": "§9 tool rule widened to the full tool set (WebFetch and WebSearch reads of public hosts, one bounded foreground subagent type recorded as a Rule 114 edge, the root's MCP servers with reads listed and every other MCP call at the doorway); the grant rule makes tools on by default under the recorded grant, derived at launch, refusable, and withdrawn live when the record or the sealed authority's resolution changes; every cleanup census reclaims each member it finds.",
+        "why": "The operator directed a powerful agent out of the box on a trustworthy infrastructure; the live stop-with-subagent run showed a shell child surviving a stop when cleanup only waited on later censuses.",
+        "ref": "lanes/w4-toolsfull-PROGRESS.md; lanes/astra-fulltool-ruling.md (MF2-MF7 floors); LIVE-PATH-PLAN.md row #395"
+      }
+    ]
+  },
+  {
     "revision": 3,
     "date": "2026-10-03",
     "status": "draft",

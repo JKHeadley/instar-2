@@ -253,8 +253,9 @@ it('keeps a tool turn\'s always-sent parts inside the same measured floor (Part 
     'memoryDecision', 'datedDecision', 'concurrentWork', 'audience'])
     expect(tools.keys, required).toContain(required);
   const growth = bytes(SUBSCRIPTION_TOOLS_SYSTEM_PROMPT) - bytes(SUBSCRIPTION_CONVERSATION_SYSTEM_PROMPT);
-  // 603 at w4-toolsreal round 0; +20 when the sentence stopped claiming deletes are refused (they are inside the scratch volume).
-  expect(growth).toBe(623);
+  // 603 at w4-toolsreal round 0; +20 when the sentence stopped claiming deletes are refused (they are inside the scratch volume);
+  // 906 at w4-toolsfull, whose sentence names the web reads, the subagent bound and the effect doorway.
+  expect(growth).toBe(906);
   // The packet names what the call really has (review round 1, finding 5): the text-only route keeps the no-tools read and
   // its "attempted nothing" guidance; the tool route says the tools are as listed and that only its recorded calls ran.
   expect(plain.packet?.capabilities?.externalTools).toBe('none');
@@ -264,7 +265,7 @@ it('keeps a tool turn\'s always-sent parts inside the same measured floor (Part 
   expect(tools.packet?.capabilities?.externalTools).toBe('as listed');
   expect(tools.packet?.obligationDecision).toBe(OBLIGATION_DECISION_TOOLS);
   expect(tools.packet?.obligationDecision).not.toContain('You attempted nothing outside this reply');
-  expect(tools.packet?.governingConstraints?.['no-tools']).toBe('only listed tools; no accounts');
+  expect(tools.packet?.governingConstraints?.['no-tools']).toBe('listed tools; no account writes');
   const plainPacket = plain.answerTotal! - bytes(SUBSCRIPTION_CONVERSATION_SYSTEM_PROMPT);
   const toolsPacket = tools.answerTotal! - bytes(SUBSCRIPTION_TOOLS_SYSTEM_PROMPT);
   expect(toolsPacket).toBeLessThanOrEqual(plainPacket);

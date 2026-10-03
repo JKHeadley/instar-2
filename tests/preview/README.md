@@ -3542,13 +3542,16 @@ npx vitest run tests/preview/two-machine-runner.test.ts tests/preview/two-machin
 
 The supervised procedure on two real machines is [two-machine-live-test.md](two-machine-live-test.md).
 
-### Scoped-tool turns (journal runner)
+### Tool turns (journal runner)
 
-Off unless asked for: without `--tools-activation /ABSOLUTE/tools-activation.json` every answer stays text only and
-the briefing keeps its no-tools line. The record is an ordinary activation record whose `invocationPolicyDigest`
-is the digest of `subscriptionToolsPolicy(model)` (framing `preview-tools-v1`), resolved from the same sealed
-authority record as the main activation. With it, an operator answer turn or a scheduled work step runs as one
-Claude Code invocation with exactly Read, Write, Edit, Glob, Grep and Bash (Part Thirteen §9,
+On by default under the operator's recorded grant. At launch the runner derives the tools activation from the
+conversation activation (the same record with `invocationPolicyDigest` = the digest of `subscriptionToolsPolicy(model)`,
+framing `preview-tools-v1`) and keeps it only when the sealed authority record resolves it; it is written to
+`ROOT/tools-activation.json`, the live withdrawal handle. `--tools-activation /ABSOLUTE/record.json` names a record
+the desk wrote instead; `--tools off` refuses tools. With no resolving grant every answer stays text only, the
+briefing keeps its no-tools line, stderr says `preview: tools off: …` and `status` says `Tools: off (…)`. With tools,
+an operator answer turn or a scheduled work step runs as one Claude Code invocation with Read, Write, Edit, Glob,
+Grep, Bash, WebFetch, WebSearch and Agent, plus the root's MCP servers (Part Thirteen §9,
 `docs/17-harness-adapters/09-claude-code-codex-and-future-runtime-mappings.md`):
 
 - Each turn gets a fresh private workspace on its own fixed-size (128 MiB) scratch volume: a sparse disk image under
@@ -3558,21 +3561,36 @@ Claude Code invocation with exactly Read, Write, Edit, Glob, Grep and Bash (Part
   the newest 16 turn directories are kept, and the journal's `tool-turn` rows are the record. The root must be on
   ordinary storage (a disk image cannot be mounted from a RAM disk); if the volume cannot be mounted the turn fails
   closed.
-- `tool-admission-hook.mjs` admits in-workspace file operations and sandboxed commands, whatever words they contain;
-  MCP and web tools and unsandboxed commands go to the effect doorway, which refuses them. Each call takes one of the
-  step's 16 slots by exclusive create, so overlapping calls cannot exceed the cap. The sandbox refuses reads from `/`
-  down except the scratch volume and the system files commands need, writes outside the volume, the network, unix
-  sockets and signals to other processes; the harness's messaging socket and token are removed from every command.
-- Before dispatch the turn reserves its whole liability, `maxTurns - 1` model attempts beyond the answer's own,
-  against the call cap, and keeps it. A short allowance, or a packet with no room for the longer tool prompt,
-  answers that turn without tools, recorded. `status` shows the tool list, tool-turn counts and refusals.
-- `/stop`, a latched stop file, expiry or withdrawal (changing or removing the record) ends a live turn: the
-  resource owner kills its process group within its 25 ms poll and verifies quiescence within two seconds.
+- `tool-admission-hook.mjs` admits ordinary work: in-workspace file operations, sandboxed commands whatever words they
+  contain, a WebFetch (GET only) of a host whose every resolved address is public, a WebSearch, an MCP tool listed as
+  a read, and a `worker` subagent within the turn's budget (rewritten to the foreground). Consequential effects go to
+  the effect doorway, which refuses them: an MCP tool not listed as a read, an unsandboxed command, a send, a
+  scheduled or remote trigger. A web read of a loopback, private or local-name host is refused. Each call takes one of
+  the step's 32 slots (shared with the turn's subagents) by exclusive create, so overlapping calls cannot exceed the
+  cap. The sandbox refuses reads from `/` down except the scratch volume and the system files commands need, writes
+  outside the volume, the network (a shell cannot write to the network), unix sockets and signals to other
+  processes; the harness's messaging socket and token are removed from every command.
+- MCP: `ROOT/mcp.json` (the operator's file; absent means none) is `{"mcpServers": {name: {command, args?, env?}},
+  "reads": ["mcp__name__tool", …]}`. Its launch configuration, with any credential in `env`, is copied into the
+  turn's admission state, which no tool can read; servers run outside the sandbox as the runner's identity.
+- Subagents: at most 2 per turn, type `worker`, 4 model turns each, no grandchildren. The hook records each child's
+  start and stop (synced) before it acts; the journal's `tool-turn` trace carries one Rule 114 edge per child
+  (`returned`, `cancelled` by stop or withdrawal, or `unknown`).
+- Before dispatch the turn reserves its whole liability, `maxTurns - 1` model attempts beyond the answer's own plus
+  each subagent's turns, against the call cap, and keeps it. Subagent budget comes only from allowance beyond this
+  turn and one further plain tool turn. A short allowance, or a packet with no room for the longer tool prompt,
+  answers that turn without tools, recorded. `status` shows the tool list, tool-turn and subagent counts and refusals.
+- `/stop`, a latched stop file, expiry or withdrawal (changing or removing the record, or a sealed-authority change
+  under which the grant no longer resolves) ends a live turn and its subagents: the resource owner kills its process
+  group within its 25 ms poll, every cleanup census reclaims each member it finds, and quiescence is verified within
+  two seconds.
 
 ```sh
 npx vitest run --maxWorkers 1 tests/preview/tool-admission.test.ts
 npx vitest run --maxWorkers 1 tests/preview/tool-turn.test.ts
 npx vitest run --maxWorkers 1 tests/preview/tool-turn-replay.test.ts
+npx vitest run --maxWorkers 1 tests/preview/tools-default.test.ts
 npx vitest run --maxWorkers 1 tests/assembly/production-provider-tools.test.ts
 INSTAR_TOOL_TURN_LIVE_TEST=1 npx vitest run --maxWorkers 1 tests/integration/tool-turn-live.test.ts   # five real harness turns
+INSTAR_TOOL_TURN_FULL_LIVE_TEST=1 INSTAR_TOOL_TURN_CASE=full npx vitest run --maxWorkers 1 tests/integration/tool-turn-full-live.test.ts  # one per case: full, outward, stop-child
 ```

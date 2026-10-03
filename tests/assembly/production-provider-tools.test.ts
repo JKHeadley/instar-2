@@ -1,7 +1,8 @@
 // Part Thirteen §9 (docs/17-harness-adapters), the preview tool rule: the tool turn's exact launch. The flag set and settings are the
 // configuration the w4-toolsreuse spike proved (lanes/w4-toolsreuse-PROGRESS.md, "Required configuration for
-// REUSE"); each assertion here fails if a floor is dropped: --bare or --safe-mode returning (both skip
-// settings hooks), a delegating or outward tool coming back, the sandbox loosening, or the hook leaving.
+// REUSE"), widened to the full tool set (w4-toolsfull); each assertion here fails if a floor is dropped: --bare or
+// --safe-mode returning (both skip settings hooks), an outward or unrecorded-delegation tool coming back, the sandbox
+// loosening, the hook leaving, or a subagent starting without its edge hooks.
 import { createHash } from 'node:crypto';
 import { chmodSync, mkdirSync, mkdtempSync, readFileSync, realpathSync, rmSync, symlinkSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
@@ -10,7 +11,7 @@ import { afterEach, expect, it } from 'vitest';
 import { canonical, decode } from '../../src/index.js';
 import { createClaudeCodeSubscriptionRoute, subscriptionConversationPolicy, subscriptionToolSettings, subscriptionToolsPolicy,
   SUBSCRIPTION_CONVERSATION_SYSTEM_PROMPT, SUBSCRIPTION_PREVIEW_EXPIRY, SUBSCRIPTION_TOOL_DISALLOWED, SUBSCRIPTION_TOOL_LIMITS,
-  SUBSCRIPTION_TOOL_NAMES, SUBSCRIPTION_TOOLS_FRAMING, SUBSCRIPTION_TOOLS_SYSTEM_PROMPT, SUBSCRIPTION_CONVERSATION_FRAMING, SUBSCRIPTION_TOOL_RUNTIME_READS,
+  SUBSCRIPTION_SUBAGENT_TYPE, SUBSCRIPTION_TOOL_NAMES, SUBSCRIPTION_TOOLS_FRAMING, SUBSCRIPTION_TOOLS_SYSTEM_PROMPT, SUBSCRIPTION_CONVERSATION_FRAMING, SUBSCRIPTION_TOOL_RUNTIME_READS,
   validateSubscriptionActivation } from '../../src/assembly/production-provider.js';
 import type { SubscriptionActivationRecord, SubscriptionToolTurn } from '../../src/assembly/production-provider.js';
 import type { ProviderSubscriptionProfile } from '../../src/assembly/provider-credential-custodian.js';
@@ -21,10 +22,10 @@ import { createSubscriptionProviderIO } from '../../scripts/production-boot-io.m
 const roots: string[] = [];
 afterEach(() => { for (const root of roots.splice(0)) rmSync(root, { recursive: true, force: true }); });
 const hash = (v: unknown) => (canonical(v) as { kind: 'Success'; value: { hash: string } }).value.hash;
-/** The spike's full disallow list (PROGRESS item 4) plus WebFetch, which the spike's e3 run left as the only extra tool. */
-const SPIKE_DISALLOWED = ['Agent', 'Task', 'CronCreate', 'CronDelete', 'CronList', 'RemoteTrigger', 'SendMessage', 'TaskStop',
-  'EnterWorktree', 'ExitWorktree', 'WebSearch', 'NotebookEdit', 'ToolSearch', 'ListAgents', 'ReportFindings', 'ScheduleWakeup',
-  'Workflow', 'WebFetch'];
+/** Removed outright: every outward, scheduling, worktree and session-control tool, and the multi-agent tools whose children no
+ * edge records (Workflow, agent teams). Agent, WebFetch and WebSearch are admitted tools now; the hook decides each call. */
+const REMOVED = ['Workflow', 'CronCreate', 'CronDelete', 'CronList', 'RemoteTrigger', 'SendMessage', 'TaskStop', 'EnterWorktree',
+  'ExitWorktree', 'ListAgents', 'ReportFindings', 'ScheduleWakeup', 'PushNotification', 'Monitor', 'Skill', 'TeamCreate', 'TeamDelete'];
 const after = (args: readonly string[], flag: string) => args[args.indexOf(flag) + 1];
 
 it('launches the tool turn with the proven flag set: hooks on, every delegating and outward tool removed, no persistence', () => {
@@ -33,10 +34,14 @@ it('launches the tool turn with the proven flag set: hooks on, every delegating 
     expect(args).not.toContain(banned);
   // No static settings: the per-turn settings carry the hook, so nothing here may set disableAllHooks.
   expect(args).not.toContain('--settings');
-  expect(after(args, '--tools')).toBe('Read,Write,Edit,Glob,Grep,Bash');
-  const disallowed = args.slice(args.indexOf('--disallowedTools') + 1, args.indexOf('--strict-mcp-config'));
-  expect([...disallowed].sort()).toEqual([...SPIKE_DISALLOWED].sort());
-  expect([...SUBSCRIPTION_TOOL_DISALLOWED].sort()).toEqual([...SPIKE_DISALLOWED].sort());
+  expect(after(args, '--tools')).toBe('Read,Write,Edit,Glob,Grep,Bash,WebFetch,WebSearch,Agent');
+  const disallowed = args.slice(args.indexOf('--disallowedTools') + 1, args.indexOf('--agents'));
+  expect([...disallowed].sort()).toEqual([...REMOVED].sort());
+  expect([...SUBSCRIPTION_TOOL_DISALLOWED].sort()).toEqual([...REMOVED].sort());
+  for (const tool of SUBSCRIPTION_TOOL_NAMES) expect(SUBSCRIPTION_TOOL_DISALLOWED).not.toContain(tool);
+  // The one subagent type: foreground, bounded turns, the same tools without Agent (no grandchildren in a turn).
+  expect(JSON.parse(after(args, '--agents')!)).toEqual({ [SUBSCRIPTION_SUBAGENT_TYPE]: { description: expect.any(String), prompt: expect.any(String),
+    tools: SUBSCRIPTION_TOOL_NAMES.filter(name => name !== 'Agent'), model: 'inherit', maxTurns: SUBSCRIPTION_TOOL_LIMITS.childMaxTurns, background: false } });
   expect(after(args, '--mcp-config')).toBe('{"mcpServers":{}}');
   expect(after(args, '--setting-sources')).toBe('');
   expect(args).toEqual(expect.arrayContaining(['--strict-mcp-config', '--no-session-persistence', '--disable-slash-commands']));
@@ -54,10 +59,13 @@ it('launches the tool turn with the proven flag set: hooks on, every delegating 
 it('tells the model exactly the tools it has, and keeps the conversation framing\'s no-tools sentence intact', () => {
   for (const name of SUBSCRIPTION_TOOL_NAMES) expect(SUBSCRIPTION_TOOLS_SYSTEM_PROMPT).toContain(name);
   expect(SUBSCRIPTION_TOOLS_SYSTEM_PROMPT).not.toContain('You have no tools');
-  expect(SUBSCRIPTION_TOOLS_SYSTEM_PROMPT).toMatch(/no MCP servers, subagents, web search, web fetch or other network access/u);
+  expect(SUBSCRIPTION_TOOLS_SYSTEM_PROMPT).toMatch(/Bash is sandboxed: no network/u);
+  expect(SUBSCRIPTION_TOOLS_SYSTEM_PROMPT).toMatch(/WebFetch and WebSearch read the public web \(GET only\)/u);
+  expect(SUBSCRIPTION_TOOLS_SYSTEM_PROMPT).toContain(`at most ${SUBSCRIPTION_TOOL_LIMITS.maxChildren} "${SUBSCRIPTION_SUBAGENT_TYPE}" subagents`);
+  expect(SUBSCRIPTION_TOOLS_SYSTEM_PROMPT).toMatch(/go through the effect doorway and are refused unless registered/u);
   expect(SUBSCRIPTION_TOOLS_SYSTEM_PROMPT).toContain('which tool call, by name and order, produced it');
   expect(SUBSCRIPTION_CONVERSATION_SYSTEM_PROMPT).toContain('You have no tools and cannot act beyond this answer; never claim otherwise.');
-  expect(SUBSCRIPTION_TOOLS_SYSTEM_PROMPT.length - SUBSCRIPTION_CONVERSATION_SYSTEM_PROMPT.length).toBeLessThan(700);
+  expect(SUBSCRIPTION_TOOLS_SYSTEM_PROMPT.length - SUBSCRIPTION_CONVERSATION_SYSTEM_PROMPT.length).toBeLessThan(1100);
 });
 
 it('writes settings that refuse every read from the root down except the scratch volume and the runtime, writes outside the volume, network and unix sockets, with the mandatory hook on both events', () => {
@@ -75,13 +83,18 @@ it('writes settings that refuse every read from the root down except the scratch
   // Nothing in the runtime list holds user, session or runner data.
   for (const read of SUBSCRIPTION_TOOL_RUNTIME_READS) expect(read).toMatch(/^\/(bin|sbin|usr\/(bin|sbin|lib|libexec|share)|System|private\/var\/select|private\/etc|dev)$/u);
   expect(settings.permissions).toEqual({ allow: [...SUBSCRIPTION_TOOL_NAMES], deny: [...SUBSCRIPTION_TOOL_DISALLOWED] });
-  for (const [event, mode] of [['PreToolUse', 'pre'], ['PostToolUse', 'post']] as const)
+  for (const [event, mode] of [['PreToolUse', 'pre'], ['PostToolUse', 'post'], ['SubagentStart', 'child-start'], ['SubagentStop', 'child-stop']] as const)
     expect(settings.hooks[event]).toEqual([{ matcher: '*', hooks: [{ type: 'command',
       command: `/usr/local/bin/node /repo/tests/preview/tool-admission-hook.mjs ${mode} /r/tool-turns/a-0/state` }] }]);
   // Refused shapes: the admission state inside the volume, a hook a tool could rewrite, a path needing quoting, a workspace
   // off its volume, and a denied root, the state or the home under a readable path.
   const home = '/profile/home';
   expect(() => subscriptionToolSettings({ ...turn, stateDirectory: '/r/tool-turns/a-0/vol/state' }, home)).toThrow(/outside the workspace/u);
+  // The root's MCP servers: each is allowed by name, and its launch configuration must lie in the admission state.
+  const mcp = JSON.parse(subscriptionToolSettings({ ...turn, mcp: { config: '/r/tool-turns/a-0/state/mcp.json', servers: ['dummy'] } }, home));
+  expect(mcp.permissions.allow).toEqual([...SUBSCRIPTION_TOOL_NAMES, 'mcp__dummy']);
+  expect(() => subscriptionToolSettings({ ...turn, mcp: { config: '/r/tool-turns/a-0/vol/ws/mcp.json', servers: ['dummy'] } }, home)).toThrow(/MCP configuration/u);
+  expect(() => subscriptionToolSettings({ ...turn, mcp: { config: '/r/tool-turns/a-0/state/mcp.json', servers: ['a b'] } }, home)).toThrow(/MCP configuration/u);
   expect(() => subscriptionToolSettings({ ...turn, hook: { ...turn.hook, script: '/r/tool-turns/a-0/vol/hook.mjs' } }, home)).toThrow(/outside the workspace/u);
   expect(() => subscriptionToolSettings({ ...turn, workspace: '/r/a b/ws' }, home)).toThrow(/absolute and plain/u);
   expect(() => subscriptionToolSettings({ ...turn, workspace: '/r/../ws' }, home)).toThrow(/absolute and plain/u);
@@ -166,6 +179,20 @@ it('runs the model command in the turn workspace with the per-turn settings appe
   expect(commands[2].stdin).toBe('{"question":"wc"}');
   // A tool route points the harness's temporary directory at the turn's volume (its preflights share the one environment).
   expect(commands.map(c => c.tmpdir)).toEqual([f.toolTurn.scratch, f.toolTurn.scratch, f.toolTurn.scratch]);
+});
+
+it('loads the root\'s MCP servers from the admission state for the model command only, never in the digest-bound policy', async () => {
+  const f = fixture();
+  const config = join(f.stateDirectory, 'mcp.json');
+  writeFileSync(config, JSON.stringify({ mcpServers: { dummy: { command: '/usr/bin/true' } } }));
+  const turn = { ...f.toolTurn, mcp: { config, servers: ['dummy'] } };
+  const route = value(createClaudeCodeSubscriptionRoute({ ...f.input(), toolTurn: turn }));
+  expect(await route.invoke('{"question":"mcp"}', f.bounds)).toMatchObject({ state: 'complete' });
+  const commands = f.commands();
+  expect(commands[2].args).toEqual([...subscriptionToolsPolicy(f.model).args, '--mcp-config', config, '--settings', subscriptionToolSettings(turn, f.profile.home)]);
+  // The preflights carry no MCP configuration, and the policy (what the activation binds) keeps its empty one.
+  for (const command of commands.slice(0, 2)) expect(command.args).not.toContain(config);
+  expect(subscriptionToolsPolicy(f.model).args).not.toContain(config);
 });
 
 it('refuses a tool turn when managed policy may disable the hook, when the framing and turn differ, or when a path is not canonical', async () => {

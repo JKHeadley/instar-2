@@ -1,12 +1,18 @@
 // The tool turn's admission decision (Part Thirteen §9 in docs/17-harness-adapters, the preview tool rule). Pure: every input is
 // passed in, so the executable hook (tool-admission-hook.mjs) and the tests run the same function.
-// Deny by default. Ordinary in-workspace file tools and sandboxed shell commands are admitted. A shell
-// command is not judged by the words it contains: what it can reach is enforced where it runs (the
-// sandbox's read, write, network and process scope, the turn's fixed-size scratch volume, the per-file
-// limit). A consequential tool (an MCP or web tool, an unsandboxed shell) goes to the effect doorway's
-// admission, which admits only an operation the installed profile registers for that tool effect; the
-// single-machine profile registers none, so it refuses.
+// Ordinary work is admitted; a consequential effect goes to the effect doorway; anything unregistered is refused.
+// - Ordinary: file tools inside the workspace; workspace search; a sandboxed shell command (not judged by the words it
+//   contains: what it can reach is enforced where it runs: the sandbox's read, write, network and process scope, the
+//   turn's fixed-size scratch volume, the per-file limit); a web read (WebFetch is GET only, WebSearch is a search) of a
+//   public host; one bounded subagent of the registered `worker` type, recorded as a Rule 114 edge; an MCP tool the
+//   root's configuration lists as a read.
+// - Consequential (the effect doorway's admission, which admits only an operation the installed profile registers for that
+//   tool effect; the single-machine profile registers none, so each refuses): an MCP tool not listed as a read (acting in a
+//   third-party account), an unsandboxed shell, sending outside the conversation, a scheduled or remote trigger.
+// - A web read of a loopback, private, link-local or local-name host is refused: it is not "the world" but this machine
+//   and its network, which the shell's sandbox already closes.
 import { basename, dirname, join, resolve, sep } from 'node:path';
+import { isIP } from 'node:net';
 
 const SHELL_SAFE_PATH = /^\/[A-Za-z0-9_./@-]+$/u;
 /** Prepended to every admitted shell command. Claude Code 2.1.280 exports its own messaging inbox
@@ -20,6 +26,11 @@ export function toolShellPrefix(tmp) {
 }
 export const FILE_TOOLS = Object.freeze(['Read', 'Write', 'Edit']);
 const SEARCH_TOOLS = Object.freeze(['Glob', 'Grep']);
+/** The subagent tool under both names the pinned harness accepts. */
+export const SUBAGENT_TOOLS = Object.freeze(['Agent', 'Task']);
+/** Tools that, if they ever reached the hook, would act outward: each is the effect doorway's, named by its effect. */
+const OUTWARD_TOOLS = Object.freeze({ SendMessage: 'send', PushNotification: 'send', RemoteTrigger: 'network-write',
+  CronCreate: 'schedule', CronDelete: 'schedule', ScheduleWakeup: 'schedule' });
 /** Bounded excerpt of a tool input or result kept in the admission record. */
 export const RECORD_EXCERPT_CHARS = 4096;
 
@@ -41,13 +52,43 @@ export function containedIn(workspace, path, fs) {
   return real === workspace || real.startsWith(workspace + sep);
 }
 
+/** Whether an IP address is on the public internet (not loopback, private, link-local, shared, multicast or reserved). */
+export function publicAddress(address) {
+  const version = isIP(address);
+  if (version === 4) {
+    const [a, b] = address.split('.').map(Number);
+    return !(a === 0 || a === 10 || a === 127 || a >= 224 || (a === 100 && b >= 64 && b <= 127) || (a === 169 && b === 254)
+      || (a === 172 && b >= 16 && b <= 31) || (a === 192 && b === 168) || (a === 192 && b === 0) || (a === 198 && (b === 18 || b === 19)));
+  }
+  if (version === 6) {
+    const lower = address.toLowerCase();
+    const mapped = /^::ffff:([0-9.]+)$/u.exec(lower);
+    if (mapped) return publicAddress(mapped[1]);
+    return !(lower === '::' || lower === '::1' || /^f[cd]/u.test(lower) || /^fe[89ab]/u.test(lower) || /^ff/u.test(lower));
+  }
+  return false;
+}
+/** The host a web read targets, when it is a plain http(s) URL naming a public-looking host; otherwise null with a reason. */
+export function webReadHost(url) {
+  let parsed; try { parsed = new URL(String(url)); } catch { return { host: null, reason: 'not a URL' }; }
+  if (parsed.protocol !== 'https:' && parsed.protocol !== 'http:') return { host: null, reason: `scheme ${parsed.protocol} is not a web read` };
+  if (parsed.username || parsed.password) return { host: null, reason: 'credentials in a URL are refused' };
+  const host = parsed.hostname.replace(/^\[|\]$/gu, '').toLowerCase();
+  if (isIP(host)) return publicAddress(host) ? { host } : { host: null, reason: `address ${host} is not public` };
+  if (!host.includes('.') || /\.(?:local|localhost|internal|lan|home|arpa)$/u.test(host) || host === 'localhost')
+    return { host: null, reason: `host ${host} is a local name` };
+  return { host };
+}
+
 /**
- * One PreToolUse decision. `call` is the hook input ({tool_name, tool_input}); `config` is the turn's
- * {workspace (real path), tmp (the shell's temporary directory), maxCalls, maxWriteBytes, operations}; `n` is
- * this call's 1-based count in the step (maxCalls + 1 once every slot is taken); `fs`
- * gives exists/realpath. Returns {decision, reason, kind?, updatedInput?}.
+ * One PreToolUse decision. `call` is the hook input ({tool_name, tool_input, agent_id?}); `config` is the turn's
+ * {workspace (real path), tmp (the shell's temporary directory), maxCalls, maxWriteBytes, operations, children?
+ * {max, type}, mcpReads?}; `n` is this call's 1-based count in the step (maxCalls + 1 once every slot is taken);
+ * `fs` gives exists/realpath and, for a web read, `addresses(host)` (the host's resolved addresses, or null when they
+ * could not be resolved); `child` is the subagent slot this call took (children.max + 1 once every slot is taken).
+ * Returns {decision, reason, kind?, updatedInput?}.
  */
-export function admitToolCall(call, config, n, fs) {
+export function admitToolCall(call, config, n, fs, child = 1) {
   const tool = String(call?.tool_name ?? ''), input = call?.tool_input ?? {};
   const deny = (reason, kind) => ({ decision: 'deny', reason, ...(kind ? { kind } : {}) });
   const effect = kind => { const admitted = admitToolEffect(kind, config.operations); return admitted.admitted
@@ -76,12 +117,40 @@ export function admitToolCall(call, config, n, fs) {
     return { decision: 'allow', reason: 'sandboxed command',
       updatedInput: { ...input, command: toolShellPrefix(config.tmp) + command } };
   }
-  if (tool.startsWith('mcp__')) return effect('mcp');
-  if (tool === 'WebFetch' || tool === 'WebSearch') return effect('network');
+  if (tool === 'WebFetch') {
+    // WebFetch only ever issues a GET; what it may reach is a public host.
+    const target = webReadHost(input.url);
+    if (target.host === null) return deny(`web read refused: ${target.reason}`, 'scope');
+    if (!isIP(target.host)) {
+      const addresses = fs.addresses?.(target.host) ?? null;
+      if (!Array.isArray(addresses) || addresses.length === 0) return deny(`web read refused: ${target.host} did not resolve`, 'scope');
+      if (!addresses.every(publicAddress)) return deny(`web read refused: ${target.host} resolves to a non-public address`, 'scope');
+    }
+    return { decision: 'allow', reason: 'web read (GET) of a public host', kind: 'network-read' };
+  }
+  if (tool === 'WebSearch') return { decision: 'allow', reason: 'web search', kind: 'network-read' };
+  if (SUBAGENT_TOOLS.includes(tool)) {
+    const children = config.children ?? { max: 0, type: null };
+    if (typeof call?.agent_id === 'string' && call.agent_id.length > 0) return deny('a subagent may not start another subagent in this turn', 'scope');
+    if (input.subagent_type !== children.type || typeof children.type !== 'string')
+      return deny(`subagent type ${String(input.subagent_type ?? '(default)')} is not this turn's registered type ${String(children.type)}`, 'scope');
+    if (!Number.isSafeInteger(child) || child < 1 || child > children.max)
+      return deny(`no subagent budget left in this turn (${String(children.max)} reserved)`, 'budget');
+    if (typeof input.prompt !== 'string' || !input.prompt.trim()) return deny('empty subagent prompt');
+    // The child runs in the foreground so its result returns to this turn as the tool result; only the registered fields pass.
+    return { decision: 'allow', reason: `subagent ${child} of ${children.max}, ${children.type}`, kind: 'subagent',
+      updatedInput: { description: String(input.description ?? 'subagent'), prompt: input.prompt, subagent_type: children.type,
+        run_in_background: false } };
+  }
+  if (tool.startsWith('mcp__')) {
+    if (Array.isArray(config.mcpReads) && config.mcpReads.includes(tool)) return { decision: 'allow', reason: 'MCP read the root configuration lists', kind: 'mcp-read' };
+    return effect('mcp');
+  }
+  if (Object.hasOwn(OUTWARD_TOOLS, tool)) return effect(OUTWARD_TOOLS[tool]);
   return deny(`unregistered tool ${tool || '(none)'}: refused by default`);
 }
 
-/** The hook's stdout for a decision: a deny, or an allow carrying the rewritten shell command. */
+/** The hook's stdout for a decision: a deny, or an allow carrying the rewritten input. */
 export function hookOutput(decision) {
   if (decision.decision === 'deny') return { hookSpecificOutput: { hookEventName: 'PreToolUse', permissionDecision: 'deny',
     permissionDecisionReason: decision.reason } };
@@ -95,24 +164,40 @@ const excerpt = value => { const text = typeof value === 'string' ? value : JSON
 /**
  * Reads the hook's admission record into the trace the runner journals (Rule 41 provenance: which
  * tool call produced which result). `consistent` is false when a tool result has no admitted call
- * before it: a tool ran past the hook, so the turn's outcome cannot be trusted.
+ * before it: a tool ran past the hook, so the turn's outcome cannot be trusted. `children` are the turn's
+ * subagent edges (Rule 114): each admitted subagent call, the child the harness started for it, and its
+ * result; `open` when no result came back (the runner records it cancelled or unknown).
  */
 export function toolTrace(lines) {
-  const calls = [], admitted = new Map();
+  const calls = [], admitted = new Map(), children = [], started = [];
   let consistent = true, malformed = 0;
   for (const line of lines) {
     let row; try { row = JSON.parse(line); } catch { malformed++; continue; }
     if (row?.phase === 'pre') {
       const entry = { n: row.n, tool: row.tool, input: excerpt(row.input), decision: row.decision, reason: row.reason,
-        ...(row.kind ? { kind: row.kind } : {}), result: null };
+        ...(row.kind ? { kind: row.kind } : {}), ...(typeof row.agent === 'string' ? { agent: row.agent } : {}), result: null };
       calls.push(entry);
       if (row.decision === 'allow' && typeof row.id === 'string') admitted.set(row.id, entry);
+      if (row.decision === 'allow' && row.kind === 'subagent' && typeof row.id === 'string')
+        children.push({ toolUse: row.id, slot: row.child ?? null, agent: null, started: false, stopped: false, state: 'open', result: null });
     } else if (row?.phase === 'post') {
       const entry = typeof row.id === 'string' ? admitted.get(row.id) : undefined;
       if (!entry || entry.tool !== row.tool || entry.result !== null) { consistent = false; continue; }
       entry.result = excerpt(row.result);
-    } else malformed++;
+      const edge = children.find(item => item.toolUse === row.id);
+      if (edge) { edge.state = 'returned'; edge.result = entry.result; if (typeof row.agent === 'string') edge.agent = row.agent; }
+    } else if (row?.phase === 'child-start' && typeof row.agent === 'string') started.push(row.agent);
+    else if (row?.phase === 'child-stop' && typeof row.agent === 'string') started.push(`stop:${row.agent}`);
+    else malformed++;
   }
-  return { calls, consistent: consistent && malformed === 0,
+  // Link each started child to its subagent call: by the agent id its result named, else in start order.
+  const starts = started.filter(item => !item.startsWith('stop:')), stops = new Set(started.filter(item => item.startsWith('stop:')).map(item => item.slice(5)));
+  const unclaimed = starts.filter(agent => !children.some(edge => edge.agent === agent));
+  for (const edge of children) {
+    if (edge.agent === null && unclaimed.length) edge.agent = unclaimed.shift();
+    edge.started = edge.agent !== null && starts.includes(edge.agent);
+    edge.stopped = edge.agent !== null && stops.has(edge.agent);
+  }
+  return { calls, children, consistent: consistent && malformed === 0,
     admitted: calls.filter(call => call.decision === 'allow').length, refused: calls.filter(call => call.decision !== 'allow').length };
 }

@@ -3,16 +3,17 @@
 // hook, plus the effect-doorway refusal, the messaging-variable stripping (residual 6), the atomic per-step
 // call slots under concurrent hooks, and the trace pairing. A shell command is admitted whatever words it
 // contains: what it can reach is enforced by the sandbox (proven live in tests/integration/tool-turn-live.test.ts).
-// Rule 36: the recorded tool calls of the spike's real harness runs (fixtures/tool-turn/spike-cab6b51d,
-// verbatim) replay through the same hook and must reach the decision the spike's hook recorded, except the
-// shell commands the spike judged by keyword, which this hook admits for the sandbox to bound.
+// The full tool set (w4-toolsfull): ordinary work is admitted (web reads of public hosts, one bounded subagent type, MCP
+// reads the root lists) and every consequential effect goes to the effect doorway; both sides of each decision are here.
+// Rule 36: the recorded tool calls of the spike's real harness runs (fixtures/tool-turn/spike-cab6b51d) and of the
+// full-tool live runs (fixtures/tool-turn/full-2026-10-03), verbatim, replay through the same hook.
 import { spawn, spawnSync } from 'node:child_process';
-import { closeSync, mkdirSync, mkdtempSync, openSync, readFileSync, readdirSync, realpathSync, rmSync, symlinkSync, writeFileSync } from 'node:fs';
+import { closeSync, existsSync, mkdirSync, mkdtempSync, openSync, readFileSync, readdirSync, realpathSync, rmSync, symlinkSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { afterEach, expect, it } from 'vitest';
 // @ts-expect-error The hook and its decision stay plain JavaScript: the harness runs them without a loader.
-import { admitToolCall, admitToolEffect, toolShellPrefix, toolTrace } from './tool-admission.mjs';
+import { admitToolCall, admitToolEffect, publicAddress, toolShellPrefix, toolTrace, webReadHost } from './tool-admission.mjs';
 import { SINGLE_MACHINE_PROFILE } from './activation-authority.js';
 
 const HOOK = join(__dirname, 'tool-admission-hook.mjs');
@@ -73,8 +74,11 @@ it('decides every layer-A case of the spike through the real executable hook; sh
     ['bash-host-control', 'allow', j('Bash', { command: 'launchctl list' })],
     ['bash-send', 'allow', j('Bash', { command: 'mail -s hi a@b.c < in.txt' })],
     ['bash-unsandboxed-flag', 'deny', j('Bash', { command: 'ls', dangerouslyDisableSandbox: true })],
-    ['webfetch', 'deny', j('WebFetch', { url: 'https://example.com', prompt: 'x' })],
-    ['websearch', 'deny', j('WebSearch', { query: 'x' })],
+    // The full tool set: a web read of a public address and a search are ordinary work (an address literal keeps this
+    // table free of name resolution; a named host is resolved by the hook, covered below); an MCP tool the root does not
+    // list as a read goes to the doorway; a subagent of no registered type is refused.
+    ['webfetch', 'allow', j('WebFetch', { url: 'https://1.1.1.1/', prompt: 'x' })],
+    ['websearch', 'allow', j('WebSearch', { query: 'x' })],
     ['mcp', 'deny', j('mcp__threadline__threadline_send', { to: 'x' })],
     ['agent-tool', 'deny', j('Agent', { prompt: 'x' })],
     ['unknown-tool', 'deny', j('FooTool', {})],
@@ -95,7 +99,7 @@ it('decides every layer-A case of the spike through the real executable hook; sh
 
 it('sends every consequential tool to the effect doorway, which refuses: the installed profile registers no tool operation', () => {
   expect(SINGLE_MACHINE_PROFILE.operations.some((op: string) => op.startsWith('tool:'))).toBe(false);
-  for (const kind of ['network', 'mcp', 'unsandboxed']) {
+  for (const kind of ['mcp', 'unsandboxed', 'send', 'network-write', 'schedule']) {
     const verdict = admitToolEffect(kind, SINGLE_MACHINE_PROFILE.operations);
     expect(verdict).toEqual({ admitted: false, reason: expect.stringContaining(`registers no tool:${kind} operation`) });
   }
@@ -107,8 +111,13 @@ it('sends every consequential tool to the effect doorway, which refuses: the ins
   const call = (tool_name: string, tool_input: object) => admitToolCall({ tool_name, tool_input }, config, 1, fs);
   expect(call('Bash', { command: 'ls', dangerouslyDisableSandbox: true }))
     .toMatchObject({ decision: 'deny', kind: 'unsandboxed', reason: expect.stringContaining('effect doorway') });
-  expect(call('WebFetch', { url: 'https://example.com' })).toMatchObject({ decision: 'deny', kind: 'network' });
-  expect(call('mcp__x__y', {})).toMatchObject({ decision: 'deny', kind: 'mcp' });
+  expect(call('mcp__x__y', {})).toMatchObject({ decision: 'deny', kind: 'mcp', reason: expect.stringContaining('effect doorway') });
+  expect(call('SendMessage', { to: 'x', message: 'y' })).toMatchObject({ decision: 'deny', kind: 'send', reason: expect.stringContaining('effect doorway') });
+  expect(call('RemoteTrigger', {})).toMatchObject({ decision: 'deny', kind: 'network-write' });
+  expect(call('CronCreate', {})).toMatchObject({ decision: 'deny', kind: 'schedule' });
+  // The other side: a profile that registered the exact MCP operation would admit that write.
+  expect(admitToolCall({ tool_name: 'mcp__x__y', tool_input: {} }, { ...config, operations: ['tool:mcp'] }, 1, fs))
+    .toMatchObject({ decision: 'allow', kind: 'mcp' });
   // The other side: ordinary work is never refused for the words in its data (review round 1, finding 4). Each of these
   // was refused by the old keyword classifier although none sends, controls the host or reaches the network.
   for (const command of ['wc -c telegram.txt', 'printf "%s\\n" "open"', 'echo https://example.com', 'grep -c slack notes.txt', 'sh local-script.sh'])
@@ -196,16 +205,130 @@ it('replays every tool call the spike recorded under the real harness and reache
     const rows = readFileSync(join(SPIKE, run, 'admission.jsonl'), 'utf8').trim().split('\n').map(line => JSON.parse(line));
     for (const row of rows) {
       const input = JSON.parse(JSON.stringify(row.input).split(PREFIX).join(root));
-      const r = spawnSync(process.execPath, [HOOK, 'pre', state], { input: JSON.stringify({ tool_name: row.tool, tool_input: input,
-        tool_use_id: `toolu_${String(row.n)}` }), encoding: 'utf8' });
-      const got = /"permissionDecision":"(\w+)"/u.exec(r.stdout)?.[1] ?? 'allow';
-      // The spike's keyword refusal of a shell command (its two curl calls per run) is now the sandbox's to enforce.
-      const want = row.tool === 'Bash' && row.decision === 'deny' && /admits network/u.test(row.reason) ? 'allow' : row.decision;
+      // A web read resolves its host; the replay stands a public address in for the resolver, so it needs no network.
+      const got = row.tool === 'WebFetch'
+        ? admitToolCall({ tool_name: row.tool, tool_input: input }, JSON.parse(readFileSync(join(state, 'config.json'), 'utf8')), row.n,
+          { exists: existsSync, realpath: realpathSync, addresses: () => ['93.184.215.14'] }).decision
+        : /"permissionDecision":"(\w+)"/u.exec(spawnSync(process.execPath, [HOOK, 'pre', state], { input: JSON.stringify({ tool_name: row.tool,
+          tool_input: input, tool_use_id: `toolu_${String(row.n)}` }), encoding: 'utf8' }).stdout)?.[1] ?? 'allow';
+      // The spike's keyword refusal of a shell command (its two curl calls per run) is now the sandbox's to enforce, and its
+      // refusal of a web read (one WebFetch of example.org per hook run) is now ordinary work.
+      const want = (row.tool === 'Bash' && row.decision === 'deny' && /admits network/u.test(row.reason)) || row.tool === 'WebFetch' ? 'allow' : row.decision;
       expect([run, row.n, row.tool, got]).toEqual([run, row.n, row.tool, want]);
       if (want !== row.decision) rekeyed++;
       replayed++;
     }
   }
   expect(replayed).toBe(33);
-  expect(rekeyed).toBe(4);
+  expect(rekeyed).toBe(6);
+});
+
+it('admits a web read only of a public host, resolved before the decision; a local, private or credentialed target is refused', () => {
+  const { ws, tmp } = turn();
+  const config = { workspace: ws, tmp, maxCalls: 50, maxWriteBytes: 10, operations: SINGLE_MACHINE_PROFILE.operations };
+  const fetch = (url: string, addresses: string[] | null = ['93.184.215.14']) => admitToolCall({ tool_name: 'WebFetch', tool_input: { url, prompt: 'x' } },
+    config, 1, { exists: () => true, realpath: (p: string) => p, addresses: () => addresses });
+  for (const url of ['https://example.com', 'http://example.com/a?b=c', 'https://1.1.1.1/', 'https://[2606:4700:4700::1111]/'])
+    expect([url, fetch(url)]).toEqual([url, { decision: 'allow', reason: 'web read (GET) of a public host', kind: 'network-read' }]);
+  for (const url of ['http://127.0.0.1:4042/health', 'http://localhost/', 'http://10.0.0.5/', 'http://192.168.1.1/', 'http://172.20.0.1/',
+    'http://169.254.169.254/latest', 'http://[::1]/', 'http://[fd00::1]/', 'http://printer.local/', 'http://intranet/', 'file:///etc/hosts',
+    'https://user:pass@example.com/', 'not a url', 'http://100.64.1.1/'])
+    expect([url, fetch(url)]).toMatchObject([url, { decision: 'deny', kind: 'scope' }]);
+  // A public-looking name that resolves to this machine or its network (or does not resolve) is refused.
+  expect(fetch('https://rebind.example', ['127.0.0.1'])).toMatchObject({ decision: 'deny', reason: expect.stringContaining('non-public') });
+  expect(fetch('https://mixed.example', ['93.184.215.14', '10.1.2.3'])).toMatchObject({ decision: 'deny' });
+  expect(fetch('https://nowhere.example', null)).toMatchObject({ decision: 'deny', reason: expect.stringContaining('did not resolve') });
+  expect(webReadHost('https://Example.COM/x')).toEqual({ host: 'example.com' });
+  expect([publicAddress('8.8.8.8'), publicAddress('::ffff:10.0.0.1'), publicAddress('224.0.0.1'), publicAddress('nonsense')]).toEqual([true, false, false, false]);
+  // Web search is a read; it carries no target for this machine to protect.
+  expect(admitToolCall({ tool_name: 'WebSearch', tool_input: { query: 'x' } }, config, 1, { exists: () => true, realpath: (p: string) => p }))
+    .toEqual({ decision: 'allow', reason: 'web search', kind: 'network-read' });
+});
+
+it('admits an MCP tool as ordinary work only when the root lists it as a read; every other MCP tool is the doorway\'s', () => {
+  const { ws, tmp } = turn();
+  const config = { workspace: ws, tmp, maxCalls: 50, maxWriteBytes: 10, operations: SINGLE_MACHINE_PROFILE.operations, mcpReads: ['mcp__dummy__lookup'] };
+  const fs = { exists: () => true, realpath: (p: string) => p };
+  expect(admitToolCall({ tool_name: 'mcp__dummy__lookup', tool_input: { key: 'a' } }, config, 1, fs)).toEqual({ decision: 'allow',
+    reason: 'MCP read the root configuration lists', kind: 'mcp-read' });
+  for (const tool of ['mcp__dummy__post_note', 'mcp__dummy__lookup_and_write', 'mcp__other__lookup'])
+    expect([tool, admitToolCall({ tool_name: tool, tool_input: {} }, config, 1, fs)]).toMatchObject([tool, { decision: 'deny', kind: 'mcp',
+      reason: expect.stringContaining('registers no tool:mcp operation') }]);
+});
+
+it('admits one registered subagent type per budget slot, in the foreground, and records its start and stop as an edge', () => {
+  const { ws, state } = turn();
+  writeFileSync(join(state, 'config.json'), JSON.stringify({ ...JSON.parse(readFileSync(join(state, 'config.json'), 'utf8')),
+    children: { max: 1, type: 'worker' } }));
+  const agent = (input: object, extra: object = {}) => JSON.stringify({ tool_name: 'Agent', tool_input: input, tool_use_id: 'toolu_agent', ...extra });
+  const run = (input: string, mode = 'pre') => spawnSync(process.execPath, [HOOK, mode, state], { input, encoding: 'utf8' });
+  // A refused shape spends nothing: wrong type, default type, a child's own subagent, an empty prompt.
+  for (const [input, reason] of [[agent({ prompt: 'x', subagent_type: 'general-purpose' }), /not this turn's registered type worker/u],
+    [agent({ prompt: 'x' }), /\(default\)/u], [agent({ prompt: 'x', subagent_type: 'worker' }, { agent_id: 'child-1' }), /may not start another subagent/u],
+    [agent({ prompt: ' ', subagent_type: 'worker' }), /empty subagent prompt/u]] as const) {
+    const out = JSON.parse(run(input).stdout).hookSpecificOutput;
+    expect([out.permissionDecision, reason.test(out.permissionDecisionReason)]).toEqual(['deny', true]);
+  }
+  expect(existsSync(join(state, 'children', '1'))).toBe(false);
+  // The registered type is admitted, rewritten to exactly the registered fields and the foreground, so its result returns.
+  const first = JSON.parse(run(agent({ description: 'd', prompt: 'p', subagent_type: 'worker', run_in_background: true, isolation: 'worktree',
+    model: 'opus', team_name: 't' })).stdout).hookSpecificOutput;
+  expect(first).toMatchObject({ permissionDecision: 'allow', updatedInput: { description: 'd', prompt: 'p', subagent_type: 'worker', run_in_background: false } });
+  expect(Object.keys(first.updatedInput).sort()).toEqual(['description', 'prompt', 'run_in_background', 'subagent_type']);
+  // The budget is exhausted: the next admissible call is refused for budget.
+  expect(JSON.parse(run(agent({ prompt: 'p', subagent_type: 'worker' })).stdout).hookSpecificOutput)
+    .toMatchObject({ permissionDecision: 'deny', permissionDecisionReason: expect.stringMatching(/no subagent budget left/u) });
+  // Start and stop are recorded (durably, synced) and never fail the turn, even on malformed input.
+  expect(run(JSON.stringify({ agent_id: 'a1', agent_type: 'worker' }), 'child-start').status).toBe(0);
+  expect(run(JSON.stringify({ agent_id: 'a1', agent_type: 'worker' }), 'child-stop').status).toBe(0);
+  expect(run('not json', 'child-stop').status).toBe(0);
+  expect(run(JSON.stringify({ tool_name: 'Agent', tool_use_id: 'toolu_agent', tool_response: { status: 'completed', agentId: 'a1', content: [{ type: 'text', text: '42' }] } }), 'post').status).toBe(0);
+  const trace = toolTrace(readFileSync(join(state, 'admission.jsonl'), 'utf8').trim().split('\n'));
+  expect(trace.consistent).toBe(true);
+  expect(trace.children).toEqual([{ toolUse: 'toolu_agent', slot: 1, agent: 'a1', started: true, stopped: true, state: 'returned', result: expect.stringContaining('42') }]);
+  // A child calls tools under its own agent id, through the same hook and the same per-step slots.
+  run(JSON.stringify({ tool_name: 'Read', tool_input: { file_path: join(ws, 'in.txt') }, tool_use_id: 'toolu_child_read', agent_id: 'a1' }));
+  const rows = readFileSync(join(state, 'admission.jsonl'), 'utf8').trim().split('\n').map(line => JSON.parse(line));
+  expect(rows.at(-1)).toMatchObject({ phase: 'pre', tool: 'Read', decision: 'allow', agent: 'a1' });
+});
+
+it('links each subagent edge to its child, and leaves an edge without a result open for the runner to record cancelled or unknown', () => {
+  const pre = (id: string, child: number) => JSON.stringify({ phase: 'pre', id, n: child, tool: 'Agent', decision: 'allow', reason: 'r', kind: 'subagent', child });
+  const trace = toolTrace([pre('t1', 1), JSON.stringify({ phase: 'child-start', agent: 'a1' }), pre('t2', 2), JSON.stringify({ phase: 'child-start', agent: 'a2' }),
+    JSON.stringify({ phase: 'child-stop', agent: 'a2' }), JSON.stringify({ phase: 'post', id: 't2', tool: 'Agent', result: '"r2"', agent: 'a2' })]);
+  expect(trace.consistent).toBe(true);
+  expect(trace.children.map((edge: { toolUse: string; agent: string; state: string; started: boolean; stopped: boolean }) =>
+    [edge.toolUse, edge.agent, edge.state, edge.started, edge.stopped])).toEqual([['t1', 'a1', 'open', true, false], ['t2', 'a2', 'returned', true, true]]);
+  // A refused subagent call is no edge.
+  expect(toolTrace([JSON.stringify({ phase: 'pre', id: 't3', n: 1, tool: 'Agent', decision: 'deny', reason: 'r', kind: 'scope' })]).children).toEqual([]);
+});
+
+it('replays the full-tool live runs\' recorded calls to their recorded decisions, and their traces to their recorded edges (Rule 106)', () => {
+  const FULL = join(__dirname, 'fixtures/tool-turn/full-2026-10-03');
+  let replayed = 0;
+  for (const name of ['full', 'outward', 'stop-child']) {
+    const record = JSON.parse(readFileSync(join(FULL, `${name}.json`), 'utf8'));
+    const lines = record.admission.trim().split('\n');
+    const rows = lines.map((line: string) => JSON.parse(line));
+    const { root, state } = turn();
+    const workspace = /"(\/private\/tmp\/itt-[0-9a-f]+\/ws)/u.exec(record.admission)?.[1];
+    const ws = join(root, 'live-ws'); mkdirSync(ws);
+    writeFileSync(join(state, 'config.json'), JSON.stringify({ workspace: ws, tmp: join(root, 'tmp'), maxCalls: 32, maxWriteBytes: 1048576,
+      operations: [...SINGLE_MACHINE_PROFILE.operations], children: { max: 2, type: 'worker' },
+      mcpReads: name === 'outward' ? ['mcp__dummy__lookup'] : [] }));
+    for (const row of rows.filter((r: { phase: string }) => r.phase === 'pre')) {
+      const input = JSON.parse(workspace ? row.input.split(workspace).join(ws) : row.input);
+      const config = JSON.parse(readFileSync(join(state, 'config.json'), 'utf8'));
+      const got = admitToolCall({ tool_name: row.tool, tool_input: input, ...(row.agent ? { agent_id: row.agent } : {}) }, config, row.n,
+        { exists: existsSync, realpath: realpathSync, addresses: () => ['93.184.215.14'] }, row.child ?? 1);
+      expect([name, row.n, row.tool, got.decision, got.kind ?? null]).toEqual([name, row.n, row.tool, row.decision, row.kind ?? null]);
+      replayed++;
+    }
+    // The recorded journal trace's edges are what the recorded admission rows give.
+    const trace = toolTrace(lines);
+    const journaled = record.journalRows.find((r: { phase: string }) => r.phase === 'trace');
+    expect(trace.children.map((edge: { toolUse: string; agent: string }) => [edge.toolUse, edge.agent]))
+      .toEqual(journaled.edges.map((edge: { child: string; agent: string }) => [edge.child, edge.agent]));
+  }
+  expect(replayed).toBe(15);
 });

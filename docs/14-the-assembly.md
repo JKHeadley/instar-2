@@ -1102,9 +1102,10 @@ these policy tradeoffs. The concrete proposed choices are ready for review:
    already-authorized plaintext extraction outside the prevention guarantee?
 2. Accept governed-mode refusal for opaque/unconfined harnesses and unsupported protected host
    modes, while retaining independently admitted communication and supported ordinary work? The
-   preview's ordinary scoped tools are supported ordinary work: they run under Part Thirteen's
-   demonstrated boundary of admission hook, harness sandbox and clean environment, with each tool's
-   scope, bounds and cause enforced before dispatch. That boundary is not this part's §4
+   preview's tools are supported ordinary work: on by default under the operator's recorded grant,
+   they run under Part Thirteen's demonstrated boundary of admission hook, harness sandbox and clean
+   environment, with each tool's scope, bounds and cause enforced before dispatch, and every
+   consequential effect goes to the effect doorway. That boundary is not this part's §4
    confinement, grants no governed or protected status, and no preview label waives a floor.
 3. Approve the requirement for finite per-installation replay/maintenance/resource thresholds
    and independently recoverable encryption keys before the corresponding live claims? The

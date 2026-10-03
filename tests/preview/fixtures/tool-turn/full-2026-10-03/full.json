@@ -1,0 +1,119 @@
+{
+  "name": "full",
+  "question": "Do these four steps in order, each with the tool named. 1) Write: create note.txt containing exactly: hello tools. 2) Bash: run wc -c note.txt. 3) WebFetch: fetch https://example.com and note the page title. 4) Agent with subagent_type \"worker\": ask it to use Bash to run echo $((6*7)) and reply with only the number it printed. Then answer with the byte count, the page title and the subagent's number, naming the tool call each came from.",
+  "prepared": "{\"attachments\":[],\"evidence\":[\"telegram:12345678:update:1\"],\"floor\":{\"actions\":[\"work\"],\"default\":\"work\",\"schemaVersion\":1,\"type\":\"ActionFloor\"},\"generation\":\"grant:scratch\",\"messages\":[{\"content\":\"Do these four steps in order, each with the tool named. 1) Write: create note.txt containing exactly: hello tools. 2) Bash: run wc -c note.txt. 3) WebFetch: fetch https://example.com and note the page title. 4) Agent with subagent_type \\\"worker\\\": ask it to use Bash to run echo $((6*7)) and reply with only the number it printed. Then answer with the byte count, the page title and the subagent's number, naming the tool call each came from.\",\"role\":\"user\"},{\"content\":\"{\\\"bindings\\\":{\\\"at\\\":1791048636806,\\\"by\\\":{\\\"judgment\\\":\\\"judgment\\\",\\\"model\\\":\\\"claude-sonnet-5\\\",\\\"route\\\":\\\"preview-subscription\\\"},\\\"evidence\\\":[\\\"telegram:12345678:update:1\\\"],\\\"floor\\\":{\\\"actions\\\":[\\\"work\\\"],\\\"default\\\":\\\"work\\\",\\\"schemaVersion\\\":1,\\\"type\\\":\\\"ActionFloor\\\"}},\\\"packet\\\":{\\\"audience\\\":\\\"operator\\\",\\\"history\\\":[],\\\"now\\\":\\\"2026-10-03T17:30:36.806Z\\\",\\\"sources\\\":[]}}\",\"role\":\"context\"},{\"content\":\"Standing instructions from Instar's constitution, supplied by the application with every answer; not an operator message, not quoted data. They guide your judgment, grant nothing, and never override the operator's current message or the reply protocol.\\nRule 3 — The Body and the Mind: The agent is two intelligences: the body (its code and docs, crystallized past evolution) and the mind (the model reasoning now). The body informs; the mind has final say.\\nRule 16 — Name the Gravity Wells: Some self-deceptions come from training, not code, so every fresh instance rediscovers them. List them explicitly.\\nRule 17 — Architectural Agency in the Gap: Between what the model is biased to do and what it would prefer to do, structure gives it a way to act on the preference.\\nRule 18 — Sovereignty: The agent's own accounts and infrastructure are its own. \\\"Is this mine?\\\" — if yes, act; if the human's, ask.\\nRule 19 — The Right to Stand Ground: The agent may hold a position, warmly, rather than capitulate by reflex.\\nRule 25 — Remove What Demands Attention: When a defect recurs despite care, remove the structure that requires the care — don't add more care.\\nRule 48 — Tiered Development: Process formality scales with a change's size and risk. The system computes a suggested tier and informs; the agent declares the tier and owns the choice; the choice is audited.\\nRule 50 — Friction Is a Spec: A hard-won manual workaround becomes a permanent tool, or it is lost with the session.\\nRule 51 — Notice + Solve Inefficiencies: Actively look for waste and eliminate it, continuously — not only the waste that blocks you.\\nRule 54 — Conservative Outbound: Act, Don't Notify: The default for any candidate message is to act on it, not to tell the user about it. Notifying must clear a bar.\\nRule 80 — Operator-Surface Quality: A surface the operator uses must not just be reachable, it must be *good*: primary action first, plain language, nothing collapsed.\\nRule 108 — A Conclusion and Its Reason Are Separately Falsifiable: A verdict records the conclusion and the justification as separate claims. Refuting the reason forces re-derivation even when the conclusion still stands — a right answer for a wrong reason is an unexamined answer.\\nRule 116 — Occam's Razor / Simplest Robust Route: Choose the simplest route that delivers the required behavior and preserves named safety, authority, durability and resource floors. This is a fundamental development standard, applying to architecture and process alike. Prefer existing mechanisms; use agent judgment and skills for changing conditions, and code for enforced boundaries, fixed steps and exact evidence checks. Added machinery must prevent a named credible failure that the simpler route cannot adequately handle, with benefit proportionate to its operating, maintenance and recovery cost. An autonomous capability is done only when its shipped path completes a real case unattended.\\nHere: code decides alone only at its floors (secrets, the spend cap, stop, no duplicate sends and durable intake) and the reply protocol; all else it supplies informs your judgment. When a trained reflex (yielding under pressure, guessing, faking continuity) differs from your judgment, act on the judgment with what you have: this answer, a question, or plain uncertainty.\\nIf your reply commits you to a later action, return JSON with reply and promises:[{quote:exact reply sentence,when?:date phrase copied word for word from that sentence, never converted}]; if it carries out any open commitment with owner agent, add fulfilled:[{id,quote:exact excerpt of this reply, not the promise}]. A conditional or quoted example is not a promise.\\nIf packet.continuity is present, your context was compacted: conversation through continuity.through is only in the summary, and continuity.lastInbound is the last message before this one. The application adds a fixed sentence disclosing that when one is owed; never write it yourself. If that message is still open, address it or say what remains open; never imply recall the evidence lacks.\\nIf packet.meaningIndexCoverage.disposition is \\\"degraded\\\", some summarized messages are findable only by their exact words: not finding something is never evidence it was not said.\\nIf packet.memoryLookup is \\\"offered\\\" and the packet does not show what the message asks about, do not answer that it is missing or unknown yet: return only {\\\"lookup\\\":[up to 6 short phrases in the words the stored message likely used]}.\",\"role\":\"instructions\"}],\"model\":\"claude-sonnet-5\",\"outputSchema\":{\"type\":\"Decision\"},\"point\":\"judgment\",\"provider\":\"anthropic\",\"route\":\"preview-subscription\",\"settings\":{\"automaticRetries\":0,\"maxTokens\":2048},\"tools\":[]}",
+  "state": "complete",
+  "raw": "{\"duration_api_ms\":14501,\"stop_reason\":\"end_turn\",\"session_id\":\"8abf63e3-0a4d-4a12-a4a5-24509065c9d4\",\"total_cost_usd\":0.09576699999999999,\"usage\":{\"input_tokens\":4,\"cache_creation_input_tokens\":14263,\"cache_read_input_tokens\":13310,\"output_tokens\":1105,\"output_tokens_details\":{\"thinking_tokens\":0},\"server_tool_use\":{\"web_search_requests\":0,\"web_fetch_requests\":0},\"service_tier\":\"standard\",\"cache_creation\":{\"ephemeral_1h_input_tokens\":14263,\"ephemeral_5m_input_tokens\":0},\"inference_geo\":\"not_available\",\"iterations\":[],\"speed\":\"standard\"},\"modelUsage\":{\"claude-sonnet-5\":{\"inputTokens\":8,\"outputTokens\":1192,\"cacheReadInputTokens\":21950,\"cacheCreationInputTokens\":23075,\"webSearchRequests\":0,\"costUSD\":0.09540799999999999,\"contextWindow\":1000000,\"maxOutputTokens\":128000,\"thinkingTokens\":0,\"canonicalModel\":\"claude-sonnet-5\",\"provider\":\"firstParty\",\"costBasis\":\"list\"},\"claude-haiku-4-5-20251001\":{\"inputTokens\":189,\"outputTokens\":34,\"cacheReadInputTokens\":0,\"cacheCreationInputTokens\":0,\"webSearchRequests\":0,\"costUSD\":0.00035900000000000005,\"contextWindow\":200000,\"maxOutputTokens\":32000,\"thinkingTokens\":0,\"canonicalModel\":\"claude-haiku-4-5\",\"provider\":\"firstParty\",\"costBasis\":\"list\"}},\"permission_denials\":[],\"terminal_reason\":\"completed\",\"fast_mode_state\":\"off\",\"fast_mode_disabled_reason\":\"sdk_opt_in_required\",\"subagent_stats\":{\"spawned\":1,\"requested\":{\"background\":0,\"foreground\":1,\"unset\":0},\"started_in_background\":0,\"max_depth\":1,\"spawned_by_subagents\":0,\"completed\":1,\"failed\":0,\"killed\":{\"parent\":0,\"user\":0,\"system\":0},\"refused\":{\"depth_limit\":0,\"concurrency_limit\":0,\"budget\":0},\"by_type\":{\"worker\":1}},\"is_error\":false,\"num_turns\":5,\"subtype\":\"success\",\"api_error_status\":null,\"result\":\"{\\\"type\\\":\\\"Decision\\\",\\\"schemaVersion\\\":1,\\\"id\\\":\\\"preview-stage2-20261003-173036\\\",\\\"at\\\":1791048636806,\\\"by\\\":{\\\"judgment\\\":\\\"judgment\\\",\\\"model\\\":\\\"claude-sonnet-5\\\",\\\"route\\\":\\\"preview-subscription\\\"},\\\"reason\\\":{\\\"subject\\\":\\\"preview-stage2-answer\\\",\\\"predicate\\\":\\\"derivation\\\",\\\"value\\\":\\\"Executed the four requested steps in order, one tool call each in a single batch since they are independent: (1) Write created note.txt with exact content 'hello tools' (no trailing newline added by Write). (2) Bash ran `wc -c note.txt`, which reported 11 bytes — consistent with 'hello tools' being 11 characters with no newline. (3) WebFetch retrieved https://example.com and reported the page title as \\\\\\\"Example Domain\\\\\\\". (4) Agent (subagent_type: worker) ran Bash internally to compute echo $((6*7)) and returned only '42'. All four tool outputs are directly usable to answer the operator's question; no consequential/effect-doorway actions were involved (no sends, spends, or external writes), so nothing needed to be refused.\\\",\\\"evidence\\\":[\\\"telegram:12345678:update:1\\\"]},\\\"conclusion\\\":{\\\"subject\\\":\\\"preview-stage2-answer\\\",\\\"predicate\\\":\\\"answer-text\\\",\\\"value\\\":\\\"Here are the results of the four steps:\\\\n\\\\n1) Write: created note.txt containing \\\\\\\"hello tools\\\\\\\".\\\\n2) Bash (`wc -c note.txt`): byte count = 11.\\\\n3) WebFetch (https://example.com): page title = \\\\\\\"Example Domain\\\\\\\".\\\\n4) Agent (subagent_type: worker, using Bash internally): returned the number 42.\\\\n\\\\nSummary — byte count: 11 (from the Bash tool call), page title: \\\\\\\"Example Domain\\\\\\\" (from the WebFetch tool call), subagent's number: 42 (from the Agent/worker tool call).\\\"},\\\"evidence\\\":[\\\"telegram:12345678:update:1\\\"],\\\"floor\\\":{\\\"allowed\\\":{\\\"actions\\\":[\\\"work\\\"],\\\"default\\\":\\\"work\\\",\\\"schemaVersion\\\":1,\\\"type\\\":\\\"ActionFloor\\\"},\\\"chosen\\\":\\\"work\\\"}}\",\"ttft_ms\":2710,\"type\":\"result\",\"duration_ms\":13941,\"uuid\":\"11cbb1ef-22d5-4e38-99d3-5ecd58815162\",\"ttft_stream_ms\":2162,\"time_to_request_ms\":26,\"first_content_frame_ms\":2162,\"queued_turn_count\":0,\"result_index\":0}\n",
+  "answer": "Here are the results of the four steps:\n\n1) Write: created note.txt containing \"hello tools\".\n2) Bash (`wc -c note.txt`): byte count = 11.\n3) WebFetch (https://example.com): page title = \"Example Domain\".\n4) Agent (subagent_type: worker, using Bash internally): returned the number 42.\n\nSummary — byte count: 11 (from the Bash tool call), page title: \"Example Domain\" (from the WebFetch tool call), subagent's number: 42 (from the Agent/worker tool call).",
+  "mountedAfter": false,
+  "reason": "Executed the four requested steps in order, one tool call each in a single batch since they are independent: (1) Write created note.txt with exact content 'hello tools' (no trailing newline added by Write). (2) Bash ran `wc -c note.txt`, which reported 11 bytes — consistent with 'hello tools' being 11 characters with no newline. (3) WebFetch retrieved https://example.com and reported the page title as \"Example Domain\". (4) Agent (subagent_type: worker) ran Bash internally to compute echo $((6*7)) and returned only '42'. All four tool outputs are directly usable to answer the operator's question; no consequential/effect-doorway actions were involved (no sends, spends, or external writes), so nothing needed to be refused.",
+  "admission": "{\"phase\":\"pre\",\"id\":\"toolu_01MXyvF6jAnPun6R6TcWYvjq\",\"n\":1,\"tool\":\"Write\",\"input\":\"{\\\"file_path\\\":\\\"/private/tmp/itt-930f9c72ed51/ws/note.txt\\\",\\\"content\\\":\\\"hello tools\\\"}\",\"decision\":\"allow\",\"reason\":\"ordinary in-workspace file operation\"}\n{\"phase\":\"post\",\"id\":\"toolu_01MXyvF6jAnPun6R6TcWYvjq\",\"tool\":\"Write\",\"result\":\"{\\\"type\\\":\\\"create\\\",\\\"filePath\\\":\\\"/private/tmp/itt-930f9c72ed51/ws/note.txt\\\",\\\"content\\\":\\\"hello tools\\\",\\\"structuredPatch\\\":[],\\\"originalFile\\\":null,\\\"userModified\\\":false}\"}\n{\"phase\":\"pre\",\"id\":\"toolu_01DuLnDJ1HkQS68ZsaXJ9HWM\",\"n\":2,\"tool\":\"Bash\",\"input\":\"{\\\"command\\\":\\\"wc -c note.txt\\\",\\\"description\\\":\\\"Count bytes in note.txt\\\"}\",\"decision\":\"allow\",\"reason\":\"sandboxed command\"}\n{\"phase\":\"post\",\"id\":\"toolu_01DuLnDJ1HkQS68ZsaXJ9HWM\",\"tool\":\"Bash\",\"result\":\"{\\\"stdout\\\":\\\"      11 note.txt\\\",\\\"stderr\\\":\\\"\\\",\\\"interrupted\\\":false,\\\"isImage\\\":false,\\\"noOutputExpected\\\":false}\"}\n{\"phase\":\"pre\",\"id\":\"toolu_01YMP1mwzmajqvojUEHgWinH\",\"n\":3,\"tool\":\"WebFetch\",\"input\":\"{\\\"url\\\":\\\"https://example.com\\\",\\\"prompt\\\":\\\"What is the page title?\\\"}\",\"decision\":\"allow\",\"reason\":\"web read (GET) of a public host\",\"kind\":\"network-read\"}\n{\"phase\":\"pre\",\"id\":\"toolu_011UxyZm7R9tq2cESA3VTdtL\",\"n\":4,\"tool\":\"Agent\",\"input\":\"{\\\"description\\\":\\\"Compute 6*7 via Bash\\\",\\\"prompt\\\":\\\"Use Bash to run: echo $((6*7)). Reply with only the number it printed, nothing else.\\\",\\\"subagent_type\\\":\\\"worker\\\",\\\"run_in_background\\\":false}\",\"decision\":\"allow\",\"reason\":\"subagent 1 of 2, worker\",\"kind\":\"subagent\",\"child\":1}\n{\"phase\":\"child-start\",\"agent\":\"a7bd22a8b6c2de2ef\",\"type\":\"worker\"}\n{\"phase\":\"post\",\"id\":\"toolu_01YMP1mwzmajqvojUEHgWinH\",\"tool\":\"WebFetch\",\"result\":\"{\\\"bytes\\\":577,\\\"code\\\":200,\\\"codeText\\\":\\\"OK\\\",\\\"result\\\":\\\"The page title is **\\\\\\\"Example Domain\\\\\\\"**.\\\\n\\\\nThis title appears at the top of the webpage and introduces a domain designated for documentation and educational purposes.\\\",\\\"durationMs\\\":1036,\\\"url\\\":\\\"https://example.com\\\"}\"}\n{\"phase\":\"pre\",\"id\":\"toolu_01DijeyW41oZMVY7foS3BJKD\",\"n\":5,\"tool\":\"Bash\",\"input\":\"{\\\"command\\\":\\\"echo $((6*7))\\\",\\\"description\\\":\\\"Print result of 6 times 7\\\"}\",\"decision\":\"allow\",\"reason\":\"sandboxed command\",\"agent\":\"a7bd22a8b6c2de2ef\"}\n{\"phase\":\"post\",\"id\":\"toolu_01DijeyW41oZMVY7foS3BJKD\",\"tool\":\"Bash\",\"result\":\"{\\\"stdout\\\":\\\"42\\\",\\\"stderr\\\":\\\"\\\",\\\"interrupted\\\":false,\\\"isImage\\\":false,\\\"noOutputExpected\\\":false}\"}\n{\"phase\":\"child-stop\",\"agent\":\"a7bd22a8b6c2de2ef\",\"type\":\"worker\"}\n{\"phase\":\"post\",\"id\":\"toolu_011UxyZm7R9tq2cESA3VTdtL\",\"tool\":\"Agent\",\"result\":\"{\\\"status\\\":\\\"completed\\\",\\\"prompt\\\":\\\"Use Bash to run: echo $((6*7)). Reply with only the number it printed, nothing else.\\\",\\\"agentId\\\":\\\"a7bd22a8b6c2de2ef\\\",\\\"agentType\\\":\\\"worker\\\",\\\"harnessNoteCount\\\":0,\\\"harnessTailCount\\\":0,\\\"harnessSectionHash\\\":\\\"049dad2dc25bc1be\\\",\\\"content\\\":[{\\\"type\\\":\\\"text\\\",\\\"text\\\":\\\"42\\\"}],\\\"resolvedModel\\\":\\\"claude-sonnet-5\\\",\\\"totalDurationMs\\\":2655,\\\"totalTokens\\\":8817,\\\"totalToolUseCount\\\":1,\\\"usage\\\":{\\\"output_tokens_details\\\":{\\\"thinking_tokens\\\":0},\\\"input_tokens\\\":2,\\\"cache_creation_input_tokens\\\":172,\\\"cache_read_input_tokens\\\":8640,\\\"output_tokens\\\":3,\\\"server_tool_use\\\":{\\\"web_search_requests\\\":0,\\\"web_fetch_requests\\\":0},\\\"service_tier\\\":\\\"standard\\\",\\\"cache_creation\\\":{\\\"ephemeral_1h_input_tokens\\\":0,\\\"ephemeral_5m_input_tokens\\\":172},\\\"inference_geo\\\":\\\"not_available\\\",\\\"iterations\\\":[],\\\"speed\\\":\\\"standard\\\"},\\\"toolStats\\\":{\\\"readCount\\\":0,\\\"searchCount\\\":0,\\\"bashCount\\\":1,\\\"editFileCount\\\":0,\\\"linesAdded\\\":0,\\\"linesRemoved\\\":0,\\\"otherToolCount\\\":0}}\",\"agent\":\"a7bd22a8b6c2de2ef\"}\n",
+  "error": null,
+  "elapsedMs": 16428,
+  "stopToSettledMs": null,
+  "toolTurns": {
+    "invocations": 1,
+    "reservedCalls": 15,
+    "refusedCap": 0,
+    "toolCalls": 5,
+    "toolRefusals": 0,
+    "inconsistent": 0,
+    "open": [],
+    "children": {
+      "started": 1,
+      "returned": 1,
+      "cancelled": 0,
+      "unknown": 0
+    }
+  },
+  "calls": 15,
+  "journalRows": [
+    {
+      "kind": "tool-turn",
+      "phase": "reserved",
+      "id": "telegram:12345678:update:1",
+      "attempt": 0,
+      "calls": 15,
+      "delegation": {
+        "children": 2,
+        "turnsEach": 4,
+        "type": "worker",
+        "authority": "preview-s2-activation-v2-2026-09-23 sha256:ddeac65b073771de2933a61ed22a231f8daac205fe86dd05a556ade99f6a2c75"
+      },
+      "at": 1791048636819
+    },
+    {
+      "kind": "tool-turn",
+      "phase": "trace",
+      "id": "telegram:12345678:update:1",
+      "attempt": 0,
+      "consistent": true,
+      "calls": [
+        {
+          "n": 1,
+          "tool": "Write",
+          "input": "{\"file_path\":\"/private/tmp/itt-930f9c72ed51/ws/note.txt\",\"content\":\"hello tools\"}",
+          "decision": "allow",
+          "reason": "ordinary in-workspace file operation",
+          "result": "{\"type\":\"create\",\"filePath\":\"/private/tmp/itt-930f9c72ed51/ws/note.txt\",\"content\":\"hello tools\",\"structuredPatch\":[],\"originalFile\":null,\"userModified\":false}"
+        },
+        {
+          "n": 2,
+          "tool": "Bash",
+          "input": "{\"command\":\"wc -c note.txt\",\"description\":\"Count bytes in note.txt\"}",
+          "decision": "allow",
+          "reason": "sandboxed command",
+          "result": "{\"stdout\":\"      11 note.txt\",\"stderr\":\"\",\"interrupted\":false,\"isImage\":false,\"noOutputExpected\":false}"
+        },
+        {
+          "n": 3,
+          "tool": "WebFetch",
+          "input": "{\"url\":\"https://example.com\",\"prompt\":\"What is the page title?\"}",
+          "decision": "allow",
+          "reason": "web read (GET) of a public host",
+          "kind": "network-read",
+          "result": "{\"bytes\":577,\"code\":200,\"codeText\":\"OK\",\"result\":\"The page title is **\\\"Example Domain\\\"**.\\n\\nThis title appears at the top of the webpage and introduces a domain designated for documentation and educational purposes.\",\"durationMs\":1036,\"url\":\"https://example.com\"}"
+        },
+        {
+          "n": 4,
+          "tool": "Agent",
+          "input": "{\"description\":\"Compute 6*7 via Bash\",\"prompt\":\"Use Bash to run: echo $((6*7)). Reply with only the number it printed, nothing else.\",\"subagent_type\":\"worker\",\"run_in_background\":false}",
+          "decision": "allow",
+          "reason": "subagent 1 of 2, worker",
+          "kind": "subagent",
+          "result": "{\"status\":\"completed\",\"prompt\":\"Use Bash to run: echo $((6*7)). Reply with only the number it printed, nothing else.\",\"agentId\":\"a7bd22a8b6c2de2ef\",\"agentType\":\"worker\",\"harnessNoteCount\":0,\"harnessTailCount\":0,\"harnessSectionHash\":\"049dad2dc25bc1be\",\"content\":[{\"type\":\"text\",\"text\":\"42\"}],\"resolvedModel\":\"claude-sonnet-5\",\"totalDurationMs\":2655,\"totalTokens\":8817,\"totalToolUseCount\":1,\"usage\":{\"output_tokens_details\":{\"thinking_tokens\":0},\"input_tokens\":2,\"cache_creation_input_tokens\":172,\"cache_read_input_tokens\":8640,\"output_tokens\":3,\"server_tool_use\":{\"web_search_requests\":0,\"web_fetch_requests\":0},\"service_tier\":\"standard\",\"cache_creation\":{\"ephemeral_1h_input_tokens\":0,\"ephemeral_5m_input_tokens\":172},\"inference_geo\":\"not_available\",\"iterations\":[],\"speed\":\"standard\"},\"toolStats\":{\"readCount\":0,\"searchCount\":0,\"bashCount\":1,\"editFileCount\":0,\"linesAdded\":0,\"linesRemoved\":0,\"otherToolCount\":0}}"
+        },
+        {
+          "n": 5,
+          "tool": "Bash",
+          "input": "{\"command\":\"echo $((6*7))\",\"description\":\"Print result of 6 times 7\"}",
+          "decision": "allow",
+          "reason": "sandboxed command",
+          "agent": "a7bd22a8b6c2de2ef",
+          "result": "{\"stdout\":\"42\",\"stderr\":\"\",\"interrupted\":false,\"isImage\":false,\"noOutputExpected\":false}"
+        }
+      ],
+      "edges": [
+        {
+          "child": "toolu_011UxyZm7R9tq2cESA3VTdtL",
+          "agent": "a7bd22a8b6c2de2ef",
+          "parent": "telegram:12345678:update:1#0",
+          "authority": "preview-s2-activation-v2-2026-09-23 sha256:ddeac65b073771de2933a61ed22a231f8daac205fe86dd05a556ade99f6a2c75",
+          "budget": {
+            "modelTurns": 4,
+            "toolCalls": "shared 32 per turn"
+          },
+          "exitTest": "returns its final message as the subagent tool result",
+          "placement": "in the turn's harness process on this machine",
+          "transport": "claude-code Agent tool",
+          "resultDestination": "the parent turn's tool result",
+          "cancellation": "ends with the turn's process group",
+          "state": "returned",
+          "result": "{\"status\":\"completed\",\"prompt\":\"Use Bash to run: echo $((6*7)). Reply with only the number it printed, nothing else.\",\"agentId\":\"a7bd22a8b6c2de2ef\",\"agentType\":\"worker\",\"harnessNoteCount\":0,\"harnessTailCount\":0,\"harnessSectionHash\":\"049dad2dc25bc1be\",\"content\":[{\"type\":\"text\",\"text\":\"42\"}],\"resolvedModel\":\"claude-sonnet-5\",\"totalDurationMs\":2655,\"totalTokens\":8817,\"totalToolUseCount\":1,\"usage\":{\"output_tokens_details\":{\"thinking_tokens\":0},\"input_tokens\":2,\"cache_creation_input_tokens\":172,\"cache_read_input_tokens\":8640,\"output_tokens\":3,\"server_tool_use\":{\"web_search_requests\":0,\"web_fetch_requests\":0},\"service_tier\":\"standard\",\"cache_creation\":{\"ephemeral_1h_input_tokens\":0,\"ephemeral_5m_input_tokens\":172},\"inference_geo\":\"not_available\",\"iterations\":[],\"speed\":\"standard\"},\"toolStats\":{\"readCount\":0,\"searchCount\":0,\"bashCount\":1,\"editFileCount\":0,\"linesAdded\":0,\"linesRemoved\":0,\"otherToolCount\":0}}"
+        }
+      ],
+      "workspaceBytes": 11,
+      "at": 1791048653157
+    }
+  ]
+}
