@@ -1930,7 +1930,9 @@ async function main() {
       reground: () => sentinelSteps.push(() => worker.drain()),
       recoverContext: () => sentinelSteps.push(() => worker.summarizeIfNeeded(true)),
       selfHeal: () => sentinelSteps.push(() => worker.drain()),
-      actOnPromise: id => sentinelSteps.push(() => id.startsWith('request:') ? worker.sendRequested() : worker.workObligations()) });
+      // A due reminder is never sent from this pre-poll job: the post-poll job below already sends every requested
+      // reminder, and only after a successful empty poll, so a waiting withdrawal is read and settled first (Rule 93).
+      actOnPromise: id => { if (!id.startsWith('request:')) sentinelSteps.push(() => worker.workObligations()); } });
     const sentinelTick = () => { if (sentinelFamilies.size && !journal.readOnly) sentinels.tick(); };
     for (let i = 0; i < cycles && !signalled; i++) {
       if (i > 0) await new Promise(done => setImmediate(done));

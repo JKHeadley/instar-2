@@ -13,7 +13,7 @@ import { defaultPresenceConfig } from '../../src/sentinels/presence.js';
 
 const recorded = JSON.parse(readFileSync(new URL('./fixtures/held-reply-live-2026-09-27.json', import.meta.url), 'utf8'));
 
-async function launch(sentinels?: string, promise = false) {
+async function launch(sentinels?: string, promise = false, pollDown = false) {
   const world = successiveWorld(), root = join(world.directory, 'sentinel-journal');
   const activation = join(world.directory, 'activation.json'), profile = join(world.directory, 'profile.json');
   const log = join(world.directory, 'poll.log'), updates = join(world.directory, 'updates.json');
@@ -78,7 +78,16 @@ export const createClaudeCodeSubscriptionRoute = () => ({kind:'Success',value:{i
     return {url:${JSON.stringify(pathToFileURL(provider).href)},shortCircuit:true};
   return next(specifier,context);
 }\n`);
-  const endpoint = spawn(process.execPath, [join(process.cwd(), 'tests/preview/journal-poll-endpoint.mjs'), log, updates],
+  // pollDown: every getUpdates answers 503 (an intake outage); every other method still answers normally.
+  let endpointScript = join(process.cwd(), 'tests/preview/journal-poll-endpoint.mjs');
+  if (pollDown) {
+    const down = join(world.directory, 'poll-down-endpoint.mjs'), source = readFileSync(endpointScript, 'utf8');
+    const marker = "response.setHeader('content-type', 'application/json');";
+    expect(source).toContain(marker);
+    writeFileSync(down, source.replace(marker, `if (method === 'getUpdates') response.statusCode = 503; ${marker}`));
+    endpointScript = down;
+  }
+  const endpoint = spawn(process.execPath, [endpointScript, log, updates],
     { stdio: ['ignore', 'pipe', 'pipe'] });
   try {
     const port = await new Promise((done, fail) => {
@@ -153,4 +162,15 @@ it('the real runner acts on a dated promise past its instant and records it clos
   expect(out.view.order.some(turn => turn.requestedAction && !turn.requestedAction.legacy && turn.intent !== undefined)).toBe(true);
   expect(promiseEvents).toContain('closed');
   expect(live.recordedTicks.promise).toBeGreaterThanOrEqual(2);
+}, 60000);
+
+// Rule 93 (review finding, round 3): a due reminder never goes out ahead of intake. While every poll fails, a waiting
+// operator message (a withdrawal included) cannot be read, so no reminder may be sent, with the promise sentinel on or off.
+it.each(['none', 'promise'])('with --sentinels %s, a due reminder waits while polling fails', async family => {
+  const out = await launch(family, true, true);
+  expect(out.view.order.filter(turn => turn.requestedAction && turn.intent !== undefined)).toHaveLength(0);
+  expect(out.sends).toBe(0);
+  expect(out.sentTexts.split('\n').filter(Boolean)[1]).toBe('getUpdates');
+  if (family === 'promise')
+    expect(out.status.liveSentinels.events.some(event => event.family === 'promise' && event.event === 'work-requested')).toBe(true);
 }, 60000);
