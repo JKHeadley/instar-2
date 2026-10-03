@@ -37,19 +37,23 @@ default, consequential effects and irreversible acts; **checks:**
 `tests/preview/tools-default.test.ts`, `tests/integration/resource-owner.test.ts` and the gated live
 runs `tests/integration/tool-turn-live.test.ts` and `tests/integration/tool-turn-full-live.test.ts`.
 The preview may run an answer or a scheduled work step as one Claude Code invocation, through the
-existing provider path, with Read, Write, Edit, Glob, Grep, Bash, WebFetch, WebSearch and Agent, plus
-the MCP servers the root's own configuration names. Each tool's scope, finite resource bounds and
-durable cause are enforced before dispatch. A mandatory PreToolUse admission hook decides every call,
-and fails closed on any error. It admits ordinary work: file operations physically contained in the
+existing provider path, with the pinned harness's whole built-in tool set, plus the MCP servers the
+root's own configuration names. No tool is left out to hold a safeguard: each tool's scope, finite
+resource bounds and durable cause are enforced per call before dispatch. A mandatory PreToolUse
+admission hook decides every call, and fails closed on any error. It admits ordinary work: file operations physically contained in the
 turn's new private workspace, workspace search, sandboxed commands (never judged by the words they
 contain), a web read (WebFetch issues only a GET) of a host whose every resolved address is public,
-a web search, an MCP tool the root's configuration lists as a read, and a subagent of the one
-registered type within the turn's reserved budget. It sends every consequential effect to the effect
-doorway's admission, which refuses a tool effect the installed profile does not register: an MCP tool
-not listed as a read (acting in a third-party account), an unsandboxed command, a send outside the
-conversation, a scheduled or remote trigger. A web read of a loopback, private, link-local or
-local-name target is refused, because it reaches this machine and its network rather than the world.
-Anything unregistered is refused. The harness sandbox is where a command's reach is enforced: reads
+a web search, an MCP tool the root's configuration lists as a read, the harness's own bookkeeping, a
+worktree inside the workspace, and a subagent of the one registered type, started by the turn or by
+another subagent, within the turn's one reserved subagent budget. It sends every consequential effect
+to the effect doorway's admission, which refuses a tool effect the installed profile does not
+register: an MCP tool not listed as a read (acting in a third-party account), an unsandboxed command,
+a monitor command (not shown to run inside the sandbox), a send outside the conversation, a scheduled
+or remote trigger, a design sync to a third-party account. It refuses for budget a tool that may start
+agents whose number or model turns the turn cannot reserve before dispatch (a workflow script, a
+skill that may fork). A web read of a loopback, private, link-local or local-name target is refused,
+because it reaches this machine and its network rather than the world. A tool the adapter has not
+classified is refused. The harness sandbox is where a command's reach is enforced: reads
 are refused from the filesystem root down except the turn's scratch volume and the system files
 commands need to run; writes reach only that volume; there is no network, so no command can write to
 the network, no unix socket and no signal to another process. The workspace and every temporary file
@@ -58,7 +62,8 @@ cannot consume the journal's disk. The per-step tool-call count, shared by the t
 is allocated atomically, so overlapping calls cannot exceed it. The launch has a clean environment;
 the harness's own messaging socket and token are removed from every command; an MCP server's launch
 configuration, with any credential it carries, lies in the turn's admission state, which no tool can
-read; and no workflow, agent-team, scheduling, remote-trigger or messaging tool exists. Neither
+read; and a workflow, scheduling, remote-trigger, monitor or messaging call is decided by the hook as
+above. Neither
 `--bare` nor `--safe-mode` is used, because both skip settings hooks, and managed policy that could
 disable hooks refuses the turn. Arbitrary-code execution is admitted only inside this demonstrated
 boundary of hook, sandbox and clean environment together, which prevents access to secrets,

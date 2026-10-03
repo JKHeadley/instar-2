@@ -127,8 +127,9 @@ it('tells the agent and the operator exactly which tools exist and where outward
   const read = () => JSON.stringify({ generation: 'g', commit: 'c', launchers: { 'tests/preview/journal-agent.mjs': [] } });
   const withTools = capabilityBriefing(read, { providerAttempts: 50, expiresAt: 1, tools: true }).text;
   expect(withTools).toContain(TOOLS_BRIEFING);
-  for (const name of SUBSCRIPTION_TOOL_NAMES) expect(TOOLS_BRIEFING).toContain(name);
-  expect(TOOLS_BRIEFING).toMatch(/root MCP; outward effects via the doorway/u);
+  // It describes the capability, never a hand-picked list: the whole set is offered and each call is decided at the hook.
+  expect(TOOLS_BRIEFING).toMatch(/^Tools: full Claude Code set \(files, shell, web reads, nested subagents\) and root MCP; outward effects via the doorway/u);
+  for (const name of SUBSCRIPTION_TOOL_NAMES) expect(TOOLS_BRIEFING).not.toContain(name);
   // No longer than the no-tools line it replaces: the floor packet has no slack.
   expect(Buffer.byteLength(TOOLS_BRIEFING)).toBeLessThanOrEqual(Buffer.byteLength('Nothing unlisted is available: no tools, browsing, running code '
     + 'or acting outside this chat, and no message you start yourself beyond the listed answers to later-time requests.'));
@@ -140,8 +141,9 @@ it('tells the agent and the operator exactly which tools exist and where outward
   expect(fallback).toContain(TOOLS_BRIEFING); expect(fallback).not.toContain('You have no tools');
   const view = { toolTurns: { invocations: 2, reservedCalls: 14, refusedCap: 1, toolCalls: 5, toolRefusals: 2, inconsistent: 0, open: [] } };
   expect(toolStatusLines(view, true)).toEqual([
-    'Tools: Read, Write, Edit, Glob, Grep, Bash, WebFetch, WebSearch, Agent and the root\'s MCP servers, in a private per-turn workspace; '
-      + 'shell sandboxed without network; web reads only; consequential effects go through the effect doorway.',
+    `Tools: the harness's full built-in set (${SUBSCRIPTION_TOOL_NAMES.length} tools, each call decided at the admission hook) and the root's `
+      + 'MCP servers, in a private per-turn workspace; shell sandboxed without network; web reads only; subagents may delegate within the '
+      + 'turn\'s budget; consequential effects go through the effect doorway.',
     'Tool turns: 2 run (14 model attempts reserved for them), 5 tool calls admitted, 2 refused, 1 turns answered without tools because the call allowance was short.']);
   expect(toolStatusLines({ toolTurns: { ...view.toolTurns, open: ['x#3'] } }, true)[1]).toContain('1 without a recorded trace yet');
   expect(toolStatusLines({ toolTurns: { ...view.toolTurns, children: { started: 3, returned: 1, cancelled: 1, unknown: 1 } } }, true)[1])
@@ -247,11 +249,13 @@ it('reserves each subagent\'s whole budget with the turn, as far as the allowanc
         writeFileSync(join(turn.stateDirectory, 'admission.jsonl'), rows.join('\n')); return 'answer'; } }).catch(() => null);
     return { journal, appended, config };
   };
-  const agent = (tid: string, child: number) => JSON.stringify({ phase: 'pre', id: tid, n: child, tool: 'Agent', input: '{}', decision: 'allow', reason: 'r', kind: 'subagent', child });
+  const agent = (tid: string, child: number, by?: string) => JSON.stringify({ phase: 'pre', id: tid, n: child, tool: 'Agent', input: '{}',
+    decision: 'allow', reason: 'r', kind: 'subagent', child, ...(by ? { agent: by } : {}) });
   const start = (agentId: string) => JSON.stringify({ phase: 'child-start', agent: agentId, type: 'worker' });
-  // One child returned, one cut off by the operator's stop.
-  const stoppedTurn = await turnWith(1000, [agent('t1', 1), start('a1'), JSON.stringify({ phase: 'post', id: 't1', tool: 'Agent', result: '"42"', agent: 'a1' }),
-    agent('t2', 2), start('a2')], true);
+  // One child returned; the one it started in turn (Rule 114: a subagent delegates within the same reservation) was cut off
+  // by the operator's stop.
+  const stoppedTurn = await turnWith(1000, [agent('t1', 1), start('a1'), agent('t2', 2, 'a1'), start('a2'),
+    JSON.stringify({ phase: 'post', id: 't1', tool: 'Agent', result: '"42"', agent: 'a1' })], true);
   expect(stoppedTurn.config.children).toEqual({ max: 2, type: SUBSCRIPTION_SUBAGENT_TYPE });
   expect(stoppedTurn.appended[0]).toMatchObject({ phase: 'reserved', calls: extra + 2 * each,
     delegation: { children: 2, turnsEach: each, type: SUBSCRIPTION_SUBAGENT_TYPE, authority: 'activation-ref sha256:tools' } });
@@ -259,7 +263,8 @@ it('reserves each subagent\'s whole budget with the turn, as far as the allowanc
   expect(edges.map(edge => [edge.child, edge.agent, edge.state])).toEqual([['t1', 'a1', 'returned'], ['t2', 'a2', 'cancelled']]);
   expect(edges[0]).toMatchObject({ parent: `${id}#0`, authority: 'activation-ref sha256:tools', budget: { modelTurns: each },
     exitTest: expect.any(String), placement: expect.any(String), transport: 'claude-code Agent tool', resultDestination: expect.any(String),
-    cancellation: expect.any(String), result: '"42"' });
+    cancellation: expect.any(String), result: '"42"', parentAgent: null });
+  expect(edges[1]).toMatchObject({ parent: `${id}#0`, parentAgent: 'a1', resultDestination: 'the tool result of subagent a1', state: 'cancelled' });
   expect(stoppedTurn.journal.view.toolTurns?.children).toEqual({ started: 2, returned: 1, cancelled: 1, unknown: 0 });
   // Without a stop, a child with no result is unknown, never cancelled or returned.
   const crashed = await turnWith(1000, [agent('t1', 1), start('a1')], false);
@@ -275,6 +280,11 @@ it('reserves each subagent\'s whole budget with the turn, as far as the allowanc
   j.append({ kind: 'tool-turn', phase: 'reserved', id, attempt: 0, calls: 15, at: 1, delegation: { children: 2, turnsEach: 4, type: 'worker', authority: 'a' } } as never);
   expect(() => j.append({ kind: 'tool-turn', phase: 'trace', id, attempt: 0, consistent: true, workspaceBytes: 0, calls: [], at: 2,
     edges: [{ child: 't', agent: null, parent: 'other#0', state: 'returned' }] } as never)).toThrow(/edges/u);
+  expect(() => j.append({ kind: 'tool-turn', phase: 'trace', id, attempt: 0, consistent: true, workspaceBytes: 0, calls: [], at: 2,
+    edges: [{ child: 't', agent: null, parent: `${id}#0`, parentAgent: 7, state: 'returned' }] } as never)).toThrow(/edges/u);
+  j.append({ kind: 'tool-turn', phase: 'trace', id, attempt: 0, consistent: true, workspaceBytes: 0, calls: [], at: 2,
+    edges: [{ child: 't', agent: 'a2', parent: `${id}#0`, parentAgent: 'a1', state: 'returned' }] } as never);
+  expect(j.view.toolTurns?.children).toEqual({ started: 1, returned: 1, cancelled: 0, unknown: 0 });
 });
 
 it('keeps an interrupted turn\'s hook record past retention and journals its child edges as unknown at the next launch (Rule 114)', async () => {

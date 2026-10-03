@@ -3550,8 +3550,9 @@ framing `preview-tools-v1`) and keeps it only when the sealed authority record r
 `ROOT/tools-activation.json`, the live withdrawal handle. `--tools-activation /ABSOLUTE/record.json` names a record
 the desk wrote instead; `--tools off` refuses tools. With no resolving grant every answer stays text only, the
 briefing keeps its no-tools line, stderr says `preview: tools off: …` and `status` says `Tools: off (…)`. With tools,
-an operator answer turn or a scheduled work step runs as one Claude Code invocation with Read, Write, Edit, Glob,
-Grep, Bash, WebFetch, WebSearch and Agent, plus the root's MCP servers (Part Thirteen §9,
+an operator answer turn or a scheduled work step runs as one Claude Code invocation with the pinned harness's whole
+built-in tool set (`SUBSCRIPTION_TOOL_NAMES`; nothing is left out, the hook decides each call), plus the root's MCP
+servers (Part Thirteen §9,
 `docs/17-harness-adapters/09-claude-code-codex-and-future-runtime-mappings.md`):
 
 - Each turn gets a fresh private workspace on its own fixed-size (128 MiB) scratch volume: a sparse disk image under
@@ -3561,11 +3562,15 @@ Grep, Bash, WebFetch, WebSearch and Agent, plus the root's MCP servers (Part Thi
   the newest 16 turn directories are kept, and the journal's `tool-turn` rows are the record. The root must be on
   ordinary storage (a disk image cannot be mounted from a RAM disk); if the volume cannot be mounted the turn fails
   closed.
-- `tool-admission-hook.mjs` admits ordinary work: in-workspace file operations, sandboxed commands whatever words they
-  contain, a WebFetch (GET only) of a host whose every resolved address is public, a WebSearch, an MCP tool listed as
-  a read, and a `worker` subagent within the turn's budget (rewritten to the foreground). Consequential effects go to
-  the effect doorway, which refuses them: an MCP tool not listed as a read, an unsandboxed command, a send, a
-  scheduled or remote trigger. A web read of a loopback, private or local-name host is refused. Each call takes one of
+- `tool-admission-hook.mjs` admits ordinary work: in-workspace file and notebook operations, sandboxed commands
+  whatever words they contain, a WebFetch (GET only) of a host whose every resolved address is public, a WebSearch,
+  an MCP tool listed as a read, the harness's bookkeeping (ToolSearch, ListAgents, CronList, ReportFindings,
+  TaskStop), a worktree inside the workspace, and a `worker` subagent within the turn's budget (rewritten to the
+  foreground), started by the turn or by a subagent. Consequential effects go to the effect doorway, which refuses
+  them: an MCP tool not listed as a read, an unsandboxed command, a Monitor command (not shown to be sandboxed; Bash
+  in the background is), a send, a scheduled or remote trigger, a DesignSync. Workflow and Skill are refused for
+  budget: the agents they may start cannot be reserved before dispatch. A web read of a loopback, private or
+  local-name host is refused; a tool the hook does not classify is refused. Each call takes one of
   the step's 32 slots (shared with the turn's subagents) by exclusive create, so overlapping calls cannot exceed the
   cap. The sandbox refuses reads from `/` down except the scratch volume and the system files commands need, writes
   outside the volume, the network (a shell cannot write to the network), unix sockets and signals to other
@@ -3573,13 +3578,14 @@ Grep, Bash, WebFetch, WebSearch and Agent, plus the root's MCP servers (Part Thi
 - MCP: `ROOT/mcp.json` (the operator's file; absent means none) is `{"mcpServers": {name: {command, args?, env?}},
   "reads": ["mcp__name__tool", …]}`. Its launch configuration, with any credential in `env`, is copied into the
   turn's admission state, which no tool can read; servers run outside the sandbox as the runner's identity.
-- Subagents: at most 2 per turn, type `worker`, 4 model turns each, no grandchildren. The hook records each child's
-  start and stop (synced) before it acts; the journal's `tool-turn` trace carries one Rule 114 edge per child
-  (`returned`, `cancelled` by stop or withdrawal, or `unknown`).
+- Subagents: at most 2 per turn at any depth (a `worker` may start its own), type `worker`, 4 model turns each. The
+  hook records each child's start and stop (synced) before it acts; the journal's `tool-turn` trace carries one Rule
+  114 edge per child, naming the subagent that started it (`parentAgent`, null for the turn) (`returned`,
+  `cancelled` by stop or withdrawal, or `unknown`).
 - Before dispatch the turn reserves its whole liability, `maxTurns - 1` model attempts beyond the answer's own plus
   each subagent's turns, against the call cap, and keeps it. Subagent budget comes only from allowance beyond this
   turn and one further plain tool turn. A short allowance, or a packet with no room for the longer tool prompt,
-  answers that turn without tools, recorded. `status` shows the tool list, tool-turn and subagent counts and refusals.
+  answers that turn without tools, recorded. `status` shows the tool set, tool-turn and subagent counts and refusals.
 - `/stop`, a latched stop file, expiry or withdrawal (changing or removing the record, or a sealed-authority change
   under which the grant no longer resolves) ends a live turn and its subagents: the resource owner kills its process
   group within its 25 ms poll, every cleanup census reclaims each member it finds, and quiescence is verified within

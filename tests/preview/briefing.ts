@@ -1,7 +1,6 @@
 import { createHash } from 'node:crypto';
 import { closeSync, fstatSync, openSync, readSync } from 'node:fs';
 import { redact } from '../../src/recall/redact.js';
-import { SUBSCRIPTION_TOOL_NAMES } from '../../src/assembly/production-provider.js';
 
 export const SUCCESSIVE_CONTEXT_VERSION = 'successive-context-v1';
 const sha256 = (bytes: string) => `sha256:${createHash('sha256').update(bytes, 'utf8').digest('hex')}`;
@@ -23,11 +22,12 @@ export const SOURCE_EXCERPTS = Object.freeze([
 export const CAPABILITY_BRIEFING_PATH = 'generated/capabilities.json';
 export const CAPABILITY_LAUNCHER = 'tests/preview/journal-agent.mjs';
 type BriefedFeature = { id: string; status: string; availability: string; userFacing: boolean; text: string | null };
-/** Part Thirteen §9 (docs/17-harness-adapters): with tools on (the default under a resolving grant), the closing line names exactly
- * the tool list the tool policy launches with (generated from it, Rule 84), the root's MCP servers, and where outward effects go.
- * It replaces the no-tools line at no more than that line's 176 bytes: the floor packet carries no slack (default-context-floor).
- * The tool turn's own system message carries the detail. Without tools the no-tools lines stay byte for byte. */
-export const TOOLS_BRIEFING = `Tools: ${SUBSCRIPTION_TOOL_NAMES.join(', ')}, root MCP; outward effects via the doorway; `
+/** Part Thirteen §9 (docs/17-harness-adapters): with tools on (the default under a resolving grant), the closing line says the
+ * turn has the harness's whole built-in tool set and the root's MCP servers, and where outward effects go. It describes the
+ * capability rather than naming tools: what a tool may do is decided per call at the admission hook, and the tool turn's own
+ * system message and tool definitions carry the detail. It replaces the no-tools line at no more than that line's 176 bytes:
+ * the floor packet carries no slack (default-context-floor). Without tools the no-tools lines stay byte for byte. */
+export const TOOLS_BRIEFING = 'Tools: full Claude Code set (files, shell, web reads, nested subagents) and root MCP; outward effects via the doorway; '
   + 'no self-started message beyond later-time answers.';
 export function capabilityBriefing(readSource: (path: string) => string,
   limits: { providerAttempts: number; expiresAt: number; tools?: boolean }, launcher = CAPABILITY_LAUNCHER) {

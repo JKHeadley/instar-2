@@ -211,16 +211,19 @@ it('replays every tool call the spike recorded under the real harness and reache
           { exists: existsSync, realpath: realpathSync, addresses: () => ['93.184.215.14'] }).decision
         : /"permissionDecision":"(\w+)"/u.exec(spawnSync(process.execPath, [HOOK, 'pre', state], { input: JSON.stringify({ tool_name: row.tool,
           tool_input: input, tool_use_id: `toolu_${String(row.n)}` }), encoding: 'utf8' }).stdout)?.[1] ?? 'allow';
-      // The spike's keyword refusal of a shell command (its two curl calls per run) is now the sandbox's to enforce, and its
-      // refusal of a web read (one WebFetch of example.org per hook run) is now ordinary work.
-      const want = (row.tool === 'Bash' && row.decision === 'deny' && /admits network/u.test(row.reason)) || row.tool === 'WebFetch' ? 'allow' : row.decision;
+      // The spike's keyword refusal of a shell command (its two curl calls per run) is now the sandbox's to enforce, its
+      // refusal of a web read (one WebFetch of example.org per hook run) is now ordinary work, and its refusal of ToolSearch
+      // (an unclassified tool then) is now harness bookkeeping. Workflow stays refused, now for budget (its agents' turns
+      // cannot be reserved), not for being unknown.
+      const want = (row.tool === 'Bash' && row.decision === 'deny' && /admits network/u.test(row.reason)) || row.tool === 'WebFetch'
+        || row.tool === 'ToolSearch' ? 'allow' : row.decision;
       expect([run, row.n, row.tool, got]).toEqual([run, row.n, row.tool, want]);
       if (want !== row.decision) rekeyed++;
       replayed++;
     }
   }
   expect(replayed).toBe(33);
-  expect(rekeyed).toBe(6);
+  expect(rekeyed).toBe(9);
 });
 
 it('admits a web read only of a public host, resolved before the decision; a local, private or credentialed target is refused', () => {
@@ -266,16 +269,16 @@ it('admits an MCP tool as ordinary work only when the root lists it as a read; e
       reason: expect.stringContaining('registers no tool:mcp operation') }]);
 });
 
-it('admits one registered subagent type per budget slot, in the foreground, and records its start and stop as an edge', () => {
+it('admits the registered subagent type per slot of one shared budget, from the turn or from a subagent (Rule 114), in the foreground, and records each start, stop and parent as an edge', () => {
   const { ws, state } = turn();
   writeFileSync(join(state, 'config.json'), JSON.stringify({ ...JSON.parse(readFileSync(join(state, 'config.json'), 'utf8')),
-    children: { max: 1, type: 'worker' } }));
-  const agent = (input: object, extra: object = {}) => JSON.stringify({ tool_name: 'Agent', tool_input: input, tool_use_id: 'toolu_agent', ...extra });
+    children: { max: 2, type: 'worker' } }));
+  const agent = (input: object, extra: object = {}, id = 'toolu_agent') => JSON.stringify({ tool_name: 'Agent', tool_input: input, tool_use_id: id, ...extra });
   const run = (input: string, mode = 'pre') => spawnSync(process.execPath, [HOOK, mode, state], { input, encoding: 'utf8' });
-  // A refused shape spends nothing: wrong type, default type, a child's own subagent, an empty prompt.
+  // A refused shape spends nothing: wrong type, default type, an empty prompt (from the turn or from a subagent alike).
   for (const [input, reason] of [[agent({ prompt: 'x', subagent_type: 'general-purpose' }), /not this turn's registered type worker/u],
-    [agent({ prompt: 'x' }), /\(default\)/u], [agent({ prompt: 'x', subagent_type: 'worker' }, { agent_id: 'child-1' }), /may not start another subagent/u],
-    [agent({ prompt: ' ', subagent_type: 'worker' }), /empty subagent prompt/u]] as const) {
+    [agent({ prompt: 'x' }), /\(default\)/u], [agent({ prompt: ' ', subagent_type: 'worker' }), /empty subagent prompt/u],
+    [agent({ prompt: 'x', subagent_type: 'Explore' }, { agent_id: 'a1' }), /not this turn's registered type worker/u]] as const) {
     const out = JSON.parse(run(input).stdout).hookSpecificOutput;
     expect([out.permissionDecision, reason.test(out.permissionDecisionReason)]).toEqual(['deny', true]);
   }
@@ -285,21 +288,62 @@ it('admits one registered subagent type per budget slot, in the foreground, and 
     model: 'opus', team_name: 't' })).stdout).hookSpecificOutput;
   expect(first).toMatchObject({ permissionDecision: 'allow', updatedInput: { description: 'd', prompt: 'p', subagent_type: 'worker', run_in_background: false } });
   expect(Object.keys(first.updatedInput).sort()).toEqual(['description', 'prompt', 'run_in_background', 'subagent_type']);
-  // The budget is exhausted: the next admissible call is refused for budget.
-  expect(JSON.parse(run(agent({ prompt: 'p', subagent_type: 'worker' })).stdout).hookSpecificOutput)
-    .toMatchObject({ permissionDecision: 'deny', permissionDecisionReason: expect.stringMatching(/no subagent budget left/u) });
-  // Start and stop are recorded (durably, synced) and never fail the turn, even on malformed input.
   expect(run(JSON.stringify({ agent_id: 'a1', agent_type: 'worker' }), 'child-start').status).toBe(0);
+  // That subagent delegates in turn: its own Agent call takes the second slot of the same budget.
+  const nested = JSON.parse(run(agent({ description: 'n', prompt: 'q', subagent_type: 'worker' }, { agent_id: 'a1' }, 'toolu_nested')).stdout).hookSpecificOutput;
+  expect(nested).toMatchObject({ permissionDecision: 'allow', permissionDecisionReason: 'subagent 2 of 2, worker, started by subagent a1',
+    updatedInput: { prompt: 'q', subagent_type: 'worker', run_in_background: false } });
+  expect(run(JSON.stringify({ agent_id: 'a2', agent_type: 'worker' }), 'child-start').status).toBe(0);
+  // The budget is exhausted for the whole tree: the next admissible call is refused for budget, from the turn or any subagent.
+  for (const extra of [{}, { agent_id: 'a1' }, { agent_id: 'a2' }])
+    expect(JSON.parse(run(agent({ prompt: 'p', subagent_type: 'worker' }, extra, 'toolu_over')).stdout).hookSpecificOutput)
+      .toMatchObject({ permissionDecision: 'deny', permissionDecisionReason: expect.stringMatching(/no subagent budget left/u) });
+  // Start and stop are recorded (durably, synced) and never fail the turn, even on malformed input.
+  expect(run(JSON.stringify({ agent_id: 'a2', agent_type: 'worker' }), 'child-stop').status).toBe(0);
+  expect(run(JSON.stringify({ tool_name: 'Agent', tool_use_id: 'toolu_nested', tool_response: { status: 'completed', agentId: 'a2', content: [{ type: 'text', text: '6' }] } }), 'post').status).toBe(0);
   expect(run(JSON.stringify({ agent_id: 'a1', agent_type: 'worker' }), 'child-stop').status).toBe(0);
   expect(run('not json', 'child-stop').status).toBe(0);
   expect(run(JSON.stringify({ tool_name: 'Agent', tool_use_id: 'toolu_agent', tool_response: { status: 'completed', agentId: 'a1', content: [{ type: 'text', text: '42' }] } }), 'post').status).toBe(0);
   const trace = toolTrace(readFileSync(join(state, 'admission.jsonl'), 'utf8').trim().split('\n'));
   expect(trace.consistent).toBe(true);
-  expect(trace.children).toEqual([{ toolUse: 'toolu_agent', slot: 1, agent: 'a1', started: true, stopped: true, state: 'returned', result: expect.stringContaining('42') }]);
+  expect(trace.children).toEqual([
+    { toolUse: 'toolu_agent', slot: 1, agent: 'a1', parentAgent: null, started: true, stopped: true, state: 'returned', result: expect.stringContaining('42') },
+    { toolUse: 'toolu_nested', slot: 2, agent: 'a2', parentAgent: 'a1', started: true, stopped: true, state: 'returned', result: expect.stringContaining('6') }]);
   // A child calls tools under its own agent id, through the same hook and the same per-step slots.
   run(JSON.stringify({ tool_name: 'Read', tool_input: { file_path: join(ws, 'in.txt') }, tool_use_id: 'toolu_child_read', agent_id: 'a1' }));
   const rows = readFileSync(join(state, 'admission.jsonl'), 'utf8').trim().split('\n').map(line => JSON.parse(line));
   expect(rows.at(-1)).toMatchObject({ phase: 'pre', tool: 'Read', decision: 'allow', agent: 'a1' });
+});
+
+it('decides every tool of the harness\'s built-in set by its class at the hook: none is refused for being left out', () => {
+  const { ws, tmp } = turn();
+  const config = { workspace: ws, tmp, maxCalls: 50, maxWriteBytes: 10, operations: SINGLE_MACHINE_PROFILE.operations,
+    children: { max: 1, type: 'worker' } };
+  const fs = { exists: existsSync, realpath: realpathSync, addresses: () => ['93.184.215.14'] };
+  const decide = (tool: string, input: object = {}) => admitToolCall({ tool_name: tool, tool_input: input }, config, 1, fs);
+  // Ordinary: a notebook inside the workspace, the harness's bookkeeping, a worktree inside the workspace.
+  expect(decide('NotebookEdit', { notebook_path: join(ws, 'n.ipynb'), new_source: 'x' })).toEqual({ decision: 'allow', reason: 'ordinary in-workspace file operation' });
+  for (const tool of ['ToolSearch', 'ListAgents', 'CronList', 'ReportFindings', 'TaskStop'])
+    expect([tool, decide(tool, { query: 'x' })]).toEqual([tool, { decision: 'allow', reason: 'harness bookkeeping' }]);
+  expect(decide('EnterWorktree', { name: 'w' }).decision).toBe('allow');
+  expect(decide('ExitWorktree', { action: 'keep' }).decision).toBe('allow');
+  // The neighbours: the same tools reaching outside the workspace are refused for scope.
+  expect(decide('NotebookEdit', { notebook_path: '/etc/n.ipynb', new_source: 'x' })).toMatchObject({ decision: 'deny', kind: 'scope' });
+  expect(decide('EnterWorktree', { path: '/Users/x/repo' })).toMatchObject({ decision: 'deny', kind: 'scope' });
+  // Consequential: each goes to the effect doorway by its kind, which the single-machine profile refuses.
+  for (const [tool, kind] of [['SendMessage', 'send'], ['PushNotification', 'send'], ['RemoteTrigger', 'network-write'], ['DesignSync', 'network-write'],
+    ['CronCreate', 'schedule'], ['CronDelete', 'schedule'], ['ScheduleWakeup', 'schedule'], ['Monitor', 'unsandboxed']] as const)
+    expect([tool, decide(tool, { command: 'x' })]).toEqual([tool, { decision: 'deny', kind,
+      reason: expect.stringMatching(new RegExp(`effect doorway: the installed profile registers no tool:${kind} operation`, 'u')) }]);
+  // A profile that registers the operation admits it through the same doorway (the doorway, not the tool list, decides).
+  expect(admitToolCall({ tool_name: 'SendMessage', tool_input: {} }, { ...config, operations: ['tool:send'] }, 1, fs))
+    .toEqual({ decision: 'allow', reason: 'registered operation tool:send', kind: 'send' });
+  // Budget: tools that may start agents the turn cannot reserve before dispatch.
+  for (const tool of ['Workflow', 'Skill'])
+    expect([tool, decide(tool, { skill: 'x', script: 'x' })]).toEqual([tool, { decision: 'deny', kind: 'budget',
+      reason: expect.stringMatching(/cannot reserve before dispatch \(the spend floor\); delegate through Agent instead/u) }]);
+  // A tool this adapter has not classified (a newer harness) is refused, since nothing says what it does.
+  expect(decide('FutureTool')).toEqual({ decision: 'deny', reason: 'unclassified tool FutureTool: refused by default' });
 });
 
 it('links each subagent edge to its child, and leaves an edge without a result open for the runner to record cancelled or unknown', () => {

@@ -3,7 +3,7 @@ import { readFileSync } from 'node:fs';
 import { resolve } from 'node:path';
 import { DECLARED_OBLIGATIONS_GUIDE, exciseNamedClaims, parseReplyReviewVerdict, quotedSpans, replyReviewQuestion,
   type ReplyRule } from './reply-check.js';
-import { SOURCE_PINS, sourcePacket } from './briefing.js';
+import { SOURCE_PINS, sourcePacket, TOOLS_BRIEFING } from './briefing.js';
 import { governingConstraints, OBLIGATION_DECISION_TOOLS, previewCapabilities, TOOL_ATTEMPTS_MEANING } from './journal.js';
 
 /** Why this file exists (plan #370, live-proof K11a, Rules 78 and 84): asked "What can you do in this chat, and what
@@ -72,7 +72,7 @@ it('the guide distinguishes describing a listed limit from declining asked work,
   expect(sources.find(source => source.id === 'capability-note')!.text).toContain('Nothing unlisted is available: no tools, browsing');
   const tools = sourcePacket(path => readFileSync(resolve(process.cwd(), path), 'utf8'), SOURCE_PINS,
     { providerAttempts: 1, expiresAt: 1, tools: true }).sources.find(source => source.id === 'capability-note')!.text;
-  expect(tools).toContain('Tools: Read, Write, Edit, Glob, Grep, Bash, WebFetch, WebSearch, Agent, root MCP');
+  expect(tools).toContain('Tools: full Claude Code set (files, shell, web reads, nested subagents) and root MCP');
   expect(tools).toContain('outward effects via the doorway');
 });
 
@@ -92,18 +92,20 @@ it('on the tools route the review packet is route-true, and the same two sides h
     expect(packet.governingConstraints, input).toEqual(governingConstraints(true));
     expect(packet.obligationDecision, input).toBe(OBLIGATION_DECISION_TOOLS);
     expect(packet.declaredObligations.toolAttempts, input).toEqual({ meaning: TOOL_ATTEMPTS_MEANING, calls: [] });
-    expect(packet.sources.find(source => source.id === 'capability-note')!.text, input).toContain('Tools: Read, Write, Edit, Glob, Grep, Bash, WebFetch, WebSearch, Agent, root MCP');
+    expect(packet.sources.find(source => source.id === 'capability-note')!.text, input).toContain(TOOLS_BRIEFING);
     expect(JSON.parse(read(output)).modelUsage, output).toHaveProperty('claude-sonnet-5');
   }
   const described = parseReplyReviewVerdict(decision('call7-review-tools-route-new-guide.json').conclusion.value, flagged);
   expect(described.verdict).toBe('pass');
   expect(described.ruleIds).toEqual([]);
-  // Declining asked work stays a violation. With the full tool set (w4-toolsfull, re-recorded 2026-10-03) WebFetch is
-  // listed, so the reviewer also judges the decline a false cannot-do (claims_blocked) and cites the listed tool.
+  // Declining asked work stays a violation. With the full tool set (w4-toolsfull, re-recorded 2026-10-03 on the briefing that
+  // describes the set rather than naming its tools) web reads are listed, so the reviewer also judges the decline a false
+  // cannot-do (claims_blocked) and cites the listed capability.
   const declined = finding('call8-review-tools-route-decline-new-guide.json', 'unrecorded_blocker');
   expect(declined.verdict).toBe('violation');
-  expect(declined.reason).toMatch(/WebFetch/u);
-  expect(finding('call8-review-tools-route-decline-new-guide.json', 'claims_blocked').verdict).toBe('violation');
+  const blocked = finding('call8-review-tools-route-decline-new-guide.json', 'claims_blocked');
+  expect(blocked.verdict).toBe('violation');
+  expect(blocked.reason).toMatch(/web reads/u);
   // This recorded verdict quotes no sentence of the reply, so the claim-scoped cut locates nothing; such a verdict is
   // answered by the revision path, not by a cut (the earlier recording quoted the sentence and the cut removed it).
   const decline = "I can't browse or fetch web pages from this chat, so I can't get that page title for you.";

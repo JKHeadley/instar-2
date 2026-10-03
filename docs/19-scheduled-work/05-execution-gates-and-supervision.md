@@ -121,11 +121,14 @@ including one started inside a turn, has the Rule 114 durable parent-child edge.
 remain owned by their enclosing execution. Durable work survives disposable turns and resumes only
 under current scope, ownership and resource authority. The preview's tool turn may start subagents of
 one registered type, in the foreground, each bounded in model turns and sharing the turn's tool-call
-count; workflows and agent teams, whose children no edge would record, do not exist in its launch, and
-a subagent cannot start another. The turn's reservation, durable before dispatch, carries the
+count, and a subagent may start its own within the same budget, so the delegation's shape is chosen
+for the work; the turn's one reserved budget covers every subagent at any depth. A workflow or a skill
+that may start agents whose number or model turns cannot be reserved before dispatch is refused for
+budget at the admission hook. The turn's reservation, durable before dispatch, carries the
 delegation's authority and its whole budget share. Each child's start and stop are recorded on the
-machine before it acts, and the turn's journaled trace carries one edge per child: the parent turn,
-the child, the authority, the budget, the exit test (its final message returns as the tool result),
+machine before it acts, and the turn's journaled trace carries one edge per child: the parent turn
+that owns its reservation, the subagent that started it when not the turn itself, the child, the
+authority, the budget, the exit test (its final message returns as the tool result to whoever started it),
 the placement (the turn's own harness process on this machine), the transport, the result destination
 and the cancellation (the turn's process group). An edge ends returned, or cancelled when the
 operator's stop or a withdrawal ended the turn, or unknown; it is never silently dropped. The commands

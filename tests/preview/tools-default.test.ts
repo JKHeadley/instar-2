@@ -73,11 +73,11 @@ it('derives and keeps the tools activation when the recorded grant covers the to
   expect(invocationPolicyDigest).toBe(toolsDigest(on.conversation.model));
   expect(invocationPolicyDigest).not.toBe(conversationDigest);
   expect(rest).toEqual(conversationRest);
-  expect(on.status).toMatch(/Tools: Read, Write, Edit, Glob, Grep, Bash, WebFetch, WebSearch, Agent and the root's MCP servers/u);
+  expect(on.status).toMatch(/Tools: the harness's full built-in set \(27 tools, each call decided at the admission hook\) and the root's MCP servers/u);
   // A grant with an expiry still ahead resolves the same way (the neighbour of the live-expiry withdrawal below).
   const dated = await launch('dated', record => withToolsGrant(record, false, Date.now() + 3_600_000));
   expect(dated.run.status, dated.run.stderr).toBe(0);
-  expect(dated.status).toMatch(/Tools: Read, Write, Edit, Glob, Grep, Bash, WebFetch, WebSearch, Agent and the root's MCP servers/u);
+  expect(dated.status).toMatch(/Tools: the harness's full built-in set \(27 tools, each call decided at the admission hook\) and the root's MCP servers/u);
 });
 
 it('stays text only, and says why in status, without a covering grant, with the grant revoked, or with --tools off', { timeout: 90000 }, async () => {
@@ -153,7 +153,7 @@ const WITHDRAWN = 'Tools: off (withdrawn since launch: the activation record cha
 it('withdraws tools live when the grant is revoked in the sealed authority while the runner runs', { timeout: 90000 }, async () => {
   // The operator revokes the grant; the desk re-seals the authority. Nothing touches the runner or its record.
   const status = await liveStatus(unsealed => withToolsGrant(unsealed), async (seal, unsealed) => seal(withToolsGrant(unsealed, true)));
-  expect(status).not.toMatch(/Tools: Read, Write/u);
+  expect(status).not.toMatch(/Tools: the harness's full built-in set/u);
   expect(status).toContain(WITHDRAWN);
 });
 
@@ -162,7 +162,7 @@ it('withdraws tools live when the grant expires, though the sealed authority\'s 
   const status = await liveStatus(unsealed => withToolsGrant(unsealed, false, expiresAt), async () => {
     while (Date.now() <= expiresAt + 500) await new Promise(r => setTimeout(r, 100));
   });
-  expect(status).not.toMatch(/Tools: Read, Write/u);
+  expect(status).not.toMatch(/Tools: the harness's full built-in set/u);
   expect(status).toContain(WITHDRAWN);
 });
 
@@ -170,6 +170,6 @@ it('withdraws tools live when the sealed authority becomes unreadable', { timeou
   const status = await liveStatus(unsealed => withToolsGrant(unsealed), async (_seal, _unsealed, authorityPath) => {
     unlinkSync(authorityPath);
   });
-  expect(status).not.toMatch(/Tools: Read, Write/u);
+  expect(status).not.toMatch(/Tools: the harness's full built-in set/u);
   expect(status).toContain(WITHDRAWN);
 });

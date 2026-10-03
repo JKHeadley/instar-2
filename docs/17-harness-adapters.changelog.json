@@ -1,5 +1,21 @@
 [
   {
+    "revision": 5,
+    "date": "2026-10-03",
+    "status": "draft",
+    "cause": {
+      "kind": "draft",
+      "note": "Unit w4-toolsfull repair, review round 2 (Astra, VERDICT NO), under the operator's approved amendment (Justin, topic 102965 message 122028, 12:20 PDT 2026-10-03): the agent's ability is never reduced to satisfy a safeguard a checkpoint can enforce. No constitution change."
+    },
+    "changes": [
+      {
+        "what": "§9 tool rule: the pinned harness's whole built-in tool set is offered and no tool is left out to hold a safeguard; the admission hook decides each call by its class (ordinary work including notebooks, bookkeeping and in-workspace worktrees; the effect doorway for sends, schedules, remote triggers, design syncs, unsandboxed and monitor commands and unlisted MCP calls; a budget refusal for a workflow or skill whose agents cannot be reserved before dispatch; refusal of an unclassified tool), and a subagent may start its own within the turn's one reserved budget.",
+        "why": "Review round 2 found the curated tool list and the ban on a subagent delegating were capability removal where the hook, the doorway and the reservation already enforce the floors.",
+        "ref": "lanes/astra-unit-w4-toolsfull-review.md (round 2); lanes/w4-toolsfull-PROGRESS.md (Pipeline repair, round 2); LIVE-PATH-PLAN.md row #395"
+      }
+    ]
+  },
+  {
     "revision": 4,
     "date": "2026-10-03",
     "status": "draft",

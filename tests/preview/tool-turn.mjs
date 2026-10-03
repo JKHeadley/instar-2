@@ -164,11 +164,13 @@ function traceRow({ id, attempt, trace, authority, ended, redactText, workspace,
   return { kind: 'tool-turn', phase: 'trace', id, attempt, consistent: trace.consistent,
     calls: trace.calls.slice(0, 64).map(call => ({ ...call, input: redactText(call.input),
       result: call.result === null ? null : redactText(call.result) })),
+    // `parent` is the turn that owns the edge and its reservation; `parentAgent` the subagent that started it (null: the turn).
     edges: trace.children.slice(0, SUBSCRIPTION_TOOL_LIMITS.maxChildren).map(edge => ({ child: edge.toolUse, agent: edge.agent,
-      parent: `${id}#${String(attempt)}`, authority, budget: { modelTurns: SUBSCRIPTION_TOOL_LIMITS.childMaxTurns,
+      parent: `${id}#${String(attempt)}`, parentAgent: edge.parentAgent ?? null, authority, budget: { modelTurns: SUBSCRIPTION_TOOL_LIMITS.childMaxTurns,
         toolCalls: `shared ${String(SUBSCRIPTION_TOOL_LIMITS.maxToolCalls)} per turn` },
       exitTest: 'returns its final message as the subagent tool result', placement: 'in the turn\'s harness process on this machine',
-      transport: 'claude-code Agent tool', resultDestination: 'the parent turn\'s tool result', cancellation: 'ends with the turn\'s process group',
+      transport: 'claude-code Agent tool',
+      resultDestination: edge.parentAgent ? `the tool result of subagent ${edge.parentAgent}` : 'the parent turn\'s tool result', cancellation: 'ends with the turn\'s process group',
       state: edge.state === 'returned' ? 'returned' : ended, result: edge.result === null ? null : redactText(edge.result) })),
     workspaceBytes: workspace === null ? null : workspaceBytes(workspace), at };
 }
@@ -256,8 +258,9 @@ export async function runToolTurn({ journal, root, id, prepared, promptLimit, de
 export function toolStatusLines(view, enabled, off = null) {
   if (!enabled) return off ? [`Tools: off (${off}); answers are text only.`] : [];
   const stats = view.toolTurns ?? { invocations: 0, reservedCalls: 0, refusedCap: 0, toolCalls: 0, toolRefusals: 0, inconsistent: 0, open: [] };
-  return [`Tools: ${SUBSCRIPTION_TOOL_NAMES.join(', ')} and the root's MCP servers, in a private per-turn workspace; shell sandboxed without `
-      + 'network; web reads only; consequential effects go through the effect doorway.',
+  return [`Tools: the harness's full built-in set (${SUBSCRIPTION_TOOL_NAMES.length} tools, each call decided at the admission hook) and the `
+      + 'root\'s MCP servers, in a private per-turn workspace; shell sandboxed without network; web reads only; subagents may delegate '
+      + 'within the turn\'s budget; consequential effects go through the effect doorway.',
     `Tool turns: ${stats.invocations} run (${stats.reservedCalls} model attempts reserved for them), ${stats.toolCalls} tool calls admitted, `
       + `${stats.toolRefusals} refused, ${stats.refusedCap} turns answered without tools because the call allowance was short`
       + `${stats.children ? `, ${stats.children.started} subagents started (${stats.children.returned} returned, ${stats.children.cancelled} cancelled, ${stats.children.unknown} unknown)` : ''}`

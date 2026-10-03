@@ -1,5 +1,21 @@
 [
   {
+    "revision": 5,
+    "date": "2026-10-03",
+    "status": "draft",
+    "cause": {
+      "kind": "draft",
+      "note": "Unit w4-toolsfull repair, review round 2 (Astra, VERDICT NO), under the operator's approved amendment (Justin, topic 102965 message 122028, 12:20 PDT 2026-10-03): the agent's ability is never reduced to satisfy a safeguard a checkpoint can enforce. No constitution change."
+    },
+    "changes": [
+      {
+        "what": "§5 delegated-session rule: a subagent may start its own within the turn's one reserved budget, so the delegation's shape is chosen for the work; each edge names the subagent that started it; a workflow or skill whose agents cannot be reserved before dispatch is refused for budget at the hook.",
+        "why": "Rule 114: the topology is chosen for the work, never fixed by the platform; the reservation, not a depth ban, holds the spend floor.",
+        "ref": "lanes/astra-unit-w4-toolsfull-review.md (round 2); lanes/w4-toolsfull-PROGRESS.md (Pipeline repair, round 2); LIVE-PATH-PLAN.md row #395"
+      }
+    ]
+  },
+  {
     "revision": 4,
     "date": "2026-10-03",
     "status": "draft",

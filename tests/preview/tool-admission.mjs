@@ -1,14 +1,22 @@
 // The tool turn's admission decision (Part Thirteen §9 in docs/17-harness-adapters, the preview tool rule). Pure: every input is
 // passed in, so the executable hook (tool-admission-hook.mjs) and the tests run the same function.
-// Ordinary work is admitted; a consequential effect goes to the effect doorway; anything unregistered is refused.
-// - Ordinary: file tools inside the workspace; workspace search; a sandboxed shell command (not judged by the words it
-//   contains: what it can reach is enforced where it runs: the sandbox's read, write, network and process scope, the
-//   turn's fixed-size scratch volume, the per-file limit); a web read (WebFetch is GET only, WebSearch is a search) of a
-//   public host; one bounded subagent of the registered `worker` type, recorded as a Rule 114 edge; an MCP tool the
-//   root's configuration lists as a read.
+// Every tool of the harness's built-in set is offered; this decides each call. Ordinary work is admitted; a consequential
+// effect goes to the effect doorway; a call whose liability the turn cannot reserve is refused for budget; a tool outside
+// the classified set (a harness the adapter has not been updated for) is refused, since nothing here says what it does.
+// - Ordinary: file tools (Read, Write, Edit, NotebookEdit) inside the workspace; workspace search; a sandboxed shell
+//   command (not judged by the words it contains: what it can reach is enforced where it runs: the sandbox's read, write,
+//   network and process scope, the turn's fixed-size scratch volume, the per-file limit); a web read (WebFetch is GET
+//   only, WebSearch is a search) of a public host; a subagent of the registered `worker` type within the turn's shared
+//   subagent budget, started by the turn or by another subagent, recorded as a Rule 114 edge; an MCP tool the root's
+//   configuration lists as a read; the harness's own bookkeeping (tool search, listing agents or schedules, rendering
+//   findings, stopping its own background task); a worktree inside the workspace.
 // - Consequential (the effect doorway's admission, which admits only an operation the installed profile registers for that
 //   tool effect; the single-machine profile registers none, so each refuses): an MCP tool not listed as a read (acting in a
-//   third-party account), an unsandboxed shell, sending outside the conversation, a scheduled or remote trigger.
+//   third-party account), an unsandboxed shell, a Monitor command (not shown to run inside the sandbox, which is what keeps
+//   a command away from the admission state and the network; Bash in the background is the sandboxed way to watch a
+//   command), sending outside the conversation, a scheduled or remote trigger, a design sync to a third-party account.
+// - Budget (the spend floor is the call reservation made before dispatch): Workflow and Skill may start agents whose
+//   number or model turns the turn cannot reserve in advance (a workflow script, a forked skill), so they are refused.
 // - A web read of a loopback, private, link-local or local-name host is refused: it is not "the world" but this machine
 //   and its network, which the shell's sandbox already closes.
 import { basename, dirname, join, resolve, sep } from 'node:path';
@@ -24,13 +32,19 @@ export function toolShellPrefix(tmp) {
   if (typeof tmp !== 'string' || !SHELL_SAFE_PATH.test(tmp)) throw Error('tool admission: shell temporary directory absent');
   return `unset CLAUDE_CODE_MESSAGING_TOKEN CLAUDE_CODE_MESSAGING_SOCKET; export TMPDIR=${tmp}; ulimit -f 65536; `;
 }
-export const FILE_TOOLS = Object.freeze(['Read', 'Write', 'Edit']);
+export const FILE_TOOLS = Object.freeze(['Read', 'Write', 'Edit', 'NotebookEdit']);
 const SEARCH_TOOLS = Object.freeze(['Glob', 'Grep']);
 /** The subagent tool under both names the pinned harness accepts. */
 export const SUBAGENT_TOOLS = Object.freeze(['Agent', 'Task']);
 /** Tools that, if they ever reached the hook, would act outward: each is the effect doorway's, named by its effect. */
 const OUTWARD_TOOLS = Object.freeze({ SendMessage: 'send', PushNotification: 'send', RemoteTrigger: 'network-write',
-  CronCreate: 'schedule', CronDelete: 'schedule', ScheduleWakeup: 'schedule' });
+  DesignSync: 'network-write', CronCreate: 'schedule', CronDelete: 'schedule', ScheduleWakeup: 'schedule', Monitor: 'unsandboxed' });
+/** The harness's own bookkeeping: no effect outside the turn's process and workspace. */
+const BOOKKEEPING_TOOLS = Object.freeze(['ToolSearch', 'ListAgents', 'CronList', 'ReportFindings', 'TaskStop']);
+/** Tools that may start agents the turn cannot reserve before dispatch (their count or model turns are not bounded). */
+const UNRESERVABLE_TOOLS = Object.freeze({ Workflow: 'a workflow script may start any number of agents',
+  Skill: 'a skill may run in a forked agent with no turn bound' });
+const WORKTREE_TOOLS = Object.freeze(['EnterWorktree', 'ExitWorktree']);
 /** Bounded excerpt of a tool input or result kept in the admission record. */
 export const RECORD_EXCERPT_CHARS = 4096;
 
@@ -122,7 +136,7 @@ export function admitToolCall(call, config, n, fs, child = 1) {
   if (n > config.maxCalls) return deny(`per-step call cap ${config.maxCalls} reached (call ${n})`);
   const inside = path => typeof path === 'string' && path.length > 0 && containedIn(config.workspace, path, fs);
   if (FILE_TOOLS.includes(tool)) {
-    const path = input.file_path;
+    const path = tool === 'NotebookEdit' ? input.notebook_path : input.file_path;
     if (!inside(path)) return deny(`path outside the workspace: ${String(path)}`, 'scope');
     if (tool === 'Write' && Buffer.byteLength(String(input.content ?? '')) > config.maxWriteBytes)
       return deny(`write larger than ${config.maxWriteBytes} bytes`, 'scope');
@@ -155,15 +169,17 @@ export function admitToolCall(call, config, n, fs, child = 1) {
   }
   if (tool === 'WebSearch') return { decision: 'allow', reason: 'web search', kind: 'network-read' };
   if (SUBAGENT_TOOLS.includes(tool)) {
+    // Rule 114: the turn or any of its subagents may delegate; every subagent, at any depth, takes a slot of the turn's one
+    // reserved budget, so the reservation covers the whole tree.
     const children = config.children ?? { max: 0, type: null };
-    if (typeof call?.agent_id === 'string' && call.agent_id.length > 0) return deny('a subagent may not start another subagent in this turn', 'scope');
     if (input.subagent_type !== children.type || typeof children.type !== 'string')
       return deny(`subagent type ${String(input.subagent_type ?? '(default)')} is not this turn's registered type ${String(children.type)}`, 'scope');
     if (!Number.isSafeInteger(child) || child < 1 || child > children.max)
       return deny(`no subagent budget left in this turn (${String(children.max)} reserved)`, 'budget');
     if (typeof input.prompt !== 'string' || !input.prompt.trim()) return deny('empty subagent prompt');
     // The child runs in the foreground so its result returns to this turn as the tool result; only the registered fields pass.
-    return { decision: 'allow', reason: `subagent ${child} of ${children.max}, ${children.type}`, kind: 'subagent',
+    const by = typeof call?.agent_id === 'string' && call.agent_id ? `, started by subagent ${call.agent_id}` : '';
+    return { decision: 'allow', reason: `subagent ${child} of ${children.max}, ${children.type}${by}`, kind: 'subagent',
       updatedInput: { description: String(input.description ?? 'subagent'), prompt: input.prompt, subagent_type: children.type,
         run_in_background: false } };
   }
@@ -172,7 +188,15 @@ export function admitToolCall(call, config, n, fs, child = 1) {
     return effect('mcp');
   }
   if (Object.hasOwn(OUTWARD_TOOLS, tool)) return effect(OUTWARD_TOOLS[tool]);
-  return deny(`unregistered tool ${tool || '(none)'}: refused by default`);
+  if (BOOKKEEPING_TOOLS.includes(tool)) return { decision: 'allow', reason: 'harness bookkeeping' };
+  if (WORKTREE_TOOLS.includes(tool)) {
+    const path = input.path ?? input.worktree_path;
+    if (path !== undefined && !inside(path)) return deny(`worktree outside the workspace: ${String(path)}`, 'scope');
+    return { decision: 'allow', reason: 'worktree inside the workspace' };
+  }
+  if (Object.hasOwn(UNRESERVABLE_TOOLS, tool)) return deny(`${UNRESERVABLE_TOOLS[tool]}, whose model turns this turn cannot reserve `
+    + 'before dispatch (the spend floor); delegate through Agent instead', 'budget');
+  return deny(`unclassified tool ${tool || '(none)'}: refused by default`);
 }
 
 /** The hook's stdout for a decision: a deny, or an allow carrying the rewritten input. */
@@ -190,8 +214,9 @@ const excerpt = value => { const text = typeof value === 'string' ? value : JSON
  * Reads the hook's admission record into the trace the runner journals (Rule 41 provenance: which
  * tool call produced which result). `consistent` is false when a tool result has no admitted call
  * before it: a tool ran past the hook, so the turn's outcome cannot be trusted. `children` are the turn's
- * subagent edges (Rule 114): each admitted subagent call, the child the harness started for it, and its
- * result; `open` when no result came back (the runner records it cancelled or unknown).
+ * subagent edges (Rule 114): each admitted subagent call, the agent that made it (`parentAgent`, null for the turn
+ * itself), the child the harness started for it, and its result; `open` when no result came back (the runner records it
+ * cancelled or unknown).
  */
 export function toolTrace(lines) {
   const calls = [], admitted = new Map(), children = [], started = [];
@@ -204,7 +229,8 @@ export function toolTrace(lines) {
       calls.push(entry);
       if (row.decision === 'allow' && typeof row.id === 'string') admitted.set(row.id, entry);
       if (row.decision === 'allow' && row.kind === 'subagent' && typeof row.id === 'string')
-        children.push({ toolUse: row.id, slot: row.child ?? null, agent: null, started: false, stopped: false, state: 'open', result: null });
+        children.push({ toolUse: row.id, slot: row.child ?? null, agent: null, parentAgent: typeof row.agent === 'string' ? row.agent : null,
+          started: false, stopped: false, state: 'open', result: null });
     } else if (row?.phase === 'post') {
       const entry = typeof row.id === 'string' ? admitted.get(row.id) : undefined;
       if (!entry || entry.tool !== row.tool || entry.result !== null) { consistent = false; continue; }

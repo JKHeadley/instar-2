@@ -2625,7 +2625,9 @@ export interface ToolTurnStats { invocations: number; reservedCalls: number; ref
 /** Rule 114: a tool turn's delegation authority and budget share, durable with its reservation before dispatch. */
 export interface ToolDelegation { children: number; turnsEach: number; type: string; authority: string }
 /** Rule 114: one subagent a tool turn started, as a durable parent-child edge. */
-export interface ToolChildEdge { child: string; agent: string | null; parent: string; authority: string;
+export interface ToolChildEdge { child: string; agent: string | null; parent: string;
+  /** The subagent that started this one (null or absent: the turn itself); the edge's reservation is always `parent`'s. */
+  parentAgent?: string | null; authority: string;
   budget: { modelTurns: number; toolCalls: string }; exitTest: string; placement: string; transport: string;
   resultDestination: string; cancellation: string; state: 'returned' | 'cancelled' | 'unknown'; result: string | null }
 /** Rules 60, 75 and MF4: a tool turn reserves its whole model-attempt liability before dispatch, and the
@@ -2660,7 +2662,8 @@ function projectToolTurn(view: JournalView, row: Extract<JournalRecord, { kind: 
     throw Error('preview journal: tool trace order');
   const edges = row.edges ?? [];
   if (!Array.isArray(edges) || edges.length > 8 || !edges.every(edge => edge && boundedText(edge.child, 1, 256)
-    && edge.parent === key && ['returned', 'cancelled', 'unknown'].includes(edge.state)))
+    && edge.parent === key && (edge.parentAgent === undefined || edge.parentAgent === null || boundedText(edge.parentAgent, 1, 256))
+    && ['returned', 'cancelled', 'unknown'].includes(edge.state)))
     throw Error('preview journal: tool turn edges');
   const admitted = row.calls.filter(call => call.decision === 'allow').length;
   const turn = view.turns.get(row.id);

@@ -49,7 +49,8 @@ const takeSlot = (name, max) => {
 const bound = value => Number.isSafeInteger(value) && value >= 0 ? value : 0;
 const n = takeSlot('slots', bound(config.maxCalls));
 // A subagent slot is spent only by a call that would otherwise be admitted, so a refused shape never uses up the budget.
-const child = SUBAGENT_TOOLS.includes(call.tool_name) && n <= bound(config.maxCalls) && !call.agent_id
+// A subagent's own subagent takes a slot of the same budget (Rule 114: the turn's one reservation covers the whole tree).
+const child = SUBAGENT_TOOLS.includes(call.tool_name) && n <= bound(config.maxCalls)
   && typeof config.children?.type === 'string' && call.tool_input?.subagent_type === config.children.type
   && typeof call.tool_input?.prompt === 'string' && call.tool_input.prompt.trim() ? takeSlot('children', bound(config.children?.max)) : 1;
 // A web read's host is resolved here, before the decision, so a name that points at this machine or its network is refused.

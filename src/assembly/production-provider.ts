@@ -221,53 +221,54 @@ export function subscriptionConversationPolicy(model: string) {
  * successive-turn framing: its digest differs, so only an activation record naming this policy admits it.
  * The boundary is the configuration the w4-toolsreuse spike proved under the pinned 2.1.280, widened to the full tool
  * set: a mandatory PreToolUse admission hook that admits ordinary work and sends consequential effects to the effect
- * doorway (the only control on the harness-side tools: Read/Write/Edit, WebFetch, MCP, subagents), the harness sandbox
+* doorway (the only control on the harness-side tools: file tools, WebFetch, MCP, subagents), the harness sandbox
  * with a tight read profile and no network or unix sockets (the control on Bash), a clean environment, no `--bare` or
- * `--safe-mode` (both skip settings hooks), subagent start and stop recorded as Rule 114 edges, and the outward,
- * scheduling and multi-agent tools removed. */
+ * `--safe-mode` (both skip settings hooks), and subagent start and stop recorded as Rule 114 edges. The whole built-in
+ * tool set is offered; what a tool may do is decided per call at the hook, never by leaving the tool out. */
 export const SUBSCRIPTION_TOOLS_FRAMING = 'preview-tools-v1';
-/** The built-in tools a tool turn has; MCP tools come from the root's configuration. The briefing, status and system prompt
- * are generated from this list. */
-export const SUBSCRIPTION_TOOL_NAMES = Object.freeze(['Read', 'Write', 'Edit', 'Glob', 'Grep', 'Bash', 'WebFetch', 'WebSearch', 'Agent']);
-/** Removed outright: workflows and agent teams (a child no edge records), sending outside the conversation, scheduling and
- * remote triggers, worktrees and session-level controls. */
-export const SUBSCRIPTION_TOOL_DISALLOWED = Object.freeze(['Workflow', 'CronCreate', 'CronDelete', 'CronList',
-  'RemoteTrigger', 'SendMessage', 'TaskStop', 'EnterWorktree', 'ExitWorktree', 'ListAgents', 'ReportFindings', 'ScheduleWakeup',
-  'PushNotification', 'Monitor', 'Skill', 'TeamCreate', 'TeamDelete']);
+/** The pinned harness's whole built-in tool set, every name passed to `--tools`: Claude Code 2.1.280's `--tools default`
+ * set as its init frame lists it, plus Glob and Grep (offered only when named) and RemoteTrigger (offered under a claude.ai
+ * login); Agent is the subagent tool (the init frame names it Task). A name the harness does not offer is ignored by it.
+ * The admission hook classifies every one of them (tests/preview/tool-admission.mjs); MCP tools come from the root's
+ * configuration. */
+export const SUBSCRIPTION_TOOL_NAMES = Object.freeze(['Agent', 'Bash', 'CronCreate', 'CronDelete', 'CronList', 'DesignSync', 'Edit',
+  'EnterWorktree', 'ExitWorktree', 'Glob', 'Grep', 'ListAgents', 'Monitor', 'NotebookEdit', 'PushNotification', 'Read', 'RemoteTrigger',
+  'ReportFindings', 'ScheduleWakeup', 'SendMessage', 'Skill', 'TaskStop', 'ToolSearch', 'WebFetch', 'WebSearch', 'Workflow', 'Write']);
 /** One tool turn's bounds. `maxTurns` model turns plus each reserved subagent's `childMaxTurns` is the whole liability the
  * call cap reserves before dispatch; `maxToolCalls` is the hook's per-step count, shared with the turn's subagents;
- * `maxChildren` subagents at most. `--max-budget-usd` is checked only after a turn and overshoots by up to one turn
- * (spike d3), so the flag sits one turn's margin below the ceiling and is a backstop only: the binding spend floor is the
- * upstream call reservation. */
+ * `maxChildren` subagents at most in the whole turn, at any depth. `--max-budget-usd` is checked only after a turn and
+ * overshoots by up to one turn (spike d3), so the flag sits one turn's margin below the ceiling and is a backstop only: the
+ * binding spend floor is the upstream call reservation. */
 export const SUBSCRIPTION_TOOL_LIMITS = Object.freeze({ maxTurns: 8, maxToolCalls: 32, timeout: 300000,
   budgetCeilingUsd: 1, oneTurnMarginUsd: 0.25, maxWriteBytes: 1048576, maxChildren: 2, childMaxTurns: 4 });
-/** The one subagent type a tool turn may start: foreground, bounded turns, the same tools minus subagents. */
+/** The subagent type a tool turn starts: foreground, bounded turns, and (no `tools` field) the turn's whole tool set,
+ * Agent included, so a subagent may delegate in turn within the turn's shared subagent budget. */
 export const SUBSCRIPTION_SUBAGENT_TYPE = 'worker';
 export const SUBSCRIPTION_SUBAGENT_DEFINITION = Object.freeze({ [SUBSCRIPTION_SUBAGENT_TYPE]: Object.freeze({
   description: 'A bounded helper for one self-contained part of this turn; it returns its result to you.',
   prompt: 'You are a helper working on one part of a larger answer. Use your tools within this turn\'s workspace, then reply '
     + 'with the result only. Report only what your tools actually produced; never claim an effect a tool did not report.',
-  tools: Object.freeze(SUBSCRIPTION_TOOL_NAMES.filter(name => name !== 'Agent')), model: 'inherit',
-  maxTurns: SUBSCRIPTION_TOOL_LIMITS.childMaxTurns, background: false }) });
+  model: 'inherit', maxTurns: SUBSCRIPTION_TOOL_LIMITS.childMaxTurns, background: false }) });
 const NO_TOOLS_SENTENCE = 'You have no tools and cannot act beyond this answer; never claim otherwise.';
-const TOOLS_SENTENCE = `In this turn you have these tools: ${SUBSCRIPTION_TOOL_NAMES.join(', ')}, plus any MCP tools listed to you. `
+const TOOLS_SENTENCE = 'In this turn you have the harness\'s full built-in tool set (your tool definitions list it), plus any MCP tools listed to you. '
   + 'Files and Bash work inside this turn\'s private, new and empty workspace (your working directory), which has a fixed size. '
   + 'Bash is sandboxed: no network, no reads outside the workspace except the system files commands need, no writes outside it, '
   + 'no control of other processes. WebFetch and WebSearch read the public web (GET only). '
-  + `Agent starts at most ${SUBSCRIPTION_TOOL_LIMITS.maxChildren} "${SUBSCRIPTION_SUBAGENT_TYPE}" subagents, each up to `
-  + `${SUBSCRIPTION_TOOL_LIMITS.childMaxTurns} turns, whose result returns to you. Consequential effects (sending outside this `
-  + 'conversation, writing to the network or a third-party account, spending, changing safeguards) go through the effect doorway '
-  + 'and are refused unless registered; say so plainly when one is refused. '
+  + `Agent starts "${SUBSCRIPTION_SUBAGENT_TYPE}" subagents, which may start their own: at most ${SUBSCRIPTION_TOOL_LIMITS.maxChildren} in this `
+  + `whole turn, each up to ${SUBSCRIPTION_TOOL_LIMITS.childMaxTurns} turns, each result returning to whoever started it. Each call is `
+  + 'checked when made: consequential effects (sending outside this conversation, writing to the network or a third-party account, '
+  + 'spending, changing safeguards) go through the effect doorway and are refused unless registered, and a refusal names its reason; '
+  + 'say so plainly when one is refused. '
   + `Use at most ${SUBSCRIPTION_TOOL_LIMITS.maxToolCalls} tool calls. When your answer reports a value a tool produced, `
   + 'say in reason.value which tool call, by name and order, produced it. Never claim an effect no tool reported.';
 export const SUBSCRIPTION_TOOLS_SYSTEM_PROMPT = SUBSCRIPTION_CONVERSATION_SYSTEM_PROMPT.replace(NO_TOOLS_SENTENCE, TOOLS_SENTENCE);
 export function subscriptionToolsPolicy(model: string) {
   return Object.freeze({ args: Object.freeze(['--print', '--input-format', 'text', '--output-format', 'json',
     '--system-prompt', SUBSCRIPTION_TOOLS_SYSTEM_PROMPT,
-    '--model', model, '--tools', SUBSCRIPTION_TOOL_NAMES.join(','), '--disallowedTools', ...SUBSCRIPTION_TOOL_DISALLOWED,
+    '--model', model, '--tools', SUBSCRIPTION_TOOL_NAMES.join(','),
     '--agents', JSON.stringify(SUBSCRIPTION_SUBAGENT_DEFINITION),
     '--strict-mcp-config', '--mcp-config', '{"mcpServers":{}}',
-    '--setting-sources', '', '--disable-slash-commands', '--no-session-persistence',
+    '--setting-sources', '', '--no-session-persistence',
     '--max-turns', String(SUBSCRIPTION_TOOL_LIMITS.maxTurns),
     '--max-budget-usd', String(SUBSCRIPTION_TOOL_LIMITS.budgetCeilingUsd - SUBSCRIPTION_TOOL_LIMITS.oneTurnMarginUsd),
     '--permission-mode', 'default']),
@@ -337,8 +338,7 @@ export function subscriptionToolSettings(turn: SubscriptionToolTurn, home: strin
       network: { allowedDomains: [], allowUnixSockets: [], allowAllUnixSockets: false, allowLocalBinding: false },
       filesystem: { allowWrite: [turn.scratch], denyWrite: [...subscriptionToolDefaultWrites(home)],
         denyRead: ['/'], allowRead: [turn.scratch, ...SUBSCRIPTION_TOOL_RUNTIME_READS] } },
-    permissions: { allow: [...SUBSCRIPTION_TOOL_NAMES, ...(turn.mcp?.servers ?? []).map(name => `mcp__${name}`)],
-      deny: [...SUBSCRIPTION_TOOL_DISALLOWED] },
+    permissions: { allow: [...SUBSCRIPTION_TOOL_NAMES, ...(turn.mcp?.servers ?? []).map(name => `mcp__${name}`)] },
     hooks: { PreToolUse: hook('pre'), PostToolUse: hook('post'), SubagentStart: hook('child-start'), SubagentStop: hook('child-stop') },
   });
 }
