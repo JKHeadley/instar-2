@@ -79,6 +79,6 @@ export function dueWithDelivery(due: readonly DueReminder[], turns: readonly Not
 /** A recorded answer's notices: at most one, each line said verbatim in the answer text. */
 export function validAnswerNotices(value: unknown, text: string): value is ReplyNotice[] {
   return Array.isArray(value) && value.length === 1 && value.every(item => item && typeof item === 'object'
-    && Object.keys(item).length === 2 && typeof item.key === 'string' && /^(credential|doorway):[^\s]{1,200}$/u.test(item.key)
+    && Object.keys(item).length === 2 && typeof item.key === 'string' && /^(credential|doorway|effect):[^\s]{1,200}$/u.test(item.key)
     && typeof item.line === 'string' && item.line.length > 0 && item.line.length <= 600 && text.includes(item.line));
 }

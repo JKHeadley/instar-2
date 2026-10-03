@@ -1,9 +1,9 @@
 #!/usr/bin/env node
 // The tool turn's mandatory PreToolUse/PostToolUse hook. argv: <pre|post> <stateDirectory>. The state
 // directory (outside the workspace, never readable or writable by a tool) holds the turn's config
-// (workspace, call cap, registered operations), the per-step call slots and the admission record.
+// (workspace, call cap, the installation's closed operation set, the effect policy), the per-step call slots and the admission record.
 // Fail closed: any error in `pre` exits 2, which Claude Code treats as a block.
-import { appendFileSync, closeSync, existsSync, mkdirSync, openSync, readFileSync, realpathSync } from 'node:fs';
+import { appendFileSync, closeSync, existsSync, fsyncSync, mkdirSync, openSync, readFileSync, realpathSync } from 'node:fs';
 import { join } from 'node:path';
 import { admitToolCall, hookOutput, RECORD_EXCERPT_CHARS } from './tool-admission.mjs';
 
@@ -14,7 +14,12 @@ let raw = '';
 for await (const chunk of process.stdin) raw += chunk;
 const call = JSON.parse(raw);
 const config = JSON.parse(readFileSync(join(stateDirectory, 'config.json'), 'utf8'));
-const record = row => appendFileSync(join(stateDirectory, 'admission.jsonl'), `${JSON.stringify(row)}\n`, { mode: 0o600 });
+const record = (row, durable = false) => {
+  const path = join(stateDirectory, 'admission.jsonl');
+  appendFileSync(path, `${JSON.stringify(row)}\n`, { mode: 0o600 });
+  // An effect-doorway decision is durable before the call proceeds (an act follows its durable cause).
+  if (durable) { const fd = openSync(path, 'r'); try { fsyncSync(fd); } finally { closeSync(fd); } }
+};
 const clip = value => { const text = JSON.stringify(value ?? null); return text.length > RECORD_EXCERPT_CHARS ? `${text.slice(0, RECORD_EXCERPT_CHARS)}…` : text; };
 if (mode === 'post') {
   record({ phase: 'post', id: call.tool_use_id, tool: call.tool_name, result: clip(call.tool_response) });
@@ -32,9 +37,10 @@ for (let slot = 1; slot <= maxCalls; slot++) {
   try { closeSync(openSync(join(slots, String(slot)), 'wx', 0o600)); n = slot; break; }
   catch (error) { if (error?.code !== 'EEXIST') throw error; }
 }
-const decision = admitToolCall(call, config, n, { exists: existsSync, realpath: realpathSync });
+const decision = admitToolCall(call, config, n, { exists: existsSync, realpath: realpathSync }, Date.now());
 record({ phase: 'pre', id: call.tool_use_id, n, tool: call.tool_name, input: clip(call.tool_input), decision: decision.decision,
-  reason: decision.reason, ...(decision.kind ? { kind: decision.kind } : {}) });
+  reason: decision.reason, ...(decision.kind ? { kind: decision.kind } : {}), ...(decision.doorway ? { doorway: decision.doorway } : {}) },
+  decision.doorway !== undefined);
 const output = hookOutput(decision);
 if (output) process.stdout.write(JSON.stringify(output));
 process.exit(0);

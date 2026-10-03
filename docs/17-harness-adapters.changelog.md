@@ -4,6 +4,10 @@ _Generated from `17-harness-adapters.changelog.json` by `scripts/render-changelo
 The document itself reads as a first version; every change to it is recorded here, newest first,
 each linked to the git change that made it (rule 91).
 
+## Revision 4 · 2026-10-03 · draft — Unit w4-doorway: the effect doorway wired onto the live answer and work path by the purpose's four consequential-effect tests (Justin 2026-10-03 10:15, topic 102965 message 121996, and his 10:45 re-grounding). No constitution change.
+
+- **§9 scoped-tool rule: ordinary in-workspace work is admitted without a doorway call, and a tool that could make a consequential effect goes to the effect doorway, which admits or refuses it by the four consequential-effect tests under Part Twelve's live-path tool rule.** — The hook's doorway call checked only operation membership; the constitution defines consequential by four tests, which now decide. _(lanes/w4-doorway-PROGRESS.md; LIVE-PATH-PLAN.md rows #399-#400)_
+
 ## Revision 3 · 2026-10-03 · draft — Unit w4-toolsreal repair, review round 1 (Astra, VERDICT NO): the §9 boundary text made true to the repaired route. No constitution change.
 
 - **§9 scoped-tool rule: the hook no longer judges a command by its words; the sandbox refuses reads from the filesystem root down except the turn scratch volume and the runtime system files, writes outside that volume, network, unix sockets and signals to other processes; the workspace and all shell and harness temporary files live on a fixed-size volume; the per-step call count is allocated atomically.** — Review round 1 findings 1-4: the old read list left unlisted paths readable, concurrent hooks exceeded the call cap, shell writes had no aggregate ceiling, and the keyword classifier refused harmless data while admitting scripts unexamined. _(lanes/astra-unit-w4-toolsreal-review.md; lanes/w4-toolsreal-PROGRESS.md (Pipeline repair); LIVE-PATH-PLAN.md row #367)_

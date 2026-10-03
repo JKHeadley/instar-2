@@ -61,8 +61,10 @@ export function detachScratch(turn) {
 }
 
 /** Allocates a fresh turn: `<root>/tool-turns/<digest>-<attempt>/state` and the turn's scratch volume holding `ws` and
- * `tmp`, all 0700 (`scratch` mounts it; tests may pass a stand-in), and the hook's config. */
-export function prepareToolTurn({ root, operation, attempt, operations, node = process.execPath, scratch = attachScratch }) {
+ * `tmp`, all 0700 (`scratch` mounts it; tests may pass a stand-in), and the hook's config: the installation's closed
+ * operation set, and the effect doorway's policy and the register's irreversible term (Part Twelve; absent policy:
+ * nothing outward by default). */
+export function prepareToolTurn({ root, operation, attempt, operations, effectPolicy, irreversibleTerm, node = process.execPath, scratch = attachScratch }) {
   const base = join(realpathSync(root), TOOL_TURNS_DIRECTORY);
   mkdirSync(base, { recursive: true, mode: 0o700 });
   const slug = `${createHash('sha256').update(operation, 'utf8').digest('hex').slice(0, 16)}-${String(attempt)}`;
@@ -74,7 +76,8 @@ export function prepareToolTurn({ root, operation, attempt, operations, node = p
   const workspace = realpathSync(join(volume, 'ws')), tmp = realpathSync(join(volume, 'tmp'));
   const stateDirectory = realpathSync(join(turn, 'state'));
   writeFileSync(join(stateDirectory, 'config.json'), JSON.stringify({ workspace, tmp, maxCalls: SUBSCRIPTION_TOOL_LIMITS.maxToolCalls,
-    maxWriteBytes: SUBSCRIPTION_TOOL_LIMITS.maxWriteBytes, operations: [...operations] }), { mode: 0o600 });
+    maxWriteBytes: SUBSCRIPTION_TOOL_LIMITS.maxWriteBytes, operations: [...operations],
+    ...(effectPolicy === undefined ? {} : { effectPolicy }), ...(irreversibleTerm === undefined ? {} : { irreversibleTerm }) }), { mode: 0o600 });
   return { slug, directory: turn, scratch: volume, workspace, stateDirectory, hook: { node, script: TOOL_HOOK_SCRIPT } };
 }
 
@@ -133,8 +136,8 @@ export const toolTurnFits = (view, unreserved = 0) => view.calls + unreserved + 
 /** The packet's side of `toolTurnFits`: its own base call is not reserved yet when it is prepared. */
 export const toolPacketFits = view => toolTurnFits(view, 1);
 
-export async function runToolTurn({ journal, root, id, prepared, promptLimit, deniedRoots, operations, invoke, fallback, now, redactText,
-  scratch = attachScratch, detach = detachScratch }) {
+export async function runToolTurn({ journal, root, id, prepared, promptLimit, deniedRoots, operations, effectPolicy, irreversibleTerm, invoke, fallback,
+  now, redactText, scratch = attachScratch, detach = detachScratch }) {
   const extra = SUBSCRIPTION_TOOL_LIMITS.maxTurns - 1;
   const refuse = reason => { journal.append({ kind: 'tool-turn', phase: 'refused', id, reason, at: now() }); return fallback(); };
   if (!toolTurnFits(journal.view)) return refuse('call cap');
@@ -143,7 +146,7 @@ export async function runToolTurn({ journal, root, id, prepared, promptLimit, de
   journal.append({ kind: 'tool-turn', phase: 'reserved', id, attempt, calls: extra, at: now() });
   let turn = null, result, failure = null;
   try {
-    turn = prepareToolTurn({ root, operation: id, attempt, operations, scratch });
+    turn = prepareToolTurn({ root, operation: id, attempt, operations, effectPolicy, irreversibleTerm, scratch });
     result = await invoke({ scratch: turn.scratch, workspace: turn.workspace, stateDirectory: turn.stateDirectory, hook: turn.hook, deniedRoots });
   } catch (error) { failure = error; }
   const trace = turn ? readToolTrace(turn.stateDirectory) : { calls: [], consistent: true };

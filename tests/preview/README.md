@@ -3580,8 +3580,16 @@ Claude Code invocation with exactly Read, Write, Edit, Glob, Grep and Bash (Part
   the newest 16 turn directories are kept, and the journal's `tool-turn` rows are the record. The root must be on
   ordinary storage (a disk image cannot be mounted from a RAM disk); if the volume cannot be mounted the turn fails
   closed.
-- `tool-admission-hook.mjs` admits in-workspace file operations and sandboxed commands, whatever words they contain;
-  MCP and web tools and unsandboxed commands go to the effect doorway, which refuses them. Each call takes one of the
+- `tool-admission-hook.mjs` admits in-workspace file operations and sandboxed commands, whatever words they contain,
+  with no effect-doorway call. MCP and web tools and unsandboxed commands go to the effect doorway
+  (`effect-doorway.mjs`, Part Twelve), which classifies each against the purpose's four consequential-effect tests
+  (cannot be undone by the agent alone; commits money or a resource above the operator's named level, an unknown cost
+  counting as above; reaches outside the granted scope; touches a matter marked policy-sensitive). All four false: admitted
+  as ordinary. Any true: admitted only when every held test is answered (an irreversible effect only as an operation of
+  the installation's accepted closed set, which on one machine no tool effect joins; a resource or policy-sensitive
+  effect under a recorded grant), otherwise refused with the tests that held and what would admit it. The decision is
+  written durably (fsync) to the admission record before the call proceeds, journaled with the turn's trace, counted
+  in `status` ("Effect doorway: …"), and a refusal rides below that turn's answer as one infrastructure line. Each call takes one of the
   step's 16 slots by exclusive create, so overlapping calls cannot exceed the cap. The sandbox refuses reads from `/`
   down except the scratch volume and the system files commands need, writes outside the volume, the network, unix
   sockets and signals to other processes; the harness's messaging socket and token are removed from every command.
@@ -3590,9 +3598,18 @@ Claude Code invocation with exactly Read, Write, Edit, Glob, Grep and Bash (Part
   answers that turn without tools, recorded. `status` shows the tool list, tool-turn counts and refusals.
 - `/stop`, a latched stop file, expiry or withdrawal (changing or removing the record) ends a live turn: the
   resource owner kills its process group within its 25 ms poll and verifies quiescence within two seconds.
+- `--effect-policy /ABSOLUTE/effect-policy.json` (optional) is the doorway's operator policy: `{"type":"PreviewEffectPolicy",
+  "resourceLevelUsd":0,"policySensitive":[],"registered":[],"grants":[]}`. A registration classifies one effect (and
+  optionally one target, such as an MCP tool name or a host) with `consequence`, `reversibility`, `reach`, `costUsd` (null:
+  unknown) and its `source`; unregistered effects take their worst reachable classification. A grant names `id`,
+  `effect`, optional `target`, `approves` (`scope`, `resources` with its `resourceLevelUsd`, `policySensitive`), the
+  operator `source` it records, its `custodian`, its `recovery` obligation and an optional `expiresAt`. Absent, nothing
+  outward is granted. Launch refuses a policy that does not decode; each tool turn re-reads the file, and a removed or
+  broken file grants nothing.
 
 ```sh
 npx vitest run --maxWorkers 1 tests/preview/tool-admission.test.ts
+npx vitest run --maxWorkers 1 tests/preview/effect-doorway.test.ts
 npx vitest run --maxWorkers 1 tests/preview/tool-turn.test.ts
 npx vitest run --maxWorkers 1 tests/preview/tool-turn-replay.test.ts
 npx vitest run --maxWorkers 1 tests/assembly/production-provider-tools.test.ts

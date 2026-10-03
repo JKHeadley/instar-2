@@ -135,6 +135,28 @@ ordinary workers, and test runtime isolation in part ten's assembly. A static im
 alone does not prove confinement against dynamic code, plugins or privileged host access.
 That remaining enforcement boundary is rendered partial under P3-NF-29.
 
+**Rule — on the live answer and work path, a tool call that could be consequential is admitted by
+the four tests.** The purpose's consequential-effect definition and its rules on nothing outward
+by default, irreversible acts and single-machine installations; Rules 41, 42, 84 and 116;
+**checks:** `tests/preview/effect-doorway.test.ts` and `tests/preview/tool-admission.test.ts`.
+Ordinary work in a tool turn's own workspace (file tools, searches and the sandboxed shell) is
+admitted by the turn's admission hook without a doorway call, because the sandbox bounds what it
+can reach. A tool that could make a consequential effect (an MCP tool, a web read or search, an
+unsandboxed command) is proposed to the doorway as an effect kind and target. The doorway
+classifies it once against the four tests from the operator's registered classification for that
+effect, or its worst reachable classification when none is registered, and an unknown cost counts
+as above the operator's level. With all four false it is ordinary and admitted. With any true it is
+admitted only when every held test is answered: an irreversible effect only as an operation of the
+installation's accepted closed set, which on one machine no tool effect joins; a resource or
+policy-sensitive effect only under a live recorded grant that names it; reach is in scope only
+under such a grant. Every grant records its operator source, custodian and recovery obligation,
+and a withdrawn or undecodable policy grants nothing. A refusal names the tests that held and what
+would admit the effect; the answer that follows carries that refusal as an infrastructure line, so
+it is reported even when the model's own words omit it. Each decision is durable in the turn's
+admission record before the call proceeds, journaled with the turn's trace and counted in status.
+Replies and provider calls stay operations of the closed set, and limit or end-date changes go
+only through the operator's approved request.
+
 **Rule — primitive execution is closed and cannot delegate business power.** Rules 1,
 4, 55, 60, 66, 100; **checks: P8-NF-11/12**. The following table is exhaustive for
 bootstrap/record maintenance. Each path remains registered, authenticated, finite and tested

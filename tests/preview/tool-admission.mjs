@@ -3,10 +3,11 @@
 // Deny by default. Ordinary in-workspace file tools and sandboxed shell commands are admitted. A shell
 // command is not judged by the words it contains: what it can reach is enforced where it runs (the
 // sandbox's read, write, network and process scope, the turn's fixed-size scratch volume, the per-file
-// limit). A consequential tool (an MCP or web tool, an unsandboxed shell) goes to the effect doorway's
-// admission, which admits only an operation the installed profile registers for that tool effect; the
-// single-machine profile registers none, so it refuses.
+// limit). A tool that could make a consequential effect (an MCP or web tool, an unsandboxed shell) goes to the
+// effect doorway (effect-doorway.mjs), which admits or refuses it by the purpose's four consequential-effect tests
+// under the turn's effect policy; ordinary in-workspace work never calls it.
 import { basename, dirname, join, resolve, sep } from 'node:path';
+import { admitEffect, decodeEffectPolicy, DEFAULT_EFFECT_POLICY, toolEffectProposal } from './effect-doorway.mjs';
 
 const SHELL_SAFE_PATH = /^\/[A-Za-z0-9_./@-]+$/u;
 /** Prepended to every admitted shell command. Claude Code 2.1.280 exports its own messaging inbox
@@ -23,13 +24,11 @@ const SEARCH_TOOLS = Object.freeze(['Glob', 'Grep']);
 /** Bounded excerpt of a tool input or result kept in the admission record. */
 export const RECORD_EXCERPT_CHARS = 4096;
 
-/** The effect doorway's admission for a tool effect: admitted only when the installed profile registers
- * an operation for exactly that tool effect. The single-machine profile's closed set registers none. */
-export function admitToolEffect(kind, operations) {
-  const operation = `tool:${kind}`;
-  if (operations.includes(operation)) return { admitted: true, reason: `registered operation ${operation}` };
-  return { admitted: false, reason: `effect doorway: the installed profile registers no ${operation} operation `
-    + `(registered: ${operations.join(', ') || 'none'}); refused by default` };
+/** The effect doorway's admission for a tool call's proposal, under the turn's config: its effect policy (absent:
+ * nothing outward by default), the register's irreversible term and the installation's accepted closed operation set. */
+export function admitToolEffect(proposal, config, now) {
+  const policy = config.effectPolicy === undefined ? DEFAULT_EFFECT_POLICY : decodeEffectPolicy(config.effectPolicy);
+  return admitEffect(proposal, policy, config.operations ?? [], { ...(config.irreversibleTerm ? { irreversibleTerm: config.irreversibleTerm } : {}), now });
 }
 
 /** Physical containment: resolve the symlinks of the longest existing prefix, then compare real paths. */
@@ -45,13 +44,18 @@ export function containedIn(workspace, path, fs) {
  * One PreToolUse decision. `call` is the hook input ({tool_name, tool_input}); `config` is the turn's
  * {workspace (real path), tmp (the shell's temporary directory), maxCalls, maxWriteBytes, operations}; `n` is
  * this call's 1-based count in the step (maxCalls + 1 once every slot is taken); `fs`
- * gives exists/realpath. Returns {decision, reason, kind?, updatedInput?}.
+ * gives exists/realpath; `now` (ms) checks a grant's expiry. Returns {decision, reason, kind?, doorway?, updatedInput?}:
+ * `doorway` is present exactly when the call reached the effect doorway.
  */
-export function admitToolCall(call, config, n, fs) {
+export function admitToolCall(call, config, n, fs, now) {
   const tool = String(call?.tool_name ?? ''), input = call?.tool_input ?? {};
   const deny = (reason, kind) => ({ decision: 'deny', reason, ...(kind ? { kind } : {}) });
-  const effect = kind => { const admitted = admitToolEffect(kind, config.operations); return admitted.admitted
-    ? { decision: 'allow', reason: admitted.reason, kind } : deny(admitted.reason, kind); };
+  // Part Twelve: the doorway's whole decision rides the admission record (Rule 41), so status and the answer can report it.
+  const effect = () => { const proposal = toolEffectProposal(tool, input), verdict = admitToolEffect(proposal, config, now);
+    const doorway = { effect: verdict.effect, ...(verdict.target ? { target: verdict.target } : {}), tests: verdict.tests,
+      disposition: verdict.disposition, ...(verdict.grant ? { grant: verdict.grant } : {}), ...(verdict.admits ? { admits: verdict.admits } : {}) };
+    const kind = proposal.effect.slice('tool:'.length);
+    return verdict.admitted ? { decision: 'allow', reason: verdict.reason, kind, doorway } : { ...deny(verdict.reason, kind), doorway }; };
   if (!Number.isSafeInteger(n) || n < 1) return deny('admission count unavailable');
   if (n > config.maxCalls) return deny(`per-step call cap ${config.maxCalls} reached (call ${n})`);
   const inside = path => typeof path === 'string' && path.length > 0 && containedIn(config.workspace, path, fs);
@@ -72,12 +76,11 @@ export function admitToolCall(call, config, n, fs) {
   if (tool === 'Bash') {
     const command = String(input.command ?? '');
     if (!command.trim()) return deny('empty command');
-    if (input.dangerouslyDisableSandbox) return effect('unsandboxed');
+    if (input.dangerouslyDisableSandbox) return effect();
     return { decision: 'allow', reason: 'sandboxed command',
       updatedInput: { ...input, command: toolShellPrefix(config.tmp) + command } };
   }
-  if (tool.startsWith('mcp__')) return effect('mcp');
-  if (tool === 'WebFetch' || tool === 'WebSearch') return effect('network');
+  if (toolEffectProposal(tool, input)) return effect();
   return deny(`unregistered tool ${tool || '(none)'}: refused by default`);
 }
 
@@ -104,7 +107,7 @@ export function toolTrace(lines) {
     let row; try { row = JSON.parse(line); } catch { malformed++; continue; }
     if (row?.phase === 'pre') {
       const entry = { n: row.n, tool: row.tool, input: excerpt(row.input), decision: row.decision, reason: row.reason,
-        ...(row.kind ? { kind: row.kind } : {}), result: null };
+        ...(row.kind ? { kind: row.kind } : {}), ...(row.doorway ? { doorway: row.doorway } : {}), result: null };
       calls.push(entry);
       if (row.decision === 'allow' && typeof row.id === 'string') admitted.set(row.id, entry);
     } else if (row?.phase === 'post') {

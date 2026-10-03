@@ -11,6 +11,7 @@ import { DEFAULT_SUBSCRIPTION_DOORWAY, subscriptionDoorway, SUBSCRIPTION_CONVERS
   subscriptionConversationPolicy, SUBSCRIPTION_PREVIEW_EXPIRY, validateSubscriptionActivation,
   SUBSCRIPTION_TOOLS_FRAMING, SUBSCRIPTION_TOOLS_SYSTEM_PROMPT, subscriptionToolsPolicy } from '../../src/assembly/production-provider.js';
 import { runToolTurn, toolPacketFits, toolStatusLines, toolTurnEligible } from './tool-turn.mjs';
+import { decodeEffectPolicy, DEFAULT_EFFECT_POLICY, effectDoorwayStatusLines, refusedEffectNotices } from './effect-doorway.mjs';
 import { redact } from '../../src/recall/redact.js';
 import { durablePreviewWrite } from './durable-write.js';
 import { prepareJournalEnvelope } from './journal-envelope.js';
@@ -1177,6 +1178,9 @@ async function main() {
   // before the loop continues, so neither a relaunch nor a crash resets it.
   let failedPolls = 0, conflictedPolls = 0;
   let identityVerified = false, routeHealthy = true, active = null, toolsActive = () => false, toolsRecord = null;
+  // Part Twelve: the effect doorway's operator policy, re-read at every tool turn so a withdrawn or broken file grants
+  // nothing (nothing outward by default); launch refuses a policy that does not decode.
+  let effectPolicyOf = () => DEFAULT_EFFECT_POLICY;
   const workerStop = { value: false };
   const signal = name => { signalled = true; signalName ??= name; workerStop.value = true; };
   process.once('SIGINT', signal); process.once('SIGTERM', signal); process.once('SIGHUP', signal);
@@ -1535,7 +1539,8 @@ async function main() {
     const invokeTools = async (prepared, id) => (await runToolTurn({ journal, root, id, prepared,
       promptLimit: toolPromptLimit(),
       deniedRoots: [realpathSync(root), profile.home, profile.configDirectory, profile.workingDirectory],
-      operations: SINGLE_MACHINE_PROFILE.operations, now: wallNow, redactText: text => redact(text).text,
+      operations: SINGLE_MACHINE_PROFILE.operations, effectPolicy: effectPolicyOf(), irreversibleTerm: shapeTerms().derivedFrom.irreversible,
+      now: wallNow, redactText: text => redact(text).text,
       fallback: async () => ({ result: await invokeSubscription(prepared, id) }),
       invoke: toolTurn => invokeSubscription(prepared, id, undefined, undefined, toolTurn) })).result;
     const proofLines = () => {
@@ -1578,8 +1583,10 @@ async function main() {
       installedUpdate: () => installUpdate && !updateDelivery(installUpdate, journal.view.order) ? updatePacketItem(installUpdate) : null,
       // Rules 8, 56, 100: due credential reminder stages and a failing doorway check ride the next answer as one line.
       // An unreadable registry or map offers nothing here; status reports it (credentials.error, doorways.fresh).
-      replyNotices: () => {
+      replyNotices: turn => {
         const now = wallNow(), notices = [];
+        // Part Twelve: this answer's own refused effects ride first, so a refusal is reported even if the answer omits it.
+        if (turn !== undefined) notices.push(...refusedEffectNotices(journal.view.effectDoorway?.recent ?? [], turn));
         try { notices.push(...credentialNotices(dueCredentialReminders(createSecretCustody(root, key(), wallNow).records(), now), now)); } catch { /* status shows it */ }
         try { notices.push(...doorwayNotices(readDoorwayMap(doorwaysPath), now)); } catch { /* status shows it */ }
         return notices;
@@ -1589,7 +1596,7 @@ async function main() {
         current: { owner: root.split('/').at(-1), launch: launchedAt, conversation: conversationOf(journal.view.genesis) }, ...ownedActivity(root) }),
       statusLines: () => [...installation ? installationStatusLines(installation, launchedAt, (() => { try { return installedCode(); } catch { return null; } })(),
         installUpdate, installUpdate && updateDelivery(installUpdate, journal.view.order), timeZoneOf(options)) : [],
-        ...toolStatusLines(journal.view, toolsActive())],
+        ...toolStatusLines(journal.view, toolsActive()), ...(toolsActive() || journal.view.effectDoorway ? effectDoorwayStatusLines(journal.view.effectDoorway) : [])],
       checkOutbound: text => { if (redact(text).count) throw Error('preview: outbound secret refused'); },
       secrets: custody,
       model: async ({ id, prepared }) => {
@@ -1749,6 +1756,11 @@ async function main() {
       if (!activationMatchesJournal(journal.view, toolsActivation)) throw Error('preview: tool activation differs from journal');
       toolsRecord = toolsActivation;
       toolsActive = () => { try { return readFileSync(toolsActivationPath, 'utf8') === toolsBytes; } catch { return false; } };
+    }
+    const effectPolicyPath = options['effect-policy'];
+    if (effectPolicyPath !== undefined) {
+      decodeEffectPolicy(JSON.parse(readFileSync(effectPolicyPath, 'utf8')));
+      effectPolicyOf = () => { try { return decodeEffectPolicy(JSON.parse(readFileSync(effectPolicyPath, 'utf8'))); } catch { return DEFAULT_EFFECT_POLICY; } };
     }
     installationPolicy = installationPolicyOf(options, activation, activationPath, journal.view, wallNow());
     registerAtLaunch = registerGeneration();

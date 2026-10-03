@@ -1,3 +1,6 @@
+// @ts-expect-error The runner side stays plain JavaScript.
+import { admitEffect, DEFAULT_EFFECT_POLICY, refusedEffectNotices } from './effect-doorway.mjs';
+import { SINGLE_MACHINE_PROFILE } from './activation-authority.js';
 // Build 4: every accepted obligation stays owned until deliberately settled (Rules 6, 8, 20-23, 46, 55, 64, 68, 83, 93, 99, 103).
 import { expect, it } from 'vitest';
 import { chmodSync, mkdirSync, mkdtempSync, readFileSync, realpathSync, rmSync } from 'node:fs';
@@ -49,6 +52,7 @@ function world(root: string, options: { maxBytes?: number; maxCalls?: number; an
   const review = options.review;
   const worker = createJournalWorker(journal, { now: () => clock.now, stopped: options.stopped ?? (() => false), timeZone: 'UTC',
     prepareModel: input => input.context,
+    replyNotices: (turn) => refusedEffectNotices(journal.view.effectDoorway?.recent ?? [], turn),
     ...(options.toolRoute ? { toolRoute: options.toolRoute } : {}),
     ...(review ? { replyCheck: { elapsedMs: () => 0,
       jev: async (text: string, questions?: Record<string, unknown>) => ({ latencyMs: 0, value: { model: 'jev-1.13.0',
@@ -81,6 +85,14 @@ function world(root: string, options: { maxBytes?: number; maxCalls?: number; an
         const commitments = packet.history.filter(turn => /remember/iu.test(turn.user))
           .map(turn => ({ in: 'message', quote: turn.user, ...(options.waitsOn === false ? {} : { waitsOn: 'nothing' }) }));
         return JSON.stringify({ summary: 'Earlier turns covered a locker code and plans.', people: [], commitments, closed: [] });
+      }
+      // A turn whose own tool call the effect doorway refused, as the live tool turn records it (Part Twelve §3).
+      if (input.question === DOORWAY) {
+        const verdict = admitEffect({ effect: 'tool:unsandboxed' }, DEFAULT_EFFECT_POLICY, SINGLE_MACHINE_PROFILE.operations);
+        journal.append({ kind: 'tool-turn', phase: 'reserved', id: input.id, attempt: 0, calls: 1, at: clock.now });
+        journal.append({ kind: 'tool-turn', phase: 'trace', id: input.id, attempt: 0, consistent: true, workspaceBytes: 0, at: clock.now,
+          calls: [{ n: 1, tool: 'Bash', input: '{"dangerouslyDisableSandbox":true}', decision: 'deny', reason: verdict.reason, kind: 'unsandboxed',
+            doorway: { effect: verdict.effect, tests: verdict.tests, disposition: verdict.disposition, admits: verdict.admits }, result: null }] });
       }
       contexts.set(input.question, input.context);
       const answer = options.answer?.(input.question, input.context) ?? 'Noted.';
@@ -315,6 +327,7 @@ it('gives the contextual reviewer the attached investigation record and the gove
 
 const LATER = 'I’ll look into the invoice question later today.';
 const INVOICE = 'Can you check the invoice question?';
+const DOORWAY = 'Run echo outside-sandbox without the sandbox.';
 it('works a due deferral with no further inbound, keeps its result for the next reply, and settles it on delivery (Rules 8, 22, 46, 64, 92)', async () => {
   const root = origin();
   try {
@@ -1133,4 +1146,32 @@ it('tells the reply review when its tool-call excerpt is incomplete, so a result
       reopened.close();
     } finally { rmSync(root, { recursive: true, force: true }); }
   }
+});
+
+it('a long answer keeps its own effect refusal; a follow-up report that no longer fits stays pending and rides a later answer (Rules 8, 42; Part Twelve §3)', async () => {
+  const root = origin();
+  const REPORT = `The invoice is ready. ${'r'.repeat(430)}`;
+  try {
+    const w = world(root, { maxBytes: 16000, answer: question => question === INVOICE
+      ? { reply: LATER, openLoops: [{ kind: 'deferral', quote: LATER, waitsOn: 'nothing' }] }
+      : question === DOORWAY ? { reply: `Here is the answer. ${'x'.repeat(2780)}` } : 'The tomatoes look fine.',
+    work: () => ({ outcome: 'report', report: REPORT }) });
+    await w.say(INVOICE);
+    w.clock.now += LOOP_REVISIT_MS + 60_000;
+    expect(await w.worker.workObligations()).toBe(true);
+    expect(w.journal.view.obligationWork['commitment:0']?.report?.text).toBe(REPORT);
+    // The report alone would fit; with the refusal reserved it does not, so the answer carries the refusal whole and no report.
+    await w.say(DOORWAY);
+    expect(w.sent).toHaveLength(2);
+    expect(w.sent[1]).toMatch(/Here is the answer\. x+\n\nEffect doorway: a tool:unsandboxed step was refused/u);
+    expect(w.sent[1]).not.toContain('The invoice is ready');
+    expect(Buffer.byteLength(w.sent[1]!)).toBeLessThanOrEqual(3600);
+    expect(w.journal.view.obligationWork['commitment:0']!.report!.boundTo).toBeUndefined();
+    // The report is still owned and is delivered whole with the next answer.
+    await w.say('How are the tomatoes?');
+    expect(w.sent).toHaveLength(3);
+    expect(w.sent[2]).toContain(REPORT);
+    expect(w.sent[2]).not.toContain('Effect doorway');
+    w.journal.close();
+  } finally { rmSync(root, { recursive: true, force: true }); }
 });

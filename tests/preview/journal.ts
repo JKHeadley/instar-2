@@ -1294,6 +1294,8 @@ export interface JournalView { genesis: Extract<JournalRecord, {kind:'genesis'}>
   modelCalls: ModelCallCounts;
   /** Present once a tool turn ran: counts only; each trace is its own journal row. */
   toolTurns?: ToolTurnStats;
+  /** Present once a tool call reached the effect doorway (Part Twelve): counts and the most recent decisions. */
+  effectDoorway?: EffectDoorwayStats;
   /** Retrospective passes in journal order (plain records, so snapshots carry them verbatim). */
   retroPasses: RetroPass[];
   /** UNKNOWN calls conservatively written off by an authorized cap raise; absent until one is. */
@@ -2724,7 +2726,32 @@ function applyRetract(view: JournalView, row: Extract<JournalRecord, { kind: 're
   const retired = view.summaries.flatMap((summary, index) => summary.through >= first ? [index] : []);
   if (retired.length) view.retiredSummaries = [...new Set([...view.retiredSummaries ?? [], ...retired])].sort((a, b) => a - b);
 }
-export interface ToolTraceCall { n: number; tool: string; input: string; decision: string; reason: string; kind?: string; result: string | null }
+export interface ToolTraceCall { n: number; tool: string; input: string; decision: string; reason: string; kind?: string;
+  /** Present exactly when the call reached the effect doorway (Part Twelve; tests/preview/effect-doorway.mjs). */
+  doorway?: EffectDoorwayCall; result: string | null }
+/** The effect doorway's decision on one tool call: the four consequential-effect tests and the disposition. */
+export interface EffectDoorwayCall { effect: string; target?: string;
+  tests: { irreversible: boolean; resources: boolean; scope: boolean; policySensitive: boolean };
+  disposition: 'ordinary' | 'granted' | 'closed-set' | 'refused'; grant?: string; admits?: string }
+/** One doorway decision as status and the answer's notice read it. */
+export interface EffectDoorwayDecision extends EffectDoorwayCall { turn: string; attempt: number; n: number; at: number }
+/** Counts of the doorway's decisions on tool calls and the most recent ones (bounded). */
+export interface EffectDoorwayStats { proposed: number; ordinary: number; granted: number; closedSet: number; refused: number;
+  recent: EffectDoorwayDecision[] }
+/** Recent doorway decisions kept in the view (the trace rows keep every one). */
+export const EFFECT_DECISIONS_KEPT = 16;
+const DOORWAY_DISPOSITIONS = ['ordinary', 'granted', 'closed-set', 'refused'] as const;
+const DOORWAY_TESTS = ['irreversible', 'resources', 'scope', 'policySensitive'] as const;
+function validDoorwayCall(value: unknown): value is EffectDoorwayCall {
+  if (!value || typeof value !== 'object') return false;
+  const d = value as Record<string, unknown>, tests = d.tests as Record<string, unknown> | undefined;
+  return boundedText(d.effect, 1, 64) && (d.target === undefined || boundedText(d.target, 1, 256))
+    && !!tests && typeof tests === 'object' && DOORWAY_TESTS.every(test => typeof tests[test] === 'boolean')
+    && DOORWAY_DISPOSITIONS.includes(d.disposition as typeof DOORWAY_DISPOSITIONS[number])
+    && (d.grant === undefined || boundedText(d.grant, 1, 128)) && (d.admits === undefined || boundedText(d.admits, 1, 2048))
+    // Ordinary exactly when no test held: a consequential effect is granted, in the closed set, or refused.
+    && (d.disposition === 'ordinary') === !DOORWAY_TESTS.some(test => tests[test] === true);
+}
 /** One recorded tool call as the reply review sees it: what was called, whether it was admitted, and what it returned. */
 export interface ToolAttempt { n: number; tool: string; decision: string; input: string; result: string | null }
 /** The review's bounds on recorded tool attempts: at most this many calls, each excerpt clipped to this many characters. */
@@ -2776,6 +2803,20 @@ function projectToolTurn(view: JournalView, row: Extract<JournalRecord, { kind: 
   }
   view.toolTurns = { ...stats, toolCalls: stats.toolCalls + admitted, toolRefusals: stats.toolRefusals + row.calls.length - admitted,
     inconsistent: stats.inconsistent + Number(!row.consistent), open: stats.open.filter(item => item !== key) };
+  // Part Twelve: every call that reached the effect doorway is counted by its disposition (Rules 41, 84).
+  const reached = row.calls.filter(call => call.doorway !== undefined);
+  if (reached.length) {
+    const doorway = view.effectDoorway ?? { proposed: 0, ordinary: 0, granted: 0, closedSet: 0, refused: 0, recent: [] };
+    const decisions = reached.map(call => {
+      if (!validDoorwayCall(call.doorway) || (call.doorway.disposition === 'refused') !== (call.decision !== 'allow'))
+        throw Error('preview journal: effect doorway decision');
+      return { ...call.doorway, tests: { ...call.doorway.tests }, turn: row.id, attempt: row.attempt, n: call.n, at: row.at };
+    });
+    const count = (disposition: EffectDoorwayCall['disposition']) => decisions.filter(item => item.disposition === disposition).length;
+    view.effectDoorway = { proposed: doorway.proposed + decisions.length, ordinary: doorway.ordinary + count('ordinary'),
+      granted: doorway.granted + count('granted'), closedSet: doorway.closedSet + count('closed-set'), refused: doorway.refused + count('refused'),
+      recent: [...doorway.recent, ...decisions].slice(-EFFECT_DECISIONS_KEPT) };
+  }
 }
 function project(view: JournalView, row: JournalRecord, system?: SystemCheck, admission: 'new' | 'replay' = 'new'): void {
   if ('at' in row) view.clockFloor = Math.max(view.clockFloor, row.at);
@@ -4357,7 +4398,8 @@ export interface PreviewPorts {
   /** Rule 44: the runner's installed update, carried into operator packets until a sent answer included it. */
   installedUpdate?(): object | null;
   /** Rules 8, 56, 100: due reminder lines (credential expiry stages, a failing doorway check), most urgent first. */
-  replyNotices?(): readonly ReplyNotice[];
+  /** Offered for the answer to turn `turn` (its own effect-doorway refusals ride first). */
+  replyNotices?(turn?: string): readonly ReplyNotice[];
   /** Rules 9, 96, 114: the runner's bounded concurrent owned-work view (concurrentWorkItem), carried into operator packets. */
   concurrentWork?(): object | null;
   /** Monotonic process time for minimum waits; inherited UNKNOWN work waits anew. */
@@ -6915,23 +6957,28 @@ export function createJournalWorker(journal: ReturnType<typeof openPreviewJourna
             else for (const item of obligations.directives ?? []) text = `${text.trim()} Standing instruction saved until you say it is done or replace it: "${item.quote}".`;
             if (invalidUndo) { text = 'I could not undo that memory change. Only the most recent change within ten minutes can be undone.';
               memory = []; dated = []; undo = undefined; invalidMemory = false; }
+            // Rules 8, 56, 100: at most one due reminder line rides the same answer; a spent key is never offered again.
+            // Part Twelve §3, Rule 42: this answer's own effect refusal is offered for this turn only, so it is never
+            // optional. Its room is reserved first: the answer body is shortened (marked with …) to keep it, and an
+            // optional follow-up report rides only whole in the space left, otherwise it stays pending for a later answer.
+            const replying = Boolean(text.trim()) && fromOperator(turn) && !probe && !turn.requestedAction;
+            const next = replying ? openReplyNotices(journal.view.order, ports.replyNotices?.(turn.id) ?? [], turn.id)[0] : undefined;
+            const reserved = next?.key.startsWith('effect:') ? Buffer.byteLength(next.line) + 2 : 0;
+            if (reserved && Buffer.byteLength(text) + reserved > 3500)
+              text = clip(text.trimEnd(), 3500 - reserved - Buffer.byteLength('…'));
             // Rules 8, 92: completed obligation work rides the operator's next answer, the only send the grant allows.
             // A result another unsent answer already carries is not repeated in this one.
             const reports: string[] = [], carried = new Set(journal.view.order.filter(item => item.id !== turn.id
               && item.intent === undefined).flatMap(item => item.answerReports ?? []));
-            if (text.trim() && fromOperator(turn) && !probe && !turn.requestedAction)
+            if (replying)
               for (const item of pendingReports(journal.view).filter(entry => !carried.has(entry.key))) {
                 const line = `\n\nFollow-up on "${clip(clean(redact(item.subject).text, true), 160)}": ${item.text}`;
-                if (reports.length >= 2 || Buffer.byteLength(text) + Buffer.byteLength(line) > 3500) break;
+                if (reports.length >= 2 || Buffer.byteLength(text) + Buffer.byteLength(line) + reserved > 3500) break;
                 text = `${text.trimEnd()}${line}`; reports.push(item.key);
               }
-            // Rules 8, 56, 100: at most one due reminder line rides the same answer; a spent key is never offered again.
             const notices: ReplyNotice[] = [];
-            if (text.trim() && fromOperator(turn) && !probe && !turn.requestedAction) {
-              const next = openReplyNotices(journal.view.order, ports.replyNotices?.() ?? [], turn.id)[0];
-              if (next && Buffer.byteLength(text) + Buffer.byteLength(next.line) + 2 <= 3500) {
-                text = `${text.trimEnd()}\n\n${next.line}`; notices.push(next);
-              }
+            if (next && Buffer.byteLength(text) + Buffer.byteLength(next.line) + 2 <= 3500) {
+              text = `${text.trimEnd()}\n\n${next.line}`; notices.push(next);
             }
             // The claims are decided one last time against the reply exactly as it is written, by the same
             // rule the replay reads it back with; anything the final text no longer carries is counted refused.
