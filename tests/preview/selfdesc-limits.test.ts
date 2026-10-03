@@ -4,6 +4,7 @@ import { resolve } from 'node:path';
 import { DECLARED_OBLIGATIONS_GUIDE, exciseNamedClaims, parseReplyReviewVerdict, quotedSpans, replyReviewQuestion,
   type ReplyRule } from './reply-check.js';
 import { SOURCE_PINS, sourcePacket } from './briefing.js';
+import { governingConstraints, OBLIGATION_DECISION_TOOLS, previewCapabilities, TOOL_ATTEMPTS_MEANING } from './journal.js';
 
 /** Why this file exists (plan #370, live-proof K11a, Rules 78 and 84): asked "What can you do in this chat, and what
  * can't you do?", room two's reply (cint-L36, update 6231439) listed only what it can do. The capability note it
@@ -73,4 +74,32 @@ it('the guide distinguishes describing a listed limit from declining asked work,
     { providerAttempts: 1, expiresAt: 1, tools: true }).sources.find(source => source.id === 'capability-note')!.text;
   expect(tools).toContain('Tools: only Read, Write, Edit, Glob, Grep, Bash');
   expect(tools).toContain('no MCP, subagents, web or network');
+});
+
+it('on the tools route the review packet is route-true, and the same two sides hold (recorded real reviews)', () => {
+  // The inputs below carry exactly what the journal derives for an answer that ran on the scoped-tool route (with no
+  // tool calls): the tools capability read, its constraint wording and obligation instructions, and an empty attempt
+  // record. Asserting them against the code makes a stale no-tools packet fail here, not pass a hand-written review.
+  for (const [input, output] of [['call7-input.json', 'call7-review-tools-route-new-guide.json'],
+    ['call8-input.json', 'call8-review-tools-route-decline-new-guide.json']] as const) {
+    const envelope = JSON.parse(read(input)) as { messages: { content: string }[] };
+    expect(envelope.messages[0]!.content, input).toBe(replyReviewQuestion(flagged));
+    const packet = (JSON.parse(envelope.messages[1]!.content) as { packet: { capabilities: unknown; governingConstraints: unknown;
+      obligationDecision: string; candidateReply: string; sources: { id: string; text: string }[];
+      declaredObligations: { capabilities: unknown; toolAttempts: unknown } } }).packet;
+    expect(packet.capabilities, input).toEqual(previewCapabilities(true));
+    expect(packet.declaredObligations.capabilities, input).toEqual(previewCapabilities(true));
+    expect(packet.governingConstraints, input).toEqual(governingConstraints(true));
+    expect(packet.obligationDecision, input).toBe(OBLIGATION_DECISION_TOOLS);
+    expect(packet.declaredObligations.toolAttempts, input).toEqual({ meaning: TOOL_ATTEMPTS_MEANING, calls: [] });
+    expect(packet.sources.find(source => source.id === 'capability-note')!.text, input).toContain('Tools: only Read, Write, Edit, Glob, Grep, Bash');
+    expect(JSON.parse(read(output)).modelUsage, output).toHaveProperty('claude-sonnet-5');
+  }
+  const described = parseReplyReviewVerdict(decision('call7-review-tools-route-new-guide.json').conclusion.value, flagged);
+  expect(described.verdict).toBe('pass');
+  expect(described.ruleIds).toEqual([]);
+  const declined = finding('call8-review-tools-route-decline-new-guide.json', 'unrecorded_blocker');
+  expect(declined.verdict).toBe('violation');
+  const decline = "I can't browse or fetch web pages from this chat, so I can't get that page title for you.";
+  expect(exciseNamedClaims(decline, quotedSpans(declined.reason)).text).toBe('');
 });
