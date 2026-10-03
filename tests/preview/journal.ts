@@ -6952,27 +6952,28 @@ export function createJournalWorker(journal: ReturnType<typeof openPreviewJourna
             else for (const item of obligations.directives ?? []) text = `${text.trim()} Standing instruction saved until you say it is done or replace it: "${item.quote}".`;
             if (invalidUndo) { text = 'I could not undo that memory change. Only the most recent change within ten minutes can be undone.';
               memory = []; dated = []; undo = undefined; invalidMemory = false; }
+            // Rules 8, 56, 100: at most one due reminder line rides the same answer; a spent key is never offered again.
+            // Part Twelve §3, Rule 42: this answer's own effect refusal is offered for this turn only, so it is never
+            // optional. Its room is reserved first: the answer body is shortened (marked with …) to keep it, and an
+            // optional follow-up report rides only whole in the space left, otherwise it stays pending for a later answer.
+            const replying = Boolean(text.trim()) && fromOperator(turn) && !probe && !turn.requestedAction;
+            const next = replying ? openReplyNotices(journal.view.order, ports.replyNotices?.(turn.id) ?? [], turn.id)[0] : undefined;
+            const reserved = next?.key.startsWith('effect:') ? Buffer.byteLength(next.line) + 2 : 0;
+            if (reserved && Buffer.byteLength(text) + reserved > 3500)
+              text = clip(text.trimEnd(), 3500 - reserved - Buffer.byteLength('…'));
             // Rules 8, 92: completed obligation work rides the operator's next answer, the only send the grant allows.
             // A result another unsent answer already carries is not repeated in this one.
             const reports: string[] = [], carried = new Set(journal.view.order.filter(item => item.id !== turn.id
               && item.intent === undefined).flatMap(item => item.answerReports ?? []));
-            if (text.trim() && fromOperator(turn) && !probe && !turn.requestedAction)
+            if (replying)
               for (const item of pendingReports(journal.view).filter(entry => !carried.has(entry.key))) {
                 const line = `\n\nFollow-up on "${clip(clean(redact(item.subject).text, true), 160)}": ${item.text}`;
-                if (reports.length >= 2 || Buffer.byteLength(text) + Buffer.byteLength(line) > 3500) break;
+                if (reports.length >= 2 || Buffer.byteLength(text) + Buffer.byteLength(line) + reserved > 3500) break;
                 text = `${text.trimEnd()}${line}`; reports.push(item.key);
               }
-            // Rules 8, 56, 100: at most one due reminder line rides the same answer; a spent key is never offered again.
             const notices: ReplyNotice[] = [];
-            if (text.trim() && fromOperator(turn) && !probe && !turn.requestedAction) {
-              const next = openReplyNotices(journal.view.order, ports.replyNotices?.(turn.id) ?? [], turn.id)[0];
-              // Part Twelve §3, Rule 42: this answer's own effect refusal is offered for this turn only, so it is never
-              // optional: the answer body is shortened (marked with …) to keep room for it in the one send.
-              if (next?.key.startsWith('effect:') && Buffer.byteLength(text) + Buffer.byteLength(next.line) + 2 > 3500)
-                text = clip(text.trimEnd(), 3500 - Buffer.byteLength(next.line) - 2 - Buffer.byteLength('…'));
-              if (next && Buffer.byteLength(text) + Buffer.byteLength(next.line) + 2 <= 3500) {
-                text = `${text.trimEnd()}\n\n${next.line}`; notices.push(next);
-              }
+            if (next && Buffer.byteLength(text) + Buffer.byteLength(next.line) + 2 <= 3500) {
+              text = `${text.trimEnd()}\n\n${next.line}`; notices.push(next);
             }
             // The claims are decided one last time against the reply exactly as it is written, by the same
             // rule the replay reads it back with; anything the final text no longer carries is counted refused.
