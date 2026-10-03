@@ -280,7 +280,7 @@ const NATIVE_TOOLS_SENTENCE = 'You run inside Instar\'s own agent loop and never
   + 'Grep {pattern, path?, glob?, output_mode?: files_with_matches|content|count}; Bash {command, timeout?}; WebFetch {url} (an HTTP GET; '
   + 'refused unless admitted). They work only inside this turn\'s private, new and empty workspace (relative paths resolve there). '
   + 'Bash is sandboxed: no network, no reads outside the workspace except the system files commands need to run, no writes outside it, '
-  + 'no control of other processes. A refused call returns its reason. When remaining steps is 0 you must answer. '
+  + 'no control of other processes. A refused call returns its reason. When remaining steps is 0, request no more calls and reply. '
   + 'Otherwise answer as below once you are done; when your answer reports a value a tool produced, say in reason.value which step and '
   + 'call produced it. Never claim an effect no tool result reported.';
 export const SUBSCRIPTION_NATIVE_SYSTEM_PROMPT = SUBSCRIPTION_CONVERSATION_SYSTEM_PROMPT.replace(NO_TOOLS_SENTENCE, NATIVE_TOOLS_SENTENCE);
