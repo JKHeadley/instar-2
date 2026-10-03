@@ -1596,6 +1596,11 @@ function decodeRow(sealed: Buffer, offset: number, key: Uint8Array): { row: Jour
   return { row: JSON.parse(json.toString('utf8')) as JournalRecord | SnapshotStart | SnapshotChunk,
     end: offset + 4 + length };
 }
+/** The turn's answer packet once no lookup, re-ask or replacement can overwrite it (all three need an unsettled call). */
+function settledPrompt(turn: { prompt?: string | null; answer?: unknown; modelState?: unknown; intent?: unknown } | undefined): string | null | undefined {
+  return turn !== undefined && (turn.answer !== undefined || turn.modelState !== undefined || turn.intent !== undefined)
+    ? turn.prompt : undefined;
+}
 function retainedEvidence(rows: JournalRecord[], view: JournalView): JournalRecord[] {
   const open = new Set(view.order.filter(turn => turn.held !== undefined
     || turn.accepted && (turn.intent === undefined || turn.sent === undefined)).map(turn => turn.id));
@@ -1604,9 +1609,10 @@ function retainedEvidence(rows: JournalRecord[], view: JournalView): JournalReco
   for (const row of rows) {
     if (row.kind === 'hold') { if (open.has(row.id)) holds.set(row.id, row); continue; }
     if ((row.kind === 'reserve' || row.kind === 'lookup' || row.kind === 'format-retry' || row.kind === 'answer-replace')
-      && row.prompt !== undefined && view.turns.get(row.id)?.prompt === row.prompt) {
-      // The snapshot turn already keeps the exact answer packet for inspect and audit.
-      // The retained reservation still proves the causal ordering of an UNKNOWN call.
+      && row.prompt !== undefined && settledPrompt(view.turns.get(row.id)) === row.prompt) {
+      // Rule 58: once the answer call is settled, the snapshot turn keeps the exact final answer packet for inspect
+      // and audit. Until then a lookup, re-ask or replacement can still overwrite that projection, so the row keeps
+      // its own prompt. The retained reservation still proves the causal ordering of an UNKNOWN call.
       const stored = { ...row }; delete stored.prompt; evidence.push(stored); continue;
     }
     // Keep per-call usage, failure details, review and summary prompts, and

@@ -306,3 +306,28 @@ it('runs the Justin probe on an isolated copy and refuses an unmarked root', () 
       unknownCalls:1,unknownSends:1,holds:1,reservations:1,stopped:false});
   } finally { rmSync(root, {recursive:true,force:true}); }
 }, 30000);
+
+it.each([false, true])('keeps an earlier attempt\'s exact input when compaction runs between attempts, then once the answer settles (Rule 58; compact before re-ask = %s)', compactBefore => {
+  const root = origin(), path = join(root, 'journal.encrypted');
+  const journal = openPreviewJournal(path, key, genesis);
+  try {
+    journal.append({kind:'intake',id:id(1),update:1,text:'question 1',raw:raw(1),accepted:true,cursor:2,at:1000});
+    journal.append({kind:'reserve',id:id(1),prompt:'first exact prepared input',at:1001});
+    if (compactBefore) journal.compact();
+    journal.append({kind:'format-retry',id:id(1),role:'answer',state:'complete',failureClass:'malformed',
+      prompt:'refreshed exact prepared input',at:1002});
+    journal.compact();
+    const between = retainedRows(path).find(row => row.kind === 'reserve') as {prompt?: string};
+    expect(between.prompt).toBe('first exact prepared input');
+    journal.append({kind:'answer',id:id(1),text:'answer 1',at:1003});
+    journal.compact();
+    journal.close();
+    const reopened = read(root);
+    expect(reopened.view.turns.get(id(1))!.prompt).toBe('refreshed exact prepared input');
+    reopened.close();
+    const rows = retainedRows(path);
+    // Settled: the snapshot turn holds the final packet, so only its duplicate is dropped; the earlier input stays.
+    expect((rows.find(row => row.kind === 'reserve') as {prompt?: string}).prompt).toBe('first exact prepared input');
+    expect((rows.find(row => row.kind === 'format-retry') as {prompt?: string}).prompt).toBeUndefined();
+  } finally { journal.close(); rmSync(root, { recursive: true, force: true }); }
+});
