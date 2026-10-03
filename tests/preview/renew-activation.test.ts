@@ -12,8 +12,8 @@ import { renewActivation } from './renew-activation.mjs';
 import { activationMatchesJournal, openPreviewJournal, renewJournalExpiry } from './journal.js';
 import { offlineOperatorMessage, writeOperatorRecords } from './successive-fixture.js';
 
-const PRIOR_EXPIRY = 1790628000000; // 2026-09-28T20:40:00Z, the record being renewed.
-const PRIOR_COMMIT = '89d5ee35'; // live frozen13 build: int10 + thinking off.
+const PRIOR_EXPIRY = 1791232800000; // 2026-10-05T20:40:00Z, the record being renewed (itself renewed from 2026-09-28).
+const PRIOR_COMMIT = '08220af9'; // live runner-frozen-cint-L33 build.
 const NOW = 1790520000000; // 2026-09-27T14:40:00Z, fixed so no assertion reads the host clock.
 const model = 'claude-sonnet-5';
 const profile = Object.freeze({ type: 'ProviderSubscriptionProfile', schemaVersion: 1, reference: 'preview-s2-profile-test',
@@ -38,7 +38,7 @@ const conversation = (record, p = profile, now = NOW) =>
   validateSubscriptionActivation(record, p, model, now, SUBSCRIPTION_CONVERSATION_FRAMING);
 
 it('pins the renewed expiry and leaves every invocation policy digest unchanged', () => {
-  expect(SUBSCRIPTION_PREVIEW_EXPIRY).toBe(Date.UTC(2026, 9, 5, 20, 40));
+  expect(SUBSCRIPTION_PREVIEW_EXPIRY).toBe(Date.UTC(2026, 9, 12, 20, 40));
   expect(SUBSCRIPTION_PREVIEW_EXPIRY - PRIOR_EXPIRY).toBe(7 * 24 * 3600 * 1000);
   // The live-fix conversation policy digest for claude-sonnet-5 (int11 was sha256:efe69876…; the 2026-09-28
   // declaration-slot system prompt needs a policy-successor record). The policy never carries the expiry.
@@ -197,15 +197,29 @@ it('the desk script writes new files only and the renew-expiry command binds tha
     // The launcher suppresses error details by design; each refusal differs from the success below
     // in exactly one input, and none of them moves the journal's expiry.
     const expires = () => JSON.parse(node(['tests/preview/journal-agent.mjs', 'status', '--root', root], env).stdout).expires;
-    expect(agent('renew-expiry', currentPath, '2026-09-28T20:40:00Z').status).toBe(1); // old record
-    expect(agent('renew-expiry', out, '2026-09-28T20:40:00Z').status).toBe(1); // flag disagrees with record
+    expect(agent('renew-expiry', currentPath, '2026-10-05T20:40:00Z').status).toBe(1); // old record
+    expect(agent('renew-expiry', out, '2026-10-05T20:40:00Z').status).toBe(1); // flag disagrees with record
     // Rules 94/98/103/104: the renewal is exercised under the recorded standing grant (the earlier
     // yes to bounded status-quo renewals), never under its reference strings. No record refuses;
     // a grant that does not cover this subject refuses; the in-scope grant renews with no new yes.
     // The launcher suppresses details; each reason is proven by activation-authority.test.ts.
-    const refusedWith = (_reason: string) => { expect(agent('renew-expiry', out, '2026-10-05T20:40:00Z').status).toBe(1);
+    const refusedWith = (_reason: string) => { expect(agent('renew-expiry', out, '2026-10-12T20:40:00Z').status).toBe(1);
       expect(expires()).toBe(PRIOR_EXPIRY); };
+    // Rule 79: status names renewal as a phone action only when `--renewal-activation` validates exactly as `run`
+    // validates it (activation, operator authority, a later end than the journal's); otherwise the host fallback.
+    const chatRoute = 'phone: the operator replies "yes" to the exact request in the bound chat';
+    const yes = file('explicit-yes-installation.json', { type: 'ExplicitYesInstallation', schemaVersion: 1, installation: renewed.trial,
+      adapter: 'github-api', machine: 'Mac Studio', agentSpeaksAsOperatorInChat: false,
+      chat: { method: 'telegram-sender', boundChatId: '7654321', operatorAccountId: '7654321', agentHoldsNoAccess: true },
+      github: { method: 'github-review', repository: 'owner/repo', operatorLogin: 'operator', agentHoldsNoAccess: true, acceptance: null } });
+    const renewSurface = (activation = out) => { const result = node(['tests/preview/journal-agent.mjs', 'status', '--root', root,
+      '--explicit-yes-installation', yes, '--renewal-activation', activation, '--login-profile', profilePath, '--model', model,
+      '--operator-records', join(root, 'operator-records')], env);
+      expect(result.status, result.stderr).toBe(0);
+      return JSON.parse(result.stdout).operatorActionSurface.renewExpiry as string; };
+    const fallback = `${chatRoute}, once the reviewed activation for the new trial end is installed (--renewal-activation); until then host command line on the trial machine (journal-agent.mjs)`;
     refusedWith('activation authority record absent');
+    expect(renewSurface()).toBe(fallback);
     // The messaging owner's records hold the operator's two authenticated messages (the standing
     // grant and the waiver); the recorded authority must resolve to them exactly.
     const GRANT_WORDS = 'You have my pre-approval for whatever we need to do', WAIVER_WORDS = 'trial waiver approved';
@@ -238,6 +252,7 @@ it('the desk script writes new files only and the renew-expiry command binds tha
     refusedWith('not the desk\'s sealed disposition');
     authority({ ...grant, scope: { ...grant.scope, model: 'claude-other-1' } });
     refusedWith('does not cover');
+    expect(renewSurface()).toBe(fallback);
     // Rules 28/82: an invented grant (unresolvable source, prose that is no approval) refuses, and so
     // does the real grant's shape carrying words the operator never sent.
     authority({ ...grant, id: 'invented-grant', words: 'This is not an operator approval.', source: 'nonexistent:review-probe' });
@@ -246,13 +261,16 @@ it('the desk script writes new files only and the renew-expiry command binds tha
     refusedWith('does not resolve to an authenticated operator message');
     expect(expires()).toBe(PRIOR_EXPIRY);
     authority();
-    const ok = agent('renew-expiry', out, '2026-10-05T20:40:00Z');
+    expect(renewSurface()).toBe(chatRoute);
+    expect(renewSurface(currentPath)).toBe(fallback);                // the current record ends at the journal's end
+    const ok = agent('renew-expiry', out, '2026-10-12T20:40:00Z');
     expect(ok.status, ok.stderr).toBe(0);
     const status = node(['tests/preview/journal-agent.mjs', 'status', '--root', root], env);
     expect(JSON.parse(status.stdout)).toMatchObject({ expires: SUBSCRIPTION_PREVIEW_EXPIRY,
       expiryAuthority: expect.stringMatching(/^status-quo renewal; preapproval note #30 \[grant observer-note-30; waiver waiver; record sha256:[a-f0-9]{64}\]$/u) });
-    expect(agent('renew-expiry', out, '2026-10-05T20:40:00Z').status).toBe(1); // one renewal per expiry
+    expect(agent('renew-expiry', out, '2026-10-12T20:40:00Z').status).toBe(1); // one renewal per expiry
     expect(expires()).toBe(SUBSCRIPTION_PREVIEW_EXPIRY);
+    expect(renewSurface()).toBe(fallback);                           // renewed: no later reviewed end to renew to
   } finally { rmSync(root, { recursive: true, force: true }); }
 }, 90_000);
 
@@ -286,17 +304,18 @@ it('the build with the previous conversation policy refuses the policy successor
     writeFileSync(provider, oldSource.stdout);
     const old = await import(provider);
     expect(encoded(old.subscriptionConversationPolicy(model)).hash).toBe(OLD_POLICY_DIGEST);
-    expect(old.SUBSCRIPTION_PREVIEW_EXPIRY).toBe(SUBSCRIPTION_PREVIEW_EXPIRY);
-    expect(() => old.validateSubscriptionActivation(policyPredecessor, profile, model, NOW,
+    // That build carried the 2026-10-05 expiry; compare at its own expiry so only the policy digest differs.
+    expect(old.SUBSCRIPTION_PREVIEW_EXPIRY).toBe(PRIOR_EXPIRY);
+    expect(() => old.validateSubscriptionActivation({ ...policyPredecessor, expiresAt: PRIOR_EXPIRY }, profile, model, NOW,
       SUBSCRIPTION_CONVERSATION_FRAMING)).not.toThrow();
     const { record } = policySuccessor();
-    expect(() => old.validateSubscriptionActivation(record, profile, model, NOW,
+    expect(() => old.validateSubscriptionActivation({ ...record, expiresAt: PRIOR_EXPIRY }, profile, model, NOW,
       SUBSCRIPTION_CONVERSATION_FRAMING)).toThrow('artifact or policy differs');
   } finally { if (existsSync(provider)) unlinkSync(provider); }
 }, 30_000);
 
 const prior = spawnSync('git', ['cat-file', '-e', `${PRIOR_COMMIT}^{commit}`], { cwd: process.cwd() }).status === 0;
-it.runIf(prior)('the prior live build refuses the renewed record (unconditional) and an uncompacted renewed journal; after compaction the prior reader accepts the snapshot with the genesis expiry (accepted residue)', async () => {
+it.runIf(prior)('the prior live build refuses the renewed record, and reads the renewed journal at its new end so its own record no longer matches', async () => {
   const show = (path: string) => spawnSync('git', ['show', `${PRIOR_COMMIT}:${path}`], { cwd: process.cwd(), encoding: 'utf8' }).stdout;
   const provider = join(process.cwd(), `src/assembly/.prior-production-provider-${String(process.pid)}.ts`);
   const journalModule = join(process.cwd(), `tests/preview/.prior-journal-${String(process.pid)}.ts`);
@@ -316,7 +335,13 @@ it.runIf(prior)('the prior live build refuses the renewed record (unconditional)
     const journal = openPreviewJournal(path, key, genesis(PRIOR_EXPIRY));
     renewJournalExpiry(journal, { expires: SUBSCRIPTION_PREVIEW_EXPIRY, activation: digest, authority: 'a', at: NOW });
     journal.close();
-    expect(() => oldJournal.openPreviewJournal(path, key)).toThrow('orphan effect');
+    // The prior build already knows expiry frames (it replays any monotonic renewal), so it reads the renewed end;
+    // the record it holds (the 2026-10-05 end) then no longer matches, and it cannot run this journal.
+    const replayed = oldJournal.openPreviewJournal(path, key);
+    expect(replayed.view.expires).toBe(SUBSCRIPTION_PREVIEW_EXPIRY);
+    expect([oldJournal.activationMatchesJournal(replayed.view, current), oldJournal.activationMatchesJournal(replayed.view, record)])
+      .toEqual([false, true]);
+    replayed.close();
   } finally {
     for (const temp of [provider, journalModule]) if (existsSync(temp)) unlinkSync(temp);
     rmSync(root, { recursive: true, force: true });

@@ -210,12 +210,15 @@ export const operatorYesAuthority = (requestId: string, reference: string, share
   `operator-yes:${requestId}:${reference}${shared ? ` [shared-access: ${SHARED_ACCESS_NOTE}]` : ''}`;
 export const OPERATOR_YES_AUTHORITY = /^operator-yes:([0-9a-f]{16}):(\S+)(?: \[shared-access: [^\]]+\])?$/u;
 /** The live surface of the two declared operator actions on this root (Rules 3, 79): the phone route an explicit yes can
- * really come from now, or the declarations' host command line where none is admissible. Never claimed ahead of the facts. */
-export function operatorActionSurface(status: Partial<ExplicitYesStatus> | undefined): { raiseCaps: string; renewExpiry: string } {
+ * really come from now, or the declarations' host command line where none is admissible. Never claimed ahead of the facts.
+ * `renewalInstalled` is true only when the reviewed activation for a later trial end (--renewal-activation) validated now,
+ * exactly as the runner validates it before proposing a renewal; only then is renewal a phone action with no host fallback. */
+export function operatorActionSurface(status: Partial<ExplicitYesStatus> | undefined, renewalInstalled = false): { raiseCaps: string; renewExpiry: string } {
   const host = 'host command line on the trial machine (journal-agent.mjs)';
   const route = status?.chat?.admissible ? 'phone: the operator replies "yes" to the exact request in the bound chat'
     : status?.review?.admissible ? `phone: the operator approves the exact request's GitHub pull request at the link sent in chat${
       status.review.acceptance?.current ? ` (note: ${SHARED_ACCESS_NOTE})` : ''}` : null;
   return { raiseCaps: route ?? host,
-    renewExpiry: route === null ? host : `${route}, once the reviewed activation for the new trial end is installed (--renewal-activation); until then ${host}` };
+    renewExpiry: route === null ? host : renewalInstalled ? route
+      : `${route}, once the reviewed activation for the new trial end is installed (--renewal-activation); until then ${host}` };
 }

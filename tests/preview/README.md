@@ -119,8 +119,8 @@ Graduation requires replacing every stand-in with its named hardening unit, espe
 `run --stage 2` explicitly selects the implemented provider path. Stage 1 remains the default and
 refuses a root with a Stage 2 sidecar. Stage 2 accepts only bot `8820318295` /
 `@echo_mmtest_seam_b27x_bot`, private chat and sender `7812716706`, with no topic. Its fixed expiry
-is `2026-10-05T20:40:00Z` (`1791232800000`), a one-week status-quo renewal of `2026-09-28T20:40:00Z`
-(see "Activation renewal" below). Existing trial limits, cursor and counters carry forward.
+is `2026-10-12T20:40:00Z` (`1791837600000`), a one-week status-quo renewal of `2026-10-05T20:40:00Z`,
+itself a renewal of `2026-09-28T20:40:00Z` (see "Activation renewal" below). Existing trial limits, cursor and counters carry forward.
 This is the recorded supervised, unconfined preview waiver, not production admission or a
 replacement for M3/M4/M5. No code default supplies the model, login profile or activation record.
 
@@ -171,7 +171,7 @@ operatorAssertion, assertedAt, observer, observedAt, method, safeCaptureReferenc
 extraUsage: "observed-disabled" | "operator-asserted/unobservable" | "contradicted"
 extraUsageReason
 subscriptionLimit: "available" | "unobservable" | "exhausted"
-subscriptionLimitReason, acceptedResiduals: string[], expiresAt: 1791232800000
+subscriptionLimitReason, acceptedResiduals: string[], expiresAt: 1791837600000
 ```
 
 Digests are canonical SHA-256: profileDigest over the frozen descriptor, invocationPolicyDigest
@@ -284,6 +284,15 @@ Every other field is copied; `predecessor` names the prior reference and file di
 an exhausted limit, an unknown observation field or a record this build refuses writes nothing.
 Outputs are created exclusively and never replace an existing file.
 
+A build also carries its predecessor's reviewed end (`SUBSCRIPTION_PREVIEW_PREDECESSOR_EXPIRY`,
+2026-10-05T20:40:00Z for the 2026-10-12 build). `run` and each model call accept a record ending
+there only while the journal's current end is that same end, so a runner can stay on the current
+record with `--renewal-activation` naming the renewed one, propose the renewal from the phone and
+complete it on the operator's yes. Once the expiry frame lands only the governed end is accepted:
+the running launch ends its cycle (`activation renewed: restart on the renewed record`) before it
+answers anything further, and the next launch must name the renewed record. Any other end is
+refused, and nothing reads an allowed end from the record itself.
+
 When a reviewed build changes only the conversation invocation policy digest and the
 current record already has this build's expiry, the desk can issue a policy successor.
 Use a fresh observation with the same fields above and the **same reference** as the
@@ -311,7 +320,7 @@ once per reviewed expiry and only before it lapses, under the writer lease:
 node --loader ./scripts/slice-ts-loader.mjs tests/preview/journal-agent.mjs renew-expiry \
   --root /ABSOLUTE/ROOT --activation-record /ABSOLUTE/activation-next.json \
   --login-profile /ABSOLUTE/profile.json --model DESK_EXACT_CLAUDE_MODEL_ID \
-  --expires-at 2026-10-05T20:40:00Z --authority "WHO APPROVED, WHERE, WHEN" \
+  --expires-at 2026-10-12T20:40:00Z --authority "WHO APPROVED, WHERE, WHEN" \
   --operator-records /ABSOLUTE/AGENT/.instar
 ```
 
@@ -1113,7 +1122,7 @@ node --loader ./scripts/slice-ts-loader.mjs tests/preview/journal-agent.mjs run 
   --root /ABSOLUTE/NEW_ROOT --bot-id BOT_ID --bot-username @BOT_USERNAME \
   --operator-sender-id OPERATOR_ID --chat-id PRIVATE_CHAT_ID \
   --grant-reference TRIAL_ID --configuration-digest sha256:TRIAL_CONFIGURATION_DIGEST \
-  --expires-at 2026-10-05T20:40:00Z --activation-record /ABSOLUTE/activation.json \
+  --expires-at 2026-10-12T20:40:00Z --activation-record /ABSOLUTE/activation.json \
   --login-profile /ABSOLUTE/profile.json --model DESK_EXACT_CLAUDE_MODEL_ID \
   --max-calls 16 --max-replies 16 --max-turns 20 --max-context-bytes 32768 \
   --time-zone America/Los_Angeles \
@@ -3172,7 +3181,10 @@ Rules 4, 14, 15, 52, 53, 77, 79, 80, 82, 86, 87, 88, 95 and 106 on the live runn
   and `operatorActionSurface`, which names the phone route only while a source is really
   admissible on this root and otherwise the host command line the two declarations name. A renewal
   is proposable only with `--renewal-activation /ABS/activation.json` (validated as `renew-expiry`
-  validates it). A capped limited answer still carries a request only where the chat yes is
+  validates it, so `status` then also needs `--login-profile`, `--model`, `--authority-record` and
+  `--operator-records`). `status` runs that same validation: its `renewExpiry` names the phone route
+  alone only while that record is valid now for a trial end later than the journal's; otherwise it
+  adds that until then the renewal stays on the host command line. A capped limited answer still carries a request only where the chat yes is
   admissible.
 - **Supervised incidents (Rules 15, 88; P-14).** `scripts/host-watch.mjs` with
   `{"mode":"journal", "alerts": {"grant": "..."}}` restarts the runner after a failed exit with

@@ -39,7 +39,7 @@ const decision = { type: 'Decision', schemaVersion: 1, id: 'resource-answer', at
 process.stdout.write(JSON.stringify({ type: 'result', is_error: false, result: JSON.stringify(decision),
   modelUsage: { [process.argv[3]]: {} } }));
 `);
-  writeFileSync(provider, `export { SUBSCRIPTION_CONVERSATION_FRAMING, subscriptionConversationPolicy,
+  writeFileSync(provider, `export { SUBSCRIPTION_CONVERSATION_FRAMING, SUBSCRIPTION_PREVIEW_EXPIRY, subscriptionConversationPolicy,
   validateSubscriptionActivation } from ${JSON.stringify(pathToFileURL(join(process.cwd(), 'src/assembly/production-provider.ts')).href)};
 ${FIXTURE_DOORWAY}
 export const createClaudeCodeSubscriptionRoute = config => ({ kind: 'Success', value: { invoke: async prepared => {

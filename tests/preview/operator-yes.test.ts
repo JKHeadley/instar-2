@@ -4,7 +4,7 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { createJournalWorker, openPreviewJournal, previewTestContext, limitedAnswerText } from './journal-test-worker.js';
 import { CHAT_YES_UNAVAILABLE, OPERATOR_ACTION_UNREAD, projectionDigest, raiseJournalCaps } from './journal.js';
-import { chatBinding, explicitYesStatus, operatorRefusalText, operatorRequestText, operatorYesAuthority, parseOperatorAction,
+import { chatBinding, explicitYesStatus, operatorActionSurface, operatorRefusalText, operatorRequestText, operatorYesAuthority, parseOperatorAction,
   proposeOperatorRequest, wellFormedRequest, type ChatCandidate, type ProposalState } from './operator-yes.js';
 import { produceExplicitYes } from '../../src/operator/explicit-yes.js';
 import type { ExplicitYesInstallation } from '../../src/operator/explicit-yes.js';
@@ -394,3 +394,16 @@ it('keeps an approval that a crash left unapplied visible to the mind, and never
   expect(told.operatorRequest?.state).toBe('approved by the operator, not applied yet');
   reopened.close();
 }));
+
+// Rule 79: the renewal's live surface follows the installed renewal record. Only with a phone route AND a renewal record
+// validated now is renewal a phone action with no host fallback; either missing keeps the declarations' wording.
+it('names renewal as a phone action only when a phone route exists and the renewal record is installed', () => {
+  const host = 'host command line on the trial machine (journal-agent.mjs)';
+  const chat = { connected: true, chat: { admissible: true }, review: { admissible: false, reason: 'x' } };
+  const route = 'phone: the operator replies "yes" to the exact request in the bound chat';
+  expect(operatorActionSurface(chat, true)).toEqual({ raiseCaps: route, renewExpiry: route });
+  expect(operatorActionSurface(chat, false).renewExpiry)
+    .toBe(`${route}, once the reviewed activation for the new trial end is installed (--renewal-activation); until then ${host}`);
+  expect(operatorActionSurface(chat).renewExpiry).toContain(`until then ${host}`);
+  for (const installed of [true, false]) expect(operatorActionSurface(undefined, installed)).toEqual({ raiseCaps: host, renewExpiry: host });
+});

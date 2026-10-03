@@ -46,7 +46,7 @@ global.fetch = async (url, init) => {
 };
 `);
     writeFileSync(provider, `import { appendFileSync } from 'node:fs';
-export { SUBSCRIPTION_CONVERSATION_FRAMING, subscriptionConversationPolicy,
+export { SUBSCRIPTION_CONVERSATION_FRAMING, SUBSCRIPTION_PREVIEW_EXPIRY, subscriptionConversationPolicy,
   validateSubscriptionActivation } from ${JSON.stringify(pathToFileURL(join(process.cwd(), 'src/assembly/production-provider.ts')).href)};
 ${FIXTURE_DOORWAY}
 ${PER_RULE_PASS}
