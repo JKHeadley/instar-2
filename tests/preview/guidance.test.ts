@@ -55,7 +55,8 @@ describe('P14-NF-72/73/74/75: recorded live shapes (fixture captured from a copy
     const data = fixture(), recorded = turn(data, 969390016);
     expect(recorded.answer).toMatch(/^I can't raise my own model-call limit/u);
     const verdict = guidanceVerdicts([recorded]).find(item => item.member === 'tone-self-stop')!;
-    expect(verdict).toMatchObject({ verdict: 'fired', rules: ['unrecorded_blocker'], decisions: ['no-decision'], landing: 'unlocated' });
+    // The capture kept no send receipt, so the recorded selection (unlocated) is not claimed as delivered.
+    expect(verdict).toMatchObject({ verdict: 'fired', rules: ['unrecorded_blocker'], decisions: ['no-decision'], landing: 'no-receipt', selected: 'unlocated' });
     expect(recorded.revision?.state).toBe('uncertain');
   });
   it('the named claim the reviewer elided is now located, so the recorded judgment lands (969390016)', () => {
@@ -105,7 +106,12 @@ describe('P14-NF-72/73/74/75: recorded live shapes (fixture captured from a copy
     const deferral = quality.find(item => item.member === 'deferral')!;
     // Recorded fact: the self-stop family fires, but its correction rarely reaches the sent reply.
     expect(tone.fired).toBeGreaterThan(0);
-    expect(tone.landing.unchanged + tone.landing.unlocated + tone.landing.unrecorded).toBeGreaterThan(tone.landing.revised + tone.landing.excised);
+    // The capture predates receipt preservation: no correction is counted as delivered without a receipt.
+    expect(tone.landing.revised + tone.landing.excised + tone.landing.unchanged + tone.landing.unlocated).toBe(0);
+    const selected = guidanceVerdicts(data.turns).filter(item => item.member === 'tone-self-stop' && item.landing === 'no-receipt');
+    expect(selected.length).toBe(tone.landing['no-receipt']);
+    expect(selected.filter(item => item.selected !== 'revised' && item.selected !== 'excised').length)
+      .toBeGreaterThan(selected.filter(item => item.selected === 'revised' || item.selected === 'excised').length);
     expect(deferral.fired).toBeGreaterThan(0);
     // The context questions were never asked on the recorded journal: no fabricated clear.
     for (const member of ['claim-verification', 'correction-learning'] as const) {
@@ -173,7 +179,8 @@ describe('P14-NF-71/72: wired on the live worker path (constructed ports, real j
   // One real worker turn: Jev is unsure about one rule, the full-context review carries the context questions and
   // finds the preference broken, the agent accepts and revises, the revision is re-reviewed and sent. The objection
   // is advice the agent answered, never a hold, and the durable turn projects as a fired, revised guidance verdict.
-  it('a broken preference is answered by the agent and its revision is sent; the verdict is read back from the durable journal', async () => {
+  // One worker turn on a real encrypted journal; `send` is the transport port. Returns the durable turn, reopened.
+  const runTurn = async (send: (text: string) => Promise<number>) => {
     const { mkdtempSync, realpathSync, rmSync } = await import('node:fs');
     const { tmpdir } = await import('node:os');
     const { join } = await import('node:path');
@@ -181,7 +188,7 @@ describe('P14-NF-71/72: wired on the live worker path (constructed ports, real j
     const { prepareJournalEnvelope } = await import('./journal-envelope.js');
     const root = realpathSync(mkdtempSync(join(tmpdir(), 'preview-guidance-')));
     const path = join(root, 'journal.encrypted'), key = new Uint8Array(32).fill(16);
-    const reviewedRules: (readonly ReplyRule[] | undefined)[] = [], sends: string[] = [], now = 1790000000000;
+    const reviewedRules: (readonly ReplyRule[] | undefined)[] = [], now = 1790000000000;
     try {
       const journal = openPreviewJournal(path, key, { kind: 'genesis', bot: '12345678', chat: '7654321', operator: '7654321',
         grant: 'grant:preview', configurationDigest: 'sha256:offline', expires: 9999999999999, maxCalls: 6, maxReplies: 3,
@@ -189,7 +196,7 @@ describe('P14-NF-71/72: wired on the live worker path (constructed ports, real j
       const worker = createJournalWorker(journal, { now: () => now, stopped: () => false,
         prepareModel: input => prepareJournalEnvelope(input, 'claude-sonnet-5', 'grant:preview', now),
         model: async () => 'Seventeen times three is fifty-one. It is still fifty-one. Ask me again any time.',
-        checkOutbound: () => {}, send: async input => { sends.push(input.expectedText); return sends.length; },
+        checkOutbound: () => {}, send: async input => send(input.expectedText),
         replyCheck: { elapsedMs: () => 0,
           jev: async () => ({ value: { model: 'jev-1.13.0', answers: Object.fromEntries(Object.keys(jevQuestions)
             .map(id => [id, { type: 'noul', noul: id === 'parks_on_user' ? 0.5 : 0.01 }])) }, latencyMs: 0 }),
@@ -211,15 +218,31 @@ describe('P14-NF-71/72: wired on the live worker path (constructed ports, real j
       await worker.drain();
       journal.close();
       expect(reviewedRules[0]).toEqual(['parks_on_user', 'self_state_claim', 'breaks_preference']);
-      expect(sends).toEqual(['PREVIEW — Seventeen times three is fifty-one. Ask me again any time.']);
       const reopened = openPreviewJournal(path, key);
       const durable = reopened.view.order[0]!;
       reopened.close();
-      expect(durable.held).toBeUndefined();
-      expect(guidanceVerdicts([durable]).find(item => item.member === 'correction-learning'))
-        .toMatchObject({ verdict: 'fired', rules: ['breaks_preference'], decisions: ['accept'], landing: 'revised' });
-      expect(guidanceVerdicts([durable]).find(item => item.member === 'claim-verification')).toMatchObject({ verdict: 'clear' });
+      return durable;
     } finally { rmSync(root, { recursive: true, force: true }); }
+  };
+  it('a broken preference is answered by the agent and its revision is sent; the verdict is read back from the durable journal', async () => {
+    const sends: string[] = [];
+    const durable = await runTurn(async text => { sends.push(text); return sends.length; });
+    expect(sends).toEqual(['PREVIEW — Seventeen times three is fifty-one. Ask me again any time.']);
+    expect(durable.held).toBeUndefined();
+    expect(durable.sent).toBe(1);
+    expect(guidanceVerdicts([durable]).find(item => item.member === 'correction-learning'))
+      .toMatchObject({ verdict: 'fired', rules: ['breaks_preference'], decisions: ['accept'], landing: 'revised' });
+    expect(guidanceVerdicts([durable]).find(item => item.member === 'claim-verification')).toMatchObject({ verdict: 'clear' });
+  });
+  it('the same revision whose send outcome is unknown is not counted as landed (no receipt)', async () => {
+    const durable = await runTurn(async () => { throw Error('transport outcome unknown'); });
+    expect(durable.release?.revised).toBe(true);
+    expect(durable.sent).toBeUndefined();
+    const verdict = guidanceVerdicts([durable]).find(item => item.member === 'correction-learning')!;
+    expect(verdict).toMatchObject({ verdict: 'fired', decisions: ['accept'], landing: 'no-receipt', selected: 'revised' });
+    const quality = guidanceQuality([verdict]).find(item => item.member === 'correction-learning')!;
+    expect(quality.landing.revised).toBe(0);
+    expect(quality.landing['no-receipt']).toBe(1);
   });
 });
 
@@ -279,7 +302,9 @@ it.skipIf(COPY === undefined || STORAGE === undefined)('captures the guidance fi
         ...(item.replyChecks ? { replyChecks: JSON.parse(JSON.stringify(checks)) as Turn['replyChecks'] } : {}),
         ...(item.release ? { release: { ...item.release, ...(named ? {} : { reason: undefined }) } } : {}),
         ...(item.heldReview ? { heldReview: { ...item.heldReview, ...(named ? {} : { reason: undefined }) } } : {}),
-        ...(item.revision ? { revision: { state: item.revision.state } } : {}), ...(item.held ? { held: item.held } : {}) } as Turn;
+        ...(item.revision ? { revision: { state: item.revision.state } } : {}), ...(item.held ? { held: item.held } : {}),
+        // The receipt is the only evidence a correction was delivered; a capture without it reads as no-receipt.
+        ...(item.sent !== undefined ? { sent: item.sent } : {}), ...(item.groupedInto !== undefined ? { groupedInto: item.groupedInto } : {}) } as Turn;
     };
     // A sample already captured for the same update is kept, not re-run: each real-model call is spent once.
     const prior = (() => { try { return fixture().samples; } catch { return []; } })();

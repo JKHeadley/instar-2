@@ -59,7 +59,9 @@ flagged it, with no full-context verdict), clear (judged, nothing found) or not 
 check judged is reported as not asked, never as clear. Each fired verdict records where the correction
 went: the agent's corrected draft was sent, the named claim was removed, the claim could not be located,
 the reply was held, the reply went unchanged with the objection recorded, or an older row that recorded
-no send record. Correction learning also measures recurrence: the operator stating the same preference
+no send record. A sent landing counts only with the transport's receipt: the send record is written
+before dispatch, so a send with no receipt (a crash, a refusal, an unknown outcome, or an older capture
+that kept none) is recorded as no receipt, with what it selected kept beside it, and never as landed. Correction learning also measures recurrence: the operator stating the same preference
 clause again after it was already on file is counted as a restatement. Identity is the journal's own
 exact clause, never a keyword match, and a preference recorded from the agent's own reply is not a
 correction. The runner's read-only status record carries the per-member counts and the recurring

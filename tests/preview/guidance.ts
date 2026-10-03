@@ -51,11 +51,17 @@ export const GUIDANCE_FAMILY: readonly GuidanceMemberDefinition[] = Object.freez
 export type GuidanceVerdictKind = 'fired' | 'unconfirmed' | 'clear' | 'not-asked';
 /** Where a fired objection went: the agent's revision was sent, the named claim was removed, the named claim could not
  * be located in the reply, the reply was held, or the reply was sent unchanged with the objection recorded.
+ * A sent landing needs the transport's receipt (Rules 26, 58): the intent row records what the send WOULD carry before
+ * dispatch, so an intent with no receipt (a crash, a refusal, an unknown outcome, or an older capture that kept no
+ * receipt) is `no-receipt`, with what it selected kept beside it; it is never counted as landed.
  * `unrecorded`: an older turn written before send records named their objections, so where it went is not known. */
-export type GuidanceLanding = 'revised' | 'excised' | 'unlocated' | 'held' | 'unchanged' | 'unrecorded';
+export type GuidanceLanding = 'revised' | 'excised' | 'unlocated' | 'held' | 'unchanged' | 'no-receipt' | 'unrecorded';
+export type GuidanceSelection = 'revised' | 'excised' | 'unlocated' | 'unchanged';
 export interface GuidanceVerdict {
   turn: string; update: number; member: GuidanceMember; verdict: GuidanceVerdictKind;
   rules: ReplyRule[]; decisions: ObjectionDecision[]; landing?: GuidanceLanding;
+  /** On `no-receipt` only: what the unconfirmed send intent selected. */
+  selected?: GuidanceSelection;
 }
 
 /** The questions one check actually judged. Jev answers every question it was asked; a full-context review with
@@ -70,6 +76,7 @@ function judged(check: ReplyCheckResult): ReplyRule[] {
 /** One verdict per member for every reply the review saw, derived only from the turn's recorded history. */
 export function guidanceVerdicts(turns: readonly Turn[]): GuidanceVerdict[] {
   const verdicts: GuidanceVerdict[] = [];
+  const byId = new Map(turns.map(item => [item.id, item]));
   for (const turn of turns) {
     const checks = turn.replyChecks ?? [];
     if (!checks.length || checks.every(check => check.path === 'operator-echo')) continue;
@@ -89,10 +96,14 @@ export function guidanceVerdicts(turns: readonly Turn[]): GuidanceVerdict[] {
         verdicts.push({ ...base, verdict: member.rules.some(rule => asked.has(rule)) ? 'clear' : 'not-asked' });
         continue;
       }
+      const verdict = unconfirmed ? 'unconfirmed' as const : 'fired' as const;
+      if (!sent || turn.heldReview) { verdicts.push({ ...base, verdict, landing: sent ? 'held' : 'unrecorded' }); continue; }
       const named = withheld?.rules.some(rule => rules.includes(rule as ReplyRule));
-      const landing: GuidanceLanding = !sent ? 'unrecorded' : turn.heldReview ? 'held' : turn.release?.revised ? 'revised'
+      const selected: GuidanceSelection = turn.release?.revised ? 'revised'
         : named && withheld!.removed.length ? 'excised' : named && withheld!.unlocated.length ? 'unlocated' : 'unchanged';
-      verdicts.push({ ...base, verdict: unconfirmed ? 'unconfirmed' : 'fired', landing });
+      // A grouped turn's send is its leader's; the receipt is the only evidence the reply went out.
+      const receipt = (turn.groupedInto === undefined ? turn : byId.get(turn.groupedInto))?.sent;
+      verdicts.push(receipt === undefined ? { ...base, verdict, landing: 'no-receipt', selected } : { ...base, verdict, landing: selected });
     }
   }
   return verdicts;
@@ -104,13 +115,14 @@ export interface GuidanceQuality {
   landing: Record<GuidanceLanding, number>;
 }
 /** Per-member counts for quality measurement: how often each member fired, how the agent answered it, and whether
- * its correction actually reached the sent reply. "Unchanged" is a recorded signal that did not change the send. */
+ * its correction actually reached the sent reply. "Unchanged" is a recorded signal that did not change the send; a
+ * landing counts only with the send's receipt, and an intent without one is counted as `no-receipt`. */
 export function guidanceQuality(verdicts: readonly GuidanceVerdict[]): GuidanceQuality[] {
   return GUIDANCE_FAMILY.map(member => {
     const mine = verdicts.filter(verdict => verdict.member === member.id);
     const count = (kind: GuidanceVerdictKind) => mine.filter(verdict => verdict.verdict === kind).length;
     const decisions: Record<ObjectionDecision, number> = { accept: 0, reject: 0, 'no-decision': 0 };
-    const landing: Record<GuidanceLanding, number> = { revised: 0, excised: 0, unlocated: 0, held: 0, unchanged: 0, unrecorded: 0 };
+    const landing: Record<GuidanceLanding, number> = { revised: 0, excised: 0, unlocated: 0, held: 0, unchanged: 0, 'no-receipt': 0, unrecorded: 0 };
     for (const verdict of mine) {
       for (const decision of verdict.decisions) decisions[decision]++;
       if (verdict.landing) landing[verdict.landing]++;
