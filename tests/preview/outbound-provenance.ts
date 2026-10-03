@@ -10,7 +10,12 @@ export interface OutboundProvenance { speaker: Speaker; principal: string; signe
 /** The exact outbound act a signature covers: its journal target, destination and body bytes. */
 export interface OutboundSubject { target: string; chat: string; thread?: number; body: string }
 /** A definite refusal and an unknown outcome stay distinct from delivery and from each other. */
-export type SendOutcome = { kind: 'accepted'; message: number } | { kind: 'refused'; reason: string } | { kind: 'unknown'; reason: string };
+/** `not-sent` is the transport's proof that the network call was never made, so this exact intent may
+ * be dispatched again. It never reaches the journal: the one outbound funnel settles it (Rule 42). */
+export type SendOutcome = { kind: 'accepted'; message: number } | { kind: 'refused'; reason: string }
+  | { kind: 'unknown'; reason: string } | { kind: 'not-sent'; reason: string };
+/** What a dispatch settles to, and the only outcomes the journal records. */
+export type SettledSendOutcome = Exclude<SendOutcome, { kind: 'not-sent' }>;
 
 const ED25519_PKCS8_SEED_PREFIX = Buffer.from('302e020100300506032b657004220420', 'hex');
 
@@ -51,7 +56,8 @@ export function settleSendOutcome(result: number | null | SendOutcome | undefine
   if (result === null || result === undefined) return { kind: 'unknown', reason: 'no receipt' };
   if (result.kind === 'accepted') return Number.isSafeInteger(result.message) && result.message > 0
     ? result : { kind: 'unknown', reason: 'malformed receipt' };
-  if ((result.kind === 'refused' || result.kind === 'unknown') && typeof result.reason === 'string' && result.reason.trim())
+  if ((result.kind === 'refused' || result.kind === 'unknown' || result.kind === 'not-sent')
+    && typeof result.reason === 'string' && result.reason.trim())
     return { kind: result.kind, reason: result.reason.slice(0, 200) };
   return { kind: 'unknown', reason: 'malformed send outcome' };
 }

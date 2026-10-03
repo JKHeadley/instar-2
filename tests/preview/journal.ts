@@ -36,7 +36,7 @@ import { evaluateMinimalPath, minimalResponse } from '../../src/operator/live.js
 import type { IndependentSurfaceVerifierPort, InstalledShape, MinimalDependency, SurfaceChallenge, VerifiedSurfaceProof } from '../../src/operator/contracts.js';
 import { authenticateTelegramSender, principalBoundToUpdate, systemWriters, verifiedAtIntake, TELEGRAM_ADAPTER, testOriginWriter, writerBoundToRaw, writerRecord, type SystemMethod, type WriteOrigin, type WriterRecord } from './intake-principal.js';
 import { LIVE_JUDGMENTS, type ModelCallRecord } from './model-call-boundary.js';
-import { outboundSigner, settleSendOutcome, type OutboundProvenance, type OutboundSubject, type SendOutcome, type Speaker } from './outbound-provenance.js';
+import { outboundSigner, settleSendOutcome, type OutboundProvenance, type OutboundSubject, type SendOutcome, type SettledSendOutcome, type Speaker } from './outbound-provenance.js';
 import { retrospectivePlan, retrospectivePopulation, validateRetrospective, replyContextDigest, RETRO_OVER_CAP_REASON, type RetroPass, type RetroSiblingEvidence } from './retrospective.js';
 import { openReplyNotices, validAnswerNotices, type ReplyNotice } from './credential-reminders.js';
 import { admitChatYes, chatBinding, explicitYesStatus, operatorRefusalText, operatorRequestText, operatorResultText, operatorReviewRequestText,
@@ -2331,9 +2331,21 @@ export const unsentLabel = (outcome: TargetOutcome) => outcome.kind === 'refused
 /** Status counts, message by message as before: a definite refusal is never delivery and never UNKNOWN. */
 export function sendOutcomeCounts(view: JournalView) {
   let accepted = 0, unknown = 0, refusedItems = 0;
+  // Rule 2: an UNKNOWN send records WHY, and the reason was readable only by decrypting the journal —
+  // so every operator view said "4 unknown" and nothing else. The reasons are a closed, bounded set
+  // (the transport's own stages), so the status pull carries them by count and names the newest.
+  const unknownReasons: Record<string, number> = {};
   const settle = (target: string, sent: number | undefined) => {
-    const kind = sendOutcomeOf(view, target, sent).kind;
-    if (kind === 'accepted') accepted++; else if (kind === 'refused') refusedItems++; else unknown++;
+    const outcome = sendOutcomeOf(view, target, sent);
+    if (outcome.kind === 'accepted') accepted++;
+    else if (outcome.kind === 'refused') refusedItems++;
+    else {
+      unknown++;
+      // A crash between the dispatch and its outcome row leaves the intent UNKNOWN with nothing
+      // recorded; that gap is named rather than counted as a reason the transport never gave.
+      const reason = outcome.reason ?? 'no recorded reason';
+      unknownReasons[reason] = (unknownReasons[reason] ?? 0) + 1;
+    }
   };
   for (const turn of view.order) {
     if (turn.intent !== undefined) settle(replyTarget(turn), turn.sent);
@@ -2342,7 +2354,8 @@ export function sendOutcomeCounts(view: JournalView) {
   }
   for (const [key, batch] of view.reminders) settle(reminderTarget(view, key, batch), batch.sent);
   return { accepted, refused: refusedItems, unknown, speakers: { ...view.speakers },
-    lastRefusal: view.sendOutcomes.filter(item => item.outcome === 'refused').at(-1) ?? null };
+    lastRefusal: view.sendOutcomes.filter(item => item.outcome === 'refused').at(-1) ?? null,
+    unknownReasons, lastUnknown: view.sendOutcomes.filter(item => item.outcome === 'unknown').at(-1) ?? null };
 }
 export interface ModelCallCounts { total: number; byJudgment: Record<string, number>; byOutcome: Record<string, number>; usageUnknown: number;
   last: Pick<ModelCallRecord, 'id' | 'judgment' | 'route' | 'outcome' | 'latencyMs' | 'usage' | 'at'>[] }
@@ -4149,15 +4162,25 @@ export interface PreviewPorts {
  * durable result is UNKNOWN on restart and never replayed. */
 export function createJournalWorker(journal: ReturnType<typeof openPreviewJournal>, ports: PreviewPorts) {
   let working = false, workingSince = 0, ordinaryFailedSince: number | null = null;
-  /** Every live send consumes its durable signed intent; a refusal or unknown outcome is recorded, never retried. */
+  /** Every live send consumes its durable signed intent; a refusal or unknown outcome is recorded, never
+   * retried. The one exception is the transport's own proof that it never made the network call: nothing
+   * reached Telegram, so that exact intent is dispatched once more (the no-duplicate floor is untouched —
+   * an outcome that MIGHT have delivered is still never repeated). A second proof settles as a definite
+   * non-delivery with its reason, never as UNKNOWN (Rule 42). */
+  const NOT_SENT_ATTEMPTS = 2;
   const dispatch = async (target: string, provenance: OutboundProvenance | undefined,
     input: { text: string; expectedText: string; chat: string; thread?: number; update: number;
-      kind?: OutboundKind; disposition?: OutboundDisposition; replyMarkup?: unknown }): Promise<SendOutcome> => {
+      kind?: OutboundKind; disposition?: OutboundDisposition; replyMarkup?: unknown }): Promise<SettledSendOutcome> => {
     const subject = { target, chat: input.chat, ...(input.thread === undefined ? {} : { thread: input.thread }), body: input.text };
-    let outcome: SendOutcome;
-    if (!journal.verifyOutbound(provenance, subject)) outcome = { kind: 'refused', reason: 'outbound provenance unsigned' };
-    else try { outcome = settleSendOutcome(await ports.send({ ...input, target, provenance: provenance! })); }
-    catch { outcome = { kind: 'unknown', reason: 'send port failed' }; }
+    let attempted: SendOutcome = { kind: 'unknown', reason: 'send port failed' };
+    if (!journal.verifyOutbound(provenance, subject)) attempted = { kind: 'refused', reason: 'outbound provenance unsigned' };
+    else for (let attempt = 0; attempt < NOT_SENT_ATTEMPTS; attempt++) {
+      try { attempted = settleSendOutcome(await ports.send({ ...input, target, provenance: provenance! })); }
+      catch { attempted = { kind: 'unknown', reason: 'send port failed' }; }
+      if (attempted.kind !== 'not-sent') break;
+    }
+    const outcome: SettledSendOutcome = attempted.kind === 'not-sent'
+      ? { kind: 'refused', reason: attempted.reason } : attempted;
     if (outcome.kind !== 'accepted') {
       try { journal.append({ kind: 'send-outcome', target, outcome: outcome.kind, reason: redact(outcome.reason).text, at: ports.now() }); }
       catch { /* the intent stays UNKNOWN without its reason */ }

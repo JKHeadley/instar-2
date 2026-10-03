@@ -80,8 +80,21 @@ export function createProductionTelegramIO(root, captures, testEndpoint = null) 
       handles: TRANSPORT_LIMITS.handleCount, cpuSeconds: Math.ceil((input.timeoutMs + 2000) / 1000) + 1,
       processLimit: transportProcessLimit(), env }) };
   };
-  const settle = (status, stdout) => {
-    if (status !== 0) return { kind: 'uncertain', limitation: 'transport', stage: 'child-exit' };
+  /** Exit codes the transport only ever produces BEFORE its network call, so nothing can have reached
+   * the provider: the limit shim's own refusal (every `exit 125` in limit-exec.sh precedes its `exec`,
+   * as does env's own failure code) and the bridge's request refusal (every `process.exit(2)` precedes
+   * its fetch). A child killed on the timeout exits by signal, never with one of these. */
+  const NEVER_DISPATCHED_EXITS = new Set([2, 125]);
+  /** `startFailure` is the host's refusal to start the child at all (spawn error code), or null.
+   * A timeout kill arrives as ETIMEDOUT and is NOT such a refusal: that child may have sent first. */
+  const settle = (status, stdout, startFailure = null) => {
+    if (startFailure !== null && startFailure !== 'ETIMEDOUT')
+      return { kind: 'uncertain', limitation: 'transport', stage: 'spawn-refused', sent: false };
+    // Rule 42: a locally refused launch is a definite non-delivery, told apart from a child that
+    // exited after it may already have sent (which stays UNKNOWN and is never repeated).
+    if (status !== 0) return NEVER_DISPATCHED_EXITS.has(status)
+      ? { kind: 'uncertain', limitation: 'transport', stage: 'launch-refused', sent: false }
+      : { kind: 'uncertain', limitation: 'transport', stage: 'child-exit' };
     try {
       const reply = JSON.parse(stdout);
       if (reply.kind === 'identity') {
@@ -103,7 +116,7 @@ export function createProductionTelegramIO(root, captures, testEndpoint = null) 
       const { env, timeout, argv } = launch(input);
       const child = spawnSync('/bin/sh', argv, { input: credential, encoding: 'utf8', timeout, maxBuffer: MAX_TRANSPORT_BYTES,
         env, stdio: ['pipe', 'pipe', 'ignore'] });
-      return settle(child.status, child.stdout);
+      return settle(child.status, child.stdout, child.error?.code ?? null);
     },
     /** The same bounded child, awaited without blocking the event loop: the long poll. A synchronous
      * long poll froze every concurrent launch's timers and exit events for its whole wait, so a

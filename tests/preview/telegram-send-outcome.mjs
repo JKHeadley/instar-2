@@ -4,11 +4,20 @@
 // The bridge's own closed failure stages (src/assembly/telegram-bot-api-bridge.mjs). Kept in the
 // recorded reason so a lost send can be diagnosed; anything else is dropped, never echoed.
 const BRIDGE_STAGES = new Set(['resolver', 'child-exit', 'fetch-timeout', 'fetch-failure', 'body-read',
-  'invalid-response', 'scan-policy', 'scan-budget', 'sealed-capture']);
+  'invalid-response', 'scan-policy', 'scan-budget', 'sealed-capture',
+  // The transport's own pre-network refusals (scripts/production-boot-io.mjs): the host would not start
+  // the child, or the launcher refused before its exec. Both carry `sent: false`.
+  'spawn-refused', 'launch-refused']);
 export function classifyTelegramSend(reply, { chat, expectedText, thread }) {
-  if (!reply || reply.kind !== 'response')
-    return { kind: 'unknown', reason: reply?.kind === 'uncertain' ? `transport ${String(reply.limitation)}${
-      BRIDGE_STAGES.has(reply.stage) ? ` at ${reply.stage}` : ''}` : 'no transport response' };
+  if (!reply || reply.kind !== 'response') {
+    const reason = reply?.kind === 'uncertain' ? `transport ${String(reply.limitation)}${
+      BRIDGE_STAGES.has(reply.stage) ? ` at ${reply.stage}` : ''}` : 'no transport response';
+    // A transport that states the network call was never made is a definite non-delivery, not UNKNOWN:
+    // nothing can have reached Telegram, so this exact intent may be dispatched again without any risk
+    // of a duplicate. Only the transport asserts this; a missing field is never read as proof.
+    return reply?.kind === 'uncertain' && reply.sent === false
+      ? { kind: 'not-sent', reason: `not sent: ${reason}` } : { kind: 'unknown', reason };
+  }
   let payload = null;
   try { payload = JSON.parse(reply.bytes); } catch { /* an unparseable body settles below */ }
   if (Number.isSafeInteger(reply.status) && reply.status >= 400 && reply.status < 500 && payload?.ok === false)
