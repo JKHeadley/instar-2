@@ -5,7 +5,7 @@
 // call past the reserved ceiling stops the harness by exact PID. Rule 106: the tool calls a live Codex 0.156.1 session
 // sent its hook (fixtures/codex-hook-probe-2026-10-03, recorded 2026-10-03) replay through it too.
 import { spawn, spawnSync } from 'node:child_process';
-import { closeSync, existsSync, mkdirSync, mkdtempSync, openSync, readFileSync, realpathSync, rmSync, symlinkSync, writeFileSync } from 'node:fs';
+import { closeSync, existsSync, mkdirSync, mkdtempSync, openSync, readdirSync, readFileSync, realpathSync, rmSync, symlinkSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { afterEach, expect, it } from 'vitest';
@@ -171,4 +171,13 @@ it('a slot is taken atomically even when every call races for it', async () => {
   expect(results.filter(code => code === 2)).toHaveLength(4);
   for (let slot = 1; slot <= 4; slot++) expect(() => closeSync(openSync(join(s.state, 'slots', String(slot)), 'wx'))).toThrow();
   expect(sessionAdmissionCeiling(s.base, s.claim)).toBe(true);
+});
+
+it('keeps only the newest step directories, never the current one', () => {
+  const s = step();
+  for (let i = 0; i < 20; i++) prepareSessionAdmission({ base: s.base, claim: `session-work-${String(i).padStart(32, '0')}`,
+    workspace: s.ws, harness: 'codex', maxCalls: 23, operations: [] });
+  const last = `session-work-${String(19).padStart(32, '0')}`;
+  expect(sessionAdmissionCeiling(s.base, last)).toBe(false);
+  expect(readdirSync(s.base).length).toBe(16);
 });

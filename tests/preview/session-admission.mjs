@@ -2,7 +2,7 @@
 // outside the session's working scope, holding the hook's config, its call slots, its record, the confined-shell
 // profile and, when a call past the reserved ceiling was refused, the ceiling marker. The same hook as the tool turn
 // (tool-admission-hook.mjs) reads it; this module lays it out fresh before each step and reads it back.
-import { existsSync, mkdirSync, readFileSync, realpathSync, rmSync, writeFileSync } from 'node:fs';
+import { existsSync, lstatSync, mkdirSync, readdirSync, readFileSync, realpathSync, rmSync, writeFileSync } from 'node:fs';
 import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { shellSandboxProfile } from './tool-admission.mjs';
@@ -11,6 +11,8 @@ import { shellSandboxProfile } from './tool-admission.mjs';
 const TOOL_HOOK_SCRIPT = join(dirname(fileURLToPath(import.meta.url)), 'tool-admission-hook.mjs');
 
 const claimPattern = /^[A-Za-z0-9][A-Za-z0-9._-]{0,120}$/u;
+/** Step admission directories kept for inspection; older ones are removed (the journal's session-work rows are the record). */
+export const SESSION_ADMISSION_KEPT = 16;
 const stateOf = (base, claim) => {
   if (!claimPattern.test(claim)) throw Error('session admission: exact claim required');
   return join(base, claim);
@@ -35,7 +37,14 @@ export function prepareSessionAdmission({ base, claim, workspace, harness, maxCa
   writeFileSync(shellProfile, shellSandboxProfile({ workspace: real, tmp }), { mode: 0o600 });
   writeFileSync(join(state, 'config.json'), JSON.stringify({ workspace: real, tmp, maxCalls, maxWriteBytes,
     operations: [...operations], harness, shellProfile, delegation: true, networkReads: true }), { mode: 0o600 });
+  pruneSessionAdmission(base, claim);
   return state;
+}
+/** Keeps the newest `SESSION_ADMISSION_KEPT` step directories (by modification time), never the current one. */
+function pruneSessionAdmission(base, current) {
+  const dirs = readdirSync(base).filter(name => name !== current && claimPattern.test(name))
+    .map(name => ({ name, at: lstatSync(join(base, name)).mtimeMs })).sort((a, b) => b.at - a.at);
+  for (const { name } of dirs.slice(SESSION_ADMISSION_KEPT - 1)) rmSync(join(base, name), { recursive: true, force: true });
 }
 /** Whether the hook refused a call past the ceiling; null when the state cannot be read. */
 export function sessionAdmissionCeiling(base, claim) {
