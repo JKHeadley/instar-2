@@ -3,7 +3,7 @@ import { createHash } from 'node:crypto';
 import { readFileSync } from 'node:fs';
 import type { JournalView } from './journal.js';
 import { RETROSPECTIVE_DUTIES, RETRO_DUTY_CODES, RETRO_DUTY_FINDING_REFUSED_NOTE, RETRO_DUTY_UNCORROBORATED_NOTE,
-  RETRO_DUTY_UNINSPECTED_NOTE, WAIVER_EVIDENCE_UNAVAILABLE,
+  RETRO_DUTY_PART_UNREADABLE_NOTE, RETRO_DUTY_UNINSPECTED_NOTE, WAIVER_EVIDENCE_UNAVAILABLE, rowRefusedReason,
   dutyLeftUninspected, validateRetrospective, type RetroCase, type RetrospectivePlan } from './retrospective.js';
 
 /** Plan row #339 (w3-retrolive2). Room two's first pass under cint-L33 was refused with 'duty outcome claims a
@@ -122,10 +122,15 @@ describe('the live pass-0 refusal of room two under cint-L33, replayed on its ow
     expect(ok.duties[at('recurrence')]).toEqual({ duty: 'recurrence', disposition: 'inspected', note: RETRO_DUTY_CODES.n });
   });
 
-  it('a malformed finding naming no known duty still refuses the whole pass: there is no duty to record it on', () => {
+  it('a malformed finding naming no known duty is not recorded, and its reason is kept (changed by plan #412)', () => {
+    // It used to refuse the whole pass, because there was no duty to record it on. It discharges nothing, so the pass
+    // stands without it and its refusal is kept in refusedRows (Rule 42).
     const answer = answerOf(3);
     const bad = (answer.findings as { duty: string }[]).find(row => row.duty === 'recurrence')!;
-    expect(() => validate({ ...answer, findings: [...answer.findings as unknown[], { ...bad, duty: 'not-a-duty' }] })).toThrow(/duty/u);
+    const result = validate({ ...answer, findings: [...answer.findings as unknown[], { ...bad, duty: 'not-a-duty' }] });
+    expect(result.findings.map(row => row.duty)).not.toContain('not-a-duty');
+    expect(result.refusedRows).toEqual([rowRefusedReason('finding', 'duty invalid')]);
+    expect(validate(answer).refusedRows).toBeUndefined();
   });
 
   it('the other side: the same recurrence finding naming an earlier record it repeats is kept and its duty inspected', () => {
@@ -187,9 +192,14 @@ describe('the live pass-0 refusal of room two under cint-L33, replayed on its ow
     expect(FIXTURE.realModelCalls.map(row => row.call)).toEqual([1, 2, 3, 4, 5]);
   });
 
-  it('still refuses what it must: an id the context never showed, cited outside a droppable row', () => {
+  it('never records an id the context never showed: the gravity-well duty is recorded not inspected (changed by plan #412)', () => {
+    // It used to refuse the whole pass. The floor is unchanged: no well is recorded on an unknown ref, and the duty
+    // whose row it was is not recorded inspected; every case the answer graded stands.
     const answer = answerOf(1);
-    expect(() => validate({ ...answer, wells: (answer.wells as unknown[]).map((row, index) => index === 1 ? ['answer:telegram:1:update:1'] : row) }))
-      .toThrow('gravity well refs cites an unknown record');
+    const result = validate({ ...answer, wells: (answer.wells as unknown[]).map((row, index) => index === 1 ? ['answer:telegram:1:update:1'] : row) });
+    expect(result.gravityWells).toEqual([]);
+    expect(result.duties[at('gravity-well')]).toEqual({ duty: 'gravity-well', disposition: 'unavailable',
+      note: `${RETRO_DUTY_PART_UNREADABLE_NOTE} (gravity well refs cites an unknown record)` });
+    expect(result.inspected).toEqual(validate(answer).inspected);
   });
 });
