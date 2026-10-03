@@ -8,12 +8,13 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { afterEach, expect, it } from 'vitest';
 import { canonical, decode } from '../../src/index.js';
-import { CODEX_ADMITTED_ITEM_TYPES, CODEX_CONVERSATION_FRAMING, CODEX_CONVERSATION_SYSTEM_PROMPT,
+import { CODEX_ADMITTED_ITEM_TYPES, CODEX_CONVERSATION_FRAMING, CODEX_CONVERSATION_SYSTEM_PROMPT, CODEX_HOOK_TRUST_NOTICE,
+  CODEX_TOOL_ITEM_TYPES, CODEX_TOOL_LIMITS, CODEX_TOOLS_FRAMING, CODEX_TOOLS_SYSTEM_PROMPT, codexToolHookArgs, codexToolsPolicy,
   CODEX_LOGIN_STATUS_STDERR_LINE, CODEX_SUBSCRIPTION_DOORWAY_ID, CODEX_SUBSCRIPTION_VERSION, codexConversationPolicy,
   codexSessionPolicy, codexSubscriptionDoorway, codexVersionLine, createCodexSubscriptionRoute, parseCodexEventStream,
   validateCodexActivation } from '../../src/assembly/production-codex-provider.js';
 import { SESSION_WORK_LIMITS, SESSION_WORK_RESIDUAL } from '../../src/assembly/production-session-work.js';
-import { SUBSCRIPTION_DOORWAYS, SUBSCRIPTION_PREVIEW_EXPIRY, subscriptionDoorway } from '../../src/assembly/production-provider.js';
+import { SUBSCRIPTION_DOORWAYS, SUBSCRIPTION_PREVIEW_EXPIRY, SUBSCRIPTION_TOOL_LIMITS, subscriptionDoorway } from '../../src/assembly/production-provider.js';
 import type { SubscriptionActivationRecord } from '../../src/assembly/production-provider.js';
 import type { ProviderSubscriptionProfile } from '../../src/assembly/provider-credential-custodian.js';
 import { directExecute } from './direct-execute.js';
@@ -74,8 +75,11 @@ it('is registered as a model doorway beside the Claude one, with its own provide
   expect(codex.contract).toMatchObject({ parserReference: 'codex-exec-jsonl-events', terminalReasonField: 'type',
     successfulFinalReplyReasons: ['turn.completed'] });
   expect(codex.conversationFraming).toBe(CODEX_CONVERSATION_FRAMING);
-  // No scoped-tool framing: a client cannot borrow the Claude doorway's reviewed tool confinement.
-  expect(codex.toolsFraming).toBe(null);
+  // Rule 30: the same scoped-tool route as the Claude doorway, its own framing and policy (never borrowed).
+  expect(codex.toolsFraming).toBe(CODEX_TOOLS_FRAMING);
+  expect(codex.toolTurn).toMatchObject({ system: CODEX_TOOLS_SYSTEM_PROMPT, maxCalls: CODEX_TOOL_LIMITS.maxTurns - 1,
+    harness: 'codex', confinedShell: true });
+  expect(codex.policyFor('gpt-5.6-sol', CODEX_TOOLS_FRAMING).framing).toBe(CODEX_TOOLS_FRAMING);
   expect(subscriptionDoorway('claude-code-subscription').provider).toBe('anthropic');
   expect(subscriptionDoorway('claude-code-subscription').toolsFraming).not.toBe(null);
   expect(() => subscriptionDoorway('unregistered-doorway')).toThrow('not registered');
@@ -277,16 +281,20 @@ it('admits session work only under its own reviewed grant, and only on a subscri
   const session = codexSubscriptionDoorway().session;
   expect(session.framework).toBe('codex-cli');
   const policy = codexSessionPolicy(f.model);
-  // The grant binds exactly what it admits: the unconfined launch flags on the exact model, the limits and the task wording.
-  expect(policy.launch).toEqual(['--dangerously-bypass-approvals-and-sandbox', '-c', 'check_for_update_on_startup=false', '--model', f.model]);
+  // The grant binds exactly what it admits: the admitted launch flags on the exact model, the admission hook's
+  // classes and slots, the limits and the task wording.
+  expect(policy.launch).toEqual(['--dangerously-bypass-approvals-and-sandbox', '-c', 'check_for_update_on_startup=false',
+    '--dangerously-bypass-hook-trust', '--model', f.model]);
   expect(policy.limits).toEqual(SESSION_WORK_LIMITS);
+  expect(policy).toMatchObject({ confinement: 'admitted-tools', effects: 'effect-doorway',
+    admission: { slots: SESSION_WORK_LIMITS.maxCallsPerStep - 1, mcp: 'effect doorway', shell: 'shell-sandbox-v1' } });
   const grant = { ...f.activation(hash(policy)), acceptedResiduals: [SESSION_WORK_RESIDUAL] };
   expect(() => session.validateActivation(grant, f.profile, f.model, 1000)).not.toThrow();
   // An answer activation is not a session grant, and a session grant that does not accept the
-  // unconfined residual in writing is refused.
+  // admitted-session residual in writing is refused.
   expect(() => session.validateActivation(f.activation(), f.profile, f.model, 1000)).toThrow(/policy differs/u);
   expect(() => session.validateActivation({ ...grant, acceptedResiduals: ['something else'] }, f.profile, f.model, 1000))
-    .toThrow(/unconfined residual/u);
+    .toThrow(/admitted-session residual/u);
   expect(() => validateCodexActivation(grant, f.profile, f.model, 1000, CODEX_CONVERSATION_FRAMING)).toThrow(/policy differs/u);
   // Before every launch: subscription sign-in only, the exact executable, the reviewed login home.
   await expect(session.admit({ profile: f.profile, io: f.io, deadline: 5000, now: () => 1000 })).resolves.toBeUndefined();
@@ -297,4 +305,86 @@ it('admits session work only under its own reviewed grant, and only on a subscri
   f.authMode('chatgpt');
   await expect(session.admit({ profile: { ...f.profile, artifact: 'sha256:changed' }, io: f.io, deadline: 5000, now: () => 1000 }))
     .rejects.toThrow(/executable changed/u);
+});
+
+const TOOL_TURNS = 'tests/preview/fixtures/codex-tool-turn-2026-10-03';
+const recordedTurn = (name: string) => ({ events: readFileSync(join(TOOL_TURNS, name, 'events.jsonl'), 'utf8'),
+  admission: readFileSync(join(TOOL_TURNS, name, 'admission.jsonl'), 'utf8'),
+  run: JSON.parse(readFileSync(join(TOOL_TURNS, name, 'run.json'), 'utf8')) as { recordedAgainst: string; exit: number; args: string[] } });
+
+it('Rule 30: a Codex tool turn keeps its shell and patch tool, installs the admission hook per turn, and binds its own policy', () => {
+  // The same turn bounds as the Claude tool turn, so the runner's one reservation covers either doorway.
+  expect(CODEX_TOOL_LIMITS.maxTurns).toBe(SUBSCRIPTION_TOOL_LIMITS.maxTurns);
+  const args = codexToolsPolicy('gpt-6-astra').args;
+  for (const flag of ['--ignore-user-config', '--ignore-rules', '--ephemeral', '--dangerously-bypass-approvals-and-sandbox',
+    '--dangerously-bypass-hook-trust']) expect(args).toContain(flag);
+  expect(args).not.toContain('--sandbox');
+  expect(CODEX_TOOLS_SYSTEM_PROMPT).toContain('exactly two tools: your shell and apply_patch');
+  expect(CODEX_TOOLS_SYSTEM_PROMPT).not.toContain('use no tools of any kind');
+  expect(hash(codexToolsPolicy('gpt-6-astra'))).not.toBe(hash(codexConversationPolicy('gpt-6-astra')));
+  const turn = { scratch: '/private/tmp/itt-1', workspace: '/private/tmp/itt-1/ws', stateDirectory: '/r/tool-turns/a-0/state',
+    deniedRoots: [], hook: { node: '/usr/local/bin/node', script: '/repo/tests/preview/tool-admission-hook.mjs' } };
+  const hooks = codexToolHookArgs(turn);
+  expect(hooks).toEqual(['-c', `hooks.PreToolUse=[{matcher='*',hooks=[{type='command',command='/usr/local/bin/node /repo/tests/preview/`
+    + `tool-admission-hook.mjs pre /r/tool-turns/a-0/state',timeout=300}]}]`, '-c', `hooks.PostToolUse=[{matcher='*',hooks=[{type='command',`
+    + `command='/usr/local/bin/node /repo/tests/preview/tool-admission-hook.mjs post /r/tool-turns/a-0/state',timeout=300}]}]`,
+  '-C', turn.workspace, '-']);
+  expect(() => codexToolHookArgs({ ...turn, stateDirectory: "/r/it's" })).toThrow(/absolute and plain/u);
+  // The recorded live turns ran with exactly these arguments (paths scrubbed).
+  for (const name of ['ordinary', 'boundary']) {
+    const { run } = recordedTurn(name);
+    expect(run.recordedAgainst).toBe('codex-cli 0.156.1');
+    expect(run.args.slice(0, args.length)).toEqual([...codexToolsPolicy(run.args[run.args.indexOf('--model') + 1]!).args]);
+    expect(run.args.slice(args.length)).toHaveLength(7);
+  }
+});
+
+it('reads the recorded live tool turns (Rule 106): admitted shell and patch items, the hook-trust notice, a refusal', () => {
+  const ordinary = parseCodexEventStream(recordedTurn('ordinary').events, CODEX_TOOL_ITEM_TYPES);
+  expect(ordinary).toMatchObject({ terminal: 'turn.completed', malformed: false, toolItems: 2 });
+  expect(ordinary.disallowedItems).toEqual([]);
+  // The same stream on the tool-free conversation framing is refused: there, a tool item is not admitted.
+  expect(parseCodexEventStream(recordedTurn('ordinary').events).disallowedItems).toEqual(['error', 'error', 'command_execution', 'file_change']);
+  expect(recordedTurn('ordinary').events).toContain(CODEX_HOOK_TRUST_NOTICE);
+  // Any other error item still refuses a tool turn.
+  expect(parseCodexEventStream(`${recordedTurn('ordinary').events}{"type":"item.completed","item":{"type":"error","message":"other"}}\n`,
+    CODEX_TOOL_ITEM_TYPES).disallowedItems).toEqual(['error']);
+  // The boundary turn: the out-of-workspace patch was refused at the hook, so only the confined shell item ran.
+  const boundary = parseCodexEventStream(recordedTurn('boundary').events, CODEX_TOOL_ITEM_TYPES);
+  expect(boundary).toMatchObject({ terminal: 'turn.completed', toolItems: 1 });
+  const pre = recordedTurn('boundary').admission.split('\n').filter(Boolean).map(line => JSON.parse(line)).filter(row => row.phase === 'pre');
+  expect(pre.map(row => [row.tool, row.decision, row.kind ?? null])).toEqual([['apply_patch', 'deny', 'scope'], ['Bash', 'allow', null]]);
+});
+
+it('answers a Codex tool turn only when every tool item has an admitted call in the hook record', async () => {
+  const f = fixture();
+  const toolPolicy = codexToolsPolicy(f.model);
+  const workspace = join(f.root, 'ws'), stateDirectory = join(f.root, 'state');
+  for (const path of [workspace, stateDirectory]) mkdirSync(path, { mode: 0o700 });
+  const toolTurn = { scratch: f.root, workspace, stateDirectory, deniedRoots: [],
+    hook: { node: process.execPath, script: join(process.cwd(), 'tests/preview/tool-admission-hook.mjs') } };
+  const recorded = recordedTurn('ordinary');
+  const tools = (admission: string | null, overrides: Record<string, unknown> = {}) => {
+    if (admission === null) rmSync(join(stateDirectory, 'admission.jsonl'), { force: true });
+    else writeFileSync(join(stateDirectory, 'admission.jsonl'), admission);
+    return value(createCodexSubscriptionRoute(f.input({ framing: CODEX_TOOLS_FRAMING, activation: f.activation(hash(toolPolicy)),
+      toolTurn, adapterEvidenceContract: { ...f.input().adapterEvidenceContract, maxRawTerminalBytes: toolPolicy.maxRawTerminalBytes },
+      ...overrides })));
+  };
+  const bounds = { ...f.bounds, maxTokens: toolPolicy.maxTokens, maxOutputBytes: toolPolicy.maxOutputBytes };
+  f.serveText(recorded.events, recorded.run.exit);
+  const answered = await tools(recorded.admission).invoke('{"question":"tools"}', bounds);
+  expect(answered).toMatchObject({ state: 'complete' });
+  expect(String(answered.bytes)).toContain('42');
+  const command = f.commands().at(-1);
+  expect(command.args).toEqual([...toolPolicy.args, ...codexToolHookArgs(toolTurn)]);
+  expect(command.cwd).toBe(realpathSync(workspace));
+  expect(command.stdin.startsWith(CODEX_TOOLS_SYSTEM_PROMPT)).toBe(true);
+  // A tool item with no admitted call behind it (the hook did not run, or its record is short) refuses the answer.
+  const short = recorded.admission.split('\n').filter(line => !line.includes('"apply_patch"')).join('\n');
+  expect((await tools(short).invoke('{"question":"tools"}', bounds)).state).toBe('rejected');
+  expect((await tools('').invoke('{"question":"tools"}', bounds)).state).toBe('rejected');
+  // The framing and the turn must agree: a tool turn without its hook state is refused at construction.
+  expect(createCodexSubscriptionRoute(f.input({ framing: CODEX_TOOLS_FRAMING, activation: f.activation(hash(toolPolicy)) })).kind).toBe('Refused');
+  expect(createCodexSubscriptionRoute(f.input({ toolTurn })).kind).toBe('Refused');
 });

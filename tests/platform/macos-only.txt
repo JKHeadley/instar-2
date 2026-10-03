@@ -8,4 +8,5 @@ tests/integration/host-watch.test.ts
 tests/preview/native-harness-contract.test.ts
 tests/preview/self-host-tools.test.ts
 tests/preview/self-host.test.ts
+tests/preview/session-admission.test.ts
 tests/types/shipped-clients.test.ts

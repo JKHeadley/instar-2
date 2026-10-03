@@ -1,5 +1,31 @@
 [
   {
+    "revision": 5,
+    "date": "2026-10-03",
+    "status": "draft",
+    "cause": {
+      "kind": "draft",
+      "note": "Unit w4-sessiondriver, round-2 repair after Astra's unit review (VERDICT NO): the session's safeguards move to checkpoints, keeping its full tool set (purpose revision 12). No constitution change."
+    },
+    "changes": [
+      {
+        "what": "\u00a75 replaces the Value that a session step's effects are unclassified with the rule that a session keeps its full tool set and every tool call passes the admission hook before dispatch: scope checks, the effect doorway for MCP and other consequential tools, and every shell confined by the step's own sandbox profile.",
+        "why": "A session launched with no admission hook could read a credential or send through one; the purpose (revision 12) requires such a safeguard at a checkpoint rather than by removing ability.",
+        "ref": "src/assembly/production-session-driver.ts; tests/preview/session-admission.mjs; tests/preview/tool-admission.mjs; tests/preview/session-admission.test.ts; tests/e2e/session-work-live.test.ts"
+      },
+      {
+        "what": "\u00a75's spend-bound rule: the call ceiling is admitted before dispatch by the hook's slots, a call past them stops the harness by exact PID, the transcript meter is accounting read before any result is accepted, and calls past the reservation are charged to the journal's allowance.",
+        "why": "A sampled meter let a child overrun its reservation within one poll, and a stable result was accepted on a poll where the meter was unreadable.",
+        "ref": "src/assembly/production-session-work.ts; tests/preview/journal.ts; tests/assembly/production-session-work.test.ts"
+      },
+      {
+        "what": "The session grant binds the admitted launch and the admission policy, and its accepted residual names only the harness-internal model calls the hook cannot see.",
+        "why": "The grant previously accepted an unconfined, unclassified child in writing.",
+        "ref": "src/assembly/production-session-work.ts; src/assembly/production-provider.ts; src/assembly/production-codex-provider.ts"
+      }
+    ]
+  },
+  {
     "revision": 4,
     "date": "2026-10-03",
     "status": "draft",

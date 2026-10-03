@@ -478,3 +478,32 @@ it('refuses changed identity and protects named sessions from stop', () => {
   expect(value(protectedDriver.stop())).toEqual([]);
   expect(f.calls.filter(row => row[0] === 'kill-session')).toHaveLength(0);
 });
+
+it.each(['claude-code', 'codex-cli'] as const)('an admitted %s session launches with every tool and the admission hook installed', framework => {
+  const f = fixture(framework);
+  const toolAdmission = { command: (claim: string, phase: 'pre' | 'post') => `/node /repo/hook.mjs ${phase} /state/${claim}`, timeoutSeconds: 600 };
+  const driver = createProductionSessionDriver({ ...f.config, confinement: 'admitted', toolAdmission });
+  value(driver.launch({ operation: 'op', claim: 'topic', artifact: 'sha256:test', incarnation: 'inc', workingScope: '/work', handles: [] }));
+  const spawned = f.calls.find(row => row[0] === 'new-session')!;
+  if (framework === 'claude-code') {
+    // Every tool stays (no permission prompt); the settings install the hook for every tool, before and after.
+    expect(spawned).toContain('--dangerously-skip-permissions');
+    const settings = JSON.parse(spawned[spawned.indexOf('--settings') + 1]!);
+    expect(settings.hooks.PreToolUse).toEqual([{ matcher: '*', hooks: [{ type: 'command', command: '/node /repo/hook.mjs pre /state/topic', timeout: 600 }] }]);
+    expect(settings.hooks.PostToolUse[0].hooks[0].command).toBe('/node /repo/hook.mjs post /state/topic');
+    // No harness-internal model call that no tool call precedes, beyond what the transcript meter accounts for.
+    expect(spawned).toContain('DISABLE_NON_ESSENTIAL_MODEL_CALLS=1');
+  } else {
+    expect(spawned).toEqual(expect.arrayContaining(['--dangerously-bypass-approvals-and-sandbox', '--dangerously-bypass-hook-trust',
+      `hooks.PreToolUse=[{matcher='*',hooks=[{type='command',command='/node /repo/hook.mjs pre /state/topic',timeout=600}]}]`,
+      `hooks.PostToolUse=[{matcher='*',hooks=[{type='command',command='/node /repo/hook.mjs post /state/topic',timeout=600}]}]`]));
+    expect(spawned).not.toContain('DISABLE_NON_ESSENTIAL_MODEL_CALLS=1');
+  }
+  // An admitted mode without its hook, an unconfined one with a hook, or a hook command that is not plain, is refused.
+  expect(() => createProductionSessionDriver({ ...f.config, confinement: 'admitted' })).toThrow(/admission hook/u);
+  expect(() => createProductionSessionDriver({ ...f.config, toolAdmission })).toThrow(/admission hook/u);
+  const quoted = createProductionSessionDriver({ ...f.config, confinement: 'admitted',
+    toolAdmission: { ...toolAdmission, command: () => "/node 'x'" } });
+  expect(quoted.launch({ operation: 'op2', claim: 'topic2', artifact: 'sha256:test', incarnation: 'inc2', workingScope: '/work', handles: [] }).kind)
+    .not.toBe('Success');
+});

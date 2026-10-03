@@ -15,6 +15,8 @@ import { assemblyRuntimeFixture } from '../assembly/runtime-fixture.js';
 import { value } from '../facts/fixtures.js';
 // @ts-expect-error physical JS host is intentionally outside the pure core
 import { createProductionSessionIO } from '../../scripts/production-session-io.mjs';
+// @ts-expect-error the admission hook and its state stay plain JavaScript: the harness runs them without a loader
+import { prepareSessionAdmission, sessionAdmissionCeiling, sessionAdmissionCommand } from '../preview/session-admission.mjs';
 // @ts-expect-error physical JS host is intentionally outside the pure core
 import { createResourceOwner } from '../../scripts/resource-owner.mjs';
 
@@ -51,17 +53,22 @@ process.stdin.on('data', chunk => {
 `);
   chmodSync(harness, 0o700);
   const physical = createProductionSessionIO({ stateDirectory: join(root, 'state'), tmuxPath: tmuxPath!, home, configHome: login, cwd: scope });
+  const admission = join(root, 'admission');
   const owner = createResourceOwner();
   const rows: (SessionWorkEdge | SessionWorkEdgeClose)[] = [];
   let stopped = false;
   const port = value(createSessionWorkPort({
-    createDriver: resolveIntake => createProductionSessionDriver({ operatorOwnUse: true, confinement: 'unconfined',
+    createDriver: resolveIntake => createProductionSessionDriver({ operatorOwnUse: true, confinement: 'admitted',
+      toolAdmission: { command: sessionAdmissionCommand({ base: admission }), timeoutSeconds: 600 },
       framework: 'claude-code', executable: harness, cwd: scope, home, configHome: login, context: f.c, io: physical,
       now: Date.now, stopped: () => stopped, resolveIntake, maxSessions: 1, turnDeadlineMs: 60_000,
       readyTimeoutMs: 15_000, protectedSessions: [] }),
     io: { readResult: (path, maxBytes) => physical.readResult(path, maxBytes), clearResult: path => physical.clearResult(path),
       modelCalls: since => physical.modelCalls('claude-code', scope, login, since),
-      wait: ms => new Promise(done => setTimeout(done, ms)) },
+      wait: ms => new Promise(done => setTimeout(done, ms)),
+      prepareAdmission: (claim: string) => { prepareSessionAdmission({ base: admission, claim, workspace: scope,
+        harness: 'claude', maxCalls: 23, operations: [] }); },
+      admissionCeiling: (claim: string) => sessionAdmissionCeiling(admission, claim) },
     resources: { admit: async () => {
       const held = await owner.hold('maintenance', { timeout: 5_000, stopped: () => stopped });
       return held === null ? null : { attach: (child: string) => held.attach({ pid: Number(child.split(':')[1]), cwd: scope }),

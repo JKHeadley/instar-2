@@ -1,6 +1,6 @@
 // Part fifteen §5 (docs/19-scheduled-work) at the real launcher: the delegated-session path is
 // enabled only by a reviewed session grant — an activation record bound to the doorway's session
-// policy, sealed by the operator's authority and accepting the unconfined residual. An answer
+// policy, sealed by the operator's authority and accepting the admitted-session residual. An answer
 // activation offered as a session grant refuses the launch before anything runs; a real grant is
 // admitted and the launcher runs normally.
 import { mkdirSync, readFileSync, writeFileSync } from 'node:fs';
@@ -9,6 +9,7 @@ import { expect, it } from 'vitest';
 import { encoded } from '../../src/assembly/boundary.js';
 import { subscriptionSessionPolicy } from '../../src/assembly/production-provider.js';
 import { SESSION_WORK_RESIDUAL } from '../../src/assembly/production-session-work.js';
+// @ts-expect-error the cutover harness stays plain JavaScript, run by the launcher without a loader
 import { cutoverHarness } from './journal-cutover-harness.mjs';
 import { offlineActivationAuthority, offlineProfile, successiveWorld } from './successive-fixture.js';
 
@@ -30,12 +31,12 @@ it('refuses an answer activation offered as a session grant, and admits a sealed
   expect(refused.status).not.toBe(0);
   expect(lastRun(harness.liveRoot)).toMatchObject({ reason: 'refused before launch' });
   expect(String(lastRun(harness.liveRoot).refused)).toMatch(/policy differs/u);
-  // A session grant that does not accept the unconfined residual is refused too.
+  // A session grant that does not accept the admitted-session residual is refused too.
   const policyDigest = encoded(subscriptionSessionPolicy(world.model)).hash;
   const unaccepted = await harness.runLive(1, ['--session-work-activation',
     grantAt(join(world.directory, 'no-residual'), { ...answer, invocationPolicyDigest: policyDigest })]);
   expect(unaccepted.status).not.toBe(0);
-  expect(String(lastRun(harness.liveRoot).refused)).toMatch(/unconfined residual/u);
+  expect(String(lastRun(harness.liveRoot).refused)).toMatch(/admitted-session residual/u);
   // The reviewed grant: admitted, and the launch runs.
   const admitted = await harness.runLive(1, ['--session-work-activation', grantAt(join(world.directory, 'grant'),
     { ...answer, invocationPolicyDigest: policyDigest, acceptedResiduals: [...answer.acceptedResiduals, SESSION_WORK_RESIDUAL] })]);

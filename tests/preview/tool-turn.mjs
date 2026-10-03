@@ -8,7 +8,7 @@ import { chmodSync, lstatSync, mkdirSync, readdirSync, readFileSync, readlinkSyn
 import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { SUBSCRIPTION_TOOL_LIMITS, SUBSCRIPTION_TOOL_NAMES, SUBSCRIPTION_TOOLS_SYSTEM_PROMPT } from '../../src/assembly/production-provider.js';
-import { toolTrace } from './tool-admission.mjs';
+import { shellSandboxProfile, toolTrace } from './tool-admission.mjs';
 
 export const TOOL_TURNS_DIRECTORY = 'tool-turns';
 /** Finished turn directories kept for inspection; older ones are removed (the journal keeps their trace). */
@@ -60,9 +60,13 @@ export function detachScratch(turn) {
   return true;
 }
 
+/** The Claude doorway's tool-turn admission: its harness bounds model turns itself (`--max-turns`) and sandboxes Bash. */
+export const CLAUDE_TOOL_ADMISSION = Object.freeze({ maxCalls: SUBSCRIPTION_TOOL_LIMITS.maxToolCalls, harness: null, confinedShell: false });
 /** Allocates a fresh turn: `<root>/tool-turns/<digest>-<attempt>/state` and the turn's scratch volume holding `ws` and
- * `tmp`, all 0700 (`scratch` mounts it; tests may pass a stand-in), and the hook's config. */
-export function prepareToolTurn({ root, operation, attempt, operations, node = process.execPath, scratch = attachScratch }) {
+ * `tmp`, all 0700 (`scratch` mounts it; tests may pass a stand-in), and the hook's config. `admission` is the doorway's
+ * tool-turn layout: its call slots, the harness the hook stops past them, and whether the hook confines the shell. */
+export function prepareToolTurn({ root, operation, attempt, operations, node = process.execPath, scratch = attachScratch,
+  admission = CLAUDE_TOOL_ADMISSION }) {
   const base = join(realpathSync(root), TOOL_TURNS_DIRECTORY);
   mkdirSync(base, { recursive: true, mode: 0o700 });
   const slug = `${createHash('sha256').update(operation, 'utf8').digest('hex').slice(0, 16)}-${String(attempt)}`;
@@ -73,8 +77,11 @@ export function prepareToolTurn({ root, operation, attempt, operations, node = p
   mkdirSync(join(volume, 'ws'), { mode: 0o700 }); mkdirSync(join(volume, 'tmp'), { mode: 0o700 });
   const workspace = realpathSync(join(volume, 'ws')), tmp = realpathSync(join(volume, 'tmp'));
   const stateDirectory = realpathSync(join(turn, 'state'));
-  writeFileSync(join(stateDirectory, 'config.json'), JSON.stringify({ workspace, tmp, maxCalls: SUBSCRIPTION_TOOL_LIMITS.maxToolCalls,
-    maxWriteBytes: SUBSCRIPTION_TOOL_LIMITS.maxWriteBytes, operations: [...operations] }), { mode: 0o600 });
+  const shellProfile = admission.confinedShell ? join(stateDirectory, 'shell.sb') : null;
+  if (shellProfile) writeFileSync(shellProfile, shellSandboxProfile({ workspace, tmp }), { mode: 0o600 });
+  writeFileSync(join(stateDirectory, 'config.json'), JSON.stringify({ workspace, tmp, maxCalls: admission.maxCalls,
+    maxWriteBytes: SUBSCRIPTION_TOOL_LIMITS.maxWriteBytes, operations: [...operations],
+    ...(admission.harness ? { harness: admission.harness } : {}), ...(shellProfile ? { shellProfile } : {}) }), { mode: 0o600 });
   return { slug, directory: turn, scratch: volume, workspace, stateDirectory, hook: { node, script: TOOL_HOOK_SCRIPT } };
 }
 
@@ -134,16 +141,16 @@ export const toolTurnFits = (view, unreserved = 0) => view.calls + unreserved + 
 export const toolPacketFits = view => toolTurnFits(view, 1);
 
 export async function runToolTurn({ journal, root, id, prepared, promptLimit, deniedRoots, operations, invoke, fallback, now, redactText,
-  scratch = attachScratch, detach = detachScratch }) {
+  scratch = attachScratch, detach = detachScratch, system = SUBSCRIPTION_TOOLS_SYSTEM_PROMPT, admission = CLAUDE_TOOL_ADMISSION }) {
   const extra = SUBSCRIPTION_TOOL_LIMITS.maxTurns - 1;
   const refuse = reason => { journal.append({ kind: 'tool-turn', phase: 'refused', id, reason, at: now() }); return fallback(); };
   if (!toolTurnFits(journal.view)) return refuse('call cap');
-  if (Buffer.byteLength(prepared) + Buffer.byteLength(SUBSCRIPTION_TOOLS_SYSTEM_PROMPT) > promptLimit) return refuse('prompt size');
+  if (Buffer.byteLength(prepared) + Buffer.byteLength(system) > promptLimit) return refuse('prompt size');
   const attempt = journal.view.toolTurns?.invocations ?? 0;
   journal.append({ kind: 'tool-turn', phase: 'reserved', id, attempt, calls: extra, at: now() });
   let turn = null, result, failure = null;
   try {
-    turn = prepareToolTurn({ root, operation: id, attempt, operations, scratch });
+    turn = prepareToolTurn({ root, operation: id, attempt, operations, scratch, admission });
     result = await invoke({ scratch: turn.scratch, workspace: turn.workspace, stateDirectory: turn.stateDirectory, hook: turn.hook, deniedRoots });
   } catch (error) { failure = error; }
   const trace = turn ? readToolTrace(turn.stateDirectory) : { calls: [], consistent: true };

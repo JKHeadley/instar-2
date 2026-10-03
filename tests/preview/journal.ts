@@ -1988,7 +1988,13 @@ function projectObligationWork(view: JournalView, row: Extract<JournalRecord, { 
  * exists, and refuses when the call allowance cannot hold it. */
 function projectSessionWork(view: JournalView, record: SessionWorkEdge | SessionWorkEdgeClose): void {
   validateSessionWorkRow(record);
-  if (record.type !== 'SessionWorkEdge') return;
+  // A close whose child made more model calls than its edge reserved charges the excess, so the remaining
+  // allowance never exceeds the real one. Unknown calls stay unknown: nothing is charged or credited.
+  if (record.type === 'SessionWorkEdgeClose') {
+    if (typeof record.calls === 'number' && typeof record.reserved === 'number' && record.calls > record.reserved)
+      view.calls += record.calls - record.reserved;
+    return;
+  }
   if (view.calls + record.budget.calls > view.limits.maxCalls) throw Error('preview journal: session work call cap');
   view.calls += record.budget.calls;
 }
@@ -2012,6 +2018,8 @@ export function validateSessionWorkRow(record: SessionWorkEdge | SessionWorkEdge
     || (record.child !== null && !text(record.child, 1024))
     || !['complete', 'uncertain', 'failed'].includes(record.state)
     || (record.resultBytes !== null && (!Number.isSafeInteger(record.resultBytes) || record.resultBytes < 0))
+    || (record.calls !== undefined && record.calls !== null && (!Number.isSafeInteger(record.calls) || record.calls < 0))
+    || (record.reserved !== undefined && (!Number.isSafeInteger(record.reserved) || record.reserved <= 0))
     || !stamp(record.closedAt)) throw Error('preview journal: session work close incomplete');
 }
 /** Measured capacity for scheduled obligation work (the existing 1.x priority brake): it runs as medium-priority

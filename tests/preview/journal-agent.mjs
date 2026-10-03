@@ -10,6 +10,7 @@ import { openProductionStorage } from '../../src/assembly/production-storage.js'
 import { DEFAULT_SUBSCRIPTION_DOORWAY, subscriptionDoorway,
   SUBSCRIPTION_PREVIEW_EXPIRY, SUBSCRIPTION_TOOLS_SYSTEM_PROMPT } from '../../src/assembly/production-provider.js';
 import { runToolTurn, toolPacketFits, toolStatusLines, toolTurnEligible } from './tool-turn.mjs';
+import { prepareSessionAdmission, sessionAdmissionCeiling, sessionAdmissionCommand } from './session-admission.mjs';
 import { redact } from '../../src/recall/redact.js';
 import { durablePreviewWrite } from './durable-write.js';
 import { prepareJournalEnvelope } from './journal-envelope.js';
@@ -159,7 +160,7 @@ const required = (options, name) => { if (!options[name]) throw Error(`preview: 
 /** Rules 60, 114 (Part fifteen §5): the delegated-session path for long and scheduled work exists
  * only under its own reviewed grant: an activation record for the doorway's session framing, bound
  * to that exact session policy (launch flags, model, limits, task wording), resolved from the same
- * sealed authority and accepting the unconfined residual. With no grant, work stays on the one-call
+ * sealed authority and accepting the admitted-session residual. With no grant, work stays on the one-call
  * route exactly as before. Everything else — harness, executable, homes, ceilings — comes from the
  * doorway, the login profile and the policy, never from a separate option. */
 const sessionWorkOf = options => options['session-work-activation'] === undefined ? null
@@ -1448,7 +1449,7 @@ async function main() {
       // A tool turn's longer system prompt must fit that room too; an overflow here makes the packet ladder yield, as
       // for the text-only prompt, instead of leaving the turn to fall back to a text-only answer.
       if (toolsActive() && toolTurnEligible(input.id)
-        && Buffer.byteLength(bytes) + Buffer.byteLength(SUBSCRIPTION_TOOLS_SYSTEM_PROMPT) > toolPromptLimit())
+        && Buffer.byteLength(bytes) + Buffer.byteLength(doorway.toolTurn?.system ?? SUBSCRIPTION_TOOLS_SYSTEM_PROMPT) > toolPromptLimit())
         throw Error('preview: complete prompt overflow');
       return bytes;
     };
@@ -1554,6 +1555,7 @@ async function main() {
       promptLimit: toolPromptLimit(),
       deniedRoots: [realpathSync(root), profile.home, profile.configDirectory, profile.workingDirectory],
       operations: SINGLE_MACHINE_PROFILE.operations, now: wallNow, redactText: text => redact(text).text,
+      ...(doorway.toolTurn ? { system: doorway.toolTurn.system, admission: doorway.toolTurn } : {}),
       fallback: async () => ({ result: await invokeSubscription(prepared, id) }),
       invoke: toolTurn => invokeSubscription(prepared, id, undefined, undefined, toolTurn) })).result;
     const proofLines = () => {
@@ -1805,15 +1807,25 @@ async function main() {
       const stoppedNow = () => workerStop.value || existsSync(stopPath) || !ownerHeld() || journal.view.stop !== null
         || wallNow() >= journal.view.expires || !active() || !sessionActive();
       const admissionIO = createSubscriptionProviderIO({ repository: process.cwd(), stopped: stoppedNow, work: 'maintenance' });
+      // Every tool call of the child (its subagents' too) passes the admission hook before dispatch: its slots are
+      // the step's reserved call liability, MCP and other consequential tools go to the effect doorway, and every
+      // shell command runs confined. The state lives beside the working scope, never inside it.
+      const admissionBase = join(root, 'session-work-state', 'admission');
+      const harness = doorway.session.harness;
       sessionWork = { authority: `session work grant ${sessionActivation.reference}: one scheduled work step for the verified operator, `
-        + 'unconfined under the operator\'s own tools, its result returned by file', port: take(createSessionWorkPort({
-        createDriver: resolveIntake => createProductionSessionDriver({ operatorOwnUse: true, confinement: 'unconfined',
+        + 'with the full tool set behind the admission hook, its result returned by file', port: take(createSessionWorkPort({
+        createDriver: resolveIntake => createProductionSessionDriver({ operatorOwnUse: true, confinement: 'admitted',
+          toolAdmission: { command: sessionAdmissionCommand({ base: admissionBase }),
+            timeoutSeconds: Math.ceil(SESSION_WORK_LIMITS.deadlineMs / 1000) },
           framework, executable: profile.executable, cwd: project, home: profile.home, configHome: profile.configDirectory,
           model: required(options, 'model'), context, io: physical, now: wallNow, stopped: stoppedNow, resolveIntake,
           maxSessions: SESSION_WORK_LIMITS.maxSessions, turnDeadlineMs: SESSION_WORK_LIMITS.deadlineMs,
           readyTimeoutMs: 30000, protectedSessions: [] }),
         io: { readResult: (path, maxBytes) => physical.readResult(path, maxBytes), clearResult: path => physical.clearResult(path),
-          modelCalls: since => physical.modelCalls(framework, project, profile.configDirectory, since), wait: delay },
+          modelCalls: since => physical.modelCalls(framework, project, profile.configDirectory, since), wait: delay,
+          prepareAdmission: claim => { prepareSessionAdmission({ base: admissionBase, claim, workspace: project, harness,
+            maxCalls: SESSION_WORK_LIMITS.maxCallsPerStep - 1, operations: SINGLE_MACHINE_PROFILE.operations }); },
+          admissionCeiling: claim => sessionAdmissionCeiling(admissionBase, claim) },
         resources: { admit: async () => {
           doorway.session.validateActivation(sessionActivation, profile, required(options, 'model'), wallNow(), journal.view.expires);
           await doorway.session.admit({ profile, io: admissionIO, deadline: wallNow() + 15000, now: wallNow });

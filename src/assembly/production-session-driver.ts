@@ -4,7 +4,8 @@ import type { AssemblyDecodeContext, HarnessObservation } from './contracts.js';
 import type { NativeHarnessDriverPort } from './harness.js';
 import type { Result } from '../index.js';
 
-/** Deliberately unconfined, operator-own-use sessions. This is not a confinement claim. */
+/** Operator-own-use sessions with the harness's full tool set. `unconfined` makes no confinement claim;
+ * `admitted` launches every session with the tool admission hook, so each tool call passes it before dispatch. */
 export type SessionFramework = 'claude-code' | 'codex-cli';
 export interface SessionRecord {
   readonly operation: string; readonly claim: string; readonly name: string; readonly identity: string;
@@ -40,12 +41,15 @@ export interface SessionIO {
   armDeadline(name: string, identity: string, deadline: number): void;
 }
 export interface ProductionSessionConfig {
-  readonly operatorOwnUse: true; readonly confinement: 'unconfined'; readonly framework: SessionFramework;
+  readonly operatorOwnUse: true; readonly confinement: 'unconfined' | 'admitted'; readonly framework: SessionFramework;
   readonly executable: string; readonly cwd: string; readonly home: string; readonly configHome: string;
   readonly context: AssemblyDecodeContext; readonly io: SessionIO; readonly now: () => number;
   readonly stopped: () => boolean; readonly resolveIntake: (id: string, digest: string) => string;
   readonly maxSessions: number; readonly turnDeadlineMs: number; readonly readyTimeoutMs: number;
   readonly protectedSessions: readonly string[]; readonly hookScript?: string;
+  /** Required exactly in `admitted` mode: the PreToolUse/PostToolUse command for a session's claim (its own
+   * admission state), and the hook timeout. The harness runs it before every tool call, its subagents' too. */
+  readonly toolAdmission?: Readonly<{ command: (claim: string, phase: 'pre' | 'post') => string; timeoutSeconds: number }>;
   /** The exact model the session runs, when a reviewed grant names one; absent, the CLI's own default. */
   readonly model?: string;
   readonly inboxDirectory?: string; readonly compactGroundingFile?: string;
@@ -54,11 +58,32 @@ export interface ProductionSessionConfig {
     reason: 'cache-miss' | 'context-wall' }>) => Readonly<{ text: string; source: string }>) | undefined;
 }
 
-/** The flags that make a session unconfined operator-own-use for each harness: every tool, no
- * permission prompt, no sandbox. Exported so a reviewed grant can bind exactly what it admits. */
-export function sessionLaunchFlags(framework: SessionFramework): readonly string[] {
+/** The flags of an operator-own-use session for each harness: every tool and no permission prompt. The
+ * harness's own sandbox is not used; an `admitted` session's tool calls each pass the admission hook instead,
+ * which confines every shell command itself. Codex runs a hook only after its source is trusted; the hook
+ * here is this runner's own reviewed script, so an admitted Codex session trusts it for the invocation.
+ * Exported so a reviewed grant can bind exactly what it admits. */
+export function sessionLaunchFlags(framework: SessionFramework, admitted = false): readonly string[] {
   return framework === 'claude-code' ? ['--dangerously-skip-permissions']
-    : ['--dangerously-bypass-approvals-and-sandbox', '-c', 'check_for_update_on_startup=false'];
+    : ['--dangerously-bypass-approvals-and-sandbox', '-c', 'check_for_update_on_startup=false',
+      ...(admitted ? ['--dangerously-bypass-hook-trust'] : [])];
+}
+/** Claude Code variables an admitted session sets: no model call outside the ones its tool calls admit
+ * (titles, suggestions) and no other background traffic. */
+export const ADMITTED_CLAUDE_ENV = Object.freeze(['DISABLE_NON_ESSENTIAL_MODEL_CALLS=1', 'CLAUDE_CODE_DISABLE_NONESSENTIAL_TRAFFIC=1']);
+const hookCommandPattern = /^[A-Za-z0-9_./@ -]{1,1024}$/u;
+/** The harness arguments that install the admission hook for one claim. */
+export function admissionArgs(framework: SessionFramework, admission: NonNullable<ProductionSessionConfig['toolAdmission']>,
+  claim: string, extraClaudeHooks: Readonly<Record<string, unknown>> = {}): readonly string[] {
+  const pre = admission.command(claim, 'pre'), post = admission.command(claim, 'post');
+  ensure([pre, post].every(command => hookCommandPattern.test(command)), 'admission hook command must be plain');
+  if (framework === 'claude-code') {
+    const hook = (command: string) => [{ matcher: '*', hooks: [{ type: 'command', command, timeout: admission.timeoutSeconds }] }];
+    return ['--settings', JSON.stringify({ disableAllHooks: false,
+      hooks: { ...extraClaudeHooks, PreToolUse: hook(pre), PostToolUse: hook(post) } })];
+  }
+  const hook = (command: string) => `[{matcher='*',hooks=[{type='command',command='${command}',timeout=${admission.timeoutSeconds}}]}]`;
+  return ['-c', `hooks.PreToolUse=${hook(pre)}`, '-c', `hooks.PostToolUse=${hook(post)}`];
 }
 const modelPattern = /^[A-Za-z0-9][A-Za-z0-9._-]{0,80}$/u;
 const uuid = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
@@ -123,7 +148,13 @@ export function createProductionSessionDriver(config: ProductionSessionConfig): 
   saveResume(identity: string, sessionId: string): Result<string>;
   recoverContext(identity: string): Result<string>;
 }> {
-  ensure(config.operatorOwnUse === true && config.confinement === 'unconfined', 'explicit unconfined operator-own-use mode required');
+  ensure(config.operatorOwnUse === true && (config.confinement === 'unconfined' || config.confinement === 'admitted'),
+    'explicit operator-own-use mode required');
+  const admitted = config.confinement === 'admitted';
+  ensure(admitted === (config.toolAdmission !== undefined), 'an admitted session requires its admission hook, and only it');
+  if (config.toolAdmission) ensure(typeof config.toolAdmission.command === 'function'
+    && Number.isSafeInteger(config.toolAdmission.timeoutSeconds) && config.toolAdmission.timeoutSeconds > 0
+    && config.toolAdmission.timeoutSeconds <= 3600, 'bounded admission hook required');
   ensure(Number.isSafeInteger(config.maxSessions) && config.maxSessions > 0 && config.maxSessions <= 16,
     'fixed concurrent session cap required');
   ensure(Number.isSafeInteger(config.turnDeadlineMs) && config.turnDeadlineMs > 0 && config.turnDeadlineMs <= 3_600_000,
@@ -228,13 +259,16 @@ export function createProductionSessionDriver(config: ProductionSessionConfig): 
     config.io.save({ ...currentJournal, reservations: [...(currentJournal.reservations ?? []), reservation] });
     const model = config.model === undefined ? [] : ['--model', config.model];
     const args = config.framework === 'claude-code'
-      ? [resumeId ? '--resume' : '--session-id', resumeId ?? randomUUID(), ...sessionLaunchFlags('claude-code'), ...model]
-      : [ ...(resumeId ? ['resume', resumeId] : []), ...sessionLaunchFlags('codex-cli'), ...model];
-    if (config.hookScript && config.framework === 'claude-code') {
-      const hook = `node ${JSON.stringify(config.hookScript)}`;
-      args.push('--settings', JSON.stringify({ hooks: { Stop: [{ hooks: [{ type: 'command', command: hook }] }],
-        SessionStart: [{ matcher: 'compact', hooks: [{ type: 'command', command: `${hook} compact` }] }] } }));
-    }
+      ? [resumeId ? '--resume' : '--session-id', resumeId ?? randomUUID(), ...sessionLaunchFlags('claude-code', admitted), ...model]
+      : [ ...(resumeId ? ['resume', resumeId] : []), ...sessionLaunchFlags('codex-cli', admitted), ...model];
+    const lifecycleHooks = config.hookScript && config.framework === 'claude-code'
+      ? { Stop: [{ hooks: [{ type: 'command', command: `node ${JSON.stringify(config.hookScript)}` }] }],
+        SessionStart: [{ matcher: 'compact', hooks: [{ type: 'command', command: `node ${JSON.stringify(config.hookScript)} compact` }] }] }
+      : null;
+    // One settings object carries every Claude hook: the admission hook and, when configured, the lifecycle hooks.
+    if (config.toolAdmission) args.push(...admissionArgs(config.framework, config.toolAdmission, claim, lifecycleHooks ?? {}));
+    else if (lifecycleHooks) args.push('--settings', JSON.stringify({ hooks: lifecycleHooks }));
+    const harnessEnv = admitted && config.framework === 'claude-code' ? ADMITTED_CLAUDE_ENV : [];
     try { run(['new-session', '-d', '-s', name, '-c', config.cwd, '-x', '100', '-y', '30',
       '-e', `HOME=${config.home}`, '-e', `CLAUDE_CONFIG_DIR=${config.configHome}`,
       '-e', `CODEX_HOME=${config.configHome}`, '-e', `INSTAR_SESSION_NAME=${name}`,
@@ -243,7 +277,7 @@ export function createProductionSessionDriver(config: ProductionSessionConfig): 
       '--', '/usr/bin/env', '-i', 'PATH=/usr/bin:/bin:/opt/homebrew/bin', `HOME=${config.home}`,
       `CLAUDE_CONFIG_DIR=${config.configHome}`, `CODEX_HOME=${config.configHome}`,
       `INSTAR_SESSION_NAME=${name}`, `INSTAR_SESSION_INBOX=${config.inboxDirectory ?? ''}`,
-      `INSTAR_SESSION_GROUNDING_FILE=${config.compactGroundingFile ?? ''}`,
+      `INSTAR_SESSION_GROUNDING_FILE=${config.compactGroundingFile ?? ''}`, ...harnessEnv,
       config.executable, ...args]); } catch (error) { reconcileReservations(); throw error; }
     reconcileReservations();
     const session = config.io.load().sessions.find(row => row.name === name);

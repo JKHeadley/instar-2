@@ -1,0 +1,24 @@
+{
+  "recordedAgainst": "codex-cli 0.156.1",
+  "exit": 0,
+  "args": [
+    "exec",
+    "--json",
+    "--skip-git-repo-check",
+    "--ignore-user-config",
+    "--ignore-rules",
+    "--ephemeral",
+    "--dangerously-bypass-approvals-and-sandbox",
+    "--dangerously-bypass-hook-trust",
+    "--model",
+    "gpt-6-astra",
+    "-c",
+    "hooks.PreToolUse=[{matcher='*',hooks=[{type='command',command='/usr/local/bin/node /HOME/.instar/agents/echo/.worktrees/w4-sessiondriver/tests/preview/tool-admission-hook.mjs pre /ROOT/tool-turns/de96618e7245fa25-0/state',timeout=300}]}]",
+    "-c",
+    "hooks.PostToolUse=[{matcher='*',hooks=[{type='command',command='/usr/local/bin/node /HOME/.instar/agents/echo/.worktrees/w4-sessiondriver/tests/preview/tool-admission-hook.mjs post /ROOT/tool-turns/de96618e7245fa25-0/state',timeout=300}]}]",
+    "-C",
+    "/ROOT/tool-turns/de96618e7245fa25-0/v/ws",
+    "-"
+  ],
+  "model": "gpt-6-astra"
+}

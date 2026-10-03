@@ -28,6 +28,11 @@ export interface SessionWorkEdgeClose {
   readonly state: 'complete' | 'uncertain' | 'failed';
   readonly detail: string; readonly evidence: string;
   readonly resultBytes: number | null; readonly closedAt: number;
+  /** The child's model calls as its own transcript counted them at the close; null when unread. Above the
+   * edge's reserved `calls`, the journal charges the excess, so the remaining allowance stays true. */
+  readonly calls?: number | null;
+  /** The edge's reserved call liability, carried so the close alone states the excess to charge. */
+  readonly reserved?: number;
 }
 /** What the caller reads. `text` is present only for `complete`; an unread or oversized result
  * is `failed`, and an interrupted or unobservable one is `uncertain` — never a guessed answer. */
@@ -44,8 +49,14 @@ export interface SessionWorkIO {
   /** Removes a leftover result before the step runs. Throws when it cannot. */
   clearResult(path: string): void;
   /** How many model calls the child has made since `since`, counted from its own transcript;
-   * null when that cannot be read. A sampled meter: it is checked once per poll. */
+   * null when that cannot be read. Accounting evidence, not the ceiling: the ceiling is admitted before
+   * dispatch by the admission hook below. */
   modelCalls(since: number): number | null;
+  /** Lays out a fresh admission state for the claim (its slots, its shell profile, its record), so the
+   * hook the child runs before every tool call admits at most the step's reserved liability. Throws when it cannot. */
+  prepareAdmission(claim: string): void;
+  /** Whether the admission hook refused a call past the reserved ceiling (and stopped the child); null when unread. */
+  admissionCeiling(claim: string): boolean | null;
   /** Resolves after at least `ms`, without blocking the host's timers. */
   wait(ms: number): Promise<void>;
 }
@@ -104,9 +115,18 @@ export interface SessionWorkPort {
  * activation names exactly the ceilings it admits. */
 export const SESSION_WORK_LIMITS = Object.freeze({ maxStepsPerLaunch: 8, maxCallsPerStep: 24, deadlineMs: 600_000,
   pollMs: 500, maxResultBytes: 65_536, maxSessions: 1 });
-/** The residual every session-work grant must accept in writing: the child is unconfined. */
-export const SESSION_WORK_RESIDUAL = 'delegated session work is unconfined operator-own-use: the child has the operator\'s own tools '
-  + 'and its effects are not classified by the effect doorway';
+/** The residual every session-work grant must accept in writing. The child keeps the harness's full tool set;
+ * each tool call (its subagents' too) passes the admission hook before dispatch, which sends MCP and other
+ * consequential tools to the effect doorway and confines every shell command; what the hook cannot see are the
+ * harness's own internal model calls, which the transcript meter accounts for after the fact. */
+export const SESSION_WORK_RESIDUAL = 'delegated session work has the full tool set behind the admission hook: every tool call is '
+  + 'admitted before dispatch, consequential tools pass the effect doorway, and shells are confined; harness-internal model '
+  + 'calls no tool call precedes are metered from the transcript and charged after the step';
+/** The admission a session-work grant binds: the hook, its per-step slots (one call fewer than the reserved
+ * liability, since the step's first model call follows no tool call), and the classes it admits. */
+export const SESSION_WORK_ADMISSION = Object.freeze({ hook: 'tool-admission-hook.mjs', framing: 'session-admission-v1',
+  slots: SESSION_WORK_LIMITS.maxCallsPerStep - 1, shell: 'shell-sandbox-v1', delegation: 'admitted, two slots each',
+  networkReads: 'admitted, two slots each', mcp: 'effect doorway', ceiling: 'stops the harness by exact PID' });
 
 const safeName = /^[A-Za-z0-9][A-Za-z0-9._:-]{0,120}$/u;
 const digestOf = (text: string) => `sha256:${createHash('sha256').update(text).digest('hex')}`;
@@ -136,8 +156,8 @@ export function sessionWorkPrompt(request: Readonly<{ question: string; context:
 export function sessionWorkPolicy(input: Readonly<{ framing: string; framework: string; model: string;
   launch: readonly string[] }>) {
   return Object.freeze({ framing: input.framing, framework: input.framework, model: input.model,
-    launch: Object.freeze([...input.launch, '--model', input.model]), confinement: 'unconfined-operator-own-use',
-    effects: 'unclassified', residual: SESSION_WORK_RESIDUAL, exitTest: SESSION_WORK_EXIT_TEST,
+    launch: Object.freeze([...input.launch, '--model', input.model]), confinement: 'admitted-tools',
+    effects: 'effect-doorway', admission: SESSION_WORK_ADMISSION, residual: SESSION_WORK_RESIDUAL, exitTest: SESSION_WORK_EXIT_TEST,
     prompt: sessionWorkPrompt({ question: '<task>', context: '<context>' }, '<result destination>'),
     limits: SESSION_WORK_LIMITS });
 }
@@ -150,9 +170,11 @@ export function sessionWorkPolicy(input: Readonly<{ framing: string; framework: 
  * path out stops the child by its exact identity and releases its resources BEFORE the close is
  * written; a stop that cannot be confirmed leaves the step uncertain.
  *
- * Honest limit: a subscription session reports no token meter, so the budget this records has
- * `tokens: null`; its spend bound is the reserved call liability, enforced from the child's own
- * transcript once per poll (sampled, so it can overrun by the calls made within one poll).
+ * The call ceiling is admitted before dispatch, not sampled: every model call after the step's first follows a
+ * tool call, every tool call (a subagent's too) takes slots from the admission hook first, and a call that
+ * finds none left stops the child before another model call can start. The transcript meter is accounting: it
+ * is read before a result is accepted, and calls it shows past the reservation are recorded in the close.
+ * Honest limit: a subscription session reports no token meter, so the budget has `tokens: null`.
  */
 export function createSessionWorkPort(config: SessionWorkConfig): Result<SessionWorkPort> {
   return boundary('ProductionSessionWorkPort', null, config.context, () => {
@@ -212,11 +234,14 @@ export function createSessionWorkPort(config: SessionWorkConfig): Result<Session
           exitTest: SESSION_WORK_EXIT_TEST, placement: config.placement, transport: config.transport,
           resultDestination: resultPath, openedAt }));
         let child: string | null = null, launched = false, lease: SessionWorkLease | null = null;
+        let observedCalls: number | null = null;
         const settled = await (async (): Promise<Settled> => {
           try {
             if (config.stopped()) return settledAs('failed', 'stop authority active before the launch', 'no-child');
             lease = await config.resources.admit();
             if (lease === null) return settledAs('failed', 'the host resource owner refused a session step: no capacity', 'no-child');
+            try { config.io.prepareAdmission(claim); }
+            catch { return settledAs('failed', 'the admission state could not be prepared before the launch', 'no-child'); }
             try { config.io.clearResult(resultPath); }
             catch { return settledAs('failed', 'a leftover result could not be cleared before the launch', 'no-child'); }
             if (config.io.readResult(resultPath, config.maxResultBytes) !== null)
@@ -238,6 +263,16 @@ export function createSessionWorkPort(config: SessionWorkConfig): Result<Session
               if (returned !== null && Buffer.byteLength(returned) > config.maxResultBytes)
                 return settledAs('failed', 'the result exceeds its declared byte bound', child, Buffer.byteLength(returned));
               const present = returned !== null && returned.trim().length > 0 ? returned : null;
+              // Accounting first: a result is accepted only with the ceiling unbreached and the calls known.
+              const ceiling = config.io.admissionCeiling(claim);
+              if (ceiling === null) return settledAs('uncertain', 'the child\'s admission record could not be read', child);
+              if (ceiling) return settledAs('uncertain',
+                `a call past the reserved model-call ceiling (${config.maxCalls}) was refused and the child stopped`, child);
+              const calls = config.io.modelCalls(openedAt);
+              observedCalls = calls;
+              if (calls === null) return settledAs('uncertain', 'the child\'s model-call meter could not be read', child);
+              if (calls > config.maxCalls)
+                return settledAs('uncertain', `the child's transcript shows ${calls} model calls, past the reserved ${config.maxCalls}`, child);
               // The declared exit test, and the only way a step completes.
               if (present !== null && present === seen)
                 return settledAs('complete', `the result was unchanged across two reads${turnClosed ? ` (${turnClosed})` : ''}`,
@@ -245,10 +280,6 @@ export function createSessionWorkPort(config: SessionWorkConfig): Result<Session
               if (present === null && turnClosed !== null && ++emptyAfterClose > 1)
                 return settledAs('failed', `the turn closed with no result at the destination (${turnClosed})`, child);
               seen = present;
-              const calls = config.io.modelCalls(openedAt);
-              if (calls === null) return settledAs('uncertain', 'the child\'s model-call meter could not be read', child);
-              if (calls >= config.maxCalls)
-                return settledAs('uncertain', `the step reached its reserved model-call ceiling (${calls} of ${config.maxCalls})`, child);
               if (turnClosed === null) {
                 const observation = take(driver.observe({ operation: request.operation, processIdentity: child }));
                 if (observation.phase === 'output-observed') turnClosed = observation.detail;
@@ -276,12 +307,15 @@ export function createSessionWorkPort(config: SessionWorkConfig): Result<Session
           try { released = await (lease as SessionWorkLease).release(); } catch { released = false; }
           if (!released) unconfirmed.push('a process of the child session could not be confirmed gone');
         }
+        // The close records the calls the child made, read once more after it stopped (unknown stays unknown).
+        if (launched) { try { observedCalls = config.io.modelCalls(openedAt); } catch { observedCalls = null; } }
         const final = unconfirmed.length === 0 ? settled
           : settledAs(settled.state === 'failed' && !launched ? 'failed' : 'uncertain',
             `${settled.detail}; ${unconfirmed.join('; ')}`, settled.evidence);
         config.append(freeze({ type: 'SessionWorkEdgeClose' as const, schemaVersion: 1 as const,
           id: `${edgeId}:close`, edge: edgeId, child, state: final.state, detail: final.detail,
-          evidence: final.evidence, resultBytes: final.resultBytes, closedAt: config.now() }));
+          evidence: final.evidence, resultBytes: final.resultBytes, closedAt: config.now(),
+          calls: launched ? observedCalls : 0, reserved: config.maxCalls }));
         return freeze({ state: final.state, ...(final.text === undefined ? {} : { text: final.text }),
           detail: final.detail, edge: edgeId, child });
       } finally { inFlight = false; intakes.delete(request.operation); }

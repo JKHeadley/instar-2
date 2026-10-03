@@ -262,6 +262,23 @@ export function createSubscriptionProviderIO({ repository, stopped, work = 'answ
       return null;
     } catch { return null; }
   };
-  return Object.freeze({ ...productionProviderIO, inspectSubscriptionProfile, managedHooksDisabled, codexAuthMode,
+  /** A tool turn's admission record (written by the runner's hook beside the workspace): the calls it admitted.
+   * Unreadable or malformed is null, never zero, so an unaccounted tool item refuses the turn. */
+  const admittedToolCalls = stateDirectory => {
+    try {
+      const path = join(stateDirectory, 'admission.jsonl');
+      if (!existsSync(path)) return 0;
+      const info = lstatSync(path);
+      if (!info.isFile() || info.size > 4194304) return null;
+      let admitted = 0;
+      for (const line of readFileSync(path, 'utf8').split('\n')) {
+        if (!line) continue;
+        const row = JSON.parse(line);
+        if (row?.phase === 'pre' && row.decision === 'allow') admitted++;
+      }
+      return admitted;
+    } catch { return null; }
+  };
+  return Object.freeze({ ...productionProviderIO, inspectSubscriptionProfile, managedHooksDisabled, codexAuthMode, admittedToolCalls,
     execute: input => productionProviderIO.execute({ ...input, stopped }, work) });
 }

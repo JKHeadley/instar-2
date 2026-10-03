@@ -21,7 +21,7 @@ const digestOf = (text: string) => `sha256:${createHash('sha256').update(text).d
 
 function fixture(options: { phases?: readonly Phase[]; maxSteps?: number; deadlineMs?: number;
   maxResultBytes?: number; failLaunch?: boolean; maxCalls?: number; calls?: () => number | null;
-  admit?: 'refuse' | 'unreleased'; stopFails?: boolean } = {}) {
+  admit?: 'refuse' | 'unreleased'; stopFails?: boolean; ceiling?: () => boolean | null; prepareFails?: boolean } = {}) {
   const f = assemblyRuntimeFixture();
   const root = realpathSync(mkdtempSync(join(tmpdir(), 'session-work-'))); roots.push(root);
   const scope = join(root, 'scope'); mkdirSync(scope, { recursive: true, mode: 0o700 });
@@ -30,6 +30,7 @@ function fixture(options: { phases?: readonly Phase[]; maxSteps?: number; deadli
   const delivered: string[] = [];
   const phases = [...(options.phases ?? ['launched', 'output-observed'])];
   let stopped = false, launches = 0, stops = 0, released = 0, attached: string[] = [];
+  const prepared: string[] = [];
   // What the child writes, written at the moment the turn closes — the real order, so a result the
   // port cleared before delivering cannot be mistaken for this step's answer.
   let answer: string | null = null;
@@ -39,6 +40,8 @@ function fixture(options: { phases?: readonly Phase[]; maxSteps?: number; deadli
     clearResult: path => rmSync(path, { force: true }),
     modelCalls: () => options.calls ? options.calls() : 0,
     wait: async ms => { clock += ms; },
+    prepareAdmission: claim => { if (options.prepareFails) throw Error('unwritable'); prepared.push(claim); },
+    admissionCeiling: () => options.ceiling ? options.ceiling() : false,
   };
   const driver: NativeHarnessDriverPort & { stop(): ReturnType<typeof f.success<readonly string[]>> } = {
     owner: 'part-eight',
@@ -71,7 +74,7 @@ function fixture(options: { phases?: readonly Phase[]; maxSteps?: number; deadli
   const request = (operation = 'obligation-commitment-1-2') => ({ operation,
     question: 'Do the one due step.', context: '{"obligation":{"kind":"request"}}',
     authority: 'a test-only grant naming one bounded step' });
-  return { port, rows, scope, io, request, driver,
+  return { port, rows, scope, io, request, driver, prepared,
     resultPath: (operation = 'obligation-commitment-1-2') =>
       join(scope, `work-${createHash('sha256').update(operation).digest('hex').slice(0, 32)}.json`),
     /** The child's result, written when its turn closes. `null` means the child wrote nothing. */
@@ -230,19 +233,50 @@ it('bounds itself: one step at a time, a finite step ceiling, and a deadline tha
   expect((slow.rows[1] as SessionWorkEdgeClose).detail).toContain('deadline exceeded');
   expect(slow.counts().stops).toBe(1);
 });
-it('ends a step at its reserved model-call ceiling, and treats an unreadable meter as unknown, never zero', async () => {
-  let calls = 0;
-  const f = fixture({ phases: ['launched'], maxCalls: 3, calls: () => calls++ });
+it('the admission ceiling ends a step; the transcript meter is accounting, read before any result is accepted', async () => {
+  // The admission hook refused a call past the reserved ceiling (and stopped the harness): the step is uncertain,
+  // its child is stopped, and the state was laid out fresh for this step's claim before the launch.
+  let polls = 0;
+  const f = fixture({ phases: ['launched'], maxCalls: 3, ceiling: () => ++polls > 1 });
   expect(await f.port.run(f.request())).toMatchObject({ state: 'uncertain' });
-  expect((f.rows[1] as SessionWorkEdgeClose).detail).toContain('model-call ceiling (3 of 3)');
+  expect((f.rows[1] as SessionWorkEdgeClose).detail).toContain('past the reserved model-call ceiling (3) was refused');
   expect(f.counts().stops).toBe(1);
-  // Under the ceiling the step runs to its result.
-  const under = fixture({ maxCalls: 3, calls: () => 2 });
+  expect(f.prepared).toEqual([`session-work-${createHash('sha256').update('obligation-commitment-1-2').digest('hex').slice(0, 32)}`]);
+  // Exactly the reserved liability (the first call plus every admitted slot) is within bounds: the step completes,
+  // and the close records the calls the child made.
+  const under = fixture({ maxCalls: 3, calls: () => 3 });
   under.answers('{"outcome":"report","report":"ok"}');
   expect((await under.port.run(under.request())).state).toBe('complete');
+  expect(under.rows[1]).toMatchObject({ calls: 3, reserved: 3 });
+  // A transcript past the reservation (a harness-internal call no tool call preceded) is uncertain, and recorded.
+  let calls = 0;
+  const over = fixture({ phases: ['launched'], maxCalls: 3, calls: () => calls++ });
+  expect(await over.port.run(over.request())).toMatchObject({ state: 'uncertain' });
+  expect((over.rows[1] as SessionWorkEdgeClose).detail).toContain('past the reserved 3');
   const blind = fixture({ phases: ['launched'], calls: () => null });
   expect(await blind.port.run(blind.request())).toMatchObject({ state: 'uncertain' });
   expect((blind.rows[1] as SessionWorkEdgeClose).detail).toContain('meter could not be read');
+  expect(blind.rows[1]).toMatchObject({ calls: null });
+  const unread = fixture({ phases: ['launched'], ceiling: () => null });
+  expect(await unread.port.run(unread.request())).toMatchObject({ state: 'uncertain' });
+  expect((unread.rows[1] as SessionWorkEdgeClose).detail).toContain('admission record could not be read');
+});
+it('a stable result is never accepted while the final accounting is unknown or the ceiling was reached', async () => {
+  // The result stabilizes on the second read; on that same poll the meter becomes unreadable. Unknown stays unknown.
+  let meter: number | null = 0;
+  const f = fixture({ phases: ['launched'], maxCalls: 2, calls: () => meter });
+  f.io.wait = async () => { if (meter === 0) { f.writeNow('{"outcome":"report","report":"done"}'); meter = 1; } else meter = null; };
+  expect((await f.port.run(f.request())).state).toBe('uncertain');
+  // The same neighbour on the ceiling side: the result is stable, but the hook refused a call past the ceiling.
+  let marked = false;
+  const g = fixture({ phases: ['launched'], maxCalls: 2, ceiling: () => marked });
+  g.io.wait = async () => { g.writeNow('{"outcome":"report","report":"done"}'); marked = true; };
+  expect((await g.port.run(g.request())).state).toBe('uncertain');
+  // An admission state that cannot be laid out launches nothing.
+  const h = fixture({ prepareFails: true });
+  expect(await h.port.run(h.request())).toMatchObject({ state: 'failed' });
+  expect((h.rows[1] as SessionWorkEdgeClose).detail).toContain('admission state could not be prepared');
+  expect(h.counts().launches).toBe(0);
 });
 it('a refused resource admission launches nothing, and an unconfirmed stop or release is uncertain', async () => {
   const full = fixture({ admit: 'refuse' });
@@ -287,7 +321,8 @@ it('refuses to start while stopped, ends an open step on a stop, and surfaces th
 it('refuses a configuration that is not bounded, or a destination outside the child scope', () => {
   const f = assemblyRuntimeFixture();
   const root = realpathSync(mkdtempSync(join(tmpdir(), 'session-work-config-'))); roots.push(root);
-  const io: SessionWorkIO = { readResult: () => null, clearResult: () => undefined, modelCalls: () => 0, wait: async () => undefined };
+  const io: SessionWorkIO = { readResult: () => null, clearResult: () => undefined, modelCalls: () => 0, wait: async () => undefined,
+    prepareAdmission: () => undefined, admissionCeiling: () => false };
   const base = { createDriver: () => ({ owner: 'part-eight' as const, launch: () => f.success('x'),
     deliver: () => f.success('y'), observe: () => f.success({ phase: 'launched' as const, evidence: 'e', detail: 'd' }),
     stop: () => f.success([] as readonly string[]) }),
@@ -370,12 +405,14 @@ function realDriverWorld(mode: 'result' | 'stop' | 'deadline' | 'idle') {
   };
   let waits = 0;
   const port = value(createSessionWorkPort({
-    createDriver: resolveIntake => createProductionSessionDriver({ operatorOwnUse: true, confinement: 'unconfined',
+    createDriver: resolveIntake => createProductionSessionDriver({ operatorOwnUse: true, confinement: 'admitted',
+      toolAdmission: { command: (claim, phase) => `/node /hook.mjs ${phase} /state/${claim}`, timeoutSeconds: 600 },
       framework: 'claude-code', executable: '/synthetic', cwd: '/work', home: '/home', configHome: '/login',
       context: f.c, io: tmux, now: () => now, stopped: () => stopped, resolveIntake,
       maxSessions: 1, turnDeadlineMs: 600_000, readyTimeoutMs: 1000, protectedSessions: [] }),
     io: { clearResult: () => { result = null; }, readResult: () => result, modelCalls: () => 0,
-      wait: async ms => { waits++; now += ms; if (mode === 'stop') stopped = true; } },
+      wait: async ms => { waits++; now += ms; if (mode === 'stop') stopped = true; },
+      prepareAdmission: () => undefined, admissionCeiling: () => false },
     resources: { admit: async () => ({ attach: async () => undefined, release: async () => true }) },
     context: f.c, now: () => now, stopped: () => stopped, append: () => {},
     parent: 'launch:conversation-1', owner: 'machine', placement: 'machine:one', transport: 'tmux',
@@ -423,5 +460,16 @@ it('the journal reserves an edge\'s whole call liability against the call cap, a
     expect(journal.view.calls).toBe(before + 24);
     expect(() => journal.append({ kind: 'session-work', record: edge('e2', 24), at: 12 })).toThrow(/session work call cap/u);
     expect(journal.view.calls).toBe(before + 24);
+    // A close whose child's transcript shows more calls than were reserved charges the excess; one within the
+    // reservation, or with unknown calls, charges nothing more.
+    const close = (id: string, calls: number | null) => ({ type: 'SessionWorkEdgeClose' as const, schemaVersion: 1 as const,
+      id: `${id}:close`, edge: id, child: 'c', state: 'uncertain' as const, detail: 'd', evidence: 'ev', resultBytes: null,
+      closedAt: 13, calls, reserved: 24 });
+    journal.append({ kind: 'session-work', record: close('e1', 24), at: 13 });
+    journal.append({ kind: 'session-work', record: close('e1', null), at: 13 });
+    expect(journal.view.calls).toBe(before + 24);
+    journal.append({ kind: 'session-work', record: close('e1', 27), at: 14 });
+    expect(journal.view.calls).toBe(before + 27);
+    expect(() => validateSessionWorkRow(close('e1', -1))).toThrow(/close incomplete/u);
   } finally { journal.close(); }
 });

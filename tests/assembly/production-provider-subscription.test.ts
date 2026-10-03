@@ -365,11 +365,12 @@ it('admits Claude session work only under its own reviewed grant and a live subs
     activation: SubscriptionActivationRecord; io: Parameters<typeof session.admit>[0]['io']; model: string };
   const policy = subscriptionSessionPolicy(model);
   expect(policy.launch).toEqual(['--dangerously-skip-permissions', '--model', model]);
+  expect(policy).toMatchObject({ confinement: 'admitted-tools', effects: 'effect-doorway', admission: { framing: 'session-admission-v1' } });
   const grant = { ...activation, invocationPolicyDigest: hash(policy), acceptedResiduals: [SESSION_WORK_RESIDUAL] };
   expect(() => session.validateActivation(grant, profile, model, 1000)).not.toThrow();
   // The answer activation is not a session grant; a grant without the written residual is refused.
   expect(() => session.validateActivation(activation, profile, model, 1000)).toThrow(/policy differs/u);
-  expect(() => session.validateActivation({ ...grant, acceptedResiduals: ['other'] }, profile, model, 1000)).toThrow(/unconfined residual/u);
+  expect(() => session.validateActivation({ ...grant, acceptedResiduals: ['other'] }, profile, model, 1000)).toThrow(/admitted-session residual/u);
   await expect(session.admit({ profile, io, deadline: 20_000, now: () => 1000 })).resolves.toBeUndefined();
   await expect(session.admit({ profile: { ...profile, artifact: 'sha256:changed' }, io, deadline: 20_000, now: () => 1000 }))
     .rejects.toThrow(/executable changed/u);

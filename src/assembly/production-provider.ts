@@ -559,14 +559,14 @@ export function claudeSubscriptionStatusAccepted(status: unknown,
  * Its own framing, so only an activation record naming this exact session policy admits it. */
 export const SUBSCRIPTION_SESSION_FRAMING = 'preview-session-work-v1';
 export const subscriptionSessionPolicy = (model: string) => sessionWorkPolicy({ framing: SUBSCRIPTION_SESSION_FRAMING,
-  framework: 'claude-code', model, launch: sessionLaunchFlags('claude-code') });
+  framework: 'claude-code', model, launch: sessionLaunchFlags('claude-code', true) });
 /** The activation check for a session grant: the shared Claude record checks on the session policy
- * digest, plus the operator's written acceptance that the child is unconfined. */
+ * digest, plus the operator's written acceptance of the admitted-session residual. */
 export function validateSubscriptionSessionActivation(record: SubscriptionActivationRecord,
   profile: import('./provider-credential-custodian.js').ProviderSubscriptionProfile, model: string, now: number,
   journalEnd?: number): void {
   validateClaudeActivation(record, profile, model, now, encoded(subscriptionSessionPolicy(model)).hash, journalEnd);
-  ensure(record.acceptedResiduals.includes(SESSION_WORK_RESIDUAL), 'session work grant does not accept the unconfined residual');
+  ensure(record.acceptedResiduals.includes(SESSION_WORK_RESIDUAL), 'session work grant does not accept the admitted-session residual');
 }
 /** Before every delegated Claude session: the exact executable, the login home's identity and
  * reviewed configuration, and a live `auth status` showing this profile's subscription sign-in. */
@@ -631,6 +631,10 @@ export interface SubscriptionDoorway {
   /** The framing a scoped-tool answer turn runs on, or null when this doorway serves none — then a
    * client has no tool route through it and must say so rather than borrowing another doorway's. */
   readonly toolsFraming: string | null;
+  /** How a tool turn through this doorway is laid out, or null with no tools framing: its system prompt, the
+   * admission hook's per-turn call slots, the harness the hook stops past them (null when the harness has its
+   * own turn limit), and whether the hook confines the shell itself (when the harness's own sandbox is not used). */
+  readonly toolTurn: Readonly<{ system: string; maxCalls: number; harness: string | null; confinedShell: boolean }> | null;
   policyFor(model: string, framing: string): SubscriptionPolicyBounds;
   /** Rule 56: this doorway's own activation check — its CLI version, model shape, sign-in source and
    * invocation policy digest. A client never validates an activation for a doorway it did not ask. */
@@ -646,6 +650,8 @@ export interface SubscriptionDoorway {
 export interface SubscriptionSessionDoorway {
   readonly framing: string;
   readonly framework: import('./production-session-driver.js').SessionFramework;
+  /** The harness executable's name, which the admission hook stops by exact PID at the call ceiling. */
+  readonly harness: string;
   validateActivation(record: SubscriptionActivationRecord, profile: ProviderSubscriptionProfileRef,
     model: string, now: number, journalEnd?: number): void;
   admit(input: Readonly<{ profile: ProviderSubscriptionProfileRef; io: SubscriptionProviderIO & Partial<Readonly<{
@@ -669,6 +675,8 @@ export const SUBSCRIPTION_DOORWAYS: Readonly<Record<string, SubscriptionDoorway>
       successfulFinalReplyReasons: Object.freeze(['success']) }),
     framings: Object.freeze(['preview-decision-system-v2', SUBSCRIPTION_CONVERSATION_FRAMING, SUBSCRIPTION_TOOLS_FRAMING]),
     conversationFraming: SUBSCRIPTION_CONVERSATION_FRAMING, toolsFraming: SUBSCRIPTION_TOOLS_FRAMING,
+    toolTurn: Object.freeze({ system: SUBSCRIPTION_TOOLS_SYSTEM_PROMPT, maxCalls: SUBSCRIPTION_TOOL_LIMITS.maxToolCalls,
+      harness: null, confinedShell: false }),
     policyFor: (model: string, framing: string): SubscriptionPolicyBounds =>
       subscriptionPolicyFor(model, asSubscriptionFraming(framing)).policy,
     validateActivation: (record: SubscriptionActivationRecord, profile: ProviderSubscriptionProfileRef,
@@ -677,7 +685,7 @@ export const SUBSCRIPTION_DOORWAYS: Readonly<Record<string, SubscriptionDoorway>
     create: ({ framing, ...rest }: SubscriptionRouteInput) =>
       createClaudeCodeSubscriptionRoute(framing === undefined ? rest
         : { ...rest, framing: asSubscriptionFraming(framing) }),
-    session: Object.freeze({ framing: SUBSCRIPTION_SESSION_FRAMING, framework: 'claude-code' as const,
+    session: Object.freeze({ framing: SUBSCRIPTION_SESSION_FRAMING, framework: 'claude-code' as const, harness: 'claude',
       validateActivation: validateSubscriptionSessionActivation, admit: admitClaudeSubscriptionSession }) }),
   'codex-cli-subscription': codexSubscriptionDoorway(),
 });
