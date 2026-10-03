@@ -540,7 +540,8 @@
     }
    },
    {
-    "why": "a duty claims a finding (f) the answer does not contain",
+    "why": "a duty claims a finding (f) the answer does not contain. Reclassified by plan #339 (w3-retrolive2): this no longer fails closed. The claim behind the f is not in the answer, so the duty is recorded unavailable (not inspected) with RETRO_DUTY_UNCORROBORATED_NOTE, and the rest of the pass stands. Live room two's first pass under cint-L33 died on exactly this row ('duty outcome claims a finding this answer does not contain') with an answer that fitted the output cap.",
+    "recordedUnavailable": true,
     "part": {
      "duties": "fnnnnnnnnnnnnn",
      "wells": [

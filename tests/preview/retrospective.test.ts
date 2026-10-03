@@ -528,10 +528,18 @@ describe('MUST-FIX 6: every duty accounted, sibling evidence through a typed sea
         summary: 'Same misunderstanding twice.', rootCause: 'The packet omits the earlier correction.' };
       w.answerWith(state => answerFor(state, { findings: [{ ...recurrence, disposition: { declined: 'isolated' }, structuralRemedy: { none: 'rare' } }] }));
       await w.retrospect();
-      expect(w.journal.view.retroPasses[0]?.reason).toContain('owned root-cause');
+      // Changed by plan #339 (w3-retrolive2): an unowned recurrence is DROPPED, never recorded, and the rest of the
+      // pass stands (it used to refuse the whole pass, which is how two of three real-model replays of live room
+      // two's first packet died). Rule 24's floor is unchanged: no recurrence is recorded without owned root-cause work.
+      expect(w.journal.view.retroPasses[0]?.state).toBe('complete');
+      expect(w.journal.view.retroPasses[0]?.result?.findings).toEqual([]);
+      expect(openFindings(w.journal.view)).toEqual([]);
       w.advance(6 * 3_600_000);
-      w.answerWith(state => answerFor(state, { findings: [{ ...recurrence, disposition: { owner: 'agent', next: 'Carry corrections.' },
-        structuralRemedy: { remove: 'the need to restate a correction each time' } }] }));
+      await w.converse(words.slice(10, 20));
+      // The second pass reviews the later messages, so its recurrence cites two of them.
+      w.answerWith(state => { const [earlier, later] = casesOf(state);
+        return answerFor(state, { findings: [{ ...recurrence, refs: [later!.id], recurs: [earlier!.id], disposition: { owner: 'agent', next: 'Carry corrections.' },
+          structuralRemedy: { remove: 'the need to restate a correction each time' } }] }); });
       await w.retrospect();
       expect(openFindings(w.journal.view)[0]).toMatchObject({ duty: 'recurrence', structuralRemedy: { remove: 'the need to restate a correction each time' } });
     } finally { w.done(); }
@@ -752,8 +760,13 @@ describe('Repair round 2 R3: waiver evidence is source-linked and citable', () =
         return answerFor(state, { grades: settled(casesOf(state)), findings: [finding('act:9')] });
       });
       await w.retrospect();
-      expect(failedReason(w, 0)).toContain('finding refs cites an unknown record');
+      // Changed by plan #339 (w3-retrolive2): a finding citing an id the context never showed is DROPPED, never
+      // recorded, and the rest of the pass stands; it used to refuse the whole pass.
+      expect(w.journal.view.retroPasses[0]?.state).toBe('complete');
+      expect(w.journal.view.retroPasses[0]?.result?.findings).toEqual([]);
+      expect(openFindings(w.journal.view)).toEqual([]);
       w.advance(RETRO_FAILURE_BACKOFF_MS);
+      await w.converse(words.slice(10, 20));
       w.answerWith(state => answerFor(state, { grades: settled(casesOf(state)), findings: [finding('act:1')] }));
       await w.retrospect();
       expect(w.journal.view.retroPasses[1]?.state).toBe('complete');
