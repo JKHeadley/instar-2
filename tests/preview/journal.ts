@@ -8002,6 +8002,14 @@ export function createJournalWorker(journal: ReturnType<typeof openPreviewJourna
       if ((mode === 'correct' || mode === 'update') && (typeof replacement !== 'string' || !replacement.trim()
         || Buffer.byteLength(replacement) > 1000 || !redact(trigger.text).text.includes(replacement))) return undefined;
       if (mode === 'forget' && replacement !== undefined) return undefined;
+      // Rules 2, 10, 57: forgetting the message of a still-open requested action would end that request with no
+      // record that it was withdrawn. Whether a message withdraws a request is the cancel decision's to make (the
+      // model's cancelReminders, tied to the operator's own words); a forget never stands in for it, so the request
+      // stays open for that decision. Live 2026-10-03 (room one, cint-L39 9fbc13ca, RA3): the rolling summary
+      // forgot "Remind me ... to refill the bird feeder" for "Actually, cancel the bird feeder one.", the request
+      // vanished with cancelled still 0, and the reply said only "Forgot the requested information".
+      if (mode === 'forget' && original && openRequests(journal.view).some(request => request.source === original.id
+        && (request.quote.includes(quote) || quote.includes(request.quote)))) continue;
       if (mode === 'update' && (!original || !updateEvidence.some(item => item.id === source && item.message.includes(quote)))) return undefined;
       if (replies !== undefined && (!Array.isArray(replies) || replies.length > 5 || replies.some(id =>
         typeof id !== 'string' || !offered.has(id) || journal.view.turns.get(id)?.intent === undefined
