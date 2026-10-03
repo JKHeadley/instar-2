@@ -1,5 +1,26 @@
 [
   {
+    "revision": 17,
+    "date": "2026-10-03",
+    "status": "draft",
+    "cause": {
+      "kind": "draft",
+      "note": "Integration cint-L44: w4-shellnet-s (built on w4-toolsfull's head before cint-L43) and w4-native (built on cint-L41) merged onto cint-L43, which carries the effect doorway's four tests, w4-toolsfull and w4-persist. Their §9 rules are kept with cint-L43's admission hook and checkpoint as the base. Revisions 12 to 16 are the units' own, renumbered. No constitution change."
+    },
+    "changes": [
+      {
+        "what": "§9 tool rule: a shell network write is the effect doorway's `tool:network-write` on its host, decided by the four tests with the turn's admission config (operations, the operator's effect policy, the irreversible term); a shell read of a host the policy registers or marks policy-sensitive goes to the doorway as a web read of it does; the shell's home directory is new each turn, also in a kept workspace.",
+        "why": "w4-shellnet-s called the doorway's earlier membership signature, which cint-L43 replaced; a policy-sensitive host would otherwise be readable from the shell while a WebFetch of it is the doorway's; and a kept volume carried HOME and the checkpoint certificate between turns, unreconciled and, for the read-only certificate, failing the next turn.",
+        "ref": "lanes/cint-L44-PROGRESS.md; lanes/w4-shellnet-s-PROGRESS.md; lanes/w4-persist-PROGRESS.md"
+      },
+      {
+        "what": "§9 native tool rule: the native worker's sandbox reaches no network but the turn's own egress checkpoint, and a tool the hook admits but the loop cannot execute returns an error result and runs nothing; a web fetch runs when the hook admitted it.",
+        "why": "w4-native was built before cint-L43's hook admitted web reads of public hosts and the full tool set, and before the turn had a checkpoint; the merged turn starts the checkpoint for every tool turn, so the native shell is given the same single network path as the harness shell.",
+        "ref": "lanes/cint-L44-PROGRESS.md; lanes/w4-native-PROGRESS.md"
+      }
+    ]
+  },
+  {
     "revision": 16,
     "date": "2026-10-03",
     "status": "draft",
