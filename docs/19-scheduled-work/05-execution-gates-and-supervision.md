@@ -123,48 +123,62 @@ subagent and workflow tool, so the commands it runs are ordinary subprocesses of
 
 **Rule — long and scheduled work runs as a delegated session, and the result file is its exit
 test.** Rules 60, 61, 68, 102 and 114; **checks:**
-`tests/assembly/production-session-work.test.ts`, `tests/e2e/session-work-live.test.ts` and
-P15-NF-21. A due work step may run as a full harness session instead of one bounded model call.
-Its Rule 114 edge is recorded durably BEFORE the child session exists, naming the scope, the
-owner, the authority this step was granted, its budget, its exit test, its placement, its transport
-and its result destination; every path out of the step — a result, a failure, an interruption, a
-launch that never happened — writes exactly one close for that edge, so a delegation is never a
-session nobody owns. The destination file is the exit test, not a terminal heuristic: a result is
-taken only when it is non-empty, within the declared byte bound and unchanged across two reads one
-poll apart, and any leftover at that destination is removed before the step is delivered. An idle-
-prompt classifier is per-harness — one real session harness keeps placeholder text on its prompt
-line throughout a turn — so a step whose completion depended on it would run to its deadline while
-its work sat finished on disk. A step that cannot be observed, is interrupted, or ends without a
-result is uncertain, never reported as done.
+`tests/assembly/production-session-work.test.ts`, `tests/e2e/session-work-tmux.test.ts`,
+`tests/e2e/session-work-live.test.ts` and P15-NF-21. A due work step may run as a full harness
+session instead of one bounded model call. Its Rule 114 edge is recorded durably BEFORE the child
+session exists, naming the scope, the owner, the grant this step runs under, its budget, its exit
+test, its placement, its transport and its result destination; every path out of the step — a
+result, a failure, an interruption, a launch that never happened — stops the child by its exact
+identity, releases its process tree and only then writes exactly one close for that edge, so a
+delegation is never a session nobody owns and a close is never written over a child still running.
+A stop or release that cannot be confirmed leaves the step uncertain. Each step is its own fresh
+session, named from its operation, so a later step never depends on continuing an earlier one. The
+destination file is the exit test, not a terminal heuristic, and it is the only way a step
+completes: a result is taken only when it is non-empty, within the declared byte bound and
+unchanged across two reads one poll apart. It is read physically bounded to one byte past that
+bound, so an oversized result is refused without being loaded; a leftover at the destination that
+cannot be removed refuses the step before any launch. An idle-prompt classifier is per-harness —
+one real session harness keeps placeholder text on its prompt line throughout a turn — so a closed
+turn only shortens the wait for a result and never bypasses the two-read test. A step that cannot
+be observed, is interrupted, or ends without a result is uncertain, never reported as done.
 
-**Rule — a delegated session is unconfined, so the path is unreachable until a root is
-deliberately configured for it.** Rules 26, 60 and 103; **checks:**
-`tests/assembly/production-session-work.test.ts` (the result destination must lie inside the child
-work scope, and the step's task text forbids the child sending anything to the operator itself) and
-`tests/preview/journal-agent.mjs` (the five session-work options go together; with none, work stays
-on the one-call route). The session driver this path uses declares itself operator-own-use and
-unconfined and makes no confinement claim: the child has the operator's own tools. What bounds a
-step today is its own work scope directory, the per-step and per-turn deadlines, the per-launch step
-ceiling, the single stop authority, and the fact that no root reaches this path unless its
-configuration names the harness, its executable, its home, its login home and its step ceiling
-together.
+**Rule — a delegated session runs only under its own reviewed grant and the execution floors.**
+Rules 26, 60, 61, 75, 103 and 114; **checks:** `tests/assembly/production-codex-provider.test.ts`,
+`tests/assembly/production-provider-subscription.test.ts`, `tests/assembly/session-work-host.test.ts`
+and `tests/assembly/production-session-work.test.ts`. The path exists only when the operator has
+approved an activation record for the doorway's own session framing, resolved from the same sealed
+authority as every other activation. That record binds the exact session policy — the harness's
+unconfined launch flags on the exact model, the step limits, the exit test and the task wording —
+and states in writing that the operator accepts the child is unconfined. The harness, its
+executable, its home and its login home come from the doorway and the login profile, never from a
+separate setting. Before every step the grant is re-checked and the login home's live sign-in is
+confirmed to be the subscription the profile names; an API-key sign-in, no sign-in, or an
+observation the host cannot make refuses the step. Changing or removing the grant, the answer
+activation, the journal stop, ownership loss or the trial's end stops an open step's child. The
+host's one resource owner admits each step before its session exists and holds the session's
+process tree under the same memory, process and CPU ceilings as every other launch, reclaiming it
+when the step ends; because the session is started by tmux rather than by the owner, those
+per-tree ceilings are enforced on sampled observation rather than kernel limits, and the record
+says so.
 
 **Value — a session step's effects are not classified, and enabling the path is the operator's
 call.** On this HEAD the effect doorway is not on the live path, so a delegated session's effects
 are not tested against the four consequential-effect tests in `docs/00-the-purpose.md`: a step can
 produce an effect no doorway classified, and the instruction not to send is an instruction, not a
-gate. No check in this part closes that, and this document does not claim otherwise. Wiring the
-effect doorway onto the live path is separate work; until it lands, configuring a root for session
-work is a deliberate operator decision about a path whose consequential effects are bounded by the
-work scope and the task text rather than by an admitted doorway.
+gate. The grant's written acceptance of the unconfined residual makes that the operator's
+deliberate decision rather than an inference from a source comment. Wiring the effect doorway onto
+the live path is separate work.
 
-**Rule — a session step's bound is time, size and step count, because its tokens are not
-observable.** Rules 60, 61 and 75; **checks:** the same two cases. One step runs at a time, under a
-finite wall-clock deadline, a finite result-size bound and a finite per-launch step ceiling; the
-driver holds its own concurrent-session cap and per-turn deadline, and the launch's single stop
-authority ends an open step. A subscription session reports no token meter, so the recorded budget
-states its token bound as absent rather than inventing one, and the step is accounted as one call
-with unknown usage. A caller that needs a token bound uses a metered route instead; no surface may
-present a session step's usage as measured.
+**Rule — a session step's spend bound is a reserved and metered call liability.** Rules 60, 61 and
+75; **checks:** the same cases. One step at a time runs under a finite wall-clock deadline, a
+finite result-size bound and a finite per-launch step ceiling. Its edge reserves the step's whole
+model-call liability against the journal's call allowance before the child exists, and the route is
+taken only when the allowance can hold that liability on top of the obligation's own start; the
+reservation is retained, as a tool turn's is. The child's model calls are counted from its own
+transcript once per poll, and the step ends when the count reaches the reserved ceiling; a
+transcript that cannot be read is unknown and ends the step, never counted as zero. The meter is
+sampled, so a step can overrun by the calls made within one poll interval. A subscription session
+reports no token meter, so the recorded budget states its token bound as absent rather than
+inventing one; no surface may present a session step's usage as measured.
 
 ---

@@ -8,7 +8,7 @@
 // (a subscription CLI; no API key is passed), and a login home to copy credentials from. Everywhere
 // else it skips, because a session this test cannot launch is not a result it may assert.
 import { execFileSync } from 'node:child_process';
-import { copyFileSync, existsSync, mkdirSync, mkdtempSync, readFileSync, realpathSync, rmSync, writeFileSync } from 'node:fs';
+import { copyFileSync, existsSync, mkdirSync, mkdtempSync, realpathSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { expect, it } from 'vitest';
@@ -19,6 +19,8 @@ import { assemblyRuntimeFixture } from '../assembly/runtime-fixture.js';
 import { value } from '../facts/fixtures.js';
 // @ts-expect-error physical JS host is intentionally outside the pure core
 import { createProductionSessionIO } from '../../scripts/production-session-io.mjs';
+// @ts-expect-error physical JS host is intentionally outside the pure core
+import { hostResources } from '../../scripts/resource-owner.mjs';
 
 const tmuxPath = ['/usr/bin/tmux', '/opt/homebrew/bin/tmux', '/usr/local/bin/tmux']
   .find(path => existsSync(path)) ?? null;
@@ -53,16 +55,22 @@ it.skipIf(!ready)('runs one long work item through the session driver and return
       framework: framework as 'claude-code' | 'codex-cli', executable: executable!, cwd: scope, home, configHome,
       context: f.c, io: physical, now: Date.now, stopped: () => false, resolveIntake,
       maxSessions: 1, turnDeadlineMs: 600_000, readyTimeoutMs: 60_000, protectedSessions: [] }),
-    io: { readResult: path => { try { return readFileSync(path, 'utf8'); } catch { return null; } },
-      clearResult: path => { try { rmSync(path, { force: true }); } catch { /* nothing to clear */ } },
+    io: { readResult: (path, maxBytes) => physical.readResult(path, maxBytes), clearResult: path => physical.clearResult(path),
+      modelCalls: since => physical.modelCalls(framework, scope, configHome, since),
       wait: ms => new Promise(done => setTimeout(done, ms)) },
+    // The host's one resource owner holds the session's process tree, as the launcher does.
+    resources: { admit: async () => {
+      const held = await hostResources.hold('maintenance', { timeout: 30_000, stopped: () => false });
+      return held === null ? null : { attach: (child: string) => held.attach({ pid: Number(child.split(':')[1]), cwd: scope }),
+        release: async () => (await held.release()).verified };
+    } },
     context: f.c, now: Date.now, stopped: () => false, append: record => rows.push(record),
     parent: 'launch:session-work-live', owner: 'test-machine', placement: 'machine:test-machine',
     transport: 'tmux session on this machine', workingScope: scope, resultDirectory: scope,
     artifact: 'doorway:live', incarnation: 'live-1',
-    deadlineMs: 600_000, pollMs: 2_000, maxResultBytes: 65536, maxSteps: 1 }));
+    deadlineMs: 600_000, pollMs: 2_000, maxResultBytes: 65536, maxSteps: 1, maxCalls: 24 }));
   try {
-    const outcome = await port.run({ operation: 'obligation-live-1', claim: 'session-work-live',
+    const outcome = await port.run({ operation: 'obligation-live-1',
       question: 'Return exactly {"outcome":"report","report":"session work reached the result file"} '
         + 'as the JSON object this step asks for. Do no other work.',
       context: '{"obligation":{"kind":"request","quote":"prove the session work path end to end"}}',
@@ -73,11 +81,14 @@ it.skipIf(!ready)('runs one long work item through the session driver and return
     expect(rows.map(row => row.type)).toEqual(['SessionWorkEdge', 'SessionWorkEdgeClose']);
     const edge = rows[0] as SessionWorkEdge;
     expect(edge.resultDestination.startsWith(`${scope}/`)).toBe(true);
-    expect(edge.budget).toMatchObject({ steps: 1, tokens: null });
+    expect(edge.budget).toMatchObject({ steps: 1, tokens: null, calls: 24 });
     expect(rows[1]).toMatchObject({ state: 'complete', edge: edge.id });
     expect((rows[1] as SessionWorkEdgeClose).resultBytes).toBeGreaterThan(0);
     // The child really was a live session of the named harness, identified exactly.
     expect(outcome.child).toMatch(/^instar20-[a-f0-9]{24}:\d+:\d+$/);
+    // And it is physically gone once the step returned: the port stopped it before the close.
+    const name = outcome.child!.split(':')[0]!;
+    expect(physical.tmux(['has-session', '-t', `=${name}:`]).code).not.toBe(0);
   } finally {
     try { value(port.stop()); } catch { /* reported by the sweep below */ }
     for (const row of physical.load().sessions) physical.tmux(['kill-session', '-t', `=${row.name}:`]);

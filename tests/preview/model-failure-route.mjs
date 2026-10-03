@@ -9,7 +9,8 @@ import { SUBSCRIPTION_DOORWAYS } from '../../src/assembly/production-provider.js
 export const DEFAULT_SUBSCRIPTION_DOORWAY = 'claude-code-subscription';
 export const subscriptionDoorway = id => {
   if (id !== DEFAULT_SUBSCRIPTION_DOORWAY) throw Error(`subscription doorway ${id} is not registered`);
-  return { id, contract: SUBSCRIPTION_DOORWAYS[id].contract, create: input => createClaudeCodeSubscriptionRoute(input) };
+  // The real registered doorway (framings, policy, activation and session checks); only its model creation is replaced.
+  return { ...SUBSCRIPTION_DOORWAYS[id], create: input => createClaudeCodeSubscriptionRoute(input) };
 };
 
 export const createClaudeCodeSubscriptionRoute = () => {

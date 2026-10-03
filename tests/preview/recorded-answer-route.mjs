@@ -11,7 +11,8 @@ export { SUBSCRIPTION_CONVERSATION_FRAMING, SUBSCRIPTION_PREVIEW_EXPIRY, subscri
 export const DEFAULT_SUBSCRIPTION_DOORWAY = 'claude-code-subscription';
 export const subscriptionDoorway = id => {
   if (id !== DEFAULT_SUBSCRIPTION_DOORWAY) throw Error(`subscription doorway ${id} is not registered`);
-  return { id, contract: SUBSCRIPTION_DOORWAYS[id].contract, create: input => createClaudeCodeSubscriptionRoute(input) };
+  // The real registered doorway (framings, policy, activation and session checks); only its model creation is replaced.
+  return { ...SUBSCRIPTION_DOORWAYS[id], create: input => createClaudeCodeSubscriptionRoute(input) };
 };
 const usage = { inputTokens: 1, outputTokens: 1, charge: null, inputComplete: true };
 const decision = value => JSON.stringify({ type: 'Decision', conclusion: { subject: 'preview-stage2-answer', value } });

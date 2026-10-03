@@ -10,8 +10,9 @@ import { afterEach, expect, it } from 'vitest';
 import { canonical, decode } from '../../src/index.js';
 import { CODEX_ADMITTED_ITEM_TYPES, CODEX_CONVERSATION_FRAMING, CODEX_CONVERSATION_SYSTEM_PROMPT,
   CODEX_LOGIN_STATUS_STDERR_LINE, CODEX_SUBSCRIPTION_DOORWAY_ID, CODEX_SUBSCRIPTION_VERSION, codexConversationPolicy,
-  codexSubscriptionDoorway, codexVersionLine, createCodexSubscriptionRoute, parseCodexEventStream,
+  codexSessionPolicy, codexSubscriptionDoorway, codexVersionLine, createCodexSubscriptionRoute, parseCodexEventStream,
   validateCodexActivation } from '../../src/assembly/production-codex-provider.js';
+import { SESSION_WORK_LIMITS, SESSION_WORK_RESIDUAL } from '../../src/assembly/production-session-work.js';
 import { SUBSCRIPTION_DOORWAYS, SUBSCRIPTION_PREVIEW_EXPIRY, subscriptionDoorway } from '../../src/assembly/production-provider.js';
 import type { SubscriptionActivationRecord } from '../../src/assembly/production-provider.js';
 import type { ProviderSubscriptionProfile } from '../../src/assembly/provider-credential-custodian.js';
@@ -179,7 +180,10 @@ it('answers from a real completed turn: version and sign-in preflights first, th
   // The instructions ride stdin ahead of the envelope, because the CLI takes no system prompt.
   expect(commands[2].stdin).toBe(`${CODEX_CONVERSATION_SYSTEM_PROMPT}\n\n{"question":"wc"}`);
   // Subscription sign-in only: no API key is passed and none is set, so a metered key cannot be spent.
-  expect(commands[2].keys).toEqual(['CODEX_HOME', 'HOME', 'PATH']);
+  // The closed environment the route supplies. macOS adds its locale key (__CF_USER_TEXT_ENCODING)
+  // to every process it starts; that is the platform's, carries no credential, and is set aside here.
+  expect(commands[2].keys.filter((key: string) => key !== '__CF_USER_TEXT_ENCODING')).toEqual(['CODEX_HOME', 'HOME', 'PATH']);
+  expect(commands[2].keys.some((key: string) => /KEY|TOKEN|SECRET/u.test(key))).toBe(false);
   expect(commands[2].codexHome).toBe(f.configDirectory);
   expect(commands.map(c => c.cwd)).toEqual([f.workingDirectory, f.workingDirectory, f.workingDirectory]);
 });
@@ -266,4 +270,31 @@ it('spends a subscription or nothing: an API-key login, no login, and an unknown
   f.authMode('apikey');
   expect((await live.invoke('{"q":1}', f.bounds)).state).toBe('uncertain');
   expect(f.commands()).toHaveLength(0);
+});
+
+it('admits session work only under its own reviewed grant, and only on a subscription sign-in', async () => {
+  const f = fixture();
+  const session = codexSubscriptionDoorway().session;
+  expect(session.framework).toBe('codex-cli');
+  const policy = codexSessionPolicy(f.model);
+  // The grant binds exactly what it admits: the unconfined launch flags on the exact model, the limits and the task wording.
+  expect(policy.launch).toEqual(['--dangerously-bypass-approvals-and-sandbox', '-c', 'check_for_update_on_startup=false', '--model', f.model]);
+  expect(policy.limits).toEqual(SESSION_WORK_LIMITS);
+  const grant = { ...f.activation(hash(policy)), acceptedResiduals: [SESSION_WORK_RESIDUAL] };
+  expect(() => session.validateActivation(grant, f.profile, f.model, 1000)).not.toThrow();
+  // An answer activation is not a session grant, and a session grant that does not accept the
+  // unconfined residual in writing is refused.
+  expect(() => session.validateActivation(f.activation(), f.profile, f.model, 1000)).toThrow(/policy differs/u);
+  expect(() => session.validateActivation({ ...grant, acceptedResiduals: ['something else'] }, f.profile, f.model, 1000))
+    .toThrow(/unconfined residual/u);
+  expect(() => validateCodexActivation(grant, f.profile, f.model, 1000, CODEX_CONVERSATION_FRAMING)).toThrow(/policy differs/u);
+  // Before every launch: subscription sign-in only, the exact executable, the reviewed login home.
+  await expect(session.admit({ profile: f.profile, io: f.io, deadline: 5000, now: () => 1000 })).resolves.toBeUndefined();
+  for (const mode of ['apikey', 'absent', null] as const) {
+    f.authMode(mode);
+    await expect(session.admit({ profile: f.profile, io: f.io, deadline: 5000, now: () => 1000 })).rejects.toThrow(/sign-in unconfirmed/u);
+  }
+  f.authMode('chatgpt');
+  await expect(session.admit({ profile: { ...f.profile, artifact: 'sha256:changed' }, io: f.io, deadline: 5000, now: () => 1000 }))
+    .rejects.toThrow(/executable changed/u);
 });

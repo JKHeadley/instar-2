@@ -1023,8 +1023,8 @@ export type JournalRecord =
    * recorded before the child session exists and the close on every path out, so a delegation is
    * never a session nobody owns. Its loss detector is replay: an obligation-result whose step ran
    * as a session with no edge before it, or an edge with no close and no later launch, is visible
-   * in the journal. The view holds nothing from it — the obligation's own result carries the
-   * operational state — so this row is an audit fact, validated here and never acted on. */
+   * in the journal. The edge reserves the step's whole model-call liability against the call cap
+   * (retained, like a tool turn's); otherwise the obligation's own result carries the state. */
   | { kind: 'session-work'; record: SessionWorkEdge | SessionWorkEdgeClose; at: number }
   | { kind: 'obligation-result'; obligation: string; slot: number; outcome: ObligationOutcome; report?: string; note?: string;
     assessment?: BlockerAssessment;
@@ -1984,8 +1984,16 @@ function projectObligationWork(view: JournalView, row: Extract<JournalRecord, { 
     if (row.recheckAt !== undefined) note.recheckAt = row.recheckAt;
   }
 }
-/** Rules 2, 60, 114: a delegated-session edge or close is accepted only complete and bounded. It
- * mutates no view state, so a malformed row is refused here rather than stored unread. */
+/** Rules 60, 61, 114: an edge reserves its step's whole model-call liability before the child
+ * exists, and refuses when the call allowance cannot hold it. */
+function projectSessionWork(view: JournalView, record: SessionWorkEdge | SessionWorkEdgeClose): void {
+  validateSessionWorkRow(record);
+  if (record.type !== 'SessionWorkEdge') return;
+  if (view.calls + record.budget.calls > view.limits.maxCalls) throw Error('preview journal: session work call cap');
+  view.calls += record.budget.calls;
+}
+/** Rules 2, 60, 114: a delegated-session edge or close is accepted only complete and bounded, so a
+ * malformed row is refused here rather than stored unread. */
 export function validateSessionWorkRow(record: SessionWorkEdge | SessionWorkEdgeClose): void {
   const text = (value: unknown, max: number) => typeof value === 'string' && value.trim().length > 0 && value.length <= max;
   const stamp = (value: unknown) => typeof value === 'number' && Number.isSafeInteger(value) && value > 0;
@@ -1994,6 +2002,7 @@ export function validateSessionWorkRow(record: SessionWorkEdge | SessionWorkEdge
       record.authority, record.exitTest, record.placement, record.transport, record.resultDestination]
       .every(value => text(value, 1024))
       || record.budget?.steps !== 1 || !stamp(record.budget.deadline) || record.budget.tokens !== null
+      || !Number.isSafeInteger(record.budget.calls) || record.budget.calls <= 0
       || !Number.isSafeInteger(record.budget.maxResultBytes) || record.budget.maxResultBytes <= 0
       || !stamp(record.openedAt)) throw Error('preview journal: session work edge incomplete');
     return;
@@ -3065,7 +3074,7 @@ function project(view: JournalView, row: JournalRecord, system?: SystemCheck, ad
       summaryCount: view.summaries.length, closedCount: view.closed.size }; return;
   }
   if (row.kind === 'obligation-start' || row.kind === 'obligation-result') { projectObligationWork(view, row); return; }
-  if (row.kind === 'session-work') { validateSessionWorkRow(row.record); return; }
+  if (row.kind === 'session-work') { projectSessionWork(view, row.record); return; }
   if (row.kind === 'summary-candidate') {
     if (!view.summaryReservations.has(row.through) || view.summaryCandidates.has(row.through))
       throw Error('preview journal: summary candidate order');

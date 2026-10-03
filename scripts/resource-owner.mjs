@@ -556,20 +556,21 @@ export function createResourceOwner(initialCeilings = RESOURCE_CEILINGS) {
     }
     return { leaked, unresolved };
   }
+  /** Returns a launch's Six debit once, citing the evidence that proves the outcome; false when it could not. */
+  function closeAllocationOf(lease, settlement) {
+    if (!lease.allocation || lease.allocation.closed) return true;
+    try { const closed = ports.allocation.close(lease.allocation.set, settlement); if (closed?.ok) { lease.allocation.closed = settlement; return true; } }
+    catch { /* the durable launch row keeps the allocation for recovery */ }
+    counters.allocationCloseFailures = (counters.allocationCloseFailures ?? 0) + 1;
+    return false;
+  }
   function run(input, lease, uidProcesses) {
     const handles = Math.max(16, ceilings.launch.handleCount);
     const cpuSeconds = Math.max(1, Math.ceil(ceilings.launch.cpuMilliseconds / 1000));
     lease.enforcement = enforcement(); lease.uidProcesses = uidProcesses;
     lease.workingArea = privateArea(input.cwd);
     const limitValue = uidProcesses.limit;
-    /** Returns the Six debit once, citing the evidence that proves the outcome; false when it could not. */
-    const closeAllocation = settlement => {
-      if (!lease.allocation || lease.allocation.closed) return true;
-      try { const closed = ports.allocation.close(lease.allocation.set, settlement); if (closed?.ok) { lease.allocation.closed = settlement; return true; } }
-      catch { /* the durable launch row keeps the allocation for recovery */ }
-      counters.allocationCloseFailures = (counters.allocationCloseFailures ?? 0) + 1;
-      return false;
-    };
+    const closeAllocation = settlement => closeAllocationOf(lease, settlement);
     return new Promise(resolve => {
       let child;
       try {
@@ -800,6 +801,49 @@ export function createResourceOwner(initialCeilings = RESOURCE_CEILINGS) {
       if (!lease) return { code: null, limited: true, localLimit: input.stopped?.() ? null : 'capacity', stdout: '', stdoutBytes: new Uint8Array() };
       try { return await run(input, lease, await processLimit()); }
       finally { counters.completed++; release(lease); }
+    },
+    /**
+     * Rules 60, 114: a delegated session's process tree, held like a launch this owner did not spawn
+     * itself (tmux forks it). Admission (count, answer reserve, priority brake, Six allocation)
+     * happens here, before the session exists; `attach` joins the session's root process and its
+     * private working area, so the same sampled memory, process and CPU ceilings reclaim it; and
+     * `release` runs the same verified cleanup. The per-process kernel limits (RLIMIT_CPU and
+     * RLIMIT_NOFILE through the shim) do not reach a tmux-forked tree, so those bounds are `sampled`
+     * here, never claimed `hard`. Returns null on a capacity refusal or a stop.
+     */
+    async hold(work, { timeout, stopped }) {
+      if (stopped?.()) return null;
+      const lease = await admit(work, timeout, stopped);
+      if (!lease) return null;
+      let outcome = null;
+      return Object.freeze({
+        async attach({ pid, cwd }) {
+          if (!Number.isSafeInteger(pid) || pid <= 1) throw Error('resource owner: exact session root process required');
+          lease.enforcement = { ...enforcement(), cpuPerProcess: 'sampled', handlesPerProcess: 'unsupported' };
+          lease.uidProcesses = { state: 'unavailable', subject: null, limit: null };
+          lease.workingArea = privateArea(cwd); lease.pid = pid;
+          const evidence = await startEvidence(pid), start = typeof evidence === 'string' ? evidence : null;
+          if (start) lease.known.set(pid, start);
+          // Durable ownership evidence before the tree is counted as held (a failed write throws).
+          ledger(rows => { rows[lease.id] = { pid, start, owner: attached?.owner ?? null, members: Object.fromEntries(lease.known),
+            enforcement: lease.enforcement, uidProcesses: lease.uidProcesses, workingArea: lease.workingArea,
+            allocation: lease.allocation?.set ?? null }; });
+          lease.running = true;
+          if (!sampler) sampler = setInterval(() => { void sample(); }, ceilings.sampleMs);
+        },
+        async release() {
+          if (outcome) return outcome;
+          lease.running = false;
+          const { unresolved } = lease.pid ? await cleanupTree(lease) : { unresolved: false };
+          if (!unresolved) closeAllocationOf(lease, lease.pid ? `cleanup-verified:${lease.id}` : `never-launched:${lease.id}`);
+          if (!unresolved && (!lease.allocation || lease.allocation.closed))
+            try { ledger(rows => { delete rows[lease.id]; }); } catch { /* observed at the next attach */ }
+          else recordMembers(lease, { cleanup: 'unresolved' });
+          counters.completed++; release(lease);
+          outcome = { verified: !unresolved, limit: lease.limit ?? null };
+          return outcome;
+        },
+      });
     },
     observeInherited,
     snapshot,

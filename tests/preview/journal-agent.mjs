@@ -3,7 +3,7 @@
 // physical ports. The worker owns all durable conversation/effect transitions.
 import { createHash, randomBytes } from 'node:crypto';
 import { execFileSync } from 'node:child_process';
-import { existsSync, lstatSync, mkdirSync, readdirSync, readFileSync, realpathSync, renameSync, rmSync, writeFileSync } from 'node:fs';
+import { chmodSync, existsSync, lstatSync, mkdirSync, readdirSync, readFileSync, realpathSync, renameSync, writeFileSync } from 'node:fs';
 import { dirname, resolve, join } from 'node:path';
 import { createProductionTelegramIO, createSubscriptionProviderIO, productionStorageIO } from '../../scripts/production-boot-io.mjs';
 import { openProductionStorage } from '../../src/assembly/production-storage.js';
@@ -90,7 +90,7 @@ import { auditJournal } from './journal-audit.mjs';
 import { memoryReport } from './memory-export.js';
 
 import { createProductionSessionDriver } from '../../src/assembly/production-session-driver.js';
-import { createSessionWorkPort } from '../../src/assembly/production-session-work.js';
+import { createSessionWorkPort, SESSION_WORK_LIMITS } from '../../src/assembly/production-session-work.js';
 // @ts-expect-error physical JS host is intentionally outside the pure core
 import { createProductionSessionIO } from '../../scripts/production-session-io.mjs';
 import { stepQuestions } from './step-check.js';
@@ -156,26 +156,14 @@ const renewalActivationOf = (options, view) => expires => {
   return `sha256:${createHash('sha256').update(bytes, 'utf8').digest('hex')}`;
 };
 const required = (options, name) => { if (!options[name]) throw Error(`preview: missing --${name}`); return options[name]; };
-/** Rules 60, 114 (Part fifteen §5): the delegated-session path for long and scheduled work. All
- * five arguments go together; with none, work stays on the one-call route exactly as before. The
- * session runs the operator's own harness unconfined under its own HOME and login home, in a
- * working directory under the root that is also where it writes its result. */
-const sessionWorkOf = options => {
-  const names = ['session-work-framework', 'session-work-executable', 'session-work-home',
-    'session-work-config-home', 'session-work-steps'];
-  const given = names.filter(name => options[name] !== undefined);
-  if (!given.length) return null;
-  if (given.length !== names.length) throw Error(`preview: ${names.map(name => `--${name}`).join(', ')} go together`);
-  for (const name of ['session-work-executable', 'session-work-home', 'session-work-config-home'])
-    if (!options[name].startsWith('/')) throw Error(`preview: --${name} must be an absolute path`);
-  return { framework: options['session-work-framework'], executable: options['session-work-executable'],
-    home: options['session-work-home'], configHome: options['session-work-config-home'],
-    maxSteps: number(options['session-work-steps'], 'session-work-steps', 1, 64),
-    deadlineMs: number(options['session-work-deadline-seconds'] ?? '600', 'session-work-deadline-seconds', 30, 3600) * 1000,
-    turnDeadlineMs: number(options['session-work-turn-seconds'] ?? '600', 'session-work-turn-seconds', 30, 3600) * 1000,
-    maxSessions: number(options['session-work-max-sessions'] ?? '1', 'session-work-max-sessions', 1, 16),
-    tmux: options['session-work-tmux'] ?? '/opt/homebrew/bin/tmux' };
-};
+/** Rules 60, 114 (Part fifteen §5): the delegated-session path for long and scheduled work exists
+ * only under its own reviewed grant: an activation record for the doorway's session framing, bound
+ * to that exact session policy (launch flags, model, limits, task wording), resolved from the same
+ * sealed authority and accepting the unconfined residual. With no grant, work stays on the one-call
+ * route exactly as before. Everything else — harness, executable, homes, ceilings — comes from the
+ * doorway, the login profile and the policy, never from a separate option. */
+const sessionWorkOf = options => options['session-work-activation'] === undefined ? null
+  : { activation: options['session-work-activation'], tmux: options['session-work-tmux'] ?? '/opt/homebrew/bin/tmux' };
 
 const number = (value, name, minimum = 1, maximum = Number.MAX_SAFE_INTEGER) => {
   const n = Number(value); if (!Number.isSafeInteger(n) || n < minimum || n > maximum) throw Error(`preview: invalid ${name}`); return n;
@@ -1204,7 +1192,7 @@ async function main() {
   // Rule 55: poll-failure pressure is episode state; every attempt that changes it is durable in the run log
   // before the loop continues, so neither a relaunch nor a crash resets it.
   let failedPolls = 0, conflictedPolls = 0;
-  let identityVerified = false, routeHealthy = true, active = null, toolsActive = () => false, toolsRecord = null;
+  let identityVerified = false, routeHealthy = true, active = null, toolsActive = () => false, toolsRecord = null, sessionWork = null;
   const workerStop = { value: false };
   const signal = name => { signalled = true; signalName ??= name; workerStop.value = true; };
   process.once('SIGINT', signal); process.once('SIGTERM', signal); process.once('SIGHUP', signal);
@@ -1589,38 +1577,6 @@ async function main() {
       return [missing.length ? `Past a cap: limited answers are not available (missing: ${missing.join(', ')}). Messages are kept. To clear: ${minimalRepair(missing)}.`
         : 'Past a cap: each kept message gets one limited answer from the reserve.'];
     };
-    // Rules 60, 61, 114: long and scheduled work runs as a delegated session when the root is
-    // configured for one. The journal records the parent-child edge and its close; the driver holds
-    // the session cap, the per-turn deadline and the one stop authority this launch already has.
-    const sessionWorkSetup = sessionWorkOf(options);
-    const sessionWork = sessionWorkSetup === null ? null : (() => {
-      const scope = join(root, 'session-work');
-      mkdirSync(scope, { recursive: true, mode: 0o700 });
-      mkdirSync(sessionWorkSetup.home, { recursive: true, mode: 0o700 });
-      mkdirSync(sessionWorkSetup.configHome, { recursive: true, mode: 0o700 });
-      const physical = createProductionSessionIO({ stateDirectory: join(root, 'session-work-state'),
-        tmuxPath: sessionWorkSetup.tmux, home: sessionWorkSetup.home,
-        configHome: sessionWorkSetup.configHome, cwd: scope });
-      const stoppedNow = () => workerStop.value || existsSync(stopPath) || !ownerHeld()
-        || journal.view.stop !== null || wallNow() >= journal.view.expires;
-      return take(createSessionWorkPort({
-        createDriver: resolveIntake => createProductionSessionDriver({ operatorOwnUse: true, confinement: 'unconfined',
-          framework: sessionWorkSetup.framework, executable: sessionWorkSetup.executable, cwd: scope,
-          home: sessionWorkSetup.home, configHome: sessionWorkSetup.configHome, context,
-          io: physical, now: wallNow, stopped: stoppedNow, resolveIntake,
-          maxSessions: sessionWorkSetup.maxSessions, turnDeadlineMs: sessionWorkSetup.turnDeadlineMs,
-          readyTimeoutMs: 30000, protectedSessions: [] }),
-        io: { readResult: path => { try { return readFileSync(path, 'utf8'); } catch { return null; } },
-          clearResult: path => { try { rmSync(path, { force: true }); } catch { /* a stale result refuses the step below */ } },
-          wait: delay },
-        context, now: wallNow, stopped: stoppedNow,
-        append: record => journal.append({ kind: 'session-work', record, at: wallNow() }),
-        parent: `launch:${conversationOf(g)}`, owner: ownerMachine, placement: `machine:${ownerMachine}`,
-        transport: 'tmux session on this machine', workingScope: scope, resultDirectory: scope,
-        artifact: `doorway:${doorway.id}`, incarnation: String(launchedAt ?? wallNow()),
-        deadlineMs: sessionWorkSetup.deadlineMs, pollMs: 500, maxResultBytes: 65536,
-        maxSteps: sessionWorkSetup.maxSteps }));
-    })();
     const approvalSurface = approvalSurfaceOf(options);
     const yesInstallation = explicitYesInstallationOf(options), reviewSource = reviewSourceOf(options, yesInstallation);
     // Plan #373: how long an operator request stays answerable (default 18 hours), never past the trial's current end.
@@ -1637,12 +1593,14 @@ async function main() {
       // is built before the answer's `reserve` or the work's `obligation-start` counts its base call, so that call is added here.
       toolRoute: id => toolsActive() && toolTurnEligible(id) && toolPacketFits(journal.view),
       // Only scheduled obligation work is delegated; an operator answer is never handed to a session.
-      ...(sessionWork === null ? {} : {
-        sessionRoute: id => id.startsWith('obligation:') && sessionWork.available(),
+      // The session route is taken only while its grant holds and the call allowance can hold the
+      // step's whole reserved liability on top of the obligation's own start.
+      ...(sessionWorkOf(options) === null ? {} : {
+        sessionRoute: id => sessionWork !== null && id.startsWith('obligation:') && sessionWork.port.available()
+          && journal.view.calls + 1 + SESSION_WORK_LIMITS.maxCallsPerStep <= journal.view.limits.maxCalls,
         sessionWork: async ({ question, context: packet, id }) => {
-          const outcome = await sessionWork.run({ operation: id.replaceAll(':', '-'),
-            claim: `session-work-${conversationOf(g)}`, question, context: packet,
-            authority: 'one scheduled work step for the verified operator: the operator\'s own tools, no outbound send, result returned by file' });
+          const outcome = await sessionWork.port.run({ operation: id.replaceAll(':', '-'), question, context: packet,
+            authority: sessionWork.authority });
           if (outcome.state === 'complete') return { state: 'complete', text: outcome.text, usage: { inputTokens: null, outputTokens: null, charge: null } };
           if (outcome.state === 'failed') return { state: 'complete', failureClass: 'malformed' };
           return { state: 'uncertain' };
@@ -1825,6 +1783,52 @@ async function main() {
       if (!activationMatchesJournal(journal.view, toolsActivation)) throw Error('preview: tool activation differs from journal');
       toolsRecord = toolsActivation;
       toolsActive = () => { try { return readFileSync(toolsActivationPath, 'utf8') === toolsBytes; } catch { return false; } };
+    }
+    // Part fifteen §5 (docs/19-scheduled-work): long and scheduled work runs as a full delegated
+    // session only under its own reviewed grant, re-checked before every step together with the
+    // login home's live subscription sign-in. Changing or removing the grant file withdraws it: no
+    // new step starts, and an open step's child is stopped. Each step is admitted and held by this
+    // process's one resource owner and reserves its call liability in the journal before it exists.
+    const sessionSetup = sessionWorkOf(options);
+    if (sessionSetup !== null) {
+      const sessionBytes = readFileSync(sessionSetup.activation, 'utf8'), sessionActivation = JSON.parse(sessionBytes);
+      doorway.session.validateActivation(sessionActivation, profile, required(options, 'model'), wallNow(), journal.view.expires);
+      requireAuthority(options, sessionActivation, sessionSetup.activation, journal.view, wallNow());
+      if (!activationMatchesJournal(journal.view, sessionActivation)) throw Error('preview: session work activation differs from journal');
+      const sessionActive = () => { try { return readFileSync(sessionSetup.activation, 'utf8') === sessionBytes; } catch { return false; } };
+      const scope = join(root, 'session-work');
+      mkdirSync(scope, { recursive: true, mode: 0o700 });
+      chmodSync(scope, 0o700);
+      const project = realpathSync(scope), framework = doorway.session.framework;
+      const physical = createProductionSessionIO({ stateDirectory: join(root, 'session-work-state'), tmuxPath: sessionSetup.tmux,
+        home: profile.home, configHome: profile.configDirectory, cwd: project });
+      const stoppedNow = () => workerStop.value || existsSync(stopPath) || !ownerHeld() || journal.view.stop !== null
+        || wallNow() >= journal.view.expires || !active() || !sessionActive();
+      const admissionIO = createSubscriptionProviderIO({ repository: process.cwd(), stopped: stoppedNow, work: 'maintenance' });
+      sessionWork = { authority: `session work grant ${sessionActivation.reference}: one scheduled work step for the verified operator, `
+        + 'unconfined under the operator\'s own tools, its result returned by file', port: take(createSessionWorkPort({
+        createDriver: resolveIntake => createProductionSessionDriver({ operatorOwnUse: true, confinement: 'unconfined',
+          framework, executable: profile.executable, cwd: project, home: profile.home, configHome: profile.configDirectory,
+          model: required(options, 'model'), context, io: physical, now: wallNow, stopped: stoppedNow, resolveIntake,
+          maxSessions: SESSION_WORK_LIMITS.maxSessions, turnDeadlineMs: SESSION_WORK_LIMITS.deadlineMs,
+          readyTimeoutMs: 30000, protectedSessions: [] }),
+        io: { readResult: (path, maxBytes) => physical.readResult(path, maxBytes), clearResult: path => physical.clearResult(path),
+          modelCalls: since => physical.modelCalls(framework, project, profile.configDirectory, since), wait: delay },
+        resources: { admit: async () => {
+          doorway.session.validateActivation(sessionActivation, profile, required(options, 'model'), wallNow(), journal.view.expires);
+          await doorway.session.admit({ profile, io: admissionIO, deadline: wallNow() + 15000, now: wallNow });
+          const held = await hostResources.hold('maintenance', { timeout: 30000, stopped: stoppedNow });
+          return held === null ? null : { attach: child => held.attach({ pid: Number(child.split(':')[1]), cwd: project }),
+            release: async () => (await held.release()).verified };
+        } },
+        context, now: wallNow, stopped: stoppedNow,
+        append: record => journal.append({ kind: 'session-work', record, at: wallNow() }),
+        parent: `launch:${conversationOf(g)}`, owner: ownerMachine, placement: `machine:${ownerMachine}`,
+        transport: 'tmux session on this machine', workingScope: project, resultDirectory: project,
+        artifact: `doorway:${doorway.id}`, incarnation: String(launchedAt ?? wallNow()),
+        deadlineMs: SESSION_WORK_LIMITS.deadlineMs, pollMs: SESSION_WORK_LIMITS.pollMs,
+        maxResultBytes: SESSION_WORK_LIMITS.maxResultBytes, maxSteps: SESSION_WORK_LIMITS.maxStepsPerLaunch,
+        maxCalls: SESSION_WORK_LIMITS.maxCallsPerStep })) };
     }
     installationPolicy = installationPolicyOf(options, activation, activationPath, journal.view, wallNow());
     registerAtLaunch = registerGeneration();
@@ -2169,6 +2173,8 @@ async function main() {
         try { appendRun(runsPath, { v: 1, launch: launchedAt, exit: wallNow(), reason, ...end }); } catch { /* the next launch reports an unrecorded end */ }
       }
     } finally {
+      // A delegated session never outlives the launch that owns it.
+      try { sessionWork?.port.stop(); } catch { /* the driver's next boot sweep and stop authority find it */ }
       if (shared) await shared.stop();
       journal?.close(); storage.close(); if (ownerClaim?.owner) ownerClaim.release(); process.removeListener('SIGINT', signal); process.removeListener('SIGTERM', signal); process.removeListener('SIGHUP', signal);
     }

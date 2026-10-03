@@ -11,6 +11,8 @@ import { subscriptionActivationEndAllowed } from './subscription-window.js';
 // Rule 30: the Codex adapter owns its own parser, policy and route; only its registry
 // entry is named here. The two modules import each other (see the cycle note in that file).
 import { codexSubscriptionDoorway } from './production-codex-provider.js';
+import { sessionLaunchFlags } from './production-session-driver.js';
+import { SESSION_WORK_RESIDUAL, sessionWorkPolicy } from './production-session-work.js';
 import type { ConfinedProviderRoute, ProviderResponseEvidenceDraft } from './provider-invocation.js';
 
 export interface ProductionProviderIO {
@@ -344,6 +346,12 @@ export interface SubscriptionProviderIO extends ProductionProviderIO {
 export function validateSubscriptionActivation(record: SubscriptionActivationRecord,
   profile: import('./provider-credential-custodian.js').ProviderSubscriptionProfile, model: string, now: number,
   framing: SubscriptionFraming = 'preview-decision-system-v2', journalEnd?: number): void {
+  validateClaudeActivation(record, profile, model, now, encoded(subscriptionPolicyFor(model, framing).policy).hash, journalEnd);
+}
+/** One activation check for every Claude grant: the record binds this exact policy digest. */
+function validateClaudeActivation(record: SubscriptionActivationRecord,
+  profile: import('./provider-credential-custodian.js').ProviderSubscriptionProfile, model: string, now: number,
+  policyDigest: string, journalEnd?: number): void {
   ensure(record?.type === 'SubscriptionActivationRecord' && record.schemaVersion === 1,
     'subscription activation absent');
   for (const value of [record.reference, record.waiver, record.p11, record.reviewedHead, record.trial,
@@ -358,7 +366,7 @@ export function validateSubscriptionActivation(record: SubscriptionActivationRec
   ensure(record.reference === profile.activationReference && record.profileDigest === encoded(profile).hash
     && record.executable === profile.executable && record.artifact === profile.artifact
     && record.version === profile.version && record.version === '2.1.280'
-    && record.invocationPolicyDigest === encoded(subscriptionPolicyFor(model, framing).policy).hash,
+    && record.invocationPolicyDigest === policyDigest,
   'subscription activation artifact or policy differs');
   ensure(record.expectedAccount === profile.expectedAccount && record.observedAccount === profile.expectedAccount
     && record.authSource === 'claude.ai', 'subscription activation account differs');
@@ -465,19 +473,8 @@ export function createClaudeCodeSubscriptionRoute(input:
         };
         const version = await command(['--version'], '', 5000, 1024);
         ensure(version.text.trim() === `${profile.version} (Claude Code)`, 'subscription version differs');
-        const status = JSON.parse((await command(['auth', 'status', '--json'], '', 5000, 8192)).text);
-        const required = ['loggedIn', 'authMethod', 'apiProvider', 'analyticsDisabled', 'projectsDirectory',
-          'configDirectory', 'email', 'orgId', 'orgName', 'subscriptionType'];
-        ensure(status && typeof status === 'object' && !Array.isArray(status)
-          && Object.keys(status).every(key => required.includes(key) || key === 'forcedLoginMethod')
-          && required.every(key => Object.hasOwn(status, key)) && status.loggedIn === true
-          && status.authMethod === 'claude.ai' && status.apiProvider === 'firstParty'
-          && typeof status.analyticsDisabled === 'boolean' && typeof status.orgName === 'string'
-          && status.email === profile.expectedAccount && status.orgId === profile.organization
-          && status.subscriptionType === profile.plan && status.configDirectory === profile.configDirectory
-          && status.projectsDirectory === `${profile.configDirectory}/projects`
-          && (status.forcedLoginMethod === undefined || status.forcedLoginMethod === 'claudeai'),
-        'subscription authentication status refused');
+        ensure(claudeSubscriptionStatusAccepted(JSON.parse((await command(['auth', 'status', '--json'], '', 5000, 8192)).text), profile),
+          'subscription authentication status refused');
         // Preflight consumes the same absolute deadline. Give the model only the time
         // still available after version and auth, retaining a small dispatch margin.
         const modelTimeout = Math.min(bounds.timeout, bounds.deadline - config.now() - 100);
@@ -540,6 +537,60 @@ export function createClaudeCodeSubscriptionRoute(input:
   });
 }
 
+/** Whether `claude auth status --json` shows exactly this profile's subscription sign-in: the
+ * claude.ai login of the expected account, organization and plan, in this login home, and no
+ * other field. Shared by the answer route and the delegated-session admission. */
+export function claudeSubscriptionStatusAccepted(status: unknown,
+  profile: import('./provider-credential-custodian.js').ProviderSubscriptionProfile): boolean {
+  const required = ['loggedIn', 'authMethod', 'apiProvider', 'analyticsDisabled', 'projectsDirectory',
+    'configDirectory', 'email', 'orgId', 'orgName', 'subscriptionType'];
+  if (!status || typeof status !== 'object' || Array.isArray(status)) return false;
+  const row = status as Record<string, unknown>;
+  return Object.keys(row).every(key => required.includes(key) || key === 'forcedLoginMethod')
+    && required.every(key => Object.hasOwn(row, key)) && row.loggedIn === true
+    && row.authMethod === 'claude.ai' && row.apiProvider === 'firstParty'
+    && typeof row.analyticsDisabled === 'boolean' && typeof row.orgName === 'string'
+    && row.email === profile.expectedAccount && row.orgId === profile.organization
+    && row.subscriptionType === profile.plan && row.configDirectory === profile.configDirectory
+    && row.projectsDirectory === `${profile.configDirectory}/projects`
+    && (row.forcedLoginMethod === undefined || row.forcedLoginMethod === 'claudeai');
+}
+/** Part fifteen §5 (docs/19-scheduled-work): the delegated-session grant through the Claude doorway.
+ * Its own framing, so only an activation record naming this exact session policy admits it. */
+export const SUBSCRIPTION_SESSION_FRAMING = 'preview-session-work-v1';
+export const subscriptionSessionPolicy = (model: string) => sessionWorkPolicy({ framing: SUBSCRIPTION_SESSION_FRAMING,
+  framework: 'claude-code', model, launch: sessionLaunchFlags('claude-code') });
+/** The activation check for a session grant: the shared Claude record checks on the session policy
+ * digest, plus the operator's written acceptance that the child is unconfined. */
+export function validateSubscriptionSessionActivation(record: SubscriptionActivationRecord,
+  profile: import('./provider-credential-custodian.js').ProviderSubscriptionProfile, model: string, now: number,
+  journalEnd?: number): void {
+  validateClaudeActivation(record, profile, model, now, encoded(subscriptionSessionPolicy(model)).hash, journalEnd);
+  ensure(record.acceptedResiduals.includes(SESSION_WORK_RESIDUAL), 'session work grant does not accept the unconfined residual');
+}
+/** Before every delegated Claude session: the exact executable, the login home's identity and
+ * reviewed configuration, and a live `auth status` showing this profile's subscription sign-in. */
+export async function admitClaudeSubscriptionSession(input: Readonly<{
+  profile: import('./provider-credential-custodian.js').ProviderSubscriptionProfile;
+  io: SubscriptionProviderIO; deadline: number; now: () => number }>): Promise<void> {
+  const { profile, io } = input;
+  ensure(io.realpath(profile.executable) === profile.executable
+    && `sha256:${createHash('sha256').update(io.executableBytes(profile.executable)).digest('hex')}` === profile.artifact,
+  'subscription executable changed');
+  const observed = io.inspectSubscriptionProfile(profile);
+  ensure(observed.loginProfileIdentity === profile.loginProfileIdentity
+    && observed.managedConfigurationDigest === profile.managedConfigurationDigest,
+  'subscription profile or managed configuration changed');
+  const timeout = Math.min(5000, input.deadline - input.now());
+  ensure(timeout > 0, 'session admission deadline exhausted');
+  const result = await io.execute({ executable: profile.executable, args: ['auth', 'status', '--json'],
+    cwd: profile.workingDirectory, env: Object.freeze({ PATH: '/usr/bin:/bin', HOME: profile.home,
+      CLAUDE_CONFIG_DIR: profile.configDirectory }), stdin: '', timeout, maxBytes: 8192 });
+  ensure(!result.limited && result.code === 0, 'subscription authentication status unavailable');
+  let status: unknown = null;
+  try { status = JSON.parse(result.stdout); } catch { status = null; }
+  ensure(claudeSubscriptionStatusAccepted(status, profile), 'subscription authentication status refused');
+}
 /** Narrows a client-supplied framing string to one this adapter owns; anything else refuses. */
 export function asSubscriptionFraming(framing: string): SubscriptionFraming {
   ensure(framing === 'preview-decision-system-v2' || framing === SUBSCRIPTION_CONVERSATION_FRAMING
@@ -586,6 +637,20 @@ export interface SubscriptionDoorway {
   validateActivation(record: SubscriptionActivationRecord, profile: ProviderSubscriptionProfileRef,
     model: string, now: number, framing: string, journalEnd?: number): void;
   create(input: SubscriptionRouteInput): Result<ConfinedProviderRoute>;
+  /** Part fifteen §5: long and scheduled work through this doorway as a full delegated session of
+   * its harness, under its own reviewed grant. The harness, its launch flags, the policy the grant
+   * binds, the grant's activation check and the live subscription check before every launch all
+   * stay in the adapter that owns the harness. */
+  readonly session: SubscriptionSessionDoorway;
+}
+export interface SubscriptionSessionDoorway {
+  readonly framing: string;
+  readonly framework: import('./production-session-driver.js').SessionFramework;
+  validateActivation(record: SubscriptionActivationRecord, profile: ProviderSubscriptionProfileRef,
+    model: string, now: number, journalEnd?: number): void;
+  admit(input: Readonly<{ profile: ProviderSubscriptionProfileRef; io: SubscriptionProviderIO & Partial<Readonly<{
+    codexAuthMode(profile: ProviderSubscriptionProfileRef): 'chatgpt' | 'apikey' | 'absent' | null }>>;
+    deadline: number; now: () => number }>): Promise<void>;
 }
 /** The host-owned subscription descriptor, named here so the doorway interface can take it. */
 export type ProviderSubscriptionProfileRef = import('./provider-credential-custodian.js').ProviderSubscriptionProfile;
@@ -611,7 +676,9 @@ export const SUBSCRIPTION_DOORWAYS: Readonly<Record<string, SubscriptionDoorway>
       validateSubscriptionActivation(record, profile, model, now, asSubscriptionFraming(framing), journalEnd),
     create: ({ framing, ...rest }: SubscriptionRouteInput) =>
       createClaudeCodeSubscriptionRoute(framing === undefined ? rest
-        : { ...rest, framing: asSubscriptionFraming(framing) }) }),
+        : { ...rest, framing: asSubscriptionFraming(framing) }),
+    session: Object.freeze({ framing: SUBSCRIPTION_SESSION_FRAMING, framework: 'claude-code' as const,
+      validateActivation: validateSubscriptionSessionActivation, admit: admitClaudeSubscriptionSession }) }),
   'codex-cli-subscription': codexSubscriptionDoorway(),
 });
 /** The doorway an existing installation used before doorways were selectable. */

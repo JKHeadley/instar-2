@@ -5,23 +5,28 @@
     "status": "draft",
     "cause": {
       "kind": "draft",
-      "note": "Unit w4-sessiondriver: long and scheduled work becomes a delegated harness session with its Rule 114 edge and honest bounds (plan rows #399/#401). No constitution change."
+      "note": "Unit w4-sessiondriver: long and scheduled work becomes a delegated harness session with its Rule 114 edge, under its own reviewed grant and the existing execution floors (plan rows #399/#401; repaired after Astra's unit review, VERDICT NO). No constitution change."
     },
     "changes": [
       {
-        "what": "\u00a75 gains the rule that long and scheduled work may run as a full delegated harness session, with its Rule 114 edge recorded before the child exists and exactly one close on every path out, and that the declared result file \u2014 non-empty, within its byte bound and unchanged across two reads one poll apart, with any leftover removed first \u2014 is the exit test rather than a per-harness idle-prompt classifier.",
-        "why": "The session driver existed but nothing called it, so no durable work item could run as a real session; and one real session harness keeps placeholder text on its prompt line throughout a turn, so a step whose completion depended on that classifier would run to its deadline with its work already finished on disk.",
-        "ref": "src/assembly/production-session-work.ts; tests/assembly/production-session-work.test.ts; tests/e2e/session-work-live.test.ts; tests/preview/journal.ts (workObligations, session-work record); LIVE-PATH-PLAN.md rows #399, #401"
+        "what": "\u00a75 gains the rule that long and scheduled work may run as a full delegated harness session: its Rule 114 edge recorded before the child exists; every path out stops the child by its exact identity and releases its process tree before exactly one close is written; each step a fresh session named from its operation; and the declared result file \u2014 non-empty, read bounded to one byte past its limit, unchanged across two reads one poll apart, with a leftover that cannot be removed refusing the step \u2014 as the only way a step completes.",
+        "why": "The session driver existed but nothing called it. The unit's first version returned before stopping its child (a stopped, timed-out or finished step left the session running), gave every step one conversation-wide claim (so the second scheduled item needed a continuation nobody supplied), accepted a closed turn's result without the two-read test, and loaded a result whole before checking its size.",
+        "ref": "src/assembly/production-session-work.ts; tests/assembly/production-session-work.test.ts; tests/e2e/session-work-tmux.test.ts; lanes/astra-unit-w4-sessiondriver-review.md (findings 2-4); LIVE-PATH-PLAN.md rows #399, #401"
       },
       {
-        "what": "\u00a75 gains the rule that a session step is bounded by time, result size and a per-launch step ceiling, one step at a time under the launch's single stop authority, and that its recorded budget states its token bound as ABSENT because a subscription session reports no token meter \u2014 with a caller needing a token bound directed to a metered route.",
-        "why": "Rule 60's ceiling has to be stated in units that are actually observable here; recording an invented token budget would be a measured claim nobody can check.",
-        "ref": "src/assembly/production-session-work.ts; tests/assembly/production-session-work.test.ts"
+        "what": "\u00a75 gains the rule that a delegated session runs only under its own operator-approved activation record for the doorway's session framing, bound to the exact session policy and accepting the unconfined residual in writing; harness, executable and homes come from the doorway and the login profile; the grant and the live subscription sign-in are re-checked before every step; withdrawal of any governing authority stops an open step's child; and the host's one resource owner admits and holds each session's process tree under the existing ceilings, enforced by sampled observation.",
+        "why": "The first version enabled the path from five free-standing options, launched an unconfined session outside the resource owner, the subscription check and the scoped authority, and could take its login home from a directory holding an API-key login.",
+        "ref": "src/assembly/production-provider.ts and production-codex-provider.ts (session doorway); scripts/resource-owner.mjs (hold); tests/preview/journal-agent.mjs; lanes/astra-unit-w4-sessiondriver-review.md (finding 1)"
       },
       {
-        "what": "\u00a75 gains the rule that a delegated session is unconfined (the driver makes no confinement claim; the child has the operator's own tools), that what bounds a step is its work scope, its deadlines, its step ceiling, its stop authority and the fact that no root reaches the path unless deliberately configured for it \u2014 and the explicit Value that a session step's effects are NOT tested against the purpose's four consequential-effect tests, because the effect doorway is not on the live path on this HEAD.",
-        "why": "The first draft of this unit stated the time/size/step bound and said nothing about confinement, which left a reader of \u00a75 free to assume a delegated session's effects pass an admitted doorway. They do not, and the operator deciding whether to configure a root needs that said plainly rather than inferred from the driver's source comment.",
-        "ref": "src/assembly/production-session-driver.ts (operatorOwnUse/unconfined); docs/00-the-purpose.md (the four consequential-effect tests); LIVE-PATH-PLAN.md row #400 (the effect-doorway wiring is separate work)"
+        "what": "\u00a75 gains the explicit Value that a session step's effects are NOT tested against the purpose's four consequential-effect tests while the effect doorway is off the live path, and that the grant's written acceptance makes enabling the path the operator's deliberate decision.",
+        "why": "A reader of \u00a75 deciding whether to approve a session grant must not be free to assume a delegated session's effects pass an admitted doorway.",
+        "ref": "docs/00-the-purpose.md (the four consequential-effect tests); LIVE-PATH-PLAN.md row #400 (the effect-doorway wiring is separate work)"
+      },
+      {
+        "what": "\u00a75 gains the rule that a session step's spend bound is its whole model-call liability, reserved against the journal's call allowance before the child exists and enforced from the child's own transcript once per poll (an unreadable transcript ends the step), with its token bound recorded as absent.",
+        "why": "One obligation-start debit did not bound the model calls a full session makes; a subscription session reports no token meter, so the bound has to be stated in calls that can actually be observed.",
+        "ref": "tests/preview/journal.ts (session-work projection); scripts/production-session-io.mjs (modelCalls); tests/assembly/session-work-host.test.ts; tests/preview/session-transcript-shapes.json"
       }
     ]
   },

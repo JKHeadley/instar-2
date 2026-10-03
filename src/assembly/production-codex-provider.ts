@@ -12,6 +12,8 @@ import type { ConfinedProviderRoute, ProviderResponseEvidenceDraft } from './pro
 // doorway registry: production-provider.ts imports THIS module for the registry entry below, so a
 // value import back would make load order load-bearing. The shared types are type-only and erased.
 import { SUBSCRIPTION_PREVIEW_EXPIRY, subscriptionActivationEndAllowed } from './subscription-window.js';
+import { sessionLaunchFlags } from './production-session-driver.js';
+import { SESSION_WORK_RESIDUAL, sessionWorkPolicy } from './production-session-work.js';
 import type { ProductionProviderIO, ProviderAdapterEvidenceContract, SubscriptionActivationRecord,
   SubscriptionDoorway, SubscriptionDoorwayContract, SubscriptionPolicyBounds } from './production-provider.js';
 
@@ -150,6 +152,11 @@ export function parseCodexEventStream(text: string): CodexTurnFrames {
 export function validateCodexActivation(record: SubscriptionActivationRecord,
   profile: ProviderSubscriptionProfile, model: string, now: number,
   framing: string = CODEX_CONVERSATION_FRAMING, journalEnd?: number): void {
+  checkCodexActivation(record, profile, model, now, encoded(codexSubscriptionPolicyFor(model, framing).policy).hash, journalEnd);
+}
+/** One activation check for every Codex grant: the record binds this exact policy digest. */
+function checkCodexActivation(record: SubscriptionActivationRecord, profile: ProviderSubscriptionProfile,
+  model: string, now: number, policyDigest: string, journalEnd?: number): void {
   ensure(record?.type === 'SubscriptionActivationRecord' && record.schemaVersion === 1,
     'codex activation absent');
   for (const value of [record.reference, record.waiver, record.p11, record.reviewedHead, record.trial,
@@ -165,7 +172,7 @@ export function validateCodexActivation(record: SubscriptionActivationRecord,
   ensure(record.reference === profile.activationReference && record.profileDigest === encoded(profile).hash
     && record.executable === profile.executable && record.artifact === profile.artifact
     && record.version === profile.version && record.version === CODEX_SUBSCRIPTION_VERSION
-    && record.invocationPolicyDigest === encoded(codexSubscriptionPolicyFor(model, framing).policy).hash,
+    && record.invocationPolicyDigest === policyDigest,
   'codex activation artifact or policy differs');
   // `authSource` stays the shared record's one accepted value; the ChatGPT sign-in this route
   // actually observes is the `codex login status` line, checked at every call below.
@@ -176,6 +183,32 @@ export function validateCodexActivation(record: SubscriptionActivationRecord,
   ensure(Array.isArray(record.acceptedResiduals) && record.acceptedResiduals.length > 0
     && record.acceptedResiduals.every(value => typeof value === 'string' && value.length > 0 && value.length <= 1024),
   'codex residuals absent');
+}
+
+/** Part fifteen §5 (docs/19-scheduled-work): the delegated-session grant through the Codex doorway.
+ * Its own framing, so only an activation record naming this exact session policy admits it. */
+export const CODEX_SESSION_FRAMING = 'preview-codex-session-work-v1';
+export const codexSessionPolicy = (model: string) => sessionWorkPolicy({ framing: CODEX_SESSION_FRAMING,
+  framework: 'codex-cli', model, launch: sessionLaunchFlags('codex-cli') });
+export function validateCodexSessionActivation(record: SubscriptionActivationRecord, profile: ProviderSubscriptionProfile,
+  model: string, now: number, journalEnd?: number): void {
+  checkCodexActivation(record, profile, model, now, encoded(codexSessionPolicy(model)).hash, journalEnd);
+  ensure(record.acceptedResiduals.includes(SESSION_WORK_RESIDUAL), 'session work grant does not accept the unconfined residual');
+}
+/** Before every delegated Codex session: the exact executable, the login home's identity and
+ * reviewed configuration, and its sign-in CLASS — subscription only, as for an answer turn. */
+export async function admitCodexSubscriptionSession(input: Readonly<{ profile: ProviderSubscriptionProfile;
+  io: CodexProviderIO; deadline: number; now: () => number }>): Promise<void> {
+  const { profile, io } = input;
+  ensure(io.realpath(profile.executable) === profile.executable
+    && `sha256:${createHash('sha256').update(io.executableBytes(profile.executable)).digest('hex')}` === profile.artifact,
+  'codex executable changed');
+  const observed = io.inspectSubscriptionProfile(profile);
+  ensure(observed.loginProfileIdentity === profile.loginProfileIdentity
+    && observed.managedConfigurationDigest === profile.managedConfigurationDigest,
+  'codex profile or reviewed configuration changed');
+  ensure(io.codexAuthMode?.(profile) === 'chatgpt', 'codex subscription sign-in unconfirmed: a session spends a subscription or nothing');
+  ensure(input.deadline > input.now(), 'session admission deadline exhausted');
 }
 
 /** Rule 30: the Codex subscription model doorway. Subscription sign-in only — this route passes no
@@ -342,5 +375,7 @@ export function codexSubscriptionDoorway(): SubscriptionDoorway {
     policyFor: (model: string, framing: string): SubscriptionPolicyBounds =>
       codexSubscriptionPolicyFor(model, framing).policy,
     validateActivation: validateCodexActivation,
-    create: createCodexSubscriptionRoute });
+    create: createCodexSubscriptionRoute,
+    session: Object.freeze({ framing: CODEX_SESSION_FRAMING, framework: 'codex-cli' as const,
+      validateActivation: validateCodexSessionActivation, admit: admitCodexSubscriptionSession }) });
 }

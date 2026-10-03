@@ -46,12 +46,21 @@ export interface ProductionSessionConfig {
   readonly stopped: () => boolean; readonly resolveIntake: (id: string, digest: string) => string;
   readonly maxSessions: number; readonly turnDeadlineMs: number; readonly readyTimeoutMs: number;
   readonly protectedSessions: readonly string[]; readonly hookScript?: string;
+  /** The exact model the session runs, when a reviewed grant names one; absent, the CLI's own default. */
+  readonly model?: string;
   readonly inboxDirectory?: string; readonly compactGroundingFile?: string;
   /** Must reconstruct complete permitted context from agent-owned records, including both sides of prior turns. */
   readonly continuation?: ((input: Readonly<{ operation: string; claim: string; incarnation: string;
     reason: 'cache-miss' | 'context-wall' }>) => Readonly<{ text: string; source: string }>) | undefined;
 }
 
+/** The flags that make a session unconfined operator-own-use for each harness: every tool, no
+ * permission prompt, no sandbox. Exported so a reviewed grant can bind exactly what it admits. */
+export function sessionLaunchFlags(framework: SessionFramework): readonly string[] {
+  return framework === 'claude-code' ? ['--dangerously-skip-permissions']
+    : ['--dangerously-bypass-approvals-and-sandbox', '-c', 'check_for_update_on_startup=false'];
+}
+const modelPattern = /^[A-Za-z0-9][A-Za-z0-9._-]{0,80}$/u;
 const uuid = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 const namePattern = /^instar20-[a-f0-9]{24}$/;
 const digestOf = (text: string) => `sha256:${createHash('sha256').update(text).digest('hex')}`;
@@ -119,6 +128,8 @@ export function createProductionSessionDriver(config: ProductionSessionConfig): 
     'fixed concurrent session cap required');
   ensure(Number.isSafeInteger(config.turnDeadlineMs) && config.turnDeadlineMs > 0 && config.turnDeadlineMs <= 3_600_000,
     'bounded per-turn deadline required');
+  ensure(config.framework === 'claude-code' || config.framework === 'codex-cli', 'supported session framework required');
+  ensure(config.model === undefined || modelPattern.test(config.model), 'exact session model required');
   ensure(config.executable.startsWith('/') && config.cwd.startsWith('/') && config.home.startsWith('/')
     && config.configHome.startsWith('/'), 'exact executable and absolute paths required');
   if (config.hookScript) ensure(config.hookScript.startsWith('/') && config.inboxDirectory?.startsWith('/')
@@ -215,9 +226,10 @@ export function createProductionSessionDriver(config: ProductionSessionConfig): 
     const reservation: SessionReservation = { name, operation, claim, incarnation, resumeId, recovery,
       startedAt: config.now(), ...(continuation ? { continuation } : {}) };
     config.io.save({ ...currentJournal, reservations: [...(currentJournal.reservations ?? []), reservation] });
+    const model = config.model === undefined ? [] : ['--model', config.model];
     const args = config.framework === 'claude-code'
-      ? [resumeId ? '--resume' : '--session-id', resumeId ?? randomUUID(), '--dangerously-skip-permissions']
-      : [ ...(resumeId ? ['resume', resumeId] : []), '--dangerously-bypass-approvals-and-sandbox', '-c', 'check_for_update_on_startup=false'];
+      ? [resumeId ? '--resume' : '--session-id', resumeId ?? randomUUID(), ...sessionLaunchFlags('claude-code'), ...model]
+      : [ ...(resumeId ? ['resume', resumeId] : []), ...sessionLaunchFlags('codex-cli'), ...model];
     if (config.hookScript && config.framework === 'claude-code') {
       const hook = `node ${JSON.stringify(config.hookScript)}`;
       args.push('--settings', JSON.stringify({ hooks: { Stop: [{ hooks: [{ type: 'command', command: hook }] }],

@@ -8,7 +8,8 @@ import { createClaudeCodeSubscriptionRoute, subscriptionInvocationPolicy, subscr
   SUBSCRIPTION_CONVERSATION_FRAMING, SUBSCRIPTION_CONVERSATION_SYSTEM_PROMPT,
   SUBSCRIPTION_PREVIEW_SYSTEM_PROMPT, SUBSCRIPTION_PREVIEW_EXPIRY, SUBSCRIPTION_PREVIEW_PREDECESSOR_EXPIRY,
   SUBSCRIPTION_THINKING_ENV, subscriptionActivationEndAllowed, subscriptionPolicyFor,
-  validateSubscriptionActivation } from '../../src/assembly/production-provider.js';
+  validateSubscriptionActivation, subscriptionDoorway, subscriptionSessionPolicy } from '../../src/assembly/production-provider.js';
+import { SESSION_WORK_RESIDUAL } from '../../src/assembly/production-session-work.js';
 import type { SubscriptionActivationRecord } from '../../src/assembly/production-provider.js';
 import type { ProviderSubscriptionProfile } from '../../src/assembly/provider-credential-custodian.js';
 import { factsFixture, value } from '../facts/fixtures.js';
@@ -355,3 +356,29 @@ it('re-reads the journal end at every call: a predecessor-end route stops dispat
   // The renewed record runs on the renewed journal (and the governed end is unaffected by the reader).
   expect(createClaudeCodeSubscriptionRoute({ ...input, activation: f.input.activation }).kind).toBe('Success');
 });
+
+it('admits Claude session work only under its own reviewed grant and a live subscription sign-in', async () => {
+  const f = fixture();
+  const session = subscriptionDoorway('claude-code-subscription').session;
+  expect(session.framework).toBe('claude-code');
+  const { profile, activation, io, model } = f.input as unknown as { profile: ProviderSubscriptionProfile;
+    activation: SubscriptionActivationRecord; io: Parameters<typeof session.admit>[0]['io']; model: string };
+  const policy = subscriptionSessionPolicy(model);
+  expect(policy.launch).toEqual(['--dangerously-skip-permissions', '--model', model]);
+  const grant = { ...activation, invocationPolicyDigest: hash(policy), acceptedResiduals: [SESSION_WORK_RESIDUAL] };
+  expect(() => session.validateActivation(grant, profile, model, 1000)).not.toThrow();
+  // The answer activation is not a session grant; a grant without the written residual is refused.
+  expect(() => session.validateActivation(activation, profile, model, 1000)).toThrow(/policy differs/u);
+  expect(() => session.validateActivation({ ...grant, acceptedResiduals: ['other'] }, profile, model, 1000)).toThrow(/unconfined residual/u);
+  await expect(session.admit({ profile, io, deadline: 20_000, now: () => 1000 })).resolves.toBeUndefined();
+  await expect(session.admit({ profile: { ...profile, artifact: 'sha256:changed' }, io, deadline: 20_000, now: () => 1000 }))
+    .rejects.toThrow(/executable changed/u);
+});
+for (const status of [{ authMethod: 'api_key' }, { apiKeySource: 'ANTHROPIC_API_KEY' }, { subscriptionType: 'console' }])
+  it(`refuses a delegated session on status ${JSON.stringify(status)}`, async () => {
+    const f = fixture({ status });
+    const { profile, io } = f.input as unknown as { profile: ProviderSubscriptionProfile;
+      io: Parameters<ReturnType<typeof subscriptionDoorway>['session']['admit']>[0]['io'] };
+    await expect(subscriptionDoorway('claude-code-subscription').session.admit({ profile, io, deadline: 20_000, now: () => 1000 }))
+      .rejects.toThrow(/authentication status refused/u);
+  });
