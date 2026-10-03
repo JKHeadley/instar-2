@@ -241,6 +241,27 @@ export function createSubscriptionProviderIO({ repository, stopped, work = 'answ
   let lastPolicy = null;
   const managedHooksDisabled = profile => { inspectSubscriptionProfile(profile);
     return lastPolicy === null ? null : lastPolicy.some(row => row.settings?.disableAllHooks === true); };
-  return Object.freeze({ ...productionProviderIO, inspectSubscriptionProfile, managedHooksDisabled,
+  /** Rule 30: which sign-in a Codex login home holds — subscription, an API key, or none. Only the
+   * `auth_mode` shape is read and only its CLASS is returned; no token, key or account value is read
+   * into a return value or a message. The Codex CLI prints its sign-in state on STDERR, which the
+   * host's bounded transport does not capture, so this narrow observation is what lets a route
+   * refuse a metered key instead of trusting an exit code that is 0 for both. `null` is unknown,
+   * and unknown is not subscription. */
+  const codexAuthMode = profile => {
+    inspectSubscriptionProfile(profile);
+    const path = join(profile.configDirectory, 'auth.json');
+    if (!existsSync(path)) return 'absent';
+    try {
+      const info = lstatSync(path);
+      if (!info.isFile() || info.size > 65536 || realpathSync(path) !== path) return null;
+      const record = JSON.parse(readFileSync(path, 'utf8'));
+      if (!record || typeof record !== 'object' || Array.isArray(record)) return null;
+      if (typeof record.OPENAI_API_KEY === 'string' && record.OPENAI_API_KEY.length > 0) return 'apikey';
+      if (record.auth_mode === 'chatgpt' && record.tokens && typeof record.tokens === 'object') return 'chatgpt';
+      if (record.auth_mode === 'apikey') return 'apikey';
+      return null;
+    } catch { return null; }
+  };
+  return Object.freeze({ ...productionProviderIO, inspectSubscriptionProfile, managedHooksDisabled, codexAuthMode,
     execute: input => productionProviderIO.execute({ ...input, stopped }, work) });
 }

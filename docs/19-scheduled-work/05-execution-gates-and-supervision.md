@@ -121,4 +121,29 @@ enclosing execution. Durable work survives disposable turns and resumes only und
 ownership and resource authority. The preview's tool turn delegates nothing: its launch removes every
 subagent and workflow tool, so the commands it runs are ordinary subprocesses of that turn's launch.
 
+**Rule — long and scheduled work runs as a delegated session, and the result file is its exit
+test.** Rules 60, 61, 68, 102 and 114; **checks:**
+`tests/assembly/production-session-work.test.ts`, `tests/e2e/session-work-live.test.ts` and
+P15-NF-21. A due work step may run as a full harness session instead of one bounded model call.
+Its Rule 114 edge is recorded durably BEFORE the child session exists, naming the scope, the
+owner, the authority this step was granted, its budget, its exit test, its placement, its transport
+and its result destination; every path out of the step — a result, a failure, an interruption, a
+launch that never happened — writes exactly one close for that edge, so a delegation is never a
+session nobody owns. The destination file is the exit test, not a terminal heuristic: a result is
+taken only when it is non-empty, within the declared byte bound and unchanged across two reads one
+poll apart, and any leftover at that destination is removed before the step is delivered. An idle-
+prompt classifier is per-harness — one real session harness keeps placeholder text on its prompt
+line throughout a turn — so a step whose completion depended on it would run to its deadline while
+its work sat finished on disk. A step that cannot be observed, is interrupted, or ends without a
+result is uncertain, never reported as done.
+
+**Rule — a session step's bound is time, size and step count, because its tokens are not
+observable.** Rules 60, 61 and 75; **checks:** the same two cases. One step runs at a time, under a
+finite wall-clock deadline, a finite result-size bound and a finite per-launch step ceiling; the
+driver holds its own concurrent-session cap and per-turn deadline, and the launch's single stop
+authority ends an open step. A subscription session reports no token meter, so the recorded budget
+states its token bound as absent rather than inventing one, and the step is accounted as one call
+with unknown usage. A caller that needs a token bound uses a metered route instead; no surface may
+present a session step's usage as measured.
+
 ---

@@ -64,12 +64,22 @@ it('R105 derives the parity matrix from the register declarations and refuses a 
   // exact composition (the static import closure of its declared entry points), the resolved runtime and the conformance digest. The journal runner's conversation case is not the shared
   // full-port contract, so its tuple is unproven (with its reason), as are the cells no captured case covers.
   expect(NATIVE_HARNESS).toBe('preview-self-host-native');
-  expect(matrix.harnessTuples.find(tuple => tuple.harness === NATIVE_HARNESS)).toMatchObject({ mode: 'self-hosting', status: 'supported',
+  const native = (doorway: string) => matrix.harnessTuples.find(tuple => tuple.harness === NATIVE_HARNESS && tuple.doorway === doorway);
+  expect(native('claude-code-subscription')).toMatchObject({ mode: 'self-hosting', status: 'supported',
     doorway: 'claude-code-subscription', platform: 'darwin',
     artifact: ['createSelfHostHarness@tests/preview/self-host-harness.mjs'], route: ['claude-code-subscription@src/assembly/production-provider.ts'],
     runtime: [currentRuntime()], conformance: [expect.stringMatching(/^sha256:[a-f0-9]{64}$/u)],
     entries: ['tests/preview/self-host.mjs,scripts/slice-ts-loader.mjs,deploy/macos/fixed-worker/worker.sb'],
     evidence: [{ file: 'tests/preview/native-harness-contract.test.ts', title: 'native composition honours the harness contract through doorway claude-code-subscription' }] });
+  // The registered Codex doorway carries its own native tuple, and it is honestly unproven: the
+  // doorway answers and drives session work, but the full harness contract has not been run against
+  // it. A `supported` claim there would be the one thing Rule 115's check exists to refuse.
+  expect(native('codex-cli-subscription')).toMatchObject({ mode: 'self-hosting', status: 'unproven',
+    platform: 'darwin', reason: expect.stringContaining('has not been run against it') });
+  expect(native('codex-cli-subscription')!.evidence).toBeUndefined();
+  // The session harness's own Codex tuple names the registered route it now has.
+  expect(matrix.harnessTuples.find(tuple => tuple.harness === 'session-harness:codex-cli'))
+    .toMatchObject({ doorway: 'codex-cli-subscription', status: 'unproven' });
   const journal = matrix.harnessTuples.filter(tuple => tuple.harness === 'preview-journal-native');
   expect(journal.find(tuple => tuple.mode === 'conversation')).toMatchObject({ status: 'unproven', reason: expect.stringContaining('not the shared full-port contract') });
   expect(journal.find(tuple => tuple.mode === 'ordinary-exhaustion-recovery')).toMatchObject({ status: 'unproven' });

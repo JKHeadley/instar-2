@@ -1,15 +1,41 @@
 [
   {
+    "revision": 4,
+    "date": "2026-10-03",
+    "status": "draft",
+    "cause": {
+      "kind": "draft",
+      "note": "Unit w4-sessiondriver: the registered Codex model doorway, its subscription-only sign-in evidence, and the session harness's startup-menu stall class (plan rows #399/#401; Justin's 2026-10-03 10:45 re-grounding, pillar (b) any framework). No constitution change."
+    },
+    "changes": [
+      {
+        "what": "\u00a79 gains the rule that the registered Codex model doorway answers only a tool-free completed turn: the terminal event, one agent message within bounds, every item an agent message or reasoning, no unreadable line; a completed turn that ran a command is refused, a failed turn carries the provider's own reason, and an unexplained outcome stays uncertain. The invocation passes and sets no API key.",
+        "why": "The harness always has a shell, so a tool-free answer cannot be a launch flag; it has to be enforced after the fact on the recorded stream. Codex was previously unsupported with no registered route, so a root configured for it could not answer at all.",
+        "ref": "src/assembly/production-codex-provider.ts; tests/assembly/production-codex-provider.test.ts; tests/preview/codex-recorded-frames.json; tests/e2e/codex-answer-live.test.ts; LIVE-PATH-PLAN.md rows #399, #401"
+      },
+      {
+        "what": "\u00a79 gains the rule that which sign-in a Codex login home holds is observed through a narrow host reading of its sign-in CLASS, never inferred from an exit code, and that the signed-in account is not observable from this harness at all \u2014 so it stays an operator assertion with attestation strength, and the profile's configuration digest is named as a change detector rather than an observation of this harness's managed policy.",
+        "why": "`codex login status` exits zero for a subscription AND for an API key and states which only on standard error, which the host's bounded transport does not capture; without the class observation the subscription-only promise would rest on an exit code that cannot keep it.",
+        "ref": "src/assembly/production-codex-provider.ts; scripts/production-boot-io.mjs (codexAuthMode); tests/assembly/production-codex-provider.test.ts"
+      },
+      {
+        "what": "\u00a79 gains the rule that a session harness's startup menu is an enumerated silent-stop class removed at setup \u2014 the host declares its own scratch work scope trusted in the session's login home \u2014 and is never answered on the operator's behalf.",
+        "why": "A Codex session launched in an untrusted directory shows a directory-trust menu before its prompt; the session driver correctly refuses a startup menu, so without the setup remedy a long work step could not start.",
+        "ref": "tests/e2e/session-work-live.test.ts; src/assembly/production-session-driver.ts (classifyPaneReadiness)"
+      }
+    ]
+  },
+  {
     "revision": 3,
     "date": "2026-10-03",
     "status": "draft",
     "cause": {
       "kind": "draft",
-      "note": "Unit w4-toolsreal repair, review round 1 (Astra, VERDICT NO): the §9 boundary text made true to the repaired route. No constitution change."
+      "note": "Unit w4-toolsreal repair, review round 1 (Astra, VERDICT NO): the \u00a79 boundary text made true to the repaired route. No constitution change."
     },
     "changes": [
       {
-        "what": "§9 scoped-tool rule: the hook no longer judges a command by its words; the sandbox refuses reads from the filesystem root down except the turn scratch volume and the runtime system files, writes outside that volume, network, unix sockets and signals to other processes; the workspace and all shell and harness temporary files live on a fixed-size volume; the per-step call count is allocated atomically.",
+        "what": "\u00a79 scoped-tool rule: the hook no longer judges a command by its words; the sandbox refuses reads from the filesystem root down except the turn scratch volume and the runtime system files, writes outside that volume, network, unix sockets and signals to other processes; the workspace and all shell and harness temporary files live on a fixed-size volume; the per-step call count is allocated atomically.",
         "why": "Review round 1 findings 1-4: the old read list left unlisted paths readable, concurrent hooks exceeded the call cap, shell writes had no aggregate ceiling, and the keyword classifier refused harmless data while admitting scripts unexamined.",
         "ref": "lanes/astra-unit-w4-toolsreal-review.md; lanes/w4-toolsreal-PROGRESS.md (Pipeline repair); LIVE-PATH-PLAN.md row #367"
       }
@@ -25,7 +51,7 @@
     },
     "changes": [
       {
-        "what": "§9 gains the preview scoped-tool rule (Read, Write, Edit, Glob, Grep and Bash through the reused harness under the demonstrated boundary of admission hook, sandbox and clean environment; whole-liability call reservation; journaled trace; existing reply path) and the tool-grant rule (scope, custodian, withdrawal within the declared cancellation bound).",
+        "what": "\u00a79 gains the preview scoped-tool rule (Read, Write, Edit, Glob, Grep and Bash through the reused harness under the demonstrated boundary of admission hook, sandbox and clean environment; whole-liability call reservation; journaled trace; existing reply path) and the tool-grant rule (scope, custodian, withdrawal within the declared cancellation bound).",
         "why": "Replaces the proposed non-governed full-tool mode the ruling rejected (MF2-MF5) with its replacement text, adapted to the route the w4-toolsreuse spike proved.",
         "ref": "lanes/astra-fulltool-ruling.md (replacement text); lanes/w4-toolsreuse-PROGRESS.md (proven configuration); lanes/w4-toolsreal-PROGRESS.md; LIVE-PATH-PLAN.md rows #358, #363, #367"
       }

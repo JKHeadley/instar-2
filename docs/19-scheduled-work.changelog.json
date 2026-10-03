@@ -1,5 +1,26 @@
 [
   {
+    "revision": 4,
+    "date": "2026-10-03",
+    "status": "draft",
+    "cause": {
+      "kind": "draft",
+      "note": "Unit w4-sessiondriver: long and scheduled work becomes a delegated harness session with its Rule 114 edge and honest bounds (plan rows #399/#401). No constitution change."
+    },
+    "changes": [
+      {
+        "what": "\u00a75 gains the rule that long and scheduled work may run as a full delegated harness session, with its Rule 114 edge recorded before the child exists and exactly one close on every path out, and that the declared result file \u2014 non-empty, within its byte bound and unchanged across two reads one poll apart, with any leftover removed first \u2014 is the exit test rather than a per-harness idle-prompt classifier.",
+        "why": "The session driver existed but nothing called it, so no durable work item could run as a real session; and one real session harness keeps placeholder text on its prompt line throughout a turn, so a step whose completion depended on that classifier would run to its deadline with its work already finished on disk.",
+        "ref": "src/assembly/production-session-work.ts; tests/assembly/production-session-work.test.ts; tests/e2e/session-work-live.test.ts; tests/preview/journal.ts (workObligations, session-work record); LIVE-PATH-PLAN.md rows #399, #401"
+      },
+      {
+        "what": "\u00a75 gains the rule that a session step is bounded by time, result size and a per-launch step ceiling, one step at a time under the launch's single stop authority, and that its recorded budget states its token bound as ABSENT because a subscription session reports no token meter \u2014 with a caller needing a token bound directed to a metered route.",
+        "why": "Rule 60's ceiling has to be stated in units that are actually observable here; recording an invented token budget would be a measured claim nobody can check.",
+        "ref": "src/assembly/production-session-work.ts; tests/assembly/production-session-work.test.ts"
+      }
+    ]
+  },
+  {
     "revision": 3,
     "date": "2026-10-03",
     "status": "draft",
@@ -9,7 +30,7 @@
     },
     "changes": [
       {
-        "what": "§5 gains the rule that every delegated session, including one started inside a turn, has its Rule 114 run edge, that subprocesses stay owned by their enclosing execution, and that the preview's tool turn delegates nothing.",
+        "what": "\u00a75 gains the rule that every delegated session, including one started inside a turn, has its Rule 114 run edge, that subprocesses stay owned by their enclosing execution, and that the preview's tool turn delegates nothing.",
         "why": "Replaces the proposed in-turn subagent exemption the ruling rejected (MF6).",
         "ref": "lanes/astra-fulltool-ruling.md (replacement text); lanes/w4-toolsreuse-PROGRESS.md (proven configuration); lanes/w4-toolsreal-PROGRESS.md; LIVE-PATH-PLAN.md rows #358, #363, #367"
       }

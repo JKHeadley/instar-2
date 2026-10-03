@@ -3,13 +3,12 @@
 // physical ports. The worker owns all durable conversation/effect transitions.
 import { createHash, randomBytes } from 'node:crypto';
 import { execFileSync } from 'node:child_process';
-import { existsSync, lstatSync, mkdirSync, readdirSync, readFileSync, realpathSync, renameSync, writeFileSync } from 'node:fs';
+import { existsSync, lstatSync, mkdirSync, readdirSync, readFileSync, realpathSync, renameSync, rmSync, writeFileSync } from 'node:fs';
 import { dirname, resolve, join } from 'node:path';
 import { createProductionTelegramIO, createSubscriptionProviderIO, productionStorageIO } from '../../scripts/production-boot-io.mjs';
 import { openProductionStorage } from '../../src/assembly/production-storage.js';
-import { DEFAULT_SUBSCRIPTION_DOORWAY, subscriptionDoorway, SUBSCRIPTION_CONVERSATION_FRAMING,
-  subscriptionConversationPolicy, SUBSCRIPTION_PREVIEW_EXPIRY, validateSubscriptionActivation,
-  SUBSCRIPTION_TOOLS_FRAMING, SUBSCRIPTION_TOOLS_SYSTEM_PROMPT, subscriptionToolsPolicy } from '../../src/assembly/production-provider.js';
+import { DEFAULT_SUBSCRIPTION_DOORWAY, subscriptionDoorway,
+  SUBSCRIPTION_PREVIEW_EXPIRY, SUBSCRIPTION_TOOLS_SYSTEM_PROMPT } from '../../src/assembly/production-provider.js';
 import { runToolTurn, toolPacketFits, toolStatusLines, toolTurnEligible } from './tool-turn.mjs';
 import { redact } from '../../src/recall/redact.js';
 import { durablePreviewWrite } from './durable-write.js';
@@ -90,6 +89,10 @@ import { auditJournal } from './journal-audit.mjs';
 
 import { memoryReport } from './memory-export.js';
 
+import { createProductionSessionDriver } from '../../src/assembly/production-session-driver.js';
+import { createSessionWorkPort } from '../../src/assembly/production-session-work.js';
+// @ts-expect-error physical JS host is intentionally outside the pure core
+import { createProductionSessionIO } from '../../scripts/production-session-io.mjs';
 import { stepQuestions } from './step-check.js';
 import { RETROSPECTIVE_QUESTION, benchmarkReruns, disciplineSource, feedbackDispositions, latestGrades, openFindings, owedCases, passAccounting, pendingGrades, promotedCases, replyContextDigest, rerunDispositions, rerunsDue, retroAnswerBudget, standingGrantCandidates } from './retrospective.js';
 
@@ -146,12 +149,34 @@ const renewalActivationOf = (options, view) => expires => {
   if (path === undefined) return null;
   const bytes = readFileSync(path, 'utf8'), activation = JSON.parse(bytes), now = wallNow();
   const profile = Object.freeze(JSON.parse(readFileSync(required(options, 'login-profile'), 'utf8')));
-  validateSubscriptionActivation(activation, profile, required(options, 'model'), now, SUBSCRIPTION_CONVERSATION_FRAMING);
+  const renewalDoorway = subscriptionDoorway(options.doorway ?? DEFAULT_SUBSCRIPTION_DOORWAY);
+  renewalDoorway.validateActivation(activation, profile, required(options, 'model'), now, renewalDoorway.conversationFraming);
   requireAuthority(options, activation, path, view(), now);
   if (activation.expiresAt !== expires || !activationMatchesJournal(view(), activation, expires)) return null;
   return `sha256:${createHash('sha256').update(bytes, 'utf8').digest('hex')}`;
 };
 const required = (options, name) => { if (!options[name]) throw Error(`preview: missing --${name}`); return options[name]; };
+/** Rules 60, 114 (Part fifteen §5): the delegated-session path for long and scheduled work. All
+ * five arguments go together; with none, work stays on the one-call route exactly as before. The
+ * session runs the operator's own harness unconfined under its own HOME and login home, in a
+ * working directory under the root that is also where it writes its result. */
+const sessionWorkOf = options => {
+  const names = ['session-work-framework', 'session-work-executable', 'session-work-home',
+    'session-work-config-home', 'session-work-steps'];
+  const given = names.filter(name => options[name] !== undefined);
+  if (!given.length) return null;
+  if (given.length !== names.length) throw Error(`preview: ${names.map(name => `--${name}`).join(', ')} go together`);
+  for (const name of ['session-work-executable', 'session-work-home', 'session-work-config-home'])
+    if (!options[name].startsWith('/')) throw Error(`preview: --${name} must be an absolute path`);
+  return { framework: options['session-work-framework'], executable: options['session-work-executable'],
+    home: options['session-work-home'], configHome: options['session-work-config-home'],
+    maxSteps: number(options['session-work-steps'], 'session-work-steps', 1, 64),
+    deadlineMs: number(options['session-work-deadline-seconds'] ?? '600', 'session-work-deadline-seconds', 30, 3600) * 1000,
+    turnDeadlineMs: number(options['session-work-turn-seconds'] ?? '600', 'session-work-turn-seconds', 30, 3600) * 1000,
+    maxSessions: number(options['session-work-max-sessions'] ?? '1', 'session-work-max-sessions', 1, 16),
+    tmux: options['session-work-tmux'] ?? '/opt/homebrew/bin/tmux' };
+};
+
 const number = (value, name, minimum = 1, maximum = Number.MAX_SAFE_INTEGER) => {
   const n = Number(value); if (!Number.isSafeInteger(n) || n < minimum || n > maximum) throw Error(`preview: invalid ${name}`); return n;
 };
@@ -588,6 +613,10 @@ async function main() {
   }
   // Rules 30, 59: an unregistered doorway or an incomplete silent-stop table refuses the launch.
   if (command === 'run') { admitHarness(); subscriptionDoorway(options.doorway ?? DEFAULT_SUBSCRIPTION_DOORWAY); }
+  // Rule 30: every activation check, policy bound and route construction below goes through the
+  // selected doorway, so a root configured for another registered doorway runs on that doorway's
+  // CLI, model shape and parser instead of the first one that happened to be written here.
+  const doorway = subscriptionDoorway(options.doorway ?? DEFAULT_SUBSCRIPTION_DOORWAY);
 
   const root = resolve(required(options, 'root'));
   if (command === 'run') mkdirSync(root, { recursive: true, mode: 0o700 });
@@ -1101,7 +1130,7 @@ async function main() {
       const bytes = readFileSync(required(options, 'activation-record'), 'utf8');
       const activation = JSON.parse(bytes);
       const profile = Object.freeze(JSON.parse(readFileSync(required(options, 'login-profile'), 'utf8')));
-      validateSubscriptionActivation(activation, profile, required(options, 'model'), now, SUBSCRIPTION_CONVERSATION_FRAMING);
+      doorway.validateActivation(activation, profile, required(options, 'model'), now, doorway.conversationFraming);
       const granted = requireAuthority(options, activation, required(options, 'activation-record'), renewJournal.view, now);
       if (!activationMatchesJournal(renewJournal.view, activation, expiry(required(options, 'expires-at'))))
         throw Error('preview: activation differs from journal');
@@ -1424,7 +1453,8 @@ async function main() {
     }
     serviceBeat(true, 'claimed');
     // Part Thirteen §9 (docs/17-harness-adapters): the tool route's room is the larger of the packet limit and its policy's prompt bound.
-    const toolPromptLimit = () => Math.max(journal.view.limits.maxBytes, subscriptionToolsPolicy(required(options, 'model')).maxPromptBytes);
+    const toolPromptLimit = () => Math.max(journal.view.limits.maxBytes,
+      doorway.policyFor(required(options, 'model'), doorway.toolsFraming ?? doorway.conversationFraming).maxPromptBytes);
     const modelEnvelope = input => {
       const bytes = prepareJournalEnvelope(input, required(options, 'model'), g.grant, wallNow(), journal.view.limits.maxBytes);
       // A tool turn's longer system prompt must fit that room too; an overflow here makes the packet ladder yield, as
@@ -1499,7 +1529,8 @@ async function main() {
     };
     // model-call-boundary:end
     const invokeSubscription = async (prepared, id, reviewTurnId, deadlineAt, toolTurn) => {
-      const policy = toolTurn ? subscriptionToolsPolicy(required(options, 'model')) : subscriptionConversationPolicy(required(options, 'model'));
+      const policy = doorway.policyFor(required(options, 'model'),
+        toolTurn ? doorway.toolsFraming ?? doorway.conversationFraming : doorway.conversationFraming);
       const deadline = Math.min(journal.view.expires, deadlineAt ?? wallNow() + policy.timeout + 60000);
       if (deadline - wallNow() <= 100) throw Error('preview: reply check budget exceeded');
       const result = await callSubscription(judgmentOf(id), prepared, id, { operation: id, deadline,
@@ -1558,6 +1589,38 @@ async function main() {
       return [missing.length ? `Past a cap: limited answers are not available (missing: ${missing.join(', ')}). Messages are kept. To clear: ${minimalRepair(missing)}.`
         : 'Past a cap: each kept message gets one limited answer from the reserve.'];
     };
+    // Rules 60, 61, 114: long and scheduled work runs as a delegated session when the root is
+    // configured for one. The journal records the parent-child edge and its close; the driver holds
+    // the session cap, the per-turn deadline and the one stop authority this launch already has.
+    const sessionWorkSetup = sessionWorkOf(options);
+    const sessionWork = sessionWorkSetup === null ? null : (() => {
+      const scope = join(root, 'session-work');
+      mkdirSync(scope, { recursive: true, mode: 0o700 });
+      mkdirSync(sessionWorkSetup.home, { recursive: true, mode: 0o700 });
+      mkdirSync(sessionWorkSetup.configHome, { recursive: true, mode: 0o700 });
+      const physical = createProductionSessionIO({ stateDirectory: join(root, 'session-work-state'),
+        tmuxPath: sessionWorkSetup.tmux, home: sessionWorkSetup.home,
+        configHome: sessionWorkSetup.configHome, cwd: scope });
+      const stoppedNow = () => workerStop.value || existsSync(stopPath) || !ownerHeld()
+        || journal.view.stop !== null || wallNow() >= journal.view.expires;
+      return take(createSessionWorkPort({
+        createDriver: resolveIntake => createProductionSessionDriver({ operatorOwnUse: true, confinement: 'unconfined',
+          framework: sessionWorkSetup.framework, executable: sessionWorkSetup.executable, cwd: scope,
+          home: sessionWorkSetup.home, configHome: sessionWorkSetup.configHome, context,
+          io: physical, now: wallNow, stopped: stoppedNow, resolveIntake,
+          maxSessions: sessionWorkSetup.maxSessions, turnDeadlineMs: sessionWorkSetup.turnDeadlineMs,
+          readyTimeoutMs: 30000, protectedSessions: [] }),
+        io: { readResult: path => { try { return readFileSync(path, 'utf8'); } catch { return null; } },
+          clearResult: path => { try { rmSync(path, { force: true }); } catch { /* a stale result refuses the step below */ } },
+          wait: delay },
+        context, now: wallNow, stopped: stoppedNow,
+        append: record => journal.append({ kind: 'session-work', record, at: wallNow() }),
+        parent: `launch:${conversationOf(g)}`, owner: ownerMachine, placement: `machine:${ownerMachine}`,
+        transport: 'tmux session on this machine', workingScope: scope, resultDirectory: scope,
+        artifact: `doorway:${doorway.id}`, incarnation: String(launchedAt ?? wallNow()),
+        deadlineMs: sessionWorkSetup.deadlineMs, pollMs: 500, maxResultBytes: 65536,
+        maxSteps: sessionWorkSetup.maxSteps }));
+    })();
     const approvalSurface = approvalSurfaceOf(options);
     const yesInstallation = explicitYesInstallationOf(options), reviewSource = reviewSourceOf(options, yesInstallation);
     // Plan #373: how long an operator request stays answerable (default 18 hours), never past the trial's current end.
@@ -1573,6 +1636,17 @@ async function main() {
       // Part Thirteen §9: the packet names the tools exactly when the model call will run on the tool route. The packet
       // is built before the answer's `reserve` or the work's `obligation-start` counts its base call, so that call is added here.
       toolRoute: id => toolsActive() && toolTurnEligible(id) && toolPacketFits(journal.view),
+      // Only scheduled obligation work is delegated; an operator answer is never handed to a session.
+      ...(sessionWork === null ? {} : {
+        sessionRoute: id => id.startsWith('obligation:') && sessionWork.available(),
+        sessionWork: async ({ question, context: packet, id }) => {
+          const outcome = await sessionWork.run({ operation: id.replaceAll(':', '-'),
+            claim: `session-work-${conversationOf(g)}`, question, context: packet,
+            authority: 'one scheduled work step for the verified operator: the operator\'s own tools, no outbound send, result returned by file' });
+          if (outcome.state === 'complete') return { state: 'complete', text: outcome.text, usage: { inputTokens: null, outputTokens: null, charge: null } };
+          if (outcome.state === 'failed') return { state: 'complete', failureClass: 'malformed' };
+          return { state: 'uncertain' };
+        } }),
       // Rule 44: an installed update rides operator packets until a sent answer's recorded prompt carried it.
       installedUpdate: () => installUpdate && !updateDelivery(installUpdate, journal.view.order) ? updatePacketItem(installUpdate) : null,
       // Rules 8, 56, 100: due credential reminder stages and a failing doorway check ride the next answer as one line.
@@ -1734,7 +1808,7 @@ async function main() {
     const activationBytes = readFileSync(activationPath, 'utf8');
     const activation = JSON.parse(activationBytes), profile = Object.freeze(JSON.parse(readFileSync(required(options, 'login-profile'), 'utf8')));
     active = () => { try { return readFileSync(activationPath, 'utf8') === activationBytes; } catch { return false; } };
-    validateSubscriptionActivation(activation, profile, required(options, 'model'), wallNow(), SUBSCRIPTION_CONVERSATION_FRAMING, journal.view.expires);
+    doorway.validateActivation(activation, profile, required(options, 'model'), wallNow(), doorway.conversationFraming, journal.view.expires);
     requireAuthority(options, activation, activationPath, journal.view, wallNow());
     if (!activationMatchesJournal(journal.view, activation)) throw Error('preview: activation differs from journal');
     // Part Thirteen §9 (docs/17-harness-adapters): the scoped-tool answer route exists only under its own reviewed activation record,
@@ -1742,8 +1816,11 @@ async function main() {
     // text-only. Changing or removing the file withdraws it: no new tool turn starts, and a live one ends.
     const toolsActivationPath = options['tools-activation'];
     if (toolsActivationPath !== undefined) {
+      // A doorway that serves no scoped-tool framing has no tool route: the option is refused
+      // rather than silently validated against another doorway's reviewed policy.
+      if (doorway.toolsFraming === null) throw Error(`preview: doorway ${doorway.id} serves no scoped-tool answer framing`);
       const toolsBytes = readFileSync(toolsActivationPath, 'utf8'), toolsActivation = JSON.parse(toolsBytes);
-      validateSubscriptionActivation(toolsActivation, profile, required(options, 'model'), wallNow(), SUBSCRIPTION_TOOLS_FRAMING, journal.view.expires);
+      doorway.validateActivation(toolsActivation, profile, required(options, 'model'), wallNow(), doorway.toolsFraming, journal.view.expires);
       requireAuthority(options, toolsActivation, toolsActivationPath, journal.view, wallNow());
       if (!activationMatchesJournal(journal.view, toolsActivation)) throw Error('preview: tool activation differs from journal');
       toolsRecord = toolsActivation;
@@ -2018,9 +2095,10 @@ async function main() {
     function modelRoute(operation, toolTurn) {
       if (!active() || workerStop.value || existsSync(stopPath)) throw Error('preview: activation stopped');
       if (toolTurn && !toolsActive()) throw Error('preview: tool activation withdrawn');
-      const policy = toolTurn ? subscriptionToolsPolicy(options.model) : subscriptionConversationPolicy(options.model);
-      // Rule 30: the doorway is selected by its registered id; its parser and terminal contract stay in the adapter.
-      const doorway = subscriptionDoorway(options.doorway ?? DEFAULT_SUBSCRIPTION_DOORWAY);
+      // Rule 30: the doorway was selected by its registered id above; its parser, terminal contract,
+      // framings and invocation policy stay in the adapter that owns them.
+      const framing = toolTurn ? doorway.toolsFraming ?? doorway.conversationFraming : doorway.conversationFraming;
+      const policy = doorway.policyFor(options.model, framing);
       const contract = { reference: activation.reference, version: activation.profileDigest,
         ...doorway.contract, successfulFinalReplyReasons: [...doorway.contract.successfulFinalReplyReasons],
         endpoint: profile.loginProfileIdentity,
@@ -2045,13 +2123,13 @@ async function main() {
       const io = observedSubscriptionIO(physicalIO, policy, operation, row => journal.append(row),
         { elapsed: () => performance.now(), at: wallNow });
       return take(doorway.create({ context, credential: secretRef(profile.reference), profile,
-        resolveProfile: () => profile, provider: 'anthropic', model: options.model, route: 'preview-subscription',
+        resolveProfile: () => profile, provider: doorway.provider, model: options.model, route: 'preview-subscription',
         disclosure: 'Subscription preview; charge UNKNOWN', activation: toolTurn ? toolsRecord : activation,
-        framing: toolTurn ? SUBSCRIPTION_TOOLS_FRAMING : SUBSCRIPTION_CONVERSATION_FRAMING, ...(toolTurn ? { toolTurn } : {}),
+        framing, ...(toolTurn ? { toolTurn } : {}),
         journalEnd: () => journal.view.expires, io,
         now: wallNow, active: () => !workerStop.value && !existsSync(stopPath) && active() && !journal.view.stop,
         adapterEvidenceContract: contract,
-        ...(journal.view.limits.maxBytes > subscriptionConversationPolicy(options.model).maxPromptBytes
+        ...(journal.view.limits.maxBytes > doorway.policyFor(options.model, doorway.conversationFraming).maxPromptBytes
           ? { raisedPromptBytes: journal.view.limits.maxBytes, promptAuthority: journal.view.capAuthority } : {}) }));
     }
   } catch (error) { if (!signalled) { startupFailure = error; throw error; } }

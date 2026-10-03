@@ -29,6 +29,7 @@ import { unlabeledRecall } from './answer-provenance.js';
 import { interpretStepJev, stepQuestionFor, stepQuestionsFor, type StepCheckResult } from './step-check.js';
 import type { Directive, VerifiedPrincipal } from '../../src/index.js';
 import { shouldRunScheduledPriority } from '../../src/scheduled/shedding.js';
+import type { SessionWorkEdge, SessionWorkEdgeClose } from '../../src/assembly/production-session-work.js';
 import type { ExhaustionAvenue } from '../../src/rungraph/index.js';
 import { consumeResult } from '../../src/index.js';
 import type { BoundaryContext, Hash, RegisterGenerationReference, Result, Scope } from '../../src/index.js';
@@ -1018,6 +1019,13 @@ export type JournalRecord =
   | { kind: 'reply-check'; id: string; result: ReplyCheckResult; at: number }
   /** Rules 8, 22, 92, 99, 102: one scheduled piece of work on a due obligation, started at most once per slot. */
   | { kind: 'obligation-start'; obligation: string; slot: number; maxInputTokens?: number; maxOutputTokens?: number; at: number }
+  /** Rules 60, 114: one delegated-session edge, or that same edge's settled close. The edge is
+   * recorded before the child session exists and the close on every path out, so a delegation is
+   * never a session nobody owns. Its loss detector is replay: an obligation-result whose step ran
+   * as a session with no edge before it, or an edge with no close and no later launch, is visible
+   * in the journal. The view holds nothing from it — the obligation's own result carries the
+   * operational state — so this row is an audit fact, validated here and never acted on. */
+  | { kind: 'session-work'; record: SessionWorkEdge | SessionWorkEdgeClose; at: number }
   | { kind: 'obligation-result'; obligation: string; slot: number; outcome: ObligationOutcome; report?: string; note?: string;
     assessment?: BlockerAssessment;
     waitsOn?: 'operator' | 'external'; recheckAt?: number; usage?: ModelUsage; at: number }
@@ -1975,6 +1983,27 @@ function projectObligationWork(view: JournalView, row: Extract<JournalRecord, { 
     if (row.assessment !== undefined) { note.avenues = row.assessment.avenues; note.constraint = row.assessment.constraint; }
     if (row.recheckAt !== undefined) note.recheckAt = row.recheckAt;
   }
+}
+/** Rules 2, 60, 114: a delegated-session edge or close is accepted only complete and bounded. It
+ * mutates no view state, so a malformed row is refused here rather than stored unread. */
+export function validateSessionWorkRow(record: SessionWorkEdge | SessionWorkEdgeClose): void {
+  const text = (value: unknown, max: number) => typeof value === 'string' && value.trim().length > 0 && value.length <= max;
+  const stamp = (value: unknown) => typeof value === 'number' && Number.isSafeInteger(value) && value > 0;
+  if (record?.type === 'SessionWorkEdge') {
+    if (record.schemaVersion !== 1 || ![record.id, record.parent, record.child, record.scope, record.owner,
+      record.authority, record.exitTest, record.placement, record.transport, record.resultDestination]
+      .every(value => text(value, 1024))
+      || record.budget?.steps !== 1 || !stamp(record.budget.deadline) || record.budget.tokens !== null
+      || !Number.isSafeInteger(record.budget.maxResultBytes) || record.budget.maxResultBytes <= 0
+      || !stamp(record.openedAt)) throw Error('preview journal: session work edge incomplete');
+    return;
+  }
+  if (record?.type !== 'SessionWorkEdgeClose' || record.schemaVersion !== 1
+    || !text(record.id, 1024) || !text(record.edge, 1024) || !text(record.detail, 2048) || !text(record.evidence, 1024)
+    || (record.child !== null && !text(record.child, 1024))
+    || !['complete', 'uncertain', 'failed'].includes(record.state)
+    || (record.resultBytes !== null && (!Number.isSafeInteger(record.resultBytes) || record.resultBytes < 0))
+    || !stamp(record.closedAt)) throw Error('preview journal: session work close incomplete');
 }
 /** Measured capacity for scheduled obligation work (the existing 1.x priority brake): it runs as medium-priority
  * work, so it yields once three quarters of the recorded model-call allowance is used and never takes the last calls
@@ -3036,6 +3065,7 @@ function project(view: JournalView, row: JournalRecord, system?: SystemCheck, ad
       summaryCount: view.summaries.length, closedCount: view.closed.size }; return;
   }
   if (row.kind === 'obligation-start' || row.kind === 'obligation-result') { projectObligationWork(view, row); return; }
+  if (row.kind === 'session-work') { validateSessionWorkRow(row.record); return; }
   if (row.kind === 'summary-candidate') {
     if (!view.summaryReservations.has(row.through) || view.summaryCandidates.has(row.through))
       throw Error('preview journal: summary candidate order');
@@ -4366,6 +4396,15 @@ export interface PreviewPorts {
   prepareModel?(input: { question: string; context: string; id: string; writer?: SessionWriter }): string;
   /** Part Thirteen §9: whether the model call for `id` runs on the scoped-tool route; its packet then names the tools. */
   toolRoute?(id: string): boolean;
+  /** Rules 60, 114 (Part fifteen §5): whether the work step for `id` runs as a delegated SESSION —
+   * a full harness session the runner launches, observes and collects a result from — instead of one
+   * bounded model call. The runner answers true only when it has a session work port that is
+   * available (not stopped, nothing in flight, steps left). */
+  sessionRoute?(id: string): boolean;
+  /** The delegated session step. It returns the same shapes as `model`, so a session result and a
+   * one-shot result settle the obligation through exactly one reader. Only long and scheduled work
+   * is routed here; an operator answer is never delegated to a session. */
+  sessionWork?(input: { question: string; context: string; id: string }): ReturnType<PreviewPorts['model']>;
   model(input: { question: string; context: string; id: string; prepared?: string }): Promise<string | {state?: 'complete'; text:string;
     usage: ModelUsage; /** The Decision's separately stated reason claim (Rule 108), kept beside its conclusion. */ reason?: string} | {state:'rejected' | 'complete'; failureClass:ModelFailureClass; usage?: ModelUsage}
     | {state:'uncertain'; usage?: ModelUsage}>;
@@ -8911,7 +8950,12 @@ export function createJournalWorker(journal: ReturnType<typeof openPreviewJourna
             evidence: redact(avenue.evidence).text })), outsideAction: redact(note.outsideAction).text,
           recheckDue: localStamp(note.recheckAt, zone).slice(0, 10) };
       })();
-      const id = `obligation:${item.key}:${item.slot}`, tools = ports.toolRoute?.(id) === true;
+      const id = `obligation:${item.key}:${item.slot}`;
+      // Rules 60, 114: long and scheduled work goes to a delegated session when one is available;
+      // the scoped-tool route is the one-call fallback. A session step has the operator's own tools,
+      // so its packet names the same tool-bearing capabilities and constraints.
+      const session = ports.sessionWork !== undefined && ports.sessionRoute?.(id) === true;
+      const tools = session || ports.toolRoute?.(id) === true;
       const context = JSON.stringify({ now: isoMinute(now), zone, today: localStamp(now, zone).slice(0, 10), obligation,
         ...(work?.note && work.waitsOn === undefined ? { lastProgress: clean(redact(work.note).text, true) } : {}),
         // A reassessment of waiting work sees what it waited for and every verified operator message since.
@@ -8923,15 +8967,19 @@ export function createJournalWorker(journal: ReturnType<typeof openPreviewJourna
         governingConstraints: governingConstraints(tools), capabilities: previewCapabilities(tools) });
       if (Buffer.byteLength(context) > journal.view.limits.maxBytes) return false;
       const question = tools ? OBLIGATION_WORK_QUESTION_TOOLS : OBLIGATION_WORK_QUESTION;
-      const prepared = ports.prepareModel?.({ question, context, id });
+      // A session step carries its task in the session's own delivered text, not a provider
+      // envelope, so no prepared envelope is built or required for it.
+      const prepared = session ? undefined : ports.prepareModel?.({ question, context, id });
       journal.append({ kind: 'obligation-start', obligation: item.key, slot: item.slot,
         maxInputTokens: journal.view.limits.maxBytes, maxOutputTokens: subscriptionOutputMaximum, at: now });
       startedHere.add(`${item.key}:${item.slot}`);
       const settle = (result: Omit<Extract<JournalRecord, { kind: 'obligation-result' }>, 'kind' | 'obligation' | 'slot' | 'at'>) =>
         journal.append({ kind: 'obligation-result', obligation: item.key, slot: item.slot, ...result, at: ports.now() });
       let answer: Awaited<ReturnType<PreviewPorts['model']>>;
-      try { answer = await ports.model({ question, context, id, ...(prepared === undefined ? {} : { prepared }) }); }
-      catch { settle({ outcome: 'uncertain' }); return true; }
+      try {
+        answer = session ? await ports.sessionWork!({ question, context, id })
+          : await ports.model({ question, context, id, ...(prepared === undefined ? {} : { prepared }) });
+      } catch { settle({ outcome: 'uncertain' }); return true; }
       const usage = typeof answer !== 'string' && 'usage' in answer && answer.usage ? { usage: answer.usage } : {};
       if (typeof answer !== 'string' && 'state' in answer && answer.state === 'uncertain') { settle({ outcome: 'uncertain', ...usage }); return true; }
       if (typeof answer !== 'string' && 'failureClass' in answer) { settle({ outcome: 'failed', ...usage }); return true; }
