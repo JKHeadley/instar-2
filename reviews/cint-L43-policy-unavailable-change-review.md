@@ -14,7 +14,7 @@ Side effects: while the configured policy is unreadable, every tool call that wo
 Undo and recovery: revert the commit; recovery for an operator is making the policy file readable again, which takes effect on the next tool turn.
 Multi-machine posture: unchanged; the policy is per-runner local state.
 Layer below: tool-admission-hook.mjs (unchanged: records the doorway row durably before proceeding) and admitEffect (unchanged).
-Bug class: fail-open fallback (a lost governed record replaced by a permissive default)
+Bug class: integration
 Bug evidence: astra-cint-L43-evidence/policy-withdrawal.json (corrupted or removed policy admitted both marked calls); the new tool-admission test reproduces both sides through the real hook.
 Hook bypass: none (plain commits; core.hooksPath is unset)
 Convergence: none
