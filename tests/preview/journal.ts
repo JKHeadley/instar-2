@@ -1061,10 +1061,10 @@ export type JournalRecord =
    * reservation) is reserved before dispatch and retained; a short allowance answers without tools; the
    * trace records each tool call, its admission and its result after the turn. */
   | { kind: 'tool-turn'; phase: 'reserved'; id: string; attempt: number; calls: number; delegation?: ToolDelegation;
-      mcp?: { servers: string[]; reads: number; digest: string }; at: number }
+      mcp?: { servers: string[]; reads: number; digest: string }; workspace?: ToolWorkspaceRow; at: number }
   | { kind: 'tool-turn'; phase: 'refused'; id: string; reason: 'call cap' | 'prompt size'; at: number }
   | { kind: 'tool-turn'; phase: 'trace'; id: string; attempt: number; calls: ToolTraceCall[]; consistent: boolean;
-      edges?: ToolChildEdge[]; workspaceBytes: number | null; at: number }
+      edges?: ToolChildEdge[]; workspaceBytes: number | null; session?: ToolSessionRow; at: number }
   | { kind: 'legacy-reply'; at: number }
   | { kind: 'import'; source: string; remainingCalls: number; remainingReplies: number; oldStop: string; at: number }
   | { kind: 'summary-reserve'; through: number; prompt?: string; supervised?: true; maxInputTokens?: number; maxOutputTokens?: number; at: number }
@@ -2621,7 +2621,20 @@ const attemptExcerpt = (text: string) => text.length > TOOL_ATTEMPT_EXCERPT_CHAR
 export interface ToolTurnStats { invocations: number; reservedCalls: number; refusedCap: number; refusedPrompt?: number; toolCalls: number;
   toolRefusals: number; inconsistent: number; open: string[];
   /** Rule 114: subagent edges the traces recorded, by how each ended (absent until a turn started one). */
-  children?: { started: number; returned: number; cancelled: number; unknown: number } }
+  children?: { started: number; returned: number; cancelled: number; unknown: number };
+  /** MF5: how the conversation's kept harness session was used (absent until a turn kept one). */
+  sessions?: { resumed: number; fresh: number; changed: number; lost: number; bounded: number; ended: number };
+  /** Rule 60: turns of a conversation past the root's kept workspaces, run in a fresh one-turn workspace (absent until one). */
+  overflow?: number }
+/** The conversation's workspace a tool turn used: `kept` (its persistent workspace) or not (past the root's bound of kept
+ * workspaces, a fresh one-turn workspace, recorded so the overflow is never silent, Rule 2). */
+export interface ToolWorkspaceRow { key: string; kept: boolean }
+/** MF5: the kept harness session a tool turn ran in: a new one (with why the previous was not resumed) or a resumed one,
+ * whether it is kept for the next turn or ended now (and why), and its transcript's size. A cache, never a record. */
+export interface ToolSessionRow { id: string; mode: 'new' | 'resume'; reason: string; turn: number; kept: boolean; ended?: string;
+  transcriptBytes: number | null }
+const SESSION_CHANGED = ['the journal changed a fact', 'authority, harness or model changed'];
+const SESSION_BOUNDED = ['turn bound', 'size bound', 'compacted'];
 /** Rule 114: a tool turn's delegation authority and budget share, durable with its reservation before dispatch. */
 export interface ToolDelegation { children: number; turnsEach: number; type: string; authority: string }
 /** Rule 114: one subagent a tool turn started, as a durable parent-child edge. */
@@ -2645,8 +2658,12 @@ function projectToolTurn(view: JournalView, row: Extract<JournalRecord, { kind: 
     if (d !== undefined && (!Number.isSafeInteger(d.children) || d.children < 0 || !Number.isSafeInteger(d.turnsEach) || d.turnsEach < 1
       || !boundedText(d.type, 1, 64) || !boundedText(d.authority, 1, 1024) || d.children * d.turnsEach > row.calls))
       throw Error('preview journal: tool turn delegation');
+    const w = row.workspace;
+    if (w !== undefined && (!/^[0-9a-f]{12}$/u.test(String(w.key)) || typeof w.kept !== 'boolean'))
+      throw Error('preview journal: tool turn workspace');
     view.calls += row.calls;
-    view.toolTurns = { ...stats, invocations: stats.invocations + 1, reservedCalls: stats.reservedCalls + row.calls, open: [...stats.open, key] };
+    view.toolTurns = { ...stats, invocations: stats.invocations + 1, reservedCalls: stats.reservedCalls + row.calls, open: [...stats.open, key],
+      ...(w?.kept === false ? { overflow: (stats.overflow ?? 0) + 1 } : {}) };
     return;
   }
   if (row.phase === 'refused') {
@@ -2672,13 +2689,27 @@ function projectToolTurn(view: JournalView, row: Extract<JournalRecord, { kind: 
       decision: String(call.decision), input: attemptExcerpt(String(call.input)), result: call.result === null ? null : attemptExcerpt(String(call.result)) }))];
     turn.toolAttemptsOmitted = (turn.toolAttemptsOmitted ?? 0) + row.calls.length - Math.min(room, row.calls.length);
   }
+  const kept = row.session;
+  if (kept !== undefined && (!/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/u.test(String(kept.id))
+    || !['new', 'resume'].includes(kept.mode) || !boundedText(kept.reason, 1, 256) || !Number.isSafeInteger(kept.turn) || kept.turn < 1
+    || typeof kept.kept !== 'boolean' || kept.kept !== (kept.ended === undefined) || (kept.ended !== undefined && !boundedText(kept.ended, 1, 256))
+    || !(kept.transcriptBytes === null || Number.isSafeInteger(kept.transcriptBytes) && kept.transcriptBytes >= 0)))
+    throw Error('preview journal: tool turn session');
+  const sessions = kept === undefined ? stats.sessions : (prior => ({ ...prior,
+    resumed: prior.resumed + Number(kept.mode === 'resume'), fresh: prior.fresh + Number(kept.mode === 'new'),
+    changed: prior.changed + Number(kept.mode === 'new' && SESSION_CHANGED.includes(kept.reason)),
+    lost: prior.lost + Number(kept.mode === 'new' && /^(?:lost|interrupted)\b/u.test(kept.reason)),
+    bounded: prior.bounded + Number(kept.mode === 'new' && SESSION_BOUNDED.includes(kept.reason)),
+    ended: prior.ended + Number(!kept.kept) }))(stats.sessions ?? emptySessionStats());
   const count = (state: string) => edges.filter(edge => edge.state === state).length;
   const children = edges.length || stats.children ? { started: (stats.children?.started ?? 0) + edges.length,
     returned: (stats.children?.returned ?? 0) + count('returned'), cancelled: (stats.children?.cancelled ?? 0) + count('cancelled'),
     unknown: (stats.children?.unknown ?? 0) + count('unknown') } : undefined;
   view.toolTurns = { ...stats, toolCalls: stats.toolCalls + admitted, toolRefusals: stats.toolRefusals + row.calls.length - admitted,
-    inconsistent: stats.inconsistent + Number(!row.consistent), open: stats.open.filter(item => item !== key), ...(children ? { children } : {}) };
+    inconsistent: stats.inconsistent + Number(!row.consistent), open: stats.open.filter(item => item !== key), ...(children ? { children } : {}),
+    ...(sessions ? { sessions } : {}) };
 }
+const emptySessionStats = () => ({ resumed: 0, fresh: 0, changed: 0, lost: 0, bounded: 0, ended: 0 });
 function project(view: JournalView, row: JournalRecord, system?: SystemCheck, admission: 'new' | 'replay' = 'new'): void {
   if ('at' in row) view.clockFloor = Math.max(view.clockFloor, row.at);
   if (row.kind === 'hold') {

@@ -1,10 +1,11 @@
-// Runner side of a tool turn (Part Thirteen §9 in docs/17-harness-adapters, the preview tool rule): the per-turn workspace on its own
-// fixed-size scratch volume under the root's allocated `tool-turns` directory, the hook's state directory beside it,
-// the trace read back after the turn, and bounded retention. Workspaces and traces are machine-local by declaration (Rule 113): they
-// are this runner's scratch; the journal row is the durable record, and nothing here is shared or resumed.
+// Runner side of a tool turn (Part Thirteen §9 in docs/17-harness-adapters, the preview tool rule): the conversation's
+// persistent workspace on its own fixed-size volume under the root's `workspaces` directory, the conversation's kept
+// harness session (a cache subordinate to the journal, MF5), the per-turn hook state directory, the trace read back after
+// the turn, and bounded retention. Workspaces, session records and traces are machine-local by declaration (Rule 113): this
+// runner's working state; the journal row is the durable record, and nothing here is shared or resumed on another machine.
 import { execFileSync } from 'node:child_process';
-import { createHash, randomBytes } from 'node:crypto';
-import { chmodSync, lstatSync, mkdirSync, readdirSync, readFileSync, readlinkSync, realpathSync, rmdirSync, rmSync, symlinkSync, writeFileSync } from 'node:fs';
+import { createHash, randomBytes, randomUUID } from 'node:crypto';
+import { chmodSync, existsSync, lstatSync, mkdirSync, readdirSync, readFileSync, readlinkSync, realpathSync, renameSync, rmdirSync, rmSync, statSync, symlinkSync, writeFileSync } from 'node:fs';
 import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { SUBSCRIPTION_SUBAGENT_TYPE, SUBSCRIPTION_TOOL_LIMITS, SUBSCRIPTION_TOOL_NAMES, SUBSCRIPTION_TOOLS_SYSTEM_PROMPT } from '../../src/assembly/production-provider.js';
@@ -19,15 +20,17 @@ export const TOOL_HOOK_SCRIPT = join(dirname(fileURLToPath(import.meta.url)), 't
 /** Answer turns and scheduled obligation work run with tools; reviews, summaries and benchmark reruns never do. */
 export const toolTurnEligible = id => /^telegram:[0-9]+:update:[0-9]+$/u.test(id) || /^obligation:/u.test(id);
 
-/** The fixed size of one turn's scratch volume. Every byte a tool can write (the workspace, the shell's
- * temporary files) lands on it, so a turn can never take more than this from the disk that holds the journal. */
+/** The fixed size of one conversation's workspace volume. Every byte a tool can write (the workspace, the shell's
+ * temporary files) lands on it, so a conversation can never take more than this from the disk that holds the journal
+ * (Rule 60); with at most `TOOL_WORKSPACES_KEPT` conversations kept, a root's tool storage is bounded by their product. */
 export const TOOL_SCRATCH_BYTES = 128 * 1024 * 1024;
 const HDIUTIL = '/usr/bin/hdiutil';
 const SCRATCH_IMAGE = 'scratch.sparseimage', SCRATCH_LINK = 'vol';
 /** Where scratch volumes mount. The mount point doubles as the harness's temporary directory (CLAUDE_CODE_TMPDIR), and
  * Claude Code 2.1.280 keeps its per-user directory under it only while that path stays within 44 bytes (else it falls
- * back to the shared /tmp/claude-<uid>, outside the volume), so the mount point is short: `/private/tmp/itt-` and 12
- * hex digits (29 bytes). The turn directory links to it as `vol`, so prune finds a volume a crash left mounted. */
+ * back to the shared /tmp/claude-<uid>, outside the volume), so the mount point is short: `/private/tmp/itw-` (a
+ * conversation's workspace, its 12 hex digits fixed) or `itt-` (a one-turn volume, random), 29 bytes. The owning
+ * directory links to it as `vol`, so the next attach or prune finds a volume a crash left mounted. */
 export const TOOL_SCRATCH_MOUNTS = '/private/tmp';
 const mountOf = turn => { try { return readlinkSync(join(turn, SCRATCH_LINK)); } catch { return null; } };
 /** Whether a turn directory's scratch volume is still mounted (its mount point sits on another device). */
@@ -35,47 +38,61 @@ export function scratchMounted(turn) {
   const mount = mountOf(turn);
   try { return mount !== null && lstatSync(mount).dev !== lstatSync(dirname(mount)).dev; } catch { return false; }
 }
-/** Creates and mounts a turn's fixed-size scratch volume (a sparse disk image: it takes only the bytes written, and
- * refuses writes past `bytes`), linked from `<turn>/vol`. Returns the mount point's real path. */
-export function attachScratch(turn, bytes = TOOL_SCRATCH_BYTES, mounts = TOOL_SCRATCH_MOUNTS) {
-  const image = join(turn, SCRATCH_IMAGE), mount = join(realpathSync(mounts), `itt-${randomBytes(6).toString('hex')}`);
-  mkdirSync(mount, { mode: 0o700 });
-  symlinkSync(mount, join(turn, SCRATCH_LINK));
-  execFileSync(HDIUTIL, ['create', '-quiet', '-size', `${String(Math.ceil(bytes / 1048576))}m`, '-type', 'SPARSE', '-fs', 'HFS+',
-    '-volname', 'instar-tool-turn', image], { stdio: 'ignore', timeout: 60000 });
+/** Mounts a directory's fixed-size scratch volume (a sparse disk image: it takes only the bytes written, and refuses
+ * writes past `bytes`), linked from `<dir>/vol`, creating the image on first use and reusing it afterwards, so its files
+ * persist between mounts. `name` is the mount point's name under `mounts` (a conversation's is fixed, so its harness
+ * session finds the same working directory every turn); a volume a crash left mounted is unmounted first. Returns the
+ * mount point's real path. */
+export function attachScratch(dir, name = `itt-${randomBytes(6).toString('hex')}`, bytes = TOOL_SCRATCH_BYTES, mounts = TOOL_SCRATCH_MOUNTS) {
+  if (!/^it[tw]-[0-9a-f]{12}$/u.test(name)) throw Error('preview: tool scratch mount name');
+  if (!unmountScratch(dir)) throw Error('preview: a tool scratch volume left mounted will not unmount');
+  const image = join(dir, SCRATCH_IMAGE), mount = join(realpathSync(mounts), name);
+  mkdirSync(mount, { recursive: true, mode: 0o700 });
+  rmSync(join(dir, SCRATCH_LINK), { force: true });
+  symlinkSync(mount, join(dir, SCRATCH_LINK));
+  if (!existsSync(image)) execFileSync(HDIUTIL, ['create', '-quiet', '-size', `${String(Math.ceil(bytes / 1048576))}m`, '-type', 'SPARSE',
+    '-fs', 'HFS+', '-volname', 'instar-tool-turn', image], { stdio: 'ignore', timeout: 60000 });
   execFileSync(HDIUTIL, ['attach', '-quiet', '-nobrowse', '-noautoopen', '-owners', 'on', '-mountpoint', mount, image],
     { stdio: 'ignore', timeout: 60000 });
-  if (!scratchMounted(turn)) throw Error('preview: tool scratch volume did not mount');
+  if (!scratchMounted(dir)) throw Error('preview: tool scratch volume did not mount');
   chmodSync(mount, 0o700);
   return realpathSync(mount);
 }
-/** Unmounts a turn's scratch volume and removes its image and mount point; the turn directory keeps only the admission
- * state. Returns false when the volume is still mounted afterwards (a later prune retries). */
-export function detachScratch(turn) {
-  const mount = mountOf(turn);
-  if (scratchMounted(turn)) {
+/** Unmounts a directory's scratch volume and removes its mount point, keeping its image (and so its files). Returns false
+ * when the volume is still mounted afterwards (the next attach or a later prune retries). */
+export function unmountScratch(dir) {
+  const mount = mountOf(dir);
+  if (scratchMounted(dir)) {
     try { execFileSync(HDIUTIL, ['detach', '-quiet', '-force', mount], { stdio: 'ignore', timeout: 60000 }); } catch { /* checked below */ }
-    if (scratchMounted(turn)) return false;
+    if (scratchMounted(dir)) return false;
   }
   if (mount !== null) try { rmdirSync(mount); } catch { /* already gone */ }
-  rmSync(join(turn, SCRATCH_IMAGE), { force: true });
+  return true;
+}
+/** Unmounts a scratch volume and removes its image: everything on it is gone. Returns false when it stays mounted. */
+export function detachScratch(dir) {
+  if (!unmountScratch(dir)) return false;
+  rmSync(join(dir, SCRATCH_IMAGE), { force: true });
   return true;
 }
 
-/** Allocates a fresh turn: `<root>/tool-turns/<digest>-<attempt>/state` and the turn's scratch volume holding `ws` and
- * `tmp`, all 0700 (`scratch` mounts it; tests may pass a stand-in), and the hook's config. `children` is the number of
- * subagents this turn's reservation covers; `mcp` is the root's MCP configuration ({servers, reads}) or null. The
- * servers' launch configuration is written into the state directory, which no tool can read. */
-export function prepareToolTurn({ root, operation, attempt, operations, children = 0, mcp = null, node = process.execPath, scratch = attachScratch }) {
+/** Allocates a turn: a fresh `<root>/tool-turns/<digest>-<attempt>/state` and the hook's config, and mounts the volume
+ * holding `ws` and `tmp`, all 0700 (`scratch(dir, name)` mounts it; tests may pass a stand-in). `volume` is the
+ * conversation's workspace ({directory, name} from `conversationWorkspace`), whose files persist across turns; absent,
+ * the turn gets its own fresh volume in its turn directory. `children` is the number of subagents this turn's
+ * reservation covers; `mcp` is the root's MCP configuration ({servers, reads}) or null. The servers' launch configuration
+ * is written into the state directory, which no tool can read. */
+export function prepareToolTurn({ root, operation, attempt, operations, children = 0, mcp = null, node = process.execPath, scratch = attachScratch,
+  volume = null }) {
   const base = join(realpathSync(root), TOOL_TURNS_DIRECTORY);
   mkdirSync(base, { recursive: true, mode: 0o700 });
   const slug = `${createHash('sha256').update(operation, 'utf8').digest('hex').slice(0, 16)}-${String(attempt)}`;
   const turn = join(base, slug);
   mkdirSync(turn, { mode: 0o700 });
   mkdirSync(join(turn, 'state'), { mode: 0o700 });
-  const volume = scratch(turn);
-  mkdirSync(join(volume, 'ws'), { mode: 0o700 }); mkdirSync(join(volume, 'tmp'), { mode: 0o700 });
-  const workspace = realpathSync(join(volume, 'ws')), tmp = realpathSync(join(volume, 'tmp'));
+  const mounted = volume ? scratch(volume.directory, volume.name) : scratch(turn);
+  for (const name of ['ws', 'tmp']) { mkdirSync(join(mounted, name), { recursive: true, mode: 0o700 }); chmodSync(join(mounted, name), 0o700); }
+  const workspace = realpathSync(join(mounted, 'ws')), tmp = realpathSync(join(mounted, 'tmp'));
   const stateDirectory = realpathSync(join(turn, 'state'));
   const servers = mcp ? Object.keys(mcp.servers) : [];
   writeFileSync(join(stateDirectory, 'config.json'), JSON.stringify({ workspace, tmp, maxCalls: SUBSCRIPTION_TOOL_LIMITS.maxToolCalls,
@@ -86,7 +103,8 @@ export function prepareToolTurn({ root, operation, attempt, operations, children
     writeFileSync(join(stateDirectory, 'mcp.json'), JSON.stringify({ mcpServers: mcp.servers }), { mode: 0o600 });
     mcpTurn = { config: join(stateDirectory, 'mcp.json'), servers };
   }
-  return { slug, directory: turn, scratch: volume, workspace, stateDirectory, hook: { node, script: TOOL_HOOK_SCRIPT },
+  return { slug, directory: turn, volumeDirectory: volume ? volume.directory : turn, scratch: mounted, workspace, stateDirectory,
+    hook: { node, script: TOOL_HOOK_SCRIPT },
     ...(mcpTurn ? { mcp: mcpTurn } : {}) };
 }
 
@@ -130,6 +148,96 @@ export function workspaceBytes(workspace, limit = 10000) {
   };
   try { walk(workspace); } catch { return null; }
   return seen > limit ? null : bytes;
+}
+
+/** Conversation workspaces a root keeps (Rule 60: with the volume size, the root's whole tool storage). A workspace is kept
+ * for the root's life and never deleted to make room (Rule 7): past this count a further conversation's turns each run in a
+ * fresh one-turn volume, removed after the turn, without a kept session, and the journal records that overflow. */
+export const TOOL_WORKSPACES_DIRECTORY = 'workspaces';
+export const TOOL_WORKSPACES_KEPT = 4;
+/** The conversation's workspace: `<root>/workspaces/<key>` holding its volume image, the `vol` link and the kept-session
+ * record, mounted at the fixed `itw-<key>`. The key is derived from the root's real path and the conversation, so two
+ * roots or two conversations never share a workspace. Null when the root already keeps its bound of other workspaces. */
+export function conversationWorkspace(root, conversation, keep = TOOL_WORKSPACES_KEPT) {
+  if (typeof conversation !== 'string' || !conversation.length) throw Error('preview: tool workspace needs its conversation');
+  const real = realpathSync(root);
+  const key = createHash('sha256').update(`${real}\0${conversation}`, 'utf8').digest('hex').slice(0, 12);
+  const base = join(real, TOOL_WORKSPACES_DIRECTORY), directory = join(base, key);
+  if (!existsSync(directory)) {
+    let kept = [];
+    try { kept = readdirSync(base).filter(name => /^[0-9a-f]{12}$/u.test(name)); } catch { kept = []; }
+    if (kept.length >= keep) return { key, directory: null, name: null };
+    mkdirSync(directory, { recursive: true, mode: 0o700 });
+  }
+  return { key, directory, name: `itw-${key}` };
+}
+
+/** The kept harness session (MF5): a disposable cache of one conversation's harness context, subordinate to the journal.
+ * It is resumed only while it is bound to the same tools authority, harness and model, and the journal's facts it may
+ * hold are unchanged; any correction, forgetting, undo, closure, grant change or stop rotates it, as do its bounds, a
+ * compaction, a lost transcript, and any turn that did not end cleanly. Every turn is still grounded by the full current
+ * journal packet; the session is never the only copy of accepted work (the journal holds every answer and tool trace). */
+export const TOOL_SESSION_LIMITS = Object.freeze({ maxTurns: 6, maxTranscriptBytes: 512 * 1024 });
+const SESSION_FILE = 'session.json';
+const SESSION_ID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/u;
+const digestOf = text => `sha256:${createHash('sha256').update(text, 'utf8').digest('hex')}`;
+const plain = (_key, value) => value instanceof Map ? [...value.entries()] : value instanceof Set ? [...value] : value;
+/** The journal facts a kept session may hold: memory changes and their undos, dated items, people, commitments and
+ * their closures, directives and blockers, conflicts, grants and authorities (reminders, summaries, caps, expiry,
+ * operator requests and their verdicts) and the stop. A change to any of them rotates the session. */
+export function sessionFactsDigest(view) {
+  return digestOf(JSON.stringify({ memory: view.memory, dated: view.dated, changes: view.changeHistory, undos: view.undos,
+    people: view.people, attributes: view.personAttributes, merges: view.personMerges, commitments: view.commitments, closed: view.closed,
+    directives: view.directives, blockers: view.blockers, conflicts: view.conflicts, reminderGrant: view.reminderGrant,
+    reminderCancels: view.reminderCancels, summaryGrants: view.summaryGrants, requests: view.operatorRequests,
+    caps: [view.limits, view.capAuthority], expiry: [view.expires, view.expiryAuthority], stop: view.stop, sourceStop: view.sourceStop }, plain));
+}
+/** Where the harness keeps a session's transcript: `<config>/projects/<cwd with every non-alphanumeric as ->/<id>.jsonl`
+ * (Claude Code 2.1.280, observed). Its subagents' transcripts sit in `<id>/` beside it. */
+export const sessionTranscript = (store, workspace, id) => join(store, workspace.replace(/[^A-Za-z0-9]/gu, '-'), `${id}.jsonl`);
+/** Removes one kept session's harness files, and only those: the transcript and its subagent directory, by exact id. */
+export function removeSessionFiles(store, workspace, id) {
+  if (typeof store !== 'string' || typeof workspace !== 'string' || !SESSION_ID.test(String(id))) return false;
+  const transcript = sessionTranscript(store, workspace, id);
+  rmSync(transcript, { force: true });
+  rmSync(transcript.slice(0, -'.jsonl'.length), { recursive: true, force: true });
+  return true;
+}
+/** The kept-session record of a workspace: `present` (with its value), `absent`, or `unreadable` (treated as lost). */
+export function readSession(dir) {
+  let text;
+  try { text = readFileSync(join(dir, SESSION_FILE), 'utf8'); } catch (error) { return error?.code === 'ENOENT' ? { state: 'absent' } : { state: 'unreadable' }; }
+  try {
+    const value = JSON.parse(text);
+    return value?.v === 1 && SESSION_ID.test(value.id) && typeof value.binding === 'string' && typeof value.facts === 'string'
+      && typeof value.workspace === 'string' && Number.isSafeInteger(value.turns) ? { state: 'present', value } : { state: 'unreadable' };
+  } catch { return { state: 'unreadable' }; }
+}
+function writeSession(dir, value) {
+  const path = join(dir, SESSION_FILE), temporary = `${path}.${randomBytes(4).toString('hex')}.pending`;
+  writeFileSync(temporary, JSON.stringify(value), { mode: 0o600 });
+  renameSync(temporary, path);
+}
+/** What this turn does with the conversation's kept session: resume it, or start a new one with the reason the old one
+ * (if any) was not resumed. Pure apart from the transcript reads, which are bounded by the size limit. */
+export function planSession({ record, binding, facts, store, workspace, stat = path => statSync(path).size,
+  read = path => readFileSync(path, 'utf8'), newId = randomUUID }) {
+  const fresh = (reason, previous = null) => ({ id: newId(), resume: false, reason, turn: 1, previous });
+  if (record.state === 'absent') return fresh('new');
+  if (record.state === 'unreadable') return fresh('lost: the session record is unreadable');
+  const r = record.value, previous = r;
+  if (r.ended) return fresh(r.ended, previous);
+  if (r.open) return fresh('interrupted: the last turn did not settle', previous);
+  if (r.binding !== binding || r.workspace !== workspace) return fresh('authority, harness or model changed', previous);
+  if (r.facts !== facts) return fresh('the journal changed a fact', previous);
+  if (r.turns >= TOOL_SESSION_LIMITS.maxTurns) return fresh('turn bound', previous);
+  let size;
+  try { size = stat(sessionTranscript(store, workspace, r.id)); } catch { return fresh('lost: the transcript is missing', previous); }
+  if (size >= TOOL_SESSION_LIMITS.maxTranscriptBytes) return fresh('size bound', previous);
+  let text;
+  try { text = read(sessionTranscript(store, workspace, r.id)); } catch { return fresh('lost: the transcript is unreadable', previous); }
+  if (text.includes('"compact_boundary"')) return fresh('compacted', previous);
+  return { id: r.id, resume: true, reason: 'resumed', turn: r.turns + 1, previous: null };
 }
 
 /** Keeps the newest `keep` turn directories (by modification time); a failed removal is reported, not thrown.
@@ -179,25 +287,58 @@ export const toolChildrenFit = (view, unreserved = 0) => Math.max(0, Math.min(SU
  * ended the turn, so an edge without a result is recorded `cancelled` (else `unknown`).
  */
 export async function runToolTurn({ journal, root, id, prepared, promptLimit, deniedRoots, operations, invoke, fallback, now, redactText,
-  authority = 'unrecorded', mcp = null, stopped = () => false, scratch = attachScratch, detach = detachScratch }) {
+  authority = 'unrecorded', mcp = null, stopped = () => false, scratch = attachScratch, detach = detachScratch, unmount = unmountScratch,
+  conversation = `${String(journal.view.genesis?.bot)}:${String(journal.view.genesis?.chat)}`, session = null,
+  completed = result => result?.state === 'complete' }) {
   const extra = SUBSCRIPTION_TOOL_LIMITS.maxTurns - 1;
   const refuse = reason => { journal.append({ kind: 'tool-turn', phase: 'refused', id, reason, at: now() }); return fallback(); };
   if (!toolTurnFits(journal.view)) return refuse('call cap');
   if (Buffer.byteLength(prepared) + Buffer.byteLength(SUBSCRIPTION_TOOLS_SYSTEM_PROMPT) > promptLimit) return refuse('prompt size');
   const attempt = journal.view.toolTurns?.invocations ?? 0;
   const children = toolChildrenFit(journal.view);
+  // Rule 60: the conversation's kept workspace, or (past the root's bound) a fresh one-turn volume and no kept session.
+  const space = conversationWorkspace(root, conversation);
+  const kept = space.directory !== null;
+  // The facts the kept session may be grounded with are read now, before the turn's own answer changes any of them.
+  const facts = session && kept ? sessionFactsDigest(journal.view) : null;
   // Rule 114: the edge's authority and budget share are durable before dispatch, with the turn's whole liability.
   journal.append({ kind: 'tool-turn', phase: 'reserved', id, attempt, calls: extra + children * SUBSCRIPTION_TOOL_LIMITS.childMaxTurns,
     delegation: { children, turnsEach: SUBSCRIPTION_TOOL_LIMITS.childMaxTurns, type: SUBSCRIPTION_SUBAGENT_TYPE, authority },
-    ...(mcp ? { mcp: { servers: Object.keys(mcp.servers), reads: mcp.reads.length, digest: mcp.digest } } : {}), at: now() });
-  let turn = null, result, failure = null;
+    ...(mcp ? { mcp: { servers: Object.keys(mcp.servers), reads: mcp.reads.length, digest: mcp.digest } } : {}),
+    workspace: { key: space.key, kept }, at: now() });
+  let turn = null, result, failure = null, plan = null;
   try {
-    turn = prepareToolTurn({ root, operation: id, attempt, operations, children, mcp, scratch });
+    turn = prepareToolTurn({ root, operation: id, attempt, operations, children, mcp, scratch, volume: kept ? space : null });
+    if (session && kept) {
+      // MF5: the session is resumed only when nothing it may hold has changed; otherwise the old one's files go before a
+      // new one starts, and the record naming it is written (open) before dispatch, so a crash leaves it `interrupted`.
+      const record = readSession(space.directory);
+      plan = planSession({ record, binding: `${authority} ${session.harness}`, facts, store: session.store, workspace: turn.workspace });
+      if (plan.previous) removeSessionFiles(session.store, plan.previous.workspace, plan.previous.id);
+      writeSession(space.directory, { v: 1, id: plan.id, binding: `${authority} ${session.harness}`, facts, workspace: turn.workspace,
+        turns: plan.turn, open: true, at: now() });
+    }
     result = await invoke({ scratch: turn.scratch, workspace: turn.workspace, stateDirectory: turn.stateDirectory, hook: turn.hook, deniedRoots,
-      ...(turn.mcp ? { mcp: turn.mcp } : {}) });
+      ...(turn.mcp ? { mcp: turn.mcp } : {}), ...(plan ? { session: { id: plan.id, resume: plan.resume } } : {}) });
   } catch (error) { failure = error; }
   const trace = turn ? readToolTrace(turn.stateDirectory) : { calls: [], children: [], consistent: true };
   const ended = stopped() ? 'cancelled' : 'unknown';
+  // A kept session continues only from a turn that ended cleanly; a stop, a withdrawal, a failure or an unproven tool
+  // run ends it now (its transcript removed), so nothing it saw outlives the turn that saw it.
+  let ending = null;
+  if (plan) {
+    const why = stopped() ? 'stopped or withdrawn' : failure ? 'the turn failed' : !trace.consistent ? 'a tool ran without its admission record'
+      : !completed(result) ? 'the answer did not complete' : null;
+    let transcriptBytes = null;
+    try { transcriptBytes = statSync(sessionTranscript(session.store, turn.workspace, plan.id)).size; } catch { transcriptBytes = null; }
+    ending = why === null && transcriptBytes === null ? 'lost: the harness wrote no transcript' : why;
+    try {
+      if (ending !== null) removeSessionFiles(session.store, turn.workspace, plan.id);
+      writeSession(space.directory, { v: 1, id: plan.id, binding: `${authority} ${session.harness}`, facts, workspace: turn.workspace,
+        turns: plan.turn, open: false, ...(ending === null ? {} : { ended: ending }), at: now() });
+    } catch { /* an unwritten record leaves the open one: the next turn rotates it as interrupted */ }
+    ending = { ended: ending, transcriptBytes };
+  }
   journal.append({ kind: 'tool-turn', phase: 'trace', id, attempt, consistent: trace.consistent,
     calls: trace.calls.slice(0, 64).map(call => ({ ...call, input: redactText(call.input),
       result: call.result === null ? null : redactText(call.result) })),
@@ -207,13 +348,17 @@ export async function runToolTurn({ journal, root, id, prepared, promptLimit, de
       exitTest: 'returns its final message as the subagent tool result', placement: 'in the turn\'s harness process on this machine',
       transport: 'claude-code Agent tool', resultDestination: 'the parent turn\'s tool result', cancellation: 'ends with the turn\'s process group',
       state: edge.state === 'returned' ? 'returned' : ended, result: edge.result === null ? null : redactText(edge.result) })),
-    workspaceBytes: turn ? workspaceBytes(turn.workspace) : null, at: now() });
-  // The workspace is scratch: nothing reads it after the turn, so its volume goes now (a failed unmount is retried by prune).
-  if (turn) detach(turn.directory);
+    workspaceBytes: turn ? workspaceBytes(turn.workspace) : null,
+    ...(plan ? { session: { id: plan.id, mode: plan.resume ? 'resume' : 'new', reason: plan.reason, turn: plan.turn,
+      kept: ending.ended === null, ...(ending.ended === null ? {} : { ended: ending.ended }), transcriptBytes: ending.transcriptBytes } } : {}),
+    at: now() });
+  // A kept volume is unmounted between turns, its image (and so its files) staying for the next turn; a one-turn volume
+  // goes with its image (a failed unmount is retried by prune).
+  if (turn) { if (kept) unmount(space.directory); else detach(turn.directory); }
   pruneToolTurns(root, TOOL_TURNS_KEPT, detach);
   if (failure) throw failure;
   if (!trace.consistent) throw Error('preview: a tool ran without its admission record');
-  return { result, turn, trace };
+  return { result, turn, trace, session: plan };
 }
 
 /** Truthful status lines for the operator's status reply (Rule 84): which tools exist, and what they did.
@@ -221,12 +366,18 @@ export async function runToolTurn({ journal, root, id, prepared, promptLimit, de
 export function toolStatusLines(view, enabled, off = null) {
   if (!enabled) return off ? [`Tools: off (${off}); answers are text only.`] : [];
   const stats = view.toolTurns ?? { invocations: 0, reservedCalls: 0, refusedCap: 0, toolCalls: 0, toolRefusals: 0, inconsistent: 0, open: [] };
-  return [`Tools: ${SUBSCRIPTION_TOOL_NAMES.join(', ')} and the root's MCP servers, in a private per-turn workspace; shell sandboxed without `
-      + 'network; web reads only; consequential effects go through the effect doorway.',
+  const sessions = stats.sessions;
+  return [`Tools: ${SUBSCRIPTION_TOOL_NAMES.join(', ')} and the root's MCP servers, in this conversation's private workspace (kept between `
+      + `turns, ${String(TOOL_SCRATCH_BYTES / 1048576)} MB); shell sandboxed without network; web reads only; consequential effects go through the effect doorway.`,
     `Tool turns: ${stats.invocations} run (${stats.reservedCalls} model attempts reserved for them), ${stats.toolCalls} tool calls admitted, `
       + `${stats.toolRefusals} refused, ${stats.refusedCap} turns answered without tools because the call allowance was short`
       + `${stats.children ? `, ${stats.children.started} subagents started (${stats.children.returned} returned, ${stats.children.cancelled} cancelled, ${stats.children.unknown} unknown)` : ''}`
       + `${stats.refusedPrompt ? `, ${stats.refusedPrompt} because the packet left no room for the tool instructions` : ''}`
       + `${stats.inconsistent ? `, ${stats.inconsistent} turns refused because a tool ran without its admission record` : ''}`
-      + `${stats.open?.length ? `, ${stats.open.length} without a recorded trace yet (running now, or interrupted with an unknown outcome)` : ''}.`];
+      + `${stats.open?.length ? `, ${stats.open.length} without a recorded trace yet (running now, or interrupted with an unknown outcome)` : ''}.`,
+    ...(sessions ? [`Kept session: ${sessions.resumed} turns resumed it, ${sessions.fresh} started a new one (${sessions.changed} after the journal `
+      + `changed a fact or the authority changed, ${sessions.lost} after a loss or an interrupted turn, ${sessions.bounded} at its size or turn bound); `
+      + `${sessions.ended} ended at a stop, withdrawal or failed turn.`] : []),
+    ...(stats.overflow ? [`Workspaces: this root keeps ${String(TOOL_WORKSPACES_KEPT)}; ${stats.overflow} turns of further conversations ran in a fresh `
+      + 'one-turn workspace without a kept session.'] : [])];
 }

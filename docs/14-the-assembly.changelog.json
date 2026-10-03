@@ -1,5 +1,21 @@
 [
   {
+    "revision": 23,
+    "date": "2026-10-03",
+    "status": "draft",
+    "cause": {
+      "kind": "draft",
+      "note": "Unit w4-persist (plan row #400): operator re-grounding, Justin 10:45 PDT 2026-10-03 via observer #149, and message 121996 (the 'handicapped' fresh-per-turn result rejected): a persistent workspace per conversation and a kept harness session subordinate to the journal, satisfying the full-tool ruling's MF5. No constitution change."
+    },
+    "changes": [
+      {
+        "what": "Operator question 2: a conversation keeps its private workspace, bounded by its fixed-size volume and the root's count of kept workspaces, and a harness session that is only a cache of the journal, replaced whenever a journal fact, the authority or the harness changes.",
+        "why": "A fresh, empty workspace and a discarded session every turn left the agent unable to keep a file or a project between messages; persistence is added under the same boundary and floors.",
+        "ref": "lanes/w4-persist-PROGRESS.md; lanes/astra-fulltool-ruling.md (MF5); LIVE-PATH-PLAN.md row #400"
+      }
+    ]
+  },
+  {
     "revision": 22,
     "date": "2026-10-03",
     "status": "draft",

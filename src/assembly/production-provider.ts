@@ -251,7 +251,8 @@ export const SUBSCRIPTION_SUBAGENT_DEFINITION = Object.freeze({ [SUBSCRIPTION_SU
   maxTurns: SUBSCRIPTION_TOOL_LIMITS.childMaxTurns, background: false }) });
 const NO_TOOLS_SENTENCE = 'You have no tools and cannot act beyond this answer; never claim otherwise.';
 const TOOLS_SENTENCE = `In this turn you have these tools: ${SUBSCRIPTION_TOOL_NAMES.join(', ')}, plus any MCP tools listed to you. `
-  + 'Files and Bash work inside this turn\'s private, new and empty workspace (your working directory), which has a fixed size. '
+  + 'Files and Bash work in this conversation\'s private, fixed-size workspace (your working directory); files stay for later turns. '
+  + 'The current context outranks earlier turns of this session. '
   + 'Bash is sandboxed: no network, no reads outside the workspace except the system files commands need, no writes outside it, '
   + 'no control of other processes. WebFetch and WebSearch read the public web (GET only). '
   + `Agent starts at most ${SUBSCRIPTION_TOOL_LIMITS.maxChildren} "${SUBSCRIPTION_SUBAGENT_TYPE}" subagents, each up to `
@@ -267,7 +268,7 @@ export function subscriptionToolsPolicy(model: string) {
     '--model', model, '--tools', SUBSCRIPTION_TOOL_NAMES.join(','), '--disallowedTools', ...SUBSCRIPTION_TOOL_DISALLOWED,
     '--agents', JSON.stringify(SUBSCRIPTION_SUBAGENT_DEFINITION),
     '--strict-mcp-config', '--mcp-config', '{"mcpServers":{}}',
-    '--setting-sources', '', '--disable-slash-commands', '--no-session-persistence',
+    '--setting-sources', '', '--disable-slash-commands',
     '--max-turns', String(SUBSCRIPTION_TOOL_LIMITS.maxTurns),
     '--max-budget-usd', String(SUBSCRIPTION_TOOL_LIMITS.budgetCeilingUsd - SUBSCRIPTION_TOOL_LIMITS.oneTurnMarginUsd),
     '--permission-mode', 'default']),
@@ -293,7 +294,21 @@ export interface SubscriptionToolTurn {
   /** The root's MCP servers for this turn: their launch configuration, written inside the admission state directory (so
    * no tool can read the credentials it may carry), and their names. Absent: no MCP server. */
   readonly mcp?: Readonly<{ config: string; servers: readonly string[] }>;
+  /** The conversation's kept harness session (MF5): `resume` continues the runner's recorded session id, otherwise the id
+   * starts a new one. A cache subordinate to the journal: the runner binds, rotates and deletes it. Absent: nothing is kept
+   * (`--no-session-persistence`). */
+  readonly session?: Readonly<{ id: string; resume: boolean }>;
 }
+/** Per-turn session arguments; the digest-bound policy carries neither, as it carries no per-turn path. */
+export function subscriptionSessionArgs(session: SubscriptionToolTurn['session']): readonly string[] {
+  if (session === undefined) return ['--no-session-persistence'];
+  ensure(/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/u.test(session.id) && typeof session.resume === 'boolean',
+    'tool turn: session id must be a lowercase UUID');
+  return session.resume ? ['--resume', session.id] : ['--session-id', session.id];
+}
+/** Tool-turn environment: the harness keeps no memory of its own beside the journal (auto memory off) and never
+ * compacts a kept session silently (the runner rotates it instead). Env-only, like thinking. */
+export const SUBSCRIPTION_TOOL_SESSION_ENV = Object.freeze({ CLAUDE_CODE_DISABLE_AUTO_MEMORY: '1', DISABLE_AUTO_COMPACT: '1' });
 const SAFE_PATH = /^\/[A-Za-z0-9_./@-]+$/u;
 const within = (path: string, root: string) => path === root || path.startsWith(`${root}/`);
 /** The longest scratch-volume path a tool turn admits (see subscriptionToolSettings). */
@@ -420,6 +435,7 @@ export function createClaudeCodeSubscriptionRoute(input:
     const tools = framing === SUBSCRIPTION_TOOLS_FRAMING;
     ensure(tools === (config.toolTurn !== undefined), 'subscription tool turn and framing differ');
     const toolSettings = config.toolTurn ? subscriptionToolSettings(config.toolTurn, profile.home) : null;
+    const sessionArgs = config.toolTurn ? subscriptionSessionArgs(config.toolTurn.session) : [];
     if (config.toolTurn) ensure(config.io.realpath(config.toolTurn.workspace) === config.toolTurn.workspace
       && config.io.realpath(config.toolTurn.scratch) === config.toolTurn.scratch
       && config.io.realpath(config.toolTurn.stateDirectory) === config.toolTurn.stateDirectory,
@@ -472,7 +488,7 @@ export function createClaudeCodeSubscriptionRoute(input:
         const env = Object.freeze({ PATH: policy.path, HOME: profile.home, CLAUDE_CONFIG_DIR: profile.configDirectory,
           CLAUDE_CODE_MAX_RETRIES: '0', CLAUDE_CODE_MAX_OUTPUT_TOKENS: String(SUBSCRIPTION_MAX_OUTPUT_TOKENS),
           CLAUDE_CODE_DISABLE_NONESSENTIAL_TRAFFIC: '1', ...SUBSCRIPTION_THINKING_ENV,
-          ...(config.toolTurn ? { CLAUDE_CODE_TMPDIR: config.toolTurn.scratch } : {}) });
+          ...(config.toolTurn ? { CLAUDE_CODE_TMPDIR: config.toolTurn.scratch, ...SUBSCRIPTION_TOOL_SESSION_ENV } : {}) });
         const command = async (args: readonly string[], stdin: string, timeout: number, maxBytes: number,
           allowFailureFrame = false) => {
           await new Promise<void>(resolve => setImmediate(resolve));
@@ -511,7 +527,7 @@ export function createClaudeCodeSubscriptionRoute(input:
         const modelTimeout = Math.min(bounds.timeout, bounds.deadline - config.now() - 100);
         ensure(modelTimeout > 0, 'subscription owner deadline exhausted before model command');
         const modelArgs = toolSettings === null ? policy.args : [...policy.args,
-          ...(config.toolTurn?.mcp ? ['--mcp-config', config.toolTurn.mcp.config] : []), '--settings', toolSettings];
+          ...(config.toolTurn?.mcp ? ['--mcp-config', config.toolTurn.mcp.config] : []), '--settings', toolSettings, ...sessionArgs];
         const returned = await command(modelArgs, bytes, modelTimeout, policy.maxRawTerminalBytes, true);
         const frame = JSON.parse(returned.text);
         const integer = (v: unknown) => typeof v === 'number' && Number.isSafeInteger(v) && v >= 0;

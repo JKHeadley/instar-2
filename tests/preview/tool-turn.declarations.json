@@ -10,14 +10,26 @@
       "holdsAgentMemory": "no",
       "machineScope": {
         "kind": "machine-local",
-        "reason": "Rule 113: one tool turn's scratch on this machine, never shared or resumed: its fixed-size volume (workspace and temporary files) is unmounted and its image removed after the turn, and only the newest 16 turn directories (the admission hook's config, call and subagent slots, record, and the copy of the root's MCP launch configuration) are kept; the journal's tool-turn rows are the durable record."
+        "reason": "Rule 113: one root's tool working state on this machine, never shared or resumed elsewhere. Each conversation keeps one fixed-size volume (128 MB; at most 4 conversations per root, a further one's turns run in a fresh one-turn volume removed after the turn), mounted only during a turn; its files persist for later turns of that conversation and are never deleted to make room. Its kept harness session (MF5) is a cache of the journal: the runner's session record beside the volume and the harness transcript in the login profile's projects directory, rotated (old transcript removed) whenever the authority, harness, model or a journal fact changes, at 6 turns or 512 KiB, on a compaction, a loss or an interrupted turn, and ended (removed) at a stop, withdrawal or failed turn. Only the newest 16 turn directories (the admission hook's config, call and subagent slots, record, and the copy of the root's MCP launch configuration) are kept; the journal's tool-turn rows are the durable record. On failover nothing moves: the new machine's turns start a new workspace and session from the journal."
       },
-      "agreesWith": []
+      "agreesWith": [
+        {
+          "store": "preview.journal.openPreviewJournal",
+          "invariant": "a kept harness session is resumed only while its recorded journal-facts digest, tools authority, harness and model equal the current ones; any difference, a loss or an unclean turn starts a new session grounded from the journal, and every turn's input is the current journal packet",
+          "check": "P13-PREVIEW-kept-session-subordinate (tests/preview/tool-persist.test.ts)"
+        }
+      ]
     },
     "standards": [
+      2,
       7,
       32,
+      33,
+      47,
       60,
+      68,
+      96,
+      110,
       113
     ],
     "holds": []

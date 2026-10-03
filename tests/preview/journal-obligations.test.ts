@@ -1026,7 +1026,7 @@ it('re-reads the tool route for a format re-ask or timeout replacement after a t
           const first = seen.length === 0;
           const result = await runToolTurn({ journal, root, id: input.id, prepared: input.prepared,
             promptLimit: 32768, deniedRoots: [root], operations: [], now: () => now, redactText: (s: string) => s,
-            scratch: (turn: string) => { const vol = join(turn, 'vol'); mkdirSync(vol); return vol; }, detach: () => true,
+            scratch: (turn: string) => { const vol = join(turn, 'vol'); mkdirSync(vol, { recursive: true }); return vol; }, detach: () => true, unmount: () => true,
             fallback: async () => { actual = 'none'; return { result: 'A short answer.' }; },
             invoke: async () => { actual = 'as listed'; return first && mode === 'format-retry' ? { state: 'complete', failureClass: 'malformed' } : 'A short answer.'; } });
           seen.push({ packet: (JSON.parse(input.context) as Packet & { capabilities: { externalTools: string } }).capabilities.externalTools, actual });

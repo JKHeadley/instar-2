@@ -1,6 +1,6 @@
 // Part Thirteen §9 (docs/17-harness-adapters), the preview tool rule, runner side: the call cap reserves a tool turn's whole liability
 // before dispatch (MF4) and retains it; a short allowance answers without tools; the trace closes exactly one
-// reserved turn; the workspace is private and fresh on a fixed-size scratch volume that refuses writes past its size;
+// reserved turn; the workspace is private, on a fixed-size volume that refuses writes past its size and keeps its files between turns;
 // status names exactly the tools; and a stop ends a live turn, descendants included, by the launch's own process
 // group within the declared bound.
 import { spawnSync } from 'node:child_process';
@@ -13,7 +13,7 @@ import { SUBSCRIPTION_SUBAGENT_TYPE, SUBSCRIPTION_TOOL_LIMITS, SUBSCRIPTION_TOOL
 import { SINGLE_MACHINE_PROFILE } from './activation-authority.js';
 import { capabilityBriefing, TOOLS_BRIEFING } from './briefing.js';
 // @ts-expect-error The runner side stays plain JavaScript.
-import { attachScratch, detachScratch, prepareToolTurn, pruneToolTurns, readRootMcp, readToolTrace, runToolTurn, scratchMounted, toolChildrenFit, toolStatusLines, toolTurnEligible, toolTurnFits, workspaceBytes, TOOL_HOOK_SCRIPT } from './tool-turn.mjs';
+import { attachScratch, detachScratch, unmountScratch, prepareToolTurn, pruneToolTurns, readRootMcp, readToolTrace, runToolTurn, scratchMounted, toolChildrenFit, toolStatusLines, toolTurnEligible, toolTurnFits, workspaceBytes, TOOL_HOOK_SCRIPT } from './tool-turn.mjs';
 // @ts-expect-error The physical host remains JavaScript.
 import { createResourceOwner } from '../../scripts/resource-owner.mjs';
 
@@ -23,7 +23,7 @@ afterEach(() => roots.splice(0).forEach(root => rmSync(root, { recursive: true, 
 const dir = () => { const root = realpathSync(mkdtempSync(join(tmpdir(), 'tool-turn-'))); roots.push(root); return root; };
 /** A stand-in for the scratch volume where the test root sits on the RAM disk (a disk image cannot be mounted from it):
  * a plain directory. The real volume is exercised by the boundary test below, on ordinary storage. */
-const plainScratch = (turn: string) => { mkdirSync(join(turn, 'vol'), { mode: 0o700 }); return realpathSync(join(turn, 'vol')); };
+const plainScratch = (turn: string) => { mkdirSync(join(turn, 'vol'), { recursive: true, mode: 0o700 }); return realpathSync(join(turn, 'vol')); };
 const keepDetached = () => true;
 const journalAt = (root: string, maxCalls: number) => openPreviewJournal(join(root, 'journal.encrypted'), key, { kind: 'genesis',
   bot: '12345678', chat: '7654321', operator: '7654321', grant: 'grant:preview', configurationDigest: 'sha256:offline',
@@ -88,11 +88,11 @@ it('allocates a private, empty workspace and a separate admission state per turn
 });
 
 const hdiutil = existsSync('/usr/bin/hdiutil');
-it.runIf(hdiutil)('bounds a turn\'s whole storage: its scratch volume refuses writes past its size, and the volume goes after the turn', { timeout: 120000 }, () => {
+it.runIf(hdiutil)('bounds a workspace\'s whole storage: its volume refuses writes past its size, keeps its files across mounts, and goes when detached', { timeout: 120000 }, () => {
   // Ordinary storage, not the RAM disk: the sparse image is the turn's real allocation, as under a live root.
   const root = realpathSync(mkdtempSync('/private/tmp/tool-scratch-')); roots.push(root);
   const turn = join(root, 'turn'); mkdirSync(turn, { mode: 0o700 });
-  const volume = attachScratch(turn, 8 * 1048576);
+  const volume = attachScratch(turn, 'itw-0123456789ab', 8 * 1048576);
   try {
     expect(scratchMounted(turn)).toBe(true);
     expect(volume).toBe(realpathSync(join(turn, 'vol')));
@@ -106,12 +106,22 @@ it.runIf(hdiutil)('bounds a turn\'s whole storage: its scratch volume refuses wr
     expect(lstatSync(join(turn, 'scratch.sparseimage')).size).toBeLessThanOrEqual(9 * 1048576);
     // The positive neighbour: a write inside the allowance succeeded and is readable.
     expect(readFileSync(join(volume, 'f0')).byteLength).toBe(1048576);
+    // Persistence: unmounted between turns, the image keeps the files; the next mount at the same fixed name finds them.
+    expect(unmountScratch(turn)).toBe(true);
+    expect(scratchMounted(turn)).toBe(false);
+    expect(existsSync(join(turn, 'scratch.sparseimage'))).toBe(true);
+    expect(attachScratch(turn, 'itw-0123456789ab', 8 * 1048576)).toBe(volume);
+    expect(readFileSync(join(volume, 'f0')).byteLength).toBe(1048576);
+    // A volume a crash left mounted is unmounted and mounted again by the next attach, files intact.
+    expect(attachScratch(turn, 'itw-0123456789ab', 8 * 1048576)).toBe(volume);
+    expect(readFileSync(join(volume, 'f0')).byteLength).toBe(1048576);
+    expect(() => attachScratch(turn, '../escape')).toThrow(/mount name/u);
   } finally { expect(detachScratch(turn)).toBe(true); }
   expect(scratchMounted(turn)).toBe(false);
   expect(existsSync(join(turn, 'scratch.sparseimage'))).toBe(false);
   // A volume left mounted by an interrupted turn is unmounted by prune before its directory is removed.
   const base = join(root, 'tool-turns'), stale = join(base, 'stale-0'); mkdirSync(stale, { recursive: true });
-  attachScratch(stale, 8 * 1048576);
+  attachScratch(stale, undefined, 8 * 1048576);
   expect(scratchMounted(stale)).toBe(true);
   expect(pruneToolTurns(root, 0)).toEqual({ removed: 1, failed: 0 });
   expect(existsSync(stale)).toBe(false);
@@ -140,12 +150,19 @@ it('tells the agent and the operator exactly which tools exist and where outward
   expect(fallback).toContain(TOOLS_BRIEFING); expect(fallback).not.toContain('You have no tools');
   const view = { toolTurns: { invocations: 2, reservedCalls: 14, refusedCap: 1, toolCalls: 5, toolRefusals: 2, inconsistent: 0, open: [] } };
   expect(toolStatusLines(view, true)).toEqual([
-    'Tools: Read, Write, Edit, Glob, Grep, Bash, WebFetch, WebSearch, Agent and the root\'s MCP servers, in a private per-turn workspace; '
-      + 'shell sandboxed without network; web reads only; consequential effects go through the effect doorway.',
+    'Tools: Read, Write, Edit, Glob, Grep, Bash, WebFetch, WebSearch, Agent and the root\'s MCP servers, in this conversation\'s private '
+      + 'workspace (kept between turns, 128 MB); shell sandboxed without network; web reads only; consequential effects go through the effect doorway.',
     'Tool turns: 2 run (14 model attempts reserved for them), 5 tool calls admitted, 2 refused, 1 turns answered without tools because the call allowance was short.']);
   expect(toolStatusLines({ toolTurns: { ...view.toolTurns, open: ['x#3'] } }, true)[1]).toContain('1 without a recorded trace yet');
   expect(toolStatusLines({ toolTurns: { ...view.toolTurns, children: { started: 3, returned: 1, cancelled: 1, unknown: 1 } } }, true)[1])
     .toContain('3 subagents started (1 returned, 1 cancelled, 1 unknown)');
+  // The kept session's line appears once a turn kept one, and names why each new session started.
+  expect(toolStatusLines({ toolTurns: { ...view.toolTurns, sessions: { resumed: 4, fresh: 3, changed: 1, lost: 1, bounded: 0, ended: 1 } } }, true)[2])
+    .toBe('Kept session: 4 turns resumed it, 3 started a new one (1 after the journal changed a fact or the authority changed, 1 after a loss or '
+      + 'an interrupted turn, 0 at its size or turn bound); 1 ended at a stop, withdrawal or failed turn.');
+  expect(toolStatusLines({ toolTurns: { ...view.toolTurns, overflow: 2 } }, true)[2])
+    .toBe('Workspaces: this root keeps 4; 2 turns of further conversations ran in a fresh one-turn workspace without a kept session.');
+  expect(toolStatusLines(view, true)).toHaveLength(2);
   expect(toolStatusLines(view, false)).toEqual([]);
   // Default on: when no grant resolves, status says tools are off and why, instead of saying nothing.
   expect(toolStatusLines(view, false, 'refused at launch with --tools off')).toEqual(['Tools: off (refused at launch with --tools off); answers are text only.']);

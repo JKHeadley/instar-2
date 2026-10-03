@@ -34,14 +34,16 @@ boundary: ordinary work runs, and every consequential effect goes to the effect 
 default, consequential effects and irreversible acts; **checks:**
 `tests/assembly/production-provider-tools.test.ts`, `tests/preview/tool-admission.test.ts`,
 `tests/preview/tool-turn.test.ts`, `tests/preview/tool-turn-replay.test.ts`,
-`tests/preview/tools-default.test.ts`, `tests/integration/resource-owner.test.ts` and the gated live
-runs `tests/integration/tool-turn-live.test.ts` and `tests/integration/tool-turn-full-live.test.ts`.
+`tests/preview/tools-default.test.ts`, `tests/preview/tool-persist.test.ts`,
+`tests/integration/resource-owner.test.ts` and the gated live runs
+`tests/integration/tool-turn-live.test.ts`, `tests/integration/tool-turn-full-live.test.ts` and
+`tests/integration/tool-turn-persist-live.test.ts`.
 The preview may run an answer or a scheduled work step as one Claude Code invocation, through the
 existing provider path, with Read, Write, Edit, Glob, Grep, Bash, WebFetch, WebSearch and Agent, plus
 the MCP servers the root's own configuration names. Each tool's scope, finite resource bounds and
 durable cause are enforced before dispatch. A mandatory PreToolUse admission hook decides every call,
 and fails closed on any error. It admits ordinary work: file operations physically contained in the
-turn's new private workspace, workspace search, sandboxed commands (never judged by the words they
+conversation's private workspace, workspace search, sandboxed commands (never judged by the words they
 contain), a web read (WebFetch issues only a GET) of a host whose every resolved address is public,
 a web search, an MCP tool the root's configuration lists as a read, and a subagent of the one
 registered type within the turn's reserved budget. It sends every consequential effect to the effect
@@ -50,11 +52,11 @@ not listed as a read (acting in a third-party account), an unsandboxed command, 
 conversation, a scheduled or remote trigger. A web read of a loopback, private, link-local or
 local-name target is refused, because it reaches this machine and its network rather than the world.
 Anything unregistered is refused. The harness sandbox is where a command's reach is enforced: reads
-are refused from the filesystem root down except the turn's scratch volume and the system files
+are refused from the filesystem root down except the conversation's volume and the system files
 commands need to run; writes reach only that volume; there is no network, so no command can write to
 the network, no unix socket and no signal to another process. The workspace and every temporary file
-of the shell and the harness live on that fixed-size volume, so a turn's whole storage is finite and
-cannot consume the journal's disk. The per-step tool-call count, shared by the turn and its subagents,
+of the shell and the harness live on that fixed-size volume, so a conversation's whole storage is
+finite and cannot consume the journal's disk. The per-step tool-call count, shared by the turn and its subagents,
 is allocated atomically, so overlapping calls cannot exceed it. The launch has a clean environment;
 the harness's own messaging socket and token are removed from every command; an MCP server's launch
 configuration, with any credential it carries, lies in the turn's admission state, which no tool can
@@ -85,7 +87,7 @@ the trial's sealed authority. Under it, a root's launch derives the tools activa
 conversation activation, changing only the policy digest, and keeps it in the root; no further desk
 step is needed, and with no resolving grant every answer is text only and status says why. A record
 the desk writes may be named instead. The record names the capabilities (the tool list and the root's
-MCP servers), the scope (one fresh workspace per turn), the custodian and the recovery obligation. It
+MCP servers), the scope (one private workspace per conversation), the custodian and the recovery obligation. It
 does not replace exact operation admission or change the installed durability profile. Tools are
 refusable at launch, and withdrawn by changing or removing the record or by a change of the sealed
 authority under which the grant no longer resolves; withdrawal prevents further tool dispatch, and it,
@@ -93,8 +95,39 @@ the operator's stop and expiry end a live turn and its subagents within the decl
 bound: the stop is observed within 25 milliseconds, the launch's own process group is killed by its
 exact process id, every cleanup census reclaims each member it finds, and quiescence is verified
 within two seconds. Credential-bearing accounts and consequential effects remain behind admitted
-adapters. No harness session persists; each workspace is machine-local scratch, never shared or
-resumed, and the journal is the sole durable copy of accepted work.
+adapters. Harness continuation is optional, subordinate to the journal, and never the sole durable
+copy of accepted work (the next rule).
+
+**Rule — a conversation keeps its workspace and, subordinate to the journal, its harness session.**
+Rules 2, 7, 32, 33, 47, 58, 60, 68, 96, 110 and 113, and the full-tool ruling's MF5; **checks:**
+`tests/preview/tool-persist.test.ts`, `tests/assembly/production-provider-tools.test.ts`,
+`tests/preview/tool-turn.test.ts` and the gated live run
+`tests/integration/tool-turn-persist-live.test.ts`. Each conversation's workspace is one fixed-size
+volume (128 MB) kept under its root for the root's life and mounted, at the same place, only during
+that conversation's turns, so a file the agent writes on one turn is there on the next. A root keeps
+at most four such workspaces; a further conversation's turns each run in a fresh one-turn volume
+without a kept session, and the journal records that overflow. A kept workspace is never deleted to
+make room, and a write past its size is refused. A tool turn also runs in the conversation's kept
+Claude Code session: the runner names it per turn (a new session id, or the recorded one to resume;
+neither is part of the activation-bound policy) and the turn's trace records which, and why. The
+session is a cache, never a record. Every turn's input is still the whole current journal packet,
+and its system prompt says the current context outranks earlier turns of the session. It is resumed
+only while the tools authority, the harness, the model and a digest of every journal fact it may hold
+(memory corrections, forgets and undos, dated items, people, commitments and their closures,
+directives, blockers, grants and authorities, the stop) equal those it was started with; any
+difference starts a new session, the old transcript removed first, so a corrected or forgotten fact,
+a withdrawn grant or a stop never survives in it. It is also replaced at six turns or 512 KiB of
+transcript, on a compaction (the harness's own automatic compaction and its own memory are off), when
+its transcript or record is missing or unreadable, and after a turn that never settled; it ends, its
+transcript removed at once, when a turn is stopped, withdrawn or fails, or runs a tool without its
+admission record. A loss is detected before dispatch and survived: the next turn starts a new
+session grounded from the journal, and the workspace's files are unaffected. Workspace, session
+record and transcript (in the login profile's projects directory) are machine-local; on another
+machine a conversation starts a new workspace and session from the journal, and nothing resumes
+across machines. The pinned harness counts the reported cost of a resumed session cumulatively, so
+its budget backstop can end a long session's turn early; the upstream call reservation remains the
+binding bound. The preview's session driver runs Claude Code only: the Codex cell is unsupported
+until its thread continuation is shown to meet this rule under its own conformance.
 
 **Rule — Codex activation has the identical bar.** Rules 34, 41, 47, 59 and 75; **checks:
 P13-NF-16/23/35/44**. The conformance run must show actual submitted context, correlated lifecycle

@@ -1503,6 +1503,10 @@ async function main() {
     const invokeTools = async (prepared, id) => (await runToolTurn({ journal, root, id, prepared,
       promptLimit: toolPromptLimit(), mcp: readRootMcp(root),
       authority: `${toolsRecord.reference} ${toolsRecord.invocationPolicyDigest}`,
+      // MF5: the conversation's workspace persists across turns, and its kept harness session (in the login profile's
+      // projects directory) is a cache bound to this authority, harness and model and to the journal's current facts.
+      conversation: conversationOf(journal.view.genesis),
+      session: { store: join(profile.configDirectory, 'projects'), harness: `${profile.version} ${required(options, 'model')}` },
       stopped: () => workerStop.value || existsSync(stopPath) || journal.view.stop !== null || !toolsActive(),
       deniedRoots: [realpathSync(root), profile.home, profile.configDirectory, profile.workingDirectory],
       operations: SINGLE_MACHINE_PROFILE.operations, now: wallNow, redactText: text => redact(text).text,

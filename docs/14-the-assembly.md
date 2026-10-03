@@ -1105,8 +1105,11 @@ these policy tradeoffs. The concrete proposed choices are ready for review:
    preview's tools are supported ordinary work: on by default under the operator's recorded grant,
    they run under Part Thirteen's demonstrated boundary of admission hook, harness sandbox and clean
    environment, with each tool's scope, bounds and cause enforced before dispatch, and every
-   consequential effect goes to the effect doorway. That boundary is not this part's §4
-   confinement, grants no governed or protected status, and no preview label waives a floor.
+   consequential effect goes to the effect doorway. A conversation keeps its private workspace,
+   bounded by a fixed-size volume and the root's count of kept workspaces, and a harness session
+   that is only a cache of the journal, replaced whenever a journal fact, the authority or the
+   harness changes. That boundary is not this part's §4 confinement, grants no governed or
+   protected status, and no preview label waives a floor.
 3. Approve the requirement for finite per-installation replay/maintenance/resource thresholds
    and independently recoverable encryption keys before the corresponding live claims? The
    deployment selects the actual values within governance and records its measurements.
