@@ -11,7 +11,7 @@ Suggested tier: critical
 Declared tier: critical
 Tier rationale: carries the unit's critical tier; this repair itself is measurement-only.
 Side effects: the runner's read-only guidance status record now carries a `no-receipt` landing count per member; on journals whose replies have receipts the counts are as before.
-Undo and recovery: revert the four repair commits (fix, owner-manifest rehash, register replay, this record).
+Undo and recovery: revert the repair commits (fix, owner-manifest rehash, register replay, this record, the Part 18 changelog revision 4).
 Multi-machine posture: machine-local preview runner, unchanged.
 Layer below: reviews/w4-guidance-change-review.md (the unit, carried unchanged). Checked one layer down: `turn.sent` is set only from the transport receipt (the same field sendTarget/sendOutcomeOf read for Rule 42), so it is the one existing delivery evidence.
 Bug class: none
@@ -26,7 +26,7 @@ Prompt finding: bd01de21286a | protocol-literal | existing capability-guidance w
 Prompt finding: fb5fa7e706c8 | protocol-literal | existing capability-guidance wording in journal.ts, unchanged by this change
 Deferral: generated/register.json:1 | not-a-deferral=generated register output quoting the rule book, not a commitment by this change
 
-Subject (12 paths): docs/18-sentinel-holders/16-the-guidance-sentinel-family.md, generated/capabilities.json, generated/capabilities.md, generated/coverage.md, generated/glossary.md, generated/register.json, generated/rules.md, generated/source.json, register-source/owner-references/preview.json, reviews/w4-guidance-astra-repair-change-review.md, tests/preview/guidance.test.ts, tests/preview/guidance.ts
+Subject (14 paths): docs/18-sentinel-holders.changelog.json, docs/18-sentinel-holders.changelog.md, docs/18-sentinel-holders/16-the-guidance-sentinel-family.md, generated/capabilities.json, generated/capabilities.md, generated/coverage.md, generated/glossary.md, generated/register.json, generated/rules.md, generated/source.json, register-source/owner-references/preview.json, reviews/w4-guidance-astra-repair-change-review.md, tests/preview/guidance.test.ts, tests/preview/guidance.ts
 
 ## Closing block
 
