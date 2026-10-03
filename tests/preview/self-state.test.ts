@@ -8,7 +8,7 @@ import { createJournalWorker, openPreviewJournal, raiseJournalCaps } from './jou
 import { prepareJournalEnvelope } from './journal-envelope.js';
 import { appendRun, heldNotices, heldRepliesToday, holdNotice, memoryHealthLine, readRuns, restartHandoff, selfState, selfStateBrief, selfStateSource } from './self-state.js';
 import { JEV_MODEL, REPLY_RULES } from './reply-check.js';
-import { TOO_LONG_REPLY_NOTICE } from './journal.js';
+import { OBLIGATION_FLOOR_PACKET_BYTES, TOO_LONG_REPLY_NOTICE } from './journal.js';
 
 
 const key = new Uint8Array(32).fill(4);
@@ -544,8 +544,10 @@ it('carries the self-state in every packet after rolling summaries take over the
   try {
     appendRun(runs, { v: 1, launch: NOON, pid: 1 });
     const journal = openPreviewJournal(join(root, 'journal.encrypted'), key,
-      // cbuild-2: room for the always-offered summary decision (measured fit 7600; was 7168).
-      { ...genesis, maxCalls: 80, maxReplies: 40, maxTurns: 40, maxBytes: 7600 });
+      // cbuild-2: room for the always-offered summary decision (measured fit 7600; was 7168). w3-floorduty: plus the
+      // obligation guide's floor form, which now rides a pressured packet where the guide used to vanish (Rules 3, 93).
+      { ...genesis, maxCalls: 80, maxReplies: 40, maxTurns: 40,
+        maxBytes: 7600 + OBLIGATION_FLOOR_PACKET_BYTES });
     const packets: { id: string; packet: { historyMode: string; sources?: { id: string; text: string }[] } }[] = [];
     const worker = createJournalWorker(journal, { now: () => NOON, stopped: () => false,
       sources: () => [selfStateSource(selfState(journal.view, readRuns(runs), NOON, 'UTC', NOON))],

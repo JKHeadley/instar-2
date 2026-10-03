@@ -6,7 +6,9 @@ import { performance } from 'node:perf_hooks';
 import { spawn, spawnSync } from 'node:child_process';
 import { createJournalWorker, openPreviewJournal, raiseJournalCaps, MODEL_FAILURE_REPLY, UNKNOWN_ANSWER_NOTICE,
   SUMMARY_UNKNOWN_RECOVERY_MS, SUMMARY_MAX_PROMPT_BYTES, SUMMARY_MAX_TURNS, SUMMARY_TARGET_OUTPUT_TOKENS, summaryPromptBytes } from './journal-test-worker.js';
-import { INDEX_ATTEMPT_LIMIT, INDEX_BACKLOG_LIMIT, TOO_LONG_INPUT_NOTICE } from './journal.js';
+import { INDEX_ATTEMPT_LIMIT, INDEX_BACKLOG_LIMIT, OBLIGATION_FLOOR_PACKET_BYTES as FLOOR_GUIDE, TOO_LONG_INPUT_NOTICE } from './journal.js';
+// w3-floorduty (Rules 3, 93): under pressure the obligation guide now yields to its floor form instead of vanishing, so a
+// small synthetic limit carries those bytes too; every outcome below is otherwise unchanged.
 
 import { prepareJournalEnvelope } from './journal-envelope.js';
 import { SUBSCRIPTION_CONVERSATION_SYSTEM_PROMPT } from '../../src/assembly/production-provider.js';
@@ -760,7 +762,7 @@ it('keeps early-turn recall and constant append cost through 60 bounded turns an
 it('uses rolling summaries only after replies, shares the attempt cap, and retains original text', async () => {
   const root = origin();
   try {
-    const initial = { ...genesis(), maxBytes: 4000 };
+    const initial = { ...genesis(), maxBytes: 4000 + FLOOR_GUIDE };
     const journal = openPreviewJournal(join(root, 'journal.encrypted'), key, initial);
     const worker = createJournalWorker(journal, { now: () => 1000, stopped: () => false,
       model: async input => input.id.startsWith('summary:') ? 'The first unique memory was ORCHID.'
@@ -1457,7 +1459,7 @@ it('recalls imported old-root turns with their original Telegram dates and drops
   const root = origin();
   try {
     const journal = openPreviewJournal(join(root, 'journal.encrypted'), key,
-      { ...genesis(), maxBytes: 5120, importSource: 'old-root', importCursor: 10 });
+      { ...genesis(), maxBytes: 5120 + FLOOR_GUIDE, importSource: 'old-root', importCursor: 10 });
     const imported = (id: number, text: string) => {
       const raw = update(id, text); (raw.message as { date?: number }).date = 1789000000 + id;
       journal.append({ kind: 'intake', id: `telegram:12345678:update:${id}`, update: id, text, raw: JSON.stringify(raw),

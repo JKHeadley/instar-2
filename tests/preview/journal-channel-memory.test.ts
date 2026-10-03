@@ -2,7 +2,7 @@ import { expect, it } from 'vitest';
 import { mkdtempSync, realpathSync, rmSync, statSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
-import { createJournalWorker, importChannelItems, openPreviewJournal } from './journal-test-worker.js';
+import { OBLIGATION_FLOOR_PACKET_BYTES, createJournalWorker, importChannelItems, openPreviewJournal } from './journal-test-worker.js';
 
 const key = new Uint8Array(32).fill(23);
 const now = 1790000000000;
@@ -10,7 +10,9 @@ const account = 'echo-agent@example.test';
 const genesis = { kind: 'genesis' as const, bot: '12345678', chat: '7654321', operator: '7654321',
   grant: 'grant:preview', configurationDigest: 'sha256:offline', expires: now + 1_000_000,
   // cbuild-2: room for the always-offered summary decision (measured fit 6400; was 6000).
-  maxCalls: 100, maxReplies: 80, maxTurns: 80, maxBytes: 6400, cursor: 0 };
+  maxCalls: 100, maxReplies: 80, maxTurns: 80,
+  // w3-floorduty (Rules 3, 93): plus the obligation guide's floor form, which now outranks optional evidence under pressure.
+  maxBytes: 6400 + OBLIGATION_FLOOR_PACKET_BYTES, cursor: 0 };
 const row = (id: string, text: string, from = 'justin@example.test') => ({ source: 'conversation', account, id, from,
   at: now - 3600000, text });
 const update = (id: number, text: string) => ({ update_id: id, message: { chat: { id: 7654321, type: 'private' },

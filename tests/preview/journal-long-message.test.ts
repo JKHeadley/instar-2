@@ -3,7 +3,7 @@ import { mkdtempSync, realpathSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { spawnSync } from 'node:child_process';
-import { createJournalWorker, openPreviewJournal, TOO_LONG_INPUT_NOTICE, TOO_LONG_REPLY_NOTICE } from './journal.js';
+import { createJournalWorker, OBLIGATION_FLOOR_PACKET_BYTES, openPreviewJournal, TOO_LONG_INPUT_NOTICE, TOO_LONG_REPLY_NOTICE } from './journal.js';
 import { replyReviewContext } from './reply-check.js';
 import { prepareJournalEnvelope } from './journal-envelope.js';
 
@@ -115,7 +115,10 @@ it.each([{ verdict: 'pass', receipt: 7 }, { verdict: 'pass', receipt: null },
     await resumed.drain();
     expect(status(dir).tooLong).toEqual([{ update: 1, kind: 'input',
       delivery: receipt === null ? 'UNKNOWN' : 'Telegram API accepted' }]);
-    // The next prompt must describe the exact prior intent, including after journal replay.
+    // The next prompt must describe the exact prior intent, including after journal replay. w3-floorduty: that prompt
+    // now also carries the obligation guide's floor form (Rules 3, 93), so that next turn gets those bytes beside the
+    // history it is checked for; the over-limit first message above is judged at the original limit.
+    replay.view.limits.maxBytes += OBLIGATION_FLOOR_PACKET_BYTES;
     const context = await (async () => {
       const next = createJournalWorker(replay, { now: () => 1002, stopped: () => false,
         model: async ({ context }) => context, send: async () => 8, checkOutbound: () => {} });

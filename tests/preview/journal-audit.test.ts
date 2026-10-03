@@ -5,7 +5,7 @@ import { join } from 'node:path';
 import { spawn } from 'node:child_process';
 import { performance } from 'node:perf_hooks';
 import { auditJournal, auditPacket } from './journal-audit.mjs';
-import { createJournalWorker, importChannelItems, openPreviewJournal, probeTurn } from './journal-test-worker.js';
+import { OBLIGATION_FLOOR_PACKET_BYTES, createJournalWorker, importChannelItems, openPreviewJournal, probeTurn } from './journal-test-worker.js';
 import { memoryHealthLine } from './self-state.js';
 import { prepareJournalEnvelope } from './journal-envelope.js';
 
@@ -226,7 +226,8 @@ it('keeps correction lineage valid when a later background summary completes', a
 it('audits the recorded packet without emitting bodies and refuses lost provenance or leaked claims', async () => {
   const root = realpathSync(mkdtempSync(join(tmpdir(), 'preview-audit-')));
   try {
-    const journal = openPreviewJournal(join(root, 'journal.encrypted'), key, genesis);
+    // w3-floorduty (Rules 3, 93): plus the obligation guide's floor form, which now outranks optional evidence under pressure.
+    const journal = openPreviewJournal(join(root, 'journal.encrypted'), key, { ...genesis, maxBytes: genesis.maxBytes + OBLIGATION_FLOOR_PACKET_BYTES });
     const account = 'agent@example.test';
     importChannelItems(journal, [{ source: 'conversation', account, id: 'Sam sent the itinerary.', from: 'sam@example.test',
       at: 1789999000000, text: 'Sam sent the itinerary.' }], account, 1790000000000);

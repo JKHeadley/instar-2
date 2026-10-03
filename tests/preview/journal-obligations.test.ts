@@ -7,7 +7,7 @@ import { join } from 'node:path';
 import { createJournalWorker, openPreviewJournal, openBlockers, openDirectives, declaredObligations, dueObligationWork, obligationSchedule,
   LOOP_REVISIT_MS, BLOCKER_RECHECK_MAX_MS, DIRECTIVE_SHARE, OBLIGATION_WORK_QUESTION, OBLIGATION_WORK_QUESTION_TOOLS, previewCapabilities,
   TOOL_ATTEMPTS_MEANING, TOOL_ATTEMPTS_PARTIAL_MEANING, TOOL_ATTEMPTS_REVIEWED, governingConstraints, OBLIGATION_DECISION,
-  OBLIGATION_DECISION_TOOLS } from './journal-test-worker.js';
+  OBLIGATION_FLOOR_PACKET_BYTES, OBLIGATION_DECISION_TOOLS } from './journal-test-worker.js';
 // @ts-expect-error The runner side stays plain JavaScript.
 import { runToolTurn, toolPacketFits, toolTurnFits } from './tool-turn.mjs';
 import { SUBSCRIPTION_TOOL_LIMITS } from '../../src/assembly/production-provider.js';
@@ -137,7 +137,9 @@ it('refuses a summary commitment without a declared dependency, counts it, and c
 it('resurfaces an unrelated open loop once its cadence passes, then waits a cadence again (Rule 8)', async () => {
   const root = origin();
   try {
-    const w = world(root);
+    // w3-floorduty: at this limit the obligation guide is under pressure, and it now yields to its floor form rather
+    // than vanishing; the limit carries those bytes so the loop item keeps the room it had (Rules 3, 8, 93).
+    const w = world(root, { maxBytes: 8000 + OBLIGATION_FLOOR_PACKET_BYTES });
     await w.say(LOCKER);
     for (let i = 0; !w.journal.view.summaries.length && i < 60; i++) { w.clock.now += 60_000; await w.say(filler(i)); }
     const locker = w.journal.view.commitments.findIndex(note => note.quote === LOCKER);

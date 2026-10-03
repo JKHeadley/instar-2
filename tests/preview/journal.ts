@@ -714,6 +714,24 @@ export const CONSTRAINT_EVIDENCE: Readonly<Partial<Record<GoverningConstraint, r
   'operator-authority': ['accounts', 'ownedIdentities'], 'secret-custody': ['secretCustody'] });
 /** How the answer model declares the obligations its reply creates or settles (Rules 6, 18, 20-23, 93, 99, 103). */
 export const OBLIGATION_DECISION = 'When one applies, return: directives:[{quote:exact clause of this message setting a standing instruction beyond this reply,supersedes?:directive id}] (reply style stays memory prefer); closeDirectives:[{id,kind:"completed"|"superseded"}]; openLoops:[{kind:"deferral"|"judgment"|"promise",quote:a sentence of your reply copied word for word,waitsOn:"nothing"|"operator"|"external"|"date"}] for work your reply leaves open (prefer deciding now); for a cannot-do or needs-a-person claim surviving every lawful avenue, blocker:{kind:"cannot-do"|"needs-human",claim:a sentence of your reply copied word for word,avenues:[{avenue,disposition:"outside-standing"|"inapplicable",evidence:one packet.capabilities key such as "externalTools"}],constraint:governingConstraints key,outsideAction:smallest step a person must take,recheck:"YYYY-MM-DD" within 90 days}. You attempted nothing outside this reply, so never call an avenue tried; a missing tool is no-tools. Refuse only behind a governingConstraints key an avenue\'s capabilities evidence supports; propose any other boundary.';
+/** The obligation guide's floor form (Rules 3, 20-23, 93): when the full guide does not fit, this replaces it, so the
+ * duty to declare never leaves a packet the agent answers from. The same fields and decisions; the evidence and constraint
+ * keys are listed here because the capability and constraint tables yield with the full guide, and they are generated
+ * from those tables (Rule 78). Live 2026-10-03 (proof room one, update 715673186): a default-size root had dropped the
+ * whole guide, and its reply promised to follow a standing instruction that was never recorded. */
+export const OBLIGATION_DECISION_FLOOR = 'When one applies, return: directives:[{quote:exact clause of this message setting a standing instruction,supersedes?:directive id}]; closeDirectives:[{id,kind:"completed"|"superseded"}]; '
+  + `openLoops:[{kind:"deferral"|"judgment"|"promise",quote:exact reply sentence,waitsOn:${COMMITMENT_WAITS_ON.map(item => JSON.stringify(item)).join('|')}}]; `
+  + 'for a cannot-do or needs-a-person claim, blocker:{kind:"cannot-do"|"needs-human",claim:exact reply sentence,'
+  + `avenues:[{avenue,disposition:${PREVIEW_AVENUE_DISPOSITIONS.map(item => JSON.stringify(item)).join('|')},evidence:${Object.keys(PREVIEW_CAPABILITIES).map(item => JSON.stringify(item)).join('|')}}],`
+  + `constraint:${Object.keys(CONSTRAINT_EVIDENCE).map(item => JSON.stringify(item)).join('|')},outsideAction,recheck:"YYYY-MM-DD" within 90 days}. `
+  + 'Refuse only behind one of these constraints; propose any other boundary. Saying you will follow an instruction saves nothing unless it is returned here.';
+/** What the floor form costs a packet: its key, its text and the separating comma. A test that sizes a limit to make a
+ * packet just fit adds this, since the floor form now stays where the whole guide used to yield. */
+export const OBLIGATION_FLOOR_PACKET_BYTES = Buffer.byteLength(JSON.stringify({ obligationDecision: OBLIGATION_DECISION_FLOOR })) - 1;
+/** The last rung's clause, used only when not even the floor form fits once every optional item, the concurrent-work view
+ * and the reply-review reserve have yielded: the turn is still answered (Rules 15, 77), and the reply says nothing was
+ * saved instead of claiming a save it cannot declare (Rule 3). About a sixth of the floor form's bytes. */
+export const OBLIGATION_DECISION_NONE = 'Nothing can be declared on this turn: never say you saved or will follow an instruction, or settled a limit; ask the operator to send it again.';
 /** The same instructions for an answer that runs on the scoped-tool route: its own tool calls are recorded attempts. */
 export const OBLIGATION_DECISION_TOOLS = replacedClause(OBLIGATION_DECISION,
   'You attempted nothing outside this reply, so never call an avenue tried; a missing tool is no-tools.',
@@ -6056,17 +6074,25 @@ export function createJournalWorker(journal: ReturnType<typeof openPreviewJourna
         const withoutSummary = (() => { const packet = JSON.parse(fullContext) as Record<string, unknown>;
           if (!('memorySummary' in packet)) return undefined;
           delete packet.memorySummary; return JSON.stringify(packet); })();
-        // Under byte pressure the obligation guide yields after the desk report is cut (a bounded omission of guidance, never of evidence).
-        const withoutGuide = (value: string) => { const packet = JSON.parse(value) as Record<string, unknown>;
+        // Under byte pressure, after the desk report is cut, the obligation guide yields to its floor form, never to nothing
+        // (Rules 3, 93). Once every optional item has yielded too, the concurrent-work view goes before the guide's floor
+        // form would: a duty to declare outranks a view of other runners. Only on the last rung, with the reply-review
+        // reserve also yielded, does the floor form give way to the no-declaration clause, so the turn is still answered.
+        const floorGuide = (value: string) => { const packet = JSON.parse(value) as Record<string, unknown>;
           if (!('obligationDecision' in packet)) return [];
-          delete packet.obligationDecision; delete packet.governingConstraints; delete packet.capabilities; return [JSON.stringify(packet)]; };
+          packet.obligationDecision = OBLIGATION_DECISION_FLOOR; delete packet.governingConstraints; delete packet.capabilities;
+          const guided = [JSON.stringify(packet)];
+          if (step < dropOrder.length) return guided;
+          if ('concurrentWork' in packet) { delete packet.concurrentWork; guided.push(JSON.stringify(packet)); }
+          if (!reviewReserveWaived) return guided;
+          packet.obligationDecision = OBLIGATION_DECISION_NONE; return [...guided, JSON.stringify(packet)]; };
         const ordinaries = withoutSummary && dropped.some(item => item.kind === 'candidate')
           ? [withoutSummary, fullContext] : [fullContext, ...(withoutSummary ? [withoutSummary] : [])];
         // Memory search is the lowest-priority evidence (Rule 11): its size
         // variants run innermost, using only leftover room.
-        // The desk report is cut before the guide yields; both yield before history does.
+        // The desk report is cut before the guide takes its floor form; both yield before history does.
         const variants = ordinaries.flatMap(ordinary => { const cut = yieldSources(ordinary);
-          return [ordinary, ...cut, ...withoutGuide(cut[0] ?? ordinary)]; });
+          return [ordinary, ...cut, ...floorGuide(cut[0] ?? ordinary)]; });
         for (const context of variants.flatMap(searchVariants)) {
         if (Buffer.byteLength(context) <= journal.view.limits.maxBytes) {
           promptFit = true;

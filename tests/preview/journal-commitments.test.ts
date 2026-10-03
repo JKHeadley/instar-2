@@ -4,7 +4,7 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { performance } from 'node:perf_hooks';
 import { spawnSync } from 'node:child_process';
-import { createJournalWorker, openPreviewJournal } from './journal-test-worker.js';
+import { OBLIGATION_FLOOR_PACKET_BYTES, createJournalWorker, openPreviewJournal } from './journal-test-worker.js';
 import { prepareJournalEnvelope } from './journal-envelope.js';
 import { ANSWER_INSTRUCTIONS, MIND_RULES, SOURCE_PINS, deskStatusSource, readDeskStatus, sourcePacket } from './briefing.js';
 import { readRuns, selfState, selfStateSource } from './self-state.js';
@@ -261,6 +261,9 @@ it('surfaces a fresh promise made after the latest summary', async () => {
     for (; !w.journal.view.summaries.length && id < 60; id++) await w.say(id, filler(id));
     expect(w.journal.view.summaries.length).toBeGreaterThan(0);
     await w.say(id++, 'Promise');
+    // w3-floorduty (Rules 3, 93): the probed packet also carries the obligation guide's floor form, which now outranks
+    // optional evidence under pressure, so the probe gets those bytes beside the promise it is checked for.
+    w.journal.view.limits.maxBytes += OBLIGATION_FLOOR_PACKET_BYTES;
     const probe = w.worker.probe('What did you promise?');
     expect('reason' in probe).toBe(false);
     if ('reason' in probe) throw Error(probe.reason);

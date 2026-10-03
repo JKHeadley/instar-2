@@ -3,13 +3,13 @@ import { mkdtempSync, realpathSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 // Fixtures substitute the model and Jev (int11's faithfulness check runs before a summary commits).
-import { createJournalWorker, openPreviewJournal, replyBody } from './journal-test-worker.js';
+import { OBLIGATION_FLOOR_PACKET_BYTES, createJournalWorker, openPreviewJournal, replyBody } from './journal-test-worker.js';
 
 const key = new Uint8Array(32).fill(41);
 const now = 1790000000000;
 const genesis = { kind: 'genesis' as const, bot: '12345678', chat: '7654321', operator: '7654321',
   grant: 'grant:preview', configurationDigest: 'sha256:offline', expires: 9999999999999,
-  maxCalls: 12, maxReplies: 8, maxTurns: 8, maxBytes: 5150, cursor: 0 }; // inside the measured window where complete history cannot fit but the recall packet can (cint-23-occam re-measure in 50-byte steps after the summary decision left every packet: 4450-5850; cbuild-2 was 5800-6200; before that 4000-5500)
+  maxCalls: 12, maxReplies: 8, maxTurns: 8, maxBytes: 5150 + OBLIGATION_FLOOR_PACKET_BYTES, cursor: 0 }; // w3-floorduty: plus the obligation guide's floor form (Rules 3, 93). Inside the measured window where complete history cannot fit but the recall packet can (cint-23-occam re-measure in 50-byte steps after the summary decision left every packet: 4450-5850; cbuild-2 was 5800-6200; before that 4000-5500)
 const update = (id: number, text: string) => ({ update_id: id,
   message: { chat: { id: 7654321, type: 'private' }, from: { id: 7654321 }, text, date: 1790000000 + id * 60 } });
 

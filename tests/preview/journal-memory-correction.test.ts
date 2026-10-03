@@ -607,8 +607,9 @@ it('keeps only the tenth correction with longer and shorter quotes through resta
     expect(compactions).toBeGreaterThan(0);
     expect(journal.view.summaries.length).toBeGreaterThan(0);
     for (let id = 12; id < 20; id++) {
-      // int12: filler leaves room for the fact-update instruction in each reply packet.
-      worker.intake([update(id, `Unrelated garden note ${id}: ${'garden '.repeat(450)}`)]);
+      // int12: filler leaves room for the fact-update instruction in each reply packet. w3-floorduty: and for the
+      // obligation guide's floor form, which now stays where the whole guide used to yield (Rules 3, 93).
+      worker.intake([update(id, `Unrelated garden note ${id}: ${'garden '.repeat(435)}`)]);
       await worker.drain(); await worker.summarizeIfNeeded(true);
     }
     const probe = worker.probe('What is the observatory access word?');

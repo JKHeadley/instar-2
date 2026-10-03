@@ -4,7 +4,7 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { performance } from 'node:perf_hooks';
 import { spawnSync } from 'node:child_process';
-import { createJournalWorker, importChannelItems, openPreviewJournal, PREVIEW_RECALL_LIMIT, replyBody } from './journal-test-worker.js';
+import { OBLIGATION_FLOOR_PACKET_BYTES, createJournalWorker, importChannelItems, openPreviewJournal, PREVIEW_RECALL_LIMIT, replyBody } from './journal-test-worker.js';
 import { bm25, terms } from '../../src/recall/lexical.js';
 import { auditPacket } from './journal-audit.mjs';
 import { SUBSCRIPTION_CONVERSATION_SYSTEM_PROMPT, subscriptionConversationPolicy } from '../../src/assembly/production-provider.js';
@@ -394,7 +394,8 @@ it('links an introductory claim even when its source ends in a question', async 
     // cbuild-2: the always-offered summary decision needs room beside the merge candidates (measured fit 7000; was 6000).
     // w3-longchat: the answer protocol's compaction and meaning-coverage sentences grew by 55 bytes (Rules 11, 110),
     // and the merge candidates were the block that yielded; re-measured in 10-byte steps, fit 7030, fail 7010.
-    const w = world(root, { maxBytes: 7100, summarize: sourceSummarizer, answer: mergeAnswer });
+    // w3-floorduty: plus the obligation guide's floor form, which now outranks optional evidence under pressure (Rules 3, 93).
+    const w = world(root, { maxBytes: 7100 + OBLIGATION_FLOOR_PACKET_BYTES, summarize: sourceSummarizer, answer: mergeAnswer });
     await w.say(1, 'My cofounder Sam prefers October. Can you remember that?');
     await w.say(2, 'Sam Ortiz is the cofounder who proposed October.');
     const n = await w.fillUntilRecall(3, 'Are Sam and Sam Ortiz the same person?');

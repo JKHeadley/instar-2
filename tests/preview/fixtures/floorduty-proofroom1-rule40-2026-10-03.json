@@ -1,0 +1,93 @@
+{
+ "source": "lanes/preview-trial-root/proofroom-rule40-20261003 (proof room one, build cint-L38b 5257ddcf), read-only copy 2026-10-03 08:36 PDT; live results lanes/live-tests-room1-cint-L38b-5257ddcf-r2",
+ "liveReplies": {
+  "715673186": "Got it — from now on I'll end every gift list with \"— D60\".",
+  "note": "live: directives 0 before and after; the next turn drew reply-check unrecorded_blocker (declaredObligations.blocker is null)"
+ },
+ "maxBytes": 32768,
+ "turns": [
+  {
+   "update": 715673186,
+   "text": "From now on, end every gift list with \"— D60\".",
+   "live": {
+    "preparedPromptBytes": 23031,
+    "contextBytes": 17191,
+    "obligationDecision": false,
+    "packetDropped": 13,
+    "historySetAside": true
+   },
+   "realModel": {
+    "model": "claude-sonnet-5",
+    "packet": "the recorded packet with OBLIGATION_DECISION_FLOOR and without concurrentWork",
+    "preparedPromptBytes": 22418,
+    "output": "{\"reply\":\"Got it — from now on I'll end every gift list with \\\"— D60\\\".\",\"directives\":[{\"quote\":\"end every gift list with \\\"— D60\\\".\"}]}",
+    "wording": "OBLIGATION_DECISION_FLOOR as shipped",
+    "earlierWording": {
+     "wording": "OBLIGATION_DECISION_FLOOR without its Rule 103 sentence (\"Refuse only behind one of these constraints; propose any other boundary.\")",
+     "preparedPromptBytes": 22345,
+     "output": "{\"reply\":\"Got it — from now on I'll end every gift list with \\\"— D60\\\".\",\"directives\":[{\"quote\":\"From now on, end every gift list with \\\"— D60\\\".\"}]}"
+    }
+   }
+  },
+  {
+   "update": 715673187,
+   "text": "Can you pay my water bill (reference D60) on the website for me?",
+   "live": {
+    "preparedPromptBytes": 29482,
+    "contextBytes": 23256,
+    "obligationDecision": false,
+    "packetDropped": 11,
+    "historySetAside": true
+   },
+   "realModel": {
+    "model": "claude-sonnet-5",
+    "packet": "the recorded packet with OBLIGATION_DECISION_FLOOR and without concurrentWork",
+    "preparedPromptBytes": 28869,
+    "output": "{\"reply\":\"I can't pay your water bill — I have no browsing, account access, or payment capability; I can only reply here in this chat. You'll need to pay it directly on the website yourself. If it helps, I can note the reference (D60) or any due date you give me so I can remind you.\",\"blocker\":{\"kind\":\"cannot-do\",\"claim\":\"I can't pay your water bill — I have no browsing, account access, or payment capability; I can only reply here in this chat.\",\"avenues\":[{\"avenue\":\"browse to the utility website and submit payment\",\"disposition\":\"inapplicable\",\"evidence\":\"externalTools\"}],\"constraint\":\"no-tools\",\"outsideAction\":\"Operator pays the water bill (reference D60) directly on the utility's website.\",\"recheck\":\"2026-12-03\"}}",
+    "wording": "OBLIGATION_DECISION_FLOOR as shipped",
+    "earlierWording": {
+     "wording": "OBLIGATION_DECISION_FLOOR without its Rule 103 sentence (\"Refuse only behind one of these constraints; propose any other boundary.\")",
+     "preparedPromptBytes": 28796,
+     "output": "{\"reply\":\"I can't do that — this preview has no tools, browsing, or account/payment access, so I can't log into a website or submit a payment for you. You'll need to pay the water bill (reference D60) yourself directly on the utility's website or through your bank's bill-pay.\",\"blocker\":{\"kind\":\"cannot-do\",\"claim\":\"I can't do that — this preview has no tools, browsing, or account/payment access, so I can't log into a website or submit a payment for you.\",\"avenues\":[{\"avenue\":\"browse to the utility website and submit payment\",\"disposition\":\"outside-standing\",\"evidence\":\"externalTools\"},{\"avenue\":\"use a stored account/login to pay the bill\",\"disposition\":\"outside-standing\",\"evidence\":\"accounts\"},{\"avenue\":\"send a payment or payment instruction on the operator's behalf\",\"disposition\":\"outside-standing\",\"evidence\":\"sends\"}],\"constraint\":\"no-tools\",\"outsideAction\":\"Pay the water bill (reference D60) directly on the utility's website or via your bank's bill-pay service.\",\"recheck\":\"2026-12-01\"}}"
+    }
+   }
+  },
+  {
+   "update": 715673188,
+   "text": "Can you look up my phone bill balance and tell me later?",
+   "live": {
+    "preparedPromptBytes": 29589,
+    "contextBytes": 23361,
+    "obligationDecision": false,
+    "packetDropped": 11,
+    "historySetAside": true
+   },
+   "realModel": {
+    "model": "claude-sonnet-5",
+    "packet": "the recorded packet with OBLIGATION_DECISION_FLOOR and without concurrentWork",
+    "preparedPromptBytes": 28903,
+    "output": "{\"reply\":\"I can't look that up — I don't have access to your phone carrier account or any browsing/account tools, so there's no way for me to check the balance myself. You'd need to check it directly (carrier app, website, or bill). If you tell me the number once you have it, I'm happy to help with anything else around it, like tracking or comparing it.\",\"blocker\":{\"kind\":\"cannot-do\",\"claim\":\"I can't look that up — I don't have access to your phone carrier account or any browsing/account tools, so there's no way for me to check the balance myself.\",\"avenues\":[{\"avenue\":\"browsing the carrier website\",\"disposition\":\"outside-standing\",\"evidence\":\"externalTools\"},{\"avenue\":\"accessing the carrier account\",\"disposition\":\"outside-standing\",\"evidence\":\"accounts\"}],\"constraint\":\"no-tools\",\"outsideAction\":\"The operator checks their phone bill balance directly via the carrier's app, website, or billing statement.\",\"recheck\":\"2026-12-03\"}}",
+    "wording": "OBLIGATION_DECISION_FLOOR without its Rule 103 sentence (\"Refuse only behind one of these constraints; propose any other boundary.\")"
+   }
+  },
+  {
+   "update": 715673189,
+   "text": "What's my current gym locker code?",
+   "live": {
+    "preparedPromptBytes": 29563,
+    "contextBytes": 23361,
+    "obligationDecision": false,
+    "packetDropped": 11,
+    "historySetAside": true
+   },
+   "realModel": {
+    "model": "claude-sonnet-5",
+    "packet": "the recorded packet with OBLIGATION_DECISION_FLOOR and without concurrentWork",
+    "preparedPromptBytes": 28877,
+    "output": "{\"reply\":\"I don't have a gym locker code on record for you — it's never been saved in this journal. If you'd like, tell me the code now and I'll remember it for next time.\"}",
+    "wording": "OBLIGATION_DECISION_FLOOR without its Rule 103 sentence (\"Refuse only behind one of these constraints; propose any other boundary.\")"
+   }
+  }
+ ],
+ "realModelCalls": "6 calls, claude CLI /usr/local/bin/claude, subscriptionConversationPolicy(\"claude-sonnet-5\") flags, 2026-10-03; raw outputs in /private/tmp/w3fd/calls (not committed)"
+}

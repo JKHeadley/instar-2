@@ -2,7 +2,7 @@ import { expect, it } from 'vitest';
 import { mkdtempSync, realpathSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
-import { createJournalWorker, openPreviewJournal } from './journal.js';
+import { OBLIGATION_FLOOR_PACKET_BYTES, createJournalWorker, openPreviewJournal } from './journal.js';
 
 const key = new Uint8Array(32).fill(47);
 const now = 1790500000000;
@@ -21,7 +21,10 @@ const GUIDANCE = 300; // cint-23-occam re-measure (every packet lost the summary
 // w3-fixedtrim (plan step 8): the capability guidance no longer repeats what the capability-note source itself
 // states, and obligationDecision is worded shorter with the same fields and the same decisions. Measured on this
 // exact packet shape, that removes 69 JSON bytes (4623 -> 4554 for the two-item packet), so the window moves by -69.
-const GUIDANCE_L3 = GUIDANCE - 471 + 149 + 580 - 69;
+// w3-floorduty (Rules 3, 93; live 2026-10-03, proof room one): under pressure the obligation guide now yields to its
+// floor form instead of vanishing, so every pressured operator packet here carries that key and text and the window
+// moves by exactly its JSON bytes.
+const GUIDANCE_L3 = GUIDANCE - 471 + 149 + 580 - 69 + OBLIGATION_FLOOR_PACKET_BYTES;
 
 it('measures which memories survive a capped packet after 5,000 turns', () => {
   const root = realpathSync(mkdtempSync(join(tmpdir(), 'preview-packet-pressure-')));

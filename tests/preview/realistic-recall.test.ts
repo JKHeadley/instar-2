@@ -1,6 +1,6 @@
 import { expect, it } from 'vitest';
 import { conversation, scenes } from './realistic-recall-fixture.js';
-import { runRealisticRecall } from './realistic-recall.js';
+import { REALISTIC_RECALL_LIMIT, runRealisticRecall } from './realistic-recall.js';
 
 it('keeps current facts and excludes stale facts in a varied 300-turn diary', async () => {
   expect(conversation()).toHaveLength(300);
@@ -14,7 +14,7 @@ it('keeps current facts and excludes stale facts in a varied 300-turn diary', as
   expect(result.memoryChanges).toBe(7);
   expect(result.summaries).toBeGreaterThan(10);
   expect(result.cases.every(item => item.historyMode === 'summary-plus-recent')).toBe(true);
-  expect(result.cases.every(item => item.packetBytes <= 24000)).toBe(true);
+  expect(result.cases.every(item => item.packetBytes <= REALISTIC_RECALL_LIMIT)).toBe(true);
   expect(result.positiveCases).toBe(57);
   expect(result.neededPresent).toBe(57);
   expect(result.exclusionCases).toBe(14);

@@ -6,12 +6,14 @@ import { mkdtempSync, readFileSync, realpathSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { createHash } from 'node:crypto';
-import { continuityDisclosure, createJournalWorker, MODEL_FAILURE_REPLY, openPreviewJournal, withDisclosure } from './journal.js';
+import { continuityDisclosure, createJournalWorker, MODEL_FAILURE_REPLY, OBLIGATION_FLOOR_PACKET_BYTES as FLOOR_GUIDE, openPreviewJournal, withDisclosure } from './journal.js';
 import { HOLDING_REPLY } from './reply-check.js';
 import { prepareJournalEnvelope } from './journal-envelope.js';
 import { ANSWER_INSTRUCTIONS, MIND_RULES, verifyMindRules } from './briefing.js';
 
 const key = new Uint8Array(32).fill(52), at = 1790000000000;
+// w3-floorduty (Rules 3, 93): under pressure the obligation guide now yields to its floor form instead of vanishing, so a
+// small synthetic limit carries those bytes too; every outcome below is otherwise unchanged.
 const genesis = (maxBytes = 1024 * 1024) => ({ kind: 'genesis' as const, bot: '12345678', chat: '7654321', operator: '7654321',
   grant: 'grant:preview', configurationDigest: 'sha256:offline', expires: 9999999999999,
   maxCalls: 400, maxReplies: 200, maxTurns: 200, maxBytes, cursor: 0 });
@@ -173,7 +175,7 @@ describe('Rule 11 and G6: recall reaches a paraphrase by meaning through the rec
   /** The live worker end to end: answers and rolling summaries go through the real paths; the model is a stub. */
   const live = (concepts: (context: string) => { source: string; terms: string[] }[]) => {
     const dir = root();
-    const journal = openPreviewJournal(join(dir, 'journal.encrypted'), key, genesis(12 * 1024));
+    const journal = openPreviewJournal(join(dir, 'journal.encrypted'), key, genesis(12 * 1024 + FLOOR_GUIDE));
     const summaryContexts: string[] = [];
     const worker = createJournalWorker(journal, { now: () => at + 100_000, stopped: () => false, send: async () => 1, checkOutbound: () => {},
       // The summary's faithfulness check passes (a stand-in for Jev), so rolling summaries advance normally.
