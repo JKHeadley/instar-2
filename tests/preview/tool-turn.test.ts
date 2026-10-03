@@ -1,8 +1,10 @@
 // Part Thirteen §9 (docs/17-harness-adapters), the preview tool rule, runner side: the call cap reserves a tool turn's whole liability
 // before dispatch (MF4) and retains it; a short allowance answers without tools; the trace closes exactly one
-// reserved turn; the workspace is private and fresh; status names exactly the tools; and a stop ends a live
-// turn, descendants included, by the launch's own process group within the declared bound.
-import { existsSync, lstatSync, mkdtempSync, readFileSync, readdirSync, realpathSync, rmSync, utimesSync, writeFileSync } from 'node:fs';
+// reserved turn; the workspace is private and fresh on a fixed-size scratch volume that refuses writes past its size;
+// status names exactly the tools; and a stop ends a live turn, descendants included, by the launch's own process
+// group within the declared bound.
+import { spawnSync } from 'node:child_process';
+import { existsSync, lstatSync, mkdirSync, mkdtempSync, readFileSync, readdirSync, realpathSync, rmSync, utimesSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { afterEach, expect, it } from 'vitest';
@@ -11,7 +13,7 @@ import { SUBSCRIPTION_TOOL_LIMITS, SUBSCRIPTION_TOOL_NAMES, SUBSCRIPTION_TOOLS_S
 import { SINGLE_MACHINE_PROFILE } from './activation-authority.js';
 import { capabilityBriefing, TOOLS_BRIEFING } from './briefing.js';
 // @ts-expect-error The runner side stays plain JavaScript.
-import { prepareToolTurn, pruneToolTurns, readToolTrace, runToolTurn, toolStatusLines, toolTurnEligible, workspaceBytes, TOOL_HOOK_SCRIPT } from './tool-turn.mjs';
+import { attachScratch, detachScratch, prepareToolTurn, pruneToolTurns, readToolTrace, runToolTurn, scratchMounted, toolStatusLines, toolTurnEligible, toolTurnFits, workspaceBytes, TOOL_HOOK_SCRIPT } from './tool-turn.mjs';
 // @ts-expect-error The physical host remains JavaScript.
 import { createResourceOwner } from '../../scripts/resource-owner.mjs';
 
@@ -19,6 +21,10 @@ const key = new Uint8Array(32).fill(7);
 const roots: string[] = [];
 afterEach(() => roots.splice(0).forEach(root => rmSync(root, { recursive: true, force: true })));
 const dir = () => { const root = realpathSync(mkdtempSync(join(tmpdir(), 'tool-turn-'))); roots.push(root); return root; };
+/** A stand-in for the scratch volume where the test root sits on the RAM disk (a disk image cannot be mounted from it):
+ * a plain directory. The real volume is exercised by the boundary test below, on ordinary storage. */
+const plainScratch = (turn: string) => { mkdirSync(join(turn, 'vol'), { mode: 0o700 }); return realpathSync(join(turn, 'vol')); };
+const keepDetached = () => true;
 const journalAt = (root: string, maxCalls: number) => openPreviewJournal(join(root, 'journal.encrypted'), key, { kind: 'genesis',
   bot: '12345678', chat: '7654321', operator: '7654321', grant: 'grant:preview', configurationDigest: 'sha256:offline',
   expires: 9_999_999_999_999, maxCalls, maxReplies: 10, maxTurns: 10, maxBytes: 32768, cursor: 0 });
@@ -52,28 +58,62 @@ it('reserves the whole tool-turn liability against the call cap, retains it, and
 
 it('allocates a private, empty workspace and a separate admission state per turn, and keeps bounded history', () => {
   const root = dir();
-  const turn = prepareToolTurn({ root, operation: 'telegram:1:update:2', attempt: 0, operations: SINGLE_MACHINE_PROFILE.operations });
+  const turn = prepareToolTurn({ root, operation: 'telegram:1:update:2', attempt: 0, operations: SINGLE_MACHINE_PROFILE.operations, scratch: plainScratch });
   expect(readdirSync(turn.workspace)).toEqual([]);
-  for (const path of [turn.workspace, turn.stateDirectory]) expect(lstatSync(path).mode & 0o777).toBe(0o700);
-  expect(turn.workspace.startsWith(join(root, 'tool-turns'))).toBe(true);
-  expect(turn.stateDirectory.startsWith(turn.workspace)).toBe(false);
+  for (const path of [turn.workspace, turn.stateDirectory, join(turn.scratch, 'tmp')]) expect(lstatSync(path).mode & 0o777).toBe(0o700);
+  expect(turn.workspace).toBe(join(turn.scratch, 'ws'));
+  expect(turn.scratch.startsWith(join(root, 'tool-turns'))).toBe(true);
+  expect(turn.stateDirectory.startsWith(turn.scratch)).toBe(false);
   expect(JSON.parse(readFileSync(join(turn.stateDirectory, 'config.json'), 'utf8'))).toEqual({ workspace: turn.workspace,
-    maxCalls: SUBSCRIPTION_TOOL_LIMITS.maxToolCalls, maxWriteBytes: SUBSCRIPTION_TOOL_LIMITS.maxWriteBytes,
+    tmp: join(turn.scratch, 'tmp'), maxCalls: SUBSCRIPTION_TOOL_LIMITS.maxToolCalls, maxWriteBytes: SUBSCRIPTION_TOOL_LIMITS.maxWriteBytes,
     operations: [...SINGLE_MACHINE_PROFILE.operations] });
   expect(turn.hook).toEqual({ node: process.execPath, script: TOOL_HOOK_SCRIPT });
   // The same attempt is never reused: a repeat allocation refuses rather than sharing a workspace.
-  expect(() => prepareToolTurn({ root, operation: 'telegram:1:update:2', attempt: 0, operations: [] })).toThrow();
+  expect(() => prepareToolTurn({ root, operation: 'telegram:1:update:2', attempt: 0, operations: [], scratch: plainScratch })).toThrow();
   writeFileSync(join(turn.workspace, 'note.txt'), 'hello reuse');
   expect(workspaceBytes(turn.workspace)).toBe(11);
   expect(readToolTrace(turn.stateDirectory)).toMatchObject({ calls: [], consistent: true });
   for (let i = 1; i <= 4; i++) {
-    const t = prepareToolTurn({ root, operation: `telegram:1:update:${String(i + 2)}`, attempt: i, operations: [] });
-    utimesSync(join(t.workspace, '..'), i * 1000, i * 1000);
+    const t = prepareToolTurn({ root, operation: `telegram:1:update:${String(i + 2)}`, attempt: i, operations: [], scratch: plainScratch });
+    utimesSync(t.directory, i * 1000, i * 1000);
   }
-  utimesSync(join(turn.workspace, '..'), 0, 0);
-  expect(pruneToolTurns(root, 2)).toEqual({ removed: 3, failed: 0 });
+  utimesSync(turn.directory, 0, 0);
+  // A turn whose volume will not unmount is kept (and counted failed), never removed from under the mount.
+  expect(pruneToolTurns(root, 3, (dir: string) => dir !== turn.directory)).toEqual({ removed: 1, failed: 1 });
+  expect(existsSync(turn.workspace)).toBe(true);
+  expect(pruneToolTurns(root, 2, keepDetached)).toEqual({ removed: 2, failed: 0 });
   expect(existsSync(turn.workspace)).toBe(false);
   expect(readdirSync(join(root, 'tool-turns'))).toHaveLength(2);
+});
+
+const hdiutil = existsSync('/usr/bin/hdiutil');
+it.runIf(hdiutil)('bounds a turn\'s whole storage: its scratch volume refuses writes past its size, and the volume goes after the turn', { timeout: 120000 }, () => {
+  // Ordinary storage, not the RAM disk: the sparse image is the turn's real allocation, as under a live root.
+  const root = realpathSync(mkdtempSync('/private/tmp/tool-scratch-')); roots.push(root);
+  const turn = join(root, 'turn'); mkdirSync(turn, { mode: 0o700 });
+  const volume = attachScratch(turn, 8 * 1048576);
+  try {
+    expect(scratchMounted(turn)).toBe(true);
+    expect(volume).toBe(realpathSync(join(turn, 'vol')));
+    // Many files, each far under the per-file limit, as a shell loop would write them: past the volume's size every
+    // further write fails, and the disk the root sits on gains nothing beyond the image.
+    const written = spawnSync('/bin/sh', ['-c', 'ulimit -f 65536; i=0; while [ $i -lt 12 ]; do /bin/dd if=/dev/zero of=f$i bs=1048576 count=1 2>/dev/null '
+      + '&& echo ok || echo full; i=$((i+1)); done'], { cwd: volume, encoding: 'utf8' }).stdout.trim().split('\n');
+    expect(written.slice(0, 4)).toEqual(['ok', 'ok', 'ok', 'ok']);
+    expect(written).toContain('full');
+    expect(written.slice(written.indexOf('full'))).toEqual(written.slice(written.indexOf('full')).map(() => 'full'));
+    expect(lstatSync(join(turn, 'scratch.sparseimage')).size).toBeLessThanOrEqual(9 * 1048576);
+    // The positive neighbour: a write inside the allowance succeeded and is readable.
+    expect(readFileSync(join(volume, 'f0')).byteLength).toBe(1048576);
+  } finally { expect(detachScratch(turn)).toBe(true); }
+  expect(scratchMounted(turn)).toBe(false);
+  expect(existsSync(join(turn, 'scratch.sparseimage'))).toBe(false);
+  // A volume left mounted by an interrupted turn is unmounted by prune before its directory is removed.
+  const base = join(root, 'tool-turns'), stale = join(base, 'stale-0'); mkdirSync(stale, { recursive: true });
+  attachScratch(stale, 8 * 1048576);
+  expect(scratchMounted(stale)).toBe(true);
+  expect(pruneToolTurns(root, 0)).toEqual({ removed: 1, failed: 0 });
+  expect(existsSync(stale)).toBe(false);
 });
 
 it('runs tools only for answer turns and scheduled work, never for reviews, summaries or benchmark reruns', () => {
@@ -136,9 +176,12 @@ it('runs one tool turn: refuses to the text-only answer on a short allowance or 
   const extra = SUBSCRIPTION_TOOL_LIMITS.maxTurns - 1, id = 'telegram:12345678:update:9';
   const base = (journal: ReturnType<typeof journalAt>, root: string, invoke: (turn: { workspace: string; stateDirectory: string }) => Promise<unknown>) => ({
     journal, root, id, prepared: '{"q":1}', promptLimit: 32768, deniedRoots: [root], operations: SINGLE_MACHINE_PROFILE.operations,
-    now: () => 10, redactText: (text: string) => text.replace('SECRET', '[redacted]'), fallback: async () => ({ result: 'text-only' }), invoke });
+    now: () => 10, redactText: (text: string) => text.replace('SECRET', '[redacted]'), fallback: async () => ({ result: 'text-only' }), invoke,
+    scratch: plainScratch, detach: keepDetached });
   // Short allowance: refused, recorded, answered without tools, nothing reserved or launched.
   let root = dir(), journal = journalAt(root, extra - 1), launched = 0;
+  // The packet's route predicate agrees with the turn's own reservation on both sides of the cap.
+  expect(toolTurnFits(journal.view)).toBe(false); expect(toolTurnFits(journalAt(dir(), extra).view)).toBe(true);
   expect(await runToolTurn(base(journal, root, async () => { launched++; }))).toEqual({ result: 'text-only' });
   expect([journal.view.calls, journal.view.toolTurns?.refusedCap, launched]).toEqual([0, 1, 0]);
   // The other side of the cap: exactly enough allowance runs the turn.

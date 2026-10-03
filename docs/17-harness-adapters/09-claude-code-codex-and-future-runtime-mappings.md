@@ -37,10 +37,15 @@ safeguards, nothing outward by default, consequential effects and irreversible a
 one Claude Code invocation that has exactly Read, Write, Edit, Glob, Grep and Bash, through the
 existing provider path. Each tool's scope, finite resource bounds and durable cause are enforced
 before dispatch. A mandatory deny-by-default PreToolUse admission hook admits only file operations
-physically contained in the turn's new private workspace and sandboxed commands of no consequential
-class; it sends every consequential call to the effect doorway's admission, which refuses a tool
-effect the installed profile does not register. The harness sandbox confines every command to that
-workspace: no network, no unix sockets, no reads outside it. The launch has a clean environment; the
+physically contained in the turn's new private workspace and sandboxed commands; it never judges a
+command by the words it contains. It sends every consequential tool (an MCP or web tool, an unsandboxed
+command) to the effect doorway's admission, which refuses a tool effect the installed profile does not
+register. The harness sandbox is where a command's reach is enforced: reads are refused from the
+filesystem root down except the turn's scratch volume and the system files commands need to run;
+writes reach only that volume; there is no network, no unix socket and no signal to another process.
+The workspace and every temporary file of the shell and the harness live on that fixed-size volume, so a
+turn's whole storage is finite and cannot consume the journal's disk. The per-step tool-call count is
+allocated atomically, so overlapping calls cannot exceed it. The launch has a clean environment; the
 harness's own messaging socket and token are removed from every command; and no subagent, workflow,
 web, MCP, scheduling or messaging tool exists. Neither `--bare` nor `--safe-mode` is used, because
 both skip settings hooks, and managed policy that could disable hooks refuses the turn. Arbitrary-code

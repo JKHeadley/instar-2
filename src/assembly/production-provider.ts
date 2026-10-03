@@ -238,8 +238,8 @@ export const SUBSCRIPTION_TOOL_LIMITS = Object.freeze({ maxTurns: 8, maxToolCall
   budgetCeilingUsd: 1, oneTurnMarginUsd: 0.25, maxWriteBytes: 1048576 });
 const NO_TOOLS_SENTENCE = 'You have no tools and cannot act beyond this answer; never claim otherwise.';
 const TOOLS_SENTENCE = `In this turn you have exactly these tools: ${SUBSCRIPTION_TOOL_NAMES.join(', ')}. They work only inside this turn's private, `
-  + 'new and empty workspace (your working directory). Bash is sandboxed: no network, no writes or reads outside the workspace. '
-  + 'Network, deleting, sending messages and host control are refused, as is any path outside the workspace. '
+  + 'new and empty workspace (your working directory). Bash is sandboxed: no network, no reads outside the workspace except the system '
+  + 'files commands need to run, no writes outside it, no control of other processes, and the workspace has a fixed size. '
   + 'There are no MCP servers, subagents, web search, web fetch or other network access. '
   + `Use at most ${SUBSCRIPTION_TOOL_LIMITS.maxToolCalls} tool calls. When your answer reports a value a tool produced, `
   + 'say in reason.value which tool call, by name and order, produced it. Never claim an effect no tool reported, '
@@ -263,7 +263,10 @@ export function subscriptionToolsPolicy(model: string) {
 }
 /** One tool turn's machine-local paths, allocated by the runner under its root. */
 export interface SubscriptionToolTurn {
-  /** The turn's private workspace: the launch's working directory and the only writable place. */
+  /** The turn's fixed-size scratch volume: it holds the workspace and the shell's temporary directory, and it
+   * is the only place a tool can write, so the turn's whole storage is bounded by the volume's size. */
+  readonly scratch: string;
+  /** The turn's private workspace inside the scratch volume: the launch's working directory. */
   readonly workspace: string;
   /** The hook's admission record and per-step count; outside the workspace, never readable or writable by a tool. */
   readonly stateDirectory: string;
@@ -273,22 +276,44 @@ export interface SubscriptionToolTurn {
 }
 const SAFE_PATH = /^\/[A-Za-z0-9_./@-]+$/u;
 const within = (path: string, root: string) => path === root || path.startsWith(`${root}/`);
+/** The longest scratch-volume path a tool turn admits (see subscriptionToolSettings). */
+export const SUBSCRIPTION_TOOL_SCRATCH_PATH_BYTES = 30;
+/** System locations a sandboxed shell reads to run at all: binaries, their libraries and the dynamic
+ * loader's cache (/System), the selected `sh` (/private/var/select), device nodes and system configuration
+ * (/private/etc: name resolution, certificates). Nothing else outside the scratch volume is readable: other
+ * sessions' temporary files, users' homes, mounted volumes and the runner root all lie outside this list. */
+export const SUBSCRIPTION_TOOL_RUNTIME_READS = Object.freeze(['/bin', '/sbin', '/usr/bin', '/usr/sbin', '/usr/lib', '/usr/libexec',
+  '/usr/share', '/System', '/private/var/select', '/private/etc', '/dev']);
+/** Places Claude Code 2.1.280 lets every sandboxed command write by default (its shared temporary directory
+ * and two home-directory logs). They lie outside the scratch volume, so a tool turn refuses them. */
+export const subscriptionToolDefaultWrites = (home: string) => Object.freeze(['/tmp/claude', '/private/tmp/claude',
+  `${home}/.npm/_logs`, `${home}/.claude/debug`]);
 /** The exact settings a tool turn launches with (template `preview-tools-settings-v1`). The paths are
- * the only per-turn inputs; each is absolute and shell-safe, so the hook command needs no quoting. */
-export function subscriptionToolSettings(turn: SubscriptionToolTurn): string {
-  const paths = [turn.workspace, turn.stateDirectory, turn.hook.node, turn.hook.script, ...turn.deniedRoots];
-  ensure(paths.every(path => SAFE_PATH.test(path) && !/(?:^|\/)\.\.?(?:\/|$)/u.test(path)), 'tool turn: paths must be absolute and plain');
-  ensure(!within(turn.stateDirectory, turn.workspace) && !within(turn.workspace, turn.stateDirectory)
-    && !within(turn.hook.script, turn.workspace), 'tool turn: the admission state and hook lie outside the workspace');
+ * the only per-turn inputs; each is absolute and shell-safe, so the hook command needs no quoting. `home`
+ * is the launch's HOME. Reads are refused from the filesystem root down and reopened only for the scratch
+ * volume and the runtime list; writes reach only the scratch volume. */
+export function subscriptionToolSettings(turn: SubscriptionToolTurn, home: string): string {
+  const paths = [turn.scratch, turn.workspace, turn.stateDirectory, turn.hook.node, turn.hook.script, home, ...turn.deniedRoots];
+  ensure(paths.every(path => typeof path === 'string' && SAFE_PATH.test(path) && !/(?:^|\/)\.\.?(?:\/|$)/u.test(path)),
+    'tool turn: paths must be absolute and plain');
+  ensure(within(turn.workspace, turn.scratch) && turn.workspace !== turn.scratch, 'tool turn: the workspace lies inside its scratch volume');
+  // The volume is also the harness's temporary directory (CLAUDE_CODE_TMPDIR). Claude Code 2.1.280 keeps its per-user
+  // directory `<tmp>/claude-<uid>` there only within 44 bytes, else it falls back to the shared /tmp/claude-<uid>, which
+  // this sandbox cannot let it create; 30 bytes leaves room for a six-digit uid.
+  ensure(Buffer.byteLength(turn.scratch) <= SUBSCRIPTION_TOOL_SCRATCH_PATH_BYTES, 'tool turn: the scratch volume path is too long for the harness temporary directory');
+  ensure(!within(turn.stateDirectory, turn.scratch) && !within(turn.scratch, turn.stateDirectory)
+    && !within(turn.hook.script, turn.scratch), 'tool turn: the admission state and hook lie outside the workspace');
+  ensure([turn.stateDirectory, home, ...turn.deniedRoots].every(path => !within(path, turn.scratch)
+    && !SUBSCRIPTION_TOOL_RUNTIME_READS.some(read => within(path, read) || within(read, path))),
+  'tool turn: a denied root, the admission state or the home lies under a readable path');
   const hook = (mode: 'pre' | 'post') => [{ matcher: '*', hooks: [{ type: 'command',
     command: `${turn.hook.node} ${turn.hook.script} ${mode} ${turn.stateDirectory}` }] }];
   return JSON.stringify({
     disableAllHooks: false,
     sandbox: { enabled: true, failIfUnavailable: true, autoAllowBashIfSandboxed: true, allowUnsandboxedCommands: false,
       network: { allowedDomains: [], allowUnixSockets: [], allowAllUnixSockets: false, allowLocalBinding: false },
-      filesystem: { allowWrite: [turn.workspace],
-        denyRead: [...turn.deniedRoots, turn.stateDirectory, '/Users', '/Volumes', '/tmp/cc-socks', '/private/tmp/cc-socks'],
-        allowRead: [turn.workspace] } },
+      filesystem: { allowWrite: [turn.scratch], denyWrite: [...subscriptionToolDefaultWrites(home)],
+        denyRead: ['/'], allowRead: [turn.scratch, ...SUBSCRIPTION_TOOL_RUNTIME_READS] } },
     permissions: { allow: [...SUBSCRIPTION_TOOL_NAMES], deny: [...SUBSCRIPTION_TOOL_DISALLOWED] },
     hooks: { PreToolUse: hook('pre'), PostToolUse: hook('post') },
   });
@@ -370,8 +395,9 @@ export function createClaudeCodeSubscriptionRoute(input:
     const promptBytes = config.raisedPromptBytes ?? policy.maxPromptBytes;
     const tools = framing === SUBSCRIPTION_TOOLS_FRAMING;
     ensure(tools === (config.toolTurn !== undefined), 'subscription tool turn and framing differ');
-    const toolSettings = config.toolTurn ? subscriptionToolSettings(config.toolTurn) : null;
+    const toolSettings = config.toolTurn ? subscriptionToolSettings(config.toolTurn, profile.home) : null;
     if (config.toolTurn) ensure(config.io.realpath(config.toolTurn.workspace) === config.toolTurn.workspace
+      && config.io.realpath(config.toolTurn.scratch) === config.toolTurn.scratch
       && config.io.realpath(config.toolTurn.stateDirectory) === config.toolTurn.stateDirectory,
     'tool turn: canonical workspace and state directory required');
     ensure(config.raisedPromptBytes === undefined || ((framing === SUBSCRIPTION_CONVERSATION_FRAMING || tools)
@@ -418,9 +444,11 @@ export function createClaudeCodeSubscriptionRoute(input:
           && bounds.maxOutputBytes === policy.maxOutputBytes && Buffer.byteLength(bytes) <= promptBytes
           && Buffer.byteLength(system, 'utf8') + Buffer.byteLength(bytes, 'utf8') <= promptBytes,
         'subscription invocation bounds differ');
+        // A tool turn's harness keeps its own temporary files (the shell's cwd record) on the turn's scratch volume.
         const env = Object.freeze({ PATH: policy.path, HOME: profile.home, CLAUDE_CONFIG_DIR: profile.configDirectory,
           CLAUDE_CODE_MAX_RETRIES: '0', CLAUDE_CODE_MAX_OUTPUT_TOKENS: String(SUBSCRIPTION_MAX_OUTPUT_TOKENS),
-          CLAUDE_CODE_DISABLE_NONESSENTIAL_TRAFFIC: '1', ...SUBSCRIPTION_THINKING_ENV });
+          CLAUDE_CODE_DISABLE_NONESSENTIAL_TRAFFIC: '1', ...SUBSCRIPTION_THINKING_ENV,
+          ...(config.toolTurn ? { CLAUDE_CODE_TMPDIR: config.toolTurn.scratch } : {}) });
         const command = async (args: readonly string[], stdin: string, timeout: number, maxBytes: number,
           allowFailureFrame = false) => {
           await new Promise<void>(resolve => setImmediate(resolve));

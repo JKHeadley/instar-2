@@ -10,7 +10,7 @@ import { afterEach, expect, it } from 'vitest';
 import { canonical, decode } from '../../src/index.js';
 import { createClaudeCodeSubscriptionRoute, subscriptionConversationPolicy, subscriptionToolSettings, subscriptionToolsPolicy,
   SUBSCRIPTION_CONVERSATION_SYSTEM_PROMPT, SUBSCRIPTION_PREVIEW_EXPIRY, SUBSCRIPTION_TOOL_DISALLOWED, SUBSCRIPTION_TOOL_LIMITS,
-  SUBSCRIPTION_TOOL_NAMES, SUBSCRIPTION_TOOLS_FRAMING, SUBSCRIPTION_TOOLS_SYSTEM_PROMPT, SUBSCRIPTION_CONVERSATION_FRAMING,
+  SUBSCRIPTION_TOOL_NAMES, SUBSCRIPTION_TOOLS_FRAMING, SUBSCRIPTION_TOOLS_SYSTEM_PROMPT, SUBSCRIPTION_CONVERSATION_FRAMING, SUBSCRIPTION_TOOL_RUNTIME_READS,
   validateSubscriptionActivation } from '../../src/assembly/production-provider.js';
 import type { SubscriptionActivationRecord, SubscriptionToolTurn } from '../../src/assembly/production-provider.js';
 import type { ProviderSubscriptionProfile } from '../../src/assembly/provider-credential-custodian.js';
@@ -60,31 +60,45 @@ it('tells the model exactly the tools it has, and keeps the conversation framing
   expect(SUBSCRIPTION_TOOLS_SYSTEM_PROMPT.length - SUBSCRIPTION_CONVERSATION_SYSTEM_PROMPT.length).toBeLessThan(700);
 });
 
-it('writes settings with the tight read sandbox, no network or unix sockets, and the mandatory hook on both events', () => {
-  const turn: SubscriptionToolTurn = { workspace: '/r/tool-turns/a-0/ws', stateDirectory: '/r/tool-turns/a-0/state',
+it('writes settings that refuse every read from the root down except the scratch volume and the runtime, writes outside the volume, network and unix sockets, with the mandatory hook on both events', () => {
+  const turn: SubscriptionToolTurn = { scratch: '/r/tool-turns/a-0/vol', workspace: '/r/tool-turns/a-0/vol/ws', stateDirectory: '/r/tool-turns/a-0/state',
     deniedRoots: ['/r', '/profile/home'], hook: { node: '/usr/local/bin/node', script: '/repo/tests/preview/tool-admission-hook.mjs' } };
-  const settings = JSON.parse(subscriptionToolSettings(turn));
+  const settings = JSON.parse(subscriptionToolSettings(turn, '/profile/home'));
   expect(settings.disableAllHooks).toBe(false);
+  // Claude Code 2.1.280 reads `denyRead` as regions and `allowRead` as reopenings inside them: with the root denied, only the
+  // listed paths are readable (review round 1, finding 1: a neighbouring temporary file was readable under the old list).
   expect(settings.sandbox).toEqual({ enabled: true, failIfUnavailable: true, autoAllowBashIfSandboxed: true, allowUnsandboxedCommands: false,
     network: { allowedDomains: [], allowUnixSockets: [], allowAllUnixSockets: false, allowLocalBinding: false },
-    filesystem: { allowWrite: ['/r/tool-turns/a-0/ws'],
-      denyRead: ['/r', '/profile/home', '/r/tool-turns/a-0/state', '/Users', '/Volumes', '/tmp/cc-socks', '/private/tmp/cc-socks'],
-      allowRead: ['/r/tool-turns/a-0/ws'] } });
+    filesystem: { allowWrite: ['/r/tool-turns/a-0/vol'],
+      denyWrite: ['/tmp/claude', '/private/tmp/claude', '/profile/home/.npm/_logs', '/profile/home/.claude/debug'],
+      denyRead: ['/'], allowRead: ['/r/tool-turns/a-0/vol', ...SUBSCRIPTION_TOOL_RUNTIME_READS] } });
+  // Nothing in the runtime list holds user, session or runner data.
+  for (const read of SUBSCRIPTION_TOOL_RUNTIME_READS) expect(read).toMatch(/^\/(bin|sbin|usr\/(bin|sbin|lib|libexec|share)|System|private\/var\/select|private\/etc|dev)$/u);
   expect(settings.permissions).toEqual({ allow: [...SUBSCRIPTION_TOOL_NAMES], deny: [...SUBSCRIPTION_TOOL_DISALLOWED] });
   for (const [event, mode] of [['PreToolUse', 'pre'], ['PostToolUse', 'post']] as const)
     expect(settings.hooks[event]).toEqual([{ matcher: '*', hooks: [{ type: 'command',
       command: `/usr/local/bin/node /repo/tests/preview/tool-admission-hook.mjs ${mode} /r/tool-turns/a-0/state` }] }]);
-  // Refused shapes: the admission state inside the workspace, a hook a tool could rewrite, a path needing quoting.
-  expect(() => subscriptionToolSettings({ ...turn, stateDirectory: '/r/tool-turns/a-0/ws/state' })).toThrow(/outside the workspace/u);
-  expect(() => subscriptionToolSettings({ ...turn, hook: { ...turn.hook, script: '/r/tool-turns/a-0/ws/hook.mjs' } })).toThrow(/outside the workspace/u);
-  expect(() => subscriptionToolSettings({ ...turn, workspace: '/r/a b/ws' })).toThrow(/absolute and plain/u);
-  expect(() => subscriptionToolSettings({ ...turn, workspace: '/r/../ws' })).toThrow(/absolute and plain/u);
+  // Refused shapes: the admission state inside the volume, a hook a tool could rewrite, a path needing quoting, a workspace
+  // off its volume, and a denied root, the state or the home under a readable path.
+  const home = '/profile/home';
+  expect(() => subscriptionToolSettings({ ...turn, stateDirectory: '/r/tool-turns/a-0/vol/state' }, home)).toThrow(/outside the workspace/u);
+  expect(() => subscriptionToolSettings({ ...turn, hook: { ...turn.hook, script: '/r/tool-turns/a-0/vol/hook.mjs' } }, home)).toThrow(/outside the workspace/u);
+  expect(() => subscriptionToolSettings({ ...turn, workspace: '/r/a b/ws' }, home)).toThrow(/absolute and plain/u);
+  expect(() => subscriptionToolSettings({ ...turn, workspace: '/r/../ws' }, home)).toThrow(/absolute and plain/u);
+  expect(() => subscriptionToolSettings({ ...turn, workspace: '/r/tool-turns/a-0/ws' }, home)).toThrow(/inside its scratch volume/u);
+  expect(() => subscriptionToolSettings({ ...turn, deniedRoots: ['/usr/share/runner'] }, home)).toThrow(/under a readable path/u);
+  expect(() => subscriptionToolSettings(turn, '/private/etc/home')).toThrow(/under a readable path/u);
+  // A mount point too long for the harness's per-user temporary directory would push it to the shared /tmp/claude-<uid>.
+  expect(() => subscriptionToolSettings({ ...turn, scratch: '/r/tool-turns/0123456789abcdef-0/vol', workspace: '/r/tool-turns/0123456789abcdef-0/vol/ws' }, home))
+    .toThrow(/too long for the harness temporary directory/u);
 });
 
 function fixture() {
   const f = factsFixture(), root = realpathSync(mkdtempSync(join(tmpdir(), 'subscription-tools-'))); roots.push(root);
   const home = join(root, 'home'), configDirectory = join(root, 'config'), workingDirectory = join(root, 'work');
-  const workspace = join(root, 'turn', 'ws'), stateDirectory = join(root, 'turn', 'state');
+  // The scratch volume's mount point is short (the harness temporary directory must fit 44 bytes), as the runner allocates it.
+  const scratch = realpathSync(mkdtempSync('/private/tmp/itt-')); roots.push(scratch);
+  const workspace = join(scratch, 'ws'), stateDirectory = join(root, 'turn', 'state');
   for (const path of [home, configDirectory, workingDirectory, workspace, stateDirectory]) mkdirSync(path, { recursive: true, mode: 0o700 });
   const executable = join(root, 'synthetic-cli.mjs'), report = join(root, 'commands.jsonl');
   const status = { loggedIn: true, authMethod: 'claude.ai', apiProvider: 'firstParty', analyticsDisabled: true,
@@ -95,7 +109,7 @@ function fixture() {
     session_id: 'synthetic-call', usage: { input_tokens: 10, output_tokens: 300 }, total_cost_usd: 0.05 });
   const source = `#!${process.execPath}\nimport {appendFileSync} from 'node:fs';
     let stdin='';for await(const chunk of process.stdin)stdin+=chunk;
-    appendFileSync(${JSON.stringify(report)},JSON.stringify({args:process.argv.slice(2),cwd:process.cwd(),stdin})+'\\n');
+    appendFileSync(${JSON.stringify(report)},JSON.stringify({args:process.argv.slice(2),cwd:process.cwd(),stdin,tmpdir:process.env.CLAUDE_CODE_TMPDIR??null})+'\\n');
     if(process.argv[2]==='--version')process.stdout.write('2.1.280 (Claude Code)\\n');
     else if(process.argv[2]==='auth')process.stdout.write(${JSON.stringify(JSON.stringify(status))});
     else process.stdout.write(${JSON.stringify(terminal)});\n`;
@@ -120,7 +134,7 @@ function fixture() {
     subscriptionLimit: 'unobservable', subscriptionLimitReason: 'synthetic limit reason', acceptedResiduals: ['synthetic residual'],
     expiresAt: SUBSCRIPTION_PREVIEW_EXPIRY });
   const ctx = { ...f.ctx.decode, register: { ...f.ctx.decode.register, entries: [...f.ctx.decode.register.entries, 'preview'] } };
-  const toolTurn: SubscriptionToolTurn = { workspace, stateDirectory, deniedRoots: [root],
+  const toolTurn: SubscriptionToolTurn = { scratch, workspace, stateDirectory, deniedRoots: [root],
     hook: { node: process.execPath, script: join(process.cwd(), 'tests/preview/tool-admission-hook.mjs') } };
   const input = (framing: string = SUBSCRIPTION_TOOLS_FRAMING, turn: SubscriptionToolTurn | null = toolTurn) => ({
     provider: 'anthropic', model, route: 'subscription-preview', disclosure: 'supervised preview',
@@ -148,8 +162,10 @@ it('runs the model command in the turn workspace with the per-turn settings appe
   expect(observed).toMatchObject({ state: 'complete', bytes: f.answer, usage: { outputTokens: 300, charge: null } });
   const commands = f.commands();
   expect(commands.map(c => c.cwd)).toEqual([f.workingDirectory, f.workingDirectory, f.workspace]);
-  expect(commands[2].args).toEqual([...subscriptionToolsPolicy(f.model).args, '--settings', subscriptionToolSettings(f.toolTurn)]);
+  expect(commands[2].args).toEqual([...subscriptionToolsPolicy(f.model).args, '--settings', subscriptionToolSettings(f.toolTurn, f.profile.home)]);
   expect(commands[2].stdin).toBe('{"question":"wc"}');
+  // A tool route points the harness's temporary directory at the turn's volume (its preflights share the one environment).
+  expect(commands.map(c => c.tmpdir)).toEqual([f.toolTurn.scratch, f.toolTurn.scratch, f.toolTurn.scratch]);
 });
 
 it('refuses a tool turn when managed policy may disable the hook, when the framing and turn differ, or when a path is not canonical', async () => {

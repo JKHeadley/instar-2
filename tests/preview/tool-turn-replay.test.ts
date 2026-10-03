@@ -1,4 +1,4 @@
-// Rule 106 for the scoped-tool turn (Part Thirteen §9, docs/17-harness-adapters): the new path replayed on REAL recorded shapes, not
+// Rule 36 (observer note #106) for the scoped-tool turn (Part Thirteen §9, docs/17-harness-adapters): the new path replayed on REAL recorded shapes, not
 // stubs alone. (1) The five live tool turns of 2026-10-03 (fixtures/tool-turn/live-2026-10-03, recorded verbatim
 // by tests/integration/tool-turn-live.test.ts against the pinned 2.1.280): their tool calls replay through the
 // real hook to the recorded decisions, their traces pair, and their multi-turn result frames parse through the
@@ -39,7 +39,8 @@ const rows = (admission: string) => admission.trim().split('\n').filter(Boolean)
 function routeFixture() {
   const f = factsFixture(), root = realpathSync(mkdtempSync(join(tmpdir(), 'tool-replay-route-'))); roots.push(root);
   const home = join(root, 'home'), configDirectory = join(root, 'config'), workingDirectory = join(root, 'work');
-  const workspace = join(root, 'turn/ws'), stateDirectory = join(root, 'turn/state'), frame = join(root, 'frame.txt');
+  const scratch = realpathSync(mkdtempSync('/private/tmp/itt-')); roots.push(scratch);
+  const workspace = join(scratch, 'ws'), stateDirectory = join(root, 'turn/state'), frame = join(root, 'frame.txt');
   for (const path of [home, configDirectory, workingDirectory, workspace, stateDirectory]) mkdirSync(path, { recursive: true, mode: 0o700 });
   const status = { loggedIn: true, authMethod: 'claude.ai', apiProvider: 'firstParty', analyticsDisabled: true,
     projectsDirectory: `${configDirectory}/projects`, configDirectory, email: 'synthetic@example.invalid', orgId: 'org', orgName: 'o', subscriptionType: 'max' };
@@ -68,7 +69,7 @@ else { const t=readFileSync(${JSON.stringify(frame)},'utf8'); process.stdout.wri
     return { policy, route: value(createClaudeCodeSubscriptionRoute({ provider: 'anthropic', model, route: 'preview-subscription', disclosure: 'replay',
       credential: value(decode('SecretRef', { type: 'SecretRef', schemaVersion: 1, vault: 'preview', name: profile.reference }, ctx)),
       context: { ...ctx, site: f.c.site, preserved: f.c.preserved }, profile, resolveProfile: () => profile, activation, io, now: () => 1000,
-      active: () => true, framing, ...(framing === SUBSCRIPTION_TOOLS_FRAMING ? { toolTurn: { workspace, stateDirectory, deniedRoots: [root],
+      active: () => true, framing, ...(framing === SUBSCRIPTION_TOOLS_FRAMING ? { toolTurn: { scratch, workspace, stateDirectory, deniedRoots: [root],
         hook: { node: process.execPath, script: HOOK } } } : {}),
       adapterEvidenceContract: { reference: profile.activationReference, version: hash(profile), parserReference: 'claude-code-json-result', parserVersion: '1',
         endpoint: profile.loginProfileIdentity, account: status.email, credentialReference: profile.reference, controller: 'replay',
@@ -92,15 +93,16 @@ const answerOf = (bytes: string | null | undefined) => {
 it('replays the five live tool turns: hook decisions, trace pairing, and the recorded answers through the tools route', async () => {
   const route = routeFixture();
   const expected: Record<string, string[][]> = { 'r6-fixed': [['Bash', 'allow']], task: [['Write', 'allow'], ['Read', 'allow'], ['Bash', 'allow']],
-    scope: [['Read', 'deny'], ['Bash', 'deny']], stop: [['Bash', 'allow']],
-    'call-cap': [['Bash', 'allow'], ['Bash', 'allow'], ['Bash', 'deny'], ['Bash', 'deny'], ['Bash', 'deny']] };
+    // Re-recorded after review round 1: the hook admits the network command and the sandbox refuses it (scope).
+    scope: [['Read', 'deny'], ['Bash', 'allow']], stop: [['Bash', 'allow']],
+    'call-cap': [['Bash', 'allow'], ['Bash', 'allow'], ['Bash', 'deny'], ['Bash', 'deny'], ['Bash', 'deny'], ['Bash', 'deny']] };
   for (const name of Object.keys(expected)) {
     const record = live(name), recorded = rows(record.admission);
     expect([name, recorded.filter(row => row.phase === 'pre').map(row => [row.tool, row.decision])]).toEqual([name, expected[name]]);
     // The recorded tool inputs, re-admitted by the real hook in a fresh workspace, reach the same decisions.
     const root = realpathSync(mkdtempSync(join(tmpdir(), 'tool-live-replay-'))); roots.push(root);
     const ws = join(root, 'ws'), state = join(root, 'state'); mkdirSync(ws); mkdirSync(state);
-    writeFileSync(join(state, 'config.json'), JSON.stringify({ workspace: ws, maxCalls: name === 'call-cap' ? 2 : 16, maxWriteBytes: 1048576,
+    writeFileSync(join(state, 'config.json'), JSON.stringify({ workspace: ws, tmp: join(root, 'tmp'), maxCalls: name === 'call-cap' ? 2 : 16, maxWriteBytes: 1048576,
       operations: [...SINGLE_MACHINE_PROFILE.operations] }));
     for (const row of recorded.filter(item => item.phase === 'pre')) {
       const original = JSON.parse(row.input), path = original.file_path as string | undefined;

@@ -676,6 +676,20 @@ export const PREVIEW_CAPABILITIES = Object.freeze({ externalTools: 'none', accou
   sends: GOVERNING_CONSTRAINTS['reply-only-grant'], ownedIdentities: ['the Telegram bot this trial runs as'],
   secretCustody: GOVERNING_CONSTRAINTS['secret-custody'] });
 export type PreviewCapability = keyof typeof PREVIEW_CAPABILITIES;
+/** Part Thirteen §9 (docs/17-harness-adapters): the same read for a call that really runs on the scoped-tool route. Only the tools
+ * entry and its constraint wording differ; the keys stay the same evidence keys, so a blocker is judged as before. The
+ * tools themselves are named once, by the capability note's Tools line (TOOLS_BRIEFING, generated from
+ * SUBSCRIPTION_TOOL_NAMES); "as listed" points there, because the floor packet has no bytes to name them twice. */
+export const PREVIEW_TOOL_CAPABILITIES = Object.freeze({ ...PREVIEW_CAPABILITIES, externalTools: 'as listed' });
+const GOVERNING_CONSTRAINTS_WITH_TOOLS = Object.freeze({ ...GOVERNING_CONSTRAINTS, 'no-tools': 'only listed tools; no accounts' });
+/** The capability read and the governing constraints for a call, from the route it actually runs on. */
+export const previewCapabilities = (tools: boolean) => tools ? PREVIEW_TOOL_CAPABILITIES : PREVIEW_CAPABILITIES;
+export const governingConstraints = (tools: boolean) => tools ? GOVERNING_CONSTRAINTS_WITH_TOOLS : GOVERNING_CONSTRAINTS;
+/** A text with one exact clause replaced; a clause that is absent is a build defect, never a silent no-op. */
+const replacedClause = (text: string, clause: string, replacement: string) => {
+  if (!text.includes(clause)) throw Error('preview: capability clause absent');
+  return text.replace(clause, replacement);
+};
 /** Rules 18, 20, 21, 103: what this runner can substantiate about an avenue. It owns no attempt records (no tools), so
  * it admits no `tried` avenue; an avenue is `outside-standing` or `inapplicable`, and its evidence is the capability
  * entry of the runner's own construction that shows it. A governing constraint is admitted only when an avenue's
@@ -686,6 +700,10 @@ export const CONSTRAINT_EVIDENCE: Readonly<Partial<Record<GoverningConstraint, r
   'operator-authority': ['accounts', 'ownedIdentities'], 'secret-custody': ['secretCustody'] });
 /** How the answer model declares the obligations its reply creates or settles (Rules 6, 18, 20-23, 93, 99, 103). */
 export const OBLIGATION_DECISION = 'When one applies, return: directives:[{quote:exact clause of this message setting a standing instruction beyond this reply,supersedes?:directive id}] (reply style stays memory prefer); closeDirectives:[{id,kind:"completed"|"superseded"}]; openLoops:[{kind:"deferral"|"judgment"|"promise",quote:a sentence of your reply copied word for word,waitsOn:"nothing"|"operator"|"external"|"date"}] for work your reply leaves open (prefer deciding now); for a cannot-do or needs-a-person claim surviving every lawful avenue, blocker:{kind:"cannot-do"|"needs-human",claim:a sentence of your reply copied word for word,avenues:[{avenue,disposition:"outside-standing"|"inapplicable",evidence:one packet.capabilities key such as "externalTools"}],constraint:governingConstraints key,outsideAction:smallest step a person must take,recheck:"YYYY-MM-DD" within 90 days}. You attempted nothing outside this reply, so never call an avenue tried; a missing tool is no-tools. Refuse only behind a governingConstraints key an avenue\'s capabilities evidence supports; propose any other boundary.';
+/** The same instructions for an answer that runs on the scoped-tool route: its own tool calls are recorded attempts. */
+export const OBLIGATION_DECISION_TOOLS = replacedClause(OBLIGATION_DECISION,
+  'You attempted nothing outside this reply, so never call an avenue tried; a missing tool is no-tools.',
+  'Only your recorded tool calls ran; never call an avenue tried; a tool not listed is no-tools.');
 /** Rules 20, 21, 23, 99: a settled cannot-do or needs-a-person claim the agent actually sent,
  * with its finite lawful avenues, the smallest outside action and a future recheck. */
 export interface BlockerNote { source: string; claim: string; kind: 'cannot-do' | 'needs-human';
@@ -1084,6 +1102,8 @@ export interface PacketDrop { kind: string; source: string; reason: string }
  * every consumer, and no SecretRef exists to spend. Optional: older rows carry none. */
 export type IntakeCustody = { state: 'stored'; arrival: string; capture: string; secrets: string[] } | { state: 'failed' };
 export interface Turn { id: string; update: number; text: string; raw: string; accepted: boolean; at: number; thread?: number; editOf?: string; replaces?: string; custody?: IntakeCustody; answer?: string;
+  /** Part Thirteen §9: the latest scoped-tool trace of this turn's answer (bounded), read by its reply review. */
+  toolAttempts?: ToolAttempt[];
   /** Rules 28/29: the session writer verified at intake (operator person or scheduler system). */
   writer?: WriterRecord;
   reserved: boolean; prompt?: string; recallHits?: number; channelRecallHits?: number; packetDropped?: PacketDrop[]; packetLimit?: number; grounding?: ReplyGrounding; failureClass?: ModelFailureClass; modelState?: 'complete' | 'rejected' | 'uncertain'; noticeDueAt?: number; noticeClass?: 'unknown-answer' | 'too-long-input'; intent?: string; intentBody?: string; sent?: number; sentAt?: number; held?: string; heldSince?: number; heldNoticeIntent?: string; heldNoticeSent?: number; heldNoticeSentAt?: number; memoryPending?: true; memoryUndecided?: true; datedPending?: true;
@@ -1678,8 +1698,13 @@ export const declaredObligations = (view: JournalView, id: string, now: number) 
   const settled = turn ? recentWithin(openBlockers(view).filter(({ note }) => note.source !== id && note.recheckAt > now)
     .map(({ id: blocker, note }) => ({ id: blocker, kind: note.kind, claim: note.claim, avenues: note.avenues,
       constraint: note.constraint, outsideAction: note.outsideAction })), SETTLED_REVIEW_BYTES) : [];
+  // Part Thirteen §9: the capability read follows the route the answer actually ran on. A recorded tool trace means the
+  // scoped-tool route ran, and its calls are the answer's only attempts; with none (the text-only route, or a tool turn
+  // refused to it) the no-tools read stands.
+  const toolAttempts = turn?.toolAttempts;
   return { blocker: turn?.answerBlocker ?? turn?.revision?.blocker ?? null, settled, loops: turn?.answerLoops ?? [],
-    ...(turn?.answerRejected ? { rejected: turn.answerRejected } : {}), capabilities: PREVIEW_CAPABILITIES };
+    ...(turn?.answerRejected ? { rejected: turn.answerRejected } : {}), capabilities: previewCapabilities(toolAttempts !== undefined),
+    ...(toolAttempts ? { toolAttempts: { meaning: TOOL_ATTEMPTS_MEANING, calls: toolAttempts } } : {}) };
 };
 /** The review's bound for settled blockers; an omitted one can only hold a restatement, never release one. */
 export const SETTLED_REVIEW_BYTES = 8192;
@@ -1882,6 +1907,11 @@ export function obligationCapacity(view: JournalView): boolean {
   return shouldRunScheduledPriority('medium', calls >= maxCalls - 2 ? 'critical' : calls >= maxCalls * 0.75 ? 'elevated' : 'normal');
 }
 export const OBLIGATION_WORK_QUESTION = 'packet.obligation is open work you own for the verified operator, due now. Do it now with what you know; you have no external tools, and a reply reaches the operator only with their next message. Return only JSON. For a request, promise, deferral or judgment: {"outcome":"report","report":<the completed result or decision, addressed to the operator>} when you can finish it now; {"outcome":"continue","note":<the concrete progress and next step>} when it genuinely needs more time; {"outcome":"waiting","waitsOn":"operator"|"external","note":<what exactly you now need>} only when someone else must act first. When packet.waitingFor is present, you said you needed it earlier: check packet.operatorMessagesSince and continue with whatever now arrived. For a blocker-recheck, test the claim again against every avenue and packet.capabilities: {"outcome":"still-blocked","recheck":"YYYY-MM-DD" within 90 days,"avenues":[{"avenue","disposition":"outside-standing"|"inapplicable","evidence":<the packet.capabilities key that shows it>}],"constraint":<governingConstraints key those capabilities support>,"reason":<what you re-examined and why it still holds>} or {"outcome":"cleared","report":<what is now possible>}. You have attempted nothing outside this step, so never call an avenue tried. Follow packet.directives. Refuse only behind a packet.governingConstraints key.';
+/** The same work step on the scoped-tool route: it can use the listed tools, and only their recorded calls ran. */
+export const OBLIGATION_WORK_QUESTION_TOOLS = replacedClause(replacedClause(OBLIGATION_WORK_QUESTION,
+  'you have no external tools,', 'your only tools are the listed ones,'),
+  'You have attempted nothing outside this step, so never call an avenue tried.',
+  'Only this step\'s recorded tool calls ran outside it, so never call an avenue tried.');
 /** Reads one work step's decision; anything malformed is a recorded failed attempt, never a guessed outcome. */
 export function obligationDecision(output: string, kind: 'commitment' | 'blocker', at: number, zone: string):
   Pick<Extract<JournalRecord, { kind: 'obligation-result' }>, 'outcome' | 'report' | 'note' | 'waitsOn' | 'recheckAt' | 'assessment'> {
@@ -2539,6 +2569,14 @@ function applyOperatorYes(view: JournalView, authority: string, action: Operator
   state.applied = true;
 }
 export interface ToolTraceCall { n: number; tool: string; input: string; decision: string; reason: string; kind?: string; result: string | null }
+/** One recorded tool call as the reply review sees it: what was called, whether it was admitted, and what it returned. */
+export interface ToolAttempt { n: number; tool: string; decision: string; input: string; result: string | null }
+/** The review's bounds on recorded tool attempts: at most this many calls, each excerpt clipped to this many characters. */
+export const TOOL_ATTEMPTS_REVIEWED = 8, TOOL_ATTEMPT_EXCERPT_CHARS = 160;
+/** Rides with the attempts themselves, so a review of a text-only answer carries no extra bytes. */
+export const TOOL_ATTEMPTS_MEANING = 'The only tool calls this reply\'s turn made, in order, with their admission and result: a tool result the reply '
+  + 'reports is evidenced only by an admitted call here, and a refused call is not an attempt at an avenue.';
+const attemptExcerpt = (text: string) => text.length > TOOL_ATTEMPT_EXCERPT_CHARS ? `${text.slice(0, TOOL_ATTEMPT_EXCERPT_CHARS)}…` : text;
 export interface ToolTurnStats { invocations: number; reservedCalls: number; refusedCap: number; refusedPrompt?: number; toolCalls: number;
   toolRefusals: number; inconsistent: number; open: string[] }
 /** Rules 60, 75 and MF4: a tool turn reserves its whole model-attempt liability before dispatch, and the
@@ -2564,6 +2602,9 @@ function projectToolTurn(view: JournalView, row: Extract<JournalRecord, { kind: 
     || typeof row.consistent !== 'boolean' || !(row.workspaceBytes === null || Number.isSafeInteger(row.workspaceBytes) && row.workspaceBytes >= 0))
     throw Error('preview journal: tool trace order');
   const admitted = row.calls.filter(call => call.decision === 'allow').length;
+  const turn = view.turns.get(row.id);
+  if (turn) turn.toolAttempts = row.calls.slice(0, TOOL_ATTEMPTS_REVIEWED).map(call => ({ n: call.n, tool: String(call.tool),
+    decision: String(call.decision), input: attemptExcerpt(String(call.input)), result: call.result === null ? null : attemptExcerpt(String(call.result)) }));
   view.toolTurns = { ...stats, toolCalls: stats.toolCalls + admitted, toolRefusals: stats.toolRefusals + row.calls.length - admitted,
     inconsistent: stats.inconsistent + Number(!row.consistent), open: stats.open.filter(item => item !== key) };
 }
@@ -4136,6 +4177,8 @@ export interface PreviewPorts {
   sources?: readonly unknown[] | ((turn?: Turn) => readonly unknown[]);
   /** Rule 29: `writer` is the turn's verified session writer, carried into the session envelope. */
   prepareModel?(input: { question: string; context: string; id: string; writer?: SessionWriter }): string;
+  /** Part Thirteen §9: whether the model call for `id` runs on the scoped-tool route; its packet then names the tools. */
+  toolRoute?(id: string): boolean;
   model(input: { question: string; context: string; id: string; prepared?: string }): Promise<string | {state?: 'complete'; text:string;
     usage: ModelUsage; /** The Decision's separately stated reason claim (Rule 108), kept beside its conclusion. */ reason?: string} | {state:'rejected' | 'complete'; failureClass:ModelFailureClass; usage?: ModelUsage}
     | {state:'uncertain'; usage?: ModelUsage}>;
@@ -5927,7 +5970,9 @@ export function createJournalWorker(journal: ReturnType<typeof openPreviewJourna
           ...(fromOperator(turn) ? { memoryDecision: `Return memory:[] unless the verified operator corrects, forgets or sets reply style. ${MEMORY_ITEM_SHAPE} For an earlier answer use in:"reply" with its exact old reply clause and keep the question. `
             + (offered.length || (JSON.parse(datedBase) as { contradictions?: unknown[] }).contradictions?.length ? 'A newer operator statement of the same fact without correction words uses mode:"update", an exact old clause from an offered operator memoryCandidate or contradiction (hints only) and the exact new clause from this turn; the old dated value stays retrievable. ' : '')
             + 'Unknown target: memoryDisposition:"unresolved". Undo only via undoDecision.', preferenceSource: turn.id,
-            obligationDecision: OBLIGATION_DECISION, governingConstraints: GOVERNING_CONSTRAINTS, capabilities: PREVIEW_CAPABILITIES } : {}),
+            ...(ports.toolRoute?.(turn.id) === true
+              ? { obligationDecision: OBLIGATION_DECISION_TOOLS, governingConstraints: governingConstraints(true), capabilities: previewCapabilities(true) }
+              : { obligationDecision: OBLIGATION_DECISION, governingConstraints: governingConstraints(false), capabilities: previewCapabilities(false) }) } : {}),
           ...(fromOperator(turn) && offered.length && !('conflictDecision' in (JSON.parse(datedBase) as object)) ? { conflictDecision: CONFLICT_DECISION } : {}),
           // The compact packet's summary already serves as the correction reference; only complete history needs a copy.
           ...(fromOperator(turn) && summaryFor(before(turn.update)) && !('summary' in (JSON.parse(datedBase) as object))
@@ -8554,6 +8599,7 @@ export function createJournalWorker(journal: ReturnType<typeof openPreviewJourna
             evidence: redact(avenue.evidence).text })), outsideAction: redact(note.outsideAction).text,
           recheckDue: localStamp(note.recheckAt, zone).slice(0, 10) };
       })();
+      const id = `obligation:${item.key}:${item.slot}`, tools = ports.toolRoute?.(id) === true;
       const context = JSON.stringify({ now: isoMinute(now), zone, today: localStamp(now, zone).slice(0, 10), obligation,
         ...(work?.note && work.waitsOn === undefined ? { lastProgress: clean(redact(work.note).text, true) } : {}),
         // A reassessment of waiting work sees what it waited for and every verified operator message since.
@@ -8562,9 +8608,9 @@ export function createJournalWorker(journal: ReturnType<typeof openPreviewJourna
             .filter(turn => verifiedOperatorTurn(journal.view, turn) && !probeTurn(journal.view, turn)).slice(-5)
             .map(turn => ({ date: dated(turn), text: clip(clean(redact(turn.text).text, true, turn.id), 1000) })) } : {}),
         directives: openDirectives(journal.view).map(({ id, note }) => ({ id, quote: clean(redact(note.quote).text, true, note.source) })),
-        governingConstraints: GOVERNING_CONSTRAINTS, capabilities: PREVIEW_CAPABILITIES });
+        governingConstraints: governingConstraints(tools), capabilities: previewCapabilities(tools) });
       if (Buffer.byteLength(context) > journal.view.limits.maxBytes) return false;
-      const id = `obligation:${item.key}:${item.slot}`, question = OBLIGATION_WORK_QUESTION;
+      const question = tools ? OBLIGATION_WORK_QUESTION_TOOLS : OBLIGATION_WORK_QUESTION;
       const prepared = ports.prepareModel?.({ question, context, id });
       journal.append({ kind: 'obligation-start', obligation: item.key, slot: item.slot,
         maxInputTokens: journal.view.limits.maxBytes, maxOutputTokens: subscriptionOutputMaximum, at: now });
