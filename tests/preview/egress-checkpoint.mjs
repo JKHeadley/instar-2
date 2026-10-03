@@ -11,10 +11,10 @@
 // turn's admission record, flushed to disk, before the request goes anywhere; a record that cannot be written refuses the
 // request. Bounds: one request budget for tunnels and requests alike (each HTTPS tunnel takes its slot before any name is
 // resolved, certificate minted or socket kept, so certificates and OpenSSL runs are bounded by it too), open tunnels and
-// open requests, bytes each way, an idle timeout per request and tunnel, and the process's own lifetime; past the budget a
+// open requests, bytes each way (once either is spent no further request or tunnel is admitted), an idle timeout per request and tunnel, and the process's own lifetime; past the budget a
 // refusal is answered without a row of its own (one row says the budget ran out). Nothing outlives the turn.
 // It adds nothing: no credential, cookie or header of its own goes upstream; a command's request is forwarded as it came,
-// minus hop-by-hop and proxy headers.
+// minus hop-by-hop and proxy headers, with its Host set to the checked authority and, on a read, no method-override header.
 import { execFile } from 'node:child_process';
 import { lookup } from 'node:dns/promises';
 import { closeSync, constants, fsyncSync, mkdirSync, openSync, readFileSync, writeFileSync, writeSync } from 'node:fs';
@@ -97,6 +97,11 @@ const budget = reason => {
   return null;
 };
 const OVER_BUDGET = `shell network refused: per-turn request bound ${EGRESS_LIMITS.maxRequests}`;
+/** Once either byte allowance is spent the turn's network is closed: the refusal reason, or null while bytes remain. */
+const spent = () => (down > EGRESS_LIMITS.maxDownBytes ? `shell network refused: per-turn download bound ${EGRESS_LIMITS.maxDownBytes} bytes spent`
+  : up > EGRESS_LIMITS.maxUpBytes ? `shell network refused: per-turn upload bound ${EGRESS_LIMITS.maxUpBytes} bytes spent` : null);
+/** Headers that ask a server to treat a request as another method: a read goes upstream without them, as the read it was admitted as. */
+const METHOD_OVERRIDES = ['x-http-method-override', 'x-http-method', 'x-method-override'];
 /** Repositories whose discovery this turn answered as a git server: a POST negotiating a fetch from one is a read. */
 const gitRepositories = new Set();
 const mediaType = value => String(value ?? '').split(';')[0].trim().toLowerCase();
@@ -120,6 +125,7 @@ async function handle(req, res, tunnel) {
     && mediaType(req.headers['content-type']) === GIT_UPLOAD_PACK_TYPES.request;
   let decision = admitEgress({ method: req.method, url, gitFetch }, addresses, operations);
   if (decision.decision === 'allow' && req.headers.upgrade) decision = { decision: 'deny', reason: 'shell network refused: protocol upgrade', kind: 'scope' };
+  if (decision.decision === 'allow' && spent() !== null) decision = { decision: 'deny', reason: spent(), kind: 'budget' };
   if (decision.decision === 'allow' && active >= EGRESS_LIMITS.maxConcurrent)
     decision = { decision: 'deny', reason: `shell network refused: ${EGRESS_LIMITS.maxConcurrent} requests already open`, kind: 'budget' };
   // The record is on disk before anything leaves this machine (an act follows its recorded cause); if it cannot be written
@@ -130,6 +136,9 @@ async function handle(req, res, tunnel) {
   const parsed = new URL(url), https = parsed.protocol === 'https:';
   const headers = {};
   for (const [name, value] of Object.entries(req.headers)) if (!HOP.has(name) && !name.startsWith('proxy-')) headers[name] = value;
+  // The request goes to the authority that was checked (and that established any git repository), never another virtual host.
+  headers.host = parsed.host;
+  if (decision.kind === 'network-read') for (const name of METHOD_OVERRIDES) delete headers[name];
   active++;
   let settled = false, sent = 0, received = 0;
   // The outcome row follows the act; if it cannot be written the next request's own record refuses that request.
@@ -187,6 +196,11 @@ plain.on('connect', (req, socket) => {
   };
   socket.on('error', () => socket.destroy());
   if (rid === null) { deny(OVER_BUDGET, null); return; }
+  const exhausted = spent();
+  if (exhausted !== null) {
+    deny(exhausted, { phase: 'egress', rid, method: 'CONNECT', url: clip(`https://${String(req.url)}/`), addresses: [], decision: 'deny', reason: exhausted, kind: 'budget' });
+    return;
+  }
   if (tunnels >= EGRESS_LIMITS.maxConcurrent) {
     const reason = `shell network refused: ${EGRESS_LIMITS.maxConcurrent} tunnels already open`;
     deny(reason, { phase: 'egress', rid, method: 'CONNECT', url: clip(`https://${String(req.url)}/`), addresses: [], decision: 'deny', reason, kind: 'budget' });

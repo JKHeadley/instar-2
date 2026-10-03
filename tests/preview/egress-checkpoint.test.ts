@@ -199,14 +199,15 @@ it('records the running checkpoint\'s port in the admission config, and offers o
 /** The real checkpoint process with one substitution at its transport: a connection to the public test address goes to a
  * local sink instead (nothing leaves the machine). The preload also observes, at each dispatch, whether the admission
  * record's last write was flushed, and makes every flush fail once `fail-flush` exists in the state's root. */
-async function controlled(answer: (req: { method: string; url: string; type: string; body: string }) => { status: number; type: string; body: string }) {
+async function controlled(answer: (req: { method: string; url: string; type: string; body: string; host: string }) => { status: number; type: string; body: string }) {
   const { root, dir } = state();
-  const received: Array<{ method: string; url: string; body: string }> = [];
+  const received: Array<{ method: string; url: string; body: string; host: string; override: string | null }> = [];
   const sink = createServer((req, res) => {
     let body = ''; req.on('data', chunk => { body += chunk; });
     req.on('end', () => {
-      received.push({ method: String(req.method), url: String(req.url), body });
-      const out = answer({ method: String(req.method), url: String(req.url), type: String(req.headers['content-type'] ?? ''), body });
+      const host = String(req.headers.host ?? ''), override = req.headers['x-http-method-override'];
+      received.push({ method: String(req.method), url: String(req.url), body, host, override: override === undefined ? null : String(override) });
+      const out = answer({ method: String(req.method), url: String(req.url), type: String(req.headers['content-type'] ?? ''), body, host });
       res.writeHead(out.status, { 'content-type': out.type }); res.end(out.body);
     });
   });
@@ -236,8 +237,8 @@ syncBuiltinESMExports();\n`);
   const rows = () => readFileSync(join(dir, 'admission.jsonl'), 'utf8').trim().split('\n').map(line => JSON.parse(line) as Record<string, unknown>);
   return { root, port, received, stop, dispatches, rows };
 }
-const call = (port: number, method: string, url: string, type = '', body = '') => new Promise<{ status: number; body: string }>((done, fail) => {
-  const req = request({ host: '127.0.0.1', port, method, path: url, headers: { host: new URL(url).host, ...(type ? { 'content-type': type } : {}) } }, res => {
+const call = (port: number, method: string, url: string, type = '', body: string | Buffer = '', extra: Record<string, string> = {}) => new Promise<{ status: number; body: string }>((done, fail) => {
+  const req = request({ host: '127.0.0.1', port, method, path: url, headers: { host: new URL(url).host, ...(type ? { 'content-type': type } : {}), ...extra } }, res => {
     let text = ''; res.on('data', chunk => { text += chunk; }); res.on('end', () => done({ status: res.statusCode ?? 0, body: text }));
   });
   req.on('error', fail); req.end(body || undefined);
@@ -315,4 +316,45 @@ it('counts each HTTPS tunnel against the open-tunnel and request bounds before a
     expect(net.rows()).toHaveLength(rows.length);
     expect(net.received).toEqual([]);
   } finally { sockets.forEach(socket => socket.destroy()); await net.stop(); }
+});
+
+it('sends each request to the authority it was checked against, and a read upstream without a header that would make it another method', { timeout: 60000 }, async () => {
+  const net = await controlled(({ url, host }) => url.startsWith('/o/r.git/info/refs') && host === '93.184.215.14'
+    ? { status: 200, type: ADVERT, body: '001e# service=git-upload-pack\n' } : { status: 200, type: 'text/plain', body: `served by ${host}` });
+  try {
+    // A Host naming another virtual host does not move the request: it reaches the checked authority, which answers it.
+    expect(await call(net.port, 'GET', `${GIT}/page`, '', '', { host: 'publish.example.test' })).toEqual({ status: 200, body: 'served by 93.184.215.14' });
+    // Discovery establishes the repository at the checked authority; a fetch carrying another Host still goes only there.
+    expect((await call(net.port, 'GET', `${GIT}/o/r.git/info/refs?service=git-upload-pack`, '', '', { host: 'git.example.test' })).status).toBe(200);
+    expect((await call(net.port, 'POST', `${GIT}/o/r.git/git-upload-pack`, GIT_REQUEST, '0032want x\n', { host: 'publish.example.test' })).status).toBe(200);
+    // A read asking to be a DELETE goes upstream as the plain GET it was admitted as; a direct DELETE is a write, refused.
+    expect((await call(net.port, 'GET', `${GIT}/item`, '', '', { 'x-http-method-override': 'DELETE' })).status).toBe(200);
+    expect((await call(net.port, 'DELETE', `${GIT}/item`)).status).toBe(403);
+    expect(net.received.map(item => [item.method, item.url, item.host, item.override])).toEqual([
+      ['GET', '/page', '93.184.215.14', null], ['GET', '/o/r.git/info/refs?service=git-upload-pack', '93.184.215.14', null],
+      ['POST', '/o/r.git/git-upload-pack', '93.184.215.14', null], ['GET', '/item', '93.184.215.14', null]]);
+  } finally { await net.stop(); }
+});
+
+it('admits requests while the byte allowance lasts, and once it is spent admits no further request or tunnel', { timeout: 60000 }, async () => {
+  const net = await controlled(() => ({ status: 200, type: 'text/plain', body: 'ok' }));
+  const tunnelAnswer = () => new Promise<string>((done, fail) => {
+    const socket = connect(net.port, '127.0.0.1', () => socket.write('CONNECT 93.184.215.14:443 HTTP/1.1\r\nHost: 93.184.215.14:443\r\n\r\n'));
+    socket.once('error', fail); socket.once('data', chunk => { done(String(chunk)); socket.destroy(); });
+  });
+  try {
+    // Below the allowance: a read and a tunnel are admitted.
+    expect(await call(net.port, 'GET', `${GIT}/small`, 'text/plain', 'x'.repeat(1024), { 'content-length': '1024' })).toEqual({ status: 200, body: 'ok' });
+    expect(await tunnelAnswer()).toMatch(/^HTTP\/1\.1 200/u);
+    // A read sending more than the turn's upload allowance (8 MiB) is cut off.
+    await call(net.port, 'GET', `${GIT}/big`, 'text/plain', Buffer.alloc(9 * 1024 * 1024, 120), { 'content-length': String(9 * 1024 * 1024) }).catch(() => null);
+    const before = net.dispatches().length;
+    // A fresh request after the allowance is spent is refused before any upstream work; so is a fresh tunnel.
+    const after = await call(net.port, 'GET', `${GIT}/after-byte-exhaustion`);
+    expect(after.status).toBe(403); expect(after.body).toMatch(/upload bound 8388608 bytes spent/u);
+    expect(await tunnelAnswer()).toMatch(/^HTTP\/1\.1 403[\s\S]*upload bound 8388608 bytes spent/u);
+    expect(net.dispatches().length).toBe(before);
+    expect(net.received.map(item => item.url)).not.toContain('/after-byte-exhaustion');
+    expect(net.rows().filter(row => row.phase === 'egress' && row.kind === 'budget').map(row => [row.method, row.decision])).toEqual([['GET', 'deny'], ['CONNECT', 'deny']]);
+  } finally { await net.stop(); }
 });
