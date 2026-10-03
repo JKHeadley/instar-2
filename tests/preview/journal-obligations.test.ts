@@ -1196,3 +1196,31 @@ it('reserving room for an effect refusal shortens only the model body, never a r
     } finally { rmSync(root, { recursive: true, force: true }); }
   }
 });
+
+it('bounded runner outcome lists leave room for every refusal beside the effect refusal (Rule 42; Part Twelve §3)', async () => {
+  // Astra cint-L42 round 2: seven long cancellations used to push the directive refusal out of a clipped answer.
+  for (const effect of [false, true]) {
+    const root = origin();
+    const requests = Array.from({ length: 7 }, (_, i) => `Remind me Friday at 9 am to handle item ${i} ${'a'.repeat(405)}`);
+    const cancel = 'Cancel all seven reminders. Always call me Alex.';
+    const w = world(root, { maxBytes: 32000, answer: (question, context) => question.includes(cancel)
+      ? { reply: 'I saved your standing instruction.', dated: [], directives: [{ quote: 'Always call me Alexander.' }],
+        cancelReminders: (JSON.parse(context) as { reminders: { id: string }[] }).reminders
+          .map(item => ({ id: item.id, quote: 'Cancel all seven reminders.' })) }
+      : { reply: 'Okay.', dated: [{ quote: question, when: 'Friday at 9 am', remind: true }] } });
+    try {
+      for (const request of requests) await w.say(request);
+      expect(w.journal.view.dated.filter(item => item.remind)).toHaveLength(7);
+      await w.say(effect ? `${DOORWAY} ${cancel}` : cancel);
+      expect(w.journal.view.reminderCancels).toHaveLength(7);
+      expect(openDirectives(w.journal.view)).toHaveLength(0);
+      expect(w.sent).toHaveLength(8);
+      const sent = w.sent.at(-1)!;
+      expect(Buffer.byteLength(sent)).toBeLessThanOrEqual(3600);
+      expect(sent).toMatch(/Cancelled requests: "[^"]+"; "[^"]+"; "[^"]+" and 4 more\./u);
+      expect(sent).toContain('I could not record that standing instruction exactly, so I have not saved it.');
+      if (effect) expect(sent).toMatch(/Please restate it\.\n\nEffect doorway: a tool:unsandboxed step was refused/u);
+      else expect(sent).not.toContain('Effect doorway');
+    } finally { w.journal.close(); rmSync(root, { recursive: true, force: true }); }
+  }
+});

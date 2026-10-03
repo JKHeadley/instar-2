@@ -374,3 +374,44 @@ it('does not erase a second open request carried by the same source', async () =
     expect(sent.at(-1)!).toContain('I did not forget the text of a request that is still open');
   } finally { journal.close(); rmSync(root, { recursive: true, force: true }); }
 });
+
+it('names every still-open request whose text it did not forget when a turn holds the most it can (Rules 42, 52)', async () => {
+  // Merge of cint-L42 round 2 into cint-L43: every runner outcome line is bounded (at most three clipped items, the
+  // rest counted) so it always fits beside an effect refusal. A turn's held forgets come from one memory decision of
+  // at most three changes, so a full decision names all three and counts none; the one-request side is above.
+  const root = tmp('kept-bounded');
+  const ask = 'Actually, forget all three reminder texts.';
+  const requests = Array.from({ length: 3 }, (_, i) => `Remind me today at 10:40 am to handle item ${i}`);
+  const forget = (quote: string) => ({ mode: 'forget', source: turnId('ra1'), quote, replies: [], summaryPassages: [] });
+  const clock = { now: START };
+  const sent: string[] = [];
+  let replayed = false;
+  const journal = openPreviewJournal(join(root, 'journal.encrypted'), key, genesis);
+  try {
+    const worker = createJournalWorker(journal, { now: () => clock.now, stopped: () => false, timeZone: 'America/Los_Angeles',
+      model: async (input: Input) => {
+        if (input.id.startsWith('summary:')) {
+          if (packetOf(input).memoryRequest?.message === ask && !replayed) {
+            replayed = true;
+            return JSON.stringify({ summary: 'The operator asked to forget the reminder texts.', people: [], commitments: [], questions: [],
+              memory: requests.map(forget) });
+          }
+          return JSON.stringify({ summary: 'The operator asked for reminders.', memory: [] });
+        }
+        if (input.question === ask) return JSON.stringify({ reply: 'Understood.', memory: [], cancelReminders: [] });
+        return JSON.stringify({ reply: 'Noted.', memory: [], dated: requests.map(quote => ({ quote, when: 'today at 10:40 am', remind: true })) });
+      }, checkOutbound: () => {}, send: async (value: { expectedText: string }) => { sent.push(value.expectedText); return sent.length; } });
+    worker.intake([update(recorded('ra1').update, requests.join('. '), clock.now)]); await worker.drain();
+    expect(openRequests(journal.view)).toHaveLength(3);
+    clock.now += 60_000;
+    await worker.summarizeIfNeeded(true);
+    clock.now += 60_000;
+    worker.intake([update(recorded('ra3').update, ask, clock.now)]); await worker.drain(); await worker.drain();
+    expect(replayed).toBe(true);
+    expect(openRequests(journal.view)).toHaveLength(3);
+    expect(journal.view.memory.filter(change => change.mode === 'forget')).toEqual([]);
+    expect(sent.at(-1)!).toContain(`I did not forget the text of requests that are still open, so nothing is lost: ${
+      requests.map(quote => `"${quote}"`).join('; ')}. Cancel it first if you want it forgotten.`);
+    expect(sent.at(-1)!).not.toContain(' more. Cancel it first');
+  } finally { journal.close(); rmSync(root, { recursive: true, force: true }); }
+});
