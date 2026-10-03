@@ -125,12 +125,15 @@ session grounded from the journal, and the workspace's files are unaffected. A n
 every earlier session file of the conversation's own projects directory, so a session whose record was
 lost is never stranded outside these bounds. The workspace is a consumer of the journal's facts too:
 before any tool of a turn runs, every clause the journal has forgotten or corrected since the volume
-last completed a pass over its memory is removed from the workspace's plain-text files, and a file
-without one is left untouched. A file the pass cannot change safely (unreadable, unwritable, or not
-plain text, such as an archive whose structure a removal would break) is kept intact and named in a
-note in the workspace; the pass is bounded and a large workspace is covered over several turns. The
-forget counts as reconciled only when a whole walk leaves no file holding the clause; until then every
-turn repeats the check and the operator's status shows it unfinished.
+last completed a pass over its memory is removed from the workspace's prose notes (plain-text and
+Markdown files, where a removal leaves a valid file), and a file without one is left untouched. Any
+other file holding one (unreadable, unwritable, or structured, such as JSON, code or an archive whose
+structure a removal would break) is kept intact and named in a note in the workspace, and that note is
+delivered in the turn's own input, so the agent rewrites the file with its own tools; the pass is
+bounded, a large workspace is covered over several turns, and a file held by an earlier part of a walk
+stays named until a whole walk completes. The forget counts as reconciled only when a whole walk leaves
+no file holding the clause; until then every turn repeats the check and the operator's status shows it
+unfinished.
 A workspace the journal shows earlier turns in that comes back empty and unmarked is a lost volume, not
 a first allocation: the turn never resumes a session against it, records the loss (the operator's
 status shows it) and leaves a note in the replacement saying the earlier files are gone. Workspace, session

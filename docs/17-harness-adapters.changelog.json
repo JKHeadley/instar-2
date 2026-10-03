@@ -1,5 +1,21 @@
 [
   {
+    "revision": 8,
+    "date": "2026-10-03",
+    "status": "draft",
+    "cause": {
+      "kind": "draft",
+      "note": "Unit w4-persist repair, review round 3 (Astra, VERDICT NO): reconciliation splices only prose notes, and the unfinished-reconciliation guidance reaches the agent in its turn input. No constitution change."
+    },
+    "changes": [
+      {
+        "what": "§9 persistent-workspace rule: only prose notes (plain-text and Markdown files) are edited by removing a forgotten or corrected clause; structured files are kept intact and named; the workspace note is delivered in the turn's own input; a file held by an earlier part of a bounded walk stays named until a whole walk completes.",
+        "why": "Review round 3 findings 1-2: valid UTF-8 admitted a JSON file whose splice left it unparseable, the stale-workspace note was a file the agent was never directed to, and the last chunk of a bounded walk removed the warning while an earlier chunk's held file remained.",
+        "ref": "lanes/w4-persist-PROGRESS.md (Pipeline repair); LIVE-PATH-PLAN.md row #400"
+      }
+    ]
+  },
+  {
     "revision": 7,
     "date": "2026-10-03",
     "status": "draft",

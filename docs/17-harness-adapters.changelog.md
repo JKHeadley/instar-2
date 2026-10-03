@@ -4,6 +4,10 @@ _Generated from `17-harness-adapters.changelog.json` by `scripts/render-changelo
 The document itself reads as a first version; every change to it is recorded here, newest first,
 each linked to the git change that made it (rule 91).
 
+## Revision 8 · 2026-10-03 · draft — Unit w4-persist repair, review round 3 (Astra, VERDICT NO): reconciliation splices only prose notes, and the unfinished-reconciliation guidance reaches the agent in its turn input. No constitution change.
+
+- **§9 persistent-workspace rule: only prose notes (plain-text and Markdown files) are edited by removing a forgotten or corrected clause; structured files are kept intact and named; the workspace note is delivered in the turn's own input; a file held by an earlier part of a bounded walk stays named until a whole walk completes.** — Review round 3 findings 1-2: valid UTF-8 admitted a JSON file whose splice left it unparseable, the stale-workspace note was a file the agent was never directed to, and the last chunk of a bounded walk removed the warning while an earlier chunk's held file remained. _(lanes/w4-persist-PROGRESS.md (Pipeline repair); LIVE-PATH-PLAN.md row #400)_
+
 ## Revision 7 · 2026-10-03 · draft — Unit w4-persist repair, review round 2 (Astra, VERDICT NO): workspace reconciliation made truthful about completion and safe for structured files. No constitution change.
 
 - **§9 persistent-workspace rule: only plain-text files are edited by removing a forgotten or corrected clause; any file the pass cannot change safely is kept intact and named in a workspace note; the bounded pass resumes over later turns; the forget is recorded reconciled only after a whole walk leaves no file holding it, and the status shows an unfinished check.** — Review round 2 findings 1-2: an unwritable note or a walk past its entry bound was recorded as reconciled and never revisited, and byte removal from an archive destroyed an unrelated entry. _(lanes/w4-persist-PROGRESS.md (Pipeline repair); LIVE-PATH-PLAN.md row #400)_
