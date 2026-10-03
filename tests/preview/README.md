@@ -3587,8 +3587,10 @@ servers (Part Thirteen §9,
   profile refuses. A git fetch is proven, not named: its repository answered `info/refs?service=git-upload-pack` in
   this turn with git's advertisement type, the POST is typed `application/x-git-upload-pack-request`, and its body
   (held, at most 8 MiB, gunzipped when encoded, before any of it is forwarded) is only upload-pack pkt-lines. A
-  method-override header (`X-HTTP-Method-Override`, `X-HTTP-Method`, `X-Method-Override`) is decided by the method it
-  names. A loopback, private, link-local, CGNAT or local-name host is refused before any connection (the
+  server may follow the request line or any method-override header (`X-HTTP-Method-Override`, `X-HTTP-Method`,
+  `X-Method-Override`), and the checkpoint forwards both unchanged, so a request is a read only when its line and every
+  method an override names are reads: an override naming a read never downgrades a POST or DELETE, and one override
+  cannot hide another's write. A loopback, private, link-local, CGNAT or local-name host is refused before any connection (the
   prefix empties `NO_PROXY`, so those ranges reach the checkpoint and are refused on the record rather than by the
   sandbox alone). Every decision is appended to `state/egress.jsonl` before the request goes anywhere and journaled
   in the turn's trace (`egress`, `egressRequests`, `egressLimited`); `status` counts admitted and refused shell

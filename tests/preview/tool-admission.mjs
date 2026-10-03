@@ -158,7 +158,8 @@ export function egressTarget(authority, scheme = 'https:') {
   return { host: target.host, port };
 }
 
-/** Headers a server may honor in place of the request line's method; a request carrying one is decided by the method it names. */
+/** Headers a server may honor in place of the request line's method. A server may follow the request line or any of them,
+ * so a request is a read only when the request line and every method these headers name are reads. */
 export const METHOD_OVERRIDES = Object.freeze(['x-http-method-override', 'x-http-method', 'x-method-override']);
 /** The largest git fetch request body the checkpoint holds to check before forwarding (a fetch's wants and haves). */
 export const GIT_FETCH_MAX_BODY = 8 * 1024 * 1024;
@@ -204,21 +205,25 @@ export function gitFetchRequest({ origin, path, headers, body, advertised }) {
 
 /** The shell's network checkpoint (the egress proxy every sandboxed command is forced through): the decision for one HTTP
  * request it can see in full (method, host, path, headers), after TLS interception. A read is admitted: GET or HEAD, or a
- * git fetch proven by gitFetchRequest (`gitFetch`, its result). A method-override header decides by the method it names.
+ * git fetch proven by gitFetchRequest (`gitFetch`, its result), and only when no method-override header names anything
+ * else: a request whose line or any override names a write is a write.
  * Everything else (POST, PUT, PATCH, DELETE, an unproven POST to a git-upload-pack path, a git push from its discovery
  * request on, a package publish) is a network write for the effect doorway, which refuses it unless the installed
  * profile registers `tool:network-write`. */
 export function admitEgress({ method, path, headers = {}, gitFetch = null }, operations) {
-  const h = lower(headers), override = METHOD_OVERRIDES.find(name => name in h);
-  const verb = String(override ? h[override] : method ?? '').trim().toUpperCase(), target = String(path ?? '');
+  const h = lower(headers), actual = String(method ?? '').trim().toUpperCase(), target = String(path ?? '');
+  // Every method the upstream could act on: the request line's and each one an override header names (a repeated header
+  // is comma-joined). An override can never downgrade the request line, and no header can hide another's write.
+  const verbs = [actual, ...METHOD_OVERRIDES.filter(name => name in h).flatMap(name => h[name].split(',').map(v => v.trim().toUpperCase()))];
+  const read = v => v === 'GET' || v === 'HEAD', verb = verbs.find(v => !read(v)) ?? actual;
   const query = target.includes('?') ? target.slice(target.indexOf('?') + 1) : '', route = target.split('?')[0];
   const service = new URLSearchParams(query).get('service');
   const write = reason => { const admitted = admitToolEffect('network-write', operations); return admitted.admitted
     ? { decision: 'allow', reason: admitted.reason, kind: 'network-write' }
     : { decision: 'deny', reason: `${reason}: ${admitted.reason}`, kind: 'network-write' }; };
   if (service === 'git-receive-pack' || route.endsWith('/git-receive-pack')) return write('a git push');
-  if (verb === 'GET' || verb === 'HEAD') return { decision: 'allow', reason: `${verb} read`, kind: 'network-read' };
-  if (verb === 'POST' && String(method).toUpperCase() === 'POST' && gitFetch?.fetch === true && route.endsWith('/git-upload-pack'))
+  if (verbs.every(read)) return { decision: 'allow', reason: `${actual} read`, kind: 'network-read' };
+  if (verbs.every(v => v === 'POST') && gitFetch?.fetch === true && route.endsWith('/git-upload-pack'))
     return { decision: 'allow', reason: 'git fetch', kind: 'network-read' };
   if (verb === 'POST' && route.endsWith('/git-upload-pack')) return write(`POST is a network write (not a proven git fetch: ${gitFetch?.reason ?? 'unchecked'})`);
   return write(`${verb || '(no method)'} is a network write`);

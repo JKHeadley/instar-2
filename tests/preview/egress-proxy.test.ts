@@ -151,7 +151,7 @@ it('a genuine git fetch is a read; a git push is refused from its discovery requ
   expect(up.seen.length).toBe(before);
 });
 
-it('an upload-pack path name, content type or method override does not make a write a read', async () => {
+it('an upload-pack path name, content type or method override (naming a write or a read) does not make a write a read', async () => {
   const up = await upstream(['example.test']);
   const { curl, record } = await checkpoint(up, { operations: [] });
   const fetchType = ['-H', 'content-type: application/x-git-upload-pack-request'];
@@ -164,6 +164,10 @@ it('an upload-pack path name, content type or method override does not make a wr
     ['-H', 'X-HTTP-Method-Override: DELETE', 'https://example.test/messages/1'],
     ['-H', 'X-HTTP-Method: POST', 'https://example.test/messages/1'],
     ['-I', '-H', 'X-Method-Override: PUT', 'https://example.test/messages/1'],
+    // An override naming a read never downgrades a write, and one override cannot hide another's write.
+    ['-X', 'POST', '-H', 'X-HTTP-Method-Override: GET', '-d', 'send=hello', 'https://example.test/messages'],
+    ['-X', 'DELETE', '-H', 'X-HTTP-Method-Override: HEAD', 'https://example.test/messages/1'],
+    ['-H', 'X-HTTP-Method-Override: GET', '-H', 'X-Method-Override: DELETE', 'https://example.test/messages/1'],
   ];
   for (const args of refused) expect((await curl(...args)).out).toMatch(/^HTTP\/1\.1 403/mu);
   expect(up.seen).toEqual([]);

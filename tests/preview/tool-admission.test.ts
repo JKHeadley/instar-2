@@ -428,13 +428,22 @@ it('the checkpoint admits reads (GET, HEAD, a proven git fetch) and sends every 
     ['POST', '/r.git/git-upload-pack-not', {}, proven], ['POST', '/messages/git-upload-pack', {}, null],
     ['POST', '/messages/git-upload-pack', {}, { fetch: false, reason: 'the repository did not advertise git upload-pack in this turn' }],
     ['GET', '/messages/1', { 'X-HTTP-Method-Override': 'DELETE' }, null], ['HEAD', '/messages/1', { 'x-http-method': 'PUT' }, null],
-    ['POST', '/r.git/git-upload-pack', { 'x-method-override': 'DELETE' }, proven]] as const) {
+    ['POST', '/r.git/git-upload-pack', { 'x-method-override': 'DELETE' }, proven],
+    // An override naming a read never downgrades the request line, and no override hides another's write.
+    ['POST', '/messages', { 'X-HTTP-Method-Override': 'GET' }, null], ['DELETE', '/messages/1', { 'X-HTTP-Method-Override': 'HEAD' }, null],
+    ['GET', '/messages/1', { 'X-HTTP-Method-Override': 'GET', 'X-Method-Override': 'DELETE' }, null],
+    ['GET', '/messages/1', { 'X-HTTP-Method-Override': 'GET, DELETE' }, null], ['GET', '/messages/1', { 'X-HTTP-Method': '' }, null],
+    ['POST', '/r.git/git-upload-pack', { 'X-HTTP-Method-Override': 'GET' }, proven]] as const) {
     const decided = admitEgress({ method, path, headers, gitFetch }, ops);
     expect(decided).toMatchObject({ decision: 'deny', kind: 'network-write' });
     expect(decided.reason).toMatch(/effect doorway: the installed profile registers no tool:network-write operation/u);
   }
   // An override naming a read leaves a read a read.
   expect(admitEgress({ method: 'GET', path: '/x', headers: { 'X-HTTP-Method-Override': 'GET' } }, ops)).toMatchObject({ decision: 'allow' });
+  expect(admitEgress({ method: 'HEAD', path: '/x', headers: { 'X-HTTP-Method-Override': 'GET', 'x-method-override': 'HEAD' } }, ops))
+    .toEqual({ decision: 'allow', reason: 'HEAD read', kind: 'network-read' });
+  expect(admitEgress({ method: 'POST', path: '/r.git/git-upload-pack', headers: { 'X-HTTP-Method-Override': 'POST' }, gitFetch: proven }, ops))
+    .toMatchObject({ decision: 'allow', reason: 'git fetch' });
   expect(admitEgress({ method: 'POST', path: '/post' }, [...ops, 'tool:network-write'])).toEqual({ decision: 'allow', kind: 'network-write',
     reason: 'registered operation tool:network-write' });
   expect(egressTarget('example.com:443')).toEqual({ host: 'example.com', port: 443 });
