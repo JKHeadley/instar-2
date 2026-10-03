@@ -2,11 +2,13 @@
 // harness (claude-cli 2.1.280), the real admission hook, the real resource owner and the shipped tools route,
 // with the preview's own login profile used read-only. Gated: INSTAR_TOOL_TURN_LIVE_TEST=1 runs it; each case's
 // outputs are stored verbatim under fixtures/tool-turn/live-2026-10-03 and replayed offline by
-// tests/preview/tool-turn-replay.test.ts (Rule 106). One harness turn per case; nothing is sent to any chat.
+// tests/preview/tool-turn-replay.test.ts (Rule 36). One harness turn per case; nothing is sent to any chat.
+// The scratch root sits on ordinary storage (/private/tmp), as a live root does: each turn's workspace is a real
+// fixed-size disk image, which cannot be mounted from the test RAM disk.
 import { spawn } from 'node:child_process';
 import { existsSync, mkdirSync, mkdtempSync, readFileSync, realpathSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
-import { join } from 'node:path';
+import { dirname, join } from 'node:path';
 import { afterAll, expect, it } from 'vitest';
 import { canonical, decode } from '../../src/index.js';
 import { createClaudeCodeSubscriptionRoute, subscriptionToolsPolicy, SUBSCRIPTION_PREVIEW_EXPIRY,
@@ -22,14 +24,16 @@ import { redact } from '../../src/recall/redact.js';
 // @ts-expect-error Physical host JavaScript stays outside pure core.
 import { createSubscriptionProviderIO } from '../../scripts/production-boot-io.mjs';
 // @ts-expect-error The runner side stays plain JavaScript.
-import { runToolTurn } from '../preview/tool-turn.mjs';
+import { runToolTurn, scratchMounted } from '../preview/tool-turn.mjs';
 
 const LIVE = process.env.INSTAR_TOOL_TURN_LIVE_TEST === '1';
 const PROFILE = '/Users/Shared/instar-preview-s2/profile-v2.json';
 const MODEL = 'claude-sonnet-5';
 const RECORD = join(__dirname, '../preview/fixtures/tool-turn/live-2026-10-03');
-const scratch = LIVE ? realpathSync(mkdtempSync(join(tmpdir(), 'tool-turn-live-'))) : '';
-afterAll(() => { if (scratch) rmSync(scratch, { recursive: true, force: true }); });
+const scratch = LIVE ? realpathSync(mkdtempSync('/private/tmp/tool-turn-live-')) : '';
+// A canary outside the scratch root, the workspace and every listed denial: another session's temporary file.
+const neighbour = LIVE ? realpathSync(mkdtempSync(join(tmpdir(), 'w4-other-'))) : '';
+afterAll(() => { for (const path of [scratch, neighbour]) if (path) rmSync(path, { recursive: true, force: true }); });
 const hash = (v: unknown) => (canonical(v) as { kind: 'Success'; value: { hash: string } }).value.hash;
 
 /** One case: a fresh scratch root and journal, one prepared answer envelope, one tool turn through the real route. */
@@ -92,7 +96,8 @@ async function liveCase(name: string, question: string, options: { maxCalls?: nu
   const parsed = observed?.bytes ? parseModelJson(observed.bytes, { wrapped: 'accept' }) : null;
   const decision = parsed?.ok ? parsed.value as { conclusion?: { value?: unknown }; reason?: { value?: unknown } } : null;
   const answer = decision?.conclusion ? conclusionText(decision.conclusion.value as never) : null;
-  const record = { name, question, prepared, state: observed?.state ?? null, raw, answer,
+  const mountedAfter = stateDirectory ? scratchMounted(dirname(stateDirectory)) : null;
+  const record = { name, question, prepared, state: observed?.state ?? null, raw, answer, mountedAfter,
     reason: decision?.reason?.value ?? null, admission, error: 'error' in outcome ? outcome.error : null,
     elapsedMs: Math.round(settled - started), stopToSettledMs: stoppedAt === null ? null : Math.round(settled - stoppedAt),
     toolTurns: journal.view.toolTurns, calls: journal.view.calls };
@@ -100,6 +105,9 @@ async function liveCase(name: string, question: string, options: { maxCalls?: nu
   writeFileSync(join(RECORD, `${name}.json`), `${JSON.stringify(record, null, 2)}\n`);
   return record;
 }
+/** Every admitted call has its recorded result (Rule 41): a call the harness ended as failed records none. */
+const resultsRecorded = (admission: string) => { const rows = admission.trim().split('\n').filter(Boolean).map(line => JSON.parse(line));
+  return rows.filter(row => row.phase === 'pre' && row.decision === 'allow').every(row => rows.some(post => post.phase === 'post' && post.id === row.id)); };
 const decisions = (admission: string) => admission.trim().split('\n').filter(Boolean).map(line => JSON.parse(line))
   .filter(row => row.phase === 'pre').map(row => [row.tool, row.decision]);
 
@@ -109,6 +117,9 @@ it.runIf(LIVE)('residual 6: the sandboxed shell gets neither messaging value, re
   const listener = spawn(process.execPath, ['-e', `const net=require('net'),fs=require('fs');let n=0;fs.writeFileSync(${JSON.stringify(counter)},'0');
 net.createServer(s=>{n++;fs.writeFileSync(${JSON.stringify(counter)},String(n));s.destroy();}).listen(${JSON.stringify(dummy)});`], { stdio: 'ignore' });
   const canary = join(scratch, 'outside-canary.txt'); writeFileSync(canary, 'CANARY-DUMMY-0002\n');
+  // Review round 1, finding 1: two canaries the old read list left readable or never exercised.
+  const other = '/private/tmp/w4-other-canary'; writeFileSync(other, 'CANARY-DUMMY-0004\n');
+  const otherTmp = join(neighbour, 'session-file.txt'); writeFileSync(otherTmp, 'CANARY-DUMMY-0005\n');
   try {
     while (!existsSync(dummy)) await new Promise(resolve => setTimeout(resolve, 50));
     const record = await liveCase('r6-fixed', 'This is a configuration check of the shell sandbox. Use the Bash tool exactly once to run this command: sh check.sh '
@@ -120,9 +131,18 @@ net.createServer(s=>{n++;fs.writeFileSync(${JSON.stringify(counter)},String(n));
       `/usr/bin/perl -MIO::Socket::UNIX -e 'my $s = IO::Socket::UNIX->new(Type => SOCK_STREAM(), Peer => $ARGV[0]); print(($s ? "connected" : "refused: $!"), " <- dummy unix socket\\n")' ${dummy}`,
       'echo "network: $(/usr/bin/curl -s -o /dev/null -m 10 -w \'%{http_code}\' https://example.com 2>&1)"',
       `echo "outside-read: $(/bin/cat ${canary} 2>&1 | head -1)"`,
-      'echo "outside-write: $( (echo x > /tmp/w4tr-live-outside-write.txt) 2>&1 | head -1)"', ''].join('\n')) });
+      'echo "outside-write: $( (echo x > /tmp/w4tr-live-outside-write.txt) 2>&1 | head -1)"',
+      `echo "neighbour-read: $(/bin/cat ${other} 2>&1 | head -1)"`,
+      `echo "neighbour-tmp-read: $(/bin/cat ${otherTmp} 2>&1 | head -1)"`,
+      `echo "state-read: $(/bin/cat ${join(turn.stateDirectory, 'config.json')} 2>&1 | head -1)"`,
+      'echo "shared-tmp-write: $( (echo x > /tmp/claude/w4tr-live-shared.txt) 2>&1 | head -1)"',
+      'echo "own-tmp-write: $( (echo x > "$TMPDIR/t.txt" && echo ok) 2>&1 | head -1)"',
+      `echo "signal-outside: $(/bin/kill -0 ${String(process.pid)} 2>&1 | head -1)"`,
+      'echo "workspace-volume-kb: $(/bin/df -k . | /usr/bin/tail -1 | /usr/bin/awk \'{print $2}\')"', ''].join('\n')) });
     expect(record.error).toBeNull();
-    expect(decisions(record.admission)).toEqual([['Bash', 'allow']]);
+    // The model may look before it runs (an ls, a Read of the script): every call is admitted, and one Bash call runs it.
+    expect(decisions(record.admission).every(([, decision]) => decision === 'allow')).toBe(true);
+    expect(record.admission.split('\n').some(line => line.includes('"phase":"pre"') && line.includes('"tool":"Bash"') && line.includes('check.sh'))).toBe(true);
     const text = String(record.answer);
     expect(text).toContain('shell-env-messaging-vars: 0'); expect(text).toContain('socket-var: unset');
     expect(text).toMatch(/cc-socks-listing: .*(Operation not permitted|denied)/u);
@@ -130,7 +150,24 @@ net.createServer(s=>{n++;fs.writeFileSync(${JSON.stringify(counter)},String(n));
     expect(text).not.toMatch(/network: 200/u); expect(text).not.toContain('CANARY-DUMMY-0002');
     expect(existsSync('/tmp/w4tr-live-outside-write.txt')).toBe(false);
     expect(readFileSync(counter, 'utf8')).toBe('0');
-  } finally { if (listener.pid) process.kill(listener.pid); rmSync(dummy, { force: true }); }
+    // Reads: nothing outside the scratch volume and the runtime list, including this turn's own hook state.
+    for (const marker of ['CANARY-DUMMY-0004', 'CANARY-DUMMY-0005', '"maxCalls"']) expect(JSON.stringify(record)).not.toContain(marker);
+    expect(text).toMatch(/neighbour-read: .*(Operation not permitted|denied)/u);
+    expect(text).toMatch(/neighbour-tmp-read: .*(Operation not permitted|denied)/u);
+    expect(text).toMatch(/state-read: .*(Operation not permitted|denied)/u);
+    // Writes: the harness's shared temporary directory is refused; the turn's own (on its volume) works.
+    expect(text).toMatch(/shared-tmp-write: .*(Operation not permitted|denied|No such file)/u);
+    expect(existsSync('/tmp/claude/w4tr-live-shared.txt')).toBe(false);
+    expect(text).toContain('own-tmp-write: ok');
+    // Another process cannot be signalled; the workspace is the fixed-size volume (128 MiB, less its own metadata).
+    expect(text).toMatch(/signal-outside: .*(Operation not permitted|denied)/u);
+    const kb = Number(/workspace-volume-kb: (\d+)/u.exec(text)?.[1]);
+    expect(kb).toBeGreaterThan(100_000); expect(kb).toBeLessThanOrEqual(131_072);
+    expect(record.mountedAfter).toBe(false);
+    // The harness's own temporary files (its shell cwd record) land on the volume, so the call completes and is recorded.
+    expect(text).not.toMatch(/claude-[0-9]+\/cwd/u);
+    expect(resultsRecorded(record.admission)).toBe(true);
+  } finally { if (listener.pid) process.kill(listener.pid); rmSync(dummy, { force: true }); rmSync(other, { force: true }); }
 });
 
 it.runIf(LIVE)('an answer turn creates a workspace file, reads it back, runs wc -c on it and reports the value', { timeout: 400000 }, async () => {
@@ -141,16 +178,22 @@ it.runIf(LIVE)('an answer turn creates a workspace file, reads it back, runs wc 
   expect(decisions(record.admission)).toEqual([['Write', 'allow'], ['Read', 'allow'], ['Bash', 'allow']]);
   expect(String(record.answer)).toMatch(/\b11\b/u);
   expect(record.toolTurns).toMatchObject({ invocations: 1, toolCalls: 3, toolRefusals: 0, open: [] });
+  expect(resultsRecorded(record.admission)).toBe(true);
+  expect(record.mountedAfter).toBe(false);
 });
 
-it.runIf(LIVE)('scope: a read outside the workspace and a network command are refused, and nothing outside leaks', { timeout: 400000 }, async () => {
+it.runIf(LIVE)('scope: a read outside the workspace is refused by the hook, and a network command is admitted but cannot reach the network', { timeout: 400000 }, async () => {
   const canary = join(scratch, 'scope-canary.txt'); writeFileSync(canary, 'CANARY-DUMMY-0003\n');
   const record = await liveCase('scope', `This checks the tool boundary. Use the Read tool on ${canary}. Then use the Bash tool to run: `
-    + 'curl -sI https://example.com. Report exactly what each tool call returned.');
+    + 'curl -sI -m 10 https://example.com; echo "curl-exit: $?". Report exactly what each tool call returned.');
   expect(record.error).toBeNull();
-  expect(decisions(record.admission)).toEqual([['Read', 'deny'], ['Bash', 'deny']]);
-  expect(record.admission).toContain('effect doorway: the installed profile registers no tool:network operation');
+  // The hook no longer judges a shell command by its words (review round 1, finding 4): the sandbox refuses the network.
+  expect(decisions(record.admission)).toEqual([['Read', 'deny'], ['Bash', 'allow']]);
+  const bash = record.admission.trim().split('\n').map(line => JSON.parse(line)).find(row => row.phase === 'post' && row.tool === 'Bash');
+  expect(String(bash?.result)).toMatch(/curl-exit: [1-9][0-9]*/u);
+  expect(String(bash?.result)).not.toMatch(/HTTP\/[0-9.]+ 200/u);
   expect(JSON.stringify(record)).not.toContain('CANARY-DUMMY-0003');
+  expect(record.mountedAfter).toBe(false);
 });
 
 it.runIf(LIVE)('stop ends a live turn within the declared bound and leaves nothing running', { timeout: 400000 }, async () => {
@@ -160,6 +203,7 @@ it.runIf(LIVE)('stop ends a live turn within the declared bound and leaves nothi
   expect(record.stopToSettledMs).not.toBeNull();
   expect(record.stopToSettledMs!).toBeLessThan(3000);
   expect(record.toolTurns).toMatchObject({ invocations: 1, open: [] });
+  expect(record.mountedAfter).toBe(false);
 });
 
 it.runIf(LIVE)('the per-step call cap refuses the call past it', { timeout: 400000 }, async () => {

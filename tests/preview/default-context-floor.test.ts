@@ -11,6 +11,7 @@ import { prepareJournalEnvelope } from './journal-envelope.js';
 import { PREVIEW_FIXED_PROMPT_BYTES, PREVIEW_LIVE_LIMITS, PREVIEW_MIN_SERVABLE_CONTEXT_BYTES,
   PREVIEW_MIN_TURN_HEADROOM_BYTES, PREVIEW_REPLY_BOUND_BYTES, REPLY_REVIEW_FIXED_BYTES,
   concurrentWorkItem, createJournalWorker, declaredObligations, openPreviewJournal, replyReviewReserveFor,
+  OBLIGATION_DECISION, OBLIGATION_DECISION_TOOLS, previewCapabilities,
   unservableContextReason } from './journal.js';
 import { jevQuestions, replyReviewContext, replyReviewQuestion } from './reply-check.js';
 import { SUBSCRIPTION_CONVERSATION_SYSTEM_PROMPT, SUBSCRIPTION_TOOLS_SYSTEM_PROMPT } from '../../src/assembly/production-provider.js';
@@ -52,6 +53,7 @@ async function firstTurn(maxBytes: number, tools = false) {
     const worker = createJournalWorker(journal, { now: () => now, stopped: () => false, sources,
       prepareModel: input => prepareJournalEnvelope(input, 'claude-opus-5-5', journal.view.genesis.grant, now,
         journal.view.limits.maxBytes),
+      toolRoute: () => tools,
       concurrentWork: () => concurrentWorkItem({ now, others: [], scanned: 1, truncated: false, unreadable: 0,
         current: { owner: 'preview-root', launch: now - 60_000, conversation: 'telegram/bot-12345678/chat-7654321' } }),
       model: async input => {
@@ -90,7 +92,9 @@ async function firstTurn(maxBytes: number, tools = false) {
     const result = { sent: turn.sent !== undefined, held: turn.held, notice: turn.noticeClass,
       answerTotal: total(answer), summaryTotal: total(summary), reviewTotal,
       deskCut: deskText.includes('[cut for space'),
-      keys: answer === undefined ? [] : Object.keys(JSON.parse(answer.context) as object) };
+      keys: answer === undefined ? [] : Object.keys(JSON.parse(answer.context) as object),
+      packet: answer === undefined ? null : JSON.parse(answer.context) as { capabilities?: { externalTools?: string };
+        obligationDecision?: string; governingConstraints?: Record<string, string> } };
     journal.close();
     return result;
   } finally { rmSync(root, { recursive: true, force: true }); }
@@ -249,7 +253,18 @@ it('keeps a tool turn\'s always-sent parts inside the same measured floor (Part 
     'memoryDecision', 'datedDecision', 'concurrentWork', 'audience'])
     expect(tools.keys, required).toContain(required);
   const growth = bytes(SUBSCRIPTION_TOOLS_SYSTEM_PROMPT) - bytes(SUBSCRIPTION_CONVERSATION_SYSTEM_PROMPT);
-  expect(growth).toBe(603);
+  // 603 at w4-toolsreal round 0; +20 when the sentence stopped claiming deletes are refused (they are inside the scratch volume).
+  expect(growth).toBe(623);
+  // The packet names what the call really has (review round 1, finding 5): the text-only route keeps the no-tools read and
+  // its "attempted nothing" guidance; the tool route says the tools are as listed and that only its recorded calls ran.
+  expect(plain.packet?.capabilities?.externalTools).toBe('none');
+  expect(plain.packet?.obligationDecision).toBe(OBLIGATION_DECISION);
+  expect(plain.packet?.governingConstraints?.['no-tools']).toBe('no external tools or accounts');
+  expect(tools.packet?.capabilities).toEqual(previewCapabilities(true));
+  expect(tools.packet?.capabilities?.externalTools).toBe('as listed');
+  expect(tools.packet?.obligationDecision).toBe(OBLIGATION_DECISION_TOOLS);
+  expect(tools.packet?.obligationDecision).not.toContain('You attempted nothing outside this reply');
+  expect(tools.packet?.governingConstraints?.['no-tools']).toBe('only listed tools; no accounts');
   const plainPacket = plain.answerTotal! - bytes(SUBSCRIPTION_CONVERSATION_SYSTEM_PROMPT);
   const toolsPacket = tools.answerTotal! - bytes(SUBSCRIPTION_TOOLS_SYSTEM_PROMPT);
   expect(toolsPacket).toBeLessThanOrEqual(plainPacket);

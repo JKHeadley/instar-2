@@ -1,32 +1,28 @@
 // The tool turn's admission decision (Part Thirteen §9 in docs/17-harness-adapters, the preview tool rule). Pure: every input is
 // passed in, so the executable hook (tool-admission-hook.mjs) and the tests run the same function.
-// Deny by default. Ordinary in-workspace file tools and sandboxed, non-consequential shell commands are
-// admitted. A consequential call (network, delete, send, host control, an MCP or web tool, an
-// unsandboxed shell) goes to the effect doorway's admission, which admits only an operation the
-// installed profile registers for that tool effect; the single-machine profile registers none, so it
-// refuses. The spike's 33-case layer A (w4-toolsreuse hooktest.mjs) is replayed by the unit tests.
+// Deny by default. Ordinary in-workspace file tools and sandboxed shell commands are admitted. A shell
+// command is not judged by the words it contains: what it can reach is enforced where it runs (the
+// sandbox's read, write, network and process scope, the turn's fixed-size scratch volume, the per-file
+// limit). A consequential tool (an MCP or web tool, an unsandboxed shell) goes to the effect doorway's
+// admission, which admits only an operation the installed profile registers for that tool effect; the
+// single-machine profile registers none, so it refuses.
 import { basename, dirname, join, resolve, sep } from 'node:path';
 
+const SHELL_SAFE_PATH = /^\/[A-Za-z0-9_./@-]+$/u;
 /** Prepended to every admitted shell command. Claude Code 2.1.280 exports its own messaging inbox
  * socket and token into the Bash tool (residual 6); the sandbox already refuses unix-socket connects,
- * and this removes both values from the command's environment as well. `ulimit -f` bounds each file a
- * command writes (65536 blocks of 512 bytes). */
-export const TOOL_SHELL_PREFIX = 'unset CLAUDE_CODE_MESSAGING_TOKEN CLAUDE_CODE_MESSAGING_SOCKET; ulimit -f 65536; ';
+ * and this removes both values from the command's environment as well. `TMPDIR` points at the turn's
+ * own scratch volume (the harness's shared default is refused for writes), and `ulimit -f` bounds each
+ * file a command writes (65536 blocks of 512 bytes). `tmp` is absolute and shell-safe. */
+export function toolShellPrefix(tmp) {
+  if (typeof tmp !== 'string' || !SHELL_SAFE_PATH.test(tmp)) throw Error('tool admission: shell temporary directory absent');
+  return `unset CLAUDE_CODE_MESSAGING_TOKEN CLAUDE_CODE_MESSAGING_SOCKET; export TMPDIR=${tmp}; ulimit -f 65536; `;
+}
 export const FILE_TOOLS = Object.freeze(['Read', 'Write', 'Edit']);
 const SEARCH_TOOLS = Object.freeze(['Glob', 'Grep']);
 /** Bounded excerpt of a tool input or result kept in the admission record. */
 export const RECORD_EXCERPT_CHARS = 4096;
 
-const CONSEQUENTIAL_SHELL = Object.freeze([
-  [/\b(curl|wget|nc|ncat|ssh|scp|rsync|ftp|telnet|socat|openssl\s+s_client)\b|\bgit\s+(push|fetch|pull|clone)\b|\b(npm|pnpm|yarn|pip3?|brew)\s+(install|publish|add)\b|https?:\/\//u, 'network'],
-  [/\b(rm|rmdir|unlink|shred|truncate)\b|\bgit\s+(reset|clean)\b/u, 'delete'],
-  [/\b(security|osascript|launchctl|sudo|kill|pkill|killall|open)\b/u, 'host-control'],
-  [/\b(mail|sendmail)\b|telegram|slack/iu, 'send'],
-]);
-/** The effect class of a shell command, or null for an ordinary one. Exact patterns only (Rule 4). */
-export function shellEffect(command) {
-  return CONSEQUENTIAL_SHELL.find(([pattern]) => pattern.test(command))?.[1] ?? null;
-}
 /** The effect doorway's admission for a tool effect: admitted only when the installed profile registers
  * an operation for exactly that tool effect. The single-machine profile's closed set registers none. */
 export function admitToolEffect(kind, operations) {
@@ -47,7 +43,8 @@ export function containedIn(workspace, path, fs) {
 
 /**
  * One PreToolUse decision. `call` is the hook input ({tool_name, tool_input}); `config` is the turn's
- * {workspace (real path), maxCalls, operations}; `n` is this call's 1-based count in the step; `fs`
+ * {workspace (real path), tmp (the shell's temporary directory), maxCalls, maxWriteBytes, operations}; `n` is
+ * this call's 1-based count in the step (maxCalls + 1 once every slot is taken); `fs`
  * gives exists/realpath. Returns {decision, reason, kind?, updatedInput?}.
  */
 export function admitToolCall(call, config, n, fs) {
@@ -76,10 +73,8 @@ export function admitToolCall(call, config, n, fs) {
     const command = String(input.command ?? '');
     if (!command.trim()) return deny('empty command');
     if (input.dangerouslyDisableSandbox) return effect('unsandboxed');
-    const kind = shellEffect(command);
-    if (kind) return effect(kind);
-    return { decision: 'allow', reason: 'ordinary sandboxed command',
-      updatedInput: { ...input, command: TOOL_SHELL_PREFIX + command } };
+    return { decision: 'allow', reason: 'sandboxed command',
+      updatedInput: { ...input, command: toolShellPrefix(config.tmp) + command } };
   }
   if (tool.startsWith('mcp__')) return effect('mcp');
   if (tool === 'WebFetch' || tool === 'WebSearch') return effect('network');

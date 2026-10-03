@@ -1,11 +1,14 @@
 // Build 4: every accepted obligation stays owned until deliberately settled (Rules 6, 8, 20-23, 46, 55, 64, 68, 83, 93, 99, 103).
 import { expect, it } from 'vitest';
-import { chmodSync, mkdtempSync, realpathSync, rmSync } from 'node:fs';
+import { chmodSync, mkdtempSync, readFileSync, realpathSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { spawnSync } from 'node:child_process';
 import { join } from 'node:path';
 import { createJournalWorker, openPreviewJournal, openBlockers, openDirectives, declaredObligations, dueObligationWork, obligationSchedule,
-  LOOP_REVISIT_MS, BLOCKER_RECHECK_MAX_MS, DIRECTIVE_SHARE } from './journal-test-worker.js';
+  LOOP_REVISIT_MS, BLOCKER_RECHECK_MAX_MS, DIRECTIVE_SHARE, OBLIGATION_WORK_QUESTION, OBLIGATION_WORK_QUESTION_TOOLS, previewCapabilities,
+  TOOL_ATTEMPTS_MEANING } from './journal-test-worker.js';
+// @ts-expect-error Plain JavaScript.
+import { toolTrace } from './tool-admission.mjs';
 import { loopHealth, loopStatusLines, BACKLOG_AGE_LIMIT_MS } from './obligations.js';
 import { statusReply } from './status-command.js';
 import { DECLARED_OBLIGATIONS_GUIDE, HOLDING_REPLY, REPLY_RULES, replySegments, replyReviewContext, replyReviewQuestion, type ObjectionDisposition, type ReplyRule } from './reply-check.js';
@@ -33,14 +36,16 @@ type Review = { jev?: (text: string) => Partial<Record<ReplyRule, number>>;
     dispositions?: ObjectionDisposition[]; blocker?: unknown }> };
 function world(root: string, options: { maxBytes?: number; maxCalls?: number; answer?: (question: string, context: string) => Answer;
   waitsOn?: boolean; work?: (context: Record<string, unknown>) => Answer | Promise<Answer>; review?: Review; stopped?: () => boolean;
-  receipt?: (text: string) => boolean; nextUpdate?: number } = {}) {
+  receipt?: (text: string) => boolean; nextUpdate?: number; toolRoute?: (id: string) => boolean } = {}) {
   const path = join(root, 'journal.encrypted');
   const journal = openPreviewJournal(path, key, genesis(options.maxBytes, options.maxCalls));
   const clock = { now: T0 };
   const contexts = new Map<string, string>(), reviews: Record<string, unknown>[] = [], work: string[] = [], sent: string[] = [];
+  const workQuestions: string[] = [];
   const review = options.review;
   const worker = createJournalWorker(journal, { now: () => clock.now, stopped: options.stopped ?? (() => false), timeZone: 'UTC',
     prepareModel: input => input.context,
+    ...(options.toolRoute ? { toolRoute: options.toolRoute } : {}),
     ...(review ? { replyCheck: { elapsedMs: () => 0,
       jev: async (text: string, questions?: Record<string, unknown>) => ({ latencyMs: 0, value: { model: 'jev-1.13.0',
         answers: Object.fromEntries(Object.keys(questions ?? REPLY_RULES).map(rule => [rule,
@@ -63,7 +68,7 @@ function world(root: string, options: { maxBytes?: number; maxCalls?: number; an
       }, ...(review.revise ? { revise: review.revise } : {}) } } : {}),
     model: async input => {
       if (input.id.startsWith('obligation:')) {
-        work.push(input.id);
+        work.push(input.id); workQuestions.push(input.question);
         const answer = await options.work?.(JSON.parse(input.context) as Record<string, unknown>) ?? { outcome: 'continue', note: 'Still working.' };
         return typeof answer === 'string' ? answer : JSON.stringify(answer);
       }
@@ -88,7 +93,7 @@ function world(root: string, options: { maxBytes?: number; maxCalls?: number; an
     queued?.();
     await worker.drain(); await worker.summarizeIfNeeded();
   };
-  return { journal, worker, clock, say, contexts, path, reviews, work, sent };
+  return { journal, worker, clock, say, contexts, path, reviews, work, sent, workQuestions };
 }
 const status = (root: string) => {
   const result = spawnSync(process.execPath, ['--no-warnings', '--loader', './scripts/slice-ts-loader.mjs',
@@ -866,5 +871,70 @@ it('revives a queued runner, stops on inhibited or none, and bounds relaunches a
     expect(launch).toBe(4);
     expect(waits).toEqual([1, 2, 4]);
     await expect(() => superviseJournal({ ...config, agent: [process.execPath, agent, 'run', '--root', '/elsewhere'] })).rejects.toThrow('invalid journal launch configuration');
+  } finally { rmSync(root, { recursive: true, force: true }); }
+});
+
+it('tells scheduled work and the reply review what the call actually had: no tools on the text-only route, the recorded tool calls on the tool route (Part Thirteen §9; review round 1, finding 5)', async () => {
+  for (const tools of [false, true]) {
+    const root = origin();
+    try {
+      const contexts: Record<string, unknown>[] = [];
+      const w = world(root, { toolRoute: id => tools && id.startsWith('obligation:'),
+        answer: question => question === INVOICE ? { reply: LATER, openLoops: [{ kind: 'deferral', quote: LATER, waitsOn: 'nothing' }] } : 'Fine.',
+        work: context => { contexts.push(context); return { outcome: 'report', report: 'The invoice is for 120 dollars.' }; } });
+      await w.say(INVOICE);
+      w.clock.now += LOOP_REVISIT_MS + 60_000;
+      expect(await w.worker.workObligations()).toBe(true);
+      expect(w.workQuestions).toEqual([tools ? OBLIGATION_WORK_QUESTION_TOOLS : OBLIGATION_WORK_QUESTION]);
+      expect(contexts[0]!.capabilities).toEqual(previewCapabilities(tools));
+      expect((contexts[0]!.governingConstraints as Record<string, string>)['no-tools'])
+        .toBe(tools ? 'only listed tools; no accounts' : 'no external tools or accounts');
+      if (tools) {
+        expect(w.workQuestions[0]).not.toContain('you have no external tools');
+        expect(w.workQuestions[0]).not.toContain('You have attempted nothing outside this step');
+      } else expect(w.workQuestions[0]).toContain('you have no external tools');
+      w.journal.close();
+    } finally { rmSync(root, { recursive: true, force: true }); }
+  }
+  // The review of a reply whose answer ran on the tool route: the REAL calls of the live task turn (Write, Read, Bash wc -c,
+  // fixtures/tool-turn/live-2026-10-03/task.json, recorded under the pinned harness) are journaled as that turn's trace,
+  // and the review context carries them beside the tool capability read. The neighbour turn answered text-only (no trace,
+  // or a tool turn refused to the text-only route) keeps the no-tools read and carries no attempts.
+  const root = origin();
+  try {
+    const w = world(root);
+    await w.say('Make a note and count its bytes.'); await w.say('And the tomatoes?'); await w.say('One more.');
+    const [toolTurn, plainTurn, refusedTurn] = w.journal.view.order.map(turn => turn.id);
+    const recorded = JSON.parse(readFileSync(join(__dirname, 'fixtures/tool-turn/live-2026-10-03/task.json'), 'utf8')) as { admission: string; answer: string };
+    const trace = toolTrace(recorded.admission.trim().split('\n'));
+    expect(trace).toMatchObject({ consistent: true, admitted: 3 });
+    w.journal.append({ kind: 'tool-turn', phase: 'reserved', id: toolTurn!, attempt: 0, calls: 7, at: w.clock.now });
+    w.journal.append({ kind: 'tool-turn', phase: 'trace', id: toolTurn!, attempt: 0, consistent: true, workspaceBytes: 11, at: w.clock.now,
+      calls: trace.calls });
+    w.journal.append({ kind: 'tool-turn', phase: 'refused', id: refusedTurn!, reason: 'call cap', at: w.clock.now });
+    const declared = declaredObligations(w.journal.view, toolTurn!, w.clock.now);
+    expect(declared.capabilities).toEqual(previewCapabilities(true));
+    const attempts = declared.toolAttempts!;
+    expect(attempts.meaning).toBe(TOOL_ATTEMPTS_MEANING);
+    expect(attempts.calls.map(call => [call.n, call.tool, call.decision])).toEqual([[1, 'Write', 'allow'], [2, 'Read', 'allow'], [3, 'Bash', 'allow']]);
+    // The recorded wc -c result (11 bytes) is what the reviewer can check the reply's "11" against.
+    expect(attempts.calls[2]!.result).toMatch(/\b11\b/u);
+    for (const id of [plainTurn!, refusedTurn!]) {
+      const none = declaredObligations(w.journal.view, id, w.clock.now);
+      expect(none.capabilities).toEqual(previewCapabilities(false));
+      expect(none.toolAttempts).toBeUndefined();
+    }
+    // Through the real review-context builder: the attempts arrive redacted and intact.
+    const envelope = JSON.stringify({ messages: [{ role: 'user', content: 'Make a note and count its bytes.' },
+      { role: 'context', content: JSON.stringify({ packet: { audience: 'operator', history: [] } }) }] });
+    const context = JSON.parse(replyReviewContext(envelope, recorded.answer, [], declared)) as
+      { declaredObligations: { capabilities: { externalTools: string }; toolAttempts: { calls: { result: string | null }[] } } };
+    expect(context.declaredObligations.capabilities.externalTools).toBe('as listed');
+    expect(context.declaredObligations.toolAttempts.calls[2]!.result).toMatch(/\b11\b/u);
+    // Replay keeps the same read.
+    w.journal.close();
+    const reopened = openPreviewJournal(w.path, key);
+    expect(declaredObligations(reopened.view, toolTurn!, w.clock.now).toolAttempts?.calls).toHaveLength(3);
+    reopened.close();
   } finally { rmSync(root, { recursive: true, force: true }); }
 });

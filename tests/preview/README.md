@@ -3534,12 +3534,18 @@ authority record as the main activation. With it, an operator answer turn or a s
 Claude Code invocation with exactly Read, Write, Edit, Glob, Grep and Bash (Part Thirteen §9,
 `docs/17-harness-adapters/09-claude-code-codex-and-future-runtime-mappings.md`):
 
-- Each turn gets a fresh private workspace, `ROOT/tool-turns/<digest>-<n>/ws` (0700), and the admission hook's
-  state beside it. The newest 16 turn directories are kept; the journal's `tool-turn` rows are the record.
-- `tool-admission-hook.mjs` admits in-workspace file operations and sandboxed commands of no consequential class;
-  network, delete, send and host-control commands, MCP and web tools go to the effect doorway, which refuses them.
-  The sandbox denies network, unix sockets and reads outside the workspace; the harness's messaging socket and token
-  are removed from every command.
+- Each turn gets a fresh private workspace on its own fixed-size (128 MiB) scratch volume: a sparse disk image under
+  `ROOT/tool-turns/<digest>-<n>/`, mounted at a short private path (`/private/tmp/itt-…`, linked as `vol`) that is
+  also the harness's temporary directory, so every byte a tool, the shell or the harness writes lands on it. The
+  admission hook's state sits beside it in `state/`. The volume is unmounted and its image removed after the turn;
+  the newest 16 turn directories are kept, and the journal's `tool-turn` rows are the record. The root must be on
+  ordinary storage (a disk image cannot be mounted from a RAM disk); if the volume cannot be mounted the turn fails
+  closed.
+- `tool-admission-hook.mjs` admits in-workspace file operations and sandboxed commands, whatever words they contain;
+  MCP and web tools and unsandboxed commands go to the effect doorway, which refuses them. Each call takes one of the
+  step's 16 slots by exclusive create, so overlapping calls cannot exceed the cap. The sandbox refuses reads from `/`
+  down except the scratch volume and the system files commands need, writes outside the volume, the network, unix
+  sockets and signals to other processes; the harness's messaging socket and token are removed from every command.
 - Before dispatch the turn reserves its whole liability, `maxTurns - 1` model attempts beyond the answer's own,
   against the call cap, and keeps it. A short allowance, or a packet with no room for the longer tool prompt,
   answers that turn without tools, recorded. `status` shows the tool list, tool-turn counts and refusals.
