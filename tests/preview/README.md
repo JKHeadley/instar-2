@@ -3679,3 +3679,51 @@ npx vitest run --maxWorkers 1 tests/assembly/production-provider-tools.test.ts
 INSTAR_TOOL_TURN_LIVE_TEST=1 npx vitest run --maxWorkers 1 tests/integration/tool-turn-live.test.ts   # five real harness turns
 INSTAR_TOOL_TURN_FULL_LIVE_TEST=1 INSTAR_TOOL_TURN_CASE=full npx vitest run --maxWorkers 1 tests/integration/tool-turn-full-live.test.ts  # one per case: full, outward, stop-child, shellnet-reads, shellnet-writes, shellnet-stop
 ```
+
+### Native tool turns (Instar's own agent loop)
+
+Rule 115: the same tool turn without a vendor agent harness (Part Thirteen §9, the native tool rule).
+`tests/preview/native-loop.mjs` is `runToolTurn`'s `invoke`: it uses the same allocation (scratch volume, workspace and
+admission state), whole-liability reservation, journaled trace and retention. Each step is one text-only model call under
+framing `preview-native-tools-v1` (`subscriptionNativePolicy(model)`: the conversation policy's single completion, no harness
+tools, one turn, with a system prompt naming the native tools). The model's answer is either the object
+`{"calls":[{"tool","input"}]}` (1 to 8 calls) or its ordinary answer. The loop:
+
+- runs every proposed call through the same `tool-admission-hook.mjs` executable (`pre`, then `post` with the result), so
+  admission, the per-turn call slots (32) and the admission record are those of a harness tool turn; a hook that cannot
+  decide refuses, and a tool the hook admits but the loop has no executor for (NotebookEdit, a subagent) returns an
+  error result and runs nothing;
+- executes each admitted Read, Write, Edit, Glob, Grep and Bash call as one worker (`native-tool-worker.mjs`, handed to
+  node as source) under `/usr/bin/sandbox-exec` with a profile built from the harness sandbox's read list plus the one
+  node executable (reads only the scratch volume, the runtime system files and the turn's network tools' locations, writes
+  only the volume, no network but the turn's egress checkpoint on its loopback port, whose decisions are a harness
+  shell's, no unix socket or mach service, no signal outside the sandbox) and an empty environment, so the kernel checks every open
+  as it happens: a path swapped into a link out of the volume after admission reads as `EPERM`, and a blocking open (a
+  FIFO) blocks only the worker. Results that leave the workspace through a link are dropped;
+- launches every worker through the host resource owner (`scripts/resource-owner.mjs`, the process's own owner in
+  production): per-process CPU time and handles and the user ID's process headroom in the kernel, the tree's memory and
+  process count sampled against the launch ceilings, the deadline (30 s for a file tool, the Bash timeout up to 120 s)
+  and the stop ending the launch within its 25 ms poll; a launch it ends is reported as `interrupted` with its reason
+  (`stopped`, `timeout`, `memory`, `processes`, `cpu`). The owner joins every descendant by the worker's sandbox
+  instance too (`membership: 'sandbox'`: the kernel's `sandbox_check`, read from outside the workload), so a daemon
+  that took a new session, lost its parent and left the volume still counts against the ceilings and is ended by the
+  stop and the cleanup; nothing inside the sandbox and no workload-writable file takes part. Each call's containment
+  evidence (owner `cleanup`, `membership: sandbox-joined`) is recorded, and `native.unresolved` lists every launch
+  whose end was not proven;
+- runs WebFetch in the loop's process as one GET whose redirect is reported, never followed (admitted by the hook's
+  web-read rule: a public host, and the effect doorway's decision for a host the `--effect-policy` names), ended by its
+  deadline or the stop, with the body read as a stream up to
+  256 KiB and then cancelled;
+- returns each call, its decision and result to the next step as a quoted `role:tool-steps` message (older results are
+  shortened first when the envelope would overflow);
+- ends on the model's answer, the step cap (8 model calls: the liability the turn reserved), a failed or empty step, or
+  the stop (a running call's tree is ended within 25 ms; a call admitted while the stop was latched is recorded as
+  stopped and never run).
+
+The launcher does not offer it yet: a native activation needs the operator's grant naming the native policy digest.
+
+```sh
+npx vitest run --maxWorkers 1 tests/preview/native-loop.test.ts
+npx vitest run --maxWorkers 1 tests/preview/native-loop-replay.test.ts
+INSTAR_NATIVE_LOOP_LIVE_TEST=1 npx vitest run --maxWorkers 1 tests/integration/native-loop-live.test.ts   # three real native turns
+```

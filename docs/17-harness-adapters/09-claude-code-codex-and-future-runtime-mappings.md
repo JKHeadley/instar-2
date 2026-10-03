@@ -163,6 +163,40 @@ its budget backstop can end a long session's turn early; the upstream call reser
 binding bound. The preview's session driver runs Claude Code only: the Codex cell is unsupported
 until its thread continuation is shown to meet this rule under its own conformance.
 
+**Rule — the native harness runs the same tool turn with Instar's own loop.** Rules 2, 30, 41, 55, 58,
+60, 75, 113 and 115, and the purpose's rules on nothing outward by default, consequential effects and
+irreversible acts; **checks:** `tests/preview/native-loop.test.ts`, `tests/preview/native-loop-replay.test.ts`,
+`tests/preview/native-harness-contract.test.ts` and the gated live run `tests/integration/native-loop-live.test.ts`.
+Instar may run a tool turn without any vendor agent harness. Each step is one text-only model call through
+a registered doorway under the native framing, whose policy differs from every other framing only in its
+system prompt, so its digest is its own and only an activation record and grant naming it admit it. The
+model proposes tool calls as its answer, and Instar runs the loop: it admits each proposed call through the
+same admission hook, call slots and record as a harness tool turn, and runs the admitted calls inside the
+same per-turn scratch volume and workspace. Every admitted call except a web fetch runs as a separate worker
+process under a sandbox built from the same read list as the harness sandbox, reaching no network but the
+turn's own egress checkpoint (so its shell's network requests are decided there exactly as a harness shell's
+are), with no unix socket and no signal outside the sandbox, so the kernel checks each file open when it happens: a path the hook
+admitted that later becomes a link out of the volume is refused, and a blocking open blocks only the worker.
+Each worker is launched through the host resource owner, which holds its CPU time and handles, the user ID's
+process headroom, and the tree's memory and process count against their ceilings, and ends it on its deadline
+or the stop. Its membership covers the identity no descendant can leave: besides recorded incarnation, group,
+ancestry and the scratch volume, the owner asks the kernel, from outside the workload, which processes are in
+the worker's sandbox instance, so a descendant that takes a new session, loses its parent and changes directory
+out of the volume is still counted against the ceilings and ended by the stop and the cleanup. Nothing inside
+the sandbox takes part in settlement or cleanup, and no file the workload can write is read on that path. Each
+call carries the owner's containment evidence (its cleanup verdict and the membership it was proven under) into
+the native result, which lists every launch whose end was not proven. A web fetch the hook admitted runs in the loop's process, ends on its deadline or
+the stop, and reads at most its byte limit before cancelling the body. A tool the hook admits but the loop has
+no executor for is answered with an error result and runs nothing. Every call, its
+decision and its result return to the next step as quoted data. The loop is the tool turn's own invocation, so
+the whole-liability reservation, the step bound equal to that reservation, the journaled trace and the
+consistency check are unchanged, and each step is a recorded model call. The loop ends on the model's answer,
+the step bound, a failed step or the stop; the stop ends every process of a running call's sandbox, and a call
+admitted while the stop was latched is recorded as stopped and never run. A
+proposal the hook cannot decide is refused. The loop is a client of the public ports and holds no authority
+of its own. The preview launcher offers a native turn only under an activation and grant naming the native
+policy's digest.
+
 **Rule — Codex activation has the identical bar.** Rules 34, 41, 47, 59 and 75; **checks:
 P13-NF-16/23/35/44**. The conformance run must show actual submitted context, correlated lifecycle
 and output events, model/runtime-configuration/reasoning and account evidence, sandbox and hidden path
