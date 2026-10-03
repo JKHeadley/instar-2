@@ -10,7 +10,7 @@ import { openProductionStorage } from '../../src/assembly/production-storage.js'
 import { DEFAULT_SUBSCRIPTION_DOORWAY, subscriptionDoorway, SUBSCRIPTION_CONVERSATION_FRAMING,
   subscriptionConversationPolicy, SUBSCRIPTION_PREVIEW_EXPIRY, validateSubscriptionActivation,
   SUBSCRIPTION_TOOLS_FRAMING, SUBSCRIPTION_TOOLS_SYSTEM_PROMPT, subscriptionToolsPolicy } from '../../src/assembly/production-provider.js';
-import { readRootMcp, runToolTurn, toolPacketFits, toolStatusLines, toolTurnEligible, TOOLS_DEFAULT_ACTIVATION } from './tool-turn.mjs';
+import { readRootMcp, reconcileToolTurns, runToolTurn, toolPacketFits, toolStatusLines, toolTurnEligible, TOOLS_DEFAULT_ACTIVATION } from './tool-turn.mjs';
 import { encoded } from '../../src/assembly/boundary.js';
 import { redact } from '../../src/recall/redact.js';
 import { durablePreviewWrite } from './durable-write.js';
@@ -1726,19 +1726,11 @@ async function main() {
       if (!activationMatchesJournal(journal.view, toolsActivation)) throw Error('preview: tool activation differs from journal');
       return toolsActivation;
     };
-    // A revoked or changed grant withdraws tools live: whenever the sealed authority's bytes change, the record is resolved
-    // again, and a refusal ends tools (no new tool turn, and a live one stops) until a later launch resolves them.
-    const authorityPathOf = recordPath => options['authority-record'] ?? join(dirname(resolve(recordPath)), 'activation-authority.json');
-    const stillGranted = (toolsActivationPath, toolsBytes) => {
-      let seen = null, granted = true;
-      return () => {
-        let bytes = null;
-        try { bytes = readFileSync(authorityPathOf(toolsActivationPath), 'utf8'); } catch { bytes = null; }
-        if (bytes === seen) return granted;
-        seen = bytes;
-        try { adoptTools(toolsActivationPath, toolsBytes); granted = true; } catch { granted = false; }
-        return granted;
-      };
+    // A revoked, changed, expired or unreadable grant withdraws tools live: every check resolves the sealed authority again
+    // at the current time (a grant's liveness depends on the clock, not only on the record's bytes), and a refusal ends
+    // tools (no new tool turn, and a live one stops) until a later launch resolves them.
+    const stillGranted = (toolsActivationPath, toolsBytes) => () => {
+      try { adoptTools(toolsActivationPath, toolsBytes); return true; } catch { return false; }
     };
     if (options['tools-activation'] !== undefined) {
       const toolsActivationPath = options['tools-activation'];
@@ -1764,6 +1756,10 @@ async function main() {
         process.stderr.write(`preview: tools off: ${toolsOff}; answers are text only\n`);
       }
     }
+    // Rule 114: a tool turn a crash interrupted has its hook record journaled now, before any new turn (and its retention
+    // pass) can run; until it is, retention keeps that directory. No tool turn of this runner is live yet.
+    try { reconcileToolTurns({ journal, root, redactText: text => redact(text).text, now: wallNow }); }
+    catch (error) { process.stderr.write(`preview: interrupted tool turns not yet journaled (kept): ${String(error?.message ?? error)}\n`); }
     installationPolicy = installationPolicyOf(options, activation, activationPath, journal.view, wallNow());
     registerAtLaunch = registerGeneration();
     if (installationPolicy.kind !== 'resolved') process.stderr.write(`preview: limited answers past a cap are inhibited: ${installationPolicy.reason}\n`);

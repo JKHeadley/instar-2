@@ -66,10 +66,13 @@ export function detachScratch(turn) {
  * `tmp`, all 0700 (`scratch` mounts it; tests may pass a stand-in), and the hook's config. `children` is the number of
  * subagents this turn's reservation covers; `mcp` is the root's MCP configuration ({servers, reads}) or null. The
  * servers' launch configuration is written into the state directory, which no tool can read. */
-export function prepareToolTurn({ root, operation, attempt, operations, children = 0, mcp = null, node = process.execPath, scratch = attachScratch }) {
+/** A turn directory's name: its operation's digest and its attempt (the journal's `id#attempt` key, filesystem-safe). */
+export const toolTurnSlug = (operation, attempt) => `${createHash('sha256').update(operation, 'utf8').digest('hex').slice(0, 16)}-${String(attempt)}`;
+export function prepareToolTurn({ root, operation, attempt, operations, children = 0, mcp = null, node = process.execPath, scratch = attachScratch,
+  authority = 'unrecorded' }) {
   const base = join(realpathSync(root), TOOL_TURNS_DIRECTORY);
   mkdirSync(base, { recursive: true, mode: 0o700 });
-  const slug = `${createHash('sha256').update(operation, 'utf8').digest('hex').slice(0, 16)}-${String(attempt)}`;
+  const slug = toolTurnSlug(operation, attempt);
   const turn = join(base, slug);
   mkdirSync(turn, { mode: 0o700 });
   mkdirSync(join(turn, 'state'), { mode: 0o700 });
@@ -80,7 +83,7 @@ export function prepareToolTurn({ root, operation, attempt, operations, children
   const servers = mcp ? Object.keys(mcp.servers) : [];
   writeFileSync(join(stateDirectory, 'config.json'), JSON.stringify({ workspace, tmp, maxCalls: SUBSCRIPTION_TOOL_LIMITS.maxToolCalls,
     maxWriteBytes: SUBSCRIPTION_TOOL_LIMITS.maxWriteBytes, operations: [...operations],
-    children: { max: children, type: SUBSCRIPTION_SUBAGENT_TYPE }, mcpReads: mcp ? [...mcp.reads] : [] }), { mode: 0o600 });
+    children: { max: children, type: SUBSCRIPTION_SUBAGENT_TYPE }, mcpReads: mcp ? [...mcp.reads] : [], authority }), { mode: 0o600 });
   let mcpTurn;
   if (servers.length) {
     writeFileSync(join(stateDirectory, 'mcp.json'), JSON.stringify({ mcpServers: mcp.servers }), { mode: 0o600 });
@@ -132,13 +135,19 @@ export function workspaceBytes(workspace, limit = 10000) {
   return seen > limit ? null : bytes;
 }
 
+/** The directory names of the turns the journal still holds open (reserved, no trace yet): running now, or interrupted. */
+export const openToolTurnSlugs = view => new Set((view.toolTurns?.open ?? []).map(key => {
+  const at = key.lastIndexOf('#'); return toolTurnSlug(key.slice(0, at), Number(key.slice(at + 1)));
+}));
 /** Keeps the newest `keep` turn directories (by modification time); a failed removal is reported, not thrown.
- * A volume left mounted (a turn interrupted by a crash) is unmounted first; one that will not unmount is kept. */
-export function pruneToolTurns(root, keep = TOOL_TURNS_KEPT, detach = detachScratch) {
+ * A volume left mounted (a turn interrupted by a crash) is unmounted first; one that will not unmount is kept.
+ * A directory in `open` (a turn the journal has no trace for yet) is never removed: its hook record is the only
+ * evidence of what that turn admitted and which subagents it started, until `reconcileToolTurns` journals it. */
+export function pruneToolTurns(root, keep = TOOL_TURNS_KEPT, detach = detachScratch, open = new Set()) {
   const base = join(root, TOOL_TURNS_DIRECTORY);
   let names;
   try { names = readdirSync(base); } catch { return { removed: 0, failed: 0 }; }
-  const dirs = names.map(name => ({ name, at: lstatSync(join(base, name)).mtimeMs })).sort((a, b) => b.at - a.at);
+  const dirs = names.filter(name => !open.has(name)).map(name => ({ name, at: lstatSync(join(base, name)).mtimeMs })).sort((a, b) => b.at - a.at);
   let removed = 0, failed = 0;
   for (const { name } of dirs.slice(keep)) {
     try {
@@ -147,6 +156,41 @@ export function pruneToolTurns(root, keep = TOOL_TURNS_KEPT, detach = detachScra
     } catch { failed++; }
   }
   return { removed, failed };
+}
+
+/** The journal row recording a turn's trace (its admitted calls and Rule 114 child edges). `ended` is the state of an
+ * edge with no returned result: `cancelled` when the operator's stop or a withdrawal ended it, else `unknown`. */
+function traceRow({ id, attempt, trace, authority, ended, redactText, workspace, at }) {
+  return { kind: 'tool-turn', phase: 'trace', id, attempt, consistent: trace.consistent,
+    calls: trace.calls.slice(0, 64).map(call => ({ ...call, input: redactText(call.input),
+      result: call.result === null ? null : redactText(call.result) })),
+    edges: trace.children.slice(0, SUBSCRIPTION_TOOL_LIMITS.maxChildren).map(edge => ({ child: edge.toolUse, agent: edge.agent,
+      parent: `${id}#${String(attempt)}`, authority, budget: { modelTurns: SUBSCRIPTION_TOOL_LIMITS.childMaxTurns,
+        toolCalls: `shared ${String(SUBSCRIPTION_TOOL_LIMITS.maxToolCalls)} per turn` },
+      exitTest: 'returns its final message as the subagent tool result', placement: 'in the turn\'s harness process on this machine',
+      transport: 'claude-code Agent tool', resultDestination: 'the parent turn\'s tool result', cancellation: 'ends with the turn\'s process group',
+      state: edge.state === 'returned' ? 'returned' : ended, result: edge.result === null ? null : redactText(edge.result) })),
+    workspaceBytes: workspace === null ? null : workspaceBytes(workspace), at };
+}
+
+/** Rule 114 recovery, run at launch before any tool turn starts (the process owner makes this runner the root's only
+ * one, so no open turn is still running): each turn the journal holds open whose directory survives an interrupted run
+ * gets its trace journaled from the hook's synced record, under the authority its admission config recorded, with every
+ * child that did not return marked `unknown` (its outcome was never observed; nothing is re-run). A turn with no
+ * surviving directory stays open (its outcome unknown, as status says). Returns the keys it closed. */
+export function reconcileToolTurns({ journal, root, redactText, now }) {
+  const closed = [];
+  for (const key of [...(journal.view.toolTurns?.open ?? [])]) {
+    const at = key.lastIndexOf('#'), id = key.slice(0, at), attempt = Number(key.slice(at + 1));
+    const stateDirectory = join(root, TOOL_TURNS_DIRECTORY, toolTurnSlug(id, attempt), 'state');
+    let config;
+    try { config = JSON.parse(readFileSync(join(stateDirectory, 'config.json'), 'utf8')); } catch { continue; }
+    const authority = typeof config?.authority === 'string' && config.authority ? config.authority : 'unrecorded';
+    journal.append(traceRow({ id, attempt, trace: readToolTrace(stateDirectory), authority, ended: 'unknown', redactText,
+      workspace: null, at: now() }));
+    closed.push(key);
+  }
+  return closed;
 }
 
 /**
@@ -192,25 +236,16 @@ export async function runToolTurn({ journal, root, id, prepared, promptLimit, de
     ...(mcp ? { mcp: { servers: Object.keys(mcp.servers), reads: mcp.reads.length, digest: mcp.digest } } : {}), at: now() });
   let turn = null, result, failure = null;
   try {
-    turn = prepareToolTurn({ root, operation: id, attempt, operations, children, mcp, scratch });
+    turn = prepareToolTurn({ root, operation: id, attempt, operations, children, mcp, scratch, authority });
     result = await invoke({ scratch: turn.scratch, workspace: turn.workspace, stateDirectory: turn.stateDirectory, hook: turn.hook, deniedRoots,
       ...(turn.mcp ? { mcp: turn.mcp } : {}) });
   } catch (error) { failure = error; }
   const trace = turn ? readToolTrace(turn.stateDirectory) : { calls: [], children: [], consistent: true };
   const ended = stopped() ? 'cancelled' : 'unknown';
-  journal.append({ kind: 'tool-turn', phase: 'trace', id, attempt, consistent: trace.consistent,
-    calls: trace.calls.slice(0, 64).map(call => ({ ...call, input: redactText(call.input),
-      result: call.result === null ? null : redactText(call.result) })),
-    edges: trace.children.slice(0, SUBSCRIPTION_TOOL_LIMITS.maxChildren).map(edge => ({ child: edge.toolUse, agent: edge.agent,
-      parent: `${id}#${String(attempt)}`, authority, budget: { modelTurns: SUBSCRIPTION_TOOL_LIMITS.childMaxTurns,
-        toolCalls: `shared ${String(SUBSCRIPTION_TOOL_LIMITS.maxToolCalls)} per turn` },
-      exitTest: 'returns its final message as the subagent tool result', placement: 'in the turn\'s harness process on this machine',
-      transport: 'claude-code Agent tool', resultDestination: 'the parent turn\'s tool result', cancellation: 'ends with the turn\'s process group',
-      state: edge.state === 'returned' ? 'returned' : ended, result: edge.result === null ? null : redactText(edge.result) })),
-    workspaceBytes: turn ? workspaceBytes(turn.workspace) : null, at: now() });
+  journal.append(traceRow({ id, attempt, trace, authority, ended, redactText, workspace: turn ? turn.workspace : null, at: now() }));
   // The workspace is scratch: nothing reads it after the turn, so its volume goes now (a failed unmount is retried by prune).
   if (turn) detach(turn.directory);
-  pruneToolTurns(root, TOOL_TURNS_KEPT, detach);
+  pruneToolTurns(root, TOOL_TURNS_KEPT, detach, openToolTurnSlugs(journal.view));
   if (failure) throw failure;
   if (!trace.consistent) throw Error('preview: a tool ran without its admission record');
   return { result, turn, trace };

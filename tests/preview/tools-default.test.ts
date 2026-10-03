@@ -6,7 +6,7 @@
 // field of the conversation activation: the policy digest.
 import { expect, it } from 'vitest';
 import { spawn, spawnSync } from 'node:child_process';
-import { existsSync, readFileSync, writeFileSync } from 'node:fs';
+import { existsSync, readFileSync, unlinkSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { successiveWorld, offlineProfile, OFFLINE_STORAGE_KEY } from './successive-fixture.js';
 import { authoritySealKey, sealAuthorityRecord } from './activation-authority.js';
@@ -55,9 +55,10 @@ async function launch(name: string, authority: (record) => object | null, extra:
 }
 const toolsDigest = (model: string) => (encoded(subscriptionToolsPolicy(model)) as { hash: string }).hash;
 /** The operator's recorded grant, copied to cover the tools policy: the same words and source, only the policy subject differs. */
-const withToolsGrant = (record, revoked = false) => {
+const withToolsGrant = (record, revoked = false, expiresAt = undefined) => {
   const grant = record.grants[0];
-  const tools = { ...grant, id: 'offline-tools-grant', scope: { ...grant.scope, invocationPolicyDigest: toolsDigest(grant.scope.model) } };
+  const tools = { ...grant, id: 'offline-tools-grant', scope: { ...grant.scope, invocationPolicyDigest: toolsDigest(grant.scope.model) },
+    ...(expiresAt === undefined ? {} : { expiresAt }) };
   return { ...record, grants: [...record.grants, tools],
     revocations: revoked ? [{ grantId: 'offline-tools-grant', at: grant.issuedAt + 1, by: grant.grantor, source: 'telegram 3' }] : [] };
 };
@@ -73,6 +74,10 @@ it('derives and keeps the tools activation when the recorded grant covers the to
   expect(invocationPolicyDigest).not.toBe(conversationDigest);
   expect(rest).toEqual(conversationRest);
   expect(on.status).toMatch(/Tools: Read, Write, Edit, Glob, Grep, Bash, WebFetch, WebSearch, Agent and the root's MCP servers/u);
+  // A grant with an expiry still ahead resolves the same way (the neighbour of the live-expiry withdrawal below).
+  const dated = await launch('dated', record => withToolsGrant(record, false, Date.now() + 3_600_000));
+  expect(dated.run.status, dated.run.stderr).toBe(0);
+  expect(dated.status).toMatch(/Tools: Read, Write, Edit, Glob, Grep, Bash, WebFetch, WebSearch, Agent and the root's MCP servers/u);
 });
 
 it('stays text only, and says why in status, without a covering grant, with the grant revoked, or with --tools off', { timeout: 90000 }, async () => {
@@ -93,7 +98,9 @@ it('stays text only, and says why in status, without a covering grant, with the 
   expect(refused.status).toContain('Tools: off (refused at launch with --tools off); answers are text only.');
 });
 
-it('withdraws tools live when the grant is revoked in the sealed authority while the runner runs', { timeout: 90000 }, async () => {
+/** Runs the real launcher with tools on under `initial(unsealed)`, applies `withdraw` once the tools are derived and the
+ * runner is polling, then asks for status and returns it. */
+async function liveStatus(initial, withdraw: (seal, unsealed, authorityPath: string) => Promise<void>) {
   const world = successiveWorld(), root = join(world.directory, 'live-journal');
   const activationPath = join(world.directory, 'activation.json'), profile = join(world.directory, 'profile.json');
   const log = join(world.directory, 'poll.log'), updates = join(world.directory, 'updates.json'), preload = join(world.directory, 'jev.mjs');
@@ -102,7 +109,7 @@ it('withdraws tools live when the grant is revoked in the sealed authority while
   const authorityPath = join(world.directory, 'activation-authority.json');
   const { seal: _seal, ...unsealed } = JSON.parse(readFileSync(authorityPath, 'utf8'));
   const seal = record => writeFileSync(authorityPath, JSON.stringify(sealAuthorityRecord(record, authoritySealKey(OFFLINE_STORAGE_KEY))));
-  seal(withToolsGrant(unsealed));
+  seal(initial(unsealed));
   writeFileSync(updates, '[]');
   writeFileSync(preload, `globalThis.fetch = async () => new Response(JSON.stringify({ model: 'jev-1.13.0',
     answers: Object.fromEntries(['raw_path','cli_command','config_key','credential','api_endpoint',
@@ -129,17 +136,40 @@ it('withdraws tools live when the grant is revoked in the sealed authority while
     const until = async (test: () => boolean) => { for (let i = 0; i < 300 && !test(); i++) await new Promise(r => setTimeout(r, 50)); return test(); };
     // Tools came on by default: the derived record is in the root and the runner is polling.
     expect(await until(() => existsSync(join(root, TOOLS_DEFAULT_ACTIVATION)) && existsSync(log))).toBe(true);
-    // The operator revokes the grant; the desk re-seals the authority. Nothing touches the runner or its record.
-    seal(withToolsGrant(unsealed, true));
+    await withdraw(seal, unsealed, authorityPath);
     writeFileSync(updates, JSON.stringify([{ update_id: 1, message: { chat: { id: Number(world.configuration.chatId), type: 'private' },
       from: { id: Number(world.configuration.operatorSenderId) }, text: 'status' } }]));
     expect(await until(() => existsSync(`${log}.sends`))).toBe(true);
     const status = readFileSync(`${log}.sends`, 'utf8').trim().split('\n').map(line => JSON.parse(line).text).join('\n');
-    // Withdrawn: status no longer names the tools as available, and the record in the root is unchanged (withdrawal is the grant's).
-    expect(status).not.toMatch(/Tools: Read, Write/u);
-    expect(status).toContain('Tools: off (withdrawn since launch: the activation record changed or its grant no longer resolves); answers are text only.');
+    // The record in the root is unchanged: withdrawal is the grant's.
     expect(existsSync(join(root, TOOLS_DEFAULT_ACTIVATION))).toBe(true);
     runner.kill('SIGTERM');
     await exited;
+    return status;
   } finally { if (runner && runner.exitCode === null) runner.kill('SIGKILL'); endpoint.kill(); }
+}
+const WITHDRAWN = 'Tools: off (withdrawn since launch: the activation record changed or its grant no longer resolves); answers are text only.';
+
+it('withdraws tools live when the grant is revoked in the sealed authority while the runner runs', { timeout: 90000 }, async () => {
+  // The operator revokes the grant; the desk re-seals the authority. Nothing touches the runner or its record.
+  const status = await liveStatus(unsealed => withToolsGrant(unsealed), async (seal, unsealed) => seal(withToolsGrant(unsealed, true)));
+  expect(status).not.toMatch(/Tools: Read, Write/u);
+  expect(status).toContain(WITHDRAWN);
+});
+
+it('withdraws tools live when the grant expires, though the sealed authority\'s bytes never change', { timeout: 90000 }, async () => {
+  const expiresAt = Date.now() + 8000;
+  const status = await liveStatus(unsealed => withToolsGrant(unsealed, false, expiresAt), async () => {
+    while (Date.now() <= expiresAt + 500) await new Promise(r => setTimeout(r, 100));
+  });
+  expect(status).not.toMatch(/Tools: Read, Write/u);
+  expect(status).toContain(WITHDRAWN);
+});
+
+it('withdraws tools live when the sealed authority becomes unreadable', { timeout: 90000 }, async () => {
+  const status = await liveStatus(unsealed => withToolsGrant(unsealed), async (_seal, _unsealed, authorityPath) => {
+    unlinkSync(authorityPath);
+  });
+  expect(status).not.toMatch(/Tools: Read, Write/u);
+  expect(status).toContain(WITHDRAWN);
 });

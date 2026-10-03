@@ -61,12 +61,37 @@ export function publicAddress(address) {
       || (a === 172 && b >= 16 && b <= 31) || (a === 192 && b === 168) || (a === 192 && b === 0) || (a === 198 && (b === 18 || b === 19)));
   }
   if (version === 6) {
-    const lower = address.toLowerCase();
-    const mapped = /^::ffff:([0-9.]+)$/u.exec(lower);
-    if (mapped) return publicAddress(mapped[1]);
-    return !(lower === '::' || lower === '::1' || /^f[cd]/u.test(lower) || /^fe[89ab]/u.test(lower) || /^ff/u.test(lower));
+    const bytes = ipv6Bytes(address);
+    if (bytes === null) return false;
+    const embedded = bytes.slice(12).join('.');
+    // IPv4-mapped (::ffff:a.b.c.d, however written) and NAT64 (64:ff9b::/96) carry an IPv4 address: classify that.
+    if (bytes.slice(0, 10).every(b => b === 0) && bytes[10] === 0xff && bytes[11] === 0xff) return publicAddress(embedded);
+    if (bytes[0] === 0 && bytes[1] === 0x64 && bytes[2] === 0xff && bytes[3] === 0x9b && bytes.slice(4, 12).every(b => b === 0))
+      return publicAddress(embedded);
+    // ::/96 (unspecified, loopback, deprecated IPv4-compatible), unique-local fc00::/7, link-local fe80::/10, multicast ff00::/8.
+    return !(bytes.slice(0, 12).every(b => b === 0) || (bytes[0] & 0xfe) === 0xfc || (bytes[0] === 0xfe && (bytes[1] & 0xc0) === 0x80)
+      || bytes[0] === 0xff);
   }
   return false;
+}
+/** The 16 bytes of an IPv6 address in any textual form (compressed, hex or dotted IPv4 tail), or null. */
+function ipv6Bytes(address) {
+  let text = String(address).toLowerCase();
+  const dotted = /^(.*:)(\d+\.\d+\.\d+\.\d+)$/u.exec(text);
+  if (dotted) {
+    if (isIP(dotted[2]) !== 4) return null;
+    const [a, b, c, d] = dotted[2].split('.').map(Number);
+    text = `${dotted[1]}${((a << 8) | b).toString(16)}:${((c << 8) | d).toString(16)}`;
+  }
+  const halves = text.split('::');
+  if (halves.length > 2) return null;
+  const parts = half => (half === '' ? [] : half.split(':'));
+  const head = parts(halves[0]), tail = halves.length === 2 ? parts(halves[1]) : [];
+  const fill = halves.length === 2 ? 8 - head.length - tail.length : 0;
+  if (fill < 0 || (halves.length === 1 && head.length !== 8)) return null;
+  const groups = [...head, ...Array(fill).fill('0'), ...tail];
+  if (groups.length !== 8 || !groups.every(g => /^[0-9a-f]{1,4}$/u.test(g))) return null;
+  return groups.flatMap(g => { const v = parseInt(g, 16); return [v >> 8, v & 0xff]; });
 }
 /** The host a web read targets, when it is a plain http(s) URL naming a public-looking host; otherwise null with a reason. */
 export function webReadHost(url) {

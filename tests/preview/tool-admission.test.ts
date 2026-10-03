@@ -240,6 +240,16 @@ it('admits a web read only of a public host, resolved before the decision; a loc
   expect(fetch('https://nowhere.example', null)).toMatchObject({ decision: 'deny', reason: expect.stringContaining('did not resolve') });
   expect(webReadHost('https://Example.COM/x')).toEqual({ host: 'example.com' });
   expect([publicAddress('8.8.8.8'), publicAddress('::ffff:10.0.0.1'), publicAddress('224.0.0.1'), publicAddress('nonsense')]).toEqual([true, false, false, false]);
+  // An IPv4-mapped or NAT64 address is classified by the IPv4 address it carries, however URL parsing writes it
+  // (new URL turns [::ffff:127.0.0.1] into [::ffff:7f00:1]): this machine and its network are refused, the public internet is not.
+  for (const url of ['http://[::ffff:127.0.0.1]:4042/health', 'http://[::ffff:10.0.0.1]/', 'http://[::ffff:169.254.169.254]/latest',
+    'http://[0:0:0:0:0:ffff:7f00:1]/', 'http://[::ffff:192.168.1.1]/', 'http://[64:ff9b::7f00:1]/', 'http://[::7f00:1]/', 'http://[fe80::1]/'])
+    expect([url, fetch(url)]).toMatchObject([url, { decision: 'deny', kind: 'scope' }]);
+  for (const url of ['http://[::ffff:8.8.8.8]/', 'http://[64:ff9b::808:808]/'])
+    expect([url, fetch(url)]).toEqual([url, { decision: 'allow', reason: 'web read (GET) of a public host', kind: 'network-read' }]);
+  expect(fetch('https://mapped.example', ['::ffff:7f00:1'])).toMatchObject({ decision: 'deny', reason: expect.stringContaining('non-public') });
+  expect([publicAddress('::ffff:7f00:1'), publicAddress('::ffff:a00:1'), publicAddress('::ffff:808:808'), publicAddress('fc0::1')])
+    .toEqual([false, false, true, true]);
   // Web search is a read; it carries no target for this machine to protect.
   expect(admitToolCall({ tool_name: 'WebSearch', tool_input: { query: 'x' } }, config, 1, { exists: () => true, realpath: (p: string) => p }))
     .toEqual({ decision: 'allow', reason: 'web search', kind: 'network-read' });
