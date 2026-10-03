@@ -4,7 +4,7 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { performance } from 'node:perf_hooks';
 import { spawnSync } from 'node:child_process';
-import { createJournalWorker, importChannelItems, openPreviewJournal, PREVIEW_RECALL_LIMIT, replyBody } from './journal-test-worker.js';
+import { OBLIGATION_FLOOR_PACKET_BYTES, createJournalWorker, importChannelItems, openPreviewJournal, PREVIEW_RECALL_LIMIT, replyBody } from './journal-test-worker.js';
 import { bm25, terms } from '../../src/recall/lexical.js';
 import { auditPacket } from './journal-audit.mjs';
 import { SUBSCRIPTION_CONVERSATION_SYSTEM_PROMPT, subscriptionConversationPolicy } from '../../src/assembly/production-provider.js';
@@ -396,7 +396,8 @@ it('links an introductory claim even when its source ends in a question', async 
     // and the merge candidates were the block that yielded; re-measured in 10-byte steps, fit 7030, fail 7010.
     // cint-L40 (w3-retrocluster, Rule 19): the 130-byte pushback sentence rides once an answer is in history; the merge
     // candidates yield again. Re-measured in 10-byte steps, fit 7110, fail 7100; the same 70 bytes of headroom kept.
-    const w = world(root, { maxBytes: 7180, summarize: sourceSummarizer, answer: mergeAnswer });
+    // w3-floorduty: plus the obligation guide's floor form, which now outranks optional evidence under pressure (Rules 3, 93).
+    const w = world(root, { maxBytes: 7180 + OBLIGATION_FLOOR_PACKET_BYTES, summarize: sourceSummarizer, answer: mergeAnswer });
     await w.say(1, 'My cofounder Sam prefers October. Can you remember that?');
     await w.say(2, 'Sam Ortiz is the cofounder who proposed October.');
     const n = await w.fillUntilRecall(3, 'Are Sam and Sam Ortiz the same person?');

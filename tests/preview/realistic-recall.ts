@@ -2,7 +2,7 @@
 import { mkdtempSync, realpathSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
-import { createJournalWorker, openPreviewJournal, withoutCorrectedHistory } from './journal-test-worker.js';
+import { OBLIGATION_FLOOR_PACKET_BYTES, createJournalWorker, openPreviewJournal, withoutCorrectedHistory } from './journal-test-worker.js';
 import { conversation, recordedParaphrase, scenes } from './realistic-recall-fixture.js';
 
 const key = new Uint8Array(32).fill(74);
@@ -51,13 +51,17 @@ export interface RealisticResult { turns: number; questions: number; positiveCas
   exclusionCases: number; staleAbsent: number;
   misses: RealisticCase[]; cases: RealisticCase[]; summaries: number; memoryChanges: number }
 
+/** The packet limit the diary runs under. */
+export const REALISTIC_RECALL_LIMIT = 24000 + OBLIGATION_FLOOR_PACKET_BYTES;
 /** No network, provider, Telegram send, or live journal access. */
 export async function runRealisticRecall(): Promise<RealisticResult> {
   const root = realpathSync(mkdtempSync(join(tmpdir(), 'preview-realistic-recall-')));
   const path = join(root, 'journal.encrypted');
   const genesis = { kind: 'genesis' as const, bot, chat: operator, operator,
     grant: 'grant:offline-realistic-recall', configurationDigest: 'sha256:offline-realistic-recall',
-    expires: now + 1_000_000, maxCalls: 1200, maxReplies: 400, maxTurns: 400, maxBytes: 24000, cursor: 0 };
+    expires: now + 1_000_000, maxCalls: 1200, maxReplies: 400, maxTurns: 400,
+    // w3-floorduty (Rules 3, 93): plus the obligation guide's floor form, which now outranks optional evidence under pressure.
+    maxBytes: REALISTIC_RECALL_LIMIT, cursor: 0 };
   let journal = openPreviewJournal(path, key, genesis);
   // Scripted answers for the one turn that runs the real answer path (the recorded paraphrase), and what it was shown.
   const script: string[] = [], shown: string[] = [];

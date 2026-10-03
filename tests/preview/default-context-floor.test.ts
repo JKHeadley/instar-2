@@ -11,7 +11,7 @@ import { prepareJournalEnvelope } from './journal-envelope.js';
 import { PREVIEW_FIXED_PROMPT_BYTES, PREVIEW_LIVE_LIMITS, PREVIEW_MIN_SERVABLE_CONTEXT_BYTES,
   PREVIEW_MIN_TURN_HEADROOM_BYTES, PREVIEW_REPLY_BOUND_BYTES, REPLY_REVIEW_FIXED_BYTES,
   concurrentWorkItem, createJournalWorker, declaredObligations, openPreviewJournal, replyReviewReserveFor,
-  OBLIGATION_DECISION, OBLIGATION_DECISION_TOOLS, previewCapabilities,
+  OBLIGATION_DECISION, OBLIGATION_DECISION_FLOOR, OBLIGATION_DECISION_TOOLS, previewCapabilities,
   unservableContextReason } from './journal.js';
 import { jevQuestions, replyReviewContext, replyReviewQuestion } from './reply-check.js';
 import { SUBSCRIPTION_CONVERSATION_SYSTEM_PROMPT, SUBSCRIPTION_TOOLS_SYSTEM_PROMPT } from '../../src/assembly/production-provider.js';
@@ -180,9 +180,12 @@ it('states the floor from the measured parts and refuses a limit below it on bot
   expect(unservableContextReason(below)).toContain('cannot serve one ordinary turn');
   expect(unservableContextReason(0)).not.toBeNull();
   expect(unservableContextReason(1.5)).not.toBeNull();
-  // Below the floor the parts really do not fit: the ladder has to drop the obligation guide to get under.
+  // Below the floor the parts really do not fit: the full obligation guide yields to get under, but only to its floor
+  // form, so the turn can still declare a directive or a blocker (live 2026-10-03, proof room one).
   const squeezed = await firstTurn(PREVIEW_MIN_SERVABLE_CONTEXT_BYTES - 1024);
-  expect(squeezed.keys).not.toContain('obligationDecision');
+  expect(squeezed.sent).toBe(true);
+  expect(squeezed.packet?.obligationDecision).toBe(OBLIGATION_DECISION_FLOOR);
+  expect(squeezed.keys).not.toContain('capabilities');
 }, 60_000);
 
 it('refuses an unservable limit at the real launcher, at genesis and when caps are re-declared', () => {

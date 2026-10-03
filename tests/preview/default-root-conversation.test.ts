@@ -6,8 +6,8 @@ import { SOURCE_PINS, deskStatusSource, sourcePacket } from './briefing.js';
 import { disciplineSource } from './retrospective.js';
 import { selfStateBrief, selfStateSource } from './self-state.js';
 import { prepareJournalEnvelope } from './journal-envelope.js';
-import { MEMORY_ITEM_SHAPE, PREVIEW_LIVE_LIMITS, PREVIEW_MIN_TURN_HEADROOM_BYTES,
-  concurrentWorkItem, createJournalWorker, declaredObligations, openPreviewJournal, replyReviewReserveFor,
+import { MEMORY_ITEM_SHAPE, OBLIGATION_DECISION, OBLIGATION_DECISION_FLOOR, PREVIEW_LIVE_LIMITS, PREVIEW_MIN_TURN_HEADROOM_BYTES,
+  concurrentWorkItem, createJournalWorker, declaredObligations, openDirectives, openPreviewJournal, replyReviewReserveFor,
   summaryPromptBytes } from './journal.js';
 import { SUBSCRIPTION_CONVERSATION_SYSTEM_PROMPT } from '../../src/assembly/production-provider.js';
 import { jevQuestions, replyReviewContext, replyReviewQuestion } from './reply-check.js';
@@ -162,6 +162,8 @@ async function conversation(maxBytes: number, texts: readonly string[],
       preferStatements: journal.view.memory.filter(item => item.mode === 'prefer').length,
       summaries: journal.view.summaries.map(item => item.text),
       preferences: journal.view.memory.filter(item => item.mode === 'prefer').map(item => item.quote),
+      directives: openDirectives(journal.view).map(item => item.note.quote),
+      blockers: journal.view.blockers.map(item => item.claim),
       firstText: journal.view.order[0]?.text };
     journal.close();
     return result;
@@ -334,13 +336,16 @@ it('keeps answering a default-size root through the live recorded shapes that si
     expect(turn.held, `turn ${String(turn.n)}`).toBeUndefined();
     expect(turn.notice, `turn ${String(turn.n)}`).toBeUndefined();
   }
-  // A fresh root's first turn fits beside the reply-review reserve; within a few notes the parts every turn
-  // carries no longer do (live, from the fourth note on).
+  // A fresh root's first turn fits beside the reply-review reserve with the full obligation guide. Within a few
+  // notes the full guide no longer does (live, from the fourth note on): those turns set history aside and carry the
+  // guide's floor form, which keeps them beside the reserve too, where before they reached the last rung. That rung
+  // stays exercised by the declaration-duty test below.
   const room = limit - replyReviewReserveFor(limit);
   expect(run.report[0]!.answerTotal).toBeLessThanOrEqual(room);
-  const lastRung = run.report.filter(turn => turn.answerTotal > room);
-  expect(lastRung.length).toBeGreaterThan(0);
-  expect(lastRung.every(turn => turn.setAside)).toBe(true);
+  const pressed = run.report.filter(turn => turn.setAside);
+  expect(pressed.length).toBeGreaterThan(0);
+  for (const turn of pressed) expect(turn.answerTotal, `turn ${String(turn.n)}`).toBeLessThanOrEqual(room);
+  expect(pressed.every(turn => turn.keys.includes('obligationDecision'))).toBe(true);
   for (const turn of run.report) expect(turn.answerTotal, `turn ${String(turn.n)}`).toBeLessThanOrEqual(limit);
   // Every recorded Jev verdict was unsure, so every reply went to the full-context review. The reserve sizes the
   // review for a 4096-byte reply; with the recorded short replies a last-rung turn's review still builds and runs,
@@ -354,4 +359,48 @@ it('keeps answering a default-size root through the live recorded shapes that si
   expect(lastPacket.preferences).toHaveLength(1);
   // Nothing was deleted: the first note is still in the journal verbatim.
   expect(run.firstText).toBe(gardenLog(1));
+}, 300_000);
+
+/** Live 2026-10-03 (proof room one, build cint-L38b 5257ddcf, a default-size root filled by the same Rule 40 garden
+ * script as room two): "From now on, end every gift list with "— D60"." drew "Got it — from now on I'll end every gift
+ * list with "— D60"", yet no directive was recorded, and the next cannot-do reply drew the reply check's
+ * unrecorded_blocker. The recorded packets (lanes/w3-floorduty-PROGRESS.md) carried no obligation guide at all: under
+ * byte pressure the ladder dropped it whole, so the model had nowhere to declare a directive or a blocker and said so in
+ * its recorded reasoning. Replayed here after room two's twenty recorded notes, which reach the same pressure, with the
+ * four recorded room-one messages and the REAL claude-sonnet-5 outputs on those recorded packets once they carried the
+ * guide's floor form (observer #106). */
+const room1 = JSON.parse(readFileSync(new URL('./fixtures/floorduty-proofroom1-rule40-2026-10-03.json', import.meta.url),
+  'utf8')) as { maxBytes: number; turns: { update: number; text: string;
+    live: { obligationDecision: boolean; historySetAside: boolean }; realModel: { output: string } }[] };
+
+it('keeps the declaration duty in every packet of a default-size root under byte pressure', async () => {
+  const limit = PREVIEW_LIVE_LIMITS.contextBytes;
+  expect(room1.maxBytes).toBe(limit);
+  // The recorded failure: every one of these live packets had set history aside and carried no obligation guide.
+  expect(room1.turns.every(turn => !turn.live.obligationDecision && turn.live.historySetAside)).toBe(true);
+  const first = room2.turns[0]!.update, shapes = room2Shapes();
+  const extra = new Map(room1.turns.map((turn, index) => [first + 20 + index, turn]));
+  const run = await conversation(limit, [...Array.from({ length: 20 }, (_, index) => gardenLog(index + 1)),
+    ...room1.turns.map(turn => turn.text)], new Map(), room2.genesis,
+  Array.from({ length: 24 }, (_, index) => first + index), { ...shapes,
+    answer: (id, context) => extra.get(Number(id.split(':').at(-1)))?.realModel.output ?? shapes.answer(id, context) });
+  const tail = run.report.slice(20);
+  for (const turn of tail) expect(turn.sent, `turn ${String(turn.n)}: held ${turn.held ?? '-'} notice ${turn.notice ?? '-'}`).toBe(true);
+  // Every answer packet carried a way to declare: the full guide while it fits, its floor form under pressure.
+  const guides = run.answerPackets.map(packet => (JSON.parse(packet) as { obligationDecision?: string }).obligationDecision);
+  expect(guides.filter(guide => guide !== OBLIGATION_DECISION && guide !== OBLIGATION_DECISION_FLOOR)).toEqual([]);
+  // The replayed room-one turns ran under the same pressure as live (history set aside). The directive turn is the floor
+  // path: its full guide no longer fits beside the reply-review reserve, so the floor form keeps the duty and the reserve.
+  const replayed = run.answerPackets.slice(-4).map(packet => JSON.parse(packet) as Record<string, unknown>);
+  expect(replayed.every(packet => 'historySetAside' in packet)).toBe(true);
+  expect(replayed[0]!.obligationDecision).toBe(OBLIGATION_DECISION_FLOOR);
+  expect(tail[0]!.answerTotal).toBeLessThanOrEqual(limit - replyReviewReserveFor(limit));
+  // The longer recorded cannot-do turns still reach the last rung (the reserve yields), and keep a guide there too.
+  expect(tail.some(turn => turn.answerTotal > limit - replyReviewReserveFor(limit))).toBe(true);
+  // Both sides of the decision: the standing instruction is recorded; the cannot-do claims become settled blockers;
+  // the plain question declares nothing.
+  expect(run.directives).toEqual(['end every gift list with "— D60".']);
+  expect(room1.turns[0]!.text).toContain(run.directives[0]!);
+  expect(run.blockers).toHaveLength(2);
+  expect(run.blockers.every(claim => claim.startsWith('I can\'t'))).toBe(true);
 }, 300_000);
