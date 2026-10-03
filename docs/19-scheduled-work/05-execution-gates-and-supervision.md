@@ -137,6 +137,27 @@ line throughout a turn — so a step whose completion depended on it would run t
 its work sat finished on disk. A step that cannot be observed, is interrupted, or ends without a
 result is uncertain, never reported as done.
 
+**Rule — a delegated session is unconfined, so the path is unreachable until a root is
+deliberately configured for it.** Rules 26, 60 and 103; **checks:**
+`tests/assembly/production-session-work.test.ts` (the result destination must lie inside the child
+work scope, and the step's task text forbids the child sending anything to the operator itself) and
+`tests/preview/journal-agent.mjs` (the five session-work options go together; with none, work stays
+on the one-call route). The session driver this path uses declares itself operator-own-use and
+unconfined and makes no confinement claim: the child has the operator's own tools. What bounds a
+step today is its own work scope directory, the per-step and per-turn deadlines, the per-launch step
+ceiling, the single stop authority, and the fact that no root reaches this path unless its
+configuration names the harness, its executable, its home, its login home and its step ceiling
+together.
+
+**Value — a session step's effects are not classified, and enabling the path is the operator's
+call.** On this HEAD the effect doorway is not on the live path, so a delegated session's effects
+are not tested against the four consequential-effect tests in `docs/00-the-purpose.md`: a step can
+produce an effect no doorway classified, and the instruction not to send is an instruction, not a
+gate. No check in this part closes that, and this document does not claim otherwise. Wiring the
+effect doorway onto the live path is separate work; until it lands, configuring a root for session
+work is a deliberate operator decision about a path whose consequential effects are bounded by the
+work scope and the task text rather than by an admitted doorway.
+
 **Rule — a session step's bound is time, size and step count, because its tokens are not
 observable.** Rules 60, 61 and 75; **checks:** the same two cases. One step runs at a time, under a
 finite wall-clock deadline, a finite result-size bound and a finite per-launch step ceiling; the

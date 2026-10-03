@@ -17,6 +17,11 @@
         "what": "\u00a75 gains the rule that a session step is bounded by time, result size and a per-launch step ceiling, one step at a time under the launch's single stop authority, and that its recorded budget states its token bound as ABSENT because a subscription session reports no token meter \u2014 with a caller needing a token bound directed to a metered route.",
         "why": "Rule 60's ceiling has to be stated in units that are actually observable here; recording an invented token budget would be a measured claim nobody can check.",
         "ref": "src/assembly/production-session-work.ts; tests/assembly/production-session-work.test.ts"
+      },
+      {
+        "what": "\u00a75 gains the rule that a delegated session is unconfined (the driver makes no confinement claim; the child has the operator's own tools), that what bounds a step is its work scope, its deadlines, its step ceiling, its stop authority and the fact that no root reaches the path unless deliberately configured for it \u2014 and the explicit Value that a session step's effects are NOT tested against the purpose's four consequential-effect tests, because the effect doorway is not on the live path on this HEAD.",
+        "why": "The first draft of this unit stated the time/size/step bound and said nothing about confinement, which left a reader of \u00a75 free to assume a delegated session's effects pass an admitted doorway. They do not, and the operator deciding whether to configure a root needs that said plainly rather than inferred from the driver's source comment.",
+        "ref": "src/assembly/production-session-driver.ts (operatorOwnUse/unconfined); docs/00-the-purpose.md (the four consequential-effect tests); LIVE-PATH-PLAN.md row #400 (the effect-doorway wiring is separate work)"
       }
     ]
   },
