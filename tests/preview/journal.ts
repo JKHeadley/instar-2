@@ -6933,6 +6933,8 @@ export function createJournalWorker(journal: ReturnType<typeof openPreviewJourna
             const nameRequests = (items: DatedItem[]) => items.slice(0, 3)
               .map(item => `"${clip(clean(redact(item.quote).text, true), 160)}"`).join('; ')
               + (items.length > 3 ? ` and ${items.length - 3} more` : '');
+            const nameQuotes = (quotes: string[]) => quotes.slice(0, 3).map(quote => `"${clip(quote, 160)}"`).join('; ')
+              + (quotes.length > 3 ? ` and ${quotes.length - 3} more` : '');
             if (unchanged.length) {
               const listed = nameRequests(unchanged);
               text = `${text.trim()}\n\nNo change was recorded to your open request${unchanged.length > 1 ? 's' : ''} ${listed}; `
@@ -6951,14 +6953,17 @@ export function createJournalWorker(journal: ReturnType<typeof openPreviewJourna
             if (invalidCancel && !invalidMemory) text = `${text.trim()} ${cancelRefusal === 'unverified'
               ? 'I couldn\'t verify that cancellation, so no request was cancelled; your open requests still stand.'
               : 'I could not tell which request to cancel, so none was cancelled.'}`.trim();
-            else if (reminderCancels?.length && !invalidMemory) text = `${text.trim()} Cancelled request: ${reminderCancels.map(key =>
-              `"${journal.view.dated.find(item => datedKey(item) === key)!.quote}"`).join('; ')}.`.trim();
+            // Rules 42, 52: an outcome list names at most three items, each clipped, and counts the rest, so the
+            // runner's own lines stay bounded and always leave room for every refusal this answer must carry.
+            else if (reminderCancels?.length && !invalidMemory) text = `${text.trim()} Cancelled request${reminderCancels.length > 1 ? 's' : ''}: `
+              + `${nameQuotes(reminderCancels.map(key => journal.view.dated.find(item => datedKey(item) === key)!.quote))}.`.trim();
             if (standing.length) text = `${text.trim()} Your open request${standing.length > 1 ? 's' : ''} `
               + `still stand${standing.length > 1 ? '' : 's'} and will be sent at ${standing.length > 1 ? 'their' : 'its'} time: `
               + `${nameRequests(standing)}.`.trim();
             if (obligations.invalidDirective) text = `${text.trim()} I could not record that standing instruction exactly, so I have not saved it. Please restate it.`;
             else if (obligations.directivesFull) text = `${text.trim()} I have not saved that standing instruction: the ones I already hold fill the space I keep for them in every answer. Tell me which one is done or replaced, and I will save this one.`;
-            else for (const item of obligations.directives ?? []) text = `${text.trim()} Standing instruction saved until you say it is done or replace it: "${item.quote}".`;
+            else if (obligations.directives?.length) text = `${text.trim()} Standing instruction${obligations.directives.length > 1 ? 's' : ''} `
+              + `saved until you say ${obligations.directives.length > 1 ? 'each is' : 'it is'} done or replace it: ${nameQuotes(obligations.directives.map(item => item.quote))}.`;
             if (invalidUndo) { text = 'I could not undo that memory change. Only the most recent change within ten minutes can be undone.'; body = '';
               memory = []; dated = []; undo = undefined; invalidMemory = false; }
             // Rules 8, 56, 100: at most one due reminder line rides the same answer; a spent key is never offered again.
@@ -6970,9 +6975,11 @@ export function createJournalWorker(journal: ReturnType<typeof openPreviewJourna
             const next = replying ? openReplyNotices(journal.view.order, ports.replyNotices?.(turn.id) ?? [], turn.id)[0] : undefined;
             const reserved = next?.key.startsWith('effect:') ? Buffer.byteLength(next.line) + 2 : 0;
             if (reserved && Buffer.byteLength(text) + reserved > 3500) {
-              const whole = text.trim(), outcome = body && whole.startsWith(body) ? whole.slice(body.length) : undefined;
-              const room = 3500 - reserved - Buffer.byteLength(outcome ?? '') - Buffer.byteLength('…');
-              text = outcome !== undefined && room > 0 ? `${clip(body, room)}${outcome}` : clip(text.trimEnd(), 3500 - reserved - Buffer.byteLength('…'));
+              // The runner's lines are bounded (each list names at most three clipped items), so they always fit
+              // beside the effect refusal; if no room is left for the body, the body alone is dropped, never a line.
+              const whole = text.trim(), kept = body && whole.startsWith(body) ? body : '', outcome = whole.slice(kept.length);
+              const room = 3500 - reserved - Buffer.byteLength(outcome) - Buffer.byteLength('…');
+              text = room > 0 && kept ? `${clip(kept, room)}${outcome}` : outcome.trim();
             }
             // Rules 8, 92: completed obligation work rides the operator's next answer, the only send the grant allows.
             // A result another unsent answer already carries is not repeated in this one.
