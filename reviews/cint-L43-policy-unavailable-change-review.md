@@ -15,7 +15,7 @@ Undo and recovery: revert the commit; recovery for an operator is making the pol
 Multi-machine posture: unchanged; the policy is per-runner local state.
 Layer below: tool-admission-hook.mjs (unchanged: records the doorway row durably before proceeding) and admitEffect (unchanged).
 Bug class: integration
-Bug evidence: astra-cint-L43-evidence/policy-withdrawal.json (corrupted or removed policy admitted both marked calls); the new tool-admission test reproduces both sides through the real hook.
+Bug evidence: reproducer=tests/preview/tool-admission.test.ts
 Hook bypass: none (plain commits; core.hooksPath is unset)
 Convergence: none
 Decision: cint-L43-policy-unavailable | carry "configured but unreadable" as an explicit marker to the existing admission checkpoint and refuse there, rather than keeping the last good policy in memory: a remembered policy would keep a grant the operator may be revoking by the rewrite, while a refusal until it reads again cannot admit what the operator withdrew (Rule 116, fail closed) | reported=/Users/dabombstudio/.instar/agents/echo/.instar/lanes/cint-L43-PROGRESS.md
