@@ -115,6 +115,37 @@ The base script replayed over the five recorded folders reproduces every recorde
 the two early runs, where the recorded FAIL predates the plan #378 amendment that is already in the script
 on this branch — a known difference, and a check that the replay harness is faithful.
 
+## Two companion items, checked rather than assumed
+
+A group script is not the only thing a change to it touches. Both of these were found by stepping back from
+the script, and both are handled here:
+
+**1. The group's verdict-sides harness still works, proven not assumed.**
+`results/prooftools-289-verify/eval-S.sh` proves S's PASS/FAIL/UNTESTED sides over six hand-made folders. It
+does *not* run the group: it `grep`s the `^ASK=`/`^RE=` definitions out of the script and `awk`s out the named
+`chk S11a`/`S11b`/`S11c` blocks, so it never sees `room`, the crowding phase, S0c or S0d. That is an argument,
+not evidence, so it was run. Two token-swapped variants were built from the current script and from the
+proposed one by the same one-line substitution the desk's `S-variant-2958.sh` uses, and `eval-S.sh` was run on
+each over all six snapshots:
+
+| snapshot | current script | proposed script | |
+|---|---|---|---|
+| `s-hand-pass` | S11a=PASS S11c=PASS | S11a=PASS S11c=PASS | identical |
+| `s-hand-inrecent` | S11a=UNTESTED S11c=UNTESTED | S11a=UNTESTED S11c=UNTESTED | identical |
+| `s-rec-fail` | S11a=UNTESTED S11c=FAIL | S11a=UNTESTED S11c=FAIL | identical |
+| `s-rec-untested` | S11a=UNTESTED S11c=UNTESTED | S11a=UNTESTED S11c=UNTESTED | identical |
+| `s-hand-invent` | S11c=FAIL | S11c=FAIL | identical |
+| `s-hand-unavail` | S11c=UNTESTED | S11c=UNTESTED | identical |
+
+(The `UE`/`UL` env values were inferred from the snapshots, so a row may differ from its recorded verdict —
+`s-rec-fail`'s S11a does. What the table proves is the column comparison: nothing the proposal changes reaches
+`eval-S.sh`. The desk's own `UE`/`UL` reproduce the recorded verdicts.)
+
+**2. The README row for `S.sh` would have gone stale.** `README.md` line 41 states "26 one-fact messages" and
+"About 50-65 messages, 40-50 minutes", which the crowding phase falsifies, and it does not mention S0c or S0d.
+A second patch is below. A description that quietly stops matching the script is the kind of drift Rule 4 of
+the purpose document is about — the documents are the body, not a description of it.
+
 ## The replacement script
 
 ```bash
@@ -402,4 +433,20 @@ also in the builder's report alongside this change.
  PY
  cat "$O/s-lookup-evidence.txt"
  st final
+```
+
+## The README row patch
+
+```diff
+--- lanes/pipeline/live-proof/README.md
++++ lanes/pipeline/live-proof/README.md.proposed
+@@ -38,7 +38,7 @@
+ | `sendrelease-replay/` | Offline proof of send-only mode: `harness.sh` (two concurrent fake groups over the real `lib.sh`, `journal-match.py` and `check.py`; fake send-one, fake journal, temp lock) and `realshapes.py` (the matcher over a copy of a real proof-room journal against the browser-read recordings). |
+ | `O.sh`, `O-offline.mjs` | Group O (Rules 24, 40, 42, 67, 86, 95; LIVE-PATH-PLAN row #145): one live message, then offline checks that run the deployed worktree's own refusal, capacity, reply-check, model-JSON, register-rung and retrospective code and record the raw outputs. `O-open-findings.md` holds one product finding (O95d). |
+ | `results/snapshots-O/` | Hand-made snapshots for O: `make.py` builds a folder from real recordings (the cint-L13 proof room's a1 reads and the real offline run `results/O-offline-trial1`), then one mutated folder per variant; `verdicts.tsv` holds the result. |
+-| `S.sh` | Group S (Rule 11; LIVE-PATH-PLAN row #289): for a FRESH room. 26 one-fact messages (more than the summary's 20 kept quotes), filler until the summary covers them, then three paraphrased questions (fact 3, fact 24, something never said). PASS needs the fact recalled (`last.recalledIds`), not just answered; an answer from the summary alone is UNTESTED. About 50-65 messages, 40-50 minutes. Verdict sides: `results/prooftools-289-verify/` (`eval-S.sh`). |
++| `S.sh` | Group S (Rule 11; LIVE-PATH-PLAN rows #289 and #397): for a FRESH room. 8 crowding messages of six household clauses each first, so the summary's 20 kept-quote slots fill on facts that are never asked about and every later fact is past the cap (row #397: without them the early asked fact was always a pass-1 candidate and was kept, so S11a kept recording UNTESTED); then 26 one-fact messages, filler until the summary covers them, then three paraphrased questions (fact 3, fact 24, something never said). PASS needs the fact recalled (`last.recalledIds`), not just answered; an answer from the summary alone is UNTESTED. S0c and S0d hold the crowding phase. About 57-72 messages, 45-55 minutes. Verdict sides: `results/prooftools-289-verify/` (`eval-S.sh`, unaffected by row #397: it extracts only the `ASK`/`RE` definitions and the `S11a`-`S11c` chk lines, never the setup). |
+
+ **Usage:** `bash .instar/lanes/pipeline/live-proof/<G>.sh [results-dir] [phase]`. The default results folder is
+ `pipeline/live-proof/results/<G>-<timestamp>/`, containing `meta.txt`, `checks.tsv`, `log.txt`, `msg-*`, `reply-*`,
 ```
