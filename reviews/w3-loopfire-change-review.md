@@ -15,7 +15,7 @@ Undo and recovery: revert tests/preview/journal.ts (the validator predicate and 
 Multi-machine posture: single-machine preview runner; no shared, replicated or leased state touched. The admitted rows are journal rows, so on a two-machine root they replicate with the journal like every other call-outcome row.
 Layer below: checked the doorway's catch (src/assembly/production-provider.ts) and observedSubscriptionIO's ordering (append after the command, outside its try). Both unchanged: the doorway is right to report UNKNOWN for a throw it cannot classify, and moving the append inside a try would hide the next id mismatch. The six-host allocation refusals ("domain predecessor changed", 7 on the root) were checked and ruled out: every waiter was admitted later (refusedCapacity 0).
 Bug class: live-path
-Bug evidence: reproducer=tests/preview/journal-loop-fire.test.ts live=/Users/dabombstudio/.instar/agents/echo/.instar/lanes/w3-loopfire-PROGRESS.md
+Bug evidence: reproducer=tests/preview/journal-loop-fire.test.ts; live=/Users/dabombstudio/.instar/agents/echo/.instar/lanes/w3-loopfire-evidence/replay-run4-fix1-fix2.json
 Hook bypass: none
 Convergence: none
 Decision: loopfire-admit-at-validator | the refusal is fixed where the row is refused, by admitting only an obligation id whose start is in flight at that exact slot and an index id whose reservation is open. The rejected alternative, catching the append failure in observedSubscriptionIO, would let a completed call through, but it would also hide every future id mismatch the same silent way this one hid | reported=/Users/dabombstudio/.instar/agents/echo/.instar/lanes/w3-loopfire-PROGRESS.md
