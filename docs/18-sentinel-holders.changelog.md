@@ -4,6 +4,10 @@ _Generated from `18-sentinel-holders.changelog.json` by `scripts/render-changelo
 The document itself reads as a first version; every change to it is recorded here, newest first,
 each linked to the git change that made it (rule 91).
 
+## Revision 7 · 2026-10-03 · draft — cint-L43 pipeline repair (plan row #420): the body names the rewrite review without the history marker rule 91 bans. No constitution change.
+
+- **Sections 13 and 16 call the review of the agent's discreet rewrite the rewrite review (four occurrences); the meaning is unchanged.** — The governed-document checker refused the word "revision" in the design body as a history marker (rule 91; P13-NF-02), though it named a review round, not a document history. _(lanes/cint-L43-PROGRESS.md (Pipeline repair); tests/harness-adapters/foundation.test.ts)_
+
 ## Revision 6 · 2026-10-03 · draft — Unit w4-sensitivity Astra review repair (plan row #405, round 1, three MUST-FIX): a shared audience is released only on a completed review. No constitution change.
 
 - **Unit review repair (Astra, round 1): for an audience other than the verified operator alone, a reply is released only on a completed full-context review. The operator-echo shortcut and a Jev-only or interrupted pass no longer stand in for it; an unavailable review, a refused reservation or the shared deadline sends the content-free holding note with the draft kept; a short reviewer quote that is exactly one whole sentence names and removes that sentence. The operator's own chat is unchanged.** — The unit review reproduced three disclosures at the checkpoint: a short quoted sentence survived a confirmed violation, an echo of the operator's earlier private words skipped the audience review, and the shared-audience path released the private draft when its review was unavailable (purpose's least revelation; Rules 57, 95). _(lanes/w4-sensitivity-PROGRESS.md (Pipeline repair); tests/preview/sensitivity.test.ts)_
