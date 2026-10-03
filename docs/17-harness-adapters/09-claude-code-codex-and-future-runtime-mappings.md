@@ -34,8 +34,9 @@ boundary: ordinary work runs, and every consequential effect goes to the effect 
 default, consequential effects and irreversible acts; **checks:**
 `tests/assembly/production-provider-tools.test.ts`, `tests/preview/tool-admission.test.ts`,
 `tests/preview/tool-turn.test.ts`, `tests/preview/tool-turn-replay.test.ts`,
-`tests/preview/tools-default.test.ts`, `tests/integration/resource-owner.test.ts` and the gated live
-runs `tests/integration/tool-turn-live.test.ts` and `tests/integration/tool-turn-full-live.test.ts`.
+`tests/preview/egress-proxy.test.ts`, `tests/preview/tools-default.test.ts`,
+`tests/integration/resource-owner.test.ts` and the gated live runs
+`tests/integration/tool-turn-live.test.ts` and `tests/integration/tool-turn-full-live.test.ts`.
 The preview may run an answer or a scheduled work step as one Claude Code invocation, through the
 existing provider path, with the pinned harness's whole built-in tool set, plus the MCP servers the
 root's own configuration names. No tool is left out to hold a safeguard: each tool's scope, finite
@@ -55,8 +56,20 @@ skill that may fork). A web read of a loopback, private, link-local or local-nam
 because it reaches this machine and its network rather than the world. A tool the adapter has not
 classified is refused. The harness sandbox is where a command's reach is enforced: reads
 are refused from the filesystem root down except the turn's scratch volume and the system files
-commands need to run; writes reach only that volume; there is no network, so no command can write to
-the network, no unix socket and no signal to another process. The workspace and every temporary file
+commands need to run; writes reach only that volume; no unix socket and no signal to another process.
+A command reaches the network only through the turn's egress checkpoint, a proxy the runner starts on
+a loopback port for the turn and stops with it, so the shell keeps its network reads while the
+floor is held at the checkpoint. The checkpoint intercepts HTTPS with the
+turn's own trust root, whose key lies in the admission state and whose certificate only the turn's
+shell trusts, so it sees each request's method and path. It resolves each host itself, admits a read
+(a GET or HEAD, or a git fetch) only when every resolved address is public, and connects to the
+address it checked. It sends every other request (any other method, a git push from its discovery
+request on, a package publish) to the effect doorway as a network write. A loopback, private,
+link-local or shared-address host is refused before any connection, the proxy adds no credential,
+upstream certificates are verified, and every decision is appended to the admission state before the
+request goes anywhere and journaled with the turn's trace. The bytes through it, its connections, its
+requests and each connection's idle time are bounded, and a command that bypasses the proxy reaches
+nothing. The workspace and every temporary file
 of the shell and the harness live on that fixed-size volume, so a turn's whole storage is finite and
 cannot consume the journal's disk. The per-step tool-call count, shared by the turn and its subagents,
 is allocated atomically, so overlapping calls cannot exceed it. The launch has a clean environment;

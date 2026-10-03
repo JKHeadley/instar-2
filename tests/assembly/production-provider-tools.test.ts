@@ -61,13 +61,16 @@ it('launches the tool turn with the proven flag set: hooks on, the whole built-i
 it('tells the model it has the whole tool set and how each call is bounded, and keeps the conversation framing\'s no-tools sentence intact', () => {
   expect(SUBSCRIPTION_TOOLS_SYSTEM_PROMPT).toContain('the harness\'s full built-in tool set');
   expect(SUBSCRIPTION_TOOLS_SYSTEM_PROMPT).not.toContain('You have no tools');
-  expect(SUBSCRIPTION_TOOLS_SYSTEM_PROMPT).toMatch(/Bash is sandboxed: no network/u);
+  // The shell's network goes through the turn's checkpoint (w4-shellnet): the model is told what it can and cannot reach.
+  expect(SUBSCRIPTION_TOOLS_SYSTEM_PROMPT).not.toMatch(/Bash is sandboxed: no network/u);
+  expect(SUBSCRIPTION_TOOLS_SYSTEM_PROMPT).toContain('its network goes through a checkpoint: public reads work (GET, HEAD, git clone, package '
+    + 'installs), writes (other methods, git push, publish) and local addresses are refused. Clone git repositories under $TMPDIR.');
   expect(SUBSCRIPTION_TOOLS_SYSTEM_PROMPT).toMatch(/WebFetch and WebSearch read the public web \(GET only\)/u);
   expect(SUBSCRIPTION_TOOLS_SYSTEM_PROMPT).toContain(`"${SUBSCRIPTION_SUBAGENT_TYPE}" subagents, which may start their own: at most ${SUBSCRIPTION_TOOL_LIMITS.maxChildren} in this whole turn`);
   expect(SUBSCRIPTION_TOOLS_SYSTEM_PROMPT).toMatch(/go through the effect doorway and are refused unless registered/u);
   expect(SUBSCRIPTION_TOOLS_SYSTEM_PROMPT).toContain('which tool call, by name and order, produced it');
   expect(SUBSCRIPTION_CONVERSATION_SYSTEM_PROMPT).toContain('You have no tools and cannot act beyond this answer; never claim otherwise.');
-  expect(SUBSCRIPTION_TOOLS_SYSTEM_PROMPT.length - SUBSCRIPTION_CONVERSATION_SYSTEM_PROMPT.length).toBeLessThan(1100);
+  expect(SUBSCRIPTION_TOOLS_SYSTEM_PROMPT.length - SUBSCRIPTION_CONVERSATION_SYSTEM_PROMPT.length).toBeLessThan(1300);
 });
 
 it('writes settings that refuse every read from the root down except the scratch volume and the runtime, writes outside the volume, network and unix sockets, with the mandatory hook on both events', () => {
@@ -82,6 +85,16 @@ it('writes settings that refuse every read from the root down except the scratch
     filesystem: { allowWrite: ['/r/tool-turns/a-0/vol'],
       denyWrite: ['/tmp/claude', '/private/tmp/claude', '/profile/home/.npm/_logs', '/profile/home/.claude/debug'],
       denyRead: ['/'], allowRead: ['/r/tool-turns/a-0/vol', ...SUBSCRIPTION_TOOL_RUNTIME_READS] } });
+  // With the turn's network checkpoint, the one reachable place is its loopback port, and its tools' locations are readable.
+  const netted = JSON.parse(subscriptionToolSettings({ ...turn, egress: { port: 40001, reads: ['/usr/local/bin', '/Library/Developer/CommandLineTools'] } }, '/profile/home'));
+  expect(netted.sandbox.network).toEqual({ allowedDomains: [], allowUnixSockets: [], allowAllUnixSockets: false, allowLocalBinding: false, httpProxyPort: 40001 });
+  expect(netted.sandbox.filesystem.allowRead).toEqual(['/r/tool-turns/a-0/vol', ...SUBSCRIPTION_TOOL_RUNTIME_READS, '/usr/local/bin', '/Library/Developer/CommandLineTools']);
+  expect(settings.sandbox.network.httpProxyPort).toBeUndefined();
+  for (const port of [0, 70000, 1.5]) expect(() => subscriptionToolSettings({ ...turn, egress: { port, reads: [] } }, '/profile/home')).toThrow(/egress checkpoint port/u);
+  // A tool location may never reopen the runner root, the login home or the admission state.
+  expect(() => subscriptionToolSettings({ ...turn, egress: { port: 40001, reads: ['/r'] } }, '/profile/home')).toThrow(/under a readable path/u);
+  expect(() => subscriptionToolSettings({ ...turn, egress: { port: 40001, reads: ['/profile'] } }, '/profile/home')).toThrow(/under a readable path/u);
+  expect(() => subscriptionToolSettings({ ...turn, egress: { port: 40001, reads: ['/usr/local bin'] } }, '/profile/home')).toThrow(/absolute and plain/u);
   // Nothing in the runtime list holds user, session or runner data.
   for (const read of SUBSCRIPTION_TOOL_RUNTIME_READS) expect(read).toMatch(/^\/(bin|sbin|usr\/(bin|sbin|lib|libexec|share)|System|private\/var\/select|private\/etc|dev)$/u);
   expect(settings.permissions).toEqual({ allow: [...SUBSCRIPTION_TOOL_NAMES] });

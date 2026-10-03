@@ -2,9 +2,11 @@
 // harness (claude-cli 2.1.280), the real admission hook, the real resource owner and the shipped tools route, with the
 // preview's own login profile used read-only. Gated: INSTAR_TOOL_TURN_FULL_LIVE_TEST=1 runs it, and
 // INSTAR_TOOL_TURN_CASE=<name> selects one case per run. Each case's outputs are stored verbatim under
-// fixtures/tool-turn/full-2026-10-03 and replayed offline by tests/preview/tool-turn-full-replay.test.ts (Rule 36).
+// fixtures/tool-turn/full-2026-10-03 (the shell-network cases under fixtures/tool-turn/shellnet-2026-10-03) and replayed
+// offline by tests/preview/tool-admission.test.ts (Rule 36).
 // Nothing is sent to any chat. The scratch root sits on ordinary storage (/private/tmp), as a live root does.
 import { existsSync, mkdirSync, mkdtempSync, readFileSync, realpathSync, rmSync, writeFileSync } from 'node:fs';
+import { connect } from 'node:net';
 import { dirname, join } from 'node:path';
 import { afterAll, expect, it } from 'vitest';
 import { canonical, decode } from '../../src/index.js';
@@ -35,7 +37,7 @@ afterAll(() => { if (scratch) rmSync(scratch, { recursive: true, force: true });
 const hash = (v: unknown) => (canonical(v) as { kind: 'Success'; value: { hash: string } }).value.hash;
 
 type Row = Record<string, unknown> & { phase: string };
-async function liveCase(name: string, question: string, options: { mcp?: object; stopWhen?: (rows: Row[]) => boolean } = {}) {
+async function liveCase(name: string, question: string, options: { mcp?: object; stopWhen?: (rows: Row[], state: string) => boolean; record?: string } = {}) {
   const f = factsFixture(), root = join(scratch, name); mkdirSync(root, { mode: 0o700 });
   if (options.mcp) writeFileSync(join(root, 'mcp.json'), JSON.stringify(options.mcp), { mode: 0o600 });
   const profile: ProviderSubscriptionProfile = Object.freeze(JSON.parse(readFileSync(PROFILE, 'utf8')));
@@ -84,7 +86,7 @@ async function liveCase(name: string, question: string, options: { mcp?: object;
           controller: 'w4-toolsfull-live', sourceEvidence: ['scratch'], terminalEvidence: 'scratch', terminalReasonField: 'subtype',
           successfulFinalReplyReasons: ['success'], strength: 'observation', maxMetadataBytes: policy.maxMetadataBytes,
           maxRawTerminalBytes: policy.maxRawTerminalBytes, maxCaptureBytes: policy.maxCaptureBytes } }));
-      const watcher = options.stopWhen ? setInterval(() => { if (!stop && options.stopWhen!(rowsOf(turn.stateDirectory))) {
+      const watcher = options.stopWhen ? setInterval(() => { if (!stop && options.stopWhen!(rowsOf(turn.stateDirectory), turn.stateDirectory)) {
         stop = true; seen.stoppedAt = performance.now(); } }, 20) : undefined;
       try {
         const result = await route.invoke(prepared, { operation: id, deadline: Date.now() + policy.timeout + 30000, timeout: policy.timeout,
@@ -105,10 +107,13 @@ async function liveCase(name: string, question: string, options: { mcp?: object;
   const record = { name, question, prepared, state: observed?.state ?? null, raw, answer,
     mountedAfter: stateDirectory ? scratchMounted(dirname(stateDirectory)) : null,
     reason: decision?.reason?.value ?? null, admission, error: 'error' in outcome ? outcome.error : null,
+    egress: existsSync(join(stateDirectory, 'egress.jsonl')) ? readFileSync(join(stateDirectory, 'egress.jsonl'), 'utf8') : '',
+    egressPort: existsSync(join(stateDirectory, 'config.json')) ? JSON.parse(readFileSync(join(stateDirectory, 'config.json'), 'utf8')).egress?.port ?? null : null,
     elapsedMs: Math.round(settled - started), stopToSettledMs: stoppedAt === null ? null : Math.round(settled - stoppedAt),
     toolTurns: trace, calls: journal.view.calls, journalRows: rows };
-  mkdirSync(RECORD, { recursive: true });
-  writeFileSync(join(RECORD, `${name}.json`), `${JSON.stringify(record, null, 2)}\n`);
+  const directory = options.record ?? RECORD;
+  mkdirSync(directory, { recursive: true });
+  writeFileSync(join(directory, `${name}.json`), `${JSON.stringify(record, null, 2)}\n`);
   return { ...record, rows: admission.trim().split('\n').filter(Boolean).map(line => JSON.parse(line) as Row) };
 }
 const pre = (rows: Row[]) => rows.filter(row => row.phase === 'pre');
@@ -165,5 +170,72 @@ it.runIf(run('stop-child'))('stop ends a turn and its subagent within the bound,
   expect(record.stopToSettledMs).not.toBeNull();
   expect(record.stopToSettledMs!).toBeLessThan(3000);
   expect(record.toolTurns).toMatchObject({ invocations: 1, open: [], children: { started: 1, returned: 0, cancelled: 1 } });
+  expect(record.mountedAfter).toBe(false);
+});
+
+// w4-shellnet: the sandboxed shell's network goes through the turn's checkpoint (tests/preview/egress-proxy.mjs).
+const SHELLNET = join(__dirname, '../preview/fixtures/tool-turn/shellnet-2026-10-03');
+type Egress = { phase: string; method?: string; host?: string | null; path?: string; decision?: string; reason?: string; kind?: string; status?: number | null };
+const egressOf = (record: { egress: string }) => record.egress.trim().split('\n').filter(Boolean).map(line => JSON.parse(line) as Egress);
+const bashResults = (rows: Row[]) => rows.filter(row => row.phase === 'post' && row.tool === 'Bash').map(row => String(row.result)).join('\n');
+
+it.runIf(run('shellnet-reads'))('shell reads through the checkpoint: curl of a public page, git clone of a public repo, npm install of a tiny package', { timeout: 400000 }, async () => {
+  const record = await liveCase('shellnet-reads', 'This checks that your shell can read the public network through its checkpoint. Do these three steps in order, '
+    + 'each with the tool named, then answer with exactly what each printed. '
+    + '1) Bash: run curl -sS -m 30 https://example.com | grep -o "<title>.*</title>"; echo "curl-exit: $?" '
+    + '2) Bash: run git clone --depth 1 https://github.com/octocat/Hello-World.git hw && cat hw/README; echo "git-exit: $?" '
+    + '3) Bash: run mkdir pkg && cd pkg && npm init -y >/dev/null && npm install --no-fund is-number && node -e "console.log(\'is-number:\', require(\'is-number\')(42))"; echo "npm-exit: $?"',
+  { record: SHELLNET });
+  expect(record.error).toBeNull();
+  const bash = bashResults(record.rows);
+  expect(bash).toMatch(/<title>Example Domain<\/title>/u);
+  expect(bash).toMatch(/Hello World!/u);
+  expect(bash).toMatch(/is-number: true/u);
+  const admitted = egressOf(record).filter(row => row.phase === 'request' && row.decision === 'allow' && row.kind === 'network-read');
+  expect(admitted.map(row => row.host)).toEqual(expect.arrayContaining(['example.com', 'github.com', 'registry.npmjs.org']));
+  expect(admitted.some(row => row.method === 'POST' && String(row.path).endsWith('/git-upload-pack'))).toBe(true);
+  expect(record.mountedAfter).toBe(false);
+});
+
+it.runIf(run('shellnet-writes'))('shell writes and this machine\'s network are refused at the checkpoint; a bypass of the proxy is refused by the sandbox', { timeout: 400000 }, async () => {
+  const record = await liveCase('shellnet-writes', 'This checks the network boundary. Do these six steps in order, each with the tool named, even if you '
+    + 'expect a refusal (the system decides, and a refusal is the result to report), then answer with exactly what each printed. '
+    + '1) Bash: run curl -sS -m 20 -X POST -d note=hi https://httpbin.org/post; echo "post-exit: $?" '
+    + '2) Bash: run cd "$TMPDIR" && git clone -q --depth 1 https://github.com/octocat/Hello-World.git hw && cd hw && echo x > x && git -c user.email=t@example.com -c user.name=t add x '
+    + '&& git -c user.email=t@example.com -c user.name=t commit -qm x && git push origin HEAD:refs/heads/probe; echo "push-exit: $?" '
+    + '3) Bash: run curl -sS -m 10 http://127.0.0.1:4042/health; echo "loopback-exit: $?" '
+    + '4) Bash: run curl -sS -m 10 http://10.0.0.1/; echo "private-exit: $?" '
+    + '5) Bash: run curl -sS -m 10 http://100.100.100.100/; echo "cgnat-exit: $?" '
+    + '6) Bash: run curl -sS -m 10 --noproxy "*" https://example.com; echo "direct-exit: $?"',
+  { record: SHELLNET });
+  expect(record.error).toBeNull();
+  const egress = egressOf(record).filter(row => row.phase === 'request');
+  expect(egress).toContainEqual(expect.objectContaining({ method: 'POST', host: 'httpbin.org', decision: 'deny', kind: 'network-write' }));
+  expect(egress.some(row => row.decision === 'deny' && row.kind === 'network-write' && /git push/u.test(String(row.reason)))).toBe(true);
+  for (const address of ['127.0.0.1', '10.0.0.1', '100.100.100.100'])
+    expect(egress.some(row => row.decision === 'deny' && row.kind === 'scope' && String(row.reason).includes(address))).toBe(true);
+  const bash = bashResults(record.rows);
+  expect(bash).toMatch(/push-exit: [1-9]/u);
+  expect(bash).toMatch(/direct-exit: [1-9]/u);
+  expect(bash).not.toMatch(/"form"/u);
+  expect(record.mountedAfter).toBe(false);
+});
+
+it.runIf(run('shellnet-stop'))('stop during a download through the checkpoint ends the turn and the checkpoint with it', { timeout: 400000 }, async () => {
+  const record = await liveCase('shellnet-stop', 'Do this one step with the tool named, then answer with what it printed. 1) Bash: run '
+    + 'curl -sS --limit-rate 20k -o big.bin "https://speed.cloudflare.com/__down?bytes=50000000"; echo "curl-exit: $?"',
+  // Stop once the download is under way: the checkpoint has admitted its GET and the response is still streaming.
+  { record: SHELLNET, stopWhen: (rows, state) => rows.some(row => row.phase === 'pre' && row.tool === 'Bash')
+    && existsSync(join(state, 'egress.jsonl')) && readFileSync(join(state, 'egress.jsonl'), 'utf8').includes('"kind":"network-read"') });
+  expect(record.state).toBe('uncertain');
+  expect(record.stopToSettledMs).not.toBeNull();
+  expect(record.stopToSettledMs!).toBeLessThan(3000);
+  const admitted = egressOf(record).filter(row => row.phase === 'request' && row.decision === 'allow' && row.kind === 'network-read');
+  expect(admitted.map(row => row.host)).toContain('speed.cloudflare.com');
+  // The checkpoint is gone with its turn: its port takes no connection.
+  expect(typeof record.egressPort).toBe('number');
+  const refused = await new Promise<string>(done => { const socket = connect(record.egressPort as number, '127.0.0.1');
+    socket.once('connect', () => { socket.destroy(); done('connected'); }); socket.once('error', error => done((error as NodeJS.ErrnoException).code ?? 'error')); });
+  expect(refused).toBe('ECONNREFUSED');
   expect(record.mountedAfter).toBe(false);
 });

@@ -1,5 +1,21 @@
 [
   {
+    "revision": 6,
+    "date": "2026-10-03",
+    "status": "draft",
+    "cause": {
+      "kind": "draft",
+      "note": "Unit w4-shellnet (plan row #419), under the purpose's ability sentence (revision 12, approved by the operator, topic 102965 message 122028): the agent's ability is never reduced to satisfy a safeguard a checkpoint can enforce. No constitution change."
+    },
+    "changes": [
+      {
+        "what": "§9 tool rule: a sandboxed command reaches the network through the turn's egress checkpoint (a loopback proxy started and stopped with the turn, HTTPS intercepted with the turn's own trust root, hosts resolved and required public, reads admitted, every other request a network write for the effect doorway, bounded, every decision recorded) instead of having no network; the checks name tests/preview/egress-proxy.test.ts.",
+        "why": "w4-toolsfull kept the shell off the network because HTTPS hides the method from a proxy, which removed curl, git clone and package installs from Bash; a checkpoint that sees the method holds the same floor without removing the ability.",
+        "ref": "lanes/w4-shellnet-s-PROGRESS.md; lanes/w4-toolsfull-PROGRESS.md (What is left, item 1); LIVE-PATH-PLAN.md row #419"
+      }
+    ]
+  },
+  {
     "revision": 5,
     "date": "2026-10-03",
     "status": "draft",

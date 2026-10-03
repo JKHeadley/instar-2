@@ -256,8 +256,9 @@ it('keeps a tool turn\'s always-sent parts inside the same measured floor (Part 
   // 603 at w4-toolsreal round 0; +20 when the sentence stopped claiming deletes are refused (they are inside the scratch volume);
   // 906 at w4-toolsfull, whose sentence names the web reads, the subagent bound and the effect doorway; 1025 at its round-2
   // repair, which offers the whole built-in set (named by the tool definitions, not the sentence), lets subagents delegate,
-  // and says each call is checked when made.
-  expect(growth).toBe(1025);
+  // and says each call is checked when made; 1225 at w4-shellnet, whose sentence says the shell's network goes through the
+  // turn's checkpoint (public reads work; writes and local addresses are refused) and where to clone repositories.
+  expect(growth).toBe(1225);
   // The packet names what the call really has (review round 1, finding 5): the text-only route keeps the no-tools read and
   // its "attempted nothing" guidance; the tool route says the tools are as listed and that only its recorded calls ran.
   expect(plain.packet?.capabilities?.externalTools).toBe('none');

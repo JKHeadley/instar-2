@@ -1064,7 +1064,7 @@ export type JournalRecord =
       mcp?: { servers: string[]; reads: number; digest: string }; at: number }
   | { kind: 'tool-turn'; phase: 'refused'; id: string; reason: 'call cap' | 'prompt size'; at: number }
   | { kind: 'tool-turn'; phase: 'trace'; id: string; attempt: number; calls: ToolTraceCall[]; consistent: boolean;
-      edges?: ToolChildEdge[]; workspaceBytes: number | null; at: number }
+      edges?: ToolChildEdge[]; egress?: ToolEgressRequest[]; egressRequests?: number; egressLimited?: string; workspaceBytes: number | null; at: number }
   | { kind: 'legacy-reply'; at: number }
   | { kind: 'import'; source: string; remainingCalls: number; remainingReplies: number; oldStop: string; at: number }
   | { kind: 'summary-reserve'; through: number; prompt?: string; supervised?: true; maxInputTokens?: number; maxOutputTokens?: number; at: number }
@@ -2606,6 +2606,10 @@ function applyOperatorYes(view: JournalView, authority: string, action: Operator
   return true;
 }
 export interface ToolTraceCall { n: number; tool: string; input: string; decision: string; reason: string; kind?: string; result: string | null }
+/** One request the shell's network checkpoint decided (tests/preview/egress-proxy.mjs): admitted reads of public hosts,
+ * refused writes (the effect doorway's reason) and refused hosts; `status`/`bytes` once its response finished. */
+export interface ToolEgressRequest { n: number; method: string; scheme: string; host: string | null; port: number | null; path: string;
+  decision: string; reason: string; kind: string; address?: string; status: number | null; bytes: number | null; error?: string }
 /** One recorded tool call as the reply review sees it: what was called, whether it was admitted, and what it returned. */
 export interface ToolAttempt { n: number; tool: string; decision: string; input: string; result: string | null }
 /** The review's bounds on recorded tool attempts: at most this many calls, each excerpt clipped to this many characters. */
@@ -2621,7 +2625,9 @@ const attemptExcerpt = (text: string) => text.length > TOOL_ATTEMPT_EXCERPT_CHAR
 export interface ToolTurnStats { invocations: number; reservedCalls: number; refusedCap: number; refusedPrompt?: number; toolCalls: number;
   toolRefusals: number; inconsistent: number; open: string[];
   /** Rule 114: subagent edges the traces recorded, by how each ended (absent until a turn started one). */
-  children?: { started: number; returned: number; cancelled: number; unknown: number } }
+  children?: { started: number; returned: number; cancelled: number; unknown: number };
+  /** Shell network requests the turn's checkpoint decided (tunnel openings not counted). */
+  network?: { admitted: number; refused: number } }
 /** Rule 114: a tool turn's delegation authority and budget share, durable with its reservation before dispatch. */
 export interface ToolDelegation { children: number; turnsEach: number; type: string; authority: string }
 /** Rule 114: one subagent a tool turn started, as a durable parent-child edge. */
@@ -2665,6 +2671,12 @@ function projectToolTurn(view: JournalView, row: Extract<JournalRecord, { kind: 
     && edge.parent === key && (edge.parentAgent === undefined || edge.parentAgent === null || boundedText(edge.parentAgent, 1, 256))
     && ['returned', 'cancelled', 'unknown'].includes(edge.state)))
     throw Error('preview journal: tool turn edges');
+  const egress = row.egress ?? [];
+  if (!Array.isArray(egress) || egress.length > 64 || !egress.every(entry => entry && Number.isSafeInteger(entry.n) && boundedText(entry.method, 1, 16)
+    && boundedText(entry.path, 0, 1024) && ['allow', 'deny'].includes(entry.decision) && boundedText(entry.reason, 1, 1024))
+    || !(row.egressRequests === undefined || (Number.isSafeInteger(row.egressRequests) && row.egressRequests >= egress.length))
+    || !(row.egressLimited === undefined || boundedText(row.egressLimited, 1, 256)))
+    throw Error('preview journal: tool turn egress');
   const admitted = row.calls.filter(call => call.decision === 'allow').length;
   const turn = view.turns.get(row.id);
   if (turn) {
@@ -2679,8 +2691,12 @@ function projectToolTurn(view: JournalView, row: Extract<JournalRecord, { kind: 
   const children = edges.length || stats.children ? { started: (stats.children?.started ?? 0) + edges.length,
     returned: (stats.children?.returned ?? 0) + count('returned'), cancelled: (stats.children?.cancelled ?? 0) + count('cancelled'),
     unknown: (stats.children?.unknown ?? 0) + count('unknown') } : undefined;
+  const requests = egress.filter(entry => entry.kind !== 'tunnel'), allowed = requests.filter(entry => entry.decision === 'allow').length;
+  const network = requests.length || stats.network ? { admitted: (stats.network?.admitted ?? 0) + allowed,
+    refused: (stats.network?.refused ?? 0) + requests.length - allowed } : undefined;
   view.toolTurns = { ...stats, toolCalls: stats.toolCalls + admitted, toolRefusals: stats.toolRefusals + row.calls.length - admitted,
-    inconsistent: stats.inconsistent + Number(!row.consistent), open: stats.open.filter(item => item !== key), ...(children ? { children } : {}) };
+    inconsistent: stats.inconsistent + Number(!row.consistent), open: stats.open.filter(item => item !== key), ...(children ? { children } : {}),
+    ...(network ? { network } : {}) };
 }
 function project(view: JournalView, row: JournalRecord, system?: SystemCheck, admission: 'new' | 'replay' = 'new'): void {
   if ('at' in row) view.clockFloor = Math.max(view.clockFloor, row.at);

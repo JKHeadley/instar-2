@@ -13,7 +13,7 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { afterEach, expect, it } from 'vitest';
 // @ts-expect-error The hook and its decision stay plain JavaScript: the harness runs them without a loader.
-import { admitToolCall, admitToolEffect, publicAddress, toolShellPrefix, toolTrace, webReadHost } from './tool-admission.mjs';
+import { admitEgress, admitToolCall, admitToolEffect, egressTarget, publicAddress, toolShellPrefix, toolTrace, webReadHost } from './tool-admission.mjs';
 import { SINGLE_MACHINE_PROFILE } from './activation-authority.js';
 
 const HOOK = join(__dirname, 'tool-admission-hook.mjs');
@@ -396,4 +396,64 @@ it('replays the full-tool live runs\' recorded calls to their recorded decisions
       .toEqual(journaled.edges.map((edge: { child: string; agent: string }) => [edge.child, edge.agent]));
   }
   expect(replayed).toBe(15);
+});
+
+const SHELLNET = join(__dirname, 'fixtures/tool-turn/shellnet-2026-10-03');
+
+it('points every admitted shell command at the turn\'s network checkpoint: its proxy, its trust root, a scratch HOME, every range through it', () => {
+  const { state, tmp, root } = turn();
+  const egress = { port: 41234, ca: join(root, 'ca.pem'), home: join(root, 'home'), path: '/usr/local/bin', developer: '/Library/Developer/CommandLineTools' };
+  const config = JSON.parse(readFileSync(join(state, 'config.json'), 'utf8'));
+  writeFileSync(join(state, 'config.json'), JSON.stringify({ ...config, egress }));
+  const out = JSON.parse(hook(state, j('Bash', { command: 'curl -sS https://example.com' })).stdout).hookSpecificOutput;
+  expect(out.updatedInput.command).toBe(`${toolShellPrefix(tmp, egress)}curl -sS https://example.com`);
+  const shell = spawnSync('/bin/sh', ['-c', `${toolShellPrefix(tmp, egress)}printf '%s|' "$HTTPS_PROXY" "$http_proxy" "x$NO_PROXY" "x$no_proxy" "$HOME" "$CURL_CA_BUNDLE" "$GIT_SSL_CAINFO" `
+    + `"$NODE_EXTRA_CA_CERTS" "$npm_config_cafile" "$GIT_CONFIG_NOSYSTEM" "$DEVELOPER_DIR" "$PATH"`],
+  { env: { PATH: '/usr/bin:/bin', NO_PROXY: 'localhost,127.0.0.1,10.0.0.0/8', no_proxy: 'localhost', HOME: '/Users/Shared/login' }, encoding: 'utf8' });
+  expect(shell.stdout.split('|').slice(0, 12)).toEqual(['http://127.0.0.1:41234', 'http://127.0.0.1:41234', 'x', 'x', egress.home, egress.ca, egress.ca,
+    egress.ca, egress.ca, '1', egress.developer, `${egress.developer}/usr/bin:/usr/local/bin:/usr/bin:/bin`]);
+  // Without a checkpoint the prefix is exactly the earlier one (the shell has no network).
+  expect(toolShellPrefix(tmp, null)).toBe(toolShellPrefix(tmp));
+  for (const bad of [{ ...egress, port: 0 }, { ...egress, ca: 'rel/ca.pem' }, { ...egress, home: '/tmp/a b' }, { ...egress, path: '/x;rm' }, { ...egress, developer: '$(x)' }])
+    expect(() => toolShellPrefix(tmp, bad)).toThrow(/egress checkpoint/u);
+});
+
+it('the checkpoint admits reads (GET, HEAD, git fetch) and sends every write to the effect doorway, which admits only a registered one', () => {
+  const ops = [...SINGLE_MACHINE_PROFILE.operations];
+  for (const [method, path] of [['GET', '/'], ['head', '/x'], ['GET', '/r.git/info/refs?service=git-upload-pack'], ['POST', '/r.git/git-upload-pack']])
+    expect(admitEgress({ method, path }, ops)).toMatchObject({ decision: 'allow', kind: 'network-read' });
+  for (const [method, path] of [['POST', '/post'], ['PUT', '/-/package'], ['PATCH', '/x'], ['DELETE', '/x'], ['OPTIONS', '/'], ['', '/'],
+    ['GET', '/r.git/info/refs?service=git-receive-pack'], ['POST', '/r.git/git-receive-pack'], ['POST', '/r.git/git-upload-pack-not']]) {
+    const decided = admitEgress({ method, path }, ops);
+    expect(decided).toMatchObject({ decision: 'deny', kind: 'network-write' });
+    expect(decided.reason).toMatch(/effect doorway: the installed profile registers no tool:network-write operation/u);
+  }
+  expect(admitEgress({ method: 'POST', path: '/post' }, [...ops, 'tool:network-write'])).toEqual({ decision: 'allow', kind: 'network-write',
+    reason: 'registered operation tool:network-write' });
+  expect(egressTarget('example.com:443')).toEqual({ host: 'example.com', port: 443 });
+  expect(egressTarget('example.com', 'http:')).toEqual({ host: 'example.com', port: 80 });
+  expect(egressTarget('registry.npmjs.org:8443')).toEqual({ host: 'registry.npmjs.org', port: 8443 });
+  for (const bad of ['127.0.0.1:443', '[::1]:443', '[::ffff:7f00:1]:443', '10.0.0.1:443', '100.64.1.1:443', '169.254.169.254:80', 'localhost:443',
+    'nas.local:443', 'user:pw@example.com:443', 'example.com/path', 'intranet:443'])
+    expect(egressTarget(bad).host).toBeNull();
+});
+
+it('replays the shell-network live runs: their shell calls reach the recorded admission and their checkpoint requests the recorded decision (Rule 106)', () => {
+  const ops = [...SINGLE_MACHINE_PROFILE.operations];
+  for (const name of ['shellnet-reads', 'shellnet-writes']) {
+    const record = JSON.parse(readFileSync(join(SHELLNET, `${name}.json`), 'utf8'));
+    const rows = String(record.admission).trim().split('\n').map(line => JSON.parse(line));
+    const { state, tmp } = turn();
+    for (const row of rows.filter(r => r.phase === 'pre')) {
+      const decided = admitToolCall({ tool_name: row.tool, tool_input: JSON.parse(row.input) }, { ...JSON.parse(readFileSync(join(state, 'config.json'), 'utf8')), tmp }, row.n,
+        { exists: existsSync, realpath: realpathSync });
+      expect([row.tool, decided.decision]).toEqual([row.tool, row.decision]);
+    }
+    const requests = String(record.egress).trim().split('\n').map(line => JSON.parse(line)).filter(r => r.phase === 'request' && r.method !== 'CONNECT');
+    expect(requests.length).toBeGreaterThan(0);
+    for (const request of requests) {
+      if (request.kind === 'scope') { expect(egressTarget(`${String(request.host)}:80`, 'http:').host).toBeNull(); continue; }
+      expect(admitEgress({ method: request.method, path: request.path }, ops)).toMatchObject({ decision: request.decision, kind: request.kind });
+    }
+  }
 });

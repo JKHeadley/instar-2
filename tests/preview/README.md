@@ -3574,9 +3574,25 @@ servers (Part Thirteen §9,
   agents they may start cannot be reserved before dispatch), and any other skill name is refused. A web read of a loopback, private or
   local-name host is refused; a tool the hook does not classify is refused. Each call takes one of
   the step's 32 slots (shared with the turn's subagents) by exclusive create, so overlapping calls cannot exceed the
-  cap. The sandbox refuses reads from `/` down except the scratch volume and the system files commands need, writes
-  outside the volume, the network (a shell cannot write to the network), unix sockets and signals to other
-  processes; the harness's messaging socket and token are removed from every command.
+  cap. The sandbox refuses reads from `/` down except the scratch volume, the system files commands need and the
+  network tools' own locations (the runner's node and npm, the developer tools' git), writes outside the volume, unix
+  sockets and signals to other processes; the harness's messaging socket and token are removed from every command.
+- Shell network (`egress-proxy.mjs`): the sandbox lets a command reach exactly one place, the turn's checkpoint, a
+  proxy the runner starts on a loopback port before launch and stops after the turn (the settings' `httpProxyPort`).
+  It intercepts HTTPS with the turn's own trust root (key in `state/egress-trust/`, certificate at
+  `<volume>/egress-ca.pem`, trusted only through the variables the shell prefix sets), resolves each host and
+  requires every address public, connects to the address it checked, and decides each request by method and path:
+  GET, HEAD and a git fetch (`git-upload-pack`) are reads; anything else (POST, PUT, PATCH, DELETE, a git push from
+  `service=git-receive-pack` on, a publish) is a `network-write` for the effect doorway, which the single-machine
+  profile refuses. A loopback, private, link-local, CGNAT or local-name host is refused before any connection (the
+  prefix empties `NO_PROXY`, so those ranges reach the checkpoint and are refused on the record rather than by the
+  sandbox alone). Every decision is appended to `state/egress.jsonl` before the request goes anywhere and journaled
+  in the turn's trace (`egress`, `egressRequests`, `egressLimited`); `status` counts admitted and refused shell
+  network requests. Bounds per turn: 256 MiB through it, 16 connections at once, 512 requests, 30 s idle per
+  connection. The shell's HOME is `<volume>/home`, so caches and tool configuration stay on the volume. The harness
+  protects `.git` under the workspace, so a repository is cloned under `$TMPDIR`. `npm install` succeeds, but its audit
+  request is a POST and is refused, so `npm audit` does not work; SSH remotes do not work (only HTTP(S) reaches the
+  checkpoint).
 - MCP: `ROOT/mcp.json` (the operator's file; absent means none) is `{"mcpServers": {name: {command, args?, env?}},
   "reads": ["mcp__name__tool", …]}`. Its launch configuration, with any credential in `env`, is copied into the
   turn's admission state, which no tool can read; servers run outside the sandbox as the runner's identity.
@@ -3597,8 +3613,9 @@ servers (Part Thirteen §9,
 npx vitest run --maxWorkers 1 tests/preview/tool-admission.test.ts
 npx vitest run --maxWorkers 1 tests/preview/tool-turn.test.ts
 npx vitest run --maxWorkers 1 tests/preview/tool-turn-replay.test.ts
+npx vitest run --maxWorkers 1 tests/preview/egress-proxy.test.ts
 npx vitest run --maxWorkers 1 tests/preview/tools-default.test.ts
 npx vitest run --maxWorkers 1 tests/assembly/production-provider-tools.test.ts
 INSTAR_TOOL_TURN_LIVE_TEST=1 npx vitest run --maxWorkers 1 tests/integration/tool-turn-live.test.ts   # five real harness turns
-INSTAR_TOOL_TURN_FULL_LIVE_TEST=1 INSTAR_TOOL_TURN_CASE=full npx vitest run --maxWorkers 1 tests/integration/tool-turn-full-live.test.ts  # one per case: full, outward, stop-child
+INSTAR_TOOL_TURN_FULL_LIVE_TEST=1 INSTAR_TOOL_TURN_CASE=full npx vitest run --maxWorkers 1 tests/integration/tool-turn-full-live.test.ts  # one per case: full, outward, stop-child, shellnet-reads, shellnet-writes, shellnet-stop
 ```

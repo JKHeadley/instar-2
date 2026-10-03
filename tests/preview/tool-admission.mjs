@@ -33,9 +33,26 @@ const SHELL_SAFE_PATH = /^\/[A-Za-z0-9_./@-]+$/u;
  * and this removes both values from the command's environment as well. `TMPDIR` points at the turn's
  * own scratch volume (the harness's shared default is refused for writes), and `ulimit -f` bounds each
  * file a command writes (65536 blocks of 512 bytes). `tmp` is absolute and shell-safe. */
-export function toolShellPrefix(tmp) {
+export function toolShellPrefix(tmp, egress = null) {
   if (typeof tmp !== 'string' || !SHELL_SAFE_PATH.test(tmp)) throw Error('tool admission: shell temporary directory absent');
-  return `unset CLAUDE_CODE_MESSAGING_TOKEN CLAUDE_CODE_MESSAGING_SOCKET; export TMPDIR=${tmp}; ulimit -f 65536; `;
+  const base = `unset CLAUDE_CODE_MESSAGING_TOKEN CLAUDE_CODE_MESSAGING_SOCKET; export TMPDIR=${tmp}; ulimit -f 65536; `;
+  if (egress === null || egress === undefined) return base;
+  // The shell's network checkpoint (egress-proxy.mjs): its port, the turn's own trust root (a public certificate on the
+  // scratch volume; its key stays in the admission state), a HOME on the scratch volume (tools keep caches and config
+  // there, never in the login profile), the developer tools' own git and python3 and the runner's node first on PATH (the
+  // /usr/bin shims would look up a system link outside the sandbox), and no system git configuration, so curl, git, npm and
+  // pip reach the network through it.
+  const { port, ca, home, path, developer } = egress;
+  if (!Number.isSafeInteger(port) || port < 1 || port > 65535 || ![ca, home].every(value => typeof value === 'string' && SHELL_SAFE_PATH.test(value))
+    || ![path, developer].every(value => value === undefined || (typeof value === 'string' && SHELL_SAFE_PATH.test(value))))
+    throw Error('tool admission: shell egress checkpoint absent');
+  const proxy = `http://127.0.0.1:${String(port)}`;
+  // NO_PROXY is emptied: the harness exempts loopback and private ranges from its proxy, and every request, those included,
+  // is to be decided (and refused) at the checkpoint, on the record.
+  return `${base}export HOME=${home} HTTPS_PROXY=${proxy} HTTP_PROXY=${proxy} https_proxy=${proxy} http_proxy=${proxy} NO_PROXY= no_proxy= `
+    + `SSL_CERT_FILE=${ca} CURL_CA_BUNDLE=${ca} GIT_SSL_CAINFO=${ca} NODE_EXTRA_CA_CERTS=${ca} REQUESTS_CA_BUNDLE=${ca} PIP_CERT=${ca} `
+    + `npm_config_cafile=${ca} npm_config_update_notifier=false GIT_CONFIG_NOSYSTEM=1 GIT_ATTR_NOSYSTEM=1${developer ? ` DEVELOPER_DIR=${developer}` : ''}`
+    + ` PATH=${[developer ? `${developer}/usr/bin` : null, path ?? null, '$PATH'].filter(Boolean).join(':')}; `;
 }
 export const FILE_TOOLS = Object.freeze(['Read', 'Write', 'Edit', 'NotebookEdit']);
 const SEARCH_TOOLS = Object.freeze(['Glob', 'Grep']);
@@ -130,6 +147,35 @@ export function webReadHost(url) {
   return { host };
 }
 
+/** The host and port a shell request targets (a CONNECT authority `host:port`, or an absolute http(s) URL), when the
+ * host is public-looking; otherwise null with a reason. The same host rule as a web read. */
+export function egressTarget(authority, scheme = 'https:') {
+  let parsed; try { parsed = new URL(`${scheme}//${String(authority)}/`); } catch { return { host: null, reason: 'not a host' }; }
+  if (parsed.pathname !== '/' || parsed.search || parsed.hash) return { host: null, reason: 'not a host' };
+  const target = webReadHost(parsed.href);
+  if (target.host === null) return target;
+  const port = parsed.port ? Number(parsed.port) : (scheme === 'http:' ? 80 : 443);
+  return { host: target.host, port };
+}
+
+/** The shell's network checkpoint (the egress proxy every sandboxed command is forced through): the decision for one HTTP
+ * request it can see in full (method, host, path), after TLS interception. A read is admitted: GET or HEAD, or a git fetch
+ * (the smart-HTTP `git-upload-pack` exchange, which is a POST carrying only the refs wanted). Everything else (POST, PUT,
+ * PATCH, DELETE, a git push from its discovery request on, a package publish) is a network write for the effect doorway,
+ * which refuses it unless the installed profile registers `tool:network-write`. */
+export function admitEgress({ method, path }, operations) {
+  const verb = String(method ?? '').toUpperCase(), target = String(path ?? '');
+  const query = target.includes('?') ? target.slice(target.indexOf('?') + 1) : '', route = target.split('?')[0];
+  const service = new URLSearchParams(query).get('service');
+  const write = reason => { const admitted = admitToolEffect('network-write', operations); return admitted.admitted
+    ? { decision: 'allow', reason: admitted.reason, kind: 'network-write' }
+    : { decision: 'deny', reason: `${reason}: ${admitted.reason}`, kind: 'network-write' }; };
+  if (service === 'git-receive-pack' || route.endsWith('/git-receive-pack')) return write('a git push');
+  if (verb === 'GET' || verb === 'HEAD') return { decision: 'allow', reason: `${verb} read`, kind: 'network-read' };
+  if (verb === 'POST' && route.endsWith('/git-upload-pack')) return { decision: 'allow', reason: 'git fetch', kind: 'network-read' };
+  return write(`${verb || '(no method)'} is a network write`);
+}
+
 /**
  * One PreToolUse decision. `call` is the hook input ({tool_name, tool_input, agent_id?}); `config` is the turn's
  * {workspace (real path), tmp (the shell's temporary directory), maxCalls, maxWriteBytes, operations, children?
@@ -165,7 +211,7 @@ export function admitToolCall(call, config, n, fs, child = 1) {
     if (!command.trim()) return deny('empty command');
     if (input.dangerouslyDisableSandbox) return effect('unsandboxed');
     return { decision: 'allow', reason: 'sandboxed command',
-      updatedInput: { ...input, command: toolShellPrefix(config.tmp) + command } };
+      updatedInput: { ...input, command: toolShellPrefix(config.tmp, config.egress ?? null) + command } };
   }
   if (tool === 'WebFetch') {
     // WebFetch only ever issues a GET; what it may reach is a public host.
