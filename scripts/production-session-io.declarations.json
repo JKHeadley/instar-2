@@ -2,7 +2,7 @@
   {
     "type": "Declaration",
     "schemaVersion": 1,
-    "id": "production-session-io.sessions",
+    "id": "production-session-io.createProductionSessionIO",
     "kind": "stores",
     "status": "live",
     "requiredFacts": {
