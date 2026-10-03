@@ -128,6 +128,13 @@ async function replay(answer: (input: Input) => unknown, name: string,
     expect(turn.memoryUndecided).toBe(true);
     await check(w, clock);
     w.journal.close();
+    // The decision is a durable journal row: a reopened root carries the same cancels and open requests.
+    const reopened = openPreviewJournal(join(root, 'journal.encrypted'), key);
+    try {
+      expect(reopened.view.reminderCancels).toEqual(w.journal.view.reminderCancels);
+      expect(openRequests(reopened.view).map(item => item.quote))
+        .toEqual(openRequests(w.journal.view).map(item => item.quote));
+    } finally { reopened.close(); }
   } finally { rmSync(root, { recursive: true, force: true }); }
 }
 const fireDue = async (w: ReturnType<typeof world>, clock: { now: number }) => {
