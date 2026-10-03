@@ -9,8 +9,9 @@ import { createProductionTelegramIO, createSubscriptionProviderIO, productionSto
 import { openProductionStorage } from '../../src/assembly/production-storage.js';
 import { DEFAULT_SUBSCRIPTION_DOORWAY, subscriptionDoorway,
   SUBSCRIPTION_PREVIEW_EXPIRY, SUBSCRIPTION_TOOLS_SYSTEM_PROMPT } from '../../src/assembly/production-provider.js';
-import { runToolTurn, toolPacketFits, toolStatusLines, toolTurnEligible } from './tool-turn.mjs';
-import { prepareSessionAdmission, sessionAdmissionCeiling, sessionAdmissionCommand } from './session-admission.mjs';
+import { attachSessionVolume, runToolTurn, toolPacketFits, toolStatusLines, toolTurnEligible } from './tool-turn.mjs';
+import { prepareSessionAdmission, sessionAdmissionCommand } from './session-admission.mjs';
+import { createAdmissionGate, createToolEffectOwner } from './admission-gate.mjs';
 import { redact } from '../../src/recall/redact.js';
 import { durablePreviewWrite } from './durable-write.js';
 import { prepareJournalEnvelope } from './journal-envelope.js';
@@ -1193,7 +1194,7 @@ async function main() {
   // Rule 55: poll-failure pressure is episode state; every attempt that changes it is durable in the run log
   // before the loop continues, so neither a relaunch nor a crash resets it.
   let failedPolls = 0, conflictedPolls = 0;
-  let identityVerified = false, routeHealthy = true, active = null, toolsActive = () => false, toolsRecord = null, sessionWork = null;
+  let identityVerified = false, routeHealthy = true, active = null, toolsActive = () => false, toolsRecord = null, sessionWork = null, gate = null;
   const workerStop = { value: false };
   const signal = name => { signalled = true; signalName ??= name; workerStop.value = true; };
   process.once('SIGINT', signal); process.once('SIGTERM', signal); process.once('SIGHUP', signal);
@@ -1554,7 +1555,7 @@ async function main() {
     const invokeTools = async (prepared, id) => (await runToolTurn({ journal, root, id, prepared,
       promptLimit: toolPromptLimit(),
       deniedRoots: [realpathSync(root), profile.home, profile.configDirectory, profile.workingDirectory],
-      operations: SINGLE_MACHINE_PROFILE.operations, now: wallNow, redactText: text => redact(text).text,
+      now: wallNow, redactText: text => redact(text).text, gate, owner: ownerMachine,
       ...(doorway.toolTurn ? { system: doorway.toolTurn.system, admission: doorway.toolTurn } : {}),
       fallback: async () => ({ result: await invokeSubscription(prepared, id) }),
       invoke: toolTurn => invokeSubscription(prepared, id, undefined, undefined, toolTurn) })).result;
@@ -1622,7 +1623,7 @@ async function main() {
         current: { owner: root.split('/').at(-1), launch: launchedAt, conversation: conversationOf(journal.view.genesis) }, ...ownedActivity(root) }),
       statusLines: () => [...installation ? installationStatusLines(installation, launchedAt, (() => { try { return installedCode(); } catch { return null; } })(),
         installUpdate, installUpdate && updateDelivery(installUpdate, journal.view.order), timeZoneOf(options)) : [],
-        ...toolStatusLines(journal.view, toolsActive())],
+        ...toolStatusLines(journal.view, toolsActive(), Boolean(doorway.toolTurn?.harness))],
       checkOutbound: text => { if (redact(text).count) throw Error('preview: outbound secret refused'); },
       secrets: custody,
       model: async ({ id, prepared }) => {
@@ -1792,16 +1793,30 @@ async function main() {
     // new step starts, and an open step's child is stopped. Each step is admitted and held by this
     // process's one resource owner and reserves its call liability in the journal before it exists.
     const sessionSetup = sessionWorkOf(options);
+    // The host's one admission checkpoint for every harness it delegates to (admission-gate.mjs): each model call of a
+    // delegated session or a Codex tool turn takes its claim's reserved allowance here before dispatch, each delegation
+    // becomes a durable child edge first, and each consequential tool passes the effect owner by exact operation.
+    if (sessionSetup !== null || doorway.toolTurn?.harness) {
+      const gateStopped = () => workerStop.value || existsSync(stopPath) || !ownerHeld() || journal.view.stop !== null
+        || wallNow() >= journal.view.expires || !active();
+      const appendWork = record => journal.append({ kind: 'session-work', record, at: wallNow() });
+      gate = await createAdmissionGate({ append: appendWork, stopped: gateStopped, now: wallNow,
+        effects: createToolEffectOwner({ operations: SINGLE_MACHINE_PROFILE.operations, append: appendWork, stopped: gateStopped,
+          now: wallNow, prepared: identity => (journal.view.toolEffects ?? []).includes(identity) }) });
+    }
     if (sessionSetup !== null) {
       const sessionBytes = readFileSync(sessionSetup.activation, 'utf8'), sessionActivation = JSON.parse(sessionBytes);
       doorway.session.validateActivation(sessionActivation, profile, required(options, 'model'), wallNow(), journal.view.expires);
       requireAuthority(options, sessionActivation, sessionSetup.activation, journal.view, wallNow());
       if (!activationMatchesJournal(journal.view, sessionActivation)) throw Error('preview: session work activation differs from journal');
       const sessionActive = () => { try { return readFileSync(sessionSetup.activation, 'utf8') === sessionBytes; } catch { return false; } };
-      const scope = join(root, 'session-work');
+      // Rule 60: the session's working scope is a persistent fixed-size volume (tool-turn.mjs attachSessionVolume), mounted
+      // before the first step, so every file a step writes, however many, is bounded together.
+      const scope = join(realpathSync(root), 'session-work');
       mkdirSync(scope, { recursive: true, mode: 0o700 });
       chmodSync(scope, 0o700);
       const project = realpathSync(scope), framework = doorway.session.framework;
+      const mountVolume = () => { if (attachSessionVolume(root) !== project) throw Error('preview: the session volume is not the working scope'); };
       const physical = createProductionSessionIO({ stateDirectory: join(root, 'session-work-state'), tmuxPath: sessionSetup.tmux,
         home: profile.home, configHome: profile.configDirectory, cwd: project });
       const stoppedNow = () => workerStop.value || existsSync(stopPath) || !ownerHeld() || journal.view.stop !== null
@@ -1811,21 +1826,22 @@ async function main() {
       // the step's reserved call liability, MCP and other consequential tools go to the effect doorway, and every
       // shell command runs confined. The state lives beside the working scope, never inside it.
       const admissionBase = join(root, 'session-work-state', 'admission');
-      const harness = doorway.session.harness;
       sessionWork = { authority: `session work grant ${sessionActivation.reference}: one scheduled work step for the verified operator, `
         + 'with the full tool set behind the admission hook, its result returned by file', port: take(createSessionWorkPort({
         createDriver: resolveIntake => createProductionSessionDriver({ operatorOwnUse: true, confinement: 'admitted',
           toolAdmission: { command: sessionAdmissionCommand({ base: admissionBase }),
-            timeoutSeconds: Math.ceil(SESSION_WORK_LIMITS.deadlineMs / 1000) },
+            timeoutSeconds: Math.ceil(SESSION_WORK_LIMITS.deadlineMs / 1000) }, modelGate: claim => gate.base(claim),
           framework, executable: profile.executable, cwd: project, home: profile.home, configHome: profile.configDirectory,
           model: required(options, 'model'), context, io: physical, now: wallNow, stopped: stoppedNow, resolveIntake,
           maxSessions: SESSION_WORK_LIMITS.maxSessions, turnDeadlineMs: SESSION_WORK_LIMITS.deadlineMs,
           readyTimeoutMs: 30000, protectedSessions: [] }),
         io: { readResult: (path, maxBytes) => physical.readResult(path, maxBytes), clearResult: path => physical.clearResult(path),
           modelCalls: since => physical.modelCalls(framework, project, profile.configDirectory, since), wait: delay,
-          prepareAdmission: claim => { prepareSessionAdmission({ base: admissionBase, claim, workspace: project, harness,
-            maxCalls: SESSION_WORK_LIMITS.maxCallsPerStep - 1, operations: SINGLE_MACHINE_PROFILE.operations }); },
-          admissionCeiling: claim => sessionAdmissionCeiling(admissionBase, claim) },
+          prepareAdmission: (claim, edge) => { mountVolume();
+            prepareSessionAdmission({ base: admissionBase, claim, workspace: project, maxCalls: SESSION_WORK_LIMITS.maxCallsPerStep,
+              gate: gate.base(claim) });
+            gate.open(claim, { framework, allowance: SESSION_WORK_LIMITS.maxCallsPerStep, edge }); },
+          admissionState: claim => gate.state(claim), closeAdmission: claim => { gate.close(claim); } },
         resources: { admit: async () => {
           doorway.session.validateActivation(sessionActivation, profile, required(options, 'model'), wallNow(), journal.view.expires);
           await doorway.session.admit({ profile, io: admissionIO, deadline: wallNow() + 15000, now: wallNow });
@@ -2187,6 +2203,7 @@ async function main() {
     } finally {
       // A delegated session never outlives the launch that owns it.
       try { sessionWork?.port.stop(); } catch { /* the driver's next boot sweep and stop authority find it */ }
+      if (gate) { gate.closeAll(); await gate.stop(); }
       if (shared) await shared.stop();
       journal?.close(); storage.close(); if (ownerClaim?.owner) ownerClaim.release(); process.removeListener('SIGINT', signal); process.removeListener('SIGTERM', signal); process.removeListener('SIGHUP', signal);
     }

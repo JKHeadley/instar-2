@@ -21,7 +21,9 @@ import { value } from '../facts/fixtures.js';
 // @ts-expect-error physical JS host is intentionally outside the pure core
 import { createProductionSessionIO } from '../../scripts/production-session-io.mjs';
 // @ts-expect-error the admission hook and its state stay plain JavaScript: the harness runs them without a loader
-import { prepareSessionAdmission, sessionAdmissionCeiling, sessionAdmissionCommand } from '../preview/session-admission.mjs';
+import { prepareSessionAdmission, sessionAdmissionCommand } from '../preview/session-admission.mjs';
+// @ts-expect-error the host admission checkpoint stays plain JavaScript
+import { createAdmissionGate, createToolEffectOwner } from '../preview/admission-gate.mjs';
 // @ts-expect-error physical JS host is intentionally outside the pure core
 import { hostResources } from '../../scripts/resource-owner.mjs';
 
@@ -54,18 +56,23 @@ it.skipIf(!ready)('runs one long work item through the session driver and return
     home, configHome, cwd: scope });
   const admission = join(root, 'admission');
   const rows: (SessionWorkEdge | SessionWorkEdgeClose)[] = [];
+  // The host's model-dispatch checkpoint: every model call of the session reaches its provider only through it.
+  const append = (record: SessionWorkEdge | SessionWorkEdgeClose) => { rows.push(record); };
+  const gate = await createAdmissionGate({ append, stopped: () => false, now: Date.now,
+    effects: createToolEffectOwner({ operations: [], append, stopped: () => false, now: Date.now, prepared: () => false }) });
   const port = value(createSessionWorkPort({
     createDriver: resolveIntake => createProductionSessionDriver({ operatorOwnUse: true, confinement: 'admitted',
       toolAdmission: { command: sessionAdmissionCommand({ base: admission }), timeoutSeconds: 600 },
+      modelGate: (claim: string) => gate.base(claim),
       framework: framework as 'claude-code' | 'codex-cli', executable: executable!, cwd: scope, home, configHome,
       context: f.c, io: physical, now: Date.now, stopped: () => false, resolveIntake,
       maxSessions: 1, turnDeadlineMs: 600_000, readyTimeoutMs: 60_000, protectedSessions: [] }),
     io: { readResult: (path, maxBytes) => physical.readResult(path, maxBytes), clearResult: path => physical.clearResult(path),
       modelCalls: since => physical.modelCalls(framework, scope, configHome, since),
       wait: ms => new Promise(done => setTimeout(done, ms)),
-      prepareAdmission: (claim: string) => { prepareSessionAdmission({ base: admission, claim, workspace: scope,
-        harness: framework === 'claude-code' ? 'claude' : 'codex', maxCalls: 23, operations: [] }); },
-      admissionCeiling: (claim: string) => sessionAdmissionCeiling(admission, claim) },
+      prepareAdmission: (claim: string, edge: SessionWorkEdge) => { prepareSessionAdmission({ base: admission, claim, workspace: scope,
+        maxCalls: 24, gate: gate.base(claim) }); gate.open(claim, { framework, allowance: 24, edge }); },
+      admissionState: (claim: string) => gate.state(claim), closeAdmission: (claim: string) => { gate.close(claim); } },
     // The host's one resource owner holds the session's process tree, as the launcher does.
     resources: { admit: async () => {
       const held = await hostResources.hold('maintenance', { timeout: 30_000, stopped: () => false });
@@ -99,6 +106,11 @@ it.skipIf(!ready)('runs one long work item through the session driver and return
     expect(pre.some(row => row.tool === 'Bash' && row.decision === 'allow' && row.reason === 'confined command'), JSON.stringify(pre)).toBe(true);
     expect(pre.some(row => row.decision === 'deny' && row.kind === 'scope'), JSON.stringify(pre)).toBe(true);
     expect(rows[1]).toMatchObject({ reserved: 24 });
+    // Every model call went through the checkpoint, inside the reservation, and nothing was refused there.
+    const gated = gate.state(claim);
+    expect(gated.calls, JSON.stringify(gated)).toBeGreaterThan(0);
+    expect(gated.calls).toBeLessThanOrEqual(24);
+    expect(gated).toMatchObject({ refused: false, closed: true });
     expect((rows[1] as SessionWorkEdgeClose).calls ?? 0).toBeLessThanOrEqual(24);
     // The Rule 114 edge and its close are both in hand, in that order.
     expect(rows.map(row => row.type)).toEqual(['SessionWorkEdge', 'SessionWorkEdgeClose']);
@@ -114,6 +126,7 @@ it.skipIf(!ready)('runs one long work item through the session driver and return
     expect(physical.tmux(['has-session', '-t', `=${name}:`]).code).not.toBe(0);
   } finally {
     try { value(port.stop()); } catch { /* reported by the sweep below */ }
+    await gate.stop();
     for (const row of physical.load().sessions) physical.tmux(['kill-session', '-t', `=${row.name}:`]);
     rmSync(root, { recursive: true, force: true });
   }

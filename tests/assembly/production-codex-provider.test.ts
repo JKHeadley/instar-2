@@ -77,7 +77,7 @@ it('is registered as a model doorway beside the Claude one, with its own provide
   expect(codex.conversationFraming).toBe(CODEX_CONVERSATION_FRAMING);
   // Rule 30: the same scoped-tool route as the Claude doorway, its own framing and policy (never borrowed).
   expect(codex.toolsFraming).toBe(CODEX_TOOLS_FRAMING);
-  expect(codex.toolTurn).toMatchObject({ system: CODEX_TOOLS_SYSTEM_PROMPT, maxCalls: CODEX_TOOL_LIMITS.maxTurns - 1,
+  expect(codex.toolTurn).toMatchObject({ system: CODEX_TOOLS_SYSTEM_PROMPT, maxCalls: CODEX_TOOL_LIMITS.maxTurns,
     harness: 'codex', confinedShell: true });
   expect(codex.policyFor('gpt-5.6-sol', CODEX_TOOLS_FRAMING).framing).toBe(CODEX_TOOLS_FRAMING);
   expect(subscriptionDoorway('claude-code-subscription').provider).toBe('anthropic');
@@ -287,7 +287,8 @@ it('admits session work only under its own reviewed grant, and only on a subscri
     '--dangerously-bypass-hook-trust', '--model', f.model]);
   expect(policy.limits).toEqual(SESSION_WORK_LIMITS);
   expect(policy).toMatchObject({ confinement: 'admitted-tools', effects: 'effect-doorway',
-    admission: { slots: SESSION_WORK_LIMITS.maxCallsPerStep - 1, mcp: 'effect doorway', shell: 'shell-sandbox-v1' } });
+    admission: { allowance: SESSION_WORK_LIMITS.maxCallsPerStep, mcp: 'effect owner by exact registered operation', shell: 'shell-sandbox-v1',
+      delegation: 'admitted as a durable child edge', storage: 'bounded session volume' } });
   const grant = { ...f.activation(hash(policy)), acceptedResiduals: [SESSION_WORK_RESIDUAL] };
   expect(() => session.validateActivation(grant, f.profile, f.model, 1000)).not.toThrow();
   // An answer activation is not a session grant, and a session grant that does not accept the
@@ -312,30 +313,38 @@ const recordedTurn = (name: string) => ({ events: readFileSync(join(TOOL_TURNS, 
   admission: readFileSync(join(TOOL_TURNS, name, 'admission.jsonl'), 'utf8'),
   run: JSON.parse(readFileSync(join(TOOL_TURNS, name, 'run.json'), 'utf8')) as { recordedAgainst: string; exit: number; args: string[] } });
 
-it('Rule 30: a Codex tool turn keeps its shell and patch tool, installs the admission hook per turn, and binds its own policy', () => {
+it('Rule 30 and revision 12: a Codex tool turn keeps its own tools, installs the hook and the model-dispatch checkpoint per turn', () => {
   // The same turn bounds as the Claude tool turn, so the runner's one reservation covers either doorway.
   expect(CODEX_TOOL_LIMITS.maxTurns).toBe(SUBSCRIPTION_TOOL_LIMITS.maxTurns);
   const args = codexToolsPolicy('gpt-6-astra').args;
-  for (const flag of ['--ignore-user-config', '--ignore-rules', '--ephemeral', '--dangerously-bypass-approvals-and-sandbox',
-    '--dangerously-bypass-hook-trust']) expect(args).toContain(flag);
+  for (const flag of ['--ignore-rules', '--ephemeral', '--dangerously-bypass-approvals-and-sandbox',
+    '--dangerously-bypass-hook-trust', 'web_search="live"']) expect(args).toContain(flag);
+  // The login home's own configuration (its installed MCP servers) is read: no blanket capability exclusion.
+  expect(args).not.toContain('--ignore-user-config');
   expect(args).not.toContain('--sandbox');
-  expect(CODEX_TOOLS_SYSTEM_PROMPT).toContain('exactly two tools: your shell and apply_patch');
-  expect(CODEX_TOOLS_SYSTEM_PROMPT).not.toContain('use no tools of any kind');
+  expect(CODEX_TOOLS_SYSTEM_PROMPT).toContain('your shell and apply_patch, live web search, subagents, and the MCP tools installed for you');
+  expect(CODEX_TOOLS_SYSTEM_PROMPT).not.toMatch(/There are no MCP servers|use no tools of any kind/u);
   expect(hash(codexToolsPolicy('gpt-6-astra'))).not.toBe(hash(codexConversationPolicy('gpt-6-astra')));
+  const gate = `http://127.0.0.1:4100/${'a'.repeat(32)}/tool-turn-0123456789abcdef-0`;
   const turn = { scratch: '/private/tmp/itt-1', workspace: '/private/tmp/itt-1/ws', stateDirectory: '/r/tool-turns/a-0/state',
-    deniedRoots: [], hook: { node: '/usr/local/bin/node', script: '/repo/tests/preview/tool-admission-hook.mjs' } };
+    deniedRoots: [], hook: { node: '/usr/local/bin/node', script: '/repo/tests/preview/tool-admission-hook.mjs' }, gate };
   const hooks = codexToolHookArgs(turn);
   expect(hooks).toEqual(['-c', `hooks.PreToolUse=[{matcher='*',hooks=[{type='command',command='/usr/local/bin/node /repo/tests/preview/`
     + `tool-admission-hook.mjs pre /r/tool-turns/a-0/state',timeout=300}]}]`, '-c', `hooks.PostToolUse=[{matcher='*',hooks=[{type='command',`
     + `command='/usr/local/bin/node /repo/tests/preview/tool-admission-hook.mjs post /r/tool-turns/a-0/state',timeout=300}]}]`,
-  '-C', turn.workspace, '-']);
+  '-c', 'model_provider=instar-gate', '-c', `model_providers.instar-gate={name="OpenAI",base_url="${gate}/backend-api/codex",`
+    + 'wire_api="responses",requires_openai_auth=true}', '-C', turn.workspace, '-']);
   expect(() => codexToolHookArgs({ ...turn, stateDirectory: "/r/it's" })).toThrow(/absolute and plain/u);
-  // The recorded live turns ran with exactly these arguments (paths scrubbed).
-  for (const name of ['ordinary', 'boundary']) {
+  // No checkpoint, no tool turn: a Codex turn has no model-call limit of its own.
+  const { gate: _gate, ...ungated } = turn;
+  expect(() => codexToolHookArgs(ungated)).toThrow(/model-dispatch checkpoint is required/u);
+  // The recorded live turns ran with exactly these arguments (paths and the checkpoint's port and secret scrubbed).
+  for (const name of ['ordinary', 'boundary', 'capabilities']) {
     const { run } = recordedTurn(name);
     expect(run.recordedAgainst).toBe('codex-cli 0.156.1');
     expect(run.args.slice(0, args.length)).toEqual([...codexToolsPolicy(run.args[run.args.indexOf('--model') + 1]!).args]);
-    expect(run.args.slice(args.length)).toHaveLength(7);
+    expect(run.args.slice(args.length)).toHaveLength(11);
+    expect(run.args).toContain('model_provider=instar-gate');
   }
 });
 
@@ -354,6 +363,23 @@ it('reads the recorded live tool turns (Rule 106): admitted shell and patch item
   expect(boundary).toMatchObject({ terminal: 'turn.completed', toolItems: 1 });
   const pre = recordedTurn('boundary').admission.split('\n').filter(Boolean).map(line => JSON.parse(line)).filter(row => row.phase === 'pre');
   expect(pre.map(row => [row.tool, row.decision, row.kind ?? null])).toEqual([['apply_patch', 'deny', 'scope'], ['Bash', 'allow', null]]);
+  // The capabilities turn: a live web search and a subagent ran through the checkpoints, the MCP send was refused before it
+  // ran (no item for it), and every tool item has an admitted call behind it.
+  const capabilities = parseCodexEventStream(recordedTurn('capabilities').events, CODEX_TOOL_ITEM_TYPES);
+  expect(capabilities).toMatchObject({ terminal: 'turn.completed', malformed: false });
+  expect(capabilities.disallowedItems).toEqual([]);
+  const items = recordedTurn('capabilities').events.split('\n').filter(Boolean).map(line => JSON.parse(line))
+    .filter(event => event.type === 'item.completed').map(event => event.item.type);
+  expect(items).toEqual(expect.arrayContaining(['web_search', 'collab_tool_call']));
+  expect(items).not.toContain('mcp_tool_call');
+  const capabilityPre = recordedTurn('capabilities').admission.split('\n').filter(Boolean).map(line => JSON.parse(line))
+    .filter(row => row.phase === 'pre');
+  expect(capabilityPre.map(row => [row.tool, row.decision, row.kind ?? null])).toEqual([['webrun', 'allow', null],
+    ['collaborationspawn_agent', 'allow', 'delegation'], ['collaborationwait_agent', 'allow', null],
+    ['mcp__threadline__threadline_send', 'deny', 'effect']]);
+  expect(capabilities.toolItems).toBeLessThanOrEqual(capabilityPre.filter(row => row.decision === 'allow').length);
+  // The same stream on the tool-free conversation framing is refused.
+  expect(parseCodexEventStream(recordedTurn('capabilities').events).disallowedItems).toEqual(expect.arrayContaining(['web_search', 'collab_tool_call']));
 });
 
 it('answers a Codex tool turn only when every tool item has an admitted call in the hook record', async () => {
@@ -362,7 +388,8 @@ it('answers a Codex tool turn only when every tool item has an admitted call in 
   const workspace = join(f.root, 'ws'), stateDirectory = join(f.root, 'state');
   for (const path of [workspace, stateDirectory]) mkdirSync(path, { mode: 0o700 });
   const toolTurn = { scratch: f.root, workspace, stateDirectory, deniedRoots: [],
-    hook: { node: process.execPath, script: join(process.cwd(), 'tests/preview/tool-admission-hook.mjs') } };
+    hook: { node: process.execPath, script: join(process.cwd(), 'tests/preview/tool-admission-hook.mjs') },
+    gate: `http://127.0.0.1:4100/${'a'.repeat(32)}/tool-turn-0123456789abcdef-0` };
   const recorded = recordedTurn('ordinary');
   const tools = (admission: string | null, overrides: Record<string, unknown> = {}) => {
     if (admission === null) rmSync(join(stateDirectory, 'admission.jsonl'), { force: true });

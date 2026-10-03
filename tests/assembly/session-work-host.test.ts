@@ -3,8 +3,8 @@
 // (tests/preview/session-transcript-shapes.json: one live Codex rollout and one live Claude Code
 // transcript, content removed, record types, call identifiers and order kept). The result reader is
 // bounded physically, and the resource owner holds and reclaims a session's real process tree.
-import { spawn } from 'node:child_process';
-import { mkdirSync, mkdtempSync, readFileSync, realpathSync, rmSync, utimesSync, writeFileSync } from 'node:fs';
+import { spawn, spawnSync } from 'node:child_process';
+import { linkSync, mkdirSync, mkdtempSync, readFileSync, realpathSync, rmSync, symlinkSync, utimesSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { afterEach, expect, it } from 'vitest';
@@ -84,6 +84,36 @@ it('reads a result physically bounded to its limit plus one byte, and a failed c
   // A destination that cannot be removed is an error, never silently left in place.
   mkdirSync(path);
   expect(() => w.io.clearResult(path)).toThrow();
+});
+
+it('reads a result only from a regular, singly-linked file inside the delegated scope: links and special files refuse', () => {
+  const w = world();
+  const path = join(w.scope, 'work.json');
+  const secret = join(w.root, 'outside-dummy-secret.json');
+  writeFileSync(secret, '{"reply":"DUMMY-SECRET-OUTSIDE-SCOPE"}');
+  // A symbolic link at the destination is never followed: the host would read with its own, broader authority.
+  symlinkSync(secret, path);
+  expect(() => w.io.readResult(path, 1024)).toThrow(/symbolic link/u);
+  rmSync(path);
+  // A hard link to an out-of-scope file is a second name for that file: refused.
+  linkSync(secret, path);
+  expect(() => w.io.readResult(path, 1024)).toThrow(/another link/u);
+  rmSync(path);
+  // A named pipe refuses at once, without blocking the host on a writer that never comes.
+  expect(spawnSync('/usr/bin/mkfifo', [path]).status).toBe(0);
+  const started = Date.now();
+  expect(() => w.io.readResult(path, 1024)).toThrow(/not a regular file/u);
+  expect(Date.now() - started).toBeLessThan(1000);
+  rmSync(path);
+  // A destination whose folder resolves outside the scope (a planted directory link) refuses.
+  mkdirSync(join(w.root, 'elsewhere'));
+  writeFileSync(join(w.root, 'elsewhere', 'work.json'), '{"reply":"outside"}');
+  symlinkSync(join(w.root, 'elsewhere'), join(w.scope, 'linked'));
+  expect(() => w.io.readResult(join(w.scope, 'linked', 'work.json'), 1024)).toThrow(/outside the delegated scope/u);
+  // The other side: an ordinary result file in the scope is read, physically bounded.
+  writeFileSync(path, '{"reply":"ordinary"}');
+  expect(w.io.readResult(path, 1024)).toBe('{"reply":"ordinary"}');
+  expect(JSON.stringify(w.io.readResult(path, 1024))).not.toContain('DUMMY-SECRET');
 });
 
 it('the resource owner admits a session step, holds its real process tree, and reclaims it on release', async () => {

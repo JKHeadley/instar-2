@@ -1,5 +1,36 @@
 [
   {
+    "revision": 6,
+    "date": "2026-10-03",
+    "status": "draft",
+    "cause": {
+      "kind": "draft",
+      "note": "Unit w4-sessiondriver, round-3 repair after Astra's unit review (VERDICT NO): the call ceiling, delegated agents, consequential tools, storage and result custody are enforced at checkpoints, keeping the full tool set (purpose revision 12). No constitution change."
+    },
+    "changes": [
+      {
+        "what": "\u00a75's spend-bound rule: every model call of a session step, harness-internal and subagent calls included, takes the step's reservation at the host's model-dispatch checkpoint before it is forwarded, and none is forwarded past it; the step is complete only on an accounting read made after the child stopped.",
+        "why": "Tool-call slots did not bound harness-internal calls no tool call precedes, so \u00a75's claim that every model call follows a tool call was false; and a post-stop meter read that was unknown or past the reservation still left a step complete.",
+        "ref": "tests/preview/admission-gate.mjs; src/assembly/production-session-driver.ts (modelGateLaunch); src/assembly/production-session-work.ts; tests/preview/admission-gate.test.ts; tests/assembly/production-session-work.test.ts; lanes/astra-unit-w4-sessiondriver-review.md (finding 2)"
+      },
+      {
+        "what": "\u00a75's tool rule: a delegation started inside a step is admitted only after its durable child edge is recorded, inheriting the parent's scope, allowance and stop, and a parent that closes first settles it as uncertain; a consequential tool passes the effect owner with its exact operation and input (exact registration, stop and fence, stable identity never prepared twice, durable preparation before dispatch).",
+        "why": "A nested agent ran with no durable edge, and an operation category in the profile admitted any MCP call without the consequential-effect tests or duplicate-send protection.",
+        "ref": "tests/preview/admission-gate.mjs; tests/preview/tool-admission.mjs; tests/preview/tool-admission-hook.mjs; tests/preview/journal.ts; tests/preview/session-admission.test.ts; lanes/astra-unit-w4-sessiondriver-review.md (findings 3-4)"
+      },
+      {
+        "what": "\u00a75's grant rule: the session's working scope is a persistent fixed-size volume, and the host reads a result only from a regular, singly-linked file inside the delegated scope, never following its name.",
+        "why": "A per-file limit did not bound the sum a step writes, and the host followed a child-planted symlink at the result destination and returned an out-of-scope file's contents.",
+        "ref": "tests/preview/tool-turn.mjs (attachSessionVolume); scripts/production-session-io.mjs (readResult); tests/preview/session-volume.test.ts; tests/assembly/session-work-host.test.ts; lanes/astra-unit-w4-sessiondriver-review.md (findings 1, 6)"
+      },
+      {
+        "what": "The session grant's accepted residual now names only the unmetered tokens of a subscription session.",
+        "why": "Harness-internal model calls are no longer a residual: the model-dispatch checkpoint enforces them.",
+        "ref": "src/assembly/production-session-work.ts (SESSION_WORK_RESIDUAL, SESSION_WORK_ADMISSION)"
+      }
+    ]
+  },
+  {
     "revision": 5,
     "date": "2026-10-03",
     "status": "draft",

@@ -1,8 +1,8 @@
 // Physical tmux and durable journal boundary for unconfined operator sessions.
 import { spawn, spawnSync } from 'node:child_process';
-import { existsSync, mkdirSync, readFileSync, readdirSync, renameSync, writeFileSync, chmodSync,
-  openSync, closeSync, fsyncSync, lstatSync, statSync, unlinkSync, readSync, rmSync } from 'node:fs';
-import { join } from 'node:path';
+import { existsSync, mkdirSync, readFileSync, readdirSync, renameSync, writeFileSync, chmodSync, constants,
+  openSync, closeSync, fsyncSync, fstatSync, lstatSync, realpathSync, statSync, unlinkSync, readSync, rmSync } from 'node:fs';
+import { dirname, join, sep } from 'node:path';
 import { fileURLToPath } from 'node:url';
 
 export function createProductionSessionIO({ stateDirectory, tmuxPath = '/opt/homebrew/bin/tmux',
@@ -19,6 +19,8 @@ export function createProductionSessionIO({ stateDirectory, tmuxPath = '/opt/hom
   mkdirSync(inboxDirectory, { recursive: true, mode: 0o700 });
   if (!lstatSync(inboxDirectory).isDirectory()) throw Error('session inbox must be a real directory');
   const base = { sessions: [], deliveries: [], resumes: {} };
+  // The delegated working scope, as the host resolves it once: a result is read only from a file inside it.
+  const scope = realpathSync(cwd);
   const env = Object.freeze({ PATH: '/usr/bin:/bin:/opt/homebrew/bin', HOME: home,
     CLAUDE_CONFIG_DIR: configHome, CODEX_HOME: configHome, LANG: 'en_US.UTF-8' });
   let depth = 0;
@@ -85,11 +87,29 @@ export function createProductionSessionIO({ stateDirectory, tmuxPath = '/opt/hom
       return readdirSync(inboxDirectory).filter(file => file.startsWith(`${name}.`) && file.endsWith('.json'))
         .slice(-100).flatMap(file => { try { return [JSON.parse(readFileSync(join(inboxDirectory, file), 'utf8'))]; } catch { return []; } });
     },
-    /** At most `maxBytes + 1` bytes of a delegated step's result file; null when it does not exist. */
+    /**
+     * At most `maxBytes + 1` bytes of a delegated step's result file; null when it does not exist. The child controls
+     * the destination, and this read runs with the host's broader authority, so custody is enforced here: the final
+     * name is never followed (a symbolic link refuses), the opened file must be a regular file with no other link,
+     * inside the delegated scope by real path, and still the file the name points at. A special file refuses without
+     * blocking the host (opened non-blocking). A refusal throws, so the step settles as not complete.
+     */
     readResult(path, maxBytes) {
       let fd;
-      try { fd = openSync(path, 'r'); } catch (error) { if (error?.code === 'ENOENT') return null; throw error; }
+      try { fd = openSync(path, constants.O_RDONLY | constants.O_NOFOLLOW | constants.O_NONBLOCK); }
+      catch (error) {
+        if (error?.code === 'ENOENT') return null;
+        if (error?.code === 'ELOOP') throw Error('result refused: the destination is a symbolic link');
+        throw Error(`result refused: the destination cannot be opened as a file (${error?.code ?? 'unknown'})`);
+      }
       try {
+        const opened = fstatSync(fd);
+        if (!opened.isFile()) throw Error('result refused: the destination is not a regular file');
+        if (opened.nlink !== 1) throw Error('result refused: the destination has another link');
+        const folder = realpathSync(dirname(path));
+        if (folder !== scope && !folder.startsWith(`${scope}${sep}`)) throw Error('result refused: the destination lies outside the delegated scope');
+        const named = lstatSync(path);
+        if (named.dev !== opened.dev || named.ino !== opened.ino) throw Error('result refused: the destination changed while it was opened');
         const buffer = Buffer.alloc(maxBytes + 1);
         let total = 0;
         while (total < buffer.length) { const read = readSync(fd, buffer, total, buffer.length - total, total); if (!read) break; total += read; }

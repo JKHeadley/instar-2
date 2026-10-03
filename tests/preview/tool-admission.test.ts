@@ -12,8 +12,7 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { afterEach, expect, it } from 'vitest';
 // @ts-expect-error The hook and its decision stay plain JavaScript: the harness runs them without a loader.
-import { admitToolCall, admitToolEffect, toolShellPrefix, toolTrace } from './tool-admission.mjs';
-import { SINGLE_MACHINE_PROFILE } from './activation-authority.js';
+import { admitToolCall, toolShellPrefix, toolTrace } from './tool-admission.mjs';
 
 const HOOK = join(__dirname, 'tool-admission-hook.mjs');
 const SPIKE = join(__dirname, 'fixtures/tool-turn/spike-cab6b51d');
@@ -27,8 +26,7 @@ function turn(maxCalls = 50) {
   const ws = join(root, 'ws'), outside = join(root, 'outside'), state = join(root, 'state'), tmp = join(root, 'tmp');
   writeFileSync(join(ws, 'in.txt'), 'hi\n'); writeFileSync(join(outside, 'canary.txt'), 'CANARY-DUMMY-0001\n');
   symlinkSync(outside, join(ws, 'link'));
-  writeFileSync(join(state, 'config.json'), JSON.stringify({ workspace: ws, tmp, maxCalls, maxWriteBytes: 1048576,
-    operations: [...SINGLE_MACHINE_PROFILE.operations] }));
+  writeFileSync(join(state, 'config.json'), JSON.stringify({ workspace: ws, tmp, maxCalls, maxWriteBytes: 1048576 }));
   return { root, ws, outside, state, tmp };
 }
 /** Marks the first `taken` call slots as already used (the state a step reaches after `taken` calls). */
@@ -93,22 +91,24 @@ it('decides every layer-A case of the spike through the real executable hook; sh
   expect(results).toEqual(cases.map(([label, want]) => [label, want]));
 });
 
-it('sends every consequential tool to the effect doorway, which refuses: the installed profile registers no tool operation', () => {
-  expect(SINGLE_MACHINE_PROFILE.operations.some((op: string) => op.startsWith('tool:'))).toBe(false);
-  for (const kind of ['network', 'mcp', 'unsandboxed']) {
-    const verdict = admitToolEffect(kind, SINGLE_MACHINE_PROFILE.operations);
-    expect(verdict).toEqual({ admitted: false, reason: expect.stringContaining(`registers no tool:${kind} operation`) });
-  }
-  // The other side of the boundary: a profile that registered the exact operation would admit it.
-  expect(admitToolEffect('network', ['tool:network']).admitted).toBe(true);
+it('a route with no admission checkpoint refuses every consequential tool and delegation; with one, the checkpoint decides', () => {
   const { ws, tmp } = turn();
   const fs = { exists: () => true, realpath: (p: string) => p };
-  const config = { workspace: ws, tmp, maxCalls: 5, maxWriteBytes: 10, operations: SINGLE_MACHINE_PROFILE.operations };
-  const call = (tool_name: string, tool_input: object) => admitToolCall({ tool_name, tool_input }, config, 1, fs);
+  const config = { workspace: ws, tmp, maxCalls: 5, maxWriteBytes: 10 };
+  const call = (tool_name: string, tool_input: object, over: object = {}) => admitToolCall({ tool_name, tool_input }, { ...config, ...over }, 1, fs);
   expect(call('Bash', { command: 'ls', dangerouslyDisableSandbox: true }))
-    .toMatchObject({ decision: 'deny', kind: 'unsandboxed', reason: expect.stringContaining('effect doorway') });
-  expect(call('WebFetch', { url: 'https://example.com' })).toMatchObject({ decision: 'deny', kind: 'network' });
-  expect(call('mcp__x__y', {})).toMatchObject({ decision: 'deny', kind: 'mcp' });
+    .toMatchObject({ decision: 'deny', kind: 'effect', reason: expect.stringContaining('no effect owner') });
+  expect(call('WebFetch', { url: 'https://example.com' })).toMatchObject({ decision: 'deny' });
+  expect(call('mcp__x__y', {})).toMatchObject({ decision: 'deny', kind: 'effect' });
+  expect(call('Agent', { prompt: 'x' }, { delegation: true })).toMatchObject({ decision: 'deny', kind: 'delegation' });
+  // The other side: with the checkpoint named, a consequential tool and a delegation are sent to it (never allowed by
+  // category here), and a network read the route admits is allowed.
+  const gated = { gate: 'http://127.0.0.1:4100/x/claim', delegation: true, networkReads: true };
+  expect(call('mcp__x__y', {}, gated)).toMatchObject({ decision: 'gate', kind: 'effect' });
+  expect(call('Bash', { command: 'ls', dangerouslyDisableSandbox: true }, gated)).toMatchObject({ decision: 'gate', kind: 'effect' });
+  expect(call('Agent', { prompt: 'x' }, gated)).toMatchObject({ decision: 'gate', kind: 'delegation' });
+  expect(call('collaborationspawn_agent', { message: 'x' }, gated)).toMatchObject({ decision: 'gate', kind: 'delegation' });
+  expect(call('webrun', { search_query: [] }, gated)).toMatchObject({ decision: 'allow', reason: 'network read' });
   // The other side: ordinary work is never refused for the words in its data (review round 1, finding 4). Each of these
   // was refused by the old keyword classifier although none sends, controls the host or reaches the network.
   for (const command of ['wc -c telegram.txt', 'printf "%s\\n" "open"', 'echo https://example.com', 'grep -c slack notes.txt', 'sh local-script.sh'])
@@ -191,8 +191,7 @@ it('replays every tool call the spike recorded under the real harness and reache
     const root = realpathSync(mkdtempSync(join(tmpdir(), 'tool-replay-'))); roots.push(root);
     const ws = join(root, run, 'ws'), state = join(root, run, 'state');
     for (const dir of [ws, state, join(root, 'outside'), join(root, 'protected')]) mkdirSync(dir, { recursive: true });
-    writeFileSync(join(state, 'config.json'), JSON.stringify({ workspace: ws, tmp: join(root, run, 'tmp'), maxCalls: cap, maxWriteBytes: 1048576,
-      operations: [...SINGLE_MACHINE_PROFILE.operations] }));
+    writeFileSync(join(state, 'config.json'), JSON.stringify({ workspace: ws, tmp: join(root, run, 'tmp'), maxCalls: cap, maxWriteBytes: 1048576 }));
     const rows = readFileSync(join(SPIKE, run, 'admission.jsonl'), 'utf8').trim().split('\n').map(line => JSON.parse(line));
     for (const row of rows) {
       const input = JSON.parse(JSON.stringify(row.input).split(PREFIX).join(root));

@@ -271,6 +271,9 @@ export interface SubscriptionToolTurn {
   /** Roots a tool may never read, on top of /Users and /Volumes (the runner root, the login profile). */
   readonly deniedRoots: readonly string[];
   readonly hook: Readonly<{ node: string; script: string }>;
+  /** The host's model-dispatch checkpoint for this turn (admission-gate.mjs), for a harness with no model-call limit of
+   * its own: every model call of the turn takes its reserved allowance there before dispatch. */
+  readonly gate?: string;
 }
 const SAFE_PATH = /^\/[A-Za-z0-9_./@-]+$/u;
 const within = (path: string, root: string) => path === root || path.startsWith(`${root}/`);

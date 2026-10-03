@@ -16,7 +16,9 @@ import { value } from '../facts/fixtures.js';
 // @ts-expect-error physical JS host is intentionally outside the pure core
 import { createProductionSessionIO } from '../../scripts/production-session-io.mjs';
 // @ts-expect-error the admission hook and its state stay plain JavaScript: the harness runs them without a loader
-import { prepareSessionAdmission, sessionAdmissionCeiling, sessionAdmissionCommand } from '../preview/session-admission.mjs';
+import { prepareSessionAdmission, sessionAdmissionCommand } from '../preview/session-admission.mjs';
+// @ts-expect-error the host admission checkpoint stays plain JavaScript
+import { createAdmissionGate, createToolEffectOwner } from '../preview/admission-gate.mjs';
 // @ts-expect-error physical JS host is intentionally outside the pure core
 import { createResourceOwner } from '../../scripts/resource-owner.mjs';
 
@@ -25,13 +27,15 @@ const tmuxWorks = tmuxPath !== null
   && (() => { try { execFileSync(tmuxPath, ['-V'], { stdio: 'ignore' }); return true; } catch { return false; } })();
 const roots: string[] = [];
 const helpers: number[] = [];
-afterEach(() => {
+const gates: { stop(): Promise<void> }[] = [];
+afterEach(async () => {
+  for (const gate of gates.splice(0)) await gate.stop();
   for (const pid of helpers.splice(0)) try { process.kill(pid, 'SIGKILL'); } catch { /* already gone */ }
   for (const root of roots.splice(0)) rmSync(root, { recursive: true, force: true });
 });
 const alive = (pid: number) => { try { process.kill(pid, 0); return true; } catch { return false; } };
 
-function world(writes: boolean) {
+async function world(writes: boolean) {
   const f = assemblyRuntimeFixture();
   const root = realpathSync(mkdtempSync(join(tmpdir(), 'swt-'))); roots.push(root);
   const scope = join(root, 'scope'), home = join(root, 'home'), login = join(root, 'login');
@@ -57,18 +61,23 @@ process.stdin.on('data', chunk => {
   const owner = createResourceOwner();
   const rows: (SessionWorkEdge | SessionWorkEdgeClose)[] = [];
   let stopped = false;
+  const append = (record: SessionWorkEdge | SessionWorkEdgeClose) => { rows.push(record); };
+  const gate = await createAdmissionGate({ append, stopped: () => stopped, now: Date.now,
+    effects: createToolEffectOwner({ operations: [], append, stopped: () => stopped, now: Date.now, prepared: () => false }) });
+  gates.push(gate);
   const port = value(createSessionWorkPort({
     createDriver: resolveIntake => createProductionSessionDriver({ operatorOwnUse: true, confinement: 'admitted',
       toolAdmission: { command: sessionAdmissionCommand({ base: admission }), timeoutSeconds: 600 },
+      modelGate: (claim: string) => gate.base(claim),
       framework: 'claude-code', executable: harness, cwd: scope, home, configHome: login, context: f.c, io: physical,
       now: Date.now, stopped: () => stopped, resolveIntake, maxSessions: 1, turnDeadlineMs: 60_000,
       readyTimeoutMs: 15_000, protectedSessions: [] }),
     io: { readResult: (path, maxBytes) => physical.readResult(path, maxBytes), clearResult: path => physical.clearResult(path),
       modelCalls: since => physical.modelCalls('claude-code', scope, login, since),
       wait: ms => new Promise(done => setTimeout(done, ms)),
-      prepareAdmission: (claim: string) => { prepareSessionAdmission({ base: admission, claim, workspace: scope,
-        harness: 'claude', maxCalls: 23, operations: [] }); },
-      admissionCeiling: (claim: string) => sessionAdmissionCeiling(admission, claim) },
+      prepareAdmission: (claim: string, edge: SessionWorkEdge) => { prepareSessionAdmission({ base: admission, claim, workspace: scope,
+        maxCalls: 8, gate: gate.base(claim) }); gate.open(claim, { framework: 'claude-code', allowance: 8, edge }); },
+      admissionState: (claim: string) => gate.state(claim), closeAdmission: (claim: string) => { gate.close(claim); } },
     resources: { admit: async () => {
       const held = await owner.hold('maintenance', { timeout: 5_000, stopped: () => stopped });
       return held === null ? null : { attach: (child: string) => held.attach({ pid: Number(child.split(':')[1]), cwd: scope }),
@@ -82,11 +91,11 @@ process.stdin.on('data', chunk => {
   const request = (operation: string) => ({ operation, question: 'Do the due work.', context: '{}', authority: 'a test grant' });
   return { port, rows, physical, request, helperPids, stop: () => { stopped = true; } };
 }
-const sessionGone = (w: ReturnType<typeof world>, child: string | null) =>
+const sessionGone = (w: Awaited<ReturnType<typeof world>>, child: string | null) =>
   child !== null && w.physical.tmux(['has-session', '-t', `=${child.split(':')[0]}:`]).code !== 0;
 
 it.skipIf(!tmuxWorks)('two successive scheduled items each run as a fresh session that is physically gone afterwards', async () => {
-  const w = world(true);
+  const w = await world(true);
   for (const operation of ['obligation-a-1', 'obligation-b-1']) {
     const outcome = await w.port.run(w.request(operation));
     expect(outcome, JSON.stringify(outcome)).toMatchObject({ state: 'complete' });
@@ -101,7 +110,7 @@ it.skipIf(!tmuxWorks)('two successive scheduled items each run as a fresh sessio
 }, 120_000);
 
 it.skipIf(!tmuxWorks)('a stop ends the open step, and its session and helper are physically gone', async () => {
-  const w = world(false);
+  const w = await world(false);
   setTimeout(() => w.stop(), 3_000);
   const outcome = await w.port.run(w.request('obligation-c-1'));
   expect(outcome.state).toBe('uncertain');

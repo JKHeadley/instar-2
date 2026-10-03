@@ -29,7 +29,7 @@ import { unlabeledRecall } from './answer-provenance.js';
 import { interpretStepJev, stepQuestionFor, stepQuestionsFor, type StepCheckResult } from './step-check.js';
 import type { Directive, VerifiedPrincipal } from '../../src/index.js';
 import { shouldRunScheduledPriority } from '../../src/scheduled/shedding.js';
-import type { SessionWorkEdge, SessionWorkEdgeClose } from '../../src/assembly/production-session-work.js';
+import type { SessionWorkEdge, SessionWorkEdgeClose, SessionWorkEffect } from '../../src/assembly/production-session-work.js';
 import type { ExhaustionAvenue } from '../../src/rungraph/index.js';
 import { consumeResult } from '../../src/index.js';
 import type { BoundaryContext, Hash, RegisterGenerationReference, Result, Scope } from '../../src/index.js';
@@ -1025,7 +1025,7 @@ export type JournalRecord =
    * as a session with no edge before it, or an edge with no close and no later launch, is visible
    * in the journal. The edge reserves the step's whole model-call liability against the call cap
    * (retained, like a tool turn's); otherwise the obligation's own result carries the state. */
-  | { kind: 'session-work'; record: SessionWorkEdge | SessionWorkEdgeClose; at: number }
+  | { kind: 'session-work'; record: SessionWorkEdge | SessionWorkEdgeClose | SessionWorkEffect; at: number }
   | { kind: 'obligation-result'; obligation: string; slot: number; outcome: ObligationOutcome; report?: string; note?: string;
     assessment?: BlockerAssessment;
     waitsOn?: 'operator' | 'external'; recheckAt?: number; usage?: ModelUsage; at: number }
@@ -1237,6 +1237,9 @@ export interface JournalView { genesis: Extract<JournalRecord, {kind:'genesis'}>
   /** Indexes into `summaries` of the rolling summaries a retraction retired: each was built over a retracted turn. They stay
    * for audit and their settled memory requests stay settled; no packet or later summary reads their text. */
   retiredSummaries?: number[];
+  /** Rules 1, 114: identities the effect owner prepared for a delegated child's consequential tool calls. Absent until one
+   * applies, so the projection digest of every journal without one is unchanged. */
+  toolEffects?: string[];
   capReports: Set<string>;
   /** Rule 11 index-only work: every offer of a source (one entry per offer, so a source appears up to
    * `INDEX_ATTEMPT_LIMIT` times), terms admitted, the reservation awaiting its result, and earlier
@@ -1986,8 +1989,19 @@ function projectObligationWork(view: JournalView, row: Extract<JournalRecord, { 
 }
 /** Rules 60, 61, 114: an edge reserves its step's whole model-call liability before the child
  * exists, and refuses when the call allowance cannot hold it. */
-function projectSessionWork(view: JournalView, record: SessionWorkEdge | SessionWorkEdgeClose): void {
+function projectSessionWork(view: JournalView, record: SessionWorkEdge | SessionWorkEdgeClose | SessionWorkEffect): void {
   validateSessionWorkRow(record);
+  // The effect owner's stable identities: one prepared record per identity, so the same send is never prepared twice.
+  if (record.type === 'SessionWorkEffect') {
+    const prepared = view.toolEffects ?? (view.toolEffects = []);
+    if (record.state === 'prepared') {
+      if (prepared.includes(record.id)) throw Error('preview journal: tool effect already prepared');
+      prepared.push(record.id);
+    } else if (!prepared.includes(record.id)) throw Error('preview journal: tool effect observed before it was prepared');
+    return;
+  }
+  // A delegation inside a step draws on its parent's reservation (the model-dispatch checkpoint counts its calls there).
+  if (record.type === 'SessionWorkEdge' && record.drawsOn !== undefined) return;
   // A close whose child made more model calls than its edge reserved charges the excess, so the remaining
   // allowance never exceeds the real one. Unknown calls stay unknown: nothing is charged or credited.
   if (record.type === 'SessionWorkEdgeClose') {
@@ -2000,9 +2014,15 @@ function projectSessionWork(view: JournalView, record: SessionWorkEdge | Session
 }
 /** Rules 2, 60, 114: a delegated-session edge or close is accepted only complete and bounded, so a
  * malformed row is refused here rather than stored unread. */
-export function validateSessionWorkRow(record: SessionWorkEdge | SessionWorkEdgeClose): void {
+export function validateSessionWorkRow(record: SessionWorkEdge | SessionWorkEdgeClose | SessionWorkEffect): void {
   const text = (value: unknown, max: number) => typeof value === 'string' && value.trim().length > 0 && value.length <= max;
   const stamp = (value: unknown) => typeof value === 'number' && Number.isSafeInteger(value) && value > 0;
+  if (record?.type === 'SessionWorkEffect') {
+    if (record.schemaVersion !== 1 || ![record.id, record.edge, record.operation, record.digest, record.detail].every(value => text(value, 1024))
+      || !/^sha256:[0-9a-f]{64}$/u.test(record.id) || !['prepared', 'observed'].includes(record.state) || !stamp(record.at))
+      throw Error('preview journal: session work effect incomplete');
+    return;
+  }
   if (record?.type === 'SessionWorkEdge') {
     if (record.schemaVersion !== 1 || ![record.id, record.parent, record.child, record.scope, record.owner,
       record.authority, record.exitTest, record.placement, record.transport, record.resultDestination]
@@ -2010,6 +2030,7 @@ export function validateSessionWorkRow(record: SessionWorkEdge | SessionWorkEdge
       || record.budget?.steps !== 1 || !stamp(record.budget.deadline) || record.budget.tokens !== null
       || !Number.isSafeInteger(record.budget.calls) || record.budget.calls <= 0
       || !Number.isSafeInteger(record.budget.maxResultBytes) || record.budget.maxResultBytes <= 0
+      || (record.drawsOn !== undefined && record.drawsOn !== record.parent)
       || !stamp(record.openedAt)) throw Error('preview journal: session work edge incomplete');
     return;
   }

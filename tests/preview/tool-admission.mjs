@@ -2,10 +2,10 @@
 // passed in, so the executable hook (tool-admission-hook.mjs) and the tests run the same function.
 // Deny by default. Ordinary in-workspace file tools and sandboxed shell commands are admitted. A shell
 // command is not judged by the words it contains: what it can reach is enforced where it runs (the
-// sandbox's read, write, network and process scope, the turn's fixed-size scratch volume, the per-file
-// limit). A consequential tool (an MCP or web tool, an unsandboxed shell) goes to the effect doorway's
-// admission, which admits only an operation the installed profile registers for that tool effect; the
-// single-machine profile registers none, so it refuses.
+// sandbox's read, write, network and process scope, the bounded volume, the per-file limit). A delegation
+// and a consequential tool (an MCP tool, an unsandboxed shell) are decided by the host's admission checkpoint
+// (admission-gate.mjs), which records the delegation as a durable child edge, or passes the exact operation
+// and input to the effect owner, before the call runs. A route with no checkpoint refuses both.
 import { basename, dirname, join, resolve, sep } from 'node:path';
 
 const SHELL_SAFE_PATH = /^\/[A-Za-z0-9_./@-]+$/u;
@@ -62,28 +62,20 @@ export function patchPaths(text) {
   }
   return paths.length > 0 ? paths : null;
 }
-/** Tools that start another model thread (a subagent). Each such call costs two slots: its own result and the new
- * thread's first model call, which no tool call of that thread precedes. */
-export const DELEGATION_TOOLS = Object.freeze(['Agent', 'Task', 'spawn_agent']);
-/** Reads from the network. A fetch costs two slots: its result and the harness's own summarizing model call. */
-export const NETWORK_READ_TOOLS = Object.freeze(['WebFetch', 'WebSearch']);
-/** The harness's own planning and output-reading tools: no effect outside the step. */
-export const BOOKKEEPING_TOOLS = Object.freeze(['TodoWrite', 'update_plan', 'BashOutput', 'KillShell']);
-/** How many call slots one call takes before dispatch. */
-export const callCost = call => DELEGATION_TOOLS.includes(String(call?.tool_name)) || NETWORK_READ_TOOLS.includes(String(call?.tool_name)) ? 2 : 1;
+/** Tools that start another agent thread (a subagent): Claude Code's, and Codex 0.156.1's as its hook names it
+ * (recorded live 2026-10-03, fixtures/codex-capabilities-2026-10-03). Each one becomes a durable child edge first. */
+export const DELEGATION_TOOLS = Object.freeze(['Agent', 'Task', 'spawn_agent', 'collaborationspawn_agent']);
+/** Reads from the network: Claude Code's fetch and search, and Codex's web search (`webrun` to its hook). */
+export const NETWORK_READ_TOOLS = Object.freeze(['WebFetch', 'WebSearch', 'webrun']);
+/** The harness's own planning, output-reading and subagent-handling tools: no effect outside the step. A subagent
+ * these address already has its edge. */
+export const BOOKKEEPING_TOOLS = Object.freeze(['TodoWrite', 'update_plan', 'BashOutput', 'KillShell', 'collaborationwait_agent',
+  'collaborationsend_input', 'collaborationclose_agent', 'collaborationresume_agent']);
 export const FILE_TOOLS = Object.freeze(['Read', 'Write', 'Edit']);
 const SEARCH_TOOLS = Object.freeze(['Glob', 'Grep']);
 /** Bounded excerpt of a tool input or result kept in the admission record. */
 export const RECORD_EXCERPT_CHARS = 4096;
 
-/** The effect doorway's admission for a tool effect: admitted only when the installed profile registers
- * an operation for exactly that tool effect. The single-machine profile's closed set registers none. */
-export function admitToolEffect(kind, operations) {
-  const operation = `tool:${kind}`;
-  if (operations.includes(operation)) return { admitted: true, reason: `registered operation ${operation}` };
-  return { admitted: false, reason: `effect doorway: the installed profile registers no ${operation} operation `
-    + `(registered: ${operations.join(', ') || 'none'}); refused by default` };
-}
 
 /** Physical containment: resolve the symlinks of the longest existing prefix, then compare real paths. */
 export function containedIn(workspace, path, fs) {
@@ -96,15 +88,16 @@ export function containedIn(workspace, path, fs) {
 
 /**
  * One PreToolUse decision. `call` is the hook input ({tool_name, tool_input}); `config` is the turn's
- * {workspace (real path), tmp (the shell's temporary directory), maxCalls, maxWriteBytes, operations}; `n` is
+ * {workspace (real path), tmp (the shell's temporary directory), maxCalls, maxWriteBytes, gate?}; `n` is
  * this call's 1-based count in the step (maxCalls + 1 once every slot is taken); `fs`
- * gives exists/realpath. Returns {decision, reason, kind?, updatedInput?}.
+ * gives exists/realpath. Returns {decision, reason, kind?, updatedInput?}. `decision: 'gate'` (a delegation, an
+ * effect) is decided by the host checkpoint at `config.gate`; the hook asks it before the call runs.
  */
 export function admitToolCall(call, config, n, fs) {
   const tool = String(call?.tool_name ?? ''), input = call?.tool_input ?? {};
   const deny = (reason, kind) => ({ decision: 'deny', reason, ...(kind ? { kind } : {}) });
-  const effect = kind => { const admitted = admitToolEffect(kind, config.operations); return admitted.admitted
-    ? { decision: 'allow', reason: admitted.reason, kind } : deny(admitted.reason, kind); };
+  const effect = () => typeof config.gate === 'string' ? { decision: 'gate', kind: 'effect', reason: 'consequential: the effect owner decides' }
+    : deny(`consequential tool ${tool}: this route has no effect owner; refused by default`, 'effect');
   if (!Number.isSafeInteger(n) || n < 1) return deny('admission count unavailable');
   if (n > config.maxCalls) return deny(`per-step call cap ${config.maxCalls} reached (call ${n})`);
   const inside = path => typeof path === 'string' && path.length > 0 && containedIn(config.workspace, path, fs);
@@ -129,7 +122,7 @@ export function admitToolCall(call, config, n, fs) {
     // harness asked for; otherwise the harness's own sandbox bounds it and an unsandboxed request is an effect.
     if (config.shellProfile) return { decision: 'allow', reason: 'confined command',
       updatedInput: { ...input, command: sandboxedShellCommand(command, { profile: config.shellProfile, workspace: config.workspace, tmp: config.tmp }) } };
-    if (input.dangerouslyDisableSandbox) return effect('unsandboxed');
+    if (input.dangerouslyDisableSandbox) return effect();
     return { decision: 'allow', reason: 'sandboxed command',
       updatedInput: { ...input, command: toolShellPrefix(config.tmp) + command } };
   }
@@ -142,11 +135,12 @@ export function admitToolCall(call, config, n, fs) {
     if (Buffer.byteLength(patch) > config.maxWriteBytes) return deny(`patch larger than ${config.maxWriteBytes} bytes`, 'scope');
     return { decision: 'allow', reason: 'ordinary in-workspace patch' };
   }
-  if (tool.startsWith('mcp__')) return effect('mcp');
+  if (tool.startsWith('mcp__')) return effect();
   if (NETWORK_READ_TOOLS.includes(tool))
-    return config.networkReads === true ? { decision: 'allow', reason: 'network read' } : effect('network');
+    return config.networkReads === true ? { decision: 'allow', reason: 'network read' } : deny(`network read ${tool} not admitted on this route`);
   if (DELEGATION_TOOLS.includes(tool) && config.delegation === true)
-    return { decision: 'allow', reason: 'delegation: the subagent\'s own calls pass this admission' };
+    return typeof config.gate === 'string' ? { decision: 'gate', kind: 'delegation', reason: 'delegation: recorded as a child edge first' }
+      : deny('delegation needs the admission checkpoint to record its edge; this route has none', 'delegation');
   if (BOOKKEEPING_TOOLS.includes(tool) && config.delegation === true) return { decision: 'allow', reason: 'harness bookkeeping' };
   return deny(`unregistered tool ${tool || '(none)'}: refused by default`);
 }

@@ -10,7 +10,7 @@ import { join } from 'node:path';
 import { afterEach, expect, it } from 'vitest';
 import { openPreviewJournal } from './journal.js';
 import { SUBSCRIPTION_TOOL_LIMITS, SUBSCRIPTION_TOOL_NAMES, SUBSCRIPTION_TOOLS_SYSTEM_PROMPT } from '../../src/assembly/production-provider.js';
-import { SINGLE_MACHINE_PROFILE } from './activation-authority.js';
+import { nestedSessionWorkEdge, type SessionWorkEdge } from '../../src/assembly/production-session-work.js';
 import { capabilityBriefing, TOOLS_BRIEFING } from './briefing.js';
 // @ts-expect-error The runner side stays plain JavaScript.
 import { attachScratch, detachScratch, prepareToolTurn, pruneToolTurns, readToolTrace, runToolTurn, scratchMounted, toolStatusLines, toolTurnEligible, toolTurnFits, workspaceBytes, TOOL_HOOK_SCRIPT } from './tool-turn.mjs';
@@ -58,23 +58,22 @@ it('reserves the whole tool-turn liability against the call cap, retains it, and
 
 it('allocates a private, empty workspace and a separate admission state per turn, and keeps bounded history', () => {
   const root = dir();
-  const turn = prepareToolTurn({ root, operation: 'telegram:1:update:2', attempt: 0, operations: SINGLE_MACHINE_PROFILE.operations, scratch: plainScratch });
+  const turn = prepareToolTurn({ root, operation: 'telegram:1:update:2', attempt: 0, scratch: plainScratch });
   expect(readdirSync(turn.workspace)).toEqual([]);
   for (const path of [turn.workspace, turn.stateDirectory, join(turn.scratch, 'tmp')]) expect(lstatSync(path).mode & 0o777).toBe(0o700);
   expect(turn.workspace).toBe(join(turn.scratch, 'ws'));
   expect(turn.scratch.startsWith(join(root, 'tool-turns'))).toBe(true);
   expect(turn.stateDirectory.startsWith(turn.scratch)).toBe(false);
   expect(JSON.parse(readFileSync(join(turn.stateDirectory, 'config.json'), 'utf8'))).toEqual({ workspace: turn.workspace,
-    tmp: join(turn.scratch, 'tmp'), maxCalls: SUBSCRIPTION_TOOL_LIMITS.maxToolCalls, maxWriteBytes: SUBSCRIPTION_TOOL_LIMITS.maxWriteBytes,
-    operations: [...SINGLE_MACHINE_PROFILE.operations] });
+    tmp: join(turn.scratch, 'tmp'), maxCalls: SUBSCRIPTION_TOOL_LIMITS.maxToolCalls, maxWriteBytes: SUBSCRIPTION_TOOL_LIMITS.maxWriteBytes });
   expect(turn.hook).toEqual({ node: process.execPath, script: TOOL_HOOK_SCRIPT });
   // The same attempt is never reused: a repeat allocation refuses rather than sharing a workspace.
-  expect(() => prepareToolTurn({ root, operation: 'telegram:1:update:2', attempt: 0, operations: [], scratch: plainScratch })).toThrow();
+  expect(() => prepareToolTurn({ root, operation: 'telegram:1:update:2', attempt: 0, scratch: plainScratch })).toThrow();
   writeFileSync(join(turn.workspace, 'note.txt'), 'hello reuse');
   expect(workspaceBytes(turn.workspace)).toBe(11);
   expect(readToolTrace(turn.stateDirectory)).toMatchObject({ calls: [], consistent: true });
   for (let i = 1; i <= 4; i++) {
-    const t = prepareToolTurn({ root, operation: `telegram:1:update:${String(i + 2)}`, attempt: i, operations: [], scratch: plainScratch });
+    const t = prepareToolTurn({ root, operation: `telegram:1:update:${String(i + 2)}`, attempt: i, scratch: plainScratch });
     utimesSync(t.directory, i * 1000, i * 1000);
   }
   utimesSync(turn.directory, 0, 0);
@@ -175,7 +174,7 @@ writeFileSync(${JSON.stringify(pids)}, JSON.stringify({ harness: process.pid, ch
 it('runs one tool turn: refuses to the text-only answer on a short allowance or prompt room, journals every trace, refuses a bypass', async () => {
   const extra = SUBSCRIPTION_TOOL_LIMITS.maxTurns - 1, id = 'telegram:12345678:update:9';
   const base = (journal: ReturnType<typeof journalAt>, root: string, invoke: (turn: { workspace: string; stateDirectory: string }) => Promise<unknown>) => ({
-    journal, root, id, prepared: '{"q":1}', promptLimit: 32768, deniedRoots: [root], operations: SINGLE_MACHINE_PROFILE.operations,
+    journal, root, id, prepared: '{"q":1}', promptLimit: 32768, deniedRoots: [root],
     now: () => 10, redactText: (text: string) => text.replace('SECRET', '[redacted]'), fallback: async () => ({ result: 'text-only' }), invoke,
     scratch: plainScratch, detach: keepDetached });
   // Short allowance: refused, recorded, answered without tools, nothing reserved or launched.
@@ -219,4 +218,40 @@ it('runs one tool turn: refuses to the text-only answer on a short allowance or 
   await expect(runToolTurn(base(journal, root, async () => { throw Error('launch failed'); }))).rejects.toThrow('launch failed');
   expect(journal.view.toolTurns).toMatchObject({ invocations: 1, open: [] });
   expect(journal.view.calls).toBe(extra);
+});
+
+it('a Codex tool turn runs only through the admission checkpoint: no checkpoint refuses, a lost subagent or a refused call refuses the answer', async () => {
+  const id = 'telegram:12345678:update:11';
+  const admission = { maxCalls: 8, harness: 'codex', confinedShell: true };
+  const opened: { claim: string; framework: string; allowance: number; edge: { id: string } }[] = [];
+  let state = { calls: 0, refused: false, closed: false, openDelegations: [] as SessionWorkEdge[] };
+  const gate = { base: (claim: string) => `http://127.0.0.1:4100/${'a'.repeat(32)}/${claim}`,
+    open: (claim: string, input: { framework: string; allowance: number; edge: { id: string } }) => { opened.push({ claim, ...input }); },
+    close: () => ({ ...state, closed: true }), settle: () => undefined };
+  const base = (journal: ReturnType<typeof journalAt>, root: string, invoke: (turn: { gate?: string }) => Promise<unknown>, withGate = true) => ({
+    journal, root, id, prepared: '{"q":1}', promptLimit: 32768, deniedRoots: [root], now: () => 10, redactText: (text: string) => text,
+    fallback: async () => ({ result: 'text-only' }), invoke, scratch: plainScratch, detach: keepDetached, admission,
+    ...(withGate ? { gate, owner: 'machine-a' } : {}) });
+  // No checkpoint: the turn is refused before anything launches.
+  let launched = 0;
+  await expect(runToolTurn(base(journalAt(dir(), 50), dir(), async () => { launched++; }, false))).rejects.toThrow(/admission checkpoint/u);
+  expect(launched).toBe(0);
+  // With it: the claim opens with the turn's whole allowance and its own edge, and the harness is given its address.
+  let given: string | undefined;
+  const root = dir(), journal = journalAt(root, 50);
+  expect((await runToolTurn(base(journal, root, async turn => { given = turn.gate; return 'answer'; }))).result).toBe('answer');
+  expect(opened[0]).toMatchObject({ framework: 'codex-cli', allowance: SUBSCRIPTION_TOOL_LIMITS.maxTurns, edge: { id: `tool-turn:${id}:0` } });
+  expect(given).toBe(gate.base(opened[0]!.claim));
+  // A subagent that never returned: its edge settles as uncertain in the journal and the answer is refused.
+  const parent = { type: 'SessionWorkEdge', schemaVersion: 1, id: `tool-turn:${id}:0`, parent: id, child: `tool-turn:${id}`, scope: '/ws',
+    owner: 'machine-a', authority: 'a', budget: { steps: 1, deadline: 5, maxResultBytes: 8, calls: 8, tokens: null }, exitTest: 'x',
+    placement: 'p', transport: 't', resultDestination: 'r', openedAt: 1 } as SessionWorkEdge;
+  state = { ...state, openDelegations: [nestedSessionWorkEdge(parent, { id: 'call_lost', tool: 'collaborationspawn_agent' }, 2)] };
+  const lostRoot = dir(), lost = journalAt(lostRoot, 50), rows: { kind: string; record?: { type: string; state?: string } }[] = [];
+  const spied = { get view() { return lost.view; }, append: (row: never) => { rows.push(row); return lost.append(row); } } as unknown as typeof lost;
+  await expect(runToolTurn(base(spied, lostRoot, async () => 'answer'))).rejects.toThrow(/delegated agent did not return/u);
+  expect(rows.find(row => row.kind === 'session-work')?.record).toMatchObject({ type: 'SessionWorkEdgeClose', state: 'uncertain' });
+  // A model call refused at the allowance: the answer is refused.
+  state = { calls: 8, refused: true, closed: false, openDelegations: [] };
+  await expect(runToolTurn(base(journalAt(dir(), 50), dir(), async () => 'answer'))).rejects.toThrow(/reserved allowance was refused/u);
 });

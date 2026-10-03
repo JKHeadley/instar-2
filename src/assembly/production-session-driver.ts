@@ -50,6 +50,10 @@ export interface ProductionSessionConfig {
   /** Required exactly in `admitted` mode: the PreToolUse/PostToolUse command for a session's claim (its own
    * admission state), and the hook timeout. The harness runs it before every tool call, its subagents' too. */
   readonly toolAdmission?: Readonly<{ command: (claim: string, phase: 'pre' | 'post') => string; timeoutSeconds: number }>;
+  /** The host's model-dispatch checkpoint for a claim: the base URL every model call of that claim's session is sent
+   * to (`modelGateLaunch`), where it takes the step's reserved allowance before it is forwarded. Required in `admitted`
+   * mode, so no admitted session can reach its model any other way. */
+  readonly modelGate?: (claim: string) => string;
   /** The exact model the session runs, when a reviewed grant names one; absent, the CLI's own default. */
   readonly model?: string;
   readonly inboxDirectory?: string; readonly compactGroundingFile?: string;
@@ -72,6 +76,19 @@ export function sessionLaunchFlags(framework: SessionFramework, admitted = false
  * (titles, suggestions) and no other background traffic. */
 export const ADMITTED_CLAUDE_ENV = Object.freeze(['DISABLE_NON_ESSENTIAL_MODEL_CALLS=1', 'CLAUDE_CODE_DISABLE_NONESSENTIAL_TRAFFIC=1']);
 const hookCommandPattern = /^[A-Za-z0-9_./@ -]{1,1024}$/u;
+/** The provider name a gated Codex invocation uses: its base URL is the host checkpoint, and it keeps the ChatGPT sign-in. */
+export const CODEX_GATE_PROVIDER = 'instar-gate';
+const gatePattern = /^http:\/\/127\.0\.0\.1:[0-9]{1,5}\/[0-9a-f]{32}\/[A-Za-z0-9._-]{1,121}$/u;
+/** How a harness is pointed at the host's model-dispatch checkpoint at `base`: Claude Code reads its model endpoint from
+ * ANTHROPIC_BASE_URL; Codex is given a provider whose base URL is the checkpoint. A configured provider speaks plain HTTP
+ * (never a websocket the checkpoint could not count), and Codex 0.156.1 keeps its hosted web search only for a provider
+ * named `OpenAI` (recorded 2026-10-03: the same provider under another name has no web search), so that is its name. */
+export function modelGateLaunch(framework: SessionFramework, base: string): Readonly<{ env: readonly string[]; args: readonly string[] }> {
+  ensure(gatePattern.test(base), 'model gate address must be the loopback checkpoint');
+  return framework === 'claude-code' ? { env: [`ANTHROPIC_BASE_URL=${base}`], args: [] }
+    : { env: [], args: ['-c', `model_provider=${CODEX_GATE_PROVIDER}`, '-c', `model_providers.${CODEX_GATE_PROVIDER}={name="OpenAI",`
+      + `base_url="${base}/backend-api/codex",wire_api="responses",requires_openai_auth=true}`] };
+}
 /** The harness arguments that install the admission hook for one claim. */
 export function admissionArgs(framework: SessionFramework, admission: NonNullable<ProductionSessionConfig['toolAdmission']>,
   claim: string, extraClaudeHooks: Readonly<Record<string, unknown>> = {}): readonly string[] {
@@ -152,6 +169,7 @@ export function createProductionSessionDriver(config: ProductionSessionConfig): 
     'explicit operator-own-use mode required');
   const admitted = config.confinement === 'admitted';
   ensure(admitted === (config.toolAdmission !== undefined), 'an admitted session requires its admission hook, and only it');
+  ensure(admitted === (config.modelGate !== undefined), 'an admitted session requires its model-dispatch checkpoint, and only it');
   if (config.toolAdmission) ensure(typeof config.toolAdmission.command === 'function'
     && Number.isSafeInteger(config.toolAdmission.timeoutSeconds) && config.toolAdmission.timeoutSeconds > 0
     && config.toolAdmission.timeoutSeconds <= 3600, 'bounded admission hook required');
@@ -268,7 +286,9 @@ export function createProductionSessionDriver(config: ProductionSessionConfig): 
     // One settings object carries every Claude hook: the admission hook and, when configured, the lifecycle hooks.
     if (config.toolAdmission) args.push(...admissionArgs(config.framework, config.toolAdmission, claim, lifecycleHooks ?? {}));
     else if (lifecycleHooks) args.push('--settings', JSON.stringify({ hooks: lifecycleHooks }));
-    const harnessEnv = admitted && config.framework === 'claude-code' ? ADMITTED_CLAUDE_ENV : [];
+    const gate = config.modelGate ? modelGateLaunch(config.framework, config.modelGate(claim)) : null;
+    if (gate) args.push(...gate.args);
+    const harnessEnv = [...(admitted && config.framework === 'claude-code' ? ADMITTED_CLAUDE_ENV : []), ...(gate?.env ?? [])];
     try { run(['new-session', '-d', '-s', name, '-c', config.cwd, '-x', '100', '-y', '30',
       '-e', `HOME=${config.home}`, '-e', `CLAUDE_CONFIG_DIR=${config.configHome}`,
       '-e', `CODEX_HOME=${config.configHome}`, '-e', `INSTAR_SESSION_NAME=${name}`,

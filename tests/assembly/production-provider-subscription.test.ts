@@ -365,7 +365,7 @@ it('admits Claude session work only under its own reviewed grant and a live subs
     activation: SubscriptionActivationRecord; io: Parameters<typeof session.admit>[0]['io']; model: string };
   const policy = subscriptionSessionPolicy(model);
   expect(policy.launch).toEqual(['--dangerously-skip-permissions', '--model', model]);
-  expect(policy).toMatchObject({ confinement: 'admitted-tools', effects: 'effect-doorway', admission: { framing: 'session-admission-v1' } });
+  expect(policy).toMatchObject({ confinement: 'admitted-tools', effects: 'effect-doorway', admission: { framing: 'session-admission-v2', allowance: 24 } });
   const grant = { ...activation, invocationPolicyDigest: hash(policy), acceptedResiduals: [SESSION_WORK_RESIDUAL] };
   expect(() => session.validateActivation(grant, profile, model, 1000)).not.toThrow();
   // The answer activation is not a session grant; a grant without the written residual is refused.

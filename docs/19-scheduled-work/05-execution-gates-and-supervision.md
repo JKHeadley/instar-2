@@ -149,8 +149,8 @@ and `tests/assembly/production-session-work.test.ts`. The path exists only when 
 approved an activation record for the doorway's own session framing, resolved from the same sealed
 authority as every other activation. That record binds the exact session policy — the harness's
 launch flags on the exact model, the admission hook it is launched with, the step limits, the exit
-test and the task wording — and states in writing the one residual it accepts (harness-internal
-model calls no tool call precedes are metered after the fact). The harness, its
+test and the task wording — and states in writing the one residual it accepts (a subscription
+session reports no token meter, so tokens stay unmetered). The harness, its
 executable, its home and its login home come from the doorway and the login profile, never from a
 separate setting. Before every step the grant is re-checked and the login home's live sign-in is
 confirmed to be the subscription the profile names; an API-key sign-in, no sign-in, or an
@@ -160,40 +160,59 @@ host's one resource owner admits each step before its session exists and holds t
 process tree under the same memory, process and CPU ceilings as every other launch, reclaiming it
 when the step ends; because the session is started by tmux rather than by the owner, those
 per-tree ceilings are enforced on sampled observation rather than kernel limits, and the record
-says so.
+says so. Its storage is bounded too: the working scope is a persistent fixed-size volume mounted
+before the first step, so the sum of every file a step writes, however many, stops at that size
+and never reaches the disk that holds the journal; the work it holds persists across steps. The
+host reads the step's result with its own authority, so the read enforces custody itself: the
+destination name is never followed, and only a regular file with no other link, inside the
+delegated scope by real path, is read; a link, a special file or a file outside the scope makes
+the step not complete.
 
 **Rule — a session keeps its full tool set, and every tool call passes the admission hook before
 dispatch.** Rules 1, 30, 60, 114 and the purpose's ability-preserving checkpoint direction;
-**checks:** `tests/preview/session-admission.test.ts`, `tests/assembly/production-session-driver.test.ts`
-and `tests/e2e/session-work-live.test.ts`. Neither harness loses a tool to satisfy a safeguard: each
-session is launched with the same PreToolUse/PostToolUse admission hook as the tool turn (Claude
-through its settings, Codex through its per-invocation hook configuration, trusted for that
-invocation because it is the runner's own reviewed script), and the harness runs it before every
-tool call, a subagent's too. Ordinary in-workspace file work, delegation and network reads are
-admitted; a file path outside the working scope is refused; MCP and any other consequential tool go
-to the effect doorway, which admits only an operation the installed profile registers for that tool
-effect; an unknown tool is refused. Every shell command is rewritten to run under the step's own
-sandbox profile with a clean environment: file contents readable only from the working scope and
-the system runtime, writes only there, no network, no signal to another process and no keychain
+**checks:** `tests/preview/session-admission.test.ts`, `tests/preview/admission-gate.test.ts`,
+`tests/assembly/production-session-driver.test.ts` and `tests/e2e/session-work-live.test.ts`.
+Neither harness loses a tool to satisfy a safeguard: each session is launched with the same
+PreToolUse/PostToolUse admission hook as the tool turn (Claude through its settings, Codex through
+its per-invocation hook configuration, trusted for that invocation because it is the runner's own
+reviewed script), and the harness runs it before every tool call, a subagent's too. Ordinary
+in-workspace file work and network reads are admitted; a file path outside the working scope is
+refused; an unknown tool is refused. A delegation and a consequential tool are decided by the
+host's one admission checkpoint before they run. A delegation (a subagent started inside the
+turn) is admitted only after the checkpoint has durably recorded it as a child edge of the step's
+own edge — inheriting the step's scope, owner, placement, deadline, call allowance (drawn from,
+never added to) and stop — and the edge closes when the subagent's result returns; a parent that
+closes first settles the still-open edge as uncertain, so a lost return remains a recorded
+obligation, never a silent loss. A consequential tool (an MCP tool, an unsandboxed shell) passes
+the effect owner with its exact operation and input: it runs only when the installed profile
+registers that exact operation (a category is never authority), no stop is held and the step is
+open, and its stable identity (the owning work item, the operation and its canonical input) has
+never been prepared before; its request is durably recorded before it is admitted, so the same
+send never goes twice. Every shell command is rewritten to run under the step's own sandbox
+profile with a clean environment: file contents readable only from the working scope and the
+system runtime, writes only there, no network, no signal to another process and no keychain
 service, so a shell cannot read a login home's credential or send through one. Each admission is
 recorded beside the working scope, never inside it.
 
-**Rule — a session step's spend bound is a reserved and metered call liability.** Rules 60, 61 and
-75; **checks:** the same cases. One step at a time runs under a finite wall-clock deadline, a
-finite result-size bound and a finite per-launch step ceiling. Its edge reserves the step's whole
-model-call liability against the journal's call allowance before the child exists, and the route is
-taken only when the allowance can hold that liability on top of the obligation's own start; the
-reservation is retained, as a tool turn's is. The ceiling is admitted before dispatch, not
-sampled: every model call after a step's first follows a tool call, every tool call takes slots
-from the admission hook first (a delegation or a fetch takes two, for the new thread's first call
-or the fetch's own summary), and a call that finds none left stops the harness by its exact PID
-before another model call can start. The child's transcript is the accounting: it is read before a
-result is accepted, so a result is never accepted while the calls are unknown or the ceiling was
-reached, and the close records the calls it shows; calls past the reservation (a harness-internal
-call no tool call preceded) make the step uncertain and are charged to the journal's allowance, so
-the remaining allowance never exceeds the real one. A transcript that cannot be read is unknown,
-never counted as zero. A subscription session reports no token meter, so the recorded budget states
-its token bound as absent rather than inventing one; no surface may present a session step's usage
-as measured.
+**Rule — a session step's spend bound is a reserved call liability, enforced before every model
+call.** Rules 60, 61 and 75; **checks:** the same cases. One step at a time runs under a finite
+wall-clock deadline, a finite result-size bound and a finite per-launch step ceiling. Its edge
+reserves the step's whole model-call liability against the journal's call allowance before the
+child exists, and the route is taken only when the allowance can hold that liability on top of the
+obligation's own start; the reservation is retained, as a tool turn's is. The ceiling is admitted
+before dispatch, not sampled and not inferred from tool calls: the child's harness reaches its
+model only through the host's model-dispatch checkpoint (Claude Code through its model endpoint
+setting, Codex through a provider whose address is the checkpoint), which takes one unit of the
+step's reservation for every model call — harness-internal calls, a fetch's or search's own call
+and every subagent's calls included — before forwarding it to the fixed upstream, and never
+forwards a call past the reservation; a closed step or a held stop forwards nothing at all, so a
+child that outlives its step cannot spend. The child's transcript is the accounting: it is read
+before a result is accepted and again after the child has been stopped, and the step is complete
+only when that last read is known and within the reservation and the checkpoint refused nothing;
+otherwise it is uncertain, the calls the transcript shows are recorded in the close, and any shown
+past the reservation are charged to the journal's allowance, so the remaining allowance never
+exceeds the real one. A transcript that cannot be read is unknown, never counted as zero. A
+subscription session reports no token meter, so the recorded budget states its token bound as
+absent rather than inventing one; no surface may present a session step's usage as measured.
 
 ---

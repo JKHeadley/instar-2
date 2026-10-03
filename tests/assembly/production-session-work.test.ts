@@ -2,11 +2,13 @@
 // substituted here so each decision can be driven on both sides; the live driver behind the same
 // port is proved against a real tmux session in tests/e2e/session-work-live.test.ts.
 import { createHash } from 'node:crypto';
-import { mkdirSync, mkdtempSync, readFileSync, realpathSync, rmSync, writeFileSync } from 'node:fs';
+import { mkdirSync, mkdtempSync, readFileSync, realpathSync, rmSync, symlinkSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { afterEach, expect, it } from 'vitest';
-import { createSessionWorkPort, SESSION_WORK_EXIT_TEST, sessionWorkPrompt } from '../../src/assembly/production-session-work.js';
+import { createSessionWorkPort, nestedSessionWorkEdge, SESSION_WORK_EXIT_TEST, sessionWorkEffect, sessionWorkPrompt } from '../../src/assembly/production-session-work.js';
+// @ts-expect-error physical host is plain JavaScript
+import { createProductionSessionIO } from '../../scripts/production-session-io.mjs';
 import type { SessionWorkEdge, SessionWorkEdgeClose, SessionWorkIO } from '../../src/assembly/production-session-work.js';
 import { createProductionSessionDriver, type SessionIO, type SessionJournal } from '../../src/assembly/production-session-driver.js';
 import type { NativeHarnessDriverPort } from '../../src/assembly/harness.js';
@@ -21,7 +23,8 @@ const digestOf = (text: string) => `sha256:${createHash('sha256').update(text).d
 
 function fixture(options: { phases?: readonly Phase[]; maxSteps?: number; deadlineMs?: number;
   maxResultBytes?: number; failLaunch?: boolean; maxCalls?: number; calls?: () => number | null;
-  admit?: 'refuse' | 'unreleased'; stopFails?: boolean; ceiling?: () => boolean | null; prepareFails?: boolean } = {}) {
+  admit?: 'refuse' | 'unreleased'; stopFails?: boolean; refused?: () => boolean | null; prepareFails?: boolean;
+  openDelegations?: () => readonly SessionWorkEdge[] } = {}) {
   const f = assemblyRuntimeFixture();
   const root = realpathSync(mkdtempSync(join(tmpdir(), 'session-work-'))); roots.push(root);
   const scope = join(root, 'scope'); mkdirSync(scope, { recursive: true, mode: 0o700 });
@@ -30,7 +33,8 @@ function fixture(options: { phases?: readonly Phase[]; maxSteps?: number; deadli
   const delivered: string[] = [];
   const phases = [...(options.phases ?? ['launched', 'output-observed'])];
   let stopped = false, launches = 0, stops = 0, released = 0, attached: string[] = [];
-  const prepared: string[] = [];
+  const prepared: string[] = [], edges: SessionWorkEdge[] = [];
+  let admissionsClosed = 0;
   // What the child writes, written at the moment the turn closes — the real order, so a result the
   // port cleared before delivering cannot be mistaken for this step's answer.
   let answer: string | null = null;
@@ -40,8 +44,10 @@ function fixture(options: { phases?: readonly Phase[]; maxSteps?: number; deadli
     clearResult: path => rmSync(path, { force: true }),
     modelCalls: () => options.calls ? options.calls() : 0,
     wait: async ms => { clock += ms; },
-    prepareAdmission: claim => { if (options.prepareFails) throw Error('unwritable'); prepared.push(claim); },
-    admissionCeiling: () => options.ceiling ? options.ceiling() : false,
+    prepareAdmission: (claim, edge) => { if (options.prepareFails) throw Error('unwritable'); prepared.push(claim); edges.push(edge); },
+    admissionState: () => { const refused = options.refused ? options.refused() : false;
+      return refused === null ? null : { refused, openDelegations: options.openDelegations ? options.openDelegations() : [] }; },
+    closeAdmission: () => { admissionsClosed += 1; },
   };
   const driver: NativeHarnessDriverPort & { stop(): ReturnType<typeof f.success<readonly string[]>> } = {
     owner: 'part-eight',
@@ -74,7 +80,7 @@ function fixture(options: { phases?: readonly Phase[]; maxSteps?: number; deadli
   const request = (operation = 'obligation-commitment-1-2') => ({ operation,
     question: 'Do the one due step.', context: '{"obligation":{"kind":"request"}}',
     authority: 'a test-only grant naming one bounded step' });
-  return { port, rows, scope, io, request, driver, prepared,
+  return { port, rows, scope, io, request, driver, prepared, edges, admissionsClosed: () => admissionsClosed,
     resultPath: (operation = 'obligation-commitment-1-2') =>
       join(scope, `work-${createHash('sha256').update(operation).digest('hex').slice(0, 32)}.json`),
     /** The child's result, written when its turn closes. `null` means the child wrote nothing. */
@@ -233,15 +239,17 @@ it('bounds itself: one step at a time, a finite step ceiling, and a deadline tha
   expect((slow.rows[1] as SessionWorkEdgeClose).detail).toContain('deadline exceeded');
   expect(slow.counts().stops).toBe(1);
 });
-it('the admission ceiling ends a step; the transcript meter is accounting, read before any result is accepted', async () => {
-  // The admission hook refused a call past the reserved ceiling (and stopped the harness): the step is uncertain,
-  // its child is stopped, and the state was laid out fresh for this step's claim before the launch.
+it('the model-dispatch checkpoint\'s allowance ends a step; the transcript meter is accounting, read before any result is accepted', async () => {
+  // The checkpoint refused a model call past the reserved allowance before dispatch: the step is uncertain, its child
+  // is stopped, the claim is closed at the checkpoint, and the state was opened for this step's claim and edge first.
   let polls = 0;
-  const f = fixture({ phases: ['launched'], maxCalls: 3, ceiling: () => ++polls > 1 });
+  const f = fixture({ phases: ['launched'], maxCalls: 3, refused: () => ++polls > 1 });
   expect(await f.port.run(f.request())).toMatchObject({ state: 'uncertain' });
-  expect((f.rows[1] as SessionWorkEdgeClose).detail).toContain('past the reserved model-call ceiling (3) was refused');
+  expect((f.rows[1] as SessionWorkEdgeClose).detail).toContain('past the reserved allowance (3) was refused before dispatch');
   expect(f.counts().stops).toBe(1);
+  expect(f.admissionsClosed()).toBe(1);
   expect(f.prepared).toEqual([`session-work-${createHash('sha256').update('obligation-commitment-1-2').digest('hex').slice(0, 32)}`]);
+  expect(f.edges).toEqual([f.rows[0]]);
   // Exactly the reserved liability (the first call plus every admitted slot) is within bounds: the step completes,
   // and the close records the calls the child made.
   const under = fixture({ maxCalls: 3, calls: () => 3 });
@@ -257,9 +265,9 @@ it('the admission ceiling ends a step; the transcript meter is accounting, read 
   expect(await blind.port.run(blind.request())).toMatchObject({ state: 'uncertain' });
   expect((blind.rows[1] as SessionWorkEdgeClose).detail).toContain('meter could not be read');
   expect(blind.rows[1]).toMatchObject({ calls: null });
-  const unread = fixture({ phases: ['launched'], ceiling: () => null });
+  const unread = fixture({ phases: ['launched'], refused: () => null });
   expect(await unread.port.run(unread.request())).toMatchObject({ state: 'uncertain' });
-  expect((unread.rows[1] as SessionWorkEdgeClose).detail).toContain('admission record could not be read');
+  expect((unread.rows[1] as SessionWorkEdgeClose).detail).toContain('admission state could not be read');
 });
 it('a stable result is never accepted while the final accounting is unknown or the ceiling was reached', async () => {
   // The result stabilizes on the second read; on that same poll the meter becomes unreadable. Unknown stays unknown.
@@ -267,9 +275,9 @@ it('a stable result is never accepted while the final accounting is unknown or t
   const f = fixture({ phases: ['launched'], maxCalls: 2, calls: () => meter });
   f.io.wait = async () => { if (meter === 0) { f.writeNow('{"outcome":"report","report":"done"}'); meter = 1; } else meter = null; };
   expect((await f.port.run(f.request())).state).toBe('uncertain');
-  // The same neighbour on the ceiling side: the result is stable, but the hook refused a call past the ceiling.
+  // The same neighbour on the ceiling side: the result is stable, but the checkpoint refused a call past the allowance.
   let marked = false;
-  const g = fixture({ phases: ['launched'], maxCalls: 2, ceiling: () => marked });
+  const g = fixture({ phases: ['launched'], maxCalls: 2, refused: () => marked });
   g.io.wait = async () => { g.writeNow('{"outcome":"report","report":"done"}'); marked = true; };
   expect((await g.port.run(g.request())).state).toBe('uncertain');
   // An admission state that cannot be laid out launches nothing.
@@ -277,6 +285,62 @@ it('a stable result is never accepted while the final accounting is unknown or t
   expect(await h.port.run(h.request())).toMatchObject({ state: 'failed' });
   expect((h.rows[1] as SessionWorkEdgeClose).detail).toContain('admission state could not be prepared');
   expect(h.counts().launches).toBe(0);
+});
+it.each([null, 25])('the disposition is judged on the accounting read after the child stopped: %s calls cannot leave a complete result', async finalCalls => {
+  // Reviewer reproduction (round 3): every poll reads 1 call, the read after the stop reads unknown or past the reservation.
+  let didStop = false;
+  const f = fixture({ calls: () => didStop ? finalCalls : 1 });
+  f.answers('{"reply":"done"}');
+  const stop = f.driver.stop;
+  f.driver.stop = () => { didStop = true; return stop(); };
+  const result = await f.port.run(f.request());
+  expect(f.rows.at(-1)).toMatchObject({ calls: finalCalls, reserved: 24 });
+  expect(result.state).toBe('uncertain');
+  expect(result.text).toBeUndefined();
+  // The other side: the same read within the reservation leaves the step complete.
+  let stopped = false;
+  const g = fixture({ calls: () => stopped ? 24 : 1 });
+  g.answers('{"reply":"done"}');
+  const gStop = g.driver.stop;
+  g.driver.stop = () => { stopped = true; return gStop(); };
+  expect(await g.port.run(g.request())).toMatchObject({ state: 'complete', text: '{"reply":"done"}' });
+});
+it('a delegation still open when its parent closes settles as uncertain, and the parent cannot be complete over it', async () => {
+  let parent: SessionWorkEdge | null = null;
+  const f = fixture({ openDelegations: () => parent ? [nestedSessionWorkEdge(parent, { id: 'toolu_nested_1', tool: 'Agent' }, 1_000_100)] : [] });
+  f.io.prepareAdmission = (_claim, edge) => { parent = edge; };
+  f.answers('{"reply":"done"}');
+  const outcome = await f.port.run(f.request());
+  expect(outcome.state).toBe('uncertain');
+  expect(outcome.detail).toContain('delegated agent delegated:toolu_nested_1 did not return before the step closed');
+  const nestedClose = f.rows.find(row => row.type === 'SessionWorkEdgeClose' && row.edge.includes(':delegated:')) as SessionWorkEdgeClose;
+  expect(nestedClose).toMatchObject({ state: 'uncertain', child: 'delegated:toolu_nested_1', edge: `${parent!.id}:delegated:toolu_nested_1` });
+  // The nested close is written before its parent's close.
+  expect(f.rows.indexOf(nestedClose)).toBeLessThan(f.rows.length - 1);
+  for (const row of f.rows) expect(() => validateSessionWorkRow(row)).not.toThrow();
+});
+it('the production result reader refuses a symlinked result, so the host never reads outside the delegated scope', async () => {
+  // Reviewer reproduction (round 3): the child plants a symlink at its result destination pointing at an out-of-scope file.
+  const f = fixture();
+  const physical = createProductionSessionIO({ stateDirectory: join(f.scope, '..', 'state'), tmuxPath: '/usr/bin/true', home: f.scope,
+    configHome: f.scope, cwd: f.scope });
+  f.io.readResult = physical.readResult;
+  const outside = join(f.scope, '..', 'outside-dummy-secret.json');
+  writeFileSync(outside, '{"reply":"DUMMY-SECRET-OUTSIDE-SCOPE"}');
+  let planted = false;
+  const observe = f.driver.observe;
+  f.driver.observe = input => { if (!planted) { symlinkSync(outside, f.resultPath()); planted = true; } return observe(input); };
+  const result = await f.port.run(f.request());
+  expect(result.text).toBeUndefined();
+  expect(result.state).not.toBe('complete');
+  expect(JSON.stringify(f.rows)).not.toContain('DUMMY-SECRET');
+  expect(result.detail).toContain('symbolic link');
+  // The neighbour: an ordinary result through the same reader completes.
+  const g = fixture();
+  g.io.readResult = createProductionSessionIO({ stateDirectory: join(g.scope, '..', 'state'), tmuxPath: '/usr/bin/true', home: g.scope,
+    configHome: g.scope, cwd: g.scope }).readResult;
+  g.answers('{"reply":"ordinary"}');
+  expect(await g.port.run(g.request())).toMatchObject({ state: 'complete', text: '{"reply":"ordinary"}' });
 });
 it('a refused resource admission launches nothing, and an unconfirmed stop or release is uncertain', async () => {
   const full = fixture({ admit: 'refuse' });
@@ -322,7 +386,7 @@ it('refuses a configuration that is not bounded, or a destination outside the ch
   const f = assemblyRuntimeFixture();
   const root = realpathSync(mkdtempSync(join(tmpdir(), 'session-work-config-'))); roots.push(root);
   const io: SessionWorkIO = { readResult: () => null, clearResult: () => undefined, modelCalls: () => 0, wait: async () => undefined,
-    prepareAdmission: () => undefined, admissionCeiling: () => false };
+    prepareAdmission: () => undefined, admissionState: () => ({ refused: false, openDelegations: [] }), closeAdmission: () => undefined };
   const base = { createDriver: () => ({ owner: 'part-eight' as const, launch: () => f.success('x'),
     deliver: () => f.success('y'), observe: () => f.success({ phase: 'launched' as const, evidence: 'e', detail: 'd' }),
     stop: () => f.success([] as readonly string[]) }),
@@ -407,12 +471,13 @@ function realDriverWorld(mode: 'result' | 'stop' | 'deadline' | 'idle') {
   const port = value(createSessionWorkPort({
     createDriver: resolveIntake => createProductionSessionDriver({ operatorOwnUse: true, confinement: 'admitted',
       toolAdmission: { command: (claim, phase) => `/node /hook.mjs ${phase} /state/${claim}`, timeoutSeconds: 600 },
+      modelGate: claim => `http://127.0.0.1:4100/${'a'.repeat(32)}/${claim}`,
       framework: 'claude-code', executable: '/synthetic', cwd: '/work', home: '/home', configHome: '/login',
       context: f.c, io: tmux, now: () => now, stopped: () => stopped, resolveIntake,
       maxSessions: 1, turnDeadlineMs: 600_000, readyTimeoutMs: 1000, protectedSessions: [] }),
     io: { clearResult: () => { result = null; }, readResult: () => result, modelCalls: () => 0,
       wait: async ms => { waits++; now += ms; if (mode === 'stop') stopped = true; },
-      prepareAdmission: () => undefined, admissionCeiling: () => false },
+      prepareAdmission: () => undefined, admissionState: () => ({ refused: false, openDelegations: [] }), closeAdmission: () => undefined },
     resources: { admit: async () => ({ attach: async () => undefined, release: async () => true }) },
     context: f.c, now: () => now, stopped: () => stopped, append: () => {},
     parent: 'launch:conversation-1', owner: 'machine', placement: 'machine:one', transport: 'tmux',
@@ -471,5 +536,23 @@ it('the journal reserves an edge\'s whole call liability against the call cap, a
     journal.append({ kind: 'session-work', record: close('e1', 27), at: 14 });
     expect(journal.view.calls).toBe(before + 27);
     expect(() => validateSessionWorkRow(close('e1', -1))).toThrow(/close incomplete/u);
+    // A delegation inside the step draws on its parent's reservation: its edge reserves nothing new.
+    const parent = edge('e1', 24);
+    const atCalls = journal.view.calls;
+    journal.append({ kind: 'session-work', record: nestedSessionWorkEdge(parent, { id: 'toolu_n1', tool: 'Agent' }, 15), at: 15 });
+    expect(journal.view.calls).toBe(atCalls);
+    // A nested edge must name its own parent as what it draws on.
+    expect(() => validateSessionWorkRow({ ...nestedSessionWorkEdge(parent, { id: 'toolu_n2', tool: 'Agent' }, 15), drawsOn: 'elsewhere' }))
+      .toThrow(/edge incomplete/u);
+    // The effect owner's identities: one prepared record per identity, observed only after it was prepared.
+    const effect = (state: 'prepared' | 'observed', id = `sha256:${'a'.repeat(64)}`) => sessionWorkEffect({ id, edge: 'e1',
+      operation: 'mcp:threadline:threadline_send', digest: `sha256:${'b'.repeat(64)}`, state, detail: 'd', at: 16 });
+    expect(() => journal.append({ kind: 'session-work', record: effect('observed', `sha256:${'c'.repeat(64)}`), at: 16 })).toThrow(/before it was prepared/u);
+    journal.append({ kind: 'session-work', record: effect('prepared'), at: 16 });
+    expect(journal.view.toolEffects).toEqual([`sha256:${'a'.repeat(64)}`]);
+    expect(() => journal.append({ kind: 'session-work', record: effect('prepared'), at: 17 })).toThrow(/already prepared/u);
+    journal.append({ kind: 'session-work', record: effect('observed'), at: 17 });
+    expect(() => validateSessionWorkRow({ ...effect('prepared'), id: 'not-a-digest' })).toThrow(/effect incomplete/u);
+    expect(journal.view.calls).toBe(atCalls);
   } finally { journal.close(); }
 });
