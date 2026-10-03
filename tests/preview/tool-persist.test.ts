@@ -10,13 +10,13 @@ import { join } from 'node:path';
 import { crc32 } from 'node:zlib';
 import { afterEach, expect, it } from 'vitest';
 import { createJournalWorker, openPreviewJournal } from './journal-test-worker.js';
-import { prepareJournalEnvelope } from './journal-envelope.js';
+import { prepareJournalEnvelope, withWorkspaceNotice } from './journal-envelope.js';
 import { decisionWithinFloor } from './model-call-boundary.js';
 import { conclusionText, parseModelJson } from './model-json.js';
 import { SINGLE_MACHINE_PROFILE } from './activation-authority.js';
 import { subscriptionSessionArgs, subscriptionToolsPolicy, SUBSCRIPTION_TOOL_SESSION_ENV } from '../../src/assembly/production-provider.js';
 // @ts-expect-error The runner side stays plain JavaScript.
-import { conversationWorkspace, detachScratch, forgottenQuotes, planSession, readSession, reconcileWorkspace, removeSessionFiles, removeWorkspaceSessions, runToolTurn, sessionFactsDigest, sessionTranscript, toolStatusLines, TOOL_SESSION_LIMITS, TOOL_WORKSPACES_KEPT, WORKSPACE_LOST_NOTE, WORKSPACE_STALE_NOTE } from './tool-turn.mjs';
+import { conversationWorkspace, detachScratch, forgottenQuotes, planSession, readSession, reconcileWorkspace, removeSessionFiles, removeWorkspaceSessions, runToolTurn, sessionFactsDigest, sessionTranscript, toolStatusLines, TOOL_SESSION_LIMITS, TOOL_WORKSPACES_KEPT, WORKSPACE_LOST_NOTE, WORKSPACE_STALE_NOTE, workspaceNotice } from './tool-turn.mjs';
 
 const key = new Uint8Array(32).fill(5);
 const roots: string[] = [];
@@ -46,7 +46,7 @@ function standInHarness(store: string, act: (turn: Turn, seen: Seen) => unknown 
   };
   return { seen, invoke };
 }
-function turnOptions(journal: ReturnType<typeof openPreviewJournal>, root: string, store: string, invoke: (turn: Turn) => Promise<unknown>,
+function turnOptions(journal: ReturnType<typeof openPreviewJournal>, root: string, store: string, invoke: (turn: Turn, notice: string) => Promise<unknown>,
   extra: Record<string, unknown> = {}) {
   return { journal, root, prepared: '{"q":1}', promptLimit: 32768, deniedRoots: [root], operations: SINGLE_MACHINE_PROFILE.operations,
     now: () => 1_790_000_000_000, redactText: (text: string) => text, fallback: async () => ({ result: 'text-only' }),
@@ -148,8 +148,9 @@ function toolWorld(answer: (input: { id: string; question: string; context: stri
     toolRoute: () => true,
     model: async input => {
       if (input.id.startsWith('summary:')) return { state: 'complete' as const, failureClass: 'malformed' as const };
-      const ran = await runToolTurn({ ...turnOptions(journal, root, store, async (turn: Turn) =>
-        harness.invoke(turn, String(input.prepared)).then(() => answer(input, harness.seen.at(-1)!)), { id: input.id, prepared: String(input.prepared),
+      // As journal-agent's tool route does: the workspace notice rides the packet the harness is given.
+      const ran = await runToolTurn({ ...turnOptions(journal, root, store, async (turn: Turn, notice: string) =>
+        harness.invoke(turn, withWorkspaceNotice(String(input.prepared), notice)).then(() => answer(input, harness.seen.at(-1)!)), { id: input.id, prepared: String(input.prepared),
         conversation: `telegram/bot-${g.bot}/chat-${g.chat}` }), completed: (result: { state?: string }) => result?.state === 'complete' });
       // As journal-agent's model port does: a complete result hands the worker its text.
       const result = ran.result as { state: string; value?: string };
@@ -397,6 +398,79 @@ it('never splices an archive: the zip is kept byte-for-byte and named, its unrel
   expect(existsSync(join(workspace, WORKSPACE_STALE_NOTE))).toBe(false);
 });
 
+it('never splices a structured text file: a JSON file holding a forgotten quote is kept byte-for-byte and still parses; a prose note beside it is reconciled', () => {
+  const { mounted, workspace, tmp } = reconcileSetup();
+  const quotes = forgottenQuotes({ memory: [{ mode: 'forget', source: 's', quote: '4417', trigger: 't' }] });
+  expect(quotes).toEqual(['4417']);
+  const json = '{"locker":4417,"project":{"title":"Keep this project"}}';
+  writeFileSync(join(workspace, 'project.json'), json);
+  writeFileSync(join(workspace, 'note.md'), 'Locker 4417, then the gym.');
+  expect(reconcileWorkspace({ mounted, workspace, tmp, used: false, quotes })).toEqual({ lost: false, reconciled: 1, held: 1 });
+  expect(readFileSync(join(workspace, 'project.json'), 'utf8')).toBe(json);
+  expect(JSON.parse(readFileSync(join(workspace, 'project.json'), 'utf8')).project.title).toBe('Keep this project');
+  expect(readFileSync(join(workspace, 'note.md'), 'utf8')).toBe('Locker , then the gym.');
+  expect(readFileSync(join(workspace, WORKSPACE_STALE_NOTE), 'utf8')).toContain('ws/project.json');
+  // The agent's own valid rewrite of the file ends the hold and completes the forget.
+  writeFileSync(join(workspace, 'project.json'), '{"project":{"title":"Keep this project"}}');
+  expect(reconcileWorkspace({ mounted, workspace, tmp, used: true, quotes })).toEqual({ lost: false, reconciled: 0 });
+  expect(existsSync(join(workspace, WORKSPACE_STALE_NOTE))).toBe(false);
+});
+
+it('keeps a file held in an earlier bounded pass named until a whole walk completes clean', () => {
+  const { mounted, workspace, tmp } = reconcileSetup();
+  writeFileSync(join(workspace, 'a-memo.dat'), sentence);
+  for (let i = 0; i < 12; i++) writeFileSync(join(workspace, `f${String(i).padStart(2, '0')}`), '');
+  const pass = () => reconcileWorkspace({ mounted, workspace, tmp, used: true, quotes: lockerQuotes, limit: 5 });
+  const stale = () => readFileSync(join(workspace, WORKSPACE_STALE_NOTE), 'utf8');
+  expect(pass()).toEqual({ lost: false, reconciled: 0, held: 1, unchecked: true });
+  expect(pass()).toEqual({ lost: false, reconciled: 0, held: 1, unchecked: true });
+  expect(stale()).toContain('ws/a-memo.dat');
+  // The walk's last chunk sees no new held file, yet the earlier one is still named and the forget stays open.
+  expect(pass()).toEqual({ lost: false, reconciled: 0, held: 1 });
+  expect(stale()).toContain('ws/a-memo.dat');
+  expect(stale()).not.toContain('4417');
+  // The next walk starts over and finds it again; once the agent rewrites it, a whole clean walk completes the forget.
+  expect(pass()).toEqual({ lost: false, reconciled: 0, held: 1, unchecked: true });
+  writeFileSync(join(workspace, 'a-memo.dat'), 'nothing to keep');
+  expect(pass()).toEqual({ lost: false, reconciled: 0, held: 1, unchecked: true });
+  expect(pass()).toEqual({ lost: false, reconciled: 0, held: 1 });
+  for (let i = 0; i < 3; i++) pass();
+  expect(existsSync(join(workspace, WORKSPACE_STALE_NOTE))).toBe(false);
+  expect(pass()).toEqual({ lost: false, reconciled: 0 });
+});
+
+it('delivers the workspace notice in the turn\'s own input while reconciliation is unfinished, and none once it completes', async () => {
+  const fact = 'My locker code is 4417.';
+  const notices: (string | null)[] = [];
+  const w = toolWorld((input, seen) => {
+    const envelope = JSON.parse(seen.prepared) as { messages: { role: string; content: string }[] };
+    const packet = JSON.parse(envelope.messages.find(message => message.role === 'context')!.content).packet as { workspace?: string };
+    notices.push(packet.workspace ?? null);
+    const memo = join(seen.workspace, 'memo.dat');
+    if (input.question === fact) writeFileSync(memo, `${fact}\n`);
+    if (input.question.startsWith('Please stop remembering')) {
+      const source = JSON.parse(input.context).memoryCandidates?.find((item: { message: string }) => item.message.includes(fact));
+      return { state: 'complete', value: JSON.stringify({ reply: 'Done.', memory: [{ mode: 'forget', source: source.id, quote: fact }] }) };
+    }
+    // The agent, told which file may disagree, rewrites it with its own tools.
+    if (input.question === 'Tidy the workspace.') writeFileSync(memo, 'cleared\n');
+    return { state: 'complete', value: 'Noted.' };
+  });
+  w.worker.intake([w.update(1, fact)]); await w.worker.drain();
+  w.worker.intake([w.update(2, `Please stop remembering this fact: ${fact}`)]); await w.worker.drain();
+  w.worker.intake([w.update(3, 'Tidy the workspace.')]); await w.worker.drain();
+  w.worker.intake([w.update(4, 'Anything else?')]); await w.worker.drain();
+  // Before the forget nothing is stale; the turn after it is told, in its input, which file may still disagree.
+  expect(notices.slice(0, 2)).toEqual([null, null]);
+  expect(notices[2]).toContain('ws/memo.dat');
+  expect(notices[2]).toContain('memory is the authority');
+  expect(notices[2]).not.toContain('4417');
+  // After the agent's rewrite the check completes and the next turn's input carries no notice.
+  expect(notices[3]).toBeNull();
+  expect(w.journal.view.toolTurns?.reconcileIncomplete).toBe(1);
+  w.journal.close();
+});
+
 it('detects a lost kept workspace from the journal\'s history: a first allocation is not a loss, a vanished volume is', async () => {
   const root = dir(), store = join(root, 'projects'), journal = openPreviewJournal(join(root, 'journal.encrypted'), key, genesis());
   const notes: (string | null)[] = [];
@@ -575,4 +649,27 @@ it('replays the live persist, forget and stop runs\' journal rows to the recorde
     expect(journal.view.toolTurns?.open, name).toEqual([]);
     journal.close();
   }
+});
+
+it('replays the live forget run\'s recorded memory change: its quote is removed from a prose note, a structured file holding it is kept and named in the delivered notice', () => {
+  const recorded = JSON.parse(readFileSync(new URL('./fixtures/tool-turn/persist-2026-10-03/forget.json', import.meta.url), 'utf8')) as
+    { memory: { mode: string; quote: string }[] };
+  const quotes = forgottenQuotes({ memory: recorded.memory });
+  expect(quotes).toEqual(['My locker code is 4417.']);
+  const { mounted, workspace, tmp } = reconcileSetup();
+  const json = JSON.stringify({ saved: quotes[0], project: { title: 'Keep this project' } });
+  writeFileSync(join(workspace, 'state.json'), json);
+  writeFileSync(join(workspace, 'note.txt'), `Saved: ${quotes[0]!}\nAlso: bring the blue folder.\n`);
+  const volume = reconcileWorkspace({ mounted, workspace, tmp, used: true, quotes });
+  expect(volume).toEqual({ lost: false, reconciled: 1, held: 1 });
+  expect(readFileSync(join(workspace, 'state.json'), 'utf8')).toBe(json);
+  expect(readFileSync(join(workspace, 'note.txt'), 'utf8')).toBe('Saved: \nAlso: bring the blue folder.\n');
+  const notice = workspaceNotice(workspace, volume) as string;
+  expect(notice).toContain('ws/state.json');
+  expect(notice).not.toContain('4417');
+  // The other side: once the file no longer holds it the pass completes and the turn carries no notice.
+  writeFileSync(join(workspace, 'state.json'), JSON.stringify({ project: { title: 'Keep this project' } }));
+  const done = reconcileWorkspace({ mounted, workspace, tmp, used: true, quotes });
+  expect(done).toEqual({ lost: false, reconciled: 0 });
+  expect(workspaceNotice(workspace, done)).toBe('');
 });

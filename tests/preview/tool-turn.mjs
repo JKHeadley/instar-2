@@ -183,6 +183,15 @@ export const WORKSPACE_LOST_NOTE = 'WORKSPACE-LOST.txt';
 /** The note a kept workspace carries while its last reconciliation could not finish, naming what still may disagree with
  * the journal; removed once a pass completes. */
 export const WORKSPACE_STALE_NOTE = 'WORKSPACE-STALE.txt';
+/** How many held files a note names (each name clipped), so the note, which is also delivered in the turn's input, stays
+ * within its bound (NOTICE_TEXT_MAX). */
+const STALE_NAMED = 16;
+const named = paths => `${paths.slice(0, STALE_NAMED).map(path => path.length > 96 ? `${path.slice(0, 93)}...` : path).join(', ')}`
+  + `${paths.length > STALE_NAMED ? ` and ${String(paths.length - STALE_NAMED)} more` : ''}`;
+/** The room a turn's packet keeps for the workspace notice delivered with it (the stale and lost notes, both bounded): the
+ * notice's own text is held to three quarters of it, the rest covers its escaping inside the packet's JSON. */
+export const TOOL_NOTICE_MAX_BYTES = 4096;
+const NOTICE_TEXT_MAX = 3072;
 const strip = (buffer, needle) => {
   const parts = []; let from = 0, at;
   while ((at = buffer.indexOf(needle, from)) >= 0) { parts.push(buffer.subarray(from, at)); from = at + needle.length; }
@@ -191,9 +200,14 @@ const strip = (buffer, needle) => {
   return Buffer.concat(parts);
 };
 const UTF8 = new TextDecoder('utf-8', { fatal: true });
-/** Plain text: valid UTF-8 without a NUL byte. Only such a file is edited by removing a clause; any other format (an
- * archive, an image, a database) has structure a byte splice would break, so it is kept intact and named instead. */
-const plainText = buffer => { if (buffer.includes(0)) return false; try { UTF8.decode(buffer); return true; } catch { return false; } };
+/** The formats whose every byte is prose, so removing a clause leaves a valid file of the same format: a plain note or a
+ * Markdown file, by its name, that is valid UTF-8 without a NUL byte. Any other file (JSON, code, an archive, a database)
+ * has structure a splice can break, so it is kept intact and named to the agent, which rewrites it with its own tools. */
+export const PROSE_EXTENSIONS = Object.freeze(['.txt', '.text', '.md', '.markdown']);
+const prose = (path, buffer) => {
+  if (!PROSE_EXTENSIONS.some(extension => path.toLowerCase().endsWith(extension)) || buffer.includes(0)) return false;
+  try { UTF8.decode(buffer); return true; } catch { return false; }
+};
 /** Whether `a` comes after `b` in the walk's order (component by component; a directory before what it holds). */
 const after = (a, b) => {
   for (let i = 0; i < Math.min(a.length, b.length); i++) if (a[i] !== b[i]) return a[i] > b[i];
@@ -207,10 +221,10 @@ function rewrite(path, data, mode) {
   try { writeFileSync(path, data); } finally { chmodSync(path, mode); }
 }
 /**
- * Removes every forgotten or corrected clause from the plain-text regular files under `dirs` (symlinks not followed);
+ * Removes every forgotten or corrected clause from the prose regular files under `dirs` (symlinks not followed);
  * files without one are left byte-for-byte. The walk visits at most `limit` entries, starting after `from` (a position a
  * bounded earlier pass stopped at), so a large workspace is covered over several passes. Returns the files changed,
- * the files still holding a clause (unreadable, unwritable, or not plain text: kept intact, never half-edited), and
+ * the files still holding a clause (unreadable, unwritable, or not prose: kept intact, never half-edited), and
  * `cursor`: where the walk stopped at its bound, or null when it reached the end.
  */
 export function removeForgotten(dirs, quotes, limit = 10000, from = null) {
@@ -223,7 +237,7 @@ export function removeForgotten(dirs, quotes, limit = 10000, from = null) {
     let next = original;
     for (const needle of needles) next = strip(next, needle) ?? next;
     if (next === original) return;
-    if (!plainText(original)) { held.push(path); return; }
+    if (!prose(path, original)) { held.push(path); return; }
     try { rewrite(path, next, stat.mode & 0o7777); changed++; } catch { held.push(path); }
   };
   const walk = (dir, position) => {
@@ -262,17 +276,20 @@ export function reconcileWorkspace({ mounted, workspace, tmp, used, quotes, limi
   else {
     const prior = recorded?.pending?.digest === forgotten && Array.isArray(recorded.pending.cursor) ? recorded.pending : null;
     const pass = removeForgotten([workspace, tmp], quotes, limit, prior?.cursor ?? null);
-    reconciled = pass.changed; held = pass.held.map(path => relative(mounted, path)); unchecked = pass.cursor !== null;
-    const clean = (prior ? prior.clean : true) && !held.length;
+    reconciled = pass.changed; unchecked = pass.cursor !== null;
+    // The files an earlier bounded pass of this same walk held stay named until the walk completes clean.
+    const earlier = Array.isArray(prior?.held) ? prior.held.filter(path => typeof path === 'string') : [];
+    held = [...new Set([...earlier, ...pass.held.map(path => relative(mounted, path))])];
+    const clean = (prior ? prior.clean === true : true) && !held.length;
     // A walk that reached the end clean completes the forget; one that held a file starts over next turn.
-    if (unchecked) pending = { digest: forgotten, cursor: pass.cursor, clean };
+    if (unchecked) pending = { digest: forgotten, cursor: pass.cursor, clean, held: held.slice(0, STALE_NAMED) };
     else if (clean) done = forgotten;
   }
   const note = join(workspace, WORKSPACE_STALE_NOTE);
   if (held.length || unchecked) writeFileSync(note, 'Some of this workspace may still disagree with this conversation\'s memory: it has '
     + 'since forgotten or corrected statements these files may still hold. The memory is the authority; do not rely on them '
     + 'for anything it no longer holds, and rewrite them without it if you use them. The check repeats every turn until it '
-    + `completes.\n${held.length ? `Files that still hold such a statement and could not be changed automatically (kept intact): ${held.join(', ')}\n` : ''}`
+    + `completes.\n${held.length ? `Files that still hold such a statement and were not changed automatically (kept intact): ${named(held)}\n` : ''}`
     + `${unchecked ? 'Part of the workspace has not been checked yet (past this turn\'s bound); the next turn continues.\n' : ''}`, { mode: 0o600 });
   else rmSync(note, { force: true });
   if (lost) writeFileSync(join(workspace, WORKSPACE_LOST_NOTE), 'This conversation\'s earlier workspace was lost: its volume was '
@@ -280,6 +297,16 @@ export function reconcileWorkspace({ mounted, workspace, tmp, used, quotes, limi
     + 'The conversation\'s journal still holds every answer and tool trace.\n', { mode: 0o600 });
   writeFileSync(mark, JSON.stringify({ v: 1, forgotten: done, ...(pending ? { pending } : {}) }), { mode: 0o600 });
   return { lost, reconciled, ...(held.length ? { held: held.length } : {}), ...(unchecked ? { unchecked } : {}) };
+}
+/** What the turn's input carries about its workspace (Rules 33, 84): the stale note while reconciliation is unfinished and
+ * the lost note on the turn that found the loss, so the agent is told, not left to discover a file. Empty when neither. */
+export function workspaceNotice(workspace, volume) {
+  const read = name => { try { return readFileSync(join(workspace, name), 'utf8'); } catch { return ''; } };
+  const parts = [...(volume.held || volume.unchecked ? [read(WORKSPACE_STALE_NOTE)] : []), ...(volume.lost ? [read(WORKSPACE_LOST_NOTE)] : [])]
+    .filter(text => text.length);
+  if (!parts.length) return '';
+  const text = `Workspace notice (from this conversation's kept workspace, before this turn):\n${parts.join('')}`;
+  return Buffer.byteLength(text) > NOTICE_TEXT_MAX ? `${Buffer.from(text).subarray(0, NOTICE_TEXT_MAX - 4).toString('utf8').replace(/\uFFFD$/u, '')}...\n` : text;
 }
 
 /** The kept harness session (MF5): a disposable cache of one conversation's harness context, subordinate to the journal.
@@ -391,7 +418,7 @@ export function pruneToolTurns(root, keep = TOOL_TURNS_KEPT, detach = detachScra
  * answers this turn without tools (`fallback`), recorded. The reservation is durable before anything is
  * allocated or launched, so a crash leaves it open and visible. The hook's trace is journaled after the
  * turn whatever its outcome; a tool result with no admitted call before it (a tool that ran past the hook)
- * refuses the answer instead of trusting it. `invoke(toolTurn)` runs the admitted route; `redactText` scrubs
+ * refuses the answer instead of trusting it. `invoke(toolTurn, notice)` runs the admitted route with the workspace notice; `redactText` scrubs
  * recorded excerpts.
  */
 /** Whether the call allowance holds a tool turn's whole liability. The packet that names the tools and the turn's own
@@ -420,7 +447,7 @@ export async function runToolTurn({ journal, root, id, prepared, promptLimit, de
   const extra = SUBSCRIPTION_TOOL_LIMITS.maxTurns - 1;
   const refuse = reason => { journal.append({ kind: 'tool-turn', phase: 'refused', id, reason, at: now() }); return fallback(); };
   if (!toolTurnFits(journal.view)) return refuse('call cap');
-  if (Buffer.byteLength(prepared) + Buffer.byteLength(SUBSCRIPTION_TOOLS_SYSTEM_PROMPT) > promptLimit) return refuse('prompt size');
+  if (Buffer.byteLength(prepared) + Buffer.byteLength(SUBSCRIPTION_TOOLS_SYSTEM_PROMPT) + TOOL_NOTICE_MAX_BYTES > promptLimit) return refuse('prompt size');
   const attempt = journal.view.toolTurns?.invocations ?? 0;
   const children = toolChildrenFit(journal.view);
   // Rule 60: the conversation's kept workspace, or (past the root's bound) a fresh one-turn volume and no kept session.
@@ -437,10 +464,13 @@ export async function runToolTurn({ journal, root, id, prepared, promptLimit, de
     delegation: { children, turnsEach: SUBSCRIPTION_TOOL_LIMITS.childMaxTurns, type: SUBSCRIPTION_SUBAGENT_TYPE, authority },
     ...(mcp ? { mcp: { servers: Object.keys(mcp.servers), reads: mcp.reads.length, digest: mcp.digest } } : {}),
     workspace: { key: space.key, kept }, at: now() });
-  let turn = null, result, failure = null, plan = null, volume = null;
+  let turn = null, result, failure = null, plan = null, volume = null, notice = '';
   try {
     turn = prepareToolTurn({ root, operation: id, attempt, operations, children, mcp, scratch, volume: kept ? space : null });
-    if (kept) volume = reconcileWorkspace({ mounted: turn.scratch, workspace: turn.workspace, tmp: join(turn.scratch, 'tmp'), used, quotes });
+    if (kept) {
+      volume = reconcileWorkspace({ mounted: turn.scratch, workspace: turn.workspace, tmp: join(turn.scratch, 'tmp'), used, quotes });
+      notice = workspaceNotice(turn.workspace, volume);
+    }
     if (session && kept) {
       // MF5: the session is resumed only when nothing it may hold has changed; otherwise the old one's files go before a
       // new one starts, and the record naming it is written (open) before dispatch, so a crash leaves it `interrupted`.
@@ -454,7 +484,7 @@ export async function runToolTurn({ journal, root, id, prepared, promptLimit, de
         turns: plan.turn, open: true, at: now() });
     }
     result = await invoke({ scratch: turn.scratch, workspace: turn.workspace, stateDirectory: turn.stateDirectory, hook: turn.hook, deniedRoots,
-      ...(turn.mcp ? { mcp: turn.mcp } : {}), ...(plan ? { session: { id: plan.id, resume: plan.resume } } : {}) });
+      ...(turn.mcp ? { mcp: turn.mcp } : {}), ...(plan ? { session: { id: plan.id, resume: plan.resume } } : {}) }, notice);
   } catch (error) { failure = error; }
   const trace = turn ? readToolTrace(turn.stateDirectory) : { calls: [], children: [], consistent: true };
   const ended = stopped() ? 'cancelled' : 'unknown';

@@ -13,7 +13,7 @@ import { SUBSCRIPTION_SUBAGENT_TYPE, SUBSCRIPTION_TOOL_LIMITS, SUBSCRIPTION_TOOL
 import { SINGLE_MACHINE_PROFILE } from './activation-authority.js';
 import { capabilityBriefing, TOOLS_BRIEFING } from './briefing.js';
 // @ts-expect-error The runner side stays plain JavaScript.
-import { attachScratch, detachScratch, unmountScratch, prepareToolTurn, pruneToolTurns, readRootMcp, readToolTrace, runToolTurn, scratchMounted, toolChildrenFit, toolStatusLines, toolTurnEligible, toolTurnFits, workspaceBytes, TOOL_HOOK_SCRIPT } from './tool-turn.mjs';
+import { attachScratch, detachScratch, unmountScratch, prepareToolTurn, pruneToolTurns, readRootMcp, readToolTrace, runToolTurn, scratchMounted, toolChildrenFit, toolStatusLines, toolTurnEligible, toolTurnFits, workspaceBytes, TOOL_HOOK_SCRIPT, TOOL_NOTICE_MAX_BYTES } from './tool-turn.mjs';
 // @ts-expect-error The physical host remains JavaScript.
 import { createResourceOwner } from '../../scripts/resource-owner.mjs';
 
@@ -227,9 +227,14 @@ it('runs one tool turn: refuses to the text-only answer on a short allowance or 
     calls: [{ n: 1, tool: 'Write', decision: 'allow', input: '{"content":"[redacted]"}', result: '"created"' }] });
   // Prompt room: a packet the tool system prompt would overflow answers without tools.
   root = dir(); journal = journalAt(root, 50);
-  const big = { ...base(journal, root, async () => 'x'), prepared: 'x'.repeat(32768 - Buffer.byteLength(SUBSCRIPTION_TOOLS_SYSTEM_PROMPT) + 1) };
+  // The room includes the bounded workspace notice the turn may carry (Rules 33, 84): one byte past it falls back, at it runs.
+  const room = 32768 - Buffer.byteLength(SUBSCRIPTION_TOOLS_SYSTEM_PROMPT) - TOOL_NOTICE_MAX_BYTES;
+  const big = { ...base(journal, root, async () => 'x'), prepared: 'x'.repeat(room + 1) };
   expect(await runToolTurn(big)).toEqual({ result: 'text-only' });
   expect(journal.view.toolTurns?.refusedPrompt).toBe(1);
+  root = dir(); journal = journalAt(root, 50);
+  expect((await runToolTurn({ ...base(journal, root, async () => 'fits'), prepared: 'x'.repeat(room) })).result).toBe('fits');
+  expect(journal.view.toolTurns?.refusedPrompt ?? 0).toBe(0);
   // A tool result with no admitted call before it: the trace is journaled, the answer refused.
   root = dir(); journal = journalAt(root, 50);
   await expect(runToolTurn(base(journal, root, async turn => {

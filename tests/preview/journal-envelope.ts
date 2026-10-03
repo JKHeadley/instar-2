@@ -29,3 +29,16 @@ export function prepareJournalEnvelope(input: { question: string; context: strin
     throw Error('preview: complete prompt overflow');
   return bytes;
 }
+
+/** The tool turn's workspace notice (Rules 33, 84), carried in the packet it grounds: `packet.workspace` of the role:context
+ * message, so the agent is told which kept files may still disagree with memory (or that the workspace was lost) in the
+ * input it answers from. An empty notice leaves the envelope byte-for-byte. */
+export function withWorkspaceNotice(bytes: string, notice: string): string {
+  if (!notice) return bytes;
+  const envelope = JSON.parse(bytes) as { messages: { role: string; content: string }[] };
+  const context = envelope.messages.find(message => message.role === 'context');
+  if (!context) throw Error('preview: envelope has no context message');
+  const value = JSON.parse(context.content) as { packet: Record<string, unknown> };
+  context.content = encoded({ ...value, packet: { ...value.packet, workspace: notice } }).bytes;
+  return encoded(envelope).bytes;
+}
