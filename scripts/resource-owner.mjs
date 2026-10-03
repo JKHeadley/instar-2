@@ -23,7 +23,12 @@
 // the launch's private working area. The last join covers a descendant that detaches
 // and whose parent exits before any sample. A launch without a private working area is
 // `unconfined`. Residue: a descendant that also leaves the working area before any
-// census; only the held separate worker identity closes that.
+// census; only the held separate worker identity closes that — or, for a launch that
+// runs under its own per-launch sandbox profile (`membership: 'sandbox'`), the sandbox
+// join (`sandbox-joined`): the kernel's sandbox identity of each candidate, read from
+// outside the launch, which no descendant sheds by a new session, a new parent or
+// another working directory. Such a descendant is counted, held to the ceilings and
+// ended like any other member; nothing inside the launch is consulted.
 //
 // The provider does not start until its launch evidence (pid, start evidence,
 // owner) is durably recorded: the shim waits on a go signal the owner sends only
@@ -172,8 +177,9 @@ export const HOST_BOUNDS = Object.freeze({ aggregateLaunches: 'hard', sixAllocat
   reason: 'no unprivileged per-tree kernel confinement on this host: memory and tree process counts are enforced on a complete '
     + 'current-user census joined by recorded incarnation, group, ancestry and private working area; RLIMIT_NPROC bounds the user ID; '
     + 'the working-area join is observation, not confinement, and a Six memory debit is an accounting reservation, not a kernel one',
-  residual: 'a descendant that leaves its group, its parent and the private working area before any census is not joined; '
-    + 'the separate restricted worker identity (the held Ten confined-launch monitor) closes it' });
+  residual: 'a descendant that leaves its group, its parent and the private working area before any census is not joined, '
+    + 'unless its launch runs under its own sandbox profile (`membership: sandbox`: the sandbox join reaches it); '
+    + 'otherwise the separate restricted worker identity (the held Ten confined-launch monitor) closes it' });
 /** The launch's private working area: the working directory when it is owned by this user ID and closed
  * to everyone else, otherwise none (then the escape join is unavailable and membership is `unconfined`). */
 export function privateArea(cwd) {
@@ -380,7 +386,7 @@ export function createResourceOwner(initialCeilings = RESOURCE_CEILINGS) {
     monotonic: () => ports.monotonic(), identity: HOST_IDENTITY, limit: censusLimit, freshForMs: 2 * ceilings.sampleMs,
     uid: typeof process.getuid === 'function' ? process.getuid() : null });
   const rootOf = lease => ({ id: lease.id, pid: lease.pid, known: lease.known, workingArea: lease.workingArea ?? null,
-    start: lease.known.get(lease.pid) ?? null });
+    sandboxArea: lease.sandboxArea ?? null, start: lease.known.get(lease.pid) ?? null });
   /** One Ten census of every current-user process, joined to the owned launches by recorded
    * incarnation, group, ancestry and private working area. `complete`, `partial` (census or
    * candidate bound reached: examined/omitted counted) or `failed` (a refused read): a partial
@@ -391,7 +397,7 @@ export function createResourceOwner(initialCeilings = RESOURCE_CEILINGS) {
     try { ten = await loadTenOwner(); snapshot = await inventory.census(); }
     catch { return { state: 'failed', snapshot: { id: `inventory:${randomUUID()}`, adapter: 'unavailable', adapterDigest: 'unavailable' },
       members: null, rows: null }; }
-    const { launchMembership, joinWorkingArea } = ten;
+    const { launchMembership, joinWorkingArea, joinSandbox } = ten;
     if (snapshot.status === 'failed') return { state: 'failed', snapshot, members: null, rows: null };
     const roots = leases.filter(l => l.pid).map(rootOf);
     const { members, candidates } = launchMembership(snapshot, roots, process.pid);
@@ -399,7 +405,18 @@ export function createResourceOwner(initialCeilings = RESOURCE_CEILINGS) {
     const read = candidates.slice(0, ceilings.candidateLimit ?? RESOURCE_CEILINGS.candidateLimit);
     const cwds = read.length ? await inventory.workingDirectories(read) : new Map();
     if (read.length) for (const [pid, member] of joinWorkingArea(snapshot, roots, read, cwds)) joined.set(pid, member);
-    const unread = await unreadCandidates(snapshot, read, cwds);
+    // The sandbox join: a candidate the working-area join missed (it changed directory out of the area) is still a
+    // member of a sandboxed launch if the kernel says it is in that launch's sandbox instance. An unreadable reading is
+    // unknown, so a census holding one is never complete.
+    const areas = [...new Set(roots.map(l => l.sandboxArea).filter(Boolean))];
+    const unjoined = read.filter(pid => !joined.has(pid));
+    let unboxed = 0;
+    if (areas.length && unjoined.length) {
+      const readings = typeof joinSandbox === 'function' ? await inventory.sandboxes(unjoined, areas) : new Map();
+      if (typeof joinSandbox === 'function') for (const [pid, member] of joinSandbox(snapshot, roots, unjoined, readings)) joined.set(pid, member);
+      unboxed = await unreadCandidates(snapshot, unjoined.filter(pid => readings.get(pid)?.state !== 'observed'), new Map());
+    }
+    const unread = await unreadCandidates(snapshot, read.filter(pid => !joined.has(pid)), cwds) + unboxed;
     const state = snapshot.status === 'partial' || read.length < candidates.length || unread ? 'partial' : 'complete';
     return { state, snapshot, members: joined, rows: new Map(snapshot.processes.map(p => [p.pid, p])),
       examined: snapshot.examined, omitted: (snapshot.omitted ?? 0) + candidates.length - read.length };
@@ -576,6 +593,9 @@ export function createResourceOwner(initialCeilings = RESOURCE_CEILINGS) {
     // own temporary directory) when given, so a descendant that changes to a sibling directory inside that
     // volume is still a member. Absent, the working directory is the area, as before.
     lease.workingArea = privateArea(input.area ?? input.cwd);
+    // A launch under its own sandbox profile (one that reads this private area and not its parent) is also joined by
+    // the kernel's sandbox identity; without a private area there is nothing to name the instance by.
+    lease.sandboxArea = input.membership === 'sandbox' ? lease.workingArea : null;
     const limitValue = uidProcesses.limit;
     /** Returns the Six debit once, citing the evidence that proves the outcome; false when it could not. */
     const closeAllocation = settlement => {
@@ -667,7 +687,7 @@ export function createResourceOwner(initialCeilings = RESOURCE_CEILINGS) {
           const resources = { enforcement: lease.enforcement, uidProcesses: lease.uidProcesses, admission: lease.admission,
             peakMemoryBytes: lease.peakMemoryBytes, peakProcesses: lease.peakProcesses,
             treeCpuMilliseconds: lease.cpuMilliseconds, census: lease.census, leakedDescendants: leaked,
-            membership: lease.workingArea ? 'working-area-joined' : 'unconfined',
+            membership: lease.sandboxArea ? 'sandbox-joined' : lease.workingArea ? 'working-area-joined' : 'unconfined',
             cleanup: unresolved ? 'unresolved' : lease.workingArea ? 'verified' : 'unconfined',
             allocation: lease.allocation ? { set: lease.allocation.set, operation: lease.allocation.operation,
               state: lease.allocation.closed ? 'returned' : 'reserved', settlement: lease.allocation.closed ?? null } : null };

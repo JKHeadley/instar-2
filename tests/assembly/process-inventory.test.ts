@@ -1,10 +1,10 @@
 // Part Ten's read-only process inventory (rows 40/63) and the launch-membership join.
 import { spawn } from 'node:child_process';
-import { mkdtempSync, realpathSync, rmSync } from 'node:fs';
+import { mkdirSync, mkdtempSync, realpathSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { describe, expect, it } from 'vitest';
-import { decodeProcessInventory, joinWorkingArea, launchMembership, startSeconds } from '../../src/assembly/index.js';
+import { decodeProcessInventory, joinSandbox, joinWorkingArea, launchMembership, startSeconds } from '../../src/assembly/index.js';
 import type { InventoryProcess, LaunchRoot, ProcessInventorySnapshot } from '../../src/assembly/index.js';
 // @ts-expect-error The physical adapter remains JavaScript.
 import { createProcessInventory } from '../../scripts/process-inventory.mjs';
@@ -108,6 +108,23 @@ describe('launch membership join', () => {
     expect(joinWorkingArea(s, launches, candidates, new Map([[500, { state: 'observed', path: '/work/area' }]])).get(500))
       .toEqual({ launch: 'B', reason: 'working-area' });
   });
+
+  it('sandbox: a reparented escapee outside the working area joins the launch whose sandbox holds it; each other side does not', () => {
+    // 500 detached, reparented and changed directory to the root: the working-area join misses it, the sandbox reading names it.
+    const s = snapshot([proc(100, 50, 100, T0), proc(500, 1, 500, T1), proc(600, 1, 600, T1), proc(700, 1, 700, T1), proc(800, 1, 800, T_BEFORE)]);
+    const boxed = { ...root('L', 100, T0), sandboxArea: '/work/area' }, plain = root('P', 100, T0);
+    const { candidates } = launchMembership(s, [boxed], 999);
+    const readings = new Map([[500, { state: 'observed', area: '/work/area' }], [600, { state: 'observed', area: null }],
+      [700, { state: 'unavailable' }], [800, { state: 'observed', area: '/work/area' }]] as const);
+    expect(joinWorkingArea(s, [boxed], candidates, new Map([[500, { state: 'observed', path: '/' }]])).size).toBe(0);
+    const joined = joinSandbox(s, [boxed], [...candidates, 800], readings);
+    expect(joined.get(500)).toEqual({ launch: 'L', reason: 'sandbox' });
+    // In no launch's sandbox, an unreadable reading, a process that started before the launch: none joins.
+    expect(joined.has(600)).toBe(false); expect(joined.has(700)).toBe(false); expect(joined.has(800)).toBe(false);
+    // A launch that did not declare a sandbox is never joined by one, and another launch's area does not match.
+    expect(joinSandbox(s, [plain], [500], readings).size).toBe(0);
+    expect(joinSandbox(s, [{ ...boxed, sandboxArea: '/work/area-2' }], [500], readings).size).toBe(0);
+  });
 });
 
 describe('physical inventory adapter (real host)', () => {
@@ -136,5 +153,29 @@ describe('physical inventory adapter (real host)', () => {
         uid: process.getuid!(), limit: 4096, freshForMs: 2000 }).census();
       expect(denied).toMatchObject({ status: 'failed', examined: 0, omitted: null, processes: [] });
     } finally { try { process.kill(child.pid!, 'SIGKILL'); } catch { /* ended */ } rmSync(area, { recursive: true, force: true }); }
+  });
+
+  it.skipIf(process.platform !== 'darwin')('reads which launch sandbox holds a process from outside it, even after it left its parent and directory', async () => {
+    const top = realpathSync(mkdtempSync(join(tmpdir(), 'inventory-box-'))), area = join(top, 'a'), other = join(top, 'b');
+    mkdirSync(area, { mode: 0o700 }); mkdirSync(other, { mode: 0o700 });
+    const profile = join(top, 'p.sb');
+    writeFileSync(profile, ['(version 1)', '(deny default)', '(allow process-exec process-fork)', '(allow sysctl-read)', '(allow file-read-metadata)',
+      '(allow file-read-data (literal "/"))', `(allow file-read* file-map-executable (subpath "/usr") (subpath "/bin") (subpath "/System") (subpath "/private/var/db/dyld") (subpath "${area}") (literal "/dev/null"))`,
+      `(allow file-write* (subpath "${area}") (literal "/dev/null"))`, ''].join('\n'));
+    // The sandboxed shell backgrounds a sleep at the root directory and exits: the sleep is reparented and outside the area.
+    const out = await hostQuery('/usr/bin/sandbox-exec', ['-f', profile, '/bin/sh', '-c', 'cd / && /bin/sleep 20 </dev/null >/dev/null 2>&1 & echo $!']);
+    const boxed = Number(String(out).trim());
+    try {
+      const inventory = createProcessInventory({ query: hostQuery, now: () => 1, monotonic: () => 1, identity: HOST_IDENTITY,
+        uid: process.getuid!(), limit: 4096, freshForMs: 2000 });
+      const readings = await inventory.sandboxes([boxed, process.pid, 99999999], [other, area]);
+      expect(readings.get(boxed)).toEqual({ state: 'observed', area });
+      expect(readings.get(process.pid)).toEqual({ state: 'observed', area: null });
+      expect(readings.get(99999999)).toEqual({ state: 'observed', area: null });
+      // A refused query is unknown for every pid, never "in none".
+      const refused = await createProcessInventory({ query: async () => null, now: () => 1, monotonic: () => 1, identity: HOST_IDENTITY,
+        uid: process.getuid!(), limit: 4096, freshForMs: 2000 }).sandboxes([boxed], [area]);
+      expect(refused.get(boxed)).toEqual({ state: 'unavailable' });
+    } finally { try { process.kill(boxed, 'SIGKILL'); } catch { /* ended */ } rmSync(top, { recursive: true, force: true }); }
   });
 });

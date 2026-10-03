@@ -411,7 +411,7 @@ describe('the tools\' execution boundary', () => {
     // The tree's process count is sampled against the ceiling; the user ID's kernel process limit may refuse forks first.
     expect(posts[2].interrupted === 'processes' || /fork|Resource temporarily unavailable/iu.test(String(posts[2].stderr))).toBe(true);
     expect(posts[3]).toEqual({ content: 'still fine' });
-    // Every launch, the ones the owner ended on a ceiling included, was swept through its sandbox instance.
+    // Every launch, the ones the owner ended on a ceiling included, had its end proven by the owner under the sandbox join.
     expect(run.outcome.result.native.unresolved).toEqual([]);
     // Nothing the launches started is left running: the owner verified every launch's cleanup in a complete census.
     const view = (small as unknown as { snapshot: () => { counters: { cleanupUnresolved: number; completed: number; killed: Record<string, number> };
@@ -471,29 +471,26 @@ child.unref(); process.stdout.write(String(child.pid));`;
     expect(rows[1]).toMatchObject({ interrupted: 'stopped' });
   });
 
-  it('a launch whose sweep did not run is reported as unproven, never assumed swept', { timeout: 20000 }, async () => {
-    // The command ends every process of its own sandbox. The sweeper and the sweep's marker write race the same kill: the
-    // outcome is honest either way — `swept` iff the marker really landed, else `unverified` — but which wins is a kernel
-    // race, so the invariant under test is that only this launch is ever in doubt and its label is never falsely `swept`.
-    // (The deterministic sweep-did-not-run case is the suspended-sweeper test below.)
-    const run = await nativeTurn([ask(['Bash', { command: 'kill -9 -1' }], ['Bash', { command: 'echo after' }]), answer('done')]);
-    const posts = admission(run.stateDirectory).filter(row => row.phase === 'post').map(row => JSON.parse(row.result));
-    expect(posts[1]).toMatchObject({ stdout: 'after\n', exitCode: 0 });
-    const unresolved = run.outcome.result.native.unresolved as Array<{ id: string; sweep: string }>;
-    for (const entry of unresolved) { expect(entry.id).toBe('native-1-1'); expect(entry.sweep).toBe('unverified'); }
-    // Every launch not in `unresolved` had its sweep proven (`swept`); none is assumed swept without the marker.
-    expect(unresolved.length).toBeLessThanOrEqual(1);
+  it('a command that ends every process of its own sandbox ends only that: the owner proves the cleanup, the next call runs', { timeout: 20000 }, async () => {
+    const neighbor = execFileSync('/bin/sh', ['-c', '/bin/sleep 60 >/dev/null 2>&1 & echo $!'], { encoding: 'utf8' }).trim();
+    try {
+      const run = await nativeTurn([ask(['Bash', { command: 'kill -9 -1' }], ['Bash', { command: 'echo after' }]), answer('done')]);
+      const posts = admission(run.stateDirectory).filter(row => row.phase === 'post').map(row => JSON.parse(row.result));
+      expect(posts[1]).toMatchObject({ stdout: 'after\n', exitCode: 0 });
+      expect(run.outcome.result.native.unresolved).toEqual([]);
+      expect(alive(Number(neighbor))).toBe(true);
+    } finally { process.kill(Number(neighbor), 'SIGKILL'); }
   });
 
-  /** A detached node child, in a new session with its parent gone, that holds ~400 MiB while its launcher keeps
-   * running in the foreground — but inside the launch's own temporary directory (the scratch volume), so the
-   * owner's working-area join still reaches it. */
-  const BIG = `import { spawn } from 'node:child_process';
+  /** A detached node child, in a new session with its parent gone, that holds ~400 MiB while its launcher keeps running in the
+   * foreground: either inside the launch's own temporary directory (the scratch volume: the working-area join reaches it) or at
+   * the root directory, outside the whole volume (only the sandbox join reaches it). */
+  const big = (cwd: string) => `import { spawn } from 'node:child_process';
 const child = spawn(process.execPath, ['-e', 'const b = Buffer.alloc(400 * 1024 * 1024, 7); setInterval(() => { b[0] = (b[0] + 1) % 251; }, 200);'],
-  { detached: true, stdio: 'ignore', cwd: process.env.TMPDIR });
+  { detached: true, stdio: 'ignore', cwd: ${cwd} });
 child.unref(); process.stdout.write(String(child.pid));`;
 
-  it('accounts for a detached child inside the scratch volume and ends it over the memory ceiling while its launcher runs', { timeout: 30000 }, async () => {
+  it.each([['inside the scratch volume', 'process.env.TMPDIR'], ['at the root directory, outside the volume', "'/'"]])('accounts for a detached child %s and ends it over the memory ceiling while its launcher runs', { timeout: 30000 }, async (_where, cwd) => {
     const small = createResourceOwner({ ...RESOURCE_CEILINGS,
       launch: { ...RESOURCE_CEILINGS.launch, memoryBytes: 96 * 1024 * 1024, processCount: 8 } }) as Owner;
     await small.attach({});
@@ -508,7 +505,7 @@ child.unref(); process.stdout.write(String(child.pid));`;
         const watch = setInterval(() => {
           try { const pid = Number(readFileSync(join(workspace, 'pid.txt'), 'utf8').trim()); if (pid > 1) { daemon = pid; clearInterval(watch); } } catch { /* not written yet */ }
         }, 20);
-        return ask(['Write', { file_path: 'big.mjs', content: BIG }], ['Bash', { command: `"${node}" big.mjs > pid.txt && /bin/sleep 6` }]);
+        return ask(['Write', { file_path: 'big.mjs', content: big(cwd) }], ['Bash', { command: `"${node}" big.mjs > pid.txt && /bin/sleep 6` }]);
       }, { resources: small, hook: turn => { node = turn.hook.node; workspace = turn.workspace; return turn.hook; } });
       const posts = admission(run.stateDirectory).filter(row => row.phase === 'post').map(row => JSON.parse(row.result));
       // The launcher's own call is ended on the memory ceiling the detached child pushed the launch over: proof the join
@@ -523,27 +520,42 @@ child.unref(); process.stdout.write(String(child.pid));`;
     } finally { if (daemon > 1) try { process.kill(daemon, 'SIGKILL'); } catch { /* already gone */ } }
   });
 
-  it('settles and cleans up when the workload suspends the sweeper: the owner never waits on it, and ends the tree itself', { timeout: 20000 }, async () => {
-    let stop = false;
-    // The command suspends every process of its own sandbox — the worker and the sweeper included — before the sweeper
-    // could run. The sweeper then holds the launch's stdout forever, so the owner must NOT wait on it (the old hang): it
-    // settles on the worker's exit instead, and its cleanup census ends the leaked sweeper. The stop drives the worker's kill.
-    setTimeout(() => { stop = true; }, 1500);
-    const run = await nativeTurn([ask(['Bash', { command: 'kill -STOP -1' }], ['Bash', { command: 'echo unreached' }]), answer('done')],
-      { stopped: () => stop });
-    // The loop settled (it did not hang on the held stdout) and reported the stop — the fix for the old hang.
-    expect(run.outcome.result).toMatchObject({ state: 'uncertain', native: { ended: 'stopped' } });
-    const unresolved = run.outcome.result.native.unresolved as Array<{ id: string; sweep: string; cleanup: string; guardian: string }>;
-    expect(unresolved).toHaveLength(1);
-    const entry = unresolved[0]!;
-    expect(entry.id).toBe('native-1-1');
-    // Honest evidence: the sweep is unproven — it was suspended before it could run and write its marker.
-    expect(entry.sweep).toBe('unverified');
-    // The owner finished independently of that helper: it reached a terminal cleanup verdict (never hung in cleanup), and it
-    // ran its own pid-backstop against the sweep. Whichever mechanism reached the sweeper first — the owner's census kill, the
-    // group kill, or the pid-backstop — the sweep is ended; `guardian` is always one of the owner's dispositions, never pending.
-    expect(['verified', 'unresolved']).toContain(entry.cleanup);
-    expect(['killed', 'absent']).toContain(entry.guardian);
+  it('the stop ends a daemon outside the volume even when the workload suspended its whole sandbox first', { timeout: 20000 }, async () => {
+    // The command daemonizes a child at the root directory (new session, parent gone, outside the scratch volume), then
+    // suspends every process of its own sandbox, its own shell and the worker included. Nothing inside the sandbox can act;
+    // the owner, outside it, still joins the daemon by its sandbox identity, ends it on the stop, and proves the cleanup.
+    let node = '', workspace = '', stop = false, daemon = 0;
+    try {
+      const run = await nativeTurn((_envelope, index) => {
+        if (index !== 0) return answer('unreached');
+        const watch = setInterval(() => {
+          try { const pid = Number(readFileSync(join(workspace, 'pid.txt'), 'utf8').trim()); if (pid > 1) { daemon = pid; clearInterval(watch); setTimeout(() => { stop = true; }, 1500); } } catch { /* not written yet */ }
+        }, 20);
+        return ask(['Write', { file_path: 'daemon.mjs', content: DAEMON }], daemonize(node, '; kill -STOP -1'));
+      }, { stopped: () => stop, hook: turn => { node = turn.hook.node; workspace = turn.workspace; return turn.hook; } });
+      // The loop settled (it never waits on anything inside the sandbox) and reported the stop.
+      expect(run.outcome.result).toMatchObject({ state: 'uncertain', native: { ended: 'stopped', unresolved: [] } });
+      expect(Number.isSafeInteger(daemon) && daemon > 1).toBe(true);
+      expect(await settled(daemon)).toBe(true);
+    } finally { if (daemon > 1) try { process.kill(daemon, 'SIGKILL'); } catch { /* already gone */ } }
+  });
+
+  it('files the workload plants in the scratch volume carry no cleanup authority: a forged pid, a FIFO and a forged marker change nothing', { timeout: 20000 }, async () => {
+    // The old sweeper's file shapes, planted by the workload itself: a pid file naming a process outside the sandbox, a FIFO
+    // under a pid-file name and a forged completion marker. The cleanup path reads no workload file, so the neighbour lives,
+    // the loop never blocks, and the launch's end is still proven by the owner's own census.
+    const neighbor = execFileSync('/bin/sh', ['-c', '/bin/sleep 60 >/dev/null 2>&1 & echo $!'], { encoding: 'utf8' }).trim();
+    try {
+      const started = performance.now();
+      const run = await nativeTurn([ask(['Bash', { command: `cd .. && echo ${neighbor} > .sweep-forged.pid && /usr/bin/mkfifo .sweep-fifo.pid && : > .sweep-fifo && echo planted` }],
+        ['Bash', { command: 'echo after' }]), answer('done')]);
+      expect(performance.now() - started).toBeLessThan(10000);
+      const posts = admission(run.stateDirectory).filter(row => row.phase === 'post').map(row => JSON.parse(row.result));
+      expect(posts[0]).toMatchObject({ stdout: 'planted\n', exitCode: 0 });
+      expect(posts[1]).toMatchObject({ stdout: 'after\n', exitCode: 0 });
+      expect(run.outcome.result).toMatchObject({ native: { ended: 'answered', unresolved: [] } });
+      expect(alive(Number(neighbor))).toBe(true);
+    } finally { process.kill(Number(neighbor), 'SIGKILL'); }
   });
 
   it('refuses to run without a host resource owner', async () => {

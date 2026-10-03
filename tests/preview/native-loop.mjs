@@ -10,8 +10,7 @@
 // turn's own. It ends on an answer, the step cap (the reserved liability), the operator's stop, or a failed step.
 // This file owns process, clock and filesystem for the turn's tools only; nothing here widens a grant.
 import { spawn } from 'node:child_process';
-import { randomUUID } from 'node:crypto';
-import { existsSync, lstatSync, readFileSync, realpathSync, rmSync, writeFileSync } from 'node:fs';
+import { existsSync, readFileSync, realpathSync, writeFileSync } from 'node:fs';
 import { join, sep } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { NATIVE_TOOL_LIMITS, NATIVE_TOOL_NAMES, SUBSCRIPTION_TOOL_RUNTIME_READS } from '../../src/assembly/production-provider.js';
@@ -116,54 +115,30 @@ export const NATIVE_EXECUTION = Object.freeze({ fileMs: 30000, workerHeapMb: 256
  * Runs one admitted call as a worker launch through the host resource owner (Rules 55, 60, 61): `sandbox-exec` with the native
  * profile, then node on the worker source, from the workspace, with an empty environment. The owner admits the launch, holds CPU
  * time and handles per process and the user ID's process headroom in the kernel, samples the tree's memory and process count
- * against its ceilings and ends the tree on the deadline or the operator's stop (its 25 ms poll). The owner joins every
- * descendant by recorded incarnation, group, ancestry and the launch's whole private working area — here the whole scratch
- * volume (`area`), so a descendant that detaches into the sibling tmp directory is still a member, counts against the ceilings,
- * and is ended by the owner. The owner settles on the launch process's exit and never waits on a descendant that detached
- * holding the stdout open, so no helper inside the sandbox can stall it; once settled, its cleanup census ends every member it
- * can reach. The sandbox sweeper is a best-effort residual catcher for a descendant that left its group, its parent AND the
- * whole volume before any census (`kill -9 -1` of the one identity no descendant can shed); it writes this launch's unguessable
- * marker first and records its own pid beside it, so the owner — outside the workload's sandbox — ends the sweeper by that exact
- * pid when the workload suspended it before it could run (the one process the census cannot reach). Each call returns its
- * containment evidence: the owner's cleanup verdict, whether the sweep ran (`swept`, never assumed), and the owner's `guardian`
- * disposition of a sweep that did not. The loop's own process never opens a tool path, so neither a path swapped after admission
- * nor a blocking open can reach it. A launch the owner ended is `interrupted`.
+ * against its ceilings and ends the tree on the deadline or the operator's stop (its 25 ms poll). Membership is the owner's, held
+ * outside the workload (`membership: 'sandbox'`): besides recorded incarnation, group, ancestry and the whole scratch volume
+ * (`area`), the owner asks the kernel which processes are in this launch's sandbox instance — the one identity no descendant
+ * sheds by a new session, a new parent or a working directory outside the volume. So a daemonized descendant counts against the
+ * ceilings while the call runs and is ended by the owner's stop and cleanup, even with the rest of the sandbox suspended. The
+ * owner settles on the launch process's exit, so nothing inside the sandbox can stall it, and no file or process the workload
+ * can touch is ever read or signalled on the cleanup path. Each call returns the owner's containment evidence (its cleanup
+ * verdict and the membership it was proven under). The loop's own process never opens a tool path, so neither a path swapped
+ * after admission nor a blocking open can reach it. A launch the owner ended is `interrupted`.
  */
 async function runWorker(tool, input, turn, context) {
-  const marker = join(context.scratch, `.sweep-${randomUUID()}`);
   const timeout = tool === 'Bash' ? (Number.isSafeInteger(input.timeout) && input.timeout > 0 ? Math.min(input.timeout, NATIVE_TOOL_LIMITS.bashMs)
     : NATIVE_TOOL_LIMITS.bashMs) : NATIVE_EXECUTION.fileMs;
   const launched = await context.resources.execute({ executable: '/usr/bin/sandbox-exec',
     args: ['-f', context.profilePath, turn.hook.node, `--max-old-space-size=${String(NATIVE_EXECUTION.workerHeapMb)}`, '--input-type=module',
       '-e', WORKER_SOURCE],
-    // The owner joins every descendant whose working directory stays inside the whole scratch volume
-    // (`area`), not just the workspace, so a tool that detaches a child into the sibling tmp directory is
-    // still a member of the launch and counts against its ceilings.
-    cwd: turn.workspace, area: context.scratch,
+    cwd: turn.workspace, area: context.scratch, membership: 'sandbox',
     env: { PATH: '/usr/bin:/bin', HOME: turn.workspace, TMPDIR: join(turn.scratch, 'tmp'), LANG: 'C.UTF-8' },
-    stdin: JSON.stringify({ tool, input, workspace: turn.workspace, sweep: marker }), timeout, maxBytes: NATIVE_EXECUTION.workerOutputBytes,
+    stdin: JSON.stringify({ tool, input, workspace: turn.workspace }), timeout, maxBytes: NATIVE_EXECUTION.workerOutputBytes,
     stopped: context.stopped }, 'answer');
-  // The marker is only ever looked at (lstat), never opened: no tool knew its name before the sweep ended every tool process.
-  let swept = false;
-  try { swept = lstatSync(marker).isFile(); rmSync(marker, { force: true }); } catch { swept = false; }
-  // The owner has already settled and cleaned up by its own census joins. A sweep that did not complete (its process suspended
-  // by the workload before it ran) has itself escaped those joins, so the owner — outside the workload's sandbox, and so free to
-  // signal into it — ends that one process by the exact pid the sweep recorded beside its marker (never a pattern match). The
-  // sweep stays reported `unverified`: the owner proves the helper is gone, never that it ran.
-  const guardian = swept || launched.localLimit === 'capacity' ? 'not-needed' : endSweeper(`${marker}.pid`);
-  try { rmSync(`${marker}.pid`, { force: true }); } catch { /* already gone */ }
-  const containment = { cleanup: launched.resources?.cleanup ?? 'unknown', leaked: launched.resources?.leakedDescendants ?? null,
-    sweep: launched.localLimit === 'capacity' ? 'not-launched' : swept ? 'swept' : 'unverified', guardian };
+  const containment = launched.localLimit === 'capacity' ? { cleanup: 'not-launched', leaked: null, membership: null }
+    : { cleanup: launched.resources?.cleanup ?? 'unknown', leaked: launched.resources?.leakedDescendants ?? null,
+      membership: launched.resources?.membership ?? null };
   return { output: workerOutput(tool, launched, context.stopped()), containment };
-}
-/** Ends a sweep that did not complete, by the exact pid it recorded beside its marker: `killed` when a live pid was signalled,
- * `absent` when the file held no pid or that pid was already gone (the owner's census join reached it first). The loop runs
- * outside the workload's sandbox, so it can signal a process the workload suspended inside that sandbox; it never matches by name. */
-function endSweeper(pidPath) {
-  let pid;
-  try { pid = Number(readFileSync(pidPath, 'utf8').trim()); } catch { return 'absent'; }
-  if (!Number.isSafeInteger(pid) || pid <= 1) return 'absent';
-  try { process.kill(pid, 'SIGKILL'); return 'killed'; } catch { return 'absent'; }
 }
 function workerOutput(tool, launched, stopped) {
   if (launched.limited) {
@@ -238,7 +213,7 @@ export async function runNativeLoop({ turn, prepared, step, stopped, promptLimit
   let calls = 0, asked = 0;
   const unresolved = [];
   // `models`: model calls made (at most maxSteps, the reserved liability); `steps`: those that requested tools; `calls`: tools run;
-  // `unresolved`: the worker launches whose end was not proven (the owner's cleanup unresolved, or the sandbox sweep unverified).
+  // `unresolved`: the worker launches whose end the owner did not prove (its cleanup not verified under the sandbox join).
   const finish = (result, ended) => ({ ...result, native: { models: asked, steps: steps.length, calls, ended, unresolved: [...unresolved] } });
   for (let index = 0; index < maxSteps; index++) {
     if (stopped()) return finish({ state: 'uncertain' }, 'stopped');
@@ -267,7 +242,8 @@ export async function runNativeLoop({ turn, prepared, step, stopped, promptLimit
         : await execute(call.tool, admission.updatedInput ?? call.input, turn, context);
       if (containment) {
         entry.containment = containment;
-        if (containment.cleanup === 'unresolved' || containment.sweep === 'unverified') unresolved.push({ id, ...containment });
+        if (containment.cleanup !== 'not-launched' && (containment.cleanup !== 'verified' || containment.membership !== 'sandbox-joined'))
+          unresolved.push({ id, ...containment });
       }
       await runHook(turn.hook, turn.stateDirectory, 'post', { tool_name: call.tool, tool_input: call.input, tool_use_id: id, tool_response: output });
       entry.result = clip(JSON.stringify(output));

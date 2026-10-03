@@ -13,8 +13,37 @@ export const loadTenOwner = () => tenOwner ??= import('../src/assembly/process-i
   .catch(() => import('../dist/assembly/process-inventory.js'));
 
 const CENSUS_COLUMNS = 'pid=,ppid=,pgid=,uid=,rss=,time=,stat=,lstart=,command=';
-const ADAPTER = 'host-ps-lsof-inventory-v1';
-export const INVENTORY_ADAPTER_DIGEST = `sha256:${createHash('sha256').update(JSON.stringify([ADAPTER, CENSUS_COLUMNS, '-a -d cwd -Fpn'])).digest('hex')}`;
+const ADAPTER = 'host-ps-lsof-sandbox-inventory-v2';
+/**
+ * The sandbox reading (macOS): the kernel's `sandbox_check` for each named pid, asked from outside the sandbox, so no
+ * file or helper inside a launch is consulted. argv: the area count, the areas, then the pids. One line per pid:
+ * `<pid> in <index>` (sandboxed, may read that area's contents and not its parent's: the per-launch profile's shape),
+ * `<pid> none` (not in any of them, or gone), or `<pid> unknown` (the query failed). The libSystem call is variadic:
+ * on arm64 a variadic argument travels on the stack, so the five padding words fill the remaining argument registers.
+ */
+const SANDBOX_READER = `import ctypes, os, platform, sys
+lib = ctypes.CDLL('/usr/lib/libSystem.dylib', use_errno=True)
+report = ctypes.c_int.in_dll(lib, 'SANDBOX_CHECK_NO_REPORT').value
+check = lib.sandbox_check; check.restype = ctypes.c_int
+pad = (0,) * 5 if platform.machine() == 'arm64' else ()
+check.argtypes = [ctypes.c_int, ctypes.c_char_p, ctypes.c_int] + [ctypes.c_long] * len(pad) + [ctypes.c_char_p]
+def ask(pid, path):
+    ctypes.set_errno(0)
+    result = check(pid, b'file-read-data' if path else None, (1 | report) if path else 0, *pad, path)
+    return result, ctypes.get_errno()
+count = int(sys.argv[1]); areas = [a.encode() for a in sys.argv[2:2 + count]]
+for pid in map(int, sys.argv[2 + count:]):
+    boxed, error = ask(pid, None)
+    if boxed == -1: print(pid, 'none' if error == 3 else 'unknown'); continue
+    if boxed == 0: print(pid, 'none'); continue
+    found, failed = None, False
+    for index, area in enumerate(areas):
+        inside, outside = ask(pid, area)[0], ask(pid, os.path.dirname(area))[0]
+        if inside == -1 or outside == -1: failed = True
+        elif inside == 0 and outside == 1: found = index; break
+    print(pid, 'in %d' % found if found is not None else 'unknown' if failed else 'none')
+`;
+export const INVENTORY_ADAPTER_DIGEST = `sha256:${createHash('sha256').update(JSON.stringify([ADAPTER, CENSUS_COLUMNS, '-a -d cwd -Fpn', SANDBOX_READER])).digest('hex')}`;
 
 /** ps `time`: [[dd-]hh:]mm:ss[.cc] on both macOS and Linux. */
 export function cpuMilliseconds(text) {
@@ -76,6 +105,19 @@ export function createProcessInventory(ports) {
       for (const line of (text ?? '').split('\n')) {
         if (line.startsWith('p')) current = Number(line.slice(1));
         else if (line.startsWith('n') && current !== null && line.slice(1).startsWith('/')) found.set(current, { state: 'observed', path: line.slice(1) });
+      }
+      for (const pid of pids) if (!found.has(pid)) found.set(pid, { state: 'unavailable' });
+      return found;
+    },
+    /** Which of `areas`' sandbox instances holds each named process (Ten's SandboxReading); an unreadable one is `unavailable`. */
+    async sandboxes(pids, areas) {
+      const found = new Map();
+      if (!pids.length) return found;
+      const text = areas.length ? await ports.query('/usr/bin/python3', ['-c', SANDBOX_READER, String(areas.length), ...areas, ...pids.map(String)]) : '';
+      for (const line of (text ?? '').split('\n')) {
+        const [pid, verdict, index] = line.trim().split(' ');
+        if (verdict === 'none') found.set(Number(pid), { state: 'observed', area: null });
+        else if (verdict === 'in' && areas[Number(index)] !== undefined) found.set(Number(pid), { state: 'observed', area: areas[Number(index)] });
       }
       for (const pid of pids) if (!found.has(pid)) found.set(pid, { state: 'unavailable' });
       return found;

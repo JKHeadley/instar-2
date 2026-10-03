@@ -3621,11 +3621,12 @@ tools, one turn, with a system prompt naming the native tools). The model's answ
   production): per-process CPU time and handles and the user ID's process headroom in the kernel, the tree's memory and
   process count sampled against the launch ceilings, the deadline (30 s for a file tool, the Bash timeout up to 120 s)
   and the stop ending the launch within its 25 ms poll; a launch it ends is reported as `interrupted` with its reason
-  (`stopped`, `timeout`, `memory`, `processes`, `cpu`). The owner's membership is observation, so every descendant is
-  ended through the sandbox instance instead: the worker's detached sweeper waits for the worker to end, however it
-  ends, then signals every process of that instance (`kill -9 -1`, which the profile confines to it), holding the
-  worker's stdout so the launch completes only after the sweep; each call's containment evidence (owner cleanup,
-  `sweep: swept|unverified`) is recorded, and `native.unresolved` lists every launch whose end was not proven;
+  (`stopped`, `timeout`, `memory`, `processes`, `cpu`). The owner joins every descendant by the worker's sandbox
+  instance too (`membership: 'sandbox'`: the kernel's `sandbox_check`, read from outside the workload), so a daemon
+  that took a new session, lost its parent and left the volume still counts against the ceilings and is ended by the
+  stop and the cleanup; nothing inside the sandbox and no workload-writable file takes part. Each call's containment
+  evidence (owner `cleanup`, `membership: sandbox-joined`) is recorded, and `native.unresolved` lists every launch
+  whose end was not proven;
 - runs WebFetch in the loop's process as one GET whose redirect is reported, never followed (admitted only when the
   installed profile registers `tool:network`), ended by its deadline or the stop, with the body read as a stream up to
   256 KiB and then cancelled;
