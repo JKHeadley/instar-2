@@ -6530,8 +6530,9 @@ export function createJournalWorker(journal: ReturnType<typeof openPreviewJourna
               lastNamedPerson = undefined; reminderCancels = undefined; invalidCancel = false; cancelRefusal = undefined; }
             if (invalidDate) undo = undefined;
             // Rule 3 (plan #362): a reply written to introduce a request the runner could not read would announce one
-            // that does not exist, so the fixed line replaces it; the runner's own lines below still follow.
-            if (unreadAction && text.trim()) { text = OPERATOR_ACTION_UNREAD; if (separatedAnswer !== undefined) separatedAnswer = OPERATOR_ACTION_UNREAD; }
+            // that does not exist, so the fixed line replaces it; the runner's own lines below still follow. It is also
+            // the safe answer an invalid date keeps, so a string reply never loses the refusal (Rule 42).
+            if (unreadAction && text.trim()) { text = OPERATOR_ACTION_UNREAD; separatedAnswer = OPERATOR_ACTION_UNREAD; }
             if (invalidDate && !invalidMemory) {
               // Legacy reply strings can mix an answer with an unchecked save claim.
               // Only the separated answer is safe to keep when validation rejects the date.

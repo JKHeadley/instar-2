@@ -145,3 +145,16 @@ it('proposes a useful raise for the recorded "step" ask on a root already raised
     operatorAction: { action: 'raise-caps', limits: { maxCalls: 'step' } } }), { maxCalls: 16, maxReplies: 16, maxTurns: 20 });
   expect(fresh.requests).toEqual([expect.objectContaining({ limits: { maxCalls: 32, maxReplies: 16, maxTurns: 20 } })]);
 });
+
+it.each([false, true])('keeps the unread-request refusal beside an invalid-date refusal (Rule 42); separated answer=%s', async separated => {
+  // Unit review w3-renewform round 1: a string reply lost the renewal refusal when the same turn also gave an unreadable date.
+  const result = await turn(1791017079850, 'Renew my trial until October 12 and remind me tomorrow.', () => JSON.stringify({
+    reply: separated ? { answer: 'I am passing the renewal request below.' } : 'I am passing the renewal request below.',
+    dated: [{ quote: 'remind me tomorrow', day: 'tomorrow', zone: 'UTC', remind: true }],
+    operatorAction: { action: 'renew-expiry', requestedEnd: '2026-10-12T20:40:00Z' } }));
+  expect(result.requests).toEqual([]);
+  expect(result.sent).toHaveLength(1);
+  expect(result.sent[0]).toContain(OPERATOR_ACTION_UNREAD);
+  expect(result.sent[0]).toContain('I could not verify the date you gave.');
+  expect(result.sent[0]).not.toMatch(/passing the renewal request/u);
+});
