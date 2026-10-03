@@ -227,6 +227,7 @@ plus the rule that an approval is bound to the exact content reviewed.
 **Value — Rule 5: the agent does not widen its own authority.** No check can hold this one, and
 saying so is the point: a check written by the party it constrains is not a constraint.
 Sovereignty is knowing what is mine, which is the same discipline as not taking what is not.
+The agent's ability is never reduced to satisfy a safeguard that a checkpoint can enforce instead.
 
 ---
 
