@@ -51,7 +51,9 @@ function liveRoot(path: string, install: ExplicitYesInstallation = installation)
   const g = { kind: 'genesis' as const, bot: '8820318295', chat: String(OPERATOR), operator: String(OPERATOR), grant: TRIAL,
     configurationDigest: 'sha256:offline', expires: SUBSCRIPTION_PREVIEW_PREDECESSOR_EXPIRY, maxCalls: 16, maxReplies: 16, maxTurns: 20,
     maxBytes: 409600, cursor: 0 };
-  const journal = openPreviewJournal(path, key, g);
+  // armCrash: the next caps frame fails, as a crash between an approval and its application would.
+  let crashCaps = false;
+  const journal = openPreviewJournal(path, key, g, stage => { if (crashCaps && stage === 'before:caps') { crashCaps = false; throw Error('crash'); } });
   const start = fixture.recorded[0]!.now;
   raiseJournalCaps(journal, { maxCalls: 2500, maxReplies: 2500, maxTurns: 2500, authority: 'operator-host:test', at: start - 3_600_000 });
   let clock = start, pull = 145, message = 1029;
@@ -89,6 +91,7 @@ function liveRoot(path: string, install: ExplicitYesInstallation = installation)
     },
     async poll(ms = 120_000) { clock += ms; await worker.minimal(); },
     advance(ms: number) { clock += ms; },
+    armCrash() { crashCaps = true; },
     request: (action: string) => journal.view.operatorRequests.filter(item => item.request.action === action).at(-1)!,
   };
 }
@@ -283,6 +286,29 @@ it('on a chat-yes root, a raise left open after the newer renewal is approved st
     // The applied renewal no longer needs reporting; the open raise does.
     expect([packet().operatorRequest?.id, packet().operatorRequest?.state, packet().otherOperatorRequest])
       .toEqual([raise.request.id, 'open, waiting for the operator\'s plain yes', undefined]);
+    root.journal.close();
+  });
+});
+
+it('a raise approved but left unapplied by a crash stays in the packet beside the open renewal (Rule 84)', async () => {
+  await withRoot(async path => {
+    const root = liveRoot(path);
+    await root.ask(RAISE, recorded(RAISE).now, recorded(RAISE).message, () => journaled(RAISE));
+    await root.ask(RENEW, recorded(RENEW).now, recorded(RENEW).message, () => journaled(RENEW));
+    const raise = root.request('raise-caps'), renew = root.request('renew-expiry');
+    // The raise's review lands; its caps frame does not.
+    root.armCrash(); root.approve(146, '9301');
+    await root.poll();
+    expect([raise.approved !== undefined, raise.applied, renew.approved]).toEqual([true, undefined, undefined]);
+    expect(root.journal.view.limits.maxCalls).toBe(2500);
+    await root.ask(RENEW + 1, recorded(RENEW).now + 600_000, 'What is still waiting for my approval?', () => JSON.stringify({ reply: 'Checking.', memory: [] }));
+    const packet = JSON.parse(root.contexts.at(-1)!) as Record<string, { id: string; state: string } | undefined>;
+    // On this live-shaped root the question is judged a refused chat answer to the renewal, which stays primary.
+    expect([packet.operatorRequest?.id, packet.otherOperatorRequest?.id]).toEqual([renew.request.id, raise.request.id]);
+    expect(packet.otherOperatorRequest?.state).toMatch(/^approved by the operator, not applied yet \(through their GitHub account;/u);
+    expect(root.contexts.at(-1)).toContain(OTHER_OPERATOR_REQUEST_GUIDANCE.trim());
+    // Nothing applies the approval from the journal rows.
+    expect(root.journal.view.limits.maxCalls).toBe(2500);
     root.journal.close();
   });
 });

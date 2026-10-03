@@ -482,7 +482,7 @@ export const OPERATOR_ACTION_GUIDANCE = ' If the verified operator asks to raise
  * then proposed the raise below it. Sent only while a route is admissible, so it never contradicts a why-not. */
 export const OPERATOR_ROUTE_GUIDANCE = ' Proposing it is how you make this change: returning operatorAction opens the exact request, and only their approval applies it. Never say you cannot raise the limits or extend the end, lack the authority or tools, or need standing authorization or an automatic rule; if an earlier reply said so, it was wrong, so say so briefly. Return operatorAction whenever they ask, even if an earlier request lapsed.';
 /** Plan #371: one request per action may be open, so a raise and a renewal can be approved together. */
-export const OTHER_OPERATOR_REQUEST_GUIDANCE = ' otherOperatorRequest is your other open request, for the other action, in the same form; it stays open alongside operatorRequest and is approved separately.';
+export const OTHER_OPERATOR_REQUEST_GUIDANCE = ' otherOperatorRequest is your request for the other action, in the same form, alongside operatorRequest; its state says whether it is still open (approved separately) or approved but not applied yet. Report that state as given.';
 /** When the proposal guidance rides the packet: whenever an explicit-yes source is admissible on this root (an
  * explicit ask is answerable at any time), or, where the port is configured but inadmissible, a limit at the cap
  * report's own "near" level (80% used) or the trial ending within two days, so the answer carries the honest why-not.
@@ -5539,20 +5539,20 @@ export function createJournalWorker(journal: ReturnType<typeof openPreviewJourna
     const requestState = requests.filter(answers).at(-1) ?? liveRequests.filter(state => state.approved !== undefined && !state.applied
       || disclosedApproval(journal.view) === state || openNow(state)).at(-1);
     const answeredHere = requestState !== undefined && answers(requestState);
-    const operatorRequest = requestState ? { id: requestState.request.id, action: requestState.request.action,
-      ...(requestState.request.limits ? { limits: requestState.request.limits } : { trialEnd: isoMinute(requestState.request.expires!) }),
-      state: requestState.approved ? `${requestState.applied ? 'approved by the operator and applied' : 'approved by the operator, not applied yet'}${
-        requestState.approved.sharedAccess ? ` (through their GitHub account; ${SHARED_ACCESS_NOTE})` : ''}`
-        : answeredHere ? `not approved: ${requestState.refusals.find(item => item.turn === question!.id)!.detail}`
-          : requestState.review ? `open, waiting for the operator to approve it at ${reviewLink(requestState.review.repository, requestState.review.pullRequest)}; a chat "yes" does not approve it`
-            : 'open, waiting for the operator\'s plain yes' } : undefined;
-    // Plan #371: a request for the other action may be open alongside; it is shown so the answer accounts for both.
-    const otherState = requestState ? liveRequests.filter(item => item.request.action !== requestState.request.action && openNow(item)
-      && requestBase(item) === approvalBase(journal.view)).at(-1) : undefined;
-    const otherOperatorRequest = otherState ? { id: otherState.request.id, action: otherState.request.action,
-      ...(otherState.request.limits ? { limits: otherState.request.limits } : { trialEnd: isoMinute(otherState.request.expires!) }),
-      state: otherState.review ? `open, waiting for the operator to approve it at ${reviewLink(otherState.review.repository, otherState.review.pullRequest)}; a chat "yes" does not approve it`
-        : 'open, waiting for the operator\'s plain yes' } : undefined;
+    // One rendering for both fields, so a sibling shows its real approval/application state too (Rule 84).
+    const describe = (state: OperatorRequestState, answered: boolean) => ({ id: state.request.id, action: state.request.action,
+      ...(state.request.limits ? { limits: state.request.limits } : { trialEnd: isoMinute(state.request.expires!) }),
+      state: state.approved ? `${state.applied ? 'approved by the operator and applied' : 'approved by the operator, not applied yet'}${
+        state.approved.sharedAccess ? ` (through their GitHub account; ${SHARED_ACCESS_NOTE})` : ''}`
+        : answered ? `not approved: ${state.refusals.find(item => item.turn === question!.id)!.detail}`
+          : state.review ? `open, waiting for the operator to approve it at ${reviewLink(state.review.repository, state.review.pullRequest)}; a chat "yes" does not approve it`
+            : 'open, waiting for the operator\'s plain yes' });
+    const operatorRequest = requestState ? describe(requestState, answeredHere) : undefined;
+    // Plan #371: a request for the other action may be open, or approved but not applied, alongside; it is shown so the
+    // answer accounts for both.
+    const otherState = requestState ? liveRequests.filter(item => item.request.action !== requestState.request.action
+      && (item.approved !== undefined && !item.applied || openNow(item) && requestBase(item) === approvalBase(journal.view))).at(-1) : undefined;
+    const otherOperatorRequest = otherState ? describe(otherState, false) : undefined;
     const packet = JSON.stringify({ now, clock: { utc: new Date(now).toISOString(), zone, day: localDay,
       time: `${String(local.hour).padStart(2, '0')}:${String(local.minute).padStart(2, '0')}`,
       weekday: new Intl.DateTimeFormat('en-US', { timeZone: zone, weekday: 'long' }).format(now) },
