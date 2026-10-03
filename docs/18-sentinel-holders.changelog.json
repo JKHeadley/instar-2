@@ -1,5 +1,31 @@
 [
   {
+    "revision": 3,
+    "date": "2026-10-03",
+    "status": "draft",
+    "cause": {
+      "kind": "draft",
+      "note": "Unit w4-guidance (plan rows #399/#403): the guidance sentinel family, on the operator's direction of 2026-10-03 (Justin, topic 102965, message 121996 at 10:15 and the 10:45 re-grounding: a powerful sentinel collection for guidance and empowerment). No constitution change."
+    },
+    "changes": [
+      {
+        "what": "New section 16, the guidance sentinel family: four members (tone and self-stop, deferral, claim verification, correction learning) ported in substance from Instar 1.x, each a named set of questions on the one pre-send reply review; two context questions (self_state_claim, breaks_preference) ride every full-context review and are never asked of Jev; a finding is a signal the agent answers; every member's verdict is projected from durable history; each member is proved on recorded live replies.",
+        "why": "The re-grounding audit (plan row #399) found Part 18 had no guidance sentinels; the reply review already held most of the 1.x self-stop and deferral questions but no claim verification or preference check, and nothing measured whether a correction reached the send.",
+        "ref": "lanes/w4-guidance-PROGRESS.md; LIVE-PATH-PLAN.md rows #399 and #403; tests/preview/guidance.test.ts"
+      },
+      {
+        "what": "Section 16 also states the named-claim landing rule (an elided, comma-ended or ellipsis-ended reviewer quote is located; a paraphrase is not) and the reply-only verdict wrapper.",
+        "why": "On the recorded live journal the 22:36 false cannot-do (update 969390016) and update 969390038 were reviewed and named, but the named sentence was never located, so the reply went unchanged.",
+        "ref": "lanes/w4-guidance-PROGRESS.md; tests/preview/fixtures/guidance-live-2026-10-03.json"
+      },
+      {
+        "what": "Section 13 gains fixtures P14-NF-70 to P14-NF-75; section 14 records the four 1.x mechanisms' disposition; the index and purpose name the family.",
+        "why": "Every new rule names executable checks with a positive neighbor, and every inherited duty has a disposition.",
+        "ref": "lanes/w4-guidance-PROGRESS.md"
+      }
+    ]
+  },
+  {
     "revision": 2,
     "date": "2026-09-28",
     "status": "approved",

@@ -2,7 +2,7 @@ import { expect, it } from 'vitest';
 import { mkdtempSync, realpathSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
-import { BARE_TOPIC_OBJECTION, checkReply, HOLDING_REPLY, interpretJev, noDecisions, parseReplyRevision, replyRevisionQuestion, validDispositions, jevQuestions, REPLY_RULES, replyReviewContext, replyReviewQuestion, replyReviewRules, parseReplyReviewVerdict, parseJevResponse, JEV_RESPONSE_MAX_BYTES, REPLY_CHECK_BUDGET_MS, REPLY_CHECK_BUDGET_REASON, REPLY_REVIEW_REASON_MAX } from './reply-check.js';
+import { BARE_TOPIC_OBJECTION, CONTEXT_RULES, checkReply, HOLDING_REPLY, interpretJev, noDecisions, parseReplyRevision, replyRevisionQuestion, validDispositions, jevQuestions, REPLY_RULES, replyReviewContext, replyReviewQuestion, replyReviewRules, parseReplyReviewVerdict, parseJevResponse, JEV_RESPONSE_MAX_BYTES, REPLY_CHECK_BUDGET_MS, REPLY_CHECK_BUDGET_REASON, REPLY_REVIEW_REASON_MAX } from './reply-check.js';
 
 
 import type { ObjectionDisposition, ReplyCheckResult, ReplyFinding, ReplyRule } from './reply-check.js';
@@ -88,9 +88,10 @@ it('keeps the complete answer grounding for the blocking reviewer and selects on
   const prompt = prepareJournalEnvelope({ question: 'What did I say?', context: JSON.stringify(context), id: 'turn:2' },
     'claude-sonnet-4-5', 'grant:test', 1000);
   expect(JSON.parse(replyReviewContext(prompt, 'PREVIEW — candidate', ['credential']))).toEqual({ ...context,
-    operatorMessage: 'What did I say?', candidateReply: 'PREVIEW — candidate',
-    rules: { credential: REPLY_RULES.credential } });
-  expect(JSON.parse(replyReviewContext(prompt, 'PREVIEW — candidate')).rules).toEqual(REPLY_RULES);
+    operatorMessage: 'What did I say?', candidateReply: 'PREVIEW — candidate' });
+  // The rule texts ride the review question once (replyReviewQuestion), never a second copy in the packet.
+  expect(JSON.parse(replyReviewContext(prompt, 'PREVIEW — candidate'))).not.toHaveProperty('rules');
+  expect(() => replyReviewContext(prompt, 'PREVIEW — candidate', ['no_such_rule' as never])).toThrow('preview: reply-review rule absent');
   const large = prepareJournalEnvelope({ question: 'Question?',
     context: JSON.stringify({ audience: { operator: 'verified' },
       history: [{ user: 'a'.repeat(6000) }, { user: 'recent' }] }), id: 'turn:3' },
@@ -203,8 +204,9 @@ it('sends an operator-supplied personal code by the exact operator-echo path, wi
 });
 
 it.each([
-  ['one uncertain rule', scores({ claims_blocked: 0.5 }), ['claims_blocked']],
-  ['positive plus uncertain', scores({ raw_path: 0.9, parks_on_user: 0.5 }), ['raw_path', 'parks_on_user']],
+  // Every contextual review also carries the guidance family's context questions (Part 18 §16).
+  ['one uncertain rule', scores({ claims_blocked: 0.5 }), ['claims_blocked', ...CONTEXT_RULES]],
+  ['positive plus uncertain', scores({ raw_path: 0.9, parks_on_user: 0.5 }), ['raw_path', 'parks_on_user', ...CONTEXT_RULES]],
   ['Jev unavailable', null, Object.keys(REPLY_RULES)],
 ] as const)('%s: review receives every unresolved rule and full context', async (_name, answer, expected) => {
   const prompt = prepareJournalEnvelope({ question: 'What did I say?',
@@ -808,7 +810,8 @@ it('answers a long, summarized conversation when Jev is unsure: grounded review 
     const journal = openPreviewJournal(path, key, { kind: 'genesis', bot: '12345678', chat: '7654321', operator: '7654321',
       grant: 'grant:preview', configurationDigest: 'sha256:offline', expires: 9999999999999,
       maxCalls: 100, maxReplies: 100, maxTurns: 100, maxBytes: 16384, cursor: 0 });
-    const reviewed: { historyMode: string; summary?: { text: string }; operatorMessage: string; candidateReply: string; history: unknown[]; rules: Record<string, string> }[] = [];
+    const reviewed: { historyMode: string; summary?: { text: string }; operatorMessage: string; candidateReply: string; history: unknown[] }[] = [];
+    const reviewedRules: unknown[] = [];
 
     const sent: string[] = [];
     let jevMemoryChecks = 0;
@@ -828,6 +831,7 @@ it('answers a long, summarized conversation when Jev is unsure: grounded review 
             ? scores({ claims_blocked: 0.5 }) : scores(), latencyMs: 150 }),
         escalate: async (text, _id, originalPrompt, ruleIds) => {
           reviewed.push(JSON.parse(replyReviewContext(originalPrompt!, text, ruleIds)));
+          reviewedRules.push(ruleIds);
 
           return { verdict: 'pass', ruleIds: [], confidence: null, latencyMs: 400 };
         } } });
@@ -850,7 +854,8 @@ it('answers a long, summarized conversation when Jev is unsure: grounded review 
       candidateReply: 'PREVIEW — I recall it was orchid.' });
     expect(reviewed[0]!.summary!.text).toContain('orchid');
     expect(reviewed[0]!.history).toBeDefined();
-    expect(reviewed[0]!.rules).toEqual({ claims_blocked: REPLY_RULES.claims_blocked });
+    // Jev's unresolved rule plus the guidance family's context questions (Part 18 §16), in one review.
+    expect(reviewedRules[0]).toEqual(['claims_blocked', 'self_state_claim', 'breaks_preference']);
     worker.intake([{ update_id: 34, message: { chat: { id: 7654321, type: 'private' }, from: { id: 7654321 },
       text: 'Please repeat the first unique memory.' } }]);
     await worker.drain();
@@ -997,7 +1002,7 @@ it('gives review the original audience, sources, history and operator message', 
   const prompt = prepareJournalEnvelope({ question: 'What did I say?', context: JSON.stringify(context), id: 'turn:2' },
     'claude-sonnet-4-5', 'grant:test', 1000);
   expect(JSON.parse(replyReviewContext(prompt, 'PREVIEW — candidate'))).toEqual({
-    ...context, operatorMessage: 'What did I say?', candidateReply: 'PREVIEW — candidate', rules: REPLY_RULES });
+    ...context, operatorMessage: 'What did I say?', candidateReply: 'PREVIEW — candidate' });
 });
 
 // OR1 (ruling 2 section C): independent contextual results, one agent response per objection, a shared
@@ -1065,7 +1070,9 @@ async function flow(options: Flow, crashAt?: string) {
         if (operation === 'revision') { calls.revisionReview++; return { verdict: 'pass' as const, ruleIds: [], confidence: null, latencyMs: 0 }; }
         calls.review++; clock.now += options.clockJump ?? 0;
         if (options.review === 'down') throw Error('reviewer unavailable');
-        const findings = options.findings ?? (rules ?? []).map(rule => ({ rule, verdict: options.review === 'violation' ? 'violation' as const : 'pass' as const, reason: `about ${rule}` }));
+        // The guidance family's context questions ride every review; this fake clears them, so each case keeps its one objection.
+        const findings = options.findings ?? (rules ?? []).map(rule => ({ rule, verdict: options.review === 'violation'
+          && !(CONTEXT_RULES as readonly ReplyRule[]).includes(rule) ? 'violation' as const : 'pass' as const, reason: `about ${rule}` }));
         const violations = findings.filter(item => item.verdict === 'violation');
         return { verdict: violations.length ? 'violation' as const : 'pass' as const, ruleIds: violations.map(item => item.rule), confidence: null,
           latencyMs: 0, reason: violations.map(item => item.reason).join('; ') || 'fine', findings };

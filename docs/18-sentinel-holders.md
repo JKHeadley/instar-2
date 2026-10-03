@@ -6,7 +6,9 @@
 notices failures has stopped making truthful progress. It should prove that it looked, distinguish
 a warning from authority, and take only bounded recovery actions whose effects are independently
 observable. This part packages the 1.x sentinel and watchdog family as ordinary registered part-nine
-holders. It gives that family no private power.
+holders. It gives that family no private power. A guidance family beside them reviews the agent's own
+outbound replies and turns what it finds into advice the agent answers, through the one reply review
+every reply already passes.
 
 **Rule — reading convention and evidence discipline.** Rules 9, 13, 26, 41, 42, 43, 49, 59,
 61, 69, 90, 91, 107 and 111; **checks: P14-NF-01/02/05/08/09/45/49/50**. Every normative claim in
@@ -37,3 +39,4 @@ This document is split into one file per section so each renders on GitHub and c
 13. [Negative contract fixtures](18-sentinel-holders/13-negative-contract-fixtures.md)
 14. [Inherited duties and disposition](18-sentinel-holders/14-inherited-duties-and-disposition.md)
 15. [Operator decisions and honest limits](18-sentinel-holders/15-operator-decisions-and-honest-limits.md)
+16. [The guidance sentinel family](18-sentinel-holders/16-the-guidance-sentinel-family.md)
