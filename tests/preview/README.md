@@ -3598,3 +3598,33 @@ npx vitest run --maxWorkers 1 tests/preview/tool-turn-replay.test.ts
 npx vitest run --maxWorkers 1 tests/assembly/production-provider-tools.test.ts
 INSTAR_TOOL_TURN_LIVE_TEST=1 npx vitest run --maxWorkers 1 tests/integration/tool-turn-live.test.ts   # five real harness turns
 ```
+
+### Native tool turns (Instar's own agent loop)
+
+Rule 115: the same tool turn without a vendor agent harness (Part Thirteen §9, the native tool rule).
+`tests/preview/native-loop.mjs` is `runToolTurn`'s `invoke`: it uses the same allocation (scratch volume, workspace and
+admission state), whole-liability reservation, journaled trace and retention. Each step is one text-only model call under
+framing `preview-native-tools-v1` (`subscriptionNativePolicy(model)`: the conversation policy's single completion, no harness
+tools, one turn, with a system prompt naming the native tools). The model's answer is either the object
+`{"calls":[{"tool","input"}]}` (1 to 8 calls) or its ordinary answer. The loop:
+
+- runs every proposed call through the same `tool-admission-hook.mjs` executable (`pre`, then `post` with the result), so
+  admission, the 16 per-turn call slots and the admission record are those of a harness tool turn; a hook that cannot
+  decide refuses;
+- executes admitted Read, Write, Edit, Glob and Grep inside the workspace (results that leave it through a link are
+  dropped), Bash under `/usr/bin/sandbox-exec` with a profile built from the harness sandbox's read list (reads only the
+  scratch volume and the runtime system files, writes only the volume, no network, no unix socket or mach service, no
+  signal outside the sandbox), an empty environment and per-process CPU and handle limits, and WebFetch as one GET whose
+  redirect is reported, never followed (admitted only when the installed profile registers `tool:network`);
+- returns each call, its decision and result to the next step as a quoted `role:tool-steps` message (older results are
+  shortened first when the envelope would overflow);
+- ends on the model's answer, the step cap (8 model calls: the liability the turn reserved), a failed or empty step, or
+  the stop (a running command is killed by its own process group within 25 ms).
+
+The launcher does not offer it yet: a native activation needs the operator's grant naming the native policy digest.
+
+```sh
+npx vitest run --maxWorkers 1 tests/preview/native-loop.test.ts
+npx vitest run --maxWorkers 1 tests/preview/native-loop-replay.test.ts
+INSTAR_NATIVE_LOOP_LIVE_TEST=1 npx vitest run --maxWorkers 1 tests/integration/native-loop-live.test.ts   # three real native turns
+```

@@ -76,6 +76,25 @@ consequential effects remain behind admitted adapters. No harness session persis
 is machine-local scratch, never shared or resumed, and the journal is the sole durable copy of
 accepted work.
 
+**Rule — the native harness runs the same tool turn with Instar's own loop.** Rules 2, 30, 41, 55, 58,
+60, 75, 113 and 115, and the purpose's rules on nothing outward by default, consequential effects and
+irreversible acts; **checks:** `tests/preview/native-loop.test.ts`, `tests/preview/native-loop-replay.test.ts`,
+`tests/preview/native-harness-contract.test.ts` and the gated live run `tests/integration/native-loop-live.test.ts`.
+Instar may run a tool turn without any vendor agent harness. Each step is one text-only model call through
+a registered doorway under the native framing, whose policy differs from every other framing only in its
+system prompt, so its digest is its own and only an activation record and grant naming it admit it. The
+model proposes tool calls as its answer, and Instar runs the loop: it admits each proposed call through the
+same admission hook, call slots and record as a harness tool turn, and runs the admitted calls inside the
+same per-turn scratch volume and workspace. The shell runs under a sandbox built from the same read list as
+the harness sandbox, with no network, no unix socket and no signal outside the sandbox. Every call, its
+decision and its result return to the next step as quoted data. The loop is the tool turn's own invocation, so
+the whole-liability reservation, the step bound equal to that reservation, the journaled trace and the
+consistency check are unchanged, and each step is a recorded model call. The loop ends on the model's answer,
+the step bound, a failed step or the stop, and the stop ends a running command by its own process group. A
+proposal the hook cannot decide is refused. The loop is a client of the public ports and holds no authority
+of its own. The preview launcher offers a native turn only under an activation and grant naming the native
+policy's digest.
+
 **Rule — Codex activation has the identical bar.** Rules 34, 41, 47, 59 and 75; **checks:
 P13-NF-16/23/35/44**. The conformance run must show actual submitted context, correlated lifecycle
 and output events, model/runtime-configuration/reasoning and account evidence, sandbox and hidden path
