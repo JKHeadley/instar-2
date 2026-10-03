@@ -1114,6 +1114,8 @@ export type JournalRecord =
   | { kind: 'summary'; through: number; text: string; memoryItems?: SummaryMemoryItem[];
     /** Meaning terms for summarized operator messages (Rule 11): a retrieval index, never shown as fact. */
     concepts?: SummaryConcept[]; people?: PersonNote[]; personAttributes?: PersonAttribute[]; memoryFor?: string[]; memory?: MemoryChange[];
+    /** Validated forgets of a still-open request's message, held until that request's cancel decision (Rules 10, 93). */
+    heldForgets?: MemoryChange[];
     reminderCancels?: string[]; faithfulness?: SummaryFaithfulness; questions?: OpenQuestion[]; questionsReviewed?: string[];
     commitments?: CommitmentNote[]; commitmentSources?: CommitmentSource[]; closed?: CommitmentClosure[];
     /** Proposed commitments refused at creation for an undeclared dependency (Rule 83). */
@@ -5274,7 +5276,10 @@ export function createJournalWorker(journal: ReturnType<typeof openPreviewJourna
   // Acknowledgements use accepted journal changes, not the model's claim that it changed memory.
   const memoryAcknowledgement = (turn: Turn) => {
     // int11's answer-correction path (in: 'reply') keeps the model's corrected answer.
-    const changes = journal.view.memory.filter(change => change.trigger === turn.id && change.mode !== 'prefer' && change.in !== 'reply');
+    const changes = journal.view.memory.filter(change => change.trigger === turn.id && change.mode !== 'prefer' && change.in !== 'reply'
+      // A held forget applied with this turn's cancellation: the answer already names the request and the forget.
+      && !(change.mode === 'forget' && turn.reminderDecided && journal.view.dated.some(item => item.source === change.source
+        && journal.view.reminderCancels.includes(datedKey(item)))));
     // int11's undo path writes its own forget and keeps its own reply.
     if (!changes.length || journal.view.undos.some(undo => undo.trigger === turn.id)) return undefined;
     // int11's memory list already reports the post-change state and must not repeat the old clause.
@@ -6653,6 +6658,7 @@ export function createJournalWorker(journal: ReturnType<typeof openPreviewJourna
               cancelRefusal: 'unlisted' | 'unverified' | undefined,
               obligations: AnswerObligations = {}, promises: PromiseProposal[] = [], fulfills: FulfillmentProposal[] = [],
               refusedFulfills = 0, operatorAction: OperatorActionProposal | undefined, unreadAction = false;
+            const heldForgets: MemoryChange[] = [];
             if (output.trim()) try {
               const parsed = JSON.parse(output) as { reply?: unknown; memory?: unknown; memoryDisposition?: unknown; dated?: unknown; undo?: unknown; personMerges?: unknown; personAttributes?: unknown; closedQuestions?: unknown; memoryList?: unknown; lastNamedPerson?: unknown;
                 conflict?: unknown; resolveConflict?: unknown; cancelReminders?: unknown;
@@ -6779,7 +6785,7 @@ export function createJournalWorker(journal: ReturnType<typeof openPreviewJourna
                   ownReplyEcho = proposals.length < parsed.memory.length;
                   memory = journal.view.summaries.some(item => item.memoryFor?.includes(turn.id))
                     ? [] : memoryFrom(proposals, turn, offered, decision.memorySummary?.text ?? decision.summary?.text,
-                      updateEvidence);
+                      updateEvidence, heldForgets);
                 }
                 // A missing optional decision on an ordinary reply is an empty
                 // decision. Direct correction/preference requests still require
@@ -6860,6 +6866,18 @@ export function createJournalWorker(journal: ReturnType<typeof openPreviewJourna
             // that does not exist, so the fixed line replaces it; the runner's own lines below still follow. It is also
             // the safe answer an invalid date keeps, so a string reply never loses the refusal (Rule 42).
             if (unreadAction && text.trim()) { text = OPERATOR_ACTION_UNREAD; separatedAnswer = OPERATOR_ACTION_UNREAD; }
+            // Rules 10, 93: a forget of a still-open request's message was held for this turn's cancel decision (by
+            // its summary or by this answer). Now that decision is recorded: a request it withdrew has its forget
+            // applied; one it kept keeps its text, and the operator is told so instead of the forget vanishing.
+            const held = memory === undefined || invalidMemory || probe || turn.requestedAction || undo !== undefined ? []
+              : [...journal.view.summaries.filter(item => item.memoryFor?.includes(turn.id)).flatMap(item => item.heldForgets ?? []),
+                ...heldForgets].filter((change, index, all) => all.findIndex(other => other.source === change.source
+                  && other.quote === change.quote) === index && !journal.view.memory.some(other => other.mode === 'forget'
+                  && other.source === change.source && other.quote === change.quote));
+            const withdrawnSource = (change: MemoryChange) => journal.view.dated.some(item => item.source === change.source
+              && reminderCancels?.includes(datedKey(item)));
+            const forgotten = held.filter(withdrawnSource), kept = held.filter(change => !withdrawnSource(change));
+            if (forgotten.length) memory = [...memory!, ...forgotten];
             if (invalidDate && !invalidMemory) {
               // Legacy reply strings can mix an answer with an unchecked save claim.
               // Only the separated answer is safe to keep when validation rejects the date.
@@ -6902,6 +6920,10 @@ export function createJournalWorker(journal: ReturnType<typeof openPreviewJourna
               : 'I could not tell which request to cancel, so none was cancelled.'}`.trim();
             else if (reminderCancels?.length && !invalidMemory) text = `${text.trim()} Cancelled request: ${reminderCancels.map(key =>
               `"${journal.view.dated.find(item => datedKey(item) === key)!.quote}"`).join('; ')}.`.trim();
+            if (forgotten.length && text.trim()) text = `${text.trim()} Also forgot the text of ${forgotten.length > 1 ? 'those requests' : 'that request'}.`;
+            if (kept.length && text.trim()) text = `${text.trim()} I did not forget the text of ${kept.length > 1 ? 'requests that are' : 'a request that is'} `
+              + `still open, so nothing is lost: ${kept.map(change => `"${clip(clean(redact(change.quote).text, true), 160)}"`).join('; ')}. `
+              + 'Cancel it first if you want it forgotten.';
             if (standing.length) text = `${text.trim()} Your open request${standing.length > 1 ? 's' : ''} `
               + `still stand${standing.length > 1 ? '' : 's'} and will be sent at ${standing.length > 1 ? 'their' : 'its'} time: `
               + `${nameRequests(standing)}.`.trim();
@@ -7950,7 +7972,7 @@ export function createJournalWorker(journal: ReturnType<typeof openPreviewJourna
       && quote.trim().length >= 8 && reply.includes(quote) && !redact(trigger.text).text.includes(quote);
   };
   const memoryFrom = (proposed: unknown[], trigger: Turn, offered: ReadonlySet<string>, offeredSummary?: string,
-    updateEvidence: readonly { id: string; message: string }[] = []): MemoryChange[] | undefined => {
+    updateEvidence: readonly { id: string; message: string }[] = [], held?: MemoryChange[]): MemoryChange[] | undefined => {
     const changes: MemoryChange[] = [], seen = new Set<string>();
     const preferences = preferenceState();
     if (!trigger.accepted || !fromOperator(trigger) || proposed.length > 3) return undefined;
@@ -8002,14 +8024,19 @@ export function createJournalWorker(journal: ReturnType<typeof openPreviewJourna
       if ((mode === 'correct' || mode === 'update') && (typeof replacement !== 'string' || !replacement.trim()
         || Buffer.byteLength(replacement) > 1000 || !redact(trigger.text).text.includes(replacement))) return undefined;
       if (mode === 'forget' && replacement !== undefined) return undefined;
-      // Rules 2, 10, 57: forgetting the message of a still-open requested action would end that request with no
-      // record that it was withdrawn. Whether a message withdraws a request is the cancel decision's to make (the
+      // Purpose constraint 2 (nothing silently lost); Rules 10, 57, 93: forgetting the message of a still-open
+      // requested action would end that request with no record that it was withdrawn. Whether a message withdraws a request is the cancel decision's to make (the
       // model's cancelReminders, tied to the operator's own words); a forget never stands in for it, so the request
       // stays open for that decision. Live 2026-10-03 (room one, cint-L39 9fbc13ca, RA3): the rolling summary
       // forgot "Remind me ... to refill the bird feeder" for "Actually, cancel the bird feeder one.", the request
       // vanished with cancelled still 0, and the reply said only "Forgot the requested information".
+      // Rule 93: the forget is held, never dropped. The answer applies it once it records that request's
+      // cancellation, or tells the operator the text was kept because the request still stands.
       if (mode === 'forget' && original && openRequests(journal.view).some(request => request.source === original.id
-        && (request.quote.includes(quote) || quote.includes(request.quote)))) continue;
+        && (request.quote.includes(quote) || quote.includes(request.quote)))) {
+        seen.add(JSON.stringify([rawSource, quote]));
+        held?.push({ mode: 'forget', source: rawSource as string, quote, trigger: trigger.id }); continue;
+      }
       if (mode === 'update' && (!original || !updateEvidence.some(item => item.id === source && item.message.includes(quote)))) return undefined;
       if (replies !== undefined && (!Array.isArray(replies) || replies.length > 5 || replies.some(id =>
         typeof id !== 'string' || !offered.has(id) || journal.view.turns.get(id)?.intent === undefined
@@ -8393,6 +8420,7 @@ export function createJournalWorker(journal: ReturnType<typeof openPreviewJourna
         closed: CommitmentClosure[] | undefined, memory: MemoryChange[] | undefined, questions: OpenQuestion[] | undefined,
         reminderCancels: string[] | undefined;
       let attemptedMemory = false, unresolvedMemory = false, attemptedAttributes = false;
+      const heldForgets: MemoryChange[] = [];
       try { type SummaryAnswer = { summary?: unknown; people?: unknown; personAttributes?: unknown;
           commitments?: unknown; closed?: unknown; memory?: unknown; memoryDisposition?: unknown; questions?: unknown; memoryItems?: unknown; cancelReminders?: unknown };
         let parsed = JSON.parse(answered.trim().replace(/^```(?:json)?\s*|\s*```$/gu, '')) as SummaryAnswer & { reply?: unknown };
@@ -8421,7 +8449,7 @@ export function createJournalWorker(journal: ReturnType<typeof openPreviewJourna
           if (Array.isArray(parsed.questions)) questions = questionsFrom(parsed.questions, questionSources);
           if (trigger && Array.isArray(parsed.memory) && parsed.memoryDisposition !== 'unresolved')
             memory = memoryFrom(parsed.memory, trigger, new Set(memorySources),
-              (JSON.parse(packet) as { summary?: { text: string } }).summary?.text);
+              (JSON.parse(packet) as { summary?: { text: string } }).summary?.text, [], heldForgets);
           if (reminderOffer.length && Array.isArray(parsed.cancelReminders)) {
             const pending = new Set(openRequests(journal.view).map(datedKey));
             const ids = new Map(reminderOffer.filter(item => pending.has(datedKey(item))).map(item => [reminderId(item), datedKey(item)]));
@@ -8644,7 +8672,7 @@ export function createJournalWorker(journal: ReturnType<typeof openPreviewJourna
         ...(trigger && (strictMemory || memory?.length) ? { memoryFor: [trigger.id] } : {}), ...(people ? { people } : {}),
         ...(personAttributes?.length ? { personAttributes } : {}),
         ...(reminderCancels ? { reminderCancels } : {}),
-        ...(memory ? { memory } : {}),
+        ...(memory ? { memory } : {}), ...(memory && heldForgets.length ? { heldForgets } : {}),
         ...(commitments ? { commitments } : {}), ...(commitmentSources?.length ? { commitmentSources } : {}),
         ...(commitmentRefusals ? { commitmentRefusals } : {}),
         ...(closed?.length ? { closed } : {}),

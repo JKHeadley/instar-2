@@ -140,9 +140,13 @@ const fireDue = async (w: ReturnType<typeof world>, clock: { now: number }) => {
 
 it('cancels the request through the cancel decision, names it, and fires only the other one', async () => {
   await replay(recordedModel(), 'cancelled', async (w, clock) => {
-    // The recorded summary ran on the cancel turn and its forget of the request message was not applied.
-    expect(w.journal.view.summaries.some(summary => summary.memoryFor?.includes(turnId('ra3')))).toBe(true);
-    expect(w.journal.view.memory.some(change => change.source === turnId('ra1'))).toBe(false);
+    // The recorded summary ran on the cancel turn. Its forget of the request message was held, not applied, so the
+    // request stayed listed for the cancel decision; once the answer recorded the cancellation the forget landed.
+    const summary = w.journal.view.summaries.find(item => item.memoryFor?.includes(turnId('ra3')))!;
+    expect(summary.memory).toEqual([]);
+    expect(summary.heldForgets).toEqual([expect.objectContaining({ mode: 'forget', source: turnId('ra1'), quote: FEEDER })]);
+    expect(w.journal.view.memory).toEqual([expect.objectContaining({ mode: 'forget', source: turnId('ra1'), quote: FEEDER,
+      trigger: turnId('ra3') })]);
     const turn = w.journal.view.order.find(item => item.text === CANCEL)!;
     expect(turn.reminderDecided).toBe(true);
     expect(turn.failureClass).toBeUndefined();
@@ -150,7 +154,7 @@ it('cancels the request through the cancel decision, names it, and fires only th
     expect(w.journal.view.reminderCancels).toHaveLength(1);
     expect(openRequests(w.journal.view).map(item => item.quote)).toEqual([PLUMBER]);
     const reply = w.sent.at(-1)!;
-    expect(reply).toContain(`Cancelled request: "${FEEDER}".`);
+    expect(reply).toContain(`Cancelled request: "${FEEDER}". Also forgot the text of that request.`);
     expect(reply).not.toContain('Forgot the requested information');
     await fireDue(w, clock);
     expect(pushes(w.sent)).toHaveLength(1);
@@ -166,11 +170,67 @@ it('keeps the request open when the answer reads no withdrawal, and the forget a
   await replay(() => JSON.stringify({ reply: none.reply, cancelReminders: [] }), 'kept', async (w, clock) => {
     expect(w.journal.view.reminderCancels).toHaveLength(0);
     expect(openRequests(w.journal.view).map(item => item.quote)).toEqual([FEEDER, PLUMBER]);
+    // The held forget is not applied, and the operator is told why instead of it vanishing (Rule 93).
+    expect(w.journal.view.memory).toHaveLength(0);
     expect(w.sent.at(-1)!).not.toContain('Forgot the requested information');
+    expect(w.sent.at(-1)!).toContain(`I did not forget the text of a request that is still open, so nothing is lost: "${FEEDER}".`);
     await fireDue(w, clock);
     expect(pushes(w.sent).join('\n')).toContain('bird feeder');
     expect(pushes(w.sent).join('\n')).toContain('call the plumber');
   });
+}, 60000);
+
+it('completes an explicit forget of the request once its cancellation is recorded (review of 7711fb29)', async () => {
+  // Neighbouring instruction on the recorded shapes: the operator asks to cancel the reminder AND forget its text.
+  // The summary proposes the same forget as live; the answer is a recorded post-fix replay whose quote is contained
+  // in this message. Before this repair the forget was skipped and the turn's memory marked settled, so the
+  // operator's forget was silently lost. Now it is held until the cancel is recorded, then applied and named.
+  const both = 'Actually, cancel the bird feeder one and forget its reminder text.';
+  const root = tmp('both');
+  try {
+    const clock = { now: START };
+    const sent: string[] = [];
+    let summaryReplayed = false;
+    const ports = { now: () => clock.now, stopped: () => false, timeZone: 'America/Los_Angeles',
+      model: async (input: Input) => {
+        if (input.id.startsWith('summary:')) {
+          if (packetOf(input).memoryRequest?.message === both && !summaryReplayed) {
+            summaryReplayed = true; return JSON.stringify(fixture.summaryOutputAtRa3);
+          }
+          return JSON.stringify({ summary: 'The operator asked for two reminders.', people: [], commitments: [],
+            questions: [], memory: [], cancelReminders: [] });
+        }
+        if (input.question === both) {
+          expect((packetOf(input).reminders ?? []).map(item => item.quote)).toEqual([FEEDER, PLUMBER]);
+          return JSON.stringify(fixture.postFixReplays[0]);
+        }
+        return JSON.stringify({ reply: 'Got it.', memory: [], dated: [{ quote: input.question, when: 'today at 10:40 am', remind: true }] });
+      },
+      checkOutbound: () => {},
+      send: async (value: { expectedText: string }) => { sent.push(value.expectedText); return sent.length; } };
+    const journal = openPreviewJournal(join(root, 'journal.encrypted'), key, genesis);
+    const worker = createJournalWorker(journal, ports);
+    for (const label of ['ra1', 'ra2']) {
+      worker.intake([update(recorded(label).update, recorded(label).message, clock.now)]); await worker.drain();
+      clock.now += 60_000;
+    }
+    clock.now += 60_000;
+    worker.intake([update(recorded('ra3').update, both, clock.now)]); await worker.drain(); await worker.drain();
+    expect(summaryReplayed).toBe(true);
+    expect(journal.view.reminderCancels).toHaveLength(1);
+    expect(openRequests(journal.view).map(item => item.quote)).toEqual([PLUMBER]);
+    expect(journal.view.memory).toEqual([expect.objectContaining({ mode: 'forget', source: turnId('ra1'), quote: FEEDER })]);
+    const turn = journal.view.order.find(item => item.text === both)!;
+    expect(turn.memoryPending).toBeUndefined();
+    expect(turn.memoryUndecided).toBeUndefined();
+    expect(sent.at(-1)!).toContain(`Cancelled request: "${FEEDER}". Also forgot the text of that request.`);
+    journal.close();
+    const reopened = openPreviewJournal(join(root, 'journal.encrypted'), key);
+    try {
+      expect(reopened.view.memory).toEqual(journal.view.memory);
+      expect(reopened.view.reminderCancels).toEqual(journal.view.reminderCancels);
+    } finally { reopened.close(); }
+  } finally { rmSync(root, { recursive: true, force: true }); }
 }, 60000);
 
 it('still applies a summary forget of a fact that carries no open request', async () => {
