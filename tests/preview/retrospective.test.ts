@@ -4,7 +4,7 @@ import { mkdtempSync, realpathSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { createJournalWorker, openPreviewJournal, retrospectiveCases, type JournalView } from './journal.js';
-import { GRAVITY_WELLS, RETRO_DUTY_CODES, RETRO_FAILURE_BACKOFF_MS, RETRO_OUTCOME_UNSETTLED_REASON, RETRO_UNACCOUNTED_REASON, rowRefusedReason, RETRO_MIN_INTERVAL_MS, RETRO_PENDING_RECHECK_MS, RETRO_STALE_CASE_MS, RETROSPECTIVE_DUTIES, RETROSPECTIVE_QUESTION,
+import { GRAVITY_WELLS, RETRO_DUTIES_UNREADABLE_NOTE, RETRO_DUTY_CODES, RETRO_FAILURE_BACKOFF_MS, RETRO_OUTCOME_UNSETTLED_REASON, RETRO_UNACCOUNTED_REASON, rowRefusedReason, RETRO_MIN_INTERVAL_MS, RETRO_PENDING_RECHECK_MS, RETRO_STALE_CASE_MS, RETROSPECTIVE_DUTIES, RETROSPECTIVE_QUESTION,
   WAIVER_EVIDENCE_UNAVAILABLE, benchmarkReruns, disciplineSource, eligibleCases, feedbackDispositions, feedbackRecordOf, latestGrades,
   openFindings, passAccounting, pendingGrades, promotedCases, replyContextDigest, rerunDispositions, retrospectivePlan, retrospectivePopulation,
   retrospectiveStatusLine, standingGrantCandidates, validateRetrospective, waiverPacket, RETRO_MAX_STATE_BYTES, RETRO_WAIVER_BYTES,
@@ -485,22 +485,51 @@ describe('MUST-FIX 5: authorization scope and cross-pass recurrence', () => {
 });
 
 describe('MUST-FIX 6: every duty accounted, sibling evidence through a typed seam', () => {
-  it('refuses a duties string that does not cover every duty, and records waiver recurrence unavailable without producer evidence', async () => {
+  it('records every duty uninspected on a duties string that does not cover every duty, and records waiver recurrence unavailable without producer evidence', async () => {
     const w = world();
     try {
       await w.converse(words.slice(0, 10));
-      // The compact shape's own accounting: one character per duty, in order. A string one character short
-      // accounts for one duty fewer, and is refused exactly as a missing duty row was.
-      w.answerWith(state => JSON.stringify({ ...body(casesOf(state)), duties: 'n'.repeat(RETROSPECTIVE_DUTIES.length - 1) }));
+      // Changed by plan #382. This pinned "a string one character short is refused exactly as a missing duty row
+      // was", and that refusal is what killed the only live pass of room two under cint-L37 (02203355) on an
+      // answer that parsed and fitted the cap. One character short accounts for one duty fewer AND shifts every
+      // character after the drop onto the wrong duty, so no position can be attributed: every duty is now
+      // recorded uninspected with RETRO_DUTIES_UNREADABLE_NOTE and the rest of the pass stands. The floor that
+      // matters is unchanged and asserted below — not one duty is recorded inspected.
+      let first: RetroCase[] = [];
+      w.answerWith(state => { first = casesOf(state); return JSON.stringify({ ...body(first), duties: 'n'.repeat(RETROSPECTIVE_DUTIES.length - 1) }); });
       await w.retrospect();
-      expect(w.journal.view.retroPasses[0]).toMatchObject({ state: 'failed', reason: expect.stringContaining('one character per duty') });
-      expect(owedIds(w.journal.view).length).toBe(retrospectiveCases(w.journal.view).length);
-      w.advance(6 * 3_600_000);
+      const short = w.journal.view.retroPasses[0]!;
+      expect(short).toMatchObject({ state: 'complete' });
+      expect(short.result!.duties).toHaveLength(RETROSPECTIVE_DUTIES.length);
+      expect(short.result!.duties.filter(item => item.disposition === 'inspected')).toEqual([]);
+      expect(short.result!.duties.filter(item => item.note === RETRO_DUTIES_UNREADABLE_NOTE))
+        .toHaveLength(RETROSPECTIVE_DUTIES.length - 1);
+      // The plan still decides availability: waiver-recurrence keeps its own unavailable reason.
+      expect(short.result!.duties.find(item => item.duty === 'waiver-recurrence')).toMatchObject({ note: WAIVER_EVIDENCE_UNAVAILABLE });
+      expect(retrospectiveStatusLine(w.journal.view)).toContain('duties not inspected although their evidence was present');
+      // Plan #382 round 1 (Astra): that pass discharged no duty, so it retires none of its cases — the next pass is
+      // due on them again and is asked about them, and a readable inspection there is what clears them.
+      expect(first.length).toBeGreaterThan(0);
+      w.advance(RETRO_STALE_CASE_MS);
+      let second: RetroCase[] = [];
+      w.answerWith(state => { second = casesOf(state); return answerFor(state); });
+      await w.retrospect();
+      expect(w.journal.view.retroPasses[1]).toMatchObject({ state: 'complete' });
+      expect(second.map(item => item.id)).toEqual(expect.arrayContaining(first.map(item => item.id)));
+    } finally { w.done(); }
+  });
+
+  // The second half of the test above, in its own world: the waiver half never depended on the short-duties pass,
+  // only on a pass whose answer the validator can read.
+  it('records waiver recurrence unavailable without producer evidence, and every other duty inspected', async () => {
+    const w = world();
+    try {
+      await w.converse(words.slice(0, 10));
       let packet: { waiverEvidence: unknown } | undefined;
       w.answerWith(state => { packet = JSON.parse(state); return answerFor(state); });
       await w.retrospect();
       expect(packet?.waiverEvidence).toBe(WAIVER_EVIDENCE_UNAVAILABLE);
-      const duties = w.journal.view.retroPasses[1]!.result!.duties;
+      const duties = w.journal.view.retroPasses[0]!.result!.duties;
       expect(duties).toHaveLength(RETROSPECTIVE_DUTIES.length);
       expect(duties.find(item => item.duty === 'waiver-recurrence')).toMatchObject({ disposition: 'unavailable' });
       expect(duties.filter(item => item.disposition === 'inspected')).toHaveLength(RETROSPECTIVE_DUTIES.length - 1);

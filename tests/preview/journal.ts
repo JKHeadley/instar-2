@@ -5680,6 +5680,20 @@ export function createJournalWorker(journal: ReturnType<typeof openPreviewJourna
       // unlisted is available, so that sentence is not repeated here (Rule 116).
       capability: `Your capabilities are the capability-note source. Summary covers earlier turns; history has later turns. For a question about what the operator said, state a remembered detail only when the offered journal evidence supports that exact detail, not a similar name, event or date, a summary inference, your earlier reply or the question's premise; otherwise say "I don't know from this journal", never that the operator did not say it. Cite sourceLabel for supported remembered facts. Say when the source is unknown.`
         // Hold guidance rides only while a held item is visible (history, recall, or today's status); exact-unit guidance only with a number carrying a unit or currency.
+        // Rule 19, live 2026-10-03 (I-proofroom2-20261003-061647, I3b, update 6231611): the operator answered
+        // "17 × 3 = 51" with "No, it's 41." and the reply asked which earlier answer was meant without naming any
+        // position — while that same call's recorded reason had already reached one ("My last answer in history
+        // was '17 × 3 = 51' … 17×3 is unambiguously 51"). The position was held inside the call and withheld from
+        // the operator, who was left with no answer: the needless-deferral well, not warmth. The pull is the
+        // memory sentence below, which rightly says an earlier reply is no evidence of what the OPERATOR said;
+        // nothing told the model that a dispute of its OWN shown answer is pushback rather than a memory lookup.
+        // It rides only while an answer of yours is actually shown, so a first turn pays nothing for it and the
+        // measured always-sent floor (PREVIEW_FIXED_PROMPT_BYTES) is unchanged, and it is written to fit the
+        // compact operator packet's own measured bound (journal.test.ts, 10667 before it and 10796 with it, under
+        // the 10800 that guard already held) rather than loosening either guard. Asking stays allowed — only
+        // asking INSTEAD of saying where you stand does not, which is exactly what the recorded answer did.
+        + (earlier.some(item => !item.noticeClass && item.intent !== undefined)
+          ? ' A message disputing an answer in history, with no new argument, is pushback: say where you stand before asking what it corrects.' : '')
         + (shownTurns.some(item => item.wasHeld || item.heldNoticeIntent !== undefined) || journal.view.heldTurns.size > 0
           || journal.view.awayEvents.some(event => event.kind === 'hold' && now - event.at < 26 * 3_600_000) ? ' History may show a held answer or a fixed held notice as delivery state; do not narrate a past hold or repeat its notice in an ordinary reply. The runner sends any due held notice on its fixed path. Explain a hold when the operator asks about it.' : '')
         + (/[$€£¥]\s?\p{Nd}|\p{Nd}\s?(?:%|°|\p{L})/u.test([question?.text ?? '', summary?.text ?? '', ...shownTurns.map(item => item.text), ...channels.map(item => ` ${item.text}`)].join(' '))
