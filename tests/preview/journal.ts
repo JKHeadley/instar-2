@@ -6874,8 +6874,10 @@ export function createJournalWorker(journal: ReturnType<typeof openPreviewJourna
                 ...heldForgets].filter((change, index, all) => all.findIndex(other => other.source === change.source
                   && other.quote === change.quote) === index && !journal.view.memory.some(other => other.mode === 'forget'
                   && other.source === change.source && other.quote === change.quote));
-            const withdrawnSource = (change: MemoryChange) => journal.view.dated.some(item => item.source === change.source
-              && reminderCancels?.includes(datedKey(item)));
+            // Released only when every open request this forget would remove (activeDated's source-and-quote overlap)
+            // is withdrawn by this decision: cancelling one request never erases another from the same message.
+            const withdrawnSource = (change: MemoryChange) => openRequests(journal.view).every(item => item.source !== change.source
+              || !(item.quote.includes(change.quote) || change.quote.includes(item.quote)) || reminderCancels?.includes(datedKey(item)));
             const forgotten = held.filter(withdrawnSource), kept = held.filter(change => !withdrawnSource(change));
             if (forgotten.length) memory = [...memory!, ...forgotten];
             if (invalidDate && !invalidMemory) {
@@ -8030,13 +8032,11 @@ export function createJournalWorker(journal: ReturnType<typeof openPreviewJourna
       // stays open for that decision. Live 2026-10-03 (room one, cint-L39 9fbc13ca, RA3): the rolling summary
       // forgot "Remind me ... to refill the bird feeder" for "Actually, cancel the bird feeder one.", the request
       // vanished with cancelled still 0, and the reply said only "Forgot the requested information".
-      // Rule 93: the forget is held, never dropped. The answer applies it once it records that request's
-      // cancellation, or tells the operator the text was kept because the request still stands.
-      if (mode === 'forget' && original && openRequests(journal.view).some(request => request.source === original.id
-        && (request.quote.includes(quote) || quote.includes(request.quote)))) {
-        seen.add(JSON.stringify([rawSource, quote]));
-        held?.push({ mode: 'forget', source: rawSource as string, quote, trigger: trigger.id }); continue;
-      }
+      // Rule 93: the forget is held, never dropped, and held whole: it passes every check below and keeps its
+      // replies and summary passages. The answer applies it once it records that request's cancellation, or tells
+      // the operator the text was kept because the request still stands.
+      const heldForget = mode === 'forget' && original !== undefined && openRequests(journal.view).some(request =>
+        request.source === original.id && (request.quote.includes(quote) || quote.includes(request.quote)));
       if (mode === 'update' && (!original || !updateEvidence.some(item => item.id === source && item.message.includes(quote)))) return undefined;
       if (replies !== undefined && (!Array.isArray(replies) || replies.length > 5 || replies.some(id =>
         typeof id !== 'string' || !offered.has(id) || journal.view.turns.get(id)?.intent === undefined
@@ -8046,7 +8046,7 @@ export function createJournalWorker(journal: ReturnType<typeof openPreviewJourna
         || summaryPassages.some(passage => typeof passage !== 'string' || passage.length < 8
           || Buffer.byteLength(passage) > 1000 || !offeredSummary?.includes(passage)))) return undefined;
       seen.add(JSON.stringify([rawSource, quote]));
-      changes.push({ mode: mode === 'update' ? 'correct' : mode, source: rawSource as string, quote, trigger: trigger.id,
+      (heldForget ? held ?? [] : changes).push({ mode: mode === 'update' ? 'correct' : mode, source: rawSource as string, quote, trigger: trigger.id,
         ...(side === 'reply' ? { in: 'reply' as const } : {}),
         ...(mode === 'correct' || mode === 'update' ? { replacement: replacement as string } : {}),
         ...(mode === 'update' ? { historical: true as const } : {}),

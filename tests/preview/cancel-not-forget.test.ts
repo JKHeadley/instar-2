@@ -265,3 +265,112 @@ it('still applies a summary forget of a fact that carries no open request', asyn
     journal.close();
   } finally { rmSync(root, { recursive: true, force: true }); }
 }, 60000);
+
+// Review of 0e49c4d5 (Astra, round 2), synthetic neighbours of the recorded shapes: a held forget keeps its validated
+// targets, and a forget is released only when every open request it would remove is cancelled.
+it('retains held forget summary passages and linked replies', async () => {
+  // Neighbouring instruction on the recorded shapes: the operator asks to cancel the reminder AND forget its text.
+  // The summary proposes the same forget as live; the answer is a recorded post-fix replay whose quote is contained
+  // in this message. Before this repair the forget was skipped and the turn's memory marked settled, so the
+  // operator's forget was silently lost. Now it is held until the cancel is recorded, then applied and named.
+  const both = 'Actually, cancel the bird feeder one and forget its reminder text.';
+  const root = tmp('probe');
+  const passage = 'A seed replenishment task for wild birds is scheduled.';
+  try {
+    const clock = { now: START };
+    const sent: string[] = [];
+    let summaryReplayed = false;
+    const ports = { now: () => clock.now, stopped: () => false, timeZone: 'America/Los_Angeles',
+      model: async (input: Input) => {
+        if (input.id.startsWith('summary:')) {
+          if (packetOf(input).memoryRequest?.message === both && !summaryReplayed) {
+            summaryReplayed = true;
+            expect(JSON.parse(input.context).summary.text).toContain(passage);
+            const proposal = JSON.parse(fixture.summaryOutputAtRa3.reply);
+            proposal.memory[0].replies = [turnId('ra2')];
+            proposal.memory[0].summaryPassages = [passage];
+            return JSON.stringify(proposal);
+          }
+          return JSON.stringify({ summary: passage, people: [], commitments: [],
+            questions: [], memory: [], cancelReminders: [] });
+        }
+        if (input.question === both) {
+          expect((packetOf(input).reminders ?? []).map(item => item.quote)).toEqual([FEEDER, PLUMBER]);
+          return JSON.stringify(fixture.postFixReplays[0]);
+        }
+        return JSON.stringify({ reply: passage, memory: [], dated: [{ quote: input.question, when: 'today at 10:40 am', remind: true }] });
+      },
+      checkOutbound: () => {},
+      send: async (value: { expectedText: string }) => { sent.push(value.expectedText); return sent.length; } };
+    const journal = openPreviewJournal(join(root, 'journal.encrypted'), key, genesis);
+    const worker = createJournalWorker(journal, ports);
+    for (const label of ['ra1', 'ra2']) {
+      worker.intake([update(recorded(label).update, recorded(label).message, clock.now)]); await worker.drain();
+      clock.now += 60_000;
+    }
+    await worker.summarizeIfNeeded(true);
+    clock.now += 60_000;
+    worker.intake([update(recorded('ra3').update, both, clock.now)]); await worker.drain(); await worker.drain();
+    expect(summaryReplayed).toBe(true);
+    const probe = worker.probe('What do you remember?');
+    expect('context' in probe && probe.context.includes(passage), 'forgotten paraphrase must not remain in later context').toBe(false);
+    expect(journal.view.memory[0]?.summaryPassages).toEqual([passage]);
+    expect(journal.view.memory[0]?.replies).toEqual([turnId('ra2')]);
+    expect('context' in probe && probe.context.includes(passage)).toBe(false);
+    expect(journal.view.reminderCancels).toHaveLength(1);
+    expect(openRequests(journal.view).map(item => item.quote)).toEqual([PLUMBER]);
+    expect(journal.view.memory).toEqual([expect.objectContaining({ mode: 'forget', source: turnId('ra1'), quote: FEEDER })]);
+    const turn = journal.view.order.find(item => item.text === both)!;
+    expect(turn.memoryPending).toBeUndefined();
+    expect(turn.memoryUndecided).toBeUndefined();
+    expect(sent.at(-1)!).toContain(`Cancelled request: "${FEEDER}". Also forgot the text of that request.`);
+    journal.close();
+    const reopened = openPreviewJournal(join(root, 'journal.encrypted'), key);
+    try {
+      expect(reopened.view.memory).toEqual(journal.view.memory);
+      expect(reopened.view.reminderCancels).toEqual(journal.view.reminderCancels);
+    } finally { reopened.close(); }
+  } finally { rmSync(root, { recursive: true, force: true }); }
+}, 60000);
+
+
+it('does not erase a second open request carried by the same source', async () => {
+  const root = tmp('shared-source');
+  const both = 'Actually, cancel the bird feeder one and forget its reminder text.';
+  const combined = FEEDER + '. ' + PLUMBER;
+  const clock = { now: START };
+  const sent: string[] = [];
+  let replayed = false;
+  const journal = openPreviewJournal(join(root, 'journal.encrypted'), key, genesis);
+  try {
+    const worker = createJournalWorker(journal, { now: () => clock.now, stopped: () => false, timeZone: 'America/Los_Angeles',
+      model: async (input: Input) => {
+        if (input.id.startsWith('summary:')) {
+          if (packetOf(input).memoryRequest?.message === both && !replayed) {
+            replayed = true;
+            return JSON.stringify({ summary: 'The operator withdrew the first reminder.', memory: [
+              { mode: 'forget', source: turnId('ra1'), quote: combined, replies: [], summaryPassages: [] }] });
+          }
+          return JSON.stringify({ summary: 'The operator asked for reminders.', memory: [] });
+        }
+        if (input.question === both) {
+          const request = packetOf(input).reminders!.find(item => item.quote === FEEDER)!;
+          return JSON.stringify({ reply: 'The feeder request is cancelled; the plumber remains.', memory: [{ mode: 'forget', source: turnId('ra1'), quote: combined, replies: [], summaryPassages: [] }],
+            cancelReminders: [{ id: request.id, quote: 'cancel the bird feeder one' }] });
+        }
+        return JSON.stringify({ reply: 'Noted.', memory: [], dated: [FEEDER, PLUMBER].map(quote =>
+          ({ quote, when: 'today at 10:40 am', remind: true })) });
+      }, checkOutbound: () => {}, send: async (value: { expectedText: string }) => { sent.push(value.expectedText); return sent.length; } });
+    worker.intake([update(recorded('ra1').update, combined, clock.now)]); await worker.drain();
+    expect(openRequests(journal.view).map(item => item.quote)).toEqual([FEEDER, PLUMBER]);
+    clock.now += 120000;
+    worker.intake([update(recorded('ra3').update, both, clock.now)]); await worker.drain(); await worker.drain();
+    expect(journal.view.reminderCancels).toHaveLength(1);
+    expect(openRequests(journal.view).map(item => item.quote)).toEqual([PLUMBER]);
+    // The broad forget is kept, not applied, and the operator is told so; it never claims the forget completed.
+    expect(journal.view.memory.filter(change => change.mode === 'forget')).toEqual([]);
+    expect(sent.at(-1)!).toContain(`Cancelled request: "${FEEDER}".`);
+    expect(sent.at(-1)!).not.toContain('Also forgot');
+    expect(sent.at(-1)!).toContain('I did not forget the text of a request that is still open');
+  } finally { journal.close(); rmSync(root, { recursive: true, force: true }); }
+});
