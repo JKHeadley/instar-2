@@ -1,17 +1,81 @@
 [
   {
-    "revision": 7,
+    "revision": 11,
     "date": "2026-10-03",
     "status": "draft",
     "cause": {
       "kind": "draft",
-      "note": "Integration cint-L43: w4-toolsfull (built on cint-L40) merged onto cint-L42, which carries w4-doorway. Both units' §9 rules are kept as one: the full tool set's classes decide what is ordinary, and every call the hook sends to the effect doorway is decided by the four consequential-effect tests. Revisions 5 and 6 were w4-toolsfull's 4 and 5 on its branch, renumbered after w4-doorway's 4. No constitution change."
+      "note": "Integration cint-L43: w4-toolsfull (built on cint-L40) merged onto cint-L42, which carries w4-doorway. Both units' §9 rules are kept as one: the full tool set's classes decide what is ordinary, and every call the hook sends to the effect doorway is decided by the four consequential-effect tests. Then w4-persist (built on w4-toolsfull's first head) merged on top: its §9 persistent-workspace and kept-session rule is kept with the newer tool-set text. Revisions 5 and 6 were w4-toolsfull's 4 and 5 on its branch and revisions 7 to 10 were w4-persist's 5 to 8, renumbered after w4-doorway's 4. No constitution change."
     },
     "changes": [
       {
         "what": "§9 tool rule: the effect doorway decides by the purpose's four consequential-effect tests (not operation membership) for every effect the full tool set sends it; a web read or listed MCP read whose effect or target the operator's effect policy registers or marks policy-sensitive goes to the doorway too.",
         "why": "w4-doorway replaced the membership check with the four tests while w4-toolsfull was built on the older check; the integration keeps the newer test and the full tool set, and an operator's policy-sensitive marking still decides a read that is otherwise ordinary.",
-        "ref": "lanes/cint-L43-PROGRESS.md; lanes/w4-toolsfull-PROGRESS.md; lanes/w4-doorway-PROGRESS.md"
+        "ref": "lanes/cint-L43-PROGRESS.md; lanes/w4-toolsfull-PROGRESS.md; lanes/w4-doorway-PROGRESS.md; lanes/w4-persist-PROGRESS.md"
+      }
+    ]
+  },
+  {
+    "revision": 10,
+    "date": "2026-10-03",
+    "status": "draft",
+    "cause": {
+      "kind": "draft",
+      "note": "Unit w4-persist repair, review round 3 (Astra, VERDICT NO): reconciliation splices only prose notes, and the unfinished-reconciliation guidance reaches the agent in its turn input. No constitution change."
+    },
+    "changes": [
+      {
+        "what": "§9 persistent-workspace rule: only prose notes (plain-text and Markdown files) are edited by removing a forgotten or corrected clause; structured files are kept intact and named; the workspace note is delivered in the turn's own input; a file held by an earlier part of a bounded walk stays named until a whole walk completes.",
+        "why": "Review round 3 findings 1-2: valid UTF-8 admitted a JSON file whose splice left it unparseable, the stale-workspace note was a file the agent was never directed to, and the last chunk of a bounded walk removed the warning while an earlier chunk's held file remained.",
+        "ref": "lanes/w4-persist-PROGRESS.md (Pipeline repair); LIVE-PATH-PLAN.md row #400"
+      }
+    ]
+  },
+  {
+    "revision": 9,
+    "date": "2026-10-03",
+    "status": "draft",
+    "cause": {
+      "kind": "draft",
+      "note": "Unit w4-persist repair, review round 2 (Astra, VERDICT NO): workspace reconciliation made truthful about completion and safe for structured files. No constitution change."
+    },
+    "changes": [
+      {
+        "what": "§9 persistent-workspace rule: only plain-text files are edited by removing a forgotten or corrected clause; any file the pass cannot change safely is kept intact and named in a workspace note; the bounded pass resumes over later turns; the forget is recorded reconciled only after a whole walk leaves no file holding it, and the status shows an unfinished check.",
+        "why": "Review round 2 findings 1-2: an unwritable note or a walk past its entry bound was recorded as reconciled and never revisited, and byte removal from an archive destroyed an unrelated entry.",
+        "ref": "lanes/w4-persist-PROGRESS.md (Pipeline repair); LIVE-PATH-PLAN.md row #400"
+      }
+    ]
+  },
+  {
+    "revision": 8,
+    "date": "2026-10-03",
+    "status": "draft",
+    "cause": {
+      "kind": "draft",
+      "note": "Unit w4-persist repair, review round 1 (Astra, VERDICT NO): the kept workspace made subordinate to the journal like the kept session, lost session records cleaned within bounds, and a lost workspace volume told apart from a first allocation. No constitution change."
+    },
+    "changes": [
+      {
+        "what": "§9 persistent-workspace rule: a new session removes every earlier session file of the conversation's projects directory; before a turn's tools run, clauses the journal forgot or corrected are removed from the workspace's files; a workspace the journal shows used that comes back empty and unmarked is recorded as lost, never resumed against, and its replacement carries a note.",
+        "why": "Review round 1 findings 1-3: a forgotten fact stayed readable in a saved note, a lost session record stranded transcripts outside retention, and a lost volume was silently treated as a first allocation.",
+        "ref": "lanes/w4-persist-PROGRESS.md (Pipeline repair); LIVE-PATH-PLAN.md row #400"
+      }
+    ]
+  },
+  {
+    "revision": 7,
+    "date": "2026-10-03",
+    "status": "draft",
+    "cause": {
+      "kind": "draft",
+      "note": "Unit w4-persist (plan row #400): operator re-grounding, Justin 10:45 PDT 2026-10-03 via observer #149, and message 121996 (the 'handicapped' fresh-per-turn result rejected): a persistent workspace per conversation and a kept harness session subordinate to the journal, satisfying the full-tool ruling's MF5. No constitution change."
+    },
+    "changes": [
+      {
+        "what": "§9 gains the persistent-workspace and kept-session rule: one 128 MB volume per conversation kept for the root's life (at most four per root; further conversations run in one-turn workspaces, journaled; nothing deleted to make room); a Claude Code session named per turn, resumed only while the authority, harness, model and a digest of every journal fact it may hold are unchanged, replaced at six turns, 512 KiB, a compaction, a loss or an unsettled turn, and ended at a stop, withdrawal or failure; machine-local, never resumed across machines; Codex cell unsupported. The tool rule's workspace and the grant's scope now name the conversation's workspace.",
+        "why": "Operator re-grounding: the agent must keep its files and its working context across messages; MF5 requires the kept session to be a disposable cache bound to the journal's current facts and authority, with loss detection, bounded retention and fresh grounding.",
+        "ref": "lanes/w4-persist-PROGRESS.md; lanes/astra-fulltool-ruling.md (MF5); LIVE-PATH-PLAN.md row #400"
       }
     ]
   },

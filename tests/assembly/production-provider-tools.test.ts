@@ -31,7 +31,7 @@ const DEFAULT_SET = ['Bash', 'CronCreate', 'CronDelete', 'CronList', 'DesignSync
 const CATALOG = [...DEFAULT_SET, 'Glob', 'Grep', 'RemoteTrigger'];
 const after = (args: readonly string[], flag: string) => args[args.indexOf(flag) + 1];
 
-it('launches the tool turn with the proven flag set: hooks on, the whole built-in tool set offered, nothing removed, no persistence', () => {
+it('launches the tool turn with the proven flag set: hooks on, the whole built-in tool set offered, nothing removed, the session per turn', () => {
   const args = subscriptionToolsPolicy('claude-synthetic-exact-1').args;
   for (const banned of ['--bare', '--safe-mode', '--dangerously-skip-permissions', '--resume', '--continue', '--add-dir',
     '--disallowedTools', '--disallowed-tools', '--disable-slash-commands'])
@@ -46,7 +46,10 @@ it('launches the tool turn with the proven flag set: hooks on, the whole built-i
     model: 'inherit', maxTurns: SUBSCRIPTION_TOOL_LIMITS.childMaxTurns, background: false } });
   expect(after(args, '--mcp-config')).toBe('{"mcpServers":{}}');
   expect(after(args, '--setting-sources')).toBe('');
-  expect(args).toEqual(expect.arrayContaining(['--strict-mcp-config', '--no-session-persistence']));
+  expect(args).toEqual(expect.arrayContaining(['--strict-mcp-config']));
+  // MF5 (plan row #400): whether the harness keeps a session is per turn (the runner's kept session, or none), never in the
+  // digest-bound policy, as the per-turn paths are not.
+  for (const flag of ['--no-session-persistence', '--session-id']) expect(args).not.toContain(flag);
   expect(after(args, '--max-turns')).toBe(String(SUBSCRIPTION_TOOL_LIMITS.maxTurns));
   // The budget flag overshoots by one turn (spike d3): it sits one turn's margin below the ceiling.
   expect(Number(after(args, '--max-budget-usd'))).toBe(SUBSCRIPTION_TOOL_LIMITS.budgetCeilingUsd - SUBSCRIPTION_TOOL_LIMITS.oneTurnMarginUsd);
@@ -124,7 +127,8 @@ function fixture() {
     session_id: 'synthetic-call', usage: { input_tokens: 10, output_tokens: 300 }, total_cost_usd: 0.05 });
   const source = `#!${process.execPath}\nimport {appendFileSync} from 'node:fs';
     let stdin='';for await(const chunk of process.stdin)stdin+=chunk;
-    appendFileSync(${JSON.stringify(report)},JSON.stringify({args:process.argv.slice(2),cwd:process.cwd(),stdin,tmpdir:process.env.CLAUDE_CODE_TMPDIR??null})+'\\n');
+    appendFileSync(${JSON.stringify(report)},JSON.stringify({args:process.argv.slice(2),cwd:process.cwd(),stdin,tmpdir:process.env.CLAUDE_CODE_TMPDIR??null,
+      memory:process.env.CLAUDE_CODE_DISABLE_AUTO_MEMORY??null,compact:process.env.DISABLE_AUTO_COMPACT??null})+'\\n');
     if(process.argv[2]==='--version')process.stdout.write('2.1.280 (Claude Code)\\n');
     else if(process.argv[2]==='auth')process.stdout.write(${JSON.stringify(JSON.stringify(status))});
     else process.stdout.write(${JSON.stringify(terminal)});\n`;
@@ -177,10 +181,26 @@ it('runs the model command in the turn workspace with the per-turn settings appe
   expect(observed).toMatchObject({ state: 'complete', bytes: f.answer, usage: { outputTokens: 300, charge: null } });
   const commands = f.commands();
   expect(commands.map(c => c.cwd)).toEqual([f.workingDirectory, f.workingDirectory, f.workspace]);
-  expect(commands[2].args).toEqual([...subscriptionToolsPolicy(f.model).args, '--settings', subscriptionToolSettings(f.toolTurn, f.profile.home)]);
+  // No kept session given: the harness persists nothing.
+  expect(commands[2].args).toEqual([...subscriptionToolsPolicy(f.model).args, '--settings', subscriptionToolSettings(f.toolTurn, f.profile.home),
+    '--no-session-persistence']);
   expect(commands[2].stdin).toBe('{"question":"wc"}');
-  // A tool route points the harness's temporary directory at the turn's volume (its preflights share the one environment).
+  // A tool route points the harness's temporary directory at the turn's volume (its preflights share the one environment), and
+  // turns off the harness's own memory and its silent compaction.
   expect(commands.map(c => c.tmpdir)).toEqual([f.toolTurn.scratch, f.toolTurn.scratch, f.toolTurn.scratch]);
+  expect(commands.map(c => [c.memory, c.compact])).toEqual([['1', '1'], ['1', '1'], ['1', '1']]);
+});
+
+it('starts or resumes the kept session the runner names, on the model command only, and refuses a malformed session id', async () => {
+  const f = fixture(), id = '0f4c2b1e-8d7a-4c3b-9e2f-1a2b3c4d5e6f';
+  for (const resume of [false, true]) {
+    const turn = { ...f.toolTurn, session: { id, resume } };
+    expect(await value(createClaudeCodeSubscriptionRoute({ ...f.input(), toolTurn: turn })).invoke('{"question":"s"}', f.bounds)).toMatchObject({ state: 'complete' });
+  }
+  const models = f.commands().filter(c => c.stdin.length > 0);
+  expect(models.map(c => c.args.slice(-2))).toEqual([['--session-id', id], ['--resume', id]]);
+  for (const c of f.commands().filter(c => c.stdin.length === 0)) expect(c.args).not.toContain(id);
+  expect(createClaudeCodeSubscriptionRoute({ ...f.input(), toolTurn: { ...f.toolTurn, session: { id: '--continue', resume: true } } }).kind).toBe('Refused');
 });
 
 it('loads the root\'s MCP servers from the admission state for the model command only, never in the digest-bound policy', async () => {
@@ -191,7 +211,8 @@ it('loads the root\'s MCP servers from the admission state for the model command
   const route = value(createClaudeCodeSubscriptionRoute({ ...f.input(), toolTurn: turn }));
   expect(await route.invoke('{"question":"mcp"}', f.bounds)).toMatchObject({ state: 'complete' });
   const commands = f.commands();
-  expect(commands[2].args).toEqual([...subscriptionToolsPolicy(f.model).args, '--mcp-config', config, '--settings', subscriptionToolSettings(turn, f.profile.home)]);
+  expect(commands[2].args).toEqual([...subscriptionToolsPolicy(f.model).args, '--mcp-config', config, '--settings', subscriptionToolSettings(turn, f.profile.home),
+    '--no-session-persistence']);
   // The preflights carry no MCP configuration, and the policy (what the activation binds) keeps its empty one.
   for (const command of commands.slice(0, 2)) expect(command.args).not.toContain(config);
   expect(subscriptionToolsPolicy(f.model).args).not.toContain(config);

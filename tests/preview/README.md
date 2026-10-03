@@ -3577,13 +3577,24 @@ built-in tool set (`SUBSCRIPTION_TOOL_NAMES`; nothing is left out, the hook deci
 servers (Part Thirteen §9,
 `docs/17-harness-adapters/09-claude-code-codex-and-future-runtime-mappings.md`):
 
-- Each turn gets a fresh private workspace on its own fixed-size (128 MiB) scratch volume: a sparse disk image under
-  `ROOT/tool-turns/<digest>-<n>/`, mounted at a short private path (`/private/tmp/itt-…`, linked as `vol`) that is
-  also the harness's temporary directory, so every byte a tool, the shell or the harness writes lands on it. The
-  admission hook's state sits beside it in `state/`. The volume is unmounted and its image removed after the turn;
-  the newest 16 turn directories are kept, and the journal's `tool-turn` rows are the record. The root must be on
-  ordinary storage (a disk image cannot be mounted from a RAM disk); if the volume cannot be mounted the turn fails
-  closed.
+- Each conversation keeps one private workspace on its own fixed-size (128 MiB) volume: a sparse disk image under
+  `ROOT/workspaces/<key>/` (the key is derived from the root and the conversation), mounted only during that
+  conversation's turns at the fixed short path `/private/tmp/itw-<key>` (linked as `vol`), which is also the harness's
+  temporary directory, so every byte a tool, the shell or the harness writes lands on it. Between turns the volume is
+  unmounted and its image kept, so files the agent wrote are there next turn. A root keeps at most 4 workspaces; a
+  further conversation's turns each get a fresh one-turn volume under `ROOT/tool-turns/` (removed after the turn, no
+  kept session; journaled as overflow). A kept workspace is never deleted to make room; writes past its size fail.
+  The admission hook's state is per turn in `ROOT/tool-turns/<digest>-<n>/state/`; the newest 16 turn directories
+  are kept, and the journal's `tool-turn` rows are the record. The root must be on ordinary storage (a disk image
+  cannot be mounted from a RAM disk); if the volume cannot be mounted the turn fails closed.
+- The conversation's Claude Code session is kept between turns as a cache of the journal (`ROOT/workspaces/<key>/
+  session.json` names it; the transcript is in the login profile's `projects/` directory). Each turn still sends the
+  whole current journal packet. The runner resumes the session (`--resume <id>`) only while the tools authority,
+  harness, model and a digest of the journal's facts (corrections, forgets, closures, grants, the stop, …) are
+  unchanged; otherwise it removes the old transcript and starts a new one (`--session-id <new id>`). It also rotates
+  at 6 turns or 512 KiB, on a compaction or a missing/unreadable transcript or record, and after an unsettled turn,
+  and ends the session (transcript removed) when a turn is stopped, withdrawn or fails. The harness's own memory and
+  automatic compaction are off. Each trace row's `session` says new or resumed and why; status counts them.
 - `tool-admission-hook.mjs` admits ordinary work: in-workspace file and notebook operations, sandboxed commands
   whatever words they contain, a WebFetch (GET only) of a host whose every resolved address is public, a WebSearch,
   an MCP tool listed as a read, the harness's bookkeeping (ToolSearch, ListAgents, CronList, ReportFindings,

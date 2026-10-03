@@ -10,12 +10,13 @@ import { openProductionStorage } from '../../src/assembly/production-storage.js'
 import { DEFAULT_SUBSCRIPTION_DOORWAY, subscriptionDoorway, SUBSCRIPTION_CONVERSATION_FRAMING,
   subscriptionConversationPolicy, SUBSCRIPTION_PREVIEW_EXPIRY, validateSubscriptionActivation,
   SUBSCRIPTION_TOOLS_FRAMING, SUBSCRIPTION_TOOLS_SYSTEM_PROMPT, subscriptionToolsPolicy } from '../../src/assembly/production-provider.js';
-import { readRootMcp, reconcileToolTurns, runToolTurn, toolPacketFits, toolStatusLines, toolTurnEligible, TOOLS_DEFAULT_ACTIVATION } from './tool-turn.mjs';
+import { readRootMcp, reconcileToolTurns, runToolTurn, toolPacketFits, toolStatusLines, toolTurnEligible, TOOL_NOTICE_MAX_BYTES,
+  TOOLS_DEFAULT_ACTIVATION } from './tool-turn.mjs';
 import { encoded } from '../../src/assembly/boundary.js';
 import { decodeEffectPolicy, DEFAULT_EFFECT_POLICY, effectDoorwayStatusLines, refusedEffectNotices } from './effect-doorway.mjs';
 import { redact } from '../../src/recall/redact.js';
 import { durablePreviewWrite } from './durable-write.js';
-import { prepareJournalEnvelope } from './journal-envelope.js';
+import { prepareJournalEnvelope, withWorkspaceNotice } from './journal-envelope.js';
 import { operatorEchoSent } from './status-command.js';
 import { SOURCE_PINS, sourcePacket, deskStatusSource, readDeskStatus, verifyMindRules, ANSWER_INSTRUCTIONS } from './briefing.js';
 import { admitPreviewHarness, PREVIEW_JOURNAL_HARNESS, PREVIEW_JOURNAL_STALL_COVERAGE } from './stall-coverage.js';
@@ -1445,7 +1446,7 @@ async function main() {
       // A tool turn's longer system prompt must fit that room too; an overflow here makes the packet ladder yield, as
       // for the text-only prompt, instead of leaving the turn to fall back to a text-only answer.
       if (toolsActive() && toolTurnEligible(input.id)
-        && Buffer.byteLength(bytes) + Buffer.byteLength(SUBSCRIPTION_TOOLS_SYSTEM_PROMPT) > toolPromptLimit())
+        && Buffer.byteLength(bytes) + Buffer.byteLength(SUBSCRIPTION_TOOLS_SYSTEM_PROMPT) + TOOL_NOTICE_MAX_BYTES > toolPromptLimit())
         throw Error('preview: complete prompt overflow');
       return bytes;
     };
@@ -1549,12 +1550,17 @@ async function main() {
     const invokeTools = async (prepared, id) => (await runToolTurn({ journal, root, id, prepared,
       promptLimit: toolPromptLimit(), mcp: readRootMcp(root),
       authority: `${toolsRecord.reference} ${toolsRecord.invocationPolicyDigest}`,
+      // MF5: the conversation's workspace persists across turns, and its kept harness session (in the login profile's
+      // projects directory) is a cache bound to this authority, harness and model and to the journal's current facts.
+      conversation: conversationOf(journal.view.genesis),
+      session: { store: join(profile.configDirectory, 'projects'), harness: `${profile.version} ${required(options, 'model')}` },
       stopped: () => workerStop.value || existsSync(stopPath) || journal.view.stop !== null || !toolsActive(),
       deniedRoots: [realpathSync(root), profile.home, profile.configDirectory, profile.workingDirectory],
       operations: SINGLE_MACHINE_PROFILE.operations, effectPolicy: effectPolicyOf(), irreversibleTerm: shapeTerms().derivedFrom.irreversible,
       now: wallNow, redactText: text => redact(text).text,
       fallback: async () => ({ result: await invokeSubscription(prepared, id) }),
-      invoke: toolTurn => invokeSubscription(prepared, id, undefined, undefined, toolTurn) })).result;
+      // Rules 33, 84: the workspace notice (files that may still disagree with memory, or a lost workspace) rides the packet.
+      invoke: (toolTurn, notice) => invokeSubscription(withWorkspaceNotice(prepared, notice), id, undefined, undefined, toolTurn) })).result;
     const proofLines = () => {
       if (!proofLaunch) return [];
       const unavailable = proofStoreFailed ? ['Proofs: the durable proof log cannot be written right now; nothing new counts as proven until it can.'] : [];
