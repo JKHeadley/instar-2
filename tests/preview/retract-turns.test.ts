@@ -10,7 +10,7 @@ import { join } from 'node:path';
 import { createJournalWorker, openPreviewJournal, previewTestContext, commitmentOpen, liveSummaries, openBlockers, openDirectives,
   openQuestionCandidates, probeTurn, projectionDigest, retractCarrier, retractedTurn, retractRefusal, withinOperatorHours,
   SUMMARY_RETRACTED_REASON, type RetractProposal } from './journal-test-worker.js';
-import { operatorYesAuthority, parseOperatorAction, proposeRetractRequest, wellFormedRequest } from './operator-yes.js';
+import { operatorYesAuthority, parseOperatorAction, proposeRetractRequest, wellFormedRequest, OPERATOR_REQUEST_MS } from './operator-yes.js';
 import { memoryReport } from './memory-export.js';
 import { createReviewYesSource, type GitHubReview, type GitHubReviewClient, type ReviewYesSource } from './review-yes-source.js';
 import { SHARED_ACCESS_NOTE, type ExplicitYesInstallation } from '../../src/operator/explicit-yes.js';
@@ -125,7 +125,7 @@ it('binds the exact list and reason in the request digest, and the model can nev
   const made = proposeRetractRequest(state, [1, 2, 3], 'desk test traffic', 'retract:abc', T0);
   expect(made.kind).toBe('request');
   if (made.kind !== 'request') return;
-  expect(made.request).toMatchObject({ action: 'retract-turns', updates: [1, 2, 3], reason: 'desk test traffic', expiresAt: T0 + HOUR });
+  expect(made.request).toMatchObject({ action: 'retract-turns', updates: [1, 2, 3], reason: 'desk test traffic', expiresAt: T0 + OPERATOR_REQUEST_MS });
   expect(wellFormedRequest(made.request, 'retract:abc', 'grant:preview')).toBe(true);
   // A different list or reason under the same digest is not the approved request.
   expect(wellFormedRequest({ ...made.request, updates: [1, 2] }, 'retract:abc', 'grant:preview')).toBe(false);
@@ -271,15 +271,15 @@ it('an unapproved, refused or lapsed request changes nothing', () => withRoot(as
   expect(w.journal.view.operatorRequests.at(-1)!.refusals).toHaveLength(1);
   expect(w.journal.view.retracted).toBeUndefined();
   expect(stores(w)).toEqual(BEFORE);
-  // After its hour the request has lapsed: a yes that answers it (a reply to it) is refused as lapsed.
+  // After its window (cint-L41: the 18-hour default from plan #373) the request has lapsed: a yes that answers it (a reply to it) is refused as lapsed.
   w.clock.now = first.request.expiresAt + 1;
   await w.say(10, 'yes', { reply_to_message: { message_id: first.message } });
   expect(w.journal.view.operatorRequests.at(-1)!.refusals.at(-1)?.detail).toBe('this request has lapsed');
   expect(w.journal.view.retracted).toBeUndefined();
   expect(stores(w)).toEqual(BEFORE);
-  // A stale proposal (older than a request's hour) is never sent.
+  // A stale proposal (older than a request's window) is never sent.
   const before = w.sent.length;
-  w.propose({ updates: DESK, reason: 'a second proposal, now stale', proposedAt: w.clock.now - 2 * HOUR });
+  w.propose({ updates: DESK, reason: 'a second proposal, now stale', proposedAt: w.clock.now - OPERATOR_REQUEST_MS - HOUR });
   await w.worker.minimal();
   expect(w.sent.length).toBe(before);
   w.journal.close();
