@@ -144,6 +144,8 @@ export const SUMMARY_FORMAT = 3;
 /** Summary prose over SUMMARY_TEXT_CEILING_BYTES: the answer asked too much, the same class as an over-cap attempt, so
  * a shorter span is offered next and the over-cap brake applies. */
 export const SUMMARY_OVER_BOUND_REASON = 'summary answer over its bound';
+/** Plan #389: a summary whose call was out when a retraction applied; its packet may hold the retracted turns. */
+export const SUMMARY_RETRACTED_REASON = 'summary built before a retraction';
 /** One Telegram reply's byte bound, the same value the send path refuses above. A review's input
  * carries exactly one candidate reply, so this is that part's whole worst case. */
 export const PREVIEW_REPLY_BOUND_BYTES = 4096;
@@ -8308,6 +8310,9 @@ export function createJournalWorker(journal: ReturnType<typeof openPreviewJourna
         ...(ports.replyCheck ? { supervised: true as const } : {}),
         maxInputTokens: journal.view.limits.maxBytes, maxOutputTokens: subscriptionOutputMaximum, at:ports.now()});
       unknownSince.set(through, elapsed());
+      // Plan #389: the retraction state this packet was built under. A retraction applied while the call is out makes
+      // the answer stale: it may carry the retracted turns' facts, so it is settled as failed at admission, never kept.
+      const retractedAtBuild = journal.view.retracted?.length ?? 0;
 
       let summary: Awaited<ReturnType<PreviewPorts['model']>>;
       try { summary = await ports.model({ question: summaryQuestion,
@@ -8573,6 +8578,14 @@ export function createJournalWorker(journal: ReturnType<typeof openPreviewJourna
           }
         }
         gate();
+      }
+      // Checked last, after every awaited reviewer: the existing failure row settles the call (usage, evidence) and the
+      // next pass rebuilds from the turns that remain. No format is recorded, so it spends none of the span's retries.
+      if ((journal.view.retracted?.length ?? 0) !== retractedAtBuild) {
+        journal.append({ kind: 'summary-failed', through, state: 'complete', reason: SUMMARY_RETRACTED_REASON,
+          ...(trigger && (strictMemory || memory?.length) ? { memoryPendingFor: trigger.id } : {}),
+          ...(!ports.replyCheck && typeof summary !== 'string' ? { usage: summary.usage } : {}), at: ports.now() });
+        return;
       }
       journal.append({kind:'summary',through,text:candidate,...(memoryItems.length ? { memoryItems } : {}),...(concepts.length ? { concepts } : {}),faithfulness: ports.replyCheck
         ? { path: faithfulness.path, verdict: faithfulness.verdict, score: faithfulness.score } : faithfulness,

@@ -9,7 +9,7 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { createJournalWorker, openPreviewJournal, previewTestContext, commitmentOpen, liveSummaries, openBlockers, openDirectives,
   openQuestionCandidates, probeTurn, projectionDigest, retractCarrier, retractedTurn, retractRefusal, withinOperatorHours,
-  type RetractProposal } from './journal-test-worker.js';
+  SUMMARY_RETRACTED_REASON, type RetractProposal } from './journal-test-worker.js';
 import { operatorYesAuthority, parseOperatorAction, proposeRetractRequest, wellFormedRequest } from './operator-yes.js';
 import { memoryReport } from './memory-export.js';
 import { createReviewYesSource, type GitHubReview, type GitHubReviewClient, type ReviewYesSource } from './review-yes-source.js';
@@ -47,7 +47,8 @@ const blocker = { kind: 'cannot-do', claim: CLAIM, avenues: [{ avenue: 'utility 
 /** Every seeded update except the operator's own message (6): exactly what the desk would propose. */
 const DESK = [1, 2, 3, 4, 5, 7, 8];
 
-function world(path: string, options: { install?: ExplicitYesInstallation; reopen?: boolean; review?: (now: () => number) => ReviewYesSource } = {}) {
+function world(path: string, options: { install?: ExplicitYesInstallation; reopen?: boolean; review?: (now: () => number) => ReviewYesSource;
+  summaryHook?: (context: string) => Promise<string> } = {}) {
   const journal = openPreviewJournal(path, key, options.reopen ? undefined : genesis);
   const clock = { now: T0 }, sent: { text: string; id: number }[] = [], summaryPackets: string[] = [], answerPackets: string[] = [];
   let message = 100, proposal: RetractProposal | undefined;
@@ -58,6 +59,7 @@ function world(path: string, options: { install?: ExplicitYesInstallation; reope
     model: async input => {
       if (input.id.startsWith('summary:')) {
         summaryPackets.push(input.context);
+        if (options.summaryHook) return options.summaryHook(input.context);
         return JSON.stringify({ summary: 'The operator asked who I am, and asked me to remember their dentist is Dr. Lee.',
           people: [], commitments: [], closed: [], memory: [], questions: [], memoryItems: [] });
       }
@@ -209,6 +211,46 @@ it('a later summary pass rebuilds without the retracted turns or the retired sum
   const rebuilt = liveSummaries(w.journal.view).at(-1)!;
   expect(rebuilt.text).toContain('Dr. Lee');
   expect(w.journal.view.retiredSummaries).toEqual([0]);
+  const digest = projectionDigest(w.journal.view);
+  w.journal.close();
+  const replay = openPreviewJournal(path, key);
+  expect(projectionDigest(replay.view)).toBe(digest);
+  replay.close();
+}));
+
+it('a summary whose call was out when the retraction applied is settled as failed, and the next pass rebuilds clean', () => withRoot(async path => {
+  let entered!: () => void, release!: () => void;
+  const waiting = new Promise<void>(resolve => { entered = resolve; }), barrier = new Promise<void>(resolve => { release = resolve; });
+  const clean = JSON.stringify({ summary: 'The operator asked me to remember their dentist is Dr. Lee.',
+    people: [], commitments: [], closed: [], memory: [], questions: [], memoryItems: [] });
+  const w = await seeded(path, { summaryHook: async context => {
+    if (!context.includes('Sam')) return clean;
+    entered(); await barrier;
+    return JSON.stringify({ summary: 'Operator said Sam wants to delay the launch, bike lock 7734, replies two sentences, dentist Dr. Lee.',
+      people: [], commitments: [], closed: [], memory: [], questions: [], memoryItems: [] });
+  } });
+  w.propose({ updates: DESK, reason: 'checks the build desk sent while proving the runner', proposedAt: w.clock.now });
+  await w.worker.minimal();
+  const job = w.worker.summarizeIfNeeded(true);
+  await waiting;
+  // The yes lands while the old packet's call is out.
+  const yes = JSON.parse(raw(9, 'yes')); yes.message.message_id = w.nextMessage(); yes.message.date = Math.floor(w.clock.now / 1000);
+  w.worker.intake([yes]);
+  expect(w.journal.view.retracted).toEqual(DESK.map(id));
+  expect(liveSummaries(w.journal.view)).toHaveLength(0);
+  const calls = w.journal.view.calls;
+  release(); await job;
+  // The stale answer never becomes memory; its call is settled by the failure row, not left UNKNOWN or uncounted.
+  expect(liveSummaries(w.journal.view)).toHaveLength(0);
+  expect(w.journal.view.lastSummaryFailure).toMatchObject({ reason: SUMMARY_RETRACTED_REASON });
+  expect(w.journal.view.summaryReservations.size).toBe(0);
+  expect(w.journal.view.calls).toBe(calls);
+  // It spends none of the span's format retries, so the next pass rebuilds from the turns that remain.
+  await w.worker.summarizeIfNeeded(true);
+  const live = liveSummaries(w.journal.view);
+  expect(live.length).toBeGreaterThan(0);
+  for (const gone of ['Sam', '7734', 'two sentences']) expect(live.map(item => item.text).join('\n'), gone).not.toContain(gone);
+  expect(live.at(-1)!.text).toContain('Dr. Lee');
   const digest = projectionDigest(w.journal.view);
   w.journal.close();
   const replay = openPreviewJournal(path, key);
