@@ -1104,6 +1104,8 @@ export type IntakeCustody = { state: 'stored'; arrival: string; capture: string;
 export interface Turn { id: string; update: number; text: string; raw: string; accepted: boolean; at: number; thread?: number; editOf?: string; replaces?: string; custody?: IntakeCustody; answer?: string;
   /** Part Thirteen §9: the latest scoped-tool trace of this turn's answer (bounded), read by its reply review. */
   toolAttempts?: ToolAttempt[];
+  /** Calls the turn made beyond `toolAttempts` (the review bound); the review is told its excerpt is incomplete. */
+  toolAttemptsOmitted?: number;
   /** Rules 28/29: the session writer verified at intake (operator person or scheduler system). */
   writer?: WriterRecord;
   reserved: boolean; prompt?: string; recallHits?: number; channelRecallHits?: number; packetDropped?: PacketDrop[]; packetLimit?: number; grounding?: ReplyGrounding; failureClass?: ModelFailureClass; modelState?: 'complete' | 'rejected' | 'uncertain'; noticeDueAt?: number; noticeClass?: 'unknown-answer' | 'too-long-input'; intent?: string; intentBody?: string; sent?: number; sentAt?: number; held?: string; heldSince?: number; heldNoticeIntent?: string; heldNoticeSent?: number; heldNoticeSentAt?: number; memoryPending?: true; memoryUndecided?: true; datedPending?: true;
@@ -1704,7 +1706,9 @@ export const declaredObligations = (view: JournalView, id: string, now: number) 
   const toolAttempts = turn?.toolAttempts;
   return { blocker: turn?.answerBlocker ?? turn?.revision?.blocker ?? null, settled, loops: turn?.answerLoops ?? [],
     ...(turn?.answerRejected ? { rejected: turn.answerRejected } : {}), capabilities: previewCapabilities(toolAttempts !== undefined),
-    ...(toolAttempts ? { toolAttempts: { meaning: TOOL_ATTEMPTS_MEANING, calls: toolAttempts } } : {}) };
+    ...(toolAttempts ? { toolAttempts: turn?.toolAttemptsOmitted
+      ? { meaning: TOOL_ATTEMPTS_PARTIAL_MEANING, calls: toolAttempts, omitted: turn.toolAttemptsOmitted }
+      : { meaning: TOOL_ATTEMPTS_MEANING, calls: toolAttempts } } : {}) };
 };
 /** The review's bound for settled blockers; an omitted one can only hold a restatement, never release one. */
 export const SETTLED_REVIEW_BYTES = 8192;
@@ -2576,6 +2580,10 @@ export const TOOL_ATTEMPTS_REVIEWED = 8, TOOL_ATTEMPT_EXCERPT_CHARS = 160;
 /** Rides with the attempts themselves, so a review of a text-only answer carries no extra bytes. */
 export const TOOL_ATTEMPTS_MEANING = 'The only tool calls this reply\'s turn made, in order, with their admission and result: a tool result the reply '
   + 'reports is evidenced only by an admitted call here, and a refused call is not an attempt at an avenue.';
+/** Replaces the meaning when the turn made more calls than the review carries: absence from the excerpt then proves nothing. */
+export const TOOL_ATTEMPTS_PARTIAL_MEANING = 'The first tool calls this reply\'s turn made, in order, with their admission and result; `omitted` '
+  + 'later calls are not shown. A refused call is not an attempt at an avenue. A tool result the reply reports may come from an omitted '
+  + 'call, so its absence here does not show that the call or result did not happen.';
 const attemptExcerpt = (text: string) => text.length > TOOL_ATTEMPT_EXCERPT_CHARS ? `${text.slice(0, TOOL_ATTEMPT_EXCERPT_CHARS)}…` : text;
 export interface ToolTurnStats { invocations: number; reservedCalls: number; refusedCap: number; refusedPrompt?: number; toolCalls: number;
   toolRefusals: number; inconsistent: number; open: string[] }
@@ -2603,8 +2611,11 @@ function projectToolTurn(view: JournalView, row: Extract<JournalRecord, { kind: 
     throw Error('preview journal: tool trace order');
   const admitted = row.calls.filter(call => call.decision === 'allow').length;
   const turn = view.turns.get(row.id);
-  if (turn) turn.toolAttempts = row.calls.slice(0, TOOL_ATTEMPTS_REVIEWED).map(call => ({ n: call.n, tool: String(call.tool),
-    decision: String(call.decision), input: attemptExcerpt(String(call.input)), result: call.result === null ? null : attemptExcerpt(String(call.result)) }));
+  if (turn) {
+    turn.toolAttempts = row.calls.slice(0, TOOL_ATTEMPTS_REVIEWED).map(call => ({ n: call.n, tool: String(call.tool),
+      decision: String(call.decision), input: attemptExcerpt(String(call.input)), result: call.result === null ? null : attemptExcerpt(String(call.result)) }));
+    turn.toolAttemptsOmitted = row.calls.length - turn.toolAttempts.length;
+  }
   view.toolTurns = { ...stats, toolCalls: stats.toolCalls + admitted, toolRefusals: stats.toolRefusals + row.calls.length - admitted,
     inconsistent: stats.inconsistent + Number(!row.consistent), open: stats.open.filter(item => item !== key) };
 }
