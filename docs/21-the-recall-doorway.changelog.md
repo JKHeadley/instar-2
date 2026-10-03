@@ -4,6 +4,12 @@ _Generated from `21-the-recall-doorway.changelog.json` by `scripts/render-change
 The document itself reads as a first version; every change to it is recorded here, newest first,
 each linked to the git change that made it (rule 91).
 
+## Revision 5 · 2026-10-03 · draft — Unit w4-memlearn-s (plan row #404): memory-failure recording and structural self-improvement, on the operator's direction of 2026-09-13 and the 2026-10-03 re-grounding (Justin, topic 102965, message 121996 and the 10:45 pillars). No constitution change.
+
+- **New section 16, memory failures and the learning loop: a failure is recorded from two model-judged signals (an operator correction naming the agent's restating reply; a structurally offered memoryFailure report after an answer given without part of memory verbatim), with the question, the returned reply, the truth and a cause read from the failed turn's recorded grounding; a projection over durable rows, with no new store.** — The re-grounding (plan rows #399 and #404) named memory-failure recording as missing: a forgotten fact left no record, so nothing could learn from it. _(lanes/w4-memlearn-s-PROGRESS.md; LIVE-PATH-PLAN.md row #404; tests/preview/memory-learning.test.ts)_
+- **Section 16 also states the learning loop inside the one recall owner: a retrieval hint adds the missed question's words to the source's meaning cues; a source that fails twice is pinned into recall; a forgotten or corrected source teaches nothing; the status reply and status record show the counts.** — A log line changes nothing; the lesson has to change what the next recall returns, measurably and within bounds. _(lanes/w4-memlearn-s-PROGRESS.md; tests/preview/memory-learning.ts)_
+- **Section 12 gains P21-NF-25 to P21-NF-27 (executable), section 13 gains P21-NEG-31 to P21-NEG-33, and the index lists section 16.** — Every new rule names executable checks with a positive neighbor (Rule 69). _(lanes/w4-memlearn-s-PROGRESS.md)_
+
 ## Revision 4 · 2026-09-28 · approved — Operator's standing direction in topic 52075 at 09:09 PDT 2026-09-28 ('For the 2.0 work the only thing I need to approve are changes to the constitution'): design parts need no separate operator approval; this part is approved as written.
 
 - **Mark the design approved as written.** — Only changes to the constitution require the operator; design parts implement it and are approved on the operator's standing direction. _(topic-52075-2026-09-28T16:09Z)_

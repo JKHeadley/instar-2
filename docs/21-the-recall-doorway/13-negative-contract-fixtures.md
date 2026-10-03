@@ -39,6 +39,9 @@ returned label. A mock returning `refused` while a hidden sender ran is a failur
 | P21-NEG-28 | Hundreds of duplicate findings produce one send each, or status waits on failed reviewer | Aggregated authorized result/pull state and independently reachable response; no new per-event topic | NF-14/24 |
 | P21-NEG-29 | Required owner dependency is a no-op fixture or unavailable 503, but feature claims active | Activation fails; actual production-init composition and real user-surface proof pass | NF-02/19/21 |
 | P21-NEG-30 | No-additional-context ACK is counted as answering uncovered pre-compaction input | Continuity assertion refused; actual first substantive accounting requires the owner seam | NF-03/10/21 |
+| P21-NEG-31 | Operator corrects their own earlier statement that the agent never repeated | No memory failure; the correction stays a fact correction. A correction naming the agent's restating reply records one failure | NF-25 |
+| P21-NEG-32 | A memoryFailure report after an answer that had the whole conversation, or a stored report the offer could not have carried | Not offered and not recorded; the forged row fails replay. The report after a summarized answer is recorded | NF-25/26 |
+| P21-NEG-33 | A lesson drawn from a source the operator has since forgotten | No hint and no pin; the same lesson from a kept source changes the next recall | NF-27 |
 
 **Rule — fixture truth does not become production identity.** Rules 35, 58, 85 and 89;
 **checks: P21-NF-16/17a–j/22**. The synthetic corpus and observed installed-method fixtures
