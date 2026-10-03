@@ -395,7 +395,9 @@ describe('Rule 110: the first reply sent from a compacted context discloses it a
     const recordedUnknown = 'transport transport at fetch-failure';
     for (const lastSend of ['unknown', 'accepted'] as const) {
       const dir = root();
-      const journal = openPreviewJournal(join(dir, 'journal.encrypted'), key, genesis(7000));
+      // cint-L41: cint-L40's pushback sentence (Rule 19) and w3-floorduty's obligation floor form (Rules 3, 93) each fit
+      // 7000 alone; together #28 was set aside at #30. Re-measured in 10-byte steps: fit 7130, fail 7120; 70 bytes of headroom kept.
+      const journal = openPreviewJournal(join(dir, 'journal.encrypted'), key, genesis(7200));
       const sent: string[] = [];
       // Send 1 answers #29 and speaks the account for frontier #27; send 2 answers #30 (fill-34's place) quietly.
       const worker = createJournalWorker(journal, { now: () => at + 100_000, stopped: () => false, model: async () => 'Noted.',
