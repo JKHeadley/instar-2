@@ -1,5 +1,21 @@
 [
   {
+    "revision": 12,
+    "date": "2026-10-03",
+    "status": "approved",
+    "cause": {
+      "kind": "conversation",
+      "note": "Operator Justin (verified) approved the exact sentence with 'yes please' at 12:20 PDT 2026-10-03 in topic 102965 (Telegram message 122028), answering the proposal to add to the purpose: 'The agent's ability is never reduced to satisfy a safeguard that a checkpoint can enforce instead.' Plan row #415."
+    },
+    "changes": [
+      {
+        "what": "Add the sentence 'The agent's ability is never reduced to satisfy a safeguard that a checkpoint can enforce instead.' to the constraints, closing the Value 'Rule 5: the agent does not widen its own authority', so the constraint on authority is paired with its counterpart on ability.",
+        "why": "The operator decided that where a safeguard can be enforced at a checkpoint, the agent keeps its ability and the checkpoint enforces the safeguard; removing ability is not an acceptable substitute. It sits beside Rule 5 as a Value because, like Rule 5, it is stated without a new check of its own.",
+        "ref": "Operator approval: topic 102965, Telegram message 122028, 2026-10-03 12:20 PDT, 'yes please'; plan row #415"
+      }
+    ]
+  },
+  {
     "revision": 11,
     "date": "2026-10-02",
     "status": "draft",
