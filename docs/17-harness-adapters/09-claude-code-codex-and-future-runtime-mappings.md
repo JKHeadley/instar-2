@@ -28,6 +28,49 @@ Missing strong context-consumption evidence may leave only a confined advisory m
 submission, built-in tools, or any other effect path cannot be confined to the public doors, the
 tested mode is unsupported; advisory supplies no Claude-specific waiver.
 
+**Rule — the preview runs ordinary scoped tools through the reused harness under its demonstrated
+boundary.** Rules 1, 4, 41, 60, 68, 75, 84, 89, 100, 113, 114 and 116, and the purpose's rules on
+safeguards, nothing outward by default, consequential effects and irreversible acts; **checks:**
+`tests/assembly/production-provider-tools.test.ts`, `tests/preview/tool-admission.test.ts`,
+`tests/preview/tool-turn.test.ts`, `tests/preview/tool-turn-replay.test.ts` and the gated live run
+`tests/integration/tool-turn-live.test.ts`. The preview may run an answer or a scheduled work step as
+one Claude Code invocation that has exactly Read, Write, Edit, Glob, Grep and Bash, through the
+existing provider path. Each tool's scope, finite resource bounds and durable cause are enforced
+before dispatch. A mandatory deny-by-default PreToolUse admission hook admits only file operations
+physically contained in the turn's new private workspace and sandboxed commands of no consequential
+class; it sends every consequential call to the effect doorway's admission, which refuses a tool
+effect the installed profile does not register. The harness sandbox confines every command to that
+workspace: no network, no unix sockets, no reads outside it. The launch has a clean environment; the
+harness's own messaging socket and token are removed from every command; and no subagent, workflow,
+web, MCP, scheduling or messaging tool exists. Neither `--bare` nor `--safe-mode` is used, because
+both skip settings hooks, and managed policy that could disable hooks refuses the turn. Arbitrary-code
+execution is admitted only inside this demonstrated boundary of hook, sandbox and clean environment
+together, which prevents access to secrets, safeguards and unadmitted effects. The boundary rests on
+recorded runs of the pinned artifact in which each part was shown necessary; it is not this part's
+governed confinement and is never reported as governed or protected. A separate operating-system
+identity is one other implementation of such a boundary, not its definition. A tool turn's whole
+liability, its model-turn bound, is reserved against the operator's call cap before dispatch and
+retained; its tool-call count, turn bound, timeout and the resource owner's process, memory and CPU
+ceilings are finite; the harness budget flag is only a backstop, one turn's margin below its ceiling,
+because the harness checks it after a turn. Tool results and current journal context ground the turn,
+every tool call and result is journaled, and the final answer returns through the existing reply
+review and send paths. Ordinary standing-covered work requires no repeated human approval. Review and
+summary calls keep their text-only policy. A preview label grants no exception to these floors.
+
+**Rule — a tool grant names its scope and is withdrawn by the same record.** Rules 4, 60 and 82, and
+the purpose's rules on nothing outward by default and irreversible acts; **checks:**
+`tests/preview/tool-turn.test.ts` (stop by process group) and the gated live stop case. The grant is a
+reviewed activation record bound to the tool policy's digest and resolved from the trial's sealed
+authority. It names the capabilities (the tool list), the scope (one fresh workspace per turn), the
+custodian and the recovery obligation. It does not replace exact operation admission or change the
+installed durability profile. Withdrawal, by changing or removing the record, prevents further tool
+dispatch; it, the operator's stop and expiry end a live turn within the declared cancellation bound:
+the stop is observed within 25 milliseconds, the launch's own process group is killed by its exact
+process id, and quiescence is verified within two seconds. Credential-bearing accounts and
+consequential effects remain behind admitted adapters. No harness session persists; each workspace
+is machine-local scratch, never shared or resumed, and the journal is the sole durable copy of
+accepted work.
+
 **Rule — Codex activation has the identical bar.** Rules 34, 41, 47, 59 and 75; **checks:
 P13-NF-16/23/35/44**. The conformance run must show actual submitted context, correlated lifecycle
 and output events, model/runtime-configuration/reasoning and account evidence, sandbox and hidden path

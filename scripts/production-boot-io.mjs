@@ -233,8 +233,14 @@ export function createSubscriptionProviderIO({ repository, stopped, work = 'answ
     if (readdirSync(profile.configDirectory).some(name =>
       name.startsWith('policy-limits.json') || name.startsWith('remote-settings')))
       throw Error('subscription server policy requires reviewed effective configuration');
+    lastPolicy = policy;
     return Object.freeze({ loginProfileIdentity: subscriptionProfileIdentity(bindings), managedConfigurationDigest: digest(policy) });
   };
-  return Object.freeze({ ...productionProviderIO, inspectSubscriptionProfile,
+  // The tool turn's admission hook is load-bearing: managed policy that disables hooks must refuse it. Read
+  // from the policy the same inspection just verified against the profile's digest; unknown is not false.
+  let lastPolicy = null;
+  const managedHooksDisabled = profile => { inspectSubscriptionProfile(profile);
+    return lastPolicy === null ? null : lastPolicy.some(row => row.settings?.disableAllHooks === true); };
+  return Object.freeze({ ...productionProviderIO, inspectSubscriptionProfile, managedHooksDisabled,
     execute: input => productionProviderIO.execute({ ...input, stopped }, work) });
 }

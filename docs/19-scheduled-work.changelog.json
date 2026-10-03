@@ -1,5 +1,21 @@
 [
   {
+    "revision": 3,
+    "date": "2026-10-03",
+    "status": "draft",
+    "cause": {
+      "kind": "draft",
+      "note": "Unit w4-toolsreal: the full-tool ruling's replacement text, adapted to the reuse route (Justin 2026-10-02 00:43, topic 102965 message 121912; desk decision 2026-10-01 17:49, message 121586). No constitution change."
+    },
+    "changes": [
+      {
+        "what": "§5 gains the rule that every delegated session, including one started inside a turn, has its Rule 114 run edge, that subprocesses stay owned by their enclosing execution, and that the preview's tool turn delegates nothing.",
+        "why": "Replaces the proposed in-turn subagent exemption the ruling rejected (MF6).",
+        "ref": "lanes/astra-fulltool-ruling.md (replacement text); lanes/w4-toolsreuse-PROGRESS.md (proven configuration); lanes/w4-toolsreal-PROGRESS.md; LIVE-PATH-PLAN.md rows #358, #363, #367"
+      }
+    ]
+  },
+  {
     "revision": 2,
     "date": "2026-09-28",
     "status": "approved",

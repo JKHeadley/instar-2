@@ -3524,3 +3524,32 @@ npx vitest run tests/preview/two-machine-runner.test.ts tests/preview/two-machin
 ```
 
 The supervised procedure on two real machines is [two-machine-live-test.md](two-machine-live-test.md).
+
+### Scoped-tool turns (journal runner)
+
+Off unless asked for: without `--tools-activation /ABSOLUTE/tools-activation.json` every answer stays text only and
+the briefing keeps its no-tools line. The record is an ordinary activation record whose `invocationPolicyDigest`
+is the digest of `subscriptionToolsPolicy(model)` (framing `preview-tools-v1`), resolved from the same sealed
+authority record as the main activation. With it, an operator answer turn or a scheduled work step runs as one
+Claude Code invocation with exactly Read, Write, Edit, Glob, Grep and Bash (Part Thirteen §9,
+`docs/17-harness-adapters/09-claude-code-codex-and-future-runtime-mappings.md`):
+
+- Each turn gets a fresh private workspace, `ROOT/tool-turns/<digest>-<n>/ws` (0700), and the admission hook's
+  state beside it. The newest 16 turn directories are kept; the journal's `tool-turn` rows are the record.
+- `tool-admission-hook.mjs` admits in-workspace file operations and sandboxed commands of no consequential class;
+  network, delete, send and host-control commands, MCP and web tools go to the effect doorway, which refuses them.
+  The sandbox denies network, unix sockets and reads outside the workspace; the harness's messaging socket and token
+  are removed from every command.
+- Before dispatch the turn reserves its whole liability, `maxTurns - 1` model attempts beyond the answer's own,
+  against the call cap, and keeps it. A short allowance, or a packet with no room for the longer tool prompt,
+  answers that turn without tools, recorded. `status` shows the tool list, tool-turn counts and refusals.
+- `/stop`, a latched stop file, expiry or withdrawal (changing or removing the record) ends a live turn: the
+  resource owner kills its process group within its 25 ms poll and verifies quiescence within two seconds.
+
+```sh
+npx vitest run --maxWorkers 1 tests/preview/tool-admission.test.ts
+npx vitest run --maxWorkers 1 tests/preview/tool-turn.test.ts
+npx vitest run --maxWorkers 1 tests/preview/tool-turn-replay.test.ts
+npx vitest run --maxWorkers 1 tests/assembly/production-provider-tools.test.ts
+INSTAR_TOOL_TURN_LIVE_TEST=1 npx vitest run --maxWorkers 1 tests/integration/tool-turn-live.test.ts   # five real harness turns
+```

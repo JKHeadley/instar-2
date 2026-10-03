@@ -1,0 +1,4 @@
+{"n":1,"tool":"Bash","input":{"command":"echo one","description":"Print \"one\""},"decision":"allow","effective":"allow","reason":"ordinary in-scope operation"}
+{"n":2,"tool":"Bash","input":{"command":"echo two","description":"Print \"two\""},"decision":"allow","effective":"allow","reason":"ordinary in-scope operation"}
+{"n":3,"tool":"Bash","input":{"command":"echo three","description":"Print \"three\""},"decision":"deny","effective":"deny","reason":"per-step call cap 2 reached (call 3)"}
+{"n":4,"tool":"Bash","input":{"command":"echo three","description":"Print \"three\""},"decision":"deny","effective":"deny","reason":"per-step call cap 2 reached (call 4)"}

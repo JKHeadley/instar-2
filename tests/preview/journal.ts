@@ -1020,6 +1020,13 @@ export type JournalRecord =
   | { kind: 'expiry'; genesisHash: string; expires: number; activation: string; authority: string; at: number }
   | { kind: 'cap-report'; reason: 'calls' | 'replies' | 'turns' | 'bytes'; limit: number; level?: 'near'; at: number }
   | { kind: 'legacy-call'; at: number }
+  /** A tool turn (Part Thirteen §9, docs/17-harness-adapters): its whole liability (`calls` model attempts beyond the answer's own
+   * reservation) is reserved before dispatch and retained; a short allowance answers without tools; the
+   * trace records each tool call, its admission and its result after the turn. */
+  | { kind: 'tool-turn'; phase: 'reserved'; id: string; attempt: number; calls: number; at: number }
+  | { kind: 'tool-turn'; phase: 'refused'; id: string; reason: 'call cap' | 'prompt size'; at: number }
+  | { kind: 'tool-turn'; phase: 'trace'; id: string; attempt: number; calls: ToolTraceCall[]; consistent: boolean;
+      workspaceBytes: number | null; at: number }
   | { kind: 'legacy-reply'; at: number }
   | { kind: 'import'; source: string; remainingCalls: number; remainingReplies: number; oldStop: string; at: number }
   | { kind: 'summary-reserve'; through: number; prompt?: string; supervised?: true; maxInputTokens?: number; maxOutputTokens?: number; at: number }
@@ -1203,6 +1210,8 @@ export interface JournalView { genesis: Extract<JournalRecord, {kind:'genesis'}>
   speakers: Record<Speaker, number>;
   /** Rules 41 and 75: counts of recorded model calls; the full records stay in the journal. */
   modelCalls: ModelCallCounts;
+  /** Present once a tool turn ran: counts only; each trace is its own journal row. */
+  toolTurns?: ToolTurnStats;
   /** Retrospective passes in journal order (plain records, so snapshots carry them verbatim). */
   retroPasses: RetroPass[];
   /** UNKNOWN calls conservatively written off by an authorized cap raise; absent until one is. */
@@ -2529,6 +2538,35 @@ function applyOperatorYes(view: JournalView, authority: string, action: Operator
       : state.request.expires !== values.expires)) throw Error('preview journal: operator yes application refused');
   state.applied = true;
 }
+export interface ToolTraceCall { n: number; tool: string; input: string; decision: string; reason: string; kind?: string; result: string | null }
+export interface ToolTurnStats { invocations: number; reservedCalls: number; refusedCap: number; refusedPrompt?: number; toolCalls: number;
+  toolRefusals: number; inconsistent: number; open: string[] }
+/** Rules 60, 75 and MF4: a tool turn reserves its whole model-attempt liability before dispatch, and the
+ * reservation is never released (the subscription charge is unknown). A trace closes exactly one open turn. */
+function projectToolTurn(view: JournalView, row: Extract<JournalRecord, { kind: 'tool-turn' }>): void {
+  const stats = view.toolTurns ?? { invocations: 0, reservedCalls: 0, refusedCap: 0, toolCalls: 0, toolRefusals: 0, inconsistent: 0, open: [] };
+  if (!boundedText(row.id, 1, 256)) throw Error('preview journal: tool turn id');
+  const key = row.phase === 'refused' ? '' : `${row.id}#${String(row.attempt)}`;
+  if (row.phase === 'reserved') {
+    if (!Number.isSafeInteger(row.attempt) || row.attempt < 0 || !Number.isSafeInteger(row.calls) || row.calls < 0
+      || view.calls + row.calls > view.limits.maxCalls || stats.open.includes(key)) throw Error('preview journal: tool turn reservation or cap');
+    view.calls += row.calls;
+    view.toolTurns = { ...stats, invocations: stats.invocations + 1, reservedCalls: stats.reservedCalls + row.calls, open: [...stats.open, key] };
+    return;
+  }
+  if (row.phase === 'refused') {
+    if (row.reason === 'call cap') view.toolTurns = { ...stats, refusedCap: stats.refusedCap + 1 };
+    else if (row.reason === 'prompt size') view.toolTurns = { ...stats, refusedPrompt: (stats.refusedPrompt ?? 0) + 1 };
+    else throw Error('preview journal: tool turn refusal');
+    return;
+  }
+  if (row.phase !== 'trace' || !stats.open.includes(key) || !Array.isArray(row.calls) || row.calls.length > 64
+    || typeof row.consistent !== 'boolean' || !(row.workspaceBytes === null || Number.isSafeInteger(row.workspaceBytes) && row.workspaceBytes >= 0))
+    throw Error('preview journal: tool trace order');
+  const admitted = row.calls.filter(call => call.decision === 'allow').length;
+  view.toolTurns = { ...stats, toolCalls: stats.toolCalls + admitted, toolRefusals: stats.toolRefusals + row.calls.length - admitted,
+    inconsistent: stats.inconsistent + Number(!row.consistent), open: stats.open.filter(item => item !== key) };
+}
 function project(view: JournalView, row: JournalRecord, system?: SystemCheck, admission: 'new' | 'replay' = 'new'): void {
   if ('at' in row) view.clockFloor = Math.max(view.clockFloor, row.at);
   if (row.kind === 'hold') {
@@ -2591,6 +2629,7 @@ function project(view: JournalView, row: JournalRecord, system?: SystemCheck, ad
     checkSendOutcome(view, row);
     view.sendOutcomes.push({ target: row.target, outcome: row.outcome, reason: row.reason, at: row.at }); return;
   }
+  if (row.kind === 'tool-turn') { projectToolTurn(view, row); return; }
   if (row.kind === 'model-call') {
     checkModelCall(row);
     const counts = view.modelCalls;

@@ -1,0 +1,4 @@
+{"n":1,"tool":"Write","input":{"file_path":"/Users/dabombstudio/.instar/agents/echo/.worktrees/w4-toolsreuse/scratch/w4-toolsreuse-run/c1-task/ws/note.txt","content":"hello reuse"},"decision":"allow","effective":"allow","reason":"ordinary in-scope operation"}
+{"n":2,"tool":"Read","input":{"file_path":"/Users/dabombstudio/.instar/agents/echo/.worktrees/w4-toolsreuse/scratch/w4-toolsreuse-run/c1-task/ws/note.txt"},"decision":"allow","effective":"allow","reason":"ordinary in-scope operation"}
+{"n":3,"tool":"Bash","input":{"command":"wc -c note.txt","description":"Count bytes in note.txt"},"decision":"allow","effective":"allow","reason":"ordinary in-scope operation"}
+{"n":4,"tool":"ToolSearch","input":{"query":"Agent Task subagent spawn","max_results":5},"decision":"deny","effective":"deny","reason":"unregistered tool ToolSearch: refused by default"}

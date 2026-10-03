@@ -8,7 +8,9 @@ import { dirname, resolve, join } from 'node:path';
 import { createProductionTelegramIO, createSubscriptionProviderIO, productionStorageIO } from '../../scripts/production-boot-io.mjs';
 import { openProductionStorage } from '../../src/assembly/production-storage.js';
 import { DEFAULT_SUBSCRIPTION_DOORWAY, subscriptionDoorway, SUBSCRIPTION_CONVERSATION_FRAMING,
-  subscriptionConversationPolicy, SUBSCRIPTION_PREVIEW_EXPIRY, validateSubscriptionActivation } from '../../src/assembly/production-provider.js';
+  subscriptionConversationPolicy, SUBSCRIPTION_PREVIEW_EXPIRY, validateSubscriptionActivation,
+  SUBSCRIPTION_TOOLS_FRAMING, SUBSCRIPTION_TOOLS_SYSTEM_PROMPT, subscriptionToolsPolicy } from '../../src/assembly/production-provider.js';
+import { runToolTurn, toolStatusLines, toolTurnEligible } from './tool-turn.mjs';
 import { redact } from '../../src/recall/redact.js';
 import { durablePreviewWrite } from './durable-write.js';
 import { prepareJournalEnvelope } from './journal-envelope.js';
@@ -313,7 +315,7 @@ const turnSources = (root, options, view, runs, current = () => undefined, hando
   // The standing mind-held instructions ride every prepared envelope; a changed rule book refuses launch.
   verifyMindRules(path => readFileSync(resolve(process.cwd(), path), 'utf8'));
   const ordinarySources = sourcePacket(path => readFileSync(resolve(process.cwd(), path), 'utf8'), SOURCE_PINS,
-    { providerAttempts: view.limits.maxCalls, expiresAt: view.expires }).sources;
+    { providerAttempts: view.limits.maxCalls, expiresAt: view.expires, tools: options['tools-activation'] !== undefined }).sources;
   const deskStatusPath = resolve(options['desk-status'] ?? join(root, 'desk-status.md'));
   return turn => {
     const now = wallNow(), log = runs();
@@ -370,8 +372,8 @@ const ownedActivity = root => {
   return { others, scanned, truncated: names.length > OWNED_ROOT_LIMIT, unreadable };
 };
 /** What the agent is told about itself, independent of the trial's changing limits. */
-const briefingDigest = () => briefingDigestOf([...sourcePacket(path => readFileSync(resolve(process.cwd(), path), 'utf8'),
-  SOURCE_PINS, { providerAttempts: 0, expiresAt: 0 }).sources.map(source => source.text), ANSWER_INSTRUCTIONS]);
+const briefingDigest = (tools = false) => briefingDigestOf([...sourcePacket(path => readFileSync(resolve(process.cwd(), path), 'utf8'),
+  SOURCE_PINS, { providerAttempts: 0, expiresAt: 0, tools }).sources.map(source => source.text), ANSWER_INSTRUCTIONS]);
 /** The operator's IANA time zone for "today"; UTC unless given. An unknown zone refuses. */
 const timeZoneOf = options => { const zone = options['time-zone'] ?? 'America/Los_Angeles'; zoneFormatter(zone); return zone; };
 /** Recall metadata and labels, never static sources or history text. */
@@ -1132,7 +1134,7 @@ async function main() {
   // Rule 55: poll-failure pressure is episode state; every attempt that changes it is durable in the run log
   // before the loop continues, so neither a relaunch nor a crash resets it.
   let failedPolls = 0, conflictedPolls = 0;
-  let identityVerified = false, routeHealthy = true, active = null;
+  let identityVerified = false, routeHealthy = true, active = null, toolsActive = () => false, toolsRecord = null;
   const workerStop = { value: false };
   const signal = name => { signalled = true; signalName ??= name; workerStop.value = true; };
   process.once('SIGINT', signal); process.once('SIGTERM', signal); process.once('SIGHUP', signal);
@@ -1380,7 +1382,17 @@ async function main() {
       return;
     }
     serviceBeat(true, 'claimed');
-    const modelEnvelope = input => prepareJournalEnvelope(input, required(options, 'model'), g.grant, wallNow(), journal.view.limits.maxBytes);
+    // Part Thirteen §9 (docs/17-harness-adapters): the tool route's room is the larger of the packet limit and its policy's prompt bound.
+    const toolPromptLimit = () => Math.max(journal.view.limits.maxBytes, subscriptionToolsPolicy(required(options, 'model')).maxPromptBytes);
+    const modelEnvelope = input => {
+      const bytes = prepareJournalEnvelope(input, required(options, 'model'), g.grant, wallNow(), journal.view.limits.maxBytes);
+      // A tool turn's longer system prompt must fit that room too; an overflow here makes the packet ladder yield, as
+      // for the text-only prompt, instead of leaving the turn to fall back to a text-only answer.
+      if (toolsActive() && toolTurnEligible(input.id)
+        && Buffer.byteLength(bytes) + Buffer.byteLength(SUBSCRIPTION_TOOLS_SYSTEM_PROMPT) > toolPromptLimit())
+        throw Error('preview: complete prompt overflow');
+      return bytes;
+    };
     const recordedUsage = usage => ({ inputTokens: usage.inputTokens, outputTokens: usage.outputTokens,
       charge: null, ...(usage.inputComplete ? { inputComplete: true } : {}) });
     // model-call-boundary:start
@@ -1393,10 +1405,10 @@ async function main() {
     // only in the states that already end a call: a stop, the expiry, or a lost conversation.
     const peerHolds = async () => await shared.replicated(() => workerStop.value || existsSync(stopPath)
       || wallNow() >= journal.view.expires || journal.view.stop || !ownerHeld() ? 'stopped' : null) === null;
-    const callSubscription = async (judgment, prepared, id, invocation) => {
+    const callSubscription = async (judgment, prepared, id, invocation, toolTurn) => {
       assertLiveJudgment(judgment, 'preview-subscription');
       if (shared !== null && !await peerHolds()) throw Error('preview: activation stopped');
-      const route = modelRoute(id), start = performance.now();
+      const route = modelRoute(id, toolTurn), start = performance.now();
       const inputRef = judgment === 'answer' && journal.view.turns.get(id)?.prompt === prepared ? `reserve:${id}` : undefined;
       // Rule 58: the journal occurrence is the operation id itself (turn, operation or summary).
       const base = { id, judgment, route: 'preview-subscription', model: required(options, 'model'), input: prepared, occurrence: id,
@@ -1444,13 +1456,13 @@ async function main() {
       return { value, latencyMs };
     };
     // model-call-boundary:end
-    const invokeSubscription = async (prepared, id, reviewTurnId, deadlineAt) => {
-      const policy = subscriptionConversationPolicy(required(options, 'model'));
-      const deadline = Math.min(journal.view.expires, deadlineAt ?? wallNow() + 180000);
+    const invokeSubscription = async (prepared, id, reviewTurnId, deadlineAt, toolTurn) => {
+      const policy = toolTurn ? subscriptionToolsPolicy(required(options, 'model')) : subscriptionConversationPolicy(required(options, 'model'));
+      const deadline = Math.min(journal.view.expires, deadlineAt ?? wallNow() + policy.timeout + 60000);
       if (deadline - wallNow() <= 100) throw Error('preview: reply check budget exceeded');
       const result = await callSubscription(judgmentOf(id), prepared, id, { operation: id, deadline,
         timeout: policy.timeout, maxOutputBytes: policy.maxOutputBytes, maxTokens: policy.maxTokens,
-        maxCharge: 0, automaticRetries: 0 });
+        maxCharge: 0, automaticRetries: 0 }, toolTurn);
       if (reviewTurnId) journal.append({ kind: 'reply-review-state', id: reviewTurnId, state: result.state,
         diagnostics: replyReviewDiagnostics(result.usage),
         ...(result.usage ? { usage: recordedUsage(result.usage) } : {}), at: wallNow() });
@@ -1476,6 +1488,13 @@ async function main() {
       const reason = typeof reasonValue === 'string' ? reasonValue : reasonValue === undefined || reasonValue === null ? '' : JSON.stringify(reasonValue);
       return { state: 'complete', value, ...(reason.trim() ? { reason } : {}), usage: result.usage };
     };
+    // Part Thirteen §9 (docs/17-harness-adapters): an eligible answer or work step runs as one scoped-tool turn (tool-turn.mjs runToolTurn).
+    const invokeTools = async (prepared, id) => (await runToolTurn({ journal, root, id, prepared,
+      promptLimit: toolPromptLimit(),
+      deniedRoots: [realpathSync(root), profile.home, profile.configDirectory, profile.workingDirectory],
+      operations: SINGLE_MACHINE_PROFILE.operations, now: wallNow, redactText: text => redact(text).text,
+      fallback: async () => ({ result: await invokeSubscription(prepared, id) }),
+      invoke: toolTurn => invokeSubscription(prepared, id, undefined, undefined, toolTurn) })).result;
     const proofLines = () => {
       if (!proofLaunch) return [];
       const unavailable = proofStoreFailed ? ['Proofs: the durable proof log cannot be written right now; nothing new counts as proven until it can.'] : [];
@@ -1518,13 +1537,14 @@ async function main() {
       // Rules 9, 96, 114: this runner's current work and the other owned runners beside it, read at each operator turn.
       concurrentWork: () => launchedAt === null ? null : concurrentWorkItem({ now: wallNow(),
         current: { owner: root.split('/').at(-1), launch: launchedAt, conversation: conversationOf(journal.view.genesis) }, ...ownedActivity(root) }),
-      statusLines: () => installation ? installationStatusLines(installation, launchedAt, (() => { try { return installedCode(); } catch { return null; } })(),
+      statusLines: () => [...installation ? installationStatusLines(installation, launchedAt, (() => { try { return installedCode(); } catch { return null; } })(),
         installUpdate, installUpdate && updateDelivery(installUpdate, journal.view.order), timeZoneOf(options)) : [],
+        ...toolStatusLines(journal.view, toolsActive())],
       checkOutbound: text => { if (redact(text).count) throw Error('preview: outbound secret refused'); },
       secrets: custody,
       model: async ({ id, prepared }) => {
         if (typeof prepared !== 'string') throw Error('preview: prepared model input absent');
-        const result = await invokeSubscription(prepared, id);
+        const result = toolsActive() && toolTurnEligible(id) ? await invokeTools(prepared, id) : await invokeSubscription(prepared, id);
         if (result.state !== 'complete' || result.failureClass) return { ...result,
           ...(result.usage ? { usage: recordedUsage(result.usage) } : {}) };
         return { state: 'complete', text: result.value, ...(result.reason ? { reason: result.reason } : {}),
@@ -1668,6 +1688,18 @@ async function main() {
     validateSubscriptionActivation(activation, profile, required(options, 'model'), wallNow(), SUBSCRIPTION_CONVERSATION_FRAMING, journal.view.expires);
     requireAuthority(options, activation, activationPath, journal.view, wallNow());
     if (!activationMatchesJournal(journal.view, activation)) throw Error('preview: activation differs from journal');
+    // Part Thirteen §9 (docs/17-harness-adapters): the scoped-tool answer route exists only under its own reviewed activation record,
+    // bound to the tools policy digest and resolved from the same sealed authority. Absent, every answer is
+    // text-only. Changing or removing the file withdraws it: no new tool turn starts, and a live one ends.
+    const toolsActivationPath = options['tools-activation'];
+    if (toolsActivationPath !== undefined) {
+      const toolsBytes = readFileSync(toolsActivationPath, 'utf8'), toolsActivation = JSON.parse(toolsBytes);
+      validateSubscriptionActivation(toolsActivation, profile, required(options, 'model'), wallNow(), SUBSCRIPTION_TOOLS_FRAMING, journal.view.expires);
+      requireAuthority(options, toolsActivation, toolsActivationPath, journal.view, wallNow());
+      if (!activationMatchesJournal(journal.view, toolsActivation)) throw Error('preview: tool activation differs from journal');
+      toolsRecord = toolsActivation;
+      toolsActive = () => { try { return readFileSync(toolsActivationPath, 'utf8') === toolsBytes; } catch { return false; } };
+    }
     installationPolicy = installationPolicyOf(options, activation, activationPath, journal.view, wallNow());
     registerAtLaunch = registerGeneration();
     if (installationPolicy.kind !== 'resolved') process.stderr.write(`preview: limited answers past a cap are inhibited: ${installationPolicy.reason}\n`);
@@ -1735,7 +1767,7 @@ async function main() {
     const cycles = number(options['max-cycles'] ?? '1000', 'max-cycles', 1, 1_000_000);
     // The run log is durable before the first poll; the self-state reads it from memory each turn.
     launchedAt = wallNow();
-    installation = { ...installedCode(), briefingDigest: briefingDigest(), harness: PREVIEW_JOURNAL_HARNESS,
+    installation = { ...installedCode(), briefingDigest: briefingDigest(options['tools-activation'] !== undefined), harness: PREVIEW_JOURNAL_HARNESS,
       stallClasses: PREVIEW_JOURNAL_STALL_COVERAGE.rows.length, doorway: options.doorway ?? DEFAULT_SUBSCRIPTION_DOORWAY };
     // An unreadable run log is refused by the Rule 55 check below, after this launch's row is appended.
     let priorRuns = null;
@@ -1934,9 +1966,10 @@ async function main() {
     } finally { clearInterval(tailBeat); }
     reportCap();
     endReason ??= 'cycle limit reached';
-    function modelRoute(operation) {
+    function modelRoute(operation, toolTurn) {
       if (!active() || workerStop.value || existsSync(stopPath)) throw Error('preview: activation stopped');
-      const policy = subscriptionConversationPolicy(options.model);
+      if (toolTurn && !toolsActive()) throw Error('preview: tool activation withdrawn');
+      const policy = toolTurn ? subscriptionToolsPolicy(options.model) : subscriptionConversationPolicy(options.model);
       // Rule 30: the doorway is selected by its registered id; its parser and terminal contract stay in the adapter.
       const doorway = subscriptionDoorway(options.doorway ?? DEFAULT_SUBSCRIPTION_DOORWAY);
       const contract = { reference: activation.reference, version: activation.profileDigest,
@@ -1947,8 +1980,11 @@ async function main() {
         strength: 'attestation', maxMetadataBytes: policy.maxMetadataBytes,
         maxRawTerminalBytes: policy.maxRawTerminalBytes, maxCaptureBytes: policy.maxCaptureBytes };
       const work = operation.startsWith('summary:') ? 'maintenance' : operation.endsWith(':reply-review') ? 'review' : 'answer';
+      // A tool turn also ends on the journal's latched /stop and on tool-activation withdrawal: the resource
+      // owner polls this every 25 ms and SIGKILLs the launch's own process group by its exact pid.
       const launchIO = createSubscriptionProviderIO({ repository: process.cwd(),
-        stopped: () => workerStop.value || existsSync(stopPath) || !active(), work });
+        stopped: () => workerStop.value || existsSync(stopPath) || !active()
+          || (toolTurn !== undefined && (journal.view.stop !== null || !toolsActive())), work });
       const physicalIO = { ...launchIO, execute: async input => {
         const result = await launchIO.execute(input);
         // Only the model command is the exchange: it alone carries the prepared prompt on stdin; the
@@ -1961,7 +1997,8 @@ async function main() {
         { elapsed: () => performance.now(), at: wallNow });
       return take(doorway.create({ context, credential: secretRef(profile.reference), profile,
         resolveProfile: () => profile, provider: 'anthropic', model: options.model, route: 'preview-subscription',
-        disclosure: 'Subscription preview; charge UNKNOWN', activation, framing: SUBSCRIPTION_CONVERSATION_FRAMING,
+        disclosure: 'Subscription preview; charge UNKNOWN', activation: toolTurn ? toolsRecord : activation,
+        framing: toolTurn ? SUBSCRIPTION_TOOLS_FRAMING : SUBSCRIPTION_CONVERSATION_FRAMING, ...(toolTurn ? { toolTurn } : {}),
         journalEnd: () => journal.view.expires, io,
         now: wallNow, active: () => !workerStop.value && !existsSync(stopPath) && active() && !journal.view.stop,
         adapterEvidenceContract: contract,

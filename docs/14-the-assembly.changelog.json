@@ -1,5 +1,21 @@
 [
   {
+    "revision": 21,
+    "date": "2026-10-03",
+    "status": "draft",
+    "cause": {
+      "kind": "draft",
+      "note": "Unit w4-toolsreal: the full-tool ruling's replacement text, adapted to the reuse route (Justin 2026-10-02 00:43, topic 102965 message 121912; desk decision 2026-10-01 17:49, message 121586). No constitution change."
+    },
+    "changes": [
+      {
+        "what": "Operator question 2 states that the preview's ordinary scoped tools are supported ordinary work under Part Thirteen's demonstrated boundary (admission hook, harness sandbox, clean environment), which is not §4 confinement and grants no governed or protected status.",
+        "why": "Replaces the proposed full-tool exception the ruling rejected (MF2, MF3); no preview label waives a floor.",
+        "ref": "lanes/astra-fulltool-ruling.md (replacement text); lanes/w4-toolsreuse-PROGRESS.md (proven configuration); lanes/w4-toolsreal-PROGRESS.md; LIVE-PATH-PLAN.md rows #358, #363, #367"
+      }
+    ]
+  },
+  {
     "revision": 20,
     "date": "2026-09-29",
     "status": "approved",

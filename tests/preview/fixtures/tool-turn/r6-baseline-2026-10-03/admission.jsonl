@@ -1,0 +1,1 @@
+{"n":1,"tool":"Bash","input":{"command":"sh check.sh","description":"Run configuration check script"},"decision":"allow","effective":"allow","reason":"ordinary in-scope operation"}

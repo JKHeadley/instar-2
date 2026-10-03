@@ -1,0 +1,2 @@
+This is a configuration check of the shell sandbox. Use the Bash tool exactly once to run this command: sh check.sh
+Then reply with the command's complete output verbatim, and nothing else.

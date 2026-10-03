@@ -13,7 +13,7 @@ import { PREVIEW_FIXED_PROMPT_BYTES, PREVIEW_LIVE_LIMITS, PREVIEW_MIN_SERVABLE_C
   concurrentWorkItem, createJournalWorker, declaredObligations, openPreviewJournal, replyReviewReserveFor,
   unservableContextReason } from './journal.js';
 import { jevQuestions, replyReviewContext, replyReviewQuestion } from './reply-check.js';
-import { SUBSCRIPTION_CONVERSATION_SYSTEM_PROMPT } from '../../src/assembly/production-provider.js';
+import { SUBSCRIPTION_CONVERSATION_SYSTEM_PROMPT, SUBSCRIPTION_TOOLS_SYSTEM_PROMPT } from '../../src/assembly/production-provider.js';
 import { OFFLINE_STORAGE_KEY, offlineProfile, successiveWorld } from './successive-fixture.js';
 
 /** Why this file exists: live 2026-10-01, room two was created at the launcher's then-default
@@ -31,7 +31,7 @@ const DESK_PATH = '/offline/desk-status.md';
 
 /** One fresh root, one ordinary operator turn, the real briefing from this checkout, reply review wired
  * and the concurrent-work row a live runner always sends. Returns what the provider would receive. */
-async function firstTurn(maxBytes: number) {
+async function firstTurn(maxBytes: number, tools = false) {
   const root = realpathSync(mkdtempSync(join(tmpdir(), 'preview-default-floor-')));
   try {
     const journal = openPreviewJournal(join(root, 'journal.encrypted'), key, { kind: 'genesis', bot: '12345678',
@@ -39,7 +39,7 @@ async function firstTurn(maxBytes: number) {
       expires: 9_999_999_999_999, maxCalls: PREVIEW_LIVE_LIMITS.calls, maxReplies: PREVIEW_LIVE_LIMITS.replies,
       maxTurns: PREVIEW_LIVE_LIMITS.turns, maxBytes, cursor: 0 });
     const briefing = sourcePacket(path => readFileSync(resolve(process.cwd(), path), 'utf8'), SOURCE_PINS,
-      { providerAttempts: journal.view.limits.maxCalls, expiresAt: journal.view.expires }).sources;
+      { providerAttempts: journal.view.limits.maxCalls, expiresAt: journal.view.expires, tools }).sources;
     const runs = { launches: [{ at: now - 60_000, pid: 1 }], exits: [] };
     // Larger than its cut bound, so the measured shape is the one every answer carries under pressure.
     const desk = { text: `# desk\n${'Preview work remains a supervised private chat trial with a reviewed activation.\n'.repeat(40)}`,
@@ -76,7 +76,7 @@ async function firstTurn(maxBytes: number) {
     await worker.summarizeIfNeeded(true);
     const turn = journal.view.order.at(-1)!;
     const total = (row: { prepared: string } | undefined) => row === undefined ? null
-      : bytes(row.prepared) + bytes(SUBSCRIPTION_CONVERSATION_SYSTEM_PROMPT);
+      : bytes(row.prepared) + bytes(tools ? SUBSCRIPTION_TOOLS_SYSTEM_PROMPT : SUBSCRIPTION_CONVERSATION_SYSTEM_PROMPT);
     // What the reply review of THIS turn would really send: the same answer prompt rebuilt as the review's
     // own input, with a candidate reply at the send path's own bound. This is what the reserve must cover.
     const reviewTotal = answer === undefined ? null
@@ -236,3 +236,23 @@ export const createProductionTelegramIO = () => ({ invoke(input) {
     .toBe(PREVIEW_LIVE_LIMITS.contextBytes);
   rmSync(world.directory, { recursive: true, force: true });
 }, 180_000);
+
+it('keeps a tool turn\'s always-sent parts inside the same measured floor (Part Thirteen §9, docs/17-harness-adapters)', async () => {
+  // The tool briefing line replaces the no-tools line at no more bytes, so the packet ladder keeps the whole
+  // always-sent shape at the floor. The tool system prompt is longer than the conversation one (measured:
+  // SYSTEM_GROWTH below); the tool route's room is max(maxBytes, the policy's 32768), so at the floor the
+  // prompt still fits with room to spare, and above it the runner's envelope reserves the difference.
+  const floor = PREVIEW_MIN_SERVABLE_CONTEXT_BYTES;
+  const plain = await firstTurn(floor), tools = await firstTurn(floor, true);
+  expect(tools.sent).toBe(true);
+  for (const required of ['sources', 'obligationDecision', 'governingConstraints', 'capabilities',
+    'memoryDecision', 'datedDecision', 'concurrentWork', 'audience'])
+    expect(tools.keys, required).toContain(required);
+  const growth = bytes(SUBSCRIPTION_TOOLS_SYSTEM_PROMPT) - bytes(SUBSCRIPTION_CONVERSATION_SYSTEM_PROMPT);
+  expect(growth).toBe(603);
+  const plainPacket = plain.answerTotal! - bytes(SUBSCRIPTION_CONVERSATION_SYSTEM_PROMPT);
+  const toolsPacket = tools.answerTotal! - bytes(SUBSCRIPTION_TOOLS_SYSTEM_PROMPT);
+  expect(toolsPacket).toBeLessThanOrEqual(plainPacket);
+  expect(tools.answerTotal!).toBeLessThanOrEqual(PREVIEW_FIXED_PROMPT_BYTES + growth);
+  expect(tools.answerTotal!).toBeLessThanOrEqual(Math.max(floor, 32768));
+}, 60_000);

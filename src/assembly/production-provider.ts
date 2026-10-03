@@ -217,19 +217,98 @@ export function subscriptionConversationPolicy(model: string) {
   maxInputBytes: SUBSCRIPTION_CONVERSATION_MAX_PROMPT_BYTES, maxOutputBytes: 16384, maxRawTerminalBytes: 65536,
   maxMetadataBytes: 8192, maxCaptureBytes: 1048576 });
 }
+/** Scoped-tool answer framing: the preview tool rule, Part Thirteen §9 in docs/17-harness-adapters. Separately bound like the
+ * successive-turn framing: its digest differs, so only an activation record naming this policy admits it.
+ * The boundary is the configuration the w4-toolsreuse spike proved under the pinned 2.1.280: a mandatory
+ * deny-by-default PreToolUse admission hook (the only control on Read/Write/Edit), the harness sandbox
+ * with a tight read profile and no network or unix sockets (the control on Bash), a clean environment,
+ * no `--bare` or `--safe-mode` (both skip settings hooks), and every delegating or outward tool removed. */
+export const SUBSCRIPTION_TOOLS_FRAMING = 'preview-tools-v1';
+/** The only tools a tool turn has. The briefing, status and system prompt are generated from this list. */
+export const SUBSCRIPTION_TOOL_NAMES = Object.freeze(['Read', 'Write', 'Edit', 'Glob', 'Grep', 'Bash']);
+/** Removed outright: subagents and workflows (MF6), outward and scheduling tools, MCP discovery. */
+export const SUBSCRIPTION_TOOL_DISALLOWED = Object.freeze(['Agent', 'Task', 'Workflow', 'CronCreate', 'CronDelete', 'CronList',
+  'RemoteTrigger', 'SendMessage', 'TaskStop', 'EnterWorktree', 'ExitWorktree', 'WebSearch', 'WebFetch', 'NotebookEdit',
+  'ToolSearch', 'ListAgents', 'ReportFindings', 'ScheduleWakeup']);
+/** One tool turn's bounds. `maxTurns` model turns is the whole liability the call cap reserves before dispatch;
+ * `maxToolCalls` is the hook's per-step count. `--max-budget-usd` is checked only after a turn and overshoots by
+ * up to one turn (spike d3), so the flag sits one turn's margin below the ceiling and is a backstop only: the
+ * binding spend floor is the upstream call reservation. */
+export const SUBSCRIPTION_TOOL_LIMITS = Object.freeze({ maxTurns: 8, maxToolCalls: 16, timeout: 300000,
+  budgetCeilingUsd: 1, oneTurnMarginUsd: 0.25, maxWriteBytes: 1048576 });
+const NO_TOOLS_SENTENCE = 'You have no tools and cannot act beyond this answer; never claim otherwise.';
+const TOOLS_SENTENCE = `In this turn you have exactly these tools: ${SUBSCRIPTION_TOOL_NAMES.join(', ')}. They work only inside this turn's private, `
+  + 'new and empty workspace (your working directory). Bash is sandboxed: no network, no writes or reads outside the workspace. '
+  + 'Network, deleting, sending messages and host control are refused, as is any path outside the workspace. '
+  + 'There are no MCP servers, subagents, web search, web fetch or other network access. '
+  + `Use at most ${SUBSCRIPTION_TOOL_LIMITS.maxToolCalls} tool calls. When your answer reports a value a tool produced, `
+  + 'say in reason.value which tool call, by name and order, produced it. Never claim an effect no tool reported, '
+  + 'and never claim to act beyond these tools and this answer.';
+export const SUBSCRIPTION_TOOLS_SYSTEM_PROMPT = SUBSCRIPTION_CONVERSATION_SYSTEM_PROMPT.replace(NO_TOOLS_SENTENCE, TOOLS_SENTENCE);
+export function subscriptionToolsPolicy(model: string) {
+  return Object.freeze({ args: Object.freeze(['--print', '--input-format', 'text', '--output-format', 'json',
+    '--system-prompt', SUBSCRIPTION_TOOLS_SYSTEM_PROMPT,
+    '--model', model, '--tools', SUBSCRIPTION_TOOL_NAMES.join(','), '--disallowedTools', ...SUBSCRIPTION_TOOL_DISALLOWED,
+    '--strict-mcp-config', '--mcp-config', '{"mcpServers":{}}',
+    '--setting-sources', '', '--disable-slash-commands', '--no-session-persistence',
+    '--max-turns', String(SUBSCRIPTION_TOOL_LIMITS.maxTurns),
+    '--max-budget-usd', String(SUBSCRIPTION_TOOL_LIMITS.budgetCeilingUsd - SUBSCRIPTION_TOOL_LIMITS.oneTurnMarginUsd),
+    '--permission-mode', 'default']),
+  framing: SUBSCRIPTION_TOOLS_FRAMING, settings: 'preview-tools-settings-v1', limits: SUBSCRIPTION_TOOL_LIMITS,
+  maxPromptBytes: SUBSCRIPTION_CONVERSATION_MAX_PROMPT_BYTES,
+  path: '/usr/bin:/bin', retries: 0, maxTokens: SUBSCRIPTION_MAX_OUTPUT_TOKENS * SUBSCRIPTION_TOOL_LIMITS.maxTurns,
+  timeout: SUBSCRIPTION_TOOL_LIMITS.timeout,
+  maxInputBytes: SUBSCRIPTION_CONVERSATION_MAX_PROMPT_BYTES, maxOutputBytes: 16384, maxRawTerminalBytes: 65536,
+  maxMetadataBytes: 8192, maxCaptureBytes: 1048576 });
+}
+/** One tool turn's machine-local paths, allocated by the runner under its root. */
+export interface SubscriptionToolTurn {
+  /** The turn's private workspace: the launch's working directory and the only writable place. */
+  readonly workspace: string;
+  /** The hook's admission record and per-step count; outside the workspace, never readable or writable by a tool. */
+  readonly stateDirectory: string;
+  /** Roots a tool may never read, on top of /Users and /Volumes (the runner root, the login profile). */
+  readonly deniedRoots: readonly string[];
+  readonly hook: Readonly<{ node: string; script: string }>;
+}
+const SAFE_PATH = /^\/[A-Za-z0-9_./@-]+$/u;
+const within = (path: string, root: string) => path === root || path.startsWith(`${root}/`);
+/** The exact settings a tool turn launches with (template `preview-tools-settings-v1`). The paths are
+ * the only per-turn inputs; each is absolute and shell-safe, so the hook command needs no quoting. */
+export function subscriptionToolSettings(turn: SubscriptionToolTurn): string {
+  const paths = [turn.workspace, turn.stateDirectory, turn.hook.node, turn.hook.script, ...turn.deniedRoots];
+  ensure(paths.every(path => SAFE_PATH.test(path) && !/(?:^|\/)\.\.?(?:\/|$)/u.test(path)), 'tool turn: paths must be absolute and plain');
+  ensure(!within(turn.stateDirectory, turn.workspace) && !within(turn.workspace, turn.stateDirectory)
+    && !within(turn.hook.script, turn.workspace), 'tool turn: the admission state and hook lie outside the workspace');
+  const hook = (mode: 'pre' | 'post') => [{ matcher: '*', hooks: [{ type: 'command',
+    command: `${turn.hook.node} ${turn.hook.script} ${mode} ${turn.stateDirectory}` }] }];
+  return JSON.stringify({
+    disableAllHooks: false,
+    sandbox: { enabled: true, failIfUnavailable: true, autoAllowBashIfSandboxed: true, allowUnsandboxedCommands: false,
+      network: { allowedDomains: [], allowUnixSockets: [], allowAllUnixSockets: false, allowLocalBinding: false },
+      filesystem: { allowWrite: [turn.workspace],
+        denyRead: [...turn.deniedRoots, turn.stateDirectory, '/Users', '/Volumes', '/tmp/cc-socks', '/private/tmp/cc-socks'],
+        allowRead: [turn.workspace] } },
+    permissions: { allow: [...SUBSCRIPTION_TOOL_NAMES], deny: [...SUBSCRIPTION_TOOL_DISALLOWED] },
+    hooks: { PreToolUse: hook('pre'), PostToolUse: hook('post') },
+  });
+}
 /** Extended thinking off for every subscription call. Claude Code 2.1.280 maps
  * MAX_THINKING_TOKENS=0 to thinking {type:"disabled"} (claude-sonnet-5 accepts it);
  * for that adaptive model a positive budget is ignored, so off is the only bound.
  * Env-only by design: it is not part of the activation-bound policy digest. */
 export const SUBSCRIPTION_THINKING_ENV = Object.freeze({ MAX_THINKING_TOKENS: '0' });
-export type SubscriptionFraming = 'preview-decision-system-v2' | typeof SUBSCRIPTION_CONVERSATION_FRAMING;
+export type SubscriptionFraming = 'preview-decision-system-v2' | typeof SUBSCRIPTION_CONVERSATION_FRAMING
+  | typeof SUBSCRIPTION_TOOLS_FRAMING;
 /** Exact policy and system prompt for a framing; the historical v2 default is unchanged. */
 export function subscriptionPolicyFor(model: string, framing: SubscriptionFraming = 'preview-decision-system-v2') {
-  ensure(framing === 'preview-decision-system-v2' || framing === SUBSCRIPTION_CONVERSATION_FRAMING,
-    'subscription framing unsupported');
-  return framing === SUBSCRIPTION_CONVERSATION_FRAMING
-    ? { policy: subscriptionConversationPolicy(model), system: SUBSCRIPTION_CONVERSATION_SYSTEM_PROMPT }
-    : { policy: subscriptionInvocationPolicy(model), system: SUBSCRIPTION_PREVIEW_SYSTEM_PROMPT };
+  ensure(framing === 'preview-decision-system-v2' || framing === SUBSCRIPTION_CONVERSATION_FRAMING
+    || framing === SUBSCRIPTION_TOOLS_FRAMING, 'subscription framing unsupported');
+  return framing === SUBSCRIPTION_TOOLS_FRAMING
+    ? { policy: subscriptionToolsPolicy(model), system: SUBSCRIPTION_TOOLS_SYSTEM_PROMPT }
+    : framing === SUBSCRIPTION_CONVERSATION_FRAMING
+      ? { policy: subscriptionConversationPolicy(model), system: SUBSCRIPTION_CONVERSATION_SYSTEM_PROMPT }
+      : { policy: subscriptionInvocationPolicy(model), system: SUBSCRIPTION_PREVIEW_SYSTEM_PROMPT };
 }
 
 export interface SubscriptionProviderIO extends ProductionProviderIO {
@@ -237,6 +316,8 @@ export interface SubscriptionProviderIO extends ProductionProviderIO {
    * The safe digest covers configuration, never credentials or token bytes. */
   inspectSubscriptionProfile(profile: import('./provider-credential-custodian.js').ProviderSubscriptionProfile):
     Readonly<{ loginProfileIdentity: string; managedConfigurationDigest: string }>;
+  /** Whether effective managed policy sets disableAllHooks (null: unknown). A tool turn refuses unless false. */
+  managedHooksDisabled?(profile: import('./provider-credential-custodian.js').ProviderSubscriptionProfile): boolean | null;
 }
 
 export function validateSubscriptionActivation(record: SubscriptionActivationRecord,
@@ -276,6 +357,8 @@ export function createClaudeCodeSubscriptionRoute(input:
     /** The journal's current end, read at every call; only it admits a record at the predecessor end. */
     journalEnd?: () => number;
     raisedPromptBytes?: number; promptAuthority?: string;
+    /** Required exactly for the tools framing: the turn's workspace, admission state and hook. */
+    toolTurn?: SubscriptionToolTurn;
   }>): Result<ConfinedProviderRoute> {
   return boundary('ClaudeCodeSubscriptionRoute', null, input.context, () => {
     const config = Object.freeze({ ...input });
@@ -285,7 +368,13 @@ export function createClaudeCodeSubscriptionRoute(input:
     const framing = config.framing ?? 'preview-decision-system-v2';
     const { policy, system } = subscriptionPolicyFor(config.model, framing);
     const promptBytes = config.raisedPromptBytes ?? policy.maxPromptBytes;
-    ensure(config.raisedPromptBytes === undefined || (framing === SUBSCRIPTION_CONVERSATION_FRAMING
+    const tools = framing === SUBSCRIPTION_TOOLS_FRAMING;
+    ensure(tools === (config.toolTurn !== undefined), 'subscription tool turn and framing differ');
+    const toolSettings = config.toolTurn ? subscriptionToolSettings(config.toolTurn) : null;
+    if (config.toolTurn) ensure(config.io.realpath(config.toolTurn.workspace) === config.toolTurn.workspace
+      && config.io.realpath(config.toolTurn.stateDirectory) === config.toolTurn.stateDirectory,
+    'tool turn: canonical workspace and state directory required');
+    ensure(config.raisedPromptBytes === undefined || ((framing === SUBSCRIPTION_CONVERSATION_FRAMING || tools)
       && Number.isSafeInteger(promptBytes) && promptBytes > policy.maxPromptBytes
       && promptBytes <= MAX_RAISED_SUBSCRIPTION_PROMPT_BYTES
       && typeof config.promptAuthority === 'string' && config.promptAuthority.trim().length > 0
@@ -300,6 +389,8 @@ export function createClaudeCodeSubscriptionRoute(input:
       ensure(observed.loginProfileIdentity === profile.loginProfileIdentity
         && observed.managedConfigurationDigest === profile.managedConfigurationDigest,
       'subscription profile or managed configuration changed');
+      // The admission hook is the only control on the file tools: managed policy that disables hooks refuses the turn.
+      if (tools) ensure(config.io.managedHooksDisabled?.(profile) === false, 'tool turn: managed policy may disable the admission hook');
     };
     check();
     ensure(approved.parserReference === 'claude-code-json-result' && approved.parserVersion === '1'
@@ -328,7 +419,7 @@ export function createClaudeCodeSubscriptionRoute(input:
           && Buffer.byteLength(system, 'utf8') + Buffer.byteLength(bytes, 'utf8') <= promptBytes,
         'subscription invocation bounds differ');
         const env = Object.freeze({ PATH: policy.path, HOME: profile.home, CLAUDE_CONFIG_DIR: profile.configDirectory,
-          CLAUDE_CODE_MAX_RETRIES: '0', CLAUDE_CODE_MAX_OUTPUT_TOKENS: String(policy.maxTokens),
+          CLAUDE_CODE_MAX_RETRIES: '0', CLAUDE_CODE_MAX_OUTPUT_TOKENS: String(SUBSCRIPTION_MAX_OUTPUT_TOKENS),
           CLAUDE_CODE_DISABLE_NONESSENTIAL_TRAFFIC: '1', ...SUBSCRIPTION_THINKING_ENV });
         const command = async (args: readonly string[], stdin: string, timeout: number, maxBytes: number,
           allowFailureFrame = false) => {
@@ -336,7 +427,8 @@ export function createClaudeCodeSubscriptionRoute(input:
           check();
           ensure(Number.isSafeInteger(bounds.deadline) && config.now() + timeout <= bounds.deadline,
             'subscription owner deadline has insufficient command time');
-          const result = await config.io.execute({ executable: profile.executable, args, cwd: profile.workingDirectory,
+          const result = await config.io.execute({ executable: profile.executable, args,
+            cwd: config.toolTurn && stdin.length > 0 ? config.toolTurn.workspace : profile.workingDirectory,
             env, stdin, timeout, maxBytes });
           lastFailure = classifyProviderFailure({ ...result, now: config.now(), localClockResetAt: config.io.localClockResetAt,
             calendarResetAt: config.io.calendarResetAt });
@@ -366,7 +458,8 @@ export function createClaudeCodeSubscriptionRoute(input:
         // still available after version and auth, retaining a small dispatch margin.
         const modelTimeout = Math.min(bounds.timeout, bounds.deadline - config.now() - 100);
         ensure(modelTimeout > 0, 'subscription owner deadline exhausted before model command');
-        const returned = await command(policy.args, bytes, modelTimeout, policy.maxRawTerminalBytes, true);
+        const modelArgs = toolSettings === null ? policy.args : [...policy.args, '--settings', toolSettings];
+        const returned = await command(modelArgs, bytes, modelTimeout, policy.maxRawTerminalBytes, true);
         const frame = JSON.parse(returned.text);
         const integer = (v: unknown) => typeof v === 'number' && Number.isSafeInteger(v) && v >= 0;
         if (frame && typeof frame === 'object' && !Array.isArray(frame) && frame.type === 'result'
