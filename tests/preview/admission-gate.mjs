@@ -12,8 +12,8 @@
 //   refuses ordinary work too, not only model calls. A delegation is recorded durably as a child edge of the claim's own
 //   edge before the subagent starts, and closed only on evidence of its result: a synchronous delegation's returned
 //   result, or, for an asynchronous spawn (whose immediate return is only the child's handle), the harness's own wait
-//   reporting that child finished. A consequential tool passes the effect owner (`createToolEffectOwner`) with its
-//   exact operation and input.
+//   reporting that exact child completed with its result. A bare wake-up is not that evidence. A consequential tool passes the
+//   effect owner (`createToolEffectOwner`) with its exact operation and input.
 //
 // Credentials pass through in the child's own request headers and are neither read nor kept here. The server binds
 // 127.0.0.1 only and serves only paths under its random secret, so another local process cannot spend a claim.
@@ -92,21 +92,25 @@ export async function createAdmissionGate({ append, effects, stopped, now, upstr
     if (!/^[A-Za-z0-9._:-]{1,200}$/u.test(id)) return { decision: 'deny', reason: 'admission: exact tool call identity required' };
     if (call.kind === 'tool') return { decision: 'allow', reason: 'admission: the step is open and no stop is held' };
     if (call.kind === 'wait') {
-      // The harness's own wait on its children. Only a wait that finished (not timed out) is evidence, and only for the
-      // children it names by handle, or, naming none, for the single asynchronous child outstanding. Anything else
-      // leaves the edges open for the parent to settle as uncertain.
+      // The harness's own wait on its children. A wait that returns is a wake-up (any mailbox activity, a progress
+      // message included), never by itself a child's completion. An edge closes only on per-child terminal evidence:
+      // the wait's `status` map naming that child's handle with a `completed` result. Anything else (the bare
+      // "Wait completed." Codex 0.156.1 returns, a timeout, a running or errored child) leaves the edge open for the
+      // parent to settle as uncertain.
       const result = unwrap(call.result_excerpt);
-      if (!result || typeof result !== 'object' || result.timed_out !== false) return { decision: 'allow', reason: 'wait: no completion evidence' };
-      const waiting = [...state.delegations.entries()].filter(([, row]) => row.open && row.async);
-      const evidence = `${JSON.stringify(unwrap(call.input_excerpt))}\n${JSON.stringify(result)}`;
-      const named = waiting.filter(([, row]) => row.handles.some(handle => evidence.includes(JSON.stringify(handle))));
-      const finished = named.length > 0 ? named : waiting.length === 1 ? waiting : [];
-      for (const [, row] of finished) {
-        append(nestedSessionWorkClose(row.edge, 'complete', 'the harness reported the delegated agent finished (its wait completed)',
-          `tool-result:${id}`, null, now()));
-        row.open = false;
+      const status = result && typeof result === 'object' && result.status && typeof result.status === 'object' ? result.status : null;
+      if (!status) return { decision: 'allow', reason: 'wait: no per-child completion evidence' };
+      let finished = 0;
+      for (const row of state.delegations.values()) {
+        if (!row.open || !row.async) continue;
+        const reported = row.handles.map(handle => status[handle]).find(value => value !== undefined);
+        const text = reported && typeof reported === 'object' && typeof reported.completed === 'string' ? reported.completed : null;
+        if (text === null) continue;
+        append(nestedSessionWorkClose(row.edge, 'complete', 'the harness reported this delegated agent completed with its result',
+          `tool-result:${id}`, Buffer.byteLength(text, 'utf8'), now()));
+        row.open = false; finished += 1;
       }
-      return { decision: 'allow', reason: `wait: ${finished.length} delegated agent(s) finished` };
+      return { decision: 'allow', reason: `wait: ${finished} delegated agent(s) reported completed` };
     }
     if (call.kind === 'delegation') {
       if (call.phase === 'post') {
@@ -161,6 +165,10 @@ export async function createAdmissionGate({ append, effects, stopped, now, upstr
       req.setEncoding('utf8');
       req.on('data', chunk => { body += chunk; if (body.length > MAX_ADMIT_BYTES) req.destroy(); });
       req.on('end', () => {
+        // Authority is read again now the whole request is here: a claim closed or a stop raised while the body was
+        // arriving refuses, so nothing is admitted on a reading taken before the withdrawal.
+        if (state.closed || claims.get(match[2]) !== state || stopped())
+          return reply(res, 200, { decision: 'deny', reason: 'admission: this step is closed or a stop is held; nothing runs' });
         let verdict;
         try { verdict = admit(state, JSON.parse(body)); } catch { verdict = { decision: 'deny', reason: 'admission: request unreadable or unrecordable' }; }
         reply(res, 200, verdict);

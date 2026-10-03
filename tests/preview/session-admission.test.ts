@@ -8,6 +8,7 @@
 import { spawn, spawnSync } from 'node:child_process';
 import { closeSync, existsSync, mkdirSync, mkdtempSync, openSync, readdirSync, readFileSync, realpathSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
+import { request } from 'node:http';
 import { join } from 'node:path';
 import { afterEach, expect, it } from 'vitest';
 import type { SessionWorkEdge } from '../../src/assembly/production-session-work.js';
@@ -132,22 +133,26 @@ it('an asynchronous spawn acknowledgement is not completion: the edge stays open
   await post(lost, 'collaborationspawn_agent', 'call_spawn', spawned.tool_response, spawned.tool_input);
   expect(lost.rows.filter(row => row.type === 'SessionWorkEdgeClose')).toEqual([]);
   expect(lost.gate.close(lost.claim).openDelegations.map((edge: SessionWorkEdge) => edge.id)).toEqual([`${lost.edge.id}:delegated:call_spawn`]);
-  // A wait that timed out is no evidence; one that completed naming the child's handle closes exactly that child.
+  // A wait that returns is a wake-up, not a completion: a timeout, the bare "Wait completed." Codex 0.156.1 returns
+  // (mailbox activity, a child's progress message included), a wait that merely names a child, and a child reported
+  // still running or errored all leave every edge open. Only that child's own `completed` result closes it.
   const named = await step();
   for (const id of ['call_a', 'call_b']) {
     expect((await hook(named.state, call('collaborationspawn_agent', { task_name: id }, id))).decision).toBe('allow');
     await post(named, 'collaborationspawn_agent', id, JSON.stringify({ task_name: `/root/${id}` }), { task_name: id });
   }
-  await post(named, 'collaborationwait_agent', 'call_w1', JSON.stringify({ message: 'Wait timed out.', timed_out: true }), { timeout_ms: 1 });
+  const wake = (id: string, result: object, input: object = { timeout_ms: 1 }) =>
+    post(named, 'collaborationwait_agent', id, JSON.stringify(result), input);
+  await wake('call_w1', { message: 'Wait timed out.', timed_out: true });
+  await wake('call_w2', { message: 'Wait completed.', timed_out: false });
+  await wake('call_w3', { message: 'Wait completed.', timed_out: false }, { targets: ['/root/call_b'] });
+  await wake('call_w4', { status: { '/root/call_a': 'running', '/root/call_b': { errored: 'x' } }, timed_out: false });
   expect(named.gate.state(named.claim).openDelegations).toHaveLength(2);
-  // Untargeted with two outstanding: which one finished is unknown, so neither closes.
-  await post(named, 'collaborationwait_agent', 'call_w2', JSON.stringify({ message: 'Wait completed.', timed_out: false }), { timeout_ms: 1 });
-  expect(named.gate.state(named.claim).openDelegations).toHaveLength(2);
-  await post(named, 'collaborationwait_agent', 'call_w3', JSON.stringify({ message: 'Wait completed.', timed_out: false }),
-    { targets: ['/root/call_b'] });
+  expect(named.rows.filter(row => row.type === 'SessionWorkEdgeClose')).toEqual([]);
+  await wake('call_w5', { status: { '/root/call_a': 'running', '/root/call_b': { completed: 'the answer' } }, timed_out: false });
   expect(named.gate.state(named.claim).openDelegations.map((edge: SessionWorkEdge) => edge.child)).toEqual(['delegated:call_a']);
   expect(named.rows.filter(row => row.type === 'SessionWorkEdgeClose')).toEqual([expect.objectContaining({ state: 'complete',
-    id: `${named.edge.id}:delegated:call_b:close` })]);
+    id: `${named.edge.id}:delegated:call_b:close`, resultBytes: 10 })]);
   // A synchronous delegation's return is its result and closes at once; a background one is only a launch.
   const claude = await step();
   expect((await hook(claude.state, call('Agent', { prompt: 'x' }, 'toolu_sync'))).decision).toBe('allow');
@@ -177,6 +182,30 @@ it('every tool, ordinary work included, runs only while the claim is open and no
   const gone = await step();
   await gone.gate.stop(); gates.splice(gates.indexOf(gone.gate), 1);
   expect((await hook(gone.state, ordinary(gone)[3]!)).decision).toBe('deny');
+});
+
+it('authority is read again once the whole admission request has arrived: a close or stop mid-body refuses', async () => {
+  for (const withdraw of ['close', 'stop'] as const) {
+    let stop = false, checks = 0;
+    const s = await step({ stopped: () => { checks += 1; return stop; } });
+    const body = JSON.stringify({ kind: 'tool', tool_name: 'Write', tool_use_id: 'w' });
+    const url = new URL(`${s.gate.base(s.claim)}/admit`);
+    const answer = new Promise<string>((resolve, reject) => {
+      const req = request({ host: url.hostname, port: url.port, path: url.pathname, method: 'POST',
+        headers: { 'content-type': 'application/json', 'content-length': Buffer.byteLength(body) } }, res => {
+        let text = ''; res.setEncoding('utf8'); res.on('data', chunk => { text += chunk; }); res.on('end', () => resolve(text));
+      });
+      req.on('error', reject); req.flushHeaders();
+      // Withdraw only after the checkpoint has read authority on the headers, then send the body.
+      const send = () => { if (checks === 0) { setImmediate(send); return; }
+        if (withdraw === 'close') s.gate.close(s.claim); else stop = true; req.end(body); };
+      send();
+    });
+    expect(JSON.parse(await answer)).toMatchObject({ decision: 'deny' });
+  }
+  // The same request with the claim open and no stop is admitted.
+  const open = await step();
+  expect((await hook(open.state, call('Write', { file_path: join(open.ws, 'w.txt'), content: 'x' }, 'w'))).decision).toBe('allow');
 });
 
 it('the effect owner admits only the exact registered operation, records it before dispatch, and never prepares it twice', async () => {
@@ -260,10 +289,10 @@ it('replays the hook inputs live Codex 0.156.1 sessions sent (Rule 106): shell, 
   expect(verdicts).toEqual([['webrun', 'allow'], ['collaborationspawn_agent', 'allow'], ['collaborationwait_agent', 'allow'],
     ['mcp__threadline__threadline_agents', 'deny'], ['mcp__threadline__threadline_send', 'deny']]);
   // The recorded spawn's PostToolUse is only the child's handle ({"task_name":"/root/ok_reply"}): its edge stays open.
-  // The recorded wait that completed (timed_out false) with that single child outstanding is what closes it.
-  expect(outstanding).toEqual([['webrun', 0], ['collaborationspawn_agent', 1], ['collaborationwait_agent', 0]]);
-  expect(s.rows.map(row => [row.type, row.state ?? null])).toEqual([['SessionWorkEdge', null], ['SessionWorkEdgeClose', 'complete']]);
-  expect(s.rows[1]).toMatchObject({ evidence: 'tool-result:call_McVGoNHDozaCOCs25B4TET7r' });
+  // The recorded wait ({"message":"Wait completed.","timed_out":false}) names no child and carries no result, so it is a
+  // wake-up, not completion: the edge stays open and the parent settles it as uncertain at its close.
+  expect(outstanding).toEqual([['webrun', 0], ['collaborationspawn_agent', 1], ['collaborationwait_agent', 1]]);
+  expect(s.rows.map(row => [row.type, row.state ?? null])).toEqual([['SessionWorkEdge', null]]);
   // The recorded PostToolUse inputs pair with their calls by the same id, so the trace is consistent.
   expect(toolTrace(recordOf(s.state).split('\n').filter(Boolean)).consistent).toBe(true);
 });
