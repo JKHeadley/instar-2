@@ -13,7 +13,7 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { afterEach, expect, it } from 'vitest';
 // @ts-expect-error The hook and its decision stay plain JavaScript: the harness runs them without a loader.
-import { admitEgress, admitToolCall, admitToolEffect, egressTarget, publicAddress, toolShellPrefix, toolTrace, webReadHost } from './tool-admission.mjs';
+import { admitEgress, admitToolCall, admitToolEffect, egressTarget, gitAdvertisement, gitFetchRequest, gitRepository, publicAddress, toolShellPrefix, toolTrace, webReadHost } from './tool-admission.mjs';
 import { SINGLE_MACHINE_PROFILE } from './activation-authority.js';
 
 const HOOK = join(__dirname, 'tool-admission-hook.mjs');
@@ -418,16 +418,23 @@ it('points every admitted shell command at the turn\'s network checkpoint: its p
     expect(() => toolShellPrefix(tmp, bad)).toThrow(/egress checkpoint/u);
 });
 
-it('the checkpoint admits reads (GET, HEAD, git fetch) and sends every write to the effect doorway, which admits only a registered one', () => {
+it('the checkpoint admits reads (GET, HEAD, a proven git fetch) and sends every write to the effect doorway, which admits only a registered one', () => {
   const ops = [...SINGLE_MACHINE_PROFILE.operations];
-  for (const [method, path] of [['GET', '/'], ['head', '/x'], ['GET', '/r.git/info/refs?service=git-upload-pack'], ['POST', '/r.git/git-upload-pack']])
-    expect(admitEgress({ method, path }, ops)).toMatchObject({ decision: 'allow', kind: 'network-read' });
-  for (const [method, path] of [['POST', '/post'], ['PUT', '/-/package'], ['PATCH', '/x'], ['DELETE', '/x'], ['OPTIONS', '/'], ['', '/'],
-    ['GET', '/r.git/info/refs?service=git-receive-pack'], ['POST', '/r.git/git-receive-pack'], ['POST', '/r.git/git-upload-pack-not']]) {
-    const decided = admitEgress({ method, path }, ops);
+  const proven = { fetch: true, reason: 'git fetch' };
+  for (const [method, path, gitFetch] of [['GET', '/', null], ['head', '/x', null], ['GET', '/r.git/info/refs?service=git-upload-pack', null], ['POST', '/r.git/git-upload-pack', proven]] as const)
+    expect(admitEgress({ method, path, gitFetch }, ops)).toMatchObject({ decision: 'allow', kind: 'network-read' });
+  for (const [method, path, headers, gitFetch] of [['POST', '/post', {}, null], ['PUT', '/-/package', {}, null], ['PATCH', '/x', {}, null], ['DELETE', '/x', {}, null],
+    ['OPTIONS', '/', {}, null], ['', '/', {}, null], ['GET', '/r.git/info/refs?service=git-receive-pack', {}, null], ['POST', '/r.git/git-receive-pack', {}, proven],
+    ['POST', '/r.git/git-upload-pack-not', {}, proven], ['POST', '/messages/git-upload-pack', {}, null],
+    ['POST', '/messages/git-upload-pack', {}, { fetch: false, reason: 'the repository did not advertise git upload-pack in this turn' }],
+    ['GET', '/messages/1', { 'X-HTTP-Method-Override': 'DELETE' }, null], ['HEAD', '/messages/1', { 'x-http-method': 'PUT' }, null],
+    ['POST', '/r.git/git-upload-pack', { 'x-method-override': 'DELETE' }, proven]] as const) {
+    const decided = admitEgress({ method, path, headers, gitFetch }, ops);
     expect(decided).toMatchObject({ decision: 'deny', kind: 'network-write' });
     expect(decided.reason).toMatch(/effect doorway: the installed profile registers no tool:network-write operation/u);
   }
+  // An override naming a read leaves a read a read.
+  expect(admitEgress({ method: 'GET', path: '/x', headers: { 'X-HTTP-Method-Override': 'GET' } }, ops)).toMatchObject({ decision: 'allow' });
   expect(admitEgress({ method: 'POST', path: '/post' }, [...ops, 'tool:network-write'])).toEqual({ decision: 'allow', kind: 'network-write',
     reason: 'registered operation tool:network-write' });
   expect(egressTarget('example.com:443')).toEqual({ host: 'example.com', port: 443 });
@@ -436,6 +443,33 @@ it('the checkpoint admits reads (GET, HEAD, git fetch) and sends every write to 
   for (const bad of ['127.0.0.1:443', '[::1]:443', '[::ffff:7f00:1]:443', '10.0.0.1:443', '100.64.1.1:443', '169.254.169.254:80', 'localhost:443',
     'nas.local:443', 'user:pw@example.com:443', 'example.com/path', 'intranet:443'])
     expect(egressTarget(bad).host).toBeNull();
+});
+
+it('a git fetch is proven by its repository\'s discovery answer and an upload-pack body, never by its path or content type alone', () => {
+  const advertisement = { 'content-type': 'application/x-git-upload-pack-advertisement' };
+  expect(gitAdvertisement({ method: 'GET', path: '/r.git/info/refs?service=git-upload-pack', status: 200, headers: advertisement })).toBe('/r.git');
+  for (const answer of [{ method: 'GET', path: '/r.git/info/refs?service=git-upload-pack', status: 200, headers: { 'content-type': 'text/plain' } },
+    { method: 'GET', path: '/r.git/info/refs?service=git-upload-pack', status: 404, headers: advertisement },
+    { method: 'GET', path: '/r.git/info/refs?service=git-receive-pack', status: 200, headers: advertisement },
+    { method: 'POST', path: '/r.git/info/refs?service=git-upload-pack', status: 200, headers: advertisement }])
+    expect(gitAdvertisement(answer)).toBeNull();
+  const advertised = new Set(['example.test:443/r.git']);
+  const type = { 'Content-Type': 'application/x-git-upload-pack-request' };
+  const pkt = (...lines: string[]) => Buffer.from(lines.map(line => line === '' ? '0000' : `${(line.length + 4).toString(16).padStart(4, '0')}${line}`).join(''), 'latin1');
+  const v0 = pkt('want 0123456789abcdef0123456789abcdef01234567 multi_ack_detailed side-band-64k ofs-delta agent=git/2.50.1\n', '', 'done\n');
+  const v2 = pkt('command=fetch', 'agent=git/2.50.1', 'object-format=sha1', 'thin-pack', 'ofs-delta', 'want 0123456789abcdef0123456789abcdef01234567\n', 'done\n', '');
+  const lsRefs = Buffer.concat([pkt('command=ls-refs', 'agent=git/2.50.1'), Buffer.from('0001'), pkt('peel', 'symrefs', 'unborn', 'ref-prefix HEAD\n', 'ref-prefix refs/heads/\n', '')]);
+  for (const body of [v0, v2, lsRefs])
+    expect(gitFetchRequest({ origin: 'example.test:443', path: '/r.git/git-upload-pack', headers: type, body, advertised })).toEqual({ fetch: true, reason: 'git fetch' });
+  for (const [request, reason] of [
+    [{ origin: 'example.test:443', path: '/r.git/git-upload-pack', headers: type, body: Buffer.from('send=hello') }, 'not git pkt-lines'],
+    [{ origin: 'example.test:443', path: '/r.git/git-upload-pack', headers: type, body: pkt('send=hello') }, 'not a git fetch request'],
+    [{ origin: 'example.test:443', path: '/r.git/git-upload-pack', headers: type, body: pkt('') }, 'empty git request'],
+    [{ origin: 'example.test:443', path: '/r.git/git-upload-pack', headers: {}, body: v0 }, 'not typed as a git fetch request'],
+    [{ origin: 'example.test:443', path: '/other.git/git-upload-pack', headers: type, body: v0 }, 'did not advertise'],
+    [{ origin: 'elsewhere.test:443', path: '/r.git/git-upload-pack', headers: type, body: v0 }, 'did not advertise'],
+    [{ origin: 'example.test:443', path: '/r.git/git-upload-pack', headers: type, body: null }, 'body unreadable']] as const)
+    expect(gitFetchRequest({ ...request, advertised }).reason).toContain(reason);
 });
 
 it('replays the shell-network live runs: their shell calls reach the recorded admission and their checkpoint requests the recorded decision (Rule 106)', () => {
@@ -451,9 +485,18 @@ it('replays the shell-network live runs: their shell calls reach the recorded ad
     }
     const requests = String(record.egress).trim().split('\n').map(line => JSON.parse(line)).filter(r => r.phase === 'request' && r.method !== 'CONNECT');
     expect(requests.length).toBeGreaterThan(0);
+    // A recorded upload-pack POST was preceded, on its host, by its repository's discovery that answered 200 (the record
+    // keeps no bodies or response types, so the replay supplies the exchange's proof from that answered discovery).
+    const answered = new Set(String(record.egress).trim().split('\n').map(line => JSON.parse(line)).filter(r => r.phase === 'response' && r.status === 200).map(r => r.n));
+    const discovered = new Set<string>();
     for (const request of requests) {
       if (request.kind === 'scope') { expect(egressTarget(`${String(request.host)}:80`, 'http:').host).toBeNull(); continue; }
-      expect(admitEgress({ method: request.method, path: request.path }, ops)).toMatchObject({ decision: request.decision, kind: request.kind });
+      const repo = gitRepository(request.path, 'git-upload-pack');
+      const gitFetch = repo === null ? null : { fetch: discovered.has(`${String(request.host)}${repo}`), reason: 'replayed' };
+      expect(admitEgress({ method: request.method, path: request.path, gitFetch }, ops)).toMatchObject({ decision: request.decision, kind: request.kind });
+      const advertised = gitRepository(String(request.path).split('?')[0], 'info/refs');
+      if (advertised !== null && String(request.path).endsWith('?service=git-upload-pack') && answered.has(request.n)) discovered.add(`${String(request.host)}${advertised}`);
     }
+    if (name === 'shellnet-reads') expect(discovered.size).toBe(1);
   }
 });

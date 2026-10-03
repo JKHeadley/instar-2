@@ -3582,14 +3582,19 @@ servers (Part Thirteen §9,
   It intercepts HTTPS with the turn's own trust root (key in `state/egress-trust/`, certificate at
   `<volume>/egress-ca.pem`, trusted only through the variables the shell prefix sets), resolves each host and
   requires every address public, connects to the address it checked, and decides each request by method and path:
-  GET, HEAD and a git fetch (`git-upload-pack`) are reads; anything else (POST, PUT, PATCH, DELETE, a git push from
+  GET, HEAD and a proven git fetch are reads; anything else (POST, PUT, PATCH, DELETE, a git push from
   `service=git-receive-pack` on, a publish) is a `network-write` for the effect doorway, which the single-machine
-  profile refuses. A loopback, private, link-local, CGNAT or local-name host is refused before any connection (the
+  profile refuses. A git fetch is proven, not named: its repository answered `info/refs?service=git-upload-pack` in
+  this turn with git's advertisement type, the POST is typed `application/x-git-upload-pack-request`, and its body
+  (held, at most 8 MiB, gunzipped when encoded, before any of it is forwarded) is only upload-pack pkt-lines. A
+  method-override header (`X-HTTP-Method-Override`, `X-HTTP-Method`, `X-Method-Override`) is decided by the method it
+  names. A loopback, private, link-local, CGNAT or local-name host is refused before any connection (the
   prefix empties `NO_PROXY`, so those ranges reach the checkpoint and are refused on the record rather than by the
   sandbox alone). Every decision is appended to `state/egress.jsonl` before the request goes anywhere and journaled
   in the turn's trace (`egress`, `egressRequests`, `egressLimited`); `status` counts admitted and refused shell
   network requests. Bounds per turn: 256 MiB through it, 16 connections at once, 512 requests, 30 s idle per
-  connection. The shell's HOME is `<volume>/home`, so caches and tool configuration stay on the volume. The harness
+  connection. Reaching the byte bound, or `close()` at the turn's end, is terminal: nothing more is admitted, connected
+  or forwarded, and a request that was waiting on name resolution or its body is re-checked before it is recorded or sent. The shell's HOME is `<volume>/home`, so caches and tool configuration stay on the volume. The harness
   protects `.git` under the workspace, so a repository is cloned under `$TMPDIR`. `npm install` succeeds, but its audit
   request is a POST and is refused, so `npm audit` does not work; SSH remotes do not work (only HTTP(S) reaches the
   checkpoint).

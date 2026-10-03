@@ -5,13 +5,17 @@
 // - HTTPS is intercepted with the turn's own trust root (a key that stays in the admission state, no tool can read it; its
 //   public certificate is trusted only by the turn's shell, through the variables the shell prefix sets), so the method
 //   and path of an HTTPS request are seen, not guessed.
-// - A read (GET or HEAD, or a git fetch) of a public host is forwarded. A write (any other method, a git push, a package
-//   publish) is a network write for the effect doorway, which refuses it unless the installed profile registers it
-//   (admitEgress in tool-admission.mjs).
+// - A read (GET or HEAD, or a git fetch) of a public host is forwarded. A git fetch is proven, not named: its repository
+//   answered its upload-pack discovery as a git server in this turn, and its body (held and checked before anything is
+//   forwarded) is nothing but upload-pack requests. A method-override header is decided by the method it names. A write
+//   (any other method, an unproven POST, a git push, a package publish) is a network write for the effect doorway, which
+//   refuses it unless the installed profile registers it (admitEgress in tool-admission.mjs).
 // - The host is resolved here and every address must be public (not loopback, private, link-local, shared/CGNAT,
 //   multicast or reserved); the connection then goes to the address checked, so a name cannot be re-pointed in between.
 // - The proxy adds no credential and strips proxy headers; upstream certificates are verified against the system's roots.
 // - Bounded: bytes through it, concurrent connections, requests, an idle timeout per connection, and the turn's lifetime.
+//   Reaching the byte bound or close() is terminal for the turn: nothing more is admitted or forwarded, and a decision
+//   that waited on name resolution or a request body is re-checked against both before it is recorded or sent on.
 import { execFile } from 'node:child_process';
 import { randomBytes } from 'node:crypto';
 import { lookup } from 'node:dns/promises';
@@ -20,10 +24,11 @@ import http from 'node:http';
 import https from 'node:https';
 import { isIP } from 'node:net';
 import { join } from 'node:path';
+import { gunzipSync } from 'node:zlib';
 import { Duplex } from 'node:stream';
 import tls from 'node:tls';
 import { promisify } from 'node:util';
-import { admitEgress, egressTarget, publicAddress } from './tool-admission.mjs';
+import { admitEgress, egressTarget, gitAdvertisement, gitFetchRequest, gitRepository, GIT_FETCH_MAX_BODY, publicAddress } from './tool-admission.mjs';
 
 const run = promisify(execFile);
 /** One turn's checkpoint bounds: bytes in both directions together, open client connections at once, requests in the
@@ -83,7 +88,7 @@ const resolveAll = async host => (await lookup(host, { all: true, verbatim: true
 export async function startEgressProxy({ stateDirectory, caPath, operations, limits = EGRESS_LIMITS, resolve = resolveAll,
   openssl = EGRESS_OPENSSL, upstream = {}, dial = (address, port) => ({ host: address, port }) }) {
   const root = await createTrustRoot(join(stateDirectory, 'egress-trust'), caPath, openssl);
-  const contexts = new Map(), targets = new WeakMap(), open = new Set();
+  const contexts = new Map(), targets = new WeakMap(), open = new Set(), advertised = new Set();
   const stats = { requests: 0, admitted: 0, refused: 0, bytes: 0, limited: null };
   let closed = false;
   // A row is appended before the request it decides goes anywhere; an admitted write (a profile that registers one) is
@@ -93,7 +98,12 @@ export async function startEgressProxy({ stateDirectory, caPath, operations, lim
   const track = socket => { open.add(socket); socket.once('close', () => open.delete(socket)); };
   const stop = reason => { if (stats.limited === null) { stats.limited = reason; record({ phase: 'limit', reason }); }
     for (const socket of open) socket.destroy(); };
-  const spend = size => { stats.bytes += size; if (stats.bytes > limits.maxBytes) stop(`byte bound ${String(limits.maxBytes)} reached`); };
+  /** Counts bytes about to pass; false (and the turn's checkpoint stopped) once they would exceed the bound, so the chunk
+   * that crosses it is not forwarded. */
+  const spend = size => { if (stats.limited !== null) return false; stats.bytes += size;
+    if (stats.bytes > limits.maxBytes) { stop(`byte bound ${String(limits.maxBytes)} reached`); return false; } return true; };
+  /** Why nothing more may pass for this turn (closed, or the byte bound reached), or null. */
+  const ended = () => (closed ? 'the checkpoint is closed' : stats.limited);
   const context = host => { if (!contexts.has(host)) contexts.set(host, leafCertificate(root, host, openssl)); return contexts.get(host); };
   /** The host's checked addresses: an IP literal must itself be public; a name must resolve, every address public. */
   const addressesOf = async host => {
@@ -121,11 +131,25 @@ export async function startEgressProxy({ stateDirectory, caPath, operations, lim
     }
     const row = { phase: 'request', n, method, scheme: target.tls ? 'https' : 'http', host: target.host ?? target.attempted ?? null, port: target.port ?? null,
       path: clip(path) };
+    const over = ended();
+    if (over !== null) { stats.refused++; record({ ...row, decision: 'deny', reason: over, kind: 'budget' }); refuse(res, 429, over); return; }
     if (target.refused) { stats.refused++; record({ ...row, decision: 'deny', reason: `host refused: ${target.refused}`, kind: 'scope' });
       refuse(res, 403, `host refused: ${target.refused}`); return; }
     if (n > limits.maxRequests) { stats.refused++; record({ ...row, decision: 'deny', reason: `request bound ${String(limits.maxRequests)} reached`, kind: 'budget' });
       refuse(res, 429, `request bound ${String(limits.maxRequests)} reached`); return; }
-    const decision = admitEgress({ method, path }, operations);
+    const origin = `${target.host}:${String(target.port)}`;
+    // A POST to an upload-pack route is held whole (bounded) so its body can prove it is a git fetch before any of it moves.
+    let body = null, gitFetch = null;
+    if (method.toUpperCase() === 'POST' && gitRepository(path, 'git-upload-pack') !== null) {
+      body = await held(req);
+      if (body === null) { stats.refused++; const why = ended() ?? `request body over ${String(GIT_FETCH_MAX_BODY)} bytes`;
+        record({ ...row, decision: 'deny', reason: why, kind: 'budget' }); if (!res.destroyed) refuse(res, 429, why); return; }
+      let plain = body;
+      if (/gzip/iu.test(String(req.headers['content-encoding'] ?? ''))) {
+        try { plain = gunzipSync(body, { maxOutputLength: GIT_FETCH_MAX_BODY }); } catch { plain = null; } }
+      gitFetch = gitFetchRequest({ origin, path, headers: req.headers, body: plain, advertised });
+    }
+    const decision = admitEgress({ method, path, headers: req.headers, gitFetch }, operations);
     let addresses = target.addresses ?? null;
     if (decision.decision === 'allow' && addresses === null) {
       try { addresses = await addressesOf(target.host); } catch (error) {
@@ -133,6 +157,9 @@ export async function startEgressProxy({ stateDirectory, caPath, operations, lim
         refuse(res, 403, `host refused: ${error.message}`); return;
       }
     }
+    // Resolution and the held body were waits: a close, the byte bound or the client leaving in between ends the request
+    // here, before any decision is recorded or connection made.
+    if (ended() !== null || req.socket.destroyed || res.destroyed) { req.socket.destroy(); return; }
     record({ ...row, decision: decision.decision, reason: decision.reason, kind: decision.kind, ...(addresses ? { address: addresses[0] } : {}) });
     if (decision.decision !== 'allow') { stats.refused++; refuse(res, 403, decision.reason); return; }
     stats.admitted++;
@@ -141,28 +168,40 @@ export async function startEgressProxy({ stateDirectory, caPath, operations, lim
     const options = { ...dial(addresses[0], target.port), method, path, headers, agent: false, timeout: limits.upstreamMs };
     const out = (target.tls ? https : http).request(target.tls ? { ...options, ...upstream, servername: isIP(target.host) ? undefined : target.host,
       checkServerIdentity: (_, cert) => tls.checkServerIdentity(target.host, cert) } : options);
-    out.on('socket', socket => { track(socket); socket.on('error', () => socket.destroy()); });
+    out.on('socket', socket => { if (ended() !== null) { socket.destroy(); return; } track(socket); socket.on('error', () => socket.destroy()); });
     req.on('error', () => out.destroy()); res.on('error', () => out.destroy());
     out.on('timeout', () => out.destroy(Error('upstream timed out')));
     out.on('error', error => { record({ phase: 'response', n, status: null, error: clip(String(error?.message ?? error)) });
       if (!res.headersSent) refuse(res, 502, `upstream failed: ${String(error?.message ?? error)}`); else res.destroy(); });
     out.on('response', answer => {
       let size = 0;
+      const repo = gitAdvertisement({ method, path, status: answer.statusCode, headers: answer.headers });
+      if (repo !== null) advertised.add(`${origin}${repo}`);
       res.writeHead(answer.statusCode ?? 502, answer.statusMessage, answer.rawHeaders);
-      answer.on('data', chunk => { size += chunk.length; spend(chunk.length); res.write(chunk); });
+      answer.on('data', chunk => { size += chunk.length; if (spend(chunk.length)) res.write(chunk); });
       answer.on('end', () => { record({ phase: 'response', n, status: answer.statusCode ?? null, bytes: size }); res.end(); });
       answer.on('error', () => res.destroy());
     });
-    req.on('data', chunk => { spend(chunk.length); out.write(chunk); });
-    req.on('end', () => out.end());
+    if (body !== null) out.end(body);
+    else { req.on('data', chunk => { if (spend(chunk.length)) out.write(chunk); }); req.on('end', () => out.end()); }
   };
+  /** A request body read whole, counted against the byte bound; null when it exceeds GIT_FETCH_MAX_BODY, the bound is
+   * reached or the request fails. */
+  const held = req => new Promise(done => {
+    const chunks = []; let size = 0;
+    req.on('data', chunk => { size += chunk.length;
+      if (size > GIT_FETCH_MAX_BODY || !spend(chunk.length)) { req.removeAllListeners('data'); req.resume(); done(null); return; }
+      chunks.push(chunk); });
+    req.on('end', () => done(size > GIT_FETCH_MAX_BODY ? null : Buffer.concat(chunks)));
+    req.on('error', () => done(null)); req.on('close', () => done(null));
+  });
   // Neither handler may throw into the runner: any failure (a record that cannot be written included) ends that connection.
   const guarded = (req, res) => handle(req, res).catch(() => { res.destroy(); req.socket?.destroy(); });
   const inner = http.createServer(guarded);
   const outer = http.createServer(guarded);
   for (const server of [inner, outer]) { server.headersTimeout = limits.idleMs; server.requestTimeout = limits.upstreamMs * 3; }
   outer.on('connection', socket => {
-    if (closed || open.size >= limits.maxConnections) { socket.destroy(); return; }
+    if (ended() !== null || open.size >= limits.maxConnections) { socket.destroy(); return; }
     track(socket); socket.setTimeout(limits.idleMs, () => socket.destroy());
     socket.on('error', () => socket.destroy());
   });
@@ -174,14 +213,16 @@ export async function startEgressProxy({ stateDirectory, caPath, operations, lim
       port: target.port ?? null, path: clip(authority) };
     const deny = (reason, kind) => { stats.refused++; record({ ...row, decision: 'deny', reason, kind });
       socket.end(`HTTP/1.1 403 Forbidden\r\nx-instar-refused: ${reason.replace(/[^\x20-\x7e]/gu, '?').slice(0, 512)}\r\ncontent-length: 0\r\n\r\n`); };
+    if (ended() !== null) { deny(ended(), 'budget'); return; }
     if (target.host === null) { deny(`host refused: ${target.reason}`, 'scope'); return; }
     if (n > limits.maxRequests) { deny(`request bound ${String(limits.maxRequests)} reached`, 'budget'); return; }
     let addresses, secure;
     try { addresses = await addressesOf(target.host); } catch (error) { deny(`host refused: ${error.message}`, 'scope'); return; }
+    if (ended() !== null || socket.destroyed) { socket.destroy(); return; }
     // The tunnel itself carries nothing yet: each request inside it is decided on its own.
     record({ ...row, decision: 'allow', reason: 'tunnel opened; each request inside it is decided', kind: 'tunnel', address: addresses[0] });
     try { secure = await context(target.host); } catch (error) { deny(`no certificate for ${target.host}: ${error.message}`, 'scope'); return; }
-    if (closed || socket.destroyed) { socket.destroy(); return; }
+    if (ended() !== null || socket.destroyed) { socket.destroy(); return; }
     socket.write('HTTP/1.1 200 Connection Established\r\n\r\n');
     // A plain JavaScript stream between the client's socket and the TLS layer, so bytes the client sent with its CONNECT
     // are not lost when the TLS layer takes over the connection.

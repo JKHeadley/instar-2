@@ -158,13 +158,59 @@ export function egressTarget(authority, scheme = 'https:') {
   return { host: target.host, port };
 }
 
+/** Headers a server may honor in place of the request line's method; a request carrying one is decided by the method it names. */
+export const METHOD_OVERRIDES = Object.freeze(['x-http-method-override', 'x-http-method', 'x-method-override']);
+/** The largest git fetch request body the checkpoint holds to check before forwarding (a fetch's wants and haves). */
+export const GIT_FETCH_MAX_BODY = 8 * 1024 * 1024;
+// A git fetch request is pkt-lines, each one of the upload-pack protocol's own requests (v0 and v2): wants, haves, the
+// negotiation's end, shallow and filter options, and v2's command, capabilities and ref prefixes. Nothing else is a fetch.
+const GIT_FETCH_LINE = /^(?:(?:want|have|shallow|deepen|deepen-since|deepen-not|filter|want-ref|ref-prefix|packfile-uris) [\x21-\x7e]{1,1024}|(?:command|agent|object-format|server-option|session-id)=[\x21-\x7e]{1,1024}|want [0-9a-f]{40,64}(?: [\x21-\x7e]{1,1024})*|done|thin-pack|no-progress|include-tag|ofs-delta|peel|symrefs|unborn|sideband-all|wait-for-done|deepen-relative)$/u;
+const lower = headers => Object.fromEntries(Object.entries(headers ?? {}).map(([name, value]) => [name.toLowerCase(), Array.isArray(value) ? value.join(',') : String(value)]));
+/** The repository a smart-HTTP git route names (`/r.git/info/refs` or `/r.git/git-upload-pack` → `/r.git`), or null. */
+export function gitRepository(path, endpoint) {
+  const route = String(path ?? '').split('?')[0], suffix = `/${endpoint}`;
+  return route.endsWith(suffix) && route.length > suffix.length ? route.slice(0, -suffix.length) : null;
+}
+/** Whether a response proves its host serves git fetches for a repository: the answer to that repository's
+ * upload-pack discovery (`GET <repo>/info/refs?service=git-upload-pack`) was 200 with git's advertisement type. */
+export function gitAdvertisement({ method, path, status, headers }) {
+  const repo = gitRepository(path, 'info/refs'), query = String(path ?? '').split('?')[1] ?? '';
+  if (String(method).toUpperCase() !== 'GET' || repo === null || new URLSearchParams(query).get('service') !== 'git-upload-pack' || status !== 200) return null;
+  return /^application\/x-git-upload-pack-advertisement\b/u.test(lower(headers)['content-type'] ?? '') ? repo : null;
+}
+/** Whether a POST is a git fetch: its repository answered its discovery as a git server in this turn (`advertised`, the
+ * set of `host:port/repo` proven by gitAdvertisement), it is typed as a fetch request, and its body (`body`, already
+ * decompressed when the request was gzip-encoded) is nothing but upload-pack pkt-lines. A path name or content type
+ * alone proves nothing. Returns {fetch, reason}. */
+export function gitFetchRequest({ origin, path, headers, body, advertised }) {
+  const repo = gitRepository(path, 'git-upload-pack'), h = lower(headers);
+  if (repo === null) return { fetch: false, reason: 'not a git-upload-pack route' };
+  if (!advertised?.has(`${origin}${repo}`)) return { fetch: false, reason: 'the repository did not advertise git upload-pack in this turn' };
+  if (!/^application\/x-git-upload-pack-request\b/u.test(h['content-type'] ?? '')) return { fetch: false, reason: 'not typed as a git fetch request' };
+  if (!Buffer.isBuffer(body)) return { fetch: false, reason: 'body unreadable' };
+  let at = 0, lines = 0;
+  while (at < body.length) {
+    const size = /^[0-9a-f]{4}$/u.test(body.toString('latin1', at, at + 4)) ? parseInt(body.toString('latin1', at, at + 4), 16) : -1;
+    if (size < 0 || size === 3 || at + Math.max(size, 4) > body.length) return { fetch: false, reason: 'body is not git pkt-lines' };
+    if (size >= 4) {
+      const line = body.toString('latin1', at + 4, at + size).replace(/\n$/u, '');
+      if (!GIT_FETCH_LINE.test(line)) return { fetch: false, reason: 'body carries a line that is not a git fetch request' };
+      lines++;
+    }
+    at += Math.max(size, 4);
+  }
+  return lines > 0 ? { fetch: true, reason: 'git fetch' } : { fetch: false, reason: 'empty git request' };
+}
+
 /** The shell's network checkpoint (the egress proxy every sandboxed command is forced through): the decision for one HTTP
- * request it can see in full (method, host, path), after TLS interception. A read is admitted: GET or HEAD, or a git fetch
- * (the smart-HTTP `git-upload-pack` exchange, which is a POST carrying only the refs wanted). Everything else (POST, PUT,
- * PATCH, DELETE, a git push from its discovery request on, a package publish) is a network write for the effect doorway,
- * which refuses it unless the installed profile registers `tool:network-write`. */
-export function admitEgress({ method, path }, operations) {
-  const verb = String(method ?? '').toUpperCase(), target = String(path ?? '');
+ * request it can see in full (method, host, path, headers), after TLS interception. A read is admitted: GET or HEAD, or a
+ * git fetch proven by gitFetchRequest (`gitFetch`, its result). A method-override header decides by the method it names.
+ * Everything else (POST, PUT, PATCH, DELETE, an unproven POST to a git-upload-pack path, a git push from its discovery
+ * request on, a package publish) is a network write for the effect doorway, which refuses it unless the installed
+ * profile registers `tool:network-write`. */
+export function admitEgress({ method, path, headers = {}, gitFetch = null }, operations) {
+  const h = lower(headers), override = METHOD_OVERRIDES.find(name => name in h);
+  const verb = String(override ? h[override] : method ?? '').trim().toUpperCase(), target = String(path ?? '');
   const query = target.includes('?') ? target.slice(target.indexOf('?') + 1) : '', route = target.split('?')[0];
   const service = new URLSearchParams(query).get('service');
   const write = reason => { const admitted = admitToolEffect('network-write', operations); return admitted.admitted
@@ -172,7 +218,9 @@ export function admitEgress({ method, path }, operations) {
     : { decision: 'deny', reason: `${reason}: ${admitted.reason}`, kind: 'network-write' }; };
   if (service === 'git-receive-pack' || route.endsWith('/git-receive-pack')) return write('a git push');
   if (verb === 'GET' || verb === 'HEAD') return { decision: 'allow', reason: `${verb} read`, kind: 'network-read' };
-  if (verb === 'POST' && route.endsWith('/git-upload-pack')) return { decision: 'allow', reason: 'git fetch', kind: 'network-read' };
+  if (verb === 'POST' && String(method).toUpperCase() === 'POST' && gitFetch?.fetch === true && route.endsWith('/git-upload-pack'))
+    return { decision: 'allow', reason: 'git fetch', kind: 'network-read' };
+  if (verb === 'POST' && route.endsWith('/git-upload-pack')) return write(`POST is a network write (not a proven git fetch: ${gitFetch?.reason ?? 'unchecked'})`);
   return write(`${verb || '(no method)'} is a network write`);
 }
 
