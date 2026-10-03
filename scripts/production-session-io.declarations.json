@@ -1,0 +1,24 @@
+[
+  {
+    "type": "Declaration",
+    "schemaVersion": 1,
+    "id": "production-session-io.sessions",
+    "kind": "stores",
+    "status": "live",
+    "requiredFacts": {
+      "growth": "deletes",
+      "holdsAgentMemory": "no",
+      "machineScope": {
+        "kind": "machine-local",
+        "reason": "A tmux session, its pane process identity and its hook inbox exist only on the machine running them, so the record of which sessions this host launched cannot be shared: a peer reading it would hold identities it can neither observe nor stop. Each row names an exact local tmux session; the file is replaced whole on every write and a row is dropped as soon as its session is gone."
+      },
+      "agreesWith": []
+    },
+    "standards": [
+      7,
+      32,
+      60
+    ],
+    "holds": []
+  }
+]
