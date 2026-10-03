@@ -51,7 +51,7 @@ const admission = (stateDirectory: string) => readFileSync(join(stateDirectory, 
 /** One native turn through runToolTurn: the scripted steps answer in order; returns what the loop, journal and hook recorded. */
 async function nativeTurn(script: Step[] | ((envelope: string, index: number) => Step | Promise<Step>), options: {
   operations?: readonly string[]; maxSteps?: number; stopped?: () => boolean; setup?: (workspace: string) => void;
-  fetch?: typeof fetch; maxCalls?: number; resources?: Owner; hook?: (turn: { hook: { node: string; script: string } }) => { node: string; script: string } } = {}) {
+  fetch?: typeof fetch; maxCalls?: number; resources?: Owner; hook?: (turn: { hook: { node: string; script: string }; workspace: string }) => { node: string; script: string } } = {}) {
   const root = dir(), journal = journalAt(root, options.maxCalls), id = 'telegram:12345678:update:7';
   const envelopes: string[] = [];
   let stateDirectory = '', workspace = '';
@@ -183,7 +183,7 @@ describe('the loop', () => {
     expect(JSON.stringify(run.envelopes)).not.toContain('CANARY-NATIVE-0001');
     expect(JSON.parse(JSON.parse(run.envelopes[1]!).messages.at(-1).content).steps[0].calls.map((call: { decision: string }) => call.decision))
       .toEqual(['deny', 'deny', 'deny', 'deny', 'deny']);
-    expect(run.outcome.result.native).toEqual({ models: 2, steps: 1, calls: 0, ended: 'answered' });
+    expect(run.outcome.result.native).toEqual({ models: 2, steps: 1, calls: 0, ended: 'answered', unresolved: [] });
   });
 
   it('runs WebFetch only when the installed profile registers it, as one GET whose redirect is reported, never followed', async () => {
@@ -411,12 +411,72 @@ describe('the tools\' execution boundary', () => {
     // The tree's process count is sampled against the ceiling; the user ID's kernel process limit may refuse forks first.
     expect(posts[2].interrupted === 'processes' || /fork|Resource temporarily unavailable/iu.test(String(posts[2].stderr))).toBe(true);
     expect(posts[3]).toEqual({ content: 'still fine' });
+    // Every launch, the ones the owner ended on a ceiling included, was swept through its sandbox instance.
+    expect(run.outcome.result.native.unresolved).toEqual([]);
     // Nothing the launches started is left running: the owner verified every launch's cleanup in a complete census.
     const view = (small as unknown as { snapshot: () => { counters: { cleanupUnresolved: number; completed: number; killed: Record<string, number> };
       lastLaunch: { cleanup: string } } }).snapshot();
     expect(view.counters).toMatchObject({ cleanupUnresolved: 0, completed: 4 });
     expect(view.counters.killed.memory).toBe(1);
     expect(view.lastLaunch.cleanup).toBe('verified');
+  });
+
+  /** A Bash call that daemonizes the way a real one does: a node child in a new session, in the sibling tmp directory (outside the
+   * launch's working area), its stdio closed, and its parent gone at once, so the owner's group, ancestry and working-area joins
+   * all miss it. It prints the daemon's pid; `after` runs in the foreground after that. */
+  const daemonize = (node: string, after = '') => ['Bash', { command: `"${node}" daemon.mjs > pid.txt && cat pid.txt${after}` }] as [string, Record<string, unknown>];
+  const DAEMON = `import { spawn } from 'node:child_process';
+const child = spawn('/bin/sleep', ['300'], { detached: true, stdio: 'ignore', cwd: process.env.TMPDIR });
+child.unref(); process.stdout.write(String(child.pid));`;
+  const alive = (pid: number) => { try { process.kill(pid, 0); return true; } catch { return false; } };
+  const settled = async (pid: number) => { for (let i = 0; i < 50 && alive(pid); i++) await new Promise(done => setTimeout(done, 20)); return !alive(pid); };
+
+  it('a detached descendant outside the working area is ended when its call completes; a process outside the sandbox is not', { timeout: 20000 }, async () => {
+    const neighbor = execFileSync('/bin/sh', ['-c', '/bin/sleep 60 >/dev/null 2>&1 & echo $!'], { encoding: 'utf8' }).trim();
+    let node = '';
+    try {
+      const run = await nativeTurn((_envelope, index) => index === 0 ? ask(['Write', { file_path: 'daemon.mjs', content: DAEMON }], daemonize(node))
+        : answer('done'), { hook: turn => { node = turn.hook.node; return turn.hook; } });
+      const posts = admission(run.stateDirectory).filter(row => row.phase === 'post').map(row => JSON.parse(row.result));
+      const daemon = Number(posts[1].stdout);
+      expect(Number.isSafeInteger(daemon) && daemon > 1).toBe(true);
+      expect(await settled(daemon)).toBe(true);
+      expect(alive(Number(neighbor))).toBe(true);
+      expect(run.outcome.result).toMatchObject({ native: { ended: 'answered', unresolved: [] } });
+    } finally { process.kill(Number(neighbor), 'SIGKILL'); }
+  });
+
+  it('the stop ends a detached descendant that left the group, its parent and the working area while its call still runs', { timeout: 20000 }, async () => {
+    let node = '', workspace = '', stop = false, observed = '';
+    const run = await nativeTurn((_envelope, index) => {
+      if (index !== 0) return answer('unreached');
+      const watch = setInterval(() => {
+        const file = join(workspace, 'pid.txt');
+        if (!existsSync(file) || !readFileSync(file, 'utf8').trim()) return;
+        const pid = readFileSync(file, 'utf8').trim();
+        // The daemon is live and outside every join the owner holds: parent gone (ppid 1), its own group, cwd elsewhere.
+        const row = execFileSync('/bin/ps', ['-o', 'pid=,ppid=,pgid=', '-p', pid], { encoding: 'utf8' }).trim();
+        if (row.split(/\s+/u)[1] !== '1') return;
+        clearInterval(watch);
+        observed = row; stop = true;
+      }, 20);
+      return ask(['Write', { file_path: 'daemon.mjs', content: DAEMON }], daemonize(node, '; /bin/sleep 30'));
+    }, { stopped: () => stop, hook: turn => { node = turn.hook.node; workspace = turn.workspace; return turn.hook; } });
+    const [pid = 0, ppid, pgid] = observed.split(/\s+/u).map(Number);
+    expect(ppid).toBe(1);
+    expect(pgid).toBe(pid);
+    expect(run.outcome.result).toMatchObject({ state: 'uncertain', native: { ended: 'stopped', unresolved: [] } });
+    expect(await settled(pid)).toBe(true);
+    const rows = admission(run.stateDirectory).filter(row => row.phase === 'post').map(row => JSON.parse(row.result));
+    expect(rows[1]).toMatchObject({ interrupted: 'stopped' });
+  });
+
+  it('a launch whose sweep did not run is reported as unproven, never assumed swept', { timeout: 20000 }, async () => {
+    // The command ends every process of its own sandbox, the sweeper included, before the sweeper could run.
+    const run = await nativeTurn([ask(['Bash', { command: 'kill -9 -1' }], ['Bash', { command: 'echo after' }]), answer('done')]);
+    const posts = admission(run.stateDirectory).filter(row => row.phase === 'post').map(row => JSON.parse(row.result));
+    expect(posts[1]).toMatchObject({ stdout: 'after\n', exitCode: 0 });
+    expect(run.outcome.result.native.unresolved).toEqual([expect.objectContaining({ id: 'native-1-1', sweep: 'unverified' })]);
   });
 
   it('refuses to run without a host resource owner', async () => {

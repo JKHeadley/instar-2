@@ -3620,8 +3620,12 @@ tools, one turn, with a system prompt naming the native tools). The model's answ
 - launches every worker through the host resource owner (`scripts/resource-owner.mjs`, the process's own owner in
   production): per-process CPU time and handles and the user ID's process headroom in the kernel, the tree's memory and
   process count sampled against the launch ceilings, the deadline (30 s for a file tool, the Bash timeout up to 120 s)
-  and the stop ending the whole tree within its 25 ms poll, and a verified cleanup (a detached descendant included); a
-  launch it ends is reported as `interrupted` with its reason (`stopped`, `timeout`, `memory`, `processes`, `cpu`);
+  and the stop ending the launch within its 25 ms poll; a launch it ends is reported as `interrupted` with its reason
+  (`stopped`, `timeout`, `memory`, `processes`, `cpu`). The owner's membership is observation, so every descendant is
+  ended through the sandbox instance instead: the worker's detached sweeper waits for the worker to end, however it
+  ends, then signals every process of that instance (`kill -9 -1`, which the profile confines to it), holding the
+  worker's stdout so the launch completes only after the sweep; each call's containment evidence (owner cleanup,
+  `sweep: swept|unverified`) is recorded, and `native.unresolved` lists every launch whose end was not proven;
 - runs WebFetch in the loop's process as one GET whose redirect is reported, never followed (admitted only when the
   installed profile registers `tool:network`), ended by its deadline or the stop, with the body read as a stream up to
   256 KiB and then cancelled;

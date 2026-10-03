@@ -1,5 +1,21 @@
 [
   {
+    "revision": 6,
+    "date": "2026-10-03",
+    "status": "draft",
+    "cause": {
+      "kind": "draft",
+      "note": "Unit w4-native repair, review round 2 (Astra, VERDICT NO): the native stop and cleanup claim made true for a descendant that leaves the resource owner's membership. No constitution change."
+    },
+    "changes": [
+      {
+        "what": "§9 native tool rule: the owner's membership is named as observation; every descendant of a native worker is ended through the worker's sandbox instance (its sweeper signals every process of that instance when the worker ends, however it ends, and the launch completes only after the sweep); each call's containment evidence reaches the native result, which lists every launch whose end was not proven.",
+        "why": "Review round 2 finding 1: a descendant that left its group, its parent and the working area escaped the owner's membership, so the stop and cleanup did not reach it, while §9 claimed the whole tree ended and was verified.",
+        "ref": "lanes/w4-native-PROGRESS.md (Pipeline repair, round 2); LIVE-PATH-PLAN.md row #414"
+      }
+    ]
+  },
+  {
     "revision": 5,
     "date": "2026-10-03",
     "status": "draft",

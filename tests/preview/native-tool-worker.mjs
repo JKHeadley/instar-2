@@ -1,9 +1,10 @@
 // One native tool call, executed out of the loop's process (Rule 115, Part Thirteen §9 in docs/17-harness-adapters). The loop
-// launches this source through the host resource owner (memory, process, CPU and handle ceilings; its stop and deadline kill the
-// whole tree) inside the native sandbox, so every open, link and path resolution below is checked by the kernel at the moment it
+// launches this source through the host resource owner (memory, process, CPU and handle ceilings; its stop and deadline end the
+// launch, and the sweeper below ends every other process of the sandbox) inside the native sandbox, so every open, link and path resolution below is checked by the kernel at the moment it
 // happens: a path the hook admitted that later turns into a link out of the scratch volume is refused (EPERM), and a blocking
-// open (a FIFO without a writer) blocks only this worker, never the loop. It reads one request ({tool, input, workspace}) on
-// stdin and writes one JSON result on stdout. Errors are results, not throws. Uses builtins only: the sandbox reads no repository.
+// open (a FIFO without a writer) blocks only this worker, never the loop. It reads one request ({tool, input, workspace, sweep})
+// on stdin and writes one JSON result on stdout. Before running the tool it starts the sweeper (SWEEPER below), so whatever ends
+// this worker, its own exit or the resource owner's kill, every process left in its sandbox is ended. Errors are results, not throws. Uses builtins only: the sandbox reads no repository.
 import { spawn } from 'node:child_process';
 import { globSync, lstatSync, mkdirSync, readdirSync, readFileSync, realpathSync, statSync, writeFileSync } from 'node:fs';
 import { dirname, join, matchesGlob, relative, resolve, sep } from 'node:path';
@@ -26,8 +27,27 @@ function walkFiles(base, limit = 5000) {
   return files;
 }
 
+/**
+ * The sweeper: the sandbox is the one identity every descendant of this worker inherits and cannot leave (not by a new group,
+ * a new parent or another working directory), and the profile lets a process signal only its own sandbox instance. So the
+ * sweeper waits for this worker to end (the end of the pipe on its fd 3; the second read returns only then), writes the loop's
+ * marker, and signals every process of the sandbox, itself included (`kill -9 -1`). It holds this worker's stdout, so the
+ * owner's launch completes only after the sweep has run. Its launching shell exits at once, so it has no parent in the launch,
+ * its own group and the root as its working directory: the owner's kill of the launch on a ceiling, a deadline or the stop
+ * never reaches it before it has swept. (The pipe is fd 3, not stdin: a background job's stdin is /dev/null, and node closes a
+ * child's stdin when that child exits.)
+ */
+const SWEEPER = 'read -r marker <&3; read -r rest <&3; : >"$marker"; kill -9 -1';
+function startSweeper(marker) {
+  const sweeper = spawn('/bin/sh', ['-c', `cd / && (${SWEEPER}) &`], { detached: true, env: { PATH: '/usr/bin:/bin' },
+    stdio: ['ignore', 'inherit', 'ignore', 'pipe'] });
+  sweeper.stdio[3].on('error', () => {});
+  sweeper.stdio[3].write(`${marker}\n`);
+  sweeper.unref();
+}
+
 /** A shell command from the workspace; settles on its exit (a backgrounded descendant that keeps the output open does not hold the
- * call: the resource owner ends every remaining member of this launch once the worker exits). */
+ * call: the sweeper ends every process left in the sandbox once the worker exits). */
 function shell(command, workspace) {
   return new Promise(done => {
     const child = spawn('/bin/sh', ['-c', command], { cwd: workspace, env: process.env, stdio: ['ignore', 'pipe', 'pipe'] });
@@ -97,6 +117,11 @@ process.stdin.setEncoding('utf8');
 process.stdin.on('data', chunk => { request += chunk; });
 process.stdin.on('end', async () => {
   let output;
-  try { output = await run(JSON.parse(request)); } catch (error) { output = { error: clip(String(error?.message ?? error), 512) }; }
+  try {
+    const parsed = JSON.parse(request);
+    if (typeof parsed.sweep !== 'string' || !parsed.sweep.startsWith('/')) throw Error('no sweep marker');
+    startSweeper(parsed.sweep);
+    output = await run(parsed);
+  } catch (error) { output = { error: clip(String(error?.message ?? error), 512) }; }
   process.stdout.write(JSON.stringify(output), () => process.exit(0));
 });

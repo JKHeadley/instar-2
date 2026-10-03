@@ -90,13 +90,18 @@ process under a sandbox built from the same read list as the harness sandbox, wi
 and no signal outside the sandbox, so the kernel checks each file open when it happens: a path the hook
 admitted that later becomes a link out of the volume is refused, and a blocking open blocks only the worker.
 Each worker is launched through the host resource owner, which holds its CPU time and handles, the user ID's
-process headroom, and the tree's memory and process count against their ceilings, ends it on its deadline or
-the stop, and verifies that no member is left. A web fetch runs in the loop's process, ends on its deadline or
+process headroom, and the tree's memory and process count against their ceilings, and ends it on its deadline
+or the stop. The owner's membership is observation, so a descendant that leaves its group, its parent and the
+working area escapes it; the identity that ends every descendant is the worker's sandbox instance, which no
+descendant can leave and whose processes may signal only each other. When the worker ends, however it ends, its
+sweeper signals every process of that instance, and the owner's launch completes only after the sweep. Each
+call carries its containment evidence (the owner's cleanup verdict and whether the sweep ran) into the native
+result, which lists every launch whose end was not proven. A web fetch runs in the loop's process, ends on its deadline or
 the stop, and reads at most its byte limit before cancelling the body. Every call, its
 decision and its result return to the next step as quoted data. The loop is the tool turn's own invocation, so
 the whole-liability reservation, the step bound equal to that reservation, the journaled trace and the
 consistency check are unchanged, and each step is a recorded model call. The loop ends on the model's answer,
-the step bound, a failed step or the stop; the stop ends a running call's whole process tree, and a call
+the step bound, a failed step or the stop; the stop ends every process of a running call's sandbox, and a call
 admitted while the stop was latched is recorded as stopped and never run. A
 proposal the hook cannot decide is refused. The loop is a client of the public ports and holds no authority
 of its own. The preview launcher offers a native turn only under an activation and grant naming the native

@@ -10,7 +10,8 @@
 // turn's own. It ends on an answer, the step cap (the reserved liability), the operator's stop, or a failed step.
 // This file owns process, clock and filesystem for the turn's tools only; nothing here widens a grant.
 import { spawn } from 'node:child_process';
-import { existsSync, readFileSync, realpathSync, writeFileSync } from 'node:fs';
+import { randomUUID } from 'node:crypto';
+import { existsSync, lstatSync, readFileSync, realpathSync, rmSync, writeFileSync } from 'node:fs';
 import { join, sep } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { NATIVE_TOOL_LIMITS, NATIVE_TOOL_NAMES, SUBSCRIPTION_TOOL_RUNTIME_READS } from '../../src/assembly/production-provider.js';
@@ -115,21 +116,33 @@ export const NATIVE_EXECUTION = Object.freeze({ fileMs: 30000, workerHeapMb: 256
  * Runs one admitted call as a worker launch through the host resource owner (Rules 55, 60, 61): `sandbox-exec` with the native
  * profile, then node on the worker source, from the workspace, with an empty environment. The owner admits the launch, holds CPU
  * time and handles per process and the user ID's process headroom in the kernel, samples the tree's memory and process count
- * against its ceilings, ends the whole tree on the deadline or the operator's stop (its 25 ms poll), and verifies afterwards that
- * no member is left, a detached descendant included. The loop's own process never opens a tool path, so neither a path swapped
- * after admission nor a blocking open can reach it. A launch the owner ended is reported as `interrupted` with its reason.
+ * against its ceilings and ends the tree on the deadline or the operator's stop (its 25 ms poll). The owner's membership is
+ * observation (a descendant that leaves the group, its parent and the working area is not joined), so the identity that ends
+ * every descendant is the sandbox instance itself: the worker's sweeper signals every process of that instance once the worker
+ * ends, however it ends, and writes this launch's unguessable marker first. Each call returns its containment evidence: the
+ * owner's cleanup verdict and whether the sweep ran (`swept`), never assumed. The loop's own process never opens a tool path, so
+ * neither a path swapped after admission nor a blocking open can reach it. A launch the owner ended is `interrupted`.
  */
 async function runWorker(tool, input, turn, context) {
+  const marker = join(context.scratch, `.sweep-${randomUUID()}`);
   const timeout = tool === 'Bash' ? (Number.isSafeInteger(input.timeout) && input.timeout > 0 ? Math.min(input.timeout, NATIVE_TOOL_LIMITS.bashMs)
     : NATIVE_TOOL_LIMITS.bashMs) : NATIVE_EXECUTION.fileMs;
   const launched = await context.resources.execute({ executable: '/usr/bin/sandbox-exec',
     args: ['-f', context.profilePath, turn.hook.node, `--max-old-space-size=${String(NATIVE_EXECUTION.workerHeapMb)}`, '--input-type=module',
       '-e', WORKER_SOURCE],
     cwd: turn.workspace, env: { PATH: '/usr/bin:/bin', HOME: turn.workspace, TMPDIR: join(turn.scratch, 'tmp'), LANG: 'C.UTF-8' },
-    stdin: JSON.stringify({ tool, input, workspace: turn.workspace }), timeout, maxBytes: NATIVE_EXECUTION.workerOutputBytes,
+    stdin: JSON.stringify({ tool, input, workspace: turn.workspace, sweep: marker }), timeout, maxBytes: NATIVE_EXECUTION.workerOutputBytes,
     stopped: context.stopped }, 'answer');
+  // The marker is only ever looked at (lstat), never opened: no tool knew its name before the sweep ended every tool process.
+  let swept = false;
+  try { swept = lstatSync(marker).isFile(); rmSync(marker, { force: true }); } catch { swept = false; }
+  const containment = { cleanup: launched.resources?.cleanup ?? 'unknown', leaked: launched.resources?.leakedDescendants ?? null,
+    sweep: launched.localLimit === 'capacity' ? 'not-launched' : swept ? 'swept' : 'unverified' };
+  return { output: workerOutput(tool, launched, context.stopped()), containment };
+}
+function workerOutput(tool, launched, stopped) {
   if (launched.limited) {
-    const reason = launched.localLimit ?? (context.stopped() ? 'stopped' : 'ended');
+    const reason = launched.localLimit ?? (stopped ? 'stopped' : 'ended');
     if (reason === 'capacity') return { error: 'no launch capacity: the host resource owner refused the call' };
     return tool === 'Bash' ? { stdout: '', stderr: '', exitCode: null, interrupted: reason } : { error: `tool call ended: ${reason}`, interrupted: reason };
   }
@@ -173,13 +186,14 @@ async function webFetch(input, context) {
   } finally { clearInterval(watch); }
 }
 
-/** Executes one admitted call. `input` is the admitted input (the hook may have rewritten it). Errors are results, not throws. */
+/** Executes one admitted call: `{output, containment?}`, where `containment` is a worker launch's evidence. `input` is the admitted
+ * input (the hook may have rewritten it). Errors are results, not throws. */
 async function execute(tool, input, turn, context) {
   try {
-    if (tool === 'WebFetch') return await webFetch(input, context);
-    if (!NATIVE_TOOL_NAMES.includes(tool)) return { error: `no native executor for ${tool}` };
+    if (tool === 'WebFetch') return { output: await webFetch(input, context) };
+    if (!NATIVE_TOOL_NAMES.includes(tool)) return { output: { error: `no native executor for ${tool}` } };
     return await runWorker(tool, input, turn, context);
-  } catch (error) { return { error: clip(String(error?.message ?? error), 512) }; }
+  } catch (error) { return { output: { error: clip(String(error?.message ?? error), 512) } }; }
 }
 
 /**
@@ -187,7 +201,7 @@ async function execute(tool, input, turn, context) {
  * answer's prepared envelope; `step(envelope, index)` makes one model call and returns the caller's answer shape
  * ({state, value?, reason?, failureClass?, usage?}); `resources` is the host resource owner (its `execute`) every tool launch
  * passes. Returns the last step's result (the answer, or the failure that ended the
- * loop), with `native: {models, steps, calls, ended}`. Every call is admitted by the hook before it runs, and recorded by it after.
+ * loop), with `native: {models, steps, calls, ended, unresolved}`. Every call is admitted by the hook before it runs, and recorded by it after.
  */
 export async function runNativeLoop({ turn, prepared, step, stopped, promptLimit, resources, maxSteps = NATIVE_TOOL_LIMITS.maxSteps,
   fetch: fetcher = globalThis.fetch }) {
@@ -195,10 +209,12 @@ export async function runNativeLoop({ turn, prepared, step, stopped, promptLimit
   if (typeof resources?.execute !== 'function') throw Error('native loop: no host resource owner to launch tools through');
   const profilePath = join(turn.stateDirectory, 'shell.sb');
   writeFileSync(profilePath, nativeShellProfile(realpathSync(turn.scratch), realpathSync(turn.hook.node)), { mode: 0o600 });
-  const steps = [], context = { profilePath, stopped, fetch: fetcher, resources };
+  const steps = [], context = { profilePath, scratch: realpathSync(turn.scratch), stopped, fetch: fetcher, resources };
   let calls = 0, asked = 0;
-  // `models`: model calls made (at most maxSteps, the reserved liability); `steps`: those that requested tools; `calls`: tools run.
-  const finish = (result, ended) => ({ ...result, native: { models: asked, steps: steps.length, calls, ended } });
+  const unresolved = [];
+  // `models`: model calls made (at most maxSteps, the reserved liability); `steps`: those that requested tools; `calls`: tools run;
+  // `unresolved`: the worker launches whose end was not proven (the owner's cleanup unresolved, or the sandbox sweep unverified).
+  const finish = (result, ended) => ({ ...result, native: { models: asked, steps: steps.length, calls, ended, unresolved: [...unresolved] } });
   for (let index = 0; index < maxSteps; index++) {
     if (stopped()) return finish({ state: 'uncertain' }, 'stopped');
     const envelope = nativeStepEnvelope(prepared, steps, { steps: maxSteps - index - 1 }, promptLimit);
@@ -222,8 +238,12 @@ export async function runNativeLoop({ turn, prepared, step, stopped, promptLimit
       if (admission.decision !== 'allow') continue;
       calls++;
       // A stop latched while the hook decided: the admitted call is recorded as stopped and never dispatched.
-      const output = stopped() ? { error: 'stopped before dispatch', interrupted: 'stopped' }
+      const { output, containment } = stopped() ? { output: { error: 'stopped before dispatch', interrupted: 'stopped' } }
         : await execute(call.tool, admission.updatedInput ?? call.input, turn, context);
+      if (containment) {
+        entry.containment = containment;
+        if (containment.cleanup === 'unresolved' || containment.sweep === 'unverified') unresolved.push({ id, ...containment });
+      }
       await runHook(turn.hook, turn.stateDirectory, 'post', { tool_name: call.tool, tool_input: call.input, tool_use_id: id, tool_response: output });
       entry.result = clip(JSON.stringify(output));
     }

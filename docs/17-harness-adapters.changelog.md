@@ -4,6 +4,10 @@ _Generated from `17-harness-adapters.changelog.json` by `scripts/render-changelo
 The document itself reads as a first version; every change to it is recorded here, newest first,
 each linked to the git change that made it (rule 91).
 
+## Revision 6 · 2026-10-03 · draft — Unit w4-native repair, review round 2 (Astra, VERDICT NO): the native stop and cleanup claim made true for a descendant that leaves the resource owner's membership. No constitution change.
+
+- **§9 native tool rule: the owner's membership is named as observation; every descendant of a native worker is ended through the worker's sandbox instance (its sweeper signals every process of that instance when the worker ends, however it ends, and the launch completes only after the sweep); each call's containment evidence reaches the native result, which lists every launch whose end was not proven.** — Review round 2 finding 1: a descendant that left its group, its parent and the working area escaped the owner's membership, so the stop and cleanup did not reach it, while §9 claimed the whole tree ended and was verified. _(lanes/w4-native-PROGRESS.md (Pipeline repair, round 2); LIVE-PATH-PLAN.md row #414)_
+
 ## Revision 5 · 2026-10-03 · draft — Unit w4-native repair, review round 1 (Astra, VERDICT NO): the native tool rule made true to the repaired executors. No constitution change.
 
 - **§9 native tool rule: every admitted call except a web fetch runs as a sandboxed worker process launched through the host resource owner (memory, process, CPU and handle ceilings, deadline, stop, verified cleanup); a web fetch ends on its deadline or the stop and reads at most its byte limit; a call admitted while the stop was latched is never run.** — Review round 1 findings 1-3: file tools opened admitted paths in the loop's own unsandboxed process (a path swapped into a link after admission escaped it, and a FIFO read blocked the stop), and no memory or process ceiling was attached to native execution. _(lanes/w4-native-PROGRESS.md (Pipeline repair); LIVE-PATH-PLAN.md row #414)_
