@@ -95,7 +95,7 @@
       "stage": "build",
       "artifact": {
         "path": "tests/preview/tool-persist.test.ts",
-        "hash": "sha256:311cae1bdad6d0e960e2417528c00ce9e700cbeb14b10f5485ed7a74d8ddb2e0"
+        "hash": "sha256:384c5ca72c1195fa3bd0c094d5a8d3b3ec88cc2c9a099f8fefc3a07b7a207616"
       }
     },
     {
@@ -103,7 +103,7 @@
       "stage": "build",
       "artifact": {
         "path": "tests/preview/tool-persist.test.ts",
-        "hash": "sha256:311cae1bdad6d0e960e2417528c00ce9e700cbeb14b10f5485ed7a74d8ddb2e0"
+        "hash": "sha256:384c5ca72c1195fa3bd0c094d5a8d3b3ec88cc2c9a099f8fefc3a07b7a207616"
       }
     }
   ],
