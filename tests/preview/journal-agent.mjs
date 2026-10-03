@@ -1409,7 +1409,8 @@ async function main() {
       assertLiveJudgment(judgment, 'preview-subscription');
       if (shared !== null && !await peerHolds()) throw Error('preview: activation stopped');
       const route = modelRoute(id, toolTurn), start = performance.now();
-      const inputRef = judgment === 'answer' && journal.view.turns.get(id)?.prompt === prepared ? `reserve:${id}` : undefined;
+      const inputRef = judgment === 'answer' && journal.view.turns.get(id)?.prompt === prepared
+        ? `${journal.view.turns.get(id)?.promptKind ?? 'reserve'}:${id}` : undefined;
       // Rule 58: the journal occurrence is the operation id itself (turn, operation or summary).
       const base = { id, judgment, route: 'preview-subscription', model: required(options, 'model'), input: prepared, occurrence: id,
         ...(inputRef === undefined ? {} : { inputRef }) };

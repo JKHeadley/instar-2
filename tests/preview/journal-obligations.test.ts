@@ -6,7 +6,8 @@ import { spawnSync } from 'node:child_process';
 import { join } from 'node:path';
 import { createJournalWorker, openPreviewJournal, openBlockers, openDirectives, declaredObligations, dueObligationWork, obligationSchedule,
   LOOP_REVISIT_MS, BLOCKER_RECHECK_MAX_MS, DIRECTIVE_SHARE, OBLIGATION_WORK_QUESTION, OBLIGATION_WORK_QUESTION_TOOLS, previewCapabilities,
-  TOOL_ATTEMPTS_MEANING, TOOL_ATTEMPTS_PARTIAL_MEANING, TOOL_ATTEMPTS_REVIEWED } from './journal-test-worker.js';
+  TOOL_ATTEMPTS_MEANING, TOOL_ATTEMPTS_PARTIAL_MEANING, TOOL_ATTEMPTS_REVIEWED, governingConstraints, OBLIGATION_DECISION,
+  OBLIGATION_DECISION_TOOLS } from './journal-test-worker.js';
 // @ts-expect-error The runner side stays plain JavaScript.
 import { runToolTurn, toolPacketFits, toolTurnFits } from './tool-turn.mjs';
 import { SUBSCRIPTION_TOOL_LIMITS } from '../../src/assembly/production-provider.js';
@@ -992,10 +993,13 @@ it('names tools in the packet exactly when its dispatch, after the base call is 
   }
 });
 
-it('re-reads the tool route for a format re-ask after a tool turn, so its packet and the review name the route its call actually took (review round 3)', async () => {
-  // Through the real worker and the real tool turn: the first call runs with tools and returns a malformed Decision;
-  // the re-ask has room for tools at a cap of 16 calls and not at 10, where it answers text-only.
-  for (const cap of [10, 16]) {
+it('re-reads the tool route for a format re-ask or timeout replacement after a tool turn, so its packet, the review and the revision read the route its call actually took (review rounds 3, 4)', async () => {
+  // Through the real worker, the shipped envelope, the real tool turn and the contextual reviewer's input: the first call
+  // runs with tools and returns a malformed Decision (or times out); the second call has room for tools at the larger
+  // cap and not at the smaller, where it answers text-only. The packet the review and revision read is that second one.
+  const timedOut = (JSON.parse(readFileSync(join(import.meta.dirname, 'fixtures/lostanswer-live-2026-10-02.json'), 'utf8')) as
+    { lostFirstCall: { callOutcomes: Record<string, unknown>[] } }).lostFirstCall.callOutcomes[0]!;
+  for (const mode of ['format-retry', 'answer-replace'] as const) for (const cap of [12, 18]) {
     const root = mkdtempSync(join(tmpdir(), 'selfdesc-retry-'));
     const now = 1790000000000;
     const journal = openPreviewJournal(join(root, 'journal.encrypted'), new Uint8Array(32).fill(23), {
@@ -1003,30 +1007,56 @@ it('re-reads the tool route for a format re-ask after a tool turn, so its packet
       configurationDigest: 'sha256:offline', expires: 9999999999999, maxCalls: cap,
       maxReplies: 10, maxTurns: 10, maxBytes: 32768, cursor: 0 });
     const seen: { packet: string; actual: string }[] = [];
+    const reviews: Record<string, any>[] = [];
+    type Packet = { capabilities: object; governingConstraints: object; obligationDecision: string };
+    const packetOf = (prompt: string) => (JSON.parse(JSON.parse(prompt).messages
+      .find((m: { role: string }) => m.role === 'context').content) as { packet: Packet }).packet;
     try {
       const worker = createJournalWorker(journal, {
-        now: () => now, stopped: () => false, timeZone: 'UTC', prepareModel: input => input.context,
+        now: () => now, stopped: () => false, timeZone: 'UTC',
+        prepareModel: input => prepareJournalEnvelope(input, 'claude-sonnet-5', 'grant:preview', now, 32768),
+        replyCheck: { elapsedMs: () => 0, jev: async () => { throw Error('offline: exercise the contextual review'); },
+          escalate: async (text, id, originalPrompt, rules) => {
+            reviews.push(JSON.parse(replyReviewContext(originalPrompt!, text, rules, declaredObligations(journal.view, id, now))));
+            return { verdict: 'pass', ruleIds: [], confidence: null, latencyMs: 0 };
+          } },
         toolRoute: () => toolPacketFits(journal.view),
         model: async input => {
           let actual = '';
+          const first = seen.length === 0;
           const result = await runToolTurn({ journal, root, id: input.id, prepared: input.prepared,
             promptLimit: 32768, deniedRoots: [root], operations: [], now: () => now, redactText: (s: string) => s,
             scratch: (turn: string) => { const vol = join(turn, 'vol'); mkdirSync(vol); return vol; }, detach: () => true,
             fallback: async () => { actual = 'none'; return { result: 'A short answer.' }; },
-            invoke: async () => { actual = 'as listed'; return seen.length === 0 ? { state: 'complete', failureClass: 'malformed' } : 'A short answer.'; } });
-          seen.push({ packet: (JSON.parse(input.context) as { capabilities: { externalTools: string } }).capabilities.externalTools, actual });
+            invoke: async () => { actual = 'as listed'; return first && mode === 'format-retry' ? { state: 'complete', failureClass: 'malformed' } : 'A short answer.'; } });
+          seen.push({ packet: (JSON.parse(input.context) as Packet & { capabilities: { externalTools: string } }).capabilities.externalTools, actual });
+          if (first && mode === 'answer-replace') {
+            const { id: _id, role, at: _at, ...outcome } = timedOut;
+            journal.append({ kind: 'call-outcome', id: input.id, role, outcome, at: now } as never);
+            return { state: 'uncertain' };
+          }
           return result.result;
         }, send: async () => 1, checkOutbound: () => {} });
       worker.intake([{ update_id: 1, message: { chat: { id: 7654321, type: 'private' }, from: { id: 7654321 },
         date: Math.floor(now / 1000), text: 'What tools can you use now?' } }]);
       await worker.drain();
-      const final = cap === 10 ? 'none' : 'as listed';
+      const tools = cap === 18, final = tools ? 'as listed' : 'none';
       expect(seen).toEqual([{ packet: 'as listed', actual: 'as listed' }, { packet: final, actual: final }]);
-      expect(declaredObligations(journal.view, journal.view.order[0]!.id, now).capabilities.externalTools).toBe(final);
-      // Replay keeps the same read.
+      const id = journal.view.order[0]!.id;
+      expect(declaredObligations(journal.view, id, now).capabilities.externalTools).toBe(final);
+      // The contextual review reads the final attempt's packet: capabilities, constraints and instructions agree with
+      // the declaration on both routes; no earlier-route entry survives beside it.
+      expect(reviews).toHaveLength(1);
+      expect(reviews[0]!.capabilities).toEqual(previewCapabilities(tools));
+      expect(reviews[0]!.governingConstraints).toEqual(governingConstraints(tools));
+      expect(reviews[0]!.obligationDecision).toBe(tools ? OBLIGATION_DECISION_TOOLS : OBLIGATION_DECISION);
+      expect(reviews[0]!.declaredObligations.capabilities.externalTools).toBe(final);
+      // Revision and inspect read the turn's prompt: the final attempt's packet, also after the journal reopens.
+      expect(packetOf(journal.view.turns.get(id)!.prompt!).capabilities).toEqual(previewCapabilities(tools));
       journal.close();
       const reopened = openPreviewJournal(join(root, 'journal.encrypted'), new Uint8Array(32).fill(23));
-      expect(declaredObligations(reopened.view, reopened.view.order[0]!.id, now).capabilities.externalTools).toBe(final);
+      expect(declaredObligations(reopened.view, id, now).capabilities.externalTools).toBe(final);
+      expect(packetOf(reopened.view.turns.get(id)!.prompt!).capabilities).toEqual(previewCapabilities(tools));
       reopened.close();
     } finally { try { journal.close(); } catch { /* closed */ } rmSync(root, { recursive: true, force: true }); }
   }

@@ -962,10 +962,10 @@ export type JournalRecord =
    * the same cap, and the packet the second call saw replaces the first as the turn's prompt and grounding. */
   | { kind: 'lookup'; id: string; words: string[]; found: string[]; prompt?: string; grounding?: ReplyGrounding; packetDropped?: PacketDrop[];
     usage?: ModelUsage; maxInputTokens?: number; maxOutputTokens?: number; at: number }
-  | { kind: 'format-retry'; id: string; role: 'answer' | 'reply-review'; state?: 'complete'; failureClass?: 'malformed'; undecided?: true; usage?: ModelUsage; maxInputTokens?: number; maxOutputTokens?: number; at: number }
+  | { kind: 'format-retry'; id: string; role: 'answer' | 'reply-review'; state?: 'complete'; failureClass?: 'malformed'; undecided?: true; prompt?: string; usage?: ModelUsage; maxInputTokens?: number; maxOutputTokens?: number; at: number }
   /** The one replacement of an answer call that ended at the local timeout (docs/09: a replacement takes separate
    * capacity). The timed-out call stays UNKNOWN and charged; the replacement is reserved under the same cap. */
-  | { kind: 'answer-replace'; id: string; state: 'uncertain'; usage?: ModelUsage; latencyMs?: number; maxInputTokens?: number; maxOutputTokens?: number; at: number }
+  | { kind: 'answer-replace'; id: string; state: 'uncertain'; prompt?: string; usage?: ModelUsage; latencyMs?: number; maxInputTokens?: number; maxOutputTokens?: number; at: number }
   | { kind: 'call-outcome'; id: string; role: 'model' | 'summary' | 'reply-review'; outcome: CallOutcome; at: number }
 
 
@@ -1110,7 +1110,7 @@ export interface Turn { id: string; update: number; text: string; raw: string; a
   toolRouted?: boolean;
   /** Rules 28/29: the session writer verified at intake (operator person or scheduler system). */
   writer?: WriterRecord;
-  reserved: boolean; prompt?: string; recallHits?: number; channelRecallHits?: number; packetDropped?: PacketDrop[]; packetLimit?: number; grounding?: ReplyGrounding; failureClass?: ModelFailureClass; modelState?: 'complete' | 'rejected' | 'uncertain'; noticeDueAt?: number; noticeClass?: 'unknown-answer' | 'too-long-input'; intent?: string; intentBody?: string; sent?: number; sentAt?: number; held?: string; heldSince?: number; heldNoticeIntent?: string; heldNoticeSent?: number; heldNoticeSentAt?: number; memoryPending?: true; memoryUndecided?: true; datedPending?: true;
+  reserved: boolean; prompt?: string; promptKind?: 'reserve' | 'lookup' | 'format-retry' | 'answer-replace'; recallHits?: number; channelRecallHits?: number; packetDropped?: PacketDrop[]; packetLimit?: number; grounding?: ReplyGrounding; failureClass?: ModelFailureClass; modelState?: 'complete' | 'rejected' | 'uncertain'; noticeDueAt?: number; noticeClass?: 'unknown-answer' | 'too-long-input'; intent?: string; intentBody?: string; sent?: number; sentAt?: number; held?: string; heldSince?: number; heldNoticeIntent?: string; heldNoticeSent?: number; heldNoticeSentAt?: number; memoryPending?: true; memoryUndecided?: true; datedPending?: true;
   /** This turn's own answer decided what it withdrew: the keys it cancelled, or none. Rules 57, 93: a
    * recorded decision, including "withdraws none", settles the reminder question this turn opened. */
   reminderDecided?: true; askConflict?: string; lastNamedPerson?: string;
@@ -1603,7 +1603,8 @@ function retainedEvidence(rows: JournalRecord[], view: JournalView): JournalReco
   const holds = new Map<string, Extract<JournalRecord, {kind:'hold'}>>();
   for (const row of rows) {
     if (row.kind === 'hold') { if (open.has(row.id)) holds.set(row.id, row); continue; }
-    if ((row.kind === 'reserve' || row.kind === 'lookup') && row.prompt !== undefined && view.turns.get(row.id)?.prompt === row.prompt) {
+    if ((row.kind === 'reserve' || row.kind === 'lookup' || row.kind === 'format-retry' || row.kind === 'answer-replace')
+      && row.prompt !== undefined && view.turns.get(row.id)?.prompt === row.prompt) {
       // The snapshot turn already keeps the exact answer packet for inspect and audit.
       // The retained reservation still proves the causal ordering of an UNKNOWN call.
       const stored = { ...row }; delete stored.prompt; evidence.push(stored); continue;
@@ -3342,7 +3343,10 @@ function project(view: JournalView, row: JournalRecord, system?: SystemCheck, ad
       reserveTokens(view, `answer:${row.id}`, 'answer', row.maxInputTokens ?? view.limits.maxBytes,
         row.maxOutputTokens ?? subscriptionOutputMaximum);
       turn.answerRetried = true;
+      // Rules 45, 58: a re-ask whose packet was re-read for its route is the attempt review and revision now read.
+      if (row.prompt !== undefined) { turn.prompt = row.prompt; turn.promptKind = 'format-retry'; }
     } else if (row.role === 'reply-review') {
+      if (row.prompt !== undefined) throw Error('preview journal: format retry order or cap');
       if (row.state !== undefined || replyCandidate === undefined || !turn.reviewReserved || turn.reviewRetried
         || turn.reviewState !== undefined && turn.reviewState !== 'complete'
         || turn.replyChecks?.some(item => item.path === 'subscription')) throw Error('preview journal: format retry order or cap');
@@ -3362,7 +3366,9 @@ function project(view: JournalView, row: JournalRecord, system?: SystemCheck, ad
     if (timedOut !== undefined) { view.tokenCurrent.delete(`answer:${row.id}`); view.tokenCurrent.set(`answer-replaced:${row.id}`, timedOut); }
     reserveTokens(view, `answer:${row.id}`, 'answer', row.maxInputTokens ?? view.limits.maxBytes,
       row.maxOutputTokens ?? subscriptionOutputMaximum);
-    turn.answerReplaced = true; view.calls++; return;
+    turn.answerReplaced = true; view.calls++;
+    if (row.prompt !== undefined) { turn.prompt = row.prompt; turn.promptKind = 'answer-replace'; }
+    return;
   }
   if (row.kind === 'lookup') {
     // Rules 55, 75: one lookup per turn, before any outcome or send; its second answer call is a counted, token-reserved
@@ -3380,7 +3386,7 @@ function project(view: JournalView, row: JournalRecord, system?: SystemCheck, ad
     reserveTokens(view, `answer:${row.id}`, 'answer', row.maxInputTokens ?? view.limits.maxBytes,
       row.maxOutputTokens ?? subscriptionOutputMaximum);
     turn.lookup = { words: row.words, found: row.found };
-    if (row.prompt !== undefined) turn.prompt = row.prompt;
+    if (row.prompt !== undefined) { turn.prompt = row.prompt; turn.promptKind = 'lookup'; }
     if (row.grounding) turn.grounding = row.grounding;
     if (row.packetDropped !== undefined) turn.packetDropped = row.packetDropped;
     const hits = promptRecallHits(row.prompt);
@@ -3424,7 +3430,7 @@ function project(view: JournalView, row: JournalRecord, system?: SystemCheck, ad
       if (frontier !== undefined && (!isJournalUpdate(frontier) || frontier >= turn.update)) throw Error('preview journal: compacted grounding order');
     reserveTokens(view, `answer:${row.id}`, 'answer', row.maxInputTokens ?? view.limits.maxBytes,
       row.maxOutputTokens ?? subscriptionOutputMaximum);
-    turn.reserved = true; turn.reservedAt = row.at; if (row.prompt !== undefined) turn.prompt = row.prompt;
+    turn.reserved = true; turn.reservedAt = row.at; if (row.prompt !== undefined) { turn.prompt = row.prompt; turn.promptKind = 'reserve'; }
     if (view.stepCheckBusiness && turn.requestedAction === undefined) view.stepChecks.set(`prepare:${row.id}`, {});
     if (row.grounding) turn.grounding = row.grounding; if (row.packetDropped !== undefined) turn.packetDropped = row.packetDropped; if (row.packetLimit !== undefined) turn.packetLimit = row.packetLimit; const hits = promptRecallHits(row.prompt);
     if (hits) { turn.recallHits = hits.turns; turn.channelRecallHits = hits.channels; }
@@ -6342,7 +6348,7 @@ export function createJournalWorker(journal: ReturnType<typeof openPreviewJourna
             catch { preparable = false; }
             if (!preparable || halted() || journal.view.calls >= journal.view.limits.maxCalls - (ports.replyCheck ? 1 : 0)) return given;
             journal.append({ kind: 'format-retry', id: turn.id, role: 'answer', state: 'complete', failureClass: 'malformed',
-              ...(given.usage ? { usage: given.usage } : {}), maxInputTokens: journal.view.limits.maxBytes,
+              ...(retryPrepared === undefined ? {} : { prompt: retryPrepared }), ...(given.usage ? { usage: given.usage } : {}), maxInputTokens: journal.view.limits.maxBytes,
               maxOutputTokens: subscriptionOutputMaximum, at: ports.now() });
             try { return await ports.model({ question, context: retryContext, id: turn.id,
               ...(retryPrepared === undefined ? {} : { prepared: retryPrepared }) }); }
@@ -6363,6 +6369,7 @@ export function createJournalWorker(journal: ReturnType<typeof openPreviewJourna
               try { replacePrepared = ports.prepareModel?.({ question, context: replaceContext, id: turn.id }); } catch { return given; }
             }
             journal.append({ kind: 'answer-replace', id: turn.id, state: 'uncertain',
+              ...(replacePrepared === undefined || replacePrepared === prepared ? {} : { prompt: replacePrepared }),
               ...('usage' in given && given.usage ? { usage: given.usage } : {}), latencyMs: duration(answerStarted),
               maxInputTokens: journal.view.limits.maxBytes, maxOutputTokens: subscriptionOutputMaximum, at: ports.now() }); gate();
             try { return await ports.model({ question, context: replaceContext, id: turn.id,
