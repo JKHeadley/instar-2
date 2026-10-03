@@ -91,7 +91,8 @@ it.each(['SIGINT','SIGTERM','SIGHUP'])('pauses on %s during synchronous idle pol
   writeFileSync(profile, JSON.stringify(offlineProfile));
   writeFileSync(updates,'[]');
   writeFileSync(provider, `export { SUBSCRIPTION_CONVERSATION_FRAMING, SUBSCRIPTION_PREVIEW_EXPIRY, subscriptionConversationPolicy,
-  validateSubscriptionActivation } from ${JSON.stringify(pathToFileURL(join(process.cwd(),'src/assembly/production-provider.ts')).href)};
+  validateSubscriptionActivation, SUBSCRIPTION_TOOLS_FRAMING, SUBSCRIPTION_TOOLS_SYSTEM_PROMPT,
+  subscriptionToolsPolicy } from ${JSON.stringify(pathToFileURL(join(process.cwd(),'src/assembly/production-provider.ts')).href)};
 ${FIXTURE_DOORWAY}
 ${PER_RULE_PASS}
 export const createClaudeCodeSubscriptionRoute = () => ({kind:'Success',value:{invoke:async prepared => {
@@ -202,7 +203,8 @@ it.each([['echo', 0], ['drop-thread', 1]])('the real launcher answers a topic fr
     {update_id:2,message:{chat:{id:chat,type:'private'},from:{id:operator},text:'What is my sister called?',
       message_thread_id:7,is_topic_message:true}}]));
   writeFileSync(provider, `export { SUBSCRIPTION_CONVERSATION_FRAMING, SUBSCRIPTION_PREVIEW_EXPIRY, subscriptionConversationPolicy,
-  validateSubscriptionActivation } from ${JSON.stringify(pathToFileURL(join(process.cwd(),'src/assembly/production-provider.ts')).href)};
+  validateSubscriptionActivation, SUBSCRIPTION_TOOLS_FRAMING, SUBSCRIPTION_TOOLS_SYSTEM_PROMPT,
+  subscriptionToolsPolicy } from ${JSON.stringify(pathToFileURL(join(process.cwd(),'src/assembly/production-provider.ts')).href)};
 ${FIXTURE_DOORWAY}
 ${PER_RULE_PASS}
 export const createClaudeCodeSubscriptionRoute = () => ({kind:'Success',value:{invoke:async prepared => {
@@ -289,7 +291,8 @@ it.each([
   const chat = Number(world.configuration.chatId), operator = Number(world.configuration.operatorSenderId);
   writeFileSync(updates, JSON.stringify([{update_id:1,message:{chat:{id:chat,type:'private'},from:{id:operator},text:'Remember this.'}}]));
   writeFileSync(provider, `export { SUBSCRIPTION_CONVERSATION_FRAMING, SUBSCRIPTION_PREVIEW_EXPIRY, subscriptionConversationPolicy,
-  validateSubscriptionActivation } from ${JSON.stringify(pathToFileURL(join(process.cwd(),'src/assembly/production-provider.ts')).href)};
+  validateSubscriptionActivation, SUBSCRIPTION_TOOLS_FRAMING, SUBSCRIPTION_TOOLS_SYSTEM_PROMPT,
+  subscriptionToolsPolicy } from ${JSON.stringify(pathToFileURL(join(process.cwd(),'src/assembly/production-provider.ts')).href)};
 ${FIXTURE_DOORWAY}
 ${PER_RULE_PASS}
 const mode = ${JSON.stringify(mode)};

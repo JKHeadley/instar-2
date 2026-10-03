@@ -26,7 +26,8 @@ globalThis.fetch = async (url, init) => {
     Object.keys(JSON.parse(init.body).questions).map(id => [id, { type: 'noul', noul: 0.01 }])) }));
 };
 export { SUBSCRIPTION_CONVERSATION_FRAMING, SUBSCRIPTION_PREVIEW_EXPIRY, subscriptionConversationPolicy,
-  validateSubscriptionActivation } from ${JSON.stringify(pathToFileURL(join(process.cwd(),'src/assembly/production-provider.ts')).href)};
+  validateSubscriptionActivation, SUBSCRIPTION_TOOLS_FRAMING, SUBSCRIPTION_TOOLS_SYSTEM_PROMPT,
+  subscriptionToolsPolicy } from ${JSON.stringify(pathToFileURL(join(process.cwd(),'src/assembly/production-provider.ts')).href)};
 ${FIXTURE_DOORWAY}
 export const createClaudeCodeSubscriptionRoute = () => ({kind:'Success',value:{invoke:async prepared => {
   appendFileSync(${JSON.stringify(prompts)}, JSON.stringify(prepared) + '\\n');
