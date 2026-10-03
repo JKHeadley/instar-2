@@ -27,6 +27,8 @@ import { createSubscriptionProviderIO } from '../../scripts/production-boot-io.m
 import { runToolTurn, scratchMounted } from '../preview/tool-turn.mjs';
 // @ts-expect-error The runner side stays plain JavaScript.
 import { runNativeLoop } from '../preview/native-loop.mjs';
+// @ts-expect-error Physical host JavaScript stays outside pure core.
+import { hostResources } from '../../scripts/resource-owner.mjs';
 
 const LIVE = process.env.INSTAR_NATIVE_LOOP_LIVE_TEST === '1';
 const PROFILE = '/Users/Shared/instar-preview-s2/profile-v2.json';
@@ -81,7 +83,7 @@ async function liveCase(name: string, question: string, options: { operations?: 
       seen.stateDirectory = turn.stateDirectory; seen.workspace = turn.workspace;
       const watcher = options.stopWhen ? setInterval(() => { if (!stop && options.stopWhen!(turn.stateDirectory)) { stop = true; seen.stoppedAt = performance.now(); } }, 20) : undefined;
       try {
-        return await runNativeLoop({ turn, prepared, promptLimit: 32768, stopped: () => stop,
+        return await runNativeLoop({ turn, prepared, promptLimit: 32768, stopped: () => stop, resources: hostResources,
           step: async (envelope: string, index: number) => {
             const begun = performance.now();
             const result = await route.invoke(envelope, { operation: `${id}#native-${String(index)}`, deadline: Date.now() + policy.timeout + 30000,

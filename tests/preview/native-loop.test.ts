@@ -3,12 +3,14 @@
 // hook executable, call slots and record a harness tool turn uses; admitted calls run inside the turn's workspace and the shell
 // runs under the sandbox; the loop runs as runToolTurn's invoke, so the call reservation, journaled trace and consistency check
 // are the tool turn's own. Both sides of each decision: admitted and refused calls, an answer and a request, the step cap and
-// one step short of it, a stop, a failed step, and the shell's boundary. Recorded real model outputs replay through the step
+// one step short of it, a stop, a failed step, and the tools' boundary: a path swapped into a link after admission, a blocking
+// read under a stop, a stopped fetch and a bounded body, and the resource owner's memory and process ceilings. Recorded real model outputs replay through the step
 // parser (Rule 106 / observer #106).
-import { existsSync, mkdirSync, mkdtempSync, readFileSync, realpathSync, rmSync, writeFileSync } from 'node:fs';
+import { execFileSync } from 'node:child_process';
+import { existsSync, lstatSync, mkdirSync, mkdtempSync, readFileSync, realpathSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
-import { afterEach, describe, expect, it } from 'vitest';
+import { afterEach, beforeAll, describe, expect, it } from 'vitest';
 import { openPreviewJournal } from './journal.js';
 import { NATIVE_TOOL_LIMITS, NATIVE_TOOL_NAMES, SUBSCRIPTION_CONVERSATION_SYSTEM_PROMPT, SUBSCRIPTION_NATIVE_FRAMING,
   SUBSCRIPTION_NATIVE_SYSTEM_PROMPT, SUBSCRIPTION_TOOL_LIMITS, subscriptionConversationPolicy, subscriptionNativePolicy,
@@ -19,7 +21,13 @@ import { conclusionText, parseModelJson } from './model-json.js';
 // @ts-expect-error The runner side stays plain JavaScript.
 import { prepareToolTurn, readToolTrace, runToolTurn } from './tool-turn.mjs';
 // @ts-expect-error The runner side stays plain JavaScript.
-import { NATIVE_STEPS_ROLE, nativeShellProfile, nativeStepEnvelope, parseNativeStep, runHook, runNativeLoop } from './native-loop.mjs';
+import { NATIVE_EXECUTION, NATIVE_STEPS_ROLE, nativeShellProfile, nativeStepEnvelope, parseNativeStep, runHook, runNativeLoop } from './native-loop.mjs';
+// @ts-expect-error Physical host JavaScript stays outside pure core.
+import { createResourceOwner, RESOURCE_CEILINGS } from '../../scripts/resource-owner.mjs';
+
+type Owner = { execute: (input: unknown, work?: string) => Promise<unknown>; attach: (options: object) => Promise<unknown> };
+let owner: Owner;
+beforeAll(async () => { owner = createResourceOwner(); await owner.attach({}); });
 
 const key = new Uint8Array(32).fill(9);
 const roots: string[] = [];
@@ -43,18 +51,18 @@ const admission = (stateDirectory: string) => readFileSync(join(stateDirectory, 
 /** One native turn through runToolTurn: the scripted steps answer in order; returns what the loop, journal and hook recorded. */
 async function nativeTurn(script: Step[] | ((envelope: string, index: number) => Step | Promise<Step>), options: {
   operations?: readonly string[]; maxSteps?: number; stopped?: () => boolean; setup?: (workspace: string) => void;
-  fetch?: typeof fetch; maxCalls?: number } = {}) {
+  fetch?: typeof fetch; maxCalls?: number; resources?: Owner; hook?: (turn: { hook: { node: string; script: string } }) => { node: string; script: string } } = {}) {
   const root = dir(), journal = journalAt(root, options.maxCalls), id = 'telegram:12345678:update:7';
   const envelopes: string[] = [];
   let stateDirectory = '', workspace = '';
   const outcome = await runToolTurn({ journal, root, id, prepared: PREPARED, promptLimit: 32768, deniedRoots: [root],
     operations: options.operations ?? SINGLE_MACHINE_PROFILE.operations, now: () => 1, redactText: (text: string) => text,
     fallback: async () => ({ result: 'fallback' }), scratch: plainScratch, detach: keepDetached,
-    invoke: async (turn: { stateDirectory: string; workspace: string }) => {
+    invoke: async (turn: { stateDirectory: string; workspace: string; hook: { node: string; script: string } }) => {
       stateDirectory = turn.stateDirectory; workspace = turn.workspace;
       options.setup?.(turn.workspace);
-      return runNativeLoop({ turn, prepared: PREPARED, promptLimit: 32768, stopped: options.stopped ?? (() => false),
-        maxSteps: options.maxSteps, fetch: options.fetch,
+      return runNativeLoop({ turn: options.hook ? { ...turn, hook: options.hook(turn) } : turn, prepared: PREPARED, promptLimit: 32768,
+        stopped: options.stopped ?? (() => false), maxSteps: options.maxSteps, fetch: options.fetch, resources: options.resources ?? owner,
         step: async (envelope: string, index: number) => {
           envelopes.push(envelope);
           return typeof script === 'function' ? script(envelope, index) : script[index] ?? answer('done');
@@ -195,11 +203,14 @@ describe('the loop', () => {
     const outside = dir(); writeFileSync(join(outside, 'hidden-name.txt'), 'x');
     const run = await nativeTurn([
       ask(['Write', { file_path: 'src/a.txt', content: 'alpha one\nbeta two\n' }], ['Edit', { file_path: 'src/a.txt', old_string: 'beta', new_string: 'gamma' }],
-        ['Bash', { command: `ln -s ${outside} out` }], ['Glob', { pattern: '**/*.txt' }], ['Glob', { pattern: 'out/*' }],
+        ['Bash', { command: `ln -s ${outside} out && echo linked` }], ['Glob', { pattern: '**/*.txt' }], ['Glob', { pattern: 'out/*' }],
         ['Grep', { pattern: 'gamma', output_mode: 'content' }], ['Edit', { file_path: 'src/a.txt', old_string: 'missing', new_string: 'x' }]),
       answer('ok')]);
     expect(readFileSync(join(run.workspace, 'src/a.txt'), 'utf8')).toBe('alpha one\ngamma two\n');
     const posts = admission(run.stateDirectory).filter(row => row.phase === 'post').map(row => JSON.parse(row.result));
+    // The setup really made the link (the sandboxed shell ran), so the empty listing below is the boundary, not a missing link.
+    expect(posts[2]).toMatchObject({ exitCode: 0, stdout: 'linked\n' });
+    expect(lstatSync(join(run.workspace, 'out')).isSymbolicLink()).toBe(true);
     expect(posts[3]).toEqual({ files: ['src/a.txt'] });
     expect(posts[4]).toEqual({ files: [] });
     expect(posts[5].matches).toBe('src/a.txt:2:gamma two');
@@ -257,13 +268,16 @@ describe('the loop', () => {
 
 describe('the shell boundary', () => {
   it('builds the sandbox from the harness sandbox inputs and refuses an unsafe or overlapping scratch path', () => {
-    const profile = nativeShellProfile('/private/tmp/itt-abc');
+    const profile = nativeShellProfile('/private/tmp/itt-abc', '/usr/local/bin/node');
     expect(profile).toContain('(deny default)');
+    expect(profile).toContain('(literal "/usr/local/bin/node")');
     expect(profile).toContain('(deny network*)');
     expect(profile).toContain('(allow file-write* (subpath "/private/tmp/itt-abc")');
     expect(profile).toContain('(subpath "/usr/bin")');
-    expect(() => nativeShellProfile('/private/tmp/a b')).toThrow(/absolute and plain/u);
-    expect(() => nativeShellProfile('/usr/share/x')).toThrow(/overlaps/u);
+    expect(() => nativeShellProfile('/private/tmp/a b', '/usr/local/bin/node')).toThrow(/absolute and plain/u);
+    expect(() => nativeShellProfile('/usr/share/x', '/usr/local/bin/node')).toThrow(/overlaps/u);
+    expect(() => nativeShellProfile('/private/tmp/itt-abc', '/private/tmp/itt-abc/node')).toThrow(/outside the scratch/u);
+    expect(() => nativeShellProfile('/private/tmp/itt-abc', 'node')).toThrow(/node path/u);
   });
 
   it('a sandboxed command reads and writes only its scratch volume, reaches no network and signals nothing outside', async () => {
@@ -283,5 +297,129 @@ describe('the shell boundary', () => {
     expect(out).not.toMatch(/network: [1-5][0-9][0-9] /u);
     expect(out).toMatch(/signal: .*Operation not permitted/u);
     expect(out).toContain('own-tmp: ok');
+  });
+});
+
+/** A hook that runs the real admission hook unchanged and then, after a `pre` decision, runs `after` (a statement of
+ * JavaScript with `input`, the call's payload, in scope): a deterministic stand-in for a change that lands between the
+ * admission and the tool's execution. */
+function wrappedHook(root: string, after: string) {
+  return (turn: { hook: { node: string; script: string } }) => {
+    const script = join(root, `hook-${String(Math.random()).slice(2)}.mjs`);
+    writeFileSync(script, `import { spawnSync } from 'node:child_process'; import * as fs from 'node:fs';
+const raw = fs.readFileSync(0), input = JSON.parse(String(raw));
+const real = spawnSync(${JSON.stringify(turn.hook.node)}, [${JSON.stringify(turn.hook.script)}, ...process.argv.slice(2)], { input: raw, env: {} });
+process.stdout.write(real.stdout); process.stderr.write(real.stderr);
+if (process.argv[2] === 'pre') { ${after} }
+process.exitCode = real.status ?? 1;`);
+    return { node: turn.hook.node, script };
+  };
+}
+
+describe('the tools\' execution boundary', () => {
+  it('a file the hook admitted that turns into a link out of the workspace before it runs is refused; an ordinary one is read', async () => {
+    const outside = dir(), canary = join(outside, 'canary.txt'); writeFileSync(canary, 'CANARY-NATIVE-0004');
+    const swap = `if (input.tool_input.file_path === 'doc.txt') { const ws = ${JSON.stringify('WS')};
+  fs.rmSync(ws + '/doc.txt'); fs.symlinkSync(${JSON.stringify(canary)}, ws + '/doc.txt'); }`;
+    let workspace = '';
+    const run = await nativeTurn([ask(['Read', { file_path: 'doc.txt' }], ['Read', { file_path: 'plain.txt' }]), answer('read')], {
+      setup: ws => { workspace = ws; writeFileSync(join(ws, 'doc.txt'), 'ordinary'); writeFileSync(join(ws, 'plain.txt'), 'ordinary neighbour'); },
+      hook: turn => wrappedHook(dir(), swap.replace('"WS"', JSON.stringify(workspace)))(turn) });
+    const rows = admission(run.stateDirectory);
+    // The real hook admitted both (the file was ordinary when it decided), and the swap really happened after that decision.
+    expect(rows.filter(row => row.phase === 'pre').map(row => row.decision)).toEqual(['allow', 'allow']);
+    expect(lstatSync(join(run.workspace, 'doc.txt')).isSymbolicLink()).toBe(true);
+    const posts = rows.filter(row => row.phase === 'post').map(row => JSON.parse(row.result));
+    expect(posts[0].error).toMatch(/EPERM|operation not permitted/iu);
+    expect(posts[1]).toEqual({ content: 'ordinary neighbour' });
+    expect(JSON.stringify(rows)).not.toContain('CANARY-NATIVE-0004');
+    expect(JSON.stringify(run.envelopes)).not.toContain('CANARY-NATIVE-0004');
+  });
+
+  it('a stop ends a read blocked on a FIFO: the loop settles at once, the blocked worker is ended, nothing further runs', { timeout: 15000 }, async () => {
+    let stop = false, latchedAt = 0;
+    const run = await nativeTurn((_envelope, index) => {
+      if (index === 0) setTimeout(() => { stop = true; latchedAt = performance.now(); }, 500);
+      return ask(['Read', { file_path: 'pipe' }], ['Write', { file_path: 'after.txt', content: 'x' }]);
+    }, { stopped: () => stop, setup: ws => execFileSync('/usr/bin/mkfifo', [join(ws, 'pipe')]) });
+    const settled = performance.now() - latchedAt;
+    expect(stop).toBe(true);
+    expect(settled).toBeLessThan(3000);
+    expect(run.envelopes).toHaveLength(1);
+    expect(run.outcome.result).toMatchObject({ state: 'uncertain', native: { ended: 'stopped', calls: 1 } });
+    const post = admission(run.stateDirectory).find(row => row.phase === 'post');
+    expect(JSON.parse(post.result)).toMatchObject({ interrupted: 'stopped' });
+    expect(existsSync(join(run.workspace, 'after.txt'))).toBe(false);
+  });
+
+  it('a stop latched while the hook decided: the admitted call is recorded as stopped and never dispatched', async () => {
+    const root = dir(), marker = join(root, 'decided');
+    const run = await nativeTurn([ask(['Write', { file_path: 'never.txt', content: 'x' }]), answer('unreached')],
+      { stopped: () => existsSync(marker), hook: wrappedHook(root, `fs.writeFileSync(${JSON.stringify(marker)}, '1');`) });
+    expect(run.outcome.result).toMatchObject({ state: 'uncertain', native: { ended: 'stopped' } });
+    const rows = admission(run.stateDirectory);
+    expect(rows.find(row => row.phase === 'pre').decision).toBe('allow');
+    expect(JSON.parse(rows.find(row => row.phase === 'post').result)).toEqual({ error: 'stopped before dispatch', interrupted: 'stopped' });
+    expect(existsSync(join(run.workspace, 'never.txt'))).toBe(false);
+    expect(readToolTrace(run.stateDirectory)).toMatchObject({ consistent: true });
+  });
+
+  it('a stop aborts a pending fetch at once, and a body larger than the limit is read only up to it, then cancelled', { timeout: 15000 }, async () => {
+    const network = [...SINGLE_MACHINE_PROFILE.operations, 'tool:network'];
+    let stop = false, aborted = false;
+    const hanging = ((_url: string, init?: RequestInit) => new Promise((_resolve, reject) => {
+      setTimeout(() => { stop = true; }, 200);
+      init?.signal?.addEventListener('abort', () => { aborted = true; reject(init.signal?.reason); });
+    })) as unknown as typeof fetch;
+    const started = performance.now();
+    const stopped = await nativeTurn([ask(['WebFetch', { url: 'https://example.com/slow' }]), answer('unreached')],
+      { operations: network, fetch: hanging, stopped: () => stop });
+    expect(performance.now() - started).toBeLessThan(5000);
+    expect(aborted).toBe(true);
+    expect(stopped.outcome.result).toMatchObject({ native: { ended: 'stopped' } });
+    expect(JSON.parse(admission(stopped.stateDirectory).find(row => row.phase === 'post').result)).toMatchObject({ interrupted: 'stopped' });
+    // An endless body: the reader takes chunks only until the limit, then cancels the stream.
+    let pulled = 0, cancelled = false;
+    const endless = (async () => new Response(new ReadableStream({
+      pull(controller) { pulled += 65536; controller.enqueue(new Uint8Array(65536).fill(97)); },
+      cancel() { cancelled = true; } }), { status: 200, headers: { 'content-type': 'text/plain' } })) as unknown as typeof fetch;
+    const big = await nativeTurn([ask(['WebFetch', { url: 'https://example.com/big' }]), answer('read')], { operations: network, fetch: endless });
+    // The recorded result is clipped for the record; its head carries the status and the truncation.
+    const recorded = String(admission(big.stateDirectory).find(row => row.phase === 'post').result);
+    expect(recorded).toContain(`"status":200,"contentType":"text/plain","truncatedAtBytes":${String(NATIVE_EXECUTION.fetchBodyBytes)}`);
+    expect(cancelled).toBe(true);
+    expect(pulled).toBeLessThanOrEqual(NATIVE_EXECUTION.fetchBodyBytes + 3 * 65536);
+    // An ordinary small body is returned whole.
+    const small = await nativeTurn([ask(['WebFetch', { url: 'https://example.com/small' }]), answer('read')], { operations: network,
+      fetch: (async () => new Response('hello body', { status: 200 })) as unknown as typeof fetch });
+    expect(JSON.parse(admission(small.stateDirectory).find(row => row.phase === 'post').result)).toMatchObject({ status: 200, body: 'hello body' });
+  });
+
+  it('every tool launch passes the host resource owner: its memory and process ceilings end a command over them; ordinary work runs', { timeout: 30000 }, async () => {
+    const small = createResourceOwner({ ...RESOURCE_CEILINGS,
+      launch: { ...RESOURCE_CEILINGS.launch, memoryBytes: 96 * 1024 * 1024, processCount: 6 } }) as Owner;
+    await small.attach({});
+    const run = await nativeTurn([ask(
+      ['Bash', { command: 'echo ordinary' }],
+      ['Bash', { command: '/usr/bin/perl -e \'$x = "a" x 400_000_000; sleep 10\'' }],
+      ['Bash', { command: 'for i in 1 2 3 4 5 6 7 8 9 10; do /bin/sleep 10 & done; wait' }],
+      ['Read', { file_path: 'note.txt' }]), answer('done')],
+      { resources: small, setup: ws => writeFileSync(join(ws, 'note.txt'), 'still fine') });
+    const posts = admission(run.stateDirectory).filter(row => row.phase === 'post').map(row => JSON.parse(row.result));
+    expect(posts[0]).toMatchObject({ stdout: 'ordinary\n', exitCode: 0 });
+    expect(posts[1]).toMatchObject({ exitCode: null, interrupted: 'memory' });
+    // The tree's process count is sampled against the ceiling; the user ID's kernel process limit may refuse forks first.
+    expect(posts[2].interrupted === 'processes' || /fork|Resource temporarily unavailable/iu.test(String(posts[2].stderr))).toBe(true);
+    expect(posts[3]).toEqual({ content: 'still fine' });
+    // Nothing the launches started is left running: the owner verified every launch's cleanup in a complete census.
+    const view = (small as unknown as { snapshot: () => { counters: { cleanupUnresolved: number; completed: number; killed: Record<string, number> };
+      lastLaunch: { cleanup: string } } }).snapshot();
+    expect(view.counters).toMatchObject({ cleanupUnresolved: 0, completed: 4 });
+    expect(view.counters.killed.memory).toBe(1);
+    expect(view.lastLaunch.cleanup).toBe('verified');
+  });
+
+  it('refuses to run without a host resource owner', async () => {
+    await expect(nativeTurn([answer('x')], { resources: {} as Owner })).rejects.toThrow(/no host resource owner/u);
   });
 });

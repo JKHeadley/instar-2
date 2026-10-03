@@ -1,5 +1,21 @@
 [
   {
+    "revision": 5,
+    "date": "2026-10-03",
+    "status": "draft",
+    "cause": {
+      "kind": "draft",
+      "note": "Unit w4-native repair, review round 1 (Astra, VERDICT NO): the native tool rule made true to the repaired executors. No constitution change."
+    },
+    "changes": [
+      {
+        "what": "§9 native tool rule: every admitted call except a web fetch runs as a sandboxed worker process launched through the host resource owner (memory, process, CPU and handle ceilings, deadline, stop, verified cleanup); a web fetch ends on its deadline or the stop and reads at most its byte limit; a call admitted while the stop was latched is never run.",
+        "why": "Review round 1 findings 1-3: file tools opened admitted paths in the loop's own unsandboxed process (a path swapped into a link after admission escaped it, and a FIFO read blocked the stop), and no memory or process ceiling was attached to native execution.",
+        "ref": "lanes/w4-native-PROGRESS.md (Pipeline repair); LIVE-PATH-PLAN.md row #414"
+      }
+    ]
+  },
+  {
     "revision": 4,
     "date": "2026-10-03",
     "status": "draft",

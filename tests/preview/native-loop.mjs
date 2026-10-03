@@ -4,13 +4,15 @@
 // admits every call through the SAME admission hook executable a harness tool turn uses (tool-admission-hook.mjs, its config,
 // call slots and record in the turn's state directory), runs the admitted ones inside the SAME per-turn boundary (the fixed-size
 // scratch volume runToolTurn allocates; the shell under the sandbox below, built from the same read list as the harness sandbox),
-// records each result through the hook's post phase, and asks again. It runs as the `invoke` of runToolTurn (tool-turn.mjs), so
+// records each result through the hook's post phase, and asks again. Every tool but WebFetch runs as a worker process launched
+// through the host resource owner inside that sandbox (runWorker below): the loop's own process never opens a tool path. It runs as the `invoke` of runToolTurn (tool-turn.mjs), so
 // the whole-liability call reservation, the trace journaled after the turn, the consistency check and retention are the tool
 // turn's own. It ends on an answer, the step cap (the reserved liability), the operator's stop, or a failed step.
 // This file owns process, clock and filesystem for the turn's tools only; nothing here widens a grant.
 import { spawn } from 'node:child_process';
-import { existsSync, globSync, lstatSync, mkdirSync, readdirSync, readFileSync, realpathSync, writeFileSync } from 'node:fs';
-import { dirname, join, matchesGlob, relative, resolve, sep } from 'node:path';
+import { existsSync, readFileSync, realpathSync, writeFileSync } from 'node:fs';
+import { join, sep } from 'node:path';
+import { fileURLToPath } from 'node:url';
 import { NATIVE_TOOL_LIMITS, NATIVE_TOOL_NAMES, SUBSCRIPTION_TOOL_RUNTIME_READS } from '../../src/assembly/production-provider.js';
 
 /** The message role that carries the loop's state to the model; the system prompt names it. */
@@ -20,15 +22,18 @@ const within = (path, root) => path === root || path.startsWith(root + sep);
 const clip = (text, chars = NATIVE_TOOL_LIMITS.resultChars) => text.length > chars ? `${text.slice(0, chars)}…[truncated ${text.length - chars} chars]` : text;
 
 /**
- * The shell's sandbox profile (Seatbelt, the mechanism the harness sandbox uses on this platform), from the harness sandbox's
- * own inputs: reads refused from the filesystem root down except the turn's scratch volume and SUBSCRIPTION_TOOL_RUNTIME_READS;
+ * The tools' sandbox profile (Seatbelt, the mechanism the harness sandbox uses on this platform), from the harness sandbox's
+ * own inputs: reads refused from the filesystem root down except the turn's scratch volume, SUBSCRIPTION_TOOL_RUNTIME_READS and
+ * the one node executable the file worker runs on (`node`, the hook's own runtime);
  * writes only to the scratch volume and the null devices; no network, no unix socket, no mach service, no signal or process
  * inspection outside this sandbox. File metadata stays readable (path resolution); contents do not.
  */
-export function nativeShellProfile(scratch) {
-  if (typeof scratch !== 'string' || !SAFE_PATH.test(scratch) || /(?:^|\/)\.\.?(?:\/|$)/u.test(scratch)) throw Error('native loop: scratch path must be absolute and plain');
+export function nativeShellProfile(scratch, node) {
+  const plain = path => typeof path === 'string' && SAFE_PATH.test(path) && !/(?:^|\/)\.\.?(?:\/|$)/u.test(path);
+  if (!plain(scratch)) throw Error('native loop: scratch path must be absolute and plain');
+  if (!plain(node) || within(node, scratch)) throw Error('native loop: node path must be absolute, plain and outside the scratch volume');
   if (SUBSCRIPTION_TOOL_RUNTIME_READS.some(read => within(scratch, read) || within(read, scratch))) throw Error('native loop: scratch overlaps the runtime reads');
-  const reads = [scratch, ...SUBSCRIPTION_TOOL_RUNTIME_READS].map(path => `(subpath "${path}")`).join(' ');
+  const reads = [...[scratch, ...SUBSCRIPTION_TOOL_RUNTIME_READS].map(path => `(subpath "${path}")`), `(literal "${node}")`].join(' ');
   return ['(version 1)', '(deny default)', '(allow process-exec process-fork)', '(allow sysctl-read)',
     '(allow file-read-metadata)', '(allow file-read-data (literal "/"))',
     `(allow file-read* file-map-executable ${reads})`,
@@ -99,120 +104,98 @@ export function runHook(hook, stateDirectory, mode, payload, timeoutMs = 30000) 
   });
 }
 
-/** A file path the hook admitted, resolved against the workspace. */
-const at = (workspace, path) => resolve(workspace, String(path));
-/** Whether a path (following every link) stays in the workspace; results that leave it are dropped, never shown. */
-const stays = (workspace, path) => { try { return within(realpathSync(path), workspace); } catch { return false; } };
+/** The worker every native tool except WebFetch runs as (native-tool-worker.mjs), handed to node as source: the sandbox reads no
+ * repository file. Its V8 heap is capped; the resource owner holds the rest. */
+const WORKER_SOURCE = readFileSync(fileURLToPath(new URL('./native-tool-worker.mjs', import.meta.url)), 'utf8');
+/** Per-call bounds the loop owns: a file tool's deadline, the worker's heap, the worker's output, a fetched body. */
+export const NATIVE_EXECUTION = Object.freeze({ fileMs: 30000, workerHeapMb: 256, workerOutputBytes: 8 * 1024 * 1024,
+  fetchMs: 30000, fetchBodyBytes: 262144 });
 
-/** Bounded walk of regular files under `base` that never follows a link. */
-function walkFiles(base, limit = 5000) {
-  const files = [];
-  const walk = dir => {
-    for (const name of readdirSync(dir).sort()) {
-      if (files.length >= limit) return;
-      const path = join(dir, name), stat = lstatSync(path);
-      if (stat.isDirectory()) walk(path); else if (stat.isFile()) files.push(path);
-    }
-  };
-  walk(base);
-  return files;
+/**
+ * Runs one admitted call as a worker launch through the host resource owner (Rules 55, 60, 61): `sandbox-exec` with the native
+ * profile, then node on the worker source, from the workspace, with an empty environment. The owner admits the launch, holds CPU
+ * time and handles per process and the user ID's process headroom in the kernel, samples the tree's memory and process count
+ * against its ceilings, ends the whole tree on the deadline or the operator's stop (its 25 ms poll), and verifies afterwards that
+ * no member is left, a detached descendant included. The loop's own process never opens a tool path, so neither a path swapped
+ * after admission nor a blocking open can reach it. A launch the owner ended is reported as `interrupted` with its reason.
+ */
+async function runWorker(tool, input, turn, context) {
+  const timeout = tool === 'Bash' ? (Number.isSafeInteger(input.timeout) && input.timeout > 0 ? Math.min(input.timeout, NATIVE_TOOL_LIMITS.bashMs)
+    : NATIVE_TOOL_LIMITS.bashMs) : NATIVE_EXECUTION.fileMs;
+  const launched = await context.resources.execute({ executable: '/usr/bin/sandbox-exec',
+    args: ['-f', context.profilePath, turn.hook.node, `--max-old-space-size=${String(NATIVE_EXECUTION.workerHeapMb)}`, '--input-type=module',
+      '-e', WORKER_SOURCE],
+    cwd: turn.workspace, env: { PATH: '/usr/bin:/bin', HOME: turn.workspace, TMPDIR: join(turn.scratch, 'tmp'), LANG: 'C.UTF-8' },
+    stdin: JSON.stringify({ tool, input, workspace: turn.workspace }), timeout, maxBytes: NATIVE_EXECUTION.workerOutputBytes,
+    stopped: context.stopped }, 'answer');
+  if (launched.limited) {
+    const reason = launched.localLimit ?? (context.stopped() ? 'stopped' : 'ended');
+    if (reason === 'capacity') return { error: 'no launch capacity: the host resource owner refused the call' };
+    return tool === 'Bash' ? { stdout: '', stderr: '', exitCode: null, interrupted: reason } : { error: `tool call ended: ${reason}`, interrupted: reason };
+  }
+  let output;
+  try { output = JSON.parse(launched.stdout); } catch { return { error: `tool worker failed (exit ${String(launched.code)})` }; }
+  if (tool === 'Bash' && output && typeof output.stdout === 'string') return { ...output, stdout: clip(output.stdout), stderr: clip(String(output.stderr ?? '')) };
+  return output;
 }
 
-/** Runs one admitted shell command inside the sandbox, from the workspace, with an empty environment and per-process CPU and
- * handle limits; ends it (its own process group, by its exact pid) on its time bound or the operator's stop. */
-function runShell({ command, workspace, tmp, profilePath, timeoutMs, stopped }) {
-  return new Promise(done => {
-    const child = spawn('/usr/bin/sandbox-exec', ['-f', profilePath, '/bin/sh', '-c', `ulimit -t ${String(Math.ceil(timeoutMs / 1000))}; ulimit -n 256; ${command}`],
-      { cwd: workspace, env: { PATH: '/usr/bin:/bin', HOME: workspace, TMPDIR: tmp, LANG: 'C.UTF-8' }, detached: true, stdio: ['ignore', 'pipe', 'pipe'] });
-    let stdout = '', stderr = '', interrupted = null;
-    const cap = 1024 * 1024;
-    child.stdout.on('data', chunk => { if (stdout.length < cap) stdout += chunk; });
-    child.stderr.on('data', chunk => { if (stderr.length < cap) stderr += chunk; });
-    const end = reason => { if (interrupted) return; interrupted = reason; try { process.kill(-child.pid, 'SIGKILL'); } catch { /* already gone */ } };
-    const timer = setTimeout(() => end('timeout'), timeoutMs);
-    const watch = setInterval(() => { if (stopped()) end('stopped'); }, 25);
-    child.on('error', error => { stderr += String(error.message); });
-    child.on('close', code => { clearTimeout(timer); clearInterval(watch);
-      done({ stdout: clip(stdout), stderr: clip(stderr), exitCode: code, ...(interrupted ? { interrupted } : {}) }); });
-  });
+/** One GET of an admitted URL in the loop's process (the sandbox has no network): ended by its deadline or the operator's stop,
+ * and the body read as a stream up to the byte limit, then cancelled, so no more than the limit is ever held. */
+async function webFetch(input, context) {
+  const url = new URL(String(input.url));
+  if (url.protocol !== 'https:' && url.protocol !== 'http:') return { error: 'only http and https URLs' };
+  const stop = new AbortController();
+  const watch = setInterval(() => { if (context.stopped()) stop.abort(Error('stopped')); }, 25);
+  try {
+    // Redirects are reported, never followed: a followed redirect would reach a host the admission never saw.
+    const response = await context.fetch(url.href, { method: 'GET', redirect: 'manual',
+      signal: AbortSignal.any([AbortSignal.timeout(NATIVE_EXECUTION.fetchMs), stop.signal]) });
+    const chunks = [];
+    let size = 0, truncated = false;
+    if (response.body) {
+      const reader = response.body.getReader();
+      for (;;) {
+        if (stop.signal.aborted) { await reader.cancel().catch(() => {}); return { error: 'stopped', interrupted: 'stopped' }; }
+        const { done, value } = await reader.read();
+        if (done) break;
+        const room = NATIVE_EXECUTION.fetchBodyBytes - size;
+        chunks.push(value.subarray(0, room)); size += Math.min(value.length, room);
+        if (value.length >= room) { truncated = true; await reader.cancel().catch(() => {}); break; }
+      }
+    }
+    const body = Buffer.concat(chunks).toString('utf8');
+    return { status: response.status, contentType: response.headers.get('content-type'),
+      ...(response.headers.get('location') ? { location: response.headers.get('location') } : {}),
+      ...(truncated ? { truncatedAtBytes: NATIVE_EXECUTION.fetchBodyBytes } : {}), body: clip(body, 16384) };
+  } catch (error) {
+    if (stop.signal.aborted) return { error: 'stopped', interrupted: 'stopped' };
+    throw error;
+  } finally { clearInterval(watch); }
 }
 
 /** Executes one admitted call. `input` is the admitted input (the hook may have rewritten it). Errors are results, not throws. */
 async function execute(tool, input, turn, context) {
-  const { workspace } = turn;
   try {
-    if (tool === 'Read') {
-      const lines = readFileSync(at(workspace, input.file_path), 'utf8').split('\n');
-      const offset = Number.isSafeInteger(input.offset) && input.offset > 0 ? input.offset - 1 : 0;
-      const limit = Number.isSafeInteger(input.limit) && input.limit > 0 ? input.limit : 2000;
-      return { content: clip(lines.slice(offset, offset + limit).join('\n'), 65536) };
-    }
-    if (tool === 'Write') {
-      const path = at(workspace, input.file_path);
-      mkdirSync(dirname(path), { recursive: true, mode: 0o700 });
-      writeFileSync(path, String(input.content ?? ''), { mode: 0o600 });
-      return { type: 'written', filePath: relative(workspace, path), bytes: Buffer.byteLength(String(input.content ?? '')) };
-    }
-    if (tool === 'Edit') {
-      const path = at(workspace, input.file_path), text = readFileSync(path, 'utf8');
-      const from = String(input.old_string ?? ''), to = String(input.new_string ?? '');
-      const count = from ? text.split(from).length - 1 : 0;
-      if (count === 0) return { error: 'old_string not found' };
-      if (count > 1 && input.replace_all !== true) return { error: `old_string occurs ${count} times; set replace_all or give more context` };
-      writeFileSync(path, input.replace_all === true ? text.split(from).join(to) : text.replace(from, () => to));
-      return { type: 'edited', filePath: relative(workspace, path), replacements: input.replace_all === true ? count : 1 };
-    }
-    if (tool === 'Glob') {
-      const base = at(workspace, input.path ?? '.');
-      const found = globSync(String(input.pattern ?? ''), { cwd: base }).map(name => join(base, name))
-        .filter(path => stays(workspace, path)).slice(0, 1000).map(path => relative(workspace, path));
-      return { files: found };
-    }
-    if (tool === 'Grep') {
-      let pattern; try { pattern = new RegExp(String(input.pattern ?? '')); } catch (error) { return { error: `invalid pattern: ${error.message}` }; }
-      const base = at(workspace, input.path ?? '.'), mode = input.output_mode ?? 'files_with_matches';
-      const candidates = lstatSync(base).isFile() ? [base] : walkFiles(base);
-      const out = [];
-      for (const path of candidates) {
-        const name = relative(workspace, path);
-        if (typeof input.glob === 'string' && !matchesGlob(relative(base, path) || name, input.glob)) continue;
-        if (lstatSync(path).size > 1024 * 1024) continue;
-        const lines = readFileSync(path, 'utf8').split('\n'), hits = lines.flatMap((line, i) => pattern.test(line) ? [`${name}:${String(i + 1)}:${line}`] : []);
-        if (!hits.length) continue;
-        if (mode === 'content') out.push(...hits); else if (mode === 'count') out.push(`${name}:${String(hits.length)}`); else out.push(name);
-      }
-      return { matches: clip(out.join('\n'), 65536) };
-    }
-    if (tool === 'Bash') {
-      const timeoutMs = Number.isSafeInteger(input.timeout) && input.timeout > 0 ? Math.min(input.timeout, NATIVE_TOOL_LIMITS.bashMs) : NATIVE_TOOL_LIMITS.bashMs;
-      return await runShell({ command: String(input.command), workspace, tmp: join(turn.scratch, 'tmp'), profilePath: context.profilePath,
-        timeoutMs, stopped: context.stopped });
-    }
-    if (tool === 'WebFetch') {
-      const url = new URL(String(input.url));
-      if (url.protocol !== 'https:' && url.protocol !== 'http:') return { error: 'only http and https URLs' };
-      // Redirects are reported, never followed: a followed redirect would reach a host the admission never saw.
-      const response = await context.fetch(url.href, { method: 'GET', redirect: 'manual', signal: AbortSignal.timeout(30000) });
-      const body = (await response.text()).slice(0, 262144);
-      return { status: response.status, contentType: response.headers.get('content-type'),
-        ...(response.headers.get('location') ? { location: response.headers.get('location') } : {}), body: clip(body, 16384) };
-    }
-    return { error: `no native executor for ${tool}` };
+    if (tool === 'WebFetch') return await webFetch(input, context);
+    if (!NATIVE_TOOL_NAMES.includes(tool)) return { error: `no native executor for ${tool}` };
+    return await runWorker(tool, input, turn, context);
   } catch (error) { return { error: clip(String(error?.message ?? error), 512) }; }
 }
 
 /**
  * One native tool turn. `turn` is runToolTurn's allocation ({scratch, workspace, stateDirectory, hook}); `prepared` is the
  * answer's prepared envelope; `step(envelope, index)` makes one model call and returns the caller's answer shape
- * ({state, value?, reason?, failureClass?, usage?}). Returns the last step's result (the answer, or the failure that ended the
+ * ({state, value?, reason?, failureClass?, usage?}); `resources` is the host resource owner (its `execute`) every tool launch
+ * passes. Returns the last step's result (the answer, or the failure that ended the
  * loop), with `native: {models, steps, calls, ended}`. Every call is admitted by the hook before it runs, and recorded by it after.
  */
-export async function runNativeLoop({ turn, prepared, step, stopped, promptLimit, maxSteps = NATIVE_TOOL_LIMITS.maxSteps,
+export async function runNativeLoop({ turn, prepared, step, stopped, promptLimit, resources, maxSteps = NATIVE_TOOL_LIMITS.maxSteps,
   fetch: fetcher = globalThis.fetch }) {
   for (const path of [turn.scratch, turn.workspace, turn.stateDirectory]) if (!existsSync(path)) throw Error('native loop: turn allocation absent');
+  if (typeof resources?.execute !== 'function') throw Error('native loop: no host resource owner to launch tools through');
   const profilePath = join(turn.stateDirectory, 'shell.sb');
-  writeFileSync(profilePath, nativeShellProfile(realpathSync(turn.scratch)), { mode: 0o600 });
-  const steps = [], context = { profilePath, stopped, fetch: fetcher };
+  writeFileSync(profilePath, nativeShellProfile(realpathSync(turn.scratch), realpathSync(turn.hook.node)), { mode: 0o600 });
+  const steps = [], context = { profilePath, stopped, fetch: fetcher, resources };
   let calls = 0, asked = 0;
   // `models`: model calls made (at most maxSteps, the reserved liability); `steps`: those that requested tools; `calls`: tools run.
   const finish = (result, ended) => ({ ...result, native: { models: asked, steps: steps.length, calls, ended } });
@@ -238,7 +221,9 @@ export async function runNativeLoop({ turn, prepared, step, stopped, promptLimit
       record.calls.push(entry);
       if (admission.decision !== 'allow') continue;
       calls++;
-      const output = await execute(call.tool, admission.updatedInput ?? call.input, turn, context);
+      // A stop latched while the hook decided: the admitted call is recorded as stopped and never dispatched.
+      const output = stopped() ? { error: 'stopped before dispatch', interrupted: 'stopped' }
+        : await execute(call.tool, admission.updatedInput ?? call.input, turn, context);
       await runHook(turn.hook, turn.stateDirectory, 'post', { tool_name: call.tool, tool_input: call.input, tool_use_id: id, tool_response: output });
       entry.result = clip(JSON.stringify(output));
     }

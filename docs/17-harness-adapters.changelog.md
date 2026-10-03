@@ -4,6 +4,10 @@ _Generated from `17-harness-adapters.changelog.json` by `scripts/render-changelo
 The document itself reads as a first version; every change to it is recorded here, newest first,
 each linked to the git change that made it (rule 91).
 
+## Revision 5 · 2026-10-03 · draft — Unit w4-native repair, review round 1 (Astra, VERDICT NO): the native tool rule made true to the repaired executors. No constitution change.
+
+- **§9 native tool rule: every admitted call except a web fetch runs as a sandboxed worker process launched through the host resource owner (memory, process, CPU and handle ceilings, deadline, stop, verified cleanup); a web fetch ends on its deadline or the stop and reads at most its byte limit; a call admitted while the stop was latched is never run.** — Review round 1 findings 1-3: file tools opened admitted paths in the loop's own unsandboxed process (a path swapped into a link after admission escaped it, and a FIFO read blocked the stop), and no memory or process ceiling was attached to native execution. _(lanes/w4-native-PROGRESS.md (Pipeline repair); LIVE-PATH-PLAN.md row #414)_
+
 ## Revision 4 · 2026-10-03 · draft — Unit w4-native (plan row #401 follow-on; Rule 115, pillar (b) "any framework or no framework at all"; operator direction Justin, topic 102965 message 121996 and the 10:45 re-grounding): the first slice of Instar's native harness. No constitution change.
 
 - **§9 gains the native tool rule: Instar runs the tool turn's agent loop itself, with each step a text-only model call under its own separately bound native framing; proposed calls pass the same admission hook, call slots and record and run in the same scratch volume, the shell under a sandbox built from the harness sandbox's read list; the loop is the tool turn's own invocation, so reservation, step bound, trace, consistency check and stop are unchanged.** — Rule 115 requires a first-party harness built only on the public core ports; the pillar asks for an agent on any framework or none. Reusing the tool turn and its hook keeps one boundary rather than a second one. _(lanes/w4-native-PROGRESS.md; LIVE-PATH-PLAN.md rows #399, #401, #414)_

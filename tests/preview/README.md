@@ -3611,15 +3611,25 @@ tools, one turn, with a system prompt naming the native tools). The model's answ
 - runs every proposed call through the same `tool-admission-hook.mjs` executable (`pre`, then `post` with the result), so
   admission, the 16 per-turn call slots and the admission record are those of a harness tool turn; a hook that cannot
   decide refuses;
-- executes admitted Read, Write, Edit, Glob and Grep inside the workspace (results that leave it through a link are
-  dropped), Bash under `/usr/bin/sandbox-exec` with a profile built from the harness sandbox's read list (reads only the
-  scratch volume and the runtime system files, writes only the volume, no network, no unix socket or mach service, no
-  signal outside the sandbox), an empty environment and per-process CPU and handle limits, and WebFetch as one GET whose
-  redirect is reported, never followed (admitted only when the installed profile registers `tool:network`);
+- executes each admitted Read, Write, Edit, Glob, Grep and Bash call as one worker (`native-tool-worker.mjs`, handed to
+  node as source) under `/usr/bin/sandbox-exec` with a profile built from the harness sandbox's read list plus the one
+  node executable (reads only the scratch volume and the runtime system files, writes only the volume, no network, no
+  unix socket or mach service, no signal outside the sandbox) and an empty environment, so the kernel checks every open
+  as it happens: a path swapped into a link out of the volume after admission reads as `EPERM`, and a blocking open (a
+  FIFO) blocks only the worker. Results that leave the workspace through a link are dropped;
+- launches every worker through the host resource owner (`scripts/resource-owner.mjs`, the process's own owner in
+  production): per-process CPU time and handles and the user ID's process headroom in the kernel, the tree's memory and
+  process count sampled against the launch ceilings, the deadline (30 s for a file tool, the Bash timeout up to 120 s)
+  and the stop ending the whole tree within its 25 ms poll, and a verified cleanup (a detached descendant included); a
+  launch it ends is reported as `interrupted` with its reason (`stopped`, `timeout`, `memory`, `processes`, `cpu`);
+- runs WebFetch in the loop's process as one GET whose redirect is reported, never followed (admitted only when the
+  installed profile registers `tool:network`), ended by its deadline or the stop, with the body read as a stream up to
+  256 KiB and then cancelled;
 - returns each call, its decision and result to the next step as a quoted `role:tool-steps` message (older results are
   shortened first when the envelope would overflow);
 - ends on the model's answer, the step cap (8 model calls: the liability the turn reserved), a failed or empty step, or
-  the stop (a running command is killed by its own process group within 25 ms).
+  the stop (a running call's tree is ended within 25 ms; a call admitted while the stop was latched is recorded as
+  stopped and never run).
 
 The launcher does not offer it yet: a native activation needs the operator's grant naming the native policy digest.
 

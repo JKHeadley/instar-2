@@ -5,7 +5,7 @@
 import { mkdirSync, mkdtempSync, readFileSync, realpathSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
-import { afterEach, expect, it } from 'vitest';
+import { afterEach, beforeAll, expect, it } from 'vitest';
 import { openPreviewJournal } from './journal.js';
 import { SINGLE_MACHINE_PROFILE } from './activation-authority.js';
 import { conclusionText, parseModelJson } from './model-json.js';
@@ -13,12 +13,16 @@ import { conclusionText, parseModelJson } from './model-json.js';
 import { runToolTurn } from './tool-turn.mjs';
 // @ts-expect-error The runner side stays plain JavaScript.
 import { parseNativeStep, runNativeLoop } from './native-loop.mjs';
+// @ts-expect-error Physical host JavaScript stays outside pure core.
+import { createResourceOwner } from '../../scripts/resource-owner.mjs';
 
 const RECORD = join(__dirname, 'fixtures/native-loop/live-2026-10-03');
 const load = (name: string) => JSON.parse(readFileSync(join(RECORD, `${name}.json`), 'utf8'));
 const roots: string[] = [];
 afterEach(() => roots.splice(0).forEach(root => rmSync(root, { recursive: true, force: true })));
 const plainScratch = (turn: string) => { mkdirSync(join(turn, 'vol'), { mode: 0o700 }); return realpathSync(join(turn, 'vol')); };
+let owner: unknown;
+beforeAll(async () => { owner = createResourceOwner(); await (owner as { attach: (o: object) => Promise<unknown> }).attach({}); });
 const rows = (text: string) => text.trim().split('\n').filter(Boolean).map(line => JSON.parse(line));
 
 async function replay(name: string, stopOnBash = false) {
@@ -34,7 +38,7 @@ async function replay(name: string, stopOnBash = false) {
       state = turn.stateDirectory;
       const watch = stopOnBash ? setInterval(() => { try { if (readFileSync(join(state, 'admission.jsonl'), 'utf8').includes('"tool":"Bash"')) stop = true; } catch { /* not yet */ } }, 20) : undefined;
       try {
-        return await runNativeLoop({ turn, prepared: record.prepared, promptLimit: 32768, stopped: () => stop,
+        return await runNativeLoop({ turn, prepared: record.prepared, promptLimit: 32768, stopped: () => stop, resources: owner,
           step: async (_envelope: string, index: number) => {
             const step = record.steps[index];
             return step.value === null ? { state: step.state } : { state: step.state, value: step.value };
