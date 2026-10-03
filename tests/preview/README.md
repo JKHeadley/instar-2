@@ -284,6 +284,15 @@ Every other field is copied; `predecessor` names the prior reference and file di
 an exhausted limit, an unknown observation field or a record this build refuses writes nothing.
 Outputs are created exclusively and never replace an existing file.
 
+A build also carries its predecessor's reviewed end (`SUBSCRIPTION_PREVIEW_PREDECESSOR_EXPIRY`,
+2026-10-05T20:40:00Z for the 2026-10-12 build). `run` and each model call accept a record ending
+there only while the journal's current end is that same end, so a runner can stay on the current
+record with `--renewal-activation` naming the renewed one, propose the renewal from the phone and
+complete it on the operator's yes. Once the expiry frame lands only the governed end is accepted:
+the running launch ends its cycle (`activation renewed: restart on the renewed record`) before it
+answers anything further, and the next launch must name the renewed record. Any other end is
+refused, and nothing reads an allowed end from the record itself.
+
 When a reviewed build changes only the conversation invocation policy digest and the
 current record already has this build's expiry, the desk can issue a policy successor.
 Use a fresh observation with the same fields above and the **same reference** as the

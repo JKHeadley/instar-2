@@ -1,4 +1,4 @@
-export { SUBSCRIPTION_CONVERSATION_FRAMING, subscriptionConversationPolicy,
+export { SUBSCRIPTION_CONVERSATION_FRAMING, SUBSCRIPTION_PREVIEW_EXPIRY, subscriptionConversationPolicy,
   validateSubscriptionActivation } from '../../src/assembly/production-provider.js';
 import { SUBSCRIPTION_DOORWAYS } from '../../src/assembly/production-provider.js';
 

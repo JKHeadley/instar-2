@@ -1,6 +1,6 @@
 // Isolated live probe only. The loader substitutes this route for the journal
 // launcher; it never calls a provider or exposes the prepared prompt.
-export { SUBSCRIPTION_CONVERSATION_FRAMING, subscriptionConversationPolicy,
+export { SUBSCRIPTION_CONVERSATION_FRAMING, SUBSCRIPTION_PREVIEW_EXPIRY, subscriptionConversationPolicy,
   validateSubscriptionActivation } from '../../src/assembly/production-provider.js';
 import { SUBSCRIPTION_DOORWAYS } from '../../src/assembly/production-provider.js';
 

@@ -1665,7 +1665,7 @@ async function main() {
     const activationBytes = readFileSync(activationPath, 'utf8');
     const activation = JSON.parse(activationBytes), profile = Object.freeze(JSON.parse(readFileSync(required(options, 'login-profile'), 'utf8')));
     active = () => { try { return readFileSync(activationPath, 'utf8') === activationBytes; } catch { return false; } };
-    validateSubscriptionActivation(activation, profile, required(options, 'model'), wallNow(), SUBSCRIPTION_CONVERSATION_FRAMING);
+    validateSubscriptionActivation(activation, profile, required(options, 'model'), wallNow(), SUBSCRIPTION_CONVERSATION_FRAMING, journal.view.expires);
     requireAuthority(options, activation, activationPath, journal.view, wallNow());
     if (!activationMatchesJournal(journal.view, activation)) throw Error('preview: activation differs from journal');
     installationPolicy = installationPolicyOf(options, activation, activationPath, journal.view, wallNow());
@@ -1825,6 +1825,13 @@ async function main() {
       while (!signalled && !workerStop.value && !existsSync(stopPath) && clock.elapsed() < until)
         await delay(Math.min(250, until - clock.elapsed()));
     };
+    // A renewal applied this launch (a chat yes at intake, a review approval in the minimal step) moves the journal's end
+    // past this record, and no model call accepts it after that. The cycle ends before any further model step, so the
+    // waiting turns (the yes included) are answered by the next launch on the renewed record, not refused under this one.
+    const renewedAway = () => {
+      if (activationMatchesJournal(journal.view, activation)) return false;
+      endReason = 'activation renewed: restart on the renewed record'; return true;
+    };
     for (let i = 0; i < cycles && !signalled; i++) {
       if (i > 0) await new Promise(done => setImmediate(done));
       if (signalled || workerStop.value || existsSync(stopPath) || journal.view.stop || !ownerHeld()) break;
@@ -1850,6 +1857,7 @@ async function main() {
       worker.gate(); await worker.minimal();
       // A stop given on the independent surface latches here, before any poll or ordinary pass.
       if (journal.view.stop) break;
+      if (renewedAway()) break;
       // Rules 8, 22, 92, 99: the scheduled consumer of due obligation work, one bounded step per tick,
       // runs after the ordinary drain inside the same background job, so it never blocks the minimal path.
       ordinary(async () => {
@@ -1897,11 +1905,14 @@ async function main() {
         shared.noteIntake(); await shared.sync();
         if (signalled || workerStop.value || existsSync(stopPath) || journal.view.stop || !ownerHeld()) break;
       }
+      // A chat yes applies a renewal at intake: end before any further step (see renewedAway).
+      if (renewedAway()) break;
       // A full held page was preserved and passed: read the rest of the backlog now, so an exact /stop
       // behind it latches before any further processing (Rule 4; bounded by the waiting store).
       if (worker.readAhead() && batch.length >= pollLimit) continue;
       await worker.minimal();
       if (journal.view.stop) break;
+      if (renewedAway()) break;
       // Reminders go out only after a successful poll returned nothing new and no ordinary drain is
       // running: every operator message already waiting (a cancellation included) has been read and
       // settled first. A failed poll, a backlog or a cap leaves them pending.
@@ -1951,7 +1962,7 @@ async function main() {
       return take(doorway.create({ context, credential: secretRef(profile.reference), profile,
         resolveProfile: () => profile, provider: 'anthropic', model: options.model, route: 'preview-subscription',
         disclosure: 'Subscription preview; charge UNKNOWN', activation, framing: SUBSCRIPTION_CONVERSATION_FRAMING,
-        io,
+        journalEnd: () => journal.view.expires, io,
         now: wallNow, active: () => !workerStop.value && !existsSync(stopPath) && active() && !journal.view.stop,
         adapterEvidenceContract: contract,
         ...(journal.view.limits.maxBytes > subscriptionConversationPolicy(options.model).maxPromptBytes

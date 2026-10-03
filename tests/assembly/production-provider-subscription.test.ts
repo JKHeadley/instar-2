@@ -6,7 +6,8 @@ import { afterEach, expect, it } from 'vitest';
 import { canonical, decode } from '../../src/index.js';
 import { createClaudeCodeSubscriptionRoute, subscriptionInvocationPolicy, subscriptionConversationPolicy,
   SUBSCRIPTION_CONVERSATION_FRAMING, SUBSCRIPTION_CONVERSATION_SYSTEM_PROMPT,
-  SUBSCRIPTION_PREVIEW_SYSTEM_PROMPT, SUBSCRIPTION_PREVIEW_EXPIRY, SUBSCRIPTION_THINKING_ENV, subscriptionPolicyFor,
+  SUBSCRIPTION_PREVIEW_SYSTEM_PROMPT, SUBSCRIPTION_PREVIEW_EXPIRY, SUBSCRIPTION_PREVIEW_PREDECESSOR_EXPIRY,
+  SUBSCRIPTION_THINKING_ENV, subscriptionActivationEndAllowed, subscriptionPolicyFor,
   validateSubscriptionActivation } from '../../src/assembly/production-provider.js';
 import type { SubscriptionActivationRecord } from '../../src/assembly/production-provider.js';
 import type { ProviderSubscriptionProfile } from '../../src/assembly/provider-credential-custodian.js';
@@ -316,4 +317,41 @@ for (const change of ['missing', 'changed', 'duplicated']) it(`synthetic CLI ref
   } };
   expect((await value(createClaudeCodeSubscriptionRoute({ ...f.input, io })).invoke('request', f.bounds)).state).toBe('uncertain');
   expect(f.commands().filter(row => row.args.includes('--print'))).toHaveLength(1);
+});
+
+// w3-renewal1012 option (b): a record at the predecessor's reviewed end runs only while the journal's current end is that
+// end, so a runner on it can propose the renewal; the build alone names both ends, and nothing reads an end from the record.
+it('accepts the predecessor end only while the journal is still at it, and the governed end always', () => {
+  expect(SUBSCRIPTION_PREVIEW_PREDECESSOR_EXPIRY).toBe(Date.UTC(2026, 9, 5, 20, 40));
+  expect(SUBSCRIPTION_PREVIEW_EXPIRY - SUBSCRIPTION_PREVIEW_PREDECESSOR_EXPIRY).toBe(7 * 24 * 3600 * 1000);
+  const P = SUBSCRIPTION_PREVIEW_PREDECESSOR_EXPIRY, G = SUBSCRIPTION_PREVIEW_EXPIRY;
+  expect([subscriptionActivationEndAllowed(P, P), subscriptionActivationEndAllowed(P, G), subscriptionActivationEndAllowed(P),
+    subscriptionActivationEndAllowed(G, P), subscriptionActivationEndAllowed(G, G), subscriptionActivationEndAllowed(G)])
+    .toEqual([true, false, false, true, true, true]);
+  // Any other end is refused whatever the journal says, including the journal's own end and the 2026-09-28 end.
+  for (const end of [Date.UTC(2026, 8, 28, 20, 40), P - 1, P + 1, G - 1, G + 1, Date.UTC(2026, 9, 19, 20, 40)])
+    for (const journal of [undefined, P, G, end]) expect(subscriptionActivationEndAllowed(end, journal)).toBe(false);
+  const f = fixture(), { profile, model } = f.input, v5 = { ...f.input.activation, expiresAt: P };
+  expect(() => validateSubscriptionActivation(v5, profile, model, 1000, undefined, P)).not.toThrow();
+  for (const journal of [G, undefined]) expect(() => validateSubscriptionActivation(v5, profile, model, 1000, undefined, journal))
+    .toThrow('subscription activation expired or clock differs');
+  // The predecessor end still expires at itself: the journal's end never extends a record past its own end.
+  expect(() => validateSubscriptionActivation(v5, profile, model, P, undefined, P)).toThrow('expired or clock differs');
+  expect(() => validateSubscriptionActivation({ ...v5, expiresAt: P + 1 }, profile, model, 1000, undefined, P + 1))
+    .toThrow('expired or clock differs');
+});
+
+it('re-reads the journal end at every call: a predecessor-end route stops dispatching once the renewal lands', async () => {
+  const f = fixture(), P = SUBSCRIPTION_PREVIEW_PREDECESSOR_EXPIRY;
+  let journalEnd = P;
+  const input = { ...f.input, activation: { ...f.input.activation, expiresAt: P }, journalEnd: () => journalEnd };
+  expect(createClaudeCodeSubscriptionRoute({ ...f.input, activation: input.activation }).kind).toBe('Refused');
+  const route = value(createClaudeCodeSubscriptionRoute(input));
+  expect((await route.invoke('request', f.bounds)).state).toBe('complete');
+  journalEnd = SUBSCRIPTION_PREVIEW_EXPIRY;                       // the renewal frame applied
+  expect((await route.invoke('request', f.bounds)).state).not.toBe('complete');
+  expect(f.commands().filter(row => row.args.includes('--print'))).toHaveLength(1);
+  expect(createClaudeCodeSubscriptionRoute(input).kind).toBe('Refused');
+  // The renewed record runs on the renewed journal (and the governed end is unaffected by the reader).
+  expect(createClaudeCodeSubscriptionRoute({ ...input, activation: f.input.activation }).kind).toBe('Success');
 });

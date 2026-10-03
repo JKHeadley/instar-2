@@ -25,7 +25,7 @@ globalThis.fetch = async (url, init) => {
   return new Response(JSON.stringify({ model: 'jev-1.13.0', answers: Object.fromEntries(
     Object.keys(JSON.parse(init.body).questions).map(id => [id, { type: 'noul', noul: 0.01 }])) }));
 };
-export { SUBSCRIPTION_CONVERSATION_FRAMING, subscriptionConversationPolicy,
+export { SUBSCRIPTION_CONVERSATION_FRAMING, SUBSCRIPTION_PREVIEW_EXPIRY, subscriptionConversationPolicy,
   validateSubscriptionActivation } from ${JSON.stringify(pathToFileURL(join(process.cwd(),'src/assembly/production-provider.ts')).href)};
 ${FIXTURE_DOORWAY}
 export const createClaudeCodeSubscriptionRoute = () => ({kind:'Success',value:{invoke:async prepared => {
