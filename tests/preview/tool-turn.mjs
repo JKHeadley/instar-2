@@ -108,10 +108,11 @@ export function networkToolReads(execPath = process.execPath, exists = existsSyn
   return { reads, path: reads.includes(bin) ? bin : undefined, developer: reads.includes(developer) ? developer : undefined };
 }
 /** Starts the turn's network checkpoint and records it in the hook's config, so every admitted shell command is pointed at
- * it (tool-admission.mjs toolShellPrefix). Returns the proxy and the part of the turn the provider's sandbox settings need. */
-export async function attachEgress(turn, operations, start = startEgressProxy, tools = networkToolReads()) {
-  const ca = join(turn.scratch, 'egress-ca.pem');
-  const proxy = await start({ stateDirectory: turn.stateDirectory, caPath: ca, operations });
+ * it (tool-admission.mjs toolShellPrefix). Returns the proxy and the part of the turn the provider's sandbox settings need.
+ * `start` stands in for startEgressProxy in tests. */
+export async function attachEgress(turn, operations, start = undefined, tools = networkToolReads()) {
+  const ca = join(turn.scratch, 'egress-ca.pem'), input = { stateDirectory: turn.stateDirectory, caPath: ca, operations };
+  const proxy = start ? await start(input) : await startEgressProxy(input);
   try {
     const configPath = join(turn.stateDirectory, 'config.json');
     const config = JSON.parse(readFileSync(configPath, 'utf8'));
@@ -258,7 +259,7 @@ export const toolChildrenFit = (view, unreserved = 0) => Math.max(0, Math.min(SU
  * ended the turn, so an edge without a result is recorded `cancelled` (else `unknown`).
  */
 export async function runToolTurn({ journal, root, id, prepared, promptLimit, deniedRoots, operations, invoke, fallback, now, redactText,
-  authority = 'unrecorded', mcp = null, stopped = () => false, scratch = attachScratch, detach = detachScratch, egress = startEgressProxy,
+  authority = 'unrecorded', mcp = null, stopped = () => false, scratch = attachScratch, detach = detachScratch, egress = undefined,
   networkTools = networkToolReads }) {
   const extra = SUBSCRIPTION_TOOL_LIMITS.maxTurns - 1;
   const refuse = reason => { journal.append({ kind: 'tool-turn', phase: 'refused', id, reason, at: now() }); return fallback(); };
@@ -274,7 +275,7 @@ export async function runToolTurn({ journal, root, id, prepared, promptLimit, de
   try {
     turn = prepareToolTurn({ root, operation: id, attempt, operations, children, mcp, scratch, authority });
     // The shell's network checkpoint lives exactly as long as the turn: started here, stopped below whatever the outcome.
-    const attached = egress ? await attachEgress(turn, operations, egress, networkTools()) : null;
+    const attached = await attachEgress(turn, operations, egress, networkTools());
     checkpoint = attached?.proxy ?? null;
     result = await invoke({ scratch: turn.scratch, workspace: turn.workspace, stateDirectory: turn.stateDirectory, hook: turn.hook, deniedRoots,
       ...(turn.mcp ? { mcp: turn.mcp } : {}), ...(attached ? { egress: attached.egress } : {}) });
