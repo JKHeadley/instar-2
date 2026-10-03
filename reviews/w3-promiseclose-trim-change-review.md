@@ -15,7 +15,7 @@ Undo and recovery: revert the trim commit, its register replay and this record t
 Multi-machine posture: machine-local; the single preview journal worker. No shared, replicated or leased state.
 Layer below: tests/preview/default-context-floor.test.ts (read; the guard, unchanged); tests/preview/journal.ts PREVIEW_FIXED_PROMPT_BYTES (read; unchanged at 22,959); tests/preview/agent-commitment.ts fulfillmentProposals (read; unchanged); reviews/w3-promiseclose-astra-repair-change-review.md (the repair this trims)
 Bug class: user-facing
-Bug evidence: reproducer=tests/preview/default-context-floor.test.ts; live=tests/preview/fixtures/promise-fulfilment-a5b-2026-10-03.json
+Bug evidence: reproducer=tests/preview/promise-fulfilment-quote.test.ts; live=tests/preview/fixtures/promise-fulfilment-a5b-2026-10-03.json
 Hook bypass: none — no hook-override or bypass flag was passed to git; every commit was a plain git commit.
 Convergence: none
 Decision: promiseclose-trim-to-the-floor | bring the always-sent bytes back to exactly 22,959 by shortening the fulfilment clause and removing text that states no duty, keeping PREVIEW_FIXED_PROMPT_BYTES; not chosen: raising the constant (raises the minimum servable context for every root) or loosening the guard test | reported=/Users/dabombstudio/.instar/agents/echo/.instar/lanes/w3-promiseclose-trim-PROGRESS.md
