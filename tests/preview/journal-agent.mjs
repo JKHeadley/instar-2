@@ -20,7 +20,7 @@ import { admitPreviewHarness, PREVIEW_JOURNAL_HARNESS, PREVIEW_JOURNAL_STALL_COV
 import { UNRECORDED, briefingDigestOf, codeDigestOf, installedCodeOf, installationRows, installationStatusLines, installedUpdateFrom, updateDelivery,
   updatePacketItem } from './installation.js';
 import { projectionDigest, summaryStoppedAt, loopRevisitMs, LOOP_REVISIT_MIN_MS, LOOP_REVISIT_MAX_MS } from './journal.js';
-import { openPreviewJournal as openJournal, createJournalWorker, raiseJournalCaps, renewJournalExpiry, activationMatchesJournal, activePersonMerges, openQuestionCandidates, projectMemoryText, unansweredCue, reportJournalCap, unknownCallCounts, pendingUnknownCalls, replyTimings, reviewUnavailableReleases, claimScopedWithholds, MINIMAL_RESERVE, reserveTurnsUsed, reserveRepliesUsed, openRequests, actionWithdrawn, reminderDue, operatorRequestsReport, retrospectiveCases, openBlockers, openDirectives, declaredObligations, sendOutcomeCounts, sendOutcomeOf, unsentLabel, replyTarget, reminderOutcome, envelopeWriter, PREVIEW_LIVE_LIMITS, unservableContextReason, PREVIEW_JOURNAL_COMPACT_BYTES, activeMemoryConflicts, TOO_LONG_INPUT_NOTICE, TOO_LONG_REPLY_NOTICE , probeTurn, isJournalUpdate, withFormatReminder, concurrentWorkItem, latestOwnedLaunch, meaningIndexStatus, LIMITED_ANSWER_OPERATION, MISSING_INSTALLATION_POLICY } from './journal.js';
+import { openPreviewJournal as openJournal, createJournalWorker, raiseJournalCaps, renewJournalExpiry, activationMatchesJournal, activePersonMerges, openQuestionCandidates, projectMemoryText, unansweredCue, reportJournalCap, unknownCallCounts, pendingUnknownCalls, replyTimings, reviewUnavailableReleases, claimScopedWithholds, MINIMAL_RESERVE, reserveTurnsUsed, reserveRepliesUsed, openRequests, actionWithdrawn, reminderDue, operatorRequestsReport, retrospectiveCases, openBlockers, openDirectives, declaredObligations, sendOutcomeCounts, sendOutcomeOf, unsentLabel, replyTarget, reminderOutcome, envelopeWriter, PREVIEW_LIVE_LIMITS, unservableContextReason, PREVIEW_JOURNAL_COMPACT_BYTES, activeMemoryConflicts, TOO_LONG_INPUT_NOTICE, TOO_LONG_REPLY_NOTICE , probeTurn, isJournalUpdate, retractRefusal, retractRendering, retractCarrier, retractedTurn, liveSummaries, withinOperatorHours, OPERATOR_HOURS, withFormatReminder, concurrentWorkItem, latestOwnedLaunch, meaningIndexStatus, LIMITED_ANSWER_OPERATION, MISSING_INSTALLATION_POLICY } from './journal.js';
 import { createPreviewClock } from './clock.js';
 import { appendRun, heldNotices, heldRepliesToday, memoryHealthLine, readRuns, restartHandoff, selfState, selfStateBrief, selfStateSource, zoneFormatter } from './self-state.js';
 import { JEV_MODEL, jevQuestions, replyReviewContext, replyReviewQuestion, replyReviewRules, parseReplyReviewVerdict, replyReviewDiagnostics, parseJevResponse, replyRevisionQuestion, parseReplyRevision, REVIEW_MALFORMED, REVIEW_FORMAT_REMINDER } from './reply-check.js';
@@ -52,7 +52,7 @@ import { createApprovalSurfaceClient } from './approval-surface-client.mjs';
 import { parseExplicitYesInstallation } from './explicit-yes-installation.js';
 import { createGitHubReviewClient } from './github-review-client.js';
 import { createReviewYesSource } from './review-yes-source.js';
-import { explicitYesStatus, operatorActionSurface, OPERATOR_REQUEST_MAX_MS } from './operator-yes.js';
+import { explicitYesStatus, operatorActionSurface, validRetractUpdates, OPERATOR_REQUEST_MS, OPERATOR_REQUEST_MAX_MS } from './operator-yes.js';
 import { hostResources, HOST_IDENTITY, RESOURCE_CEILINGS } from '../../scripts/resource-owner.mjs';
 import { createHostResourceAllocation } from './six-host-resources.js';
 import { shouldRunScheduledPriority } from '../../src/scheduled/shedding.js';
@@ -375,6 +375,15 @@ const ownedActivity = root => {
 const briefingDigest = (tools = false) => briefingDigestOf([...sourcePacket(path => readFileSync(resolve(process.cwd(), path), 'utf8'),
   SOURCE_PINS, { providerAttempts: 0, expiresAt: 0, tools }).sources.map(source => source.text), ANSWER_INSTRUCTIONS]);
 /** The operator's IANA time zone for "today"; UTC unless given. An unknown zone refuses. */
+/** Plan #389: the desk's current retraction proposal on this root, or none. A malformed file proposes nothing. */
+const readRetractProposal = path => {
+  try {
+    if (!existsSync(path)) return undefined;
+    const saved = JSON.parse(readFileSync(path, 'utf8'));
+    return saved?.version === 1 && validRetractUpdates(saved.updates) && typeof saved.reason === 'string' && Number.isSafeInteger(saved.proposedAt)
+      ? { updates: saved.updates, reason: saved.reason, proposedAt: saved.proposedAt } : undefined;
+  } catch { return undefined; }
+};
 const timeZoneOf = options => { const zone = options['time-zone'] ?? 'America/Los_Angeles'; zoneFormatter(zone); return zone; };
 /** Recall metadata and labels, never static sources or history text. */
 const recallView = packet => ({ historyMode: packet.historyMode, summaryThrough: packet.summary?.through ?? null, summarySourceKind: packet.summary?.sourceKind ?? null,
@@ -569,7 +578,7 @@ async function main() {
   if (options.retrospective !== undefined && !['true', 'false'].includes(options.retrospective)) throw Error('preview: --retrospective must be true or false');
   // On by default: one bounded pass at most hourly, inside the model-attempt cap with a reply reserve.
   const retrospectiveEnabled = options.retrospective !== 'false';
-  if (!['run', 'status', 'stop', 'raise-caps', 'renew-expiry', 'inspect', 'import-store', 'audit', 'export-memory', 'seal-authority', 'record-live-proof', 'check-agreements'].includes(command)) throw Error('preview: unknown command');
+  if (!['run', 'status', 'stop', 'raise-caps', 'renew-expiry', 'inspect', 'import-store', 'audit', 'export-memory', 'seal-authority', 'record-live-proof', 'check-agreements', 'propose-retract'].includes(command)) throw Error('preview: unknown command');
   if (command === 'seal-authority') {
     // The desk's recording step: seals the authority record it decided, under the trial's storage
     // SecretRef, into a new file (never replacing one). Nothing else is read or written.
@@ -584,6 +593,7 @@ async function main() {
   if (command === 'run') mkdirSync(root, { recursive: true, mode: 0o700 });
   if (realpathSync(root) !== root || lstatSync(root).isSymbolicLink()) throw Error('preview: substituted root');
   const stopPath = join(root, 'preview-stop.json');
+  const retractPath = join(root, 'preview-retract-proposal.json');
   const journalPath = join(root, 'journal.encrypted');
   const importPath = join(root, 'preview-import.json');
   const runsPath = join(root, 'runs.jsonl');
@@ -628,6 +638,34 @@ async function main() {
   if (command === 'stop') {
     if (!existsSync(journalPath)) throw Error('preview: journal absent');
     if (!existsSync(stopPath)) durablePreviewWrite(stopPath, { latchedAt: wallNow(), reason: 'operator' });
+    return;
+  }
+  if (command === 'propose-retract') {
+    // Plan #389, Rule 35: the desk proposes the exact test-origin turns; nothing is applied here and nothing is sent from
+    // here. It leaves one proposal on the root for the running runner, which renders it and opens the operator's approval
+    // exactly as a raise is opened, during operator hours only. Only the operator's yes applies it (never chat text).
+    // A refusal names its fixed reason on stdout (never a secret or message text), so the desk sees why nothing was proposed.
+    const refuse = reason => { process.stdout.write(`${JSON.stringify({ refused: reason })}\n`); process.exitCode = 1; };
+    const now = wallNow(), zone = timeZoneOf(options);
+    if (!withinOperatorHours(now, zone))
+      return refuse(`propose-retract runs only during operator hours (${OPERATOR_HOURS.start}:00 to ${OPERATOR_HOURS.end}:00 ${zone})`);
+    if (existsSync(stopPath)) return refuse('stop latched');
+    const lines = readFileSync(required(options, 'updates-file'), 'utf8').split('\n').map(line => line.trim()).filter(line => line && !line.startsWith('#'));
+    if (lines.some(line => !/^\d+(?:\.\d+)?$/u.test(line))) return refuse('--updates-file holds one Telegram update id per line');
+    const updates = lines.map(Number).sort((left, right) => left - right);
+    if (!validRetractUpdates(updates)) return refuse('the update list must be 1 to 1000 distinct ids');
+    const reason = options.reason ?? 'desk and test traffic sent through your account (residue audit, plan #387)';
+    const peek = openPreviewJournal(journalPath, key(), undefined, undefined, true);
+    try {
+      const refusal = retractRefusal(peek.view, updates);
+      if (refusal !== null) return refuse(refusal);
+      const proposal = { updates, reason, proposedAt: now };
+      const rendering = retractRendering(peek.view, { action: 'retract-turns', updates });
+      durablePreviewWrite(retractPath, { version: 1, ...proposal });
+      process.stdout.write(`${JSON.stringify({ proposed: updates.length, first: rendering.first, last: rendering.last, reason,
+        carrier: retractCarrier(proposal), sendBy: new Date(now + OPERATOR_REQUEST_MS).toISOString(),
+        next: 'the running runner renders this exact request and opens the operator approval; nothing changes without their yes' })}\n`);
+    } finally { peek.close(); }
     return;
   }
   if (command === 'audit') {
@@ -707,18 +745,18 @@ async function main() {
       importComplete: importMarker
         ? view.view.genesis.importSource === importMarker.source && view.view.imported
         : view.view.genesis.importSource === undefined || view.view.imported,
-      summaryThrough: view.view.summaries.at(-1)?.through ?? null,
+      summaryThrough: liveSummaries(view.view).at(-1)?.through ?? null,
       lastSummaryFaithfulness: view.view.lastSummaryFailure?.faithfulness
-        && view.view.lastSummaryFailure.at >= (view.view.summaries.at(-1)?.at ?? -1)
+        && view.view.lastSummaryFailure.at >= (liveSummaries(view.view).at(-1)?.at ?? -1)
         ? { through: view.view.lastSummaryFailure.through, ...view.view.lastSummaryFailure.faithfulness,
           reason: view.view.lastSummaryFailure.reason }
-        : view.view.summaries.at(-1)?.faithfulness
-          ? { through: view.view.summaries.at(-1).through, ...view.view.summaries.at(-1).faithfulness }
+        : liveSummaries(view.view).at(-1)?.faithfulness
+          ? { through: liveSummaries(view.view).at(-1).through, ...liveSummaries(view.view).at(-1).faithfulness }
           : null,
       // The recorded reason of a summary failure newer than the last accepted summary (a fixed phrase, never content),
       // so a room that is not compacting says why: e.g. "summary output over the cap".
       lastSummaryFailure: view.view.lastSummaryFailure
-        && view.view.lastSummaryFailure.at >= (view.view.summaries.at(-1)?.at ?? -1)
+        && view.view.lastSummaryFailure.at >= (liveSummaries(view.view).at(-1)?.at ?? -1)
         ? { through: view.view.lastSummaryFailure.through,
           reason: view.view.lastSummaryFailure.reason ?? view.view.lastSummaryFailure.failureClass ?? 'failed' }
         : null,
@@ -855,10 +893,13 @@ async function main() {
       answerProvenance: { unlabeledRecallReplies: view.view.order.filter(t => t.unlabeledRecall
         && t.answer !== undefined && t.intent === `PREVIEW — ${t.answer}`).length },
 
-      summaries: view.view.summaries.map(s => ({ through: s.through, people: s.people ? s.people.length : null,
+      summaries: view.view.summaries.map((s, index) => ({ through: s.through, people: s.people ? s.people.length : null,
         commitments: s.commitments ? s.commitments.length : null, closed: s.closed?.length ?? 0,
-        memory: s.memory ? s.memory.length : null })),
-      commitments: { total: view.view.commitments.length, open: view.view.commitments.length - view.view.closed.size },
+        memory: s.memory ? s.memory.length : null, ...(view.view.retiredSummaries?.includes(index) ? { retired: true } : {}) })),
+      commitments: { total: view.view.commitments.length, open: view.view.commitments.filter((note, id) => !view.view.closed.has(id)
+        && !retractedTurn(view.view, note.source)).length },
+      // Plan #389, Rule 35: how many turns an approved retraction says were never the operator's, and the summaries it retired.
+      ...(view.view.retracted ? { retracted: { turns: view.view.retracted.length, retiredSummaries: view.view.retiredSummaries?.length ?? 0 } } : {}),
       mentionedDates: view.view.mentionedDates.size,
       // The one general capability: what the operator asked for at a later time, answered once when due. An older
       // journal's fixed-text reminder batches count as earlier sends of it.
@@ -881,7 +922,7 @@ async function main() {
 
         quote: redact(item.quote).text, when: redact(item.when).text, zone: item.zone, day: item.day ?? null,
         time: item.time ?? null, repeat: item.repeat ?? null, ambiguity: item.ambiguity ?? null, state: dueState(item, wallNow()) })),
-      datedPending: view.view.order.filter(item => item.datedPending && !view.view.memory.some(change => change.mode !== 'prefer' && change.in !== 'reply' && change.source === item.id))
+      datedPending: view.view.order.filter(item => item.datedPending && !probeTurn(view.view, item) && !view.view.memory.some(change => change.mode !== 'prefer' && change.in !== 'reply' && change.source === item.id))
         .map(item => ({ update: item.update, message: redact(item.text).text.slice(0, 500) })),
       summaryPending: view.view.summaryReservations.size,
 
@@ -915,7 +956,7 @@ async function main() {
         checkMs: Math.round((lastSent.replyChecks ?? []).reduce((total, result) => total + result.latencyMs, 0)) } : null,
       ...(view.view.stepCheckStarted ? { stepChecks: stepCheckView(view.view) } : {}),
       retrospective: retrospectiveView(view.view, wallNow()),
-      people: [...new Set([...view.view.people.filter(note => !view.view.memory.some(change =>
+      people: [...new Set([...view.view.people.filter(note => !retractedTurn(view.view, note.source) && !view.view.memory.some(change =>
         change.in !== 'reply' && note.source === change.source && note.quote.includes(change.quote))).map(note => note.name),
         ...[...view.view.channelItems.values()].map(item => item.from.split('<')[0].trim().split('@')[0].replace(/[._-]+/gu, ' ')).filter(Boolean)])],
       personMerges: activePersonMerges(view.view).map(link => ({ left: view.view.people[link.left]?.name,
@@ -1000,7 +1041,7 @@ async function main() {
         // Rules 11 and 110: the latest summary frontier and which operator updates the meaning index covers.
         // Both write sides count: terms a summary recorded, and terms the index-only pass recorded beside it.
         // Reading the summaries alone under-reported the index by exactly the backlog it had just repaired.
-        summaryFrontier: view.view.summaries.at(-1)?.through ?? null,
+        summaryFrontier: liveSummaries(view.view).at(-1)?.through ?? null,
         meaningIndexed: [...new Set([...view.view.summaries.flatMap(item => item.concepts ?? []), ...view.view.indexConcepts]
           .map(item => view.view.turns.get(item.source)?.update))].filter(update => update !== undefined)
           .sort((left, right) => left - right).slice(-100),
@@ -1009,7 +1050,7 @@ async function main() {
         // still owed an attempt" is answerable (live 2026-10-01: 93 of 100 with no surface naming the seven).
         meaningIndexPending: (status => ({ count: status.pendingUpdates.length, owed: status.owed,
           oldestUpdate: status.pendingUpdates[0] ?? null, updates: status.pendingUpdates.slice(0, 100) }))(
-          meaningIndexStatus(view.view, view.view.summaries.at(-1)?.through ?? -1)),
+          meaningIndexStatus(view.view, liveSummaries(view.view).at(-1)?.through ?? -1)),
         agentPromises: view.view.commitments.flatMap((note, id) => note.agentPromise ? [{ id, quote: note.quote,
           action: note.agentPromise.action, closed: view.view.closed.has(id) }] : []).slice(-10),
         ...(next ? { next } : {}), withheld: withheldView(view.view),
@@ -1524,7 +1565,7 @@ async function main() {
       : number(options['operator-request-hours'], 'operator-request-hours', 1, OPERATOR_REQUEST_MAX_MS / 3_600_000);
     const explicitYes = yesInstallation ? { context, installation: yesInstallation, ...(reviewSource ? { review: reviewSource } : {}),
       ...(requestHours === undefined ? {} : { requestWindowMs: requestHours * 3_600_000 }),
-      renewalActivation: renewalActivationOf(options, () => journal.view) } : null;
+      renewalActivation: renewalActivationOf(options, () => journal.view), retractProposal: () => readRetractProposal(retractPath) } : null;
     worker = createJournalWorker(journal, { ...(approvalSurface ? { approvalSurface } : {}), ...(explicitYes ? { explicitYes } : {}), now: wallNow, elapsed: clock.elapsed, origin, stopped: () => workerStop.value || existsSync(stopPath) || !ownerHeld(), timeZone: timeZoneOf(options),
       sources: turnSources(root, options, journal.view, () => runs, () => launchedAt ?? undefined,
         () => journal.view.order.some(turn => turn.reserved && !reservedAtLaunch.has(turn.id)) ? null : handoff),

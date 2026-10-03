@@ -1,5 +1,6 @@
 // Rules 10, 28, 29, 79, 82, 98; Purpose "the agent never administers its own safeguards"; plan #91.
-// The phone path for the trial's two declared operator actions, raise-caps and renew-expiry:
+// The phone path for the trial's declared operator actions, raise-caps and renew-expiry, and the desk's retract-turns
+// (plan #389, Rule 35: the exact turns the desk sent through the operator's account, proposed only by the host, never the model):
 //   1. the agent proposes ONE exact request (which limits to which values, or which new expiry), bounded by the
 //      governed limits, with its own id, digest and lifetime; the operator never authors it (Rule 82);
 //   2. the operator's explicit yes completes it once. The default source is the verified operator's reply in the
@@ -12,7 +13,7 @@ import type { ExplicitYesInstallation, ExplicitYesRecord, ExplicitYesRequest } f
 import { consumeResult } from '../../src/index.js';
 import type { BoundaryContext, Clock, Hash, Scope, VerifiedPrincipal } from '../../src/index.js';
 
-export type OperatorAction = 'raise-caps' | 'renew-expiry';
+export type OperatorAction = 'raise-caps' | 'renew-expiry' | 'retract-turns';
 export type CapLimits = { maxCalls: number; maxReplies: number; maxTurns: number };
 /** What the model may propose: the action, and for a raise each allowance to raise, as the number the operator named
  * or "step" (the usual governed increase). An omitted `limits` raises the allowance nearest its limit. The runner,
@@ -23,7 +24,9 @@ export type OperatorActionProposal =
   | { action: 'renew-expiry'; expiresAt?: number };
 /** The exact request the operator approves. `base` binds the journal state it was issued against. */
 export interface OperatorRequest { id: string; action: OperatorAction; base: string; digest: Hash;
-  limits?: CapLimits; expires?: number; issuedAt: number; expiresAt: number }
+  limits?: CapLimits; expires?: number;
+  /** retract-turns only: the exact Telegram update ids, ascending, and the desk's stated reason. */
+  updates?: number[]; reason?: string; issuedAt: number; expiresAt: number }
 /** The journal facts a proposal is bounded by. `step` is, per limit, the larger of the trial's own original allowance
  * and its current allowance: one raise may add at most that much, so it at most doubles a limit (at the original
  * allowance, the same step the cap-reached raise uses). Live 2026-10-03 (plan #362): on a root host-raised to 2,500 the
@@ -68,9 +71,32 @@ export function parseOperatorAction(raw: unknown): OperatorActionProposal | unde
 const sha = (value: string) => `sha256:${createHash('sha256').update(value).digest('hex')}` as Hash;
 export const operatorRequestId = (carrier: string, action: OperatorAction, base: string) =>
   createHash('sha256').update(JSON.stringify(['operator-request', carrier, action, base])).digest('hex').slice(0, 16);
-/** The digest an approval binds: the action, its exact values, the base and the trial. Recomputed on replay. */
-export const operatorRequestDigest = (request: Pick<OperatorRequest, 'id' | 'action' | 'base' | 'limits' | 'expires'>, grant: string) =>
-  sha(JSON.stringify([request.id, request.action, request.base, request.limits ?? null, request.expires ?? null, grant]));
+/** The digest an approval binds: the action, its exact values, the base and the trial. Recomputed on replay. A
+ * retraction also binds its exact update list and reason; the two older actions keep their digests unchanged. */
+export const operatorRequestDigest = (request: Pick<OperatorRequest, 'id' | 'action' | 'base' | 'limits' | 'expires' | 'updates' | 'reason'>, grant: string) =>
+  sha(JSON.stringify([request.id, request.action, request.base, request.limits ?? null, request.expires ?? null, grant,
+    ...(request.action === 'retract-turns' ? [request.updates ?? null, request.reason ?? null] : [])]));
+/** Rule 35, plan #389: at most this many turns in one retraction, and the reason's bounds. */
+export const RETRACT_UPDATES_LIMIT = 1000;
+const validReason = (reason: unknown): reason is string => typeof reason === 'string' && reason.trim() === reason
+  && reason.length >= 8 && Buffer.byteLength(reason) <= 300 && !/[\r\n]/u.test(reason);
+/** An exact retraction list: positive finite update ids, strictly ascending (so one list has one digest). */
+export const validRetractUpdates = (updates: unknown): updates is number[] => Array.isArray(updates) && updates.length >= 1
+  && updates.length <= RETRACT_UPDATES_LIMIT && updates.every((value, index) => typeof value === 'number' && Number.isFinite(value)
+    && value > 0 && (index === 0 || value > (updates[index - 1] as number)));
+/** The one exact retraction request for a desk proposal (plan #389). The journal checks the turns themselves; this
+ * bounds the shape, the lifetime and the trial state, exactly as a raise is bounded. */
+export function proposeRetractRequest(state: Pick<ProposalState, 'expires' | 'stopped' | 'grant' | 'base'>, updates: readonly number[],
+  reason: string, carrier: string, now: number): { kind: 'request'; request: OperatorRequest } | { kind: 'refused'; reason: string } {
+  if (state.stopped) return { kind: 'refused', reason: 'this trial is stopped' };
+  if (now >= state.expires) return { kind: 'refused', reason: 'this trial has ended' };
+  if (!validRetractUpdates(updates)) return { kind: 'refused', reason: `the list must hold 1 to ${RETRACT_UPDATES_LIMIT} distinct update ids in ascending order` };
+  if (!validReason(reason)) return { kind: 'refused', reason: 'the reason must be one line of 8 to 300 bytes' };
+  const id = operatorRequestId(carrier, 'retract-turns', state.base);
+  const request = { id, action: 'retract-turns' as const, base: state.base, updates: [...updates], reason,
+    issuedAt: now, expiresAt: Math.min(state.expires, now + OPERATOR_REQUEST_MS) };
+  return { kind: 'request', request: { ...request, digest: operatorRequestDigest(request, state.grant) } };
+}
 
 /** The allowance nearest its limit: what a raise proposed without values grows. */
 const nearest = (state: ProposalState): keyof CapLimits => KEYS.reduce((best, key) =>
@@ -113,10 +139,12 @@ export function proposeOperatorRequest(state: ProposalState, proposal: OperatorA
 /** True only for a request whose shape, id and digest are exactly what this module issues. */
 export function wellFormedRequest(request: unknown, carrier: string, grant: string): request is OperatorRequest {
   const r = request as OperatorRequest;
-  if (!r || typeof r !== 'object' || (r.action !== 'raise-caps' && r.action !== 'renew-expiry') || typeof r.base !== 'string'
+  if (!r || typeof r !== 'object' || (r.action !== 'raise-caps' && r.action !== 'renew-expiry' && r.action !== 'retract-turns') || typeof r.base !== 'string'
     || r.id !== operatorRequestId(carrier, r.action, r.base) || !Number.isSafeInteger(r.issuedAt) || !Number.isSafeInteger(r.expiresAt)
     || r.expiresAt <= r.issuedAt || r.expiresAt - r.issuedAt > OPERATOR_REQUEST_MAX_MS) return false;
-  if (r.action === 'raise-caps' ? r.expires !== undefined || !r.limits || KEYS.some(key => !Number.isSafeInteger(r.limits![key]) || r.limits![key] <= 0)
+  if (r.action === 'retract-turns') { if (r.limits !== undefined || r.expires !== undefined || !validRetractUpdates(r.updates) || !validReason(r.reason)) return false; }
+  else if (r.updates !== undefined || r.reason !== undefined) return false;
+  else if (r.action === 'raise-caps' ? r.expires !== undefined || !r.limits || KEYS.some(key => !Number.isSafeInteger(r.limits![key]) || r.limits![key] <= 0)
     || Object.keys(r.limits).length !== KEYS.length : r.limits !== undefined || !Number.isSafeInteger(r.expires)) return false;
   return r.digest === operatorRequestDigest(r, grant);
 }
@@ -136,33 +164,55 @@ const requestChange = (request: OperatorRequest, current: { limits: CapLimits; e
   ? KEYS.filter(key => request.limits![key] !== current.limits[key]).map(key =>
     `the ${LIMIT_NAMES[key][0]} allowance from ${current.limits[key]} to ${request.limits![key]} (${request.limits![key] - current.limits[key]} more ${LIMIT_NAMES[key][1]})`).join(' and ')
   : `this trial's end from ${minute(current.expires)} to ${minute(request.expires!)}`;
-const requestHead = (request: OperatorRequest, current: { limits: CapLimits; expires: number }) =>
-  `Request ${request.id}: ${request.action === 'raise-caps' ? 'raise' : 'extend'} ${requestChange(request, current)}. `;
+/** What the operator reads of a retraction besides its count (plan #389): the first and last listed turn, each
+ * already redacted and clipped by the journal, which computes this from its own turns on issue and on replay. */
+export interface RetractRendering { first: { update: number; text: string }; last: { update: number; text: string } }
+/** Telegram sends this text as HTML: a quoted message is escaped so it reads as written. */
+const html = (value: string) => value.replaceAll('&', '&amp;').replaceAll('<', '&lt;').replaceAll('>', '&gt;');
+const messages = (count: number) => `${count} message${count === 1 ? '' : 's'}`;
+const retractHead = (request: OperatorRequest, rendering: RetractRendering) => {
+  const count = request.updates!.length, quote = (item: RetractRendering['first']) => `update ${item.update}: "${html(item.text)}"`;
+  return `Request ${request.id}: treat ${messages(count)} sent through your account as test traffic, never as yours `
+    + `(Rule 35: test identity never enters production state). ${count === 1 ? `It is ${quote(rendering.first)}. `
+      : `The first is ${quote(rendering.first)}; the last is ${quote(rendering.last)}. `}Reason given: ${html(request.reason!)}. `
+    + 'Once applied, no memory, standing instruction, commitment, blocker, open question or summary treats them as yours; '
+    + 'the messages themselves stay in the journal. ';
+};
+const requestHead = (request: OperatorRequest, current: { limits: CapLimits; expires: number }, rendering?: RetractRendering) =>
+  request.action === 'retract-turns' ? retractHead(request, rendering!)
+    : `Request ${request.id}: ${request.action === 'raise-caps' ? 'raise' : 'extend'} ${requestChange(request, current)}. `;
 /** The fixed, plain request the operator reads (Rule 82): the exact change, how to approve, and when it lapses. */
-export function operatorRequestText(request: OperatorRequest, current: { limits: CapLimits; expires: number }, zone?: string | null): string {
-  return `${requestHead(request, current)}To approve, reply "yes" as your next message here; anything else changes nothing. `
+export function operatorRequestText(request: OperatorRequest, current: { limits: CapLimits; expires: number }, zone?: string | null,
+  rendering?: RetractRendering): string {
+  return `${requestHead(request, current, rendering)}To approve, reply "yes" as your next message here; anything else changes nothing. `
     + `This request lapses at ${minute(request.expiresAt)}.${zone === null ? '' : operatorLapseDetail(request, current, zone)}`;
 }
 /** The same request where the yes is the operator's GitHub review (P-05): the direct link to approve it (Rule 106). */
-export function operatorReviewRequestText(request: OperatorRequest, current: { limits: CapLimits; expires: number }, link: string, zone?: string | null): string {
-  return `${requestHead(request, current)}To approve, open ${link} and approve the pull request (Review changes, then Approve); `
+export function operatorReviewRequestText(request: OperatorRequest, current: { limits: CapLimits; expires: number }, link: string, zone?: string | null,
+  rendering?: RetractRendering): string {
+  return `${requestHead(request, current, rendering)}To approve, open ${link} and approve the pull request (Review changes, then Approve); `
     + `anything else changes nothing. This request lapses at ${minute(request.expiresAt)}.${zone === null ? '' : operatorLapseDetail(request, current, zone)}`;
 }
 /** The text of the request's own pull request and request file (P-05 route; plan #371). It names only the route that
- * approves it, the pull request's review: on this route a chat yes is not admissible, so it never mentions one. */
-export function operatorReviewBodyText(request: OperatorRequest, current: { limits: CapLimits; expires: number }, zone?: string): string {
-  return `${requestHead(request, current)}To approve, approve this pull request (Review changes, then Approve); anything else `
-    + `changes nothing. This request lapses at ${minute(request.expiresAt)}.${operatorLapseDetail(request, current, zone)}`;
+ * approves it, the pull request's review: on this route a chat yes is not admissible, so it never mentions one. A
+ * retraction's page also lists every update id it names, so the operator can check the exact list it binds. */
+export function operatorReviewBodyText(request: OperatorRequest, current: { limits: CapLimits; expires: number }, zone?: string,
+  rendering?: RetractRendering): string {
+  return `${requestHead(request, current, rendering)}To approve, approve this pull request (Review changes, then Approve); anything else `
+    + `changes nothing. This request lapses at ${minute(request.expiresAt)}.${operatorLapseDetail(request, current, zone)}`
+    + (request.action === 'retract-turns' ? `\n\nThe exact update ids (${request.updates!.length}): ${request.updates!.join(', ')}` : '');
 }
 /** What an applied request set, from the request alone: the facts the approval-report question names. */
 export const operatorRequestTarget = (request: OperatorRequest): string => request.action === 'raise-caps'
   ? `set the ${KEYS.map(key => `${LIMIT_NAMES[key][0]} allowance to ${request.limits![key]}`).join(', the ')}`
-  : `extended this trial's end to ${minute(request.expires!)}`;
+  : request.action === 'retract-turns' ? `stopped treating ${messages(request.updates!.length)} sent through your account as yours`
+    : `extended this trial's end to ${minute(request.expires!)}`;
 /** The fixed line the operator receives when a review-approved request completes. Under an operator acceptance of
  * shared account access it carries the disclosure (Purpose, the approval-account exception), written once. */
 export function operatorResultText(request: OperatorRequest, before: { limits: CapLimits; expires: number }, shared: boolean): string {
-  return `Request ${request.id} is done: ${request.action === 'raise-caps' ? 'raised' : 'extended'} ${requestChange(request, before)}, `
-    + `approved through your GitHub account${shared ? `; note: ${SHARED_ACCESS_NOTE}` : ''}.`;
+  const done = request.action === 'retract-turns' ? `${messages(request.updates!.length)} sent through your account are no longer treated as yours`
+    : `${request.action === 'raise-caps' ? 'raised' : 'extended'} ${requestChange(request, before)}`;
+  return `Request ${request.id} is done: ${done}, approved through your GitHub account${shared ? `; note: ${SHARED_ACCESS_NOTE}` : ''}.`;
 }
 /** The fixed line when a proposal is out of bounds or not proposable: what was asked and why not. */
 export const operatorRefusalText = (action: OperatorAction, reason: string) =>
