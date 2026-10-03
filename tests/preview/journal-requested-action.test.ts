@@ -116,7 +116,9 @@ it('answers a requested action once at its due time as an ordinary turn, stating
     const report = JSON.parse(read.stdout);
     expect(report.requestedActions).toEqual({ requested: 1, cancelled: 0, accepted: 1, refused: 0, unknown: 0, open: [],
       dueTurns: [{ update: 1 + 1 / 1024, requests: 1, state: 'accepted' }] });
-    expect(report.self).toContain('Requested actions Telegram accepted: 1 today, 1 in this trial; 0 requested and not yet sent.');
+    // The status command reads the real wall clock, so its "today" is the day the suite runs, not the simulated
+    // Friday the due turn was sent on; only the trial-wide count is fixed here.
+    expect(report.self).toMatch(/Requested actions Telegram accepted: [01] today, 1 in this trial; 0 requested and not yet sent\./u);
   } finally { rmSync(root, { recursive: true, force: true }); }
 });
 
