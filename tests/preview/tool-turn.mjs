@@ -2,9 +2,9 @@
 // fixed-size scratch volume under the root's allocated `tool-turns` directory, the hook's state directory beside it,
 // the trace read back after the turn, and bounded retention. Workspaces and traces are machine-local by declaration (Rule 113): they
 // are this runner's scratch; the journal row is the durable record, and nothing here is shared or resumed.
-import { execFileSync } from 'node:child_process';
+import { execFileSync, spawn } from 'node:child_process';
 import { createHash, randomBytes } from 'node:crypto';
-import { chmodSync, lstatSync, mkdirSync, readdirSync, readFileSync, readlinkSync, realpathSync, rmdirSync, rmSync, symlinkSync, writeFileSync } from 'node:fs';
+import { chmodSync, existsSync, lstatSync, mkdirSync, readdirSync, readFileSync, readlinkSync, realpathSync, renameSync, rmdirSync, rmSync, symlinkSync, writeFileSync } from 'node:fs';
 import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { SUBSCRIPTION_SUBAGENT_TYPE, SUBSCRIPTION_TOOL_LIMITS, SUBSCRIPTION_TOOL_NAMES, SUBSCRIPTION_TOOLS_SYSTEM_PROMPT } from '../../src/assembly/production-provider.js';
@@ -16,6 +16,65 @@ export const TOOLS_DEFAULT_ACTIVATION = 'tools-activation.json';
 /** Finished turn directories kept for inspection; older ones are removed (the journal keeps their trace). */
 export const TOOL_TURNS_KEPT = 16;
 export const TOOL_HOOK_SCRIPT = join(dirname(fileURLToPath(import.meta.url)), 'tool-admission-hook.mjs');
+/** The turn's shell egress checkpoint (egress-checkpoint.mjs): one process per turn, started before the harness and
+ * stopped with the turn; its authority certificate is written to the scratch volume as EGRESS_CA_FILE. */
+export const EGRESS_SCRIPT = join(dirname(fileURLToPath(import.meta.url)), 'egress-checkpoint.mjs');
+export const EGRESS_CA_FILE = 'egress-ca.pem';
+const SAFE_DIRECTORY = /^\/[A-Za-z0-9_./@-]+$/u;
+/** The toolchain a sandboxed command reads to use the network: the runner's own node installation (node and npm; its
+ * `bin` leads the command's PATH) and the developer tools that hold git. Installed programs only; a path that is not
+ * plain, or the filesystem root, is left out rather than widened around. Returns {reads, bin, developer}. */
+export function toolchainReads({ execPath = process.execPath, real = realpathSync, exists = existsSync } = {}) {
+  const reads = [], bin = [];
+  let developer = null;
+  const add = path => { if (SAFE_DIRECTORY.test(path) && path !== '/' && !reads.includes(path)) { reads.push(path); return true; } return false; };
+  try { const node = dirname(dirname(real(execPath))); if (add(node) && exists(join(node, 'bin'))) bin.push(join(node, 'bin')); } catch { /* no node prefix */ }
+  // macOS's /usr/bin/git is a shim (xcrun) that needs the per-user cache directory and a read through the /var link, both
+  // outside the sandbox; the developer tools' own git needs neither, so their `usr/bin` leads PATH (the command line tools when
+  // installed, else the selected developer directory) and DEVELOPER_DIR names them for any other shim.
+  const candidates = ['/Library/Developer/CommandLineTools'];
+  for (const link of ['/private/var/select/developer_dir', '/private/var/db/xcode_select_link']) try { candidates.push(real(link)); } catch { /* absent */ }
+  for (const dir of candidates) {
+    if (exists(join(dir, 'usr', 'bin', 'git')) && add(dir)) { developer = dir; bin.push(join(dir, 'usr', 'bin')); break; }
+  }
+  return { reads, bin, developer };
+}
+/** Adds the running checkpoint's port to the turn's admission config (write then rename), so every later shell command is
+ * pointed at it by address: inside the sandbox the name `localhost` does not resolve for every client (node's resolver
+ * cannot reach the system's), while 127.0.0.1 needs no resolver. */
+export function recordEgressPort(stateDirectory, port) {
+  const path = join(stateDirectory, 'config.json'), config = JSON.parse(readFileSync(path, 'utf8'));
+  if (!config.egress || !Number.isSafeInteger(port)) throw Error('preview: no egress configuration for the checkpoint port');
+  writeFileSync(`${path}.next`, JSON.stringify({ ...config, egress: { ...config.egress, port } }), { mode: 0o600 });
+  renameSync(`${path}.next`, path);
+}
+/** Starts the turn's egress checkpoint for `stateDirectory` (whose config names its authority certificate's path) and
+ * waits for its port. Returns {port, pid, stop}; `stop` signals exactly that process id, then kills it if it has not
+ * exited within the grace period, and resolves once it has gone. */
+export function startEgressCheckpoint(stateDirectory, { node = process.execPath, readyMs = 15000, graceMs = 2000 } = {}) {
+  return new Promise((resolveStart, rejectStart) => {
+    const child = spawn(node, ['--max-old-space-size=128', EGRESS_SCRIPT, stateDirectory],
+      { stdio: ['ignore', 'pipe', 'pipe'], env: { PATH: '/usr/bin:/bin' } });
+    let out = '', err = '', ready = false;
+    const exited = new Promise(done => child.once('exit', done));
+    const stop = async () => {
+      if (child.exitCode !== null || child.signalCode !== null) return;
+      try { process.kill(child.pid, 'SIGTERM'); } catch { return; }
+      const timer = setTimeout(() => { try { process.kill(child.pid, 'SIGKILL'); } catch { /* gone */ } }, graceMs);
+      await exited; clearTimeout(timer);
+    };
+    const timer = setTimeout(() => { if (!ready) { stop(); rejectStart(Error('egress checkpoint did not start in time')); } }, readyMs);
+    child.stderr.on('data', chunk => { err = (err + chunk).slice(-2048); });
+    child.stdout.on('data', chunk => {
+      out += chunk;
+      if (ready || !out.includes('\n')) return;
+      ready = true; clearTimeout(timer);
+      try { const { port } = JSON.parse(out.slice(0, out.indexOf('\n'))); resolveStart({ port, pid: child.pid, stop }); }
+      catch (error) { stop(); rejectStart(error); }
+    });
+    child.once('exit', code => { if (!ready) { clearTimeout(timer); rejectStart(Error(`egress checkpoint exited (${String(code)}): ${err.trim()}`)); } });
+  });
+}
 /** Answer turns and scheduled obligation work run with tools; reviews, summaries and benchmark reruns never do. */
 export const toolTurnEligible = id => /^telegram:[0-9]+:update:[0-9]+$/u.test(id) || /^obligation:/u.test(id);
 
@@ -69,7 +128,7 @@ export function detachScratch(turn) {
 /** A turn directory's name: its operation's digest and its attempt (the journal's `id#attempt` key, filesystem-safe). */
 export const toolTurnSlug = (operation, attempt) => `${createHash('sha256').update(operation, 'utf8').digest('hex').slice(0, 16)}-${String(attempt)}`;
 export function prepareToolTurn({ root, operation, attempt, operations, children = 0, mcp = null, node = process.execPath, scratch = attachScratch,
-  authority = 'unrecorded' }) {
+  authority = 'unrecorded', egress = null }) {
   const base = join(realpathSync(root), TOOL_TURNS_DIRECTORY);
   mkdirSync(base, { recursive: true, mode: 0o700 });
   const slug = toolTurnSlug(operation, attempt);
@@ -83,7 +142,8 @@ export function prepareToolTurn({ root, operation, attempt, operations, children
   const servers = mcp ? Object.keys(mcp.servers) : [];
   writeFileSync(join(stateDirectory, 'config.json'), JSON.stringify({ workspace, tmp, maxCalls: SUBSCRIPTION_TOOL_LIMITS.maxToolCalls,
     maxWriteBytes: SUBSCRIPTION_TOOL_LIMITS.maxWriteBytes, operations: [...operations],
-    children: { max: children, type: SUBSCRIPTION_SUBAGENT_TYPE }, mcpReads: mcp ? [...mcp.reads] : [], authority }), { mode: 0o600 });
+    children: { max: children, type: SUBSCRIPTION_SUBAGENT_TYPE }, mcpReads: mcp ? [...mcp.reads] : [], authority,
+    ...(egress ? { egress: { ca: join(volume, EGRESS_CA_FILE), bin: [...egress.bin], ...(egress.developer ? { developer: egress.developer } : {}) } } : {}) }), { mode: 0o600 });
   let mcpTurn;
   if (servers.length) {
     writeFileSync(join(stateDirectory, 'mcp.json'), JSON.stringify({ mcpServers: mcp.servers }), { mode: 0o600 });
@@ -160,8 +220,15 @@ export function pruneToolTurns(root, keep = TOOL_TURNS_KEPT, detach = detachScra
 
 /** The journal row recording a turn's trace (its admitted calls and Rule 114 child edges). `ended` is the state of an
  * edge with no returned result: `cancelled` when the operator's stop or a withdrawal ended it, else `unknown`. */
-function traceRow({ id, attempt, trace, authority, ended, redactText, workspace, at }) {
+/** Shell network requests a trace row keeps (the rest are counted). */
+export const EGRESS_KEPT = 64;
+function traceRow({ id, attempt, trace, authority, ended, redactText, workspace, at, network = null }) {
+  const egress = trace.egress ?? [];
   return { kind: 'tool-turn', phase: 'trace', id, attempt, consistent: trace.consistent,
+    // Rule 41: every shell network request the checkpoint decided, its decision and outcome (`network` says whether the
+    // checkpoint ran: `checkpoint`, `none`, or `unavailable: <reason>` when the shell ran offline).
+    ...(network !== null ? { network, egress: egress.slice(0, EGRESS_KEPT).map(row => ({ ...row, url: redactText(row.url) })),
+      egressOmitted: Math.max(0, egress.length - EGRESS_KEPT), ...(trace.egressErrors ? { egressErrors: trace.egressErrors } : {}) } : {}),
     calls: trace.calls.slice(0, 64).map(call => ({ ...call, input: redactText(call.input),
       result: call.result === null ? null : redactText(call.result) })),
     // `parent` is the turn that owns the edge and its reservation; `parentAgent` the subagent that started it (null: the turn).
@@ -189,7 +256,7 @@ export function reconcileToolTurns({ journal, root, redactText, now }) {
     try { config = JSON.parse(readFileSync(join(stateDirectory, 'config.json'), 'utf8')); } catch { continue; }
     const authority = typeof config?.authority === 'string' && config.authority ? config.authority : 'unrecorded';
     journal.append(traceRow({ id, attempt, trace: readToolTrace(stateDirectory), authority, ended: 'unknown', redactText,
-      workspace: null, at: now() }));
+      workspace: null, at: now(), network: 'interrupted' }));
     closed.push(key);
   }
   return closed;
@@ -225,7 +292,8 @@ export const toolChildrenFit = (view, unreserved = 0) => Math.max(0, Math.min(SU
  * ended the turn, so an edge without a result is recorded `cancelled` (else `unknown`).
  */
 export async function runToolTurn({ journal, root, id, prepared, promptLimit, deniedRoots, operations, invoke, fallback, now, redactText,
-  authority = 'unrecorded', mcp = null, stopped = () => false, scratch = attachScratch, detach = detachScratch }) {
+  authority = 'unrecorded', mcp = null, stopped = () => false, scratch = attachScratch, detach = detachScratch,
+  egress = startEgressCheckpoint, toolchain = toolchainReads }) {
   const extra = SUBSCRIPTION_TOOL_LIMITS.maxTurns - 1;
   const refuse = reason => { journal.append({ kind: 'tool-turn', phase: 'refused', id, reason, at: now() }); return fallback(); };
   if (!toolTurnFits(journal.view)) return refuse('call cap');
@@ -236,15 +304,24 @@ export async function runToolTurn({ journal, root, id, prepared, promptLimit, de
   journal.append({ kind: 'tool-turn', phase: 'reserved', id, attempt, calls: extra + children * SUBSCRIPTION_TOOL_LIMITS.childMaxTurns,
     delegation: { children, turnsEach: SUBSCRIPTION_TOOL_LIMITS.childMaxTurns, type: SUBSCRIPTION_SUBAGENT_TYPE, authority },
     ...(mcp ? { mcp: { servers: Object.keys(mcp.servers), reads: mcp.reads.length, digest: mcp.digest } } : {}), at: now() });
-  let turn = null, result, failure = null;
+  let turn = null, result, failure = null, checkpoint = null, network = 'none';
   try {
-    turn = prepareToolTurn({ root, operation: id, attempt, operations, children, mcp, scratch, authority });
+    // The shell's network: one egress checkpoint for this turn. If it cannot start, the turn runs with the shell offline
+    // (the sandbox then reaches no address at all), and the trace says so.
+    const tools = egress ? toolchain() : null;
+    turn = prepareToolTurn({ root, operation: id, attempt, operations, children, mcp, scratch, authority, egress: tools });
+    if (egress) {
+      try { checkpoint = await egress(turn.stateDirectory); recordEgressPort(turn.stateDirectory, checkpoint.port); network = 'checkpoint'; }
+      catch (error) { network = `unavailable: ${String(error?.message ?? error).slice(0, 256)}`; }
+    }
     result = await invoke({ scratch: turn.scratch, workspace: turn.workspace, stateDirectory: turn.stateDirectory, hook: turn.hook, deniedRoots,
-      ...(turn.mcp ? { mcp: turn.mcp } : {}) });
+      ...(turn.mcp ? { mcp: turn.mcp } : {}), ...(checkpoint ? { egress: { port: checkpoint.port, reads: tools.reads } } : {}) });
   } catch (error) { failure = error; }
-  const trace = turn ? readToolTrace(turn.stateDirectory) : { calls: [], children: [], consistent: true };
+  // The checkpoint ends with the turn: no shell request can start after the harness has gone.
+  if (checkpoint) await checkpoint.stop();
+  const trace = turn ? readToolTrace(turn.stateDirectory) : { calls: [], children: [], egress: [], consistent: true };
   const ended = stopped() ? 'cancelled' : 'unknown';
-  journal.append(traceRow({ id, attempt, trace, authority, ended, redactText, workspace: turn ? turn.workspace : null, at: now() }));
+  journal.append(traceRow({ id, attempt, trace, authority, ended, redactText, workspace: turn ? turn.workspace : null, at: now(), network }));
   // The workspace is scratch: nothing reads it after the turn, so its volume goes now (a failed unmount is retried by prune).
   if (turn) detach(turn.directory);
   pruneToolTurns(root, TOOL_TURNS_KEPT, detach, openToolTurnSlugs(journal.view));
@@ -259,12 +336,13 @@ export function toolStatusLines(view, enabled, off = null) {
   if (!enabled) return off ? [`Tools: off (${off}); answers are text only.`] : [];
   const stats = view.toolTurns ?? { invocations: 0, reservedCalls: 0, refusedCap: 0, toolCalls: 0, toolRefusals: 0, inconsistent: 0, open: [] };
   return [`Tools: the harness's full built-in set (${SUBSCRIPTION_TOOL_NAMES.length} tools, each call decided at the admission hook) and the `
-      + 'root\'s MCP servers, in a private per-turn workspace; shell sandboxed without network; web reads only; subagents may delegate '
-      + 'within the turn\'s budget; consequential effects go through the effect doorway.',
+      + 'root\'s MCP servers, in a private per-turn workspace; shell sandboxed, its network through a per-turn checkpoint (public reads '
+      + 'only); web reads only; subagents may delegate within the turn\'s budget; consequential effects go through the effect doorway.',
     `Tool turns: ${stats.invocations} run (${stats.reservedCalls} model attempts reserved for them), ${stats.toolCalls} tool calls admitted, `
       + `${stats.toolRefusals} refused, ${stats.refusedCap} turns answered without tools because the call allowance was short`
       + `${stats.children ? `, ${stats.children.started} subagents started (${stats.children.returned} returned, ${stats.children.cancelled} cancelled, ${stats.children.unknown} unknown)` : ''}`
       + `${stats.refusedPrompt ? `, ${stats.refusedPrompt} because the packet left no room for the tool instructions` : ''}`
+      + `${stats.egress ? `, ${stats.egress.admitted} shell network reads admitted, ${stats.egress.refused} shell network requests refused` : ''}`
       + `${stats.inconsistent ? `, ${stats.inconsistent} turns refused because a tool ran without its admission record` : ''}`
       + `${stats.open?.length ? `, ${stats.open.length} without a recorded trace yet (running now, or interrupted with an unknown outcome)` : ''}.`];
 }

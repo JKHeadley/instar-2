@@ -10,7 +10,7 @@
       "holdsAgentMemory": "no",
       "machineScope": {
         "kind": "machine-local",
-        "reason": "Rule 113: one tool turn's scratch on this machine, never shared or resumed: its fixed-size volume (workspace and temporary files) is unmounted and its image removed after the turn, and only the newest 16 turn directories (the admission hook's config, call and subagent slots, record, and the copy of the root's MCP launch configuration) are kept; the journal's tool-turn rows are the durable record."
+        "reason": "Rule 113: one tool turn's scratch on this machine, never shared or resumed: its fixed-size volume (workspace and temporary files) is unmounted and its image removed after the turn, and only the newest 16 turn directories (the admission hook's config, call and subagent slots, record with the shell egress checkpoint's request decisions, the copy of the root's MCP launch configuration, and the checkpoint's per-turn TLS authority, which signs nothing after its turn and expires within a day) are kept; the journal's tool-turn rows are the durable record."
       },
       "agreesWith": []
     },

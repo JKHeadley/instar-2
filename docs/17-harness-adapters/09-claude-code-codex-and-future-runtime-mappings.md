@@ -34,8 +34,10 @@ boundary: ordinary work runs, and every consequential effect goes to the effect 
 default, consequential effects and irreversible acts; **checks:**
 `tests/assembly/production-provider-tools.test.ts`, `tests/preview/tool-admission.test.ts`,
 `tests/preview/tool-turn.test.ts`, `tests/preview/tool-turn-replay.test.ts`,
-`tests/preview/tools-default.test.ts`, `tests/integration/resource-owner.test.ts` and the gated live
-runs `tests/integration/tool-turn-live.test.ts` and `tests/integration/tool-turn-full-live.test.ts`.
+`tests/preview/tools-default.test.ts`, `tests/preview/egress-checkpoint.test.ts`,
+`tests/integration/resource-owner.test.ts`, the gated live runs
+`tests/integration/tool-turn-live.test.ts` and `tests/integration/tool-turn-full-live.test.ts`, and
+the gated pinned-harness run `tests/integration/tool-turn-shellnet-harness.test.ts`.
 The preview may run an answer or a scheduled work step as one Claude Code invocation, through the
 existing provider path, with the pinned harness's whole built-in tool set, plus the MCP servers the
 root's own configuration names. No tool is left out to hold a safeguard: each tool's scope, finite
@@ -54,9 +56,22 @@ agents whose number or model turns the turn cannot reserve before dispatch (a wo
 skill that may fork). A web read of a loopback, private, link-local or local-name target is refused,
 because it reaches this machine and its network rather than the world. A tool the adapter has not
 classified is refused. The harness sandbox is where a command's reach is enforced: reads
-are refused from the filesystem root down except the turn's scratch volume and the system files
-commands need to run; writes reach only that volume; there is no network, so no command can write to
-the network, no unix socket and no signal to another process. The workspace and every temporary file
+are refused from the filesystem root down except the turn's scratch volume, the system files
+commands need to run and the installed toolchain they use for the network (the runner's node and
+npm, the developer tools that hold git); writes reach only that volume; no unix socket and no signal
+to another process. A command's network reaches one address only, the turn's egress checkpoint: a
+process started for the turn and stopped with it, which terminates each HTTPS connection under an
+authority minted for that turn alone (its key lies in the admission state), so it sees every
+request's method and full URL. A read of a public host on the web's ports (GET, HEAD, and git's
+fetch negotiation) is ordinary work, so curl, git clone and package installs work; every other
+request (another method, git's push, a publish) is a network write sent to the effect doorway's
+admission and refused unless the installed profile registers it, with the reason returned to the
+command. The checkpoint resolves each name itself and connects only to an address it checked, so a
+loopback, private, link-local or shared address, or a name resolving to one, is refused. It records
+each decision in the turn's admission record before the request leaves the machine, adds nothing of
+its own (no credential reaches a command), and bounds concurrent requests, bytes each way, idle time
+and its own lifetime. If it cannot start, the turn runs with the shell offline and the trace says
+so. The workspace and every temporary file
 of the shell and the harness live on that fixed-size volume, so a turn's whole storage is finite and
 cannot consume the journal's disk. The per-step tool-call count, shared by the turn and its subagents,
 is allocated atomically, so overlapping calls cannot exceed it. The launch has a clean environment;
@@ -76,7 +91,7 @@ subagent budget is taken only from allowance beyond the turn and one further pla
 never costs the next answer its tools. Its tool-call count, turn bounds, timeout and the resource
 owner's process, memory and CPU ceilings are finite; the harness budget flag is only a backstop, one
 turn's margin below its ceiling, because the harness checks it after a turn. Tool results and current
-journal context ground the turn, every tool call, result and subagent edge is journaled, and the final
+journal context ground the turn, every tool call, result, shell network request and subagent edge is journaled, and the final
 answer returns through the existing reply review and send paths. Ordinary standing-covered work
 requires no repeated human approval. Review and summary calls keep their text-only policy. A preview
 label grants no exception to these floors.

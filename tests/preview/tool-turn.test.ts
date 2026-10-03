@@ -6,14 +6,14 @@
 import { spawnSync } from 'node:child_process';
 import { existsSync, lstatSync, mkdirSync, mkdtempSync, readFileSync, readdirSync, realpathSync, rmSync, utimesSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
-import { join } from 'node:path';
+import { dirname, join } from 'node:path';
 import { afterEach, expect, it } from 'vitest';
 import { openPreviewJournal } from './journal.js';
 import { SUBSCRIPTION_SUBAGENT_TYPE, SUBSCRIPTION_TOOL_LIMITS, SUBSCRIPTION_TOOL_NAMES, SUBSCRIPTION_TOOLS_SYSTEM_PROMPT } from '../../src/assembly/production-provider.js';
 import { SINGLE_MACHINE_PROFILE } from './activation-authority.js';
 import { capabilityBriefing, TOOLS_BRIEFING } from './briefing.js';
 // @ts-expect-error The runner side stays plain JavaScript.
-import { attachScratch, detachScratch, openToolTurnSlugs, prepareToolTurn, pruneToolTurns, readRootMcp, readToolTrace, reconcileToolTurns, runToolTurn, scratchMounted, toolChildrenFit, toolStatusLines, toolTurnEligible, toolTurnFits, workspaceBytes, TOOL_HOOK_SCRIPT } from './tool-turn.mjs';
+import { attachScratch, detachScratch, EGRESS_CA_FILE, openToolTurnSlugs, prepareToolTurn, pruneToolTurns, readRootMcp, readToolTrace, reconcileToolTurns, runToolTurn, scratchMounted, toolChildrenFit, toolStatusLines, toolTurnEligible, toolTurnFits, workspaceBytes, TOOL_HOOK_SCRIPT } from './tool-turn.mjs';
 // @ts-expect-error The physical host remains JavaScript.
 import { createResourceOwner } from '../../scripts/resource-owner.mjs';
 
@@ -142,12 +142,14 @@ it('tells the agent and the operator exactly which tools exist and where outward
   const view = { toolTurns: { invocations: 2, reservedCalls: 14, refusedCap: 1, toolCalls: 5, toolRefusals: 2, inconsistent: 0, open: [] } };
   expect(toolStatusLines(view, true)).toEqual([
     `Tools: the harness's full built-in set (${SUBSCRIPTION_TOOL_NAMES.length} tools, each call decided at the admission hook) and the root's `
-      + 'MCP servers, in a private per-turn workspace; shell sandboxed without network; web reads only; subagents may delegate within the '
-      + 'turn\'s budget; consequential effects go through the effect doorway.',
+      + 'MCP servers, in a private per-turn workspace; shell sandboxed, its network through a per-turn checkpoint (public reads only); '
+      + 'web reads only; subagents may delegate within the turn\'s budget; consequential effects go through the effect doorway.',
     'Tool turns: 2 run (14 model attempts reserved for them), 5 tool calls admitted, 2 refused, 1 turns answered without tools because the call allowance was short.']);
   expect(toolStatusLines({ toolTurns: { ...view.toolTurns, open: ['x#3'] } }, true)[1]).toContain('1 without a recorded trace yet');
   expect(toolStatusLines({ toolTurns: { ...view.toolTurns, children: { started: 3, returned: 1, cancelled: 1, unknown: 1 } } }, true)[1])
     .toContain('3 subagents started (1 returned, 1 cancelled, 1 unknown)');
+  expect(toolStatusLines({ toolTurns: { ...view.toolTurns, egress: { admitted: 7, refused: 3 } } }, true)[1])
+    .toContain('7 shell network reads admitted, 3 shell network requests refused');
   expect(toolStatusLines(view, false)).toEqual([]);
   // Default on: when no grant resolves, status says tools are off and why, instead of saying nothing.
   expect(toolStatusLines(view, false, 'refused at launch with --tools off')).toEqual(['Tools: off (refused at launch with --tools off); answers are text only.']);
@@ -349,4 +351,61 @@ it('reads the root\'s MCP configuration: absent is none, malformed refuses, and 
   expect(JSON.parse(readFileSync(join(turn.stateDirectory, 'config.json'), 'utf8')).mcpReads).toEqual(['mcp__dummy__lookup']);
   // The credential never lands where a tool can reach: not in the workspace or the scratch volume.
   expect(JSON.stringify(readdirSync(turn.scratch, { recursive: true }))).not.toContain('mcp');
+});
+
+it('starts the turn\'s egress checkpoint before the harness, hands it the port and toolchain, stops it after, and journals its requests', async () => {
+  const root = dir(), journal = journalAt(root, 40), id = 'telegram:12345678:update:5', appended: unknown[] = [];
+  const events: string[] = [];
+  const egress = async (stateDirectory: string) => {
+    events.push('start');
+    const config = JSON.parse(readFileSync(join(stateDirectory, 'config.json'), 'utf8'));
+    // The admission config names the authority certificate on the volume and the toolchain before anything runs.
+    expect(config.egress).toEqual({ ca: join(dirname(config.tmp), EGRESS_CA_FILE), bin: ['/opt/node/bin'] });
+    writeFileSync(join(stateDirectory, 'admission.jsonl'), [
+      { phase: 'egress', rid: 1, method: 'GET', url: 'https://example.com/?token=sk-ant-api03-AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA', addresses: ['93.184.215.14'],
+        decision: 'allow', reason: 'shell network read (GET) of a public host', kind: 'network-read' },
+      { phase: 'egress-done', rid: 1, status: 200, down: 10, up: 0 },
+      { phase: 'egress', rid: 2, method: 'POST', url: 'https://example.com/', addresses: ['93.184.215.14'], decision: 'deny', reason: 'effect doorway', kind: 'network-write' },
+    ].map(row => JSON.stringify(row)).join('\n') + '\n');
+    return { port: 50999, pid: 0, stop: async () => { events.push('stop'); } };
+  };
+  const recorder = { get view() { return journal.view; }, append: (row: never) => { appended.push(row); return journal.append(row); } };
+  const ran = await runToolTurn({ journal: recorder, root, id, prepared: '{}', promptLimit: 32768, deniedRoots: [root], operations: SINGLE_MACHINE_PROFILE.operations,
+    now: () => 1, redactText: (t: string) => t.replace(/sk-ant-[A-Za-z0-9-]+/gu, '[redacted]'), fallback: async () => 'text-only', scratch: plainScratch, detach: keepDetached,
+    egress, toolchain: () => ({ reads: ['/opt/node'], bin: ['/opt/node/bin'], developer: null }),
+    invoke: async (turn: { stateDirectory: string; egress?: { port: number; reads: string[] } }) => {
+      events.push('invoke');
+      expect(turn.egress).toEqual({ port: 50999, reads: ['/opt/node'] });
+      expect(JSON.parse(readFileSync(join(turn.stateDirectory, 'config.json'), 'utf8')).egress.port).toBe(50999);
+      return 'answer';
+    } });
+  expect(ran.result).toBe('answer');
+  expect(events).toEqual(['start', 'invoke', 'stop']);
+  const trace = journal.view.toolTurns!;
+  expect(trace).toMatchObject({ open: [], egress: { admitted: 1, refused: 1 } });
+  expect(ran.trace.egress).toHaveLength(2);
+  // Each journaled URL passes the same redaction as every other recorded excerpt.
+  const traced = appended.find(row => (row as { phase: string }).phase === 'trace') as { network: string; egress: Array<{ url: string }> };
+  expect(traced.network).toBe('checkpoint');
+  expect(traced.egress.map(row => row.url)).toEqual(['https://example.com/?token=[redacted]', 'https://example.com/']);
+  // The checkpoint cannot start: the turn still runs, with the shell offline, and the trace says why.
+  const second = journalAt(dir(), 40), rows: Array<Record<string, unknown>> = [];
+  const secondRecorder = { get view() { return second.view; }, append: (row: never) => { rows.push(row); return second.append(row); } };
+  let offered: unknown = 'unset';
+  await runToolTurn({ journal: secondRecorder, root: dir(), id, prepared: '{}', promptLimit: 32768, deniedRoots: [root], operations: SINGLE_MACHINE_PROFILE.operations,
+    now: () => 1, redactText: (t: string) => t, fallback: async () => 'text-only', scratch: plainScratch, detach: keepDetached,
+    egress: async () => { throw Error('openssl missing'); }, toolchain: () => ({ reads: [], bin: [], developer: null }),
+    invoke: async (turn: { egress?: unknown }) => { offered = turn.egress; return 'answer'; } });
+  expect(offered).toBeUndefined();
+  expect(rows.find(row => row.phase === 'trace')).toMatchObject({ network: 'unavailable: openssl missing', egress: [], egressOmitted: 0 });
+});
+
+it('journals a trace\'s shell network requests only in their recorded shape', () => {
+  const root = dir(), journal = journalAt(root, 40), id = 'telegram:12345678:update:6';
+  journal.append({ kind: 'tool-turn', phase: 'reserved', id, attempt: 0, calls: 7, at: 1 } as never);
+  const trace = { kind: 'tool-turn', phase: 'trace', id, attempt: 0, calls: [], consistent: true, workspaceBytes: 0, network: 'checkpoint', at: 2 };
+  expect(() => journal.append({ ...trace, egress: [{ rid: 'one', method: 'GET', url: 'u', decision: 'allow', reason: 'r' }] } as never)).toThrow(/egress/u);
+  expect(() => journal.append({ ...trace, egress: [{ rid: 1, method: 'GET', url: 'u', decision: 'maybe', reason: 'r' }] } as never)).toThrow(/egress/u);
+  journal.append({ ...trace, egress: [{ rid: 1, method: 'GET', url: 'u', decision: 'allow', reason: 'r', status: 200, down: 1, up: 0 }], egressOmitted: 0 } as never);
+  expect(journal.view.toolTurns).toMatchObject({ open: [], egress: { admitted: 1, refused: 0 } });
 });

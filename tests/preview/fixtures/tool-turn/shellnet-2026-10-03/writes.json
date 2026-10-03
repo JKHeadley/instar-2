@@ -1,0 +1,168 @@
+{
+  "name": "writes",
+  "harness": "2.1.280 (pinned), scripted model endpoint",
+  "calls": [
+    {
+      "name": "Bash",
+      "input": {
+        "command": "curl -sS -X POST -d note=hi https://httpbin.org/post; echo \"post-exit: $?\"",
+        "description": "scripted step"
+      }
+    },
+    {
+      "name": "Bash",
+      "input": {
+        "command": "git init -q p && cd p && git -c user.name=t -c user.email=t@example.com commit -q --allow-empty -m x && GIT_TERMINAL_PROMPT=0 git push https://github.com/octocat/Hello-World.git HEAD:refs/heads/instar-probe; echo \"push-exit: $?\"",
+        "description": "scripted step"
+      }
+    },
+    {
+      "name": "Bash",
+      "input": {
+        "command": "curl -sS -m 5 http://127.0.0.1:4042/health; echo \"loopback-exit: $?\"",
+        "description": "scripted step"
+      }
+    },
+    {
+      "name": "Bash",
+      "input": {
+        "command": "curl -sS -m 5 http://localtest.me/; echo \"name-exit: $?\"",
+        "description": "scripted step"
+      }
+    }
+  ],
+  "scriptedCallsUsed": 4,
+  "exitCode": 0,
+  "survivors": [],
+  "error": null,
+  "mountedAfter": false,
+  "admission": "{\"phase\":\"pre\",\"id\":\"toolu_2\",\"n\":1,\"tool\":\"Bash\",\"input\":\"{\\\"command\\\":\\\"curl -sS -X POST -d note=hi https://httpbin.org/post; echo \\\\\\\"post-exit: $?\\\\\\\"\\\",\\\"description\\\":\\\"scripted step\\\"}\",\"decision\":\"allow\",\"reason\":\"sandboxed command\"}\n{\"phase\":\"egress\",\"rid\":1,\"method\":\"POST\",\"url\":\"https://httpbin.org/post\",\"addresses\":[\"18.233.182.23\",\"34.227.237.26\",\"54.159.186.149\",\"3.90.119.127\",\"3.210.105.125\",\"54.175.207.120\",\"54.172.131.225\",\"34.193.104.167\"],\"decision\":\"deny\",\"reason\":\"effect doorway: the installed profile registers no tool:network-write operation (registered: provider-call, telegram:ordinary-reply, slack:ordinary-reply); refused by default\",\"kind\":\"network-write\"}\n{\"phase\":\"egress-done\",\"rid\":1,\"status\":403,\"down\":0,\"up\":0}\n{\"phase\":\"post\",\"id\":\"toolu_2\",\"tool\":\"Bash\",\"result\":\"{\\\"stdout\\\":\\\"Instar egress checkpoint refused this request: effect doorway: the installed profile registers no tool:network-write operation (registered: provider-call, telegram:ordinary-reply, slack:ordinary-reply); refused by default\\\\npost-exit: 0\\\",\\\"stderr\\\":\\\"\\\",\\\"interrupted\\\":false,\\\"isImage\\\":false,\\\"noOutputExpected\\\":false}\"}\n{\"phase\":\"pre\",\"id\":\"toolu_3\",\"n\":2,\"tool\":\"Bash\",\"input\":\"{\\\"command\\\":\\\"git init -q p && cd p && git -c user.name=t -c user.email=t@example.com commit -q --allow-empty -m x && GIT_TERMINAL_PROMPT=0 git push https://github.com/octocat/Hello-World.git HEAD:refs/heads/instar-probe; echo \\\\\\\"push-exit: $?\\\\\\\"\\\",\\\"description\\\":\\\"scripted step\\\"}\",\"decision\":\"allow\",\"reason\":\"sandboxed command\"}\n{\"phase\":\"egress\",\"rid\":2,\"method\":\"GET\",\"url\":\"https://github.com/octocat/Hello-World.git/info/refs?service=git-receive-pack\",\"addresses\":[\"172.182.252.133\"],\"decision\":\"deny\",\"reason\":\"effect doorway: the installed profile registers no tool:network-write operation (registered: provider-call, telegram:ordinary-reply, slack:ordinary-reply); refused by default\",\"kind\":\"network-write\"}\n{\"phase\":\"egress-done\",\"rid\":2,\"status\":403,\"down\":0,\"up\":0}\n{\"phase\":\"post\",\"id\":\"toolu_3\",\"tool\":\"Bash\",\"result\":\"{\\\"stdout\\\":\\\"remote: Instar egress checkpoint refused this request: effect doorway: the installed profile registers no tool:network-write operation (registered: provider-call, telegram:ordinary-reply, slack:ordinary-reply); refused by default\\\\nfatal: unable to access 'https://github.com/octocat/Hello-World.git/': The requested URL returned error: 403\\\\npush-exit: 128\\\",\\\"stderr\\\":\\\"\\\",\\\"interrupted\\\":false,\\\"isImage\\\":false,\\\"noOutputExpected\\\":false}\"}\n{\"phase\":\"pre\",\"id\":\"toolu_4\",\"n\":3,\"tool\":\"Bash\",\"input\":\"{\\\"command\\\":\\\"curl -sS -m 5 http://127.0.0.1:4042/health; echo \\\\\\\"loopback-exit: $?\\\\\\\"\\\",\\\"description\\\":\\\"scripted step\\\"}\",\"decision\":\"allow\",\"reason\":\"sandboxed command\"}\n{\"phase\":\"post\",\"id\":\"toolu_4\",\"tool\":\"Bash\",\"result\":\"{\\\"stdout\\\":\\\"curl: (7) Failed to connect to 127.0.0.1 port 4042 after 0 ms: Couldn't connect to server\\\\nloopback-exit: 7\\\",\\\"stderr\\\":\\\"\\\",\\\"interrupted\\\":false,\\\"isImage\\\":false,\\\"noOutputExpected\\\":false}\"}\n{\"phase\":\"pre\",\"id\":\"toolu_5\",\"n\":4,\"tool\":\"Bash\",\"input\":\"{\\\"command\\\":\\\"curl -sS -m 5 http://localtest.me/; echo \\\\\\\"name-exit: $?\\\\\\\"\\\",\\\"description\\\":\\\"scripted step\\\"}\",\"decision\":\"allow\",\"reason\":\"sandboxed command\"}\n{\"phase\":\"egress\",\"rid\":3,\"method\":\"GET\",\"url\":\"http://localtest.me/\",\"addresses\":[\"::1\",\"127.0.0.1\"],\"decision\":\"deny\",\"reason\":\"shell network refused: localtest.me resolves to a non-public address\",\"kind\":\"scope\"}\n{\"phase\":\"egress-done\",\"rid\":3,\"status\":403,\"down\":0,\"up\":0}\n{\"phase\":\"post\",\"id\":\"toolu_5\",\"tool\":\"Bash\",\"result\":\"{\\\"stdout\\\":\\\"Instar egress checkpoint refused this request: shell network refused: localtest.me resolves to a non-public address\\\\nname-exit: 0\\\",\\\"stderr\\\":\\\"\\\",\\\"interrupted\\\":false,\\\"isImage\\\":false,\\\"noOutputExpected\\\":false}\"}\n",
+  "toolTurns": {
+    "invocations": 1,
+    "reservedCalls": 15,
+    "refusedCap": 0,
+    "toolCalls": 4,
+    "toolRefusals": 0,
+    "inconsistent": 0,
+    "open": [],
+    "egress": {
+      "admitted": 0,
+      "refused": 3
+    }
+  },
+  "journalRows": [
+    {
+      "kind": "tool-turn",
+      "phase": "reserved",
+      "id": "telegram:12345678:update:1",
+      "attempt": 0,
+      "calls": 15,
+      "delegation": {
+        "children": 2,
+        "turnsEach": 4,
+        "type": "worker",
+        "authority": "scripted harness test"
+      },
+      "at": 1791064439024
+    },
+    {
+      "kind": "tool-turn",
+      "phase": "trace",
+      "id": "telegram:12345678:update:1",
+      "attempt": 0,
+      "consistent": true,
+      "network": "checkpoint",
+      "egress": [
+        {
+          "rid": 1,
+          "method": "POST",
+          "url": "https://httpbin.org/post",
+          "addresses": [
+            "18.233.182.23",
+            "34.227.237.26",
+            "54.159.186.149",
+            "3.90.119.127",
+            "3.210.105.125",
+            "54.175.207.120",
+            "54.172.131.225",
+            "34.193.104.167"
+          ],
+          "decision": "deny",
+          "reason": "effect doorway: the installed profile registers no tool:network-write operation (registered: provider-call, telegram:ordinary-reply, slack:ordinary-reply); refused by default",
+          "kind": "network-write",
+          "status": 403,
+          "down": 0,
+          "up": 0
+        },
+        {
+          "rid": 2,
+          "method": "GET",
+          "url": "https://github.com/octocat/Hello-World.git/info/refs?service=git-receive-pack",
+          "addresses": [
+            "172.182.252.133"
+          ],
+          "decision": "deny",
+          "reason": "effect doorway: the installed profile registers no tool:network-write operation (registered: provider-call, telegram:ordinary-reply, slack:ordinary-reply); refused by default",
+          "kind": "network-write",
+          "status": 403,
+          "down": 0,
+          "up": 0
+        },
+        {
+          "rid": 3,
+          "method": "GET",
+          "url": "http://localtest.me/",
+          "addresses": [
+            "::1",
+            "127.0.0.1"
+          ],
+          "decision": "deny",
+          "reason": "shell network refused: localtest.me resolves to a non-public address",
+          "kind": "scope",
+          "status": 403,
+          "down": 0,
+          "up": 0
+        }
+      ],
+      "egressOmitted": 0,
+      "calls": [
+        {
+          "n": 1,
+          "tool": "Bash",
+          "input": "{\"command\":\"curl -sS -X POST -d note=hi https://httpbin.org/post; echo \\\"post-exit: $?\\\"\",\"description\":\"scripted step\"}",
+          "decision": "allow",
+          "reason": "sandboxed command",
+          "result": "{\"stdout\":\"Instar egress checkpoint refused this request: effect doorway: the installed profile registers no tool:network-write operation (registered: provider-call, telegram:ordinary-reply, slack:ordinary-reply); refused by default\\npost-exit: 0\",\"stderr\":\"\",\"interrupted\":false,\"isImage\":false,\"noOutputExpected\":false}"
+        },
+        {
+          "n": 2,
+          "tool": "Bash",
+          "input": "{\"command\":\"git init -q p && cd p && git -c user.name=t -c user.email=t@example.com commit -q --allow-empty -m x && GIT_TERMINAL_PROMPT=0 git push https://github.com/octocat/Hello-World.git HEAD:refs/heads/instar-probe; echo \\\"push-exit: $?\\\"\",\"description\":\"scripted step\"}",
+          "decision": "allow",
+          "reason": "sandboxed command",
+          "result": "{\"stdout\":\"remote: Instar egress checkpoint refused this request: effect doorway: the installed profile registers no tool:network-write operation (registered: provider-call, telegram:ordinary-reply, slack:ordinary-reply); refused by default\\nfatal: unable to access 'https://github.com/octocat/Hello-World.git/': The requested URL returned error: 403\\npush-exit: 128\",\"stderr\":\"\",\"interrupted\":false,\"isImage\":false,\"noOutputExpected\":false}"
+        },
+        {
+          "n": 3,
+          "tool": "Bash",
+          "input": "{\"command\":\"curl -sS -m 5 http://127.0.0.1:4042/health; echo \\\"loopback-exit: $?\\\"\",\"description\":\"scripted step\"}",
+          "decision": "allow",
+          "reason": "sandboxed command",
+          "result": "{\"stdout\":\"curl: (7) Failed to connect to 127.0.0.1 port 4042 after 0 ms: Couldn't connect to server\\nloopback-exit: 7\",\"stderr\":\"\",\"interrupted\":false,\"isImage\":false,\"noOutputExpected\":false}"
+        },
+        {
+          "n": 4,
+          "tool": "Bash",
+          "input": "{\"command\":\"curl -sS -m 5 http://localtest.me/; echo \\\"name-exit: $?\\\"\",\"description\":\"scripted step\"}",
+          "decision": "allow",
+          "reason": "sandboxed command",
+          "result": "{\"stdout\":\"Instar egress checkpoint refused this request: shell network refused: localtest.me resolves to a non-public address\\nname-exit: 0\",\"stderr\":\"\",\"interrupted\":false,\"isImage\":false,\"noOutputExpected\":false}"
+        }
+      ],
+      "edges": [],
+      "workspaceBytes": 63,
+      "at": 1791064441242
+    }
+  ],
+  "frame": "{\"duration_api_ms\":34,\"stop_reason\":\"end_turn\",\"session_id\":\"9c3aa6a9-0355-4ff2-ba20-2a4e33e54687\",\"total_cost_usd\":0.0006000000000000001,\"usage\":{\"input_tokens\":50,\"cache_creation_input_tokens\":0,\"cache_read_input_tokens\":0,\"output_tokens\":50,\"output_tokens_details\":{\"thinking_tokens\":0},\"server_tool_use\":{\"web_search_requests\":0,\"web_fetch_requests\":0},\"service_tier\":\"standard\",\"cache_creation\":{\"ephemeral_1h_input_tokens\":0,\"ephemeral_5m_input_tokens\":0},\"inference_geo\":\"\",\"iterations\":[],\"speed\":\"standard\"},\"modelUsage\":{\"claude-sonnet-5\":{\"inputTokens\":50,\"outputTokens\":50,\"cacheReadInputTokens\":0,\"cacheCreationInputTokens\":0,\"webSearchRequests\":0,\"costUSD\":0.0006000000000000001,\"contextWindow\":200000,\"maxOutputTokens\":64000,\"thinkingTokens\":0,\"canonicalModel\":\"claude-sonnet-5\",\"provider\":\"firstParty\",\"costBasis\":\"list\"}},\"permission_denials\":[],\"terminal_reason\":\"completed\",\"fast_mode_state\":\"off\",\"fast_mode_disabled_reason\":\"sdk_opt_in_required\",\"subagent_stats\":{\"spawned\":0,\"requested\":{\"background\":0,\"foreground\":0,\"unset\":0},\"started_in_background\":0,\"max_depth\":0,\"spawned_by_subagents\":0,\"completed\":0,\"failed\":0,\"killed\":{\"parent\":0,\"user\":0,\"system\":0},\"refused\":{\"depth_limit\":0,\"concurrency_limit\":0,\"budget\":0},\"by_type\":{}},\"is_error\":false,\"num_turns\":5,\"subtype\":\"success\",\"api_error_status\":null,\"result\":\"done\",\"ttft_ms\":26,\"type\":\"result\",\"duration_ms\":647,\"uuid\":\"65f900a6-0d73-4916-8b60-47254a7020cc\",\"ttft_stream_ms\":25,\"time_to_request_ms\":23,\"first_content_frame_ms\":25,\"queued_turn_count\":0,\"result_index\":0}\n"
+}

@@ -1,5 +1,21 @@
 [
   {
+    "revision": 6,
+    "date": "2026-10-03",
+    "status": "draft",
+    "cause": {
+      "kind": "draft",
+      "note": "Unit w4-shellnet (plan row #419), under the purpose's revision 12 (Justin, topic 102965 message 122028): the agent's ability is never reduced to satisfy a safeguard that a checkpoint can enforce instead. No constitution change."
+    },
+    "changes": [
+      {
+        "what": "§9 tool rule: a sandboxed command's network reaches only the turn's egress checkpoint, a per-turn process with its own per-turn TLS authority that sees each request's method and URL; reads of public hosts (GET, HEAD, git fetch) are ordinary work, every other request is a network write for the effect doorway, refused unless registered; the checkpoint resolves and pins each address and refuses this machine and its network, records each decision before dispatch, is bounded and stops with the turn; the sandbox reads the installed toolchain (node, npm, git) the network needs.",
+        "why": "The w4-toolsfull rule kept the shell off the network entirely because HTTPS hides the method from a plain proxy; that removed curl, git clone and package installs to hold a safeguard a checkpoint can enforce.",
+        "ref": "lanes/w4-toolsfull-PROGRESS.md (What is left, item 1); lanes/w4-shellnet-PROGRESS.md; LIVE-PATH-PLAN.md row #419"
+      }
+    ]
+  },
+  {
     "revision": 5,
     "date": "2026-10-03",
     "status": "draft",

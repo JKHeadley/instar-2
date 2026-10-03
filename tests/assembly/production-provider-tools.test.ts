@@ -61,13 +61,14 @@ it('launches the tool turn with the proven flag set: hooks on, the whole built-i
 it('tells the model it has the whole tool set and how each call is bounded, and keeps the conversation framing\'s no-tools sentence intact', () => {
   expect(SUBSCRIPTION_TOOLS_SYSTEM_PROMPT).toContain('the harness\'s full built-in tool set');
   expect(SUBSCRIPTION_TOOLS_SYSTEM_PROMPT).not.toContain('You have no tools');
-  expect(SUBSCRIPTION_TOOLS_SYSTEM_PROMPT).toMatch(/Bash is sandboxed: no network/u);
+  expect(SUBSCRIPTION_TOOLS_SYSTEM_PROMPT).toMatch(/its network goes through this turn's checkpoint, which admits reads of public hosts/u);
+  expect(SUBSCRIPTION_TOOLS_SYSTEM_PROMPT).toMatch(/refuses writes \(other methods, git push\) and this machine's own network/u);
   expect(SUBSCRIPTION_TOOLS_SYSTEM_PROMPT).toMatch(/WebFetch and WebSearch read the public web \(GET only\)/u);
   expect(SUBSCRIPTION_TOOLS_SYSTEM_PROMPT).toContain(`"${SUBSCRIPTION_SUBAGENT_TYPE}" subagents, which may start their own: at most ${SUBSCRIPTION_TOOL_LIMITS.maxChildren} in this whole turn`);
   expect(SUBSCRIPTION_TOOLS_SYSTEM_PROMPT).toMatch(/go through the effect doorway and are refused unless registered/u);
   expect(SUBSCRIPTION_TOOLS_SYSTEM_PROMPT).toContain('which tool call, by name and order, produced it');
   expect(SUBSCRIPTION_CONVERSATION_SYSTEM_PROMPT).toContain('You have no tools and cannot act beyond this answer; never claim otherwise.');
-  expect(SUBSCRIPTION_TOOLS_SYSTEM_PROMPT.length - SUBSCRIPTION_CONVERSATION_SYSTEM_PROMPT.length).toBeLessThan(1100);
+  expect(SUBSCRIPTION_TOOLS_SYSTEM_PROMPT.length - SUBSCRIPTION_CONVERSATION_SYSTEM_PROMPT.length).toBeLessThan(1400);
 });
 
 it('writes settings that refuse every read from the root down except the scratch volume and the runtime, writes outside the volume, network and unix sockets, with the mandatory hook on both events', () => {
@@ -103,6 +104,16 @@ it('writes settings that refuse every read from the root down except the scratch
   expect(() => subscriptionToolSettings({ ...turn, workspace: '/r/tool-turns/a-0/ws' }, home)).toThrow(/inside its scratch volume/u);
   expect(() => subscriptionToolSettings({ ...turn, deniedRoots: ['/usr/share/runner'] }, home)).toThrow(/under a readable path/u);
   expect(() => subscriptionToolSettings(turn, '/private/etc/home')).toThrow(/under a readable path/u);
+  // The shell's network: the sandbox reaches only the turn's egress checkpoint port, and the toolchain a command needs for it
+  // (node and npm, the developer tools behind git) is readable; without a checkpoint no address is reachable at all.
+  const net = JSON.parse(subscriptionToolSettings({ ...turn, egress: { port: 50785, reads: ['/opt/node', '/Library/Developer/CommandLineTools'] } }, home));
+  expect(net.sandbox.network).toEqual({ allowedDomains: [], allowUnixSockets: [], allowAllUnixSockets: false, allowLocalBinding: false, httpProxyPort: 50785 });
+  expect(net.sandbox.filesystem.allowRead).toEqual(['/r/tool-turns/a-0/vol', ...SUBSCRIPTION_TOOL_RUNTIME_READS, '/opt/node', '/Library/Developer/CommandLineTools']);
+  expect(settings.sandbox.network).not.toHaveProperty('httpProxyPort');
+  for (const egress of [{ port: 80, reads: [] }, { port: 70000, reads: [] }, { port: 1.5, reads: [] }, { port: 50785, reads: ['/'] },
+    { port: 50785, reads: ['/repo'] }, { port: 50785, reads: ['/r'] }, { port: 50785, reads: ['/profile'] }])
+    expect(() => subscriptionToolSettings({ ...turn, egress }, home)).toThrow(/egress checkpoint port or toolchain reads refused|under a readable path|absolute and plain/u);
+  expect(() => subscriptionToolSettings({ ...turn, egress: { port: 50785, reads: ['/opt/my node'] } }, home)).toThrow(/absolute and plain/u);
   // A mount point too long for the harness's per-user temporary directory would push it to the shared /tmp/claude-<uid>.
   expect(() => subscriptionToolSettings({ ...turn, scratch: '/r/tool-turns/0123456789abcdef-0/vol', workspace: '/r/tool-turns/0123456789abcdef-0/vol/ws' }, home))
     .toThrow(/too long for the harness temporary directory/u);

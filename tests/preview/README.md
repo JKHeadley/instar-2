@@ -3572,9 +3572,22 @@ servers (Part Thirteen §9,
   budget: the agents they may start cannot be reserved before dispatch. A web read of a loopback, private or
   local-name host is refused; a tool the hook does not classify is refused. Each call takes one of
   the step's 32 slots (shared with the turn's subagents) by exclusive create, so overlapping calls cannot exceed the
-  cap. The sandbox refuses reads from `/` down except the scratch volume and the system files commands need, writes
-  outside the volume, the network (a shell cannot write to the network), unix sockets and signals to other
-  processes; the harness's messaging socket and token are removed from every command.
+  cap. The sandbox refuses reads from `/` down except the scratch volume, the system files commands need and the
+  installed toolchain (the runner's node and npm, the developer tools holding git), writes outside the volume, unix
+  sockets and signals to other processes; the harness's messaging socket and token are removed from every command.
+- Shell network: a command reaches one address only, the turn's egress checkpoint (`egress-checkpoint.mjs`, the
+  sandbox's `httpProxyPort`), one process per turn started before the harness and stopped with it. It mints a TLS
+  authority for the turn (key in `state/egress/`, certificate on the volume as `egress-ca.pem`, named by every
+  client's trust-root variable), so it sees each request's method and URL. GET, HEAD and git's fetch negotiation
+  of a public host on ports 80/443 are admitted (curl, `git clone`, `npm install` work); every other request (POST,
+  PUT, DELETE, `git push`, a publish) goes to the effect doorway, which refuses it unless the profile registers
+  `tool:network-write`, and the command gets a 403 naming the reason. Each name is resolved at the checkpoint and only a
+  checked address is dialled; loopback, private, link-local, shared and mapped addresses, or names resolving to them,
+  are refused. Every decision (`egress` rows, with addresses) is in the admission record before the request leaves,
+  and the trace journals them (`network`, `egress`). Bounds: 16 open requests, 512 requests, 256 MiB down, 8 MiB up,
+  30 s idle, its own lifetime. `git clone`/`git init` keep their git directory on the volume (`--separate-git-dir`),
+  because the sandbox never lets a command write a `.git/config` or `.git/hooks`. If the checkpoint cannot start the
+  shell runs offline and the trace says `unavailable: <reason>`.
 - MCP: `ROOT/mcp.json` (the operator's file; absent means none) is `{"mcpServers": {name: {command, args?, env?}},
   "reads": ["mcp__name__tool", …]}`. Its launch configuration, with any credential in `env`, is copied into the
   turn's admission state, which no tool can read; servers run outside the sandbox as the runner's identity.
@@ -3596,6 +3609,8 @@ npx vitest run --maxWorkers 1 tests/preview/tool-admission.test.ts
 npx vitest run --maxWorkers 1 tests/preview/tool-turn.test.ts
 npx vitest run --maxWorkers 1 tests/preview/tool-turn-replay.test.ts
 npx vitest run --maxWorkers 1 tests/preview/tools-default.test.ts
+npx vitest run --maxWorkers 1 tests/preview/egress-checkpoint.test.ts
+INSTAR_SHELLNET_HARNESS=/path/to/claude-2.1.280 npx vitest run --maxWorkers 1 tests/integration/tool-turn-shellnet-harness.test.ts   # pinned harness, scripted model
 npx vitest run --maxWorkers 1 tests/assembly/production-provider-tools.test.ts
 INSTAR_TOOL_TURN_LIVE_TEST=1 npx vitest run --maxWorkers 1 tests/integration/tool-turn-live.test.ts   # five real harness turns
 INSTAR_TOOL_TURN_FULL_LIVE_TEST=1 INSTAR_TOOL_TURN_CASE=full npx vitest run --maxWorkers 1 tests/integration/tool-turn-full-live.test.ts  # one per case: full, outward, stop-child

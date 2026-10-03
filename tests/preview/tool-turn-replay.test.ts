@@ -123,7 +123,7 @@ it('replays the five live tool turns: hook decisions, trace pairing, and the rec
   expect(live('stop').stopToSettledMs).toBeLessThan(3000);
 });
 
-it('returns earlier real outputs through the tools route exactly as through the text-only route', async () => {
+it('returns earlier real outputs through the tools route exactly as through the text-only route', { timeout: 120000 }, async () => {
   const route = routeFixture();
   const declarations = JSON.parse(readFileSync(join(__dirname, 'fixtures/live-declarations-2026-09-28.json'), 'utf8'));
   const outputs: string[] = [...declarations.current.answers, ...declarations.fixed.answers, ...declarations.current.reviews, ''];

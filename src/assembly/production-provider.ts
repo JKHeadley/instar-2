@@ -222,7 +222,9 @@ export function subscriptionConversationPolicy(model: string) {
  * The boundary is the configuration the w4-toolsreuse spike proved under the pinned 2.1.280, widened to the full tool
  * set: a mandatory PreToolUse admission hook that admits ordinary work and sends consequential effects to the effect
 * doorway (the only control on the harness-side tools: file tools, WebFetch, MCP, subagents), the harness sandbox
- * with a tight read profile and no network or unix sockets (the control on Bash), a clean environment, no `--bare` or
+ * with a tight read profile, no unix sockets and no network address but the turn's egress checkpoint (the control on Bash: the
+ * checkpoint sees each request's method and URL, admits reads of public hosts and sends writes to the effect doorway), a clean
+ * environment, no `--bare` or
  * `--safe-mode` (both skip settings hooks), and subagent start and stop recorded as Rule 114 edges. The whole built-in
  * tool set is offered; what a tool may do is decided per call at the hook, never by leaving the tool out. */
 export const SUBSCRIPTION_TOOLS_FRAMING = 'preview-tools-v1';
@@ -252,8 +254,10 @@ export const SUBSCRIPTION_SUBAGENT_DEFINITION = Object.freeze({ [SUBSCRIPTION_SU
 const NO_TOOLS_SENTENCE = 'You have no tools and cannot act beyond this answer; never claim otherwise.';
 const TOOLS_SENTENCE = 'In this turn you have the harness\'s full built-in tool set (your tool definitions list it), plus any MCP tools listed to you. '
   + 'Files and Bash work inside this turn\'s private, new and empty workspace (your working directory), which has a fixed size. '
-  + 'Bash is sandboxed: no network, no reads outside the workspace except the system files commands need, no writes outside it, '
-  + 'no control of other processes. WebFetch and WebSearch read the public web (GET only). '
+  + 'Bash is sandboxed: no reads outside the workspace except the system files and toolchain (node, npm, git) commands need, no writes '
+  + 'outside it, no control of other processes; its network goes through this turn\'s checkpoint, which admits reads of public hosts '
+  + '(GET, HEAD, git fetch: curl, git clone and npm install work) and refuses writes (other methods, git push) and this machine\'s own '
+  + 'network. WebFetch and WebSearch read the public web (GET only). '
   + `Agent starts "${SUBSCRIPTION_SUBAGENT_TYPE}" subagents, which may start their own: at most ${SUBSCRIPTION_TOOL_LIMITS.maxChildren} in this `
   + `whole turn, each up to ${SUBSCRIPTION_TOOL_LIMITS.childMaxTurns} turns, each result returning to whoever started it. Each call is `
   + 'checked when made: consequential effects (sending outside this conversation, writing to the network or a third-party account, '
@@ -272,7 +276,7 @@ export function subscriptionToolsPolicy(model: string) {
     '--max-turns', String(SUBSCRIPTION_TOOL_LIMITS.maxTurns),
     '--max-budget-usd', String(SUBSCRIPTION_TOOL_LIMITS.budgetCeilingUsd - SUBSCRIPTION_TOOL_LIMITS.oneTurnMarginUsd),
     '--permission-mode', 'default']),
-  framing: SUBSCRIPTION_TOOLS_FRAMING, settings: 'preview-tools-settings-v1', limits: SUBSCRIPTION_TOOL_LIMITS,
+  framing: SUBSCRIPTION_TOOLS_FRAMING, settings: 'preview-tools-settings-v2', limits: SUBSCRIPTION_TOOL_LIMITS,
   maxPromptBytes: SUBSCRIPTION_CONVERSATION_MAX_PROMPT_BYTES,
   path: '/usr/bin:/bin', retries: 0, maxTokens: SUBSCRIPTION_MAX_OUTPUT_TOKENS * SUBSCRIPTION_TOOL_LIMITS.maxTurns,
   timeout: SUBSCRIPTION_TOOL_LIMITS.timeout,
@@ -294,6 +298,10 @@ export interface SubscriptionToolTurn {
   /** The root's MCP servers for this turn: their launch configuration, written inside the admission state directory (so
    * no tool can read the credentials it may carry), and their names. Absent: no MCP server. */
   readonly mcp?: Readonly<{ config: string; servers: readonly string[] }>;
+  /** The turn's shell egress checkpoint (tests/preview/egress-checkpoint.mjs): its loopback port, the only network address
+   * the sandbox lets a command reach, and the toolchain directories a command reads to use the network (the runner's node
+   * and npm, the developer tools behind git). Absent: the shell has no network at all. */
+  readonly egress?: Readonly<{ port: number; reads: readonly string[] }>;
 }
 const SAFE_PATH = /^\/[A-Za-z0-9_./@-]+$/u;
 const within = (path: string, root: string) => path === root || path.startsWith(`${root}/`);
@@ -309,13 +317,14 @@ export const SUBSCRIPTION_TOOL_RUNTIME_READS = Object.freeze(['/bin', '/sbin', '
  * and two home-directory logs). They lie outside the scratch volume, so a tool turn refuses them. */
 export const subscriptionToolDefaultWrites = (home: string) => Object.freeze(['/tmp/claude', '/private/tmp/claude',
   `${home}/.npm/_logs`, `${home}/.claude/debug`]);
-/** The exact settings a tool turn launches with (template `preview-tools-settings-v1`). The paths are
+/** The exact settings a tool turn launches with (template `preview-tools-settings-v2`). The paths are
  * the only per-turn inputs; each is absolute and shell-safe, so the hook command needs no quoting. `home`
  * is the launch's HOME. Reads are refused from the filesystem root down and reopened only for the scratch
  * volume and the runtime list; writes reach only the scratch volume. */
 export function subscriptionToolSettings(turn: SubscriptionToolTurn, home: string): string {
+  const reads = turn.egress?.reads ?? [];
   const paths = [turn.scratch, turn.workspace, turn.stateDirectory, turn.hook.node, turn.hook.script, home, ...turn.deniedRoots,
-    ...(turn.mcp ? [turn.mcp.config] : [])];
+    ...(turn.mcp ? [turn.mcp.config] : []), ...reads];
   ensure(paths.every(path => typeof path === 'string' && SAFE_PATH.test(path) && !/(?:^|\/)\.\.?(?:\/|$)/u.test(path)),
     'tool turn: paths must be absolute and plain');
   ensure(within(turn.workspace, turn.scratch) && turn.workspace !== turn.scratch, 'tool turn: the workspace lies inside its scratch volume');
@@ -326,8 +335,10 @@ export function subscriptionToolSettings(turn: SubscriptionToolTurn, home: strin
   ensure(!within(turn.stateDirectory, turn.scratch) && !within(turn.scratch, turn.stateDirectory)
     && !within(turn.hook.script, turn.scratch), 'tool turn: the admission state and hook lie outside the workspace');
   ensure([turn.stateDirectory, home, ...turn.deniedRoots].every(path => !within(path, turn.scratch)
-    && !SUBSCRIPTION_TOOL_RUNTIME_READS.some(read => within(path, read) || within(read, path))),
+    && ![...SUBSCRIPTION_TOOL_RUNTIME_READS, ...reads].some(read => within(path, read) || within(read, path))),
   'tool turn: a denied root, the admission state or the home lies under a readable path');
+  ensure(!turn.egress || (Number.isSafeInteger(turn.egress.port) && turn.egress.port >= 1024 && turn.egress.port <= 65535
+    && reads.length <= 8 && reads.every(path => path !== '/' && !within(turn.hook.script, path))), 'tool turn: egress checkpoint port or toolchain reads refused');
   ensure(!turn.mcp || (within(turn.mcp.config, turn.stateDirectory) && turn.mcp.servers.length > 0
     && turn.mcp.servers.every(name => /^[A-Za-z0-9_-]{1,64}$/u.test(name))), 'tool turn: MCP configuration lies in the admission state with plain server names');
   const hook = (mode: 'pre' | 'post' | 'child-start' | 'child-stop') => [{ matcher: '*', hooks: [{ type: 'command',
@@ -335,9 +346,10 @@ export function subscriptionToolSettings(turn: SubscriptionToolTurn, home: strin
   return JSON.stringify({
     disableAllHooks: false,
     sandbox: { enabled: true, failIfUnavailable: true, autoAllowBashIfSandboxed: true, allowUnsandboxedCommands: false,
-      network: { allowedDomains: [], allowUnixSockets: [], allowAllUnixSockets: false, allowLocalBinding: false },
+      network: { allowedDomains: [], allowUnixSockets: [], allowAllUnixSockets: false, allowLocalBinding: false,
+        ...(turn.egress ? { httpProxyPort: turn.egress.port } : {}) },
       filesystem: { allowWrite: [turn.scratch], denyWrite: [...subscriptionToolDefaultWrites(home)],
-        denyRead: ['/'], allowRead: [turn.scratch, ...SUBSCRIPTION_TOOL_RUNTIME_READS] } },
+        denyRead: ['/'], allowRead: [turn.scratch, ...SUBSCRIPTION_TOOL_RUNTIME_READS, ...reads] } },
     permissions: { allow: [...SUBSCRIPTION_TOOL_NAMES, ...(turn.mcp?.servers ?? []).map(name => `mcp__${name}`)] },
     hooks: { PreToolUse: hook('pre'), PostToolUse: hook('post'), SubagentStart: hook('child-start'), SubagentStop: hook('child-stop') },
   });

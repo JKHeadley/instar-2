@@ -23,14 +23,42 @@ import { basename, dirname, join, resolve, sep } from 'node:path';
 import { isIP } from 'node:net';
 
 const SHELL_SAFE_PATH = /^\/[A-Za-z0-9_./@-]+$/u;
+/** The variables through which common clients (curl, git, node and npm, Python's requests and pip) take a trust root: each
+ * names the turn's egress checkpoint authority, so a command's TLS to any host is the checkpoint's. */
+export const EGRESS_CA_VARIABLES = Object.freeze(['SSL_CERT_FILE', 'CURL_CA_BUNDLE', 'GIT_SSL_CAINFO', 'NODE_EXTRA_CA_CERTS',
+  'REQUESTS_CA_BUNDLE', 'PIP_CERT', 'npm_config_cafile']);
+/** The proxy variables clients read (curl, git, npm and pip each read some of them), all naming the checkpoint by address. */
+export const EGRESS_PROXY_VARIABLES = Object.freeze(['http_proxy', 'https_proxy', 'HTTP_PROXY', 'HTTPS_PROXY', 'ALL_PROXY', 'all_proxy',
+  'npm_config_proxy', 'npm_config_https_proxy']);
 /** Prepended to every admitted shell command. Claude Code 2.1.280 exports its own messaging inbox
  * socket and token into the Bash tool (residual 6); the sandbox already refuses unix-socket connects,
  * and this removes both values from the command's environment as well. `TMPDIR` points at the turn's
  * own scratch volume (the harness's shared default is refused for writes), and `ulimit -f` bounds each
- * file a command writes (65536 blocks of 512 bytes). `tmp` is absolute and shell-safe. */
-export function toolShellPrefix(tmp) {
+ * file a command writes (65536 blocks of 512 bytes). `tmp` is absolute and shell-safe. With the turn's
+ * egress checkpoint (`egress` {ca, bin, developer?, port?}), the clients' trust-root variables name its authority certificate, the
+ * proxy variables name it by address once it runs (`port`), npm keeps its cache on the volume, the readable toolchain directories (`bin`) lead PATH, and `DEVELOPER_DIR` names the developer tools
+ * behind macOS's git shim. */
+export function toolShellPrefix(tmp, egress = null) {
   if (typeof tmp !== 'string' || !SHELL_SAFE_PATH.test(tmp)) throw Error('tool admission: shell temporary directory absent');
-  return `unset CLAUDE_CODE_MESSAGING_TOKEN CLAUDE_CODE_MESSAGING_SOCKET; export TMPDIR=${tmp}; ulimit -f 65536; `;
+  let network = '';
+  if (egress) {
+    const bin = egress.bin ?? [], developer = egress.developer ?? null, port = egress.port ?? null;
+    if (typeof egress.ca !== 'string' || !SHELL_SAFE_PATH.test(egress.ca) || !Array.isArray(bin)
+      || !bin.every(dir => typeof dir === 'string' && SHELL_SAFE_PATH.test(dir))
+      || !(developer === null || (typeof developer === 'string' && SHELL_SAFE_PATH.test(developer)))
+      || !(port === null || (Number.isSafeInteger(port) && port > 0 && port < 65536))) throw Error('tool admission: egress paths absent');
+    const proxy = port === null ? '' : ` ${EGRESS_PROXY_VARIABLES.map(name => `${name}=http://127.0.0.1:${String(port)}`).join(' ')}`;
+    // git reads /etc/gitconfig through the /etc link and the home's config, both outside the sandbox, so it skips them. The
+    // sandbox never lets a command write a `.git/config` or `.git/hooks` (the harness itself runs git outside the sandbox, and
+    // such a file could make it run code), so `git clone` and `git init` keep their git directory on the volume
+    // (`--separate-git-dir`, under tmp/git-dirs) with an empty template; the checkout is where it would be.
+    network = `mkdir -p ${tmp}/git-template ${tmp}/git-dirs; git() { case "$1" in clone|init) local sub="$1"; shift; `
+      + `command git "$sub" --separate-git-dir="${tmp}/git-dirs/$$-$RANDOM" "$@";; *) command git "$@";; esac; }; `
+      + `export ${EGRESS_CA_VARIABLES.map(name => `${name}=${egress.ca}`).join(' ')} npm_config_cache=${tmp}/npm-cache${proxy}`
+      + ` GIT_CONFIG_NOSYSTEM=1 GIT_CONFIG_GLOBAL=/dev/null GIT_TEMPLATE_DIR=${tmp}/git-template`
+      + `${developer ? ` DEVELOPER_DIR=${developer}` : ''}${bin.length ? ` PATH=${bin.join(':')}:$PATH` : ''}; `;
+  }
+  return `unset CLAUDE_CODE_MESSAGING_TOKEN CLAUDE_CODE_MESSAGING_SOCKET; export TMPDIR=${tmp}; ulimit -f 65536; ${network}`;
 }
 export const FILE_TOOLS = Object.freeze(['Read', 'Write', 'Edit', 'NotebookEdit']);
 const SEARCH_TOOLS = Object.freeze(['Glob', 'Grep']);
@@ -119,6 +147,46 @@ export function webReadHost(url) {
   return { host };
 }
 
+/** Ports a shell network request may reach: the web's own (http 80, https 443). */
+export const EGRESS_PORTS = Object.freeze({ 'http:': 80, 'https:': 443 });
+/** What one shell HTTP request does, read from its method and path alone (never its body or the words of the command):
+ * `read` for GET and HEAD and for git's fetch negotiation (a POST to `…/git-upload-pack`, which only asks for objects),
+ * `write` for everything else. A push is a write from its first request: git's push discovery
+ * (`…/info/refs?service=git-receive-pack`) and its upload (`…/git-receive-pack`). */
+export function egressRequestKind(method, target) {
+  const verb = String(method ?? '').toUpperCase();
+  let url; try { url = new URL(String(target)); } catch { return 'write'; }
+  const path = url.pathname;
+  if (path.endsWith('/git-receive-pack') || (path.endsWith('/info/refs') && url.searchParams.get('service') === 'git-receive-pack'))
+    return 'write';
+  if (verb === 'GET' || verb === 'HEAD') return 'read';
+  if (verb === 'POST' && path.endsWith('/git-upload-pack')) return 'read';
+  return 'write';
+}
+/**
+ * One shell network request at the turn's egress checkpoint (egress-checkpoint.mjs): the sandbox lets a command reach
+ * nothing but that checkpoint, which terminates TLS under the turn's own ephemeral authority and so sees each request's
+ * method and full URL. `request` is {method, url} (absolute http(s) URL); `addresses` the target's addresses as the
+ * checkpoint itself resolved them (the checkpoint then connects only to an address it checked); `operations` the installed
+ * profile's registered operations. A read of a public host on the web's ports is ordinary work; anything else that is
+ * well-formed is a network write for the effect doorway, which refuses it unless the profile registers `tool:network-write`.
+ * Returns {decision, reason, kind?}.
+ */
+export function admitEgress(request, addresses, operations) {
+  const deny = (reason, kind) => ({ decision: 'deny', reason, ...(kind ? { kind } : {}) });
+  const target = webReadHost(request?.url);
+  if (target.host === null) return deny(`shell network refused: ${target.reason}`, 'scope');
+  const url = new URL(String(request.url));
+  const port = url.port === '' ? EGRESS_PORTS[url.protocol] : Number(url.port);
+  if (port !== EGRESS_PORTS[url.protocol]) return deny(`shell network refused: port ${String(port)} is not the web's ${url.protocol} port`, 'scope');
+  if (!Array.isArray(addresses) || addresses.length === 0) return deny(`shell network refused: ${target.host} did not resolve`, 'scope');
+  if (!addresses.every(publicAddress)) return deny(`shell network refused: ${target.host} resolves to a non-public address`, 'scope');
+  if (egressRequestKind(request.method, request.url) === 'read')
+    return { decision: 'allow', reason: `shell network read (${String(request.method).toUpperCase()}) of a public host`, kind: 'network-read' };
+  const admitted = admitToolEffect('network-write', operations);
+  return admitted.admitted ? { decision: 'allow', reason: admitted.reason, kind: 'network-write' } : deny(admitted.reason, 'network-write');
+}
+
 /**
  * One PreToolUse decision. `call` is the hook input ({tool_name, tool_input, agent_id?}); `config` is the turn's
  * {workspace (real path), tmp (the shell's temporary directory), maxCalls, maxWriteBytes, operations, children?
@@ -154,7 +222,7 @@ export function admitToolCall(call, config, n, fs, child = 1) {
     if (!command.trim()) return deny('empty command');
     if (input.dangerouslyDisableSandbox) return effect('unsandboxed');
     return { decision: 'allow', reason: 'sandboxed command',
-      updatedInput: { ...input, command: toolShellPrefix(config.tmp) + command } };
+      updatedInput: { ...input, command: toolShellPrefix(config.tmp, config.egress ?? null) + command } };
   }
   if (tool === 'WebFetch') {
     // WebFetch only ever issues a GET; what it may reach is a public host.
@@ -219,7 +287,8 @@ const excerpt = value => { const text = typeof value === 'string' ? value : JSON
  * cancelled or unknown).
  */
 export function toolTrace(lines) {
-  const calls = [], admitted = new Map(), children = [], started = [];
+  const calls = [], admitted = new Map(), children = [], started = [], egress = [], requests = new Map();
+  let egressErrors = 0;
   let consistent = true, malformed = 0;
   for (const line of lines) {
     let row; try { row = JSON.parse(line); } catch { malformed++; continue; }
@@ -237,6 +306,17 @@ export function toolTrace(lines) {
       entry.result = excerpt(row.result);
       const edge = children.find(item => item.toolUse === row.id);
       if (edge) { edge.state = 'returned'; edge.result = entry.result; if (typeof row.agent === 'string') edge.agent = row.agent; }
+    } else if (row?.phase === 'egress' && Number.isSafeInteger(row.rid) && !requests.has(row.rid)) {
+      // A shell network request the turn's egress checkpoint decided (recorded before it went anywhere).
+      const entry = { rid: row.rid, method: String(row.method), url: excerpt(String(row.url)),
+        addresses: Array.isArray(row.addresses) ? row.addresses.slice(0, 8).map(String) : [], decision: row.decision, reason: row.reason,
+        ...(row.kind ? { kind: row.kind } : {}), status: null, down: 0, up: 0 };
+      egress.push(entry); requests.set(row.rid, entry);
+    } else if (row?.phase === 'egress-error') {
+      // A request the checkpoint closed on an internal error (counted, so the loss is visible in the trace).
+      egressErrors++;
+    } else if (row?.phase === 'egress-done' && requests.has(row.rid)) {
+      Object.assign(requests.get(row.rid), { status: row.status ?? null, down: row.down ?? 0, up: row.up ?? 0 });
     } else if (row?.phase === 'child-start' && typeof row.agent === 'string') started.push(row.agent);
     else if (row?.phase === 'child-stop' && typeof row.agent === 'string') started.push(`stop:${row.agent}`);
     else malformed++;
@@ -249,6 +329,6 @@ export function toolTrace(lines) {
     edge.started = edge.agent !== null && starts.includes(edge.agent);
     edge.stopped = edge.agent !== null && stops.has(edge.agent);
   }
-  return { calls, children, consistent: consistent && malformed === 0,
+  return { calls, children, egress, egressErrors, consistent: consistent && malformed === 0,
     admitted: calls.filter(call => call.decision === 'allow').length, refused: calls.filter(call => call.decision !== 'allow').length };
 }
