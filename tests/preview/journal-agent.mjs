@@ -23,10 +23,11 @@ import { admitPreviewHarness, PREVIEW_JOURNAL_HARNESS, PREVIEW_JOURNAL_STALL_COV
 import { UNRECORDED, briefingDigestOf, codeDigestOf, installedCodeOf, installationRows, installationStatusLines, installedUpdateFrom, updateDelivery,
   updatePacketItem } from './installation.js';
 import { projectionDigest, summaryStoppedAt, loopRevisitMs, LOOP_REVISIT_MIN_MS, LOOP_REVISIT_MAX_MS } from './journal.js';
-import { openPreviewJournal as openJournal, createJournalWorker, raiseJournalCaps, renewJournalExpiry, activationMatchesJournal, activePersonMerges, openQuestionCandidates, projectMemoryText, unansweredCue, reportJournalCap, unknownCallCounts, pendingUnknownCalls, replyTimings, reviewUnavailableReleases, claimScopedWithholds, MINIMAL_RESERVE, reserveTurnsUsed, reserveRepliesUsed, openRequests, actionWithdrawn, reminderDue, operatorRequestsReport, retrospectiveCases, openBlockers, openDirectives, declaredObligations, sendOutcomeCounts, sendOutcomeOf, unsentLabel, replyTarget, reminderOutcome, envelopeWriter, PREVIEW_LIVE_LIMITS, unservableContextReason, PREVIEW_JOURNAL_COMPACT_BYTES, activeMemoryConflicts, TOO_LONG_INPUT_NOTICE, TOO_LONG_REPLY_NOTICE , probeTurn, isJournalUpdate, retractRefusal, retractRendering, retractCarrier, retractedTurn, liveSummaries, withinOperatorHours, OPERATOR_HOURS, withFormatReminder, concurrentWorkItem, latestOwnedLaunch, meaningIndexStatus, LIMITED_ANSWER_OPERATION, MISSING_INSTALLATION_POLICY } from './journal.js';
+import { openPreviewJournal as openJournal, createJournalWorker, raiseJournalCaps, renewJournalExpiry, activationMatchesJournal, activePersonMerges, openQuestionCandidates, projectMemoryText, unansweredCue, reportJournalCap, unknownCallCounts, pendingUnknownCalls, replyTimings, reviewUnavailableReleases, claimScopedWithholds, MINIMAL_RESERVE, reserveTurnsUsed, reserveRepliesUsed, openRequests, actionWithdrawn, reminderDue, operatorRequestsReport, retrospectiveCases, openBlockers, openDirectives, declaredObligations, sendOutcomeCounts, sendOutcomeOf, unsentLabel, replyTarget, reminderOutcome, envelopeWriter, PREVIEW_LIVE_LIMITS, unservableContextReason, PREVIEW_JOURNAL_COMPACT_BYTES, activeMemoryConflicts, TOO_LONG_INPUT_NOTICE, TOO_LONG_REPLY_NOTICE , probeTurn, operatorWriter, isJournalUpdate, retractRefusal, retractRendering, retractCarrier, retractedTurn, liveSummaries, withinOperatorHours, OPERATOR_HOURS, withFormatReminder, concurrentWorkItem, latestOwnedLaunch, meaningIndexStatus, LIMITED_ANSWER_OPERATION, MISSING_INSTALLATION_POLICY } from './journal.js';
 import { createPreviewClock } from './clock.js';
 import { appendRun, heldNotices, heldRepliesToday, memoryHealthLine, readRuns, restartHandoff, selfState, selfStateBrief, selfStateSource, zoneFormatter } from './self-state.js';
 import { guidanceReport } from './guidance.js';
+import { memoryLearningReport } from './memory-learning.js';
 import { JEV_MODEL, jevQuestions, replyReviewContext, replyReviewQuestion, replyReviewRules, parseReplyReviewVerdict, replyReviewDiagnostics, parseJevResponse, replyRevisionQuestion, parseReplyRevision, REVIEW_MALFORMED, REVIEW_FORMAT_REMINDER } from './reply-check.js';
 import { interpretSummaryReview, SUMMARY_QUESTION } from './summary-check.js';
 import { assertLiveJudgment, decisionWithinFloor, modelCallRecord, sha256 } from './model-call-boundary.js';
@@ -967,6 +968,7 @@ async function main() {
         pendingCorrections: view.view.corrections.length,
         findings: view.view.order.filter(t => t.checked?.length).map(t => ({ update: t.update, rules: t.checked.map(f => f.rule) })) },
       jevChecks: view.view.jevChecks, replyChecks: view.view.replyCheckCounts, replyCheckPaths: view.view.replyCheckPaths, operatorEchoSent: operatorEchoSent(view.view), reviewUnavailableReleases: reviewUnavailableReleases(view.view), claimScopedWithholds: claimScopedWithholds(view.view), guidance: guidanceReport(view.view),
+        memoryLearning: memoryLearningReport(view.view, turn => operatorWriter(view.view, turn, true)),
       // Absolute times only: the ages are derivable and would make two reads of one journal differ.
       obligations: (({ oldestUnfinishedAgeMs: _age, progressAgeMs: _progress, ...health }) => health)(loopHealth(view.view, wallNow())),
       directives: openDirectives(view.view).map(({ id, note }) => ({ id, update: view.view.turns.get(note.source)?.update,
@@ -1085,6 +1087,7 @@ async function main() {
         undos: view.view.undos.map(item => ({ operatorUpdate: view.view.turns.get(item.trigger)?.update,
           change: item.change, kind: view.view.changeHistory[item.change]?.kind })),
         jevChecks: view.view.jevChecks, replyChecks: view.view.replyCheckCounts, replyCheckPaths: view.view.replyCheckPaths, operatorEchoSent: operatorEchoSent(view.view), reviewUnavailableReleases: reviewUnavailableReleases(view.view), claimScopedWithholds: claimScopedWithholds(view.view), guidance: guidanceReport(view.view),
+        memoryLearning: memoryLearningReport(view.view, turn => operatorWriter(view.view, turn, true)),
         lastReplyCheck: view.view.lastReplyCheck, lastReplyReview: lastReplyReview(view.view),
         ...(view.view.stepCheckStarted ? { stepChecks: stepCheckView(view.view) } : {}) })).text}\n`);
 

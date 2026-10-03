@@ -37,6 +37,8 @@ import type { IndependentSurfaceVerifierPort, InstalledShape, MinimalDependency,
 import { authenticateTelegramSender, principalBoundToUpdate, systemWriters, verifiedAtIntake, TELEGRAM_ADAPTER, testOriginWriter, writerBoundToRaw, writerRecord, type SystemMethod, type WriteOrigin, type WriterRecord } from './intake-principal.js';
 import { LIVE_JUDGMENTS, type ModelCallRecord } from './model-call-boundary.js';
 import { outboundSigner, settleSendOutcome, type OutboundProvenance, type OutboundSubject, type SendOutcome, type SettledSendOutcome, type Speaker } from './outbound-provenance.js';
+import { acceptedMemoryFailure, memoryFailureOffer, memoryFailures, memoryLearningLine, memoryLessons, validStoredMemoryFailure, withLearnedCues,
+  MEMORY_FAILURE_DECISION, type MemoryFailureProposal } from './memory-learning.js';
 import { retrospectivePlan, retrospectivePopulation, validateRetrospective, replyContextDigest, RETRO_OVER_CAP_REASON, type RetroPass, type RetroSiblingEvidence } from './retrospective.js';
 import { openReplyNotices, validAnswerNotices, type ReplyNotice } from './credential-reminders.js';
 import { admitChatYes, chatBinding, explicitYesStatus, operatorRefusalText, operatorRequestText, operatorResultText, operatorReviewBodyText, operatorReviewRequestText,
@@ -987,6 +989,8 @@ export type JournalRecord =
     promises?: PromiseProposal[]; fulfills?: FulfillmentProposal[];
     /** The operator action the model read this verified operator message as asking for (Rules 10, 82). */
     operatorAction?: OperatorActionProposal;
+    /** Part 21 §16: the operator's message showed the previous answer here should have remembered this (offered by structure). */
+    memoryFailure?: MemoryFailureProposal;
     at: number }
   | { kind: 'status-answer'; id: string; text: string; prompt: string; at: number }
   | { kind: 'model-uncertain'; id: string; state: 'uncertain'; usage?: ModelUsage; latencyMs?: number; at: number }
@@ -1212,6 +1216,8 @@ export interface Turn { id: string; update: number; text: string; raw: string; a
   proposedPromises?: PromiseProposal[]; proposedFulfills?: FulfillmentProposal[]; intentFulfills?: number[];
   /** The operator action this turn's answer proposed; its reply carries the exact request or the refusal. */
   operatorAction?: OperatorActionProposal;
+  /** Part 21 §16: this verified operator turn's validated report of a memory failure in the previous answer here. */
+  memoryFailure?: MemoryFailureProposal;
   /** Rule 110: the continuity account the send intent recorded for this reply. */
   continuity?: ContinuityAccount }
 
@@ -3846,6 +3852,14 @@ function project(view: JournalView, row: JournalRecord, system?: SystemCheck, ad
     if (row.memoryPending) turn.memoryPending = true;
     if (row.datedPending) turn.datedPending = true;
     if (row.closedQuestions) turn.closedQuestions = row.closedQuestions;
+    if (row.memoryFailure !== undefined) {
+      // Part 21 §16: the same rule the writer applied; a report the offer could not have carried fails replay.
+      const operator = (item: Turn) => operatorWriter(view, item, true);
+      if (!verifiedOperatorTurn(view, turn) || turn.requestedAction !== undefined
+        || !validStoredMemoryFailure(view, turn, memoryFailureOffer(view, turn, operator), row.memoryFailure, operator))
+        throw Error('preview journal: memory failure report refused');
+      turn.memoryFailure = row.memoryFailure;
+    }
     if (row.reminderCancels !== undefined) {
       const pending = openRequests(view).map(datedKey);
       // As on the recovery summary row, [] is a recorded decision that this turn withdrew nothing -- not an
@@ -4887,7 +4901,9 @@ export function createJournalWorker(journal: ReturnType<typeof openPreviewJourna
     const spoken = continuitySpoken(carried, { disposition, basis, disclosure }, unresolved !== undefined);
     return { before, label, disposition, reference, basis, disclosure, spoken };
   };
-  const meaningIndex = () => meaningTermsIndex(journal.view);
+  /** Part 21 §16: the learning loop's retrieval hints add the words of a question that missed to its source's cues. */
+  const learnedLessons = () => memoryLessons(journal.view, memoryFailures(journal.view, fromOperator));
+  const meaningIndex = () => withLearnedCues(meaningTermsIndex(journal.view), learnedLessons());
   /** How many times the write-side indexer has already offered one source its terms (Rule 11). */
   const indexAttempts = (id: string) => journal.view.indexOffered.filter(saved => saved === id).length;
   /** What an answer's packet carries: the disposition and its two counts, never the backlog itself. */
@@ -4973,8 +4989,10 @@ export function createJournalWorker(journal: ReturnType<typeof openPreviewJourna
     // model, not a word match, decides whether the new message answers either one.
     const continued = journal.view.order.filter(item => remembered(item) && !sizeRefused(item) && item.update < turn.update)
       .slice(-PREVIEW_CONTINUED_TURNS).filter(item => item.update <= summary.through);
-    return [...new Map([...continued, ...(earliest ? [earliest] : []), ...(dated ? [dated] : []), ...ranked].map(item => [item.id, item])).values()]
-      .slice(0, PREVIEW_RECALL_LIMIT + continued.length);
+    // Part 21 §16: a fact that keeps being forgotten rides recall on every turn whose verbatim history no longer shows it.
+    const pinned = learnedLessons().pinned.flatMap(id => older.filter(item => item.id === id));
+    return [...new Map([...pinned, ...continued, ...(earliest ? [earliest] : []), ...(dated ? [dated] : []), ...ranked].map(item => [item.id, item])).values()]
+      .slice(0, PREVIEW_RECALL_LIMIT + continued.length + pinned.length);
   };
   /** Rule 11: the answer model's own search phrases, run through the same word stage and the same recall owner as a
    * question, over the turns verbatim history no longer shows. Bounded like recall; empty when nothing relates. */
@@ -6104,6 +6122,10 @@ export function createJournalWorker(journal: ReturnType<typeof openPreviewJourna
     const lookup = activeLookup?.id === turn.id ? activeLookup : undefined;
     const lookupOffered = !lookup && !turn.lookup && fromOperator(turn) && !turn.requestedAction && !probeTurn(journal.view, turn)
       && journal.view.calls + 2 <= journal.view.limits.maxCalls - (ports.replyCheck ? 1 : 0);
+    // Part 21 §16: a memory-failure report is offered by structure (Rule 10): a verified operator turn whose previous
+    // answered turn here came from the operator. Never by the message's words.
+    const failureOffer = fromOperator(turn) && !turn.editOf && !turn.requestedAction && !probeTurn(journal.view, turn)
+      ? memoryFailureOffer(journal.view, turn, fromOperator) : undefined;
 
     const ranked = selectRecall({ message: turn.text, now: ports.now(), limit: 5,
       summary: latestSummary?.text ?? '',
@@ -6275,9 +6297,10 @@ export function createJournalWorker(journal: ReturnType<typeof openPreviewJourna
           rank: older ? askedAttribute && /\b(?:history|earlier|before|previous|used to)\b/iu.test(turn.text) ? 0 : 2 : 0,
           match: 0, recent: journal.view.turns.get(item.source)?.update ?? 0, index });
       });
+      const pinnedFacts = new Set(learnedLessons().pinned);
       recalled.forEach((item, index) => {
         const due = dueSoon(clean(item.text, true));
-        optional.push({ kind: due ? 'dated' : 'recent', key: item.id, signal: item.id, rank: due || lookedUp.has(item.id) ? 1 : 4,
+        optional.push({ kind: due ? 'dated' : 'recent', key: item.id, signal: item.id, rank: due || lookedUp.has(item.id) || pinnedFacts.has(item.id) ? 1 : 4,
           match: matches(item.text), recent: sentAt(item) ?? 0, index });
       });
       channels.forEach((item, index) => {
@@ -6343,6 +6366,7 @@ export function createJournalWorker(journal: ReturnType<typeof openPreviewJourna
           ...(fromOperator(turn) ? { memoryDecision: `Return memory:[] unless the verified operator corrects, forgets or sets reply style. ${MEMORY_ITEM_SHAPE} For an earlier answer use in:"reply" with its exact old reply clause and keep the question. `
             + (offered.length || (JSON.parse(datedBase) as { contradictions?: unknown[] }).contradictions?.length ? 'A newer operator statement of the same fact without correction words uses mode:"update", an exact old clause from an offered operator memoryCandidate or contradiction (hints only) and the exact new clause from this turn; the old dated value stays retrievable. ' : '')
             + 'Unknown target: memoryDisposition:"unresolved". Undo only via undoDecision.', preferenceSource: turn.id,
+            ...(failureOffer ? { memoryFailureDecision: MEMORY_FAILURE_DECISION, searchedTurn: failureOffer.id } : {}),
             ...(ports.toolRoute?.(turn.id) === true
               ? { obligationDecision: OBLIGATION_DECISION_TOOLS, governingConstraints: governingConstraints(true), capabilities: previewCapabilities(true) }
               : { obligationDecision: OBLIGATION_DECISION, governingConstraints: governingConstraints(false), capabilities: previewCapabilities(false) }) } : {}),
@@ -6374,8 +6398,14 @@ export function createJournalWorker(journal: ReturnType<typeof openPreviewJourna
         // Memory search is the lowest-priority evidence (Rule 11): its size
         // variants run innermost, using only leftover room.
         // The desk report is cut before the guide takes its floor form; both yield before history does.
-        const variants = ordinaries.flatMap(ordinary => { const cut = yieldSources(ordinary);
-          return [ordinary, ...cut, ...floorGuide(cut[0] ?? ordinary)]; });
+        // Part 21 §16: the memory-failure offer is the lowest-priority guidance, so it yields first: a packet that fit
+        // before the offer existed still fits, unchanged, and the report is then simply not offered on that turn.
+        const withoutOffer = (value: string) => { const packet = JSON.parse(value) as Record<string, unknown>;
+          if (!('memoryFailureDecision' in packet)) return undefined;
+          delete packet.memoryFailureDecision; delete packet.searchedTurn; return JSON.stringify(packet); };
+        const variants = ordinaries.flatMap(ordinary => { const bare = withoutOffer(ordinary), base = bare ?? ordinary;
+          const cut = yieldSources(base);
+          return [ordinary, ...(bare ? [bare] : []), ...cut, ...floorGuide(cut[0] ?? base)]; });
         for (const context of variants.flatMap(searchVariants)) {
         if (Buffer.byteLength(context) <= journal.view.limits.maxBytes) {
           promptFit = true;
@@ -6622,7 +6652,8 @@ export function createJournalWorker(journal: ReturnType<typeof openPreviewJourna
           journal.append({ kind: 'status-answer', id: turn.id, text: STOP_CONFIRM_TEXT, prompt, at: ports.now() });
         }
         if (turn.answer === undefined && !turn.reserved && !turn.noticeClass && isStatusCommand(turn.text)) {
-          const answer = [statusReply(journal.view, ports.now(), ports.timeZone ?? 'UTC', ports.statusExtra?.() ?? []), ...(ports.statusLines?.() ?? [])].join('\n');
+          const answer = [statusReply(journal.view, ports.now(), ports.timeZone ?? 'UTC',
+            [...ports.statusExtra?.() ?? [], memoryLearningLine(journal.view, fromOperator)]), ...(ports.statusLines?.() ?? [])].join('\n');
           const packet = { ...JSON.parse(packetFor(before(turn.update), true, [], [], [], turn.thread, false, [], [], false, turn)) as object,
             statusFacts: answer };
           const prompt = JSON.stringify({ messages: [{ role: 'context', content: JSON.stringify({ packet }) },
@@ -6805,13 +6836,14 @@ export function createJournalWorker(journal: ReturnType<typeof openPreviewJourna
               reminderCancels: string[] | undefined, invalidCancel = false, decided = false, ownReplyEcho = false,
               cancelRefusal: 'unlisted' | 'unverified' | undefined,
               obligations: AnswerObligations = {}, promises: PromiseProposal[] = [], fulfills: FulfillmentProposal[] = [],
-              refusedFulfills = 0, operatorAction: OperatorActionProposal | undefined, unreadAction = false;
+              refusedFulfills = 0, operatorAction: OperatorActionProposal | undefined, unreadAction = false,
+              memoryFailure: MemoryFailureProposal | undefined;
             const heldForgets: MemoryChange[] = [];
             if (output.trim()) try {
               const parsed = JSON.parse(output) as { reply?: unknown; memory?: unknown; memoryDisposition?: unknown; dated?: unknown; undo?: unknown; personMerges?: unknown; personAttributes?: unknown; closedQuestions?: unknown; memoryList?: unknown; lastNamedPerson?: unknown;
                 conflict?: unknown; resolveConflict?: unknown; cancelReminders?: unknown;
                 directives?: unknown; closeDirectives?: unknown; openLoops?: unknown; blocker?: unknown; blockerRechecks?: unknown;
-                promises?: unknown; fulfilled?: unknown; operatorAction?: unknown; operatorRequest?: unknown };
+                promises?: unknown; fulfilled?: unknown; operatorAction?: unknown; operatorRequest?: unknown; memoryFailure?: unknown };
               const replyValue = parsed?.reply;
               const replyAnswer = replyValue && typeof replyValue === 'object' && !Array.isArray(replyValue)
                 && 'answer' in replyValue && typeof replyValue.answer === 'string' ? replyValue.answer : undefined;
@@ -6923,6 +6955,14 @@ export function createJournalWorker(journal: ReturnType<typeof openPreviewJourna
                 if (Array.isArray(parsed.closedQuestions) && parsed.closedQuestions.length <= PREVIEW_QUESTION_LIMIT
                   && parsed.closedQuestions.every(id => typeof id === 'string' && listedQuestions.has(id)))
                   closedQuestions = [...new Set(parsed.closedQuestions as string[])];
+                // Part 21 §16: read only where the packet offered it, for exactly the turn it named.
+                if (parsed.memoryFailure !== undefined && parsed.memoryFailure !== null) {
+                  const offer = JSON.parse(context) as { memoryFailureDecision?: unknown; searchedTurn?: unknown };
+                  const failed = offer.memoryFailureDecision !== undefined && typeof offer.searchedTurn === 'string'
+                    ? journal.view.turns.get(offer.searchedTurn) : undefined;
+                  if (failed && !turn.editOf && failed === memoryFailureOffer(journal.view, turn, fromOperator))
+                    memoryFailure = acceptedMemoryFailure(journal.view, turn, failed, parsed.memoryFailure, fromOperator);
+                }
                 if (Array.isArray(parsed.memory)) {
                   // Live proof room 715672853 (cint-L13): on a plain question the model added a prefer item, sourced to this
                   // turn, whose quote is a clause of its own reply and not of the operator's message. The agent's own words
@@ -6997,7 +7037,7 @@ export function createJournalWorker(journal: ReturnType<typeof openPreviewJourna
               obligations = agentSide; operatorAction = undefined; unreadAction = false;
               memory = undefined; dated = undefined; personMerges = undefined; personAttributes = undefined; undo = undefined;
               conflict = undefined; askConflict = undefined; resolveConflict = undefined; lastNamedPerson = undefined;
-              closedQuestions = undefined; reminderCancels = undefined;
+              closedQuestions = undefined; reminderCancels = undefined; memoryFailure = undefined;
               invalidMemory = false; invalidDate = false; invalidUndo = false; invalidCancel = false; cancelRefusal = undefined; }
             if (invalidMemory) { memory = undefined; dated = undefined; personMerges = undefined; personAttributes = undefined; undo = undefined;
               conflict = undefined; askConflict = undefined; resolveConflict = undefined; reminderCancels = undefined; }
@@ -7008,7 +7048,7 @@ export function createJournalWorker(journal: ReturnType<typeof openPreviewJourna
             if (probe) { obligations = {}; operatorAction = undefined; unreadAction = false;
               invalidMemory = false; invalidDate = false; memory = []; dated = []; personMerges = undefined; personAttributes = undefined;
               undo = undefined; closedQuestions = undefined; conflict = undefined; askConflict = undefined; resolveConflict = undefined;
-              lastNamedPerson = undefined; reminderCancels = undefined; invalidCancel = false; cancelRefusal = undefined; }
+              lastNamedPerson = undefined; reminderCancels = undefined; invalidCancel = false; cancelRefusal = undefined; memoryFailure = undefined; }
             if (invalidDate) undo = undefined;
             // Rule 3 (plan #362): a reply written to introduce a request the runner could not read would announce one
             // that does not exist, so the fixed line replaces it; the runner's own lines below still follow. It is also
@@ -7130,7 +7170,7 @@ export function createJournalWorker(journal: ReturnType<typeof openPreviewJourna
               ...(refusedDeclarations ? { fulfills: refusedDeclarations } : {}) };
             journal.append({ kind: 'answer', id: turn.id, text: written,
               state: 'complete', ...(text.trim() ? {} : { failureClass: 'empty' as const }),
-              ...(memory === undefined ? {} : { memory }), ...(closedQuestions?.length ? { closedQuestions } : {}), ...(personMerges?.length ? { personMerges } : {}), ...(personAttributes?.length ? { personAttributes } : {}), ...(dated === undefined ? {} : { dated }),
+              ...(memory === undefined ? {} : { memory }), ...(closedQuestions?.length ? { closedQuestions } : {}), ...(memoryFailure ? { memoryFailure } : {}), ...(personMerges?.length ? { personMerges } : {}), ...(personAttributes?.length ? { personAttributes } : {}), ...(dated === undefined ? {} : { dated }),
               ...(reminderCancels === undefined ? {} : { reminderCancels }),
               ...(undo === undefined ? {} : { undo }),
               ...(conflict === undefined ? {} : { conflict }), ...(askConflict === undefined ? {} : { askConflict }),
