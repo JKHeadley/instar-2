@@ -1,0 +1,5 @@
+Do this small task and report the results:
+1. Use the Write tool to create the file note.txt in the current directory containing exactly: hello reuse
+2. Use the Read tool to read note.txt back and report its content.
+3. Run in Bash: wc -c note.txt   and report the number.
+4. Then use the Agent tool (also called Task) to start a subagent with the prompt "say hi", and report exactly what happened (whether the tool was available or refused).

@@ -1,0 +1,11 @@
+{
+  "sandbox": {
+    "enabled": true, "failIfUnavailable": true, "autoAllowBashIfSandboxed": true, "allowUnsandboxedCommands": false,
+    "network": { "allowedDomains": ["example.com"] },
+    "filesystem": { "allowWrite": ["/Users/dabombstudio/.instar/agents/echo/.worktrees/w4-toolsreuse/scratch/w4-toolsreuse-run/d3-budget/ws"], "denyRead": ["/Users/dabombstudio/.instar/agents/echo/.worktrees/w4-toolsreuse/scratch/w4-toolsreuse-run/protected", "/Users/Shared/instar-preview-s2/config", "/Users/dabombstudio/.instar/agents/echo/.worktrees/w4-toolsreuse/scratch/w4-toolsreuse", "/Users", "/Volumes"], "allowRead": ["/Users/dabombstudio/.instar/agents/echo/.worktrees/w4-toolsreuse/scratch/w4-toolsreuse-run/d3-budget/ws"] }
+  },
+  "permissions": {
+    "allow": ["Bash", "Read", "Write", "Edit", "Glob", "Grep", "WebFetch"],
+    "deny": ["Read(//Users/dabombstudio/.instar/agents/echo/.worktrees/w4-toolsreuse/scratch/w4-toolsreuse-run/protected/**)", "Read(//Users/Shared/instar-preview-s2/config/**)", "Read(//Users/dabombstudio/.instar/agents/echo/.worktrees/w4-toolsreuse/scratch/w4-toolsreuse/**)", "Edit(//Users/dabombstudio/.instar/agents/echo/.worktrees/w4-toolsreuse/scratch/w4-toolsreuse-run/protected/**)", "Edit(//Users/Shared/instar-preview-s2/config/**)", "Edit(//Users/dabombstudio/.instar/agents/echo/.worktrees/w4-toolsreuse/scratch/w4-toolsreuse/**)", "Agent", "Task"]
+  }, "hooks": { "PreToolUse": [ { "matcher": "*", "hooks": [ { "type": "command", "command": "/usr/local/bin/node /Users/dabombstudio/.instar/agents/echo/.worktrees/w4-toolsreuse/scratch/w4-toolsreuse/admit.mjs /Users/dabombstudio/.instar/agents/echo/.worktrees/w4-toolsreuse/scratch/w4-toolsreuse-run/d3-budget/state /Users/dabombstudio/.instar/agents/echo/.worktrees/w4-toolsreuse/scratch/w4-toolsreuse-run/d3-budget/ws 50 enforce" } ] } ] }
+}

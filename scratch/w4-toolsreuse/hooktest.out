@@ -1,0 +1,34 @@
+OK   read-inside                exit=0 decision=allow  want=allow
+OK   read-outside-abs           exit=0 decision=deny   want=deny
+OK   read-dotdot                exit=0 decision=deny   want=deny
+OK   read-relative-dotdot       exit=0 decision=deny   want=deny
+OK   read-via-symlink           exit=0 decision=deny   want=deny
+OK   read-missing-path          exit=0 decision=deny   want=deny
+OK   write-inside-new           exit=0 decision=allow  want=allow
+OK   write-outside              exit=0 decision=deny   want=deny
+OK   write-via-symlink          exit=0 decision=deny   want=deny
+OK   write-nonexistent-dotdot   exit=0 decision=deny   want=deny
+OK   edit-inside                exit=0 decision=allow  want=allow
+OK   edit-dotdot                exit=0 decision=deny   want=deny
+OK   glob-inside                exit=0 decision=allow  want=allow
+OK   glob-outside-path          exit=0 decision=deny   want=deny
+OK   glob-via-symlink-path      exit=0 decision=deny   want=deny
+OK   glob-dotdot-pattern        exit=0 decision=deny   want=deny
+OK   glob-abs-pattern           exit=0 decision=deny   want=deny
+OK   bash-plain                 exit=0 decision=allow  want=allow
+OK   bash-network-curl          exit=0 decision=deny   want=deny
+OK   bash-network-git-push      exit=0 decision=deny   want=deny
+OK   bash-delete                exit=0 decision=deny   want=deny
+OK   bash-host-control          exit=0 decision=deny   want=deny
+OK   bash-send                  exit=0 decision=deny   want=deny
+OK   bash-unsandboxed-flag      exit=0 decision=deny   want=deny
+OK   webfetch                   exit=0 decision=deny   want=deny
+OK   websearch                  exit=0 decision=deny   want=deny
+OK   mcp                        exit=0 decision=deny   want=deny
+OK   agent-tool                 exit=0 decision=deny   want=deny
+OK   unknown-tool               exit=0 decision=deny   want=deny
+OK   malformed-json             exit=2 decision=refuse want=refuse  stderr=admission hook error, refused: Expected double-quoted property name in
+OK   empty-input                exit=2 decision=refuse want=refuse  stderr=admission hook error, refused: Unexpected end of JSON input
+OK   cap-3rd-of-3               exit=0 decision=allow  want=allow
+OK   cap-4th-of-3               exit=0 decision=deny   want=deny
+33/33 as expected

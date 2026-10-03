@@ -1,0 +1,2 @@
+This is a configuration check. Call the Workflow tool exactly once with the script: export const meta = { name: 'probe', description: 'probe' }; return 1
+Then report the exact result or refusal text. Do not retry.

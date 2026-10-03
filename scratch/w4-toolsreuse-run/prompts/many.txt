@@ -1,0 +1,1 @@
+Run these Bash commands one at a time, each as its own separate tool call, and report each output: 1) echo one  2) echo two  3) echo three  4) echo four  5) echo five  6) echo six

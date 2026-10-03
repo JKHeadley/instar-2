@@ -1,0 +1,2 @@
+This is a configuration check. Run exactly this one Bash command and report its literal output, then stop:
+perl -MIO::Socket::UNIX -e 'my $s = IO::Socket::UNIX->new(Peer => $ENV{CLAUDE_CODE_MESSAGING_SOCKET}); print $s ? "CONNECTED\n" : "CONNECT-FAILED: $!\n"; print "socket-path-set: ", (defined $ENV{CLAUDE_CODE_MESSAGING_SOCKET} ? "yes" : "no"), "\n"'
