@@ -6,7 +6,7 @@ import { createJournalWorker, openPreviewJournal, retrospectiveCases, type Journ
 import { GRAVITY_WELLS, RETROSPECTIVE_DUTIES, RETROSPECTIVE_QUESTION, RETRO_ANSWER_BUDGET_BYTES, RETRO_DUTY_UNCORROBORATED_NOTE, RETRO_DUTY_UNINSPECTED_NOTE,
   RETRO_ANSWER_BYTES_PER_TOKEN, RETRO_DUTY_CODES, RETRO_EFFICIENCY_CHARS, RETRO_FAILURE_BACKOFF_MS,
   RETRO_MIN_INTERVAL_MS, RETRO_OUTCOME_REASON_CHARS, RETRO_OVER_CAP_REASON, RETRO_WELL_NOTES,
-  WAIVER_EVIDENCE_UNAVAILABLE, disciplineSource, eligibleCases, estimatedAnswerBytes, retroAnswerBudget, retrospectiveStatusLine,
+  WAIVER_EVIDENCE_UNAVAILABLE, disciplineSource, dutyLeftUninspected, eligibleCases, estimatedAnswerBytes, retroAnswerBudget, retrospectiveStatusLine,
   type RetroCase } from './retrospective.js';
 import { SUBSCRIPTION_MAX_OUTPUT_TOKENS } from '../../src/assembly/production-provider.js';
 
@@ -345,12 +345,15 @@ it('reports each duty by its recorded disposition in status: an uninspected effi
 });
 
 it('fails closed on every malformed compact fixed part in the fixture, and keeps every case owed', async () => {
-  // Two fixture entries are no longer malformed — a `u` at a duty whose evidence is present (plan #289), and an
-  // `f` at a duty the answer holds no finding for (plan #339) now each record that duty unavailable instead of
-  // refusing the pass (see the tests above) — and both carry `recordedUnavailable`, so the fail-closed set is
-  // exactly the nine that remain rather than quietly shrinking further.
+  // Five fixture entries are no longer malformed, each carrying `recordedUnavailable`: a `u` at a duty whose
+  // evidence is present (plan #289), an `f` at a duty the answer holds no finding for (plan #339), and — plan
+  // #382 — the three whose `duties` field cannot be read per position at all (the verbose array, one character
+  // short, a number). Each records the duty or duties unavailable instead of refusing the pass; the neighbour
+  // test below drives the three new ones. Two genuinely malformed fixed parts were added in their place (`eff`
+  // as a number, `wells` as a number), so the fail-closed set is the eight that remain rather than quietly
+  // shrinking to six.
   const failClosed = FIXTURE.answers.malformedFixed.filter(row => row.recordedUnavailable !== true);
-  expect(failClosed.length).toBe(9);
+  expect(failClosed.length).toBe(8);
   for (const { why, part } of failClosed) {
     // The malformed fixed part REPLACES the well-formed one, so each case carries exactly one defect.
     const { pass, before, stillOwed } = await onePass(state => complete(JSON.stringify({
@@ -361,6 +364,27 @@ it('fails closed on every malformed compact fixed part in the fixture, and keeps
     expect(pass.result, why).toBeUndefined();
     // The declared fail direction, unchanged by the compaction: no grade, no finding, every case still owed.
     expect(stillOwed, why).toEqual(expect.arrayContaining(before));
+  }
+});
+
+it('completes with every duty uninspected on each duties field that cannot be read per position (plan #382)', async () => {
+  // The three rows the fixture reclassified. Each one is the class that discarded room two's only live pass on
+  // the fresh cint-L37 root; the recorded reason names the one test both arms trip, so all three are driven here.
+  const unreadable = FIXTURE.answers.malformedFixed.filter(row => row.recordedUnavailable === true
+    && 'duties' in row.part && typeof row.part.duties !== 'string');
+  const short = FIXTURE.answers.malformedFixed.filter(row => row.recordedUnavailable === true
+    && typeof row.part.duties === 'string' && (row.part.duties as string).length !== RETROSPECTIVE_DUTIES.length);
+  expect(unreadable.length + short.length).toBe(3);
+  for (const { why, part } of [...unreadable, ...short]) {
+    const { pass } = await onePass(state => complete(JSON.stringify({
+      ...JSON.parse(compactAnswer(state)) as Record<string, unknown>,
+      duties: undefined, wells: undefined, eff: undefined, ...part })));
+    expect(pass.state, why).toBe('complete');
+    const duties = pass.result!.duties;
+    expect(duties, why).toHaveLength(RETROSPECTIVE_DUTIES.length);
+    // Rule 9's floor: not one duty is recorded inspected on a field no position could be read from.
+    expect(duties.filter(row => row.disposition === 'inspected'), why).toEqual([]);
+    expect(duties.every(row => dutyLeftUninspected(row) || row.duty === 'waiver-recurrence'), why).toBe(true);
   }
 });
 

@@ -315,7 +315,7 @@
   },
   "malformedFixed": [
    {
-    "why": "duties is still the verbose array, not one character per duty (the pre-compaction shape)",
+    "why": "duties is still the verbose array, not one character per duty (the pre-compaction shape). Reclassified by plan #382 (w3-retrocluster): a duties field that cannot be read per position no longer refuses the pass. It is not a string, so no character can be attributed to a duty; every duty is recorded unavailable with RETRO_DUTIES_UNREADABLE_NOTE and the rest of the pass stands. The recorded live refusal of room two under cint-L37 (I-proofroom2-20261003-061647, pass 0) fires from the one test both this and the one-character-short row below trip, and its reason does not say which arm it was, so both are covered.",
     "part": {
      "duties": [
       {
@@ -399,10 +399,11 @@
       0
      ],
      "eff": "none"
-    }
+    },
+    "recordedUnavailable": true
    },
    {
-    "why": "duties is one character short, so one duty is unaccounted for",
+    "why": "duties is one character short, so one duty is unaccounted for AND every character after the drop lands on the wrong duty. Reclassified by plan #382 (w3-retrocluster): recorded unavailable for every duty instead of refusing the pass. This is the class that killed room two's only pass on the fresh cint-L37 root, on an answer that parsed cleanly and fitted the output cap at 1905 tokens.",
     "part": {
      "duties": "nnnnnnnnnnnnn",
      "wells": [
@@ -415,7 +416,8 @@
       0
      ],
      "eff": "none"
-    }
+    },
+    "recordedUnavailable": true
    },
    {
     "why": "duties carries a character outside the verdict alphabet",
@@ -574,7 +576,7 @@
     }
    },
    {
-    "why": "duties is a number, not a string of one verdict character per duty (added by plan #289 to keep ten fail-closed fixed parts after the u case above was reclassified)",
+    "why": "duties is a number, not a string of one verdict character per duty (added by plan #289 to keep ten fail-closed parts). Reclassified by plan #382 (w3-retrocluster): not a string, so it is the same unreadable field as the two rows above and records every duty unavailable.",
     "part": {
      "duties": 14,
      "wells": [
@@ -586,6 +588,31 @@
       0,
       0
      ],
+     "eff": "none"
+    },
+    "recordedUnavailable": true
+   },
+   {
+    "why": "the efficiency sentence Rule 51 requires is a number, not a sentence (added by plan #382 to replace the three duties rows it reclassified: a fixed-part field whose own type the validator still refuses)",
+    "part": {
+     "duties": "nnnnnnnnnnnnnn",
+     "wells": [
+      0,
+      0,
+      0,
+      0,
+      0,
+      0,
+      0
+     ],
+     "eff": 3
+    }
+   },
+   {
+    "why": "wells is a number, not one entry per gravity well (added by plan #382, same reason)",
+    "part": {
+     "duties": "nnnnnnnnnnnnnn",
+     "wells": 7,
      "eff": "none"
     }
    }
