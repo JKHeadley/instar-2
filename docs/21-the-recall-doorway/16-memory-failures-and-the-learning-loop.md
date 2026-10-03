@@ -2,8 +2,9 @@
 
 **Value — a forgotten fact is evidence, and evidence should change the agent.** When the
 operator has to say "I told you that", the agent's memory failed in a way the agent could not
-see from inside the turn. Each such failure says something specific: the fact was never stored,
-a summary dropped it, recall missed it, or it was in front of the agent and went unused. The aim
+see from inside the turn. Each such failure says something specific: a summary dropped the fact,
+recall missed it, or it was in front of the agent and went unused; and when the original cannot
+be found, the record says so rather than guessing. The aim
 is an agent that forgets the same thing less often over time, by changing how it recalls, not by
 writing a note about the failure and hoping a later session reads it.
 
@@ -15,15 +16,16 @@ list.** Rules 2, 10, 11, 12, 85 and 116; **checks: P21-NF-25/26**. A failure is 
   `in: "reply"` for a correction of the agent's own answer). A correction that names such a
   reply is a memory failure. An operator correcting their own earlier statement, which the agent
   never repeated, is a fact correction and records no failure.
-- **the operator shows the agent should already have known something.** After an answer given
-  while part of memory was not in front of the agent word for word (behind a summary, below the
-  set-aside floor, or found through a memory lookup), the next verified operator message in that
-  conversation carries a structural offer, `memoryFailureDecision` with `searchedTurn` naming that
-  answer. If the message shows the agent should have known something, the answer model returns
-  `memoryFailure` with the clause of the message that states the fact and, when it can name one,
-  the earlier message where the operator said it. The offer is placed by structure, never by the
-  message's words; an answer that had the whole conversation in front of it gets no offer, since a
-  wrong statement there is the correction signal above.
+- **the operator shows the agent should already have known something.** After any answer to the
+  operator in a conversation, whether given from the whole history, from behind a summary, below
+  the set-aside floor, or through a memory lookup, the next verified operator message there carries
+  a structural offer, `memoryFailureDecision` with `searchedTurn` naming that answer. If the
+  message shows the agent should have known something, the answer model returns `memoryFailure`
+  with the clause of the message that states the fact and, when it can name one, the earlier
+  message where the operator said it. The offer is placed by structure, never by the message's
+  words. A full-history answer is offered too: a plain "I don't know" states no wrong value, so
+  the correction signal cannot cover it. The offer is the packet's lowest-priority guidance and
+  yields first under byte pressure, so a packet that fit without it still fits unchanged.
 
 The runner stores the report on the turn's answer row only as validated: the quote must be the
 operator's own words (otherwise the whole message, bounded, stands in for it), and a named source
@@ -42,7 +44,7 @@ failed turn's recorded packet grounding and the summaries in force then, not fro
 
 | Cause | Recorded evidence |
 |---|---|
-| never stored | no earlier operator message holds the true value |
+| source unresolved | the report named no original and no earlier operator message states its words exactly; since a wording miss is not evidence of absence (Rule 11), whether the fact was stored is recorded as unknown |
 | wrongly stored | the original was right, and a summary passage expressed the old value |
 | summarized away | the original lay behind the summary, which kept neither the fact nor meaning cues for it |
 | not retrieved | memory held the original (verbatim-reachable, or kept by the summary) and recall did not select it |
@@ -57,7 +59,7 @@ disagree with the journal.
 read, and both act through the existing recall owner rather than a new engine:
 
 - **Retrieval hint.** When memory held the fact and recall missed it, or a summary dropped it, or
-  the fact was never stored before the reminder (the reminder then holds it), the words of the
+  the original could not be resolved (the reminder then holds the fact), the words of the
   question that missed are added to the meaning cues of the message holding the answer. The next
   question asked that way reaches it through the meaning index. At most twelve words per source.
 - **Pinned fact.** When the same source fails twice or more, recall carries it on every turn whose
@@ -75,8 +77,8 @@ by signal and cause and the latest five failures by update number; the quoted te
 journal, which the inspection surface reads. Nothing is pushed to the operator.
 
 **Value — scope this design keeps honest.** A plain "I don't know" given with the whole
-conversation in front of the agent gets no offer: the operator's correction of it is the signal,
-and an answer with full history that misses a fact is classed as shown, not used. The model's
+conversation in front of the agent is offered like any other answer, and its miss is classed as
+shown, not used, from the recorded grounding. The model's
 response to the new offer is proved on recorded room shapes and stub reports; the first live report
 on a real root is what will measure how often the model makes one.
 

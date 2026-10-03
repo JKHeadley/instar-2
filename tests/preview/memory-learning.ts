@@ -6,9 +6,10 @@
  *    it as a `correct` memory change whose `replies` (or `in: 'reply'`) name the agent's reply that restated the old
  *    fact. An operator correcting their own earlier statement, which the agent never repeated, is a fact correction
  *    and not a memory failure.
- *  - `operator-reminded`: after an answer given while part of memory was not in front of the agent verbatim (a
- *    summary, a set-aside floor, or a memory lookup), the operator's next message showed the agent should already
- *    have known something. The answer model reports it as `memoryFailure` on that turn's answer row.
+ *  - `operator-reminded`: after any answer to the operator (from full history, a summary, a set-aside floor, or a
+ *    memory lookup), the operator's next message showed the agent should already have known something. The answer
+ *    model reports it as `memoryFailure` on that turn's answer row. A plain "I don't know" carries no wrong value to
+ *    correct, so the correction signal cannot cover it, even with the whole conversation in front of the agent.
  *
  * Everything here is a projection over durable journal rows (Rules 2, 39, 116): the failure record (what was asked,
  * what the memory path returned, the truth, and the likely cause) is recomputed on every read from the answer rows,
@@ -27,12 +28,14 @@ import type { JournalView, MemoryChange, ReplyGrounding, Turn } from './journal.
 
 export type MemoryFailureSignal = 'operator-correction' | 'operator-reminded';
 /** The likely cause, from the failed turn's recorded evidence:
- *  - `never-stored`: no earlier operator message held the true value, so memory returned what it had;
+ *  - `source-unresolved`: the earlier message that held the truth could not be resolved (the report named none and no
+ *    earlier operator message states the reported words exactly). A wording miss is not evidence of absence (Rule 11),
+ *    so whether the fact was ever stored stays unknown rather than asserted;
  *  - `wrongly-stored`: the original was right but a summary expressed the old, wrong value;
  *  - `summarized-away`: the original lay behind the summary, which kept neither the fact nor meaning cues for it;
  *  - `not-retrieved`: memory held the original (verbatim-reachable, or indexed by the summary) but recall missed it;
  *  - `shown-not-used`: the original was in the answer's packet and the answer still missed it. */
-export type MemoryFailureCause = 'never-stored' | 'wrongly-stored' | 'summarized-away' | 'not-retrieved' | 'shown-not-used';
+export type MemoryFailureCause = 'source-unresolved' | 'wrongly-stored' | 'summarized-away' | 'not-retrieved' | 'shown-not-used';
 /** The answer model's report, as the answer row stores it. `quote` is the clause of the operator's message that states
  * the fact; `source` is the earlier message where the operator had said it, when the model could name one. */
 export interface MemoryFailureProposal { quote: string; source?: string }
@@ -59,9 +62,9 @@ export const LEARNED_CUES_LIMIT = 12;
 export const PIN_AFTER_FAILURES = 2;
 /** Most pinned facts recall carries at once; the most recently failed win. */
 export const PINNED_FACTS_LIMIT = 4;
-/** Runner guidance offered by structure, never by the operator's words (Rule 10): only on a verified operator turn
- * whose previous answered turn here was given while part of memory was not shown verbatim. */
-export const MEMORY_FAILURE_DECISION = 'searchedTurn names your previous answer here, given while part of memory was not in front of you verbatim. '
+/** Runner guidance offered by structure, never by the operator's words (Rule 10): on a verified operator turn whose
+ * previous answered turn here was the operator's. It is the packet's lowest-priority guidance and yields first. */
+export const MEMORY_FAILURE_DECISION = 'searchedTurn names your previous answer here. '
   + 'If this message shows you should already have known something the operator had told you, also return '
   + 'memoryFailure:{quote:<the clause of this message stating that fact, word for word>,source:<id of the earlier message that said it, '
   + 'from history or recalled, else null>}. Otherwise omit memoryFailure.';
@@ -72,9 +75,9 @@ const bounded = (value: string) => {
 };
 const normalized = (value: string) => value.toLowerCase().replace(/\s+/gu, ' ').trim().replace(/[.!?]+$/u, '');
 
-/** The turn a reminder can be about: the latest earlier answered turn in the same conversation from the operator, when
- * its answer was given while part of memory was not shown verbatim (a summary frontier, a set-aside floor, or a lookup).
- * A complete-history answer had everything in front of it; a correction of what it said is the correction signal. */
+/** The turn a reminder can be about: the latest earlier answered turn in the same conversation from the operator. A
+ * complete-history answer is eligible too: an "I don't know" there states no wrong value a correction could replace,
+ * and its grounding then classifies the miss as shown, not used. */
 export function memoryFailureOffer(view: JournalView, turn: Turn, operator: (item: Turn) => boolean): Turn | undefined {
   let prior: Turn | undefined;
   for (const item of view.order) {
@@ -82,10 +85,7 @@ export function memoryFailureOffer(view: JournalView, turn: Turn, operator: (ite
     if (item.accepted && item.thread === turn.thread && item.answer !== undefined && item.requestedAction === undefined
       && !item.editOf && operator(item)) prior = item;
   }
-  if (!prior) return undefined;
-  const grounding = prior.grounding;
-  return prior.lookup !== undefined || grounding?.compactedThrough !== undefined || grounding?.setAsideThrough !== undefined
-    ? prior : undefined;
+  return prior;
 }
 
 /** A report the answer row may store: the quote is a clause of the operator's own message (the whole message, bounded,
@@ -118,7 +118,8 @@ export function validStoredMemoryFailure(view: JournalView, turn: Turn, failed: 
 /** Where the failed turn's recorded packet stood relative to the true source. */
 function classify(view: JournalView, failed: Turn, source: Turn | undefined, summaryWrong: boolean):
   { cause: MemoryFailureCause; basis: string } {
-  if (!source) return { cause: 'never-stored', basis: 'no earlier operator message holds the true value' };
+  if (!source) return { cause: 'source-unresolved',
+    basis: 'the original message was not named and no earlier operator message states the reported words exactly; whether it was stored is unknown' };
   if (summaryWrong) return { cause: 'wrongly-stored', basis: 'a summary passage expressed the old value' };
   const grounding: ReplyGrounding | undefined = failed.grounding;
   if (!grounding) return { cause: 'not-retrieved', basis: 'the failed turn recorded no packet grounding' };
@@ -134,7 +135,8 @@ function classify(view: JournalView, failed: Turn, source: Turn | undefined, sum
     : { cause: 'summarized-away', basis: 'the source lay behind the summary, which kept neither the fact nor cues for it' };
 }
 
-/** The earliest-to-latest operator message before `before` that states the clause, exactly (case and spacing aside). */
+/** The latest operator message before `before` that states the clause exactly (case and spacing aside). A miss here
+ * only means the source is unresolved: the operator may have said it in other words. */
 function statedBefore(view: JournalView, clause: string, before: number, operator: (item: Turn) => boolean) {
   const wanted = normalized(clause);
   if (wanted.length < 3) return undefined;
@@ -200,15 +202,15 @@ export interface MemoryLessons {
   pinned: string[];
 }
 /** The learning loop's current lessons, derived from the failures. A hint is learned from one failure whose source
- * memory held but recall did not reach (or from the reminder itself, when the fact was never stored before); a pin
- * needs the same source to fail repeatedly. */
+ * memory held but recall did not reach (or from the reminder itself, which holds the fact, when the original could
+ * not be resolved); a pin needs the same source to fail repeatedly. */
 export function memoryLessons(view: JournalView, failures: readonly MemoryFailure[]): MemoryLessons {
   const hints = new Map<string, string[]>(), counts = new Map<string, { count: number; last: number }>();
   for (const failure of failures) {
     const target = failure.truth.source
-      ?? (failure.signal === 'operator-reminded' && failure.cause === 'never-stored' ? failure.trigger : undefined);
+      ?? (failure.signal === 'operator-reminded' && failure.cause === 'source-unresolved' ? failure.trigger : undefined);
     if (target === undefined || withdrawn(view.memory, target)) continue;
-    if (failure.cause === 'not-retrieved' || failure.cause === 'summarized-away' || failure.cause === 'never-stored') {
+    if (failure.cause === 'not-retrieved' || failure.cause === 'summarized-away' || failure.cause === 'source-unresolved') {
       const cues = hints.get(target) ?? [];
       for (const cue of learnedCues(failure.asked.question)) if (!cues.includes(cue) && cues.length < LEARNED_CUES_LIMIT) cues.push(cue);
       if (cues.length) hints.set(target, cues);

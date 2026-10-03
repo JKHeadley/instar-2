@@ -1,5 +1,26 @@
 [
   {
+    "revision": 6,
+    "date": "2026-10-03",
+    "status": "draft",
+    "cause": {
+      "kind": "draft",
+      "note": "Unit review of w4-memlearn-s round 1 (Astra, VERDICT: NO): two must-fixes repaired at source. No constitution change."
+    },
+    "changes": [
+      {
+        "what": "Section 16 offers the memoryFailure report after any answer to the operator, including a full-history one, as the packet's lowest-priority guidance that yields first under byte pressure; section 12 P21-NF-25 and section 13 P21-NEG-32 follow.",
+        "why": "A full-history \"I don't know\" states no wrong value, so the correction signal could not cover it and the operator's reminder was silently lost (Purpose constraint 2, Rule 85).",
+        "ref": "lanes/w4-memlearn-s-PROGRESS.md (Pipeline repair); tests/preview/memory-learning.test.ts"
+      },
+      {
+        "what": "The never-stored cause is replaced by source unresolved: when the report names no original and no earlier operator message states its words exactly, the record says whether the fact was stored is unknown; P21-NF-26 follows.",
+        "why": "A wording miss is not evidence of absence (Rules 11 and 26); a paraphrased reminder was misreported as proof the fact was never stored.",
+        "ref": "lanes/w4-memlearn-s-PROGRESS.md (Pipeline repair); tests/preview/memory-learning.ts"
+      }
+    ]
+  },
+  {
     "revision": 5,
     "date": "2026-10-03",
     "status": "draft",

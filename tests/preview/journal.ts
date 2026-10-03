@@ -6017,7 +6017,7 @@ export function createJournalWorker(journal: ReturnType<typeof openPreviewJourna
     const lookupOffered = !lookup && !turn.lookup && fromOperator(turn) && !turn.requestedAction && !probeTurn(journal.view, turn)
       && journal.view.calls + 2 <= journal.view.limits.maxCalls - (ports.replyCheck ? 1 : 0);
     // Part 21 §16: a memory-failure report is offered by structure (Rule 10): a verified operator turn whose previous
-    // answered turn here was given while part of memory was not shown verbatim. Never by the message's words.
+    // answered turn here came from the operator. Never by the message's words.
     const failureOffer = fromOperator(turn) && !turn.editOf && !turn.requestedAction && !probeTurn(journal.view, turn)
       ? memoryFailureOffer(journal.view, turn, fromOperator) : undefined;
 
@@ -6292,8 +6292,14 @@ export function createJournalWorker(journal: ReturnType<typeof openPreviewJourna
         // Memory search is the lowest-priority evidence (Rule 11): its size
         // variants run innermost, using only leftover room.
         // The desk report is cut before the guide takes its floor form; both yield before history does.
-        const variants = ordinaries.flatMap(ordinary => { const cut = yieldSources(ordinary);
-          return [ordinary, ...cut, ...floorGuide(cut[0] ?? ordinary)]; });
+        // Part 21 §16: the memory-failure offer is the lowest-priority guidance, so it yields first: a packet that fit
+        // before the offer existed still fits, unchanged, and the report is then simply not offered on that turn.
+        const withoutOffer = (value: string) => { const packet = JSON.parse(value) as Record<string, unknown>;
+          if (!('memoryFailureDecision' in packet)) return undefined;
+          delete packet.memoryFailureDecision; delete packet.searchedTurn; return JSON.stringify(packet); };
+        const variants = ordinaries.flatMap(ordinary => { const bare = withoutOffer(ordinary), base = bare ?? ordinary;
+          const cut = yieldSources(base);
+          return [ordinary, ...(bare ? [bare] : []), ...cut, ...floorGuide(cut[0] ?? base)]; });
         for (const context of variants.flatMap(searchVariants)) {
         if (Buffer.byteLength(context) <= journal.view.limits.maxBytes) {
           promptFit = true;

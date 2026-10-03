@@ -150,7 +150,7 @@ describe('Part 21 §16 (P21-NF-25/26/27): a forgotten fact, then the operator re
     } finally { w.close(); }
   }, 120_000);
 
-  it('records a recorded lookup that found nothing as never-stored, learned against the reminder itself', async () => {
+  it('records a recorded lookup that found nothing, with no resolvable original, as source-unresolved, learned against the reminder itself', async () => {
     const sample = recorded('never-said');
     const first = decoded(sample.calls[0]!.raw), settled = decoded(sample.calls[1]!.raw);
     const told = 'I did tell you, I am sure of it: my sister\'s middle name is Rosalind.';
@@ -167,7 +167,7 @@ describe('Part 21 §16 (P21-NF-25/26/27): a forgotten fact, then the operator re
       const reminded = await w.say(told);
       expect(reminded.packet!.searchedTurn).toBe(asked.turn.id);
       const [failure] = memoryFailures(w.journal.view, operator(w.journal.view));
-      expect(failure).toMatchObject({ cause: 'never-stored', truth: { quote: 'my sister\'s middle name is Rosalind' },
+      expect(failure).toMatchObject({ cause: 'source-unresolved', truth: { quote: 'my sister\'s middle name is Rosalind' },
         returned: { lookup: { found: 0 } } });
       expect(failure!.truth.source).toBeUndefined();
       expect(memoryLessons(w.journal.view, [failure!]).hints.get(reminded.turn.id)).toEqual(learnedCues(sample.question));
@@ -199,40 +199,80 @@ describe('Part 21 §16 (P21-NF-25/27, P21-NEG-32/33): what a report may carry, b
       report = { quote: 'the shed code is 2958', source: askedId };
       const first = await w.say(REMINDER);
       expect(first.turn.memoryFailure).toEqual({ quote: REMINDER });
-      // Not an object: nothing recorded. The previous answer is now the reminder's, which had the whole message too.
+      // Not an object: nothing recorded. The previous answer is now the reminder's.
       report = 'forgot the code';
       const second = await w.say('And again, you forgot.');
       expect(second.turn.memoryFailure).toBeUndefined();
     } finally { w.close(); }
   }, 120_000);
 
-  it('offers nothing and records nothing after an answer that had the whole conversation in front of it', async () => {
+  it('records a full-history "I don\'t know" reminded by the operator, and nothing after an ordinary full-history answer', async () => {
+    // Every turn here has the whole conversation in front of it: no summary, set-aside floor or lookup.
     const dir = realpathSync(mkdtempSync(join(tmpdir(), 'preview-memlearn-small-')));
     const packets: Packet[] = [];
+    const told = 'I told you: my locker is 4521.';
     try {
       const journal = openPreviewJournal(join(dir, 'journal.encrypted'), new Uint8Array(32).fill(5), { kind: 'genesis',
         bot: '12345678', chat: '7654321', operator: '7654321', grant: 'grant:preview', configurationDigest: 'sha256:offline',
         expires: 9999999999999, maxCalls: 30, maxReplies: 20, maxTurns: 20, maxBytes: 409600, cursor: 0 });
       const worker = createJournalWorker(journal, { now: () => 1790000000000, stopped: () => false, checkOutbound: () => {},
         send: async (input: { update: number }) => input.update,
-        model: async (input: { context: string }) => { packets.push(JSON.parse(input.context) as Packet);
-          return JSON.stringify({ reply: 'I do not know.', memory: [], memoryFailure: { quote: 'my locker is 4521', source: null } }); } });
+        model: async (input: { question: string; context: string }) => { packets.push(JSON.parse(input.context) as Packet);
+          if (input.question === told) return JSON.stringify({ reply: 'Sorry: your locker is 4521.', memory: [],
+            memoryFailure: { quote: 'my locker is 4521', source: sourceId(1) } });
+          return JSON.stringify({ reply: input.question === 'What is my locker?' ? 'I do not know.' : 'Noted.', memory: [] }); } });
       worker.intake([update(1, 'My locker is 4521.')]); await worker.drain();
       worker.intake([update(2, 'What is my locker?')]); await worker.drain();
-      worker.intake([update(3, 'I told you: my locker is 4521.')]); await worker.drain();
-      expect(packets.every(packet => packet.memoryFailureDecision === undefined)).toBe(true);
-      expect(journal.view.order.every(turn => turn.memoryFailure === undefined)).toBe(true);
+      // Negative neighbor: the ordinary full-history answer to a question carries the offer but no report; nothing recorded.
+      expect(packets[0]!.memoryFailureDecision).toBeUndefined();
+      expect(packets[1]).toMatchObject({ memoryFailureDecision: MEMORY_FAILURE_DECISION, searchedTurn: sourceId(1) });
       expect(memoryFailures(journal.view, operator(journal.view))).toEqual([]);
-      // A forged row naming a report the offer could not have carried fails replay.
+      // The reminder after the full-history "I do not know": offered, recorded, and classed from its grounding.
+      worker.intake([update(3, told)]); await worker.drain();
+      expect(packets[2]).toMatchObject({ memoryFailureDecision: MEMORY_FAILURE_DECISION, searchedTurn: sourceId(2) });
+      expect(journal.view.turns.get(sourceId(3))!.memoryFailure).toEqual({ quote: 'my locker is 4521', source: sourceId(1) });
+      const [failure, ...rest] = memoryFailures(journal.view, operator(journal.view));
+      expect(rest).toEqual([]);
+      expect(failure).toMatchObject({ signal: 'operator-reminded', asked: { turn: sourceId(2), question: 'What is my locker?' },
+        returned: { reply: 'I do not know.' }, truth: { quote: 'my locker is 4521', source: sourceId(1) }, cause: 'shown-not-used' });
+      // A forged row naming a quote that is not the operator's own words fails replay.
       const id = sourceId(4);
       journal.append({ kind: 'intake', id, update: 4, text: 'I told you twice: my locker is 4521.',
         raw: JSON.stringify(update(4, 'I told you twice: my locker is 4521.')), accepted: true, cursor: 5, at: 1790000000000 });
       journal.append({ kind: 'reserve', id, at: 1790000000000 });
-      expect(() => journal.append({ kind: 'answer', id, text: 'Sorry.', state: 'complete', memoryFailure: { quote: 'my locker is 4521' },
+      expect(() => journal.append({ kind: 'answer', id, text: 'Sorry.', state: 'complete', memoryFailure: { quote: 'my locker is 9999' },
         at: 1790000000000 })).toThrow('memory failure report refused');
       journal.close();
     } finally { rmSync(dir, { recursive: true, force: true }); }
   });
+
+  it('records a source-less paraphrase as source-unresolved, never as never stored; an exact clause resolves its source', async () => {
+    const forgot = decoded(recorded('P2').calls[0]!.raw);
+    const paraphrase = 'You should have known that. I told you: the padlock on my garden shed opens with 2958.';
+    const w = world(text => text === paraphrase ? JSON.stringify({ reply: 'Sorry: 2958.', memory: [],
+      memoryFailure: { quote: 'the padlock on my garden shed opens with 2958', source: null } })
+      : text === REMINDER ? reminderReport(null) : text === question.message ? forgot : 'Noted.');
+    try {
+      await w.say(question.message);
+      const reminded = await w.say(paraphrase);
+      const [failure] = memoryFailures(w.journal.view, operator(w.journal.view));
+      // The journal holds the fact in other words; a wording miss is not proof it was never stored (Rule 11).
+      expect(failure).toMatchObject({ signal: 'operator-reminded', cause: 'source-unresolved',
+        truth: { quote: 'the padlock on my garden shed opens with 2958' } });
+      expect(failure!.truth.source).toBeUndefined();
+      expect(failure!.basis).toContain('unknown');
+      // The reminder holds the fact, so the useful lesson is kept against it.
+      expect(memoryLessons(w.journal.view, [failure!]).hints.get(reminded.turn.id)).toEqual(learnedCues(question.message));
+    } finally { w.close(); }
+    // Resolved neighbor: the same null source with the exact clause resolves to the original and is classed from grounding.
+    const v = world(text => text === REMINDER ? reminderReport(null) : text === question.message ? forgot : 'Noted.');
+    try {
+      await v.say(question.message);
+      await v.say(REMINDER);
+      const [failure] = memoryFailures(v.journal.view, operator(v.journal.view));
+      expect(failure).toMatchObject({ cause: 'not-retrieved', truth: { source: factId } });
+    } finally { v.close(); }
+  }, 120_000);
 
   it('teaches nothing from a fact the operator has since forgotten', async () => {
     const forgot = decoded(recorded('P2').calls[0]!.raw);
@@ -278,7 +318,7 @@ describe('Part 21 §16 (P21-NF-25, P21-NEG-31): an operator correction of a fact
       const failures = memoryFailures(r.journal.view, operator(r.journal.view));
       expect(failures).toHaveLength(1);
       expect(failures[0]).toMatchObject({ signal: 'operator-correction', asked: { update: 1, question: 'When was the review?' },
-        returned: { reply: 'The review was Monday.' }, truth: { quote: 'it was Tuesday.' }, cause: 'never-stored' });
+        returned: { reply: 'The review was Monday.' }, truth: { quote: 'it was Tuesday.' }, cause: 'source-unresolved' });
     } finally { r.close(); }
   });
 
