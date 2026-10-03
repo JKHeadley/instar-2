@@ -1,0 +1,117 @@
+{
+ "source": "live-proof group A, room two, results A-proofroom2-20261003-022222 (cint-L36 4228d0c5); check A5b FAILED",
+ "note": "The live raw answer rows are kept in the proof room's journal, which is not readable from the Mama PC, so the two recordedAnswers below are REAL claude-sonnet-5 outputs captured on the SAME recorded A5b packet through the SAME envelope, protocol and reader (scripts runner, 2026-10-03). They are the observed answer shape; the live row's own bytes are not claimed here.",
+ "model": "claude-sonnet-5",
+ "turns": [
+  {
+   "update": 6231386,
+   "message": "Please promise that in your next reply you will give me three tips for watering my tomato plants. Do not give the tips now; just say you will.",
+   "sent": "PREVIEW — I promise — in my next reply, I'll give you three tips for watering your tomato plants.",
+   "answer": "I promise — in my next reply, I'll give you three tips for watering your tomato plants."
+  },
+  {
+   "update": 6231387,
+   "message": "Go ahead with the three tomato watering tips you promised.",
+   "sent": "PREVIEW — Here are three tomato watering tips as promised:\n\n1. Water deeply and infrequently — aim for about 1–2 inches of water per week, soaking the root zone rather than sprinkling lightly every day. This encourages deep roots and more drought-resistant plants.\n\n2. Water at the base, not the leaves — wet foliage (especially left wet overnight) invites fungal diseases like blight. Use a soaker hose or water directly at the soil.\n\n3. Keep moisture consistent — big swings between bone-dry and soaked soil cause blossom-end rot and split fruit. Mulching around the base helps even this out between waterings.",
+   "answer": "Here are three tomato watering tips as promised:\n\n1. Water deeply and infrequently — aim for about 1–2 inches of water per week, soaking the root zone rather than sprinkling lightly every day. This encourages deep roots and more drought-resistant plants.\n\n2. Water at the base, not the leaves — wet foliage (especially left wet overnight) invites fungal diseases like blight. Use a soaker hose or water directly at the soil.\n\n3. Keep moisture consistent — big swings between bone-dry and soaked soil cause blossom-end rot and split fruit. Mulching around the base helps even this out between waterings."
+  }
+ ],
+ "agentPromisesAfterA5": [
+  {
+   "id": 0,
+   "quote": "I promise — in my next reply, I'll give you three tips for watering your tomato plants.",
+   "action": "promised",
+   "closed": false
+  }
+ ],
+ "agentPromisesAfterA5b": [
+  {
+   "id": 0,
+   "quote": "I promise — in my next reply, I'll give you three tips for watering your tomato plants.",
+   "action": "promised",
+   "closed": false
+  }
+ ],
+ "recordedAnswers": [
+  {
+   "run": "reproduction-2",
+   "replyBytes": 526,
+   "output": {
+    "reply": "Here are three tomato watering tips: 1) Water deeply and infrequently — aim for about 1-2 inches per week, soaking the soil 6-8 inches down, rather than light daily sprinkles, to encourage deep root growth. 2) Water at the base of the plant in the morning, avoiding the leaves, to reduce the risk of fungal diseases like blight. 3) Keep moisture consistent — uneven watering (letting soil dry out then flooding it) causes problems like blossom end rot and cracked fruit, so mulch around the base to retain steady moisture.",
+    "fulfilled": [
+     {
+      "id": 0,
+      "quote": "Here are three tomato watering tips: 1) Water deeply and infrequently — aim for about 1-2 inches per week, soaking the soil 6-8 inches down, rather than light daily sprinkles, to encourage deep root growth. 2) Water at the base of the plant in the morning, avoiding the leaves, to reduce the risk of fungal diseases like blight. 3) Keep moisture consistent — uneven watering (letting soil dry out then flooding it) causes problems like blossom end rot and cracked fruit, so mulch around the base to retain steady moisture."
+     }
+    ]
+   },
+   "quoteBytes": 526,
+   "quotesTheReply": true,
+   "note": "quote = the whole reply, 526 bytes: over the 500-byte sentence bound, so the claim was refused"
+  },
+  {
+   "run": "reproduction-3",
+   "replyBytes": 413,
+   "output": {
+    "reply": "Here are three tips for watering your tomato plants: 1) Water deeply and less frequently (about 1-2 inches per week) to encourage deep root growth rather than shallow roots. 2) Water at the base of the plant in the morning, avoiding the leaves, to reduce the risk of fungal disease. 3) Keep moisture consistent — uneven watering (drying out then flooding) causes problems like blossom end rot and cracked fruit.",
+    "fulfilled": [
+     {
+      "id": 0,
+      "quote": "Here are three tips for watering your tomato plants: 1) Water deeply and less frequently (about 1-2 inches per week) to encourage deep root growth rather than shallow roots. 2) Water at the base of the plant in the morning, avoiding the leaves, to reduce the risk of fungal disease. 3) Keep moisture consistent — uneven watering (drying out then flooding) causes problems like blossom end rot and cracked fruit."
+     }
+    ]
+   },
+   "quoteBytes": 413,
+   "quotesTheReply": true,
+   "note": "quote = the whole reply, 413 bytes: inside the old bound, so the same shape closed the promise"
+  },
+  {
+   "run": "reproduction-6",
+   "replyBytes": 525,
+   "quoteBytes": 89,
+   "quotesTheReply": false,
+   "note": "quote = the PROMISE sentence copied from the packet, not an excerpt of this reply: not carried by the reply as sent, so refused (the floor, correctly) — a second cause of the same live failure, needing the protocol to say which text the quote comes from",
+   "output": {
+    "reply": "Here are three tips for watering your tomato plants: 1) Water deeply and less often — aim for about 1-2 inches per week, soaking the soil 6-8 inches down, to encourage deep root growth rather than shallow roots. 2) Water at the base of the plant, not overhead — wetting the leaves promotes fungal diseases like blight, so use a soaker hose or water directly at the soil line. 3) Water early in the morning — this lets the plant absorb moisture before the heat of the day and lets foliage dry out, reducing disease risk.",
+    "fulfilled": [
+     {
+      "id": 0,
+      "quote": "I promise — in my next reply, I'll give you three tips for watering your tomato plants."
+     }
+    ]
+   }
+  },
+  {
+   "run": "reproduction-4",
+   "replyBytes": 518,
+   "quoteBytes": 83,
+   "quotesTheReply": true,
+   "note": "quote = a real short excerpt of this reply: accepted on both builds",
+   "output": {
+    "reply": "Here are three tips for watering your tomato plants: 1) Water deeply and less often — aim for about 1-2 inches per week, soaking the soil 6-8 inches down, rather than light daily sprinkles, to encourage deep root growth. 2) Water at the base, not the leaves — using a soaker hose or watering can at soil level keeps foliage dry and helps prevent fungal diseases like blight. 3) Water early in the morning — this reduces evaporation loss and gives leaves time to dry before evening, further lowering disease risk.",
+    "fulfilled": [
+     {
+      "id": 0,
+      "quote": "Here are three tips for watering your tomato plants: 1) Water deeply and less often"
+     }
+    ]
+   }
+  },
+  {
+   "run": "reproduction-5",
+   "replyBytes": 687,
+   "quoteBytes": 51,
+   "quotesTheReply": true,
+   "note": "quote = a real short excerpt of this reply: accepted on both builds",
+   "output": {
+    "reply": "Here are three tips for watering your tomato plants:\n\n1. Water deeply and consistently — aim for about 1-2 inches of water per week, delivered in fewer, deeper sessions rather than frequent light sprinkles. This encourages deep, strong root growth.\n\n2. Water at the base in the morning — direct water to the soil around the stem rather than the leaves, and do it early in the day. This reduces evaporation loss and helps prevent fungal diseases from damp foliage.\n\n3. Mulch to even out moisture — a layer of mulch around the base retains soil moisture and keeps watering consistent, which helps prevent problems like blossom end rot and fruit cracking caused by irregular watering.",
+    "fulfilled": [
+     {
+      "id": 0,
+      "quote": "Here are three tips for watering your tomato plants"
+     }
+    ]
+   }
+  }
+ ]
+}
