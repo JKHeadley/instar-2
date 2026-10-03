@@ -66,6 +66,8 @@ import { doorwayFreshness, installDoorways, observeExchange, readDoorwayMap, sta
 import { createSecretCustody, dueCredentialReminders, reminderSchedule } from './secret-custody.js';
 import { credentialNotices, doorwayNotices, dueWithDelivery } from './credential-reminders.js';
 import { journalCapacity, packetCapacity } from './capacity-outcome.js';
+import { createLiveSentinels, createOrdinaryLane, sentinelCycle, sentinelReport } from './live-sentinels.js';
+import { SENTINEL_FAMILIES } from './sentinel-record.js';
 
 const clock = createPreviewClock(() => Date.now(), () => performance.now());
 const wallNow = clock.now;
@@ -99,6 +101,15 @@ import { RETROSPECTIVE_QUESTION, benchmarkReruns, disciplineSource, feedbackDisp
 
 
 
+/** `--sentinels`: `none`, or a comma list of context, presence and promise; absent means all three. */
+const sentinelFamiliesOf = value => {
+  if (value === undefined) return new Set(SENTINEL_FAMILIES);
+  if (value === 'none') return new Set();
+  const named = value.split(',');
+  if (!named.length || named.some(name => !SENTINEL_FAMILIES.includes(name)) || new Set(named).size !== named.length)
+    throw Error('preview: --sentinels must be none or a comma list of context, presence, promise');
+  return new Set(named);
+};
 const parse = values => {
   const command = values[0] ?? 'run', options = {};
   for (let i = 1; i < values.length; i += 2) {
@@ -591,6 +602,8 @@ async function main() {
   if (options.retrospective !== undefined && !['true', 'false'].includes(options.retrospective)) throw Error('preview: --retrospective must be true or false');
   // On by default: one bounded pass at most hourly, inside the model-attempt cap with a reply reserve.
   const retrospectiveEnabled = options.retrospective !== 'false';
+  // Part 18 (plan #402): the live sentinels, all on by default; `--sentinels none` (or a subset) is the off-switch.
+  const sentinelFamilies = sentinelFamiliesOf(options.sentinels);
   if (!['run', 'status', 'stop', 'raise-caps', 'renew-expiry', 'inspect', 'import-store', 'audit', 'export-memory', 'seal-authority', 'record-live-proof', 'check-agreements', 'propose-retract'].includes(command)) throw Error('preview: unknown command');
   if (command === 'seal-authority') {
     // The desk's recording step: seals the authority record it decided, under the trial's storage
@@ -969,6 +982,8 @@ async function main() {
         checkMs: Math.round((lastSent.replyChecks ?? []).reduce((total, result) => total + result.latencyMs, 0)) } : null,
       ...(view.view.stepCheckStarted ? { stepChecks: stepCheckView(view.view) } : {}),
       retrospective: retrospectiveView(view.view, wallNow()),
+      // Part 18: what each live sentinel last decided, read back from the journal (the families this command names).
+      liveSentinels: sentinelReport(view.view, sentinelFamilies),
       people: [...new Set([...view.view.people.filter(note => !retractedTurn(view.view, note.source) && !view.view.memory.some(change =>
         change.in !== 'reply' && note.source === change.source && note.quote.includes(change.quote))).map(note => note.name),
         ...[...view.view.channelItems.values()].map(item => item.from.split('<')[0].trim().split('@')[0].replace(/[._-]+/gu, ' ')).filter(Boolean)])],
@@ -1591,6 +1606,7 @@ async function main() {
       ...(requestHours === undefined ? {} : { requestWindowMs: requestHours * 3_600_000 }),
       renewalActivation: renewalActivationOf(options, () => journal.view), retractProposal: () => readRetractProposal(retractPath) } : null;
     worker = createJournalWorker(journal, { ...(approvalSurface ? { approvalSurface } : {}), ...(explicitYes ? { explicitYes } : {}), now: wallNow, elapsed: clock.elapsed, origin, stopped: () => workerStop.value || existsSync(stopPath) || !ownerHeld(), timeZone: timeZoneOf(options),
+      presenceNotes: sentinelFamilies.has('presence'),
       sources: turnSources(root, options, journal.view, () => runs, () => launchedAt ?? undefined,
         () => journal.view.order.some(turn => turn.reserved && !reservedAtLaunch.has(turn.id)) ? null : handoff, () => toolsActive()),
       prepareModel: modelEnvelope,
@@ -1960,18 +1976,10 @@ async function main() {
     // ordinary pass no longer ends the process: the minimal path keeps reading and answering (reason
     // `worker`) while the ordinary pass is retried with backoff; eight consecutive failures open the
     // breaker and end the run for the host supervisor (Rules 15, 55; Eleven §5's ordinary-worker cut).
-    let drainJob = null, drainError = null, drainFailures = 0, drainRetryAt = 0;
-    const background = run => {
-      if (drainJob || clock.elapsed() < drainRetryAt) return;
-      drainJob = run().then(() => { drainFailures = 0; }, error => {
-        drainFailures++;
-        drainRetryAt = clock.elapsed() + Math.min(300_000, 1000 * 2 ** Math.min(drainFailures - 1, 9));
-        if (drainFailures >= 8) drainError ??= error;
-      }).then(summarizeLater).finally(() => { drainJob = null; });
-    };
     // Two machines: ordinary work (model calls, replies, reminders) starts only while the other machine holds the
     // whole journal, so nothing is spent or prepared on local durability while the peer is away. Input is still read.
-    const ordinary = run => { if (shared === null || shared.peerCurrent()) background(run); };
+    const lane = createOrdinaryLane({ elapsed: clock.elapsed, peerCurrent: () => shared === null || shared.peerCurrent(), after: summarizeLater });
+    const ordinary = run => { lane.submit(run); };
     // A message past every bound waits at Telegram; later presses behind it are re-read after this pause.
     const waitHeld = async () => {
       const until = clock.elapsed() + 3000;
@@ -1985,6 +1993,19 @@ async function main() {
       if (activationMatchesJournal(journal.view, activation)) return false;
       endReason = 'activation renewed: restart on the renewed record'; return true;
     };
+    // Part 18 (plan #402): the live sentinels run on this loop's own cycle and request only the runner's own bounded
+    // steps. A requested step is queued and run inside the cycle's admitted ordinary job (sentinelCycle), never
+    // resubmitted to the busy lane, where it would be silently declined.
+    const sentinelSteps = [];
+    const sentinels = createLiveSentinels(journal, { now: wallNow, startedAt: launchedAt, families: sentinelFamilies,
+      stopped: () => signalled || workerStop.value || existsSync(stopPath) || !ownerHeld(),
+      reground: () => sentinelSteps.push(() => worker.drain()),
+      recoverContext: () => sentinelSteps.push(() => worker.summarizeIfNeeded(true)),
+      selfHeal: () => sentinelSteps.push(() => worker.drain()),
+      // A due reminder is never sent from this pre-poll job: the post-poll job below already sends every requested
+      // reminder, and only after a successful empty poll, so a waiting withdrawal is read and settled first (Rule 93).
+      actOnPromise: id => { if (!id.startsWith('request:')) sentinelSteps.push(() => worker.workObligations()); } });
+    const sentinelTick = () => { if (sentinelFamilies.size && !journal.readOnly) sentinels.tick(); };
     for (let i = 0; i < cycles && !signalled; i++) {
       if (i > 0) await new Promise(done => setImmediate(done));
       if (signalled || workerStop.value || existsSync(stopPath) || journal.view.stop || !ownerHeld()) break;
@@ -2006,17 +2027,19 @@ async function main() {
           if (workerStop.value || existsSync(stopPath)) break;
         }
       }
-      if (drainError) throw drainError;
+      if (lane.error()) throw lane.error();
       worker.gate(); await worker.minimal();
       // A stop given on the independent surface latches here, before any poll or ordinary pass.
       if (journal.view.stop) break;
       if (renewedAway()) break;
       // Rules 8, 22, 92, 99: the scheduled consumer of due obligation work, one bounded step per tick,
       // runs after the ordinary drain inside the same background job, so it never blocks the minimal path.
-      ordinary(async () => {
-        await worker.drain();
-        try { await worker.workObligations(); } catch { /* a stop or expiry ends the step; its start stays durable */ }
-      });
+      // The sentinels tick only when that job is admitted, and their requested steps run inside it after the drain.
+      // A holding note the presence sentinel marks due goes out at the minimal path's next step after the poll.
+      sentinelCycle(lane, { tick: sentinelTick, requested: sentinelSteps, drain: () => worker.drain(),
+        after: async () => {
+          try { await worker.workObligations(); } catch { /* a stop or expiry ends the step; its start stays durable */ }
+        } });
       worker.gate();
       reportCap();
       runDueProof();
@@ -2078,8 +2101,8 @@ async function main() {
     // The bounded shutdown awaits (provider timeouts) are progress, not a hang.
     const tailBeat = setInterval(hostBeat, 5000);
     try {
-      await drainJob;
-      if (drainError && !signalled) throw drainError;
+      await lane.settle();
+      if (lane.error() && !signalled) throw lane.error();
       await summaryJob;
       await stepJob;
       await retroJob;

@@ -46,6 +46,7 @@ import { admitChatYes, chatBinding, explicitYesStatus, operatorRefusalText, oper
 import { chatYesReference, reviewYesReference, SHARED_ACCESS_NOTE } from '../../src/operator/explicit-yes.js';
 import type { ExplicitYesInstallation, SharedAccessDisclosure } from '../../src/operator/explicit-yes.js';
 import { reviewLink, type ReviewYesSource } from './review-yes-source.js';
+import { applySentinelRecord, checkSentinelRecord, presenceNoteDue, type SentinelRecord, type SentinelView } from './sentinel-record.js';
 
 
 
@@ -445,6 +446,9 @@ export interface VerifiedApproval { challenge: string; principal: string; receip
 export interface VerifiedActSubmission { challenge: string; proof: string; decision: 'approve' | 'decline' }
 export type ApprovalOutcome = 'approved' | 'declined' | 'stale' | 'refused';
 export const HELD_NOTICE_WINDOW_MS = 3_600_000;
+/** Holds a presence holding note may speak to: a pre-send check that could not decide keeps the message and answers it
+ * when the check returns, so "busy or unavailable; answered when it recovers; nothing is needed from you" is true. */
+export const PRESENCE_NOTE_HOLDS: ReadonlySet<string> = new Set(['reply check unavailable', 'step check unavailable']);
 const heldNoticeReason = (reason: string | undefined) => reason === 'reply check unavailable' || reason === 'step check unavailable'
   || reason === 'call cap' || reason === 'memory correction pending';
 /** Rule 87: every push is classified at the one send boundary. `status` is pull-only (status,
@@ -1146,7 +1150,9 @@ export type JournalRecord =
   | { kind: 'retro'; pass: number; state: 'complete' | 'failed' | 'unknown'; result?: RetroPass['result']; reason?: string; usage?: ModelUsage; at: number }
   /** One bounded benchmark rerun of a promoted case under the current reply configuration, inside its pass. */
   | { kind: 'retro-rerun-reserve'; pass: number; index: number; case: string; contextDigest: string; at: number }
-  | { kind: 'retro-rerun'; pass: number; index: number; state: 'complete' | 'failed' | 'unknown'; answer?: string; reason?: string; usage?: ModelUsage; at: number };
+  | { kind: 'retro-rerun'; pass: number; index: number; state: 'complete' | 'failed' | 'unknown'; answer?: string; reason?: string; usage?: ModelUsage; at: number }
+  /** Part 18: one live sentinel tick that changed something (sentinel-record.ts). */
+  | SentinelRecord;
 
 /** A conversation is the operator's private chat or one of its Telegram topics
  * (`thread`); every one has the operator as its only audience. */
@@ -1303,7 +1309,9 @@ export interface JournalView { genesis: Extract<JournalRecord, {kind:'genesis'}>
   /** Retrospective passes in journal order (plain records, so snapshots carry them verbatim). */
   retroPasses: RetroPass[];
   /** UNKNOWN calls conservatively written off by an authorized cap raise; absent until one is. */
-  writtenOff?: string[] }
+  writtenOff?: string[];
+  /** Part 18: the live sentinels' recorded decisions; absent until a sentinel records one. */
+  sentinels?: SentinelView }
 
 function reserveTokens(view: JournalView, key: string, kind: CallKind, input: number, output: number): void {
   if (![input, output].every(n => Number.isSafeInteger(n) && n > 0)) throw Error('preview journal: invalid token reservation');
@@ -1733,7 +1741,7 @@ export const operatorWriter = (view: JournalView, turn: Turn, edits = false) => 
   if (turn.writer !== undefined) return turn.writer.kind === 'person' && turn.writer.id === view.genesis.operator && String(from) === turn.writer.id;
   return String(from) === view.genesis.operator;
 };
-const verifiedOperatorTurn = (view: JournalView, turn: Turn) => turn.accepted && operatorWriter(view, turn);
+export const verifiedOperatorTurn = (view: JournalView, turn: Turn) => turn.accepted && operatorWriter(view, turn);
 const channelMemoryId = (item: ChannelItem) => `channel:${channelKey(item)}`;
 const datedKey = (item: DatedItem) => JSON.stringify([item.source, item.quote, item.when]);
 const reminderKey = (item: ReminderRef) => JSON.stringify([item.source, item.quote, item.when]);
@@ -3366,6 +3374,10 @@ function project(view: JournalView, row: JournalRecord, system?: SystemCheck, ad
       ...(row.estimatedAnswerBytes === undefined ? {} : { estimatedAnswerBytes: row.estimatedAnswerBytes }) });
     return;
   }
+  if (row.kind === 'sentinel') {
+    checkSentinelRecord(row, id => view.turns.has(id));
+    view.sentinels = applySentinelRecord(view.sentinels, row); return;
+  }
   if (row.kind === 'retro') {
     const pass = view.retroPasses[row.pass];
     if (!pass || pass.state !== undefined || (row.state === 'complete') !== (row.result !== undefined)
@@ -4470,6 +4482,9 @@ export function concurrentWorkItem(input: { now: number; current: { owner: strin
 
 export interface PreviewPorts {
   now(): number; stopped(): boolean;
+  /** Part 18: whether the presence sentinel is enabled this launch (its off-switch); absent means enabled. A disabled
+   * family keeps its recorded decisions for audit, but a holding note it marked due earlier no longer goes out. */
+  presenceNotes?: boolean;
   /** Extra lines for the fixed status reply, supplied by the runner (ownership, store checks). */
   statusLines?(): readonly string[];
   /** Rule 44: the runner's installed update, carried into operator packets until a sent answer included it. */
@@ -7523,8 +7538,13 @@ export function createJournalWorker(journal: ReturnType<typeof openPreviewJourna
       || turn.held === 'superseded by edit' || turn.heldNoticeIntent !== undefined || turn.heldNoticeCoveredBy !== undefined) return null;
     const capped = outsideAllowance(journal.view, turn) ? 'turns' as const : turn.held === 'call cap' ? 'calls' as const
       : turn.held === 'reply cap' ? 'replies' as const : null;
-    if (capped || turn.held !== undefined) return capped;
-    if (ordinaryFailedSince !== null) return 'worker';
+    if (capped) return capped;
+    // Part 18 §6: the presence sentinel marked this message's holding note due after its self-heal request failed.
+    // Only causes the fixed worker wording states truthfully qualify: a check that could not decide, or nothing at all.
+    const presence = ports.presenceNotes !== false && presenceNoteDue(journal.view.sentinels, turn.id) && turn.noticeClass === undefined
+      && turn.modelState !== 'uncertain' && (turn.held === undefined || PRESENCE_NOTE_HOLDS.has(turn.held));
+    if (turn.held !== undefined) return presence ? 'worker' : null;
+    if (ordinaryFailedSince !== null || presence) return 'worker';
     if (!working) return null;
     // Eleven §5: an unavailable ordinary worker (blocked or busy) leaves the minimal path eligible,
     // whatever the caps. The brake never waits behind it; other messages wait the bounded interval.
