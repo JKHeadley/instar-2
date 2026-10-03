@@ -13,7 +13,11 @@
         "why": "The operator decided that where a safeguard can be enforced at a checkpoint, the agent keeps its ability and the checkpoint enforces the safeguard; removing ability is not an acceptable substitute. It sits beside Rule 5 as a Value because, like Rule 5, it is stated without a new check of its own.",
         "ref": "Operator approval: topic 102965, Telegram message 122028, 2026-10-03 12:20 PDT, 'yes please'; plan row #415"
       }
-    ]
+    ],
+    "approvedIn": {
+      "pr": 149,
+      "mergeCommit": null
+    }
   },
   {
     "revision": 11,
