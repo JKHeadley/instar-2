@@ -1,7 +1,7 @@
 ## 14. Inherited duties and disposition
 
 **Rule — no inherited duty remains parked.** Rules 8, 45, 49, 53, 59, 64, 68, 69, 71, 87 and 88;
-**checks: P14-NF-01/03–05/25/32/35/49/50/55–68/70–74**.
+**checks: P14-NF-01/03–05/25/32/35/49/50/55–68/70–74/76–78**.
 
 | Duty | Disposition |
 |---|---|
@@ -27,5 +27,6 @@
 | 1.x deferral detector and action-claim follow-through | **Held as guidance, live:** section 16's deferral member (`defers_work`) is answered by doing the work or by a declared loop the runner admits and tracks; P14-NF-70/71/73. |
 | 1.x claim verification | **Held as guidance, live where the full-context review runs:** section 16's claim-verification member (`self_state_claim`) judges a claim about the agent itself against the journal's own records in the same review call; replies Jev clears are covered by the retrospective gravity wells. P14-NF-70–73. |
 | 1.x correction and preference learning, with its self-violation signal | **Held as guidance:** operator preferences are the journal's existing durable preferences; section 16's correction-learning member (`breaks_preference`) checks each reviewed reply against them, and restatements are measured by exact clause under P14-NF-74. The retrospective `feedback` duty gives every correction a disposition (Rule 85). |
+| 1.x credential-exposure wall and Know Your Principal's observe-only principal-coherence guard | **Held, and extended to who reads:** the exact credential wall and the credential question stay the reply review's floor for every audience; section 16's sensitivity member adds the judgment 1.x never made, what a reply may reveal to the audience reading it, under P14-NF-76–78. Operator confidences ride the existing Rule 93 directive record. |
 
 ---

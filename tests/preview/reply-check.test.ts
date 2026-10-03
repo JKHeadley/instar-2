@@ -2,7 +2,7 @@ import { expect, it } from 'vitest';
 import { mkdtempSync, realpathSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
-import { BARE_TOPIC_OBJECTION, CONTEXT_RULES, checkReply, HOLDING_REPLY, interpretJev, noDecisions, parseReplyRevision, replyRevisionQuestion, validDispositions, jevQuestions, REPLY_RULES, replyReviewContext, replyReviewQuestion, replyReviewRules, parseReplyReviewVerdict, parseJevResponse, JEV_RESPONSE_MAX_BYTES, REPLY_CHECK_BUDGET_MS, REPLY_CHECK_BUDGET_REASON, REPLY_REVIEW_REASON_MAX } from './reply-check.js';
+import { AUDIENCE_RULES, BARE_TOPIC_OBJECTION, CONTEXT_RULES, checkReply, HOLDING_REPLY, interpretJev, noDecisions, parseReplyRevision, replyRevisionQuestion, validDispositions, jevQuestions, REPLY_RULES, replyReviewContext, replyReviewQuestion, replyReviewRules, parseReplyReviewVerdict, parseJevResponse, JEV_RESPONSE_MAX_BYTES, REPLY_CHECK_BUDGET_MS, REPLY_CHECK_BUDGET_REASON, REPLY_REVIEW_REASON_MAX } from './reply-check.js';
 
 
 import type { ObjectionDisposition, ReplyCheckResult, ReplyFinding, ReplyRule } from './reply-check.js';
@@ -203,14 +203,20 @@ it('sends an operator-supplied personal code by the exact operator-echo path, wi
   } finally { rmSync(root, { recursive: true, force: true }); }
 });
 
+// The operator's own private chat, and an audience whose surface is not that chat (here one with no surface named at
+// all, which is never read as the operator alone): the audience question rides only the second (Part 18 §16).
+const PRIVATE_AUDIENCE = { surface: 'telegram-private-chat', operator: 'verified' };
+const UNNAMED_AUDIENCE = { operator: 'verified' };
 it.each([
   // Every contextual review also carries the guidance family's context questions (Part 18 §16).
-  ['one uncertain rule', scores({ claims_blocked: 0.5 }), ['claims_blocked', ...CONTEXT_RULES]],
-  ['positive plus uncertain', scores({ raw_path: 0.9, parks_on_user: 0.5 }), ['raw_path', 'parks_on_user', ...CONTEXT_RULES]],
-  ['Jev unavailable', null, Object.keys(REPLY_RULES)],
-] as const)('%s: review receives every unresolved rule and full context', async (_name, answer, expected) => {
+  ['one uncertain rule', PRIVATE_AUDIENCE, scores({ claims_blocked: 0.5 }), ['claims_blocked', ...CONTEXT_RULES]],
+  ['positive plus uncertain', PRIVATE_AUDIENCE, scores({ raw_path: 0.9, parks_on_user: 0.5 }), ['raw_path', 'parks_on_user', ...CONTEXT_RULES]],
+  ['Jev unavailable', PRIVATE_AUDIENCE, null, Object.keys(REPLY_RULES).filter(id => !(AUDIENCE_RULES as readonly string[]).includes(id))],
+  ['one uncertain rule, unnamed audience', UNNAMED_AUDIENCE, scores({ claims_blocked: 0.5 }), ['claims_blocked', ...CONTEXT_RULES, ...AUDIENCE_RULES]],
+  ['Jev unavailable, unnamed audience', UNNAMED_AUDIENCE, null, Object.keys(REPLY_RULES)],
+] as const)('%s: review receives every unresolved rule and full context', async (_name, audience, answer, expected) => {
   const prompt = prepareJournalEnvelope({ question: 'What did I say?',
-    context: JSON.stringify({ audience: { operator: 'verified' }, sources: [{ id: 'source:1' }],
+    context: JSON.stringify({ audience, sources: [{ id: 'source:1' }],
       history: [{ update: 1, user: 'remember this' }] }), id: 'turn:2' },
   'claude-sonnet-4-5', 'grant:test', 1000);
   let reviewed: readonly string[] = [];
@@ -221,7 +227,7 @@ it.each([
     escalate: async (text, _id, originalPrompt, ruleIds) => {
       reviewed = ruleIds ?? [];
       expect(JSON.parse(replyReviewContext(originalPrompt!, text))).toMatchObject({
-        operatorMessage: 'What did I say?', audience: { operator: 'verified' },
+        operatorMessage: 'What did I say?', audience,
         sources: [{ id: 'source:1' }], history: [{ update: 1, user: 'remember this' }] });
       return { verdict: 'pass', ruleIds: [], confidence: null, latencyMs: 100 };
     }, record: () => {},

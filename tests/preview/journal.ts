@@ -16,7 +16,7 @@ import { buildWorkIndex, detectOverlaps, workForTopic, type SessionActivity } fr
 import { MAX_RAISED_SUBSCRIPTION_PROMPT_BYTES, SUBSCRIPTION_CONVERSATION_SYSTEM_PROMPT, SUBSCRIPTION_MAX_OUTPUT_TOKENS, SUBSCRIPTION_PREVIEW_EXPIRY } from '../../src/assembly/production-provider.js';
 import { hasClaim, replaceClaim, supersedesCorrection } from './claim-match.mjs';
 import { checkReply as checkCoherenceOf, correctionNote, releaseFindings, COHERENCE_FINDING_LIMIT, type CoherenceFinding } from './coherence-check.js';
-import { checkReply, reviewReply, repeatsOperatorOnly, HOLDING_REPLY, jevRequestBody, JEV_RESPONSE_MAX_BYTES, REPLY_CHECK_BUDGET_MS, REPLY_CHECK_BUDGET_REASON, LINK_SHAPE_REASON, linkShapeRules, bareTopicReferences, topicNameReason, BARE_TOPIC_OBJECTION, noDecisions, validDispositions, jevConfidentCredential, CLAIM_SCOPED_RULES, quotedSpans, exciseNamedClaims, substantiveReply, type ApprovalFacts } from './reply-check.js';
+import { checkReply, reviewReply, repeatsOperatorOnly, HOLDING_REPLY, jevRequestBody, JEV_RESPONSE_MAX_BYTES, REPLY_CHECK_BUDGET_MS, REPLY_CHECK_BUDGET_REASON, LINK_SHAPE_REASON, linkShapeRules, bareTopicReferences, topicNameReason, BARE_TOPIC_OBJECTION, noDecisions, validDispositions, jevConfidentCredential, CLAIM_SCOPED_RULES, namedClaimsIn, exciseNamedClaims, substantiveReply, sharedAudience, AUDIENCE_RULES, type ApprovalFacts } from './reply-check.js';
 import { parseDatedItem, restatedDatePhrase, dueState, selectDatedItems, withinNext48Hours, localParts, type DatedItem } from './dated-memory.js';
 import { isStatusCommand, isStopCommand, statusReply, STOP_CONFIRM_TEXT } from './status-command.js';
 import { AGENT_PROMISE_LIMIT, fulfillableCommitment, fulfillmentProposals, fulfillmentSupported, legacyFulfillsReminder, promiseProposals, recordedPromises, type AgentPromise, type FulfillmentProposal, type PromiseProposal } from './agent-commitment.js';
@@ -1385,7 +1385,11 @@ const jevNonSecretFlags = (turn: Turn, candidateDigest?: string): ReplyRule[] | 
  * review verdict exists; its unsure band escalated, and an UNKNOWN escalation leaves only a signal (plan #102). A contextual review violation naming a rule in `REVIEW_HOLDING_RULES` still holds:
  * the secret exception, and build 4's obligation floor for an untracked deferral or an unevidenced final
  * cannot-do claim (Rules 6, 20, 21, 23). Every other objection is an advisory signal (Rules 4, 77, 86, 95). */
-export const REVIEW_HOLDING_RULES: readonly ReplyRule[] = Object.freeze(['credential', 'defers_work', 'unrecorded_blocker']);
+export const REVIEW_HOLDING_RULES: readonly ReplyRule[] = Object.freeze(['credential', 'defers_work', 'unrecorded_blocker', 'sensitive_disclosure']);
+/** The held classes one revision review judges: the audience question only where the reply's audience is not the
+ * verified operator alone, so the operator's own chat asks exactly what it asked before (Part 18 §16). */
+export const revisionReviewRules = (originalPrompt: string | undefined): ReplyRule[] =>
+  REVIEW_HOLDING_RULES.filter(rule => sharedAudience(originalPrompt) || !(AUDIENCE_RULES as readonly ReplyRule[]).includes(rule));
 const jevCredentialFlag = (turn: Turn, candidateDigest: string): boolean => (turn.replyChecks ?? []).some(check =>
   jevConfidentCredential(check) && (check.candidateDigest === undefined || check.candidateDigest === candidateDigest));
 /** The holding rules the last contextual review of this exact candidate named, with the per-rule findings that
@@ -7228,6 +7232,9 @@ export function createJournalWorker(journal: ReturnType<typeof openPreviewJourna
               { role: 'context', content: JSON.stringify({ packet: { audience: { surface: 'telegram-private-chat',
                 chat: journal.view.genesis.chat, operator: journal.view.genesis.operator }, history: [] } }) }] })
             : undefined);
+          // Least revelation (Part 18 §16): a reply for any audience other than the verified operator alone is released
+          // only on a completed full-context review; an operator echo or a Jev-only pass never stands in for it.
+          const audienceShared = sharedAudience(reviewPrompt);
 
           // Objections and an unavailable review are signals recorded with the send, never a
           // hold (Rules 4, 77, 86, 95). Only the exact credential-shape floor withholds text, and
@@ -7239,7 +7246,7 @@ export function createJournalWorker(journal: ReturnType<typeof openPreviewJourna
             if (!previous) journal.append({ kind: 'reply-check', id: turn.id, result: { verdict: 'violation',
               ruleIds: ['credential'], confidence: 1, path: 'holding', latencyMs: 0, candidateDigest }, at: ports.now() });
             decision = 'violation';
-          } else if (!previous && !turn.jevReserved && !turn.reviewReserved && !turn.noticeClass && !refusedObligation(turn) && fromOperator(turn)
+          } else if (!previous && !audienceShared && !turn.jevReserved && !turn.reviewReserved && !turn.noticeClass && !refusedObligation(turn) && fromOperator(turn)
             && repeatsOperatorOnly(reply, journal.view.order.filter(item => item.accepted && item.update <= turn.update
               && fromOperator(item)).map(item => redact(item.text).text))) {
             // The operator's own words back to the operator skip Jev and the review; the
@@ -7249,7 +7256,8 @@ export function createJournalWorker(journal: ReturnType<typeof openPreviewJourna
               path: 'operator-echo', latencyMs: 0, candidateDigest }, at: ports.now() });
             decision = 'pass';
           } else if (previous && previous.path !== 'jev' && previous.verdict === 'violation') decision = 'violation';
-          else if (previous && previous.path !== 'holding' && previous.verdict === 'pass') decision = 'pass';
+          else if (previous && previous.path !== 'holding' && previous.verdict === 'pass'
+            && (!audienceShared || previous.path === 'subscription')) decision = 'pass';
           else if (turn.reviewReserved) {
             // A failed or interrupted paid review is UNKNOWN: it is never repeated.
             if (previous?.path !== 'subscription') journal.append({ kind: 'reply-check', id: turn.id, result: { verdict: 'unavailable',
@@ -7308,6 +7316,10 @@ export function createJournalWorker(journal: ReturnType<typeof openPreviewJourna
           const holding = !credentialShape && (decision === 'unavailable'
             ? jevCredentialFlag(turn, candidateDigest) || refusedObligation(turn)
             : decision === 'violation' && (reviewHoldingFlag(turn, candidateDigest) || refusedObligation(turn)));
+          // A shared audience whose review did not complete (unavailable, call cap, deadline) has no established
+          // permission to disclose: the draft stays in the journal and the content-free holding note is sent
+          // (purpose's least revelation; Rules 57, 95). The operator's own chat keeps its advisory release.
+          const audienceUnreviewed = !credentialShape && !holding && decision === 'unavailable' && audienceShared;
           if (holding && decision === 'unavailable') {
             // A refused review reservation waits on `raise-caps` like any call-cap hold.
             journal.append({ kind: 'hold', id: turn.id, reason: capRefused ? 'call cap'
@@ -7385,7 +7397,7 @@ export function createJournalWorker(journal: ReturnType<typeof openPreviewJourna
                   maxInputTokens: journal.view.limits.maxBytes, maxOutputTokens: subscriptionOutputMaximum, at: ports.now() });
                 let result: { verdict: 'pass' | 'violation' | 'unavailable'; ruleIds: ReplyRule[]; reason?: string; findings?: ReplyFinding[]; usage?: ModelUsage };
                 try {
-                  const reviewed = await ports.replyCheck.escalate(revised, turn.id, originalPrompt, REVIEW_HOLDING_RULES,
+                  const reviewed = await ports.replyCheck.escalate(revised, turn.id, originalPrompt, revisionReviewRules(originalPrompt),
                     loopDeadline, 'revision');
                   result = { verdict: reviewed.verdict === 'pass' ? 'pass' : 'violation',
                     ruleIds: Array.isArray(reviewed.ruleIds) ? reviewed.ruleIds.filter(rule => typeof rule === 'string') : [],
@@ -7408,13 +7420,13 @@ export function createJournalWorker(journal: ReturnType<typeof openPreviewJourna
             // judgment, not a second judgment. What was removed, and any named claim no sentence carried, is
             // recorded with the send and counted, so neither a withholding nor a pass is silent.
             let withheld: ClaimWithheld | undefined, scoped: string | undefined, nothingLeft = false;
-            if (revised === undefined && holding && !credentialHeldClass(turn, candidateDigest)) {
+            if (revised === undefined && holding && !audienceUnreviewed && !credentialHeldClass(turn, candidateDigest)) {
               const named = reviewHoldingFindings(turn, candidateDigest);
-              const claims = named.findings.flatMap(finding => quotedSpans(finding.reason));
               const stripped = (actionHeader === undefined ? reply : reply.slice(actionHeader.length + 1))
                 .replace(/^PREVIEW(?=$|[\s:—])(?:\s*[:—])?\s*/u, '');
               const body = continuity && stripped.startsWith(continuity.disclosure)
                 ? stripped.slice(continuity.disclosure.length).trimStart() : stripped;
+              const claims = named.findings.flatMap(finding => namedClaimsIn(finding.reason, body));
               const cut = exciseNamedClaims(body, claims);
               withheld = { rules: named.rules, removed: cut.removed, unlocated: cut.unlocated };
               if (cut.removed.length) {
@@ -7430,7 +7442,7 @@ export function createJournalWorker(journal: ReturnType<typeof openPreviewJourna
             const note = reason ?? (decision === 'unavailable' || inTime() ? undefined : REPLY_CHECK_BUDGET_REASON);
             if (revised !== undefined) { reply = revised; mentionedKeys = []; }
             else if (scoped !== undefined) { reply = scoped; mentionedKeys = []; }
-            else if (holding && (nothingLeft || withheld === undefined)) {
+            else if (audienceUnreviewed || holding && (nothingLeft || withheld === undefined)) {
               reply = actionHeader === undefined ? disclosed(HOLDING_REPLY) : `${actionHeader}\n${HOLDING_REPLY.replace(/^PREVIEW — /u, '')}`;
               heldBack = true; speaker = 'infrastructure';
               held = { objections, ...(note === undefined ? {} : { reason: note }), dispositions, ...(skipped ? { responseSkipped: skipped } : {}),

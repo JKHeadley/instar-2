@@ -14,7 +14,7 @@
 import type { Turn } from './journal.js';
 import type { ObjectionDecision, ReplyCheckResult, ReplyRule } from './reply-check.js';
 
-export type GuidanceMember = 'tone-self-stop' | 'deferral' | 'claim-verification' | 'correction-learning';
+export type GuidanceMember = 'tone-self-stop' | 'deferral' | 'claim-verification' | 'correction-learning' | 'sensitivity';
 export interface GuidanceMemberDefinition {
   id: GuidanceMember;
   /** The Instar 1.x mechanism whose substance the member carries forward. */
@@ -41,6 +41,9 @@ export const GUIDANCE_FAMILY: readonly GuidanceMemberDefinition[] = Object.freez
   { id: 'correction-learning', legacy: 'Correction & Preference Learning, with its self-violation signal (a learned preference the agent then breaks)',
     rules: ['breaks_preference'], retrospective: ['feedback'],
     correction: 'the agent brings the reply back within the active preference; a restated preference is counted as a recurrence' },
+  { id: 'sensitivity', legacy: 'Know Your Principal with the principal-coherence guard and the credential-exposure wall (1.x judged who sent, never who reads); new here: Part 23\'s use-or-withhold judgment',
+    rules: ['sensitive_disclosure'], retrospective: [],
+    correction: 'the agent rewrites the reply discreetly; a sentence still revealing the private detail is removed, and a reply that was only that detail becomes the honest holding note' },
 ] as const);
 
 /** What one member concluded about one reviewed reply.

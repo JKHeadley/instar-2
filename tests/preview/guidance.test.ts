@@ -31,11 +31,12 @@ describe('P14-NF-70: the family is the one reply review, never a second gate', (
     for (const rule of all) expect(Object.hasOwn(REPLY_RULES, rule)).toBe(true);
     // The credential question is the reply review's floor (Rule 4), not a guidance member.
     expect(all).not.toContain('credential');
-    expect(GUIDANCE_FAMILY.map(member => member.id)).toEqual(['tone-self-stop', 'deferral', 'claim-verification', 'correction-learning']);
+    expect(GUIDANCE_FAMILY.map(member => member.id)).toEqual(['tone-self-stop', 'deferral', 'claim-verification', 'correction-learning', 'sensitivity']);
   });
   it('the context questions are never asked of Jev, and ride every contextual review that runs', () => {
     for (const rule of CONTEXT_RULES) expect(Object.hasOwn(jevQuestions, rule)).toBe(false);
-    expect(Object.keys(jevQuestions)).toHaveLength(Object.keys(REPLY_RULES).length - CONTEXT_RULES.length);
+    // The sensitivity member's audience question is never asked of Jev either (sensitivity.test.ts).
+    expect(Object.keys(jevQuestions)).toHaveLength(Object.keys(REPLY_RULES).length - CONTEXT_RULES.length - 1);
     expect(guidanceReviewRules(['defers_work'])).toEqual(['defers_work', 'self_state_claim', 'breaks_preference']);
     expect(guidanceReviewRules(['self_state_claim'])).toEqual(['self_state_claim', 'breaks_preference']);
     expect(replyReviewQuestion(guidanceReviewRules(['credential']))).toContain('packet.declaredObligations is what the runner admitted');
