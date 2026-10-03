@@ -1,7 +1,7 @@
 // Rules 42 and 89: a live send consumes the journal's signed intent and settles as exactly
 // one of accepted, refused or unknown; infrastructure notices never speak as the agent.
 import { expect, it } from 'vitest';
-import { spawnSync } from 'node:child_process';
+import { spawn, spawnSync } from 'node:child_process';
 import { mkdtempSync, realpathSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
@@ -306,3 +306,52 @@ it('an ambiguous send is dispatched exactly once, and status names why it is UNK
         lastUnknown: { outcome: 'unknown', reason: 'receipt differs from intent' } } });
   } finally { rmSync(dir, { recursive: true, force: true }); }
 }, 60000);
+
+// cint-L34 review MUST-FIX 1: ENOBUFS arrives AFTER the child started and the provider answered. The
+// bridge admits a body up to 2 MiB and JSON-encodes it, so escaping can overflow the parent's own
+// 2 MiB stdout bound. That send reached Telegram: it must settle UNKNOWN and never be dispatched again.
+it('a reply whose provider answer overflows the transport output is UNKNOWN, sent once, and not retried on reopen', { timeout: 60000 }, async () => {
+  const dir = root();
+  // The provider runs in its own process: the production send waits synchronously, so an in-process
+  // server could not answer. Each request is counted on its stdout.
+  const provider = spawn(process.execPath, ['--input-type=module', '-e', `
+    import { createServer } from 'node:http';
+    let count = 0;
+    const server = createServer((req, res) => { count++; req.resume();
+      res.end(JSON.stringify({ ok: true, result: { message_id: count, chat: { id: 7654321 }, text: 'an answer',
+        padding: '"'.repeat(600000) } })); console.log('request ' + count); });
+    server.listen(0, '127.0.0.1', () => console.log('port ' + server.address().port));`], { stdio: ['ignore', 'pipe', 'inherit'] });
+  try {
+    let output = '';
+    provider.stdout.on('data', data => { output += String(data); });
+    while (!/port \d+/.test(output)) await new Promise(done => setTimeout(done, 20));
+    const port = /port (\d+)/.exec(output)![1];
+    const { createProductionTelegramIO } = await import(new URL('../../scripts/production-boot-io.mjs', import.meta.url).href) as {
+      createProductionTelegramIO: (root: string, captures: { preserve(): boolean; read(): null }, testEndpoint: string) =>
+        { invoke(input: unknown, credential: string): unknown } };
+    const telegram = createProductionTelegramIO(join(dir, '.writer'), { preserve: () => true, read: () => null },
+      `http://127.0.0.1:${port}`);
+    const replies: unknown[] = [];
+    const first = world(dir, () => {
+      const reply = telegram.invoke({ method: 'sendMessage', body: { chat_id: '7654321', text: 'an answer' }, timeoutMs: 20000 },
+        '12345678:AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA');
+      replies.push(reply);
+      return classifyTelegramSend(reply, { chat: '7654321', expectedText: 'an answer' });
+    });
+    first.worker.intake([update(1)]); await first.worker.drain();
+    expect(replies).toEqual([{ kind: 'uncertain', limitation: 'transport', stage: 'child-exit' }]);
+    expect(first.seen).toHaveLength(1);
+    expect(first.journal.view.order[0]?.sent).toBeUndefined();
+    expect(sendOutcomeCounts(first.journal.view)).toMatchObject({ accepted: 0, refused: 0, unknown: 1,
+      unknownReasons: { 'transport transport at child-exit': 1 } });
+    first.journal.close();
+    // Reopened, the UNKNOWN intent is never dispatched again.
+    const reopened = world(dir, () => { throw Error('send repeated'); });
+    await reopened.worker.drain();
+    expect(reopened.seen).toHaveLength(0);
+    expect(sendOutcomeCounts(reopened.journal.view)).toMatchObject({ refused: 0, unknown: 1 });
+    reopened.journal.close();
+    await new Promise(done => setTimeout(done, 100));
+    expect(output.match(/request \d+/g)).toEqual(['request 1']); // exactly one physical request
+  } finally { provider.kill(); rmSync(dir, { recursive: true, force: true }); }
+});
