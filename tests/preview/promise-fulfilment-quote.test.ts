@@ -18,9 +18,11 @@
  *      reply it must appear in, which is the bound that was always doing the work.
  *   2. the promise's own sentence, copied from the packet. That is not carried by the reply as sent, and it
  *      stays refused — accepting it would let any reply close any offered promise by echoing the packet back.
- *      Fixed in the protocol: ANSWER_PROTOCOL now says the quote is copied from the answer's own reply field,
- *      never from the text of the commitment, and six real calls under that wording all quoted their reply
- *      and closed the promise. The old malformed output is still refused, asserted below.
+ *      Fixed in the protocol: ANSWER_PROTOCOL now says the quote is an exact excerpt of this reply, not the
+ *      promise. Six real calls under the first, longer wording all quoted their reply and closed the promise;
+ *      that wording broke the measured context floor (cint-L38), so it was shortened, and six more real calls
+ *      under the short wording -- four delivering the tips, two delivering nothing -- closed exactly the
+ *      delivered ones. The old malformed output is still refused, asserted below.
  *
  * Every case replays recorded shapes: the live turns, and the verbatim claude-sonnet-5 outputs on that packet.
  * The floor is proved on both sides — a quote the reply does not carry is refused and counted, a reply that
@@ -41,6 +43,9 @@ const recorded = JSON.parse(readFileSync(new URL('./fixtures/promise-fulfilment-
     note: string; output: { reply: string; fulfilled?: { id: number; quote: string }[] } }[];
   clarifiedProtocol: { wording: string; answers: { run: string; quotesTheReply: boolean;
     output: { reply: string; fulfilled?: { id: number; quote: string }[] } }[] };
+  trimmedProtocol: { wording: string;
+    delivered: { run: string; quotesTheReply: boolean; output: { reply: string; fulfilled?: { id: number; quote: string }[] } }[];
+    undelivered: { run: string; message: string; output: { reply: string; fulfilled?: unknown } }[] };
 };
 const [A5, A5B] = recorded.turns as [typeof recorded.turns[number], typeof recorded.turns[number]];
 const PROMISE = recorded.agentPromisesAfterA5[0]!.quote;
@@ -59,13 +64,13 @@ const update = (id: number, text: string) => ({ update_id: id,
 
 /** The recorded exchange: A5's promise, then A5b answered by `answerA5b` — the model's own output shape,
  * given the commitment ids the packet actually offered, exactly as the live launcher passes them. */
-async function replay(root: string, answerA5b: (offered: { id: number; owner?: string }[]) => string) {
+async function replay(root: string, answerA5b: (offered: { id: number; owner?: string }[]) => string, message = A5B.message) {
   const journal = openPreviewJournal(join(root, 'journal.encrypted'), key, genesis);
   const worker = createJournalWorker(journal, { now: () => now, stopped: () => false,
     prepareModel: input => input.context,
     model: async ({ question, context }) => {
       if (question === A5.message) return JSON.stringify({ reply: A5.answer, memory: [], promises: [{ quote: PROMISE }] });
-      if (question !== A5B.message) return 'Noted.';
+      if (question !== message) return 'Noted.';
       const offered = ((JSON.parse(context) as { commitments?: { items?: { id: number; owner?: string }[] }[] })
         .commitments ?? []).flatMap(group => group.items ?? []);
       return answerA5b(offered);
@@ -73,7 +78,7 @@ async function replay(root: string, answerA5b: (offered: { id: number; owner?: s
     send: async () => 1, checkOutbound: () => {} });
   worker.intake([update(A5.update, A5.message)]); await worker.drain();
   const promised = journal.view.commitments.findIndex(note => note.agentPromise !== undefined);
-  worker.intake([update(A5B.update, A5B.message)]); await worker.drain();
+  worker.intake([update(A5B.update, message)]); await worker.drain();
   return { journal, promised, last: journal.view.order.at(-1)!,
     closed: () => journal.view.closed.has(promised), rejected: () => journal.view.rejectedObligations };
 }
@@ -157,10 +162,10 @@ it('a recorded answer that quoted the promise instead of its own reply is still 
   }
 }, 30000);
 
-it('under the clarified protocol every real answer quotes its own reply and closes the promise', async () => {
-  // Six real claude-sonnet-5 calls on the recorded A5b packet, each sent the wording asserted here.
+it('under the first clarified wording every real answer quotes its own reply and closes the promise', async () => {
+  // Six real claude-sonnet-5 calls on the recorded A5b packet, each sent that earlier, longer wording.
   const clarified = recorded.clarifiedProtocol;
-  expect(ANSWER_PROTOCOL).toContain(clarified.wording);
+  expect(ANSWER_PROTOCOL).not.toContain(clarified.wording);
   expect(clarified.answers).toHaveLength(6);
   for (const item of clarified.answers) {
     expect(item.quotesTheReply, item.run).toBe(true);
@@ -172,6 +177,43 @@ it('under the clarified protocol every real answer quotes its own reply and clos
       expect(w.last.proposedFulfills, item.run).toEqual(item.output.fulfilled);
       expect(w.closed(), item.run).toBe(true);
       expect(w.rejected(), item.run).toBe(0);
+      w.journal.close();
+    } finally { rmSync(root, { recursive: true, force: true }); }
+  }
+}, 60000);
+
+it('under the shortened wording a delivered promise closes and an undelivered one stays open', async () => {
+  // Six real claude-sonnet-5 calls, each sent the wording asserted here: four on the recorded A5b packet,
+  // two with A5b's operator text replaced so that the reply delivers nothing.
+  const trimmed = recorded.trimmedProtocol;
+  expect(ANSWER_PROTOCOL).toContain(trimmed.wording);
+  expect(trimmed.delivered).toHaveLength(4);
+  expect(trimmed.undelivered).toHaveLength(2);
+  for (const item of trimmed.delivered) {
+    expect(item.quotesTheReply, item.run).toBe(true);
+    expect(item.output.fulfilled![0]!.quote, item.run).not.toBe(PROMISE);
+    const root = origin();
+    try {
+      const w = await replay(root, () => JSON.stringify(item.output));
+      expectRecordedPromise(w);
+      expect(w.last.proposedFulfills, item.run).toEqual(item.output.fulfilled);
+      expect(w.closed(), item.run).toBe(true);
+      expect(w.rejected(), item.run).toBe(0);
+      w.journal.close();
+    } finally { rmSync(root, { recursive: true, force: true }); }
+  }
+  for (const item of trimmed.undelivered) {
+    // Neither real answer declared a fulfilment. Each did add one openLoops item (kind promise) that the
+    // obligation reader refused; the refusal is counted, not lost, and it is outside the fulfilment clause.
+    expect(item.output.fulfilled, item.run).toBeUndefined();
+    const root = origin();
+    try {
+      const w = await replay(root, () => JSON.stringify(item.output), item.message);
+      expectRecordedPromise(w);
+      expect(w.last.proposedFulfills, item.run).toBeUndefined();
+      expect(w.last.intentFulfills, item.run).toEqual([]);
+      expect(w.closed(), item.run).toBe(false);
+      expect(w.rejected(), item.run).toBe(1);
       w.journal.close();
     } finally { rmSync(root, { recursive: true, force: true }); }
   }

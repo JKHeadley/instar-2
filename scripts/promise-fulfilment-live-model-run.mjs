@@ -7,7 +7,8 @@
  *
  * Turn 1 (the promise) is replayed from the live answer shape; only turn 2 — the A5b packet — is a real call.
  * Usage: node --no-warnings --loader ./scripts/slice-ts-loader.mjs scripts/promise-fulfilment-live-model-run.mjs <out-dir>
- * Env: A5_LIVE_MODEL (default claude-sonnet-5, the model the recorded run used); A5_CLAUDE_BIN (default /usr/bin/claude).
+ * Env: A5_LIVE_MODEL (default claude-sonnet-5, the model the recorded run used); A5_CLAUDE_BIN (default /usr/bin/claude);
+ * A5B_MESSAGE (default the recorded A5b message) replaces turn 2's operator text, to drive a turn that delivers nothing.
  * Every verbatim model output is written to <out-dir>. One call per run.
  */
 import { execFile } from 'node:child_process';
@@ -29,7 +30,8 @@ const MODEL = process.env.A5_LIVE_MODEL ?? 'claude-sonnet-5';
 const policy = subscriptionConversationPolicy(MODEL);
 const recorded = JSON.parse(readFileSync(new URL('../tests/preview/fixtures/promise-fulfilment-a5b-2026-10-03.json',
   import.meta.url), 'utf8'));
-const [A5, A5B] = recorded.turns;
+const [A5, RECORDED_A5B] = recorded.turns;
+const A5B = { ...RECORDED_A5B, message: process.env.A5B_MESSAGE ?? RECORDED_A5B.message };
 const PROMISE = recorded.agentPromisesAfterA5[0].quote;
 
 /** The live room's identity shape, so the packet and every id are as long as they really are. */
