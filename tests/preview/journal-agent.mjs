@@ -62,6 +62,8 @@ import { doorwayFreshness, installDoorways, observeExchange, readDoorwayMap, sta
 import { createSecretCustody, dueCredentialReminders, reminderSchedule } from './secret-custody.js';
 import { credentialNotices, doorwayNotices, dueWithDelivery } from './credential-reminders.js';
 import { journalCapacity, packetCapacity } from './capacity-outcome.js';
+import { createLiveSentinels, sentinelReport } from './live-sentinels.js';
+import { SENTINEL_FAMILIES } from './sentinel-record.js';
 
 const clock = createPreviewClock(() => Date.now(), () => performance.now());
 const wallNow = clock.now;
@@ -95,6 +97,15 @@ import { RETROSPECTIVE_QUESTION, benchmarkReruns, disciplineSource, feedbackDisp
 
 
 
+/** `--sentinels`: `none`, or a comma list of context, presence and promise; absent means all three. */
+const sentinelFamiliesOf = value => {
+  if (value === undefined) return new Set(SENTINEL_FAMILIES);
+  if (value === 'none') return new Set();
+  const named = value.split(',');
+  if (!named.length || named.some(name => !SENTINEL_FAMILIES.includes(name)) || new Set(named).size !== named.length)
+    throw Error('preview: --sentinels must be none or a comma list of context, presence, promise');
+  return new Set(named);
+};
 const parse = values => {
   const command = values[0] ?? 'run', options = {};
   for (let i = 1; i < values.length; i += 2) {
@@ -578,6 +589,8 @@ async function main() {
   if (options.retrospective !== undefined && !['true', 'false'].includes(options.retrospective)) throw Error('preview: --retrospective must be true or false');
   // On by default: one bounded pass at most hourly, inside the model-attempt cap with a reply reserve.
   const retrospectiveEnabled = options.retrospective !== 'false';
+  // Part 18 (plan #402): the live sentinels, all on by default; `--sentinels none` (or a subset) is the off-switch.
+  const sentinelFamilies = sentinelFamiliesOf(options.sentinels);
   if (!['run', 'status', 'stop', 'raise-caps', 'renew-expiry', 'inspect', 'import-store', 'audit', 'export-memory', 'seal-authority', 'record-live-proof', 'check-agreements', 'propose-retract'].includes(command)) throw Error('preview: unknown command');
   if (command === 'seal-authority') {
     // The desk's recording step: seals the authority record it decided, under the trial's storage
@@ -956,6 +969,8 @@ async function main() {
         checkMs: Math.round((lastSent.replyChecks ?? []).reduce((total, result) => total + result.latencyMs, 0)) } : null,
       ...(view.view.stepCheckStarted ? { stepChecks: stepCheckView(view.view) } : {}),
       retrospective: retrospectiveView(view.view, wallNow()),
+      // Part 18: what each live sentinel last decided, read back from the journal (the families this command names).
+      liveSentinels: sentinelReport(view.view, sentinelFamilies),
       people: [...new Set([...view.view.people.filter(note => !retractedTurn(view.view, note.source) && !view.view.memory.some(change =>
         change.in !== 'reply' && note.source === change.source && note.quote.includes(change.quote))).map(note => note.name),
         ...[...view.view.channelItems.values()].map(item => item.from.split('<')[0].trim().split('@')[0].replace(/[._-]+/gu, ' ')).filter(Boolean)])],
@@ -1913,6 +1928,17 @@ async function main() {
       if (activationMatchesJournal(journal.view, activation)) return false;
       endReason = 'activation renewed: restart on the renewed record'; return true;
     };
+    // Part 18 (plan #402): the live sentinels run on this loop's own cycle and request only the runner's own bounded steps.
+    const sentinels = createLiveSentinels(journal, { now: wallNow, startedAt: launchedAt, families: sentinelFamilies,
+      stopped: () => signalled || workerStop.value || existsSync(stopPath) || !ownerHeld(),
+      reground: () => ordinary(() => worker.drain()),
+      recoverContext: () => ordinary(() => worker.summarizeIfNeeded(true)),
+      selfHeal: () => ordinary(() => worker.drain()),
+      actOnPromise: id => ordinary(async () => {
+        await worker.drain();
+        if (id.startsWith('request:')) await worker.sendRequested(); else await worker.workObligations();
+      }) });
+    const sentinelTick = () => { if (sentinelFamilies.size && !journal.readOnly) try { sentinels.tick(); } catch { /* silence: a failed tick requests nothing */ } };
     for (let i = 0; i < cycles && !signalled; i++) {
       if (i > 0) await new Promise(done => setImmediate(done));
       if (signalled || workerStop.value || existsSync(stopPath) || journal.view.stop || !ownerHeld()) break;
@@ -1946,6 +1972,8 @@ async function main() {
         try { await worker.workObligations(); } catch { /* a stop or expiry ends the step; its start stays durable */ }
       });
       worker.gate();
+      // A holding note the presence sentinel marks due goes out at the minimal path's next step after the poll.
+      sentinelTick();
       reportCap();
       runDueProof();
       checkDoorways();
