@@ -15,8 +15,13 @@
 //   third-party account), an unsandboxed shell, a Monitor command (not shown to run inside the sandbox, which is what keeps
 //   a command away from the admission state and the network; Bash in the background is the sandboxed way to watch a
 //   command), sending outside the conversation, a scheduled or remote trigger, a design sync to a third-party account.
-// - Budget (the spend floor is the call reservation made before dispatch): Workflow and Skill may start agents whose
-//   number or model turns the turn cannot reserve in advance (a workflow script, a forked skill), so they are refused.
+// - Skill: an inline skill adds instructions to this conversation and starts nothing, so it is ordinary work under the
+//   turn's own checks; the pinned harness runs a skill in a forked agent only when the skill's resolved execution context
+//   is `fork`. The turn loads no user or project skills (its setting sources are empty), so the skills it can invoke are
+//   the harness's bundled ones, whose context is decided in harness code: INLINE_SKILLS names those verified inline in
+//   the pinned artifact. Any other name (a skill that can fork, or one not verified) is refused, as an unclassified tool is.
+// - Budget (the spend floor is the call reservation made before dispatch): Workflow, and a skill that can run forked, may
+//   start agents whose number or model turns the turn cannot reserve in advance, so they are refused.
 // - A web read of a loopback, private, link-local or local-name host is refused: it is not "the world" but this machine
 //   and its network, which the shell's sandbox already closes.
 import { basename, dirname, join, resolve, sep } from 'node:path';
@@ -42,8 +47,14 @@ const OUTWARD_TOOLS = Object.freeze({ SendMessage: 'send', PushNotification: 'se
 /** The harness's own bookkeeping: no effect outside the turn's process and workspace. */
 const BOOKKEEPING_TOOLS = Object.freeze(['ToolSearch', 'ListAgents', 'CronList', 'ReportFindings', 'TaskStop']);
 /** Tools that may start agents the turn cannot reserve before dispatch (their count or model turns are not bounded). */
-const UNRESERVABLE_TOOLS = Object.freeze({ Workflow: 'a workflow script may start any number of agents',
-  Skill: 'a skill may run in a forked agent with no turn bound' });
+const UNRESERVABLE_TOOLS = Object.freeze({ Workflow: 'a workflow script may start any number of agents' });
+/** Bundled skills of the pinned Claude Code 2.1.280 that run inline: each definition sets no fork context, no
+ * `getContext`, no agent, no background and no hooks, and builds its prompt without running a command or a network
+ * request (so nothing runs outside this hook). Read from the pinned artifact; a newer harness needs this list re-read. */
+export const INLINE_SKILLS = Object.freeze(['claude-api', 'dataviz', 'explain-usage', 'fewer-permission-prompts', 'keybindings-help',
+  'loop', 'run', 'simplify', 'update-config', 'workflow-authoring']);
+/** Bundled skills of the pinned harness that can run in a forked agent (code-review forks unless its own checks say inline). */
+const FORKING_SKILLS = Object.freeze(['code-review']);
 const WORKTREE_TOOLS = Object.freeze(['EnterWorktree', 'ExitWorktree']);
 /** Bounded excerpt of a tool input or result kept in the admission record. */
 export const RECORD_EXCERPT_CHARS = 4096;
@@ -193,6 +204,13 @@ export function admitToolCall(call, config, n, fs, child = 1) {
     const path = input.path ?? input.worktree_path;
     if (path !== undefined && !inside(path)) return deny(`worktree outside the workspace: ${String(path)}`, 'scope');
     return { decision: 'allow', reason: 'worktree inside the workspace' };
+  }
+  if (tool === 'Skill') {
+    const name = String(input.skill ?? '').replace(/^\//u, '');
+    if (INLINE_SKILLS.includes(name)) return { decision: 'allow', reason: `inline skill ${name}: its instructions join this turn, which starts nothing` };
+    if (FORKING_SKILLS.includes(name)) return deny(`skill ${name} can run in a forked agent, whose model turns this turn cannot reserve `
+      + 'before dispatch (the spend floor); delegate through Agent instead', 'budget');
+    return deny(`skill ${name || '(none)'} is not one this harness is known to run inline: refused by default`);
   }
   if (Object.hasOwn(UNRESERVABLE_TOOLS, tool)) return deny(`${UNRESERVABLE_TOOLS[tool]}, whose model turns this turn cannot reserve `
     + 'before dispatch (the spend floor); delegate through Agent instead', 'budget');

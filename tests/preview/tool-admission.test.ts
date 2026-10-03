@@ -338,10 +338,21 @@ it('decides every tool of the harness\'s built-in set by its class at the hook: 
   // A profile that registers the operation admits it through the same doorway (the doorway, not the tool list, decides).
   expect(admitToolCall({ tool_name: 'SendMessage', tool_input: {} }, { ...config, operations: ['tool:send'] }, 1, fs))
     .toEqual({ decision: 'allow', reason: 'registered operation tool:send', kind: 'send' });
-  // Budget: tools that may start agents the turn cannot reserve before dispatch.
-  for (const tool of ['Workflow', 'Skill'])
-    expect([tool, decide(tool, { skill: 'x', script: 'x' })]).toEqual([tool, { decision: 'deny', kind: 'budget',
-      reason: expect.stringMatching(/cannot reserve before dispatch \(the spend floor\); delegate through Agent instead/u) }]);
+  // Budget: a workflow may start agents the turn cannot reserve before dispatch.
+  expect(decide('Workflow', { script: 'x' })).toEqual({ decision: 'deny', kind: 'budget',
+    reason: expect.stringMatching(/cannot reserve before dispatch \(the spend floor\); delegate through Agent instead/u) });
+  // Skill: an inline skill is ordinary work; one that can run forked is refused for budget; an unverified name is refused.
+  for (const skill of ['simplify', '/dataviz'])
+    expect(decide('Skill', { skill })).toEqual({ decision: 'allow', reason: `inline skill ${skill.replace('/', '')}: its instructions join this turn, which starts nothing` });
+  expect(decide('Skill', { skill: 'code-review' })).toEqual({ decision: 'deny', kind: 'budget',
+    reason: expect.stringMatching(/^skill code-review can run in a forked agent, whose model turns this turn cannot reserve before dispatch/u) });
+  for (const skill of ['plain-instructions', 'commit', ''])
+    expect(decide('Skill', { skill })).toEqual({ decision: 'deny',
+      reason: `skill ${skill || '(none)'} is not one this harness is known to run inline: refused by default` });
+  // The same decisions through the real executable hook (each takes one of the step's call slots).
+  const { state: hookState } = turn();
+  expect(hook(hookState, j('Skill', { skill: 'simplify' })).decision).toBe('allow');
+  expect(hook(hookState, j('Skill', { skill: 'code-review' })).decision).toBe('deny');
   // A tool this adapter has not classified (a newer harness) is refused, since nothing says what it does.
   expect(decide('FutureTool')).toEqual({ decision: 'deny', reason: 'unclassified tool FutureTool: refused by default' });
 });

@@ -3568,8 +3568,10 @@ servers (Part Thirteen §9,
   TaskStop), a worktree inside the workspace, and a `worker` subagent within the turn's budget (rewritten to the
   foreground), started by the turn or by a subagent. Consequential effects go to the effect doorway, which refuses
   them: an MCP tool not listed as a read, an unsandboxed command, a Monitor command (not shown to be sandboxed; Bash
-  in the background is), a send, a scheduled or remote trigger, a DesignSync. Workflow and Skill are refused for
-  budget: the agents they may start cannot be reserved before dispatch. A web read of a loopback, private or
+  in the background is), a send, a scheduled or remote trigger, a DesignSync. A Skill is admitted when it is one of
+  the pinned harness's bundled skills verified to run inline (its instructions join the turn, which starts nothing;
+  the turn loads no user or project skills); a skill that can run forked, and Workflow, are refused for budget (the
+  agents they may start cannot be reserved before dispatch), and any other skill name is refused. A web read of a loopback, private or
   local-name host is refused; a tool the hook does not classify is refused. Each call takes one of
   the step's 32 slots (shared with the turn's subagents) by exclusive create, so overlapping calls cannot exceed the
   cap. The sandbox refuses reads from `/` down except the scratch volume and the system files commands need, writes
