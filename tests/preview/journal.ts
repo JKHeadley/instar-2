@@ -19,6 +19,7 @@ import { checkReply as checkCoherenceOf, correctionNote, releaseFindings, COHERE
 import { checkReply, reviewReply, repeatsOperatorOnly, HOLDING_REPLY, jevRequestBody, JEV_RESPONSE_MAX_BYTES, REPLY_CHECK_BUDGET_MS, REPLY_CHECK_BUDGET_REASON, LINK_SHAPE_REASON, linkShapeRules, bareTopicReferences, topicNameReason, BARE_TOPIC_OBJECTION, noDecisions, validDispositions, jevConfidentCredential, CLAIM_SCOPED_RULES, quotedSpans, exciseNamedClaims, substantiveReply, type ApprovalFacts } from './reply-check.js';
 import { parseDatedItem, restatedDatePhrase, dueState, selectDatedItems, withinNext48Hours, localParts, type DatedItem } from './dated-memory.js';
 import { isStatusCommand, isStopCommand, statusReply, STOP_CONFIRM_TEXT } from './status-command.js';
+import { memoryFailureCuesFor, memoryLearnings } from './memory-learning.js';
 import { AGENT_PROMISE_LIMIT, fulfillableCommitment, fulfillmentProposals, fulfillmentSupported, legacyFulfillsReminder, promiseProposals, recordedPromises, type AgentPromise, type FulfillmentProposal, type PromiseProposal } from './agent-commitment.js';
 import { messageTime, zoneFormatter } from './self-state.js';
 import type { ObjectionDisposition, ReplyCheckResult, ReplyCheckPorts, ReplyDecision, ReplyFinding, ReplyReviewDiagnostics, ReplyRule } from './reply-check.js';
@@ -4750,9 +4751,21 @@ export function createJournalWorker(journal: ReturnType<typeof openPreviewJourna
    * stage are fused there. Ordinary conversation reserves no helper spend (Part 21 §7). */
   const ownedRecall = (query: string, lexical: readonly number[], candidates: readonly { id: string; text: string; indexable: boolean }[], maxResults: number) => {
     const index = meaningIndex();
+    // Rule 85, row #404: a recorded memory failure repairs the ranking that produced it. The words
+    // that failed to reach a record join that record's derived terms here, at the one recall owner,
+    // so every retrieval path gets the hint and none of them gets a second ranking of its own. The
+    // write-side index is left exactly as written: its own coverage reading stays honest.
+    const hints = memoryFailureCuesFor(journal.view, query);
+    const cuesFor = (id: string) => {
+      const learned = hints.get(id);
+      if (!learned) return index.get(id);
+      const written = index.get(id) ?? [];
+      return [...written, ...learned.filter(term => !written.includes(term))].slice(0, CONCEPT_TERMS_LIMIT);
+    };
     return composeRecall({ query, lexical, maxResults, stopped: ports.stopped, spend: { reserve: () => false },
       ...(ports.recallReranker ? { reranker: ports.recallReranker } : {}),
-      candidates: candidates.map(item => ({ text: item.text, indexable: item.indexable, ...(index.has(item.id) ? { cues: index.get(item.id)! } : {}) })) });
+      candidates: candidates.map(item => { const cues = cuesFor(item.id);
+        return { text: item.text, indexable: item.indexable, ...(cues ? { cues } : {}) }; }) });
   };
   /** Telegram's own send time survives import; the local intake time is the fallback. */
   const sentAt = (turn: Turn) => {
@@ -6194,6 +6207,12 @@ export function createJournalWorker(journal: ReturnType<typeof openPreviewJourna
               ? { obligationDecision: OBLIGATION_DECISION_TOOLS, governingConstraints: governingConstraints(true), capabilities: previewCapabilities(true) }
               : { obligationDecision: OBLIGATION_DECISION, governingConstraints: governingConstraints(false), capabilities: previewCapabilities(false) }) } : {}),
           ...(fromOperator(turn) && offered.length && !('conflictDecision' in (JSON.parse(datedBase) as object)) ? { conflictDecision: CONFLICT_DECISION } : {}),
+          // Rules 24, 85, row #404: a cause of memory failure that has happened more than once is
+          // carried as a standing note, so the next answer is shaped by what the last ones got
+          // wrong. Fixed text, bounded to two notes, and absent entirely while nothing recurs --
+          // a healthy conversation's packet is byte-for-byte what it was.
+          ...(fromOperator(turn) && memoryLearnings(journal.view).length
+            ? { memoryLearning: memoryLearnings(journal.view).map(item => ({ cause: item.cause, occurrences: item.occurrences, guidance: item.guidance })) } : {}),
           // The compact packet's summary already serves as the correction reference; only complete history needs a copy.
           ...(fromOperator(turn) && summaryFor(before(turn.update)) && !('summary' in (JSON.parse(datedBase) as object))
             ? { memorySummary: { sourceKind: 'inferred-by-summary' as MemorySourceKind, text: clean(redact(summaryFor(before(turn.update))!.text).text, true,

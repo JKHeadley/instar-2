@@ -80,6 +80,43 @@ benchmark scenario is promoted only from a real graded case through the judgment
 owners. Synthetic cases in section 10 remain test/research fixtures; they cannot be relabeled
 production-derived to satisfy the rulebook's real-case benchmark requirement.
 
+**Rule — a recorded memory failure is read from stage evidence and repairs the stage it names.**
+Rules 2, 7, 11, 24, 26, 55, 60, 85, 87, 108 and 116; **checks: P21-NF-05/09/12/15/16/17a–j/22**.
+Where a conversation keeps a durable record of what each answer was handed, a coherence outcome
+is derived from that record rather than stored beside it: the operator's correction of an answer,
+and that answer's own grounding, are both already durable, so the reading survives a restart
+because its evidence does and cannot drift from it. The observation binds what was asked, what the
+memory path returned (how many verbatim, recalled, candidate and imported items the packet carried,
+the frontier below which it had no verbatim history and how that frontier arose, and any search the
+answer ran with its words and its result count), what the operator says is true, and the record the
+evidence names as missed or wrongly held.
+
+The stage is named strongest-evidence-first and only where the evidence supports it, so the four
+stage labels are exhaustive over what the record can decide and a fifth is reserved for what it
+cannot: a record memory already held and still got wrong is `wrongly-stored` (reader-use); a search
+that ran over the hidden history and came back without the record is `not-retrieved` (selection),
+which outranks the frontier because a search that actually ran is stronger evidence than a frontier
+that merely existed; a record below the answer's frontier that nothing searched is
+`summarized-away` (index); a search that covered the hidden history, found nothing, and no record
+holding what the operator has now said is `never-stored` (capture); and a correction after an
+answer that carried the complete history and ran no search is `undetermined`, counted and read but
+not diagnosed. A correction of a stored record, as against a correction of the agent's own reply,
+is read as a failure only on the evidence that the answer actually carried that record: an operator
+restating a fact is usually changing it.
+
+The repair is structural and bounded. The words that failed to reach a record become that record's
+own derived index terms, so a question that substantially repeats the one that failed ranks it,
+through the recall owner's existing derived stage and no second ranking; a hint is applied only
+where the query shares at least half of it, because the owner's result set is a fixed size and an
+always-on hint buys one record by displacing another. A correction of a stored record yields no
+hint, because the record it names is the superseded one. A cause that has happened more than once
+is carried into each later answer as a fixed standing note naming the cause, how often it has
+happened and what to do instead; one occurrence is an incident and earns none. Every bound is
+finite and declared: how many observations are read, how many records carry hints, how many terms
+each carries, and how many notes ride a packet. The write-side index is never written to, so its
+own coverage reading keeps measuring the indexer's work. The reading is a pull surface; nothing
+here notifies, blocks, delays or rewrites anything.
+
 **Value — measure the relationship experienced by the user.**
 [R5 §10](research/05-proposals-and-evaluation.md#10-metrics-denominators-and-error-attribution)
 defines these outcomes and denominators; [R3 §§3, 8](research/03-external-research.md) explains

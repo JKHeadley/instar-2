@@ -1,5 +1,31 @@
 [
   {
+    "revision": 5,
+    "date": "2026-10-03",
+    "status": "approved",
+    "cause": {
+      "kind": "conversation",
+      "note": "Operator's direction of 2026-09-13 (memory-failure recording plus self-improvement), carried as live-path plan row #404 and built as unit w4-memlearn"
+    },
+    "changes": [
+      {
+        "what": "State in section 9 that a coherence outcome is derived from the answer's own durable grounding beside the operator's correction, and name what the observation binds.",
+        "why": "Section 9 already requires outcomes to be recorded separately from their explanations and stage diagnosis to require stage evidence, but names no shape a conversation with a durable per-answer grounding can read one from; without it the record is a wish.",
+        "ref": "plan row #404; tests/preview/memory-learning.ts; reviews/w4-memlearn-change-review.md"
+      },
+      {
+        "what": "Name the five stage labels, their order by strength of evidence, and the reserved label for a correction the record cannot diagnose.",
+        "why": "Section 9 forbids naming a stage its evidence does not support; an exhaustive, ordered reading is what makes that enforceable rather than a caution, and an honest fifth label keeps an undiagnosable correction counted instead of mislabelled.",
+        "ref": "section 9, stage diagnosis requires stage evidence; docs/00-the-purpose.md, a design question this document cannot decide is a gap in this document"
+      },
+      {
+        "what": "State the bounded structural repair: the failing question's words become the missed record's derived index terms, applied only to a query that substantially repeats it, with no hint from a correction of a superseded record, and a fixed standing note once a cause recurs.",
+        "why": "Section 9 requires corrections to feed learning with accountable promotion but names no repair; a repair that is only counted changes nothing, and an unscoped one displaces a correctly recalled record, which was measured against the realistic-recall corpus.",
+        "ref": "tests/preview/journal-memory-learning.test.ts; tests/preview/realistic-recall.test.ts; section 6, write-side indexing and non-deleting projections"
+      }
+    ]
+  },
+  {
     "revision": 4,
     "date": "2026-09-28",
     "status": "approved",
