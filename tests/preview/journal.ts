@@ -1704,7 +1704,7 @@ const boundedText = (value: unknown, min: number, max: number): value is string 
 /** An open directive: admitted and not yet completed or superseded. Time never closes one (Rule 93). */
 export const openDirectives = (view: JournalView) => view.directives.flatMap((note, id) => note.closedBy ? [] : [{ id, note }]);
 /** What one settled blocker covers, stated once for the answer packet so the reviewer's own
- * DECLARED_OBLIGATIONS_GUIDE ("restating a settled limit needs no new record") and this cannot drift apart.
+ * DECLARED_OBLIGATIONS_GUIDE ("restating a settled limit ... needs no new record") and this cannot drift apart.
  * Live 969389730 the writer leaned on a record of a DIFFERENT action (looking up a bill, not paying it), so the
  * first clause holds. The second settles what that left open and what the live check then read as a defect:
  * cint-L28 (2026-10-02 08:31 and 08:35 PDT) restated settled water-bill limit 41 for a new reference and

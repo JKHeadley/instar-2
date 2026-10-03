@@ -294,8 +294,9 @@ it('gives the contextual reviewer the attached investigation record and the gove
   // Plan #111: the settled records count, and the verdict word carries the conclusion. Live L9 (update 969389755) the
   // reviewer wrote "unrecorded_blocker: VIOLATION | none — declaredObligations.blocker matches this exact claim".
   expect(REPLY_RULES.unrecorded_blocker).toContain('packet.declaredObligations.settled');
-  expect(DECLARED_OBLIGATIONS_GUIDE).toContain('restating a settled limit needs no new record');
-  expect(DECLARED_OBLIGATIONS_GUIDE).toContain('VIOLATION only when one is not, with a reason quoting that claim');
+  // w3-selfdesc (plan #370) shortened both clauses to the wording its recorded real reviews ran on; the meaning holds.
+  expect(DECLARED_OBLIGATIONS_GUIDE).toMatch(/restating a settled limit, or [^.;]+, needs no new record/u);
+  expect(DECLARED_OBLIGATIONS_GUIDE).toContain('VIOLATION only when one such final claim is not recorded this way, with a reason quoting that claim');
   for (const rules of [[], ['unrecorded_blocker'], ['credential']] as ReplyRule[][])
     expect(replyReviewQuestion(rules)).toContain('A reason that finds no breach belongs on a PASS line.');
 });

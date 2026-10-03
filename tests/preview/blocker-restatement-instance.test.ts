@@ -87,7 +87,8 @@ it('resolves the instance question in one place, and the reviewer guide reads th
   expect(SETTLED_BLOCKER_SCOPE).toContain('another instance of that same action');
   expect(SETTLED_BLOCKER_SCOPE).toContain('is that same claim and needs no new record');
   // The reviewer is told the same thing already, and was consistent live; the two now cannot drift apart.
-  expect(DECLARED_OBLIGATIONS_GUIDE).toContain('restating a settled limit needs no new record');
+  // w3-selfdesc added a second case to the same clause (a capability-note limit described, not used to decline work).
+  expect(DECLARED_OBLIGATIONS_GUIDE).toMatch(/restating a settled limit, or [^.;]+, needs no new record/u);
   expect(REPLY_RULES.unrecorded_blocker).toContain('packet.declaredObligations.settled');
 });
 
