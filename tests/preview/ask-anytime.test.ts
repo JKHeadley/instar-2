@@ -117,11 +117,11 @@ it('sends the proposal guidance on an admissible root far from every limit, and 
   expect(shutNear.near).toBe(true);
   expect(count(shutNear.capability, OPERATOR_ACTION_GUIDANCE)).toBe(1);
   // Bytes: the admissible root differs from the no-port root by exactly the guidance (one root, same message, same clock):
-  // 397 bytes of text, 415 on the prepared envelope, where the packet is JSON inside JSON and each of its 6 quotes costs 3.
+  // 621 bytes of text, 639 on the prepared envelope, where the packet is JSON inside JSON and each of its 6 quotes costs 3.
   const added = Buffer.byteLength(review.prompt) - Buffer.byteLength(none.prompt);
-  expect(Buffer.byteLength(OPERATOR_ACTION_GUIDANCE)).toBe(397);
+  expect(Buffer.byteLength(OPERATOR_ACTION_GUIDANCE)).toBe(621);
   expect(added).toBe(Buffer.byteLength(JSON.stringify(JSON.stringify(OPERATOR_ACTION_GUIDANCE))) - 6);
-  expect(added).toBe(415);
+  expect(added).toBe(639);
 }, 60_000);
 
 it('a proposed raise on an admissible root far from every limit opens one request; without a source the reply says why not', async () => {

@@ -467,8 +467,10 @@ export const STOP_PAGE_BUTTON = 'Stop page';
 export const RAISE_NEEDS_SURFACE = 'A raise is approved on your approval page, not here. Nothing changed.';
 /** Why a request is not proposed where the installation record says the agent can speak as the operator in chat (P-05). */
 export const CHAT_YES_UNAVAILABLE = 'on this setup I can also send messages as you in this chat, so a "yes" here would not prove it came from you';
-/** Rules 10, 82: how the mind proposes one of the two declared operator actions; the runner writes the request. */
-export const OPERATOR_ACTION_GUIDANCE = ' If the verified operator asks to raise this trial\'s limits or extend its end, return JSON with reply and operatorAction:{action:"raise-caps",limits:{maxCalls|maxReplies|maxTurns: the number they named, or "step" for the usual increase}} or {action:"renew-expiry"}. The exact request, or why not, is added below your reply for them to approve; introduce it in plain words and never say it is done.';
+/** Rules 10, 82: how the mind proposes one of the two declared operator actions; the runner writes the request. Live
+ * 2026-10-03 (update 969390031, plan #362): with no field offered for the end, the model wrote the end the operator named
+ * as `requestedEnd`, which the exact reader refuses; the renewal has one reviewed end, so no end field is asked for. */
+export const OPERATOR_ACTION_GUIDANCE = ' If the verified operator asks to raise this trial\'s limits or extend its end, return JSON with reply and operatorAction:{action:"raise-caps",limits:{maxCalls|maxReplies|maxTurns: the number they named, or "step" for the usual increase}} or exactly {action:"renew-expiry"} with no other field (the runner fills in the one reviewed end, whatever end they named). Return operatorAction even while an operatorRequest is shown: operatorRequest is the runner\'s record, never a field you return. The exact request, or why not, is added below your reply for them to approve; introduce it in plain words and never say it is done.';
 /** When the proposal guidance rides the packet: whenever an explicit-yes source is admissible on this root (an
  * explicit ask is answerable at any time), or, where the port is configured but inadmissible, a limit at the cap
  * report's own "near" level (80% used) or the trial ending within two days, so the answer carries the honest why-not.
@@ -482,7 +484,7 @@ export function limitsNear(view: JournalView, now: number): boolean {
 /** Sent only while a request is open or was just answered (Rule 98: only an explicit yes approves). */
 export const OPERATOR_REQUEST_GUIDANCE = ' operatorRequest is your proposed request and the runner\'s verdict on the operator\'s answer. Only the runner applies it, on a plain yes. Report its state as shown; never claim a change it does not show. If not approved, say nothing changed and that replying just "yes" approves it.';
 /** The same guidance where the yes is the operator's GitHub review (P-05): a chat yes approves nothing there. */
-export const OPERATOR_REVIEW_REQUEST_GUIDANCE = ' operatorRequest is your proposed request and its state. Only the runner applies it, when the operator approves it at the link its state shows. Report its state as shown; never claim a change it does not show, and never say a chat "yes" approves it.';
+export const OPERATOR_REVIEW_REQUEST_GUIDANCE = ' operatorRequest is the runner\'s record of the request you last proposed, and its state. Only the runner applies it, when the operator approves it at the link its state shows. Report its state as shown; never claim a change it does not show, and never say a chat "yes" approves it.';
 /** Why not, where no explicit-yes source is configured on this root at all. */
 export const NO_YES_SOURCE = 'on this setup that approval is still given at the host, not in this chat';
 /** Said when the answer named an operator action the runner could not read exactly (Rule 2: never dropped in silence). */
@@ -6328,7 +6330,7 @@ export function createJournalWorker(journal: ReturnType<typeof openPreviewJourna
               const parsed = JSON.parse(output) as { reply?: unknown; memory?: unknown; memoryDisposition?: unknown; dated?: unknown; undo?: unknown; personMerges?: unknown; personAttributes?: unknown; closedQuestions?: unknown; memoryList?: unknown; lastNamedPerson?: unknown;
                 conflict?: unknown; resolveConflict?: unknown; cancelReminders?: unknown;
                 directives?: unknown; closeDirectives?: unknown; openLoops?: unknown; blocker?: unknown; blockerRechecks?: unknown;
-                promises?: unknown; fulfilled?: unknown; operatorAction?: unknown };
+                promises?: unknown; fulfilled?: unknown; operatorAction?: unknown; operatorRequest?: unknown };
               const replyValue = parsed?.reply;
               const replyAnswer = replyValue && typeof replyValue === 'object' && !Array.isArray(replyValue)
                 && 'answer' in replyValue && typeof replyValue.answer === 'string' ? replyValue.answer : undefined;
@@ -6421,8 +6423,10 @@ export function createJournalWorker(journal: ReturnType<typeof openPreviewJourna
                 obligations = obligationsFrom(parsed, turn, text, context, decisionAt);
                 // Rules 10, 82: the model reads whether the verified operator asked for a limit raise or a renewal; the
                 // runner, never the model, writes the exact request from the governed bounds when the reply is sent.
-                if (parsed.operatorAction !== undefined && fromOperator(turn)) {
-                  operatorAction = parseOperatorAction(parsed.operatorAction);
+                // Rule 2: a proposal written under the runner's own field name (operatorRequest) is a proposal the
+                // runner could not read, never one dropped in silence (plan #362: the model named that field).
+                if ((parsed.operatorAction !== undefined || parsed.operatorRequest !== undefined) && fromOperator(turn)) {
+                  operatorAction = parsed.operatorAction === undefined ? undefined : parseOperatorAction(parsed.operatorAction);
                   unreadAction = operatorAction === undefined;
                 }
                 const decision = JSON.parse(context) as { memoryCandidates?: { id: string; message: string }[];
@@ -6525,6 +6529,9 @@ export function createJournalWorker(journal: ReturnType<typeof openPreviewJourna
               undo = undefined; closedQuestions = undefined; conflict = undefined; askConflict = undefined; resolveConflict = undefined;
               lastNamedPerson = undefined; reminderCancels = undefined; invalidCancel = false; cancelRefusal = undefined; }
             if (invalidDate) undo = undefined;
+            // Rule 3 (plan #362): a reply written to introduce a request the runner could not read would announce one
+            // that does not exist, so the fixed line replaces it; the runner's own lines below still follow.
+            if (unreadAction && text.trim()) { text = OPERATOR_ACTION_UNREAD; if (separatedAnswer !== undefined) separatedAnswer = OPERATOR_ACTION_UNREAD; }
             if (invalidDate && !invalidMemory) {
               // Legacy reply strings can mix an answer with an unchecked save claim.
               // Only the separated answer is safe to keep when validation rejects the date.
@@ -6573,7 +6580,6 @@ export function createJournalWorker(journal: ReturnType<typeof openPreviewJourna
             if (obligations.invalidDirective) text = `${text.trim()} I could not record that standing instruction exactly, so I have not saved it. Please restate it.`;
             else if (obligations.directivesFull) text = `${text.trim()} I have not saved that standing instruction: the ones I already hold fill the space I keep for them in every answer. Tell me which one is done or replaced, and I will save this one.`;
             else for (const item of obligations.directives ?? []) text = `${text.trim()} Standing instruction saved until you say it is done or replace it: "${item.quote}".`;
-            if (unreadAction && text.trim()) text = `${text.trim()} ${OPERATOR_ACTION_UNREAD}`;
             if (invalidUndo) { text = 'I could not undo that memory change. Only the most recent change within ten minutes can be undone.';
               memory = []; dated = []; undo = undefined; invalidMemory = false; }
             // Rules 8, 92: completed obligation work rides the operator's next answer, the only send the grant allows.
@@ -7075,7 +7081,8 @@ export function createJournalWorker(journal: ReturnType<typeof openPreviewJourna
     try { renewal = ports.explicitYes?.renewalActivation?.(SUBSCRIPTION_PREVIEW_EXPIRY) ?? null; } catch { renewal = null; }
     return { limits: { maxCalls: view.limits.maxCalls, maxReplies: view.limits.maxReplies, maxTurns: view.limits.maxTurns },
       used: { maxCalls: view.calls, maxReplies: view.replies, maxTurns: view.order.length },
-      step: { maxCalls: g.maxCalls, maxReplies: g.maxReplies, maxTurns: g.maxTurns }, expires: view.expires,
+      step: { maxCalls: Math.max(g.maxCalls, view.limits.maxCalls), maxReplies: Math.max(g.maxReplies, view.limits.maxReplies),
+        maxTurns: Math.max(g.maxTurns, view.limits.maxTurns) }, expires: view.expires,
       governedExpiry: SUBSCRIPTION_PREVIEW_EXPIRY,
       renewalActivation: typeof renewal === 'string' && /^sha256:[a-f0-9]{64}$/u.test(renewal) ? renewal : null,
       unknownCalls: pendingUnknownCalls(view).length, stopped: view.stop !== null, grant: g.grant, base: approvalBase(view) };

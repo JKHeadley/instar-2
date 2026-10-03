@@ -24,8 +24,10 @@ export type OperatorActionProposal =
 /** The exact request the operator approves. `base` binds the journal state it was issued against. */
 export interface OperatorRequest { id: string; action: OperatorAction; base: string; digest: Hash;
   limits?: CapLimits; expires?: number; issuedAt: number; expiresAt: number }
-/** The journal facts a proposal is bounded by. `step` is the trial's own original allowance per limit: one raise
- * may add at most that much to a limit, the same governed step the cap-reached raise has always used. */
+/** The journal facts a proposal is bounded by. `step` is, per limit, the larger of the trial's own original allowance
+ * and its current allowance: one raise may add at most that much, so it at most doubles a limit (at the original
+ * allowance, the same step the cap-reached raise uses). Live 2026-10-03 (plan #362): on a root host-raised to 2,500 the
+ * original 16 made an explicit "raise my limit" propose 16 more calls. */
 export interface ProposalState { limits: CapLimits; used: CapLimits; step: CapLimits; expires: number;
   /** The reviewed build's governed trial end (SUBSCRIPTION_PREVIEW_EXPIRY); the only expiry a renewal may name. */
   governedExpiry: number;
