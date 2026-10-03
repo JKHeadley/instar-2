@@ -85,10 +85,12 @@ export function createProductionTelegramIO(root, captures, testEndpoint = null) 
    * as does env's own failure code) and the bridge's request refusal (every `process.exit(2)` precedes
    * its fetch). A child killed on the timeout exits by signal, never with one of these. */
   const NEVER_DISPATCHED_EXITS = new Set([2, 125]);
-  /** `startFailure` is the host's refusal to start the child at all (spawn error code), or null.
-   * A timeout kill arrives as ETIMEDOUT and is NOT such a refusal: that child may have sent first. */
-  const settle = (status, stdout, startFailure = null) => {
-    if (startFailure !== null && startFailure !== 'ETIMEDOUT')
+  /** `neverStarted` is true only when the host refused to start the child at all (a spawn error with
+   * no process id). Any error from a child that did start (a timeout kill as ETIMEDOUT, an output
+   * overflow as ENOBUFS after the provider already answered) is NOT such a refusal: that child may
+   * have sent first, so it settles UNKNOWN through the null status below and is never repeated. */
+  const settle = (status, stdout, neverStarted = false) => {
+    if (neverStarted)
       return { kind: 'uncertain', limitation: 'transport', stage: 'spawn-refused', sent: false };
     // Rule 42: a locally refused launch is a definite non-delivery, told apart from a child that
     // exited after it may already have sent (which stays UNKNOWN and is never repeated).
@@ -116,7 +118,9 @@ export function createProductionTelegramIO(root, captures, testEndpoint = null) 
       const { env, timeout, argv } = launch(input);
       const child = spawnSync('/bin/sh', argv, { input: credential, encoding: 'utf8', timeout, maxBuffer: MAX_TRANSPORT_BYTES,
         env, stdio: ['pipe', 'pipe', 'ignore'] });
-      return settle(child.status, child.stdout, child.error?.code ?? null);
+      // Rule 26: an error label is no proof. Only a child that never got a process id sent nothing.
+      if (child.error) return settle(null, '', !child.pid);
+      return settle(child.status, child.stdout);
     },
     /** The same bounded child, awaited without blocking the event loop: the long poll. A synchronous
      * long poll froze every concurrent launch's timers and exit events for its whole wait, so a
