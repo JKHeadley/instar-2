@@ -1,5 +1,31 @@
 [
   {
+    "revision": 5,
+    "date": "2026-10-03",
+    "status": "draft",
+    "cause": {
+      "kind": "draft",
+      "note": "Unit w4-sensitivity (plan row #405): information sensitivity, on the operator's direction of 2026-09-13 (wisdom in the use of knowledge) and of 2026-10-03 (Justin, message 121996 and the 10:45 re-grounding: a powerful sentinel collection; never narrow ability to gain safety). No constitution change."
+    },
+    "changes": [
+      {
+        "what": "Section 16 gains a fifth member, sensitivity: the audience question sensitive_disclosure on the one reply review, asked only where the reply's audience is not the verified operator alone, never asked of Jev; for such an audience Jev's pass no longer ends the check.",
+        "why": "The preview had secret custody and the reply review but no judgment of who reads a reply; the purpose's least revelation requires one, and Jev cannot see the audience.",
+        "ref": "lanes/w4-sensitivity-PROGRESS.md; LIVE-PATH-PLAN.md row #405; tests/preview/sensitivity.test.ts"
+      },
+      {
+        "what": "Section 16's new rule: who reads a reply bounds what it reveals. A disclosure is a claim-scoped held class: the agent's discreet rewrite is sent after its revision review clears; otherwise the quoted sentence is removed, and a reply that was only the private detail becomes the holding note. Operator confidences ride the existing Rule 93 directive record; credentials stay the credential rule and the exact wall for every audience.",
+        "why": "Guidance that rewrites or holds with an honest note, through existing machinery: no second gate, no new store, no change on the operator's own chat.",
+        "ref": "lanes/w4-sensitivity-PROGRESS.md; tests/preview/fixtures/sensitivity-live-2026-10-03.json"
+      },
+      {
+        "what": "Section 16's recorded-proof table and honest limits cover the member; section 13 gains P14-NF-76 to P14-NF-78; section 14 records the disposition of the 1.x credential wall and principal-coherence guard.",
+        "why": "Every new rule names executable checks with a positive neighbor, and the live path's single audience is stated rather than implied.",
+        "ref": "lanes/w4-sensitivity-PROGRESS.md"
+      }
+    ]
+  },
+  {
     "revision": 4,
     "date": "2026-10-03",
     "status": "draft",

@@ -16,7 +16,7 @@ import { buildWorkIndex, detectOverlaps, workForTopic, type SessionActivity } fr
 import { MAX_RAISED_SUBSCRIPTION_PROMPT_BYTES, SUBSCRIPTION_CONVERSATION_SYSTEM_PROMPT, SUBSCRIPTION_MAX_OUTPUT_TOKENS, SUBSCRIPTION_PREVIEW_EXPIRY } from '../../src/assembly/production-provider.js';
 import { hasClaim, replaceClaim, supersedesCorrection } from './claim-match.mjs';
 import { checkReply as checkCoherenceOf, correctionNote, releaseFindings, COHERENCE_FINDING_LIMIT, type CoherenceFinding } from './coherence-check.js';
-import { checkReply, reviewReply, repeatsOperatorOnly, HOLDING_REPLY, jevRequestBody, JEV_RESPONSE_MAX_BYTES, REPLY_CHECK_BUDGET_MS, REPLY_CHECK_BUDGET_REASON, LINK_SHAPE_REASON, linkShapeRules, bareTopicReferences, topicNameReason, BARE_TOPIC_OBJECTION, noDecisions, validDispositions, jevConfidentCredential, CLAIM_SCOPED_RULES, quotedSpans, exciseNamedClaims, substantiveReply, type ApprovalFacts } from './reply-check.js';
+import { checkReply, reviewReply, repeatsOperatorOnly, HOLDING_REPLY, jevRequestBody, JEV_RESPONSE_MAX_BYTES, REPLY_CHECK_BUDGET_MS, REPLY_CHECK_BUDGET_REASON, LINK_SHAPE_REASON, linkShapeRules, bareTopicReferences, topicNameReason, BARE_TOPIC_OBJECTION, noDecisions, validDispositions, jevConfidentCredential, CLAIM_SCOPED_RULES, quotedSpans, exciseNamedClaims, substantiveReply, sharedAudience, AUDIENCE_RULES, type ApprovalFacts } from './reply-check.js';
 import { parseDatedItem, restatedDatePhrase, dueState, selectDatedItems, withinNext48Hours, localParts, type DatedItem } from './dated-memory.js';
 import { isStatusCommand, isStopCommand, statusReply, STOP_CONFIRM_TEXT } from './status-command.js';
 import { AGENT_PROMISE_LIMIT, fulfillableCommitment, fulfillmentProposals, fulfillmentSupported, legacyFulfillsReminder, promiseProposals, recordedPromises, type AgentPromise, type FulfillmentProposal, type PromiseProposal } from './agent-commitment.js';
@@ -1371,7 +1371,11 @@ const jevNonSecretFlags = (turn: Turn, candidateDigest?: string): ReplyRule[] | 
  * review verdict exists; its unsure band escalated, and an UNKNOWN escalation leaves only a signal (plan #102). A contextual review violation naming a rule in `REVIEW_HOLDING_RULES` still holds:
  * the secret exception, and build 4's obligation floor for an untracked deferral or an unevidenced final
  * cannot-do claim (Rules 6, 20, 21, 23). Every other objection is an advisory signal (Rules 4, 77, 86, 95). */
-export const REVIEW_HOLDING_RULES: readonly ReplyRule[] = Object.freeze(['credential', 'defers_work', 'unrecorded_blocker']);
+export const REVIEW_HOLDING_RULES: readonly ReplyRule[] = Object.freeze(['credential', 'defers_work', 'unrecorded_blocker', 'sensitive_disclosure']);
+/** The held classes one revision review judges: the audience question only where the reply's audience is not the
+ * verified operator alone, so the operator's own chat asks exactly what it asked before (Part 18 §16). */
+export const revisionReviewRules = (originalPrompt: string | undefined): ReplyRule[] =>
+  REVIEW_HOLDING_RULES.filter(rule => sharedAudience(originalPrompt) || !(AUDIENCE_RULES as readonly ReplyRule[]).includes(rule));
 const jevCredentialFlag = (turn: Turn, candidateDigest: string): boolean => (turn.replyChecks ?? []).some(check =>
   jevConfidentCredential(check) && (check.candidateDigest === undefined || check.candidateDigest === candidateDigest));
 /** The holding rules the last contextual review of this exact candidate named, with the per-rule findings that
@@ -7224,7 +7228,7 @@ export function createJournalWorker(journal: ReturnType<typeof openPreviewJourna
                   maxInputTokens: journal.view.limits.maxBytes, maxOutputTokens: subscriptionOutputMaximum, at: ports.now() });
                 let result: { verdict: 'pass' | 'violation' | 'unavailable'; ruleIds: ReplyRule[]; reason?: string; findings?: ReplyFinding[]; usage?: ModelUsage };
                 try {
-                  const reviewed = await ports.replyCheck.escalate(revised, turn.id, originalPrompt, REVIEW_HOLDING_RULES,
+                  const reviewed = await ports.replyCheck.escalate(revised, turn.id, originalPrompt, revisionReviewRules(originalPrompt),
                     loopDeadline, 'revision');
                   result = { verdict: reviewed.verdict === 'pass' ? 'pass' : 'violation',
                     ruleIds: Array.isArray(reviewed.ruleIds) ? reviewed.ruleIds.filter(rule => typeof rule === 'string') : [],
