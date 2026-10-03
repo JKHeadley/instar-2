@@ -6,19 +6,21 @@
  * reply gave exactly three "as promised" — and the promise was still `closed: false` after its receipt
  * (`inspect-a5b.json`, recorded in the fixture).
  *
- * The answering model read the meaning correctly. Replayed on the same recorded packet through the same
- * envelope, protocol and reader, claude-sonnet-5 named commitment 0 and declared `fulfilled` in five of six
- * calls — but it chose the `quote` three different ways, and two of them lost the declaration:
+ * The live answer row was not readable, so which declaration the live call made is UNCONFIRMED. Replayed on
+ * the same recorded packet through the same envelope, protocol and reader, claude-sonnet-5 named commitment 0
+ * and declared `fulfilled` in five of six calls — but it chose the `quote` three different ways, and two of
+ * them lost the declaration; either could explain the live failure:
  *
  *   1. the whole reply as the excerpt. The fulfilment quote shared the 500-byte bound written for a promise
  *      SENTENCE, so an excerpt over that bound was refused: the same answer shape closed the promise at 413
- *      bytes and was refused at 526, and the live reply was 610. Only the reply's length decided whether a
- *      delivered promise was recorded as delivered. This is what the fix removes: a fulfilment quote is now
- *      bounded by the reply it must appear in, which is the bound that was always doing the work.
+ *      bytes and was refused at 526 (the live reply was 610). Only the reply's length decided whether a
+ *      delivered promise was recorded as delivered. Fixed in code: a fulfilment quote is now bounded by the
+ *      reply it must appear in, which is the bound that was always doing the work.
  *   2. the promise's own sentence, copied from the packet. That is not carried by the reply as sent, and it
  *      stays refused — accepting it would let any reply close any offered promise by echoing the packet back.
- *      A second cause of the same live failure, and a protocol-wording question rather than one code can
- *      decide; it is asserted below as the floor it is, with the recorded answer that produced it.
+ *      Fixed in the protocol: ANSWER_PROTOCOL now says the quote is copied from the answer's own reply field,
+ *      never from the text of the commitment, and six real calls under that wording all quoted their reply
+ *      and closed the promise. The old malformed output is still refused, asserted below.
  *
  * Every case replays recorded shapes: the live turns, and the verbatim claude-sonnet-5 outputs on that packet.
  * The floor is proved on both sides — a quote the reply does not carry is refused and counted, a reply that
@@ -29,6 +31,7 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { createJournalWorker, openPreviewJournal } from './journal-test-worker.js';
 import { REPLY_EXCERPT_LIMIT, fulfillmentProposals, promiseProposals } from './agent-commitment.js';
+import { ANSWER_PROTOCOL } from './briefing.js';
 
 const recorded = JSON.parse(readFileSync(new URL('./fixtures/promise-fulfilment-a5b-2026-10-03.json', import.meta.url), 'utf8')) as {
   turns: { update: number; message: string; sent: string; answer: string }[];
@@ -36,6 +39,8 @@ const recorded = JSON.parse(readFileSync(new URL('./fixtures/promise-fulfilment-
   agentPromisesAfterA5b: { id: number; quote: string; action: string; closed: boolean }[];
   recordedAnswers: { run: string; replyBytes: number; quoteBytes: number | null; quotesTheReply: boolean;
     note: string; output: { reply: string; fulfilled?: { id: number; quote: string }[] } }[];
+  clarifiedProtocol: { wording: string; answers: { run: string; quotesTheReply: boolean;
+    output: { reply: string; fulfilled?: { id: number; quote: string }[] } }[] };
 };
 const [A5, A5B] = recorded.turns as [typeof recorded.turns[number], typeof recorded.turns[number]];
 const PROMISE = recorded.agentPromisesAfterA5[0]!.quote;
@@ -82,8 +87,9 @@ const expectRecordedPromise = (w: Awaited<ReturnType<typeof replay>>) => {
 it('the live answer shape — the whole reply quoted as the excerpt — closes the promise it delivered', async () => {
   const root = origin();
   try {
-    // The reply actually sent live (610 bytes of body), with the fulfilment declaration the recorded
-    // claude-sonnet-5 answers show for it: commitment 0, the whole reply as the quote.
+    // The reply actually sent live (610 bytes of body), with a SYNTHETIC declaration of the whole-reply shape
+    // the recorded claude-sonnet-5 answers showed (commitment 0, the whole reply as the quote). The live
+    // call's own declaration was not recoverable; this proves the bound on the live reply's length only.
     const w = await replay(root, offered => JSON.stringify({ reply: A5B.answer, memory: [], promises: [],
       fulfilled: [{ id: offered.find(item => item.owner === 'agent')!.id, quote: A5B.answer }] }));
     expectRecordedPromise(w);
@@ -130,10 +136,10 @@ it('a reply that delivers nothing closes nothing, and the promise stays open', a
 });
 
 it('a recorded answer that quoted the promise instead of its own reply is still refused, counted, and closes nothing', async () => {
-  // Reproduction 6, verbatim: the tips were delivered, commitment 0 was named — and the quote was the
-  // promise's own sentence, copied from the packet, which this reply does not carry. Accepting that would let
-  // any reply close any offered promise by echoing the packet back, so it stays refused. This is a SECOND
-  // cause of the same live failure, and it is a protocol-wording question, not one code can decide.
+  // Reproduction 6, verbatim (under the earlier protocol wording): the tips were delivered, commitment 0 was
+  // named — and the quote was the promise's own sentence, copied from the packet, which this reply does not
+  // carry. Accepting that would let any reply close any offered promise by echoing the packet back, so it
+  // stays refused; the protocol wording, not the floor, is what now steers the model away from it.
   expect(uncarried).toHaveLength(1);
   for (const item of uncarried) {
     const root = origin();
@@ -150,6 +156,26 @@ it('a recorded answer that quoted the promise instead of its own reply is still 
     } finally { rmSync(root, { recursive: true, force: true }); }
   }
 }, 30000);
+
+it('under the clarified protocol every real answer quotes its own reply and closes the promise', async () => {
+  // Six real claude-sonnet-5 calls on the recorded A5b packet, each sent the wording asserted here.
+  const clarified = recorded.clarifiedProtocol;
+  expect(ANSWER_PROTOCOL).toContain(clarified.wording);
+  expect(clarified.answers).toHaveLength(6);
+  for (const item of clarified.answers) {
+    expect(item.quotesTheReply, item.run).toBe(true);
+    expect(item.output.fulfilled![0]!.quote, item.run).not.toBe(PROMISE);
+    const root = origin();
+    try {
+      const w = await replay(root, () => JSON.stringify(item.output));
+      expectRecordedPromise(w);
+      expect(w.last.proposedFulfills, item.run).toEqual(item.output.fulfilled);
+      expect(w.closed(), item.run).toBe(true);
+      expect(w.rejected(), item.run).toBe(0);
+      w.journal.close();
+    } finally { rmSync(root, { recursive: true, force: true }); }
+  }
+}, 60000);
 
 it('the bound is still finite, decides on exact bytes, and leaves the promise sentence bound alone', () => {
   const supported = () => true;

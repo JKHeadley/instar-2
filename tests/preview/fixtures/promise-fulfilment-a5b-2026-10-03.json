@@ -113,5 +113,101 @@
     ]
    }
   }
- ]
+ ],
+ "clarifiedProtocol": {
+  "note": "Six REAL claude-sonnet-5 calls on the same recorded A5b packet (scripts/promise-fulfilment-live-model-run.mjs, 2026-10-03, Studio) after ANSWER_PROTOCOL was changed to say the fulfilment quote is copied from the answer's own reply field, never from the text of the commitment. Each prepared envelope carried that wording. Verbatim answer values.",
+  "wording": "quote:an excerpt copied word for word from your own reply field, never from the text of the commitment",
+  "answers": [
+   {
+    "run": "clarified-1",
+    "replyBytes": 554,
+    "quoteBytes": 83,
+    "quotesTheReply": true,
+    "output": {
+     "reply": "Here are three tips for watering your tomato plants: 1) Water deeply and less often — aim for about 1-2 inches per week, soaking the soil to encourage deep root growth rather than frequent shallow sprinkles. 2) Water at the base, not the leaves — wet foliage invites fungal diseases like blight, so use a soaker hose or water directly at soil level in the morning. 3) Keep moisture consistent — uneven watering (dry spells followed by heavy soaking) causes blossom end rot and cracked fruit, so mulch around the plants to retain even soil moisture.",
+     "fulfilled": [
+      {
+       "id": 0,
+       "quote": "Here are three tips for watering your tomato plants: 1) Water deeply and less often"
+      }
+     ]
+    }
+   },
+   {
+    "run": "clarified-2",
+    "replyBytes": 396,
+    "quoteBytes": 157,
+    "quotesTheReply": true,
+    "output": {
+     "reply": "Here are three tips for watering your tomato plants: 1) Water deeply and infrequently so roots grow deep and strong, rather than shallow, frequent sprinkles. 2) Water at the base of the plant in the morning, not overhead, to reduce disease and evaporation. 3) Keep moisture consistent — check soil 1-2 inches down and use mulch — since irregular watering causes problems like blossom end rot.",
+     "fulfilled": [
+      {
+       "id": 0,
+       "quote": "Here are three tips for watering your tomato plants: 1) Water deeply and infrequently so roots grow deep and strong, rather than shallow, frequent sprinkles."
+      }
+     ]
+    }
+   },
+   {
+    "run": "clarified-3",
+    "replyBytes": 530,
+    "quoteBytes": 67,
+    "quotesTheReply": true,
+    "output": {
+     "reply": "Here are three tomato watering tips: 1) Water deeply and less often — aim for about 1-2 inches per week, soaking the root zone rather than sprinkling daily, which encourages deep, resilient roots. 2) Water at the base of the plant, not overhead — wet foliage invites blight and fungal disease, so use a soaker hose or watering can aimed at the soil. 3) Keep moisture consistent — uneven watering (dry then flooded) causes blossom-end rot and cracking, so mulch around the base to retain even soil moisture between waterings.",
+     "fulfilled": [
+      {
+       "id": 0,
+       "quote": "Here are three tomato watering tips: 1) Water deeply and less often"
+      }
+     ]
+    }
+   },
+   {
+    "run": "clarified-4",
+    "replyBytes": 431,
+    "quoteBytes": 114,
+    "quotesTheReply": true,
+    "output": {
+     "reply": "Here are three tips for watering your tomato plants: 1) Water deeply and less often rather than a little every day — this encourages deep root growth and makes plants more drought-resistant. 2) Water at the base of the plant, not over the leaves, to reduce the risk of fungal diseases like blight. 3) Water early in the morning so the plant has moisture through the heat of the day and foliage can dry off, lowering disease risk.",
+     "fulfilled": [
+      {
+       "id": 0,
+       "quote": "Here are three tips for watering your tomato plants: 1) Water deeply and less often rather than a little every day"
+      }
+     ]
+    }
+   },
+   {
+    "run": "clarified-5",
+    "replyBytes": 568,
+    "quoteBytes": 85,
+    "quotesTheReply": true,
+    "output": {
+     "reply": "Here are three tips for watering your tomato plants: 1) Water deeply but infrequently — aim for about 1-2 inches per week, soaking the soil 6-8 inches down so roots grow strong and deep rather than shallow. 2) Water at the base of the plant, not the leaves, ideally in the early morning — this reduces the risk of fungal diseases like blight. 3) Keep moisture consistent; avoid letting the soil swing from bone-dry to soaked, since irregular watering causes problems like blossom-end rot and cracked fruit. Mulching around the base also helps retain even moisture.",
+     "fulfilled": [
+      {
+       "id": 0,
+       "quote": "Here are three tips for watering your tomato plants: 1) Water deeply but infrequently"
+      }
+     ]
+    }
+   },
+   {
+    "run": "clarified-6",
+    "replyBytes": 524,
+    "quoteBytes": 203,
+    "quotesTheReply": true,
+    "output": {
+     "reply": "Here are three tomato watering tips: 1) Water deeply and infrequently — aim for about 1-2 inches per week, soaking the root zone rather than sprinkling lightly every day, to encourage deep root growth. 2) Water at the base of the plant, not the leaves, ideally in the morning, to reduce the risk of fungal diseases like blight. 3) Keep moisture consistent — avoid letting the soil dry out completely between waterings and then flooding it, since irregular watering causes problems like blossom-end rot and cracked fruit.",
+     "fulfilled": [
+      {
+       "id": 0,
+       "quote": "Here are three tomato watering tips: 1) Water deeply and infrequently — aim for about 1-2 inches per week, soaking the root zone rather than sprinkling lightly every day, to encourage deep root growth."
+      }
+     ]
+    }
+   }
+  ]
+ }
 }

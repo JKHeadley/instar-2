@@ -7,7 +7,7 @@
  *
  * Turn 1 (the promise) is replayed from the live answer shape; only turn 2 — the A5b packet — is a real call.
  * Usage: node --no-warnings --loader ./scripts/slice-ts-loader.mjs scripts/promise-fulfilment-live-model-run.mjs <out-dir>
- * Env: A5_LIVE_MODEL (default claude-sonnet-5, the model the recorded run used).
+ * Env: A5_LIVE_MODEL (default claude-sonnet-5, the model the recorded run used); A5_CLAUDE_BIN (default /usr/bin/claude).
  * Every verbatim model output is written to <out-dir>. One call per run.
  */
 import { execFile } from 'node:child_process';
@@ -43,7 +43,7 @@ const update = (id, text) => ({ update_id: id,
 /** A clean cwd, so the CLI reads no project settings of this repository. */
 const cwd = realpathSync(mkdtempSync(join(tmpdir(), 'promise-fulfilment-cwd-')));
 const run = async stdin => await new Promise((resolve, reject) => {
-  const child = execFile('/usr/bin/claude', [...policy.args], { cwd, maxBuffer: 1 << 22,
+  const child = execFile(process.env.A5_CLAUDE_BIN ?? '/usr/bin/claude', [...policy.args], { cwd, maxBuffer: 1 << 22,
     env: { ...process.env, ...SUBSCRIPTION_THINKING_ENV, PATH: policy.path }, timeout: policy.timeout + 60000 },
   (error, stdout, stderr) => error && !stdout ? reject(Object.assign(error, { stderr })) : resolve({ stdout, stderr }));
   child.stdin.end(stdin);
