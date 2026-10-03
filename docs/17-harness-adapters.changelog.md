@@ -4,6 +4,10 @@ _Generated from `17-harness-adapters.changelog.json` by `scripts/render-changelo
 The document itself reads as a first version; every change to it is recorded here, newest first,
 each linked to the git change that made it (rule 91).
 
+## Revision 7 · 2026-10-03 · draft — Unit w4-persist repair, review round 2 (Astra, VERDICT NO): workspace reconciliation made truthful about completion and safe for structured files. No constitution change.
+
+- **§9 persistent-workspace rule: only plain-text files are edited by removing a forgotten or corrected clause; any file the pass cannot change safely is kept intact and named in a workspace note; the bounded pass resumes over later turns; the forget is recorded reconciled only after a whole walk leaves no file holding it, and the status shows an unfinished check.** — Review round 2 findings 1-2: an unwritable note or a walk past its entry bound was recorded as reconciled and never revisited, and byte removal from an archive destroyed an unrelated entry. _(lanes/w4-persist-PROGRESS.md (Pipeline repair); LIVE-PATH-PLAN.md row #400)_
+
 ## Revision 6 · 2026-10-03 · draft — Unit w4-persist repair, review round 1 (Astra, VERDICT NO): the kept workspace made subordinate to the journal like the kept session, lost session records cleaned within bounds, and a lost workspace volume told apart from a first allocation. No constitution change.
 
 - **§9 persistent-workspace rule: a new session removes every earlier session file of the conversation's projects directory; before a turn's tools run, clauses the journal forgot or corrected are removed from the workspace's files; a workspace the journal shows used that comes back empty and unmarked is recorded as lost, never resumed against, and its replacement carries a note.** — Review round 1 findings 1-3: a forgotten fact stayed readable in a saved note, a lost session record stranded transcripts outside retention, and a lost volume was silently treated as a first allocation. _(lanes/w4-persist-PROGRESS.md (Pipeline repair); LIVE-PATH-PLAN.md row #400)_

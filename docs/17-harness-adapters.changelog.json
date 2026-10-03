@@ -1,5 +1,21 @@
 [
   {
+    "revision": 7,
+    "date": "2026-10-03",
+    "status": "draft",
+    "cause": {
+      "kind": "draft",
+      "note": "Unit w4-persist repair, review round 2 (Astra, VERDICT NO): workspace reconciliation made truthful about completion and safe for structured files. No constitution change."
+    },
+    "changes": [
+      {
+        "what": "§9 persistent-workspace rule: only plain-text files are edited by removing a forgotten or corrected clause; any file the pass cannot change safely is kept intact and named in a workspace note; the bounded pass resumes over later turns; the forget is recorded reconciled only after a whole walk leaves no file holding it, and the status shows an unfinished check.",
+        "why": "Review round 2 findings 1-2: an unwritable note or a walk past its entry bound was recorded as reconciled and never revisited, and byte removal from an archive destroyed an unrelated entry.",
+        "ref": "lanes/w4-persist-PROGRESS.md (Pipeline repair); LIVE-PATH-PLAN.md row #400"
+      }
+    ]
+  },
+  {
     "revision": 6,
     "date": "2026-10-03",
     "status": "draft",

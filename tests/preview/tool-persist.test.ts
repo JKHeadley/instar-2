@@ -4,9 +4,10 @@
 // has changed, and rotated, ended or recovered from the journal in every other case. The stand-in harness below behaves as
 // the pinned Claude Code 2.1.280 was observed to (probe, PROGRESS): `--session-id` writes `<id>.jsonl` under the
 // workspace's projects directory, `--resume` continues that same id, and a resume of a missing transcript fails.
-import { appendFileSync, existsSync, mkdirSync, mkdtempSync, readdirSync, readFileSync, realpathSync, rmSync, writeFileSync } from 'node:fs';
+import { appendFileSync, chmodSync, existsSync, mkdirSync, mkdtempSync, readdirSync, readFileSync, realpathSync, rmSync, statSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
+import { crc32 } from 'node:zlib';
 import { afterEach, expect, it } from 'vitest';
 import { createJournalWorker, openPreviewJournal } from './journal-test-worker.js';
 import { prepareJournalEnvelope } from './journal-envelope.js';
@@ -15,7 +16,7 @@ import { conclusionText, parseModelJson } from './model-json.js';
 import { SINGLE_MACHINE_PROFILE } from './activation-authority.js';
 import { subscriptionSessionArgs, subscriptionToolsPolicy, SUBSCRIPTION_TOOL_SESSION_ENV } from '../../src/assembly/production-provider.js';
 // @ts-expect-error The runner side stays plain JavaScript.
-import { conversationWorkspace, detachScratch, forgottenQuotes, planSession, readSession, reconcileWorkspace, removeSessionFiles, removeWorkspaceSessions, runToolTurn, sessionFactsDigest, sessionTranscript, toolStatusLines, TOOL_SESSION_LIMITS, TOOL_WORKSPACES_KEPT, WORKSPACE_LOST_NOTE } from './tool-turn.mjs';
+import { conversationWorkspace, detachScratch, forgottenQuotes, planSession, readSession, reconcileWorkspace, removeSessionFiles, removeWorkspaceSessions, runToolTurn, sessionFactsDigest, sessionTranscript, toolStatusLines, TOOL_SESSION_LIMITS, TOOL_WORKSPACES_KEPT, WORKSPACE_LOST_NOTE, WORKSPACE_STALE_NOTE } from './tool-turn.mjs';
 
 const key = new Uint8Array(32).fill(5);
 const roots: string[] = [];
@@ -315,6 +316,85 @@ it('reconciles a corrected clause too, only once per change, and never a prefere
   // Unchanged memory: the files are not walked again (a re-added clause stays until the journal changes).
   writeFileSync(join(workspace, 'plan.md'), 'The meeting is on Tuesday at noon.');
   expect(reconcileWorkspace({ mounted, workspace, tmp, used: true, quotes })).toEqual({ lost: false, reconciled: 0 });
+});
+
+/** A stored (uncompressed) ZIP of `entries`, so a forgotten sentence sits in it as plain bytes beside binary headers. */
+function storedZip(entries: [string, string][]): Buffer {
+  const locals: Buffer[] = [], centrals: Buffer[] = [];
+  let offset = 0;
+  for (const [name, text] of entries) {
+    const nameBytes = Buffer.from(name), data = Buffer.from(text), crc = crc32(data);
+    const local = Buffer.alloc(30); local.writeUInt32LE(0x04034b50, 0); local.writeUInt16LE(20, 4); local.writeUInt32LE(crc, 14);
+    local.writeUInt32LE(data.length, 18); local.writeUInt32LE(data.length, 22); local.writeUInt16LE(nameBytes.length, 26);
+    const central = Buffer.alloc(46); central.writeUInt32LE(0x02014b50, 0); central.writeUInt16LE(20, 4); central.writeUInt16LE(20, 6);
+    central.writeUInt32LE(crc, 16); central.writeUInt32LE(data.length, 20); central.writeUInt32LE(data.length, 24);
+    central.writeUInt16LE(nameBytes.length, 28); central.writeUInt32LE(offset, 42);
+    locals.push(local, nameBytes, data); centrals.push(central, nameBytes);
+    offset += 30 + nameBytes.length + data.length;
+  }
+  const directory = Buffer.concat(centrals), end = Buffer.alloc(22);
+  end.writeUInt32LE(0x06054b50, 0); end.writeUInt16LE(entries.length, 8); end.writeUInt16LE(entries.length, 10);
+  end.writeUInt32LE(directory.length, 12); end.writeUInt32LE(offset, 16);
+  return Buffer.concat([...locals, directory, end]);
+}
+const reconcileSetup = () => {
+  const root = dir(), mounted = join(root, 'vol'), workspace = join(mounted, 'ws'), tmp = join(mounted, 'tmp');
+  mkdirSync(workspace, { recursive: true }); mkdirSync(tmp);
+  return { mounted, workspace, tmp };
+};
+const sentence = 'My locker code is 4417.';
+const lockerQuotes = forgottenQuotes({ memory: [{ mode: 'forget', source: 's', quote: sentence, trigger: 't' }] });
+
+it('reconciles a readable but unwritable note, keeping its mode; a file it cannot change is held, and the forget is never marked done', () => {
+  const { mounted, workspace, tmp } = reconcileSetup();
+  writeFileSync(join(workspace, 'note.txt'), `${sentence} Bring the blue folder.`); chmodSync(join(workspace, 'note.txt'), 0o444);
+  expect(reconcileWorkspace({ mounted, workspace, tmp, used: false, quotes: lockerQuotes })).toEqual({ lost: false, reconciled: 1 });
+  expect(readFileSync(join(workspace, 'note.txt'), 'utf8')).toBe(' Bring the blue folder.');
+  expect(statSync(join(workspace, 'note.txt')).mode & 0o777).toBe(0o444);
+  expect(existsSync(join(workspace, WORKSPACE_STALE_NOTE))).toBe(false);
+  // The other side: a directory the pass cannot read holds the forget open; restoring access completes it on the next turn.
+  const { mounted: m2, workspace: w2, tmp: t2 } = reconcileSetup();
+  mkdirSync(join(w2, 'locked')); writeFileSync(join(w2, 'locked', 'note.txt'), sentence); chmodSync(join(w2, 'locked'), 0o000);
+  expect(reconcileWorkspace({ mounted: m2, workspace: w2, tmp: t2, used: false, quotes: lockerQuotes })).toEqual({ lost: false, reconciled: 0, held: 1 });
+  expect(readFileSync(join(w2, WORKSPACE_STALE_NOTE), 'utf8')).toContain('ws/locked');
+  expect(readFileSync(join(w2, WORKSPACE_STALE_NOTE), 'utf8')).not.toContain('4417');
+  chmodSync(join(w2, 'locked'), 0o700);
+  expect(reconcileWorkspace({ mounted: m2, workspace: w2, tmp: t2, used: true, quotes: lockerQuotes })).toEqual({ lost: false, reconciled: 1 });
+  expect(readFileSync(join(w2, 'locked', 'note.txt'), 'utf8')).toBe('');
+  expect(existsSync(join(w2, WORKSPACE_STALE_NOTE))).toBe(false);
+  expect(reconcileWorkspace({ mounted: m2, workspace: w2, tmp: t2, used: true, quotes: lockerQuotes })).toEqual({ lost: false, reconciled: 0 });
+});
+
+it('covers a workspace larger than one pass\'s bound over several turns, and completes the forget only when the walk ends', () => {
+  const { mounted, workspace, tmp } = reconcileSetup();
+  for (let i = 0; i < 12; i++) writeFileSync(join(workspace, `f${String(i).padStart(2, '0')}`), '');
+  writeFileSync(join(tmp, 'note.txt'), sentence);
+  const pass = () => reconcileWorkspace({ mounted, workspace, tmp, used: true, quotes: lockerQuotes, limit: 5 });
+  expect(pass()).toEqual({ lost: false, reconciled: 0, unchecked: true });
+  expect(readFileSync(join(workspace, WORKSPACE_STALE_NOTE), 'utf8')).toContain('not been checked yet');
+  expect(pass()).toEqual({ lost: false, reconciled: 0, unchecked: true });
+  // The third pass reaches the temporary files: the note is reconciled and the walk ends.
+  expect(pass()).toEqual({ lost: false, reconciled: 1 });
+  expect(readFileSync(join(tmp, 'note.txt'), 'utf8')).toBe('');
+  expect(existsSync(join(workspace, WORKSPACE_STALE_NOTE))).toBe(false);
+  writeFileSync(join(tmp, 'note.txt'), sentence);
+  expect(pass()).toEqual({ lost: false, reconciled: 0 });
+});
+
+it('never splices an archive: the zip is kept byte-for-byte and named, its unrelated entry stays readable, and the agent\'s rewrite completes it', () => {
+  const { mounted, workspace, tmp } = reconcileSetup();
+  const zip = storedZip([['project.txt', 'Quarterly plan draft v3'], ['note.txt', sentence]]);
+  writeFileSync(join(workspace, 'bundle.zip'), zip);
+  writeFileSync(join(workspace, 'plain.txt'), `${sentence} Call Ana.`);
+  expect(reconcileWorkspace({ mounted, workspace, tmp, used: false, quotes: lockerQuotes })).toEqual({ lost: false, reconciled: 1, held: 1 });
+  expect(readFileSync(join(workspace, 'bundle.zip')).equals(zip)).toBe(true);
+  expect(readFileSync(join(workspace, 'plain.txt'), 'utf8')).toBe(' Call Ana.');
+  expect(readFileSync(join(workspace, WORKSPACE_STALE_NOTE), 'utf8')).toContain('ws/bundle.zip');
+  // Held again on the next turn while the archive still holds it; the agent rebuilding the archive without it ends the hold.
+  expect(reconcileWorkspace({ mounted, workspace, tmp, used: true, quotes: lockerQuotes })).toEqual({ lost: false, reconciled: 0, held: 1 });
+  writeFileSync(join(workspace, 'bundle.zip'), storedZip([['project.txt', 'Quarterly plan draft v3']]));
+  expect(reconcileWorkspace({ mounted, workspace, tmp, used: true, quotes: lockerQuotes })).toEqual({ lost: false, reconciled: 0 });
+  expect(existsSync(join(workspace, WORKSPACE_STALE_NOTE))).toBe(false);
 });
 
 it('detects a lost kept workspace from the journal\'s history: a first allocation is not a loss, a vanished volume is', async () => {

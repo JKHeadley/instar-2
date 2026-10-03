@@ -6,7 +6,7 @@
 import { execFileSync } from 'node:child_process';
 import { createHash, randomBytes, randomUUID } from 'node:crypto';
 import { chmodSync, existsSync, lstatSync, mkdirSync, readdirSync, readFileSync, readlinkSync, realpathSync, renameSync, rmdirSync, rmSync, statSync, symlinkSync, writeFileSync } from 'node:fs';
-import { dirname, join } from 'node:path';
+import { dirname, join, relative } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { SUBSCRIPTION_SUBAGENT_TYPE, SUBSCRIPTION_TOOL_LIMITS, SUBSCRIPTION_TOOL_NAMES, SUBSCRIPTION_TOOLS_SYSTEM_PROMPT } from '../../src/assembly/production-provider.js';
 import { toolTrace } from './tool-admission.mjs';
@@ -180,6 +180,9 @@ export const forgottenQuotes = view => [...new Set((view.memory ?? []).filter(ch
 const VOLUME_MARK = 'kept.json';
 /** The note a replacement workspace carries, so the turn that finds it is told plainly what was lost (constraint 2). */
 export const WORKSPACE_LOST_NOTE = 'WORKSPACE-LOST.txt';
+/** The note a kept workspace carries while its last reconciliation could not finish, naming what still may disagree with
+ * the journal; removed once a pass completes. */
+export const WORKSPACE_STALE_NOTE = 'WORKSPACE-STALE.txt';
 const strip = (buffer, needle) => {
   const parts = []; let from = 0, at;
   while ((at = buffer.indexOf(needle, from)) >= 0) { parts.push(buffer.subarray(from, at)); from = at + needle.length; }
@@ -187,42 +190,96 @@ const strip = (buffer, needle) => {
   parts.push(buffer.subarray(from));
   return Buffer.concat(parts);
 };
-/** Removes every forgotten or corrected clause from the regular files under `dirs` (bounded walk, symlinks not followed);
- * files without one are left byte-for-byte. Returns how many files changed. */
-export function removeForgotten(dirs, quotes, limit = 10000) {
+const UTF8 = new TextDecoder('utf-8', { fatal: true });
+/** Plain text: valid UTF-8 without a NUL byte. Only such a file is edited by removing a clause; any other format (an
+ * archive, an image, a database) has structure a byte splice would break, so it is kept intact and named instead. */
+const plainText = buffer => { if (buffer.includes(0)) return false; try { UTF8.decode(buffer); return true; } catch { return false; } };
+/** Whether `a` comes after `b` in the walk's order (component by component; a directory before what it holds). */
+const after = (a, b) => {
+  for (let i = 0; i < Math.min(a.length, b.length); i++) if (a[i] !== b[i]) return a[i] > b[i];
+  return a.length > b.length;
+};
+const prefixOf = (a, b) => a.length < b.length && a.every((part, i) => part === b[i]);
+/** Writes a file in place, keeping its mode: a read-only file the agent left is made writable for the edit only. */
+function rewrite(path, data, mode) {
+  try { writeFileSync(path, data); return; } catch (error) { if (error?.code !== 'EACCES' && error?.code !== 'EPERM') throw error; }
+  chmodSync(path, mode | 0o200);
+  try { writeFileSync(path, data); } finally { chmodSync(path, mode); }
+}
+/**
+ * Removes every forgotten or corrected clause from the plain-text regular files under `dirs` (symlinks not followed);
+ * files without one are left byte-for-byte. The walk visits at most `limit` entries, starting after `from` (a position a
+ * bounded earlier pass stopped at), so a large workspace is covered over several passes. Returns the files changed,
+ * the files still holding a clause (unreadable, unwritable, or not plain text: kept intact, never half-edited), and
+ * `cursor`: where the walk stopped at its bound, or null when it reached the end.
+ */
+export function removeForgotten(dirs, quotes, limit = 10000, from = null) {
   const needles = quotes.map(quote => Buffer.from(quote, 'utf8'));
-  let changed = 0, seen = 0;
-  const walk = dir => {
-    for (const name of readdirSync(dir)) {
-      if (++seen > limit) return;
-      const path = join(dir, name), stat = lstatSync(path);
-      if (stat.isDirectory()) { walk(path); continue; }
-      if (!stat.isFile()) continue;
-      const original = readFileSync(path);
-      let next = original;
-      for (const needle of needles) next = strip(next, needle) ?? next;
-      if (next !== original) { writeFileSync(path, next); changed++; }
+  let changed = 0, seen = 0, stopped = false, cursor = null, last = null;
+  const held = [];
+  const visit = (path, stat) => {
+    let original;
+    try { original = readFileSync(path); } catch { held.push(path); return; }
+    let next = original;
+    for (const needle of needles) next = strip(next, needle) ?? next;
+    if (next === original) return;
+    if (!plainText(original)) { held.push(path); return; }
+    try { rewrite(path, next, stat.mode & 0o7777); changed++; } catch { held.push(path); }
+  };
+  const walk = (dir, position) => {
+    let names;
+    try { names = readdirSync(dir).sort(); } catch { held.push(dir); return; }
+    for (const name of names) {
+      if (stopped) return;
+      const child = [...position, name];
+      if (from !== null && !prefixOf(child, from) && !after(child, from)) continue;
+      if (++seen > limit) { stopped = true; cursor = last ?? from ?? []; return; }
+      last = child;
+      const path = join(dir, name);
+      let stat;
+      try { stat = lstatSync(path); } catch { held.push(path); continue; }
+      if (stat.isDirectory()) walk(path, child);
+      else if (stat.isFile()) visit(path, stat);
     }
   };
-  for (const dir of dirs) try { walk(dir); } catch { /* an unreadable directory holds nothing a tool can read either */ }
-  return changed;
+  dirs.forEach((dir, index) => { if (!stopped) walk(dir, [index]); });
+  return { changed, held, cursor };
 }
 /** Reconciles a mounted kept workspace with the journal before any tool of the turn can read it. `used` says whether the
  * journal records an earlier turn in this workspace: then a volume without its mark and with an empty workspace is a lost
  * volume (its image gone), not a first allocation, and the replacement carries a note saying so. Whenever the journal's
- * forgotten clauses changed since the volume last saw them, they are removed from its files. */
-export function reconcileWorkspace({ mounted, workspace, tmp, used, quotes }) {
+ * forgotten clauses changed since the volume last completed a pass over them, a pass removes them from its files. The
+ * mark records them as reconciled only when a whole walk (possibly over several bounded passes) left no file holding
+ * one; until then every turn repeats the check, and the workspace carries a note naming what may still disagree. */
+export function reconcileWorkspace({ mounted, workspace, tmp, used, quotes, limit = 10000 }) {
   const mark = join(mounted, VOLUME_MARK);
   let recorded = null;
   try { recorded = JSON.parse(readFileSync(mark, 'utf8')); } catch { recorded = null; }
   const lost = used && recorded === null && readdirSync(workspace).length === 0;
   const forgotten = digestOf(JSON.stringify(quotes));
-  const reconciled = recorded?.forgotten !== forgotten && quotes.length ? removeForgotten([workspace, tmp], quotes) : 0;
+  let reconciled = 0, held = [], unchecked = false, pending = null, done = recorded?.forgotten ?? null;
+  if (recorded?.forgotten === forgotten || !quotes.length) done = forgotten;
+  else {
+    const prior = recorded?.pending?.digest === forgotten && Array.isArray(recorded.pending.cursor) ? recorded.pending : null;
+    const pass = removeForgotten([workspace, tmp], quotes, limit, prior?.cursor ?? null);
+    reconciled = pass.changed; held = pass.held.map(path => relative(mounted, path)); unchecked = pass.cursor !== null;
+    const clean = (prior ? prior.clean : true) && !held.length;
+    // A walk that reached the end clean completes the forget; one that held a file starts over next turn.
+    if (unchecked) pending = { digest: forgotten, cursor: pass.cursor, clean };
+    else if (clean) done = forgotten;
+  }
+  const note = join(workspace, WORKSPACE_STALE_NOTE);
+  if (held.length || unchecked) writeFileSync(note, 'Some of this workspace may still disagree with this conversation\'s memory: it has '
+    + 'since forgotten or corrected statements these files may still hold. The memory is the authority; do not rely on them '
+    + 'for anything it no longer holds, and rewrite them without it if you use them. The check repeats every turn until it '
+    + `completes.\n${held.length ? `Files that still hold such a statement and could not be changed automatically (kept intact): ${held.join(', ')}\n` : ''}`
+    + `${unchecked ? 'Part of the workspace has not been checked yet (past this turn\'s bound); the next turn continues.\n' : ''}`, { mode: 0o600 });
+  else rmSync(note, { force: true });
   if (lost) writeFileSync(join(workspace, WORKSPACE_LOST_NOTE), 'This conversation\'s earlier workspace was lost: its volume was '
     + `missing when this turn started. Files written on earlier turns are gone; this workspace started empty. `
     + 'The conversation\'s journal still holds every answer and tool trace.\n', { mode: 0o600 });
-  writeFileSync(mark, JSON.stringify({ v: 1, forgotten }), { mode: 0o600 });
-  return { lost, reconciled };
+  writeFileSync(mark, JSON.stringify({ v: 1, forgotten: done, ...(pending ? { pending } : {}) }), { mode: 0o600 });
+  return { lost, reconciled, ...(held.length ? { held: held.length } : {}), ...(unchecked ? { unchecked } : {}) };
 }
 
 /** The kept harness session (MF5): a disposable cache of one conversation's harness context, subordinate to the journal.
@@ -461,5 +518,7 @@ export function toolStatusLines(view, enabled, off = null) {
       + 'one-turn workspace without a kept session.'] : []),
     ...(stats.workspacesLost ? [`Workspace lost: ${stats.workspacesLost} turns found this conversation's kept workspace missing; its earlier files are `
       + 'gone and it started again empty (the journal still holds every answer and tool trace).'] : []),
-    ...(stats.reconciledFiles ? [`Workspace kept in step with memory: ${stats.reconciledFiles} files had a forgotten or corrected statement removed.`] : [])];
+    ...(stats.reconciledFiles ? [`Workspace kept in step with memory: ${stats.reconciledFiles} files had a forgotten or corrected statement removed.`] : []),
+    ...(stats.reconcileIncomplete ? [`Workspace check against memory unfinished on ${stats.reconcileIncomplete} turns (files that could not be changed `
+      + 'automatically, kept intact, or a part not yet checked); the agent was told which, and the check repeats each turn until it completes.'] : [])];
 }

@@ -2628,10 +2628,14 @@ export interface ToolTurnStats { invocations: number; reservedCalls: number; ref
   overflow?: number;
   /** Rule 33 / constraint 2: the kept workspaces this journal's turns used (keys), turns that found theirs lost and started
    * from an empty replacement, and files that had a forgotten or corrected clause removed (each absent until it happens). */
-  workspaces?: string[]; workspacesLost?: number; reconciledFiles?: number }
+  workspaces?: string[]; workspacesLost?: number; reconciledFiles?: number;
+  /** Turns whose reconciliation did not finish: a file it could not change (kept intact) or a part past its bound. */
+  reconcileIncomplete?: number }
 /** What a turn found in its kept workspace before any tool ran: whether its volume was lost (the journal names earlier
- * turns there, the volume came back empty and unmarked), and how many files had forgotten or corrected clauses removed. */
-export interface ToolVolumeRow { lost: boolean; reconciled: number }
+ * turns there, the volume came back empty and unmarked), how many files had forgotten or corrected clauses removed, how
+ * many still hold one (`held`: unreadable, unwritable or not plain text, kept intact), and whether the pass stopped at its
+ * bound (`unchecked`). */
+export interface ToolVolumeRow { lost: boolean; reconciled: number; held?: number; unchecked?: true }
 /** The conversation's workspace a tool turn used: `kept` (its persistent workspace) or not (past the root's bound of kept
  * workspaces, a fresh one-turn workspace, recorded so the overflow is never silent, Rule 2). */
 export interface ToolWorkspaceRow { key: string; kept: boolean }
@@ -2709,7 +2713,8 @@ function projectToolTurn(view: JournalView, row: Extract<JournalRecord, { kind: 
     bounded: prior.bounded + Number(kept.mode === 'new' && SESSION_BOUNDED.includes(kept.reason)),
     ended: prior.ended + Number(!kept.kept) }))(stats.sessions ?? emptySessionStats());
   const volume = row.volume;
-  if (volume !== undefined && (typeof volume.lost !== 'boolean' || !Number.isSafeInteger(volume.reconciled) || volume.reconciled < 0))
+  if (volume !== undefined && (typeof volume.lost !== 'boolean' || !Number.isSafeInteger(volume.reconciled) || volume.reconciled < 0
+    || (volume.held !== undefined && (!Number.isSafeInteger(volume.held) || volume.held < 1)) || (volume.unchecked !== undefined && volume.unchecked !== true)))
     throw Error('preview journal: tool turn volume');
   const count = (state: string) => edges.filter(edge => edge.state === state).length;
   const children = edges.length || stats.children ? { started: (stats.children?.started ?? 0) + edges.length,
@@ -2719,7 +2724,8 @@ function projectToolTurn(view: JournalView, row: Extract<JournalRecord, { kind: 
     inconsistent: stats.inconsistent + Number(!row.consistent), open: stats.open.filter(item => item !== key), ...(children ? { children } : {}),
     ...(sessions ? { sessions } : {}),
     ...(volume?.lost ? { workspacesLost: (stats.workspacesLost ?? 0) + 1 } : {}),
-    ...(volume?.reconciled ? { reconciledFiles: (stats.reconciledFiles ?? 0) + volume.reconciled } : {}) };
+    ...(volume?.reconciled ? { reconciledFiles: (stats.reconciledFiles ?? 0) + volume.reconciled } : {}),
+    ...(volume?.held || volume?.unchecked ? { reconcileIncomplete: (stats.reconcileIncomplete ?? 0) + 1 } : {}) };
 }
 const emptySessionStats = () => ({ resumed: 0, fresh: 0, changed: 0, lost: 0, bounded: 0, ended: 0 });
 function project(view: JournalView, row: JournalRecord, system?: SystemCheck, admission: 'new' | 'replay' = 'new'): void {
