@@ -64,7 +64,7 @@ function fixture(options: { phases?: readonly Phase[]; maxSteps?: number; deadli
     maxResultBytes: options.maxResultBytes ?? 65536, maxSteps: options.maxSteps ?? 2 }));
   const request = (operation = 'obligation-commitment-1-2') => ({ operation, claim: 'session-work-conversation-1',
     question: 'Do the one due step.', context: '{"obligation":{"kind":"request"}}',
-    authority: 'one scheduled work step for the verified operator' });
+    authority: 'a test-only grant naming one bounded step' });
   return { port, rows, scope, io, request, driver,
     resultPath: (operation = 'obligation-commitment-1-2') =>
       join(scope, `work-${createHash('sha256').update(operation).digest('hex').slice(0, 32)}.json`),
@@ -87,7 +87,7 @@ it('records the edge before the child exists, delivers the task, and returns the
   expect(edge).toMatchObject({ parent: 'launch:conversation-1', child: 'session-work-conversation-1', scope: f.scope,
     owner: 'machine-a', placement: 'machine:machine-a', transport: 'tmux session on this machine',
     exitTest: SESSION_WORK_EXIT_TEST, resultDestination: f.resultPath() });
-  expect(edge.authority).toContain('one scheduled work step');
+  expect(edge.authority).toBe('a test-only grant naming one bounded step');
   // Honest budget: a subscription session reports no token meter, so the bound is time and size.
   expect(edge.budget).toMatchObject({ steps: 1, tokens: null, maxResultBytes: 65536 });
   expect(edge.budget.deadline).toBeGreaterThan(edge.openedAt);
