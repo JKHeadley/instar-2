@@ -385,6 +385,53 @@ describe('Rule 110: the first reply sent from a compacted context discloses it a
     } finally { rmSync(revised.dir, { recursive: true, force: true }); }
   }, 30_000);
 
+  // Live 2026-10-03 (room two, cint-L36 4228d0c5, group A): the reply to fill-34 (update 6231425) was prepared and
+  // its Telegram send settled UNKNOWN ("transport transport at fetch-failure"); fill-35's first reply after the
+  // compaction accounted for it as pending, "my reply to it was prepared but its delivery is unconfirmed". That is
+  // the honest account (the UNKNOWN send is never replayed); claiming "was answered" would be the bluff Rule 110 forbids.
+  it('a pre-pause message whose reply send stayed UNKNOWN is accounted as pending with that outcome, never as answered', async () => {
+    const recordedUnknown = 'transport transport at fetch-failure';
+    for (const lastSend of ['unknown', 'accepted'] as const) {
+      const dir = root();
+      const journal = openPreviewJournal(join(dir, 'journal.encrypted'), key, genesis(7000));
+      const sent: string[] = [];
+      // Send 1 answers #29 and speaks the account for frontier #27; send 2 answers #30 (fill-34's place) quietly.
+      const worker = createJournalWorker(journal, { now: () => at + 100_000, stopped: () => false, model: async () => 'Noted.',
+        checkOutbound: () => {}, send: async input => { sent.push(input.expectedText);
+          return sent.length === 2 && lastSend === 'unknown' ? { kind: 'unknown' as const, reason: recordedUnknown } : sent.length + 100; } });
+      try {
+        seedAnswered(journal, garden.slice(0, 28));
+        summarize(journal, 27, 'Twenty-seven garden updates.');
+        worker.intake([update(29, 'Garden log 33: rows steady, nothing to act on.')]); await worker.drain();
+        expect(journal.view.turns.get('telegram:12345678:update:29')!.continuity?.spoken).not.toBe(false);
+        worker.intake([update(30, 'Garden log 34: rows steady, nothing to act on.')]); await worker.drain();
+        const before = journal.view.turns.get('telegram:12345678:update:30')!;
+        // Like fill-34, this reply speaks no account of its own: the frontier was already disclosed.
+        expect(!before.continuity || before.continuity.spoken === false).toBe(true);
+        summarize(journal, 29, 'Twenty-nine garden updates.');
+        worker.intake([update(31, 'Garden log 35: rows steady, nothing to act on.')]); await worker.drain();
+        const account = journal.view.turns.get('telegram:12345678:update:31')!.continuity!;
+        expect(account.prePauseInbound).toBe('telegram:12345678:update:30');
+        if (lastSend === 'unknown') {
+          expect(before.sent).toBeUndefined();
+          expect(journal.view.sendOutcomes.at(-1)).toMatchObject({ outcome: 'unknown', reason: recordedUnknown });
+          // Still-open is material, so it is spoken (live fill-35 opened with this sentence).
+          expect(account).toMatchObject({ disposition: 'pending', reference: 'my reply to it was prepared but its delivery is unconfirmed' });
+          expect(account.spoken).not.toBe(false);
+          // The UNKNOWN send is never replayed: three sends in all, and the third carries the account.
+          expect(sent).toHaveLength(3);
+          expect(sent[2]).toContain('is still open (my reply to it was prepared but its delivery is unconfirmed).');
+        } else {
+          // The neighbour: a delivered reply is answered, and once the episode is disclosed that account stays
+          // silent (plan #251), the shape live fill-36 and a6q recorded.
+          expect(account).toMatchObject({ disposition: 'addressed', reference: `Telegram message ${before.sent}`, spoken: false });
+          expect(sent[2]).toBe('PREVIEW — Noted.');
+        }
+        journal.close();
+      } finally { rmSync(dir, { recursive: true, force: true }); }
+    }
+  });
+
   it('an unanswered last message is accounted as pending, never as answered', async () => {
     const { dir, journal, worker, sent } = setup(7000, garden.slice(0, 29), () => 'Hi!');
     try {
