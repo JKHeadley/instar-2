@@ -5528,14 +5528,18 @@ export function createJournalWorker(journal: ReturnType<typeof openPreviewJourna
     const blockerItems = awayFor === undefined ? [] : recentWithin(openBlockers(journal.view).map(({ id, note }) => ({ id, kind: note.kind,
       claim: clean(redact(note.claim).text, true), constraint: note.constraint, outsideAction: clean(redact(note.outsideAction).text, true),
       recheck: localStamp(note.recheckAt, zone).slice(0, 10), recheckDue: now >= note.recheckAt })), BLOCKER_ITEMS_BYTES);
-    // Rules 79, 82, 98: the open operator request, or the verdict on this very message's answer to one.
-    const requestState = question === undefined || !fromOperator(question) ? undefined : journal.view.operatorRequests.at(-1);
-    const answeredHere = requestState !== undefined && (requestState.approved?.turn === question!.id
-      || requestState.refusals.some(item => item.turn === question!.id));
+    // Rules 79, 82, 84, 98: the request this very message answered, else the latest one still to report. Plan #371: a
+    // request stays current until a later one for its action (or a legacy row, which replaced every one) replaces it.
+    const requests = question === undefined || !fromOperator(question) ? [] : journal.view.operatorRequests;
+    const answers = (state: OperatorRequestState) => state.approved?.turn === question!.id || state.refusals.some(item => item.turn === question!.id);
+    const liveRequests = requests.filter((state, index) => !requests.slice(index + 1)
+      .some(later => later.scope === undefined || later.request.action === state.request.action));
+    const openNow = (state: OperatorRequestState) => state.message !== undefined && !state.superseded && !state.approved && now <= state.request.expiresAt;
     // An approval that never applied (a crash between its two frames) stays visible until a later request replaces it.
-    const operatorRequest = requestState && (answeredHere || requestState.approved !== undefined && !requestState.applied
-      || disclosedApproval(journal.view) === requestState
-      || requestState.message !== undefined && !requestState.superseded && !requestState.approved && now <= requestState.request.expiresAt) ? { id: requestState.request.id, action: requestState.request.action,
+    const requestState = requests.filter(answers).at(-1) ?? liveRequests.filter(state => state.approved !== undefined && !state.applied
+      || disclosedApproval(journal.view) === state || openNow(state)).at(-1);
+    const answeredHere = requestState !== undefined && answers(requestState);
+    const operatorRequest = requestState ? { id: requestState.request.id, action: requestState.request.action,
       ...(requestState.request.limits ? { limits: requestState.request.limits } : { trialEnd: isoMinute(requestState.request.expires!) }),
       state: requestState.approved ? `${requestState.applied ? 'approved by the operator and applied' : 'approved by the operator, not applied yet'}${
         requestState.approved.sharedAccess ? ` (through their GitHub account; ${SHARED_ACCESS_NOTE})` : ''}`
@@ -5543,9 +5547,8 @@ export function createJournalWorker(journal: ReturnType<typeof openPreviewJourna
           : requestState.review ? `open, waiting for the operator to approve it at ${reviewLink(requestState.review.repository, requestState.review.pullRequest)}; a chat "yes" does not approve it`
             : 'open, waiting for the operator\'s plain yes' } : undefined;
     // Plan #371: a request for the other action may be open alongside; it is shown so the answer accounts for both.
-    const otherState = operatorRequest && fromOperator(question!) ? journal.view.operatorRequests.filter(item => item !== requestState
-      && item.request.action !== requestState!.request.action && item.message !== undefined && !item.superseded && !item.approved
-      && now <= item.request.expiresAt && requestBase(item) === approvalBase(journal.view)).at(-1) : undefined;
+    const otherState = requestState ? liveRequests.filter(item => item.request.action !== requestState.request.action && openNow(item)
+      && requestBase(item) === approvalBase(journal.view)).at(-1) : undefined;
     const otherOperatorRequest = otherState ? { id: otherState.request.id, action: otherState.request.action,
       ...(otherState.request.limits ? { limits: otherState.request.limits } : { trialEnd: isoMinute(otherState.request.expires!) }),
       state: otherState.review ? `open, waiting for the operator to approve it at ${reviewLink(otherState.review.repository, otherState.review.pullRequest)}; a chat "yes" does not approve it`

@@ -252,6 +252,10 @@ it('on a chat-yes root, a yes binds only the request it answers: each of two ope
     await root.ask(RENEW + 1, recorded(RENEW).now + 30_000, 'yes', () => JSON.stringify({ reply: 'Done.', memory: [] }), raise.message);
     expect(raise.applied).toBe(true);
     expect(renew.approved).toBeUndefined();
+    // Rule 84: the yes turn's packet reports the approval it answered, and the renewal still open beside it.
+    const packet = () => JSON.parse(root.contexts.at(-1)!) as Record<string, { id: string; state: string } | undefined>;
+    expect([packet().operatorRequest?.id, packet().operatorRequest?.state]).toEqual([raise.request.id, 'approved by the operator and applied']);
+    expect([packet().otherOperatorRequest?.id, packet().otherOperatorRequest?.state]).toEqual([renew.request.id, 'open, waiting for the operator\'s plain yes']);
     // The next message is not an answer to the renewal (another operator message came after it); a reply to it is.
     await root.ask(RENEW + 2, recorded(RENEW).now + 60_000, 'yes', () => JSON.stringify({ reply: 'Done.', memory: [] }));
     expect(renew.approved).toBeUndefined();
@@ -259,6 +263,26 @@ it('on a chat-yes root, a yes binds only the request it answers: each of two ope
     expect(renew.applied).toBe(true);
     expect(root.journal.view.limits.maxCalls).toBe(5000);
     expect(root.journal.view.expires).toBe(SUBSCRIPTION_PREVIEW_EXPIRY);
+    root.journal.close();
+  });
+});
+
+it('on a chat-yes root, a raise left open after the newer renewal is approved stays in the answer packet (Rule 84)', async () => {
+  const chatRoot: ExplicitYesInstallation = { ...installation, agentSpeaksAsOperatorInChat: false,
+    chat: { ...installation.chat, agentHoldsNoAccess: true }, github: null };
+  await withRoot(async path => {
+    const root = liveRoot(path, chatRoot);
+    await root.ask(RAISE, recorded(RAISE).now, recorded(RAISE).message, () => journaled(RAISE));
+    await root.ask(RENEW, recorded(RENEW).now, recorded(RENEW).message, () => journaled(RENEW));
+    const raise = root.request('raise-caps'), renew = root.request('renew-expiry');
+    await root.ask(RENEW + 1, recorded(RENEW).now + 30_000, 'yes', () => JSON.stringify({ reply: 'Done.', memory: [] }), renew.message);
+    expect([renew.applied, raise.approved, raise.superseded]).toEqual([true, undefined, undefined]);
+    const packet = () => JSON.parse(root.contexts.at(-1)!) as Record<string, { id: string; state: string } | undefined>;
+    expect([packet().operatorRequest?.id, packet().otherOperatorRequest?.id]).toEqual([renew.request.id, raise.request.id]);
+    await root.ask(RENEW + 2, recorded(RENEW).now + 60_000, 'What is still waiting for my approval?', () => JSON.stringify({ reply: 'Checking.', memory: [] }));
+    // The applied renewal no longer needs reporting; the open raise does.
+    expect([packet().operatorRequest?.id, packet().operatorRequest?.state, packet().otherOperatorRequest])
+      .toEqual([raise.request.id, 'open, waiting for the operator\'s plain yes', undefined]);
     root.journal.close();
   });
 });
