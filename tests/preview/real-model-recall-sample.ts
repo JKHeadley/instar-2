@@ -7,6 +7,9 @@ import { createJournalWorker, openPreviewJournal } from './journal-test-worker.j
 import { prepareJournalEnvelope } from './journal-envelope.js';
 
 const NOW = 1_790_000_000_000;
+// The worker reads the wall clock, so the trial end must lie far past any real run, not a fixed offset from the
+// fixture's NOW (NOW + 1e9 ms expired on 2026-10-03 and stopped every run as 'preview stopped').
+const FAR_FUTURE = NOW + 100 * 365 * 86_400_000;
 const BOT = '12345678';
 const CHAT = '7654321';
 const key = new Uint8Array(32).fill(87);
@@ -91,7 +94,7 @@ export async function runRealModelRecallSample(model: string,
   const root = realpathSync(mkdtempSync(join(tmpdir(), 'preview-real-recall-')));
   const path = join(root, 'journal.encrypted');
   let journal = openPreviewJournal(path, key, { kind: 'genesis', bot: BOT, chat: CHAT, operator: CHAT,
-    grant, configurationDigest: 'sha256:real-recall-sample', expires: NOW + 1_000_000_000,
+    grant, configurationDigest: 'sha256:real-recall-sample', expires: FAR_FUTURE,
     maxCalls: 141, maxReplies: 140, maxTurns: 140, maxBytes: 32768, cursor: 0 });
   try {
     seed(journal);
