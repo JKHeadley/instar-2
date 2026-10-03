@@ -126,7 +126,8 @@ it('keeps the always-sent prompt parts inside what the measured floor allows, wi
   expect(PREVIEW_FIXED_PROMPT_BYTES).toBeLessThanOrEqual(floor - replyReviewReserveFor(floor));
   // The reserve is sized from what the review really needs, so the review of THIS turn -- with a candidate
   // reply at the send path's own bound -- fits in the room the reserve sets aside. This is the half the flat
-  // 8192 only guessed at: measured here, it is 6636 (4096 reply bound + 2540 review-only parts; 6775 at cint-L25).
+  // 8192 only guessed at: measured here, it is 5132 (4096 reply bound + 1036 review-only parts, inside the 2540 the
+  // reserve keeps; 6636 at cint-L27 and 6775 at cint-L25, before the review packet stopped repeating its rule texts).
   expect(measured.reviewTotal).not.toBeNull();
   expect(measured.reviewTotal! - measured.answerTotal!).toBeLessThanOrEqual(replyReviewReserveFor(floor));
   expect(measured.reviewTotal! - measured.answerTotal!)

@@ -161,6 +161,11 @@ export const PREVIEW_REPLY_BOUND_BYTES = 4096;
  * Re-measured at cint-L27 (2679 -> 2540): the instruction message is 139 bytes longer (w3-recallrank's lookup
  * sentence, +284, less the two trims that paid for it in the protocol, -145), so the review-only parts are
  * 139 bytes smaller; the measured review-minus-answer delta is 6636 = 4096 + 2540.
+ * Re-measured at w4-guidance (Part 18 §16): the review packet no longer repeats the rule texts its question
+ * already states (-2171 and more), and the guidance family's two context questions ride the question once, so
+ * the review-only parts measure 1036 (delta 5132 = 4096 + 1036). The reserve is deliberately kept at 2540: it
+ * still covers the parts, and keeping it leaves the servable minimum below, and so every existing root's
+ * admitted limit, exactly as it was.
  * `default-context-floor.test.ts` re-measures the real review prompt and fails if it outgrows this. */
 export const REPLY_REVIEW_FIXED_BYTES = 2540;
 /** The room one turn's prompt must leave beside it for that turn's reply review, derived from the two

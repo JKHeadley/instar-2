@@ -18,7 +18,7 @@ import { createJournalWorker, openPreviewJournal, type PreviewPorts } from './jo
 import { PREVIEW_LIVE_GATES, reviewUnavailableReleases } from './journal.js';
 import type { JournalView } from './journal.js';
 import { prepareJournalEnvelope } from './journal-envelope.js';
-import { JEV_MODEL, REPLY_RULES, type ReplyCheckPorts, type ReplyRule } from './reply-check.js';
+import { JEV_MODEL, jevQuestions, type JevRule, type ReplyCheckPorts } from './reply-check.js';
 import { LIVE_JUDGMENTS } from './model-call-boundary.js';
 import { CRITICAL_PIPELINES, stepCoverage } from './proofs.js';
 
@@ -33,7 +33,7 @@ const o95d = (releases: number, declared: Readonly<Record<string, { failureDirec
 //    `results/A-proofroom-20260930-184054/status-a3.json` (the same vector group O feeds its own Jev cases through
 //    `O_JEV_SCORES`). Its own verdict was a pass, so one rule is raised past its line to reach the flagged class —
 //    a derived input, named as such, exactly as O.sh's inputs note records.
-const LIVE_PASS_SCORES: Record<ReplyRule, number> = { raw_path: 0.02, cli_command: 0.02, config_key: 0.03,
+const LIVE_PASS_SCORES: Record<JevRule, number> = { raw_path: 0.02, cli_command: 0.02, config_key: 0.03,
   credential: 0.03, api_endpoint: 0.06, quits_on_self: 0.16, claims_blocked: 0.18, parks_on_user: 0.42,
   defers_work: 0.13, unrecorded_blocker: 0.38 };
 // 2. The complete recorded Jev answer of Justin's preview turn 969389800 ("What's my current gym locker code?",
@@ -55,8 +55,8 @@ const update = (id: number, text: string) => ({ update_id: id,
 const genesis = () => ({ kind: 'genesis' as const, bot: '12345678', chat: '7654321', operator: '7654321',
   grant: 'grant:preview', configurationDigest: 'sha256:offline', expires: 9999999999999,
   maxCalls: 120, maxReplies: 80, maxTurns: 80, maxBytes: 32768, cursor: 0 });
-const jevBody = (scores: Record<ReplyRule, number>) => JSON.stringify({ model: JEV_MODEL,
-  answers: Object.fromEntries(Object.keys(REPLY_RULES).map(id => [id, { type: 'noul', noul: scores[id as ReplyRule] }])) });
+const jevBody = (scores: Record<JevRule, number>) => JSON.stringify({ model: JEV_MODEL,
+  answers: Object.fromEntries(Object.keys(jevQuestions).map(id => [id, { type: 'noul', noul: scores[id as JevRule] }])) });
 const jevFrom = (body: string): ReplyCheckPorts['jev'] => async () => ({ value: JSON.parse(body) as unknown, latencyMs: 191 });
 const ports = (sent: string[], jev: ReplyCheckPorts['jev'], escalate: ReplyCheckPorts['escalate']): PreviewPorts => ({
   now: () => now, stopped: () => false, model: async () => JSON.stringify({ reply: ANSWER, memory: [] }),
