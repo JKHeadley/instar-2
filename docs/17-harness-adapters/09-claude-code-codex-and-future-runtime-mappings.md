@@ -32,15 +32,16 @@ tested mode is unsupported; advisory supplies no Claude-specific waiver.
 boundary.** Rules 1, 4, 41, 60, 68, 75, 84, 89, 100, 113, 114 and 116, and the purpose's rules on
 safeguards, nothing outward by default, consequential effects and irreversible acts; **checks:**
 `tests/assembly/production-provider-tools.test.ts`, `tests/preview/tool-admission.test.ts`,
-`tests/preview/tool-turn.test.ts`, `tests/preview/tool-turn-replay.test.ts` and the gated live run
+`tests/preview/effect-doorway.test.ts`, `tests/preview/tool-turn.test.ts`, `tests/preview/tool-turn-replay.test.ts` and the gated live run
 `tests/integration/tool-turn-live.test.ts`. The preview may run an answer or a scheduled work step as
 one Claude Code invocation that has exactly Read, Write, Edit, Glob, Grep and Bash, through the
 existing provider path. Each tool's scope, finite resource bounds and durable cause are enforced
 before dispatch. A mandatory deny-by-default PreToolUse admission hook admits only file operations
 physically contained in the turn's new private workspace and sandboxed commands; it never judges a
-command by the words it contains. It sends every consequential tool (an MCP or web tool, an unsandboxed
-command) to the effect doorway's admission, which refuses a tool effect the installed profile does not
-register. The harness sandbox is where a command's reach is enforced: reads are refused from the
+command by the words it contains, and admits ordinary in-workspace work without a doorway call. It sends
+every tool that could make a consequential effect (an MCP or web tool, an unsandboxed command) to the
+effect doorway, which admits or refuses it by the purpose's four consequential-effect tests under Part
+Twelve's live-path tool rule. The harness sandbox is where a command's reach is enforced: reads are refused from the
 filesystem root down except the turn's scratch volume and the system files commands need to run;
 writes reach only that volume; there is no network, no unix socket and no signal to another process.
 The workspace and every temporary file of the shell and the harness live on that fixed-size volume, so a

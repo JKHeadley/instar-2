@@ -1,5 +1,21 @@
 [
   {
+    "revision": 4,
+    "date": "2026-10-03",
+    "status": "draft",
+    "cause": {
+      "kind": "draft",
+      "note": "Unit w4-doorway: the effect doorway wired onto the live answer and work path by the purpose's four consequential-effect tests (Justin 2026-10-03 10:15, topic 102965 message 121996, and his 10:45 re-grounding). No constitution change."
+    },
+    "changes": [
+      {
+        "what": "§9 scoped-tool rule: ordinary in-workspace work is admitted without a doorway call, and a tool that could make a consequential effect goes to the effect doorway, which admits or refuses it by the four consequential-effect tests under Part Twelve's live-path tool rule.",
+        "why": "The hook's doorway call checked only operation membership; the constitution defines consequential by four tests, which now decide.",
+        "ref": "lanes/w4-doorway-PROGRESS.md; LIVE-PATH-PLAN.md rows #399-#400"
+      }
+    ]
+  },
+  {
     "revision": 3,
     "date": "2026-10-03",
     "status": "draft",

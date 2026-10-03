@@ -4,6 +4,10 @@ _Generated from `12-the-effect-doorway.changelog.json` by `scripts/render-change
 The document itself reads as a first version; every change to it is recorded here, newest first,
 each linked to the git change that made it (rule 91).
 
+## Revision 9 · 2026-10-03 · draft — Unit w4-doorway: the effect doorway wired onto the live answer and work path by the purpose's four consequential-effect tests (Justin 2026-10-03 10:15, topic 102965 message 121996, and his 10:45 re-grounding). No constitution change.
+
+- **§3 gains the live-path tool rule: ordinary in-workspace tool work is admitted without a doorway call; a tool call that could be consequential is classified against the four tests from its registered or worst reachable classification and admitted only when every held test is answered (closed set for irreversible effects, a recorded grant for resource, policy-sensitive and scope); a refusal names the held tests and what would admit it, rides below the answer, and every decision is durable, journaled and counted in status.** — The observer's audit found the doorway was not on the live path; the operator's direction is full ability with only consequential effects going to the doorway, enforced by the constitution's own definition. _(lanes/w4-doorway-PROGRESS.md; LIVE-PATH-PLAN.md rows #399-#400)_
+
 ## Revision 8 · 2026-09-24 · draft — Bounded Slack second-channel constitutional amendment from astra-slack-closedset-ruling.md; operator approval PENDING; no merge or runtime activation.
 
 - **Include the bounded Slack reply in Eight’s installed local-durable closed set and keep its refusal example open to a further operation.** — An irreversible Slack reply needs explicit membership, a complete durable causal prefix and current installation policy; it cannot inherit Telegram authority. _(astra-slack-closedset-ruling.md, Exact minimal governing edits and approval procedure (2026-09-24); approval PENDING)_

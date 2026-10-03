@@ -93,14 +93,17 @@ it('decides every layer-A case of the spike through the real executable hook; sh
   expect(results).toEqual(cases.map(([label, want]) => [label, want]));
 });
 
-it('sends every consequential tool to the effect doorway, which refuses: the installed profile registers no tool operation', () => {
+it('sends every consequential tool to the effect doorway, which refuses it by the four tests under the default policy', () => {
   expect(SINGLE_MACHINE_PROFILE.operations.some((op: string) => op.startsWith('tool:'))).toBe(false);
-  for (const kind of ['network', 'mcp', 'unsandboxed']) {
-    const verdict = admitToolEffect(kind, SINGLE_MACHINE_PROFILE.operations);
-    expect(verdict).toEqual({ admitted: false, reason: expect.stringContaining(`registers no tool:${kind} operation`) });
+  const defaults = { operations: SINGLE_MACHINE_PROFILE.operations };
+  for (const effect of ['tool:network', 'tool:mcp', 'tool:unsandboxed']) {
+    const verdict = admitToolEffect({ effect }, defaults, 0);
+    expect(verdict).toMatchObject({ admitted: false, disposition: 'refused', reason: expect.stringContaining(`effect doorway refused ${effect}`) });
   }
-  // The other side of the boundary: a profile that registered the exact operation would admit it.
-  expect(admitToolEffect('network', ['tool:network']).admitted).toBe(true);
+  // The other side of the boundary: a recorded scope grant places a web read in scope, so the doorway admits it as ordinary.
+  expect(admitToolEffect({ effect: 'tool:network', target: 'example.com' }, { ...defaults, effectPolicy: { type: 'PreviewEffectPolicy',
+    resourceLevelUsd: 0, policySensitive: [], registered: [], grants: [{ id: 'g', effect: 'tool:network', approves: ['scope'],
+      source: 'telegram:102965:121996', custodian: 'desk', recovery: 'remove the grant' }] } }, 0)).toMatchObject({ admitted: true, disposition: 'ordinary' });
   const { ws, tmp } = turn();
   const fs = { exists: () => true, realpath: (p: string) => p };
   const config = { workspace: ws, tmp, maxCalls: 5, maxWriteBytes: 10, operations: SINGLE_MACHINE_PROFILE.operations };
