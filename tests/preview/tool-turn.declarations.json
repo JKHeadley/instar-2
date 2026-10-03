@@ -16,12 +16,12 @@
         {
           "store": "preview.journal.openPreviewJournal",
           "invariant": "a kept harness session is resumed only while its recorded journal-facts digest, tools authority, harness and model equal the current ones; any difference, a loss or an unclean turn starts a new session grounded from the journal, and every turn's input is the current journal packet",
-          "check": "P13-PREVIEW-kept-session-subordinate (tests/preview/tool-persist.test.ts)"
+          "check": "PREVIEW-KEPT-SESSION-SUBORDINATE"
         },
         {
           "store": "preview.journal.openPreviewJournal",
           "invariant": "a kept workspace never hands a tool a clause the journal has forgotten or corrected: before any tool of a turn runs, every such clause changed since the volume last saw the journal's memory is removed from the workspace's files (files without one untouched); and a workspace the journal records earlier turns in that is found empty and unmarked is journaled as lost and its session is not resumed",
-          "check": "P13-PREVIEW-workspace-subordinate (tests/preview/tool-persist.test.ts)"
+          "check": "PREVIEW-WORKSPACE-SUBORDINATE"
         }
       ]
     },
