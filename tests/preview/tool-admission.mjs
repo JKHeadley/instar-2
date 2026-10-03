@@ -36,9 +36,26 @@ const SHELL_SAFE_PATH = /^\/[A-Za-z0-9_./@-]+$/u;
  * and this removes both values from the command's environment as well. `TMPDIR` points at the turn's
  * own scratch volume (the harness's shared default is refused for writes), and `ulimit -f` bounds each
  * file a command writes (65536 blocks of 512 bytes). `tmp` is absolute and shell-safe. */
-export function toolShellPrefix(tmp) {
+export function toolShellPrefix(tmp, egress = null) {
   if (typeof tmp !== 'string' || !SHELL_SAFE_PATH.test(tmp)) throw Error('tool admission: shell temporary directory absent');
-  return `unset CLAUDE_CODE_MESSAGING_TOKEN CLAUDE_CODE_MESSAGING_SOCKET; export TMPDIR=${tmp}; ulimit -f 65536; `;
+  const base = `unset CLAUDE_CODE_MESSAGING_TOKEN CLAUDE_CODE_MESSAGING_SOCKET; export TMPDIR=${tmp}; ulimit -f 65536; `;
+  if (egress === null || egress === undefined) return base;
+  // The shell's network checkpoint (egress-proxy.mjs): its port, the turn's own trust root (a public certificate on the
+  // scratch volume; its key stays in the admission state), a HOME on the scratch volume (tools keep caches and config
+  // there, never in the login profile), the developer tools' own git and python3 and the runner's node first on PATH (the
+  // /usr/bin shims would look up a system link outside the sandbox), and no system git configuration, so curl, git, npm and
+  // pip reach the network through it.
+  const { port, ca, home, path, developer } = egress;
+  if (!Number.isSafeInteger(port) || port < 1 || port > 65535 || ![ca, home].every(value => typeof value === 'string' && SHELL_SAFE_PATH.test(value))
+    || ![path, developer].every(value => value === undefined || (typeof value === 'string' && SHELL_SAFE_PATH.test(value))))
+    throw Error('tool admission: shell egress checkpoint absent');
+  const proxy = `http://127.0.0.1:${String(port)}`;
+  // NO_PROXY is emptied: the harness exempts loopback and private ranges from its proxy, and every request, those included,
+  // is to be decided (and refused) at the checkpoint, on the record.
+  return `${base}export HOME=${home} HTTPS_PROXY=${proxy} HTTP_PROXY=${proxy} https_proxy=${proxy} http_proxy=${proxy} NO_PROXY= no_proxy= `
+    + `SSL_CERT_FILE=${ca} CURL_CA_BUNDLE=${ca} GIT_SSL_CAINFO=${ca} NODE_EXTRA_CA_CERTS=${ca} REQUESTS_CA_BUNDLE=${ca} PIP_CERT=${ca} `
+    + `npm_config_cafile=${ca} npm_config_update_notifier=false GIT_CONFIG_NOSYSTEM=1 GIT_ATTR_NOSYSTEM=1${developer ? ` DEVELOPER_DIR=${developer}` : ''}`
+    + ` PATH=${[developer ? `${developer}/usr/bin` : null, path ?? null, '$PATH'].filter(Boolean).join(':')}; `;
 }
 export const FILE_TOOLS = Object.freeze(['Read', 'Write', 'Edit', 'NotebookEdit']);
 const SEARCH_TOOLS = Object.freeze(['Glob', 'Grep']);
@@ -143,6 +160,93 @@ export function webReadHost(url) {
   return { host };
 }
 
+/** The host and port a shell request targets (a CONNECT authority `host:port`, or an absolute http(s) URL), when the
+ * host is public-looking; otherwise null with a reason. The same host rule as a web read. */
+export function egressTarget(authority, scheme = 'https:') {
+  let parsed; try { parsed = new URL(`${scheme}//${String(authority)}/`); } catch { return { host: null, reason: 'not a host' }; }
+  if (parsed.pathname !== '/' || parsed.search || parsed.hash) return { host: null, reason: 'not a host' };
+  const target = webReadHost(parsed.href);
+  if (target.host === null) return target;
+  const port = parsed.port ? Number(parsed.port) : (scheme === 'http:' ? 80 : 443);
+  return { host: target.host, port };
+}
+
+/** Headers a server may honor in place of the request line's method. A server may follow the request line or any of them,
+ * so a request is a read only when the request line and every method these headers name are reads. */
+export const METHOD_OVERRIDES = Object.freeze(['x-http-method-override', 'x-http-method', 'x-method-override']);
+/** The largest git fetch request body the checkpoint holds to check before forwarding (a fetch's wants and haves). */
+export const GIT_FETCH_MAX_BODY = 8 * 1024 * 1024;
+// A git fetch request is pkt-lines, each one of the upload-pack protocol's own requests (v0 and v2): wants, haves, the
+// negotiation's end, shallow and filter options, and v2's command, capabilities and ref prefixes. Nothing else is a fetch.
+const GIT_FETCH_LINE = /^(?:(?:want|have|shallow|deepen|deepen-since|deepen-not|filter|want-ref|ref-prefix|packfile-uris) [\x21-\x7e]{1,1024}|(?:command|agent|object-format|server-option|session-id)=[\x21-\x7e]{1,1024}|want [0-9a-f]{40,64}(?: [\x21-\x7e]{1,1024})*|done|thin-pack|no-progress|include-tag|ofs-delta|peel|symrefs|unborn|sideband-all|wait-for-done|deepen-relative)$/u;
+const lower = headers => Object.fromEntries(Object.entries(headers ?? {}).map(([name, value]) => [name.toLowerCase(), Array.isArray(value) ? value.join(',') : String(value)]));
+/** The repository a smart-HTTP git route names (`/r.git/info/refs` or `/r.git/git-upload-pack` → `/r.git`), or null. */
+export function gitRepository(path, endpoint) {
+  const route = String(path ?? '').split('?')[0], suffix = `/${endpoint}`;
+  return route.endsWith(suffix) && route.length > suffix.length ? route.slice(0, -suffix.length) : null;
+}
+/** Whether a response proves its host serves git fetches for a repository: the answer to that repository's
+ * upload-pack discovery (`GET <repo>/info/refs?service=git-upload-pack`) was 200 with git's advertisement type. */
+export function gitAdvertisement({ method, path, status, headers }) {
+  const repo = gitRepository(path, 'info/refs'), query = String(path ?? '').split('?')[1] ?? '';
+  if (String(method).toUpperCase() !== 'GET' || repo === null || new URLSearchParams(query).get('service') !== 'git-upload-pack' || status !== 200) return null;
+  return /^application\/x-git-upload-pack-advertisement\b/u.test(lower(headers)['content-type'] ?? '') ? repo : null;
+}
+/** Whether a POST is a git fetch: its repository answered its discovery as a git server in this turn (`advertised`, the
+ * set of `host:port/repo` proven by gitAdvertisement), it is typed as a fetch request, and its body (`body`, already
+ * decompressed when the request was gzip-encoded) is nothing but upload-pack pkt-lines. A path name or content type
+ * alone proves nothing. Returns {fetch, reason}. */
+export function gitFetchRequest({ origin, path, headers, body, advertised }) {
+  const repo = gitRepository(path, 'git-upload-pack'), h = lower(headers);
+  if (repo === null) return { fetch: false, reason: 'not a git-upload-pack route' };
+  if (!advertised?.has(`${origin}${repo}`)) return { fetch: false, reason: 'the repository did not advertise git upload-pack in this turn' };
+  if (!/^application\/x-git-upload-pack-request\b/u.test(h['content-type'] ?? '')) return { fetch: false, reason: 'not typed as a git fetch request' };
+  if (!Buffer.isBuffer(body)) return { fetch: false, reason: 'body unreadable' };
+  let at = 0, lines = 0;
+  while (at < body.length) {
+    const size = /^[0-9a-f]{4}$/u.test(body.toString('latin1', at, at + 4)) ? parseInt(body.toString('latin1', at, at + 4), 16) : -1;
+    if (size < 0 || size === 3 || at + Math.max(size, 4) > body.length) return { fetch: false, reason: 'body is not git pkt-lines' };
+    if (size >= 4) {
+      const line = body.toString('latin1', at + 4, at + size).replace(/\n$/u, '');
+      if (!GIT_FETCH_LINE.test(line)) return { fetch: false, reason: 'body carries a line that is not a git fetch request' };
+      lines++;
+    }
+    at += Math.max(size, 4);
+  }
+  return lines > 0 ? { fetch: true, reason: 'git fetch' } : { fetch: false, reason: 'empty git request' };
+}
+
+/** The shell's network checkpoint (the egress proxy every sandboxed command is forced through): the decision for one HTTP
+ * request it can see in full (method, host, path, headers), after TLS interception. A read is admitted: GET or HEAD, or a
+ * git fetch proven by gitFetchRequest (`gitFetch`, its result), and only when no method-override header names anything
+ * else: a request whose line or any override names a write is a write. A read of a host the operator's effect policy
+ * registers or marks policy-sensitive goes to the effect doorway as `tool:network`, exactly as a WebFetch of it does.
+ * Everything else (POST, PUT, PATCH, DELETE, an unproven POST to a git-upload-pack path, a git push from its discovery
+ * request on, a package publish) is a network write the effect doorway decides as `tool:network-write` on the host:
+ * unregistered, it is classified at its worst on all four tests and refused. `config` is the turn's admission config
+ * ({operations, effectPolicy?, irreversibleTerm?}); `now` (ms) checks a grant's expiry. */
+export function admitEgress({ method, path, host = null, headers = {}, gitFetch = null }, config, now) {
+  const h = lower(headers), actual = String(method ?? '').trim().toUpperCase(), target = String(path ?? '');
+  const on = host ? { target: String(host).slice(0, 256) } : {};
+  // Every method the upstream could act on: the request line's and each one an override header names (a repeated header
+  // is comma-joined). An override can never downgrade the request line, and no header can hide another's write.
+  const verbs = [actual, ...METHOD_OVERRIDES.filter(name => name in h).flatMap(name => h[name].split(',').map(v => v.trim().toUpperCase()))];
+  const read = v => v === 'GET' || v === 'HEAD', verb = verbs.find(v => !read(v)) ?? actual;
+  const query = target.includes('?') ? target.slice(target.indexOf('?') + 1) : '', route = target.split('?')[0];
+  const service = new URLSearchParams(query).get('service');
+  const doorway = (proposal, kind, why) => { const verdict = admitToolEffect(proposal, config, now);
+    return verdict.admitted ? { decision: 'allow', reason: verdict.reason, kind }
+      : { decision: 'deny', reason: why ? `${why}: ${verdict.reason}` : verdict.reason, kind }; };
+  const write = reason => doorway({ effect: 'tool:network-write', ...on }, 'network-write', reason);
+  const admitRead = reason => policyNames(config, { effect: 'tool:network', ...on })
+    ? doorway({ effect: 'tool:network', ...on }, 'network-read', null) : { decision: 'allow', reason, kind: 'network-read' };
+  if (service === 'git-receive-pack' || route.endsWith('/git-receive-pack')) return write('a git push');
+  if (verbs.every(read)) return admitRead(`${actual} read`);
+  if (verbs.every(v => v === 'POST') && gitFetch?.fetch === true && route.endsWith('/git-upload-pack')) return admitRead('git fetch');
+  if (verb === 'POST' && route.endsWith('/git-upload-pack')) return write(`POST is a network write (not a proven git fetch: ${gitFetch?.reason ?? 'unchecked'})`);
+  return write(`${verb || '(no method)'} is a network write`);
+}
+
 /**
  * One PreToolUse decision. `call` is the hook input ({tool_name, tool_input, agent_id?}); `config` is the turn's
  * {workspace (real path), tmp (the shell's temporary directory), maxCalls, maxWriteBytes, operations, effectPolicy?,
@@ -186,7 +290,7 @@ export function admitToolCall(call, config, n, fs, child = 1, now) {
     if (!command.trim()) return deny('empty command');
     if (input.dangerouslyDisableSandbox) return effect('unsandboxed');
     return { decision: 'allow', reason: 'sandboxed command',
-      updatedInput: { ...input, command: toolShellPrefix(config.tmp) + command } };
+      updatedInput: { ...input, command: toolShellPrefix(config.tmp, config.egress ?? null) + command } };
   }
   if (tool === 'WebFetch') {
     // WebFetch only ever issues a GET; what it may reach is a public host.

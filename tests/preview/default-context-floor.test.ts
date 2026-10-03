@@ -261,8 +261,10 @@ it('keeps a tool turn\'s always-sent parts inside the same measured floor (Part 
   // 906 at w4-toolsfull, whose sentence names the web reads, the subagent bound and the effect doorway; 1025 at its round-2
   // repair, which offers the whole built-in set (named by the tool definitions, not the sentence), lets subagents delegate,
   // and says each call is checked when made; 1090 with w4-persist (merged at cint-L43), whose workspace sentence says files
-  // stay for later turns and that the current context outranks the kept session (+65).
-  expect(growth).toBe(1090);
+  // stay for later turns and that the current context outranks the kept session (+65); 1290 with w4-shellnet-s (merged at
+  // cint-L44), whose sentence says the shell's network goes through the turn's checkpoint (public reads work; writes and
+  // local addresses are refused) and where to clone repositories (+200).
+  expect(growth).toBe(1290);
   // The packet names what the call really has (review round 1, finding 5): the text-only route keeps the no-tools read and
   // its "attempted nothing" guidance; the tool route says the tools are as listed and that only its recorded calls ran.
   expect(plain.packet?.capabilities?.externalTools).toBe('none');

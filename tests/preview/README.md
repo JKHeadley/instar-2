@@ -3616,9 +3616,34 @@ servers (Part Thirteen §9,
   agents they may start cannot be reserved before dispatch), and any other skill name is refused. A web read of a loopback, private or
   local-name host is refused; a tool the hook does not classify is refused. Each call takes one of
   the step's 32 slots (shared with the turn's subagents) by exclusive create, so overlapping calls cannot exceed the
-  cap. The sandbox refuses reads from `/` down except the scratch volume and the system files commands need, writes
-  outside the volume, the network (a shell cannot write to the network), unix sockets and signals to other
-  processes; the harness's messaging socket and token are removed from every command.
+  cap. The sandbox refuses reads from `/` down except the scratch volume, the system files commands need and the
+  network tools' own locations (the runner's node and npm, the developer tools' git), writes outside the volume, unix
+  sockets and signals to other processes; the harness's messaging socket and token are removed from every command.
+- Shell network (`egress-proxy.mjs`): the sandbox lets a command reach exactly one place, the turn's checkpoint, a
+  proxy the runner starts on a loopback port before launch and stops after the turn (the settings' `httpProxyPort`).
+  It intercepts HTTPS with the turn's own trust root (key in `state/egress-trust/`, certificate at
+  `<volume>/egress-ca.pem`, trusted only through the variables the shell prefix sets), resolves each host and
+  requires every address public, connects to the address it checked, and decides each request by method and path:
+  GET, HEAD and a proven git fetch are reads; anything else (POST, PUT, PATCH, DELETE, a git push from
+  `service=git-receive-pack` on, a publish) is a `tool:network-write` on its host for the effect doorway's four tests,
+  which classify it at its worst and refuse it unless the `--effect-policy` registers and grants it; a read of a host
+  the policy registers or marks policy-sensitive goes to the doorway as `tool:network`, as a WebFetch of it does. A git fetch is proven, not named: its repository answered `info/refs?service=git-upload-pack` in
+  this turn with git's advertisement type, the POST is typed `application/x-git-upload-pack-request`, and its body
+  (held, at most 8 MiB, gunzipped when encoded, before any of it is forwarded) is only upload-pack pkt-lines. A
+  server may follow the request line or any method-override header (`X-HTTP-Method-Override`, `X-HTTP-Method`,
+  `X-Method-Override`), and the checkpoint forwards both unchanged, so a request is a read only when its line and every
+  method an override names are reads: an override naming a read never downgrades a POST or DELETE, and one override
+  cannot hide another's write. A loopback, private, link-local, CGNAT or local-name host is refused before any connection (the
+  prefix empties `NO_PROXY`, so those ranges reach the checkpoint and are refused on the record rather than by the
+  sandbox alone). Every decision is appended to `state/egress.jsonl` before the request goes anywhere and journaled
+  in the turn's trace (`egress`, `egressRequests`, `egressLimited`); `status` counts admitted and refused shell
+  network requests. Bounds per turn: 256 MiB through it, 16 connections at once, 512 requests, 30 s idle per
+  connection. Reaching the byte bound, or `close()` at the turn's end, is terminal: nothing more is admitted, connected
+  or forwarded, and a request that was waiting on name resolution or its body is re-checked before it is recorded or sent. The shell's HOME is `<volume>/home`, so caches and tool configuration stay on the volume; it is emptied at the start of every
+  turn, also in a kept workspace, where only the workspace and its temporary directory carry files between turns. The harness
+  protects `.git` under the workspace, so a repository is cloned under `$TMPDIR`. `npm install` succeeds, but its audit
+  request is a POST and is refused, so `npm audit` does not work; SSH remotes do not work (only HTTP(S) reaches the
+  checkpoint).
 - MCP: `ROOT/mcp.json` (the operator's file; absent means none) is `{"mcpServers": {name: {command, args?, env?}},
   "reads": ["mcp__name__tool", …]}`. Its launch configuration, with any credential in `env`, is copied into the
   turn's admission state, which no tool can read; servers run outside the sandbox as the runner's identity.
@@ -3648,8 +3673,9 @@ npx vitest run --maxWorkers 1 tests/preview/tool-admission.test.ts
 npx vitest run --maxWorkers 1 tests/preview/effect-doorway.test.ts
 npx vitest run --maxWorkers 1 tests/preview/tool-turn.test.ts
 npx vitest run --maxWorkers 1 tests/preview/tool-turn-replay.test.ts
+npx vitest run --maxWorkers 1 tests/preview/egress-proxy.test.ts
 npx vitest run --maxWorkers 1 tests/preview/tools-default.test.ts
 npx vitest run --maxWorkers 1 tests/assembly/production-provider-tools.test.ts
 INSTAR_TOOL_TURN_LIVE_TEST=1 npx vitest run --maxWorkers 1 tests/integration/tool-turn-live.test.ts   # five real harness turns
-INSTAR_TOOL_TURN_FULL_LIVE_TEST=1 INSTAR_TOOL_TURN_CASE=full npx vitest run --maxWorkers 1 tests/integration/tool-turn-full-live.test.ts  # one per case: full, outward, stop-child
+INSTAR_TOOL_TURN_FULL_LIVE_TEST=1 INSTAR_TOOL_TURN_CASE=full npx vitest run --maxWorkers 1 tests/integration/tool-turn-full-live.test.ts  # one per case: full, outward, stop-child, shellnet-reads, shellnet-writes, shellnet-stop
 ```

@@ -55,6 +55,31 @@ function turnOptions(journal: ReturnType<typeof openPreviewJournal>, root: strin
 }
 const traceSession = (journal: ReturnType<typeof openPreviewJournal>) => journal.view.toolTurns?.sessions;
 
+it('a kept workspace keeps its files while the shell\'s home and the checkpoint\'s trust root are new each turn (cint-L44)', async () => {
+  // w4-shellnet-s gives the shell a HOME and the checkpoint's public certificate on the turn's volume; w4-persist keeps that
+  // volume. The second turn must start its real checkpoint over the first turn's read-only certificate, and nothing a command
+  // left in HOME may outlive the turn (only the workspace and its temporary directory are reconciled against the memory).
+  const root = dir(), store = join(root, 'projects'), journal = openPreviewJournal(join(root, 'journal.encrypted'), key, genesis());
+  const certs: string[] = [], homes: string[][] = [];
+  const harness = standInHarness(store, turn => {
+    const scratch = join(turn.workspace, '..');
+    certs.push(readFileSync(join(scratch, 'egress-ca.pem'), 'utf8'));
+    homes.push(readdirSync(join(scratch, 'home')));
+    writeFileSync(join(scratch, 'home', '.gitconfig'), '[user]\n\tname = kiwi-7731\n');
+    if (!existsSync(join(turn.workspace, 'note.txt'))) writeFileSync(join(turn.workspace, 'note.txt'), 'kept');
+    return { state: 'complete', value: 'Done.' };
+  });
+  for (const update of [1, 2]) await runToolTurn(turnOptions(journal, root, store, (turn: Turn) => harness.invoke(turn, `turn ${update}`),
+    { id: `telegram:12345678:update:${update}` }));
+  expect(homes).toEqual([[], []]);
+  expect(certs).toHaveLength(2);
+  expect(certs[0]).toMatch(/BEGIN CERTIFICATE/u);
+  expect(certs[1]).not.toBe(certs[0]);
+  expect(journal.view.toolTurns?.invocations).toBe(2);
+  expect(journal.view.toolTurns?.sessions).toMatchObject({ fresh: 1, resumed: 1 });
+  journal.close();
+});
+
 it('keeps a file the agent wrote on one turn for the next turn of the same conversation, and never shows it to another', async () => {
   const root = dir(), store = join(root, 'projects'), journal = openPreviewJournal(join(root, 'journal.encrypted'), key, genesis());
   const reads: (string | null)[] = [];

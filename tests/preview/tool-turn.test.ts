@@ -13,7 +13,7 @@ import { SUBSCRIPTION_SUBAGENT_TYPE, SUBSCRIPTION_TOOL_LIMITS, SUBSCRIPTION_TOOL
 import { SINGLE_MACHINE_PROFILE } from './activation-authority.js';
 import { capabilityBriefing, TOOLS_BRIEFING } from './briefing.js';
 // @ts-expect-error The runner side stays plain JavaScript.
-import { TOOL_HOOK_SCRIPT, TOOL_NOTICE_MAX_BYTES, attachScratch, detachScratch, openToolTurnSlugs, prepareToolTurn, pruneToolTurns, readRootMcp, readToolTrace, reconcileToolTurns, runToolTurn, scratchMounted, toolChildrenFit, toolStatusLines, toolTurnEligible, toolTurnFits, unmountScratch, workspaceBytes } from './tool-turn.mjs';
+import { TOOL_HOOK_SCRIPT, TOOL_NOTICE_MAX_BYTES, attachEgress, attachScratch, detachScratch, networkToolReads, openToolTurnSlugs, prepareToolTurn, pruneToolTurns, readRootMcp, readToolTrace, reconcileToolTurns, runToolTurn, scratchMounted, toolChildrenFit, toolStatusLines, toolTurnEligible, toolTurnFits, unmountScratch, workspaceBytes } from './tool-turn.mjs';
 // @ts-expect-error The physical host remains JavaScript.
 import { createResourceOwner } from '../../scripts/resource-owner.mjs';
 
@@ -152,7 +152,8 @@ it('tells the agent and the operator exactly which tools exist and where outward
   const view = { toolTurns: { invocations: 2, reservedCalls: 14, refusedCap: 1, toolCalls: 5, toolRefusals: 2, inconsistent: 0, open: [] } };
   expect(toolStatusLines(view, true)).toEqual([
     `Tools: the harness's full built-in set (${SUBSCRIPTION_TOOL_NAMES.length} tools, each call decided at the admission hook) and the root's `
-      + 'MCP servers, in this conversation\'s private workspace (kept between turns, 128 MB); shell sandboxed without network; web reads only; '
+      + 'MCP servers, in this conversation\'s private workspace (kept between turns, 128 MB); shell sandboxed, its network through the '
+      + 'turn\'s checkpoint (reads of public hosts admitted, writes refused at the effect doorway); web reads only; '
       + 'subagents may delegate within the turn\'s budget; consequential effects go through the effect doorway.',
     'Tool turns: 2 run (14 model attempts reserved for them), 5 tool calls admitted, 2 refused, 1 turns answered without tools because the call allowance was short.']);
   expect(toolStatusLines({ toolTurns: { ...view.toolTurns, open: ['x#3'] } }, true)[1]).toContain('1 without a recorded trace yet');
@@ -165,6 +166,8 @@ it('tells the agent and the operator exactly which tools exist and where outward
   expect(toolStatusLines({ toolTurns: { ...view.toolTurns, overflow: 2 } }, true)[2])
     .toBe('Workspaces: this root keeps 4; 2 turns of further conversations ran in a fresh one-turn workspace without a kept session.');
   expect(toolStatusLines(view, true)).toHaveLength(2);
+  expect(toolStatusLines({ toolTurns: { ...view.toolTurns, network: { admitted: 4, refused: 2 } } }, true)[1])
+    .toContain('4 shell network reads admitted and 2 refused at the checkpoint');
   expect(toolStatusLines(view, false)).toEqual([]);
   // Default on: when no grant resolves, status says tools are off and why, instead of saying nothing.
   expect(toolStatusLines(view, false, 'refused at launch with --tools off')).toEqual(['Tools: off (refused at launch with --tools off); answers are text only.']);
@@ -371,4 +374,83 @@ it('reads the root\'s MCP configuration: absent is none, malformed refuses, and 
   expect(JSON.parse(readFileSync(join(turn.stateDirectory, 'config.json'), 'utf8')).mcpReads).toEqual(['mcp__dummy__lookup']);
   // The credential never lands where a tool can reach: not in the workspace or the scratch volume.
   expect(JSON.stringify(readdirSync(turn.scratch, { recursive: true }))).not.toContain('mcp');
+});
+
+it('runs the shell\'s network checkpoint exactly as long as the turn: started before launch, named to the hook and the sandbox, recorded, stopped after', async () => {
+  const root = dir(), id = 'telegram:12345678:update:21';
+  const journal = journalAt(root, 60);
+  const appended: Record<string, unknown>[] = [];
+  const spied = { get view() { return journal.view; }, append: (row: never) => { appended.push(row); return journal.append(row); } };
+  const events: string[] = [];
+  let started: { stateDirectory: string; caPath: string; admission: { operations: string[] } } | null = null;
+  const egress = async (input: { stateDirectory: string; caPath: string; admission: { operations: string[] } }) => {
+    started = input; events.push('start'); writeFileSync(input.caPath, 'CERT');
+    // What the real checkpoint appends for a refused write and an admitted read.
+    writeFileSync(join(input.stateDirectory, 'egress.jsonl'), [
+      { phase: 'request', n: 1, method: 'CONNECT', scheme: 'https', host: 'example.com', port: 443, path: 'example.com:443', decision: 'allow', reason: 'tunnel opened; each request inside it is decided', kind: 'tunnel', address: '93.184.215.14' },
+      { phase: 'request', n: 2, method: 'GET', scheme: 'https', host: 'example.com', port: 443, path: '/?token=SECRETVALUE', decision: 'allow', reason: 'GET read', kind: 'network-read', address: '93.184.215.14' },
+      { phase: 'response', n: 2, status: 200, bytes: 577 },
+      { phase: 'request', n: 3, method: 'POST', scheme: 'https', host: 'httpbin.org', port: 443, path: '/post', decision: 'deny', reason: 'POST is a network write: effect doorway: refused by default', kind: 'network-write' },
+    ].map(row => JSON.stringify(row)).join('\n') + '\n');
+    return { port: 40001, close: async () => { events.push('close'); } };
+  };
+  const tools = () => ({ reads: ['/usr/local/bin'], path: '/usr/local/bin', developer: undefined });
+  let seen: Record<string, unknown> | null = null;
+  const base = { journal: spied, root, prepared: '{}', promptLimit: 32768, deniedRoots: [root], operations: SINGLE_MACHINE_PROFILE.operations,
+    now: () => 10, redactText: (text: string) => text.replace('SECRETVALUE', '[redacted]'), fallback: async () => ({ result: 'text-only' }),
+    scratch: plainScratch, detach: keepDetached, egress, networkTools: tools };
+  await runToolTurn({ ...base, id, invoke: async (turn: Record<string, unknown>) => {
+    seen = turn; events.push('invoke');
+    const config = JSON.parse(readFileSync(join(turn.stateDirectory as string, 'config.json'), 'utf8'));
+    expect(config.egress).toEqual({ port: 40001, ca: join(turn.scratch as string, 'egress-ca.pem'), home: join(turn.scratch as string, 'home'), path: '/usr/local/bin' });
+    return { result: 'ok' };
+  } });
+  expect(events).toEqual(['start', 'invoke', 'close']);
+  expect(started!.admission).toEqual({ operations: [...SINGLE_MACHINE_PROFILE.operations] });
+  expect(started!.stateDirectory).toBe((seen as unknown as { stateDirectory: string }).stateDirectory);
+  expect((seen as unknown as { egress: unknown }).egress).toEqual({ port: 40001, reads: ['/usr/local/bin'] });
+  const trace = appended.find(row => row.phase === 'trace')!;
+  expect(trace.egressRequests).toBe(3);
+  expect(trace.egress).toEqual([expect.objectContaining({ kind: 'tunnel' }),
+    expect.objectContaining({ method: 'GET', path: '/?token=[redacted]', decision: 'allow', status: 200, bytes: 577 }),
+    expect.objectContaining({ method: 'POST', decision: 'deny', kind: 'network-write', status: null })]);
+  expect(journal.view.toolTurns?.network).toEqual({ admitted: 1, refused: 1 });
+  // A failed launch still stops the checkpoint and journals its trace.
+  events.length = 0;
+  await expect(runToolTurn({ ...base, id: 'telegram:12345678:update:22', invoke: async () => { events.push('invoke'); throw Error('launch failed'); } }))
+    .rejects.toThrow('launch failed');
+  expect(events).toEqual(['start', 'invoke', 'close']);
+  expect(journal.view.toolTurns?.open).toEqual([]);
+  expect(journal.view.toolTurns?.network).toEqual({ admitted: 2, refused: 2 });
+  // A checkpoint that does not start fails the turn before launch (no shell without its checkpoint), still journaled.
+  let launched = false;
+  await expect(runToolTurn({ ...base, id: 'telegram:12345678:update:23', egress: async () => { throw Error('no loopback port'); },
+    invoke: async () => { launched = true; return { result: 'ok' }; } })).rejects.toThrow('no loopback port');
+  expect(launched).toBe(false);
+  expect(journal.view.toolTurns?.open).toEqual([]);
+  // The journal refuses a malformed checkpoint record.
+  journal.append({ kind: 'tool-turn', phase: 'reserved', id: 'telegram:12345678:update:24', attempt: 9, calls: 1, at: 11 });
+  expect(() => journal.append({ kind: 'tool-turn', phase: 'trace', id: 'telegram:12345678:update:24', attempt: 9, consistent: true, workspaceBytes: 0, calls: [],
+    egress: [{ n: 1, method: 'GET', path: '/', decision: 'maybe', reason: 'r' }], at: 12 } as never)).toThrow(/tool turn egress/u);
+  // Replay reaches the same projection.
+  expect(journalAt(root, 60).view.toolTurns?.network).toEqual({ admitted: 2, refused: 2 });
+});
+
+it('names the shell\'s network tools read-only, never under a home or mounted volume, and closes the checkpoint if its config cannot be written', async () => {
+  expect(networkToolReads('/usr/local/bin/node', () => true, (p: string) => p)).toEqual({ reads: ['/usr/local/bin', '/usr/local/lib/node_modules/npm',
+    '/Library/Developer/CommandLineTools'], path: '/usr/local/bin', developer: '/Library/Developer/CommandLineTools' });
+  expect(networkToolReads('/Users/me/.nvm/versions/node/v24/bin/node', (p: string) => !p.startsWith('/Library'), (p: string) => p))
+    .toEqual({ reads: [], path: undefined, developer: undefined });
+  let closed = false;
+  let starts = 0;
+  const start = async () => { starts++; return { port: 1, close: async () => { closed = true; } }; };
+  // No admission config: nothing to decide with, so no checkpoint starts.
+  await expect(attachEgress({ scratch: dir(), stateDirectory: join(dir(), 'missing'), home: '/h' }, start, { reads: [] })).rejects.toThrow();
+  expect(starts).toBe(0);
+  // The config is read (the checkpoint decides with it) but cannot be rewritten: the started checkpoint is closed again.
+  const state = dir();
+  writeFileSync(join(state, 'config.json'), JSON.stringify({ operations: [] }), { mode: 0o400 });
+  await expect(attachEgress({ scratch: dir(), stateDirectory: state, home: '/h' }, start, { reads: [] })).rejects.toThrow();
+  expect(starts).toBe(1);
+  expect(closed).toBe(true);
 });

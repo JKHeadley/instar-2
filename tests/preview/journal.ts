@@ -1106,7 +1106,8 @@ export type JournalRecord =
       mcp?: { servers: string[]; reads: number; digest: string }; workspace?: ToolWorkspaceRow; at: number }
   | { kind: 'tool-turn'; phase: 'refused'; id: string; reason: 'call cap' | 'prompt size'; at: number }
   | { kind: 'tool-turn'; phase: 'trace'; id: string; attempt: number; calls: ToolTraceCall[]; consistent: boolean;
-      edges?: ToolChildEdge[]; workspaceBytes: number | null; session?: ToolSessionRow; volume?: ToolVolumeRow; at: number }
+      edges?: ToolChildEdge[]; egress?: ToolEgressRequest[]; egressRequests?: number; egressLimited?: string; workspaceBytes: number | null;
+      session?: ToolSessionRow; volume?: ToolVolumeRow; at: number }
   | { kind: 'legacy-reply'; at: number }
   | { kind: 'import'; source: string; remainingCalls: number; remainingReplies: number; oldStop: string; at: number }
   | { kind: 'summary-reserve'; through: number; prompt?: string; supervised?: true; maxInputTokens?: number; maxOutputTokens?: number; at: number }
@@ -2781,6 +2782,10 @@ function validDoorwayCall(value: unknown): value is EffectDoorwayCall {
     // Ordinary exactly when no test held: a consequential effect is granted, in the closed set, or refused.
     && (d.disposition === 'ordinary') === !DOORWAY_TESTS.some(test => tests[test] === true);
 }
+/** One request the shell's network checkpoint decided (tests/preview/egress-proxy.mjs): admitted reads of public hosts,
+ * refused writes (the effect doorway's reason) and refused hosts; `status`/`bytes` once its response finished. */
+export interface ToolEgressRequest { n: number; method: string; scheme: string; host: string | null; port: number | null; path: string;
+  decision: string; reason: string; kind: string; address?: string; status: number | null; bytes: number | null; error?: string }
 /** One recorded tool call as the reply review sees it: what was called, whether it was admitted, and what it returned. */
 export interface ToolAttempt { n: number; tool: string; decision: string; input: string; result: string | null }
 /** The review's bounds on recorded tool attempts: at most this many calls, each excerpt clipped to this many characters. */
@@ -2805,7 +2810,9 @@ export interface ToolTurnStats { invocations: number; reservedCalls: number; ref
    * from an empty replacement, and files that had a forgotten or corrected clause removed (each absent until it happens). */
   workspaces?: string[]; workspacesLost?: number; reconciledFiles?: number;
   /** Turns whose reconciliation did not finish: a file it could not change (kept intact) or a part past its bound. */
-  reconcileIncomplete?: number }
+  reconcileIncomplete?: number;
+  /** Shell network requests the turn's checkpoint decided (tunnel openings not counted). */
+  network?: { admitted: number; refused: number } }
 /** What a turn found in its kept workspace before any tool ran: whether its volume was lost (the journal names earlier
  * turns there, the volume came back empty and unmarked), how many files had forgotten or corrected clauses removed, how
  * many still hold one (`held`: unreadable, unwritable or not plain text, kept intact), and whether the pass stopped at its
@@ -2868,6 +2875,12 @@ function projectToolTurn(view: JournalView, row: Extract<JournalRecord, { kind: 
     && edge.parent === key && (edge.parentAgent === undefined || edge.parentAgent === null || boundedText(edge.parentAgent, 1, 256))
     && ['returned', 'cancelled', 'unknown'].includes(edge.state)))
     throw Error('preview journal: tool turn edges');
+  const egress = row.egress ?? [];
+  if (!Array.isArray(egress) || egress.length > 64 || !egress.every(entry => entry && Number.isSafeInteger(entry.n) && boundedText(entry.method, 1, 16)
+    && boundedText(entry.path, 0, 1024) && ['allow', 'deny'].includes(entry.decision) && boundedText(entry.reason, 1, 1024))
+    || !(row.egressRequests === undefined || (Number.isSafeInteger(row.egressRequests) && row.egressRequests >= egress.length))
+    || !(row.egressLimited === undefined || boundedText(row.egressLimited, 1, 256)))
+    throw Error('preview journal: tool turn egress');
   const admitted = row.calls.filter(call => call.decision === 'allow').length;
   const turn = view.turns.get(row.id);
   if (turn) {
@@ -2898,12 +2911,16 @@ function projectToolTurn(view: JournalView, row: Extract<JournalRecord, { kind: 
   const children = edges.length || stats.children ? { started: (stats.children?.started ?? 0) + edges.length,
     returned: (stats.children?.returned ?? 0) + count('returned'), cancelled: (stats.children?.cancelled ?? 0) + count('cancelled'),
     unknown: (stats.children?.unknown ?? 0) + count('unknown') } : undefined;
+  const requests = egress.filter(entry => entry.kind !== 'tunnel'), allowed = requests.filter(entry => entry.decision === 'allow').length;
+  const network = requests.length || stats.network ? { admitted: (stats.network?.admitted ?? 0) + allowed,
+    refused: (stats.network?.refused ?? 0) + requests.length - allowed } : undefined;
   view.toolTurns = { ...stats, toolCalls: stats.toolCalls + admitted, toolRefusals: stats.toolRefusals + row.calls.length - admitted,
     inconsistent: stats.inconsistent + Number(!row.consistent), open: stats.open.filter(item => item !== key), ...(children ? { children } : {}),
     ...(sessions ? { sessions } : {}),
     ...(volume?.lost ? { workspacesLost: (stats.workspacesLost ?? 0) + 1 } : {}),
     ...(volume?.reconciled ? { reconciledFiles: (stats.reconciledFiles ?? 0) + volume.reconciled } : {}),
-    ...(volume?.held || volume?.unchecked ? { reconcileIncomplete: (stats.reconcileIncomplete ?? 0) + 1 } : {}) };
+    ...(volume?.held || volume?.unchecked ? { reconcileIncomplete: (stats.reconcileIncomplete ?? 0) + 1 } : {}),
+    ...(network ? { network } : {}) };
   // Part Twelve: every call that reached the effect doorway is counted by its disposition (Rules 41, 84).
   const reached = row.calls.filter(call => call.doorway !== undefined);
   if (reached.length) {
