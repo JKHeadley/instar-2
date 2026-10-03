@@ -421,12 +421,12 @@ describe('the tools\' execution boundary', () => {
     expect(view.lastLaunch.cleanup).toBe('verified');
   });
 
-  /** A Bash call that daemonizes the way a real one does: a node child in a new session, in the sibling tmp directory (outside the
-   * launch's working area), its stdio closed, and its parent gone at once, so the owner's group, ancestry and working-area joins
-   * all miss it. It prints the daemon's pid; `after` runs in the foreground after that. */
+  /** A Bash call that daemonizes the way a real one does: a node child in a new session, at the root directory (outside the whole
+   * scratch volume, so outside the launch's working area), its stdio closed, and its parent gone at once, so the owner's group,
+   * ancestry and working-area joins all miss it. It prints the daemon's pid; `after` runs in the foreground after that. */
   const daemonize = (node: string, after = '') => ['Bash', { command: `"${node}" daemon.mjs > pid.txt && cat pid.txt${after}` }] as [string, Record<string, unknown>];
   const DAEMON = `import { spawn } from 'node:child_process';
-const child = spawn('/bin/sleep', ['300'], { detached: true, stdio: 'ignore', cwd: process.env.TMPDIR });
+const child = spawn('/bin/sleep', ['300'], { detached: true, stdio: 'ignore', cwd: '/' });
 child.unref(); process.stdout.write(String(child.pid));`;
   const alive = (pid: number) => { try { process.kill(pid, 0); return true; } catch { return false; } };
   const settled = async (pid: number) => { for (let i = 0; i < 50 && alive(pid); i++) await new Promise(done => setTimeout(done, 20)); return !alive(pid); };
@@ -472,11 +472,78 @@ child.unref(); process.stdout.write(String(child.pid));`;
   });
 
   it('a launch whose sweep did not run is reported as unproven, never assumed swept', { timeout: 20000 }, async () => {
-    // The command ends every process of its own sandbox, the sweeper included, before the sweeper could run.
+    // The command ends every process of its own sandbox. The sweeper and the sweep's marker write race the same kill: the
+    // outcome is honest either way — `swept` iff the marker really landed, else `unverified` — but which wins is a kernel
+    // race, so the invariant under test is that only this launch is ever in doubt and its label is never falsely `swept`.
+    // (The deterministic sweep-did-not-run case is the suspended-sweeper test below.)
     const run = await nativeTurn([ask(['Bash', { command: 'kill -9 -1' }], ['Bash', { command: 'echo after' }]), answer('done')]);
     const posts = admission(run.stateDirectory).filter(row => row.phase === 'post').map(row => JSON.parse(row.result));
     expect(posts[1]).toMatchObject({ stdout: 'after\n', exitCode: 0 });
-    expect(run.outcome.result.native.unresolved).toEqual([expect.objectContaining({ id: 'native-1-1', sweep: 'unverified' })]);
+    const unresolved = run.outcome.result.native.unresolved as Array<{ id: string; sweep: string }>;
+    for (const entry of unresolved) { expect(entry.id).toBe('native-1-1'); expect(entry.sweep).toBe('unverified'); }
+    // Every launch not in `unresolved` had its sweep proven (`swept`); none is assumed swept without the marker.
+    expect(unresolved.length).toBeLessThanOrEqual(1);
+  });
+
+  /** A detached node child, in a new session with its parent gone, that holds ~400 MiB while its launcher keeps
+   * running in the foreground — but inside the launch's own temporary directory (the scratch volume), so the
+   * owner's working-area join still reaches it. */
+  const BIG = `import { spawn } from 'node:child_process';
+const child = spawn(process.execPath, ['-e', 'const b = Buffer.alloc(400 * 1024 * 1024, 7); setInterval(() => { b[0] = (b[0] + 1) % 251; }, 200);'],
+  { detached: true, stdio: 'ignore', cwd: process.env.TMPDIR });
+child.unref(); process.stdout.write(String(child.pid));`;
+
+  it('accounts for a detached child inside the scratch volume and ends it over the memory ceiling while its launcher runs', { timeout: 30000 }, async () => {
+    const small = createResourceOwner({ ...RESOURCE_CEILINGS,
+      launch: { ...RESOURCE_CEILINGS.launch, memoryBytes: 96 * 1024 * 1024, processCount: 8 } }) as Owner;
+    await small.attach({});
+    let node = '', workspace = '', daemon = 0;
+    try {
+      // Write the big-child launcher, then run it (printing the child's pid to a workspace file) and stay alive in the
+      // foreground long enough for a sample to see the child's memory. The child detached into the sibling tmp directory,
+      // inside the scratch volume: the working-area join reaches it, its memory counts against the launch, and the owner
+      // ends it. The memory kill clears the call's stdout, so the test reads the child's pid from the workspace file live.
+      const run = await nativeTurn((_envelope, index) => {
+        if (index !== 0) return answer('done');
+        const watch = setInterval(() => {
+          try { const pid = Number(readFileSync(join(workspace, 'pid.txt'), 'utf8').trim()); if (pid > 1) { daemon = pid; clearInterval(watch); } } catch { /* not written yet */ }
+        }, 20);
+        return ask(['Write', { file_path: 'big.mjs', content: BIG }], ['Bash', { command: `"${node}" big.mjs > pid.txt && /bin/sleep 6` }]);
+      }, { resources: small, hook: turn => { node = turn.hook.node; workspace = turn.workspace; return turn.hook; } });
+      const posts = admission(run.stateDirectory).filter(row => row.phase === 'post').map(row => JSON.parse(row.result));
+      // The launcher's own call is ended on the memory ceiling the detached child pushed the launch over: proof the join
+      // reaches a child inside the volume (a bare launcher plus sleep is far under 96 MiB).
+      expect(posts[1]).toMatchObject({ exitCode: null, interrupted: 'memory' });
+      expect(Number.isSafeInteger(daemon) && daemon > 1).toBe(true);
+      // The detached child is gone: the owner killed it as a joined member, not a bystander.
+      expect(await settled(daemon)).toBe(true);
+      expect(run.outcome.result.native.unresolved).toEqual([]);
+      const view = (small as unknown as { snapshot: () => { counters: { killed: Record<string, number> } } }).snapshot();
+      expect(view.counters.killed.memory).toBe(1);
+    } finally { if (daemon > 1) try { process.kill(daemon, 'SIGKILL'); } catch { /* already gone */ } }
+  });
+
+  it('settles and cleans up when the workload suspends the sweeper: the owner never waits on it, and ends the tree itself', { timeout: 20000 }, async () => {
+    let stop = false;
+    // The command suspends every process of its own sandbox — the worker and the sweeper included — before the sweeper
+    // could run. The sweeper then holds the launch's stdout forever, so the owner must NOT wait on it (the old hang): it
+    // settles on the worker's exit instead, and its cleanup census ends the leaked sweeper. The stop drives the worker's kill.
+    setTimeout(() => { stop = true; }, 1500);
+    const run = await nativeTurn([ask(['Bash', { command: 'kill -STOP -1' }], ['Bash', { command: 'echo unreached' }]), answer('done')],
+      { stopped: () => stop });
+    // The loop settled (it did not hang on the held stdout) and reported the stop — the fix for the old hang.
+    expect(run.outcome.result).toMatchObject({ state: 'uncertain', native: { ended: 'stopped' } });
+    const unresolved = run.outcome.result.native.unresolved as Array<{ id: string; sweep: string; cleanup: string; guardian: string }>;
+    expect(unresolved).toHaveLength(1);
+    const entry = unresolved[0]!;
+    expect(entry.id).toBe('native-1-1');
+    // Honest evidence: the sweep is unproven — it was suspended before it could run and write its marker.
+    expect(entry.sweep).toBe('unverified');
+    // The owner finished independently of that helper: it reached a terminal cleanup verdict (never hung in cleanup), and it
+    // ran its own pid-backstop against the sweep. Whichever mechanism reached the sweeper first — the owner's census kill, the
+    // group kill, or the pid-backstop — the sweep is ended; `guardian` is always one of the owner's dispositions, never pending.
+    expect(['verified', 'unresolved']).toContain(entry.cleanup);
+    expect(['killed', 'absent']).toContain(entry.guardian);
   });
 
   it('refuses to run without a host resource owner', async () => {

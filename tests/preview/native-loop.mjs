@@ -116,12 +116,18 @@ export const NATIVE_EXECUTION = Object.freeze({ fileMs: 30000, workerHeapMb: 256
  * Runs one admitted call as a worker launch through the host resource owner (Rules 55, 60, 61): `sandbox-exec` with the native
  * profile, then node on the worker source, from the workspace, with an empty environment. The owner admits the launch, holds CPU
  * time and handles per process and the user ID's process headroom in the kernel, samples the tree's memory and process count
- * against its ceilings and ends the tree on the deadline or the operator's stop (its 25 ms poll). The owner's membership is
- * observation (a descendant that leaves the group, its parent and the working area is not joined), so the identity that ends
- * every descendant is the sandbox instance itself: the worker's sweeper signals every process of that instance once the worker
- * ends, however it ends, and writes this launch's unguessable marker first. Each call returns its containment evidence: the
- * owner's cleanup verdict and whether the sweep ran (`swept`), never assumed. The loop's own process never opens a tool path, so
- * neither a path swapped after admission nor a blocking open can reach it. A launch the owner ended is `interrupted`.
+ * against its ceilings and ends the tree on the deadline or the operator's stop (its 25 ms poll). The owner joins every
+ * descendant by recorded incarnation, group, ancestry and the launch's whole private working area — here the whole scratch
+ * volume (`area`), so a descendant that detaches into the sibling tmp directory is still a member, counts against the ceilings,
+ * and is ended by the owner. The owner settles on the launch process's exit and never waits on a descendant that detached
+ * holding the stdout open, so no helper inside the sandbox can stall it; once settled, its cleanup census ends every member it
+ * can reach. The sandbox sweeper is a best-effort residual catcher for a descendant that left its group, its parent AND the
+ * whole volume before any census (`kill -9 -1` of the one identity no descendant can shed); it writes this launch's unguessable
+ * marker first and records its own pid beside it, so the owner — outside the workload's sandbox — ends the sweeper by that exact
+ * pid when the workload suspended it before it could run (the one process the census cannot reach). Each call returns its
+ * containment evidence: the owner's cleanup verdict, whether the sweep ran (`swept`, never assumed), and the owner's `guardian`
+ * disposition of a sweep that did not. The loop's own process never opens a tool path, so neither a path swapped after admission
+ * nor a blocking open can reach it. A launch the owner ended is `interrupted`.
  */
 async function runWorker(tool, input, turn, context) {
   const marker = join(context.scratch, `.sweep-${randomUUID()}`);
@@ -130,15 +136,34 @@ async function runWorker(tool, input, turn, context) {
   const launched = await context.resources.execute({ executable: '/usr/bin/sandbox-exec',
     args: ['-f', context.profilePath, turn.hook.node, `--max-old-space-size=${String(NATIVE_EXECUTION.workerHeapMb)}`, '--input-type=module',
       '-e', WORKER_SOURCE],
-    cwd: turn.workspace, env: { PATH: '/usr/bin:/bin', HOME: turn.workspace, TMPDIR: join(turn.scratch, 'tmp'), LANG: 'C.UTF-8' },
+    // The owner joins every descendant whose working directory stays inside the whole scratch volume
+    // (`area`), not just the workspace, so a tool that detaches a child into the sibling tmp directory is
+    // still a member of the launch and counts against its ceilings.
+    cwd: turn.workspace, area: context.scratch,
+    env: { PATH: '/usr/bin:/bin', HOME: turn.workspace, TMPDIR: join(turn.scratch, 'tmp'), LANG: 'C.UTF-8' },
     stdin: JSON.stringify({ tool, input, workspace: turn.workspace, sweep: marker }), timeout, maxBytes: NATIVE_EXECUTION.workerOutputBytes,
     stopped: context.stopped }, 'answer');
   // The marker is only ever looked at (lstat), never opened: no tool knew its name before the sweep ended every tool process.
   let swept = false;
   try { swept = lstatSync(marker).isFile(); rmSync(marker, { force: true }); } catch { swept = false; }
+  // The owner has already settled and cleaned up by its own census joins. A sweep that did not complete (its process suspended
+  // by the workload before it ran) has itself escaped those joins, so the owner — outside the workload's sandbox, and so free to
+  // signal into it — ends that one process by the exact pid the sweep recorded beside its marker (never a pattern match). The
+  // sweep stays reported `unverified`: the owner proves the helper is gone, never that it ran.
+  const guardian = swept || launched.localLimit === 'capacity' ? 'not-needed' : endSweeper(`${marker}.pid`);
+  try { rmSync(`${marker}.pid`, { force: true }); } catch { /* already gone */ }
   const containment = { cleanup: launched.resources?.cleanup ?? 'unknown', leaked: launched.resources?.leakedDescendants ?? null,
-    sweep: launched.localLimit === 'capacity' ? 'not-launched' : swept ? 'swept' : 'unverified' };
+    sweep: launched.localLimit === 'capacity' ? 'not-launched' : swept ? 'swept' : 'unverified', guardian };
   return { output: workerOutput(tool, launched, context.stopped()), containment };
+}
+/** Ends a sweep that did not complete, by the exact pid it recorded beside its marker: `killed` when a live pid was signalled,
+ * `absent` when the file held no pid or that pid was already gone (the owner's census join reached it first). The loop runs
+ * outside the workload's sandbox, so it can signal a process the workload suspended inside that sandbox; it never matches by name. */
+function endSweeper(pidPath) {
+  let pid;
+  try { pid = Number(readFileSync(pidPath, 'utf8').trim()); } catch { return 'absent'; }
+  if (!Number.isSafeInteger(pid) || pid <= 1) return 'absent';
+  try { process.kill(pid, 'SIGKILL'); return 'killed'; } catch { return 'absent'; }
 }
 function workerOutput(tool, launched, stopped) {
   if (launched.limited) {

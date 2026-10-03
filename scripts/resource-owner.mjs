@@ -38,6 +38,12 @@
 // member the ledger could not record, or a survivor keeps the durable row
 // (`cleanup: 'unresolved'`): a signal attempt is not observed quiescence.
 //
+// The owner settles each launch on the launch process's exit, and never waits on it
+// past EXIT_SETTLE_MS: a descendant that detached holding the launch's stdout open
+// (an escaped or suspended helper) cannot keep the owner from settling and then
+// cleaning up. The owner, outside any launch's sandbox, is never dependent on a helper
+// inside the launch to finish.
+//
 // Recovery after a crash is observation only. Disposing of a process left by a dead
 // launcher is a recovery effect that needs the typed Part Eight process effect and
 // the Ten driver seams, which are not landed; until then surviving orphans are
@@ -71,6 +77,11 @@ const WORK = Object.freeze({ answer: 'critical', review: 'critical', maintenance
 const OUTCOME_LIMIT = 32;
 const QUERY_TIMEOUT_MS = 2000;
 const GATE_TIMEOUT_MS = 5000;
+// After the launch process has exited, how long the owner waits for its output stream to end before it
+// settles anyway. The stream ends at once when nothing outside the launch holds the launch's stdout; a
+// descendant that detached with the stdout open (an escaped or suspended helper) would otherwise keep it
+// open forever, so the owner never depends on that descendant to settle (it is independently protected).
+const EXIT_SETTLE_MS = 2000;
 const UNKNOWN = Symbol('unknown');
 
 // Wait for the owner's go signal (fd 3) when gated, then lower (never raise) the
@@ -560,7 +571,11 @@ export function createResourceOwner(initialCeilings = RESOURCE_CEILINGS) {
     const handles = Math.max(16, ceilings.launch.handleCount);
     const cpuSeconds = Math.max(1, Math.ceil(ceilings.launch.cpuMilliseconds / 1000));
     lease.enforcement = enforcement(); lease.uidProcesses = uidProcesses;
-    lease.workingArea = privateArea(input.cwd);
+    // The join covers the whole private area the launch may write to, not just its working directory:
+    // `input.area` (a caller's private scratch volume holding both the working directory and the launch's
+    // own temporary directory) when given, so a descendant that changes to a sibling directory inside that
+    // volume is still a member. Absent, the working directory is the area, as before.
+    lease.workingArea = privateArea(input.area ?? input.cwd);
     const limitValue = uidProcesses.limit;
     /** Returns the Six debit once, citing the evidence that proves the outcome; false when it could not. */
     const closeAllocation = settlement => {
@@ -614,15 +629,20 @@ export function createResourceOwner(initialCeilings = RESOURCE_CEILINGS) {
       void openGate().catch(() => fail('capacity'));
       const timer = setTimeout(() => fail('timeout'), input.timeout);
       const stopTimer = input.stopped ? setInterval(() => { if (input.stopped()) fail(null); }, 25) : undefined;
-      child.on('error', () => { clearTimeout(timer); clearTimeout(gateTimer); clearInterval(stopTimer); resolve({ code: null, limited: true, localLimit: null, stdout: '', stdoutBytes: new Uint8Array() }); });
+      let settleTimer, settled = false;
+      child.on('error', () => { clearTimeout(timer); clearTimeout(gateTimer); clearInterval(stopTimer); clearTimeout(settleTimer); resolve({ code: null, limited: true, localLimit: null, stdout: '', stdoutBytes: new Uint8Array() }); });
       child.stdin.on('error', () => fail(null));
       child.stdout.on('data', chunk => {
         size += chunk.length;
         if (size > input.maxBytes) fail('size'); else if (!limited) chunks.push(chunk);
       });
-      child.on('close', (code, signal) => {
-        clearTimeout(timer); clearTimeout(gateTimer); clearInterval(stopTimer);
+      const finalize = (code, signal, stdoutHeld) => {
+        if (settled) return;
+        settled = true;
+        clearTimeout(timer); clearTimeout(gateTimer); clearInterval(stopTimer); clearTimeout(settleTimer);
         lease.running = false;
+        // The stdout stream never ended; drop it so the owner holds no half-open read of a leaked descendant.
+        if (stdoutHeld) try { child.stdout.destroy(); } catch { /* already gone */ }
         if (lease.limit) { limited = true; localLimit = lease.limit; chunks = []; }
         else if (signal === 'SIGXCPU' && !limited) {
           limited = true; localLimit = 'cpu'; chunks = [];
@@ -656,7 +676,15 @@ export function createResourceOwner(initialCeilings = RESOURCE_CEILINGS) {
         };
         if (lease.pid) cleanupTree(lease).then(done, () => done({ leaked: 0, unresolved: true }));
         else done({ leaked: 0, unresolved: false });
-      });
+      };
+      // The ordinary settlement: the output stream ended because nothing outside the launch holds it.
+      child.on('close', (code, signal) => finalize(code, signal, false));
+      // The launch process exited but its output stream has not ended yet. The owner settles when it does
+      // ('close'), but never waits past EXIT_SETTLE_MS: a descendant that detached holding the stdout open
+      // (an escaped or suspended helper) would otherwise keep 'close' from ever firing, so the owner
+      // force-settles itself and its cleanup then ends every member it can reach. A helper inside the
+      // launch is never the owner's only way to finish.
+      child.on('exit', (code, signal) => { if (!settled) settleTimer = setTimeout(() => finalize(code, signal, true), EXIT_SETTLE_MS); });
       child.stdin.end(input.stdin, 'utf8');
     });
   }

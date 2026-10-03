@@ -1,10 +1,11 @@
 // One native tool call, executed out of the loop's process (Rule 115, Part Thirteen §9 in docs/17-harness-adapters). The loop
 // launches this source through the host resource owner (memory, process, CPU and handle ceilings; its stop and deadline end the
-// launch, and the sweeper below ends every other process of the sandbox) inside the native sandbox, so every open, link and path resolution below is checked by the kernel at the moment it
+// launch) inside the native sandbox, so every open, link and path resolution below is checked by the kernel at the moment it
 // happens: a path the hook admitted that later turns into a link out of the scratch volume is refused (EPERM), and a blocking
 // open (a FIFO without a writer) blocks only this worker, never the loop. It reads one request ({tool, input, workspace, sweep})
-// on stdin and writes one JSON result on stdout. Before running the tool it starts the sweeper (SWEEPER below), so whatever ends
-// this worker, its own exit or the resource owner's kill, every process left in its sandbox is ended. Errors are results, not throws. Uses builtins only: the sandbox reads no repository.
+// on stdin and writes one JSON result on stdout. Before running the tool it starts the sweeper (SWEEPER below), the best-effort
+// catcher for a descendant that left the owner's every join; the owner settles and cleans up independently of it, and ends the
+// sweeper itself by its recorded pid if the workload suspended it. Errors are results, not throws. Uses builtins only: the sandbox reads no repository.
 import { spawn } from 'node:child_process';
 import { globSync, lstatSync, mkdirSync, readdirSync, readFileSync, realpathSync, statSync, writeFileSync } from 'node:fs';
 import { dirname, join, matchesGlob, relative, resolve, sep } from 'node:path';
@@ -31,15 +32,21 @@ function walkFiles(base, limit = 5000) {
  * The sweeper: the sandbox is the one identity every descendant of this worker inherits and cannot leave (not by a new group,
  * a new parent or another working directory), and the profile lets a process signal only its own sandbox instance. So the
  * sweeper waits for this worker to end (the end of the pipe on its fd 3; the second read returns only then), writes the loop's
- * marker, and signals every process of the sandbox, itself included (`kill -9 -1`). It holds this worker's stdout, so the
- * owner's launch completes only after the sweep has run. Its launching shell exits at once, so it has no parent in the launch,
- * its own group and the root as its working directory: the owner's kill of the launch on a ceiling, a deadline or the stop
- * never reaches it before it has swept. (The pipe is fd 3, not stdin: a background job's stdin is /dev/null, and node closes a
- * child's stdin when that child exits.)
+ * marker, and signals every process of the sandbox, itself included (`kill -9 -1`) — the residual catcher for a descendant the
+ * owner's joins miss. It is not the owner's stop or settlement mechanism: the owner settles on the worker's exit regardless, so
+ * a sweeper the workload suspended (`kill -STOP` of its own sandbox) before it ran cannot stall the launch. Such a suspended
+ * sweeper has itself escaped every one of the owner's census joins (its own session, the root as its working directory, its
+ * parent gone), so the owner ends it by the pid it recorded beside the marker — the one process the census cannot reach. (The
+ * pipe is fd 3, not stdin: a background job's stdin is /dev/null, and node closes a child's stdin when that child exits.)
  */
-const SWEEPER = 'read -r marker <&3; read -r rest <&3; : >"$marker"; kill -9 -1';
+// The launcher shell reads the marker line, backgrounds the sweep (the same subshell as always: it waits for this worker to end
+// on fd 3, writes the marker, then `kill -9 -1` ends every process of the sandbox, itself included), and records the sweep
+// subshell's own pid (`$!`) beside the marker — so the owner, outside this sandbox, can end that one process by its exact pid if
+// the workload suspended it before it ran. The launcher then exits; the backgrounded subshell keeps fd 3 open until this worker
+// ends, so the owner's kill of the launch's group never reaches it before it has swept.
+const SWEEPER = 'read -r m <&3; (read -r rest <&3; : >"$m"; kill -9 -1) & echo "$!" > "$m.pid"';
 function startSweeper(marker) {
-  const sweeper = spawn('/bin/sh', ['-c', `cd / && (${SWEEPER}) &`], { detached: true, env: { PATH: '/usr/bin:/bin' },
+  const sweeper = spawn('/bin/sh', ['-c', `cd / && ${SWEEPER}`], { detached: true, env: { PATH: '/usr/bin:/bin' },
     stdio: ['ignore', 'inherit', 'ignore', 'pipe'] });
   sweeper.stdio[3].on('error', () => {});
   sweeper.stdio[3].write(`${marker}\n`);
