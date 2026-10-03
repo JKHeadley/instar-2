@@ -1120,7 +1120,7 @@ export interface PacketDrop { kind: string; source: string; reason: string }
  * every consumer, and no SecretRef exists to spend. Optional: older rows carry none. */
 export type IntakeCustody = { state: 'stored'; arrival: string; capture: string; secrets: string[] } | { state: 'failed' };
 export interface Turn { id: string; update: number; text: string; raw: string; accepted: boolean; at: number; thread?: number; editOf?: string; replaces?: string; custody?: IntakeCustody; answer?: string;
-  /** Part Thirteen §9: the latest scoped-tool trace of this turn's answer (bounded), read by its reply review. */
+  /** Part Thirteen §9: the scoped-tool calls of every attempt of this turn's answer, in order (bounded), read by its reply review. */
   toolAttempts?: ToolAttempt[];
   /** Calls the turn made beyond `toolAttempts` (the review bound); the review is told its excerpt is incomplete. */
   toolAttemptsOmitted?: number;
@@ -1728,8 +1728,8 @@ export const declaredObligations = (view: JournalView, id: string, now: number) 
     .map(({ id: blocker, note }) => ({ id: blocker, kind: note.kind, claim: note.claim, avenues: note.avenues,
       constraint: note.constraint, outsideAction: note.outsideAction })), SETTLED_REVIEW_BYTES) : [];
   // Part Thirteen §9: the capability read follows the route the answer's LATEST attempt ran on (a format re-ask or
-  // replacement refused to text reads no tools). A recorded tool trace stays as the turn's history of attempts, the
-  // only tool calls it made, whatever route its final call took.
+  // replacement refused to text reads no tools). Every recorded tool trace stays as the turn's history of attempts, the
+  // only tool calls it made across all of them, whatever route its final call took.
   const toolAttempts = turn?.toolAttempts;
   return { blocker: turn?.answerBlocker ?? turn?.revision?.blocker ?? null, settled, loops: turn?.answerLoops ?? [],
     ...(turn?.answerRejected ? { rejected: turn.answerRejected } : {}), capabilities: previewCapabilities(turn?.toolRouted === true),
@@ -2646,9 +2646,12 @@ function projectToolTurn(view: JournalView, row: Extract<JournalRecord, { kind: 
   const admitted = row.calls.filter(call => call.decision === 'allow').length;
   const turn = view.turns.get(row.id);
   if (turn) {
-    turn.toolAttempts = row.calls.slice(0, TOOL_ATTEMPTS_REVIEWED).map(call => ({ n: call.n, tool: String(call.tool),
-      decision: String(call.decision), input: attemptExcerpt(String(call.input)), result: call.result === null ? null : attemptExcerpt(String(call.result)) }));
-    turn.toolAttemptsOmitted = row.calls.length - turn.toolAttempts.length;
+    // Every attempt's calls accumulate in order (a format re-ask's second tool attempt does not erase the first's):
+    // the excerpt keeps the first calls up to the bound and counts every later one as omitted (Rules 45, 58, 84).
+    const shown = turn.toolAttempts ?? [], room = Math.max(0, TOOL_ATTEMPTS_REVIEWED - shown.length);
+    turn.toolAttempts = [...shown, ...row.calls.slice(0, room).map(call => ({ n: call.n, tool: String(call.tool),
+      decision: String(call.decision), input: attemptExcerpt(String(call.input)), result: call.result === null ? null : attemptExcerpt(String(call.result)) }))];
+    turn.toolAttemptsOmitted = (turn.toolAttemptsOmitted ?? 0) + row.calls.length - Math.min(room, row.calls.length);
   }
   view.toolTurns = { ...stats, toolCalls: stats.toolCalls + admitted, toolRefusals: stats.toolRefusals + row.calls.length - admitted,
     inconsistent: stats.inconsistent + Number(!row.consistent), open: stats.open.filter(item => item !== key) };

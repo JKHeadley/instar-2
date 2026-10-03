@@ -1062,6 +1062,41 @@ it('re-reads the tool route for a format re-ask or timeout replacement after a t
   }
 });
 
+it('keeps an earlier tool attempt\'s calls when a later attempt traces, so the review never reads a retry as the whole turn (cint-L39 review, must-fix 1)', async () => {
+  // [first attempt calls, second attempt calls] -> shown, omitted. The reviewer's shape: three admitted calls, then a
+  // format re-ask on tools that made none. Its neighbour overflows the bound across the two attempts.
+  for (const [first, second] of [[3, 0], [6, 6]] as const) {
+    const root = origin();
+    try {
+      const w = world(root);
+      await w.say('Run the check and tell me what you tried.');
+      const id = w.journal.view.order[0]!.id;
+      const calls = (attempt: number, count: number) => Array.from({ length: count }, (_, i) => ({ n: i + 1, tool: 'Bash',
+        input: `echo ${attempt}-${i + 1}`, decision: 'allow', reason: 'sandboxed', result: `R${attempt}-${i + 1}` }));
+      for (const [attempt, count] of [[0, first], [1, second]] as const) {
+        w.journal.append({ kind: 'tool-turn', phase: 'reserved', id, attempt, calls: 1, at: w.clock.now });
+        w.journal.append({ kind: 'tool-turn', phase: 'trace', id, attempt, consistent: true, workspaceBytes: 0, at: w.clock.now, calls: calls(attempt, count) });
+      }
+      const check = (view: typeof w.journal.view) => {
+        const attempts = declaredObligations(view, id, w.clock.now).toolAttempts as { meaning: string; calls: { result: string | null }[]; omitted?: number };
+        const total = first + second, shown = Math.min(total, TOOL_ATTEMPTS_REVIEWED);
+        expect(attempts.calls.map(call => call.result)).toEqual([...calls(0, first), ...calls(1, second)].slice(0, shown).map(call => call.result));
+        if (total <= TOOL_ATTEMPTS_REVIEWED) {
+          expect(attempts).toMatchObject({ meaning: TOOL_ATTEMPTS_MEANING });
+          expect(attempts.omitted).toBeUndefined();
+        } else {
+          expect(attempts).toMatchObject({ meaning: TOOL_ATTEMPTS_PARTIAL_MEANING, omitted: total - shown });
+        }
+      };
+      check(w.journal.view);
+      w.journal.close();
+      const reopened = openPreviewJournal(w.path, key);
+      check(reopened.view);
+      reopened.close();
+    } finally { rmSync(root, { recursive: true, force: true }); }
+  }
+});
+
 it('tells the reply review when its tool-call excerpt is incomplete, so a result from an omitted call is not read as unsupported (review round 2, finding 2)', async () => {
   for (const count of [TOOL_ATTEMPTS_REVIEWED, TOOL_ATTEMPTS_REVIEWED + 1]) {
     const root = origin();
