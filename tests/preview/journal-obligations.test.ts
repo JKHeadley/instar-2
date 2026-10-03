@@ -87,7 +87,7 @@ function world(root: string, options: { maxBytes?: number; maxCalls?: number; an
         return JSON.stringify({ summary: 'Earlier turns covered a locker code and plans.', people: [], commitments, closed: [] });
       }
       // A turn whose own tool call the effect doorway refused, as the live tool turn records it (Part Twelve §3).
-      if (input.question === DOORWAY) {
+      if (input.question.startsWith(DOORWAY)) {
         const verdict = admitEffect({ effect: 'tool:unsandboxed' }, DEFAULT_EFFECT_POLICY, SINGLE_MACHINE_PROFILE.operations);
         journal.append({ kind: 'tool-turn', phase: 'reserved', id: input.id, attempt: 0, calls: 1, at: clock.now });
         journal.append({ kind: 'tool-turn', phase: 'trace', id: input.id, attempt: 0, consistent: true, workspaceBytes: 0, at: clock.now,
@@ -1174,4 +1174,25 @@ it('a long answer keeps its own effect refusal; a follow-up report that no longe
     expect(w.sent[2]).not.toContain('Effect doorway');
     w.journal.close();
   } finally { rmSync(root, { recursive: true, force: true }); }
+});
+
+it('reserving room for an effect refusal shortens only the model body, never a runner refusal after it (Rule 42; Part Twelve §3)', async () => {
+  // Astra cint-L42 MUST-FIX 1: a rejected standing instruction's correction must survive beside the effect refusal.
+  for (const effect of [false, true]) {
+    const root = origin();
+    try {
+      const w = world(root, { answer: () => ({ reply: `I saved your standing instruction. ${'x'.repeat(3200)}`,
+        directives: [{ quote: 'Always call me Alexander.' }] }) });
+      await w.say(effect ? `${DOORWAY} Always call me Alex.` : 'Always call me Alex.');
+      expect(openDirectives(w.journal.view)).toHaveLength(0);
+      expect(w.sent).toHaveLength(1);
+      expect(w.sent[0]).toContain('I could not record that standing instruction exactly, so I have not saved it.');
+      expect(Buffer.byteLength(w.sent[0]!)).toBeLessThanOrEqual(3600);
+      if (effect) {
+        expect(w.sent[0]).toMatch(/x…  ?I could not record that standing instruction exactly/u);
+        expect(w.sent[0]).toMatch(/Please restate it\.\n\nEffect doorway: a tool:unsandboxed step was refused/u);
+      } else expect(w.sent[0]).not.toContain('Effect doorway');
+      w.journal.close();
+    } finally { rmSync(root, { recursive: true, force: true }); }
+  }
 });

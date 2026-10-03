@@ -6906,10 +6906,14 @@ export function createJournalWorker(journal: ReturnType<typeof openPreviewJourna
             // Rule 3 (plan #362): a reply written to introduce a request the runner could not read would announce one
             // that does not exist, so the fixed line replaces it; the runner's own lines below still follow. It is also
             // the safe answer an invalid date keeps, so a string reply never loses the refusal (Rule 42).
-            if (unreadAction && text.trim()) { text = OPERATOR_ACTION_UNREAD; separatedAnswer = OPERATOR_ACTION_UNREAD; }
+            // Rule 42: `body` is the answer the model wrote; every runner-authored outcome line is appended after it,
+            // so only `body` may be shortened to make room for this turn's effect refusal below.
+            let body = text.trim();
+            if (unreadAction && text.trim()) { text = OPERATOR_ACTION_UNREAD; separatedAnswer = OPERATOR_ACTION_UNREAD; body = ''; }
             if (invalidDate && !invalidMemory) {
               // Legacy reply strings can mix an answer with an unchecked save claim.
               // Only the separated answer is safe to keep when validation rejects the date.
+              body = separatedAnswer?.trim() ?? '';
               text = `${separatedAnswer?.trim() ?? ''} I could not verify the date you gave. Please restate it; I have not saved a dated item.`.trim();
             } else if (!invalidMemory && dated?.length) {
               const receipt = dated.map((item, index) => (item.day
@@ -6955,17 +6959,21 @@ export function createJournalWorker(journal: ReturnType<typeof openPreviewJourna
             if (obligations.invalidDirective) text = `${text.trim()} I could not record that standing instruction exactly, so I have not saved it. Please restate it.`;
             else if (obligations.directivesFull) text = `${text.trim()} I have not saved that standing instruction: the ones I already hold fill the space I keep for them in every answer. Tell me which one is done or replaced, and I will save this one.`;
             else for (const item of obligations.directives ?? []) text = `${text.trim()} Standing instruction saved until you say it is done or replace it: "${item.quote}".`;
-            if (invalidUndo) { text = 'I could not undo that memory change. Only the most recent change within ten minutes can be undone.';
+            if (invalidUndo) { text = 'I could not undo that memory change. Only the most recent change within ten minutes can be undone.'; body = '';
               memory = []; dated = []; undo = undefined; invalidMemory = false; }
             // Rules 8, 56, 100: at most one due reminder line rides the same answer; a spent key is never offered again.
             // Part Twelve §3, Rule 42: this answer's own effect refusal is offered for this turn only, so it is never
-            // optional. Its room is reserved first: the answer body is shortened (marked with …) to keep it, and an
-            // optional follow-up report rides only whole in the space left, otherwise it stays pending for a later answer.
+            // optional. Its room is reserved first: only the model's answer body is shortened (marked with …) to keep it,
+            // never the runner's own outcome lines after it, and an optional follow-up report rides only whole in the
+            // space left, otherwise it stays pending for a later answer.
             const replying = Boolean(text.trim()) && fromOperator(turn) && !probe && !turn.requestedAction;
             const next = replying ? openReplyNotices(journal.view.order, ports.replyNotices?.(turn.id) ?? [], turn.id)[0] : undefined;
             const reserved = next?.key.startsWith('effect:') ? Buffer.byteLength(next.line) + 2 : 0;
-            if (reserved && Buffer.byteLength(text) + reserved > 3500)
-              text = clip(text.trimEnd(), 3500 - reserved - Buffer.byteLength('…'));
+            if (reserved && Buffer.byteLength(text) + reserved > 3500) {
+              const whole = text.trim(), outcome = body && whole.startsWith(body) ? whole.slice(body.length) : undefined;
+              const room = 3500 - reserved - Buffer.byteLength(outcome ?? '') - Buffer.byteLength('…');
+              text = outcome !== undefined && room > 0 ? `${clip(body, room)}${outcome}` : clip(text.trimEnd(), 3500 - reserved - Buffer.byteLength('…'));
+            }
             // Rules 8, 92: completed obligation work rides the operator's next answer, the only send the grant allows.
             // A result another unsent answer already carries is not repeated in this one.
             const reports: string[] = [], carried = new Set(journal.view.order.filter(item => item.id !== turn.id
