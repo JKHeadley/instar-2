@@ -1,6 +1,6 @@
 // Build 4: every accepted obligation stays owned until deliberately settled (Rules 6, 8, 20-23, 46, 55, 64, 68, 83, 93, 99, 103).
 import { expect, it } from 'vitest';
-import { chmodSync, mkdtempSync, readFileSync, realpathSync, rmSync } from 'node:fs';
+import { chmodSync, mkdirSync, mkdtempSync, readFileSync, realpathSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { spawnSync } from 'node:child_process';
 import { join } from 'node:path';
@@ -8,7 +8,7 @@ import { createJournalWorker, openPreviewJournal, openBlockers, openDirectives, 
   LOOP_REVISIT_MS, BLOCKER_RECHECK_MAX_MS, DIRECTIVE_SHARE, OBLIGATION_WORK_QUESTION, OBLIGATION_WORK_QUESTION_TOOLS, previewCapabilities,
   TOOL_ATTEMPTS_MEANING, TOOL_ATTEMPTS_PARTIAL_MEANING, TOOL_ATTEMPTS_REVIEWED } from './journal-test-worker.js';
 // @ts-expect-error The runner side stays plain JavaScript.
-import { toolPacketFits, toolTurnFits } from './tool-turn.mjs';
+import { runToolTurn, toolPacketFits, toolTurnFits } from './tool-turn.mjs';
 import { SUBSCRIPTION_TOOL_LIMITS } from '../../src/assembly/production-provider.js';
 // @ts-expect-error Plain JavaScript.
 import { toolTrace } from './tool-admission.mjs';
@@ -989,6 +989,46 @@ it('names tools in the packet exactly when its dispatch, after the base call is 
       expect(seen).toEqual([{ packet: expected ? 'as listed' : 'none', dispatch: expected }]);
       w.journal.close();
     } finally { rmSync(root, { recursive: true, force: true }); }
+  }
+});
+
+it('re-reads the tool route for a format re-ask after a tool turn, so its packet and the review name the route its call actually took (review round 3)', async () => {
+  // Through the real worker and the real tool turn: the first call runs with tools and returns a malformed Decision;
+  // the re-ask has room for tools at a cap of 16 calls and not at 10, where it answers text-only.
+  for (const cap of [10, 16]) {
+    const root = mkdtempSync(join(tmpdir(), 'selfdesc-retry-'));
+    const now = 1790000000000;
+    const journal = openPreviewJournal(join(root, 'journal.encrypted'), new Uint8Array(32).fill(23), {
+      kind: 'genesis', bot: '12345678', chat: '7654321', operator: '7654321', grant: 'grant:preview',
+      configurationDigest: 'sha256:offline', expires: 9999999999999, maxCalls: cap,
+      maxReplies: 10, maxTurns: 10, maxBytes: 32768, cursor: 0 });
+    const seen: { packet: string; actual: string }[] = [];
+    try {
+      const worker = createJournalWorker(journal, {
+        now: () => now, stopped: () => false, timeZone: 'UTC', prepareModel: input => input.context,
+        toolRoute: () => toolPacketFits(journal.view),
+        model: async input => {
+          let actual = '';
+          const result = await runToolTurn({ journal, root, id: input.id, prepared: input.prepared,
+            promptLimit: 32768, deniedRoots: [root], operations: [], now: () => now, redactText: (s: string) => s,
+            scratch: (turn: string) => { const vol = join(turn, 'vol'); mkdirSync(vol); return vol; }, detach: () => true,
+            fallback: async () => { actual = 'none'; return { result: 'A short answer.' }; },
+            invoke: async () => { actual = 'as listed'; return seen.length === 0 ? { state: 'complete', failureClass: 'malformed' } : 'A short answer.'; } });
+          seen.push({ packet: (JSON.parse(input.context) as { capabilities: { externalTools: string } }).capabilities.externalTools, actual });
+          return result.result;
+        }, send: async () => 1, checkOutbound: () => {} });
+      worker.intake([{ update_id: 1, message: { chat: { id: 7654321, type: 'private' }, from: { id: 7654321 },
+        date: Math.floor(now / 1000), text: 'What tools can you use now?' } }]);
+      await worker.drain();
+      const final = cap === 10 ? 'none' : 'as listed';
+      expect(seen).toEqual([{ packet: 'as listed', actual: 'as listed' }, { packet: final, actual: final }]);
+      expect(declaredObligations(journal.view, journal.view.order[0]!.id, now).capabilities.externalTools).toBe(final);
+      // Replay keeps the same read.
+      journal.close();
+      const reopened = openPreviewJournal(join(root, 'journal.encrypted'), new Uint8Array(32).fill(23));
+      expect(declaredObligations(reopened.view, reopened.view.order[0]!.id, now).capabilities.externalTools).toBe(final);
+      reopened.close();
+    } finally { try { journal.close(); } catch { /* closed */ } rmSync(root, { recursive: true, force: true }); }
   }
 });
 

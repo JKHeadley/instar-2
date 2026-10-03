@@ -1106,6 +1106,8 @@ export interface Turn { id: string; update: number; text: string; raw: string; a
   toolAttempts?: ToolAttempt[];
   /** Calls the turn made beyond `toolAttempts` (the review bound); the review is told its excerpt is incomplete. */
   toolAttemptsOmitted?: number;
+  /** Part Thirteen §9: whether this turn's latest answer attempt ran on the scoped-tool route (reserved) or was refused to text. */
+  toolRouted?: boolean;
   /** Rules 28/29: the session writer verified at intake (operator person or scheduler system). */
   writer?: WriterRecord;
   reserved: boolean; prompt?: string; recallHits?: number; channelRecallHits?: number; packetDropped?: PacketDrop[]; packetLimit?: number; grounding?: ReplyGrounding; failureClass?: ModelFailureClass; modelState?: 'complete' | 'rejected' | 'uncertain'; noticeDueAt?: number; noticeClass?: 'unknown-answer' | 'too-long-input'; intent?: string; intentBody?: string; sent?: number; sentAt?: number; held?: string; heldSince?: number; heldNoticeIntent?: string; heldNoticeSent?: number; heldNoticeSentAt?: number; memoryPending?: true; memoryUndecided?: true; datedPending?: true;
@@ -1700,12 +1702,12 @@ export const declaredObligations = (view: JournalView, id: string, now: number) 
   const settled = turn ? recentWithin(openBlockers(view).filter(({ note }) => note.source !== id && note.recheckAt > now)
     .map(({ id: blocker, note }) => ({ id: blocker, kind: note.kind, claim: note.claim, avenues: note.avenues,
       constraint: note.constraint, outsideAction: note.outsideAction })), SETTLED_REVIEW_BYTES) : [];
-  // Part Thirteen §9: the capability read follows the route the answer actually ran on. A recorded tool trace means the
-  // scoped-tool route ran, and its calls are the answer's only attempts; with none (the text-only route, or a tool turn
-  // refused to it) the no-tools read stands.
+  // Part Thirteen §9: the capability read follows the route the answer's LATEST attempt ran on (a format re-ask or
+  // replacement refused to text reads no tools). A recorded tool trace stays as the turn's history of attempts, the
+  // only tool calls it made, whatever route its final call took.
   const toolAttempts = turn?.toolAttempts;
   return { blocker: turn?.answerBlocker ?? turn?.revision?.blocker ?? null, settled, loops: turn?.answerLoops ?? [],
-    ...(turn?.answerRejected ? { rejected: turn.answerRejected } : {}), capabilities: previewCapabilities(toolAttempts !== undefined),
+    ...(turn?.answerRejected ? { rejected: turn.answerRejected } : {}), capabilities: previewCapabilities(turn?.toolRouted === true),
     ...(toolAttempts ? { toolAttempts: turn?.toolAttemptsOmitted
       ? { meaning: TOOL_ATTEMPTS_PARTIAL_MEANING, calls: toolAttempts, omitted: turn.toolAttemptsOmitted }
       : { meaning: TOOL_ATTEMPTS_MEANING, calls: toolAttempts } } : {}) };
@@ -2593,6 +2595,9 @@ function projectToolTurn(view: JournalView, row: Extract<JournalRecord, { kind: 
   const stats = view.toolTurns ?? { invocations: 0, reservedCalls: 0, refusedCap: 0, toolCalls: 0, toolRefusals: 0, inconsistent: 0, open: [] };
   if (!boundedText(row.id, 1, 256)) throw Error('preview journal: tool turn id');
   const key = row.phase === 'refused' ? '' : `${row.id}#${String(row.attempt)}`;
+  // The latest attempt's route is the turn's current capability; an earlier trace stays as history (Rules 78, 84).
+  const routed = view.turns.get(row.id);
+  if (routed && row.phase !== 'trace') routed.toolRouted = row.phase === 'reserved';
   if (row.phase === 'reserved') {
     if (!Number.isSafeInteger(row.attempt) || row.attempt < 0 || !Number.isSafeInteger(row.calls) || row.calls < 0
       || view.calls + row.calls > view.limits.maxCalls || stats.open.includes(key)) throw Error('preview journal: tool turn reservation or cap');
@@ -6318,10 +6323,20 @@ export function createJournalWorker(journal: ReturnType<typeof openPreviewJourna
           // once more with a runner-authored format reminder in the packet (never in the operator's message),
           // reserved against the same call cap and only while not stopped; a second miss is refused as before.
           // Returns false when the re-ask's outcome is unknown (its reservation then stays UNKNOWN).
+          // Part Thirteen §9 (Rules 78, 84): a re-ask or replacement reuses this packet, but an earlier tool turn may have
+          // reserved the allowance its own tools would need. Its capability entries are re-read for the call about to run
+          // (its base call not yet reserved, as at preparation), so the packet never claims tools its call will not get.
+          const routedContext = (value: string): string => {
+            const packet = JSON.parse(value) as Record<string, unknown>;
+            if (!('capabilities' in packet)) return value;
+            const tools = ports.toolRoute?.(turn.id) === true;
+            return JSON.stringify({ ...packet, obligationDecision: tools ? OBLIGATION_DECISION_TOOLS : OBLIGATION_DECISION,
+              governingConstraints: governingConstraints(tools), capabilities: previewCapabilities(tools) });
+          };
           const formatReask = async (given: Answer): Promise<Answer | false> => {
             if (typeof given === 'string' || !('failureClass' in given) || given.state !== 'complete'
               || given.failureClass !== 'malformed' || turn.answerRetried) return given;
-            const retryContext = withFormatReminder(context, ANSWER_FORMAT_REMINDER);
+            const retryContext = routedContext(withFormatReminder(context, ANSWER_FORMAT_REMINDER));
             let retryPrepared: string | undefined, preparable = true;
             if (prepared !== undefined) try { retryPrepared = ports.prepareModel?.({ question, context: retryContext, id: turn.id }); }
             catch { preparable = false; }
@@ -6342,10 +6357,16 @@ export function createJournalWorker(journal: ReturnType<typeof openPreviewJourna
             if (typeof given === 'string' || !('state' in given) || given.state !== 'uncertain' || turn.answerReplaced
               || !timedOutCall(journal.view, turn.id) || halted()
               || journal.view.calls >= journal.view.limits.maxCalls - (ports.replyCheck ? 1 : 0)) return given;
+            const replaceContext = routedContext(context);
+            let replacePrepared = prepared;
+            if (replaceContext !== context && prepared !== undefined) {
+              try { replacePrepared = ports.prepareModel?.({ question, context: replaceContext, id: turn.id }); } catch { return given; }
+            }
             journal.append({ kind: 'answer-replace', id: turn.id, state: 'uncertain',
               ...('usage' in given && given.usage ? { usage: given.usage } : {}), latencyMs: duration(answerStarted),
               maxInputTokens: journal.view.limits.maxBytes, maxOutputTokens: subscriptionOutputMaximum, at: ports.now() }); gate();
-            try { return await ports.model({ question, context, id: turn.id, ...(prepared === undefined ? {} : { prepared }) }); }
+            try { return await ports.model({ question, context: replaceContext, id: turn.id,
+              ...(replacePrepared === undefined ? {} : { prepared: replacePrepared }) }); }
             catch { return false; }
           };
           /** One answer call's settled result: a timed-out call replaced once, then a format miss re-asked once. */
