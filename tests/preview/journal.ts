@@ -6966,6 +6966,10 @@ export function createJournalWorker(journal: ReturnType<typeof openPreviewJourna
             const notices: ReplyNotice[] = [];
             if (text.trim() && fromOperator(turn) && !probe && !turn.requestedAction) {
               const next = openReplyNotices(journal.view.order, ports.replyNotices?.(turn.id) ?? [], turn.id)[0];
+              // Part Twelve §3, Rule 42: this answer's own effect refusal is offered for this turn only, so it is never
+              // optional: the answer body is shortened (marked with …) to keep room for it in the one send.
+              if (next?.key.startsWith('effect:') && Buffer.byteLength(text) + Buffer.byteLength(next.line) + 2 > 3500)
+                text = clip(text.trimEnd(), 3500 - Buffer.byteLength(next.line) - 2 - Buffer.byteLength('…'));
               if (next && Buffer.byteLength(text) + Buffer.byteLength(next.line) + 2 <= 3500) {
                 text = `${text.trimEnd()}\n\n${next.line}`; notices.push(next);
               }

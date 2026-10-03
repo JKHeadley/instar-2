@@ -272,7 +272,7 @@ it('one tool turn on a scratch root: an ordinary write is admitted with no doorw
     .toThrow(/effect doorway decision/u);
 });
 
-it('the worker carries this answer\'s own refused effect below it, once, and status counts it (journal-agent replyNotices wiring)', async () => {
+async function refusalWorker(reply: string) {
   const { createJournalWorker, openPreviewJournal: openWorkerJournal } = await import('./journal-test-worker.js');
   const root = dir('effect-worker-'), sent: string[] = [];
   const journal = openWorkerJournal(join(root, 'journal.encrypted'), new Uint8Array(32).fill(9), { kind: 'genesis', bot: '12345678', chat: '7654321',
@@ -294,7 +294,7 @@ it('the worker carries this answer\'s own refused effect below it, once, and sta
           calls: [{ n: 1, tool: 'Bash', input: '{"dangerouslyDisableSandbox":true}', decision: 'deny', reason: verdict.reason, kind: 'unsandboxed',
             doorway: { effect: verdict.effect, tests: verdict.tests, disposition: verdict.disposition, admits: verdict.admits }, result: null }] });
       }
-      return JSON.stringify({ reply: 'I could not run that step.', memory: [] });
+      return JSON.stringify({ reply, memory: [] });
     },
     send: async input => { sent.push(input.text); return sent.length; }, checkOutbound: () => {} });
   let next = 1;
@@ -302,6 +302,11 @@ it('the worker carries this answer\'s own refused effect below it, once, and sta
     worker.intake([{ update_id: next++, message: { chat: { id: 7654321, type: 'private' }, from: { id: 7654321 }, text, date: Math.floor(T0 / 1000) } }]);
     await worker.drain();
   };
+  return { journal, sent, say };
+}
+
+it('the worker carries this answer\'s own refused effect below it, once, and status counts it (journal-agent replyNotices wiring)', async () => {
+  const { journal, sent, say } = await refusalWorker('I could not run that step.');
   await say('Run echo outside-sandbox without the sandbox.');
   expect(sent).toHaveLength(1);
   expect(sent[0]).toMatch(/I could not run that step\.\n\nEffect doorway: a tool:unsandboxed step was refused, because it cannot be undone by the agent alone/u);
@@ -310,4 +315,17 @@ it('the worker carries this answer\'s own refused effect below it, once, and sta
   await say('Thanks.');
   expect(sent).toHaveLength(2);
   expect(sent[1]).not.toContain('Effect doorway');
+});
+
+it('a long answer is shortened to keep its own refused effect in the one send (Part Twelve §3, Rule 42)', async () => {
+  const { journal, sent, say } = await refusalWorker(`Here is the answer. ${'x'.repeat(3300)}`);
+  await say('Run echo outside-sandbox without the sandbox.');
+  expect(sent).toHaveLength(1);
+  expect(sent[0]).toMatch(/^PREVIEW — Here is the answer\. x+…\n\nEffect doorway: a tool:unsandboxed step was refused/u);
+  expect(journal.view.effectDoorway).toMatchObject({ proposed: 1, refused: 1 });
+  // A long answer with no refusal of its own is sent whole, with nothing appended.
+  await say('Thanks.');
+  expect(sent).toHaveLength(2);
+  expect(sent[1]).not.toContain('Effect doorway');
+  expect(sent[1]).not.toContain('…');
 });
