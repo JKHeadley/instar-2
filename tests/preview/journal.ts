@@ -40,8 +40,9 @@ import { outboundSigner, settleSendOutcome, type OutboundProvenance, type Outbou
 import { retrospectivePlan, retrospectivePopulation, validateRetrospective, replyContextDigest, RETRO_OVER_CAP_REASON, type RetroPass, type RetroSiblingEvidence } from './retrospective.js';
 import { openReplyNotices, validAnswerNotices, type ReplyNotice } from './credential-reminders.js';
 import { admitChatYes, chatBinding, explicitYesStatus, operatorRefusalText, operatorRequestText, operatorResultText, operatorReviewBodyText, operatorReviewRequestText,
-  operatorRequestTarget, operatorYesAuthority, parseOperatorAction, proposeOperatorRequest, wellFormedRequest, OPERATOR_YES_AUTHORITY, type ChatCandidate,
-  type ExplicitYesStatus, type OperatorActionProposal, type OperatorRequest, type ProposalState } from './operator-yes.js';
+  operatorRequestTarget, operatorYesAuthority, parseOperatorAction, proposeOperatorRequest, proposeRetractRequest, wellFormedRequest, OPERATOR_REQUEST_MS,
+  OPERATOR_YES_AUTHORITY, RETRACT_UPDATES_LIMIT, validRetractUpdates, type ChatCandidate, type ExplicitYesStatus, type OperatorActionProposal, type OperatorRequest, type ProposalState,
+  type RetractRendering } from './operator-yes.js';
 import { chatYesReference, reviewYesReference, SHARED_ACCESS_NOTE } from '../../src/operator/explicit-yes.js';
 import type { ExplicitYesInstallation, SharedAccessDisclosure } from '../../src/operator/explicit-yes.js';
 import { reviewLink, type ReviewYesSource } from './review-yes-source.js';
@@ -414,7 +415,7 @@ export interface ApprovalRequest { id: string; action: 'raise-caps' | 'stop'; ba
   challenge?: SurfaceChallenge }
 /** One proposed operator request: the reply (or limited answer) that carried it, the Telegram message it was sent
  * as, and what the operator's messages decided. A later request supersedes an undecided earlier one. */
-export interface OperatorRequestState { request: OperatorRequest; carrier: string; via: 'reply' | 'limited'; thread: number | null;
+export interface OperatorRequestState { request: OperatorRequest; carrier: string; via: 'reply' | 'limited' | 'retract'; thread: number | null;
   message?: number; superseded?: true;
   /** `action`: recorded under one-open-request-per-action (plan #371): a later request supersedes only an undecided request of
    * the same action. Absent on legacy rows, whose later request superseded every undecided one. */
@@ -923,6 +924,14 @@ export type JournalRecord =
   /** The fixed completion line for a review-approved request (Rule 89: infrastructure speaks as infrastructure). */
   | { kind: 'operator-result-intent'; request: string; text: string; chat: string; thread?: number; provenance?: OutboundProvenance; at: number }
   | { kind: 'operator-result-sent'; request: string; message: number; at: number }
+  /** Plan #389, Rule 35: the desk's proposed retraction, rendered and signed as infrastructure (Rule 89) before it is sent.
+   * Only the host's propose-retract command supplies one; no model output and no chat text can. */
+  | { kind: 'retract-request'; request: OperatorRequest; carrier: string; text: string; chat: string; review?: OperatorReviewRef;
+      provenance?: OutboundProvenance; at: number }
+  | { kind: 'retract-request-sent'; request: string; message: number; at: number }
+  /** The approved retraction, applied once at its journal position under the consumed explicit yes. From here on the listed
+   * turns are never the operator's in any store; every earlier row stays and replays unchanged (Rule 7: hidden, never deleted). */
+  | { kind: 'retract'; request: string; updates: number[]; reason: string; authority: string; at: number }
   | { kind: 'channel-item'; item: ChannelItem; at: number }
   | { kind: 'channel-source-cursor'; source: 'telegram' | 'slack'; cursor: ChannelSourceCursor; reset?: true; at: number }
   | { kind: 'channel-source-error'; source: 'telegram' | 'slack'; error: string | null; at: number }
@@ -1194,6 +1203,12 @@ export interface JournalView { genesis: Extract<JournalRecord, {kind:'genesis'}>
   expires: number; expiryAuthority: string | null;
   /** Rules 79, 82, 98: every operator request a sent reply or limited answer proposed, with its explicit-yes verdicts. */
   operatorRequests: OperatorRequestState[];
+  /** Plan #389, Rule 35: turn ids an applied retraction says were never the operator's. Absent until one applies, so the
+   * projection digest of every journal without one is unchanged. */
+  retracted?: string[];
+  /** Indexes into `summaries` of the rolling summaries a retraction retired: each was built over a retracted turn. They stay
+   * for audit and their settled memory requests stay settled; no packet or later summary reads their text. */
+  retiredSummaries?: number[];
   capReports: Set<string>;
   /** Rule 11 index-only work: every offer of a source (one entry per offer, so a source appears up to
    * `INDEX_ATTEMPT_LIMIT` times), terms admitted, the reservation awaiting its result, and earlier
@@ -1757,8 +1772,19 @@ export const recentWithin = <T>(items: readonly T[], bytes: number): T[] => {
 };
 const boundedText = (value: unknown, min: number, max: number): value is string =>
   typeof value === 'string' && value.trim() === value && value.length >= min && Buffer.byteLength(value) <= max;
-/** An open directive: admitted and not yet completed or superseded. Time never closes one (Rule 93). */
-export const openDirectives = (view: JournalView) => view.directives.flatMap((note, id) => note.closedBy ? [] : [{ id, note }]);
+const retractedSets = new WeakMap<readonly string[], ReadonlySet<string>>();
+/** Plan #389, Rule 35: whether an applied retraction says this turn was never the operator's. Every store reads its
+ * items through this (directly, or through `probeTurn`), so a retracted turn is treated exactly like a desk probe. */
+export const retractedTurn = (view: Pick<JournalView, 'retracted'>, id: string): boolean => {
+  const list = view.retracted;
+  if (list === undefined) return false;
+  let set = retractedSets.get(list);
+  if (set === undefined) { set = new Set(list); retractedSets.set(list, set); }
+  return set.has(id);
+};
+/** An open directive: admitted and not yet completed or superseded. Time never closes one (Rule 93). A directive
+ * whose source turn was retracted was never the operator's, so it is not open (plan #389). */
+export const openDirectives = (view: JournalView) => view.directives.flatMap((note, id) => note.closedBy || retractedTurn(view, note.source) ? [] : [{ id, note }]);
 /** What one settled blocker covers, stated once for the answer packet so the reviewer's own
  * DECLARED_OBLIGATIONS_GUIDE ("restating a settled limit ... needs no new record") and this cannot drift apart.
  * Live 969389730 the writer leaned on a record of a DIFFERENT action (looking up a bill, not paying it), so the
@@ -1772,7 +1798,7 @@ export const openDirectives = (view: JournalView) => view.directives.flatMap((no
 export const SETTLED_BLOCKER_SCOPE = 'A settled blocker covers only its own claim: a final claim about a different action or matter needs its own blocker record, but the same limit asked again about another instance of that same action — another bill, booking, item, date or reference number — is that same claim and needs no new record.';
 /** A settled blocker stays open until a recorded recheck clears it (Rule 99). */
 export const openBlockers = (view: JournalView) => view.blockers.flatMap((note, id) =>
-  note.rechecks.at(-1)?.outcome === 'cleared' ? [] : [{ id, note }]);
+  note.rechecks.at(-1)?.outcome === 'cleared' || retractedTurn(view, note.source) ? [] : [{ id, note }]);
 const validLoops = (loops: unknown): loops is ReplyLoop[] => Array.isArray(loops) && loops.length <= 5
   && new Set(loops.map(loop => (loop as ReplyLoop)?.quote)).size === loops.length
   && loops.every(loop => loop && (loop.kind === 'deferral' || loop.kind === 'judgment' || loop.kind === 'promise')
@@ -2137,7 +2163,7 @@ const operatorTurn = (view: JournalView, turn: Turn) => operatorWriter(view, tur
  * never read back as operator memory: history, recall, summaries, week recaps, inventory,
  * search, open questions, digests, preferences and dated items all skip it. */
 export const PROBE_TAG = /^(?:Build|Renewal|Canary) check [0-9a-f]{7,40}: /u;
-export const probeTurn = (view: JournalView, turn: Turn) => PROBE_TAG.test(turn.text) && operatorTurn(view, turn);
+export const probeTurn = (view: JournalView, turn: Turn) => retractedTurn(view, turn.id) || PROBE_TAG.test(turn.text) && operatorTurn(view, turn);
 /** The turns a packet grounds on in order, through `through`: every accepted turn except a desk probe and an edited
  * message's replaced original, after the rolling summary when there is one (Rule 96). The packet and its audit both read this. */
 export const groundingHistory = (view: JournalView, through: number, summaryThrough?: number) => {
@@ -2377,6 +2403,8 @@ function sendTarget(view: JournalView, target: string): { sent: number | undefin
     return turn?.limited?.lead === key ? { sent: turn.limitedSent } : undefined; }
   if (kind === 'operator-result') { const notice = view.operatorRequests.find(item => item.request.id === key)?.resultNotice;
     return notice ? { sent: notice.sent } : undefined; }
+  if (kind === 'retract-request') { const state = view.operatorRequests.find(item => item.request.id === key && item.via === 'retract');
+    return state ? { sent: state.message } : undefined; }
   return undefined;
 }
 /** Rule 42: the one target-outcome lookup every view reads. A receipt is acceptance; a recorded
@@ -2459,7 +2487,8 @@ function checkModelCall(row: ModelCallRecord): void {
     throw Error('preview journal: model call record refused');
 }
 /** The exact act an outbound intent's signature covers. */
-export function outboundSubjectOf(row: Extract<JournalRecord, { kind: 'intent' | 'held-notice-intent' | 'requested-reminder-intent' | 'limited-intent' | 'operator-result-intent' }>): OutboundSubject {
+export function outboundSubjectOf(row: Extract<JournalRecord, { kind: 'intent' | 'held-notice-intent' | 'requested-reminder-intent' | 'limited-intent' | 'operator-result-intent' | 'retract-request' }>): OutboundSubject {
+  if (row.kind === 'retract-request') return { target: `retract-request:${row.request.id}`, chat: row.chat, body: row.text };
   const thread = row.thread === undefined ? {} : { thread: row.thread };
   if (row.kind === 'operator-result-intent') return { target: `operator-result:${row.request}`, chat: row.chat, ...thread, body: row.text };
   if (row.kind === 'limited-intent') return { target: `limited:${row.id}`, chat: row.chat, ...thread, body: row.text };
@@ -2481,8 +2510,10 @@ function addOperatorRequest(view: JournalView, request: OperatorRequest, carrier
     || request.issuedAt > at || request.expiresAt > view.expires || view.operatorRequests.some(item => item.request.id === request.id)
     || review !== undefined && (!/^[A-Za-z0-9_.-]+\/[A-Za-z0-9_.-]+$/u.test(review.repository)
       || !Number.isSafeInteger(review.pullRequest) || review.pullRequest <= 0 || !/^[0-9a-f]{40}$/u.test(review.head))
-    || !text.includes(review === undefined ? operatorRequestText(request, current)
-      : operatorReviewRequestText(request, current, reviewLink(review.repository, review.pullRequest)))
+    || (via === 'retract') !== (request.action === 'retract-turns')
+    || request.action === 'retract-turns' && (scope !== 'action' || retractRefusal(view, request.updates!) !== null)
+    || !text.includes(review === undefined ? operatorRequestText(request, current, retractRendering(view, request))
+      : operatorReviewRequestText(request, current, reviewLink(review.repository, review.pullRequest), retractRendering(view, request)))
     || request.action === 'raise-caps' && (['maxCalls', 'maxReplies', 'maxTurns'] as const).some(key => request.limits![key] < view.limits[key])
     || request.action === 'renew-expiry' && !(request.expires! > view.expires) || scope !== undefined && scope !== 'action')
     throw Error('preview journal: operator request refused');
@@ -2591,7 +2622,7 @@ function decideOperatorRequest(view: JournalView, turn: Turn, row: Extract<Journ
 }
 /** A caps or expiry frame written under an explicit yes applies exactly the approved request, once, at its base. */
 function applyOperatorYes(view: JournalView, authority: string, action: OperatorRequest['action'],
-  values: { limits?: OperatorRequest['limits']; expires?: number; bytesUnchanged?: boolean }): boolean {
+  values: { limits?: OperatorRequest['limits']; expires?: number; bytesUnchanged?: boolean; updates?: number[]; reason?: string }): boolean {
   const yes = OPERATOR_YES_AUTHORITY.exec(authority);
   if (!yes) return false;
   const state = view.operatorRequests.find(item => item.request.id === yes[1]);
@@ -2599,9 +2630,74 @@ function applyOperatorYes(view: JournalView, authority: string, action: Operator
     || requestBase(state) !== approvalBase(view)
     || authority !== operatorYesAuthority(state.request.id, state.approved.reference, state.approved.sharedAccess !== undefined)
     || (action === 'raise-caps' ? (['maxCalls', 'maxReplies', 'maxTurns'] as const).some(key => state.request.limits?.[key] !== values.limits?.[key]) || values.bytesUnchanged !== true
-      : state.request.expires !== values.expires)) throw Error('preview journal: operator yes application refused');
+      : action === 'retract-turns' ? JSON.stringify(state.request.updates) !== JSON.stringify(values.updates) || state.request.reason !== values.reason
+        : state.request.expires !== values.expires)) throw Error('preview journal: operator yes application refused');
   state.applied = true;
   return true;
+}
+/** Plan #389, Rule 35: why an exact retraction list cannot be retracted on this journal now, or null. Each id must be one
+ * accepted message here, not already retracted. Which turns are test traffic is the desk's evidence and the operator's
+ * approval, never a reading inside the product (Rule 10), so the product checks only that the list is exact. */
+export function retractRefusal(view: JournalView, updates: readonly number[]): string | null {
+  if (!validRetractUpdates(updates)) return `the list must hold 1 to ${RETRACT_UPDATES_LIMIT} distinct update ids in ascending order`;
+  const accepted = new Map<number, Turn>();
+  for (const turn of view.order) if (turn.accepted) accepted.set(turn.update, turn);
+  for (const update of updates) {
+    const turn = accepted.get(update);
+    if (turn === undefined) return `update ${update} is not an accepted message in this journal`;
+    if (retractedTurn(view, turn.id)) return `update ${update} is already retracted`;
+  }
+  return null;
+}
+/** The first and last listed message as the operator reads them in the request: redacted, one line, clipped. */
+export function retractRendering(view: JournalView, request: Pick<OperatorRequest, 'action' | 'updates'>): RetractRendering | undefined {
+  if (request.action !== 'retract-turns' || !request.updates?.length) return undefined;
+  const shown = (update: number) => {
+    const text = redact(view.order.find(turn => turn.accepted && turn.update === update)?.text ?? '').text.replace(/\s+/gu, ' ').trim();
+    return { update, text: [...text].length > 80 ? `${[...text].slice(0, 79).join('')}…` : text };
+  };
+  return { first: shown(request.updates[0]!), last: shown(request.updates.at(-1)!) };
+}
+/** The desk's proposal as the host hands it to the runner (plan #389): the exact list, the stated reason, and when it was
+ * proposed. Its carrier names this one proposal, so a re-proposal is a new request and a re-read is never a second one. */
+export interface RetractProposal { updates: number[]; reason: string; proposedAt: number }
+export const retractCarrier = (proposal: RetractProposal) =>
+  `retract:${createHash('sha256').update(JSON.stringify([proposal.updates, proposal.reason, proposal.proposedAt])).digest('hex').slice(0, 16)}`;
+/** The hours a retraction request may reach the operator's phone, in the trial's zone: never at night (plan #389). */
+export const OPERATOR_HOURS = Object.freeze({ start: 9, end: 21 });
+export const withinOperatorHours = (at: number, zone: string) => {
+  const hour = localParts(at, zone).hour;
+  return hour >= OPERATOR_HOURS.start && hour < OPERATOR_HOURS.end;
+};
+/** Rolling summaries a retraction has not retired: the only ones a packet, a later summary or a frontier reads. */
+export const liveSummaries = (view: JournalView) => view.retiredSummaries === undefined ? view.summaries
+  : view.summaries.filter((_, index) => !view.retiredSummaries!.includes(index));
+/** Plan #389: an approved retraction applied at its journal position, once, under its consumed explicit yes. From here
+ * every store treats the listed turns as never the operator's: they are probe-like for history, recall, summaries and
+ * questions; what they created (directives, blockers, commitments, people notes) is no longer open or offered; the
+ * memory and dated changes they triggered or sourced leave the active projection; and every rolling summary built over
+ * one of them is retired, so the next pass rebuilds from the turns that remain. Nothing is deleted from the journal. */
+function applyRetract(view: JournalView, row: Extract<JournalRecord, { kind: 'retract' }>): void {
+  const state = view.operatorRequests.find(item => item.request.id === row.request && item.via === 'retract');
+  if (!state || typeof row.reason !== 'string' || retractRefusal(view, row.updates) !== null
+    || !applyOperatorYes(view, row.authority, 'retract-turns', { updates: row.updates, reason: row.reason }))
+    throw Error('preview journal: retract refused');
+  const listed = new Set(row.updates);
+  const ids = view.order.filter(turn => turn.accepted && listed.has(turn.update)).map(turn => turn.id);
+  view.retracted = [...view.retracted ?? [], ...ids];
+  const gone = (id: string | undefined) => id !== undefined && retractedTurn(view, id);
+  const touched = (change: MemoryChange) => gone(change.source) || gone(change.trigger);
+  for (const record of view.changeHistory) if (record.kind === 'memory' ? touched(record.value as MemoryChange)
+    : gone((record.value as DatedItem).source)) record.undone = true;
+  view.memory = view.memory.filter(change => !touched(change));
+  view.dated = view.dated.filter(item => !gone(item.source));
+  view.personAttributes = view.personAttributes.filter(item => !gone(item.source));
+  view.questions = view.questions.filter(item => !gone(item.source));
+  view.corrections = view.corrections.filter(id => !gone(id));
+  view.conflicts = view.conflicts.filter(item => !gone(item.askedBy) && !gone(item.first.source) && !gone(item.second.source));
+  const first = Math.min(...row.updates);
+  const retired = view.summaries.flatMap((summary, index) => summary.through >= first ? [index] : []);
+  if (retired.length) view.retiredSummaries = [...new Set([...view.retiredSummaries ?? [], ...retired])].sort((a, b) => a - b);
 }
 export interface ToolTraceCall { n: number; tool: string; input: string; decision: string; reason: string; kind?: string; result: string | null }
 /** One recorded tool call as the reply review sees it: what was called, whether it was admitted, and what it returned. */
@@ -2711,6 +2807,18 @@ function project(view: JournalView, row: JournalRecord, system?: SystemCheck, ad
     }
     return;
   }
+  if (row.kind === 'retract-request') {
+    if (row.provenance === undefined || row.chat !== view.genesis.chat || !row.carrier.startsWith('retract:'))
+      throw Error('preview journal: operator request refused');
+    addOperatorRequest(view, row.request, row.carrier, 'retract', null, row.text, row.at, row.review, 'action'); return;
+  }
+  if (row.kind === 'retract-request-sent') {
+    const state = view.operatorRequests.find(item => item.request.id === row.request && item.via === 'retract');
+    if (!state || state.message !== undefined || !Number.isSafeInteger(row.message) || row.message <= 0)
+      throw Error('preview journal: retract request receipt order');
+    state.message = row.message; return;
+  }
+  if (row.kind === 'retract') { applyRetract(view, row); return; }
   if (row.kind === 'operator-review') { decideOperatorReview(view, row); return; }
   if (row.kind === 'operator-review-closed') { closeOperatorReview(view, row); return; }
   if (row.kind === 'operator-result-intent') { operatorResultIntent(view, row); return; }
@@ -2897,7 +3005,7 @@ function project(view: JournalView, row: JournalRecord, system?: SystemCheck, ad
     view.sourceStop = row.oldStop; view.cursor = view.genesis.importCursor!; view.imported = true; return;
   }
   if (row.kind === 'summary-reserve') {
-    if (view.summaryReservations.has(row.through) || view.summaries.some(item => item.through === row.through)
+    if (view.summaryReservations.has(row.through) || liveSummaries(view).some(item => item.through === row.through)
       || summaryFormatFailures(view, row.through) >= 2) throw Error('preview journal: repeated summary reservation');
     reserveTokens(view, `summary:${String(row.through)}`, 'summary', row.maxInputTokens ?? view.limits.maxBytes,
       row.maxOutputTokens ?? subscriptionOutputMaximum);
@@ -3047,7 +3155,7 @@ function project(view: JournalView, row: JournalRecord, system?: SystemCheck, ad
     view.indexConcepts.push(...row.concepts); view.indexOpen = null; return;
   }
   if (row.kind === 'summary') {
-    if (!view.summaryReservations.has(row.through) || view.summaries.some(item => item.through === row.through))
+    if (!view.summaryReservations.has(row.through) || liveSummaries(view).some(item => item.through === row.through))
       throw Error('preview journal: summary without reservation');
     if (view.summaryRequired.has(row.through) && (!view.summaryCandidates.has(row.through)
       || !view.summaryChecks.get(row.through)?.some(check => check.verdict === 'pass')))
@@ -3620,7 +3728,7 @@ function project(view: JournalView, row: JournalRecord, system?: SystemCheck, ad
         || row.undo.summaryPassages !== undefined && (!Array.isArray(row.undo.summaryPassages)
           || row.undo.summaryPassages.length > 5 || row.undo.summaryPassages.some(passage =>
             typeof passage !== 'string' || passage.length < 8 || Buffer.byteLength(passage) > 1000
-            || !view.summaries.at(-1)?.text.includes(passage)))
+            || !liveSummaries(view).at(-1)?.text.includes(passage)))
         || row.at < latest.at || row.at - latest.at > 600_000)
         throw Error('preview journal: invalid undo');
       latest.undone = true;
@@ -3897,8 +4005,8 @@ export function openPreviewJournal(path: string, key: Uint8Array, initial?: Extr
         && (row.kind === 'intake' || row.kind === 'action-due') && testOriginWriter(row.writer))
         throw Error('preview journal: test-origin identity refused by a production store');
       if (row.kind === 'genesis' && row.origin !== undefined && row.origin !== 'test') throw Error('preview journal: invalid genesis origin');
-      if ((row.kind === 'intent' || row.kind === 'held-notice-intent' || row.kind === 'limited-intent' || row.kind === 'operator-result-intent')
-        && row.provenance !== undefined && !verifyOutbound(row.provenance, outboundSubjectOf(row)))
+      if ((row.kind === 'intent' || row.kind === 'held-notice-intent' || row.kind === 'limited-intent' || row.kind === 'operator-result-intent'
+        || row.kind === 'retract-request') && row.provenance !== undefined && !verifyOutbound(row.provenance, outboundSubjectOf(row)))
         throw Error('preview journal: outbound provenance refused');
       // Checked before the durable write: a record its own projection would refuse must never reach the file.
       if (row.kind === 'retro-rerun-reserve') checkRerunReserve(view!, row);
@@ -4271,7 +4379,9 @@ export interface PreviewPorts {
     installation: ExplicitYesInstallation | (() => ExplicitYesInstallation | undefined);
     /** The GitHub review source (P-05 route), connected by the launcher with the agent's own token; absent: not connected. */
     review?: ReviewYesSource;
-    renewalActivation?(expires: number): string | null };
+    renewalActivation?(expires: number): string | null;
+    /** Plan #389: the desk's current retraction proposal, read from the root by the host (propose-retract), or none. */
+    retractProposal?(): RetractProposal | undefined };
   replyCheck?: Pick<ReplyCheckPorts, 'jev' | 'escalate' | 'elapsedMs'> & { summaryReview?(state: string, through: number): Promise<{
     verdict: 'pass' | 'violation' | 'unavailable'; latencyMs: number; retryable?: true; usage?: ModelUsage }>;
     /** The mind's one revision of an objected draft (same model envelope as review). Absent: no revision round. */
@@ -4554,7 +4664,7 @@ export function createJournalWorker(journal: ReturnType<typeof openPreviewJourna
   let activeLookup: { id: string; words: string[]; found: Turn[] } | undefined;
   /** Turns whose reply this worker sent with a spoken continuity disclosure: the current episode (Rule 110). */
   const episodeSpoken = new Set<string>();
-  const summaryFor = (through: number) => journal.view.summaries.filter(item => item.through <= through).at(-1);
+  const summaryFor = (through: number) => liveSummaries(journal.view).filter(item => item.through <= through).at(-1);
   /** Rule 110: the continuity `turn`'s reply accounts for when its context was compacted through
    * `through`. Every such reply records the account, so what it accounted for stays inspectable; the
    * `spoken` flag decides whether its sentence is also said to the operator.
@@ -5097,7 +5207,7 @@ export function createJournalWorker(journal: ReturnType<typeof openPreviewJourna
         && (text.includes(change.quote) || change.quote.includes(text)));
     for (const [id, note] of journal.view.commitments.entries()) {
       const turn = journal.view.turns.get(note.source);
-      if (note.in === 'message' && turn && !journal.view.closed.has(id)
+      if (note.in === 'message' && turn && !journal.view.closed.has(id) && !retractedTurn(journal.view, note.source)
         && !retired(note.source, note.quote)) add(note.source, note.quote, turn.update);
     }
     for (const item of [...journal.view.dated, ...pendingDated]) {
@@ -5206,7 +5316,7 @@ export function createJournalWorker(journal: ReturnType<typeof openPreviewJourna
           : 'No packet was retained for this reply.' }) };
   };
   const affectedNote = (note: { source: string; quote: string; in?: 'message' | 'reply'; sources?: { source: string; quote: string }[] }) =>
-    [note, ...note.sources ?? []].some(item => journal.view.memory.some(change => change.mode !== 'prefer' && (
+    retractedTurn(journal.view, note.source) || [note, ...note.sources ?? []].some(item => journal.view.memory.some(change => change.mode !== 'prefer' && (
       note.in === 'reply' && (item.source === change.source || change.replies?.includes(item.source))
       || change.in !== 'reply' && item.source === change.source && (change.quote.includes(item.quote) || item.quote.includes(change.quote))
       || change.mode === 'correct' && item.source === change.trigger
@@ -5643,7 +5753,8 @@ export function createJournalWorker(journal: ReturnType<typeof openPreviewJourna
       recheck: localStamp(note.recheckAt, zone).slice(0, 10), recheckDue: now >= note.recheckAt })), BLOCKER_ITEMS_BYTES);
     // Rules 79, 82, 84, 98: the request this very message answered, else the latest one still to report. Plan #371: a
     // request stays current until a later one for its action (or a legacy row, which replaced every one) replaces it.
-    const requests = question === undefined || !fromOperator(question) ? [] : journal.view.operatorRequests;
+    // A retraction is the desk's request to the operator (plan #389), never the agent's proposal: it is not shown as one.
+    const requests = question === undefined || !fromOperator(question) ? [] : journal.view.operatorRequests.filter(item => item.via !== 'retract');
     const answers = (state: OperatorRequestState) => state.approved?.turn === question!.id || state.refusals.some(item => item.turn === question!.id);
     const liveRequests = requests.filter((state, index) => !requests.slice(index + 1)
       .some(later => later.scope === undefined || later.request.action === state.request.action));
@@ -7299,6 +7410,39 @@ export function createJournalWorker(journal: ReturnType<typeof openPreviewJourna
   /** The undecided, sent requests still answerable now at the current base: at most one per action (plan #371). */
   const openOperatorRequests = (now: number) => journal.view.operatorRequests.filter(item => item.message !== undefined
     && !item.superseded && !item.approved && now <= item.request.expiresAt && requestBase(item) === approvalBase(journal.view));
+  /** Plan #389, Rule 35: the desk's retraction proposal, issued once as an exact request on the same explicit-yes route a
+   * raise uses, during operator hours only, and sent as infrastructure (Rule 89). It sends nothing else; a proposal the
+   * journal refuses, a stale one, or one outside the hours is left unsent. Only the operator's yes applies it. */
+  const issueRetractRequest = async () => {
+    const proposal = ports.explicitYes?.retractProposal?.(), view = journal.view, now = ports.now();
+    if (!proposal || journal.readOnly || view.stop !== null || proposal.proposedAt > now || now - proposal.proposedAt > OPERATOR_REQUEST_MS
+      || !withinOperatorHours(now, ports.timeZone ?? 'America/Los_Angeles')) return;
+    const carrier = retractCarrier(proposal);
+    if (view.operatorRequests.some(item => item.carrier === carrier) || retractRefusal(view, proposal.updates) !== null) return;
+    const status = yesStatus(), source = ports.explicitYes!.review;
+    const viaReview = !status.chat.admissible && status.review.admissible && source !== undefined;
+    if (!status.chat.admissible && !viaReview) return;
+    const result = proposeRetractRequest({ expires: view.expires, stopped: false, grant: view.genesis.grant, base: approvalBase(view) },
+      proposal.updates, proposal.reason, carrier, now);
+    if (result.kind === 'refused') return;
+    const request = result.request, rendering = retractRendering(view, request);
+    let text = operatorRequestText(request, view, rendering), review: OperatorReviewRef | undefined;
+    if (viaReview) {
+      const issued = await source!.issue(request, operatorReviewBodyText(request, view, rendering));
+      if (issued.kind === 'refused') return;
+      review = { repository: issued.issued.repository, pullRequest: issued.issued.pullRequest, head: issued.issued.head };
+      text = operatorReviewRequestText(request, view, issued.issued.link, rendering);
+    }
+    gate();
+    try { ports.checkOutbound(text); } catch { return; }
+    const chat = journal.view.genesis.chat, target = `retract-request:${request.id}`;
+    const provenance = journal.signOutbound('infrastructure', { target, chat, body: text });
+    try { journal.append({ kind: 'retract-request', request, carrier, text, chat, ...(review ? { review } : {}), provenance, at: ports.now() }); }
+    catch { return; }
+    const outcome = await push('approval', target, provenance, { text, expectedText: text, chat, update: 0 });
+    if (outcome.kind === 'accepted') try { journal.append({ kind: 'retract-request-sent', request: request.id, message: outcome.message, at: ports.now() }); }
+    catch { /* stays UNKNOWN; never repeated */ }
+  };
   /** The raise a capped limited answer asks for with an explicit yes, when no independent surface carries it. */
   const limitedOperatorRequest = async (lead: Turn, reason: RaiseReason) => {
     const now = ports.now();
@@ -7319,6 +7463,8 @@ export function createJournalWorker(journal: ReturnType<typeof openPreviewJourna
     const authority = operatorYesAuthority(id, state.approved.reference, state.approved.sharedAccess !== undefined), at = ports.now(), request = state.request;
     try {
       if (request.action === 'raise-caps') raiseJournalCaps(journal, { ...request.limits!, authority, at });
+      else if (request.action === 'retract-turns')
+        journal.append({ kind: 'retract', request: id, updates: request.updates!, reason: request.reason!, authority, at });
       else {
         const activation = ports.explicitYes?.renewalActivation?.(request.expires!) ?? null;
         if (typeof activation === 'string' && /^sha256:[a-f0-9]{64}$/u.test(activation))
@@ -7388,7 +7534,10 @@ export function createJournalWorker(journal: ReturnType<typeof openPreviewJourna
       const issued = { requestId: state.request.id, ...state.review!, link: reviewLink(state.review!.repository, state.review!.pullRequest) };
       const observations = await source.acts(issued);
       gate();
-      const carrier = journal.view.turns.get(state.carrier);
+      // A retraction has no asking turn (the desk proposed it): the approver is the bound operator, minted from their
+      // latest verified message. The review itself is what authenticates the yes (the pinned GitHub account).
+      const carrier = journal.view.turns.get(state.carrier) ?? (state.via === 'retract'
+        ? journal.view.order.filter(turn => verifiedOperatorTurn(journal.view, turn)).at(-1) : undefined);
       let approver: VerifiedPrincipal | null = null;
       try { approver = carrier && verifiedOperatorTurn(journal.view, carrier)
         ? authenticateTelegramSender(JSON.parse(carrier.raw), ports.origin ?? 'production', carrier.at) : null; } catch { approver = null; }
@@ -8036,7 +8185,10 @@ export function createJournalWorker(journal: ReturnType<typeof openPreviewJourna
       const askedTooMuch = journal.view.summaryFormatFailures.filter(failed => failed.overCap && failed.through > previous
         && (summaryFormatFailures(journal.view, failed.through) < 2 || summaryBraking(journal.view, failed.through)));
       const overCapCeiling = Math.min(Number.MAX_SAFE_INTEGER, ...askedTooMuch.map(failed => failed.through));
-      const withBudget = pending.filter(turn => summaryFormatFailures(journal.view, turn.update) < 2 && !unknown.has(turn.update));
+      // Plan #389: a span never ends on a retracted turn. Its packet holds none of them, so a frontier stepping through the
+      // retracted turns a few at a time would spend a model call per empty span (430 of them on the audited root).
+      const withBudget = pending.filter(turn => summaryFormatFailures(journal.view, turn.update) < 2 && !unknown.has(turn.update)
+        && !retractedTurn(journal.view, turn.id));
       const shorter = withBudget.filter(turn => turn.update < overCapCeiling);
       const open = shorter.length ? shorter : withBudget.filter(turn => turn.update === overCapCeiling);
       if (pending.length && !open.length) return;
@@ -8509,7 +8661,7 @@ export function createJournalWorker(journal: ReturnType<typeof openPreviewJourna
     }
     if (stepId.startsWith('summary-failed:')) return { step: stepId, modelOutput: step.output,
       journal: { summaryRecorded: false, previousSummaryRetained: true, failureRecorded: true } };
-    const summary = journal.view.summaries.find(item => `summary:${item.through}` === stepId)!;
+    const summary = journal.view.summaries.filter(item => `summary:${item.through}` === stepId).at(-1)!;
     return { step: stepId, modelOutput: summary.text, journal: { summaryRecorded: true,
       through: summary.through, memoryChanges: summary.memory ?? [], people: summary.people ?? [],
       commitments: summary.commitments ?? [], closed: summary.closed ?? [] } };
@@ -8746,7 +8898,7 @@ export function createJournalWorker(journal: ReturnType<typeof openPreviewJourna
   /** The minimal path's own step, run by the host between polls without waiting on an ordinary drain
    * that may be blocked on a model: confirmed stops, verified raises, then limited answers (Rule 15). */
   const minimal = async () => { gate(); completeApprovals(); if (journal.view.stop !== null) return; ensureStopChallenge(); await answerLimited();
-    await pollReviewRequests(); };
+    await pollReviewRequests(); await issueRetractRequest(); };
   return { intake, drain, minimal, minimalMissing, stopPage, intakeHeld: () => intakeHeld, readAhead: () => readAhead, sendRequested, workObligations, summarizeIfNeeded, checkCoherence, gate, pollGate, pollLimit, startStepChecks, checkSteps, retrospect, probe,
 
     stop: (reason: string) => { if (reason !== 'operator') throw Error('preview: only operator stop is permanent');

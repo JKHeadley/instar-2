@@ -1,6 +1,6 @@
 /** Bounded, read-only operator review of the journal's memory projection. */
 import { redact } from '../../src/recall/redact.js';
-import type { JournalView } from './journal.js';
+import { retractedTurn, type JournalView } from './journal.js';
 
 type Action = { mode: 'correct' | 'forget' | 'prefer'; source: string; quote: string; trigger: string; replacement?: string };
 type Dated = { source: string; quote: string; when: string; day?: string; time?: string; ambiguity?: string; zone: string };
@@ -32,7 +32,8 @@ export function memoryReport(view: ExportView): string {
   };
   const lines: string[] = ['# Preview memory review', '', 'Read-only view of the encrypted journal for the bound operator. Imported sender metadata comes from an export fixture. Omitted entries remain in the journal.', ''];
   const sections: { title: string; rows: string[] }[] = [];
-  const people = view.people.filter(note => !actions.some(change => change.mode !== 'prefer' && change.source === note.source
+  // Plan #389: a people note whose source turn an approved retraction says was never the operator's is not shown.
+  const people = view.people.filter(note => !retractedTurn(view, note.source) && !actions.some(change => change.mode !== 'prefer' && change.source === note.source
     && (change.quote.includes(note.quote) || note.quote.includes(change.quote))));
   sections.push({ title: 'People notes', rows: people.map(note => {
     const turn = view.turns.get(note.source);

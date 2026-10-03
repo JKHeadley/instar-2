@@ -3199,6 +3199,28 @@ Rules 4, 14, 15, 52, 53, 77, 79, 80, 82, 86, 87, 88, 95 and 106 on the live runn
   alone only while that record is valid now for a trial end later than the journal's; otherwise it
   adds that until then the renewal stays on the host command line. A capped limited answer still carries a request only where the chat yes is
   admissible.
+- **Retracting test turns (plan #389, Rule 35).** Desk or test traffic sent through the operator's own
+  account lands in every store as theirs, and chat text from that account cannot be trusted to undo it.
+  The desk runs `journal-agent.mjs propose-retract --root R --updates-file F [--reason TEXT]` (one
+  Telegram update id per line; `#` comments allowed) during operator hours only (09:00 to 21:00 in the
+  trial's zone, `OPERATOR_HOURS`). It checks the list against a read-only open of the journal (each id one
+  accepted, not yet retracted message; a refusal prints `{"refused": reason}` and exits 1) and leaves one
+  proposal at `preview-retract-proposal.json`; it changes no journal state and sends nothing. The
+  running runner's `minimal()` issues it once (per proposal) as an exact `retract-turns` operator request
+  on the same explicit-yes route a raise uses, within an hour of the proposal and inside operator hours:
+  the operator reads the count, the first and last listed message (redacted, clipped), the reason and
+  Rule 35, and on the review route the pull request lists every id. The request is signed as
+  infrastructure (`retract-request`/`-sent` rows). A model's `operatorAction` can never name one. Only the
+  admitted yes applies it, as one `retract` row at its journal position. From that row on, `probeTurn`
+  is true for every listed turn (`retractedTurn`); directives, blockers, commitments and people notes
+  they created are not open or offered; memory and dated changes they sourced or triggered leave the
+  active projection (their change-history entries are marked undone); held questions, waiting
+  corrections and conflicts from them are dropped; and every rolling summary built over one of them is
+  retired (`retiredSummaries`, `liveSummaries`), so the next pass rebuilds from the remaining turns and
+  never ends a span on a retracted turn. Nothing is deleted (Rule 7): every earlier row replays
+  unchanged, and `status` shows `retracted {turns, retiredSummaries}` and marks retired summaries. A
+  closure that a retracted turn made of a real item (a directive superseded, a blocker cleared, a
+  commitment closed) is not reopened. Tests: `retract-turns.test.ts`.
 - **Supervised incidents (Rules 15, 88; P-14).** `scripts/host-watch.mjs` with
   `{"mode":"journal", "alerts": {"grant": "..."}}` restarts the runner after a failed exit with
   bounded backoff. After three consecutive failed restarts it records one incident episode with the
