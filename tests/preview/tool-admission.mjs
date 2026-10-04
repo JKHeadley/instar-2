@@ -175,28 +175,53 @@ export function admitToolEffect(proposal, config, now) {
 }
 
 /** The proposals a consequential (or policy-named) tool call makes at the effect doorway: the doorway's own vocabulary
- * (toolEffectProposal), each URL a Codex web call opens (by host) and its search, or `tool:<kind>` on the tool's name for
- * a tool that vocabulary does not name (sending, scheduling, a remote trigger, Monitor), which no default classifies, so
- * it is classified worst-case on every test. */
+ * (toolEffectProposal), each host a Codex web call names by URL in any of its operations (an `open`, a `find`, a click or
+ * a search alike: an explicit URL never loses its host by becoming a generic search) and, for any operation that is not a
+ * page read by URL reference, its search, or `tool:<kind>` on the tool's name for a tool that vocabulary does not name
+ * (sending, scheduling, a remote trigger, Monitor), which no default classifies, so it is classified worst-case on every test. */
 export function toolCallProposals(tool, input) {
   if (CODEX_NETWORK_READ_TOOLS.includes(tool)) {
-    const hosts = [], open = Array.isArray(input?.open) ? input.open : [];
-    let other = Object.entries(input ?? {}).some(([key, value]) => key !== 'open' && key !== 'response_length' && value !== undefined && value !== null
-      && !(Array.isArray(value) && value.length === 0));
-    for (const item of open) {
-      let host = null; try { const url = new URL(String(item?.ref_id ?? '')); host = /^https?:$/u.test(url.protocol) ? url.hostname || null : null; } catch { host = null; }
-      if (host) hosts.push(host.replace(/^\[|\]$/gu, '').slice(0, 256)); else other = true;
+    const hostOf = text => { try { const url = new URL(String(text)); return /^https?:$/u.test(url.protocol) && url.hostname
+      ? url.hostname.replace(/^\[|\]$/gu, '').slice(0, 256) : null; } catch { return null; } };
+    const urls = (value, depth = 0) => typeof value === 'string' ? [hostOf(value)].filter(Boolean)
+      : value && typeof value === 'object' && depth < 4 ? Object.values(value).flatMap(item => urls(item, depth + 1)) : [];
+    const hosts = new Set();
+    let other = false;
+    for (const [key, value] of Object.entries(input ?? {})) {
+      if (key === 'response_length' || value === undefined || value === null || (Array.isArray(value) && value.length === 0)) continue;
+      for (const item of Array.isArray(value) ? value : [value]) {
+        for (const host of urls(item)) hosts.add(host);
+        if (hostOf(item?.ref_id) === null) other = true;
+      }
     }
-    return [...hosts.map(target => ({ effect: 'tool:network', target })), ...(other || hosts.length === 0 ? [{ effect: 'tool:network', target: 'web-search' }] : [])];
+    return [...[...hosts].map(target => ({ effect: 'tool:network', target })),
+      ...(other || hosts.size === 0 ? [{ effect: 'tool:network', target: 'web-search' }] : [])];
   }
   const kind = Object.hasOwn(OUTWARD_TOOLS, tool) ? OUTWARD_TOOLS[tool] : 'unclassified';
   return [toolEffectProposal(tool, input) ?? { effect: `tool:${kind}`, target: tool.slice(0, 256) }];
 }
-/** The effect doorway's decision for one tool call: every proposal it makes must be admitted; the first refusal (else the
- * first admission) is the call's verdict. The host checkpoint's effect owner decides with this same function. */
+/** The effect doorway's decision for one tool call, the same whether one target or many: each proposal keeps its own
+ * decision (a Codex web target the effect policy does not name is an ordinary network read, as that read alone is; one it
+ * names, or any under an unreadable policy, is decided by the doorway). Any refusal refuses the call; otherwise the call is
+ * consequential when any of its targets is, carrying every test that held and every grant that admitted one, so the effect
+ * owner applies the never-twice identity to it. The host checkpoint's effect owner decides with this same function. */
 export function admitToolCallEffect(tool, input, config, now) {
-  const verdicts = toolCallProposals(tool, input).map(proposal => admitToolEffect(proposal, config, now));
-  return verdicts.find(verdict => !verdict.admitted) ?? verdicts[0];
+  const network = CODEX_NETWORK_READ_TOOLS.includes(tool);
+  const verdicts = toolCallProposals(tool, input).map(proposal => network && !policyNames(config, proposal)
+    ? { effect: proposal.effect, target: proposal.target, tests: { irreversible: false, resources: false, scope: false, policySensitive: false },
+      consequential: false, admitted: true, disposition: 'ordinary',
+      reason: `network read of ${proposal.target}: the effect policy does not name it, so it is an ordinary read; admitted` }
+    : admitToolEffect(proposal, config, now));
+  const refused = verdicts.find(verdict => !verdict.admitted);
+  if (refused || verdicts.length === 1) return refused ?? verdicts[0];
+  const held = verdicts.filter(verdict => verdict.consequential);
+  if (held.length === 0) return { ...verdicts[0], target: verdicts.map(verdict => verdict.target).join(', ').slice(0, 256),
+    reason: verdicts.map(verdict => verdict.reason).join('; ') };
+  const grants = [...new Set(held.map(verdict => verdict.grant).filter(Boolean))];
+  return { effect: held[0].effect, target: verdicts.map(verdict => verdict.target).join(', ').slice(0, 256),
+    tests: Object.fromEntries(Object.keys(held[0].tests).map(test => [test, verdicts.some(verdict => verdict.tests?.[test] === true)])),
+    consequential: true, admitted: true, disposition: held.some(verdict => verdict.disposition === 'granted') ? 'granted' : held[0].disposition,
+    ...(grants.length ? { grant: grants.join(', ') } : {}), reason: verdicts.map(verdict => verdict.reason).join('; ') };
 }
 /** A doorway verdict as the admission record carries it (Rule 41): enough for status and the answer's refusal notice. */
 export function doorwayRecord(verdict) {

@@ -13,10 +13,12 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { afterEach, expect, it } from 'vitest';
 // @ts-expect-error The hook and its decision stay plain JavaScript: the harness runs them without a loader.
-import { admitEgress, admitToolCall, admitToolEffect, egressTarget, gitAdvertisement, gitFetchRequest, gitRepository, publicAddress, shellSandboxProfile, toolShellPrefix, toolTrace, webReadHost } from './tool-admission.mjs';
+import { admitEgress, admitToolCall, admitToolCallEffect, admitToolEffect, egressTarget, gitAdvertisement, gitFetchRequest, gitRepository, publicAddress, shellSandboxProfile, toolShellPrefix, toolTrace, webReadHost } from './tool-admission.mjs';
 import { SINGLE_MACHINE_PROFILE } from './activation-authority.js';
 // @ts-expect-error The doorway stays plain JavaScript, like the hook.
 import { currentEffectPolicy } from './effect-doorway.mjs';
+// @ts-expect-error The effect owner stays plain JavaScript, like the hook.
+import { createToolEffectOwner } from './admission-gate.mjs';
 
 const HOOK = join(__dirname, 'tool-admission-hook.mjs');
 const SPIKE = join(__dirname, 'fixtures/tool-turn/spike-cab6b51d');
@@ -145,6 +147,40 @@ it('a checkpointed route sends consequential tools and delegations to its checkp
   expect(call('webrun', open, { networkReads: true, effectPolicy: sensitive })).toMatchObject({ decision: 'deny', kind: 'network',
     doorway: { effect: 'tool:network', target: '1.1.1.1', disposition: 'refused' } });
   expect(call('webrun', open, { networkReads: true, effectPolicy: unavailable })).toMatchObject({ decision: 'deny', kind: 'network' });
+  // cint-L45 round 3 (MF1): an explicit URL keeps its host whatever operation carries it; a `find` in that page is a read of
+  // it, decided exactly as its `open` is (and a search naming a URL proposes both its host and the search).
+  const find = { find: [{ ref_id: 'https://1.1.1.1/', pattern: 'test' }] };
+  expect(call('webrun', find, { ...gated, effectPolicy: sensitive })).toMatchObject({ decision: 'gate', kind: 'effect' });
+  expect(call('webrun', find, { networkReads: true, effectPolicy: sensitive })).toMatchObject({ decision: 'deny', kind: 'network',
+    doorway: { target: '1.1.1.1', disposition: 'refused' } });
+  expect(call('webrun', { find: [{ ref_id: 'https://example.com/', pattern: 'test' }] }, { ...gated, effectPolicy: sensitive }))
+    .toMatchObject({ decision: 'allow', reason: 'network read' });
+  expect(call('webrun', { search_query: [{ q: 'https://1.1.1.1/x' }] }, { ...gated, effectPolicy: sensitive })).toMatchObject({ decision: 'gate' });
+  // cint-L45 round 3 (MF2): several targets in one call keep their own decisions. A public read the policy does not name stays
+  // ordinary beside a granted sensitive one; any refused target refuses the call; a consequential target makes the whole call
+  // consequential, so the effect owner applies the never-twice identity to it.
+  const grant = (target: string) => ({ id: `g-${target}`, effect: 'tool:network', target, approves: ['scope', 'policySensitive'],
+    source: 'review-fixture', custodian: 'desk', recovery: 'remove grant' });
+  const granted = { ...sensitive, grants: [grant('1.1.1.1')] };
+  const mixed = { open: [{ ref_id: 'https://8.8.8.8/' }, { ref_id: 'https://1.1.1.1/' }] };
+  expect(call('webrun', mixed, { networkReads: true, effectPolicy: granted })).toMatchObject({ decision: 'allow', kind: 'network',
+    doorway: { disposition: 'granted', grant: 'g-1.1.1.1', tests: { policySensitive: true } } });
+  expect(admitToolCallEffect('webrun', mixed, { effectPolicy: granted }, 0)).toMatchObject({ admitted: true, consequential: true,
+    target: '8.8.8.8, 1.1.1.1', tests: { policySensitive: true, scope: false } });
+  expect(admitToolCallEffect('webrun', mixed, { effectPolicy: sensitive }, 0)).toMatchObject({ admitted: false, target: '1.1.1.1' });
+  expect(admitToolCallEffect('webrun', { open: [mixed.open[0]!] }, { effectPolicy: sensitive }, 0)).toMatchObject({ admitted: true, consequential: false });
+  expect(admitToolCallEffect('webrun', { open: [mixed.open[0]!, { ref_id: 'https://9.9.9.9/' }] }, { effectPolicy: sensitive }, 0))
+    .toMatchObject({ admitted: true, consequential: false, disposition: 'ordinary' });
+  const both = { ...sensitive, grants: [grant('1.1.1.1'), grant('8.8.8.8')] }, rows: { id: string }[] = [];
+  const owner = createToolEffectOwner({ decide: (tool: string, input: unknown) => admitToolCallEffect(tool, input, { effectPolicy: both }, 0),
+    append: (row: { id: string }) => rows.push(row), prepared: (id: string) => rows.some(row => row.id === id), stopped: () => false, now: () => 0 });
+  const parent = { id: 'edge', child: 'child' };
+  expect(owner.admit({ parent, tool: 'webrun', input: mixed, call: 'c1' })).toMatchObject({ admitted: true, doorway: { disposition: 'granted' } });
+  expect(owner.admit({ parent, tool: 'webrun', input: mixed, call: 'c2' })).toMatchObject({ admitted: false, reason: expect.stringContaining('never sent twice') });
+  // The other side: an ordinary multi-target read repeats freely (its identity includes the call).
+  const plain = { open: [{ ref_id: 'https://9.9.9.9/' }, { ref_id: 'https://8.8.4.4/' }] };
+  expect(owner.admit({ parent, tool: 'webrun', input: plain, call: 'c3' })).toMatchObject({ admitted: true });
+  expect(owner.admit({ parent, tool: 'webrun', input: plain, call: 'c4' })).toMatchObject({ admitted: true });
   // cint-L45 repair (MF3): with the step's network checkpoint attached, a confined command is pointed at it (its proxy,
   // trust root and HOME) and its profile allows exactly that loopback port.
   const egress = { port: 40003, ca: `${tmp}/egress-ca.pem`, home: `${tmp}/home`, path: '/usr/local/bin' };

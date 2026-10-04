@@ -52,8 +52,10 @@ export const CODEX_CONVERSATION_SYSTEM_PROMPT = "You are Instar, speaking with y
  * installed in the login home. Safeguards sit at checkpoints, never in removed abilities: every tool call passes the
  * runner's admission hook before dispatch (installed per turn with `-c hooks.*`, trusted for this invocation because it
  * is the runner's own reviewed script), which runs every shell command confined (`codex exec` cannot confine reads
- * itself), keeps patches in the workspace, records each subagent as a durable child edge first and passes each
- * consequential tool (an MCP tool) to the effect owner by exact operation; and every model call of the turn, its
+ * itself) with its network only through the turn's egress checkpoint, keeps patches in the workspace, records each
+ * subagent as a durable child edge first and passes each consequential or policy-named tool call (an MCP tool, a
+ * policy-sensitive read) to the effect owner, which decides it by the four tests under the operator's grants and never
+ * prepares the same consequential operation and input twice; and every model call of the turn, its
  * subagents' included, reaches the model only through the host's model-dispatch checkpoint (`codexToolHookArgs`),
  * which takes the turn's reserved allowance (`maxTurns`) before dispatch and forwards nothing past it. Separately
  * bound: only an activation naming this policy admits it. */
@@ -73,11 +75,14 @@ export const CODEX_TOOL_KINDS = Object.freeze(['command_execution', 'file_change
 export const CODEX_TOOL_ITEM_TYPES = Object.freeze(['agent_message', 'reasoning', ...CODEX_TOOL_KINDS]);
 const CODEX_TOOLS_SENTENCE = 'In this turn you have your own tools: your shell and apply_patch, live web search, subagents, and the MCP tools '
   + 'installed for you. (This overrides the capability note\'s tool line, which describes another route.) The shell and patches work '
-  + 'inside this turn\'s private, new workspace (your working directory); every shell command runs confined: no network, no reads '
-  + 'outside the workspace except the system files commands need to run, no writes outside it, no control of other processes. Use web '
-  + 'search for anything on the network. A subagent shares this turn\'s limits and must return before you answer. An MCP tool that '
-  + 'changes something outside this turn runs only when the installed profile registers that exact operation; otherwise it is refused, '
-  + `and a refusal is an answer you report, not something to route around. The whole turn, subagents included, has at most `
+  + 'inside this turn\'s private, new workspace (your working directory); every shell command runs confined: no reads outside the '
+  + 'workspace except the system files commands need to run, no writes outside it, no control of other processes, and its network '
+  + 'only through this turn\'s network checkpoint (already set up for your commands): reads such as a GET or a git fetch pass, and a '
+  + 'network write is decided by the effect doorway. Web search and opening pages are live. A subagent shares this turn\'s limits and '
+  + 'must return before you answer. A read of a host or matter the operator marked policy-sensitive, an MCP tool call, and any other '
+  + 'step that acts outside this turn pass the effect doorway: ordinary work and work the operator has granted run; a consequential '
+  + 'step without a grant is refused, and a refusal is an answer you report, not something to route around. Repeating the same '
+  + `consequential step with the same input is refused. The whole turn, subagents included, has at most `
   + `${CODEX_TOOL_LIMITS.maxTurns} model calls; a call past them is refused and the turn ends with no answer. When your answer reports `
   + 'a value a tool produced, say in reason.value which tool call, by name and order, produced it. Never claim an effect no tool '
   + 'reported, and never claim to act beyond these tools and this answer.';
@@ -91,7 +96,7 @@ export function codexToolsPolicy(model: string) {
     '--ignore-rules', '--ephemeral', '--dangerously-bypass-approvals-and-sandbox', '--dangerously-bypass-hook-trust',
     '-c', 'web_search="live"', '--model', model]),
   system: CODEX_TOOLS_SYSTEM_PROMPT,
-  admission: 'tool-admission-hook.mjs: confined shell, workspace patches, delegation as a child edge, network reads, effect owner by exact operation',
+  admission: 'tool-admission-hook.mjs: confined shell with its network through the egress checkpoint, workspace patches, delegation as a child edge, network reads under the effect policy, effect owner by the four tests and grants, never twice by exact operation',
   gate: 'admission-gate.mjs: every model call takes the turn\'s reserved allowance before dispatch',
   framing: CODEX_TOOLS_FRAMING, maxPromptBytes: CODEX_CONVERSATION_MAX_PROMPT_BYTES, limits: CODEX_TOOL_LIMITS,
   path: '/usr/bin:/bin', retries: 0, maxTokens: CODEX_MAX_OUTPUT_TOKENS * CODEX_TOOL_LIMITS.maxTurns, timeout: CODEX_TOOL_LIMITS.timeout,
