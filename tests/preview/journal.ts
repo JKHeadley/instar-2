@@ -7430,18 +7430,16 @@ export function createJournalWorker(journal: ReturnType<typeof openPreviewJourna
             // at send (reply-parts.ts), so no result waits on a count or a one-message bound (live cint-L49 D1c: a cap of
             // two kept the deferral's result back). The text stays inside the route's answer bound, the size every split
             // reply is derived to carry; a result past it stays pending for the next answer, never dropped. A result
-            // another unsent answer already carries is not repeated. Each obligation keeps its own subject line: only a
-            // result with the same text from the same originating turn (one deferral recorded from both the message
-            // and the reply) settles under the line already attached, never one from different work that happens to
-            // read the same ("Yes." to two questions).
-            const reports: string[] = [], attached: { source: string; text: string }[] = [], carried = new Set(journal.view.order
+            // another unsent answer already carries is not repeated. Each obligation keeps its own subject line: a shared
+            // originating turn and the same result text do not prove the same work (one message can open two loops
+            // that are both answered "Yes."), so no obligation settles under another's line.
+            const reports: string[] = [], carried = new Set(journal.view.order
               .filter(item => item.id !== turn.id && item.intent === undefined).flatMap(item => item.answerReports ?? []));
             if (replying)
               for (const item of pendingReports(journal.view).filter(entry => !carried.has(entry.key))) {
-                if (attached.some(entry => entry.source === item.source && entry.text === item.text)) { reports.push(item.key); continue; }
                 const line = `\n\nFollow-up on "${clip(clean(redact(item.subject).text, true), 160)}": ${item.text}`;
                 if (Buffer.byteLength(text) + Buffer.byteLength(line) > MAX_ANSWER_BYTES) break;
-                text = `${text.trimEnd()}${line}`; reports.push(item.key); attached.push(item);
+                text = `${text.trimEnd()}${line}`; reports.push(item.key);
               }
             // The claims are decided one last time against the reply exactly as it is written, by the same
             // rule the replay reads it back with; anything the final text no longer carries is counted refused.

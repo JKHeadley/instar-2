@@ -115,6 +115,26 @@ it('distinct obligations with the same result text each keep their own subject l
   } finally { rmSync(root, { recursive: true, force: true }); }
 }, 60_000);
 
+it('two loops opened by one message keep both subjects even when both answers read the same (Rules 8, 46)', async () => {
+  const root = realpathSync(mkdtempSync(join(tmpdir(), 'preview-deliver-same-turn-')));
+  try {
+    const MONDAY = 'I\'ll check whether Monday is free and report later.', FRIDAY = 'I\'ll check whether Friday is free and report later.';
+    const w = world(root, () => JSON.stringify({ outcome: 'report', report: 'Yes.' }));
+    await w.say('Check whether Monday and Friday are free; answer both later.', JSON.stringify({ reply: `${MONDAY} ${FRIDAY}`, memory: [],
+      openLoops: [MONDAY, FRIDAY].map(quote => ({ kind: 'deferral', quote, waitsOn: 'nothing' })) }));
+    w.clock.now += REVISIT + MINUTE; await w.tick();
+    expect(loopHealth(w.journal.view, w.clock.now).awaitingDelivery).toBe(2);
+    expect(w.journal.view.commitments[0]!.source).toBe(w.journal.view.commitments[1]!.source);
+    const sends = w.sent.length;
+    await w.say('hi', JSON.stringify({ reply: 'Hi!', memory: [] }));
+    const reply = w.sent.slice(sends).join('\n');
+    expect(reply).toContain(`Follow-up on "${MONDAY}": Yes.`);
+    expect(reply).toContain(`Follow-up on "${FRIDAY}": Yes.`);
+    expect(loopHealth(w.journal.view, w.clock.now).awaitingDelivery).toBe(0);
+    w.journal.close();
+  } finally { rmSync(root, { recursive: true, force: true }); }
+}, 60_000);
+
 it('delivers every finished result on the next message, in order, and tells the answering model they are finished', async () => {
   const root = realpathSync(mkdtempSync(join(tmpdir(), 'preview-deliver-all-')));
   try {
