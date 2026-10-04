@@ -7,7 +7,7 @@ import { existsSync, readFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { cutoverHarness } from './journal-cutover-harness.mjs';
 import { offlineProfile, successiveWorld } from './successive-fixture.js';
-import { CONCURRENT_WORK_ROWS, concurrentWorkItem, latestOwnedLaunch } from './journal.js';
+import { CONCURRENT_WORK_ROWS, concurrentWorkItem, latestOwnedLaunch, ownedProcessOf } from './journal.js';
 
 const HOUR = 3_600_000, NOW = Date.UTC(2026, 8, 28, 12, 0);
 const CONVERSATION = 'telegram/bot-8820318295/chat-7812716706';
@@ -71,6 +71,59 @@ it('is bounded in rows and bytes however many owned runners exist', () => {
   expect(value.scope).toEqual({ runnerRootsRead: 50, truncated: true, unreadable: 3 });
   expect(Buffer.byteLength(JSON.stringify(value))).toBeLessThanOrEqual(2600);
   expect(value.rows.every(row => row.owner.length <= 120 && (row.endReason ?? '').length <= 120)).toBe(true);
+});
+
+// Recorded shapes (rule 106): group P on live cint-L47, results P-proofroom2-20261004-042523. runners.txt (taken
+// 11:25:25Z) held the three runner processes below; the packet built at the 11:26:36Z send showed
+// justin-20261003-1046 running from its run log's launch at 11:26:12Z (pid 73747), whose exit row says it lived
+// until 11:57:50Z. The view was right; the snapshot predated that relaunch.
+const LANES = '/Users/dabombstudio/.instar/agents/echo/.instar/lanes/preview-trial-root';
+const RECORDED_RUNNERS = [
+  `node --no-warnings --loader ./scripts/slice-ts-loader.mjs tests/preview/journal-agent.mjs run --root ${LANES}/proofroom1-q-20261004-033411 --bot-id 8994258214 --model claude-sonnet-5`,
+  `/usr/local/bin/node --no-warnings --loader ./scripts/slice-ts-loader.mjs /Users/dabombstudio/.instar/agents/echo/.worktrees/runner-frozen-cint-L47-4aae6c18/tests/preview/journal-agent.mjs run --root ${LANES}/proofroom2-ps-20261004-022506 --bot-id 8989505249 --model claude-sonnet-5`,
+  `node --no-warnings --loader ./scripts/slice-ts-loader.mjs tests/preview/journal-agent.mjs run --root ${LANES}/canary-copy-20261004-042456 --bot-id 8820318295 --model claude-sonnet-5\n`,
+];
+
+it('a launch is running only while its pid is the runner of exactly that root (recorded runner command lines)', () => {
+  expect(RECORDED_RUNNERS.map((command, index) => ownedProcessOf(command,
+    `${LANES}/${['proofroom1-q-20261004-033411', 'proofroom2-ps-20261004-022506', 'canary-copy-20261004-042456'][index]}`)))
+    .toEqual(['present', 'present', 'present']);
+  // A gone pid, or one reused by something that is not a runner, is absent: the row is stale, never running.
+  expect(ownedProcessOf(null, `${LANES}/proofroom2-ps-20261004-022506`)).toBe('absent');
+  expect(ownedProcessOf('/usr/sbin/cfprefsd agent', `${LANES}/proofroom2-ps-20261004-022506`)).toBe('absent');
+  expect(ownedProcessOf('', `${LANES}/proofroom2-ps-20261004-022506`)).toBe('absent');
+  // A live runner of another root never vouches for this one: neither a different root nor one this root's path
+  // is a prefix of (the old substring test read `--root <root>-copy` as present for `<root>`).
+  expect(ownedProcessOf(RECORDED_RUNNERS[1], `${LANES}/proofroom2-ps-20261004-02250`)).toBe('unknown');
+  expect(ownedProcessOf(RECORDED_RUNNERS[1], `${LANES}/proofroom2-ps-20261004-022506`.slice(0, -1))).toBe('unknown');
+  expect(ownedProcessOf(RECORDED_RUNNERS[0], `${LANES}/proofroom2-ps-20261004-022506`)).toBe('unknown');
+  expect(ownedProcessOf(RECORDED_RUNNERS[1].replace(`${LANES}/proofroom2-ps-20261004-022506`, `${LANES}/proofroom2-ps-20261004-022506-copy`),
+    `${LANES}/proofroom2-ps-20261004-022506`)).toBe('unknown');
+});
+
+it('replays the recorded P114b packet: a runner relaunched after a process snapshot is running at the send, stopped after its exit', () => {
+  const at = { launch: 1791113172756, send: 1791113196254, exit: 1791115070742 };
+  const log = [
+    { v: 1, launch: 1791109817000, pid: 11377, work: { conversation: 'telegram/bot-8820318295/chat-7812716706' } },
+    { v: 1, launch: 1791109817000, exit: 1791113095000, reason: 'paused by signal SIGHUP' },
+    { v: 1, launch: at.launch, pid: 73747, work: { conversation: 'telegram/bot-8820318295/chat-7812716706' } },
+    { v: 1, launch: at.launch, poll: 'failed', at: at.launch + 1000 },
+  ].map(row => JSON.stringify(row)).join('\n');
+  const you = { owner: 'proofroom2-ps-20261004-022506', launch: Date.UTC(2026, 9, 4, 10, 31), conversation: 'telegram/bot-8989505249/chat-7812716706' };
+  const view = (text, process) => concurrentWorkItem({ now: at.send, current: you, scanned: 1, truncated: false, unreadable: 0,
+    others: [{ ...latestOwnedLaunch('justin-20261003-1046', text), process }] });
+  const justin = latestOwnedLaunch('justin-20261003-1046', log);
+  expect(justin).toEqual({ owner: 'justin-20261003-1046', launch: at.launch, pid: 73747, conversation: 'telegram/bot-8820318295/chat-7812716706' });
+  // At the send its pid was that root's runner: running, as the recorded packet showed.
+  expect(rowOf(view(log, 'present'), 'justin-20261003-1046')).toMatchObject({ state: 'running', launched: '2026-10-04T11:26Z' });
+  // Had it been killed without an exit row, the same log reads stale; it is never running without its process.
+  expect(rowOf(view(log, 'absent'), 'justin-20261003-1046').state).toBe('stale');
+  expect(rowOf(view(log, 'unknown'), 'justin-20261003-1046').state).toBe('unknown');
+  // Its recorded exit row (11:57:50Z) makes it stopped whatever the process reads.
+  const ended = `${log}\n${JSON.stringify({ v: 1, launch: at.launch, exit: at.exit, reason: 'paused by signal SIGHUP' })}`;
+  expect(rowOf(concurrentWorkItem({ now: at.exit + 60_000, current: you, scanned: 1, truncated: false, unreadable: 0,
+    others: [{ ...latestOwnedLaunch('justin-20261003-1046', ended), process: 'present' }] }), 'justin-20261003-1046'))
+    .toMatchObject({ state: 'stopped', endReason: 'paused by signal SIGHUP' });
 });
 
 const message = (world, id, text) => ({ update_id: id, message: { message_id: 100 + id,
