@@ -2151,8 +2151,15 @@ function applyIntentObligations(view: JournalView, turn: Turn, row: Extract<Jour
   if (row.loops !== undefined) {
     if (!validLoops(row.loops) || !row.loops.length || row.loops.some(loop => !row.text.includes(loop.quote)
       || !turn.answerLoops?.some(proposed => same(proposed, loop)))) throw Error('preview journal: invalid reply loop');
-    for (const loop of row.loops) if (!view.commitments.some(note => note.in === 'reply' && note.source === turn.id && note.quote === loop.quote))
-      view.commitments.push({ in: 'reply', source: turn.id, quote: loop.quote, owner: 'agent', waitsOn: loop.waitsOn, loop: loop.kind });
+    // A sentence the answer declared both as a promise and as a loop is one commitment: an undated promise note written
+    // just before takes the loop's declared wait, so `nothing` schedules its work (plan #461) instead of being dropped.
+    // A dated promise keeps the date its own words name.
+    for (const loop of row.loops) {
+      const note = view.commitments.find(item => item.in === 'reply' && item.source === turn.id && item.quote === loop.quote);
+      if (!note) view.commitments.push({ in: 'reply', source: turn.id, quote: loop.quote, owner: 'agent', waitsOn: loop.waitsOn, loop: loop.kind });
+      else if (note.agentPromise && !note.agentPromise.due && note.waitsOn === undefined)
+        Object.assign(note, { owner: 'agent', waitsOn: loop.waitsOn, loop: loop.kind });
+    }
   }
   if (row.blocker !== undefined) {
     // The answer frame validated its shape and range; the send must still quote it and precede its recheck.
@@ -5990,7 +5997,8 @@ export function createJournalWorker(journal: ReturnType<typeof openPreviewJourna
         items: items.map(item => {
           const note = journal.view.commitments[item.id]!;
           return { ...item, quote: clean(item.quote, true, turn.id),
-            ...(note.agentPromise ? { owner: note.agentPromise.owner, waitsOn: note.agentPromise.waitsOn,
+            ...(note.agentPromise ? { owner: note.agentPromise.owner, waitsOn: note.waitsOn ?? note.agentPromise.waitsOn,
+              ...(note.loop ? { loop: note.loop } : {}),
               ...(note.agentPromise.due ? { due: { when: note.agentPromise.due.when,
                 state: dueState(note.agentPromise.due, ports.now()),
                 ...(note.agentPromise.due.day ? { day: note.agentPromise.due.day } : {}),
