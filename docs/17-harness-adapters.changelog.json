@@ -1,5 +1,21 @@
 [
   {
+    "revision": 20,
+    "date": "2026-10-03",
+    "status": "draft",
+    "cause": {
+      "kind": "draft",
+      "note": "Unit w4-toolsclass (plan row #449; observer #159) with its review round 1 repair: the standing full-tools grant covers a checkpointed policy class. No constitution change."
+    },
+    "changes": [
+      {
+        "what": "§9 tools-on-by-default: the operator's standing full-tools grant may name the policy class full-tools-checkpointed-v1 instead of one build's policy digest; a tools policy is in the class only when the build's own generated per-turn settings and arguments keep every checkpoint (admission hook on every call, confined shell whose read exceptions stay in the workspace and reviewed runtime list, the Codex provider routed through the turn's model checkpoint, no skip flags, caps at the reviewed ceilings). With no covering grant the preview runner refuses to start rather than running text only; only an explicit --tools off runs text only.",
+        "why": "Every build changes the tools policy digest, so a per-digest grant fell silently out of date and cint-L44 went live with tools off. Review round 1 (Astra) showed the class check must read effective read exceptions and the provider's real base URL, not labels.",
+        "ref": "lanes/w4-toolsclass-PROGRESS.md; LIVE-PATH-PLAN.md row #449"
+      }
+    ]
+  },
+  {
     "revision": 19,
     "date": "2026-10-03",
     "status": "draft",
