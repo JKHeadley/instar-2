@@ -398,14 +398,14 @@
   {
     "type": "Declaration",
     "schemaVersion": 1,
-    "id": "preview.journal.reachedJournalCap",
+    "id": "preview.journal.capacityRefused",
     "kind": "blocking sites",
     "status": "live",
     "requiredFacts": {
       "authority": "block",
       "decidesAlone": "ruled-three",
       "decidesAloneBasis": "spend-past-a-cap",
-      "criticality": "Spend past a cap is refused, not asked about: once the trial's turn, model-call, reply or context-byte allowance is reached, the work is held instead of spent. The reached allowance is reported once to the operator and no further call is made against it.",
+      "criticality": "Spend past a cap is refused, not asked about: the journal's durable append refuses every model-call reservation, reply intent and Jev check once the trial's model-call, reply or turn allowance is reached (capacityRefused in tests/preview/journal.ts), before the record reaches the file. Every model call is preceded by one of those records and every send by an intent, so nothing is spent past the cap.",
       "failDirection": "closed",
       "preservesInput": "encrypted preview journal: the unspent turn stays recorded and pending, so a raise of the allowance resumes it; nothing is discarded",
       "inspectedBy": "PREVIEW-TRIAL-GATES"
@@ -427,7 +427,7 @@
       95
     ],
     "holds": [
-      { "rule": 4, "class": "partial", "evidence": { "kind": "fixture", "id": "PREVIEW-TRIAL-GATES", "stage": "build" }, "portion": "rule 4's second irreversible-miss case is enumerated: the one allowance test that decides alone and holds the turn instead of spending", "remainder": "the inline allowance comparisons through the journal are not funnelled through this one admission yet, and no module reads this declaration at runtime" }
+      { "rule": 4, "class": "partial", "evidence": { "kind": "fixture", "id": "PREVIEW-TRIAL-GATES", "stage": "build" }, "portion": "rule 4's second irreversible-miss case is enumerated at the test that actually refuses spending: the journal's durable append refuses a reservation or intent past the allowance before it is written, and the preview runner binds this declaration to that checkpoint at launch (bindPreviewBlockingSites)", "remainder": "the worker's earlier holds (a turn held as 'call cap' or 'reply cap' before it asks), the tool-turn and session-work reservation checks, and cap reporting (reachedJournalCap, reportJournalCap) are separate comparisons not funnelled through this predicate; each holds or refuses sooner, never later" }
     ]
   }
 ]

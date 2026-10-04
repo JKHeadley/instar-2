@@ -41,8 +41,8 @@ describe('the live enumeration rule 4 asks for', () => {
     for (const miss of ['live-secret-leaving', 'spend-past-a-cap', 'operator-emergency-stop']) expect([...bases]).toContain(miss);
   });
   it('the live ruled-three roster is exactly this set, so a new site cannot join it unnoticed', () => {
-    expect(ruledThree.map(d => d.id).sort()).toEqual(['intake.stop', 'preview.journal.gate',
-      'preview.journal.pollLimit', 'preview.journal.reachedJournalCap', 'recall.redact',
+    expect(ruledThree.map(d => d.id).sort()).toEqual(['intake.stop', 'preview.journal.capacityRefused', 'preview.journal.gate',
+      'preview.journal.pollLimit', 'recall.redact',
       'resource-owner.admit', 'rungraph.exhaustion', 'rungraph.stop', 'rungraph.unreachable']);
   });
   it('rules 60 and 61 each have a live holder, and its honesty class says what is still owed', () => {

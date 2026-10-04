@@ -229,7 +229,7 @@ export function inspectSource(path, source, sources = {}, program = sourceProgra
     const alternatives = properties(context, 'ownedBodies').map(v => registrations(v));
     return alternatives.length ? alternatives[0].filter(id => alternatives.every(a => a.includes(id))) : [];
   }
-  const constructs = []; const reads = []; const invokes = []; const residual = []; const scopes = {};
+  const constructs = []; const bindings = []; const reads = []; const invokes = []; const residual = []; const scopes = {};
   for (const node of file.statements) if (ts.isImportDeclaration(node) && ts.isStringLiteral(node.moduleSpecifier)) {
     const resolved = program.resolveSourceModule(node.moduleSpecifier.text, resolve(path));
     if (![resolve('src/index.ts'), resolve('src/register/index.ts'), resolve('src/register/governance.ts'), resolve('dist/index.d.ts'), resolve('dist/register/index.d.ts')].includes(resolved)
@@ -267,6 +267,13 @@ export function inspectSource(path, source, sources = {}, program = sourceProgra
         if (owned.includes('intakeWorkRegistration')) { credit(receiverAppend ? 'createFactStore.append' : 'authorAndAppend'); for (const id of owned) credit(id); }
         else residual.push({ path, reason: 'admission lacks a real fact store with the intake owner registration in its context' });
       } else if (name?.startsWith('owner:') && !consumers.some(c => c.id === name.slice(6))) credit(name.slice(6));
+      // A sidecar-declared site whose checkpoint is composed without a generated register is bound at
+      // composition instead (governance.ts bindBlockingSite); the binding names its site by literal id.
+      if (name === 'bindBlockingSite') {
+        const id = literal(node.arguments[1]);
+        if (!id) residual.push({ path, line: file.getLineAndCharacterOfPosition(node.getStart()).line + 1, reason: 'computed or missing blocking-site binding id' });
+        else bindings.push({ kind: 'blocking sites', id, path, symbol: scope });
+      }
       if (name === 'readRegisterEntry') { const id = literal(node.arguments[0]); if (id) { reads.push(id); scopes[scope].reads.push(id); } }
       if (identity(node.expression) === 'readEnforcedRecord') {
         const [site, record, decoder] = node.arguments.slice(0, 3).map(literal);
@@ -276,7 +283,7 @@ export function inspectSource(path, source, sources = {}, program = sourceProgra
     }
     ts.forEachChild(node, visit);
   }
-  visit(file); return { constructs, reads, invokes, residual, scopes };
+  visit(file); return { constructs, bindings, reads, invokes, residual, scopes };
 }
 export function scanSources(sourceFiles, decoderBindings = []) {
   const program = sourceProgram(sourceFiles);
@@ -289,13 +296,16 @@ export function scanSources(sourceFiles, decoderBindings = []) {
       observed.reads.push(read.record); report.reads.push(read.record);
     }
   const constructs = reports.flatMap(r => r.constructs); const residual = reports.flatMap(r => r.residual);
-  return { reports, constructs, residual, program };
+  const bindings = reports.flatMap(r => r.bindings);
+  return { reports, constructs, bindings, residual, program };
 }
 export function checkWiring(register, sourceFiles, scanned = scanSources(sourceFiles)) {
-  const { reports, constructs } = scanned; const issues = [];
+  const { reports, constructs } = scanned; const bindings = scanned.bindings ?? []; const issues = [];
   // A copy: a second call over the same scan must not accumulate residual rows.
   const residual = [...scanned.residual];
   for (const c of constructs) if (!register.entries.some(e => e.declaration.id === c.id && e.declaration.kind === c.kind)) issues.push(`P3-NF-04: ${c.path} constructs undeclared ${c.id}`);
+  for (const b of bindings) if (!register.entries.some(e => e.declaration.id === b.id && e.declaration.kind === b.kind && e.declaration.status === 'live'))
+    issues.push(`P3-NF-04: ${b.path} binds undeclared or non-live blocking site ${b.id}`);
   for (const { declaration: d } of register.entries) if (d.kind === 'blocking sites') {
     const multi = d.requiredFacts.rungs !== undefined;
     const rungs = multi ? d.requiredFacts.rungs : [d.requiredFacts];
@@ -309,18 +319,19 @@ export function checkWiring(register, sourceFiles, scanned = scanSources(sourceF
     if (rungs.some(r => r && (r.decidesAlone === 'ruled-three'
       ? !['live-secret-leaving', 'spend-past-a-cap', 'operator-emergency-stop', 'recorded-governed-state'].includes(r.decidesAloneBasis)
       : r.decidesAloneBasis !== undefined))) issues.push(`P3-NF-26: ${d.id} rung misnames rule 4's admission`);
-    // Rule 4's Check enumerates every site that blocks WITHOUT asking the mind. A
-    // `governed-state` rung carries its own wiring obligation below; a `ruled-three` rung
-    // carried none, so a declared category, fail direction and preservation claim no module
-    // reads could sit in the register deciding nothing (docs/07: "a cap declared in dead code
-    // bounds nothing", P3-NF-19). A construct in the WRONG module is a failure; an unpaired
-    // live ruled-three site is measured as this kind's residual, never silent.
-    if (d.status === 'live' && rungs.some(r => r && r.decidesAlone === 'ruled-three')) {
+    // Rule 4's Check enumerates every site that blocks, deciding alone or asking the mind. A
+    // `governed-state` rung carries its own wiring obligation below; the other two carried none, so
+    // a declared category, fail direction and preservation claim no module reads could sit in the
+    // register deciding nothing (docs/07: "a cap declared in dead code bounds nothing", P3-NF-19).
+    // A live site needs a construct in its declaring module, or (for a checkpoint composed without a
+    // generated register) a literal-id composition binding; a construct in the WRONG module, or
+    // neither, is a failure. Computed forms stay the scan's general residual.
+    if (d.status === 'live' && rungs.some(r => r && (r.decidesAlone === 'ruled-three' || r.decidesAlone === 'no'))) {
       const own = constructs.filter(c => c.kind === 'blocking sites' && c.id === d.id);
       const paired = own.some(c => c.path === d.declaredBy.path && c.symbol === d.declaredBy.symbol);
-      if (!paired && own.length) issues.push(`P3-NF-19: ruled-three ${d.id} is constructed outside its declaring module (${own.map(c => `${c.path}#${c.symbol}`).join(', ')})`);
-      if (!paired && !own.length) residual.push({ path: d.declaredBy.path,
-        reason: `ruled-three blocking site ${d.id} is declared but no module constructs it; its category decides nothing at runtime` });
+      const bound = bindings.some(b => b.id === d.id);
+      if (!paired && own.length) issues.push(`P3-NF-19: blocking site ${d.id} is constructed outside its declaring module (${own.map(c => `${c.path}#${c.symbol}`).join(', ')})`);
+      else if (!paired && !bound) issues.push(`P3-NF-19: live blocking site ${d.id} has no runtime binding: no module constructs it or binds it to its checkpoint, so its category decides nothing`);
     }
     for (const rung of rungs) if (rung.decidesAlone === 'governed-state') {
       const report = reports[Object.keys(sourceFiles).indexOf(d.declaredBy.path)];

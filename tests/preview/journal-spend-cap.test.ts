@@ -4,7 +4,7 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { spawnSync } from 'node:child_process';
 import { createCipheriv, createHash, randomBytes } from 'node:crypto';
-import { createJournalWorker, openPreviewJournal, openQuestionCandidates, raiseJournalCaps, reachedJournalCap, reportJournalCap, unknownCallCounts, MINIMAL_RESERVE, MINIMAL_POLL_LIMIT } from './journal-test-worker.js';
+import { capacityRefused, createJournalWorker, openPreviewJournal, openQuestionCandidates, raiseJournalCaps, reachedJournalCap, reportJournalCap, unknownCallCounts, MINIMAL_RESERVE, MINIMAL_POLL_LIMIT } from './journal-test-worker.js';
 
 const key = new Uint8Array(32).fill(19);
 const root = () => realpathSync(mkdtempSync(join(tmpdir(), 'preview-cap-')));
@@ -313,6 +313,22 @@ it('PREVIEW-TRIAL-GATES holds maxReplies and maxBytes work, and journals one cap
     journal = openPreviewJournal(path, key);
     expect(journal.view.replies).toBe(1);
     expect([...journal.view.capReports]).toEqual(['bytes:128', 'replies:80:1', 'replies:1']);
+    journal.close();
+  } finally { rmSync(dir, { recursive: true, force: true }); }
+});
+
+it('capacityRefused refuses a model-call reservation at the call cap and admits it below, before the file', async () => {
+  const dir = root(), path = join(dir, 'journal.encrypted');
+  try {
+    const journal = openPreviewJournal(path, key, genesis({ maxCalls: 1 }));
+    const counts = { calls: 0, sends: 0 }, w = worker(journal, counts);
+    w.intake([update(1), update(2)]);
+    expect(capacityRefused(journal.view, { kind: 'reserve', id: id(1), at: 1000 })).toBe(false);
+    await w.drain();
+    expect(counts.calls).toBe(1);
+    expect(capacityRefused(journal.view, { kind: 'reserve', id: id(2), at: 1000 })).toBe(true);
+    expect(() => journal.append({ kind: 'reserve', id: id(2), at: 1000 })).toThrow('capacity reached');
+    expect(journal.view.turns.get(id(2))?.reserved).toBeFalsy();
     journal.close();
   } finally { rmSync(dir, { recursive: true, force: true }); }
 });

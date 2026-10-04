@@ -30,7 +30,7 @@
       100
     ],
     "holds": [
-      { "rule": 4, "class": "partial", "evidence": { "kind": "fixture", "id": "PREVIEW-SECRET-WALL", "stage": "build" }, "portion": "rule 4's first irreversible-miss case is enumerated: the one text wall that decides alone, on an exact pattern test, and preserves its input", "remainder": "the part-two envelope's own secret-shaped refusal (src/facts/envelope.ts) and every caller's application of this wall are not themselves declared sites, and no module reads this declaration at runtime" }
+      { "rule": 4, "class": "partial", "evidence": { "kind": "fixture", "id": "PREVIEW-SECRET-WALL", "stage": "build" }, "portion": "rule 4's first irreversible-miss case is enumerated: the one text wall that decides alone, on an exact pattern test, and preserves its input", "remainder": "the part-two envelope's own secret-shaped refusal (src/facts/envelope.ts) and every caller's application of this wall are not themselves declared sites; the preview runner binds this declaration to the wall it hands its outbound check at launch (bindPreviewBlockingSites), and no other composition binds it yet" }
     ]
   }
 ]

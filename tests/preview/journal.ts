@@ -32,6 +32,8 @@ import { shouldRunScheduledPriority } from '../../src/scheduled/shedding.js';
 import type { SessionWorkEdge, SessionWorkEdgeClose, SessionWorkEffect } from '../../src/assembly/production-session-work.js';
 import type { ExhaustionAvenue } from '../../src/rungraph/index.js';
 import { consumeResult } from '../../src/index.js';
+import type { Json } from '../../src/index.js';
+import { bindBlockingSite } from '../../src/register/governance.js';
 import type { BoundaryContext, Hash, RegisterGenerationReference, Result, Scope } from '../../src/index.js';
 import { evaluateMinimalPath, minimalResponse } from '../../src/operator/live.js';
 import type { IndependentSurfaceVerifierPort, InstalledShape, MinimalDependency, SurfaceChallenge, VerifiedSurfaceProof } from '../../src/operator/contracts.js';
@@ -2373,6 +2375,41 @@ export function reachedJournalCap(view: JournalView): { reason: 'calls' | 'repli
     || turn.held === 'summary oversized turn')) return { reason: 'bytes', limit: view.limits.maxBytes };
   return null;
 }
+/** The trial allowance, refused before the file (the blocking site `preview.journal.capacityRefused`, Rule 4's
+ * spend-past-a-cap admission): every model call is preceded by one of the reservation records below and every send
+ * by an intent, so a record this refuses never reaches the journal and nothing is spent past the cap. The turn
+ * itself stays recorded and pending, so a raise of the allowance resumes it. */
+export function capacityRefused(view: JournalView, row: JournalRecord): boolean {
+  return ((row.kind === 'intake' || row.kind === 'action-due') && !view.turns.has(row.id) && view.order.length >= view.limits.maxTurns
+      && !(row.kind === 'intake' && row.reserve === true && (!row.accepted || reserveTurnsUsed(view, row.at) < MINIMAL_RESERVE.turns)))
+    || (row.kind === 'intake' && row.reserve !== undefined && !view.turns.has(row.id) && view.order.length < view.limits.maxTurns)
+    || (row.kind === 'limited-intent' && row.approval?.action !== 'stop' && reserveRepliesUsed(view, row.at) >= MINIMAL_RESERVE.replies)
+    || ((row.kind === 'reserve' || row.kind === 'summary-reserve' || row.kind === 'index-reserve' || row.kind === 'reply-review-reserve'
+      || row.kind === 'reply-revision-reserve' || row.kind === 'reply-revision-review-reserve' || row.kind === 'format-retry' || row.kind === 'lookup'
+      || row.kind === 'answer-replace' || row.kind === 'retro-reserve' || row.kind === 'retro-rerun-reserve' || row.kind === 'retro-duty-reserve')
+      && view.calls >= view.limits.maxCalls)
+    || (row.kind === 'intent' && view.replies >= view.limits.maxReplies)
+    || (row.kind === 'reply-jev-reserve' && view.jevChecks >= view.limits.maxReplies);
+}
+/** Rule 4 / P3-NF-19: the runner composes these checkpoints without a generated register, so it binds each one to
+ * its committed declaration at launch. Each line states what the code enforces; a declaration that says otherwise
+ * (another category, admission or fail direction), or that is missing or no longer live, refuses the launch. */
+export function bindPreviewBlockingSites(declarations: { journal: Json; replyCheck: Json; redact: Json; resourceOwner: Json }): string[] {
+  return [
+    // The worker's stop/expiry gate (`gate()` in createJournalWorker): nothing is dispatched after either.
+    bindBlockingSite(declarations.journal, 'preview.journal.gate', [{ decidesAlone: 'ruled-three', decidesAloneBasis: 'operator-emergency-stop', failDirection: 'closed' }]),
+    // The poll gate (`pollGate()`): stop and expiry end polling; a resource ceiling never does.
+    bindBlockingSite(declarations.journal, 'preview.journal.pollLimit', [{ decidesAlone: 'ruled-three', decidesAloneBasis: 'operator-emergency-stop', failDirection: 'closed' }]),
+    // The durable append's allowance test (`capacityRefused`, above).
+    bindBlockingSite(declarations.journal, 'preview.journal.capacityRefused', [{ decidesAlone: 'ruled-three', decidesAloneBasis: 'spend-past-a-cap', failDirection: 'closed' }]),
+    // reviewReply asks the mind: its credential/deferral floor holds closed, every other objection is a signal.
+    bindBlockingSite(declarations.replyCheck, 'preview.reply-check.reviewReply', [{ decidesAlone: 'no', failDirection: 'closed' }, { decidesAlone: 'no', failDirection: 'open' }]),
+    // The outbound credential wall the runner hands its outbound check (`redact`).
+    bindBlockingSite(declarations.redact, 'recall.redact', [{ decidesAlone: 'ruled-three', decidesAloneBasis: 'live-secret-leaving', failDirection: 'closed' }]),
+    // The host funnel every model launch of this runner passes (`createResourceOwner`).
+    bindBlockingSite(declarations.resourceOwner, 'resource-owner.admit', [{ decidesAlone: 'ruled-three', decidesAloneBasis: 'spend-past-a-cap', failDirection: 'closed' }]),
+  ];
+}
 /** Telegram may return 100 updates. Never request past the remaining durable turn slots. */
 export const journalPollLimit = (view: JournalView) => Math.min(100, Math.max(0, view.limits.maxTurns - view.order.length));
 /** Local operator lines are durably fenced before output. They consume no
@@ -4312,17 +4349,7 @@ export function openPreviewJournal(path: string, key: Uint8Array, initial?: Extr
       if (row.kind === 'reply-review-reserve' && row.promptSha256
         && row.promptSha256 !== createHash('sha256').update(view!.turns.get(row.id)?.prompt ?? '').digest('hex'))
         throw Error('preview journal: reply review prompt reference differs');
-      if (view && (((row.kind === 'intake' || row.kind === 'action-due') && !view.turns.has(row.id) && view.order.length >= view.limits.maxTurns
-          && !(row.kind === 'intake' && row.reserve === true && (!row.accepted || reserveTurnsUsed(view, row.at) < MINIMAL_RESERVE.turns)))
-        || (row.kind === 'intake' && row.reserve !== undefined && !view.turns.has(row.id) && view.order.length < view.limits.maxTurns)
-        || (row.kind === 'limited-intent' && row.approval?.action !== 'stop' && reserveRepliesUsed(view, row.at) >= MINIMAL_RESERVE.replies)
-        || ((row.kind === 'reserve' || row.kind === 'summary-reserve' || row.kind === 'index-reserve' || row.kind === 'reply-review-reserve'
-          || row.kind === 'reply-revision-reserve' || row.kind === 'reply-revision-review-reserve' || row.kind === 'format-retry' || row.kind === 'lookup'
-          || row.kind === 'answer-replace' || row.kind === 'retro-reserve' || row.kind === 'retro-rerun-reserve' || row.kind === 'retro-duty-reserve')
-          && view.calls >= view.limits.maxCalls)
-        || (row.kind === 'intent' && view.replies >= view.limits.maxReplies)
-        || (row.kind === 'reply-jev-reserve' && view.jevChecks >= view.limits.maxReplies)))
-        throw Error('preview journal: capacity reached');
+      if (view && capacityRefused(view, row)) throw Error('preview journal: capacity reached');
       if (row.kind === 'cap-report') {
         if (!capReportAllowed(view!, row)
           || view!.capReports.has(capKey(row.reason, row.limit, row.level))) throw Error('preview journal: cap report order');

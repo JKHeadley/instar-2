@@ -11,8 +11,9 @@ import { checkWiring, scanSources } from '../../scripts/check-register-wiring.mj
 import type { Construct } from '../../scripts/check-register-wiring.mjs';
 import { setup, detail, value, withoutBasis } from './fixtures.js';
 
-/** The real empty scan, with its constructs replaced: a hand-built object would not carry the scanner's own shape. */
-const withScan = (constructs: Construct[]) => ({ ...scanSources({}), constructs, residual: [] });
+/** The real empty scan, with its constructs and bindings replaced: a hand-built object would not carry the scanner's own shape. */
+const withScan = (constructs: Construct[], bindings: Construct[] = []) => ({ ...scanSources({}), constructs, bindings, residual: [] });
+const boundTo = (id: string) => withScan([], [{ kind: 'blocking sites', id, path: 'tests/preview/journal.ts', symbol: 'bindPreviewBlockingSites' }]);
 const basisOf = (d: { requiredFacts: object }, basis: unknown) =>
   ({ ...d, requiredFacts: basis === undefined ? withoutBasis(d.requiredFacts) : { ...withoutBasis(d.requiredFacts), decidesAloneBasis: basis } });
 
@@ -49,32 +50,59 @@ describe('rule 4 admission basis', () => {
     expect(detail(decodeDeclaration(bad, s.context))).toMatch(/decidesAloneBasis|P3-NF-05/);
   });
   it('P3-NF-26 the wiring check mirrors the decode rule, so a forged register cannot get past it', () => {
-    const s = setup(); const register = s.build([s.holder([])]);
-    expect(checkWiring(register, {}).issues).toEqual([]);
+    const s = setup(); const register = s.build([s.holder([])]); const bound = boundTo('holder');
+    expect(checkWiring(register, {}, bound).issues).toEqual([]);
     const forge = (facts: object) => ({ ...register, entries: register.entries.map(e => ({ ...e,
       declaration: { ...e.declaration, requiredFacts: { ...e.declaration.requiredFacts, ...facts } } })) });
-    expect(checkWiring(forge({ decidesAloneBasis: 'invented' }), {}).issues.join()).toContain("misnames rule 4's admission");
+    expect(checkWiring(forge({ decidesAloneBasis: 'invented' }), {}, bound).issues.join()).toContain("misnames rule 4's admission");
     const dropped = { ...register, entries: register.entries.map(e => ({ ...e,
       declaration: { ...e.declaration, requiredFacts: withoutBasis(e.declaration.requiredFacts) } })) };
-    expect(checkWiring(dropped, {}).issues.join()).toContain("misnames rule 4's admission");
-    expect(checkWiring(forge({ decidesAlone: 'no', model: 'doorway' }), {}).issues.join()).toContain("misnames rule 4's admission");
+    expect(checkWiring(dropped, {}, bound).issues.join()).toContain("misnames rule 4's admission");
+    expect(checkWiring(forge({ decidesAlone: 'no', model: 'doorway' }), {}, bound).issues.join()).toContain("misnames rule 4's admission");
   });
 });
 
 describe('rule 4 enumeration reaches the runtime', () => {
   // A `governed-state` rung has carried a wiring obligation since P3-NF-26. A `ruled-three`
-  // rung carried none, so three live preview gates sat in the register with a category, a fail
-  // direction and a preservation claim that no module read (docs/07: "a cap declared in dead
-  // code bounds nothing"). An unpaired live site is now measured as this kind's residual, and a
-  // construct in the WRONG module is a failure.
-  it('P3-NF-19 an unpaired live ruled-three site is residual, a paired one is not, and a dark one is neither', () => {
+  // or model-asking rung carried none, so three live preview gates sat in the register with a
+  // category, a fail direction and a preservation claim that no module read (docs/07: "a cap
+  // declared in dead code bounds nothing"). A live site now needs a construct in its declaring
+  // module or a literal-id composition binding; neither, or a construct in the WRONG module, fails.
+  it('P3-NF-19 a live site with neither a construct nor a binding fails; a paired, a bound and a dark one pass', () => {
     const s = setup(); const holder = s.holder([]);
-    const named = (r: { reason: string }) => r.reason.includes(holder.id);
-    expect(checkWiring(s.build([holder]), {}).residual.filter(named)).toHaveLength(1);
-    expect(checkWiring(s.build([{ ...holder, status: 'dark' }]), {}).residual.filter(named)).toHaveLength(0);
+    expect(checkWiring(s.build([holder]), {}).issues.join()).toContain(`P3-NF-19: live blocking site ${holder.id} has no runtime binding`);
+    expect(checkWiring(s.build([holder]), {}).residual.filter(r => r.reason.includes(holder.id))).toHaveLength(0);
+    expect(checkWiring(s.build([{ ...holder, status: 'dark' }]), {}).issues).toEqual([]);
     const paired = withScan([{ kind: 'blocking sites', id: holder.id, path: 'src/example.ts', symbol: 'example' }]);
-    expect(checkWiring(s.build([holder]), {}, paired).residual.filter(named)).toHaveLength(0);
     expect(checkWiring(s.build([holder]), {}, paired).issues).toEqual([]);
+    expect(checkWiring(s.build([holder]), {}, boundTo(holder.id)).issues).toEqual([]);
+    // A binding for another site does not discharge this one.
+    expect(checkWiring(s.build([holder]), {}, boundTo('elsewhere')).issues.join()).toContain(`${holder.id} has no runtime binding`);
+  });
+  it('P3-NF-19 a site that asks the mind carries the same obligation', () => {
+    const s = setup(); const holder = s.holder([]);
+    // The fixture context resolves no model doorway, so the built entry is re-pointed at a model rung after
+    // generation; checkWiring reads the register as given, exactly as for the forged registers above.
+    const built = s.build([holder]);
+    const register = { ...built, entries: built.entries.map(e => ({ ...e, declaration: { ...e.declaration,
+      requiredFacts: { ...withoutBasis(e.declaration.requiredFacts), decidesAlone: 'no', model: 'doorway' } } })) };
+    expect(checkWiring(register, {}).issues.join()).toContain(`${holder.id} has no runtime binding`);
+    expect(checkWiring(register, {}, boundTo(holder.id)).issues).toEqual([]);
+  });
+  it('P3-NF-04 a binding to an undeclared or dark site fails', () => {
+    const s = setup(); const holder = s.holder([]);
+    expect(checkWiring(s.build([holder]), {}, withScan([], [{ kind: 'blocking sites', id: holder.id, path: 'a.ts', symbol: 'a' },
+      { kind: 'blocking sites', id: 'ghost', path: 'a.ts', symbol: 'a' }])).issues.join()).toContain('binds undeclared or non-live blocking site ghost');
+    expect(checkWiring(s.build([{ ...holder, status: 'dark' }]), {}, boundTo(holder.id)).issues.join()).toContain(`non-live blocking site ${holder.id}`);
+  });
+  it('the scanner reads a literal binding through the governance port and keeps a computed one as residual', () => {
+    const files = {
+      'src/register/governance.ts': 'export function bindBlockingSite(d: unknown, id: string, e: unknown): string { return id; }\n',
+      'tests/preview/bound.ts': "import { bindBlockingSite } from '../../src/register/governance.js';\n"
+        + "export function bindAll(d: unknown, id: string) { bindBlockingSite(d, 'preview.journal.gate', []); bindBlockingSite(d, id, []); }\n" };
+    const scan = scanSources(files);
+    expect(scan.bindings).toEqual([{ kind: 'blocking sites', id: 'preview.journal.gate', path: 'tests/preview/bound.ts', symbol: 'bindAll' }]);
+    expect(scan.residual.map(r => r.reason)).toContain('computed or missing blocking-site binding id');
   });
   it('P3-NF-19 a construct in another module is a failure, not a residual', () => {
     const s = setup(); const holder = s.holder([]);
