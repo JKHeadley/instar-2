@@ -7243,7 +7243,7 @@ export function createJournalWorker(journal: ReturnType<typeof openPreviewJourna
           const candidateDigest = createHash('sha256').update(reply).digest('hex');
           // Plans #442, #446 (Rules 4, 86, 100): a secret is decided against the material the runner holds, and a
           // reviewer's credential VIOLATION always holds. Every reviewer reads the reply exactly as it will be sent;
-          // the full-context review is told the register's public labels instead (packet.knownNonSecrets).
+          // the full-context review is given the register's public entries as recorded facts (packet.credentialRegister).
           const heldValues = (() => { try { return ports.heldSecrets?.() ?? []; } catch { return []; } })();
           const last = turn.replyChecks?.at(-1);
           const previous = last?.candidateDigest === candidateDigest
