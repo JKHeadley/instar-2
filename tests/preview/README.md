@@ -3604,10 +3604,12 @@ servers (Part Thirteen §9,
   followed by Read, Write, Edit, Glob or Grep; a sandboxed command has no such window, because the kernel decides at
   open. That race is OPEN: pre-existing on the live line, not closed by this runner, and closable only by running the
   harness as its own operating-system user, an operator step (`docs/defects/2026-10-03-file-tool-swap-race.md`).
-  Separately, this runner keeps secret values out of the files it writes (the journal and the vault are ciphertext
-  under the storage key, which only the runner's environment holds; an MCP server's credential is given as a
-  SecretRef and handed to that server's launcher alone; the admission record is scrubbed when the turn ends;
-  `secret-at-rest.test.ts`); that does not close the race. It also admits sandboxed commands
+  Separately, and narrowly: the journal and the vault are ciphertext under the storage key, which only the runner's
+  environment holds; an MCP server's credential given as a SecretRef is handed to that server's launcher alone and is
+  not written to the launch configuration; the admission record holds any credential a tool result carried in
+  plaintext while the turn runs and is scrubbed when the turn ends (a process death before that scrub leaves it);
+  `secret-at-rest.test.ts` checks these cases. This is not a claim that every file the runner writes is secret-free,
+  and it does not close the race. It also admits sandboxed commands
   whatever words they contain, a WebFetch (GET only) of a host whose every resolved address is public, a WebSearch,
   an MCP tool listed as a read, the harness's bookkeeping (ToolSearch, ListAgents, CronList, ReportFindings,
   TaskStop), a worktree inside the workspace, and a `worker` subagent within the turn's budget (rewritten to the
@@ -3637,8 +3639,10 @@ servers (Part Thirteen §9,
   "reads": ["mcp__name__tool", …]}`. An `env` value is a plain string, kept as written, or `{"secretRef": "<name>"}`,
   a credential in the root's custody vault: the runner opens it at the turn (a value it cannot open answers the turn
   without tools, recorded) and hands it once, over a private socket with a per-turn nonce, to that server's launcher
-  (`mcp-launch.mjs`), which starts the server with it in its environment; no file holds the value. A recognised
-  credential written literally in a command, an argument or an env value is refused, naming the SecretRef form.
+  (`mcp-launch.mjs`), which starts the server with it in its environment; the launch configuration holds no
+  SecretRef value. A credential in a recognised format written literally in a command, an argument or an env value is
+  refused, naming the SecretRef form; an opaque literal no pattern recognises is not detected and is kept in the
+  launch configuration as written.
   Servers run outside the sandbox as the runner's identity; the sandboxed shell cannot reach the socket (no unix
   sockets). The turn's admission record is scrubbed when the turn ends: each served value is replaced by its
   SecretRef marker and recognised credentials are redacted.

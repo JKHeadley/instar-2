@@ -50,10 +50,12 @@ open, so no symlink, alias or `..` spelling reaches past the boundary. For the i
 Edit, Glob, Grep) the hook decides on the realpath at admission, and a path the agent itself swaps for a link between
 admission and the harness's open can still be followed. That race is OPEN: it is pre-existing, the admission check
 does not close it, and it can be closed only by running the harness as its own operating-system user, an operator
-infrastructure step (`docs/defects/2026-10-03-file-tool-swap-race.md`). Separately, the tool runner keeps secret
-values out of the files it writes: its journal and vault are ciphertext under the storage key, which only the runner's
-environment holds, and an MCP server's credential is given as a SecretRef that the runner resolves and hands to that
-server's launcher alone; this narrows what the race can find but does not close it. It also admits sandboxed commands (never judged by the words they
+infrastructure step (`docs/defects/2026-10-03-file-tool-swap-race.md`). Separately, and narrowly: the tool runner's
+journal and vault are ciphertext under the storage key, which only the runner's environment holds, and an MCP server's
+credential given as a SecretRef is resolved by the runner and handed to that server's launcher alone, not written to
+the launch configuration. The admission record can hold a credential a tool result carried, in plaintext, until the
+end-of-turn scrub, and a literal credential in a format no pattern recognises is not detected; so this is not a claim
+that every file the runner writes is secret-free, and it does not close the race. It also admits sandboxed commands (never judged by the words they
 contain), a web read (WebFetch issues only a GET) of a host whose every resolved address is public,
 a web search, an MCP tool the root's configuration lists as a read, the harness's own bookkeeping, a
 worktree inside the workspace, and a subagent of the one registered type, started by the turn or by

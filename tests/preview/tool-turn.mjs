@@ -137,8 +137,10 @@ export function prepareToolTurn({ root, operation, attempt, operations, effectPo
  * `reads` is ordinary work; every other MCP tool is a consequential effect for the effect doorway. A malformed file
  * refuses (thrown) rather than guessing. An `env` value is either a plain string, kept as written, or
  * `{"secretRef": "<name>"}`, a credential in the runner's custody vault: the runner resolves it at the turn and hands it to
- * that server alone (`serveMcpSecrets`), so no file holds it. The checkpoint (Rule 100): a recognised credential written
- * literally in a command, an argument or an env value is refused, with the SecretRef form named as the way to give it.
+ * that server alone (`serveMcpSecrets`), so the launch configuration holds no SecretRef value. The checkpoint (Rule 100): a
+ * credential in a recognised format written literally in a command, an argument or an env value is refused, with the
+ * SecretRef form named as the way to give it; an opaque literal (one no pattern recognises) is not detected and is kept
+ * in the launch configuration as written.
  * `secrets` maps each server to its env names and the SecretRef names they resolve from. */
 export const TOOL_MCP_CONFIG = 'mcp.json';
 export function readRootMcp(root, read = path => readFileSync(path, 'utf8')) {

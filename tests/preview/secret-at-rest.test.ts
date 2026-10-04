@@ -1,6 +1,8 @@
-// The secrets floor for the files this tool runner writes: every file a root holds carries a secret value only as
-// ciphertext under the storage key, which lives in the runner's environment alone (never the harness's environment, argv
-// or a file). This test drives a root through the paths that handle secret values (a credential handed over in chat, with
+// The secrets floor for the files this tool runner writes, for the tested values only: after a completed turn, the
+// tested secret values sit under a root only as ciphertext under the storage key, which lives in the runner's environment
+// alone (never the harness's environment, argv or a file). It does not show every runner-written file is secret-free at
+// every moment: the admission record holds a tool result's credential in plaintext until the end-of-turn scrub, and an
+// opaque literal in mcp.json is not detected. This test drives a root through the paths that handle secret values (a credential handed over in chat, with
 // and without custody, a tool turn whose MCP server takes a credential by SecretRef and whose tool result carries
 // credentials) and then reads every byte under the root. It does not close the file tools' admission-to-open race
 // (docs/defects/2026-10-03-file-tool-swap-race.md, OPEN): that race reaches files other owners wrote, which no code here
@@ -64,7 +66,7 @@ it.each([['with custody', true], ['without custody', false]])('a root holds no s
     expect(turn.mcp?.servers).toEqual(['notes']);
     expect(JSON.parse(readFileSync(turn.mcp.config, 'utf8')).mcpServers.notes.env).toEqual({ LOG_LEVEL: 'info' });
     if (vaulted) expect(readdirSync(join(root, 'vault')).length).toBeGreaterThan(0);
-    // The property: no file anywhere under the root holds a credential or the storage key in plaintext.
+    // The property: no file anywhere under the root holds the tested credentials or the storage key in plaintext.
     expect(plaintextHolders(root, [GITHUB, TELEGRAM, ...KEY_FORMS])).toEqual([]);
     // The other side: the sweep sees a plaintext value when one is there (a file the operator placed by hand).
     writeFileSync(join(root, 'operator-note.txt'), `left here: ${TELEGRAM}`);
@@ -91,7 +93,7 @@ const hook = (mode: string, state: string, call: object) => new Promise<void>((r
   child.stdin.end(JSON.stringify(call));
 });
 
-it('an MCP server takes its credential by SecretRef: that server alone gets the value, an ordinary env setting still works, and no file under the root holds it', async () => {
+it('an MCP server takes its credential by SecretRef: that server alone gets the value, an ordinary env setting still works, and no file under the root holds it after the turn', async () => {
   const root = realpathSync(mkdtempSync(join(tmpdir(), 'secret-at-rest-mcp-')));
   try {
     const journal = openPreviewJournal(join(root, 'journal.encrypted'), key, { ...genesis, maxCalls: 60 });
@@ -135,7 +137,7 @@ it('an MCP server takes its credential by SecretRef: that server alone gets the 
     expect(outcome.trace.calls[0]).toMatchObject({ tool: 'mcp__keyed__lookup', decision: 'allow' });
     expect(String(outcome.trace.calls[0].result)).toContain(`[credential: SecretRef preview/${ref.name}]`);
     expect(existsSync(socket)).toBe(false);
-    // When the turn ends, no file under the root holds either value or the storage key.
+    // When the turn ends, no file under the root holds either tested value or the storage key.
     expect(plaintextHolders(root, [OPAQUE, GITHUB, ...KEY_FORMS])).toEqual([]);
     // The other side: a credential the vault cannot open refuses the tool turn (answered without tools, nothing launched).
     let launched = 0;
