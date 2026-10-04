@@ -1988,8 +1988,9 @@ export const dueObligationWork = (view: JournalView, now: number) =>
   obligationSchedule(view).filter(item => !item.inFlight && !item.awaitingDelivery && !item.deliveryUnknown && item.slot <= now);
 /** Completed results waiting for a reply to carry them: the reply-only grant has no unsolicited send. */
 export const pendingReports = (view: JournalView) => obligationSchedule(view).filter(item => item.awaitingDelivery)
-  .map(item => ({ key: item.key, text: view.obligationWork[item.key]!.report!.text, subject: item.kind === 'commitment'
-    ? view.commitments[item.id]!.quote : view.blockers[item.id]!.claim }));
+  .map(item => { const note = item.kind === 'commitment' ? view.commitments[item.id]! : view.blockers[item.id]!;
+    return { key: item.key, text: view.obligationWork[item.key]!.report!.text, source: note.source,
+      subject: 'quote' in note ? note.quote : note.claim }; });
 function workTarget(view: JournalView, key: string): 'commitment' | 'blocker' | undefined {
   const match = /^(commitment|blocker):(0|[1-9][0-9]*)$/u.exec(key);
   if (!match) return undefined;
@@ -2107,17 +2108,10 @@ export const OBLIGATION_WORK_QUESTION_TOOLS = replacedClause(replacedClause(OBLI
   'you have no external tools,', 'your only tools are the listed ones,'),
   'You have attempted nothing outside this step, so never call an avenue tried.',
   'Only this step\'s recorded tool calls ran outside it, so never call an avenue tried.');
-/** The answer packet's mark on a commitment whose finished result rides this reply (plan #492). */
-export const READY_RESULT = 'finished: appended after your answer as a follow-up, not pending';
-/** Rules 8, 92: a commitment's work report that only repeats text the operator already received (the reply sent
- * to its source) is not a finished result. Live cint-L49 (room two, 15-minute root, 2026-10-04): the deferral's work
- * step returned its own holding reply verbatim as the "result", which would have been delivered as the follow-up in
- * place of the ranking the operator asked for. Compared with whitespace collapsed and the PREVIEW mark removed. */
-export function repeatsSentReply(report: string, sent: string | undefined): boolean {
-  const plain = (value: string) => value.replace(/^PREVIEW(?=$|[\s:—])(?:\s*[:—])?\s*/u, '').replace(/\s+/gu, ' ').trim();
-  const said = sent === undefined ? '' : plain(sent), result = plain(report);
-  return result.length > 0 && said.length > 0 && said.includes(result);
-}
+/** The answer packet's mark on a commitment whose work is finished and whose result waits for delivery (plan #492).
+ * It states only what is known when the packet is built: the attachment is decided after the answer, inside the
+ * reply's size bound, so a result past that bound waits for a later message. */
+export const READY_RESULT = 'finished, result awaiting delivery: follows your answer when this reply has room, otherwise a later message; the work is done, not still to do';
 /** Reads one work step's decision; anything malformed is a recorded failed attempt, never a guessed outcome. */
 export function obligationDecision(output: string, kind: 'commitment' | 'blocker', at: number, zone: string):
   Pick<Extract<JournalRecord, { kind: 'obligation-result' }>, 'outcome' | 'report' | 'note' | 'waitsOn' | 'recheckAt' | 'assessment'> {
@@ -7436,16 +7430,18 @@ export function createJournalWorker(journal: ReturnType<typeof openPreviewJourna
             // at send (reply-parts.ts), so no result waits on a count or a one-message bound (live cint-L49 D1c: a cap of
             // two kept the deferral's result back). The text stays inside the route's answer bound, the size every split
             // reply is derived to carry; a result past it stays pending for the next answer, never dropped. A result
-            // another unsent answer already carries is not repeated, and one whose text this reply already says (the
-            // same deferral recorded from both the message and the reply) settles without being said twice.
-            const reports: string[] = [], carried = new Set(journal.view.order.filter(item => item.id !== turn.id
-              && item.intent === undefined).flatMap(item => item.answerReports ?? []));
+            // another unsent answer already carries is not repeated. Each obligation keeps its own subject line: only a
+            // result with the same text from the same originating turn (one deferral recorded from both the message
+            // and the reply) settles under the line already attached, never one from different work that happens to
+            // read the same ("Yes." to two questions).
+            const reports: string[] = [], attached: { source: string; text: string }[] = [], carried = new Set(journal.view.order
+              .filter(item => item.id !== turn.id && item.intent === undefined).flatMap(item => item.answerReports ?? []));
             if (replying)
               for (const item of pendingReports(journal.view).filter(entry => !carried.has(entry.key))) {
-                if (text.includes(item.text)) { reports.push(item.key); continue; }
+                if (attached.some(entry => entry.source === item.source && entry.text === item.text)) { reports.push(item.key); continue; }
                 const line = `\n\nFollow-up on "${clip(clean(redact(item.subject).text, true), 160)}": ${item.text}`;
                 if (Buffer.byteLength(text) + Buffer.byteLength(line) > MAX_ANSWER_BYTES) break;
-                text = `${text.trimEnd()}${line}`; reports.push(item.key);
+                text = `${text.trimEnd()}${line}`; reports.push(item.key); attached.push(item);
               }
             // The claims are decided one last time against the reply exactly as it is written, by the same
             // rule the replay reads it back with; anything the final text no longer carries is counted refused.
@@ -9549,12 +9545,9 @@ export function createJournalWorker(journal: ReturnType<typeof openPreviewJourna
       const usage = typeof answer !== 'string' && 'usage' in answer && answer.usage ? { usage: answer.usage } : {};
       if (typeof answer !== 'string' && 'state' in answer && answer.state === 'uncertain') { settle({ outcome: 'uncertain', ...usage }); return true; }
       if (typeof answer !== 'string' && 'failureClass' in answer) { settle({ outcome: 'failed', ...usage }); return true; }
-      const decided = obligationDecision(typeof answer === 'string' ? answer : answer.text, item.kind, ports.now(), zone);
-      // A "result" that only repeats the reply already sent carries nothing new: a failed attempt, retried on the
-      // revisit cadence, never a finished result waiting for the operator.
-      const repeated = item.kind === 'commitment' && decided.report !== undefined
-        && repeatsSentReply(decided.report, sentText(journal.view.turns.get(journal.view.commitments[item.id]!.source)!));
-      settle({ ...(repeated ? { outcome: 'failed' as const } : decided), ...usage });
+      // Rules 4, 10, 86: whether the report is the finished work is the work step's own full-context judgment (its
+      // packet carries yourReply and the question says repeating it is not the work); no text overlap overrides it.
+      settle({ ...obligationDecision(typeof answer === 'string' ? answer : answer.text, item.kind, ports.now(), zone), ...usage });
       return true;
     } finally { working = false; }
   };

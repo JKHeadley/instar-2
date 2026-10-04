@@ -2,15 +2,16 @@
 // proofroom2-dshort15-20261004-071729): the deferred work ran on its revisit (D1b), but the operator's next message
 // ("hi", update 6232211) carried only the two OLDEST finished results — the answer assembly attached at most two
 // follow-ups, inside one 3500-byte message — so the deferral's result stayed waiting (D1c). Its "result" was also
-// not one: the work step returned the deferral's own holding reply verbatim. And the answering model, not told a
-// result was ready, wrote "still queued" beside the results it carried. The texts below are the root's recorded
+// not one: the work step returned the deferral's own holding reply verbatim (its question never said that reply was
+// already sent; no text-overlap veto replaces that judgment). And the answering model, not told a result was ready,
+// wrote "still queued" beside the results it carried. The texts below are the root's recorded
 // shapes (read-only journal dump: obligationWork reports of commitments 0-3, the sent replies of updates 6232206,
 // 6232207 and 6232210, and the model body of the reply to 6232211), verbatim.
 import { expect, it } from 'vitest';
 import { mkdtempSync, realpathSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
-import { createJournalWorker, openPreviewJournal, READY_RESULT, repeatsSentReply } from './journal-test-worker.js';
+import { createJournalWorker, openPreviewJournal, OBLIGATION_WORK_QUESTION, READY_RESULT } from './journal-test-worker.js';
 import { loopHealth } from './obligations.js';
 import { MAX_ANSWER_BYTES } from './reply-parts.js';
 
@@ -36,20 +37,21 @@ const HI_BODY = 'Hi! Just flagging: I\'ve still got that open item queued — ra
 
 const loopAnswer = (reply: string, quote: string) => JSON.stringify({ reply, memory: [], openLoops: [{ kind: 'deferral', quote, waitsOn: 'nothing' }] });
 
-function world(root: string, work: (quote: string, attempt: number) => string) {
+function world(root: string, work: (quote: string, attempt: number) => string, summary = () => JSON.stringify({ summary: 'Earlier turns.', people: [], commitments: [], closed: [], memory: [] })) {
   const journal = openPreviewJournal(join(root, 'journal.encrypted'), key, { kind: 'genesis', bot: '8989505249', chat: '7812716706',
     operator: '7812716706', grant: 'grant:preview', configurationDigest: 'sha256:offline', expires: 9999999999999,
     maxCalls: 1000, maxReplies: 1000, maxTurns: 1000, maxBytes: 409600, cursor: 0, loopRevisitMs: REVISIT });
   const clock = { now: T0 }, sent: string[] = [], answers: string[] = [], contexts: string[] = [], attempts = new Map<string, number>();
+  const steps: { question: string; context: string }[] = [];
   const worker = createJournalWorker(journal, { now: () => clock.now, stopped: () => false, timeZone: 'America/Los_Angeles',
     prepareModel: input => input.context,
     model: async input => {
       if (input.id.startsWith('obligation:')) {
         const quote = (JSON.parse(input.context) as { obligation: { quote: string } }).obligation.quote;
-        const n = (attempts.get(quote) ?? 0) + 1; attempts.set(quote, n);
+        const n = (attempts.get(quote) ?? 0) + 1; attempts.set(quote, n); steps.push({ question: input.question, context: input.context });
         return work(quote, n);
       }
-      if (input.id.startsWith('summary:')) return JSON.stringify({ summary: 'Earlier turns.', people: [], commitments: [], closed: [], memory: [] });
+      if (input.id.startsWith('summary:')) return summary();
       contexts.push(input.context);
       return answers.shift() ?? JSON.stringify({ reply: 'Okay.', memory: [] });
     },
@@ -63,37 +65,74 @@ function world(root: string, work: (quote: string, attempt: number) => string) {
   };
   /** Runs every due work step, one bounded step per tick, as the launcher's quiet loop does. */
   const tick = async () => { for (let i = 0; i < 10 && await worker.workObligations(); i++) { /* one step per tick */ } };
-  return { journal, clock, say, tick, sent, contexts };
+  return { journal, clock, say, tick, sent, contexts, steps };
 }
 
-it('a work report that only repeats the reply already sent is not a result (recorded shapes, both sides)', () => {
-  // The deferral's recorded step output against its recorded sent reply: the same text, so no result.
-  expect(repeatsSentReply(HOLD, `PREVIEW — ${HOLD}`)).toBe(true);
-  expect(repeatsSentReply(HOLD_LOOP, `PREVIEW — ${HOLD}`)).toBe(true);
-  expect(repeatsSentReply(` ${HOLD.replace(/ /gu, '  ')}\n`, `PREVIEW — ${HOLD}`)).toBe(true);
-  // A paraphrase, an acknowledgement with a new note, and the asked-for answer each say something new.
-  expect(repeatsSentReply(LIBRARY_REPORT, `PREVIEW — ${LIBRARY_REPLY}`)).toBe(false);
-  expect(repeatsSentReply(K_REPORT, `PREVIEW — ${K_REPLY}`)).toBe(false);
-  expect(repeatsSentReply(RANKING, `PREVIEW — ${HOLD}`)).toBe(false);
-  expect(repeatsSentReply(HOLD, undefined)).toBe(false);
-});
+it('the work step is told its sent reply is not the result; a valid report that repeats words of it stays a result (Rules 4, 10, 86)', async () => {
+  const root = realpathSync(mkdtempSync(join(tmpdir(), 'preview-deliver-echo-')));
+  try {
+    // The recorded failure: the deferral's step echoed HOLD. Its packet now carries that sent reply as yourReply and
+    // the question says repeating it is not the work; the judgment stays the step's own, with full context.
+    // The neighbor: the acknowledgement names the exact label it will send later, and the step returns exactly it.
+    const NOTES = 'Check the notes and send me the exact label for the first folder later.', ACK = 'I\'ll check the notes and send Home later.';
+    const w = world(root, quote => JSON.stringify({ outcome: 'report', report: quote === HOLD_LOOP ? RANKING : 'Home' }));
+    await w.say(D1, loopAnswer(HOLD, HOLD_LOOP));
+    await w.say(NOTES, loopAnswer(ACK, ACK));
+    w.clock.now += REVISIT + MINUTE; await w.tick(); await w.tick();
+    const deferral = w.steps.find(step => step.context.includes(HOLD_LOOP))!;
+    expect(deferral.question).toBe(OBLIGATION_WORK_QUESTION);
+    expect(deferral.question).toContain('packet.obligation.yourReply was already sent to the operator: repeating or re-confirming it is not the work');
+    expect((JSON.parse(deferral.context) as { obligation: { yourReply?: string } }).obligation.yourReply).toContain(HOLD);
+    const label = w.journal.view.commitments.findIndex(note => note.quote === ACK);
+    expect(w.journal.view.obligationWork[`commitment:${String(label)}`]).toMatchObject({ outcome: 'report', report: { text: 'Home' } });
+    expect(loopHealth(w.journal.view, w.clock.now).awaitingDelivery).toBe(2);
+    const sends = w.sent.length;
+    w.clock.now += MINUTE; await w.say('hi', JSON.stringify({ reply: 'Hi!', memory: [] }));
+    const reply = w.sent.slice(sends).join('\n');
+    expect(reply).toContain(`Follow-up on "${ACK}": Home`);
+    expect(reply).toContain(RANKING);
+    expect(loopHealth(w.journal.view, w.clock.now).awaitingDelivery).toBe(0);
+    w.journal.close();
+  } finally { rmSync(root, { recursive: true, force: true }); }
+}, 60_000);
 
-it('delivers every finished result on the next message, in order, and never an echo of the deferral as its result', async () => {
+it('distinct obligations with the same result text each keep their own subject line (Rules 8, 46)', async () => {
+  const root = realpathSync(mkdtempSync(join(tmpdir(), 'preview-deliver-same-')));
+  try {
+    const MONDAY = 'I\'ll check whether Monday is free and report later.', FRIDAY = 'I\'ll check whether Friday is free and report later.';
+    const w = world(root, () => JSON.stringify({ outcome: 'report', report: 'Yes.' }));
+    await w.say('Is Monday free? Tell me later.', loopAnswer(MONDAY, MONDAY));
+    w.clock.now += MINUTE; await w.say('Is Friday free? Tell me later.', loopAnswer(FRIDAY, FRIDAY));
+    w.clock.now += REVISIT + MINUTE; await w.tick();
+    expect(loopHealth(w.journal.view, w.clock.now).awaitingDelivery).toBe(2);
+    const sends = w.sent.length;
+    w.clock.now += MINUTE; await w.say('hi', JSON.stringify({ reply: 'Yes. Hi!', memory: [] }));
+    const reply = w.sent.slice(sends).join('\n');
+    expect(reply).toContain(`Follow-up on "${MONDAY}": Yes.`);
+    expect(reply).toContain(`Follow-up on "${FRIDAY}": Yes.`);
+    expect(loopHealth(w.journal.view, w.clock.now).awaitingDelivery).toBe(0);
+    w.journal.close();
+  } finally { rmSync(root, { recursive: true, force: true }); }
+}, 60_000);
+
+it('delivers every finished result on the next message, in order, and tells the answering model they are finished', async () => {
   const root = realpathSync(mkdtempSync(join(tmpdir(), 'preview-deliver-all-')));
   try {
-    // The recorded step outputs: commitments 0 and 1 report, the deferral first echoes its holding reply.
-    const w = world(root, (quote, attempt) => JSON.stringify({ outcome: 'report', report: quote === LIBRARY_LOOP ? LIBRARY_REPORT
-      : quote === K_REPLY ? K_REPORT : attempt === 1 ? HOLD : RANKING }));
+    // The recorded step outputs: commitments 0 and 1 report; the deferral's first step needs more time, then reports
+    // the asked-for answer (the recorded echo and the question that now addresses it are covered above).
+    const w = world(root, (quote, attempt) => JSON.stringify(quote === LIBRARY_LOOP ? { outcome: 'report', report: LIBRARY_REPORT }
+      : quote === K_REPLY ? { outcome: 'report', report: K_REPORT } : attempt === 1
+        ? { outcome: 'continue', note: 'Gathering what you told me this week.' } : { outcome: 'report', report: RANKING }));
     await w.say(LIBRARY, loopAnswer(LIBRARY_REPLY, LIBRARY_LOOP));
     w.clock.now += MINUTE; await w.say(K, loopAnswer(K_REPLY, K_REPLY));
     w.clock.now += 2 * MINUTE; await w.say(D1, loopAnswer(HOLD, HOLD_LOOP));
     const ids = [LIBRARY_LOOP, K_REPLY, HOLD_LOOP].map(quote => w.journal.view.commitments.findIndex(note => note.quote === quote));
     expect(ids, JSON.stringify(w.journal.view.commitments.map(n => n.quote))).not.toContain(-1);
     const sends = w.sent.length;
-    // The quiet window: every loop's step runs. The deferral's echo is a failed attempt, never a waiting result.
+    // The quiet window: every loop's step runs; the deferral is still in progress, not a waiting result.
     w.clock.now += REVISIT + 10 * MINUTE; await w.tick();
     const deferral = w.journal.view.obligationWork[`commitment:${String(ids[2])}`]!;
-    expect(deferral.outcome).toBe('failed');
+    expect(deferral.outcome).toBe('continue');
     expect(deferral.report).toBeUndefined();
     expect(loopHealth(w.journal.view, w.clock.now).awaitingDelivery).toBe(2);
     // Its next revisit does the work; three results now wait, and status says so (D2's line, its count truthful).
@@ -147,6 +186,15 @@ it('splits a reply too long for one message rather than holding results back, an
     // What did not fit the answer bound still waits, never dropped, and the next message carries it.
     const left = 14 - carried.length;
     expect(left).toBeGreaterThan(0);
+    // The packet marked the results it showed (carried or not) finished and awaiting delivery, never promising
+    // that this reply carries them: some it marked are left for the next message.
+    const marked = ((JSON.parse(w.contexts.at(-1)!) as { commitments?: { items: { quote: string; result?: string }[] }[] })
+      .commitments ?? []).flatMap(entry => entry.items);
+    const notCarried = marked.filter(item => !carried.includes(quotes.indexOf(item.quote)));
+    expect(notCarried.length).toBeGreaterThan(0);
+    expect(marked.every(item => item.result === READY_RESULT)).toBe(true);
+    expect(READY_RESULT).toContain('otherwise a later message');
+    expect(READY_RESULT).not.toMatch(/appended after your answer|not pending/u);
     expect(loopHealth(w.journal.view, w.clock.now).awaitingDelivery).toBe(left);
     const again = w.sent.length;
     w.clock.now += MINUTE; await w.say('and?', JSON.stringify({ reply: 'Here is the rest.', memory: [] }));
