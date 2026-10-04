@@ -481,7 +481,7 @@ const recordShape = (path, role, layer, outcome, shape) => {
   } catch { /* a diagnostics write never changes a model outcome */ }
 };
 const roleOf = id => id.endsWith(':reply-review') || id.endsWith(':revision-review') ? 'reply-review' : /^summary:.*:review$/u.test(id) ? 'summary-review'
-  : /^retrospective:\d+$/u.test(id) ? 'retrospective' : 'answer';
+  : /^retrospective:\d+(?::duties)?$/u.test(id) ? 'retrospective' : 'answer';
 /** Rule 95, the fail direction of this consumer: may text around one complete Decision object be
  * discarded? The answer side says yes — the answer, a reply revision and the summary writer, which
  * `roleOf` folds into `answer`. Their output is reviewed again (the reply review, the faithfulness
@@ -495,11 +495,11 @@ const roleOf = id => id.endsWith(':reply-review') || id.endsWith(':revision-revi
 const wrappedPolicyOf = role => role === 'answer' ? 'accept' : 'refuse';
 /** The registered live judgment a subscription call serves (model-call-boundary.ts). A revised
  * reply's held-class review is a reply review; the revision is the agent's own response to the
- * objections, with its own floor. A retrospective pass is its own judgment; its benchmark reruns
- * (`retrospective:N:rerun:I`) replay an answer. */
+ * objections, with its own floor. A retrospective pass is its own judgment, and so is its duty follow-up
+ * (`retrospective:N:duties`); its benchmark reruns (`retrospective:N:rerun:I`) replay an answer. */
 const judgmentOf = id => id.endsWith(':reply-review') || id.endsWith(':revision-review') ? 'reply-review'
   : id.endsWith(':reply-revision') ? 'reply-revision' : /^summary:.*:review$/u.test(id) ? 'summary-review'
-  : /^summary:/u.test(id) ? 'summary' : /^retrospective:\d+$/u.test(id) ? 'retrospective' : 'answer';
+  : /^summary:/u.test(id) ? 'summary' : /^retrospective:\d+(?::duties)?$/u.test(id) ? 'retrospective' : 'answer';
 
 const contextOf = prompt => JSON.parse(JSON.parse(prompt).messages.find(m => m.role === 'context').content).packet;
 /** Rules 3, 17 and 47: which standing instructions the prepared prompt carried, by digest and rule number. */
@@ -562,7 +562,9 @@ const retrospectiveView = (view, now) => { const digest = replyContextDigest(vie
     findings: pass.result?.findings.map(item => ({ id: item.id, duty: item.duty, refs: item.refs, summary: item.summary, recurs: item.recurs ?? [],
       rootCause: item.rootCause ?? null, structuralRemedy: item.structuralRemedy ?? null,
       disposition: 'owner' in item.disposition ? `owned by ${item.disposition.owner}` : 'declined with reason' })) ?? [],
-    reruns: (pass.reruns ?? []).map(run => ({ index: run.index, case: run.case, state: run.state ?? 'in-flight-or-unknown' })) })),
+    reruns: (pass.reruns ?? []).map(run => ({ index: run.index, case: run.case, state: run.state ?? 'in-flight-or-unknown' })),
+    dutyFollowUp: pass.dutyFollowUp ? { duties: pass.dutyFollowUp.duties, state: pass.dutyFollowUp.state ?? 'in-flight-or-unknown',
+      reason: pass.dutyFollowUp.reason ?? null } : null })),
   grades: grades.map(({ grade, pass }) => ({ case: grade.case, pass, conclusion: grade.conclusion.assessment, reason: grade.reason.assessment,
     outcome: grade.outcome.assessment, outcomeReason: grade.outcome.reason, rederivation: grade.rederivation ?? null, reassessment: grade.reassessment === true })),
   pendingGrades: pendingGrades(view).length,
@@ -1719,8 +1721,8 @@ async function main() {
         }
       },
       ...(stepCheckEnabled ? { stepCheck: { jev: (text, questions) => callJev('jev-step-check', text, questions ?? stepQuestions) } } : {}),
-      ...(retrospectiveEnabled ? { retrospect: async (state, id) => {
-        const result = await invokeSubscription(modelEnvelope({ question: RETROSPECTIVE_QUESTION, context: state, id }), id);
+      ...(retrospectiveEnabled ? { retrospect: async (state, id, question = RETROSPECTIVE_QUESTION) => {
+        const result = await invokeSubscription(modelEnvelope({ question, context: state, id }), id);
         return { ...result, ...(result.usage ? { usage: recordedUsage(result.usage) } : {}) };
       } } : {}),
       // Status pull lines: proof posture (Rule 43), then conversation ownership and store checks (Rules 63, 33).
