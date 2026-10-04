@@ -2780,7 +2780,9 @@ export const TOOL_ATTEMPTS_PARTIAL_MEANING = 'The first tool calls this reply\'s
   + 'later calls are not shown. A refused call is not an attempt at an avenue. A tool result the reply reports may come from an omitted '
   + 'call, so its absence here does not show that the call or result did not happen.';
 const attemptExcerpt = (text: string) => text.length > TOOL_ATTEMPT_EXCERPT_CHARS ? `${text.slice(0, TOOL_ATTEMPT_EXCERPT_CHARS)}…` : text;
-export interface ToolTurnStats { invocations: number; reservedCalls: number; refusedCap: number; refusedPrompt?: number; toolCalls: number;
+export interface ToolTurnStats { invocations: number; reservedCalls: number; refusedCap: number; refusedPrompt?: number;
+  /** Turns answered without tools because an MCP server's SecretRef could not be opened from custody. */
+  refusedCredential?: number; toolCalls: number;
   toolRefusals: number; inconsistent: number; open: string[];
   /** Rule 114: subagent edges the traces recorded, by how each ended (absent until a turn started one). */
   children?: { started: number; returned: number; cancelled: number; unknown: number };
@@ -2844,6 +2846,7 @@ function projectToolTurn(view: JournalView, row: Extract<JournalRecord, { kind: 
   if (row.phase === 'refused') {
     if (row.reason === 'call cap') view.toolTurns = { ...stats, refusedCap: stats.refusedCap + 1 };
     else if (row.reason === 'prompt size') view.toolTurns = { ...stats, refusedPrompt: (stats.refusedPrompt ?? 0) + 1 };
+    else if (row.reason === 'mcp credential unavailable') view.toolTurns = { ...stats, refusedCredential: (stats.refusedCredential ?? 0) + 1 };
     else throw Error('preview journal: tool turn refusal');
     return;
   }

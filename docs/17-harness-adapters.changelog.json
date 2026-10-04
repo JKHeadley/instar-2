@@ -19,9 +19,9 @@
         "ref": "docs/defects/2026-10-03-file-tool-swap-race.md; lanes/w4-toolpaths-PROGRESS.md; LIVE-PATH-PLAN.md row #447"
       },
       {
-        "what": "§9 tool rule: the secrets floor for the in-process file tools rests on what is on disk rather than on the admission check: no file the tool runner writes holds a secret value in plaintext, and the root's MCP launch configuration carries commands and arguments only (an environment block, or a recognised credential in a command or argument, is refused).",
-        "why": "The admission check cannot close a swap the agent makes between admission and the harness's open, so the floor is closed where the secret is written. Every value the runner writes was already ciphertext under a key the harness never holds, except an MCP server's credential, which was copied in plaintext into the turn's admission state. Secrets the harness's operating-system user can read that this runner did not write are recorded as open in the defect.",
-        "ref": "docs/defects/2026-10-03-file-tool-swap-race.md; tests/preview/secret-at-rest.test.ts; lanes/w4-toolpaths-PROGRESS.md; LIVE-PATH-PLAN.md row #452"
+        "what": "§9 tool rule: the in-process file tools' race between admission and open is stated as OPEN (pre-existing, not closed by the tool runner, closable only by running the harness as its own operating-system user); separately, the tool runner keeps secret values out of the files it writes: an MCP server's credential is given as a SecretRef the runner resolves and hands to that server's launcher alone, a credential written literally in the root's MCP configuration is refused, and the admission record is scrubbed when the turn ends.",
+        "why": "The admission check cannot close a change the agent makes between admission and the harness's open, and no code in the runner can; an earlier wording that called the race closed at its source was wrong. MCP environment blocks stay supported (the purpose in force: ability is never reduced where a checkpoint can enforce the safeguard), with the custody checkpoint keeping credential values out of the launch configuration and the record.",
+        "ref": "docs/defects/2026-10-03-file-tool-swap-race.md; tests/preview/secret-at-rest.test.ts; lanes/w4-toolpaths-PROGRESS.md; LIVE-PATH-PLAN.md rows #452, #457"
       }
     ]
   },

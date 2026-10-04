@@ -13,7 +13,7 @@ import { SUBSCRIPTION_SUBAGENT_TYPE, SUBSCRIPTION_TOOL_LIMITS, SUBSCRIPTION_TOOL
 import { SINGLE_MACHINE_PROFILE } from './activation-authority.js';
 import { capabilityBriefing, TOOLS_BRIEFING } from './briefing.js';
 // @ts-expect-error The runner side stays plain JavaScript.
-import { TOOL_HOOK_SCRIPT, TOOL_NOTICE_MAX_BYTES, attachScratch, detachScratch, openToolTurnSlugs, prepareToolTurn, pruneToolTurns, readRootMcp, readToolTrace, reconcileToolTurns, runToolTurn, scratchMounted, toolChildrenFit, toolStatusLines, toolTurnEligible, toolTurnFits, unmountScratch, workspaceBytes } from './tool-turn.mjs';
+import { TOOL_HOOK_SCRIPT, TOOL_MCP_LAUNCHER, TOOL_NOTICE_MAX_BYTES, attachScratch, detachScratch, openToolTurnSlugs, prepareToolTurn, pruneToolTurns, readRootMcp, readToolTrace, reconcileToolTurns, runToolTurn, scratchMounted, toolChildrenFit, toolStatusLines, toolTurnEligible, toolTurnFits, unmountScratch, workspaceBytes } from './tool-turn.mjs';
 // @ts-expect-error The physical host remains JavaScript.
 import { createResourceOwner } from '../../scripts/resource-owner.mjs';
 
@@ -350,7 +350,7 @@ it('keeps an interrupted turn\'s hook record past retention and journals its chi
   expect(reconcileToolTurns({ journal: done, root: fresh, redactText: (text: string) => text, now: () => 11 })).toEqual([]);
 });
 
-it('reads the root\'s MCP configuration: absent is none, malformed refuses, a secret value refuses, and its servers stay in the admission state', () => {
+it('reads the root\'s MCP configuration: absent is none, malformed refuses, a literal credential refuses, env settings and SecretRefs are kept, and its servers stay in the admission state', () => {
   const root = dir();
   expect(readRootMcp(root)).toBeNull();
   for (const bad of ['{', '{"mcpServers":[]}', '{"mcpServers":{"a b":{"command":"/x"}}}', '{"mcpServers":{"a":{}}}',
@@ -360,20 +360,24 @@ it('reads the root\'s MCP configuration: absent is none, malformed refuses, a se
   }
   writeFileSync(join(root, 'mcp.json'), '{"mcpServers":{}}');
   expect(readRootMcp(root)).toBeNull();
-  // No secret value is kept in this file or its copy (the source property that closes the swap race at the source): an
-  // env block is refused whatever it holds, so is any other key, and so is a recognised credential in the command or args.
+  // The checkpoint (Rule 100): a recognised credential written literally (command, argument or env value) refuses, naming
+  // the SecretRef form; so does a malformed env value. An ordinary env setting, or any other launch key, is kept.
   const synthetic = `ghp_${'0'.repeat(36)}`;
-  for (const [server, why] of [[{ command: '/usr/bin/true', env: { LOG: '/tmp/x' } }, /only command and args \(refused: env\)/u],
-    [{ command: '/usr/bin/true', cwd: '/tmp' }, /refused: cwd/u], [{ command: '/usr/bin/true', args: [1] }, /args must be strings/u],
-    [{ command: '/usr/bin/true', args: ['--token', synthetic] }, /names a credential/u],
-    [{ command: `/usr/bin/env TOKEN=${synthetic}` }, /names a credential/u]] as const) {
+  for (const [server, why] of [[{ command: '/usr/bin/true', args: [1] }, /args must be strings/u],
+    [{ command: '/usr/bin/true', args: ['--token', synthetic] }, /holds a credential literally in its command or args/u],
+    [{ command: `/usr/bin/env TOKEN=${synthetic}` }, /holds a credential literally in its command or args/u],
+    [{ command: '/usr/bin/true', env: { TOKEN: synthetic } }, /env TOKEN holds a credential literally; give it as \{"secretRef"/u],
+    [{ command: '/usr/bin/true', env: [] }, /env must be an object/u],
+    [{ command: '/usr/bin/true', env: { TOKEN: { secretRef: 'a b' } } }, /must be a string or \{"secretRef"/u],
+    [{ command: '/usr/bin/true', env: { TOKEN: { secretRef: 'a', extra: 1 } } }, /must be a string or \{"secretRef"/u]] as const) {
     writeFileSync(join(root, 'mcp.json'), JSON.stringify({ mcpServers: { dummy: server } }));
     expect(() => readRootMcp(root)).toThrow(why);
   }
-  const config = { mcpServers: { dummy: { command: '/usr/bin/true', args: ['--log', '/tmp/x'] } }, reads: ['mcp__dummy__lookup'] };
+  const config = { mcpServers: { dummy: { command: '/usr/bin/true', args: ['--log', '/tmp/x'], env: { LOG_LEVEL: 'info' }, cwd: '/tmp' } },
+    reads: ['mcp__dummy__lookup'] };
   writeFileSync(join(root, 'mcp.json'), JSON.stringify(config));
   const mcp = readRootMcp(root);
-  expect(mcp).toMatchObject({ servers: config.mcpServers, reads: config.reads, digest: expect.stringMatching(/^sha256:/u) });
+  expect(mcp).toMatchObject({ servers: config.mcpServers, reads: config.reads, secrets: { dummy: {} }, digest: expect.stringMatching(/^sha256:/u) });
   const turn = prepareToolTurn({ root, operation: 'telegram:1:update:9', attempt: 0, operations: [], mcp, scratch: plainScratch });
   expect(turn.mcp).toEqual({ config: join(turn.stateDirectory, 'mcp.json'), servers: ['dummy'] });
   expect(lstatSync(turn.mcp.config).mode & 0o777).toBe(0o600);
@@ -381,4 +385,16 @@ it('reads the root\'s MCP configuration: absent is none, malformed refuses, a se
   expect(JSON.parse(readFileSync(join(turn.stateDirectory, 'config.json'), 'utf8')).mcpReads).toEqual(['mcp__dummy__lookup']);
   // The launch configuration lands in the admission state only: not in the workspace or the scratch volume.
   expect(JSON.stringify(readdirSync(turn.scratch, { recursive: true }))).not.toContain('mcp');
+  // A SecretRef server is launched through the launcher with its ordinary settings and no value; the others are unchanged.
+  writeFileSync(join(root, 'mcp.json'), JSON.stringify({ mcpServers: { ...config.mcpServers,
+    keyed: { command: '/usr/bin/srv', args: ['--x'], env: { TOKEN: { secretRef: 'chat-api-key-1' }, LOG_LEVEL: 'debug' } } } }));
+  const keyed = readRootMcp(root);
+  expect(keyed.secrets).toEqual({ dummy: {}, keyed: { TOKEN: 'chat-api-key-1' } });
+  const second = prepareToolTurn({ root, operation: 'telegram:1:update:3', attempt: 0, operations: [], mcp: keyed, scratch: plainScratch });
+  const written = JSON.parse(readFileSync(second.mcp.config, 'utf8')).mcpServers;
+  expect(written.dummy).toEqual(config.mcpServers.dummy);
+  expect(written.keyed).toEqual({ command: process.execPath, args: [TOOL_MCP_LAUNCHER, second.mcp.socket, 'keyed', second.mcp.nonces.keyed,
+    '/usr/bin/srv', '--x'], env: { LOG_LEVEL: 'debug' } });
+  expect(second.mcp.socket.length).toBeLessThan(100);
+  rmSync(join(second.mcp.socket, '..'), { recursive: true, force: true });
 });

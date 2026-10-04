@@ -1,43 +1,32 @@
-# File-tool swap race between admission and open (secrets floor)
+# File-tool race between admission and open (secrets floor)
 
-**Status:** CLOSED AT SOURCE for every file the tool runner writes. OPEN for plaintext secrets that the harness's operating-system user can read but this runner did not write (listed below). The closing path for those is the harness as a separate OS user, an operator infrastructure step.
+**Status:** OPEN. Pre-existing on the live line: live L44 has this race and more (the path spellings this unit repairs). Not introduced by unit w4-toolpaths, and not closed by it. It can be closed only by running the harness as its own operating-system user, an operator infrastructure step that needs the administrator password, which the agent never uses (P-01). No code in the tool runner can close it.
 
-**Owner:** Echo (agent), as owner of the preview trial's tool admission. The open part needs an operator decision.
+**Owner:** Echo (agent), as owner of the preview trial's tool admission. The closing step is the operator's.
 
-**The class:** the in-process file tools (Read, Write, Edit, Glob, Grep) are admitted by the PreToolUse hook (`tests/preview/tool-admission.mjs`), which decides on the realpath of the presented path and hands that resolved path to the harness. The check happens at admission, not at open. If a component of that path is replaced by a symlink between the hook's allow and the harness's open, the harness follows it. Only the agent writes into the conversation's volume, so such a swap would have to be made by the agent itself, concurrently with its own file-tool call. Review MF2 of unit w4-toolpaths confirmed the class with synthetic canaries. Sandboxed commands (Bash) are not affected: the kernel decides at open under the settings-derived Seatbelt profile (`tests/preview/tool-paths.test.ts`).
+**The class:** the in-process file tools (Read, Write, Edit, Glob, Grep) are admitted by the PreToolUse hook (`tests/preview/tool-admission.mjs`), which decides on the realpath of the presented path and hands that resolved path to the harness. The decision happens at admission, not at open. If the filesystem on that resolved path changes between the hook's allow and the harness's open, the harness opens whatever is there then, which can lie outside the workspace. Review MF2 of unit w4-toolpaths and its round-2 review confirmed the class for both Read and Write with synthetic canaries. Only the agent writes into the conversation's volume, so such a change would have to be made by the agent itself, concurrently with its own file-tool call.
 
-**Why the floor is closed at the source, not at the path:** Claude Code sandboxes only Bash, and macOS refuses a sandbox nested inside one, so the file tools cannot be put under the kernel profile without losing the Bash sandbox. Replacing them with a sandboxed file server would reduce the agent's ability (images, PDFs, notebooks, Edit's read state). So the floor rests on what is on disk: a path the race reaches can yield only ciphertext or a file that holds no secret value.
+**What the race can reach:** anything the harness's operating-system user can read or write. For reads, that includes plaintext secrets other owners keep under the same user (listed below). For writes, it includes the integrity of protected state: the journal, the admission state and policy, and durable intake. Encryption at rest protects confidentiality of the runner's own stores, not their integrity against a write.
 
-## Inventory: what the tool runner writes, and where secret values live
+**What holds:**
 
-| Store | Written at | What it holds |
-|---|---|---|
-| Journal `ROOT/journal.encrypted` (messages, their raw captures, summaries, memory) | `tests/preview/journal.ts:1637` (`frame`) | AES-256-GCM ciphertext under the storage key |
-| Vault `ROOT/vault/*.sealed` (credentials handed over in chat, the original bytes of their messages) | `tests/preview/secret-custody.ts:98` (`seal`), written at `:114` | AES-256-GCM ciphertext under the storage key |
-| Credentials registry `ROOT/credentials.json` | `tests/preview/secret-custody.ts:96` | names, kinds, expiry and reminder schedule; no value |
-| Turn hook config `ROOT/tool-turns/*/state/config.json` | `tests/preview/tool-turn.mjs:103` | paths, limits, effect policy; no secret |
-| Turn MCP launch config `ROOT/tool-turns/*/state/mcp.json` | `tests/preview/tool-turn.mjs:109` | commands and arguments only. **Fixed here:** it used to copy each server's `env` block, credentials included, in plaintext. `readRootMcp` now refuses an `env` block (or any key besides `command` and `args`) and a recognised credential in a command or argument; a server that needs a credential reads it from its own custody |
-| Hook admission record `ROOT/tool-turns/*/state/admission.jsonl` | `tests/preview/tool-admission-hook.mjs:24` | tool calls and results of the turn; the agent's context carries a credential only as a SecretRef marker, never its value |
-| Telegram identity capture `ROOT/.telegram-sealed/*.capture` | moved into encrypted custody and removed, `scripts/production-boot-io.mjs:109` | the bot's identity response, not its token |
-| Harness login | macOS login keychain item `Claude Code-credentials-<hash>`, written by Claude Code itself | keychain ciphertext; the profile's `config/.claude.json` holds account metadata only. The token is the harness's own credential and is necessarily usable by the harness process |
-| Harness transcripts `config/projects/*.jsonl` | Claude Code | the prepared packet (credentials as SecretRef markers) and tool input and output |
+- **Sandboxed commands (Bash):** the kernel decides at open under the settings-derived Seatbelt profile, so no symlink, alias, `..` or changed spelling reaches past the boundary (`tests/preview/tool-paths.test.ts`).
+- **File tools, before open:** every spelling the agent presents is decided on its realpath at admission, including `..` after an absent directory and dangling links. This is an early refusal, not a boundary at open.
+- **This runner's own writers** (hygiene, not a closure of the race): the journal and the custody vault are AES-256-GCM ciphertext under the storage key, which lives only in the runner's environment. An MCP server's credential is given in the root's `mcp.json` as `{"secretRef": "<name>"}`; the runner opens it from custody at the turn and hands it once, over a private socket, to that server's launcher (`tests/preview/mcp-launch.mjs`), so the launch configuration holds no value. A credential written literally there is refused. The turn's admission record is scrubbed when the turn ends (each served value replaced by its SecretRef marker, recognised credentials redacted); while the turn runs it can hold a credential a tool result carried. `tests/preview/secret-at-rest.test.ts` checks that no file under a driven root holds a credential or the storage key after the turn.
 
-**The keys:** the storage key, the bot token and the other runner secrets are bound into the runner's environment by the launch script, read from the operator agent's encrypted vault. The harness's environment is built explicitly from a fixed list (`src/assembly/production-provider.ts:493`) and passed unchanged by the resource owner (`scripts/resource-owner.mjs:575`), and its arguments carry policy, settings and paths only. No file the runner writes holds a key. The pinned 2.1.280 harness's shell profile allows process inspection only within its own sandbox (from the artifact's profile text).
+**Why not a code fix:** Claude Code sandboxes only Bash, and macOS refuses a sandbox nested inside one (`sandbox_apply: Operation not permitted`), so the file tools cannot be put under the kernel profile without losing the Bash sandbox. Replacing the built-in file tools with a sandboxed file server would reduce the agent's ability (images, PDFs, notebooks, Edit's read state), which the purpose forbids when a checkpoint can enforce the safeguard instead. No macOS mount option refuses symlinks on the scratch volume.
 
-**Evidence:**
+## Plaintext secrets readable by the harness's OS user that this runner did not write
 
-- `tests/preview/secret-at-rest.test.ts` drives a root through a credential handed over in chat (with and without custody) and a tool turn with MCP servers, then reads every byte under the root: neither credential nor the storage key (hex or base64) appears. The same sweep finds a value placed in plaintext by hand. With `readRootMcp` reverted, the test fails.
-- A read-only scan on the Studio (2026-10-03) compared the 55 values in the operator agent's vault (each at least 12 characters; values held in memory, only paths and names printed) against every file in all 267 preview roots and the harness login profile (256,159 files). None holds a value; the only matches were the bot's public username.
+Found on the Studio on 2026-10-03 by name and pattern only. No value was read out, and none was changed.
 
-## Open: plaintext secrets this runner did not write
+- The Instar 1.x agent configurations under `~/.instar/agents/*/.instar/config.json` (Telegram bot tokens).
+- An SSH private key under `~/.ssh/`.
+- Files left in `/private/tmp` by other sessions holding the operator agent's API token and other credentials.
+- The older stage-1 and stage-2 runner (`tests/preview/agent.mjs`) keeps its captures in plaintext fixture stores (`tests/preview/composition.ts`, declared simulated custody); a credential typed to it would be stored in plaintext.
 
-The harness runs as the same OS user as the operator's other agents, so a path the race reaches could still yield these. Each was found on the Studio on 2026-10-03 by name and pattern only. No value was read out, and none was changed.
+## Closure
 
-- The Instar 1.x agent configurations `~/.instar/agents/echo/.instar/config.json` (a Telegram bot token, mode 0644) and `~/.instar/agents/groky/.instar/config.json` (two Telegram bot tokens, mode 0644).
-- An SSH private key `~/.ssh/id_groky_move` (mode 0600).
-- Values left in `/private/tmp` by other sessions: a session scratchpad under `/private/tmp/claude-501/` (the operator agent's API token, a Telegram bot token, a one-time-code seed), `/private/tmp/ds-tail.jsonl` and `/private/tmp/drain_auth.txt` (the operator agent's API token).
-- The older stage-1 and stage-2 runner (`tests/preview/agent.mjs`) keeps its captures in plaintext fixture stores (`tests/preview/composition.ts:452`, declared simulated custody) with no intake custody. It runs no tool turn, and the scan found no secret value in its roots, but a credential typed to it would be stored in plaintext in a root beside the tool runner's.
+The operator provisions a dedicated OS user for the harness, owning only its login profile and the turn state, with the roots, the runner's material and other owners' files unreadable and unwritable to it (effective permissions checked, not just an account created). The preview then launches the harness as that user; a test shows a protected read and a protected write refused at open by the file tools, with an ordinary workspace file still readable and writable; and this record is closed, with Part 17 §9 and `tests/preview/README.md` restated. Separately, each owner of a listed plaintext secret can move it out of plaintext; that narrows what the race reaches but does not close it.
 
-These cannot be closed by the tool runner's code. Two closing paths, both the operator's: (1) the harness runs as a dedicated OS user that owns only its login profile and the turn state, so none of these is readable to it at open (kernel-enforced, no window); or (2) each owner moves its value out of plaintext (the 1.x tokens into the 1.x vault, the SSH key behind a passphrase or the keychain, the temporary files removed, the stage-1/2 roots retired). Option 1 closes the class, including files written later.
-
-**Multi-machine posture:** machine-local. Each machine's tool runner writes the same encrypted stores. The open list is per machine and must be taken on each machine.
+**Multi-machine posture:** machine-local; each machine's tool runner carries the same open race until its own harness user is provisioned.

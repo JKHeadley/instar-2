@@ -1,10 +1,10 @@
 #!/usr/bin/env node
-// A minimal stdio MCP server for the full-tool live test: one read tool and one write tool. Its call log path is its
-// first argument (the root's MCP configuration carries commands and arguments only, never an env block).
+// A minimal stdio MCP server for the full-tool live test: one read tool and one write tool. It holds a dummy
+// credential in its environment (never a real secret) so the test can show the sandboxed shell cannot see it.
 import { appendFileSync } from 'node:fs';
 import { createInterface } from 'node:readline';
 
-const log = process.argv[2];
+const log = process.env.MCP_DUMMY_LOG;
 const send = message => process.stdout.write(`${JSON.stringify({ jsonrpc: '2.0', ...message })}\n`);
 const tools = [
   { name: 'lookup', description: 'Returns the stored value for a key (read only).', inputSchema: { type: 'object', properties: { key: { type: 'string' } }, required: ['key'] },

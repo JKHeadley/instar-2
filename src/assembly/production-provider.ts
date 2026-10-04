@@ -292,8 +292,9 @@ export interface SubscriptionToolTurn {
   /** Roots a tool may never read, on top of /Users and /Volumes (the runner root, the login profile). */
   readonly deniedRoots: readonly string[];
   readonly hook: Readonly<{ node: string; script: string }>;
-  /** The root's MCP servers for this turn: their launch configuration (commands and arguments only, never a secret
-   * value), written inside the admission state directory, and their names. Absent: no MCP server. */
+  /** The root's MCP servers for this turn: their launch configuration, written inside the admission state directory
+   * (a credential appears there only as a SecretRef the runner resolves and hands to that server's launcher, never as a
+   * value), and their names. Absent: no MCP server. */
   readonly mcp?: Readonly<{ config: string; servers: readonly string[] }>;
   /** The conversation's kept harness session (MF5): `resume` continues the runner's recorded session id, otherwise the id
    * starts a new one. A cache subordinate to the journal: the runner binds, rotates and deletes it. Absent: nothing is kept

@@ -125,10 +125,9 @@ export function containedIn(workspace, path, fs) {
  * (`config.reads`, real paths: binaries, libraries, /private/etc). The hook and the sandbox share these sets and both
  * decide on the resolved file, so no readable file is refused for how it was spelled. The sandbox decides at open (the
  * kernel), so no spelling reaches past it; the hook decides before the harness opens, so it is an early refusal and a
- * directory the agent swaps for a link between its check and the harness's open is not caught here. The secrets floor
- * is therefore kept on disk: no file the runner writes holds a secret value in plaintext
- * (docs/defects/2026-10-03-file-tool-swap-race.md). Users' homes, keychains, the runner root, other roots and the
- * admission state lie outside both sets. */
+ * change the agent makes on that path between its check and the harness's open is not caught here: an OPEN race,
+ * pre-existing and closable only by running the harness as its own OS user (docs/defects/2026-10-03-file-tool-swap-race.md).
+ * Users' homes, keychains, the runner root, other roots and the admission state lie outside both sets. */
 export function toolRoots(config) {
   const writes = [config.workspace, ...(typeof config.tmp === 'string' ? [config.tmp] : [])];
   return { writes, reads: [...writes, ...(Array.isArray(config.reads) ? config.reads.filter(root => typeof root === 'string' && root.startsWith('/')) : [])] };
@@ -212,9 +211,8 @@ export function admitToolCall(call, config, n, fs, child = 1, now) {
   if (n > config.maxCalls) return deny(`per-step call cap ${config.maxCalls} reached (call ${n})`);
   // A file tool or search is decided on the file its path resolves to, against the turn's read or write set, and the
   // harness is handed that resolved path, so re-pointing the presented alias after this check does not redirect the call.
-  // The resolved file or a directory on its path, swapped for a link after this check, still can, so no file the runner
-  // writes holds a secret value in plaintext (docs/defects/2026-10-03-file-tool-swap-race.md). This is a check at
-  // admission; only Bash is decided at open.
+  // The resolved file or a directory on its path, changed after this check, still can: an OPEN race this check does not
+  // close (docs/defects/2026-10-03-file-tool-swap-race.md). This is a check at admission; only Bash is decided at open.
   const roots = toolRoots(config);
   const place = (path, set) => {
     if (typeof path !== 'string' || path.length === 0) return { ok: false, why: 'path absent' };

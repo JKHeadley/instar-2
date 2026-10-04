@@ -5,7 +5,9 @@
 // runner's working state; the journal row is the durable record, and nothing here is shared or resumed on another machine.
 import { execFileSync } from 'node:child_process';
 import { createHash, randomBytes, randomUUID } from 'node:crypto';
-import { chmodSync, existsSync, lstatSync, mkdirSync, readdirSync, readFileSync, readlinkSync, realpathSync, renameSync, rmdirSync, rmSync, statSync, symlinkSync, writeFileSync } from 'node:fs';
+import { chmodSync, existsSync, lstatSync, mkdirSync, mkdtempSync, readdirSync, readFileSync, readlinkSync, realpathSync, renameSync, rmdirSync, rmSync, statSync, symlinkSync, writeFileSync } from 'node:fs';
+import { createServer } from 'node:net';
+import { tmpdir } from 'node:os';
 import { dirname, join, relative } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { SUBSCRIPTION_SUBAGENT_TYPE, SUBSCRIPTION_TOOL_LIMITS, SUBSCRIPTION_TOOL_NAMES, SUBSCRIPTION_TOOL_RUNTIME_READS, SUBSCRIPTION_TOOLS_SYSTEM_PROMPT } from '../../src/assembly/production-provider.js';
@@ -18,6 +20,8 @@ export const TOOLS_DEFAULT_ACTIVATION = 'tools-activation.json';
 /** Finished turn directories kept for inspection; older ones are removed (the journal keeps their trace). */
 export const TOOL_TURNS_KEPT = 16;
 export const TOOL_HOOK_SCRIPT = join(dirname(fileURLToPath(import.meta.url)), 'tool-admission-hook.mjs');
+/** Starts an MCP server whose environment names a credential by SecretRef (`readRootMcp`, `serveMcpSecrets`). */
+export const TOOL_MCP_LAUNCHER = join(dirname(fileURLToPath(import.meta.url)), 'mcp-launch.mjs');
 /** Answer turns and scheduled obligation work run with tools; reviews, summaries and benchmark reruns never do. */
 export const toolTurnEligible = id => /^telegram:[0-9]+:update:[0-9]+$/u.test(id) || /^obligation:/u.test(id);
 
@@ -84,9 +88,11 @@ export const toolTurnSlug = (operation, attempt) => `${createHash('sha256').upda
  * holding `ws` and `tmp`, all 0700 (`scratch(dir, name)` mounts it; tests may pass a stand-in). `volume` is the
  * conversation's workspace ({directory, name} from `conversationWorkspace`), whose files persist across turns; absent,
  * the turn gets its own fresh volume in its turn directory. `children` is the number of subagents this turn's
- * reservation covers; `mcp` is the root's MCP configuration ({servers, reads}) or null. The servers' launch configuration
- * (commands and arguments only, no secret value: `readRootMcp`) is written into the state directory. The config also carries the effect doorway's policy and
- * the register's irreversible term (Part Twelve; absent policy: nothing outward by default). */
+ * reservation covers; `mcp` is the root's MCP configuration ({servers, reads, secrets}) or null. The servers' launch
+ * configuration is written into the state directory with no secret value: a server whose environment names a SecretRef
+ * is launched through `mcp-launch.mjs`, which takes the resolved values from the turn's socket (`serveMcpSecrets`). The
+ * config also carries the effect doorway's policy and the register's irreversible term (Part Twelve; absent policy:
+ * nothing outward by default). */
 export function prepareToolTurn({ root, operation, attempt, operations, effectPolicy, irreversibleTerm, children = 0, mcp = null,
   node = process.execPath, scratch = attachScratch, volume = null, authority = 'unrecorded' }) {
   const base = join(realpathSync(root), TOOL_TURNS_DIRECTORY);
@@ -106,8 +112,20 @@ export function prepareToolTurn({ root, operation, attempt, operations, effectPo
     ...(effectPolicy === undefined ? {} : { effectPolicy }), ...(irreversibleTerm === undefined ? {} : { irreversibleTerm }) }), { mode: 0o600 });
   let mcpTurn;
   if (servers.length) {
-    writeFileSync(join(stateDirectory, 'mcp.json'), JSON.stringify({ mcpServers: mcp.servers }), { mode: 0o600 });
-    mcpTurn = { config: join(stateDirectory, 'mcp.json'), servers };
+    const secretServers = servers.filter(name => Object.keys(mcp.secrets?.[name] ?? {}).length > 0);
+    // A short private directory for the socket (a Unix socket path is limited to about 100 bytes).
+    const socket = secretServers.length ? join(realpathSync(mkdtempSync(join(tmpdir(), 'itm-'))), 's') : null;
+    const nonces = Object.fromEntries(secretServers.map(name => [name, randomBytes(16).toString('hex')]));
+    const launch = Object.fromEntries(servers.map(name => {
+      const server = mcp.servers[name];
+      if (!nonces[name]) return [name, server];
+      const { command, args = [], env = {}, ...rest } = server;
+      const plain = Object.fromEntries(Object.entries(env).filter(([, value]) => typeof value === 'string'));
+      return [name, { ...rest, command: node, args: [TOOL_MCP_LAUNCHER, socket, name, nonces[name], command, ...args],
+        ...(Object.keys(plain).length ? { env: plain } : {}) }];
+    }));
+    writeFileSync(join(stateDirectory, 'mcp.json'), JSON.stringify({ mcpServers: launch }), { mode: 0o600 });
+    mcpTurn = { config: join(stateDirectory, 'mcp.json'), servers, ...(socket ? { socket, nonces } : {}) };
   }
   return { slug, directory: turn, volumeDirectory: volume ? volume.directory : turn, scratch: mounted, workspace, stateDirectory,
     hook: { node, script: TOOL_HOOK_SCRIPT },
@@ -115,13 +133,13 @@ export function prepareToolTurn({ root, operation, attempt, operations, effectPo
 }
 
 /** The root's MCP configuration, read from `<root>/mcp.json` (the operator's file; absent means no MCP servers):
- * `{"mcpServers": {name: {command, args?}}, "reads": ["mcp__name__tool", ...]}`. A tool the file lists in `reads`
- * is ordinary work; every other MCP tool is a consequential effect for the effect doorway. A malformed file refuses
- * (thrown) rather than guessing. The file and its copy in the turn's admission state hold no secret value: a server
- * entry carries only its command and arguments (an `env` block, or any other key, is refused), and a command or
- * argument that holds a recognised credential is refused. A server that needs a credential reads it from its own
- * custody, never from this file. The admission check on file-tool paths happens before the harness opens the file
- * (docs/defects/2026-10-03-file-tool-swap-race.md), so a secret is kept out of every file at its source instead. */
+ * `{"mcpServers": {name: {command, args?, env?, ...}}, "reads": ["mcp__name__tool", ...]}`. A tool the file lists in
+ * `reads` is ordinary work; every other MCP tool is a consequential effect for the effect doorway. A malformed file
+ * refuses (thrown) rather than guessing. An `env` value is either a plain string, kept as written, or
+ * `{"secretRef": "<name>"}`, a credential in the runner's custody vault: the runner resolves it at the turn and hands it to
+ * that server alone (`serveMcpSecrets`), so no file holds it. The checkpoint (Rule 100): a recognised credential written
+ * literally in a command, an argument or an env value is refused, with the SecretRef form named as the way to give it.
+ * `secrets` maps each server to its env names and the SecretRef names they resolve from. */
 export const TOOL_MCP_CONFIG = 'mcp.json';
 export function readRootMcp(root, read = path => readFileSync(path, 'utf8')) {
   let text;
@@ -132,19 +150,71 @@ export function readRootMcp(root, read = path => readFileSync(path, 'utf8')) {
   if (!names.length) return null;
   if (!names.every(name => /^[A-Za-z0-9_-]{1,64}$/u.test(name) && servers[name] && typeof servers[name].command === 'string'))
     throw Error('preview: root MCP server names must be plain and each must name a command');
+  const literal = text => typeof text === 'string' && credentialSpans(text).length > 0;
+  const secrets = {};
   for (const name of names) {
-    const server = servers[name], extra = Object.keys(server).filter(key => key !== 'command' && key !== 'args');
-    if (extra.length) throw Error(`preview: root MCP server ${name} may carry only command and args (refused: ${extra.join(', ')}); `
-      + 'a server that needs a credential reads it from its own custody, never this file');
-    const args = server.args ?? [];
+    const server = servers[name], args = server.args ?? [], env = server.env ?? {};
     if (!Array.isArray(args) || !args.every(arg => typeof arg === 'string')) throw Error(`preview: root MCP server ${name} args must be strings`);
-    if ([server.command, ...args].some(text => credentialSpans(text).length > 0))
-      throw Error(`preview: root MCP server ${name} names a credential in its command or args; it must read it from its own custody`);
+    if (!env || typeof env !== 'object' || Array.isArray(env)) throw Error(`preview: root MCP server ${name} env must be an object`);
+    secrets[name] = {};
+    for (const [key, value] of Object.entries(env)) {
+      if (typeof value === 'string') { if (literal(value)) throw Error(`preview: root MCP server ${name} env ${key} holds a credential literally; give it as {"secretRef": "<name>"}`); continue; }
+      if (!value || typeof value !== 'object' || Object.keys(value).length !== 1 || typeof value.secretRef !== 'string' || !/^[A-Za-z0-9_.-]{1,128}$/u.test(value.secretRef))
+        throw Error(`preview: root MCP server ${name} env ${key} must be a string or {"secretRef": "<name>"}`);
+      secrets[name][key] = value.secretRef;
+    }
+    if ([server.command, ...args].some(literal))
+      throw Error(`preview: root MCP server ${name} holds a credential literally in its command or args; give it as an env {"secretRef": "<name>"}`);
   }
   const reads = data.reads ?? [];
   if (!Array.isArray(reads) || !reads.every(tool => typeof tool === 'string' && names.some(name => tool.startsWith(`mcp__${name}__`))))
     throw Error('preview: root MCP reads must name tools of the configured servers');
-  return { servers, reads, digest: `sha256:${createHash('sha256').update(text, 'utf8').digest('hex')}` };
+  return { servers, reads, secrets, digest: `sha256:${createHash('sha256').update(text, 'utf8').digest('hex')}` };
+}
+
+/** Serves each SecretRef-bearing MCP server its resolved environment on the turn's socket, once, to a launcher presenting
+ * that server's nonce (`mcp-launch.mjs`); anything else gets nothing. `values` maps server → {ENV: value}. Resolves to a
+ * `close()` that stops serving and removes the socket's directory. */
+export async function serveMcpSecrets(socket, nonces, values) {
+  const pending = new Map(Object.entries(values));
+  const server = createServer({ allowHalfOpen: true }, link => {
+    let text = '';
+    link.setEncoding('utf8');
+    link.on('data', chunk => { text = `${text}${chunk}`.slice(0, 512); });
+    link.on('end', () => {
+      const [name, nonce] = text.trim().split(' ');
+      const env = pending.get(name);
+      if (env && nonces[name] === nonce) { pending.delete(name); link.end(JSON.stringify(env)); } else link.end('');
+    });
+    link.on('error', () => {});
+  });
+  await new Promise((resolve, reject) => { server.once('error', reject); server.listen(socket, resolve); });
+  return () => new Promise(resolve => server.close(() => { rmSync(dirname(socket), { recursive: true, force: true }); resolve(); }));
+}
+
+/** Rewrites the turn's admission record with each served credential value replaced by its SecretRef marker and every
+ * recognised credential redacted (`redactText`), so the record a turn leaves holds no value (scrubbed when the turn ends;
+ * a tool result may carry one while the turn runs). */
+export function scrubAdmissionRecord(stateDirectory, served, redactText) {
+  const path = join(stateDirectory, 'admission.jsonl');
+  let text;
+  try { text = readFileSync(path, 'utf8'); } catch { return; }
+  const clean = value => {
+    if (typeof value === 'string') {
+      let out = value;
+      for (const [secret, marker] of served) for (const form of [secret, JSON.stringify(secret).slice(1, -1)]) out = out.split(form).join(marker);
+      return redactText(out);
+    }
+    if (Array.isArray(value)) return value.map(clean);
+    if (value && typeof value === 'object') return Object.fromEntries(Object.entries(value).map(([k, v]) => [k, clean(v)]));
+    return value;
+  };
+  const lines = text.split('\n').filter(line => line.length > 0).map(line => {
+    let row; try { row = JSON.parse(line); } catch { return clean(line); }
+    return JSON.stringify(clean(row));
+  });
+  writeFileSync(`${path}.scrub`, lines.length ? `${lines.join('\n')}\n` : '', { mode: 0o600 });
+  renameSync(`${path}.scrub`, path);
 }
 
 /** The trace of one finished turn, read from the hook's record. An absent record is an empty trace. */
@@ -505,17 +575,31 @@ export const toolChildrenFit = (view, unreserved = 0) => Math.max(0, Math.min(SU
 
 /**
  * One tool turn. `authority` names the activation the tools run under (its reference and tools policy digest); each
- * subagent edge carries it. `mcp` is `readRootMcp(root)`. `stopped()` reports whether the operator's stop or a withdrawal
+ * subagent edge carries it. `mcp` is `readRootMcp(root)`; `resolveSecret(name)` opens a SecretRef its servers name from the
+ * runner's custody (a server's credential that cannot be opened refuses the tool turn). `stopped()` reports whether the operator's stop or a withdrawal
  * ended the turn, so an edge without a result is recorded `cancelled` (else `unknown`).
  */
 export async function runToolTurn({ journal, root, id, prepared, promptLimit, deniedRoots, operations, effectPolicy, irreversibleTerm, invoke,
-  fallback, now, redactText, authority = 'unrecorded', mcp = null, stopped = () => false, scratch = attachScratch, detach = detachScratch, unmount = unmountScratch,
+  fallback, now, redactText, authority = 'unrecorded', mcp = null, resolveSecret = null, stopped = () => false, scratch = attachScratch, detach = detachScratch, unmount = unmountScratch,
   conversation = `${String(journal.view.genesis?.bot)}:${String(journal.view.genesis?.chat)}`, session = null,
   completed = result => result?.state === 'complete' }) {
   const extra = SUBSCRIPTION_TOOL_LIMITS.maxTurns - 1;
   const refuse = reason => { journal.append({ kind: 'tool-turn', phase: 'refused', id, reason, at: now() }); return fallback(); };
   if (!toolTurnFits(journal.view)) return refuse('call cap');
   if (Buffer.byteLength(prepared) + Buffer.byteLength(SUBSCRIPTION_TOOLS_SYSTEM_PROMPT) + TOOL_NOTICE_MAX_BYTES > promptLimit) return refuse('prompt size');
+  // Rule 100: a server's SecretRefs are opened from custody before anything is reserved; held in memory only.
+  const mcpValues = {}, served = [];
+  try {
+    for (const [server, refs] of Object.entries(mcp?.secrets ?? {})) {
+      if (!Object.keys(refs).length) continue;
+      mcpValues[server] = Object.fromEntries(Object.entries(refs).map(([key, ref]) => {
+        const secret = resolveSecret(ref);
+        if (typeof secret !== 'string' || !secret) throw Error('empty');
+        served.push([secret, `[credential: SecretRef preview/${ref}]`]);
+        return [key, secret];
+      }));
+    }
+  } catch { return refuse('mcp credential unavailable'); }
   const attempt = journal.view.toolTurns?.invocations ?? 0;
   const children = toolChildrenFit(journal.view);
   // Rule 60: the conversation's kept workspace, or (past the root's bound) a fresh one-turn volume and no kept session.
@@ -532,7 +616,7 @@ export async function runToolTurn({ journal, root, id, prepared, promptLimit, de
     delegation: { children, turnsEach: SUBSCRIPTION_TOOL_LIMITS.childMaxTurns, type: SUBSCRIPTION_SUBAGENT_TYPE, authority },
     ...(mcp ? { mcp: { servers: Object.keys(mcp.servers), reads: mcp.reads.length, digest: mcp.digest } } : {}),
     workspace: { key: space.key, kept }, at: now() });
-  let turn = null, result, failure = null, plan = null, volume = null, notice = '';
+  let turn = null, result, failure = null, plan = null, volume = null, notice = '', closeSecrets = null;
   try {
     turn = prepareToolTurn({ root, operation: id, attempt, operations, effectPolicy, irreversibleTerm, children, mcp, scratch,
       volume: kept ? space : null, authority });
@@ -552,9 +636,13 @@ export async function runToolTurn({ journal, root, id, prepared, promptLimit, de
       writeSession(space.directory, { v: 1, id: plan.id, binding: `${authority} ${session.harness}`, facts, workspace: turn.workspace,
         turns: plan.turn, open: true, at: now() });
     }
+    if (turn.mcp?.socket) closeSecrets = await serveMcpSecrets(turn.mcp.socket, turn.mcp.nonces, mcpValues);
     result = await invoke({ scratch: turn.scratch, workspace: turn.workspace, stateDirectory: turn.stateDirectory, hook: turn.hook, deniedRoots,
       ...(turn.mcp ? { mcp: turn.mcp } : {}), ...(plan ? { session: { id: plan.id, resume: plan.resume } } : {}) }, notice);
   } catch (error) { failure = error; }
+  if (closeSecrets) await closeSecrets();
+  else if (turn?.mcp?.socket) rmSync(dirname(turn.mcp.socket), { recursive: true, force: true });
+  if (turn) scrubAdmissionRecord(turn.stateDirectory, served, redactText);
   const trace = turn ? readToolTrace(turn.stateDirectory) : { calls: [], children: [], consistent: true };
   const ended = stopped() ? 'cancelled' : 'unknown';
   // A kept session continues only from a turn that ended cleanly; a stop, a withdrawal, a failure or an unproven tool
@@ -599,6 +687,7 @@ export function toolStatusLines(view, enabled, off = null) {
       + `${stats.toolRefusals} refused, ${stats.refusedCap} turns answered without tools because the call allowance was short`
       + `${stats.children ? `, ${stats.children.started} subagents started (${stats.children.returned} returned, ${stats.children.cancelled} cancelled, ${stats.children.unknown} unknown)` : ''}`
       + `${stats.refusedPrompt ? `, ${stats.refusedPrompt} because the packet left no room for the tool instructions` : ''}`
+      + `${stats.refusedCredential ? `, ${stats.refusedCredential} because an MCP server's stored credential could not be opened` : ''}`
       + `${stats.inconsistent ? `, ${stats.inconsistent} turns refused because a tool ran without its admission record` : ''}`
       + `${stats.open?.length ? `, ${stats.open.length} without a recorded trace yet (running now, or interrupted with an unknown outcome)` : ''}.`,
     ...(sessions ? [`Kept session: ${sessions.resumed} turns resumed it, ${sessions.fresh} started a new one (${sessions.changed} after the journal `

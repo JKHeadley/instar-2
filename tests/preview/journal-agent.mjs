@@ -1564,6 +1564,8 @@ async function main() {
     // Part Thirteen §9 (docs/17-harness-adapters): an eligible answer or work step runs as one scoped-tool turn (tool-turn.mjs runToolTurn).
     const invokeTools = async (prepared, id) => (await runToolTurn({ journal, root, id, prepared,
       promptLimit: toolPromptLimit(), mcp: readRootMcp(root),
+      // Rule 100: an MCP server's SecretRef is opened from this root's custody vault and handed to that server alone.
+      resolveSecret: name => createSecretCustody(root, key(), wallNow).resolve(secretRef(name)),
       authority: `${toolsRecord.reference} ${toolsRecord.invocationPolicyDigest}`,
       // MF5: the conversation's workspace persists across turns, and its kept harness session (in the login profile's
       // projects directory) is a cache bound to this authority, harness and model and to the journal's current facts.

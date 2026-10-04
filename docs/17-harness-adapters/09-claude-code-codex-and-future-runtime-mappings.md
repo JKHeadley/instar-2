@@ -48,12 +48,12 @@ file write or edit inside the conversation's volume, each decided on the resolve
 that resolved path, so no readable file is refused for its spelling. For a sandboxed command the kernel decides at
 open, so no symlink, alias or `..` spelling reaches past the boundary. For the in-process file tools (Read, Write,
 Edit, Glob, Grep) the hook decides on the realpath at admission, and a path the agent itself swaps for a link between
-admission and the harness's open can still be followed. The secrets floor therefore rests on what is on disk, not on
-that check: no file the tool runner writes holds a secret value in plaintext. Its journal (which holds the message
-captures) and its vault are ciphertext under the storage key, which only the runner's environment holds (never the
-harness's environment, its arguments or a file), and the credentials registry and the MCP launch configuration hold
-none. Plaintext secrets that the harness's operating-system user can read but this runner did not write remain open
-until the harness runs as its own user (`docs/defects/2026-10-03-file-tool-swap-race.md`). It also admits sandboxed commands (never judged by the words they
+admission and the harness's open can still be followed. That race is OPEN: it is pre-existing, the admission check
+does not close it, and it can be closed only by running the harness as its own operating-system user, an operator
+infrastructure step (`docs/defects/2026-10-03-file-tool-swap-race.md`). Separately, the tool runner keeps secret
+values out of the files it writes: its journal and vault are ciphertext under the storage key, which only the runner's
+environment holds, and an MCP server's credential is given as a SecretRef that the runner resolves and hands to that
+server's launcher alone; this narrows what the race can find but does not close it. It also admits sandboxed commands (never judged by the words they
 contain), a web read (WebFetch issues only a GET) of a host whose every resolved address is public,
 a web search, an MCP tool the root's configuration lists as a read, the harness's own bookkeeping, a
 worktree inside the workspace, and a subagent of the one registered type, started by the turn or by
@@ -75,9 +75,9 @@ of the shell and the harness live on that fixed-size volume, so a conversation's
 finite and cannot consume the journal's disk. The per-step tool-call count, shared by the turn and its subagents,
 is allocated atomically, so overlapping calls cannot exceed it. The launch has a clean environment;
 the harness's own messaging socket and token are removed from every command; an MCP server's launch
-configuration lies in the turn's admission state and carries its command and arguments only (an environment
-block, or a recognised credential in a command or argument, is refused; a server that needs a credential reads it
-from its own custody); and a workflow, scheduling, remote-trigger, monitor or messaging call is decided by the hook as
+configuration lies in the turn's admission state and carries its command, arguments and ordinary environment
+settings, with a credential only as a SecretRef that the runner resolves from custody and hands once to that
+server's launcher (a credential written literally is refused); and a workflow, scheduling, remote-trigger, monitor or messaging call is decided by the hook as
 above. Neither
 `--bare` nor `--safe-mode` is used, because both skip settings hooks, and managed policy that could
 disable hooks refuses the turn. Arbitrary-code execution is admitted only inside this demonstrated
