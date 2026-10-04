@@ -5,14 +5,15 @@
 import { readFileSync } from 'node:fs';
 import { describe, expect, it } from 'vitest';
 import { bindBlockingSite } from '../../src/register/governance.js';
+import type { Json } from '../../src/types/values.js';
 import { bindPreviewBlockingSites } from './journal.js';
 
-type Declaration = { id: string; status: string; requiredFacts: Record<string, unknown> & { rungs?: Record<string, unknown>[] } };
+type Declaration = { id: string; status: string; requiredFacts: Record<string, Json> & { rungs?: Record<string, Json>[] } };
 const read = (path: string): Declaration[] => JSON.parse(readFileSync(path, 'utf8'));
 const committed = () => ({ journal: read('tests/preview/journal.declarations.json'), replyCheck: read('tests/preview/reply-check.declarations.json'),
   redact: read('src/recall/redact.declarations.json'), resourceOwner: read('scripts/resource-owner.declarations.json') });
 const edited = (list: Declaration[], id: string, edit: (d: Declaration) => Declaration) => list.map(d => d.id === id ? edit(d) : d);
-const facts = (patch: Record<string, unknown>) => (d: Declaration) => ({ ...d, requiredFacts: { ...d.requiredFacts, ...patch } });
+const facts = (patch: Record<string, Json>) => (d: Declaration) => ({ ...d, requiredFacts: { ...d.requiredFacts, ...patch } });
 
 describe('the preview runner binds every blocking site it enforces', () => {
   it('binds the committed declarations, one per enforced checkpoint', () => {
