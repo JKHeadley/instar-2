@@ -13,21 +13,24 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { createJournalWorker, obligationDecision, obligationSchedule, openPreviewJournal } from './journal-test-worker.js';
 import { loopHealth, openLoops } from './obligations.js';
-import { decisionWithinFloor, obligationTaskAnswer } from './model-call-boundary.js';
+import { decisionWithinFloor } from './model-call-boundary.js';
 import { conclusionText, parseModelJson } from './model-json.js';
+import { readAnswer } from './answer-reading.js';
 import { REPLY_RULES } from './reply-check.js';
 
 type Call = { root: string; call: string; recordedOutcome: string; output: string };
 const fixture = JSON.parse(readFileSync(new URL('./fixtures/obligation-step-outputs-live-2026-10-04.json', import.meta.url), 'utf8')) as { calls: Call[] };
 type Decision = { type?: unknown; floor?: unknown; conclusion?: { subject?: unknown; value?: unknown } };
 
-/** Exactly the launcher's acceptance of a result for an `answer`-role id (journal-agent invokeSubscription). `task`
- * false is the reading before this change. */
+/** Exactly the launcher's acceptance of a result for an `answer`-role id (journal-agent invokeSubscription). Since plan
+ * #491 that is the one flat-answer reading (answer-reading.ts readAnswer), which reads a step's own task object as the
+ * answer's fields; it replaced the step-only reader of plan #477 when cint-L50 merged both (same text on all 20 recorded
+ * steps). `task` false is the reading before plan #477: only a well-formed Decision envelope. */
 function launched(raw: string, id: string, task = true): string | null {
+  if (task) { const reading = readAnswer(raw, { wrapped: 'accept', evidence: [id] }); return reading.ok ? reading.value : null; }
   const extracted = parseModelJson(raw, { wrapped: 'accept' }), decision = extracted.ok ? extracted.value as Decision : null;
-  const enveloped = decision?.type === 'Decision' && decision.conclusion?.subject === 'preview-stage2-answer'
+  return decision?.type === 'Decision' && decision.conclusion?.subject === 'preview-stage2-answer'
     && decisionWithinFloor(decision) ? conclusionText(decision.conclusion.value) : null;
-  return enveloped ?? (task && decision ? obligationTaskAnswer(id, decision as Record<string, unknown>) : null);
 }
 const outcomeOf = (call: Call, task = true) => {
   const text = launched(call.output, call.call, task);
@@ -72,21 +75,21 @@ it('reads the live d1 deferral steps as the model wrote them', () => {
 });
 
 it.each([
-  ['a reply-answer id', 'telegram:8989505249:update:6232091', { outcome: 'report', report: 'r' }],
-  ['a summary id', 'summary:6232091', { outcome: 'report', report: 'r' }],
-  ['a non-canonical obligation id', 'obligation:commitment:3', { outcome: 'report', report: 'r' }],
-  ['a Decision attempt', 'obligation:commitment:3:1', { type: 'Decision', outcome: 'report', report: 'r' }],
-  ['a broken envelope carrying a floor', 'obligation:commitment:3:1', { outcome: 'report', report: 'r', floor: { allowed: ['work', 'send'], chosen: 'send' } }],
-  ['a broken envelope carrying a conclusion', 'obligation:commitment:3:1', { outcome: 'report', conclusion: { value: 'x' } }],
-  ['an object naming no outcome', 'obligation:commitment:3:1', { reply: 'Confirmed.', fulfilled: [] }],
-])('refuses %s', (_, id, value) => {
-  expect(obligationTaskAnswer(id, value as Record<string, unknown>)).toBeNull();
+  ['a Decision attempt', { type: 'Decision', outcome: 'report', report: 'r' }],
+  ['a broken envelope carrying a widened floor', { outcome: 'report', report: 'r', floor: { allowed: ['work', 'send'], chosen: 'send' } }],
+  ['a broken envelope carrying a conclusion', { outcome: 'report', conclusion: { value: 'x' } }],
+])('refuses %s as a step answer', (_, value) => {
+  expect(launched(JSON.stringify(value), 'obligation:commitment:3:1')).toBeNull();
 });
 
-it('admits the task object for a canonical commitment or blocker step, unchanged', () => {
+it('reads a step task object unchanged, and leaves every field check to obligationDecision', () => {
   const value = { outcome: 'still-blocked', recheck: '2026-10-20', reason: 'r' };
-  expect(obligationTaskAnswer('obligation:blocker:0:1791107022571', value)).toBe(JSON.stringify(value));
-  expect(obligationTaskAnswer('obligation:commitment:3:1791107022571', { outcome: 'x' })).toBe('{"outcome":"x"}');
+  expect(launched(JSON.stringify(value), 'obligation:blocker:0:1791107022571')).toBe(JSON.stringify(value));
+  expect(launched('{"outcome":"x"}', 'obligation:commitment:3:1791107022571')).toBe('{"outcome":"x"}');
+  // An object naming no outcome is read, and the step still settles failed: obligationDecision refuses it.
+  const noOutcome = launched(JSON.stringify({ reply: 'Confirmed.', fulfilled: [] }), 'obligation:commitment:3:1');
+  expect(noOutcome).not.toBeNull();
+  expect(obligationDecision(noOutcome!, 'commitment', 0, 'America/Los_Angeles').outcome).toBe('failed');
 });
 
 // The live journal path, at the journal worker, with the launcher's reading of each recorded output.

@@ -162,10 +162,10 @@ it('states the credential boundary: a value returned only to the operator who su
   expect(REPLY_RULES.credential).toMatch(/credential wall on every reply, including one the operator pasted/u);
 });
 
-it('gives full-context review the actual operator request and the required Decision envelope', () => {
+it('gives full-context review the actual operator request and the flat answer slot', () => {
   const question = replyReviewQuestion(['cli_command']);
   expect(question).toContain('packet.operatorMessage');
-  expect(question).toContain('conclusion.value');
+  expect(question).toContain('Return as "answer" exactly one line');
   expect(question).toContain('explicit request for the command');
   expect(question).toContain('authentication secret');
   expect(question).not.toContain('Jev cleared');

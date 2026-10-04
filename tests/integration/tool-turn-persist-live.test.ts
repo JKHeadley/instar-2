@@ -15,8 +15,7 @@ import type { ProviderSubscriptionProfile } from '../../src/assembly/provider-cr
 import { factsFixture, value } from '../facts/fixtures.js';
 import { createJournalWorker, openPreviewJournal } from '../preview/journal-test-worker.js';
 import { prepareJournalEnvelope } from '../preview/journal-envelope.js';
-import { decisionWithinFloor } from '../preview/model-call-boundary.js';
-import { parseModelJson, conclusionText } from '../preview/model-json.js';
+import { readAnswer } from '../preview/answer-reading.js';
 import { SINGLE_MACHINE_PROFILE } from '../preview/activation-authority.js';
 import { redact } from '../../src/recall/redact.js';
 // @ts-expect-error Physical host JavaScript stays outside pure core.
@@ -80,10 +79,8 @@ function world(name: string) {
     try {
       const result = await route.invoke(prepared, { operation: id, deadline: Date.now() + policy.timeout + 30000, timeout: policy.timeout,
         maxOutputBytes: policy.maxOutputBytes, maxTokens: policy.maxTokens, maxCharge: 0, automaticRetries: 0 });
-      const extracted = typeof result.bytes === 'string' ? parseModelJson(result.bytes, { wrapped: 'accept' }) : null;
-      const decision = extracted?.ok ? extracted.value as { type?: unknown; floor?: unknown; conclusion?: { subject?: unknown; value?: unknown } } : null;
-      const text = decision?.type === 'Decision' && decision.conclusion?.subject === 'preview-stage2-answer' && decisionWithinFloor(decision)
-        ? conclusionText(decision.conclusion.value as never) : null;
+      const reading = typeof result.bytes === 'string' ? readAnswer(result.bytes, { wrapped: 'accept', evidence: [id] }) : null;
+      const text = reading?.ok ? reading.value : null;
       return { state: result.state, raw: result.bytes ?? null, text };
     } finally { clearInterval(watcher); }
   };

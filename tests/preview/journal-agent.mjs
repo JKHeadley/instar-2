@@ -33,8 +33,8 @@ import { guidanceReport } from './guidance.js';
 import { memoryLearningLine, memoryLearningReport } from './memory-learning.js';
 import { JEV_MODEL, jevQuestions, publicCredentialRegister, secretMaterialIn, replyReviewContext, replyReviewQuestion, replyReviewRules, parseReplyReviewVerdict, replyReviewDiagnostics, parseJevResponse, replyRevisionQuestion, parseReplyRevision, REVIEW_MALFORMED, REVIEW_FORMAT_REMINDER } from './reply-check.js';
 import { interpretSummaryReview, SUMMARY_QUESTION } from './summary-check.js';
-import { assertLiveJudgment, decisionWithinFloor, modelCallRecord, obligationTaskAnswer, sha256 } from './model-call-boundary.js';
-import { conclusionText, failureShapeOf, parseModelJson } from './model-json.js';
+import { assertLiveJudgment, modelCallRecord, sha256 } from './model-call-boundary.js';
+import { readAnswer } from './answer-reading.js';
 import { SUMMARY_FAITHFULNESS_QUESTION } from './summary-faithfulness.js';
 
 
@@ -1596,6 +1596,8 @@ async function main() {
       return { value, latencyMs };
     };
     // model-call-boundary:end
+    /** A refused review verdict's defect, kept only until that review's one format re-ask reads it (content-free protocol text). */
+    const reviewDefects = new Map();
     const invokeSubscription = async (prepared, id, reviewTurnId, deadlineAt, toolTurn) => {
       const policy = doorway.policyFor(required(options, 'model'),
         toolTurn ? doorway.toolsFraming ?? doorway.conversationFraming : doorway.conversationFraming);
@@ -1613,24 +1615,20 @@ async function main() {
       if (result.state !== 'complete') throw Error('preview: model outcome unknown');
       if (!result.bytes) return { state: 'complete', failureClass: 'empty', usage: result.usage };
       const role = roleOf(id);
-      // A wrapped object passes exactly the checks below that an unwrapped one does; only the wrapper is dropped.
-      const extracted = parseModelJson(result.bytes, { wrapped: wrappedPolicyOf(role) }), decision = extracted.ok ? extracted.value : null;
+      // Plan #491 (answer-reading.ts): the model returns one flat object and the runner builds the Decision from its own
+      // values; a wrapped object passes exactly the checks an unwrapped one does, and only the wrapper is dropped.
       // Rule 57: a returned floor may only echo the envelope's own; it never defines or widens it.
-      const enveloped = decision?.type === 'Decision' && decision.conclusion?.subject === 'preview-stage2-answer'
-        && decisionWithinFloor(decision) ? conclusionText(decision.conclusion.value) : null;
-      // Plan #477: a scheduled obligation step that returned its task's own JSON unenveloped (model-call-boundary.ts).
-      const task = enveloped === null && role === 'answer' && decision ? obligationTaskAnswer(id, decision) : null;
-      const value = enveloped ?? task;
-      if (value === null) {
-        recordShape(shapesPath, role, 'decision', 'malformed', failureShapeOf(extracted));
-        return { state: 'complete', failureClass: 'malformed', usage: result.usage };
+      const reading = readAnswer(result.bytes, { wrapped: wrappedPolicyOf(role), evidence: [id] });
+      if (!reading.ok) {
+        recordShape(shapesPath, role, 'decision', 'malformed', reading.shape);
+        // The defect is content-free protocol text; the format re-ask names it so the model can correct exactly that.
+        return { state: 'complete', failureClass: 'malformed', defect: reading.defect, usage: result.usage };
       }
-      if (task !== null) recordShape(shapesPath, role, 'decision', 'tolerated', `task-${extracted.shape}`);
-      else if (extracted.shape !== 'bare') recordShape(shapesPath, role, 'decision', 'tolerated', extracted.shape);
+      if (reading.shape !== 'bare') recordShape(shapesPath, role, 'decision', 'tolerated', reading.shape);
+      const value = reading.value;
       if (!value.trim()) return { state: 'complete', failureClass: 'empty', usage: result.usage };
-      // Rule 108: the stated reason is recorded beside the conclusion (build 8). A task's own object has no Decision reason.
-      const reasonValue = task === null ? decision.reason?.value : undefined;
-      const reason = typeof reasonValue === 'string' ? reasonValue : reasonValue === undefined || reasonValue === null ? '' : JSON.stringify(reasonValue);
+      // Rule 108: the stated reason is recorded beside the conclusion (build 8).
+      const reason = reading.reason;
       return { state: 'complete', value, ...(reason.trim() ? { reason } : {}), usage: result.usage };
     };
     // Part Thirteen §9 (docs/17-harness-adapters): an eligible answer or work step runs as one scoped-tool turn (tool-turn.mjs runToolTurn).
@@ -1768,8 +1766,12 @@ async function main() {
 
           const reviewContext = replyReviewContext(originalPrompt, text, reviewRules, declaredObligations(journal.view, id, wallNow()),
             credentialRegister());
-          const context = formatRetry ? withFormatReminder(reviewContext, REVIEW_FORMAT_REMINDER) : reviewContext;
           const operationId = operation === 'revision' ? `${id}:revision-review` : `${id}:reply-review`;
+          // Plan #491: the one format re-ask names the exact defect the reader found in this review's refused verdict.
+          const defect = reviewDefects.get(operationId);
+          const context = formatRetry ? withFormatReminder(reviewContext, defect ? `${REVIEW_FORMAT_REMINDER} The defect: ${defect}.`
+            : REVIEW_FORMAT_REMINDER) : reviewContext;
+          reviewDefects.delete(operationId);
           // Rule 29: the review input is written by the runner, a verified system principal.
           const writer = envelopeWriter(journal.systemWriter('reply-review', `${operationId}\n${context}`, wallNow()));
           const prepared = modelEnvelope({ question, context, id: operationId, ...(writer ? { writer } : {}) });
@@ -1778,7 +1780,10 @@ async function main() {
           const result = operation === 'revision' ? await invokeSubscription(prepared, operationId, undefined, deadlineAt)
             : await invokeSubscription(prepared, operationId, id, deadlineAt);
           // A Decision-shape miss is a format miss like a malformed verdict line: the worker may re-ask it once.
-          if (result.state === 'complete' && result.failureClass === 'malformed') throw Error(REVIEW_MALFORMED);
+          if (result.state === 'complete' && result.failureClass === 'malformed') {
+            if (result.defect) reviewDefects.set(operationId, result.defect);
+            throw Error(REVIEW_MALFORMED);
+          }
           if (result.state !== 'complete' || result.failureClass) throw Error('preview: reply review unavailable');
           // The reply verdict is one exact line per selected rule (rule_id: PASS | reason); the whole-line
           // pattern admits no surrounding text, so a written rejection can never be discarded around it.

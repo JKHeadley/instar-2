@@ -240,7 +240,11 @@ export const STEP_SUPERVISOR_EXHAUSTED = 'step supervisor budget exhausted';
 /** The journal record, rather than model prose, determines a packet item's origin. */
 export type MemorySourceKind = 'operator-stated' | 'channel-import' | 'inferred-by-summary';
 /** Runner-authored packet guidance for the single format re-ask (Rule 116); the operator's message is unchanged. */
-export const ANSWER_FORMAT_REMINDER = 'Your previous response to this same message was refused because it was not exactly one JSON Decision object. Answer again and return only that object, with no text before or after it; put all reasoning inside reason.value.';
+export const ANSWER_FORMAT_REMINDER = 'Your previous response to this same message was refused because it was not exactly one flat JSON answer object. Answer again and return only that object, with no text before or after it: "reasoning" first, then "answer" or your answer\'s own fields beside it.';
+/** The re-ask names the exact defect the runner found (answer-reading.ts), so the model can correct that one thing. A
+ * re-ask that says only "format" got the identical slip back on both attempts of a1 and a3 (cint-L47, plan #491). */
+export const answerFormatReminder = (defect?: string): string => defect
+  ? `${ANSWER_FORMAT_REMINDER} The defect: ${defect}.` : ANSWER_FORMAT_REMINDER;
 export const withFormatReminder = (context: string, reminder: string): string =>
   JSON.stringify({ ...JSON.parse(context) as Record<string, unknown>, formatReminder: reminder });
 export const MODEL_FAILURE_REPLY = 'I couldn\'t produce an answer to that. Please rephrase or ask again.';
@@ -4781,7 +4785,8 @@ export interface PreviewPorts {
    * is routed here; an operator answer is never delegated to a session. */
   sessionWork?(input: { question: string; context: string; id: string }): ReturnType<PreviewPorts['model']>;
   model(input: { question: string; context: string; id: string; prepared?: string }): Promise<string | {state?: 'complete'; text:string;
-    usage: ModelUsage; /** The Decision's separately stated reason claim (Rule 108), kept beside its conclusion. */ reason?: string} | {state:'rejected' | 'complete'; failureClass:ModelFailureClass; usage?: ModelUsage}
+    usage: ModelUsage; /** The Decision's separately stated reason claim (Rule 108), kept beside its conclusion. */ reason?: string} | {state:'rejected' | 'complete'; failureClass:ModelFailureClass; usage?: ModelUsage;
+      /** A malformed answer's exact protocol defect (answer-reading.ts), named in the one format re-ask. */ defect?: string}
     | {state:'uncertain'; usage?: ModelUsage}>;
   /** Rule 42: a message id (accepted), null (UNKNOWN) or a closed outcome. Rule 89: `provenance`
    * is the journal's signature over exactly `target`, `chat`, `thread` and `text`. */
@@ -7008,7 +7013,7 @@ export function createJournalWorker(journal: ReturnType<typeof openPreviewJourna
           const formatReask = async (given: Answer): Promise<Answer | false> => {
             if (typeof given === 'string' || !('failureClass' in given) || given.state !== 'complete'
               || given.failureClass !== 'malformed' || turn.answerRetried) return given;
-            const retryContext = routedContext(withFormatReminder(context, ANSWER_FORMAT_REMINDER));
+            const retryContext = routedContext(withFormatReminder(context, answerFormatReminder('defect' in given ? given.defect : undefined)));
             let retryPrepared: string | undefined, preparable = true;
             if (prepared !== undefined) try { retryPrepared = ports.prepareModel?.({ question, context: retryContext, id: turn.id }); }
             catch { preparable = false; }
@@ -8666,7 +8671,7 @@ export function createJournalWorker(journal: ReturnType<typeof openPreviewJourna
       + 'For each memory action, include replies: ids of memoryCandidates whose reply repeats or restates the old fact, including short answers, and summaryPassages: exact passages of the prior summary that express the old fact; leave unrelated material alone. '
       + 'Return memory: [] when no direct request applies; set memoryDisposition: "unresolved" when a direct request has no identifiable source. '
       + `Keep the complete JSON response within ${SUMMARY_TARGET_OUTPUT_TOKENS} output tokens; use concise summary prose and exact short quotes. `
-      + `Write reason.value as one sentence of at most ${SUMMARY_REASON_CHARS} characters. Put the summary prose in the summary field. Keep the summary prose within ${String(summaryTextBound())} bytes of UTF-8: a plain ASCII character is one byte, an accented or non-Latin character two to four, so non-ASCII prose holds fewer characters; that keeps the whole answer inside its output limit. `
+      + `Write reasoning as one sentence of at most ${SUMMARY_REASON_CHARS} characters. Put the summary prose in the summary field. Keep the summary prose within ${String(summaryTextBound())} bytes of UTF-8: a plain ASCII character is one byte, an accented or non-Latin character two to four, so non-ASCII prose holds fewer characters; that keeps the whole answer inside its output limit. `
       + 'If the packet\'s summary.text is longer than that, rewrite it condensed within that size, keeping every fact, commitment and open question it holds; memoryItems already keep the exact facts. '
       + 'For unansweredCandidates, judge each candidate by the full conversation: its reply only triggered review. Return questions: [{"source": candidate id, "quote": exact question excerpt from that operator message}] only when it really left an operator question unanswered. Return questions: [] when none. '
       + 'Return memoryItems: [{"source": history item id, "quote": exact short factual clause from that operator message}] for new active facts worth keeping. Existing summary.memoryItems are already retained by source; do not repeat or paraphrase them in summary prose. A correction replaces its old item and forgetting removes it. '
