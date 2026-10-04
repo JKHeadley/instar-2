@@ -14,7 +14,8 @@ it.each([['with', true], ['without', false]])('the runner %s the approval page i
   const activation = join(world.directory, 'activation.json'), profile = join(world.directory, 'profile.json');
   const log = join(world.directory, 'poll.log'), updates = join(world.directory, 'updates.json'), preload = join(world.directory, 'jev.mjs');
   const store = join(world.directory, 'store'), outbox = join(world.directory, 'outbox');
-  for (const directory of [store, outbox]) { mkdirSync(directory, { mode: 0o755 }); chmodSync(directory, 0o755); }
+  mkdirSync(store, { mode: 0o755 }); chmodSync(store, 0o755);
+  mkdirSync(outbox, { mode: 0o750 }); chmodSync(outbox, 0o750); // closed to other accounts: the dashboard carries message excerpts
   writeFileSync(activation, JSON.stringify(world.activation()));
   writeFileSync(profile, JSON.stringify(offlineProfile));
   writeFileSync(updates, JSON.stringify([{ update_id: 1, message: { chat: { id: Number(world.configuration.chatId), type: 'private' },

@@ -5,7 +5,7 @@
  * current (purpose Rule 2: the loss detector for this state is that age, on every view). */
 import { redact } from '../../src/recall/redact.js';
 import { localParts } from './dated-memory.js';
-import { operatorRequestsReport, retractedTurn, type JournalView, type Turn } from './journal.js';
+import { operatorRequestsReport, replyTarget, retractedTurn, sendOutcomeOf, type JournalView, type Turn } from './journal.js';
 import { messageTime } from './self-state.js';
 import { heldReplies, turnsToday } from './status-command.js';
 
@@ -21,7 +21,11 @@ export interface DashboardSnapshot {
   counts: { turnsToday: number; held: number; waiting: number };
   allowance: { label: string; used: number; max: number }[];
   tokens: { input: number; output: number; unknownCalls: number };
-  requests: { title: string; state: string; open: boolean; route: 'chat' | 'github-review'; link: string | null }[];
+  /** `sharedAccess`: the approval was admitted under the operator's acceptance of shared account access, and its disclosure
+   * (Purpose, the approval-account exception) is carried wherever the approval is displayed. */
+  requests: { title: string; state: string; open: boolean; route: 'chat' | 'github-review'; link: string | null;
+    sharedAccess: { account: string; disclosure: string } | null }[];
+  /** `update` is the journal's update domain (`isJournalUpdate`): a scheduled turn's synthetic update is fractional. */
   turns: { update: number; time: string; from: 'you' | 'scheduled'; message: string; reply: string | null; state: string }[];
   /** The bot's username, for a direct link into the operator's chat; null when the runner was not told it. */
   chat: string | null;
@@ -37,13 +41,27 @@ const REQUEST_TITLES: Record<string, string> = { 'raise-caps': "Let me continue 
 const REQUEST_STATES: Record<string, string> = { open: 'Waiting for your answer', applied: 'Approved and done',
   'approved, not applied': 'Approved, being applied', superseded: 'Replaced by a newer request', lapsed: 'Expired unanswered',
   'not sent': 'Being prepared' };
-/** What happened to one message, in plain words, read from the turn's own durable record. */
-export function turnState(turn: Turn): string {
-  if (turn.sent !== undefined) return 'Answered';
-  if (turn.limitedSent !== undefined) return 'Answered briefly: the allowance was reached';
-  if (turn.held) return `Held: ${turn.held}`;
-  if (turn.intent !== undefined) return 'Sending';
-  return 'Waiting for my answer';
+/** One send's settled outcome in plain words (Rules 26, 42), read through the journal's own `sendOutcomeOf`: a receipt is
+ * delivery; a recorded refusal or UNKNOWN is settled and never sent again; with no outcome recorded yet it is unconfirmed. */
+function delivery(view: JournalView, target: string, sent: number | undefined, done: string, what: string): string {
+  const outcome = sendOutcomeOf(view, target, sent);
+  if (outcome.kind === 'accepted') return done;
+  if (outcome.kind === 'refused') return `${what} was refused and not delivered (${outcome.reason}); it is not sent again`;
+  return view.sendOutcomes.some(item => item.target === target)
+    ? `${what} may or may not have arrived: delivery is UNKNOWN${outcome.reason ? ` (${outcome.reason})` : ''}; it is not sent again`
+    : `Sending ${what.toLowerCase()}: not confirmed delivered yet`;
+}
+/** What happened to one message, and the reply it got, read from the turn's own durable record. A message covered by a
+ * limited answer shows that answer and its lead's send outcome, whichever covered turn it is. */
+export function turnOutcome(view: JournalView, turn: Turn): { state: string; reply: string | null } {
+  if (turn.intent !== undefined) return { reply: turn.intent, state: delivery(view, replyTarget(turn), turn.sent, 'Answered', 'My reply') };
+  if (turn.limited !== undefined) {
+    const lead = view.turns.get(turn.limited.lead);
+    return { reply: turn.limited.text, state: delivery(view, `limited:${turn.limited.lead}`, lead?.limitedSent,
+      'Answered briefly: the allowance was reached', 'My brief answer (the allowance was reached)') };
+  }
+  if (turn.held) return { reply: null, state: `Held: ${turn.held}` };
+  return { reply: null, state: 'Waiting for my answer' };
 }
 
 /** The snapshot for one moment. `statusText` is `statusAnswer(...)`, the exact chat status answer the runner would send now. */
@@ -51,10 +69,13 @@ export function dashboardSnapshot(view: JournalView, input: { now: number; zone:
   const { now, zone } = input, L = DASHBOARD_LIMITS;
   const requests = operatorRequestsReport(view, now).slice(-L.requests).reverse().map(item => ({
     title: REQUEST_TITLES[item.action] ?? 'A request from your agent', state: REQUEST_STATES[item.state] ?? item.state,
-    open: item.state === 'open', route: item.route, link: item.route === 'github-review' ? item.link ?? null : null }));
-  const turns = view.order.filter(turn => turn.accepted && !retractedTurn(view, turn.id)).slice(-L.turns).reverse().map(turn => ({
-    update: turn.update, time: stamp(messageTime(turn) ?? turn.at, zone), from: turn.writer?.kind === 'system' ? 'scheduled' as const : 'you' as const,
-    message: clip(turn.text, L.textChars), reply: turn.intent === undefined ? null : clip(turn.intent, L.textChars), state: turnState(turn) }));
+    open: item.state === 'open', route: item.route, link: item.route === 'github-review' ? item.link ?? null : null,
+    sharedAccess: item.sharedAccess ? { account: item.sharedAccess.account, disclosure: item.sharedAccess.disclosure } : null }));
+  const turns = view.order.filter(turn => turn.accepted && !retractedTurn(view, turn.id)).slice(-L.turns).reverse().map(turn => {
+    const outcome = turnOutcome(view, turn);
+    return { update: turn.update, time: stamp(messageTime(turn) ?? turn.at, zone), from: turn.writer?.kind === 'system' ? 'scheduled' as const : 'you' as const,
+      message: clip(turn.text, L.textChars), reply: outcome.reply === null ? null : clip(outcome.reply, L.textChars), state: outcome.state };
+  });
   const bot = input.bot?.replace(/^@/u, '') ?? null;
   return { type: DASHBOARD_SNAPSHOT, schemaVersion: 1, asOf: now, zone,
     state: input.stopped || view.stop !== null ? 'stopped' : now >= view.expires ? 'ended' : 'running', until: stamp(view.expires, zone),

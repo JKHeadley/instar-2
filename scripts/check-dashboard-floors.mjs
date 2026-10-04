@@ -38,6 +38,8 @@ const hrefs = html => [...html.matchAll(/\b(?:href|src)="([^"]*)"/gu)].map(match
 const cssRule = (css, selector) => css.match(new RegExp(`(?:^|\\n)${selector.replace('.', '\\.')}\\{([^}]*)\\}`, 'u'))?.[1] ?? '';
 const EXTERNAL = [/^https:\/\/github\.com\/[A-Za-z0-9_.-]+\/[A-Za-z0-9_.-]+\/pull\/[1-9]\d*\/files$/u, /^https:\/\/t\.me\/[A-Za-z0-9_]{5,32}$/u];
 const JARGON = /sha256|\bjournal\b|\bcursor\b|snapshot|\bjson\b|\btoken\b|challenge|\bconfig|\bupdates? \d|\b[0-9a-f]{12,}\b|\b\w+_\w+\b|\b[a-z]+[A-Z]\w*\b|\b\d+\s?ms\b|\bnull\b|\bundefined\b/u;
+/** What every view of each lost state must say (scripts/operator-dashboard.mjs). */
+const NOTICE = { stale: 'Last updated by your agent', missing: 'has not shared its status here yet', invalid: 'latest status could not be read' };
 const RAW_ERROR = /\bundefined\b|\bNaN\b|\[object |Error:|\bnull\b|SyntaxError|ENOENT/u;
 
 /** The eleven floors over a set of rendered pages. `pages`: { state, path, status, html, front, signIn }; `fetch(path)`
@@ -81,6 +83,9 @@ export function floorVerdicts({ pages, fetch, states, script = DASHBOARD_APP, st
   const expected = { missing: 'has not shared its status', invalid: 'could not be read', stale: 'has not updated this page for' };
   out.F6 = verdict('F6', [...Object.entries(expected).flatMap(([state, phrase]) => !states[state] ? [`${state}: not rendered`]
     : visible(states[state]).includes(phrase) ? [] : [`${state}: the page does not say plainly what is going on`]),
+  // The loss detector is on every view, detail pages included: each page of a stale, missing or unreadable state says so.
+  ...inside.filter(item => NOTICE[item.state]).flatMap(({ state, path, html }) => visible(html).includes(NOTICE[state]) ? []
+    : [`${state} ${path}: this view does not say the status is ${state}`]),
   ...(visible(states.emptyWaiting ?? '').includes('Nothing is waiting for you.') ? [] : ['empty: the waiting list does not say it is empty']),
   ...(visible(states.emptyMessages ?? '').includes('No messages yet') ? [] : ['empty: the message list does not say it is empty']),
   ...pages.flatMap(({ state, path, html }) => RAW_ERROR.test(visible(html)) ? [`${state} ${path}: raw error text`] : [])],
@@ -141,6 +146,8 @@ function authenticator(origin, rpId) {
 }
 
 const ORIGIN = 'https://approvals.example.org', RP = 'approvals.example.org';
+/** The recorded shared-access disclosure (src/decode/explicit-yes.ts SHARED_ACCESS_NOTE), as a fixture. */
+const SHARED_ACCESS_FIXTURE = 'I can also use that account, so the account alone does not show who approved';
 const RAISE_TEXT = 'Approve raising the model call allowance from 16 to 32? That adds 16 model calls I may spend in this trial.';
 /** The snapshot shapes the six states render, built from recorded live shapes. */
 export function fixtureSnapshots(recorded, now) {
@@ -152,7 +159,8 @@ export function fixtureSnapshots(recorded, now) {
       { label: 'Messages taken', used: 14, max: 1000 }, { label: 'Reply checks', used: 13, max: 1000 }],
     tokens: { input: 1834012, output: 20412, unknownCalls: 0 },
     requests: [{ title: "Let me continue past this trial's allowance", state: 'Waiting for your answer', open: row.state === 'open',
-      route: row.route, link: row.link }, { title: 'Extend this trial', state: 'Approved and done', open: false, route: 'chat', link: null }],
+      route: row.route, link: row.link, sharedAccess: null }, { title: 'Extend this trial', state: 'Approved and done', open: false, route: 'chat', link: null,
+      sharedAccess: { account: 'github:operator', disclosure: SHARED_ACCESS_FIXTURE } }],
     turns: recorded.turns.map((turn, index) => ({ update: turn.update, time: `2026-10-0${index + 1} 14:0${index}`, from: 'you',
       message: turn.message.slice(0, DASHBOARD_BOUNDS.textChars), reply: turn.reply.slice(0, DASHBOARD_BOUNDS.textChars),
       state: index === 1 ? 'Held: summary faithfulness: full-context review found loss' : 'Answered' })),
@@ -236,7 +244,11 @@ export async function runDashboardChecks({ fixture = resolve('tests/fixtures/das
       F3: mutate(text => text.replace(/<p class="purpose">[^<]*<\/p>/u, '')),
       F4: mutate(insert('<table><tr><td>wide</td></tr></table>')),
       F5: mutate(insert(`<a href="/${token}/dashboard/status"></a>`)),
-      F6: floorVerdicts({ pages, fetch: checkFetch, states: { ...states, missing: '<main class="panel"><p>Error: ENOENT</p></main>' } }),
+      // Both halves must be caught: a raw error on a lost state's front page, and a stale detail page with no age notice.
+      F6: (() => { const raw = floorVerdicts({ pages, fetch: checkFetch, states: { ...states, missing: '<main class="panel"><p>Error: ENOENT</p></main>' } });
+        const quiet = floorVerdicts({ pages: pages.map(item => item.state === 'stale' && /\/dashboard\/requests\//u.test(item.path)
+          ? { ...item, html: item.html.replace(/<p class="note">Last updated by your agent[^<]*<\/p>/u, '') } : item), fetch: checkFetch, states });
+        return { verdicts: { F6: { pass: raw.verdicts.F6.pass || quiet.verdicts.F6.pass } } }; })(),
       F7: mutate(text => text.replace('<p class="headline">', '<p class="headline" style="color:red">')),
       F8: mutate(insert(`<a href="/${token}/dashboard/nowhere/at/all">Elsewhere</a>`)),
       F9: mutate(text => text.replace('<title>', '<meta http-equiv="refresh" content="5"><title>')),

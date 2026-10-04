@@ -33,6 +33,13 @@ const FIELDS = 'allowance,asOf,chat,counts,requests,schemaVersion,state,status,t
 
 const text = (value, limit) => { check(typeof value === 'string' && value.length <= limit, 'dashboard text field invalid'); return value; };
 const count = value => { check(Number.isSafeInteger(value) && value >= 0, 'dashboard count invalid'); return value; };
+/** The journal's update domain (tests/preview/journal.ts `isJournalUpdate`): a Telegram update id, or a scheduled turn's
+ * synthetic update on the 1/1024 grid. Its decimal form names a message's detail page. */
+const SYNTHETIC_STEPS = 1024;
+export const isDashboardUpdate = value => typeof value === 'number' && Number.isFinite(value) && value >= 0
+  && Number.isSafeInteger(value * SYNTHETIC_STEPS);
+/** Every dashboard detail path: `messages/<update>` (an update's decimal form) or `requests/<index>`. */
+export const DETAIL_PATH = /^(?:messages\/\d{1,16}(?:\.\d{1,12})?|requests\/\d{1,2})$/u;
 const closed = (value, fields) => { check(value !== null && typeof value === 'object' && !Array.isArray(value)
   && Object.keys(value).sort().join(',') === fields, 'dashboard record shape invalid'); return value; };
 const list = (value, limit) => { check(Array.isArray(value) && value.length <= limit, 'dashboard list invalid'); return value; };
@@ -46,13 +53,14 @@ export function checkSnapshot(value) {
   for (const item of list(s.allowance, 8)) { closed(item, 'label,max,used'); text(item.label, 40); count(item.used); count(item.max); }
   closed(s.tokens, 'input,output,unknownCalls'); Object.values(s.tokens).forEach(count);
   for (const item of list(s.requests, B.requests)) {
-    closed(item, 'link,open,route,state,title'); text(item.title, 120); text(item.state, 120);
+    closed(item, 'link,open,route,sharedAccess,state,title'); text(item.title, 120); text(item.state, 120);
+    if (item.sharedAccess !== null) { closed(item.sharedAccess, 'account,disclosure'); text(item.sharedAccess.account, 200); text(item.sharedAccess.disclosure, 300); }
     check(typeof item.open === 'boolean' && ['chat', 'github-review'].includes(item.route), 'dashboard request invalid');
     check(item.route === 'github-review' ? typeof item.link === 'string' && GITHUB_REVIEW.test(item.link) : item.link === null,
       'dashboard request link is not a GitHub review page');
   }
   for (const item of list(s.turns, B.turns)) {
-    closed(item, 'from,message,reply,state,time,update'); count(item.update); text(item.time, 32); text(item.message, B.textChars);
+    closed(item, 'from,message,reply,state,time,update'); check(isDashboardUpdate(item.update), 'dashboard update invalid'); text(item.time, 32); text(item.message, B.textChars);
     check(item.reply === null || typeof item.reply === 'string' && item.reply.length <= B.textChars, 'dashboard reply invalid');
     check(['you', 'scheduled'].includes(item.from), 'dashboard sender invalid'); text(item.state, 200);
   }
@@ -107,9 +115,10 @@ const document = (title, body, script) => `<!doctype html><html lang="en"><head>
 </head><body>${body}${script ? `<script src="${script}"></script>` : ''}</body></html>`;
 /** Every dashboard address lives under the page's path token. */
 export const dashboardPath = (token, path = '') => `/${token}/dashboard${path ? `/${path}` : ''}`;
-const page = (token, here, { title, purpose }, body) => document(title, `<nav class="views" aria-label="Dashboard pages">${
+/** Every page, with the snapshot's age or unavailability on it (the loss detector, purpose Rule 2), whatever the view. */
+const page = (token, here, { title, purpose }, state, body) => document(title, `<nav class="views" aria-label="Dashboard pages">${
   DASHBOARD_VIEWS.map(view => `<a${view.id === here ? ' class="here" aria-current="page"' : ''} href="${dashboardPath(token, view.path)}">${escape(view.title)}</a>`).join('')
-}</nav><main class="panel"><h1>${escape(title)}</h1><p class="purpose">${escape(purpose)}</p>${body}</main>`);
+}</nav><main class="panel"><h1>${escape(title)}</h1><p class="purpose">${escape(purpose)}</p>${body}${state.snapshot ? freshness(state) : unavailable(state)}</main>`);
 const VIEW = Object.fromEntries(DASHBOARD_VIEWS.map(view => [view.id, view]));
 
 /** Plain sentences for a page that has no current snapshot to show (floor F6). */
@@ -118,7 +127,7 @@ const UNAVAILABLE = {
   invalid: "Your agent's latest status could not be read, so nothing from it is shown. Reload in a minute; if this stays, your agent may need a restart.",
 };
 const freshness = state => state.kind === 'stale'
-  ? `<p class="note">It may be stopped or busy. The details shown are from ${escape(ago(state.age))}.</p>`
+  ? `<p class="note">Last updated by your agent ${escape(ago(state.age))}. It may be stopped or busy, so this shows things as they were then.</p>`
   : `<p class="note">Updated ${escape(ago(state.age))}. Reload the page to see newer details.</p>`;
 const unavailable = state => `<p class="note">${escape(UNAVAILABLE[state.kind])}</p>`;
 const chatLink = chat => `https://t.me/${chat}`;
@@ -132,6 +141,9 @@ function waitingRows(token, state, pending) {
         : { href: dashboardPath(token, `requests/${index}`), title: item.title, meta: 'Answer it in your chat' }); });
   return rows;
 }
+/** Purpose (the approval-account exception): an approval admitted under shared account access carries its disclosure. */
+const sharedAccessLine = shared => `Approved through the account ${shared.account}. ${shared.disclosure}.`;
+const requestMeta = item => item.sharedAccess ? `${item.state}. ${sharedAccessLine(item.sharedAccess)}` : item.state;
 const row = item => `<a class="row" href="${escape(item.href)}">${escape(item.title)}<span class="meta">${escape(item.meta)}</span></a>`;
 const tile = (token, view, label, value, stop = false) =>
   `<a class="tile${stop ? ' stop' : ''}" href="${dashboardPath(token, VIEW[view].path)}"><span class="label">${escape(label)}</span><span class="value">${escape(value)}</span></a>`;
@@ -151,44 +163,45 @@ export function renderDashboard({ token, view, state, pending }) {
         tile(token, 'allowance', 'Allowance used', calls ? `${calls.used} of ${calls.max} model calls` : 'Not recorded')]
         : [tile(token, 'status', 'Status', 'Not available')]),
       tile(token, 'stop', 'Stop', s?.state === 'stopped' ? 'Already stopped' : 'Stop your agent', true)];
-    return page(token, 'overview', VIEW.overview, `<p class="headline">${escape(headline)}</p><div class="tiles">${tiles.join('')}</div>${
-      s ? freshness(state) : unavailable(state)}`);
+    return page(token, 'overview', VIEW.overview, state, `<p class="headline">${escape(headline)}</p><div class="tiles">${tiles.join('')}</div>`);
   }
-  if (view === 'waiting') return page(token, 'waiting', VIEW.waiting, waiting.length ? waiting.map(row).join('')
-    : `<p class="note">Nothing is waiting for you.${s ? '' : ` ${UNAVAILABLE[state.kind]}`}</p>`
+  if (view === 'waiting') return page(token, 'waiting', VIEW.waiting, state, (waiting.length ? waiting.map(row).join('')
+    : '<p class="note">Nothing is waiting for you.</p>')
     + (s && s.requests.some(item => !item.open) ? `<h2>Earlier requests</h2>${s.requests.map((item, index) => item.open ? ''
-      : row({ href: dashboardPath(token, `requests/${index}`), title: item.title, meta: item.state })).join('')}` : ''));
-  if (view === 'messages') return page(token, 'messages', VIEW.messages, !s ? unavailable(state) : (s.turns.length
+      : row({ href: dashboardPath(token, `requests/${index}`), title: item.title, meta: requestMeta(item) })).join('')}` : ''));
+  if (view === 'messages') return page(token, 'messages', VIEW.messages, state, !s ? '' : (s.turns.length
     ? s.turns.map(turn => row({ href: dashboardPath(token, `messages/${turn.update}`),
       title: turn.message.length > 90 ? `${turn.message.slice(0, 89)}…` : turn.message || '(no text)',
       meta: `${turn.time} · ${turn.from === 'you' ? 'From you' : 'Scheduled'} · ${turn.state}` })).join('')
-    : '<p class="note">No messages yet in this trial.</p>') + freshness(state));
-  if (view === 'status') return page(token, 'status', VIEW.status, !s ? unavailable(state)
-    : `<ul class="lines">${s.status.map(line => `<li>${escape(line)}</li>`).join('')}</ul>${freshness(state)}`);
-  if (view === 'allowance') return page(token, 'allowance', VIEW.allowance, !s ? unavailable(state)
+    : '<p class="note">No messages yet in this trial.</p>'));
+  if (view === 'status') return page(token, 'status', VIEW.status, state, !s ? ''
+    : `<ul class="lines">${s.status.map(line => `<li>${escape(line)}</li>`).join('')}</ul>`);
+  if (view === 'allowance') return page(token, 'allowance', VIEW.allowance, state, !s ? ''
     : `<ul class="facts">${s.allowance.map(item => `<li>${escape(`${item.label}: ${item.used} of ${item.max} used.`)}<meter aria-label="${escape(item.label)} used" min="0" max="${item.max}" value="${Math.min(item.used, item.max)}"></meter></li>`).join('')}
 <li>${escape(`Model tokens this trial: ${s.tokens.input.toLocaleString('en-US')} in, ${s.tokens.output.toLocaleString('en-US')} out.`)}</li>
 <li>${escape(`Model calls whose size was not reported: ${s.tokens.unknownCalls}.`)}</li>
-<li>Dollar spend is not recorded for this trial.</li></ul>${freshness(state)}`);
-  if (view === 'stop') return page(token, 'stop', VIEW.stop, s?.state === 'stopped' ? '<p class="headline">Your agent is already stopped.</p>'
+<li>Dollar spend is not recorded for this trial.</li></ul>`);
+  if (view === 'stop') return page(token, 'stop', VIEW.stop, state, s?.state === 'stopped'
+    ? `<p class="headline">${state.kind === 'stale' ? 'Your agent was stopped when it last reported.' : 'Your agent is already stopped.'}</p>`
     : stopItem ? `<a class="button danger" href="/${token}/c/${stopItem.name}">Stop your agent now</a><p class="note">Your phone's passkey confirms it. Your agent stops at once, and your saved messages stay saved.</p>`
       : `<p class="note">The one-tap stop is not ready on this page right now.${s?.chat ? '' : ' Send /stop in your chat with your agent to stop it.'}</p>${
         s?.chat ? `<a class="button danger" href="${chatLink(s.chat)}">Open your chat and send /stop</a>` : ''}`);
   const [kind, key] = view.split('/');
-  if (kind === 'messages' && /^\d{1,20}$/u.test(key ?? '')) {
+  if (kind === 'messages' && DETAIL_PATH.test(view)) {
     const turn = s?.turns.find(item => String(item.update) === key);
-    return page(token, 'messages', DETAIL.message, !turn ? `<p class="note">That message is not in the recent list any more.${s ? '' : ` ${UNAVAILABLE[state.kind]}`}</p>`
+    return page(token, 'messages', DETAIL.message, state, !turn ? (s ? '<p class="note">That message is not in the recent list any more.</p>' : '')
       : `<p class="meta">${escape(`${turn.time} · ${turn.from === 'you' ? 'From you' : 'Scheduled'}`)}</p><p class="quote">${escape(turn.message || '(no text)')}</p>
 <h2>Reply</h2>${turn.reply === null ? '<p class="note">No reply yet.</p>' : `<p class="quote">${escape(turn.reply)}</p>`}<p class="note">${escape(turn.state)}</p>`);
   }
-  if (kind === 'requests' && /^\d{1,2}$/u.test(key ?? '')) {
+  if (kind === 'requests' && DETAIL_PATH.test(view)) {
     const item = s?.requests[Number(key)];
-    return page(token, 'waiting', DETAIL.request, !item ? '<p class="note">That request is not in the recent list any more.</p>'
-      : `<p class="headline">${escape(item.title)}</p><p class="note">${escape(item.state)}.</p>${!item.open ? ''
+    return page(token, 'waiting', DETAIL.request, state, !item ? (s ? '<p class="note">That request is not in the recent list any more.</p>' : '')
+      : `<p class="headline">${escape(item.title)}</p><p class="note">${escape(item.state)}.</p>${item.sharedAccess
+        ? `<p class="note">${escape(sharedAccessLine(item.sharedAccess))}</p>` : ''}${!item.open ? ''
         : item.route === 'github-review' ? `<a class="button primary" href="${escape(item.link)}">Answer it on GitHub</a>`
           : s.chat ? `<a class="button primary" href="${chatLink(s.chat)}">Answer it in your chat</a>` : '<p class="note">Answer it in your chat with your agent.</p>'}`);
   }
-  return page(token, '', DETAIL.missing, '<p class="note">That page does not exist. Choose one of the pages above.</p>');
+  return page(token, '', DETAIL.missing, state, '<p class="note">That page does not exist. Choose one of the pages above.</p>');
 }
 
 /** The only page shown before sign-in: it reveals nothing from the agent. */

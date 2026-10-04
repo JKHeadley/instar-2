@@ -3121,7 +3121,8 @@ Rules 4, 14, 15, 52, 53, 77, 79, 80, 82, 86, 87, 88, 95 and 106 on the live runn
   config file it owns (mode 0600): `{"operator":"telegram:OPERATOR_ID","operatorUid":UID_OF_THAT_USER,
   "agentUid":RUNNER_UID,"store":"/ABS/STORE","outbox":"/ABS/RUNNER_OUTBOX","publicBase":"https://STABLE.HOST",
   "ingressGrant":"desk:approvals-ingress-DATE","port":PORT}`. The runner's outbox is a directory the
-  runner owns, mode 0755. Publish `127.0.0.1:PORT` at that stable HTTPS host (a named tunnel; a
+  runner owns whose group is one the page's user is in (and no other account), mode 0750: the dashboard's message
+  excerpts are published only into an outbox other local accounts cannot enter. Publish `127.0.0.1:PORT` at that stable HTTPS host (a named tunnel; a
   passkey is bound to the host name, so an ephemeral tunnel name breaks it). Run
   `node scripts/approval-surface.mjs serve CONFIG` as that user, then `... enroll CONFIG` prints a
   one-use enrolment link (15 minutes) to open on the phone; enrol a second passkey or a synced
@@ -3148,7 +3149,8 @@ Rules 4, 14, 15, 52, 53, 77, 79, 80, 82, 86, 87, 88, 95 and 106 on the live runn
   unreadable or stale (over 2 minutes) snapshot is said in plain words. The page never refreshes
   itself (reload to update). The snapshot carries credential-redacted message excerpts (at most 500
   characters, the last 10 messages): the outbox directory's permissions are its access boundary on
-  the machine, so on a shared machine give the outbox a group the page's user is in and mode 0750.
+  the machine, so the runner publishes it (mode 0640) only into an outbox closed to other accounts (mode 0750, the
+  group shared with the page's user) and refuses an outbox others can enter.
   Rule 81's eleven floors are checked on any tree by `node scripts/check-dashboard-floors.mjs`
   (one JSON object; exit 0 only when every floor holds, every floor's negative control is caught,
   and nothing shows without the passkey); live-proof check Q81 runs it on the deployed tree.

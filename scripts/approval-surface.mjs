@@ -18,7 +18,7 @@ import { join, resolve } from 'node:path';
 import { pathToFileURL } from 'node:url';
 import { ACT_RECORD, actChallenge, b64u, canonical, check, checkChallenge, hex, nameFor, renderChallenge, signInChallenge, SURFACE_LIMITS,
   verifyAssertion, verifyRegistration, writeOnce } from './approval-surface-core.mjs';
-import { DASHBOARD_BOUNDS, DASHBOARD_VIEWS, readSnapshot, renderDashboard, renderSignIn } from './operator-dashboard.mjs';
+import { DASHBOARD_BOUNDS, DASHBOARD_VIEWS, DETAIL_PATH, readSnapshot, renderDashboard, renderSignIn } from './operator-dashboard.mjs';
 export { SURFACE_LIMITS };
 
 const privateDir = directory => { const stat = lstatSync(directory);
@@ -255,7 +255,7 @@ export function handle(surface, { method, path, body, cookie }) {
     if (method === 'GET' && parts[1] === 'dashboard' && parts.length <= 4) {
       if (!surface.signedIn(sessionOf(cookie))) return html(renderSignIn(token, surface.keys().length > 0));
       const view = parts.length === 2 ? 'overview' : parts.slice(2).join('/');
-      const known = view === 'overview' || DASHBOARD_VIEWS.some(item => item.path === view) || /^(?:messages|requests)\/\d{1,20}$/u.test(view);
+      const known = view === 'overview' || DASHBOARD_VIEWS.some(item => item.path === view) || DETAIL_PATH.test(view);
       const out = html(renderDashboard({ token, view, state: surface.dashboard(), pending: surface.pending() }));
       return known ? out : { ...out, status: 404 };
     }
