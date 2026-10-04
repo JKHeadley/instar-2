@@ -18,7 +18,12 @@
 //   verified; otherwise one warning names the path. An override must carry its own finite
 //   size bound; nothing here limits it.
 // - else /Volumes/instar-test-ram on macOS (scripts/ensure-test-ramdisk.sh) or /dev/shm on
-//   Linux/WSL, when writable AND verified RAM-backed.
+//   Linux/WSL, when writable AND verified RAM-backed AND it has RAM_MIN_FREE_BYTES free after
+//   this suite's own dead runs are swept. The volume is shared with other test runs on the
+//   host; when they have filled it, a run there fails dozens of unrelated tests with ENOSPC
+//   (cint-L50 gate, 2026-10-04: 12 false FAILs with 639 MiB left on the 8 GiB volume).
+//   A verified RAM root short of that space falls back to REAL_DISK_ROOT with one loud warning,
+//   not to the inherited TMPDIR: a harness may itself point TMPDIR at the same full volume.
 // - else the inherited TMPDIR with one loud warning.
 // "Verified RAM" means: on macOS the path is on the same device as a mounted `ram://` disk
 // image listed by `hdiutil info`; on Linux its filesystem is tmpfs. Nothing else counts.
@@ -30,6 +35,9 @@ import { join } from 'node:path';
 export const MAC_RAM_ROOT = '/Volumes/instar-test-ram';
 export const LINUX_RAM_ROOT = '/dev/shm';
 export const REAL_DISK_ROOT = '/var/tmp';
+// Free space the full suite needs on the RAM root (it copies the node binary, ~240 MB, into
+// several native-harness fixtures and keeps many durable journals open at once).
+export const RAM_MIN_FREE_BYTES = 4 * 1024 ** 3;
 const RUN_PREFIX = 'instar-test-';
 const TMPFS_MAGIC = 0x01021994;
 
@@ -38,23 +46,26 @@ export interface TmpRootInput {
   readonly platform: string;
   readonly writable: (path: string) => boolean;
   readonly ramBacked: (path: string) => boolean;
+  readonly freeBytes: (path: string) => number;
 }
 
 export type TmpRoot =
   | { readonly kind: 'ram'; readonly root: string }
   | { readonly kind: 'unverified'; readonly root: string }
   | { readonly kind: 'real-disk'; readonly root: string }
+  | { readonly kind: 'ram-full'; readonly root: string }
   | { readonly kind: 'inherited'; readonly reason: 'no-ram-root' };
 
-export function chooseTestTmpRoot({ env, platform, writable, ramBacked }: TmpRootInput): TmpRoot {
+export function chooseTestTmpRoot({ env, platform, writable, ramBacked, freeBytes }: TmpRootInput): TmpRoot {
   if (env.INSTAR_TEST_REAL_DISK === '1') return { kind: 'real-disk', root: REAL_DISK_ROOT };
   const override = env.INSTAR_TEST_TMP;
   if (override !== undefined && override !== '') {
     return ramBacked(override) ? { kind: 'ram', root: override } : { kind: 'unverified', root: override };
   }
   const candidate = platform === 'darwin' ? MAC_RAM_ROOT : platform === 'linux' ? LINUX_RAM_ROOT : null;
-  if (candidate !== null && writable(candidate) && ramBacked(candidate)) return { kind: 'ram', root: candidate };
-  return { kind: 'inherited', reason: 'no-ram-root' };
+  if (candidate === null || !writable(candidate) || !ramBacked(candidate)) return { kind: 'inherited', reason: 'no-ram-root' };
+  return freeBytes(candidate) >= RAM_MIN_FREE_BYTES ? { kind: 'ram', root: candidate }
+    : { kind: 'ram-full', root: REAL_DISK_ROOT };
 }
 
 // Mount points of attached `ram://` disk images in `hdiutil info` output. Each image is a
@@ -91,6 +102,10 @@ function isWritable(path: string): boolean {
   try { accessSync(path, constants.W_OK); return true; } catch { return false; }
 }
 
+function availableBytes(path: string): number {
+  try { const s = statfsSync(path); return s.bavail * s.bsize; } catch { return 0; }
+}
+
 function pidAlive(pid: number): boolean {
   try { process.kill(pid, 0); return true; } catch (e) { return (e as NodeJS.ErrnoException).code === 'EPERM'; }
 }
@@ -112,13 +127,19 @@ export function sweepDeadRuns(root: string, alive: (pid: number) => boolean = pi
 }
 
 export default function setup(): () => void {
+  // Free space is measured after this suite's own dead runs are swept, so leftovers of a
+  // killed run never push the next run off RAM.
   const choice = chooseTestTmpRoot({ env: process.env, platform: process.platform, writable: isWritable,
-    ramBacked: path => isRamBacked(path) });
+    ramBacked: path => isRamBacked(path), freeBytes: path => { sweepDeadRuns(path); return availableBytes(path); } });
   if (choice.kind === 'inherited') {
     process.stderr.write(`[instar tests] WARNING: no verified RAM root; test temp files stay in the inherited TMPDIR `
       + `(${process.env.TMPDIR ?? 'unset'}), which may be the REAL DISK. Run scripts/ensure-test-ramdisk.sh on macOS `
       + `or set INSTAR_TEST_TMP.\n`);
     return () => {};
+  }
+  if (choice.kind === 'ram-full') {
+    process.stderr.write(`[instar tests] WARNING: the RAM root has under ${RAM_MIN_FREE_BYTES / 1024 ** 3} GiB free `
+      + `(other runs on this host filled it); test temp files go to the REAL DISK at ${choice.root} for this run.\n`);
   }
   if (choice.kind === 'real-disk' && (!isWritable(choice.root) || isRamBacked(realpathSync(choice.root)))) {
     throw new Error(`[instar tests] INSTAR_TEST_REAL_DISK=1 needs ${choice.root} to be a writable real-disk directory`);
