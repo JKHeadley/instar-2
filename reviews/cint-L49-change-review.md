@@ -40,6 +40,10 @@ Decision: cint-L49-merge | merged w4-loopfire47 (fast-forward), w4-harnessuser a
 Decision: cint-L49-e2e-binding | the shipped-CLI e2e case supplies a literal binding for its live fixture site instead of a dark status or a different rung, so each case still reaches the check it names and P3-NF-19 keeps holding on the real tree; it is the unit's own supply pattern from tests/register/repairs.test.ts | reported=/Users/dabombstudio/.instar/agents/echo/.instar/lanes/cint-L49-PROGRESS.md
 Decision: cint-L49-desk | repin 0, tsc 0, rehash 1 pin (journal-agent-resources.test.ts, changed on both sides), architecture passed; register replayed at 0b628f23 (37903042), at 5c73d889 (10c6a15a) and at the final merge 66bfe6fc (ae6649a6); build-register --check is true | reported=/Users/dabombstudio/.instar/agents/echo/.instar/lanes/cint-L49-PROGRESS.md
 Prompt review: the model-facing changes are the carried units'. w4-loopfire47 changes how a scheduled step's output is parsed (canonical obligation ids only; no prompt change); w4-harnessuser and w4-ugaps change no prompt, parser or decision on model output. Recorded shapes replay on this tree (above). This build adds no model-facing text. Always-sent answer bytes on a default root are unchanged (+0, 22,959).
+Prompt finding: 450c79237a95 | protocol-literal | existing provider guidance sentence in production-provider.ts, unchanged by this change (w4-harnessuser edits other lines of that file; as dispositioned in reviews/w4-harnessuser-astra-repair-change-review.md)
+Prompt finding: 849db3a6296a | protocol-literal | an existing fixed reply literal in journal.ts, unchanged by this change (as dispositioned in reviews/cint-L48-change-review.md)
+Prompt finding: bd01de21286a | protocol-literal | existing capability-guidance wording in journal.ts, unchanged by this change (as dispositioned in reviews/cint-L48-change-review.md)
+Prompt finding: fb5fa7e706c8 | protocol-literal | existing capability-guidance wording in journal.ts, unchanged by this change (as dispositioned in reviews/cint-L48-change-review.md)
 
 ## Closing block
 
