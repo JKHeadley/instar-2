@@ -5,7 +5,7 @@ import { messageTime } from './self-state.js';
 import type { JournalView } from './journal.js';
 import { loopStatusLines } from './obligations.js';
 import { sentinelStatusLines } from './live-sentinels.js';
-import { replyContextDigest, retrospectiveStatusLine } from './retrospective.js';
+import { retrospectiveStatusBrief } from './retrospective.js';
 
 /** Content-free count of replies Telegram accepted after the operator-echo path released them. */
 export const operatorEchoSent = (view: JournalView) => view.order.filter(turn => turn.sent !== undefined
@@ -61,8 +61,8 @@ export function statusReply(view: JournalView, now: number, zone: string, extra:
     ...loopStatusLines(view, now),
     ...sentinelStatusLines(view),
     // Rules 9 and 51: the retrospective review's proof it ran (completed passes, cases inspected, the efficiency duty,
-    // duties left uninspected) reaches the pull reply itself, from the same line the status record carries.
-    retrospectiveStatusLine(view, replyContextDigest(view)),
+    // duties left uninspected) reaches the pull reply itself, in the brief form; the full line stays in the status record.
+    retrospectiveStatusBrief(view),
     ...extra,
     `Spend allowance: ${view.calls}/${view.limits.maxCalls} subscription attempts; ${view.jevChecks}/${view.limits.maxReplies} Jev checks. Dollar spend/cap: not recorded in this journal. Replies: ${view.replies}/${view.limits.maxReplies} used.`,
     `Replies sent as your own words repeated back, without the second check: ${operatorEchoSent(view)}.`,

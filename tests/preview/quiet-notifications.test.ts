@@ -51,20 +51,25 @@ it('sends more due requests than are written out as one push with a count line, 
   expect(journal.view.order.filter(turn => turn.requestedAction)).toHaveLength(1);
 }));
 
-it('keeps one push when a due answer is too long: a truthful line under the reason header, never a second push', () => withHarness(async ({ state, journal, worker }) => {
+it('a due answer too long for one message goes out whole, in order, under its reason header, and is never pushed again', () => withHarness(async ({ state, journal, worker }) => {
+  // Plan #466 (w4-statuslen): a long answer is split into a bounded run of messages (reply-parts.ts), never refused.
   dueRepeat = 900;
   worker.intake([update(1, 'remind me today at 5 pm to water the plants', 17)]);
   await tick(worker);
   const before = state.sent.length;
   state.now = sixPm; await tick(worker); await tick(worker);
   const pushes = state.sent.slice(before);
-  expect(pushes).toHaveLength(1);
-  expect(Buffer.byteLength(pushes[0]!.text)).toBeLessThanOrEqual(4096);
-  expect(pushes[0]!.text).toMatch(/^PREVIEW — You asked on .*\nMy answer was too long for one Telegram message, so I sent no part of it\. Ask me for a shorter one\.$/u);
-  // The full answer stays in the journal.
-  expect(journal.view.order.find(turn => turn.requestedAction)?.answer?.startsWith('Done.')).toBe(true);
+  expect(pushes).toHaveLength(2);
+  for (const push of pushes) expect(Buffer.byteLength(push.text)).toBeLessThanOrEqual(4096);
+  expect(pushes[0]!.text).toMatch(/^PREVIEW — You asked on .*\nDone\. Done\./u);
+  expect(pushes[0]!.text.endsWith(' (1/2)')).toBe(true);
+  expect(pushes[1]!.text).toMatch(/^PREVIEW \(2\/2\) — Done\./u);
+  expect(pushes.map(push => push.disposition)).toEqual(['result', 'result']);
+  const turn = journal.view.order.find(item => item.requestedAction)!;
+  expect(turn.answer?.startsWith('Done.')).toBe(true);
+  expect(turn.intent).toContain('Done. '.repeat(899).trim());
   await tick(worker);
-  expect(state.sent.slice(before)).toHaveLength(1);
+  expect(state.sent.slice(before)).toHaveLength(2);
 }));
 
 it('never pushes a held backlog: unchanged status stays on the pull surface, across restart', () => withHarness(async ({ state, journal, worker, path }) => {
