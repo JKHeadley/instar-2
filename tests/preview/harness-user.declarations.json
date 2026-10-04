@@ -1,0 +1,25 @@
+[
+  {
+    "type": "Declaration",
+    "schemaVersion": 1,
+    "id": "preview.harness-user.setupHarnessArea",
+    "kind": "stores",
+    "status": "live",
+    "requiredFacts": {
+      "growth": "unbounded",
+      "holdsAgentMemory": "no",
+      "machineScope": {
+        "kind": "machine-local",
+        "reason": "Rule 113: the harness user's area on this machine (/Users/Shared/instar-harness), provisioned per machine and never shared or replicated: the launcher, the pinned harness copy, the harness profile's home, config and work directories (its own login and transcripts), one read-only copy of the admission hook and the MCP SecretRef launcher per content digest (a changed hook adds a copy; old copies are not removed, so this part grows with each hook change), each tool turn's harness-side admission state (removed with its turn directory by the prune that keeps the newest 16), each turn's MCP credential socket directory (removed when the turn ends), and a volume's ACL mark (on the conversation's own volume). None of it is agent memory: the journal's tool-turn rows are the durable record."
+      },
+      "agreesWith": []
+    },
+    "standards": [
+      7,
+      32,
+      60,
+      113
+    ],
+    "holds": []
+  }
+]
