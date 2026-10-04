@@ -25,7 +25,7 @@ import { SOURCE_PINS, sourcePacket, deskStatusSource, readDeskStatus, verifyMind
 import { admitPreviewHarness, PREVIEW_JOURNAL_HARNESS, PREVIEW_JOURNAL_STALL_COVERAGE } from './stall-coverage.js';
 import { UNRECORDED, briefingDigestOf, codeDigestOf, installedCodeOf, installationRows, installationStatusLines, installedUpdateFrom, updateDelivery,
   updatePacketItem } from './installation.js';
-import { projectionDigest, summaryStoppedAt, loopRevisitMs, LOOP_REVISIT_MIN_MS, LOOP_REVISIT_MAX_MS } from './journal.js';
+import { bindPreviewBlockingSites, projectionDigest, summaryStoppedAt, loopRevisitMs, LOOP_REVISIT_MIN_MS, LOOP_REVISIT_MAX_MS } from './journal.js';
 import { openPreviewJournal as openJournal, createJournalWorker, raiseJournalCaps, renewJournalExpiry, activationMatchesJournal, activePersonMerges, openQuestionCandidates, projectMemoryText, unansweredCue, reportJournalCap, unknownCallCounts, pendingUnknownCalls, replyTimings, reviewUnavailableReleases, claimScopedWithholds, MINIMAL_RESERVE, reserveTurnsUsed, reserveRepliesUsed, openRequests, actionWithdrawn, reminderDue, operatorRequestsReport, retrospectiveCases, openBlockers, openDirectives, declaredObligations, sendOutcomeCounts, sendOutcomeOf, unsentLabel, replyTarget, reminderOutcome, envelopeWriter, PREVIEW_LIVE_LIMITS, unservableContextReason, PREVIEW_JOURNAL_COMPACT_BYTES, activeMemoryConflicts, TOO_LONG_INPUT_NOTICE, TOO_LONG_REPLY_NOTICE , probeTurn, operatorWriter, isJournalUpdate, retractRefusal, retractRendering, retractCarrier, retractedTurn, liveSummaries, withinOperatorHours, OPERATOR_HOURS, withFormatReminder, concurrentWorkItem, latestOwnedLaunch, meaningIndexStatus, LIMITED_ANSWER_OPERATION, MISSING_INSTALLATION_POLICY } from './journal.js';
 import { createPreviewClock } from './clock.js';
 import { appendRun, heldNotices, heldRepliesToday, memoryHealthLine, readRuns, restartHandoff, selfState, selfStateBrief, selfStateSource, zoneFormatter } from './self-state.js';
@@ -1698,6 +1698,11 @@ async function main() {
     const explicitYes = yesInstallation ? { context, installation: yesInstallation, ...(reviewSource ? { review: reviewSource } : {}),
       ...(requestHours === undefined ? {} : { requestWindowMs: requestHours * 3_600_000 }),
       renewalActivation: renewalActivationOf(options, () => journal.view), retractProposal: () => readRetractProposal(retractPath) } : null;
+    // Rule 4 / P3-NF-19: every blocking site this runner enforces is bound to its committed declaration before the
+    // worker exists; a declaration that no longer matches its checkpoint refuses the launch.
+    bindPreviewBlockingSites({ journal: declarationsOf('journal.declarations'), replyCheck: declarationsOf('reply-check.declarations'),
+      redact: JSON.parse(readFileSync(resolve(process.cwd(), 'src/recall/redact.declarations.json'), 'utf8')),
+      resourceOwner: JSON.parse(readFileSync(resolve(process.cwd(), 'scripts/resource-owner.declarations.json'), 'utf8')) });
     worker = createJournalWorker(journal, { ...(approvalSurface ? { approvalSurface } : {}), ...(explicitYes ? { explicitYes } : {}), now: wallNow, elapsed: clock.elapsed, origin, stopped: () => workerStop.value || existsSync(stopPath) || !ownerHeld(), timeZone: timeZoneOf(options),
       presenceNotes: sentinelFamilies.has('presence'),
       sources: turnSources(root, options, journal.view, () => runs, () => launchedAt ?? undefined,

@@ -279,6 +279,7 @@
     "requiredFacts": {
       "authority": "block",
       "decidesAlone": "ruled-three",
+      "decidesAloneBasis": "operator-emergency-stop",
       "criticality": "Exact authenticated bound-operator stop before ordinary work; no requester halt",
       "failDirection": "open",
       "preservesInput": "part-two:intake-receipt + local-durable intake-stop or intake-stop-signal",

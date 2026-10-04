@@ -20,5 +20,40 @@
       60
     ],
     "holds": []
+  },
+  {
+    "type": "Declaration",
+    "schemaVersion": 1,
+    "id": "resource-owner.admit",
+    "kind": "blocking sites",
+    "status": "live",
+    "requiredFacts": {
+      "authority": "block",
+      "decidesAlone": "ruled-three",
+      "decidesAloneBasis": "spend-past-a-cap",
+      "criticality": "The one funnel every provider launch of this host passes. It refuses a launch past the hard concurrent-launch ceiling, keeps the answer reserve out of reach of non-critical work, lowers each process's own kernel limits (soft and hard) before anything is spawned, and kills a launch observed past its memory or process ceiling. A resource above the level the operator named is spent or it is not; nothing is asked.",
+      "failDirection": "closed",
+      "preservesInput": "the launch request waits in the owner's queue until a slot frees, or comes back refused with its reason and its ceiling; no work is discarded and nothing is spawned past the ceiling",
+      "inspectedBy": "PREVIEW-HOST-RESOURCE-FUNNEL"
+    },
+    "profile": {
+      "type": "Profile",
+      "schemaVersion": 1,
+      "consequence": "control",
+      "reversibility": "costly",
+      "reach": "internal",
+      "surface": "none",
+      "repeats": { "kind": "no" }
+    },
+    "standards": [
+      60,
+      61,
+      66,
+      95
+    ],
+    "holds": [
+      { "rule": 60, "class": "deferred", "part": 10, "ceiling": 1797292800000, "owner": "echo (agent)", "overdueAction": "Register the host funnel's can-fail fixture with part ten (its ceiling, answer-reserve and kill tests are written at tests/integration/resource-owner.test.ts) and replace this deferral with a partial hold citing it; if that is not done by the ceiling, raise an operator attention item naming rule 60 as unproven in the register." },
+      { "rule": 61, "class": "deferred", "part": 10, "ceiling": 1797292800000, "owner": "echo (agent)", "overdueAction": "Register the same part-ten fixture for the funnel's priority brake and answer reserve (tests/integration/resource-owner.test.ts: maintenance keeps the reserve, defers while elevated, and reclaims by stopping maintenance first) and replace this deferral with a partial hold citing it; if that is not done by the ceiling, raise an operator attention item naming rule 61 as unproven in the register." }
+    ]
   }
 ]

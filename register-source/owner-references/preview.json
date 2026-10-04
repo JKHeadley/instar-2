@@ -55,7 +55,7 @@
       "stage": "build",
       "artifact": {
         "path": "tests/preview/journal-spend-cap.test.ts",
-        "hash": "sha256:6eb3011a39303be4dc25cd35d87e532acb6c36efa8094d70b6577df58b3e4c72"
+        "hash": "sha256:3eccd30c04aad2b9c21d4283b1595ce5918fe4e5cf7e5982e1a44bdbf5d0aa2f"
       }
     },
     {
@@ -104,6 +104,22 @@
       "artifact": {
         "path": "tests/preview/tool-persist.test.ts",
         "hash": "sha256:384c5ca72c1195fa3bd0c094d5a8d3b3ec88cc2c9a099f8fefc3a07b7a207616"
+      }
+    },
+    {
+      "id": "PREVIEW-SECRET-WALL",
+      "stage": "build",
+      "artifact": {
+        "path": "tests/preview/secret-custody.test.ts",
+        "hash": "sha256:9c0dd8dd76c59cb4856be241d509b0355c173b20d7ec01bbbc95a2768f3f6277"
+      }
+    },
+    {
+      "id": "PREVIEW-HOST-RESOURCE-FUNNEL",
+      "stage": "build",
+      "artifact": {
+        "path": "tests/preview/journal-agent-resources.test.ts",
+        "hash": "sha256:5d49b1fd931f8eda008738df40399d8f46d100092bacaaf6510f8ba48b81c4f9"
       }
     }
   ],

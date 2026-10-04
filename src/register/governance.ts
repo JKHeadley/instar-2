@@ -37,6 +37,27 @@ export function constructGoverned(kind: string, id: string, register: GeneratedR
     return { type: 'GovernedConstruct', schemaVersion: 1, kind, declaration: reference } as GovernedConstruct;
   });
 }
+// P3-NF-19 / Rule 4: a blocking site whose checkpoint runs where no GeneratedRegister is
+// composed (the preview runner and the host funnel it composes) is bound to its committed
+// declaration at composition instead. The consumer names the rung facts its own code enforces;
+// a declaration that is missing, retired, or says otherwise refuses the composition, so the
+// register can no longer describe a gate that decides differently. The wiring check requires
+// one literal-id binding (or a paired construct) for every live site that decides alone or asks
+// the mind, and finds its removal.
+export type BoundRung = Readonly<{ decidesAlone: 'no' | 'ruled-three' | 'governed-state'; decidesAloneBasis?: string; failDirection: 'open' | 'closed' }>;
+export function bindBlockingSite(declarations: Json, id: string, expected: readonly BoundRung[]): string {
+  const found = list(declarations, 'declarations').map(object).filter(d => d.id === id);
+  requireThat(found.length === 1, `P3-NF-19: blocking site ${id} needs exactly one declaration, found ${found.length}`);
+  const d = found[0]!;
+  requireThat(d.kind === 'blocking sites' && d.status === 'live', `P3-NF-19: blocking site ${id} is not a live blocking-site declaration`);
+  const facts = object(d.requiredFacts!);
+  requireThat(facts.authority === 'block', `P3-NF-19: blocking site ${id} does not declare block authority`);
+  const rungs = boundaryRungs(facts);
+  requireThat(expected.length > 0 && rungs.length === expected.length && rungs.every((r, i) => r.decidesAlone === expected[i]!.decidesAlone
+    && r.failDirection === expected[i]!.failDirection && r.decidesAloneBasis === expected[i]!.decidesAloneBasis),
+  `P3-NF-19: blocking site ${id} declaration differs from the checkpoint that enforces it`);
+  return id;
+}
 export interface ConstructObservation { readonly id: string; readonly path: string; readonly symbol: string }
 export function checkPairing(register: GeneratedRegister, constructs: readonly ConstructObservation[], context: RegisterContext) {
   return checked('DeclarationPairing', { register, constructs }, context, () => {
