@@ -18,6 +18,14 @@ Bug class: none
 Bug evidence: none
 Hook bypass: none (plain commits and an ordinary merge; core.hooksPath is unset and the hooks directory holds only .sample files). The carried records each record their own.
 Convergence: none
+Deferral: tests/preview/fixtures/status-reply-split-live-2026-10-03.json:2 | not-a-deferral=names the retrospective duty follow-up feature in a fixture description (as in the carried w4-statuslen record)
+Deferral: tests/preview/fixtures/status-reply-split-live-2026-10-03.json:12 | not-a-deferral=recorded status text quoted verbatim from the live root (as in the carried w4-statuslen record)
+Deferral: tests/preview/fixtures/status-reply-split-live-2026-10-03.json:17 | not-a-deferral=recorded status text quoted verbatim from the live root (as in the carried w4-statuslen record)
+Deferral: tests/preview/fixtures/status-reply-split-live-2026-10-03.json:29 | not-a-deferral=recorded status text quoted verbatim from the live root (as in the carried w4-statuslen record)
+Deferral: tests/preview/reply-parts.test.ts:252 | not-a-deferral=a test name about the retrospective duty follow-up feature (as in the carried w4-statuslen record)
+Deferral: tests/preview/retrospective.ts:1260 | not-a-deferral=documents the retrospective duty follow-up feature (as in the carried w4-statuslen record)
+Deferral: tests/preview/retrospective.ts:1261 | not-a-deferral=documents the retrospective duty follow-up feature (as in the carried w4-statuslen record)
+Deferral: tests/preview/retrospective.ts:1264 | not-a-deferral=the reason text naming the retrospective duty follow-up feature (as in the carried w4-statuslen record)
 Deferral: tests/preview/retrospective.ts:1265 | not-a-deferral=the reason text naming the retrospective duty follow-up feature (as in the carried w4-statuslen record)
 Decision: cint-L48-merge | merged w4-statuslen onto cint-L47 4aae6c18 with one ordinary merge; the one conflict (journal.ts, two candidate-acceptance lines) keeps both w4-credlabel's held-material check and w4-statuslen's split-aware fits | reported=/Users/dabombstudio/.instar/agents/echo/.instar/lanes/cint-L48-PROGRESS.md
 Decision: cint-L48-desk | repin 0, tsc 0, rehash 0, architecture passed; register replayed at 5f82aaa6 (4f8d021f); build-register --check is true | reported=/Users/dabombstudio/.instar/agents/echo/.instar/lanes/cint-L48-PROGRESS.md
