@@ -54,7 +54,7 @@ import { chatYesReference, reviewYesReference, SHARED_ACCESS_NOTE } from '../../
 import type { ExplicitYesInstallation, SharedAccessDisclosure } from '../../src/operator/explicit-yes.js';
 import { reviewLink, type ReviewYesSource } from './review-yes-source.js';
 import { applySentinelRecord, checkSentinelRecord, presenceNoteDue, type SentinelRecord, type SentinelView } from './sentinel-record.js';
-import { encodeReply, fitsOneMessage, replyPartTarget, splitReply, wholeReplySent, MAX_REPLY_PARTS, TELEGRAM_MESSAGE_LIMIT } from './reply-parts.js';
+import { encodeReply, fitsOneMessage, replyPartTarget, splitReply, wholeReplySent, MAX_ANSWER_BYTES, MAX_REPLY_PARTS, TELEGRAM_MESSAGE_LIMIT } from './reply-parts.js';
 
 
 
@@ -2101,12 +2101,23 @@ export function obligationCapacity(view: JournalView): boolean {
   const { calls } = view, { maxCalls } = view.limits;
   return shouldRunScheduledPriority('medium', calls >= maxCalls - 2 ? 'critical' : calls >= maxCalls * 0.75 ? 'elevated' : 'normal');
 }
-export const OBLIGATION_WORK_QUESTION = 'packet.obligation is open work you own for the verified operator, due now. Do it now with what you know; you have no external tools, and a reply reaches the operator only with their next message. A report is that later message: it is held now and delivered with their next message, never before it, so "answer later" or "not in this reply" is done by reporting now. Return only JSON. For a request, promise, deferral or judgment: {"outcome":"report","report":<the completed result or decision, addressed to the operator>} when you can finish it now; {"outcome":"continue","note":<the concrete progress and next step>} when it genuinely needs more time; {"outcome":"waiting","waitsOn":"operator"|"external","note":<what exactly you now need>} only when someone else must act first. When packet.waitingFor is present, you said you needed it earlier: check packet.operatorMessagesSince and continue with whatever now arrived. For a blocker-recheck, test the claim again against every avenue and packet.capabilities: {"outcome":"still-blocked","recheck":"YYYY-MM-DD" within 90 days,"avenues":[{"avenue","disposition":"outside-standing"|"inapplicable","evidence":<the packet.capabilities key that shows it>}],"constraint":<governingConstraints key those capabilities support>,"reason":<what you re-examined and why it still holds>} or {"outcome":"cleared","report":<what is now possible>}. You have attempted nothing outside this step, so never call an avenue tried. Follow packet.directives. Refuse only behind a packet.governingConstraints key.';
+export const OBLIGATION_WORK_QUESTION = 'packet.obligation is open work you own for the verified operator, due now. packet.obligation.yourReply was already sent to the operator: repeating or re-confirming it is not the work, so the report for a deferral or judgment is the deferred answer itself, never another acknowledgement. Do it now with what you know; you have no external tools, and a reply reaches the operator only with their next message. A report is that later message: it is held now and delivered with their next message, never before it, so "answer later" or "not in this reply" is done by reporting now. Return only JSON. For a request, promise, deferral or judgment: {"outcome":"report","report":<the completed result or decision, addressed to the operator>} when you can finish it now; {"outcome":"continue","note":<the concrete progress and next step>} when it genuinely needs more time; {"outcome":"waiting","waitsOn":"operator"|"external","note":<what exactly you now need>} only when someone else must act first. When packet.waitingFor is present, you said you needed it earlier: check packet.operatorMessagesSince and continue with whatever now arrived. For a blocker-recheck, test the claim again against every avenue and packet.capabilities: {"outcome":"still-blocked","recheck":"YYYY-MM-DD" within 90 days,"avenues":[{"avenue","disposition":"outside-standing"|"inapplicable","evidence":<the packet.capabilities key that shows it>}],"constraint":<governingConstraints key those capabilities support>,"reason":<what you re-examined and why it still holds>} or {"outcome":"cleared","report":<what is now possible>}. You have attempted nothing outside this step, so never call an avenue tried. Follow packet.directives. Refuse only behind a packet.governingConstraints key.';
 /** The same work step on the scoped-tool route: it can use the listed tools, and only their recorded calls ran. */
 export const OBLIGATION_WORK_QUESTION_TOOLS = replacedClause(replacedClause(OBLIGATION_WORK_QUESTION,
   'you have no external tools,', 'your only tools are the listed ones,'),
   'You have attempted nothing outside this step, so never call an avenue tried.',
   'Only this step\'s recorded tool calls ran outside it, so never call an avenue tried.');
+/** The answer packet's mark on a commitment whose finished result rides this reply (plan #492). */
+export const READY_RESULT = 'finished: appended after your answer as a follow-up, not pending';
+/** Rules 8, 92: a commitment's work report that only repeats text the operator already received (the reply sent
+ * to its source) is not a finished result. Live cint-L49 (room two, 15-minute root, 2026-10-04): the deferral's work
+ * step returned its own holding reply verbatim as the "result", which would have been delivered as the follow-up in
+ * place of the ranking the operator asked for. Compared with whitespace collapsed and the PREVIEW mark removed. */
+export function repeatsSentReply(report: string, sent: string | undefined): boolean {
+  const plain = (value: string) => value.replace(/^PREVIEW(?=$|[\s:—])(?:\s*[:—])?\s*/u, '').replace(/\s+/gu, ' ').trim();
+  const said = sent === undefined ? '' : plain(sent), result = plain(report);
+  return result.length > 0 && said.length > 0 && said.includes(result);
+}
 /** Reads one work step's decision; anything malformed is a recorded failed attempt, never a guessed outcome. */
 export function obligationDecision(output: string, kind: 'commitment' | 'blocker', at: number, zone: string):
   Pick<Extract<JournalRecord, { kind: 'obligation-result' }>, 'outcome' | 'report' | 'note' | 'waitsOn' | 'recheckAt' | 'assessment'> {
@@ -7405,8 +7416,7 @@ export function createJournalWorker(journal: ReturnType<typeof openPreviewJourna
             // Rules 8, 56, 100: at most one due reminder line rides the same answer; a spent key is never offered again.
             // Part Twelve §3, Rule 42: this answer's own effect refusal is offered for this turn only, so it is never
             // optional. Its room is reserved first: only the model's answer body is shortened (marked with …) to keep it,
-            // never the runner's own outcome lines after it, and an optional follow-up report rides only whole in the
-            // space left, otherwise it stays pending for a later answer.
+            // never the runner's own outcome lines after it. Follow-up reports come after it (below).
             const replying = Boolean(text.trim()) && fromOperator(turn) && !probe && !turn.requestedAction;
             const next = replying ? openReplyNotices(journal.view.order, ports.replyNotices?.(turn.id) ?? [], turn.id)[0] : undefined;
             const reserved = next?.key.startsWith('effect:') ? Buffer.byteLength(next.line) + 2 : 0;
@@ -7417,20 +7427,26 @@ export function createJournalWorker(journal: ReturnType<typeof openPreviewJourna
               const room = 3500 - reserved - Buffer.byteLength(outcome) - Buffer.byteLength('…');
               text = room > 0 && keptBody ? `${clip(keptBody, room)}${outcome}` : outcome.trim();
             }
-            // Rules 8, 92: completed obligation work rides the operator's next answer, the only send the grant allows.
-            // A result another unsent answer already carries is not repeated in this one.
-            const reports: string[] = [], carried = new Set(journal.view.order.filter(item => item.id !== turn.id
-              && item.intent === undefined).flatMap(item => item.answerReports ?? []));
-            if (replying)
-              for (const item of pendingReports(journal.view).filter(entry => !carried.has(entry.key))) {
-                const line = `\n\nFollow-up on "${clip(clean(redact(item.subject).text, true), 160)}": ${item.text}`;
-                if (reports.length >= 2 || Buffer.byteLength(text) + Buffer.byteLength(line) + reserved > 3500) break;
-                text = `${text.trimEnd()}${line}`; reports.push(item.key);
-              }
             const notices: ReplyNotice[] = [];
             if (next && Buffer.byteLength(text) + Buffer.byteLength(next.line) + 2 <= 3500) {
               text = `${text.trimEnd()}\n\n${next.line}`; notices.push(next);
             }
+            // Rules 8, 92: EVERY completed obligation result rides the operator's next answer, the only send the grant
+            // allows, in schedule order, after the answer and its notice. A long reply is split into ordered messages
+            // at send (reply-parts.ts), so no result waits on a count or a one-message bound (live cint-L49 D1c: a cap of
+            // two kept the deferral's result back). The text stays inside the route's answer bound, the size every split
+            // reply is derived to carry; a result past it stays pending for the next answer, never dropped. A result
+            // another unsent answer already carries is not repeated, and one whose text this reply already says (the
+            // same deferral recorded from both the message and the reply) settles without being said twice.
+            const reports: string[] = [], carried = new Set(journal.view.order.filter(item => item.id !== turn.id
+              && item.intent === undefined).flatMap(item => item.answerReports ?? []));
+            if (replying)
+              for (const item of pendingReports(journal.view).filter(entry => !carried.has(entry.key))) {
+                if (text.includes(item.text)) { reports.push(item.key); continue; }
+                const line = `\n\nFollow-up on "${clip(clean(redact(item.subject).text, true), 160)}": ${item.text}`;
+                if (Buffer.byteLength(text) + Buffer.byteLength(line) > MAX_ANSWER_BYTES) break;
+                text = `${text.trimEnd()}${line}`; reports.push(item.key);
+              }
             // The claims are decided one last time against the reply exactly as it is written, by the same
             // rule the replay reads it back with; anything the final text no longer carries is counted refused.
             const written = text.trim() ? text : MODEL_FAILURE_REPLY;
@@ -8399,6 +8415,9 @@ export function createJournalWorker(journal: ReturnType<typeof openPreviewJourna
   const workState = (id: number) => {
     const work = journal.view.obligationWork[`commitment:${id}`];
     if (!work || work.inFlight !== undefined) return {};
+    // A finished result waiting for this reply is appended after the answer (live cint-L49: the model, not told, wrote
+    // "still queued" beside the result it was carrying).
+    if (attachableReport(work)) return { result: READY_RESULT };
     return work.waitsOn !== undefined ? { waitsOn: work.waitsOn!, need: clean(redact(work.note!).text, true) }
       : work.outcome === 'continue' ? { progress: clean(redact(work.note!).text, true) } : {};
   };
@@ -9531,7 +9550,11 @@ export function createJournalWorker(journal: ReturnType<typeof openPreviewJourna
       if (typeof answer !== 'string' && 'state' in answer && answer.state === 'uncertain') { settle({ outcome: 'uncertain', ...usage }); return true; }
       if (typeof answer !== 'string' && 'failureClass' in answer) { settle({ outcome: 'failed', ...usage }); return true; }
       const decided = obligationDecision(typeof answer === 'string' ? answer : answer.text, item.kind, ports.now(), zone);
-      settle({ ...decided, ...usage });
+      // A "result" that only repeats the reply already sent carries nothing new: a failed attempt, retried on the
+      // revisit cadence, never a finished result waiting for the operator.
+      const repeated = item.kind === 'commitment' && decided.report !== undefined
+        && repeatsSentReply(decided.report, sentText(journal.view.turns.get(journal.view.commitments[item.id]!.source)!));
+      settle({ ...(repeated ? { outcome: 'failed' as const } : decided), ...usage });
       return true;
     } finally { working = false; }
   };
