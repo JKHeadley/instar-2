@@ -10,7 +10,7 @@
       "holdsAgentMemory": "no",
       "machineScope": {
         "kind": "machine-local",
-        "reason": "The runner's approval outbox on this machine: a lapsed request is removed and a full outbox refuses (Rule 60); consumed-act markers keep one use per approval on this host."
+        "reason": "The runner's approval outbox on this machine: a lapsed request is removed and a full outbox refuses (Rule 60); consumed-act markers keep one use per approval on this host; the operator dashboard's one snapshot (dashboard.json) is replaced whole and bounded."
       },
       "agreesWith": []
     },

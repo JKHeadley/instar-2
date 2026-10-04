@@ -3129,6 +3129,29 @@ Rules 4, 14, 15, 52, 53, 77, 79, 80, 82, 86, 87, 88, 95 and 106 on the live runn
   --approval-outbox /ABS/RUNNER_OUTBOX --approval-operator-uid UID_OF_THAT_USER`; `status
   .approvalSurface` then reads `{ installed: true, ready: true, page, passkeys }`. A store owned by
   the runner's own identity is refused (`installed: false`).
+- **The operator dashboard (Rules 79, 80, 81, 87; Eleven §2; plan #439).** One phone page that shows
+  what the agent is doing and what needs the operator: the status (the exact chat `status` answer,
+  from `statusAnswer`), the requests waiting for a yes or no with a direct link to where each is
+  answered (the approval page itself, the GitHub review, or the chat), the recent messages and what
+  happened to each, the allowance used, and the stop (a link to the page's own standing Stop). It is
+  a page of the independent approval page above, served by that process at `/TOKEN/dashboard`
+  (linked from the approvals index), never by the agent. Nothing from the agent shows until the
+  operator's enrolled passkey signs in: one assertion over a fresh nonce whose signed bytes are a
+  different type from any act (`signInChallenge`), so a sign-in never stands for an approval. The
+  session is a random value held hashed in the page's memory for 30 minutes (at most 64); a restart
+  signs everyone out. The runner publishes the data: while the approval page is installed, every
+  cycle (at most every 15 seconds, and once at exit) it writes one snapshot,
+  `OUTBOX/dashboard.json` (`tests/preview/operator-dashboard.ts`), replaced whole, from the journal
+  and the same status lines it would send in chat. The page reads it as untrusted data
+  (`scripts/operator-dashboard.mjs`): a closed, bounded shape whose only links are a GitHub review
+  page or `https://t.me/BOT`, every field escaped, its age shown on every view; a missing,
+  unreadable or stale (over 2 minutes) snapshot is said in plain words. The page never refreshes
+  itself (reload to update). The snapshot carries credential-redacted message excerpts (at most 500
+  characters, the last 10 messages): the outbox directory's permissions are its access boundary on
+  the machine, so on a shared machine give the outbox a group the page's user is in and mode 0750.
+  Rule 81's eleven floors are checked on any tree by `node scripts/check-dashboard-floors.mjs`
+  (one JSON object; exit 0 only when every floor holds, every floor's negative control is caught,
+  and nothing shows without the passkey); live-proof check Q81 runs it on the deployed tree.
 - **Operator actions by explicit yes (Rules 28, 79, 82, 98; plan #91; `operator-yes.ts`).** The
   two declared operator actions, `raise-caps` and `renew-expiry`, can be requested in chat and
   completed by the verified operator's explicit yes, with no setup. The worker port is

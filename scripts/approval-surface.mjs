@@ -16,8 +16,9 @@ import { chmodSync, closeSync, existsSync, fsyncSync, lstatSync, mkdirSync, open
   renameSync } from 'node:fs';
 import { join, resolve } from 'node:path';
 import { pathToFileURL } from 'node:url';
-import { ACT_RECORD, actChallenge, b64u, canonical, check, checkChallenge, hex, nameFor, renderChallenge, SURFACE_LIMITS, verifyAssertion,
-  verifyRegistration, writeOnce } from './approval-surface-core.mjs';
+import { ACT_RECORD, actChallenge, b64u, canonical, check, checkChallenge, hex, nameFor, renderChallenge, signInChallenge, SURFACE_LIMITS,
+  verifyAssertion, verifyRegistration, writeOnce } from './approval-surface-core.mjs';
+import { DASHBOARD_BOUNDS, DASHBOARD_VIEWS, readSnapshot, renderDashboard, renderSignIn } from './operator-dashboard.mjs';
 export { SURFACE_LIMITS };
 
 const privateDir = directory => { const stat = lstatSync(directory);
@@ -141,7 +142,29 @@ export function createApprovalSurface(configuration, now = () => Date.now()) {
     replace(store, 'keys.json', canonical([...enrolled, { ...key, enrolledAt: now() }]), 0o644);
     return { enrolled: true, message: 'This passkey can now approve requests on this page.' };
   };
-  return Object.freeze({ surface, pending, request, begin, act, enrol, enrolBegin, enrolFinish, keys });
+  // The operator dashboard (scripts/operator-dashboard.mjs): opened only by a passkey sign-in over a fresh nonce. A session
+  // is a random value held hashed in memory, short-lived and bounded; a restart of this page signs everyone out.
+  const signIns = new Map(), sessions = new Map();
+  const signInBegin = () => {
+    const enrolled = keys();
+    check(enrolled.length > 0, 'no passkey is enrolled for this page');
+    const nonce = randomBytes(32).toString('hex');
+    remember(signIns, nonce, { expiresAt: now() + SURFACE_LIMITS.nonceMs });
+    return { challenge: b64u(signInChallenge(config.operator, nonce)), nonce, rpId, allow: enrolled.map(key => key.id) };
+  };
+  const signInFinish = ({ nonce, assertion }) => {
+    const started = typeof nonce === 'string' ? signIns.get(nonce) : undefined;
+    check(started !== undefined && started.expiresAt > now(), 'this sign-in step expired; try again');
+    signIns.delete(nonce);
+    verifyAssertion({ keys: keys(), origin, rpId, expected: signInChallenge(config.operator, nonce), assertion });
+    const session = randomBytes(32).toString('hex');
+    remember(sessions, hex(session), { expiresAt: now() + DASHBOARD_BOUNDS.sessionMs });
+    return session;
+  };
+  const signedIn = session => typeof session === 'string' && /^[a-f0-9]{64}$/u.test(session)
+    && (sessions.get(hex(session))?.expiresAt ?? 0) > now();
+  const dashboard = () => readSnapshot(outbox, now());
+  return Object.freeze({ surface, pending, request, begin, act, enrol, enrolBegin, enrolFinish, keys, signInBegin, signInFinish, signedIn, dashboard });
 }
 
 const escape = text => String(text).replace(/[&<>"']/gu, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' })[c]);
@@ -162,7 +185,7 @@ export function renderRequestPage(item, token) {
 }
 export function renderIndexPage(items, token) {
   const rows = items.map(item => `<a class="row" href="/${token}/c/${item.name}">${escape(item.view.title)}</a>`).join('');
-  return page('Approvals', `<h1>Approvals</h1>${rows || '<p>Nothing is waiting for you.</p>'}`, token);
+  return page('Approvals', `<h1>Approvals</h1>${rows || '<p>Nothing is waiting for you.</p>'}<p class="note"><a href="/${token}/dashboard">Your dashboard</a></p>`, token);
 }
 const enrolPage = token => page('Add your passkey', '<h1>Add your passkey</h1><p>This lets your phone approve requests on this page. Your phone keeps the key; this page never sees it.</p><button class="primary" id="enrol">Add passkey</button><p id="result" role="status"></p>', token);
 const APP = `(() => {
@@ -191,11 +214,32 @@ if (enrol) enrol.addEventListener('click', async () => {
     enrol.disabled = true; out(done.message);
   } catch (e) { out('Not added: ' + e.message); } });
 })();`;
+/** The sign-in script: one passkey assertion over the page's fresh nonce, then a reload. It never polls (floor F9). */
+export const DASHBOARD_APP = `(() => {
+const b = s => Uint8Array.from(atob(s.replace(/-/g,'+').replace(/_/g,'/')), c => c.charCodeAt(0));
+const u = a => btoa(String.fromCharCode(...new Uint8Array(a))).replace(/\\+/g,'-').replace(/\\//g,'_').replace(/=+$/,'');
+const base = location.pathname.split('/').slice(0, 2).join('/');
+const post = async (path, body) => { const r = await fetch(base + path, { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify(body) });
+  const j = await r.json(); if (!r.ok) throw Error(j.error || 'refused'); return j; };
+const button = document.getElementById('signin');
+if (button) button.addEventListener('click', async () => {
+  try { const start = await post('/dashboard/sign-in/begin', {});
+    const c = await navigator.credentials.get({ publicKey: { challenge: b(start.challenge), rpId: start.rpId, userVerification: 'required',
+      timeout: 120000, allowCredentials: start.allow.map(id => ({ type: 'public-key', id: b(id) })) } });
+    await post('/dashboard/sign-in/finish', { nonce: start.nonce, assertion: { credentialId: c.id,
+      clientDataJSON: u(c.response.clientDataJSON), authenticatorData: u(c.response.authenticatorData), signature: u(c.response.signature) } });
+    location.reload();
+  } catch (e) { document.getElementById('result').textContent = 'Not signed in: ' + e.message; } });
+})();`;
 const HEADERS = { 'cache-control': 'no-store', 'referrer-policy': 'no-referrer', 'x-content-type-options': 'nosniff',
   'content-security-policy': "default-src 'none'; script-src 'self'; style-src 'unsafe-inline'; connect-src 'self'; frame-ancestors 'none'; base-uri 'none'; form-action 'none'" };
 
+const SESSION_COOKIE = 'instar_dashboard';
+const sessionOf = cookie => String(cookie ?? '').split(';').map(part => part.trim().split('='))
+  .find(([name]) => name === SESSION_COOKIE)?.[1];
+
 /** The surface's HTTP handling, transport-free so it is testable: every route lives under the path token. */
-export function handle(surface, { method, path, body }) {
+export function handle(surface, { method, path, body, cookie }) {
   const token = surface.surface.token, json = (status, value) => ({ status, headers: { ...HEADERS, 'content-type': 'application/json' }, body: JSON.stringify(value) });
   const html = text => ({ status: 200, headers: { ...HEADERS, 'content-type': 'text/html; charset=utf-8' }, body: text });
   const parts = String(path).split('?')[0].split('/').filter(Boolean);
@@ -206,12 +250,26 @@ export function handle(surface, { method, path, body }) {
     if (route === 'GET /app.js') return { status: 200, headers: { ...HEADERS, 'content-type': 'text/javascript' }, body: APP };
     if (method === 'GET' && parts[1] === 'c' && parts.length === 3) return html(renderRequestPage(surface.request(parts[2]), token));
     if (route === 'GET /enrol') return html(enrolPage(token));
+    // The dashboard: nothing from the agent is shown before the operator's passkey signs in (Rules 79, 81).
+    if (route === 'GET /dashboard.js') return { status: 200, headers: { ...HEADERS, 'content-type': 'text/javascript' }, body: DASHBOARD_APP };
+    if (method === 'GET' && parts[1] === 'dashboard' && parts.length <= 4) {
+      if (!surface.signedIn(sessionOf(cookie))) return html(renderSignIn(token, surface.keys().length > 0));
+      const view = parts.length === 2 ? 'overview' : parts.slice(2).join('/');
+      const known = view === 'overview' || DASHBOARD_VIEWS.some(item => item.path === view) || /^(?:messages|requests)\/\d{1,20}$/u.test(view);
+      const out = html(renderDashboard({ token, view, state: surface.dashboard(), pending: surface.pending() }));
+      return known ? out : { ...out, status: 404 };
+    }
     const input = JSON.parse(typeof body === 'string' && body.length <= SURFACE_LIMITS.maxBody ? body : 'null');
     check(input !== null && typeof input === 'object', 'request body required');
     if (route === 'POST /begin') return json(200, surface.begin(input));
     if (route === 'POST /act') return json(200, surface.act(input));
     if (route === 'POST /enrol/begin') return json(200, surface.enrolBegin(input));
     if (route === 'POST /enrol/finish') return json(200, surface.enrolFinish(input));
+    if (route === 'POST /dashboard/sign-in/begin') return json(200, surface.signInBegin());
+    if (route === 'POST /dashboard/sign-in/finish') {
+      const session = surface.signInFinish(input), out = json(200, { signedIn: true });
+      return { ...out, headers: { ...out.headers, 'set-cookie': `${SESSION_COOKIE}=${session}; Path=/${token}/; HttpOnly; Secure; SameSite=Strict; Max-Age=${DASHBOARD_BOUNDS.sessionMs / 1000}` } };
+    }
     return json(404, { error: 'not found' });
   } catch (error) { return json(400, { error: error instanceof Error ? error.message.slice(0, 200) : 'refused' }); }
 }
@@ -221,7 +279,7 @@ export function serve(surface, port) {
     let body = '', size = 0;
     req.setEncoding('utf8');
     req.on('data', chunk => { size += chunk.length; if (size > SURFACE_LIMITS.maxBody) req.destroy(); else body += chunk; });
-    req.on('end', () => { const out = handle(surface, { method: req.method, path: req.url, body });
+    req.on('end', () => { const out = handle(surface, { method: req.method, path: req.url, body, cookie: req.headers.cookie });
       res.writeHead(out.status, out.headers); res.end(out.body); });
   });
   // Loopback only: the operator's recorded ingress (for example a named HTTPS tunnel) publishes it.

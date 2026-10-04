@@ -4,10 +4,11 @@
 // identity cannot write, and re-verify each act's passkey signature over the exact challenge. The agent
 // holds no key that could produce an approval (Purpose: the agent never administers its own safeguards).
 import { randomBytes } from 'node:crypto';
-import { existsSync, lstatSync, readdirSync, readFileSync, realpathSync, unlinkSync } from 'node:fs';
+import { existsSync, lstatSync, readdirSync, readFileSync, realpathSync, renameSync, rmSync, unlinkSync } from 'node:fs';
 import { join, resolve } from 'node:path';
 import { ACT_RECORD, actChallenge, canonical, check, checkChallenge, nameFor, readOwnedFile, SURFACE, SURFACE_LIMITS, verifyAssertion,
   writeOnce } from '../../scripts/approval-surface-core.mjs';
+import { checkSnapshot, DASHBOARD_BOUNDS, DASHBOARD_FILE } from '../../scripts/operator-dashboard.mjs';
 // Rule 115: a shipped client reaches the core through its public ports only, so this port
 // implementation builds its own plain, frozen Result values (the core's port shape) instead of the
 // core-private sealing factory. Consumers read them only through `consumeResult`; nothing trusts a
@@ -90,6 +91,16 @@ export function createApprovalSurfaceClient({ store, outbox, operatorUid, agentU
             && record.challenge.expiresAt > at ? [{ at: record.at, act: { challenge: record.challenge.id, proof, decision: record.decision } }] : [];
         } catch { return []; }
       }).sort((a, b) => b.at - a.at).slice(0, 256).map(item => item.act);
+    },
+    /** The operator dashboard's one snapshot (tests/preview/operator-dashboard.ts), replaced whole in this runner's own
+     * outbox. It is checked against the page's own shape and bound first, so a snapshot the page would refuse is never written. */
+    publish: snapshot => {
+      checkSnapshot(snapshot);
+      const bytes = canonical(snapshot), temporary = '.dashboard.json.next';
+      check(Buffer.byteLength(bytes) <= DASHBOARD_BOUNDS.maxBytes, 'dashboard snapshot too large');
+      rmSync(join(outboxDir, temporary), { force: true });
+      writeOnce(outboxDir, temporary, bytes, 0o644);
+      renameSync(join(outboxDir, temporary), join(outboxDir, DASHBOARD_FILE));
     },
     /** Pull-only status: whether the page is installed and can approve right now. */
     status: () => { try { const page = surface(); return { installed: true, page: `${page.origin}/${page.token}/`,

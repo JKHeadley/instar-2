@@ -14,18 +14,29 @@ export const isStatusCommand = (text: string): boolean => /^(?:status|how are yo
 export const isStopCommand = (text: string): boolean => /^\/stop$/iu.test(text.trim());
 export const STOP_CONFIRM_TEXT = 'Stop this preview permanently? Approving halts every model call and message from me until a new trial is set up. Your saved messages stay saved. Tap Approve or Decline below.';
 
-export function statusReply(view: JournalView, now: number, zone: string, extra: readonly string[] = []): string {
+/** Accepted turns whose message is dated today in `zone` (the status reply's and the dashboard's one count). */
+export function turnsToday(view: JournalView, now: number, zone: string): number {
   const local = localParts(now, zone);
-  const today = `${String(local.year).padStart(4, '0')}-${String(local.month).padStart(2, '0')}-${String(local.day).padStart(2, '0')}`;
-  const turns = view.order.reduce((count, turn) => {
+  return view.order.reduce((count, turn) => {
     const time = turn.accepted ? messageTime(turn) : null;
     if (time === null) return count;
     const sent = localParts(time, zone);
     return count + Number(sent.year === local.year && sent.month === local.month && sent.day === local.day);
   }, 0);
+}
+/** Held replies by their recorded reason (the status reply's and the dashboard's one count). */
+export function heldReplies(view: JournalView): Map<string, number> {
   const held = new Map<string, number>();
   for (const turn of view.order) if (turn.accepted && turn.held && !turn.intent)
     held.set(turn.held, (held.get(turn.held) ?? 0) + 1);
+  return held;
+}
+
+export function statusReply(view: JournalView, now: number, zone: string, extra: readonly string[] = []): string {
+  const local = localParts(now, zone);
+  const today = `${String(local.year).padStart(4, '0')}-${String(local.month).padStart(2, '0')}-${String(local.day).padStart(2, '0')}`;
+  const turns = turnsToday(view, now, zone);
+  const held = heldReplies(view);
   const pending = view.order.filter(turn => turn.accepted && (
     (turn.datedPending && !view.memory.some(change => change.mode !== 'prefer' && change.source === turn.id))
     || (!turn.memoryUndecided && (turn.memoryPending || turn.held === 'memory correction pending')
@@ -48,3 +59,7 @@ export function statusReply(view: JournalView, now: number, zone: string, extra:
     `Replies sent as your own words repeated back, without the second check: ${operatorEchoSent(view)}.`,
   ].join('\n');
 }
+/** The whole chat "status" answer: the fixed reply, then the host's pull lines. The chat reply and the operator dashboard
+ * both read it from here, so the two can never say different things. */
+export const statusAnswer = (view: JournalView, now: number, zone: string, extra: readonly string[] = [], lines: readonly string[] = []): string =>
+  [statusReply(view, now, zone, extra), ...lines].join('\n');

@@ -1,5 +1,26 @@
 [
   {
+    "revision": 8,
+    "date": "2026-10-03",
+    "status": "draft",
+    "cause": {
+      "kind": "draft",
+      "note": "Unit w4-dashboard (plan row #439): the first operator dashboard slice. No constitution change."
+    },
+    "changes": [
+      {
+        "what": "Section 2: the operator dashboard is a page of the registered approval surface, opened only by its enrolled passkey through a sign-in typed apart from every act; it shows status, waiting requests with direct links, recent messages, allowance and the stop, completes no authority, renders an untrusted bounded snapshot with its age, and is held by eleven floors with negative controls.",
+        "why": "Rule 81 had no dashboard to check (Q81 NEEDS-FEATURE); the operator needs one phone-reachable place to see what the agent is doing without a second source of truth or a new authority path.",
+        "ref": "lanes/w4-dashboard-PROGRESS.md; LIVE-PATH-PLAN.md row #439"
+      },
+      {
+        "what": "P11-NF-52: a missed negative control, or agent data shown without the passkey session, also fails; the eleven floors with every control detected are the positive neighbor.",
+        "why": "A floor check that cannot fail, or a dashboard reachable without the credential, would pass the old wording.",
+        "ref": "lanes/w4-dashboard-PROGRESS.md; scripts/check-dashboard-floors.mjs"
+      }
+    ]
+  },
+  {
     "revision": 7,
     "date": "2026-09-29",
     "status": "approved",
