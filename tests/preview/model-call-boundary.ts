@@ -69,6 +69,21 @@ export function decisionWithinFloor(decision: { floor?: unknown }): boolean {
     && typeof floor?.chosen === 'string' && ENVELOPE_FLOOR.actions.includes(floor.chosen);
 }
 
+/** A scheduled obligation step's own answer when the model returned it without the Decision envelope (plan #477). The
+ * step's question asks for "only JSON" in its own shape ({"outcome":...}), while the system prompt puts a runner task's
+ * JSON inside conclusion.value. Live, the model often wrote exactly what the question asked: 14 of the 26 obligation
+ * steps recorded in every preview root by 2026-10-04 (cint-L47 D: the d1 deferral's step at its revisit), and every one
+ * was refused as malformed, so finished work settled `failed` and waited a further revisit. For that step id only, the
+ * one object is read as its conclusion when it is plainly the task's object: it names an outcome and is no Decision
+ * attempt (no type, conclusion or floor field). It carries no floor, which `decisionWithinFloor` already reads as the
+ * local one; the floor has one action, so no choice is inferred from absence (Rule 57). Every field check stays with
+ * `obligationDecision`, and a report is held and reviewed with the operator's next reply before it reaches them. */
+export function obligationTaskAnswer(id: string, value: Record<string, unknown>): string | null {
+  if (!/^obligation:(?:commitment|blocker):\d+:\d+$/u.test(id) || ENVELOPE_FLOOR.actions.length !== 1) return null;
+  if ('type' in value || 'conclusion' in value || 'floor' in value || typeof value.outcome !== 'string') return null;
+  return JSON.stringify(value);
+}
+
 export interface ModelUsageRecord { inputTokens: number | null; outputTokens: number | null; charge: null }
 /** One durable model-call record: exactly what was asked, what came back, by which route, how
  * it ended, how long it took and what it used (or the written exception naming why not). */

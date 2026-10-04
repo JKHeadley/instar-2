@@ -32,7 +32,7 @@ import { guidanceReport } from './guidance.js';
 import { memoryLearningLine, memoryLearningReport } from './memory-learning.js';
 import { JEV_MODEL, jevQuestions, publicCredentialRegister, secretMaterialIn, replyReviewContext, replyReviewQuestion, replyReviewRules, parseReplyReviewVerdict, replyReviewDiagnostics, parseJevResponse, replyRevisionQuestion, parseReplyRevision, REVIEW_MALFORMED, REVIEW_FORMAT_REMINDER } from './reply-check.js';
 import { interpretSummaryReview, SUMMARY_QUESTION } from './summary-check.js';
-import { assertLiveJudgment, decisionWithinFloor, modelCallRecord, sha256 } from './model-call-boundary.js';
+import { assertLiveJudgment, decisionWithinFloor, modelCallRecord, obligationTaskAnswer, sha256 } from './model-call-boundary.js';
 import { conclusionText, failureShapeOf, parseModelJson } from './model-json.js';
 import { SUMMARY_FAITHFULNESS_QUESTION } from './summary-faithfulness.js';
 
@@ -1595,16 +1595,20 @@ async function main() {
       // A wrapped object passes exactly the checks below that an unwrapped one does; only the wrapper is dropped.
       const extracted = parseModelJson(result.bytes, { wrapped: wrappedPolicyOf(role) }), decision = extracted.ok ? extracted.value : null;
       // Rule 57: a returned floor may only echo the envelope's own; it never defines or widens it.
-      const value = decision?.type === 'Decision' && decision.conclusion?.subject === 'preview-stage2-answer'
+      const enveloped = decision?.type === 'Decision' && decision.conclusion?.subject === 'preview-stage2-answer'
         && decisionWithinFloor(decision) ? conclusionText(decision.conclusion.value) : null;
+      // Plan #477: a scheduled obligation step that returned its task's own JSON unenveloped (model-call-boundary.ts).
+      const task = enveloped === null && role === 'answer' && decision ? obligationTaskAnswer(id, decision) : null;
+      const value = enveloped ?? task;
       if (value === null) {
         recordShape(shapesPath, role, 'decision', 'malformed', failureShapeOf(extracted));
         return { state: 'complete', failureClass: 'malformed', usage: result.usage };
       }
-      if (extracted.shape !== 'bare') recordShape(shapesPath, role, 'decision', 'tolerated', extracted.shape);
+      if (task !== null) recordShape(shapesPath, role, 'decision', 'tolerated', `task-${extracted.shape}`);
+      else if (extracted.shape !== 'bare') recordShape(shapesPath, role, 'decision', 'tolerated', extracted.shape);
       if (!value.trim()) return { state: 'complete', failureClass: 'empty', usage: result.usage };
-      // Rule 108: the stated reason is recorded beside the conclusion (build 8).
-      const reasonValue = decision.reason?.value;
+      // Rule 108: the stated reason is recorded beside the conclusion (build 8). A task's own object has no Decision reason.
+      const reasonValue = task === null ? decision.reason?.value : undefined;
       const reason = typeof reasonValue === 'string' ? reasonValue : reasonValue === undefined || reasonValue === null ? '' : JSON.stringify(reasonValue);
       return { state: 'complete', value, ...(reason.trim() ? { reason } : {}), usage: result.usage };
     };
