@@ -25,7 +25,7 @@ const POLICY = { args: ['--print', '--output-format', 'json'], maxTokens: 2048, 
 const frame = (text: string) => JSON.stringify({ type: 'result', subtype: 'success', is_error: false, result: text,
   session_id: 'session-1', usage: { input_tokens: 17000, output_tokens: 600 } });
 
-function world(root: string) {
+function world(root: string, first = JSON.stringify({ reply: HOLD, memory: [], openLoops: [{ kind: 'deferral', quote: HOLD, waitsOn: 'nothing' }] })) {
   const journal = openPreviewJournal(join(root, 'journal.encrypted'), key, { kind: 'genesis', bot: '8989505249', chat: '7812716706',
     operator: '7812716706', grant: 'grant:preview', configurationDigest: 'sha256:offline', expires: 9999999999999,
     maxCalls: 1000, maxReplies: 1000, maxTurns: 1000, maxBytes: 409600, cursor: 0, loopRevisitMs: REVISIT });
@@ -45,8 +45,7 @@ function world(root: string) {
       if (input.id.startsWith('obligation:')) return physical(input.id, JSON.stringify({ outcome: 'report', report: RESULT }));
       if (input.id.startsWith('summary:')) return physical(input.id, JSON.stringify({ summary: 'Earlier turns.', people: [], commitments: [], closed: [], memory: [] }) /* no memory change: settles the ask's preference cue, as the live summary did */);
       // The first answer is the live deferral; every later one is the live reply to "hi".
-      return physical(input.id, answers++ === 0
-        ? JSON.stringify({ reply: HOLD, memory: [], openLoops: [{ kind: 'deferral', quote: HOLD, waitsOn: 'nothing' }] })
+      return physical(input.id, answers++ === 0 ? first
         : JSON.stringify({ reply: 'Hi! What can I help you with?', memory: [] }));
     },
     send: async input => { sent.push(input.text); return sent.length; }, checkOutbound: () => {} });
@@ -127,5 +126,79 @@ it('admits a background call-outcome row only for the launch it belongs to', asy
     expect(journal.view.callOutcomes.map(item => item.id).slice(-2))
       .toEqual([`obligation:commitment:${String(id)}:${String(slot)}`, `summary:index:${String(n)}`]);
     journal.close();
+  } finally { rmSync(root, { recursive: true, force: true }); }
+}, 60_000);
+
+// Plan row #461 (cint-L44 live D run 2026-10-03 21:50, room two, 15-minute root proofroom2-dshort15-20261003-214951):
+// the answer to update 6232039 declared its one deferral sentence BOTH as a promise and as a loop that waits on
+// nothing (journal rows 286 and 295, recorded verbatim below). The promise note was written first, and the loop was
+// then skipped as a duplicate of that same sentence, so the only reply commitment carried the promise's
+// `next-relevant-reply` wait, which schedules no work: nothing ran in the quiet window. On w3-loopfire's passing run
+// (room two, 15:20 root) the answer declared the loop alone, so its commitment waited on nothing and was worked.
+const L44_REPLY = 'Got it, Luna — I\'m holding this as an open item and won\'t answer it in this reply. I\'ll think over which three of the things you\'ve told me matter most for planning your week, and I\'ll bring you that ranked answer in a later message.';
+const L44_SENTENCE = 'I\'ll bring you that ranked answer in a later message.';
+const L44_ANSWER = JSON.stringify({ reply: L44_REPLY, memory: [], promises: [{ quote: L44_SENTENCE }],
+  openLoops: [{ kind: 'promise', quote: L44_SENTENCE, waitsOn: 'nothing' }] });
+
+it('works a loop the answer also declared as a promise, and an inbound never postpones the due step', async () => {
+  const root = realpathSync(mkdtempSync(join(tmpdir(), 'preview-loop-fire-l44-')));
+  try {
+    const w = world(root, L44_ANSWER);
+    await w.say(D1);
+    expect(w.sent.at(-1)).toContain('holding this as an open item');
+    // One commitment for the sentence, not two: the promise note now carries the loop's declared wait.
+    const notes = w.journal.view.commitments.filter(note => note.quote === L44_SENTENCE);
+    expect(notes).toHaveLength(1);
+    expect(notes[0]).toMatchObject({ in: 'reply', owner: 'agent', waitsOn: 'nothing', loop: 'promise',
+      agentPromise: { owner: 'agent', waitsOn: 'next-relevant-reply' } });
+    const id = w.journal.view.commitments.indexOf(notes[0]!), key = `commitment:${String(id)}`;
+    const source = w.journal.view.turns.get(notes[0]!.source)!;
+    // Due one revisit after the source; with no inbound the step is due in the quiet window.
+    const slot = obligationSchedule(w.journal.view).find(item => item.key === key)!.slot;
+    expect(slot).toBe(source.at + REVISIT);
+    w.clock.now = slot + 10 * MINUTE;
+    expect(dueObligationWork(w.journal.view, w.clock.now).map(item => item.key)).toContain(key);
+    // An operator message arriving while the step is due leaves it due at the same slot (the live "hi").
+    w.worker.intake([{ update_id: 6232040, message: { chat: { id: 7812716706, type: 'private' }, from: { id: 7812716706 },
+      text: 'hi', date: Math.floor(w.clock.now / 1000) } }]);
+    expect(obligationSchedule(w.journal.view).find(item => item.key === key)!.slot).toBe(slot);
+    expect(dueObligationWork(w.journal.view, w.clock.now).map(item => item.key)).toContain(key);
+    await w.worker.drain();
+    for (let i = 0; i < 4 && await w.worker.workObligations(); i++) { /* one bounded step per tick */ }
+    expect(w.journal.view.obligationWork[key]!.outcome).toBe('report');
+    expect(w.launched.some(launch => launch.startsWith(`obligation:${key}:`))).toBe(true);
+    w.journal.close();
+  } finally { rmSync(root, { recursive: true, force: true }); }
+}, 60_000);
+
+it('keeps a promise with no declared loop on its next-relevant-reply wait, scheduling no work', async () => {
+  const root = realpathSync(mkdtempSync(join(tmpdir(), 'preview-loop-fire-l44-promise-')));
+  try {
+    const w = world(root, JSON.stringify({ reply: L44_REPLY, memory: [], promises: [{ quote: L44_SENTENCE }] }));
+    await w.say(D1);
+    const notes = w.journal.view.commitments.filter(note => note.quote === L44_SENTENCE);
+    expect(notes).toHaveLength(1);
+    expect(notes[0]!.waitsOn).toBeUndefined();
+    const key = `commitment:${String(w.journal.view.commitments.indexOf(notes[0]!))}`;
+    expect(obligationSchedule(w.journal.view).some(item => item.key === key)).toBe(false);
+    w.journal.close();
+  } finally { rmSync(root, { recursive: true, force: true }); }
+}, 60_000);
+
+it('keeps a dated promise on its own date when the answer also declared it as a loop', async () => {
+  const root = realpathSync(mkdtempSync(join(tmpdir(), 'preview-loop-fire-l44-dated-')));
+  try {
+    const sentence = 'I\'ll bring you that ranked answer on Friday.';
+    const w = world(root, JSON.stringify({ reply: `Got it, holding this open. ${sentence}`, memory: [],
+      promises: [{ quote: sentence, when: 'on Friday' }], openLoops: [{ kind: 'promise', quote: sentence, waitsOn: 'nothing' }] }));
+    await w.say(D1);
+    const notes = w.journal.view.commitments.filter(note => note.quote === sentence);
+    expect(notes).toHaveLength(1);
+    expect(notes[0]!.agentPromise?.due).toBeDefined();
+    expect(notes[0]!.waitsOn).toBeUndefined();
+    const source = w.journal.view.turns.get(notes[0]!.source)!;
+    const item = obligationSchedule(w.journal.view).find(entry => entry.key === `commitment:${String(w.journal.view.commitments.indexOf(notes[0]!))}`);
+    expect(item?.slot).not.toBe(source.at + REVISIT);
+    w.journal.close();
   } finally { rmSync(root, { recursive: true, force: true }); }
 }, 60_000);
