@@ -3,7 +3,8 @@
 // Every tool of the harness's built-in set is offered; this decides each call. Ordinary work is admitted; a consequential
 // effect goes to the effect doorway; a call whose liability the turn cannot reserve is refused for budget; a tool outside
 // the classified set (a harness the adapter has not been updated for) is refused, since nothing here says what it does.
-// - Ordinary: file tools (Read, Write, Edit, NotebookEdit) inside the workspace; workspace search; a sandboxed shell
+// - Ordinary: a file read or search of the workspace or the system files the shell may also read, and a file write or
+//   edit inside the workspace, each decided on the resolved file (toolRoots, resolvedPath); a sandboxed shell
 //   command (not judged by the words it contains: what it can reach is enforced where it runs: the sandbox's read, write,
 //   network and process scope, the turn's fixed-size scratch volume, the per-file limit); a web read (WebFetch is GET
 //   only, WebSearch is a search) of a public host; a subagent of the registered `worker` type within the turn's shared
@@ -26,7 +27,7 @@
 //   goes to the doorway too, so that marking decides it; otherwise it is ordinary under the operator's recorded tools grant.
 // - A web read of a loopback, private, link-local or local-name host is refused: it is not "the world" but this machine
 //   and its network, which the shell's sandbox already closes.
-import { basename, dirname, join, resolve, sep } from 'node:path';
+import { dirname, join, sep } from 'node:path';
 import { isIP } from 'node:net';
 import { admitEffect, decodeEffectPolicy, DEFAULT_EFFECT_POLICY, toolEffectProposal, UNAVAILABLE_EFFECT_POLICY } from './effect-doorway.mjs';
 
@@ -95,13 +96,37 @@ function policyNames(config, proposal) {
   return registered.length > 0 || matters.some(item => policy.policySensitive.includes(item));
 }
 
-/** Physical containment: resolve the symlinks of the longest existing prefix, then compare real paths. */
+/** The file a path names, resolved as the operating system resolves it: component by component (a relative path from
+ * the workspace), each symlink followed where it stands, so `link/..` leaves through the link's target rather than
+ * lexically. Components past the deepest existing one are kept as written. Null when a component is a symlink that
+ * does not resolve (dangling or looping): a write through it would create a file wherever it points. `fs.exists` must
+ * not follow symlinks (lstat), so a dangling link counts as present and then fails to resolve. */
+export function resolvedPath(workspace, path, fs) {
+  const text = String(path), parts = text.split('/').filter(part => part !== '' && part !== '.');
+  let real = text.startsWith('/') ? '/' : workspace;
+  for (let i = 0; i < parts.length; i++) {
+    if (parts[i] === '..') { real = dirname(real); continue; }
+    const next = join(real, parts[i]);
+    if (!fs.exists(next)) return join(next, ...parts.slice(i + 1));
+    try { real = fs.realpath(next); } catch { return null; }
+  }
+  return real;
+}
+const under = (path, root) => path === root || path.startsWith(root === sep ? sep : root + sep);
+/** Physical containment: whether the path resolves (resolvedPath) inside the workspace. */
 export function containedIn(workspace, path, fs) {
-  let abs = resolve(workspace, String(path));
-  const rest = [];
-  while (!fs.exists(abs)) { rest.unshift(basename(abs)); const up = dirname(abs); if (up === abs) break; abs = up; }
-  const real = join(fs.realpath(abs), ...rest);
-  return real === workspace || real.startsWith(workspace + sep);
+  const real = resolvedPath(workspace, path, fs);
+  return real !== null && under(real, workspace);
+}
+/** Where a tool may write: the turn's workspace and the shell's temporary directory (both on the fixed-size scratch volume,
+ * the sandbox's only write root). Where it may read: those, plus the system locations the sandbox reopens for commands
+ * (`config.reads`, real paths: binaries, libraries, /private/etc). The hook and the sandbox share these sets and both
+ * decide on the resolved file, so no other spelling of a path (a symlink, a /private alias, `..`) reaches past them, and
+ * no readable file is refused for how it was spelled. Secret material (users' homes, keychains, the runner root and its
+ * vault, other roots, the admission state) lies outside both. */
+export function toolRoots(config) {
+  const writes = [config.workspace, ...(typeof config.tmp === 'string' ? [config.tmp] : [])];
+  return { writes, reads: [...writes, ...(Array.isArray(config.reads) ? config.reads.filter(root => typeof root === 'string' && root.startsWith('/')) : [])] };
 }
 
 /** Whether an IP address is on the public internet (not loopback, private, link-local, shared, multicast or reserved). */
@@ -180,20 +205,34 @@ export function admitToolCall(call, config, n, fs, child = 1, now) {
     return verdict.admitted ? { decision: 'allow', reason: verdict.reason, kind, doorway } : { ...deny(verdict.reason, kind), doorway }; };
   if (!Number.isSafeInteger(n) || n < 1) return deny('admission count unavailable');
   if (n > config.maxCalls) return deny(`per-step call cap ${config.maxCalls} reached (call ${n})`);
-  const inside = path => typeof path === 'string' && path.length > 0 && containedIn(config.workspace, path, fs);
+  // A file tool or search is decided on the file its path resolves to, against the turn's read or write set, and the
+  // harness is handed that resolved path: a symlink the agent swaps after this check cannot redirect the call.
+  const roots = toolRoots(config);
+  const place = (path, set) => {
+    if (typeof path !== 'string' || path.length === 0) return { ok: false, why: 'path absent' };
+    const real = resolvedPath(config.workspace, path, fs);
+    if (real === null) return { ok: false, why: `path does not resolve: ${path} (a symlink in it points nowhere)` };
+    const via = real === path ? '' : ` (resolves to ${real})`;
+    return roots[set].some(root => under(real, root)) ? { ok: true, real, changed: real !== path }
+      : { ok: false, why: `${String(path)}${via}`, real };
+  };
+  const inside = path => place(path, 'writes').ok;
+  const rewrite = (key, at) => (at.changed ? { updatedInput: { ...input, [key]: at.real } } : {});
   if (FILE_TOOLS.includes(tool)) {
-    const path = tool === 'NotebookEdit' ? input.notebook_path : input.file_path;
-    if (!inside(path)) return deny(`path outside the workspace: ${String(path)}`, 'scope');
+    const key = tool === 'NotebookEdit' ? 'notebook_path' : 'file_path', path = input[key];
+    const at = place(path, tool === 'Read' ? 'reads' : 'writes');
+    if (!at.ok) return deny(tool === 'Read' ? `path outside the workspace and the system files: ${at.why}`
+      : `path outside the workspace: ${at.why}`, 'scope');
     if (tool === 'Write' && Buffer.byteLength(String(input.content ?? '')) > config.maxWriteBytes)
       return deny(`write larger than ${config.maxWriteBytes} bytes`, 'scope');
-    return { decision: 'allow', reason: 'ordinary in-workspace file operation' };
+    return { decision: 'allow', reason: tool === 'Read' ? 'ordinary file read' : 'ordinary in-workspace file operation', ...rewrite(key, at) };
   }
   if (SEARCH_TOOLS.includes(tool)) {
-    const path = input.path ?? config.workspace;
-    if (!inside(path)) return deny(`search outside the workspace: ${String(path)}`, 'scope');
+    const at = place(input.path ?? config.workspace, 'reads');
+    if (!at.ok) return deny(`search outside the workspace and the system files: ${at.why}`, 'scope');
     const shape = tool === 'Glob' ? String(input.pattern ?? '') : String(input.glob ?? '');
     if (shape.startsWith('/') || shape.includes('..')) return deny(`search pattern outside the workspace: ${shape}`, 'scope');
-    return { decision: 'allow', reason: 'ordinary in-workspace search' };
+    return { decision: 'allow', reason: 'ordinary search', ...(input.path === undefined ? {} : rewrite('path', at)) };
   }
   if (tool === 'Bash') {
     const command = String(input.command ?? '');

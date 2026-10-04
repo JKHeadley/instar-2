@@ -5,7 +5,7 @@
 // per-step call and subagent slots and the admission record.
 // Fail closed: any error in `pre` exits 2, which Claude Code treats as a block. The child rows are records
 // only (the harness cannot be blocked from a subagent's start or stop hook), so they never fail the turn.
-import { appendFileSync, closeSync, existsSync, fsyncSync, mkdirSync, openSync, readFileSync, realpathSync, writeSync } from 'node:fs';
+import { appendFileSync, closeSync, fsyncSync, lstatSync, mkdirSync, openSync, readFileSync, realpathSync, writeSync } from 'node:fs';
 import { lookup } from 'node:dns/promises';
 import { isIP } from 'node:net';
 import { join } from 'node:path';
@@ -64,7 +64,9 @@ const target = call.tool_name === 'WebFetch' ? webReadHost(call.tool_input?.url)
 if (target.host !== null && !isIP(target.host)) {
   try { addresses = (await lookup(target.host, { all: true, verbatim: true })).map(entry => entry.address); } catch { addresses = null; }
 }
-const decision = admitToolCall(call, config, n, { exists: existsSync, realpath: realpathSync, addresses: () => addresses }, child, Date.now());
+// `exists` does not follow symlinks, so a dangling link is present and then refused as unresolvable (resolvedPath).
+const exists = path => { try { lstatSync(path); return true; } catch { return false; } };
+const decision = admitToolCall(call, config, n, { exists, realpath: realpathSync, addresses: () => addresses }, child, Date.now());
 record({ phase: 'pre', id: call.tool_use_id, n, tool: call.tool_name, input: clip(call.tool_input), decision: decision.decision,
   reason: decision.reason, ...(decision.kind ? { kind: decision.kind } : {}), ...(decision.kind === 'subagent' ? { child } : {}),
   ...(typeof call.agent_id === 'string' && call.agent_id ? { agent: call.agent_id } : {}), ...(decision.doorway ? { doorway: decision.doorway } : {}) },

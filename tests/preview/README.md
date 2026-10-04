@@ -3595,7 +3595,11 @@ servers (Part Thirteen §9,
   at 6 turns or 512 KiB, on a compaction or a missing/unreadable transcript or record, and after an unsettled turn,
   and ends the session (transcript removed) when a turn is stopped, withdrawn or fails. The harness's own memory and
   automatic compaction are off. Each trace row's `session` says new or resumed and why; status counts them.
-- `tool-admission-hook.mjs` admits ordinary work: in-workspace file and notebook operations, sandboxed commands
+- `tool-admission-hook.mjs` admits ordinary work: a file read or search of the workspace, the shell's temporary
+  directory or the system files the sandbox also lets commands read (binaries, libraries, `/private/etc`), a file or
+  notebook write or edit inside the workspace or that temporary directory, each decided on the RESOLVED file (symlinks
+  followed where they stand, so `link/..` leaves through the link; `/etc` and `/private/etc` are one place; a dangling
+  link is refused as unresolvable) with the resolved path handed to the harness; sandboxed commands
   whatever words they contain, a WebFetch (GET only) of a host whose every resolved address is public, a WebSearch,
   an MCP tool listed as a read, the harness's bookkeeping (ToolSearch, ListAgents, CronList, ReportFindings,
   TaskStop), a worktree inside the workspace, and a `worker` subagent within the turn's budget (rewritten to the
@@ -3616,7 +3620,9 @@ servers (Part Thirteen §9,
   agents they may start cannot be reserved before dispatch), and any other skill name is refused. A web read of a loopback, private or
   local-name host is refused; a tool the hook does not classify is refused. Each call takes one of
   the step's 32 slots (shared with the turn's subagents) by exclusive create, so overlapping calls cannot exceed the
-  cap. The sandbox refuses reads from `/` down except the scratch volume and the system files commands need, writes
+  cap. The sandbox refuses reads from `/` down except the scratch volume and the system files commands need (it
+  reopens the `/etc` and `/var` symlinks themselves, so `/etc/hosts` reads as `/private/etc/hosts` does and nothing else
+  behind them opens), writes
   outside the volume, the network (a shell cannot write to the network), unix sockets and signals to other
   processes; the harness's messaging socket and token are removed from every command.
 - MCP: `ROOT/mcp.json` (the operator's file; absent means none) is `{"mcpServers": {name: {command, args?, env?}},

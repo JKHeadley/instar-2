@@ -320,6 +320,11 @@ export const SUBSCRIPTION_TOOL_SCRATCH_PATH_BYTES = 30;
  * sessions' temporary files, users' homes, mounted volumes and the runner root all lie outside this list. */
 export const SUBSCRIPTION_TOOL_RUNTIME_READS = Object.freeze(['/bin', '/sbin', '/usr/bin', '/usr/sbin', '/usr/lib', '/usr/libexec',
   '/usr/share', '/System', '/private/var/select', '/private/etc', '/dev']);
+/** Root-level symlinks whose targets hold a runtime read (/etc to /private/etc, /var to /private/var). The sandbox
+ * checks a link itself when a path is looked up through it, then checks the resolved target against the read list, so
+ * reopening the link alone makes `/etc/hosts` as readable as `/private/etc/hosts` and opens nothing else behind it
+ * (/var/log stays refused, as /private/var/log is). The admission hook resolves paths itself and needs no link entries. */
+export const SUBSCRIPTION_TOOL_RUNTIME_READ_LINKS = Object.freeze(['/etc', '/var']);
 /** Places Claude Code 2.1.280 lets every sandboxed command write by default (its shared temporary directory
  * and two home-directory logs). They lie outside the scratch volume, so a tool turn refuses them. */
 export const subscriptionToolDefaultWrites = (home: string) => Object.freeze(['/tmp/claude', '/private/tmp/claude',
@@ -341,7 +346,7 @@ export function subscriptionToolSettings(turn: SubscriptionToolTurn, home: strin
   ensure(!within(turn.stateDirectory, turn.scratch) && !within(turn.scratch, turn.stateDirectory)
     && !within(turn.hook.script, turn.scratch), 'tool turn: the admission state and hook lie outside the workspace');
   ensure([turn.stateDirectory, home, ...turn.deniedRoots].every(path => !within(path, turn.scratch)
-    && !SUBSCRIPTION_TOOL_RUNTIME_READS.some(read => within(path, read) || within(read, path))),
+    && ![...SUBSCRIPTION_TOOL_RUNTIME_READS, ...SUBSCRIPTION_TOOL_RUNTIME_READ_LINKS].some(read => within(path, read) || within(read, path))),
   'tool turn: a denied root, the admission state or the home lies under a readable path');
   ensure(!turn.mcp || (within(turn.mcp.config, turn.stateDirectory) && turn.mcp.servers.length > 0
     && turn.mcp.servers.every(name => /^[A-Za-z0-9_-]{1,64}$/u.test(name))), 'tool turn: MCP configuration lies in the admission state with plain server names');
@@ -352,7 +357,7 @@ export function subscriptionToolSettings(turn: SubscriptionToolTurn, home: strin
     sandbox: { enabled: true, failIfUnavailable: true, autoAllowBashIfSandboxed: true, allowUnsandboxedCommands: false,
       network: { allowedDomains: [], allowUnixSockets: [], allowAllUnixSockets: false, allowLocalBinding: false },
       filesystem: { allowWrite: [turn.scratch], denyWrite: [...subscriptionToolDefaultWrites(home)],
-        denyRead: ['/'], allowRead: [turn.scratch, ...SUBSCRIPTION_TOOL_RUNTIME_READS] } },
+        denyRead: ['/'], allowRead: [turn.scratch, ...SUBSCRIPTION_TOOL_RUNTIME_READS, ...SUBSCRIPTION_TOOL_RUNTIME_READ_LINKS] } },
     permissions: { allow: [...SUBSCRIPTION_TOOL_NAMES, ...(turn.mcp?.servers ?? []).map(name => `mcp__${name}`)] },
     hooks: { PreToolUse: hook('pre'), PostToolUse: hook('post'), SubagentStart: hook('child-start'), SubagentStop: hook('child-stop') },
   });

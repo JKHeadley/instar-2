@@ -42,8 +42,11 @@ The preview may run an answer or a scheduled work step as one Claude Code invoca
 existing provider path, with the pinned harness's whole built-in tool set, plus the MCP servers the
 root's own configuration names. No tool is left out to hold a safeguard: each tool's scope, finite
 resource bounds and durable cause are enforced per call before dispatch. A mandatory PreToolUse
-admission hook decides every call, and fails closed on any error. It admits ordinary work: file operations physically contained in the
-conversation's private workspace, workspace search, sandboxed commands (never judged by the words they
+admission hook decides every call, and fails closed on any error. It admits ordinary work: a file read or
+search of what a sandboxed command may also read (the conversation's volume and the system files commands need), a
+file write or edit inside the conversation's volume, each decided on the resolved file and handed to the harness as
+that resolved path, so no symlink, alias or `..` spelling reaches past the boundary and no readable file is refused
+for its spelling; sandboxed commands (never judged by the words they
 contain), a web read (WebFetch issues only a GET) of a host whose every resolved address is public,
 a web search, an MCP tool the root's configuration lists as a read, the harness's own bookkeeping, a
 worktree inside the workspace, and a subagent of the one registered type, started by the turn or by
@@ -58,7 +61,8 @@ skill that may fork). A web read of a loopback, private, link-local or local-nam
 because it reaches this machine and its network rather than the world. A tool the adapter has not
 classified is refused. The harness sandbox is where a command's reach is enforced: reads
 are refused from the filesystem root down except the conversation's volume and the system files
-commands need to run; writes reach only that volume; there is no network, so no command can write to
+commands need to run (the operating system's root-level links to those system files are reopened as
+links only, so a system file reads by either spelling and nothing behind the link opens); writes reach only that volume; there is no network, so no command can write to
 the network, no unix socket and no signal to another process. The workspace and every temporary file
 of the shell and the harness live on that fixed-size volume, so a conversation's whole storage is
 finite and cannot consume the journal's disk. The per-step tool-call count, shared by the turn and its subagents,

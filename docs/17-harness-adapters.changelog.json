@@ -1,5 +1,21 @@
 [
   {
+    "revision": 12,
+    "date": "2026-10-03",
+    "status": "draft",
+    "cause": {
+      "kind": "draft",
+      "note": "Repair unit w4-toolpaths (plan row #442): live L43 group T scenario t2 showed the boundary deciding on the path string (Read and the sandbox refused /etc/hosts while the same file via /private/etc/hosts was read). Under the purpose in force (revision 12 of the purpose: the agent's ability is never reduced to satisfy a safeguard that a checkpoint can enforce instead) and the operator's standing full-tool direction (topic 102965, message 121996). No constitution change."
+    },
+    "changes": [
+      {
+        "what": "§9 tool rule: file reads and searches reach what a sandboxed command may read (the conversation's volume and the system files), writes and edits the volume, each decided on the resolved file and handed to the harness as that path; the sandbox reopens the root-level links to its system files as links only.",
+        "why": "The hook and the sandbox decided on different sets and on spellings: an ordinary system file was refused by one spelling and read by another, and a symlink before `..` or a dangling link could be judged as a different file than the one opened. One shared set, compared on resolved paths, keeps secret material unreachable by every spelling without refusing ordinary reads.",
+        "ref": "lanes/w4-toolpaths-PROGRESS.md; lanes/pipeline/live-proof/results/T-proofroom-20261003-175716 (tools-t2.json); LIVE-PATH-PLAN.md row #442"
+      }
+    ]
+  },
+  {
     "revision": 11,
     "date": "2026-10-03",
     "status": "draft",
