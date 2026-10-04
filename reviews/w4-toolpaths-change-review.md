@@ -15,7 +15,7 @@ Undo and recovery: revert the commits; no durable state is added.
 Multi-machine posture: machine-local; path resolution and the sandbox profile are per tool executor, with no replication or peer dependency.
 Layer below: the Claude Code 2.1.280 sandbox (Seatbelt, unchanged apart from the two link reads) and the harness's in-process file tools (unchanged; the residual lives there).
 Bug class: live-path
-Bug evidence: reproducer=tests/preview/tool-paths.test.ts tests/preview/secret-at-rest.test.ts; live=/Users/dabombstudio/.instar/agents/echo/.instar/lanes/pipeline/live-proof/results/T-proofroom-20261003-175716/tools-t2.json
+Bug evidence: reproducer=tests/preview/tool-paths.test.ts; live=/Users/dabombstudio/.instar/agents/echo/.instar/lanes/pipeline/live-proof/results/T-proofroom-20261003-175716/tools-t2.json
 Hook bypass: none (plain commits; core.hooksPath is unset)
 Convergence: none
 Decision: w4-toolpaths-mf2 | accept the in-process file-tool swap race as a named residual rather than nesting the harness in a sandbox (macOS refuses nested sandboxes, which would drop the Bash sandbox) or replacing the built-in file tools (ability reduced); the closing path is the harness as a separate OS user, an operator infrastructure step | reported=/Users/dabombstudio/.instar/agents/echo/.instar/lanes/w4-toolpaths-PROGRESS.md
