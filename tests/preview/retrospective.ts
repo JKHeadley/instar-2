@@ -10,6 +10,7 @@ import { feedbackCoverage, reviewAccounting, waiverReview, type ReviewAccounting
 import type { FeedbackDisposition, Grade, VerificationDecodeContext } from '../../src/verification/contracts.js';
 import { SOURCE_PINS } from './briefing.js';
 import type { JournalView, Turn } from './journal.js';
+import { wholeReplySent } from './reply-parts.js';
 
 /** The one bounded, resumable retrospective consumer (Rules 8, 9, 16, 19, 24, 25, 48, 50, 51, 58, 85, 94, 104, 108).
  * It is a worker step like the step check, not a daemon: one review attempt per pass (plus at most
@@ -497,7 +498,7 @@ export function retrospectivePopulation(view: JournalView, operator: (turn: Turn
       cases.push({ id: `answer:${turn.id}`, category: 'decision', at: turn.at, seq,
         text: answered ? clip(turn.answer!) : `no answer: model ${turn.modelState}${turn.failureClass ? ` (${turn.failureClass})` : ''}`,
         ...(turn.answerReason ? { reason: clip(turn.answerReason, RETRO_REASON_TEXT_CHARS) } : {}),
-        meta: { question: `turn:${turn.id}`, state: turn.modelState, sent: turn.sent !== undefined,
+        meta: { question: `turn:${turn.id}`, state: turn.modelState, sent: wholeReplySent(turn),
           // Process-tier and proportionality inputs: which checks this reply went through and whether it was held.
           checks: (turn.replyChecks ?? []).map(check => `${check.path}:${check.verdict}`).join(',') || 'none',
           held: turn.held !== undefined || turn.wasHeld === true },

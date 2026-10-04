@@ -3,12 +3,13 @@ import { redact } from '../../src/recall/redact.js';
 import { dueState, localParts } from './dated-memory.js';
 import { messageTime } from './self-state.js';
 import type { JournalView } from './journal.js';
+import { wholeReplySent } from './reply-parts.js';
 import { loopStatusLines } from './obligations.js';
 import { sentinelStatusLines } from './live-sentinels.js';
 import { retrospectiveStatusBrief } from './retrospective.js';
 
 /** Content-free count of replies Telegram accepted after the operator-echo path released them. */
-export const operatorEchoSent = (view: JournalView) => view.order.filter(turn => turn.sent !== undefined
+export const operatorEchoSent = (view: JournalView) => view.order.filter(turn => wholeReplySent(turn)
   && turn.replyChecks?.some(check => check.path === 'operator-echo')).length;
 
 /** The operator's status pull (Rule 87). Rule 4: the fixed reply answers only an EXACT phrase; anything else, however

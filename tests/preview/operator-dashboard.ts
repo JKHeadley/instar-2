@@ -5,7 +5,7 @@
  * current (purpose Rule 2: the loss detector for this state is that age, on every view). */
 import { redact } from '../../src/recall/redact.js';
 import { localParts } from './dated-memory.js';
-import { operatorRequestsReport, replyTarget, retractedTurn, sendOutcomeOf, type JournalView, type Turn } from './journal.js';
+import { operatorRequestsReport, replyOutcomeOf, retractedTurn, sendOutcomeOf, type JournalView, type Turn } from './journal.js';
 import { messageTime } from './self-state.js';
 import { heldReplies, turnsToday } from './status-command.js';
 
@@ -60,7 +60,14 @@ function delivery(view: JournalView, target: string, sent: number | undefined, d
 /** What happened to one message, and the reply it got, read from the turn's own durable record. A message covered by a
  * limited answer shows that answer and its lead's send outcome, whichever covered turn it is. */
 export function turnOutcome(view: JournalView, turn: Turn): { state: string; reply: string | null } {
-  if (turn.intent !== undefined) return { reply: turn.intent, state: delivery(view, replyTarget(turn), turn.sent, 'Answered', 'My reply') };
+  // Rule 42: a split reply is answered only when every message carrying it was accepted; otherwise the state is the
+  // first message without a receipt, named by its place.
+  if (turn.intent !== undefined) {
+    const whole = replyOutcomeOf(view, turn);
+    if (whole.outcome.kind === 'accepted') return { reply: turn.intent, state: 'Answered' };
+    return { reply: turn.intent, state: delivery(view, whole.target, undefined, 'Answered',
+      whole.part === 1 ? 'My reply' : `Part ${String(whole.part)} of ${String(whole.of)} of my reply`) };
+  }
   if (turn.limited !== undefined) {
     const lead = view.turns.get(turn.limited.lead);
     return { reply: turn.limited.text, state: delivery(view, `limited:${turn.limited.lead}`, lead?.limitedSent,
