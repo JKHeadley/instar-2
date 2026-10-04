@@ -139,6 +139,15 @@ export async function startEgressProxy({ stateDirectory, caPath, admission, limi
     if (over !== null) { stats.refused++; record({ ...row, decision: 'deny', reason: over, kind: 'budget' }); refuse(res, 429, over); return; }
     if (target.refused) { stats.refused++; record({ ...row, decision: 'deny', reason: `host refused: ${target.refused}`, kind: 'scope' });
       refuse(res, 403, `host refused: ${target.refused}`); return; }
+    // The Host header names the authority a shared server routes on: it must name the authority admitted above, or the
+    // decision would cover one host while the request reaches another. Absent, the admitted authority is supplied.
+    const authority = `${isIP(target.host) === 6 ? `[${target.host}]` : target.host}${target.port === (target.tls ? 443 : 80) ? '' : `:${String(target.port)}`}`;
+    if (req.headers.host !== undefined) {
+      const named = egressTarget(String(req.headers.host), target.tls ? 'https:' : 'http:');
+      if (named.host !== target.host || named.port !== target.port) { stats.refused++;
+        const why = `host refused: Host header ${clip(String(req.headers.host))} does not name the admitted host ${authority}`;
+        record({ ...row, decision: 'deny', reason: why, kind: 'scope' }); refuse(res, 403, why); return; }
+    }
     if (n > limits.maxRequests) { stats.refused++; record({ ...row, decision: 'deny', reason: `request bound ${String(limits.maxRequests)} reached`, kind: 'budget' });
       refuse(res, 429, `request bound ${String(limits.maxRequests)} reached`); return; }
     const origin = `${target.host}:${String(target.port)}`;
@@ -167,7 +176,7 @@ export async function startEgressProxy({ stateDirectory, caPath, admission, limi
     record({ ...row, decision: decision.decision, reason: decision.reason, kind: decision.kind, ...(addresses ? { address: addresses[0] } : {}) });
     if (decision.decision !== 'allow') { stats.refused++; refuse(res, 403, decision.reason); return; }
     stats.admitted++;
-    const headers = { ...req.headers };
+    const headers = { ...req.headers, host: authority };
     for (const name of ['proxy-connection', 'proxy-authorization', 'connection', 'keep-alive']) delete headers[name];
     const options = { ...dial(addresses[0], target.port), method, path, headers, agent: false, timeout: limits.upstreamMs };
     const out = (target.tls ? https : http).request(target.tls ? { ...options, ...upstream, servername: isIP(target.host) ? undefined : target.host,

@@ -102,6 +102,40 @@ it('a write is refused at the effect doorway and never reaches the host; an oper
     reason: expect.stringContaining('tool:network-write is ordinary (none of the four consequential-effect tests holds); admitted') });
 });
 
+it('the Host header must name the admitted host: a request admitted for one host never reaches another through Host', async () => {
+  const up = await upstream(['allowed.test']);
+  const plainSeen: string[] = [];
+  const plain = createServer((req, res) => { plainSeen.push(`${String(req.method)} ${String(req.headers.host)}`); res.end(`plain ${String(req.headers.host)}`); });
+  await new Promise<void>(done => plain.listen(0, '127.0.0.1', done));
+  cleanup.push(() => new Promise<void>(done => { plain.closeAllConnections(); plain.close(() => done()); }));
+  const granted = { operations: [...SINGLE_MACHINE_PROFILE.operations], effectPolicy: { type: 'PreviewEffectPolicy', resourceLevelUsd: 0, policySensitive: [],
+    registered: [{ effect: 'tool:network-write', target: 'allowed.test', consequence: 'data', reversibility: 'reversible', reach: 'world', costUsd: 0,
+      source: 'telegram:102965:121996' }],
+    grants: [{ id: 'g-api', effect: 'tool:network-write', target: 'allowed.test', approves: ['scope'], source: 'telegram:102965:121996',
+      custodian: 'desk', recovery: 'remove the grant' }] } };
+  const { curl, record } = await checkpoint(up, { admission: granted, plainPort: (plain.address() as { port: number }).port,
+    addresses: { 'allowed.test': [PUBLIC], 'outside.test': [PUBLIC] } });
+  // The other host addressed directly: its write is refused at the doorway.
+  expect((await curl('-X', 'POST', '-d', 'x=1', 'https://outside.test/api')).out).toMatch(/^HTTP\/1\.1 403/mu);
+  // The same write addressed to the granted host but carrying the other Host, over HTTPS and plain HTTP: refused, never forwarded.
+  for (const url of ['https://allowed.test/api', 'http://allowed.test/api']) {
+    for (const args of [['-X', 'POST', '-d', 'x=1'], []]) {
+      const got = await curl(...args, '-H', 'Host: outside.test', url);
+      expect(got.out).toMatch(/^HTTP\/1\.1 403/mu);
+      expect(got.out).toContain('Host header outside.test does not name the admitted host allowed.test');
+    }
+  }
+  expect(up.seen).toEqual([]); expect(plainSeen).toEqual([]);
+  // The matching-host neighbors: the granted write and a read, with the Host given explicitly or left to the client, reach the host.
+  expect((await curl('-X', 'POST', '-d', 'x=1', '-H', 'Host: Allowed.test', 'https://allowed.test/api')).out).toContain('hello from allowed.test');
+  expect((await curl('https://allowed.test/page')).out).toContain('hello from allowed.test');
+  expect((await curl('http://allowed.test/page')).out).toContain('plain allowed.test');
+  expect(up.seen.map(row => [row.method, row.host])).toEqual([['POST', 'allowed.test'], ['GET', 'allowed.test']]);
+  expect(plainSeen).toEqual(['GET allowed.test']);
+  expect(record().requests.filter((row: { reason?: string }) => /Host header/u.test(row.reason ?? '')).map((row: { decision: string; kind: string }) =>
+    [row.decision, row.kind])).toEqual(Array(4).fill(['deny', 'scope']));
+});
+
 /** A local HTTPS git server (git's own http-backend, the smart-HTTP server) standing in for a public git host, holding one
  * repository `r.git` with one commit; every request it receives is recorded. */
 async function gitUpstream() {
