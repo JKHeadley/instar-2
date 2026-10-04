@@ -16,7 +16,7 @@ import { buildWorkIndex, detectOverlaps, workForTopic, type SessionActivity } fr
 import { MAX_RAISED_SUBSCRIPTION_PROMPT_BYTES, SUBSCRIPTION_CONVERSATION_SYSTEM_PROMPT, SUBSCRIPTION_MAX_OUTPUT_TOKENS, SUBSCRIPTION_PREVIEW_EXPIRY } from '../../src/assembly/production-provider.js';
 import { hasClaim, replaceClaim, supersedesCorrection } from './claim-match.mjs';
 import { checkReply as checkCoherenceOf, correctionNote, releaseFindings, COHERENCE_FINDING_LIMIT, type CoherenceFinding } from './coherence-check.js';
-import { checkReply, reviewReply, repeatsOperatorOnly, HOLDING_REPLY, jevRequestBody, JEV_RESPONSE_MAX_BYTES, REPLY_CHECK_BUDGET_MS, REPLY_CHECK_BUDGET_REASON, LINK_SHAPE_REASON, linkShapeRules, bareTopicReferences, topicNameReason, BARE_TOPIC_OBJECTION, noDecisions, validDispositions, jevConfidentCredential, CLAIM_SCOPED_RULES, namedClaimsIn, exciseNamedClaims, substantiveReply, sharedAudience, AUDIENCE_RULES, type ApprovalFacts } from './reply-check.js';
+import { checkReply, reviewReply, repeatsOperatorOnly, HOLDING_REPLY, jevRequestBody, JEV_RESPONSE_MAX_BYTES, REPLY_CHECK_BUDGET_MS, REPLY_CHECK_BUDGET_REASON, LINK_SHAPE_REASON, linkShapeRules, bareTopicReferences, topicNameReason, BARE_TOPIC_OBJECTION, noDecisions, validDispositions, jevConfidentCredential, concealSecretMaterial, credentialFindingPublic, maskPublicLabels, secretMaterialIn, CLAIM_SCOPED_RULES, namedClaimsIn, exciseNamedClaims, substantiveReply, sharedAudience, AUDIENCE_RULES, type ApprovalFacts } from './reply-check.js';
 import { parseDatedItem, restatedDatePhrase, dueState, selectDatedItems, withinNext48Hours, localParts, type DatedItem } from './dated-memory.js';
 import { isStatusCommand, isStopCommand, statusReply, STOP_CONFIRM_TEXT } from './status-command.js';
 import { AGENT_PROMISE_LIMIT, fulfillableCommitment, fulfillmentProposals, fulfillmentSupported, legacyFulfillsReminder, promiseProposals, recordedPromises, type AgentPromise, type FulfillmentProposal, type PromiseProposal } from './agent-commitment.js';
@@ -1394,18 +1394,23 @@ const jevCredentialFlag = (turn: Turn, candidateDigest: string): boolean => (tur
   jevConfidentCredential(check) && (check.candidateDigest === undefined || check.candidateDigest === candidateDigest));
 /** The holding rules the last contextual review of this exact candidate named, with the per-rule findings that
  * carry each one's quoted claim (Rules 41, 108: a conclusion and its reason stay separate claims). */
-const reviewHoldingFindings = (turn: Turn, candidateDigest: string): { rules: ReplyRule[]; findings: ReplyFinding[] } => {
+/** Plan #442: `publicCredential` answers whether a credential finding's reason names only public text of this reply
+ * (credentialFindingPublic). Such a finding names no secret: it stays an advisory objection and holds nothing. */
+const reviewHoldingFindings = (turn: Turn, candidateDigest: string, publicCredential?: (reason: string) => boolean):
+  { rules: ReplyRule[]; findings: ReplyFinding[] } => {
   const review = [...(turn.replyChecks ?? [])].reverse().find(check => check.path !== 'jev' && check.verdict === 'violation'
     && (check.candidateDigest === undefined || check.candidateDigest === candidateDigest));
-  return { rules: (review?.ruleIds ?? []).filter(rule => REVIEW_HOLDING_RULES.includes(rule)),
+  const credential = review?.findings?.find(finding => finding.rule === 'credential' && finding.verdict === 'violation');
+  const cleared = credential !== undefined && publicCredential?.(credential.reason) === true;
+  return { rules: (review?.ruleIds ?? []).filter(rule => REVIEW_HOLDING_RULES.includes(rule) && !(cleared && rule === 'credential')),
     findings: (review?.findings ?? []).filter(finding => finding.verdict === 'violation' && CLAIM_SCOPED_RULES.includes(finding.rule)) };
 };
-const reviewHoldingFlag = (turn: Turn, candidateDigest: string): boolean =>
-  reviewHoldingFindings(turn, candidateDigest).rules.length > 0;
+const reviewHoldingFlag = (turn: Turn, candidateDigest: string, publicCredential?: (reason: string) => boolean): boolean =>
+  reviewHoldingFindings(turn, candidateDigest, publicCredential).rules.length > 0;
 /** The credential floors inside the held classes (Rules 4, 86). These alone may withhold a WHOLE reply, because
  * what they name is the reply's fitness to leave at all rather than one claim inside it. */
-const credentialHeldClass = (turn: Turn, candidateDigest: string): boolean =>
-  jevCredentialFlag(turn, candidateDigest) || reviewHoldingFindings(turn, candidateDigest).rules.includes('credential');
+const credentialHeldClass = (turn: Turn, candidateDigest: string, publicCredential?: (reason: string) => boolean): boolean =>
+  jevCredentialFlag(turn, candidateDigest) || reviewHoldingFindings(turn, candidateDigest, publicCredential).rules.includes('credential');
 /** Build 4's obligation floor (Rules 6, 20, 21, 23) against reachability (Rules 77, 86, 95): only a refused deferral,
  * blocker or recheck forces the contextual review and its mandatory hold. A refused fulfillment claim has already
  * lost its one authority (it closes no commitment), so it stays a counted signal and its reply takes the ordinary
@@ -4496,6 +4501,11 @@ export interface PreviewPorts {
   /** Rules 8, 56, 100: due reminder lines (credential expiry stages, a failing doorway check), most urgent first. */
   /** Offered for the answer to turn `turn` (its own effect-doorway refusals ride first). */
   replyNotices?(turn?: string): readonly ReplyNotice[];
+  /** Plan #442 (Rules 4, 86, 100): the secret values the runner holds (vault and host custody) for the exact floor on
+   * every reply. Read in memory only, never recorded or sent to a model. */
+  heldSecrets?(): readonly string[];
+  /** Plan #442: the credential register's public labels (publicCredentialLabels), known non-secrets for reply review. */
+  knownNonSecrets?(): readonly string[];
   /** Rules 9, 96, 114: the runner's bounded concurrent owned-work view (concurrentWorkItem), carried into operator packets. */
   concurrentWork?(): object | null;
   /** Monotonic process time for minimum waits; inherited UNKNOWN work waits anew. */
@@ -7238,6 +7248,16 @@ export function createJournalWorker(journal: ReturnType<typeof openPreviewJourna
             reply = turn.reviewCandidate; mentionedKeys = turn.reviewMentionedDates;
           }
           const candidateDigest = createHash('sha256').update(reply).digest('hex');
+          // Plan #442 (Rules 4, 86, 100): a secret is decided against the material the runner holds. The register's
+          // public labels and the runner's own reminder lines built from them are known non-secrets, as is admitted
+          // tool output carrying no secret material; a credential finding naming only those holds nothing.
+          const heldValues = (() => { try { return ports.heldSecrets?.() ?? []; } catch { return []; } })();
+          const labels = (() => { try { return ports.knownNonSecrets?.() ?? []; } catch { return []; } })();
+          const known = [...labels, ...(turn.answerNotices ?? []).map(notice => notice.line)
+            .filter(line => redact(line).count === 0 && !secretMaterialIn(line, heldValues))];
+          const toolOutputs = (turn.toolAttempts ?? []).flatMap(call => call.decision === 'allow' && typeof call.result === 'string' ? [call.result] : []);
+          const publicCredential = (text: string) => (reason: string) => credentialFindingPublic(reason, text, known, toolOutputs, heldValues);
+          const reviewedReply = reply;
           const last = turn.replyChecks?.at(-1);
           const previous = last?.candidateDigest === candidateDigest
             || last?.candidateDigest === undefined && !mentioned.length ? last : undefined;
@@ -7256,7 +7276,7 @@ export function createJournalWorker(journal: ReturnType<typeof openPreviewJourna
           // a check naming a credential keeps the secrets exception (Rule 86) below.
           let decision: ReplyDecision['outcome'] | undefined, capRefused = false;
           // The exact credential-shape floor runs before provider disclosure on every replay.
-          const credentialShape = redact(reply).count > 0;
+          const credentialShape = redact(reply).count > 0 || secretMaterialIn(reply, heldValues);
           if (credentialShape) {
             if (!previous) journal.append({ kind: 'reply-check', id: turn.id, result: { verdict: 'violation',
               ruleIds: ['credential'], confidence: 1, path: 'holding', latencyMs: 0, candidateDigest }, at: ports.now() });
@@ -7280,6 +7300,9 @@ export function createJournalWorker(journal: ReturnType<typeof openPreviewJourna
             decision = 'unavailable';
           } else {
             const checkPorts = { ...ports.replyCheck, now: ports.now,
+              // Jev reads only the text, never packet.knownNonSecrets, so the register's labels are masked for it.
+              jev: (text: string, questions?: Record<string, { type: string; instructions: string }>, timeoutMs?: number, occurrence?: string) =>
+                ports.replyCheck!.jev(maskPublicLabels(text, labels), questions, timeoutMs, occurrence),
               deadlineAt: (turn.jevReservedAt ?? ports.now()) + REPLY_CHECK_BUDGET_MS,
               reserveEscalation: (candidate: string, originalPrompt?: string) => {
                 gate();
@@ -7317,7 +7340,7 @@ export function createJournalWorker(journal: ReturnType<typeof openPreviewJourna
               const shared = fromOperator(turn) ? disclosedApproval(journal.view) : undefined;
               const facts = shared && approvalFacts(shared);
               journal.append({ kind: 'reply-jev-reserve', id: turn.id,
-                maxInputTokens: Buffer.byteLength(jevRequestBody(reply, facts)), maxOutputTokens: jevOutputMaximum, at: ports.now() });
+                maxInputTokens: Buffer.byteLength(jevRequestBody(maskPublicLabels(reply, labels), facts)), maxOutputTokens: jevOutputMaximum, at: ports.now() });
               checked = await checkReply(reply, turn.id, checkPorts, reviewPrompt, facts);
 
             }
@@ -7330,7 +7353,7 @@ export function createJournalWorker(journal: ReturnType<typeof openPreviewJourna
           // Every other objection, and an unavailable review, is a signal released with the reply below.
           const holding = !credentialShape && (decision === 'unavailable'
             ? jevCredentialFlag(turn, candidateDigest) || refusedObligation(turn)
-            : decision === 'violation' && (reviewHoldingFlag(turn, candidateDigest) || refusedObligation(turn)));
+            : decision === 'violation' && (reviewHoldingFlag(turn, candidateDigest, publicCredential(reviewedReply)) || refusedObligation(turn)));
           // A shared audience whose review did not complete (unavailable, call cap, deadline) has no established
           // permission to disclose: the draft stays in the journal and the content-free holding note is sent
           // (purpose's least revelation; Rules 57, 95). The operator's own chat keeps its advisory release.
@@ -7369,7 +7392,7 @@ export function createJournalWorker(journal: ReturnType<typeof openPreviewJourna
                 let outcome: Awaited<ReturnType<NonNullable<NonNullable<PreviewPorts['replyCheck']>['revise']>>> | { state: 'failed'; text?: undefined; usage?: undefined; dispositions?: undefined; blocker?: undefined };
                 // The draft is revised without its Rule 110 disclosure, which code adds back to the final text.
                 const draft = continuity?.spoken ? reply.replace(`${continuity.disclosure} `, '') : reply;
-                try { outcome = await ports.replyCheck.revise({ text: redact(draft).text, id: turn.id, originalPrompt,
+                try { outcome = await ports.replyCheck.revise({ text: concealSecretMaterial(redact(draft).text, heldValues), id: turn.id, originalPrompt,
                   ruleIds: objections.filter(item => item !== BARE_TOPIC_OBJECTION) as ReplyRule[], objections,
                   ...(checkRow?.findings ? { findings: checkRow.findings } : {}),
                   ...(reason === undefined ? {} : { reason }), deadlineAt: loopDeadline }); }
@@ -7395,7 +7418,7 @@ export function createJournalWorker(journal: ReturnType<typeof openPreviewJourna
                 const encoded = encodeReply(candidate);
                 // The agent keeping its draft unchanged is its answer, not a new candidate: nothing to re-review.
                 // The same text with a newly declared investigation record is a new candidate (plan #104).
-                if ((candidate !== reply || turn.revision.blocker !== undefined) && !redact(candidate).count && Buffer.byteLength(encoded) <= 4096 && Array.from(encoded).length <= 4096)
+                if ((candidate !== reply || turn.revision.blocker !== undefined) && !redact(candidate).count && !secretMaterialIn(candidate, heldValues) && Buffer.byteLength(encoded) <= 4096 && Array.from(encoded).length <= 4096)
                   revised = candidate;
               }
             }
@@ -7422,9 +7445,11 @@ export function createJournalWorker(journal: ReturnType<typeof openPreviewJourna
                 } catch { result = { verdict: 'unavailable', ruleIds: [] }; }
                 journal.append({ kind: 'reply-revision-review', id: turn.id, ...result, at: ports.now() });
               }
-              const check = turn.revisionReview;
+              const check = turn.revisionReview, revisedText = revised;
+              const revisedCredentialPublic = (check?.findings ?? []).some(finding => finding.rule === 'credential'
+                && finding.verdict === 'violation' && publicCredential(revisedText)(finding.reason));
               if (!(check?.verdict === 'pass' || check?.verdict === 'violation'
-                && !check.ruleIds.some(rule => REVIEW_HOLDING_RULES.includes(rule)))) revised = undefined;
+                && !check.ruleIds.some(rule => REVIEW_HOLDING_RULES.includes(rule) && !(rule === 'credential' && revisedCredentialPublic)))) revised = undefined;
             }
             // THE CLAIM-SCOPED FLOOR (plan #215; Rules 2, 4, 42, 77, 86, 95): a gate withholds only what it
             // NAMED. The two credential floors keep the whole-reply notice, because what they name is the reply's
@@ -7435,8 +7460,8 @@ export function createJournalWorker(journal: ReturnType<typeof openPreviewJourna
             // judgment, not a second judgment. What was removed, and any named claim no sentence carried, is
             // recorded with the send and counted, so neither a withholding nor a pass is silent.
             let withheld: ClaimWithheld | undefined, scoped: string | undefined, nothingLeft = false;
-            if (revised === undefined && holding && !audienceUnreviewed && !credentialHeldClass(turn, candidateDigest)) {
-              const named = reviewHoldingFindings(turn, candidateDigest);
+            if (revised === undefined && holding && !audienceUnreviewed && !credentialHeldClass(turn, candidateDigest, publicCredential(reviewedReply))) {
+              const named = reviewHoldingFindings(turn, candidateDigest, publicCredential(reviewedReply));
               const stripped = (actionHeader === undefined ? reply : reply.slice(actionHeader.length + 1))
                 .replace(/^PREVIEW(?=$|[\s:—])(?:\s*[:—])?\s*/u, '');
               const body = continuity && stripped.startsWith(continuity.disclosure)
@@ -7446,7 +7471,7 @@ export function createJournalWorker(journal: ReturnType<typeof openPreviewJourna
               withheld = { rules: named.rules, removed: cut.removed, unlocated: cut.unlocated };
               if (cut.removed.length) {
                 const candidate = actionHeader === undefined ? disclosed(`PREVIEW — ${cut.text}`) : `${actionHeader}\n${cut.text}`;
-                if (substantiveReply(cut.text) && !redact(candidate).count && fits(candidate) && fits(encodeReply(candidate))) scoped = candidate;
+                if (substantiveReply(cut.text) && !redact(candidate).count && !secretMaterialIn(candidate, heldValues) && fits(candidate) && fits(encodeReply(candidate))) scoped = candidate;
                 else nothingLeft = true;
               }
             }

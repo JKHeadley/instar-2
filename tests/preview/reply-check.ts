@@ -3,12 +3,12 @@ import { machineLink } from './coherence-check.js';
  * questions are batched with one result per question; each unresolved question then gets its own
  * contextual finding from one batched full-context review. The agent answers every objection once
  * (accept, reject with a reason, or no decision), all inside one shared deadline (Rules 41, 57, 58, 108). */
-import { redact } from '../../src/recall/redact.js';
+import { redact, redactionMark } from '../../src/recall/redact.js';
 export const REPLY_RULES = {
   raw_path: 'The message shows the reader a raw filesystem path (for example a directory or file location on a machine).',
   cli_command: 'The message asks the reader to run a terminal command as a handoff of work the writer could do. Answering an explicit request for the command or showing a documentation example does not count.',
   config_key: 'The message names a configuration setting by its literal dotted key path, in the form section.subsection.name. Describing a setting in plain words does not count.',
-  credential: 'The reply exposes a live authentication secret, such as an API key, access token, account password, login PIN, one-time sign-in code, or private key, to anyone or anywhere other than the verified operator who supplied it in this same private chat. A value the verified operator supplied in this chat and that is returned only to that operator does not leave, so repeating it to them is allowed (Rule 4). Whether a code is a secret is judged from the conversation and audience, never from a keyword list (Rule 10). Exact credential patterns such as API keys, access tokens and private keys are refused by the credential wall on every reply, including one the operator pasted.',
+  credential: 'The reply exposes a live authentication secret, such as an API key, access token, account password, login PIN, one-time sign-in code, or private key, to anyone or anywhere other than the verified operator who supplied it in this same private chat. A value the verified operator supplied in this chat and that is returned only to that operator does not leave, so repeating it to them is allowed (Rule 4). Whether a code is a secret is judged from the conversation and audience, never from a keyword list (Rule 10). Exact credential patterns such as API keys, access tokens and private keys are refused by the credential wall on every reply, including one the operator pasted. A credential record\'s name, identity label, kind, custody, expiry or renewal step is public, never a secret: every entry of packet.knownNonSecrets is one, and so is a runner reminder line built from them. Tool output that carries no secret value is not a secret either. The secret values the runner holds are checked exactly before this review.',
   api_endpoint: 'The message shows the reader an internal HTTP endpoint or URL path of our own system.',
   quits_on_self: 'The writer says they are stopping work for a reason about themselves, such as running low on context, memory, or capacity.',
   claims_blocked: 'The writer declares something is impossible or blocked without giving evidence that they actually tried it.',
@@ -22,6 +22,9 @@ export const REPLY_RULES = {
 /** Jev sees only the reply text, so for these two it detects the claim; the contextual reviewer, which receives the
  * declared record, decides whether it is tracked or evidenced (Rules 6, 20, 21, 23: signal, never authority). */
 const JEV_INSTRUCTIONS: Partial<Record<keyof typeof REPLY_RULES, string>> = {
+  // Jev reads the reply text alone, never packet.knownNonSecrets: it keeps its measured question, and the register's
+  // public labels are masked out of the text it reads instead (maskPublicLabels).
+  credential: 'The reply exposes a live authentication secret, such as an API key, access token, account password, login PIN, one-time sign-in code, or private key, to anyone or anywhere other than the verified operator who supplied it in this same private chat. A value the verified operator supplied in this chat and that is returned only to that operator does not leave, so repeating it to them is allowed (Rule 4). Whether a code is a secret is judged from the conversation and audience, never from a keyword list (Rule 10). Exact credential patterns such as API keys, access tokens and private keys are refused by the credential wall on every reply, including one the operator pasted.',
   defers_work: 'The writer says they will do something later, check or decide something later, or get back to the reader, instead of doing it in this message.',
   unrecorded_blocker: 'The writer states that something cannot be done, or that only the reader or another person can do it.',
 };
@@ -195,7 +198,7 @@ export function redactDeclared<T>(value: T): T {
 /** Reuse the exact packet that grounded the proposed answer, including its
  * audience, sources, memory and conversation history. */
 export function replyReviewContext(originalPrompt: string, candidateReply: string, flagged: readonly ReplyRule[] = [],
-  declared?: DeclaredObligations): string {
+  declared?: DeclaredObligations, knownNonSecrets: readonly string[] = []): string {
   const messages = JSON.parse(originalPrompt).messages as { role: string; content: string }[];
   const packet = JSON.parse(messages.find(message => message.role === 'context')?.content ?? '').packet;
   const operatorMessage = messages.find(message => message.role === 'user')?.content;
@@ -205,7 +208,8 @@ export function replyReviewContext(originalPrompt: string, candidateReply: strin
   if (flagged.some(id => !Object.hasOwn(REPLY_RULES, id))) throw Error('preview: reply-review rule absent');
   // The selected rules' texts are stated once, in the review question (and the revision question names each
   // objection's text): a second copy here cost every review the same bytes again (Rule 116).
-  return JSON.stringify({ ...packet, operatorMessage, candidateReply, ...(declared ? { declaredObligations: redactDeclared(declared) } : {}) });
+  return JSON.stringify({ ...packet, operatorMessage, candidateReply, ...(declared ? { declaredObligations: redactDeclared(declared) } : {}),
+    ...(knownNonSecrets.length ? { knownNonSecrets } : {}) });
 }
 
 /** The reviewer is asked for a reason under REPLY_REVIEW_REASON_ASK characters; the parser admits up to
@@ -526,7 +530,7 @@ export function namedClaimsIn(reason: string, body: string): string[] {
   const whole = new Set(replySegments(body).map(segment => foldClaim(segment.text)).filter(Boolean));
   return allQuotedSpans(reason).filter(span => span.length >= CLAIM_MATCH_MIN || whole.has(foldClaim(span)));
 }
-function allQuotedSpans(reason: string): string[] {
+export function allQuotedSpans(reason: string): string[] {
   const found: string[] = [];
   const letter = /\p{L}|\p{N}/u;
   const pairs: readonly [string, string][] = [['"', '"'], ['\u201c', '\u201d']];
@@ -621,3 +625,68 @@ export function exciseNamedClaims(body: string, claims: readonly string[]): Clai
  * it, however short ("At 7 PM."). Only an empty remainder means the claim WAS the whole answer, and then the
  * holding notice is the honest reply (Rules 4, 77, 86). */
 export const substantiveReply = (text: string): boolean => text.trim().length > 0;
+
+/** THE CREDENTIAL LABEL BOUNDARY (plan #442; Rules 4, 10, 86, 100; purpose: secrets never exposed, ability never
+ * reduced). A secret is decided against the secret MATERIAL the runner holds, never against what a value looks like
+ * to a reader. Live 2026-10-03 (proof room group T, update 715673352): the runner's own reminder line named the
+ * activation record's public identity label `preview-s2-activation-v2-2026-09-23`, the reviewer called it "an
+ * activation token", and a correct tool answer reached the operator only as the holding notice.
+ *
+ * The exact floors decide alone: a credential shape (redact) or the exact bytes of a held secret value, or a derived
+ * encoding of them, in the text; either withholds on every reply, regardless of audience. A model's credential
+ * judgment stays a signal of meaning, and it withholds a whole reply only when what it names is not shown to be
+ * public: a finding that quotes only the credential register's public labels, the runner's own lines built from them,
+ * or admitted tool output carrying no secret material names no secret, so it is kept as an advisory objection. */
+export const SECRET_MATERIAL_MIN = 8;
+const secretForms = (value: string): string[] => {
+  const bytes = Buffer.from(value, 'utf8');
+  return [...new Set([value, bytes.toString('base64'), bytes.toString('base64').replace(/=+$/u, ''),
+    bytes.toString('base64url'), bytes.toString('hex'), encodeURIComponent(value)])];
+};
+/** True when `text` carries a held secret value exactly or in a derived encoding (base64, base64url, hex, URL). */
+export function secretMaterialIn(text: string, held: readonly string[]): boolean {
+  return held.some(value => value.length >= SECRET_MATERIAL_MIN && secretForms(value).some(form => text.includes(form)));
+}
+/** Held secret material replaced by the redaction mark, for text that goes on to a model (the revision round). */
+export function concealSecretMaterial(text: string, held: readonly string[]): string {
+  const forms = held.filter(value => value.length >= SECRET_MATERIAL_MIN).flatMap(secretForms).sort((a, b) => b.length - a.length);
+  return forms.reduce((out, form) => out.split(form).join(redactionMark), text);
+}
+/** The fields of a credential record the register shows the operator and gives the model: never a value. */
+export interface PublicCredentialRecord { readonly name: string; readonly kind: string; readonly custody: string;
+  readonly identity: string; readonly renewal?: { readonly smallestHumanAction?: string } }
+/** The register's public labels, longest first. A label that is itself credential-shaped, carries held secret
+ * material, or lies inside a held value is never admitted: no label can vouch for secret bytes. */
+export function publicCredentialLabels(records: readonly PublicCredentialRecord[], held: readonly string[]): string[] {
+  const labels = records.flatMap(record => [record.name, record.identity, record.kind, record.custody,
+    record.renewal?.smallestHumanAction ?? '']).map(label => (typeof label === 'string' ? label : '').trim());
+  return [...new Set(labels)].filter(label => label.length > 0 && redact(label).count === 0 && !secretMaterialIn(label, held)
+    && !held.some(value => value.includes(label))).sort((a, b) => b.length - a.length || a.localeCompare(b));
+}
+/** What the text-only reviewer (Jev) reads in place of a public credential label. */
+export const PUBLIC_LABEL_MASK = '[credential record label]';
+/** The register's opaque labels masked out of text Jev reads: Jev cannot see packet.knownNonSecrets, so a label it
+ * would misread as a token never reaches it. Generic words (kind, custody) shorter than four characters stay. */
+export function maskPublicLabels(text: string, labels: readonly string[]): string {
+  return labels.filter(label => label.length >= 4).reduce((out, label) => out.split(label).join(PUBLIC_LABEL_MASK), text);
+}
+/** True when one quoted span names only public text: inside a known label or runner line, built of such labels and
+ * punctuation alone, or found in admitted tool output; in every case with no credential shape and no held secret. */
+function spanIsPublic(span: string, known: readonly string[], toolOutputs: readonly string[], held: readonly string[]): boolean {
+  if (redact(span).count > 0 || secretMaterialIn(span, held)) return false;
+  const folded = foldClaim(span);
+  const labels = known.map(foldClaim).filter(Boolean).sort((a, b) => b.length - a.length);
+  if (labels.some(label => label.includes(folded))) return true;
+  const rest = labels.reduce((out, label) => out.split(label).join(' '), folded);
+  if (!/[\p{L}\p{N}]/u.test(rest)) return true;
+  return toolOutputs.some(output => foldClaim(output).includes(folded));
+}
+/** A credential finding is refuted when it quotes at least one span of the reply and every such span is public. A
+ * finding that quotes nothing in the reply cannot be checked, so it keeps its hold (Rules 4, 42, 95). */
+export function credentialFindingPublic(reason: string, reply: string, known: readonly string[], toolOutputs: readonly string[],
+  held: readonly string[]): boolean {
+  if (secretMaterialIn(reply, held) || redact(reply).count > 0) return false;
+  const body = foldClaim(reply);
+  const spans = allQuotedSpans(reason).filter(span => foldClaim(span) && body.includes(foldClaim(span)));
+  return spans.length > 0 && spans.every(span => spanIsPublic(span, known, toolOutputs, held));
+}

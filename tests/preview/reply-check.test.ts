@@ -152,7 +152,10 @@ it('accepts one-line compact verdicts and refuses malformed or unlisted outcomes
 });
 
 it('states the credential boundary: a value returned only to the operator who supplied it does not leave', () => {
-  expect(jevQuestions.credential?.instructions).toBe(REPLY_RULES.credential);
+  // Jev keeps its measured question (it never sees packet.knownNonSecrets); the review's rule extends that same text.
+  expect(REPLY_RULES.credential.startsWith(jevQuestions.credential!.instructions)).toBe(true);
+  expect(jevQuestions.credential?.instructions).not.toContain('knownNonSecrets');
+  expect(REPLY_RULES.credential).toMatch(/packet\.knownNonSecrets/u);
   expect(REPLY_RULES.credential).toMatch(/other than the verified operator who supplied it in this same private chat/u);
   expect(REPLY_RULES.credential).toMatch(/does not leave.*\(Rule 4\)/u);
   expect(REPLY_RULES.credential).toMatch(/never from a keyword list \(Rule 10\)/u);
