@@ -1257,6 +1257,29 @@ export function feedbackCoverageOf(view: JournalView) {
   return feedbackCoverage([...latest.keys()], [...latest.values()]);
 }
 
+/** Why a complete pass's duties stayed uninspected. Every pass recorded since the duty follow-up carries its reason; a pass
+ * with no reason and no follow-up was recorded by a build before the follow-up existed (live L45 group I, 2026-10-03: both
+ * passes on the proof root ran on cint-L44 before it went live), and says so rather than nothing. */
+export const uninspectedReason = (pass: Pick<RetroPass, 'reason' | 'dutyFollowUp'>) => pass.reason
+  ?? (pass.dutyFollowUp === undefined ? RETRO_FOLLOWUP_PREDATES : 'duty follow-up: no reason recorded');
+export const RETRO_FOLLOWUP_PREDATES = 'duty follow-up: not run, this pass was recorded before the follow-up existed';
+/** The status reply's form of the line (Rules 9, 51): the same proof the review and its efficiency duty ran, in about a
+ * fifth of the length, so the fixed status pull carries it and stays one Telegram message. The full line stays in the
+ * status record and the self-state. Live L45 group I (2026-10-03, update 6232050): the full line pushed "What is your
+ * status?" past one message. */
+export function retrospectiveStatusBrief(view: JournalView): string {
+  const passes = view.retroPasses, done = completePasses(view), last = done.at(-1);
+  if (!passes.length) return 'Retrospective review: not run yet.';
+  const failed = passes.filter(pass => pass.state === 'failed').length, unknown = passes.filter(pass => pass.state === 'unknown').length;
+  const duties = last?.result!.duties ?? [];
+  const uninspected = duties.filter(dutyLeftUninspected).length;
+  const efficiencyRan = duties.some(item => item.duty === 'waste' && item.disposition === 'inspected');
+  const accounting = last ? passAccounting(last) : null;
+  return `Retrospective review: ${String(done.length)} completed pass(es)${failed ? `, ${String(failed)} refused` : ''}${unknown ? `, ${String(unknown)} UNKNOWN` : ''}`
+    + (last ? `; last inspected ${String(last.result!.inspected.length)} of ${String(accounting?.eligible ?? 0)} case(s), efficiency duty ${efficiencyRan ? 'ran' : 'not inspected'}`
+      + (uninspected ? `; ${String(uninspected)} of ${String(duties.length)} duties not inspected although their evidence was present (${clip(uninspectedReason(last), 120)})` : '') : '')
+    + `; open improvement items ${String(openFindings(view).length)}; pending grades ${String(pendingGrades(view).length)}.`;
+}
 /** One status line: proof the review (and its efficiency duty) ran, what it covered and what stays open. */
 export function retrospectiveStatusLine(view: JournalView, contextDigest?: string): string {
   const passes = view.retroPasses, done = completePasses(view), last = done.at(-1);
@@ -1274,7 +1297,7 @@ export function retrospectiveStatusLine(view: JournalView, contextDigest?: strin
   const efficiencyRan = duties.some(item => item.duty === 'waste' && item.disposition === 'inspected');
   return `Retrospective review: ${String(done.length)} completed pass(es)${failed ? `, ${String(failed)} refused` : ''}${unknown ? `, ${String(unknown)} with UNKNOWN outcome` : ''}`
     + (last ? `; last at epoch ms ${String(last.completedAt ?? last.at)} inspected ${String(last.result!.inspected.length)} of ${String(accounting?.eligible ?? 0)} case(s) and deferred ${String(accounting?.omitted ?? 0)} (efficiency duty ${efficiencyRan ? 'ran' : 'not inspected'}: ${last.result!.efficiency.summary.slice(0, 120)})`
-      + (uninspected.length ? `; duties not inspected although their evidence was present: ${uninspected.join(', ')}${last.reason ? ` (${last.reason})` : ''}` : '')
+      + (uninspected.length ? `; duties not inspected although their evidence was present: ${uninspected.join(', ')} (${uninspectedReason(last)})` : '')
       + (unavailable.length ? `; duties not inspected for lack of evidence: ${unavailable.join(', ')}` : '') : '')
     + `; open improvement items ${String(openFindings(view).length)}; pending grades ${String(pendingGrades(view).length)}; feedback dispositions ${String(feedbackDispositions(view).length)}`
     + `; standing-grant candidates ${String(candidates.length)} (${String(candidates.filter(item => item.presentable).length)} recurring, shown per P-10; none grants anything until the operator approves)`

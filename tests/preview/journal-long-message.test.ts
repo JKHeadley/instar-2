@@ -223,23 +223,23 @@ it('does not prepare a too-long notice after stop, then sends it once when resum
   } finally { rmSync(dir, { recursive: true, force: true }); }
 });
 
-it('sends a full reply at the Telegram boundary and a truthful notice for longer or HTML-expanded answers', async () => {
+it('sends a full reply at the Telegram boundary, and a longer or HTML-expanded answer whole across two messages in order', async () => {
+  // Plan #466 (w4-statuslen): an answer past one Telegram message is split, never refused for its length.
   for (const answer of ['a'.repeat(4084), 'a'.repeat(4085), '<'.repeat(1200)]) {
     const dir = root();
     try {
       const journal = openPreviewJournal(join(dir, 'journal.encrypted'), key, genesis());
       const sent: string[] = [];
+      let message = 7;
       const worker = createJournalWorker(journal, { now: () => 1000, stopped: () => false,
-        model: async () => answer, send: async ({ text }) => { sent.push(text); return 7; }, checkOutbound: () => {} });
+        model: async () => answer, send: async ({ text }) => { sent.push(text); return message++; }, checkOutbound: () => {} });
       worker.intake([update(1, 'Short question')]); await worker.drain();
       expect(journal.view.order[0]?.answer).toBe(answer);
-      expect(sent).toHaveLength(1);
-      if (Buffer.byteLength(`PREVIEW — ${answer}`) <= 4096 && answer[0] !== '<')
-        expect(journal.view.order[0]?.intent).toBe(`PREVIEW — ${answer}`);
-      else {
-        expect(journal.view.order[0]?.intent).toBe(TOO_LONG_REPLY_NOTICE);
-        expect(status(dir).tooLong).toEqual([{ update: 1, kind: 'reply', delivery: 'Telegram API accepted' }]);
-      }
+      expect(journal.view.order[0]?.intent).toBe(`PREVIEW — ${answer}`);
+      expect(sent).toHaveLength(Buffer.byteLength(`PREVIEW — ${answer}`) <= 4096 && answer[0] !== '<' ? 1 : 2);
+      for (const body of sent) expect(Buffer.byteLength(body)).toBeLessThanOrEqual(4096);
+      expect(status(dir).tooLong).toEqual([]);
+      expect(status(dir).unknownSends).toBe(0);
       journal.close();
     } finally { rmSync(dir, { recursive: true, force: true }); }
   }
