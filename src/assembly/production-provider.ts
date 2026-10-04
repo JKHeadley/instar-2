@@ -269,7 +269,11 @@ const TOOLS_SENTENCE = 'In this turn you have the harness\'s full built-in tool 
   + 'spending, changing safeguards) go through the effect doorway: one runs once the operator registers and grants it, otherwise it '
   + 'is refused and the refusal names its reason; say so plainly when one is refused. '
   + `Use at most ${SUBSCRIPTION_TOOL_LIMITS.maxToolCalls} tool calls. When your answer reports a value a tool produced, `
-  + 'say in reasoning which tool call, by name and order, produced it. Never claim an effect no tool reported.';
+  + 'say in reasoning which tool call, by name and order, produced it. Never claim an effect no tool reported. '
+  // Plan #510: without --safe-mode Claude Code adds its own "# userEmail" context naming the subscription login
+  // (2.1.280 has no switch to omit it); live cint-L50 every tool-turn answer called the operator "Luna" from it.
+  + 'An email address or account name the harness itself shows you is the subscription login running you, never the operator: '
+  + 'call the operator by packet.audience.operatorName, or by no name.';
 export const SUBSCRIPTION_TOOLS_SYSTEM_PROMPT = SUBSCRIPTION_CONVERSATION_SYSTEM_PROMPT.replace(NO_TOOLS_SENTENCE, TOOLS_SENTENCE);
 export function subscriptionToolsPolicy(model: string) {
   return Object.freeze({ args: Object.freeze(['--print', '--input-format', 'text', '--output-format', 'json',

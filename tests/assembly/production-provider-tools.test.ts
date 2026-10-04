@@ -80,8 +80,11 @@ it('tells the model it has the whole tool set and how each call is bounded, and 
   expect(SUBSCRIPTION_NATIVE_SYSTEM_PROMPT).toMatch(/one runs once the operator registers and grants it, otherwise it is refused/u);
   expect(SUBSCRIPTION_TOOLS_SYSTEM_PROMPT).toContain('which tool call, by name and order, produced it');
   expect(SUBSCRIPTION_CONVERSATION_SYSTEM_PROMPT).toContain('You have no tools and cannot act beyond this answer; never claim otherwise.');
-  // The tool route's own prompt bound (default-context-floor measures the exact growth, 1360 at w4-selfdesc).
-  expect(SUBSCRIPTION_TOOLS_SYSTEM_PROMPT.length - SUBSCRIPTION_CONVERSATION_SYSTEM_PROMPT.length).toBeLessThan(1400);
+  // Plan #510: the tool route runs without --safe-mode, so Claude Code injects its own account email; the prompt says that
+  // login is never the operator (+187, live cint-L50 "Luna"). The tool route's own prompt bound (default-context-floor
+  // measures the exact growth, 1544 with w4-selfdesc and plan #510).
+  expect(SUBSCRIPTION_TOOLS_SYSTEM_PROMPT).toContain('is the subscription login running you, never the operator');
+  expect(SUBSCRIPTION_TOOLS_SYSTEM_PROMPT.length - SUBSCRIPTION_CONVERSATION_SYSTEM_PROMPT.length).toBeLessThan(1600);
 });
 
 it('writes settings that refuse every read from the root down except the scratch volume and the runtime, writes outside the volume, network and unix sockets, with the mandatory hook on both events', () => {

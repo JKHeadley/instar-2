@@ -4,6 +4,7 @@ import { resolve } from 'node:path';
 import { CLAIM_SCOPED_RULES, DECLARED_OBLIGATIONS_GUIDE, exciseNamedClaims, namedClaimsIn, parseReplyReviewVerdict, quotedSpans,
   replyReviewQuestion, substantiveReply, type ReplyRule } from './reply-check.js';
 import { SOURCE_PINS, sourcePacket, TOOLS_BRIEFING, TOOLS_LIMITS, toolsBriefing } from './briefing.js';
+import { taskFields } from './answer-reading.js';
 import { governingConstraints, OBLIGATION_DECISION_TOOLS, previewCapabilities, TOOL_ATTEMPTS_MEANING } from './journal.js';
 
 /** Why this file exists (plan #370, live-proof K11a, Rules 78 and 84): asked "What can you do in this chat, and what
@@ -101,8 +102,12 @@ it('on the tools route the review packet is route-true, and the same two sides h
     const question = envelopeOf(input).messages[0]!.content;
     // Plan #491 changed only the answer-slot wording of the review question (the flat answer protocol); every rule,
     // guide and packet line is still the recorded one.
-    if (input.startsWith('review-r2-')) expect(question.replace('Return inside conclusion.value exactly one line', 'Return as "answer" exactly one line')
-      .replace('put any longer reasoning in reason.value.', 'put any longer reasoning in reasoning.'), input).toBe(replyReviewQuestion(flagged));
+    // Plan #510 then changed only the answer-slot wording again: each rule's verdict is its own field beside reasoning.
+    if (input.startsWith('review-r2-')) expect(question
+      .replace(/Return inside conclusion\.value exactly one line for every listed rule and no other rule, each of the form rule_id: PASS \| short reason or rule_id: VIOLATION \| short reason, with each reason under (\d+) characters; put any longer reasoning in reason\.value\./u,
+        'Give every listed rule, and no other rule, one verdict "PASS | short reason" or "VIOLATION | short reason", with each reason under $1 characters; put any longer reasoning in reasoning.')
+      .replace('A reason that finds no breach belongs on a PASS line. No other text.', `A reason that finds no breach belongs on a PASS verdict. ${taskFields('{rule_id: its verdict, one field for each listed rule, named by that rule id}')}`), input)
+      .toBe(replyReviewQuestion(flagged));
     else expect(question, input).not.toContain('in no broader terms');
   }
   const BROAD = '- Log in to or change any website, bank portal, or account. This preview has no logged-in account access.';

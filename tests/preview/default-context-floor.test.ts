@@ -267,8 +267,9 @@ it('keeps a tool turn\'s always-sent parts inside the same measured floor (Part 
   // local addresses are refused) and where to clone repositories (+200); 1287 with the flat answer protocol (plan #491),
   // whose tool sentence names "reasoning" instead of "reason.value" (-3); 1357 with w4-selfdesc (merged at cint-L51), whose
   // sentence says a network write goes to the effect doorway and a consequential effect runs once the operator registers
-  // and grants it (+70).
-  expect(growth).toBe(1357);
+  // and grants it (+70); 1544 with plan #510's sentence (merged from cint-L50 repair 2) that the account email the harness
+  // itself injects is the subscription login, never the operator (+187).
+  expect(growth).toBe(1544);
   // The packet names what the call really has (review round 1, finding 5): the text-only route keeps the no-tools read and
   // its "attempted nothing" guidance; the tool route says the tools are listed (in the note's tools item) and that only its recorded calls ran.
   expect(plain.packet?.capabilities?.externalTools).toBe('none');

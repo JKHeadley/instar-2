@@ -412,7 +412,7 @@ it('gives the contextual reviewer the attached investigation record and the gove
   expect(DECLARED_OBLIGATIONS_GUIDE).toMatch(/restating a settled limit, or [^.;]+, needs no new record/u);
   expect(DECLARED_OBLIGATIONS_GUIDE).toContain('VIOLATION only when one such final claim is not recorded this way, with a reason quoting that claim');
   for (const rules of [[], ['unrecorded_blocker'], ['credential']] as ReplyRule[][])
-    expect(replyReviewQuestion(rules)).toContain('A reason that finds no breach belongs on a PASS line.');
+    expect(replyReviewQuestion(rules)).toContain('A reason that finds no breach belongs on a PASS verdict.');
 });
 
 
@@ -1357,4 +1357,66 @@ it('bounded runner outcome lists leave room for every refusal beside the effect 
       else expect(sent).not.toContain('Effect doorway');
     } finally { w.journal.close(); rmSync(root, { recursive: true, force: true }); }
   }
+});
+
+it('gives scheduled work the operator\'s own earlier words, and drops them only when the packet would not fit (plan #510)', async () => {
+  // Live cint-L50/L49: the deferral "which three of the things I have told you matter most" got a work packet with none of
+  // them, and the replayed step answered "continue: this turn's context does not include the broader history".
+  const DENTIST = 'My dentist is Dr. Ortiz on Elm Street, and the cleaning is on Thursday.';
+  for (const size of ['fits', 'too-large'] as const) {
+    const root = origin();
+    try {
+      const contexts: Record<string, unknown>[] = [];
+      const w = world(root, { answer: question => question === INVOICE ? { reply: LATER, openLoops: [{ kind: 'deferral', quote: LATER, waitsOn: 'nothing' }] } : 'Noted.',
+        work: context => { contexts.push(context); return { outcome: 'report', report: 'The invoice is for 120 dollars.' }; } });
+      await w.say(DENTIST);
+      await w.say(INVOICE);
+      const sizes: number[] = [];
+      if (size === 'too-large') {
+        // The limit the packet is checked against: just under the packet with its memory, above the packet without it.
+        const probeRoot = origin();
+        const probe = world(probeRoot, { answer: question => question === INVOICE ? { reply: LATER, openLoops: [{ kind: 'deferral', quote: LATER, waitsOn: 'nothing' }] } : 'Noted.',
+          work: context => { sizes.push(Buffer.byteLength(JSON.stringify(context)), Buffer.byteLength(JSON.stringify({ ...context, memory: undefined })));
+            return { outcome: 'report', report: 'x' }; } });
+        await probe.say(DENTIST); await probe.say(INVOICE);
+        probe.clock.now += LOOP_REVISIT_MS + 60_000;
+        expect(await probe.worker.workObligations()).toBe(true);
+        probe.journal.close(); rmSync(probeRoot, { recursive: true, force: true });
+        (w.journal.view.limits as { maxBytes: number }).maxBytes = sizes[0]! - 1;
+      }
+      w.clock.now += LOOP_REVISIT_MS + 60_000;
+      expect(await w.worker.workObligations()).toBe(true);
+      expect(w.workQuestions[0]).toContain('packet.memory holds what the operator told you');
+      if (size === 'fits')
+        expect(contexts[0]!.memory).toEqual({ operatorMessages: [expect.objectContaining({ text: DENTIST }), expect.objectContaining({ text: INVOICE })] });
+      else {
+        expect(sizes[0]!).toBeGreaterThan(sizes[1]!);
+        expect(contexts[0]!.memory).toBeUndefined();
+        expect(contexts[0]!.obligation).toBeDefined();
+      }
+      w.journal.close();
+    } finally { rmSync(root, { recursive: true, force: true }); }
+  }
+});
+
+it('names the operator in the packet by their own Telegram first name, and names no one without it (plan #510)', async () => {
+  // Live cint-L50: with no name in the packet, tool-turn answers called the operator "Luna", the subscription login's
+  // account email that the harness itself injects. The packet now carries the verified operator's own name.
+  const root = origin();
+  try {
+    const w = world(root);
+    await w.say('What should I plant first?');
+    expect((JSON.parse(w.contexts.get('What should I plant first?')!) as { audience: Record<string, unknown> }).audience.operatorName).toBeUndefined();
+    w.worker.intake([{ update_id: 99, message: { chat: { id: 7654321, type: 'private' }, from: { id: 7654321, first_name: 'Justin' },
+      text: 'And what after that?', date: Math.floor(w.clock.now / 1000) } }]);
+    await w.worker.drain();
+    expect((JSON.parse(w.contexts.get('And what after that?')!) as { audience: Record<string, unknown> }).audience.operatorName).toBe('Justin');
+    // Another sender's name is never the operator's: only a verified operator message names them.
+    w.worker.intake([{ update_id: 100, message: { chat: { id: 7654321, type: 'private' }, from: { id: 5550001, first_name: 'Luna' },
+      text: 'Hello?', date: Math.floor(w.clock.now / 1000) } }]);
+    await w.worker.drain();
+    await w.say('One more question?');
+    expect((JSON.parse(w.contexts.get('One more question?')!) as { audience: Record<string, unknown> }).audience.operatorName).toBe('Justin');
+    w.journal.close();
+  } finally { rmSync(root, { recursive: true, force: true }); }
 });
