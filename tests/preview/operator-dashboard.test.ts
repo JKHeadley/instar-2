@@ -4,6 +4,7 @@
 import { afterEach, expect, it } from 'vitest';
 import { chmodSync, lstatSync, mkdirSync, mkdtempSync, readFileSync, realpathSync, rmSync, symlinkSync, writeFileSync } from 'node:fs';
 import { createServer } from 'node:http';
+import { connect } from 'node:net';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { createJournalWorker, limitedAnswerText, openPreviewJournal } from './journal-test-worker.js';
@@ -342,6 +343,48 @@ it('plan #502: the read-only page over real HTTP shows nothing before the existi
   existing.close();
   const down = await fetch(`${base}/dashboard/sign-in`, form('246810'));
   expect([down.status, down.headers.get('set-cookie')]).toEqual([503, null]);
+});
+
+it('plan #502 MF1: overlapping PIN checks are bounded before the verifier is awaited, and the slots return when they settle (Rule 60)', async () => {
+  // A slow verifier that holds every check open until released, counting how many run at once.
+  let running = 0, peak = 0, calls = 0, clock = at;
+  const held: ((ok: boolean) => void)[] = [];
+  const dash = createReadOnlyDashboard({ state: () => ({ kind: 'missing' }), now: () => clock,
+    checkPin: (pin: string) => { calls += 1; running += 1; peak = Math.max(peak, running);
+      return new Promise<boolean>(done => held.push(ok => { running -= 1; done(ok && pin === '246810'); })); } });
+  const server = serveReadOnly(dash, '127.0.0.1:0');
+  cleanup.push(() => server.close());
+  await new Promise(done => server.once('listening', done));
+  const port = (server.address() as { port: number }).port;
+  // 100 wrong-PIN sign-ins pipelined over ONE connection: the reviewer's reproduction of the unbounded fan-out.
+  const request = 'POST /dashboard/sign-in HTTP/1.1\r\nHost: x\r\ncontent-type: application/x-www-form-urlencoded\r\ncontent-length: 10\r\n\r\npin=000000';
+  const socket = connect(port, '127.0.0.1');
+  cleanup.push(() => socket.destroy());
+  let received = '';
+  socket.setEncoding('utf8');
+  socket.on('data', chunk => { received += chunk; });
+  socket.write(Array.from({ length: 100 }, () => request).join(''));
+  const statuses = () => received.match(/^HTTP\/1\.1 \d{3}/gmu) ?? [];
+  for (let spin = 0; spin < 200 && held.length < 5; spin += 1) await new Promise(done => setTimeout(done, 5));
+  await new Promise(done => setTimeout(done, 100)); // every pipelined request has reached signIn by now
+  expect([calls, peak]).toEqual([5, 5]);
+  // Overflow is refused without calling the verifier, on the direct path too, while five checks are in flight.
+  expect((await dash.signIn('246810')).kind).toBe('locked');
+  expect(calls).toBe(5);
+  // The held checks settle as refused: five 401s, then the 95 already-refused requests answer 429 in order.
+  for (const release of held.splice(0)) release(false);
+  for (let spin = 0; spin < 400 && statuses().length < 100; spin += 1) await new Promise(done => setTimeout(done, 5));
+  const counts = statuses().reduce<Record<string, number>>((all, line) => ({ ...all, [line.slice(9)]: (all[line.slice(9)] ?? 0) + 1 }), {});
+  expect([counts, calls, running]).toEqual([{ 401: 5, 429: 95 }, 5, 0]);
+  // After the failure window the slots and failures are free again: a fresh check reaches the verifier and signs in.
+  clock = at + 300_001;
+  const next = dash.signIn('246810');
+  expect(calls).toBe(6);
+  held.shift()!(true);
+  expect((await next).kind).toBe('ok');
+  // A thrown verifier releases its slot as well.
+  const throwing = createReadOnlyDashboard({ state: () => ({ kind: 'missing' }), now: () => at, checkPin: async () => { throw new Error('down'); } });
+  for (let tries = 0; tries < 10; tries += 1) expect((await throwing.signIn('246810')).kind).toBe('unavailable');
 });
 
 it('plan #502: the read-only page listens on loopback or Tailscale only, and checks the PIN only on this machine', () => {

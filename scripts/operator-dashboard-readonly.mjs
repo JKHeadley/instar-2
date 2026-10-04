@@ -56,10 +56,12 @@ const digest = value => createHash('sha256').update(value).digest('hex');
 
 /** `state()` returns the page state of the runner's latest snapshot (`snapshotState`, or `{ kind: 'missing' }`);
  * `checkPin(pin)` resolves true only for the operator's PIN. A session is a random value held hashed in memory for 30
- * minutes (at most 64); a runner restart signs everyone out. Five failed sign-ins in five minutes pause sign-in. */
+ * minutes (at most 64); a runner restart signs everyone out. Five failed sign-ins in five minutes pause sign-in, and PIN
+ * checks still in flight count against the same five, so overlapping requests never reach the verifier more than five at once. */
 export function createReadOnlyDashboard({ state, checkPin, now = () => Date.now() }) {
   check(typeof state === 'function' && typeof checkPin === 'function', 'read-only dashboard needs a state and a PIN check');
   const sessions = new Map(), failures = [];
+  let pending = 0; // PIN checks in flight: each holds an admission slot until it settles (Rule 60: bounded concurrent work)
   const prune = () => {
     for (const [key, expiresAt] of sessions) if (expiresAt <= now()) sessions.delete(key);
     while (failures.length && failures[0] <= now() - READ_ONLY_LIMITS.failureWindowMs) failures.shift();
@@ -68,10 +70,11 @@ export function createReadOnlyDashboard({ state, checkPin, now = () => Date.now(
     return typeof value === 'string' && /^[a-f0-9]{64}$/u.test(value) && (sessions.get(digest(value)) ?? 0) > now(); };
   const signIn = async pin => {
     prune();
-    if (failures.length >= READ_ONLY_LIMITS.failures) return { kind: 'locked' };
+    if (failures.length + pending >= READ_ONLY_LIMITS.failures) return { kind: 'locked' };
     if (typeof pin !== 'string' || pin.length === 0 || pin.length > READ_ONLY_LIMITS.pinChars) { failures.push(now()); return { kind: 'refused' }; }
     let accepted;
-    try { accepted = await checkPin(pin) === true; } catch { return { kind: 'unavailable' }; }
+    pending += 1; // reserved synchronously, before the await, so overlapping requests cannot all reach the verifier
+    try { accepted = await checkPin(pin) === true; } catch { return { kind: 'unavailable' }; } finally { pending -= 1; }
     if (!accepted) { failures.push(now()); return { kind: 'refused' }; }
     while (sessions.size >= READ_ONLY_LIMITS.sessions) sessions.delete(sessions.keys().next().value);
     const session = randomBytes(32).toString('hex');
