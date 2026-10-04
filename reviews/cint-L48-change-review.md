@@ -18,6 +18,7 @@ Bug class: none
 Bug evidence: none
 Hook bypass: none (plain commits and an ordinary merge; core.hooksPath is unset and the hooks directory holds only .sample files). The carried records each record their own.
 Convergence: none
+Deferral: tests/preview/retrospective.ts:1265 | not-a-deferral=the reason text naming the retrospective duty follow-up feature (as in the carried w4-statuslen record)
 Decision: cint-L48-merge | merged w4-statuslen onto cint-L47 4aae6c18 with one ordinary merge; the one conflict (journal.ts, two candidate-acceptance lines) keeps both w4-credlabel's held-material check and w4-statuslen's split-aware fits | reported=/Users/dabombstudio/.instar/agents/echo/.instar/lanes/cint-L48-PROGRESS.md
 Decision: cint-L48-desk | repin 0, tsc 0, rehash 0, architecture passed; register replayed at 5f82aaa6 (4f8d021f); build-register --check is true | reported=/Users/dabombstudio/.instar/agents/echo/.instar/lanes/cint-L48-PROGRESS.md
 Prompt review: the model-facing changes are the carried units'. w4-statuslen changes no question, briefing or reviewer prompt; the reply review still judges the whole reply before it is split. Recorded shapes replay on this tree (above), as do cint-L47's (answer-envelope-slips-live 8/8, journal-loop-fire 5/5, credential-label-boundary 23/23). This build adds no model-facing text. Always-sent answer bytes on a default root are unchanged (+0, 22,959).
