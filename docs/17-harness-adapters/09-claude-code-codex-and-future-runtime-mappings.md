@@ -45,8 +45,10 @@ resource bounds and durable cause are enforced per call before dispatch. A manda
 admission hook decides every call, and fails closed on any error. It admits ordinary work: a file read or
 search of what a sandboxed command may also read (the conversation's volume and the system files commands need), a
 file write or edit inside the conversation's volume, each decided on the resolved file and handed to the harness as
-that resolved path, so no symlink, alias or `..` spelling reaches past the boundary and no readable file is refused
-for its spelling; sandboxed commands (never judged by the words they
+that resolved path, so no readable file is refused for its spelling. For a sandboxed command the kernel decides at
+open, so no symlink, alias or `..` spelling reaches past the boundary. For the in-process file tools (Read, Write,
+Edit, Glob, Grep) the hook decides on the realpath at admission; a path the agent itself swaps for a link between
+admission and the harness's open is a named residual (`docs/defects/2026-10-03-file-tool-swap-race.md`); sandboxed commands (never judged by the words they
 contain), a web read (WebFetch issues only a GET) of a host whose every resolved address is public,
 a web search, an MCP tool the root's configuration lists as a read, the harness's own bookkeeping, a
 worktree inside the workspace, and a subagent of the one registered type, started by the turn or by

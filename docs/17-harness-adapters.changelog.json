@@ -10,8 +10,13 @@
     "changes": [
       {
         "what": "§9 tool rule: file reads and searches reach what a sandboxed command may read (the conversation's volume and the system files), writes and edits the volume, each decided on the resolved file and handed to the harness as that path; the sandbox reopens the root-level links to its system files as links only.",
-        "why": "The hook and the sandbox decided on different sets and on spellings: an ordinary system file was refused by one spelling and read by another, and a symlink before `..` or a dangling link could be judged as a different file than the one opened. One shared set, compared on resolved paths, keeps secret material unreachable by every spelling without refusing ordinary reads.",
+        "why": "The hook and the sandbox decided on different sets and on spellings: an ordinary system file was refused by one spelling and read by another, and a symlink before `..` or a dangling link could be judged as a different file than the one opened. One shared set, compared on resolved paths, refuses secret material by every spelling a sandboxed command can use, and by every spelling a file tool presents at admission, without refusing ordinary reads.",
         "ref": "lanes/w4-toolpaths-PROGRESS.md; lanes/pipeline/live-proof/results/T-proofroom-20261003-175716 (tools-t2.json); LIVE-PATH-PLAN.md row #442"
+      },
+      {
+        "what": "§9 tool rule: for the in-process file tools the resolved-path decision is stated as a check at admission, with a swap the agent itself makes between admission and the harness's open named as a residual; only sandboxed commands are stated to be decided at open.",
+        "why": "Review of the unit (MF2) reproduced a directory swapped for a link to a secret between the hook's allow and the harness's open: the in-process Read followed it. Claude Code sandboxes only Bash, and macOS refuses a sandbox nested inside one, so the file tools cannot be put under the kernel profile without losing the Bash sandbox. The text no longer claims the boundary holds against every spelling for them; the closing path (the harness as a separate OS user) is recorded in the defect.",
+        "ref": "docs/defects/2026-10-03-file-tool-swap-race.md; lanes/w4-toolpaths-PROGRESS.md; LIVE-PATH-PLAN.md row #447"
       }
     ]
   },

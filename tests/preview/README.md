@@ -3599,7 +3599,10 @@ servers (Part Thirteen §9,
   directory or the system files the sandbox also lets commands read (binaries, libraries, `/private/etc`), a file or
   notebook write or edit inside the workspace or that temporary directory, each decided on the RESOLVED file (symlinks
   followed where they stand, so `link/..` leaves through the link; `/etc` and `/private/etc` are one place; a dangling
-  link is refused as unresolvable) with the resolved path handed to the harness; sandboxed commands
+  link is refused as unresolvable) with the resolved path handed to the harness. This is a check at admission, not
+  at open: a directory the agent itself swaps for a link between the hook's check and the harness's open can still be
+  followed by Read, Write, Edit, Glob or Grep (residual, `docs/defects/2026-10-03-file-tool-swap-race.md`); a
+  sandboxed command has no such window, because the kernel decides at open; sandboxed commands
   whatever words they contain, a WebFetch (GET only) of a host whose every resolved address is public, a WebSearch,
   an MCP tool listed as a read, the harness's bookkeeping (ToolSearch, ListAgents, CronList, ReportFindings,
   TaskStop), a worktree inside the workspace, and a `worker` subagent within the turn's budget (rewritten to the

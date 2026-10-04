@@ -210,8 +210,9 @@ export function admitToolCall(call, config, n, fs, child = 1, now) {
   if (!Number.isSafeInteger(n) || n < 1) return deny('admission count unavailable');
   if (n > config.maxCalls) return deny(`per-step call cap ${config.maxCalls} reached (call ${n})`);
   // A file tool or search is decided on the file its path resolves to, against the turn's read or write set, and the
-  // harness is handed that resolved path, so a swap of the final link after this check does not redirect the call. A
-  // directory swapped for a link after this check still can (review MF2, open): this is the early refusal, not the boundary.
+  // harness is handed that resolved path, so re-pointing the presented alias after this check does not redirect the call.
+  // The resolved file or a directory on its path, swapped for a link after this check, still can: a named residual
+  // (docs/defects/2026-10-03-file-tool-swap-race.md). This is a check at admission; only Bash is decided at open.
   const roots = toolRoots(config);
   const place = (path, set) => {
     if (typeof path !== 'string' || path.length === 0) return { ok: false, why: 'path absent' };
