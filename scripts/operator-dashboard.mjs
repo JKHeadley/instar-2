@@ -1,9 +1,10 @@
-// The operator dashboard (Rules 79, 80, 81, 87; tests/preview/README.md "The operator dashboard"). It is rendered by the
-// operator's own approval page process (scripts/approval-surface.mjs), never by the agent, and only after the operator's
-// enrolled passkey signs in. The agent's runner publishes one disposable snapshot into its own outbox
-// (tests/preview/operator-dashboard.ts); everything in it is untrusted agent data here: it is checked against a closed,
-// bounded shape, escaped, and its only links are a GitHub review page or the operator's own chat. Approve, decline and stop
-// are never performed here: each links to the request's own approval page, which renders its own fixed wording.
+// The operator dashboard (Rules 79, 80, 81, 87; tests/preview/README.md "The operator dashboard"). It is rendered in two
+// places from this one module: by the operator's own approval page process (scripts/approval-surface.mjs) after the
+// operator's enrolled passkey signs in, and READ-ONLY by the runner itself (scripts/operator-dashboard-readonly.mjs) after
+// the operator's existing dashboard PIN signs in. The snapshot (tests/preview/operator-dashboard.ts) is untrusted agent
+// data here: it is checked against a closed, bounded shape, escaped, and its only links are a GitHub review page or the
+// operator's own chat. Approve, decline and stop are never performed here: each links to where it is answered (the
+// request's own approval page, the GitHub review, or the chat), which renders its own fixed wording.
 import { lstatSync, readFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { check } from './approval-surface-core.mjs';
@@ -68,6 +69,14 @@ export function checkSnapshot(value) {
   return s;
 }
 
+/** One snapshot as a page treats it: unreadable (invalid), fresh (ok) or stale. Both pages read through this. */
+export function snapshotState(text, now) {
+  try {
+    check(typeof text === 'string' && Buffer.byteLength(text) <= DASHBOARD_BOUNDS.maxBytes, 'dashboard record invalid');
+    const snapshot = checkSnapshot(JSON.parse(text)), age = Math.max(0, now - snapshot.asOf);
+    return { kind: age > DASHBOARD_BOUNDS.staleMs ? 'stale' : 'ok', snapshot, age };
+  } catch { return { kind: 'invalid' }; }
+}
 /** The runner's snapshot as the page will treat it: missing, unreadable (invalid), fresh (ok) or stale. */
 export function readSnapshot(outbox, now) {
   const path = join(outbox, DASHBOARD_FILE);
@@ -75,8 +84,7 @@ export function readSnapshot(outbox, now) {
   try { stat = lstatSync(path); } catch { return { kind: 'missing' }; }
   try {
     check(stat.isFile() && !stat.isSymbolicLink() && (stat.mode & 0o022) === 0 && stat.size <= DASHBOARD_BOUNDS.maxBytes, 'dashboard record invalid');
-    const snapshot = checkSnapshot(JSON.parse(readFileSync(path, 'utf8'))), age = Math.max(0, now - snapshot.asOf);
-    return { kind: age > DASHBOARD_BOUNDS.staleMs ? 'stale' : 'ok', snapshot, age };
+    return snapshotState(readFileSync(path, 'utf8'), now);
   } catch { return { kind: 'invalid' }; }
 }
 
@@ -109,12 +117,13 @@ h1{font-size:1.35rem;margin:.2rem 0}
 .primary{background:#0b57d0;color:#fff}
 .danger{background:#b3261e;color:#fff}
 .note{color:#444;font-size:.95rem}
+.field{display:block;width:100%;font-size:1.15rem;padding:.8rem;margin:.4rem 0;border:1px solid #888;border-radius:.6rem}
 meter{width:100%}`;
 const document = (title, body, script) => `<!doctype html><html lang="en"><head><meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1"><title>${escape(title)}</title><style>${DASHBOARD_STYLE}</style>
 </head><body>${body}${script ? `<script src="${script}"></script>` : ''}</body></html>`;
-/** Every dashboard address lives under the page's path token. */
-export const dashboardPath = (token, path = '') => `/${token}/dashboard${path ? `/${path}` : ''}`;
+/** Every dashboard address lives under the page's path token; the read-only page has none (`token` null). */
+export const dashboardPath = (token, path = '') => `${token === null ? '' : `/${token}`}/dashboard${path ? `/${path}` : ''}`;
 /** Every page, with the snapshot's age or unavailability on it (the loss detector, purpose Rule 2), whatever the view. */
 const page = (token, here, { title, purpose }, state, body) => document(title, `<nav class="views" aria-label="Dashboard pages">${
   DASHBOARD_VIEWS.map(view => `<a${view.id === here ? ' class="here" aria-current="page"' : ''} href="${dashboardPath(token, view.path)}">${escape(view.title)}</a>`).join('')
@@ -148,8 +157,15 @@ const row = item => `<a class="row" href="${escape(item.href)}">${escape(item.ti
 const tile = (token, view, label, value, stop = false) =>
   `<a class="tile${stop ? ' stop' : ''}" href="${dashboardPath(token, VIEW[view].path)}"><span class="label">${escape(label)}</span><span class="value">${escape(value)}</span></a>`;
 
-/** One dashboard page. `view` is a registered view id or a detail path (`messages/<update>`, `requests/<index>`). */
-export function renderDashboard({ token, view, state, pending }) {
+/** The read-only page's stop view: it never stops anything itself; it says how, and opens the chat where /stop is confirmed. */
+const readOnlyStop = (s, state) => s?.state === 'stopped'
+  ? `<p class="headline">${state.kind === 'stale' ? 'Your agent was stopped when it last reported.' : 'Your agent is already stopped.'}</p>`
+  : `<p class="headline">To stop your agent, send /stop in your chat with it, then tap Approve.</p><p class="note">It stops at once: nothing more is sent or spent, and your saved messages stay saved. This page only shows your agent; it cannot stop it or approve anything.</p>${
+    s?.chat ? `<a class="button danger" href="${chatLink(s.chat)}">Open your chat to send /stop</a>` : ''}`;
+
+/** One dashboard page. `view` is a registered view id or a detail path (`messages/<update>`, `requests/<index>`).
+ * `readOnly`: the runner's own page, which has no approval page behind it (`pending` is empty and `token` null). */
+export function renderDashboard({ token, view, state, pending, readOnly = false }) {
   const s = state.snapshot, waiting = waitingRows(token, state, pending), stopItem = pending.find(item => item.view.kind === 'stop');
   if (view === 'overview') {
     const headline = !s ? (state.kind === 'missing' ? 'Your agent has not shared its status yet.' : "Your agent's status could not be read.")
@@ -181,6 +197,7 @@ export function renderDashboard({ token, view, state, pending }) {
 <li>${escape(`Model tokens this trial: ${s.tokens.input.toLocaleString('en-US')} in, ${s.tokens.output.toLocaleString('en-US')} out.`)}</li>
 <li>${escape(`Model calls whose size was not reported: ${s.tokens.unknownCalls}.`)}</li>
 <li>Dollar spend is not recorded for this trial.</li></ul>`);
+  if (view === 'stop' && readOnly) return page(token, 'stop', VIEW.stop, state, readOnlyStop(s, state));
   if (view === 'stop') return page(token, 'stop', VIEW.stop, state, s?.state === 'stopped'
     ? `<p class="headline">${state.kind === 'stale' ? 'Your agent was stopped when it last reported.' : 'Your agent is already stopped.'}</p>`
     : stopItem ? `<a class="button danger" href="/${token}/c/${stopItem.name}">Stop your agent now</a><p class="note">Your phone's passkey confirms it. Your agent stops at once, and your saved messages stay saved.</p>`
@@ -209,3 +226,11 @@ export const renderSignIn = (token, enrolled) => document('Sign in', `<main clas
   enrolled ? '<button class="button primary" id="signin">Sign in with your passkey</button><p class="note" id="result" role="status"></p>'
     : '<p class="note">No passkey is set up for this page yet, so the dashboard cannot open. The one-use set-up link comes from the computer that runs this page.</p>'}</main>`,
   enrolled ? `/${token}/dashboard.js` : null);
+
+/** The read-only page's sign-in: the operator's existing dashboard PIN, checked by the server that already holds it. It
+ * reveals nothing from the agent, runs no script, and its one field is the labeled PIN (the sign-in, never a request). */
+export const renderPinSignIn = (token, notice = null) => document('Sign in', `<main class="panel"><h1>Sign in</h1><p class="purpose">Your dashboard shows your agent's messages, so your dashboard PIN confirms it is you first.</p>
+<form method="post" action="${dashboardPath(token, 'sign-in')}"><label class="label" for="pin">Your dashboard PIN</label>
+<input class="field" id="pin" name="pin" type="password" inputmode="numeric" autocomplete="current-password" maxlength="64" required>
+<button class="button primary" id="signin-pin" type="submit">Sign in</button></form>${notice ? `<p class="note" role="status">${escape(notice)}</p>` : ''}
+<p class="note">This page only shows your agent. Approvals stay where they are answered today.</p></main>`, null);
