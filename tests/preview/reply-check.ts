@@ -5,6 +5,7 @@ import { machineLink } from './coherence-check.js';
  * (accept, reject with a reason, or no decision), all inside one shared deadline (Rules 41, 57, 58, 108). */
 import { redact, redactionMark } from '../../src/recall/redact.js';
 import { remainingText } from './credential-reminders.js';
+import { taskFields } from './answer-reading.js';
 export const REPLY_RULES = {
   raw_path: 'The message shows the reader a raw filesystem path (for example a directory or file location on a machine).',
   cli_command: 'The message asks the reader to run a terminal command as a handoff of work the writer could do. Answering an explicit request for the command or showing a documentation example does not count.',
@@ -178,7 +179,7 @@ export function replyReviewRules(ruleIds: readonly ReplyRule[]): Record<string, 
 }
 
 export function replyReviewQuestion(ruleIds: readonly ReplyRule[]): string {
-  return `Judge this proposed reply: review packet.candidateReply against packet.operatorMessage and the full private conversation context. Judge each of these rules on its own: ${JSON.stringify(replyReviewRules(ruleIds))}. For raw_path, cli_command, config_key and api_endpoint, an illustrative or quoted literal explicitly requested or supplied by the verified operator is not a breach merely because it appears in the reply. Still flag an actual internal path or endpoint disclosed without need, a command or setting that offloads work the agent could do, and every live authentication secret that reaches anyone other than the verified operator who supplied it in this same private chat. Return as "answer" exactly one line for every listed rule and no other rule, each of the form rule_id: PASS | short reason or rule_id: VIOLATION | short reason, with each reason under ${REPLY_REVIEW_REASON_ASK} characters; put any longer reasoning in reasoning. A violation requires an actual breach of that rule; uncertainty is PASS. PASS means the reply does not breach the rule; VIOLATION means it does, and its reason names the breach. A reason that finds no breach belongs on a PASS line. No other text.${ruleIds.length === 0 || ruleIds.some(id => id === 'claims_blocked' || id === 'parks_on_user' || id === 'defers_work' || id === 'unrecorded_blocker' || id === 'self_state_claim') ? DECLARED_OBLIGATIONS_GUIDE : ''}`;
+  return `Judge this proposed reply: review packet.candidateReply against packet.operatorMessage and the full private conversation context. Judge each of these rules on its own: ${JSON.stringify(replyReviewRules(ruleIds))}. For raw_path, cli_command, config_key and api_endpoint, an illustrative or quoted literal explicitly requested or supplied by the verified operator is not a breach merely because it appears in the reply. Still flag an actual internal path or endpoint disclosed without need, a command or setting that offloads work the agent could do, and every live authentication secret that reaches anyone other than the verified operator who supplied it in this same private chat. Give every listed rule, and no other rule, one verdict "PASS | short reason" or "VIOLATION | short reason", with each reason under ${REPLY_REVIEW_REASON_ASK} characters; put any longer reasoning in reasoning. A violation requires an actual breach of that rule; uncertainty is PASS. PASS means the reply does not breach the rule; VIOLATION means it does, and its reason names the breach. A reason that finds no breach belongs on a PASS verdict. ${taskFields('{rule_id: its verdict, one field for each listed rule, named by that rule id}')}${ruleIds.length === 0 || ruleIds.some(id => id === 'claims_blocked' || id === 'parks_on_user' || id === 'defers_work' || id === 'unrecorded_blocker' || id === 'self_state_claim') ? DECLARED_OBLIGATIONS_GUIDE : ''}`;
 }
 
 /** Rules 20, 21, 23, 103: a settled cannot-do or needs-a-person claim is judged against the investigation record the
@@ -222,7 +223,7 @@ export const REPLY_REVIEW_REASON_ASK = 300;
 /** The one error that means the reviewer answered but missed the verdict format (the only case re-asked). */
 export const REVIEW_MALFORMED = 'preview: review malformed';
 /** Runner-authored packet guidance for the single format re-ask of a review. */
-export const REVIEW_FORMAT_REMINDER = 'Your previous verdict for this same review was refused because its answer was not exactly one line per listed rule of the form rule_id: PASS | reason or rule_id: VIOLATION | reason. Return only the flat object {"reasoning":...,"answer":those lines}, no other text; put longer reasoning in reasoning.';
+export const REVIEW_FORMAT_REMINDER = 'Your previous verdict for this same review was refused because it was not exactly one field per listed rule, named by the rule id and valued "PASS | reason" or "VIOLATION | reason". Return only the flat object {"reasoning":..., one such field per listed rule}, no other text; put longer reasoning in reasoning.';
 export const REPLY_REVIEW_REASON_MAX = 600;
 /** The conversation framing tells the model to answer an operator message as {"reply": ...} when decision guidance
  * applies, and a review packet carries the answer packet's guidance, so a reviewer sometimes returns its verdict lines
@@ -235,6 +236,11 @@ function unwrappedVerdict(text: string): string {
     const parsed = JSON.parse(text) as unknown;
     if (parsed && typeof parsed === 'object' && !Array.isArray(parsed) && Object.keys(parsed).length === 1
       && typeof (parsed as { reply?: unknown }).reply === 'string') return (parsed as { reply: string }).reply.trim();
+    // Plan #510: the review's verdicts are its own fields, one per rule beside reasoning (the runner-assembled flat
+    // protocol); each becomes its `rule_id: VERDICT | reason` line, judged by exactly the line checks below.
+    const entries = parsed && typeof parsed === 'object' && !Array.isArray(parsed) ? Object.entries(parsed) : [];
+    if (entries.length && entries.every(([rule, verdict]) => Object.hasOwn(REPLY_RULES, rule) && typeof verdict === 'string'))
+      return entries.map(([rule, verdict]) => `${rule}: ${(verdict as string).trim()}`).join('\n');
   } catch { /* not JSON: judged as written */ }
   return text;
 }
@@ -409,7 +415,7 @@ export function replyRevisionQuestion(objections: readonly string[], reason?: st
     const note = findings?.find(finding => finding.rule === id && finding.verdict === 'violation')?.reason;
     return text === undefined ? [] : [[id, note ? `${text} Reviewer: ${note.slice(0, 160)}` : text]];
   }));
-  return `Revise packet.candidateReply, your own draft reply to packet.operatorMessage, before it is sent. A pre-send review raised these objections: ${JSON.stringify(listed)}${reason ? `; reviewer note: ${JSON.stringify(reason.slice(0, 160))}` : ''}. Objections are signals, not verdicts: fix what is actually wrong, keep what is right, and still answer the operator's message fully. Never reproduce a password, access key or other secret. Return beside reasoning only the fields of the JSON object {"reply": the reply to send (revised, or unchanged when you reject every objection), "dispositions": {objection id: {"decision": "accept" or "reject", "reason": one short sentence}}${objections.some(id => id === 'unrecorded_blocker' || id === 'claims_blocked') ? ', "blocker": optional investigation record' : ''}} with one entry for every listed objection; a rejection needs its reason.${objections.some(id => id === 'unrecorded_blocker' || id === 'claims_blocked') ? REVISION_BLOCKER_GUIDE : ''} No other text.`;
+  return `Revise packet.candidateReply, your own draft reply to packet.operatorMessage, before it is sent. A pre-send review raised these objections: ${JSON.stringify(listed)}${reason ? `; reviewer note: ${JSON.stringify(reason.slice(0, 160))}` : ''}. Objections are signals, not verdicts: fix what is actually wrong, keep what is right, and still answer the operator's message fully. Never reproduce a password, access key or other secret. Give dispositions one entry for every listed objection; a rejection needs its reason.${objections.some(id => id === 'unrecorded_blocker' || id === 'claims_blocked') ? REVISION_BLOCKER_GUIDE : ''} ${taskFields(`{"reply": the reply to send (revised, or unchanged when you reject every objection), "dispositions": {objection id: {"decision": "accept" or "reject", "reason": one short sentence}}${objections.some(id => id === 'unrecorded_blocker' || id === 'claims_blocked') ? ', "blocker": optional investigation record' : ''}}`)}`;
 }
 /** Plan #104: a true capability limit is kept and recorded, never talked away. The shape is the answer's own
  * blocker declaration, admitted by the same runner checks. */

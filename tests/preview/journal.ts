@@ -54,6 +54,7 @@ import { chatYesReference, reviewYesReference, SHARED_ACCESS_NOTE } from '../../
 import type { ExplicitYesInstallation, SharedAccessDisclosure } from '../../src/operator/explicit-yes.js';
 import { reviewLink, type ReviewYesSource } from './review-yes-source.js';
 import { applySentinelRecord, checkSentinelRecord, presenceNoteDue, type SentinelRecord, type SentinelView } from './sentinel-record.js';
+import { taskFields } from './answer-reading.js';
 import { encodeReply, fitsOneMessage, replyPartTarget, splitReply, wholeReplySent, MAX_ANSWER_BYTES, MAX_REPLY_PARTS, TELEGRAM_MESSAGE_LIMIT } from './reply-parts.js';
 
 
@@ -1789,6 +1790,21 @@ export const operatorWriter = (view: JournalView, turn: Turn, edits = false) => 
   return String(from) === view.genesis.operator;
 };
 export const verifiedOperatorTurn = (view: JournalView, turn: Turn) => turn.accepted && operatorWriter(view, turn);
+/** The verified operator's own Telegram first name, from their newest verified message (plan #510), or undefined.
+ * Live cint-L50: with no name in the packet, every tool-turn answer called the operator "Luna", the local part of
+ * the subscription login the harness itself injects ("# userEmail ... luna@sagemindai.io"; Claude Code 2.1.280
+ * has no switch to omit it), and that name then spread through history into later answers and the summary. */
+export const operatorName = (view: JournalView): string | undefined => {
+  for (let index = view.order.length - 1; index >= 0; index--) {
+    const turn = view.order[index]!;
+    if (!verifiedOperatorTurn(view, turn)) continue;
+    try {
+      const raw = JSON.parse(turn.raw) as TelegramUpdate, name = (raw.message ?? raw.edited_message)?.from?.first_name;
+      if (typeof name === 'string' && name.trim()) return redact(name.trim()).text.slice(0, 64);
+    } catch { /* an unreadable update names no one */ }
+  }
+  return undefined;
+};
 const channelMemoryId = (item: ChannelItem) => `channel:${channelKey(item)}`;
 const datedKey = (item: DatedItem) => JSON.stringify([item.source, item.quote, item.when]);
 const reminderKey = (item: ReminderRef) => JSON.stringify([item.source, item.quote, item.when]);
@@ -2106,7 +2122,12 @@ export function obligationCapacity(view: JournalView): boolean {
   const { calls } = view, { maxCalls } = view.limits;
   return shouldRunScheduledPriority('medium', calls >= maxCalls - 2 ? 'critical' : calls >= maxCalls * 0.75 ? 'elevated' : 'normal');
 }
-export const OBLIGATION_WORK_QUESTION = 'packet.obligation is open work you own for the verified operator, due now. packet.obligation.yourReply was already sent to the operator: repeating or re-confirming it is not the work, so the report for a deferral or judgment is the deferred answer itself, never another acknowledgement. Do it now with what you know; you have no external tools, and a reply reaches the operator only with their next message. A report is that later message: it is held now and delivered with their next message, never before it, so "answer later" or "not in this reply" is done by reporting now. Return only JSON. For a request, promise, deferral or judgment: {"outcome":"report","report":<the completed result or decision, addressed to the operator>} when you can finish it now; {"outcome":"continue","note":<the concrete progress and next step>} when it genuinely needs more time; {"outcome":"waiting","waitsOn":"operator"|"external","note":<what exactly you now need>} only when someone else must act first. When packet.waitingFor is present, you said you needed it earlier: check packet.operatorMessagesSince and continue with whatever now arrived. For a blocker-recheck, test the claim again against every avenue and packet.capabilities: {"outcome":"still-blocked","recheck":"YYYY-MM-DD" within 90 days,"avenues":[{"avenue","disposition":"outside-standing"|"inapplicable","evidence":<the packet.capabilities key that shows it>}],"constraint":<governingConstraints key those capabilities support>,"reason":<what you re-examined and why it still holds>} or {"outcome":"cleared","report":<what is now possible>}. You have attempted nothing outside this step, so never call an avenue tried. Follow packet.directives. Refuse only behind a packet.governingConstraints key.';
+/** The operator's own earlier words a work step carries (plan #510): the newest summary and their messages after it. */
+export const OBLIGATION_SUMMARY_CHARS = 4000, OBLIGATION_MEMORY_MESSAGES = 20, OBLIGATION_MEMORY_MESSAGE_CHARS = 500;
+/** The runner's bounds on a work step's report and note (obligationDecision); the question states them. */
+export const OBLIGATION_REPORT_CHARS = 1500, OBLIGATION_NOTE_CHARS = 500;
+export const OBLIGATION_WORK_QUESTION = 'packet.obligation is open work you own for the verified operator, due now. packet.obligation.yourReply was already sent to the operator: repeating or re-confirming it is not the work, so the report for a deferral or judgment is the deferred answer itself, never another acknowledgement. packet.memory holds what the operator told you (the newest summary and their messages after it): work about what they told you is done from it. Do it now with what you know; you have no external tools, and a reply reaches the operator only with their next message. A report is that later message: it is held now and delivered with their next message, never before it, so "answer later" or "not in this reply" is done by reporting now. Choose exactly one of these objects. For a request, promise, deferral or judgment: {"outcome":"report","report":<the completed result or decision, addressed to the operator, at most ' + String(OBLIGATION_REPORT_CHARS) + ' characters>} when you can finish it now; {"outcome":"continue","note":<the concrete progress and next step, at most ' + String(OBLIGATION_NOTE_CHARS) + ' characters>} when it genuinely needs more time; {"outcome":"waiting","waitsOn":"operator"|"external","note":<what exactly you now need, at most ' + String(OBLIGATION_NOTE_CHARS) + ' characters>} only when someone else must act first. When packet.waitingFor is present, you said you needed it earlier: check packet.operatorMessagesSince and continue with whatever now arrived. For a blocker-recheck, test the claim again against every avenue and packet.capabilities: {"outcome":"still-blocked","recheck":"YYYY-MM-DD" within 90 days,"avenues":[{"avenue","disposition":"outside-standing"|"inapplicable","evidence":<the packet.capabilities key that shows it>}],"constraint":<governingConstraints key those capabilities support>,"reason":<what you re-examined and why it still holds>} or {"outcome":"cleared","report":<what is now possible>}. You have attempted nothing outside this step, so never call an avenue tried. Follow packet.directives. Refuse only behind a packet.governingConstraints key. '
+  + taskFields('the one object you chose');
 /** The same work step on the scoped-tool route: it can use the listed tools, and only their recorded calls ran. */
 export const OBLIGATION_WORK_QUESTION_TOOLS = replacedClause(replacedClause(OBLIGATION_WORK_QUESTION,
   'you have no external tools,', 'your only tools are the listed ones,'),
@@ -2124,7 +2145,7 @@ export function obligationDecision(output: string, kind: 'commitment' | 'blocker
   try { value = JSON.parse(output) as typeof value; } catch { return { outcome: 'failed' }; }
   const text = (field: unknown, max: number) => typeof field === 'string' && field.trim() && Buffer.byteLength(field.trim()) <= max
     ? redact(field.trim()).text : undefined;
-  const report = text(value?.report, 1500), note = text(value?.note, 500);
+  const report = text(value?.report, OBLIGATION_REPORT_CHARS), note = text(value?.note, OBLIGATION_NOTE_CHARS);
   if (kind === 'commitment') {
     if (value?.outcome === 'report' && report) return { outcome: 'report', report };
     if (value?.outcome === 'continue' && note) return { outcome: 'continue', note };
@@ -4580,7 +4601,7 @@ export function importChannelItems(journal: ReturnType<typeof openPreviewJournal
   return added;
 }
 
-type TelegramMessage = { message_id?: number; chat?: { id: number; type?: string }; from?: { id: number }; text?: string; caption?: string; message_thread_id?: number; date?: number; edit_date?: number;
+type TelegramMessage = { message_id?: number; chat?: { id: number; type?: string }; from?: { id: number; first_name?: string }; text?: string; caption?: string; message_thread_id?: number; date?: number; edit_date?: number;
   reply_to_message?: { message_id?: number; chat?: { id: number }; from?: { id: number }; message_thread_id?: number } };
 type TelegramUpdate = { update_id: number; message?: TelegramMessage; edited_message?: TelegramMessage;
   callback_query?: { id?: string; from?: { id: number }; message?: TelegramMessage; data?: string } };
@@ -6317,7 +6338,8 @@ export function createJournalWorker(journal: ReturnType<typeof openPreviewJourna
       ...(pendingReminders.length ? { reminders: pendingReminders.map(item => ({ id: reminderId(item),
         quote: clean(redact(item.quote).text, true), due: `${reminderDue(item)} ${item.zone}` })) } : {}),
       audience: { surface: 'telegram-private-chat', chat: journal.view.genesis.chat,
-        operator: journal.view.genesis.operator, ...(current === undefined && !crossed ? {} : { conversation: conversationName(current, topicNames(journal.view)) }) },
+        operator: journal.view.genesis.operator, ...(operatorName(journal.view) === undefined ? {} : { operatorName: operatorName(journal.view) }),
+        ...(current === undefined && !crossed ? {} : { conversation: conversationName(current, topicNames(journal.view)) }) },
       ...(suppliedSources === undefined ? {} : { sources: suppliedSources }),
       ...(reference ? { replyTo: reference } : {}),
       ...(summary ? { historyMode: 'summary-plus-recent', summary: { sourceKind: 'inferred-by-summary' as MemorySourceKind, sourceLabel: summaryLabel(summary), through: summary.through, text: clean(redact(summary.text).text, true, summary.through),
@@ -8668,7 +8690,7 @@ export function createJournalWorker(journal: ReturnType<typeof openPreviewJourna
       + 'which conversation and date each fact came from, '
       + 'and who said each thing: what the operator reports another person said or thinks stays the operator\'s report. '
       + 'Copy each quantitative fact you retain with its original number and unit exactly; do not round, convert, or drop the unit. '
-      + 'Make your answer text one JSON object: {"summary": <the summary>, "memory": [{"mode": "prefer", "source": <memoryRequest.id>, "quote": <exact durable reply preference clause from memoryRequest.message>} or {"mode": "correct" or "forget", '
+      + 'The object: {"summary": <the summary>, "memory": [{"mode": "prefer", "source": <memoryRequest.id>, "quote": <exact durable reply preference clause from memoryRequest.message>} or {"mode": "correct" or "forget", '
       + '"source": <id from memoryCandidates>, "quote": <the complete old factual clause, exactly quoted from that source>, '
       + '"replacement": <for correct only, the corrected factual clause exactly quoted from memoryRequest.message>}], '
       + '"people": [{"name": <a person\'s name exactly as written '
@@ -8693,13 +8715,14 @@ export function createJournalWorker(journal: ReturnType<typeof openPreviewJourna
       + 'For each memory action, include replies: ids of memoryCandidates whose reply repeats or restates the old fact, including short answers, and summaryPassages: exact passages of the prior summary that express the old fact; leave unrelated material alone. '
       + 'Return memory: [] when no direct request applies; set memoryDisposition: "unresolved" when a direct request has no identifiable source. '
       + `Keep the complete JSON response within ${SUMMARY_TARGET_OUTPUT_TOKENS} output tokens; use concise summary prose and exact short quotes. `
-      + `Write reasoning as one sentence of at most ${SUMMARY_REASON_CHARS} characters. Put the summary prose in the summary field. Keep the summary prose within ${String(summaryTextBound())} bytes of UTF-8: a plain ASCII character is one byte, an accented or non-Latin character two to four, so non-ASCII prose holds fewer characters; that keeps the whole answer inside its output limit. `
+      + `Put the summary prose in the summary field. Keep the summary prose within ${String(summaryTextBound())} bytes of UTF-8: a plain ASCII character is one byte, an accented or non-Latin character two to four, so non-ASCII prose holds fewer characters; that keeps the whole answer inside its output limit. `
       + 'If the packet\'s summary.text is longer than that, rewrite it condensed within that size, keeping every fact, commitment and open question it holds; memoryItems already keep the exact facts. '
       + 'For unansweredCandidates, judge each candidate by the full conversation: its reply only triggered review. Return questions: [{"source": candidate id, "quote": exact question excerpt from that operator message}] only when it really left an operator question unanswered. Return questions: [] when none. '
       + 'Return memoryItems: [{"source": history item id, "quote": exact short factual clause from that operator message}] for new active facts worth keeping. Existing summary.memoryItems are already retained by source; do not repeat or paraphrase them in summary prose. A correction replaces its old item and forgetting removes it. '
-      + `Return concepts: [{"source": history item id of an operator message, "terms": up to ${SUMMARY_CONCEPT_TERMS} lowercase words or short phrases someone could later use to ask about that message by meaning (synonyms, category names, paraphrases), beyond its own words}] for each operator message in history and each indexBacklog item. They only help find the original message later and are never shown as facts.`;
+      + `Return concepts: [{"source": history item id of an operator message, "terms": up to ${SUMMARY_CONCEPT_TERMS} lowercase words or short phrases someone could later use to ask about that message by meaning (synonyms, category names, paraphrases), beyond its own words}] for each operator message in history and each indexBacklog item. They only help find the original message later and are never shown as facts. `
+      + taskFields('the object above, with memoryDisposition, questions, memoryItems and concepts as further fields', SUMMARY_REASON_CHARS);
     const editInstruction = ' A Telegram edit is a revision of editedTurn, not a new request or reply opportunity. Compare its memoryRequest.message with the exact prior revision in memoryCandidates. If a stated fact changed, return a correct memory action with the exact old clause, the exact replacement clause, and affected replies and summary passages. If a prior claim was withdrawn or deleted without a replacement fact, use forget with its exact old clause. Return memory:[] only when no stated fact changed. The latest revision controls the summary.';
-    const indexQuestion = `Return one JSON object {"concepts": [{"source": indexBacklog item id, "terms": up to ${CONCEPT_TERMS_LIMIT} lowercase words or short phrases someone could later use to ask about that message by meaning (synonyms, category names, paraphrases), beyond its own words}]} with one entry for each indexBacklog item. The terms only help find the original message later and are never shown as facts.`;
+    const indexQuestion = `For each indexBacklog item, give one concepts entry {"source": indexBacklog item id, "terms": up to ${CONCEPT_TERMS_LIMIT} lowercase words or short phrases someone could later use to ask about that message by meaning (synonyms, category names, paraphrases), beyond its own words}. The terms only help find the original message later and are never shown as facts. ${taskFields('{"concepts": [those entries]}')}`;
     /** Rule 11 write-side indexing (Part 21 §6): meaning terms for messages summarized before terms
      * existed, recorded beside the summaries. The summary frontier does not move, so nothing is
      * compacted and no Rule 110 disclosure is owed. Each source is offered here at most
@@ -9543,7 +9566,17 @@ export function createJournalWorker(journal: ReturnType<typeof openPreviewJourna
       // so its packet names the same tool-bearing capabilities and constraints.
       const session = ports.sessionWork !== undefined && ports.sessionRoute?.(id) === true;
       const tools = session || ports.toolRoute?.(id) === true;
-      const context = JSON.stringify({ now: isoMinute(now), zone, today: localStamp(now, zone).slice(0, 10), obligation,
+      // Plan #510: the operator's own earlier words, so work about what they told you can be done from what they told
+      // you. The live deferral "which three of the things I have told you matter most" got a packet with none of it, and
+      // the replayed work step (cint-L49 obligation:commitment:3, claude-sonnet-5) answered "continue: this turn's context
+      // does not include the broader history" both times. Bounded; omitted only when the packet would not fit.
+      const latest = summaryFor(Number.MAX_SAFE_INTEGER);
+      const memory = { ...(latest ? { summary: clip(clean(redact(latest.text).text, true, latest.through), OBLIGATION_SUMMARY_CHARS) } : {}),
+        operatorMessages: journal.view.order.filter(turn => verifiedOperatorTurn(journal.view, turn) && !probeTurn(journal.view, turn)
+          && turn.update > (latest?.through ?? -1)).slice(-OBLIGATION_MEMORY_MESSAGES)
+          .map(turn => ({ date: dated(turn), text: clip(clean(redact(turn.text).text, true, turn.id), OBLIGATION_MEMORY_MESSAGE_CHARS) })) };
+      const packetWith = (withMemory: boolean) => JSON.stringify({ now: isoMinute(now), zone, today: localStamp(now, zone).slice(0, 10), obligation,
+        ...(withMemory ? { memory } : {}),
         ...(work?.note && work.waitsOn === undefined ? { lastProgress: clean(redact(work.note).text, true) } : {}),
         // A reassessment of waiting work sees what it waited for and every verified operator message since.
         ...(work?.waitsOn !== undefined && work.note ? { waitingFor: { waitsOn: work.waitsOn, need: clean(redact(work.note).text, true),
@@ -9552,6 +9585,7 @@ export function createJournalWorker(journal: ReturnType<typeof openPreviewJourna
             .map(turn => ({ date: dated(turn), text: clip(clean(redact(turn.text).text, true, turn.id), 1000) })) } : {}),
         directives: openDirectives(journal.view).map(({ id, note }) => ({ id, quote: clean(redact(note.quote).text, true, note.source) })),
         governingConstraints: governingConstraints(tools), capabilities: previewCapabilities(tools) });
+      const full = packetWith(true), context = Buffer.byteLength(full) <= journal.view.limits.maxBytes ? full : packetWith(false);
       if (Buffer.byteLength(context) > journal.view.limits.maxBytes) return false;
       const question = tools ? OBLIGATION_WORK_QUESTION_TOOLS : OBLIGATION_WORK_QUESTION;
       // A session step carries its task in the session's own delivered text, not a provider
