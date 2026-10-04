@@ -157,8 +157,8 @@ be observed, is interrupted, or ends without a result is uncertain, never report
 
 **Rule — a delegated session runs only under its own reviewed grant and the execution floors.**
 Rules 26, 60, 61, 75, 103 and 114; **checks:** `tests/assembly/production-codex-provider.test.ts`,
-`tests/assembly/production-provider-subscription.test.ts`, `tests/assembly/session-work-host.test.ts`
-and `tests/assembly/production-session-work.test.ts`. The path exists only when the operator has
+`tests/assembly/production-provider-subscription.test.ts`, `tests/assembly/session-work-host.test.ts`,
+`tests/assembly/production-session-work.test.ts` and P15-NF-05. The path exists only when the operator has
 approved an activation record for the doorway's own session framing, resolved from the same sealed
 authority as every other activation. That record binds the exact session policy — the harness's
 launch flags on the exact model, the admission hook it is launched with, the step limits, the exit
@@ -184,7 +184,8 @@ the step not complete.
 **Rule — a session keeps its full tool set, and every tool call passes the admission hook before
 dispatch.** Rules 1, 30, 60, 114 and the purpose's ability-preserving checkpoint direction;
 **checks:** `tests/preview/session-admission.test.ts`, `tests/preview/admission-gate.test.ts`,
-`tests/assembly/production-session-driver.test.ts` and `tests/e2e/session-work-live.test.ts`.
+`tests/assembly/production-session-driver.test.ts`, `tests/e2e/session-work-live.test.ts` and
+P15-NF-12.
 Neither harness loses a tool to satisfy a safeguard: each session is launched with the same
 PreToolUse/PostToolUse admission hook as the tool turn (Claude through its settings, Codex through
 its per-invocation hook configuration, trusted for that invocation because it is the runner's own
@@ -209,7 +210,7 @@ service, so a shell cannot read a login home's credential or send through one. E
 recorded beside the working scope, never inside it.
 
 **Rule — a session step's spend bound is a reserved call liability, enforced before every model
-call.** Rules 60, 61 and 75; **checks:** the same cases. One step at a time runs under a finite
+call.** Rules 60, 61 and 75; **checks:** the same cases and P15-NF-30. One step at a time runs under a finite
 wall-clock deadline, a finite result-size bound and a finite per-launch step ceiling. Its edge
 reserves the step's whole model-call liability against the journal's call allowance before the
 child exists, and the route is taken only when the allowance can hold that liability on top of the
