@@ -83,7 +83,10 @@ it('on the tools route the review packet is route-true, and the same two sides h
   for (const [input, output] of [['call7-input.json', 'call7-review-tools-route-new-guide.json'],
     ['call8-input.json', 'call8-review-tools-route-decline-new-guide.json']] as const) {
     const envelope = JSON.parse(read(input)) as { messages: { content: string }[] };
-    expect(envelope.messages[0]!.content, input).toBe(replyReviewQuestion(flagged));
+    // Plan #491 changed only the answer-slot wording of the review question (the flat answer protocol); every rule,
+    // guide and packet line below is still the recorded one.
+    expect(envelope.messages[0]!.content.replace('Return inside conclusion.value exactly one line', 'Return as "answer" exactly one line')
+      .replace('put any longer reasoning in reason.value.', 'put any longer reasoning in reasoning.'), input).toBe(replyReviewQuestion(flagged));
     const packet = (JSON.parse(envelope.messages[1]!.content) as { packet: { capabilities: unknown; governingConstraints: unknown;
       obligationDecision: string; candidateReply: string; sources: { id: string; text: string }[];
       declaredObligations: { capabilities: unknown; toolAttempts: unknown } } }).packet;
