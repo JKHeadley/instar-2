@@ -478,3 +478,39 @@ it('refuses changed identity and protects named sessions from stop', () => {
   expect(value(protectedDriver.stop())).toEqual([]);
   expect(f.calls.filter(row => row[0] === 'kill-session')).toHaveLength(0);
 });
+
+it.each(['claude-code', 'codex-cli'] as const)('an admitted %s session launches with every tool, the admission hook and the model-dispatch checkpoint', framework => {
+  const f = fixture(framework);
+  const toolAdmission = { command: (claim: string, phase: 'pre' | 'post') => `/node /repo/hook.mjs ${phase} /state/${claim}`, timeoutSeconds: 600 };
+  const modelGate = (claim: string) => `http://127.0.0.1:4100/${'a'.repeat(32)}/${claim}`;
+  const driver = createProductionSessionDriver({ ...f.config, confinement: 'admitted', toolAdmission, modelGate });
+  value(driver.launch({ operation: 'op', claim: 'topic', artifact: 'sha256:test', incarnation: 'inc', workingScope: '/work', handles: [] }));
+  const spawned = f.calls.find(row => row[0] === 'new-session')!;
+  if (framework === 'claude-code') {
+    // Every tool stays (no permission prompt); the settings install the hook for every tool, before and after.
+    expect(spawned).toContain('--dangerously-skip-permissions');
+    const settings = JSON.parse(spawned[spawned.indexOf('--settings') + 1]!);
+    expect(settings.hooks.PreToolUse).toEqual([{ matcher: '*', hooks: [{ type: 'command', command: '/node /repo/hook.mjs pre /state/topic', timeout: 600 }] }]);
+    expect(settings.hooks.PostToolUse[0].hooks[0].command).toBe('/node /repo/hook.mjs post /state/topic');
+    // No background model traffic, and every model call the session makes goes to this claim's checkpoint.
+    expect(spawned).toContain('DISABLE_NON_ESSENTIAL_MODEL_CALLS=1');
+    expect(spawned).toContain(`ANTHROPIC_BASE_URL=${modelGate('topic')}`);
+  } else {
+    expect(spawned).toEqual(expect.arrayContaining(['--dangerously-bypass-approvals-and-sandbox', '--dangerously-bypass-hook-trust',
+      `hooks.PreToolUse=[{matcher='*',hooks=[{type='command',command='/node /repo/hook.mjs pre /state/topic',timeout=600}]}]`,
+      `hooks.PostToolUse=[{matcher='*',hooks=[{type='command',command='/node /repo/hook.mjs post /state/topic',timeout=600}]}]`,
+      'model_provider=instar-gate', `model_providers.instar-gate={name="OpenAI",base_url="${modelGate('topic')}/backend-api/codex",`
+        + 'wire_api="responses",requires_openai_auth=true}']));
+    expect(spawned).not.toContain('DISABLE_NON_ESSENTIAL_MODEL_CALLS=1');
+  }
+  // An admitted mode without its hook, an unconfined one with a hook, or a hook command that is not plain, is refused.
+  expect(() => createProductionSessionDriver({ ...f.config, confinement: 'admitted', modelGate })).toThrow(/admission hook/u);
+  expect(() => createProductionSessionDriver({ ...f.config, toolAdmission })).toThrow(/admission hook/u);
+  // An admitted session without its model-dispatch checkpoint, or an unconfined one with it, is refused too.
+  expect(() => createProductionSessionDriver({ ...f.config, confinement: 'admitted', toolAdmission })).toThrow(/model-dispatch checkpoint/u);
+  expect(() => createProductionSessionDriver({ ...f.config, modelGate })).toThrow(/model-dispatch checkpoint|admission hook/u);
+  const quoted = createProductionSessionDriver({ ...f.config, confinement: 'admitted', modelGate,
+    toolAdmission: { ...toolAdmission, command: () => "/node 'x'" } });
+  expect(quoted.launch({ operation: 'op2', claim: 'topic2', artifact: 'sha256:test', incarnation: 'inc2', workingScope: '/work', handles: [] }).kind)
+    .not.toBe('Success');
+});

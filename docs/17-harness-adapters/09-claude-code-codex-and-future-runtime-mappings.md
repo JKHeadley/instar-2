@@ -96,6 +96,15 @@ journal context ground the turn, every tool call, result and subagent edge is jo
 answer returns through the existing reply review and send paths. Ordinary standing-covered work
 requires no repeated human approval. Review and summary calls keep their text-only policy. A preview
 label grants no exception to these floors.
+A doorway whose harness has no model-call limit of its own (the Codex tool turn) runs the same hook
+through the host's admission checkpoint instead (Part fifteen §5 in docs/19-scheduled-work): every
+model call of the turn and its subagents takes the turn's one reserved allowance there, so no separate
+subagent budget is reserved; a delegation is first recorded as a durable child edge; every command runs
+under the turn's own confined sandbox profile, with no network and so no egress checkpoint; and a
+consequential tool passes the checkpoint's effect owner, which admits only an operation the installed
+profile registers exactly. That owner consults no effect-policy grant, so on this route an operator
+grant does not admit a consequential tool, and each refuses by default. The web-read host rule above
+holds on this route too. A turn without the checkpoint never sends a call to it.
 
 **Rule — tools are on by default under the operator's recorded grant, which names their scope and is
 withdrawn by the same record.** Rules 4, 60, 82 and 104, and the purpose's rules on nothing outward by
@@ -208,6 +217,46 @@ recorded as GRANTED in `SEAM-LEDGER.md` row 38, lands. A rollout file, composer 
 or terminal render is accepted only for the precise observation its authenticated structure and
 subject binding prove. Missing strong consumption or completion evidence keeps those capabilities
 unsupported.
+
+**Rule — the registered Codex model doorway answers only a tool-free completed turn, on a
+subscription.** Rules 26, 30, 41, 56, 75 and 115; **checks: P13-NF-08/16/45** and
+`tests/assembly/production-codex-provider.test.ts`. The doorway is selected by its registered id
+(`codex-cli-subscription`); its parser, its invocation policy, its model shape and its activation
+check live in the adapter module that owns the harness, and the registry carries exactly one entry
+per id. An answer turn is admitted only when all of the following hold on the exact recorded
+output: the terminal event is `turn.completed`; the stream carries one non-empty agent message
+within the declared output bound; the turn's reported output tokens are within the policy ceiling;
+every completed item is an agent message or reasoning; and no line of the stream was unreadable.
+Because the harness always has a shell, a tool-free answer cannot be a launch flag: a completed
+turn that ran a command, applied a patch or called a tool is refused rather than answered from a
+run its answer does not account for. A `turn.failed` event is the provider's own reason and is
+recorded as a refusal with that reason; a stream with no terminal event, an unreadable line, or a
+contradiction between the stream and the process exit is retained as uncertain and never retried
+here. The invocation passes no API key and sets none, and the environment it passes is closed to
+everything except the path, the home and the login home.
+
+**Rule — which sign-in a Codex login home holds is observed, not inferred from an exit code.**
+Rules 26, 56, 75 and 103; **checks: P13-NF-16/23** and the same adapter case. `codex login status`
+exits zero for a subscription sign-in AND for an API-key sign-in, and states which only on standard
+error, which the host's bounded transport does not capture. The route therefore reads the exit code
+only as evidence that some sign-in exists, and takes the KIND from a narrow host observation of the
+login home that returns the sign-in class and never any token, key or account value. Anything but
+the subscription class — an API key, no login, or an observation this host cannot make — refuses
+the route, at construction and again at every call. WHICH account is signed in is not observable
+from this harness at all: the account on the activation record is the operator's assertion, the
+route's source strength is an attestation, and no surface may present it as an observed account.
+The configuration digest the profile inspection returns is a change detector over the host's
+reviewed policy state, not an observation of this harness's own managed policy, which stays
+unobserved and is declared as an accepted residual.
+
+**Rule — a session harness's startup menu is the operator's, and is removed at setup rather than
+answered.** Rules 59, 103 and 115; **checks: P13-NF-16** and
+`tests/e2e/session-work-live.test.ts`. A Codex session launched in a directory its login home does
+not already trust shows a directory-trust menu before its prompt. The session driver classifies a
+startup menu and refuses the launch rather than choosing for the operator, so this is an enumerated
+silent-stop class with a setup remedy, not a runtime decision: the host declares its own scratch
+work scope trusted in the session's login home when it creates it. No adapter may answer a startup
+menu on the operator's behalf.
 
 **Rule — a future adapter arrives through declarations and evidence.** Rules 30, 44, 49 and 115;
 **checks: P13-NF-08/45**. The builder adds a registered package, exact assembly binding,

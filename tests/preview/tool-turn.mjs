@@ -9,7 +9,8 @@ import { chmodSync, existsSync, lstatSync, mkdirSync, readdirSync, readFileSync,
 import { dirname, join, relative } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { SUBSCRIPTION_SUBAGENT_TYPE, SUBSCRIPTION_TOOL_LIMITS, SUBSCRIPTION_TOOL_NAMES, SUBSCRIPTION_TOOLS_SYSTEM_PROMPT } from '../../src/assembly/production-provider.js';
-import { toolTrace } from './tool-admission.mjs';
+import { nestedSessionWorkClose } from '../../src/assembly/production-session-work.js';
+import { shellSandboxProfile, toolTrace } from './tool-admission.mjs';
 import { readEgressRecord, startEgressProxy } from './egress-proxy.mjs';
 
 export const TOOL_TURNS_DIRECTORY = 'tool-turns';
@@ -61,6 +62,33 @@ export function attachScratch(dir, name = `itt-${randomBytes(6).toString('hex')}
   chmodSync(mount, 0o700);
   return realpathSync(mount);
 }
+/** The fixed size of the delegated session's volume (Rule 60). Every byte a session step's tools write (its workspace
+ * and its shells' temporary files) lands on it, so session work can never take more than this from the disk that holds
+ * the journal, however many files it writes. */
+export const SESSION_VOLUME_BYTES = 2 * 1024 * 1024 * 1024;
+/** Mounts the delegated session's persistent volume at `<root>/<name>` (a sparse disk image beside it, created once and
+ * kept, so the workspace persists across steps and restarts) and returns its real path. Already mounted, it is reused.
+ * `bytes` exists so a test can prove the bound with a small volume. */
+export function attachSessionVolume(root, { bytes = SESSION_VOLUME_BYTES, name = 'session-work' } = {}) {
+  const real = realpathSync(root), mount = join(real, name), image = join(real, `${name}.sparseimage`);
+  mkdirSync(mount, { recursive: true, mode: 0o700 });
+  const mounted = () => { try { return lstatSync(mount).dev !== lstatSync(real).dev; } catch { return false; } };
+  if (!mounted()) {
+    let created = true;
+    try { lstatSync(image); } catch { created = false; }
+    if (!created) execFileSync(HDIUTIL, ['create', '-quiet', '-size', `${String(Math.ceil(bytes / 1048576))}m`, '-type', 'SPARSE', '-fs', 'HFS+',
+      '-volname', 'instar-session-work', image], { stdio: 'ignore', timeout: 60000 });
+    execFileSync(HDIUTIL, ['attach', '-quiet', '-nobrowse', '-noautoopen', '-owners', 'on', '-mountpoint', mount, image],
+      { stdio: 'ignore', timeout: 60000 });
+    if (!mounted()) throw Error('preview: the session volume did not mount');
+  }
+  chmodSync(mount, 0o700);
+  return realpathSync(mount);
+}
+/** Unmounts the session volume (a test's cleanup; the runner keeps it mounted). */
+export function detachSessionVolume(mount) {
+  try { execFileSync(HDIUTIL, ['detach', '-quiet', '-force', mount], { stdio: 'ignore', timeout: 60000 }); } catch { /* checked by the caller */ }
+}
 /** Unmounts a directory's scratch volume and removes its mount point, keeping its image (and so its files). Returns false
  * when the volume is still mounted afterwards (the next attach or a later prune retries). */
 export function unmountScratch(dir) {
@@ -79,6 +107,10 @@ export function detachScratch(dir) {
   return true;
 }
 
+/** The Claude doorway's tool-turn admission: its harness bounds model turns itself (`--max-turns`) and sandboxes Bash.
+ * A doorway whose admission names a `harness` has no such limit of its own, so its turns run through the host's
+ * admission checkpoint (admission-gate.mjs): every model call takes the turn's reserved allowance before dispatch. */
+export const CLAUDE_TOOL_ADMISSION = Object.freeze({ maxCalls: SUBSCRIPTION_TOOL_LIMITS.maxToolCalls, harness: null, confinedShell: false });
 /** A turn directory's name: its operation's digest and its attempt (the journal's `id#attempt` key, filesystem-safe). */
 export const toolTurnSlug = (operation, attempt) => `${createHash('sha256').update(operation, 'utf8').digest('hex').slice(0, 16)}-${String(attempt)}`;
 
@@ -88,9 +120,11 @@ export const toolTurnSlug = (operation, attempt) => `${createHash('sha256').upda
  * the turn gets its own fresh volume in its turn directory. `children` is the number of subagents this turn's
  * reservation covers; `mcp` is the root's MCP configuration ({servers, reads}) or null. The servers' launch configuration
  * is written into the state directory, which no tool can read. The config also carries the effect doorway's policy and
- * the register's irreversible term (Part Twelve; absent policy: nothing outward by default). */
+ * the register's irreversible term (Part Twelve; absent policy: nothing outward by default). `admission` is the doorway's
+ * tool-turn layout: its call slots, the harness the hook stops past them, and whether the hook confines the shell; `gate`
+ * is the host checkpoint's address for this turn when the doorway's harness runs through it (w4-sessiondriver). */
 export function prepareToolTurn({ root, operation, attempt, operations, effectPolicy, irreversibleTerm, children = 0, mcp = null,
-  node = process.execPath, scratch = attachScratch, volume = null, authority = 'unrecorded' }) {
+  node = process.execPath, scratch = attachScratch, volume = null, authority = 'unrecorded', admission = CLAUDE_TOOL_ADMISSION, gate = null }) {
   const base = join(realpathSync(root), TOOL_TURNS_DIRECTORY);
   mkdirSync(base, { recursive: true, mode: 0o700 });
   const slug = toolTurnSlug(operation, attempt);
@@ -105,8 +139,13 @@ export function prepareToolTurn({ root, operation, attempt, operations, effectPo
   const workspace = realpathSync(join(mounted, 'ws')), tmp = realpathSync(join(mounted, 'tmp')), home = realpathSync(join(mounted, 'home'));
   const stateDirectory = realpathSync(join(turn, 'state'));
   const servers = mcp ? Object.keys(mcp.servers) : [];
-  writeFileSync(join(stateDirectory, 'config.json'), JSON.stringify({ workspace, tmp, maxCalls: SUBSCRIPTION_TOOL_LIMITS.maxToolCalls,
+  const shellProfile = admission.confinedShell ? join(stateDirectory, 'shell.sb') : null;
+  if (shellProfile) writeFileSync(shellProfile, shellSandboxProfile({ workspace, tmp }), { mode: 0o600 });
+  // A gated turn (`gate`, the checkpoint's address for this turn) has the harness's full tool set behind the checkpoint:
+  // delegation becomes a child edge, network reads are admitted, consequential tools pass the effect owner.
+  writeFileSync(join(stateDirectory, 'config.json'), JSON.stringify({ workspace, tmp, maxCalls: admission.maxCalls,
     maxWriteBytes: SUBSCRIPTION_TOOL_LIMITS.maxWriteBytes, operations: [...operations],
+    ...(shellProfile ? { shellProfile } : {}), ...(gate ? { gate, delegation: true, networkReads: true } : {}),
     children: { max: children, type: SUBSCRIPTION_SUBAGENT_TYPE }, mcpReads: mcp ? [...mcp.reads] : [], authority,
     ...(effectPolicy === undefined ? {} : { effectPolicy }), ...(irreversibleTerm === undefined ? {} : { irreversibleTerm }) }), { mode: 0o600 });
   let mcpTurn;
@@ -539,13 +578,16 @@ export const toolChildrenFit = (view, unreserved = 0) => Math.max(0, Math.min(SU
 export async function runToolTurn({ journal, root, id, prepared, promptLimit, deniedRoots, operations, effectPolicy, irreversibleTerm, invoke,
   fallback, now, redactText, authority = 'unrecorded', mcp = null, stopped = () => false, scratch = attachScratch, detach = detachScratch, unmount = unmountScratch,
   conversation = `${String(journal.view.genesis?.bot)}:${String(journal.view.genesis?.chat)}`, session = null,
-  completed = result => result?.state === 'complete', egress = undefined, networkTools = networkToolReads }) {
+  completed = result => result?.state === 'complete', egress = undefined, networkTools = networkToolReads,
+  system = SUBSCRIPTION_TOOLS_SYSTEM_PROMPT, admission = CLAUDE_TOOL_ADMISSION, gate = null, owner = 'this machine' }) {
   const extra = SUBSCRIPTION_TOOL_LIMITS.maxTurns - 1;
   const refuse = reason => { journal.append({ kind: 'tool-turn', phase: 'refused', id, reason, at: now() }); return fallback(); };
   if (!toolTurnFits(journal.view)) return refuse('call cap');
-  if (Buffer.byteLength(prepared) + Buffer.byteLength(SUBSCRIPTION_TOOLS_SYSTEM_PROMPT) + TOOL_NOTICE_MAX_BYTES > promptLimit) return refuse('prompt size');
+  if (Buffer.byteLength(prepared) + Buffer.byteLength(system) + TOOL_NOTICE_MAX_BYTES > promptLimit) return refuse('prompt size');
   const attempt = journal.view.toolTurns?.invocations ?? 0;
-  const children = toolChildrenFit(journal.view);
+  // A checkpointed harness's subagents spend from the turn's one allowance at the checkpoint (every model call of the
+  // tree passes it), so no separate subagent budget is reserved for it.
+  const children = admission.harness ? 0 : toolChildrenFit(journal.view);
   // Rule 60: the conversation's kept workspace, or (past the root's bound) a fresh one-turn volume and no kept session.
   const space = conversationWorkspace(root, conversation);
   const kept = space.directory !== null;
@@ -560,10 +602,22 @@ export async function runToolTurn({ journal, root, id, prepared, promptLimit, de
     delegation: { children, turnsEach: SUBSCRIPTION_TOOL_LIMITS.childMaxTurns, type: SUBSCRIPTION_SUBAGENT_TYPE, authority },
     ...(mcp ? { mcp: { servers: Object.keys(mcp.servers), reads: mcp.reads.length, digest: mcp.digest } } : {}),
     workspace: { key: space.key, kept }, at: now() });
-  let turn = null, result, failure = null, plan = null, volume = null, notice = '', checkpoint = null;
+  let turn = null, result, failure = null, plan = null, volume = null, notice = '', checkpoint = null, claim = null, gated = null;
   try {
+    // A harness with no model-call limit of its own runs only through the checkpoint: no checkpoint, no tool turn.
+    if (admission.harness && !gate) throw Error('preview: this tool turn needs the host admission checkpoint');
+    if (admission.harness) claim = `tool-turn-${createHash('sha256').update(id, 'utf8').digest('hex').slice(0, 16)}-${String(attempt)}`;
     turn = prepareToolTurn({ root, operation: id, attempt, operations, effectPolicy, irreversibleTerm, children, mcp, scratch,
-      volume: kept ? space : null, authority });
+      volume: kept ? space : null, authority, admission, ...(claim ? { gate: gate.base(claim) } : {}) });
+    if (claim) {
+      // The turn's own edge: the parent its delegations hang from (its durable record is the journal's reserved row).
+      const openedAt = now();
+      gate.open(claim, { framework: 'codex-cli', allowance: SUBSCRIPTION_TOOL_LIMITS.maxTurns, edge: { type: 'SessionWorkEdge', schemaVersion: 1,
+        id: `tool-turn:${id}:${attempt}`, parent: id, child: `tool-turn:${id}`, scope: turn.workspace, owner, authority: 'the reviewed tools activation',
+        budget: { steps: 1, deadline: openedAt + SUBSCRIPTION_TOOL_LIMITS.timeout, maxResultBytes: 16384, calls: SUBSCRIPTION_TOOL_LIMITS.maxTurns, tokens: null },
+        exitTest: 'the turn returned one admitted answer', placement: `machine:${owner}`, transport: 'codex exec on this machine',
+        resultDestination: `answer of ${id}`, openedAt } });
+    }
     if (kept) {
       volume = reconcileWorkspace({ mounted: turn.scratch, workspace: turn.workspace, tmp: join(turn.scratch, 'tmp'), used, quotes });
       notice = workspaceNotice(turn.workspace, volume);
@@ -581,13 +635,23 @@ export async function runToolTurn({ journal, root, id, prepared, promptLimit, de
         turns: plan.turn, open: true, at: now() });
     }
     // The shell's network checkpoint lives exactly as long as the turn: started here, stopped below whatever the outcome.
-    const attached = await attachEgress(turn, egress, networkTools());
+    // A confined shell has no network at all (its profile denies it), so it gets none.
+    const attached = admission.confinedShell ? null : await attachEgress(turn, egress, networkTools());
     checkpoint = attached?.proxy ?? null;
     result = await invoke({ scratch: turn.scratch, workspace: turn.workspace, stateDirectory: turn.stateDirectory, hook: turn.hook, deniedRoots,
       ...(turn.mcp ? { mcp: turn.mcp } : {}), ...(plan ? { session: { id: plan.id, resume: plan.resume } } : {}),
-      ...(attached ? { egress: attached.egress } : {}) }, notice);
+      ...(attached ? { egress: attached.egress } : {}), ...(claim ? { gate: gate.base(claim) } : {}) }, notice);
   } catch (error) { failure = error; }
   if (checkpoint) await checkpoint.close();
+  if (claim) {
+    // Nothing the turn left running can dispatch another call; a delegation that never returned settles as uncertain.
+    gated = gate.close(claim);
+    for (const nested of gated?.openDelegations ?? []) {
+      journal.append({ kind: 'session-work', record: nestedSessionWorkClose(nested, 'uncertain', 'the tool turn ended before the delegated agent returned',
+        nested.parent, null, now()), at: now() });
+      gate.settle(claim, nested.id);
+    }
+  }
   const trace = turn ? readToolTrace(turn.stateDirectory) : { calls: [], children: [], consistent: true };
   const egressRecord = turn && checkpoint ? readEgressRecord(turn.stateDirectory) : null;
   const ended = stopped() ? 'cancelled' : 'unknown';
@@ -617,16 +681,21 @@ export async function runToolTurn({ journal, root, id, prepared, promptLimit, de
   pruneToolTurns(root, TOOL_TURNS_KEPT, detach, openToolTurnSlugs(journal.view));
   if (failure) throw failure;
   if (!trace.consistent) throw Error('preview: a tool ran without its admission record');
+  // A model call refused at the allowance, or a delegation that never returned: the answer cannot account for the turn.
+  if (gated?.refused) throw Error('preview: a model call past the tool turn\'s reserved allowance was refused');
+  if (gated && gated.openDelegations.length > 0) throw Error('preview: a delegated agent did not return before the tool turn ended');
   return { result, turn, trace, session: plan };
 }
 
 /** Truthful status lines for the operator's status reply (Rule 84): which tools exist, and what they did.
- * Without a tool activation the briefing already says there are no tools; `off` names why the default did not turn them on. */
-export function toolStatusLines(view, enabled, off = null) {
+ * Without a tool activation the briefing already says there are no tools; `off` names why the default did not turn them on.
+ * `gated` is a doorway whose harness runs every model call and consequential tool through the host checkpoint. */
+export function toolStatusLines(view, enabled, off = null, gated = false) {
   if (!enabled) return off ? [`Tools: off (${off}); answers are text only.`] : [];
   const stats = view.toolTurns ?? { invocations: 0, reservedCalls: 0, refusedCap: 0, toolCalls: 0, toolRefusals: 0, inconsistent: 0, open: [] };
   const sessions = stats.sessions;
-  return [`Tools: the harness's full built-in set (${SUBSCRIPTION_TOOL_NAMES.length} tools, each call decided at the admission hook) and the `
+  return [gated ? 'Tools: a confined shell and patches in this conversation\'s private workspace, web search, subagents and the login\'s '
+      + 'installed MCP tools, every model call and consequential tool through the admission checkpoint.' : `Tools: the harness's full built-in set (${SUBSCRIPTION_TOOL_NAMES.length} tools, each call decided at the admission hook) and the `
       + `root's MCP servers, in this conversation's private workspace (kept between turns, ${String(TOOL_SCRATCH_BYTES / 1048576)} MB); shell `
       + 'sandboxed, its network through the turn\'s checkpoint (reads of public hosts admitted, writes refused at the effect doorway); '
       + 'web reads only; subagents may delegate within the turn\'s budget; consequential effects go through the effect doorway.',

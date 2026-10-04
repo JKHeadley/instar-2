@@ -26,6 +26,11 @@
 //   goes to the doorway too, so that marking decides it; otherwise it is ordinary under the operator's recorded tools grant.
 // - A web read of a loopback, private, link-local or local-name host is refused: it is not "the world" but this machine
 //   and its network, which the shell's sandbox already closes.
+// - A checkpointed route (a delegated session step, or a Codex tool turn: `config.gate` set) has the host's admission
+//   checkpoint (admission-gate.mjs) as its live authority: a delegation is recorded there as a durable child edge, a
+//   consequential tool passes its effect owner with the exact operation and input, and every shell command runs under
+//   the step's own confined sandbox profile (`config.shellProfile`). A route with no checkpoint refuses a delegation of
+//   that kind, and its consequential tools go to the effect doorway as above.
 import { basename, dirname, join, resolve, sep } from 'node:path';
 import { isIP } from 'node:net';
 import { admitEffect, decodeEffectPolicy, DEFAULT_EFFECT_POLICY, toolEffectProposal, UNAVAILABLE_EFFECT_POLICY } from './effect-doorway.mjs';
@@ -57,12 +62,67 @@ export function toolShellPrefix(tmp, egress = null) {
     + `npm_config_cafile=${ca} npm_config_update_notifier=false GIT_CONFIG_NOSYSTEM=1 GIT_ATTR_NOSYSTEM=1${developer ? ` DEVELOPER_DIR=${developer}` : ''}`
     + ` PATH=${[developer ? `${developer}/usr/bin` : null, path ?? null, '$PATH'].filter(Boolean).join(':')}; `;
 }
+/** System locations a confined shell reads to run at all (the tool turn's runtime list, plus the installed tool
+ * prefixes and the command-line developer tools that `python3` and `git` resolve through). Nothing under a home,
+ * a mounted volume, a login profile or the runner root is on it. */
+export const SHELL_RUNTIME_READS = Object.freeze(['/bin', '/sbin', '/usr/bin', '/usr/sbin', '/usr/lib', '/usr/libexec', '/usr/share',
+  '/usr/local', '/opt/homebrew', '/System', '/Library/Developer/CommandLineTools', '/private/var/select', '/private/etc', '/dev']);
+const SBPL_PATH = /^\/[A-Za-z0-9_./@-]+$/u;
+/**
+ * The confined shell's macOS sandbox profile (`shell-sandbox-v1`), for a harness whose own sandbox is not used: a
+ * delegated session, and the Codex tool turn (`codex exec` cannot confine reads itself). File contents are readable
+ * only from the workspace, its temporary directory and the runtime list; writes reach only those two; there is no
+ * network, no signal to any other process, and no keychain service. A path's existence stays visible (metadata),
+ * its contents do not. Every `Bash` call is rewritten to run under it (`sandboxedShellCommand`).
+ */
+export function shellSandboxProfile({ workspace, tmp }) {
+  if (![workspace, tmp].every(path => typeof path === 'string' && SBPL_PATH.test(path)))
+    throw Error('tool admission: confined shell paths must be absolute and plain');
+  const subpaths = paths => paths.map(path => `(subpath "${path}")`).join(' ');
+  return ['(version 1)', '(allow default)', '(deny network*)',
+    '(deny file-read-data (subpath "/"))', `(allow file-read-data (literal "/") ${subpaths([...SHELL_RUNTIME_READS, workspace, tmp])})`,
+    '(deny file-write* (subpath "/"))',
+    `(allow file-write* ${subpaths([workspace, tmp])} (literal "/dev/null") (literal "/dev/zero") (regex #"^/dev/tty") (regex #"^/dev/fd/"))`,
+    '(deny signal)', '(allow signal (target self))',
+    '(deny mach-lookup (global-name "com.apple.SecurityServer") (global-name "com.apple.securityd.xpc") (global-name "com.apple.security.agent"))',
+    ''].join('\n');
+}
+const quoted = text => `'${String(text).replaceAll("'", "'\\''")}'`;
+/** One shell command, run under the confined profile with a clean environment: no inherited variable (a harness
+ * token or socket) reaches it, `TMPDIR` is the step's own, and `ulimit -f` bounds each file it writes. */
+export function sandboxedShellCommand(command, { profile, workspace, tmp }) {
+  if (![profile, workspace, tmp].every(path => typeof path === 'string' && SHELL_SAFE_PATH.test(path)))
+    throw Error('tool admission: confined shell paths absent');
+  return `/usr/bin/sandbox-exec -f ${profile} /usr/bin/env -i PATH=${SHELL_RUNTIME_READS.filter(p => /bin$/u.test(p)).join(':')}`
+    + `:/usr/local/bin:/opt/homebrew/bin HOME=${workspace} TMPDIR=${tmp} /bin/zsh -c ${quoted(`ulimit -f 65536; ${command}`)}`;
+}
+/** The paths a Codex `apply_patch` call names, or null when its text is not a patch this reads. */
+export function patchPaths(text) {
+  if (typeof text !== 'string' || !text.startsWith('*** Begin Patch')) return null;
+  const paths = [];
+  for (const line of text.split('\n')) {
+    const match = /^\*\*\* (?:Add File|Update File|Delete File|Move to): (.+)$/u.exec(line);
+    if (match) paths.push(match[1].trim());
+  }
+  return paths.length > 0 ? paths : null;
+}
+/** Tools that start another agent thread (a subagent): Claude Code's, and Codex 0.156.1's as its hook names it
+ * (recorded live 2026-10-03, fixtures/codex-capabilities-2026-10-03). Each one becomes a durable child edge first. */
+export const DELEGATION_TOOLS = Object.freeze(['Agent', 'Task', 'spawn_agent', 'collaborationspawn_agent']);
+/** The harness's wait on its own subagents: its completed outcome is the evidence an asynchronous spawn's edge closes on. */
+export const DELEGATION_WAIT_TOOLS = Object.freeze(['collaborationwait_agent']);
+/** Codex's web search, as its hook names it (`webrun`): admitted only on a route that admits network reads. */
+export const CODEX_NETWORK_READ_TOOLS = Object.freeze(['webrun']);
+/** On a checkpointed route, the harness's own planning, output-reading and subagent-handling tools: no effect outside
+ * the step. A subagent these address already has its edge. */
+export const SESSION_BOOKKEEPING_TOOLS = Object.freeze(['TodoWrite', 'update_plan', 'BashOutput', 'KillShell', 'collaborationwait_agent',
+  'collaborationsend_input', 'collaborationclose_agent', 'collaborationresume_agent']);
 export const FILE_TOOLS = Object.freeze(['Read', 'Write', 'Edit', 'NotebookEdit']);
 const SEARCH_TOOLS = Object.freeze(['Glob', 'Grep']);
 /** The subagent tool under both names the pinned harness accepts. */
 export const SUBAGENT_TOOLS = Object.freeze(['Agent', 'Task']);
 /** Tools that, if they ever reached the hook, would act outward: each is the effect doorway's, named by its effect. */
-const OUTWARD_TOOLS = Object.freeze({ SendMessage: 'send', PushNotification: 'send', RemoteTrigger: 'network-write',
+export const OUTWARD_TOOLS = Object.freeze({ SendMessage: 'send', PushNotification: 'send', RemoteTrigger: 'network-write',
   DesignSync: 'network-write', CronCreate: 'schedule', CronDelete: 'schedule', ScheduleWakeup: 'schedule', Monitor: 'unsandboxed' });
 /** The harness's own bookkeeping: no effect outside the turn's process and workspace. */
 const BOOKKEEPING_TOOLS = Object.freeze(['ToolSearch', 'ListAgents', 'CronList', 'ReportFindings', 'TaskStop']);
@@ -268,7 +328,9 @@ export function admitEgress({ method, path, host = null, headers = {}, gitFetch 
  * every slot is taken); `fs` gives exists/realpath and, for a web read, `addresses(host)` (the host's resolved addresses,
  * or null when they could not be resolved); `child` is the subagent slot this call took (children.max + 1 once every slot
  * is taken); `now` (ms) checks a grant's expiry. Returns {decision, reason, kind?, doorway?, updatedInput?}: `doorway` is
- * present exactly when the call reached the effect doorway.
+ * present exactly when the call reached the effect doorway. On a checkpointed route (`config.gate`, with `shellProfile`,
+ * `delegation` and `networkReads`), `decision: 'gate'` (a delegation, an effect) is decided by the host checkpoint; the
+ * hook asks it before the call runs.
  */
 export function admitToolCall(call, config, n, fs, child = 1, now) {
   const tool = String(call?.tool_name ?? ''), input = call?.tool_input ?? {};
@@ -276,7 +338,8 @@ export function admitToolCall(call, config, n, fs, child = 1, now) {
   // Part Twelve: the doorway's whole decision rides the admission record (Rule 41), so status and the answer can report it.
   // A tool the doorway's own vocabulary does not name (sending, scheduling, a remote trigger, Monitor) proposes `tool:<kind>`,
   // which no default classifies, so it is classified worst-case on every test.
-  const effect = kindOf => { const proposal = toolEffectProposal(tool, input) ?? { effect: `tool:${kindOf}`, target: tool.slice(0, 256) },
+  const effect = kindOf => { if (typeof config.gate === 'string') return { decision: 'gate', kind: 'effect', reason: 'consequential: the effect owner decides' };
+    const proposal = toolEffectProposal(tool, input) ?? { effect: `tool:${kindOf}`, target: tool.slice(0, 256) },
     verdict = admitToolEffect(proposal, config, now);
     const doorway = { effect: verdict.effect, ...(verdict.target ? { target: verdict.target } : {}), tests: verdict.tests,
       disposition: verdict.disposition, ...(verdict.grant ? { grant: verdict.grant } : {}), ...(verdict.admits ? { admits: verdict.admits } : {}) };
@@ -302,10 +365,25 @@ export function admitToolCall(call, config, n, fs, child = 1, now) {
   if (tool === 'Bash') {
     const command = String(input.command ?? '');
     if (!command.trim()) return deny('empty command');
+    // A confined shell (`shellProfile` set) runs every command under the step's own sandbox profile, whatever the
+    // harness asked for; otherwise the harness's own sandbox bounds it and an unsandboxed request is an effect.
+    if (config.shellProfile) return { decision: 'allow', reason: 'confined command',
+      updatedInput: { ...input, command: sandboxedShellCommand(command, { profile: config.shellProfile, workspace: config.workspace, tmp: config.tmp }) } };
     if (input.dangerouslyDisableSandbox) return effect('unsandboxed');
     return { decision: 'allow', reason: 'sandboxed command',
       updatedInput: { ...input, command: toolShellPrefix(config.tmp, config.egress ?? null) + command } };
   }
+  if (tool === 'apply_patch') {
+    const patch = String(input.command ?? input.input ?? '');
+    const paths = patchPaths(patch);
+    if (paths === null) return deny('unreadable patch', 'scope');
+    const outside = paths.find(path => !inside(path));
+    if (outside !== undefined) return deny(`path outside the workspace: ${outside}`, 'scope');
+    if (Buffer.byteLength(patch) > config.maxWriteBytes) return deny(`patch larger than ${config.maxWriteBytes} bytes`, 'scope');
+    return { decision: 'allow', reason: 'ordinary in-workspace patch' };
+  }
+  if (CODEX_NETWORK_READ_TOOLS.includes(tool))
+    return config.networkReads === true ? { decision: 'allow', reason: 'network read', kind: 'network-read' } : deny(`network read ${tool} not admitted on this route`);
   if (tool === 'WebFetch') {
     // WebFetch only ever issues a GET; what it may reach is a public host.
     const target = webReadHost(input.url);
@@ -322,6 +400,9 @@ export function admitToolCall(call, config, n, fs, child = 1, now) {
     if (policyNames(config, toolEffectProposal(tool, input))) return effect('network');
     return { decision: 'allow', reason: 'web search', kind: 'network-read' };
   }
+  if (DELEGATION_TOOLS.includes(tool) && config.delegation === true)
+    return typeof config.gate === 'string' ? { decision: 'gate', kind: 'delegation', reason: 'delegation: recorded as a child edge first' }
+      : deny('delegation needs the admission checkpoint to record its edge; this route has none', 'delegation');
   if (SUBAGENT_TOOLS.includes(tool)) {
     // Rule 114: the turn or any of its subagents may delegate; every subagent, at any depth, takes a slot of the turn's one
     // reserved budget, so the reservation covers the whole tree.
@@ -342,7 +423,8 @@ export function admitToolCall(call, config, n, fs, child = 1, now) {
     return effect('mcp');
   }
   if (Object.hasOwn(OUTWARD_TOOLS, tool)) return effect(OUTWARD_TOOLS[tool]);
-  if (BOOKKEEPING_TOOLS.includes(tool)) return { decision: 'allow', reason: 'harness bookkeeping' };
+  if (BOOKKEEPING_TOOLS.includes(tool) || (SESSION_BOOKKEEPING_TOOLS.includes(tool) && config.delegation === true))
+    return { decision: 'allow', reason: 'harness bookkeeping' };
   if (WORKTREE_TOOLS.includes(tool)) {
     const path = input.path ?? input.worktree_path;
     if (path !== undefined && !inside(path)) return deny(`worktree outside the workspace: ${String(path)}`, 'scope');

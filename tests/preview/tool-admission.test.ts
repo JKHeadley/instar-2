@@ -99,6 +99,38 @@ it('decides every layer-A case of the spike through the real executable hook; sh
   expect(results).toEqual(cases.map(([label, want]) => [label, want]));
 });
 
+it('a checkpointed route sends consequential tools and delegations to its checkpoint; a route without one never does (cint-L45)', () => {
+  // w4-sessiondriver's checkpointed route (a delegated session step or a Codex tool turn) beside cint-L43's doorway route.
+  const { ws, tmp } = turn();
+  const fs = { exists: () => true, realpath: (p: string) => p };
+  const config = { workspace: ws, tmp, maxCalls: 5, maxWriteBytes: 10, operations: SINGLE_MACHINE_PROFILE.operations };
+  const call = (tool_name: string, tool_input: object, over: object = {}) => admitToolCall({ tool_name, tool_input }, { ...config, ...over }, 1, fs, 1, 0);
+  // No checkpoint: a delegation of the session kind is refused (nothing could record its edge), Codex's web search is not
+  // admitted, and a consequential tool reaches the effect doorway (never the checkpoint), which refuses it by default.
+  expect(call('collaborationspawn_agent', { message: 'x' }, { delegation: true })).toMatchObject({ decision: 'deny', kind: 'delegation' });
+  expect(call('webrun', { search_query: [] })).toMatchObject({ decision: 'deny' });
+  expect(call('mcp__x__y', {})).toMatchObject({ decision: 'deny', kind: 'mcp', doorway: { disposition: 'refused' } });
+  expect(call('TodoWrite', {})).toMatchObject({ decision: 'deny' });
+  // The other side: with the checkpoint named, a consequential tool and a delegation are sent to it (never allowed by
+  // category here), and a network read the route admits is allowed.
+  const gated = { gate: 'http://127.0.0.1:4100/x/claim', delegation: true, networkReads: true };
+  expect(call('mcp__x__y', {}, gated)).toMatchObject({ decision: 'gate', kind: 'effect' });
+  expect(call('SendMessage', { to: 'x', message: 'y' }, gated)).toMatchObject({ decision: 'gate', kind: 'effect' });
+  expect(call('Bash', { command: 'ls', dangerouslyDisableSandbox: true }, gated)).toMatchObject({ decision: 'gate', kind: 'effect' });
+  expect(call('Agent', { prompt: 'x' }, gated)).toMatchObject({ decision: 'gate', kind: 'delegation' });
+  expect(call('collaborationspawn_agent', { message: 'x' }, gated)).toMatchObject({ decision: 'gate', kind: 'delegation' });
+  expect(call('webrun', { search_query: [] }, gated)).toMatchObject({ decision: 'allow', reason: 'network read' });
+  expect(call('TodoWrite', {}, gated)).toMatchObject({ decision: 'allow', reason: 'harness bookkeeping' });
+  // A web read keeps cint-L43's host rule on the checkpointed route too: this machine's own address is never a web read.
+  expect(call('WebFetch', { url: 'http://127.0.0.1:4100/x/claim' }, gated)).toMatchObject({ decision: 'deny', kind: 'scope' });
+  // A confined shell runs every command under the step's own profile, whatever the harness asked for.
+  const confined = call('Bash', { command: 'ls', dangerouslyDisableSandbox: true }, { ...gated, shellProfile: `${ws}/shell.sb` });
+  expect(confined).toMatchObject({ decision: 'allow', reason: 'confined command' });
+  expect(confined.updatedInput.command).toContain(`/usr/bin/sandbox-exec -f ${ws}/shell.sb`);
+  expect(call('apply_patch', { input: `*** Begin Patch\n*** Add File: ${ws}/a.txt\n+x\n*** End Patch` }, { maxWriteBytes: 1000 })).toMatchObject({ decision: 'allow', reason: 'ordinary in-workspace patch' });
+  expect(call('apply_patch', { input: '*** Begin Patch\n*** Add File: /etc/a.txt\n+x\n*** End Patch' })).toMatchObject({ decision: 'deny', kind: 'scope' });
+});
+
 it('sends every consequential tool to the effect doorway, which refuses it by the four tests under the default policy', () => {
   expect(SINGLE_MACHINE_PROFILE.operations.some((op: string) => op.startsWith('tool:'))).toBe(false);
   const defaults = { operations: SINGLE_MACHINE_PROFILE.operations };

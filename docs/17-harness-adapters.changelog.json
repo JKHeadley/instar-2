@@ -1,5 +1,47 @@
 [
   {
+    "revision": 19,
+    "date": "2026-10-03",
+    "status": "draft",
+    "cause": {
+      "kind": "draft",
+      "note": "Integration cint-L45: w4-sessiondriver (built on cint-L41) merged onto cint-L44 after w4-retroduties and w4-dashboard. Revision 18 is the unit's own revision 4, renumbered. No constitution change."
+    },
+    "changes": [
+      {
+        "what": "§9 tool rule: a doorway whose harness has no model-call limit of its own (the Codex tool turn) runs the same admission hook through the host's admission checkpoint: its subagents spend the turn's one allowance there, its commands run under the confined sandbox profile with no network, and a consequential tool passes the checkpoint's effect owner, which consults no effect-policy grant and admits only an exactly registered operation; the web-read host rule holds on that route too.",
+        "why": "w4-sessiondriver (built on cint-L41) gated the Codex tool turn and delegated sessions through its checkpoint, while cint-L43 and cint-L44 replaced the turn's doorway with the four tests, the egress checkpoint and the subagent budget. The merged admission keeps each route's own authority and states where they differ, rather than leaving either rule silently overridden.",
+        "ref": "lanes/cint-L45-PROGRESS.md; lanes/w4-sessiondriver-PROGRESS.md; lanes/cint-L44-PROGRESS.md"
+      }
+    ]
+  },
+  {
+    "revision": 18,
+    "date": "2026-10-03",
+    "status": "draft",
+    "cause": {
+      "kind": "draft",
+      "note": "Unit w4-sessiondriver: the registered Codex model doorway, its subscription-only sign-in evidence, and the session harness's startup-menu stall class (plan rows #399/#401; Justin's 2026-10-03 10:45 re-grounding, pillar (b) any framework). No constitution change."
+    },
+    "changes": [
+      {
+        "what": "§9 gains the rule that the registered Codex model doorway answers only a tool-free completed turn: the terminal event, one agent message within bounds, every item an agent message or reasoning, no unreadable line; a completed turn that ran a command is refused, a failed turn carries the provider's own reason, and an unexplained outcome stays uncertain. The invocation passes and sets no API key.",
+        "why": "The harness always has a shell, so a tool-free answer cannot be a launch flag; it has to be enforced after the fact on the recorded stream. Codex was previously unsupported with no registered route, so a root configured for it could not answer at all.",
+        "ref": "src/assembly/production-codex-provider.ts; tests/assembly/production-codex-provider.test.ts; tests/preview/codex-recorded-frames.json; tests/e2e/codex-answer-live.test.ts; LIVE-PATH-PLAN.md rows #399, #401"
+      },
+      {
+        "what": "§9 gains the rule that which sign-in a Codex login home holds is observed through a narrow host reading of its sign-in CLASS, never inferred from an exit code, and that the signed-in account is not observable from this harness at all — so it stays an operator assertion with attestation strength, and the profile's configuration digest is named as a change detector rather than an observation of this harness's managed policy.",
+        "why": "`codex login status` exits zero for a subscription AND for an API key and states which only on standard error, which the host's bounded transport does not capture; without the class observation the subscription-only promise would rest on an exit code that cannot keep it.",
+        "ref": "src/assembly/production-codex-provider.ts; scripts/production-boot-io.mjs (codexAuthMode); tests/assembly/production-codex-provider.test.ts"
+      },
+      {
+        "what": "§9 gains the rule that a session harness's startup menu is an enumerated silent-stop class removed at setup — the host declares its own scratch work scope trusted in the session's login home — and is never answered on the operator's behalf.",
+        "why": "A Codex session launched in an untrusted directory shows a directory-trust menu before its prompt; the session driver correctly refuses a startup menu, so without the setup remedy a long work step could not start.",
+        "ref": "tests/e2e/session-work-live.test.ts; src/assembly/production-session-driver.ts (classifyPaneReadiness)"
+      }
+    ]
+  },
+  {
     "revision": 17,
     "date": "2026-10-03",
     "status": "draft",

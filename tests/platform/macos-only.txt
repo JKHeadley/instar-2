@@ -12,4 +12,6 @@ tests/preview/native-loop-replay.test.ts
 tests/preview/native-loop.test.ts
 tests/preview/self-host-tools.test.ts
 tests/preview/self-host.test.ts
+tests/preview/session-admission.test.ts
+tests/preview/session-volume.test.ts
 tests/types/shipped-clients.test.ts

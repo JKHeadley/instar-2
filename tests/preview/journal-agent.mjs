@@ -3,15 +3,16 @@
 // physical ports. The worker owns all durable conversation/effect transitions.
 import { createHash, randomBytes } from 'node:crypto';
 import { execFileSync } from 'node:child_process';
-import { existsSync, lstatSync, mkdirSync, readdirSync, readFileSync, realpathSync, renameSync, writeFileSync } from 'node:fs';
+import { chmodSync, existsSync, lstatSync, mkdirSync, readdirSync, readFileSync, realpathSync, renameSync, writeFileSync } from 'node:fs';
 import { dirname, resolve, join } from 'node:path';
 import { createProductionTelegramIO, createSubscriptionProviderIO, productionStorageIO } from '../../scripts/production-boot-io.mjs';
 import { openProductionStorage } from '../../src/assembly/production-storage.js';
-import { DEFAULT_SUBSCRIPTION_DOORWAY, subscriptionDoorway, SUBSCRIPTION_CONVERSATION_FRAMING,
-  subscriptionConversationPolicy, SUBSCRIPTION_PREVIEW_EXPIRY, validateSubscriptionActivation,
-  SUBSCRIPTION_TOOLS_FRAMING, SUBSCRIPTION_TOOLS_SYSTEM_PROMPT, subscriptionToolsPolicy } from '../../src/assembly/production-provider.js';
-import { readRootMcp, reconcileToolTurns, runToolTurn, toolPacketFits, toolStatusLines, toolTurnEligible, TOOL_NOTICE_MAX_BYTES,
+import { DEFAULT_SUBSCRIPTION_DOORWAY, subscriptionDoorway,
+  SUBSCRIPTION_PREVIEW_EXPIRY, SUBSCRIPTION_TOOLS_SYSTEM_PROMPT } from '../../src/assembly/production-provider.js';
+import { attachSessionVolume, readRootMcp, reconcileToolTurns, runToolTurn, toolPacketFits, toolStatusLines, toolTurnEligible, TOOL_NOTICE_MAX_BYTES,
   TOOLS_DEFAULT_ACTIVATION } from './tool-turn.mjs';
+import { prepareSessionAdmission, sessionAdmissionCommand } from './session-admission.mjs';
+import { createAdmissionGate, createToolEffectOwner } from './admission-gate.mjs';
 import { encoded } from '../../src/assembly/boundary.js';
 import { decodeEffectPolicy, DEFAULT_EFFECT_POLICY, effectDoorwayStatusLines, refusedEffectNotices, currentEffectPolicy } from './effect-doorway.mjs';
 import { redact } from '../../src/recall/redact.js';
@@ -98,6 +99,10 @@ import { auditJournal } from './journal-audit.mjs';
 
 import { memoryReport } from './memory-export.js';
 
+import { createProductionSessionDriver } from '../../src/assembly/production-session-driver.js';
+import { createSessionWorkPort, SESSION_WORK_LIMITS } from '../../src/assembly/production-session-work.js';
+// @ts-expect-error physical JS host is intentionally outside the pure core
+import { createProductionSessionIO } from '../../scripts/production-session-io.mjs';
 import { stepQuestions } from './step-check.js';
 import { RETROSPECTIVE_QUESTION, benchmarkReruns, disciplineSource, feedbackDispositions, latestGrades, openFindings, owedCases, passAccounting, pendingGrades, promotedCases, replyContextDigest, rerunDispositions, rerunsDue, retroAnswerBudget, standingGrantCandidates } from './retrospective.js';
 
@@ -163,12 +168,22 @@ const renewalActivationOf = (options, view) => expires => {
   if (path === undefined) return null;
   const bytes = readFileSync(path, 'utf8'), activation = JSON.parse(bytes), now = wallNow();
   const profile = Object.freeze(JSON.parse(readFileSync(required(options, 'login-profile'), 'utf8')));
-  validateSubscriptionActivation(activation, profile, required(options, 'model'), now, SUBSCRIPTION_CONVERSATION_FRAMING);
+  const renewalDoorway = subscriptionDoorway(options.doorway ?? DEFAULT_SUBSCRIPTION_DOORWAY);
+  renewalDoorway.validateActivation(activation, profile, required(options, 'model'), now, renewalDoorway.conversationFraming);
   requireAuthority(options, activation, path, view(), now);
   if (activation.expiresAt !== expires || !activationMatchesJournal(view(), activation, expires)) return null;
   return `sha256:${createHash('sha256').update(bytes, 'utf8').digest('hex')}`;
 };
 const required = (options, name) => { if (!options[name]) throw Error(`preview: missing --${name}`); return options[name]; };
+/** Rules 60, 114 (Part fifteen §5): the delegated-session path for long and scheduled work exists
+ * only under its own reviewed grant: an activation record for the doorway's session framing, bound
+ * to that exact session policy (launch flags, model, limits, task wording), resolved from the same
+ * sealed authority and accepting the admitted-session residual. With no grant, work stays on the one-call
+ * route exactly as before. Everything else — harness, executable, homes, ceilings — comes from the
+ * doorway, the login profile and the policy, never from a separate option. */
+const sessionWorkOf = options => options['session-work-activation'] === undefined ? null
+  : { activation: options['session-work-activation'], tmux: options['session-work-tmux'] ?? '/opt/homebrew/bin/tmux' };
+
 const number = (value, name, minimum = 1, maximum = Number.MAX_SAFE_INTEGER) => {
   const n = Number(value); if (!Number.isSafeInteger(n) || n < minimum || n > maximum) throw Error(`preview: invalid ${name}`); return n;
 };
@@ -618,6 +633,10 @@ async function main() {
   }
   // Rules 30, 59: an unregistered doorway or an incomplete silent-stop table refuses the launch.
   if (command === 'run') { admitHarness(); subscriptionDoorway(options.doorway ?? DEFAULT_SUBSCRIPTION_DOORWAY); }
+  // Rule 30: every activation check, policy bound and route construction below goes through the
+  // selected doorway, so a root configured for another registered doorway runs on that doorway's
+  // CLI, model shape and parser instead of the first one that happened to be written here.
+  const doorway = subscriptionDoorway(options.doorway ?? DEFAULT_SUBSCRIPTION_DOORWAY);
 
   const root = resolve(required(options, 'root'));
   if (command === 'run') mkdirSync(root, { recursive: true, mode: 0o700 });
@@ -1135,7 +1154,7 @@ async function main() {
       const bytes = readFileSync(required(options, 'activation-record'), 'utf8');
       const activation = JSON.parse(bytes);
       const profile = Object.freeze(JSON.parse(readFileSync(required(options, 'login-profile'), 'utf8')));
-      validateSubscriptionActivation(activation, profile, required(options, 'model'), now, SUBSCRIPTION_CONVERSATION_FRAMING);
+      doorway.validateActivation(activation, profile, required(options, 'model'), now, doorway.conversationFraming);
       const granted = requireAuthority(options, activation, required(options, 'activation-record'), renewJournal.view, now);
       if (!activationMatchesJournal(renewJournal.view, activation, expiry(required(options, 'expires-at'))))
         throw Error('preview: activation differs from journal');
@@ -1209,7 +1228,8 @@ async function main() {
   // Rule 55: poll-failure pressure is episode state; every attempt that changes it is durable in the run log
   // before the loop continues, so neither a relaunch nor a crash resets it.
   let failedPolls = 0, conflictedPolls = 0;
-  let identityVerified = false, routeHealthy = true, active = null, toolsActive = () => false, toolsRecord = null, toolsOff = null;
+  let identityVerified = false, routeHealthy = true, active = null, toolsActive = () => false, toolsRecord = null, toolsOff = null,
+    sessionWork = null, gate = null;
   // Part Twelve: the effect doorway's operator policy, re-read at every tool turn so a withdrawn or broken file grants
   // nothing (nothing outward by default); launch refuses a policy that does not decode.
   let effectPolicyOf = () => DEFAULT_EFFECT_POLICY;
@@ -1461,13 +1481,14 @@ async function main() {
     }
     serviceBeat(true, 'claimed');
     // Part Thirteen §9 (docs/17-harness-adapters): the tool route's room is the larger of the packet limit and its policy's prompt bound.
-    const toolPromptLimit = () => Math.max(journal.view.limits.maxBytes, subscriptionToolsPolicy(required(options, 'model')).maxPromptBytes);
+    const toolPromptLimit = () => Math.max(journal.view.limits.maxBytes,
+      doorway.policyFor(required(options, 'model'), doorway.toolsFraming ?? doorway.conversationFraming).maxPromptBytes);
     const modelEnvelope = input => {
       const bytes = prepareJournalEnvelope(input, required(options, 'model'), g.grant, wallNow(), journal.view.limits.maxBytes);
       // A tool turn's longer system prompt must fit that room too; an overflow here makes the packet ladder yield, as
       // for the text-only prompt, instead of leaving the turn to fall back to a text-only answer.
       if (toolsActive() && toolTurnEligible(input.id)
-        && Buffer.byteLength(bytes) + Buffer.byteLength(SUBSCRIPTION_TOOLS_SYSTEM_PROMPT) + TOOL_NOTICE_MAX_BYTES > toolPromptLimit())
+        && Buffer.byteLength(bytes) + Buffer.byteLength(doorway.toolTurn?.system ?? SUBSCRIPTION_TOOLS_SYSTEM_PROMPT) + TOOL_NOTICE_MAX_BYTES > toolPromptLimit())
         throw Error('preview: complete prompt overflow');
       return bytes;
     };
@@ -1536,7 +1557,8 @@ async function main() {
     };
     // model-call-boundary:end
     const invokeSubscription = async (prepared, id, reviewTurnId, deadlineAt, toolTurn) => {
-      const policy = toolTurn ? subscriptionToolsPolicy(required(options, 'model')) : subscriptionConversationPolicy(required(options, 'model'));
+      const policy = doorway.policyFor(required(options, 'model'),
+        toolTurn ? doorway.toolsFraming ?? doorway.conversationFraming : doorway.conversationFraming);
       const deadline = Math.min(journal.view.expires, deadlineAt ?? wallNow() + policy.timeout + 60000);
       if (deadline - wallNow() <= 100) throw Error('preview: reply check budget exceeded');
       const result = await callSubscription(judgmentOf(id), prepared, id, { operation: id, deadline,
@@ -1574,11 +1596,13 @@ async function main() {
       // MF5: the conversation's workspace persists across turns, and its kept harness session (in the login profile's
       // projects directory) is a cache bound to this authority, harness and model and to the journal's current facts.
       conversation: conversationOf(journal.view.genesis),
-      session: { store: join(profile.configDirectory, 'projects'), harness: `${profile.version} ${required(options, 'model')}` },
+      // The kept session is Claude Code's (its projects directory); a checkpointed harness keeps none.
+      session: doorway.toolTurn?.harness ? null : { store: join(profile.configDirectory, 'projects'), harness: `${profile.version} ${required(options, 'model')}` },
       stopped: () => workerStop.value || existsSync(stopPath) || journal.view.stop !== null || !toolsActive(),
       deniedRoots: [realpathSync(root), profile.home, profile.configDirectory, profile.workingDirectory],
       operations: SINGLE_MACHINE_PROFILE.operations, effectPolicy: effectPolicyOf(), irreversibleTerm: shapeTerms().derivedFrom.irreversible,
-      now: wallNow, redactText: text => redact(text).text,
+      now: wallNow, redactText: text => redact(text).text, gate, owner: ownerMachine,
+      ...(doorway.toolTurn ? { system: doorway.toolTurn.system, admission: doorway.toolTurn } : {}),
       fallback: async () => ({ result: await invokeSubscription(prepared, id) }),
       // Rules 33, 84: the workspace notice (files that may still disagree with memory, or a lost workspace) rides the packet.
       invoke: (toolTurn, notice) => invokeSubscription(withWorkspaceNotice(prepared, notice), id, undefined, undefined, toolTurn) })).result;
@@ -1607,7 +1631,7 @@ async function main() {
     const statusPullLines = () => [...installation ? installationStatusLines(installation, launchedAt, (() => { try { return installedCode(); } catch { return null; } })(),
       installUpdate, installUpdate && updateDelivery(installUpdate, journal.view.order), timeZoneOf(options)) : [],
       ...toolStatusLines(journal.view, toolsActive(), toolsOff ?? (toolsRecord
-        ? 'withdrawn since launch: the activation record changed or its grant no longer resolves' : null)),
+        ? 'withdrawn since launch: the activation record changed or its grant no longer resolves' : null), Boolean(doorway.toolTurn?.harness)),
       ...(toolsActive() || journal.view.effectDoorway ? effectDoorwayStatusLines(journal.view.effectDoorway) : [])];
     const statusExtraLines = () => [...proofLines(), ...ownerLines(), ...minimalLines()];
     const approvalSurface = approvalSurfaceOf(options);
@@ -1641,6 +1665,19 @@ async function main() {
       // Part Thirteen §9: the packet names the tools exactly when the model call will run on the tool route. The packet
       // is built before the answer's `reserve` or the work's `obligation-start` counts its base call, so that call is added here.
       toolRoute: id => toolsActive() && toolTurnEligible(id) && toolPacketFits(journal.view),
+      // Only scheduled obligation work is delegated; an operator answer is never handed to a session.
+      // The session route is taken only while its grant holds and the call allowance can hold the
+      // step's whole reserved liability on top of the obligation's own start.
+      ...(sessionWorkOf(options) === null ? {} : {
+        sessionRoute: id => sessionWork !== null && id.startsWith('obligation:') && sessionWork.port.available()
+          && journal.view.calls + 1 + SESSION_WORK_LIMITS.maxCallsPerStep <= journal.view.limits.maxCalls,
+        sessionWork: async ({ question, context: packet, id }) => {
+          const outcome = await sessionWork.port.run({ operation: id.replaceAll(':', '-'), question, context: packet,
+            authority: sessionWork.authority });
+          if (outcome.state === 'complete') return { state: 'complete', text: outcome.text, usage: { inputTokens: null, outputTokens: null, charge: null } };
+          if (outcome.state === 'failed') return { state: 'complete', failureClass: 'malformed' };
+          return { state: 'uncertain' };
+        } }),
       // Rule 44: an installed update rides operator packets until a sent answer's recorded prompt carried it.
       installedUpdate: () => installUpdate && !updateDelivery(installUpdate, journal.view.order) ? updatePacketItem(installUpdate) : null,
       // Rules 8, 56, 100: due credential reminder stages and a failing doorway check ride the next answer as one line.
@@ -1802,7 +1839,7 @@ async function main() {
     const activationBytes = readFileSync(activationPath, 'utf8');
     const activation = JSON.parse(activationBytes), profile = Object.freeze(JSON.parse(readFileSync(required(options, 'login-profile'), 'utf8')));
     active = () => { try { return readFileSync(activationPath, 'utf8') === activationBytes; } catch { return false; } };
-    validateSubscriptionActivation(activation, profile, required(options, 'model'), wallNow(), SUBSCRIPTION_CONVERSATION_FRAMING, journal.view.expires);
+    doorway.validateActivation(activation, profile, required(options, 'model'), wallNow(), doorway.conversationFraming, journal.view.expires);
     requireAuthority(options, activation, activationPath, journal.view, wallNow());
     if (!activationMatchesJournal(journal.view, activation)) throw Error('preview: activation differs from journal');
     // Part Thirteen §9 (docs/17-harness-adapters): tools are on by default. The tool route runs under its own activation
@@ -1816,8 +1853,11 @@ async function main() {
     if (toolsMode !== 'default' && toolsMode !== 'off') throw Error('preview: --tools must be default or off');
     if (options['tools-activation'] !== undefined && toolsMode === 'off') throw Error('preview: --tools off contradicts --tools-activation');
     const adoptTools = (toolsActivationPath, toolsBytes) => {
+      // A doorway that serves no scoped-tool framing has no tool route: refused rather than validated against another
+      // doorway's reviewed policy (w4-sessiondriver); each doorway checks its own tools activation.
+      if (doorway.toolsFraming === null) throw Error(`preview: doorway ${doorway.id} serves no scoped-tool answer framing`);
       const toolsActivation = JSON.parse(toolsBytes);
-      validateSubscriptionActivation(toolsActivation, profile, required(options, 'model'), wallNow(), SUBSCRIPTION_TOOLS_FRAMING, journal.view.expires);
+      doorway.validateActivation(toolsActivation, profile, required(options, 'model'), wallNow(), doorway.toolsFraming, journal.view.expires);
       requireAuthority(options, toolsActivation, toolsActivationPath, journal.view, wallNow());
       if (!activationMatchesJournal(journal.view, toolsActivation)) throw Error('preview: tool activation differs from journal');
       return toolsActivation;
@@ -1837,7 +1877,8 @@ async function main() {
     } else if (toolsMode === 'off') toolsOff = 'refused at launch with --tools off';
     else {
       const toolsActivationPath = join(root, TOOLS_DEFAULT_ACTIVATION);
-      const toolsBytes = `${JSON.stringify({ ...activation, invocationPolicyDigest: encoded(subscriptionToolsPolicy(required(options, 'model'))).hash }, null, 2)}\n`;
+      const toolsBytes = `${JSON.stringify({ ...activation, invocationPolicyDigest: doorway.toolsFraming === null ? 'none'
+        : encoded(doorway.policyFor(required(options, 'model'), doorway.toolsFraming)).hash }, null, 2)}\n`;
       try {
         // The authority is resolved against the record's would-be path, so the sealed record beside the activation governs it.
         toolsRecord = adoptTools(activationPath, toolsBytes);
@@ -1863,6 +1904,77 @@ async function main() {
     // pass) can run; until it is, retention keeps that directory. No tool turn of this runner is live yet.
     try { reconcileToolTurns({ journal, root, redactText: text => redact(text).text, now: wallNow }); }
     catch (error) { process.stderr.write(`preview: interrupted tool turns not yet journaled (kept): ${String(error?.message ?? error)}\n`); }
+    // Part fifteen §5 (docs/19-scheduled-work): long and scheduled work runs as a full delegated
+    // session only under its own reviewed grant, re-checked before every step together with the
+    // login home's live subscription sign-in. Changing or removing the grant file withdraws it: no
+    // new step starts, and an open step's child is stopped. Each step is admitted and held by this
+    // process's one resource owner and reserves its call liability in the journal before it exists.
+    const sessionSetup = sessionWorkOf(options);
+    // The host's one admission checkpoint for every harness it delegates to (admission-gate.mjs): each model call of a
+    // delegated session or a Codex tool turn takes its claim's reserved allowance here before dispatch, each delegation
+    // becomes a durable child edge first, and each consequential tool passes the effect owner by exact operation.
+    if (sessionSetup !== null || doorway.toolTurn?.harness) {
+      const gateStopped = () => workerStop.value || existsSync(stopPath) || !ownerHeld() || journal.view.stop !== null
+        || wallNow() >= journal.view.expires || !active();
+      const appendWork = record => journal.append({ kind: 'session-work', record, at: wallNow() });
+      gate = await createAdmissionGate({ append: appendWork, stopped: gateStopped, now: wallNow,
+        effects: createToolEffectOwner({ operations: SINGLE_MACHINE_PROFILE.operations, append: appendWork, stopped: gateStopped,
+          now: wallNow, prepared: identity => (journal.view.toolEffects ?? []).includes(identity) }) });
+    }
+    if (sessionSetup !== null) {
+      const sessionBytes = readFileSync(sessionSetup.activation, 'utf8'), sessionActivation = JSON.parse(sessionBytes);
+      doorway.session.validateActivation(sessionActivation, profile, required(options, 'model'), wallNow(), journal.view.expires);
+      requireAuthority(options, sessionActivation, sessionSetup.activation, journal.view, wallNow());
+      if (!activationMatchesJournal(journal.view, sessionActivation)) throw Error('preview: session work activation differs from journal');
+      const sessionActive = () => { try { return readFileSync(sessionSetup.activation, 'utf8') === sessionBytes; } catch { return false; } };
+      // Rule 60: the session's working scope is a persistent fixed-size volume (tool-turn.mjs attachSessionVolume), mounted
+      // before the first step, so every file a step writes, however many, is bounded together.
+      const scope = join(realpathSync(root), 'session-work');
+      mkdirSync(scope, { recursive: true, mode: 0o700 });
+      chmodSync(scope, 0o700);
+      const project = realpathSync(scope), framework = doorway.session.framework;
+      const mountVolume = () => { if (attachSessionVolume(root) !== project) throw Error('preview: the session volume is not the working scope'); };
+      const physical = createProductionSessionIO({ stateDirectory: join(root, 'session-work-state'), tmuxPath: sessionSetup.tmux,
+        home: profile.home, configHome: profile.configDirectory, cwd: project });
+      const stoppedNow = () => workerStop.value || existsSync(stopPath) || !ownerHeld() || journal.view.stop !== null
+        || wallNow() >= journal.view.expires || !active() || !sessionActive();
+      const admissionIO = createSubscriptionProviderIO({ repository: process.cwd(), stopped: stoppedNow, work: 'maintenance' });
+      // Every tool call of the child (its subagents' too) passes the admission hook before dispatch: its slots are
+      // the step's reserved call liability, MCP and other consequential tools go to the effect doorway, and every
+      // shell command runs confined. The state lives beside the working scope, never inside it.
+      const admissionBase = join(root, 'session-work-state', 'admission');
+      sessionWork = { authority: `session work grant ${sessionActivation.reference}: one scheduled work step for the verified operator, `
+        + 'with the full tool set behind the admission hook, its result returned by file', port: take(createSessionWorkPort({
+        createDriver: resolveIntake => createProductionSessionDriver({ operatorOwnUse: true, confinement: 'admitted',
+          toolAdmission: { command: sessionAdmissionCommand({ base: admissionBase }),
+            timeoutSeconds: Math.ceil(SESSION_WORK_LIMITS.deadlineMs / 1000) }, modelGate: claim => gate.base(claim),
+          framework, executable: profile.executable, cwd: project, home: profile.home, configHome: profile.configDirectory,
+          model: required(options, 'model'), context, io: physical, now: wallNow, stopped: stoppedNow, resolveIntake,
+          maxSessions: SESSION_WORK_LIMITS.maxSessions, turnDeadlineMs: SESSION_WORK_LIMITS.deadlineMs,
+          readyTimeoutMs: 30000, protectedSessions: [] }),
+        io: { readResult: (path, maxBytes) => physical.readResult(path, maxBytes), clearResult: path => physical.clearResult(path),
+          modelCalls: since => physical.modelCalls(framework, project, profile.configDirectory, since), wait: delay,
+          prepareAdmission: (claim, edge) => { mountVolume();
+            prepareSessionAdmission({ base: admissionBase, claim, workspace: project, maxCalls: SESSION_WORK_LIMITS.maxCallsPerStep,
+              gate: gate.base(claim) });
+            gate.open(claim, { framework, allowance: SESSION_WORK_LIMITS.maxCallsPerStep, edge }); },
+          admissionState: claim => gate.state(claim), closeAdmission: claim => { gate.close(claim); } },
+        resources: { admit: async () => {
+          doorway.session.validateActivation(sessionActivation, profile, required(options, 'model'), wallNow(), journal.view.expires);
+          await doorway.session.admit({ profile, io: admissionIO, deadline: wallNow() + 15000, now: wallNow });
+          const held = await hostResources.hold('maintenance', { timeout: 30000, stopped: stoppedNow });
+          return held === null ? null : { attach: child => held.attach({ pid: Number(child.split(':')[1]), cwd: project }),
+            release: async () => (await held.release()).verified };
+        } },
+        context, now: wallNow, stopped: stoppedNow,
+        append: record => journal.append({ kind: 'session-work', record, at: wallNow() }),
+        parent: `launch:${conversationOf(g)}`, owner: ownerMachine, placement: `machine:${ownerMachine}`,
+        transport: 'tmux session on this machine', workingScope: project, resultDirectory: project,
+        artifact: `doorway:${doorway.id}`, incarnation: String(launchedAt ?? wallNow()),
+        deadlineMs: SESSION_WORK_LIMITS.deadlineMs, pollMs: SESSION_WORK_LIMITS.pollMs,
+        maxResultBytes: SESSION_WORK_LIMITS.maxResultBytes, maxSteps: SESSION_WORK_LIMITS.maxStepsPerLaunch,
+        maxCalls: SESSION_WORK_LIMITS.maxCallsPerStep })) };
+    }
     installationPolicy = installationPolicyOf(options, activation, activationPath, journal.view, wallNow());
     registerAtLaunch = registerGeneration();
     if (installationPolicy.kind !== 'resolved') process.stderr.write(`preview: limited answers past a cap are inhibited: ${installationPolicy.reason}\n`);
@@ -2141,9 +2253,10 @@ async function main() {
     function modelRoute(operation, toolTurn) {
       if (!active() || workerStop.value || existsSync(stopPath)) throw Error('preview: activation stopped');
       if (toolTurn && !toolsActive()) throw Error('preview: tool activation withdrawn');
-      const policy = toolTurn ? subscriptionToolsPolicy(options.model) : subscriptionConversationPolicy(options.model);
-      // Rule 30: the doorway is selected by its registered id; its parser and terminal contract stay in the adapter.
-      const doorway = subscriptionDoorway(options.doorway ?? DEFAULT_SUBSCRIPTION_DOORWAY);
+      // Rule 30: the doorway was selected by its registered id above; its parser, terminal contract,
+      // framings and invocation policy stay in the adapter that owns them.
+      const framing = toolTurn ? doorway.toolsFraming ?? doorway.conversationFraming : doorway.conversationFraming;
+      const policy = doorway.policyFor(options.model, framing);
       const contract = { reference: activation.reference, version: activation.profileDigest,
         ...doorway.contract, successfulFinalReplyReasons: [...doorway.contract.successfulFinalReplyReasons],
         endpoint: profile.loginProfileIdentity,
@@ -2168,13 +2281,13 @@ async function main() {
       const io = observedSubscriptionIO(physicalIO, policy, operation, row => journal.append(row),
         { elapsed: () => performance.now(), at: wallNow });
       return take(doorway.create({ context, credential: secretRef(profile.reference), profile,
-        resolveProfile: () => profile, provider: 'anthropic', model: options.model, route: 'preview-subscription',
+        resolveProfile: () => profile, provider: doorway.provider, model: options.model, route: 'preview-subscription',
         disclosure: 'Subscription preview; charge UNKNOWN', activation: toolTurn ? toolsRecord : activation,
-        framing: toolTurn ? SUBSCRIPTION_TOOLS_FRAMING : SUBSCRIPTION_CONVERSATION_FRAMING, ...(toolTurn ? { toolTurn } : {}),
+        framing, ...(toolTurn ? { toolTurn } : {}),
         journalEnd: () => journal.view.expires, io,
         now: wallNow, active: () => !workerStop.value && !existsSync(stopPath) && active() && !journal.view.stop,
         adapterEvidenceContract: contract,
-        ...(journal.view.limits.maxBytes > subscriptionConversationPolicy(options.model).maxPromptBytes
+        ...(journal.view.limits.maxBytes > doorway.policyFor(options.model, doorway.conversationFraming).maxPromptBytes
           ? { raisedPromptBytes: journal.view.limits.maxBytes, promptAuthority: journal.view.capAuthority } : {}) }));
     }
   } catch (error) { if (!signalled) { startupFailure = error; throw error; } }
@@ -2214,6 +2327,9 @@ async function main() {
         try { appendRun(runsPath, { v: 1, launch: launchedAt, exit: wallNow(), reason, ...end }); } catch { /* the next launch reports an unrecorded end */ }
       }
     } finally {
+      // A delegated session never outlives the launch that owns it.
+      try { sessionWork?.port.stop(); } catch { /* the driver's next boot sweep and stop authority find it */ }
+      if (gate) { gate.closeAll(); await gate.stop(); }
       if (shared) await shared.stop();
       journal?.close(); storage.close(); if (ownerClaim?.owner) ownerClaim.release(); process.removeListener('SIGINT', signal); process.removeListener('SIGTERM', signal); process.removeListener('SIGHUP', signal);
     }

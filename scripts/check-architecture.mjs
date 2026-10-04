@@ -234,6 +234,7 @@ export function shippedClientFiles() {
  * adapter interface by a registered id. */
 export const HARNESS_ADAPTER_MODULES = Object.freeze([
   'src/harness-adapters/', 'src/assembly/production-session-driver.ts', 'src/assembly/production-provider.ts',
+  'src/assembly/production-codex-provider.ts',
   'scripts/production-session-io.mjs', 'scripts/production-boot-io.mjs',
 ]);
 const HARNESS_NAME = /^(?:claude-code|claude|codex-cli|codex|gemini-cli|gemini|pi-cli|grok-build|grok|aider|cursor|opencode)$/iu;

@@ -38,5 +38,28 @@
       113
     ],
     "holds": []
+  },
+  {
+    "type": "Declaration",
+    "schemaVersion": 1,
+    "id": "preview.tool-turn.attachSessionVolume",
+    "kind": "stores",
+    "status": "live",
+    "requiredFacts": {
+      "growth": "unbounded",
+      "holdsAgentMemory": "no",
+      "machineScope": {
+        "kind": "machine-local",
+        "reason": "Rule 113 and Rule 60: the delegated session's working scope on this machine: one sparse disk image beside the runner root, mounted at the scope and kept across steps so a step's work persists for the next; it grows only within its fixed size (the volume refuses writes past it), and nothing on it is shared, replicated or read as agent memory: the journal's session-work rows are the durable record."
+      },
+      "agreesWith": []
+    },
+    "standards": [
+      7,
+      32,
+      60,
+      113
+    ],
+    "holds": []
   }
 ]
