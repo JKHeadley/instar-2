@@ -17,6 +17,10 @@ Layer below: parseModelJson and decisionWithinFloor (unchanged), obligationTaskA
 Bug class: none
 Bug evidence: none
 Hook bypass: none
+Deferral: tests/preview/fixtures/obligation-step-outputs-live-2026-10-04.json:44 | not-a-deferral=a recorded live model output replayed verbatim as test data, not work this change defers
+Deferral: tests/preview/fixtures/obligation-step-outputs-live-2026-10-04.json:62 | not-a-deferral=a recorded live model output replayed verbatim as test data, not work this change defers
+Deferral: tests/preview/fixtures/obligation-step-outputs-live-2026-10-04.json:80 | not-a-deferral=a recorded live model output replayed verbatim as test data, not work this change defers
+Deferral: tests/preview/obligation-task-answer-live.test.ts:136 | not-a-deferral=a test assertion on the product's fixed follow-up wording, not work this change defers
 Convergence: none
 Decision: loopfire47-task-json-obligation-only | the unenveloped reading is limited to canonical obligation step ids, whose question names the JSON and whose report is reviewed with the next reply; answers and gates keep the Decision requirement | reported=/Users/dabombstudio/.instar/agents/echo/.instar/lanes/w4-loopfire47-PROGRESS.md
 Decision: loopfire47-no-prompt-change | the step question's "Return only JSON" wording is left as it is: the acceptance fix is proven on every recorded output, while a prompt change could only be shown with new real-model calls; the model's continue on a deferral (live 02:43) is reported as a residual | reported=/Users/dabombstudio/.instar/agents/echo/.instar/lanes/w4-loopfire47-PROGRESS.md
