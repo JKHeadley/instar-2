@@ -2,6 +2,7 @@ import { expect, it } from 'vitest';
 import { mkdtempSync, realpathSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
+import { setImmediate as yieldImmediate } from 'node:timers';
 import { createJournalWorker, openPreviewJournal } from './journal.js';
 import { REPLY_RULES } from './reply-check.js';
 import { replyReviewContext, replyReviewQuestion } from './reply-check.js';
@@ -98,6 +99,9 @@ it('answers 200 mixed-length turns in one day with bounded review context and ea
       worker.intake([{ update_id: turn, message: { chat: { id: 7654321, type: 'private' },
         from: { id: 7654321 }, date: Math.floor(now / 1000) + turn * 60, text } }]);
       await worker.drain();
+      // One real event-loop turn per message keeps the worker's task-update RPC answered (see
+      // docs/defects/vitest-worker-rpc-timeouts.md). Scheduling only.
+      await new Promise<void>(done => yieldImmediate(done));
       if (!firstHeld && journal.view.order.at(-1)?.held) firstHeld = turn;
     }
     console.log('long conversation', { turns: 200, sends, firstHeld, summaries: journal.view.summaries.length,

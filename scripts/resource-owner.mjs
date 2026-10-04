@@ -23,7 +23,12 @@
 // the launch's private working area. The last join covers a descendant that detaches
 // and whose parent exits before any sample. A launch without a private working area is
 // `unconfined`. Residue: a descendant that also leaves the working area before any
-// census; only the held separate worker identity closes that.
+// census; only the held separate worker identity closes that — or, for a launch that
+// runs under its own per-launch sandbox profile (`membership: 'sandbox'`), the sandbox
+// join (`sandbox-joined`): the kernel's sandbox identity of each candidate, read from
+// outside the launch, which no descendant sheds by a new session, a new parent or
+// another working directory. Such a descendant is counted, held to the ceilings and
+// ended like any other member; nothing inside the launch is consulted.
 //
 // The provider does not start until its launch evidence (pid, start evidence,
 // owner) is durably recorded: the shim waits on a go signal the owner sends only
@@ -37,6 +42,12 @@
 // complete census that no member is left. A denied signal, a failed query, a
 // member the ledger could not record, or a survivor keeps the durable row
 // (`cleanup: 'unresolved'`): a signal attempt is not observed quiescence.
+//
+// The owner settles each launch on the launch process's exit, and never waits on it
+// past EXIT_SETTLE_MS: a descendant that detached holding the launch's stdout open
+// (an escaped or suspended helper) cannot keep the owner from settling and then
+// cleaning up. The owner, outside any launch's sandbox, is never dependent on a helper
+// inside the launch to finish.
 //
 // Recovery after a crash is observation only. Disposing of a process left by a dead
 // launcher is a recovery effect that needs the typed Part Eight process effect and
@@ -71,6 +82,11 @@ const WORK = Object.freeze({ answer: 'critical', review: 'critical', maintenance
 const OUTCOME_LIMIT = 32;
 const QUERY_TIMEOUT_MS = 2000;
 const GATE_TIMEOUT_MS = 5000;
+// After the launch process has exited, how long the owner waits for its output stream to end before it
+// settles anyway. The stream ends at once when nothing outside the launch holds the launch's stdout; a
+// descendant that detached with the stdout open (an escaped or suspended helper) would otherwise keep it
+// open forever, so the owner never depends on that descendant to settle (it is independently protected).
+const EXIT_SETTLE_MS = 2000;
 const UNKNOWN = Symbol('unknown');
 
 // Wait for the owner's go signal (fd 3) when gated, then lower (never raise) the
@@ -161,8 +177,9 @@ export const HOST_BOUNDS = Object.freeze({ aggregateLaunches: 'hard', sixAllocat
   reason: 'no unprivileged per-tree kernel confinement on this host: memory and tree process counts are enforced on a complete '
     + 'current-user census joined by recorded incarnation, group, ancestry and private working area; RLIMIT_NPROC bounds the user ID; '
     + 'the working-area join is observation, not confinement, and a Six memory debit is an accounting reservation, not a kernel one',
-  residual: 'a descendant that leaves its group, its parent and the private working area before any census is not joined; '
-    + 'the separate restricted worker identity (the held Ten confined-launch monitor) closes it' });
+  residual: 'a descendant that leaves its group, its parent and the private working area before any census is not joined, '
+    + 'unless its launch runs under its own sandbox profile (`membership: sandbox`: the sandbox join reaches it); '
+    + 'otherwise the separate restricted worker identity (the held Ten confined-launch monitor) closes it' });
 /** The launch's private working area: the working directory when it is owned by this user ID and closed
  * to everyone else, otherwise none (then the escape join is unavailable and membership is `unconfined`). */
 export function privateArea(cwd) {
@@ -278,7 +295,8 @@ export function createResourceOwner(initialCeilings = RESOURCE_CEILINGS) {
       if (!rows[lease.id]) {
         if (!extra.cleanup) return;
         rows[lease.id] = { pid: lease.pid, start: lease.known.get(lease.pid) ?? null, owner: attached?.owner ?? null,
-          enforcement: lease.enforcement, uidProcesses: lease.uidProcesses };
+          enforcement: lease.enforcement, uidProcesses: lease.uidProcesses, workingArea: lease.workingArea ?? null,
+          sandboxArea: lease.sandboxArea ?? null };
       }
       Object.assign(rows[lease.id], { members: Object.fromEntries(lease.known), ...extra },
         lease.recordingFailures ? { recording: 'repaired', recordingFailures: lease.recordingFailures } : {});
@@ -365,32 +383,56 @@ export function createResourceOwner(initialCeilings = RESOURCE_CEILINGS) {
     for (const pid of members) kill(pid);
     record({ kind: 'limit-kill', work: lease.work, reason, memoryBytes: lease.memoryBytes, processes: lease.processes });
   }
+  // The harness's own user (harness-user.mjs), when the runner launches the harness as it: its processes are in the
+  // census (so the tree's memory and processes are still sampled and bounded), but this account cannot signal them or
+  // read their working directories; its launcher ends that tree, and cleanup waits for it (boundedly) instead.
+  let harnessUid = null;
+  const ownUid = typeof process.getuid === 'function' ? process.getuid() : null;
   const inventory = createProcessInventory({ query: (file, args) => query(file, args), now: () => ports.now(),
     monotonic: () => ports.monotonic(), identity: HOST_IDENTITY, limit: censusLimit, freshForMs: 2 * ceilings.sampleMs,
-    uid: typeof process.getuid === 'function' ? process.getuid() : null });
+    uid: ownUid, uids: () => harnessUid === null ? [ownUid] : [ownUid, harnessUid] });
+  const harnessRow = (snapshot, pid) => harnessUid !== null && snapshot.processes.find(p => p.pid === pid)?.uid === harnessUid;
   const rootOf = lease => ({ id: lease.id, pid: lease.pid, known: lease.known, workingArea: lease.workingArea ?? null,
-    start: lease.known.get(lease.pid) ?? null });
+    sandboxArea: lease.sandboxArea ?? null, start: lease.known.get(lease.pid) ?? null });
   /** One Ten census of every current-user process, joined to the owned launches by recorded
    * incarnation, group, ancestry and private working area. `complete`, `partial` (census or
    * candidate bound reached: examined/omitted counted) or `failed` (a refused read): a partial
    * or failed census never reads as empty. */
-  async function census(leases) {
+  async function census(leases) { return joinRoots(leases.filter(l => l.pid).map(rootOf)); }
+  /** The one membership join, shared by live cleanup and restart recovery: a recovered root carries the
+   * same working-area and sandbox declarations its launch row recorded, so recovery joins exactly as live does. */
+  async function joinRoots(roots) {
     let snapshot, ten;
     // An owner module that cannot load is a failed census (unknown), never an empty one.
     try { ten = await loadTenOwner(); snapshot = await inventory.census(); }
     catch { return { state: 'failed', snapshot: { id: `inventory:${randomUUID()}`, adapter: 'unavailable', adapterDigest: 'unavailable' },
       members: null, rows: null }; }
-    const { launchMembership, joinWorkingArea } = ten;
+    const { launchMembership, joinWorkingArea, joinSandbox } = ten;
     if (snapshot.status === 'failed') return { state: 'failed', snapshot, members: null, rows: null };
-    const roots = leases.filter(l => l.pid).map(rootOf);
     const { members, candidates } = launchMembership(snapshot, roots, process.pid);
     const joined = new Map(members);
     const read = candidates.slice(0, ceilings.candidateLimit ?? RESOURCE_CEILINGS.candidateLimit);
     const cwds = read.length ? await inventory.workingDirectories(read) : new Map();
     if (read.length) for (const [pid, member] of joinWorkingArea(snapshot, roots, read, cwds)) joined.set(pid, member);
-    const unread = await unreadCandidates(snapshot, read, cwds);
-    const state = snapshot.status === 'partial' || read.length < candidates.length || unread ? 'partial' : 'complete';
-    return { state, snapshot, members: joined, rows: new Map(snapshot.processes.map(p => [p.pid, p])),
+    // The sandbox join: a candidate the working-area join missed (it changed directory out of the area) is still a
+    // member of a sandboxed launch if the kernel says it is in that launch's sandbox instance. An unreadable reading is
+    // unknown, so a census holding one is never complete.
+    const areas = [...new Set(roots.map(l => l.sandboxArea).filter(Boolean))];
+    const unjoined = read.filter(pid => !joined.has(pid));
+    let unboxed = 0;
+    if (areas.length && unjoined.length) {
+      const readings = typeof joinSandbox === 'function' ? await inventory.sandboxes(unjoined, areas) : new Map();
+      if (typeof joinSandbox === 'function') for (const [pid, member] of joinSandbox(snapshot, roots, unjoined, readings)) joined.set(pid, member);
+      unboxed = await unreadCandidates(snapshot, unjoined.filter(pid => readings.get(pid)?.state !== 'observed'), new Map());
+    }
+    const leftover = read.filter(pid => !joined.has(pid));
+    const unread = await unreadCandidates(snapshot, leftover.filter(pid => !harnessRow(snapshot, pid)), cwds) + unboxed;
+    // A harness-user process no join reached (its working directory is unreadable to this account): unknown now, and
+    // its launcher ends it, so cleanup waits for it to go rather than reading the census as complete or as failed.
+    const harnessUnread = await unreadCandidates(snapshot, leftover.filter(pid => harnessRow(snapshot, pid)), cwds);
+    const settled = snapshot.status !== 'partial' && read.length >= candidates.length && !unread;
+    const state = settled && !harnessUnread ? 'complete' : 'partial';
+    return { state, waiting: settled && harnessUnread > 0, snapshot, members: joined, rows: new Map(snapshot.processes.map(p => [p.pid, p])),
       examined: snapshot.examined, omitted: (snapshot.omitted ?? 0) + candidates.length - read.length };
   }
   /** Candidates whose working directory could not be read and that are still the same live
@@ -511,15 +553,15 @@ export function createResourceOwner(initialCeilings = RESOURCE_CEILINGS) {
    * area); `null` when the census failed or was partial: absence is then unproven. */
   async function liveMembers(lease) {
     const seen = await census([...launches.values()]);
-    if (seen.state !== 'complete') return null;
+    if (seen.state !== 'complete' && !seen.waiting) return null;
     const mine = [...seen.members].filter(([pid, member]) => member.launch === lease.id && !seen.rows.get(pid).zombie)
-      .map(([pid]) => [pid, seen.rows.get(pid).start]);
+      .map(([pid]) => [pid, seen.rows.get(pid).start, seen.rows.get(pid).uid]);
     // A recorded incarnation still alive is ours even if no join reached it this time.
     for (const [pid, start] of lease.known) {
       const row = seen.rows.get(pid);
-      if (row && row.start === start && !row.zombie && !mine.some(([p]) => p === pid)) mine.push([pid, start]);
+      if (row && row.start === start && !row.zombie && !mine.some(([p]) => p === pid)) mine.push([pid, start, row.uid]);
     }
-    return mine;
+    return Object.assign(mine, { waiting: seen.waiting === true });
   }
   /** After the provider exits: every live member of this launch (one that left the group, and one
    * that detached before any sample but stayed in the private working area, included) is recorded
@@ -534,13 +576,18 @@ export function createResourceOwner(initialCeilings = RESOURCE_CEILINGS) {
     for (let attempt = 0; attempt < 20 && !quiet; attempt++) {
       const living = await liveMembers(lease);
       if (living === null) { unresolved = true; break; }
-      if (!living.length) { quiet = true; break; }
+      if (!living.length && !living.waiting) { quiet = true; break; }
       let discovered = false;
       for (const [pid, start] of living) if (!lease.known.has(pid)) { lease.known.set(pid, start); discovered = true; }
       // Ownership evidence is durable before any signal, so a failed signal leaves it recoverable.
       if (discovered) recordMembers(lease);
       if (lease.pid) kill(-lease.pid);
-      for (const [pid] of living) { if (kill(pid) === 'denied') unresolved = true; reclaimed.add(pid); }
+      // A harness-user member refuses this account's signal by design: its launcher is ending it, so the next census
+      // (bounded by this loop) sees it gone; one still alive when the loop ends is `unresolved` below.
+      for (const [pid, , uid] of living) {
+        if (kill(pid) === 'denied' && !(harnessUid !== null && uid === harnessUid)) unresolved = true;
+        reclaimed.add(pid);
+      }
       if (unresolved) break;
       await new Promise(done => setTimeout(done, 100));
     }
@@ -554,20 +601,28 @@ export function createResourceOwner(initialCeilings = RESOURCE_CEILINGS) {
     }
     return { leaked, unresolved };
   }
+  /** Returns a launch's Six debit once, citing the evidence that proves the outcome; false when it could not. */
+  function closeAllocationOf(lease, settlement) {
+    if (!lease.allocation || lease.allocation.closed) return true;
+    try { const closed = ports.allocation.close(lease.allocation.set, settlement); if (closed?.ok) { lease.allocation.closed = settlement; return true; } }
+    catch { /* the durable launch row keeps the allocation for recovery */ }
+    counters.allocationCloseFailures = (counters.allocationCloseFailures ?? 0) + 1;
+    return false;
+  }
   function run(input, lease, uidProcesses) {
     const handles = Math.max(16, ceilings.launch.handleCount);
     const cpuSeconds = Math.max(1, Math.ceil(ceilings.launch.cpuMilliseconds / 1000));
     lease.enforcement = enforcement(); lease.uidProcesses = uidProcesses;
-    lease.workingArea = privateArea(input.cwd);
+    // The join covers the whole private area the launch may write to, not just its working directory:
+    // `input.area` (a caller's private scratch volume holding both the working directory and the launch's
+    // own temporary directory) when given, so a descendant that changes to a sibling directory inside that
+    // volume is still a member. Absent, the working directory is the area, as before.
+    lease.workingArea = privateArea(input.area ?? input.cwd);
+    // A launch under its own sandbox profile (one that reads this private area and not its parent) is also joined by
+    // the kernel's sandbox identity; without a private area there is nothing to name the instance by.
+    lease.sandboxArea = input.membership === 'sandbox' ? lease.workingArea : null;
     const limitValue = uidProcesses.limit;
-    /** Returns the Six debit once, citing the evidence that proves the outcome; false when it could not. */
-    const closeAllocation = settlement => {
-      if (!lease.allocation || lease.allocation.closed) return true;
-      try { const closed = ports.allocation.close(lease.allocation.set, settlement); if (closed?.ok) { lease.allocation.closed = settlement; return true; } }
-      catch { /* the durable launch row keeps the allocation for recovery */ }
-      counters.allocationCloseFailures = (counters.allocationCloseFailures ?? 0) + 1;
-      return false;
-    };
+    const closeAllocation = settlement => closeAllocationOf(lease, settlement);
     return new Promise(resolve => {
       let child;
       try {
@@ -595,7 +650,7 @@ export function createResourceOwner(initialCeilings = RESOURCE_CEILINGS) {
         try {
           ledger(rows => { rows[lease.id] = { pid: lease.pid, start, owner: attached?.owner ?? null,
             members: Object.fromEntries(lease.known), enforcement: lease.enforcement, uidProcesses: lease.uidProcesses,
-            workingArea: lease.workingArea, allocation: lease.allocation?.set ?? null }; });
+            workingArea: lease.workingArea, sandboxArea: lease.sandboxArea, allocation: lease.allocation?.set ?? null }; });
         } catch {
           // The gate never opened, so the provider never ran: the Six debit returns now.
           closeAllocation(`never-launched:${lease.id}`);
@@ -612,15 +667,20 @@ export function createResourceOwner(initialCeilings = RESOURCE_CEILINGS) {
       void openGate().catch(() => fail('capacity'));
       const timer = setTimeout(() => fail('timeout'), input.timeout);
       const stopTimer = input.stopped ? setInterval(() => { if (input.stopped()) fail(null); }, 25) : undefined;
-      child.on('error', () => { clearTimeout(timer); clearTimeout(gateTimer); clearInterval(stopTimer); resolve({ code: null, limited: true, localLimit: null, stdout: '', stdoutBytes: new Uint8Array() }); });
+      let settleTimer, settled = false;
+      child.on('error', () => { clearTimeout(timer); clearTimeout(gateTimer); clearInterval(stopTimer); clearTimeout(settleTimer); resolve({ code: null, limited: true, localLimit: null, stdout: '', stdoutBytes: new Uint8Array() }); });
       child.stdin.on('error', () => fail(null));
       child.stdout.on('data', chunk => {
         size += chunk.length;
         if (size > input.maxBytes) fail('size'); else if (!limited) chunks.push(chunk);
       });
-      child.on('close', (code, signal) => {
-        clearTimeout(timer); clearTimeout(gateTimer); clearInterval(stopTimer);
+      const finalize = (code, signal, stdoutHeld) => {
+        if (settled) return;
+        settled = true;
+        clearTimeout(timer); clearTimeout(gateTimer); clearInterval(stopTimer); clearTimeout(settleTimer);
         lease.running = false;
+        // The stdout stream never ended; drop it so the owner holds no half-open read of a leaked descendant.
+        if (stdoutHeld) try { child.stdout.destroy(); } catch { /* already gone */ }
         if (lease.limit) { limited = true; localLimit = lease.limit; chunks = []; }
         else if (signal === 'SIGXCPU' && !limited) {
           limited = true; localLimit = 'cpu'; chunks = [];
@@ -645,7 +705,7 @@ export function createResourceOwner(initialCeilings = RESOURCE_CEILINGS) {
           const resources = { enforcement: lease.enforcement, uidProcesses: lease.uidProcesses, admission: lease.admission,
             peakMemoryBytes: lease.peakMemoryBytes, peakProcesses: lease.peakProcesses,
             treeCpuMilliseconds: lease.cpuMilliseconds, census: lease.census, leakedDescendants: leaked,
-            membership: lease.workingArea ? 'working-area-joined' : 'unconfined',
+            membership: lease.sandboxArea ? 'sandbox-joined' : lease.workingArea ? 'working-area-joined' : 'unconfined',
             cleanup: unresolved ? 'unresolved' : lease.workingArea ? 'verified' : 'unconfined',
             allocation: lease.allocation ? { set: lease.allocation.set, operation: lease.allocation.operation,
               state: lease.allocation.closed ? 'returned' : 'reserved', settlement: lease.allocation.closed ?? null } : null };
@@ -654,7 +714,15 @@ export function createResourceOwner(initialCeilings = RESOURCE_CEILINGS) {
         };
         if (lease.pid) cleanupTree(lease).then(done, () => done({ leaked: 0, unresolved: true }));
         else done({ leaked: 0, unresolved: false });
-      });
+      };
+      // The ordinary settlement: the output stream ended because nothing outside the launch holds it.
+      child.on('close', (code, signal) => finalize(code, signal, false));
+      // The launch process exited but its output stream has not ended yet. The owner settles when it does
+      // ('close'), but never waits past EXIT_SETTLE_MS: a descendant that detached holding the stdout open
+      // (an escaped or suspended helper) would otherwise keep 'close' from ever firing, so the owner
+      // force-settles itself and its cleanup then ends every member it can reach. A helper inside the
+      // launch is never the owner's only way to finish.
+      child.on('exit', (code, signal) => { if (!settled) settleTimer = setTimeout(() => finalize(code, signal, true), EXIT_SETTLE_MS); });
       child.stdin.end(input.stdin, 'utf8');
     });
   }
@@ -690,26 +758,21 @@ export function createResourceOwner(initialCeilings = RESOURCE_CEILINGS) {
       judged.push({ id, row, members, surviving, unknown });
     }
     // An unrecorded escapee of a dead launch (it detached before any census and its owner died)
-    // is found by the same working-area join; observation only, so it keeps the row.
+    // is found by the same working-area and sandbox joins live cleanup uses; observation only, so it keeps the row.
+    const area = value => typeof value === 'string' ? value : null;
     const roots = judged.filter(j => Number.isSafeInteger(j.row?.pid)).map(j => ({ id: j.id, pid: j.row.pid,
-      known: new Map(j.members.filter(([, start]) => typeof start === 'string')), workingArea: typeof j.row.workingArea === 'string'
-        ? j.row.workingArea : null, start: typeof j.row.start === 'string' ? startIdentity(j.row.start) : null }));
+      known: new Map(j.members.filter(([, start]) => typeof start === 'string')), workingArea: area(j.row.workingArea),
+      sandboxArea: area(j.row.sandboxArea), start: typeof j.row.start === 'string' ? startIdentity(j.row.start) : null }));
     let escaped = null;
     if (roots.length) {
-      let snapshot = null, ten = null;
-      try { ten = await loadTenOwner(); snapshot = await inventory.census(); } catch { snapshot = null; }
-      const { launchMembership, joinWorkingArea } = ten ?? {};
-      if (snapshot?.status === 'complete') {
-        const { members, candidates } = launchMembership(snapshot, roots, process.pid);
-        const all = new Map(members), read = candidates.slice(0, ceilings.candidateLimit ?? RESOURCE_CEILINGS.candidateLimit);
-        const cwds = read.length ? await inventory.workingDirectories(read) : new Map();
-        if (read.length) for (const [pid, m] of joinWorkingArea(snapshot, roots, read, cwds)) all.set(pid, m);
-        const unread = await unreadCandidates(snapshot, read, cwds);
+      let joined = null;
+      try { joined = await joinRoots(roots); } catch { joined = null; }
+      // Anything short of a complete census (a partial read, an unread working directory or an unreadable
+      // sandbox reading) leaves membership unknown, so every row stays.
+      if (joined?.state === 'complete') {
         escaped = new Map();
-        const rowsByPid = new Map(snapshot.processes.map(p => [p.pid, p]));
-        for (const [pid, m] of all) if (!rowsByPid.get(pid)?.zombie && !roots.find(r => r.id === m.launch)?.known.has(pid))
+        for (const [pid, m] of joined.members) if (!joined.rows.get(pid)?.zombie && !roots.find(r => r.id === m.launch)?.known.has(pid))
           escaped.set(m.launch, (escaped.get(m.launch) ?? 0) + 1);
-        if (read.length < candidates.length || unread) escaped = null;
       }
     }
     for (const { id, members, surviving, unknown } of judged) {
@@ -775,6 +838,11 @@ export function createResourceOwner(initialCeilings = RESOURCE_CEILINGS) {
           throw Error('resource owner: aggregate memory ceiling may only be lowered');
         ceilings = Object.freeze({ ...ceilings, aggregate: Object.freeze({ ...ceilings.aggregate, memoryBytes: bytes }) });
       }
+      if (options.harnessUid !== undefined && options.harnessUid !== null) {
+        if (!Number.isSafeInteger(options.harnessUid) || options.harnessUid <= 0 || options.harnessUid === ownUid)
+          throw Error('resource owner: the harness user must be a separate identity');
+        harnessUid = options.harnessUid;
+      }
       attached = { ledgerPath: options.ledgerPath ?? null, statePath: options.statePath ?? null, owner: { pid: process.pid, start: null } };
       const own = await startEvidence(process.pid);
       attached.owner.start = typeof own === 'string' ? own : null;
@@ -798,6 +866,49 @@ export function createResourceOwner(initialCeilings = RESOURCE_CEILINGS) {
       if (!lease) return { code: null, limited: true, localLimit: input.stopped?.() ? null : 'capacity', stdout: '', stdoutBytes: new Uint8Array() };
       try { return await run(input, lease, await processLimit()); }
       finally { counters.completed++; release(lease); }
+    },
+    /**
+     * Rules 60, 114: a delegated session's process tree, held like a launch this owner did not spawn
+     * itself (tmux forks it). Admission (count, answer reserve, priority brake, Six allocation)
+     * happens here, before the session exists; `attach` joins the session's root process and its
+     * private working area, so the same sampled memory, process and CPU ceilings reclaim it; and
+     * `release` runs the same verified cleanup. The per-process kernel limits (RLIMIT_CPU and
+     * RLIMIT_NOFILE through the shim) do not reach a tmux-forked tree, so those bounds are `sampled`
+     * here, never claimed `hard`. Returns null on a capacity refusal or a stop.
+     */
+    async hold(work, { timeout, stopped }) {
+      if (stopped?.()) return null;
+      const lease = await admit(work, timeout, stopped);
+      if (!lease) return null;
+      let outcome = null;
+      return Object.freeze({
+        async attach({ pid, cwd }) {
+          if (!Number.isSafeInteger(pid) || pid <= 1) throw Error('resource owner: exact session root process required');
+          lease.enforcement = { ...enforcement(), cpuPerProcess: 'sampled', handlesPerProcess: 'unsupported' };
+          lease.uidProcesses = { state: 'unavailable', subject: null, limit: null };
+          lease.workingArea = privateArea(cwd); lease.pid = pid;
+          const evidence = await startEvidence(pid), start = typeof evidence === 'string' ? evidence : null;
+          if (start) lease.known.set(pid, start);
+          // Durable ownership evidence before the tree is counted as held (a failed write throws).
+          ledger(rows => { rows[lease.id] = { pid, start, owner: attached?.owner ?? null, members: Object.fromEntries(lease.known),
+            enforcement: lease.enforcement, uidProcesses: lease.uidProcesses, workingArea: lease.workingArea,
+            allocation: lease.allocation?.set ?? null }; });
+          lease.running = true;
+          if (!sampler) sampler = setInterval(() => { void sample(); }, ceilings.sampleMs);
+        },
+        async release() {
+          if (outcome) return outcome;
+          lease.running = false;
+          const { unresolved } = lease.pid ? await cleanupTree(lease) : { unresolved: false };
+          if (!unresolved) closeAllocationOf(lease, lease.pid ? `cleanup-verified:${lease.id}` : `never-launched:${lease.id}`);
+          if (!unresolved && (!lease.allocation || lease.allocation.closed))
+            try { ledger(rows => { delete rows[lease.id]; }); } catch { /* observed at the next attach */ }
+          else recordMembers(lease, { cleanup: 'unresolved' });
+          counters.completed++; release(lease);
+          outcome = { verified: !unresolved, limit: lease.limit ?? null };
+          return outcome;
+        },
+      });
     },
     observeInherited,
     snapshot,

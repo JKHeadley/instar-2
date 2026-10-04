@@ -34,7 +34,7 @@ boundary: ordinary work runs, and every consequential effect goes to the effect 
 default, consequential effects and irreversible acts; **checks:**
 `tests/assembly/production-provider-tools.test.ts`, `tests/preview/tool-admission.test.ts`,
 `tests/preview/effect-doorway.test.ts`, `tests/preview/tool-turn.test.ts`, `tests/preview/tool-turn-replay.test.ts`,
-`tests/preview/tools-default.test.ts`, `tests/preview/tool-persist.test.ts`,
+`tests/preview/egress-proxy.test.ts`, `tests/preview/tools-default.test.ts`, `tests/preview/tool-persist.test.ts`,
 `tests/integration/resource-owner.test.ts` and the gated live runs
 `tests/integration/tool-turn-live.test.ts`, `tests/integration/tool-turn-full-live.test.ts` and
 `tests/integration/tool-turn-persist-live.test.ts`.
@@ -48,14 +48,17 @@ file write or edit inside the conversation's volume, each decided on the resolve
 that resolved path, so no readable file is refused for its spelling. For a sandboxed command the kernel decides at
 open, so no symlink, alias or `..` spelling reaches past the boundary. For the in-process file tools (Read, Write,
 Edit, Glob, Grep) the hook decides on the realpath at admission, and a path the agent itself swaps for a link between
-admission and the harness's open can still be followed. That race is OPEN: it is pre-existing, the admission check
-does not close it, and it can be closed only by running the harness as its own operating-system user, an operator
-infrastructure step (`docs/defects/2026-10-03-file-tool-swap-race.md`). Separately, and narrowly: the tool runner's
+admission and the harness's open could be followed. That race is closed by the kernel when the harness runs as its
+own macOS user (`--harness-user _instarharness`): every open the harness or its file tools make is checked as that
+user, which cannot read or write the operator account's home, keys, vault, agent configurations or preview roots, so
+a swapped path reaches only the harness's own area (its login, its state and the workspace) and files every local user
+can read. Without that switch, or when the user is not ready, the harness runs as the operator's account, the race is
+open, and the launch and the status answer say so (`docs/defects/2026-10-03-file-tool-swap-race.md`). Separately, and narrowly: the tool runner's
 journal and vault are ciphertext under the storage key, which only the runner's environment holds, and an MCP server's
 credential given as a SecretRef is resolved by the runner and handed to that server's launcher alone, not written to
 the launch configuration. The admission record can hold a credential a tool result carried, in plaintext, until the
 end-of-turn scrub, and a literal credential in a format no pattern recognises is not detected; so this is not a claim
-that every file the runner writes is secret-free, and it does not close the race. It also admits sandboxed commands (never judged by the words they
+that every file the runner writes is secret-free, and it is not what closes the race. It also admits sandboxed commands (never judged by the words they
 contain), a web read (WebFetch issues only a GET) of a host whose every resolved address is public,
 a web search, an MCP tool the root's configuration lists as a read, the harness's own bookkeeping, a
 worktree inside the workspace, and a subagent of the one registered type, started by the turn or by
@@ -71,15 +74,29 @@ because it reaches this machine and its network rather than the world. A tool th
 classified is refused. The harness sandbox is where a command's reach is enforced: reads
 are refused from the filesystem root down except the conversation's volume and the system files
 commands need to run (the operating system's root-level links to those system files are reopened as
-links only, so a system file reads by either spelling and nothing behind the link opens); writes reach only that volume; there is no network, so no command can write to
-the network, no unix socket and no signal to another process. The workspace and every temporary file
+links only, so a system file reads by either spelling and nothing behind the link opens); writes reach
+only that volume; no unix socket and no signal to another process.
+A command reaches the network only through the turn's egress checkpoint, a proxy the runner starts on
+a loopback port for the turn and stops with it, so the shell keeps its network reads while the
+floor is held at the checkpoint. The checkpoint intercepts HTTPS with the
+turn's own trust root, whose key lies in the admission state and whose certificate only the turn's
+shell trusts, so it sees each request's method and path. It resolves each host itself, admits a read
+(a GET or HEAD, or a git fetch) only when every resolved address is public, and connects to the
+address it checked. It sends every other request (any other method, a git push from its discovery
+request on, a package publish) to the effect doorway's four tests as a network write on its host, and
+a read of a host the operator's effect policy names to the doorway as a web read of it is sent. A loopback, private,
+link-local or shared-address host is refused before any connection, the proxy adds no credential,
+upstream certificates are verified, and every decision is appended to the admission state before the
+request goes anywhere and journaled with the turn's trace. The bytes through it, its connections, its
+requests and each connection's idle time are bounded, and a command that bypasses the proxy reaches
+nothing. The shell's home directory is new each turn. The workspace and every temporary file
 of the shell and the harness live on that fixed-size volume, so a conversation's whole storage is
 finite and cannot consume the journal's disk. The per-step tool-call count, shared by the turn and its subagents,
 is allocated atomically, so overlapping calls cannot exceed it. The launch has a clean environment;
 the harness's own messaging socket and token are removed from every command; an MCP server's launch
 configuration lies in the turn's admission state and carries its command, arguments and ordinary environment
 settings, with a credential only as a SecretRef that the runner resolves from custody and hands once to that
-server's launcher (a credential written literally is refused); and a workflow, scheduling, remote-trigger, monitor or messaging call is decided by the hook as
+server's launcher (a credential in a recognised format written literally is refused; an opaque one is not detected); and a workflow, scheduling, remote-trigger, monitor or messaging call is decided by the hook as
 above. Neither
 `--bare` nor `--safe-mode` is used, because both skip settings hooks, and managed policy that could
 disable hooks refuses the turn. Arbitrary-code execution is admitted only inside this demonstrated
@@ -97,6 +114,19 @@ journal context ground the turn, every tool call, result and subagent edge is jo
 answer returns through the existing reply review and send paths. Ordinary standing-covered work
 requires no repeated human approval. Review and summary calls keep their text-only policy. A preview
 label grants no exception to these floors.
+A doorway whose harness has no model-call limit of its own (the Codex tool turn) runs the same hook
+through the host's admission checkpoint instead (Part fifteen §5 in docs/19-scheduled-work): every
+model call of the turn and its subagents takes the turn's one reserved allowance there, so no separate
+subagent budget is reserved; a delegation is first recorded as a durable child edge; every command runs
+under the turn's own confined sandbox profile, whose one network path is the turn's egress checkpoint
+(its loopback port), so a command's reads and writes meet the effect doorway as above; a network read
+the operator's effect policy names, Codex's own web calls included, goes to the doorway as above; and
+a consequential tool passes the checkpoint's effect owner, which decides it by the same four tests
+under the installation's current effect policy and its grants (an ordinary or granted operation
+passes, an ungranted consequential one refuses, and every one refuses while an installed policy cannot
+be read), then adds the stop, a durable record before dispatch and, for a consequential effect, a
+stable identity that is never prepared twice. The web-read host rule above holds on this route too. A
+turn without the checkpoint never sends a call to it.
 
 **Rule — tools are on by default under the operator's recorded grant, which names their scope and is
 withdrawn by the same record.** Rules 4, 60, 82 and 104, and the purpose's rules on nothing outward by
@@ -164,6 +194,40 @@ its budget backstop can end a long session's turn early; the upstream call reser
 binding bound. The preview's session driver runs Claude Code only: the Codex cell is unsupported
 until its thread continuation is shown to meet this rule under its own conformance.
 
+**Rule — the native harness runs the same tool turn with Instar's own loop.** Rules 2, 30, 41, 55, 58,
+60, 75, 113 and 115, and the purpose's rules on nothing outward by default, consequential effects and
+irreversible acts; **checks:** `tests/preview/native-loop.test.ts`, `tests/preview/native-loop-replay.test.ts`,
+`tests/preview/native-harness-contract.test.ts` and the gated live run `tests/integration/native-loop-live.test.ts`.
+Instar may run a tool turn without any vendor agent harness. Each step is one text-only model call through
+a registered doorway under the native framing, whose policy differs from every other framing only in its
+system prompt, so its digest is its own and only an activation record and grant naming it admit it. The
+model proposes tool calls as its answer, and Instar runs the loop: it admits each proposed call through the
+same admission hook, call slots and record as a harness tool turn, and runs the admitted calls inside the
+same per-turn scratch volume and workspace. Every admitted call except a web fetch runs as a separate worker
+process under a sandbox built from the same read list as the harness sandbox, reaching no network but the
+turn's own egress checkpoint (so its shell's network requests are decided there exactly as a harness shell's
+are), with no unix socket and no signal outside the sandbox, so the kernel checks each file open when it happens: a path the hook
+admitted that later becomes a link out of the volume is refused, and a blocking open blocks only the worker.
+Each worker is launched through the host resource owner, which holds its CPU time and handles, the user ID's
+process headroom, and the tree's memory and process count against their ceilings, and ends it on its deadline
+or the stop. Its membership covers the identity no descendant can leave: besides recorded incarnation, group,
+ancestry and the scratch volume, the owner asks the kernel, from outside the workload, which processes are in
+the worker's sandbox instance, so a descendant that takes a new session, loses its parent and changes directory
+out of the volume is still counted against the ceilings and ended by the stop and the cleanup. Nothing inside
+the sandbox takes part in settlement or cleanup, and no file the workload can write is read on that path. Each
+call carries the owner's containment evidence (its cleanup verdict and the membership it was proven under) into
+the native result, which lists every launch whose end was not proven. A web fetch the hook admitted runs in the loop's process, ends on its deadline or
+the stop, and reads at most its byte limit before cancelling the body. A tool the hook admits but the loop has
+no executor for is answered with an error result and runs nothing. Every call, its
+decision and its result return to the next step as quoted data. The loop is the tool turn's own invocation, so
+the whole-liability reservation, the step bound equal to that reservation, the journaled trace and the
+consistency check are unchanged, and each step is a recorded model call. The loop ends on the model's answer,
+the step bound, a failed step or the stop; the stop ends every process of a running call's sandbox, and a call
+admitted while the stop was latched is recorded as stopped and never run. A
+proposal the hook cannot decide is refused. The loop is a client of the public ports and holds no authority
+of its own. The preview launcher offers a native turn only under an activation and grant naming the native
+policy's digest.
+
 **Rule — Codex activation has the identical bar.** Rules 34, 41, 47, 59 and 75; **checks:
 P13-NF-16/23/35/44**. The conformance run must show actual submitted context, correlated lifecycle
 and output events, model/runtime-configuration/reasoning and account evidence, sandbox and hidden path
@@ -175,6 +239,46 @@ recorded as GRANTED in `SEAM-LEDGER.md` row 38, lands. A rollout file, composer 
 or terminal render is accepted only for the precise observation its authenticated structure and
 subject binding prove. Missing strong consumption or completion evidence keeps those capabilities
 unsupported.
+
+**Rule — the registered Codex model doorway answers only a tool-free completed turn, on a
+subscription.** Rules 26, 30, 41, 56, 75 and 115; **checks: P13-NF-08/16/45** and
+`tests/assembly/production-codex-provider.test.ts`. The doorway is selected by its registered id
+(`codex-cli-subscription`); its parser, its invocation policy, its model shape and its activation
+check live in the adapter module that owns the harness, and the registry carries exactly one entry
+per id. An answer turn is admitted only when all of the following hold on the exact recorded
+output: the terminal event is `turn.completed`; the stream carries one non-empty agent message
+within the declared output bound; the turn's reported output tokens are within the policy ceiling;
+every completed item is an agent message or reasoning; and no line of the stream was unreadable.
+Because the harness always has a shell, a tool-free answer cannot be a launch flag: a completed
+turn that ran a command, applied a patch or called a tool is refused rather than answered from a
+run its answer does not account for. A `turn.failed` event is the provider's own reason and is
+recorded as a refusal with that reason; a stream with no terminal event, an unreadable line, or a
+contradiction between the stream and the process exit is retained as uncertain and never retried
+here. The invocation passes no API key and sets none, and the environment it passes is closed to
+everything except the path, the home and the login home.
+
+**Rule — which sign-in a Codex login home holds is observed, not inferred from an exit code.**
+Rules 26, 56, 75 and 103; **checks: P13-NF-16/23** and the same adapter case. `codex login status`
+exits zero for a subscription sign-in AND for an API-key sign-in, and states which only on standard
+error, which the host's bounded transport does not capture. The route therefore reads the exit code
+only as evidence that some sign-in exists, and takes the KIND from a narrow host observation of the
+login home that returns the sign-in class and never any token, key or account value. Anything but
+the subscription class — an API key, no login, or an observation this host cannot make — refuses
+the route, at construction and again at every call. WHICH account is signed in is not observable
+from this harness at all: the account on the activation record is the operator's assertion, the
+route's source strength is an attestation, and no surface may present it as an observed account.
+The configuration digest the profile inspection returns is a change detector over the host's
+reviewed policy state, not an observation of this harness's own managed policy, which stays
+unobserved and is declared as an accepted residual.
+
+**Rule — a session harness's startup menu is the operator's, and is removed at setup rather than
+answered.** Rules 59, 103 and 115; **checks: P13-NF-16** and
+`tests/e2e/session-work-live.test.ts`. A Codex session launched in a directory its login home does
+not already trust shows a directory-trust menu before its prompt. The session driver classifies a
+startup menu and refuses the launch rather than choosing for the operator, so this is an enumerated
+silent-stop class with a setup remedy, not a runtime decision: the host declares its own scratch
+work scope trusted in the session's login home when it creates it. No adapter may answer a startup
+menu on the operator's behalf.
 
 **Rule — a future adapter arrives through declarations and evidence.** Rules 30, 44, 49 and 115;
 **checks: P13-NF-08/45**. The builder adds a registered package, exact assembly binding,

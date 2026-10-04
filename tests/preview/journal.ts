@@ -18,7 +18,7 @@ import { hasClaim, replaceClaim, supersedesCorrection } from './claim-match.mjs'
 import { checkReply as checkCoherenceOf, correctionNote, releaseFindings, COHERENCE_FINDING_LIMIT, type CoherenceFinding } from './coherence-check.js';
 import { checkReply, reviewReply, repeatsOperatorOnly, HOLDING_REPLY, jevRequestBody, JEV_RESPONSE_MAX_BYTES, REPLY_CHECK_BUDGET_MS, REPLY_CHECK_BUDGET_REASON, LINK_SHAPE_REASON, linkShapeRules, bareTopicReferences, topicNameReason, BARE_TOPIC_OBJECTION, noDecisions, validDispositions, jevConfidentCredential, CLAIM_SCOPED_RULES, namedClaimsIn, exciseNamedClaims, substantiveReply, sharedAudience, AUDIENCE_RULES, type ApprovalFacts } from './reply-check.js';
 import { parseDatedItem, restatedDatePhrase, dueState, selectDatedItems, withinNext48Hours, localParts, type DatedItem } from './dated-memory.js';
-import { isStatusCommand, isStopCommand, statusReply, STOP_CONFIRM_TEXT } from './status-command.js';
+import { isStatusCommand, isStopCommand, statusAnswer, STOP_CONFIRM_TEXT } from './status-command.js';
 import { AGENT_PROMISE_LIMIT, fulfillableCommitment, fulfillmentProposals, fulfillmentSupported, legacyFulfillsReminder, promiseProposals, recordedPromises, type AgentPromise, type FulfillmentProposal, type PromiseProposal } from './agent-commitment.js';
 import { messageTime, zoneFormatter } from './self-state.js';
 import type { ObjectionDisposition, ReplyCheckResult, ReplyCheckPorts, ReplyDecision, ReplyFinding, ReplyReviewDiagnostics, ReplyRule } from './reply-check.js';
@@ -29,6 +29,7 @@ import { unlabeledRecall } from './answer-provenance.js';
 import { interpretStepJev, stepQuestionFor, stepQuestionsFor, type StepCheckResult } from './step-check.js';
 import type { Directive, VerifiedPrincipal } from '../../src/index.js';
 import { shouldRunScheduledPriority } from '../../src/scheduled/shedding.js';
+import type { SessionWorkEdge, SessionWorkEdgeClose, SessionWorkEffect } from '../../src/assembly/production-session-work.js';
 import type { ExhaustionAvenue } from '../../src/rungraph/index.js';
 import { consumeResult } from '../../src/index.js';
 import type { BoundaryContext, Hash, RegisterGenerationReference, Result, Scope } from '../../src/index.js';
@@ -37,7 +38,11 @@ import type { IndependentSurfaceVerifierPort, InstalledShape, MinimalDependency,
 import { authenticateTelegramSender, principalBoundToUpdate, systemWriters, verifiedAtIntake, TELEGRAM_ADAPTER, testOriginWriter, writerBoundToRaw, writerRecord, type SystemMethod, type WriteOrigin, type WriterRecord } from './intake-principal.js';
 import { LIVE_JUDGMENTS, type ModelCallRecord } from './model-call-boundary.js';
 import { outboundSigner, settleSendOutcome, type OutboundProvenance, type OutboundSubject, type SendOutcome, type SettledSendOutcome, type Speaker } from './outbound-provenance.js';
-import { retrospectivePlan, retrospectivePopulation, validateRetrospective, replyContextDigest, RETRO_OVER_CAP_REASON, type RetroPass, type RetroSiblingEvidence } from './retrospective.js';
+import { acceptedMemoryFailure, memoryFailureOffer, memoryFailures, memoryLearningLine, memoryLessons, validStoredMemoryFailure, withLearnedCues,
+  MEMORY_FAILURE_DECISION, type MemoryFailureProposal } from './memory-learning.js';
+import { retrospectivePlan, retrospectivePopulation, validateRetrospective, replyContextDigest, RETRO_OVER_CAP_REASON, RETRO_DUTY_FOLLOWUP_QUESTION,
+  dutiesLeftUninspected, dutyFollowUpPacket, mergeDutyFollowUp, retroCallReserve, retroFollowUpReason, RETROSPECTIVE_DUTIES,
+  type RetroPass, type RetroSiblingEvidence, type RetrospectiveDuty } from './retrospective.js';
 import { openReplyNotices, validAnswerNotices, type ReplyNotice } from './credential-reminders.js';
 import { admitChatYes, chatBinding, explicitYesStatus, operatorRefusalText, operatorRequestText, operatorResultText, operatorReviewBodyText, operatorReviewRequestText,
   operatorRequestTarget, operatorYesAuthority, parseOperatorAction, proposeOperatorRequest, proposeRetractRequest, wellFormedRequest, OPERATOR_REQUEST_MS,
@@ -987,6 +992,8 @@ export type JournalRecord =
     promises?: PromiseProposal[]; fulfills?: FulfillmentProposal[];
     /** The operator action the model read this verified operator message as asking for (Rules 10, 82). */
     operatorAction?: OperatorActionProposal;
+    /** Part 21 §16: the operator's message showed the previous answer here should have remembered this (offered by structure). */
+    memoryFailure?: MemoryFailureProposal;
     at: number }
   | { kind: 'status-answer'; id: string; text: string; prompt: string; at: number }
   | { kind: 'model-uncertain'; id: string; state: 'uncertain'; usage?: ModelUsage; latencyMs?: number; at: number }
@@ -1028,6 +1035,13 @@ export type JournalRecord =
   | { kind: 'reply-check'; id: string; result: ReplyCheckResult; at: number }
   /** Rules 8, 22, 92, 99, 102: one scheduled piece of work on a due obligation, started at most once per slot. */
   | { kind: 'obligation-start'; obligation: string; slot: number; maxInputTokens?: number; maxOutputTokens?: number; at: number }
+  /** Rules 60, 114: one delegated-session edge, or that same edge's settled close. The edge is
+   * recorded before the child session exists and the close on every path out, so a delegation is
+   * never a session nobody owns. Its loss detector is replay: an obligation-result whose step ran
+   * as a session with no edge before it, or an edge with no close and no later launch, is visible
+   * in the journal. The edge reserves the step's whole model-call liability against the call cap
+   * (retained, like a tool turn's); otherwise the obligation's own result carries the state. */
+  | { kind: 'session-work'; record: SessionWorkEdge | SessionWorkEdgeClose | SessionWorkEffect; at: number }
   | { kind: 'obligation-result'; obligation: string; slot: number; outcome: ObligationOutcome; report?: string; note?: string;
     assessment?: BlockerAssessment;
     waitsOn?: 'operator' | 'external'; recheckAt?: number; usage?: ModelUsage; at: number }
@@ -1102,7 +1116,8 @@ export type JournalRecord =
       mcp?: { servers: string[]; reads: number; digest: string }; workspace?: ToolWorkspaceRow; at: number }
   | { kind: 'tool-turn'; phase: 'refused'; id: string; reason: 'call cap' | 'prompt size'; at: number }
   | { kind: 'tool-turn'; phase: 'trace'; id: string; attempt: number; calls: ToolTraceCall[]; consistent: boolean;
-      edges?: ToolChildEdge[]; workspaceBytes: number | null; session?: ToolSessionRow; volume?: ToolVolumeRow; at: number }
+      edges?: ToolChildEdge[]; egress?: ToolEgressRequest[]; egressRequests?: number; egressLimited?: string; workspaceBytes: number | null;
+      session?: ToolSessionRow; volume?: ToolVolumeRow; harness?: ToolHarnessRow; at: number }
   | { kind: 'legacy-reply'; at: number }
   | { kind: 'import'; source: string; remainingCalls: number; remainingReplies: number; oldStop: string; at: number }
   | { kind: 'summary-reserve'; through: number; prompt?: string; supervised?: true; maxInputTokens?: number; maxOutputTokens?: number; at: number }
@@ -1151,6 +1166,12 @@ export type JournalRecord =
   /** One bounded benchmark rerun of a promoted case under the current reply configuration, inside its pass. */
   | { kind: 'retro-rerun-reserve'; pass: number; index: number; case: string; contextDigest: string; at: number }
   | { kind: 'retro-rerun'; pass: number; index: number; state: 'complete' | 'failed' | 'unknown'; answer?: string; reason?: string; usage?: ModelUsage; at: number }
+  /** The pass's duty follow-up: one more call, inside its pass and the cap, about the duties the first answer left
+   * uninspected although their evidence was present. It holds the first answer's validated result and usage, so a
+   * crash before the pass is recorded loses nothing the first answer produced. */
+  | { kind: 'retro-duty-reserve'; pass: number; duties: RetrospectiveDuty[];
+    held: NonNullable<RetroPass['result']>; heldUsage?: ModelUsage; at: number }
+  | { kind: 'retro-duty'; pass: number; state: 'complete' | 'failed' | 'unknown'; reason?: string; usage?: ModelUsage; at: number }
   /** Part 18: one live sentinel tick that changed something (sentinel-record.ts). */
   | SentinelRecord;
 
@@ -1212,6 +1233,8 @@ export interface Turn { id: string; update: number; text: string; raw: string; a
   proposedPromises?: PromiseProposal[]; proposedFulfills?: FulfillmentProposal[]; intentFulfills?: number[];
   /** The operator action this turn's answer proposed; its reply carries the exact request or the refusal. */
   operatorAction?: OperatorActionProposal;
+  /** Part 21 §16: this verified operator turn's validated report of a memory failure in the previous answer here. */
+  memoryFailure?: MemoryFailureProposal;
   /** Rule 110: the continuity account the send intent recorded for this reply. */
   continuity?: ContinuityAccount }
 
@@ -1244,6 +1267,9 @@ export interface JournalView { genesis: Extract<JournalRecord, {kind:'genesis'}>
   /** Indexes into `summaries` of the rolling summaries a retraction retired: each was built over a retracted turn. They stay
    * for audit and their settled memory requests stay settled; no packet or later summary reads their text. */
   retiredSummaries?: number[];
+  /** Rules 1, 114: identities the effect owner prepared for a delegated child's consequential tool calls. Absent until one
+   * applies, so the projection digest of every journal without one is unchanged. */
+  toolEffects?: string[];
   capReports: Set<string>;
   /** Rule 11 index-only work: every offer of a source (one entry per offer, so a source appears up to
    * `INDEX_ATTEMPT_LIMIT` times), terms admitted, the reservation awaiting its result, and earlier
@@ -1999,6 +2025,62 @@ function projectObligationWork(view: JournalView, row: Extract<JournalRecord, { 
     if (row.recheckAt !== undefined) note.recheckAt = row.recheckAt;
   }
 }
+/** Rules 60, 61, 114: an edge reserves its step's whole model-call liability before the child
+ * exists, and refuses when the call allowance cannot hold it. */
+function projectSessionWork(view: JournalView, record: SessionWorkEdge | SessionWorkEdgeClose | SessionWorkEffect): void {
+  validateSessionWorkRow(record);
+  // The effect owner's stable identities: one prepared record per identity, so the same send is never prepared twice.
+  if (record.type === 'SessionWorkEffect') {
+    const prepared = view.toolEffects ?? (view.toolEffects = []);
+    if (record.state === 'prepared') {
+      if (prepared.includes(record.id)) throw Error('preview journal: tool effect already prepared');
+      prepared.push(record.id);
+    } else if (!prepared.includes(record.id)) throw Error('preview journal: tool effect observed before it was prepared');
+    return;
+  }
+  // A delegation inside a step draws on its parent's reservation (the model-dispatch checkpoint counts its calls there).
+  if (record.type === 'SessionWorkEdge' && record.drawsOn !== undefined) return;
+  // A close whose child made more model calls than its edge reserved charges the excess, so the remaining
+  // allowance never exceeds the real one. Unknown calls stay unknown: nothing is charged or credited.
+  if (record.type === 'SessionWorkEdgeClose') {
+    if (typeof record.calls === 'number' && typeof record.reserved === 'number' && record.calls > record.reserved)
+      view.calls += record.calls - record.reserved;
+    return;
+  }
+  if (view.calls + record.budget.calls > view.limits.maxCalls) throw Error('preview journal: session work call cap');
+  view.calls += record.budget.calls;
+}
+/** Rules 2, 60, 114: a delegated-session edge or close is accepted only complete and bounded, so a
+ * malformed row is refused here rather than stored unread. */
+export function validateSessionWorkRow(record: SessionWorkEdge | SessionWorkEdgeClose | SessionWorkEffect): void {
+  const text = (value: unknown, max: number) => typeof value === 'string' && value.trim().length > 0 && value.length <= max;
+  const stamp = (value: unknown) => typeof value === 'number' && Number.isSafeInteger(value) && value > 0;
+  if (record?.type === 'SessionWorkEffect') {
+    if (record.schemaVersion !== 1 || ![record.id, record.edge, record.operation, record.digest, record.detail].every(value => text(value, 1024))
+      || !/^sha256:[0-9a-f]{64}$/u.test(record.id) || !['prepared', 'observed'].includes(record.state) || !stamp(record.at))
+      throw Error('preview journal: session work effect incomplete');
+    return;
+  }
+  if (record?.type === 'SessionWorkEdge') {
+    if (record.schemaVersion !== 1 || ![record.id, record.parent, record.child, record.scope, record.owner,
+      record.authority, record.exitTest, record.placement, record.transport, record.resultDestination]
+      .every(value => text(value, 1024))
+      || record.budget?.steps !== 1 || !stamp(record.budget.deadline) || record.budget.tokens !== null
+      || !Number.isSafeInteger(record.budget.calls) || record.budget.calls <= 0
+      || !Number.isSafeInteger(record.budget.maxResultBytes) || record.budget.maxResultBytes <= 0
+      || (record.drawsOn !== undefined && record.drawsOn !== record.parent)
+      || !stamp(record.openedAt)) throw Error('preview journal: session work edge incomplete');
+    return;
+  }
+  if (record?.type !== 'SessionWorkEdgeClose' || record.schemaVersion !== 1
+    || !text(record.id, 1024) || !text(record.edge, 1024) || !text(record.detail, 2048) || !text(record.evidence, 1024)
+    || (record.child !== null && !text(record.child, 1024))
+    || !['complete', 'uncertain', 'failed'].includes(record.state)
+    || (record.resultBytes !== null && (!Number.isSafeInteger(record.resultBytes) || record.resultBytes < 0))
+    || (record.calls !== undefined && record.calls !== null && (!Number.isSafeInteger(record.calls) || record.calls < 0))
+    || (record.reserved !== undefined && (!Number.isSafeInteger(record.reserved) || record.reserved <= 0))
+    || !stamp(record.closedAt)) throw Error('preview journal: session work close incomplete');
+}
 /** Measured capacity for scheduled obligation work (the existing 1.x priority brake): it runs as medium-priority
  * work, so it yields once three quarters of the recorded model-call allowance is used and never takes the last calls
  * an operator reply and its review need. */
@@ -2006,7 +2088,7 @@ export function obligationCapacity(view: JournalView): boolean {
   const { calls } = view, { maxCalls } = view.limits;
   return shouldRunScheduledPriority('medium', calls >= maxCalls - 2 ? 'critical' : calls >= maxCalls * 0.75 ? 'elevated' : 'normal');
 }
-export const OBLIGATION_WORK_QUESTION = 'packet.obligation is open work you own for the verified operator, due now. Do it now with what you know; you have no external tools, and a reply reaches the operator only with their next message. Return only JSON. For a request, promise, deferral or judgment: {"outcome":"report","report":<the completed result or decision, addressed to the operator>} when you can finish it now; {"outcome":"continue","note":<the concrete progress and next step>} when it genuinely needs more time; {"outcome":"waiting","waitsOn":"operator"|"external","note":<what exactly you now need>} only when someone else must act first. When packet.waitingFor is present, you said you needed it earlier: check packet.operatorMessagesSince and continue with whatever now arrived. For a blocker-recheck, test the claim again against every avenue and packet.capabilities: {"outcome":"still-blocked","recheck":"YYYY-MM-DD" within 90 days,"avenues":[{"avenue","disposition":"outside-standing"|"inapplicable","evidence":<the packet.capabilities key that shows it>}],"constraint":<governingConstraints key those capabilities support>,"reason":<what you re-examined and why it still holds>} or {"outcome":"cleared","report":<what is now possible>}. You have attempted nothing outside this step, so never call an avenue tried. Follow packet.directives. Refuse only behind a packet.governingConstraints key.';
+export const OBLIGATION_WORK_QUESTION = 'packet.obligation is open work you own for the verified operator, due now. Do it now with what you know; you have no external tools, and a reply reaches the operator only with their next message. A report is that later message: it is held now and delivered with their next message, never before it, so "answer later" or "not in this reply" is done by reporting now. Return only JSON. For a request, promise, deferral or judgment: {"outcome":"report","report":<the completed result or decision, addressed to the operator>} when you can finish it now; {"outcome":"continue","note":<the concrete progress and next step>} when it genuinely needs more time; {"outcome":"waiting","waitsOn":"operator"|"external","note":<what exactly you now need>} only when someone else must act first. When packet.waitingFor is present, you said you needed it earlier: check packet.operatorMessagesSince and continue with whatever now arrived. For a blocker-recheck, test the claim again against every avenue and packet.capabilities: {"outcome":"still-blocked","recheck":"YYYY-MM-DD" within 90 days,"avenues":[{"avenue","disposition":"outside-standing"|"inapplicable","evidence":<the packet.capabilities key that shows it>}],"constraint":<governingConstraints key those capabilities support>,"reason":<what you re-examined and why it still holds>} or {"outcome":"cleared","report":<what is now possible>}. You have attempted nothing outside this step, so never call an avenue tried. Follow packet.directives. Refuse only behind a packet.governingConstraints key.';
 /** The same work step on the scoped-tool route: it can use the listed tools, and only their recorded calls ran. */
 export const OBLIGATION_WORK_QUESTION_TOOLS = replacedClause(replacedClause(OBLIGATION_WORK_QUESTION,
   'you have no external tools,', 'your only tools are the listed ones,'),
@@ -2395,16 +2477,31 @@ function checkRerunReserve(view: JournalView, row: Extract<JournalRecord, { kind
   if (!pass || pass.state !== undefined || row.index !== (pass.reruns?.length ?? 0) || !row.case.startsWith('answer:')
     || view.calls >= view.limits.maxCalls) throw Error('preview journal: benchmark rerun order or cap');
 }
+/** A duty follow-up reservation: once per pass, after its reruns settled, inside the cap, for known duties only. */
+function checkDutyReserve(view: JournalView, row: Extract<JournalRecord, { kind: 'retro-duty-reserve' }>): void {
+  const pass = view.retroPasses[row.pass];
+  if (!pass || pass.state !== undefined || pass.dutyFollowUp !== undefined || (pass.reruns ?? []).some(run => run.state === undefined)
+    || !row.duties.length || !row.duties.every(duty => RETROSPECTIVE_DUTIES.includes(duty)) || view.calls >= view.limits.maxCalls)
+    throw Error('preview journal: retrospective duty follow-up order or cap');
+}
 function validateCallOutcome(view: JournalView, row: Extract<JournalRecord, { kind: 'call-outcome' }>): void {
   const summary = /^summary:(\d+(?:\.\d+)?)(:review)?$/.exec(row.id);
-  const valid = row.role === 'summary' ? !!summary && view.summaryReservations.has(Number(summary[1]))
+  // The two background launches beside turns and summaries: a scheduled obligation step (its start reserved this slot)
+  // and an index-only pass (its reservation still open). Refusing their row turned a completed call into UNKNOWN
+  // (live D run 2026-10-03: every work step settled uncertain, so no result ever waited for delivery).
+  const work = /^obligation:((?:commitment|blocker):(?:0|[1-9][0-9]*)):(0|[1-9][0-9]*)$/u.exec(row.id);
+  const index = /^summary:index:(0|[1-9][0-9]*)$/u.exec(row.id);
+  const valid = work ? row.role === 'model' && view.obligationWork[work[1]!]?.inFlight === Number(work[2])
+    : index ? row.role === 'summary' && view.indexOpen?.key === `index:${index[1]!}`
+    : row.role === 'summary' ? !!summary && view.summaryReservations.has(Number(summary[1]))
     && (summary[2] === undefined || view.summaryReviews.has(Number(summary[1])))
     : row.role === 'reply-review' ? row.id.endsWith(':reply-review') && !!view.turns.get(row.id.slice(0, -13))?.reviewReserved
       || row.id.endsWith(':reply-revision') && !!view.turns.get(row.id.slice(0, -15))?.revisionReserved
       || row.id.endsWith(':revision-review') && !!view.turns.get(row.id.slice(0, -16))?.revisionReviewReserved
-    : /^retrospective:\d+(?::rerun:\d+)?$/u.test(row.id) ? view.retroPasses.some(pass => pass.state === undefined
+    : /^retrospective:\d+(?::rerun:\d+|:duties)?$/u.test(row.id) ? view.retroPasses.some(pass => pass.state === undefined
       && (`retrospective:${String(pass.pass)}` === row.id || (pass.reruns ?? []).some(run => run.state === undefined
-        && `retrospective:${String(pass.pass)}:rerun:${String(run.index)}` === row.id)))
+        && `retrospective:${String(pass.pass)}:rerun:${String(run.index)}` === row.id)
+        || pass.dutyFollowUp?.state === undefined && pass.dutyFollowUp !== undefined && `retrospective:${String(pass.pass)}:duties` === row.id))
     : !!view.turns.get(row.id)?.reserved;
   const o = row.outcome;
   if (!valid || !o || ![o.elapsedMs, o.promptBytes].every(n => Number.isSafeInteger(n) && n >= 0)
@@ -2768,6 +2865,10 @@ function validDoorwayCall(value: unknown): value is EffectDoorwayCall {
     // Ordinary exactly when no test held: a consequential effect is granted, in the closed set, or refused.
     && (d.disposition === 'ordinary') === !DOORWAY_TESTS.some(test => tests[test] === true);
 }
+/** One request the shell's network checkpoint decided (tests/preview/egress-proxy.mjs): admitted reads of public hosts,
+ * refused writes (the effect doorway's reason) and refused hosts; `status`/`bytes` once its response finished. */
+export interface ToolEgressRequest { n: number; method: string; scheme: string; host: string | null; port: number | null; path: string;
+  decision: string; reason: string; kind: string; address?: string; status: number | null; bytes: number | null; error?: string }
 /** One recorded tool call as the reply review sees it: what was called, whether it was admitted, and what it returned. */
 export interface ToolAttempt { n: number; tool: string; decision: string; input: string; result: string | null }
 /** The review's bounds on recorded tool attempts: at most this many calls, each excerpt clipped to this many characters. */
@@ -2794,12 +2895,17 @@ export interface ToolTurnStats { invocations: number; reservedCalls: number; ref
    * from an empty replacement, and files that had a forgotten or corrected clause removed (each absent until it happens). */
   workspaces?: string[]; workspacesLost?: number; reconciledFiles?: number;
   /** Turns whose reconciliation did not finish: a file it could not change (kept intact) or a part past its bound. */
-  reconcileIncomplete?: number }
+  reconcileIncomplete?: number;
+  /** Shell network requests the turn's checkpoint decided (tunnel openings not counted). */
+  network?: { admitted: number; refused: number } }
 /** What a turn found in its kept workspace before any tool ran: whether its volume was lost (the journal names earlier
  * turns there, the volume came back empty and unmarked), how many files had forgotten or corrected clauses removed, how
  * many still hold one (`held`: unreadable, unwritable or not plain text, kept intact), and whether the pass stopped at its
  * bound (`unchecked`). */
 export interface ToolVolumeRow { lost: boolean; reconciled: number; held?: number; unchecked?: true }
+/** Which identity a tool turn's harness ran as (harness-user.mjs): its own macOS user, or the runner's account because
+ * the configured harness user was unavailable (the reason, recorded so the fallback is never silent). */
+export type ToolHarnessRow = { user: string } | { fallback: string };
 /** The conversation's workspace a tool turn used: `kept` (its persistent workspace) or not (past the root's bound of kept
  * workspaces, a fresh one-turn workspace, recorded so the overflow is never silent, Rule 2). */
 export interface ToolWorkspaceRow { key: string; kept: boolean }
@@ -2858,6 +2964,12 @@ function projectToolTurn(view: JournalView, row: Extract<JournalRecord, { kind: 
     && edge.parent === key && (edge.parentAgent === undefined || edge.parentAgent === null || boundedText(edge.parentAgent, 1, 256))
     && ['returned', 'cancelled', 'unknown'].includes(edge.state)))
     throw Error('preview journal: tool turn edges');
+  const egress = row.egress ?? [];
+  if (!Array.isArray(egress) || egress.length > 64 || !egress.every(entry => entry && Number.isSafeInteger(entry.n) && boundedText(entry.method, 1, 16)
+    && boundedText(entry.path, 0, 1024) && ['allow', 'deny'].includes(entry.decision) && boundedText(entry.reason, 1, 1024))
+    || !(row.egressRequests === undefined || (Number.isSafeInteger(row.egressRequests) && row.egressRequests >= egress.length))
+    || !(row.egressLimited === undefined || boundedText(row.egressLimited, 1, 256)))
+    throw Error('preview journal: tool turn egress');
   const admitted = row.calls.filter(call => call.decision === 'allow').length;
   const turn = view.turns.get(row.id);
   if (turn) {
@@ -2880,6 +2992,11 @@ function projectToolTurn(view: JournalView, row: Extract<JournalRecord, { kind: 
     lost: prior.lost + Number(kept.mode === 'new' && /^(?:lost|interrupted)\b/u.test(kept.reason)),
     bounded: prior.bounded + Number(kept.mode === 'new' && SESSION_BOUNDED.includes(kept.reason)),
     ended: prior.ended + Number(!kept.kept) }))(stats.sessions ?? emptySessionStats());
+  // Which identity the harness ran as (harness-user.mjs): its own user, or the runner's account on a loud fallback.
+  const harness = row.harness;
+  if (harness !== undefined && !(harness && typeof harness === 'object' && Object.keys(harness).length === 1
+    && (boundedText((harness as { user?: unknown }).user, 1, 64) || boundedText((harness as { fallback?: unknown }).fallback, 1, 512))))
+    throw Error('preview journal: tool turn harness identity');
   const volume = row.volume;
   if (volume !== undefined && (typeof volume.lost !== 'boolean' || !Number.isSafeInteger(volume.reconciled) || volume.reconciled < 0
     || (volume.held !== undefined && (!Number.isSafeInteger(volume.held) || volume.held < 1)) || (volume.unchecked !== undefined && volume.unchecked !== true)))
@@ -2888,12 +3005,16 @@ function projectToolTurn(view: JournalView, row: Extract<JournalRecord, { kind: 
   const children = edges.length || stats.children ? { started: (stats.children?.started ?? 0) + edges.length,
     returned: (stats.children?.returned ?? 0) + count('returned'), cancelled: (stats.children?.cancelled ?? 0) + count('cancelled'),
     unknown: (stats.children?.unknown ?? 0) + count('unknown') } : undefined;
+  const requests = egress.filter(entry => entry.kind !== 'tunnel'), allowed = requests.filter(entry => entry.decision === 'allow').length;
+  const network = requests.length || stats.network ? { admitted: (stats.network?.admitted ?? 0) + allowed,
+    refused: (stats.network?.refused ?? 0) + requests.length - allowed } : undefined;
   view.toolTurns = { ...stats, toolCalls: stats.toolCalls + admitted, toolRefusals: stats.toolRefusals + row.calls.length - admitted,
     inconsistent: stats.inconsistent + Number(!row.consistent), open: stats.open.filter(item => item !== key), ...(children ? { children } : {}),
     ...(sessions ? { sessions } : {}),
     ...(volume?.lost ? { workspacesLost: (stats.workspacesLost ?? 0) + 1 } : {}),
     ...(volume?.reconciled ? { reconciledFiles: (stats.reconciledFiles ?? 0) + volume.reconciled } : {}),
-    ...(volume?.held || volume?.unchecked ? { reconcileIncomplete: (stats.reconcileIncomplete ?? 0) + 1 } : {}) };
+    ...(volume?.held || volume?.unchecked ? { reconcileIncomplete: (stats.reconcileIncomplete ?? 0) + 1 } : {}),
+    ...(network ? { network } : {}) };
   // Part Twelve: every call that reached the effect doorway is counted by its disposition (Rules 41, 84).
   const reached = row.calls.filter(call => call.doorway !== undefined);
   if (reached.length) {
@@ -3174,6 +3295,7 @@ function project(view: JournalView, row: JournalRecord, system?: SystemCheck, ad
       summaryCount: view.summaries.length, closedCount: view.closed.size }; return;
   }
   if (row.kind === 'obligation-start' || row.kind === 'obligation-result') { projectObligationWork(view, row); return; }
+  if (row.kind === 'session-work') { projectSessionWork(view, row.record); return; }
   if (row.kind === 'summary-candidate') {
     if (!view.summaryReservations.has(row.through) || view.summaryCandidates.has(row.through))
       throw Error('preview journal: summary candidate order');
@@ -3388,7 +3510,8 @@ function project(view: JournalView, row: JournalRecord, system?: SystemCheck, ad
   if (row.kind === 'retro') {
     const pass = view.retroPasses[row.pass];
     if (!pass || pass.state !== undefined || (row.state === 'complete') !== (row.result !== undefined)
-      || (pass.reruns ?? []).some(run => run.state === undefined))
+      || (pass.reruns ?? []).some(run => run.state === undefined)
+      || pass.dutyFollowUp !== undefined && (pass.dutyFollowUp.state === undefined || row.state !== 'complete'))
       throw Error('preview journal: retrospective result order');
     settleTokens(view, `retrospective:${String(row.pass)}`, row.usage);
     pass.state = row.state; pass.completedAt = row.at;
@@ -3399,6 +3522,22 @@ function project(view: JournalView, row: JournalRecord, system?: SystemCheck, ad
     if (typeof row.usage?.outputTokens === 'number') pass.outputTokens = row.usage.outputTokens;
     if (row.result) pass.result = row.result;
     if (row.reason !== undefined) pass.reason = row.reason;
+    return;
+  }
+  if (row.kind === 'retro-duty-reserve') {
+    checkDutyReserve(view, row);
+    reserveTokens(view, `retrospective:${String(row.pass)}:duties`, 'summary', view.limits.maxBytes, subscriptionOutputMaximum);
+    view.calls++;
+    view.retroPasses[row.pass]!.dutyFollowUp = { duties: row.duties, held: row.held, ...(row.heldUsage ? { heldUsage: row.heldUsage } : {}) };
+    return;
+  }
+  if (row.kind === 'retro-duty') {
+    const followUp = view.retroPasses[row.pass]?.dutyFollowUp;
+    if (!followUp || followUp.state !== undefined || view.retroPasses[row.pass]!.state !== undefined)
+      throw Error('preview journal: retrospective duty follow-up result order');
+    settleTokens(view, `retrospective:${String(row.pass)}:duties`, row.usage);
+    followUp.state = row.state;
+    if (row.reason !== undefined) followUp.reason = row.reason;
     return;
   }
   if (row.kind === 'retro-rerun-reserve') {
@@ -3842,6 +3981,14 @@ function project(view: JournalView, row: JournalRecord, system?: SystemCheck, ad
     if (row.memoryPending) turn.memoryPending = true;
     if (row.datedPending) turn.datedPending = true;
     if (row.closedQuestions) turn.closedQuestions = row.closedQuestions;
+    if (row.memoryFailure !== undefined) {
+      // Part 21 §16: the same rule the writer applied; a report the offer could not have carried fails replay.
+      const operator = (item: Turn) => operatorWriter(view, item, true);
+      if (!verifiedOperatorTurn(view, turn) || turn.requestedAction !== undefined
+        || !validStoredMemoryFailure(view, turn, memoryFailureOffer(view, turn, operator), row.memoryFailure, operator))
+        throw Error('preview journal: memory failure report refused');
+      turn.memoryFailure = row.memoryFailure;
+    }
     if (row.reminderCancels !== undefined) {
       const pending = openRequests(view).map(datedKey);
       // As on the recovery summary row, [] is a recorded decision that this turn withdrew nothing -- not an
@@ -4172,6 +4319,7 @@ export function openPreviewJournal(path: string, key: Uint8Array, initial?: Extr
         throw Error('preview journal: outbound provenance refused');
       // Checked before the durable write: a record its own projection would refuse must never reach the file.
       if (row.kind === 'retro-rerun-reserve') checkRerunReserve(view!, row);
+      if (row.kind === 'retro-duty-reserve') checkDutyReserve(view!, row);
       if (row.kind === 'reply-review-reserve' && row.promptSha256
         && row.promptSha256 !== createHash('sha256').update(view!.turns.get(row.id)?.prompt ?? '').digest('hex'))
         throw Error('preview journal: reply review prompt reference differs');
@@ -4181,7 +4329,7 @@ export function openPreviewJournal(path: string, key: Uint8Array, initial?: Extr
         || (row.kind === 'limited-intent' && row.approval?.action !== 'stop' && reserveRepliesUsed(view, row.at) >= MINIMAL_RESERVE.replies)
         || ((row.kind === 'reserve' || row.kind === 'summary-reserve' || row.kind === 'index-reserve' || row.kind === 'reply-review-reserve'
           || row.kind === 'reply-revision-reserve' || row.kind === 'reply-revision-review-reserve' || row.kind === 'format-retry' || row.kind === 'lookup'
-          || row.kind === 'answer-replace' || row.kind === 'retro-reserve' || row.kind === 'retro-rerun-reserve')
+          || row.kind === 'answer-replace' || row.kind === 'retro-reserve' || row.kind === 'retro-rerun-reserve' || row.kind === 'retro-duty-reserve')
           && view.calls >= view.limits.maxCalls)
         || (row.kind === 'intent' && view.replies >= view.limits.maxReplies)
         || (row.kind === 'reply-jev-reserve' && view.jevChecks >= view.limits.maxReplies)))
@@ -4512,6 +4660,15 @@ export interface PreviewPorts {
   prepareModel?(input: { question: string; context: string; id: string; writer?: SessionWriter }): string;
   /** Part Thirteen §9: whether the model call for `id` runs on the scoped-tool route; its packet then names the tools. */
   toolRoute?(id: string): boolean;
+  /** Rules 60, 114 (Part fifteen §5): whether the work step for `id` runs as a delegated SESSION —
+   * a full harness session the runner launches, observes and collects a result from — instead of one
+   * bounded model call. The runner answers true only when it has a session work port that is
+   * available (not stopped, nothing in flight, steps left). */
+  sessionRoute?(id: string): boolean;
+  /** The delegated session step. It returns the same shapes as `model`, so a session result and a
+   * one-shot result settle the obligation through exactly one reader. Only long and scheduled work
+   * is routed here; an operator answer is never delegated to a session. */
+  sessionWork?(input: { question: string; context: string; id: string }): ReturnType<PreviewPorts['model']>;
   model(input: { question: string; context: string; id: string; prepared?: string }): Promise<string | {state?: 'complete'; text:string;
     usage: ModelUsage; /** The Decision's separately stated reason claim (Rule 108), kept beside its conclusion. */ reason?: string} | {state:'rejected' | 'complete'; failureClass:ModelFailureClass; usage?: ModelUsage}
     | {state:'uncertain'; usage?: ModelUsage}>;
@@ -4567,8 +4724,9 @@ export interface PreviewPorts {
   /** Extra plain lines for the status pull, read at the moment of answering (Rule 43: proof posture; Rules 63/33: ownership, store checks). */
   statusExtra?(): readonly string[];
   /** The bounded retrospective review: one subscription attempt over the pass's case packet.
-   * `value` is the model's JSON answer text; anything else leaves the cases owed. */
-  retrospect?(state: string, id: string): Promise<{ state: 'complete'; value: string; usage?: ModelUsage }
+   * `value` is the model's JSON answer text; anything else leaves the cases owed. `question` is set only for the
+   * pass's duty follow-up (RETRO_DUTY_FOLLOWUP_QUESTION); absent, the port asks RETROSPECTIVE_QUESTION. */
+  retrospect?(state: string, id: string, question?: string): Promise<{ state: 'complete'; value: string; usage?: ModelUsage }
     | { state: 'complete' | 'rejected' | 'uncertain'; failureClass?: ModelFailureClass; usage?: ModelUsage }>;
   /** Typed seam for evidence other builds own (build 5: waiver authorizations and acts). Absent: the duty is recorded unavailable. */
   retrospectiveEvidence?(): RetroSiblingEvidence;
@@ -4883,7 +5041,9 @@ export function createJournalWorker(journal: ReturnType<typeof openPreviewJourna
     const spoken = continuitySpoken(carried, { disposition, basis, disclosure }, unresolved !== undefined);
     return { before, label, disposition, reference, basis, disclosure, spoken };
   };
-  const meaningIndex = () => meaningTermsIndex(journal.view);
+  /** Part 21 §16: the learning loop's retrieval hints add the words of a question that missed to its source's cues. */
+  const learnedLessons = () => memoryLessons(journal.view, memoryFailures(journal.view, fromOperator));
+  const meaningIndex = () => withLearnedCues(meaningTermsIndex(journal.view), learnedLessons());
   /** How many times the write-side indexer has already offered one source its terms (Rule 11). */
   const indexAttempts = (id: string) => journal.view.indexOffered.filter(saved => saved === id).length;
   /** What an answer's packet carries: the disposition and its two counts, never the backlog itself. */
@@ -4969,8 +5129,10 @@ export function createJournalWorker(journal: ReturnType<typeof openPreviewJourna
     // model, not a word match, decides whether the new message answers either one.
     const continued = journal.view.order.filter(item => remembered(item) && !sizeRefused(item) && item.update < turn.update)
       .slice(-PREVIEW_CONTINUED_TURNS).filter(item => item.update <= summary.through);
-    return [...new Map([...continued, ...(earliest ? [earliest] : []), ...(dated ? [dated] : []), ...ranked].map(item => [item.id, item])).values()]
-      .slice(0, PREVIEW_RECALL_LIMIT + continued.length);
+    // Part 21 §16: a fact that keeps being forgotten rides recall on every turn whose verbatim history no longer shows it.
+    const pinned = learnedLessons().pinned.flatMap(id => older.filter(item => item.id === id));
+    return [...new Map([...pinned, ...continued, ...(earliest ? [earliest] : []), ...(dated ? [dated] : []), ...ranked].map(item => [item.id, item])).values()]
+      .slice(0, PREVIEW_RECALL_LIMIT + continued.length + pinned.length);
   };
   /** Rule 11: the answer model's own search phrases, run through the same word stage and the same recall owner as a
    * question, over the turns verbatim history no longer shows. Bounded like recall; empty when nothing relates. */
@@ -6100,6 +6262,10 @@ export function createJournalWorker(journal: ReturnType<typeof openPreviewJourna
     const lookup = activeLookup?.id === turn.id ? activeLookup : undefined;
     const lookupOffered = !lookup && !turn.lookup && fromOperator(turn) && !turn.requestedAction && !probeTurn(journal.view, turn)
       && journal.view.calls + 2 <= journal.view.limits.maxCalls - (ports.replyCheck ? 1 : 0);
+    // Part 21 §16: a memory-failure report is offered by structure (Rule 10): a verified operator turn whose previous
+    // answered turn here came from the operator. Never by the message's words.
+    const failureOffer = fromOperator(turn) && !turn.editOf && !turn.requestedAction && !probeTurn(journal.view, turn)
+      ? memoryFailureOffer(journal.view, turn, fromOperator) : undefined;
 
     const ranked = selectRecall({ message: turn.text, now: ports.now(), limit: 5,
       summary: latestSummary?.text ?? '',
@@ -6271,9 +6437,10 @@ export function createJournalWorker(journal: ReturnType<typeof openPreviewJourna
           rank: older ? askedAttribute && /\b(?:history|earlier|before|previous|used to)\b/iu.test(turn.text) ? 0 : 2 : 0,
           match: 0, recent: journal.view.turns.get(item.source)?.update ?? 0, index });
       });
+      const pinnedFacts = new Set(learnedLessons().pinned);
       recalled.forEach((item, index) => {
         const due = dueSoon(clean(item.text, true));
-        optional.push({ kind: due ? 'dated' : 'recent', key: item.id, signal: item.id, rank: due || lookedUp.has(item.id) ? 1 : 4,
+        optional.push({ kind: due ? 'dated' : 'recent', key: item.id, signal: item.id, rank: due || lookedUp.has(item.id) || pinnedFacts.has(item.id) ? 1 : 4,
           match: matches(item.text), recent: sentAt(item) ?? 0, index });
       });
       channels.forEach((item, index) => {
@@ -6339,6 +6506,7 @@ export function createJournalWorker(journal: ReturnType<typeof openPreviewJourna
           ...(fromOperator(turn) ? { memoryDecision: `Return memory:[] unless the verified operator corrects, forgets or sets reply style. ${MEMORY_ITEM_SHAPE} For an earlier answer use in:"reply" with its exact old reply clause and keep the question. `
             + (offered.length || (JSON.parse(datedBase) as { contradictions?: unknown[] }).contradictions?.length ? 'A newer operator statement of the same fact without correction words uses mode:"update", an exact old clause from an offered operator memoryCandidate or contradiction (hints only) and the exact new clause from this turn; the old dated value stays retrievable. ' : '')
             + 'Unknown target: memoryDisposition:"unresolved". Undo only via undoDecision.', preferenceSource: turn.id,
+            ...(failureOffer ? { memoryFailureDecision: MEMORY_FAILURE_DECISION, searchedTurn: failureOffer.id } : {}),
             ...(ports.toolRoute?.(turn.id) === true
               ? { obligationDecision: OBLIGATION_DECISION_TOOLS, governingConstraints: governingConstraints(true), capabilities: previewCapabilities(true) }
               : { obligationDecision: OBLIGATION_DECISION, governingConstraints: governingConstraints(false), capabilities: previewCapabilities(false) }) } : {}),
@@ -6370,8 +6538,14 @@ export function createJournalWorker(journal: ReturnType<typeof openPreviewJourna
         // Memory search is the lowest-priority evidence (Rule 11): its size
         // variants run innermost, using only leftover room.
         // The desk report is cut before the guide takes its floor form; both yield before history does.
-        const variants = ordinaries.flatMap(ordinary => { const cut = yieldSources(ordinary);
-          return [ordinary, ...cut, ...floorGuide(cut[0] ?? ordinary)]; });
+        // Part 21 §16: the memory-failure offer is the lowest-priority guidance, so it yields first: a packet that fit
+        // before the offer existed still fits, unchanged, and the report is then simply not offered on that turn.
+        const withoutOffer = (value: string) => { const packet = JSON.parse(value) as Record<string, unknown>;
+          if (!('memoryFailureDecision' in packet)) return undefined;
+          delete packet.memoryFailureDecision; delete packet.searchedTurn; return JSON.stringify(packet); };
+        const variants = ordinaries.flatMap(ordinary => { const bare = withoutOffer(ordinary), base = bare ?? ordinary;
+          const cut = yieldSources(base);
+          return [ordinary, ...(bare ? [bare] : []), ...cut, ...floorGuide(cut[0] ?? base)]; });
         for (const context of variants.flatMap(searchVariants)) {
         if (Buffer.byteLength(context) <= journal.view.limits.maxBytes) {
           promptFit = true;
@@ -6618,7 +6792,8 @@ export function createJournalWorker(journal: ReturnType<typeof openPreviewJourna
           journal.append({ kind: 'status-answer', id: turn.id, text: STOP_CONFIRM_TEXT, prompt, at: ports.now() });
         }
         if (turn.answer === undefined && !turn.reserved && !turn.noticeClass && isStatusCommand(turn.text)) {
-          const answer = [statusReply(journal.view, ports.now(), ports.timeZone ?? 'UTC', ports.statusExtra?.() ?? []), ...(ports.statusLines?.() ?? [])].join('\n');
+          const answer = statusAnswer(journal.view, ports.now(), ports.timeZone ?? 'UTC',
+            [...ports.statusExtra?.() ?? [], memoryLearningLine(journal.view, fromOperator)], ports.statusLines?.() ?? []);
           const packet = { ...JSON.parse(packetFor(before(turn.update), true, [], [], [], turn.thread, false, [], [], false, turn)) as object,
             statusFacts: answer };
           const prompt = JSON.stringify({ messages: [{ role: 'context', content: JSON.stringify({ packet }) },
@@ -6801,13 +6976,14 @@ export function createJournalWorker(journal: ReturnType<typeof openPreviewJourna
               reminderCancels: string[] | undefined, invalidCancel = false, decided = false, ownReplyEcho = false,
               cancelRefusal: 'unlisted' | 'unverified' | undefined,
               obligations: AnswerObligations = {}, promises: PromiseProposal[] = [], fulfills: FulfillmentProposal[] = [],
-              refusedFulfills = 0, operatorAction: OperatorActionProposal | undefined, unreadAction = false;
+              refusedFulfills = 0, operatorAction: OperatorActionProposal | undefined, unreadAction = false,
+              memoryFailure: MemoryFailureProposal | undefined;
             const heldForgets: MemoryChange[] = [];
             if (output.trim()) try {
               const parsed = JSON.parse(output) as { reply?: unknown; memory?: unknown; memoryDisposition?: unknown; dated?: unknown; undo?: unknown; personMerges?: unknown; personAttributes?: unknown; closedQuestions?: unknown; memoryList?: unknown; lastNamedPerson?: unknown;
                 conflict?: unknown; resolveConflict?: unknown; cancelReminders?: unknown;
                 directives?: unknown; closeDirectives?: unknown; openLoops?: unknown; blocker?: unknown; blockerRechecks?: unknown;
-                promises?: unknown; fulfilled?: unknown; operatorAction?: unknown; operatorRequest?: unknown };
+                promises?: unknown; fulfilled?: unknown; operatorAction?: unknown; operatorRequest?: unknown; memoryFailure?: unknown };
               const replyValue = parsed?.reply;
               const replyAnswer = replyValue && typeof replyValue === 'object' && !Array.isArray(replyValue)
                 && 'answer' in replyValue && typeof replyValue.answer === 'string' ? replyValue.answer : undefined;
@@ -6919,6 +7095,14 @@ export function createJournalWorker(journal: ReturnType<typeof openPreviewJourna
                 if (Array.isArray(parsed.closedQuestions) && parsed.closedQuestions.length <= PREVIEW_QUESTION_LIMIT
                   && parsed.closedQuestions.every(id => typeof id === 'string' && listedQuestions.has(id)))
                   closedQuestions = [...new Set(parsed.closedQuestions as string[])];
+                // Part 21 §16: read only where the packet offered it, for exactly the turn it named.
+                if (parsed.memoryFailure !== undefined && parsed.memoryFailure !== null) {
+                  const offer = JSON.parse(context) as { memoryFailureDecision?: unknown; searchedTurn?: unknown };
+                  const failed = offer.memoryFailureDecision !== undefined && typeof offer.searchedTurn === 'string'
+                    ? journal.view.turns.get(offer.searchedTurn) : undefined;
+                  if (failed && !turn.editOf && failed === memoryFailureOffer(journal.view, turn, fromOperator))
+                    memoryFailure = acceptedMemoryFailure(journal.view, turn, failed, parsed.memoryFailure, fromOperator);
+                }
                 if (Array.isArray(parsed.memory)) {
                   // Live proof room 715672853 (cint-L13): on a plain question the model added a prefer item, sourced to this
                   // turn, whose quote is a clause of its own reply and not of the operator's message. The agent's own words
@@ -6993,7 +7177,7 @@ export function createJournalWorker(journal: ReturnType<typeof openPreviewJourna
               obligations = agentSide; operatorAction = undefined; unreadAction = false;
               memory = undefined; dated = undefined; personMerges = undefined; personAttributes = undefined; undo = undefined;
               conflict = undefined; askConflict = undefined; resolveConflict = undefined; lastNamedPerson = undefined;
-              closedQuestions = undefined; reminderCancels = undefined;
+              closedQuestions = undefined; reminderCancels = undefined; memoryFailure = undefined;
               invalidMemory = false; invalidDate = false; invalidUndo = false; invalidCancel = false; cancelRefusal = undefined; }
             if (invalidMemory) { memory = undefined; dated = undefined; personMerges = undefined; personAttributes = undefined; undo = undefined;
               conflict = undefined; askConflict = undefined; resolveConflict = undefined; reminderCancels = undefined; }
@@ -7004,7 +7188,7 @@ export function createJournalWorker(journal: ReturnType<typeof openPreviewJourna
             if (probe) { obligations = {}; operatorAction = undefined; unreadAction = false;
               invalidMemory = false; invalidDate = false; memory = []; dated = []; personMerges = undefined; personAttributes = undefined;
               undo = undefined; closedQuestions = undefined; conflict = undefined; askConflict = undefined; resolveConflict = undefined;
-              lastNamedPerson = undefined; reminderCancels = undefined; invalidCancel = false; cancelRefusal = undefined; }
+              lastNamedPerson = undefined; reminderCancels = undefined; invalidCancel = false; cancelRefusal = undefined; memoryFailure = undefined; }
             if (invalidDate) undo = undefined;
             // Rule 3 (plan #362): a reply written to introduce a request the runner could not read would announce one
             // that does not exist, so the fixed line replaces it; the runner's own lines below still follow. It is also
@@ -7126,7 +7310,7 @@ export function createJournalWorker(journal: ReturnType<typeof openPreviewJourna
               ...(refusedDeclarations ? { fulfills: refusedDeclarations } : {}) };
             journal.append({ kind: 'answer', id: turn.id, text: written,
               state: 'complete', ...(text.trim() ? {} : { failureClass: 'empty' as const }),
-              ...(memory === undefined ? {} : { memory }), ...(closedQuestions?.length ? { closedQuestions } : {}), ...(personMerges?.length ? { personMerges } : {}), ...(personAttributes?.length ? { personAttributes } : {}), ...(dated === undefined ? {} : { dated }),
+              ...(memory === undefined ? {} : { memory }), ...(closedQuestions?.length ? { closedQuestions } : {}), ...(memoryFailure ? { memoryFailure } : {}), ...(personMerges?.length ? { personMerges } : {}), ...(personAttributes?.length ? { personAttributes } : {}), ...(dated === undefined ? {} : { dated }),
               ...(reminderCancels === undefined ? {} : { reminderCancels }),
               ...(undo === undefined ? {} : { undo }),
               ...(conflict === undefined ? {} : { conflict }), ...(askConflict === undefined ? {} : { askConflict }),
@@ -9004,7 +9188,17 @@ export function createJournalWorker(journal: ReturnType<typeof openPreviewJourna
       if (last && last.state === undefined) {
         for (const run of last.reruns ?? []) if (run.state === undefined)
           journal.append({ kind: 'retro-rerun', pass: last.pass, index: run.index, state: 'unknown', reason: 'interrupted before its result was recorded', at: ports.now() });
-        journal.append({ kind: 'retro', pass: last.pass, state: 'unknown', reason: 'interrupted before its result was recorded; never replayed', at: ports.now() });
+        const followUp = last.dutyFollowUp;
+        if (followUp) {
+          // The first answer was validated and held before the follow-up was reserved: it is recorded as it stood,
+          // with the interruption on every duty it left uninspected. The follow-up itself is never replayed.
+          const unsettled = followUp.state === undefined;
+          if (unsettled)
+            journal.append({ kind: 'retro-duty', pass: last.pass, state: 'unknown', reason: 'interrupted before its result was recorded', at: ports.now() });
+          journal.append({ kind: 'retro', pass: last.pass, state: 'complete', result: followUp.held,
+            reason: retroFollowUpReason(unsettled ? 'interrupted, outcome unknown, never replayed' : 'its result was not recorded before an interruption'),
+            ...(followUp.heldUsage ? { usage: followUp.heldUsage } : {}), at: ports.now() });
+        } else journal.append({ kind: 'retro', pass: last.pass, state: 'unknown', reason: 'interrupted before its result was recorded; never replayed', at: ports.now() });
       }
       if (journal.view.stop || ports.stopped() || ports.now() >= journal.view.expires) return;
       const population = retrospectiveCases(journal.view);
@@ -9055,8 +9249,46 @@ export function createJournalWorker(journal: ReturnType<typeof openPreviewJourna
         const reason = error instanceof SyntaxError ? 'answer was not JSON' : error instanceof Error ? error.message : 'answer refused';
         journal.append({ kind: 'retro', pass, state: 'failed', reason, ...usage, at: ports.now() }); return;
       }
-      journal.append({ kind: 'retro', pass, state: 'complete', result, ...usage, at: ports.now() });
+      // Rule 9: a duty whose evidence was present but which the answer did not inspect is asked about once more,
+      // before the pass is recorded complete. The result then carries what the follow-up did, or why it did not.
+      let reason: string | undefined;
+      if (dutiesLeftUninspected(result).length) {
+        const followed = await followUpDuties(pass, plan, result, answer.usage, contextDigest);
+        result = followed.result;
+        if (dutiesLeftUninspected(result).length) reason = retroFollowUpReason(followed.detail);
+      }
+      journal.append({ kind: 'retro', pass, state: 'complete', result, ...(reason === undefined ? {} : { reason }), ...usage, at: ports.now() });
     } finally { retrospecting = false; }
+  };
+  /** The pass's duty follow-up (RETRO_DUTY_FOLLOWUP_QUESTION): one call inside the same spend admission and reply
+   * reserve as the pass, about exactly the duties the first answer left uninspected although their evidence was
+   * present. Returns the result to record: merged, or the first answer with the reason the follow-up did not discharge it. */
+  const followUpDuties = async (pass: number, plan: NonNullable<ReturnType<typeof retrospectivePlan>>,
+    held: NonNullable<RetroPass['result']>, heldUsage: ModelUsage | undefined, contextDigest: string)
+    : Promise<{ result: NonNullable<RetroPass['result']>; detail: string }> => {
+    const view = journal.view, asked = dutiesLeftUninspected(held);
+    const kept = (detail: string) => ({ result: held, detail });
+    if (view.limits.maxCalls - view.calls - retroCallReserve(view.limits.maxCalls) < 1) return kept('not run, model attempts kept in reserve for replies');
+    if (view.stop || ports.stopped() || ports.now() >= view.expires) return kept('not run, the preview stopped');
+    journal.append({ kind: 'retro-duty-reserve', pass, duties: asked, held, ...(heldUsage ? { heldUsage } : {}), at: ports.now() });
+    const settle = (state: 'complete' | 'failed' | 'unknown', reason: string | undefined, usage: ModelUsage | undefined) =>
+      journal.append({ kind: 'retro-duty', pass, state, ...(reason === undefined ? {} : { reason }), ...(usage ? { usage } : {}), at: ports.now() });
+    let answer: Awaited<ReturnType<NonNullable<PreviewPorts['retrospect']>>>;
+    try { gate(); answer = await ports.retrospect!(dutyFollowUpPacket(plan.state, asked), `retrospective:${String(pass)}:duties`, RETRO_DUTY_FOLLOWUP_QUESTION); }
+    catch { settle('unknown', 'model call failed or was stopped', undefined); return kept('model call failed or was stopped, outcome unknown'); }
+    if (answer.state === 'uncertain') { settle('unknown', 'model outcome uncertain', answer.usage); return kept('model outcome uncertain'); }
+    if (!('value' in answer)) {
+      const reason = `model ${answer.failureClass ?? answer.state}`;
+      settle('failed', reason, answer.usage); return kept(reason);
+    }
+    try {
+      const merged = mergeDutyFollowUp(JSON.parse(answer.value.trim().replace(/^```(?:json)?\s*|\s*```$/gu, '')), plan, journal.view, pass, held, ports.now(), contextDigest);
+      settle('complete', undefined, answer.usage);
+      return { result: merged, detail: 'ran, and its answer did not inspect them either' };
+    } catch (error) {
+      const reason = error instanceof SyntaxError ? 'answer was not JSON' : error instanceof Error ? error.message : 'answer refused';
+      settle('failed', reason, answer.usage); return kept(`answer refused, ${reason}`);
+    }
   };
   /** The recorded requests a due turn's selection must agree with: each quote, when it was asked and when it was due. */
   const actionDueEvidence = (turn: Turn, step: string): object => ({ step, selectedAt: isoMinute(turn.at),
@@ -9124,7 +9356,12 @@ export function createJournalWorker(journal: ReturnType<typeof openPreviewJourna
             evidence: redact(avenue.evidence).text })), outsideAction: redact(note.outsideAction).text,
           recheckDue: localStamp(note.recheckAt, zone).slice(0, 10) };
       })();
-      const id = `obligation:${item.key}:${item.slot}`, tools = ports.toolRoute?.(id) === true;
+      const id = `obligation:${item.key}:${item.slot}`;
+      // Rules 60, 114: long and scheduled work goes to a delegated session when one is available;
+      // the scoped-tool route is the one-call fallback. A session step has the operator's own tools,
+      // so its packet names the same tool-bearing capabilities and constraints.
+      const session = ports.sessionWork !== undefined && ports.sessionRoute?.(id) === true;
+      const tools = session || ports.toolRoute?.(id) === true;
       const context = JSON.stringify({ now: isoMinute(now), zone, today: localStamp(now, zone).slice(0, 10), obligation,
         ...(work?.note && work.waitsOn === undefined ? { lastProgress: clean(redact(work.note).text, true) } : {}),
         // A reassessment of waiting work sees what it waited for and every verified operator message since.
@@ -9136,15 +9373,19 @@ export function createJournalWorker(journal: ReturnType<typeof openPreviewJourna
         governingConstraints: governingConstraints(tools), capabilities: previewCapabilities(tools) });
       if (Buffer.byteLength(context) > journal.view.limits.maxBytes) return false;
       const question = tools ? OBLIGATION_WORK_QUESTION_TOOLS : OBLIGATION_WORK_QUESTION;
-      const prepared = ports.prepareModel?.({ question, context, id });
+      // A session step carries its task in the session's own delivered text, not a provider
+      // envelope, so no prepared envelope is built or required for it.
+      const prepared = session ? undefined : ports.prepareModel?.({ question, context, id });
       journal.append({ kind: 'obligation-start', obligation: item.key, slot: item.slot,
         maxInputTokens: journal.view.limits.maxBytes, maxOutputTokens: subscriptionOutputMaximum, at: now });
       startedHere.add(`${item.key}:${item.slot}`);
       const settle = (result: Omit<Extract<JournalRecord, { kind: 'obligation-result' }>, 'kind' | 'obligation' | 'slot' | 'at'>) =>
         journal.append({ kind: 'obligation-result', obligation: item.key, slot: item.slot, ...result, at: ports.now() });
       let answer: Awaited<ReturnType<PreviewPorts['model']>>;
-      try { answer = await ports.model({ question, context, id, ...(prepared === undefined ? {} : { prepared }) }); }
-      catch { settle({ outcome: 'uncertain' }); return true; }
+      try {
+        answer = session ? await ports.sessionWork!({ question, context, id })
+          : await ports.model({ question, context, id, ...(prepared === undefined ? {} : { prepared }) });
+      } catch { settle({ outcome: 'uncertain' }); return true; }
       const usage = typeof answer !== 'string' && 'usage' in answer && answer.usage ? { usage: answer.usage } : {};
       if (typeof answer !== 'string' && 'state' in answer && answer.state === 'uncertain') { settle({ outcome: 'uncertain', ...usage }); return true; }
       if (typeof answer !== 'string' && 'failureClass' in answer) { settle({ outcome: 'failed', ...usage }); return true; }

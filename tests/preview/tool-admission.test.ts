@@ -13,10 +13,12 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { afterEach, expect, it } from 'vitest';
 // @ts-expect-error The hook and its decision stay plain JavaScript: the harness runs them without a loader.
-import { admitToolCall, admitToolEffect, publicAddress, toolShellPrefix, toolTrace, webReadHost } from './tool-admission.mjs';
+import { admitEgress, admitToolCall, admitToolCallEffect, admitToolEffect, egressTarget, gitAdvertisement, gitFetchRequest, gitRepository, publicAddress, shellSandboxProfile, toolShellPrefix, toolTrace, webReadHost } from './tool-admission.mjs';
 import { SINGLE_MACHINE_PROFILE } from './activation-authority.js';
 // @ts-expect-error The doorway stays plain JavaScript, like the hook.
 import { currentEffectPolicy } from './effect-doorway.mjs';
+// @ts-expect-error The effect owner stays plain JavaScript, like the hook.
+import { createToolEffectOwner } from './admission-gate.mjs';
 
 const HOOK = join(__dirname, 'tool-admission-hook.mjs');
 const SPIKE = join(__dirname, 'fixtures/tool-turn/spike-cab6b51d');
@@ -97,6 +99,102 @@ it('decides every layer-A case of the spike through the real executable hook; sh
     return [label, got];
   });
   expect(results).toEqual(cases.map(([label, want]) => [label, want]));
+});
+
+it('a checkpointed route sends consequential tools and delegations to its checkpoint; a route without one never does (cint-L45)', () => {
+  // w4-sessiondriver's checkpointed route (a delegated session step or a Codex tool turn) beside cint-L43's doorway route.
+  const { ws, tmp } = turn();
+  const fs = { exists: () => true, realpath: (p: string) => p };
+  const config = { workspace: ws, tmp, maxCalls: 5, maxWriteBytes: 10, operations: SINGLE_MACHINE_PROFILE.operations };
+  const call = (tool_name: string, tool_input: object, over: object = {}) => admitToolCall({ tool_name, tool_input }, { ...config, ...over }, 1, fs, 1, 0);
+  // No checkpoint: a delegation of the session kind is refused (nothing could record its edge), Codex's web search is not
+  // admitted, and a consequential tool reaches the effect doorway (never the checkpoint), which refuses it by default.
+  expect(call('collaborationspawn_agent', { message: 'x' }, { delegation: true })).toMatchObject({ decision: 'deny', kind: 'delegation' });
+  expect(call('webrun', { search_query: [] })).toMatchObject({ decision: 'deny' });
+  expect(call('mcp__x__y', {})).toMatchObject({ decision: 'deny', kind: 'mcp', doorway: { disposition: 'refused' } });
+  expect(call('TodoWrite', {})).toMatchObject({ decision: 'deny' });
+  // The other side: with the checkpoint named, a consequential tool and a delegation are sent to it (never allowed by
+  // category here), and a network read the route admits is allowed.
+  const gated = { gate: 'http://127.0.0.1:4100/x/claim', delegation: true, networkReads: true };
+  expect(call('mcp__x__y', {}, gated)).toMatchObject({ decision: 'gate', kind: 'effect' });
+  expect(call('SendMessage', { to: 'x', message: 'y' }, gated)).toMatchObject({ decision: 'gate', kind: 'effect' });
+  expect(call('Bash', { command: 'ls', dangerouslyDisableSandbox: true }, gated)).toMatchObject({ decision: 'gate', kind: 'effect' });
+  expect(call('Agent', { prompt: 'x' }, gated)).toMatchObject({ decision: 'gate', kind: 'delegation' });
+  expect(call('collaborationspawn_agent', { message: 'x' }, gated)).toMatchObject({ decision: 'gate', kind: 'delegation' });
+  expect(call('webrun', { search_query: [] }, gated)).toMatchObject({ decision: 'allow', reason: 'network read' });
+  expect(call('TodoWrite', {}, gated)).toMatchObject({ decision: 'allow', reason: 'harness bookkeeping' });
+  // A web read keeps cint-L43's host rule on the checkpointed route too: this machine's own address is never a web read.
+  expect(call('WebFetch', { url: 'http://127.0.0.1:4100/x/claim' }, gated)).toMatchObject({ decision: 'deny', kind: 'scope' });
+  // A confined shell runs every command under the step's own profile, whatever the harness asked for.
+  const confined = call('Bash', { command: 'ls', dangerouslyDisableSandbox: true }, { ...gated, shellProfile: `${ws}/shell.sb` });
+  expect(confined).toMatchObject({ decision: 'allow', reason: 'confined command' });
+  expect(confined.updatedInput.command).toContain(`/usr/bin/sandbox-exec -f ${ws}/shell.sb`);
+  expect(call('apply_patch', { input: `*** Begin Patch\n*** Add File: ${ws}/a.txt\n+x\n*** End Patch` }, { maxWriteBytes: 1000 })).toMatchObject({ decision: 'allow', reason: 'ordinary in-workspace patch' });
+  // cint-L45 repair (MF1): the checkpointed route's network reads keep the operator's effect policy. A Codex web call whose
+  // opened host or search the policy marks policy-sensitive, or any under a policy that cannot be read, goes to the effect
+  // owner (which refuses it without a grant), exactly as a WebFetch of it does; a public read the policy does not name is
+  // still an ordinary network read.
+  const sensitive = { type: 'PreviewEffectPolicy', resourceLevelUsd: 0, policySensitive: ['1.1.1.1'], registered: [], grants: [] };
+  const unavailable = { type: 'PreviewEffectPolicyUnavailable', reason: 'withdrawn' };
+  const open = { open: [{ ref_id: 'https://1.1.1.1/' }] };
+  expect(call('webrun', open, { ...gated, effectPolicy: sensitive })).toMatchObject({ decision: 'gate', kind: 'effect' });
+  expect(call('webrun', open, { ...gated, effectPolicy: unavailable })).toMatchObject({ decision: 'gate', kind: 'effect' });
+  expect(call('webrun', { search_query: [{ q: 'x' }] }, { ...gated, effectPolicy: unavailable })).toMatchObject({ decision: 'gate', kind: 'effect' });
+  expect(call('webrun', { open: [{ ref_id: 'https://example.com/' }] }, { ...gated, effectPolicy: sensitive })).toMatchObject({ decision: 'allow', reason: 'network read' });
+  expect(call('webrun', { search_query: [{ q: 'x' }], response_length: 'short' }, { ...gated, effectPolicy: sensitive })).toMatchObject({ decision: 'allow' });
+  expect(call('WebFetch', { url: 'https://1.1.1.1/' }, { ...gated, effectPolicy: sensitive })).toMatchObject({ decision: 'gate', kind: 'effect' });
+  // Without a checkpoint the same web call meets the doorway directly: refused, the decision on the record.
+  expect(call('webrun', open, { networkReads: true, effectPolicy: sensitive })).toMatchObject({ decision: 'deny', kind: 'network',
+    doorway: { effect: 'tool:network', target: '1.1.1.1', disposition: 'refused' } });
+  expect(call('webrun', open, { networkReads: true, effectPolicy: unavailable })).toMatchObject({ decision: 'deny', kind: 'network' });
+  // cint-L45 round 3 (MF1): an explicit URL keeps its host whatever operation carries it; a `find` in that page is a read of
+  // it, decided exactly as its `open` is (and a search naming a URL proposes both its host and the search).
+  const find = { find: [{ ref_id: 'https://1.1.1.1/', pattern: 'test' }] };
+  expect(call('webrun', find, { ...gated, effectPolicy: sensitive })).toMatchObject({ decision: 'gate', kind: 'effect' });
+  expect(call('webrun', find, { networkReads: true, effectPolicy: sensitive })).toMatchObject({ decision: 'deny', kind: 'network',
+    doorway: { target: '1.1.1.1', disposition: 'refused' } });
+  expect(call('webrun', { find: [{ ref_id: 'https://example.com/', pattern: 'test' }] }, { ...gated, effectPolicy: sensitive }))
+    .toMatchObject({ decision: 'allow', reason: 'network read' });
+  expect(call('webrun', { search_query: [{ q: 'https://1.1.1.1/x' }] }, { ...gated, effectPolicy: sensitive })).toMatchObject({ decision: 'gate' });
+  // cint-L45 round 3 (MF2): several targets in one call keep their own decisions. A public read the policy does not name stays
+  // ordinary beside a granted sensitive one; any refused target refuses the call; a consequential target makes the whole call
+  // consequential, so the effect owner applies the never-twice identity to it.
+  const grant = (target: string) => ({ id: `g-${target}`, effect: 'tool:network', target, approves: ['scope', 'policySensitive'],
+    source: 'review-fixture', custodian: 'desk', recovery: 'remove grant' });
+  const granted = { ...sensitive, grants: [grant('1.1.1.1')] };
+  const mixed = { open: [{ ref_id: 'https://8.8.8.8/' }, { ref_id: 'https://1.1.1.1/' }] };
+  expect(call('webrun', mixed, { networkReads: true, effectPolicy: granted })).toMatchObject({ decision: 'allow', kind: 'network',
+    doorway: { disposition: 'granted', grant: 'g-1.1.1.1', tests: { policySensitive: true } } });
+  expect(admitToolCallEffect('webrun', mixed, { effectPolicy: granted }, 0)).toMatchObject({ admitted: true, consequential: true,
+    target: '8.8.8.8, 1.1.1.1', tests: { policySensitive: true, scope: false } });
+  expect(admitToolCallEffect('webrun', mixed, { effectPolicy: sensitive }, 0)).toMatchObject({ admitted: false, target: '1.1.1.1' });
+  expect(admitToolCallEffect('webrun', { open: [mixed.open[0]!] }, { effectPolicy: sensitive }, 0)).toMatchObject({ admitted: true, consequential: false });
+  expect(admitToolCallEffect('webrun', { open: [mixed.open[0]!, { ref_id: 'https://9.9.9.9/' }] }, { effectPolicy: sensitive }, 0))
+    .toMatchObject({ admitted: true, consequential: false, disposition: 'ordinary' });
+  const both = { ...sensitive, grants: [grant('1.1.1.1'), grant('8.8.8.8')] }, rows: { id: string }[] = [];
+  const owner = createToolEffectOwner({ decide: (tool: string, input: unknown) => admitToolCallEffect(tool, input, { effectPolicy: both }, 0),
+    append: (row: { id: string }) => rows.push(row), prepared: (id: string) => rows.some(row => row.id === id), stopped: () => false, now: () => 0 });
+  const parent = { id: 'edge', child: 'child' };
+  expect(owner.admit({ parent, tool: 'webrun', input: mixed, call: 'c1' })).toMatchObject({ admitted: true, doorway: { disposition: 'granted' } });
+  expect(owner.admit({ parent, tool: 'webrun', input: mixed, call: 'c2' })).toMatchObject({ admitted: false, reason: expect.stringContaining('never sent twice') });
+  // The other side: an ordinary multi-target read repeats freely (its identity includes the call).
+  const plain = { open: [{ ref_id: 'https://9.9.9.9/' }, { ref_id: 'https://8.8.4.4/' }] };
+  expect(owner.admit({ parent, tool: 'webrun', input: plain, call: 'c3' })).toMatchObject({ admitted: true });
+  expect(owner.admit({ parent, tool: 'webrun', input: plain, call: 'c4' })).toMatchObject({ admitted: true });
+  // cint-L45 repair (MF3): with the step's network checkpoint attached, a confined command is pointed at it (its proxy,
+  // trust root and HOME) and its profile allows exactly that loopback port.
+  const egress = { port: 40003, ca: `${tmp}/egress-ca.pem`, home: `${tmp}/home`, path: '/usr/local/bin' };
+  const networked = call('Bash', { command: 'curl -sS https://example.com' }, { ...gated, shellProfile: `${ws}/shell.sb`, egress });
+  expect(networked.updatedInput.command).toContain(`/usr/bin/env -i HOME=${tmp}/home HTTPS_PROXY=http://127.0.0.1:40003 `);
+  expect(networked.updatedInput.command).toContain(`SSL_CERT_FILE=${tmp}/egress-ca.pem `);
+  expect(networked.updatedInput.command).toContain(' PATH=/usr/local/bin:/bin:');
+  expect(confined.updatedInput.command).not.toContain('HTTPS_PROXY');
+  const profile = shellSandboxProfile({ workspace: ws, tmp, egress: { port: 40003, reads: ['/usr/local/bin', `${tmp}/egress-ca.pem`], writes: [`${tmp}/home`] } });
+  expect(profile).toContain('(deny network*)\n(allow network-outbound (remote ip "localhost:40003"))\n');
+  expect(shellSandboxProfile({ workspace: ws, tmp })).not.toContain('network-outbound');
+  expect(() => shellSandboxProfile({ workspace: ws, tmp, egress: { port: 0 } })).toThrow(/egress port/u);
+  expect(() => shellSandboxProfile({ workspace: ws, tmp, egress: { port: 1, reads: ['relative'] } })).toThrow(/absolute and plain/u);
+  expect(call('apply_patch', { input: '*** Begin Patch\n*** Add File: /etc/a.txt\n+x\n*** End Patch' })).toMatchObject({ decision: 'deny', kind: 'scope' });
 });
 
 it('sends every consequential tool to the effect doorway, which refuses it by the four tests under the default policy', () => {
@@ -468,4 +566,142 @@ it('replays the full-tool live runs\' recorded calls to their recorded decisions
       .toEqual(journaled.edges.map((edge: { child: string; agent: string }) => [edge.child, edge.agent]));
   }
   expect(replayed).toBe(15);
+});
+
+const SHELLNET = join(__dirname, 'fixtures/tool-turn/shellnet-2026-10-03');
+
+it('points every admitted shell command at the turn\'s network checkpoint: its proxy, its trust root, a scratch HOME, every range through it', () => {
+  const { state, tmp, root } = turn();
+  const egress = { port: 41234, ca: join(root, 'ca.pem'), home: join(root, 'home'), path: '/usr/local/bin', developer: '/Library/Developer/CommandLineTools' };
+  const config = JSON.parse(readFileSync(join(state, 'config.json'), 'utf8'));
+  writeFileSync(join(state, 'config.json'), JSON.stringify({ ...config, egress }));
+  const out = JSON.parse(hook(state, j('Bash', { command: 'curl -sS https://example.com' })).stdout).hookSpecificOutput;
+  expect(out.updatedInput.command).toBe(`${toolShellPrefix(tmp, egress)}curl -sS https://example.com`);
+  const shell = spawnSync('/bin/sh', ['-c', `${toolShellPrefix(tmp, egress)}printf '%s|' "$HTTPS_PROXY" "$http_proxy" "x$NO_PROXY" "x$no_proxy" "$HOME" "$CURL_CA_BUNDLE" "$GIT_SSL_CAINFO" `
+    + `"$NODE_EXTRA_CA_CERTS" "$npm_config_cafile" "$GIT_CONFIG_NOSYSTEM" "$DEVELOPER_DIR" "$PATH"`],
+  { env: { PATH: '/usr/bin:/bin', NO_PROXY: 'localhost,127.0.0.1,10.0.0.0/8', no_proxy: 'localhost', HOME: '/Users/Shared/login' }, encoding: 'utf8' });
+  expect(shell.stdout.split('|').slice(0, 12)).toEqual(['http://127.0.0.1:41234', 'http://127.0.0.1:41234', 'x', 'x', egress.home, egress.ca, egress.ca,
+    egress.ca, egress.ca, '1', egress.developer, `${egress.developer}/usr/bin:/usr/local/bin:/usr/bin:/bin`]);
+  // Without a checkpoint the prefix is exactly the earlier one (the shell has no network).
+  expect(toolShellPrefix(tmp, null)).toBe(toolShellPrefix(tmp));
+  for (const bad of [{ ...egress, port: 0 }, { ...egress, ca: 'rel/ca.pem' }, { ...egress, home: '/tmp/a b' }, { ...egress, path: '/x;rm' }, { ...egress, developer: '$(x)' }])
+    expect(() => toolShellPrefix(tmp, bad)).toThrow(/egress checkpoint/u);
+});
+
+it('the checkpoint admits reads (GET, HEAD, a proven git fetch) and sends every write to the effect doorway, which admits only a registered and granted one', () => {
+  const ops = { operations: [...SINGLE_MACHINE_PROFILE.operations] };
+  const proven = { fetch: true, reason: 'git fetch' };
+  for (const [method, path, gitFetch] of [['GET', '/', null], ['head', '/x', null], ['GET', '/r.git/info/refs?service=git-upload-pack', null], ['POST', '/r.git/git-upload-pack', proven]] as const)
+    expect(admitEgress({ method, path, host: 'example.com', gitFetch }, ops, 0)).toMatchObject({ decision: 'allow', kind: 'network-read' });
+  for (const [method, path, headers, gitFetch] of [['POST', '/post', {}, null], ['PUT', '/-/package', {}, null], ['PATCH', '/x', {}, null], ['DELETE', '/x', {}, null],
+    ['OPTIONS', '/', {}, null], ['', '/', {}, null], ['GET', '/r.git/info/refs?service=git-receive-pack', {}, null], ['POST', '/r.git/git-receive-pack', {}, proven],
+    ['POST', '/r.git/git-upload-pack-not', {}, proven], ['POST', '/messages/git-upload-pack', {}, null],
+    ['POST', '/messages/git-upload-pack', {}, { fetch: false, reason: 'the repository did not advertise git upload-pack in this turn' }],
+    ['GET', '/messages/1', { 'X-HTTP-Method-Override': 'DELETE' }, null], ['HEAD', '/messages/1', { 'x-http-method': 'PUT' }, null],
+    ['POST', '/r.git/git-upload-pack', { 'x-method-override': 'DELETE' }, proven],
+    // An override naming a read never downgrades the request line, and no override hides another's write.
+    ['POST', '/messages', { 'X-HTTP-Method-Override': 'GET' }, null], ['DELETE', '/messages/1', { 'X-HTTP-Method-Override': 'HEAD' }, null],
+    ['GET', '/messages/1', { 'X-HTTP-Method-Override': 'GET', 'X-Method-Override': 'DELETE' }, null],
+    ['GET', '/messages/1', { 'X-HTTP-Method-Override': 'GET, DELETE' }, null], ['GET', '/messages/1', { 'X-HTTP-Method': '' }, null],
+    ['POST', '/r.git/git-upload-pack', { 'X-HTTP-Method-Override': 'GET' }, proven]] as const) {
+    const decided = admitEgress({ method, path, host: 'example.com', headers, gitFetch }, ops, 0);
+    expect(decided).toMatchObject({ decision: 'deny', kind: 'network-write' });
+    // Unregistered, a network write is classified at its worst on all four tests (L43's doorway), so it is refused.
+    expect(decided.reason).toMatch(/effect doorway refused tool:network-write \(example\.com\): it is consequential because it cannot be undone/u);
+  }
+  // An override naming a read leaves a read a read.
+  expect(admitEgress({ method: 'GET', path: '/x', headers: { 'X-HTTP-Method-Override': 'GET' } }, ops, 0)).toMatchObject({ decision: 'allow' });
+  expect(admitEgress({ method: 'HEAD', path: '/x', headers: { 'X-HTTP-Method-Override': 'GET', 'x-method-override': 'HEAD' } }, ops, 0))
+    .toEqual({ decision: 'allow', reason: 'HEAD read', kind: 'network-read' });
+  expect(admitEgress({ method: 'POST', path: '/r.git/git-upload-pack', headers: { 'X-HTTP-Method-Override': 'POST' }, gitFetch: proven }, ops, 0))
+    .toMatchObject({ decision: 'allow', reason: 'git fetch' });
+  // The other side: the doorway admits a write the operator registered (reversible, zero cost) and granted into scope for
+  // that host (the grant places it in scope, so no test holds), and only for that host; a lapsed grant refuses again.
+  const grant = { id: 'g-post', effect: 'tool:network-write', target: 'httpbin.org', approves: ['scope'], source: 'telegram:102965:121996',
+    custodian: 'desk', recovery: 'remove the grant', expiresAt: 100 };
+  const writable = { ...ops, effectPolicy: { type: 'PreviewEffectPolicy', resourceLevelUsd: 0, policySensitive: [],
+    registered: [{ effect: 'tool:network-write', target: 'httpbin.org', consequence: 'data', reversibility: 'reversible', reach: 'world', costUsd: 0,
+      source: 'telegram:102965:121996' }], grants: [grant] } };
+  expect(admitEgress({ method: 'POST', path: '/post', host: 'httpbin.org' }, writable, 0)).toMatchObject({ decision: 'allow', kind: 'network-write',
+    reason: expect.stringContaining('tool:network-write is ordinary (none of the four consequential-effect tests holds); admitted') });
+  expect(admitEgress({ method: 'POST', path: '/post', host: 'example.com' }, writable, 0)).toMatchObject({ decision: 'deny', kind: 'network-write' });
+  expect(admitEgress({ method: 'POST', path: '/post', host: 'httpbin.org' }, writable, 100)).toMatchObject({ decision: 'deny', kind: 'network-write' });
+  // A shell read of a host the policy marks policy-sensitive meets the doorway exactly as a WebFetch of it does: refused
+  // without a grant approving that matter, admitted with one; an unmarked host stays an ordinary read.
+  const marked = (grants: object[]) => admitEgress({ method: 'GET', path: '/x', host: 'example.com' },
+    { ...ops, effectPolicy: { type: 'PreviewEffectPolicy', resourceLevelUsd: 0, policySensitive: ['example.com'], registered: [], grants } }, 0);
+  expect(marked([])).toMatchObject({ decision: 'deny', kind: 'network-read', reason: expect.stringContaining('effect doorway refused tool:network (example.com)') });
+  expect(marked([{ id: 'g-web', effect: 'tool:network', target: 'example.com', approves: ['scope', 'policySensitive'],
+    source: 'telegram:102965:121996', custodian: 'desk', recovery: 'remove the grant' }])).toMatchObject({ decision: 'allow', kind: 'network-read' });
+  // cint-L43's policy-unavailable repair reaches the checkpoint too: a configured policy that cannot be read refuses every
+  // shell request at the doorway (reads included), never lapsing to the empty default.
+  const unavailable = { ...ops, effectPolicy: { type: 'PreviewEffectPolicyUnavailable', reason: 'it cannot be read (ENOENT)' } };
+  for (const method of ['GET', 'POST'])
+    expect(admitEgress({ method, path: '/x', host: 'example.org' }, unavailable, 0)).toMatchObject({ decision: 'deny',
+      reason: expect.stringContaining('the installed effect policy is unavailable (it cannot be read (ENOENT))') });
+  expect(admitEgress({ method: 'GET', path: '/x', host: 'example.org' },
+    { ...ops, effectPolicy: { type: 'PreviewEffectPolicy', resourceLevelUsd: 0, policySensitive: ['example.com'], registered: [], grants: [] } }, 0))
+    .toEqual({ decision: 'allow', reason: 'GET read', kind: 'network-read' });
+  expect(egressTarget('example.com:443')).toEqual({ host: 'example.com', port: 443 });
+  expect(egressTarget('example.com', 'http:')).toEqual({ host: 'example.com', port: 80 });
+  expect(egressTarget('registry.npmjs.org:8443')).toEqual({ host: 'registry.npmjs.org', port: 8443 });
+  for (const bad of ['127.0.0.1:443', '[::1]:443', '[::ffff:7f00:1]:443', '10.0.0.1:443', '100.64.1.1:443', '169.254.169.254:80', 'localhost:443',
+    'nas.local:443', 'user:pw@example.com:443', 'example.com/path', 'intranet:443'])
+    expect(egressTarget(bad).host).toBeNull();
+});
+
+it('a git fetch is proven by its repository\'s discovery answer and an upload-pack body, never by its path or content type alone', () => {
+  const advertisement = { 'content-type': 'application/x-git-upload-pack-advertisement' };
+  expect(gitAdvertisement({ method: 'GET', path: '/r.git/info/refs?service=git-upload-pack', status: 200, headers: advertisement })).toBe('/r.git');
+  for (const answer of [{ method: 'GET', path: '/r.git/info/refs?service=git-upload-pack', status: 200, headers: { 'content-type': 'text/plain' } },
+    { method: 'GET', path: '/r.git/info/refs?service=git-upload-pack', status: 404, headers: advertisement },
+    { method: 'GET', path: '/r.git/info/refs?service=git-receive-pack', status: 200, headers: advertisement },
+    { method: 'POST', path: '/r.git/info/refs?service=git-upload-pack', status: 200, headers: advertisement }])
+    expect(gitAdvertisement(answer)).toBeNull();
+  const advertised = new Set(['example.test:443/r.git']);
+  const type = { 'Content-Type': 'application/x-git-upload-pack-request' };
+  const pkt = (...lines: string[]) => Buffer.from(lines.map(line => line === '' ? '0000' : `${(line.length + 4).toString(16).padStart(4, '0')}${line}`).join(''), 'latin1');
+  const v0 = pkt('want 0123456789abcdef0123456789abcdef01234567 multi_ack_detailed side-band-64k ofs-delta agent=git/2.50.1\n', '', 'done\n');
+  const v2 = pkt('command=fetch', 'agent=git/2.50.1', 'object-format=sha1', 'thin-pack', 'ofs-delta', 'want 0123456789abcdef0123456789abcdef01234567\n', 'done\n', '');
+  const lsRefs = Buffer.concat([pkt('command=ls-refs', 'agent=git/2.50.1'), Buffer.from('0001'), pkt('peel', 'symrefs', 'unborn', 'ref-prefix HEAD\n', 'ref-prefix refs/heads/\n', '')]);
+  for (const body of [v0, v2, lsRefs])
+    expect(gitFetchRequest({ origin: 'example.test:443', path: '/r.git/git-upload-pack', headers: type, body, advertised })).toEqual({ fetch: true, reason: 'git fetch' });
+  for (const [request, reason] of [
+    [{ origin: 'example.test:443', path: '/r.git/git-upload-pack', headers: type, body: Buffer.from('send=hello') }, 'not git pkt-lines'],
+    [{ origin: 'example.test:443', path: '/r.git/git-upload-pack', headers: type, body: pkt('send=hello') }, 'not a git fetch request'],
+    [{ origin: 'example.test:443', path: '/r.git/git-upload-pack', headers: type, body: pkt('') }, 'empty git request'],
+    [{ origin: 'example.test:443', path: '/r.git/git-upload-pack', headers: {}, body: v0 }, 'not typed as a git fetch request'],
+    [{ origin: 'example.test:443', path: '/other.git/git-upload-pack', headers: type, body: v0 }, 'did not advertise'],
+    [{ origin: 'elsewhere.test:443', path: '/r.git/git-upload-pack', headers: type, body: v0 }, 'did not advertise'],
+    [{ origin: 'example.test:443', path: '/r.git/git-upload-pack', headers: type, body: null }, 'body unreadable']] as const)
+    expect(gitFetchRequest({ ...request, advertised }).reason).toContain(reason);
+});
+
+it('replays the shell-network live runs: their shell calls reach the recorded admission and their checkpoint requests the recorded decision (Rule 106)', () => {
+  const ops = { operations: [...SINGLE_MACHINE_PROFILE.operations] };
+  for (const name of ['shellnet-reads', 'shellnet-writes']) {
+    const record = JSON.parse(readFileSync(join(SHELLNET, `${name}.json`), 'utf8'));
+    const rows = String(record.admission).trim().split('\n').map(line => JSON.parse(line));
+    const { state, tmp } = turn();
+    for (const row of rows.filter(r => r.phase === 'pre')) {
+      const decided = admitToolCall({ tool_name: row.tool, tool_input: JSON.parse(row.input) }, { ...JSON.parse(readFileSync(join(state, 'config.json'), 'utf8')), tmp }, row.n,
+        { exists: existsSync, realpath: realpathSync });
+      expect([row.tool, decided.decision]).toEqual([row.tool, row.decision]);
+    }
+    const requests = String(record.egress).trim().split('\n').map(line => JSON.parse(line)).filter(r => r.phase === 'request' && r.method !== 'CONNECT');
+    expect(requests.length).toBeGreaterThan(0);
+    // A recorded upload-pack POST was preceded, on its host, by its repository's discovery that answered 200 (the record
+    // keeps no bodies or response types, so the replay supplies the exchange's proof from that answered discovery).
+    const answered = new Set(String(record.egress).trim().split('\n').map(line => JSON.parse(line)).filter(r => r.phase === 'response' && r.status === 200).map(r => r.n));
+    const discovered = new Set<string>();
+    for (const request of requests) {
+      if (request.kind === 'scope') { expect(egressTarget(`${String(request.host)}:80`, 'http:').host).toBeNull(); continue; }
+      const repo = gitRepository(request.path, 'git-upload-pack');
+      const gitFetch = repo === null ? null : { fetch: discovered.has(`${String(request.host)}${repo}`), reason: 'replayed' };
+      expect(admitEgress({ method: request.method, path: request.path, host: request.host, gitFetch }, ops, 0)).toMatchObject({ decision: request.decision, kind: request.kind });
+      const advertised = gitRepository(String(request.path).split('?')[0], 'info/refs');
+      if (advertised !== null && String(request.path).endsWith('?service=git-upload-pack') && answered.has(request.n)) discovered.add(`${String(request.host)}${advertised}`);
+    }
+    if (name === 'shellnet-reads') expect(discovered.size).toBe(1);
+  }
 });

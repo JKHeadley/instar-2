@@ -1,0 +1,89 @@
+{
+  "name": "stop",
+  "question": "Use Bash to run: sleep 60; echo done. Then answer with what it printed.",
+  "error": null,
+  "uid": 498,
+  "stateDirectory": "/Users/Shared/instar-harness/turns/35f8f5cfde36/b592ae84fc07730d-0",
+  "rows": [
+    {
+      "phase": "pre",
+      "id": "toolu_01MwJAxZPSEhJAxx5dnCnkCH",
+      "n": 1,
+      "tool": "Bash",
+      "input": "{\"command\":\"sleep 60; echo done\",\"timeout\":65000,\"description\":\"Sleep for 60 seconds then print done\"}",
+      "decision": "allow",
+      "reason": "sandboxed command"
+    }
+  ],
+  "trace": {
+    "kind": "tool-turn",
+    "phase": "trace",
+    "id": "telegram:12345678:update:1",
+    "attempt": 0,
+    "consistent": true,
+    "calls": [
+      {
+        "n": 1,
+        "tool": "Bash",
+        "input": "{\"command\":\"sleep 60; echo done\",\"timeout\":65000,\"description\":\"Sleep for 60 seconds then print done\"}",
+        "decision": "allow",
+        "reason": "sandboxed command",
+        "result": null
+      }
+    ],
+    "edges": [],
+    "workspaceBytes": 0,
+    "volume": {
+      "lost": false,
+      "reconciled": 0
+    },
+    "harness": {
+      "user": "_instarharness"
+    },
+    "at": 1791096163410
+  },
+  "stopToSettledMs": 201,
+  "toolTurns": {
+    "invocations": 1,
+    "reservedCalls": 15,
+    "refusedCap": 0,
+    "toolCalls": 1,
+    "toolRefusals": 0,
+    "inconsistent": 0,
+    "open": [],
+    "workspaces": [
+      "22cba652c1c8"
+    ]
+  },
+  "lastLaunch": {
+    "work": "answer",
+    "at": 1791096163409,
+    "enforcement": {
+      "cpuPerProcess": "hard",
+      "handlesPerProcess": "hard",
+      "processGrowth": "sampled",
+      "treeHandles": "unsupported",
+      "memory": "sampled",
+      "treeCpu": "sampled"
+    },
+    "uidProcesses": {
+      "state": "hard",
+      "subject": "uid:501",
+      "limit": 561
+    },
+    "admission": {
+      "work": "answer",
+      "concurrent": 1,
+      "waitedMs": 0
+    },
+    "peakMemoryBytes": 323092480,
+    "peakProcesses": 4,
+    "treeCpuMilliseconds": 330,
+    "census": "complete",
+    "leakedDescendants": 0,
+    "membership": "working-area-joined",
+    "cleanup": "verified",
+    "allocation": null
+  },
+  "harnessProcessesAfter": ""
+}

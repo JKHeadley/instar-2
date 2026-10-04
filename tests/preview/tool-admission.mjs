@@ -27,6 +27,11 @@
 //   goes to the doorway too, so that marking decides it; otherwise it is ordinary under the operator's recorded tools grant.
 // - A web read of a loopback, private, link-local or local-name host is refused: it is not "the world" but this machine
 //   and its network, which the shell's sandbox already closes.
+// - A checkpointed route (a delegated session step, or a Codex tool turn: `config.gate` set) has the host's admission
+//   checkpoint (admission-gate.mjs) as its live authority: a delegation is recorded there as a durable child edge, a
+//   consequential tool passes its effect owner with the exact operation and input, and every shell command runs under
+//   the step's own confined sandbox profile (`config.shellProfile`). A route with no checkpoint refuses a delegation of
+//   that kind, and its consequential tools go to the effect doorway as above.
 import { dirname, join, sep } from 'node:path';
 import { isIP } from 'node:net';
 import { admitEffect, decodeEffectPolicy, DEFAULT_EFFECT_POLICY, toolEffectProposal, UNAVAILABLE_EFFECT_POLICY } from './effect-doorway.mjs';
@@ -37,16 +42,102 @@ const SHELL_SAFE_PATH = /^\/[A-Za-z0-9_./@-]+$/u;
  * and this removes both values from the command's environment as well. `TMPDIR` points at the turn's
  * own scratch volume (the harness's shared default is refused for writes), and `ulimit -f` bounds each
  * file a command writes (65536 blocks of 512 bytes). `tmp` is absolute and shell-safe. */
-export function toolShellPrefix(tmp) {
+export function toolShellPrefix(tmp, egress = null) {
   if (typeof tmp !== 'string' || !SHELL_SAFE_PATH.test(tmp)) throw Error('tool admission: shell temporary directory absent');
-  return `unset CLAUDE_CODE_MESSAGING_TOKEN CLAUDE_CODE_MESSAGING_SOCKET; export TMPDIR=${tmp}; ulimit -f 65536; `;
+  const base = `unset CLAUDE_CODE_MESSAGING_TOKEN CLAUDE_CODE_MESSAGING_SOCKET; export TMPDIR=${tmp}; ulimit -f 65536; `;
+  if (egress === null || egress === undefined) return base;
+  const { assignments, path } = egressEnvironment(egress);
+  return `${base}export ${assignments} PATH=${[...path, '$PATH'].join(':')}; `;
 }
+/** The shell's network checkpoint (egress-proxy.mjs) as environment: its port, the turn's own trust root (a public
+ * certificate; its key stays in the admission state), a HOME the shell may write (tools keep caches and config there,
+ * never in the login profile), the developer tools' own git and python3 and the runner's node first on PATH (the /usr/bin
+ * shims would look up a system link outside the sandbox), and no system git configuration, so curl, git, npm and pip
+ * reach the network through it. Returns the assignments and the PATH entries to put first. */
+function egressEnvironment(egress) {
+  const { port, ca, home, path, developer } = egress ?? {};
+  if (!Number.isSafeInteger(port) || port < 1 || port > 65535 || ![ca, home].every(value => typeof value === 'string' && SHELL_SAFE_PATH.test(value))
+    || ![path, developer].every(value => value === undefined || (typeof value === 'string' && SHELL_SAFE_PATH.test(value))))
+    throw Error('tool admission: shell egress checkpoint absent');
+  const proxy = `http://127.0.0.1:${String(port)}`;
+  // NO_PROXY is emptied: the harness exempts loopback and private ranges from its proxy, and every request, those included,
+  // is to be decided (and refused) at the checkpoint, on the record.
+  return { assignments: `HOME=${home} HTTPS_PROXY=${proxy} HTTP_PROXY=${proxy} https_proxy=${proxy} http_proxy=${proxy} NO_PROXY= no_proxy= `
+    + `SSL_CERT_FILE=${ca} CURL_CA_BUNDLE=${ca} GIT_SSL_CAINFO=${ca} NODE_EXTRA_CA_CERTS=${ca} REQUESTS_CA_BUNDLE=${ca} PIP_CERT=${ca} `
+    + `npm_config_cafile=${ca} npm_config_update_notifier=false GIT_CONFIG_NOSYSTEM=1 GIT_ATTR_NOSYSTEM=1${developer ? ` DEVELOPER_DIR=${developer}` : ''}`,
+  path: [developer ? `${developer}/usr/bin` : null, path ?? null].filter(Boolean) };
+}
+/** System locations a confined shell reads to run at all (the tool turn's runtime list, plus the installed tool
+ * prefixes and the command-line developer tools that `python3` and `git` resolve through). Nothing under a home,
+ * a mounted volume, a login profile or the runner root is on it. */
+export const SHELL_RUNTIME_READS = Object.freeze(['/bin', '/sbin', '/usr/bin', '/usr/sbin', '/usr/lib', '/usr/libexec', '/usr/share',
+  '/usr/local', '/opt/homebrew', '/System', '/Library/Developer/CommandLineTools', '/private/var/select', '/private/etc', '/dev']);
+const SBPL_PATH = /^\/[A-Za-z0-9_./@-]+$/u;
+/**
+ * The confined shell's macOS sandbox profile (`shell-sandbox-v1`), for a harness whose own sandbox is not used: a
+ * delegated session, and the Codex tool turn (`codex exec` cannot confine reads itself). File contents are readable
+ * only from the workspace, its temporary directory and the runtime list; writes reach only those two; there is no
+ * network, no signal to any other process, and no keychain service. A path's existence stays visible (metadata),
+ * its contents do not. Every `Bash` call is rewritten to run under it (`sandboxedShellCommand`).
+ */
+export function shellSandboxProfile({ workspace, tmp, egress = null }) {
+  const reads = egress?.reads ?? [], writes = egress?.writes ?? [];
+  if (![workspace, tmp, ...reads, ...writes].every(path => typeof path === 'string' && SBPL_PATH.test(path)))
+    throw Error('tool admission: confined shell paths must be absolute and plain');
+  if (egress !== null && (!Number.isSafeInteger(egress.port) || egress.port < 1 || egress.port > 65535))
+    throw Error('tool admission: confined shell egress port invalid');
+  const subpaths = paths => paths.map(path => `(subpath "${path}")`).join(' ');
+  // With the step's network checkpoint (egress-proxy.mjs), the one network path is to its loopback port: every request the
+  // shell makes is decided there by the same effect doorway as a tool call, under its request and byte bounds.
+  return ['(version 1)', '(allow default)', '(deny network*)',
+    ...(egress !== null ? [`(allow network-outbound (remote ip "localhost:${String(egress.port)}"))`] : []),
+    '(deny file-read-data (subpath "/"))', `(allow file-read-data (literal "/") ${subpaths([...SHELL_RUNTIME_READS, workspace, tmp, ...reads, ...writes])})`,
+    '(deny file-write* (subpath "/"))',
+    `(allow file-write* ${subpaths([workspace, tmp, ...writes])} (literal "/dev/null") (literal "/dev/zero") (regex #"^/dev/tty") (regex #"^/dev/fd/"))`,
+    '(deny signal)', '(allow signal (target self))',
+    '(deny mach-lookup (global-name "com.apple.SecurityServer") (global-name "com.apple.securityd.xpc") (global-name "com.apple.security.agent"))',
+    ''].join('\n');
+}
+const quoted = text => `'${String(text).replaceAll("'", "'\\''")}'`;
+/** One shell command, run under the confined profile with a clean environment: no inherited variable (a harness
+ * token or socket) reaches it, `TMPDIR` is the step's own, and `ulimit -f` bounds each file it writes. */
+export function sandboxedShellCommand(command, { profile, workspace, tmp, egress = null }) {
+  if (![profile, workspace, tmp].every(path => typeof path === 'string' && SHELL_SAFE_PATH.test(path)))
+    throw Error('tool admission: confined shell paths absent');
+  const path = `${SHELL_RUNTIME_READS.filter(p => /bin$/u.test(p)).join(':')}:/usr/local/bin:/opt/homebrew/bin`;
+  // With the step's network checkpoint, the command is pointed at it (its proxy, trust root and HOME): the profile lets
+  // the shell reach that port and nothing else.
+  const env = egress ? (({ assignments, path: first }) => `${assignments} PATH=${[...first, path].join(':')}`)(egressEnvironment(egress))
+    : `PATH=${path} HOME=${workspace}`;
+  return `/usr/bin/sandbox-exec -f ${profile} /usr/bin/env -i ${env} TMPDIR=${tmp} /bin/zsh -c ${quoted(`ulimit -f 65536; ${command}`)}`;
+}
+/** The paths a Codex `apply_patch` call names, or null when its text is not a patch this reads. */
+export function patchPaths(text) {
+  if (typeof text !== 'string' || !text.startsWith('*** Begin Patch')) return null;
+  const paths = [];
+  for (const line of text.split('\n')) {
+    const match = /^\*\*\* (?:Add File|Update File|Delete File|Move to): (.+)$/u.exec(line);
+    if (match) paths.push(match[1].trim());
+  }
+  return paths.length > 0 ? paths : null;
+}
+/** Tools that start another agent thread (a subagent): Claude Code's, and Codex 0.156.1's as its hook names it
+ * (recorded live 2026-10-03, fixtures/codex-capabilities-2026-10-03). Each one becomes a durable child edge first. */
+export const DELEGATION_TOOLS = Object.freeze(['Agent', 'Task', 'spawn_agent', 'collaborationspawn_agent']);
+/** The harness's wait on its own subagents: its completed outcome is the evidence an asynchronous spawn's edge closes on. */
+export const DELEGATION_WAIT_TOOLS = Object.freeze(['collaborationwait_agent']);
+/** Codex's web search, as its hook names it (`webrun`): admitted only on a route that admits network reads. */
+export const CODEX_NETWORK_READ_TOOLS = Object.freeze(['webrun']);
+/** On a checkpointed route, the harness's own planning, output-reading and subagent-handling tools: no effect outside
+ * the step. A subagent these address already has its edge. */
+export const SESSION_BOOKKEEPING_TOOLS = Object.freeze(['TodoWrite', 'update_plan', 'BashOutput', 'KillShell', 'collaborationwait_agent',
+  'collaborationsend_input', 'collaborationclose_agent', 'collaborationresume_agent']);
 export const FILE_TOOLS = Object.freeze(['Read', 'Write', 'Edit', 'NotebookEdit']);
 const SEARCH_TOOLS = Object.freeze(['Glob', 'Grep']);
 /** The subagent tool under both names the pinned harness accepts. */
 export const SUBAGENT_TOOLS = Object.freeze(['Agent', 'Task']);
 /** Tools that, if they ever reached the hook, would act outward: each is the effect doorway's, named by its effect. */
-const OUTWARD_TOOLS = Object.freeze({ SendMessage: 'send', PushNotification: 'send', RemoteTrigger: 'network-write',
+export const OUTWARD_TOOLS = Object.freeze({ SendMessage: 'send', PushNotification: 'send', RemoteTrigger: 'network-write',
   DesignSync: 'network-write', CronCreate: 'schedule', CronDelete: 'schedule', ScheduleWakeup: 'schedule', Monitor: 'unsandboxed' });
 /** The harness's own bookkeeping: no effect outside the turn's process and workspace. */
 const BOOKKEEPING_TOOLS = Object.freeze(['ToolSearch', 'ListAgents', 'CronList', 'ReportFindings', 'TaskStop']);
@@ -82,6 +173,61 @@ export function admitToolEffect(proposal, config, now) {
         + 'done; tell the user plainly that this step was refused, why, and what would admit it.' };
   }
   return admitEffect(proposal, policy, config.operations ?? [], options);
+}
+
+/** The proposals a consequential (or policy-named) tool call makes at the effect doorway: the doorway's own vocabulary
+ * (toolEffectProposal), each host a Codex web call names by URL in any of its operations (an `open`, a `find`, a click or
+ * a search alike: an explicit URL never loses its host by becoming a generic search) and, for any operation that is not a
+ * page read by URL reference, its search, or `tool:<kind>` on the tool's name for a tool that vocabulary does not name
+ * (sending, scheduling, a remote trigger, Monitor), which no default classifies, so it is classified worst-case on every test. */
+export function toolCallProposals(tool, input) {
+  if (CODEX_NETWORK_READ_TOOLS.includes(tool)) {
+    const hostOf = text => { try { const url = new URL(String(text)); return /^https?:$/u.test(url.protocol) && url.hostname
+      ? url.hostname.replace(/^\[|\]$/gu, '').slice(0, 256) : null; } catch { return null; } };
+    const urls = (value, depth = 0) => typeof value === 'string' ? [hostOf(value)].filter(Boolean)
+      : value && typeof value === 'object' && depth < 4 ? Object.values(value).flatMap(item => urls(item, depth + 1)) : [];
+    const hosts = new Set();
+    let other = false;
+    for (const [key, value] of Object.entries(input ?? {})) {
+      if (key === 'response_length' || value === undefined || value === null || (Array.isArray(value) && value.length === 0)) continue;
+      for (const item of Array.isArray(value) ? value : [value]) {
+        for (const host of urls(item)) hosts.add(host);
+        if (hostOf(item?.ref_id) === null) other = true;
+      }
+    }
+    return [...[...hosts].map(target => ({ effect: 'tool:network', target })),
+      ...(other || hosts.size === 0 ? [{ effect: 'tool:network', target: 'web-search' }] : [])];
+  }
+  const kind = Object.hasOwn(OUTWARD_TOOLS, tool) ? OUTWARD_TOOLS[tool] : 'unclassified';
+  return [toolEffectProposal(tool, input) ?? { effect: `tool:${kind}`, target: tool.slice(0, 256) }];
+}
+/** The effect doorway's decision for one tool call, the same whether one target or many: each proposal keeps its own
+ * decision (a Codex web target the effect policy does not name is an ordinary network read, as that read alone is; one it
+ * names, or any under an unreadable policy, is decided by the doorway). Any refusal refuses the call; otherwise the call is
+ * consequential when any of its targets is, carrying every test that held and every grant that admitted one, so the effect
+ * owner applies the never-twice identity to it. The host checkpoint's effect owner decides with this same function. */
+export function admitToolCallEffect(tool, input, config, now) {
+  const network = CODEX_NETWORK_READ_TOOLS.includes(tool);
+  const verdicts = toolCallProposals(tool, input).map(proposal => network && !policyNames(config, proposal)
+    ? { effect: proposal.effect, target: proposal.target, tests: { irreversible: false, resources: false, scope: false, policySensitive: false },
+      consequential: false, admitted: true, disposition: 'ordinary',
+      reason: `network read of ${proposal.target}: the effect policy does not name it, so it is an ordinary read; admitted` }
+    : admitToolEffect(proposal, config, now));
+  const refused = verdicts.find(verdict => !verdict.admitted);
+  if (refused || verdicts.length === 1) return refused ?? verdicts[0];
+  const held = verdicts.filter(verdict => verdict.consequential);
+  if (held.length === 0) return { ...verdicts[0], target: verdicts.map(verdict => verdict.target).join(', ').slice(0, 256),
+    reason: verdicts.map(verdict => verdict.reason).join('; ') };
+  const grants = [...new Set(held.map(verdict => verdict.grant).filter(Boolean))];
+  return { effect: held[0].effect, target: verdicts.map(verdict => verdict.target).join(', ').slice(0, 256),
+    tests: Object.fromEntries(Object.keys(held[0].tests).map(test => [test, verdicts.some(verdict => verdict.tests?.[test] === true)])),
+    consequential: true, admitted: true, disposition: held.some(verdict => verdict.disposition === 'granted') ? 'granted' : held[0].disposition,
+    ...(grants.length ? { grant: grants.join(', ') } : {}), reason: verdicts.map(verdict => verdict.reason).join('; ') };
+}
+/** A doorway verdict as the admission record carries it (Rule 41): enough for status and the answer's refusal notice. */
+export function doorwayRecord(verdict) {
+  return { effect: verdict.effect, ...(verdict.target ? { target: verdict.target } : {}), tests: verdict.tests,
+    disposition: verdict.disposition, ...(verdict.grant ? { grant: verdict.grant } : {}), ...(verdict.admits ? { admits: verdict.admits } : {}) };
 }
 
 /** Whether the turn's effect policy registers this proposal's effect (and target) or marks the effect, its target or a
@@ -186,6 +332,93 @@ export function webReadHost(url) {
   return { host };
 }
 
+/** The host and port a shell request targets (a CONNECT authority `host:port`, or an absolute http(s) URL), when the
+ * host is public-looking; otherwise null with a reason. The same host rule as a web read. */
+export function egressTarget(authority, scheme = 'https:') {
+  let parsed; try { parsed = new URL(`${scheme}//${String(authority)}/`); } catch { return { host: null, reason: 'not a host' }; }
+  if (parsed.pathname !== '/' || parsed.search || parsed.hash) return { host: null, reason: 'not a host' };
+  const target = webReadHost(parsed.href);
+  if (target.host === null) return target;
+  const port = parsed.port ? Number(parsed.port) : (scheme === 'http:' ? 80 : 443);
+  return { host: target.host, port };
+}
+
+/** Headers a server may honor in place of the request line's method. A server may follow the request line or any of them,
+ * so a request is a read only when the request line and every method these headers name are reads. */
+export const METHOD_OVERRIDES = Object.freeze(['x-http-method-override', 'x-http-method', 'x-method-override']);
+/** The largest git fetch request body the checkpoint holds to check before forwarding (a fetch's wants and haves). */
+export const GIT_FETCH_MAX_BODY = 8 * 1024 * 1024;
+// A git fetch request is pkt-lines, each one of the upload-pack protocol's own requests (v0 and v2): wants, haves, the
+// negotiation's end, shallow and filter options, and v2's command, capabilities and ref prefixes. Nothing else is a fetch.
+const GIT_FETCH_LINE = /^(?:(?:want|have|shallow|deepen|deepen-since|deepen-not|filter|want-ref|ref-prefix|packfile-uris) [\x21-\x7e]{1,1024}|(?:command|agent|object-format|server-option|session-id)=[\x21-\x7e]{1,1024}|want [0-9a-f]{40,64}(?: [\x21-\x7e]{1,1024})*|done|thin-pack|no-progress|include-tag|ofs-delta|peel|symrefs|unborn|sideband-all|wait-for-done|deepen-relative)$/u;
+const lower = headers => Object.fromEntries(Object.entries(headers ?? {}).map(([name, value]) => [name.toLowerCase(), Array.isArray(value) ? value.join(',') : String(value)]));
+/** The repository a smart-HTTP git route names (`/r.git/info/refs` or `/r.git/git-upload-pack` → `/r.git`), or null. */
+export function gitRepository(path, endpoint) {
+  const route = String(path ?? '').split('?')[0], suffix = `/${endpoint}`;
+  return route.endsWith(suffix) && route.length > suffix.length ? route.slice(0, -suffix.length) : null;
+}
+/** Whether a response proves its host serves git fetches for a repository: the answer to that repository's
+ * upload-pack discovery (`GET <repo>/info/refs?service=git-upload-pack`) was 200 with git's advertisement type. */
+export function gitAdvertisement({ method, path, status, headers }) {
+  const repo = gitRepository(path, 'info/refs'), query = String(path ?? '').split('?')[1] ?? '';
+  if (String(method).toUpperCase() !== 'GET' || repo === null || new URLSearchParams(query).get('service') !== 'git-upload-pack' || status !== 200) return null;
+  return /^application\/x-git-upload-pack-advertisement\b/u.test(lower(headers)['content-type'] ?? '') ? repo : null;
+}
+/** Whether a POST is a git fetch: its repository answered its discovery as a git server in this turn (`advertised`, the
+ * set of `host:port/repo` proven by gitAdvertisement), it is typed as a fetch request, and its body (`body`, already
+ * decompressed when the request was gzip-encoded) is nothing but upload-pack pkt-lines. A path name or content type
+ * alone proves nothing. Returns {fetch, reason}. */
+export function gitFetchRequest({ origin, path, headers, body, advertised }) {
+  const repo = gitRepository(path, 'git-upload-pack'), h = lower(headers);
+  if (repo === null) return { fetch: false, reason: 'not a git-upload-pack route' };
+  if (!advertised?.has(`${origin}${repo}`)) return { fetch: false, reason: 'the repository did not advertise git upload-pack in this turn' };
+  if (!/^application\/x-git-upload-pack-request\b/u.test(h['content-type'] ?? '')) return { fetch: false, reason: 'not typed as a git fetch request' };
+  if (!Buffer.isBuffer(body)) return { fetch: false, reason: 'body unreadable' };
+  let at = 0, lines = 0;
+  while (at < body.length) {
+    const size = /^[0-9a-f]{4}$/u.test(body.toString('latin1', at, at + 4)) ? parseInt(body.toString('latin1', at, at + 4), 16) : -1;
+    if (size < 0 || size === 3 || at + Math.max(size, 4) > body.length) return { fetch: false, reason: 'body is not git pkt-lines' };
+    if (size >= 4) {
+      const line = body.toString('latin1', at + 4, at + size).replace(/\n$/u, '');
+      if (!GIT_FETCH_LINE.test(line)) return { fetch: false, reason: 'body carries a line that is not a git fetch request' };
+      lines++;
+    }
+    at += Math.max(size, 4);
+  }
+  return lines > 0 ? { fetch: true, reason: 'git fetch' } : { fetch: false, reason: 'empty git request' };
+}
+
+/** The shell's network checkpoint (the egress proxy every sandboxed command is forced through): the decision for one HTTP
+ * request it can see in full (method, host, path, headers), after TLS interception. A read is admitted: GET or HEAD, or a
+ * git fetch proven by gitFetchRequest (`gitFetch`, its result), and only when no method-override header names anything
+ * else: a request whose line or any override names a write is a write. A read of a host the operator's effect policy
+ * registers or marks policy-sensitive goes to the effect doorway as `tool:network`, exactly as a WebFetch of it does.
+ * Everything else (POST, PUT, PATCH, DELETE, an unproven POST to a git-upload-pack path, a git push from its discovery
+ * request on, a package publish) is a network write the effect doorway decides as `tool:network-write` on the host:
+ * unregistered, it is classified at its worst on all four tests and refused. `config` is the turn's admission config
+ * ({operations, effectPolicy?, irreversibleTerm?}); `now` (ms) checks a grant's expiry. */
+export function admitEgress({ method, path, host = null, headers = {}, gitFetch = null }, config, now) {
+  const h = lower(headers), actual = String(method ?? '').trim().toUpperCase(), target = String(path ?? '');
+  const on = host ? { target: String(host).slice(0, 256) } : {};
+  // Every method the upstream could act on: the request line's and each one an override header names (a repeated header
+  // is comma-joined). An override can never downgrade the request line, and no header can hide another's write.
+  const verbs = [actual, ...METHOD_OVERRIDES.filter(name => name in h).flatMap(name => h[name].split(',').map(v => v.trim().toUpperCase()))];
+  const read = v => v === 'GET' || v === 'HEAD', verb = verbs.find(v => !read(v)) ?? actual;
+  const query = target.includes('?') ? target.slice(target.indexOf('?') + 1) : '', route = target.split('?')[0];
+  const service = new URLSearchParams(query).get('service');
+  const doorway = (proposal, kind, why) => { const verdict = admitToolEffect(proposal, config, now);
+    return verdict.admitted ? { decision: 'allow', reason: verdict.reason, kind }
+      : { decision: 'deny', reason: why ? `${why}: ${verdict.reason}` : verdict.reason, kind }; };
+  const write = reason => doorway({ effect: 'tool:network-write', ...on }, 'network-write', reason);
+  const admitRead = reason => policyNames(config, { effect: 'tool:network', ...on })
+    ? doorway({ effect: 'tool:network', ...on }, 'network-read', null) : { decision: 'allow', reason, kind: 'network-read' };
+  if (service === 'git-receive-pack' || route.endsWith('/git-receive-pack')) return write('a git push');
+  if (verbs.every(read)) return admitRead(`${actual} read`);
+  if (verbs.every(v => v === 'POST') && gitFetch?.fetch === true && route.endsWith('/git-upload-pack')) return admitRead('git fetch');
+  if (verb === 'POST' && route.endsWith('/git-upload-pack')) return write(`POST is a network write (not a proven git fetch: ${gitFetch?.reason ?? 'unchecked'})`);
+  return write(`${verb || '(no method)'} is a network write`);
+}
+
 /**
  * One PreToolUse decision. `call` is the hook input ({tool_name, tool_input, agent_id?}); `config` is the turn's
  * {workspace (real path), tmp (the shell's temporary directory), maxCalls, maxWriteBytes, operations, effectPolicy?,
@@ -193,7 +426,9 @@ export function webReadHost(url) {
  * every slot is taken); `fs` gives exists/realpath and, for a web read, `addresses(host)` (the host's resolved addresses,
  * or null when they could not be resolved); `child` is the subagent slot this call took (children.max + 1 once every slot
  * is taken); `now` (ms) checks a grant's expiry. Returns {decision, reason, kind?, doorway?, updatedInput?}: `doorway` is
- * present exactly when the call reached the effect doorway.
+ * present exactly when the call reached the effect doorway. On a checkpointed route (`config.gate`, with `shellProfile`,
+ * `delegation` and `networkReads`), `decision: 'gate'` (a delegation, an effect) is decided by the host checkpoint; the
+ * hook asks it before the call runs.
  */
 export function admitToolCall(call, config, n, fs, child = 1, now) {
   const tool = String(call?.tool_name ?? ''), input = call?.tool_input ?? {};
@@ -201,11 +436,10 @@ export function admitToolCall(call, config, n, fs, child = 1, now) {
   // Part Twelve: the doorway's whole decision rides the admission record (Rule 41), so status and the answer can report it.
   // A tool the doorway's own vocabulary does not name (sending, scheduling, a remote trigger, Monitor) proposes `tool:<kind>`,
   // which no default classifies, so it is classified worst-case on every test.
-  const effect = kindOf => { const proposal = toolEffectProposal(tool, input) ?? { effect: `tool:${kindOf}`, target: tool.slice(0, 256) },
-    verdict = admitToolEffect(proposal, config, now);
-    const doorway = { effect: verdict.effect, ...(verdict.target ? { target: verdict.target } : {}), tests: verdict.tests,
-      disposition: verdict.disposition, ...(verdict.grant ? { grant: verdict.grant } : {}), ...(verdict.admits ? { admits: verdict.admits } : {}) };
-    const kind = kindOf;
+  // On a checkpointed route the host's effect owner decides it, by this same doorway decision under the installation's
+  // current policy, and adds the stop, durable preparation and (for a consequential one) the never-twice identity.
+  const effect = kind => { if (typeof config.gate === 'string') return { decision: 'gate', kind: 'effect', reason: 'the effect owner decides' };
+    const verdict = admitToolCallEffect(tool, input, config, now), doorway = doorwayRecord(verdict);
     return verdict.admitted ? { decision: 'allow', reason: verdict.reason, kind, doorway } : { ...deny(verdict.reason, kind), doorway }; };
   if (!Number.isSafeInteger(n) || n < 1) return deny('admission count unavailable');
   if (n > config.maxCalls) return deny(`per-step call cap ${config.maxCalls} reached (call ${n})`);
@@ -243,9 +477,30 @@ export function admitToolCall(call, config, n, fs, child = 1, now) {
   if (tool === 'Bash') {
     const command = String(input.command ?? '');
     if (!command.trim()) return deny('empty command');
+    // A confined shell (`shellProfile` set) runs every command under the step's own sandbox profile, whatever the
+    // harness asked for; otherwise the harness's own sandbox bounds it and an unsandboxed request is an effect.
+    if (config.shellProfile) return { decision: 'allow', reason: 'confined command',
+      updatedInput: { ...input, command: sandboxedShellCommand(command, { profile: config.shellProfile, workspace: config.workspace, tmp: config.tmp,
+        egress: config.egress ?? null }) } };
     if (input.dangerouslyDisableSandbox) return effect('unsandboxed');
     return { decision: 'allow', reason: 'sandboxed command',
-      updatedInput: { ...input, command: toolShellPrefix(config.tmp) + command } };
+      updatedInput: { ...input, command: toolShellPrefix(config.tmp, config.egress ?? null) + command } };
+  }
+  if (tool === 'apply_patch') {
+    const patch = String(input.command ?? input.input ?? '');
+    const paths = patchPaths(patch);
+    if (paths === null) return deny('unreadable patch', 'scope');
+    const outside = paths.find(path => !inside(path));
+    if (outside !== undefined) return deny(`path outside the workspace: ${outside}`, 'scope');
+    if (Buffer.byteLength(patch) > config.maxWriteBytes) return deny(`patch larger than ${config.maxWriteBytes} bytes`, 'scope');
+    return { decision: 'allow', reason: 'ordinary in-workspace patch' };
+  }
+  if (CODEX_NETWORK_READ_TOOLS.includes(tool)) {
+    if (config.networkReads !== true) return deny(`network read ${tool} not admitted on this route`);
+    // A host it opens, or its search, that the operator's effect policy registers or marks policy-sensitive (or a policy
+    // that cannot be read) goes to the doorway, exactly as a WebFetch or WebSearch of it does.
+    if (toolCallProposals(tool, input).some(proposal => policyNames(config, proposal))) return effect('network');
+    return { decision: 'allow', reason: 'network read', kind: 'network-read' };
   }
   if (tool === 'WebFetch') {
     // WebFetch only ever issues a GET; what it may reach is a public host.
@@ -263,6 +518,9 @@ export function admitToolCall(call, config, n, fs, child = 1, now) {
     if (policyNames(config, toolEffectProposal(tool, input))) return effect('network');
     return { decision: 'allow', reason: 'web search', kind: 'network-read' };
   }
+  if (DELEGATION_TOOLS.includes(tool) && config.delegation === true)
+    return typeof config.gate === 'string' ? { decision: 'gate', kind: 'delegation', reason: 'delegation: recorded as a child edge first' }
+      : deny('delegation needs the admission checkpoint to record its edge; this route has none', 'delegation');
   if (SUBAGENT_TOOLS.includes(tool)) {
     // Rule 114: the turn or any of its subagents may delegate; every subagent, at any depth, takes a slot of the turn's one
     // reserved budget, so the reservation covers the whole tree.
@@ -283,7 +541,8 @@ export function admitToolCall(call, config, n, fs, child = 1, now) {
     return effect('mcp');
   }
   if (Object.hasOwn(OUTWARD_TOOLS, tool)) return effect(OUTWARD_TOOLS[tool]);
-  if (BOOKKEEPING_TOOLS.includes(tool)) return { decision: 'allow', reason: 'harness bookkeeping' };
+  if (BOOKKEEPING_TOOLS.includes(tool) || (SESSION_BOOKKEEPING_TOOLS.includes(tool) && config.delegation === true))
+    return { decision: 'allow', reason: 'harness bookkeeping' };
   if (WORKTREE_TOOLS.includes(tool)) {
     const path = input.path ?? input.worktree_path;
     if (path !== undefined && !inside(path)) return deny(`worktree outside the workspace: ${String(path)}`, 'scope');

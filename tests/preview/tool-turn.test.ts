@@ -11,9 +11,10 @@ import { afterEach, expect, it } from 'vitest';
 import { openPreviewJournal } from './journal.js';
 import { SUBSCRIPTION_SUBAGENT_TYPE, SUBSCRIPTION_TOOL_LIMITS, SUBSCRIPTION_TOOL_NAMES, SUBSCRIPTION_TOOL_RUNTIME_READS, SUBSCRIPTION_TOOLS_SYSTEM_PROMPT } from '../../src/assembly/production-provider.js';
 import { SINGLE_MACHINE_PROFILE } from './activation-authority.js';
+import { nestedSessionWorkEdge, type SessionWorkEdge } from '../../src/assembly/production-session-work.js';
 import { capabilityBriefing, TOOLS_BRIEFING } from './briefing.js';
 // @ts-expect-error The runner side stays plain JavaScript.
-import { TOOL_HOOK_SCRIPT, TOOL_MCP_LAUNCHER, TOOL_NOTICE_MAX_BYTES, attachScratch, detachScratch, openToolTurnSlugs, prepareToolTurn, pruneToolTurns, readRootMcp, readToolTrace, reconcileToolTurns, runToolTurn, scratchMounted, toolChildrenFit, toolStatusLines, toolTurnEligible, toolTurnFits, unmountScratch, workspaceBytes } from './tool-turn.mjs';
+import { TOOL_HOOK_SCRIPT, TOOL_MCP_LAUNCHER, TOOL_NOTICE_MAX_BYTES, attachEgress, attachScratch, detachScratch, networkToolReads, openToolTurnSlugs, prepareToolTurn, pruneToolTurns, readRootMcp, readToolTrace, reconcileToolTurns, runToolTurn, scratchMounted, toolChildrenFit, toolStatusLines, toolTurnEligible, toolTurnFits, unmountScratch, workspaceBytes } from './tool-turn.mjs';
 // @ts-expect-error The physical host remains JavaScript.
 import { createResourceOwner } from '../../scripts/resource-owner.mjs';
 
@@ -152,7 +153,8 @@ it('tells the agent and the operator exactly which tools exist and where outward
   const view = { toolTurns: { invocations: 2, reservedCalls: 14, refusedCap: 1, toolCalls: 5, toolRefusals: 2, inconsistent: 0, open: [] } };
   expect(toolStatusLines(view, true)).toEqual([
     `Tools: the harness's full built-in set (${SUBSCRIPTION_TOOL_NAMES.length} tools, each call decided at the admission hook) and the root's `
-      + 'MCP servers, in this conversation\'s private workspace (kept between turns, 128 MB); shell sandboxed without network; web reads only; '
+      + 'MCP servers, in this conversation\'s private workspace (kept between turns, 128 MB); shell sandboxed, its network through the '
+      + 'turn\'s checkpoint (reads of public hosts admitted, writes refused at the effect doorway); web reads only; '
       + 'subagents may delegate within the turn\'s budget; consequential effects go through the effect doorway.',
     'Tool turns: 2 run (14 model attempts reserved for them), 5 tool calls admitted, 2 refused, 1 turns answered without tools because the call allowance was short.']);
   expect(toolStatusLines({ toolTurns: { ...view.toolTurns, open: ['x#3'] } }, true)[1]).toContain('1 without a recorded trace yet');
@@ -165,6 +167,8 @@ it('tells the agent and the operator exactly which tools exist and where outward
   expect(toolStatusLines({ toolTurns: { ...view.toolTurns, overflow: 2 } }, true)[2])
     .toBe('Workspaces: this root keeps 4; 2 turns of further conversations ran in a fresh one-turn workspace without a kept session.');
   expect(toolStatusLines(view, true)).toHaveLength(2);
+  expect(toolStatusLines({ toolTurns: { ...view.toolTurns, network: { admitted: 4, refused: 2 } } }, true)[1])
+    .toContain('4 shell network reads admitted and 2 refused at the checkpoint');
   expect(toolStatusLines(view, false)).toEqual([]);
   // Default on: when no grant resolves, status says tools are off and why, instead of saying nothing.
   expect(toolStatusLines(view, false, 'refused at launch with --tools off')).toEqual(['Tools: off (refused at launch with --tools off); answers are text only.']);
@@ -397,4 +401,140 @@ it('reads the root\'s MCP configuration: absent is none, malformed refuses, a li
     '/usr/bin/srv', '--x'], env: { LOG_LEVEL: 'debug' } });
   expect(second.mcp.socket.length).toBeLessThan(100);
   rmSync(join(second.mcp.socket, '..'), { recursive: true, force: true });
+});
+
+it('runs the shell\'s network checkpoint exactly as long as the turn: started before launch, named to the hook and the sandbox, recorded, stopped after', async () => {
+  const root = dir(), id = 'telegram:12345678:update:21';
+  const journal = journalAt(root, 60);
+  const appended: Record<string, unknown>[] = [];
+  const spied = { get view() { return journal.view; }, append: (row: never) => { appended.push(row); return journal.append(row); } };
+  const events: string[] = [];
+  let started: { stateDirectory: string; caPath: string; admission: { operations: string[] } } | null = null;
+  const egress = async (input: { stateDirectory: string; caPath: string; admission: { operations: string[] } }) => {
+    started = input; events.push('start'); writeFileSync(input.caPath, 'CERT');
+    // What the real checkpoint appends for a refused write and an admitted read.
+    writeFileSync(join(input.stateDirectory, 'egress.jsonl'), [
+      { phase: 'request', n: 1, method: 'CONNECT', scheme: 'https', host: 'example.com', port: 443, path: 'example.com:443', decision: 'allow', reason: 'tunnel opened; each request inside it is decided', kind: 'tunnel', address: '93.184.215.14' },
+      { phase: 'request', n: 2, method: 'GET', scheme: 'https', host: 'example.com', port: 443, path: '/?token=SECRETVALUE', decision: 'allow', reason: 'GET read', kind: 'network-read', address: '93.184.215.14' },
+      { phase: 'response', n: 2, status: 200, bytes: 577 },
+      { phase: 'request', n: 3, method: 'POST', scheme: 'https', host: 'httpbin.org', port: 443, path: '/post', decision: 'deny', reason: 'POST is a network write: effect doorway: refused by default', kind: 'network-write' },
+    ].map(row => JSON.stringify(row)).join('\n') + '\n');
+    return { port: 40001, close: async () => { events.push('close'); } };
+  };
+  const tools = () => ({ reads: ['/usr/local/bin'], path: '/usr/local/bin', developer: undefined });
+  let seen: Record<string, unknown> | null = null;
+  const base = { journal: spied, root, prepared: '{}', promptLimit: 32768, deniedRoots: [root], operations: SINGLE_MACHINE_PROFILE.operations,
+    now: () => 10, redactText: (text: string) => text.replace('SECRETVALUE', '[redacted]'), fallback: async () => ({ result: 'text-only' }),
+    scratch: plainScratch, detach: keepDetached, egress, networkTools: tools };
+  await runToolTurn({ ...base, id, invoke: async (turn: Record<string, unknown>) => {
+    seen = turn; events.push('invoke');
+    const config = JSON.parse(readFileSync(join(turn.stateDirectory as string, 'config.json'), 'utf8'));
+    expect(config.egress).toEqual({ port: 40001, ca: join(turn.scratch as string, 'egress-ca.pem'), home: join(turn.scratch as string, 'home'), path: '/usr/local/bin' });
+    return { result: 'ok' };
+  } });
+  expect(events).toEqual(['start', 'invoke', 'close']);
+  expect(started!.admission).toEqual({ operations: [...SINGLE_MACHINE_PROFILE.operations] });
+  expect(started!.stateDirectory).toBe((seen as unknown as { stateDirectory: string }).stateDirectory);
+  expect((seen as unknown as { egress: unknown }).egress).toEqual({ port: 40001, reads: ['/usr/local/bin'] });
+  const trace = appended.find(row => row.phase === 'trace')!;
+  expect(trace.egressRequests).toBe(3);
+  expect(trace.egress).toEqual([expect.objectContaining({ kind: 'tunnel' }),
+    expect.objectContaining({ method: 'GET', path: '/?token=[redacted]', decision: 'allow', status: 200, bytes: 577 }),
+    expect.objectContaining({ method: 'POST', decision: 'deny', kind: 'network-write', status: null })]);
+  expect(journal.view.toolTurns?.network).toEqual({ admitted: 1, refused: 1 });
+  // A failed launch still stops the checkpoint and journals its trace.
+  events.length = 0;
+  await expect(runToolTurn({ ...base, id: 'telegram:12345678:update:22', invoke: async () => { events.push('invoke'); throw Error('launch failed'); } }))
+    .rejects.toThrow('launch failed');
+  expect(events).toEqual(['start', 'invoke', 'close']);
+  expect(journal.view.toolTurns?.open).toEqual([]);
+  expect(journal.view.toolTurns?.network).toEqual({ admitted: 2, refused: 2 });
+  // A checkpoint that does not start fails the turn before launch (no shell without its checkpoint), still journaled.
+  let launched = false;
+  await expect(runToolTurn({ ...base, id: 'telegram:12345678:update:23', egress: async () => { throw Error('no loopback port'); },
+    invoke: async () => { launched = true; return { result: 'ok' }; } })).rejects.toThrow('no loopback port');
+  expect(launched).toBe(false);
+  expect(journal.view.toolTurns?.open).toEqual([]);
+  // The journal refuses a malformed checkpoint record.
+  journal.append({ kind: 'tool-turn', phase: 'reserved', id: 'telegram:12345678:update:24', attempt: 9, calls: 1, at: 11 });
+  expect(() => journal.append({ kind: 'tool-turn', phase: 'trace', id: 'telegram:12345678:update:24', attempt: 9, consistent: true, workspaceBytes: 0, calls: [],
+    egress: [{ n: 1, method: 'GET', path: '/', decision: 'maybe', reason: 'r' }], at: 12 } as never)).toThrow(/tool turn egress/u);
+  // Replay reaches the same projection.
+  expect(journalAt(root, 60).view.toolTurns?.network).toEqual({ admitted: 2, refused: 2 });
+});
+
+it('names the shell\'s network tools read-only, never under a home or mounted volume, and closes the checkpoint if its config cannot be written', async () => {
+  expect(networkToolReads('/usr/local/bin/node', () => true, (p: string) => p)).toEqual({ reads: ['/usr/local/bin', '/usr/local/lib/node_modules/npm',
+    '/Library/Developer/CommandLineTools'], path: '/usr/local/bin', developer: '/Library/Developer/CommandLineTools' });
+  expect(networkToolReads('/Users/me/.nvm/versions/node/v24/bin/node', (p: string) => !p.startsWith('/Library'), (p: string) => p))
+    .toEqual({ reads: [], path: undefined, developer: undefined });
+  let closed = false;
+  let starts = 0;
+  const start = async () => { starts++; return { port: 1, close: async () => { closed = true; } }; };
+  // No admission config: nothing to decide with, so no checkpoint starts.
+  await expect(attachEgress({ scratch: dir(), stateDirectory: join(dir(), 'missing'), home: '/h' }, start, { reads: [] })).rejects.toThrow();
+  expect(starts).toBe(0);
+  // The config is read (the checkpoint decides with it) but cannot be rewritten: the started checkpoint is closed again.
+  const state = dir();
+  writeFileSync(join(state, 'config.json'), JSON.stringify({ operations: [] }), { mode: 0o400 });
+  await expect(attachEgress({ scratch: dir(), stateDirectory: state, home: '/h' }, start, { reads: [] })).rejects.toThrow();
+  expect(starts).toBe(1);
+  expect(closed).toBe(true);
+});
+
+it('a Codex tool turn runs only through the admission checkpoint: no checkpoint refuses, a lost subagent or a refused call refuses the answer', async () => {
+  const id = 'telegram:12345678:update:11';
+  const admission = { maxCalls: 8, harness: 'codex', confinedShell: true };
+  const opened: { claim: string; framework: string; allowance: number; edge: { id: string } }[] = [];
+  let state = { calls: 0, refused: false, closed: false, openDelegations: [] as SessionWorkEdge[] };
+  const gate = { base: (claim: string) => `http://127.0.0.1:4100/${'a'.repeat(32)}/${claim}`,
+    open: (claim: string, input: { framework: string; allowance: number; edge: { id: string } }) => { opened.push({ claim, ...input }); },
+    close: () => ({ ...state, closed: true }), settle: () => undefined };
+  // The shell's network checkpoint, as a stand-in: its start and close are observed.
+  const egressEvents: string[] = [];
+  const egress = async (input: { caPath: string }) => { egressEvents.push('start'); writeFileSync(input.caPath, 'CERT');
+    return { port: 40002, close: async () => { egressEvents.push('close'); } }; };
+  const base = (journal: ReturnType<typeof journalAt>, root: string, invoke: (turn: { gate?: string; stateDirectory?: string; scratch?: string;
+    egress?: unknown }) => Promise<unknown>, withGate = true) => ({
+    journal, root, id, prepared: '{"q":1}', promptLimit: 32768, deniedRoots: [root], operations: SINGLE_MACHINE_PROFILE.operations, now: () => 10,
+    redactText: (text: string) => text,
+    fallback: async () => ({ result: 'text-only' }), invoke, scratch: plainScratch, detach: keepDetached, admission, egress,
+    networkTools: () => ({ reads: ['/usr/local/bin'], path: '/usr/local/bin', developer: undefined }),
+    ...(withGate ? { gate, owner: 'machine-a' } : {}) });
+  // No checkpoint: the turn is refused before anything launches.
+  let launched = 0;
+  await expect(runToolTurn(base(journalAt(dir(), 50), dir(), async () => { launched++; }, false))).rejects.toThrow(/admission checkpoint/u);
+  expect(launched).toBe(0);
+  // With it: the claim opens with the turn's whole allowance and its own edge, and the harness is given its address.
+  let given: string | undefined;
+  const root = dir(), journal = journalAt(root, 50);
+  let profile = '', config: Record<string, unknown> = {}, invokeEgress: unknown = 'unset';
+  expect((await runToolTurn(base(journal, root, async turn => { given = turn.gate; invokeEgress = turn.egress;
+    config = JSON.parse(readFileSync(join(turn.stateDirectory!, 'config.json'), 'utf8'));
+    profile = readFileSync(config.shellProfile as string, 'utf8'); return 'answer'; }))).result).toBe('answer');
+  expect(opened[0]).toMatchObject({ framework: 'codex-cli', allowance: SUBSCRIPTION_TOOL_LIMITS.maxTurns, edge: { id: `tool-turn:${id}:0` } });
+  expect(given).toBe(gate.base(opened[0]!.claim));
+  // cint-L45: a checkpointed turn reserves no separate subagent budget (its subagents spend the turn's allowance at the
+  // checkpoint). Its confined shell reaches the network through the turn's checkpoint, started before launch and stopped
+  // after: the hook points every command at it, and the shell's own profile allows that one loopback port and nothing else.
+  expect(journal.view.calls).toBe(SUBSCRIPTION_TOOL_LIMITS.maxTurns - 1);
+  expect(egressEvents).toEqual(['start', 'close']);
+  expect(config.egress).toMatchObject({ port: 40002, path: '/usr/local/bin' });
+  expect(profile).toContain('(deny network*)\n(allow network-outbound (remote ip "localhost:40002"))\n');
+  expect(profile).toContain('(subpath "/usr/local/bin")');
+  expect(profile).toContain(`(allow file-write* (subpath "${config.workspace as string}") (subpath "${config.tmp as string}") (subpath "${(config.egress as { home: string }).home}")`);
+  // Codex's own sandbox is not used for the shell (the hook confines it), so the harness is not handed the port.
+  expect(invokeEgress).toBeUndefined();
+  // A subagent that never returned: its edge settles as uncertain in the journal and the answer is refused.
+  const parent = { type: 'SessionWorkEdge', schemaVersion: 1, id: `tool-turn:${id}:0`, parent: id, child: `tool-turn:${id}`, scope: '/ws',
+    owner: 'machine-a', authority: 'a', budget: { steps: 1, deadline: 5, maxResultBytes: 8, calls: 8, tokens: null }, exitTest: 'x',
+    placement: 'p', transport: 't', resultDestination: 'r', openedAt: 1 } as SessionWorkEdge;
+  state = { ...state, openDelegations: [nestedSessionWorkEdge(parent, { id: 'call_lost', tool: 'collaborationspawn_agent' }, 2)] };
+  const lostRoot = dir(), lost = journalAt(lostRoot, 50), rows: { kind: string; record?: { type: string; state?: string } }[] = [];
+  const spied = { get view() { return lost.view; }, append: (row: never) => { rows.push(row); return lost.append(row); } } as unknown as typeof lost;
+  await expect(runToolTurn(base(spied, lostRoot, async () => 'answer'))).rejects.toThrow(/delegated agent did not return/u);
+  expect(rows.find(row => row.kind === 'session-work')?.record).toMatchObject({ type: 'SessionWorkEdgeClose', state: 'uncertain' });
+  // A model call refused at the allowance: the answer is refused.
+  state = { calls: 8, refused: true, closed: false, openDelegations: [] };
+  await expect(runToolTurn(base(journalAt(dir(), 50), dir(), async () => 'answer'))).rejects.toThrow(/reserved allowance was refused/u);
 });

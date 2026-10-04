@@ -1,0 +1,33 @@
+# Change review — w4-shellnet repair: a git fetch is proven, the byte bound is terminal, a stop is re-checked after every wait
+
+Subject base: 2b9ae0c22885fc11d991cd6ae4815f545744139e
+Review state: open
+Reviewed content: none
+Outcome: Unit review round 1 (Astra, VERDICT NO) reproduced three must-fix defects in the shell's network checkpoint; each is fixed at its source and the ability is kept (public reads, git clone, package installs). (1) A POST was a read when its path ended in /git-upload-pack, and a method-override header passed through: an arbitrary POST and a GET carrying X-HTTP-Method-Override: DELETE reached the upstream. A git fetch is now proven, not named: its repository must have answered its upload-pack discovery in this turn with git's advertisement type, the POST must be typed application/x-git-upload-pack-request, and its body (held, at most 8 MiB, gunzipped when encoded, before any byte is forwarded) must be only upload-pack pkt-lines; anything else on that path is a network write for the effect doorway. A request carrying X-HTTP-Method-Override, X-HTTP-Method or X-Method-Override is decided by the method it names. (2) Reaching the byte bound destroyed the open sockets but a later request was admitted and forwarded; exhaustion is now terminal for the turn (checked at connection, CONNECT and request admission and after every wait) and the chunk that crosses the bound is not forwarded. (3) A plain-HTTP request waiting on name resolution connected upstream and recorded an allow after close(); the closed/exhausted/client-gone state is re-checked after resolution and after the held body, before any record or connection, and an upstream socket attached after shutdown is destroyed. Tests: a genuine git clone with the real git client through the checkpoint to git's own http-backend; the reviewer's negative cases (arbitrary POST to an upload-pack path, a fetch-shaped POST to an unadvertised repository, three override headers); reconnect after exhaustion with an upstream counter and the below-bound positive case; delayed resolution across close() with a connection counter and the answered-in-time positive case. Each new proxy test fails against the old code.
+Affected rules: 1, 4 and 26 (a read is decided on the real exchange, not a path label), 42 (refusals stay refusals; an exhausted or closed checkpoint refuses), 60 and 61 (the byte bound holds for the turn), 34 and 36 (unit tests with real curl, real git and the real proxy, both sides of each decision), 106 (the recorded live shellnet-reads and shellnet-writes runs replayed through the new admission), 37 (fixed at source, nothing quarantined), 74 (this record), 101 (plain commits), 116 (state the checkpoint already had: one set of advertised repositories, one ended() check; no new service); Purpose: the ability sentence (reads and git clone kept; the safeguard enforced at the checkpoint), a consequential effect only through the doorway
+Affected floors: secrets — unchanged; spend cap — unchanged (no model call); stop — strengthened: after close() a request waiting on resolution or its body records nothing and connects nowhere; no duplicate sends — strengthened: a POST to any path is a network write unless it is a proven git fetch, and a method override cannot turn a write into a read; durable intake — unchanged
+Operator questions: none
+Suggested tier: critical
+Declared tier: critical
+Tier rationale: it changes which shell network requests the checkpoint forwards.
+Side effects: admitEgress takes optional headers and gitFetch; new exports METHOD_OVERRIDES, GIT_FETCH_MAX_BODY, gitRepository, gitAdvertisement, gitFetchRequest; a POST to an upload-pack path is held whole (bounded) before forwarding; a request after exhaustion or close is answered 429 and recorded as budget; a git upload-pack POST to a server that did not advertise the repository in the same turn is refused.
+Undo and recovery: revert these commits and this record; no journal frame or record row shape changed.
+Multi-machine posture: machine-local, unchanged (one turn's checkpoint).
+Layer below: startEgressProxy and admitEgress (extended); admitToolEffect, egressTarget, publicAddress (unchanged); the pinned harness's httpProxyPort (unchanged); git's smart-HTTP protocol v0/v2 request lines (the git 2.50.1 client exercised in the test).
+Bug class: none
+Bug evidence: none
+Hook bypass: none
+Convergence: none
+Decision: shellnet-r1-git-fetch-proof | a git fetch is proven by its repository's discovery answer in this turn (200, git advertisement type), the fetch request type and an upload-pack-only pkt-line body held before forwarding; a path name or content type alone proves nothing | reported=/Users/dabombstudio/.instar/agents/echo/.instar/lanes/w4-shellnet-s-PROGRESS.md
+Decision: shellnet-r1-method-override | a method-override header is classified by the method it names (not stripped), so a write it names goes to the doorway | reported=/Users/dabombstudio/.instar/agents/echo/.instar/lanes/w4-shellnet-s-PROGRESS.md
+Decision: shellnet-r1-terminal-bound | byte exhaustion and close() are one terminal ended() state checked at every admission point and after every await; the crossing chunk is not forwarded | reported=/Users/dabombstudio/.instar/agents/echo/.instar/lanes/w4-shellnet-s-PROGRESS.md
+Prompt review: no model-facing change: no prompt, parser or model decision is touched; the change decides network requests. Recorded shapes replayed: the live shellnet-reads and shellnet-writes egress records (fixtures/tool-turn/shellnet-2026-10-03) reach their recorded decisions through the new admission.
+Deferral: generated/register.json:1 | not-a-deferral=generated register output quoting the rule book, not a commitment by this change
+
+Subject (12 paths): generated/capabilities.json, generated/capabilities.md, generated/coverage.md, generated/glossary.md, generated/register.json, generated/rules.md, generated/source.json, tests/preview/README.md, tests/preview/egress-proxy.mjs, tests/preview/egress-proxy.test.ts, tests/preview/tool-admission.mjs, tests/preview/tool-admission.test.ts
+
+## Closing block
+
+simplestRobustRoute: keep the checkpoint and the ability; add the proof the suffix label lacked (the repository's own discovery answer plus an upload-pack-only body, both already seen by the proxy), decide override headers by the method they name, and make the existing limited/closed state terminal and re-checked after each await. No new service.
+80/20: 0 must-fix, 1 note — a GET can still carry text the model chose (accepted by the review as ordinary reads).
+VERDICT: author submission; the independent verdict is recorded as a pass

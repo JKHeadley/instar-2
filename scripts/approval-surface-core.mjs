@@ -70,6 +70,10 @@ export function renderChallenge(challenge, text) {
  * fresh nonce. A proof for one subject or decision can never stand for another. */
 export const actChallenge = (challenge, decision, nonce) =>
   sha256(canonical({ type: 'PreviewApprovalAct', schemaVersion: 1, challenge, decision, nonce }));
+/** The exact bytes the operator's passkey signs to open the dashboard: a different type than an act, so a sign-in
+ * assertion can never stand for an approval, and an approval can never open a session. */
+export const signInChallenge = (operator, nonce) =>
+  sha256(canonical({ type: 'PreviewDashboardSignIn', schemaVersion: 1, operator, nonce }));
 
 const authenticatorData = (bytes, rpId, required) => {
   check(bytes.length >= 37 && bytes.subarray(0, 32).equals(sha256(rpId)), 'authenticator data names another site');

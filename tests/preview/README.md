@@ -3121,7 +3121,8 @@ Rules 4, 14, 15, 52, 53, 77, 79, 80, 82, 86, 87, 88, 95 and 106 on the live runn
   config file it owns (mode 0600): `{"operator":"telegram:OPERATOR_ID","operatorUid":UID_OF_THAT_USER,
   "agentUid":RUNNER_UID,"store":"/ABS/STORE","outbox":"/ABS/RUNNER_OUTBOX","publicBase":"https://STABLE.HOST",
   "ingressGrant":"desk:approvals-ingress-DATE","port":PORT}`. The runner's outbox is a directory the
-  runner owns, mode 0755. Publish `127.0.0.1:PORT` at that stable HTTPS host (a named tunnel; a
+  runner owns whose group is one the page's user is in (and no other account), mode 0750: the dashboard's message
+  excerpts are published only into an outbox other local accounts cannot enter. Publish `127.0.0.1:PORT` at that stable HTTPS host (a named tunnel; a
   passkey is bound to the host name, so an ephemeral tunnel name breaks it). Run
   `node scripts/approval-surface.mjs serve CONFIG` as that user, then `... enroll CONFIG` prints a
   one-use enrolment link (15 minutes) to open on the phone; enrol a second passkey or a synced
@@ -3129,6 +3130,30 @@ Rules 4, 14, 15, 52, 53, 77, 79, 80, 82, 86, 87, 88, 95 and 106 on the live runn
   --approval-outbox /ABS/RUNNER_OUTBOX --approval-operator-uid UID_OF_THAT_USER`; `status
   .approvalSurface` then reads `{ installed: true, ready: true, page, passkeys }`. A store owned by
   the runner's own identity is refused (`installed: false`).
+- **The operator dashboard (Rules 79, 80, 81, 87; Eleven §2; plan #439).** One phone page that shows
+  what the agent is doing and what needs the operator: the status (the exact chat `status` answer,
+  from `statusAnswer`), the requests waiting for a yes or no with a direct link to where each is
+  answered (the approval page itself, the GitHub review, or the chat), the recent messages and what
+  happened to each, the allowance used, and the stop (a link to the page's own standing Stop). It is
+  a page of the independent approval page above, served by that process at `/TOKEN/dashboard`
+  (linked from the approvals index), never by the agent. Nothing from the agent shows until the
+  operator's enrolled passkey signs in: one assertion over a fresh nonce whose signed bytes are a
+  different type from any act (`signInChallenge`), so a sign-in never stands for an approval. The
+  session is a random value held hashed in the page's memory for 30 minutes (at most 64); a restart
+  signs everyone out. The runner publishes the data: while the approval page is installed, every
+  cycle (at most every 15 seconds, and once at exit) it writes one snapshot,
+  `OUTBOX/dashboard.json` (`tests/preview/operator-dashboard.ts`), replaced whole, from the journal
+  and the same status lines it would send in chat. The page reads it as untrusted data
+  (`scripts/operator-dashboard.mjs`): a closed, bounded shape whose only links are a GitHub review
+  page or `https://t.me/BOT`, every field escaped, its age shown on every view; a missing,
+  unreadable or stale (over 2 minutes) snapshot is said in plain words. The page never refreshes
+  itself (reload to update). The snapshot carries credential-redacted message excerpts (at most 500
+  characters, the last 10 messages): the outbox directory's permissions are its access boundary on
+  the machine, so the runner publishes it (mode 0640) only into an outbox closed to other accounts (mode 0750, the
+  group shared with the page's user) and refuses an outbox others can enter.
+  Rule 81's eleven floors are checked on any tree by `node scripts/check-dashboard-floors.mjs`
+  (one JSON object; exit 0 only when every floor holds, every floor's negative control is caught,
+  and nothing shows without the passkey); live-proof check Q81 runs it on the deployed tree.
 - **Operator actions by explicit yes (Rules 28, 79, 82, 98; plan #91; `operator-yes.ts`).** The
   two declared operator actions, `raise-caps` and `renew-expiry`, can be requested in chat and
   completed by the verified operator's explicit yes, with no setup. The worker port is
@@ -3602,14 +3627,16 @@ servers (Part Thirteen §9,
   link is refused as unresolvable) with the resolved path handed to the harness. This is a check at admission, not
   at open: a directory the agent itself swaps for a link between the hook's check and the harness's open can still be
   followed by Read, Write, Edit, Glob or Grep; a sandboxed command has no such window, because the kernel decides at
-  open. That race is OPEN: pre-existing on the live line, not closed by this runner, and closable only by running the
-  harness as its own operating-system user, an operator step (`docs/defects/2026-10-03-file-tool-swap-race.md`).
+  open. The kernel closes that race when the harness runs as its own macOS user (`--harness-user _instarharness`,
+  below): a swapped path then reaches only the harness's own area and world-readable files. Without the switch, or
+  with a harness user that is not ready, the race is open and the launch says so: stderr, `status` (`Harness identity:
+  OFF` or `FALLBACK`) and, when the switch is set, each trace row (`docs/defects/2026-10-03-file-tool-swap-race.md`).
   Separately, and narrowly: the journal and the vault are ciphertext under the storage key, which only the runner's
   environment holds; an MCP server's credential given as a SecretRef is handed to that server's launcher alone and is
   not written to the launch configuration; the admission record holds any credential a tool result carried in
   plaintext while the turn runs and is scrubbed when the turn ends (a process death before that scrub leaves it);
   `secret-at-rest.test.ts` checks these cases. This is not a claim that every file the runner writes is secret-free,
-  and it does not close the race. It also admits sandboxed commands
+  and it is not what closes the race. It also admits sandboxed commands
   whatever words they contain, a WebFetch (GET only) of a host whose every resolved address is public, a WebSearch,
   an MCP tool listed as a read, the harness's bookkeeping (ToolSearch, ListAgents, CronList, ReportFindings,
   TaskStop), a worktree inside the workspace, and a `worker` subagent within the turn's budget (rewritten to the
@@ -3630,11 +3657,35 @@ servers (Part Thirteen §9,
   agents they may start cannot be reserved before dispatch), and any other skill name is refused. A web read of a loopback, private or
   local-name host is refused; a tool the hook does not classify is refused. Each call takes one of
   the step's 32 slots (shared with the turn's subagents) by exclusive create, so overlapping calls cannot exceed the
-  cap. The sandbox refuses reads from `/` down except the scratch volume and the system files commands need (it
-  reopens the `/etc` and `/var` symlinks themselves, so `/etc/hosts` reads as `/private/etc/hosts` does and nothing else
-  behind them opens), writes
-  outside the volume, the network (a shell cannot write to the network), unix sockets and signals to other
-  processes; the harness's messaging socket and token are removed from every command.
+  cap. The sandbox refuses reads from `/` down except the scratch volume, the system files commands need (it reopens the
+  `/etc` and `/var` symlinks themselves, so `/etc/hosts` reads as `/private/etc/hosts` does and nothing else behind them
+  opens) and the network tools' own locations (the runner's node and npm, the developer tools' git), writes outside the volume, unix
+  sockets and signals to other processes; the harness's messaging socket and token are removed from every command.
+- Shell network (`egress-proxy.mjs`): the sandbox lets a command reach exactly one place, the turn's checkpoint, a
+  proxy the runner starts on a loopback port before launch and stops after the turn (the settings' `httpProxyPort`).
+  It intercepts HTTPS with the turn's own trust root (key in `state/egress-trust/`, certificate at
+  `<volume>/egress-ca.pem`, trusted only through the variables the shell prefix sets), resolves each host and
+  requires every address public, connects to the address it checked, and decides each request by method and path:
+  GET, HEAD and a proven git fetch are reads; anything else (POST, PUT, PATCH, DELETE, a git push from
+  `service=git-receive-pack` on, a publish) is a `tool:network-write` on its host for the effect doorway's four tests,
+  which classify it at its worst and refuse it unless the `--effect-policy` registers and grants it; a read of a host
+  the policy registers or marks policy-sensitive goes to the doorway as `tool:network`, as a WebFetch of it does. A git fetch is proven, not named: its repository answered `info/refs?service=git-upload-pack` in
+  this turn with git's advertisement type, the POST is typed `application/x-git-upload-pack-request`, and its body
+  (held, at most 8 MiB, gunzipped when encoded, before any of it is forwarded) is only upload-pack pkt-lines. A
+  server may follow the request line or any method-override header (`X-HTTP-Method-Override`, `X-HTTP-Method`,
+  `X-Method-Override`), and the checkpoint forwards both unchanged, so a request is a read only when its line and every
+  method an override names are reads: an override naming a read never downgrades a POST or DELETE, and one override
+  cannot hide another's write. A loopback, private, link-local, CGNAT or local-name host is refused before any connection (the
+  prefix empties `NO_PROXY`, so those ranges reach the checkpoint and are refused on the record rather than by the
+  sandbox alone). Every decision is appended to `state/egress.jsonl` before the request goes anywhere and journaled
+  in the turn's trace (`egress`, `egressRequests`, `egressLimited`); `status` counts admitted and refused shell
+  network requests. Bounds per turn: 256 MiB through it, 16 connections at once, 512 requests, 30 s idle per
+  connection. Reaching the byte bound, or `close()` at the turn's end, is terminal: nothing more is admitted, connected
+  or forwarded, and a request that was waiting on name resolution or its body is re-checked before it is recorded or sent. The shell's HOME is `<volume>/home`, so caches and tool configuration stay on the volume; it is emptied at the start of every
+  turn, also in a kept workspace, where only the workspace and its temporary directory carry files between turns. The harness
+  protects `.git` under the workspace, so a repository is cloned under `$TMPDIR`. `npm install` succeeds, but its audit
+  request is a POST and is refused, so `npm audit` does not work; SSH remotes do not work (only HTTP(S) reaches the
+  checkpoint).
 - MCP: `ROOT/mcp.json` (the operator's file; absent means none) is `{"mcpServers": {name: {command, args?, env?}},
   "reads": ["mcp__name__tool", …]}`. An `env` value is a plain string, kept as written, or `{"secretRef": "<name>"}`,
   a credential in the root's custody vault: the runner opens it at the turn (a value it cannot open answers the turn
@@ -3643,8 +3694,9 @@ servers (Part Thirteen §9,
   SecretRef value. A credential in a recognised format written literally in a command, an argument or an env value is
   refused, naming the SecretRef form; an opaque literal no pattern recognises is not detected and is kept in the
   launch configuration as written.
-  Servers run outside the sandbox as the runner's identity; the sandboxed shell cannot reach the socket (no unix
-  sockets). The turn's admission record is scrubbed when the turn ends: each served value is replaced by its
+  Servers run outside the sandbox as the harness's identity (the runner's account, or the harness user with
+  `--harness-user`, whose launcher is its read-only copy beside the hook and whose socket lies in the harness area,
+  traversable by that user and the runner only); the sandboxed shell cannot reach the socket (no unix sockets). The turn's admission record is scrubbed when the turn ends: each served value is replaced by its
   SecretRef marker and recognised credentials are redacted.
 - Subagents: at most 2 per turn at any depth (a `worker` may start its own), type `worker`, 4 model turns each. The
   hook records each child's start and stop (synced) before it acts; the journal's `tool-turn` trace carries one Rule
@@ -3672,8 +3724,91 @@ npx vitest run --maxWorkers 1 tests/preview/tool-admission.test.ts
 npx vitest run --maxWorkers 1 tests/preview/effect-doorway.test.ts
 npx vitest run --maxWorkers 1 tests/preview/tool-turn.test.ts
 npx vitest run --maxWorkers 1 tests/preview/tool-turn-replay.test.ts
+npx vitest run --maxWorkers 1 tests/preview/egress-proxy.test.ts
 npx vitest run --maxWorkers 1 tests/preview/tools-default.test.ts
 npx vitest run --maxWorkers 1 tests/assembly/production-provider-tools.test.ts
 INSTAR_TOOL_TURN_LIVE_TEST=1 npx vitest run --maxWorkers 1 tests/integration/tool-turn-live.test.ts   # five real harness turns
-INSTAR_TOOL_TURN_FULL_LIVE_TEST=1 INSTAR_TOOL_TURN_CASE=full npx vitest run --maxWorkers 1 tests/integration/tool-turn-full-live.test.ts  # one per case: full, outward, stop-child
+INSTAR_TOOL_TURN_FULL_LIVE_TEST=1 INSTAR_TOOL_TURN_CASE=full npx vitest run --maxWorkers 1 tests/integration/tool-turn-full-live.test.ts  # one per case: full, outward, stop-child, shellnet-reads, shellnet-writes, shellnet-stop
+```
+
+### The harness as its own macOS user (`--harness-user`)
+
+`--harness-user _instarharness` runs every Claude Code launch of the login profile (version and auth preflights, plain
+answers and tool turns) as that macOS user, so the kernel checks each file the harness and its in-process file tools
+open as an identity with no access to the operator account: a path swapped between the admission hook's decision and
+the tool's open (docs/defects/2026-10-03-file-tool-swap-race.md) reaches only the harness's own area. The resource
+owner launches `sudo -n -u _instarharness /Users/Shared/instar-harness/bin/harness-launch ENV... -- claude ARGS`
+(`tests/preview/harness-launch.mjs`, the one command the root step's sudoers rule names); the launcher runs only the
+pinned harness copy beside it and ends the harness's whole tree when it exits, on a relayed stop, or within 50 ms of
+sudo being killed, because the runner's account cannot signal another user's processes. The owner's census includes
+the harness user, so memory and process ceilings still hold, and it waits (boundedly) for the launcher to end a
+member it cannot signal. A tool turn's admission state then lives in `/Users/Shared/instar-harness/turns/` (the turn
+directory's `state` links there; the hook may add files but not change or replace the runner's), the egress
+checkpoint's private state stays in the turn directory's `private/`, the hook runs from a read-only copy, and the
+turn's volume grants both identities by inherited ACL entries, never through a link.
+
+The decision is made at launch from live state (`harnessReadiness` in `tests/preview/harness-user.mjs`): the user
+exists, the launcher and hook copy are installed, the profile's executable is the installed copy of its artifact,
+its directories sit in the harness area, and a probe through the launcher shows the harness user can read and write
+its profile and cannot read the root, the operator's home or the runner's repository. Not ready, the runner falls
+back to its own account loudly: stderr at launch, `status` says `Harness identity: FALLBACK … (<reason>)`, and every
+tool trace row carries `harness: {fallback}`; ready, they say the user and each trace row carries `harness: {user}`.
+With no `--harness-user` at all, a Claude Code tool route says at launch and in `status` that the harness is the
+operator's account and the file-tool race is open (`Harness identity: OFF …`).
+The setup (after the root step, `lanes/harness-user/root-steps.sh`) is `node --loader ./scripts/slice-ts-loader.mjs
+tests/preview/harness-user.mjs setup <operator profile.json> /Users/Shared/instar-harness/profile.json`; the new profile
+needs its own activation and its own login (a fresh login through the launcher, or the one move of the old login,
+never two live copies of one refresh token).
+
+```bash
+npx vitest run --maxWorkers 1 tests/preview/harness-user.test.ts
+INSTAR_TOOL_TURN_HARNESS_USER_LIVE_TEST=1 INSTAR_TOOL_TURN_CASE=race npx vitest run --maxWorkers 1 tests/integration/tool-turn-harness-user-live.test.ts  # race, turn, stop
+```
+
+### Native tool turns (Instar's own agent loop)
+
+Rule 115: the same tool turn without a vendor agent harness (Part Thirteen §9, the native tool rule).
+`tests/preview/native-loop.mjs` is `runToolTurn`'s `invoke`: it uses the same allocation (scratch volume, workspace and
+admission state), whole-liability reservation, journaled trace and retention. Each step is one text-only model call under
+framing `preview-native-tools-v1` (`subscriptionNativePolicy(model)`: the conversation policy's single completion, no harness
+tools, one turn, with a system prompt naming the native tools). The model's answer is either the object
+`{"calls":[{"tool","input"}]}` (1 to 8 calls) or its ordinary answer. The loop:
+
+- runs every proposed call through the same `tool-admission-hook.mjs` executable (`pre`, then `post` with the result), so
+  admission, the per-turn call slots (32) and the admission record are those of a harness tool turn; a hook that cannot
+  decide refuses, and a tool the hook admits but the loop has no executor for (NotebookEdit, a subagent) returns an
+  error result and runs nothing;
+- executes each admitted Read, Write, Edit, Glob, Grep and Bash call as one worker (`native-tool-worker.mjs`, handed to
+  node as source) under `/usr/bin/sandbox-exec` with a profile built from the harness sandbox's read list plus the one
+  node executable (reads only the scratch volume, the runtime system files and the turn's network tools' locations, writes
+  only the volume, no network but the turn's egress checkpoint on its loopback port, whose decisions are a harness
+  shell's, no unix socket or mach service, no signal outside the sandbox) and an empty environment, so the kernel checks every open
+  as it happens: a path swapped into a link out of the volume after admission reads as `EPERM`, and a blocking open (a
+  FIFO) blocks only the worker. Results that leave the workspace through a link are dropped;
+- launches every worker through the host resource owner (`scripts/resource-owner.mjs`, the process's own owner in
+  production): per-process CPU time and handles and the user ID's process headroom in the kernel, the tree's memory and
+  process count sampled against the launch ceilings, the deadline (30 s for a file tool, the Bash timeout up to 120 s)
+  and the stop ending the launch within its 25 ms poll; a launch it ends is reported as `interrupted` with its reason
+  (`stopped`, `timeout`, `memory`, `processes`, `cpu`). The owner joins every descendant by the worker's sandbox
+  instance too (`membership: 'sandbox'`: the kernel's `sandbox_check`, read from outside the workload), so a daemon
+  that took a new session, lost its parent and left the volume still counts against the ceilings and is ended by the
+  stop and the cleanup; nothing inside the sandbox and no workload-writable file takes part. Each call's containment
+  evidence (owner `cleanup`, `membership: sandbox-joined`) is recorded, and `native.unresolved` lists every launch
+  whose end was not proven;
+- runs WebFetch in the loop's process as one GET whose redirect is reported, never followed (admitted by the hook's
+  web-read rule: a public host, and the effect doorway's decision for a host the `--effect-policy` names), ended by its
+  deadline or the stop, with the body read as a stream up to
+  256 KiB and then cancelled;
+- returns each call, its decision and result to the next step as a quoted `role:tool-steps` message (older results are
+  shortened first when the envelope would overflow);
+- ends on the model's answer, the step cap (8 model calls: the liability the turn reserved), a failed or empty step, or
+  the stop (a running call's tree is ended within 25 ms; a call admitted while the stop was latched is recorded as
+  stopped and never run).
+
+The launcher does not offer it yet: a native activation needs the operator's grant naming the native policy digest.
+
+```sh
+npx vitest run --maxWorkers 1 tests/preview/native-loop.test.ts
+npx vitest run --maxWorkers 1 tests/preview/native-loop-replay.test.ts
+INSTAR_NATIVE_LOOP_LIVE_TEST=1 npx vitest run --maxWorkers 1 tests/integration/native-loop-live.test.ts   # three real native turns
 ```

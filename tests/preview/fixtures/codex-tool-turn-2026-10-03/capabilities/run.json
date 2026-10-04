@@ -1,0 +1,43 @@
+{
+  "recordedAgainst": "codex-cli 0.156.1",
+  "exit": 0,
+  "args": [
+    "exec",
+    "--json",
+    "--skip-git-repo-check",
+    "--ignore-rules",
+    "--ephemeral",
+    "--dangerously-bypass-approvals-and-sandbox",
+    "--dangerously-bypass-hook-trust",
+    "-c",
+    "web_search=\"live\"",
+    "--model",
+    "gpt-6-astra",
+    "-c",
+    "hooks.PreToolUse=[{matcher='*',hooks=[{type='command',command='/usr/local/bin/node /HOME/.instar/agents/echo/.worktrees/w4-sessiondriver/tests/preview/tool-admission-hook.mjs pre /ROOT/tool-turns/6e0e702143128d9a-0/state',timeout=300}]}]",
+    "-c",
+    "hooks.PostToolUse=[{matcher='*',hooks=[{type='command',command='/usr/local/bin/node /HOME/.instar/agents/echo/.worktrees/w4-sessiondriver/tests/preview/tool-admission-hook.mjs post /ROOT/tool-turns/6e0e702143128d9a-0/state',timeout=300}]}]",
+    "-c",
+    "model_provider=instar-gate",
+    "-c",
+    "model_providers.instar-gate={name=\"OpenAI\",base_url=\"http://127.0.0.1:PORT/SECRET/tool-turn-live-capabilities/backend-api/codex\",wire_api=\"responses\",requires_openai_auth=true}",
+    "-C",
+    "/ROOT/tool-turns/6e0e702143128d9a-0/v/ws",
+    "-"
+  ],
+  "model": "gpt-6-astra",
+  "gate": {
+    "calls": 7,
+    "refused": false,
+    "records": [
+      [
+        "SessionWorkEdge",
+        null
+      ],
+      [
+        "SessionWorkEdgeClose",
+        "complete"
+      ]
+    ]
+  }
+}

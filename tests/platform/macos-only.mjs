@@ -10,7 +10,8 @@ export const LIST_PATH = 'tests/platform/macos-only.txt';
 
 // A macOS-only tool launched as a process: the seatbelt sandbox, launchd, property lists,
 // disk images, or BSD `stat -f` (GNU stat reads -f as "file system").
-const MACOS_SPAWN = /\b(?:spawn|spawnSync|execFile|execFileSync|exec|execSync)\(\s*['"`](?:\/usr\/s?bin\/|\/s?bin\/)?(?:sandbox-exec|launchctl|plutil|hdiutil|diskutil)['"`]/;
+// A launch through the host resource owner names its tool as `executable:` instead.
+const MACOS_SPAWN = /(?:\b(?:spawn|spawnSync|execFile|execFileSync|exec|execSync)\(\s*|\bexecutable\s*:\s*)['"`](?:\/usr\/s?bin\/|\/s?bin\/)?(?:sandbox-exec|launchctl|plutil|hdiutil|diskutil)['"`]/;
 const BSD_STAT = /['"`]\/usr\/bin\/stat['"`]\s*,\s*\[\s*['"`]-f['"`]/;
 // A test gated on darwin, so on any other host it is skipped and would never run in the split.
 const DARWIN_CONST = /\b(?:const|let)\s+(\w+)\s*=\s*process\.platform\s*===\s*['"`]darwin['"`]/g;

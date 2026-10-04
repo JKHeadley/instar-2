@@ -111,12 +111,16 @@ it('profiles full turns at 2000 turns with every memory source', async () => {
     // `capability` changed, 3471 -> 3600 bytes, by exactly the one added sentence (a message disputing an answer in
     // history is pushback: say where you stand first), which rides because this fixture's history shows answers.
     // Removing just that sentence reproduces 73561b15…410374 and 33ce2cbb…8489fa exactly.
+    // cint-L44 re-pin (w4-memlearn-s, Part 21 §16): diffed field by field against the cint-L43 packet, two fields were
+    // added (memoryFailureDecision and searchedTurn: the memory-failure offer, since this answer follows a sent reply)
+    // and memorySearch, which only uses leftover room, holds 2 items instead of 5. Removing those two fields and restoring
+    // the 5 search items reproduces the cint-L43 packet exactly (key order included).
     const withoutLookup = JSON.parse(packetText) as Record<string, unknown>;
     expect(withoutLookup.memoryLookup).toBe('offered');
     delete withoutLookup.memoryLookup;
     expect(createHash('sha256').update(JSON.stringify(withoutLookup)).digest('hex'))
-      .toBe('ba3aa17df87dc968588bccd91a14f8e3fab572eb075ba4dafecb8e7ef7cb6eb7');
-    expect(packetHash).toBe('e7bf7b78829d9e76743e5081297ea49aeeea211ebcb5ccdcc8af24f110a10f07');
+      .toBe('a287adaa51e512b2425eac20207b2227544cdb84440b9abb8f33912d1d4750d2');
+    expect(packetHash).toBe('fc04a39228688dcfe207af3be6fbb99a0fd75a5c3bb6f9b8806172cee0b8ad71');
     process.stdout.write(`recall latency 2000 turns all memory: probe p95=${p95(samples).toFixed(2)} ms packet=${packetHash}\n`);
     const turnSamples: number[] = [];
     const intakeSamples: number[] = [], drainSamples: number[] = [], coherenceSamples: number[] = [];

@@ -2,6 +2,7 @@ import { expect, it } from 'vitest';
 import { mkdtempSync, readFileSync, realpathSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join, resolve } from 'node:path';
+import { setImmediate as yieldImmediate } from 'node:timers';
 import { SOURCE_PINS, deskStatusSource, sourcePacket } from './briefing.js';
 import { disciplineSource } from './retrospective.js';
 import { selfStateBrief, selfStateSource } from './self-state.js';
@@ -153,6 +154,10 @@ async function conversation(maxBytes: number, texts: readonly string[],
           date: Math.floor(at / 1000) + index, text } }]);
       await worker.drain();
       await worker.summarizeIfNeeded();
+      // Every port here resolves as a microtask, so a whole conversation never reaches the event loop's I/O
+      // phase; one real turn per message lets the fork worker answer its task-update RPC inside the runner's
+      // fixed 60s deadline (docs/defects/vitest-worker-rpc-timeouts.md). Scheduling only.
+      await new Promise<void>(done => yieldImmediate(done));
       const turn = journal.view.order.at(-1)!;
       const packet = JSON.parse(answerPackets.at(-1) ?? '{}') as Record<string, unknown>;
       report.push({ n: index + 1, sent: turn.sent !== undefined, held: turn.held, notice: turn.noticeClass,

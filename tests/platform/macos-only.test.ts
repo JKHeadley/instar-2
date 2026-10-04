@@ -44,10 +44,11 @@ it('detects every macOS-only mechanism, directly or through a local helper, and 
     'tests/helpers/confined.ts': spawnOf('sandbox-exec'),
     'tests/a/via-script.test.ts': "import { disk } from '../../scripts/disk.mjs';\n",
     'scripts/disk.mjs': spawnOf('hdiutil'),
+    'tests/a/owner-launch.test.ts': `await owner.execute({ execut${'able'}: '/usr/bin/sandbox-exec', args: ['-f', p] });\n`,
   });
   const detected = detectMacosOnly(root);
   expect(detected.map((row: { file: string }) => row.file)).toEqual(['tests/a/gated.test.ts', 'tests/a/inline-gate.test.ts',
-    'tests/a/launchd.test.ts', 'tests/a/plist.test.ts', 'tests/a/sandbox.test.ts', 'tests/a/stat.test.ts',
+    'tests/a/launchd.test.ts', 'tests/a/owner-launch.test.ts', 'tests/a/plist.test.ts', 'tests/a/sandbox.test.ts', 'tests/a/stat.test.ts',
     'tests/a/via-helper.test.ts', 'tests/a/via-script.test.ts']);
   expect(detected.find((row: { file: string }) => row.file === 'tests/a/via-helper.test.ts').reason)
     .toBe('spawns a macOS-only tool (via tests/helpers/confined.ts)');
@@ -66,6 +67,7 @@ it('does not flag portable files that only mention macOS as data, in comments, o
     'tests/b/setup-user.test.ts': "import { chooseRoot } from '../setup/tmp.ts';\n",
     'tests/setup/tmp.ts': spawnOf('hdiutil'),
     'tests/b/shell.test.ts': "spawnSync('/bin/sh', ['-c', 'ulimit -n']);\n",
+    'tests/b/owner-portable.test.ts': "await owner.execute({ executable: process.execPath, args: ['-e', '1'] });\n",
   });
   expect(detectMacosOnly(root)).toEqual([]);
   expect(macosMechanism("it('reads only ram:// images from hdiutil info', () => {});")).toBeNull();
