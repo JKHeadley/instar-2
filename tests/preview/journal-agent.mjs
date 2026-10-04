@@ -1412,6 +1412,7 @@ async function main() {
         try { values.push(custody.resolve(secretRef(record.name))); } catch { /* status reports the missing object */ }
       return values;
     };
+    // Plan #446: the register's public labels, given to the full-context review as known-public metadata.
     const knownNonSecrets = () => publicCredentialLabels(custody.records(), heldSecretValues());
     for (const [name, supplied, original, current] of [
       ['max-calls', maxCalls, g.maxCalls, journal.view.limits.maxCalls],
@@ -1644,8 +1645,6 @@ async function main() {
         ...(toolsActive() || journal.view.effectDoorway ? effectDoorwayStatusLines(journal.view.effectDoorway) : [])],
       checkOutbound: text => { if (redact(text).count || secretMaterialIn(text, heldSecretValues())) throw Error('preview: outbound secret refused'); },
       heldSecrets: heldSecretValues,
-      knownNonSecrets,
-      credentialRecordLabels: () => publicCredentialLabels(custody.records(), heldSecretValues(), 'record'),
       secrets: custody,
       model: async ({ id, prepared }) => {
         if (typeof prepared !== 'string') throw Error('preview: prepared model input absent');

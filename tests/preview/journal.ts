@@ -16,7 +16,7 @@ import { buildWorkIndex, detectOverlaps, workForTopic, type SessionActivity } fr
 import { MAX_RAISED_SUBSCRIPTION_PROMPT_BYTES, SUBSCRIPTION_CONVERSATION_SYSTEM_PROMPT, SUBSCRIPTION_MAX_OUTPUT_TOKENS, SUBSCRIPTION_PREVIEW_EXPIRY } from '../../src/assembly/production-provider.js';
 import { hasClaim, replaceClaim, supersedesCorrection } from './claim-match.mjs';
 import { checkReply as checkCoherenceOf, correctionNote, releaseFindings, COHERENCE_FINDING_LIMIT, type CoherenceFinding } from './coherence-check.js';
-import { checkReply, reviewReply, repeatsOperatorOnly, HOLDING_REPLY, jevRequestBody, JEV_RESPONSE_MAX_BYTES, REPLY_CHECK_BUDGET_MS, REPLY_CHECK_BUDGET_REASON, LINK_SHAPE_REASON, linkShapeRules, bareTopicReferences, topicNameReason, BARE_TOPIC_OBJECTION, noDecisions, validDispositions, jevConfidentCredential, concealSecretMaterial, maskPublicLabels, secretMaterialIn, CLAIM_SCOPED_RULES, namedClaimsIn, exciseNamedClaims, substantiveReply, sharedAudience, AUDIENCE_RULES, type ApprovalFacts } from './reply-check.js';
+import { checkReply, reviewReply, repeatsOperatorOnly, HOLDING_REPLY, jevRequestBody, JEV_RESPONSE_MAX_BYTES, REPLY_CHECK_BUDGET_MS, REPLY_CHECK_BUDGET_REASON, LINK_SHAPE_REASON, linkShapeRules, bareTopicReferences, topicNameReason, BARE_TOPIC_OBJECTION, noDecisions, validDispositions, jevConfidentCredential, concealSecretMaterial, secretMaterialIn, CLAIM_SCOPED_RULES, namedClaimsIn, exciseNamedClaims, substantiveReply, sharedAudience, AUDIENCE_RULES, type ApprovalFacts } from './reply-check.js';
 import { parseDatedItem, restatedDatePhrase, dueState, selectDatedItems, withinNext48Hours, localParts, type DatedItem } from './dated-memory.js';
 import { isStatusCommand, isStopCommand, statusReply, STOP_CONFIRM_TEXT } from './status-command.js';
 import { AGENT_PROMISE_LIMIT, fulfillableCommitment, fulfillmentProposals, fulfillmentSupported, legacyFulfillsReminder, promiseProposals, recordedPromises, type AgentPromise, type FulfillmentProposal, type PromiseProposal } from './agent-commitment.js';
@@ -4499,11 +4499,6 @@ export interface PreviewPorts {
   /** Plan #442 (Rules 4, 86, 100): the secret values the runner holds (vault and host custody) for the exact floor on
    * every reply. Read in memory only, never recorded or sent to a model. */
   heldSecrets?(): readonly string[];
-  /** Plan #442: the credential register's public labels (publicCredentialLabels), known non-secrets for reply review. */
-  knownNonSecrets?(): readonly string[];
-  /** Plan #444: each register record's own name and identity (publicCredentialLabels, 'record'), masked out of every
-   * text a reviewer reads (maskPublicLabels). */
-  credentialRecordLabels?(): readonly string[];
   /** Rules 9, 96, 114: the runner's bounded concurrent owned-work view (concurrentWorkItem), carried into operator packets. */
   concurrentWork?(): object | null;
   /** Monotonic process time for minimum waits; inherited UNKNOWN work waits anew. */
@@ -7246,13 +7241,10 @@ export function createJournalWorker(journal: ReturnType<typeof openPreviewJourna
             reply = turn.reviewCandidate; mentionedKeys = turn.reviewMentionedDates;
           }
           const candidateDigest = createHash('sha256').update(reply).digest('hex');
-          // Plans #442, #444 (Rules 4, 86, 100): a secret is decided against the material the runner holds, and a
-          // reviewer's credential VIOLATION always holds. The register's record labels are masked, by exact whole
-          // match, out of the text every reviewer reads, so a public label is never judged as a token; anything else,
-          // tool output included, reaches the reviewer as written. The send itself carries the real labels.
+          // Plans #442, #446 (Rules 4, 86, 100): a secret is decided against the material the runner holds, and a
+          // reviewer's credential VIOLATION always holds. Every reviewer reads the reply exactly as it will be sent;
+          // the full-context review is told the register's public labels instead (packet.knownNonSecrets).
           const heldValues = (() => { try { return ports.heldSecrets?.() ?? []; } catch { return []; } })();
-          const recordLabels = (() => { try { return ports.credentialRecordLabels?.() ?? []; } catch { return []; } })();
-          const masked = (text: string) => maskPublicLabels(text, recordLabels);
           const last = turn.replyChecks?.at(-1);
           const previous = last?.candidateDigest === candidateDigest
             || last?.candidateDigest === undefined && !mentioned.length ? last : undefined;
@@ -7295,12 +7287,6 @@ export function createJournalWorker(journal: ReturnType<typeof openPreviewJourna
             decision = 'unavailable';
           } else {
             const checkPorts = { ...ports.replyCheck, now: ports.now,
-              // Every reviewer reads the candidate with the register's record labels masked (plan #444).
-              jev: (text: string, questions?: Record<string, { type: string; instructions: string }>, timeoutMs?: number, occurrence?: string) =>
-                ports.replyCheck!.jev(masked(text), questions, timeoutMs, occurrence),
-              escalate: (text: string, id: string, originalPrompt?: string, reviewRules?: readonly ReplyRule[], deadlineAt?: number,
-                operation?: 'revision', formatRetry?: boolean) =>
-                ports.replyCheck!.escalate(masked(text), id, originalPrompt, reviewRules, deadlineAt, operation, formatRetry),
               deadlineAt: (turn.jevReservedAt ?? ports.now()) + REPLY_CHECK_BUDGET_MS,
               reserveEscalation: (candidate: string, originalPrompt?: string) => {
                 gate();
@@ -7338,7 +7324,7 @@ export function createJournalWorker(journal: ReturnType<typeof openPreviewJourna
               const shared = fromOperator(turn) ? disclosedApproval(journal.view) : undefined;
               const facts = shared && approvalFacts(shared);
               journal.append({ kind: 'reply-jev-reserve', id: turn.id,
-                maxInputTokens: Buffer.byteLength(jevRequestBody(masked(reply), facts)), maxOutputTokens: jevOutputMaximum, at: ports.now() });
+                maxInputTokens: Buffer.byteLength(jevRequestBody(reply, facts)), maxOutputTokens: jevOutputMaximum, at: ports.now() });
               checked = await checkReply(reply, turn.id, checkPorts, reviewPrompt, facts);
 
             }
@@ -7433,7 +7419,7 @@ export function createJournalWorker(journal: ReturnType<typeof openPreviewJourna
                   maxInputTokens: journal.view.limits.maxBytes, maxOutputTokens: subscriptionOutputMaximum, at: ports.now() });
                 let result: { verdict: 'pass' | 'violation' | 'unavailable'; ruleIds: ReplyRule[]; reason?: string; findings?: ReplyFinding[]; usage?: ModelUsage };
                 try {
-                  const reviewed = await ports.replyCheck.escalate(masked(revised), turn.id, originalPrompt, revisionReviewRules(originalPrompt),
+                  const reviewed = await ports.replyCheck.escalate(revised, turn.id, originalPrompt, revisionReviewRules(originalPrompt),
                     loopDeadline, 'revision');
                   result = { verdict: reviewed.verdict === 'pass' ? 'pass' : 'violation',
                     ruleIds: Array.isArray(reviewed.ruleIds) ? reviewed.ruleIds.filter(rule => typeof rule === 'string') : [],

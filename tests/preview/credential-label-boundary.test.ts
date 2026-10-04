@@ -6,7 +6,7 @@ import { openPreviewJournal, createJournalWorker, CREDENTIAL_SHAPE_NOTICE } from
 import { prepareJournalEnvelope } from './journal-envelope.js';
 import { credentialNotices } from './credential-reminders.js';
 import { createSecretCustody, dueCredentialReminders, type CredentialRecord } from './secret-custody.js';
-import { HOLDING_REPLY, PUBLIC_LABEL_MASK, REPLY_RULES, concealSecretMaterial, maskPublicLabels, publicCredentialLabels,
+import { HOLDING_REPLY, REPLY_RULES, concealSecretMaterial, jevQuestions, publicCredentialLabels,
   replyReviewContext, secretMaterialIn, type ReplyFinding, type ReplyRule } from './reply-check.js';
 import { redact } from '../../src/recall/redact.js';
 
@@ -19,10 +19,13 @@ import { redact } from '../../src/recall/redact.js';
  * the one revision came back UNKNOWN; and the operator received only the holding notice. On the very next turn the
  * same reviewer passed the same line (0.59 from Jev), so the hold was a coin flip on a public label.
  *
- * Plan #444 (review round 3): no reading of a VIOLATION's prose can establish that its whole allegation is public, so a
- * credential VIOLATION always holds. The record labels are masked out of the text every reviewer reads instead. The
- * replay's reviewer reproduces both recorded verdicts: the VIOLATION when it reads the label (715673352), the PASS on
- * the same reply when it does not (the neighbouring turn 715673353 read the line as a name). */
+ * Plan #446 (structural cut v2): no reading of a VIOLATION's prose can establish that its whole allegation is public,
+ * so a credential VIOLATION always holds, and nothing a reviewer reads is masked or rewritten. The false finding is
+ * prevented at its source: the full-context review is told the register's public labels (packet.knownNonSecrets) and
+ * its credential rule says, in one sentence, that they are never secret values. What the REAL reviewer then does with
+ * the recorded reply, and with the three held shapes, is shown by scripts/credlabel-live-model-run.mjs (Rule 106);
+ * these tests replay the worker's decisions on the recorded verdicts: the PASS the neighbouring turn 715673353 gave
+ * the same line, and the VIOLATION 715673352 gave it. */
 const recorded = JSON.parse(readFileSync(new URL('./fixtures/credlabel-proofroom-T-2026-10-03.json', import.meta.url), 'utf8')) as {
   register: CredentialRecord[];
   turn: { update: number; operator: string; answerBody: string; recordedAnswer: string; answeredAt: number; recordedIntent: string;
@@ -47,8 +50,6 @@ interface Run {
   heldValue?: string;
   /** An admitted Bash call whose recorded result is this text (an authorized read). */
   toolOutput?: string;
-  /** Run without the record-label port (the runner before plan #444): the reviewer reads the label. */
-  unmasked?: boolean;
 }
 async function replay(options: Run) {
   const root = realpathSync(mkdtempSync(join(tmpdir(), 'preview-credlabel-')));
@@ -56,6 +57,7 @@ async function replay(options: Run) {
   const genesis = { kind: 'genesis' as const, bot: '12345678', chat: '7654321', operator: '7654321', grant: 'grant:preview',
     configurationDigest: 'sha256:offline', expires: 9999999999999, maxCalls: 9, maxReplies: 3, maxTurns: 3, maxBytes: 32768, cursor: 0 };
   const clock = { now: T.answeredAt }, sends: string[] = [], jevTexts: string[] = [], reviseTexts: string[] = [], reviewTexts: string[] = [];
+  const reviewPackets: { knownNonSecrets?: string[]; candidateReply: string }[] = [];
   const calls = { jev: 0, review: 0, revision: 0 };
   const custody = createSecretCustody(root, key, () => clock.now);
   const heldValue = options.heldValue ?? (options.holdSecret ? TEST_SECRET : undefined);
@@ -77,17 +79,17 @@ async function replay(options: Run) {
     checkOutbound: () => {},
     replyNotices: () => credentialNotices(dueCredentialReminders(recorded.register, clock.now), clock.now),
     heldSecrets: () => held,
-    knownNonSecrets: () => publicCredentialLabels(recorded.register, held),
-    ...(options.unmasked ? {} : { credentialRecordLabels: () => publicCredentialLabels(recorded.register, held, 'record') }),
     replyCheck: { elapsedMs: () => 0,
       jev: async (text: string) => { calls.jev++; jevTexts.push(text);
         return { value: { model: 'jev-1.13.0', usage: { input_tokens: T.jev.usage.inputTokens, output_tokens: T.jev.usage.outputTokens },
           answers: Object.fromEntries(Object.entries(options.jevScores ?? T.jev.scores).map(([rule, noul]) => [rule, { type: 'noul', noul }])) } as unknown,
         latencyMs: T.jev.latencyMs }; },
-      escalate: async (text: string) => { calls.review++; reviewTexts.push(text);
-        // The recorded reviewer: VIOLATION on the label it read (715673352), PASS on the line without it (715673353).
-        const review = options.review ?? (text.includes(LABEL) ? T.review
-          : { verdict: 'pass' as const, ruleIds: [], findings: [recorded.neighbour.credentialFinding] });
+      escalate: async (text: string, _id: string, originalPrompt: string, rules: readonly ReplyRule[]) => {
+        calls.review++; reviewTexts.push(text);
+        // The review context exactly as the launcher builds it, with the register's public labels (plan #446).
+        reviewPackets.push(JSON.parse(replyReviewContext(originalPrompt, text, rules, undefined, publicCredentialLabels(recorded.register, held))));
+        // Default: the recorded reviewer's PASS on this same line (715673353); the recorded VIOLATION is a test option.
+        const review = options.review ?? { verdict: 'pass' as const, ruleIds: [], findings: [recorded.neighbour.credentialFinding] };
         return { verdict: review.verdict, ruleIds: review.ruleIds, confidence: null, latencyMs: T.review.latencyMs,
           ...(review.reason === undefined ? {} : { reason: review.reason }), ...(review.findings === undefined ? {} : { findings: review.findings }),
           usage: { inputTokens: T.review.usage.inputTokens, outputTokens: T.review.usage.outputTokens, charge: null } }; },
@@ -98,7 +100,7 @@ async function replay(options: Run) {
     worker.intake([{ update_id: T.update, message: { chat: { id: 7654321, type: 'private' }, from: { id: 7654321 }, text: T.operator } }]);
     await worker.drain();
     const turn = journal.view.order[0]!;
-    const result = { sends, calls, jevTexts, reviseTexts, reviewTexts, turn, release: turn.release, heldReview: turn.heldReview };
+    const result = { sends, calls, jevTexts, reviseTexts, reviewTexts, reviewPackets, turn, release: turn.release, heldReview: turn.heldReview };
     journal.close();
     const reopened = openPreviewJournal(path, key);
     const durable = reopened.view.order[0]!;
@@ -107,39 +109,49 @@ async function replay(options: Run) {
   } finally { rmSync(root, { recursive: true, force: true }); }
 }
 
-it('715673352 replayed: the tool answer naming the activation record\'s public label is sent, not held', async () => {
-  const { sends, calls, jevTexts, reviewTexts, turn, release, heldReview, durableIntent } = await replay({ answer: T.answerBody });
+it('715673352 replayed: the reviewers read the reply as sent; the review is told the labels are public; a PASS sends it', async () => {
+  const { sends, calls, jevTexts, reviewTexts, reviewPackets, turn, release, heldReview, durableIntent } = await replay({ answer: T.answerBody });
   // The runner composed exactly the recorded answer: the model's body plus its own reminder line.
   expect(turn.answer).toBe(T.recordedAnswer);
-  // Both reviewers still ran (nothing skipped), each on the text with the record labels masked.
+  // Both reviewers ran on the reply exactly as composed: nothing masked or rewritten.
   expect(calls).toMatchObject({ jev: 1, review: 1 });
-  for (const text of [jevTexts[0]!, reviewTexts[0]!]) {
-    expect(text).not.toContain(LABEL);
-    expect(text).not.toContain('"preview-activation"');
-    expect(text).toContain(PUBLIC_LABEL_MASK);
-    expect(text).toContain('The byte count is 25');
-    expect(text).toContain('approve a renewed activation record');
-  }
+  expect(jevTexts[0]).toContain(LABEL);
+  expect(reviewTexts[0]).toContain(turn.answer!);
+  // The full-context review is told the record's name and identity label are public metadata.
+  expect(reviewPackets[0]!.candidateReply).toBe(reviewTexts[0]);
+  expect(reviewPackets[0]!.knownNonSecrets).toEqual(expect.arrayContaining([LABEL, 'preview-activation', 'approve a renewed activation record']));
   expect(sends).toHaveLength(1);
   expect(sends[0]).not.toBe(T.recordedIntent);
-  expect(sends[0]).not.toContain('I need to check that answer');
   expect(sends[0]).toContain('The byte count is 25');
-  // The operator receives the real label: the mask exists only in what a reviewer reads.
   expect(sends[0]).toContain(LABEL);
-  expect(sends[0]).not.toContain(PUBLIC_LABEL_MASK);
+  // The send is exactly the text the reviewers judged.
+  expect(sends[0]).toBe(reviewTexts[0]);
   expect(durableIntent).toBe(sends[0]);
   expect(heldReview).toBeUndefined();
-  // A clean pass: no objection to release, and the full-context review's own row records the PASS.
   expect(release).toBeUndefined();
   expect(turn.replyChecks?.find(check => check.path !== 'jev')?.verdict).toBe('pass');
 });
 
-it('the other side: the recorded VIOLATION on the label, where a reviewer does read it, still holds the whole reply', async () => {
-  const { sends, calls, reviewTexts, heldReview } = await replay({ answer: T.answerBody, unmasked: true });
-  expect(reviewTexts[0]).toContain(LABEL);
+it('the other side: a credential VIOLATION the reviewer still makes holds the whole reply (the recorded 715673352 verdict)', async () => {
+  const { sends, calls, heldReview } = await replay({ answer: T.answerBody, review: T.review });
   expect(calls.review).toBe(1);
   expect(sends).toEqual([HOLDING_REPLY]);
   expect(heldReview?.objections).toContain('credential');
+});
+
+// Review round 4 (Astra): a claim-scoped finding quotes the sentence the reviewer read, and that sentence must be the
+// one removed from the send. With nothing masked, the quotation matches the reply, so the rejected claim never sends.
+it('the other side: a deferral naming a record label is removed from the send, and the answer survives', async () => {
+  const promise = 'I will renew preview-activation tomorrow.';
+  const reason = `The reply promises "${promise}" but no recorded loop tracks it.`;
+  const { sends, reviewTexts } = await replay({ answer: `The byte count is 25. ${promise}`,
+    jevScores: { ...T.jev.scores, defers_work: 0.6 },
+    review: { verdict: 'violation', ruleIds: ['defers_work'], reason: `defers_work: ${reason}`,
+      findings: [{ rule: 'credential', verdict: 'pass', reason: 'no secret.' }, { rule: 'defers_work', verdict: 'violation', reason }] } });
+  expect(reviewTexts[0]).toContain(promise);
+  expect(sends).toHaveLength(1);
+  expect(sends[0]).toContain('The byte count is 25');
+  expect(sends[0]).not.toContain('I will renew');
 });
 
 it('the other side: a real secret value from a test SecretRef is withheld on every reply, and no model reads it', async () => {
@@ -228,7 +240,6 @@ for (const [name, toolOutput] of [['a longer output line', JSON.stringify({ stdo
     const { sends, reviewTexts, heldReview, turn } = await replay({ answer: 'The vendor portal password is marigold.',
       toolOutput, review: violation(MIXED) });
     expect(turn.answer).toContain('Reminder: the credential');
-    // The reviewer read the password as written: only the record labels are masked.
     expect(reviewTexts[0]).toContain('marigold');
     expect(sends).toEqual([HOLDING_REPLY]);
     expect(sends.join('')).not.toContain('marigold');
@@ -266,11 +277,11 @@ it('labels: the register\'s public fields are known non-secrets; a label carryin
   expect(labels).toContain('preview-activation');
   expect(labels).toContain('approve a renewed activation record');
   expect(labels).toContain('activation-record');
-  // Longest first, so a label inside a longer label is masked after it.
+  // Longest first.
   expect(labels.indexOf(LABEL)).toBeLessThan(labels.indexOf('preview-activation'));
   const poisoned = [{ ...recorded.register[3]!, identity: TEST_SECRET }];
   expect(publicCredentialLabels(poisoned, [TEST_SECRET])).not.toContain(TEST_SECRET);
-  // A label that is a piece of a held value would let a mask hide part of a secret: refused too.
+  // A label that is a piece of a held value is never vouched for as public either.
   expect(publicCredentialLabels([{ ...recorded.register[3]!, identity: 'lantern-4471' }], [TEST_SECRET])).not.toContain('lantern-4471');
   // A credential-shaped label is never public.
   expect(publicCredentialLabels([{ ...recorded.register[3]!, identity: 'sk-ant-abcdefghijklmnopqrstuvwxyz012345' }], []))
@@ -290,31 +301,15 @@ it('secret material: exact bytes and derived encodings match, however short the 
   expect(secretMaterialIn('anything', [''])).toBe(false);
 });
 
-it('the mask: only exact, whole record labels; a longer value carrying a label, and generic register words, stay visible', () => {
-  const labels = publicCredentialLabels(recorded.register, [], 'record');
-  expect(labels).toContain(LABEL);
-  expect(labels).toContain('preview-activation');
-  expect(labels).not.toContain('activation');
-  expect(labels).not.toContain('approve a renewed activation record');
-  expect(maskPublicLabels(`"preview-activation" (${LABEL})`, labels)).toBe(`"${PUBLIC_LABEL_MASK}" (${PUBLIC_LABEL_MASK})`);
-  // A value joined to a label is not that label: a reviewer judges it whole.
-  for (const value of [`${LABEL}x`, `preview-activation-7731`, `xpreview-activation`, `preview-activation_key`])
-    expect(maskPublicLabels(`the password is ${value}.`, labels)).toBe(`the password is ${value}.`);
-  expect(maskPublicLabels('the activation record needs renewal', labels)).toBe('the activation record needs renewal');
-  // A held value is never hidden: a label inside one is refused (see below), and held bytes are refused before review.
-});
-
-it('the reviewer is told which labels are public, and Jev keeps its measured question while reading masked text', () => {
+it('the reviewer is told which labels are public, in one plain sentence of its rule; Jev keeps its measured question', () => {
   const prompt = JSON.stringify({ messages: [{ role: 'user', content: T.operator },
     { role: 'context', content: JSON.stringify({ packet: { audience: { surface: 'telegram-private-chat' }, history: [] } }) }] });
   const labels = publicCredentialLabels(recorded.register, []);
   const packet = JSON.parse(replyReviewContext(prompt, T.recordedAnswer, ['credential'], undefined, labels)) as { knownNonSecrets?: string[] };
   expect(packet.knownNonSecrets).toEqual(labels);
   expect((JSON.parse(replyReviewContext(prompt, T.recordedAnswer, ['credential'])) as { knownNonSecrets?: unknown }).knownNonSecrets).toBeUndefined();
-  expect(REPLY_RULES.credential).toMatch(/identity label.*never a secret/u);
-  const masked = maskPublicLabels(T.recordedAnswer, publicCredentialLabels(recorded.register, [], 'record'));
-  expect(masked).not.toContain(LABEL);
-  expect(masked).toContain('The byte count is 25');
+  expect(REPLY_RULES.credential).toMatch(/Every entry of packet\.knownNonSecrets is public metadata from the credential register \([^)]*identity label[^)]*\), never a secret value/u);
+  expect(jevQuestions.credential?.instructions).not.toContain('knownNonSecrets');
   // The neighbouring turn's verdict on the same line: the reviewer itself judged it public once already.
   expect(recorded.neighbour.credentialFinding.verdict).toBe('pass');
 });
