@@ -383,9 +383,15 @@ export function createResourceOwner(initialCeilings = RESOURCE_CEILINGS) {
     for (const pid of members) kill(pid);
     record({ kind: 'limit-kill', work: lease.work, reason, memoryBytes: lease.memoryBytes, processes: lease.processes });
   }
+  // The harness's own user (harness-user.mjs), when the runner launches the harness as it: its processes are in the
+  // census (so the tree's memory and processes are still sampled and bounded), but this account cannot signal them or
+  // read their working directories; its launcher ends that tree, and cleanup waits for it (boundedly) instead.
+  let harnessUid = null;
+  const ownUid = typeof process.getuid === 'function' ? process.getuid() : null;
   const inventory = createProcessInventory({ query: (file, args) => query(file, args), now: () => ports.now(),
     monotonic: () => ports.monotonic(), identity: HOST_IDENTITY, limit: censusLimit, freshForMs: 2 * ceilings.sampleMs,
-    uid: typeof process.getuid === 'function' ? process.getuid() : null });
+    uid: ownUid, uids: () => harnessUid === null ? [ownUid] : [ownUid, harnessUid] });
+  const harnessRow = (snapshot, pid) => harnessUid !== null && snapshot.processes.find(p => p.pid === pid)?.uid === harnessUid;
   const rootOf = lease => ({ id: lease.id, pid: lease.pid, known: lease.known, workingArea: lease.workingArea ?? null,
     sandboxArea: lease.sandboxArea ?? null, start: lease.known.get(lease.pid) ?? null });
   /** One Ten census of every current-user process, joined to the owned launches by recorded
@@ -419,9 +425,14 @@ export function createResourceOwner(initialCeilings = RESOURCE_CEILINGS) {
       if (typeof joinSandbox === 'function') for (const [pid, member] of joinSandbox(snapshot, roots, unjoined, readings)) joined.set(pid, member);
       unboxed = await unreadCandidates(snapshot, unjoined.filter(pid => readings.get(pid)?.state !== 'observed'), new Map());
     }
-    const unread = await unreadCandidates(snapshot, read.filter(pid => !joined.has(pid)), cwds) + unboxed;
-    const state = snapshot.status === 'partial' || read.length < candidates.length || unread ? 'partial' : 'complete';
-    return { state, snapshot, members: joined, rows: new Map(snapshot.processes.map(p => [p.pid, p])),
+    const leftover = read.filter(pid => !joined.has(pid));
+    const unread = await unreadCandidates(snapshot, leftover.filter(pid => !harnessRow(snapshot, pid)), cwds) + unboxed;
+    // A harness-user process no join reached (its working directory is unreadable to this account): unknown now, and
+    // its launcher ends it, so cleanup waits for it to go rather than reading the census as complete or as failed.
+    const harnessUnread = await unreadCandidates(snapshot, leftover.filter(pid => harnessRow(snapshot, pid)), cwds);
+    const settled = snapshot.status !== 'partial' && read.length >= candidates.length && !unread;
+    const state = settled && !harnessUnread ? 'complete' : 'partial';
+    return { state, waiting: settled && harnessUnread > 0, snapshot, members: joined, rows: new Map(snapshot.processes.map(p => [p.pid, p])),
       examined: snapshot.examined, omitted: (snapshot.omitted ?? 0) + candidates.length - read.length };
   }
   /** Candidates whose working directory could not be read and that are still the same live
@@ -542,15 +553,15 @@ export function createResourceOwner(initialCeilings = RESOURCE_CEILINGS) {
    * area); `null` when the census failed or was partial: absence is then unproven. */
   async function liveMembers(lease) {
     const seen = await census([...launches.values()]);
-    if (seen.state !== 'complete') return null;
+    if (seen.state !== 'complete' && !seen.waiting) return null;
     const mine = [...seen.members].filter(([pid, member]) => member.launch === lease.id && !seen.rows.get(pid).zombie)
-      .map(([pid]) => [pid, seen.rows.get(pid).start]);
+      .map(([pid]) => [pid, seen.rows.get(pid).start, seen.rows.get(pid).uid]);
     // A recorded incarnation still alive is ours even if no join reached it this time.
     for (const [pid, start] of lease.known) {
       const row = seen.rows.get(pid);
-      if (row && row.start === start && !row.zombie && !mine.some(([p]) => p === pid)) mine.push([pid, start]);
+      if (row && row.start === start && !row.zombie && !mine.some(([p]) => p === pid)) mine.push([pid, start, row.uid]);
     }
-    return mine;
+    return Object.assign(mine, { waiting: seen.waiting === true });
   }
   /** After the provider exits: every live member of this launch (one that left the group, and one
    * that detached before any sample but stayed in the private working area, included) is recorded
@@ -565,13 +576,18 @@ export function createResourceOwner(initialCeilings = RESOURCE_CEILINGS) {
     for (let attempt = 0; attempt < 20 && !quiet; attempt++) {
       const living = await liveMembers(lease);
       if (living === null) { unresolved = true; break; }
-      if (!living.length) { quiet = true; break; }
+      if (!living.length && !living.waiting) { quiet = true; break; }
       let discovered = false;
       for (const [pid, start] of living) if (!lease.known.has(pid)) { lease.known.set(pid, start); discovered = true; }
       // Ownership evidence is durable before any signal, so a failed signal leaves it recoverable.
       if (discovered) recordMembers(lease);
       if (lease.pid) kill(-lease.pid);
-      for (const [pid] of living) { if (kill(pid) === 'denied') unresolved = true; reclaimed.add(pid); }
+      // A harness-user member refuses this account's signal by design: its launcher is ending it, so the next census
+      // (bounded by this loop) sees it gone; one still alive when the loop ends is `unresolved` below.
+      for (const [pid, , uid] of living) {
+        if (kill(pid) === 'denied' && !(harnessUid !== null && uid === harnessUid)) unresolved = true;
+        reclaimed.add(pid);
+      }
       if (unresolved) break;
       await new Promise(done => setTimeout(done, 100));
     }
@@ -806,6 +822,14 @@ export function createResourceOwner(initialCeilings = RESOURCE_CEILINGS) {
   }
   return Object.freeze({
     get ceilings() { return ceilings; },
+    /** The harness's own user, when it did not exist at attach (harness-user.mjs harnessGate): from now on the census
+     * includes its processes. Only once, never a different uid, never this account. */
+    adoptHarnessUid(uid) {
+      if (harnessUid === uid) return;
+      if (harnessUid !== null) throw Error('resource owner: a different harness user is already in the census');
+      if (!Number.isSafeInteger(uid) || uid <= 0 || uid === ownUid) throw Error('resource owner: the harness user must be a separate identity');
+      harnessUid = uid;
+    },
     /** One owner per process: a second attach is refused. */
     async attach(options = {}) {
       if (attached) throw Error('resource owner already attached');
@@ -821,6 +845,11 @@ export function createResourceOwner(initialCeilings = RESOURCE_CEILINGS) {
         if (!Number.isSafeInteger(bytes) || bytes < MIN_AGGREGATE_MEMORY_BYTES || bytes > ceilings.aggregate.memoryBytes)
           throw Error('resource owner: aggregate memory ceiling may only be lowered');
         ceilings = Object.freeze({ ...ceilings, aggregate: Object.freeze({ ...ceilings.aggregate, memoryBytes: bytes }) });
+      }
+      if (options.harnessUid !== undefined && options.harnessUid !== null) {
+        if (!Number.isSafeInteger(options.harnessUid) || options.harnessUid <= 0 || options.harnessUid === ownUid)
+          throw Error('resource owner: the harness user must be a separate identity');
+        harnessUid = options.harnessUid;
       }
       attached = { ledgerPath: options.ledgerPath ?? null, statePath: options.statePath ?? null, owner: { pid: process.pid, start: null } };
       const own = await startEvidence(process.pid);

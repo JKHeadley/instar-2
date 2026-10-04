@@ -1,0 +1,124 @@
+{
+  "name": "mcp",
+  "question": "Use the MCP tool mcp__probe__service_status (no arguments) once and tell me the status line it returns.",
+  "error": null,
+  "answer": "{\"state\":\"complete\",\"bytes\":\"{\\\"type\\\":\\\"Decision\\\",\\\"schemaVersion\\\":1,\\\"id\\\":\\\"preview-stage2-probe-1\\\",\\\"at\\\":1791104562181,\\\"by\\\":{\\\"judgment\\\":\\\"judgment\\\",\\\"model\\\":\\\"claude-sonnet-5\\\",\\\"route\\\":\\\"preview-subscription\\\"},\\\"reason\\\":{\\\"subject\\\":\\\"mcp__probe__service_status call\\\",\\\"predicate\\\":\\\"returned-status-line\\\",\\\"value\\\":\\\"The operator asked me to call the MCP tool mcp__probe__service_status with no arguments once and report the status line. I located its schema via ToolSearch (select:mcp__probe__service_status), which showed it takes no parameters, then invoked mcp__probe__service_status (1st and only call, no arguments). It returned the literal status line: 'service status: configured'. This is a read-only status check with no consequential effect, so no effect-doorway registration was needed. I'm reporting that exact line back to the operator.\\\",\\\"evidence\\\":[\\\"telegram:12345678:update:1\\\"]},\\\"conclusion\\\":{\\\"subject\\\":\\\"preview-stage2-answer\\\",\\\"predicate\\\":\\\"answer-text\\\",\\\"value\\\":\\\"I called mcp__probe__service_status (no arguments) once. The status line it returned was: \\\\\\\"service status: configured\\\\\\\"\\\",\\\"evidence\\\":[\\\"telegram:12345678:update:1\\\"]},\\\"floor\\\":{\\\"allowed\\\":[\\\"work\\\"],\\\"chosen\\\":\\\"work\\\"}}\",\"providerOperation\":\"b0948b1f-ac5a-4324-b834-0a0846d99d82\",\"usage\":{\"inputTokens\":80903,\"inputComplete\":true,\"outputTokens\":535,\"charge\":null,\"source\":\"Subscription policy declares zero additional metered demand; actual charge unknown; CLI estimate is raw evidence only\"},\"retryBlocked\":false,\"responseEvidenceDraft\":{\"eligibility\":\"admitted\",\"contract\":{\"parserReference\":\"claude-code-json-result\",\"parserVersion\":\"1\",\"evidenceContractReference\":\"preview-harness-profile-v1-activation\",\"evidenceContractVersion\":\"sha256:ce001bff43652ac1e2b3455792f7d877d055564b1f48ee7e7a8e935026c5bd35\",\"mode\":\"single-final-reply\",\"maxMetadataBytes\":8192,\"maxRawTerminalBytes\":65536,\"maxCaptureBytes\":1048576},\"basis\":{\"sourceEvidence\":[\"scratch\"],\"terminalEvidence\":\"scratch\",\"terminalReasonField\":\"subtype\",\"successfulFinalReplyReasons\":[\"success\"]},\"source\":{\"controller\":\"harness-user-live\",\"evidence\":[\"scratch\"],\"endpoint\":\"sha256:da5c7bb77c0450ce0d5ba383682ef90c85d82a7799a92d328bb1d2dadad7f18e\",\"account\":\"luna@sagemindai.io\",\"credentialReference\":\"preview-harness-profile-v1\",\"executableArtifact\":\"sha256:387a5c5dcdbb815085edf0baf79591f9d8894efe922bceaf3d75b1b08055229d\",\"provider\":\"anthropic\",\"model\":\"claude-sonnet-5\",\"route\":\"preview-subscription\",\"call\":\"b0948b1f-ac5a-4324-b834-0a0846d99d82\",\"submittedDigest\":\"sha256:306eb1b726eaa07d13457d631c0cdc64d742bbe3fa9057e0753638b7597896e0\",\"strength\":\"observation\"},\"terminal\":{\"rawBase64\":\"eyJkdXJhdGlvbl9hcGlfbXMiOjkxOTEsInN0b3BfcmVhc29uIjoiZW5kX3R1cm4iLCJzZXNzaW9uX2lkIjoiYjA5NDhiMWYtYWM1YS00MzI0LWI4MzQtMGEwODQ2ZDk5ZDgyIiwidG90YWxfY29zdF91c2QiOjAuMDU0MTk0OCwidXNhZ2UiOnsiaW5wdXRfdG9rZW5zIjo2LCJjYWNoZV9jcmVhdGlvbl9pbnB1dF90b2tlbnMiOjg1OTMsImNhY2hlX3JlYWRfaW5wdXRfdG9rZW5zIjo3MjMwNCwib3V0cHV0X3Rva2VucyI6NTM1LCJvdXRwdXRfdG9rZW5zX2RldGFpbHMiOnsidGhpbmtpbmdfdG9rZW5zIjowfSwic2VydmVyX3Rvb2xfdXNlIjp7IndlYl9zZWFyY2hfcmVxdWVzdHMiOjAsIndlYl9mZXRjaF9yZXF1ZXN0cyI6MH0sInNlcnZpY2VfdGllciI6InN0YW5kYXJkIiwiY2FjaGVfY3JlYXRpb24iOnsiZXBoZW1lcmFsXzFoX2lucHV0X3Rva2VucyI6ODU5MywiZXBoZW1lcmFsXzVtX2lucHV0X3Rva2VucyI6MH0sImluZmVyZW5jZV9nZW8iOiJub3RfYXZhaWxhYmxlIiwiaXRlcmF0aW9ucyI6W10sInNwZWVkIjoic3RhbmRhcmQifSwibW9kZWxVc2FnZSI6eyJjbGF1ZGUtc29ubmV0LTUiOnsiaW5wdXRUb2tlbnMiOjYsIm91dHB1dFRva2VucyI6NTM1LCJjYWNoZVJlYWRJbnB1dFRva2VucyI6NzIzMDQsImNhY2hlQ3JlYXRpb25JbnB1dFRva2VucyI6ODU5Mywid2ViU2VhcmNoUmVxdWVzdHMiOjAsImNvc3RVU0QiOjAuMDU0MTk0OCwiY29udGV4dFdpbmRvdyI6MTAwMDAwMCwibWF4T3V0cHV0VG9rZW5zIjo2NDAwMCwidGhpbmtpbmdUb2tlbnMiOjAsImNhbm9uaWNhbE1vZGVsIjoiY2xhdWRlLXNvbm5ldC01IiwicHJvdmlkZXIiOiJmaXJzdFBhcnR5IiwiY29zdEJhc2lzIjoibGlzdCJ9fSwicGVybWlzc2lvbl9kZW5pYWxzIjpbXSwidGVybWluYWxfcmVhc29uIjoiY29tcGxldGVkIiwiZmFzdF9tb2RlX3N0YXRlIjoib2ZmIiwiZmFzdF9tb2RlX2Rpc2FibGVkX3JlYXNvbiI6InNka19vcHRfaW5fcmVxdWlyZWQiLCJzdWJhZ2VudF9zdGF",
+  "uid": 498,
+  "stateDirectory": "/Users/Shared/instar-harness/turns/3f76117460b1/b592ae84fc07730d-0",
+  "rows": [
+    {
+      "phase": "pre",
+      "id": "toolu_01TTn7rmdhyMda1KhGfAdwsx",
+      "n": 1,
+      "tool": "ToolSearch",
+      "input": "{\"query\":\"select:mcp__probe__service_status\",\"max_results\":1}",
+      "decision": "allow",
+      "reason": "harness bookkeeping"
+    },
+    {
+      "phase": "post",
+      "id": "toolu_01TTn7rmdhyMda1KhGfAdwsx",
+      "tool": "ToolSearch",
+      "result": "{\"matches\":[\"mcp__probe__service_status\"],\"query\":\"select:mcp__probe__service_status\",\"total_deferred_tools\":12}"
+    },
+    {
+      "phase": "pre",
+      "id": "toolu_01QtmSopMVH3oSDWzuYvK5fr",
+      "n": 2,
+      "tool": "mcp__probe__service_status",
+      "input": "{}",
+      "decision": "allow",
+      "reason": "MCP read the root configuration lists",
+      "kind": "mcp-read"
+    },
+    {
+      "phase": "post",
+      "id": "toolu_01QtmSopMVH3oSDWzuYvK5fr",
+      "tool": "mcp__probe__service_status",
+      "result": "[{\"type\":\"text\",\"text\":\"service status: configured\"}]"
+    }
+  ],
+  "trace": {
+    "kind": "tool-turn",
+    "phase": "trace",
+    "id": "telegram:12345678:update:1",
+    "attempt": 0,
+    "consistent": true,
+    "calls": [
+      {
+        "n": 1,
+        "tool": "ToolSearch",
+        "input": "{\"query\":\"select:mcp__probe__service_status\",\"max_results\":1}",
+        "decision": "allow",
+        "reason": "harness bookkeeping",
+        "result": "{\"matches\":[\"mcp__probe__service_status\"],\"query\":\"select:mcp__probe__service_status\",\"total_deferred_tools\":12}"
+      },
+      {
+        "n": 2,
+        "tool": "mcp__probe__service_status",
+        "input": "{}",
+        "decision": "allow",
+        "reason": "MCP read the root configuration lists",
+        "kind": "mcp-read",
+        "result": "[{\"type\":\"text\",\"text\":\"service status: configured\"}]"
+      }
+    ],
+    "edges": [],
+    "workspaceBytes": 0,
+    "volume": {
+      "lost": false,
+      "reconciled": 0
+    },
+    "harness": {
+      "user": "_instarharness"
+    },
+    "at": 1791104573877
+  },
+  "stopToSettledMs": null,
+  "toolTurns": {
+    "invocations": 1,
+    "reservedCalls": 15,
+    "refusedCap": 0,
+    "toolCalls": 2,
+    "toolRefusals": 0,
+    "inconsistent": 0,
+    "open": [],
+    "workspaces": [
+      "daafeb8626f2"
+    ]
+  },
+  "lastLaunch": {
+    "work": "answer",
+    "at": 1791104573876,
+    "enforcement": {
+      "cpuPerProcess": "hard",
+      "handlesPerProcess": "hard",
+      "processGrowth": "sampled",
+      "treeHandles": "unsupported",
+      "memory": "sampled",
+      "treeCpu": "sampled"
+    },
+    "uidProcesses": {
+      "state": "hard",
+      "subject": "uid:501",
+      "limit": 565
+    },
+    "admission": {
+      "work": "answer",
+      "concurrent": 1,
+      "waitedMs": 0
+    },
+    "peakMemoryBytes": 329449472,
+    "peakProcesses": 4,
+    "treeCpuMilliseconds": 460,
+    "census": "complete",
+    "leakedDescendants": 0,
+    "membership": "working-area-joined",
+    "cleanup": "verified",
+    "allocation": null
+  },
+  "harnessProcessesAfter": "",
+  "mcpConfig": "/private/tmp/tool-harness-user-OwXIDc/mcp/tool-turns/b592ae84fc07730d-0/private/mcp.json",
+  "plaintextLoginsAfter": [],
+  "serverPolicyAfter": []
+}

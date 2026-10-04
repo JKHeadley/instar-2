@@ -56,6 +56,10 @@ export interface ProductionSessionConfig {
   readonly modelGate?: (claim: string) => string;
   /** The exact model the session runs, when a reviewed grant names one; absent, the CLI's own default. */
   readonly model?: string;
+  /** The command the pane runs the harness through, when it runs as its own identity (the harness-user bridge): its
+   * words go before `executable` in the pane's clean environment. The first is an absolute path. Absent: the harness
+   * itself. */
+  readonly launchVia?: readonly string[];
   readonly inboxDirectory?: string; readonly compactGroundingFile?: string;
   /** Must reconstruct complete permitted context from agent-owned records, including both sides of prior turns. */
   readonly continuation?: ((input: Readonly<{ operation: string; claim: string; incarnation: string;
@@ -181,6 +185,8 @@ export function createProductionSessionDriver(config: ProductionSessionConfig): 
   ensure(config.model === undefined || modelPattern.test(config.model), 'exact session model required');
   ensure(config.executable.startsWith('/') && config.cwd.startsWith('/') && config.home.startsWith('/')
     && config.configHome.startsWith('/'), 'exact executable and absolute paths required');
+  ensure(config.launchVia === undefined || (config.launchVia[0]?.startsWith('/') === true
+    && config.launchVia.every(word => typeof word === 'string' && word.length > 0)), 'exact launch command required');
   if (config.hookScript) ensure(config.hookScript.startsWith('/') && config.inboxDirectory?.startsWith('/')
     && config.compactGroundingFile?.startsWith('/'), 'hook requires exact script, inbox, and compact grounding file');
   const run = (args: readonly string[]) => {
@@ -298,7 +304,7 @@ export function createProductionSessionDriver(config: ProductionSessionConfig): 
       `CLAUDE_CONFIG_DIR=${config.configHome}`, `CODEX_HOME=${config.configHome}`,
       `INSTAR_SESSION_NAME=${name}`, `INSTAR_SESSION_INBOX=${config.inboxDirectory ?? ''}`,
       `INSTAR_SESSION_GROUNDING_FILE=${config.compactGroundingFile ?? ''}`, ...harnessEnv,
-      config.executable, ...args]); } catch (error) { reconcileReservations(); throw error; }
+      ...(config.launchVia ?? []), config.executable, ...args]); } catch (error) { reconcileReservations(); throw error; }
     reconcileReservations();
     const session = config.io.load().sessions.find(row => row.name === name);
     ensure(session, 'spawned session identity missing');

@@ -75,7 +75,7 @@ function parseRow(line, sample) {
  */
 export function createProcessInventory(ports) {
   return Object.freeze({
-    /** One complete current-user census, decoded by the Ten owner decoder. */
+    /** One complete census of the current user (and the harness user, when set), decoded by the Ten owner decoder. */
     async census() {
       const { decodeProcessInventory } = await loadTenOwner();
       const id = `inventory:${randomUUID()}`;
@@ -84,8 +84,10 @@ export function createProcessInventory(ports) {
         freshForMs: ports.freshForMs, cpuBasis: 'process-cpu-time' };
       const failed = () => decodeProcessInventory({ ...base, sourceTime: ports.now(), monotonicAt: ports.monotonic(),
         status: 'failed', examined: 0, omitted: null, processes: [] });
-      if (ports.uid === null) return failed();
-      const table = await ports.query('/bin/ps', ['-U', String(ports.uid), '-ww', '-o', CENSUS_COLUMNS]);
+      // The current user, and the harness's own user when the runner launches the harness as it (`uids`).
+      const uids = typeof ports.uids === 'function' ? ports.uids() : [ports.uid];
+      if (!uids.length || uids.some(uid => !Number.isSafeInteger(uid))) return failed();
+      const table = await ports.query('/bin/ps', ['-U', uids.map(String).join(','), '-ww', '-o', CENSUS_COLUMNS]);
       const sourceTime = ports.now(), monotonicAt = ports.monotonic();
       if (table === null) return failed();
       const lines = table.split('\n').filter(line => line.trim());

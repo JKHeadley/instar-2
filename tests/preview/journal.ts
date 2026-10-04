@@ -1125,7 +1125,7 @@ export type JournalRecord =
   | { kind: 'tool-turn'; phase: 'refused'; id: string; reason: 'call cap' | 'prompt size'; at: number }
   | { kind: 'tool-turn'; phase: 'trace'; id: string; attempt: number; calls: ToolTraceCall[]; consistent: boolean;
       edges?: ToolChildEdge[]; egress?: ToolEgressRequest[]; egressRequests?: number; egressLimited?: string; workspaceBytes: number | null;
-      session?: ToolSessionRow; volume?: ToolVolumeRow; at: number }
+      session?: ToolSessionRow; volume?: ToolVolumeRow; harness?: ToolHarnessRow; at: number }
   | { kind: 'legacy-reply'; at: number }
   | { kind: 'import'; source: string; remainingCalls: number; remainingReplies: number; oldStop: string; at: number }
   | { kind: 'summary-reserve'; through: number; prompt?: string; supervised?: true; maxInputTokens?: number; maxOutputTokens?: number; at: number }
@@ -2943,6 +2943,10 @@ export interface ToolTurnStats { invocations: number; reservedCalls: number; ref
  * many still hold one (`held`: unreadable, unwritable or not plain text, kept intact), and whether the pass stopped at its
  * bound (`unchecked`). */
 export interface ToolVolumeRow { lost: boolean; reconciled: number; held?: number; unchecked?: true }
+/** Which identity a tool turn's harness ran as (harness-user.mjs): its own macOS user. `fallback` is only read back from
+ * journals of the first build of that unit, which ran the runner's account when the harness user was unavailable; the
+ * runner no longer writes it (an unavailable harness user now holds the launch). */
+export type ToolHarnessRow = { user: string } | { fallback: string };
 /** The conversation's workspace a tool turn used: `kept` (its persistent workspace) or not (past the root's bound of kept
  * workspaces, a fresh one-turn workspace, recorded so the overflow is never silent, Rule 2). */
 export interface ToolWorkspaceRow { key: string; kept: boolean }
@@ -3028,6 +3032,11 @@ function projectToolTurn(view: JournalView, row: Extract<JournalRecord, { kind: 
     lost: prior.lost + Number(kept.mode === 'new' && /^(?:lost|interrupted)\b/u.test(kept.reason)),
     bounded: prior.bounded + Number(kept.mode === 'new' && SESSION_BOUNDED.includes(kept.reason)),
     ended: prior.ended + Number(!kept.kept) }))(stats.sessions ?? emptySessionStats());
+  // Which identity the harness ran as (harness-user.mjs): its own user (`fallback` only in journals of its first build).
+  const harness = row.harness;
+  if (harness !== undefined && !(harness && typeof harness === 'object' && Object.keys(harness).length === 1
+    && (boundedText((harness as { user?: unknown }).user, 1, 64) || boundedText((harness as { fallback?: unknown }).fallback, 1, 512))))
+    throw Error('preview journal: tool turn harness identity');
   const volume = row.volume;
   if (volume !== undefined && (typeof volume.lost !== 'boolean' || !Number.isSafeInteger(volume.reconciled) || volume.reconciled < 0
     || (volume.held !== undefined && (!Number.isSafeInteger(volume.held) || volume.held < 1)) || (volume.unchecked !== undefined && volume.unchecked !== true)))

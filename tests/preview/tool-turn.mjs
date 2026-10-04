@@ -12,8 +12,12 @@ import { SUBSCRIPTION_SUBAGENT_TYPE, SUBSCRIPTION_TOOL_LIMITS, SUBSCRIPTION_TOOL
 import { nestedSessionWorkClose } from '../../src/assembly/production-session-work.js';
 import { shellSandboxProfile, toolTrace } from './tool-admission.mjs';
 import { readEgressRecord, startEgressProxy } from './egress-proxy.mjs';
+import { grantVolume, harnessRootState, prepareHarnessState, removeHarnessState } from './harness-user.mjs';
 
 export const TOOL_TURNS_DIRECTORY = 'tool-turns';
+/** A turn directory's runner-only part when the harness runs as its own user (the egress checkpoint's state, and the MCP
+ * launch configuration the harness receives only through the launcher's hand-off). */
+export const TOOL_TURN_PRIVATE = 'private';
 /** Where a root keeps the tools activation the runner derived by default (its live withdrawal handle; machine-local). */
 export const TOOLS_DEFAULT_ACTIVATION = 'tools-activation.json';
 /** Finished turn directories kept for inspection; older ones are removed (the journal keeps their trace). */
@@ -69,10 +73,12 @@ export const SESSION_VOLUME_BYTES = 2 * 1024 * 1024 * 1024;
 /** Mounts the delegated session's persistent volume at `<root>/<name>` (a sparse disk image beside it, created once and
  * kept, so the workspace persists across steps and restarts) and returns its real path. Already mounted, it is reused.
  * `bytes` exists so a test can prove the bound with a small volume. */
-export function attachSessionVolume(root, { bytes = SESSION_VOLUME_BYTES, name = 'session-work' } = {}) {
-  const real = realpathSync(root), mount = join(real, name), image = join(real, `${name}.sparseimage`);
+export function attachSessionVolume(root, { bytes = SESSION_VOLUME_BYTES, name = 'session-work', at = null } = {}) {
+  // `at`: a mount point outside the root (a session run as the harness user, harness-user.mjs harnessSessionLayout); the
+  // image stays beside the root's own mount point, so the workspace is the same one.
+  const real = realpathSync(root), mount = at ?? join(real, name), image = join(real, `${name}.sparseimage`);
   mkdirSync(mount, { recursive: true, mode: 0o700 });
-  const mounted = () => { try { return lstatSync(mount).dev !== lstatSync(real).dev; } catch { return false; } };
+  const mounted = () => { try { return lstatSync(mount).dev !== lstatSync(dirname(mount)).dev; } catch { return false; } };
   if (!mounted()) {
     let created = true;
     try { lstatSync(image); } catch { created = false; }
@@ -124,20 +130,33 @@ export const toolTurnSlug = (operation, attempt) => `${createHash('sha256').upda
  * tool-turn layout: its call slots, the harness the hook stops past them, and whether the hook confines the shell; `gate`
  * is the host checkpoint's address for this turn when the doorway's harness runs through it (w4-sessiondriver). */
 export function prepareToolTurn({ root, operation, attempt, operations, effectPolicy, irreversibleTerm, children = 0, mcp = null,
-  node = process.execPath, scratch = attachScratch, volume = null, authority = 'unrecorded', admission = CLAUDE_TOOL_ADMISSION, gate = null }) {
+  node = process.execPath, scratch = attachScratch, volume = null, authority = 'unrecorded', admission = CLAUDE_TOOL_ADMISSION, gate = null,
+  harness = null, grant = { volume: grantVolume, state: prepareHarnessState } }) {
   const base = join(realpathSync(root), TOOL_TURNS_DIRECTORY);
   mkdirSync(base, { recursive: true, mode: 0o700 });
   const slug = toolTurnSlug(operation, attempt);
   const turn = join(base, slug);
   mkdirSync(turn, { mode: 0o700 });
-  mkdirSync(join(turn, 'state'), { mode: 0o700 });
+  // The harness as its own user (harness-user.mjs): the hook it runs reads and writes this turn's admission state, so
+  // the state lives in the harness area (the turn directory's `state` links to it), add-only for the harness; the
+  // runner's private material for the turn (the egress checkpoint's trust root and record) stays under the root.
+  let opened = null;
+  if (harness) {
+    const shared = join(harness.rootState, slug);
+    opened = grant.state(shared, harness.user, harness.runner);
+    symlinkSync(shared, join(turn, 'state'));
+    mkdirSync(join(turn, TOOL_TURN_PRIVATE), { mode: 0o700 });
+  } else mkdirSync(join(turn, 'state'), { mode: 0o700 });
   const mounted = volume ? scratch(volume.directory, volume.name) : scratch(turn);
+  // Both identities work on the volume (workspace, tmp, shell HOME, the harness's temporary directory), never through a link.
+  if (harness) grant.volume(mounted, harness.user, harness.runner);
   // The shell's HOME (w4-shellnet) is per turn even in a kept volume: only the workspace and its temporary directory carry
   // files between turns, and those are what the forget reconciliation walks, so nothing a command left in HOME outlives it.
   rmSync(join(mounted, 'home'), { recursive: true, force: true });
   for (const name of ['ws', 'tmp', 'home']) { mkdirSync(join(mounted, name), { recursive: true, mode: 0o700 }); chmodSync(join(mounted, name), 0o700); }
   const workspace = realpathSync(join(mounted, 'ws')), tmp = realpathSync(join(mounted, 'tmp')), home = realpathSync(join(mounted, 'home'));
   const stateDirectory = realpathSync(join(turn, 'state'));
+  const privateDirectory = harness ? realpathSync(join(turn, TOOL_TURN_PRIVATE)) : stateDirectory;
   const servers = mcp ? Object.keys(mcp.servers) : [];
   const shellProfile = admission.confinedShell ? join(stateDirectory, 'shell.sb') : null;
   if (shellProfile) writeFileSync(shellProfile, shellSandboxProfile({ workspace, tmp }), { mode: 0o600 });
@@ -150,11 +169,16 @@ export function prepareToolTurn({ root, operation, attempt, operations, effectPo
     ...(effectPolicy === undefined ? {} : { effectPolicy }), ...(irreversibleTerm === undefined ? {} : { irreversibleTerm }) }), { mode: 0o600 });
   let mcpTurn;
   if (servers.length) {
-    writeFileSync(join(stateDirectory, 'mcp.json'), JSON.stringify({ mcpServers: mcp.servers }), { mode: 0o600 });
-    mcpTurn = { config: join(stateDirectory, 'mcp.json'), servers };
+    // The MCP servers' credentials (their `env`): as its own user the harness never gets a file of them it could open. The
+    // configuration stays runner-private and reaches the harness through the launcher's hand-off (harnessCommand).
+    const config = join(privateDirectory, 'mcp.json');
+    writeFileSync(config, JSON.stringify({ mcpServers: mcp.servers }), { mode: 0o600 });
+    mcpTurn = { config, servers };
   }
+  // Only now may the harness enter its state: it reads the runner's config, adds its own files, and replaces none.
+  if (opened) opened.open([join(stateDirectory, 'config.json')]);
   return { slug, directory: turn, volumeDirectory: volume ? volume.directory : turn, scratch: mounted, workspace, tmp, home, stateDirectory,
-    hook: { node, script: TOOL_HOOK_SCRIPT },
+    privateDirectory, hook: { node, script: harness ? harness.hookScript : TOOL_HOOK_SCRIPT },
     ...(mcpTurn ? { mcp: mcpTurn } : {}) };
 }
 
@@ -179,7 +203,7 @@ export async function attachEgress(turn, start = undefined, tools = networkToolR
   const config = JSON.parse(readFileSync(configPath, 'utf8'));
   const admission = { operations: config.operations, ...(config.effectPolicy === undefined ? {} : { effectPolicy: config.effectPolicy }),
     ...(config.irreversibleTerm === undefined ? {} : { irreversibleTerm: config.irreversibleTerm }) };
-  const ca = join(turn.scratch, 'egress-ca.pem'), input = { stateDirectory: turn.stateDirectory, caPath: ca, admission };
+  const ca = join(turn.scratch, 'egress-ca.pem'), input = { stateDirectory: turn.privateDirectory ?? turn.stateDirectory, caPath: ca, admission };
   const proxy = start ? await start(input) : await startEgressProxy(input);
   try {
     mkdirSync(turn.home, { recursive: true, mode: 0o700 });
@@ -493,7 +517,7 @@ export const openToolTurnSlugs = view => new Set((view.toolTurns?.open ?? []).ma
  * A volume left mounted (a turn interrupted by a crash) is unmounted first; one that will not unmount is kept.
  * A directory in `open` (a turn the journal has no trace for yet) is never removed: its hook record is the only
  * evidence of what that turn admitted and which subagents it started, until `reconcileToolTurns` journals it. */
-export function pruneToolTurns(root, keep = TOOL_TURNS_KEPT, detach = detachScratch, open = new Set()) {
+export function pruneToolTurns(root, keep = TOOL_TURNS_KEPT, detach = detachScratch, open = new Set(), stateBase = undefined) {
   const base = join(root, TOOL_TURNS_DIRECTORY);
   let names;
   try { names = readdirSync(base); } catch { return { removed: 0, failed: 0 }; }
@@ -502,6 +526,8 @@ export function pruneToolTurns(root, keep = TOOL_TURNS_KEPT, detach = detachScra
   for (const { name } of dirs.slice(keep)) {
     try {
       if (!detach(join(base, name))) { failed++; continue; }
+      // A harness-user turn's admission state lives in the harness area; it goes with its turn.
+      removeHarnessState(join(base, name, 'state'), stateBase);
       rmSync(join(base, name), { recursive: true, force: true }); removed++;
     } catch { failed++; }
   }
@@ -544,7 +570,8 @@ export function reconcileToolTurns({ journal, root, redactText, now }) {
     let config;
     try { config = JSON.parse(readFileSync(join(stateDirectory, 'config.json'), 'utf8')); } catch { continue; }
     const authority = typeof config?.authority === 'string' && config.authority ? config.authority : 'unrecorded';
-    journal.append(traceRow({ id, attempt, trace: readToolTrace(stateDirectory), egress: readEgressRecord(stateDirectory), authority,
+    const own = join(root, TOOL_TURNS_DIRECTORY, toolTurnSlug(id, attempt), TOOL_TURN_PRIVATE);
+    journal.append(traceRow({ id, attempt, trace: readToolTrace(stateDirectory), egress: readEgressRecord(existsSync(own) ? own : stateDirectory), authority,
       ended: 'unknown', redactText, workspace: null, at: now() }));
     closed.push(key);
   }
@@ -584,7 +611,9 @@ export async function runToolTurn({ journal, root, id, prepared, promptLimit, de
   fallback, now, redactText, authority = 'unrecorded', mcp = null, stopped = () => false, scratch = attachScratch, detach = detachScratch, unmount = unmountScratch,
   conversation = `${String(journal.view.genesis?.bot)}:${String(journal.view.genesis?.chat)}`, session = null,
   completed = result => result?.state === 'complete', egress = undefined, networkTools = networkToolReads,
-  system = SUBSCRIPTION_TOOLS_SYSTEM_PROMPT, admission = CLAUDE_TOOL_ADMISSION, gate = null, owner = 'this machine' }) {
+  system = SUBSCRIPTION_TOOLS_SYSTEM_PROMPT, admission = CLAUDE_TOOL_ADMISSION, gate = null, owner = 'this machine', harness = null }) {
+  // A configured harness user that is not ready never runs a turn, nor lets one fall back to the runner's own account.
+  if (harness && harness.ready !== true) throw Error(`preview: the harness identity is unavailable (${String(harness.reason ?? 'not ready')})`);
   const extra = SUBSCRIPTION_TOOL_LIMITS.maxTurns - 1;
   const refuse = reason => { journal.append({ kind: 'tool-turn', phase: 'refused', id, reason, at: now() }); return fallback(); };
   if (!toolTurnFits(journal.view)) return refuse('call cap');
@@ -613,7 +642,9 @@ export async function runToolTurn({ journal, root, id, prepared, promptLimit, de
     if (admission.harness && !gate) throw Error('preview: this tool turn needs the host admission checkpoint');
     if (admission.harness) claim = `tool-turn-${createHash('sha256').update(id, 'utf8').digest('hex').slice(0, 16)}-${String(attempt)}`;
     turn = prepareToolTurn({ root, operation: id, attempt, operations, effectPolicy, irreversibleTerm, children, mcp, scratch,
-      volume: kept ? space : null, authority, admission, ...(claim ? { gate: gate.base(claim) } : {}) });
+      volume: kept ? space : null, authority, admission, ...(claim ? { gate: gate.base(claim) } : {}),
+      ...(harness ? { harness: { user: harness.user, runner: harness.runner, hookScript: harness.hookScript,
+        rootState: harnessRootState(root, harness.user) } } : {}) });
     if (claim) {
       // The turn's own edge: the parent its delegations hang from (its durable record is the journal's reserved row).
       const openedAt = now();
@@ -658,7 +689,7 @@ export async function runToolTurn({ journal, root, id, prepared, promptLimit, de
     }
   }
   const trace = turn ? readToolTrace(turn.stateDirectory) : { calls: [], children: [], consistent: true };
-  const egressRecord = turn && checkpoint ? readEgressRecord(turn.stateDirectory) : null;
+  const egressRecord = turn && checkpoint ? readEgressRecord(turn.privateDirectory) : null;
   const ended = stopped() ? 'cancelled' : 'unknown';
   // A kept session continues only from a turn that ended cleanly; a stop, a withdrawal, a failure or an unproven tool
   // run ends it now (its transcript removed), so nothing it saw outlives the turn that saw it.
@@ -678,6 +709,8 @@ export async function runToolTurn({ journal, root, id, prepared, promptLimit, de
   }
   journal.append(traceRow({ id, attempt, trace, egress: egressRecord, authority, ended, redactText, workspace: turn ? turn.workspace : null, at: now(),
     extra: { ...(volume ? { volume } : {}),
+      // Which identity the harness ran as: its own user (an unavailable one never reaches a turn; launches are held).
+      ...(harness ? { harness: { user: harness.user } } : {}),
       ...(plan ? { session: { id: plan.id, mode: plan.resume ? 'resume' : 'new', reason: plan.reason, turn: plan.turn,
         kept: ending.ended === null, ...(ending.ended === null ? {} : { ended: ending.ended }), transcriptBytes: ending.transcriptBytes } } : {}) } }));
   // A kept volume is unmounted between turns, its image (and so its files) staying for the next turn; a one-turn volume

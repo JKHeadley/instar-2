@@ -1,0 +1,339 @@
+// Desk unit harness-user (plan row #464), live: the preview's Claude Code harness as its own macOS user. Gated:
+// INSTAR_TOOL_TURN_HARNESS_USER_LIVE_TEST=1 runs it; INSTAR_TOOL_TURN_CASE=<name> selects one case. It needs the root
+// step (lanes/harness-user/root-steps.sh: the `_instarharness` user and its one sudoers rule) and the unprivileged
+// setup (`node tests/preview/harness-user.mjs setup ...`, which writes /Users/Shared/instar-harness/profile.json), and
+// for the turn case a login in that profile. Every root is a throwaway under /private/tmp; nothing is sent to any chat.
+//
+// `race` is the swap race of docs/defects/2026-10-03-file-tool-swap-race.md, scheduled deterministically: the real
+// admission hook allows a workspace path, the path is then swapped for a link to a target, and the open happens. The
+// targets are synthetic canaries in every place a credential could be: the operator's home, the runner's login custody
+// (laid out exactly as the real one), a turn's runner-private MCP configuration, a world-readable file the operator's
+// account left at the top of /private/tmp before the runner's closing sweep, and one it creates there AFTER that sweep
+// (no sweep ever touches it: only the root step's inherited deny entry can refuse it, from creation). Opened as the
+// operator's account each reads its canary (the race is real); opened as the harness user each is refused by the kernel,
+// while an ordinary workspace file stays readable and writable. `turn` drives one real tool turn through the real launcher, hook, resource
+// owner and shipped route on a throwaway root: the harness runs as the harness user with its full tool set and its login
+// handed over from custody, and leaves no process of that user behind. `mcp` adds an MCP server whose credential reaches
+// it only through the hand-off. `session` launches a delegated session's harness through the real session driver, its
+// pane running the bridge (harness-session.mjs) in the launcher's terminal mode: the harness runs as the harness user in
+// the session volume mounted where that user can reach it, reads the pane's keys, takes a custody login (synthetic: no
+// model call is made), and ends with the pane; a custody whose login cannot be used launches nothing at all.
+import { execFileSync, spawnSync } from 'node:child_process';
+import { createHash } from 'node:crypto';
+import { chmodSync, existsSync, mkdirSync, mkdtempSync, readdirSync, readFileSync, realpathSync, rmSync, symlinkSync, unlinkSync, writeFileSync } from 'node:fs';
+import { homedir } from 'node:os';
+import { join } from 'node:path';
+import { afterAll, expect, it } from 'vitest';
+import { canonical, decode } from '../../src/index.js';
+import { createClaudeCodeSubscriptionRoute, subscriptionToolsPolicy, SUBSCRIPTION_PREVIEW_EXPIRY,
+  SUBSCRIPTION_TOOLS_FRAMING } from '../../src/assembly/production-provider.js';
+import type { SubscriptionActivationRecord, SubscriptionToolTurn } from '../../src/assembly/production-provider.js';
+import type { ProviderSubscriptionProfile } from '../../src/assembly/provider-credential-custodian.js';
+import { factsFixture, value } from '../facts/fixtures.js';
+import { openPreviewJournal } from '../preview/journal.js';
+import { prepareJournalEnvelope } from '../preview/journal-envelope.js';
+import { SINGLE_MACHINE_PROFILE } from '../preview/activation-authority.js';
+import { redact } from '../../src/recall/redact.js';
+// @ts-expect-error Physical host JavaScript stays outside pure core.
+import { createSubscriptionProviderIO } from '../../scripts/production-boot-io.mjs';
+// @ts-expect-error Physical host JavaScript stays outside pure core.
+import { hostResources } from '../../scripts/resource-owner.mjs';
+// @ts-expect-error The runner side stays plain JavaScript.
+import { runToolTurn, attachScratch, detachScratch, attachSessionVolume, detachSessionVolume } from '../preview/tool-turn.mjs';
+// @ts-expect-error Physical host JavaScript stays outside pure core.
+import { createProductionSessionIO } from '../../scripts/production-session-io.mjs';
+import { createProductionSessionDriver } from '../../src/assembly/production-session-driver.js';
+import { assemblyRuntimeFixture } from '../assembly/runtime-fixture.js';
+// @ts-expect-error The runner side stays plain JavaScript.
+import { closeOperatorTmp, grantVolume, harnessGate, harnessHookPath, harnessSessionLayout, HARNESS_BASE, HARNESS_LOGIN, HARNESS_SESSION_BRIDGE, HARNESS_USER, installHook, plaintextLogins, probeAccess, runnerUser, storeHarnessLogin } from '../preview/harness-user.mjs';
+
+const LIVE = process.env.INSTAR_TOOL_TURN_HARNESS_USER_LIVE_TEST === '1';
+const ONLY = process.env.INSTAR_TOOL_TURN_CASE;
+const run = (name: string) => LIVE && (ONLY === undefined || ONLY === name);
+const PROFILE = '/Users/Shared/instar-harness/profile.json';
+const RECORD = join(__dirname, '../preview/fixtures/tool-turn/harness-user-2026-10-03');
+const MODEL = 'claude-sonnet-5';
+const scratch = LIVE ? realpathSync(mkdtempSync('/private/tmp/tool-harness-user-')) : '';
+// A canary in the operator's home (never a real secret), removed afterwards.
+const CANARY_DIR = LIVE ? realpathSync(mkdtempSync(join(homedir(), '.harness-user-canary-'))) : '';
+const CANARY_TEXT = 'HARNESS-USER-SYNTHETIC-CANARY';
+afterAll(() => { if (scratch) rmSync(scratch, { recursive: true, force: true }); if (CANARY_DIR) rmSync(CANARY_DIR, { recursive: true, force: true }); });
+const hash = (v: unknown) => (canonical(v) as { kind: 'Success'; value: { hash: string } }).value.hash;
+const harnessUid = () => Number(execFileSync('/usr/bin/id', ['-u', HARNESS_USER], { encoding: 'utf8' }).trim());
+// ps exits 1 when the user has no process: that is the empty list.
+const harnessProcesses = () => { const r = spawnSync('/bin/ps', ['-U', String(harnessUid()), '-o', 'pid='], { encoding: 'utf8' });
+  expect([0, 1]).toContain(r.status); return r.stdout.trim(); };
+
+it.runIf(run('race'))('the swap race: admitted by the real hook, swapped, then opened: the operator account reads each credential canary, the harness user is refused', { timeout: 120000 }, () => {
+  const profile = JSON.parse(readFileSync(PROFILE, 'utf8'));
+  const dir = join(scratch, 'race'); mkdirSync(dir, { mode: 0o700 });
+  // The canaries (never real secrets), each where a credential could be.
+  const home = join(CANARY_DIR, 'credentials.json');
+  writeFileSync(home, CANARY_TEXT, { mode: 0o600 });
+  const custody = storeHarnessLogin(profile, `${CANARY_TEXT}-LOGIN`, join(HARNESS_BASE, `custody-race-${String(process.pid)}`, 'login.json'));
+  const privateDir = join(dir, 'tool-turns', 'turn', 'private'); mkdirSync(privateDir, { recursive: true, mode: 0o700 });
+  const mcp = join(privateDir, 'mcp.json');
+  writeFileSync(mcp, JSON.stringify({ mcpServers: { s: { command: 'c', env: { TOKEN: `${CANARY_TEXT}-MCP` } } } }), { mode: 0o600 });
+  const tmpFile = `/private/tmp/harness-user-race-${String(process.pid)}.txt`;
+  const lateFile = `/private/tmp/harness-user-race-late-${String(process.pid)}.txt`;
+  let mounted: string | null = null;
+  try {
+    writeFileSync(tmpFile, `${CANARY_TEXT}-TMP`, { mode: 0o644 }); chmodSync(tmpFile, 0o644);
+    // A file from before the root step's entry (its inherited entry removed, as such a file never had one) is open to every
+    // local user, the harness user included, until the runner's sweep closes it.
+    execFileSync('/bin/chmod', ['-N', tmpFile]);
+    expect(probeAccess([`r:${tmpFile}`])![0]).toMatchObject({ ok: true });
+    expect(closeOperatorTmp().entries).toContain(tmpFile);
+    // Created after the sweep, world-readable, and probed at once: refused from the moment it exists.
+    writeFileSync(lateFile, `${CANARY_TEXT}-LATE`, { mode: 0o644 }); chmodSync(lateFile, 0o644);
+    expect(probeAccess([`r:${lateFile}`, `w:${lateFile}`])).toMatchObject([{ ok: false, code: 'EACCES' }, { ok: false, code: 'EACCES' }]);
+    const targets = [home, custody, mcp, tmpFile, lateFile];
+    const runner = runnerUser();
+    const volume = attachScratch(dir);
+    mounted = volume;
+    grantVolume(volume, HARNESS_USER, runner);
+    const ws = join(volume, 'ws'), state = join(dir, 'state');
+    mkdirSync(ws, { mode: 0o700 }); mkdirSync(state, { mode: 0o700 });
+    writeFileSync(join(state, 'config.json'), JSON.stringify({ workspace: ws, tmp: join(volume, 'tmp'), maxCalls: 64, maxWriteBytes: 1024, operations: [] }));
+    const hook = (tool: string, input: object) => {
+      const result = spawnSync(process.execPath, [installHook(), 'pre', state], { input: JSON.stringify({ tool_name: tool, tool_input: input, tool_use_id: 'harness-user-race' }), encoding: 'utf8' });
+      expect(result.status).toBe(0);
+      return result.stdout ? JSON.parse(result.stdout).hookSpecificOutput : { permissionDecision: 'allow' };
+    };
+    for (const canary of targets) for (const mode of ['r', 'w'] as const) {
+      const safe = join(ws, `safe-${mode}.txt`);
+      rmSync(safe, { force: true }); writeFileSync(safe, 'ordinary');
+      const admitted = hook(mode === 'r' ? 'Read' : 'Write', mode === 'r' ? { file_path: safe } : { file_path: safe, content: 'x' });
+      expect(admitted.permissionDecision).toBe('allow');
+      const target = admitted.updatedInput?.file_path ?? safe;
+      // The permitted workspace mutation, scheduled between the hook's allow and the open.
+      unlinkSync(safe); symlinkSync(canary, safe);
+      // As the operator's account the open follows the link to the canary: the race is real.
+      if (mode === 'r') expect(readFileSync(target, 'utf8')).toContain(CANARY_TEXT);
+      // As the harness user the kernel refuses the same open.
+      const rows = probeAccess([`${mode}:${target}`]);
+      expect(rows).not.toBeNull();
+      expect(rows![0]).toMatchObject({ ok: false, code: 'EACCES' });
+      unlinkSync(safe);
+    }
+    // The real custody and the profile hold no plain-text login the harness user could open.
+    if (existsSync(HARNESS_LOGIN)) expect(probeAccess([`r:${HARNESS_LOGIN}`])![0]).toMatchObject({ ok: false, code: 'EACCES' });
+    expect(plaintextLogins(profile)).toEqual([]);
+    // An ordinary workspace file stays readable and writable as the harness user.
+    const plain = join(ws, 'plain.txt'); writeFileSync(plain, 'ordinary');
+    expect(probeAccess([`r:${plain}`, `w:${plain}`])!.every((row: { ok: boolean }) => row.ok)).toBe(true);
+    expect(readFileSync(home, 'utf8')).toBe(CANARY_TEXT);
+  } finally {
+    if (mounted !== null) detachScratch(dir);
+    rmSync(join(custody, '..'), { recursive: true, force: true });
+    rmSync(tmpFile, { force: true });
+    rmSync(lateFile, { force: true });
+  }
+});
+
+let attached: { uid: number } | null = null;
+async function liveTurn(name: string, question: string, stopWhen?: (rows: Record<string, unknown>[]) => boolean,
+  mcp: { servers: Record<string, unknown>; reads: string[]; digest: string } | null = null) {
+  const profile: ProviderSubscriptionProfile = Object.freeze(JSON.parse(readFileSync(PROFILE, 'utf8')));
+  const root = join(scratch, name); mkdirSync(root, { mode: 0o700 });
+  const gate = harnessGate({ profile, denied: [realpathSync(root), homedir(), process.cwd()], clock: () => performance.now() });
+  expect(gate.state).toMatchObject({ ready: true, user: HARNESS_USER });
+  const harness = gate.current();
+  if (!attached) { await hostResources.attach({ harnessUid: harness.uid }); attached = { uid: harness.uid }; }
+  const f = factsFixture();
+  let stop = false;
+  const io = createSubscriptionProviderIO({ repository: process.cwd(), stopped: () => stop,
+    runAs: { user: harness.user, launcher: harness.launcher, login: harness.login, plan: harness.plan } });
+  const now = Date.now();
+  const policy = subscriptionToolsPolicy(MODEL);
+  const activation: SubscriptionActivationRecord = { type: 'SubscriptionActivationRecord', schemaVersion: 1,
+    reference: profile.activationReference, waiver: 'harness-user integration test', p11: 'scratch', reviewedHead: 'w4-harnessuser',
+    trial: 'scratch', baseConfigurationDigest: hash('scratch'), profileDigest: hash(profile), executable: profile.executable,
+    artifact: profile.artifact, version: profile.version, model: MODEL, invocationPolicyDigest: hash(policy),
+    expectedAccount: profile.expectedAccount, observedAccount: profile.expectedAccount, authSource: 'claude.ai',
+    operatorAssertion: 'scratch test', assertedAt: now - 2000, observer: 'harness-user', observedAt: now - 1000, method: 'scratch',
+    safeCaptureReference: 'scratch', extraUsage: 'operator-asserted/unobservable', extraUsageReason: 'scratch integration test',
+    subscriptionLimit: 'unobservable', subscriptionLimitReason: 'scratch integration test', acceptedResiduals: ['scratch test'],
+    expiresAt: SUBSCRIPTION_PREVIEW_EXPIRY };
+  const ctx = { ...f.ctx.decode, register: { ...f.ctx.decode.register, entries: [...f.ctx.decode.register.entries, 'preview'] } };
+  const journal = openPreviewJournal(join(root, 'journal.encrypted'), new Uint8Array(32).fill(3), { kind: 'genesis', bot: '12345678',
+    chat: '7654321', operator: '7654321', grant: 'grant:scratch', configurationDigest: 'sha256:scratch', expires: SUBSCRIPTION_PREVIEW_EXPIRY,
+    maxCalls: 40, maxReplies: 10, maxTurns: 10, maxBytes: 32768, cursor: 0 });
+  const id = 'telegram:12345678:update:1';
+  const prepared = prepareJournalEnvelope({ question, context: JSON.stringify({ now: new Date(now).toISOString(), audience: 'operator', sources: [], history: [] }), id },
+    MODEL, 'grant:scratch', now, 32768);
+  const appended: unknown[] = [];
+  const recorder = { get view() { return journal.view; }, append: (row: never) => { appended.push(row); return journal.append(row); } };
+  let stateDirectory = '', mcpConfig: string | null = null, stoppedAt: number | null = null;
+  const rowsOf = (state: string) => { try { return readFileSync(join(state, 'admission.jsonl'), 'utf8').trim().split('\n').filter(Boolean)
+    .map(line => JSON.parse(line) as Record<string, unknown>); } catch { return []; } };
+  const outcome = await runToolTurn({ journal: recorder, root, id, prepared, promptLimit: 32768, deniedRoots: [root, profile.home, profile.configDirectory,
+    profile.workingDirectory], operations: SINGLE_MACHINE_PROFILE.operations, now: () => Date.now(), redactText: (t: string) => redact(t).text,
+    authority: `${activation.reference} ${activation.invocationPolicyDigest}`, mcp, stopped: () => stop, harness,
+    fallback: async () => ({ result: 'fallback' }),
+    invoke: async (turn: SubscriptionToolTurn) => {
+      stateDirectory = turn.stateDirectory; mcpConfig = turn.mcp?.config ?? null;
+      const route = value(createClaudeCodeSubscriptionRoute({ provider: 'anthropic', model: MODEL, route: 'preview-subscription',
+        disclosure: 'scratch integration test', credential: value(decode('SecretRef', { type: 'SecretRef', schemaVersion: 1,
+          vault: 'preview', name: profile.reference }, ctx)), context: { ...ctx, site: f.c.site, preserved: f.c.preserved },
+        profile, resolveProfile: () => profile, activation, io, now: () => Date.now(), active: () => !stop,
+        framing: SUBSCRIPTION_TOOLS_FRAMING, toolTurn: turn, adapterEvidenceContract: { reference: activation.reference,
+          version: activation.profileDigest, parserReference: 'claude-code-json-result', parserVersion: '1',
+          endpoint: profile.loginProfileIdentity, account: profile.expectedAccount, credentialReference: profile.reference,
+          controller: 'harness-user-live', sourceEvidence: ['scratch'], terminalEvidence: 'scratch', terminalReasonField: 'subtype',
+          successfulFinalReplyReasons: ['success'], strength: 'observation', maxMetadataBytes: policy.maxMetadataBytes,
+          maxRawTerminalBytes: policy.maxRawTerminalBytes, maxCaptureBytes: policy.maxCaptureBytes } }));
+      const watcher = stopWhen ? setInterval(() => { if (!stop && stopWhen(rowsOf(turn.stateDirectory))) { stop = true; stoppedAt = performance.now(); } }, 20) : undefined;
+      try {
+        return await route.invoke(prepared, { operation: id, deadline: Date.now() + policy.timeout + 30000, timeout: policy.timeout,
+          maxOutputBytes: policy.maxOutputBytes, maxTokens: policy.maxTokens, maxCharge: 0, automaticRetries: 0 });
+      } finally { clearInterval(watcher); }
+    } }).catch((error: Error) => ({ error: error.message }));
+  const settled = performance.now();
+  const rows = rowsOf(stateDirectory);
+  const trace = appended.find(row => (row as { phase?: string }).phase === 'trace') as { harness?: unknown } | undefined;
+  const answer = 'error' in outcome ? null : JSON.stringify((outcome as { result?: unknown }).result ?? null).slice(0, 4000);
+  const record = { name, question, error: 'error' in outcome ? outcome.error : null, answer, uid: harness.uid, stateDirectory, rows, trace,
+    stopToSettledMs: stoppedAt === null ? null : Math.round(settled - stoppedAt), toolTurns: journal.view.toolTurns,
+    lastLaunch: hostResources.snapshot().lastLaunch, harnessProcessesAfter: harnessProcesses(), mcpConfig,
+    plaintextLoginsAfter: plaintextLogins(profile),
+    // The handed-over login declares its plan, so the CLI fetched and cached no server policy into the profile.
+    serverPolicyAfter: readdirSync(profile.configDirectory).filter(name => name.startsWith('policy-limits.json') || name.startsWith('remote-settings')) };
+  mkdirSync(RECORD, { recursive: true });
+  writeFileSync(join(RECORD, `${name}.json`), `${JSON.stringify(record, null, 2)}\n`);
+  return record;
+}
+
+it.runIf(run('turn'))('one tool turn on a throwaway root runs as the harness user with its full tool set and leaves nothing running', { timeout: 400000 }, async () => {
+  const record = await liveTurn('turn', 'Do these five steps in order, each with the tool named, then answer with what each returned. 1) Write: create '
+    + 'note.txt containing exactly: hello harness. 2) Bash: run id -u; wc -c note.txt 3) Read: read note.txt. 4) WebFetch: fetch https://example.com '
+    + 'and note the page title. 5) Bash: run curl -sS -m 30 https://example.com | grep -o "<title>.*</title>"; echo "curl-exit: $?"');
+  const { rows, trace, stateDirectory } = record;
+  const harness = { uid: record.uid };
+  expect(record.error).toBeNull();
+  const decided = rows.filter(row => row.phase === 'pre').map(row => [row.tool, row.decision]);
+  for (const step of [['Write', 'allow'], ['Bash', 'allow'], ['Read', 'allow'], ['WebFetch', 'allow']]) expect(decided).toContainEqual(step);
+  const bash = rows.filter(row => row.phase === 'post' && row.tool === 'Bash').map(row => String(row.result)).join('\n');
+  // The shell, the file tools and the hook ran as the harness user (the hook wrote this record as it).
+  expect(bash).toMatch(new RegExp(`\\b${String(harness.uid)}\\b`, 'u'));
+  expect(bash).toMatch(/\b13 note\.txt\b/u);
+  // The shell's network still goes through the turn's checkpoint (a loopback port the runner's account serves).
+  expect(bash).toMatch(/<title>Example Domain<\/title>/u);
+  expect(bash).toMatch(/curl-exit: 0/u);
+  expect(trace?.harness).toEqual({ user: HARNESS_USER });
+  // The login came over the hand-off: Claude Code left no plain-text login in the profile, nor cached server policy.
+  expect(record.plaintextLoginsAfter).toEqual([]);
+  expect(record.serverPolicyAfter).toEqual([]);
+  expect(record.toolTurns).toMatchObject({ invocations: 1, open: [], inconsistent: 0 });
+  // The turn's harness-side state is the harness area's, and the launcher left no process of that user running.
+  expect(stateDirectory.startsWith('/Users/Shared/instar-harness/turns/')).toBe(true);
+  expect(record.harnessProcessesAfter).toBe('');
+  expect(record.lastLaunch).toMatchObject({ cleanup: 'verified' });
+});
+
+it.runIf(run('stop'))('the stop ends a harness-user turn within the bound: the runner kills sudo, the launcher ends the harness tree', { timeout: 400000 }, async () => {
+  const record = await liveTurn('stop', 'Use Bash to run: sleep 60; echo done. Then answer with what it printed.',
+    rows => rows.some(row => row.phase === 'pre' && row.tool === 'Bash'));
+  expect(record.stopToSettledMs).not.toBeNull();
+  expect(record.stopToSettledMs!).toBeLessThan(3000);
+  expect(record.toolTurns).toMatchObject({ invocations: 1, open: [] });
+  expect(record.harnessProcessesAfter).toBe('');
+});
+
+it.runIf(run('mcp'))('an MCP server receives its credential through the hand-off: the tool works, the configuration was never the harness user\'s to open', { timeout: 400000 }, async () => {
+  // A minimal stdio MCP server, inline (node -e), with one read tool that says only whether its credential arrived intact
+  // (it compares a digest; nothing credential-derived is ever returned).
+  const token = `${CANARY_TEXT}-MCP-LIVE`;
+  const digest = createHash('sha256').update(token).digest('hex');
+  const server = `const {createHash}=require('crypto');let b='';process.stdin.on('data',d=>{b+=d;let i;while((i=b.indexOf('\\n'))>=0){const l=b.slice(0,i);b=b.slice(i+1);if(!l.trim())continue;const m=JSON.parse(l);`
+    + `const r=x=>process.stdout.write(JSON.stringify({jsonrpc:'2.0',id:m.id,result:x})+'\\n');`
+    + `if(m.method==='initialize')r({protocolVersion:m.params.protocolVersion,capabilities:{tools:{}},serverInfo:{name:'probe',version:'1'}});`
+    + `else if(m.method==='tools/list')r({tools:[{name:'service_status',description:'Reports whether this demo service is configured',inputSchema:{type:'object',properties:{}}}]});`
+    + `else if(m.method==='tools/call')r({content:[{type:'text',text:'service status: '+(createHash('sha256').update(String(process.env.PROBE_TOKEN)).digest('hex')==='${digest}'?'configured':'unconfigured')}]});`
+    + `else if(m.id!==undefined)r({});}});`;
+  const record = await liveTurn('mcp', 'Use the MCP tool mcp__probe__service_status (no arguments) once and tell me the status line it returns.', undefined,
+    { servers: { probe: { command: process.execPath, args: ['-e', server], env: { PROBE_TOKEN: token } } }, reads: ['mcp__probe__service_status'], digest: 'sha256:live' });
+  expect(record.error).toBeNull();
+  const post = record.rows.filter(row => row.phase === 'post' && row.tool === 'mcp__probe__service_status').map(row => String(row.result)).join('\n');
+  expect(post).toContain('service status: configured');
+  expect(JSON.stringify(record.rows)).not.toContain(token);
+  // The configuration it came from is runner-private, and the kernel refuses it to the harness user.
+  expect(record.mcpConfig).toMatch(/\/tool-turns\/[^/]+\/private\/mcp\.json$/u);
+  expect(probeAccess([`r:${record.mcpConfig}`])![0]).toMatchObject({ ok: false });
+  expect(record.plaintextLoginsAfter).toEqual([]);
+  expect(record.serverPolicyAfter).toEqual([]);
+  expect(record.harnessProcessesAfter).toBe('');
+});
+
+it.runIf(run('session'))('a delegated session runs as the harness user through the bridge, with a custody login, and ends with its pane', { timeout: 120000 }, () => {
+  const profile = JSON.parse(readFileSync(PROFILE, 'utf8'));
+  const root = join(scratch, 'session'); mkdirSync(root, { mode: 0o700 });
+  // The session volume where the harness user can reach it (never under the root), both identities granted on it.
+  const { mount } = harnessSessionLayout(root);
+  mkdirSync(mount, { recursive: true, mode: 0o700 });
+  const project = attachSessionVolume(root, { at: mount, bytes: 64 * 1024 * 1024 });
+  // A throwaway login home on the volume (onboarding done, the volume trusted, bypass mode accepted, as the profile's are).
+  const custody = storeHarnessLogin(profile, 'sk-ant-oat01-HARNESS-USER-SYNTHETIC-SESSION-LOGIN', join(HARNESS_BASE, `custody-session-${String(process.pid)}`, 'login.json'));
+  const unusable = storeHarnessLogin({ ...profile, expectedAccount: 'someone-else@example.invalid' }, 'sk-ant-oat01-HARNESS-USER-SYNTHETIC-OTHER-ACCOUNT',
+    join(HARNESS_BASE, `custody-session-other-${String(process.pid)}`, 'login.json'));
+  // The driver's tmux, on a private server so nothing touches the operator's own sessions.
+  const tmux = join(root, 'tmux'), socket = `harness-session-${String(process.pid)}`;
+  writeFileSync(tmux, `#!/bin/sh\nexec /opt/homebrew/bin/tmux -L ${socket} "$@"\n`, { mode: 0o700 });
+  const sleep = (ms: number) => Atomics.wait(new Int32Array(new SharedArrayBuffer(4)), 0, 0, ms);
+  try {
+    grantVolume(project, HARNESS_USER, runnerUser());
+    for (const name of ['home', 'config']) mkdirSync(join(project, name), { mode: 0o700 });
+    writeFileSync(join(project, 'config', '.claude.json'), JSON.stringify({ hasCompletedOnboarding: true, bypassPermissionsModeAccepted: true,
+      projects: { [project]: { hasTrustDialogAccepted: true } } }));
+    const driverFor = (login: string) => {
+      const f = assemblyRuntimeFixture();
+      const io = createProductionSessionIO({ stateDirectory: join(root, `state-${login === custody ? 'ok' : 'refused'}`), tmuxPath: tmux,
+        home: join(project, 'home'), configHome: join(project, 'config'), cwd: project });
+      return { io, driver: createProductionSessionDriver({ operatorOwnUse: true, confinement: 'admitted', framework: 'claude-code',
+        executable: profile.executable, cwd: project, home: join(project, 'home'), configHome: join(project, 'config'), context: f.c, io,
+        now: () => Date.now(), stopped: () => false, resolveIntake: () => 'unused', maxSessions: 1, turnDeadlineMs: 60000, readyTimeoutMs: 30000,
+        protectedSessions: [], model: MODEL,
+        toolAdmission: { command: (claim: string, phase: string) => `${process.execPath} ${harnessHookPath()} ${phase} ${join(root, 'admission', claim)}`, timeoutSeconds: 60 },
+        modelGate: () => 'http://127.0.0.1:9/0123456789abcdef0123456789abcdef/session-work-live',
+        launchVia: [process.execPath, HARNESS_SESSION_BRIDGE, '--custody', login, HARNESS_USER, PROFILE, '--'] }) };
+    };
+    // A custody login bound to another account: the bridge refuses it, so the pane launches nothing and readiness never comes.
+    const refused = driverFor(unusable);
+    const held = refused.driver.launch({ operation: 'session-refused', claim: 'session-work-refused', artifact: 'sha256:live', incarnation: 'live',
+      workingScope: project, handles: [] });
+    // The bridge exits before any launch (its custody check refuses), so the pane is gone before it is ever ready.
+    expect(held).toMatchObject({ kind: 'Refused', detail: 'session exited' });
+    expect(harnessProcesses()).toBe('');
+    // The harness binary never ran as the runner's account either.
+    expect(spawnSync('/bin/ps', ['-U', String(process.getuid!()), '-o', 'command='], { encoding: 'utf8' }).stdout).not.toContain(profile.executable);
+    spawnSync(tmux, ['kill-server']);
+    // The usable custody login: the pane's harness is the harness user's, ready at its prompt.
+    const { driver, io } = driverFor(custody);
+    const launched = driver.launch({ operation: 'session-live', claim: 'session-work-live', artifact: 'sha256:live', incarnation: 'live',
+      workingScope: project, handles: [] });
+    if (launched.kind !== 'Success') throw Error(JSON.stringify(launched).slice(0, 600));
+    const name = String((launched as { value: string }).value).split(':')[0];
+    const rows = spawnSync('/bin/ps', ['-U', String(harnessUid()), '-o', 'pid=,command='], { encoding: 'utf8' }).stdout;
+    expect(rows).toContain(profile.executable);
+    expect(rows).toMatch(/harness-launch --handoff --tty /u);
+    // The login travelled on the hand-off: never in an argument, and no plain-text login appeared in the login home.
+    expect(rows).not.toContain('SYNTHETIC-SESSION-LOGIN');
+    expect(existsSync(join(project, 'config', '.credentials.json'))).toBe(false);
+    // The pane's keys reach it (the launcher handed it the terminal).
+    io.tmux(['send-keys', '-t', `=${name}:`, '-l', 'typed into the harness pane']);
+    sleep(1500);
+    expect(io.tmux(['capture-pane', '-p', '-t', `=${name}:`]).stdout).toContain('typed into the harness pane');
+    // Closing the pane ends the harness's whole tree (the hang-up reaches the launcher through sudo).
+    expect(driver.stop().kind).toBe('Success');
+    spawnSync(tmux, ['kill-server']);
+    let left = harnessProcesses();
+    for (let at = Date.now(); left && Date.now() - at < 5000; left = harnessProcesses()) sleep(100);
+    expect(left).toBe('');
+  } finally {
+    spawnSync(tmux, ['kill-server']);
+    detachSessionVolume(project);
+    rmSync(join(custody, '..'), { recursive: true, force: true });
+    rmSync(join(unusable, '..'), { recursive: true, force: true });
+    try { rmSync(mount, { recursive: true, force: true }); } catch { /* the volume's mount point, gone with it */ }
+  }
+});
