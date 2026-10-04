@@ -324,6 +324,11 @@ it('Rule 30 and revision 12: a Codex tool turn keeps its own tools, installs the
   expect(args).not.toContain('--sandbox');
   expect(CODEX_TOOLS_SYSTEM_PROMPT).toContain('your shell and apply_patch, live web search, subagents, and the MCP tools installed for you');
   expect(CODEX_TOOLS_SYSTEM_PROMPT).not.toMatch(/There are no MCP servers|use no tools of any kind/u);
+  // cint-L45 round 3 (Rule 84): the briefing states the abilities the checkpoints keep: the shell's network through the turn's
+  // checkpoint, and MCP and policy-sensitive steps decided by the effect doorway under the operator's grants, not removed.
+  expect(CODEX_TOOLS_SYSTEM_PROMPT).toContain('its network only through this turn\'s network checkpoint');
+  expect(CODEX_TOOLS_SYSTEM_PROMPT).toContain('ordinary work and work the operator has granted run; a consequential step without a grant is refused');
+  expect(CODEX_TOOLS_SYSTEM_PROMPT).not.toMatch(/runs confined: no network|Use web search for anything on the network|registers that exact operation/u);
   expect(hash(codexToolsPolicy('gpt-6-astra'))).not.toBe(hash(codexConversationPolicy('gpt-6-astra')));
   const gate = `http://127.0.0.1:4100/${'a'.repeat(32)}/tool-turn-0123456789abcdef-0`;
   const turn = { scratch: '/private/tmp/itt-1', workspace: '/private/tmp/itt-1/ws', stateDirectory: '/r/tool-turns/a-0/state',
@@ -413,5 +418,12 @@ it('answers a Codex tool turn only when every tool item has an admitted call in 
   expect((await tools('').invoke('{"question":"tools"}', bounds)).state).toBe('rejected');
   // The framing and the turn must agree: a tool turn without its hook state is refused at construction.
   expect(createCodexSubscriptionRoute(f.input({ framing: CODEX_TOOLS_FRAMING, activation: f.activation(hash(toolPolicy)) })).kind).toBe('Refused');
+  // An activation naming the policy as it was before the briefing changed is stale and refused; the current one answers above.
+  const stale = { ...toolPolicy, system: toolPolicy.system.replace('its network only through this turn\'s network checkpoint', 'no network') };
+  expect(hash(stale)).not.toBe(hash(toolPolicy));
+  const withActivation = (digest: string) => createCodexSubscriptionRoute(f.input({ framing: CODEX_TOOLS_FRAMING, activation: f.activation(digest),
+    toolTurn, adapterEvidenceContract: { ...f.input().adapterEvidenceContract, maxRawTerminalBytes: toolPolicy.maxRawTerminalBytes } })).kind;
+  expect(withActivation(hash(toolPolicy))).not.toBe('Refused');
+  expect(withActivation(hash(stale))).toBe('Refused');
   expect(createCodexSubscriptionRoute(f.input({ toolTurn })).kind).toBe('Refused');
 });
