@@ -695,12 +695,12 @@ export interface DirectiveNote { source: string; quote: string; at: number; supe
 /** The governed boundaries a preview refusal may cite (Rule 103). Each names a real preview
  * governance source; a boundary that is none of these is a proposal for the operator. */
 export const GOVERNING_CONSTRAINTS = Object.freeze({
-  'reply-only-grant': 'replies and requested reminders or summaries only',
+  'reply-only-grant': 'bot: replies and requested reminders or summaries',
   'no-tools': 'no external tools or accounts',
   'operator-authority': 'an approval, credential or policy only the operator holds',
   'spend-allowance': 'recorded call and reply allowances',
   'operator-stop': 'stop latch and trial expiry',
-  'secret-custody': 'live secrets stay in custody',
+  'secret-custody': 'credentials vaulted, never shown',
 } as const);
 export type GoverningConstraint = keyof typeof GOVERNING_CONSTRAINTS;
 /** Rules 18, 21: the current capability and owned-identity read of this preview runner, consulted by the obligation
@@ -710,13 +710,18 @@ export const PREVIEW_CAPABILITIES = Object.freeze({ externalTools: 'none', accou
   sends: GOVERNING_CONSTRAINTS['reply-only-grant'], ownedIdentities: ['the Telegram bot this trial runs as'],
   secretCustody: GOVERNING_CONSTRAINTS['secret-custody'] });
 export type PreviewCapability = keyof typeof PREVIEW_CAPABILITIES;
-/** Part Thirteen §9 (docs/17-harness-adapters): the same read for a call that really runs on the scoped-tool route. Only the tools
- * entry and its constraint wording differ; the keys stay the same evidence keys, so a blocker is judged as before. The
- * tools themselves are named once, by the capability note's Tools line (TOOLS_BRIEFING, generated from
- * SUBSCRIPTION_TOOL_NAMES); "as listed" points there, because the floor packet has no bytes to name them twice. */
-// With tools, accounts are reachable only through the root's MCP reads; every account write is the effect doorway's.
-export const PREVIEW_TOOL_CAPABILITIES = Object.freeze({ ...PREVIEW_CAPABILITIES, externalTools: 'as listed', accounts: 'no writes' });
-const GOVERNING_CONSTRAINTS_WITH_TOOLS = Object.freeze({ ...GOVERNING_CONSTRAINTS, 'no-tools': 'listed tools; no account writes' });
+/** Part Thirteen §9 (docs/17-harness-adapters): the same read for a call that really runs on the scoped-tool route. Only the tools,
+ * accounts and credential entries and their constraint wording differ; the keys stay the same evidence keys, so a blocker is
+ * judged as before. What the turn can do is stated once, by the capability note's tools item and limits (briefing.ts
+ * toolsBriefing, TOOLS_LIMITS); "listed" and "see Limits" point there, because the floor packet has no bytes to say it twice.
+ * With tools, a logged-in account is reached through a root MCP server and an account write is the effect doorway's, admitted
+ * once the operator grants it. Live 2026-10-04 (cint-L49, K11a): the old "no writes" / "no account writes" was read as a
+ * standing block the design does not have (Rule 103), and "unlisted tools" was read by the reply review as "this run has no
+ * tools"; "listed tools only" says the boundary without denying the set. */
+export const PREVIEW_TOOL_CAPABILITIES = Object.freeze({ ...PREVIEW_CAPABILITIES, externalTools: 'listed', accounts: 'listed',
+  secretCustody: 'see Limits' });
+const GOVERNING_CONSTRAINTS_WITH_TOOLS = Object.freeze({ ...GOVERNING_CONSTRAINTS, 'no-tools': 'listed tools only',
+  'secret-custody': 'see Limits' });
 /** The capability read and the governing constraints for a call, from the route it actually runs on. */
 export const previewCapabilities = (tools: boolean) => tools ? PREVIEW_TOOL_CAPABILITIES : PREVIEW_CAPABILITIES;
 export const governingConstraints = (tools: boolean) => tools ? GOVERNING_CONSTRAINTS_WITH_TOOLS : GOVERNING_CONSTRAINTS;
@@ -756,7 +761,7 @@ export const OBLIGATION_DECISION_NONE = 'Nothing can be declared on this turn: n
 /** The same instructions for an answer that runs on the scoped-tool route: its own tool calls are recorded attempts. */
 export const OBLIGATION_DECISION_TOOLS = replacedClause(OBLIGATION_DECISION,
   'You attempted nothing outside this reply, so never call an avenue tried; a missing tool is no-tools.',
-  'Only your recorded tool calls ran; never call an avenue tried; a tool not listed is no-tools.');
+  'Only your recorded tool calls ran; never call an avenue tried.');
 /** Rules 20, 21, 23, 99: a settled cannot-do or needs-a-person claim the agent actually sent,
  * with its finite lawful avenues, the smallest outside action and a future recheck. */
 export interface BlockerNote { source: string; claim: string; kind: 'cannot-do' | 'needs-human';
@@ -1881,6 +1886,26 @@ export const SETTLED_BLOCKER_SCOPE = 'A settled blocker covers only its own clai
 /** A settled blocker stays open until a recorded recheck clears it (Rule 99). */
 export const openBlockers = (view: JournalView) => view.blockers.flatMap((note, id) =>
   note.rechecks.at(-1)?.outcome === 'cleared' || retractedTurn(view, note.source) ? [] : [{ id, note }]);
+/** Rules 20, 99, 103: the wording of the governing constraint a blocker was settled behind, read from its source turn's
+ * retained answer packet; undefined when that packet is not retained or carried no such entry. A wall rests on the
+ * capability read it was settled under: when that wording has since changed (a build widened what the agent can do, or
+ * the call runs on the other route), the wall is not offered to the answer as settled; it stays recorded, counted and
+ * due on its own recheck day. Live 2026-10-04 (cint-L49, K11a, update 6232231): walls settled under "no account writes"
+ * and "live secrets stay in custody" were restated as standing limits after the read no longer said so. */
+export function settledConstraintWording(view: JournalView, note: BlockerNote): string | undefined {
+  const prompt = view.turns.get(note.source)?.prompt;
+  if (typeof prompt !== 'string') return undefined;
+  try {
+    // The prepared envelope's context message (live), or the packet itself where the model input is the bare context.
+    const parsed = JSON.parse(prompt) as { messages?: { role?: string; content?: string }[] } | null;
+    const context = parsed?.messages?.find(item => item.role === 'context')?.content;
+    const outer = (context === undefined ? parsed : JSON.parse(context)) as { packet?: unknown } | null;
+    const packet = (outer && typeof outer === 'object' && 'packet' in outer ? outer.packet : outer) as
+      { governingConstraints?: Record<string, unknown> } | null;
+    const wording = packet?.governingConstraints?.[note.constraint];
+    return typeof wording === 'string' ? wording : undefined;
+  } catch { return undefined; }
+}
 const validLoops = (loops: unknown): loops is ReplyLoop[] => Array.isArray(loops) && loops.length <= 5
   && new Set(loops.map(loop => (loop as ReplyLoop)?.quote)).size === loops.length
   && loops.every(loop => loop && (loop.kind === 'deferral' || loop.kind === 'judgment' || loop.kind === 'promise')
@@ -5997,6 +6022,13 @@ export function createJournalWorker(journal: ReturnType<typeof openPreviewJourna
 
   /** One journal is the agent's memory for every conversation. A turn from
    * another conversation is labelled with where and when it was said. */
+  /** Each blocker's settled constraint wording, parsed once: a settled answer packet never changes. */
+  const settledWordings = new Map<string, string | undefined>();
+  const settledWording = (note: BlockerNote) => {
+    const key = `${note.source}\u0000${note.constraint}`;
+    if (!settledWordings.has(key)) settledWordings.set(key, settledConstraintWording(journal.view, note));
+    return settledWordings.get(key);
+  };
   /** Under byte pressure, a source that declares `yieldBytes` (the desk report) is cut to that many bytes before
    * conversation history or reply guidance yields. The cut is labelled and names where the full text is; [] when
    * nothing needed cutting. */
@@ -6191,7 +6223,11 @@ export function createJournalWorker(journal: ReturnType<typeof openPreviewJourna
       const source = journal.view.turns.get(note.source)!;
       return { id, quote: clean(redact(note.quote).text, true, note.source), since: dated(source), sourceLabel: turnLabel(source) };
     });
-    const blockerItems = awayFor === undefined ? [] : recentWithin(openBlockers(journal.view).map(({ id, note }) => ({ id, kind: note.kind,
+    const toolRouted = awayFor !== undefined && ports.toolRoute?.(awayFor.id) === true, constraintsNow = governingConstraints(toolRouted);
+    const blockerItems = awayFor === undefined ? [] : recentWithin(openBlockers(journal.view).filter(({ note }) => {
+      const settled = settledWording(note);
+      return settled === undefined || settled === constraintsNow[note.constraint];
+    }).map(({ id, note }) => ({ id, kind: note.kind,
       claim: clean(redact(note.claim).text, true), constraint: note.constraint, outsideAction: clean(redact(note.outsideAction).text, true),
       recheck: localStamp(note.recheckAt, zone).slice(0, 10), recheckDue: now >= note.recheckAt })), BLOCKER_ITEMS_BYTES);
     // Rules 79, 82, 84, 98: the request this very message answered, else the latest one still to report. Plan #371: a
@@ -6228,8 +6264,11 @@ export function createJournalWorker(journal: ReturnType<typeof openPreviewJourna
       memoryVersion: journal.view.memory.length, purpose: 'Make coherence something an AI cannot lose.',
       // What you can do is the generated capability-note source; this field carries only how to use the packet.
       // The capability-note source already states that it is generated from the register and that nothing
-      // unlisted is available, so that sentence is not repeated here (Rule 116).
-      capability: `Your capabilities are the capability-note source. Summary covers earlier turns; history has later turns. For a question about what the operator said, state a remembered detail only when the offered journal evidence supports that exact detail, not a similar name, event or date, a summary inference, your earlier reply or the question's premise; otherwise say "I don't know from this journal", never that the operator did not say it. Cite sourceLabel for supported remembered facts. Say when the source is unknown.`
+      // unlisted is available, so that sentence is not repeated here (Rule 116). On the tool route, whose note lists
+      // conditional abilities rather than closing with that sentence, the agent describing itself gives only the note's
+      // items and limits: live 2026-10-04 (cint-L49, K11a, update 6232231) replays restated earlier
+      // refusals in history as standing limits the note does not have (Rule 103; lanes/w4-selfdesc-PROGRESS.md).
+      capability: `Your capabilities are the capability-note source${toolRouted ? '; describing yourself, give only its items and limits' : ''}. Summary covers earlier turns; history has later turns. For a question about what the operator said, state a remembered detail only when the offered journal evidence supports that exact detail, not a similar name, event or date, a summary inference, your earlier reply or the question's premise; otherwise say "I don't know from this journal", never that the operator did not say it. Cite sourceLabel for supported remembered facts. Say when the source is unknown.`
         // Hold guidance rides only while a held item is visible (history, recall, or today's status); exact-unit guidance only with a number carrying a unit or currency.
         // Rule 19, live 2026-10-03 (I-proofroom2-20261003-061647, I3b, update 6231611): the operator answered
         // "17 × 3 = 51" with "No, it's 41." and the reply asked which earlier answer was meant without naming any

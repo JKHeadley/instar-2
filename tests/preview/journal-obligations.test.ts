@@ -7,7 +7,7 @@ import { chmodSync, mkdirSync, mkdtempSync, readFileSync, realpathSync, rmSync }
 import { tmpdir } from 'node:os';
 import { spawnSync } from 'node:child_process';
 import { join } from 'node:path';
-import { createJournalWorker, openPreviewJournal, openBlockers, openDirectives, declaredObligations, dueObligationWork, obligationSchedule,
+import { createJournalWorker, openPreviewJournal, openBlockers, openDirectives, settledConstraintWording, declaredObligations, dueObligationWork, obligationSchedule,
   LOOP_REVISIT_MS, BLOCKER_RECHECK_MAX_MS, DIRECTIVE_SHARE, OBLIGATION_WORK_QUESTION, OBLIGATION_WORK_QUESTION_TOOLS, previewCapabilities,
   TOOL_ATTEMPTS_MEANING, TOOL_ATTEMPTS_PARTIAL_MEANING, TOOL_ATTEMPTS_REVIEWED, governingConstraints, OBLIGATION_DECISION,
   OBLIGATION_FLOOR_PACKET_BYTES, OBLIGATION_DECISION_TOOLS } from './journal-test-worker.js';
@@ -260,6 +260,38 @@ it('settles a cannot-do claim only with a finite, governed investigation record,
         expect(openBlockers(w.journal.view)).toEqual([]);
         expect(w.journal.view.blockers[0]!.rechecks).toMatchObject([{ outcome: 'cleared' }]);
       }
+      w.journal.close();
+    } finally { rmSync(root, { recursive: true, force: true }); }
+  }
+});
+
+it('offers a settled wall to the answer only while the constraint wording it rests on still holds (Rules 20, 99, 103)', async () => {
+  // Live 2026-10-04 (cint-L49, K11a, update 6232231): walls settled under an earlier capability read ("no account writes",
+  // "live secrets stay in custody") were restated as standing limits after the read widened. A wall rests on the wording
+  // of its constraint when it was settled; when that wording changes the wall is not offered as settled, and it stays
+  // recorded, open, counted and due on its own recheck day.
+  for (const [settledOn, askedOn, offered] of [[false, false, true], [false, true, false], [true, true, true]] as const) {
+    const root = origin();
+    try {
+      const route = { tools: settledOn };
+      const w = world(root, { toolRoute: () => route.tools,
+        answer: question => question.startsWith('Can you book') ? { reply: CLAIM, blocker: blocker() } : 'Noted.' });
+      await w.say('Can you book the dentist appointment online?');
+      expect(openBlockers(w.journal.view), `${settledOn}`).toHaveLength(1);
+      expect(settledConstraintWording(w.journal.view, w.journal.view.blockers[0]!)).toBe(governingConstraints(settledOn)['no-tools']);
+      route.tools = askedOn;
+      const probe = w.worker.probe('What can you do here, and what can you not do?');
+      if ('reason' in probe) throw Error(probe.reason);
+      const shown = (JSON.parse(probe.context) as { blockers?: { claim: string }[] }).blockers ?? [];
+      expect(shown.map(item => item.claim), `settled ${settledOn}, asked ${askedOn}`).toEqual(offered ? [CLAIM] : []);
+      // On the tool route the self-description is held to the note's items and limits; the text-only note already closes
+      // with "Nothing unlisted is available", so its guidance is unchanged.
+      expect((JSON.parse(probe.context) as { capability: string }).capability.startsWith(askedOn
+        ? 'Your capabilities are the capability-note source; describing yourself, give only its items and limits. Summary'
+        : 'Your capabilities are the capability-note source. Summary')).toBe(true);
+      // Withheld from the answer is not dropped: still open, still counted, its recheck still scheduled.
+      expect(openBlockers(w.journal.view)).toHaveLength(1);
+      expect(obligationSchedule(w.journal.view).filter(item => item.kind === 'blocker')).toHaveLength(1);
       w.journal.close();
     } finally { rmSync(root, { recursive: true, force: true }); }
   }
@@ -908,7 +940,7 @@ it('tells scheduled work and the reply review what the call actually had: no too
       expect(w.workQuestions).toEqual([tools ? OBLIGATION_WORK_QUESTION_TOOLS : OBLIGATION_WORK_QUESTION]);
       expect(contexts[0]!.capabilities).toEqual(previewCapabilities(tools));
       expect((contexts[0]!.governingConstraints as Record<string, string>)['no-tools'])
-        .toBe(tools ? 'listed tools; no account writes' : 'no external tools or accounts');
+        .toBe(tools ? 'listed tools only' : 'no external tools or accounts');
       if (tools) {
         expect(w.workQuestions[0]).not.toContain('you have no external tools');
         expect(w.workQuestions[0]).not.toContain('You have attempted nothing outside this step');
@@ -949,7 +981,7 @@ it('tells scheduled work and the reply review what the call actually had: no too
       { role: 'context', content: JSON.stringify({ packet: { audience: 'operator', history: [] } }) }] });
     const context = JSON.parse(replyReviewContext(envelope, recorded.answer, [], declared)) as
       { declaredObligations: { capabilities: { externalTools: string }; toolAttempts: { calls: { result: string | null }[] } } };
-    expect(context.declaredObligations.capabilities.externalTools).toBe('as listed');
+    expect(context.declaredObligations.capabilities.externalTools).toBe('listed');
     expect(context.declaredObligations.toolAttempts.calls[2]!.result).toMatch(/\b11\b/u);
     // Replay keeps the same read.
     w.journal.close();
@@ -976,7 +1008,7 @@ it('names tools in the packet exactly when its dispatch, after the base call is 
       expect(w.journal.view.calls).toBe(0);
       await w.say(INVOICE);
       const expected = remaining > extra;
-      expect(seen).toEqual([{ packet: expected ? 'as listed' : 'none', dispatch: expected }]);
+      expect(seen).toEqual([{ packet: expected ? 'listed' : 'none', dispatch: expected }]);
       w.journal.close();
     } finally { rmSync(root, { recursive: true, force: true }); }
   }
@@ -1002,7 +1034,7 @@ it('names tools in the packet exactly when its dispatch, after the base call is 
       w.clock.now += LOOP_REVISIT_MS + 60_000;
       expect(await w.worker.workObligations()).toBe(true);
       const expected = remaining > extra;
-      expect(seen).toEqual([{ packet: expected ? 'as listed' : 'none', dispatch: expected }]);
+      expect(seen).toEqual([{ packet: expected ? 'listed' : 'none', dispatch: expected }]);
       w.journal.close();
     } finally { rmSync(root, { recursive: true, force: true }); }
   }
@@ -1043,7 +1075,7 @@ it('re-reads the tool route for a format re-ask or timeout replacement after a t
             promptLimit: 32768, deniedRoots: [root], operations: [], now: () => now, redactText: (s: string) => s,
             scratch: (turn: string) => { const vol = join(turn, 'vol'); mkdirSync(vol, { recursive: true }); return vol; }, detach: () => true, unmount: () => true,
             fallback: async () => { actual = 'none'; return { result: 'A short answer.' }; },
-            invoke: async () => { actual = 'as listed'; return first && mode === 'format-retry' ? { state: 'complete', failureClass: 'malformed' } : 'A short answer.'; } });
+            invoke: async () => { actual = 'listed'; return first && mode === 'format-retry' ? { state: 'complete', failureClass: 'malformed' } : 'A short answer.'; } });
           seen.push({ packet: (JSON.parse(input.context) as Packet & { capabilities: { externalTools: string } }).capabilities.externalTools, actual });
           if (first && mode === 'answer-replace') {
             const { id: _id, role, at: _at, ...outcome } = timedOut;
@@ -1055,8 +1087,8 @@ it('re-reads the tool route for a format re-ask or timeout replacement after a t
       worker.intake([{ update_id: 1, message: { chat: { id: 7654321, type: 'private' }, from: { id: 7654321 },
         date: Math.floor(now / 1000), text: 'What tools can you use now?' } }]);
       await worker.drain();
-      const tools = cap === 18, final = tools ? 'as listed' : 'none';
-      expect(seen).toEqual([{ packet: 'as listed', actual: 'as listed' }, { packet: final, actual: final }]);
+      const tools = cap === 18, final = tools ? 'listed' : 'none';
+      expect(seen).toEqual([{ packet: 'listed', actual: 'listed' }, { packet: final, actual: final }]);
       const id = journal.view.order[0]!.id;
       expect(declaredObligations(journal.view, id, now).capabilities.externalTools).toBe(final);
       // The contextual review reads the final attempt's packet: capabilities, constraints and instructions agree with

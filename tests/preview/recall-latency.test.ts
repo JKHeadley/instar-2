@@ -115,12 +115,16 @@ it('profiles full turns at 2000 turns with every memory source', async () => {
     // added (memoryFailureDecision and searchedTurn: the memory-failure offer, since this answer follows a sent reply)
     // and memorySearch, which only uses leftover room, holds 2 items instead of 5. Removing those two fields and restoring
     // the 5 search items reproduces the cint-L43 packet exactly (key order included).
+    // w4-selfdesc re-pin (live K11a, Rule 103): diffed field by field against the cint-L49 packet, only four values changed,
+    // all wording: governingConstraints and capabilities name the bot's own messages ("bot: replies and requested reminders
+    // or summaries") and say a sent credential is vaulted, never shown ("credentials vaulted, never shown"). Restoring the
+    // four cint-L49 values reproduces a287adaa…4750d2 exactly.
     const withoutLookup = JSON.parse(packetText) as Record<string, unknown>;
     expect(withoutLookup.memoryLookup).toBe('offered');
     delete withoutLookup.memoryLookup;
     expect(createHash('sha256').update(JSON.stringify(withoutLookup)).digest('hex'))
-      .toBe('a287adaa51e512b2425eac20207b2227544cdb84440b9abb8f33912d1d4750d2');
-    expect(packetHash).toBe('fc04a39228688dcfe207af3be6fbb99a0fd75a5c3bb6f9b8806172cee0b8ad71');
+      .toBe('1d20157b8f7940d7ae26a1f49a9fb074b362492a8c050c8c1c28d717deac6cc0');
+    expect(packetHash).toBe('bdf3fc8d6ea168326722d770a78b3c3623aa313cd2468a1bb5ac35a31cf32dd9');
     process.stdout.write(`recall latency 2000 turns all memory: probe p95=${p95(samples).toFixed(2)} ms packet=${packetHash}\n`);
     const turnSamples: number[] = [];
     const intakeSamples: number[] = [], drainSamples: number[] = [], coherenceSamples: number[] = [];
