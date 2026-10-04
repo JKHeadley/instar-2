@@ -701,6 +701,9 @@ export async function runToolTurn({ journal, root, id, prepared, promptLimit, de
   system = SUBSCRIPTION_TOOLS_SYSTEM_PROMPT, admission = CLAUDE_TOOL_ADMISSION, gate = null, owner = 'this machine', harness = null }) {
   const extra = SUBSCRIPTION_TOOL_LIMITS.maxTurns - 1;
   const refuse = reason => { journal.append({ kind: 'tool-turn', phase: 'refused', id, reason, at: now() }); return fallback(); };
+  // Plan #473: a Claude Code turn whose harness identity is named but not ready is refused, never run as the operator's
+  // account (the production runner always names one: harness-user.mjs). A checkpointed harness runs under its own sandbox.
+  if (!admission.harness && harness && !harness.ready) return refuse('harness identity unavailable');
   if (!toolTurnFits(journal.view)) return refuse('call cap');
   if (Buffer.byteLength(prepared) + Buffer.byteLength(system) + TOOL_NOTICE_MAX_BYTES > promptLimit) return refuse('prompt size');
   // Rule 100: a server's SecretRefs are opened from custody before anything is reserved; held in memory only.
@@ -811,7 +814,8 @@ export async function runToolTurn({ journal, root, id, prepared, promptLimit, de
   }
   journal.append(traceRow({ id, attempt, trace, egress: egressRecord, authority, ended, redactText, workspace: turn ? turn.workspace : null, at: now(),
     extra: { ...(volume ? { volume } : {}),
-      // Which identity the harness ran as: its own user, or (configured but unavailable) the runner's account, loudly.
+      // Which identity the harness ran as: its own user, or (a checkpointed harness, whose turn the identity does not gate)
+      // the runner's account, with the reason the separate user was not ready.
       ...(harness ? { harness: harness.ready ? { user: harness.user } : { fallback: harness.reason } } : {}),
       ...(plan ? { session: { id: plan.id, mode: plan.resume ? 'resume' : 'new', reason: plan.reason, turn: plan.turn,
         kept: ending.ended === null, ...(ending.ended === null ? {} : { ended: ending.ended }), transcriptBytes: ending.transcriptBytes } } : {}) } }));
@@ -845,6 +849,7 @@ export function toolStatusLines(view, enabled, off = null, gated = false) {
       + `${stats.network ? `, ${stats.network.admitted} shell network reads admitted and ${stats.network.refused} refused at the checkpoint` : ''}`
       + `${stats.refusedPrompt ? `, ${stats.refusedPrompt} because the packet left no room for the tool instructions` : ''}`
       + `${stats.refusedCredential ? `, ${stats.refusedCredential} because an MCP server's stored credential could not be opened` : ''}`
+      + `${stats.refusedIdentity ? `, ${stats.refusedIdentity} because the separate harness user was not ready` : ''}`
       + `${stats.inconsistent ? `, ${stats.inconsistent} turns refused because a tool ran without its admission record` : ''}`
       + `${stats.open?.length ? `, ${stats.open.length} without a recorded trace yet (running now, or interrupted with an unknown outcome)` : ''}.`,
     ...(sessions ? [`Kept session: ${sessions.resumed} turns resumed it, ${sessions.fresh} started a new one (${sessions.changed} after the journal `

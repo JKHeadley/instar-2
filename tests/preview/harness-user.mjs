@@ -3,7 +3,7 @@
 // its in-process file tools open is checked by the kernel as a user with no access to the operator account's files:
 // a path swapped between the admission hook's decision and the tool's open can reach only the harness's own area
 // (docs/defects/2026-10-03-file-tool-swap-race.md). This module holds the area's layout, its unprivileged setup, the
-// readiness check that decides the switch (a refusal names its reason and the runner falls back loudly), the ACL grants
+// readiness check that decides the switch (a refusal names its reason, and the runner then refuses every tool turn), the ACL grants
 // a turn's volume and admission state need, and the sudo command line. Machine-local by declaration (Rule 113): each
 // machine provisions its own harness user; nothing here is shared.
 import { createHash } from 'node:crypto';
@@ -120,8 +120,8 @@ export function probeAccess(specs, { user = HARNESS_USER, launcher = HARNESS_LAU
 
 /**
  * Whether the launches of `profile` can run as the harness user, decided from live state, never from the switch alone.
- * Ready: `{ ready: true, user, uid, hookScript }`. Otherwise `{ ready: false, reason }`, and the runner falls back to its
- * own account, loudly. Ready means: the user exists and is not the runner; the launcher and the hook copy are installed
+ * Ready: `{ ready: true, user, uid, hookScript }`. Otherwise `{ ready: false, reason }`, and the runner refuses every tool
+ * turn, loudly (plan #473: never the operator's account). Ready means: the user exists and is not the runner; the launcher and the hook copy are installed
  * (installed here when the repo's copy differs); the profile's executable is the installed copy of its artifact; the
  * profile's directories sit in the harness area; and the probe shows the harness CAN read and write its profile and
  * CANNOT read any of `denied` (the root, the operator home, the runner's state), checked as that user by the kernel.
@@ -215,15 +215,44 @@ export function removeHarnessState(link, base = HARNESS_TURNS) {
   return !existsSync(target);
 }
 
-/** The launch and status line when a Claude Code tool route runs with no `--harness-user` at all: the harness is the
- * operator's account, so the file-tool race between admission and open is open (docs/defects/2026-10-03-file-tool-swap-race.md). */
-export const HARNESS_OFF_LINE = 'Harness identity: OFF, Claude Code runs as the operator\'s account (no --harness-user): its file tools are '
-  + 'checked at admission, not at open, so the admission-to-open race is open.';
+/** Plan #473: a Claude Code tool route never runs as the operator's account. With no `--harness-user` at all, or a harness
+ * user that is not ready, every tool turn is refused (the answer runs text only) and says why: stderr at launch, the
+ * status line below, and a notice under each answer whose tools were refused (`harnessRefusedNotice`). */
+export const HARNESS_OFF_REASON = 'no --harness-user was given';
 /** The operator's status line for the harness identity (Rule 84). */
 export const harnessStatusLine = harness => harness?.ready
   ? `Harness identity: Claude Code runs as its own macOS user (${harness.user}); the kernel refuses its reads and writes of the operator account's files.`
-  : harness?.reason ? `Harness identity: FALLBACK, Claude Code runs as the operator's account (the separate harness user is configured but unavailable: ${harness.reason}).`
+  : harness?.reason ? `Harness identity: REFUSED, tool turns are not run, because Claude Code would run as the operator's account (${harness.reason}); `
+    + 'answers are text only until the separate harness user is ready.'
     : null;
+/** The line under an answer whose tool turn was refused for the harness identity (Rule 84: never a silent text-only answer). */
+export const harnessRefusedNotice = reason => `Tools: not run for this answer, because Claude Code would have run as the operator's account (${reason}). `
+  + 'Answers are text only until the separate harness user is ready.';
+
+/** Plan #473 (2): the harness's own Claude login, as exact values the reply floor and the outbound check withhold. With no
+ * keychain of its own, Claude Code keeps it in `<config>/.credentials.json`; every string in it of 16 characters or more
+ * is held (an absent or unreadable file holds nothing: no login is there). */
+export const HARNESS_CREDENTIAL_FILE = '.credentials.json';
+export function harnessCredentialValues(configDirectory, read = path => readFileSync(path, 'utf8')) {
+  let parsed;
+  try { parsed = JSON.parse(read(join(configDirectory, HARNESS_CREDENTIAL_FILE))); } catch { return []; }
+  const values = [];
+  const walk = value => {
+    if (typeof value === 'string') { if (value.length >= 16) values.push(value); }
+    else if (Array.isArray(value)) value.forEach(walk);
+    else if (value && typeof value === 'object') Object.values(value).forEach(walk);
+  };
+  walk(parsed);
+  return values;
+}
+/** The forms of a held value a text may carry: as written, JSON-escaped, and (a provider key) without its kind prefix,
+ * which the shape floor alone would no longer recognise. */
+const heldForms = value => [...new Set([value, JSON.stringify(value).slice(1, -1),
+  ...(/^sk-[a-z]+-[a-z]+\d*-/u.test(value) ? [value.replace(/^sk-[a-z]+-[a-z]+\d*-/u, '')] : [])])].filter(form => form.length >= 16);
+/** Whether `text` carries any held value (exact, never a guess). */
+export const heldSecretIn = (text, values) => values.some(value => heldForms(value).some(form => text.includes(form)));
+/** `text` with every held value replaced by the redaction mark. */
+export const scrubHeld = (text, values) => values.reduce((out, value) => heldForms(value).reduce((acc, form) => acc.split(form).join('[redacted credential]'), out), text);
 
 /** The harness profile derived from the operator-run one (`source`): the same account, organization, plan and pinned
  * artifact, with the harness copy as its executable and the harness area's three directories, its login-profile

@@ -14,7 +14,8 @@ import { attachEgress, attachSessionVolume, networkToolReads, readRootMcp, recon
 import { prepareSessionAdmission, sessionAdmissionCommand } from './session-admission.mjs';
 import { createAdmissionGate, createToolEffectOwner } from './admission-gate.mjs';
 import { admitToolCallEffect } from './tool-admission.mjs';
-import { HARNESS_LAUNCHER, HARNESS_OFF_LINE, harnessReadiness, harnessStatusLine, runnerUser } from './harness-user.mjs';
+import { HARNESS_LAUNCHER, HARNESS_OFF_REASON, harnessCredentialValues, harnessReadiness, harnessRefusedNotice, harnessStatusLine, heldSecretIn,
+  runnerUser, scrubHeld } from './harness-user.mjs';
 import { encoded } from '../../src/assembly/boundary.js';
 import { decodeEffectPolicy, DEFAULT_EFFECT_POLICY, effectDoorwayStatusLines, refusedEffectNotices, currentEffectPolicy } from './effect-doorway.mjs';
 import { redact } from '../../src/recall/redact.js';
@@ -179,14 +180,17 @@ const renewalActivationOf = (options, view) => expires => {
 const required = (options, name) => { if (!options[name]) throw Error(`preview: missing --${name}`); return options[name]; };
 /** Desk unit harness-user: `--harness-user NAME` runs every Claude Code launch of the login profile as that macOS user, so
  * the kernel checks each file the harness opens as an identity with no access to the operator account. Decided once at
- * launch from live state (harness-user.mjs harnessReadiness), never from the switch alone. Unavailable, the runner falls
- * back to its own account LOUDLY: stderr now, the status line, and every tool trace row naming the reason. Absent: null,
- * and a Claude Code tool route says so at launch and in status (HARNESS_OFF_LINE: the file-tool race is open). */
+ * launch from live state (harness-user.mjs harnessReadiness), never from the switch alone. Plan #473: a Claude Code tool
+ * route with no switch, or with a harness user that is not ready, REFUSES every tool turn (never the operator's account):
+ * stderr now, the status line, and a notice under each answer whose tools were refused name the reason. A checkpointed
+ * harness (its own sandbox, every consequential tool through the host checkpoint) is not gated by it: null when absent. */
 const harnessOf = (options, root, doorway) => {
   const user = options['harness-user'];
   if (user === undefined) {
-    if (!doorway.toolTurn?.harness) process.stderr.write(`preview: ${HARNESS_OFF_LINE}\n`);
-    return null;
+    if (doorway.toolTurn?.harness) return null;
+    const off = { ready: false, reason: HARNESS_OFF_REASON, user: null };
+    process.stderr.write(`preview: ${harnessStatusLine(off)}\n`);
+    return off;
   }
   const profile = JSON.parse(readFileSync(required(options, 'login-profile'), 'utf8'));
   const result = doorway.toolTurn?.harness ? { ready: false, reason: 'the selected doorway is not the Claude Code harness' }
@@ -1448,6 +1452,9 @@ async function main() {
       incarnation: `launcher:${process.pid}:${createHash('sha256').update(`${process.pid}:${wallNow()}:${performance.now()}`).digest('hex').slice(0, 16)}`,
       now: wallNow, monotonic: () => performance.now() });
     const harness = harnessOf(options, root, doorway);
+    // Plan #473: why a Claude Code tool turn would be refused for its identity (null: the harness is its own user, or the
+    // doorway's checkpointed harness is not gated by it). The packet then names no tools, and runToolTurn refuses the turn.
+    const identityRefusal = !doorway.toolTurn?.harness && harness && !harness.ready ? harness.reason : null;
     await hostResources.attach({ ledgerPath: launchesPath, statePath: resourcesPath, now: wallNow, allocation,
       ...(harness?.ready ? { harnessUid: harness.uid } : {}),
       ...(aggregateMemoryMib === undefined ? {} : { aggregateMemoryBytes: aggregateMemoryMib * 1024 * 1024 }),
@@ -1515,7 +1522,7 @@ async function main() {
       const bytes = prepareJournalEnvelope(input, required(options, 'model'), g.grant, wallNow(), journal.view.limits.maxBytes);
       // A tool turn's longer system prompt must fit that room too; an overflow here makes the packet ladder yield, as
       // for the text-only prompt, instead of leaving the turn to fall back to a text-only answer.
-      if (toolsActive() && toolTurnEligible(input.id)
+      if (toolsActive() && identityRefusal === null && toolTurnEligible(input.id)
         && Buffer.byteLength(bytes) + Buffer.byteLength(doorway.toolTurn?.system ?? SUBSCRIPTION_TOOLS_SYSTEM_PROMPT) + TOOL_NOTICE_MAX_BYTES > toolPromptLimit())
         throw Error('preview: complete prompt overflow');
       return bytes;
@@ -1617,6 +1624,20 @@ async function main() {
       const reason = typeof reasonValue === 'string' ? reasonValue : reasonValue === undefined || reasonValue === null ? '' : JSON.stringify(reasonValue);
       return { state: 'complete', value, ...(reason.trim() ? { reason } : {}), usage: result.usage };
     };
+    // Plan #473 (2): the exact secret values this runner holds, withheld from every reply and outbound text and scrubbed from
+    // recorded tool excerpts: its own SecretRef values, the harness's login (a value read through the file-tool race stays
+    // in the runner), and the root's MCP credentials (served to a turn's servers and carried by its admission record).
+    const heldValues = () => {
+      const values = ['STORAGE_KEY', 'TELEGRAM_BOT_TOKEN', 'AUTHORITY_SECRET', 'TYPESAFE_KEY', 'GITHUB_TOKEN']
+        .map(name => process.env[`INSTAR_SECRET_PREVIEW_${name}`]).filter(value => typeof value === 'string' && value.length >= 16);
+      values.push(...harnessCredentialValues(profile.configDirectory));
+      try {
+        const custody = createSecretCustody(root, key(), wallNow);
+        for (const refs of Object.values(readRootMcp(root)?.secrets ?? {}))
+          for (const ref of Object.values(refs)) { const value = custody.resolve(secretRef(ref)); if (typeof value === 'string' && value.length >= 16) values.push(value); }
+      } catch { /* an MCP credential that cannot be opened was never served */ }
+      return values;
+    };
     // Part Thirteen §9 (docs/17-harness-adapters): an eligible answer or work step runs as one scoped-tool turn (tool-turn.mjs runToolTurn).
     const invokeTools = async (prepared, id) => (await runToolTurn({ journal, root, id, prepared,
       promptLimit: toolPromptLimit(), mcp: readRootMcp(root),
@@ -1630,7 +1651,7 @@ async function main() {
       session: doorway.toolTurn?.harness ? null : { store: join(profile.configDirectory, 'projects'), harness: `${profile.version} ${required(options, 'model')}` },
       stopped: () => workerStop.value || existsSync(stopPath) || journal.view.stop !== null || !toolsActive(),
       deniedRoots: [realpathSync(root), profile.home, profile.configDirectory, profile.workingDirectory],
-      ...admissionConfig(), now: wallNow, redactText: text => redact(text).text, gate, owner: ownerMachine, harness,
+      ...admissionConfig(), now: wallNow, redactText: text => redact(scrubHeld(text, heldValues())).text, gate, owner: ownerMachine, harness,
       ...(doorway.toolTurn ? { system: doorway.toolTurn.system, admission: doorway.toolTurn } : {}),
       fallback: async () => ({ result: await invokeSubscription(prepared, id) }),
       // Rules 33, 84: the workspace notice (files that may still disagree with memory, or a lost workspace) rides the packet.
@@ -1662,7 +1683,7 @@ async function main() {
       ...toolStatusLines(journal.view, toolsActive(), toolsOff ?? (toolsRecord
         ? 'withdrawn since launch: the activation record changed or its grant no longer resolves' : null), Boolean(doorway.toolTurn?.harness)),
       ...(toolsActive() || journal.view.effectDoorway ? effectDoorwayStatusLines(journal.view.effectDoorway) : []),
-      ...(harness ? [harnessStatusLine(harness)] : toolsActive() && !doorway.toolTurn?.harness ? [HARNESS_OFF_LINE] : [])];
+      ...(harness ? [harnessStatusLine(harness)] : [])];
     const statusExtraLines = () => [...proofLines(), ...ownerLines(), ...minimalLines()];
     const approvalSurface = approvalSurfaceOf(options);
     // Rules 79, 81: the operator dashboard's snapshot, published into this runner's own outbox at most every 15 seconds
@@ -1694,7 +1715,7 @@ async function main() {
       prepareModel: modelEnvelope,
       // Part Thirteen §9: the packet names the tools exactly when the model call will run on the tool route. The packet
       // is built before the answer's `reserve` or the work's `obligation-start` counts its base call, so that call is added here.
-      toolRoute: id => toolsActive() && toolTurnEligible(id) && toolPacketFits(journal.view),
+      toolRoute: id => toolsActive() && identityRefusal === null && toolTurnEligible(id) && toolPacketFits(journal.view),
       // Only scheduled obligation work is delegated; an operator answer is never handed to a session.
       // The session route is taken only while its grant holds and the call allowance can hold the
       // step's whole reserved liability on top of the obligation's own start.
@@ -1716,6 +1737,9 @@ async function main() {
         const now = wallNow(), notices = [];
         // Part Twelve: this answer's own refused effects ride first, so a refusal is reported even if the answer omits it.
         if (turn !== undefined) notices.push(...refusedEffectNotices(journal.view.effectDoorway?.recent ?? [], turn));
+        // Plan #473: an answer whose tool turn was refused for the harness identity says so under it.
+        if (turn !== undefined && identityRefusal !== null && (journal.view.toolTurns?.identityRefused ?? []).includes(turn))
+          notices.push({ key: `harness:${turn}`, line: harnessRefusedNotice(identityRefusal) });
         try { notices.push(...credentialNotices(dueCredentialReminders(createSecretCustody(root, key(), wallNow).records(), now), now)); } catch { /* status shows it */ }
         try { notices.push(...doorwayNotices(readDoorwayMap(doorwaysPath), now)); } catch { /* status shows it */ }
         return notices;
@@ -1724,7 +1748,8 @@ async function main() {
       concurrentWork: () => launchedAt === null ? null : concurrentWorkItem({ now: wallNow(),
         current: { owner: root.split('/').at(-1), launch: launchedAt, conversation: conversationOf(journal.view.genesis) }, ...ownedActivity(root) }),
       statusLines: statusPullLines,
-      checkOutbound: text => { if (redact(text).count) throw Error('preview: outbound secret refused'); },
+      checkOutbound: text => { if (redact(text).count || heldSecretIn(text, heldValues())) throw Error('preview: outbound secret refused'); },
+      heldSecret: text => heldSecretIn(text, heldValues()),
       secrets: custody,
       model: async ({ id, prepared }) => {
         if (typeof prepared !== 'string') throw Error('preview: prepared model input absent');

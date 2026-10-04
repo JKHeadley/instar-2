@@ -3628,9 +3628,11 @@ servers (Part Thirteen §9,
   at open: a directory the agent itself swaps for a link between the hook's check and the harness's open can still be
   followed by Read, Write, Edit, Glob or Grep; a sandboxed command has no such window, because the kernel decides at
   open. The kernel closes that race when the harness runs as its own macOS user (`--harness-user _instarharness`,
-  below): a swapped path then reaches only the harness's own area and world-readable files. Without the switch, or
-  with a harness user that is not ready, the race is open and the launch says so: stderr, `status` (`Harness identity:
-  OFF` or `FALLBACK`) and, when the switch is set, each trace row (`docs/defects/2026-10-03-file-tool-swap-race.md`).
+  below): a swapped path then reaches only the harness's own area and world-readable files, and the harness's own
+  login is a held value the reply floor and the outbound check withhold. Without the switch, or with a harness user
+  that is not ready, every Claude Code tool turn is refused (never run as the operator's account): the answer is text
+  only, and stderr, `status` (`Harness identity: REFUSED … (<reason>)`) and a notice under that answer say why
+  (`docs/defects/2026-10-03-file-tool-swap-race.md`).
   Separately, and narrowly: the journal and the vault are ciphertext under the storage key, which only the runner's
   environment holds; an MCP server's credential given as a SecretRef is handed to that server's launcher alone and is
   not written to the launch configuration; the admission record holds any credential a tool result carried in
@@ -3750,11 +3752,14 @@ turn's volume grants both identities by inherited ACL entries, never through a l
 The decision is made at launch from live state (`harnessReadiness` in `tests/preview/harness-user.mjs`): the user
 exists, the launcher and hook copy are installed, the profile's executable is the installed copy of its artifact,
 its directories sit in the harness area, and a probe through the launcher shows the harness user can read and write
-its profile and cannot read the root, the operator's home or the runner's repository. Not ready, the runner falls
-back to its own account loudly: stderr at launch, `status` says `Harness identity: FALLBACK … (<reason>)`, and every
-tool trace row carries `harness: {fallback}`; ready, they say the user and each trace row carries `harness: {user}`.
-With no `--harness-user` at all, a Claude Code tool route says at launch and in `status` that the harness is the
-operator's account and the file-tool race is open (`Harness identity: OFF …`).
+its profile and cannot read the root, the operator's home or the runner's repository. Not ready, or with no
+`--harness-user` at all, the runner never runs a Claude Code tool turn as its own account (plan #473): each is refused
+and answered text only (the packet names no tools), and stderr at launch, `status` (`Harness identity: REFUSED …
+(<reason>)`, and `Tool turns: … N because the separate harness user was not ready`) and a notice under each such
+answer say why. Ready, they say the user and each trace row carries `harness: {user}`. The exact values the runner
+holds (its own SecretRef values, the harness's login from `<config>/.credentials.json`, the root's MCP credentials) are
+withheld from every reply like credential-shaped text, refused at the outbound check, and scrubbed from recorded tool
+excerpts.
 The setup (after the root step, `lanes/harness-user/root-steps.sh`) is `node --loader ./scripts/slice-ts-loader.mjs
 tests/preview/harness-user.mjs setup <operator profile.json> /Users/Shared/instar-harness/profile.json`; the new profile
 needs its own activation and its own login (a fresh login through the launcher, or the one move of the old login,

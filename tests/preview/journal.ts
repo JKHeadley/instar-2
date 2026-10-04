@@ -1114,7 +1114,7 @@ export type JournalRecord =
    * trace records each tool call, its admission and its result after the turn. */
   | { kind: 'tool-turn'; phase: 'reserved'; id: string; attempt: number; calls: number; delegation?: ToolDelegation;
       mcp?: { servers: string[]; reads: number; digest: string }; workspace?: ToolWorkspaceRow; at: number }
-  | { kind: 'tool-turn'; phase: 'refused'; id: string; reason: 'call cap' | 'prompt size'; at: number }
+  | { kind: 'tool-turn'; phase: 'refused'; id: string; reason: 'call cap' | 'prompt size' | 'mcp credential unavailable' | 'harness identity unavailable'; at: number }
   | { kind: 'tool-turn'; phase: 'trace'; id: string; attempt: number; calls: ToolTraceCall[]; consistent: boolean;
       edges?: ToolChildEdge[]; egress?: ToolEgressRequest[]; egressRequests?: number; egressLimited?: string; workspaceBytes: number | null;
       session?: ToolSessionRow; volume?: ToolVolumeRow; harness?: ToolHarnessRow; at: number }
@@ -2883,7 +2883,10 @@ export const TOOL_ATTEMPTS_PARTIAL_MEANING = 'The first tool calls this reply\'s
 const attemptExcerpt = (text: string) => text.length > TOOL_ATTEMPT_EXCERPT_CHARS ? `${text.slice(0, TOOL_ATTEMPT_EXCERPT_CHARS)}…` : text;
 export interface ToolTurnStats { invocations: number; reservedCalls: number; refusedCap: number; refusedPrompt?: number;
   /** Turns answered without tools because an MCP server's SecretRef could not be opened from custody. */
-  refusedCredential?: number; toolCalls: number;
+  refusedCredential?: number;
+  /** Plan #473: turns answered without tools because the separate harness user was not ready, and the latest such
+   * answers' ids (bounded), so each answer can carry its own notice. */
+  refusedIdentity?: number; identityRefused?: string[]; toolCalls: number;
   toolRefusals: number; inconsistent: number; open: string[];
   /** Rule 114: subagent edges the traces recorded, by how each ended (absent until a turn started one). */
   children?: { started: number; returned: number; cancelled: number; unknown: number };
@@ -2953,6 +2956,8 @@ function projectToolTurn(view: JournalView, row: Extract<JournalRecord, { kind: 
     if (row.reason === 'call cap') view.toolTurns = { ...stats, refusedCap: stats.refusedCap + 1 };
     else if (row.reason === 'prompt size') view.toolTurns = { ...stats, refusedPrompt: (stats.refusedPrompt ?? 0) + 1 };
     else if (row.reason === 'mcp credential unavailable') view.toolTurns = { ...stats, refusedCredential: (stats.refusedCredential ?? 0) + 1 };
+    else if (row.reason === 'harness identity unavailable') view.toolTurns = { ...stats, refusedIdentity: (stats.refusedIdentity ?? 0) + 1,
+      identityRefused: [...(stats.identityRefused ?? []), row.id].slice(-16) };
     else throw Error('preview journal: tool turn refusal');
     return;
   }
@@ -4730,6 +4735,9 @@ export interface PreviewPorts {
     | { state: 'complete' | 'rejected' | 'uncertain'; failureClass?: ModelFailureClass; usage?: ModelUsage }>;
   /** Typed seam for evidence other builds own (build 5: waiver authorizations and acts). Absent: the duty is recorded unavailable. */
   retrospectiveEvidence?(): RetroSiblingEvidence;
+  /** Plan #473 (2): whether a reply carries an exact secret value the runner holds (its own credentials, the harness's
+   * login, the root's MCP credentials). Such a reply is withheld exactly like credential-shaped text. */
+  heldSecret?(text: string): boolean;
   /** Rule 100: vault-first custody of the credentials in a verified operator message, before it is recorded. */
   secrets?: { custody(input: { text: string; raw: string; source: string }): { text: string; raw: string; custody?: IntakeCustody } };
   boundary?(stage: string): void;
@@ -7443,7 +7451,7 @@ export function createJournalWorker(journal: ReturnType<typeof openPreviewJourna
           // a check naming a credential keeps the secrets exception (Rule 86) below.
           let decision: ReplyDecision['outcome'] | undefined, capRefused = false;
           // The exact credential-shape floor runs before provider disclosure on every replay.
-          const credentialShape = redact(reply).count > 0;
+          const credentialShape = redact(reply).count > 0 || ports.heldSecret?.(reply) === true;
           if (credentialShape) {
             if (!previous) journal.append({ kind: 'reply-check', id: turn.id, result: { verdict: 'violation',
               ruleIds: ['credential'], confidence: 1, path: 'holding', latencyMs: 0, candidateDigest }, at: ports.now() });

@@ -74,6 +74,11 @@ it('derives and keeps the tools activation when the recorded grant covers the to
   expect(invocationPolicyDigest).not.toBe(conversationDigest);
   expect(rest).toEqual(conversationRest);
   expect(on.status).toMatch(/Tools: the harness's full built-in set \(27 tools, each call decided at the admission hook\) and the root's MCP servers/u);
+  // Plan #473: with no --harness-user the granted tools are refused, never run as the operator's account, and the launch
+  // and status say so (the harness-user cases in harness-user.test.ts prove the refusal and its neighbour).
+  const refusal = /Harness identity: REFUSED, tool turns are not run, because Claude Code would run as the operator's account \(no --harness-user was given\)/u;
+  expect(on.status).toMatch(refusal);
+  expect(on.run.stderr).toMatch(refusal);
   // A grant with an expiry still ahead resolves the same way (the neighbour of the live-expiry withdrawal below).
   const dated = await launch('dated', record => withToolsGrant(record, false, Date.now() + 3_600_000));
   expect(dated.run.status, dated.run.stderr).toBe(0);

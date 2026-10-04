@@ -52,8 +52,11 @@ admission and the harness's open could be followed. That race is closed by the k
 own macOS user (`--harness-user _instarharness`): every open the harness or its file tools make is checked as that
 user, which cannot read or write the operator account's home, keys, vault, agent configurations or preview roots, so
 a swapped path reaches only the harness's own area (its login, its state and the workspace) and files every local user
-can read. Without that switch, or when the user is not ready, the harness runs as the operator's account, the race is
-open, and the launch and the status answer say so (`docs/defects/2026-10-03-file-tool-swap-race.md`). Separately, and narrowly: the tool runner's
+can read. The harness's own login is among the exact values the runner holds: a reply or outbound text carrying it is
+withheld like credential-shaped text, so a login value read through the race never leaves in a reply. Without that
+switch, or when the user is not ready, a Claude Code tool turn is refused, never run as the operator's account: the
+answer is text only, and the launch, the status answer and a notice under that answer name the reason
+(`docs/defects/2026-10-03-file-tool-swap-race.md`). Separately, and narrowly: the tool runner's
 journal and vault are ciphertext under the storage key, which only the runner's environment holds, and an MCP server's
 credential given as a SecretRef is resolved by the runner and handed to that server's launcher alone, not written to
 the launch configuration. The admission record can hold a credential a tool result carried, in plaintext, until the

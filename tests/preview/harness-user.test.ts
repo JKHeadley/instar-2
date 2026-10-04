@@ -15,9 +15,9 @@ import { createResourceOwner, RESOURCE_CEILINGS, hostQuery } from '../../scripts
 // @ts-expect-error Physical host JavaScript stays outside pure core.
 import { createProcessInventory } from '../../scripts/process-inventory.mjs';
 // @ts-expect-error The runner side stays plain JavaScript.
-import { harnessExecutable, harnessReadiness, harnessStatusLine, HARNESS_HOOK_FILES, HARNESS_OFF_LINE, HARNESS_PROFILE, harnessSocketDirectory, removeHarnessState, grantVolume, HARNESS_VOLUME_MARK } from './harness-user.mjs';
+import { harnessCredentialValues, harnessExecutable, harnessReadiness, harnessRefusedNotice, harnessStatusLine, heldSecretIn, scrubHeld, HARNESS_HOOK_FILES, HARNESS_OFF_REASON, HARNESS_PROFILE, harnessSocketDirectory, removeHarnessState, grantVolume, HARNESS_VOLUME_MARK } from './harness-user.mjs';
 // @ts-expect-error The runner side stays plain JavaScript.
-import { prepareToolTurn, pruneToolTurns, serveMcpSecrets, TOOL_MCP_LAUNCHER, TOOL_TURN_PRIVATE } from './tool-turn.mjs';
+import { prepareToolTurn, pruneToolTurns, runToolTurn, serveMcpSecrets, toolStatusLines, TOOL_MCP_LAUNCHER, TOOL_TURN_PRIVATE } from './tool-turn.mjs';
 
 const scratch = realpathSync(mkdtempSync(join(tmpdir(), 'harness-user-')));
 afterAll(() => rmSync(scratch, { recursive: true, force: true }));
@@ -61,12 +61,13 @@ describe('readiness: the switch is decided from live state, a refusal names its 
     expect(ready({ probe: probe(null, `${HARNESS_PROFILE}/config`) }).reason).toBe(`the harness user cannot read ${HARNESS_PROFILE}/config`);
     expect(ready({ probe: probe('/Users/operator', null) }).reason).toBe('the harness user can read /Users/operator');
   });
-  it('says which identity the harness runs as, and a fallback loudly with its reason', () => {
+  it('says which identity the harness runs as, and a refusal (never the operator\'s account) loudly with its reason', () => {
     expect(harnessStatusLine({ ready: true, user: '_instarharness' })).toMatch(/own macOS user \(_instarharness\)/u);
-    expect(harnessStatusLine({ ready: false, reason: 'no user x' })).toMatch(/^Harness identity: FALLBACK.*no user x/u);
+    expect(harnessStatusLine({ ready: false, reason: 'no user x' })).toMatch(/^Harness identity: REFUSED, tool turns are not run.*\(no user x\).*text only/u);
     expect(harnessStatusLine(null)).toBeNull();
-    // With no switch at all the launch is not silent: the race is named open.
-    expect(HARNESS_OFF_LINE).toMatch(/^Harness identity: OFF, Claude Code runs as the operator's account \(no --harness-user\).*race is open\.$/u);
+    // With no switch at all the launch is not silent: tool turns are refused, and the reason names the missing switch.
+    expect(harnessStatusLine({ ready: false, reason: HARNESS_OFF_REASON })).toMatch(/REFUSED.*no --harness-user was given/u);
+    expect(harnessRefusedNotice('no user x')).toMatch(/^Tools: not run for this answer.*\(no user x\)/u);
   });
 });
 
@@ -262,5 +263,59 @@ describe('the journal records which identity the harness ran as', () => {
     expect(journalWith({})).toThrow(/harness identity/u);
     expect(journalWith({ user: '' })).toThrow(/harness identity/u);
     expect(journalWith({ user: 'a', fallback: 'b' })).toThrow(/harness identity/u);
+  });
+});
+
+describe('plan #473: a tool turn never runs as the operator\'s account', () => {
+  const journalOf = (maxCalls: number) => openPreviewJournal(join(fresh(`refuse-${Math.random().toString(16).slice(2)}`), 'journal.encrypted'),
+    new Uint8Array(32).fill(5), { kind: 'genesis', bot: '1', chat: '2', operator: '2', grant: 'grant:x', configurationDigest: 'sha256:x',
+      expires: 9_999_999_999_999, maxCalls, maxReplies: 5, maxTurns: 5, maxBytes: 32768, cursor: 0 });
+  const turnWith = async (journal: ReturnType<typeof openPreviewJournal>, harness: unknown, admission?: unknown) => {
+    let launched = 0;
+    const out = await runToolTurn({ journal, root: scratch, id: 'telegram:2:update:9', prepared: 'x', promptLimit: 1 << 20, deniedRoots: [],
+      invoke: async () => { launched++; return { state: 'complete' }; }, fallback: async () => ({ result: 'text-only' }), now: () => 1,
+      redactText: (text: string) => text, harness, ...(admission ? { admission } : {}) });
+    return { out, launched, refused: (journal.view.toolTurns as { refusedIdentity?: number; identityRefused?: string[]; refusedCap: number } | undefined) };
+  };
+  it('refuses a Claude Code turn whose harness user is absent or not ready: text only, recorded with its turn, nothing launched', async () => {
+    const journal = journalOf(400);
+    for (const reason of [HARNESS_OFF_REASON, 'no user _instarharness']) {
+      const { out, launched } = await turnWith(journal, { ready: false, reason, user: null });
+      expect([out, launched]).toEqual([{ result: 'text-only' }, 0]);
+    }
+    expect(journal.view.toolTurns).toMatchObject({ invocations: 0, refusedIdentity: 2, identityRefused: ['telegram:2:update:9', 'telegram:2:update:9'] });
+    expect(journal.view.calls).toBe(0);
+    expect(toolStatusLines(journal.view, true)[1]).toMatch(/2 because the separate harness user was not ready/u);
+  });
+  it('does not refuse for identity when the harness is its own user, or the doorway\'s harness is checkpointed (the next check decides)', async () => {
+    const ready = await turnWith(journalOf(1), { ready: true, user: '_instarharness', uid: 498 });
+    expect(ready.refused).toMatchObject({ refusedCap: 1 });
+    expect(ready.refused?.refusedIdentity).toBeUndefined();
+    const checkpointed = await turnWith(journalOf(1), { ready: false, reason: 'the selected doorway is not the Claude Code harness' },
+      { maxCalls: 8, harness: 'codex-cli', confinedShell: true });
+    expect(checkpointed.refused).toMatchObject({ refusedCap: 1 });
+    expect(checkpointed.refused?.refusedIdentity).toBeUndefined();
+  });
+});
+
+describe('plan #473 (2): the harness login is a held value', () => {
+  const login = 'sk-ant-oat01-SyntheticHarnessLoginValue0123456789abcdef';
+  const refresh = 'sk-ant-ort01-SyntheticRefreshValue0123456789abcdefghij';
+  it('reads every long string of the harness\'s credential file, and nothing when there is no login', () => {
+    const config = fresh('harness-config');
+    expect(harnessCredentialValues(config)).toEqual([]);
+    writeFileSync(join(config, '.credentials.json'), JSON.stringify({ claudeAiOauth: { accessToken: login, refreshToken: refresh, expiresAt: 1, scopes: ['user:inference'],
+      subscriptionType: 'max' } }), { mode: 0o600 });
+    expect(harnessCredentialValues(config)).toEqual([login, refresh]);
+    writeFileSync(join(config, '.credentials.json'), 'not json', { mode: 0o600 });
+    expect(harnessCredentialValues(config)).toEqual([]);
+  });
+  it('finds a held value as written, JSON-escaped or without its kind prefix, and nothing else', () => {
+    expect(heldSecretIn(`here: ${login}`, [login])).toBe(true);
+    expect(heldSecretIn(`here: ${login.slice('sk-ant-oat01-'.length)}`, [login])).toBe(true);
+    expect(heldSecretIn(JSON.stringify({ v: 'a"b\\c-0123456789abcdef' }), ['a"b\\c-0123456789abcdef'])).toBe(true);
+    expect(heldSecretIn('an ordinary answer about sk-ant tokens', [login, refresh])).toBe(false);
+    expect(heldSecretIn(login.slice(0, 20), [login])).toBe(false);
+    expect(scrubHeld(`a ${login} b ${login.slice(13)}`, [login])).toBe('a [redacted credential] b [redacted credential]');
   });
 });
