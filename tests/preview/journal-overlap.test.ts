@@ -83,34 +83,59 @@ const RECORDED_RUNNERS = readFileSync(join(import.meta.dirname, 'fixtures', 'sta
   .split('\n').filter(Boolean).map(line => `${line.slice(line.indexOf(' ') + 1)}\n`);
 const RECORDED_ROOTS = ['proofroom1-q-20261004-033411', 'proofroom2-ps-20261004-022506', 'canary-copy-20261004-042456'];
 
+/** The roots that exist at the observation, as the runner's own lstat would report them. */
+const existing = (...paths: string[]) => (path: string) => paths.includes(path);
+const RECORDED_EXISTING = existing(...RECORDED_ROOTS.map(name => `${LANES}/${name}`));
+
 it('a launch is running only while its pid is the runner of exactly that root (recorded runner command lines)', () => {
   expect(RECORDED_RUNNERS.length).toBe(3);
-  expect(RECORDED_RUNNERS.map((command, index) => ownedProcessOf(command, `${LANES}/${RECORDED_ROOTS[index]}`)))
+  expect(RECORDED_RUNNERS.map((command, index) => ownedProcessOf(command, `${LANES}/${RECORDED_ROOTS[index]}`, RECORDED_EXISTING)))
     .toEqual(['present', 'present', 'present']);
   // A gone pid, or one reused by something that is not a runner, is absent: the row is stale, never running.
-  expect(ownedProcessOf(null, `${LANES}/proofroom2-ps-20261004-022506`)).toBe('absent');
-  expect(ownedProcessOf('/usr/sbin/cfprefsd agent', `${LANES}/proofroom2-ps-20261004-022506`)).toBe('absent');
-  expect(ownedProcessOf('', `${LANES}/proofroom2-ps-20261004-022506`)).toBe('absent');
+  expect(ownedProcessOf(null, `${LANES}/proofroom2-ps-20261004-022506`, RECORDED_EXISTING)).toBe('absent');
+  expect(ownedProcessOf('/usr/sbin/cfprefsd agent', `${LANES}/proofroom2-ps-20261004-022506`, RECORDED_EXISTING)).toBe('absent');
+  expect(ownedProcessOf('', `${LANES}/proofroom2-ps-20261004-022506`, RECORDED_EXISTING)).toBe('absent');
   // A live runner of another root never vouches for this one: neither a different root nor one this root's path
   // is a prefix of (the old substring test read `--root <root>-copy` as present for `<root>`).
-  expect(ownedProcessOf(RECORDED_RUNNERS[1], `${LANES}/proofroom2-ps-20261004-02250`)).toBe('unknown');
-  expect(ownedProcessOf(RECORDED_RUNNERS[1], `${LANES}/proofroom2-ps-20261004-022506`.slice(0, -1))).toBe('unknown');
-  expect(ownedProcessOf(RECORDED_RUNNERS[0], `${LANES}/proofroom2-ps-20261004-022506`)).toBe('unknown');
+  expect(ownedProcessOf(RECORDED_RUNNERS[1], `${LANES}/proofroom2-ps-20261004-02250`, RECORDED_EXISTING)).toBe('unknown');
+  expect(ownedProcessOf(RECORDED_RUNNERS[1], `${LANES}/proofroom2-ps-20261004-022506`.slice(0, -1), RECORDED_EXISTING)).toBe('unknown');
+  expect(ownedProcessOf(RECORDED_RUNNERS[0], `${LANES}/proofroom2-ps-20261004-022506`, RECORDED_EXISTING)).toBe('unknown');
   expect(ownedProcessOf(RECORDED_RUNNERS[1].replace(`${LANES}/proofroom2-ps-20261004-022506`, `${LANES}/proofroom2-ps-20261004-022506-copy`),
-    `${LANES}/proofroom2-ps-20261004-022506`)).toBe('unknown');
+    `${LANES}/proofroom2-ps-20261004-022506`, RECORDED_EXISTING)).toBe('unknown');
+  // A possible root that exists but cannot be ruled out (here: every candidate reads as existing) is unknown.
+  expect(ownedProcessOf(RECORDED_RUNNERS[1], `${LANES}/proofroom2-ps-20261004-022506`, () => true)).toBe('unknown');
 });
 
 it('a root containing spaces is matched whole: its own runner is present, its shorter sibling is not', () => {
   const spaced = RECORDED_RUNNERS[1].replace(`${LANES}/proofroom2-ps-20261004-022506`, '/tmp/runner copy');
-  expect(ownedProcessOf(spaced, '/tmp/runner copy')).toBe('present');
-  expect(ownedProcessOf(spaced, '/tmp/runner')).toBe('unknown');
-  expect(ownedProcessOf('node tests/preview/journal-agent.mjs run --root /tmp/runner copy --bot-id 123', '/tmp/runner')).toBe('unknown');
-  expect(ownedProcessOf('node tests/preview/journal-agent.mjs run --root /tmp/runner copy --bot-id 123', '/tmp/runner copy')).toBe('present');
+  const both = existing('/tmp/runner', '/tmp/runner copy');
+  expect(ownedProcessOf(spaced, '/tmp/runner copy', both)).toBe('present');
+  expect(ownedProcessOf(spaced, '/tmp/runner', both)).toBe('unknown');
+  expect(ownedProcessOf('node tests/preview/journal-agent.mjs run --root /tmp/runner copy --bot-id 123', '/tmp/runner', both)).toBe('unknown');
+  expect(ownedProcessOf('node tests/preview/journal-agent.mjs run --root /tmp/runner copy --bot-id 123', '/tmp/runner copy', both)).toBe('present');
   // The root as the last argument, and a script path holding a space, still read whole.
-  expect(ownedProcessOf('node /tmp/my tree/tests/preview/journal-agent.mjs run --root /tmp/runner copy', '/tmp/runner copy')).toBe('present');
+  expect(ownedProcessOf('node /tmp/my tree/tests/preview/journal-agent.mjs run --root /tmp/runner copy', '/tmp/runner copy', both)).toBe('present');
   // Ambiguous lines stay unknown: a repeated --root, or no --root at all.
-  expect(ownedProcessOf('node tests/preview/journal-agent.mjs run --root /tmp/a --root /tmp/a', '/tmp/a')).toBe('unknown');
-  expect(ownedProcessOf('node tests/preview/journal-agent.mjs inspect', '/tmp/a')).toBe('unknown');
+  expect(ownedProcessOf('node tests/preview/journal-agent.mjs run --root /tmp/a --root /tmp/a', '/tmp/a', existing('/tmp/a'))).toBe('unknown');
+  expect(ownedProcessOf('node tests/preview/journal-agent.mjs inspect', '/tmp/a', existing('/tmp/a'))).toBe('unknown');
+});
+
+it('a root holding " --" never lets its runner vouch for the shorter sibling root (round-2 review pair)', () => {
+  // One argv value `/tmp/runner --copy`, flattened by ps exactly as the reviewer replayed it.
+  const line = 'node tests/preview/journal-agent.mjs run --root /tmp/runner --copy --bot-id 123';
+  // Both roots on disk: the text cannot say which one this runner serves, so neither is claimed running.
+  const both = existing('/tmp/runner', '/tmp/runner --copy');
+  expect(ownedProcessOf(line, '/tmp/runner', both)).toBe('unknown');
+  expect(ownedProcessOf(line, '/tmp/runner --copy', both)).toBe('unknown');
+  // Only the complete root on disk: it is recognised whole; the missing shorter path is not a root.
+  expect(ownedProcessOf(line, '/tmp/runner --copy', existing('/tmp/runner --copy'))).toBe('present');
+  // Only the shorter root on disk (the longer one never existed): the runner is the shorter root's.
+  expect(ownedProcessOf(line, '/tmp/runner', existing('/tmp/runner'))).toBe('present');
+  // The packet never shows the stopped shorter-root runner as running when its pid now runs the longer root.
+  const item = concurrentWorkItem({ now: 2_000_000, current: { owner: 'me', launch: 1_000_000, conversation: 'telegram/bot-1/chat-2' },
+    others: [{ owner: 'runner', launch: 1_500_000, pid: 42, conversation: 'telegram/bot-1/chat-2',
+      process: ownedProcessOf(line, '/tmp/runner', both) }], scanned: 1, truncated: false, unreadable: 0 });
+  expect(item.rows[1]).toMatchObject({ owner: 'runner', state: 'unknown' });
 });
 
 it('replays the recorded P114b packet: a runner relaunched after a process snapshot is running at the send, stopped after its exit', () => {

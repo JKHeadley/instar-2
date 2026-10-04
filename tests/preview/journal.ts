@@ -4629,16 +4629,23 @@ export type OwnedProcess = 'present' | 'absent' | 'unknown';
  * Whether one process command line (`ps -o command=`, or null when the pid has no process) is the runner of
  * `root`. Its `--root` argument must equal `root` exactly: a substring test would let a live runner of
  * `<root>-copy` vouch for a gone runner of `<root>` (Rule 114: never claim work nobody is doing). `ps` joins
- * arguments with spaces, so the value is everything after `--root ` up to the next ` --` option or the end of
- * the line, which keeps a root containing spaces whole. Another spelling of the root, a value holding ` --`
- * itself, or a repeated `--root` cannot be told apart, so it is `unknown`, never shown as running.
+ * arguments with spaces, so text alone cannot say where the root ends: every point before a ` --` (or the end
+ * of the line) is a possible end, and a path may itself hold ` --` (`/tmp/runner --copy` is one valid root).
+ * `root` is present only when it is one of those possible values and no other possible value is a path that
+ * exists (`exists`, read at this observation): a live runner of `/tmp/runner --copy` therefore never vouches for
+ * `/tmp/runner` while both roots are there, and a lone root is still recognised whole. Any other ambiguity
+ * (another spelling of the root, a repeated `--root`, an unreadable candidate) is `unknown`, never running.
  */
-export function ownedProcessOf(command: string | null, root: string): OwnedProcess {
+export function ownedProcessOf(command: string | null, root: string, exists: (path: string) => boolean): OwnedProcess {
   if (command === null) return 'absent';
   const line = command.replace(/[\r\n]+$/u, '');
   if (!/(^|[\s/])journal-agent\.mjs(\s|$)/u.test(line)) return 'absent';
-  const values = [...line.matchAll(/(?:^|\s)--root (.*?)(?= --|$)/gsu)].map(match => match[1]);
-  return values.length === 1 && values[0] === root ? 'present' : 'unknown';
+  const starts = [...line.matchAll(/(?:^|\s)--root /gu)];
+  if (starts.length !== 1) return 'unknown';
+  const after = line.slice(starts[0]!.index! + starts[0]![0].length);
+  const candidates = [...after.matchAll(/ --/gu)].map(match => after.slice(0, match.index)).concat(after).filter(Boolean);
+  if (!candidates.includes(root)) return 'unknown';
+  return candidates.every(candidate => candidate === root || !exists(candidate)) ? 'present' : 'unknown';
 }
 /** Most rows one packet carries (the current runner plus the most relevant others). */
 export const CONCURRENT_WORK_ROWS = 6;

@@ -387,14 +387,18 @@ const installedCode = () => {
 const OWNED_ROOT_LIMIT = 256, OWNED_RUN_LOG_BYTES = 1024 * 1024;
 /** The conversation a runner polls, recorded on its launch row so a sibling can see a shared conversation. */
 const conversationOf = genesis => `telegram/bot-${genesis.bot}/chat-${genesis.chat}`;
+/** Whether a possible root another runner's flattened command line could name exists now; only a path proven
+ * missing (ENOENT, ENOTDIR, or a name too long to exist) is ruled out, so an unreadable one keeps it unknown. */
+const PATH_MISSING = new Set(['ENOENT', 'ENOTDIR', 'ENAMETOOLONG']);
+const pathExists = path => { try { lstatSync(path); return true; } catch (error) { return !PATH_MISSING.has(error?.code); } };
 /** A launch with no exit row is running only while its recorded pid is still that root's runner. */
 const ownedProcess = (pid, root) => {
   if (!Number.isSafeInteger(pid) || pid <= 0) return 'unknown';
   try {
     // The exact --root argument decides (ownedProcessOf); another spelling of the root is unknown, never guessed.
     return ownedProcessOf(execFileSync('ps', ['-ww', '-p', String(pid), '-o', 'command='], { encoding: 'utf8',
-      stdio: ['ignore', 'pipe', 'ignore'], timeout: 2000 }), root);
-  } catch (error) { return error?.status === 1 ? ownedProcessOf(null, root) : 'unknown'; }
+      stdio: ['ignore', 'pipe', 'ignore'], timeout: 2000 }), root, pathExists);
+  } catch (error) { return error?.status === 1 ? ownedProcessOf(null, root, pathExists) : 'unknown'; }
 };
 const ownedActivity = root => {
   const parent = dirname(root);
