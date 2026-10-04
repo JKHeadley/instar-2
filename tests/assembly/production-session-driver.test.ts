@@ -12,7 +12,7 @@ import type { SessionIO, SessionJournal } from '../../src/assembly/production-se
 const hash = (text: string) => `sha256:${createHash('sha256').update(text).digest('hex')}`;
 const fixtureRoots: string[] = [];
 afterEach(() => { for (const root of fixtureRoots.splice(0)) rmSync(root, { recursive: true, force: true }); });
-function fixture(framework: 'claude-code' | 'codex-cli' = 'claude-code') {
+function fixture(framework: 'claude-code' | 'codex-cli' = 'claude-code', extra: Readonly<{ launchVia?: readonly string[] }> = {}) {
   const f = assemblyRuntimeFixture(); let now = 1000, stopped = false, pane = '❯ ', sends = 0;
   const root = mkdtempSync(join(tmpdir(), 'instar-session-test-')); fixtureRoots.push(root);
   const homes = { a: join(root, 'login-a'), b: join(root, 'login-b') };
@@ -62,7 +62,7 @@ function fixture(framework: 'claude-code' | 'codex-cli' = 'claude-code') {
     framework, executable: '/synthetic', cwd: '/work', home: homes.a, configHome: homes.a,
     context: f.c, io, now: () => now, stopped: () => stopped, resolveIntake: () => 'hello',
     maxSessions: 1, turnDeadlineMs: 1000, readyTimeoutMs: 1000, protectedSessions: [],
-    continuation: () => ({ text: 'Agent-owned prior exchange and work', source: 'agent-root' }) };
+    continuation: () => ({ text: 'Agent-owned prior exchange and work', source: 'agent-root' }), ...extra };
   const driver = createProductionSessionDriver(config);
   const launch = () => value(driver.launch({ operation: 'op', claim: 'topic', artifact: 'sha256:test',
     incarnation: 'inc', workingScope: '/work', handles: [] }));
@@ -513,4 +513,22 @@ it.each(['claude-code', 'codex-cli'] as const)('an admitted %s session launches 
     toolAdmission: { ...toolAdmission, command: () => "/node 'x'" } });
   expect(quoted.launch({ operation: 'op2', claim: 'topic2', artifact: 'sha256:test', incarnation: 'inc2', workingScope: '/work', handles: [] }).kind)
     .not.toBe('Success');
+});
+
+it('runs the harness through the configured launch command (the harness-user bridge), and only then', () => {
+  const via = ['/usr/local/bin/node', '/repo/tests/preview/harness-session.mjs', '_instarharness', '/h/profile.json', '--'];
+  const bridged = fixture('claude-code', { launchVia: via });
+  bridged.launch();
+  const pane = bridged.calls.find(row => row[0] === 'new-session') ?? [];
+  const at = pane.indexOf('/synthetic');
+  expect(pane.slice(at - via.length, at)).toEqual(via);
+  // The bridge receives the same clean environment the harness would: it precedes the bridge, never follows it.
+  expect(pane.slice(0, at - via.length)).toContain(`CLAUDE_CONFIG_DIR=${bridged.homes.a}`);
+  const plain = fixture();
+  plain.launch();
+  const direct = plain.calls.find(row => row[0] === 'new-session') ?? [];
+  expect(direct).not.toContain('/repo/tests/preview/harness-session.mjs');
+  expect(direct[direct.indexOf('/synthetic') - 1]).toMatch(/^INSTAR_SESSION_GROUNDING_FILE=/u);
+  expect(() => fixture('claude-code', { launchVia: ['relative', '--'] })).toThrow(/exact launch command/u);
+  expect(() => fixture('claude-code', { launchVia: [] })).toThrow(/exact launch command/u);
 });

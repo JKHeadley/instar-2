@@ -15,7 +15,11 @@ import { createResourceOwner, RESOURCE_CEILINGS, hostQuery } from '../../scripts
 // @ts-expect-error Physical host JavaScript stays outside pure core.
 import { createProcessInventory } from '../../scripts/process-inventory.mjs';
 // @ts-expect-error The runner side stays plain JavaScript.
-import { harnessExecutable, harnessReadiness, harnessStatusLine, HARNESS_PROFILE, removeHarnessState, grantVolume, HARNESS_VOLUME_MARK, harnessGate, HARNESS_RECHECK_MS, readHarnessLogin, storeHarnessLogin, plaintextLogins, closeOperatorTmp, tmpGuard } from './harness-user.mjs';
+import { harnessExecutable, harnessReadiness, harnessStatusLine, HARNESS_PROFILE, removeHarnessState, grantVolume, HARNESS_VOLUME_MARK, harnessGate, HARNESS_RECHECK_MS, readHarnessLogin, storeHarnessLogin, plaintextLogins, closeOperatorTmp, tmpCanary, HARNESS_TMP } from './harness-user.mjs';
+// @ts-expect-error The runner side stays plain JavaScript.
+import { prepareSessionAdmission, sessionAdmissionCommand } from './session-admission.mjs';
+// @ts-expect-error The runner side stays plain JavaScript.
+import { harnessSessionCommand } from './harness-session.mjs';
 // @ts-expect-error The runner side stays plain JavaScript.
 import { prepareToolTurn, pruneToolTurns, runToolTurn, TOOL_TURN_PRIVATE } from './tool-turn.mjs';
 
@@ -62,15 +66,20 @@ describe('readiness: the switch is decided from live state, a refusal names its 
   const profile = { version: '2.1.280', artifact: 'sha256:good', executable: harnessExecutable('2.1.280'),
     home: `${HARNESS_PROFILE}/home`, configDirectory: `${HARNESS_PROFILE}/config`, workingDirectory: `${HARNESS_PROFILE}/work` };
   const exec = (uid: string) => (file: string) => { if (file === '/usr/bin/id') { if (uid === 'none') throw Error('no such user'); return `${uid}\n`; } throw Error(file); };
-  const install = { launcher: () => 'sha256:l', hook: () => '/h/hook/x/tool-admission-hook.mjs' };
+  const install = { launcher: () => 'sha256:l', hook: () => '/h/hook/x/tool-admission-hook.mjs', tmp: () => HARNESS_TMP };
   const refusedPaths = ['/root', '/Users/operator', '/h/custody', '/h/custody/login.json', '/private/tmp/closed'];
-  const probe = (exposed: string | null, unreadable: string | null) => (specs: string[]) => specs.map(spec => {
+  // The canary made after the sweep: the kernel's inherited entry refuses it (EACCES), unless `canaryOpen` says otherwise.
+  const CANARY = '/private/tmp/instar-harness-canary-000000000000';
+  let removed = 0;
+  const canary = () => ({ path: CANARY, remove: () => { removed++; } });
+  const probe = (exposed: string | null, unreadable: string | null, canaryRow: { ok: boolean; code: string | null } = { ok: false, code: 'EACCES' }) => (specs: string[]) => specs.map(spec => {
     const path = spec.slice(2), denied = refusedPaths.includes(path);
+    if (path === CANARY) return { path, mode: spec[0], ...canaryRow };
     return { path, mode: spec[0], ok: path === unreadable ? false : path === exposed ? true : !denied, code: null };
   });
   const ready = (overrides: Record<string, unknown> = {}) => harnessReadiness({ profile, denied: ['/root', '/Users/operator'], exec: exec('498'),
     install, probe: probe(null, null), digestOf: () => 'sha256:good', login: () => 'token', custody: ['/h/custody', '/h/custody/login.json'],
-    plaintext: () => [], tmp: () => ({ entries: ['/private/tmp/closed'], failed: 0 }), ...overrides });
+    plaintext: () => [], tmp: () => ({ entries: ['/private/tmp/closed'], failed: 0 }), canary, ...overrides });
   it('is ready when the user, launcher, hook, pinned copy, custody login, closed /private/tmp and the kernel\'s answers all hold', () => {
     expect(ready()).toEqual({ ready: true, user: '_instarharness', uid: 498, hookScript: '/h/hook/x/tool-admission-hook.mjs' });
   });
@@ -80,7 +89,9 @@ describe('readiness: the switch is decided from live state, a refusal names its 
     expect(ready({ profile: { ...profile, executable: '/elsewhere/claude' } })).toMatchObject({ uid: 498, reason: expect.stringMatching(/installed harness copy/u) });
     expect(ready({ profile: { ...profile, home: '/Users/Shared/instar-preview-s2/home' } }).reason).toMatch(/harness area/u);
     expect(ready({ digestOf: () => 'sha256:other' }).reason).toMatch(/differs from the pinned artifact/u);
-    expect(ready({ install: { launcher: () => { throw Error('EACCES'); }, hook: install.hook } }).reason).toMatch(/cannot be installed/u);
+    expect(ready({ install: { ...install, launcher: () => { throw Error('EACCES'); } } }).reason).toMatch(/cannot be installed/u);
+    expect(ready({ install: { ...install, tmp: () => { throw Error('EACCES'); } } }).reason).toMatch(/cannot be installed/u);
+    expect(ready({ probe: probe(null, HARNESS_TMP) }).reason).toBe(`the harness user cannot read ${HARNESS_TMP}`);
     expect(ready({ probe: () => null }).reason).toMatch(/not permitted/u);
     expect(ready({ probe: probe(null, `${HARNESS_PROFILE}/config`) }).reason).toBe(`the harness user cannot read ${HARNESS_PROFILE}/config`);
     expect(ready({ probe: probe('/Users/operator', null) }).reason).toBe('the harness user can read /Users/operator');
@@ -95,8 +106,27 @@ describe('readiness: the switch is decided from live state, a refusal names its 
     expect(ready({ tmp: () => ({ entries: [], failed: 2 }) }).reason).toMatch(/2 of the runner's \/private\/tmp entries cannot be closed/u);
     expect(ready({ tmp: () => { throw Error('EACCES'); } }).reason).toMatch(/cannot be listed/u);
   });
+  it('is ready only while the kernel refuses a /private/tmp file created after the sweep, and always removes that canary', () => {
+    removed = 0;
+    expect(ready().ready).toBe(true);
+    // No inherited deny entry: the fresh world-readable canary is readable as the harness user, so nothing launches.
+    expect(ready({ probe: probe(null, null, { ok: true, code: null }) }).reason).toMatch(/does not refuse the harness user new \/private\/tmp files/u);
+    // A refusal that is not the kernel's permission answer (the canary vanished) proves nothing either.
+    expect(ready({ probe: probe(null, null, { ok: false, code: 'ENOENT' }) }).reason).toMatch(/does not refuse/u);
+    expect(ready({ canary: () => { throw Error('EEXIST'); } }).reason).toMatch(/canary cannot be created/u);
+    expect(ready({ probe: () => null }).reason).toMatch(/not permitted/u);
+    expect(removed).toBe(4);
+  });
+  it('makes the canary world-readable, in the given directory, under a fresh name', () => {
+    const base = fresh('canary-base');
+    const one = tmpCanary(base), two = tmpCanary(base);
+    expect(one.path).not.toBe(two.path);
+    expect(lstatSync(one.path).mode & 0o777).toBe(0o644);
+    one.remove(); two.remove();
+    expect([existsSync(one.path), existsSync(two.path)]).toEqual([false, false]);
+  });
   it('says which identity the harness runs as, and an unavailable one as held, never as a fallback', () => {
-    expect(harnessStatusLine({ ready: true, user: '_instarharness' })).toMatch(/own macOS user \(_instarharness\).*every local user may read stay readable/u);
+    expect(harnessStatusLine({ ready: true, user: '_instarharness' })).toMatch(/own macOS user \(_instarharness\).*new \/private\/tmp entries are denied to it from creation/u);
     expect(harnessStatusLine({ ready: false, reason: 'no user x' })).toMatch(/^Harness identity: UNAVAILABLE, so every Claude Code launch is held \(nothing runs as the operator's account\).*no user x/u);
     expect(harnessStatusLine({ ready: false, reason: 'no user x' })).not.toMatch(/FALLBACK/u);
     expect(harnessStatusLine(null)).toBeNull();
@@ -105,10 +135,10 @@ describe('readiness: the switch is decided from live state, a refusal names its 
 
 describe('the gate: an unavailable harness user holds every launch, a ready one runs it', () => {
   const profile = { expectedAccount: 'a@example.invalid', organization: 'org', plan: 'max' };
-  const gateWith = (results: Array<Record<string, unknown>>, clock: { t: number }) => {
+  const gateWith = (results: Array<Record<string, unknown>>, clock: { t: number }, adopt: ((uid: number) => void) | null = () => {}) => {
     const lines: string[] = [];
     const gate = harnessGate({ profile, denied: [], clock: () => clock.t, runner: () => 'operator', log: (line: string) => lines.push(line),
-      check: () => results.shift() ?? { ready: false, reason: 'exhausted' }, guard: { during: () => () => {} }, login: () => 'sk-ant-oat01-synthetic-login' });
+      check: () => results.shift() ?? { ready: false, reason: 'exhausted' }, login: () => 'sk-ant-oat01-synthetic-login', adopt });
     return { gate, lines };
   };
   it('throws instead of returning an identity while not ready, decides again only after the recheck interval, then runs as the harness user', () => {
@@ -135,6 +165,38 @@ describe('the gate: an unavailable harness user holds every launch, a ready one 
     expect(gate.uid).toBe(498);
     clock.t = HARNESS_RECHECK_MS;
     expect(() => gate.current()).toThrow(/id changed since launch \(498 to 499\)/u);
+  });
+  it('a user that did not exist at launch is handed to the census before its first launch, and once only', () => {
+    const clock = { t: 0 }, adopted: number[] = [];
+    const { gate } = gateWith([{ ready: false, reason: 'no user _instarharness' }, { ready: true, user: '_instarharness', uid: 498, hookScript: '/h' },
+      { ready: true, user: '_instarharness', uid: 498, hookScript: '/h' }], clock, uid => { adopted.push(uid); });
+    expect(gate.uid).toBeNull();
+    expect(() => gate.current()).toThrow(/no user _instarharness/u);
+    expect(adopted).toEqual([]);
+    clock.t = HARNESS_RECHECK_MS;
+    expect(gate.current()).toMatchObject({ ready: true, uid: 498 });
+    expect(adopted).toEqual([498]);
+    expect(gate.current()).toMatchObject({ ready: true, uid: 498 });
+    expect(adopted).toEqual([498]);
+  });
+  it('holds that late user while the census cannot take it, and when no census was given', () => {
+    const clock = { t: 0 };
+    const { gate } = gateWith([{ ready: false, reason: 'no user _instarharness' }, { ready: true, user: '_instarharness', uid: 498, hookScript: '/h' }],
+      clock, () => { throw Error('a different harness user is already in the census'); });
+    clock.t = HARNESS_RECHECK_MS;
+    expect(() => gate.current()).toThrow(/appeared after launch and the resource census cannot take its processes \(a different harness user/u);
+    const later = { t: 0 };
+    const none = gateWith([{ ready: false, reason: 'no user _instarharness' }, { ready: true, user: '_instarharness', uid: 498, hookScript: '/h' }],
+      later, null);
+    later.t = HARNESS_RECHECK_MS;
+    expect(() => none.gate.current()).toThrow(/no census to take it/u);
+  });
+  it('a user present (ready) at launch is the census\'s from attach, never adopted again', () => {
+    const adopted: number[] = [];
+    const { gate } = gateWith([{ ready: true, user: '_instarharness', uid: 498, hookScript: '/h' }], { t: 0 }, uid => { adopted.push(uid); });
+    expect(gate.uid).toBe(498);
+    expect(gate.current()).toMatchObject({ ready: true });
+    expect(adopted).toEqual([]);
   });
   it('a tool turn given an unavailable identity throws before preparing or launching anything', async () => {
     const root = fresh('held-turn');
@@ -179,21 +241,6 @@ describe('the login custody and the runner\'s /private/tmp entries', () => {
     expect(lstatSync(join(base, 'open-dir')).mode & 0o777).toBe(0o700);
     expect(lstatSync(join(base, 'link')).isSymbolicLink()).toBe(true);
   });
-  it('keeps closing them while any harness command runs, and stops once the last ends', async () => {
-    let sweeps = 0;
-    const guard = tmpGuard({ close: () => { sweeps++; }, intervalMs: 20 });
-    const first = guard.during(), second = guard.during();
-    expect(sweeps).toBe(2);
-    await new Promise(resolve => setTimeout(resolve, 70));
-    expect(sweeps).toBeGreaterThan(3);
-    first(); first();
-    expect(guard.running).toBe(1);
-    second();
-    const settled = sweeps;
-    await new Promise(resolve => setTimeout(resolve, 60));
-    expect(sweeps).toBe(settled);
-    expect(guard.running).toBe(0);
-  });
 });
 
 describe('the launcher', () => {
@@ -217,7 +264,20 @@ describe('the launcher', () => {
     expect(result.status).toBe(7);
     const env = readFileSync(join(out, 'env'), 'utf8');
     expect(env).toContain('MARK=a b'); expect(env).not.toContain('LEAK');
+    // Absent from the command's environment, the temporary directory is the harness area's own (`tmp` beside `bin`).
+    expect(env).toContain(`TMPDIR=${join(dir, '..', 'tmp').replace(/\/launcher\/\.\./u, '')}`);
+    expect(env).toContain('CLAUDE_CODE_TMPDIR=');
     expect(await waitFor(() => !alive(pidOf(out, 'same-group')) && !alive(pidOf(out, 'own-group')))).toBe(true);
+  });
+  it('keeps a temporary directory the command names, and refuses the terminal mode with no terminal', async () => {
+    const out = fresh('launcher-tmpdir');
+    const given = spawnSync(process.execPath, [launcher, `OUT=${out}`, 'CLAUDE_CODE_TMPDIR=/private/tmp/itt-000000000000', '--', fake, 'exit'],
+      { encoding: 'utf8', env: { PATH: '/usr/bin:/bin' } });
+    expect(given.status).toBe(7);
+    expect(readFileSync(join(out, 'env'), 'utf8')).toContain('CLAUDE_CODE_TMPDIR=/private/tmp/itt-000000000000\n');
+    const tty = spawnSync(process.execPath, [launcher, '--handoff', '--tty', `OUT=${out}`, '--', fake], { encoding: 'utf8', input: '{}\n', env: { PATH: '/usr/bin:/bin' } });
+    expect(tty.status).toBe(125);
+    expect(tty.stderr).toMatch(/--tty needs a terminal on stdout/u);
   });
   it('ends the whole tree, a group-leaver included, within the bound once its parent (sudo) is gone', async () => {
     const out = fresh('launcher-parent');
@@ -278,7 +338,7 @@ describe('the census and cleanup of a harness-user tree', () => {
   });
   // A member the runner's account cannot signal: a real process of this user that the fakes present as the harness
   // user's (its uid rewritten in the census, its signal refused), which "its launcher" ends 300 ms later.
-  const launchWithUnkillableMember = async (harnessUid: number | null) => {
+  const launchWithUnkillableMember = async (harnessUid: number | null, late = false) => {
     const area = fresh(`owner-${String(harnessUid)}`), pidFile = join(area, 'member');
     const memberPid = () => { try { return Number(readFileSync(pidFile, 'utf8').trim()) || null; } catch { return null; } };
     const fakeUid = 498;
@@ -300,7 +360,9 @@ describe('the census and cleanup of a harness-user tree', () => {
       process.kill(target, name);
     };
     const owner = createResourceOwner(RESOURCE_CEILINGS);
-    await owner.attach({ query, signal, ...(harnessUid === null ? {} : { harnessUid }) });
+    await owner.attach({ query, signal, ...(harnessUid === null || late ? {} : { harnessUid }) });
+    // A harness user that appeared after attach (harness-user.mjs harnessGate's adopt), before this launch.
+    if (late && harnessUid !== null) owner.adoptHarnessUid(harnessUid);
     const result = await owner.execute({ executable: '/bin/sh', args: ['-c', `sleep 30 & echo $! > "${pidFile}"; sleep 0.5; exit 0`], cwd: area,
       env: { PATH: '/usr/bin:/bin' }, stdin: '', timeout: 20000, maxBytes: 4096 });
     const pid = memberPid();
@@ -315,6 +377,17 @@ describe('the census and cleanup of a harness-user tree', () => {
     const resources = await launchWithUnkillableMember(null);
     expect(resources.cleanup).toBe('unresolved');
   }, 30000);
+  it('a harness user adopted after attach is in the census from then on, as one given at attach is', async () => {
+    const resources = await launchWithUnkillableMember(498, true);
+    expect(resources.cleanup).toBe('verified');
+  }, 30000);
+  it('adopts one harness user only: the same uid again is a no-op, a different one or this account refuses', async () => {
+    const owner = createResourceOwner(RESOURCE_CEILINGS);
+    expect(() => owner.adoptHarnessUid(process.getuid!())).toThrow(/separate identity/u);
+    owner.adoptHarnessUid(498);
+    owner.adoptHarnessUid(498);
+    expect(() => owner.adoptHarnessUid(499)).toThrow(/different harness user is already in the census/u);
+  });
   it('refuses the runner\'s own uid as the harness user', async () => {
     await expect(createResourceOwner(RESOURCE_CEILINGS).attach({ harnessUid: process.getuid!() })).rejects.toThrow(/separate identity/u);
   });
@@ -387,5 +460,43 @@ describe('the journal records which identity the harness ran as', () => {
     expect(journalWith({})).toThrow(/harness identity/u);
     expect(journalWith({ user: '' })).toThrow(/harness identity/u);
     expect(journalWith({ user: 'a', fallback: 'b' })).toThrow(/harness identity/u);
+  });
+});
+
+describe('a delegated session as the harness user', () => {
+  const gate = 'http://127.0.0.1:4000/0123456789abcdef0123456789abcdef/session-work-a';
+  it('lays its step state out as a tool turn\'s: created by the harness-state preparer, its config and shell profile opened once written', () => {
+    const base = fresh('session-admission-harness'), workspace = fresh('session-workspace-harness');
+    let prepared: string[] = [], opened: string[] = [];
+    const state = prepareSessionAdmission({ base, claim: 'session-work-a', workspace, maxCalls: 4, gate, harness: { user: '_instarharness', runner: 'me' },
+      prepare: (directory: string, user: string, runner: string) => { prepared = [directory, user, runner]; mkdirSync(directory, { mode: 0o700 });
+        return { open: (readable: string[]) => { opened = readable.filter(path => existsSync(path)); } }; } });
+    expect(prepared).toEqual([join(base, 'session-work-a'), '_instarharness', 'me']);
+    expect(opened).toEqual([join(state, 'config.json'), join(realpathSync(state), 'shell.sb')]);
+    // The hook it runs is the read-only copy the command names.
+    expect(sessionAdmissionCommand({ base, node: '/n', script: '/h/hook/x/tool-admission-hook.mjs' })('session-work-a', 'pre'))
+      .toBe(`/n /h/hook/x/tool-admission-hook.mjs pre ${join(base, 'session-work-a')}`);
+  });
+  it('without a harness user, the step state is the runner\'s own plain directory, as before', () => {
+    const base = fresh('session-admission-plain'), workspace = fresh('session-workspace-plain');
+    let called = false;
+    const state = prepareSessionAdmission({ base, claim: 'session-work-a', workspace, maxCalls: 4, gate,
+      prepare: () => { called = true; throw Error('not used'); } });
+    expect(called).toBe(false);
+    expect(lstatSync(state).mode & 0o777).toBe(0o700);
+    expect(existsSync(join(state, 'config.json'))).toBe(true);
+  });
+  it('runs the pane\'s harness as the harness user in the launcher\'s terminal mode, the login only in the stdin hand-off', () => {
+    const profile = { expectedAccount: 'a@example.invalid', organization: 'org', plan: 'max' };
+    const command = harnessSessionCommand({ user: '_instarharness', profile, executable: '/h/bin/claude-2.1.280', args: ['--session-id', 'x'],
+      env: { PATH: '/usr/bin:/bin', HOME: '/h/home', ANTHROPIC_BASE_URL: 'http://127.0.0.1:4000/g' }, login: () => 'sk-ant-oat01-synthetic-login' });
+    expect(command.executable).toBe('/usr/bin/sudo');
+    expect(command.args.slice(0, 6)).toEqual(['-n', '-u', '_instarharness', '/Users/Shared/instar-harness/bin/harness-launch', '--handoff', '--tty']);
+    expect(command.args).toContain('ANTHROPIC_BASE_URL=http://127.0.0.1:4000/g');
+    expect(command.args.slice(-3)).toEqual(['/h/bin/claude-2.1.280', '--session-id', 'x']);
+    expect(JSON.stringify(command.args)).not.toContain('synthetic-login');
+    expect(command.stdin).toBe(`${JSON.stringify({ login: 'sk-ant-oat01-synthetic-login' })}\n`);
+    expect(() => harnessSessionCommand({ user: '_instarharness', profile, executable: '/x', args: [], env: {},
+      login: () => { throw Error('the login custody file is not the runner\'s alone'); } })).toThrow(/not the runner's alone/u);
   });
 });

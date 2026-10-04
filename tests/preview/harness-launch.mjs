@@ -16,6 +16,14 @@
 //                                                         as /dev/fd/4), each a pipe read once; neither is ever a file
 //                                                         this user can open, nor in an argument or the environment.
 //                                                         The rest of stdin is the harness's.
+//   harness-launch --handoff --tty NAME=VALUE ... -- EXECUTABLE ARG ...
+//                                                         the same hand-off for an interactive harness (a delegated
+//                                                         session in a tmux pane): stdin carries only the header, and
+//                                                         the harness's stdin is this process's terminal (its stdout),
+//                                                         in this process's group, so the pane's keys reach it
+//
+// Absent from the command's environment, TMPDIR and CLAUDE_CODE_TMPDIR are the harness area's own temporary directory
+// (`tmp` beside `bin`): in /private/tmp every new entry is denied to this user (harness-user.mjs HARNESS_TMP_DENY).
 //   harness-launch --probe r:PATH w:PATH ...              report whether this user can read (r) or write (w) each path;
 //                                                         a read opens and reads one byte (never printed), a write is an
 //                                                         access(2) check (nothing is created)
@@ -48,7 +56,8 @@ if (argv[0] === '--probe') {
 }
 
 const handoff = argv[0] === '--handoff';
-const rest = handoff ? argv.slice(1) : argv;
+const tty = handoff && argv[1] === '--tty';
+const rest = argv.slice((handoff ? 1 : 0) + (tty ? 1 : 0));
 const split = rest.indexOf('--');
 if (split < 0 || split === rest.length - 1) fail('usage: [--handoff] NAME=VALUE ... -- EXECUTABLE ARG ...');
 const env = {};
@@ -57,6 +66,8 @@ for (const pair of rest.slice(0, split)) {
   if (at < 1 || !/^[A-Z_][A-Z0-9_]*$/u.test(pair.slice(0, at))) fail(`environment entry ${JSON.stringify(pair.slice(0, 64))}`);
   env[pair.slice(0, at)] = pair.slice(at + 1);
 }
+for (const name of ['TMPDIR', 'CLAUDE_CODE_TMPDIR']) env[name] ??= `${dirname(HERE)}/tmp`;
+if (tty && !process.stdout.isTTY) fail('--tty needs a terminal on stdout');
 const [executable, ...args] = rest.slice(split + 1);
 // Only an executable installed beside this launcher (the pinned harness copy) runs: the rule names one command.
 let real = null;
@@ -153,18 +164,24 @@ const watch = setInterval(() => {
 }, 50);
 
 const { header, remainder } = handoff ? await readHeader() : { header: null, remainder: null };
+if (tty && remainder.length) fail('--tty takes only the hand-off header on stdin');
 if (header?.login !== undefined) env.CLAUDE_CODE_OAUTH_TOKEN_FILE_DESCRIPTOR = '3';
-// The harness runs in its own process group (and session), so one group signal reaches every process it did not move.
-child = spawn(executable, args, { env, detached: true, stdio: handoff
-  ? ['pipe', 'inherit', 'inherit', header.login === undefined ? 'ignore' : 'pipe', header.mcp === undefined ? 'ignore' : 'pipe'] : 'inherit' });
+// The harness runs in its own process group (and session), so one group signal reaches every process it did not move. An
+// interactive one stays in this group instead, the terminal's foreground, or it could not read the terminal; the tree walk
+// and the tracking still find every descendant.
+const descriptors = handoff ? [header.login === undefined ? 'ignore' : 'pipe', header.mcp === undefined ? 'ignore' : 'pipe'] : [];
+child = spawn(executable, args, { env, detached: !tty, stdio: tty ? [1, 'inherit', 'inherit', ...descriptors]
+  : handoff ? ['pipe', 'inherit', 'inherit', ...descriptors] : 'inherit' });
 if (handoff) {
   // Each hand-off is written once and closed; a harness that never reads one only loses a pipe (EPIPE is ignored).
   for (const [fd, text] of [[3, header.login === undefined ? undefined : `${header.login}\n`], [4, header.mcp]])
     if (text !== undefined) { child.stdio[fd].on('error', () => {}); child.stdio[fd].end(text, 'utf8'); }
-  child.stdin.on('error', () => {});
-  if (remainder.length) child.stdin.write(remainder);
-  process.stdin.pipe(child.stdin);
-  process.stdin.resume();
+  if (!tty) {
+    child.stdin.on('error', () => {});
+    if (remainder.length) child.stdin.write(remainder);
+    process.stdin.pipe(child.stdin);
+    process.stdin.resume();
+  }
 }
 child.on('error', () => { clearInterval(watch); teardown(); process.exit(126); });
 child.on('exit', (code, signal) => {

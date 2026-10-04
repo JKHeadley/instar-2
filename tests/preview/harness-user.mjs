@@ -4,13 +4,15 @@
 // files (docs/defects/2026-10-03-file-tool-swap-race.md). A path swapped between the admission hook's decision and the
 // tool's open reaches only what that user may open: its own area (transcripts, turn state, workspace), and operator
 // files that every local user may read. No credential is among them: the login stays in the runner's custody and each
-// command receives it, with any MCP configuration, through the launcher's one-shot hand-off (a pipe, never a file), and
-// the runner keeps its own /private/tmp entries closed to other users while any harness command runs. This module holds
-// the area's layout, its unprivileged setup, the login custody, the readiness check that decides the switch (a refusal
-// names its reason and the runner then holds every harness launch: nothing falls back to the operator's account), the
-// /private/tmp guard, the ACL grants a turn's volume and admission state need. Machine-local by declaration (Rule 113):
-// each machine provisions its own harness user; nothing here is shared.
-import { createHash } from 'node:crypto';
+// command receives it, with any MCP configuration, through the launcher's one-shot hand-off (a pipe, never a file). In
+// /private/tmp, where other operator sessions write world-readable output, a root-set inherited ACL entry denies the
+// harness user every entry created there from the moment it exists (its own temporary files live in the harness area
+// instead), and readiness closes the runner's entries that predate it. This module holds the area's layout, its
+// unprivileged setup, the login custody, the readiness check that decides the switch (a refusal names its reason and the
+// runner then holds every harness launch: nothing falls back to the operator's account), and the ACL grants a turn's
+// volume and admission state need. Machine-local by declaration (Rule 113): each machine provisions its own harness
+// user; nothing here is shared.
+import { createHash, randomBytes } from 'node:crypto';
 import { execFileSync } from 'node:child_process';
 import { chmodSync, copyFileSync, existsSync, lstatSync, mkdirSync, readdirSync, readFileSync, realpathSync, renameSync, rmSync, statSync, writeFileSync } from 'node:fs';
 import { dirname, join } from 'node:path';
@@ -23,6 +25,16 @@ export const HARNESS_LAUNCHER = join(HARNESS_BIN, 'harness-launch');
 export const HARNESS_HOOKS = join(HARNESS_BASE, 'hook');
 export const HARNESS_TURNS = join(HARNESS_BASE, 'turns');
 export const HARNESS_PROFILE = join(HARNESS_BASE, 'profile');
+/** The harness user's own temporary directory (the launcher's default TMPDIR and CLAUDE_CODE_TMPDIR, short enough that
+ * Claude Code keeps its per-user directory under it): what it would otherwise create in /private/tmp, where the deny
+ * entry below would refuse it its own files. */
+export const HARNESS_TMP = join(HARNESS_BASE, 'tmp');
+/** The root step's entry on /private/tmp (lanes/harness-user/tmp-acl.sh): inherited by every entry created there, by any
+ * user, from creation, and not applied to /private/tmp itself (`only_inherit`, so the turns' volumes mounted there stay
+ * reachable). The kernel then refuses the harness user each new file and directory there, whatever mode its producer
+ * gives it, before anything could open it. Readiness confirms it with a fresh canary. */
+export const HARNESS_TMP_DENY = 'user:_instarharness deny list,search,add_file,add_subdirectory,delete_child,read,write,append,execute,'
+  + 'readextattr,writeextattr,readsecurity,writesecurity,chown,file_inherit,directory_inherit,only_inherit';
 /** The runner's custody of the harness login: a directory and a file only the runner's account can open (no entry for the
  * harness user), holding `{v: 1, token, account, organization, plan}`. The token is a long-lived Claude Code login token
  * (`claude setup-token`); the account fields bind it to one profile. */
@@ -30,6 +42,8 @@ export const HARNESS_CUSTODY = join(HARNESS_BASE, 'custody');
 export const HARNESS_LOGIN = join(HARNESS_CUSTODY, 'login.json');
 const HERE = dirname(fileURLToPath(import.meta.url));
 export const HARNESS_LAUNCHER_SOURCE = join(HERE, 'harness-launch.mjs');
+/** The runner-side command a delegated session's pane runs the harness through (harness-session.mjs). */
+export const HARNESS_SESSION_BRIDGE = join(HERE, 'harness-session.mjs');
 /** The admission hook and its whole import closure: the harness user reads them from a copy it cannot write. */
 export const HARNESS_HOOK_FILES = Object.freeze(['tool-admission-hook.mjs', 'tool-admission.mjs', 'effect-doorway.mjs']);
 
@@ -75,11 +89,15 @@ export function installLauncher() {
   installFile(HARNESS_LAUNCHER_SOURCE, HARNESS_LAUNCHER, 0o755);
   return sha256(readFileSync(HARNESS_LAUNCHER));
 }
-/** The admission hook's read-only copy, content-addressed: `<hooks>/<digest>/tool-admission-hook.mjs`. */
-export function installHook(from = HERE) {
+/** Where the admission hook's read-only copy of `from` lives, content-addressed: `<hooks>/<digest>/tool-admission-hook.mjs`
+ * (installHook puts it there; readiness installs it before any launch). */
+export function harnessHookPath(from = HERE) {
   const digest = createHash('sha256');
   for (const name of HARNESS_HOOK_FILES) digest.update(name).update('\0').update(readFileSync(join(from, name)));
-  const directory = join(HARNESS_HOOKS, digest.digest('hex').slice(0, 16));
+  return join(HARNESS_HOOKS, digest.digest('hex').slice(0, 16), HARNESS_HOOK_FILES[0]);
+}
+export function installHook(from = HERE) {
+  const directory = dirname(harnessHookPath(from));
   ensureDirectory(HARNESS_HOOKS, 0o755);
   ensureDirectory(directory, 0o755);
   for (const name of HARNESS_HOOK_FILES) installFile(join(from, name), join(directory, name), 0o644);
@@ -109,6 +127,7 @@ export function setupHarnessArea({ user = HARNESS_USER, source, version, artifac
   grantAcl([HARNESS_TURNS], [harnessAcl.search(user)]);
   ensureDirectory(HARNESS_PROFILE, 0o700);
   grantAcl([HARNESS_PROFILE], [harnessAcl.search(user)]);
+  installTmp(user, runner);
   // The login custody: the runner's alone (no entry for the harness user); filled by `harness-user.mjs login`.
   ensureDirectory(HARNESS_CUSTODY, 0o700);
   chmodSync(HARNESS_CUSTODY, 0o700);
@@ -116,6 +135,14 @@ export function setupHarnessArea({ user = HARNESS_USER, source, version, artifac
   for (const dir of dirs) { ensureDirectory(dir, 0o700); chmodSync(dir, 0o700); }
   grantAcl(dirs, [harnessAcl.full(user), harnessAcl.full(runner)]);
   return { executable, home: dirs[0], configDirectory: dirs[1], workingDirectory: dirs[2] };
+}
+
+/** The harness's temporary directory (HARNESS_TMP), usable by both identities. Idempotent. */
+export function installTmp(user = HARNESS_USER, runner = runnerUser(), grant = grantAcl) {
+  ensureDirectory(HARNESS_TMP, 0o700);
+  chmodSync(HARNESS_TMP, 0o700);
+  grant([HARNESS_TMP], [harnessAcl.full(user), harnessAcl.full(runner)]);
+  return HARNESS_TMP;
 }
 
 /** The login a profile's harness commands receive, read from the runner's custody: its token, or an Error naming why it
@@ -166,16 +193,14 @@ export function closeOperatorTmp(base = '/private/tmp', uid = process.getuid()) 
   }
   return { entries, failed };
 }
-/** The exposure guard while harness commands run: the runner's new /private/tmp entries are closed at the start of each
- * command and every `intervalMs` until the last running one ends. `during()` returns that command's release. */
-export function tmpGuard({ close = () => closeOperatorTmp(), intervalMs = 1000 } = {}) {
-  let running = 0, timer = null;
-  const sweep = () => { try { close(); } catch { /* the next sweep retries */ } };
-  return { during() {
-    if (running++ === 0) { sweep(); timer = setInterval(sweep, intervalMs); timer.unref?.(); } else sweep();
-    let released = false;
-    return () => { if (released) return; released = true; if (--running === 0) { clearInterval(timer); timer = null; } };
-  }, get running() { return running; } };
+/** A fresh runner-owned file in /private/tmp with the default world-readable mode, made AFTER the readiness sweep: the
+ * kernel must refuse it to the harness user at once (only the inherited deny entry can, since no sweep has touched it).
+ * Returns its path and its removal. */
+export function tmpCanary(base = '/private/tmp') {
+  const path = join(base, `instar-harness-canary-${randomBytes(6).toString('hex')}`);
+  writeFileSync(path, 'canary\n', { mode: 0o644, flag: 'wx' });
+  chmodSync(path, 0o644);
+  return { path, remove: () => rmSync(path, { force: true }) };
 }
 
 /** Effective access as the harness user, read through the launcher's probe: one row per path ({path, mode, ok, code}),
@@ -195,12 +220,14 @@ export function probeAccess(specs, { user = HARNESS_USER, launcher = HARNESS_LAU
  * is not the runner; the launcher and the hook copy are installed (installed here when the repo's copy differs); the
  * profile's executable is the installed copy of its artifact; the profile's directories sit in the harness area and hold
  * no plain-text login; the runner's custody holds a login bound to this profile; the runner's /private/tmp entries are
- * closed; and the probe shows the harness CAN read and write its profile and CANNOT open any of `denied` (the root, the
- * operator home, the runner's state), the login custody or those /private/tmp entries, checked as that user by the kernel.
+ * closed; and the probe shows the harness CAN read and write its profile and its temporary directory and CANNOT open any
+ * of `denied` (the root, the operator home, the runner's state), the login custody, those /private/tmp entries, or a
+ * world-readable file created in /private/tmp after all of that (the inherited deny entry), checked as that user by the
+ * kernel.
  */
 export function harnessReadiness({ user = HARNESS_USER, profile, denied, exec = execFileSync, probe = probeAccess,
-  install = { launcher: installLauncher, hook: installHook }, digestOf = path => sha256(readFileSync(path)),
-  login = readHarnessLogin, custody = [HARNESS_CUSTODY, HARNESS_LOGIN], plaintext = plaintextLogins, tmp = closeOperatorTmp }) {
+  install = { launcher: installLauncher, hook: installHook, tmp: () => installTmp(user) }, digestOf = path => sha256(readFileSync(path)),
+  login = readHarnessLogin, custody = [HARNESS_CUSTODY, HARNESS_LOGIN], plaintext = plaintextLogins, tmp = closeOperatorTmp, canary = tmpCanary }) {
   let uid;
   try { uid = Number(exec('/usr/bin/id', ['-u', user], { encoding: 'utf8', timeout: 2000, stdio: ['ignore', 'pipe', 'ignore'] }).trim()); }
   catch { return { ready: false, reason: `no user ${user}` }; }
@@ -213,25 +240,34 @@ export function harnessReadiness({ user = HARNESS_USER, profile, denied, exec = 
   const exposedLogin = plaintext(profile);
   if (exposedLogin.length) return no(`a plain-text login the harness user can open sits at ${exposedLogin[0]}`);
   try { login(profile); } catch (error) { return no(`the harness login is unusable: ${String(error?.message ?? error)}`); }
-  let hookScript;
+  let hookScript, tmpDirectory;
   try {
-    install.launcher(); hookScript = install.hook();
+    install.launcher(); hookScript = install.hook(); tmpDirectory = install.tmp();
     if (digestOf(profile.executable) !== profile.artifact) return no('the installed harness copy differs from the pinned artifact');
   } catch { return no('the launcher, hook or harness copy cannot be installed'); }
   let closed;
   try { closed = tmp(); } catch { return no('the runner\'s /private/tmp entries cannot be listed'); }
   if (closed.failed) return no(`${closed.failed} of the runner's /private/tmp entries cannot be closed`);
-  const own = [profile.home, profile.configDirectory, profile.workingDirectory, HARNESS_LAUNCHER, hookScript, profile.executable];
+  let fresh;
+  try { fresh = canary(); } catch { return no('a /private/tmp canary cannot be created'); }
+  const own = [profile.home, profile.configDirectory, profile.workingDirectory, tmpDirectory, HARNESS_LAUNCHER, hookScript, profile.executable];
+  const writable = [profile.home, profile.configDirectory, tmpDirectory];
   const refused = [...denied, ...custody, ...closed.entries];
-  const rows = probe([...own.map(path => `r:${path}`), ...[profile.home, profile.configDirectory].map(path => `w:${path}`),
-    ...refused.map(path => `r:${path}`)], { user, exec });
+  let rows;
+  try {
+    rows = probe([...own.map(path => `r:${path}`), ...writable.map(path => `w:${path}`), ...refused.map(path => `r:${path}`), `r:${fresh.path}`],
+      { user, exec });
+  } finally { fresh.remove(); }
   if (rows === null) return no('the harness launch is not permitted (sudo rule, user or launcher missing)');
-  const allowedCount = own.length + 2;
+  const allowedCount = own.length + writable.length;
   const missing = rows.slice(0, allowedCount).find(row => !row.ok);
   if (missing) return no(`the harness user cannot ${missing.mode === 'w' ? 'write' : 'read'} ${missing.path}`);
   // A /private/tmp entry removed between the sweep and the probe is simply gone (ENOENT): only an open that succeeded exposes.
-  const exposed = rows.slice(allowedCount).find(row => row.ok);
+  const exposed = rows.slice(allowedCount, -1).find(row => row.ok);
   if (exposed) return no(`the harness user can read ${exposed.path}`);
+  // The fresh canary: only the kernel's inherited entry can refuse it (EACCES); any other outcome is not that refusal.
+  if (rows.at(-1).ok || rows.at(-1).code !== 'EACCES')
+    return no('the kernel does not refuse the harness user new /private/tmp files (the root step lanes/harness-user/tmp-acl.sh is not applied)');
   return { ready: true, user, uid, hookScript };
 }
 
@@ -240,25 +276,33 @@ export const HARNESS_RECHECK_MS = 30000;
 /**
  * The runner's harness identity for its whole life: decided at launch, and while it is not ready decided again on a later
  * launch at most every HARNESS_RECHECK_MS. `current()` returns the ready identity a command runs as (`runAs`: user,
- * launcher, the custody login read per command, the plan it is bound to, and the /private/tmp guard), or THROWS, so a launch is held and never
- * runs as the runner's own account. The census was attached for the uid known at launch; a later different uid holds.
- * `log` receives the status line on every change.
+ * launcher, the custody login read per command, the plan it is bound to), or THROWS, so a launch is held and never runs
+ * as the runner's own account. The resource census is attached for the uid known at launch (`uid`); a user that did not
+ * exist then is handed to the census through `adopt(uid)` the first time it is ready, before any launch runs as it (a
+ * census that cannot take it holds the launch); a later different uid holds. `log` receives the status line on every change.
  */
 export function harnessGate({ user = HARNESS_USER, profile, denied, unavailable = null, check = harnessReadiness, runner = runnerUser,
-  clock, log = () => {}, guard = tmpGuard(), login = readHarnessLogin }) {
+  clock, log = () => {}, login = readHarnessLogin, adopt = null }) {
   if (typeof clock !== 'function') throw Error('preview: the harness gate needs a clock');
   const decide = () => unavailable ? { ready: false, reason: unavailable } : check({ user, profile, denied });
-  let state = null, checkedAt = 0, attached = null;
+  let state = null, checkedAt = 0, attached = null, launched = false;
   const settle = result => {
-    let next = result.ready ? { ...result, runner: runner(), launcher: HARNESS_LAUNCHER, login: () => login(profile), plan: profile.plan, during: guard.during }
+    let next = result.ready ? { ...result, runner: runner(), launcher: HARNESS_LAUNCHER, login: () => login(profile), plan: profile.plan }
       : { ...result, user };
     if (attached !== null && next.uid !== undefined && next.uid !== attached)
       next = { ready: false, user, reason: `the harness user's id changed since launch (${String(attached)} to ${String(next.uid)}); restart the runner` };
+    else if (launched && attached === null && next.ready) {
+      // The user appeared after launch: the census takes its processes before the first launch runs as it.
+      try { if (typeof adopt !== 'function') throw Error('no census to take it'); adopt(next.uid); attached = next.uid; }
+      catch (error) { next = { ready: false, user, uid: next.uid,
+        reason: `the harness user appeared after launch and the resource census cannot take its processes (${String(error?.message ?? error)})` }; }
+    }
     if (state === null || state.ready !== next.ready || state.reason !== next.reason) log(harnessStatusLine(next));
     state = next; checkedAt = clock();
   };
   settle(decide());
   attached = Number.isSafeInteger(state.uid) ? state.uid : null;
+  launched = true;
   return Object.freeze({ uid: attached, get state() { return state; },
     current() {
       if (!state.ready && clock() - checkedAt >= HARNESS_RECHECK_MS) settle(decide());
@@ -294,8 +338,10 @@ export function grantVolume(mounted, user, runner, limit = 20000, grant = grantA
 
 /** The per-root directory of the turns' harness-side admission state: `<turns>/<digest of the root's real path>`. The
  * harness may only traverse it; each turn's directory under it is opened to the harness by `prepareHarnessState`. */
+export const harnessRootStatePath = (root, base = HARNESS_TURNS) =>
+  join(base, createHash('sha256').update(realpathSync(root), 'utf8').digest('hex').slice(0, 12));
 export function harnessRootState(root, user, base = HARNESS_TURNS) {
-  const directory = join(base, createHash('sha256').update(realpathSync(root), 'utf8').digest('hex').slice(0, 12));
+  const directory = harnessRootStatePath(root, base);
   ensureDirectory(directory, 0o700);
   grantAcl([directory], [harnessAcl.search(user)]);
   return directory;
@@ -309,6 +355,20 @@ export function prepareHarnessState(directory, user, runner, grant = grantAcl) {
   grant([directory], [harnessAcl.full(runner)]);
   return { open: readable => { grant(readable, [harnessAcl.readOnly(user)]); grant([directory], [harnessAcl.addOnly(user)]); } };
 }
+/** A root's delegated session work as the harness user: its volume's mount point, short and outside the root (which the
+ * harness user cannot traverse), and its steps' admission state in the harness area (`<root state>/session`, one
+ * directory per step claim, each prepared by `prepareHarnessState`). */
+export const harnessSessionLayout = (root, mounts = '/private/tmp') => {
+  const digest = createHash('sha256').update(realpathSync(root), 'utf8').digest('hex').slice(0, 12);
+  return { mount: join(mounts, `its-${digest}`), admission: join(harnessRootStatePath(root), 'session') };
+};
+/** Creates the session admission base (traversal only for the harness, like the root state above it). */
+export function harnessSessionAdmission(root, user, grant = grantAcl) {
+  const base = join(harnessRootState(root, user), 'session');
+  ensureDirectory(base, 0o700);
+  grant([base], [harnessAcl.search(user)]);
+  return base;
+}
 /** Removes one turn's harness-side state (a turn directory's `state` link points there). Only a directory inside `base`. */
 export function removeHarnessState(link, base = HARNESS_TURNS) {
   let target, within;
@@ -320,7 +380,7 @@ export function removeHarnessState(link, base = HARNESS_TURNS) {
 
 /** The operator's status line for the harness identity (Rule 84). Not ready is never a fallback: launches are held. */
 export const harnessStatusLine = harness => harness?.ready
-  ? `Harness identity: Claude Code runs as its own macOS user (${harness.user}). The kernel refuses its opens of the operator account's private files; its login and MCP credentials reach it only through a one-shot hand-off, never a file it can open; operator files every local user may read stay readable to it (this runner closes its own /private/tmp entries while it runs).`
+  ? `Harness identity: Claude Code runs as its own macOS user (${harness.user}). The kernel refuses its opens of the operator account's private files; its login and MCP credentials reach it only through a one-shot hand-off, never a file it can open; new /private/tmp entries are denied to it from creation; operator files every local user may read elsewhere stay readable to it.`
   : harness?.reason ? `Harness identity: UNAVAILABLE, so every Claude Code launch is held (nothing runs as the operator's account) until the separate harness user is ready again: ${harness.reason}.`
     : null;
 

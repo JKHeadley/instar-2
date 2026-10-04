@@ -73,10 +73,12 @@ export const SESSION_VOLUME_BYTES = 2 * 1024 * 1024 * 1024;
 /** Mounts the delegated session's persistent volume at `<root>/<name>` (a sparse disk image beside it, created once and
  * kept, so the workspace persists across steps and restarts) and returns its real path. Already mounted, it is reused.
  * `bytes` exists so a test can prove the bound with a small volume. */
-export function attachSessionVolume(root, { bytes = SESSION_VOLUME_BYTES, name = 'session-work' } = {}) {
-  const real = realpathSync(root), mount = join(real, name), image = join(real, `${name}.sparseimage`);
+export function attachSessionVolume(root, { bytes = SESSION_VOLUME_BYTES, name = 'session-work', at = null } = {}) {
+  // `at`: a mount point outside the root (a session run as the harness user, harness-user.mjs harnessSessionLayout); the
+  // image stays beside the root's own mount point, so the workspace is the same one.
+  const real = realpathSync(root), mount = at ?? join(real, name), image = join(real, `${name}.sparseimage`);
   mkdirSync(mount, { recursive: true, mode: 0o700 });
-  const mounted = () => { try { return lstatSync(mount).dev !== lstatSync(real).dev; } catch { return false; } };
+  const mounted = () => { try { return lstatSync(mount).dev !== lstatSync(dirname(mount)).dev; } catch { return false; } };
   if (!mounted()) {
     let created = true;
     try { lstatSync(image); } catch { created = false; }

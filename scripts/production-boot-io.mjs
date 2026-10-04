@@ -181,11 +181,10 @@ export function subscriptionProfileIdentity(bindings) {
 }
 
 /** Preview-only provider host. No secret file or Keychain contents are read here. `runAs` (harness-user.mjs readiness:
- * `{ user, launcher, login, during }`, or null) runs every harness command (version, auth status, model call) as the
+ * `{ user, launcher, login, plan }`, or null) runs every harness command (version, auth status, model call) as the
  * harness's own user through the one sudoers rule: `sudo -n -u USER LAUNCHER --handoff ENV... -- EXECUTABLE ARGS`, the
  * launcher applying exactly the command's environment. The login and any MCP configuration file reach the harness only
- * through the launcher's hand-off (harnessCommand), never as a file its user can open. `during()` (the runner's
- * exposure guard) runs for as long as any such command does and returns its release. The resource owner still
+ * through the launcher's hand-off (harnessCommand), never as a file its user can open. The resource owner still
  * launches, bounds and reclaims it (the launcher ends its tree). */
 export function createSubscriptionProviderIO({ repository, stopped, work = 'answer', runAs = null }) {
   const outside = (path, root) => { const suffix = relative(root, path);
@@ -286,13 +285,8 @@ export function createSubscriptionProviderIO({ repository, stopped, work = 'answ
       return admitted;
     } catch { return null; }
   };
-  const execute = async input => {
-    if (!runAs) return productionProviderIO.execute({ ...input, stopped }, work);
-    const command = harnessCommand(input, runAs);
-    const release = typeof runAs.during === 'function' ? runAs.during() : null;
-    try { return await productionProviderIO.execute({ ...input, ...command, stopped }, work); }
-    finally { if (typeof release === 'function') release(); }
-  };
+  const execute = async input => runAs ? productionProviderIO.execute({ ...input, ...harnessCommand(input, runAs), stopped }, work)
+    : productionProviderIO.execute({ ...input, stopped }, work);
   return Object.freeze({ ...productionProviderIO, inspectSubscriptionProfile, managedHooksDisabled, codexAuthMode, admittedToolCalls,
     ...(runAs ? { descriptorLogin: true } : {}), execute });
 }
