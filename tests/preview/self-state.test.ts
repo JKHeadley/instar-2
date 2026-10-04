@@ -90,20 +90,22 @@ it('gives every held reply one fixed plain reason and truthful resend advice', (
 const jevPass = { model: JEV_MODEL, answers: Object.fromEntries(
   Object.keys(REPLY_RULES).map(id => [id, { type: 'noul', noul: 0.01 }])) };
 
-it('sends the fixed too-long notice after a healthy safety check without partial output', async () => {
+it('checks a too-long answer once, whole, then sends all of it across two messages (never the notice, never a partial)', async () => {
+  // Plan #466 (w4-statuslen): the safety check judges the whole reply before it is split for sending.
   const root = realpathSync(mkdtempSync(join(tmpdir(), 'preview-hold-size-')));
   try {
     const journal = openPreviewJournal(join(root, 'journal.encrypted'), key, genesis);
     let checks = 0, sends = 0;
     const worker = createJournalWorker(journal, { now: () => NOON, stopped: () => false,
-      model: async () => 'x'.repeat(4100), send: async () => { sends++; return 1; }, checkOutbound: () => {},
+      model: async () => 'x'.repeat(4100), send: async () => ++sends, checkOutbound: () => {},
       replyCheck: { jev: async () => { checks++; return { value: jevPass, latencyMs: 1 }; },
         escalate: async () => { throw Error('unexpected review'); }, elapsedMs: () => 0 } });
     worker.intake([update(1, 'one', NOON)]); await worker.drain();
     expect(checks).toBe(1);
-    expect(sends).toBe(1);
-    expect(journal.view.order[0]?.intent).toBe(TOO_LONG_REPLY_NOTICE);
-    expect(journal.view.order[0]?.intent).not.toContain('x'.repeat(4100));
+    expect(sends).toBe(2);
+    expect(journal.view.order[0]?.intent).toBe(`PREVIEW — ${'x'.repeat(4100)}`);
+    expect(journal.view.order[0]?.intent).not.toBe(TOO_LONG_REPLY_NOTICE);
+    expect(journal.view.order[0]?.replyParts).toEqual([expect.objectContaining({ started: true, sent: 2 })]);
     expect(heldNotices(journal.view)).toEqual([]);
     expect(selfState(journal.view, { launches: [], unreadable: 0 }, NOON, 'UTC'))
       .toContain('Held messages: none.');

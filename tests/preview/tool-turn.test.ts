@@ -6,7 +6,7 @@
 import { spawnSync } from 'node:child_process';
 import { existsSync, lstatSync, mkdirSync, mkdtempSync, readFileSync, readdirSync, realpathSync, rmSync, utimesSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
-import { join } from 'node:path';
+import { dirname, join } from 'node:path';
 import { afterEach, expect, it } from 'vitest';
 import { openPreviewJournal } from './journal.js';
 import { SUBSCRIPTION_SUBAGENT_TYPE, SUBSCRIPTION_TOOL_LIMITS, SUBSCRIPTION_TOOL_NAMES, SUBSCRIPTION_TOOL_RUNTIME_READS, SUBSCRIPTION_TOOLS_SYSTEM_PROMPT } from '../../src/assembly/production-provider.js';
@@ -67,7 +67,10 @@ it('allocates a private, empty workspace and a separate admission state per turn
   expect(turn.stateDirectory.startsWith(turn.scratch)).toBe(false);
   expect(JSON.parse(readFileSync(join(turn.stateDirectory, 'config.json'), 'utf8'))).toEqual({ workspace: turn.workspace,
     tmp: join(turn.scratch, 'tmp'), reads: [...SUBSCRIPTION_TOOL_RUNTIME_READS], maxCalls: SUBSCRIPTION_TOOL_LIMITS.maxToolCalls,
-    maxWriteBytes: SUBSCRIPTION_TOOL_LIMITS.maxWriteBytes, operations: [...SINGLE_MACHINE_PROFILE.operations], children: { max: 0, type: SUBSCRIPTION_SUBAGENT_TYPE }, mcpReads: [], authority: 'unrecorded' });
+    maxWriteBytes: SUBSCRIPTION_TOOL_LIMITS.maxWriteBytes, operations: [...SINGLE_MACHINE_PROFILE.operations], children: { max: 0, type: SUBSCRIPTION_SUBAGENT_TYPE }, mcpReads: [], authority: 'unrecorded',
+    heldCheck: turn.socket.path });
+  // Plan #507: the turn's runner socket (the held-secret check every outward request asks) sits in a private directory.
+  expect(lstatSync(dirname(turn.socket.path)).mode & 0o777).toBe(0o700);
   expect(turn.mcp).toBeUndefined();
   expect(turn.hook).toEqual({ node: process.execPath, script: TOOL_HOOK_SCRIPT });
   // The same attempt is never reused: a repeat allocation refuses rather than sharing a workspace.
@@ -397,10 +400,10 @@ it('reads the root\'s MCP configuration: absent is none, malformed refuses, a li
   const second = prepareToolTurn({ root, operation: 'telegram:1:update:3', attempt: 0, operations: [], mcp: keyed, scratch: plainScratch });
   const written = JSON.parse(readFileSync(second.mcp.config, 'utf8')).mcpServers;
   expect(written.dummy).toEqual(config.mcpServers.dummy);
-  expect(written.keyed).toEqual({ command: process.execPath, args: [TOOL_MCP_LAUNCHER, second.mcp.socket, 'keyed', second.mcp.nonces.keyed,
+  expect(written.keyed).toEqual({ command: process.execPath, args: [TOOL_MCP_LAUNCHER, second.socket.path, 'keyed', second.mcp.nonces.keyed,
     '/usr/bin/srv', '--x'], env: { LOG_LEVEL: 'debug' } });
-  expect(second.mcp.socket.length).toBeLessThan(100);
-  rmSync(join(second.mcp.socket, '..'), { recursive: true, force: true });
+  expect(second.socket.path.length).toBeLessThan(100);
+  for (const each of [turn, second]) rmSync(join(each.socket.path, '..'), { recursive: true, force: true });
 });
 
 it('runs the shell\'s network checkpoint exactly as long as the turn: started before launch, named to the hook and the sandbox, recorded, stopped after', async () => {

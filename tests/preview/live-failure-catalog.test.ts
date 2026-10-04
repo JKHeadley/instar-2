@@ -6,6 +6,7 @@ import { SUBSCRIPTION_THINKING_ENV, subscriptionConversationPolicy } from '../..
 import { createJournalWorker, openPreviewJournal, openQuestionCandidates, TOO_LONG_INPUT_NOTICE, TOO_LONG_REPLY_NOTICE } from './journal-test-worker.js';
 import { failureShapeOf, parseModelJson } from './model-json.js';
 import { parseReplyReviewVerdict, replyReviewDiagnostics } from './reply-check.js';
+import { splitReply } from './reply-parts.js';
 
 // Each named case is a replayable boundary from the live preview record. The
 // nearby accepting case prevents a safety hold from becoming a blanket refusal.
@@ -93,10 +94,17 @@ it('F06 prose-wrapped answer: the answer side reads one wrapped object; a list, 
   expect(failureShapeOf(parseModelJson(`${prose}{"type":"Other"}`, { wrapped: 'accept' }))).toBe('prose-wrapped-wrong-fields');
 });
 
-it('F04 too-long notice: a short answer sends whole; an oversized answer sends one fixed notice across replay', async () => {
-  // Live failure: a reply beyond Telegram's limit must not send a truncated prefix.
-  const cases: [string, string][] = [['short answer', 'PREVIEW — short answer'], ['x'.repeat(4085), TOO_LONG_REPLY_NOTICE]];
-  for (const [answer, expected] of cases) {
+it('F04 too-long answer: a short answer sends whole; an oversized answer sends whole across two messages, once, across replay', async () => {
+  // Live failure: a reply beyond Telegram's limit must not send a truncated prefix. Since plan #466 (w4-statuslen) it is
+  // never refused either: the whole answer goes out in order across messages, and nothing is sent again on replay.
+  const long = 'x'.repeat(4085);
+  const cases: [string, string[], string][] = [['short answer', ['PREVIEW — short answer'], 'PREVIEW — short answer'],
+    [long, splitReply(`PREVIEW — ${long}`)!, `PREVIEW — ${long}`]];
+  const [first, second] = cases[1]![1];
+  expect(cases[1]![1]).toHaveLength(2);
+  expect(first!.endsWith(' (1/2)') && second!.startsWith('PREVIEW (2/2) — ')).toBe(true);
+  expect(`${first!.slice(0, -' (1/2)'.length)}${second!.slice('PREVIEW (2/2) — '.length)}`).toBe(`PREVIEW — ${long}`);
+  for (const [answer, sends, intent] of cases) {
     await inJournal(async path => {
       const journal = openPreviewJournal(path, key, genesis());
       const sent: string[] = [];
@@ -105,9 +113,10 @@ it('F04 too-long notice: a short answer sends whole; an oversized answer sends o
         send: async ({ text }) => { sent.push(text); return 7; } });
       worker.intake([update(1, 'Please answer.')]);
       await worker.drain();
-      expect(sent).toEqual([expected]);
+      expect(sent).toEqual(sends);
+      expect(sent).not.toContain(TOO_LONG_REPLY_NOTICE);
       expect(journal.view.order[0]?.answer).toBe(answer);
-      expect(journal.view.order[0]?.intent).toBe(expected);
+      expect(journal.view.order[0]?.intent).toBe(intent);
       journal.close();
       const replay = openPreviewJournal(path, key);
       let repeats = 0;

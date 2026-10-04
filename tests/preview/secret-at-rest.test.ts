@@ -115,8 +115,10 @@ it('an MCP server takes its credential by SecretRef: that server alone gets the 
       deniedRoots: [root], operations: SINGLE_MACHINE_PROFILE.operations, now: () => 10, redactText: (text: string) => redact(text).text,
       fallback: async () => ({ result: 'text-only' }), scratch: plainScratch, detach: () => true, mcp,
       resolveSecret: (name: string) => custody.resolve(secretRef(name)),
-      invoke: async (turn: { stateDirectory: string; mcp: { config: string; socket: string } }) => {
-        socket = turn.mcp.socket;
+      invoke: async (turn: { stateDirectory: string; mcp: { config: string } }) => {
+        // The turn's runner socket (MCP credentials and the held-secret check) is named in the hook's configuration.
+        socket = String(JSON.parse(readFileSync(join(turn.stateDirectory, 'config.json'), 'utf8')).heldCheck);
+        expect(existsSync(socket)).toBe(true);
         const servers = JSON.parse(readFileSync(turn.mcp.config, 'utf8')).mcpServers;
         // The launch configuration holds the SecretRef's server behind the launcher and no value.
         expect(JSON.stringify(servers)).not.toContain(OPAQUE);

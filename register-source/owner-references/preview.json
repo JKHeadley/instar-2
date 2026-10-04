@@ -7,7 +7,7 @@
       "stage": "build",
       "artifact": {
         "path": "tests/preview/journal-agent.test.ts",
-        "hash": "sha256:477e6dac2c5ebaca3d46ef01c7b40b78fbcc4281bfc5119fe04cb8f6e06ea972"
+        "hash": "sha256:e0e153e7b2b2ec3cfe041b2658abb551d396a1c76cc14d60e80933ebb036ba4e"
       }
     },
     {
@@ -47,7 +47,7 @@
       "stage": "build",
       "artifact": {
         "path": "tests/preview/journal-obligations.test.ts",
-        "hash": "sha256:6cb1b66b3009f9bb7ee18610925697a8a2cc5cabbda754dafb7fc6feb13befee"
+        "hash": "sha256:438b598fb25b9444ad56dc53c6fee75a5d3b55d05765095c918eb7ab84095ef8"
       }
     },
     {
@@ -55,7 +55,7 @@
       "stage": "build",
       "artifact": {
         "path": "tests/preview/journal-spend-cap.test.ts",
-        "hash": "sha256:6eb3011a39303be4dc25cd35d87e532acb6c36efa8094d70b6577df58b3e4c72"
+        "hash": "sha256:3eccd30c04aad2b9c21d4283b1595ce5918fe4e5cf7e5982e1a44bdbf5d0aa2f"
       }
     },
     {
@@ -63,7 +63,7 @@
       "stage": "build",
       "artifact": {
         "path": "tests/preview/reply-check.test.ts",
-        "hash": "sha256:e141efa3114341f7b0b1efe504664788a7eabe3915be455055a0b7cad7e320e6"
+        "hash": "sha256:9429ab24578118173c6c475727870f358b16a362f2554ca76591719d1520243e"
       }
     },
     {
@@ -71,7 +71,7 @@
       "stage": "build",
       "artifact": {
         "path": "tests/preview/model-json.test.ts",
-        "hash": "sha256:62f5e15f968c145858ce217b62b3aa97975eaa1d1f67a9d37df3048666a6a3e1"
+        "hash": "sha256:1b7f35ee358fd3a9cf1d22dad3c26907f9a9cc7e9ae601b932ee10f959d41abb"
       }
     },
     {
@@ -104,6 +104,22 @@
       "artifact": {
         "path": "tests/preview/tool-persist.test.ts",
         "hash": "sha256:384c5ca72c1195fa3bd0c094d5a8d3b3ec88cc2c9a099f8fefc3a07b7a207616"
+      }
+    },
+    {
+      "id": "PREVIEW-SECRET-WALL",
+      "stage": "build",
+      "artifact": {
+        "path": "tests/preview/secret-custody.test.ts",
+        "hash": "sha256:9c0dd8dd76c59cb4856be241d509b0355c173b20d7ec01bbbc95a2768f3f6277"
+      }
+    },
+    {
+      "id": "PREVIEW-HOST-RESOURCE-FUNNEL",
+      "stage": "build",
+      "artifact": {
+        "path": "tests/preview/journal-agent-resources.test.ts",
+        "hash": "sha256:7534be6f43d1b9e5a172eb540b36651e833868414c1691f280bfbc58b3b4c024"
       }
     }
   ],

@@ -13,7 +13,7 @@
  * missing join stays in the denominator as a gap. */
 import { PREVIEW_PROOF_PLANS, probeId, replyTurn, requestedActionTurn, statusTurn } from './proofs.js';
 import type { LiveProofRecord, PlanPosture, ProofRecord } from './proofs.js';
-import { isJournalUpdate } from './journal.js';
+import { isJournalUpdate, wholeReplyReceipt } from './journal.js';
 import { PROMOTION_RECORD, STAGES, promotionOf, promotionRecordFindings, utcDay } from './promotion-record.js';
 import type { PromotionEntry, Stage } from './promotion-record.js';
 import type { JournalView, Turn } from './journal.js';
@@ -317,7 +317,9 @@ export function resolveLiveProof(input: LiveProofInput): LiveProofResult {
     return refuse('this capability needs the desk-recorded semantic observation (--desk-observation)');
   if (!isJournalUpdate(update)) return refuse('the update is outside the journal\'s update domain');
   const turn = view.order.find(item => item.update === update);
-  const sent = (item: Turn | undefined) => item?.sent !== undefined && item.sentAt !== undefined ? { message: item.sent, at: item.sentAt } : null;
+  // The whole answer delivered: every message of a split reply accepted, timed at the last (Rule 42).
+  const sent = (item: Turn | undefined) => { const receipt = item && wholeReplyReceipt(view, item);
+    return receipt && receipt.at !== undefined ? { message: receipt.message, at: receipt.at } : null; };
   let found: { message: number | null; at: number } | null = null;
   switch (capability.acceptance.outcome) {
     case 'reply': found = turn && replyTurn(turn) ? sent(turn) : null; break;

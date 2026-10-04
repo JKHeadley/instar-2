@@ -23,7 +23,7 @@ import { decodeVerificationRecord, deriveGuardPosture, deriveVerificationDue, me
 import type { GuardPosture, ProbePostureResolution, ProbeRecord, VerificationPlan } from '../../src/verification/index.js';
 import { isStatusCommand } from './status-command.js';
 import { loopHealth } from './obligations.js';
-import { CREDENTIAL_SHAPE_NOTICE, PREVIEW_LIVE_GATES, durableProjection, packetDigest, replyBody } from './journal.js';
+import { CREDENTIAL_SHAPE_NOTICE, PREVIEW_LIVE_GATES, durableProjection, packetDigest, replyBody, wholeReplyReceipt } from './journal.js';
 import { HOLDING_REPLY } from './reply-check.js';
 import type { JournalView, Turn } from './journal.js';
 
@@ -134,7 +134,9 @@ function delivery(rows: readonly Attempt[], now: number, freshness: number, noun
 }
 const turnAttempts = (view: JournalView, select: (turn: Turn) => boolean): Attempt[] => view.order
   .filter(turn => select(turn) && turn.intent !== undefined)
-  .map(turn => ({ message: turn.sent, attemptAt: turn.at, acceptedAt: turn.sentAt }));
+  // A split reply counts as accepted only when every message carrying it was (Rule 42).
+  .map(turn => { const receipt = wholeReplyReceipt(view, turn);
+    return { message: receipt?.message, attemptAt: turn.at, acceptedAt: receipt?.at }; });
 const answerCalls = (view: JournalView) => view.callOutcomes.filter(row => row.role === 'model');
 const completedCall = (row: JournalView['callOutcomes'][number]) => row.outcome.subtype === 'success' && row.outcome.isError !== true && row.outcome.localLimit === null;
 const CAP_HOLDS = new Set(['call cap', 'reply cap']);

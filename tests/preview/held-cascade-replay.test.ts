@@ -6,8 +6,6 @@ import { openPreviewJournal, createJournalWorker } from './journal.js';
 import { prepareJournalEnvelope } from './journal-envelope.js';
 import { CREDENTIAL_SHAPE_NOTICE } from './journal.js';
 import { HOLDING_REPLY, interpretJev, jevConfidentCredential } from './reply-check.js';
-// @ts-expect-error The runner side stays plain JavaScript.
-import { heldSecretIn } from './harness-user.mjs';
 
 // Plan #144: the REAL recorded shapes of Justin's preview turn 969389800 ("What's my current gym locker code?",
 // 2026-09-30 18:20 PDT, build cint-L13 72fb5a82). Jev's reply check answered credential 0.51 (its unsure band;
@@ -34,7 +32,7 @@ async function flow(options: Flow) {
     prepareModel: (input: Parameters<typeof prepareJournalEnvelope>[0]) => prepareJournalEnvelope(input, 'claude-sonnet-5', 'grant:preview', clock.now),
     model: async () => { if (!fresh) throw Error('model repeated'); return options.answer; },
     checkOutbound: () => {},
-    ...(options.held ? { heldSecret: (text: string) => heldSecretIn(text, options.held) as boolean } : {}),
+    ...(options.held ? { heldSecrets: () => options.held ?? [] } : {}),
     replyCheck: { elapsedMs: () => 0,
       jev: async () => { if (!fresh) throw Error('Jev repeated'); calls.jev++; return { value: JSON.parse(options.jev) as unknown, latencyMs: 191 }; },
       escalate: async () => {

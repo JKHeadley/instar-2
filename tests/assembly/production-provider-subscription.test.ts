@@ -8,7 +8,7 @@ import { createClaudeCodeSubscriptionRoute, subscriptionInvocationPolicy, subscr
   SUBSCRIPTION_CONVERSATION_FRAMING, SUBSCRIPTION_CONVERSATION_SYSTEM_PROMPT,
   SUBSCRIPTION_PREVIEW_SYSTEM_PROMPT, SUBSCRIPTION_PREVIEW_EXPIRY, SUBSCRIPTION_PREVIEW_PREDECESSOR_EXPIRY,
   SUBSCRIPTION_THINKING_ENV, subscriptionActivationEndAllowed, subscriptionPolicyFor,
-  validateSubscriptionActivation, subscriptionDoorway, subscriptionSessionPolicy } from '../../src/assembly/production-provider.js';
+  validateSubscriptionActivation, subscriptionDoorway, subscriptionSessionPolicy, claudeSubscriptionStatusAccepted } from '../../src/assembly/production-provider.js';
 import { SESSION_WORK_RESIDUAL } from '../../src/assembly/production-session-work.js';
 import type { SubscriptionActivationRecord } from '../../src/assembly/production-provider.js';
 import type { ProviderSubscriptionProfile } from '../../src/assembly/provider-credential-custodian.js';
@@ -20,7 +20,7 @@ const roots: string[] = [];
 afterEach(() => { for (const root of roots.splice(0)) rmSync(root, { recursive: true, force: true }); });
 const hash = (value: unknown) => canonical(value).kind === 'Success' ?
   (canonical(value) as { kind: 'Success'; value: { hash: string } }).value.hash : '';
-function fixture(options: { status?: object; terminal?: string; pending?: boolean; resultBytes?: number; rawBytes?: number; tokens?: number; invalidUtf8?: boolean; malformedAuth?: boolean; conversation?: boolean } = {}) {
+function fixture(options: { descriptor?: boolean; status?: object; terminal?: string; pending?: boolean; resultBytes?: number; rawBytes?: number; tokens?: number; invalidUtf8?: boolean; malformedAuth?: boolean; conversation?: boolean } = {}) {
   const f = factsFixture(), root = realpathSync(mkdtempSync(join(tmpdir(), 'subscription-offline-'))); roots.push(root);
   const home = join(root, 'home'), configDirectory = join(root, 'config'), workingDirectory = join(root, 'work');
   for (const path of [home, configDirectory, workingDirectory]) mkdirSync(path, { mode: 0o700 });
@@ -29,6 +29,9 @@ function fixture(options: { status?: object; terminal?: string; pending?: boolea
   const status = { loggedIn: true, authMethod: 'claude.ai', apiProvider: 'firstParty', analyticsDisabled: true,
     projectsDirectory: `${configDirectory}/projects`, configDirectory, email: 'synthetic@example.invalid',
     orgId: 'synthetic-organization', orgName: 'synthetic', subscriptionType: 'max', ...options.status };
+  // A descriptor login (the host hands the CLI its token): the CLI reports that and nothing of an account.
+  const reported = options.descriptor ? { loggedIn: true, authMethod: 'oauth_token', apiProvider: 'firstParty', analyticsDisabled: false,
+    projectsDirectory: `${configDirectory}/projects`, configDirectory, ...options.status } : status;
   const answer = JSON.stringify({ ...f.decisionInput(), conclusion: { ...f.decisionInput().conclusion, subject: 'preview-stage2-answer', predicate: 'answer-text', value: 'café <世界> &' } });
   const result = options.resultBytes ? answer + ' '.repeat(options.resultBytes - Buffer.byteLength(answer)) : answer;
   const terminal = options.terminal ?? JSON.stringify({ type: 'result', subtype: 'success', is_error: false, result,
@@ -39,14 +42,15 @@ function fixture(options: { status?: object; terminal?: string; pending?: boolea
     let stdin='';for await(const chunk of process.stdin)stdin+=chunk;
     appendFileSync(${JSON.stringify(report)},JSON.stringify({args:process.argv.slice(2),env:process.env,cwd:process.cwd(),stdin})+'\\n');
     if(process.argv[2]==='--version')process.stdout.write('2.1.280 (Claude Code)\\n');
-    else if(process.argv[2]==='auth')process.stdout.write(${JSON.stringify(options.malformedAuth ? '{' : JSON.stringify(status))});
+    else if(process.argv[2]==='auth')process.stdout.write(${JSON.stringify(options.malformedAuth ? '{' : JSON.stringify(reported))});
     else if(process.argv.slice(2).filter(v=>v==='--system-prompt').length!==1 || process.argv[process.argv.indexOf('--system-prompt')+1]!==${JSON.stringify(options.conversation ? SUBSCRIPTION_CONVERSATION_SYSTEM_PROMPT : SUBSCRIPTION_PREVIEW_SYSTEM_PROMPT)})process.exit(42);
     else ${options.pending ? 'setInterval(()=>{},1000)' : `process.stdout.write(Buffer.from(${JSON.stringify(raw.toString('base64'))},'base64'))`};\n`;
   writeFileSync(executable, source); chmodSync(executable, 0o700);
   let active = true;
   const physical = createSubscriptionProviderIO({ repository: process.cwd(), stopped: () => !active });
   const launched: Record<string, string>[] = [];
-  const io = { ...physical, execute: (input: any) => { launched.push(input.env); return physical.execute(input); } };
+  const io = { ...physical, ...(options.descriptor ? { descriptorLogin: true as const } : {}),
+    execute: (input: any) => { launched.push(input.env); return physical.execute(input); } };
   const seed = { type: 'ProviderSubscriptionProfile' as const, schemaVersion: 1 as const, reference: 'subscription-login',
     home, configDirectory, workingDirectory, expectedAccount: status.email, organization: status.orgId, plan: 'max' as const,
     executable, artifact: `sha256:${createHash('sha256').update(source).digest('hex')}`, version: '2.1.280',
@@ -106,8 +110,9 @@ it('spawns the synthetic subscription CLI with exact bytes, args and allowlisted
 // The conversation digest is int11's policy (reviewer-compact-call and related fields);
 // the live frozen14 build pins sha256:557a62fa…, so an int11 switch needs a new record.
 const RECORDED_DIGESTS = { 'preview-decision-system-v2': 'sha256:234293e8e209f210b23cdcf5322202065766dfe64f532f85bbea69486c0260b4',
-  // 2026-09-28 declaration-slot system prompt; its predecessor sha256:efe69876… (record v4) needs a policy successor.
-  [SUBSCRIPTION_CONVERSATION_FRAMING]: 'sha256:aced65e686a665f11a02d7480501170ad3e2f8664fa5858ec69f42374390374a' } as const;
+  // 2026-10-04 flat answer protocol (plan #491: the runner builds the Decision); its predecessor sha256:aced65e6…
+  // (the 2026-09-28 declaration-slot prompt, itself after efe69876…) needs a policy-successor record.
+  [SUBSCRIPTION_CONVERSATION_FRAMING]: 'sha256:5817ae4bda9396f7f27a957b287c97b4965322128a03c401bc415166594e2255' } as const;
 for (const conversation of [false, true]) it(`sends thinking off on the ${conversation ? 'conversation' : 'decision'} framing, args unchanged`, async () => {
   const f = fixture({ conversation });
   expect((await value(createClaudeCodeSubscriptionRoute(f.input)).invoke('request', f.bounds)).state).toBe('complete');
@@ -383,3 +388,24 @@ for (const status of [{ authMethod: 'api_key' }, { apiKeySource: 'ANTHROPIC_API_
     await expect(subscriptionDoorway('claude-code-subscription').session.admit({ profile, io, deadline: 20_000, now: () => 1000 }))
       .rejects.toThrow(/authentication status refused/u);
   });
+it('accepts a descriptor login only from a host that declares the hand-off, and only in its exact shape', async () => {
+  const handed = fixture({ descriptor: true });
+  expect((await value(createClaudeCodeSubscriptionRoute(handed.input)).invoke('request', handed.bounds)).state).toBe('complete');
+  // The same CLI report from a host that declares no hand-off is no subscription login.
+  const undeclared = fixture({ status: { authMethod: 'oauth_token' } });
+  expect((await value(createClaudeCodeSubscriptionRoute(undeclared.input)).invoke('request', undeclared.bounds)).state).toBe('uncertain');
+  // A host that hands the login over refuses a stored one (a plain-text login the harness could open) and any other shape.
+  for (const status of [{ email: 'synthetic@example.invalid' }, { authMethod: 'claude.ai' }, { loggedIn: false },
+    { configDirectory: '/different-profile' }, { apiKeySource: 'ANTHROPIC_API_KEY' }, { apiProvider: 'bedrock' }]) {
+    const f = fixture({ descriptor: true, status });
+    expect((await value(createClaudeCodeSubscriptionRoute(f.input)).invoke('request', f.bounds)).state).toBe('uncertain');
+    expect(f.commands().some(row => row.args.includes('--print'))).toBe(false);
+  }
+  const stored = fixture();
+  const profile = (stored.input as unknown as { profile: ProviderSubscriptionProfile }).profile;
+  const claudeAi = { loggedIn: true, authMethod: 'claude.ai', apiProvider: 'firstParty', analyticsDisabled: true,
+    projectsDirectory: `${profile.configDirectory}/projects`, configDirectory: profile.configDirectory, email: profile.expectedAccount,
+    orgId: profile.organization, orgName: 'synthetic', subscriptionType: profile.plan };
+  expect(claudeSubscriptionStatusAccepted(claudeAi, profile)).toBe(true);
+  expect(claudeSubscriptionStatusAccepted(claudeAi, profile, true)).toBe(false);
+});

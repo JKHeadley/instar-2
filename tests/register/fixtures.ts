@@ -27,11 +27,17 @@ export function setup() {
   const rule = (n = 7, extra: object = {}) => declaration(`rule:${n}`, 'rules', { number: n, name: `Rule ${n}`, statement: 'Keep the record.',
     held: 'script', parent: 'root', rootReason: 'independent fixture rule', termRefs: [], checkDescription: 'fixture', deadline: 1000, owner: 'operator-route', overdueAction: 'surface overdue', ...extra });
   const holder = (holds: readonly object[], extra: object = {}) => declaration('holder', 'blocking sites', {
-    authority: 'block', decidesAlone: 'ruled-three', criticality: 'exact irreversible match', failDirection: 'closed', preservesInput: 'capture:input', inspectedBy: 'check',
+    authority: 'block', decidesAlone: 'ruled-three', decidesAloneBasis: 'operator-emergency-stop', criticality: 'exact irreversible match', failDirection: 'closed', preservesInput: 'capture:input', inspectedBy: 'check',
   }, { profile: f.profileInput({ consequence: 'none', reach: 'internal', surface: 'none', repeats: { kind: 'no' } }), holds, ...extra });
   const profile = f.profileInput({ consequence: 'none', reach: 'internal', surface: 'none', repeats: { kind: 'no' } });
   const bound = declaration('bound', 'critical outcomes', { probe: 'probe', cadence: 100 }, { profile });
   return { f, context, declaration, extract, source, input, build, rule, holder, profile, bound };
+}
+// A ruled-three rung must name its rule 4 admission and no other rung may carry one, so a
+// fixture that re-points `holder` at another category drops the basis rather than blanking it:
+// a key whose value is undefined is not finite JSON and refuses at the decode boundary.
+export function withoutBasis(facts: object): Record<string, unknown> {
+  const { decidesAloneBasis: _basis, ...rest } = facts as Record<string, unknown>; return rest;
 }
 export function detail<T>(r: Result<T>): string { return consumeResult(r, { Success: () => { throw new Error('expected refusal'); }, Refused: r => r.detail }); }
 export function hash(v: unknown) { return value(canonical(v)).hash; }

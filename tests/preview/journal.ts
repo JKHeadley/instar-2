@@ -16,7 +16,7 @@ import { buildWorkIndex, detectOverlaps, workForTopic, type SessionActivity } fr
 import { MAX_RAISED_SUBSCRIPTION_PROMPT_BYTES, SUBSCRIPTION_CONVERSATION_SYSTEM_PROMPT, SUBSCRIPTION_MAX_OUTPUT_TOKENS, SUBSCRIPTION_PREVIEW_EXPIRY } from '../../src/assembly/production-provider.js';
 import { hasClaim, replaceClaim, supersedesCorrection } from './claim-match.mjs';
 import { checkReply as checkCoherenceOf, correctionNote, releaseFindings, COHERENCE_FINDING_LIMIT, type CoherenceFinding } from './coherence-check.js';
-import { checkReply, reviewReply, repeatsOperatorOnly, HOLDING_REPLY, jevRequestBody, JEV_RESPONSE_MAX_BYTES, REPLY_CHECK_BUDGET_MS, REPLY_CHECK_BUDGET_REASON, LINK_SHAPE_REASON, linkShapeRules, bareTopicReferences, topicNameReason, BARE_TOPIC_OBJECTION, noDecisions, validDispositions, jevConfidentCredential, CLAIM_SCOPED_RULES, namedClaimsIn, exciseNamedClaims, substantiveReply, sharedAudience, AUDIENCE_RULES, type ApprovalFacts } from './reply-check.js';
+import { checkReply, reviewReply, repeatsOperatorOnly, HOLDING_REPLY, jevRequestBody, JEV_RESPONSE_MAX_BYTES, REPLY_CHECK_BUDGET_MS, REPLY_CHECK_BUDGET_REASON, LINK_SHAPE_REASON, linkShapeRules, bareTopicReferences, topicNameReason, BARE_TOPIC_OBJECTION, noDecisions, validDispositions, jevConfidentCredential, concealSecretMaterial, secretMaterialIn, CLAIM_SCOPED_RULES, namedClaimsIn, exciseNamedClaims, substantiveReply, sharedAudience, AUDIENCE_RULES, type ApprovalFacts } from './reply-check.js';
 import { parseDatedItem, restatedDatePhrase, dueState, selectDatedItems, withinNext48Hours, localParts, type DatedItem } from './dated-memory.js';
 import { isStatusCommand, isStopCommand, statusAnswer, STOP_CONFIRM_TEXT } from './status-command.js';
 import { AGENT_PROMISE_LIMIT, fulfillableCommitment, fulfillmentProposals, fulfillmentSupported, legacyFulfillsReminder, promiseProposals, recordedPromises, type AgentPromise, type FulfillmentProposal, type PromiseProposal } from './agent-commitment.js';
@@ -32,6 +32,8 @@ import { shouldRunScheduledPriority } from '../../src/scheduled/shedding.js';
 import type { SessionWorkEdge, SessionWorkEdgeClose, SessionWorkEffect } from '../../src/assembly/production-session-work.js';
 import type { ExhaustionAvenue } from '../../src/rungraph/index.js';
 import { consumeResult } from '../../src/index.js';
+import type { Json } from '../../src/index.js';
+import { bindBlockingSite } from '../../src/register/governance.js';
 import type { BoundaryContext, Hash, RegisterGenerationReference, Result, Scope } from '../../src/index.js';
 import { evaluateMinimalPath, minimalResponse } from '../../src/operator/live.js';
 import type { IndependentSurfaceVerifierPort, InstalledShape, MinimalDependency, SurfaceChallenge, VerifiedSurfaceProof } from '../../src/operator/contracts.js';
@@ -52,6 +54,7 @@ import { chatYesReference, reviewYesReference, SHARED_ACCESS_NOTE } from '../../
 import type { ExplicitYesInstallation, SharedAccessDisclosure } from '../../src/operator/explicit-yes.js';
 import { reviewLink, type ReviewYesSource } from './review-yes-source.js';
 import { applySentinelRecord, checkSentinelRecord, presenceNoteDue, type SentinelRecord, type SentinelView } from './sentinel-record.js';
+import { encodeReply, fitsOneMessage, replyPartTarget, splitReply, wholeReplySent, MAX_ANSWER_BYTES, MAX_REPLY_PARTS, TELEGRAM_MESSAGE_LIMIT } from './reply-parts.js';
 
 
 
@@ -237,7 +240,11 @@ export const STEP_SUPERVISOR_EXHAUSTED = 'step supervisor budget exhausted';
 /** The journal record, rather than model prose, determines a packet item's origin. */
 export type MemorySourceKind = 'operator-stated' | 'channel-import' | 'inferred-by-summary';
 /** Runner-authored packet guidance for the single format re-ask (Rule 116); the operator's message is unchanged. */
-export const ANSWER_FORMAT_REMINDER = 'Your previous response to this same message was refused because it was not exactly one JSON Decision object. Answer again and return only that object, with no text before or after it; put all reasoning inside reason.value.';
+export const ANSWER_FORMAT_REMINDER = 'Your previous response to this same message was refused because it was not exactly one flat JSON answer object. Answer again and return only that object, with no text before or after it: "reasoning" first, then "answer" or your answer\'s own fields beside it.';
+/** The re-ask names the exact defect the runner found (answer-reading.ts), so the model can correct that one thing. A
+ * re-ask that says only "format" got the identical slip back on both attempts of a1 and a3 (cint-L47, plan #491). */
+export const answerFormatReminder = (defect?: string): string => defect
+  ? `${ANSWER_FORMAT_REMINDER} The defect: ${defect}.` : ANSWER_FORMAT_REMINDER;
 export const withFormatReminder = (context: string, reminder: string): string =>
   JSON.stringify({ ...JSON.parse(context) as Record<string, unknown>, formatReminder: reminder });
 export const MODEL_FAILURE_REPLY = 'I couldn\'t produce an answer to that. Please rephrase or ask again.';
@@ -1070,8 +1077,15 @@ export type JournalRecord =
      * Replayed inertly so those items stay dispatched; nothing writes these fields any more. */
     reminderBatch?: number; reminders?: ReminderRef[]; reminderOverflow?: ReminderRef[]; summaries?: string[];
     /** Rule 89: automatically signed sender provenance; absent only on legacy rows. */
-    provenance?: OutboundProvenance; at: number }
+    provenance?: OutboundProvenance;
+    /** A reply too long for one Telegram message (reply-parts.ts): `text` is the whole reply, `body` and `provenance`
+     * its first message, and these its later messages (part 2 onward), each signed for its own send target. Each is
+     * sent in order, only after the one before it was accepted. */
+    parts?: ReplyPart[]; at: number }
   | { kind: 'sent'; id: string; message: number; latencyMs?: number; at: number }
+  /** A continuation part's dispatch is about to start: a part started without a receipt is UNKNOWN, never re-sent. */
+  | { kind: 'reply-part-start'; id: string; part: number; at: number }
+  | { kind: 'reply-part-sent'; id: string; part: number; message: number; at: number }
   /** Legacy: successful-send duration now rides on `sent`; still read on replay. */
   | { kind: 'send-timing'; id: string; latencyMs: number; at: number }
   /** Legacy fixed-text reminder frames: replayed so their items stay dispatched; never written any more. */
@@ -1184,9 +1198,13 @@ export interface PacketDrop { kind: string; source: string; reason: string }
  * `failed`: custody did not complete; the original stays in the encrypted journal, redacted for
  * every consumer, and no SecretRef exists to spend. Optional: older rows carry none. */
 export type IntakeCustody = { state: 'stored'; arrival: string; capture: string; secrets: string[] } | { state: 'failed' };
+/** One later message of a reply split across several: its plain text, its Telegram body, and its own signed provenance. */
+export interface ReplyPart { text: string; body: string; provenance: OutboundProvenance }
 export interface Turn { id: string; update: number; text: string; raw: string; accepted: boolean; at: number; thread?: number; editOf?: string; replaces?: string; custody?: IntakeCustody; answer?: string;
   /** Part Thirteen §9: the scoped-tool calls of every attempt of this turn's answer, in order (bounded), read by its reply review. */
   toolAttempts?: ToolAttempt[];
+  /** The later messages of a reply split across several (part 2 onward, in order), with each one's dispatch start and receipt. */
+  replyParts?: (ReplyPart & { started?: true; sent?: number; sentAt?: number })[];
   /** Calls the turn made beyond `toolAttempts` (the review bound); the review is told its excerpt is incomplete. */
   toolAttemptsOmitted?: number;
   /** Part Thirteen §9: whether this turn's latest answer attempt ran on the scoped-tool route (reserved) or was refused to text. */
@@ -1579,7 +1597,6 @@ export const activeMemoryConflicts = (view: JournalView) => view.conflicts.filte
   [item.first, item.second].every(part => projectMemoryClause(view, part.quote, part.source) === part.quote));
 
 const frameLimit = 2 * 1024 * 1024;
-const encodeReply = (reply: string) => reply.replaceAll('&', '&amp;').replaceAll('<', '&lt;').replaceAll('>', '&gt;');
 export const PREVIEW_JOURNAL_COMPACT_BYTES = 8 * 1024 * 1024;
 const snapshotChunkBytes = 256 * 1024;
 type SnapshotStart = { kind: 'snapshot-start'; version: 1; chunks: number; bytes: number; digest: string };
@@ -1975,8 +1992,9 @@ export const dueObligationWork = (view: JournalView, now: number) =>
   obligationSchedule(view).filter(item => !item.inFlight && !item.awaitingDelivery && !item.deliveryUnknown && item.slot <= now);
 /** Completed results waiting for a reply to carry them: the reply-only grant has no unsolicited send. */
 export const pendingReports = (view: JournalView) => obligationSchedule(view).filter(item => item.awaitingDelivery)
-  .map(item => ({ key: item.key, text: view.obligationWork[item.key]!.report!.text, subject: item.kind === 'commitment'
-    ? view.commitments[item.id]!.quote : view.blockers[item.id]!.claim }));
+  .map(item => { const note = item.kind === 'commitment' ? view.commitments[item.id]! : view.blockers[item.id]!;
+    return { key: item.key, text: view.obligationWork[item.key]!.report!.text, source: note.source,
+      subject: 'quote' in note ? note.quote : note.claim }; });
 function workTarget(view: JournalView, key: string): 'commitment' | 'blocker' | undefined {
   const match = /^(commitment|blocker):(0|[1-9][0-9]*)$/u.exec(key);
   if (!match) return undefined;
@@ -2088,12 +2106,16 @@ export function obligationCapacity(view: JournalView): boolean {
   const { calls } = view, { maxCalls } = view.limits;
   return shouldRunScheduledPriority('medium', calls >= maxCalls - 2 ? 'critical' : calls >= maxCalls * 0.75 ? 'elevated' : 'normal');
 }
-export const OBLIGATION_WORK_QUESTION = 'packet.obligation is open work you own for the verified operator, due now. Do it now with what you know; you have no external tools, and a reply reaches the operator only with their next message. A report is that later message: it is held now and delivered with their next message, never before it, so "answer later" or "not in this reply" is done by reporting now. Return only JSON. For a request, promise, deferral or judgment: {"outcome":"report","report":<the completed result or decision, addressed to the operator>} when you can finish it now; {"outcome":"continue","note":<the concrete progress and next step>} when it genuinely needs more time; {"outcome":"waiting","waitsOn":"operator"|"external","note":<what exactly you now need>} only when someone else must act first. When packet.waitingFor is present, you said you needed it earlier: check packet.operatorMessagesSince and continue with whatever now arrived. For a blocker-recheck, test the claim again against every avenue and packet.capabilities: {"outcome":"still-blocked","recheck":"YYYY-MM-DD" within 90 days,"avenues":[{"avenue","disposition":"outside-standing"|"inapplicable","evidence":<the packet.capabilities key that shows it>}],"constraint":<governingConstraints key those capabilities support>,"reason":<what you re-examined and why it still holds>} or {"outcome":"cleared","report":<what is now possible>}. You have attempted nothing outside this step, so never call an avenue tried. Follow packet.directives. Refuse only behind a packet.governingConstraints key.';
+export const OBLIGATION_WORK_QUESTION = 'packet.obligation is open work you own for the verified operator, due now. packet.obligation.yourReply was already sent to the operator: repeating or re-confirming it is not the work, so the report for a deferral or judgment is the deferred answer itself, never another acknowledgement. Do it now with what you know; you have no external tools, and a reply reaches the operator only with their next message. A report is that later message: it is held now and delivered with their next message, never before it, so "answer later" or "not in this reply" is done by reporting now. Return only JSON. For a request, promise, deferral or judgment: {"outcome":"report","report":<the completed result or decision, addressed to the operator>} when you can finish it now; {"outcome":"continue","note":<the concrete progress and next step>} when it genuinely needs more time; {"outcome":"waiting","waitsOn":"operator"|"external","note":<what exactly you now need>} only when someone else must act first. When packet.waitingFor is present, you said you needed it earlier: check packet.operatorMessagesSince and continue with whatever now arrived. For a blocker-recheck, test the claim again against every avenue and packet.capabilities: {"outcome":"still-blocked","recheck":"YYYY-MM-DD" within 90 days,"avenues":[{"avenue","disposition":"outside-standing"|"inapplicable","evidence":<the packet.capabilities key that shows it>}],"constraint":<governingConstraints key those capabilities support>,"reason":<what you re-examined and why it still holds>} or {"outcome":"cleared","report":<what is now possible>}. You have attempted nothing outside this step, so never call an avenue tried. Follow packet.directives. Refuse only behind a packet.governingConstraints key.';
 /** The same work step on the scoped-tool route: it can use the listed tools, and only their recorded calls ran. */
 export const OBLIGATION_WORK_QUESTION_TOOLS = replacedClause(replacedClause(OBLIGATION_WORK_QUESTION,
   'you have no external tools,', 'your only tools are the listed ones,'),
   'You have attempted nothing outside this step, so never call an avenue tried.',
   'Only this step\'s recorded tool calls ran outside it, so never call an avenue tried.');
+/** The answer packet's mark on a commitment whose work is finished and whose result waits for delivery (plan #492).
+ * It states only what is known when the packet is built: the attachment is decided after the answer, inside the
+ * reply's size bound, so a result past that bound waits for a later message. */
+export const READY_RESULT = 'finished, result awaiting delivery: follows your answer when this reply has room, otherwise a later message; the work is done, not still to do';
 /** Reads one work step's decision; anything malformed is a recorded failed attempt, never a guessed outcome. */
 export function obligationDecision(output: string, kind: 'commitment' | 'blocker', at: number, zone: string):
   Pick<Extract<JournalRecord, { kind: 'obligation-result' }>, 'outcome' | 'report' | 'note' | 'waitsOn' | 'recheckAt' | 'assessment'> {
@@ -2151,8 +2173,15 @@ function applyIntentObligations(view: JournalView, turn: Turn, row: Extract<Jour
   if (row.loops !== undefined) {
     if (!validLoops(row.loops) || !row.loops.length || row.loops.some(loop => !row.text.includes(loop.quote)
       || !turn.answerLoops?.some(proposed => same(proposed, loop)))) throw Error('preview journal: invalid reply loop');
-    for (const loop of row.loops) if (!view.commitments.some(note => note.in === 'reply' && note.source === turn.id && note.quote === loop.quote))
-      view.commitments.push({ in: 'reply', source: turn.id, quote: loop.quote, owner: 'agent', waitsOn: loop.waitsOn, loop: loop.kind });
+    // A sentence the answer declared both as a promise and as a loop is one commitment: an undated promise note written
+    // just before takes the loop's declared wait, so `nothing` schedules its work (plan #461) instead of being dropped.
+    // A dated promise keeps the date its own words name.
+    for (const loop of row.loops) {
+      const note = view.commitments.find(item => item.in === 'reply' && item.source === turn.id && item.quote === loop.quote);
+      if (!note) view.commitments.push({ in: 'reply', source: turn.id, quote: loop.quote, owner: 'agent', waitsOn: loop.waitsOn, loop: loop.kind });
+      else if (note.agentPromise && !note.agentPromise.due && note.waitsOn === undefined)
+        Object.assign(note, { owner: 'agent', waitsOn: loop.waitsOn, loop: loop.kind });
+    }
   }
   if (row.blocker !== undefined) {
     // The answer frame validated its shape and range; the send must still quote it and precede its recheck.
@@ -2307,7 +2336,7 @@ export const projectMemoryText = (view: JournalView, value: string) => view.memo
   return projected;
 }, value);
 export function openQuestionCandidates(view: JournalView): OpenQuestion[] {
-  const closed = new Set(view.order.filter(turn => turn.sent && turn.intent === `PREVIEW — ${turn.answer}`)
+  const closed = new Set(view.order.filter(turn => wholeReplySent(turn) && turn.intent === `PREVIEW — ${turn.answer}`)
     .flatMap(turn => turn.closedQuestions ?? []));
   const open = new Map<string, OpenQuestion>();
   for (const turn of view.order) {
@@ -2321,7 +2350,7 @@ export function openQuestionCandidates(view: JournalView): OpenQuestion[] {
     const turn = view.turns.get(id);
     if (closed.has(id) || view.memory.some(change => change.mode === 'forget' && change.source === id)
       || !view.questions.some(note => note.source === id)
-        && turn?.sent && turn.noticeClass === undefined && turn.intent === `PREVIEW — ${turn.answer}`
+        && turn && wholeReplySent(turn) && turn.noticeClass === undefined && turn.intent === `PREVIEW — ${turn.answer}`
         && turn.answer !== MODEL_FAILURE_REPLY) open.delete(id);
   }
   return [...open.values()];
@@ -2372,6 +2401,41 @@ export function reachedJournalCap(view: JournalView): { reason: 'calls' | 'repli
   if (view.order.some(turn => turn.held === 'context overflow' || turn.held === 'prompt overflow'
     || turn.held === 'summary oversized turn')) return { reason: 'bytes', limit: view.limits.maxBytes };
   return null;
+}
+/** The trial allowance, refused before the file (the blocking site `preview.journal.capacityRefused`, Rule 4's
+ * spend-past-a-cap admission): every model call is preceded by one of the reservation records below and every send
+ * by an intent, so a record this refuses never reaches the journal and nothing is spent past the cap. The turn
+ * itself stays recorded and pending, so a raise of the allowance resumes it. */
+export function capacityRefused(view: JournalView, row: JournalRecord): boolean {
+  return ((row.kind === 'intake' || row.kind === 'action-due') && !view.turns.has(row.id) && view.order.length >= view.limits.maxTurns
+      && !(row.kind === 'intake' && row.reserve === true && (!row.accepted || reserveTurnsUsed(view, row.at) < MINIMAL_RESERVE.turns)))
+    || (row.kind === 'intake' && row.reserve !== undefined && !view.turns.has(row.id) && view.order.length < view.limits.maxTurns)
+    || (row.kind === 'limited-intent' && row.approval?.action !== 'stop' && reserveRepliesUsed(view, row.at) >= MINIMAL_RESERVE.replies)
+    || ((row.kind === 'reserve' || row.kind === 'summary-reserve' || row.kind === 'index-reserve' || row.kind === 'reply-review-reserve'
+      || row.kind === 'reply-revision-reserve' || row.kind === 'reply-revision-review-reserve' || row.kind === 'format-retry' || row.kind === 'lookup'
+      || row.kind === 'answer-replace' || row.kind === 'retro-reserve' || row.kind === 'retro-rerun-reserve' || row.kind === 'retro-duty-reserve')
+      && view.calls >= view.limits.maxCalls)
+    || (row.kind === 'intent' && view.replies >= view.limits.maxReplies)
+    || (row.kind === 'reply-jev-reserve' && view.jevChecks >= view.limits.maxReplies);
+}
+/** Rule 4 / P3-NF-19: the runner composes these checkpoints without a generated register, so it binds each one to
+ * its committed declaration at launch. Each line states what the code enforces; a declaration that says otherwise
+ * (another category, admission or fail direction), or that is missing or no longer live, refuses the launch. */
+export function bindPreviewBlockingSites(declarations: { journal: Json; replyCheck: Json; redact: Json; resourceOwner: Json }): string[] {
+  return [
+    // The worker's stop/expiry gate (`gate()` in createJournalWorker): nothing is dispatched after either.
+    bindBlockingSite(declarations.journal, 'preview.journal.gate', [{ decidesAlone: 'ruled-three', decidesAloneBasis: 'operator-emergency-stop', failDirection: 'closed' }]),
+    // The poll gate (`pollGate()`): stop and expiry end polling; a resource ceiling never does.
+    bindBlockingSite(declarations.journal, 'preview.journal.pollLimit', [{ decidesAlone: 'ruled-three', decidesAloneBasis: 'operator-emergency-stop', failDirection: 'closed' }]),
+    // The durable append's allowance test (`capacityRefused`, above).
+    bindBlockingSite(declarations.journal, 'preview.journal.capacityRefused', [{ decidesAlone: 'ruled-three', decidesAloneBasis: 'spend-past-a-cap', failDirection: 'closed' }]),
+    // reviewReply asks the mind: its credential/deferral floor holds closed, every other objection is a signal.
+    bindBlockingSite(declarations.replyCheck, 'preview.reply-check.reviewReply', [{ decidesAlone: 'no', failDirection: 'closed' }, { decidesAlone: 'no', failDirection: 'open' }]),
+    // The outbound credential wall the runner hands its outbound check (`redact`).
+    bindBlockingSite(declarations.redact, 'recall.redact', [{ decidesAlone: 'ruled-three', decidesAloneBasis: 'live-secret-leaving', failDirection: 'closed' }]),
+    // The host funnel every model launch of this runner passes (`createResourceOwner`).
+    bindBlockingSite(declarations.resourceOwner, 'resource-owner.admit', [{ decidesAlone: 'ruled-three', decidesAloneBasis: 'spend-past-a-cap', failDirection: 'closed' }]),
+  ];
 }
 /** Telegram may return 100 updates. Never request past the remaining durable turn slots. */
 export const journalPollLimit = (view: JournalView) => Math.min(100, Math.max(0, view.limits.maxTurns - view.order.length));
@@ -2537,6 +2601,8 @@ function sendTarget(view: JournalView, target: string): { sent: number | undefin
     return turn?.intent !== undefined && turn.groupedInto === undefined ? { sent: turn.sent } : undefined; }
   if (kind === 'held-notice') { const turn = view.turns.get(key);
     return turn?.heldNoticeIntent !== undefined ? { sent: turn.heldNoticeSent } : undefined; }
+  if (kind === 'reply-part') { const part = view.turns.get(rest.slice(1).join(':'))?.replyParts?.[Number(rest[0]) - 2];
+    return part?.started ? { sent: part.sent } : undefined; }
   if (kind === 'requested-reminder') { const batch = view.reminders.get(requestedBatchKey(Number(key)));
     return batch?.requested ? { sent: batch.sent } : undefined; }
   if (kind === 'limited') { const turn = view.turns.get(key);
@@ -2558,6 +2624,35 @@ export function sendOutcomeOf(view: JournalView, target: string, sent: number | 
 }
 /** The reply target a turn's intent was dispatched under (a grouped turn shares its leader's send). */
 export const replyTarget = (turn: Turn) => `reply:${turn.groupedInto ?? turn.id}`;
+/** Rule 42 for a split reply (reply-parts.ts): the outcome of the WHOLE answer, read from every message that carries
+ * it. It is accepted only when each one was accepted; otherwise it is the outcome of the first message, in order,
+ * without a receipt (`part` of `of`, and its `target`). A continuation not yet started (`started: false`) may still be
+ * sent and is never counted delivered; a started one without a receipt is refused or UNKNOWN and is never re-sent.
+ * Per-message accounting (`sendOutcomeCounts`) still counts each message on its own. */
+export function replyOutcomeOf(view: JournalView, turn: Turn): { outcome: TargetOutcome; target: string; part: number; of: number; started: boolean } {
+  const lead = (turn.groupedInto === undefined ? undefined : view.turns.get(turn.groupedInto)) ?? turn;
+  const parts = lead.replyParts ?? [], of = parts.length + 1, first = sendOutcomeOf(view, replyTarget(turn), turn.sent);
+  if (first.kind !== 'accepted') return { outcome: first, target: replyTarget(turn), part: 1, of, started: true };
+  for (const [index, part] of parts.entries()) {
+    const target = replyPartTarget(lead.id, index + 2);
+    if (!part.started) return { outcome: { kind: 'unknown', reason: null }, target, part: index + 2, of, started: false };
+    const settled = sendOutcomeOf(view, target, part.sent);
+    if (settled.kind !== 'accepted') return { outcome: settled, target, part: index + 2, of, started: true };
+  }
+  return { outcome: first, target: replyTarget(turn), part: of, of, started: true };
+}
+/** The whole reply's receipt, only when every message carrying it was accepted (`replyOutcomeOf`): the first
+ * message's receipt, with the last message's acceptance time. Readers that claim the answer delivered read this. */
+export function wholeReplyReceipt(view: JournalView, turn: Turn): { message: number; at: number | undefined } | null {
+  if (turn.sent === undefined || replyOutcomeOf(view, turn).outcome.kind !== 'accepted') return null;
+  const lead = (turn.groupedInto === undefined ? undefined : view.turns.get(turn.groupedInto)) ?? turn;
+  return { message: turn.sent, at: lead.replyParts?.length ? lead.replyParts.at(-1)!.sentAt : turn.sentAt };
+}
+/** The plain label of a whole reply's outcome when it is not delivered: which message stopped it, and how. */
+export function partialReplyLabel(whole: ReturnType<typeof replyOutcomeOf>): string {
+  const label = whole.started ? unsentLabel(whole.outcome) : 'not sent yet';
+  return whole.part === 1 ? label : `part ${String(whole.part)} of ${String(whole.of)} ${label}; the parts before it Telegram API accepted`;
+}
 /** The target a reminder batch was dispatched under: grouped into a reply, or its own requested batch. */
 function reminderTarget(view: JournalView, key: string, batch: { requested?: boolean }): string {
   const number = batch.requested ? JSON.parse(key)[1] as number : undefined;
@@ -2589,6 +2684,7 @@ export function sendOutcomeCounts(view: JournalView) {
   };
   for (const turn of view.order) {
     if (turn.intent !== undefined) settle(replyTarget(turn), turn.sent);
+    for (const [index, part] of (turn.replyParts ?? []).entries()) if (part.started) settle(replyPartTarget(turn.id, index + 2), part.sent);
     if (turn.heldNoticeIntent !== undefined) settle(`held-notice:${turn.id}`, turn.heldNoticeSent);
     if (turn.limited?.lead === turn.id) settle(`limited:${turn.id}`, turn.limitedSent);
   }
@@ -2731,6 +2827,27 @@ function operatorResultIntent(view: JournalView, row: Extract<JournalRecord, { k
     || !row.text.endsWith(`approved through your GitHub account${state.approved.sharedAccess ? `; note: ${SHARED_ACCESS_NOTE}` : ''}.`))
     throw Error('preview journal: operator result order');
   state.resultNotice = { text: row.text };
+}
+/** What an accepted reply settles, once the whole reply is accepted (for a split reply, its last message, which also
+ * carries any operator request line): the request it carries is bound to that message, results bound to it are delivered,
+ * and the promises it says it carries out close. Until then a part that is refused or UNKNOWN settles none of them. */
+function settleDeliveredReply(view: JournalView, turn: Turn, message: number, at: number): void {
+  sentOperatorRequest(view, turn.id, 'reply', message);
+  // Evidenced settlement: a result bound to this reply's intent is delivered, and its commitment closed, only now.
+  for (const [key, work] of Object.entries(view.obligationWork)) if (work.report?.boundTo === turn.id && work.report.delivered === undefined) {
+    work.report.delivered = turn.id;
+    const id = Number(key.slice(11));
+    if (key.startsWith('commitment:') && !view.closed.has(id)) view.closed.set(id, { id, source: turn.id, quote: work.report.text });
+  }
+  // An API-accepted reply closes the promises the model said it carries out; a legacy
+  // intent (no fulfills field) keeps the closure rule it was recorded under.
+  if (turn.intentFulfills !== undefined) {
+    for (const id of turn.intentFulfills) if (!view.closed.has(id)) view.closed.set(id, { id, source: turn.id, quote: turn.intent! });
+  } else for (const [id, note] of view.commitments.entries()) if (note.agentPromise && !view.closed.has(id)
+    && note.source !== turn.id && view.turns.get(note.source)!.update < turn.update
+    && (!note.agentPromise.due || dueState(note.agentPromise.due, at) === 'due'
+      || dueState(note.agentPromise.due, at) === 'overdue')
+    && legacyFulfillsReminder(note.agentPromise, turn.intent!)) view.closed.set(id, { id, source: turn.id, quote: turn.intent! });
 }
 function sentOperatorRequest(view: JournalView, carrier: string, via: OperatorRequestState['via'], message: number): void {
   const state = view.operatorRequests.find(item => item.carrier === carrier && item.via === via && item.message === undefined);
@@ -2906,8 +3023,9 @@ export interface ToolTurnStats { invocations: number; reservedCalls: number; ref
  * many still hold one (`held`: unreadable, unwritable or not plain text, kept intact), and whether the pass stopped at its
  * bound (`unchecked`). */
 export interface ToolVolumeRow { lost: boolean; reconciled: number; held?: number; unchecked?: true }
-/** Which identity a tool turn's harness ran as (harness-user.mjs): its own macOS user, or the runner's account because
- * the configured harness user was unavailable (the reason, recorded so the fallback is never silent). */
+/** Which identity a tool turn's harness ran as (harness-user.mjs): its own macOS user. `fallback` is only read back from
+ * journals of the first build of that unit, which ran the runner's account when the harness user was unavailable; the
+ * runner no longer writes it (an unavailable harness user now holds the launch). */
 export type ToolHarnessRow = { user: string } | { fallback: string };
 /** The conversation's workspace a tool turn used: `kept` (its persistent workspace) or not (past the root's bound of kept
  * workspaces, a fresh one-turn workspace, recorded so the overflow is never silent, Rule 2). */
@@ -2997,7 +3115,7 @@ function projectToolTurn(view: JournalView, row: Extract<JournalRecord, { kind: 
     lost: prior.lost + Number(kept.mode === 'new' && /^(?:lost|interrupted)\b/u.test(kept.reason)),
     bounded: prior.bounded + Number(kept.mode === 'new' && SESSION_BOUNDED.includes(kept.reason)),
     ended: prior.ended + Number(!kept.kept) }))(stats.sessions ?? emptySessionStats());
-  // Which identity the harness ran as (harness-user.mjs): its own user, or the runner's account on a loud fallback.
+  // Which identity the harness ran as (harness-user.mjs): its own user (`fallback` only in journals of its first build).
   const harness = row.harness;
   if (harness !== undefined && !(harness && typeof harness === 'object' && Object.keys(harness).length === 1
     && (boundedText((harness as { user?: unknown }).user, 1, 64) || boundedText((harness as { fallback?: unknown }).fallback, 1, 512))))
@@ -3626,6 +3744,18 @@ function project(view: JournalView, row: JournalRecord, system?: SystemCheck, ad
   const turn = view.turns.get(row.id);
   if (!turn) throw Error('preview journal: orphan effect');
   if (row.kind === 'operator-yes') { decideOperatorRequest(view, turn, row); return; }
+  // A continuation part starts only after the message before it was accepted, once; its receipt follows its start.
+  if (row.kind === 'reply-part-start' || row.kind === 'reply-part-sent') {
+    const parts = turn.replyParts ?? [], part = parts[row.part - 2];
+    const previousSent = row.part === 2 ? turn.sent : parts[row.part - 3]?.sent;
+    if (!part || !Number.isSafeInteger(row.part) || previousSent === undefined || view.sendOutcomes.some(item => item.target === replyPartTarget(turn.id, row.part))
+      || (row.kind === 'reply-part-start' ? part.started !== undefined : !part.started || part.sent !== undefined || !Number.isSafeInteger(row.message) || row.message <= 0))
+      throw Error('preview journal: reply part order');
+    if (row.kind === 'reply-part-start') { part.started = true; return; }
+    part.sent = row.message; part.sentAt = row.at;
+    if (row.part === parts.length + 1) settleDeliveredReply(view, turn, row.message, row.at);
+    return;
+  }
   if (row.kind === 'held-notice-intent') {
     const lastNotice = lastHeldNoticeAt(view, row.id);
     const heldCount = view.order.filter(item => item.accepted && item.held !== undefined && item.intent === undefined).length;
@@ -4086,7 +4216,12 @@ function project(view: JournalView, row: JournalRecord, system?: SystemCheck, ad
       if (turn.operatorAction?.action !== row.operatorRequest.action) throw Error('preview journal: operator request without proposal');
       addOperatorRequest(view, row.operatorRequest, turn.id, 'reply', turn.thread ?? null, row.text, row.at, row.operatorReview, row.requestScope);
     }
+    if (row.parts !== undefined && (!Array.isArray(row.parts) || !row.parts.length || row.parts.length >= MAX_REPLY_PARTS
+      || row.approval !== undefined || row.body === undefined || Buffer.byteLength(row.body) > TELEGRAM_MESSAGE_LIMIT
+      || row.parts.some(part => typeof part.text !== 'string' || !part.text || part.body !== encodeReply(part.text) || !fitsOneMessage(part.text))))
+      throw Error('preview journal: reply parts refused');
     turn.intent = row.text; turn.intentBody = row.body ?? row.text; view.replies++;
+    if (row.parts !== undefined) turn.replyParts = row.parts.map(part => ({ ...part }));
     if (row.release) turn.release = row.release;
     if (row.heldReview) turn.heldReview = row.heldReview;
     if (row.approval) turn.approval = { ...row.approval };
@@ -4146,26 +4281,13 @@ function project(view: JournalView, row: JournalRecord, system?: SystemCheck, ad
   if (row.kind === 'sent') { if (turn.intent === undefined || turn.sent !== undefined
       || row.latencyMs !== undefined && (turn.sendMs !== undefined || !Number.isSafeInteger(row.latencyMs) || row.latencyMs < 0))
       throw Error('preview journal: receipt order');
-    turn.sent = row.message; turn.sentAt = row.at; sentOperatorRequest(view, turn.id, 'reply', row.message);
+    turn.sent = row.message; turn.sentAt = row.at;
     if (row.latencyMs !== undefined) turn.sendMs = row.latencyMs;
     const grouped = turn.reminderBatch === undefined ? undefined : view.reminders.get(requestedBatchKey(turn.reminderBatch));
     if (grouped) { grouped.sent = row.message; grouped.sentAt = row.at; }
     for (const id of turn.summaryBatch ?? []) { const item = view.turns.get(id)!; item.sent = row.message; item.sentAt = row.at; }
-    // Evidenced settlement: a result bound to this reply's intent is delivered, and its commitment closed, only now.
-    for (const [key, work] of Object.entries(view.obligationWork)) if (work.report?.boundTo === turn.id && work.report.delivered === undefined) {
-      work.report.delivered = turn.id;
-      const id = Number(key.slice(11));
-      if (key.startsWith('commitment:') && !view.closed.has(id)) view.closed.set(id, { id, source: turn.id, quote: work.report.text });
-    }
-    // An API-accepted reply closes the promises the model said it carries out; a legacy
-    // intent (no fulfills field) keeps the closure rule it was recorded under.
-    if (turn.intentFulfills !== undefined) {
-      for (const id of turn.intentFulfills) if (!view.closed.has(id)) view.closed.set(id, { id, source: turn.id, quote: turn.intent });
-    } else for (const [id, note] of view.commitments.entries()) if (note.agentPromise && !view.closed.has(id)
-      && note.source !== turn.id && view.turns.get(note.source)!.update < turn.update
-      && (!note.agentPromise.due || dueState(note.agentPromise.due, row.at) === 'due'
-        || dueState(note.agentPromise.due, row.at) === 'overdue')
-      && legacyFulfillsReminder(note.agentPromise, turn.intent)) view.closed.set(id, { id, source: turn.id, quote: turn.intent }); }
+    // A split reply is delivered, and settles, only when its last message is accepted (the reply-part-sent row).
+    if (!turn.replyParts?.length) settleDeliveredReply(view, turn, row.message, row.at); }
   if (row.kind === 'send-timing') {
     if (turn.intent === undefined || turn.sendMs !== undefined || !Number.isSafeInteger(row.latencyMs) || row.latencyMs < 0)
       throw Error('preview journal: send timing order');
@@ -4322,23 +4444,16 @@ export function openPreviewJournal(path: string, key: Uint8Array, initial?: Extr
       if ((row.kind === 'intent' || row.kind === 'held-notice-intent' || row.kind === 'limited-intent' || row.kind === 'operator-result-intent'
         || row.kind === 'retract-request') && row.provenance !== undefined && !verifyOutbound(row.provenance, outboundSubjectOf(row)))
         throw Error('preview journal: outbound provenance refused');
+      if (row.kind === 'intent' && row.parts !== undefined && row.parts.some((part, index) => !verifyOutbound(part.provenance,
+        { target: replyPartTarget(row.id, index + 2), chat: row.chat, ...(row.thread === undefined ? {} : { thread: row.thread }), body: part.body })))
+        throw Error('preview journal: outbound provenance refused');
       // Checked before the durable write: a record its own projection would refuse must never reach the file.
       if (row.kind === 'retro-rerun-reserve') checkRerunReserve(view!, row);
       if (row.kind === 'retro-duty-reserve') checkDutyReserve(view!, row);
       if (row.kind === 'reply-review-reserve' && row.promptSha256
         && row.promptSha256 !== createHash('sha256').update(view!.turns.get(row.id)?.prompt ?? '').digest('hex'))
         throw Error('preview journal: reply review prompt reference differs');
-      if (view && (((row.kind === 'intake' || row.kind === 'action-due') && !view.turns.has(row.id) && view.order.length >= view.limits.maxTurns
-          && !(row.kind === 'intake' && row.reserve === true && (!row.accepted || reserveTurnsUsed(view, row.at) < MINIMAL_RESERVE.turns)))
-        || (row.kind === 'intake' && row.reserve !== undefined && !view.turns.has(row.id) && view.order.length < view.limits.maxTurns)
-        || (row.kind === 'limited-intent' && row.approval?.action !== 'stop' && reserveRepliesUsed(view, row.at) >= MINIMAL_RESERVE.replies)
-        || ((row.kind === 'reserve' || row.kind === 'summary-reserve' || row.kind === 'index-reserve' || row.kind === 'reply-review-reserve'
-          || row.kind === 'reply-revision-reserve' || row.kind === 'reply-revision-review-reserve' || row.kind === 'format-retry' || row.kind === 'lookup'
-          || row.kind === 'answer-replace' || row.kind === 'retro-reserve' || row.kind === 'retro-rerun-reserve' || row.kind === 'retro-duty-reserve')
-          && view.calls >= view.limits.maxCalls)
-        || (row.kind === 'intent' && view.replies >= view.limits.maxReplies)
-        || (row.kind === 'reply-jev-reserve' && view.jevChecks >= view.limits.maxReplies)))
-        throw Error('preview journal: capacity reached');
+      if (view && capacityRefused(view, row)) throw Error('preview journal: capacity reached');
       if (row.kind === 'cap-report') {
         if (!capReportAllowed(view!, row)
           || view!.capReports.has(capKey(row.reason, row.limit, row.level))) throw Error('preview journal: cap report order');
@@ -4563,6 +4678,28 @@ export interface OwnedLaunch { owner: string; launch: number; pid: number | null
   exit?: number; reason?: string }
 /** Whether a launch's recorded process is still that runner: `unknown` is never shown as running. */
 export type OwnedProcess = 'present' | 'absent' | 'unknown';
+/**
+ * Whether one process command line (`ps -o command=`, or null when the pid has no process) is the runner of
+ * `root`. Its `--root` argument must equal `root` exactly: a substring test would let a live runner of
+ * `<root>-copy` vouch for a gone runner of `<root>` (Rule 114: never claim work nobody is doing). `ps` joins
+ * arguments with spaces, so text alone cannot say where the root ends: every point before a ` --` (or the end
+ * of the line) is a possible end, and a path may itself hold ` --` (`/tmp/runner --copy` is one valid root).
+ * `root` is present only when it is one of those possible values and no other possible value is a path that
+ * exists (`exists`, read at this observation): a live runner of `/tmp/runner --copy` therefore never vouches for
+ * `/tmp/runner` while both roots are there, and a lone root is still recognised whole. Any other ambiguity
+ * (another spelling of the root, a repeated `--root`, an unreadable candidate) is `unknown`, never running.
+ */
+export function ownedProcessOf(command: string | null, root: string, exists: (path: string) => boolean): OwnedProcess {
+  if (command === null) return 'absent';
+  const line = command.replace(/[\r\n]+$/u, '');
+  if (!/(^|[\s/])journal-agent\.mjs(\s|$)/u.test(line)) return 'absent';
+  const starts = [...line.matchAll(/(?:^|\s)--root /gu)];
+  if (starts.length !== 1) return 'unknown';
+  const after = line.slice(starts[0]!.index! + starts[0]![0].length);
+  const candidates = [...after.matchAll(/ --/gu)].map(match => after.slice(0, match.index)).concat(after).filter(Boolean);
+  if (!candidates.includes(root)) return 'unknown';
+  return candidates.every(candidate => candidate === root || !exists(candidate)) ? 'present' : 'unknown';
+}
 /** Most rows one packet carries (the current runner plus the most relevant others). */
 export const CONCURRENT_WORK_ROWS = 6;
 /** Stopped or stale runners older than this are counted, not listed. */
@@ -4652,6 +4789,10 @@ export interface PreviewPorts {
   /** Rules 8, 56, 100: due reminder lines (credential expiry stages, a failing doorway check), most urgent first. */
   /** Offered for the answer to turn `turn` (its own effect-doorway refusals ride first). */
   replyNotices?(turn?: string): readonly ReplyNotice[];
+  /** Plan #442 (Rules 4, 86, 100): the secret values the runner holds (vault and host custody, the harness login, the
+   * root's MCP credentials; plan #507: every value once read stays held) for the exact floor on every reply. Read in
+   * memory only, never recorded or sent to a model. */
+  heldSecrets?(): readonly string[];
   /** Rules 9, 96, 114: the runner's bounded concurrent owned-work view (concurrentWorkItem), carried into operator packets. */
   concurrentWork?(): object | null;
   /** Monotonic process time for minimum waits; inherited UNKNOWN work waits anew. */
@@ -4675,7 +4816,8 @@ export interface PreviewPorts {
    * is routed here; an operator answer is never delegated to a session. */
   sessionWork?(input: { question: string; context: string; id: string }): ReturnType<PreviewPorts['model']>;
   model(input: { question: string; context: string; id: string; prepared?: string }): Promise<string | {state?: 'complete'; text:string;
-    usage: ModelUsage; /** The Decision's separately stated reason claim (Rule 108), kept beside its conclusion. */ reason?: string} | {state:'rejected' | 'complete'; failureClass:ModelFailureClass; usage?: ModelUsage}
+    usage: ModelUsage; /** The Decision's separately stated reason claim (Rule 108), kept beside its conclusion. */ reason?: string} | {state:'rejected' | 'complete'; failureClass:ModelFailureClass; usage?: ModelUsage;
+      /** A malformed answer's exact protocol defect (answer-reading.ts), named in the one format re-ask. */ defect?: string}
     | {state:'uncertain'; usage?: ModelUsage}>;
   /** Rule 42: a message id (accepted), null (UNKNOWN) or a closed outcome. Rule 89: `provenance`
    * is the journal's signature over exactly `target`, `chat`, `thread` and `text`. */
@@ -4735,9 +4877,6 @@ export interface PreviewPorts {
     | { state: 'complete' | 'rejected' | 'uncertain'; failureClass?: ModelFailureClass; usage?: ModelUsage }>;
   /** Typed seam for evidence other builds own (build 5: waiver authorizations and acts). Absent: the duty is recorded unavailable. */
   retrospectiveEvidence?(): RetroSiblingEvidence;
-  /** Plan #473 (2): whether a reply carries an exact secret value the runner holds (its own credentials, the harness's
-   * login, the root's MCP credentials). Such a reply is withheld exactly like credential-shaped text. */
-  heldSecret?(text: string): boolean;
   /** Rule 100: vault-first custody of the credentials in a verified operator message, before it is recorded. */
   secrets?: { custody(input: { text: string; raw: string; source: string }): { text: string; raw: string; custody?: IntakeCustody } };
   boundary?(stage: string): void;
@@ -5722,11 +5861,13 @@ export function createJournalWorker(journal: ReturnType<typeof openPreviewJourna
     return `limited answer (${item.limited!.reason} allowance) ${settled.kind === 'accepted' ? 'Telegram API accepted' : unsentLabel(settled)}`;
   };
   // Rule 42: an unsent intent reads its recorded outcome; a definite refusal is never shown as UNKNOWN.
+  // A split reply is answered only when every message carrying it was accepted; the first receipt alone is partial.
   const outcome = (item: Turn) => {
-    const text = unsettledOutcome(item), settled = item.intent && !item.sent ? sendOutcomeOf(journal.view, replyTarget(item), item.sent) : null;
-    return settled?.kind === 'refused' ? text.replace('delivery UNKNOWN', unsentLabel(settled)) : text;
+    const whole = item.intent !== undefined ? replyOutcomeOf(journal.view, item) : null;
+    const text = unsettledOutcome(item, whole?.outcome.kind === 'accepted');
+    return whole && whole.outcome.kind !== 'accepted' ? text.replace('delivery UNKNOWN', partialReplyLabel(whole)) : text;
   };
-  const unsettledOutcome = (item: Turn) => item.sent ? (lostNotice(item) ? 'loss notice delivered; model UNKNOWN'
+  const unsettledOutcome = (item: Turn, delivered: boolean) => delivered ? (lostNotice(item) ? 'loss notice delivered; model UNKNOWN'
       : sizeRefused(item) ? item.intent === TOO_LONG_INPUT_NOTICE ? 'too-long notice Telegram API accepted'
         : 'holding reply delivered in place of the too-long notice'
       : item.noticeClass ? 'holding reply delivered in place of the loss notice; model UNKNOWN'
@@ -6006,7 +6147,8 @@ export function createJournalWorker(journal: ReturnType<typeof openPreviewJourna
         items: items.map(item => {
           const note = journal.view.commitments[item.id]!;
           return { ...item, quote: clean(item.quote, true, turn.id),
-            ...(note.agentPromise ? { owner: note.agentPromise.owner, waitsOn: note.agentPromise.waitsOn,
+            ...(note.agentPromise ? { owner: note.agentPromise.owner, waitsOn: note.waitsOn ?? note.agentPromise.waitsOn,
+              ...(note.loop ? { loop: note.loop } : {}),
               ...(note.agentPromise.due ? { due: { when: note.agentPromise.due.when,
                 state: dueState(note.agentPromise.due, ports.now()),
                 ...(note.agentPromise.due.day ? { day: note.agentPromise.due.day } : {}),
@@ -6686,6 +6828,26 @@ export function createJournalWorker(journal: ReturnType<typeof openPreviewJourna
     return due.items.map(item => requestItem(journal.view, item))
       .some(item => !item || clean(item.quote) !== item.quote || reminderUnsettled(item)) ? 'unsettled' : null;
   };
+  /** The later messages of a split reply, in order (reply-parts.ts). Each is sent only after the one before it was
+   * accepted; its durable start is written before its dispatch, so a part started with no receipt (a crash, or an
+   * unknown or refused outcome) is never re-sent, and the parts after it are not sent out of order. Stop and expiry
+   * end it like any send. */
+  const sendReplyParts = async (turn: Turn) => {
+    const parts = turn.replyParts ?? [];
+    for (const [index, part] of parts.entries()) {
+      if (part.sent !== undefined) continue;
+      const previous = index === 0 ? turn.sent : parts[index - 1]!.sent;
+      if (part.started || previous === undefined) return;
+      gate();
+      const number = index + 2, target = replyPartTarget(turn.id, number);
+      journal.append({ kind: 'reply-part-start', id: turn.id, part: number, at: ports.now() });
+      const outcome = await push('reply', target, part.provenance, { text: part.body, expectedText: part.text,
+        chat: journal.view.genesis.chat, ...(turn.thread === undefined ? {} : { thread: turn.thread }), update: turn.update });
+      if (outcome.kind !== 'accepted') return;
+      try { journal.append({ kind: 'reply-part-sent', id: turn.id, part: number, message: outcome.message, at: ports.now() }); }
+      catch { return; }
+    }
+  };
   /** Ordinary answers drain on every cycle. A requested action is proactive: it is created and answered only at
    * the due point `sendRequested()`, after a successful poll returned nothing new, so a queued withdrawal is
    * always read and settled first (Rules 57, 93). */
@@ -6702,6 +6864,8 @@ export function createJournalWorker(journal: ReturnType<typeof openPreviewJourna
     working = true; workingSince = ports.now();
     try {
       completeApprovals();
+      // A split reply left part-way by a restart continues before anything new is answered.
+      for (const turn of journal.view.order) if (turn.replyParts?.length) await sendReplyParts(turn);
       if (due) scheduleRequests();
       let blockedEarlier = false;
       for (const turn of journal.view.order) {
@@ -6880,7 +7044,7 @@ export function createJournalWorker(journal: ReturnType<typeof openPreviewJourna
           const formatReask = async (given: Answer): Promise<Answer | false> => {
             if (typeof given === 'string' || !('failureClass' in given) || given.state !== 'complete'
               || given.failureClass !== 'malformed' || turn.answerRetried) return given;
-            const retryContext = routedContext(withFormatReminder(context, ANSWER_FORMAT_REMINDER));
+            const retryContext = routedContext(withFormatReminder(context, answerFormatReminder('defect' in given ? given.defect : undefined)));
             let retryPrepared: string | undefined, preparable = true;
             if (prepared !== undefined) try { retryPrepared = ports.prepareModel?.({ question, context: retryContext, id: turn.id }); }
             catch { preparable = false; }
@@ -7282,8 +7446,7 @@ export function createJournalWorker(journal: ReturnType<typeof openPreviewJourna
             // Rules 8, 56, 100: at most one due reminder line rides the same answer; a spent key is never offered again.
             // Part Twelve §3, Rule 42: this answer's own effect refusal is offered for this turn only, so it is never
             // optional. Its room is reserved first: only the model's answer body is shortened (marked with …) to keep it,
-            // never the runner's own outcome lines after it, and an optional follow-up report rides only whole in the
-            // space left, otherwise it stays pending for a later answer.
+            // never the runner's own outcome lines after it. Follow-up reports come after it (below).
             const replying = Boolean(text.trim()) && fromOperator(turn) && !probe && !turn.requestedAction;
             const next = replying ? openReplyNotices(journal.view.order, ports.replyNotices?.(turn.id) ?? [], turn.id)[0] : undefined;
             const reserved = next?.key.startsWith('effect:') ? Buffer.byteLength(next.line) + 2 : 0;
@@ -7294,20 +7457,26 @@ export function createJournalWorker(journal: ReturnType<typeof openPreviewJourna
               const room = 3500 - reserved - Buffer.byteLength(outcome) - Buffer.byteLength('…');
               text = room > 0 && keptBody ? `${clip(keptBody, room)}${outcome}` : outcome.trim();
             }
-            // Rules 8, 92: completed obligation work rides the operator's next answer, the only send the grant allows.
-            // A result another unsent answer already carries is not repeated in this one.
-            const reports: string[] = [], carried = new Set(journal.view.order.filter(item => item.id !== turn.id
-              && item.intent === undefined).flatMap(item => item.answerReports ?? []));
-            if (replying)
-              for (const item of pendingReports(journal.view).filter(entry => !carried.has(entry.key))) {
-                const line = `\n\nFollow-up on "${clip(clean(redact(item.subject).text, true), 160)}": ${item.text}`;
-                if (reports.length >= 2 || Buffer.byteLength(text) + Buffer.byteLength(line) + reserved > 3500) break;
-                text = `${text.trimEnd()}${line}`; reports.push(item.key);
-              }
             const notices: ReplyNotice[] = [];
             if (next && Buffer.byteLength(text) + Buffer.byteLength(next.line) + 2 <= 3500) {
               text = `${text.trimEnd()}\n\n${next.line}`; notices.push(next);
             }
+            // Rules 8, 92: EVERY completed obligation result rides the operator's next answer, the only send the grant
+            // allows, in schedule order, after the answer and its notice. A long reply is split into ordered messages
+            // at send (reply-parts.ts), so no result waits on a count or a one-message bound (live cint-L49 D1c: a cap of
+            // two kept the deferral's result back). The text stays inside the route's answer bound, the size every split
+            // reply is derived to carry; a result past it stays pending for the next answer, never dropped. A result
+            // another unsent answer already carries is not repeated. Each obligation keeps its own subject line: a shared
+            // originating turn and the same result text do not prove the same work (one message can open two loops
+            // that are both answered "Yes."), so no obligation settles under another's line.
+            const reports: string[] = [], carried = new Set(journal.view.order
+              .filter(item => item.id !== turn.id && item.intent === undefined).flatMap(item => item.answerReports ?? []));
+            if (replying)
+              for (const item of pendingReports(journal.view).filter(entry => !carried.has(entry.key))) {
+                const line = `\n\nFollow-up on "${clip(clean(redact(item.subject).text, true), 160)}": ${item.text}`;
+                if (Buffer.byteLength(text) + Buffer.byteLength(line) > MAX_ANSWER_BYTES) break;
+                text = `${text.trimEnd()}${line}`; reports.push(item.key);
+              }
             // The claims are decided one last time against the reply exactly as it is written, by the same
             // rule the replay reads it back with; anything the final text no longer carries is counted refused.
             const written = text.trim() ? text : MODEL_FAILURE_REPLY;
@@ -7378,9 +7547,9 @@ export function createJournalWorker(journal: ReturnType<typeof openPreviewJourna
           || [LOOKUP_UNAVAILABLE_REPLY, LOOKUP_NOT_FOUND_REPLY, LOOKUP_UNSETTLED_REPLY].includes(turn.answer)
           || turn.memoryPending && turn.memoryUndecided && !requestDecided
           || isStatusCommand(turn.text) && !turn.reserved ? 'infrastructure' : 'agent';
-        const proposedBody = reply.replaceAll('&', '&amp;').replaceAll('<', '&lt;').replaceAll('>', '&gt;');
-        if (Buffer.byteLength(proposedBody) > 4096 || Array.from(proposedBody).length > 4096)
-          { reply = disclosed(TOO_LONG_REPLY_NOTICE); speaker = 'infrastructure'; }
+        // An answer too long for one Telegram message is split into several, sent in order (reply-parts.ts); only one
+        // past MAX_REPLY_PARTS messages, which no route's answer bound reaches, still gets the too-long notice.
+        if (!splitReply(reply)) { reply = disclosed(TOO_LONG_REPLY_NOTICE); speaker = 'infrastructure'; }
         // A requested action always leads with why it was sent: the request and when it was made (Rule 54). A lost
         // or failed answer sends a truthful line under the same header, never a made-up result.
         const actionHeader = turn.requestedAction ? requestedActionHeader(journal.view, turn) : undefined;
@@ -7389,8 +7558,7 @@ export function createJournalWorker(journal: ReturnType<typeof openPreviewJourna
             ? 'I lost my answer to this: the model call\'s outcome is unknown, and I never repeat it. Ask me again if you still want it.'
             : turn.answer === MODEL_FAILURE_REPLY ? 'I could not produce an answer to this. Ask me again if you still want it.'
               : turn.answer.replace(/^PREVIEW(?=$|[\s:—])(?:\s*[:—])?\s*/u, '')}`;
-          const encoded = encodeReply(reply);
-          if (Buffer.byteLength(encoded) > 4096 || Array.from(encoded).length > 4096)
+          if (!splitReply(reply))
             { reply = `${actionHeader}\nMy answer was too long for one Telegram message, so I sent no part of it. Ask me for a shorter one.`; speaker = 'infrastructure'; }
         }
         // Upcoming dates ride an ordinary reply to the operator's message, never a due turn the runner started.
@@ -7398,18 +7566,16 @@ export function createJournalWorker(journal: ReturnType<typeof openPreviewJourna
           && !journal.view.mentionedDates.has(datedKey(item)) && withinNext48Hours(item, ports.now())
           && !journal.view.memory.some(change => change.mode !== 'prefer' && change.in !== 'reply' && change.source === item.source
             && (item.quote.includes(change.quote) || change.quote.includes(item.quote))));
-        const fits = (text: string) => {
-          const body = text.replaceAll('&', '&amp;').replaceAll('<', '&lt;').replaceAll('>', '&gt;');
-          return Buffer.byteLength(text) <= 4096 && Array.from(text).length <= 4096
-            && Buffer.byteLength(body) <= 4096 && Array.from(body).length <= 4096;
-        };
+        // Whether the messages that carry a candidate can be sent (one, or several in order).
+        const fits = (text: string) => splitReply(text) !== null;
         const mentioned: DatedItem[] = [], labels: string[] = [];
         for (const item of imminent.slice(0, 3)) {
           if (reply.includes(item.quote)) { mentioned.push(item); continue; }
           const quote = redact(item.quote).text;
           const label = `${quote.length > 80 ? `${quote.slice(0, 79)}…` : quote} (${item.day}${item.time ? ` ${item.time}` : ''})`;
           const candidate = `${reply} Upcoming: ${[...labels, label].join('; ')}.`;
-          if (fits(candidate)) { labels.push(label); mentioned.push(item); }
+          // An optional mention rides only inside one message: it never makes a reply into two.
+          if (fitsOneMessage(candidate)) { labels.push(label); mentioned.push(item); }
         }
         if (labels.length) reply += ` Upcoming: ${labels.join('; ')}.`;
         let mentionedKeys = mentioned.map(datedKey), heldBack = false;
@@ -7433,6 +7599,10 @@ export function createJournalWorker(journal: ReturnType<typeof openPreviewJourna
             reply = turn.reviewCandidate; mentionedKeys = turn.reviewMentionedDates;
           }
           const candidateDigest = createHash('sha256').update(reply).digest('hex');
+          // Plans #442, #446 (Rules 4, 86, 100): a secret is decided against the material the runner holds, and a
+          // reviewer's credential VIOLATION always holds. Every reviewer reads the reply exactly as it will be sent;
+          // the full-context review is given the register's public entries as recorded facts (packet.credentialRegister).
+          const heldValues = (() => { try { return ports.heldSecrets?.() ?? []; } catch { return []; } })();
           const last = turn.replyChecks?.at(-1);
           const previous = last?.candidateDigest === candidateDigest
             || last?.candidateDigest === undefined && !mentioned.length ? last : undefined;
@@ -7451,7 +7621,7 @@ export function createJournalWorker(journal: ReturnType<typeof openPreviewJourna
           // a check naming a credential keeps the secrets exception (Rule 86) below.
           let decision: ReplyDecision['outcome'] | undefined, capRefused = false;
           // The exact credential-shape floor runs before provider disclosure on every replay.
-          const credentialShape = redact(reply).count > 0 || ports.heldSecret?.(reply) === true;
+          const credentialShape = redact(reply).count > 0 || secretMaterialIn(reply, heldValues);
           if (credentialShape) {
             if (!previous) journal.append({ kind: 'reply-check', id: turn.id, result: { verdict: 'violation',
               ruleIds: ['credential'], confidence: 1, path: 'holding', latencyMs: 0, candidateDigest }, at: ports.now() });
@@ -7564,7 +7734,7 @@ export function createJournalWorker(journal: ReturnType<typeof openPreviewJourna
                 let outcome: Awaited<ReturnType<NonNullable<NonNullable<PreviewPorts['replyCheck']>['revise']>>> | { state: 'failed'; text?: undefined; usage?: undefined; dispositions?: undefined; blocker?: undefined };
                 // The draft is revised without its Rule 110 disclosure, which code adds back to the final text.
                 const draft = continuity?.spoken ? reply.replace(`${continuity.disclosure} `, '') : reply;
-                try { outcome = await ports.replyCheck.revise({ text: redact(draft).text, id: turn.id, originalPrompt,
+                try { outcome = await ports.replyCheck.revise({ text: concealSecretMaterial(redact(draft).text, heldValues), id: turn.id, originalPrompt,
                   ruleIds: objections.filter(item => item !== BARE_TOPIC_OBJECTION) as ReplyRule[], objections,
                   ...(checkRow?.findings ? { findings: checkRow.findings } : {}),
                   ...(reason === undefined ? {} : { reason }), deadlineAt: loopDeadline }); }
@@ -7587,10 +7757,9 @@ export function createJournalWorker(journal: ReturnType<typeof openPreviewJourna
                 let body = turn.revision.text.replace(/^PREVIEW(?=$|[\s:—])(?:\s*[:—])?\s*/u, '');
                 if (continuity && body.startsWith(continuity.disclosure)) body = body.slice(continuity.disclosure.length).trimStart();
                 const candidate = actionHeader === undefined ? disclosed(`PREVIEW — ${body}`) : `${actionHeader}\n${body}`;
-                const encoded = encodeReply(candidate);
                 // The agent keeping its draft unchanged is its answer, not a new candidate: nothing to re-review.
                 // The same text with a newly declared investigation record is a new candidate (plan #104).
-                if ((candidate !== reply || turn.revision.blocker !== undefined) && !redact(candidate).count && Buffer.byteLength(encoded) <= 4096 && Array.from(encoded).length <= 4096)
+                if ((candidate !== reply || turn.revision.blocker !== undefined) && !redact(candidate).count && !secretMaterialIn(candidate, heldValues) && fits(candidate))
                   revised = candidate;
               }
             }
@@ -7641,7 +7810,7 @@ export function createJournalWorker(journal: ReturnType<typeof openPreviewJourna
               withheld = { rules: named.rules, removed: cut.removed, unlocated: cut.unlocated };
               if (cut.removed.length) {
                 const candidate = actionHeader === undefined ? disclosed(`PREVIEW — ${cut.text}`) : `${actionHeader}\n${cut.text}`;
-                if (substantiveReply(cut.text) && !redact(candidate).count && fits(candidate) && fits(encodeReply(candidate))) scoped = candidate;
+                if (substantiveReply(cut.text) && !redact(candidate).count && !secretMaterialIn(candidate, heldValues) && fits(candidate)) scoped = candidate;
                 else nothingLeft = true;
               }
             }
@@ -7672,7 +7841,7 @@ export function createJournalWorker(journal: ReturnType<typeof openPreviewJourna
         // Rules 57, 93: a due turn is rechecked just before its send intent: never sent once withdrawn, and
         // held back while a later operator turn that may withdraw one of its requests is unsettled.
         if (actionHeader !== undefined && actionBlocked(turn)) continue;
-        if (Buffer.byteLength(reply) > 4096 || Array.from(reply).length > 4096) { journal.append({kind:'hold',id:turn.id,reason:'reply size',at:ports.now()}); continue; }
+        if (!fits(reply)) { journal.append({kind:'hold',id:turn.id,reason:'reply size',at:ports.now()}); continue; }
         // Rule 106 on the final candidate: a revision or assembly can introduce a link the first check
         // never saw. The findings are recorded against this exact text; they advise, never hold.
         if (turn.answer !== undefined && held === undefined) {
@@ -7693,6 +7862,8 @@ export function createJournalWorker(journal: ReturnType<typeof openPreviewJourna
         // Rules 79, 82: the operator action this answer proposed rides the reply as one fixed line: the exact request
         // (approved only by the operator's explicit yes) or why it cannot be proposed. Never on a held or notice reply.
         const offer = heldBack || reply === HOLDING_REPLY || turn.answer === undefined ? undefined : await operatorOffer(turn, ports.now());
+        // What follows here (the request line and the disclosure) stays whole in the last message of a split reply.
+        const answerEnd = reply.trimEnd().length;
         if (offer) reply = `${reply.trimEnd()}\n\n${offer.text}`;
         // The approval-account exception: an answer that reports an approval taken under shared account access carries the
         // disclosure, once, however old the approval. Whether it reports it is the reply reviewer's judgment of meaning
@@ -7704,11 +7875,12 @@ export function createJournalWorker(journal: ReturnType<typeof openPreviewJourna
           && check.candidateDigest === reviewedDigest && check.approvalReport?.request === shown.request.id
           && check.approvalReport.answer === 'no');
         if (shown && !reportedNo && !reply.includes(SHARED_ACCESS_NOTE)) reply = `${reply.trimEnd()}\n\n${approvalDisclosureText(shown)}`;
-        const body = encodeReply(reply);
-        if (Buffer.byteLength(body) > 4096 || Array.from(body).length > 4096) {
+        const split = splitReply(reply, reply.slice(answerEnd));
+        if (!split) {
           journal.append({kind:'hold',id:turn.id,reason:'encoded reply size',at:ports.now()}); continue;
         }
-        try { ports.checkOutbound(body); }
+        const body = encodeReply(split[0]!);
+        try { ports.checkOutbound(encodeReply(reply)); if (split.length > 1) for (const part of split) ports.checkOutbound(encodeReply(part)); }
         catch { journal.append({ kind: 'hold', id: turn.id, reason: 'outbound secret refused', at: ports.now() }); continue; }
         const thread = turn.thread === undefined ? {} : { thread: turn.thread };
         const intentAt = ports.now();
@@ -7716,7 +7888,10 @@ export function createJournalWorker(journal: ReturnType<typeof openPreviewJourna
         const approval: ApprovalRequest | undefined = isStopCommand(turn.text) && reply.includes(STOP_CONFIRM_TEXT) && journal.view.stop === null
           ? { id: approvalId(turn.id, 'stop', stopBase), action: 'stop', base: stopBase } : undefined;
         const provenance = journal.signOutbound(speaker, { target: `reply:${turn.id}`, chat: journal.view.genesis.chat, ...thread, body });
+        const parts = split.slice(1).map((text, index) => ({ text, body: encodeReply(text), provenance: journal.signOutbound(speaker,
+          { target: replyPartTarget(turn.id, index + 2), chat: journal.view.genesis.chat, ...thread, body: encodeReply(text) }) }));
         journal.append({ kind: 'intent', id: turn.id, text: reply, body, chat: journal.view.genesis.chat, ...thread, provenance,
+          ...(parts.length ? { parts } : {}),
           ...(approval ? { approval } : {}), ...(offer?.request ? { operatorRequest: offer.request, requestScope: 'action' as const } : {}),
           ...(offer?.request && offer.review ? { operatorReview: offer.review } : {}),
           ...(reply === HOLDING_REPLY || heldBack || !mentionedKeys.length ? {} : { mentionedDates: mentionedKeys }),
@@ -7736,13 +7911,15 @@ export function createJournalWorker(journal: ReturnType<typeof openPreviewJourna
           update: turn.update, grant: journal.view.genesis.grant, at: intentAt });
         gate();
         const sendStarted = elapsedMs();
-        const outcome = await push(approval ? 'approval' : 'reply', `reply:${turn.id}`, provenance, { text: body, expectedText: reply,
+        const outcome = await push(approval ? 'approval' : 'reply', `reply:${turn.id}`, provenance, { text: body, expectedText: split[0]!,
           chat: journal.view.genesis.chat, ...thread, update: turn.update, ...(approval ? { replyMarkup: approvalMarkup(approval.id) } : {}) });
         // The receipt carries the measured duration; an UNKNOWN or refused attempt records no timing.
         // A failed receipt write leaves the exact intent UNKNOWN; it is never re-sent.
         if (outcome.kind === 'accepted') try {
           journal.append({ kind: 'sent', id: turn.id, message: outcome.message, latencyMs: duration(sendStarted), at: ports.now() });
         } catch { /* exact intent stays UNKNOWN */ }
+        // The rest of a split reply follows at once, before any later reply.
+        if (parts.length) await sendReplyParts(turn);
       }
       // Rule 87: an unchanged held status is pull-only (status, self-state, the mind's packet). Earlier
       // held-notice rows still replay; no new held notice is ever pushed.
@@ -8268,6 +8445,9 @@ export function createJournalWorker(journal: ReturnType<typeof openPreviewJourna
   const workState = (id: number) => {
     const work = journal.view.obligationWork[`commitment:${id}`];
     if (!work || work.inFlight !== undefined) return {};
+    // A finished result waiting for this reply is appended after the answer (live cint-L49: the model, not told, wrote
+    // "still queued" beside the result it was carrying).
+    if (attachableReport(work)) return { result: READY_RESULT };
     return work.waitsOn !== undefined ? { waitsOn: work.waitsOn!, need: clean(redact(work.note!).text, true) }
       : work.outcome === 'continue' ? { progress: clean(redact(work.note!).text, true) } : {};
   };
@@ -8522,7 +8702,7 @@ export function createJournalWorker(journal: ReturnType<typeof openPreviewJourna
       + 'For each memory action, include replies: ids of memoryCandidates whose reply repeats or restates the old fact, including short answers, and summaryPassages: exact passages of the prior summary that express the old fact; leave unrelated material alone. '
       + 'Return memory: [] when no direct request applies; set memoryDisposition: "unresolved" when a direct request has no identifiable source. '
       + `Keep the complete JSON response within ${SUMMARY_TARGET_OUTPUT_TOKENS} output tokens; use concise summary prose and exact short quotes. `
-      + `Write reason.value as one sentence of at most ${SUMMARY_REASON_CHARS} characters. Put the summary prose in the summary field. Keep the summary prose within ${String(summaryTextBound())} bytes of UTF-8: a plain ASCII character is one byte, an accented or non-Latin character two to four, so non-ASCII prose holds fewer characters; that keeps the whole answer inside its output limit. `
+      + `Write reasoning as one sentence of at most ${SUMMARY_REASON_CHARS} characters. Put the summary prose in the summary field. Keep the summary prose within ${String(summaryTextBound())} bytes of UTF-8: a plain ASCII character is one byte, an accented or non-Latin character two to four, so non-ASCII prose holds fewer characters; that keeps the whole answer inside its output limit. `
       + 'If the packet\'s summary.text is longer than that, rewrite it condensed within that size, keeping every fact, commitment and open question it holds; memoryItems already keep the exact facts. '
       + 'For unansweredCandidates, judge each candidate by the full conversation: its reply only triggered review. Return questions: [{"source": candidate id, "quote": exact question excerpt from that operator message}] only when it really left an operator question unanswered. Return questions: [] when none. '
       + 'Return memoryItems: [{"source": history item id, "quote": exact short factual clause from that operator message}] for new active facts worth keeping. Existing summary.memoryItems are already retained by source; do not repeat or paraphrase them in summary prose. A correction replaces its old item and forgetting removes it. '
@@ -9089,10 +9269,12 @@ export function createJournalWorker(journal: ReturnType<typeof openPreviewJourna
   const operatorBinding = () => ({ operator: journal.view.genesis.operator, chat: journal.view.genesis.chat, chatType: 'private' });
   /** The journal evidence each observed step's question needs, rebuilt from the durable view. */
   /** Rule 42: step evidence reads the one send-outcome lookup, so a definite refusal is never UNKNOWN. */
+  /** A split reply is accepted only when every message carrying it was (`replyOutcomeOf`). */
   const deliveryEvidence = (turn: Turn): string => {
-    const settled = sendOutcomeOf(journal.view, replyTarget(turn), turn.sent);
-    return settled.kind === 'accepted' ? 'Telegram API accepted' : settled.kind === 'refused'
-      ? `send refused, not delivered (${settled.reason})` : 'send outcome UNKNOWN';
+    const whole = replyOutcomeOf(journal.view, turn), settled = whole.outcome;
+    const head = whole.part === 1 ? '' : `part ${String(whole.part)} of ${String(whole.of)}: `;
+    return settled.kind === 'accepted' ? 'Telegram API accepted' : !whole.started ? `${head}not sent yet`
+      : settled.kind === 'refused' ? `${head}send refused, not delivered (${settled.reason})` : `${head}send outcome UNKNOWN`;
   };
   const stepEvidence = (stepId: string, step: { output?: string }): object => {
     if (stepId.startsWith('intake:')) {
@@ -9397,8 +9579,9 @@ export function createJournalWorker(journal: ReturnType<typeof openPreviewJourna
       const usage = typeof answer !== 'string' && 'usage' in answer && answer.usage ? { usage: answer.usage } : {};
       if (typeof answer !== 'string' && 'state' in answer && answer.state === 'uncertain') { settle({ outcome: 'uncertain', ...usage }); return true; }
       if (typeof answer !== 'string' && 'failureClass' in answer) { settle({ outcome: 'failed', ...usage }); return true; }
-      const decided = obligationDecision(typeof answer === 'string' ? answer : answer.text, item.kind, ports.now(), zone);
-      settle({ ...decided, ...usage });
+      // Rules 4, 10, 86: whether the report is the finished work is the work step's own full-context judgment (its
+      // packet carries yourReply and the question says repeating it is not the work); no text overlap overrides it.
+      settle({ ...obligationDecision(typeof answer === 'string' ? answer : answer.text, item.kind, ports.now(), zone), ...usage });
       return true;
     } finally { working = false; }
   };

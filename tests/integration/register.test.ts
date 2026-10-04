@@ -3,7 +3,7 @@ import { decode, defineDecoder } from '../../src/index.js';
 import type { Result } from '../../src/index.js';
 import { generateRegister, generationOf, decodeGenerationRecord, loadRegister, readRegisterEntry, readEnforcedRecord, checkGovernedState, buildRuleGraph, resolveTerms, renderRegister, planLandingCompletion } from '../../src/register/index.js';
 import type { FactReference, RegisterContext, SpineReadPort } from '../../src/register/index.js';
-import { setup, json, value, detail, hash } from '../register/fixtures.js';
+import { setup, json, value, detail, hash, withoutBasis } from '../register/fixtures.js';
 import { partTwoSpine } from '../register/part-two-spine.js';
 import { createRegisterSpine } from '../../src/facts/index.js';
 import type { GoverningSpine } from '../../src/facts/index.js';
@@ -52,7 +52,7 @@ describe('register integration with constitutional types and explicit spine port
   it('P3-P5 rungraph.contract retains approved history through the verified runtime consumer', () => {
     const s = setup(); const context = { ...s.context, references: [...s.context.references!, { provider: 'decoder' as const, id: 'decodeRun' }] };
     const contract = s.declaration('rungraph.contract', 'governed documents', { location: 'docs/09-the-run-graph.md', changelog: 'git-history:docs/09-the-run-graph.md' });
-    const holder = s.holder([]); const gate = { ...holder, requiredFacts: { ...holder.requiredFacts, decidesAlone: 'governed-state', enforces: { record: 'rungraph.contract', decoder: 'decodeRun' } } };
+    const holder = s.holder([]); const gate = { ...holder, requiredFacts: { ...withoutBasis(holder.requiredFacts), decidesAlone: 'governed-state', enforces: { record: 'rungraph.contract', decoder: 'decodeRun' } } };
     const observations = [{ site: 'holder', record: 'rungraph.contract', decoder: 'decodeRun', reads: ['rungraph.contract'], invokes: ['decodeRun'] }];
     const row = { id: 'rungraph.contract', version: 'contract:v1', status: 'live', since: 'commit:1', supersedes: [],
       approvedIn: { owner: 'part-two', name: 'FactEnvelope', id: 'fixture:verified-approval' }, landedIn: 'commit:1', base: 'commit:1', contentHash: hash(contract) };
@@ -100,7 +100,7 @@ describe('register integration with constitutional types and explicit spine port
   it('P4 pair-aware runtime guard preserves the verified authority boundary before calling a real decoder', () => {
     const s = setup(), context = s.context;
     const contract = s.declaration('intake.contract', 'governed documents', { location: 'docs/08-the-intake.md', changelog: 'git-history:docs/08-the-intake.md' });
-    const holder = s.holder([]), gate = { ...holder, requiredFacts: { ...holder.requiredFacts, decidesAlone: 'governed-state', enforces: { record: 'intake.contract', decoder: 'decode:Profile' } } };
+    const holder = s.holder([]), gate = { ...holder, requiredFacts: { ...withoutBasis(holder.requiredFacts), decidesAlone: 'governed-state', enforces: { record: 'intake.contract', decoder: 'decode:Profile' } } };
     const row = { id: 'intake.contract', version: 'contract:v1', status: 'live', since: 'commit:1', supersedes: [],
       approvedIn: { owner: 'part-two', name: 'FactEnvelope', id: 'fixture:approval' }, landedIn: 'commit:1', base: 'commit:1', contentHash: hash(contract) };
     for (const approved of [false, true]) {

@@ -3,19 +3,19 @@
 // physical ports. The worker owns all durable conversation/effect transitions.
 import { createHash, randomBytes } from 'node:crypto';
 import { execFileSync } from 'node:child_process';
-import { chmodSync, existsSync, lstatSync, mkdirSync, readdirSync, readFileSync, realpathSync, renameSync, writeFileSync } from 'node:fs';
+import { chmodSync, existsSync, lstatSync, mkdirSync, readdirSync, readFileSync, realpathSync, renameSync, rmSync, writeFileSync } from 'node:fs';
 import { dirname, resolve, join } from 'node:path';
 import { createProductionTelegramIO, createSubscriptionProviderIO, productionStorageIO } from '../../scripts/production-boot-io.mjs';
 import { openProductionStorage } from '../../src/assembly/production-storage.js';
 import { DEFAULT_SUBSCRIPTION_DOORWAY, subscriptionDoorway,
   SUBSCRIPTION_PREVIEW_EXPIRY, SUBSCRIPTION_TOOLS_SYSTEM_PROMPT } from '../../src/assembly/production-provider.js';
 import { attachEgress, attachSessionVolume, networkToolReads, readRootMcp, reconcileToolTurns, runToolTurn, toolPacketFits, toolStatusLines, toolTurnEligible, TOOL_NOTICE_MAX_BYTES,
-  TOOLS_DEFAULT_ACTIVATION } from './tool-turn.mjs';
-import { prepareSessionAdmission, sessionAdmissionCommand } from './session-admission.mjs';
+  TOOLS_DEFAULT_ACTIVATION, createHeldSecrets, heldSpan, heldVerdict } from './tool-turn.mjs';
+import { prepareSessionAdmission, sessionAdmissionCommand, SESSION_ADMISSION_KEPT } from './session-admission.mjs';
 import { createAdmissionGate, createToolEffectOwner } from './admission-gate.mjs';
 import { admitToolCallEffect } from './tool-admission.mjs';
-import { HARNESS_LAUNCHER, HARNESS_OFF_REASON, harnessCredentialValues, harnessReadiness, harnessRefusedNotice, harnessStatusLine, heldSecretIn,
-  runnerUser, scrubHeld } from './harness-user.mjs';
+import { grantVolume, HARNESS_OFF_REASON, HARNESS_SESSION_BRIDGE, harnessCredentialValues, harnessGate, harnessHookPath, harnessRefusedNotice, harnessSessionAdmission,
+  harnessSessionLayout, harnessStatusLine, readHarnessLogin } from './harness-user.mjs';
 import { encoded } from '../../src/assembly/boundary.js';
 import { decodeEffectPolicy, DEFAULT_EFFECT_POLICY, effectDoorwayStatusLines, refusedEffectNotices, currentEffectPolicy } from './effect-doorway.mjs';
 import { redact } from '../../src/recall/redact.js';
@@ -26,16 +26,16 @@ import { SOURCE_PINS, sourcePacket, deskStatusSource, readDeskStatus, verifyMind
 import { admitPreviewHarness, PREVIEW_JOURNAL_HARNESS, PREVIEW_JOURNAL_STALL_COVERAGE } from './stall-coverage.js';
 import { UNRECORDED, briefingDigestOf, codeDigestOf, installedCodeOf, installationRows, installationStatusLines, installedUpdateFrom, updateDelivery,
   updatePacketItem } from './installation.js';
-import { projectionDigest, summaryStoppedAt, loopRevisitMs, LOOP_REVISIT_MIN_MS, LOOP_REVISIT_MAX_MS } from './journal.js';
-import { openPreviewJournal as openJournal, createJournalWorker, raiseJournalCaps, renewJournalExpiry, activationMatchesJournal, activePersonMerges, openQuestionCandidates, projectMemoryText, unansweredCue, reportJournalCap, unknownCallCounts, pendingUnknownCalls, replyTimings, reviewUnavailableReleases, claimScopedWithholds, MINIMAL_RESERVE, reserveTurnsUsed, reserveRepliesUsed, openRequests, actionWithdrawn, reminderDue, operatorRequestsReport, retrospectiveCases, openBlockers, openDirectives, declaredObligations, sendOutcomeCounts, sendOutcomeOf, unsentLabel, replyTarget, reminderOutcome, envelopeWriter, PREVIEW_LIVE_LIMITS, unservableContextReason, PREVIEW_JOURNAL_COMPACT_BYTES, activeMemoryConflicts, TOO_LONG_INPUT_NOTICE, TOO_LONG_REPLY_NOTICE , probeTurn, operatorWriter, isJournalUpdate, retractRefusal, retractRendering, retractCarrier, retractedTurn, liveSummaries, withinOperatorHours, OPERATOR_HOURS, withFormatReminder, concurrentWorkItem, latestOwnedLaunch, meaningIndexStatus, LIMITED_ANSWER_OPERATION, MISSING_INSTALLATION_POLICY } from './journal.js';
+import { bindPreviewBlockingSites, projectionDigest, summaryStoppedAt, loopRevisitMs, LOOP_REVISIT_MIN_MS, LOOP_REVISIT_MAX_MS } from './journal.js';
+import { openPreviewJournal as openJournal, createJournalWorker, raiseJournalCaps, renewJournalExpiry, activationMatchesJournal, activePersonMerges, openQuestionCandidates, projectMemoryText, unansweredCue, reportJournalCap, unknownCallCounts, pendingUnknownCalls, replyTimings, reviewUnavailableReleases, claimScopedWithholds, MINIMAL_RESERVE, reserveTurnsUsed, reserveRepliesUsed, openRequests, actionWithdrawn, reminderDue, operatorRequestsReport, retrospectiveCases, openBlockers, openDirectives, declaredObligations, sendOutcomeCounts, sendOutcomeOf, unsentLabel, replyTarget, replyOutcomeOf, partialReplyLabel, reminderOutcome, envelopeWriter, PREVIEW_LIVE_LIMITS, unservableContextReason, PREVIEW_JOURNAL_COMPACT_BYTES, activeMemoryConflicts, TOO_LONG_INPUT_NOTICE, TOO_LONG_REPLY_NOTICE , probeTurn, operatorWriter, isJournalUpdate, retractRefusal, retractRendering, retractCarrier, retractedTurn, liveSummaries, withinOperatorHours, OPERATOR_HOURS, withFormatReminder, concurrentWorkItem, latestOwnedLaunch, ownedProcessOf, meaningIndexStatus, LIMITED_ANSWER_OPERATION, MISSING_INSTALLATION_POLICY } from './journal.js';
 import { createPreviewClock } from './clock.js';
 import { appendRun, heldNotices, heldRepliesToday, memoryHealthLine, readRuns, restartHandoff, selfState, selfStateBrief, selfStateSource, zoneFormatter } from './self-state.js';
 import { guidanceReport } from './guidance.js';
 import { memoryLearningLine, memoryLearningReport } from './memory-learning.js';
-import { JEV_MODEL, jevQuestions, replyReviewContext, replyReviewQuestion, replyReviewRules, parseReplyReviewVerdict, replyReviewDiagnostics, parseJevResponse, replyRevisionQuestion, parseReplyRevision, REVIEW_MALFORMED, REVIEW_FORMAT_REMINDER } from './reply-check.js';
+import { JEV_MODEL, jevQuestions, publicCredentialRegister, concealSecretMaterial, secretMaterialIn, replyReviewContext, replyReviewQuestion, replyReviewRules, parseReplyReviewVerdict, replyReviewDiagnostics, parseJevResponse, replyRevisionQuestion, parseReplyRevision, REVIEW_MALFORMED, REVIEW_FORMAT_REMINDER } from './reply-check.js';
 import { interpretSummaryReview, SUMMARY_QUESTION } from './summary-check.js';
-import { assertLiveJudgment, decisionWithinFloor, modelCallRecord, sha256 } from './model-call-boundary.js';
-import { conclusionText, failureShapeOf, parseModelJson } from './model-json.js';
+import { assertLiveJudgment, modelCallRecord, sha256 } from './model-call-boundary.js';
+import { readAnswer } from './answer-reading.js';
 import { SUMMARY_FAITHFULNESS_QUESTION } from './summary-faithfulness.js';
 
 
@@ -179,26 +179,29 @@ const renewalActivationOf = (options, view) => expires => {
 };
 const required = (options, name) => { if (!options[name]) throw Error(`preview: missing --${name}`); return options[name]; };
 /** Desk unit harness-user: `--harness-user NAME` runs every Claude Code launch of the login profile as that macOS user, so
- * the kernel checks each file the harness opens as an identity with no access to the operator account. Decided once at
- * launch from live state (harness-user.mjs harnessReadiness), never from the switch alone. Plan #473: a Claude Code tool
- * route with no switch, or with a harness user that is not ready, REFUSES every tool turn (never the operator's account):
- * stderr now, the status line, and a notice under each answer whose tools were refused name the reason. A checkpointed
- * harness (its own sandbox, every consequential tool through the host checkpoint) is not gated by it: null when absent. */
+ * the kernel checks each file the harness opens as an identity with no access to the operator account's private files.
+ * Decided at launch from live state (harness-user.mjs harnessGate), never from the switch alone. Unavailable, every
+ * harness launch is HELD (never run as the runner's own account) and the identity is decided again on a later launch;
+ * the runner's journal, messaging and stop keep working, and the status line says why. Absent: null (and plan #473: a
+ * Claude Code tool route then refuses every tool turn, `identityRefusalOf`). */
 const harnessOf = (options, root, doorway) => {
   const user = options['harness-user'];
-  if (user === undefined) {
-    if (doorway.toolTurn?.harness) return null;
-    const off = { ready: false, reason: HARNESS_OFF_REASON, user: null };
-    process.stderr.write(`preview: ${harnessStatusLine(off)}\n`);
-    return off;
-  }
-  const profile = JSON.parse(readFileSync(required(options, 'login-profile'), 'utf8'));
-  const result = doorway.toolTurn?.harness ? { ready: false, reason: 'the selected doorway is not the Claude Code harness' }
-    : harnessReadiness({ user, profile, denied: [realpathSync(root), homedir(), process.cwd()] });
-  const harness = result.ready ? { ...result, runner: runnerUser(), launcher: HARNESS_LAUNCHER } : { ...result, user };
-  process.stderr.write(`preview: ${harnessStatusLine(harness)}\n`);
-  return harness;
+  if (user === undefined) return null;
+  return harnessGate({ user, profile: JSON.parse(readFileSync(required(options, 'login-profile'), 'utf8')),
+    denied: [realpathSync(root), homedir(), process.cwd()], clock: () => performance.now(),
+    unavailable: doorway.toolTurn?.harness ? 'the selected doorway is not the Claude Code harness' : null,
+    adopt: uid => hostResources.adoptHarnessUid(uid), log: line => process.stderr.write(`preview: ${line}\n`) });
 };
+/** Plan #473: why a Claude Code tool turn is refused for its identity: no `--harness-user` at all on a Claude Code tool
+ * route (never the operator's account), said at launch. A configured user that is not ready holds every launch instead
+ * (harnessGate); a checkpointed harness runs under its own sandbox and is not gated by it. */
+const identityRefusalOf = (options, doorway) => {
+  if (options['harness-user'] !== undefined || doorway.toolTurn?.harness) return null;
+  process.stderr.write(`preview: ${harnessStatusLine({ ready: false, reason: HARNESS_OFF_REASON })}\n`);
+  return HARNESS_OFF_REASON;
+};
+/** The `runAs` a launch passes: the ready identity's command fields (throws while the identity is held). */
+const runAsOf = harness => { if (!harness) return null; const { user, launcher, login, plan } = harness.current(); return { user, launcher, login, plan }; };
 /** Rules 60, 114 (Part fifteen §5): the delegated-session path for long and scheduled work exists
  * only under its own reviewed grant: an activation record for the doorway's session framing, bound
  * to that exact session policy (launch flags, model, limits, task wording), resolved from the same
@@ -276,13 +279,14 @@ const operatorRecords = directory => {
  * covers this exact act: the original activation, or a bounded renewal inside the standing grant.
  * The record defaults to `activation-authority.json` beside the activation record. Rule 82: it
  * resolves only as the desk's disposition sealed under this trial's storage SecretRef
- * (`seal-authority`); a copy with any field changed resolves nothing. */
-const requireAuthority = (options, activation, activationPath, view, now) => {
+ * (`seal-authority`); a copy with any field changed resolves nothing. `policy` is the build's own
+ * invocation policy the activation names: a grant recorded for a policy class covers it only then. */
+const requireAuthority = (options, activation, activationPath, view, now, policy = undefined) => {
   const path = options['authority-record'] ?? join(dirname(resolve(activationPath)), 'activation-authority.json');
   let record = null;
   try { record = JSON.parse(readFileSync(path, 'utf8')); } catch { record = null; }
   const resolution = resolveActivationAuthority(activation, record, view.genesis.operator, view.genesis.expires, now,
-    operatorRecords(options['operator-records']), authoritySealKey(key()));
+    operatorRecords(options['operator-records']), authoritySealKey(key()), policy);
   if (resolution.kind !== 'resolved') throw Error(`preview: ${resolution.reason}`);
   return resolution;
 };
@@ -409,15 +413,18 @@ const installedCode = () => {
 const OWNED_ROOT_LIMIT = 256, OWNED_RUN_LOG_BYTES = 1024 * 1024;
 /** The conversation a runner polls, recorded on its launch row so a sibling can see a shared conversation. */
 const conversationOf = genesis => `telegram/bot-${genesis.bot}/chat-${genesis.chat}`;
+/** Whether a possible root another runner's flattened command line could name exists now; only a path proven
+ * missing (ENOENT, ENOTDIR, or a name too long to exist) is ruled out, so an unreadable one keeps it unknown. */
+const PATH_MISSING = new Set(['ENOENT', 'ENOTDIR', 'ENAMETOOLONG']);
+const pathExists = path => { try { lstatSync(path); return true; } catch (error) { return !PATH_MISSING.has(error?.code); } };
 /** A launch with no exit row is running only while its recorded pid is still that root's runner. */
 const ownedProcess = (pid, root) => {
   if (!Number.isSafeInteger(pid) || pid <= 0) return 'unknown';
   try {
-    const command = execFileSync('ps', ['-ww', '-p', String(pid), '-o', 'command='], { encoding: 'utf8',
-      stdio: ['ignore', 'pipe', 'ignore'], timeout: 2000 });
-    // A runner started with another spelling of the root cannot be matched: unknown, never guessed either way.
-    return !command.includes('journal-agent.mjs') ? 'absent' : command.includes(`--root ${root}`) ? 'present' : 'unknown';
-  } catch (error) { return error?.status === 1 ? 'absent' : 'unknown'; }
+    // The exact --root argument decides (ownedProcessOf); another spelling of the root is unknown, never guessed.
+    return ownedProcessOf(execFileSync('ps', ['-ww', '-p', String(pid), '-o', 'command='], { encoding: 'utf8',
+      stdio: ['ignore', 'pipe', 'ignore'], timeout: 2000 }), root, pathExists);
+  } catch (error) { return error?.status === 1 ? ownedProcessOf(null, root, pathExists) : 'unknown'; }
 };
 const ownedActivity = root => {
   const parent = dirname(root);
@@ -978,7 +985,8 @@ async function main() {
       // journal's fixed-text reminder batches count as earlier sends of it.
       requestedActions: (() => {
         const dueTurns = view.view.order.filter(t => t.requestedAction && !t.requestedAction.legacy);
-        const kinds = [...dueTurns.filter(t => t.intent !== undefined).map(t => sendOutcomeOf(view.view, replyTarget(t), t.sent).kind),
+        const kinds = [...dueTurns.filter(t => t.intent !== undefined).map(t => replyOutcomeOf(view.view, t))
+            .map(whole => whole.started ? whole.outcome.kind : 'sending'),
           ...[...view.view.reminders.entries()].map(([key, item]) => reminderOutcome(view.view, key, item).kind)];
         return { requested: view.view.dated.filter(item => item.remind).length, cancelled: view.view.reminderCancels.length,
           accepted: kinds.filter(kind => kind === 'accepted').length, refused: kinds.filter(kind => kind === 'refused').length,
@@ -986,7 +994,7 @@ async function main() {
           open: openRequests(view.view).map(item => ({ sourceUpdate: view.view.turns.get(item.source)?.update,
             quote: redact(item.quote).text, due: `${reminderDue(item)} ${item.zone}` })),
           dueTurns: dueTurns.map(t => ({ update: t.update, requests: t.requestedAction.items.length + (t.requestedAction.overflow?.length ?? 0),
-            state: t.sent !== undefined ? 'accepted' : t.intent !== undefined ? unsentLabel(sendOutcomeOf(view.view, replyTarget(t), t.sent))
+            state: t.intent !== undefined ? (whole => whole.outcome.kind === 'accepted' ? 'accepted' : partialReplyLabel(whole))(replyOutcomeOf(view.view, t))
               : actionWithdrawn(view.view, t) ? 'withdrawn, not sent'
               : t.held ? `held (${t.held})` : t.reserved && t.answer === undefined && t.modelState === undefined ? 'model UNKNOWN' : 'pending' })) };
       })(),
@@ -1105,9 +1113,11 @@ async function main() {
         last: last ? { update: last.update, answered: last.answer !== undefined,
         instructions: instructionsOf(last.prompt), writer: writerOf(last.prompt), ...recallView(contextOf(last.prompt)) } : null,
         reply: reply?.intent ? { update: reply.update, text: reply.intent, telegramMessageId: reply.sent ?? null,
-          ...(() => { const settled = sendOutcomeOf(view.view, replyTarget(reply), reply.sent);
-            return { outcome: settled.kind === 'accepted' ? 'api-accepted' : settled.kind === 'refused' ? 'send-refused' : 'send-unknown',
-              ...(settled.kind === 'refused' ? { refusal: settled.reason } : {}) }; })(),
+          // Rule 42: the WHOLE reply's outcome; a split reply is api-accepted only when every message carrying it was.
+          ...(() => { const whole = replyOutcomeOf(view.view, reply), settled = whole.outcome;
+            return { outcome: settled.kind === 'accepted' ? 'api-accepted' : !whole.started ? 'sending' : settled.kind === 'refused' ? 'send-refused' : 'send-unknown',
+              ...(settled.kind === 'refused' ? { refusal: settled.reason } : {}),
+              ...(whole.of > 1 ? { parts: { of: whole.of, ...(settled.kind === 'accepted' ? {} : { stoppedAt: whole.part }) } } : {}) }; })(),
           grounding: reply.grounding ?? null,
           answerReason: reply.answerReason ?? null,
           retrospectiveGrade: (() => { const row = latestGrades(view.view).get(`answer:${reply.id}`);
@@ -1252,7 +1262,7 @@ async function main() {
   // Rule 55: poll-failure pressure is episode state; every attempt that changes it is durable in the run log
   // before the loop continues, so neither a relaunch nor a crash resets it.
   let failedPolls = 0, conflictedPolls = 0;
-  let identityVerified = false, routeHealthy = true, active = null, toolsActive = () => false, toolsRecord = null, toolsOff = null,
+  let identityVerified = false, routeHealthy = true, active = null, toolsActive = () => false, toolsRecord = null, toolsResolution = null, toolsOff = null,
     sessionWork = null, gate = null;
   /** Each delegated session step's shell network checkpoint, by claim: closed with the step's claim and at shutdown. */
   const stepEgress = new Map();
@@ -1452,11 +1462,11 @@ async function main() {
       incarnation: `launcher:${process.pid}:${createHash('sha256').update(`${process.pid}:${wallNow()}:${performance.now()}`).digest('hex').slice(0, 16)}`,
       now: wallNow, monotonic: () => performance.now() });
     const harness = harnessOf(options, root, doorway);
-    // Plan #473: why a Claude Code tool turn would be refused for its identity (null: the harness is its own user, or the
+    // Plan #473: why a Claude Code tool turn is refused for its identity (null: a harness user is configured, or the
     // doorway's checkpointed harness is not gated by it). The packet then names no tools, and runToolTurn refuses the turn.
-    const identityRefusal = !doorway.toolTurn?.harness && harness && !harness.ready ? harness.reason : null;
+    const identityRefusal = identityRefusalOf(options, doorway);
     await hostResources.attach({ ledgerPath: launchesPath, statePath: resourcesPath, now: wallNow, allocation,
-      ...(harness?.ready ? { harnessUid: harness.uid } : {}),
+      ...(harness?.uid != null ? { harnessUid: harness.uid } : {}),
       ...(aggregateMemoryMib === undefined ? {} : { aggregateMemoryBytes: aggregateMemoryMib * 1024 * 1024 }),
       compare: resourceCompare, priorityGate: shouldRunScheduledPriority,
       reconcile: (row, current) => current === null ? 'missing' : take(reconcileProcessIncarnation(
@@ -1465,6 +1475,30 @@ async function main() {
         context)) });
     // Rule 100: credentials handed over in chat are stored before anything consumes them.
     const custody = createSecretCustody(root, key(), wallNow);
+    // Plan #442 (Rules 4, 86, 100): the secret values this runner holds, for the exact floor on every reply and send and
+    // (plan #507) every outward tool request: host custody, the preview vault, the root's MCP credentials (served to a
+    // turn's servers) and, with a harness user, its login from the runner's custody and any login Claude Code wrote into
+    // the harness profile. Read in memory at each use; never recorded, logged or given to a model. A value once read stays
+    // held for the runner's life, so a source that later changes or becomes unreadable cannot drop a value an active
+    // context may already hold; a source that cannot be read now is reported unavailable (createHeldSecrets).
+    const harnessLoginProfile = options['harness-user'] === undefined ? null : JSON.parse(readFileSync(required(options, 'login-profile'), 'utf8'));
+    const heldSecrets = createHeldSecrets({
+      environment: () => Object.entries(process.env).flatMap(([name, value]) => name.startsWith('INSTAR_SECRET_') && value ? [value] : []),
+      vault: () => custody.records().flatMap(record => {
+        if (record.custody !== 'preview-vault') return [];
+        try { return [custody.resolve(secretRef(record.name))]; } catch { return []; /* status reports the missing object */ }
+      }),
+      mcp: () => Object.values(readRootMcp(root)?.secrets ?? {}).flatMap(refs => Object.values(refs).flatMap(ref => {
+        try { return [custody.resolve(secretRef(ref))]; } catch { return []; /* never served: the turn refuses (runToolTurn) */ }
+      })),
+      ...(harnessLoginProfile === null ? {} : {
+        'harness login': () => [readHarnessLogin(harnessLoginProfile)],
+        'harness profile login': () => harnessCredentialValues(harnessLoginProfile.configDirectory) }),
+    });
+    const heldSecretValues = () => heldSecrets().values;
+    // Plans #446, #451: the register's public entries (names, labels, custody, expiry, renewal standing and step), given
+    // to the full-context review as quoted recorded facts. An unreadable register gives none; the review then holds as before.
+    const credentialRegister = () => { try { return publicCredentialRegister(custody.records(), heldSecretValues(), wallNow()); } catch { return []; } };
     for (const [name, supplied, original, current] of [
       ['max-calls', maxCalls, g.maxCalls, journal.view.limits.maxCalls],
       ['max-replies', maxReplies, g.maxReplies, journal.view.limits.maxReplies],
@@ -1591,6 +1625,8 @@ async function main() {
       return { value, latencyMs };
     };
     // model-call-boundary:end
+    /** A refused review verdict's defect, kept only until that review's one format re-ask reads it (content-free protocol text). */
+    const reviewDefects = new Map();
     const invokeSubscription = async (prepared, id, reviewTurnId, deadlineAt, toolTurn) => {
       const policy = doorway.policyFor(required(options, 'model'),
         toolTurn ? doorway.toolsFraming ?? doorway.conversationFraming : doorway.conversationFraming);
@@ -1608,35 +1644,21 @@ async function main() {
       if (result.state !== 'complete') throw Error('preview: model outcome unknown');
       if (!result.bytes) return { state: 'complete', failureClass: 'empty', usage: result.usage };
       const role = roleOf(id);
-      // A wrapped object passes exactly the checks below that an unwrapped one does; only the wrapper is dropped.
-      const extracted = parseModelJson(result.bytes, { wrapped: wrappedPolicyOf(role) }), decision = extracted.ok ? extracted.value : null;
+      // Plan #491 (answer-reading.ts): the model returns one flat object and the runner builds the Decision from its own
+      // values; a wrapped object passes exactly the checks an unwrapped one does, and only the wrapper is dropped.
       // Rule 57: a returned floor may only echo the envelope's own; it never defines or widens it.
-      const value = decision?.type === 'Decision' && decision.conclusion?.subject === 'preview-stage2-answer'
-        && decisionWithinFloor(decision) ? conclusionText(decision.conclusion.value) : null;
-      if (value === null) {
-        recordShape(shapesPath, role, 'decision', 'malformed', failureShapeOf(extracted));
-        return { state: 'complete', failureClass: 'malformed', usage: result.usage };
+      const reading = readAnswer(result.bytes, { wrapped: wrappedPolicyOf(role), evidence: [id] });
+      if (!reading.ok) {
+        recordShape(shapesPath, role, 'decision', 'malformed', reading.shape);
+        // The defect is content-free protocol text; the format re-ask names it so the model can correct exactly that.
+        return { state: 'complete', failureClass: 'malformed', defect: reading.defect, usage: result.usage };
       }
-      if (extracted.shape !== 'bare') recordShape(shapesPath, role, 'decision', 'tolerated', extracted.shape);
+      if (reading.shape !== 'bare') recordShape(shapesPath, role, 'decision', 'tolerated', reading.shape);
+      const value = reading.value;
       if (!value.trim()) return { state: 'complete', failureClass: 'empty', usage: result.usage };
       // Rule 108: the stated reason is recorded beside the conclusion (build 8).
-      const reasonValue = decision.reason?.value;
-      const reason = typeof reasonValue === 'string' ? reasonValue : reasonValue === undefined || reasonValue === null ? '' : JSON.stringify(reasonValue);
+      const reason = reading.reason;
       return { state: 'complete', value, ...(reason.trim() ? { reason } : {}), usage: result.usage };
-    };
-    // Plan #473 (2): the exact secret values this runner holds, withheld from every reply and outbound text and scrubbed from
-    // recorded tool excerpts: its own SecretRef values, the harness's login (a value read through the file-tool race stays
-    // in the runner), and the root's MCP credentials (served to a turn's servers and carried by its admission record).
-    const heldValues = () => {
-      const values = ['STORAGE_KEY', 'TELEGRAM_BOT_TOKEN', 'AUTHORITY_SECRET', 'TYPESAFE_KEY', 'GITHUB_TOKEN']
-        .map(name => process.env[`INSTAR_SECRET_PREVIEW_${name}`]).filter(value => typeof value === 'string' && value.length >= 16);
-      values.push(...harnessCredentialValues(profile.configDirectory));
-      try {
-        const custody = createSecretCustody(root, key(), wallNow);
-        for (const refs of Object.values(readRootMcp(root)?.secrets ?? {}))
-          for (const ref of Object.values(refs)) { const value = custody.resolve(secretRef(ref)); if (typeof value === 'string' && value.length >= 16) values.push(value); }
-      } catch { /* an MCP credential that cannot be opened was never served */ }
-      return values;
     };
     // Part Thirteen §9 (docs/17-harness-adapters): an eligible answer or work step runs as one scoped-tool turn (tool-turn.mjs runToolTurn).
     const invokeTools = async (prepared, id) => (await runToolTurn({ journal, root, id, prepared,
@@ -1651,7 +1673,8 @@ async function main() {
       session: doorway.toolTurn?.harness ? null : { store: join(profile.configDirectory, 'projects'), harness: `${profile.version} ${required(options, 'model')}` },
       stopped: () => workerStop.value || existsSync(stopPath) || journal.view.stop !== null || !toolsActive(),
       deniedRoots: [realpathSync(root), profile.home, profile.configDirectory, profile.workingDirectory],
-      ...admissionConfig(), now: wallNow, redactText: text => redact(scrubHeld(text, heldValues())).text, gate, owner: ownerMachine, harness,
+      ...admissionConfig(), now: wallNow, redactText: text => redact(concealSecretMaterial(text, heldSecretValues())).text, gate, owner: ownerMachine,
+      harness: identityRefusal !== null ? { ready: false, refused: true, reason: identityRefusal } : harness ? harness.current() : null, heldSecrets,
       ...(doorway.toolTurn ? { system: doorway.toolTurn.system, admission: doorway.toolTurn } : {}),
       fallback: async () => ({ result: await invokeSubscription(prepared, id) }),
       // Rules 33, 84: the workspace notice (files that may still disagree with memory, or a lost workspace) rides the packet.
@@ -1683,7 +1706,7 @@ async function main() {
       ...toolStatusLines(journal.view, toolsActive(), toolsOff ?? (toolsRecord
         ? 'withdrawn since launch: the activation record changed or its grant no longer resolves' : null), Boolean(doorway.toolTurn?.harness)),
       ...(toolsActive() || journal.view.effectDoorway ? effectDoorwayStatusLines(journal.view.effectDoorway) : []),
-      ...(harness ? [harnessStatusLine(harness)] : [])];
+      ...(harness ? [harnessStatusLine(harness.state)] : identityRefusal !== null ? [harnessStatusLine({ ready: false, reason: identityRefusal })] : [])];
     const statusExtraLines = () => [...proofLines(), ...ownerLines(), ...minimalLines()];
     const approvalSurface = approvalSurfaceOf(options);
     // Rules 79, 81: the operator dashboard's snapshot, published into this runner's own outbox at most every 15 seconds
@@ -1708,6 +1731,11 @@ async function main() {
     const explicitYes = yesInstallation ? { context, installation: yesInstallation, ...(reviewSource ? { review: reviewSource } : {}),
       ...(requestHours === undefined ? {} : { requestWindowMs: requestHours * 3_600_000 }),
       renewalActivation: renewalActivationOf(options, () => journal.view), retractProposal: () => readRetractProposal(retractPath) } : null;
+    // Rule 4 / P3-NF-19: every blocking site this runner enforces is bound to its committed declaration before the
+    // worker exists; a declaration that no longer matches its checkpoint refuses the launch.
+    bindPreviewBlockingSites({ journal: declarationsOf('journal.declarations'), replyCheck: declarationsOf('reply-check.declarations'),
+      redact: JSON.parse(readFileSync(resolve(process.cwd(), 'src/recall/redact.declarations.json'), 'utf8')),
+      resourceOwner: JSON.parse(readFileSync(resolve(process.cwd(), 'scripts/resource-owner.declarations.json'), 'utf8')) });
     worker = createJournalWorker(journal, { ...(approvalSurface ? { approvalSurface } : {}), ...(explicitYes ? { explicitYes } : {}), now: wallNow, elapsed: clock.elapsed, origin, stopped: () => workerStop.value || existsSync(stopPath) || !ownerHeld(), timeZone: timeZoneOf(options),
       presenceNotes: sentinelFamilies.has('presence'),
       sources: turnSources(root, options, journal.view, () => runs, () => launchedAt ?? undefined,
@@ -1748,8 +1776,8 @@ async function main() {
       concurrentWork: () => launchedAt === null ? null : concurrentWorkItem({ now: wallNow(),
         current: { owner: root.split('/').at(-1), launch: launchedAt, conversation: conversationOf(journal.view.genesis) }, ...ownedActivity(root) }),
       statusLines: statusPullLines,
-      checkOutbound: text => { if (redact(text).count || heldSecretIn(text, heldValues())) throw Error('preview: outbound secret refused'); },
-      heldSecret: text => heldSecretIn(text, heldValues()),
+      checkOutbound: text => { if (redact(text).count || secretMaterialIn(text, heldSecretValues())) throw Error('preview: outbound secret refused'); },
+      heldSecrets: heldSecretValues,
       secrets: custody,
       model: async ({ id, prepared }) => {
         if (typeof prepared !== 'string') throw Error('preview: prepared model input absent');
@@ -1771,9 +1799,14 @@ async function main() {
           const selectedRules = replyReviewRules(reviewRules ?? []);
           const question = replyReviewQuestion(reviewRules ?? []);
 
-          const reviewContext = replyReviewContext(originalPrompt, text, reviewRules, declaredObligations(journal.view, id, wallNow()));
-          const context = formatRetry ? withFormatReminder(reviewContext, REVIEW_FORMAT_REMINDER) : reviewContext;
+          const reviewContext = replyReviewContext(originalPrompt, text, reviewRules, declaredObligations(journal.view, id, wallNow()),
+            credentialRegister());
           const operationId = operation === 'revision' ? `${id}:revision-review` : `${id}:reply-review`;
+          // Plan #491: the one format re-ask names the exact defect the reader found in this review's refused verdict.
+          const defect = reviewDefects.get(operationId);
+          const context = formatRetry ? withFormatReminder(reviewContext, defect ? `${REVIEW_FORMAT_REMINDER} The defect: ${defect}.`
+            : REVIEW_FORMAT_REMINDER) : reviewContext;
+          reviewDefects.delete(operationId);
           // Rule 29: the review input is written by the runner, a verified system principal.
           const writer = envelopeWriter(journal.systemWriter('reply-review', `${operationId}\n${context}`, wallNow()));
           const prepared = modelEnvelope({ question, context, id: operationId, ...(writer ? { writer } : {}) });
@@ -1782,7 +1815,10 @@ async function main() {
           const result = operation === 'revision' ? await invokeSubscription(prepared, operationId, undefined, deadlineAt)
             : await invokeSubscription(prepared, operationId, id, deadlineAt);
           // A Decision-shape miss is a format miss like a malformed verdict line: the worker may re-ask it once.
-          if (result.state === 'complete' && result.failureClass === 'malformed') throw Error(REVIEW_MALFORMED);
+          if (result.state === 'complete' && result.failureClass === 'malformed') {
+            if (result.defect) reviewDefects.set(operationId, result.defect);
+            throw Error(REVIEW_MALFORMED);
+          }
           if (result.state !== 'complete' || result.failureClass) throw Error('preview: reply review unavailable');
           // The reply verdict is one exact line per selected rule (rule_id: PASS | reason); the whole-line
           // pattern admits no surrounding text, so a written rejection can never be discarded around it.
@@ -1802,7 +1838,7 @@ async function main() {
         // The mind's one response to the objections on its draft: same envelope and grounding packet as review,
         // one disposition per objection, inside the loop's shared deadline.
         revise: async ({ text, id, originalPrompt, ruleIds, reason, objections = ruleIds, findings, deadlineAt }) => {
-          const context = replyReviewContext(originalPrompt, text, ruleIds);
+          const context = replyReviewContext(originalPrompt, text, ruleIds, undefined, credentialRegister());
           // Rule 29: the revision input (the objected draft in its review context) is written by the runner.
           const writer = envelopeWriter(journal.systemWriter('reply-review', `${id}:reply-revision\n${context}`, wallNow()));
           const prepared = modelEnvelope({ question: replyRevisionQuestion(objections, reason, findings), context, id: `${id}:reply-revision`,
@@ -1903,7 +1939,10 @@ async function main() {
     // activation (every field the same, the tools policy digest in place of the conversation one) and keeps it only when
     // the sealed authority resolves it, writing it to the root as the live withdrawal handle. `--tools off` refuses tools.
     // Changing or removing the file withdraws them: no new tool turn starts, and a live one ends. Revoking the grant
-    // withdraws them durably. With no resolving grant every answer is text only, and status says why.
+    // withdraws them durably. Plan #449: the build's own tools policy is presented to the resolver, so the operator's standing
+    // full-tools grant recorded for a policy class (tools-policy-class.ts) covers every build whose policy keeps the class's
+    // checkpoints. With no covering grant the runner REFUSES to start and names why; it never starts silently text only
+    // (only an explicit `--tools off` runs text only).
     const toolsMode = options.tools ?? 'default';
     if (toolsMode !== 'default' && toolsMode !== 'off') throw Error('preview: --tools must be default or off');
     if (options['tools-activation'] !== undefined && toolsMode === 'off') throw Error('preview: --tools off contradicts --tools-activation');
@@ -1913,7 +1952,8 @@ async function main() {
       if (doorway.toolsFraming === null) throw Error(`preview: doorway ${doorway.id} serves no scoped-tool answer framing`);
       const toolsActivation = JSON.parse(toolsBytes);
       doorway.validateActivation(toolsActivation, profile, required(options, 'model'), wallNow(), doorway.toolsFraming, journal.view.expires);
-      requireAuthority(options, toolsActivation, toolsActivationPath, journal.view, wallNow());
+      toolsResolution = requireAuthority(options, toolsActivation, toolsActivationPath, journal.view, wallNow(),
+        doorway.policyFor(required(options, 'model'), doorway.toolsFraming));
       if (!activationMatchesJournal(journal.view, toolsActivation)) throw Error('preview: tool activation differs from journal');
       return toolsActivation;
     };
@@ -1943,11 +1983,20 @@ async function main() {
         const granted = stillGranted(activationPath, toolsBytes);
         toolsActive = () => { try { return readFileSync(toolsActivationPath, 'utf8') === toolsBytes && granted(); } catch { return false; } };
       } catch (error) {
-        toolsRecord = null;
-        toolsOff = `no recorded operator grant resolves the tools policy: ${String(error?.message ?? error).replace(/^preview: /u, '')}`;
-        process.stderr.write(`preview: tools off: ${toolsOff}; answers are text only\n`);
+        // Never a silent text-only start: the operator granted the full tool set, so a launch nothing covers is refused, loudly.
+        // The reason is the resolver's fixed text with digests and class names (no secret), so it goes to stderr whole, as the
+        // tools-off line it replaces did; the launch log records it too ('refused before launch').
+        const refusal = `preview: refused to start: no recorded operator grant covers this build's tools policy (${JSON.parse(toolsBytes).invocationPolicyDigest}): `
+          + `${String(error?.message ?? error).replace(/^preview: /u, '')}. Record the standing full-tools grant for this policy (or its class), `
+          + 'or pass --tools off to run text only';
+        process.stderr.write(`${refusal}\n`);
+        throw Error(refusal);
       }
     }
+    // The resolved tools authority, recorded at launch: the grant, and the class and policy digest it was verified for.
+    if (toolsRecord && toolsResolution) process.stderr.write(`preview: tools on: grant ${toolsResolution.grant}`
+      + (toolsResolution.policyClass ? ` (class ${toolsResolution.policyClass.name})` : ' (exact policy)')
+      + ` covers tools policy ${toolsRecord.invocationPolicyDigest}\n`);
     const effectPolicyPath = options['effect-policy'];
     if (effectPolicyPath !== undefined) {
       decodeEffectPolicy(JSON.parse(readFileSync(effectPolicyPath, 'utf8')));
@@ -1974,7 +2023,7 @@ async function main() {
       const gateStopped = () => workerStop.value || existsSync(stopPath) || !ownerHeld() || journal.view.stop !== null
         || wallNow() >= journal.view.expires || !active();
       const appendWork = record => journal.append({ kind: 'session-work', record, at: wallNow() });
-      gate = await createAdmissionGate({ append: appendWork, stopped: gateStopped, now: wallNow,
+      gate = await createAdmissionGate({ append: appendWork, stopped: gateStopped, now: wallNow, held: heldVerdict(heldSecrets),
         effects: createToolEffectOwner({ decide: (tool, input) => admitToolCallEffect(tool, input, admissionConfig(), wallNow()),
           append: appendWork, stopped: gateStopped, now: wallNow, prepared: identity => (journal.view.toolEffects ?? []).includes(identity) }) });
     }
@@ -1985,47 +2034,74 @@ async function main() {
       if (!activationMatchesJournal(journal.view, sessionActivation)) throw Error('preview: session work activation differs from journal');
       const sessionActive = () => { try { return readFileSync(sessionSetup.activation, 'utf8') === sessionBytes; } catch { return false; } };
       // Rule 60: the session's working scope is a persistent fixed-size volume (tool-turn.mjs attachSessionVolume), mounted
-      // before the first step, so every file a step writes, however many, is bounded together.
-      const scope = join(realpathSync(root), 'session-work');
+      // before the first step, so every file a step writes, however many, is bounded together. Run as the harness user
+      // (--harness-user), the same volume mounts where that user can reach it (harness-user.mjs harnessSessionLayout),
+      // both identities granted on it, and each step's admission state lives in the harness area, as a tool turn's does.
+      const layout = harness ? harnessSessionLayout(root) : null;
+      const scope = layout ? layout.mount : join(realpathSync(root), 'session-work');
       mkdirSync(scope, { recursive: true, mode: 0o700 });
       chmodSync(scope, 0o700);
       const project = realpathSync(scope), framework = doorway.session.framework;
-      const mountVolume = () => { if (attachSessionVolume(root) !== project) throw Error('preview: the session volume is not the working scope'); };
+      const mountVolume = identity => {
+        if (attachSessionVolume(root, layout ? { at: layout.mount } : {}) !== project) throw Error('preview: the session volume is not the working scope');
+        if (identity) grantVolume(project, identity.user, identity.runner);
+      };
       const physical = createProductionSessionIO({ stateDirectory: join(root, 'session-work-state'), tmuxPath: sessionSetup.tmux,
         home: profile.home, configHome: profile.configDirectory, cwd: project });
       const stoppedNow = () => workerStop.value || existsSync(stopPath) || !ownerHeld() || journal.view.stop !== null
         || wallNow() >= journal.view.expires || !active() || !sessionActive();
-      const admissionIO = createSubscriptionProviderIO({ repository: process.cwd(), stopped: stoppedNow, work: 'maintenance' });
+      // The step's preflights run as the identity its session will (harness-user: held, never the runner's, while unready).
+      const admissionIO = () => createSubscriptionProviderIO({ repository: process.cwd(), stopped: stoppedNow, work: 'maintenance',
+        runAs: runAsOf(harness) });
       // Every tool call of the child (its subagents' too) passes the admission hook before dispatch: its slots are
       // the step's reserved call liability, MCP and other consequential tools go to the effect doorway, and every
       // shell command runs confined. The state lives beside the working scope, never inside it.
-      const admissionBase = join(root, 'session-work-state', 'admission');
+      const admissionBase = layout ? layout.admission : join(root, 'session-work-state', 'admission');
       const closeStepEgress = async claim => { const proxy = stepEgress.get(claim); stepEgress.delete(claim); if (proxy) await proxy.close(); };
       sessionWork = { authority: `session work grant ${sessionActivation.reference}: one scheduled work step for the verified operator, `
         + 'with the full tool set behind the admission hook, its result returned by file', port: take(createSessionWorkPort({
         createDriver: resolveIntake => createProductionSessionDriver({ operatorOwnUse: true, confinement: 'admitted',
-          toolAdmission: { command: sessionAdmissionCommand({ base: admissionBase }),
+          toolAdmission: { command: sessionAdmissionCommand({ base: admissionBase, ...(layout ? { script: harnessHookPath() } : {}) }),
             timeoutSeconds: Math.ceil(SESSION_WORK_LIMITS.deadlineMs / 1000) }, modelGate: claim => gate.base(claim),
           framework, executable: profile.executable, cwd: project, home: profile.home, configHome: profile.configDirectory,
           model: required(options, 'model'), context, io: physical, now: wallNow, stopped: stoppedNow, resolveIntake,
           maxSessions: SESSION_WORK_LIMITS.maxSessions, turnDeadlineMs: SESSION_WORK_LIMITS.deadlineMs,
-          readyTimeoutMs: 30000, protectedSessions: [] }),
+          readyTimeoutMs: 30000, protectedSessions: [],
+          // As the harness user: the pane runs the harness through the bridge, which hands it the custody login.
+          ...(layout ? { launchVia: [process.execPath, HARNESS_SESSION_BRIDGE, options['harness-user'],
+            realpathSync(required(options, 'login-profile')), '--'] } : {}) }),
         io: { readResult: (path, maxBytes) => physical.readResult(path, maxBytes), clearResult: path => physical.clearResult(path),
           modelCalls: since => physical.modelCalls(framework, project, profile.configDirectory, since), wait: delay,
-          prepareAdmission: async (claim, edge) => { mountVolume();
+          prepareAdmission: async (claim, edge) => {
+            const identity = harness ? harness.current() : null;
+            mountVolume(identity);
             await closeStepEgress(claim);
+            if (identity) harnessSessionAdmission(root, identity.user);
             const state = prepareSessionAdmission({ base: admissionBase, claim, workspace: project, maxCalls: SESSION_WORK_LIMITS.maxCallsPerStep,
-              gate: gate.base(claim), ...admissionConfig() });
+              gate: gate.base(claim), ...admissionConfig(), ...(identity ? { harness: { user: identity.user, runner: identity.runner } } : {}) });
             // The step's shell network checkpoint (egress-proxy.mjs): the confined shell's one network path, deciding every
             // request by the same effect doorway, under its request and byte bounds; stopped when the step's claim closes.
+            // As the harness user its private state stays the runner's alone, outside the harness-readable step state.
             const tmp = join(project, '.tmp');
-            stepEgress.set(claim, (await attachEgress({ stateDirectory: state, scratch: tmp, home: join(tmp, 'home') }, undefined, networkToolReads())).proxy);
+            let privateDirectory;
+            if (identity) {
+              const egressBase = join(root, 'session-work-state', 'egress');
+              privateDirectory = join(egressBase, claim);
+              rmSync(privateDirectory, { recursive: true, force: true });
+              mkdirSync(privateDirectory, { recursive: true, mode: 0o700 });
+              // Kept like the admission directories: the newest SESSION_ADMISSION_KEPT steps.
+              readdirSync(egressBase).filter(name => name !== claim).map(name => ({ name, at: lstatSync(join(egressBase, name)).mtimeMs }))
+                .sort((a, b) => b.at - a.at).slice(SESSION_ADMISSION_KEPT - 1)
+                .forEach(({ name }) => rmSync(join(egressBase, name), { recursive: true, force: true }));
+            }
+            stepEgress.set(claim, (await attachEgress({ stateDirectory: state, ...(privateDirectory ? { privateDirectory } : {}), scratch: tmp,
+              home: join(tmp, 'home') }, undefined, networkToolReads(), { check: heldVerdict(heldSecrets), span: () => heldSpan(heldSecrets) })).proxy);
             gate.open(claim, { framework, allowance: SESSION_WORK_LIMITS.maxCallsPerStep, edge }); },
           admissionState: claim => gate.state(claim),
           closeAdmission: claim => { gate.close(claim); closeStepEgress(claim).catch(() => {}); } },
         resources: { admit: async () => {
           doorway.session.validateActivation(sessionActivation, profile, required(options, 'model'), wallNow(), journal.view.expires);
-          await doorway.session.admit({ profile, io: admissionIO, deadline: wallNow() + 15000, now: wallNow });
+          await doorway.session.admit({ profile, io: admissionIO(), deadline: wallNow() + 15000, now: wallNow });
           const held = await hostResources.hold('maintenance', { timeout: 30000, stopped: stoppedNow });
           return held === null ? null : { attach: child => held.attach({ pid: Number(child.split(':')[1]), cwd: project }),
             release: async () => (await held.release()).verified };
@@ -2113,6 +2189,9 @@ async function main() {
     try { priorRuns = existsSync(runsPath) ? readFileSync(runsPath, 'utf8') : ''; } catch { /* readRuns reports readFailed */ }
     if (priorRuns !== null) installUpdate = installedUpdateFrom(installationRows(priorRuns), installation, launchedAt);
     appendRun(runsPath, { v: 1, launch: launchedAt, pid: process.pid, install: installation, work: { conversation: conversationOf(g) },
+      // Plan #449: the tools authority this launch resolved (grant, class, policy digest), or why tools are off (only --tools off).
+      tools: toolsRecord && toolsResolution ? { state: 'on', grant: toolsResolution.grant, policyClass: toolsResolution.policyClass?.name ?? null,
+        policyDigest: toolsRecord.invocationPolicyDigest } : { state: 'off', reason: toolsOff ?? 'no tool route' },
       minimalPath: { shape: 'single-machine', register: registerAtLaunch, policy: installationPolicy.kind === 'resolved'
         ? { state: 'accepted', id: installationPolicy.id, acceptance: installationPolicy.acceptance, acceptedAt: installationPolicy.acceptedAt,
           profile: installationPolicy.profile, standing: 'account-authenticated operator message under the desk\'s seal; not device-signed' }
@@ -2331,7 +2410,7 @@ async function main() {
       const work = operation.startsWith('summary:') ? 'maintenance' : operation.endsWith(':reply-review') ? 'review' : 'answer';
       // A tool turn also ends on the journal's latched /stop and on tool-activation withdrawal: the resource
       // owner polls this every 25 ms and SIGKILLs the launch's own process group by its exact pid.
-      const launchIO = createSubscriptionProviderIO({ repository: process.cwd(), runAs: harness?.ready ? { user: harness.user, launcher: harness.launcher } : null,
+      const launchIO = createSubscriptionProviderIO({ repository: process.cwd(), runAs: runAsOf(harness),
         stopped: () => workerStop.value || existsSync(stopPath) || !active()
           || (toolTurn !== undefined && (journal.view.stop !== null || !toolsActive())), work });
       const physicalIO = { ...launchIO, execute: async input => {

@@ -1,0 +1,207 @@
+{
+ "source": "Plan row #466 (w4-statuslen). Live L45 group I on proof room two (I-proofroom2-20261003-232346; root proofroom2-dshort15-20261003-214951; build c0b57925). Read from the root's journal with the build's read-only open (O_RDONLY, as `inspect`), never written. statusAnswers are the fixed status pull answers (turn.answer) to three operator status questions, verbatim: 6232038 ('status', 3240 bytes) was sent as one message; 6232050 and 6232056 ('What is your status?', 4139 and 4184 bytes) exceeded one Telegram message and were replaced by the too-long notice (noticeSent, verbatim from reply-i1s.json). retroPasses are the root's two recorded retrospective passes: both ran on cint-L44 9ee1c2bd (runs.jsonl: launch 21:50:09 9ee1c2bd, launch 23:16:34 c0b57925; passes at 22:01:56 and 23:02:01), before the duty follow-up existed, so neither carries dutyFollowUp or a reason.",
+ "statusAnswers": [
+  {
+   "update": 6232038,
+   "outcome": "sent",
+   "answer": "Status (2026-10-03, America/Los_Angeles)\nTurns today: 14.\nHeld replies: none.\nPending memory decisions: 11 (updates 6232025, 6232028, 6232029, 6232030, 6232031, 6232032, 6232033, 6232034, 6232035, 6232036, 6232037).\nNext dated item: none confirmed.\nOpen loops: 3 (1 commitment, 2 questions); 0 due to resurface with your next message.\nBacklog: 1 unfinished (1 message, 0 due work steps); oldest 0 min.\nProgress: progressing; last 0 min ago.\nScheduled work: 1 waiting for their time.\nOverdue: 0 check-ins, 0 blocker rechecks, 0 requested actions; corrections awaiting your next message: 0.\nDeclared obligations I could not record: 1 (a refused deferral or limit is sent only after a full review; a refused completion claim closes nothing).\nSentinels: context compact episode recovered; presence watching 0 unanswered (0 holding notes due); promises 0 overdue reported, 0 waiting on someone else, 0 with work requested.\nProofs: 5/13 healthy; 8 not currently observed.\nCapabilities: 1 confirmed, 7 unconfirmed, 1 dark (preview.step-check); 12 without a live proof at their current version.\nGraduation: preview.step-check — test-agent missing, development-agent missing, fleet missing; deadline 2026-10-15 (recorded 2026-09-28).\nServing: this runner on DaBombs-Mac-Studio.local owns this conversation (claimed 15 min ago); 0 duplicate launch(es) refused on this machine.\nStore checks: 3 of 4 agree.\nPast a cap: each kept message gets one limited answer from the reserve.\nMemory failures: none recorded.\nSpend allowance: 269/1000 subscription attempts; 13/1000 Jev checks. Dollar spend/cap: not recorded in this journal. Replies: 13/1000 used.\nReplies sent as your own words repeated back, without the second check: 0.\nBuild: 9ee1c2bd running since 2026-10-03 21:50; running code matches the installed files.\nHarness: preview-journal-native via claude-code-subscription; 9 of 9 silent-stop classes covered.\nUpdate: from an unrecorded earlier build; briefing change unknown; delivered in my reply to update 6232025.\nTools: the harness's full built-in set (27 tools, each call decided at the admission hook) and the root's MCP servers, in this conversation's private workspace (kept between turns, 128 MB); shell sandboxed, its network through the turn's checkpoint (reads of public hosts admitted, writes refused at the effect doorway); web reads only; subagents may delegate within the turn's budget; consequential effects go through the effect doorway.\nTool turns: 16 run (240 model attempts reserved for them), 0 tool calls admitted, 0 refused, 0 turns answered without tools because the call allowance was short.\nKept session: 12 turns resumed it, 4 started a new one (1 after the journal changed a fact or the authority changed, 0 after a loss or an interrupted turn, 2 at its size or turn bound); 0 ended at a stop, withdrawal or failed turn.\nEffect doorway: 0 effect(s) reached it from tool turns (0 ordinary, 0 admitted under an operator grant, 0 admitted in the accepted closed set, 0 refused); ordinary work in the turn's own workspace is admitted without it. Replies and model calls go through the installation's accepted closed set (provider call, ordinary replies), and limit or end-date changes only through your approved request."
+  },
+  {
+   "update": 6232050,
+   "outcome": "too-long notice",
+   "answer": "Status (2026-10-03, America/Los_Angeles)\nTurns today: 26.\nHeld replies: none.\nPending memory decisions: 22 (updates 6232025, 6232028, 6232029, 6232030, 6232031, 6232032, 6232033, 6232034, 6232035, 6232036, 6232037, 6232039, 6232040, 6232041, 6232042, 6232043, 6232044, 6232045, 6232046, 6232047, 6232048, 6232049).\nNext dated item: none confirmed.\nOpen loops: 4 (2 commitments, 2 questions); 0 due to resurface with your next message.\nBacklog: 1 unfinished (1 message, 0 due work steps); oldest 0 min.\nProgress: progressing; last 0 min ago.\nScheduled work: 0 waiting for their time.\nOverdue: 0 check-ins, 0 blocker rechecks, 0 requested actions; corrections awaiting your next message: 0.\nDeclared obligations I could not record: 1 (a refused deferral or limit is sent only after a full review; a refused completion claim closes nothing).\nSentinels: context respawn episode recovered; presence watching 0 unanswered (0 holding notes due); promises 0 overdue reported, 0 waiting on someone else, 0 with work requested.\nRetrospective review: 2 completed pass(es); last at epoch ms 1791093741931 inspected 10 of 38 case(s) and deferred 28 (efficiency duty ran: Ten near-identical garden logs sent as separate messages wasted turns; one batched note would suffice.); duties not inspected although their evidence was present: unsupported-reversal, recurrence, removable-attention, workaround, standing-grant, refuted-reason, process-tier, proportionality, benchmark-divergence; duties not inspected for lack of evidence: waiver-recurrence; open improvement items 2; pending grades 1; feedback dispositions 1; standing-grant candidates 0 (0 recurring, shown per P-10; none grants anything until the operator approves); benchmark cases promoted 0, reruns 0 (0 regressed); model route selection unmeasured (one route).\nProofs: 6/13 healthy; reply-review-reached failed; 6 not currently observed.\nCapabilities: 1 confirmed, 7 unconfirmed, 1 dark (preview.step-check); 12 without a live proof at their current version.\nGraduation: preview.step-check — test-agent missing, development-agent missing, fleet missing; deadline 2026-10-15 (recorded 2026-09-28).\nServing: this runner on DaBombs-Mac-Studio.local owns this conversation (claimed 11 min ago); 0 duplicate launch(es) refused on this machine.\nStore checks: 4 of 4 agree.\nPast a cap: each kept message gets one limited answer from the reserve.\nMemory failures: none recorded.\nSpend allowance: 552/1000 subscription attempts; 24/1000 Jev checks. Dollar spend/cap: not recorded in this journal. Replies: 25/1000 used.\nReplies sent as your own words repeated back, without the second check: 1.\nBuild: c0b57925 running since 2026-10-03 23:16; running code matches the installed files.\nHarness: preview-journal-native via claude-code-subscription; 9 of 9 silent-stop classes covered.\nUpdate: from 9ee1c2bd; briefing unchanged; delivered in my reply to update 6232041.\nTools: the harness's full built-in set (27 tools, each call decided at the admission hook) and the root's MCP servers, in this conversation's private workspace (kept between turns, 128 MB); shell sandboxed, its network through the turn's checkpoint (reads of public hosts admitted, writes refused at the effect doorway); web reads only; subagents may delegate within the turn's budget; consequential effects go through the effect doorway.\nTool turns: 33 run (495 model attempts reserved for them), 1 tool calls admitted, 0 refused, 0 turns answered without tools because the call allowance was short.\nKept session: 23 turns resumed it, 10 started a new one (4 after the journal changed a fact or the authority changed, 0 after a loss or an interrupted turn, 5 at its size or turn bound); 0 ended at a stop, withdrawal or failed turn.\nEffect doorway: 0 effect(s) reached it from tool turns (0 ordinary, 0 admitted under an operator grant, 0 admitted in the accepted closed set, 0 refused); ordinary work in the turn's own workspace is admitted without it. Replies and model calls go through the installation's accepted closed set (provider call, ordinary replies), and limit or end-date changes only through your approved request."
+  },
+  {
+   "update": 6232056,
+   "outcome": "too-long notice",
+   "answer": "Status (2026-10-03, America/Los_Angeles)\nTurns today: 32.\nHeld replies: none.\nPending memory decisions: 27 (updates 6232025, 6232028, 6232029, 6232030, 6232031, 6232032, 6232033, 6232034, 6232035, 6232036, 6232037, 6232039, 6232040, 6232041, 6232042, 6232043, 6232044, 6232045, 6232046, 6232047, 6232048, 6232049, 6232051, 6232052, 6232053, 6232054, 6232055).\nNext dated item: none confirmed.\nOpen loops: 4 (2 commitments, 2 questions); 0 due to resurface with your next message.\nBacklog: 1 unfinished (1 message, 0 due work steps); oldest 0 min.\nProgress: progressing; last 0 min ago.\nScheduled work: 0 waiting for their time.\nOverdue: 0 check-ins, 0 blocker rechecks, 0 requested actions; corrections awaiting your next message: 0.\nDeclared obligations I could not record: 1 (a refused deferral or limit is sent only after a full review; a refused completion claim closes nothing).\nSentinels: context respawn episode recovered; presence watching 0 unanswered (0 holding notes due); promises 0 overdue reported, 0 waiting on someone else, 0 with work requested.\nRetrospective review: 2 completed pass(es); last at epoch ms 1791093741931 inspected 10 of 38 case(s) and deferred 28 (efficiency duty ran: Ten near-identical garden logs sent as separate messages wasted turns; one batched note would suffice.); duties not inspected although their evidence was present: unsupported-reversal, recurrence, removable-attention, workaround, standing-grant, refuted-reason, process-tier, proportionality, benchmark-divergence; duties not inspected for lack of evidence: waiver-recurrence; open improvement items 2; pending grades 1; feedback dispositions 1; standing-grant candidates 0 (0 recurring, shown per P-10; none grants anything until the operator approves); benchmark cases promoted 0, reruns 0 (0 regressed); model route selection unmeasured (one route).\nProofs: 6/13 healthy; reply-review-reached failed; 6 not currently observed.\nCapabilities: 1 confirmed, 7 unconfirmed, 1 dark (preview.step-check); 12 without a live proof at their current version.\nGraduation: preview.step-check — test-agent missing, development-agent missing, fleet missing; deadline 2026-10-15 (recorded 2026-09-28).\nServing: this runner on DaBombs-Mac-Studio.local owns this conversation (claimed 22 min ago); 0 duplicate launch(es) refused on this machine.\nStore checks: 4 of 4 agree.\nPast a cap: each kept message gets one limited answer from the reserve.\nMemory failures: none recorded.\nSpend allowance: 637/1000 subscription attempts; 30/1000 Jev checks. Dollar spend/cap: not recorded in this journal. Replies: 31/1000 used.\nReplies sent as your own words repeated back, without the second check: 1.\nBuild: c0b57925 running since 2026-10-03 23:16; running code matches the installed files.\nHarness: preview-journal-native via claude-code-subscription; 9 of 9 silent-stop classes covered.\nUpdate: from 9ee1c2bd; briefing unchanged; delivered in my reply to update 6232041.\nTools: the harness's full built-in set (27 tools, each call decided at the admission hook) and the root's MCP servers, in this conversation's private workspace (kept between turns, 128 MB); shell sandboxed, its network through the turn's checkpoint (reads of public hosts admitted, writes refused at the effect doorway); web reads only; subagents may delegate within the turn's budget; consequential effects go through the effect doorway.\nTool turns: 38 run (570 model attempts reserved for them), 1 tool calls admitted, 0 refused, 0 turns answered without tools because the call allowance was short.\nKept session: 27 turns resumed it, 11 started a new one (4 after the journal changed a fact or the authority changed, 0 after a loss or an interrupted turn, 6 at its size or turn bound); 0 ended at a stop, withdrawal or failed turn.\nEffect doorway: 0 effect(s) reached it from tool turns (0 ordinary, 0 admitted under an operator grant, 0 admitted in the accepted closed set, 0 refused); ordinary work in the turn's own workspace is admitted without it. Replies and model calls go through the installation's accepted closed set (provider call, ordinary replies), and limit or end-date changes only through your approved request."
+  }
+ ],
+ "noticeSent": "PREVIEW — I produced an answer, but it was too long for one Telegram reply. I did not send part of it. Please ask for a shorter answer.",
+ "retroPasses": [
+  {
+   "pass": 0,
+   "at": 1791090116447,
+   "state": "complete",
+   "reason": null,
+   "dutyFollowUp": null,
+   "efficiency": {
+    "summary": "No wasted calls found; two substantive cases inspected within tight byte budget, rest deferred."
+   },
+   "inspected": [
+    "answer:telegram:8989505249:update:6232025",
+    "repair:coherence:telegram:8989505249:update:6232025",
+    "turn:telegram:8989505249:update:6232025",
+    "verdict:telegram:8989505249:update:6232025:1",
+    "repair:coherence:telegram:8989505249:update:6232026",
+    "turn:telegram:8989505249:update:6232026"
+   ],
+   "duties": [
+    {
+     "duty": "gravity-well",
+     "disposition": "inspected",
+     "note": "inspected; finding opened"
+    },
+    {
+     "duty": "unsupported-reversal",
+     "disposition": "unavailable",
+     "note": "reported unavailable although its evidence was present; not inspected"
+    },
+    {
+     "duty": "recurrence",
+     "disposition": "unavailable",
+     "note": "reported unavailable although its evidence was present; not inspected"
+    },
+    {
+     "duty": "removable-attention",
+     "disposition": "unavailable",
+     "note": "reported unavailable although its evidence was present; not inspected"
+    },
+    {
+     "duty": "workaround",
+     "disposition": "unavailable",
+     "note": "reported unavailable although its evidence was present; not inspected"
+    },
+    {
+     "duty": "waste",
+     "disposition": "inspected",
+     "note": "inspected; nothing found"
+    },
+    {
+     "duty": "outcome",
+     "disposition": "inspected",
+     "note": "inspected; nothing found"
+    },
+    {
+     "duty": "feedback",
+     "disposition": "inspected",
+     "note": "inspected; finding opened"
+    },
+    {
+     "duty": "standing-grant",
+     "disposition": "unavailable",
+     "note": "reported unavailable although its evidence was present; not inspected"
+    },
+    {
+     "duty": "refuted-reason",
+     "disposition": "unavailable",
+     "note": "reported unavailable although its evidence was present; not inspected"
+    },
+    {
+     "duty": "waiver-recurrence",
+     "disposition": "unavailable",
+     "note": "unavailable: the waiver authority/provenance producer (build 5) has supplied no waiver authorizations or acts to this consumer"
+    },
+    {
+     "duty": "process-tier",
+     "disposition": "inspected",
+     "note": "inspected; finding opened"
+    },
+    {
+     "duty": "proportionality",
+     "disposition": "inspected",
+     "note": "inspected; nothing found"
+    },
+    {
+     "duty": "benchmark-divergence",
+     "disposition": "unavailable",
+     "note": "reported unavailable although its evidence was present; not inspected"
+    }
+   ]
+  },
+  {
+   "pass": 1,
+   "at": 1791093721913,
+   "state": "complete",
+   "reason": null,
+   "dutyFollowUp": null,
+   "efficiency": {
+    "summary": "Ten near-identical garden logs sent as separate messages wasted turns; one batched note would suffice."
+   },
+   "inspected": [
+    "turn:telegram:8989505249:update:6232027",
+    "turn:telegram:8989505249:update:6232028",
+    "turn:telegram:8989505249:update:6232029",
+    "turn:telegram:8989505249:update:6232030",
+    "turn:telegram:8989505249:update:6232031",
+    "turn:telegram:8989505249:update:6232032",
+    "turn:telegram:8989505249:update:6232033",
+    "turn:telegram:8989505249:update:6232034",
+    "turn:telegram:8989505249:update:6232035",
+    "turn:telegram:8989505249:update:6232036"
+   ],
+   "duties": [
+    {
+     "duty": "gravity-well",
+     "disposition": "inspected",
+     "note": "inspected; nothing found"
+    },
+    {
+     "duty": "unsupported-reversal",
+     "disposition": "unavailable",
+     "note": "reported unavailable although its evidence was present; not inspected"
+    },
+    {
+     "duty": "recurrence",
+     "disposition": "unavailable",
+     "note": "reported unavailable although its evidence was present; not inspected"
+    },
+    {
+     "duty": "removable-attention",
+     "disposition": "unavailable",
+     "note": "reported unavailable although its evidence was present; not inspected"
+    },
+    {
+     "duty": "workaround",
+     "disposition": "unavailable",
+     "note": "reported unavailable although its evidence was present; not inspected"
+    },
+    {
+     "duty": "waste",
+     "disposition": "inspected",
+     "note": "inspected; nothing found"
+    },
+    {
+     "duty": "outcome",
+     "disposition": "inspected",
+     "note": "inspected; nothing found"
+    },
+    {
+     "duty": "feedback",
+     "disposition": "inspected",
+     "note": "inspected; nothing found"
+    },
+    {
+     "duty": "standing-grant",
+     "disposition": "unavailable",
+     "note": "reported unavailable although its evidence was present; not inspected"
+    },
+    {
+     "duty": "refuted-reason",
+     "disposition": "unavailable",
+     "note": "reported unavailable although its evidence was present; not inspected"
+    },
+    {
+     "duty": "waiver-recurrence",
+     "disposition": "unavailable",
+     "note": "unavailable: the waiver authority/provenance producer (build 5) has supplied no waiver authorizations or acts to this consumer (finding row refused: finding refs cites an unknown record)"
+    },
+    {
+     "duty": "process-tier",
+     "disposition": "unavailable",
+     "note": "reported unavailable although its evidence was present; not inspected"
+    },
+    {
+     "duty": "proportionality",
+     "disposition": "unavailable",
+     "note": "reported unavailable although its evidence was present; not inspected"
+    },
+    {
+     "duty": "benchmark-divergence",
+     "disposition": "unavailable",
+     "note": "reported unavailable although its evidence was present; not inspected"
+    }
+   ]
+  }
+ ]
+}

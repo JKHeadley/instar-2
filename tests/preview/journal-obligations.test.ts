@@ -1148,7 +1148,7 @@ it('tells the reply review when its tool-call excerpt is incomplete, so a result
   }
 });
 
-it('a long answer keeps its own effect refusal; a follow-up report that no longer fits stays pending and rides a later answer (Rules 8, 42; Part Twelve §3)', async () => {
+it('a long answer keeps its own effect refusal whole, and a waiting follow-up report still rides it, after the refusal (Rules 8, 42, 92; Part Twelve §3; plan #492)', async () => {
   const root = origin();
   const REPORT = `The invoice is ready. ${'r'.repeat(430)}`;
   try {
@@ -1160,18 +1160,22 @@ it('a long answer keeps its own effect refusal; a follow-up report that no longe
     w.clock.now += LOOP_REVISIT_MS + 60_000;
     expect(await w.worker.workObligations()).toBe(true);
     expect(w.journal.view.obligationWork['commitment:0']?.report?.text).toBe(REPORT);
-    // The report alone would fit; with the refusal reserved it does not, so the answer carries the refusal whole and no report.
+    // The refusal keeps its reserved room in the first message; the report no longer waits on a one-message bound
+    // (live cint-L49 D1c: that bound, with a cap of two, kept a finished result back). It follows the refusal, and
+    // the reply is split into ordered messages at send when it outgrows one (here it still fits one).
     await w.say(DOORWAY);
     expect(w.sent).toHaveLength(2);
     expect(w.sent[1]).toMatch(/Here is the answer\. x+\n\nEffect doorway: a tool:unsandboxed step was refused/u);
-    expect(w.sent[1]).not.toContain('The invoice is ready');
-    expect(Buffer.byteLength(w.sent[1]!)).toBeLessThanOrEqual(3600);
-    expect(w.journal.view.obligationWork['commitment:0']!.report!.boundTo).toBeUndefined();
-    // The report is still owned and is delivered whole with the next answer.
+    const reply = w.sent.slice(1).join('\n');
+    expect(reply).toContain('The invoice is ready');
+    expect(reply.indexOf('Effect doorway')).toBeLessThan(reply.indexOf('The invoice is ready'));
+    expect(w.journal.view.obligationWork['commitment:0']!.report!.delivered).toBeDefined();
+    // Delivered once: the next answer does not repeat it.
+    const before = w.sent.length;
     await w.say('How are the tomatoes?');
-    expect(w.sent).toHaveLength(3);
-    expect(w.sent[2]).toContain(REPORT);
-    expect(w.sent[2]).not.toContain('Effect doorway');
+    expect(w.sent).toHaveLength(before + 1);
+    expect(w.sent.at(-1)).not.toContain('The invoice is ready');
+    expect(w.sent.at(-1)).not.toContain('Effect doorway');
     w.journal.close();
   } finally { rmSync(root, { recursive: true, force: true }); }
 });

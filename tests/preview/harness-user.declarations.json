@@ -21,5 +21,27 @@
       113
     ],
     "holds": []
+  },
+  {
+    "type": "Declaration",
+    "schemaVersion": 1,
+    "id": "preview.harness-user.storeHarnessLogin",
+    "kind": "stores",
+    "status": "live",
+    "requiredFacts": {
+      "growth": "deletes",
+      "holdsAgentMemory": "no",
+      "machineScope": {
+        "kind": "machine-local",
+        "reason": "Rule 113: each machine provisions its own harness user and area (/Users/Shared/instar-harness), never shared or replicated: the login custody (one record, replaced atomically, the previous value discarded), the installed launcher, hook copy and pinned harness copy (replaced when their content differs), the harness profile, the harness's own temporary directory (its and Claude Code's temporary files, which /private/tmp now refuses it), and one ACL mark per workspace volume (removed with the volume); a turn's harness-side admission state is removed with its turn directory by prune, and a delegated session's per-step admission state keeps only the newest steps."
+      },
+      "agreesWith": []
+    },
+    "standards": [
+      7,
+      32,
+      113
+    ],
+    "holds": []
   }
 ]

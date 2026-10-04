@@ -241,6 +241,7 @@
     "requiredFacts": {
       "authority": "block",
       "decidesAlone": "ruled-three",
+      "decidesAloneBasis": "operator-emergency-stop",
       "criticality": "The operator's stop, and the trial expiry the operator granted in advance, end all model calls and sends; nothing is dispatched after either.",
       "failDirection": "closed",
       "preservesInput": "encrypted preview journal: admitted turns stay recorded and pending",
@@ -273,6 +274,7 @@
     "requiredFacts": {
       "authority": "block",
       "decidesAlone": "ruled-three",
+      "decidesAloneBasis": "operator-emergency-stop",
       "criticality": "The operator's stop and the trial expiry the operator granted in advance end polling. A resource ceiling never stops reading: past the turn bound, updates wait in the finite waiting store or at Telegram, so stop and approval presses stay reachable (Rules 14, 15).",
       "failDirection": "closed",
       "preservesInput": "Telegram retains unpolled updates; the journal keeps every admitted turn",
@@ -392,5 +394,40 @@
       82
     ],
     "holds": []
+  },
+  {
+    "type": "Declaration",
+    "schemaVersion": 1,
+    "id": "preview.journal.capacityRefused",
+    "kind": "blocking sites",
+    "status": "live",
+    "requiredFacts": {
+      "authority": "block",
+      "decidesAlone": "ruled-three",
+      "decidesAloneBasis": "spend-past-a-cap",
+      "criticality": "Spend past a cap is refused, not asked about: the journal's durable append refuses every model-call reservation, reply intent and Jev check once the trial's model-call, reply or turn allowance is reached (capacityRefused in tests/preview/journal.ts), before the record reaches the file. Every model call is preceded by one of those records and every send by an intent, so nothing is spent past the cap.",
+      "failDirection": "closed",
+      "preservesInput": "encrypted preview journal: the unspent turn stays recorded and pending, so a raise of the allowance resumes it; nothing is discarded",
+      "inspectedBy": "PREVIEW-TRIAL-GATES"
+    },
+    "profile": {
+      "type": "Profile",
+      "schemaVersion": 1,
+      "consequence": "money",
+      "reversibility": "irreversible",
+      "reach": "operator",
+      "surface": "chat",
+      "repeats": {
+        "kind": "no"
+      }
+    },
+    "standards": [
+      4,
+      66,
+      95
+    ],
+    "holds": [
+      { "rule": 4, "class": "partial", "evidence": { "kind": "fixture", "id": "PREVIEW-TRIAL-GATES", "stage": "build" }, "portion": "rule 4's second irreversible-miss case is enumerated at the test that actually refuses spending: the journal's durable append refuses a reservation or intent past the allowance before it is written, and the preview runner binds this declaration to that checkpoint at launch (bindPreviewBlockingSites)", "remainder": "the worker's earlier holds (a turn held as 'call cap' or 'reply cap' before it asks), the tool-turn and session-work reservation checks, and cap reporting (reachedJournalCap, reportJournalCap) are separate comparisons not funnelled through this predicate; each holds or refuses sooner, never later" }
+    ]
   }
 ]

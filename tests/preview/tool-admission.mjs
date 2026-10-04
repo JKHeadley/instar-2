@@ -388,6 +388,39 @@ export function gitFetchRequest({ origin, path, headers, body, advertised }) {
   return lines > 0 ? { fetch: true, reason: 'git fetch' } : { fetch: false, reason: 'empty git request' };
 }
 
+/** Plan #507: the decision for an outward request whose text the held-secret check (`held`, text => 'clear' | 'held' |
+ * 'unavailable') did not clear, or null when it cleared. No check at all (`held` null) clears nothing an owner did not
+ * wire: callers that dispatch outward always pass one. */
+export function heldRefusal(held, text) {
+  if (typeof held !== 'function') return null;
+  let verdict;
+  try { verdict = held(text); } catch { verdict = 'unavailable'; }
+  if (verdict === 'clear') return null;
+  return verdict === 'held' ? { decision: 'deny', reason: 'the request carries a secret value the runner holds', kind: 'secret' }
+    : { decision: 'deny', reason: 'the held-secret check is unavailable, so the outward request is refused', kind: 'secret' };
+}
+/** Plan #507: the longest text one held-secret check carries (an outward tool call's input; larger is refused, never
+ * truncated, since a truncated check could miss a value in the part left out). */
+export const HELD_CHECK_MAX_BYTES = 1024 * 1024;
+/** Plan #507: the text an outward tool request carries off the machine (every string in its input), or null for a tool
+ * whose input does not leave it (a file tool, a search, a sandboxed shell command, whose network goes through the shell's
+ * checkpoint, a subagent). Outward: WebFetch, WebSearch, a Codex network read, a named outward tool, an MCP tool, and a
+ * shell command run outside the sandbox. */
+export function outwardText(tool, input) {
+  const name = String(tool ?? '');
+  const outward = name === 'WebFetch' || name === 'WebSearch' || CODEX_NETWORK_READ_TOOLS.includes(name) || Object.hasOwn(OUTWARD_TOOLS, name)
+    || name.startsWith('mcp__') || (name === 'Bash' && input?.dangerouslyDisableSandbox === true);
+  if (!outward) return null;
+  const strings = [];
+  const walk = value => {
+    if (typeof value === 'string') strings.push(value);
+    else if (Array.isArray(value)) value.forEach(walk);
+    else if (value && typeof value === 'object') Object.values(value).forEach(walk);
+  };
+  walk(input);
+  return strings.join('\n');
+}
+
 /** The shell's network checkpoint (the egress proxy every sandboxed command is forced through): the decision for one HTTP
  * request it can see in full (method, host, path, headers), after TLS interception. A read is admitted: GET or HEAD, or a
  * git fetch proven by gitFetchRequest (`gitFetch`, its result), and only when no method-override header names anything
@@ -397,8 +430,14 @@ export function gitFetchRequest({ origin, path, headers, body, advertised }) {
  * request on, a package publish) is a network write the effect doorway decides as `tool:network-write` on the host:
  * unregistered, it is classified at its worst on all four tests and refused. `config` is the turn's admission config
  * ({operations, effectPolicy?, irreversibleTerm?}); `now` (ms) checks a grant's expiry. */
-export function admitEgress({ method, path, host = null, headers = {}, gitFetch = null }, config, now) {
+export function admitEgress({ method, path, host = null, headers = {}, gitFetch = null }, config, now, held = null) {
   const h = lower(headers), actual = String(method ?? '').trim().toUpperCase(), target = String(path ?? '');
+  // Plan #507 (secrets floor, Rule 4): a request whose host, path or any header carries a held secret value is refused
+  // before anything else is decided, whatever its method; a check that cannot decide refuses too (Rule 95: fail closed).
+  // `held` is the runner's check (tool-turn.mjs heldVerdict); the proxy always passes it.
+  const secret = heldRefusal(held, [String(host ?? ''), target, ...Object.entries(headers).map(([name, value]) =>
+    `${name}: ${Array.isArray(value) ? value.join(', ') : String(value)}`)].join('\n'));
+  if (secret) return secret;
   const on = host ? { target: String(host).slice(0, 256) } : {};
   // Every method the upstream could act on: the request line's and each one an override header names (a repeated header
   // is comma-joined). An override can never downgrade the request line, and no header can hide another's write.

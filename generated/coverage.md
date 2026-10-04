@@ -1,7 +1,7 @@
 # Rule coverage
 
-Register generation: sha256:3b5e7a7ad0820258cc3a87c372565bb637a35be30adc9740816f46e8e72ca2be
-Source commit: e607400fd889f754a5631376c8d265af867cc36a
+Register generation: sha256:4ba0c203f52840cbf0b79098aa2642c079190f60ff1b0e4d676c5ca7132e5b9f
+Source commit: 3418a159d2fe7cf416256b354a1298c1184c3224
 Extract vector: genesis:empty-extract
 Authority: shape-only; entering-force verification required at consumption.
 
@@ -10,9 +10,9 @@ Authority: shape-only; entering-force verification required at consumption.
 | held-reviewed | 0 |
 | held-unreviewed | 0 |
 | declared | 3 |
-| partial | 22 |
-| deferred | 1 |
-| gap | 110 |
+| partial | 24 |
+| deferred | 3 |
+| gap | 108 |
 
 {
   "rules": [
@@ -6349,6 +6349,8 @@ Authority: shape-only; entering-force verification required at consumption.
       ],
       "enforcedBy": [
         "intake.stop",
+        "preview.journal.capacityRefused",
+        "recall.redact",
         "rungraph.stop"
       ]
     },
@@ -9217,7 +9219,9 @@ Authority: shape-only; entering-force verification required at consumption.
         98,
         99
       ],
-      "enforcedBy": []
+      "enforcedBy": [
+        "resource-owner.admit"
+      ]
     },
     {
       "number": 61,
@@ -9341,7 +9345,9 @@ Authority: shape-only; entering-force verification required at consumption.
         98,
         99
       ],
-      "enforcedBy": []
+      "enforcedBy": [
+        "resource-owner.admit"
+      ]
     },
     {
       "number": 62,
@@ -14435,6 +14441,24 @@ Authority: shape-only; entering-force verification required at consumption.
   ],
   "loops": [
     {
+      "id": "deferred:resource-owner.admit:60",
+      "rule": 60,
+      "holder": "resource-owner.admit",
+      "dueBy": 1797292800000,
+      "part": 10,
+      "owner": "echo (agent)",
+      "overdueAction": "Register the host funnel's can-fail fixture with part ten (its ceiling, answer-reserve and kill tests are written at tests/integration/resource-owner.test.ts) and replace this deferral with a partial hold citing it; if that is not done by the ceiling, raise an operator attention item naming rule 60 as unproven in the register."
+    },
+    {
+      "id": "deferred:resource-owner.admit:61",
+      "rule": 61,
+      "holder": "resource-owner.admit",
+      "dueBy": 1797292800000,
+      "part": 10,
+      "owner": "echo (agent)",
+      "overdueAction": "Register the same part-ten fixture for the funnel's priority brake and answer reserve (tests/integration/resource-owner.test.ts: maintenance keeps the reserve, defers while elevated, and reclaims by stopping maintenance first) and replace this deferral with a partial hold citing it; if that is not done by the ceiling, raise an operator attention item naming rule 61 as unproven in the register."
+    },
+    {
       "id": "deferred:slack-intake-v1:36",
       "rule": 36,
       "holder": "slack-intake-v1",
@@ -14796,16 +14820,6 @@ Authority: shape-only; entering-force verification required at consumption.
     },
     {
       "rule": 6,
-      "owner": "part-three-bootstrap:operator-policy-prerequisite",
-      "required": "operator-approved gap deadline and standing route before entering force"
-    },
-    {
-      "rule": 60,
-      "owner": "part-three-bootstrap:operator-policy-prerequisite",
-      "required": "operator-approved gap deadline and standing route before entering force"
-    },
-    {
-      "rule": 61,
       "owner": "part-three-bootstrap:operator-policy-prerequisite",
       "required": "operator-approved gap deadline and standing route before entering force"
     },

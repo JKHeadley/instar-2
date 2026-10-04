@@ -11,7 +11,7 @@ import { successiveWorld, offlineProfile, OFFLINE_STORAGE_KEY, FIXTURE_DOORWAY, 
 
 const TOKEN = 'ghp_' + 'Z9y8X7w6V5u4T3s2R1q0P9o8';
 
-it('launches every model call through the resource owner and records resources, doorways and credential custody', async () => {
+it('PREVIEW-HOST-RESOURCE-FUNNEL launches every model call through the resource owner and records resources, doorways and credential custody', async () => {
   const world = successiveWorld(), root = join(world.directory, 'resource-journal');
   const activation = join(world.directory, 'activation.json'), profile = join(world.directory, 'profile.json');
   const log = join(world.directory, 'poll.log'), updates = join(world.directory, 'updates.json');
@@ -75,7 +75,7 @@ export const createClaudeCodeSubscriptionRoute = config => ({ kind: 'Success', v
       'tests/preview/journal-agent.mjs', 'run', '--root', root, '--bot-id', world.configuration.botId, '--chat-id', world.configuration.chatId,
       '--operator-sender-id', world.configuration.operatorSenderId, '--grant-reference', trial.id,
       '--configuration-digest', trial.configurationDigest, '--expires-at', String(trial.expiresAt),
-      '--activation-record', activation, '--operator-records', join(world.directory, 'operator-records'), '--login-profile', profile, '--model', world.model,
+      '--tools', 'off', '--activation-record', activation, '--operator-records', join(world.directory, 'operator-records'), '--login-profile', profile, '--model', world.model,
       '--bot-username', world.configuration.botUsername, '--max-cycles', '3', '--max-poll-seconds', '1'],
     { cwd: process.cwd(), encoding: 'utf8', timeout: 30000, env });
     expect(run.status, run.stderr).toBe(0);

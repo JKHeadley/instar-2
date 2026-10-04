@@ -336,12 +336,14 @@ describe('Rule 110: the first reply sent from a compacted context discloses it a
     } finally { rmSync(dir, { recursive: true, force: true }); }
   });
 
-  it('the disclosure survives a size notice and a holding reply, and is bound to the text actually sent', async () => {
+  it('the disclosure survives a split long answer and a holding reply, and is bound to the text actually sent', async () => {
+    // Plan #466 (w4-statuslen): a long answer is split, not refused; its first message opens with the disclosure.
     const tooLong = setup(7000, errands, () => 'x'.repeat(4100));
     try {
       summarize(tooLong.journal, 30, 'Errands and a plumber quote question.');
       tooLong.worker.intake([update(31, 'Hello again')]); await tooLong.worker.drain();
-      expect(tooLong.sent[0]).toMatch(/^PREVIEW — Earlier conversation up to #30 is now summarized for me; your previous message \(#30, [^)]+\) was answered\. I produced an answer, but it was too long/u);
+      expect(tooLong.sent[0]).toMatch(/^PREVIEW — Earlier conversation up to #30 is now summarized for me; your previous message \(#30, [^)]+\) was answered\. x+ \(1\/2\)$/u);
+      expect(tooLong.sent[1]).toMatch(/^PREVIEW \(2\/2\) — x+$/u);
       const turn = tooLong.journal.view.turns.get('telegram:12345678:update:31')!;
       expect(turn.continuity?.replyDigest).toBe(createHash('sha256').update(turn.intent!).digest('hex'));
       tooLong.journal.close();

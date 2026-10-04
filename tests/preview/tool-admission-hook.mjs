@@ -7,14 +7,17 @@
 // (admission-gate.mjs) before it runs, so a closed step or a held stop refuses ordinary work too; a delegation or a
 // consequential tool is decided there, and its result (or, for a harness wait on its children, the wait's outcome) is
 // reported back after. Fail closed: any error in `pre` exits 2, which the harness treats as a block, and an unreachable
-// checkpoint refuses. The child rows are records only (the harness cannot be blocked from a subagent's start or stop
+// checkpoint refuses. Plan #507: an outward tool request (a web read or search, an MCP or other outward tool, an
+// unsandboxed command) first asks the runner's held-secret check (the host checkpoint on a checkpointed route, the turn's
+// runner socket otherwise) and is refused if it carries a secret value the runner holds, before anything is done for it
+// (a name lookup included); a check that cannot answer refuses (fails closed). The child rows are records only (the harness cannot be blocked from a subagent's start or stop
 // hook), so they never fail the turn.
 import { appendFileSync, closeSync, fsyncSync, lstatSync, mkdirSync, openSync, readFileSync, realpathSync, writeSync } from 'node:fs';
 import { lookup } from 'node:dns/promises';
-import { isIP } from 'node:net';
+import { connect, isIP } from 'node:net';
 import { join } from 'node:path';
-import { admitToolCall, CODEX_NETWORK_READ_TOOLS, DELEGATION_TOOLS, DELEGATION_WAIT_TOOLS, hookOutput, OUTWARD_TOOLS, RECORD_EXCERPT_CHARS, SUBAGENT_TOOLS,
-  webReadHost } from './tool-admission.mjs';
+import { admitToolCall, CODEX_NETWORK_READ_TOOLS, DELEGATION_TOOLS, DELEGATION_WAIT_TOOLS, HELD_CHECK_MAX_BYTES, hookOutput, outwardText, OUTWARD_TOOLS,
+  RECORD_EXCERPT_CHARS, SUBAGENT_TOOLS, webReadHost } from './tool-admission.mjs';
 
 const NETWORK_TOOLS = Object.freeze(['WebFetch', 'WebSearch', ...CODEX_NETWORK_READ_TOOLS]);
 const [mode, stateDirectory] = process.argv.slice(2);
@@ -88,16 +91,45 @@ const n = takeSlot('slots', bound(config.maxCalls));
 const child = SUBAGENT_TOOLS.includes(call.tool_name) && n <= bound(config.maxCalls)
   && typeof config.children?.type === 'string' && call.tool_input?.subagent_type === config.children.type
   && typeof call.tool_input?.prompt === 'string' && call.tool_input.prompt.trim() ? takeSlot('children', bound(config.children?.max)) : 1;
+/** Plan #507: the runner's verdict on text an outward request would carry: null when clear, else the refusal. */
+const heldVerdictOf = async text => {
+  const refusal = reason => ({ decision: 'deny', reason, kind: 'secret' });
+  if (Buffer.byteLength(text) > HELD_CHECK_MAX_BYTES) return refusal('the outward request is too large for the held-secret check, so it is refused');
+  let verdict;
+  try {
+    if (typeof config.gate === 'string') {
+      const answer = await ask({ phase: 'pre', kind: 'held', tool_name: call.tool_name, tool_use_id: call.tool_use_id, text });
+      verdict = answer.decision === 'allow' ? 'clear' : answer.reason;
+    } else if (typeof config.heldCheck === 'string') {
+      verdict = await new Promise((resolve, reject) => {
+        let answer = '';
+        const link = connect(config.heldCheck);
+        link.setEncoding('utf8');
+        link.setTimeout(10000, () => link.destroy(Error('held-secret check timed out')));
+        link.on('connect', () => link.end(`check ${Buffer.from(text, 'utf8').toString('base64')}\n`));
+        link.on('data', chunk => { answer += chunk; });
+        link.on('end', () => resolve(answer.trim()));
+        link.on('error', reject);
+      });
+    } else verdict = 'unavailable';
+  } catch { verdict = 'unavailable'; }
+  if (verdict === 'clear') return null;
+  return refusal(verdict === 'held' ? 'the request carries a secret value the runner holds'
+    : verdict === 'unavailable' || !verdict ? 'the held-secret check is unavailable, so the outward request is refused' : verdict);
+};
+const outward = n <= bound(config.maxCalls) ? outwardText(call.tool_name, call.tool_input) : null;
+const heldDecision = outward === null ? null : await heldVerdictOf(outward);
 // A web read's host is resolved here, before the decision, so a name that points at this machine or its network is refused.
 let addresses = null;
-const target = call.tool_name === 'WebFetch' ? webReadHost(call.tool_input?.url) : { host: null };
+const target = call.tool_name === 'WebFetch' && heldDecision === null ? webReadHost(call.tool_input?.url) : { host: null };
 if (target.host !== null && !isIP(target.host)) {
   try { addresses = (await lookup(target.host, { all: true, verbatim: true })).map(entry => entry.address); } catch { addresses = null; }
 }
 // `exists` does not follow symlinks, so a dangling link is present and then refused as unresolvable (resolvedPath).
 const exists = path => { try { lstatSync(path); return true; } catch { return false; } };
-let decision = admitToolCall(call, config, n, { exists, realpath: realpathSync, addresses: () => addresses }, child, Date.now());
-if (decision.decision === 'gate') {
+let decision = heldDecision ?? admitToolCall(call, config, n, { exists, realpath: realpathSync, addresses: () => addresses }, child, Date.now());
+if (heldDecision !== null) { /* refused before anything else was decided or done for it */ }
+else if (decision.decision === 'gate') {
   const kind = decision.kind;
   try { decision = { ...(await ask({ phase: 'pre', kind, tool_name: call.tool_name, tool_input: call.tool_input ?? null,
     tool_use_id: call.tool_use_id })), kind }; }
@@ -110,7 +142,7 @@ if (decision.decision === 'gate') {
   catch (error) { live = { decision: 'deny', reason: `admission checkpoint unreachable: ${error?.message ?? error}` }; }
   if (live.decision !== 'allow') decision = { decision: 'deny', reason: live.reason, kind: 'stop' };
 }
-record({ phase: 'pre', id: call.tool_use_id, n, tool: call.tool_name, input: clip(call.tool_input), decision: decision.decision,
+record({ phase: 'pre', id: call.tool_use_id, n, tool: call.tool_name, input: heldDecision === null ? clip(call.tool_input) : JSON.stringify('[withheld: an outward request the held-secret check refused]'), decision: decision.decision,
   reason: decision.reason, ...(decision.kind ? { kind: decision.kind } : {}), ...(decision.kind === 'subagent' ? { child } : {}),
   ...(typeof call.agent_id === 'string' && call.agent_id ? { agent: call.agent_id } : {}), ...(decision.doorway ? { doorway: decision.doorway } : {}) },
   decision.doorway !== undefined);

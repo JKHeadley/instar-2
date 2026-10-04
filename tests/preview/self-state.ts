@@ -5,7 +5,8 @@ import { replyContextDigest, retrospectiveStatusLine } from './retrospective.js'
 import { closeSync, constants, existsSync, fsyncSync, openSync, readFileSync, writeSync } from 'node:fs';
 import { dirname } from 'node:path';
 import { redact } from '../../src/recall/redact.js';
-import { openRequests, replyTarget, sendOutcomeCounts, sendOutcomeOf, unknownCallCounts, type JournalView, type Turn } from './journal.js';
+import { openRequests, replyOutcomeOf, sendOutcomeCounts, unknownCallCounts, type JournalView, type Turn } from './journal.js';
+import { wholeReplySent, wholeReplySentAt } from './reply-parts.js';
 
 /** One line per launch, one per recorded end of that launch (paired by `launch`), and one per poll attempt that
  * changes the failure episode (Rule 55): each failure is durable when it happens, and a successful poll after
@@ -246,9 +247,10 @@ function stateFacts(view: JournalView, now: number, timeZone: string, stopped: b
   const count = (turns: readonly Turn[], when: (turn: Turn) => number | null | undefined) =>
     ({ total: turns.length, today: turns.filter(turn => isToday(when(turn))).length });
   const incoming = count(accepted, messageTime);
-  const delivered = count(accepted.filter(turn => turn.sent !== undefined), turn => turn.sentAt);
+  // Rule 42: a split reply counts as delivered only when every message carrying it was accepted.
+  const delivered = count(accepted.filter(wholeReplySent), wholeReplySentAt);
   // Requested actions sent, including an older journal's fixed-text reminder batches.
-  const requestSends = [...view.order.filter(turn => turn.requestedAction && !turn.requestedAction.legacy && turn.sent !== undefined).map(turn => turn.sentAt),
+  const requestSends = [...view.order.filter(turn => turn.requestedAction && !turn.requestedAction.legacy && wholeReplySent(turn)).map(wholeReplySentAt),
     ...[...view.reminders.values()].filter(item => item.requested && item.sent !== undefined).map(item => item.sentAt)];
   const requestsToday = requestSends.filter(isToday).length;
   const holds = new Map<string, number>();
@@ -363,7 +365,7 @@ export function restartHandoff(view: JournalView, runs: RunLog, launch: number) 
     && (turn.modelState === 'uncertain' || turn.answer === undefined));
   const heldNotices = view.order.filter(turn => turn.heldNoticeIntent !== undefined).length;
   const unknownSends = view.order.filter(turn => turn.accepted && turn.intent !== undefined
-    && sendOutcomeOf(view, replyTarget(turn), turn.sent).kind === 'unknown');
+    && (whole => whole.started && whole.outcome.kind === 'unknown')(replyOutcomeOf(view, turn)));
   const noticesDue = pending.filter(turn => turn.modelState === 'uncertain' && turn.noticeDueAt !== undefined
     && turn.noticeDueAt <= launch);
   const ids = (turns: readonly Turn[]) => `${String(turns.length)}${turns.length

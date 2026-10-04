@@ -41,7 +41,7 @@ export const createProductionTelegramIO = () => ({ invoke(input) {
       '--bot-id', world.configuration.botId, '--bot-username', world.configuration.botUsername,
       '--chat-id', world.configuration.chatId, '--operator-sender-id', world.configuration.operatorSenderId,
       '--grant-reference', activation.trial, '--configuration-digest', activation.baseConfigurationDigest,
-      '--expires-at', String(activation.expiresAt), '--activation-record', activationPath, '--operator-records', join(directory, 'operator-records'),
+      '--expires-at', String(activation.expiresAt), '--tools', 'off', '--activation-record', activationPath, '--operator-records', join(directory, 'operator-records'),
       '--login-profile', profilePath, '--model', world.model, '--max-cycles', '1'],
     { cwd: process.cwd(), env: { ...keyEnv, INSTAR_SECRET_PREVIEW_TELEGRAM_BOT_TOKEN: '12345678:AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA' },
       encoding: 'utf8', timeout: 10000 });

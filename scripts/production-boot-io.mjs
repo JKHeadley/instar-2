@@ -181,9 +181,11 @@ export function subscriptionProfileIdentity(bindings) {
 }
 
 /** Preview-only provider host. No secret file or Keychain contents are read here. `runAs` (harness-user.mjs readiness:
- * `{ user, launcher }`, or null) runs every harness command (version, auth status, model call) as the harness's own
- * user through the one sudoers rule: `sudo -n -u USER LAUNCHER ENV... -- EXECUTABLE ARGS`, the launcher applying exactly
- * the command's environment. The resource owner still launches, bounds and reclaims it (the launcher ends its tree). */
+ * `{ user, launcher, login, plan }`, or null) runs every harness command (version, auth status, model call) as the
+ * harness's own user through the one sudoers rule: `sudo -n -u USER LAUNCHER --handoff ENV... -- EXECUTABLE ARGS`, the
+ * launcher applying exactly the command's environment. The login and any MCP configuration file reach the harness only
+ * through the launcher's hand-off (harnessCommand), never as a file its user can open. The resource owner still
+ * launches, bounds and reclaims it (the launcher ends its tree). */
 export function createSubscriptionProviderIO({ repository, stopped, work = 'answer', runAs = null }) {
   const outside = (path, root) => { const suffix = relative(root, path);
     return suffix.startsWith('../') || suffix === '..' || isAbsolute(suffix); };
@@ -283,15 +285,33 @@ export function createSubscriptionProviderIO({ repository, stopped, work = 'answ
       return admitted;
     } catch { return null; }
   };
+  const execute = async input => runAs ? productionProviderIO.execute({ ...input, ...harnessCommand(input, runAs), stopped }, work)
+    : productionProviderIO.execute({ ...input, stopped }, work);
   return Object.freeze({ ...productionProviderIO, inspectSubscriptionProfile, managedHooksDisabled, codexAuthMode, admittedToolCalls,
-    execute: input => productionProviderIO.execute({ ...input, ...(runAs ? harnessCommand(input, runAs) : {}), stopped }, work) });
+    ...(runAs ? { descriptorLogin: true } : {}), execute });
 }
 /** One harness command as the harness user (see createSubscriptionProviderIO). The environment travels as launcher
- * arguments, so sudo needs no SETENV and its own environment is only a plain PATH. */
-export function harnessCommand(input, runAs) {
-  if (!runAs || !/^[A-Za-z0-9_][A-Za-z0-9_.-]*$/u.test(String(runAs.user)) || typeof runAs.launcher !== 'string' || !runAs.launcher.startsWith('/'))
+ * arguments, so sudo needs no SETENV and its own environment is only a plain PATH. What the harness user must never be able
+ * to open travels in the launcher's stdin hand-off line instead: the login (`runAs.login()`, read from the runner's custody
+ * for each command) and the file of an `--mcp-config PATH` argument (read here; the argument becomes /dev/fd/4). A handed-
+ * over login carries no plan, so the CLI would fetch and cache server policy for it (which the profile inspection then
+ * refuses, rightly, as unreviewed); the custody binds the login to `runAs.plan`, declared here as the CLI's
+ * CLAUDE_CODE_SUBSCRIPTION_TYPE, as a stored claude.ai login's own record would. */
+export const HARNESS_MCP_DESCRIPTOR = '/dev/fd/4';
+export function harnessCommand(input, runAs, read = path => readFileSync(path, 'utf8')) {
+  if (!runAs || !/^[A-Za-z0-9_][A-Za-z0-9_.-]*$/u.test(String(runAs.user)) || typeof runAs.launcher !== 'string' || !runAs.launcher.startsWith('/')
+    || typeof runAs.login !== 'function' || !['pro', 'max', 'team', 'enterprise'].includes(runAs.plan))
     throw Error('preview: harness identity malformed');
-  const env = Object.entries(input.env ?? {}).filter(([, value]) => value !== undefined).map(([key, value]) => `${key}=${String(value)}`);
-  return { executable: '/usr/bin/sudo', args: ['-n', '-u', runAs.user, runAs.launcher, ...env, '--', input.executable, ...input.args],
-    env: Object.freeze({ PATH: '/usr/bin:/bin' }) };
+  const env = Object.entries({ ...input.env, CLAUDE_CODE_SUBSCRIPTION_TYPE: runAs.plan }).filter(([, value]) => value !== undefined)
+    .map(([key, value]) => `${key}=${String(value)}`);
+  const args = [...input.args], header = { login: runAs.login() };
+  if (typeof header.login !== 'string' || !header.login) throw Error('preview: harness login unavailable');
+  for (let at = 0; at < args.length - 1; at++) {
+    if (args[at] !== '--mcp-config' || !isAbsolute(args[at + 1])) continue;
+    if (header.mcp !== undefined) throw Error('preview: more than one MCP configuration file');
+    header.mcp = read(args[at + 1]);
+    args[at + 1] = HARNESS_MCP_DESCRIPTOR;
+  }
+  return { executable: '/usr/bin/sudo', args: ['-n', '-u', runAs.user, runAs.launcher, '--handoff', ...env, '--', input.executable, ...args],
+    env: Object.freeze({ PATH: '/usr/bin:/bin' }), stdin: `${JSON.stringify(header)}\n${input.stdin ?? ''}` };
 }

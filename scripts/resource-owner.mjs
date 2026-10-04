@@ -822,6 +822,14 @@ export function createResourceOwner(initialCeilings = RESOURCE_CEILINGS) {
   }
   return Object.freeze({
     get ceilings() { return ceilings; },
+    /** The harness's own user, when it did not exist at attach (harness-user.mjs harnessGate): from now on the census
+     * includes its processes. Only once, never a different uid, never this account. */
+    adoptHarnessUid(uid) {
+      if (harnessUid === uid) return;
+      if (harnessUid !== null) throw Error('resource owner: a different harness user is already in the census');
+      if (!Number.isSafeInteger(uid) || uid <= 0 || uid === ownUid) throw Error('resource owner: the harness user must be a separate identity');
+      harnessUid = uid;
+    },
     /** One owner per process: a second attach is refused. */
     async attach(options = {}) {
       if (attached) throw Error('resource owner already attached');

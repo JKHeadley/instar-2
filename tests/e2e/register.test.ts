@@ -10,7 +10,7 @@ import { actionRegistry } from '../../scripts/register-source.mjs';
 import { defineDecoder, decode } from '../../src/index.js';
 import { generationOf, decodeGenerationRecord } from '../../src/register/index.js';
 import type { FactReference, RegisterContext } from '../../src/register/index.js';
-import { setup, value, json, hash } from '../register/fixtures.js';
+import { setup, value, json, hash, withoutBasis } from '../register/fixtures.js';
 import { installOwnerFixture } from '../register/owner-fixture.js';
 import { installIntakeOwnerFixture } from '../register/intake-owner-fixture.js';
 import { runChild } from './async-child.js';
@@ -178,7 +178,7 @@ describe('compiled register build adapter lifecycle', () => {
       await yieldToRunner();
       // R1.1: normal ingestion must bind the sidecar to a real function, then
       // derive its record read/decoder observations and check live separation.
-      const guarded = { ...s.holder([]), requiredFacts: { ...s.holder([]).requiredFacts, decidesAlone: 'governed-state', enforces: { record: 'store', decoder: 'decode:Profile' } } };
+      const guarded = { ...s.holder([]), requiredFacts: { ...withoutBasis(s.holder([]).requiredFacts), decidesAlone: 'governed-state', enforces: { record: 'store', decoder: 'decode:Profile' } } };
       const governed = { ...workflow, references: [{ provider: 'fixture', id: 'check' }, { provider: 'decoder', id: 'decode:Profile' }],
         catalog: { ...workflow.catalog, fixtures: [{ id: 'check', stage: 'build', artifact: { path: 'src/register/workflow.ts', hash: hash(readFileSync(join(root, 'src/register/workflow.ts'), 'utf8')) } }] },
         extract: { ...workflow.extract, rows: [...ownerRows, { id: 'store', version: 'v1', status: 'live', since: initial, supersedes: [], approvedIn: { owner: 'part-two', name: 'FactEnvelope', id: 'fixture:approval' },
@@ -230,7 +230,7 @@ describe('compiled register build adapter lifecycle', () => {
         catalog: { fixtures: [{ id: 'check', stage: 'build', artifact: { path: 'src/register/workflow.ts', hash: hash(readFileSync(join(root, 'src/register/workflow.ts'), 'utf8')) } }], probes: [], sentinels: [], semanticReviews: [] } }));
       const declaration = (id: string, kind: string, facts: object, extra: object = {}) => ({ type: 'Declaration', schemaVersion: 1, id, kind, status: 'live', requiredFacts: facts, standards: [], holds: [], ...extra });
       const profile = { type: 'Profile', schemaVersion: 1, consequence: 'none', reversibility: 'reversible', reach: 'internal', surface: 'none', repeats: { kind: 'no' } };
-      const rung = { decidesAlone: 'ruled-three', criticality: 'exact fixture', failDirection: 'closed', preservesInput: 'capture' };
+      const rung = { decidesAlone: 'ruled-three', decidesAloneBasis: 'operator-emergency-stop', criticality: 'exact fixture', failDirection: 'closed', preservesInput: 'capture' };
       const holder = (rule: number, part: number) => declaration('fixture-holder', 'blocking sites', { authority: 'block', inspectedBy: 'check', ...rung }, {
         profile, holds: [{ rule, class: 'deferred', part, ceiling: 1000, owner: 'fixture-operator', overdueAction: 'surface' }] });
       const cases: [object, string | null][] = [
@@ -247,15 +247,22 @@ describe('compiled register build adapter lifecycle', () => {
       // A declared feature must carry its one capability line in its module README (R78/R84), and a
       // README may describe only declared features; the feature cases carry that line, the others do not.
       const readme = readFileSync(join(root, 'src/README.md'), 'utf8');
+      // A live alone-deciding site must be bound to its checkpoint (P3-NF-19), so each blocking-site case carries a
+      // literal-id binding and reaches the check it tests; the other cases carry none (a binding needs a live site).
+      const binding = join(root, 'src/repair-binding.ts');
       for (const [d, error] of cases) {
         writeFileSync(join(root, 'src/README.md'), (d as { kind: string }).kind === 'features'
           ? `${readme}\n## Capabilities\n\n- \`fixture-feature\`: a test-only feature for the deadline cases.\n` : readme);
+        if ((d as { kind: string }).kind === 'blocking sites') writeFileSync(binding, "import { bindBlockingSite } from './register/governance.js';\n"
+          + "export const repairBinding = (declarations: Parameters<typeof bindBlockingSite>[0]) => bindBlockingSite(declarations, 'fixture-holder', []);\n");
+        else rmSync(binding, { force: true });
         writeFileSync(join(root, 'src/repair.declarations.json'), JSON.stringify([d])); const revision = commit();
         const result = spawnSync(process.execPath, [script, '--replay', '--checks', 'register-source/checks.json', '--now', '100', '--commit', revision, '--out', join(root, 'out')], { cwd: root, encoding: 'utf8' });
         if (error) { expect(result.status, result.stderr).not.toBe(0); expect(result.stderr).toContain(error); }
         else { expect(result.status, result.stderr).toBe(0); expect(JSON.parse(result.stdout).prerequisites).toBeGreaterThan(0); }
         await new Promise<void>(done => setImmediate(done));
       }
+      rmSync(binding, { force: true });
       // R1.1: a colocated cap can actually carry a memory store's load-bearing
       // bound through the shipped CLI. Missing, other-file and ambiguous sites
       // do not become valid simply because they repeat its id.
@@ -298,7 +305,13 @@ describe('compiled register build adapter lifecycle', () => {
         await new Promise<void>(done => setImmediate(done));
       }
     } finally { rmSync(root, { recursive: true, force: true }); }
-  }, 120_000);
+  // Same execution-budget class as the workflow case above: this case copies the whole tree and
+  // runs the shipped CLI nineteen times. Measured on the Mama PC (WSL2, 2026-10-03, w4-ugaps):
+  // 134s isolated, and past 120s on cint-L45 itself before this change (137s), so the budget was
+  // the limit, not the tree.
+  // A fixture execution budget, not an owner/runtime latency requirement
+  // (docs/defects/full-suite-load-timeouts.md).
+  }, 300_000);
   it('P3-P4-P5 shipped CLI resolves both owners, retains replay prerequisites and refuses broken intake consumer wiring', async () => {
     const root = mkdtempSync(join(tmpdir(), 'instar-intake-cli-'));
     try {
@@ -449,5 +462,8 @@ describe('compiled register build adapter lifecycle', () => {
       const fail = await runNode(['scripts/build-register.mjs', '--out', root, '--check']);
       expect(fail.status).not.toBe(0); expect(fail.stderr).toContain('P3-NF-09');
     } finally { rmSync(root, { recursive: true, force: true }); }
-  }, 30_000);
+  // Four shipped-CLI replay builds over the real tree. Measured on the Mama PC (WSL2,
+  // 2026-10-03, w4-ugaps): past 30s on cint-L45 itself, before this change. Same fixture
+  // execution-budget class as the two cases above (docs/defects/full-suite-load-timeouts.md).
+  }, 120_000);
 });

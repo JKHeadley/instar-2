@@ -116,6 +116,9 @@ it('writes settings that refuse every read from the root down except the scratch
   expect(mcp.permissions.allow).toEqual([...SUBSCRIPTION_TOOL_NAMES, 'mcp__dummy']);
   expect(() => subscriptionToolSettings({ ...turn, mcp: { config: '/r/tool-turns/a-0/vol/ws/mcp.json', servers: ['dummy'] } }, home)).toThrow(/MCP configuration/u);
   expect(() => subscriptionToolSettings({ ...turn, mcp: { config: '/r/tool-turns/a-0/state/mcp.json', servers: ['a b'] } }, home)).toThrow(/MCP configuration/u);
+  // A runner-private directory under a denied root (the harness user's hand-off) is accepted; anywhere else is not.
+  expect(() => subscriptionToolSettings({ ...turn, mcp: { config: '/r/tool-turns/a-0/private/mcp.json', servers: ['dummy'] } }, home)).not.toThrow();
+  expect(() => subscriptionToolSettings({ ...turn, mcp: { config: '/elsewhere/mcp.json', servers: ['dummy'] } }, home)).toThrow(/MCP configuration/u);
   expect(() => subscriptionToolSettings({ ...turn, hook: { ...turn.hook, script: '/r/tool-turns/a-0/vol/hook.mjs' } }, home)).toThrow(/outside the workspace/u);
   expect(() => subscriptionToolSettings({ ...turn, workspace: '/r/a b/ws' }, home)).toThrow(/absolute and plain/u);
   expect(() => subscriptionToolSettings({ ...turn, workspace: '/r/../ws' }, home)).toThrow(/absolute and plain/u);

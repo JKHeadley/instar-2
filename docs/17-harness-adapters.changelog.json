@@ -1,11 +1,11 @@
 [
   {
-    "revision": 21,
-    "date": "2026-10-03",
+    "revision": 22,
+    "date": "2026-10-04",
     "status": "draft",
     "cause": {
       "kind": "draft",
-      "note": "Repair unit w4-toolpaths (plan row #442): live L43 group T scenario t2 showed the boundary deciding on the path string (Read and the sandbox refused /etc/hosts while the same file via /private/etc/hosts was read). Under the purpose in force (revision 12 of the purpose: the agent's ability is never reduced to satisfy a safeguard that a checkpoint can enforce instead) and the operator's standing full-tool direction (topic 102965, message 121996). Revision 12 on its branch, renumbered after cint-L45's 20 when it merged w4-harnessuser (plan row #470). No constitution change."
+      "note": "Repair unit w4-toolpaths (plan row #442): live L43 group T scenario t2 showed the boundary deciding on the path string (Read and the sandbox refused /etc/hosts while the same file via /private/etc/hosts was read). Under the purpose in force (revision 12 of the purpose: the agent's ability is never reduced to satisfy a safeguard that a checkpoint can enforce instead) and the operator's standing full-tool direction (topic 102965, message 121996). Revision 12 on its branch, renumbered 21 after cint-L45's 20 when it merged w4-harnessuser (plan row #470), and 22 after cint-L50's 21 (w4-toolsclass) when it merged cint-L50 (plan row #507). No constitution change."
     },
     "changes": [
       {
@@ -29,9 +29,30 @@
         "ref": "docs/defects/2026-10-03-file-tool-swap-race.md; tests/integration/tool-turn-harness-user-live.test.ts; tests/preview/fixtures/tool-turn/harness-user-2026-10-03; lanes/harness-user-PROGRESS.md; LIVE-PATH-PLAN.md rows #462, #464, #470"
       },
       {
-        "what": "§9 tool rule: without the harness-user switch, or with a harness user that is not ready, a Claude Code tool turn is refused, never run as the operator's account; the answer is text only and the launch, the status answer and a notice under that answer name the reason. The harness's own login is held: a reply or outbound text carrying it is withheld like credential-shaped text.",
+        "what": "§9 tool rule: without the harness-user switch a Claude Code tool turn is refused, never run as the operator's account; the answer is text only and the launch, the status answer and a notice under that answer name the reason. A configured harness user that is not ready holds every launch (w4-harnessuser, merged through cint-L50). The harness's login stays in the runner's custody and is held: a reply or outbound text carrying it is withheld like credential-shaped text.",
         "why": "Unit review round 4 of w4-toolpaths: the not-ready path fell back to the operator's account, reopening the race to protected state, and the harness user can read its own login, so the race still reached a credential. Plan #473: refuse loudly rather than degrade silently, and withhold the harness credential at the outbound check so a value read through the residual race never leaves in a reply. No tool or ability is removed.",
         "ref": "docs/defects/2026-10-03-file-tool-swap-race.md; tests/preview/harness-user.test.ts; tests/preview/held-cascade-replay.test.ts; tests/preview/tools-default.test.ts; LIVE-PATH-PLAN.md row #473"
+      },
+      {
+        "what": "§9 tool rule: every outward tool request (WebFetch, WebSearch, a Codex network read, an MCP or other outward tool, an unsandboxed command) is checked, before it is dispatched and before any name in it is resolved, against every secret value the runner holds (its own and the vault's, the root's MCP credentials, the harness login), in each recognised form; one carrying such a value is refused. The shell's network checkpoint runs the same check on each request's host, path, headers and body (a streamed body held back by the longest held form; a CONNECT authority before resolution). A value once read stays held for the runner's life; a held source that cannot be read, or no check at all, refuses outward requests (fails closed). Ordinary web reads, searches and shell network are unchanged.",
+        "why": "Unit review round 5 of w4-toolpaths (MF1 carried): the held-value floor ran only on replies, so a value read through the residual race could leave in a WebFetch URL, a WebSearch query or a proxied GET, and the held set was rebuilt from a file the harness could empty. Plan #507: the existing admission and egress owners check the same held set before dispatch, and the set never forgets.",
+        "ref": "docs/defects/2026-10-03-file-tool-swap-race.md; tests/preview/held-egress.test.ts; LIVE-PATH-PLAN.md row #507"
+      }
+    ]
+  },
+  {
+    "revision": 21,
+    "date": "2026-10-03",
+    "status": "draft",
+    "cause": {
+      "kind": "draft",
+      "note": "Unit w4-toolsclass (plan row #449; observer #159) with its review round 1 repair: the standing full-tools grant covers a checkpointed policy class. Recorded as the unit's revision 20 and renumbered 21 in integration cint-L46, after cint-L45's repair revision 20. No constitution change."
+    },
+    "changes": [
+      {
+        "what": "§9 tools-on-by-default: the operator's standing full-tools grant may name the policy class full-tools-checkpointed-v1 instead of one build's policy digest; a tools policy is in the class only when the build's own generated per-turn settings and arguments keep every checkpoint (admission hook on every call, confined shell whose read exceptions stay in the workspace and reviewed runtime list, the Codex provider routed through the turn's model checkpoint, no skip flags, caps at the reviewed ceilings). With no covering grant the preview runner refuses to start rather than running text only; only an explicit --tools off runs text only.",
+        "why": "Every build changes the tools policy digest, so a per-digest grant fell silently out of date and cint-L44 went live with tools off. Review round 1 (Astra) showed the class check must read effective read exceptions and the provider's real base URL, not labels.",
+        "ref": "lanes/w4-toolsclass-PROGRESS.md; LIVE-PATH-PLAN.md row #449"
       }
     ]
   },

@@ -5,7 +5,7 @@ import { createSubscriptionProviderIO } from '../../scripts/production-boot-io.m
 import { createClaudeCodeSubscriptionRoute, SUBSCRIPTION_CONVERSATION_FRAMING,
   subscriptionConversationPolicy, validateSubscriptionActivation } from '../../src/assembly/production-provider.js';
 import { installRecallStopSignals, runRealModelRecallSample } from './real-model-recall-sample.ts';
-import { conclusionText } from './model-json.ts';
+import { readAnswer } from './answer-reading.ts';
 
 const flags = process.argv.slice(2);
 const live = flags.includes('--live');
@@ -61,13 +61,9 @@ if (!live || !profilePath) {
         outputTokens: result.usage.outputTokens, charge: null } : undefined;
       if (result.state !== 'complete' || !result.bytes)
         return { state: result.state === 'complete' ? 'rejected' : result.state, usage };
-      try {
-        const decision = JSON.parse(result.bytes);
-        const text = decision?.type === 'Decision' && decision.conclusion?.subject === 'preview-stage2-answer'
-          ? conclusionText(decision.conclusion.value) : null;
-        if (text === null) return { state: 'rejected', usage };
-        return { state: 'complete', text, usage };
-      } catch { return { state: 'rejected', usage }; }
+      // The runner's own reading (answer-reading.ts): the flat answer object, or a legacy Decision.
+      const reading = readAnswer(result.bytes, { evidence: [id] });
+      return reading.ok ? { state: 'complete', text: reading.value, usage } : { state: 'rejected', usage };
     }, activation.trial, () => !active());
     if (!active()) throw Error('recall sample: stopped; report remains incomplete');
     writeFileSync(output, `${JSON.stringify({ status: 'complete', ...report }, null, 2)}\n`, { mode: 0o600 });

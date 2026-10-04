@@ -3595,8 +3595,17 @@ On by default under the operator's recorded grant. At launch the runner derives 
 conversation activation (the same record with `invocationPolicyDigest` = the digest of `subscriptionToolsPolicy(model)`,
 framing `preview-tools-v1`) and keeps it only when the sealed authority record resolves it; it is written to
 `ROOT/tools-activation.json`, the live withdrawal handle. `--tools-activation /ABSOLUTE/record.json` names a record
-the desk wrote instead; `--tools off` refuses tools. With no resolving grant every answer stays text only, the
-briefing keeps its no-tools line, stderr says `preview: tools off: …` and `status` says `Tools: off (…)`. With tools,
+the desk wrote instead; `--tools off` refuses tools, so every answer stays text only, the briefing keeps its no-tools
+line and `status` says `Tools: off (…)`. The operator's standing full-tools grant may be recorded for a policy CLASS
+instead of one digest: a grant whose scope carries `invocationPolicyClass: "full-tools-checkpointed-v1"` (and no
+`invocationPolicyDigest`) covers every build whose own tools policy keeps the class's checkpoints — the admission hook on
+every call, the confined shell, no flag that skips the hook or permission checks, and every cap at or below the reviewed
+ceiling (`tests/preview/tools-policy-class.ts`). The launch checks this against the build's own policy each time it
+resolves the grant, so a build that only rewrites the tools prompt or the settings label needs no new record, while one
+that removes a checkpoint or raises a cap is not covered. With no covering grant the runner REFUSES to start: stderr says
+`preview: refused to start: no recorded operator grant covers this build's tools policy (…)` with the reason, and the run
+log records `refused before launch`; it never starts silently text only. A launch that resolves records the grant, the
+class (or `exact policy`) and the digest on stderr (`preview: tools on: …`) and in its launch row (`tools`). With tools,
 an operator answer turn or a scheduled work step runs as one Claude Code invocation with the pinned harness's whole
 built-in tool set (`SUBSCRIPTION_TOOL_NAMES`; nothing is left out, the hook decides each call), plus the root's MCP
 servers (Part Thirteen §9,
@@ -3736,38 +3745,104 @@ INSTAR_TOOL_TURN_FULL_LIVE_TEST=1 INSTAR_TOOL_TURN_CASE=full npx vitest run --ma
 ### The harness as its own macOS user (`--harness-user`)
 
 `--harness-user _instarharness` runs every Claude Code launch of the login profile (version and auth preflights, plain
-answers and tool turns) as that macOS user, so the kernel checks each file the harness and its in-process file tools
-open as an identity with no access to the operator account: a path swapped between the admission hook's decision and
-the tool's open (docs/defects/2026-10-03-file-tool-swap-race.md) reaches only the harness's own area. The resource
-owner launches `sudo -n -u _instarharness /Users/Shared/instar-harness/bin/harness-launch ENV... -- claude ARGS`
-(`tests/preview/harness-launch.mjs`, the one command the root step's sudoers rule names); the launcher runs only the
-pinned harness copy beside it and ends the harness's whole tree when it exits, on a relayed stop, or within 50 ms of
-sudo being killed, because the runner's account cannot signal another user's processes. The owner's census includes
-the harness user, so memory and process ceilings still hold, and it waits (boundedly) for the launcher to end a
-member it cannot signal. A tool turn's admission state then lives in `/Users/Shared/instar-harness/turns/` (the turn
-directory's `state` links there; the hook may add files but not change or replace the runner's), the egress
-checkpoint's private state stays in the turn directory's `private/`, the hook runs from a read-only copy, and the
-turn's volume grants both identities by inherited ACL entries, never through a link.
+answers, tool turns and delegated session work) as that macOS user, so the kernel checks each file the harness and its in-process file tools
+open as an identity with no access to the operator account's private files. A path swapped between the admission
+hook's decision and the tool's open (docs/defects/2026-10-03-file-tool-swap-race.md) then reaches only what that user
+may open: its own area (its transcripts, a turn's admission state, the workspace), and operator files that every local
+user may read. No credential is in that set:
 
-The decision is made at launch from live state (`harnessReadiness` in `tests/preview/harness-user.mjs`): the user
-exists, the launcher and hook copy are installed, the profile's executable is the installed copy of its artifact,
-its directories sit in the harness area, and a probe through the launcher shows the harness user can read and write
-its profile and cannot read the root, the operator's home or the runner's repository. Not ready, or with no
-`--harness-user` at all, the runner never runs a Claude Code tool turn as its own account (plan #473): each is refused
-and answered text only (the packet names no tools), and stderr at launch, `status` (`Harness identity: REFUSED …
-(<reason>)`, and `Tool turns: … N because the separate harness user was not ready`) and a notice under each such
-answer say why. Ready, they say the user and each trace row carries `harness: {user}`. The exact values the runner
-holds (its own SecretRef values, the harness's login from `<config>/.credentials.json`, the root's MCP credentials) are
-withheld from every reply like credential-shaped text, refused at the outbound check, and scrubbed from recorded tool
-excerpts.
-The setup (after the root step, `lanes/harness-user/root-steps.sh`) is `node --loader ./scripts/slice-ts-loader.mjs
-tests/preview/harness-user.mjs setup <operator profile.json> /Users/Shared/instar-harness/profile.json`; the new profile
-needs its own activation and its own login (a fresh login through the launcher, or the one move of the old login,
-never two live copies of one refresh token).
+- **The login** stays in the runner's custody (`/Users/Shared/instar-harness/custody/login.json`, the runner's alone:
+  no ACL entry for the harness user) and reaches each command through the launcher's stdin hand-off, which passes it
+  to Claude Code on a pipe (`CLAUDE_CODE_OAUTH_TOKEN_FILE_DESCRIPTOR=3`), read once and never written to a file, an
+  argument or the environment. Store one with `node tests/preview/harness-user.mjs login <harness profile.json>`, the
+  token (from `claude setup-token` for the profile's account) on stdin; the record binds it to that account,
+  organization and plan; each command declares that plan (`CLAUDE_CODE_SUBSCRIPTION_TYPE`), as a stored login's record
+  would, so the CLI fetches and caches no server policy into the profile (which the profile inspection would refuse as
+  unreviewed). Claude Code then reports an `oauth_token` login with no account fields; the shipped route
+  accepts that shape only from a host IO that declares the hand-off (`descriptorLogin`), and refuses a stored
+  `claude.ai` login there (a plain-text login the harness could open).
+- **MCP servers' credentials** (their `env`): a credential the root's `mcp.json` names by SecretRef is resolved by the
+  runner and served once, on the turn's runner socket, to that server's launcher (`mcp-launch.mjs`); the turn's
+  `mcp.json` holds no value, stays in the turn directory's runner-private `private/`, and the launcher hands it to
+  Claude Code as `--mcp-config /dev/fd/4`, a pipe read once.
+- **The operator's /private/tmp files** (other sessions leave output there with default, world-readable permissions):
+  a root step (`lanes/harness-user/tmp-acl.sh`) puts one inherited deny entry for the harness user on `/private/tmp`
+  (`HARNESS_TMP_DENY`, `only_inherit`), so every entry created there afterwards, by any user and whatever its mode, is
+  refused to the harness user by the kernel from the moment it exists; there is no window between a file's creation and
+  its closing. Entries that predate the rule are closed by the runner (group and other access removed from its own
+  top-level entries, mount points and links aside) at each readiness check. The turns' volumes mounted there stay
+  reachable (the entry is not applied to `/private/tmp` itself). The harness's own temporary files go to
+  `/Users/Shared/instar-harness/tmp` (the launcher's default `TMPDIR` and `CLAUDE_CODE_TMPDIR`).
+
+The resource owner launches `sudo -n -u _instarharness /Users/Shared/instar-harness/bin/harness-launch --handoff ENV...
+-- claude ARGS` (`tests/preview/harness-launch.mjs`, the one command the root step's sudoers rule names); the launcher
+runs only the pinned harness copy beside it and ends the harness's whole tree when it exits, on a relayed stop, or
+within 50 ms of sudo being killed, because the runner's account cannot signal another user's processes. The owner's
+census includes the harness user, so memory and process ceilings still hold, and it waits (boundedly) for the launcher
+to end a member it cannot signal. A tool turn's admission state lives in `/Users/Shared/instar-harness/turns/` (the
+turn directory's `state` links there; the hook may add files but not change or replace the runner's), the egress
+checkpoint's private state and the MCP configuration stay in the turn directory's `private/`, the hook runs from a
+read-only copy, and the turn's volume grants both identities by inherited ACL entries, never through a link.
+
+Delegated session work (the session work grant) runs the same way. The session's persistent volume (the same image)
+mounts at `/private/tmp/its-<12 hex>` instead of under the root, which the harness user cannot traverse, and both
+identities are granted on it. Each step's admission state lives in `/Users/Shared/instar-harness/turns/<root>/session/`,
+prepared as a tool turn's is, its config and shell profile opened read-only to the hook copy. The egress checkpoint's
+private state stays under the root. The step's preflights run as the harness user, and the tmux pane runs the
+harness through `tests/preview/harness-session.mjs`. That bridge runs as the runner, reads the custody login and starts
+the launcher in its terminal mode (`--handoff --tty`). The login arrives on descriptor 3, and the harness reads the
+pane's keys and draws on it. While the identity is held, a step's admission throws before anything is prepared or
+launched.
+
+The decision is made from live state (`harnessReadiness` in `tests/preview/harness-user.mjs`): the user exists, the
+launcher and hook copy are installed, the profile's executable is the installed copy of its artifact, its directories
+sit in the harness area and hold no plain-text login (`.credentials.json`), the custody holds a login bound to the
+profile, the runner's `/private/tmp` entries are closed, and a probe through the launcher shows the harness user can
+read and write its profile and its temporary directory and cannot open the root, the operator's home, the runner's
+repository, the login custody, any of those `/private/tmp` entries, or a world-readable canary the runner creates in
+`/private/tmp` after all of that (only the root step's entry can refuse it). **Not ready never falls back to the operator's account:** every harness launch
+is held (it throws before anything is launched; accepted work stays queued), the runner's journal, messaging and stop
+keep working, `status` says `Harness identity: UNAVAILABLE, so every Claude Code launch is held … (<reason>)`, and the
+identity is decided again on a later launch at most every 30 seconds (`harnessGate`). A user that did not exist when the
+runner started is added to the resource owner's census the first time it is ready, before anything runs as it.
+Ready, `status` names the user
+and each tool trace row carries `harness: {user}`. The setup (after the root step, `lanes/harness-user/root-steps.sh`)
+is `node --loader ./scripts/slice-ts-loader.mjs tests/preview/harness-user.mjs setup <operator profile.json>
+/Users/Shared/instar-harness/profile.json`; the new profile needs its own activation and its own login (above).
+
+With no `--harness-user` at all on a Claude Code tool route, the runner never runs a tool turn as its own account
+(plan #473): each is refused and answered text only (the packet names no tools), and stderr at launch, `status`
+(`Harness identity: REFUSED … (no --harness-user was given)`, and `Tool turns: … N because the separate harness user was
+not ready`) and a notice under each such answer say why.
+
+**Held secret values (plans #442, #473, #507).** The runner holds every secret value it can read: its own
+`INSTAR_SECRET_*` values, the preview vault, the root's MCP credentials, and with `--harness-user` the custody login and
+any login Claude Code writes into the harness profile. A value once read stays held for the runner's life, so a source
+that later changes, empties or becomes unreadable never drops it (`createHeldSecrets` in `tool-turn.mjs`). Each value is
+matched exactly and in its derived forms (base64, base64url, hex, URL and JSON escaping, a provider key without its kind
+prefix). It is withheld from every reply like credential-shaped text, refused at the outbound check, scrubbed from
+recorded tool excerpts, and checked before any outward tool request is dispatched:
+
+- the admission hook asks the runner (the turn's runner socket, or the host checkpoint on a checkpointed route) about
+  every string an outward tool call carries (WebFetch, WebSearch, a Codex network read, an MCP or other outward tool,
+  an unsandboxed command) before anything is done for it, a name lookup included, and refuses one that carries a held
+  value; its record keeps `[withheld …]` instead of the input;
+- the shell's network checkpoint checks each request's host, path and headers (a CONNECT authority before its name is
+  resolved), a held git-fetch body whole, and a streamed body as it arrives, holding back the longest held form so no
+  part of a value is forwarded before all of it is seen; its record never keeps the value.
+
+The check fails closed (Rule 95: its miss is a secret leaving): a held source that cannot be read now, a check that does
+not answer, an input over 1 MiB, or no check at all refuses the outward request. Ordinary web reads, searches and shell
+network are otherwise unchanged; nothing is added to a request on the runner's behalf.
+
+What the race still reaches, stated: the harness's own transcripts and turn state, and operator files that every local
+user may read outside `/private/tmp`. A held value read that way cannot leave through a reply, an outward tool request
+or the shell's network; a value the runner never held (another session's credential in a file every local user may
+read) is not covered by this check.
 
 ```bash
 npx vitest run --maxWorkers 1 tests/preview/harness-user.test.ts
-INSTAR_TOOL_TURN_HARNESS_USER_LIVE_TEST=1 INSTAR_TOOL_TURN_CASE=race npx vitest run --maxWorkers 1 tests/integration/tool-turn-harness-user-live.test.ts  # race, turn, stop
+INSTAR_TOOL_TURN_HARNESS_USER_LIVE_TEST=1 INSTAR_TOOL_TURN_CASE=race npx vitest run --maxWorkers 1 tests/integration/tool-turn-harness-user-live.test.ts  # race, turn, stop, mcp, session
 ```
 
 ### Native tool turns (Instar's own agent loop)

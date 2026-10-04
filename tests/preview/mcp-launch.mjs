@@ -1,7 +1,7 @@
 #!/usr/bin/env node
 // Launches one of the root's MCP servers whose environment names a credential by SecretRef (tool-turn.mjs readRootMcp).
 // argv: <socket> <server> <nonce> <command> [args...]. The runner resolves the server's SecretRefs from its custody and
-// serves them, once, on the turn's socket (tool-turn.mjs serveMcpSecrets); this launcher takes them and starts the
+// serves them, once, on the turn's socket (tool-turn.mjs serveTurnSocket); this launcher takes them and starts the
 // server with them in its environment. The value is held in memory only: it is never written to a file.
 import { spawn } from 'node:child_process';
 import { connect } from 'node:net';

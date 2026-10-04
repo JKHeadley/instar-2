@@ -14,6 +14,10 @@
 // - The host is resolved here and every address must be public (not loopback, private, link-local, shared/CGNAT,
 //   multicast or reserved); the connection then goes to the address checked, so a name cannot be re-pointed in between.
 // - The proxy adds no credential and strips proxy headers; upstream certificates are verified against the system's roots.
+// - Plan #507 (secrets floor): a request whose host, path, headers or body carries a secret value the runner holds is
+//   refused before any of it moves (a CONNECT authority before its name is resolved; a streamed body is held back by the
+//   longest held form, so no part of a value is forwarded before the whole of it is seen). A check that cannot decide
+//   refuses (Rule 95: this consumer fails closed); with no check given, nothing is forwarded.
 // - Bounded: bytes through it, concurrent connections, requests, an idle timeout per connection, and the turn's lifetime.
 //   Reaching the byte bound or close() is terminal for the turn: nothing more is admitted or forwarded, and a decision
 //   that waited on name resolution or a request body is re-checked against both before it is recorded or sent on.
@@ -29,9 +33,13 @@ import { gunzipSync } from 'node:zlib';
 import { Duplex } from 'node:stream';
 import tls from 'node:tls';
 import { promisify } from 'node:util';
-import { admitEgress, egressTarget, gitAdvertisement, gitFetchRequest, gitRepository, GIT_FETCH_MAX_BODY, publicAddress } from './tool-admission.mjs';
+import { admitEgress, egressTarget, gitAdvertisement, gitFetchRequest, gitRepository, GIT_FETCH_MAX_BODY, heldRefusal, publicAddress } from './tool-admission.mjs';
 
 const run = promisify(execFile);
+/** No held-secret check wired: every request is refused as unchecked (fails closed). */
+const UNCHECKED = Object.freeze({ check: () => 'unavailable', span: () => 0 });
+/** What the record keeps of a request refused for a held value: never the value itself. */
+const WITHHELD = '[withheld: carries a held secret value]';
 /** One turn's checkpoint bounds: bytes in both directions together, open client connections at once, requests in the
  * whole turn, the idle time a connection may sit, and the time an upstream connection may take to answer. */
 export const EGRESS_LIMITS = Object.freeze({ maxBytes: 256 * 1024 * 1024, maxConnections: 16, maxRequests: 512, idleMs: 30000, upstreamMs: 20000 });
@@ -85,11 +93,13 @@ const resolveAll = async host => (await lookup(host, { all: true, verbatim: true
  * Starts one turn's checkpoint on a loopback port. `stateDirectory` is the turn's admission state (the record and the
  * trust root's key go there); `caPath` is where the shell finds the public certificate; `admission` is the turn's
  * admission config the effect doorway decides with ({operations, effectPolicy?, irreversibleTerm?}, as the hook reads it).
+ * `held` is the runner's held-secret check ({check(text): 'clear' | 'held' | 'unavailable', span(): the longest held form
+ * in bytes}, tool-turn.mjs heldVerdict/heldSpan); absent, every request is refused as unchecked.
  * `resolve(host)` returns addresses; `upstream` adds TLS
  * options for the upstream connection and `dial(address, port)` names where the checked address is reached (tests pass their
  * own root and a local server). Returns {port, close(), stats()}.
  */
-export async function startEgressProxy({ stateDirectory, caPath, admission, limits = EGRESS_LIMITS, resolve = resolveAll,
+export async function startEgressProxy({ stateDirectory, caPath, admission, held: secrets = UNCHECKED, limits = EGRESS_LIMITS, resolve = resolveAll,
   openssl = EGRESS_OPENSSL, upstream = {}, dial = (address, port) => ({ host: address, port }) }) {
   const root = await createTrustRoot(join(stateDirectory, 'egress-trust'), caPath, openssl);
   const contexts = new Map(), targets = new WeakMap(), open = new Set(), advertised = new Set();
@@ -97,7 +107,12 @@ export async function startEgressProxy({ stateDirectory, caPath, admission, limi
   let closed = false;
   // A row is appended before the request it decides goes anywhere; an admitted write (a profile that registers one) is
   // synced to disk first, so its authorization outlives a crash (the Purpose: an irreversible act follows its durable cause).
-  const record = row => { const fd = openSync(join(stateDirectory, EGRESS_RECORD), 'a', 0o600);
+  const record = entry => {
+    // The record (read into the journal after the turn) never keeps a held value a refused or admitted request named.
+    let named = true;
+    try { named = entry.phase === 'request' && secrets.check(`${String(entry.host ?? '')}\n${String(entry.path ?? '')}`) === 'held'; } catch { /* kept withheld */ }
+    const row = named && entry.phase === 'request' ? { ...entry, host: WITHHELD, path: WITHHELD } : entry;
+    const fd = openSync(join(stateDirectory, EGRESS_RECORD), 'a', 0o600);
     try { writeSync(fd, `${JSON.stringify(row)}\n`); if (row.decision === 'allow' && row.kind === 'network-write') fsyncSync(fd); } finally { closeSync(fd); } };
   const track = socket => { open.add(socket); socket.once('close', () => open.delete(socket)); };
   const stop = reason => { if (stats.limited === null) { stats.limited = reason; record({ phase: 'limit', reason }); }
@@ -162,7 +177,9 @@ export async function startEgressProxy({ stateDirectory, caPath, admission, limi
         try { plain = gunzipSync(body, { maxOutputLength: GIT_FETCH_MAX_BODY }); } catch { plain = null; } }
       gitFetch = gitFetchRequest({ origin, path, headers: req.headers, body: plain, advertised });
     }
-    const decision = admitEgress({ method, path, host: target.host, headers: req.headers, gitFetch }, admission, Date.now());
+    let decision = admitEgress({ method, path, host: target.host, headers: req.headers, gitFetch }, admission, Date.now(), secrets.check);
+    // A held git fetch body is checked whole before any of it moves.
+    if (decision.decision === 'allow' && body !== null) decision = heldRefusal(secrets.check, body.toString('utf8')) ?? decision;
     let addresses = target.addresses ?? null;
     if (decision.decision === 'allow' && addresses === null) {
       try { addresses = await addressesOf(target.host); } catch (error) {
@@ -196,7 +213,29 @@ export async function startEgressProxy({ stateDirectory, caPath, admission, limi
       answer.on('error', () => res.destroy());
     });
     if (body !== null) out.end(body);
-    else { req.on('data', chunk => { if (spend(chunk.length)) out.write(chunk); }); req.on('end', () => out.end()); }
+    else {
+      // A streamed body is checked as it arrives; the last `span - 1` bytes are held back until the next chunk (or the
+      // end), so a held value split across chunks is refused before any part of it is forwarded.
+      const span = Math.max(0, Number(secrets.span()) || 0);
+      let tail = Buffer.alloc(0), refused = false;
+      const pass = (chunk, last) => {
+        if (refused) return;
+        const buffer = Buffer.concat([tail, chunk]);
+        if (heldRefusal(secrets.check, buffer.toString('utf8'))) {
+          refused = true; stats.refused++;
+          record({ phase: 'response', n, status: null, error: 'refused: the request body carries a secret value the runner holds' });
+          out.destroy(Error('held secret in the request body'));
+          return;
+        }
+        const keep = last ? 0 : Math.min(buffer.length, Math.max(0, span - 1));
+        tail = buffer.subarray(buffer.length - keep);
+        const ready = buffer.subarray(0, buffer.length - keep);
+        if (ready.length) out.write(ready);
+        if (last) out.end();
+      };
+      req.on('data', chunk => { if (spend(chunk.length)) pass(chunk, false); });
+      req.on('end', () => pass(Buffer.alloc(0), true));
+    }
   };
   /** A request body read whole, counted against the byte bound; null when it exceeds GIT_FETCH_MAX_BODY, the bound is
    * reached or the request fails. */
@@ -228,6 +267,9 @@ export async function startEgressProxy({ stateDirectory, caPath, admission, limi
       socket.end(`HTTP/1.1 403 Forbidden\r\nx-instar-refused: ${reason.replace(/[^\x20-\x7e]/gu, '?').slice(0, 512)}\r\ncontent-length: 0\r\n\r\n`); };
     if (ended() !== null) { deny(ended(), 'budget'); return; }
     if (target.host === null) { deny(`host refused: ${target.reason}`, 'scope'); return; }
+    // A held value in the authority is refused before the name is resolved (a lookup would already carry it out).
+    const secret = heldRefusal(secrets.check, authority);
+    if (secret) { deny(secret.reason, secret.kind); return; }
     if (n > limits.maxRequests) { deny(`request bound ${String(limits.maxRequests)} reached`, 'budget'); return; }
     let addresses, secure;
     try { addresses = await addressesOf(target.host); } catch (error) { deny(`host refused: ${error.message}`, 'scope'); return; }

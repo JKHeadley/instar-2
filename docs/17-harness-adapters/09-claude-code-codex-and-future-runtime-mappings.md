@@ -51,12 +51,17 @@ Edit, Glob, Grep) the hook decides on the realpath at admission, and a path the 
 admission and the harness's open could be followed. That race is closed by the kernel when the harness runs as its
 own macOS user (`--harness-user _instarharness`): every open the harness or its file tools make is checked as that
 user, which cannot read or write the operator account's home, keys, vault, agent configurations or preview roots, so
-a swapped path reaches only the harness's own area (its login, its state and the workspace) and files every local user
-can read. The harness's own login is among the exact values the runner holds: a reply or outbound text carrying it is
-withheld like credential-shaped text, so a login value read through the race never leaves in a reply. Without that
-switch, or when the user is not ready, a Claude Code tool turn is refused, never run as the operator's account: the
-answer is text only, and the launch, the status answer and a notice under that answer name the reason
-(`docs/defects/2026-10-03-file-tool-swap-race.md`). Separately, and narrowly: the tool runner's
+a swapped path reaches only the harness's own area (its state and the workspace) and files every local user can read
+outside `/private/tmp` (whose new entries the kernel denies it from creation). Its login stays in the runner's custody
+and reaches it only through the launcher's one-shot pipe. Every secret value the runner holds (its own, the vault's,
+the root's MCP credentials, the harness login) is withheld from every reply and outbound text, and is refused in every
+outward tool request before it is dispatched: the hook asks the runner about every string a WebFetch, WebSearch,
+Codex network read, MCP or other outward tool, or unsandboxed command carries, before anything is done for it, and the
+shell's network checkpoint checks each request's host, path, headers and body. A value once read stays held; a held
+source that cannot be read, or a check that does not answer, refuses outward requests (fails closed). Without the
+switch, a Claude Code tool turn is refused, never run as the operator's account: the answer is text only, and the
+launch, the status answer and a notice under that answer name the reason; a configured user that is not ready holds
+every launch (`docs/defects/2026-10-03-file-tool-swap-race.md`). Separately, and narrowly: the tool runner's
 journal and vault are ciphertext under the storage key, which only the runner's environment holds, and an MCP server's
 credential given as a SecretRef is resolved by the runner and handed to that server's launcher alone, not written to
 the launch configuration. The admission record can hold a credential a tool result carried, in plaintext, until the
@@ -138,7 +143,11 @@ default and irreversible acts; **checks:** `tests/preview/tools-default.test.ts`
 and the gated live stop cases. The grant is the operator's recorded yes for the tool policy, held in
 the trial's sealed authority. Under it, a root's launch derives the tools activation record from its
 conversation activation, changing only the policy digest, and keeps it in the root; no further desk
-step is needed, and with no resolving grant every answer is text only and status says why. A record
+step is needed. The grant may name a policy class (`full-tools-checkpointed-v1`) instead of one digest:
+it then covers every build whose own tools policy keeps the admission hook on every call, the confined
+shell and caps at or below the reviewed ceilings, checked against that policy at each resolution, and
+never a policy that removes a checkpoint or raises a cap. With no covering grant the launch refuses to
+start and names why; it never starts silently text only (only an explicit refusal of tools does). A record
 the desk writes may be named instead. The record names the capabilities (the tool list and the root's
 MCP servers), the scope (one private workspace per conversation), the custodian and the recovery obligation. It
 does not replace exact operation admission or change the installed durability profile. Tools are
