@@ -1,0 +1,56 @@
+{
+ "_provenance": "Recorded live-proof shapes, read-only copies (observer #106): each entry names its results directory and Telegram update id under lanes/pipeline/live-proof/results. Status texts are the chat status replies with the PREVIEW prefix removed, exactly what statusAnswer produced.",
+ "statusLong": {
+  "source": "B-proofroom-20260930-230841/reply-b8.json",
+  "update": 715672930,
+  "text": "Status (2026-09-30, America/Los_Angeles)\nTurns today: 196.\nHeld replies: 1 summary faithfulness: full-context review found loss.\nPending memory decisions: 168 (updates 715672735, 715672736, 715672738, 715672739, 715672741, 715672742, 715672743, 715672745, 715672748, 715672750, 715672751, 715672753, 715672754, 715672755, 715672757, 715672758, 715672760, 715672762, 715672763, 715672764, 715672765, 715672766, 715672767, 715672768, 715672770, 715672771, 715672772, 715672775, 715672776, 715672777, 715672778, 715672780, 715672783, 715672784, 715672785, 715672786, 715672787, 715672788, 715672790, 715672792, 715672793, 715672794, 715672795, 715672796, 715672797, 715672798, 715672800, 715672801, 715672802, 715672804, 715672805, 715672806, 715672807, 715672808, 715672809, 715672810, 715672811, 715672812, 715672813, 715672814, 715672815, 715672816, 715672817, 715672818, 715672819, 715672820, 715672821, 715672822, 715672823, 715672824, 715672825, 715672826, 715672827, 715672828, 715672829, 715672830, 715672831, 715672832, 715672833, 715672834, 715672835, 715672836, 715672837, 715672838, 715672839, 715672840, 715672841, 715672842, 715672844, 715672845, 715672846, 715672847, 715672848, 715672849, 715672850, 715672851, 715672852, 715672853, 715672854, 715672855, 715672857, 715672858, 715672859, 715672860, 715672861, 715672862, 715672864, 715672865, 715672866, 715672867, 715672868, 715672869, 715672870, 715672871, 715672872, 715672873, 715672874, 715672875, 715672878, 715672879, 715672880, 715672881, 715672882, 715672883, 715672884, 715672885, 715672886, 715672887, 715672888, 715672889, 715672890, 715672891, 715672892, 715672893, 715672894, 715672895, 715672896, 715672897, 715672898, 715672899, 715672900, 715672901, 715672902, 715672903, 715672904, 715672905, 715672906, 715672907, 715672908, 715672909, 715672910, 715672911, 715672912, 715672913, 715672914, 715672915, 715672916, 715672917, 715672918, 715672919, 715672920, 715672921, 715672922, 715672923, 715672924, 715672926, 715672927, 715672929).\nNext dated item: none confirmed.\nOpen loops: 27 (16 commitments, 1 directive, 6 blockers, 3 questions, 1 request); 0 due to resurface with your next message.\nBacklog: 2 unfinished (2 messages, 0 due work steps); oldest 2 h 18 min, over the 30 min limit; waiting on held: summary faithfulness: full-context review found loss.\nProgress: stalled; last 0 min ago.\nScheduled work: 11 waiting for their time.\nOverdue: 0 check-ins, 0 blocker rechecks, 1 requested actions; corrections awaiting your next message: 0.\nDeclared obligations I could not record: 1 (each sent only after a full review).\nProofs: 6/13 healthy; reply-review-reached failed; 6 not currently observed.\nCapabilities: 1 confirmed, 7 unconfirmed, 1 dark (preview.step-check); 12 without a live proof at their current version.\nGraduation: preview.step-check — test-agent missing, development-agent missing, fleet missing; deadline 2026-10-15 (recorded 2026-09-28).\nServing: this runner on DaBombs-Mac-Studio.local owns this conversation (claimed 26 min ago); 1 duplicate launch(es) refused on this machine.\nStore checks: 3 of 4 agree.\nSpend allowance: 380/1000 subscription attempts; 189/1000 Jev checks. Dollar spend/cap: not recorded in this journal. Replies: 194/1000 used.\nReplies sent as your own words repeated back, without the second check: 4.\nBuild: ebaa3b17 running since 2026-09-30 22:43; running code matches the installed files.\nHarness: preview-journal-native via claude-code-subscription; 9 of 9 silent-stop classes covered.\nUpdate: from 72fb5a82; briefing unchanged; delivered in my reply to update 715672880."
+ },
+ "statusNormal": {
+  "source": "D-20261003T152101/reply-d7.json",
+  "update": 6231983,
+  "text": "Status (2026-10-03, America/Los_Angeles)\nTurns today: 14.\nHeld replies: none.\nPending memory decisions: 11 (updates 6231970, 6231971, 6231972, 6231973, 6231975, 6231976, 6231978, 6231979, 6231980, 6231981, 6231982).\nNext dated item: none confirmed.\nOpen loops: 3 (1 commitment, 1 directive, 1 blocker); 0 due to resurface with your next message.\nBacklog: 1 unfinished (1 message, 0 due work steps); oldest 0 min.\nProgress: progressing; last 0 min ago.\nScheduled work: 1 waiting for their time.\nOverdue: 0 check-ins, 0 blocker rechecks, 0 requested actions; corrections awaiting your next message: 0.\nProofs: 5/13 healthy; 8 not currently observed.\nCapabilities: 1 confirmed, 7 unconfirmed, 1 dark (preview.step-check); 12 without a live proof at their current version.\nGraduation: preview.step-check — test-agent missing, development-agent missing, fleet missing; deadline 2026-10-15 (recorded 2026-09-28).\nServing: this runner on DaBombs-Mac-Studio.local owns this conversation (claimed 39 min ago); 0 duplicate launch(es) refused on this machine.\nStore checks: 3 of 4 agree.\nPast a cap: each kept message gets one limited answer from the reserve.\nSpend allowance: 19/1000 subscription attempts; 13/1000 Jev checks. Dollar spend/cap: not recorded in this journal. Replies: 13/1000 used.\nReplies sent as your own words repeated back, without the second check: 0.\nBuild: 1535a80e running since 2026-10-03 15:20; running code matches the installed files.\nHarness: preview-journal-native via claude-code-subscription; 9 of 9 silent-stop classes covered.\nUpdate: from an unrecorded earlier build; briefing change unknown; delivered in my reply to update 6231970."
+ },
+ "turns": [
+  {
+   "source": "B-proofroom2-20261003-122907 msg-x3.txt + reply-x3.json",
+   "update": 6231927,
+   "message": "For my notes: please write this address back to me in your reply so I can find it in our chat later: http://localhost:8123/garden-notes",
+   "reply": "PREVIEW — Here's the address for your notes: http://localhost:8123/garden-notes"
+  },
+  {
+   "source": "I-proofroom-20261001-102047 msg-i1s.txt + reply-i1s.json",
+   "update": 715673062,
+   "message": "What is your status?",
+   "reply": "PREVIEW — Running normally — build bc2173c2 up 7+ minutes, nothing held, no open loops or overdue items, and plenty of spend allowance left (21/1000 model attempts used). Trial runs through 2026-10-05 13:40 PDT."
+  },
+  {
+   "source": "B-proofroom-20260930-230841 msg-b8.txt + reply-b8.json",
+   "update": 715672930,
+   "message": "status",
+   "reply": "PREVIEW — Status (2026-09-30, America/Los_Angeles)\nTurns today: 196.\nHeld replies: 1 summary faithfulness: full-context review found loss.\nPending memory decisions: 168 (updates 715672735, 715672736, 715672738, 715672739, 715672741, 715672742, 715672743, 715672745, 715672748, 715672750, 715672751, 715672753, 715672754, 715672755, 715672757, 715672758, 715672760, 715672762, 715672763, 715672764, 715672765, 715672766, 715672767, 715672768, 715672770, 715672771, 715672772, 715672775, 715672776, 715672777, 715672778, 715672780, 715672783, 715672784, 715672785, 715672786, 715672787, 715672788, 715672790, 715672792, 715672793, 715672794, 715672795, 715672796, 715672797, 715672798, 715672800, 715672801, 715672802, 715672804, 715672805, 715672806, 715672807, 715672808, 715672809, 715672810, 715672811, 715672812, 715672813, 715672814, 715672815, 715672816, 715672817, 715672818, 715672819, 715672820, 715672821, 715672822, 715672823, 715672824, 715672825, 715672826, 715672827, 715672828, 715672829, 715672830, 715672831, 715672832, 715672833, 715672834, 715672835, 715672836, 715672837, 715672838, 715672839, 715672840, 715672841, 715672842, 715672844, 715672845, 715672846, 715672847, 715672848, 715672849, 715672850, 715672851, 715672852, 715672853, 715672854, 715672855, 715672857, 715672858, 715672859, 715672860, 715672861, 715672862, 715672864, 715672865, 715672866, 715672867, 715672868, 715672869, 715672870, 715672871, 715672872, 715672873, 715672874, 715672875, 715672878, 715672879, 715672880, 715672881, 715672882, 715672883, 715672884, 715672885, 715672886, 715672887, 715672888, 715672889, 715672890, 715672891, 715672892, 715672893, 715672894, 715672895, 715672896, 715672897, 715672898, 715672899, 715672900, 715672901, 715672902, 715672903, 715672904, 715672905, 715672906, 715672907, 715672908, 715672909, 715672910, 715672911, 715672912, 715672913, 715672914, 715672915, 715672916, 715672917, 715672918, 715672919, 715672920, 715672921, 715672922, 715672923, 715672924, 715672926, 715672927, 715672929).\nNext dated item: none confirmed.\nOpen loops: 27 (16 commitments, 1 directive, 6 blockers, 3 questions, 1 request); 0 due to resurface with your next message.\nBacklog: 2 unfinished (2 messages, 0 due work steps); oldest 2 h 18 min, over the 30 min limit; waiting on held: summary faithfulness: full-context review found loss.\nProgress: stalled; last 0 min ago.\nScheduled work: 11 waiting for their time.\nOverdue: 0 check-ins, 0 blocker rechecks, 1 requested actions; corrections awaiting your next message: 0.\nDeclared obligations I could not record: 1 (each sent only after a full review).\nProofs: 6/13 healthy; reply-review-reached failed; 6 not currently observed.\nCapabilities: 1 confirmed, 7 unconfirmed, 1 dark (preview.step-check); 12 without a live proof at their current version.\nGraduation: preview.step-check — test-agent missing, development-agent missing, fleet missing; deadline 2026-10-15 (recorded 2026-09-28).\nServing: this runner on DaBombs-Mac-Studio.local owns this conversation (claimed 26 min ago); 1 duplicate launch(es) refused on this machine.\nStore checks: 3 of 4 agree.\nSpend allowance: 380/1000 subscription attempts; 189/1000 Jev checks. Dollar spend/cap: not recorded in this journal. Replies: 194/1000 used.\nReplies sent as your own words repeated back, without the second check: 4.\nBuild: ebaa3b17 running since 2026-09-30 22:43; running code matches the installed files.\nHarness: preview-journal-native via claude-code-subscription; 9 of 9 silent-stop classes covered.\nUpdate: from 72fb5a82; briefing unchanged; delivered in my reply to update 715672880."
+  },
+  {
+   "source": "B-proofroom-20260930-203348 msg-b1.txt + reply-b1.json",
+   "update": 715672744,
+   "message": "Build check 72fb5a82: reply with the word ok",
+   "reply": "PREVIEW — ok"
+  }
+ ],
+ "operatorRequests": {
+  "source": "R79renew2-20261003T014429/status-renew.json",
+  "rows": [
+   {
+    "id": "2a9e7a52e98077e6",
+    "action": "raise-caps",
+    "via": "reply",
+    "route": "github-review",
+    "link": "https://github.com/JKHeadley/instar-2/pull/145/files",
+    "closed": false,
+    "state": "open",
+    "refusals": [
+     "explicit yes: a P-05 grant lets the agent speak as the operator in chat, so a chat reply is not the operator's yes; use the review path"
+    ]
+   }
+  ]
+ }
+}

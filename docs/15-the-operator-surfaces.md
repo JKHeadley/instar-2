@@ -109,6 +109,30 @@ it reaches approved, declined, superseded, expired, withdrawn, conflict, or stil
 any timer-to-yes transition. The original requester receives an attributable receipt for each
 terminal disposition through eight's message operation.
 
+**Rule — the operator dashboard reads; it grants nothing.** Owner: Eleven. Rules 2, 79, 80, 81,
+87 and 113, and the purpose's least-revelation rule; **checks: P11-NF-52** and
+`node scripts/check-dashboard-floors.mjs`. The dashboard is a page of the registered approval
+surface, rendered by that surface's own process and opened only by the passkey enrolled there to
+approve. Sign-in is one assertion over a fresh nonce whose signed bytes are typed apart from every
+act, so a sign-in never stands for an approval and an approval never opens a session; a short,
+bounded session follows, and without it every dashboard address shows only the sign-in page. Its
+audience is that operator. It shows the agent's status as the exact chat status answer, the
+requests waiting for the operator with a direct link to the surface that answers each, recent
+messages with their outcomes, the allowance used, and the stop, which links to the surface's own
+standing stop. Approve, decline and stop complete only on those surfaces. Its data is one
+disposable snapshot the agent publishes into its own request outbox, projected from the journal by
+the functions the status reply uses. The page treats it as untrusted data: it accepts only a closed,
+bounded shape whose only links are a GitHub review page or the operator's own chat, escapes every
+field, and shows the snapshot's age. A missing, unreadable or stale snapshot is stated plainly on
+every view, which is the loss detector this state needs; the outbox directory's permissions are its
+local access boundary. The page never refreshes itself. Eleven objective floors hold it, each with a
+negative control: one full-width panel and nothing collapsed; every view reachable from every page;
+a purpose line on every page; no sideways scrolling on a phone; every control labeled; plain empty,
+missing, unreadable and stale states; one shared stylesheet; every link resolving; no background
+refresh; a front page of one headline and at most five tiles within 150 words without insider
+vocabulary; and every tile and row opening its next layer. It is machine-local: the page and the
+outbox live on the machine that serves the conversation.
+
 ---
 
 ## 3. The full conversation-binding surface
@@ -443,7 +467,7 @@ plane is called live from screenshots, mocks, configured routes, self-report or 
 | P11-NF-49 | wiring/e2e | Any required port is null/no-op or bypassed; real delegation evidence passes |
 | P11-NF-50 | accounting | Duration/memory/token/money/attempt count missing or beyond cap; complete bounded sample passes |
 | P11-NF-51 | live | Mock/canned provider or synthetic delivery satisfies production slice; real bounded call/witness passes |
-| P11-NF-52 | UI | Objective dashboard/mobile floor fails; activation remains blocked |
+| P11-NF-52 | UI | Objective dashboard/mobile floor fails, a floor's negative control is missed, or a dashboard address shows agent data without the passkey session; the eleven floors with every control detected pass |
 | P11-NF-53 | build | Declared fixture lacks executed check-run evidence; no held/live claim is emitted |
 
 ---

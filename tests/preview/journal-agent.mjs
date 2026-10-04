@@ -17,7 +17,7 @@ import { decodeEffectPolicy, DEFAULT_EFFECT_POLICY, effectDoorwayStatusLines, re
 import { redact } from '../../src/recall/redact.js';
 import { durablePreviewWrite } from './durable-write.js';
 import { prepareJournalEnvelope, withWorkspaceNotice } from './journal-envelope.js';
-import { operatorEchoSent } from './status-command.js';
+import { operatorEchoSent, statusAnswer } from './status-command.js';
 import { SOURCE_PINS, sourcePacket, deskStatusSource, readDeskStatus, verifyMindRules, ANSWER_INSTRUCTIONS } from './briefing.js';
 import { admitPreviewHarness, PREVIEW_JOURNAL_HARNESS, PREVIEW_JOURNAL_STALL_COVERAGE } from './stall-coverage.js';
 import { UNRECORDED, briefingDigestOf, codeDigestOf, installedCodeOf, installationRows, installationStatusLines, installedUpdateFrom, updateDelivery,
@@ -27,7 +27,7 @@ import { openPreviewJournal as openJournal, createJournalWorker, raiseJournalCap
 import { createPreviewClock } from './clock.js';
 import { appendRun, heldNotices, heldRepliesToday, memoryHealthLine, readRuns, restartHandoff, selfState, selfStateBrief, selfStateSource, zoneFormatter } from './self-state.js';
 import { guidanceReport } from './guidance.js';
-import { memoryLearningReport } from './memory-learning.js';
+import { memoryLearningLine, memoryLearningReport } from './memory-learning.js';
 import { JEV_MODEL, jevQuestions, replyReviewContext, replyReviewQuestion, replyReviewRules, parseReplyReviewVerdict, replyReviewDiagnostics, parseJevResponse, replyRevisionQuestion, parseReplyRevision, REVIEW_MALFORMED, REVIEW_FORMAT_REMINDER } from './reply-check.js';
 import { interpretSummaryReview, SUMMARY_QUESTION } from './summary-check.js';
 import { assertLiveJudgment, decisionWithinFloor, modelCallRecord, sha256 } from './model-call-boundary.js';
@@ -54,6 +54,7 @@ import { createLeaseHolder } from './two-machine-serving.js';
 import { adoptReceivedCopy, connectReplicaPeer, createJournalShipper, createReplicatedDispatch, openReplicaStore, serveReplicaStore,
   sharedHistoryStatus, takeoverEligibility } from './journal-replication.js';
 import { createApprovalSurfaceClient } from './approval-surface-client.mjs';
+import { dashboardSnapshot } from './operator-dashboard.js';
 import { parseExplicitYesInstallation } from './explicit-yes-installation.js';
 import { createGitHubReviewClient } from './github-review-client.js';
 import { createReviewYesSource } from './review-yes-source.js';
@@ -1602,7 +1603,29 @@ async function main() {
       return [missing.length ? `Past a cap: limited answers are not available (missing: ${missing.join(', ')}). Messages are kept. To clear: ${minimalRepair(missing)}.`
         : 'Past a cap: each kept message gets one limited answer from the reserve.'];
     };
+    // The chat "status" answer's host lines; the operator dashboard reads the very same ones (statusAnswer).
+    const statusPullLines = () => [...installation ? installationStatusLines(installation, launchedAt, (() => { try { return installedCode(); } catch { return null; } })(),
+      installUpdate, installUpdate && updateDelivery(installUpdate, journal.view.order), timeZoneOf(options)) : [],
+      ...toolStatusLines(journal.view, toolsActive(), toolsOff ?? (toolsRecord
+        ? 'withdrawn since launch: the activation record changed or its grant no longer resolves' : null)),
+      ...(toolsActive() || journal.view.effectDoorway ? effectDoorwayStatusLines(journal.view.effectDoorway) : [])];
+    const statusExtraLines = () => [...proofLines(), ...ownerLines(), ...minimalLines()];
     const approvalSurface = approvalSurfaceOf(options);
+    // Rules 79, 81: the operator dashboard's snapshot, published into this runner's own outbox at most every 15 seconds
+    // (and once at the end), only while the operator's approval page is installed. A failed publish is never fatal: the
+    // page shows how old its copy is, and status reports the page (approvalSurface).
+    let dashboardAt = -Infinity;
+    const publishDashboard = (force = false) => {
+      const now = wallNow(), zone = timeZoneOf(options);
+      if (!approvalSurface || !force && now - dashboardAt < 15_000) return;
+      dashboardAt = now;
+      try {
+        approvalSurface.publish(dashboardSnapshot(journal.view, { now, zone, bot: options['bot-username'] ?? null,
+          stopped: existsSync(stopPath), statusText: statusAnswer(journal.view, now, zone,
+            // The memory-learning line the chat answer adds after the host's extra lines (journal.ts), so both read the same.
+            [...statusExtraLines(), memoryLearningLine(journal.view, turn => operatorWriter(journal.view, turn, true))], statusPullLines()) }));
+      } catch { /* the page reads its copy's age */ }
+    };
     const yesInstallation = explicitYesInstallationOf(options), reviewSource = reviewSourceOf(options, yesInstallation);
     // Plan #373: how long an operator request stays answerable (default 18 hours), never past the trial's current end.
     const requestHours = options['operator-request-hours'] === undefined ? undefined
@@ -1633,11 +1656,7 @@ async function main() {
       // Rules 9, 96, 114: this runner's current work and the other owned runners beside it, read at each operator turn.
       concurrentWork: () => launchedAt === null ? null : concurrentWorkItem({ now: wallNow(),
         current: { owner: root.split('/').at(-1), launch: launchedAt, conversation: conversationOf(journal.view.genesis) }, ...ownedActivity(root) }),
-      statusLines: () => [...installation ? installationStatusLines(installation, launchedAt, (() => { try { return installedCode(); } catch { return null; } })(),
-        installUpdate, installUpdate && updateDelivery(installUpdate, journal.view.order), timeZoneOf(options)) : [],
-        ...toolStatusLines(journal.view, toolsActive(), toolsOff ?? (toolsRecord
-          ? 'withdrawn since launch: the activation record changed or its grant no longer resolves' : null)),
-        ...(toolsActive() || journal.view.effectDoorway ? effectDoorwayStatusLines(journal.view.effectDoorway) : [])],
+      statusLines: statusPullLines,
       checkOutbound: text => { if (redact(text).count) throw Error('preview: outbound secret refused'); },
       secrets: custody,
       model: async ({ id, prepared }) => {
@@ -1726,7 +1745,7 @@ async function main() {
         return { ...result, ...(result.usage ? { usage: recordedUsage(result.usage) } : {}) };
       } } : {}),
       // Status pull lines: proof posture (Rule 43), then conversation ownership and store checks (Rules 63, 33).
-      statusExtra: () => [...proofLines(), ...ownerLines(), ...minimalLines()],
+      statusExtra: statusExtraLines,
       // Part Eleven's minimal-path owner decides (src/operator/live.ts); the host reports only what it
       // actually observes (Rule 26), never the activation record standing in for it.
       //   register: the register generation this launch read is still the installed one (Ten's rule).
@@ -2051,6 +2070,7 @@ async function main() {
       reportCap();
       runDueProof();
       checkDoorways();
+      publishDashboard();
       if (existsSync(stopPath) || wallNow() >= journal.view.expires) break;
       let pollLimit;
       try { pollLimit = worker.pollLimit(); } catch { break; }
@@ -2116,6 +2136,7 @@ async function main() {
       if (stepCheckEnabled) await worker.checkSteps();
     } finally { clearInterval(tailBeat); }
     reportCap();
+    publishDashboard(true);
     endReason ??= 'cycle limit reached';
     function modelRoute(operation, toolTurn) {
       if (!active() || workerStop.value || existsSync(stopPath)) throw Error('preview: activation stopped');
