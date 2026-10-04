@@ -350,7 +350,7 @@ it('keeps an interrupted turn\'s hook record past retention and journals its chi
   expect(reconcileToolTurns({ journal: done, root: fresh, redactText: (text: string) => text, now: () => 11 })).toEqual([]);
 });
 
-it('reads the root\'s MCP configuration: absent is none, malformed refuses, and its servers and credentials stay in the admission state', () => {
+it('reads the root\'s MCP configuration: absent is none, malformed refuses, a secret value refuses, and its servers stay in the admission state', () => {
   const root = dir();
   expect(readRootMcp(root)).toBeNull();
   for (const bad of ['{', '{"mcpServers":[]}', '{"mcpServers":{"a b":{"command":"/x"}}}', '{"mcpServers":{"a":{}}}',
@@ -360,7 +360,17 @@ it('reads the root\'s MCP configuration: absent is none, malformed refuses, and 
   }
   writeFileSync(join(root, 'mcp.json'), '{"mcpServers":{}}');
   expect(readRootMcp(root)).toBeNull();
-  const config = { mcpServers: { dummy: { command: '/usr/bin/true', env: { TOKEN: 'DUMMY-NOT-A-SECRET' } } }, reads: ['mcp__dummy__lookup'] };
+  // No secret value is kept in this file or its copy (the source property that closes the swap race at the source): an
+  // env block is refused whatever it holds, so is any other key, and so is a recognised credential in the command or args.
+  const synthetic = `ghp_${'0'.repeat(36)}`;
+  for (const [server, why] of [[{ command: '/usr/bin/true', env: { LOG: '/tmp/x' } }, /only command and args \(refused: env\)/u],
+    [{ command: '/usr/bin/true', cwd: '/tmp' }, /refused: cwd/u], [{ command: '/usr/bin/true', args: [1] }, /args must be strings/u],
+    [{ command: '/usr/bin/true', args: ['--token', synthetic] }, /names a credential/u],
+    [{ command: `/usr/bin/env TOKEN=${synthetic}` }, /names a credential/u]] as const) {
+    writeFileSync(join(root, 'mcp.json'), JSON.stringify({ mcpServers: { dummy: server } }));
+    expect(() => readRootMcp(root)).toThrow(why);
+  }
+  const config = { mcpServers: { dummy: { command: '/usr/bin/true', args: ['--log', '/tmp/x'] } }, reads: ['mcp__dummy__lookup'] };
   writeFileSync(join(root, 'mcp.json'), JSON.stringify(config));
   const mcp = readRootMcp(root);
   expect(mcp).toMatchObject({ servers: config.mcpServers, reads: config.reads, digest: expect.stringMatching(/^sha256:/u) });
@@ -369,6 +379,6 @@ it('reads the root\'s MCP configuration: absent is none, malformed refuses, and 
   expect(lstatSync(turn.mcp.config).mode & 0o777).toBe(0o600);
   expect(JSON.parse(readFileSync(turn.mcp.config, 'utf8'))).toEqual({ mcpServers: config.mcpServers });
   expect(JSON.parse(readFileSync(join(turn.stateDirectory, 'config.json'), 'utf8')).mcpReads).toEqual(['mcp__dummy__lookup']);
-  // The credential never lands where a tool can reach: not in the workspace or the scratch volume.
+  // The launch configuration lands in the admission state only: not in the workspace or the scratch volume.
   expect(JSON.stringify(readdirSync(turn.scratch, { recursive: true }))).not.toContain('mcp');
 });

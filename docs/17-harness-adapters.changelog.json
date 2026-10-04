@@ -17,6 +17,11 @@
         "what": "§9 tool rule: for the in-process file tools the resolved-path decision is stated as a check at admission, with a swap the agent itself makes between admission and the harness's open named as a residual; only sandboxed commands are stated to be decided at open.",
         "why": "Review of the unit (MF2) reproduced a directory swapped for a link to a secret between the hook's allow and the harness's open: the in-process Read followed it. Claude Code sandboxes only Bash, and macOS refuses a sandbox nested inside one, so the file tools cannot be put under the kernel profile without losing the Bash sandbox. The text no longer claims the boundary holds against every spelling for them; the closing path (the harness as a separate OS user) is recorded in the defect.",
         "ref": "docs/defects/2026-10-03-file-tool-swap-race.md; lanes/w4-toolpaths-PROGRESS.md; LIVE-PATH-PLAN.md row #447"
+      },
+      {
+        "what": "§9 tool rule: the secrets floor for the in-process file tools rests on what is on disk rather than on the admission check: no file the tool runner writes holds a secret value in plaintext, and the root's MCP launch configuration carries commands and arguments only (an environment block, or a recognised credential in a command or argument, is refused).",
+        "why": "The admission check cannot close a swap the agent makes between admission and the harness's open, so the floor is closed where the secret is written. Every value the runner writes was already ciphertext under a key the harness never holds, except an MCP server's credential, which was copied in plaintext into the turn's admission state. Secrets the harness's operating-system user can read that this runner did not write are recorded as open in the defect.",
+        "ref": "docs/defects/2026-10-03-file-tool-swap-race.md; tests/preview/secret-at-rest.test.ts; lanes/w4-toolpaths-PROGRESS.md; LIVE-PATH-PLAN.md row #452"
       }
     ]
   },

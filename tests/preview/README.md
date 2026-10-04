@@ -3601,8 +3601,12 @@ servers (Part Thirteen §9,
   followed where they stand, so `link/..` leaves through the link; `/etc` and `/private/etc` are one place; a dangling
   link is refused as unresolvable) with the resolved path handed to the harness. This is a check at admission, not
   at open: a directory the agent itself swaps for a link between the hook's check and the harness's open can still be
-  followed by Read, Write, Edit, Glob or Grep (residual, `docs/defects/2026-10-03-file-tool-swap-race.md`); a
-  sandboxed command has no such window, because the kernel decides at open; sandboxed commands
+  followed by Read, Write, Edit, Glob or Grep; a sandboxed command has no such window, because the kernel decides at
+  open. The secrets floor is therefore kept on disk: no file this runner writes holds a secret value in plaintext (the
+  journal and the vault are ciphertext under the storage key, which only the runner's environment holds; the
+  credentials registry and the MCP launch configuration hold none; `secret-at-rest.test.ts`). Plaintext secrets the
+  same operating-system user holds elsewhere stay open until the harness runs as its own user
+  (`docs/defects/2026-10-03-file-tool-swap-race.md`). It also admits sandboxed commands
   whatever words they contain, a WebFetch (GET only) of a host whose every resolved address is public, a WebSearch,
   an MCP tool listed as a read, the harness's bookkeeping (ToolSearch, ListAgents, CronList, ReportFindings,
   TaskStop), a worktree inside the workspace, and a `worker` subagent within the turn's budget (rewritten to the
@@ -3628,9 +3632,11 @@ servers (Part Thirteen §9,
   behind them opens), writes
   outside the volume, the network (a shell cannot write to the network), unix sockets and signals to other
   processes; the harness's messaging socket and token are removed from every command.
-- MCP: `ROOT/mcp.json` (the operator's file; absent means none) is `{"mcpServers": {name: {command, args?, env?}},
-  "reads": ["mcp__name__tool", …]}`. Its launch configuration, with any credential in `env`, is copied into the
-  turn's admission state, which no tool can read; servers run outside the sandbox as the runner's identity.
+- MCP: `ROOT/mcp.json` (the operator's file; absent means none) is `{"mcpServers": {name: {command, args?}},
+  "reads": ["mcp__name__tool", …]}`. A server entry carries its command and arguments only: an `env` block (or any
+  other key) is refused, and so is a recognised credential in the command or an argument, because this file and its
+  copy in the turn's admission state must hold no secret value. A server that needs a credential reads it from its
+  own custody (for example the system keychain). Servers run outside the sandbox as the runner's identity.
 - Subagents: at most 2 per turn at any depth (a `worker` may start its own), type `worker`, 4 model turns each. The
   hook records each child's start and stop (synced) before it acts; the journal's `tool-turn` trace carries one Rule
   114 edge per child, naming the subagent that started it (`parentAgent`, null for the turn) (`returned`,

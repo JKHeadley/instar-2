@@ -9,6 +9,7 @@ import { chmodSync, existsSync, lstatSync, mkdirSync, readdirSync, readFileSync,
 import { dirname, join, relative } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { SUBSCRIPTION_SUBAGENT_TYPE, SUBSCRIPTION_TOOL_LIMITS, SUBSCRIPTION_TOOL_NAMES, SUBSCRIPTION_TOOL_RUNTIME_READS, SUBSCRIPTION_TOOLS_SYSTEM_PROMPT } from '../../src/assembly/production-provider.js';
+import { credentialSpans } from '../../src/recall/redact.js';
 import { toolTrace } from './tool-admission.mjs';
 
 export const TOOL_TURNS_DIRECTORY = 'tool-turns';
@@ -84,7 +85,7 @@ export const toolTurnSlug = (operation, attempt) => `${createHash('sha256').upda
  * conversation's workspace ({directory, name} from `conversationWorkspace`), whose files persist across turns; absent,
  * the turn gets its own fresh volume in its turn directory. `children` is the number of subagents this turn's
  * reservation covers; `mcp` is the root's MCP configuration ({servers, reads}) or null. The servers' launch configuration
- * is written into the state directory, which no tool can read. The config also carries the effect doorway's policy and
+ * (commands and arguments only, no secret value: `readRootMcp`) is written into the state directory. The config also carries the effect doorway's policy and
  * the register's irreversible term (Part Twelve; absent policy: nothing outward by default). */
 export function prepareToolTurn({ root, operation, attempt, operations, effectPolicy, irreversibleTerm, children = 0, mcp = null,
   node = process.execPath, scratch = attachScratch, volume = null, authority = 'unrecorded' }) {
@@ -114,10 +115,13 @@ export function prepareToolTurn({ root, operation, attempt, operations, effectPo
 }
 
 /** The root's MCP configuration, read from `<root>/mcp.json` (the operator's file; absent means no MCP servers):
- * `{"mcpServers": {name: {command, args?, env?}}, "reads": ["mcp__name__tool", ...]}`. A tool the file lists in `reads`
+ * `{"mcpServers": {name: {command, args?}}, "reads": ["mcp__name__tool", ...]}`. A tool the file lists in `reads`
  * is ordinary work; every other MCP tool is a consequential effect for the effect doorway. A malformed file refuses
- * (thrown) rather than guessing. Credentials in `env` stay in this file and in the turn's admission state, both
- * outside every path a tool can read. */
+ * (thrown) rather than guessing. The file and its copy in the turn's admission state hold no secret value: a server
+ * entry carries only its command and arguments (an `env` block, or any other key, is refused), and a command or
+ * argument that holds a recognised credential is refused. A server that needs a credential reads it from its own
+ * custody, never from this file. The admission check on file-tool paths happens before the harness opens the file
+ * (docs/defects/2026-10-03-file-tool-swap-race.md), so a secret is kept out of every file at its source instead. */
 export const TOOL_MCP_CONFIG = 'mcp.json';
 export function readRootMcp(root, read = path => readFileSync(path, 'utf8')) {
   let text;
@@ -128,6 +132,15 @@ export function readRootMcp(root, read = path => readFileSync(path, 'utf8')) {
   if (!names.length) return null;
   if (!names.every(name => /^[A-Za-z0-9_-]{1,64}$/u.test(name) && servers[name] && typeof servers[name].command === 'string'))
     throw Error('preview: root MCP server names must be plain and each must name a command');
+  for (const name of names) {
+    const server = servers[name], extra = Object.keys(server).filter(key => key !== 'command' && key !== 'args');
+    if (extra.length) throw Error(`preview: root MCP server ${name} may carry only command and args (refused: ${extra.join(', ')}); `
+      + 'a server that needs a credential reads it from its own custody, never this file');
+    const args = server.args ?? [];
+    if (!Array.isArray(args) || !args.every(arg => typeof arg === 'string')) throw Error(`preview: root MCP server ${name} args must be strings`);
+    if ([server.command, ...args].some(text => credentialSpans(text).length > 0))
+      throw Error(`preview: root MCP server ${name} names a credential in its command or args; it must read it from its own custody`);
+  }
   const reads = data.reads ?? [];
   if (!Array.isArray(reads) || !reads.every(tool => typeof tool === 'string' && names.some(name => tool.startsWith(`mcp__${name}__`))))
     throw Error('preview: root MCP reads must name tools of the configured servers');
