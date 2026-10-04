@@ -36,7 +36,7 @@ Deferral: tests/preview/fixtures/runner-task-protocol-live-2026-10-04.json:34 | 
 Deferral: tests/preview/fixtures/runner-task-protocol-live-2026-10-04.json:39 | not-a-deferral=a recorded model output quoted verbatim as test evidence, not a commitment by this change
 Deferral: tests/preview/fixtures/runner-task-protocol-live-2026-10-04.json:44 | not-a-deferral=a recorded model output quoted verbatim as test evidence, not a commitment by this change
 Deferral: tests/preview/journal.ts:2129 | not-a-deferral=the work step's existing question quoting the operator's "answer later" wording it must resolve now
-Deferral: tests/preview/runner-task-protocol.test.ts:90 | not-a-deferral=a test comment quoting the recorded "continue" answer the change removes
+Deferral: tests/preview/runner-task-protocol.test.ts:91 | not-a-deferral=a test comment quoting the recorded "continue" answer the change removes
 
 Subject (15 paths): reviews/cint-L50-repair2-change-review.md, src/assembly/harness.declarations.json, src/assembly/production-provider.ts, tests/assembly/production-provider-tools.test.ts, tests/preview/answer-reading.ts, tests/preview/default-context-floor.test.ts, tests/preview/fixtures/runner-task-protocol-live-2026-10-04.json, tests/preview/journal-agent.mjs, tests/preview/journal-obligations.test.ts, tests/preview/journal.ts, tests/preview/reply-check.test.ts, tests/preview/reply-check.ts, tests/preview/retrospective.ts, tests/preview/runner-task-protocol.test.ts, tests/preview/selfdesc-limits.test.ts
 
