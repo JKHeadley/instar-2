@@ -7,7 +7,7 @@ import { existsSync, readFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { cutoverHarness } from './journal-cutover-harness.mjs';
 import { offlineProfile, successiveWorld } from './successive-fixture.js';
-import { CONCURRENT_WORK_ROWS, concurrentWorkItem, latestOwnedLaunch } from './journal.js';
+import { CONCURRENT_WORK_ROWS, concurrentWorkItem, latestOwnedLaunch, ownedProcessOf } from './journal.js';
 
 const HOUR = 3_600_000, NOW = Date.UTC(2026, 8, 28, 12, 0);
 const CONVERSATION = 'telegram/bot-8820318295/chat-7812716706';
@@ -71,6 +71,96 @@ it('is bounded in rows and bytes however many owned runners exist', () => {
   expect(value.scope).toEqual({ runnerRootsRead: 50, truncated: true, unreadable: 3 });
   expect(Buffer.byteLength(JSON.stringify(value))).toBeLessThanOrEqual(2600);
   expect(value.rows.every(row => row.owner.length <= 120 && (row.endReason ?? '').length <= 120)).toBe(true);
+});
+
+// Recorded shapes (Rule 36 captured bytes; observer #106 replay duty): group P on live cint-L47, results
+// P-proofroom2-20261004-042523. Its runners.txt, checked in verbatim as the fixture below (`<pid> <command>` per
+// line, taken 11:25:25Z), held the three runner processes; the packet built at the 11:26:36Z send showed
+// justin-20261003-1046 running from its run log's launch at 11:26:12Z (pid 73747), whose exit row says it lived
+// until 11:57:50Z. The view was right; the snapshot predated that relaunch.
+const LANES = '/Users/dabombstudio/.instar/agents/echo/.instar/lanes/preview-trial-root';
+const RECORDED_RUNNERS = readFileSync(join(import.meta.dirname, 'fixtures', 'staleview-runners-proofroom2-2026-10-04.txt'), 'utf8')
+  .split('\n').filter(Boolean).map(line => `${line.slice(line.indexOf(' ') + 1)}\n`);
+const RECORDED_ROOTS = ['proofroom1-q-20261004-033411', 'proofroom2-ps-20261004-022506', 'canary-copy-20261004-042456'];
+
+/** The roots that exist at the observation, as the runner's own lstat would report them. */
+const existing = (...paths: string[]) => (path: string) => paths.includes(path);
+const RECORDED_EXISTING = existing(...RECORDED_ROOTS.map(name => `${LANES}/${name}`));
+
+it('a launch is running only while its pid is the runner of exactly that root (recorded runner command lines)', () => {
+  expect(RECORDED_RUNNERS.length).toBe(3);
+  expect(RECORDED_RUNNERS.map((command, index) => ownedProcessOf(command, `${LANES}/${RECORDED_ROOTS[index]}`, RECORDED_EXISTING)))
+    .toEqual(['present', 'present', 'present']);
+  // A gone pid, or one reused by something that is not a runner, is absent: the row is stale, never running.
+  expect(ownedProcessOf(null, `${LANES}/proofroom2-ps-20261004-022506`, RECORDED_EXISTING)).toBe('absent');
+  expect(ownedProcessOf('/usr/sbin/cfprefsd agent', `${LANES}/proofroom2-ps-20261004-022506`, RECORDED_EXISTING)).toBe('absent');
+  expect(ownedProcessOf('', `${LANES}/proofroom2-ps-20261004-022506`, RECORDED_EXISTING)).toBe('absent');
+  // A live runner of another root never vouches for this one: neither a different root nor one this root's path
+  // is a prefix of (the old substring test read `--root <root>-copy` as present for `<root>`).
+  expect(ownedProcessOf(RECORDED_RUNNERS[1], `${LANES}/proofroom2-ps-20261004-02250`, RECORDED_EXISTING)).toBe('unknown');
+  expect(ownedProcessOf(RECORDED_RUNNERS[1], `${LANES}/proofroom2-ps-20261004-022506`.slice(0, -1), RECORDED_EXISTING)).toBe('unknown');
+  expect(ownedProcessOf(RECORDED_RUNNERS[0], `${LANES}/proofroom2-ps-20261004-022506`, RECORDED_EXISTING)).toBe('unknown');
+  expect(ownedProcessOf(RECORDED_RUNNERS[1].replace(`${LANES}/proofroom2-ps-20261004-022506`, `${LANES}/proofroom2-ps-20261004-022506-copy`),
+    `${LANES}/proofroom2-ps-20261004-022506`, RECORDED_EXISTING)).toBe('unknown');
+  // A possible root that exists but cannot be ruled out (here: every candidate reads as existing) is unknown.
+  expect(ownedProcessOf(RECORDED_RUNNERS[1], `${LANES}/proofroom2-ps-20261004-022506`, () => true)).toBe('unknown');
+});
+
+it('a root containing spaces is matched whole: its own runner is present, its shorter sibling is not', () => {
+  const spaced = RECORDED_RUNNERS[1].replace(`${LANES}/proofroom2-ps-20261004-022506`, '/tmp/runner copy');
+  const both = existing('/tmp/runner', '/tmp/runner copy');
+  expect(ownedProcessOf(spaced, '/tmp/runner copy', both)).toBe('present');
+  expect(ownedProcessOf(spaced, '/tmp/runner', both)).toBe('unknown');
+  expect(ownedProcessOf('node tests/preview/journal-agent.mjs run --root /tmp/runner copy --bot-id 123', '/tmp/runner', both)).toBe('unknown');
+  expect(ownedProcessOf('node tests/preview/journal-agent.mjs run --root /tmp/runner copy --bot-id 123', '/tmp/runner copy', both)).toBe('present');
+  // The root as the last argument, and a script path holding a space, still read whole.
+  expect(ownedProcessOf('node /tmp/my tree/tests/preview/journal-agent.mjs run --root /tmp/runner copy', '/tmp/runner copy', both)).toBe('present');
+  // Ambiguous lines stay unknown: a repeated --root, or no --root at all.
+  expect(ownedProcessOf('node tests/preview/journal-agent.mjs run --root /tmp/a --root /tmp/a', '/tmp/a', existing('/tmp/a'))).toBe('unknown');
+  expect(ownedProcessOf('node tests/preview/journal-agent.mjs inspect', '/tmp/a', existing('/tmp/a'))).toBe('unknown');
+});
+
+it('a root holding " --" never lets its runner vouch for the shorter sibling root (round-2 review pair)', () => {
+  // One argv value `/tmp/runner --copy`, flattened by ps exactly as the reviewer replayed it.
+  const line = 'node tests/preview/journal-agent.mjs run --root /tmp/runner --copy --bot-id 123';
+  // Both roots on disk: the text cannot say which one this runner serves, so neither is claimed running.
+  const both = existing('/tmp/runner', '/tmp/runner --copy');
+  expect(ownedProcessOf(line, '/tmp/runner', both)).toBe('unknown');
+  expect(ownedProcessOf(line, '/tmp/runner --copy', both)).toBe('unknown');
+  // Only the complete root on disk: it is recognised whole; the missing shorter path is not a root.
+  expect(ownedProcessOf(line, '/tmp/runner --copy', existing('/tmp/runner --copy'))).toBe('present');
+  // Only the shorter root on disk (the longer one never existed): the runner is the shorter root's.
+  expect(ownedProcessOf(line, '/tmp/runner', existing('/tmp/runner'))).toBe('present');
+  // The packet never shows the stopped shorter-root runner as running when its pid now runs the longer root.
+  const item = concurrentWorkItem({ now: 2_000_000, current: { owner: 'me', launch: 1_000_000, conversation: 'telegram/bot-1/chat-2' },
+    others: [{ owner: 'runner', launch: 1_500_000, pid: 42, conversation: 'telegram/bot-1/chat-2',
+      process: ownedProcessOf(line, '/tmp/runner', both) }], scanned: 1, truncated: false, unreadable: 0 });
+  expect(item.rows[1]).toMatchObject({ owner: 'runner', state: 'unknown' });
+});
+
+it('replays the recorded P114b packet: a runner relaunched after a process snapshot is running at the send, stopped after its exit', () => {
+  const at = { launch: 1791113172756, send: 1791113196254, exit: 1791115070742 };
+  const log = [
+    { v: 1, launch: 1791109817000, pid: 11377, work: { conversation: 'telegram/bot-8820318295/chat-7812716706' } },
+    { v: 1, launch: 1791109817000, exit: 1791113095000, reason: 'paused by signal SIGHUP' },
+    { v: 1, launch: at.launch, pid: 73747, work: { conversation: 'telegram/bot-8820318295/chat-7812716706' } },
+    { v: 1, launch: at.launch, poll: 'failed', at: at.launch + 1000 },
+  ].map(row => JSON.stringify(row)).join('\n');
+  const you = { owner: 'proofroom2-ps-20261004-022506', launch: Date.UTC(2026, 9, 4, 10, 31), conversation: 'telegram/bot-8989505249/chat-7812716706' };
+  const view = (text, process) => concurrentWorkItem({ now: at.send, current: you, scanned: 1, truncated: false, unreadable: 0,
+    others: [{ ...latestOwnedLaunch('justin-20261003-1046', text), process }] });
+  const justin = latestOwnedLaunch('justin-20261003-1046', log);
+  expect(justin).toEqual({ owner: 'justin-20261003-1046', launch: at.launch, pid: 73747, conversation: 'telegram/bot-8820318295/chat-7812716706' });
+  // At the send its pid was that root's runner: running, as the recorded packet showed.
+  expect(rowOf(view(log, 'present'), 'justin-20261003-1046')).toMatchObject({ state: 'running', launched: '2026-10-04T11:26Z' });
+  // Had it been killed without an exit row, the same log reads stale; it is never running without its process.
+  expect(rowOf(view(log, 'absent'), 'justin-20261003-1046').state).toBe('stale');
+  expect(rowOf(view(log, 'unknown'), 'justin-20261003-1046').state).toBe('unknown');
+  // Its recorded exit row (11:57:50Z) makes it stopped whatever the process reads.
+  const ended = `${log}\n${JSON.stringify({ v: 1, launch: at.launch, exit: at.exit, reason: 'paused by signal SIGHUP' })}`;
+  expect(rowOf(concurrentWorkItem({ now: at.exit + 60_000, current: you, scanned: 1, truncated: false, unreadable: 0,
+    others: [{ ...latestOwnedLaunch('justin-20261003-1046', ended), process: 'present' }] }), 'justin-20261003-1046'))
+    .toMatchObject({ state: 'stopped', endReason: 'paused by signal SIGHUP' });
 });
 
 const message = (world, id, text) => ({ update_id: id, message: { message_id: 100 + id,
