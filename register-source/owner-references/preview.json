@@ -55,7 +55,7 @@
       "stage": "build",
       "artifact": {
         "path": "tests/preview/journal-spend-cap.test.ts",
-        "hash": "sha256:6106ce0fa8eb1a6fabf5079c39826c36673ff7c9cf209ba4fef24672ee18ee70"
+        "hash": "sha256:3eccd30c04aad2b9c21d4283b1595ce5918fe4e5cf7e5982e1a44bdbf5d0aa2f"
       }
     },
     {
