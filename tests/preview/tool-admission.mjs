@@ -99,15 +99,17 @@ function policyNames(config, proposal) {
 /** The file a path names, resolved as the operating system resolves it: component by component (a relative path from
  * the workspace), each symlink followed where it stands, so `link/..` leaves through the link's target rather than
  * lexically. Components past the deepest existing one are kept as written. Null when a component is a symlink that
- * does not resolve (dangling or looping): a write through it would create a file wherever it points. `fs.exists` must
- * not follow symlinks (lstat), so a dangling link counts as present and then fails to resolve. */
+ * does not resolve (dangling or looping): a write through it would create a file wherever it points. Null too when `..`
+ * follows an absent component (`missing/../x`): the operating system refuses that lookup, and collapsing it here would
+ * hand back a path whose remaining components were never resolved. `fs.exists` must not follow symlinks (lstat), so a
+ * dangling link counts as present and then fails to resolve. */
 export function resolvedPath(workspace, path, fs) {
   const text = String(path), parts = text.split('/').filter(part => part !== '' && part !== '.');
   let real = text.startsWith('/') ? '/' : workspace;
   for (let i = 0; i < parts.length; i++) {
     if (parts[i] === '..') { real = dirname(real); continue; }
     const next = join(real, parts[i]);
-    if (!fs.exists(next)) return join(next, ...parts.slice(i + 1));
+    if (!fs.exists(next)) return parts.slice(i + 1).includes('..') ? null : join(next, ...parts.slice(i + 1));
     try { real = fs.realpath(next); } catch { return null; }
   }
   return real;
@@ -121,8 +123,10 @@ export function containedIn(workspace, path, fs) {
 /** Where a tool may write: the turn's workspace and the shell's temporary directory (both on the fixed-size scratch volume,
  * the sandbox's only write root). Where it may read: those, plus the system locations the sandbox reopens for commands
  * (`config.reads`, real paths: binaries, libraries, /private/etc). The hook and the sandbox share these sets and both
- * decide on the resolved file, so no other spelling of a path (a symlink, a /private alias, `..`) reaches past them, and
- * no readable file is refused for how it was spelled. Secret material (users' homes, keychains, the runner root and its
+ * decide on the resolved file, so no readable file is refused for how it was spelled. The sandbox decides at open (the
+ * kernel), so no spelling reaches past it; the hook decides before the harness opens, so it is an early refusal and a
+ * directory the agent swaps for a link between its check and the harness's open is not caught here (open, w4-toolpaths
+ * review MF2). Secret material (users' homes, keychains, the runner root and its
  * vault, other roots, the admission state) lies outside both. */
 export function toolRoots(config) {
   const writes = [config.workspace, ...(typeof config.tmp === 'string' ? [config.tmp] : [])];
@@ -206,12 +210,13 @@ export function admitToolCall(call, config, n, fs, child = 1, now) {
   if (!Number.isSafeInteger(n) || n < 1) return deny('admission count unavailable');
   if (n > config.maxCalls) return deny(`per-step call cap ${config.maxCalls} reached (call ${n})`);
   // A file tool or search is decided on the file its path resolves to, against the turn's read or write set, and the
-  // harness is handed that resolved path: a symlink the agent swaps after this check cannot redirect the call.
+  // harness is handed that resolved path, so a swap of the final link after this check does not redirect the call. A
+  // directory swapped for a link after this check still can (review MF2, open): this is the early refusal, not the boundary.
   const roots = toolRoots(config);
   const place = (path, set) => {
     if (typeof path !== 'string' || path.length === 0) return { ok: false, why: 'path absent' };
     const real = resolvedPath(config.workspace, path, fs);
-    if (real === null) return { ok: false, why: `path does not resolve: ${path} (a symlink in it points nowhere)` };
+    if (real === null) return { ok: false, why: `path does not resolve: ${path} (a symlink in it points nowhere, or \`..\` follows a missing directory)` };
     const via = real === path ? '' : ` (resolves to ${real})`;
     return roots[set].some(root => under(real, root)) ? { ok: true, real, changed: real !== path }
       : { ok: false, why: `${String(path)}${via}`, real };

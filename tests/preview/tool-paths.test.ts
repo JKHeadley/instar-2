@@ -60,6 +60,10 @@ it('resolves a path as the operating system does: a symlink before `..` is follo
   expect(resolvedPath(ws, '../../credentials.json', fs)).toBe(secret);
   expect(resolvedPath(ws, 'sub/new.txt', fs)).toBe(join(ws, 'sub/new.txt'));
   expect(resolvedPath(ws, 'dangling', fs)).toBeNull();
+  // `..` after an absent directory: the OS refuses that lookup, so it does not resolve (review MF1: collapsing it left
+  // `creds` unresolved and handed back the link itself).
+  expect(resolvedPath(ws, `${ws}/missing/../creds`, fs)).toBeNull();
+  expect(resolvedPath(ws, 'missing/../note.txt', fs)).toBeNull();
   if (darwin) expect(resolvedPath(ws, alias(secret), fs)).toBe(secret);
   expect(root.length).toBeGreaterThan(0);
 });
@@ -85,7 +89,9 @@ it('replays the recorded t2 shape (Rule 106): /etc/hosts is now readable by both
     const got = hook(state, 'Read', { ...read.input, file_path });
     expect([file_path, got.decision]).toEqual([file_path, 'deny']);
     expect(got.reason).toContain('outside the workspace');
-    if (file_path !== secret) expect(got.reason).toContain(`resolves to ${secret}`);
+    // `sub` is absent, so that spelling does not resolve at all (the OS refuses it too); the others name the secret.
+    if (file_path.includes('/sub/')) expect(got.reason).toContain('does not resolve');
+    else if (file_path !== secret) expect(got.reason).toContain(`resolves to ${secret}`);
   }
   // The admission state (the hook's own config) is not readable either, nor its alias.
   for (const file_path of [join(state, 'config.json'), ...(darwin ? [alias(join(state, 'config.json'))] : [])])
@@ -119,6 +125,10 @@ it('decides searches and writes on the resolved file too, so a symlink, an alias
   expect(hook(state, 'Write', { file_path: `${ws}/creds`, content: 'x' }).decision).toBe('deny');
   expect(hook(state, 'Write', { file_path: `${ws}/out/new.txt`, content: 'x' }).decision).toBe('deny');
   expect(hook(state, 'Edit', { file_path: `${ws}/out/../credentials.json`, old_string: 'a', new_string: 'b' }).decision).toBe('deny');
+  // Review MF1: `..` after an absent directory, ending on the agent's link to the secret: refused for reads and writes,
+  // where the neighbour (a new file under a new directory) is admitted.
+  for (const tool of ['Read', 'Write']) expect([tool, hook(state, tool, { file_path: `${ws}/missing/../creds`, content: 'x' })])
+    .toMatchObject([tool, { decision: 'deny', reason: expect.stringContaining('does not resolve') }]);
   // A dangling link would create its target wherever it points: refused as unresolvable, never treated as a new file.
   expect(hook(state, 'Write', { file_path: `${ws}/dangling`, content: 'x' })).toMatchObject({ decision: 'deny',
     reason: expect.stringContaining('does not resolve') });
@@ -149,10 +159,16 @@ it.runIf(darwin)('runs the shell under the sandbox profile the settings produce:
   // The agent's own symlink in the workspace to the secret, and the other spellings: each refused, never the canary.
   run(`ln -s ${secret} ${ws}/creds2`);
   for (const path of [secret, alias(secret), `${ws}/creds`, `${ws}/creds2`, `${ws}/../../credentials.json`, `${ws}/out/../credentials.json`,
-    alias(`${ws}/creds`)]) {
+    alias(`${ws}/creds`), `${ws}/missing/../creds`]) {
     const got = run(`cat ${path}`);
     expect([path, got.stdout.includes(SECRET), got.status === 0]).toEqual([path, false, false]);
   }
+  // Review MF2 on the shell side: a directory swapped for a link to the root between commands is decided at open.
+  run(`mkdir ${ws}/d && echo ok > ${ws}/d/credentials.json`);
+  expect(run(`cat ${ws}/d/credentials.json`).stdout).toBe('ok\n');
+  run(`mv ${ws}/d ${ws}/d-old && ln -s ${root} ${ws}/d`);
+  const swapped = run(`cat ${ws}/d/credentials.json`);
+  expect([swapped.stdout.includes(SECRET), swapped.status === 0]).toEqual([false, false]);
   // Nothing else behind the link spellings opens: /var/log stays refused, as /private/var/log is.
   expect(run('ls /var/log >/dev/null').status).not.toBe(0);
   expect(run(`cat ${ws}/note.txt`).stdout).toBe('hello\n');
