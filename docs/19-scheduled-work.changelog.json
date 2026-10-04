@@ -1,5 +1,21 @@
 [
   {
+    "revision": 10,
+    "date": "2026-10-03",
+    "status": "draft",
+    "cause": {
+      "kind": "draft",
+      "note": "Integration cint-L45 pipeline repair (plan row #443): the governance inventory check P15-NF-02 requires every governed Rule to name a negative fixture. No constitution change."
+    },
+    "changes": [
+      {
+        "what": "§5's three session Rules now name the existing negative fixtures whose contracts they carry: the delegated-session grant Rule P15-NF-05, the full-tool-set Rule P15-NF-12 and the spend-bound Rule P15-NF-30.",
+        "why": "The w4-sessiondriver merge added the three Rules with test files only, so the Part Fifteen governance inventory found them unmapped.",
+        "ref": "tests/scheduled/governance.test.ts (P15-NF-02); lanes/cint-L45-PROGRESS.md"
+      }
+    ]
+  },
+  {
     "revision": 9,
     "date": "2026-10-03",
     "status": "draft",

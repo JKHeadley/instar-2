@@ -4,6 +4,10 @@ _Generated from `19-scheduled-work.changelog.json` by `scripts/render-changelog.
 The document itself reads as a first version; every change to it is recorded here, newest first,
 each linked to the git change that made it (rule 91).
 
+## Revision 10 · 2026-10-03 · draft — Integration cint-L45 pipeline repair (plan row #443): the governance inventory check P15-NF-02 requires every governed Rule to name a negative fixture. No constitution change.
+
+- **§5's three session Rules now name the existing negative fixtures whose contracts they carry: the delegated-session grant Rule P15-NF-05, the full-tool-set Rule P15-NF-12 and the spend-bound Rule P15-NF-30.** — The w4-sessiondriver merge added the three Rules with test files only, so the Part Fifteen governance inventory found them unmapped. _(tests/scheduled/governance.test.ts (P15-NF-02); lanes/cint-L45-PROGRESS.md)_
+
 ## Revision 9 · 2026-10-03 · draft — Integration cint-L45: w4-sessiondriver (built on cint-L41) merged onto cint-L44. Revisions 6 to 8 are the unit's own revisions 4 to 6, renumbered. No constitution change.
 
 - **§5 session rule: a session's network reads keep the tool turn's web-read host rule, so a web fetch of this machine or its private network is refused.** — The merged admission decision applies cint-L43's host rule on every route, and the session step's own checkpoint listens on this machine. _(lanes/cint-L45-PROGRESS.md; lanes/w4-sessiondriver-PROGRESS.md)_
