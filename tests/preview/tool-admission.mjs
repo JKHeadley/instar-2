@@ -402,7 +402,7 @@ export function heldRefusal(held, text) {
 /** Plan #507: the longest text one held-secret check carries (an outward tool call's input; larger is refused, never
  * truncated, since a truncated check could miss a value in the part left out). */
 export const HELD_CHECK_MAX_BYTES = 1024 * 1024;
-/** Plan #507: the text an outward tool request carries off the machine (every string in its input), or null for a tool
+/** Plan #507: the text an outward tool request carries off the machine (every string in its input, property names included), or null for a tool
  * whose input does not leave it (a file tool, a search, a sandboxed shell command, whose network goes through the shell's
  * checkpoint, a subagent). Outward: WebFetch, WebSearch, a Codex network read, a named outward tool, an MCP tool, and a
  * shell command run outside the sandbox. */
@@ -415,7 +415,8 @@ export function outwardText(tool, input) {
   const walk = value => {
     if (typeof value === 'string') strings.push(value);
     else if (Array.isArray(value)) value.forEach(walk);
-    else if (value && typeof value === 'object') Object.values(value).forEach(walk);
+    // A property name leaves the machine too (an MCP map of query parameters or headers), so it is checked as a value is.
+    else if (value && typeof value === 'object') for (const [name, item] of Object.entries(value)) { strings.push(name); walk(item); }
   };
   walk(input);
   return strings.join('\n');

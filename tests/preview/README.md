@@ -3824,14 +3824,15 @@ prefix). It is withheld from every reply like credential-shaped text, refused at
 recorded tool excerpts, and checked before any outward tool request is dispatched:
 
 - the admission hook asks the runner (the turn's runner socket, or the host checkpoint on a checkpointed route) about
-  every string an outward tool call carries (WebFetch, WebSearch, a Codex network read, an MCP or other outward tool,
+  every string and property name an outward tool call carries (WebFetch, WebSearch, a Codex network read, an MCP or other outward tool,
   an unsandboxed command) before anything is done for it, a name lookup included, and refuses one that carries a held
   value; its record keeps `[withheld …]` instead of the input;
 - the shell's network checkpoint checks each request's host, path and headers (a CONNECT authority before its name is
   resolved), a held git-fetch body whole, and a streamed body as it arrives, holding back the longest held form so no
   part of a value is forwarded before all of it is seen; its record never keeps the value.
 
-The check fails closed (Rule 95: its miss is a secret leaving): a held source that cannot be read now, a check that does
+The check fails closed (Rule 95: its miss is a secret leaving): a held source that cannot be read now (a registered or
+MCP-referenced credential whose sealed object cannot be opened counts: `custodyHeldSources`), a check that does
 not answer, an input over 1 MiB, or no check at all refuses the outward request. Ordinary web reads, searches and shell
 network are otherwise unchanged; nothing is added to a request on the runner's behalf.
 

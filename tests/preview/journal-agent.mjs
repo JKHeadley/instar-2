@@ -10,7 +10,7 @@ import { openProductionStorage } from '../../src/assembly/production-storage.js'
 import { DEFAULT_SUBSCRIPTION_DOORWAY, subscriptionDoorway,
   SUBSCRIPTION_PREVIEW_EXPIRY, SUBSCRIPTION_TOOLS_SYSTEM_PROMPT } from '../../src/assembly/production-provider.js';
 import { attachEgress, attachSessionVolume, networkToolReads, readRootMcp, reconcileToolTurns, runToolTurn, toolPacketFits, toolStatusLines, toolTurnEligible, TOOL_NOTICE_MAX_BYTES,
-  TOOLS_DEFAULT_ACTIVATION, createHeldSecrets, heldSpan, heldVerdict } from './tool-turn.mjs';
+  TOOLS_DEFAULT_ACTIVATION, createHeldSecrets, custodyHeldSources, heldSpan, heldVerdict } from './tool-turn.mjs';
 import { prepareSessionAdmission, sessionAdmissionCommand, SESSION_ADMISSION_KEPT } from './session-admission.mjs';
 import { createAdmissionGate, createToolEffectOwner } from './admission-gate.mjs';
 import { admitToolCallEffect } from './tool-admission.mjs';
@@ -1484,13 +1484,7 @@ async function main() {
     const harnessLoginProfile = options['harness-user'] === undefined ? null : JSON.parse(readFileSync(required(options, 'login-profile'), 'utf8'));
     const heldSecrets = createHeldSecrets({
       environment: () => Object.entries(process.env).flatMap(([name, value]) => name.startsWith('INSTAR_SECRET_') && value ? [value] : []),
-      vault: () => custody.records().flatMap(record => {
-        if (record.custody !== 'preview-vault') return [];
-        try { return [custody.resolve(secretRef(record.name))]; } catch { return []; /* status reports the missing object */ }
-      }),
-      mcp: () => Object.values(readRootMcp(root)?.secrets ?? {}).flatMap(refs => Object.values(refs).flatMap(ref => {
-        try { return [custody.resolve(secretRef(ref))]; } catch { return []; /* never served: the turn refuses (runToolTurn) */ }
-      })),
+      ...custodyHeldSources(custody, () => readRootMcp(root)?.secrets ?? {}),
       ...(harnessLoginProfile === null ? {} : {
         'harness login': () => [readHarnessLogin(harnessLoginProfile)],
         'harness profile login': () => harnessCredentialValues(harnessLoginProfile.configDirectory) }),

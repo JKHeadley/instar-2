@@ -304,6 +304,18 @@ export function createHeldSecrets(sources) {
     return { values: [...kept], unavailable: failing.length ? failing.join('; ') : null };
   };
 }
+/** Plan #507 (Rule 95): the held-set readers over the runner's custody (`custody`, createSecretCustody) — `vault`, every
+ * registered preview-vault credential, and `mcp`, every credential the root's MCP servers reference (`mcpSecrets()`, server
+ * name to env name to secret name). A credential that cannot be resolved now throws, so its source reads unavailable and
+ * every outward request refuses: custody that cannot be opened is not an established absence, since a context kept from an
+ * earlier runner may still hold the value. No registered or referenced credential reads as an established absence. */
+export function custodyHeldSources(custody, mcpSecrets) {
+  const ref = name => ({ type: 'SecretRef', schemaVersion: 1, vault: 'preview', name });
+  return {
+    vault: () => custody.records().flatMap(record => record.custody === 'preview-vault' ? [custody.resolve(ref(record.name))] : []),
+    mcp: () => Object.values(mcpSecrets()).flatMap(refs => Object.values(refs).map(name => custody.resolve(ref(name)))),
+  };
+}
 /** The held-secret check one outward request asks before it is dispatched (the admission hook through the turn socket or
  * the host checkpoint, and the shell's network checkpoint): `held` when `text` carries a held value in any recognised form
  * (reply-check.ts secretMaterialIn, also case-folded), `unavailable` when a held source cannot be read now (Rule 95: this consumer fails
