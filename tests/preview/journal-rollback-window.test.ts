@@ -6,10 +6,10 @@
 // and records that message; this file proves the window the fix installs, on the same byte shape.
 import { expect, it } from 'vitest';
 import { createCipheriv, createHash, randomBytes } from 'node:crypto';
-import { appendFileSync, mkdtempSync, readFileSync, realpathSync, rmSync, statSync } from 'node:fs';
+import { appendFileSync, mkdtempSync, readFileSync, realpathSync, rmSync, statSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
-import { JOURNAL_GENERATION, KNOWN_FRAME_KINDS, openPreviewJournal, type JournalRecord } from './journal.js';
+import { durableProjection, JOURNAL_GENERATION, KNOWN_FRAME_KINDS, openPreviewJournal, type JournalRecord } from './journal.js';
 
 const key = new Uint8Array(32).fill(47);
 const at = 1790520000000;
@@ -150,6 +150,9 @@ it('will not compact away a forward frame, and still compacts a root without one
     try {
       expect(journal.view.forwardFrames).toHaveLength(1);
       expect(digestOf(path)).toBe(before); // the open did not rewrite it
+      // An explicit call is refused too: `compact` is handed to every holder, not only the automatic path.
+      expect(() => journal.compact()).toThrow('preview journal: compaction refused while a forward frame is present');
+      expect(digestOf(path)).toBe(before);
       journal.append({ kind: 'hold', id: id(1), reason: 'reply check unavailable', at: at + 8 });
       expect(statSync(path).size).toBeGreaterThan(bytesBefore); // it kept appending instead
     } finally { journal.close(); }
@@ -164,6 +167,10 @@ it('will not compact away a forward frame, and still compacts a root without one
     try {
       expect(other.view.forwardFrames).toHaveLength(0);
       expect(digestOf(controlPath)).not.toBe(controlBefore); // the same threshold did compact this one
+      expect(other.view.order[0]?.answer).toBe('Sam keeps the cedar map in the green drawer.');
+      const compactedOnce = digestOf(controlPath);
+      other.compact(); // and an explicit call still compacts a root without one
+      expect(digestOf(controlPath)).not.toBe(compactedOnce);
       expect(other.view.order[0]?.answer).toBe('Sam keeps the cedar map in the green drawer.');
     } finally { other.close(); }
   } finally { rmSync(directory, { recursive: true, force: true }); rmSync(control, { recursive: true, force: true }); }
@@ -193,5 +200,67 @@ it('keeps the orphan-effect refusal for a kind it does know whose turn is missin
     // must stay refused under its own name — the window widens nothing for a frame the reader understands.
     sealFrameAt(path, { kind: 'sent', id: id(9), message: 999, at: at + 6 } satisfies JournalRecord);
     expect(() => openPreviewJournal(path, key)).toThrow('preview journal: orphan effect');
+  } finally { rmSync(directory, { recursive: true, force: true }); }
+});
+
+/** A root a newer build COMPACTED before the rollback: genesis, then one snapshot whose retained evidence
+ * carries the frame that build added. The saved projection is this build's own, so only the retained row
+ * differs between the neighbours — exactly the representation a newer writer's compaction leaves. */
+function snapshotRoot(directory: string, forwardRow: unknown): string {
+  const seeded = seedRoot(directory, undefined);
+  const journal = openPreviewJournal(seeded, key, undefined, undefined, true);
+  const saved = { view: durableProjection(journal.view), retained: forwardRow === undefined ? [] : [forwardRow] };
+  const stored = journal.view.genesis;
+  journal.close(); rmSync(seeded);
+  const path = join(directory, 'snapshot.encrypted');
+  writeFileSync(path, '');
+  const data = Buffer.from(JSON.stringify(saved));
+  sealFrameAt(path, stored);
+  sealFrameAt(path, { kind: 'snapshot-start', version: 1, chunks: 1, bytes: data.length,
+    digest: createHash('sha256').update(data).digest('hex') });
+  sealFrameAt(path, { kind: 'snapshot-chunk', data: data.toString('base64') });
+  return path;
+}
+
+it('admits a snapshot\'s retained frames on the same test a raw frame meets', () => {
+  const directory = temp();
+  try {
+    // Ordinary control: a snapshot with nothing unknown restores whole and reports no forward frame.
+    const control = snapshotRoot(directory, undefined);
+    const plain = openPreviewJournal(control, key);
+    try {
+      expect(plain.compacted).toBe(true);
+      expect(plain.view.forwardFrames).toEqual([]);
+      expect(plain.view.order[0]?.answer).toBe('Sam keeps the cedar map in the green drawer.');
+    } finally { plain.close(); }
+    rmSync(control);
+
+    // One generation ahead and additive: read, named, and never compacted away.
+    const ahead = snapshotRoot(directory, { kind: nextKind, forward: { generation: JOURNAL_GENERATION + 1, additive: true },
+      record: realSessionWorkEdge, at: at + 6 });
+    const before = digestOf(ahead);
+    const journal = openPreviewJournal(ahead, key, undefined, undefined, false, 64);
+    try {
+      expect(journal.view.forwardFrames).toEqual([{ kind: nextKind, generation: JOURNAL_GENERATION + 1, at: at + 6 }]);
+      expect(journal.view.order[0]?.sent).toBe(101);
+      expect(digestOf(ahead)).toBe(before);
+      expect(() => journal.compact()).toThrow('compaction refused while a forward frame is present');
+      expect(digestOf(ahead)).toBe(before);
+    } finally { journal.close(); }
+    rmSync(ahead);
+
+    // Two generations ahead: refused before any mutation, as a raw frame is.
+    const tooNew = snapshotRoot(directory, { kind: nextKind, forward: { generation: JOURNAL_GENERATION + 2, additive: true },
+      record: realSessionWorkEdge, at: at + 6 });
+    const tooNewBefore = digestOf(tooNew);
+    expect(() => openPreviewJournal(tooNew, key)).toThrow('more than one build ahead');
+    expect(digestOf(tooNew)).toBe(tooNewBefore);
+    rmSync(tooNew);
+
+    // Undeclared: it may be load-bearing, so the snapshot is refused whole.
+    const undeclared = snapshotRoot(directory, { kind: nextKind, record: realSessionWorkEdge, at: at + 6 });
+    const undeclaredBefore = digestOf(undeclared);
+    expect(() => openPreviewJournal(undeclared, key)).toThrow(`preview journal: unknown frame kind "${nextKind}"`);
+    expect(digestOf(undeclared)).toBe(undeclaredBefore);
   } finally { rmSync(directory, { recursive: true, force: true }); }
 });

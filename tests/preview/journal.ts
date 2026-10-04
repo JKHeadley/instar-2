@@ -1706,6 +1706,11 @@ function restoreSnapshot(snapshot: Snapshot, genesis: JournalView['genesis']): J
     summaryGrants: (saved.summaryGrants ?? []).map(grant => ({ id: grant.id, source: grant.source })), stopChallenges: saved.stopChallenges ?? [], waiting: saved.waiting ?? [],
     sendOutcomes: saved.sendOutcomes ?? [], speakers: saved.speakers ?? { agent: 0, infrastructure: 0 }, modelCalls: saved.modelCalls ?? emptyModelCalls(), retroPasses: saved.retroPasses ?? [],
     indexOffered: saved.indexOffered ?? [], indexConcepts: saved.indexConcepts ?? [], indexOpen: saved.indexOpen ?? null, indexUnknown: saved.indexUnknown ?? [] };
+  // Rule 42: a snapshot is the same history in another shape, so a kind this build does not project is
+  // admitted on exactly the test a raw frame meets — a newer build that compacted before the rollback must
+  // not turn a refusal into a read. Known kinds are already in the saved projection and are not replayed;
+  // only the per-reader observation `forwardFrames` is rebuilt, which also keeps compaction refused.
+  for (const row of snapshot.retained) if (!KNOWN_FRAME_KINDS.has(row.kind)) admitForwardFrame(view, row);
   verifyPendingEvidence(snapshot.retained, view);
   // Older snapshots retained the exact notice intents but did not project them
   // into awayEvents. Recover their times so the first upgraded send keeps its fence.
@@ -4540,6 +4545,9 @@ export function openPreviewJournal(path: string, key: Uint8Array, initial?: Extr
     const compactable = () => view === undefined || view.forwardFrames.length === 0;
     function compact(): void {
       if (readOnly || closed || !view) throw Error('preview journal: compaction refused');
+      // Enforced here, not only at the two automatic callers: `compact` is returned to every holder of the
+      // journal, and an explicit call must not destroy a forward frame the automatic path preserves.
+      if (!compactable()) throw Error('preview journal: compaction refused while a forward frame is present');
       const temp = `${path}.compacting`;
       let tempFd: number | undefined;
       try {
