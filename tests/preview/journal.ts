@@ -37,7 +37,9 @@ import type { IndependentSurfaceVerifierPort, InstalledShape, MinimalDependency,
 import { authenticateTelegramSender, principalBoundToUpdate, systemWriters, verifiedAtIntake, TELEGRAM_ADAPTER, testOriginWriter, writerBoundToRaw, writerRecord, type SystemMethod, type WriteOrigin, type WriterRecord } from './intake-principal.js';
 import { LIVE_JUDGMENTS, type ModelCallRecord } from './model-call-boundary.js';
 import { outboundSigner, settleSendOutcome, type OutboundProvenance, type OutboundSubject, type SendOutcome, type SettledSendOutcome, type Speaker } from './outbound-provenance.js';
-import { retrospectivePlan, retrospectivePopulation, validateRetrospective, replyContextDigest, RETRO_OVER_CAP_REASON, type RetroPass, type RetroSiblingEvidence } from './retrospective.js';
+import { retrospectivePlan, retrospectivePopulation, validateRetrospective, replyContextDigest, RETRO_OVER_CAP_REASON, RETRO_DUTY_FOLLOWUP_QUESTION,
+  dutiesLeftUninspected, dutyFollowUpPacket, mergeDutyFollowUp, retroCallReserve, retroFollowUpReason, RETROSPECTIVE_DUTIES,
+  type RetroPass, type RetroSiblingEvidence, type RetrospectiveDuty } from './retrospective.js';
 import { openReplyNotices, validAnswerNotices, type ReplyNotice } from './credential-reminders.js';
 import { admitChatYes, chatBinding, explicitYesStatus, operatorRefusalText, operatorRequestText, operatorResultText, operatorReviewBodyText, operatorReviewRequestText,
   operatorRequestTarget, operatorYesAuthority, parseOperatorAction, proposeOperatorRequest, proposeRetractRequest, wellFormedRequest, OPERATOR_REQUEST_MS,
@@ -1151,6 +1153,12 @@ export type JournalRecord =
   /** One bounded benchmark rerun of a promoted case under the current reply configuration, inside its pass. */
   | { kind: 'retro-rerun-reserve'; pass: number; index: number; case: string; contextDigest: string; at: number }
   | { kind: 'retro-rerun'; pass: number; index: number; state: 'complete' | 'failed' | 'unknown'; answer?: string; reason?: string; usage?: ModelUsage; at: number }
+  /** The pass's duty follow-up: one more call, inside its pass and the cap, about the duties the first answer left
+   * uninspected although their evidence was present. It holds the first answer's validated result and usage, so a
+   * crash before the pass is recorded loses nothing the first answer produced. */
+  | { kind: 'retro-duty-reserve'; pass: number; duties: RetrospectiveDuty[];
+    held: NonNullable<RetroPass['result']>; heldUsage?: ModelUsage; at: number }
+  | { kind: 'retro-duty'; pass: number; state: 'complete' | 'failed' | 'unknown'; reason?: string; usage?: ModelUsage; at: number }
   /** Part 18: one live sentinel tick that changed something (sentinel-record.ts). */
   | SentinelRecord;
 
@@ -2395,6 +2403,13 @@ function checkRerunReserve(view: JournalView, row: Extract<JournalRecord, { kind
   if (!pass || pass.state !== undefined || row.index !== (pass.reruns?.length ?? 0) || !row.case.startsWith('answer:')
     || view.calls >= view.limits.maxCalls) throw Error('preview journal: benchmark rerun order or cap');
 }
+/** A duty follow-up reservation: once per pass, after its reruns settled, inside the cap, for known duties only. */
+function checkDutyReserve(view: JournalView, row: Extract<JournalRecord, { kind: 'retro-duty-reserve' }>): void {
+  const pass = view.retroPasses[row.pass];
+  if (!pass || pass.state !== undefined || pass.dutyFollowUp !== undefined || (pass.reruns ?? []).some(run => run.state === undefined)
+    || !row.duties.length || !row.duties.every(duty => RETROSPECTIVE_DUTIES.includes(duty)) || view.calls >= view.limits.maxCalls)
+    throw Error('preview journal: retrospective duty follow-up order or cap');
+}
 function validateCallOutcome(view: JournalView, row: Extract<JournalRecord, { kind: 'call-outcome' }>): void {
   const summary = /^summary:(\d+(?:\.\d+)?)(:review)?$/.exec(row.id);
   const valid = row.role === 'summary' ? !!summary && view.summaryReservations.has(Number(summary[1]))
@@ -2402,9 +2417,10 @@ function validateCallOutcome(view: JournalView, row: Extract<JournalRecord, { ki
     : row.role === 'reply-review' ? row.id.endsWith(':reply-review') && !!view.turns.get(row.id.slice(0, -13))?.reviewReserved
       || row.id.endsWith(':reply-revision') && !!view.turns.get(row.id.slice(0, -15))?.revisionReserved
       || row.id.endsWith(':revision-review') && !!view.turns.get(row.id.slice(0, -16))?.revisionReviewReserved
-    : /^retrospective:\d+(?::rerun:\d+)?$/u.test(row.id) ? view.retroPasses.some(pass => pass.state === undefined
+    : /^retrospective:\d+(?::rerun:\d+|:duties)?$/u.test(row.id) ? view.retroPasses.some(pass => pass.state === undefined
       && (`retrospective:${String(pass.pass)}` === row.id || (pass.reruns ?? []).some(run => run.state === undefined
-        && `retrospective:${String(pass.pass)}:rerun:${String(run.index)}` === row.id)))
+        && `retrospective:${String(pass.pass)}:rerun:${String(run.index)}` === row.id)
+        || pass.dutyFollowUp?.state === undefined && pass.dutyFollowUp !== undefined && `retrospective:${String(pass.pass)}:duties` === row.id))
     : !!view.turns.get(row.id)?.reserved;
   const o = row.outcome;
   if (!valid || !o || ![o.elapsedMs, o.promptBytes].every(n => Number.isSafeInteger(n) && n >= 0)
@@ -3385,7 +3401,8 @@ function project(view: JournalView, row: JournalRecord, system?: SystemCheck, ad
   if (row.kind === 'retro') {
     const pass = view.retroPasses[row.pass];
     if (!pass || pass.state !== undefined || (row.state === 'complete') !== (row.result !== undefined)
-      || (pass.reruns ?? []).some(run => run.state === undefined))
+      || (pass.reruns ?? []).some(run => run.state === undefined)
+      || pass.dutyFollowUp !== undefined && (pass.dutyFollowUp.state === undefined || row.state !== 'complete'))
       throw Error('preview journal: retrospective result order');
     settleTokens(view, `retrospective:${String(row.pass)}`, row.usage);
     pass.state = row.state; pass.completedAt = row.at;
@@ -3396,6 +3413,22 @@ function project(view: JournalView, row: JournalRecord, system?: SystemCheck, ad
     if (typeof row.usage?.outputTokens === 'number') pass.outputTokens = row.usage.outputTokens;
     if (row.result) pass.result = row.result;
     if (row.reason !== undefined) pass.reason = row.reason;
+    return;
+  }
+  if (row.kind === 'retro-duty-reserve') {
+    checkDutyReserve(view, row);
+    reserveTokens(view, `retrospective:${String(row.pass)}:duties`, 'summary', view.limits.maxBytes, subscriptionOutputMaximum);
+    view.calls++;
+    view.retroPasses[row.pass]!.dutyFollowUp = { duties: row.duties, held: row.held, ...(row.heldUsage ? { heldUsage: row.heldUsage } : {}) };
+    return;
+  }
+  if (row.kind === 'retro-duty') {
+    const followUp = view.retroPasses[row.pass]?.dutyFollowUp;
+    if (!followUp || followUp.state !== undefined || view.retroPasses[row.pass]!.state !== undefined)
+      throw Error('preview journal: retrospective duty follow-up result order');
+    settleTokens(view, `retrospective:${String(row.pass)}:duties`, row.usage);
+    followUp.state = row.state;
+    if (row.reason !== undefined) followUp.reason = row.reason;
     return;
   }
   if (row.kind === 'retro-rerun-reserve') {
@@ -4169,6 +4202,7 @@ export function openPreviewJournal(path: string, key: Uint8Array, initial?: Extr
         throw Error('preview journal: outbound provenance refused');
       // Checked before the durable write: a record its own projection would refuse must never reach the file.
       if (row.kind === 'retro-rerun-reserve') checkRerunReserve(view!, row);
+      if (row.kind === 'retro-duty-reserve') checkDutyReserve(view!, row);
       if (row.kind === 'reply-review-reserve' && row.promptSha256
         && row.promptSha256 !== createHash('sha256').update(view!.turns.get(row.id)?.prompt ?? '').digest('hex'))
         throw Error('preview journal: reply review prompt reference differs');
@@ -4178,7 +4212,7 @@ export function openPreviewJournal(path: string, key: Uint8Array, initial?: Extr
         || (row.kind === 'limited-intent' && row.approval?.action !== 'stop' && reserveRepliesUsed(view, row.at) >= MINIMAL_RESERVE.replies)
         || ((row.kind === 'reserve' || row.kind === 'summary-reserve' || row.kind === 'index-reserve' || row.kind === 'reply-review-reserve'
           || row.kind === 'reply-revision-reserve' || row.kind === 'reply-revision-review-reserve' || row.kind === 'format-retry' || row.kind === 'lookup'
-          || row.kind === 'answer-replace' || row.kind === 'retro-reserve' || row.kind === 'retro-rerun-reserve')
+          || row.kind === 'answer-replace' || row.kind === 'retro-reserve' || row.kind === 'retro-rerun-reserve' || row.kind === 'retro-duty-reserve')
           && view.calls >= view.limits.maxCalls)
         || (row.kind === 'intent' && view.replies >= view.limits.maxReplies)
         || (row.kind === 'reply-jev-reserve' && view.jevChecks >= view.limits.maxReplies)))
@@ -4564,8 +4598,9 @@ export interface PreviewPorts {
   /** Extra plain lines for the status pull, read at the moment of answering (Rule 43: proof posture; Rules 63/33: ownership, store checks). */
   statusExtra?(): readonly string[];
   /** The bounded retrospective review: one subscription attempt over the pass's case packet.
-   * `value` is the model's JSON answer text; anything else leaves the cases owed. */
-  retrospect?(state: string, id: string): Promise<{ state: 'complete'; value: string; usage?: ModelUsage }
+   * `value` is the model's JSON answer text; anything else leaves the cases owed. `question` is set only for the
+   * pass's duty follow-up (RETRO_DUTY_FOLLOWUP_QUESTION); absent, the port asks RETROSPECTIVE_QUESTION. */
+  retrospect?(state: string, id: string, question?: string): Promise<{ state: 'complete'; value: string; usage?: ModelUsage }
     | { state: 'complete' | 'rejected' | 'uncertain'; failureClass?: ModelFailureClass; usage?: ModelUsage }>;
   /** Typed seam for evidence other builds own (build 5: waiver authorizations and acts). Absent: the duty is recorded unavailable. */
   retrospectiveEvidence?(): RetroSiblingEvidence;
@@ -9001,7 +9036,17 @@ export function createJournalWorker(journal: ReturnType<typeof openPreviewJourna
       if (last && last.state === undefined) {
         for (const run of last.reruns ?? []) if (run.state === undefined)
           journal.append({ kind: 'retro-rerun', pass: last.pass, index: run.index, state: 'unknown', reason: 'interrupted before its result was recorded', at: ports.now() });
-        journal.append({ kind: 'retro', pass: last.pass, state: 'unknown', reason: 'interrupted before its result was recorded; never replayed', at: ports.now() });
+        const followUp = last.dutyFollowUp;
+        if (followUp) {
+          // The first answer was validated and held before the follow-up was reserved: it is recorded as it stood,
+          // with the interruption on every duty it left uninspected. The follow-up itself is never replayed.
+          const unsettled = followUp.state === undefined;
+          if (unsettled)
+            journal.append({ kind: 'retro-duty', pass: last.pass, state: 'unknown', reason: 'interrupted before its result was recorded', at: ports.now() });
+          journal.append({ kind: 'retro', pass: last.pass, state: 'complete', result: followUp.held,
+            reason: retroFollowUpReason(unsettled ? 'interrupted, outcome unknown, never replayed' : 'its result was not recorded before an interruption'),
+            ...(followUp.heldUsage ? { usage: followUp.heldUsage } : {}), at: ports.now() });
+        } else journal.append({ kind: 'retro', pass: last.pass, state: 'unknown', reason: 'interrupted before its result was recorded; never replayed', at: ports.now() });
       }
       if (journal.view.stop || ports.stopped() || ports.now() >= journal.view.expires) return;
       const population = retrospectiveCases(journal.view);
@@ -9052,8 +9097,46 @@ export function createJournalWorker(journal: ReturnType<typeof openPreviewJourna
         const reason = error instanceof SyntaxError ? 'answer was not JSON' : error instanceof Error ? error.message : 'answer refused';
         journal.append({ kind: 'retro', pass, state: 'failed', reason, ...usage, at: ports.now() }); return;
       }
-      journal.append({ kind: 'retro', pass, state: 'complete', result, ...usage, at: ports.now() });
+      // Rule 9: a duty whose evidence was present but which the answer did not inspect is asked about once more,
+      // before the pass is recorded complete. The result then carries what the follow-up did, or why it did not.
+      let reason: string | undefined;
+      if (dutiesLeftUninspected(result).length) {
+        const followed = await followUpDuties(pass, plan, result, answer.usage, contextDigest);
+        result = followed.result;
+        if (dutiesLeftUninspected(result).length) reason = retroFollowUpReason(followed.detail);
+      }
+      journal.append({ kind: 'retro', pass, state: 'complete', result, ...(reason === undefined ? {} : { reason }), ...usage, at: ports.now() });
     } finally { retrospecting = false; }
+  };
+  /** The pass's duty follow-up (RETRO_DUTY_FOLLOWUP_QUESTION): one call inside the same spend admission and reply
+   * reserve as the pass, about exactly the duties the first answer left uninspected although their evidence was
+   * present. Returns the result to record: merged, or the first answer with the reason the follow-up did not discharge it. */
+  const followUpDuties = async (pass: number, plan: NonNullable<ReturnType<typeof retrospectivePlan>>,
+    held: NonNullable<RetroPass['result']>, heldUsage: ModelUsage | undefined, contextDigest: string)
+    : Promise<{ result: NonNullable<RetroPass['result']>; detail: string }> => {
+    const view = journal.view, asked = dutiesLeftUninspected(held);
+    const kept = (detail: string) => ({ result: held, detail });
+    if (view.limits.maxCalls - view.calls - retroCallReserve(view.limits.maxCalls) < 1) return kept('not run, model attempts kept in reserve for replies');
+    if (view.stop || ports.stopped() || ports.now() >= view.expires) return kept('not run, the preview stopped');
+    journal.append({ kind: 'retro-duty-reserve', pass, duties: asked, held, ...(heldUsage ? { heldUsage } : {}), at: ports.now() });
+    const settle = (state: 'complete' | 'failed' | 'unknown', reason: string | undefined, usage: ModelUsage | undefined) =>
+      journal.append({ kind: 'retro-duty', pass, state, ...(reason === undefined ? {} : { reason }), ...(usage ? { usage } : {}), at: ports.now() });
+    let answer: Awaited<ReturnType<NonNullable<PreviewPorts['retrospect']>>>;
+    try { gate(); answer = await ports.retrospect!(dutyFollowUpPacket(plan.state, asked), `retrospective:${String(pass)}:duties`, RETRO_DUTY_FOLLOWUP_QUESTION); }
+    catch { settle('unknown', 'model call failed or was stopped', undefined); return kept('model call failed or was stopped, outcome unknown'); }
+    if (answer.state === 'uncertain') { settle('unknown', 'model outcome uncertain', answer.usage); return kept('model outcome uncertain'); }
+    if (!('value' in answer)) {
+      const reason = `model ${answer.failureClass ?? answer.state}`;
+      settle('failed', reason, answer.usage); return kept(reason);
+    }
+    try {
+      const merged = mergeDutyFollowUp(JSON.parse(answer.value.trim().replace(/^```(?:json)?\s*|\s*```$/gu, '')), plan, journal.view, pass, held, ports.now(), contextDigest);
+      settle('complete', undefined, answer.usage);
+      return { result: merged, detail: 'ran, and its answer did not inspect them either' };
+    } catch (error) {
+      const reason = error instanceof SyntaxError ? 'answer was not JSON' : error instanceof Error ? error.message : 'answer refused';
+      settle('failed', reason, answer.usage); return kept(`answer refused, ${reason}`);
+    }
   };
   /** The recorded requests a due turn's selection must agree with: each quote, when it was asked and when it was due. */
   const actionDueEvidence = (turn: Turn, step: string): object => ({ step, selectedAt: isoMinute(turn.at),
