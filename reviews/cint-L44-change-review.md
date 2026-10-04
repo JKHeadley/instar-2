@@ -25,6 +25,14 @@ Decision: cint-L44-native-fit | the native loop runs on cint-L43's hook unchange
 Decision: cint-L44-measured-bound | the compact-packet fixture bound in journal.test.ts records memlearn's widened offer (11213, bound 11240); it failed on origin/w4-memlearn-s itself | reported=/Users/dabombstudio/.instar/agents/echo/.instar/lanes/cint-L44-PROGRESS.md
 Decision: cint-L44-desk | changelog renumbered (12 shellnet, 13-16 native, 17 integration) and re-rendered; conformance re-declared after native-harness-contract on the fresh build (0c24f974); desk chain as cint-L37 records it: repin 0, tsc 0, rehash 2 pins in preview.json (tool-persist.test.ts, 9974e220), register replay at 9974e220 (3ef6a397); build-register --check is true | reported=/Users/dabombstudio/.instar/agents/echo/.instar/lanes/cint-L44-PROGRESS.md
 Prompt review: the model-facing changes are the carried units' (w4-shellnet-s's network sentence, w4-native's step protocol, w4-memlearn-s's memory-failure offer), reviewed in their records with their recorded shapes. This build's own model-facing text is the merged tool sentence (persist's workspace wording plus shellnet's network wording, each as its unit wrote it) and the doorway's existing refusal reason now reaching shell network writes. Always-sent answer bytes on a default root are unchanged (+0, 22,959).
+Prompt finding: 450c79237a95 | protocol-literal | existing conversation system-prompt wording in production-provider.ts, unchanged by this change (as dispositioned in the carried records); this build merges only the tool sentence beside it
+Prompt finding: 849db3a6296a | protocol-literal | an existing fixed reply literal in journal.ts, unchanged by this change
+Prompt finding: bd01de21286a | protocol-literal | existing capability-guidance wording in journal.ts, unchanged by this change
+Prompt finding: fb5fa7e706c8 | protocol-literal | existing capability-guidance wording in journal.ts, unchanged by this change
+Deferral: tests/preview/journal-loop-fire.test.ts:62 | not-a-deferral=a test title naming the behaviour under test (a result held for the next message), not postponed work (as in the carried w3-loopfire record)
+Deferral: tests/preview/journal-loop-fire.test.ts:67 | not-a-deferral=a comment naming the agent's recorded deferral that the test asserts, not postponed work (as in the carried w3-loopfire record)
+Deferral: tests/preview/journal-loop-fire.test.ts:91 | not-a-deferral=an assertion on the delivered follow-up line, not postponed work (as in the carried w3-loopfire record)
+Skip: tests/assembly/process-inventory.test.ts:158 | scope=the real-host sandbox reading needs macOS sandbox-exec and sandbox_check; it skips only on other platforms (as in the carried w4-native record)
 
 ## Closing block
 
