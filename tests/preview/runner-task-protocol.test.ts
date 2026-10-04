@@ -16,7 +16,8 @@ const fixture = JSON.parse(readFileSync(resolve('tests/preview/fixtures/runner-t
   live: Record<'obligationFenced' | 'obligationProse' | 'summaryAsReply' | 'summaryAnswerBeside' | 'replyReviewFieldsBroken', Shape>;
   replayed: Record<'obligationDeferral' | 'obligationDirective' | 'summary' | 'summaryReview' | 'retrospective', Shape & { outputTokens: number }>
     & { replyReview: Shape & { outputTokens: number; rules: ReplyRule[] } } };
-const MARK = 'This is a runner task, not a message from the operator.';
+// The protocol's own opening sentence, taken from the one instruction function rather than restated here.
+const MARK = taskFields('{}').split(' Return ')[0]!;
 const read = (text: string, wrapped: 'accept' | 'refuse') => readAnswer(text, { wrapped, evidence: ['test'] });
 
 it('reads the live obligation step that prose and a fence wrapped, which failed the deferral work (D1b), and only on the answer side', () => {

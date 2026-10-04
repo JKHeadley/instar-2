@@ -7,6 +7,7 @@ import { AUDIENCE_RULES, BARE_TOPIC_OBJECTION, CONTEXT_RULES, checkReply, HOLDIN
 
 import type { ObjectionDisposition, ReplyCheckResult, ReplyFinding, ReplyRule } from './reply-check.js';
 import { redact } from '../../src/recall/redact.js';
+import { taskFields } from './answer-reading.js';
 import { createJournalWorker, openPreviewJournal, raiseJournalCaps } from './journal-test-worker.js';
 import { CREDENTIAL_SHAPE_NOTICE, replyTimings, type JournalView } from './journal.js';
 import { prepareJournalEnvelope } from './journal-envelope.js';
@@ -167,7 +168,7 @@ it('gives full-context review the actual operator request and the flat answer sl
   expect(question).toContain('packet.operatorMessage');
   // Plan #510: each rule's verdict is its own field beside reasoning (the one runner-task field protocol).
   expect(question).toContain('one field for each listed rule, named by that rule id');
-  expect(question).toContain('This is a runner task, not a message from the operator.');
+  expect(question).toContain(taskFields('{rule_id: its verdict, one field for each listed rule, named by that rule id}'));
   expect(question).toContain('explicit request for the command');
   expect(question).toContain('authentication secret');
   expect(question).not.toContain('Jev cleared');
