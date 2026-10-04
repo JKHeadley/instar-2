@@ -1,0 +1,36 @@
+# Change review — rules-4-60-61 check + gap unit
+
+Subject base: a9e565b2b290bb78763438bc23df011b4b98d850
+Review state: open
+Reviewed content: none
+Outcome: Rules 4, 60 and 61 had no live-proof check, so none of them could be proven. This unit reads the L42 tree for the code that enforces each, writes a new live-proof group (U) that proves what is enforced on real evidence with both sides of every decision, and files precise briefs for what is not. No product source changes: the only tracked file this record covers is the record itself.
+Affected rules: 4, 60, 61 (read and measured); 13, 52, 53, 55, 88, 100 (carried by individual checks); 116 (the group's own shape)
+Affected floors: secrets — the probe uses the build's documented test-shaped token (cbuild-6 L5.1) and never a real credential; no secret is read, printed or recorded. spend cap — the group sends no message and makes no model call, so it spends nothing. stop — nothing latches or clears the stop; the supervisor cases write their stop latch inside a private scratch folder only. no duplicate sends — nothing is sent. durable intake — the live root is read-only (one `runner status`); no recorded run is written.
+Operator questions: none
+Suggested tier: ordinary
+Declared tier: ordinary
+Tier rationale: desk tooling plus one review record. Nothing in the running product changes; the group reads the live root and runs the deployed code on a private scratch folder that is removed afterwards.
+Side effects: the proof group starts short `/bin/sleep` children (at most 4 at once, about a second each) through the deployed resource owner, inside its scratch folder — that is the proof that the ceiling holds. On macOS it also mounts and unmounts one 8 MiB disk image under /private/tmp for the scratch-volume case. It takes no browser lock, so it cannot collide with a concurrent group's send.
+Undo and recovery: the group is desk tooling under lanes/; removing U.sh, U-probe.mjs and results/snapshots-U/ restores the previous state exactly. Nothing durable is written outside its own results folder. This record is reverted by deleting it.
+Multi-machine posture: machine-local. The group reads one runner's root and runs the deployed code on the machine it is invoked from; it makes no cross-machine claim and needs no peer.
+Layer below: the live-proof harness (lib.sh, check.py) and the deployed worktree's own code; no new service, no new dependency.
+Bug class: none
+Bug evidence: none
+Hook bypass: none
+Convergence: none
+<!-- Rule 102: record each mid-run engineering decision as a line: Decision: <id> | <what was decided, and why> | reported=<report that names the id> -->
+Decision: rules-4-60-61-group-letter-U | the brief offers "R.sh, or a free group letter"; R.sh is already the framework-agnostic group (Rules 30, 31), so the new group takes U, the first free letter after the A-T range in use. | reported=/Users/dabombstudio/.instar/agents/echo/.instar/lanes/rules-4-60-61-PROGRESS.md
+Decision: rules-4-60-61-no-message | group U sends nothing and takes no browser lock, following group R rather than group P, because every live datum these three rules need is already in one `runner status` read (resources, incident, installation). Sending would spend a model call and a lock for no extra evidence (Rule 116). | reported=/Users/dabombstudio/.instar/agents/echo/.instar/lanes/rules-4-60-61-PROGRESS.md
+Decision: rules-4-60-61-gap-checks-fail | U4i and U4j ship as checks expected to FAIL, not UNTESTED, because their precondition IS met (the registry is readable and was read) and the measured answer is that Rule 4's own Check is not satisfied. The fresh-root rule reserves UNTESTED for a precondition that did not occur; a measured shortfall is a FAIL and must stay visible. Both are named in the group header with their brief ids. | reported=/Users/dabombstudio/.instar/agents/echo/.instar/lanes/rules-4-60-61-PROGRESS.md
+Decision: rules-4-60-61-standin-dry-run | the dry run ran against a local stand-in of the Studio's path layout, created on the builder machine, using byte-identical copies of the live lib.sh and check.py, because the Studio is read-only from this machine and lib.sh resolves its paths from a hard-coded agent home. Nothing was written to the Studio. | reported=/Users/dabombstudio/.instar/agents/echo/.instar/lanes/rules-4-60-61-PROGRESS.md
+Decision: rules-4-60-61-probe-uses-build-fixtures | the Rule 4 both-sides cases drive the SHIPPED declaration bytes (src/intake/port.declarations.json, src/rungraph/*.declarations.json) through the build's own governance fixtures, so the register under proof is generated from the real declarations with fixture approval witnesses — the same path the build's own tests use. A hand-written register would prove the fixture, not the build. | reported=/Users/dabombstudio/.instar/agents/echo/.instar/lanes/rules-4-60-61-PROGRESS.md
+Decision: rules-4-60-61-macos-only-untested | two Rule 60 cases need macOS (the limit shim needs a /bin/sh carrying `ulimit -u`, and the fixed-size scratch volume needs hdiutil). They record `supported:false` on another host and the checks read UNTESTED there, never PASS and never FAIL, so a Linux run cannot claim a ceiling it did not watch hold. | reported=/Users/dabombstudio/.instar/agents/echo/.instar/lanes/rules-4-60-61-PROGRESS.md
+Decision: rules-4-60-61-no-product-change | no src/ or scripts/ file is changed. The one `check-architecture.mjs` finding on this tree (R105, the self-hosting tuple's composition closure) is present on unmodified origin/cint-L42 in this environment and is reported for the desk rather than repaired, because the brief forbids product commits and a repair would be an unreviewed product change. | reported=/Users/dabombstudio/.instar/agents/echo/.instar/lanes/rules-4-60-61-PROGRESS.md
+
+Subject (1 paths): reviews/rules-4-60-61-change-review.md
+
+## Closing block
+
+simplestRobustRoute: one group script and one probe, in the existing live-proof shape, with no new service, no new dependency and no new harness. The probe drives the deployed code's own exported functions rather than re-deriving their rules, and the group reuses lib.sh, check.py and the snapshot-replay convention the other groups already use. Nothing was added that an existing mechanism could carry: the both-sides evidence rides LIVE_PROOF_REPLAY, which already exists.
+80/20: the three rules now have 34 checks with every decision exercised on both sides, and the four places the rules are NOT held are named with file and line and a brief each. The remaining detail — a live run on a root that has actually reached the launch ceiling, and the two macOS-only cases — needs the Studio and is named rather than guessed.
+VERDICT: author submission; the independent verdict is recorded as a pass
