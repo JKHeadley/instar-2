@@ -633,23 +633,24 @@ export const substantiveReply = (text: string): boolean => text.trim().length > 
  * activation token", and a correct tool answer reached the operator only as the holding notice.
  *
  * The exact floors decide alone: a credential shape (redact) or the exact bytes of a held secret value, or a derived
- * encoding of them, in the text; either withholds on every reply, regardless of audience. A model's credential
- * judgment stays a signal of meaning, and it withholds a whole reply only when what it names is not shown to be
- * public: a finding that quotes only the credential register's public labels, the runner's own lines built from them,
- * or admitted tool output carrying no secret material names no secret, so it is kept as an advisory objection. */
-export const SECRET_MATERIAL_MIN = 8;
+ * encoding of them, in the text; either withholds on every reply, regardless of audience. Every nonempty held value is
+ * matched, however short: a six-digit login code is as secret as a long key. A model's credential judgment stays a
+ * signal of meaning, and it withholds a whole reply unless what it names is shown to be public: a finding whose every
+ * quoted span is the credential register's public labels or the runner's own lines built from them, and which names
+ * no other value the reply carries, names no secret, so it is kept as an advisory objection. Tool provenance is never
+ * disclosure authority: an authorized read may return a password, so admitted tool output clears nothing. */
 const secretForms = (value: string): string[] => {
   const bytes = Buffer.from(value, 'utf8');
   return [...new Set([value, bytes.toString('base64'), bytes.toString('base64').replace(/=+$/u, ''),
-    bytes.toString('base64url'), bytes.toString('hex'), encodeURIComponent(value)])];
+    bytes.toString('base64url'), bytes.toString('hex'), encodeURIComponent(value)])].filter(form => form.length > 0);
 };
 /** True when `text` carries a held secret value exactly or in a derived encoding (base64, base64url, hex, URL). */
 export function secretMaterialIn(text: string, held: readonly string[]): boolean {
-  return held.some(value => value.length >= SECRET_MATERIAL_MIN && secretForms(value).some(form => text.includes(form)));
+  return held.some(value => value.length > 0 && secretForms(value).some(form => text.includes(form)));
 }
 /** Held secret material replaced by the redaction mark, for text that goes on to a model (the revision round). */
 export function concealSecretMaterial(text: string, held: readonly string[]): string {
-  const forms = held.filter(value => value.length >= SECRET_MATERIAL_MIN).flatMap(secretForms).sort((a, b) => b.length - a.length);
+  const forms = held.filter(value => value.length > 0).flatMap(secretForms).sort((a, b) => b.length - a.length);
   return forms.reduce((out, form) => out.split(form).join(redactionMark), text);
 }
 /** The fields of a credential record the register shows the operator and gives the model: never a value. */
@@ -670,23 +671,32 @@ export const PUBLIC_LABEL_MASK = '[credential record label]';
 export function maskPublicLabels(text: string, labels: readonly string[]): string {
   return labels.filter(label => label.length >= 4).reduce((out, label) => out.split(label).join(PUBLIC_LABEL_MASK), text);
 }
-/** True when one quoted span names only public text: inside a known label or runner line, built of such labels and
- * punctuation alone, or found in admitted tool output; in every case with no credential shape and no held secret. */
-function spanIsPublic(span: string, known: readonly string[], toolOutputs: readonly string[], held: readonly string[]): boolean {
+/** True when one quoted span names only public text: inside a known label or runner line, or built of such labels and
+ * punctuation alone; in every case with no credential shape and no held secret. */
+function spanIsPublic(span: string, known: readonly string[], held: readonly string[]): boolean {
   if (redact(span).count > 0 || secretMaterialIn(span, held)) return false;
   const folded = foldClaim(span);
   const labels = known.map(foldClaim).filter(Boolean).sort((a, b) => b.length - a.length);
   if (labels.some(label => label.includes(folded))) return true;
   const rest = labels.reduce((out, label) => out.split(label).join(' '), folded);
-  if (!/[\p{L}\p{N}]/u.test(rest)) return true;
-  return toolOutputs.some(output => foldClaim(output).includes(folded));
+  return !/[\p{L}\p{N}]/u.test(rest);
 }
-/** A credential finding is refuted when it quotes at least one span of the reply and every such span is public. A
- * finding that quotes nothing in the reply cannot be checked, so it keeps its hold (Rules 4, 42, 95). */
-export function credentialFindingPublic(reason: string, reply: string, known: readonly string[], toolOutputs: readonly string[],
-  held: readonly string[]): boolean {
+/** The value-like words of a text: four or more characters carrying a digit or inner punctuation (a code, a
+ * passphrase, a key), never an ordinary word. */
+const valueWords = (text: string): string[] =>
+  (text.match(/[\p{L}\p{N}][\p{L}\p{N}._~+\/=-]*[\p{L}\p{N}=]/gu) ?? [])
+    .filter(word => word.length >= 4 && /[\p{N}]|[\p{L}\p{N}][._~+\/=-]+[\p{L}\p{N}]/u.test(word));
+/** A credential finding is refuted only when its whole allegation is public metadata: it quotes at least one span,
+ * every quoted span is in the reply and public, and the rest of the reason names no value-like word the reply
+ * carries outside those labels. A finding quoting nothing in the reply cannot be checked, and a finding that also
+ * names another value (quoted or not) alleges more than a label, so either keeps its hold (Rules 4, 42, 86, 95). */
+export function credentialFindingPublic(reason: string, reply: string, known: readonly string[], held: readonly string[]): boolean {
   if (secretMaterialIn(reply, held) || redact(reply).count > 0) return false;
   const body = foldClaim(reply);
-  const spans = allQuotedSpans(reason).filter(span => foldClaim(span) && body.includes(foldClaim(span)));
-  return spans.length > 0 && spans.every(span => spanIsPublic(span, known, toolOutputs, held));
+  const spans = allQuotedSpans(reason).filter(span => foldClaim(span));
+  if (!spans.length || !spans.every(span => body.includes(foldClaim(span)) && spanIsPublic(span, known, held))) return false;
+  const labels = [...known].filter(Boolean).sort((a, b) => b.length - a.length);
+  const strip = (text: string) => labels.reduce((out, label) => out.split(label).join(' '), text);
+  const replyWords = new Set(valueWords(strip(reply)));
+  return !valueWords(strip(spans.reduce((out, span) => out.split(span).join(' '), reason))).some(word => replyWords.has(word));
 }

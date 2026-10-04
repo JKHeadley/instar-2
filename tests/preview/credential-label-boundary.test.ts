@@ -6,7 +6,7 @@ import { openPreviewJournal, createJournalWorker, CREDENTIAL_SHAPE_NOTICE } from
 import { prepareJournalEnvelope } from './journal-envelope.js';
 import { credentialNotices } from './credential-reminders.js';
 import { createSecretCustody, dueCredentialReminders, type CredentialRecord } from './secret-custody.js';
-import { HOLDING_REPLY, PUBLIC_LABEL_MASK, REPLY_RULES, credentialFindingPublic, maskPublicLabels, publicCredentialLabels,
+import { HOLDING_REPLY, PUBLIC_LABEL_MASK, REPLY_RULES, concealSecretMaterial, credentialFindingPublic, maskPublicLabels, publicCredentialLabels,
   replyReviewContext, secretMaterialIn, type ReplyFinding, type ReplyRule } from './reply-check.js';
 import { redact } from '../../src/recall/redact.js';
 
@@ -38,6 +38,10 @@ interface Run {
   jevScores?: Record<string, number>;
   /** Hold the test secret in a real preview-vault SecretRef. */
   holdSecret?: boolean;
+  /** Hold this value in a real preview-vault SecretRef instead of TEST_SECRET. */
+  heldValue?: string;
+  /** An admitted Bash call whose recorded result is this text (an authorized read). */
+  toolOutput?: string;
 }
 async function replay(options: Run) {
   const root = realpathSync(mkdtempSync(join(tmpdir(), 'preview-credlabel-')));
@@ -47,12 +51,22 @@ async function replay(options: Run) {
   const clock = { now: T.answeredAt }, sends: string[] = [], jevTexts: string[] = [], reviseTexts: string[] = [];
   const calls = { jev: 0, review: 0, revision: 0 };
   const custody = createSecretCustody(root, key, () => clock.now);
-  const held = options.holdSecret ? [custody.resolve(custody.store({ value: TEST_SECRET, kind: 'test-secret', source: 'this test' }))] : [];
+  const heldValue = options.heldValue ?? (options.holdSecret ? TEST_SECRET : undefined);
+  const held = heldValue === undefined ? [] : [custody.resolve(custody.store({ value: heldValue, kind: 'test-secret', source: 'this test' }))];
   const journal = openPreviewJournal(path, key, genesis);
   const worker = createJournalWorker(journal, { now: () => clock.now, stopped: () => false,
     prepareModel: (input: Parameters<typeof prepareJournalEnvelope>[0]) =>
       prepareJournalEnvelope(input, 'claude-sonnet-5', 'grant:preview', clock.now),
-    model: async () => options.answer,
+    model: async () => {
+      if (options.toolOutput !== undefined) {
+        const id = journal.view.order[0]!.id;
+        journal.append({ kind: 'tool-turn', phase: 'reserved', id, attempt: 0, calls: 0, at: clock.now });
+        journal.append({ kind: 'tool-turn', phase: 'trace', id, attempt: 0, consistent: true, workspaceBytes: 0,
+          calls: [{ n: 1, tool: 'Bash', decision: 'allow', input: 'read vendor credential', result: options.toolOutput }] as never,
+          at: clock.now });
+      }
+      return options.answer;
+    },
     checkOutbound: () => {},
     replyNotices: () => credentialNotices(dueCredentialReminders(recorded.register, clock.now), clock.now),
     heldSecrets: () => held,
@@ -147,6 +161,42 @@ it('the other side: a credential finding that quotes nothing it can be checked a
   expect(sends).toEqual([HOLDING_REPLY]);
 });
 
+const PASSWORD = 'tulip-meridian-3390-cascade';
+const violation = (reason: string) => ({ verdict: 'violation' as const, ruleIds: ['credential' as ReplyRule], reason: `credential: ${reason}`,
+  findings: [{ rule: 'credential' as ReplyRule, verdict: 'violation' as const, reason }] });
+
+it('the other side: a password an authorized read returned is still withheld when the reviewer names it', async () => {
+  const reason = `The reply exposes the live vendor portal password "${PASSWORD}" obtained from a private file.`;
+  const { sends, heldReview } = await replay({ answer: `The vendor portal password is ${PASSWORD}.`,
+    toolOutput: JSON.stringify({ stdout: PASSWORD }), review: violation(reason) });
+  expect(sends).toEqual([HOLDING_REPLY]);
+  expect(heldReview?.objections).toContain('credential');
+});
+
+it('the neighbour: a benign tool answer the reviewer passes is sent; the tool keeps its full reach', async () => {
+  const { sends } = await replay({ answer: T.answerBody, toolOutput: T.toolResult,
+    review: { verdict: 'pass', ruleIds: [], findings: [{ rule: 'credential', verdict: 'pass', reason: 'no secret.' }] } });
+  expect(sends).toHaveLength(1);
+  expect(sends[0]).toContain('The byte count is 25');
+});
+
+it('the other side: quoting a public label does not clear a finding that also names an unquoted password', async () => {
+  const reason = `The public label "${LABEL}" is harmless, but the reply also exposes the live vendor portal password ${PASSWORD}, obtained from a private file rather than supplied by this operator.`;
+  const { sends } = await replay({ answer: `${T.answerBody} The vendor portal password is ${PASSWORD}.`, review: violation(reason) });
+  expect(sends).toEqual([HOLDING_REPLY]);
+});
+
+it('the other side: a six-digit held login code never reaches a model or a send; an unrelated code does', async () => {
+  const code = '482639';
+  const held = await replay({ answer: `The vendor login code is ${code}.`, heldValue: code, review: { verdict: 'pass', ruleIds: [] } });
+  expect(held.sends).toEqual([CREDENTIAL_SHAPE_NOTICE]);
+  expect(held.calls).toMatchObject({ jev: 0, review: 0 });
+  for (const text of held.reviseTexts) expect(text).not.toContain(code);
+  const other = await replay({ answer: 'The meeting room code is 731905.', heldValue: code, review: { verdict: 'pass', ruleIds: [] } });
+  expect(other.sends).toHaveLength(1);
+  expect(other.sends[0]).toContain('731905');
+});
+
 it('labels: the register\'s public fields are known non-secrets; a label carrying held material is never admitted', () => {
   const labels = publicCredentialLabels(recorded.register, []);
   expect(labels).toContain(LABEL);
@@ -164,35 +214,50 @@ it('labels: the register\'s public fields are known non-secrets; a label carryin
     .not.toContain('sk-ant-abcdefghijklmnopqrstuvwxyz012345');
 });
 
-it('secret material: exact bytes and derived encodings match; a near miss and a short value do not', () => {
+it('secret material: exact bytes and derived encodings match, however short the held value; a near miss does not', () => {
   const bytes = Buffer.from(TEST_SECRET);
   for (const form of [TEST_SECRET, bytes.toString('base64'), bytes.toString('base64url'), bytes.toString('hex'), encodeURIComponent(TEST_SECRET)])
     expect(secretMaterialIn(`x ${form} y`, [TEST_SECRET])).toBe(true);
   expect(secretMaterialIn(`x ${TEST_SECRET.slice(0, -1)} y`, [TEST_SECRET])).toBe(false);
-  expect(secretMaterialIn('pin 4826', ['4826'])).toBe(false);
+  // A short held value (a login code, a PIN) is still secret: matched exactly and encoded; an unrelated value is not.
+  expect(secretMaterialIn('pin 4826', ['4826'])).toBe(true);
+  expect(secretMaterialIn(`pin ${Buffer.from('4826').toString('base64')}`, ['4826'])).toBe(true);
+  expect(secretMaterialIn('pin 4827', ['4826'])).toBe(false);
+  expect(concealSecretMaterial('The vendor login code is 482639.', ['482639'])).not.toContain('482639');
+  expect(secretMaterialIn('anything', [''])).toBe(false);
 });
 
-it('the finding test: public quotes (label, runner line, secret-free tool output) clear; anything else keeps the hold', () => {
+it('the finding test: public quotes (label, runner line) clear; tool output, a second value, or anything else keeps the hold', () => {
   const known = [...publicCredentialLabels(recorded.register, [TEST_SECRET]),
     ...credentialNotices(dueCredentialReminders(recorded.register, T.answeredAt), T.answeredAt).map(notice => notice.line)];
   const reply = `PREVIEW — ${T.recordedAnswer}`;
   // The recorded reason, verbatim.
-  expect(credentialFindingPublic(T.review.findings[1]!.reason, reply, known, [], [TEST_SECRET])).toBe(true);
+  expect(credentialFindingPublic(T.review.findings[1]!.reason, reply, known, [TEST_SECRET])).toBe(true);
   // The reviewer quoting the whole runner line, or the label with its name around it.
   const line = known.find(item => item.startsWith('Reminder:'))!;
-  expect(credentialFindingPublic(`discloses "${line}"`, reply, known, [], [])).toBe(true);
-  expect(credentialFindingPublic('discloses "preview-activation" (preview-s2-activation-v2-2026-09-23)', reply, known, [], [])).toBe(true);
-  // Tool output with no secret material: the wc -c line quoted from the admitted Bash call.
-  const toolReply = 'PREVIEW — wc -c printed "25 tools-f374b0.txt".';
-  expect(credentialFindingPublic('discloses "25 tools-f374b0.txt"', toolReply, [], [T.toolResult], [])).toBe(true);
-  expect(credentialFindingPublic('discloses "25 tools-f374b0.txt"', toolReply, [], [], [])).toBe(false);
-  // Tool output that carries a held secret is not public, nor is a quote mixing a label with other text.
+  expect(credentialFindingPublic(`discloses "${line}"`, reply, known, [])).toBe(true);
+  expect(credentialFindingPublic('discloses "preview-activation" (preview-s2-activation-v2-2026-09-23)', reply, known, [])).toBe(true);
+  // Tool provenance is not disclosure authority: a value an admitted read returned is judged like any other, so a
+  // finding quoting it keeps its hold, whether the value is a password or the benign wc -c line.
+  const password = 'tulip-meridian-3390-cascade';
+  expect(credentialFindingPublic(`exposes the live account password "${password}" from a private file.`,
+    `The vendor portal password is ${password}.`, known, [])).toBe(false);
+  expect(credentialFindingPublic('discloses "25 tools-f374b0.txt"', 'PREVIEW — wc -c printed "25 tools-f374b0.txt".', known, [])).toBe(false);
+  // A public quote does not exhaust a finding that also names another value the reply carries, quoted or not.
+  const mixedReply = `${reply} The vendor portal password is ${password}.`;
+  expect(credentialFindingPublic(`The public label "${LABEL}" is harmless, but the reply also exposes the live vendor portal password ${password}.`,
+    mixedReply, known, [])).toBe(false);
+  expect(credentialFindingPublic(`"${LABEL}" is harmless; the code 482639 is not.`, `${reply} Code 482639.`, known, [])).toBe(false);
+  // The neighbour: the same public quote with no other value named still clears on the mixed reply.
+  expect(credentialFindingPublic(`discloses "${LABEL}" (an activation token).`, mixedReply, known, [])).toBe(true);
+  // A held secret is not public, nor is a quote mixing a label with other text.
   const leaky = `PREVIEW — the tool printed "${TEST_SECRET}".`;
-  expect(credentialFindingPublic(`discloses "${TEST_SECRET}"`, leaky, known, [`{"stdout":"${TEST_SECRET}"}`], [TEST_SECRET])).toBe(false);
-  expect(credentialFindingPublic(`discloses "${LABEL} hunter-77"`, `PREVIEW — ${LABEL} hunter-77`, known, [], [])).toBe(false);
+  expect(credentialFindingPublic(`discloses "${TEST_SECRET}"`, leaky, known, [TEST_SECRET])).toBe(false);
+  expect(credentialFindingPublic(`discloses "${LABEL} hunter-77"`, `PREVIEW — ${LABEL} hunter-77`, known, [])).toBe(false);
   // A quote that is not in the reply, or no quote at all, cannot be checked: the hold stays.
-  expect(credentialFindingPublic('discloses "an activation token"', reply, known, [], [])).toBe(false);
-  expect(credentialFindingPublic('discloses an activation token', reply, known, [], [])).toBe(false);
+  expect(credentialFindingPublic('discloses "an activation token"', reply, known, [])).toBe(false);
+  expect(credentialFindingPublic('discloses an activation token', reply, known, [])).toBe(false);
+  expect(credentialFindingPublic(`discloses "${LABEL}" and "an activation token"`, reply, known, [])).toBe(false);
 });
 
 it('the reviewer is told which labels are public, and Jev keeps its measured question while reading masked text', () => {

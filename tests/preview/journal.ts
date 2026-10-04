@@ -7249,14 +7249,13 @@ export function createJournalWorker(journal: ReturnType<typeof openPreviewJourna
           }
           const candidateDigest = createHash('sha256').update(reply).digest('hex');
           // Plan #442 (Rules 4, 86, 100): a secret is decided against the material the runner holds. The register's
-          // public labels and the runner's own reminder lines built from them are known non-secrets, as is admitted
-          // tool output carrying no secret material; a credential finding naming only those holds nothing.
+          // public labels and the runner's own reminder lines built from them are known non-secrets; a credential
+          // finding naming only those holds nothing. Admitted tool output is never disclosure authority.
           const heldValues = (() => { try { return ports.heldSecrets?.() ?? []; } catch { return []; } })();
           const labels = (() => { try { return ports.knownNonSecrets?.() ?? []; } catch { return []; } })();
           const known = [...labels, ...(turn.answerNotices ?? []).map(notice => notice.line)
             .filter(line => redact(line).count === 0 && !secretMaterialIn(line, heldValues))];
-          const toolOutputs = (turn.toolAttempts ?? []).flatMap(call => call.decision === 'allow' && typeof call.result === 'string' ? [call.result] : []);
-          const publicCredential = (text: string) => (reason: string) => credentialFindingPublic(reason, text, known, toolOutputs, heldValues);
+          const publicCredential = (text: string) => (reason: string) => credentialFindingPublic(reason, text, known, heldValues);
           const reviewedReply = reply;
           const last = turn.replyChecks?.at(-1);
           const previous = last?.candidateDigest === candidateDigest
