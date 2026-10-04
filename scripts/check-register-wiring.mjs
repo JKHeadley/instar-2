@@ -292,15 +292,36 @@ export function scanSources(sourceFiles, decoderBindings = []) {
   return { reports, constructs, residual, program };
 }
 export function checkWiring(register, sourceFiles, scanned = scanSources(sourceFiles)) {
-  const { reports, constructs, residual } = scanned; const issues = [];
+  const { reports, constructs } = scanned; const issues = [];
+  // A copy: a second call over the same scan must not accumulate residual rows.
+  const residual = [...scanned.residual];
   for (const c of constructs) if (!register.entries.some(e => e.declaration.id === c.id && e.declaration.kind === c.kind)) issues.push(`P3-NF-04: ${c.path} constructs undeclared ${c.id}`);
   for (const { declaration: d } of register.entries) if (d.kind === 'blocking sites') {
     const multi = d.requiredFacts.rungs !== undefined;
     const rungs = multi ? d.requiredFacts.rungs : [d.requiredFacts];
-    if (!Array.isArray(rungs) || !rungs.length || multi && ['decidesAlone', 'criticality', 'failDirection', 'preservesInput', 'enforces', 'model'].some(k => k in d.requiredFacts)) {
+    if (!Array.isArray(rungs) || !rungs.length || multi && ['decidesAlone', 'decidesAloneBasis', 'criticality', 'failDirection', 'preservesInput', 'enforces', 'model'].some(k => k in d.requiredFacts)) {
       issues.push(`P3-NF-26: ${d.id} malformed/ambiguous rung list`); continue;
     }
     if (rungs.some(r => !r || !['no', 'ruled-three', 'governed-state'].includes(r.decidesAlone) || !['open', 'closed'].includes(r.failDirection) || !r.preservesInput || !r.criticality)) issues.push(`P3-NF-26: ${d.id} malformed rung`);
+    // Rule 4's first admission is a closed list of three subjects, mirrored from
+    // src/register/rungs.ts: a `ruled-three` rung names which admission it claims, and
+    // only `recorded-governed-state` stands for the rule's second clause.
+    if (rungs.some(r => r && (r.decidesAlone === 'ruled-three'
+      ? !['live-secret-leaving', 'spend-past-a-cap', 'operator-emergency-stop', 'recorded-governed-state'].includes(r.decidesAloneBasis)
+      : r.decidesAloneBasis !== undefined))) issues.push(`P3-NF-26: ${d.id} rung misnames rule 4's admission`);
+    // Rule 4's Check enumerates every site that blocks WITHOUT asking the mind. A
+    // `governed-state` rung carries its own wiring obligation below; a `ruled-three` rung
+    // carried none, so a declared category, fail direction and preservation claim no module
+    // reads could sit in the register deciding nothing (docs/07: "a cap declared in dead code
+    // bounds nothing", P3-NF-19). A construct in the WRONG module is a failure; an unpaired
+    // live ruled-three site is measured as this kind's residual, never silent.
+    if (d.status === 'live' && rungs.some(r => r && r.decidesAlone === 'ruled-three')) {
+      const own = constructs.filter(c => c.kind === 'blocking sites' && c.id === d.id);
+      const paired = own.some(c => c.path === d.declaredBy.path && c.symbol === d.declaredBy.symbol);
+      if (!paired && own.length) issues.push(`P3-NF-19: ruled-three ${d.id} is constructed outside its declaring module (${own.map(c => `${c.path}#${c.symbol}`).join(', ')})`);
+      if (!paired && !own.length) residual.push({ path: d.declaredBy.path,
+        reason: `ruled-three blocking site ${d.id} is declared but no module constructs it; its category decides nothing at runtime` });
+    }
     for (const rung of rungs) if (rung.decidesAlone === 'governed-state') {
       const report = reports[Object.keys(sourceFiles).indexOf(d.declaredBy.path)];
       const e = rung.enforces;

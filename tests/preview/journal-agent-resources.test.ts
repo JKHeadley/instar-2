@@ -11,7 +11,7 @@ import { successiveWorld, offlineProfile, OFFLINE_STORAGE_KEY, FIXTURE_DOORWAY, 
 
 const TOKEN = 'ghp_' + 'Z9y8X7w6V5u4T3s2R1q0P9o8';
 
-it('launches every model call through the resource owner and records resources, doorways and credential custody', async () => {
+it('PREVIEW-HOST-RESOURCE-FUNNEL launches every model call through the resource owner and records resources, doorways and credential custody', async () => {
   const world = successiveWorld(), root = join(world.directory, 'resource-journal');
   const activation = join(world.directory, 'activation.json'), profile = join(world.directory, 'profile.json');
   const log = join(world.directory, 'poll.log'), updates = join(world.directory, 'updates.json');

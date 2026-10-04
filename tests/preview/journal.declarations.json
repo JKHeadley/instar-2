@@ -241,6 +241,7 @@
     "requiredFacts": {
       "authority": "block",
       "decidesAlone": "ruled-three",
+      "decidesAloneBasis": "operator-emergency-stop",
       "criticality": "The operator's stop, and the trial expiry the operator granted in advance, end all model calls and sends; nothing is dispatched after either.",
       "failDirection": "closed",
       "preservesInput": "encrypted preview journal: admitted turns stay recorded and pending",
@@ -273,6 +274,7 @@
     "requiredFacts": {
       "authority": "block",
       "decidesAlone": "ruled-three",
+      "decidesAloneBasis": "operator-emergency-stop",
       "criticality": "The operator's stop and the trial expiry the operator granted in advance end polling. A resource ceiling never stops reading: past the turn bound, updates wait in the finite waiting store or at Telegram, so stop and approval presses stay reachable (Rules 14, 15).",
       "failDirection": "closed",
       "preservesInput": "Telegram retains unpolled updates; the journal keeps every admitted turn",
@@ -392,5 +394,40 @@
       82
     ],
     "holds": []
+  },
+  {
+    "type": "Declaration",
+    "schemaVersion": 1,
+    "id": "preview.journal.reachedJournalCap",
+    "kind": "blocking sites",
+    "status": "live",
+    "requiredFacts": {
+      "authority": "block",
+      "decidesAlone": "ruled-three",
+      "decidesAloneBasis": "spend-past-a-cap",
+      "criticality": "Spend past a cap is refused, not asked about: once the trial's turn, model-call, reply or context-byte allowance is reached, the work is held instead of spent. The reached allowance is reported once to the operator and no further call is made against it.",
+      "failDirection": "closed",
+      "preservesInput": "encrypted preview journal: the unspent turn stays recorded and pending, so a raise of the allowance resumes it; nothing is discarded",
+      "inspectedBy": "PREVIEW-TRIAL-GATES"
+    },
+    "profile": {
+      "type": "Profile",
+      "schemaVersion": 1,
+      "consequence": "money",
+      "reversibility": "irreversible",
+      "reach": "operator",
+      "surface": "chat",
+      "repeats": {
+        "kind": "no"
+      }
+    },
+    "standards": [
+      4,
+      66,
+      95
+    ],
+    "holds": [
+      { "rule": 4, "class": "partial", "evidence": { "kind": "fixture", "id": "PREVIEW-TRIAL-GATES", "stage": "build" }, "portion": "rule 4's second irreversible-miss case is enumerated: the one allowance test that decides alone and holds the turn instead of spending", "remainder": "the inline allowance comparisons through the journal are not funnelled through this one admission yet, and no module reads this declaration at runtime" }
+    ]
   }
 ]

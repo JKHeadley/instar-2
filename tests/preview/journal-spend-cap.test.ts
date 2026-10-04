@@ -279,7 +279,7 @@ it('replays a previously valid cap raise after unavailable Jev and completed sub
   } finally { rmSync(dir, { recursive: true, force: true }); }
 });
 
-it('holds maxReplies and maxBytes work, and journals one cap report per reached threshold', async () => {
+it('PREVIEW-TRIAL-GATES holds maxReplies and maxBytes work, and journals one cap report per reached threshold', async () => {
   const dir = root(), path = join(dir, 'journal.encrypted');
   try {
     let journal = openPreviewJournal(path, key, genesis({ maxReplies: 1, maxBytes: 128 }));

@@ -13,7 +13,7 @@ describe('desk counterexamples', () => {
       { authority: 'block', inspectedBy: 'check', rungs: [{}] },
       { authority: 'block', inspectedBy: 'check', rungs: [{ ...d.requiredFacts, decidesAlone: 'invented' }] },
     ]) expect(detail(decodeDeclaration(attempt(facts), s.context))).toMatch(/rung|ambiguous|undeclared/);
-    const rung = { decidesAlone: 'ruled-three', criticality: 'exact test', failDirection: 'closed', preservesInput: 'capture' };
+    const rung = { decidesAlone: 'ruled-three', decidesAloneBasis: 'operator-emergency-stop', criticality: 'exact test', failDirection: 'closed', preservesInput: 'capture' };
     const multi = attempt({ authority: 'block', inspectedBy: 'check', rungs: [rung, { ...rung, failDirection: 'open' }] });
     expect(value(decodeDeclaration(multi, s.context)).id).toBe('holder');
     const register = s.build([multi]);

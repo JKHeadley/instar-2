@@ -17,7 +17,7 @@ const HOUR = 3600_000, DAY = 24 * HOUR;
 const jwt = (exp: number) => ['eyJhbGciOiJIUzI1NiJ9', Buffer.from(JSON.stringify({ sub: 'x', exp })).toString('base64url'),
   'c2lnbmF0dXJlLXZhbHVl'].join('.');
 
-it('finds the exact credential spans redaction would remove', () => {
+it('PREVIEW-SECRET-WALL finds the exact credential spans redaction would remove', () => {
   const text = `token ${TOKEN} and Authorization: Bearer abcdefghijklmnopqrstuv and password=hunter2hunter2`;
   const spans = credentialSpans(text).map(s => [text.slice(s.start, s.end), s.kind]);
   expect(spans).toEqual([[TOKEN, 'github-token'], ['abcdefghijklmnopqrstuv', 'bearer-token'], ['hunter2hunter2', 'assigned-secret']]);
