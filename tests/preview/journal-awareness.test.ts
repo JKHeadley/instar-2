@@ -4,6 +4,7 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { performance } from 'node:perf_hooks';
 import { createJournalWorker, openPreviewJournal } from './journal-test-worker.js';
+import { SEARCH_GUIDANCE } from './journal.js';
 import { prepareJournalEnvelope } from './journal-envelope.js';
 import { DESK_STATUS_MAX_AGE_MS, DESK_STATUS_MAX_BYTES, DESK_STATUS_YIELD_BYTES, SOURCE_PINS, deskStatusSource, readDeskStatus, sourcePacket } from './briefing.js';
 import { SUBSCRIPTION_CONVERSATION_SYSTEM_PROMPT } from '../../src/assembly/production-provider.js';
@@ -177,9 +178,13 @@ it('cuts a long desk report under byte pressure before any history yields, and k
   expect(desk(whole).text).toContain(report.trim().split('\n').at(-1));
   expect(desk(whole).text).not.toContain('cut for space');
   expect(JSON.parse(whole).history).toHaveLength(2);
-  // Pressure: the whole report no longer fits beside the history (memory search, the lowest-priority evidence,
-  // has already yielded). The report is cut to its bound and the history stays verbatim.
-  const tight = await run(Buffer.byteLength(whole) - 1024);
+  // Pressure: the whole report no longer fits beside the history even once everything ranked below it has yielded
+  // (memory search with its capability guidance, and the memory-failure offer, Part 21 §16). The report is cut to
+  // its bound and the history stays verbatim.
+  const { memorySearch: _search, memoryFailureDecision: _offer, searchedTurn: _turn, ...higher } = JSON.parse(whole) as Record<string, unknown>;
+  const lowerOnly = Buffer.byteLength(whole) - Buffer.byteLength(JSON.stringify({ ...higher,
+    capability: String(higher.capability).split(SEARCH_GUIDANCE)[0] }));
+  const tight = await run(Buffer.byteLength(whole) - lowerOnly - 1024);
   expect(tight.held).toBeUndefined();
   const cut = tight.seen.at(-1)!.context;
   expect(JSON.parse(cut).history.map((item: { user: string }) => item.user)).toEqual(['first question', 'second question']);

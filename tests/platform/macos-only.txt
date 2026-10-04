@@ -4,6 +4,7 @@
 # the detection in tests/platform/macos-only.mjs (`node tests/platform/macos-only.mjs` prints it).
 tests/assembly/fixed-installation-live.test.ts
 tests/assembly/fixed-worker-monitor-native.test.ts
+tests/assembly/process-inventory.test.ts
 tests/integration/host-watch.test.ts
 tests/integration/native-loop-live.test.ts
 tests/preview/native-harness-contract.test.ts
