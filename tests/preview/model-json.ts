@@ -15,7 +15,7 @@
  *
  * The returned shape is content-free, so it may be counted in status without storing
  * model text. Callers keep every shape check they already apply after parsing. */
-export type ModelJsonShape = 'bare' | 'fenced' | 'prose-wrapped';
+export type ModelJsonShape = 'bare' | 'fenced' | 'prose-wrapped' | 'early-close';
 /** Whether this consumer may discard text around one complete object (see above). */
 export type ModelJsonWrapped = 'accept' | 'refuse';
 export type ModelJsonMalformedShape = 'fenced' | 'prose-wrapped' | 'multiple-objects' | 'truncated' | 'not-json';
@@ -32,8 +32,8 @@ const parseObject = (text: string): Record<string, unknown> | null => {
 
 /** Top-level balanced `{...}` spans. Strings are tracked only inside an object,
  * so apostrophes and quotes in surrounding prose never confuse the scan. */
-const topLevelObjects = (text: string): { spans: string[]; open: boolean } => {
-  const spans: string[] = [];
+const topLevelObjects = (text: string): { spans: string[]; starts: number[]; open: boolean } => {
+  const spans: string[] = [], starts: number[] = [];
   let depth = 0, start = -1, inString = false, escaped = false;
   for (let index = 0; index < text.length; index++) {
     const char = text[index];
@@ -45,9 +45,25 @@ const topLevelObjects = (text: string): { spans: string[]; open: boolean } => {
     }
     if (depth > 0 && char === '"') { inString = true; continue; }
     if (char === '{') { if (depth === 0) start = index; depth++; }
-    else if (char === '}' && depth > 0) { depth--; if (depth === 0) spans.push(text.slice(start, index + 1)); }
+    else if (char === '}' && depth > 0) { depth--; if (depth === 0) { spans.push(text.slice(start, index + 1)); starts.push(start); } }
   }
-  return { spans, open: depth > 0 };
+  return { spans, starts, open: depth > 0 };
+};
+
+/** The live answer slip of 2026-10-03 (cint-L44, plan #455; 8 of the 17 distinct failing answers in every preview
+ * journal): one stray `}` after an object-valued field closes the whole object early, and the fields the model wrote
+ * next follow it as `,"floor":{...}}`. Read as written, that is two objects, and a correct answer became the
+ * failure reply. The one reading is to drop the premature close: the first object's own fields stay exactly as
+ * written (none may be replaced, so a repeated key refuses), and the continuation may only add fields after them.
+ * Anything else, including a continuation that does not parse, stays malformed. */
+const earlyClose = (text: string, spans: string[], starts: number[]): { value: Record<string, unknown>; outside: string } | null => {
+  const [first, start] = [spans[0], starts[0]];
+  if (spans.length < 2 || first === undefined || start === undefined) return null;
+  const end = start + first.length, last = text.lastIndexOf('}');
+  if (!/^\s*,/u.test(text.slice(end)) || last < end) return null;
+  const head = parseObject(first), value = parseObject(text.slice(start, end - 1) + text.slice(end, last + 1));
+  if (!head || !value || Object.keys(head).some(field => JSON.stringify(head[field]) !== JSON.stringify(value[field]))) return null;
+  return { value, outside: text.slice(0, start) + text.slice(last + 1) };
 };
 
 /** Content-free class for a parse that failed, or parsed but failed the caller's field checks. */
@@ -69,9 +85,14 @@ export function parseModelJson(text: string, options: { wrapped?: ModelJsonWrapp
     try { inner = JSON.parse((fence[1] ?? '').trim()); } catch { inner = undefined; }
     if (isObject(inner)) return { ok: true, value: inner, shape: 'fenced' };
   }
-  const { spans, open } = topLevelObjects(trimmed);
+  const { spans, starts, open } = topLevelObjects(trimmed);
   if (open) return { ok: false, shape: 'truncated' };
-  if (spans.length > 1) return { ok: false, shape: 'multiple-objects' };
+  if (spans.length > 1) {
+    // A tolerant consumer only, on the same terms as a wrapper: anything around the repaired object is prose.
+    const repaired = options.wrapped === 'accept' ? earlyClose(trimmed, spans, starts) : null;
+    if (repaired && !/[[\]{}]/u.test(repaired.outside)) return { ok: true, value: repaired.value, shape: 'early-close' };
+    return { ok: false, shape: 'multiple-objects' };
+  }
   const span = spans[0];
   const outside = spans.reduce((rest, part) => rest.replace(part, ''), trimmed);
   // One complete object inside text a tolerant consumer may discard. The residual must carry no
