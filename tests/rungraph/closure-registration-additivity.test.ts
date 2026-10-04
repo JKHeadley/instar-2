@@ -10,10 +10,17 @@ import { setup, value, refused } from './fixtures.js';
 // Baseline re-pinned to the reviewed installation (hold arrays only) per astra-enforce-contracts-ruling.md.
 it('P5-SEAM-RC-R9-F3-ADMISSION-BINDINGS P5-SEAM-RC-R10-F3-ADDITIVE-REGISTRATION keeps the reviewed installation byte-identical and gates only additive operations', () => {
   const original = readFileSync('src/rungraph/rungraph.declarations.json', 'utf8');
-  // Byte-identical to the reviewed installation except one governance-only line: cbuild-1 added
-  // Rule 39 to rungraph-core's `standards` (governed-by). No gate, rung, record or holds claim changed.
+  // Byte-identical to the reviewed installation except two governance-only lines, each named here.
+  // (1) cbuild-1 added Rule 39 to rungraph-core's `standards` (governed-by). No gate, rung, record or
+  // holds claim changed. (2) w4-ugaps added `decidesAloneBasis` to the stop's rung: rule 4 names two
+  // admissions in one sentence, and a `ruled-three` rung now says which of rule 4's own subjects it
+  // claims (here: the operator's emergency stop). The gate's authority, category, fail direction,
+  // preserved input, inspection reference, enforced record and holds claim are unchanged, and
+  // src/rungraph/rungraph.ts's own equality checks on the declaration are unchanged.
   const reviewed = execFileSync('git', ['show', '330097eecca10780d7109146f60732b95556fb35:src/rungraph/rungraph.declarations.json'], { encoding: 'utf8' });
-  expect(original).toBe(reviewed.replace('"standards": [26, 31, 33, 34, 63, 68, 69, 96],', '"standards": [26, 31, 33, 34, 39, 63, 68, 69, 96],'));
+  expect(original).toBe(reviewed
+    .replace('"standards": [26, 31, 33, 34, 63, 68, 69, 96],', '"standards": [26, 31, 33, 34, 39, 63, 68, 69, 96],')
+    .replace('"decidesAlone": "ruled-three",', '"decidesAlone": "ruled-three",\n      "decidesAloneBasis": "operator-emergency-stop",'));
   expect(original).not.toBe(reviewed);
 
   const legacy = setup();

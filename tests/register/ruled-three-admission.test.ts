@@ -48,7 +48,7 @@ describe('rule 4 admission basis', () => {
     const bad = { ...holder, requiredFacts: { authority: 'block', inspectedBy: 'check', rungs: [{ ...rung, decidesAloneBasis: 'invented' }] } };
     expect(detail(decodeDeclaration(bad, s.context))).toMatch(/decidesAloneBasis|P3-NF-05/);
   });
-  it('the wiring check mirrors the decode rule, so a forged register cannot get past it', () => {
+  it('P3-NF-26 the wiring check mirrors the decode rule, so a forged register cannot get past it', () => {
     const s = setup(); const register = s.build([s.holder([])]);
     expect(checkWiring(register, {}).issues).toEqual([]);
     const forge = (facts: object) => ({ ...register, entries: register.entries.map(e => ({ ...e,
@@ -67,7 +67,7 @@ describe('rule 4 enumeration reaches the runtime', () => {
   // direction and a preservation claim that no module read (docs/07: "a cap declared in dead
   // code bounds nothing"). An unpaired live site is now measured as this kind's residual, and a
   // construct in the WRONG module is a failure.
-  it('an unpaired live ruled-three site is residual, a paired one is not, and a dark one is neither', () => {
+  it('P3-NF-19 an unpaired live ruled-three site is residual, a paired one is not, and a dark one is neither', () => {
     const s = setup(); const holder = s.holder([]);
     const named = (r: { reason: string }) => r.reason.includes(holder.id);
     expect(checkWiring(s.build([holder]), {}).residual.filter(named)).toHaveLength(1);
@@ -76,7 +76,7 @@ describe('rule 4 enumeration reaches the runtime', () => {
     expect(checkWiring(s.build([holder]), {}, paired).residual.filter(named)).toHaveLength(0);
     expect(checkWiring(s.build([holder]), {}, paired).issues).toEqual([]);
   });
-  it('a construct in another module is a failure, not a residual', () => {
+  it('P3-NF-19 a construct in another module is a failure, not a residual', () => {
     const s = setup(); const holder = s.holder([]);
     const elsewhere = withScan([{ kind: 'blocking sites', id: holder.id, path: 'src/other.ts', symbol: 'other' }]);
     const result = checkWiring(s.build([holder]), {}, elsewhere);
@@ -102,7 +102,7 @@ describe('rules 60 and 61 may be held, and only by the kind that can refuse', ()
   const catalog = { fixtures: [{ id: 'check', stage: 'build' }], probes: [], sentinels: [], semanticReviews: [] };
   const held = (rule: number) => ({ rule, class: 'partial', evidence: { kind: 'fixture', id: 'check', stage: 'build' },
     portion: 'the one funnel refuses past its hard ceiling', remainder: 'sampled ceilings are observed, not hard' });
-  it('a blocking site may enforce 60 and 61; the rules leave the gap list', () => {
+  it('P3-NF-18 a blocking site may enforce 60 and 61; the rules leave the gap list', () => {
     const s = setup();
     const register = s.build([s.rule(60), s.rule(61), s.holder([held(60), held(61)])]);
     const graph = value(buildRuleGraph(register, 'main', [], catalog, s.context));
@@ -110,7 +110,7 @@ describe('rules 60 and 61 may be held, and only by the kind that can refuse', ()
     expect(graph.rules.map(r => r.enforcedBy)).toEqual([['holder'], ['holder']]);
     expect(graph.totals.partial).toBe(2);
   });
-  it('a kind whose table omits them still cannot, and an unlisted rule still cannot', () => {
+  it('P3-NF-18 a kind whose table omits them still cannot, and an unlisted rule still cannot', () => {
     const s = setup();
     const outcome = { ...s.bound, holds: [held(60)] };
     expect(detail(buildRuleGraph(s.build([s.rule(60), outcome]), 'main', [], catalog, s.context))).toContain('P3-NF-18');
