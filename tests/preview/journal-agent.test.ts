@@ -273,9 +273,15 @@ it.each([
   // The live 2026-10-01 k6 failure: the answer model wrote its reasoning before the Decision. The answer side
   // reads the one object and answers (Rules 15, 77); the shape is counted as tolerated, never hidden.
   ['answer-prose-wrapped', { 'answer/decision/tolerated/prose-wrapped': 1 }, null, {}],
-  // Still ambiguous for the answer side too: a list could have held any number of objects, so it stays malformed.
-  ['answer-list-wrapped', { 'answer/decision/malformed/prose-wrapped': 2 },
-    { role: 'answer', layer: 'decision', shape: 'prose-wrapped' }, { malformed: 2 }],
+  // Plan #485: the list is no longer ambiguous for the answer side, because that side names the object it asked
+  // for — exactly one Decision with this subject is in there, so that is what the model decided. Two would refuse.
+  ['answer-list-wrapped', { 'answer/decision/tolerated/sole-object': 1 }, null, {}],
+  // The live 2026-10-04 class: the response is complete, but text beside it leaves a brace open (here the system
+  // prompt's own `{"type":"Decision"` fragment), which the brace scan alone can only call truncated.
+  ['answer-open-brace', { 'answer/decision/tolerated/sole-object': 1 }, null, {}],
+  // And the real thing it was mistaken for: the only object is genuinely cut, so there is no answer to read.
+  ['answer-cut', { 'answer/decision/malformed/truncated': 2 },
+    { role: 'answer', layer: 'decision', shape: 'truncated' }, { malformed: 2 }],
   // Accepted as one object, then refused by the same field checks an unwrapped Decision passes.
   ['answer-prose-wrong-fields', { 'answer/decision/malformed/prose-wrapped-wrong-fields': 2 },
     { role: 'answer', layer: 'decision', shape: 'prose-wrapped-wrong-fields' }, { malformed: 2 }],
@@ -312,6 +318,8 @@ export const createClaudeCodeSubscriptionRoute = () => ({kind:'Success',value:{i
   const bytes=mode === 'decision-contradicted' && review ? 'VIOLATION: this reply must not be sent. '+decision
     : mode === 'answer-prose-wrapped' && !review ? prose+decision
     : mode === 'answer-list-wrapped' && !review ? prose+'['+decision+']'
+    : mode === 'answer-open-brace' && !review ? decision+' (your response starts with {"type":"Decision" and ends with the closing brace)'
+    : mode === 'answer-cut' && !review ? decision.slice(0,-1)
     : mode === 'answer-prose-wrong-fields' && !review ? prose+JSON.stringify({type:'Other',conclusion:{subject:'preview-stage2-answer',value}})
     : mode === 'wrapped' || mode === 'wrapped-crlf' ? (review ? '\\u0060\\u0060\\u0060'+newline+decision+newline+'\\u0060\\u0060\\u0060' : '\\u0060\\u0060\\u0060json'+newline+decision+newline+'\\u0060\\u0060\\u0060')
     : mode === 'answer-two-objects' && !review ? decision+'\\n'+decision : decision;
@@ -346,7 +354,7 @@ export const createClaudeCodeSubscriptionRoute = () => ({kind:'Success',value:{i
     // A contradicted review is unavailable, never a pass and never a veto (Rules 77, 86, 95).
     // An answer that stays malformed after its one re-ask is never sent; every other mode still answers.
     expect(sends.some(send => answerOf(send.text) === 'PREVIEW — Noted.')).toBe(
-      !['answer-two-objects', 'answer-list-wrapped', 'answer-prose-wrong-fields'].includes(mode));
+      !['answer-two-objects', 'answer-cut', 'answer-prose-wrong-fields'].includes(mode));
     const status = JSON.parse(spawnSync(process.execPath,
       ['--no-warnings','--loader','./scripts/slice-ts-loader.mjs','tests/preview/journal-agent.mjs','status','--root',root],
       {cwd:process.cwd(),env,encoding:'utf8',timeout:10000}).stdout);

@@ -15,9 +15,13 @@
  *
  * The returned shape is content-free, so it may be counted in status without storing
  * model text. Callers keep every shape check they already apply after parsing. */
-export type ModelJsonShape = 'bare' | 'fenced' | 'prose-wrapped' | 'early-close';
+export type ModelJsonShape = 'bare' | 'fenced' | 'prose-wrapped' | 'early-close' | 'sole-object';
 /** Whether this consumer may discard text around one complete object (see above). */
 export type ModelJsonWrapped = 'accept' | 'refuse';
+/** A tolerant consumer's own test for "this is the object I asked for". Supplying it widens nothing on its
+ * own: it only lets the reading below pick the one object that answers the caller's question out of text the
+ * brace scan alone cannot divide. The caller applies its full field checks afterwards, exactly as before. */
+export type ModelJsonSole = (value: Record<string, unknown>) => boolean;
 export type ModelJsonMalformedShape = 'fenced' | 'prose-wrapped' | 'multiple-objects' | 'truncated' | 'not-json';
 export type ModelJsonResult =
   | { ok: true; value: Record<string, unknown>; shape: ModelJsonShape }
@@ -71,7 +75,23 @@ export type ModelJsonFailureShape = ModelJsonMalformedShape | `${ModelJsonShape}
 export const failureShapeOf = (result: ModelJsonResult): ModelJsonFailureShape =>
   result.ok ? `${result.shape}-wrong-fields` : result.shape;
 
-export function parseModelJson(text: string, options: { wrapped?: ModelJsonWrapped } = {}): ModelJsonResult {
+/** The last reading a tolerant consumer may take (plan #485), for the two live classes the scan alone cannot
+ * divide. (a) The k6 residual class w4-answerfail left open: the model reasons in prose that itself carries a
+ * bracket or a brace pair (`cancelReminders:[]`), so the residual test above refuses an answer that was written.
+ * (b) The live class of 2026-10-04 (proof room one, updates 715673529 and 715673530, both attempts each, counted
+ * `answer/decision/malformed/truncated`): the scan ends with a brace still open, so the whole response is refused
+ * as cut off. Neither is a reading of meaning: `sole` is the caller's own identity test, and the object is taken
+ * only when EXACTLY ONE complete top-level object passes it, so two answers can never collapse into one and a
+ * response whose only object is genuinely cut still has none. Nothing else about the surrounding text is read,
+ * because nothing else is evidence: a stray bracket is not a list the model meant, and a brace left open after a
+ * complete answer is not that answer being incomplete. Rules 15 and 77: refusing an answer the model did produce
+ * costs the operator the answer; this consumer's output is reviewed again before it can reach them. */
+const soleObject = (spans: readonly string[], sole: ModelJsonSole): Record<string, unknown> | null => {
+  const named = spans.map(parseObject).filter((value): value is Record<string, unknown> => value !== null && sole(value));
+  return named.length === 1 ? named[0]! : null;
+};
+
+export function parseModelJson(text: string, options: { wrapped?: ModelJsonWrapped; sole?: ModelJsonSole } = {}): ModelJsonResult {
   const trimmed = text.trim();
   let whole: unknown;
   try { whole = JSON.parse(trimmed); } catch { whole = undefined; }
@@ -86,12 +106,15 @@ export function parseModelJson(text: string, options: { wrapped?: ModelJsonWrapp
     if (isObject(inner)) return { ok: true, value: inner, shape: 'fenced' };
   }
   const { spans, starts, open } = topLevelObjects(trimmed);
-  if (open) return { ok: false, shape: 'truncated' };
+  // The tolerant consumer's last reading (see soleObject): computed once, used only where the readings below refuse.
+  const named = options.wrapped === 'accept' && options.sole ? soleObject(spans, options.sole) : null;
+  const sole = (): ModelJsonResult | null => named === null ? null : { ok: true, value: named, shape: 'sole-object' };
+  if (open) return sole() ?? { ok: false, shape: 'truncated' };
   if (spans.length > 1) {
     // A tolerant consumer only, on the same terms as a wrapper: anything around the repaired object is prose.
     const repaired = options.wrapped === 'accept' ? earlyClose(trimmed, spans, starts) : null;
     if (repaired && !/[[\]{}]/u.test(repaired.outside)) return { ok: true, value: repaired.value, shape: 'early-close' };
-    return { ok: false, shape: 'multiple-objects' };
+    return sole() ?? { ok: false, shape: 'multiple-objects' };
   }
   const span = spans[0];
   const outside = spans.reduce((rest, part) => rest.replace(part, ''), trimmed);
@@ -104,6 +127,8 @@ export function parseModelJson(text: string, options: { wrapped?: ModelJsonWrapp
     const value = parseObject(span);
     if (value) return { ok: true, value, shape: 'prose-wrapped' };
   }
+  const only = sole();
+  if (only) return only;
   // Refused: classify content-free for diagnostics only; nothing here is accepted.
   if (fence || outside.includes('```')) return { ok: false, shape: 'fenced' };
   return { ok: false, shape: span === undefined ? 'not-json' : 'prose-wrapped' };

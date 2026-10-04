@@ -239,6 +239,22 @@ export const STEP_SUPERVISOR_EXHAUSTED = 'step supervisor budget exhausted';
 export type MemorySourceKind = 'operator-stated' | 'channel-import' | 'inferred-by-summary';
 /** Runner-authored packet guidance for the single format re-ask (Rule 116); the operator's message is unchanged. */
 export const ANSWER_FORMAT_REMINDER = 'Your previous response to this same message was refused because it was not exactly one JSON Decision object. Answer again and return only that object, with no text before or after it; put all reasoning inside reason.value.';
+/** What the runner's reader actually saw, one clause per refusal class (plan #485). Live 2026-10-04 (proof room
+ * one, updates 715673529 and 715673530) the one re-ask said only that the response was not one Decision object,
+ * and both re-asks returned the same slip, so the operator read the failure reply for an answer the model wrote.
+ * Each clause is the runner's own content-free class, never any of the model's text, and it adds a fact the model
+ * cannot otherwise have: its own response looked complete to it. An unlisted or absent class adds nothing. */
+const FORMAT_DEFECTS: Readonly<Record<string, string>> = Object.freeze({
+  truncated: ' What the reader saw: a "{" that is never closed, so the response did not parse at all. Close every brace and bracket you open, and keep the answer short enough to finish.',
+  'multiple-objects': ' What the reader saw: more than one top-level JSON object. Return one object only.',
+  'prose-wrapped': ' What the reader saw: text outside the object. Start at "{" and end at its closing brace.',
+  fenced: ' What the reader saw: the object inside a Markdown fence, or a stray fence. Return the bare object, with no ``` marks.',
+  'not-json': ' What the reader saw: no JSON object at all. Return the Decision object itself, not a description of it.',
+});
+const WRONG_FIELDS = ' What the reader saw: one object, but its fields were wrong. type must be "Decision", conclusion.subject must be "preview-stage2-answer", and floor.allowed must copy bindings.floor exactly with chosen inside it.';
+/** The re-ask reminder for one refusal class: the fixed sentence, plus the clause naming what the reader saw. */
+export const answerFormatReminder = (shape?: string): string => shape === undefined ? ANSWER_FORMAT_REMINDER
+  : `${ANSWER_FORMAT_REMINDER}${shape.endsWith('-wrong-fields') ? WRONG_FIELDS : FORMAT_DEFECTS[shape] ?? ''}`;
 export const withFormatReminder = (context: string, reminder: string): string =>
   JSON.stringify({ ...JSON.parse(context) as Record<string, unknown>, formatReminder: reminder });
 export const MODEL_FAILURE_REPLY = 'I couldn\'t produce an answer to that. Please rephrase or ask again.';
@@ -4733,7 +4749,10 @@ export interface PreviewPorts {
    * is routed here; an operator answer is never delegated to a session. */
   sessionWork?(input: { question: string; context: string; id: string }): ReturnType<PreviewPorts['model']>;
   model(input: { question: string; context: string; id: string; prepared?: string }): Promise<string | {state?: 'complete'; text:string;
-    usage: ModelUsage; /** The Decision's separately stated reason claim (Rule 108), kept beside its conclusion. */ reason?: string} | {state:'rejected' | 'complete'; failureClass:ModelFailureClass; usage?: ModelUsage}
+    usage: ModelUsage; /** The Decision's separately stated reason claim (Rule 108), kept beside its conclusion. */ reason?: string}
+    | {state:'rejected' | 'complete'; failureClass:ModelFailureClass;
+      /** The runner's content-free refusal class, when the reader produced one: it names the re-ask's defect clause. */
+      failureShape?: string; usage?: ModelUsage}
     | {state:'uncertain'; usage?: ModelUsage}>;
   /** Rule 42: a message id (accepted), null (UNKNOWN) or a closed outcome. Rule 89: `provenance`
    * is the journal's signature over exactly `target`, `chat`, `thread` and `text`. */
@@ -6960,7 +6979,8 @@ export function createJournalWorker(journal: ReturnType<typeof openPreviewJourna
           const formatReask = async (given: Answer): Promise<Answer | false> => {
             if (typeof given === 'string' || !('failureClass' in given) || given.state !== 'complete'
               || given.failureClass !== 'malformed' || turn.answerRetried) return given;
-            const retryContext = routedContext(withFormatReminder(context, ANSWER_FORMAT_REMINDER));
+            const retryContext = routedContext(withFormatReminder(context,
+              answerFormatReminder(typeof given.failureShape === 'string' ? given.failureShape : undefined)));
             let retryPrepared: string | undefined, preparable = true;
             if (prepared !== undefined) try { retryPrepared = ports.prepareModel?.({ question, context: retryContext, id: turn.id }); }
             catch { preparable = false; }

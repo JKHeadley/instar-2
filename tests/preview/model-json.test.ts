@@ -107,8 +107,11 @@ it('the shipped launcher parses with a per-consumer policy, and only the answer 
   const launcher = readFileSync(join(process.cwd(), 'tests/preview/journal-agent.mjs'), 'utf8');
   expect(launcher).toContain("const wrappedPolicyOf = role => role === 'answer' ? 'accept' : 'refuse';");
   const sites = launcher.match(/parseModelJson\([^;]*?\),/gu) ?? [];
-  expect(sites).toEqual(['parseModelJson(result.bytes, { wrapped: wrappedPolicyOf(role) }),']);
+  expect(sites).toEqual(['parseModelJson(result.bytes, readOptionsOf(role)),']);
   expect(launcher).toContain('const role = roleOf(id);');
+  // Plan #485: the same one site also carries the answer side's own identity test, and a gate never gets it.
+  expect(launcher).toContain("const readOptionsOf = role => ({ wrapped: wrappedPolicyOf(role),"
+    + " ...(role === 'answer' ? { sole: previewAnswerDecision } : {}) });");
 });
 
 it('names a wrapped object that fails the caller checks by its wrapper, content-free', () => {

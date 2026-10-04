@@ -511,6 +511,15 @@ const roleOf = id => id.endsWith(':reply-review') || id.endsWith(':revision-revi
  * and no later review would catch it. Nothing branches on what the text means, only on which consumer asked.
  */
 const wrappedPolicyOf = role => role === 'answer' ? 'accept' : 'refuse';
+/** The answer consumer's own identity test for the object it asked for: the same two fields it reads below, and
+ * nothing more. It lets `parseModelJson` pick that one object out of text the brace scan alone cannot divide
+ * (plan #485); every field check, including the floor, still runs afterwards exactly as before. A gate never
+ * supplies it, so a verdict keeps the narrow reading. */
+const previewAnswerDecision = value => value.type === 'Decision'
+  && value.conclusion?.subject === 'preview-stage2-answer';
+/** The one options object the single parse site below uses: this consumer's wrapper policy, plus — for the answer
+ * side alone — its own identity test. A gate gets neither, so its verdict keeps the narrow reading. */
+const readOptionsOf = role => ({ wrapped: wrappedPolicyOf(role), ...(role === 'answer' ? { sole: previewAnswerDecision } : {}) });
 /** The registered live judgment a subscription call serves (model-call-boundary.ts). A revised
  * reply's held-class review is a reply review; the revision is the agent's own response to the
  * objections, with its own floor. A retrospective pass is its own judgment, and so is its duty follow-up
@@ -1596,13 +1605,16 @@ async function main() {
       if (!result.bytes) return { state: 'complete', failureClass: 'empty', usage: result.usage };
       const role = roleOf(id);
       // A wrapped object passes exactly the checks below that an unwrapped one does; only the wrapper is dropped.
-      const extracted = parseModelJson(result.bytes, { wrapped: wrappedPolicyOf(role) }), decision = extracted.ok ? extracted.value : null;
+      const extracted = parseModelJson(result.bytes, readOptionsOf(role)), decision = extracted.ok ? extracted.value : null;
       // Rule 57: a returned floor may only echo the envelope's own; it never defines or widens it.
       const value = decision?.type === 'Decision' && decision.conclusion?.subject === 'preview-stage2-answer'
         && decisionWithinFloor(decision) ? conclusionText(decision.conclusion.value) : null;
       if (value === null) {
-        recordShape(shapesPath, role, 'decision', 'malformed', failureShapeOf(extracted));
-        return { state: 'complete', failureClass: 'malformed', usage: result.usage };
+        const failureShape = failureShapeOf(extracted);
+        recordShape(shapesPath, role, 'decision', 'malformed', failureShape);
+        // Plan #485: the one re-ask tells the model WHICH way its response missed the protocol. The shape is the
+        // runner's own content-free class, never any of the model's text, so naming it reveals nothing.
+        return { state: 'complete', failureClass: 'malformed', failureShape, usage: result.usage };
       }
       if (extracted.shape !== 'bare') recordShape(shapesPath, role, 'decision', 'tolerated', extracted.shape);
       if (!value.trim()) return { state: 'complete', failureClass: 'empty', usage: result.usage };

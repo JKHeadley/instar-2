@@ -8,16 +8,18 @@ import { mkdtempSync, readFileSync, realpathSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { createJournalWorker, openPreviewJournal } from './journal-test-worker.js';
-import { ANSWER_FORMAT_REMINDER, MODEL_FAILURE_REPLY } from './journal.js';
+import { ANSWER_FORMAT_REMINDER, MODEL_FAILURE_REPLY, answerFormatReminder } from './journal.js';
 import { conclusionText, parseModelJson } from './model-json.js';
 import { REPLY_RULES, REVIEW_MALFORMED, reviewReply, type ReplyCheckResult } from './reply-check.js';
 
 const key = new Uint8Array(32).fill(54);
 const usage = { inputTokens: 10, outputTokens: 5, charge: null };
 const malformed = { state: 'complete' as const, failureClass: 'malformed' as const, usage };
+/** Plan #485: the same refusal with the runner's content-free class, as the launcher now reports it. */
+const shaped = (failureShape: string) => ({ ...malformed, failureShape });
 const scores = (overrides: Record<string, number> = {}) => ({ model: 'jev-1.13.0', answers: Object.fromEntries(
   Object.keys(REPLY_RULES).map(id => [id, { type: 'noul', noul: overrides[id] ?? 0.01 }])) });
-type Answer = typeof malformed | string;
+type Answer = typeof malformed | ReturnType<typeof shaped> | string;
 type Escalation = 'malformed' | 'pass' | 'unavailable';
 
 async function run(options: { maxCalls: number; answers: Answer[]; reviews?: Escalation[]; stopAfterModel?: number;
@@ -200,4 +202,21 @@ it('re-asks a format miss and sends the model\'s real bare answer, while the rea
     expect(r.sent[0]).toContain((JSON.parse(retried) as { reply: string }).reply.replace(/^PREVIEW:\s*/u, '').slice(0, 40));
     expect(r.turn.answerRetried).toBe(true);
   } finally { r.close(); }
+});
+
+it('names the defect the reader saw when the launcher reported one, and only then (plan #485)', async () => {
+  // Live 2026-10-04 (proof room one, updates 715673529 and 715673530): the first attempt's refusal class was
+  // `truncated`, the re-ask said only "not exactly one JSON Decision object", and the second attempt repeated
+  // the same slip. The class is the runner's own, so naming it reveals none of the model's text.
+  const r = await run({ maxCalls: 4, answers: [shaped('truncated'), 'Pack light layers and a rain jacket.'] });
+  try {
+    const reminder = r.inputs[1]!.context.formatReminder as string;
+    expect(reminder).toBe(answerFormatReminder('truncated'));
+    expect(reminder.startsWith(ANSWER_FORMAT_REMINDER)).toBe(true);
+    expect(reminder).toContain('a "{" that is never closed');
+    expect(r.sent).toEqual(['PREVIEW — Pack light layers and a rain jacket.']);
+  } finally { r.close(); }
+  // A refusal the launcher could not class (or an older journal's) keeps exactly the sentence it had before.
+  const plain = await run({ maxCalls: 4, answers: [malformed, 'Pack light layers and a rain jacket.'] });
+  try { expect(plain.inputs[1]!.context.formatReminder).toBe(ANSWER_FORMAT_REMINDER); } finally { plain.close(); }
 });

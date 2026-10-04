@@ -803,7 +803,7 @@ permitted neighbor:
 | F02 wrapped JSON | A complete fenced Decision was held as malformed. | Bare and whole-response LF/CRLF fences parse for every consumer; extra objects and a real redacted Claude limit-result capture do not, and prose around the object does not for a gate. The CRLF fence itself is a synthetic boundary: the live root that produced it is not readable from the machine running this catalog. |
 | F03 contradicting review prose | A PASS object appeared beside written rejection. | A lone PASS line or whole fence parses; rejecting prose around it cannot authorize a send. |
 | F04 too-long notice | An input or answer exceeded a preview limit. | A short reply sends whole; oversized input and answer send their fixed notices, never a prefix. The answer notice does not repeat after replay. |
-| F06 prose-wrapped answer | Both answer attempts put the Decision inside reasoning, so a plain question got "I couldn't produce an answer" (live 2026-10-01 12:38 PDT, k6 update 969389879). | Replaying real recorded prose-wrapped and prose-plus-fence answers: the answer side reads the one object and answers, while a gate still refuses them; a list wrapper, a cut object and wrong fields stay malformed. |
+| F06 prose-wrapped answer | Both answer attempts put the Decision inside reasoning, so a plain question got "I couldn't produce an answer" (live 2026-10-01 12:38 PDT, k6 update 969389879). | Replaying real recorded prose-wrapped and prose-plus-fence answers: the answer side reads the one object and answers, while a gate still refuses them; a cut object and wrong fields stay malformed. Since plan #485 a list wrapper around one such Decision is read on the answer side too (`answer-sole-decision-live.test.ts`); this case keeps the gate-side reading. |
 | F05 held-item crowding | Many held turns competed for packet space. | The relevant older item reaches the bounded ten-item packet; excess items stay outside it. The answer model still judges relevance. |
 
 Run only this catalog and the parser unit test after a catalog change:
@@ -2081,8 +2081,13 @@ validated terminal result remains UNKNOWN and is never repeated. This also
 applies to summary reservations: a definite summary failure may use its remaining
 bounded attempt, while an uncertain one stays pending across restart. For answers and reviews one step
 comes before the fixed reply: a completed answer or reply-review verdict that missed its
-required format (`malformed`) is asked again exactly once, with a fixed runner-authored
-`formatReminder` added to the packet (the operator's message is unchanged). The re-ask is
+required format (`malformed`) is asked again exactly once, with a runner-authored
+`formatReminder` added to the packet (the operator's message is unchanged). Since plan
+#485 that reminder also names the refusal class the runner's reader produced — an unclosed
+brace, more than one object, text outside it, a fence, no JSON at all, or an object whose
+fields were wrong — because a model whose own response looked complete to it cannot
+otherwise know which way it missed. The class is the runner's own and content-free, so the
+reminder repeats none of the model's text; an unclassed refusal keeps the fixed sentence alone. The re-ask is
 not a provider retry: it is a separate call, recorded as a `format-retry` journal row that
 keeps the first call's failure class and usage, and it reserves against the same call cap.
 It is skipped when that cap is reached, the stop latch holds or the trial has expired, and
@@ -2122,13 +2127,20 @@ operator an answer the model did produce (Rules 15, 77: the live 2026-10-01 k6
 turn was answered "I couldn't produce an answer" twice for this reason alone).
 Every gate here — a reply or summary review verdict, and the retrospective —
 keeps the narrow reading, because prose beside a verdict may state a rejection
-that contradicts the object and no later review would catch it. Acceptance needs
-exactly one object and no other JSON structure outside it: a `[`, `]` or stray
-brace in the residual means a list of unknown length or a second object began,
-so it stays malformed, as do two objects, a cut object, and an object that fails
-the same field checks an unwrapped one passes. `status`
+that contradicts the object and no later review would catch it. The wrapper
+reading needs exactly one object and no other JSON structure outside it: a `[`,
+`]` or stray brace in the residual could be a list of unknown length or a second
+object. Plan #485 added one further reading for the answer side alone, because
+that side can name the object it asked for: when exactly one complete top-level
+object is a Decision whose `conclusion.subject` is `preview-stage2-answer`, that
+object is read (`sole-object`), whatever the text around it — a list wrapper, a
+bracket in the model's reasoning, or a brace it left open. Two such objects, or
+none, still refuse, so two answers can never collapse into one and a response
+whose only object is genuinely cut has none; an object read this way still faces
+every field check an unwrapped one passes. `status`
 reports `modelJsonShapes`: content-free counts keyed `role/layer/outcome/shape`
-(shapes `bare`, `fenced`, `prose-wrapped`, and for refusals `fenced`, `prose-wrapped`,
+(shapes `bare`, `fenced`, `prose-wrapped`, `early-close`, `sole-object`, and for
+refusals `fenced`, `prose-wrapped`,
 `multiple-objects`, `truncated`, `not-json`,
 or `<wrapper>-wrong-fields` when the JSON parsed but failed its checks), plus the
 last malformed one, from a plaintext sidecar `model-json-shapes.json` outside
