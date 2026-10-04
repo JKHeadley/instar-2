@@ -386,8 +386,12 @@ export function subscriptionToolSettings(turn: SubscriptionToolTurn, home: strin
   'tool turn: a denied root, the admission state or the home lies under a readable path');
   ensure(!turn.egress || (Number.isSafeInteger(turn.egress.port) && turn.egress.port > 0 && turn.egress.port <= 65535),
     'tool turn: the egress checkpoint port is invalid');
-  ensure(!turn.mcp || (within(turn.mcp.config, turn.stateDirectory) && turn.mcp.servers.length > 0
-    && turn.mcp.servers.every(name => /^[A-Za-z0-9_-]{1,64}$/u.test(name))), 'tool turn: MCP configuration lies in the admission state with plain server names');
+  // The MCP configuration (its servers' credentials) lies where no tool may read: never on the scratch volume, and in the
+  // admission state or (a harness that runs as its own user receives it through a hand-off) under one of the denied roots.
+  ensure(!turn.mcp || (!within(turn.mcp.config, turn.scratch)
+    && (within(turn.mcp.config, turn.stateDirectory) || turn.deniedRoots.some(root => within(turn.mcp!.config, root)))
+    && turn.mcp.servers.length > 0 && turn.mcp.servers.every(name => /^[A-Za-z0-9_-]{1,64}$/u.test(name))),
+  'tool turn: MCP configuration lies in the admission state or a denied root, with plain server names');
   const hook = (mode: 'pre' | 'post' | 'child-start' | 'child-stop') => [{ matcher: '*', hooks: [{ type: 'command',
     command: `${turn.hook.node} ${turn.hook.script} ${mode} ${turn.stateDirectory}` }] }];
   return JSON.stringify({
@@ -429,6 +433,10 @@ export interface SubscriptionProviderIO extends ProductionProviderIO {
     Readonly<{ loginProfileIdentity: string; managedConfigurationDigest: string }>;
   /** Whether effective managed policy sets disableAllHooks (null: unknown). A tool turn refuses unless false. */
   managedHooksDisabled?(profile: import('./provider-credential-custodian.js').ProviderSubscriptionProfile): boolean | null;
+  /** The host hands each command the login from its own custody over a descriptor, so no file of the login exists for
+   * the harness's user to open (preview harness user). Its account, organization and plan are bound to the profile in
+   * that custody when the login is stored, not echoed back by the CLI, which then reports only an `oauth_token` login. */
+  readonly descriptorLogin?: true;
 }
 
 export function validateSubscriptionActivation(record: SubscriptionActivationRecord,
@@ -563,7 +571,8 @@ export function createClaudeCodeSubscriptionRoute(input:
         };
         const version = await command(['--version'], '', 5000, 1024);
         ensure(version.text.trim() === `${profile.version} (Claude Code)`, 'subscription version differs');
-        ensure(claudeSubscriptionStatusAccepted(JSON.parse((await command(['auth', 'status', '--json'], '', 5000, 8192)).text), profile),
+        ensure(claudeSubscriptionStatusAccepted(JSON.parse((await command(['auth', 'status', '--json'], '', 5000, 8192)).text), profile,
+          config.io.descriptorLogin === true),
           'subscription authentication status refused');
         // Preflight consumes the same absolute deadline. Give the model only the time
         // still available after version and auth, retaining a small dispatch margin.
@@ -632,19 +641,25 @@ export function createClaudeCodeSubscriptionRoute(input:
  * claude.ai login of the expected account, organization and plan, in this login home, and no
  * other field. Shared by the answer route and the delegated-session admission. */
 export function claudeSubscriptionStatusAccepted(status: unknown,
-  profile: import('./provider-credential-custodian.js').ProviderSubscriptionProfile): boolean {
-  const required = ['loggedIn', 'authMethod', 'apiProvider', 'analyticsDisabled', 'projectsDirectory',
-    'configDirectory', 'email', 'orgId', 'orgName', 'subscriptionType'];
+  profile: import('./provider-credential-custodian.js').ProviderSubscriptionProfile, descriptorLogin = false): boolean {
   if (!status || typeof status !== 'object' || Array.isArray(status)) return false;
   const row = status as Record<string, unknown>;
-  return Object.keys(row).every(key => required.includes(key) || key === 'forcedLoginMethod')
-    && required.every(key => Object.hasOwn(row, key)) && row.loggedIn === true
-    && row.authMethod === 'claude.ai' && row.apiProvider === 'firstParty'
-    && typeof row.analyticsDisabled === 'boolean' && typeof row.orgName === 'string'
-    && row.email === profile.expectedAccount && row.orgId === profile.organization
-    && row.subscriptionType === profile.plan && row.configDirectory === profile.configDirectory
-    && row.projectsDirectory === `${profile.configDirectory}/projects`
+  const local = row.configDirectory === profile.configDirectory && row.projectsDirectory === `${profile.configDirectory}/projects`
+    && row.loggedIn === true && row.apiProvider === 'firstParty' && typeof row.analyticsDisabled === 'boolean'
     && (row.forcedLoginMethod === undefined || row.forcedLoginMethod === 'claudeai');
+  // A descriptor login (SubscriptionProviderIO.descriptorLogin): the CLI holds only the handed-over token, so it reports
+  // that and nothing of an account; only that exact shape passes, and only from a host that declares the hand-off.
+  if (descriptorLogin) {
+    const shape = ['loggedIn', 'authMethod', 'apiProvider', 'analyticsDisabled', 'projectsDirectory', 'configDirectory'];
+    return local && row.authMethod === 'oauth_token' && Object.keys(row).every(key => shape.includes(key) || key === 'forcedLoginMethod')
+      && shape.every(key => Object.hasOwn(row, key));
+  }
+  const required = ['loggedIn', 'authMethod', 'apiProvider', 'analyticsDisabled', 'projectsDirectory',
+    'configDirectory', 'email', 'orgId', 'orgName', 'subscriptionType'];
+  return local && Object.keys(row).every(key => required.includes(key) || key === 'forcedLoginMethod')
+    && required.every(key => Object.hasOwn(row, key)) && row.authMethod === 'claude.ai' && typeof row.orgName === 'string'
+    && row.email === profile.expectedAccount && row.orgId === profile.organization
+    && row.subscriptionType === profile.plan;
 }
 /** Part fifteen §5 (docs/19-scheduled-work): the delegated-session grant through the Claude doorway.
  * Its own framing, so only an activation record naming this exact session policy admits it. */
@@ -680,7 +695,7 @@ export async function admitClaudeSubscriptionSession(input: Readonly<{
   ensure(!result.limited && result.code === 0, 'subscription authentication status unavailable');
   let status: unknown = null;
   try { status = JSON.parse(result.stdout); } catch { status = null; }
-  ensure(claudeSubscriptionStatusAccepted(status, profile), 'subscription authentication status refused');
+  ensure(claudeSubscriptionStatusAccepted(status, profile, io.descriptorLogin === true), 'subscription authentication status refused');
 }
 /** Narrows a client-supplied framing string to one this adapter owns; anything else refuses. */
 export function asSubscriptionFraming(framing: string): SubscriptionFraming {

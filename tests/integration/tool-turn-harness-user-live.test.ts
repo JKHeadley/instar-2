@@ -5,13 +5,18 @@
 // for the turn case a login in that profile. Every root is a throwaway under /private/tmp; nothing is sent to any chat.
 //
 // `race` is the swap race of docs/defects/2026-10-03-file-tool-swap-race.md, scheduled deterministically: the real
-// admission hook allows a workspace path, the path is then swapped for a link to a canary in the operator's home, and
-// the open happens. Opened as the operator's account it reads the canary (the race is real); opened as the harness
-// user it is refused by the kernel. `turn` drives one real tool turn through the real launcher, hook, resource owner
-// and shipped route on a throwaway root: the harness runs as the harness user with its full tool set, and leaves no
-// process of that user behind.
+// admission hook allows a workspace path, the path is then swapped for a link to a target, and the open happens. The
+// targets are synthetic canaries in every place a credential could be: the operator's home, the runner's login custody
+// (laid out exactly as the real one), a turn's runner-private MCP configuration, and a world-readable file the operator's
+// account left at the top of /private/tmp (after the runner's closing sweep). Opened as the operator's account each
+// reads its canary (the race is real); opened as the harness user each is refused by the kernel, while an ordinary
+// workspace file stays readable and writable. `turn` drives one real tool turn through the real launcher, hook, resource
+// owner and shipped route on a throwaway root: the harness runs as the harness user with its full tool set and its login
+// handed over from custody, and leaves no process of that user behind. `mcp` adds an MCP server whose credential reaches
+// it only through the hand-off.
 import { execFileSync, spawnSync } from 'node:child_process';
-import { mkdirSync, mkdtempSync, readFileSync, realpathSync, rmSync, symlinkSync, unlinkSync, writeFileSync } from 'node:fs';
+import { createHash } from 'node:crypto';
+import { chmodSync, existsSync, mkdirSync, mkdtempSync, readdirSync, readFileSync, realpathSync, rmSync, symlinkSync, unlinkSync, writeFileSync } from 'node:fs';
 import { homedir } from 'node:os';
 import { join } from 'node:path';
 import { afterAll, expect, it } from 'vitest';
@@ -32,7 +37,7 @@ import { hostResources } from '../../scripts/resource-owner.mjs';
 // @ts-expect-error The runner side stays plain JavaScript.
 import { runToolTurn, attachScratch, detachScratch } from '../preview/tool-turn.mjs';
 // @ts-expect-error The runner side stays plain JavaScript.
-import { grantVolume, harnessReadiness, HARNESS_LAUNCHER, HARNESS_USER, installHook, probeAccess, runnerUser } from '../preview/harness-user.mjs';
+import { closeOperatorTmp, grantVolume, harnessGate, HARNESS_BASE, HARNESS_LOGIN, HARNESS_USER, installHook, plaintextLogins, probeAccess, runnerUser, storeHarnessLogin } from '../preview/harness-user.mjs';
 
 const LIVE = process.env.INSTAR_TOOL_TURN_HARNESS_USER_LIVE_TEST === '1';
 const ONLY = process.env.INSTAR_TOOL_TURN_CASE;
@@ -51,55 +56,77 @@ const harnessUid = () => Number(execFileSync('/usr/bin/id', ['-u', HARNESS_USER]
 const harnessProcesses = () => { const r = spawnSync('/bin/ps', ['-U', String(harnessUid()), '-o', 'pid='], { encoding: 'utf8' });
   expect([0, 1]).toContain(r.status); return r.stdout.trim(); };
 
-it.runIf(run('race'))('the swap race: admitted by the real hook, swapped, then opened: the operator account reads the canary, the harness user is refused', { timeout: 120000 }, () => {
-  const canary = join(CANARY_DIR, 'credentials.json');
-  writeFileSync(canary, CANARY_TEXT, { mode: 0o600 });
+it.runIf(run('race'))('the swap race: admitted by the real hook, swapped, then opened: the operator account reads each credential canary, the harness user is refused', { timeout: 120000 }, () => {
+  const profile = JSON.parse(readFileSync(PROFILE, 'utf8'));
   const dir = join(scratch, 'race'); mkdirSync(dir, { mode: 0o700 });
+  // The canaries (never real secrets), each where a credential could be.
+  const home = join(CANARY_DIR, 'credentials.json');
+  writeFileSync(home, CANARY_TEXT, { mode: 0o600 });
+  const custody = storeHarnessLogin(profile, `${CANARY_TEXT}-LOGIN`, join(HARNESS_BASE, `custody-race-${String(process.pid)}`, 'login.json'));
+  const privateDir = join(dir, 'tool-turns', 'turn', 'private'); mkdirSync(privateDir, { recursive: true, mode: 0o700 });
+  const mcp = join(privateDir, 'mcp.json');
+  writeFileSync(mcp, JSON.stringify({ mcpServers: { s: { command: 'c', env: { TOKEN: `${CANARY_TEXT}-MCP` } } } }), { mode: 0o600 });
+  const tmpFile = `/private/tmp/harness-user-race-${String(process.pid)}.txt`;
+  writeFileSync(tmpFile, `${CANARY_TEXT}-TMP`, { mode: 0o644 }); chmodSync(tmpFile, 0o644);
+  // Before the runner's sweep the world-readable file is open to every local user, the harness user included.
+  expect(probeAccess([`r:${tmpFile}`])![0]).toMatchObject({ ok: true });
+  expect(closeOperatorTmp().entries).toContain(tmpFile);
+  const targets = [home, custody, mcp, tmpFile];
   const runner = runnerUser();
   const mounted = attachScratch(dir);
   try {
     grantVolume(mounted, HARNESS_USER, runner);
     const ws = join(mounted, 'ws'), state = join(dir, 'state');
     mkdirSync(ws, { mode: 0o700 }); mkdirSync(state, { mode: 0o700 });
-    writeFileSync(join(state, 'config.json'), JSON.stringify({ workspace: ws, tmp: join(mounted, 'tmp'), maxCalls: 8, maxWriteBytes: 1024, operations: [] }));
+    writeFileSync(join(state, 'config.json'), JSON.stringify({ workspace: ws, tmp: join(mounted, 'tmp'), maxCalls: 64, maxWriteBytes: 1024, operations: [] }));
     const hook = (tool: string, input: object) => {
       const result = spawnSync(process.execPath, [installHook(), 'pre', state], { input: JSON.stringify({ tool_name: tool, tool_input: input, tool_use_id: 'harness-user-race' }), encoding: 'utf8' });
       expect(result.status).toBe(0);
       return result.stdout ? JSON.parse(result.stdout).hookSpecificOutput : { permissionDecision: 'allow' };
     };
-    for (const mode of ['r', 'w'] as const) {
+    for (const canary of targets) for (const mode of ['r', 'w'] as const) {
       const safe = join(ws, `safe-${mode}.txt`);
-      writeFileSync(safe, 'ordinary');
+      rmSync(safe, { force: true }); writeFileSync(safe, 'ordinary');
       const admitted = hook(mode === 'r' ? 'Read' : 'Write', mode === 'r' ? { file_path: safe } : { file_path: safe, content: 'x' });
       expect(admitted.permissionDecision).toBe('allow');
       const target = admitted.updatedInput?.file_path ?? safe;
       // The permitted workspace mutation, scheduled between the hook's allow and the open.
       unlinkSync(safe); symlinkSync(canary, safe);
       // As the operator's account the open follows the link to the canary: the race is real.
-      if (mode === 'r') expect(readFileSync(target, 'utf8')).toBe(CANARY_TEXT);
+      if (mode === 'r') expect(readFileSync(target, 'utf8')).toContain(CANARY_TEXT);
       // As the harness user the kernel refuses the same open.
       const rows = probeAccess([`${mode}:${target}`]);
       expect(rows).not.toBeNull();
       expect(rows![0]).toMatchObject({ ok: false, code: 'EACCES' });
-      // An ordinary workspace file stays readable and writable as the harness user.
-      const plain = join(ws, `plain-${mode}.txt`); writeFileSync(plain, 'ordinary');
-      expect(probeAccess([`r:${plain}`, `w:${plain}`])!.every((row: { ok: boolean }) => row.ok)).toBe(true);
+      unlinkSync(safe);
     }
-    expect(readFileSync(canary, 'utf8')).toBe(CANARY_TEXT);
-  } finally { detachScratch(dir); }
+    // The real custody and the profile hold no plain-text login the harness user could open.
+    if (existsSync(HARNESS_LOGIN)) expect(probeAccess([`r:${HARNESS_LOGIN}`])![0]).toMatchObject({ ok: false, code: 'EACCES' });
+    expect(plaintextLogins(profile)).toEqual([]);
+    // An ordinary workspace file stays readable and writable as the harness user.
+    const plain = join(ws, 'plain.txt'); writeFileSync(plain, 'ordinary');
+    expect(probeAccess([`r:${plain}`, `w:${plain}`])!.every((row: { ok: boolean }) => row.ok)).toBe(true);
+    expect(readFileSync(home, 'utf8')).toBe(CANARY_TEXT);
+  } finally {
+    detachScratch(dir);
+    rmSync(join(custody, '..'), { recursive: true, force: true });
+    rmSync(tmpFile, { force: true });
+  }
 });
 
 let attached: { uid: number } | null = null;
-async function liveTurn(name: string, question: string, stopWhen?: (rows: Record<string, unknown>[]) => boolean) {
+async function liveTurn(name: string, question: string, stopWhen?: (rows: Record<string, unknown>[]) => boolean,
+  mcp: { servers: Record<string, unknown>; reads: string[]; digest: string } | null = null) {
   const profile: ProviderSubscriptionProfile = Object.freeze(JSON.parse(readFileSync(PROFILE, 'utf8')));
   const root = join(scratch, name); mkdirSync(root, { mode: 0o700 });
-  const readiness = harnessReadiness({ profile, denied: [realpathSync(root), homedir(), process.cwd()] });
-  expect(readiness).toMatchObject({ ready: true, user: HARNESS_USER });
-  const harness = { ...readiness, runner: runnerUser(), launcher: HARNESS_LAUNCHER };
+  const gate = harnessGate({ profile, denied: [realpathSync(root), homedir(), process.cwd()], clock: () => performance.now() });
+  expect(gate.state).toMatchObject({ ready: true, user: HARNESS_USER });
+  const harness = gate.current();
   if (!attached) { await hostResources.attach({ harnessUid: harness.uid }); attached = { uid: harness.uid }; }
   const f = factsFixture();
   let stop = false;
-  const io = createSubscriptionProviderIO({ repository: process.cwd(), stopped: () => stop, runAs: { user: harness.user, launcher: harness.launcher } });
+  const io = createSubscriptionProviderIO({ repository: process.cwd(), stopped: () => stop,
+    runAs: { user: harness.user, launcher: harness.launcher, login: harness.login, plan: harness.plan, during: harness.during } });
   const now = Date.now();
   const policy = subscriptionToolsPolicy(MODEL);
   const activation: SubscriptionActivationRecord = { type: 'SubscriptionActivationRecord', schemaVersion: 1,
@@ -120,15 +147,15 @@ async function liveTurn(name: string, question: string, stopWhen?: (rows: Record
     MODEL, 'grant:scratch', now, 32768);
   const appended: unknown[] = [];
   const recorder = { get view() { return journal.view; }, append: (row: never) => { appended.push(row); return journal.append(row); } };
-  let stateDirectory = '', stoppedAt: number | null = null;
+  let stateDirectory = '', mcpConfig: string | null = null, stoppedAt: number | null = null;
   const rowsOf = (state: string) => { try { return readFileSync(join(state, 'admission.jsonl'), 'utf8').trim().split('\n').filter(Boolean)
     .map(line => JSON.parse(line) as Record<string, unknown>); } catch { return []; } };
   const outcome = await runToolTurn({ journal: recorder, root, id, prepared, promptLimit: 32768, deniedRoots: [root, profile.home, profile.configDirectory,
     profile.workingDirectory], operations: SINGLE_MACHINE_PROFILE.operations, now: () => Date.now(), redactText: (t: string) => redact(t).text,
-    authority: `${activation.reference} ${activation.invocationPolicyDigest}`, mcp: null, stopped: () => stop, harness,
+    authority: `${activation.reference} ${activation.invocationPolicyDigest}`, mcp, stopped: () => stop, harness,
     fallback: async () => ({ result: 'fallback' }),
     invoke: async (turn: SubscriptionToolTurn) => {
-      stateDirectory = turn.stateDirectory;
+      stateDirectory = turn.stateDirectory; mcpConfig = turn.mcp?.config ?? null;
       const route = value(createClaudeCodeSubscriptionRoute({ provider: 'anthropic', model: MODEL, route: 'preview-subscription',
         disclosure: 'scratch integration test', credential: value(decode('SecretRef', { type: 'SecretRef', schemaVersion: 1,
           vault: 'preview', name: profile.reference }, ctx)), context: { ...ctx, site: f.c.site, preserved: f.c.preserved },
@@ -148,9 +175,13 @@ async function liveTurn(name: string, question: string, stopWhen?: (rows: Record
   const settled = performance.now();
   const rows = rowsOf(stateDirectory);
   const trace = appended.find(row => (row as { phase?: string }).phase === 'trace') as { harness?: unknown } | undefined;
-  const record = { name, question, error: 'error' in outcome ? outcome.error : null, uid: harness.uid, stateDirectory, rows, trace,
+  const answer = 'error' in outcome ? null : JSON.stringify((outcome as { result?: unknown }).result ?? null).slice(0, 4000);
+  const record = { name, question, error: 'error' in outcome ? outcome.error : null, answer, uid: harness.uid, stateDirectory, rows, trace,
     stopToSettledMs: stoppedAt === null ? null : Math.round(settled - stoppedAt), toolTurns: journal.view.toolTurns,
-    lastLaunch: hostResources.snapshot().lastLaunch, harnessProcessesAfter: harnessProcesses() };
+    lastLaunch: hostResources.snapshot().lastLaunch, harnessProcessesAfter: harnessProcesses(), mcpConfig,
+    plaintextLoginsAfter: plaintextLogins(profile),
+    // The handed-over login declares its plan, so the CLI fetched and cached no server policy into the profile.
+    serverPolicyAfter: readdirSync(profile.configDirectory).filter(name => name.startsWith('policy-limits.json') || name.startsWith('remote-settings')) };
   mkdirSync(RECORD, { recursive: true });
   writeFileSync(join(RECORD, `${name}.json`), `${JSON.stringify(record, null, 2)}\n`);
   return record;
@@ -173,6 +204,9 @@ it.runIf(run('turn'))('one tool turn on a throwaway root runs as the harness use
   expect(bash).toMatch(/<title>Example Domain<\/title>/u);
   expect(bash).toMatch(/curl-exit: 0/u);
   expect(trace?.harness).toEqual({ user: HARNESS_USER });
+  // The login came over the hand-off: Claude Code left no plain-text login in the profile, nor cached server policy.
+  expect(record.plaintextLoginsAfter).toEqual([]);
+  expect(record.serverPolicyAfter).toEqual([]);
   expect(record.toolTurns).toMatchObject({ invocations: 1, open: [], inconsistent: 0 });
   // The turn's harness-side state is the harness area's, and the launcher left no process of that user running.
   expect(stateDirectory.startsWith('/Users/Shared/instar-harness/turns/')).toBe(true);
@@ -186,5 +220,30 @@ it.runIf(run('stop'))('the stop ends a harness-user turn within the bound: the r
   expect(record.stopToSettledMs).not.toBeNull();
   expect(record.stopToSettledMs!).toBeLessThan(3000);
   expect(record.toolTurns).toMatchObject({ invocations: 1, open: [] });
+  expect(record.harnessProcessesAfter).toBe('');
+});
+
+it.runIf(run('mcp'))('an MCP server receives its credential through the hand-off: the tool works, the configuration was never the harness user\'s to open', { timeout: 400000 }, async () => {
+  // A minimal stdio MCP server, inline (node -e), with one read tool that says only whether its credential arrived intact
+  // (it compares a digest; nothing credential-derived is ever returned).
+  const token = `${CANARY_TEXT}-MCP-LIVE`;
+  const digest = createHash('sha256').update(token).digest('hex');
+  const server = `const {createHash}=require('crypto');let b='';process.stdin.on('data',d=>{b+=d;let i;while((i=b.indexOf('\\n'))>=0){const l=b.slice(0,i);b=b.slice(i+1);if(!l.trim())continue;const m=JSON.parse(l);`
+    + `const r=x=>process.stdout.write(JSON.stringify({jsonrpc:'2.0',id:m.id,result:x})+'\\n');`
+    + `if(m.method==='initialize')r({protocolVersion:m.params.protocolVersion,capabilities:{tools:{}},serverInfo:{name:'probe',version:'1'}});`
+    + `else if(m.method==='tools/list')r({tools:[{name:'service_status',description:'Reports whether this demo service is configured',inputSchema:{type:'object',properties:{}}}]});`
+    + `else if(m.method==='tools/call')r({content:[{type:'text',text:'service status: '+(createHash('sha256').update(String(process.env.PROBE_TOKEN)).digest('hex')==='${digest}'?'configured':'unconfigured')}]});`
+    + `else if(m.id!==undefined)r({});}});`;
+  const record = await liveTurn('mcp', 'Use the MCP tool mcp__probe__service_status (no arguments) once and tell me the status line it returns.', undefined,
+    { servers: { probe: { command: process.execPath, args: ['-e', server], env: { PROBE_TOKEN: token } } }, reads: ['mcp__probe__service_status'], digest: 'sha256:live' });
+  expect(record.error).toBeNull();
+  const post = record.rows.filter(row => row.phase === 'post' && row.tool === 'mcp__probe__service_status').map(row => String(row.result)).join('\n');
+  expect(post).toContain('service status: configured');
+  expect(JSON.stringify(record.rows)).not.toContain(token);
+  // The configuration it came from is runner-private, and the kernel refuses it to the harness user.
+  expect(record.mcpConfig).toMatch(/\/tool-turns\/[^/]+\/private\/mcp\.json$/u);
+  expect(probeAccess([`r:${record.mcpConfig}`])![0]).toMatchObject({ ok: false });
+  expect(record.plaintextLoginsAfter).toEqual([]);
+  expect(record.serverPolicyAfter).toEqual([]);
   expect(record.harnessProcessesAfter).toBe('');
 });

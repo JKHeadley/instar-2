@@ -15,7 +15,8 @@ import { readEgressRecord, startEgressProxy } from './egress-proxy.mjs';
 import { grantVolume, harnessRootState, prepareHarnessState, removeHarnessState } from './harness-user.mjs';
 
 export const TOOL_TURNS_DIRECTORY = 'tool-turns';
-/** A turn directory's runner-only part when the harness runs as its own user (the egress checkpoint's state). */
+/** A turn directory's runner-only part when the harness runs as its own user (the egress checkpoint's state, and the MCP
+ * launch configuration the harness receives only through the launcher's hand-off). */
 export const TOOL_TURN_PRIVATE = 'private';
 /** Where a root keeps the tools activation the runner derived by default (its live withdrawal handle; machine-local). */
 export const TOOLS_DEFAULT_ACTIVATION = 'tools-activation.json';
@@ -166,11 +167,14 @@ export function prepareToolTurn({ root, operation, attempt, operations, effectPo
     ...(effectPolicy === undefined ? {} : { effectPolicy }), ...(irreversibleTerm === undefined ? {} : { irreversibleTerm }) }), { mode: 0o600 });
   let mcpTurn;
   if (servers.length) {
-    writeFileSync(join(stateDirectory, 'mcp.json'), JSON.stringify({ mcpServers: mcp.servers }), { mode: 0o600 });
-    mcpTurn = { config: join(stateDirectory, 'mcp.json'), servers };
+    // The MCP servers' credentials (their `env`): as its own user the harness never gets a file of them it could open. The
+    // configuration stays runner-private and reaches the harness through the launcher's hand-off (harnessCommand).
+    const config = join(privateDirectory, 'mcp.json');
+    writeFileSync(config, JSON.stringify({ mcpServers: mcp.servers }), { mode: 0o600 });
+    mcpTurn = { config, servers };
   }
-  // Only now may the harness enter its state: it reads the two runner files, adds its own, and replaces neither.
-  if (opened) opened.open([join(stateDirectory, 'config.json'), ...(mcpTurn ? [mcpTurn.config] : [])]);
+  // Only now may the harness enter its state: it reads the runner's config, adds its own files, and replaces none.
+  if (opened) opened.open([join(stateDirectory, 'config.json')]);
   return { slug, directory: turn, volumeDirectory: volume ? volume.directory : turn, scratch: mounted, workspace, tmp, home, stateDirectory,
     privateDirectory, hook: { node, script: harness ? harness.hookScript : TOOL_HOOK_SCRIPT },
     ...(mcpTurn ? { mcp: mcpTurn } : {}) };
@@ -606,6 +610,8 @@ export async function runToolTurn({ journal, root, id, prepared, promptLimit, de
   conversation = `${String(journal.view.genesis?.bot)}:${String(journal.view.genesis?.chat)}`, session = null,
   completed = result => result?.state === 'complete', egress = undefined, networkTools = networkToolReads,
   system = SUBSCRIPTION_TOOLS_SYSTEM_PROMPT, admission = CLAUDE_TOOL_ADMISSION, gate = null, owner = 'this machine', harness = null }) {
+  // A configured harness user that is not ready never runs a turn, nor lets one fall back to the runner's own account.
+  if (harness && harness.ready !== true) throw Error(`preview: the harness identity is unavailable (${String(harness.reason ?? 'not ready')})`);
   const extra = SUBSCRIPTION_TOOL_LIMITS.maxTurns - 1;
   const refuse = reason => { journal.append({ kind: 'tool-turn', phase: 'refused', id, reason, at: now() }); return fallback(); };
   if (!toolTurnFits(journal.view)) return refuse('call cap');
@@ -635,7 +641,7 @@ export async function runToolTurn({ journal, root, id, prepared, promptLimit, de
     if (admission.harness) claim = `tool-turn-${createHash('sha256').update(id, 'utf8').digest('hex').slice(0, 16)}-${String(attempt)}`;
     turn = prepareToolTurn({ root, operation: id, attempt, operations, effectPolicy, irreversibleTerm, children, mcp, scratch,
       volume: kept ? space : null, authority, admission, ...(claim ? { gate: gate.base(claim) } : {}),
-      ...(harness?.ready ? { harness: { user: harness.user, runner: harness.runner, hookScript: harness.hookScript,
+      ...(harness ? { harness: { user: harness.user, runner: harness.runner, hookScript: harness.hookScript,
         rootState: harnessRootState(root, harness.user) } } : {}) });
     if (claim) {
       // The turn's own edge: the parent its delegations hang from (its durable record is the journal's reserved row).
@@ -701,8 +707,8 @@ export async function runToolTurn({ journal, root, id, prepared, promptLimit, de
   }
   journal.append(traceRow({ id, attempt, trace, egress: egressRecord, authority, ended, redactText, workspace: turn ? turn.workspace : null, at: now(),
     extra: { ...(volume ? { volume } : {}),
-      // Which identity the harness ran as: its own user, or (configured but unavailable) the runner's account, loudly.
-      ...(harness ? { harness: harness.ready ? { user: harness.user } : { fallback: harness.reason } } : {}),
+      // Which identity the harness ran as: its own user (an unavailable one never reaches a turn; launches are held).
+      ...(harness ? { harness: { user: harness.user } } : {}),
       ...(plan ? { session: { id: plan.id, mode: plan.resume ? 'resume' : 'new', reason: plan.reason, turn: plan.turn,
         kept: ending.ended === null, ...(ending.ended === null ? {} : { ended: ending.ended }), transcriptBytes: ending.transcriptBytes } } : {}) } }));
   // A kept volume is unmounted between turns, its image (and so its files) staying for the next turn; a one-turn volume

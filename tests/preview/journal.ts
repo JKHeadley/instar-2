@@ -2901,8 +2901,9 @@ export interface ToolTurnStats { invocations: number; reservedCalls: number; ref
  * many still hold one (`held`: unreadable, unwritable or not plain text, kept intact), and whether the pass stopped at its
  * bound (`unchecked`). */
 export interface ToolVolumeRow { lost: boolean; reconciled: number; held?: number; unchecked?: true }
-/** Which identity a tool turn's harness ran as (harness-user.mjs): its own macOS user, or the runner's account because
- * the configured harness user was unavailable (the reason, recorded so the fallback is never silent). */
+/** Which identity a tool turn's harness ran as (harness-user.mjs): its own macOS user. `fallback` is only read back from
+ * journals of the first build of that unit, which ran the runner's account when the harness user was unavailable; the
+ * runner no longer writes it (an unavailable harness user now holds the launch). */
 export type ToolHarnessRow = { user: string } | { fallback: string };
 /** The conversation's workspace a tool turn used: `kept` (its persistent workspace) or not (past the root's bound of kept
  * workspaces, a fresh one-turn workspace, recorded so the overflow is never silent, Rule 2). */
@@ -2989,7 +2990,7 @@ function projectToolTurn(view: JournalView, row: Extract<JournalRecord, { kind: 
     lost: prior.lost + Number(kept.mode === 'new' && /^(?:lost|interrupted)\b/u.test(kept.reason)),
     bounded: prior.bounded + Number(kept.mode === 'new' && SESSION_BOUNDED.includes(kept.reason)),
     ended: prior.ended + Number(!kept.kept) }))(stats.sessions ?? emptySessionStats());
-  // Which identity the harness ran as (harness-user.mjs): its own user, or the runner's account on a loud fallback.
+  // Which identity the harness ran as (harness-user.mjs): its own user (`fallback` only in journals of its first build).
   const harness = row.harness;
   if (harness !== undefined && !(harness && typeof harness === 'object' && Object.keys(harness).length === 1
     && (boundedText((harness as { user?: unknown }).user, 1, 64) || boundedText((harness as { fallback?: unknown }).fallback, 1, 512))))

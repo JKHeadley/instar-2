@@ -2,15 +2,16 @@
   "name": "stop",
   "question": "Use Bash to run: sleep 60; echo done. Then answer with what it printed.",
   "error": null,
+  "answer": "{\"state\":\"uncertain\",\"bytes\":null,\"providerOperation\":null,\"failure\":{\"failureClass\":\"timeout\",\"resetHint\":null,\"resetAt\":null},\"usage\":{\"inputTokens\":null,\"outputTokens\":null,\"charge\":null,\"source\":\"Subscription preview: charge and quiescence unknown; no retry or fallback\"},\"retryBlocked\":false}",
   "uid": 498,
-  "stateDirectory": "/Users/Shared/instar-harness/turns/35f8f5cfde36/b592ae84fc07730d-0",
+  "stateDirectory": "/Users/Shared/instar-harness/turns/2bc7181524b4/b592ae84fc07730d-0",
   "rows": [
     {
       "phase": "pre",
-      "id": "toolu_01MwJAxZPSEhJAxx5dnCnkCH",
+      "id": "toolu_01XQZioQ7k1cA9HJyEA6MpGu",
       "n": 1,
       "tool": "Bash",
-      "input": "{\"command\":\"sleep 60; echo done\",\"timeout\":65000,\"description\":\"Sleep for 60 seconds then print done\"}",
+      "input": "{\"command\":\"sleep 60; echo done\",\"timeout\":70000,\"description\":\"Sleep 60 seconds then print done\"}",
       "decision": "allow",
       "reason": "sandboxed command"
     }
@@ -25,7 +26,7 @@
       {
         "n": 1,
         "tool": "Bash",
-        "input": "{\"command\":\"sleep 60; echo done\",\"timeout\":65000,\"description\":\"Sleep for 60 seconds then print done\"}",
+        "input": "{\"command\":\"sleep 60; echo done\",\"timeout\":70000,\"description\":\"Sleep 60 seconds then print done\"}",
         "decision": "allow",
         "reason": "sandboxed command",
         "result": null
@@ -40,9 +41,9 @@
     "harness": {
       "user": "_instarharness"
     },
-    "at": 1791096163410
+    "at": 1791104608275
   },
-  "stopToSettledMs": 201,
+  "stopToSettledMs": 124,
   "toolTurns": {
     "invocations": 1,
     "reservedCalls": 15,
@@ -52,12 +53,12 @@
     "inconsistent": 0,
     "open": [],
     "workspaces": [
-      "22cba652c1c8"
+      "77e140b2660b"
     ]
   },
   "lastLaunch": {
     "work": "answer",
-    "at": 1791096163409,
+    "at": 1791104608275,
     "enforcement": {
       "cpuPerProcess": "hard",
       "handlesPerProcess": "hard",
@@ -76,14 +77,17 @@
       "concurrent": 1,
       "waitedMs": 0
     },
-    "peakMemoryBytes": 323092480,
-    "peakProcesses": 4,
-    "treeCpuMilliseconds": 330,
+    "peakMemoryBytes": 273072128,
+    "peakProcesses": 3,
+    "treeCpuMilliseconds": 320,
     "census": "complete",
     "leakedDescendants": 0,
     "membership": "working-area-joined",
     "cleanup": "verified",
     "allocation": null
   },
-  "harnessProcessesAfter": ""
+  "harnessProcessesAfter": "",
+  "mcpConfig": null,
+  "plaintextLoginsAfter": [],
+  "serverPolicyAfter": []
 }
