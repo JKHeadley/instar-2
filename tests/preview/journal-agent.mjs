@@ -14,6 +14,7 @@ import { attachEgress, attachSessionVolume, networkToolReads, readRootMcp, recon
 import { prepareSessionAdmission, sessionAdmissionCommand } from './session-admission.mjs';
 import { createAdmissionGate, createToolEffectOwner } from './admission-gate.mjs';
 import { admitToolCallEffect } from './tool-admission.mjs';
+import { HARNESS_LAUNCHER, harnessReadiness, harnessStatusLine, runnerUser } from './harness-user.mjs';
 import { encoded } from '../../src/assembly/boundary.js';
 import { decodeEffectPolicy, DEFAULT_EFFECT_POLICY, effectDoorwayStatusLines, refusedEffectNotices, currentEffectPolicy } from './effect-doorway.mjs';
 import { redact } from '../../src/recall/redact.js';
@@ -176,6 +177,20 @@ const renewalActivationOf = (options, view) => expires => {
   return `sha256:${createHash('sha256').update(bytes, 'utf8').digest('hex')}`;
 };
 const required = (options, name) => { if (!options[name]) throw Error(`preview: missing --${name}`); return options[name]; };
+/** Desk unit harness-user: `--harness-user NAME` runs every Claude Code launch of the login profile as that macOS user, so
+ * the kernel checks each file the harness opens as an identity with no access to the operator account. Decided once at
+ * launch from live state (harness-user.mjs harnessReadiness), never from the switch alone. Unavailable, the runner falls
+ * back to its own account LOUDLY: stderr now, the status line, and every tool trace row naming the reason. Absent: null. */
+const harnessOf = (options, root, doorway) => {
+  const user = options['harness-user'];
+  if (user === undefined) return null;
+  const profile = JSON.parse(readFileSync(required(options, 'login-profile'), 'utf8'));
+  const result = doorway.toolTurn?.harness ? { ready: false, reason: 'the selected doorway is not the Claude Code harness' }
+    : harnessReadiness({ user, profile, denied: [realpathSync(root), homedir(), process.cwd()] });
+  const harness = result.ready ? { ...result, runner: runnerUser(), launcher: HARNESS_LAUNCHER } : { ...result, user };
+  process.stderr.write(`preview: ${harnessStatusLine(harness)}\n`);
+  return harness;
+};
 /** Rules 60, 114 (Part fifteen §5): the delegated-session path for long and scheduled work exists
  * only under its own reviewed grant: an activation record for the doorway's session framing, bound
  * to that exact session policy (launch flags, model, limits, task wording), resolved from the same
@@ -1428,7 +1443,9 @@ async function main() {
     const allocation = createHostResourceAllocation({ root, machine: HOST_IDENTITY.machine, ceilings: allocationCeilings,
       incarnation: `launcher:${process.pid}:${createHash('sha256').update(`${process.pid}:${wallNow()}:${performance.now()}`).digest('hex').slice(0, 16)}`,
       now: wallNow, monotonic: () => performance.now() });
+    const harness = harnessOf(options, root, doorway);
     await hostResources.attach({ ledgerPath: launchesPath, statePath: resourcesPath, now: wallNow, allocation,
+      ...(harness?.ready ? { harnessUid: harness.uid } : {}),
       ...(aggregateMemoryMib === undefined ? {} : { aggregateMemoryBytes: aggregateMemoryMib * 1024 * 1024 }),
       compare: resourceCompare, priorityGate: shouldRunScheduledPriority,
       reconcile: (row, current) => current === null ? 'missing' : take(reconcileProcessIncarnation(
@@ -1607,7 +1624,7 @@ async function main() {
       session: doorway.toolTurn?.harness ? null : { store: join(profile.configDirectory, 'projects'), harness: `${profile.version} ${required(options, 'model')}` },
       stopped: () => workerStop.value || existsSync(stopPath) || journal.view.stop !== null || !toolsActive(),
       deniedRoots: [realpathSync(root), profile.home, profile.configDirectory, profile.workingDirectory],
-      ...admissionConfig(), now: wallNow, redactText: text => redact(text).text, gate, owner: ownerMachine,
+      ...admissionConfig(), now: wallNow, redactText: text => redact(text).text, gate, owner: ownerMachine, harness,
       ...(doorway.toolTurn ? { system: doorway.toolTurn.system, admission: doorway.toolTurn } : {}),
       fallback: async () => ({ result: await invokeSubscription(prepared, id) }),
       // Rules 33, 84: the workspace notice (files that may still disagree with memory, or a lost workspace) rides the packet.
@@ -1638,7 +1655,8 @@ async function main() {
       installUpdate, installUpdate && updateDelivery(installUpdate, journal.view.order), timeZoneOf(options)) : [],
       ...toolStatusLines(journal.view, toolsActive(), toolsOff ?? (toolsRecord
         ? 'withdrawn since launch: the activation record changed or its grant no longer resolves' : null), Boolean(doorway.toolTurn?.harness)),
-      ...(toolsActive() || journal.view.effectDoorway ? effectDoorwayStatusLines(journal.view.effectDoorway) : [])];
+      ...(toolsActive() || journal.view.effectDoorway ? effectDoorwayStatusLines(journal.view.effectDoorway) : []),
+      ...(harness ? [harnessStatusLine(harness)] : [])];
     const statusExtraLines = () => [...proofLines(), ...ownerLines(), ...minimalLines()];
     const approvalSurface = approvalSurfaceOf(options);
     // Rules 79, 81: the operator dashboard's snapshot, published into this runner's own outbox at most every 15 seconds
@@ -2282,7 +2300,7 @@ async function main() {
       const work = operation.startsWith('summary:') ? 'maintenance' : operation.endsWith(':reply-review') ? 'review' : 'answer';
       // A tool turn also ends on the journal's latched /stop and on tool-activation withdrawal: the resource
       // owner polls this every 25 ms and SIGKILLs the launch's own process group by its exact pid.
-      const launchIO = createSubscriptionProviderIO({ repository: process.cwd(),
+      const launchIO = createSubscriptionProviderIO({ repository: process.cwd(), runAs: harness?.ready ? { user: harness.user, launcher: harness.launcher } : null,
         stopped: () => workerStop.value || existsSync(stopPath) || !active()
           || (toolTurn !== undefined && (journal.view.stop !== null || !toolsActive())), work });
       const physicalIO = { ...launchIO, execute: async input => {

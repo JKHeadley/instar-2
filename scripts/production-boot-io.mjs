@@ -180,8 +180,11 @@ export function subscriptionProfileIdentity(bindings) {
   return `sha256:${createHash('sha256').update(JSON.stringify(rows)).digest('hex')}`;
 }
 
-/** Preview-only provider host. No secret file or Keychain contents are read here. */
-export function createSubscriptionProviderIO({ repository, stopped, work = 'answer' }) {
+/** Preview-only provider host. No secret file or Keychain contents are read here. `runAs` (harness-user.mjs readiness:
+ * `{ user, launcher }`, or null) runs every harness command (version, auth status, model call) as the harness's own
+ * user through the one sudoers rule: `sudo -n -u USER LAUNCHER ENV... -- EXECUTABLE ARGS`, the launcher applying exactly
+ * the command's environment. The resource owner still launches, bounds and reclaims it (the launcher ends its tree). */
+export function createSubscriptionProviderIO({ repository, stopped, work = 'answer', runAs = null }) {
   const outside = (path, root) => { const suffix = relative(root, path);
     return suffix.startsWith('../') || suffix === '..' || isAbsolute(suffix); };
   const digest = value => `sha256:${createHash('sha256').update(JSON.stringify(value)).digest('hex')}`;
@@ -209,7 +212,8 @@ export function createSubscriptionProviderIO({ repository, stopped, work = 'answ
     // The pinned CLI also consults device and per-user MDM policy. This narrow
     // preview refuses those sources rather than interpreting plist helpers.
     if (process.platform === 'darwin') {
-      for (const base of ['/Library/Managed Preferences', `/Library/Managed Preferences/${userInfo().username}`]) {
+      for (const base of ['/Library/Managed Preferences', `/Library/Managed Preferences/${userInfo().username}`,
+        ...(runAs ? [`/Library/Managed Preferences/${runAs.user}`] : [])]) {
         if (existsSync(join(base, 'com.anthropic.claudecode.plist'))) throw Error('subscription MDM policy unsupported');
       }
     }
@@ -280,5 +284,14 @@ export function createSubscriptionProviderIO({ repository, stopped, work = 'answ
     } catch { return null; }
   };
   return Object.freeze({ ...productionProviderIO, inspectSubscriptionProfile, managedHooksDisabled, codexAuthMode, admittedToolCalls,
-    execute: input => productionProviderIO.execute({ ...input, stopped }, work) });
+    execute: input => productionProviderIO.execute({ ...input, ...(runAs ? harnessCommand(input, runAs) : {}), stopped }, work) });
+}
+/** One harness command as the harness user (see createSubscriptionProviderIO). The environment travels as launcher
+ * arguments, so sudo needs no SETENV and its own environment is only a plain PATH. */
+export function harnessCommand(input, runAs) {
+  if (!runAs || !/^[A-Za-z0-9_][A-Za-z0-9_.-]*$/u.test(String(runAs.user)) || typeof runAs.launcher !== 'string' || !runAs.launcher.startsWith('/'))
+    throw Error('preview: harness identity malformed');
+  const env = Object.entries(input.env ?? {}).filter(([, value]) => value !== undefined).map(([key, value]) => `${key}=${String(value)}`);
+  return { executable: '/usr/bin/sudo', args: ['-n', '-u', runAs.user, runAs.launcher, ...env, '--', input.executable, ...input.args],
+    env: Object.freeze({ PATH: '/usr/bin:/bin' }) };
 }

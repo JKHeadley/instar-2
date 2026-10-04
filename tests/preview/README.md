@@ -3705,6 +3705,38 @@ INSTAR_TOOL_TURN_LIVE_TEST=1 npx vitest run --maxWorkers 1 tests/integration/too
 INSTAR_TOOL_TURN_FULL_LIVE_TEST=1 INSTAR_TOOL_TURN_CASE=full npx vitest run --maxWorkers 1 tests/integration/tool-turn-full-live.test.ts  # one per case: full, outward, stop-child, shellnet-reads, shellnet-writes, shellnet-stop
 ```
 
+### The harness as its own macOS user (`--harness-user`)
+
+`--harness-user _instarharness` runs every Claude Code launch of the login profile (version and auth preflights, plain
+answers and tool turns) as that macOS user, so the kernel checks each file the harness and its in-process file tools
+open as an identity with no access to the operator account: a path swapped between the admission hook's decision and
+the tool's open (docs/defects/2026-10-03-file-tool-swap-race.md) reaches only the harness's own area. The resource
+owner launches `sudo -n -u _instarharness /Users/Shared/instar-harness/bin/harness-launch ENV... -- claude ARGS`
+(`tests/preview/harness-launch.mjs`, the one command the root step's sudoers rule names); the launcher runs only the
+pinned harness copy beside it and ends the harness's whole tree when it exits, on a relayed stop, or within 50 ms of
+sudo being killed, because the runner's account cannot signal another user's processes. The owner's census includes
+the harness user, so memory and process ceilings still hold, and it waits (boundedly) for the launcher to end a
+member it cannot signal. A tool turn's admission state then lives in `/Users/Shared/instar-harness/turns/` (the turn
+directory's `state` links there; the hook may add files but not change or replace the runner's), the egress
+checkpoint's private state stays in the turn directory's `private/`, the hook runs from a read-only copy, and the
+turn's volume grants both identities by inherited ACL entries, never through a link.
+
+The decision is made at launch from live state (`harnessReadiness` in `tests/preview/harness-user.mjs`): the user
+exists, the launcher and hook copy are installed, the profile's executable is the installed copy of its artifact,
+its directories sit in the harness area, and a probe through the launcher shows the harness user can read and write
+its profile and cannot read the root, the operator's home or the runner's repository. Not ready, the runner falls
+back to its own account loudly: stderr at launch, `status` says `Harness identity: FALLBACK … (<reason>)`, and every
+tool trace row carries `harness: {fallback}`; ready, they say the user and each trace row carries `harness: {user}`.
+The setup (after the root step, `lanes/harness-user/root-steps.sh`) is `node --loader ./scripts/slice-ts-loader.mjs
+tests/preview/harness-user.mjs setup <operator profile.json> /Users/Shared/instar-harness/profile.json`; the new profile
+needs its own activation and its own login (a fresh login through the launcher, or the one move of the old login,
+never two live copies of one refresh token).
+
+```bash
+npx vitest run --maxWorkers 1 tests/preview/harness-user.test.ts
+INSTAR_TOOL_TURN_HARNESS_USER_LIVE_TEST=1 INSTAR_TOOL_TURN_CASE=race npx vitest run --maxWorkers 1 tests/integration/tool-turn-harness-user-live.test.ts  # race, turn, stop
+```
+
 ### Native tool turns (Instar's own agent loop)
 
 Rule 115: the same tool turn without a vendor agent harness (Part Thirteen §9, the native tool rule).

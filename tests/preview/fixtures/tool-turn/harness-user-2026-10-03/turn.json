@@ -1,0 +1,247 @@
+{
+  "name": "turn",
+  "question": "Do these five steps in order, each with the tool named, then answer with what each returned. 1) Write: create note.txt containing exactly: hello harness. 2) Bash: run id -u; wc -c note.txt 3) Read: read note.txt. 4) WebFetch: fetch https://example.com and note the page title. 5) Bash: run curl -sS -m 30 https://example.com | grep -o \"<title>.*</title>\"; echo \"curl-exit: $?\"",
+  "error": null,
+  "uid": 498,
+  "stateDirectory": "/Users/Shared/instar-harness/turns/6c3059ec9a09/b592ae84fc07730d-0",
+  "rows": [
+    {
+      "phase": "pre",
+      "id": "toolu_017GZhPsjsSiuwp5ayznt4xn",
+      "n": 1,
+      "tool": "Write",
+      "input": "{\"file_path\":\"/private/tmp/itw-cd25388548a9/ws/note.txt\",\"content\":\"hello harness\"}",
+      "decision": "allow",
+      "reason": "ordinary in-workspace file operation"
+    },
+    {
+      "phase": "post",
+      "id": "toolu_017GZhPsjsSiuwp5ayznt4xn",
+      "tool": "Write",
+      "result": "{\"type\":\"create\",\"filePath\":\"/private/tmp/itw-cd25388548a9/ws/note.txt\",\"content\":\"hello harness\",\"structuredPatch\":[],\"originalFile\":null,\"userModified\":false}"
+    },
+    {
+      "phase": "pre",
+      "id": "toolu_01N8kr7mqCvYBxZkDpo9Mtps",
+      "n": 2,
+      "tool": "ToolSearch",
+      "input": "{\"query\":\"select:WebFetch\",\"max_results\":5}",
+      "decision": "allow",
+      "reason": "harness bookkeeping"
+    },
+    {
+      "phase": "post",
+      "id": "toolu_01N8kr7mqCvYBxZkDpo9Mtps",
+      "tool": "ToolSearch",
+      "result": "{\"matches\":[\"WebFetch\"],\"query\":\"select:WebFetch\",\"total_deferred_tools\":11}"
+    },
+    {
+      "phase": "pre",
+      "id": "toolu_0139UyEdiYwUdHzjuYfTsRR4",
+      "n": 3,
+      "tool": "Bash",
+      "input": "{\"command\":\"id -u; wc -c note.txt\",\"description\":\"Run id -u and count bytes in note.txt\"}",
+      "decision": "allow",
+      "reason": "sandboxed command"
+    },
+    {
+      "phase": "post",
+      "id": "toolu_0139UyEdiYwUdHzjuYfTsRR4",
+      "tool": "Bash",
+      "result": "{\"stdout\":\"498\\n      13 note.txt\",\"stderr\":\"\",\"interrupted\":false,\"isImage\":false,\"noOutputExpected\":false}"
+    },
+    {
+      "phase": "pre",
+      "id": "toolu_01FY5ykBsRu6gP5pgrgoFgYf",
+      "n": 4,
+      "tool": "Read",
+      "input": "{\"file_path\":\"/private/tmp/itw-cd25388548a9/ws/note.txt\"}",
+      "decision": "allow",
+      "reason": "ordinary in-workspace file operation"
+    },
+    {
+      "phase": "post",
+      "id": "toolu_01FY5ykBsRu6gP5pgrgoFgYf",
+      "tool": "Read",
+      "result": "{\"type\":\"text\",\"file\":{\"filePath\":\"/private/tmp/itw-cd25388548a9/ws/note.txt\",\"content\":\"hello harness\",\"numLines\":1,\"startLine\":1,\"totalLines\":1}}"
+    },
+    {
+      "phase": "pre",
+      "id": "toolu_014BA4s7jBzGacFTLaoiRhov",
+      "n": 5,
+      "tool": "WebFetch",
+      "input": "{\"url\":\"https://example.com\",\"prompt\":\"What is the page title?\"}",
+      "decision": "allow",
+      "reason": "web read (GET) of a public host",
+      "kind": "network-read"
+    },
+    {
+      "phase": "post",
+      "id": "toolu_014BA4s7jBzGacFTLaoiRhov",
+      "tool": "WebFetch",
+      "result": "{\"bytes\":577,\"code\":200,\"codeText\":\"OK\",\"result\":\"# Page Title\\n\\nThe page title is **\\\"Example Domain\\\"**.\\n\\nThe content describes this as a domain designated \\\"for use in documentation examples without needing permission,\\\" emphasizing it's not an operational service and shouldn't be used for production testing or monitoring.\",\"durationMs\":1192,\"url\":\"https://example.com\"}"
+    },
+    {
+      "phase": "pre",
+      "id": "toolu_013CxJYZHydFEtWn9s4VZWRn",
+      "n": 6,
+      "tool": "Bash",
+      "input": "{\"command\":\"curl -sS -m 30 https://example.com | grep -o \\\"<title>.*</title>\\\"; echo \\\"curl-exit: $?\\\"\",\"description\":\"Fetch example.com and extract title tag via curl\",\"allowed_domains\":[\"example.com\"]}",
+      "decision": "allow",
+      "reason": "sandboxed command"
+    },
+    {
+      "phase": "post",
+      "id": "toolu_013CxJYZHydFEtWn9s4VZWRn",
+      "tool": "Bash",
+      "result": "{\"stdout\":\"<title>Example Domain</title>\\ncurl-exit: 0\",\"stderr\":\"\",\"interrupted\":false,\"isImage\":false,\"noOutputExpected\":false}"
+    }
+  ],
+  "trace": {
+    "kind": "tool-turn",
+    "phase": "trace",
+    "id": "telegram:12345678:update:1",
+    "attempt": 0,
+    "consistent": true,
+    "egress": [
+      {
+        "n": 1,
+        "method": "CONNECT",
+        "scheme": "https",
+        "host": "example.com",
+        "port": 443,
+        "path": "example.com:443",
+        "decision": "allow",
+        "reason": "tunnel opened; each request inside it is decided",
+        "kind": "tunnel",
+        "address": "172.66.147.243",
+        "status": null,
+        "bytes": null
+      },
+      {
+        "n": 2,
+        "method": "GET",
+        "scheme": "https",
+        "host": "example.com",
+        "port": 443,
+        "path": "/",
+        "decision": "allow",
+        "reason": "GET read",
+        "kind": "network-read",
+        "address": "172.66.147.243",
+        "status": 200,
+        "bytes": 577
+      }
+    ],
+    "egressRequests": 2,
+    "calls": [
+      {
+        "n": 1,
+        "tool": "Write",
+        "input": "{\"file_path\":\"/private/tmp/itw-cd25388548a9/ws/note.txt\",\"content\":\"hello harness\"}",
+        "decision": "allow",
+        "reason": "ordinary in-workspace file operation",
+        "result": "{\"type\":\"create\",\"filePath\":\"/private/tmp/itw-cd25388548a9/ws/note.txt\",\"content\":\"hello harness\",\"structuredPatch\":[],\"originalFile\":null,\"userModified\":false}"
+      },
+      {
+        "n": 2,
+        "tool": "ToolSearch",
+        "input": "{\"query\":\"select:WebFetch\",\"max_results\":5}",
+        "decision": "allow",
+        "reason": "harness bookkeeping",
+        "result": "{\"matches\":[\"WebFetch\"],\"query\":\"select:WebFetch\",\"total_deferred_tools\":11}"
+      },
+      {
+        "n": 3,
+        "tool": "Bash",
+        "input": "{\"command\":\"id -u; wc -c note.txt\",\"description\":\"Run id -u and count bytes in note.txt\"}",
+        "decision": "allow",
+        "reason": "sandboxed command",
+        "result": "{\"stdout\":\"498\\n      13 note.txt\",\"stderr\":\"\",\"interrupted\":false,\"isImage\":false,\"noOutputExpected\":false}"
+      },
+      {
+        "n": 4,
+        "tool": "Read",
+        "input": "{\"file_path\":\"/private/tmp/itw-cd25388548a9/ws/note.txt\"}",
+        "decision": "allow",
+        "reason": "ordinary in-workspace file operation",
+        "result": "{\"type\":\"text\",\"file\":{\"filePath\":\"/private/tmp/itw-cd25388548a9/ws/note.txt\",\"content\":\"hello harness\",\"numLines\":1,\"startLine\":1,\"totalLines\":1}}"
+      },
+      {
+        "n": 5,
+        "tool": "WebFetch",
+        "input": "{\"url\":\"https://example.com\",\"prompt\":\"What is the page title?\"}",
+        "decision": "allow",
+        "reason": "web read (GET) of a public host",
+        "kind": "network-read",
+        "result": "{\"bytes\":577,\"code\":200,\"codeText\":\"OK\",\"result\":\"# Page Title\\n\\nThe page title is **\\\"Example Domain\\\"**.\\n\\nThe content describes this as a domain designated \\\"for use in documentation examples without needing permission,\\\" emphasizing it's not an operational service and shouldn't be used for production testing or monitoring.\",\"durationMs\":1192,\"url\":\"https://example.com\"}"
+      },
+      {
+        "n": 6,
+        "tool": "Bash",
+        "input": "{\"command\":\"curl -sS -m 30 https://example.com | grep -o \\\"<title>.*</title>\\\"; echo \\\"curl-exit: $?\\\"\",\"description\":\"Fetch example.com and extract title tag via curl\",\"allowed_domains\":[\"example.com\"]}",
+        "decision": "allow",
+        "reason": "sandboxed command",
+        "result": "{\"stdout\":\"<title>Example Domain</title>\\ncurl-exit: 0\",\"stderr\":\"\",\"interrupted\":false,\"isImage\":false,\"noOutputExpected\":false}"
+      }
+    ],
+    "edges": [],
+    "workspaceBytes": 13,
+    "volume": {
+      "lost": false,
+      "reconciled": 0
+    },
+    "harness": {
+      "user": "_instarharness"
+    },
+    "at": 1791096156117
+  },
+  "stopToSettledMs": null,
+  "toolTurns": {
+    "invocations": 1,
+    "reservedCalls": 15,
+    "refusedCap": 0,
+    "toolCalls": 6,
+    "toolRefusals": 0,
+    "inconsistent": 0,
+    "open": [],
+    "workspaces": [
+      "cd25388548a9"
+    ],
+    "network": {
+      "admitted": 1,
+      "refused": 0
+    }
+  },
+  "lastLaunch": {
+    "work": "answer",
+    "at": 1791096156116,
+    "enforcement": {
+      "cpuPerProcess": "hard",
+      "handlesPerProcess": "hard",
+      "processGrowth": "sampled",
+      "treeHandles": "unsupported",
+      "memory": "sampled",
+      "treeCpu": "sampled"
+    },
+    "uidProcesses": {
+      "state": "hard",
+      "subject": "uid:501",
+      "limit": 564
+    },
+    "admission": {
+      "work": "answer",
+      "concurrent": 1,
+      "waitedMs": 0
+    },
+    "peakMemoryBytes": 330924032,
+    "peakProcesses": 3,
+    "treeCpuMilliseconds": 590,
+    "census": "complete",
+    "leakedDescendants": 0,
+    "membership": "working-area-joined",
+    "cleanup": "verified",
+    "allocation": null
+  },
+  "harnessProcessesAfter": ""
+}
