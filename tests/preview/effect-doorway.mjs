@@ -43,6 +43,10 @@ export const TOOL_EFFECT_DEFAULTS = Object.freeze({
 export const DEFAULT_EFFECT_POLICY = Object.freeze({ type: 'PreviewEffectPolicy', resourceLevelUsd: 0, policySensitive: Object.freeze([]),
   registered: Object.freeze([]), grants: Object.freeze([]) });
 
+/** The marker the runner hands the hook when its configured effect policy could not be read at a turn: distinct from
+ * "no policy configured", so the operator's restrictions are never silently replaced by the empty default. */
+export const UNAVAILABLE_EFFECT_POLICY = 'PreviewEffectPolicyUnavailable';
+
 const text = (value, max = 256) => typeof value === 'string' && value.length > 0 && value.length <= max;
 const strings = (value, max = 64) => Array.isArray(value) && value.length <= max && value.every(item => text(item));
 const level = value => typeof value === 'number' && Number.isFinite(value) && value >= 0;
@@ -93,6 +97,14 @@ export function termHolds(term, profile, depth = 0) {
 
 const covers = (entry, proposal) => entry.effect === proposal.effect && (entry.target === undefined || entry.target === proposal.target);
 const live = (grant, now) => grant.expiresAt === undefined || (Number.isSafeInteger(now) && now < grant.expiresAt);
+
+/** The configured effect policy as it reads at this moment (`read` returns the file's text): decoded, or, when it cannot
+ * be read or does not decode, the unavailable marker, never the empty default (a policy being rewritten, removed or made
+ * unreadable after launch must not lapse its restrictions). */
+export function currentEffectPolicy(read) {
+  try { return decodeEffectPolicy(JSON.parse(read())); }
+  catch (error) { return { type: UNAVAILABLE_EFFECT_POLICY, reason: error?.code ? `it cannot be read (${String(error.code)})` : 'it does not decode' }; }
+}
 
 /**
  * Classifies one proposal `{effect, target, matters?}` against the four tests. The classification is the operator's
