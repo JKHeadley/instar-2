@@ -635,10 +635,11 @@ export const substantiveReply = (text: string): boolean => text.trim().length > 
  * The exact floors decide alone: a credential shape (redact) or the exact bytes of a held secret value, or a derived
  * encoding of them, in the text; either withholds on every reply, regardless of audience. Every nonempty held value is
  * matched, however short: a six-digit login code is as secret as a long key. A model's credential judgment stays a
- * signal of meaning, and it withholds a whole reply unless what it names is shown to be public: a finding whose every
- * quoted span is the credential register's public labels or the runner's own lines built from them, and which names
- * no other value the reply carries, names no secret, so it is kept as an advisory objection. Tool provenance is never
- * disclosure authority: an authorized read may return a password, so admitted tool output clears nothing. */
+ * signal of meaning, and it withholds a whole reply unless what it names is shown, by exact match, to be public: plan
+ * #444 releases a finding only when every value it quotes is EXACTLY one of the credential register's public labels
+ * (record name, identity, kind, custody, renewal step) and the reply repeats no line of the conversation's tool
+ * output the operator did not supply. Nothing is inferred from what a word looks like. Tool provenance is never
+ * disclosure authority: an authorized read may return a password, so tool output the reply repeats keeps the hold. */
 const secretForms = (value: string): string[] => {
   const bytes = Buffer.from(value, 'utf8');
   return [...new Set([value, bytes.toString('base64'), bytes.toString('base64').replace(/=+$/u, ''),
@@ -671,32 +672,30 @@ export const PUBLIC_LABEL_MASK = '[credential record label]';
 export function maskPublicLabels(text: string, labels: readonly string[]): string {
   return labels.filter(label => label.length >= 4).reduce((out, label) => out.split(label).join(PUBLIC_LABEL_MASK), text);
 }
-/** True when one quoted span names only public text: inside a known label or runner line, or built of such labels and
- * punctuation alone; in every case with no credential shape and no held secret. */
-function spanIsPublic(span: string, known: readonly string[], held: readonly string[]): boolean {
-  if (redact(span).count > 0 || secretMaterialIn(span, held)) return false;
-  const folded = foldClaim(span);
-  const labels = known.map(foldClaim).filter(Boolean).sort((a, b) => b.length - a.length);
-  if (labels.some(label => label.includes(folded))) return true;
-  const rest = labels.reduce((out, label) => out.split(label).join(' '), folded);
-  return !/[\p{L}\p{N}]/u.test(rest);
+/** The lines of the conversation's tool output, as the runner recorded them: each string field of a JSON result (stdout,
+ * stderr) or the raw result, split into trimmed nonempty lines. `undefined` when the record is incomplete (calls
+ * omitted, or a result cut to its excerpt), so no release can be decided against it. */
+export function toolOutputLines(results: readonly (string | null)[], complete: boolean): string[] | undefined {
+  if (!complete || results.some(result => result !== null && result.endsWith('…'))) return undefined;
+  const fields = (result: string): string[] => {
+    try {
+      const parsed: unknown = JSON.parse(result);
+      if (parsed && typeof parsed === 'object') return Object.values(parsed).filter((value): value is string => typeof value === 'string');
+    } catch { /* not JSON: the raw text is the output */ }
+    return [result];
+  };
+  return results.flatMap(result => result === null ? [] : fields(result))
+    .flatMap(text => text.split(/\r?\n/u)).map(line => line.trim()).filter(Boolean);
 }
-/** The value-like words of a text: four or more characters carrying a digit or inner punctuation (a code, a
- * passphrase, a key), never an ordinary word. */
-const valueWords = (text: string): string[] =>
-  (text.match(/[\p{L}\p{N}][\p{L}\p{N}._~+\/=-]*[\p{L}\p{N}=]/gu) ?? [])
-    .filter(word => word.length >= 4 && /[\p{N}]|[\p{L}\p{N}][._~+\/=-]+[\p{L}\p{N}]/u.test(word));
-/** A credential finding is refuted only when its whole allegation is public metadata: it quotes at least one span,
- * every quoted span is in the reply and public, and the rest of the reason names no value-like word the reply
- * carries outside those labels. A finding quoting nothing in the reply cannot be checked, and a finding that also
- * names another value (quoted or not) alleges more than a label, so either keeps its hold (Rules 4, 42, 86, 95). */
-export function credentialFindingPublic(reason: string, reply: string, known: readonly string[], held: readonly string[]): boolean {
-  if (secretMaterialIn(reply, held) || redact(reply).count > 0) return false;
-  const body = foldClaim(reply);
-  const spans = allQuotedSpans(reason).filter(span => foldClaim(span));
-  if (!spans.length || !spans.every(span => body.includes(foldClaim(span)) && spanIsPublic(span, known, held))) return false;
-  const labels = [...known].filter(Boolean).sort((a, b) => b.length - a.length);
-  const strip = (text: string) => labels.reduce((out, label) => out.split(label).join(' '), text);
-  const replyWords = new Set(valueWords(strip(reply)));
-  return !valueWords(strip(spans.reduce((out, span) => out.split(span).join(' '), reason))).some(word => replyWords.has(word));
+/** Plan #444 (Rules 4, 86, 116): a credential finding is released ONLY when every value it names is EXACTLY one of
+ * the register's public labels the runner put in the review context. It must quote at least one value; every quoted
+ * span, trimmed, must equal a label and appear in the reply; the reply must carry no held secret material or
+ * credential shape; and the reply must repeat no line of the recorded tool output that the operator's own message did
+ * not supply (`tool` undefined = an incomplete record, so nothing is released). Anything else keeps its hold. */
+export function credentialFindingPublic(reason: string, reply: string, labels: readonly string[], held: readonly string[],
+  tool: readonly string[] | undefined, operator: string): boolean {
+  if (tool === undefined || secretMaterialIn(reply, held) || redact(reply).count > 0) return false;
+  const spans = allQuotedSpans(reason).map(span => span.trim());
+  if (!spans.length || !spans.every(span => labels.includes(span) && reply.includes(span))) return false;
+  return !tool.some(line => reply.includes(line) && !operator.includes(line));
 }

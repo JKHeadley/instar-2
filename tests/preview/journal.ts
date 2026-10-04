@@ -16,7 +16,7 @@ import { buildWorkIndex, detectOverlaps, workForTopic, type SessionActivity } fr
 import { MAX_RAISED_SUBSCRIPTION_PROMPT_BYTES, SUBSCRIPTION_CONVERSATION_SYSTEM_PROMPT, SUBSCRIPTION_MAX_OUTPUT_TOKENS, SUBSCRIPTION_PREVIEW_EXPIRY } from '../../src/assembly/production-provider.js';
 import { hasClaim, replaceClaim, supersedesCorrection } from './claim-match.mjs';
 import { checkReply as checkCoherenceOf, correctionNote, releaseFindings, COHERENCE_FINDING_LIMIT, type CoherenceFinding } from './coherence-check.js';
-import { checkReply, reviewReply, repeatsOperatorOnly, HOLDING_REPLY, jevRequestBody, JEV_RESPONSE_MAX_BYTES, REPLY_CHECK_BUDGET_MS, REPLY_CHECK_BUDGET_REASON, LINK_SHAPE_REASON, linkShapeRules, bareTopicReferences, topicNameReason, BARE_TOPIC_OBJECTION, noDecisions, validDispositions, jevConfidentCredential, concealSecretMaterial, credentialFindingPublic, maskPublicLabels, secretMaterialIn, CLAIM_SCOPED_RULES, namedClaimsIn, exciseNamedClaims, substantiveReply, sharedAudience, AUDIENCE_RULES, type ApprovalFacts } from './reply-check.js';
+import { checkReply, reviewReply, repeatsOperatorOnly, HOLDING_REPLY, jevRequestBody, JEV_RESPONSE_MAX_BYTES, REPLY_CHECK_BUDGET_MS, REPLY_CHECK_BUDGET_REASON, LINK_SHAPE_REASON, linkShapeRules, bareTopicReferences, topicNameReason, BARE_TOPIC_OBJECTION, noDecisions, validDispositions, jevConfidentCredential, concealSecretMaterial, credentialFindingPublic, toolOutputLines, maskPublicLabels, secretMaterialIn, CLAIM_SCOPED_RULES, namedClaimsIn, exciseNamedClaims, substantiveReply, sharedAudience, AUDIENCE_RULES, type ApprovalFacts } from './reply-check.js';
 import { parseDatedItem, restatedDatePhrase, dueState, selectDatedItems, withinNext48Hours, localParts, type DatedItem } from './dated-memory.js';
 import { isStatusCommand, isStopCommand, statusReply, STOP_CONFIRM_TEXT } from './status-command.js';
 import { AGENT_PROMISE_LIMIT, fulfillableCommitment, fulfillmentProposals, fulfillmentSupported, legacyFulfillsReminder, promiseProposals, recordedPromises, type AgentPromise, type FulfillmentProposal, type PromiseProposal } from './agent-commitment.js';
@@ -7248,14 +7248,18 @@ export function createJournalWorker(journal: ReturnType<typeof openPreviewJourna
             reply = turn.reviewCandidate; mentionedKeys = turn.reviewMentionedDates;
           }
           const candidateDigest = createHash('sha256').update(reply).digest('hex');
-          // Plan #442 (Rules 4, 86, 100): a secret is decided against the material the runner holds. The register's
-          // public labels and the runner's own reminder lines built from them are known non-secrets; a credential
-          // finding naming only those holds nothing. Admitted tool output is never disclosure authority.
+          // Plans #442, #444 (Rules 4, 86, 100): a secret is decided against the material the runner holds. A
+          // credential finding is released only when every value it quotes is exactly a register public label and
+          // the reply repeats none of this turn's tool output the operator did not supply. Tool output is never
+          // disclosure authority.
           const heldValues = (() => { try { return ports.heldSecrets?.() ?? []; } catch { return []; } })();
           const labels = (() => { try { return ports.knownNonSecrets?.() ?? []; } catch { return []; } })();
-          const known = [...labels, ...(turn.answerNotices ?? []).map(notice => notice.line)
-            .filter(line => redact(line).count === 0 && !secretMaterialIn(line, heldValues))];
-          const publicCredential = (text: string) => (reason: string) => credentialFindingPublic(reason, text, known, heldValues);
+          // Every turn so far: a kept harness session can repeat what an earlier turn's tool read.
+          const toolTurns = journal.view.order.filter(item => item.update <= turn.update);
+          const toolLines = toolOutputLines(toolTurns.flatMap(item => (item.toolAttempts ?? []).map(call => call.result)),
+            toolTurns.every(item => !item.toolAttemptsOmitted));
+          const publicCredential = (text: string) => (reason: string) =>
+            credentialFindingPublic(reason, text, labels, heldValues, toolLines, turn.text);
           const reviewedReply = reply;
           const last = turn.replyChecks?.at(-1);
           const previous = last?.candidateDigest === candidateDigest

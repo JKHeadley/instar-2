@@ -6,7 +6,7 @@ import { openPreviewJournal, createJournalWorker, CREDENTIAL_SHAPE_NOTICE } from
 import { prepareJournalEnvelope } from './journal-envelope.js';
 import { credentialNotices } from './credential-reminders.js';
 import { createSecretCustody, dueCredentialReminders, type CredentialRecord } from './secret-custody.js';
-import { HOLDING_REPLY, PUBLIC_LABEL_MASK, REPLY_RULES, concealSecretMaterial, credentialFindingPublic, maskPublicLabels, publicCredentialLabels,
+import { HOLDING_REPLY, PUBLIC_LABEL_MASK, REPLY_RULES, concealSecretMaterial, credentialFindingPublic, maskPublicLabels, publicCredentialLabels, toolOutputLines,
   replyReviewContext, secretMaterialIn, type ReplyFinding, type ReplyRule } from './reply-check.js';
 import { redact } from '../../src/recall/redact.js';
 
@@ -180,10 +180,32 @@ it('the neighbour: a benign tool answer the reviewer passes is sent; the tool ke
   expect(sends[0]).toContain('The byte count is 25');
 });
 
-it('the other side: quoting a public label does not clear a finding that also names an unquoted password', async () => {
-  const reason = `The public label "${LABEL}" is harmless, but the reply also exposes the live vendor portal password ${PASSWORD}, obtained from a private file rather than supplied by this operator.`;
-  const { sends } = await replay({ answer: `${T.answerBody} The vendor portal password is ${PASSWORD}.`, review: violation(reason) });
-  expect(sends).toEqual([HOLDING_REPLY]);
+// Plan #444 (review round 2): a finding quoting the public label EXACTLY does not release a reply that repeats a
+// password an authorized read returned, whether the finding names it unquoted, indirectly, or as a short word.
+for (const [index, [password, reason]] of ([
+  [PASSWORD, `The public label "${LABEL}" is harmless, but the reply also exposes the live vendor portal password ${PASSWORD}, obtained from a private file rather than supplied by this operator.`],
+  ['marigold', `The public label "${LABEL}" is harmless, but the reply also exposes the live vendor portal password marigold, obtained from a private file rather than supplied by this operator.`],
+  [PASSWORD, `The public label "${LABEL}" is harmless, but the password printed immediately before the reminder is a live vendor credential obtained from a private file, not supplied by this operator.`]] as const).entries()) {
+  it(`the other side: quoting the public label does not clear a tool-output password (${['unquoted', 'short alphabetic', 'indirect'][index]})`, async () => {
+    const { sends, heldReview, calls } = await replay({ answer: `The vendor portal password is ${password}.`,
+      toolOutput: JSON.stringify({ stdout: password }), review: violation(reason) });
+    expect(calls.review).toBe(1);
+    expect(sends).toEqual([HOLDING_REPLY]);
+    expect(heldReview?.objections).toContain('credential');
+  });
+}
+
+it('the recorded replay with its recorded tool output is still sent: the operator supplied the line the reply repeats', async () => {
+  const { sends } = await replay({ answer: T.answerBody, toolOutput: T.toolResult });
+  expect(sends).toHaveLength(1);
+  expect(sends[0]).toContain(LABEL);
+  expect(sends[0]).toContain('The byte count is 25');
+});
+
+it('the other side: the recorded label plus a held six-digit code in the same reply is held', async () => {
+  const { sends, calls } = await replay({ answer: `${T.answerBody} Code: 482639.`, heldValue: '482639' });
+  expect(sends).toEqual([CREDENTIAL_SHAPE_NOTICE]);
+  expect(calls.review).toBe(0);
 });
 
 it('the other side: a six-digit held login code never reaches a model or a send; an unrelated code does', async () => {
@@ -227,37 +249,33 @@ it('secret material: exact bytes and derived encodings match, however short the 
   expect(secretMaterialIn('anything', [''])).toBe(false);
 });
 
-it('the finding test: public quotes (label, runner line) clear; tool output, a second value, or anything else keeps the hold', () => {
-  const known = [...publicCredentialLabels(recorded.register, [TEST_SECRET]),
-    ...credentialNotices(dueCredentialReminders(recorded.register, T.answeredAt), T.answeredAt).map(notice => notice.line)];
+it('the finding test: only exact register labels clear; a runner line, a fragment, a second value or tool output keeps the hold', () => {
+  const labels = publicCredentialLabels(recorded.register, [TEST_SECRET]);
   const reply = `PREVIEW — ${T.recordedAnswer}`;
-  // The recorded reason, verbatim.
-  expect(credentialFindingPublic(T.review.findings[1]!.reason, reply, known, [TEST_SECRET])).toBe(true);
-  // The reviewer quoting the whole runner line, or the label with its name around it.
-  const line = known.find(item => item.startsWith('Reminder:'))!;
-  expect(credentialFindingPublic(`discloses "${line}"`, reply, known, [])).toBe(true);
-  expect(credentialFindingPublic('discloses "preview-activation" (preview-s2-activation-v2-2026-09-23)', reply, known, [])).toBe(true);
-  // Tool provenance is not disclosure authority: a value an admitted read returned is judged like any other, so a
-  // finding quoting it keeps its hold, whether the value is a password or the benign wc -c line.
-  const password = 'tulip-meridian-3390-cascade';
-  expect(credentialFindingPublic(`exposes the live account password "${password}" from a private file.`,
-    `The vendor portal password is ${password}.`, known, [])).toBe(false);
-  expect(credentialFindingPublic('discloses "25 tools-f374b0.txt"', 'PREVIEW — wc -c printed "25 tools-f374b0.txt".', known, [])).toBe(false);
-  // A public quote does not exhaust a finding that also names another value the reply carries, quoted or not.
-  const mixedReply = `${reply} The vendor portal password is ${password}.`;
-  expect(credentialFindingPublic(`The public label "${LABEL}" is harmless, but the reply also exposes the live vendor portal password ${password}.`,
-    mixedReply, known, [])).toBe(false);
-  expect(credentialFindingPublic(`"${LABEL}" is harmless; the code 482639 is not.`, `${reply} Code 482639.`, known, [])).toBe(false);
-  // The neighbour: the same public quote with no other value named still clears on the mixed reply.
-  expect(credentialFindingPublic(`discloses "${LABEL}" (an activation token).`, mixedReply, known, [])).toBe(true);
-  // A held secret is not public, nor is a quote mixing a label with other text.
-  const leaky = `PREVIEW — the tool printed "${TEST_SECRET}".`;
-  expect(credentialFindingPublic(`discloses "${TEST_SECRET}"`, leaky, known, [TEST_SECRET])).toBe(false);
-  expect(credentialFindingPublic(`discloses "${LABEL} hunter-77"`, `PREVIEW — ${LABEL} hunter-77`, known, [])).toBe(false);
-  // A quote that is not in the reply, or no quote at all, cannot be checked: the hold stays.
-  expect(credentialFindingPublic('discloses "an activation token"', reply, known, [])).toBe(false);
-  expect(credentialFindingPublic('discloses an activation token', reply, known, [])).toBe(false);
-  expect(credentialFindingPublic(`discloses "${LABEL}" and "an activation token"`, reply, known, [])).toBe(false);
+  const operator = T.operator;
+  const tool = toolOutputLines([T.toolResult], true)!;
+  expect(tool).toEqual(['hello from the tool test', '25 tools-f374b0.txt']);
+  // The recorded reason, verbatim, with the recorded tool output: released.
+  expect(credentialFindingPublic(T.review.findings[1]!.reason, reply, labels, [TEST_SECRET], tool, operator)).toBe(true);
+  expect(credentialFindingPublic('discloses "preview-activation" (preview-s2-activation-v2-2026-09-23)', reply, labels, [], [], operator)).toBe(true);
+  // Not an exact label: the runner's whole line, a fragment of a label, a label with more text, or no quote at all.
+  const line = credentialNotices(dueCredentialReminders(recorded.register, T.answeredAt), T.answeredAt)[0]!.line;
+  expect(credentialFindingPublic(`discloses "${line}"`, reply, labels, [], [], operator)).toBe(false);
+  expect(credentialFindingPublic('discloses "s2-activation-v2"', reply, labels, [], [], operator)).toBe(false);
+  expect(credentialFindingPublic(`discloses "${LABEL} hunter-77"`, `PREVIEW — ${LABEL} hunter-77`, labels, [], [], operator)).toBe(false);
+  expect(credentialFindingPublic('discloses an activation token', reply, labels, [], [], operator)).toBe(false);
+  expect(credentialFindingPublic(`discloses "${LABEL}" and "an activation token"`, reply, labels, [], [], operator)).toBe(false);
+  // A span from tool output is never a label, and a reply repeating tool output the operator did not supply is held,
+  // however the finding names it.
+  expect(credentialFindingPublic('discloses "25 tools-f374b0.txt"', 'PREVIEW — wc -c printed "25 tools-f374b0.txt".', labels, [], tool, operator)).toBe(false);
+  const leakTool = toolOutputLines([JSON.stringify({ stdout: 'marigold' })], true)!;
+  expect(credentialFindingPublic(`"${LABEL}" is harmless, but the password printed before the reminder is live.`,
+    `${reply} The vendor portal password is marigold.`, labels, [], leakTool, operator)).toBe(false);
+  // An incomplete tool record (omitted calls or a clipped excerpt) cannot be checked: the hold stays.
+  expect(credentialFindingPublic(T.review.findings[1]!.reason, reply, labels, [], toolOutputLines([T.toolResult], false), operator)).toBe(false);
+  expect(toolOutputLines(['x'.repeat(10) + '…'], true)).toBeUndefined();
+  // Held material in the reply, any length, keeps the hold.
+  expect(credentialFindingPublic(T.review.findings[1]!.reason, `${reply} Code 482639.`, labels, ['482639'], tool, operator)).toBe(false);
 });
 
 it('the reviewer is told which labels are public, and Jev keeps its measured question while reading masked text', () => {
