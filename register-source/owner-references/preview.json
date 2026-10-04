@@ -63,7 +63,7 @@
       "stage": "build",
       "artifact": {
         "path": "tests/preview/reply-check.test.ts",
-        "hash": "sha256:e141efa3114341f7b0b1efe504664788a7eabe3915be455055a0b7cad7e320e6"
+        "hash": "sha256:c4f981d46743de51ba3753f1415f8dd22cc44aa7599b0d55cdd10a20da9121c0"
       }
     },
     {

@@ -30,7 +30,7 @@ import { createPreviewClock } from './clock.js';
 import { appendRun, heldNotices, heldRepliesToday, memoryHealthLine, readRuns, restartHandoff, selfState, selfStateBrief, selfStateSource, zoneFormatter } from './self-state.js';
 import { guidanceReport } from './guidance.js';
 import { memoryLearningLine, memoryLearningReport } from './memory-learning.js';
-import { JEV_MODEL, jevQuestions, replyReviewContext, replyReviewQuestion, replyReviewRules, parseReplyReviewVerdict, replyReviewDiagnostics, parseJevResponse, replyRevisionQuestion, parseReplyRevision, REVIEW_MALFORMED, REVIEW_FORMAT_REMINDER } from './reply-check.js';
+import { JEV_MODEL, jevQuestions, publicCredentialRegister, secretMaterialIn, replyReviewContext, replyReviewQuestion, replyReviewRules, parseReplyReviewVerdict, replyReviewDiagnostics, parseJevResponse, replyRevisionQuestion, parseReplyRevision, REVIEW_MALFORMED, REVIEW_FORMAT_REMINDER } from './reply-check.js';
 import { interpretSummaryReview, SUMMARY_QUESTION } from './summary-check.js';
 import { assertLiveJudgment, decisionWithinFloor, modelCallRecord, sha256 } from './model-call-boundary.js';
 import { conclusionText, failureShapeOf, parseModelJson } from './model-json.js';
@@ -1438,6 +1438,17 @@ async function main() {
         context)) });
     // Rule 100: credentials handed over in chat are stored before anything consumes them.
     const custody = createSecretCustody(root, key(), wallNow);
+    // Plan #442 (Rules 4, 86, 100): the secret values this runner holds (host custody and the preview vault), for the
+    // exact floor on every reply and send. Read in memory at each use; never recorded, logged or given to a model.
+    const heldSecretValues = () => {
+      const values = Object.entries(process.env).flatMap(([name, value]) => name.startsWith('INSTAR_SECRET_') && value ? [value] : []);
+      for (const record of custody.records()) if (record.custody === 'preview-vault')
+        try { values.push(custody.resolve(secretRef(record.name))); } catch { /* status reports the missing object */ }
+      return values;
+    };
+    // Plans #446, #451: the register's public entries (names, labels, custody, expiry, renewal standing and step), given
+    // to the full-context review as quoted recorded facts. An unreadable register gives none; the review then holds as before.
+    const credentialRegister = () => { try { return publicCredentialRegister(custody.records(), heldSecretValues(), wallNow()); } catch { return []; } };
     for (const [name, supplied, original, current] of [
       ['max-calls', maxCalls, g.maxCalls, journal.view.limits.maxCalls],
       ['max-replies', maxReplies, g.maxReplies, journal.view.limits.maxReplies],
@@ -1701,7 +1712,8 @@ async function main() {
       concurrentWork: () => launchedAt === null ? null : concurrentWorkItem({ now: wallNow(),
         current: { owner: root.split('/').at(-1), launch: launchedAt, conversation: conversationOf(journal.view.genesis) }, ...ownedActivity(root) }),
       statusLines: statusPullLines,
-      checkOutbound: text => { if (redact(text).count) throw Error('preview: outbound secret refused'); },
+      checkOutbound: text => { if (redact(text).count || secretMaterialIn(text, heldSecretValues())) throw Error('preview: outbound secret refused'); },
+      heldSecrets: heldSecretValues,
       secrets: custody,
       model: async ({ id, prepared }) => {
         if (typeof prepared !== 'string') throw Error('preview: prepared model input absent');
@@ -1723,7 +1735,8 @@ async function main() {
           const selectedRules = replyReviewRules(reviewRules ?? []);
           const question = replyReviewQuestion(reviewRules ?? []);
 
-          const reviewContext = replyReviewContext(originalPrompt, text, reviewRules, declaredObligations(journal.view, id, wallNow()));
+          const reviewContext = replyReviewContext(originalPrompt, text, reviewRules, declaredObligations(journal.view, id, wallNow()),
+            credentialRegister());
           const context = formatRetry ? withFormatReminder(reviewContext, REVIEW_FORMAT_REMINDER) : reviewContext;
           const operationId = operation === 'revision' ? `${id}:revision-review` : `${id}:reply-review`;
           // Rule 29: the review input is written by the runner, a verified system principal.
@@ -1754,7 +1767,7 @@ async function main() {
         // The mind's one response to the objections on its draft: same envelope and grounding packet as review,
         // one disposition per objection, inside the loop's shared deadline.
         revise: async ({ text, id, originalPrompt, ruleIds, reason, objections = ruleIds, findings, deadlineAt }) => {
-          const context = replyReviewContext(originalPrompt, text, ruleIds);
+          const context = replyReviewContext(originalPrompt, text, ruleIds, undefined, credentialRegister());
           // Rule 29: the revision input (the objected draft in its review context) is written by the runner.
           const writer = envelopeWriter(journal.systemWriter('reply-review', `${id}:reply-revision\n${context}`, wallNow()));
           const prepared = modelEnvelope({ question: replyRevisionQuestion(objections, reason, findings), context, id: `${id}:reply-revision`,
