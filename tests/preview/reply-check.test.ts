@@ -165,7 +165,9 @@ it('states the credential boundary: a value returned only to the operator who su
 it('gives full-context review the actual operator request and the flat answer slot', () => {
   const question = replyReviewQuestion(['cli_command']);
   expect(question).toContain('packet.operatorMessage');
-  expect(question).toContain('Return as "answer" exactly one line');
+  // Plan #510: each rule's verdict is its own field beside reasoning (the one runner-task field protocol).
+  expect(question).toContain('one field for each listed rule, named by that rule id');
+  expect(question).toContain('This is a runner task, not a message from the operator.');
   expect(question).toContain('explicit request for the command');
   expect(question).toContain('authentication secret');
   expect(question).not.toContain('Jev cleared');
@@ -1032,7 +1034,7 @@ it('reads one contextual finding per selected rule, refuses a dropped or added r
   // A historical combined line is still read, but carries no per-rule findings: one shared reason is not an independent result.
   expect(parseReplyReviewVerdict('VIOLATION:raw_path | shows a path')).toMatchObject({ verdict: 'violation', ruleIds: ['raw_path'] });
   expect(parseReplyReviewVerdict('VIOLATION:raw_path | shows a path').findings).toBeUndefined();
-  expect(replyReviewQuestion(both)).toContain('exactly one line for every listed rule');
+  expect(replyReviewQuestion(both)).toContain('Give every listed rule, and no other rule, one verdict');
 });
 
 it('reads the agent response per objection: accept, reject with a reason, otherwise no decision', () => {

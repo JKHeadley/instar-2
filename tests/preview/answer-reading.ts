@@ -53,6 +53,21 @@ export function answerDecision(object: Record<string, unknown>, evidence: readon
     reason: { value: object.reasoning } } };
 }
 
+/** The one output instruction every runner task that asks for a structured result ends with (plan #510). Live cint-L50
+ * (proofroom2-dshort15-20261004-120144): the questions still said "Return only JSON {...}" or "Make your answer text one
+ * JSON object", which the flat system prompt lets the model answer as JSON text inside "answer", so it hand-wrote the
+ * nested object again (summary 6232267 attempt 2, beside "reply" and "openLoops"), answered a summary task as a reply to
+ * the operator (attempt 1), wrote a reply review's verdicts as fields the reader did not read, and spent 2964 characters
+ * of a budgeted retrospective's 2048-token cap on reasoning ("review output over the cap"). Every such task now names its
+ * object, the model writes that object's fields beside `reasoning`, and the runner assembles them (answerDecision) and
+ * applies the task's own checks. `reasoningChars` bounds the reasoning of a task whose output has a budget. */
+export function taskFields(shape: string, reasoningChars?: number): string {
+  return `This is a runner task, not a message from the operator. Return ${shape} as one flat object: `
+    + `"reasoning" first${reasoningChars === undefined ? '' : ` (at most ${String(reasoningChars)} characters; it counts toward the output limit)`}, `
+    + 'then each field of that object directly beside it at the top level. Never put the object inside "answer" or write it as JSON text '
+    + 'inside a string, and write no field it does not name (no "answer", "reply" or "openLoops" unless named).';
+}
+
 /** How many `{` are still open at the end of the text, counted outside JSON strings from the first `{`. */
 const openBraces = (text: string): number => {
   let depth = 0, inString = false, escaped = false;
@@ -86,18 +101,23 @@ export function parseDefect(text: string, extracted: ModelJsonResult): string {
 /** The one reading of a subscription answer-side or task result (journal-agent invokeSubscription): parse, build the
  * Decision, check it. `wrapped: 'accept'` (the answer side, Rule 95) may also discard prose around the object; there,
  * prose that itself carries brackets or a brace pair (`dated:[]`, `[withheld]`, `{reply, dated:[...]}`) is discarded only
- * when exactly one top-level span parses as an object at all, it is not written as a list element, and it is the protocol's answer (one with `answer` or `reply`, or a legacy Decision with the
- * answer subject). A gate keeps the narrow reading, so a written rejection beside its verdict is never dropped. */
+ * when exactly one top-level span parses as an object at all, it is not written as a list element, and it is the protocol's answer (one with `answer`, `reply` or `reasoning`, or a legacy Decision with
+ * the answer subject). A gate keeps the narrow reading, so a written rejection beside its verdict is never dropped. */
 export function readAnswer(text: string, options: { wrapped?: ModelJsonWrapped; evidence?: readonly string[] } = {}): AnswerReading {
   let extracted = parseModelJson(text, { wrapped: options.wrapped ?? 'refuse' });
-  if (!extracted.ok && (extracted.shape === 'prose-wrapped' || extracted.shape === 'multiple-objects') && options.wrapped === 'accept') {
+  // A whole-response fence is read above; a fence inside prose (live cint-L50 obligation:commitment:0:1791141513158:
+  // prose quoting `"tools":[]`, then a ```json fence holding the flat object) is the same wrapper, on the same terms.
+  if (!extracted.ok && (extracted.shape === 'prose-wrapped' || extracted.shape === 'multiple-objects' || extracted.shape === 'fenced')
+    && options.wrapped === 'accept') {
     const trimmed = escapeRawControls(text.trim()), { spans, starts } = topLevelObjects(trimmed);
     const parsed = spans.flatMap((span, index) => { try { const value: unknown = JSON.parse(span); return isObject(value) ? [{ value, start: starts[index]! }] : []; } catch { return []; } });
     // k6 stands for a list: an object written as a list element (`[{...}]`) may be one of any number, so it stays refused.
     const listed = parsed.length === 1 && /\[\s*$/u.test(trimmed.slice(0, parsed[0]!.start));
     const sole = parsed.length === 1 && !listed ? parsed[0]!.value : null;
+    // The protocol's answer: `answer` or `reply`, or `reasoning`, which leads every flat object, so a runner task's own
+    // fields (an obligation step's `outcome` and `note`) are recognised as well as a reply.
     if (sole && (sole.type === 'Decision' ? isObject(sole.conclusion) && sole.conclusion.subject === ANSWER_SUBJECT
-      : 'answer' in sole || 'reply' in sole)) extracted = { ok: true, value: sole, shape: 'prose-wrapped' };
+      : 'answer' in sole || 'reply' in sole || 'reasoning' in sole)) extracted = { ok: true, value: sole, shape: extracted.shape === 'fenced' ? 'fenced' : 'prose-wrapped' };
   }
   if (!extracted.ok) return { ok: false, shape: extracted.shape, defect: parseDefect(text, extracted) };
   const built = answerDecision(extracted.value, options.evidence ?? []);
