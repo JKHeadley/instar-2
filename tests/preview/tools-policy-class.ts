@@ -35,6 +35,13 @@ const capped = (value: unknown, ceiling: number) => typeof value === 'number' &&
 /** The per-turn probe paths: plain, short, and laid out as the runner lays out a real turn. */
 const PROBE = Object.freeze({ scratch: '/private/var/x/s', workspace: '/private/var/x/s/w', stateDirectory: '/Users/p/state',
   hook: Object.freeze({ node: '/Users/p/node', script: '/Users/p/tool-admission.mjs' }), deniedRoots: Object.freeze(['/Users/p/root']) });
+const PROBE_HOME = '/Users/p/home';
+const PROBE_EGRESS = Object.freeze({ port: 4321, reads: Object.freeze(['/opt/probe/node']) });
+const PROBE_GATE = 'http://127.0.0.1:4321/0123456789abcdef0123456789abcdef/probe';
+/** The reviewed system locations a confined shell may read (the build's runtime list when 121996 was recorded against the
+ * class). Reading anywhere else changes the secrets checkpoint, so it is a new class, not an edit of this list. */
+export const FULL_TOOLS_RUNTIME_READS = Object.freeze(['/bin', '/sbin', '/usr/bin', '/usr/sbin', '/usr/lib', '/usr/libexec',
+  '/usr/share', '/System', '/private/var/select', '/private/etc', '/dev']);
 
 function claudeCheckpoints(policy: Policy, args: readonly string[]): string | null {
   // The flags that skip settings hooks or permission checks, and the settings sources that could replace the per-turn settings.
@@ -48,29 +55,53 @@ function claudeCheckpoints(policy: Policy, args: readonly string[]): string | nu
   const limits = record(policy.limits);
   for (const name of ['maxTurns', 'maxToolCalls', 'maxChildren', 'childMaxTurns', 'budgetCeilingUsd', 'timeout', 'maxWriteBytes'] as const)
     if (!capped(limits[name], FULL_TOOLS_CEILINGS[name])) return `the ${name} cap is absent or above the class ceiling`;
-  // The build's own per-turn settings, with and without the shell's network checkpoint: sandbox on and unescapable, no direct
-  // network, reads closed from the root down, writes only to the scratch volume, and the admission hook on every call.
-  for (const egress of [undefined, { port: 4321, reads: ['/opt/probe/node'] }]) {
-    let settings: Policy;
-    try { settings = record(JSON.parse(subscriptionToolSettings({ ...PROBE, ...(egress ? { egress } : {}) }, '/Users/p/home'))); }
+  // The build's own per-turn settings, with and without the shell's network checkpoint.
+  for (const egress of [undefined, PROBE_EGRESS]) {
+    let settings: string;
+    try { settings = subscriptionToolSettings({ ...PROBE, ...(egress ? { egress } : {}) }, PROBE_HOME); }
     catch (error) { return `the per-turn settings could not be produced: ${String((error as Error)?.message ?? error)}`; }
-    const sandbox = record(settings.sandbox), network = record(sandbox.network), files = record(sandbox.filesystem), hooks = record(settings.hooks);
-    if (settings.disableAllHooks !== false) return 'the per-turn settings disable hooks';
-    if (sandbox.enabled !== true || sandbox.failIfUnavailable !== true || sandbox.allowUnsandboxedCommands !== false)
-      return 'the shell sandbox is off, optional or escapable';
-    if (!Array.isArray(network.allowedDomains) || network.allowedDomains.length !== 0 || network.allowAllUnixSockets !== false
-      || !Array.isArray(network.allowUnixSockets) || network.allowUnixSockets.length !== 0 || network.allowLocalBinding !== false
-      || (network.httpProxyPort !== undefined && network.httpProxyPort !== egress?.port))
-      return 'the shell reaches the network other than through the turn\'s checkpoint';
-    if (!Array.isArray(files.denyRead) || !files.denyRead.includes('/') || JSON.stringify(files.allowWrite) !== JSON.stringify([PROBE.scratch]))
-      return 'the shell reads or writes outside its workspace';
-    for (const [event, mode] of [['PreToolUse', 'pre'], ['PostToolUse', 'post'], ['SubagentStart', 'child-start'], ['SubagentStop', 'child-stop']]) {
-      const entries = hooks[event as string];
-      const command = `${PROBE.hook.node} ${PROBE.hook.script} ${mode} ${PROBE.stateDirectory}`;
-      if (!Array.isArray(entries) || !entries.some(entry => record(entry).matcher === '*'
-        && Array.isArray(record(entry).hooks) && (record(entry).hooks as unknown[]).some(hook => record(hook).command === command)))
-        return `the admission hook does not run on every ${event as string}`;
-    }
+    const why = claudeSettingsCheckpoints(settings, egress);
+    if (why !== null) return why;
+  }
+  return null;
+}
+
+/** Whether one turn's generated Claude settings (for `PROBE`, `PROBE_HOME` and `egress`) keep every checkpoint: sandbox on and
+ * unescapable, no direct network, reads closed from the root down and reopened only for the scratch volume, the reviewed
+ * runtime list and the checkpoint's own reads (never the login home, the admission state, the hook or a denied root), writes
+ * only to the scratch volume, and the admission hook on every call. */
+export function claudeSettingsCheckpoints(json: string, egress: Readonly<{ port: number; reads: readonly string[] }> | undefined): string | null {
+  let settings: Policy;
+  try { settings = record(JSON.parse(json)); } catch { return 'the per-turn settings are not JSON'; }
+  const sandbox = record(settings.sandbox), network = record(sandbox.network), files = record(sandbox.filesystem), hooks = record(settings.hooks);
+  if (settings.disableAllHooks !== false) return 'the per-turn settings disable hooks';
+  if (sandbox.enabled !== true || sandbox.failIfUnavailable !== true || sandbox.allowUnsandboxedCommands !== false)
+    return 'the shell sandbox is off, optional or escapable';
+  if (!Array.isArray(network.allowedDomains) || network.allowedDomains.length !== 0 || network.allowAllUnixSockets !== false
+    || !Array.isArray(network.allowUnixSockets) || network.allowUnixSockets.length !== 0 || network.allowLocalBinding !== false
+    || (network.httpProxyPort !== undefined && network.httpProxyPort !== egress?.port))
+    return 'the shell reaches the network other than through the turn\'s checkpoint';
+  if (!Array.isArray(files.denyRead) || !files.denyRead.includes('/') || JSON.stringify(files.allowWrite) !== JSON.stringify([PROBE.scratch]))
+    return 'the shell reads or writes outside its workspace';
+  // The read exceptions reopen paths inside the root denial, so each one must be a reviewed place: inside the scratch volume,
+  // a reviewed runtime location, or one of the checkpoint's own reads. None may contain a protected path.
+  const reads = files.allowRead === undefined ? [] : files.allowRead;
+  if (!Array.isArray(reads)) return 'the shell\'s read exceptions are not a list';
+  const within = (path: string, root: string) => path === root || path.startsWith(root === '/' ? '/' : `${root}/`);
+  const protectedPaths = [PROBE_HOME, PROBE.stateDirectory, PROBE.hook.script, ...PROBE.deniedRoots];
+  for (const read of reads) {
+    if (typeof read !== 'string' || !read.startsWith('/') || /(?:^|\/)\.\.?(?:\/|$)/u.test(read) || read.includes('*'))
+      return 'the shell\'s read exceptions are not plain absolute paths';
+    if (!(within(read, PROBE.scratch) || FULL_TOOLS_RUNTIME_READS.includes(read) || (egress?.reads ?? []).includes(read)))
+      return `the shell reads ${read}, outside its workspace and the reviewed runtime list`;
+    if (protectedPaths.some(path => within(path, read))) return `the shell reads ${read}, which holds the login home, admission state or a denied root`;
+  }
+  for (const [event, mode] of [['PreToolUse', 'pre'], ['PostToolUse', 'post'], ['SubagentStart', 'child-start'], ['SubagentStop', 'child-stop']]) {
+    const entries = hooks[event as string];
+    const command = `${PROBE.hook.node} ${PROBE.hook.script} ${mode} ${PROBE.stateDirectory}`;
+    if (!Array.isArray(entries) || !entries.some(entry => record(entry).matcher === '*'
+      && Array.isArray(record(entry).hooks) && (record(entry).hooks as unknown[]).some(hook => record(hook).command === command)))
+      return `the admission hook does not run on every ${event as string}`;
   }
   return null;
 }
@@ -85,12 +116,41 @@ function codexCheckpoints(policy: Policy, args: readonly string[]): string | nul
   for (const name of ['maxTurns', 'timeout', 'maxWriteBytes'] as const)
     if (!capped(limits[name], FULL_TOOLS_CEILINGS[name])) return `the ${name} cap is absent or above the class ceiling`;
   let hookArgs: readonly string[];
-  try { hookArgs = codexToolHookArgs({ ...PROBE, gate: 'http://127.0.0.1:4321/0123456789abcdef0123456789abcdef/probe' }); }
+  try { hookArgs = codexToolHookArgs({ ...PROBE, gate: PROBE_GATE }); }
   catch (error) { return `the per-turn admission arguments could not be produced: ${String((error as Error)?.message ?? error)}`; }
   for (const [event, mode] of [['PreToolUse', 'pre'], ['PostToolUse', 'post']])
     if (!hookArgs.some(arg => arg.startsWith(`hooks.${event as string}=[{matcher='*'`) && arg.includes(` ${PROBE.hook.script} ${mode as string} `)))
       return `the admission hook does not run on every ${event as string}`;
-  if (!hookArgs.some(arg => arg.startsWith('model_provider='))) return 'model calls bypass the dispatch checkpoint';
+  return codexDispatchCheckpoint([...args, ...hookArgs]);
+}
+
+/** Whether the effective Codex launch arguments send every model call through the turn's checkpoint (`PROBE_GATE`): exactly
+ * one selected provider, defined exactly once, whose base URL is that checkpoint over plain HTTP responses; no other provider
+ * definition, base-URL override or profile/local-provider switch. A provider label alone proves nothing. */
+export function codexDispatchCheckpoint(args: readonly string[]): string | null {
+  const bypass = 'model calls bypass the dispatch checkpoint';
+  if (args.some(arg => ['--profile', '-p', '--oss', '--local-provider'].includes(arg) || arg.startsWith('--profile=')
+    || arg.startsWith('--local-provider='))) return `${bypass}: a profile or local provider may select the provider`;
+  const overrides: string[] = [];
+  for (let at = 0; at < args.length; at++) {
+    const arg = args[at]!;
+    if (arg === '-c' || arg === '--config') overrides.push(args[++at] ?? '');
+    else if (arg.startsWith('--config=')) overrides.push(arg.slice('--config='.length));
+  }
+  const key = (override: string) => override.slice(0, override.indexOf('=') < 0 ? override.length : override.indexOf('=')).trim();
+  const selected = overrides.filter(override => key(override) === 'model_provider');
+  if (selected.length !== 1) return `${bypass}: no single selected provider`;
+  const name = selected[0]!.slice(selected[0]!.indexOf('=') + 1).trim();
+  if (!/^[A-Za-z0-9_-]{1,64}$/u.test(name)) return `${bypass}: the selected provider name is not plain`;
+  if (overrides.some(override => /(?:^|\.)(?:openai_base_url|chatgpt_base_url|base_url)$/u.test(key(override))
+    || (key(override).startsWith('model_providers') && key(override) !== `model_providers.${name}`)))
+    return `${bypass}: another provider or base URL is configured`;
+  const defined = overrides.filter(override => key(override) === `model_providers.${name}`);
+  if (defined.length !== 1) return `${bypass}: the selected provider is not defined exactly once`;
+  const definition = defined[0]!;
+  const baseUrls = [...definition.matchAll(/(?:^|[{,\s])base_url\s*=\s*"([^"]*)"/gu)].map(match => match[1]);
+  if (baseUrls.length !== 1 || !baseUrls[0]!.startsWith(`${PROBE_GATE}/`)) return `${bypass}: the provider does not target the turn's checkpoint`;
+  if (!/(?:^|[{,\s])wire_api\s*=\s*"responses"/u.test(definition)) return `${bypass}: the provider does not speak plain HTTP responses`;
   return null;
 }
 

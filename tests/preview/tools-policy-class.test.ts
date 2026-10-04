@@ -9,10 +9,10 @@ import { createHash } from 'node:crypto';
 import { readFileSync } from 'node:fs';
 import { authoritySealKey, PREVIEW_DESK, resolveActivationAuthority, sealAuthorityRecord, type ActivationAuthorityRecord,
   type ActivationFacts, type OperatorMessageRecords } from './activation-authority.js';
-import { FULL_TOOLS_CLASS, toolsPolicyClassVerdict } from './tools-policy-class.js';
+import { claudeSettingsCheckpoints, codexDispatchCheckpoint, FULL_TOOLS_CLASS, toolsPolicyClassVerdict } from './tools-policy-class.js';
 import { encoded } from '../../src/assembly/boundary.js';
-import { subscriptionConversationPolicy, subscriptionToolsPolicy } from '../../src/assembly/production-provider.js';
-import { codexToolsPolicy } from '../../src/assembly/production-codex-provider.js';
+import { subscriptionConversationPolicy, subscriptionToolSettings, subscriptionToolsPolicy } from '../../src/assembly/production-provider.js';
+import { codexToolHookArgs, codexToolsPolicy } from '../../src/assembly/production-codex-provider.js';
 
 const recorded = JSON.parse(readFileSync('tests/preview/fixtures/tools-policies-L42-L44-2026-10-03.json', 'utf8')) as
   { builds: { build: string; grant: string; model: string; digest: string; policy: Record<string, unknown> }[] };
@@ -119,4 +119,42 @@ it('a class grant keeps every other floor: the operator\'s exact words, the subj
   // Revoked: refuses.
   const revoked = sealAuthorityRecord({ ...unsealed, revocations: [{ grantId: 'justin-121996-tools-class', at: NOW - 10, by: OPERATOR, source: 'telegram 3' }] }, KEY);
   expect(resolve(revoked, l44)).toMatchObject({ kind: 'refused', reason: expect.stringMatching(/revoked or expired/u) });
+});
+
+it('the class reads the effective checkpoints, not labels: a reopened read or a direct Codex provider is outside (review round 1)', () => {
+  // The same probe turn the class reads; the passing neighbour is each build's own generated output, unchanged.
+  const turn = { scratch: '/private/var/x/s', workspace: '/private/var/x/s/w', stateDirectory: '/Users/p/state',
+    hook: { node: '/Users/p/node', script: '/Users/p/tool-admission.mjs' }, deniedRoots: ['/Users/p/root'] };
+  const egress = { port: 4321, reads: ['/opt/probe/node'] };
+  const gate = 'http://127.0.0.1:4321/0123456789abcdef0123456789abcdef/probe';
+  for (const e of [undefined, egress]) {
+    const settings = JSON.parse(subscriptionToolSettings({ ...turn, ...(e ? { egress: e } : {}) }, '/Users/p/home'));
+    expect(claudeSettingsCheckpoints(JSON.stringify(settings), e)).toBeNull();
+    const reopen = (allowRead: unknown) => JSON.stringify({ ...settings, sandbox: { ...settings.sandbox,
+      filesystem: { ...settings.sandbox.filesystem, allowRead } } });
+    // Astra's probe: the root denial stays, but its exception reopens everything (or the login home, the state, a denied root).
+    expect(claudeSettingsCheckpoints(reopen(['/']), e)).toMatch(/the shell reads \/, outside/u);
+    expect(claudeSettingsCheckpoints(reopen([...settings.sandbox.filesystem.allowRead, '/Users']), e)).toMatch(/outside its workspace and the reviewed runtime list/u);
+    expect(claudeSettingsCheckpoints(reopen([...settings.sandbox.filesystem.allowRead, '/Users/p/home']), e)).toMatch(/outside its workspace/u);
+    expect(claudeSettingsCheckpoints(reopen([...settings.sandbox.filesystem.allowRead, '/Users/p/root/x']), e)).toMatch(/outside its workspace/u);
+    expect(claudeSettingsCheckpoints(reopen(['/private/var/x/s/../../../Users']), e)).toMatch(/not plain absolute/u);
+    expect(claudeSettingsCheckpoints(reopen(['/private/var/x/s/w']), e)).toBeNull();          // narrower reads stay in the class
+  }
+  const policyArgs = codexToolsPolicy(MODEL).args;
+  const hookArgs = codexToolHookArgs({ ...turn, gate });
+  expect(codexDispatchCheckpoint([...policyArgs, ...hookArgs])).toBeNull();
+  const at = hookArgs.findIndex(arg => arg.startsWith('model_provider='));
+  const replaced = (extra: string[]) => [...hookArgs.slice(0, at - 1), ...extra, ...hookArgs.slice(at + 3)];
+  // Astra's probe: the gate arguments replaced by a bare provider label, hooks and limits intact.
+  expect(codexDispatchCheckpoint([...policyArgs, ...replaced(['-c', 'model_provider=openai'])])).toMatch(/not defined exactly once/u);
+  expect(codexDispatchCheckpoint([...policyArgs, ...replaced(['-c', 'model_provider=instar-gate', '-c',
+    'model_providers.instar-gate={name="OpenAI",base_url="https://api.openai.com/v1",wire_api="responses",requires_openai_auth=true}'])]))
+    .toMatch(/does not target the turn's checkpoint/u);
+  expect(codexDispatchCheckpoint([...policyArgs, ...hookArgs, '-c', 'model_provider=openai'])).toMatch(/no single selected provider/u);
+  expect(codexDispatchCheckpoint([...policyArgs, ...hookArgs, '-c', 'model_providers.instar-gate.base_url="https://x"'])).toMatch(/another provider or base URL/u);
+  expect(codexDispatchCheckpoint([...policyArgs, ...hookArgs, '-c', 'openai_base_url="https://x"'])).toMatch(/another provider or base URL/u);
+  expect(codexDispatchCheckpoint([...policyArgs, '--profile', 'direct', ...hookArgs])).toMatch(/profile or local provider/u);
+  // A policy whose own arguments select a direct provider is outside the class through the full verdict too.
+  const direct = withArgs(codexToolsPolicy(MODEL) as unknown as Record<string, unknown>, args => [...args, '-c', 'model_provider=openai']);
+  expect(toolsPolicyClassVerdict(FULL_TOOLS_CLASS, direct, digestOf(direct))).toMatchObject({ kind: 'outside', reason: expect.stringMatching(/dispatch checkpoint/u) });
 });
