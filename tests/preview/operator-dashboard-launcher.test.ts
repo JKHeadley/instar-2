@@ -46,7 +46,7 @@ it.each([['with', true], ['without', false]])('the runner %s the approval page i
       'tests/preview/journal-agent.mjs', 'run', '--root', root, '--bot-id', world.configuration.botId, '--chat-id', world.configuration.chatId,
       '--operator-sender-id', world.configuration.operatorSenderId, '--grant-reference', trial.id,
       '--configuration-digest', trial.configurationDigest, '--expires-at', String(trial.expiresAt),
-      '--activation-record', activation, '--operator-records', join(world.directory, 'operator-records'), '--login-profile', profile, '--model', world.model,
+      '--tools', 'off', '--activation-record', activation, '--operator-records', join(world.directory, 'operator-records'), '--login-profile', profile, '--model', world.model,
       '--bot-username', world.configuration.botUsername, '--max-cycles', '2', '--max-poll-seconds', '1', ...page],
     { cwd: process.cwd(), encoding: 'utf8', timeout: 20000, env });
     expect(run.status, run.stderr).toBe(0);

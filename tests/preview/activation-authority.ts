@@ -25,6 +25,7 @@
 import { createHash, createHmac, timingSafeEqual } from 'node:crypto';
 import { canonical, grantLiveness } from '../../src/index.js';
 import type { Clock, Revocation, StandingGrant } from '../../src/index.js';
+import { toolsPolicyClassVerdict } from './tools-policy-class.js';
 
 /** Rules the preview activation departs from, per the recorded trial waiver's waived safeguards
  * (preview-trial-waiver-record.md): no Rule-38 model supervisor on the reply pipeline. A waiver
@@ -45,9 +46,11 @@ export interface OperatorMessageRecords { messages: readonly unknown[]; provenan
 /** The operator's recorded earlier yes, with the exact words and the authenticated message it came from. */
 export interface ActivationGrant { id: string; grantor: string; grantee: string; words: string; source: OperatorMessageRef;
   issuedAt: number; expiresAt?: number; actions: readonly ActivationAction[];
-  /** The exact subject the yes covers: a changed field is a different act. */
+  /** The exact subject the yes covers: a changed field is a different act. The policy is named by exactly one of: its
+   * digest (that one policy), or a policy class (`tools-policy-class.ts`: every policy the class admits, verified against
+   * the build's own policy at each resolution; plan #449). */
   scope: { trial: string; model: string; expectedAccount: string; executable: string; artifact: string; version: string;
-    invocationPolicyDigest: string; profileDigest: string };
+    invocationPolicyDigest?: string; invocationPolicyClass?: string; profileDigest: string };
   /** Bounded recurrence: each renewal extends by at most this much, never past the latest expiry. */
   renewal?: { maxExtensionMs: number; latestExpiresAt: number } }
 export interface ActivationWaiver { reference: string; rules: readonly string[]; grantor: string; recordedAt: number; source: OperatorMessageRef; words: string }
@@ -76,7 +79,9 @@ export interface ActivationAuthorityRecord { type: 'PreviewActivationAuthority';
   /** The desk's seal over every other field: `hmac-sha256:<hex>` under the trial's seal key. */
   seal?: string }
 export type AuthorityResolution =
-  | { kind: 'resolved'; action: ActivationAction; grant: string; waiver: string; digest: string }
+  | { kind: 'resolved'; action: ActivationAction; grant: string; waiver: string; digest: string;
+      /** Present when a class grant resolved it: the class and the policy digest it was verified for. */
+      policyClass?: { name: string; policyDigest: string } }
   | { kind: 'refused'; reason: string };
 
 const text = (value: unknown) => typeof value === 'string' && value.trim().length > 0 && value.length <= 4096;
@@ -163,9 +168,12 @@ const sealed = (record: Record<string, unknown>, sealKey: Uint8Array | null) => 
 
 /** Resolves the activation's act against the desk's sealed authority record. `baseExpiry` is the
  * trial's own genesis expiry: an activation ending there is the original activation; a later one is
- * a renewal. `sealKey` is the trial's (`authoritySealKey`); without it nothing resolves. */
+ * a renewal. `sealKey` is the trial's (`authoritySealKey`); without it nothing resolves. `policy` is
+ * the build's own invocation policy the activation's digest names; only with it can a class grant
+ * cover the activation (an exact-digest grant needs none). */
 export function resolveActivationAuthority(activation: ActivationFacts, record: unknown, operator: string,
-  baseExpiry: number, now: number, records: OperatorMessageRecords | null, sealKey: Uint8Array | null): AuthorityResolution {
+  baseExpiry: number, now: number, records: OperatorMessageRecords | null, sealKey: Uint8Array | null,
+  policy?: unknown): AuthorityResolution {
   const refuse = (reason: string): AuthorityResolution => ({ kind: 'refused', reason });
   const r = record as Partial<ActivationAuthorityRecord> | null;
   if (r?.type !== 'PreviewActivationAuthority' || r.schemaVersion !== 1 || !Array.isArray(r.grants) || !Array.isArray(r.waivers)
@@ -186,10 +194,23 @@ export function resolveActivationAuthority(activation: ActivationFacts, record: 
   const current = sourced.filter(g => live(g, revocations, now));
   if (!current.length) return refuse(`the recorded grant for ${action} is revoked or expired`);
   const s = activation;
-  const inScope = current.filter(g => g.scope && g.scope.trial === s.trial && g.scope.model === s.model
+  const subject = current.filter(g => g.scope && g.scope.trial === s.trial && g.scope.model === s.model
     && g.scope.expectedAccount === s.expectedAccount && g.scope.executable === s.executable && g.scope.artifact === s.artifact
-    && g.scope.version === s.version && g.scope.invocationPolicyDigest === s.invocationPolicyDigest && g.scope.profileDigest === s.profileDigest);
-  if (!inScope.length) return refuse('the activation changes a subject the recorded grant does not cover; a new verified approval is required');
+    && g.scope.version === s.version && g.scope.profileDigest === s.profileDigest);
+  // The policy: an exact-digest grant names this one policy; a class grant (and no digest beside it) covers the policy
+  // only when the build's own policy is presented, carries the activation's digest and lies in the class.
+  const classOutside: string[] = [];
+  const inScope = subject.filter(g => {
+    const named = g.scope.invocationPolicyClass;
+    if (named === undefined) return g.scope.invocationPolicyDigest === s.invocationPolicyDigest;
+    if (g.scope.invocationPolicyDigest !== undefined) return false;
+    if (policy === undefined) { classOutside.push(`the grant names policy class ${String(named)}, and no policy was presented to check against it`); return false; }
+    const verdict = toolsPolicyClassVerdict(named, policy, s.invocationPolicyDigest);
+    if (verdict.kind !== 'covered') classOutside.push(`the policy ${s.invocationPolicyDigest} is outside the granted class ${String(named)}: ${verdict.reason}`);
+    return verdict.kind === 'covered';
+  });
+  if (!inScope.length) return refuse(`the activation changes a subject the recorded grant does not cover${classOutside.length
+    ? ` (${classOutside.join('; ')})` : ''}; a new verified approval is required`);
   const bounded = action === 'activate-subscription-preview' ? inScope : inScope.filter(g => g.renewal
     && Number.isSafeInteger(g.renewal.maxExtensionMs) && g.renewal.maxExtensionMs > 0 && time(g.renewal.latestExpiresAt)
     && s.expiresAt - baseExpiry <= g.renewal.maxExtensionMs && s.expiresAt <= g.renewal.latestExpiresAt);
@@ -198,7 +219,10 @@ export function resolveActivationAuthority(activation: ActivationFacts, record: 
     && time(w.recordedAt) && authentic(w.source, w.words, w.recordedAt, operator, records) && w.recordedAt < s.observedAt && Array.isArray(w.rules)
     && PREVIEW_ACTIVATION_DEPARTURES.every(rule => w.rules.includes(rule)));
   if (!waiver) return refuse('the activation waiver does not resolve to a prior operator waiver of the rules this preview departs from');
-  return { kind: 'resolved', action, grant: bounded[0]!.id, waiver: waiver.reference, digest: authorityDigest(record) };
+  const chosen = bounded.find(g => g.scope.invocationPolicyClass === undefined) ?? bounded[0]!;
+  return { kind: 'resolved', action, grant: chosen.id, waiver: waiver.reference, digest: authorityDigest(record),
+    ...(chosen.scope.invocationPolicyClass === undefined ? {}
+      : { policyClass: { name: chosen.scope.invocationPolicyClass, policyDigest: s.invocationPolicyDigest } }) };
 }
 
 /** Digest of the fixed single-machine profile: the subject an acceptance must name exactly. */

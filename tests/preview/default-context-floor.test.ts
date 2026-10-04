@@ -216,7 +216,7 @@ export const createProductionTelegramIO = () => ({ invoke(input) {
     '--bot-id', world.configuration.botId, '--bot-username', world.configuration.botUsername,
     '--chat-id', world.configuration.chatId, '--operator-sender-id', world.configuration.operatorSenderId,
     '--grant-reference', activation.trial, '--configuration-digest', activation.baseConfigurationDigest,
-    '--expires-at', String(activation.expiresAt), '--activation-record', activationPath,
+    '--expires-at', String(activation.expiresAt), '--tools', 'off', '--activation-record', activationPath,
     '--operator-records', join(world.directory, 'operator-records'),
     '--login-profile', profilePath, '--model', world.model, '--max-cycles', '1', ...extra);
 
