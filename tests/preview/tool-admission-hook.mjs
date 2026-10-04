@@ -13,9 +13,10 @@ import { appendFileSync, closeSync, existsSync, fsyncSync, mkdirSync, openSync, 
 import { lookup } from 'node:dns/promises';
 import { isIP } from 'node:net';
 import { join } from 'node:path';
-import { admitToolCall, DELEGATION_TOOLS, DELEGATION_WAIT_TOOLS, hookOutput, OUTWARD_TOOLS, RECORD_EXCERPT_CHARS, SUBAGENT_TOOLS,
+import { admitToolCall, CODEX_NETWORK_READ_TOOLS, DELEGATION_TOOLS, DELEGATION_WAIT_TOOLS, hookOutput, OUTWARD_TOOLS, RECORD_EXCERPT_CHARS, SUBAGENT_TOOLS,
   webReadHost } from './tool-admission.mjs';
 
+const NETWORK_TOOLS = Object.freeze(['WebFetch', 'WebSearch', ...CODEX_NETWORK_READ_TOOLS]);
 const [mode, stateDirectory] = process.argv.slice(2);
 const childRow = mode === 'child-start' || mode === 'child-stop';
 const refuse = error => { process.stderr.write(`tool admission refused: ${error?.message ?? error}`); process.exit(childRow ? 0 : 2); };
@@ -43,11 +44,15 @@ const ask = async body => {
   const response = await fetch(`${config.gate}/admit`, { method: 'POST', headers: { 'content-type': 'application/json' },
     body: JSON.stringify(body), signal: AbortSignal.timeout(15000) });
   const verdict = await response.json();
-  return verdict?.decision === 'allow' ? { decision: 'allow', reason: String(verdict.reason ?? '') }
-    : { decision: 'deny', reason: String(verdict?.reason ?? 'admission checkpoint refused') };
+  // The effect owner's doorway decision rides the admission record, as a local doorway decision does (Rule 41).
+  const doorway = verdict?.doorway && typeof verdict.doorway === 'object' && typeof verdict.doorway.effect === 'string' ? { doorway: verdict.doorway } : {};
+  return verdict?.decision === 'allow' ? { decision: 'allow', reason: String(verdict.reason ?? ''), ...doorway }
+    : { decision: 'deny', reason: String(verdict?.reason ?? 'admission checkpoint refused'), ...doorway };
 };
+// A network read is reported too: one the effect policy names was admitted by the effect owner, which records its result.
 const gatedKind = () => DELEGATION_TOOLS.includes(String(call.tool_name)) ? 'delegation'
   : String(call.tool_name).startsWith('mcp__') || Object.hasOwn(OUTWARD_TOOLS, String(call.tool_name))
+    || NETWORK_TOOLS.includes(String(call.tool_name))
     || (call.tool_name === 'Bash' && call.tool_input?.dangerouslyDisableSandbox) ? 'effect' : null;
 if (mode === 'post') {
   const agent = SUBAGENT_TOOLS.includes(call.tool_name) && typeof call.tool_response?.agentId === 'string' ? { agent: call.tool_response.agentId } : {};

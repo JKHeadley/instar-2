@@ -19,6 +19,8 @@ import { createProductionSessionIO } from '../../scripts/production-session-io.m
 import { prepareSessionAdmission, sessionAdmissionCommand } from '../preview/session-admission.mjs';
 // @ts-expect-error the host admission checkpoint stays plain JavaScript
 import { createAdmissionGate, createToolEffectOwner } from '../preview/admission-gate.mjs';
+// @ts-expect-error the hook's decision stays plain JavaScript
+import { admitToolCallEffect } from '../preview/tool-admission.mjs';
 // @ts-expect-error physical JS host is intentionally outside the pure core
 import { createResourceOwner } from '../../scripts/resource-owner.mjs';
 
@@ -63,7 +65,8 @@ process.stdin.on('data', chunk => {
   let stopped = false;
   const append = (record: SessionWorkEdge | SessionWorkEdgeClose) => { rows.push(record); };
   const gate = await createAdmissionGate({ append, stopped: () => stopped, now: Date.now,
-    effects: createToolEffectOwner({ operations: [], append, stopped: () => stopped, now: Date.now, prepared: () => false }) });
+    effects: createToolEffectOwner({ decide: (tool: string, input: unknown) => admitToolCallEffect(tool, input, { operations: [] }, Date.now()),
+      append, stopped: () => stopped, now: Date.now, prepared: () => false }) });
   gates.push(gate);
   const port = value(createSessionWorkPort({
     createDriver: resolveIntake => createProductionSessionDriver({ operatorOwnUse: true, confinement: 'admitted',

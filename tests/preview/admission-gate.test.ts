@@ -10,6 +10,8 @@ import type { SessionWorkEdge } from '../../src/assembly/production-session-work
 import { modelGateLaunch } from '../../src/assembly/production-session-driver.js';
 // @ts-expect-error the checkpoint stays plain JavaScript
 import { canonical, createAdmissionGate, createToolEffectOwner, toolOperation } from './admission-gate.mjs';
+// @ts-expect-error the hook's decision stays plain JavaScript
+import { admitToolCallEffect } from './tool-admission.mjs';
 
 const RECORDED = JSON.parse(readFileSync(join(__dirname, 'fixtures/model-gate-requests-2026-10-03.json'), 'utf8')) as Record<string,
   { modelCalls: number; requests: [string, string][] }>;
@@ -30,7 +32,8 @@ async function world(options: { stopped?: () => boolean } = {}) {
   const rows: unknown[] = [];
   const stopped = options.stopped ?? (() => false);
   const gate = await createAdmissionGate({ append: (row: unknown) => rows.push(row), stopped, now: () => 5,
-    effects: createToolEffectOwner({ operations: [], append: (row: unknown) => rows.push(row), stopped, now: () => 5, prepared: () => false }),
+    effects: createToolEffectOwner({ decide: (tool: string, input: unknown) => admitToolCallEffect(tool, input, { operations: [] }, Date.now()),
+      append: (row: unknown) => rows.push(row), stopped, now: () => 5, prepared: () => false }),
     upstreams: { 'claude-code': { host: '127.0.0.1', port, secure: false }, 'codex-cli': { host: '127.0.0.1', port, secure: false } } });
   closers.push(() => gate.stop());
   const edge = { id: 'session-work-edge:op:1', child: 'session-work-x' } as SessionWorkEdge;

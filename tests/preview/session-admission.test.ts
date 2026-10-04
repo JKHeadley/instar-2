@@ -2,20 +2,24 @@
 // every tool call passes the same admission hook as the tool turn before dispatch. Both sides of each decision run
 // through the real executable hook and the real host checkpoint (admission-gate.mjs): ordinary in-workspace work and
 // network reads are admitted; a delegation is admitted only after its durable child edge is recorded; an MCP tool
-// passes the effect owner by exact operation; every shell command is rewritten to run confined. Rule 106: the tool
+// passes the effect owner (the effect doorway's four tests); every shell command is rewritten to run confined. Rule 106: the tool
 // calls live Codex 0.156.1 sessions sent their hook (fixtures/codex-hook-probe-2026-10-03 and
 // fixtures/codex-capabilities-2026-10-03, recorded 2026-10-03) replay through it too.
 import { spawn, spawnSync } from 'node:child_process';
 import { closeSync, existsSync, mkdirSync, mkdtempSync, openSync, readdirSync, readFileSync, realpathSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
-import { request } from 'node:http';
+import { createServer, request } from 'node:http';
 import { join } from 'node:path';
 import { afterEach, expect, it } from 'vitest';
 import type { SessionWorkEdge } from '../../src/assembly/production-session-work.js';
 // @ts-expect-error The hook and its state stay plain JavaScript: the harness runs them without a loader.
 import { prepareSessionAdmission, sessionAdmissionCommand } from './session-admission.mjs';
 // @ts-expect-error see above
-import { toolTrace } from './tool-admission.mjs';
+import { admitToolCallEffect, toolTrace } from './tool-admission.mjs';
+// @ts-expect-error see above
+import { attachEgress } from './tool-turn.mjs';
+// @ts-expect-error see above
+import { startEgressProxy } from './egress-proxy.mjs';
 // @ts-expect-error see above
 import { createAdmissionGate, createToolEffectOwner } from './admission-gate.mjs';
 
@@ -32,7 +36,8 @@ afterEach(async () => {
 const sandboxWorks = spawnSync('/usr/bin/sandbox-exec', ['-p', '(version 1)(allow default)', '/usr/bin/true']).status === 0;
 type Row = { type: string; id: string; state?: string; parent?: string; drawsOn?: string; operation?: string };
 
-async function step(options: { maxCalls?: number; operations?: readonly string[]; stopped?: () => boolean } = {}) {
+type Policy = Record<string, unknown>;
+async function step(options: { maxCalls?: number; policy?: Policy; gatePolicy?: Policy; stopped?: () => boolean } = {}) {
   const root = realpathSync(mkdtempSync(join(tmpdir(), 'session-admission-'))); roots.push(root);
   const ws = join(root, 'ws'), outside = join(root, 'outside'), base = join(root, 'admission');
   for (const dir of [ws, outside]) mkdirSync(dir, { recursive: true, mode: 0o700 });
@@ -41,15 +46,18 @@ async function step(options: { maxCalls?: number; operations?: readonly string[]
   const rows: Row[] = [], prepared = new Set<string>();
   const append = (row: Row) => { rows.push(row); if (row.type === 'SessionWorkEffect' && row.state === 'prepared') prepared.add(row.id); };
   const gate = await createAdmissionGate({ append, stopped: options.stopped ?? (() => false), now: () => 1_000,
-    effects: createToolEffectOwner({ operations: options.operations ?? [], append, stopped: () => false, now: () => 1_000,
-      prepared: (id: string) => prepared.has(id) }) });
+    // The effect owner decides by the doorway's four tests under the installation's current policy, as the runner wires it.
+    effects: createToolEffectOwner({ decide: (tool: string, input: unknown) => admitToolCallEffect(tool, input,
+      { operations: [], ...((options.gatePolicy ?? options.policy) ? { effectPolicy: options.gatePolicy ?? options.policy } : {}) }, 1_000),
+    append, stopped: () => false, now: () => 1_000, prepared: (id: string) => prepared.has(id) }) });
   gates.push(gate);
   const edge: SessionWorkEdge = { type: 'SessionWorkEdge', schemaVersion: 1, id: 'session-work-edge:obligation-1:1', parent: 'launch:1',
     child: claim, scope: ws, owner: 'machine-a', authority: 'a test grant', placement: 'machine:machine-a', transport: 'tmux',
     budget: { steps: 1, deadline: 9_999, maxResultBytes: 65536, calls: 24, tokens: null }, exitTest: 'x', resultDestination: join(ws, 'r.json'),
     openedAt: 1 };
   gate.open(claim, { framework: 'codex-cli', allowance: 24, edge });
-  const state = prepareSessionAdmission({ base, claim, workspace: ws, maxCalls: options.maxCalls ?? 24, gate: gate.base(claim) });
+  const state = prepareSessionAdmission({ base, claim, workspace: ws, maxCalls: options.maxCalls ?? 24, gate: gate.base(claim),
+    ...(options.policy ? { effectPolicy: options.policy } : {}) });
   return { root, ws, outside, base, claim, state, gate, rows, edge };
 }
 const call = (tool_name: string, tool_input: object, id = `call_${tool_name}`) => JSON.stringify({ tool_name, tool_input, tool_use_id: id });
@@ -73,8 +81,10 @@ it('lays out a fresh admission state per step: config with the checkpoint addres
   const config = JSON.parse(readFileSync(join(s.state, 'config.json'), 'utf8'));
   expect(config).toMatchObject({ workspace: s.ws, tmp: join(s.ws, '.tmp'), maxCalls: 24, delegation: true, networkReads: true,
     gate: s.gate.base(s.claim), shellProfile: join(s.state, 'shell.sb') });
-  // No category list travels with the hook: authority for an effect is the effect owner's, by exact operation.
-  expect(config.operations).toBeUndefined();
+  // The hook carries the same admission config as a tool turn (the closed operation set; the effect policy when one is
+  // installed); the checkpoint's effect owner decides consequential effects with it, read live.
+  expect(config.operations).toEqual([]);
+  expect(config.effectPolicy).toBeUndefined();
   expect(readFileSync(config.shellProfile, 'utf8')).toContain('(deny network*)');
   expect(sessionAdmissionCommand({ base: s.base, node: '/node' })(s.claim, 'pre')).toBe(`/node ${HOOK} pre ${s.state}`);
   expect(() => prepareSessionAdmission({ base: s.base, claim: s.claim, workspace: s.ws, maxCalls: 24 })).toThrow(/checkpoint address/u);
@@ -99,7 +109,7 @@ it('admits the full tool set: ordinary work, network reads, delegation as a chil
     parent: s.edge.id, drawsOn: s.edge.id, child: 'delegated:toolu_agent_1' })]);
   // The same delegation is never admitted twice.
   expect(await decide('Agent', { prompt: 'look into it' }, 'toolu_agent_1')).toBe('deny');
-  // MCP is consequential: the effect owner refuses an operation the profile does not register.
+  // MCP is consequential by default: the effect owner's doorway refuses an operation no grant places in scope.
   expect(await decide('mcp__threadline__threadline_send', { message: 'hi' })).toBe('deny');
   expect(await decide('SomethingNew', {})).toBe('deny');
   // Each call takes one tool-call slot; the model-call ceiling is the checkpoint's.
@@ -208,27 +218,99 @@ it('authority is read again once the whole admission request has arrived: a clos
   expect((await hook(open.state, call('Write', { file_path: join(open.ws, 'w.txt'), content: 'x' }, 'w'))).decision).toBe('allow');
 });
 
-it('the effect owner admits only the exact registered operation, records it before dispatch, and never prepares it twice', async () => {
-  // A category is never authority: `tool:mcp` registers nothing for an MCP tool.
-  const category = await step({ operations: ['tool:mcp'] });
-  expect((await hook(category.state, call('mcp__threadline__threadline_agents', {}))).decision).toBe('deny');
-  const s = await step({ operations: ['mcp:threadline:threadline_agents'] });
+it('the effect owner decides by the four tests: a granted operation passes, is recorded before dispatch, and a consequential one is never prepared twice (cint-L45 MF2)', async () => {
+  // The reviewer's reproduction: an exactly named MCP operation the operator registered reversible and zero-cost, inside a
+  // recorded scope grant. It is ordinary work under the four tests, so the checkpoint admits it (it never needed the
+  // irreversible closed set), records it before dispatch, and admits a repeat of it (repeating ordinary work is harmless).
+  const registered = { effect: 'tool:mcp', target: 'mcp__x__y', consequence: 'data', reversibility: 'reversible', reach: 'world', costUsd: 0, source: 'test' };
+  const grant = { id: 'g', effect: 'tool:mcp', target: 'mcp__x__y', approves: ['scope'], source: 'test', custodian: 'desk', recovery: 'remove grant' };
+  const ordinary = { type: 'PreviewEffectPolicy', resourceLevelUsd: 0, policySensitive: [], registered: [registered], grants: [grant] };
+  const s = await step({ policy: ordinary });
   expect(s.rows).toHaveLength(0);
-  expect((await hook(s.state, call('mcp__threadline__threadline_agents', { includeOffline: false }, 'exec-1'))).decision).toBe('allow');
-  // The prepared record is durable before the hook answered, with the call's stable identity.
-  expect(s.rows).toEqual([expect.objectContaining({ type: 'SessionWorkEffect', state: 'prepared', operation: 'mcp:threadline:threadline_agents',
-    edge: s.edge.id })]);
-  await hook(s.state, JSON.stringify({ tool_name: 'mcp__threadline__threadline_agents', tool_use_id: 'exec-1', tool_response: { agents: [] } }), 'post');
+  expect((await hook(s.state, call('mcp__x__y', {}, 'exec-1'))).decision).toBe('allow');
+  expect(s.rows).toEqual([expect.objectContaining({ type: 'SessionWorkEffect', state: 'prepared', operation: 'mcp:x:y', edge: s.edge.id })]);
+  // The doorway's decision rides the hook's record (Rule 41), as on a route without the checkpoint.
+  expect(recordOf(s.state)).toContain('"doorway":{"effect":"tool:mcp","target":"mcp__x__y"');
+  await hook(s.state, JSON.stringify({ tool_name: 'mcp__x__y', tool_use_id: 'exec-1', tool_response: { ok: true } }), 'post');
   expect(s.rows.at(-1)).toMatchObject({ type: 'SessionWorkEffect', state: 'observed', id: s.rows[0]!.id });
-  // The same exact operation and input again (a retry, a replayed step): refused, never sent twice.
-  expect((await hook(s.state, call('mcp__threadline__threadline_agents', { includeOffline: false }, 'exec-2'))).decision).toBe('deny');
-  // A different input is a different identity; an unregistered neighbour refuses.
-  expect((await hook(s.state, call('mcp__threadline__threadline_agents', { includeOffline: true }, 'exec-3'))).decision).toBe('allow');
-  expect((await hook(s.state, call('mcp__threadline__threadline_send', { agentId: 'x', message: 'y' }, 'exec-4'))).decision).toBe('deny');
-  // A held stop refuses even a registered operation.
-  const stopped = await step({ operations: ['mcp:threadline:threadline_agents'] });
+  expect((await hook(s.state, call('mcp__x__y', {}, 'exec-2'))).decision).toBe('allow');
+  // An ungranted neighbour (another tool on the same server) is consequential and refused, nothing recorded for it.
+  const before = s.rows.length;
+  expect((await hook(s.state, call('mcp__x__z', {}, 'exec-3'))).decision).toBe('deny');
+  expect(s.rows).toHaveLength(before);
+  // A consequential operation the operator granted (policy-sensitive, approved): admitted once; the same exact operation
+  // and input again (a retry, a replayed step) is refused, never sent twice; a different input is a different identity.
+  const sensitive = { ...ordinary, policySensitive: ['mcp__x__y'], grants: [{ ...grant, approves: ['scope', 'policySensitive'] }] };
+  const c = await step({ policy: sensitive });
+  expect((await hook(c.state, call('mcp__x__y', { a: 1 }, 'exec-1'))).decision).toBe('allow');
+  expect((await hook(c.state, call('mcp__x__y', { a: 1 }, 'exec-2'))).decision).toBe('deny');
+  expect((await hook(c.state, call('mcp__x__y', { a: 2 }, 'exec-3'))).decision).toBe('allow');
+  // The checkpoint reads the installed policy itself: one that has become unreadable refuses even a granted operation.
+  const lost = await step({ policy: ordinary, gatePolicy: { type: 'PreviewEffectPolicyUnavailable', reason: 'withdrawn' } });
+  expect((await hook(lost.state, call('mcp__x__y', {}, 'exec-4'))).decision).toBe('deny');
+  // A held stop refuses even a granted operation.
+  const stopped = await step({ policy: ordinary });
   stopped.gate.close(stopped.claim);
-  expect((await hook(stopped.state, call('mcp__threadline__threadline_agents', {}, 'exec-5'))).decision).toBe('deny');
+  expect((await hook(stopped.state, call('mcp__x__y', {}, 'exec-5'))).decision).toBe('deny');
+});
+
+it('keeps the installed effect policy on its network reads (cint-L45 MF1): a sensitive or unreadable-policy read refuses, a public one passes', async () => {
+  const sensitive = { type: 'PreviewEffectPolicy', resourceLevelUsd: 0, policySensitive: ['1.1.1.1'], registered: [], grants: [] };
+  const s = await step({ policy: sensitive });
+  expect(JSON.parse(readFileSync(join(s.state, 'config.json'), 'utf8')).effectPolicy).toEqual(sensitive);
+  const decide = async (tool: string, input: object, id: string) => (await hook(s.state, call(tool, input, id))).decision;
+  expect(await decide('WebFetch', { url: 'https://1.1.1.1/', prompt: 'read' }, 'f1')).toBe('deny');
+  expect(await decide('webrun', { open: [{ ref_id: 'https://1.1.1.1/' }] }, 'w1')).toBe('deny');
+  expect(await decide('WebFetch', { url: 'https://8.8.8.8/', prompt: 'read' }, 'f2')).toBe('allow');
+  expect(await decide('webrun', { search_query: [{ q: 'x' }], response_length: 'short' }, 'w2')).toBe('allow');
+  // The refusal is the doorway's, on the record: what it is and what would admit it.
+  expect(recordOf(s.state)).toContain('"doorway":{"effect":"tool:network","target":"1.1.1.1"');
+  // A granted sensitive read is admitted (the positive neighbour).
+  const granted = await step({ policy: { ...sensitive, grants: [{ id: 'g', effect: 'tool:network', target: '1.1.1.1', approves: ['scope', 'policySensitive'],
+    source: 'test', custodian: 'desk', recovery: 'remove grant' }] } });
+  expect((await hook(granted.state, call('webrun', { open: [{ ref_id: 'https://1.1.1.1/' }] }, 'w3'))).decision).toBe('allow');
+  // An installed policy that cannot be read refuses every read it could name, and still admits ordinary work.
+  const lost = await step({ policy: { type: 'PreviewEffectPolicyUnavailable', reason: 'withdrawn' } });
+  expect((await hook(lost.state, call('webrun', { open: [{ ref_id: 'https://1.1.1.1/' }] }, 'w4'))).decision).toBe('deny');
+  expect((await hook(lost.state, call('Read', { file_path: join(lost.ws, 'in.txt') }, 'r1'))).decision).toBe('allow');
+});
+
+it.skipIf(!sandboxWorks)('gives the confined shell the step\'s network checkpoint (cint-L45 MF3): reads pass through it, writes refuse, nothing else is reachable, and it closes with the step', async () => {
+  // A stand-in for the public host: the checkpoint resolves example.com to a public address and dials this server instead.
+  const received: string[] = [];
+  const upstream = createServer((req, res) => { received.push(`${req.method} ${req.url}`); res.end('upstream-body\n'); });
+  await new Promise<void>(resolve => upstream.listen(0, '127.0.0.1', resolve));
+  const port = (upstream.address() as { port: number }).port;
+  const s = await step();
+  const tmp = join(s.ws, '.tmp');
+  const { proxy } = await attachEgress({ stateDirectory: s.state, scratch: tmp, home: join(tmp, 'home') },
+    (input: object) => startEgressProxy({ ...input, resolve: async () => ['93.184.216.34'], dial: () => ({ host: '127.0.0.1', port }) }),
+    { reads: [], path: undefined, developer: undefined });
+  try {
+    const run = async (command: string, id: string) => {
+      const admitted = await hook(s.state, call('Bash', { command }, id));
+      expect(admitted.decision).toBe('allow');
+      // Asynchronously: the checkpoint serves from this same process, so a synchronous child would block it.
+      return new Promise<{ status: number | null; stdout: string }>(resolve => {
+        const child = spawn('/bin/zsh', ['-c', admitted.command!], { cwd: s.ws, stdio: ['ignore', 'pipe', 'pipe'] });
+        let stdout = ''; child.stdout.on('data', chunk => { stdout += chunk; });
+        child.on('exit', status => resolve({ status, stdout }));
+      });
+    };
+    // A read of a public host passes the checkpoint and returns.
+    expect((await run('curl -sS -m 8 http://example.com/page', 'c1')).stdout).toBe('upstream-body\n');
+    // A write is refused at the checkpoint by the effect doorway, before it reaches the host.
+    const write = await run('curl -sS -m 8 -X POST -d x http://example.com/post', 'c2');
+    expect(write.stdout).toContain('Refused by the tool turn\'s network checkpoint');
+    expect(received).toEqual(['GET /page']);
+    // The checkpoint is the only path: a direct connection to anything else is refused by the profile.
+    expect((await run(`curl -sS -m 4 --noproxy '*' http://127.0.0.1:${String(port)}/direct`, 'c3')).status).not.toBe(0);
+    expect(received).toEqual(['GET /page']);
+    // Closed with the step: nothing more passes.
+    await proxy.close();
+    expect((await run('curl -sS -m 4 http://example.com/after', 'c4')).stdout).not.toContain('upstream-body');
+    expect(received).toEqual(['GET /page']);
+  } finally { await proxy.close(); await new Promise<void>(resolve => upstream.close(() => resolve())); }
 });
 
 it.skipIf(!sandboxWorks)('runs every admitted shell command confined: workspace work succeeds; secrets, network and other paths refuse', async () => {

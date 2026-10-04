@@ -11,6 +11,8 @@ import { expect, it } from 'vitest';
 import { modelGateLaunch } from '../../src/assembly/production-session-driver.js';
 // @ts-expect-error the host checkpoint stays plain JavaScript
 import { createAdmissionGate, createToolEffectOwner } from '../preview/admission-gate.mjs';
+// @ts-expect-error the hook's decision stays plain JavaScript
+import { admitToolCallEffect } from '../preview/tool-admission.mjs';
 
 const ready = process.env.INSTAR_MODEL_GATE_LIVE === '1' && existsSync('/usr/local/bin/claude') && existsSync('/usr/local/bin/codex');
 const run = (command: string, args: readonly string[], env: Record<string, string>, cwd: string) =>
@@ -26,7 +28,8 @@ const run = (command: string, args: readonly string[], env: Record<string, strin
 
 it.skipIf(!ready)('both harnesses: one allowed call is forwarded and answered, a call past the allowance is refused before dispatch', async () => {
   const gate = await createAdmissionGate({ append: () => undefined, stopped: () => false, now: Date.now,
-    effects: createToolEffectOwner({ operations: [], append: () => undefined, stopped: () => false, now: Date.now, prepared: () => false }) });
+    effects: createToolEffectOwner({ decide: (tool: string, input: unknown) => admitToolCallEffect(tool, input, { operations: [] }, Date.now()),
+      append: () => undefined, stopped: () => false, now: Date.now, prepared: () => false }) });
   const cwd = realpathSync(mkdtempSync('/private/tmp/mgl-'));
   const edge = { id: 'model-gate-live', child: 'model-gate-live' };
   try {

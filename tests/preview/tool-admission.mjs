@@ -45,22 +45,26 @@ export function toolShellPrefix(tmp, egress = null) {
   if (typeof tmp !== 'string' || !SHELL_SAFE_PATH.test(tmp)) throw Error('tool admission: shell temporary directory absent');
   const base = `unset CLAUDE_CODE_MESSAGING_TOKEN CLAUDE_CODE_MESSAGING_SOCKET; export TMPDIR=${tmp}; ulimit -f 65536; `;
   if (egress === null || egress === undefined) return base;
-  // The shell's network checkpoint (egress-proxy.mjs): its port, the turn's own trust root (a public certificate on the
-  // scratch volume; its key stays in the admission state), a HOME on the scratch volume (tools keep caches and config
-  // there, never in the login profile), the developer tools' own git and python3 and the runner's node first on PATH (the
-  // /usr/bin shims would look up a system link outside the sandbox), and no system git configuration, so curl, git, npm and
-  // pip reach the network through it.
-  const { port, ca, home, path, developer } = egress;
+  const { assignments, path } = egressEnvironment(egress);
+  return `${base}export ${assignments} PATH=${[...path, '$PATH'].join(':')}; `;
+}
+/** The shell's network checkpoint (egress-proxy.mjs) as environment: its port, the turn's own trust root (a public
+ * certificate; its key stays in the admission state), a HOME the shell may write (tools keep caches and config there,
+ * never in the login profile), the developer tools' own git and python3 and the runner's node first on PATH (the /usr/bin
+ * shims would look up a system link outside the sandbox), and no system git configuration, so curl, git, npm and pip
+ * reach the network through it. Returns the assignments and the PATH entries to put first. */
+function egressEnvironment(egress) {
+  const { port, ca, home, path, developer } = egress ?? {};
   if (!Number.isSafeInteger(port) || port < 1 || port > 65535 || ![ca, home].every(value => typeof value === 'string' && SHELL_SAFE_PATH.test(value))
     || ![path, developer].every(value => value === undefined || (typeof value === 'string' && SHELL_SAFE_PATH.test(value))))
     throw Error('tool admission: shell egress checkpoint absent');
   const proxy = `http://127.0.0.1:${String(port)}`;
   // NO_PROXY is emptied: the harness exempts loopback and private ranges from its proxy, and every request, those included,
   // is to be decided (and refused) at the checkpoint, on the record.
-  return `${base}export HOME=${home} HTTPS_PROXY=${proxy} HTTP_PROXY=${proxy} https_proxy=${proxy} http_proxy=${proxy} NO_PROXY= no_proxy= `
+  return { assignments: `HOME=${home} HTTPS_PROXY=${proxy} HTTP_PROXY=${proxy} https_proxy=${proxy} http_proxy=${proxy} NO_PROXY= no_proxy= `
     + `SSL_CERT_FILE=${ca} CURL_CA_BUNDLE=${ca} GIT_SSL_CAINFO=${ca} NODE_EXTRA_CA_CERTS=${ca} REQUESTS_CA_BUNDLE=${ca} PIP_CERT=${ca} `
-    + `npm_config_cafile=${ca} npm_config_update_notifier=false GIT_CONFIG_NOSYSTEM=1 GIT_ATTR_NOSYSTEM=1${developer ? ` DEVELOPER_DIR=${developer}` : ''}`
-    + ` PATH=${[developer ? `${developer}/usr/bin` : null, path ?? null, '$PATH'].filter(Boolean).join(':')}; `;
+    + `npm_config_cafile=${ca} npm_config_update_notifier=false GIT_CONFIG_NOSYSTEM=1 GIT_ATTR_NOSYSTEM=1${developer ? ` DEVELOPER_DIR=${developer}` : ''}`,
+  path: [developer ? `${developer}/usr/bin` : null, path ?? null].filter(Boolean) };
 }
 /** System locations a confined shell reads to run at all (the tool turn's runtime list, plus the installed tool
  * prefixes and the command-line developer tools that `python3` and `git` resolve through). Nothing under a home,
@@ -75,14 +79,20 @@ const SBPL_PATH = /^\/[A-Za-z0-9_./@-]+$/u;
  * network, no signal to any other process, and no keychain service. A path's existence stays visible (metadata),
  * its contents do not. Every `Bash` call is rewritten to run under it (`sandboxedShellCommand`).
  */
-export function shellSandboxProfile({ workspace, tmp }) {
-  if (![workspace, tmp].every(path => typeof path === 'string' && SBPL_PATH.test(path)))
+export function shellSandboxProfile({ workspace, tmp, egress = null }) {
+  const reads = egress?.reads ?? [], writes = egress?.writes ?? [];
+  if (![workspace, tmp, ...reads, ...writes].every(path => typeof path === 'string' && SBPL_PATH.test(path)))
     throw Error('tool admission: confined shell paths must be absolute and plain');
+  if (egress !== null && (!Number.isSafeInteger(egress.port) || egress.port < 1 || egress.port > 65535))
+    throw Error('tool admission: confined shell egress port invalid');
   const subpaths = paths => paths.map(path => `(subpath "${path}")`).join(' ');
+  // With the step's network checkpoint (egress-proxy.mjs), the one network path is to its loopback port: every request the
+  // shell makes is decided there by the same effect doorway as a tool call, under its request and byte bounds.
   return ['(version 1)', '(allow default)', '(deny network*)',
-    '(deny file-read-data (subpath "/"))', `(allow file-read-data (literal "/") ${subpaths([...SHELL_RUNTIME_READS, workspace, tmp])})`,
+    ...(egress !== null ? [`(allow network-outbound (remote ip "localhost:${String(egress.port)}"))`] : []),
+    '(deny file-read-data (subpath "/"))', `(allow file-read-data (literal "/") ${subpaths([...SHELL_RUNTIME_READS, workspace, tmp, ...reads, ...writes])})`,
     '(deny file-write* (subpath "/"))',
-    `(allow file-write* ${subpaths([workspace, tmp])} (literal "/dev/null") (literal "/dev/zero") (regex #"^/dev/tty") (regex #"^/dev/fd/"))`,
+    `(allow file-write* ${subpaths([workspace, tmp, ...writes])} (literal "/dev/null") (literal "/dev/zero") (regex #"^/dev/tty") (regex #"^/dev/fd/"))`,
     '(deny signal)', '(allow signal (target self))',
     '(deny mach-lookup (global-name "com.apple.SecurityServer") (global-name "com.apple.securityd.xpc") (global-name "com.apple.security.agent"))',
     ''].join('\n');
@@ -90,11 +100,15 @@ export function shellSandboxProfile({ workspace, tmp }) {
 const quoted = text => `'${String(text).replaceAll("'", "'\\''")}'`;
 /** One shell command, run under the confined profile with a clean environment: no inherited variable (a harness
  * token or socket) reaches it, `TMPDIR` is the step's own, and `ulimit -f` bounds each file it writes. */
-export function sandboxedShellCommand(command, { profile, workspace, tmp }) {
+export function sandboxedShellCommand(command, { profile, workspace, tmp, egress = null }) {
   if (![profile, workspace, tmp].every(path => typeof path === 'string' && SHELL_SAFE_PATH.test(path)))
     throw Error('tool admission: confined shell paths absent');
-  return `/usr/bin/sandbox-exec -f ${profile} /usr/bin/env -i PATH=${SHELL_RUNTIME_READS.filter(p => /bin$/u.test(p)).join(':')}`
-    + `:/usr/local/bin:/opt/homebrew/bin HOME=${workspace} TMPDIR=${tmp} /bin/zsh -c ${quoted(`ulimit -f 65536; ${command}`)}`;
+  const path = `${SHELL_RUNTIME_READS.filter(p => /bin$/u.test(p)).join(':')}:/usr/local/bin:/opt/homebrew/bin`;
+  // With the step's network checkpoint, the command is pointed at it (its proxy, trust root and HOME): the profile lets
+  // the shell reach that port and nothing else.
+  const env = egress ? (({ assignments, path: first }) => `${assignments} PATH=${[...first, path].join(':')}`)(egressEnvironment(egress))
+    : `PATH=${path} HOME=${workspace}`;
+  return `/usr/bin/sandbox-exec -f ${profile} /usr/bin/env -i ${env} TMPDIR=${tmp} /bin/zsh -c ${quoted(`ulimit -f 65536; ${command}`)}`;
 }
 /** The paths a Codex `apply_patch` call names, or null when its text is not a patch this reads. */
 export function patchPaths(text) {
@@ -158,6 +172,36 @@ export function admitToolEffect(proposal, config, now) {
         + 'done; tell the user plainly that this step was refused, why, and what would admit it.' };
   }
   return admitEffect(proposal, policy, config.operations ?? [], options);
+}
+
+/** The proposals a consequential (or policy-named) tool call makes at the effect doorway: the doorway's own vocabulary
+ * (toolEffectProposal), each URL a Codex web call opens (by host) and its search, or `tool:<kind>` on the tool's name for
+ * a tool that vocabulary does not name (sending, scheduling, a remote trigger, Monitor), which no default classifies, so
+ * it is classified worst-case on every test. */
+export function toolCallProposals(tool, input) {
+  if (CODEX_NETWORK_READ_TOOLS.includes(tool)) {
+    const hosts = [], open = Array.isArray(input?.open) ? input.open : [];
+    let other = Object.entries(input ?? {}).some(([key, value]) => key !== 'open' && key !== 'response_length' && value !== undefined && value !== null
+      && !(Array.isArray(value) && value.length === 0));
+    for (const item of open) {
+      let host = null; try { const url = new URL(String(item?.ref_id ?? '')); host = /^https?:$/u.test(url.protocol) ? url.hostname || null : null; } catch { host = null; }
+      if (host) hosts.push(host.replace(/^\[|\]$/gu, '').slice(0, 256)); else other = true;
+    }
+    return [...hosts.map(target => ({ effect: 'tool:network', target })), ...(other || hosts.length === 0 ? [{ effect: 'tool:network', target: 'web-search' }] : [])];
+  }
+  const kind = Object.hasOwn(OUTWARD_TOOLS, tool) ? OUTWARD_TOOLS[tool] : 'unclassified';
+  return [toolEffectProposal(tool, input) ?? { effect: `tool:${kind}`, target: tool.slice(0, 256) }];
+}
+/** The effect doorway's decision for one tool call: every proposal it makes must be admitted; the first refusal (else the
+ * first admission) is the call's verdict. The host checkpoint's effect owner decides with this same function. */
+export function admitToolCallEffect(tool, input, config, now) {
+  const verdicts = toolCallProposals(tool, input).map(proposal => admitToolEffect(proposal, config, now));
+  return verdicts.find(verdict => !verdict.admitted) ?? verdicts[0];
+}
+/** A doorway verdict as the admission record carries it (Rule 41): enough for status and the answer's refusal notice. */
+export function doorwayRecord(verdict) {
+  return { effect: verdict.effect, ...(verdict.target ? { target: verdict.target } : {}), tests: verdict.tests,
+    disposition: verdict.disposition, ...(verdict.grant ? { grant: verdict.grant } : {}), ...(verdict.admits ? { admits: verdict.admits } : {}) };
 }
 
 /** Whether the turn's effect policy registers this proposal's effect (and target) or marks the effect, its target or a
@@ -338,12 +382,10 @@ export function admitToolCall(call, config, n, fs, child = 1, now) {
   // Part Twelve: the doorway's whole decision rides the admission record (Rule 41), so status and the answer can report it.
   // A tool the doorway's own vocabulary does not name (sending, scheduling, a remote trigger, Monitor) proposes `tool:<kind>`,
   // which no default classifies, so it is classified worst-case on every test.
-  const effect = kindOf => { if (typeof config.gate === 'string') return { decision: 'gate', kind: 'effect', reason: 'consequential: the effect owner decides' };
-    const proposal = toolEffectProposal(tool, input) ?? { effect: `tool:${kindOf}`, target: tool.slice(0, 256) },
-    verdict = admitToolEffect(proposal, config, now);
-    const doorway = { effect: verdict.effect, ...(verdict.target ? { target: verdict.target } : {}), tests: verdict.tests,
-      disposition: verdict.disposition, ...(verdict.grant ? { grant: verdict.grant } : {}), ...(verdict.admits ? { admits: verdict.admits } : {}) };
-    const kind = kindOf;
+  // On a checkpointed route the host's effect owner decides it, by this same doorway decision under the installation's
+  // current policy, and adds the stop, durable preparation and (for a consequential one) the never-twice identity.
+  const effect = kind => { if (typeof config.gate === 'string') return { decision: 'gate', kind: 'effect', reason: 'the effect owner decides' };
+    const verdict = admitToolCallEffect(tool, input, config, now), doorway = doorwayRecord(verdict);
     return verdict.admitted ? { decision: 'allow', reason: verdict.reason, kind, doorway } : { ...deny(verdict.reason, kind), doorway }; };
   if (!Number.isSafeInteger(n) || n < 1) return deny('admission count unavailable');
   if (n > config.maxCalls) return deny(`per-step call cap ${config.maxCalls} reached (call ${n})`);
@@ -368,7 +410,8 @@ export function admitToolCall(call, config, n, fs, child = 1, now) {
     // A confined shell (`shellProfile` set) runs every command under the step's own sandbox profile, whatever the
     // harness asked for; otherwise the harness's own sandbox bounds it and an unsandboxed request is an effect.
     if (config.shellProfile) return { decision: 'allow', reason: 'confined command',
-      updatedInput: { ...input, command: sandboxedShellCommand(command, { profile: config.shellProfile, workspace: config.workspace, tmp: config.tmp }) } };
+      updatedInput: { ...input, command: sandboxedShellCommand(command, { profile: config.shellProfile, workspace: config.workspace, tmp: config.tmp,
+        egress: config.egress ?? null }) } };
     if (input.dangerouslyDisableSandbox) return effect('unsandboxed');
     return { decision: 'allow', reason: 'sandboxed command',
       updatedInput: { ...input, command: toolShellPrefix(config.tmp, config.egress ?? null) + command } };
@@ -382,8 +425,13 @@ export function admitToolCall(call, config, n, fs, child = 1, now) {
     if (Buffer.byteLength(patch) > config.maxWriteBytes) return deny(`patch larger than ${config.maxWriteBytes} bytes`, 'scope');
     return { decision: 'allow', reason: 'ordinary in-workspace patch' };
   }
-  if (CODEX_NETWORK_READ_TOOLS.includes(tool))
-    return config.networkReads === true ? { decision: 'allow', reason: 'network read', kind: 'network-read' } : deny(`network read ${tool} not admitted on this route`);
+  if (CODEX_NETWORK_READ_TOOLS.includes(tool)) {
+    if (config.networkReads !== true) return deny(`network read ${tool} not admitted on this route`);
+    // A host it opens, or its search, that the operator's effect policy registers or marks policy-sensitive (or a policy
+    // that cannot be read) goes to the doorway, exactly as a WebFetch or WebSearch of it does.
+    if (toolCallProposals(tool, input).some(proposal => policyNames(config, proposal))) return effect('network');
+    return { decision: 'allow', reason: 'network read', kind: 'network-read' };
+  }
   if (tool === 'WebFetch') {
     // WebFetch only ever issues a GET; what it may reach is a public host.
     const target = webReadHost(input.url);

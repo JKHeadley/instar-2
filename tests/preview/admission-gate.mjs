@@ -13,7 +13,7 @@
 //   edge before the subagent starts, and closed only on evidence of its result: a synchronous delegation's returned
 //   result, or, for an asynchronous spawn (whose immediate return is only the child's handle), the harness's own wait
 //   reporting that exact child completed with its result. A bare wake-up is not that evidence. A consequential tool passes the
-//   effect owner (`createToolEffectOwner`) with its exact operation and input.
+//   effect owner (`createToolEffectOwner`) with its exact operation and input; it decides by the effect doorway's four tests.
 //
 // Credentials pass through in the child's own request headers and are neither read nor kept here. The server binds
 // 127.0.0.1 only and serves only paths under its random secret, so another local process cannot spend a claim.
@@ -21,6 +21,7 @@ import { createHash, randomBytes } from 'node:crypto';
 import http from 'node:http';
 import https from 'node:https';
 import { nestedSessionWorkClose, nestedSessionWorkEdge, sessionWorkEffect } from '../../src/assembly/production-session-work.js';
+import { doorwayRecord } from './tool-admission.mjs';
 
 /** Where each harness's model calls go after admission: fixed, so this server can never be used to reach anything else. */
 export const MODEL_UPSTREAMS = Object.freeze({ 'claude-code': Object.freeze({ host: 'api.anthropic.com', port: 443, secure: true }),
@@ -47,27 +48,32 @@ export function toolOperation(tool) {
 }
 
 /**
- * The effect owner a consequential tool call passes, with its exact operation and input, before it is dispatched. Its four
- * tests, in order: (1) authorization: the installed profile registers exactly this operation (a category is never
- * authority); (2) stop and fence: no stop is held and the claim is open; (3) stable identity: the call's identity is the
- * digest of the work item that owns it, the operation and the canonical input, and an identity already prepared refuses,
- * so the same send never goes twice (a retry of the same step included); (4) durable preparation: the request is appended
- * before the call is admitted, and an append that fails refuses. The returned result is what the gate consumes.
+ * The effect owner a consequential (or policy-named) tool call passes, with its exact operation and input, before it is
+ * dispatched. In order: (1) authorization: `decide(tool, input)` is the effect doorway's decision for the call
+ * (tool-admission.mjs admitToolCallEffect: the purpose's four consequential-effect tests under the installation's current
+ * effect policy, its grants and the accepted closed operation set, so an ordinary or granted operation passes and an
+ * ungranted consequential one, or any under a policy that cannot be read, refuses); (2) stop and fence: no stop is held
+ * and the claim is open; (3) stable identity: a consequential call's identity is the digest of the work item that owns it,
+ * the operation and the canonical input, and an identity already prepared refuses, so the same send never goes twice (a
+ * retry of the same step included); an ordinary one (no test holds) is identified by its call as well, since repeating
+ * it is harmless; (4) durable preparation: the request is appended before the call is admitted, and an append that fails
+ * refuses. The returned result (with the doorway's record) is what the gate consumes.
  */
-export function createToolEffectOwner({ operations, append, prepared, stopped, now }) {
-  const registered = new Set(operations);
+export function createToolEffectOwner({ decide, append, prepared, stopped, now }) {
   return Object.freeze({
-    admit({ parent, tool, input }) {
+    admit({ parent, tool, input, call }) {
       const operation = toolOperation(tool);
-      if (!registered.has(operation)) return { admitted: false, reason: `effect owner: the installed profile registers no ${operation} operation `
-        + `(registered: ${[...registered].join(', ') || 'none'}); refused by default` };
-      if (stopped()) return { admitted: false, reason: 'effect owner: a stop is held' };
+      let verdict;
+      try { verdict = decide(tool, input); } catch (error) { return { admitted: false, reason: `effect owner: the effect doorway could not decide (${String(error?.message ?? error)}); refused` }; }
+      const doorway = doorwayRecord(verdict);
+      if (!verdict.admitted) return { admitted: false, reason: verdict.reason, doorway };
+      if (stopped()) return { admitted: false, reason: 'effect owner: a stop is held', doorway };
       const payload = digest(canonical(input));
-      const identity = digest(`${parent.child}\n${operation}\n${payload}`);
-      if (prepared(identity)) return { admitted: false, reason: `effect owner: ${operation} with this exact input was already prepared (${identity}); never sent twice` };
+      const identity = digest(`${parent.child}\n${operation}\n${payload}${verdict.consequential ? '' : `\n${String(call)}`}`);
+      if (prepared(identity)) return { admitted: false, reason: `effect owner: ${operation} with this exact input was already prepared (${identity}); never sent twice`, doorway };
       try { append(sessionWorkEffect({ id: identity, edge: parent.id, operation, digest: payload, state: 'prepared', detail: 'admitted for dispatch', at: now() })); }
-      catch { return { admitted: false, reason: 'effect owner: the request could not be recorded before dispatch' }; }
-      return { admitted: true, reason: `effect owner: ${operation} admitted as ${identity}`, identity, operation, digest: payload };
+      catch { return { admitted: false, reason: 'effect owner: the request could not be recorded before dispatch', doorway }; }
+      return { admitted: true, reason: `${verdict.reason}; effect owner: ${operation} prepared as ${identity}`, identity, operation, digest: payload, doorway };
     },
     observed({ parent, identity, operation, digest: payload, resultBytes }) {
       append(sessionWorkEffect({ id: identity, edge: parent.id, operation, digest: payload, state: 'observed',
@@ -143,10 +149,12 @@ export async function createAdmissionGate({ append, effects, stopped, now, upstr
         if (admitted) { effects.observed({ parent: state.edge, ...admitted, resultBytes: Number(call.result_bytes) || 0 }); state.effects.delete(id); }
         return { decision: 'allow', reason: 'effect observed' };
       }
-      const verdict = effects.admit({ parent: state.edge, tool, input: call.tool_input ?? null });
-      if (!verdict.admitted) return { decision: 'deny', reason: verdict.reason };
+      if (state.effects.has(id)) return { decision: 'deny', reason: 'admission: this effect was already admitted' };
+      const verdict = effects.admit({ parent: state.edge, tool, input: call.tool_input ?? null, call: id });
+      const record = verdict.doorway ? { doorway: verdict.doorway } : {};
+      if (!verdict.admitted) return { decision: 'deny', reason: verdict.reason, ...record };
       state.effects.set(id, { identity: verdict.identity, operation: verdict.operation, digest: verdict.digest });
-      return { decision: 'allow', reason: verdict.reason };
+      return { decision: 'allow', reason: verdict.reason, ...record };
     }
     return { decision: 'deny', reason: 'admission: unknown admission kind' };
   };

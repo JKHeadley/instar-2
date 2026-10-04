@@ -91,8 +91,9 @@ export interface SessionWorkIO {
   /** Lays out a fresh admission state for the claim (its tool hook and shell profile) and opens the claim at the
    * host's model-dispatch checkpoint with the step's reserved allowance and its edge, so every model call of the child,
    * harness-internal and subagent calls included, takes allowance before dispatch and every delegation is recorded as
-   * a child of `edge` before it starts. Throws when it cannot. */
-  prepareAdmission(claim: string, edge: SessionWorkEdge): void;
+   * a child of `edge` before it starts. It may finish asynchronously (the step's shell network checkpoint starts with
+   * it); the launch waits for it. Throws (or rejects) when it cannot. */
+  prepareAdmission(claim: string, edge: SessionWorkEdge): void | Promise<void>;
   /** The checkpoint's view of the claim: whether a call past the allowance was refused, and the child edges still
    * open. Null when unread. */
   admissionState(claim: string): Readonly<{ refused: boolean; openDelegations: readonly SessionWorkEdge[] }> | null;
@@ -285,7 +286,7 @@ export function createSessionWorkPort(config: SessionWorkConfig): Result<Session
             if (config.stopped()) return settledAs('failed', 'stop authority active before the launch', 'no-child');
             lease = await config.resources.admit();
             if (lease === null) return settledAs('failed', 'the host resource owner refused a session step: no capacity', 'no-child');
-            try { config.io.prepareAdmission(claim, edge); }
+            try { await config.io.prepareAdmission(claim, edge); }
             catch { return settledAs('failed', 'the admission state could not be prepared before the launch', 'no-child'); }
             try { config.io.clearResult(resultPath); }
             catch { return settledAs('failed', 'a leftover result could not be cleared before the launch', 'no-child'); }

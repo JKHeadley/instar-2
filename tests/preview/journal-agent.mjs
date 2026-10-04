@@ -9,10 +9,11 @@ import { createProductionTelegramIO, createSubscriptionProviderIO, productionSto
 import { openProductionStorage } from '../../src/assembly/production-storage.js';
 import { DEFAULT_SUBSCRIPTION_DOORWAY, subscriptionDoorway,
   SUBSCRIPTION_PREVIEW_EXPIRY, SUBSCRIPTION_TOOLS_SYSTEM_PROMPT } from '../../src/assembly/production-provider.js';
-import { attachSessionVolume, readRootMcp, reconcileToolTurns, runToolTurn, toolPacketFits, toolStatusLines, toolTurnEligible, TOOL_NOTICE_MAX_BYTES,
+import { attachEgress, attachSessionVolume, networkToolReads, readRootMcp, reconcileToolTurns, runToolTurn, toolPacketFits, toolStatusLines, toolTurnEligible, TOOL_NOTICE_MAX_BYTES,
   TOOLS_DEFAULT_ACTIVATION } from './tool-turn.mjs';
 import { prepareSessionAdmission, sessionAdmissionCommand } from './session-admission.mjs';
 import { createAdmissionGate, createToolEffectOwner } from './admission-gate.mjs';
+import { admitToolCallEffect } from './tool-admission.mjs';
 import { encoded } from '../../src/assembly/boundary.js';
 import { decodeEffectPolicy, DEFAULT_EFFECT_POLICY, effectDoorwayStatusLines, refusedEffectNotices, currentEffectPolicy } from './effect-doorway.mjs';
 import { redact } from '../../src/recall/redact.js';
@@ -1230,9 +1231,15 @@ async function main() {
   let failedPolls = 0, conflictedPolls = 0;
   let identityVerified = false, routeHealthy = true, active = null, toolsActive = () => false, toolsRecord = null, toolsOff = null,
     sessionWork = null, gate = null;
+  /** Each delegated session step's shell network checkpoint, by claim: closed with the step's claim and at shutdown. */
+  const stepEgress = new Map();
   // Part Twelve: the effect doorway's operator policy, re-read at every tool turn so a withdrawn or broken file grants
   // nothing (nothing outward by default); launch refuses a policy that does not decode.
   let effectPolicyOf = () => DEFAULT_EFFECT_POLICY;
+  /** The admission config every route's effect doorway decides with: the accepted closed operation set, the effect
+   * policy as it reads now, and the register's irreversible term. */
+  const admissionConfig = () => ({ operations: SINGLE_MACHINE_PROFILE.operations, effectPolicy: effectPolicyOf(),
+    irreversibleTerm: shapeTerms().derivedFrom.irreversible });
   const workerStop = { value: false };
   const signal = name => { signalled = true; signalName ??= name; workerStop.value = true; };
   process.once('SIGINT', signal); process.once('SIGTERM', signal); process.once('SIGHUP', signal);
@@ -1600,8 +1607,7 @@ async function main() {
       session: doorway.toolTurn?.harness ? null : { store: join(profile.configDirectory, 'projects'), harness: `${profile.version} ${required(options, 'model')}` },
       stopped: () => workerStop.value || existsSync(stopPath) || journal.view.stop !== null || !toolsActive(),
       deniedRoots: [realpathSync(root), profile.home, profile.configDirectory, profile.workingDirectory],
-      operations: SINGLE_MACHINE_PROFILE.operations, effectPolicy: effectPolicyOf(), irreversibleTerm: shapeTerms().derivedFrom.irreversible,
-      now: wallNow, redactText: text => redact(text).text, gate, owner: ownerMachine,
+      ...admissionConfig(), now: wallNow, redactText: text => redact(text).text, gate, owner: ownerMachine,
       ...(doorway.toolTurn ? { system: doorway.toolTurn.system, admission: doorway.toolTurn } : {}),
       fallback: async () => ({ result: await invokeSubscription(prepared, id) }),
       // Rules 33, 84: the workspace notice (files that may still disagree with memory, or a lost workspace) rides the packet.
@@ -1912,14 +1918,16 @@ async function main() {
     const sessionSetup = sessionWorkOf(options);
     // The host's one admission checkpoint for every harness it delegates to (admission-gate.mjs): each model call of a
     // delegated session or a Codex tool turn takes its claim's reserved allowance here before dispatch, each delegation
-    // becomes a durable child edge first, and each consequential tool passes the effect owner by exact operation.
+    // becomes a durable child edge first, and each consequential tool passes the effect owner, which decides it by the
+    // effect doorway's four tests under the installation's current effect policy (read at each decision, so a policy
+    // withdrawn or unreadable mid-step refuses), exactly as an unchecked tool turn's hook does.
     if (sessionSetup !== null || doorway.toolTurn?.harness) {
       const gateStopped = () => workerStop.value || existsSync(stopPath) || !ownerHeld() || journal.view.stop !== null
         || wallNow() >= journal.view.expires || !active();
       const appendWork = record => journal.append({ kind: 'session-work', record, at: wallNow() });
       gate = await createAdmissionGate({ append: appendWork, stopped: gateStopped, now: wallNow,
-        effects: createToolEffectOwner({ operations: SINGLE_MACHINE_PROFILE.operations, append: appendWork, stopped: gateStopped,
-          now: wallNow, prepared: identity => (journal.view.toolEffects ?? []).includes(identity) }) });
+        effects: createToolEffectOwner({ decide: (tool, input) => admitToolCallEffect(tool, input, admissionConfig(), wallNow()),
+          append: appendWork, stopped: gateStopped, now: wallNow, prepared: identity => (journal.view.toolEffects ?? []).includes(identity) }) });
     }
     if (sessionSetup !== null) {
       const sessionBytes = readFileSync(sessionSetup.activation, 'utf8'), sessionActivation = JSON.parse(sessionBytes);
@@ -1943,6 +1951,7 @@ async function main() {
       // the step's reserved call liability, MCP and other consequential tools go to the effect doorway, and every
       // shell command runs confined. The state lives beside the working scope, never inside it.
       const admissionBase = join(root, 'session-work-state', 'admission');
+      const closeStepEgress = async claim => { const proxy = stepEgress.get(claim); stepEgress.delete(claim); if (proxy) await proxy.close(); };
       sessionWork = { authority: `session work grant ${sessionActivation.reference}: one scheduled work step for the verified operator, `
         + 'with the full tool set behind the admission hook, its result returned by file', port: take(createSessionWorkPort({
         createDriver: resolveIntake => createProductionSessionDriver({ operatorOwnUse: true, confinement: 'admitted',
@@ -1954,11 +1963,17 @@ async function main() {
           readyTimeoutMs: 30000, protectedSessions: [] }),
         io: { readResult: (path, maxBytes) => physical.readResult(path, maxBytes), clearResult: path => physical.clearResult(path),
           modelCalls: since => physical.modelCalls(framework, project, profile.configDirectory, since), wait: delay,
-          prepareAdmission: (claim, edge) => { mountVolume();
-            prepareSessionAdmission({ base: admissionBase, claim, workspace: project, maxCalls: SESSION_WORK_LIMITS.maxCallsPerStep,
-              gate: gate.base(claim) });
+          prepareAdmission: async (claim, edge) => { mountVolume();
+            await closeStepEgress(claim);
+            const state = prepareSessionAdmission({ base: admissionBase, claim, workspace: project, maxCalls: SESSION_WORK_LIMITS.maxCallsPerStep,
+              gate: gate.base(claim), ...admissionConfig() });
+            // The step's shell network checkpoint (egress-proxy.mjs): the confined shell's one network path, deciding every
+            // request by the same effect doorway, under its request and byte bounds; stopped when the step's claim closes.
+            const tmp = join(project, '.tmp');
+            stepEgress.set(claim, (await attachEgress({ stateDirectory: state, scratch: tmp, home: join(tmp, 'home') }, undefined, networkToolReads())).proxy);
             gate.open(claim, { framework, allowance: SESSION_WORK_LIMITS.maxCallsPerStep, edge }); },
-          admissionState: claim => gate.state(claim), closeAdmission: claim => { gate.close(claim); } },
+          admissionState: claim => gate.state(claim),
+          closeAdmission: claim => { gate.close(claim); closeStepEgress(claim).catch(() => {}); } },
         resources: { admit: async () => {
           doorway.session.validateActivation(sessionActivation, profile, required(options, 'model'), wallNow(), journal.view.expires);
           await doorway.session.admit({ profile, io: admissionIO, deadline: wallNow() + 15000, now: wallNow });
@@ -2330,6 +2345,8 @@ async function main() {
       // A delegated session never outlives the launch that owns it.
       try { sessionWork?.port.stop(); } catch { /* the driver's next boot sweep and stop authority find it */ }
       if (gate) { gate.closeAll(); await gate.stop(); }
+      for (const proxy of stepEgress.values()) await proxy.close();
+      stepEgress.clear();
       if (shared) await shared.stop();
       journal?.close(); storage.close(); if (ownerClaim?.owner) ownerClaim.release(); process.removeListener('SIGINT', signal); process.removeListener('SIGTERM', signal); process.removeListener('SIGHUP', signal);
     }

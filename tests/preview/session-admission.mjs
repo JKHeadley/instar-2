@@ -24,9 +24,13 @@ export const sessionAdmissionCommand = ({ base, node = process.execPath }) => (c
  * Lays out one step's admission state, replacing any earlier one for the claim. `maxCalls` bounds the step's tool calls
  * (each is followed by a model call, so it never binds before the model-call allowance does); `gate` is the host
  * checkpoint's address for this claim, which decides delegations (a durable child edge first) and consequential tools
- * (the effect owner, by exact operation). Network reads are admitted.
+ * (the effect owner, by the effect doorway's four tests). Network reads are admitted, except those the operator's effect
+ * policy names (`effectPolicy`, with the installation's `operations` and `irreversibleTerm`: the same admission config a
+ * tool turn carries), which go to the effect owner. The shell's network checkpoint is attached after this (tool-turn.mjs
+ * attachEgress), its trust root and HOME under the step's temporary directory.
  */
-export function prepareSessionAdmission({ base, claim, workspace, maxCalls, gate, maxWriteBytes = 1048576 }) {
+export function prepareSessionAdmission({ base, claim, workspace, maxCalls, gate, maxWriteBytes = 1048576, operations = [], effectPolicy,
+  irreversibleTerm }) {
   if (typeof gate !== 'string' || !/^http:\/\/127\.0\.0\.1:[0-9]+\/[0-9a-f]{32}\/[A-Za-z0-9._-]+$/u.test(gate))
     throw Error('session admission: the host checkpoint address is required');
   const state = stateOf(base, claim);
@@ -38,7 +42,8 @@ export function prepareSessionAdmission({ base, claim, workspace, maxCalls, gate
   const shellProfile = join(realpathSync(state), 'shell.sb');
   writeFileSync(shellProfile, shellSandboxProfile({ workspace: real, tmp }), { mode: 0o600 });
   writeFileSync(join(state, 'config.json'), JSON.stringify({ workspace: real, tmp, maxCalls, maxWriteBytes,
-    gate, shellProfile, delegation: true, networkReads: true }), { mode: 0o600 });
+    gate, shellProfile, delegation: true, networkReads: true, operations: [...operations],
+    ...(effectPolicy === undefined ? {} : { effectPolicy }), ...(irreversibleTerm === undefined ? {} : { irreversibleTerm }) }), { mode: 0o600 });
   pruneSessionAdmission(base, claim);
   return state;
 }

@@ -1,5 +1,21 @@
 [
   {
+    "revision": 11,
+    "date": "2026-10-03",
+    "status": "draft",
+    "cause": {
+      "kind": "draft",
+      "note": "Integration cint-L45 pipeline repair, review round 2 (Astra, VERDICT NO; plan row #443): a session keeps the effect policy and its shell's network at the checkpoint (purpose revision 12). No constitution change."
+    },
+    "changes": [
+      {
+        "what": "§5 full-tool-set Rule: a session's network reads keep the installed effect policy; the effect owner admits a consequential tool by the four tests under the current policy and its grants (an irreversible one only within the closed operation set) rather than by exact registration; and the confined shell reaches the network through the step's own egress checkpoint, which closes with the step.",
+        "why": "Review round 2 found the session route bypassing the installed policy on reads, refusing granted ordinary operations, and removing shell network ability a checkpoint can govern.",
+        "ref": "lanes/astra-cint-L45-review.md (round 2, MF1-MF3); lanes/cint-L45-PROGRESS.md (Pipeline repair)"
+      }
+    ]
+  },
+  {
     "revision": 10,
     "date": "2026-10-03",
     "status": "draft",

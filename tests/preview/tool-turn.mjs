@@ -182,6 +182,11 @@ export async function attachEgress(turn, start = undefined, tools = networkToolR
   const ca = join(turn.scratch, 'egress-ca.pem'), input = { stateDirectory: turn.stateDirectory, caPath: ca, admission };
   const proxy = start ? await start(input) : await startEgressProxy(input);
   try {
+    mkdirSync(turn.home, { recursive: true, mode: 0o700 });
+    // A confined shell (its own sandbox profile) reaches the network only through this checkpoint: its profile now allows
+    // exactly the checkpoint's loopback port, reads of the trust root and the network tools, and writes to its HOME.
+    if (config.shellProfile) writeFileSync(config.shellProfile, shellSandboxProfile({ workspace: config.workspace, tmp: config.tmp,
+      egress: { port: proxy.port, reads: [...tools.reads, ca], writes: [turn.home] } }), { mode: 0o600 });
     writeFileSync(configPath, JSON.stringify({ ...config, egress: { port: proxy.port, ca, home: turn.home, ...(tools.path ? { path: tools.path } : {}),
       ...(tools.developer ? { developer: tools.developer } : {}) } }),
       { mode: 0o600 });
@@ -635,12 +640,12 @@ export async function runToolTurn({ journal, root, id, prepared, promptLimit, de
         turns: plan.turn, open: true, at: now() });
     }
     // The shell's network checkpoint lives exactly as long as the turn: started here, stopped below whatever the outcome.
-    // A confined shell has no network at all (its profile denies it), so it gets none.
-    const attached = admission.confinedShell ? null : await attachEgress(turn, egress, networkTools());
+    // A confined shell reaches it through its own profile (the one network path it has); the harness's sandbox otherwise.
+    const attached = await attachEgress(turn, egress, networkTools());
     checkpoint = attached?.proxy ?? null;
     result = await invoke({ scratch: turn.scratch, workspace: turn.workspace, stateDirectory: turn.stateDirectory, hook: turn.hook, deniedRoots,
       ...(turn.mcp ? { mcp: turn.mcp } : {}), ...(plan ? { session: { id: plan.id, resume: plan.resume } } : {}),
-      ...(attached ? { egress: attached.egress } : {}), ...(claim ? { gate: gate.base(claim) } : {}) }, notice);
+      ...(attached && !admission.confinedShell ? { egress: attached.egress } : {}), ...(claim ? { gate: gate.base(claim) } : {}) }, notice);
   } catch (error) { failure = error; }
   if (checkpoint) await checkpoint.close();
   if (claim) {

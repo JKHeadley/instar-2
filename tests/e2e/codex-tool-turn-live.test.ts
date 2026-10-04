@@ -21,6 +21,8 @@ import { CODEX_TOOLS_SYSTEM_PROMPT, codexToolHookArgs, codexToolsPolicy, parseCo
 import { prepareToolTurn } from '../preview/tool-turn.mjs';
 // @ts-expect-error the host checkpoint stays plain JavaScript
 import { createAdmissionGate, createToolEffectOwner } from '../preview/admission-gate.mjs';
+// @ts-expect-error the hook's decision stays plain JavaScript
+import { admitToolCallEffect } from '../preview/tool-admission.mjs';
 
 const executable = process.env.INSTAR_CODEX_EXECUTABLE ?? '/usr/local/bin/codex';
 const login = process.env.INSTAR_CODEX_LOGIN_HOME ?? join(homedir(), '.codex');
@@ -43,7 +45,8 @@ function loginHome(root: string) {
 async function liveTurn(root: string, name: string, task: (turn: { workspace: string }) => string) {
   const rows: { type: string; state?: string; operation?: string }[] = [];
   const gate = await createAdmissionGate({ append: (row: { type: string }) => rows.push(row), stopped: () => false, now: Date.now,
-    effects: createToolEffectOwner({ operations: [], append: (row: { type: string }) => rows.push(row), stopped: () => false,
+    effects: createToolEffectOwner({ decide: (tool: string, input: unknown) => admitToolCallEffect(tool, input, { operations: [] }, Date.now()),
+      append: (row: { type: string }) => rows.push(row), stopped: () => false,
       now: Date.now, prepared: () => false }) });
   const claim = `tool-turn-live-${name}`;
   // A stand-in for the fixed-size scratch volume: the same layout, on the ordinary disk.
@@ -137,7 +140,7 @@ it.skipIf(!ready)('a real Codex tool turn keeps its wider abilities through the 
     expect(pre.some(row => row.tool === 'webrun' && row.decision === 'allow'), JSON.stringify(pre)).toBe(true);
     expect(pre.some(row => row.tool === 'collaborationspawn_agent' && row.decision === 'allow' && row.kind === 'delegation'), JSON.stringify(pre)).toBe(true);
     expect(rows.some(row => row.type === 'SessionWorkEdge'), JSON.stringify(rows)).toBe(true);
-    // The consequential MCP send was refused by the effect owner (no registered operation), before it ran.
+    // The consequential MCP send was refused by the effect owner (the doorway: no grant places it in scope), before it ran.
     expect(pre.some(row => row.tool === 'mcp__threadline__threadline_send' && row.decision === 'deny' && row.kind === 'effect'),
       JSON.stringify(pre)).toBe(true);
     expect(rows.some(row => row.type === 'SessionWorkEffect')).toBe(false);

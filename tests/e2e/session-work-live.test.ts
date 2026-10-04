@@ -24,6 +24,8 @@ import { createProductionSessionIO } from '../../scripts/production-session-io.m
 import { prepareSessionAdmission, sessionAdmissionCommand } from '../preview/session-admission.mjs';
 // @ts-expect-error the host admission checkpoint stays plain JavaScript
 import { createAdmissionGate, createToolEffectOwner } from '../preview/admission-gate.mjs';
+// @ts-expect-error the hook's decision stays plain JavaScript
+import { admitToolCallEffect } from '../preview/tool-admission.mjs';
 // @ts-expect-error physical JS host is intentionally outside the pure core
 import { hostResources } from '../../scripts/resource-owner.mjs';
 
@@ -59,7 +61,8 @@ it.skipIf(!ready)('runs one long work item through the session driver and return
   // The host's model-dispatch checkpoint: every model call of the session reaches its provider only through it.
   const append = (record: SessionWorkEdge | SessionWorkEdgeClose) => { rows.push(record); };
   const gate = await createAdmissionGate({ append, stopped: () => false, now: Date.now,
-    effects: createToolEffectOwner({ operations: [], append, stopped: () => false, now: Date.now, prepared: () => false }) });
+    effects: createToolEffectOwner({ decide: (tool: string, input: unknown) => admitToolCallEffect(tool, input, { operations: [] }, Date.now()),
+      append, stopped: () => false, now: Date.now, prepared: () => false }) });
   const port = value(createSessionWorkPort({
     createDriver: resolveIntake => createProductionSessionDriver({ operatorOwnUse: true, confinement: 'admitted',
       toolAdmission: { command: sessionAdmissionCommand({ base: admission }), timeoutSeconds: 600 },

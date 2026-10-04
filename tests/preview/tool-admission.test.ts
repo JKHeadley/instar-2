@@ -13,7 +13,7 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { afterEach, expect, it } from 'vitest';
 // @ts-expect-error The hook and its decision stay plain JavaScript: the harness runs them without a loader.
-import { admitEgress, admitToolCall, admitToolEffect, egressTarget, gitAdvertisement, gitFetchRequest, gitRepository, publicAddress, toolShellPrefix, toolTrace, webReadHost } from './tool-admission.mjs';
+import { admitEgress, admitToolCall, admitToolEffect, egressTarget, gitAdvertisement, gitFetchRequest, gitRepository, publicAddress, shellSandboxProfile, toolShellPrefix, toolTrace, webReadHost } from './tool-admission.mjs';
 import { SINGLE_MACHINE_PROFILE } from './activation-authority.js';
 // @ts-expect-error The doorway stays plain JavaScript, like the hook.
 import { currentEffectPolicy } from './effect-doorway.mjs';
@@ -128,6 +128,36 @@ it('a checkpointed route sends consequential tools and delegations to its checkp
   expect(confined).toMatchObject({ decision: 'allow', reason: 'confined command' });
   expect(confined.updatedInput.command).toContain(`/usr/bin/sandbox-exec -f ${ws}/shell.sb`);
   expect(call('apply_patch', { input: `*** Begin Patch\n*** Add File: ${ws}/a.txt\n+x\n*** End Patch` }, { maxWriteBytes: 1000 })).toMatchObject({ decision: 'allow', reason: 'ordinary in-workspace patch' });
+  // cint-L45 repair (MF1): the checkpointed route's network reads keep the operator's effect policy. A Codex web call whose
+  // opened host or search the policy marks policy-sensitive, or any under a policy that cannot be read, goes to the effect
+  // owner (which refuses it without a grant), exactly as a WebFetch of it does; a public read the policy does not name is
+  // still an ordinary network read.
+  const sensitive = { type: 'PreviewEffectPolicy', resourceLevelUsd: 0, policySensitive: ['1.1.1.1'], registered: [], grants: [] };
+  const unavailable = { type: 'PreviewEffectPolicyUnavailable', reason: 'withdrawn' };
+  const open = { open: [{ ref_id: 'https://1.1.1.1/' }] };
+  expect(call('webrun', open, { ...gated, effectPolicy: sensitive })).toMatchObject({ decision: 'gate', kind: 'effect' });
+  expect(call('webrun', open, { ...gated, effectPolicy: unavailable })).toMatchObject({ decision: 'gate', kind: 'effect' });
+  expect(call('webrun', { search_query: [{ q: 'x' }] }, { ...gated, effectPolicy: unavailable })).toMatchObject({ decision: 'gate', kind: 'effect' });
+  expect(call('webrun', { open: [{ ref_id: 'https://example.com/' }] }, { ...gated, effectPolicy: sensitive })).toMatchObject({ decision: 'allow', reason: 'network read' });
+  expect(call('webrun', { search_query: [{ q: 'x' }], response_length: 'short' }, { ...gated, effectPolicy: sensitive })).toMatchObject({ decision: 'allow' });
+  expect(call('WebFetch', { url: 'https://1.1.1.1/' }, { ...gated, effectPolicy: sensitive })).toMatchObject({ decision: 'gate', kind: 'effect' });
+  // Without a checkpoint the same web call meets the doorway directly: refused, the decision on the record.
+  expect(call('webrun', open, { networkReads: true, effectPolicy: sensitive })).toMatchObject({ decision: 'deny', kind: 'network',
+    doorway: { effect: 'tool:network', target: '1.1.1.1', disposition: 'refused' } });
+  expect(call('webrun', open, { networkReads: true, effectPolicy: unavailable })).toMatchObject({ decision: 'deny', kind: 'network' });
+  // cint-L45 repair (MF3): with the step's network checkpoint attached, a confined command is pointed at it (its proxy,
+  // trust root and HOME) and its profile allows exactly that loopback port.
+  const egress = { port: 40003, ca: `${tmp}/egress-ca.pem`, home: `${tmp}/home`, path: '/usr/local/bin' };
+  const networked = call('Bash', { command: 'curl -sS https://example.com' }, { ...gated, shellProfile: `${ws}/shell.sb`, egress });
+  expect(networked.updatedInput.command).toContain(`/usr/bin/env -i HOME=${tmp}/home HTTPS_PROXY=http://127.0.0.1:40003 `);
+  expect(networked.updatedInput.command).toContain(`SSL_CERT_FILE=${tmp}/egress-ca.pem `);
+  expect(networked.updatedInput.command).toContain(' PATH=/usr/local/bin:/bin:');
+  expect(confined.updatedInput.command).not.toContain('HTTPS_PROXY');
+  const profile = shellSandboxProfile({ workspace: ws, tmp, egress: { port: 40003, reads: ['/usr/local/bin', `${tmp}/egress-ca.pem`], writes: [`${tmp}/home`] } });
+  expect(profile).toContain('(deny network*)\n(allow network-outbound (remote ip "localhost:40003"))\n');
+  expect(shellSandboxProfile({ workspace: ws, tmp })).not.toContain('network-outbound');
+  expect(() => shellSandboxProfile({ workspace: ws, tmp, egress: { port: 0 } })).toThrow(/egress port/u);
+  expect(() => shellSandboxProfile({ workspace: ws, tmp, egress: { port: 1, reads: ['relative'] } })).toThrow(/absolute and plain/u);
   expect(call('apply_patch', { input: '*** Begin Patch\n*** Add File: /etc/a.txt\n+x\n*** End Patch' })).toMatchObject({ decision: 'deny', kind: 'scope' });
 });
 

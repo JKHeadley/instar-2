@@ -100,11 +100,15 @@ A doorway whose harness has no model-call limit of its own (the Codex tool turn)
 through the host's admission checkpoint instead (Part fifteen §5 in docs/19-scheduled-work): every
 model call of the turn and its subagents takes the turn's one reserved allowance there, so no separate
 subagent budget is reserved; a delegation is first recorded as a durable child edge; every command runs
-under the turn's own confined sandbox profile, with no network and so no egress checkpoint; and a
-consequential tool passes the checkpoint's effect owner, which admits only an operation the installed
-profile registers exactly. That owner consults no effect-policy grant, so on this route an operator
-grant does not admit a consequential tool, and each refuses by default. The web-read host rule above
-holds on this route too. A turn without the checkpoint never sends a call to it.
+under the turn's own confined sandbox profile, whose one network path is the turn's egress checkpoint
+(its loopback port), so a command's reads and writes meet the effect doorway as above; a network read
+the operator's effect policy names, Codex's own web calls included, goes to the doorway as above; and
+a consequential tool passes the checkpoint's effect owner, which decides it by the same four tests
+under the installation's current effect policy and its grants (an ordinary or granted operation
+passes, an ungranted consequential one refuses, and every one refuses while an installed policy cannot
+be read), then adds the stop, a durable record before dispatch and, for a consequential effect, a
+stable identity that is never prepared twice. The web-read host rule above holds on this route too. A
+turn without the checkpoint never sends a call to it.
 
 **Rule — tools are on by default under the operator's recorded grant, which names their scope and is
 withdrawn by the same record.** Rules 4, 60, 82 and 104, and the purpose's rules on nothing outward by

@@ -464,10 +464,16 @@ it('a Codex tool turn runs only through the admission checkpoint: no checkpoint 
   const gate = { base: (claim: string) => `http://127.0.0.1:4100/${'a'.repeat(32)}/${claim}`,
     open: (claim: string, input: { framework: string; allowance: number; edge: { id: string } }) => { opened.push({ claim, ...input }); },
     close: () => ({ ...state, closed: true }), settle: () => undefined };
-  const base = (journal: ReturnType<typeof journalAt>, root: string, invoke: (turn: { gate?: string }) => Promise<unknown>, withGate = true) => ({
+  // The shell's network checkpoint, as a stand-in: its start and close are observed.
+  const egressEvents: string[] = [];
+  const egress = async (input: { caPath: string }) => { egressEvents.push('start'); writeFileSync(input.caPath, 'CERT');
+    return { port: 40002, close: async () => { egressEvents.push('close'); } }; };
+  const base = (journal: ReturnType<typeof journalAt>, root: string, invoke: (turn: { gate?: string; stateDirectory?: string; scratch?: string;
+    egress?: unknown }) => Promise<unknown>, withGate = true) => ({
     journal, root, id, prepared: '{"q":1}', promptLimit: 32768, deniedRoots: [root], operations: SINGLE_MACHINE_PROFILE.operations, now: () => 10,
     redactText: (text: string) => text,
-    fallback: async () => ({ result: 'text-only' }), invoke, scratch: plainScratch, detach: keepDetached, admission,
+    fallback: async () => ({ result: 'text-only' }), invoke, scratch: plainScratch, detach: keepDetached, admission, egress,
+    networkTools: () => ({ reads: ['/usr/local/bin'], path: '/usr/local/bin', developer: undefined }),
     ...(withGate ? { gate, owner: 'machine-a' } : {}) });
   // No checkpoint: the turn is refused before anything launches.
   let launched = 0;
@@ -476,12 +482,23 @@ it('a Codex tool turn runs only through the admission checkpoint: no checkpoint 
   // With it: the claim opens with the turn's whole allowance and its own edge, and the harness is given its address.
   let given: string | undefined;
   const root = dir(), journal = journalAt(root, 50);
-  expect((await runToolTurn(base(journal, root, async turn => { given = turn.gate; return 'answer'; }))).result).toBe('answer');
+  let profile = '', config: Record<string, unknown> = {}, invokeEgress: unknown = 'unset';
+  expect((await runToolTurn(base(journal, root, async turn => { given = turn.gate; invokeEgress = turn.egress;
+    config = JSON.parse(readFileSync(join(turn.stateDirectory!, 'config.json'), 'utf8'));
+    profile = readFileSync(config.shellProfile as string, 'utf8'); return 'answer'; }))).result).toBe('answer');
   expect(opened[0]).toMatchObject({ framework: 'codex-cli', allowance: SUBSCRIPTION_TOOL_LIMITS.maxTurns, edge: { id: `tool-turn:${id}:0` } });
   expect(given).toBe(gate.base(opened[0]!.claim));
   // cint-L45: a checkpointed turn reserves no separate subagent budget (its subagents spend the turn's allowance at the
-  // checkpoint) and starts no shell network checkpoint (its confined shell has no network).
+  // checkpoint). Its confined shell reaches the network through the turn's checkpoint, started before launch and stopped
+  // after: the hook points every command at it, and the shell's own profile allows that one loopback port and nothing else.
   expect(journal.view.calls).toBe(SUBSCRIPTION_TOOL_LIMITS.maxTurns - 1);
+  expect(egressEvents).toEqual(['start', 'close']);
+  expect(config.egress).toMatchObject({ port: 40002, path: '/usr/local/bin' });
+  expect(profile).toContain('(deny network*)\n(allow network-outbound (remote ip "localhost:40002"))\n');
+  expect(profile).toContain('(subpath "/usr/local/bin")');
+  expect(profile).toContain(`(allow file-write* (subpath "${config.workspace as string}") (subpath "${config.tmp as string}") (subpath "${(config.egress as { home: string }).home}")`);
+  // Codex's own sandbox is not used for the shell (the hook confines it), so the harness is not handed the port.
+  expect(invokeEgress).toBeUndefined();
   // A subagent that never returned: its edge settles as uncertain in the journal and the answer is refused.
   const parent = { type: 'SessionWorkEdge', schemaVersion: 1, id: `tool-turn:${id}:0`, parent: id, child: `tool-turn:${id}`, scope: '/ws',
     owner: 'machine-a', authority: 'a', budget: { steps: 1, deadline: 5, maxResultBytes: 8, calls: 8, tokens: null }, exitTest: 'x',

@@ -191,7 +191,9 @@ PreToolUse/PostToolUse admission hook as the tool turn (Claude through its setti
 its per-invocation hook configuration, trusted for that invocation because it is the runner's own
 reviewed script), and the harness runs it before every tool call, a subagent's too. Ordinary
 in-workspace file work and network reads are admitted, except that a web fetch of this machine or
-its private network is refused, as in a tool turn; a file path outside the working scope is
+its private network is refused, as in a tool turn, and a read whose host or search the installed
+effect policy registers or marks policy-sensitive (or any read while that policy cannot be read)
+goes to the effect owner below; a file path outside the working scope is
 refused; an unknown tool is refused. A delegation and a consequential tool are decided by the
 host's one admission checkpoint before they run. A delegation (a subagent started inside the
 turn) is admitted only after the checkpoint has durably recorded it as a child edge of the step's
@@ -199,15 +201,19 @@ own edge — inheriting the step's scope, owner, placement, deadline, call allow
 never added to) and stop — and the edge closes when the subagent's result returns; a parent that
 closes first settles the still-open edge as uncertain, so a lost return remains a recorded
 obligation, never a silent loss. A consequential tool (an MCP tool, an unsandboxed shell) passes
-the effect owner with its exact operation and input: it runs only when the installed profile
-registers that exact operation (a category is never authority), no stop is held and the step is
-open, and its stable identity (the owning work item, the operation and its canonical input) has
-never been prepared before; its request is durably recorded before it is admitted, so the same
-send never goes twice. Every shell command is rewritten to run under the step's own sandbox
-profile with a clean environment: file contents readable only from the working scope and the
-system runtime, writes only there, no network, no signal to another process and no keychain
-service, so a shell cannot read a login home's credential or send through one. Each admission is
-recorded beside the working scope, never inside it.
+the effect owner with its exact operation and input: it runs only when the effect doorway admits
+it by the purpose's four consequential-effect tests under the installation's current effect policy
+and its grants (an irreversible one only within the accepted closed operation set; an ungranted
+consequential one, or any while the installed policy cannot be read, refuses), no stop is held and
+the step is open, and, for a consequential effect, its stable identity (the owning work item, the
+operation and its canonical input) has never been prepared before; its request is durably recorded
+before it is admitted, so the same send never goes twice. Every shell command is rewritten to run
+under the step's own sandbox profile with a clean environment: file contents readable only from the
+working scope, the system runtime and the network tools, writes only there, no network but the
+step's own egress checkpoint (its loopback port, which decides every request by the same effect
+doorway under finite request and byte bounds and closes with the step), no signal to another
+process and no keychain service, so a shell cannot read a login home's credential or send through
+one. Each admission is recorded beside the working scope, never inside it.
 
 **Rule — a session step's spend bound is a reserved call liability, enforced before every model
 call.** Rules 60, 61 and 75; **checks:** the same cases and P15-NF-30. One step at a time runs under a finite

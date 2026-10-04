@@ -1,5 +1,21 @@
 [
   {
+    "revision": 20,
+    "date": "2026-10-03",
+    "status": "draft",
+    "cause": {
+      "kind": "draft",
+      "note": "Integration cint-L45 pipeline repair, review round 2 (Astra, VERDICT NO; plan row #443): the checkpointed route keeps the effect policy and the shell's network, under the operator's approved amendment (purpose revision 12). No constitution change."
+    },
+    "changes": [
+      {
+        "what": "§9 tool rule, checkpointed route: the confined shell's one network path is the turn's egress checkpoint; a network read the effect policy names, Codex's web calls included, goes to the doorway; and the checkpoint's effect owner decides a consequential tool by the four tests under the current effect policy and its grants, adding the stop, durable preparation and the never-twice identity. Revision 19's statement that the owner consults no grant and that the shell has no network is withdrawn.",
+        "why": "Review round 2 reproduced a policy-sensitive read admitted through the checkpoint, a granted reversible MCP operation refused for want of a closed-set entry, and the shell's network removed although the egress checkpoint can enforce its safeguard.",
+        "ref": "lanes/astra-cint-L45-review.md (round 2, MF1-MF3); lanes/cint-L45-PROGRESS.md (Pipeline repair)"
+      }
+    ]
+  },
+  {
     "revision": 19,
     "date": "2026-10-03",
     "status": "draft",

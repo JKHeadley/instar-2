@@ -4,6 +4,10 @@ _Generated from `19-scheduled-work.changelog.json` by `scripts/render-changelog.
 The document itself reads as a first version; every change to it is recorded here, newest first,
 each linked to the git change that made it (rule 91).
 
+## Revision 11 · 2026-10-03 · draft — Integration cint-L45 pipeline repair, review round 2 (Astra, VERDICT NO; plan row #443): a session keeps the effect policy and its shell's network at the checkpoint (purpose revision 12). No constitution change.
+
+- **§5 full-tool-set Rule: a session's network reads keep the installed effect policy; the effect owner admits a consequential tool by the four tests under the current policy and its grants (an irreversible one only within the closed operation set) rather than by exact registration; and the confined shell reaches the network through the step's own egress checkpoint, which closes with the step.** — Review round 2 found the session route bypassing the installed policy on reads, refusing granted ordinary operations, and removing shell network ability a checkpoint can govern. _(lanes/astra-cint-L45-review.md (round 2, MF1-MF3); lanes/cint-L45-PROGRESS.md (Pipeline repair))_
+
 ## Revision 10 · 2026-10-03 · draft — Integration cint-L45 pipeline repair (plan row #443): the governance inventory check P15-NF-02 requires every governed Rule to name a negative fixture. No constitution change.
 
 - **§5's three session Rules now name the existing negative fixtures whose contracts they carry: the delegated-session grant Rule P15-NF-05, the full-tool-set Rule P15-NF-12 and the spend-bound Rule P15-NF-30.** — The w4-sessiondriver merge added the three Rules with test files only, so the Part Fifteen governance inventory found them unmapped. _(tests/scheduled/governance.test.ts (P15-NF-02); lanes/cint-L45-PROGRESS.md)_
