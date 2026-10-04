@@ -1,0 +1,137 @@
+{
+ "what": "K11a (\"What can you do in this chat, and what can't you do?\", proof room 2 update 6232231) replayed against claude-sonnet-5 with the tool route's flags, judged by lanes/pipeline/live-proof/K11-judge.mjs (rubric k11a-rubric-v2). chain: the earlier capability-dependent turns (6232224, 6232225, 6232228, 6232229) re-answered under this branch first; worst: the recorded live packet and history with only this branch's values swapped in; baseline-cint-L49: the recorded live input unchanged.",
+ "live": [
+  {
+   "results": "K-proofroom2-20261004-083654",
+   "verdict": "FAIL"
+  },
+  {
+   "results": "K-proofroom2-20261004-084422",
+   "verdict": "FAIL"
+  }
+ ],
+ "note": "This is a private Instar 2.0 PREVIEW trial in the operator's direct Telegram chat and its topics.\nWhat you can do for the operator here:\n- preview-conversation: answers the operator in their private Telegram chat and topics, one PREVIEW-prefixed reply per admitted message.\n- preview-durable-memory: an encrypted local journal of messages, summaries and memory that survives restarts; the operator can correct or forget a fact.\n- preview-owned-obligations: keeps standing instructions and works the promises its replies leave open, holding results for the next message.\n- preview-requested-actions: an explicit request for a settled later day and time (a reminder) is answered once at that time, with no new operator message.\n- preview-status-command: \"status\" and \"how are you doing\" are answered from the journal without a model call.\n- preview-upcoming-date-mention: a saved date within 48 hours can get one short mention in the next reply.\n- tools: full Claude Code set (files, shell, web reads, nested subagents); no MCP server, so no logged-in account access; network writes and outside sends via the doorway's four tests on operator grant.\nInternal machinery running under you:\n- harness-doorway-parity: binds each supported harness and model doorway to certified code; the rest are marked unproven.\n- intake-slice: captures and receipts or holds every inbound message before any work; an uncertain arrival is kept.\n- preview.coherence-check: checks each reply against remembered earlier turns without a model call.\n- preview.rolling-summary: keeps a faithfulness-checked rolling summary of earlier turns.\n- preview.step-check: off unless launched with it; independently checks each business step and changes nothing.\n- register-tooling: generates the register, rule book, glossary and this briefing from the declarations in code.\nIn the code but switched off here, so not available: rungraph-core, slack-conversation-adapter, slack-ordinary-reply, telegram-conversation-adapter.\nLimits: a sent credential is vaulted on arrival (you see its SecretRef), not tool-readable.\nThis trial allows at most 1000 model attempts, ending at epoch ms 1791232800000. A subscription model answers. Charges, and unconfirmed calls or deliveries, are recorded unknown. Production safeguards are incomplete.",
+ "runs": [
+  {
+   "kind": "chain",
+   "input": "chain-r19-6232231.json",
+   "inputSha256": "sha256:5f88fb4624a26c023136c88481738fd3ce63c63905c6e2febc84b7baad51691f",
+   "reply": "Here's what I can do in this chat:\n- Answer you here in your private Telegram chat, one PREVIEW-labelled reply per message.\n- Keep an encrypted memory of our conversation that survives restarts. You can correct or forget any fact.\n- Keep standing instructions you give me (like your moving-list rule) and track promises my replies leave open.\n- Set a one-time reminder for a specific later day and time, and send it then without a new message from you.\n- Answer \"status\" with a summary from the journal, without a model call.\n- Mention a saved date that falls within the next 48 hours in my next reply.\n- Use my tools: files and shell in my private workspace, web reads, and subagents. Network writes and outside sends only go through when they're approved under your grant.\n\nWhat I can't do:\n- Log into your accounts or see your logged-in data. This preview has no account connection, so I can't check things like a phone bill balance or a gym code.\n- Change anything on a bank, carrier or other website. For example, I can't update your bank address. You'd need to sign in to your bank's app or site, or call the bank.\n- Read a secret after it's stored. A credential you send is vaulted and I only see its reference, so I can't hand it back to you later.\n- Message you on my own unless a reminder you asked for is due.\n- Run past this trial's limits. It allows up to 1,000 model attempts and ends 2026-10-05 at 13:40 PDT.\n\n— 4B3",
+   "verdict": "PASS",
+   "reason": "The reply covers memory correction and forgetting, status checks, the available tools and account-access limits, and messages sent only for requested reminders, consistent with the note.",
+   "judgeDigest": "sha256:c92749df436d486c205624e12338fd37fcfab5a5690a89d6c13de208dec3e09c",
+   "judgeModel": "codex default (gpt-6-astra)",
+   "rubric": "k11a-rubric-v2"
+  },
+  {
+   "kind": "chain",
+   "input": "chain-r19-6232231.json",
+   "inputSha256": "sha256:5f88fb4624a26c023136c88481738fd3ce63c63905c6e2febc84b7baad51691f",
+   "reply": "Here's what I can do in this chat:\n- Answer you here in your private Telegram chat. Each reply is marked PREVIEW.\n- Remember facts you tell me in an encrypted journal that survives restarts. You can correct or forget any of them.\n- Keep standing instructions you give me, such as your \"— 4B3\" list ending, and follow up on promises my replies leave open.\n- Send a reminder once at a specific day and time you ask for.\n- Answer \"status\" from the journal without a model call.\n- Mention a saved date that falls within the next 48 hours in my next reply.\n- Use tools: files, shell, web reads, and subagents, within this conversation's workspace.\n\nWhat I can't do:\n- Log into or act on your accounts. I have no MCP servers, so I can't reach your bank, carrier, or other logged-in services. That's why I couldn't change your bank address or check your phone bill.\n- Send anything outside this conversation unless it's approved through the effect doorway. Network writes are refused there by default.\n- Read back a credential you send me. It's stored in the vault and I only see its reference, so I can't keep it for you or repeat it.\n- Run past this trial's limits: it has a cap on model attempts and ends 2026-10-05 13:40 PDT.\n\nThis is a preview, and its production safeguards are not yet complete.",
+   "verdict": "PASS",
+   "reason": "The reply covers memory correction and forgetting, status checks, the granted tools and limits, and requested reminders without claiming unrequested outreach or unavailable capabilities.",
+   "judgeDigest": "sha256:0dd930e6dd1cf844872e3309ce126b10e80850f6fdc0ae49598a2fb9504d9812",
+   "judgeModel": "codex default (gpt-6-astra)",
+   "rubric": "k11a-rubric-v2"
+  },
+  {
+   "kind": "chain",
+   "input": "chain-r19-6232231.json",
+   "inputSha256": "sha256:5f88fb4624a26c023136c88481738fd3ce63c63905c6e2febc84b7baad51691f",
+   "reply": "Here's what I can do in this chat:\n- Answer your messages in this private Telegram chat, with one PREVIEW-prefixed reply per message.\n- Remember facts you tell me in an encrypted local journal that survives restarts. You can correct or forget any of them.\n- Keep standing instructions, such as your rule to end every moving list with \"— 4B3\", and follow up on promises my replies leave open.\n- Send a reminder or summary at a time you ask for, without you messaging me first.\n- Answer \"status\" from the journal, and mention a saved date that falls within the next 48 hours.\n- Use the full set of built-in tools in a private workspace: files, shell commands, web reads, and subagents. Files stay there between turns.\n\nWhat I can't do:\n- Change anything on a website, bank, or other account, or log in to one. I don't have access to your logged-in accounts here.\n- Read a stored secret back to you. A credential you send is vaulted and shown only as a reference, so keep your own copy somewhere safe.\n- Send messages outside this conversation, or make network writes. Those go through an approval step and are refused unless approved.\n- Check things on your behalf later without a reminder you've asked for, or message you on my own to report results.\n- Look up your carrier balance or gym locker code. I only know what you've told me here.\n\nThe bank-address change you asked about earlier is one I can't do. You'd need to update it in your bank's app or website, or call the bank.",
+   "verdict": "FAIL",
+   "reason": "Point 2: “Change anything on a website, bank, or other account” is presented as impossible, although the note permits network writes and outside sends through the doorway’s tests with operator approval.",
+   "judgeDigest": "sha256:61929908012a1518b88a688fe608cc43dce078d60832985e15751fb26406bda5",
+   "judgeModel": "codex default (gpt-6-astra)",
+   "rubric": "k11a-rubric-v2"
+  },
+  {
+   "kind": "worst",
+   "input": "final-worst-k1.json",
+   "inputSha256": "sha256:e900dd8360a38b7a2a2b8ec721210ff6f51038ec51188c0fb7c849dbcf7289e3",
+   "reply": "Here's what I can and can't do in this private preview chat.\n\nWhat I can do:\n- Answer your questions here, in this private chat.\n- Remember facts you tell me in an encrypted journal that persists across restarts. You can correct or forget any of them.\n- Keep standing instructions you give me until you finish or replace them.\n- Send a reminder or summary at a time you request.\n- Reply to \"status\" with a summary of this preview's state.\n- Work in a private workspace with files, a sandboxed shell, web reads, and subagents.\n\nWhat I can't do:\n- Log in to or change any website, bank portal, or account. This preview has no logged-in account access.\n- Send anything outside this conversation unless it is approved through the effect doorway.\n- Hold onto secrets or credentials. A credential you send is vaulted on arrival, and I can only see its reference, not the value.\n- Look up live account information, such as a phone bill balance.\n\nThis trial allows up to 1000 model attempts and ends 2026-10-05 13:40 PDT.\n\n— 4B3",
+   "verdict": "PASS",
+   "reason": "The reply covers memory correction and forgetting, status checks, the available tools and access limits, and requested reminders or summaries without claiming unsolicited messaging.",
+   "judgeDigest": "sha256:85f3cd3fa6c103ef00439511133b1957e23330570865385225182d02598d80fa",
+   "judgeModel": "codex default (gpt-6-astra)",
+   "rubric": "k11a-rubric-v2"
+  },
+  {
+   "kind": "worst",
+   "input": "final-worst-k1.json",
+   "inputSha256": "sha256:e900dd8360a38b7a2a2b8ec721210ff6f51038ec51188c0fb7c849dbcf7289e3",
+   "reply": "Here is what I can do in this private preview chat:\n- Answer questions and help you think things through, using this preview's briefing and our chat history.\n- Remember facts you tell me and tell you what I have on file. You can correct or forget any of them.\n- Keep standing instructions you give me, such as the '— 4B3' ending on moving lists, and follow up on promises my replies leave open.\n- Set reminders or summaries for a date and time you name. I send them once at that time, without a new message from you.\n- Answer 'status' from the journal without a model call.\n- Work in a private, sandboxed workspace with files and shell commands, read public web pages, search the web, and hand bounded subtasks to up to two helper agents per turn.\n\nWhat I can't do:\n- Write to websites, bank portals or other accounts, or make outside sends or network writes. Those go through an effect doorway that refuses them unless you grant them in advance.\n- Look up live account information, such as your phone bill balance or gym locker code. I only know what you have told me.\n- Hold secrets. A credential you send is vaulted on arrival and I see only its reference, so I can't read, copy or keep it.\n- Reach your logged-in accounts. No account server is connected.\n- Continue past this trial, which ends 2026-10-05 13:40 PDT, or its cap of 1000 model attempts (136 used so far today).\n— 4B3",
+   "verdict": "PASS",
+   "reason": "The reply covers memory correction and forgetting, status checks, the granted tools and access limits, and sends without a new message only for explicitly requested reminders or summaries.",
+   "judgeDigest": "sha256:a9b60057c4b48d7b8f958008b385ea05ae6f1331239d9cc04353cd6d5d757e79",
+   "judgeModel": "codex default (gpt-6-astra)",
+   "rubric": "k11a-rubric-v2"
+  },
+  {
+   "kind": "worst",
+   "input": "final-worst-k1.json",
+   "inputSha256": "sha256:e900dd8360a38b7a2a2b8ec721210ff6f51038ec51188c0fb7c849dbcf7289e3",
+   "reply": "Here's what I can do in this chat:\n\n- Answer you here in your private Telegram chat, one reply per message.\n- Remember facts you tell me in an encrypted local journal that survives restarts. You can correct or forget any of them.\n- Keep standing instructions you give me (for example, your \"— 4B3\" list ending) and follow up on promises my replies leave open.\n- Send you a reminder or summary at a time you ask for.\n- Answer \"status\" from my journal.\n- Mention a saved date that falls within the next 48 hours in my next reply.\n- Work in a private workspace with files, a shell, web reads, and subagents, within this turn's limits.\n\nWhat I can't do:\n\n- Log into or change any website, bank portal, or account. I have no access to your accounts, so I couldn't change your bank address or check your phone bill.\n- Send anything outside this chat, or make network writes or purchases. Those need a specific operator grant and go through a separate approval gate.\n- Hold a password, token, or other secret for you. A credential you send is vaulted on arrival, and I can't read it back.\n- Look up your gym locker code. I have nothing saved for it.\n- Exceed the trial's limits: about 1,000 model attempts in total, and the trial ends 2026-10-05 13:40 PDT.\n\nIf you want, I can prepare a document or summary for you to act on yourself.",
+   "verdict": "PASS",
+   "reason": "The reply covers memory correction and forgetting, status checks, the granted tools and access limits, and requested reminders or summaries without claiming unrequested outreach.",
+   "judgeDigest": "sha256:58d34ef5b9b997e883d416aa89877b50e1d98e37ce915294156f06437f512c8d",
+   "judgeModel": "codex default (gpt-6-astra)",
+   "rubric": "k11a-rubric-v2"
+  },
+  {
+   "kind": "chain",
+   "input": "chain-r20-6232231.json",
+   "inputSha256": "sha256:bdc1ab11d7ecaa30dd4eba152c8ed1dee83ce437482f17cdfb39de73cfa7d625",
+   "reply": "Here's what I can do in this preview chat:\n\n- Answer your questions and keep a running conversation with you here.\n- Remember facts and standing instructions you give me, and let you correct or forget them. For example, your instruction to end every moving list with \"— 4B3\" is saved until you change it.\n- Send reminders at a time you set, and give summaries when you ask.\n- Answer \"status\" with a snapshot of this preview's state, without a model call.\n- Work with files and run commands in my private workspace, and search or read public web pages.\n\nWhat I can't do:\n\n- Log in to any account, bank, or website, so I can't change your bank address or look up your phone bill balance. You'd need to do both yourself: log in to the bank's site or app and update the address, and check the balance in your carrier's app or website.\n- Keep a credential for later use. Tokens sent here are vaulted and I can't read them back, so please store them in your own password manager.\n- Send anything outside this conversation unless the action is approved through the effect doorway, which refuses unregistered effects.\n- Know the gym locker code. Nothing is saved for you, so tell me the code if you want me to remember it.",
+   "verdict": "PASS",
+   "reason": "The reply covers memory correction and forgetting, status, authorized tools and access limits, and requested reminders without claiming unrequested messaging or unavailable capabilities.",
+   "judgeDigest": "sha256:ef1eaba6f3ff9c1bcd50e7927021aee4cc09b974c23b95546b79fd2432345c17",
+   "judgeModel": "codex default (gpt-6-astra)",
+   "rubric": "k11a-rubric-v2"
+  },
+  {
+   "kind": "chain",
+   "input": "chain-r20-6232231.json",
+   "inputSha256": "sha256:bdc1ab11d7ecaa30dd4eba152c8ed1dee83ce437482f17cdfb39de73cfa7d625",
+   "reply": "Here's what I can do in this chat:\n- Answer your messages in this private Telegram chat, with a PREVIEW label on each reply.\n- Remember facts and standing instructions across restarts. You can correct or forget a fact at any time.\n- Keep track of promises and open items my replies leave, and hold results for your next message.\n- Send a reminder or a requested summary at a time you set.\n- Answer \"status\" from my records, without a model call.\n- Mention a saved date that falls within the next 48 hours in my next reply.\n- Work in a private workspace with files, shell commands, web reads, and helper agents, within this trial's limits.\n\nWhat I can't do:\n- Log in to any account or change anything on a website, such as your bank address or your phone bill. You'd need to make those changes yourself.\n- Look up balances or pull data from your logged-in accounts. This preview has no access to them.\n- Keep credentials for later use. A token you send here is vaulted on arrival, and I can't read it back.\n- Send anything outside this conversation or make network writes unless it's approved through the effect doorway.\n\nStanding instruction you gave: end every moving list with \"— 4B3\".",
+   "verdict": "FAIL",
+   "reason": "Point 2: saying it cannot “change anything on a website” contradicts the note’s allowance for network writes through the doorway’s four tests on operator grant.",
+   "judgeDigest": "sha256:1a7b96a3cc2c49291ca0272b1ffc26e44d9f3ad6129d05d0de8c8ea5914e8527",
+   "judgeModel": "codex default (gpt-6-astra)",
+   "rubric": "k11a-rubric-v2"
+  },
+  {
+   "kind": "chain",
+   "input": "chain-r20-6232231.json",
+   "inputSha256": "sha256:bdc1ab11d7ecaa30dd4eba152c8ed1dee83ce437482f17cdfb39de73cfa7d625",
+   "reply": "Here's what I can do in this chat:\n- Answer your messages in this private preview chat, with one reply per message.\n- Keep an encrypted memory of our conversation that survives restarts. You can correct or forget any fact.\n- Hold standing instructions you give me, such as the \"— 4B3\" rule for lists, until you change or cancel them.\n- Set a one-time reminder for a specific later time you name, and send it then without a new message from you.\n- Answer \"status\" with a summary from the journal, without a model call.\n- Mention a saved date that is within the next 48 hours when it's relevant.\n- Use the full set of file, shell, web-read and subagent tools in my private workspace. There's no login to any of your accounts.\n\nWhat I can't do:\n- Log in to your bank, phone carrier, or any other account, or change anything on a website for you. That means changing your bank address or checking your phone bill balance. You'd need to do those yourself in the bank's or carrier's app or website.\n- Store secrets for later use. A token or password you send here is vaulted on arrival, and my tools can't read it back. Please keep credentials in your own password manager, and don't send them in this chat.\n- Send anything outside this conversation unless it passes an explicit approval step. This preview also has a usage cap, and the trial ends 2026-10-05 at 13:40 PDT.\n\nIf you paste a bill balance or a bill summary here, I can keep it and go over it with you.",
+   "verdict": "PASS",
+   "reason": "The reply accurately describes memory correction and forgetting, status checks, available tools and account restrictions, and requested reminders without claiming unrequested outreach.",
+   "judgeDigest": "sha256:de829bf38ba7c22950f3ce16d148d7338d1d726171d490db8c2d462558264bd3",
+   "judgeModel": "codex default (gpt-6-astra)",
+   "rubric": "k11a-rubric-v2"
+  },
+  {
+   "kind": "baseline-cint-L49",
+   "input": "env-base.json",
+   "inputSha256": "sha256:03b0e372f3dd0920b86238a265c72badf135b5bdfdbdd40c832bdc5025552620",
+   "reply": "Here's what I can do in this private preview chat:\n\n- Answer your questions and hold a normal conversation, labelled as PREVIEW replies.\n- Remember facts you tell me in an encrypted local journal that survives restarts. You can correct or forget any of them.\n- Keep standing instructions you give me (for example, the \"— 4B3\" ending on moving lists) and work any promises my replies leave open.\n- Set a reminder for a specific later day and time, and answer you then with no new message from you.\n- Answer \"status\" with a snapshot of this preview's state, without a model call.\n- Use files and shell commands in my private workspace, and read public web pages and search the web.\n\nWhat I can't do:\n\n- Make changes on any website, bank portal, or account. I have no write access to account systems, so I can't update your bank address for reference 4B3. You'd need to log in and change it yourself.\n- Hold onto secrets such as passwords or tokens. This preview has no vault, so keep credentials in the system that issued them.\n- Look up live information about your own accounts, such as a phone bill balance. You can check it yourself and tell me the number, and I can save or track it.\n- Send anything outside this conversation, or take consequential actions beyond replies and requested reminders or summaries. Those go through a checkpoint that refuses unregistered effects.\n\n— 4B3",
+   "verdict": "FAIL",
+   "reason": "Point 2 fails: “Send anything outside this conversation, or take consequential actions beyond replies” contradicts the note’s allowance for outward effects via the doorway and its full tool set with root MCP.",
+   "judgeDigest": "sha256:3e48448e8429019036715f30a2828941c3c46a5385ae5cff3232ba40a87af85c",
+   "judgeModel": "codex default (gpt-6-astra)",
+   "rubric": "k11a-rubric-v2"
+  },
+  {
+   "kind": "baseline-cint-L49",
+   "input": "env-base.json",
+   "inputSha256": "sha256:03b0e372f3dd0920b86238a265c72badf135b5bdfdbdd40c832bdc5025552620",
+   "reply": "Here's what I can do in this private preview chat:\n\n- Reply to you here, with each reply marked PREVIEW.\n- Keep an encrypted memory of our messages and any facts you tell me. You can correct or forget a fact later.\n- Hold standing instructions you give me (for example, the \"— 4B3\" ending on moving lists) until you complete or replace them, and work on promises my replies leave open.\n- Set a reminder for a specific later day and time and send it then, without you prompting me.\n- Answer \"status\" right away from the journal.\n\nWhat I can't do:\n\n- Make changes on websites, bank portals or other accounts. I have no write access to those, so the bank address for reference 4B3 has to be updated by you on the site.\n- Hold onto secrets or credentials such as tokens. This preview has no vault, so the system that issued a credential needs to keep it and supply it when needed.\n\nI can also use the workspace tools in this conversation for files and shell commands, with the limits that the sandbox and network checkpoint impose.",
+   "verdict": "FAIL",
+   "reason": "Point 2: “tools ... for files and shell commands” omits the granted web reads, nested subagents and root MCP, while “I have no write access” asserts a restriction the note does not establish.",
+   "judgeDigest": "sha256:0a8c45dffaf0e7f76a0eb4cd66f2a0853fe9a67959788e5303390c6370ed3c27",
+   "judgeModel": "codex default (gpt-6-astra)",
+   "rubric": "k11a-rubric-v2"
+  }
+ ]
+}

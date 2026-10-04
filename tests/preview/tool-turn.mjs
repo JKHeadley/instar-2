@@ -735,7 +735,7 @@ export function toolStatusLines(view, enabled, off = null, gated = false) {
   return [gated ? 'Tools: a confined shell and patches in this conversation\'s private workspace, web search, subagents and the login\'s '
       + 'installed MCP tools, every model call and consequential tool through the admission checkpoint.' : `Tools: the harness's full built-in set (${SUBSCRIPTION_TOOL_NAMES.length} tools, each call decided at the admission hook) and the `
       + `root's MCP servers, in this conversation's private workspace (kept between turns, ${String(TOOL_SCRATCH_BYTES / 1048576)} MB); shell `
-      + 'sandboxed, its network through the turn\'s checkpoint (reads of public hosts admitted, writes refused at the effect doorway); '
+      + 'sandboxed, its network through the turn\'s checkpoint (reads of public hosts admitted, writes sent to the effect doorway); '
       + 'web reads only; subagents may delegate within the turn\'s budget; consequential effects go through the effect doorway.',
     `Tool turns: ${stats.invocations} run (${stats.reservedCalls} model attempts reserved for them), ${stats.toolCalls} tool calls admitted, `
       + `${stats.toolRefusals} refused, ${stats.refusedCap} turns answered without tools because the call allowance was short`
