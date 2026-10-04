@@ -2,7 +2,10 @@ import { describe, expect, it } from 'vitest';
 import { copyFileSync, mkdtempSync, readFileSync, realpathSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
-import { createJournalWorker, openPreviewJournal, replyOutcomeOf, sendOutcomeCounts, TOO_LONG_REPLY_NOTICE, type JournalView } from './journal.js';
+import { createJournalWorker, openPreviewJournal, openQuestionCandidates, replyOutcomeOf, sendOutcomeCounts, TOO_LONG_REPLY_NOTICE, type JournalView } from './journal.js';
+import { PREVIEW_PROOF_PLANS } from './proofs.js';
+import { previewInventory, resolveLiveProof } from './capabilities.js';
+import { deliveredNotices } from './credential-reminders.js';
 import { turnOutcome } from './operator-dashboard.js';
 import { selfState } from './self-state.js';
 import { encodeReply, fitsOneMessage, MAX_REPLY_PARTS, splitReply, TELEGRAM_MESSAGE_LIMIT, wholeReplySent } from './reply-parts.js';
@@ -394,4 +397,65 @@ describe('a split reply reads as answered only when every message carrying it wa
       expect(delivered(w.journal.view)).toContain('0 in this trial');
     } finally { w.done(); }
   });
+});
+
+/** Review round 3 (cint-L48): the delivery-proof readers claim the WHOLE answer delivered, so a split reply's first
+ * receipt alone never proves it: the proof plans, the live-proof resolver, credential-notice delivery and question
+ * closure all read whole-reply delivery. Replays the recorded 6232050 status answer. */
+describe('delivery proof, notices and question closure read whole-reply delivery', () => {
+  const recorded = answerOf(6232050);
+  const inventory = previewInventory(
+    JSON.parse(readFileSync(new URL('./capabilities.declarations.json', import.meta.url), 'utf8')),
+    JSON.parse(readFileSync(new URL('./preview.pending-declarations.json', import.meta.url), 'utf8')));
+  const setUp = async (verdict: 'accepted' | 'refused' | 'unknown' | 'not-started') => {
+    const w = world(() => recorded);
+    w.refuse(target => {
+      if (verdict === 'not-started' && target.startsWith('reply:')) w.stop(true);
+      return target.startsWith('reply-part:') && (verdict === 'refused' || verdict === 'unknown') ? verdict : null;
+    });
+    w.worker.intake([update(1, 'Explain the report in full.')]);
+    if (verdict === 'not-started') await expect(w.worker.drain()).rejects.toThrow('preview stopped'); else await w.worker.drain();
+    const turn = w.journal.view.order[0]!;
+    // A notice line said only in the continuation, and a question this answer says it closes.
+    const tail = turn.intent!.slice(-40);
+    Object.assign(turn, { answerNotices: [{ key: 'credential:probe', line: tail }], closedQuestions: ['q-probe'] });
+    w.journal.view.questions.push({ source: 'q-probe', quote: 'An earlier question.', reason: 'held' });
+    const plan = PREVIEW_PROOF_PLANS.find(item => item.id === 'reply-delivered')!;
+    const proof = plan.probe({ liveView: () => w.journal.view, now: () => 1001 } as never) as { disposition: string; observed: Record<string, string | number | boolean | null> };
+    const live = resolveLiveProof({ capability: inventory.capabilities.find(item => item.declaration.id === 'preview.reply')!,
+      view: w.journal.view, update: 1, deskObservation: null, stopLatch: null, launches: [{ at: 900 }],
+      startups: [{ plan: 'startup', startedAt: 800, generation: 'offline-probe', observed: { 'version:preview.reply': 'offline-probe' } }] as never,
+      now: 1001 });
+    return { w, turn, proof, confirms: plan.confirms(proof.observed), live,
+      notice: deliveredNotices(w.journal.view.order).has('credential:probe'),
+      open: openQuestionCandidates(w.journal.view).some(item => item.source === 'q-probe') };
+  };
+
+  it('every message accepted: the proof passes, the notice is delivered at the last receipt, the question closes', async () => {
+    const { w, turn, proof, confirms, live, notice, open } = await setUp('accepted');
+    try {
+      expect(turn.replyParts).toHaveLength(1);
+      expect(proof.disposition).toBe('passed');
+      expect(confirms).toBe(true);
+      expect(live.ok).toBe(true);
+      expect(notice).toBe(true);
+      expect(open).toBe(false);
+    } finally { w.done(); }
+  });
+
+  for (const verdict of ['refused', 'unknown', 'not-started'] as const) {
+    it(`the other side: part 2 ${verdict}: no passing proof, notice not delivered, question still open; nothing re-sent`, async () => {
+      const { w, turn, proof, confirms, live, notice, open } = await setUp(verdict);
+      try {
+        expect(turn.sent).toBeDefined();
+        expect(proof.disposition).not.toBe('passed');
+        expect(proof.observed.latestAccepted).toBe(false);
+        expect(confirms).toBe(false);
+        expect(live.ok).toBe(false);
+        expect(notice).toBe(false);
+        expect(open).toBe(true);
+        expect(w.sent.filter(item => item.target.startsWith('reply-part:2:'))).toHaveLength(verdict === 'not-started' ? 0 : 1);
+      } finally { w.done(); }
+    });
+  }
 });

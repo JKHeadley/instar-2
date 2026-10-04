@@ -8,11 +8,12 @@
 // verdict is a new key.
 import type { DueReminder } from './secret-custody.js';
 import { doorwayFreshness, type DoorwayMap } from './doorway-map.js';
+import { wholeReplySent, wholeReplySentAt } from './reply-parts.js';
 
 export interface ReplyNotice { readonly key: string; readonly line: string }
 /** The turn fields this module reads; structurally the journal's own Turn. */
 export interface NoticeTurn { readonly id: string; readonly intent?: string; readonly sent?: number; readonly sentAt?: number;
-  readonly answerNotices?: readonly ReplyNotice[] }
+  readonly replyParts?: readonly { sent?: number; sentAt?: number }[]; readonly answerNotices?: readonly ReplyNotice[] }
 
 const MINUTE = 60_000, HOUR = 60 * MINUTE, DAY = 24 * HOUR;
 /** Rule 13: the number is bound to what it measures in the same sentence ("expires in 6 days 23 h"). */
@@ -56,11 +57,11 @@ export function openReplyNotices(turns: readonly NoticeTurn[], candidates: reado
   return candidates.filter(notice => !spent.has(notice.key));
 }
 
-/** Keys a sent reply actually delivered (its receipt recorded), with the send time. */
+/** Keys a sent reply actually delivered (every message of it accepted, Rule 42), with the last message's send time. */
 export function deliveredNotices(turns: readonly NoticeTurn[]): Map<string, number> {
   const delivered = new Map<string, number>();
   for (const turn of turns) for (const notice of turn.answerNotices ?? [])
-    if (turn.sent !== undefined && turn.intent?.includes(notice.line)) delivered.set(notice.key, turn.sentAt ?? 0);
+    if (wholeReplySent(turn) && turn.intent?.includes(notice.line)) delivered.set(notice.key, wholeReplySentAt(turn) ?? 0);
   return delivered;
 }
 

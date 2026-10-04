@@ -52,7 +52,7 @@ import { chatYesReference, reviewYesReference, SHARED_ACCESS_NOTE } from '../../
 import type { ExplicitYesInstallation, SharedAccessDisclosure } from '../../src/operator/explicit-yes.js';
 import { reviewLink, type ReviewYesSource } from './review-yes-source.js';
 import { applySentinelRecord, checkSentinelRecord, presenceNoteDue, type SentinelRecord, type SentinelView } from './sentinel-record.js';
-import { encodeReply, fitsOneMessage, replyPartTarget, splitReply, MAX_REPLY_PARTS, TELEGRAM_MESSAGE_LIMIT } from './reply-parts.js';
+import { encodeReply, fitsOneMessage, replyPartTarget, splitReply, wholeReplySent, MAX_REPLY_PARTS, TELEGRAM_MESSAGE_LIMIT } from './reply-parts.js';
 
 
 
@@ -2325,7 +2325,7 @@ export const projectMemoryText = (view: JournalView, value: string) => view.memo
   return projected;
 }, value);
 export function openQuestionCandidates(view: JournalView): OpenQuestion[] {
-  const closed = new Set(view.order.filter(turn => turn.sent && turn.intent === `PREVIEW — ${turn.answer}`)
+  const closed = new Set(view.order.filter(turn => wholeReplySent(turn) && turn.intent === `PREVIEW — ${turn.answer}`)
     .flatMap(turn => turn.closedQuestions ?? []));
   const open = new Map<string, OpenQuestion>();
   for (const turn of view.order) {
@@ -2339,7 +2339,7 @@ export function openQuestionCandidates(view: JournalView): OpenQuestion[] {
     const turn = view.turns.get(id);
     if (closed.has(id) || view.memory.some(change => change.mode === 'forget' && change.source === id)
       || !view.questions.some(note => note.source === id)
-        && turn?.sent && turn.noticeClass === undefined && turn.intent === `PREVIEW — ${turn.answer}`
+        && turn && wholeReplySent(turn) && turn.noticeClass === undefined && turn.intent === `PREVIEW — ${turn.answer}`
         && turn.answer !== MODEL_FAILURE_REPLY) open.delete(id);
   }
   return [...open.values()];
@@ -2594,6 +2594,13 @@ export function replyOutcomeOf(view: JournalView, turn: Turn): { outcome: Target
     if (settled.kind !== 'accepted') return { outcome: settled, target, part: index + 2, of, started: true };
   }
   return { outcome: first, target: replyTarget(turn), part: of, of, started: true };
+}
+/** The whole reply's receipt, only when every message carrying it was accepted (`replyOutcomeOf`): the first
+ * message's receipt, with the last message's acceptance time. Readers that claim the answer delivered read this. */
+export function wholeReplyReceipt(view: JournalView, turn: Turn): { message: number; at: number | undefined } | null {
+  if (turn.sent === undefined || replyOutcomeOf(view, turn).outcome.kind !== 'accepted') return null;
+  const lead = (turn.groupedInto === undefined ? undefined : view.turns.get(turn.groupedInto)) ?? turn;
+  return { message: turn.sent, at: lead.replyParts?.length ? lead.replyParts.at(-1)!.sentAt : turn.sentAt };
 }
 /** The plain label of a whole reply's outcome when it is not delivered: which message stopped it, and how. */
 export function partialReplyLabel(whole: ReturnType<typeof replyOutcomeOf>): string {
