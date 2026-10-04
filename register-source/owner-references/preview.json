@@ -63,7 +63,7 @@
       "stage": "build",
       "artifact": {
         "path": "tests/preview/reply-check.test.ts",
-        "hash": "sha256:c4f981d46743de51ba3753f1415f8dd22cc44aa7599b0d55cdd10a20da9121c0"
+        "hash": "sha256:9429ab24578118173c6c475727870f358b16a362f2554ca76591719d1520243e"
       }
     },
     {
@@ -71,7 +71,7 @@
       "stage": "build",
       "artifact": {
         "path": "tests/preview/model-json.test.ts",
-        "hash": "sha256:62f5e15f968c145858ce217b62b3aa97975eaa1d1f67a9d37df3048666a6a3e1"
+        "hash": "sha256:1b7f35ee358fd3a9cf1d22dad3c26907f9a9cc7e9ae601b932ee10f959d41abb"
       }
     },
     {
