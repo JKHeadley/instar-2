@@ -1,9 +1,11 @@
 // @ts-nocheck -- offline process and HTTP fixtures exercise the real launcher.
 // Part Thirteen §9 (docs/17-harness-adapters): tools are on by default. Through the real launcher (offline Telegram endpoint,
 // offline Jev), a root whose sealed authority holds the operator's recorded grant for the tools policy derives its tools
-// activation at launch, writes it to the root as the live withdrawal handle, and says so in status; a root with no such
-// grant, a revoked grant, or `--tools off` stays text only and its status says why. The derived record changes exactly one
-// field of the conversation activation: the policy digest.
+// activation at launch, writes it to the root as the live withdrawal handle, and says so in status. Plan #449: the grant may be
+// recorded for the policy CLASS (tools-policy-class.ts), and the launch records the grant, class and digest it resolved. A root
+// with no covering grant or a revoked one REFUSES to start and says why (never a silent text-only start); only `--tools off`
+// runs text only, and its status says so. The derived record changes exactly one field of the conversation activation: the
+// policy digest.
 import { expect, it } from 'vitest';
 import { spawn, spawnSync } from 'node:child_process';
 import { existsSync, readFileSync, unlinkSync, writeFileSync } from 'node:fs';
@@ -13,8 +15,9 @@ import { authoritySealKey, sealAuthorityRecord } from './activation-authority.js
 import { subscriptionToolsPolicy } from '../../src/assembly/production-provider.js';
 import { encoded } from '../../src/assembly/boundary.js';
 import { TOOLS_DEFAULT_ACTIVATION } from './tool-turn.mjs';
+import { FULL_TOOLS_CLASS } from './tools-policy-class.js';
 
-async function launch(name: string, authority: (record) => object | null, extra: string[] = []) {
+async function launch(name: string, authority: (record) => object | null, extra: string[] = [], nodeArgs: (directory: string) => string[] = () => []) {
   const world = successiveWorld(), root = join(world.directory, `${name}-journal`);
   const activationPath = join(world.directory, 'activation.json'), profile = join(world.directory, 'profile.json');
   const log = join(world.directory, 'poll.log'), updates = join(world.directory, 'updates.json'), preload = join(world.directory, 'jev.mjs');
@@ -39,7 +42,7 @@ async function launch(name: string, authority: (record) => object | null, extra:
       endpoint.once('exit', code => reject(Error(`endpoint exited before listening: ${String(code)}`)));
     });
     const trial = world.state().read().trial;
-    const run = spawnSync(process.execPath, ['--no-warnings', '--loader', './scripts/slice-ts-loader.mjs', '--import', preload,
+    const run = spawnSync(process.execPath, ['--no-warnings', '--loader', './scripts/slice-ts-loader.mjs', ...nodeArgs(world.directory), '--import', preload,
       'tests/preview/journal-agent.mjs', 'run', '--root', root, '--bot-id', world.configuration.botId, '--chat-id', world.configuration.chatId,
       '--operator-sender-id', world.configuration.operatorSenderId, '--grant-reference', trial.id,
       '--configuration-digest', trial.configurationDigest, '--expires-at', String(trial.expiresAt),
@@ -49,15 +52,19 @@ async function launch(name: string, authority: (record) => object | null, extra:
       INSTAR_SECRET_PREVIEW_STORAGE_KEY: Buffer.from(OFFLINE_STORAGE_KEY).toString('hex'), INSTAR_SECRET_PREVIEW_TYPESAFE_KEY: 'offline-placeholder',
       INSTAR_SECRET_PREVIEW_TELEGRAM_BOT_TOKEN: '12345678:AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA', INSTAR_PREVIEW_TEST_TELEGRAM_ENDPOINT: `http://127.0.0.1:${port}` } });
     const sends = existsSync(`${log}.sends`) ? readFileSync(`${log}.sends`, 'utf8').trim().split('\n').map(line => JSON.parse(line).text) : [];
-    const derived = join(root, TOOLS_DEFAULT_ACTIVATION);
-    return { run, conversation, status: sends.join('\n'), derived: existsSync(derived) ? JSON.parse(readFileSync(derived, 'utf8')) : null };
+    const derived = join(root, TOOLS_DEFAULT_ACTIVATION), runsPath = join(root, 'runs.jsonl');
+    const runs = existsSync(runsPath) ? readFileSync(runsPath, 'utf8').split('\n').filter(Boolean).map(line => JSON.parse(line)) : [];
+    return { run, conversation, status: sends.join('\n'), sends, runs,
+      derived: existsSync(derived) ? JSON.parse(readFileSync(derived, 'utf8')) : null };
   } finally { endpoint.kill(); }
 }
 const toolsDigest = (model: string) => (encoded(subscriptionToolsPolicy(model)) as { hash: string }).hash;
 /** The operator's recorded grant, copied to cover the tools policy: the same words and source, only the policy subject differs. */
-const withToolsGrant = (record, revoked = false, expiresAt = undefined) => {
+const withToolsGrant = (record, revoked = false, expiresAt = undefined, policyClass = undefined) => {
   const grant = record.grants[0];
-  const tools = { ...grant, id: 'offline-tools-grant', scope: { ...grant.scope, invocationPolicyDigest: toolsDigest(grant.scope.model) },
+  const { invocationPolicyDigest: _conversation, ...subject } = grant.scope;
+  const tools = { ...grant, id: 'offline-tools-grant', scope: policyClass === undefined
+    ? { ...grant.scope, invocationPolicyDigest: toolsDigest(grant.scope.model) } : { ...subject, invocationPolicyClass: policyClass },
     ...(expiresAt === undefined ? {} : { expiresAt }) };
   return { ...record, grants: [...record.grants, tools],
     revocations: revoked ? [{ grantId: 'offline-tools-grant', at: grant.issuedAt + 1, by: grant.grantor, source: 'telegram 3' }] : [] };
@@ -80,18 +87,54 @@ it('derives and keeps the tools activation when the recorded grant covers the to
   expect(dated.status).toMatch(/Tools: the harness's full built-in set \(27 tools, each call decided at the admission hook\) and the root's MCP servers/u);
 });
 
-it('stays text only, and says why in status, without a covering grant, with the grant revoked, or with --tools off', { timeout: 90000 }, async () => {
-  const none = await launch('none', () => null);
-  expect(none.run.status, none.run.stderr).toBe(0);
-  expect(none.derived).toBeNull();
-  expect(none.run.stderr).toMatch(/tools off: no recorded operator grant resolves the tools policy/u);
-  expect(none.status).toMatch(/Tools: off \(no recorded operator grant resolves the tools policy: .*\); answers are text only\./u);
-  const revoked = await launch('revoked', record => withToolsGrant(record, true));
-  expect(revoked.run.status, revoked.run.stderr).toBe(0);
-  expect(revoked.derived).toBeNull();
+it('records the class grant at launch: one standing grant for the policy class turns tools on, with grant, class and digest recorded', { timeout: 60000 }, async () => {
+  const on = await launch('class', record => withToolsGrant(record, false, undefined, FULL_TOOLS_CLASS));
+  expect(on.run.status, on.run.stderr).toBe(0);
+  expect(on.derived.invocationPolicyDigest).toBe(toolsDigest(on.conversation.model));
+  expect(on.run.stderr).toContain(`preview: tools on: grant offline-tools-grant (class ${FULL_TOOLS_CLASS}) covers tools policy ${toolsDigest(on.conversation.model)}`);
+  expect(on.status).toMatch(/Tools: the harness's full built-in set \(27 tools, each call decided at the admission hook\) and the root's MCP servers/u);
+  expect(on.runs.find(row => row.tools)?.tools).toEqual({ state: 'on', grant: 'offline-tools-grant', policyClass: FULL_TOOLS_CLASS,
+    policyDigest: toolsDigest(on.conversation.model) });
+  // The exact-digest grant is recorded as such.
+  const exact = await launch('exact', record => withToolsGrant(record));
+  expect(exact.run.stderr).toContain('preview: tools on: grant offline-tools-grant (exact policy)');
+  expect(exact.runs.find(row => row.tools)?.tools).toMatchObject({ state: 'on', policyClass: null });
+});
+
+it('refuses to start, loudly and specifically, when no grant covers the tools policy; never a silent text-only start', { timeout: 90000 }, async () => {
+  const refusedToStart = (launched, why: RegExp) => {
+    expect(launched.run.status).not.toBe(0);
+    expect(launched.derived).toBeNull();
+    expect(launched.run.stderr).not.toMatch(/preview: tools off/u);
+    expect(launched.run.stderr).toMatch(/preview: refused to start: no recorded operator grant covers this build's tools policy \(sha256:[0-9a-f]{64}\)/u);
+    expect(launched.run.stderr).toMatch(why);
+    expect(launched.run.stderr).toMatch(/or pass --tools off to run text only/u);
+    // Nothing was answered text only, and the refusal is recorded as a launch refused before it launched.
+    expect(launched.sends).toEqual([]);
+    expect(launched.runs.at(-1)).toMatchObject({ reason: 'refused before launch', refused: expect.stringMatching(/refused to start/u) });
+  };
+  refusedToStart(await launch('none', () => null), /does not cover/u);
   // The revoked tools grant no longer resolves; the still-live conversation grant does not cover the tools policy. The positive
   // neighbour is the same grant unrevoked (above).
-  expect(revoked.status).toMatch(/Tools: off \(no recorded operator grant resolves the tools policy: .*a new verified approval is required\)/u);
+  refusedToStart(await launch('revoked', record => withToolsGrant(record, true)), /a new verified approval is required/u);
+  // A class grant for a class this build does not know covers nothing either.
+  refusedToStart(await launch('unknown-class', record => withToolsGrant(record, false, undefined, 'full-tools-anything')), /not known to this build/u);
+  // A build whose OWN tools policy removes a checkpoint (here: permission checks off, as `--permission-mode bypassPermissions`
+  // would) is outside the class: the class grant does not cover it, and the launch refuses, naming the checkpoint.
+  const bypassBuild = (directory: string) => {
+    const loader = join(directory, 'bypass-permissions-loader.mjs');
+    writeFileSync(loader, `export async function load(url, context, next) {
+  const loaded = await next(url, context);
+  if (!url.endsWith('/src/assembly/production-provider.ts')) return loaded;
+  const source = String(loaded.source).replace("'--permission-mode', 'default'", "'--permission-mode', 'bypassPermissions'");
+  if (source === String(loaded.source)) throw Error('fixture: the tools policy permission mode was not found');
+  return { ...loaded, source };
+}\n`);
+    return ['--loader', loader];
+  };
+  refusedToStart(await launch('bypass', record => withToolsGrant(record, false, undefined, FULL_TOOLS_CLASS), [], bypassBuild),
+    new RegExp(`outside the granted class ${FULL_TOOLS_CLASS}: the permission mode is not default`, 'u'));
+  // Only an explicit --tools off runs text only, and its status says so.
   const refused = await launch('refused', record => withToolsGrant(record), ['--tools', 'off']);
   expect(refused.run.status, refused.run.stderr).toBe(0);
   expect(refused.derived).toBeNull();

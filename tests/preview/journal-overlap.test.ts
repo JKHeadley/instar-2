@@ -99,7 +99,7 @@ it('a real second runner appears in the live packet with its overlap, and after 
     '--bot-id', world.configuration.botId, '--bot-username', world.configuration.botUsername,
     '--chat-id', world.configuration.chatId, '--operator-sender-id', world.configuration.operatorSenderId,
     '--grant-reference', activation.trial, '--configuration-digest', activation.baseConfigurationDigest,
-    '--expires-at', String(activation.expiresAt), '--activation-record', join(directory, 'cutover-activation.json'),
+    '--expires-at', String(activation.expiresAt), '--tools', 'off', '--activation-record', join(directory, 'cutover-activation.json'),
     '--operator-records', join(directory, 'operator-records'), '--login-profile', join(directory, 'cutover-profile.json'), '--model', world.model, '--max-cycles', '100000',
     '--max-poll-seconds', '1'], { cwd: process.cwd(), env: { ...env, INSTAR_CONVERSATION_OWNERS: join(directory, 'owners-second') },
     stdio: 'ignore' });

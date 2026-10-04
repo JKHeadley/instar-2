@@ -3595,8 +3595,17 @@ On by default under the operator's recorded grant. At launch the runner derives 
 conversation activation (the same record with `invocationPolicyDigest` = the digest of `subscriptionToolsPolicy(model)`,
 framing `preview-tools-v1`) and keeps it only when the sealed authority record resolves it; it is written to
 `ROOT/tools-activation.json`, the live withdrawal handle. `--tools-activation /ABSOLUTE/record.json` names a record
-the desk wrote instead; `--tools off` refuses tools. With no resolving grant every answer stays text only, the
-briefing keeps its no-tools line, stderr says `preview: tools off: …` and `status` says `Tools: off (…)`. With tools,
+the desk wrote instead; `--tools off` refuses tools, so every answer stays text only, the briefing keeps its no-tools
+line and `status` says `Tools: off (…)`. The operator's standing full-tools grant may be recorded for a policy CLASS
+instead of one digest: a grant whose scope carries `invocationPolicyClass: "full-tools-checkpointed-v1"` (and no
+`invocationPolicyDigest`) covers every build whose own tools policy keeps the class's checkpoints — the admission hook on
+every call, the confined shell, no flag that skips the hook or permission checks, and every cap at or below the reviewed
+ceiling (`tests/preview/tools-policy-class.ts`). The launch checks this against the build's own policy each time it
+resolves the grant, so a build that only rewrites the tools prompt or the settings label needs no new record, while one
+that removes a checkpoint or raises a cap is not covered. With no covering grant the runner REFUSES to start: stderr says
+`preview: refused to start: no recorded operator grant covers this build's tools policy (…)` with the reason, and the run
+log records `refused before launch`; it never starts silently text only. A launch that resolves records the grant, the
+class (or `exact policy`) and the digest on stderr (`preview: tools on: …`) and in its launch row (`tools`). With tools,
 an operator answer turn or a scheduled work step runs as one Claude Code invocation with the pinned harness's whole
 built-in tool set (`SUBSCRIPTION_TOOL_NAMES`; nothing is left out, the hook decides each call), plus the root's MCP
 servers (Part Thirteen §9,

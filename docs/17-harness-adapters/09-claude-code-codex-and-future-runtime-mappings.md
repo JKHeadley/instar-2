@@ -113,7 +113,11 @@ default and irreversible acts; **checks:** `tests/preview/tools-default.test.ts`
 and the gated live stop cases. The grant is the operator's recorded yes for the tool policy, held in
 the trial's sealed authority. Under it, a root's launch derives the tools activation record from its
 conversation activation, changing only the policy digest, and keeps it in the root; no further desk
-step is needed, and with no resolving grant every answer is text only and status says why. A record
+step is needed. The grant may name a policy class (`full-tools-checkpointed-v1`) instead of one digest:
+it then covers every build whose own tools policy keeps the admission hook on every call, the confined
+shell and caps at or below the reviewed ceilings, checked against that policy at each resolution, and
+never a policy that removes a checkpoint or raises a cap. With no covering grant the launch refuses to
+start and names why; it never starts silently text only (only an explicit refusal of tools does). A record
 the desk writes may be named instead. The record names the capabilities (the tool list and the root's
 MCP servers), the scope (one private workspace per conversation), the custodian and the recovery obligation. It
 does not replace exact operation admission or change the installed durability profile. Tools are

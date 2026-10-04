@@ -252,13 +252,14 @@ const operatorRecords = directory => {
  * covers this exact act: the original activation, or a bounded renewal inside the standing grant.
  * The record defaults to `activation-authority.json` beside the activation record. Rule 82: it
  * resolves only as the desk's disposition sealed under this trial's storage SecretRef
- * (`seal-authority`); a copy with any field changed resolves nothing. */
-const requireAuthority = (options, activation, activationPath, view, now) => {
+ * (`seal-authority`); a copy with any field changed resolves nothing. `policy` is the build's own
+ * invocation policy the activation names: a grant recorded for a policy class covers it only then. */
+const requireAuthority = (options, activation, activationPath, view, now, policy = undefined) => {
   const path = options['authority-record'] ?? join(dirname(resolve(activationPath)), 'activation-authority.json');
   let record = null;
   try { record = JSON.parse(readFileSync(path, 'utf8')); } catch { record = null; }
   const resolution = resolveActivationAuthority(activation, record, view.genesis.operator, view.genesis.expires, now,
-    operatorRecords(options['operator-records']), authoritySealKey(key()));
+    operatorRecords(options['operator-records']), authoritySealKey(key()), policy);
   if (resolution.kind !== 'resolved') throw Error(`preview: ${resolution.reason}`);
   return resolution;
 };
@@ -1228,7 +1229,7 @@ async function main() {
   // Rule 55: poll-failure pressure is episode state; every attempt that changes it is durable in the run log
   // before the loop continues, so neither a relaunch nor a crash resets it.
   let failedPolls = 0, conflictedPolls = 0;
-  let identityVerified = false, routeHealthy = true, active = null, toolsActive = () => false, toolsRecord = null, toolsOff = null,
+  let identityVerified = false, routeHealthy = true, active = null, toolsActive = () => false, toolsRecord = null, toolsResolution = null, toolsOff = null,
     sessionWork = null, gate = null;
   // Part Twelve: the effect doorway's operator policy, re-read at every tool turn so a withdrawn or broken file grants
   // nothing (nothing outward by default); launch refuses a policy that does not decode.
@@ -1848,7 +1849,10 @@ async function main() {
     // activation (every field the same, the tools policy digest in place of the conversation one) and keeps it only when
     // the sealed authority resolves it, writing it to the root as the live withdrawal handle. `--tools off` refuses tools.
     // Changing or removing the file withdraws them: no new tool turn starts, and a live one ends. Revoking the grant
-    // withdraws them durably. With no resolving grant every answer is text only, and status says why.
+    // withdraws them durably. Plan #449: the build's own tools policy is presented to the resolver, so the operator's standing
+    // full-tools grant recorded for a policy class (tools-policy-class.ts) covers every build whose policy keeps the class's
+    // checkpoints. With no covering grant the runner REFUSES to start and names why; it never starts silently text only
+    // (only an explicit `--tools off` runs text only).
     const toolsMode = options.tools ?? 'default';
     if (toolsMode !== 'default' && toolsMode !== 'off') throw Error('preview: --tools must be default or off');
     if (options['tools-activation'] !== undefined && toolsMode === 'off') throw Error('preview: --tools off contradicts --tools-activation');
@@ -1858,7 +1862,8 @@ async function main() {
       if (doorway.toolsFraming === null) throw Error(`preview: doorway ${doorway.id} serves no scoped-tool answer framing`);
       const toolsActivation = JSON.parse(toolsBytes);
       doorway.validateActivation(toolsActivation, profile, required(options, 'model'), wallNow(), doorway.toolsFraming, journal.view.expires);
-      requireAuthority(options, toolsActivation, toolsActivationPath, journal.view, wallNow());
+      toolsResolution = requireAuthority(options, toolsActivation, toolsActivationPath, journal.view, wallNow(),
+        doorway.policyFor(required(options, 'model'), doorway.toolsFraming));
       if (!activationMatchesJournal(journal.view, toolsActivation)) throw Error('preview: tool activation differs from journal');
       return toolsActivation;
     };
@@ -1888,11 +1893,20 @@ async function main() {
         const granted = stillGranted(activationPath, toolsBytes);
         toolsActive = () => { try { return readFileSync(toolsActivationPath, 'utf8') === toolsBytes && granted(); } catch { return false; } };
       } catch (error) {
-        toolsRecord = null;
-        toolsOff = `no recorded operator grant resolves the tools policy: ${String(error?.message ?? error).replace(/^preview: /u, '')}`;
-        process.stderr.write(`preview: tools off: ${toolsOff}; answers are text only\n`);
+        // Never a silent text-only start: the operator granted the full tool set, so a launch nothing covers is refused, loudly.
+        // The reason is the resolver's fixed text with digests and class names (no secret), so it goes to stderr whole, as the
+        // tools-off line it replaces did; the launch log records it too ('refused before launch').
+        const refusal = `preview: refused to start: no recorded operator grant covers this build's tools policy (${JSON.parse(toolsBytes).invocationPolicyDigest}): `
+          + `${String(error?.message ?? error).replace(/^preview: /u, '')}. Record the standing full-tools grant for this policy (or its class), `
+          + 'or pass --tools off to run text only';
+        process.stderr.write(`${refusal}\n`);
+        throw Error(refusal);
       }
     }
+    // The resolved tools authority, recorded at launch: the grant, and the class and policy digest it was verified for.
+    if (toolsRecord && toolsResolution) process.stderr.write(`preview: tools on: grant ${toolsResolution.grant}`
+      + (toolsResolution.policyClass ? ` (class ${toolsResolution.policyClass.name})` : ' (exact policy)')
+      + ` covers tools policy ${toolsRecord.invocationPolicyDigest}\n`);
     const effectPolicyPath = options['effect-policy'];
     if (effectPolicyPath !== undefined) {
       decodeEffectPolicy(JSON.parse(readFileSync(effectPolicyPath, 'utf8')));
@@ -2049,6 +2063,9 @@ async function main() {
     try { priorRuns = existsSync(runsPath) ? readFileSync(runsPath, 'utf8') : ''; } catch { /* readRuns reports readFailed */ }
     if (priorRuns !== null) installUpdate = installedUpdateFrom(installationRows(priorRuns), installation, launchedAt);
     appendRun(runsPath, { v: 1, launch: launchedAt, pid: process.pid, install: installation, work: { conversation: conversationOf(g) },
+      // Plan #449: the tools authority this launch resolved (grant, class, policy digest), or why tools are off (only --tools off).
+      tools: toolsRecord && toolsResolution ? { state: 'on', grant: toolsResolution.grant, policyClass: toolsResolution.policyClass?.name ?? null,
+        policyDigest: toolsRecord.invocationPolicyDigest } : { state: 'off', reason: toolsOff ?? 'no tool route' },
       minimalPath: { shape: 'single-machine', register: registerAtLaunch, policy: installationPolicy.kind === 'resolved'
         ? { state: 'accepted', id: installationPolicy.id, acceptance: installationPolicy.acceptance, acceptedAt: installationPolicy.acceptedAt,
           profile: installationPolicy.profile, standing: 'account-authenticated operator message under the desk\'s seal; not device-signed' }
