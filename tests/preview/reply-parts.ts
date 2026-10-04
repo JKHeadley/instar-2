@@ -1,11 +1,18 @@
 /** Telegram's per-message bound, as the send path measures it: the HTML-escaped body in UTF-8 bytes (never fewer
  * than its characters), and the plain text Telegram echoes back. */
 export const TELEGRAM_MESSAGE_LIMIT = 4096;
-/** The most messages one reply is split into. A model answer is capped at 16384 output bytes, so this bound is far
- * above any answer the route can produce; only a reply past it is still answered with the too-long notice. */
-export const MAX_REPLY_PARTS = 10;
 /** Room kept in every part for its position marker (" (1/2)" on the first, "PREVIEW (2/2) — " on the rest). */
 const MARKER_ROOM = 32;
+/** The encoded bytes every part's text may use. */
+const PART_BUDGET = TELEGRAM_MESSAGE_LIMIT - MARKER_ROOM;
+/** A model answer is at most its route's 16384 output bytes; a reply adds bounded fixed text to it (the PREVIEW mark,
+ * a continuity or approval disclosure, a requested action's header, an upcoming-dates line). */
+const MAX_ANSWER_BYTES = 16384, FIXED_TEXT_BYTES = 4096;
+/** The most messages one reply is split into, derived so that every reply a route can produce fits: escaping turns
+ * one byte into at most five ('&' becomes '&amp;'), every part but the last consumes more than half the budget
+ * (`pieces` cuts only in the second half of the encoded bytes, and the cut-off code point costs at most five), and a
+ * kept tail may take one part of its own. Only a reply past this still gets the too-long notice. */
+export const MAX_REPLY_PARTS = Math.ceil(5 * (MAX_ANSWER_BYTES + FIXED_TEXT_BYTES) / ((PART_BUDGET - 5) / 2)) + 2;
 
 /** The Telegram HTML body of a plain reply. */
 export const encodeReply = (reply: string) => reply.replaceAll('&', '&amp;').replaceAll('<', '&lt;').replaceAll('>', '&gt;');
@@ -17,7 +24,8 @@ export const fitsOneMessage = (text: string) => {
 
 const PREFIX = /^PREVIEW(?=$|[\s:—])(?:\s*[:—])?\s*/u;
 /** Splits `text` into pieces each within `budget` encoded bytes, at the latest paragraph break, else line break, else
- * sentence end, else space in the second half of the piece; a hard cut at a code point only when none exists. */
+ * sentence end, else space in the second half of the piece's encoded bytes; a hard cut at a code point only when none
+ * exists. Measuring the half in encoded bytes (not characters) keeps every piece but the last above half the budget. */
 function pieces(text: string, budget: number): string[] {
   const out: string[] = [];
   let rest = text;
@@ -31,11 +39,17 @@ function pieces(text: string, budget: number): string[] {
       if (Buffer.byteLength(encodeReply(points.slice(0, mid).join(''))) <= budget) low = mid; else high = mid - 1;
     }
     const head = points.slice(0, low).join('');
-    const floor = Math.floor(head.length / 2);
+    // The first index past which the kept prefix holds more than half the head's encoded bytes.
+    const half = Buffer.byteLength(encodeReply(head)) / 2;
+    let floor = 0;
+    for (let size = 0; floor < head.length && size <= half;) {
+      const point = String.fromCodePoint(head.codePointAt(floor)!);
+      size += Buffer.byteLength(encodeReply(point)); floor += point.length;
+    }
     const breaks = [/\n\s*\n/gu, /\n/gu, /[.!?…](?=\s)/gu, /\s/gu];
     let cut = head.length;
     for (const pattern of breaks) {
-      const found = [...head.matchAll(pattern)].map(match => match.index! + match[0].length).filter(at => at > floor && at < head.length);
+      const found = [...head.matchAll(pattern)].map(match => match.index! + match[0].length).filter(at => at >= floor && at < head.length);
       if (found.length) { cut = found.at(-1)!; break; }
     }
     if (cut === 0) cut = head.length;
@@ -55,7 +69,7 @@ export function splitReply(reply: string, tail = ''): string[] | null {
   if (fitsOneMessage(reply)) return [reply];
   const kept = tail && reply.endsWith(tail) ? tail.trim() : '';
   const main = (kept ? reply.slice(0, reply.length - tail.length) : reply).trimEnd();
-  const budget = TELEGRAM_MESSAGE_LIMIT - MARKER_ROOM;
+  const budget = PART_BUDGET;
   if (kept && Buffer.byteLength(encodeReply(kept)) > budget) return null;
   const parts = pieces(main, budget);
   if (kept) {
@@ -69,5 +83,12 @@ export function splitReply(reply: string, tail = ''): string[] | null {
     : `PREVIEW (${String(index + 1)}/${String(total)}) — ${part.replace(PREFIX, '')}`);
   return marked.every(fitsOneMessage) ? marked : null;
 }
+/** Whether every message carrying a reply has Telegram's receipt: the whole answer delivered (Rule 42). A split
+ * reply's first receipt alone is partial delivery, never the answer's. */
+export const wholeReplySent = (turn: { sent?: number; replyParts?: readonly { sent?: number }[] }) =>
+  turn.sent !== undefined && (turn.replyParts ?? []).every(part => part.sent !== undefined);
+/** When the whole reply was delivered: its last message's receipt time. */
+export const wholeReplySentAt = (turn: { sentAt?: number; replyParts?: readonly { sentAt?: number }[] }) =>
+  turn.replyParts?.length ? turn.replyParts.at(-1)!.sentAt : turn.sentAt;
 /** The send target of a continuation part (k ≥ 2) of the reply to turn `id`; part 1 keeps `reply:<id>`. */
 export const replyPartTarget = (id: string, part: number) => `reply-part:${String(part)}:${id}`;

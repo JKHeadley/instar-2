@@ -25,7 +25,7 @@ import { admitPreviewHarness, PREVIEW_JOURNAL_HARNESS, PREVIEW_JOURNAL_STALL_COV
 import { UNRECORDED, briefingDigestOf, codeDigestOf, installedCodeOf, installationRows, installationStatusLines, installedUpdateFrom, updateDelivery,
   updatePacketItem } from './installation.js';
 import { projectionDigest, summaryStoppedAt, loopRevisitMs, LOOP_REVISIT_MIN_MS, LOOP_REVISIT_MAX_MS } from './journal.js';
-import { openPreviewJournal as openJournal, createJournalWorker, raiseJournalCaps, renewJournalExpiry, activationMatchesJournal, activePersonMerges, openQuestionCandidates, projectMemoryText, unansweredCue, reportJournalCap, unknownCallCounts, pendingUnknownCalls, replyTimings, reviewUnavailableReleases, claimScopedWithholds, MINIMAL_RESERVE, reserveTurnsUsed, reserveRepliesUsed, openRequests, actionWithdrawn, reminderDue, operatorRequestsReport, retrospectiveCases, openBlockers, openDirectives, declaredObligations, sendOutcomeCounts, sendOutcomeOf, unsentLabel, replyTarget, reminderOutcome, envelopeWriter, PREVIEW_LIVE_LIMITS, unservableContextReason, PREVIEW_JOURNAL_COMPACT_BYTES, activeMemoryConflicts, TOO_LONG_INPUT_NOTICE, TOO_LONG_REPLY_NOTICE , probeTurn, operatorWriter, isJournalUpdate, retractRefusal, retractRendering, retractCarrier, retractedTurn, liveSummaries, withinOperatorHours, OPERATOR_HOURS, withFormatReminder, concurrentWorkItem, latestOwnedLaunch, meaningIndexStatus, LIMITED_ANSWER_OPERATION, MISSING_INSTALLATION_POLICY } from './journal.js';
+import { openPreviewJournal as openJournal, createJournalWorker, raiseJournalCaps, renewJournalExpiry, activationMatchesJournal, activePersonMerges, openQuestionCandidates, projectMemoryText, unansweredCue, reportJournalCap, unknownCallCounts, pendingUnknownCalls, replyTimings, reviewUnavailableReleases, claimScopedWithholds, MINIMAL_RESERVE, reserveTurnsUsed, reserveRepliesUsed, openRequests, actionWithdrawn, reminderDue, operatorRequestsReport, retrospectiveCases, openBlockers, openDirectives, declaredObligations, sendOutcomeCounts, sendOutcomeOf, unsentLabel, replyTarget, replyOutcomeOf, partialReplyLabel, reminderOutcome, envelopeWriter, PREVIEW_LIVE_LIMITS, unservableContextReason, PREVIEW_JOURNAL_COMPACT_BYTES, activeMemoryConflicts, TOO_LONG_INPUT_NOTICE, TOO_LONG_REPLY_NOTICE , probeTurn, operatorWriter, isJournalUpdate, retractRefusal, retractRendering, retractCarrier, retractedTurn, liveSummaries, withinOperatorHours, OPERATOR_HOURS, withFormatReminder, concurrentWorkItem, latestOwnedLaunch, meaningIndexStatus, LIMITED_ANSWER_OPERATION, MISSING_INSTALLATION_POLICY } from './journal.js';
 import { createPreviewClock } from './clock.js';
 import { appendRun, heldNotices, heldRepliesToday, memoryHealthLine, readRuns, restartHandoff, selfState, selfStateBrief, selfStateSource, zoneFormatter } from './self-state.js';
 import { guidanceReport } from './guidance.js';
@@ -956,7 +956,8 @@ async function main() {
       // journal's fixed-text reminder batches count as earlier sends of it.
       requestedActions: (() => {
         const dueTurns = view.view.order.filter(t => t.requestedAction && !t.requestedAction.legacy);
-        const kinds = [...dueTurns.filter(t => t.intent !== undefined).map(t => sendOutcomeOf(view.view, replyTarget(t), t.sent).kind),
+        const kinds = [...dueTurns.filter(t => t.intent !== undefined).map(t => replyOutcomeOf(view.view, t))
+            .map(whole => whole.started ? whole.outcome.kind : 'sending'),
           ...[...view.view.reminders.entries()].map(([key, item]) => reminderOutcome(view.view, key, item).kind)];
         return { requested: view.view.dated.filter(item => item.remind).length, cancelled: view.view.reminderCancels.length,
           accepted: kinds.filter(kind => kind === 'accepted').length, refused: kinds.filter(kind => kind === 'refused').length,
@@ -964,7 +965,7 @@ async function main() {
           open: openRequests(view.view).map(item => ({ sourceUpdate: view.view.turns.get(item.source)?.update,
             quote: redact(item.quote).text, due: `${reminderDue(item)} ${item.zone}` })),
           dueTurns: dueTurns.map(t => ({ update: t.update, requests: t.requestedAction.items.length + (t.requestedAction.overflow?.length ?? 0),
-            state: t.sent !== undefined ? 'accepted' : t.intent !== undefined ? unsentLabel(sendOutcomeOf(view.view, replyTarget(t), t.sent))
+            state: t.intent !== undefined ? (whole => whole.outcome.kind === 'accepted' ? 'accepted' : partialReplyLabel(whole))(replyOutcomeOf(view.view, t))
               : actionWithdrawn(view.view, t) ? 'withdrawn, not sent'
               : t.held ? `held (${t.held})` : t.reserved && t.answer === undefined && t.modelState === undefined ? 'model UNKNOWN' : 'pending' })) };
       })(),
@@ -1083,9 +1084,11 @@ async function main() {
         last: last ? { update: last.update, answered: last.answer !== undefined,
         instructions: instructionsOf(last.prompt), writer: writerOf(last.prompt), ...recallView(contextOf(last.prompt)) } : null,
         reply: reply?.intent ? { update: reply.update, text: reply.intent, telegramMessageId: reply.sent ?? null,
-          ...(() => { const settled = sendOutcomeOf(view.view, replyTarget(reply), reply.sent);
-            return { outcome: settled.kind === 'accepted' ? 'api-accepted' : settled.kind === 'refused' ? 'send-refused' : 'send-unknown',
-              ...(settled.kind === 'refused' ? { refusal: settled.reason } : {}) }; })(),
+          // Rule 42: the WHOLE reply's outcome; a split reply is api-accepted only when every message carrying it was.
+          ...(() => { const whole = replyOutcomeOf(view.view, reply), settled = whole.outcome;
+            return { outcome: settled.kind === 'accepted' ? 'api-accepted' : !whole.started ? 'sending' : settled.kind === 'refused' ? 'send-refused' : 'send-unknown',
+              ...(settled.kind === 'refused' ? { refusal: settled.reason } : {}),
+              ...(whole.of > 1 ? { parts: { of: whole.of, ...(settled.kind === 'accepted' ? {} : { stoppedAt: whole.part }) } } : {}) }; })(),
           grounding: reply.grounding ?? null,
           answerReason: reply.answerReason ?? null,
           retrospectiveGrade: (() => { const row = latestGrades(view.view).get(`answer:${reply.id}`);

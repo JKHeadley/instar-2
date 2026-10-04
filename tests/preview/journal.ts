@@ -2578,6 +2578,28 @@ export function sendOutcomeOf(view: JournalView, target: string, sent: number | 
 }
 /** The reply target a turn's intent was dispatched under (a grouped turn shares its leader's send). */
 export const replyTarget = (turn: Turn) => `reply:${turn.groupedInto ?? turn.id}`;
+/** Rule 42 for a split reply (reply-parts.ts): the outcome of the WHOLE answer, read from every message that carries
+ * it. It is accepted only when each one was accepted; otherwise it is the outcome of the first message, in order,
+ * without a receipt (`part` of `of`, and its `target`). A continuation not yet started (`started: false`) may still be
+ * sent and is never counted delivered; a started one without a receipt is refused or UNKNOWN and is never re-sent.
+ * Per-message accounting (`sendOutcomeCounts`) still counts each message on its own. */
+export function replyOutcomeOf(view: JournalView, turn: Turn): { outcome: TargetOutcome; target: string; part: number; of: number; started: boolean } {
+  const lead = (turn.groupedInto === undefined ? undefined : view.turns.get(turn.groupedInto)) ?? turn;
+  const parts = lead.replyParts ?? [], of = parts.length + 1, first = sendOutcomeOf(view, replyTarget(turn), turn.sent);
+  if (first.kind !== 'accepted') return { outcome: first, target: replyTarget(turn), part: 1, of, started: true };
+  for (const [index, part] of parts.entries()) {
+    const target = replyPartTarget(lead.id, index + 2);
+    if (!part.started) return { outcome: { kind: 'unknown', reason: null }, target, part: index + 2, of, started: false };
+    const settled = sendOutcomeOf(view, target, part.sent);
+    if (settled.kind !== 'accepted') return { outcome: settled, target, part: index + 2, of, started: true };
+  }
+  return { outcome: first, target: replyTarget(turn), part: of, of, started: true };
+}
+/** The plain label of a whole reply's outcome when it is not delivered: which message stopped it, and how. */
+export function partialReplyLabel(whole: ReturnType<typeof replyOutcomeOf>): string {
+  const label = whole.started ? unsentLabel(whole.outcome) : 'not sent yet';
+  return whole.part === 1 ? label : `part ${String(whole.part)} of ${String(whole.of)} ${label}; the parts before it Telegram API accepted`;
+}
 /** The target a reminder batch was dispatched under: grouped into a reply, or its own requested batch. */
 function reminderTarget(view: JournalView, key: string, batch: { requested?: boolean }): string {
   const number = batch.requested ? JSON.parse(key)[1] as number : undefined;
@@ -5755,11 +5777,13 @@ export function createJournalWorker(journal: ReturnType<typeof openPreviewJourna
     return `limited answer (${item.limited!.reason} allowance) ${settled.kind === 'accepted' ? 'Telegram API accepted' : unsentLabel(settled)}`;
   };
   // Rule 42: an unsent intent reads its recorded outcome; a definite refusal is never shown as UNKNOWN.
+  // A split reply is answered only when every message carrying it was accepted; the first receipt alone is partial.
   const outcome = (item: Turn) => {
-    const text = unsettledOutcome(item), settled = item.intent && !item.sent ? sendOutcomeOf(journal.view, replyTarget(item), item.sent) : null;
-    return settled?.kind === 'refused' ? text.replace('delivery UNKNOWN', unsentLabel(settled)) : text;
+    const whole = item.intent !== undefined ? replyOutcomeOf(journal.view, item) : null;
+    const text = unsettledOutcome(item, whole?.outcome.kind === 'accepted');
+    return whole && whole.outcome.kind !== 'accepted' ? text.replace('delivery UNKNOWN', partialReplyLabel(whole)) : text;
   };
-  const unsettledOutcome = (item: Turn) => item.sent ? (lostNotice(item) ? 'loss notice delivered; model UNKNOWN'
+  const unsettledOutcome = (item: Turn, delivered: boolean) => delivered ? (lostNotice(item) ? 'loss notice delivered; model UNKNOWN'
       : sizeRefused(item) ? item.intent === TOO_LONG_INPUT_NOTICE ? 'too-long notice Telegram API accepted'
         : 'holding reply delivered in place of the too-long notice'
       : item.noticeClass ? 'holding reply delivered in place of the loss notice; model UNKNOWN'
@@ -9153,10 +9177,12 @@ export function createJournalWorker(journal: ReturnType<typeof openPreviewJourna
   const operatorBinding = () => ({ operator: journal.view.genesis.operator, chat: journal.view.genesis.chat, chatType: 'private' });
   /** The journal evidence each observed step's question needs, rebuilt from the durable view. */
   /** Rule 42: step evidence reads the one send-outcome lookup, so a definite refusal is never UNKNOWN. */
+  /** A split reply is accepted only when every message carrying it was (`replyOutcomeOf`). */
   const deliveryEvidence = (turn: Turn): string => {
-    const settled = sendOutcomeOf(journal.view, replyTarget(turn), turn.sent);
-    return settled.kind === 'accepted' ? 'Telegram API accepted' : settled.kind === 'refused'
-      ? `send refused, not delivered (${settled.reason})` : 'send outcome UNKNOWN';
+    const whole = replyOutcomeOf(journal.view, turn), settled = whole.outcome;
+    const head = whole.part === 1 ? '' : `part ${String(whole.part)} of ${String(whole.of)}: `;
+    return settled.kind === 'accepted' ? 'Telegram API accepted' : !whole.started ? `${head}not sent yet`
+      : settled.kind === 'refused' ? `${head}send refused, not delivered (${settled.reason})` : `${head}send outcome UNKNOWN`;
   };
   const stepEvidence = (stepId: string, step: { output?: string }): object => {
     if (stepId.startsWith('intake:')) {
