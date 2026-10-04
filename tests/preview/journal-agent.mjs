@@ -1645,6 +1645,7 @@ async function main() {
       checkOutbound: text => { if (redact(text).count || secretMaterialIn(text, heldSecretValues())) throw Error('preview: outbound secret refused'); },
       heldSecrets: heldSecretValues,
       knownNonSecrets,
+      credentialRecordLabels: () => publicCredentialLabels(custody.records(), heldSecretValues(), 'record'),
       secrets: custody,
       model: async ({ id, prepared }) => {
         if (typeof prepared !== 'string') throw Error('preview: prepared model input absent');

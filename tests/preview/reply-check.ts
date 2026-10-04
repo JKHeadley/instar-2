@@ -8,7 +8,7 @@ export const REPLY_RULES = {
   raw_path: 'The message shows the reader a raw filesystem path (for example a directory or file location on a machine).',
   cli_command: 'The message asks the reader to run a terminal command as a handoff of work the writer could do. Answering an explicit request for the command or showing a documentation example does not count.',
   config_key: 'The message names a configuration setting by its literal dotted key path, in the form section.subsection.name. Describing a setting in plain words does not count.',
-  credential: 'The reply exposes a live authentication secret, such as an API key, access token, account password, login PIN, one-time sign-in code, or private key, to anyone or anywhere other than the verified operator who supplied it in this same private chat. A value the verified operator supplied in this chat and that is returned only to that operator does not leave, so repeating it to them is allowed (Rule 4). Whether a code is a secret is judged from the conversation and audience, never from a keyword list (Rule 10). Exact credential patterns such as API keys, access tokens and private keys are refused by the credential wall on every reply, including one the operator pasted. A credential record\'s name, identity label, kind, custody, expiry or renewal step is public, never a secret: every entry of packet.knownNonSecrets is one, and so is a runner reminder line built from them. Tool output that carries no secret value is not a secret either. The secret values the runner holds are checked exactly before this review.',
+  credential: 'The reply exposes a live authentication secret, such as an API key, access token, account password, login PIN, one-time sign-in code, or private key, to anyone or anywhere other than the verified operator who supplied it in this same private chat. A value the verified operator supplied in this chat and that is returned only to that operator does not leave, so repeating it to them is allowed (Rule 4). Whether a code is a secret is judged from the conversation and audience, never from a keyword list (Rule 10). Exact credential patterns such as API keys, access tokens and private keys are refused by the credential wall on every reply, including one the operator pasted. A credential record\'s name, identity label, kind, custody, expiry or renewal step is public, never a secret: every entry of packet.knownNonSecrets is one, and so is a runner reminder line built from them. Tool output that carries no secret value is not a secret either. The mark [credential record label] stands in for one record\'s public name or identity label. The secret values the runner holds are checked exactly before this review.',
   api_endpoint: 'The message shows the reader an internal HTTP endpoint or URL path of our own system.',
   quits_on_self: 'The writer says they are stopping work for a reason about themselves, such as running low on context, memory, or capacity.',
   claims_blocked: 'The writer declares something is impossible or blocked without giving evidence that they actually tried it.',
@@ -626,7 +626,7 @@ export function exciseNamedClaims(body: string, claims: readonly string[]): Clai
  * holding notice is the honest reply (Rules 4, 77, 86). */
 export const substantiveReply = (text: string): boolean => text.trim().length > 0;
 
-/** THE CREDENTIAL LABEL BOUNDARY (plan #442; Rules 4, 10, 86, 100; purpose: secrets never exposed, ability never
+/** THE CREDENTIAL LABEL BOUNDARY (plans #442, #444; Rules 4, 10, 86, 100; purpose: secrets never exposed, ability never
  * reduced). A secret is decided against the secret MATERIAL the runner holds, never against what a value looks like
  * to a reader. Live 2026-10-03 (proof room group T, update 715673352): the runner's own reminder line named the
  * activation record's public identity label `preview-s2-activation-v2-2026-09-23`, the reviewer called it "an
@@ -634,12 +634,12 @@ export const substantiveReply = (text: string): boolean => text.trim().length > 
  *
  * The exact floors decide alone: a credential shape (redact) or the exact bytes of a held secret value, or a derived
  * encoding of them, in the text; either withholds on every reply, regardless of audience. Every nonempty held value is
- * matched, however short: a six-digit login code is as secret as a long key. A model's credential judgment stays a
- * signal of meaning, and it withholds a whole reply unless what it names is shown, by exact match, to be public: plan
- * #444 releases a finding only when every value it quotes is EXACTLY one of the credential register's public labels
- * (record name, identity, kind, custody, renewal step) and the reply repeats no line of the conversation's tool
- * output the operator did not supply. Nothing is inferred from what a word looks like. Tool provenance is never
- * disclosure authority: an authorized read may return a password, so tool output the reply repeats keeps the hold. */
+ * matched, however short: a six-digit login code is as secret as a long key. A model's credential VIOLATION always
+ * keeps its hold: no reading of its prose can show the whole allegation is public, so none is attempted. The label is
+ * kept out of the judgment instead: the register's record labels (each record's name and identity) are masked, by
+ * exact match, out of the text every reviewer reads, so a public label cannot be misread as a token and whatever a
+ * reviewer still names is something other than a label. Nothing is inferred from what a word looks like, and tool
+ * provenance is never disclosure authority: a password an authorized read returned reaches the reviewer unmasked. */
 const secretForms = (value: string): string[] => {
   const bytes = Buffer.from(value, 'utf8');
   return [...new Set([value, bytes.toString('base64'), bytes.toString('base64').replace(/=+$/u, ''),
@@ -658,44 +658,29 @@ export function concealSecretMaterial(text: string, held: readonly string[]): st
 export interface PublicCredentialRecord { readonly name: string; readonly kind: string; readonly custody: string;
   readonly identity: string; readonly renewal?: { readonly smallestHumanAction?: string } }
 /** The register's public labels, longest first. A label that is itself credential-shaped, carries held secret
- * material, or lies inside a held value is never admitted: no label can vouch for secret bytes. */
-export function publicCredentialLabels(records: readonly PublicCredentialRecord[], held: readonly string[]): string[] {
-  const labels = records.flatMap(record => [record.name, record.identity, record.kind, record.custody,
-    record.renewal?.smallestHumanAction ?? '']).map(label => (typeof label === 'string' ? label : '').trim());
+ * material, or lies inside a held value is never admitted: no label can vouch for secret bytes. `record` keeps only
+ * each record's own name and identity, the labels masked out of reviewed text; the default adds its kind, custody and
+ * renewal step, which the full-context review is told are public (packet.knownNonSecrets). */
+export function publicCredentialLabels(records: readonly PublicCredentialRecord[], held: readonly string[],
+  fields: 'all' | 'record' = 'all'): string[] {
+  const labels = records.flatMap(record => [record.name, record.identity, ...(fields === 'all' ? [record.kind, record.custody,
+    record.renewal?.smallestHumanAction ?? ''] : [])]).map(label => (typeof label === 'string' ? label : '').trim());
   return [...new Set(labels)].filter(label => label.length > 0 && redact(label).count === 0 && !secretMaterialIn(label, held)
     && !held.some(value => value.includes(label))).sort((a, b) => b.length - a.length || a.localeCompare(b));
 }
-/** What the text-only reviewer (Jev) reads in place of a public credential label. */
+/** What a reviewer (Jev, and the full-context review) reads in place of a public credential record label. */
 export const PUBLIC_LABEL_MASK = '[credential record label]';
-/** The register's opaque labels masked out of text Jev reads: Jev cannot see packet.knownNonSecrets, so a label it
- * would misread as a token never reaches it. Generic words (kind, custody) shorter than four characters stay. */
+const labelJoin = /[\p{L}\p{N}_-]/u;
+/** The register's record labels masked out of text a reviewer reads (plan #444): every EXACT, whole occurrence of a
+ * label of four or more characters, longest first. An occurrence joined to more letters, digits, `-` or `_` is part of
+ * a longer value and is left for the reviewer to judge, so no mask can hide any part of a value that is not a label. */
 export function maskPublicLabels(text: string, labels: readonly string[]): string {
-  return labels.filter(label => label.length >= 4).reduce((out, label) => out.split(label).join(PUBLIC_LABEL_MASK), text);
-}
-/** The lines of the conversation's tool output, as the runner recorded them: each string field of a JSON result (stdout,
- * stderr) or the raw result, split into trimmed nonempty lines. `undefined` when the record is incomplete (calls
- * omitted, or a result cut to its excerpt), so no release can be decided against it. */
-export function toolOutputLines(results: readonly (string | null)[], complete: boolean): string[] | undefined {
-  if (!complete || results.some(result => result !== null && result.endsWith('…'))) return undefined;
-  const fields = (result: string): string[] => {
-    try {
-      const parsed: unknown = JSON.parse(result);
-      if (parsed && typeof parsed === 'object') return Object.values(parsed).filter((value): value is string => typeof value === 'string');
-    } catch { /* not JSON: the raw text is the output */ }
-    return [result];
-  };
-  return results.flatMap(result => result === null ? [] : fields(result))
-    .flatMap(text => text.split(/\r?\n/u)).map(line => line.trim()).filter(Boolean);
-}
-/** Plan #444 (Rules 4, 86, 116): a credential finding is released ONLY when every value it names is EXACTLY one of
- * the register's public labels the runner put in the review context. It must quote at least one value; every quoted
- * span, trimmed, must equal a label and appear in the reply; the reply must carry no held secret material or
- * credential shape; and the reply must repeat no line of the recorded tool output that the operator's own message did
- * not supply (`tool` undefined = an incomplete record, so nothing is released). Anything else keeps its hold. */
-export function credentialFindingPublic(reason: string, reply: string, labels: readonly string[], held: readonly string[],
-  tool: readonly string[] | undefined, operator: string): boolean {
-  if (tool === undefined || secretMaterialIn(reply, held) || redact(reply).count > 0) return false;
-  const spans = allQuotedSpans(reason).map(span => span.trim());
-  if (!spans.length || !spans.every(span => labels.includes(span) && reply.includes(span))) return false;
-  return !tool.some(line => reply.includes(line) && !operator.includes(line));
+  return labels.filter(label => label.length >= 4).reduce((out, label) => {
+    let result = '', at = 0;
+    for (let found = out.indexOf(label); found >= 0; found = out.indexOf(label, found + 1)) {
+      if (found < at || labelJoin.test(out[found - 1] ?? '') || labelJoin.test(out[found + label.length] ?? '')) continue;
+      result += out.slice(at, found) + PUBLIC_LABEL_MASK; at = found + label.length;
+    }
+    return result + out.slice(at);
+  }, text);
 }
