@@ -4628,15 +4628,17 @@ export type OwnedProcess = 'present' | 'absent' | 'unknown';
 /**
  * Whether one process command line (`ps -o command=`, or null when the pid has no process) is the runner of
  * `root`. Its `--root` argument must equal `root` exactly: a substring test would let a live runner of
- * `<root>-copy` vouch for a gone runner of `<root>` (Rule 114: never claim work nobody is doing). Another
- * spelling of the same root cannot be matched, so it is `unknown`, never shown as running.
+ * `<root>-copy` vouch for a gone runner of `<root>` (Rule 114: never claim work nobody is doing). `ps` joins
+ * arguments with spaces, so the value is everything after `--root ` up to the next ` --` option or the end of
+ * the line, which keeps a root containing spaces whole. Another spelling of the root, a value holding ` --`
+ * itself, or a repeated `--root` cannot be told apart, so it is `unknown`, never shown as running.
  */
 export function ownedProcessOf(command: string | null, root: string): OwnedProcess {
   if (command === null) return 'absent';
-  const args = command.trim().split(/\s+/u);
-  if (!args.some(arg => /(^|\/)journal-agent\.mjs$/u.test(arg))) return 'absent';
-  const at = args.indexOf('--root');
-  return at >= 0 && args[at + 1] === root ? 'present' : 'unknown';
+  const line = command.replace(/[\r\n]+$/u, '');
+  if (!/(^|[\s/])journal-agent\.mjs(\s|$)/u.test(line)) return 'absent';
+  const values = [...line.matchAll(/(?:^|\s)--root (.*?)(?= --|$)/gsu)].map(match => match[1]);
+  return values.length === 1 && values[0] === root ? 'present' : 'unknown';
 }
 /** Most rows one packet carries (the current runner plus the most relevant others). */
 export const CONCURRENT_WORK_ROWS = 6;

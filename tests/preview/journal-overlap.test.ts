@@ -73,20 +73,19 @@ it('is bounded in rows and bytes however many owned runners exist', () => {
   expect(value.rows.every(row => row.owner.length <= 120 && (row.endReason ?? '').length <= 120)).toBe(true);
 });
 
-// Recorded shapes (rule 106): group P on live cint-L47, results P-proofroom2-20261004-042523. runners.txt (taken
-// 11:25:25Z) held the three runner processes below; the packet built at the 11:26:36Z send showed
+// Recorded shapes (Rule 36 captured bytes; observer #106 replay duty): group P on live cint-L47, results
+// P-proofroom2-20261004-042523. Its runners.txt, checked in verbatim as the fixture below (`<pid> <command>` per
+// line, taken 11:25:25Z), held the three runner processes; the packet built at the 11:26:36Z send showed
 // justin-20261003-1046 running from its run log's launch at 11:26:12Z (pid 73747), whose exit row says it lived
 // until 11:57:50Z. The view was right; the snapshot predated that relaunch.
 const LANES = '/Users/dabombstudio/.instar/agents/echo/.instar/lanes/preview-trial-root';
-const RECORDED_RUNNERS = [
-  `node --no-warnings --loader ./scripts/slice-ts-loader.mjs tests/preview/journal-agent.mjs run --root ${LANES}/proofroom1-q-20261004-033411 --bot-id 8994258214 --model claude-sonnet-5`,
-  `/usr/local/bin/node --no-warnings --loader ./scripts/slice-ts-loader.mjs /Users/dabombstudio/.instar/agents/echo/.worktrees/runner-frozen-cint-L47-4aae6c18/tests/preview/journal-agent.mjs run --root ${LANES}/proofroom2-ps-20261004-022506 --bot-id 8989505249 --model claude-sonnet-5`,
-  `node --no-warnings --loader ./scripts/slice-ts-loader.mjs tests/preview/journal-agent.mjs run --root ${LANES}/canary-copy-20261004-042456 --bot-id 8820318295 --model claude-sonnet-5\n`,
-];
+const RECORDED_RUNNERS = readFileSync(join(import.meta.dirname, 'fixtures', 'staleview-runners-proofroom2-2026-10-04.txt'), 'utf8')
+  .split('\n').filter(Boolean).map(line => `${line.slice(line.indexOf(' ') + 1)}\n`);
+const RECORDED_ROOTS = ['proofroom1-q-20261004-033411', 'proofroom2-ps-20261004-022506', 'canary-copy-20261004-042456'];
 
 it('a launch is running only while its pid is the runner of exactly that root (recorded runner command lines)', () => {
-  expect(RECORDED_RUNNERS.map((command, index) => ownedProcessOf(command,
-    `${LANES}/${['proofroom1-q-20261004-033411', 'proofroom2-ps-20261004-022506', 'canary-copy-20261004-042456'][index]}`)))
+  expect(RECORDED_RUNNERS.length).toBe(3);
+  expect(RECORDED_RUNNERS.map((command, index) => ownedProcessOf(command, `${LANES}/${RECORDED_ROOTS[index]}`)))
     .toEqual(['present', 'present', 'present']);
   // A gone pid, or one reused by something that is not a runner, is absent: the row is stale, never running.
   expect(ownedProcessOf(null, `${LANES}/proofroom2-ps-20261004-022506`)).toBe('absent');
@@ -99,6 +98,19 @@ it('a launch is running only while its pid is the runner of exactly that root (r
   expect(ownedProcessOf(RECORDED_RUNNERS[0], `${LANES}/proofroom2-ps-20261004-022506`)).toBe('unknown');
   expect(ownedProcessOf(RECORDED_RUNNERS[1].replace(`${LANES}/proofroom2-ps-20261004-022506`, `${LANES}/proofroom2-ps-20261004-022506-copy`),
     `${LANES}/proofroom2-ps-20261004-022506`)).toBe('unknown');
+});
+
+it('a root containing spaces is matched whole: its own runner is present, its shorter sibling is not', () => {
+  const spaced = RECORDED_RUNNERS[1].replace(`${LANES}/proofroom2-ps-20261004-022506`, '/tmp/runner copy');
+  expect(ownedProcessOf(spaced, '/tmp/runner copy')).toBe('present');
+  expect(ownedProcessOf(spaced, '/tmp/runner')).toBe('unknown');
+  expect(ownedProcessOf('node tests/preview/journal-agent.mjs run --root /tmp/runner copy --bot-id 123', '/tmp/runner')).toBe('unknown');
+  expect(ownedProcessOf('node tests/preview/journal-agent.mjs run --root /tmp/runner copy --bot-id 123', '/tmp/runner copy')).toBe('present');
+  // The root as the last argument, and a script path holding a space, still read whole.
+  expect(ownedProcessOf('node /tmp/my tree/tests/preview/journal-agent.mjs run --root /tmp/runner copy', '/tmp/runner copy')).toBe('present');
+  // Ambiguous lines stay unknown: a repeated --root, or no --root at all.
+  expect(ownedProcessOf('node tests/preview/journal-agent.mjs run --root /tmp/a --root /tmp/a', '/tmp/a')).toBe('unknown');
+  expect(ownedProcessOf('node tests/preview/journal-agent.mjs inspect', '/tmp/a')).toBe('unknown');
 });
 
 it('replays the recorded P114b packet: a runner relaunched after a process snapshot is running at the send, stopped after its exit', () => {
