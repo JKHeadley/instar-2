@@ -247,15 +247,22 @@ describe('compiled register build adapter lifecycle', () => {
       // A declared feature must carry its one capability line in its module README (R78/R84), and a
       // README may describe only declared features; the feature cases carry that line, the others do not.
       const readme = readFileSync(join(root, 'src/README.md'), 'utf8');
+      // A live alone-deciding site must be bound to its checkpoint (P3-NF-19), so each blocking-site case carries a
+      // literal-id binding and reaches the check it tests; the other cases carry none (a binding needs a live site).
+      const binding = join(root, 'src/repair-binding.ts');
       for (const [d, error] of cases) {
         writeFileSync(join(root, 'src/README.md'), (d as { kind: string }).kind === 'features'
           ? `${readme}\n## Capabilities\n\n- \`fixture-feature\`: a test-only feature for the deadline cases.\n` : readme);
+        if ((d as { kind: string }).kind === 'blocking sites') writeFileSync(binding, "import { bindBlockingSite } from './register/governance.js';\n"
+          + "export const repairBinding = (declarations: Parameters<typeof bindBlockingSite>[0]) => bindBlockingSite(declarations, 'fixture-holder', []);\n");
+        else rmSync(binding, { force: true });
         writeFileSync(join(root, 'src/repair.declarations.json'), JSON.stringify([d])); const revision = commit();
         const result = spawnSync(process.execPath, [script, '--replay', '--checks', 'register-source/checks.json', '--now', '100', '--commit', revision, '--out', join(root, 'out')], { cwd: root, encoding: 'utf8' });
         if (error) { expect(result.status, result.stderr).not.toBe(0); expect(result.stderr).toContain(error); }
         else { expect(result.status, result.stderr).toBe(0); expect(JSON.parse(result.stdout).prerequisites).toBeGreaterThan(0); }
         await new Promise<void>(done => setImmediate(done));
       }
+      rmSync(binding, { force: true });
       // R1.1: a colocated cap can actually carry a memory store's load-bearing
       // bound through the shipped CLI. Missing, other-file and ambiguous sites
       // do not become valid simply because they repeat its id.
