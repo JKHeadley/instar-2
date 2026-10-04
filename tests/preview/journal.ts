@@ -21,6 +21,7 @@ import { parseDatedItem, restatedDatePhrase, dueState, selectDatedItems, withinN
 import { isStatusCommand, isStopCommand, statusAnswer, STOP_CONFIRM_TEXT } from './status-command.js';
 import { AGENT_PROMISE_LIMIT, fulfillableCommitment, fulfillmentProposals, fulfillmentSupported, legacyFulfillsReminder, promiseProposals, recordedPromises, type AgentPromise, type FulfillmentProposal, type PromiseProposal } from './agent-commitment.js';
 import { messageTime, zoneFormatter } from './self-state.js';
+import { TOOLS_BRIEFING, TOOLS_LIMITS } from './briefing.js';
 import type { ObjectionDisposition, ReplyCheckResult, ReplyCheckPorts, ReplyDecision, ReplyFinding, ReplyReviewDiagnostics, ReplyRule } from './reply-check.js';
 import { SUMMARY_QUESTION, interpretSummaryJev, type SummaryCheckResult } from './summary-check.js';
 import { exactSummaryFaithfulness, interpretSummaryJev as interpretFaithfulnessJev, summaryFaithfulnessEvidence, summaryJevScore, summaryJevUsage } from './summary-faithfulness.js';
@@ -771,8 +772,10 @@ export interface BlockerNote { source: string; claim: string; kind: 'cannot-do' 
 /** One lawful avenue and the runner-owned capability evidence for its disposition. */
 export interface BlockerAvenue { avenue: string; disposition: Extract<ExhaustionAvenue['disposition'], typeof PREVIEW_AVENUE_DISPOSITIONS[number]>;
   evidence: PreviewCapability }
-/** A due recheck's retained reassessment of the wall (Rules 99, 103). */
-export interface BlockerAssessment { avenues: BlockerAvenue[]; constraint: GoverningConstraint; reason: string }
+/** A due recheck's retained reassessment of the wall (Rules 99, 103). `wording` is the governing constraint's wording
+ * the reassessment was made under (the runner's, never the model's), so a renewed wall is current evidence exactly while
+ * that wording still holds (currentBlockers); a record from before it carries none and is read as current. */
+export interface BlockerAssessment { avenues: BlockerAvenue[]; constraint: GoverningConstraint; reason: string; wording?: string }
 export type ProposedBlocker = Omit<BlockerNote, 'source' | 'at' | 'rechecks'>;
 /** What one answer proposed for the obligation population before its reply is sent. */
 type AnswerObligations = { directives?: { quote: string; supersedes?: number }[];
@@ -1826,7 +1829,7 @@ export const declaredObligations = (view: JournalView, id: string, now: number) 
   // told never to renew one, so a reply restating it is judged against that record, not held as unrecorded. One due
   // for recheck (or cleared) is not current evidence and is left out; past the bound the oldest are left out too.
   // Due is judged at review time `now`, not intake: a message queued before the recheck date is reviewed after it.
-  const settled = turn ? recentWithin(openBlockers(view).filter(({ note }) => note.source !== id && note.recheckAt > now)
+  const settled = turn ? recentWithin(currentBlockers(view, turn.toolRouted === true).filter(({ note }) => note.source !== id && note.recheckAt > now)
     .map(({ id: blocker, note }) => ({ id: blocker, kind: note.kind, claim: note.claim, avenues: note.avenues,
       constraint: note.constraint, outsideAction: note.outsideAction })), SETTLED_REVIEW_BYTES) : [];
   // Part Thirteen §9: the capability read follows the route the answer's LATEST attempt ran on (a format re-ask or
@@ -1893,8 +1896,15 @@ export const openBlockers = (view: JournalView) => view.blockers.flatMap((note, 
  * due on its own recheck day. Live 2026-10-04 (cint-L49, K11a, update 6232231): walls settled under "no account writes"
  * and "live secrets stay in custody" were restated as standing limits after the read no longer said so. */
 export function settledConstraintWording(view: JournalView, note: BlockerNote): string | undefined {
-  const prompt = view.turns.get(note.source)?.prompt;
+  // A still-blocked recheck re-settles the wall under the wording it was reassessed with (Rule 99): the latest one wins.
+  const renewal = note.rechecks.filter(recheck => recheck.outcome === 'still-blocked').at(-1);
+  if (renewal) return renewal.assessment?.wording;
+  const turn = view.turns.get(note.source), prompt = turn?.prompt;
   if (typeof prompt !== 'string') return undefined;
+  // A settled answer packet never changes: each prompt's constraints are parsed once.
+  const cached = promptConstraints.get(turn!);
+  if (cached?.prompt === prompt) return wordingOf(cached.constraints, note.constraint);
+  let constraints: Record<string, unknown> | undefined;
   try {
     // The prepared envelope's context message (live), or the packet itself where the model input is the bare context.
     const parsed = JSON.parse(prompt) as { messages?: { role?: string; content?: string }[] } | null;
@@ -1902,10 +1912,27 @@ export function settledConstraintWording(view: JournalView, note: BlockerNote): 
     const outer = (context === undefined ? parsed : JSON.parse(context)) as { packet?: unknown } | null;
     const packet = (outer && typeof outer === 'object' && 'packet' in outer ? outer.packet : outer) as
       { governingConstraints?: Record<string, unknown> } | null;
-    const wording = packet?.governingConstraints?.[note.constraint];
-    return typeof wording === 'string' ? wording : undefined;
-  } catch { return undefined; }
+    constraints = packet?.governingConstraints ?? undefined;
+  } catch { constraints = undefined; }
+  promptConstraints.set(turn!, { prompt, constraints });
+  return wordingOf(constraints, note.constraint);
 }
+const promptConstraints = new WeakMap<Turn, { prompt: string; constraints: Record<string, unknown> | undefined }>();
+const wordingOf = (constraints: Record<string, unknown> | undefined, key: string) => {
+  const wording = constraints?.[key];
+  return typeof wording === 'string' ? wording : undefined;
+};
+/** Rules 20, 45, 99, 103: the open walls that are current evidence for a call on the given route, the one rule the answer
+ * packet and the reply review both read. A wall whose settled wording (its source answer's, or its latest renewal's)
+ * differs from the route's wording now is not offered as settled; it stays open, counted and due on its recheck day,
+ * and a renewal under the current wording makes it current again. Unknown wording is read as current. */
+export const currentBlockers = (view: JournalView, tools: boolean) => {
+  const now = governingConstraints(tools);
+  return openBlockers(view).filter(({ note }) => {
+    const settled = settledConstraintWording(view, note);
+    return settled === undefined || settled === now[note.constraint];
+  });
+};
 const validLoops = (loops: unknown): loops is ReplyLoop[] => Array.isArray(loops) && loops.length <= 5
   && new Set(loops.map(loop => (loop as ReplyLoop)?.quote)).size === loops.length
   && loops.every(loop => loop && (loop.kind === 'deferral' || loop.kind === 'judgment' || loop.kind === 'promise')
@@ -1932,7 +1959,8 @@ function validBlocker(value: unknown, at: number): value is ProposedBlocker {
 const validBlockerAssessment = (value: unknown): value is BlockerAssessment => {
   const assessment = value as BlockerAssessment | null;
   return !!assessment && validAssessment(assessment.avenues, assessment.constraint) && boundedText(assessment.reason, 8, 500)
-    && Object.keys(assessment).length === 3;
+    && (assessment.wording === undefined ? Object.keys(assessment).length === 3
+      : boundedText(assessment.wording, 1, 300) && Object.keys(assessment).length === 4);
 };
 /** An answer may clear a settled blocker the message shows no longer holds; renewing one needs the scheduled
  * recheck's retained reassessment of every avenue (Rule 99), never a new date alone. */
@@ -6022,12 +6050,17 @@ export function createJournalWorker(journal: ReturnType<typeof openPreviewJourna
 
   /** One journal is the agent's memory for every conversation. A turn from
    * another conversation is labelled with where and when it was said. */
-  /** Each blocker's settled constraint wording, parsed once: a settled answer packet never changes. */
-  const settledWordings = new Map<string, string | undefined>();
-  const settledWording = (note: BlockerNote) => {
-    const key = `${note.source}\u0000${note.constraint}`;
-    if (!settledWordings.has(key)) settledWordings.set(key, settledConstraintWording(journal.view, note));
-    return settledWordings.get(key);
+  /** Rules 45, 78, 84: the tool route's capability and constraint entries point at the capability note ("listed", "see
+   * Limits"), so a tool-bearing work step carries the same note an answer does (review round 1, finding 2). When the
+   * supplied note is not the tool note (no sources, or the activation is off while a delegated session still has tools),
+   * it carries the note's own tools item and limits, with the MCP count unknown rather than guessed. */
+  const toolNote = () => {
+    const supplied = typeof ports.sources === 'function' ? ports.sources() : ports.sources;
+    const note = supplied?.find(source => (source as { id?: unknown } | null)?.id === 'capability-note') as
+      { id: string; title?: string; text?: unknown } | undefined;
+    return note && typeof note.text === 'string' && note.text.includes(TOOLS_LIMITS)
+      ? { id: note.id, ...(note.title === undefined ? {} : { title: note.title }), text: note.text }
+      : { id: 'capability-note', text: `You have ${TOOLS_BRIEFING} ${TOOLS_LIMITS}` };
   };
   /** Under byte pressure, a source that declares `yieldBytes` (the desk report) is cut to that many bytes before
    * conversation history or reply guidance yields. The cut is labelled and names where the full text is; [] when
@@ -6223,11 +6256,8 @@ export function createJournalWorker(journal: ReturnType<typeof openPreviewJourna
       const source = journal.view.turns.get(note.source)!;
       return { id, quote: clean(redact(note.quote).text, true, note.source), since: dated(source), sourceLabel: turnLabel(source) };
     });
-    const toolRouted = awayFor !== undefined && ports.toolRoute?.(awayFor.id) === true, constraintsNow = governingConstraints(toolRouted);
-    const blockerItems = awayFor === undefined ? [] : recentWithin(openBlockers(journal.view).filter(({ note }) => {
-      const settled = settledWording(note);
-      return settled === undefined || settled === constraintsNow[note.constraint];
-    }).map(({ id, note }) => ({ id, kind: note.kind,
+    const toolRouted = awayFor !== undefined && ports.toolRoute?.(awayFor.id) === true;
+    const blockerItems = awayFor === undefined ? [] : recentWithin(currentBlockers(journal.view, toolRouted).map(({ id, note }) => ({ id, kind: note.kind,
       claim: clean(redact(note.claim).text, true), constraint: note.constraint, outsideAction: clean(redact(note.outsideAction).text, true),
       recheck: localStamp(note.recheckAt, zone).slice(0, 10), recheckDue: now >= note.recheckAt })), BLOCKER_ITEMS_BYTES);
     // Rules 79, 82, 84, 98: the request this very message answered, else the latest one still to report. Plan #371: a
@@ -9550,7 +9580,8 @@ export function createJournalWorker(journal: ReturnType<typeof openPreviewJourna
             .filter(turn => verifiedOperatorTurn(journal.view, turn) && !probeTurn(journal.view, turn)).slice(-5)
             .map(turn => ({ date: dated(turn), text: clip(clean(redact(turn.text).text, true, turn.id), 1000) })) } : {}),
         directives: openDirectives(journal.view).map(({ id, note }) => ({ id, quote: clean(redact(note.quote).text, true, note.source) })),
-        governingConstraints: governingConstraints(tools), capabilities: previewCapabilities(tools) });
+        governingConstraints: governingConstraints(tools), capabilities: previewCapabilities(tools),
+        ...(tools ? { sources: [toolNote()] } : {}) });
       if (Buffer.byteLength(context) > journal.view.limits.maxBytes) return false;
       const question = tools ? OBLIGATION_WORK_QUESTION_TOOLS : OBLIGATION_WORK_QUESTION;
       // A session step carries its task in the session's own delivered text, not a provider
@@ -9570,7 +9601,9 @@ export function createJournalWorker(journal: ReturnType<typeof openPreviewJourna
       if (typeof answer !== 'string' && 'state' in answer && answer.state === 'uncertain') { settle({ outcome: 'uncertain', ...usage }); return true; }
       if (typeof answer !== 'string' && 'failureClass' in answer) { settle({ outcome: 'failed', ...usage }); return true; }
       const decided = obligationDecision(typeof answer === 'string' ? answer : answer.text, item.kind, ports.now(), zone);
-      settle({ ...decided, ...usage });
+      // A renewal records the constraint wording this step was shown, so the wall is current evidence while it holds.
+      settle({ ...decided, ...(decided.assessment ? { assessment: { ...decided.assessment,
+        wording: governingConstraints(tools)[decided.assessment.constraint] } } : {}), ...usage });
       return true;
     } finally { working = false; }
   };

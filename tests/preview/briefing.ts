@@ -24,22 +24,27 @@ export const CAPABILITY_LAUNCHER = 'tests/preview/journal-agent.mjs';
 type BriefedFeature = { id: string; status: string; availability: string; userFacing: boolean; text: string | null };
 /** Part Thirteen §9 (docs/17-harness-adapters): with tools on (the default under a resolving grant), the note states what the
  * turn can do in one place every route reads (Rules 78, 84). The tools item joins the can-do list: the harness's whole
- * built-in tool set with nested subagents and web reads; the root's MCP servers, as configured right now (`mcp`: their count,
- * read at each turn; undefined when unknown), which are the only way into a logged-in account because no tool can read a
- * vaulted credential; and network writes and outside sends once the operator grants them (Purpose: nothing outward by
- * default). TOOLS_LIMITS names what is easy to misread: a credential the operator sends is vaulted on arrival (the marker
- * the model sees is that record), never shown, and no tool can read it. The other floors are stated once where they live:
- * consequential effects through the doorway's four tests in the tools item, the attempt cap in the trial line, the stop and
- * the spend allowance in the governing constraints. Nothing else is denied (Rule 103). Live 2026-10-04 (cint-L49, K11a,
- * update 6232231) the old trailing line said only "outward effects via the doorway" beside a packet that read "no account
- * writes", and the reply called site and account writes "a standing block", said it had "no vault" and left out nested
- * subagents and MCP; replays of that turn (lanes/w4-selfdesc-PROGRESS.md) showed a model lists what the note lists and
- * nothing it leaves implicit. It names no tool: what a tool may do is decided per call at the admission hook. The tool
- * route's capability and constraint entries point here instead of restating it, which pays for these bytes within
- * default-context-floor's measurement. */
+ * built-in tool set with nested subagents and web reads; how many MCP servers the root configures right now (`mcp`: their
+ * count, read at each turn; undefined when the configuration cannot be read, which is said as unknown, never guessed); and
+ * network writes and outside sends once the operator grants them (Purpose: nothing outward by default). Only the MCP
+ * servers' tools can reach a logged-in account, because no tool can read a vaulted credential: with none configured there
+ * is no logged-in account access; with some, the count claims none either, since a configured server proves only a
+ * command, not a login (review round 1, finding 4), and what it reaches is what its listed tools do. TOOLS_LIMITS names
+ * what is easy to misread: a credential the operator sends is vaulted on arrival (the marker the model sees is that
+ * record), never shown, and no tool can read it. The other floors are stated once where they live: consequential effects
+ * through the doorway's four tests in the tools item, the attempt cap in the trial line, the stop and the spend allowance
+ * in the governing constraints. Nothing else is denied (Rule 103). Live 2026-10-04 (cint-L49, K11a, update 6232231) the
+ * old trailing line said only "outward effects via the doorway" beside a packet that read "no account writes", and the
+ * reply called site and account writes "a standing block", said it had "no vault" and left out nested subagents and MCP;
+ * replays of that turn (lanes/w4-selfdesc-PROGRESS.md) showed a model lists what the note lists and nothing it leaves
+ * implicit. Replays that also spelled out "no login is not no site writes" in this note did no better (review round 1,
+ * runs r21-r24); a reply stating "no logged-in account" as "can't change any website" is instead cut by the reply review
+ * (reply-check.ts DECLARED_OBLIGATIONS_GUIDE). It names no tool: what a tool may do is decided per call at the admission
+ * hook. The tool route's capability and constraint entries point here instead of restating it, which pays for these bytes
+ * within default-context-floor's measurement. */
 export function toolsBriefing(mcp?: number) {
-  const servers = mcp === undefined ? 'root MCP servers (logged-in account access)'
-    : mcp === 0 ? 'no MCP server, so no logged-in account access' : `${String(mcp)} root MCP server(s) (logged-in account access)`;
+  const servers = mcp === undefined ? 'MCP servers: unknown' : mcp === 0 ? 'no MCP server, so no logged-in account access'
+    : `${String(mcp)} MCP server(s) (accounts only via their tools)`;
   return `tools: full Claude Code set (files, shell, web reads, nested subagents); ${servers}; network writes and outside sends `
     + 'via the doorway\'s four tests on operator grant.';
 }

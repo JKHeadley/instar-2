@@ -19,7 +19,7 @@ const packetOf = (envelope: Envelope) => (JSON.parse(envelope.messages.find(item
   { packet: Record<string, unknown> & { sources: { id: string; text: string }[]; capability: string } }).packet;
 const live = (update: number) => ({ turns: new Map([[`telegram:8989505249:update:${update}`,
   { prompt: read(`recorded-prompt-${update}.json`) }]]) }) as unknown as JournalView;
-const wall = (update: number, constraint: string) => ({ source: `telegram:8989505249:update:${update}`, constraint }) as BlockerNote;
+const wall = (update: number, constraint: string) => ({ source: `telegram:8989505249:update:${update}`, constraint, rechecks: [] }) as unknown as BlockerNote;
 
 it('reads the wording each live wall was settled behind from its recorded answer packet, and finds it superseded', () => {
   // The two walls the live k1 packet carried: the bank-address refusal (no-tools) and the vault refusal (secret-custody).
@@ -77,4 +77,21 @@ it('records the K11a replays on both sides: the live build fails, this build pas
     expect(run.reply).not.toMatch(/standing block/u);
   }
   for (const run of [...of('worst'), ...chain.filter(item => item.verdict === 'PASS')]) expect(run.reply).not.toMatch(/no vault/iu);
+});
+
+it('states the MCP count it read and claims no account access from it: zero, a configured count, and an unreadable count (review round 1, finding 4)', () => {
+  // A configured MCP server proves a command, not a login (tool-turn.mjs readRootMcp checks names, commands and read-tool
+  // names only), so a positive count says account access goes only through its tools and never asserts one exists; an
+  // unreadable configuration is said as unknown; none configured is the one case that settles it: no logged-in account.
+  const accessClaim = /logged-in account access\)|\(logged-in account/u;
+  expect(toolsBriefing(0)).toContain('no MCP server, so no logged-in account access');
+  for (const count of [1, 3]) {
+    expect(toolsBriefing(count)).toContain(`${String(count)} MCP server(s) (accounts only via their tools)`);
+    expect(toolsBriefing(count)).not.toMatch(accessClaim);
+  }
+  expect(toolsBriefing(undefined)).toContain('MCP servers: unknown');
+  expect(toolsBriefing(undefined)).not.toMatch(accessClaim);
+  expect(toolsBriefing(undefined)).not.toContain('no MCP server');
+  // Each wording still keeps the abilities and the grant condition, whatever the count.
+  for (const count of [undefined, 0, 1]) expect(toolsBriefing(count)).toMatch(/full Claude Code set \(files, shell, web reads, nested subagents\);.*network writes and outside sends via the doorway's four tests on operator grant\.$/u);
 });
