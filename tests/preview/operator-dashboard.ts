@@ -11,7 +11,7 @@ import { heldReplies, turnsToday } from './status-command.js';
 
 export const DASHBOARD_SNAPSHOT = 'PreviewOperatorDashboard';
 /** Finite bounds (Rule 60). The operator page refuses a snapshot past its own bounds (scripts/operator-dashboard.mjs). */
-export const DASHBOARD_LIMITS = Object.freeze({ statusLines: 40, lineChars: 4000, turns: 10, textChars: 500, requests: 10 });
+export const DASHBOARD_LIMITS = Object.freeze({ statusLines: 40, lineChars: 4000, turns: 10, textChars: 500, requests: 10, stateChars: 200 });
 
 export interface DashboardSnapshot {
   type: typeof DASHBOARD_SNAPSHOT; schemaVersion: 1; asOf: number; zone: string;
@@ -45,10 +45,16 @@ const REQUEST_STATES: Record<string, string> = { open: 'Waiting for your answer'
  * delivery; a recorded refusal or UNKNOWN is settled and never sent again; with no outcome recorded yet it is unconfirmed. */
 function delivery(view: JournalView, target: string, sent: number | undefined, done: string, what: string): string {
   const outcome = sendOutcomeOf(view, target, sent);
+  // The reason is clipped to the room the page's state field leaves, so a long provider reason never voids the snapshot;
+  // the outcome and "not sent again" always survive, and the journal keeps the full reason.
+  const settled = (head: string, reason: string | null | undefined, tail: string) => {
+    if (!reason) return `${head}${tail}`;
+    return `${head} (${clip(reason, Math.max(1, DASHBOARD_LIMITS.stateChars - head.length - tail.length - 3))})${tail}`;
+  };
   if (outcome.kind === 'accepted') return done;
-  if (outcome.kind === 'refused') return `${what} was refused and not delivered (${outcome.reason}); it is not sent again`;
+  if (outcome.kind === 'refused') return settled(`${what} was refused and not delivered`, outcome.reason, '; it is not sent again');
   return view.sendOutcomes.some(item => item.target === target)
-    ? `${what} may or may not have arrived: delivery is UNKNOWN${outcome.reason ? ` (${outcome.reason})` : ''}; it is not sent again`
+    ? settled(`${what} may or may not have arrived: delivery is UNKNOWN`, outcome.reason, '; it is not sent again')
     : `Sending ${what.toLowerCase()}: not confirmed delivered yet`;
 }
 /** What happened to one message, and the reply it got, read from the turn's own durable record. A message covered by a

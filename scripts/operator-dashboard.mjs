@@ -11,7 +11,7 @@ import { check } from './approval-surface-core.mjs';
 export const DASHBOARD_FILE = 'dashboard.json';
 export const DASHBOARD_TYPE = 'PreviewOperatorDashboard';
 /** Bounds the page holds independently of the runner (Rule 60), the session lifetime, and when a snapshot reads as stale. */
-export const DASHBOARD_BOUNDS = Object.freeze({ maxBytes: 262144, statusLines: 40, lineChars: 4000, turns: 10, textChars: 500,
+export const DASHBOARD_BOUNDS = Object.freeze({ maxBytes: 262144, statusLines: 40, lineChars: 4000, turns: 10, textChars: 500, stateChars: 200,
   requests: 10, staleMs: 120_000, sessionMs: 1_800_000 });
 /** Every registered view: the navigation lists all of them on every page (floor F2). */
 export const DASHBOARD_VIEWS = Object.freeze([
@@ -62,7 +62,7 @@ export function checkSnapshot(value) {
   for (const item of list(s.turns, B.turns)) {
     closed(item, 'from,message,reply,state,time,update'); check(isDashboardUpdate(item.update), 'dashboard update invalid'); text(item.time, 32); text(item.message, B.textChars);
     check(item.reply === null || typeof item.reply === 'string' && item.reply.length <= B.textChars, 'dashboard reply invalid');
-    check(['you', 'scheduled'].includes(item.from), 'dashboard sender invalid'); text(item.state, 200);
+    check(['you', 'scheduled'].includes(item.from), 'dashboard sender invalid'); text(item.state, B.stateChars);
   }
   check(s.chat === null || typeof s.chat === 'string' && CHAT.test(s.chat), 'dashboard chat invalid');
   return s;

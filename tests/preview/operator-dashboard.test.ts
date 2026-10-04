@@ -100,23 +100,44 @@ it('each message shows its durable send outcome: accepted, refused and UNKNOWN a
   expect(snapshotOf(inFlight).turns[1]).toMatchObject({ update: 2, state: 'Sending my reply: not confirmed delivered yet' });
 }, 60000);
 
+const LONG_REFUSAL = "telegram 400: Bad Request: can't parse entities: Can't find end of the entity starting at byte offset 1234";
 it('every message a delivered limited answer covers shows that answer, and a refused one says so', async () => {
-  for (const refuse of [false, true]) {
+  for (const refuse of [false, true, 'long'] as const) {
     const journal = openPreviewJournal(join(temp('dashboard-limited-'), 'journal.encrypted'), key, { ...genesis, maxCalls: 8, maxReplies: 8, maxTurns: 2 });
     cleanup.push(() => journal.close());
     let sends = 0;
     const worker = createJournalWorker(journal, { now: () => at, timeZone: zone, stopped: () => false, model: async () => 'ordinary answer',
-      checkOutbound: () => {}, send: async () => (++sends === 3 && refuse ? { kind: 'refused', reason: 'telegram 400: chat not found' } : sends) as never });
+      checkOutbound: () => {}, send: async () => (++sends === 3 && refuse
+        ? { kind: 'refused', reason: refuse === 'long' ? LONG_REFUSAL : 'telegram 400: chat not found' } : sends) as never });
     worker.intake([update(1, 'one'), update(2, 'two')]); await worker.drain();
     worker.intake([update(3, 'three'), update(4, 'four')]); await worker.drain();
     const [four, three] = snapshotOf(journal.view).turns;
     const text = limitedAnswerText(journal.view, 'turns', 2);
     for (const turn of [three!, four!]) {
       expect(turn.reply).toContain(text.slice(0, 60));
+      if (refuse === 'long') {
+        // A supported provider reason longer than the page's state field is clipped, never voiding the snapshot (Rules 26, 42, 60).
+        expect(turn.state.length).toBeLessThanOrEqual(DASHBOARD_BOUNDS.stateChars);
+        expect(turn.state).toMatch(/^My brief answer \(the allowance was reached\) was refused and not delivered \(telegram 400: Bad Request: .*…\); it is not sent again$/u);
+        continue;
+      }
       expect(turn.state).toBe(refuse ? 'My brief answer (the allowance was reached) was refused and not delivered (telegram 400: chat not found); it is not sent again'
         : 'Answered briefly: the allowance was reached');
     }
     expect(render(snapshotOf(journal.view), 'messages/4')).not.toContain('No reply yet');
+    if (refuse !== 'long') continue;
+    // The full reason stays in the journal, and the snapshot carrying it publishes and replaces the previous one.
+    expect(journal.view.sendOutcomes.some(item => item.reason === LONG_REFUSAL)).toBe(true);
+    const outbox = join(temp('dashboard-long-'), 'outbox'), store = join(outbox, '..', 'store');
+    mkdirSync(store, { mode: 0o755 }); mkdirSync(outbox, { mode: 0o750 }); chmodSync(outbox, 0o750);
+    const client = createApprovalSurfaceClient({ store, outbox, operatorUid: process.getuid!() + 1, agentUid: process.getuid!(), now: () => at });
+    const snapshot = snapshotOf(journal.view);
+    expect(checkSnapshot(JSON.parse(JSON.stringify(snapshot)))).toBeTruthy();
+    client.publish({ ...snapshot, counts: { ...snapshot.counts, turnsToday: 1 } });
+    client.publish(snapshot);
+    const published = readSnapshot(outbox, at);
+    expect(published).toMatchObject({ kind: 'ok', snapshot: { counts: snapshot.counts } });
+    expect(published.snapshot.turns.slice(0, 2).map((turn: { state: string }) => turn.state)).toEqual([four!.state, three!.state]);
   }
 }, 60000);
 
