@@ -273,11 +273,9 @@ it.each([
   // The live 2026-10-01 k6 failure: the answer model wrote its reasoning before the Decision. The answer side
   // reads the one object and answers (Rules 15, 77); the shape is counted as tolerated, never hidden.
   ['answer-prose-wrapped', { 'answer/decision/tolerated/prose-wrapped': 1 }, null, {}],
-  // Plan #491 (answer-reading.ts, w4-answerfail's proposed follow-up): one answer inside a list is that answer, since
-  // exactly one top-level span parses at all and it is the protocol's answer. A list of two stays malformed.
-  ['answer-list-wrapped', { 'answer/decision/tolerated/prose-wrapped': 1 }, null, {}],
-  ['answer-list-two', { 'answer/decision/malformed/multiple-objects': 2 },
-    { role: 'answer', layer: 'decision', shape: 'multiple-objects' }, { malformed: 2 }],
+  // Still ambiguous for the answer side too: a list could have held any number of objects, so it stays malformed.
+  ['answer-list-wrapped', { 'answer/decision/malformed/prose-wrapped': 2 },
+    { role: 'answer', layer: 'decision', shape: 'prose-wrapped' }, { malformed: 2 }],
   // Accepted as one object, then refused by the same field checks an unwrapped Decision passes.
   ['answer-prose-wrong-fields', { 'answer/decision/malformed/prose-wrapped-wrong-fields': 2 },
     { role: 'answer', layer: 'decision', shape: 'prose-wrapped-wrong-fields' }, { malformed: 2 }],
@@ -314,7 +312,6 @@ export const createClaudeCodeSubscriptionRoute = () => ({kind:'Success',value:{i
   const bytes=mode === 'decision-contradicted' && review ? 'VIOLATION: this reply must not be sent. '+decision
     : mode === 'answer-prose-wrapped' && !review ? prose+decision
     : mode === 'answer-list-wrapped' && !review ? prose+'['+decision+']'
-    : mode === 'answer-list-two' && !review ? prose+'['+decision+','+decision+']'
     : mode === 'answer-prose-wrong-fields' && !review ? prose+JSON.stringify({type:'Other',conclusion:{subject:'preview-stage2-answer',value}})
     : mode === 'wrapped' || mode === 'wrapped-crlf' ? (review ? '\\u0060\\u0060\\u0060'+newline+decision+newline+'\\u0060\\u0060\\u0060' : '\\u0060\\u0060\\u0060json'+newline+decision+newline+'\\u0060\\u0060\\u0060')
     : mode === 'answer-two-objects' && !review ? decision+'\\n'+decision : decision;
@@ -349,7 +346,7 @@ export const createClaudeCodeSubscriptionRoute = () => ({kind:'Success',value:{i
     // A contradicted review is unavailable, never a pass and never a veto (Rules 77, 86, 95).
     // An answer that stays malformed after its one re-ask is never sent; every other mode still answers.
     expect(sends.some(send => answerOf(send.text) === 'PREVIEW — Noted.')).toBe(
-      !['answer-two-objects', 'answer-list-two', 'answer-prose-wrong-fields'].includes(mode));
+      !['answer-two-objects', 'answer-list-wrapped', 'answer-prose-wrong-fields'].includes(mode));
     const status = JSON.parse(spawnSync(process.execPath,
       ['--no-warnings','--loader','./scripts/slice-ts-loader.mjs','tests/preview/journal-agent.mjs','status','--root',root],
       {cwd:process.cwd(),env,encoding:'utf8',timeout:10000}).stdout);

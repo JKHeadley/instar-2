@@ -86,14 +86,16 @@ export function parseDefect(text: string, extracted: ModelJsonResult): string {
 /** The one reading of a subscription answer-side or task result (journal-agent invokeSubscription): parse, build the
  * Decision, check it. `wrapped: 'accept'` (the answer side, Rule 95) may also discard prose around the object; there,
  * prose that itself carries brackets or a brace pair (`dated:[]`, `[withheld]`, `{reply, dated:[...]}`) is discarded only
- * when exactly one top-level span parses as an object at all and that object is the protocol's answer (one with `answer` or `reply`, or a legacy Decision with the
+ * when exactly one top-level span parses as an object at all, it is not written as a list element, and it is the protocol's answer (one with `answer` or `reply`, or a legacy Decision with the
  * answer subject). A gate keeps the narrow reading, so a written rejection beside its verdict is never dropped. */
 export function readAnswer(text: string, options: { wrapped?: ModelJsonWrapped; evidence?: readonly string[] } = {}): AnswerReading {
   let extracted = parseModelJson(text, { wrapped: options.wrapped ?? 'refuse' });
   if (!extracted.ok && (extracted.shape === 'prose-wrapped' || extracted.shape === 'multiple-objects') && options.wrapped === 'accept') {
-    const parsed = topLevelObjects(escapeRawControls(text.trim())).spans.map(span => { try { const value: unknown = JSON.parse(span); return isObject(value) ? value : null; } catch { return null; } })
-      .filter((value): value is Record<string, unknown> => value !== null);
-    const sole = parsed.length === 1 ? parsed[0]! : null;
+    const trimmed = escapeRawControls(text.trim()), { spans, starts } = topLevelObjects(trimmed);
+    const parsed = spans.flatMap((span, index) => { try { const value: unknown = JSON.parse(span); return isObject(value) ? [{ value, start: starts[index]! }] : []; } catch { return []; } });
+    // k6 stands for a list: an object written as a list element (`[{...}]`) may be one of any number, so it stays refused.
+    const listed = parsed.length === 1 && /\[\s*$/u.test(trimmed.slice(0, parsed[0]!.start));
+    const sole = parsed.length === 1 && !listed ? parsed[0]!.value : null;
     if (sole && (sole.type === 'Decision' ? isObject(sole.conclusion) && sole.conclusion.subject === ANSWER_SUBJECT
       : 'answer' in sole || 'reply' in sole)) extracted = { ok: true, value: sole, shape: 'prose-wrapped' };
   }

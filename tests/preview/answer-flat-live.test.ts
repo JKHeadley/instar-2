@@ -191,6 +191,9 @@ it('answer side: prose that carries brackets is discarded only around exactly on
   expect(answer(`I considered ${draft} and dated:[] then: {"reasoning":"r","reply":"Final."}`)).toMatchObject({ ok: false });
   expect(answer('Looking at [withheld] {reply, dated:[]} so: {"reasoning":"r","answer":"Final."}')).toMatchObject({ ok: true, value: 'Final.' });
   expect(answer('A list [{"verdict":"pass"}]')).toMatchObject({ ok: false });
+  // k6's list rule stands: an answer object written as a list element may be one of many, so it is refused.
+  expect(answer('Looking at dated:[] first. [{"reasoning":"r","answer":"Final."}]')).toMatchObject({ ok: false });
+  expect(answer('Looking at dated:[] first. [ {"reasoning":"r","answer":"Final."}')).toMatchObject({ ok: false });
 });
 
 it('every conversation prompt carries the flat protocol and none still asks the model for the envelope', () => {
