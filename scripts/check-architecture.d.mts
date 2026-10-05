@@ -28,3 +28,7 @@ export function parityMatrix(sources?: Record<string, unknown>): { type: 'Parity
   harnessTuples: (ParityCell & { harness: string; doorway: string; platform: string; mode: string })[]; stray: string[] };
 export function lintParityRegister(sources?: Record<string, unknown>, read?: (path: string) => string | null,
   doorways?: readonly string[]): Issue[];
+export function currentPlatform(): string;
+export function buildCoreIfAbsent(exists?: (path: string) => boolean,
+  run?: (command: string, args: readonly string[], options: { encoding: 'utf8' }) =>
+    { status: number | null; stdout?: string; stderr?: string }): Issue[];

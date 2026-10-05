@@ -4,6 +4,7 @@
 // an observation is genuine is decided by its bound witness, not by this lint.
 import ts from 'typescript';
 import { existsSync, lstatSync, readdirSync, readFileSync } from 'node:fs';
+import { spawnSync } from 'node:child_process';
 import { resolve, relative, dirname } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { importClosure } from './import-closure.mjs';
@@ -403,6 +404,7 @@ export function parityMatrix(sources = registerDeclarationSources()) {
  * state; a supported cell cites a test that exists (and, for a harness tuple, an adapter artifact,
  * a registered route and its platform/mode); an unsupported or unproven cell states why; every
  * registered model doorway carries a native harness tuple. */
+export const currentPlatform = () => process.platform;
 export function lintParityRegister(sources = registerDeclarationSources(), read = repoRead, doorways = registeredDoorways()) {
   const issues = [], matrix = parityMatrix(sources);
   const flag = (detail, file = 'src/conversation') => issues.push({ file, line: 0, rule: 'R105', detail });
@@ -438,7 +440,12 @@ export function lintParityRegister(sources = registerDeclarationSources(), read 
     const closure = entries.length ? compositionClosure(entries, read, tuple.source) : { files: [], complete: false };
     if (!entries.length || !closure.complete || !closure.files.includes(artifactPath) || !closure.files.includes(routePath) || !runtime)
       flag(`${where}: supported without complete composition entry points (closure reaching its artifact and route) and runtime`, tuple.source);
-    else if (runtime !== currentRuntime()) flag(`${where}: certified on ${runtime}, running ${currentRuntime()}`, tuple.source);
+    // Whether this host IS the certified machine is only the certified platform's question: off that
+    // platform the declared runtime can never equal this one, and saying so would report a host
+    // difference as a declaration defect. The byte-exactness of the conformance below is not host
+    // bound (it hashes the declared runtime line and the closure's bytes), so it still runs here.
+    else if (tuple.platform === currentPlatform() && runtime !== currentRuntime())
+      flag(`${where}: certified on ${runtime}, running ${currentRuntime()}`, tuple.source);
     else {
       const digest = compositionDigest(runtime, closure.files, read);
       if (!digest || tuple.conformance?.length !== 1 || tuple.conformance[0] !== digest)
@@ -451,11 +458,27 @@ export function lintParityRegister(sources = registerDeclarationSources(), read 
 }
 
 function walk(path) { return readdirSync(path, { withFileTypes: true }).flatMap(e => e.isDirectory() ? walk(`${path}/${e.name}`) : e.name.endsWith('.ts') ? [`${path}/${e.name}`] : []); }
+/**
+ * A certified composition executes the built core, so `lintParityRegister` reads `dist/` — which is
+ * generated, never committed. On a tree nobody has built, those imports do not resolve and the tuple
+ * reports an incomplete closure, which reads as a declaration defect and is not one. The build is a
+ * precondition of this check, so the check satisfies it rather than failing for its absence; a build
+ * that cannot be produced is itself the finding.
+ */
+export function buildCoreIfAbsent(exists = existsSync, run = spawnSync) {
+  if (exists('dist/index.js')) return [];
+  const build = run(process.execPath, ['node_modules/typescript/bin/tsc', '-p', 'tsconfig.build.json'], { encoding: 'utf8' });
+  if (build.status === 0 && exists('dist/index.js')) return [];
+  const said = `${build.stdout ?? ''}${build.stderr ?? ''}`.trim().split('\n').find(line => line.trim().length > 0);
+  return [{ file: 'tsconfig.build.json', line: 0, rule: 'R105',
+    detail: `the built core a certified composition executes is absent and could not be built: ${said ?? `tsc exited ${build.status}`}` }];
+}
 if (process.argv[1] && resolve(process.argv[1]) === fileURLToPath(import.meta.url)) {
+  const built = buildCoreIfAbsent();
   const program = createProgram(); const clients = shippedClientFiles();
   const shipped = Object.fromEntries([...walk('src'), ...clients].map(path => [path, readFileSync(path, 'utf8')]));
   const clientSources = Object.fromEntries(clients.map(path => [path, shipped[path]]));
-  const issues = [...lintProgram(program, [...walk('src'), ...DETECTOR_MODULES]), ...lintIntentSites(), ...lintRetrievalSites(),
+  const issues = [...built, ...lintProgram(program, [...walk('src'), ...DETECTOR_MODULES]), ...lintIntentSites(), ...lintRetrievalSites(),
     ...lintShippedLauncher('tests/preview/journal-agent.mjs'), ...lintHarnessNames(shipped),
     ...lintClientImports(clientSources), ...lintReplacedStores(shipped), ...lintParityRegister()];
   if (issues.length) { console.error(JSON.stringify(issues, null, 2)); process.exitCode = 1; }
