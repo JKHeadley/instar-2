@@ -371,14 +371,23 @@ const turnSources = (root, options, view, runs, current = () => undefined, hando
   toolsOn = () => options['tools-activation'] !== undefined) => {
   // The standing mind-held instructions ride every prepared envelope; a changed rule book refuses launch.
   verifyMindRules(path => readFileSync(resolve(process.cwd(), path), 'utf8'));
-  // Both briefings are built once; each turn carries the one that matches whether its tools are on now (default on,
-  // withdrawn when the record is removed or its grant no longer resolves).
-  const packets = new Map([true, false].map(tools => [tools, sourcePacket(path => readFileSync(resolve(process.cwd(), path), 'utf8'), SOURCE_PINS,
-    { providerAttempts: view.limits.maxCalls, expiresAt: view.expires, tools }).sources]));
+  // Each turn carries the briefing that matches whether its tools are on now (default on, withdrawn when the record is
+  // removed or its grant no longer resolves) and how many MCP servers the root configures now (read at each turn, as the
+  // tool turn reads them; unknown when the configuration is unreadable). Each distinct briefing is built once.
+  const packets = new Map();
+  const packetFor = (tools, mcp) => {
+    const key = `${String(tools)}:${String(mcp)}`;
+    if (!packets.has(key)) packets.set(key, sourcePacket(path => readFileSync(resolve(process.cwd(), path), 'utf8'), SOURCE_PINS,
+      { providerAttempts: view.limits.maxCalls, expiresAt: view.expires, tools, ...(tools && mcp !== undefined ? { mcp } : {}) }).sources);
+    return packets.get(key);
+  };
+  const mcpCount = () => { try { return Object.keys(readRootMcp(root)?.servers ?? {}).length; } catch { return undefined; } };
+  // Built now, so a changed source document still refuses launch rather than a later turn.
+  packetFor(true, mcpCount()); packetFor(false, undefined);
   const deskStatusPath = resolve(options['desk-status'] ?? join(root, 'desk-status.md'));
   return turn => {
     const now = wallNow(), log = runs();
-    const sources = packets.get(Boolean(toolsOn()));
+    const tools = Boolean(toolsOn()), sources = packetFor(tools, tools ? mcpCount() : undefined);
     const desk = deskStatusSource(readDeskStatus(deskStatusPath), now, deskStatusPath);
     const note = handoff();
     return [...sources, disciplineSource(view), selfStateSource(selfStateBrief(view, log, now, timeZoneOf(options), current())), desk, ...(note ? [note] : [])];
