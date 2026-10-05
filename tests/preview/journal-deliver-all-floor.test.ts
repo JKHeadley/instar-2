@@ -125,7 +125,7 @@ it('the claim-scoped floor removes only what it named: every other result still 
     const reply = w.sent.slice(sends).join('\n');
     const withholds = claimScopedWithholds(w.journal.view);
     expect(withholds.trimmed).toBe(1);
-    expect(withholds.removed ?? withholds.sentencesRemoved).toBe(1);
+    expect(withholds.sentencesRemoved).toBe(1);
     expect(reply).not.toContain(DEFERRED_CLAIM);
     // D1c: the product's own wording, every result still carried, and nothing left waiting afterwards.
     expect(reply).toContain('Follow-up on "');
