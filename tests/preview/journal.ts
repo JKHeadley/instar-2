@@ -21,6 +21,7 @@ import { parseDatedItem, restatedDatePhrase, dueState, selectDatedItems, withinN
 import { isStatusCommand, isStopCommand, statusAnswer, STOP_CONFIRM_TEXT } from './status-command.js';
 import { AGENT_PROMISE_LIMIT, fulfillableCommitment, fulfillmentProposals, fulfillmentSupported, legacyFulfillsReminder, promiseProposals, recordedPromises, type AgentPromise, type FulfillmentProposal, type PromiseProposal } from './agent-commitment.js';
 import { messageTime, zoneFormatter } from './self-state.js';
+import { TOOLS_BRIEFING, TOOLS_LIMITS } from './briefing.js';
 import type { ObjectionDisposition, ReplyCheckResult, ReplyCheckPorts, ReplyDecision, ReplyFinding, ReplyReviewDiagnostics, ReplyRule } from './reply-check.js';
 import { SUMMARY_QUESTION, interpretSummaryJev, type SummaryCheckResult } from './summary-check.js';
 import { exactSummaryFaithfulness, interpretSummaryJev as interpretFaithfulnessJev, summaryFaithfulnessEvidence, summaryJevScore, summaryJevUsage } from './summary-faithfulness.js';
@@ -149,8 +150,12 @@ export const SUMMARY_CONCEPT_TERMS = 6;
 /** The summary answer format. Recorded on every summary failure written by this build: an attempt budget or an
  * over-cap brake is spent only by failures made under the current format, so a build that changes what a summary is
  * asked, or how its answer is read and accepted, is a changed input and may try a span an older build exhausted.
- * 3: the prose target is no longer a refusal line, and prose written in `reply` beside the other fields is read. */
-export const SUMMARY_FORMAT = 3;
+ * 3: the prose target is no longer a refusal line, and prose written in `reply` beside the other fields is read.
+ * 4: the summary's own fields are asked for directly beside `reasoning`, and an answer written as JSON text inside
+ * `answer` is read as the object it was meant to be or named as a defect (plan #507, answer-reading.ts `object`). Both
+ * what the summary is asked and how its answer is read changed, so the span the live root of 2026-10-04 exhausted
+ * under format 3 may be tried again. */
+export const SUMMARY_FORMAT = 4;
 /** Summary prose over SUMMARY_TEXT_CEILING_BYTES: the answer asked too much, the same class as an over-cap attempt, so
  * a shorter span is offered next and the over-cap brake applies. */
 export const SUMMARY_OVER_BOUND_REASON = 'summary answer over its bound';
@@ -700,12 +705,12 @@ export interface DirectiveNote { source: string; quote: string; at: number; supe
 /** The governed boundaries a preview refusal may cite (Rule 103). Each names a real preview
  * governance source; a boundary that is none of these is a proposal for the operator. */
 export const GOVERNING_CONSTRAINTS = Object.freeze({
-  'reply-only-grant': 'replies and requested reminders or summaries only',
+  'reply-only-grant': 'bot: replies and requested reminders or summaries',
   'no-tools': 'no external tools or accounts',
   'operator-authority': 'an approval, credential or policy only the operator holds',
   'spend-allowance': 'recorded call and reply allowances',
   'operator-stop': 'stop latch and trial expiry',
-  'secret-custody': 'live secrets stay in custody',
+  'secret-custody': 'credentials vaulted, never shown',
 } as const);
 export type GoverningConstraint = keyof typeof GOVERNING_CONSTRAINTS;
 /** Rules 18, 21: the current capability and owned-identity read of this preview runner, consulted by the obligation
@@ -715,13 +720,18 @@ export const PREVIEW_CAPABILITIES = Object.freeze({ externalTools: 'none', accou
   sends: GOVERNING_CONSTRAINTS['reply-only-grant'], ownedIdentities: ['the Telegram bot this trial runs as'],
   secretCustody: GOVERNING_CONSTRAINTS['secret-custody'] });
 export type PreviewCapability = keyof typeof PREVIEW_CAPABILITIES;
-/** Part Thirteen §9 (docs/17-harness-adapters): the same read for a call that really runs on the scoped-tool route. Only the tools
- * entry and its constraint wording differ; the keys stay the same evidence keys, so a blocker is judged as before. The
- * tools themselves are named once, by the capability note's Tools line (TOOLS_BRIEFING, generated from
- * SUBSCRIPTION_TOOL_NAMES); "as listed" points there, because the floor packet has no bytes to name them twice. */
-// With tools, accounts are reachable only through the root's MCP reads; every account write is the effect doorway's.
-export const PREVIEW_TOOL_CAPABILITIES = Object.freeze({ ...PREVIEW_CAPABILITIES, externalTools: 'as listed', accounts: 'no writes' });
-const GOVERNING_CONSTRAINTS_WITH_TOOLS = Object.freeze({ ...GOVERNING_CONSTRAINTS, 'no-tools': 'listed tools; no account writes' });
+/** Part Thirteen §9 (docs/17-harness-adapters): the same read for a call that really runs on the scoped-tool route. Only the tools,
+ * accounts and credential entries and their constraint wording differ; the keys stay the same evidence keys, so a blocker is
+ * judged as before. What the turn can do is stated once, by the capability note's tools item and limits (briefing.ts
+ * toolsBriefing, TOOLS_LIMITS); "listed" and "see Limits" point there, because the floor packet has no bytes to say it twice.
+ * With tools, a logged-in account is reached through a root MCP server and an account write is the effect doorway's, admitted
+ * once the operator grants it. Live 2026-10-04 (cint-L49, K11a): the old "no writes" / "no account writes" was read as a
+ * standing block the design does not have (Rule 103), and "unlisted tools" was read by the reply review as "this run has no
+ * tools"; "listed tools only" says the boundary without denying the set. */
+export const PREVIEW_TOOL_CAPABILITIES = Object.freeze({ ...PREVIEW_CAPABILITIES, externalTools: 'listed', accounts: 'listed',
+  secretCustody: 'see Limits' });
+const GOVERNING_CONSTRAINTS_WITH_TOOLS = Object.freeze({ ...GOVERNING_CONSTRAINTS, 'no-tools': 'listed tools only',
+  'secret-custody': 'see Limits' });
 /** The capability read and the governing constraints for a call, from the route it actually runs on. */
 export const previewCapabilities = (tools: boolean) => tools ? PREVIEW_TOOL_CAPABILITIES : PREVIEW_CAPABILITIES;
 export const governingConstraints = (tools: boolean) => tools ? GOVERNING_CONSTRAINTS_WITH_TOOLS : GOVERNING_CONSTRAINTS;
@@ -761,7 +771,7 @@ export const OBLIGATION_DECISION_NONE = 'Nothing can be declared on this turn: n
 /** The same instructions for an answer that runs on the scoped-tool route: its own tool calls are recorded attempts. */
 export const OBLIGATION_DECISION_TOOLS = replacedClause(OBLIGATION_DECISION,
   'You attempted nothing outside this reply, so never call an avenue tried; a missing tool is no-tools.',
-  'Only your recorded tool calls ran; never call an avenue tried; a tool not listed is no-tools.');
+  'Only your recorded tool calls ran; never call an avenue tried.');
 /** Rules 20, 21, 23, 99: a settled cannot-do or needs-a-person claim the agent actually sent,
  * with its finite lawful avenues, the smallest outside action and a future recheck. */
 export interface BlockerNote { source: string; claim: string; kind: 'cannot-do' | 'needs-human';
@@ -771,8 +781,10 @@ export interface BlockerNote { source: string; claim: string; kind: 'cannot-do' 
 /** One lawful avenue and the runner-owned capability evidence for its disposition. */
 export interface BlockerAvenue { avenue: string; disposition: Extract<ExhaustionAvenue['disposition'], typeof PREVIEW_AVENUE_DISPOSITIONS[number]>;
   evidence: PreviewCapability }
-/** A due recheck's retained reassessment of the wall (Rules 99, 103). */
-export interface BlockerAssessment { avenues: BlockerAvenue[]; constraint: GoverningConstraint; reason: string }
+/** A due recheck's retained reassessment of the wall (Rules 99, 103). `wording` is the governing constraint's wording
+ * the reassessment was made under (the runner's, never the model's), so a renewed wall is current evidence exactly while
+ * that wording still holds (currentBlockers); a record from before it carries none and is read as current. */
+export interface BlockerAssessment { avenues: BlockerAvenue[]; constraint: GoverningConstraint; reason: string; wording?: string }
 export type ProposedBlocker = Omit<BlockerNote, 'source' | 'at' | 'rechecks'>;
 /** What one answer proposed for the obligation population before its reply is sent. */
 type AnswerObligations = { directives?: { quote: string; supersedes?: number }[];
@@ -1129,7 +1141,7 @@ export type JournalRecord =
    * trace records each tool call, its admission and its result after the turn. */
   | { kind: 'tool-turn'; phase: 'reserved'; id: string; attempt: number; calls: number; delegation?: ToolDelegation;
       mcp?: { servers: string[]; reads: number; digest: string }; workspace?: ToolWorkspaceRow; at: number }
-  | { kind: 'tool-turn'; phase: 'refused'; id: string; reason: 'call cap' | 'prompt size'; at: number }
+  | { kind: 'tool-turn'; phase: 'refused'; id: string; reason: 'call cap' | 'prompt size' | 'mcp credential unavailable' | 'harness identity unavailable'; at: number }
   | { kind: 'tool-turn'; phase: 'trace'; id: string; attempt: number; calls: ToolTraceCall[]; consistent: boolean;
       edges?: ToolChildEdge[]; egress?: ToolEgressRequest[]; egressRequests?: number; egressLimited?: string; workspaceBytes: number | null;
       session?: ToolSessionRow; volume?: ToolVolumeRow; harness?: ToolHarnessRow; at: number }
@@ -1841,7 +1853,7 @@ export const declaredObligations = (view: JournalView, id: string, now: number) 
   // told never to renew one, so a reply restating it is judged against that record, not held as unrecorded. One due
   // for recheck (or cleared) is not current evidence and is left out; past the bound the oldest are left out too.
   // Due is judged at review time `now`, not intake: a message queued before the recheck date is reviewed after it.
-  const settled = turn ? recentWithin(openBlockers(view).filter(({ note }) => note.source !== id && note.recheckAt > now)
+  const settled = turn ? recentWithin(currentBlockers(view, turn.toolRouted === true).filter(({ note }) => note.source !== id && note.recheckAt > now)
     .map(({ id: blocker, note }) => ({ id: blocker, kind: note.kind, claim: note.claim, avenues: note.avenues,
       constraint: note.constraint, outsideAction: note.outsideAction })), SETTLED_REVIEW_BYTES) : [];
   // Part Thirteen §9: the capability read follows the route the answer's LATEST attempt ran on (a format re-ask or
@@ -1901,6 +1913,50 @@ export const SETTLED_BLOCKER_SCOPE = 'A settled blocker covers only its own clai
 /** A settled blocker stays open until a recorded recheck clears it (Rule 99). */
 export const openBlockers = (view: JournalView) => view.blockers.flatMap((note, id) =>
   note.rechecks.at(-1)?.outcome === 'cleared' || retractedTurn(view, note.source) ? [] : [{ id, note }]);
+/** Rules 20, 99, 103: the wording of the governing constraint a blocker was settled behind, read from its source turn's
+ * retained answer packet; undefined when that packet is not retained or carried no such entry. A wall rests on the
+ * capability read it was settled under: when that wording has since changed (a build widened what the agent can do, or
+ * the call runs on the other route), the wall is not offered to the answer as settled; it stays recorded, counted and
+ * due on its own recheck day. Live 2026-10-04 (cint-L49, K11a, update 6232231): walls settled under "no account writes"
+ * and "live secrets stay in custody" were restated as standing limits after the read no longer said so. */
+export function settledConstraintWording(view: JournalView, note: BlockerNote): string | undefined {
+  // A still-blocked recheck re-settles the wall under the wording it was reassessed with (Rule 99): the latest one wins.
+  const renewal = note.rechecks.filter(recheck => recheck.outcome === 'still-blocked').at(-1);
+  if (renewal) return renewal.assessment?.wording;
+  const turn = view.turns.get(note.source), prompt = turn?.prompt;
+  if (typeof prompt !== 'string') return undefined;
+  // A settled answer packet never changes: each prompt's constraints are parsed once.
+  const cached = promptConstraints.get(turn!);
+  if (cached?.prompt === prompt) return wordingOf(cached.constraints, note.constraint);
+  let constraints: Record<string, unknown> | undefined;
+  try {
+    // The prepared envelope's context message (live), or the packet itself where the model input is the bare context.
+    const parsed = JSON.parse(prompt) as { messages?: { role?: string; content?: string }[] } | null;
+    const context = parsed?.messages?.find(item => item.role === 'context')?.content;
+    const outer = (context === undefined ? parsed : JSON.parse(context)) as { packet?: unknown } | null;
+    const packet = (outer && typeof outer === 'object' && 'packet' in outer ? outer.packet : outer) as
+      { governingConstraints?: Record<string, unknown> } | null;
+    constraints = packet?.governingConstraints ?? undefined;
+  } catch { constraints = undefined; }
+  promptConstraints.set(turn!, { prompt, constraints });
+  return wordingOf(constraints, note.constraint);
+}
+const promptConstraints = new WeakMap<Turn, { prompt: string; constraints: Record<string, unknown> | undefined }>();
+const wordingOf = (constraints: Record<string, unknown> | undefined, key: string) => {
+  const wording = constraints?.[key];
+  return typeof wording === 'string' ? wording : undefined;
+};
+/** Rules 20, 45, 99, 103: the open walls that are current evidence for a call on the given route, the one rule the answer
+ * packet and the reply review both read. A wall whose settled wording (its source answer's, or its latest renewal's)
+ * differs from the route's wording now is not offered as settled; it stays open, counted and due on its recheck day,
+ * and a renewal under the current wording makes it current again. Unknown wording is read as current. */
+export const currentBlockers = (view: JournalView, tools: boolean) => {
+  const now = governingConstraints(tools);
+  return openBlockers(view).filter(({ note }) => {
+    const settled = settledConstraintWording(view, note);
+    return settled === undefined || settled === now[note.constraint];
+  });
+};
 const validLoops = (loops: unknown): loops is ReplyLoop[] => Array.isArray(loops) && loops.length <= 5
   && new Set(loops.map(loop => (loop as ReplyLoop)?.quote)).size === loops.length
   && loops.every(loop => loop && (loop.kind === 'deferral' || loop.kind === 'judgment' || loop.kind === 'promise')
@@ -1927,7 +1983,8 @@ function validBlocker(value: unknown, at: number): value is ProposedBlocker {
 const validBlockerAssessment = (value: unknown): value is BlockerAssessment => {
   const assessment = value as BlockerAssessment | null;
   return !!assessment && validAssessment(assessment.avenues, assessment.constraint) && boundedText(assessment.reason, 8, 500)
-    && Object.keys(assessment).length === 3;
+    && (assessment.wording === undefined ? Object.keys(assessment).length === 3
+      : boundedText(assessment.wording, 1, 300) && Object.keys(assessment).length === 4);
 };
 /** An answer may clear a settled blocker the message shows no longer holds; renewing one needs the scheduled
  * recheck's retained reassessment of every avenue (Rule 99), never a new date alone. */
@@ -3028,7 +3085,12 @@ export const TOOL_ATTEMPTS_PARTIAL_MEANING = 'The first tool calls this reply\'s
   + 'later calls are not shown. A refused call is not an attempt at an avenue. A tool result the reply reports may come from an omitted '
   + 'call, so its absence here does not show that the call or result did not happen.';
 const attemptExcerpt = (text: string) => text.length > TOOL_ATTEMPT_EXCERPT_CHARS ? `${text.slice(0, TOOL_ATTEMPT_EXCERPT_CHARS)}…` : text;
-export interface ToolTurnStats { invocations: number; reservedCalls: number; refusedCap: number; refusedPrompt?: number; toolCalls: number;
+export interface ToolTurnStats { invocations: number; reservedCalls: number; refusedCap: number; refusedPrompt?: number;
+  /** Turns answered without tools because an MCP server's SecretRef could not be opened from custody. */
+  refusedCredential?: number;
+  /** Plan #473: turns answered without tools because the separate harness user was not ready, and the latest such
+   * answers' ids (bounded), so each answer can carry its own notice. */
+  refusedIdentity?: number; identityRefused?: string[]; toolCalls: number;
   toolRefusals: number; inconsistent: number; open: string[];
   /** Rule 114: subagent edges the traces recorded, by how each ended (absent until a turn started one). */
   children?: { started: number; returned: number; cancelled: number; unknown: number };
@@ -3098,6 +3160,9 @@ function projectToolTurn(view: JournalView, row: Extract<JournalRecord, { kind: 
   if (row.phase === 'refused') {
     if (row.reason === 'call cap') view.toolTurns = { ...stats, refusedCap: stats.refusedCap + 1 };
     else if (row.reason === 'prompt size') view.toolTurns = { ...stats, refusedPrompt: (stats.refusedPrompt ?? 0) + 1 };
+    else if (row.reason === 'mcp credential unavailable') view.toolTurns = { ...stats, refusedCredential: (stats.refusedCredential ?? 0) + 1 };
+    else if (row.reason === 'harness identity unavailable') view.toolTurns = { ...stats, refusedIdentity: (stats.refusedIdentity ?? 0) + 1,
+      identityRefused: [...(stats.identityRefused ?? []), row.id].slice(-16) };
     else throw Error('preview journal: tool turn refusal');
     return;
   }
@@ -4811,8 +4876,9 @@ export interface PreviewPorts {
   /** Rules 8, 56, 100: due reminder lines (credential expiry stages, a failing doorway check), most urgent first. */
   /** Offered for the answer to turn `turn` (its own effect-doorway refusals ride first). */
   replyNotices?(turn?: string): readonly ReplyNotice[];
-  /** Plan #442 (Rules 4, 86, 100): the secret values the runner holds (vault and host custody) for the exact floor on
-   * every reply. Read in memory only, never recorded or sent to a model. */
+  /** Plan #442 (Rules 4, 86, 100): the secret values the runner holds (vault and host custody, the harness login, the
+   * root's MCP credentials; plan #507: every value once read stays held) for the exact floor on every reply. Read in
+   * memory only, never recorded or sent to a model. */
   heldSecrets?(): readonly string[];
   /** Rules 9, 96, 114: the runner's bounded concurrent owned-work view (concurrentWorkItem), carried into operator packets. */
   concurrentWork?(): object | null;
@@ -6069,6 +6135,18 @@ export function createJournalWorker(journal: ReturnType<typeof openPreviewJourna
 
   /** One journal is the agent's memory for every conversation. A turn from
    * another conversation is labelled with where and when it was said. */
+  /** Rules 45, 78, 84: the tool route's capability and constraint entries point at the capability note ("listed", "see
+   * Limits"), so a tool-bearing work step carries the same note an answer does (review round 1, finding 2). When the
+   * supplied note is not the tool note (no sources, or the activation is off while a delegated session still has tools),
+   * it carries the note's own tools item and limits, with the MCP count unknown rather than guessed. */
+  const toolNote = () => {
+    const supplied = typeof ports.sources === 'function' ? ports.sources() : ports.sources;
+    const note = supplied?.find(source => (source as { id?: unknown } | null)?.id === 'capability-note') as
+      { id: string; title?: string; text?: unknown } | undefined;
+    return note && typeof note.text === 'string' && note.text.includes(TOOLS_LIMITS)
+      ? { id: note.id, ...(note.title === undefined ? {} : { title: note.title }), text: note.text }
+      : { id: 'capability-note', text: `You have ${TOOLS_BRIEFING} ${TOOLS_LIMITS}` };
+  };
   /** Under byte pressure, a source that declares `yieldBytes` (the desk report) is cut to that many bytes before
    * conversation history or reply guidance yields. The cut is labelled and names where the full text is; [] when
    * nothing needed cutting. */
@@ -6264,7 +6342,8 @@ export function createJournalWorker(journal: ReturnType<typeof openPreviewJourna
       const source = journal.view.turns.get(note.source)!;
       return { id, quote: clean(redact(note.quote).text, true, note.source), since: dated(source), sourceLabel: turnLabel(source) };
     });
-    const blockerItems = awayFor === undefined ? [] : recentWithin(openBlockers(journal.view).map(({ id, note }) => ({ id, kind: note.kind,
+    const toolRouted = awayFor !== undefined && ports.toolRoute?.(awayFor.id) === true;
+    const blockerItems = awayFor === undefined ? [] : recentWithin(currentBlockers(journal.view, toolRouted).map(({ id, note }) => ({ id, kind: note.kind,
       claim: clean(redact(note.claim).text, true), constraint: note.constraint, outsideAction: clean(redact(note.outsideAction).text, true),
       recheck: localStamp(note.recheckAt, zone).slice(0, 10), recheckDue: now >= note.recheckAt })), BLOCKER_ITEMS_BYTES);
     // Rules 79, 82, 84, 98: the request this very message answered, else the latest one still to report. Plan #371: a
@@ -6301,8 +6380,11 @@ export function createJournalWorker(journal: ReturnType<typeof openPreviewJourna
       memoryVersion: journal.view.memory.length, purpose: 'Make coherence something an AI cannot lose.',
       // What you can do is the generated capability-note source; this field carries only how to use the packet.
       // The capability-note source already states that it is generated from the register and that nothing
-      // unlisted is available, so that sentence is not repeated here (Rule 116).
-      capability: `Your capabilities are the capability-note source. Summary covers earlier turns; history has later turns. For a question about what the operator said, state a remembered detail only when the offered journal evidence supports that exact detail, not a similar name, event or date, a summary inference, your earlier reply or the question's premise; otherwise say "I don't know from this journal", never that the operator did not say it. Cite sourceLabel for supported remembered facts. Say when the source is unknown.`
+      // unlisted is available, so that sentence is not repeated here (Rule 116). On the tool route, whose note lists
+      // conditional abilities rather than closing with that sentence, the agent describing itself gives only the note's
+      // items and limits: live 2026-10-04 (cint-L49, K11a, update 6232231) replays restated earlier
+      // refusals in history as standing limits the note does not have (Rule 103; lanes/w4-selfdesc-PROGRESS.md).
+      capability: `Your capabilities are the capability-note source${toolRouted ? '; describing yourself, give only its items and limits' : ''}. Summary covers earlier turns; history has later turns. For a question about what the operator said, state a remembered detail only when the offered journal evidence supports that exact detail, not a similar name, event or date, a summary inference, your earlier reply or the question's premise; otherwise say "I don't know from this journal", never that the operator did not say it. Cite sourceLabel for supported remembered facts. Say when the source is unknown.`
         // Hold guidance rides only while a held item is visible (history, recall, or today's status); exact-unit guidance only with a number carrying a unit or currency.
         // Rule 19, live 2026-10-03 (I-proofroom2-20261003-061647, I3b, update 6231611): the operator answered
         // "17 × 3 = 51" with "No, it's 41." and the reply asked which earlier answer was meant without naming any
@@ -6347,7 +6429,7 @@ export function createJournalWorker(journal: ReturnType<typeof openPreviewJourna
         + (contradictions.length ? ' contradictions quotes two sourced statements with the same literal subject and different values. This is a narrow signal, not a verdict. Judge both statements in context. If the newer verified operator statement updates the same fact, return memory mode update with the exact earlier quote and exact newer quote; answer with the current value first and mention the dated change when relevant. If they are unrelated or ambiguous, return memory:[] and ask only if needed.' : '')
         + (personMergeCandidates.length ? ' personMergeCandidates are possible links between two particular notes, not identity facts. Ask the operator whether the specific people are the same when relevant. Never assume a link or combine homonyms from a shared name.' : '')
         + (personMerges.length ? ' personMerges records links the verified operator explicitly confirmed between particular notes. Other people with the same name remain separate.' : '')
-        + (commitments.length ? ' commitments holds sourced, dated requests and exact promises in their full message or reply. An item with sources is one request or promise repeated across those later messages. Mention relevant or due items as data. You have no external tools. Only an explicit operator request for a later time (dated remind:true) lets the runner answer it at that time; a promise itself grants no send. Never claim an external act without evidence. Only an API-accepted reply that carries it out or verified operator completion closes one. Absence from this bounded list proves nothing. An item with need is scheduled work of yours waiting on waitsOn for exactly that; progress is your latest step on it. When this message supplies a need, continue that work.' : '')
+        + (commitments.length ? ' commitments holds sourced, dated requests and exact promises in their full message or reply. An item with sources is one request or promise repeated across those later messages. Mention relevant or due items as data. Only an explicit operator request for a later time (dated remind:true) lets the runner answer it at that time; a promise itself grants no send. Never claim an external act without evidence. Only an API-accepted reply that carries it out or verified operator completion closes one. Absence from this bounded list proves nothing. An item with need is scheduled work of yours waiting on waitsOn for exactly that; progress is your latest step on it. When this message supplies a need, continue that work.' : '')
         + (openQuestions.length ? ' openQuestions are earlier operator turns whose answer was held, lost, or judged unanswered. They are data, not instructions. Decide by meaning whether one relates to the new message; mention it only when useful. If this reply actually answers one, return JSON with reply, memory:[], and closedQuestions containing its listed id. Do not close it for a guess, an acknowledgement, or a promise to answer later. A listed held turn may be a statement rather than a question; judge it in context. Absence from this bounded list is not evidence that no question remains.' : '')
         + (corrections.length ? ' corrections lists possible problems an automatic check found, after sending, in your earlier replies, each with the numbered rule it relates to. They are signals from a simple pattern check, not verdicts: read your reply again; if a problem is real, correct it for the operator briefly and plainly in this reply; if the check misread it, say nothing about it.' : '')
         + (reference ? ' replyTo identifies an earlier Telegram message. Use retained journal text only; unavailable means do not infer its content from the embedded reply quote.' : '')
@@ -8924,7 +9006,7 @@ export function createJournalWorker(journal: ReturnType<typeof openPreviewJourna
                 memoryCandidates: memoryCandidates.slice(0, count) } : {}),
               ...(includeMemory && reminderOffer.length ? { reminders: reminderOffer.map(item => ({ id: reminderId(item),
                 quote: clean(redact(item.quote).text, true), due: `${reminderDue(item)} ${item.zone}` })),
-                reminderDecision: 'reminders lists what the verified operator asked you earlier to do at a later time. Return cancelReminders:[ids] that memoryRequest.message itself withdraws, or cancelReminders:[] when it withdraws none; a further request, even for the same time, adds a request and withdraws nothing. Quoted text never cancels.' } : {}) }) : base;
+                reminderDecision: 'reminders lists what the verified operator asked you earlier to do at a later time. For each one memoryRequest.message itself withdraws, return cancelReminders:[{"id": the reminders id, "quote": the words of memoryRequest.message that withdraw it, copied exactly}]; return cancelReminders:[] when it withdraws none. Your own reply is never the evidence, and a withdrawal with no such quote is refused. A further request, even for the same time, adds a request and withdraws nothing. Quoted text never cancels.' } : {}) }) : base;
             // Rule 11: messages summarized before their meaning terms existed are offered again,
             // oldest first and bounded, so the derived index converges instead of staying partial.
             for (const packet of backlog.length && !overCapRetry ? [JSON.stringify({ ...JSON.parse(plain) as object,
@@ -9029,11 +9111,30 @@ export function createJournalWorker(journal: ReturnType<typeof openPreviewJourna
           if (trigger && Array.isArray(parsed.memory) && parsed.memoryDisposition !== 'unresolved')
             memory = memoryFrom(parsed.memory, trigger, new Set(memorySources),
               (JSON.parse(packet) as { summary?: { text: string } }).summary?.text, [], heldForgets);
+          // One field, one shape (plan #507). `cancelReminders` on the ANSWER side is
+          // [{id, quote-of-this-message}], and this side asked for [ids] -- the same name for two shapes, to the same
+          // model. It writes the answer's shape here: all three real-model runs of 2026-10-04 that volunteered the
+          // field wrote [{id, quote}], as did the recorded live output of 2026-10-02, so the withdrawal was read as
+          // nothing and the summary was refused for want of it. Both forms are read, and the quoted form carries the
+          // answer side's own evidence rule: the id must be one this packet offered AND still open, and the quote must
+          // be copied from the operator's own withdrawing message (Rules 57, 93 -- the agent's reply is never the
+          // evidence). So the object form is strictly the stronger of the two, never a loosening.
           if (reminderOffer.length && Array.isArray(parsed.cancelReminders)) {
             const pending = new Set(openRequests(journal.view).map(datedKey));
             const ids = new Map(reminderOffer.filter(item => pending.has(datedKey(item))).map(item => [reminderId(item), datedKey(item)]));
-            if (parsed.cancelReminders.every(id => typeof id === 'string' && ids.has(id)))
-              reminderCancels = [...new Set(parsed.cancelReminders as string[])].map(id => ids.get(id)!);
+            // Exactly the text the packet showed as memoryRequest.message, so a legitimate quote of it always matches.
+            const shown = trigger ? clean(redact(trigger.text).text, false, trigger.id) : '';
+            const withdrawn = (value: unknown): string | undefined => {
+              if (typeof value === 'string') return ids.has(value) ? value : undefined;
+              if (value === null || typeof value !== 'object' || Array.isArray(value)) return undefined;
+              const { id, quote } = value as { id?: unknown; quote?: unknown };
+              return typeof id === 'string' && ids.has(id) && typeof quote === 'string'
+                && quote.trim().length >= WITHDRAWAL_QUOTE_MIN_CHARS
+                && Buffer.byteLength(quote) <= WITHDRAWAL_QUOTE_MAX_BYTES && shown.includes(quote) ? id : undefined;
+            };
+            const cited = parsed.cancelReminders.map(withdrawn);
+            if (cited.every(id => id !== undefined))
+              reminderCancels = [...new Set(cited as string[])].map(id => ids.get(id)!);
           }
           if (Array.isArray(parsed.closed)) closed = closuresFrom(parsed.closed, through, new Set(offered.map(item => item.id)));
           if (Array.isArray(parsed.commitments)) {
@@ -9609,7 +9710,8 @@ export function createJournalWorker(journal: ReturnType<typeof openPreviewJourna
             .filter(turn => verifiedOperatorTurn(journal.view, turn) && !probeTurn(journal.view, turn)).slice(-5)
             .map(turn => ({ date: dated(turn), text: clip(clean(redact(turn.text).text, true, turn.id), 1000) })) } : {}),
         directives: openDirectives(journal.view).map(({ id, note }) => ({ id, quote: clean(redact(note.quote).text, true, note.source) })),
-        governingConstraints: governingConstraints(tools), capabilities: previewCapabilities(tools) });
+        governingConstraints: governingConstraints(tools), capabilities: previewCapabilities(tools),
+        ...(tools ? { sources: [toolNote()] } : {}) });
       let context: string | undefined;
       for (const level of ['facts-and-messages', 'messages-only', 'none'] as const) {
         const candidate = packetWith(level);
@@ -9635,7 +9737,10 @@ export function createJournalWorker(journal: ReturnType<typeof openPreviewJourna
       if (typeof answer !== 'string' && 'failureClass' in answer) { settle({ outcome: 'failed', ...usage }); return true; }
       // Rules 4, 10, 86: whether the report is the finished work is the work step's own full-context judgment (its
       // packet carries yourReply and the question says repeating it is not the work); no text overlap overrides it.
-      settle({ ...obligationDecision(typeof answer === 'string' ? answer : answer.text, item.kind, ports.now(), zone), ...usage });
+      const decided = obligationDecision(typeof answer === 'string' ? answer : answer.text, item.kind, ports.now(), zone);
+      // A renewal records the constraint wording this step was shown, so the wall is current evidence while it holds.
+      settle({ ...decided, ...(decided.assessment ? { assessment: { ...decided.assessment,
+        wording: governingConstraints(tools)[decided.assessment.constraint] } } : {}), ...usage });
       return true;
     } finally { working = false; }
   };

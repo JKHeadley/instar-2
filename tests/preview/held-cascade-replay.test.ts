@@ -21,7 +21,7 @@ const JEV_804_SCORES = { raw_path: 0.01, cli_command: 0.02, config_key: 0.02, cr
 const REVIEW_UNKNOWN = 'preview: reply review unavailable';
 const key = new Uint8Array(32).fill(5);
 
-interface Flow { jev: string; answer: string; review: 'unknown' | 'pass' | 'violation'; crashAt?: string; preHeld?: boolean }
+interface Flow { jev: string; answer: string; review: 'unknown' | 'pass' | 'violation'; crashAt?: string; preHeld?: boolean; held?: string[] }
 async function flow(options: Flow) {
   const root = realpathSync(mkdtempSync(join(tmpdir(), 'preview-holdcascade-')));
   const path = join(root, 'journal.encrypted');
@@ -32,6 +32,7 @@ async function flow(options: Flow) {
     prepareModel: (input: Parameters<typeof prepareJournalEnvelope>[0]) => prepareJournalEnvelope(input, 'claude-sonnet-5', 'grant:preview', clock.now),
     model: async () => { if (!fresh) throw Error('model repeated'); return options.answer; },
     checkOutbound: () => {},
+    ...(options.held ? { heldSecrets: () => options.held ?? [] } : {}),
     replyCheck: { elapsedMs: () => 0,
       jev: async () => { if (!fresh) throw Error('Jev repeated'); calls.jev++; return { value: JSON.parse(options.jev) as unknown, latencyMs: 191 }; },
       escalate: async () => {
@@ -130,4 +131,20 @@ it('confidence is read from the recorded score, both sides of the 0.70 line, and
   expect(jevConfidentCredential({ verdict: 'violation', ruleIds: ['credential'], confidence: 0.8, path: 'jev', latencyMs: 0 })).toBe(true);
   expect(jevConfidentCredential({ verdict: 'unsure', ruleIds: ['credential'], confidence: 0.6, path: 'jev', latencyMs: 0 })).toBe(false);
   expect(jevConfidentCredential({ verdict: 'violation', ruleIds: ['credential'], confidence: null, path: 'subscription', latencyMs: 0 })).toBe(false);
+});
+
+// Plan #473 (2): the harness's own login is a held value. A value read through the file-tool race never leaves in a reply,
+// even with its kind prefix removed (the shape floor alone would no longer see it). Synthetic token; the answer is 969389800's.
+const HARNESS_LOGIN = 'sk-ant-oat01-SyntheticHarnessLoginValue0123456789abcdefABCDEF';
+it('969389800 recorded answer carrying the harness login (prefix removed) is withheld as a credential, before Jev', async () => {
+  const leaked = `${ANSWER_800} ${HARNESS_LOGIN.replace(/^sk-ant-oat01-/u, '')}`;
+  const { sends, calls } = await flow({ jev: JEV_800, answer: leaked, review: 'pass', held: [HARNESS_LOGIN] });
+  expect(calls).toEqual({ jev: 0, review: 0 });
+  expect(sends).toEqual([CREDENTIAL_SHAPE_NOTICE]);
+  expect(sends.join('')).not.toContain('SyntheticHarnessLogin');
+});
+it('969389800 recorded answer with held values that it does not carry is answered exactly as before', async () => {
+  const { sends, calls } = await flow({ jev: JEV_800, answer: ANSWER_800, review: 'unknown', held: [HARNESS_LOGIN] });
+  expect(calls).toEqual({ jev: 1, review: 1 });
+  expect(sends).toEqual([`PREVIEW — ${ANSWER_800}`]);
 });

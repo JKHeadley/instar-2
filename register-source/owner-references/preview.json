@@ -47,7 +47,7 @@
       "stage": "build",
       "artifact": {
         "path": "tests/preview/journal-obligations.test.ts",
-        "hash": "sha256:9fb411bac2c4bc9aa6c369080615b190ac8ab40133db54abaccd45b97fae07dc"
+        "hash": "sha256:61687812af170b07532477172436af7bd51843d3a027689f4320ed09c1f74c8d"
       }
     },
     {
@@ -71,7 +71,7 @@
       "stage": "build",
       "artifact": {
         "path": "tests/preview/model-json.test.ts",
-        "hash": "sha256:1b7f35ee358fd3a9cf1d22dad3c26907f9a9cc7e9ae601b932ee10f959d41abb"
+        "hash": "sha256:98831eb20d1053bf09a4c6f43b63e8a0eaa598c4b2a72b86a85d5f6b31309ed1"
       }
     },
     {
