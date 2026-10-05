@@ -530,6 +530,13 @@ const roleOf = id => id.endsWith(':reply-review') || id.endsWith(':revision-revi
  * and no later review would catch it. Nothing branches on what the text means, only on which consumer asked.
  */
 const wrappedPolicyOf = role => role === 'answer' ? 'accept' : 'refuse';
+/** Plan #507, the same declaration one layer deeper: is this task's ANSWER itself a JSON object? The three summary-side
+ * calls are -- the rolling summary (`summary:<through>`, whose object carries the memory decision and the reminder
+ * withdrawal), its review (`summary:<through>:review`, {verdict, reason}) and the meaning index
+ * (`summary:index:<n>`, {concepts}) -- and each of their consumers parses the answer as JSON. For them the runner
+ * serializes the object, never the model (answer-reading.ts). Every other call's answer is prose or the conversation
+ * protocol's own flat fields. Nothing branches on what the text means, only on which consumer asked. */
+const objectAnswerOf = id => /^summary:/u.test(id);
 /** The registered live judgment a subscription call serves (model-call-boundary.ts). A revised
  * reply's held-class review is a reply review; the revision is the agent's own response to the
  * objections, with its own floor. A retrospective pass is its own judgment, and so is its duty follow-up
@@ -1621,13 +1628,16 @@ async function main() {
       // Plan #491 (answer-reading.ts): the model returns one flat object and the runner builds the Decision from its own
       // values; a wrapped object passes exactly the checks an unwrapped one does, and only the wrapper is dropped.
       // Rule 57: a returned floor may only echo the envelope's own; it never defines or widens it.
-      const reading = readAnswer(result.bytes, { wrapped: wrappedPolicyOf(role), evidence: [id] });
+      const reading = readAnswer(result.bytes, { wrapped: wrappedPolicyOf(role), evidence: [id],
+        ...(objectAnswerOf(id) ? { object: true } : {}) });
       if (!reading.ok) {
         recordShape(shapesPath, role, 'decision', 'malformed', reading.shape);
         // The defect is content-free protocol text; the format re-ask names it so the model can correct exactly that.
         return { state: 'complete', failureClass: 'malformed', defect: reading.defect, usage: result.usage };
       }
       if (reading.shape !== 'bare') recordShape(shapesPath, role, 'decision', 'tolerated', reading.shape);
+      // Rule 2: an object task's answer the runner had to read out of JSON text is a visible deviation, not a silent one.
+      if (reading.objectAsText) recordShape(shapesPath, role, 'decision', 'tolerated', 'object-as-text');
       const value = reading.value;
       if (!value.trim()) return { state: 'complete', failureClass: 'empty', usage: result.usage };
       // Rule 108: the stated reason is recorded beside the conclusion (build 8).

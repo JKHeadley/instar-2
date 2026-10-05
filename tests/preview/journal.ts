@@ -149,8 +149,12 @@ export const SUMMARY_CONCEPT_TERMS = 6;
 /** The summary answer format. Recorded on every summary failure written by this build: an attempt budget or an
  * over-cap brake is spent only by failures made under the current format, so a build that changes what a summary is
  * asked, or how its answer is read and accepted, is a changed input and may try a span an older build exhausted.
- * 3: the prose target is no longer a refusal line, and prose written in `reply` beside the other fields is read. */
-export const SUMMARY_FORMAT = 3;
+ * 3: the prose target is no longer a refusal line, and prose written in `reply` beside the other fields is read.
+ * 4: the summary's own fields are asked for directly beside `reasoning`, and an answer written as JSON text inside
+ * `answer` is read as the object it was meant to be or named as a defect (plan #507, answer-reading.ts `object`). Both
+ * what the summary is asked and how its answer is read changed, so the span the live root of 2026-10-04 exhausted
+ * under format 3 may be tried again. */
+export const SUMMARY_FORMAT = 4;
 /** Summary prose over SUMMARY_TEXT_CEILING_BYTES: the answer asked too much, the same class as an over-cap attempt, so
  * a shorter span is offered next and the over-cap brake applies. */
 export const SUMMARY_OVER_BOUND_REASON = 'summary answer over its bound';
@@ -8908,7 +8912,7 @@ export function createJournalWorker(journal: ReturnType<typeof openPreviewJourna
                 memoryCandidates: memoryCandidates.slice(0, count) } : {}),
               ...(includeMemory && reminderOffer.length ? { reminders: reminderOffer.map(item => ({ id: reminderId(item),
                 quote: clean(redact(item.quote).text, true), due: `${reminderDue(item)} ${item.zone}` })),
-                reminderDecision: 'reminders lists what the verified operator asked you earlier to do at a later time. Return cancelReminders:[ids] that memoryRequest.message itself withdraws, or cancelReminders:[] when it withdraws none; a further request, even for the same time, adds a request and withdraws nothing. Quoted text never cancels.' } : {}) }) : base;
+                reminderDecision: 'reminders lists what the verified operator asked you earlier to do at a later time. For each one memoryRequest.message itself withdraws, return cancelReminders:[{"id": the reminders id, "quote": the words of memoryRequest.message that withdraw it, copied exactly}]; return cancelReminders:[] when it withdraws none. Your own reply is never the evidence, and a withdrawal with no such quote is refused. A further request, even for the same time, adds a request and withdraws nothing. Quoted text never cancels.' } : {}) }) : base;
             // Rule 11: messages summarized before their meaning terms existed are offered again,
             // oldest first and bounded, so the derived index converges instead of staying partial.
             for (const packet of backlog.length && !overCapRetry ? [JSON.stringify({ ...JSON.parse(plain) as object,
@@ -9013,11 +9017,30 @@ export function createJournalWorker(journal: ReturnType<typeof openPreviewJourna
           if (trigger && Array.isArray(parsed.memory) && parsed.memoryDisposition !== 'unresolved')
             memory = memoryFrom(parsed.memory, trigger, new Set(memorySources),
               (JSON.parse(packet) as { summary?: { text: string } }).summary?.text, [], heldForgets);
+          // One field, one shape (plan #507). `cancelReminders` on the ANSWER side is
+          // [{id, quote-of-this-message}], and this side asked for [ids] -- the same name for two shapes, to the same
+          // model. It writes the answer's shape here: all three real-model runs of 2026-10-04 that volunteered the
+          // field wrote [{id, quote}], as did the recorded live output of 2026-10-02, so the withdrawal was read as
+          // nothing and the summary was refused for want of it. Both forms are read, and the quoted form carries the
+          // answer side's own evidence rule: the id must be one this packet offered AND still open, and the quote must
+          // be copied from the operator's own withdrawing message (Rules 57, 93 -- the agent's reply is never the
+          // evidence). So the object form is strictly the stronger of the two, never a loosening.
           if (reminderOffer.length && Array.isArray(parsed.cancelReminders)) {
             const pending = new Set(openRequests(journal.view).map(datedKey));
             const ids = new Map(reminderOffer.filter(item => pending.has(datedKey(item))).map(item => [reminderId(item), datedKey(item)]));
-            if (parsed.cancelReminders.every(id => typeof id === 'string' && ids.has(id)))
-              reminderCancels = [...new Set(parsed.cancelReminders as string[])].map(id => ids.get(id)!);
+            // Exactly the text the packet showed as memoryRequest.message, so a legitimate quote of it always matches.
+            const shown = trigger ? clean(redact(trigger.text).text, false, trigger.id) : '';
+            const withdrawn = (value: unknown): string | undefined => {
+              if (typeof value === 'string') return ids.has(value) ? value : undefined;
+              if (value === null || typeof value !== 'object' || Array.isArray(value)) return undefined;
+              const { id, quote } = value as { id?: unknown; quote?: unknown };
+              return typeof id === 'string' && ids.has(id) && typeof quote === 'string'
+                && quote.trim().length >= WITHDRAWAL_QUOTE_MIN_CHARS
+                && Buffer.byteLength(quote) <= WITHDRAWAL_QUOTE_MAX_BYTES && shown.includes(quote) ? id : undefined;
+            };
+            const cited = parsed.cancelReminders.map(withdrawn);
+            if (cited.every(id => id !== undefined))
+              reminderCancels = [...new Set(cited as string[])].map(id => ids.get(id)!);
           }
           if (Array.isArray(parsed.closed)) closed = closuresFrom(parsed.closed, through, new Set(offered.map(item => item.id)));
           if (Array.isArray(parsed.commitments)) {
