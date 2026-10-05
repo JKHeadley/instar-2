@@ -11,10 +11,11 @@ import { spawn, spawnSync } from 'node:child_process';
 import { closeSync, existsSync, mkdirSync, mkdtempSync, openSync, readFileSync, readdirSync, realpathSync, rmSync, symlinkSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
-import { afterEach, expect, it } from 'vitest';
+import { afterAll, afterEach, beforeAll, expect, it } from 'vitest';
 // @ts-expect-error The hook and its decision stay plain JavaScript: the harness runs them without a loader.
 import { admitEgress, admitToolCall, admitToolCallEffect, admitToolEffect, egressTarget, gitAdvertisement, gitFetchRequest, gitRepository, publicAddress, shellSandboxProfile, toolShellPrefix, toolTrace, webReadHost } from './tool-admission.mjs';
 import { SINGLE_MACHINE_PROFILE } from './activation-authority.js';
+import { startClearHeldCheck } from './held-check-stub.js';
 // @ts-expect-error The doorway stays plain JavaScript, like the hook.
 import { currentEffectPolicy } from './effect-doorway.mjs';
 // @ts-expect-error The effect owner stays plain JavaScript, like the hook.
@@ -24,6 +25,11 @@ const HOOK = join(__dirname, 'tool-admission-hook.mjs');
 const SPIKE = join(__dirname, 'fixtures/tool-turn/spike-cab6b51d');
 const roots: string[] = [];
 afterEach(() => roots.splice(0).forEach(root => rmSync(root, { recursive: true, force: true })));
+// Plan #507: outward calls ask the runner's held-secret check first; a stand-in answers `clear` (held-check-stub.ts).
+let HELD_CHECK = '';
+let stopHeldCheck = () => {};
+beforeAll(async () => { const stub = await startClearHeldCheck(); HELD_CHECK = stub.path; stopHeldCheck = stub.stop; });
+afterAll(() => stopHeldCheck());
 
 /** A turn laid out as the runner lays it out: `ws` and `state` side by side, the config in `state`. */
 function turn(maxCalls = 50) {
@@ -33,7 +39,7 @@ function turn(maxCalls = 50) {
   writeFileSync(join(ws, 'in.txt'), 'hi\n'); writeFileSync(join(outside, 'canary.txt'), 'CANARY-DUMMY-0001\n');
   symlinkSync(outside, join(ws, 'link'));
   writeFileSync(join(state, 'config.json'), JSON.stringify({ workspace: ws, tmp, maxCalls, maxWriteBytes: 1048576,
-    operations: [...SINGLE_MACHINE_PROFILE.operations] }));
+    operations: [...SINGLE_MACHINE_PROFILE.operations], heldCheck: HELD_CHECK }));
   return { root, ws, outside, state, tmp };
 }
 /** Marks the first `taken` call slots as already used (the state a step reaches after `taken` calls). */
@@ -309,7 +315,7 @@ it('replays every tool call the spike recorded under the real harness and reache
     const ws = join(root, run, 'ws'), state = join(root, run, 'state');
     for (const dir of [ws, state, join(root, 'outside'), join(root, 'protected')]) mkdirSync(dir, { recursive: true });
     writeFileSync(join(state, 'config.json'), JSON.stringify({ workspace: ws, tmp: join(root, run, 'tmp'), maxCalls: cap, maxWriteBytes: 1048576,
-      operations: [...SINGLE_MACHINE_PROFILE.operations] }));
+      operations: [...SINGLE_MACHINE_PROFILE.operations], heldCheck: HELD_CHECK }));
     const rows = readFileSync(join(SPIKE, run, 'admission.jsonl'), 'utf8').trim().split('\n').map(line => JSON.parse(line));
     for (const row of rows) {
       const input = JSON.parse(JSON.stringify(row.input).split(PREFIX).join(root));
@@ -550,7 +556,7 @@ it('replays the full-tool live runs\' recorded calls to their recorded decisions
     const ws = join(root, 'live-ws'); mkdirSync(ws);
     writeFileSync(join(state, 'config.json'), JSON.stringify({ workspace: ws, tmp: join(root, 'tmp'), maxCalls: 32, maxWriteBytes: 1048576,
       operations: [...SINGLE_MACHINE_PROFILE.operations], children: { max: 2, type: 'worker' },
-      mcpReads: name === 'outward' ? ['mcp__dummy__lookup'] : [] }));
+      mcpReads: name === 'outward' ? ['mcp__dummy__lookup'] : [], heldCheck: HELD_CHECK }));
     for (const row of rows.filter((r: { phase: string }) => r.phase === 'pre')) {
       const input = JSON.parse(workspace ? row.input.split(workspace).join(ws) : row.input);
       const config = JSON.parse(readFileSync(join(state, 'config.json'), 'utf8'));

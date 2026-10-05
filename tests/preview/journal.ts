@@ -1129,7 +1129,7 @@ export type JournalRecord =
    * trace records each tool call, its admission and its result after the turn. */
   | { kind: 'tool-turn'; phase: 'reserved'; id: string; attempt: number; calls: number; delegation?: ToolDelegation;
       mcp?: { servers: string[]; reads: number; digest: string }; workspace?: ToolWorkspaceRow; at: number }
-  | { kind: 'tool-turn'; phase: 'refused'; id: string; reason: 'call cap' | 'prompt size'; at: number }
+  | { kind: 'tool-turn'; phase: 'refused'; id: string; reason: 'call cap' | 'prompt size' | 'mcp credential unavailable' | 'harness identity unavailable'; at: number }
   | { kind: 'tool-turn'; phase: 'trace'; id: string; attempt: number; calls: ToolTraceCall[]; consistent: boolean;
       edges?: ToolChildEdge[]; egress?: ToolEgressRequest[]; egressRequests?: number; egressLimited?: string; workspaceBytes: number | null;
       session?: ToolSessionRow; volume?: ToolVolumeRow; harness?: ToolHarnessRow; at: number }
@@ -3028,7 +3028,12 @@ export const TOOL_ATTEMPTS_PARTIAL_MEANING = 'The first tool calls this reply\'s
   + 'later calls are not shown. A refused call is not an attempt at an avenue. A tool result the reply reports may come from an omitted '
   + 'call, so its absence here does not show that the call or result did not happen.';
 const attemptExcerpt = (text: string) => text.length > TOOL_ATTEMPT_EXCERPT_CHARS ? `${text.slice(0, TOOL_ATTEMPT_EXCERPT_CHARS)}…` : text;
-export interface ToolTurnStats { invocations: number; reservedCalls: number; refusedCap: number; refusedPrompt?: number; toolCalls: number;
+export interface ToolTurnStats { invocations: number; reservedCalls: number; refusedCap: number; refusedPrompt?: number;
+  /** Turns answered without tools because an MCP server's SecretRef could not be opened from custody. */
+  refusedCredential?: number;
+  /** Plan #473: turns answered without tools because the separate harness user was not ready, and the latest such
+   * answers' ids (bounded), so each answer can carry its own notice. */
+  refusedIdentity?: number; identityRefused?: string[]; toolCalls: number;
   toolRefusals: number; inconsistent: number; open: string[];
   /** Rule 114: subagent edges the traces recorded, by how each ended (absent until a turn started one). */
   children?: { started: number; returned: number; cancelled: number; unknown: number };
@@ -3098,6 +3103,9 @@ function projectToolTurn(view: JournalView, row: Extract<JournalRecord, { kind: 
   if (row.phase === 'refused') {
     if (row.reason === 'call cap') view.toolTurns = { ...stats, refusedCap: stats.refusedCap + 1 };
     else if (row.reason === 'prompt size') view.toolTurns = { ...stats, refusedPrompt: (stats.refusedPrompt ?? 0) + 1 };
+    else if (row.reason === 'mcp credential unavailable') view.toolTurns = { ...stats, refusedCredential: (stats.refusedCredential ?? 0) + 1 };
+    else if (row.reason === 'harness identity unavailable') view.toolTurns = { ...stats, refusedIdentity: (stats.refusedIdentity ?? 0) + 1,
+      identityRefused: [...(stats.identityRefused ?? []), row.id].slice(-16) };
     else throw Error('preview journal: tool turn refusal');
     return;
   }
@@ -4811,8 +4819,9 @@ export interface PreviewPorts {
   /** Rules 8, 56, 100: due reminder lines (credential expiry stages, a failing doorway check), most urgent first. */
   /** Offered for the answer to turn `turn` (its own effect-doorway refusals ride first). */
   replyNotices?(turn?: string): readonly ReplyNotice[];
-  /** Plan #442 (Rules 4, 86, 100): the secret values the runner holds (vault and host custody) for the exact floor on
-   * every reply. Read in memory only, never recorded or sent to a model. */
+  /** Plan #442 (Rules 4, 86, 100): the secret values the runner holds (vault and host custody, the harness login, the
+   * root's MCP credentials; plan #507: every value once read stays held) for the exact floor on every reply. Read in
+   * memory only, never recorded or sent to a model. */
   heldSecrets?(): readonly string[];
   /** Rules 9, 96, 114: the runner's bounded concurrent owned-work view (concurrentWorkItem), carried into operator packets. */
   concurrentWork?(): object | null;
