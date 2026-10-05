@@ -26,7 +26,7 @@ import { admitPreviewHarness, PREVIEW_JOURNAL_HARNESS, PREVIEW_JOURNAL_STALL_COV
 import { UNRECORDED, briefingDigestOf, codeDigestOf, installedCodeOf, installationRows, installationStatusLines, installedUpdateFrom, updateDelivery,
   updatePacketItem } from './installation.js';
 import { bindPreviewBlockingSites, projectionDigest, summaryStoppedAt, loopRevisitMs, LOOP_REVISIT_MIN_MS, LOOP_REVISIT_MAX_MS, SUMMARY_REASON_CHARS } from './journal.js';
-import { openPreviewJournal as openJournal, createJournalWorker, raiseJournalCaps, renewJournalExpiry, activationMatchesJournal, activePersonMerges, openQuestionCandidates, projectMemoryText, unansweredCue, reportJournalCap, unknownCallCounts, pendingUnknownCalls, replyTimings, reviewUnavailableReleases, claimScopedWithholds, MINIMAL_RESERVE, reserveTurnsUsed, reserveRepliesUsed, openRequests, actionWithdrawn, reminderDue, operatorRequestsReport, retrospectiveCases, openBlockers, openDirectives, declaredObligations, sendOutcomeCounts, sendOutcomeOf, unsentLabel, replyTarget, replyOutcomeOf, partialReplyLabel, reminderOutcome, envelopeWriter, PREVIEW_LIVE_LIMITS, unservableContextReason, PREVIEW_JOURNAL_COMPACT_BYTES, activeMemoryConflicts, TOO_LONG_INPUT_NOTICE, TOO_LONG_REPLY_NOTICE , probeTurn, operatorWriter, isJournalUpdate, retractRefusal, retractRendering, retractCarrier, retractedTurn, liveSummaries, withinOperatorHours, OPERATOR_HOURS, withFormatReminder, concurrentWorkItem, latestOwnedLaunch, ownedProcessOf, meaningIndexStatus, LIMITED_ANSWER_OPERATION, MISSING_INSTALLATION_POLICY } from './journal.js';
+import { openPreviewJournal as openJournal, createJournalWorker, raiseJournalCaps, renewJournalExpiry, activationMatchesJournal, activePersonMerges, openQuestionCandidates, projectMemoryText, unansweredCue, reportJournalCap, unknownCallCounts, pendingUnknownCalls, replyTimings, reviewUnavailableReleases, claimScopedWithholds, MINIMAL_RESERVE, reserveTurnsUsed, reserveRepliesUsed, openRequests, actionWithdrawn, reminderDue, operatorRequestsReport, retrospectiveCases, openBlockers, openDirectives, declaredObligations, sendOutcomeCounts, sendOutcomeOf, unsentLabel, replyTarget, replyOutcomeOf, partialReplyLabel, reminderOutcome, envelopeWriter, PREVIEW_LIVE_LIMITS, unservableContextReason, PREVIEW_JOURNAL_COMPACT_BYTES, activeMemoryConflicts, TOO_LONG_INPUT_NOTICE, TOO_LONG_REPLY_NOTICE , probeTurn, operatorWriter, isJournalUpdate, retractRefusal, retractRendering, retractCarrier, retractedTurn, liveSummaries, continuityFrontier, withinOperatorHours, OPERATOR_HOURS, withFormatReminder, concurrentWorkItem, latestOwnedLaunch, ownedProcessOf, meaningIndexStatus, LIMITED_ANSWER_OPERATION, MISSING_INSTALLATION_POLICY } from './journal.js';
 import { createPreviewClock } from './clock.js';
 import { appendRun, heldNotices, heldRepliesToday, memoryHealthLine, readRuns, restartHandoff, selfState, selfStateBrief, selfStateSource, zoneFormatter } from './self-state.js';
 import { guidanceReport } from './guidance.js';
@@ -1113,7 +1113,11 @@ async function main() {
           retrospectiveGrade: (() => { const row = latestGrades(view.view).get(`answer:${reply.id}`);
             return row ? { pass: row.pass, conclusion: row.grade.conclusion, reason: row.grade.reason, outcome: row.grade.outcome,
               rederivation: row.grade.rederivation ?? null } : null; })(),
-          ...(reply.continuity ? { continuity: reply.continuity } : {}) } : null,
+          // Rule 110 (live check A7c): the frontier THIS reply was composed from, read back from its own recorded
+          // grounding. `summaryFrontier` below is read now, so a summary pass that advanced the frontier after the
+          // reply made a truthful account look stale; the disclosure is about this reply's context, which never moves.
+          ...(reply.continuity ? { continuity: reply.continuity,
+            frontierAtCompose: continuityFrontier(reply.grounding)?.through ?? null } : {}) } : null,
         // Rules 11 and 110: the latest summary frontier and which operator updates the meaning index covers.
         // Both write sides count: terms a summary recorded, and terms the index-only pass recorded beside it.
         // Reading the summaries alone under-reported the index by exactly the backlog it had just repaired.
