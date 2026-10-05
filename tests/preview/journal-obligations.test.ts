@@ -1233,13 +1233,21 @@ it('gives scheduled work the operator\'s own earlier words, and drops them only 
   // Live cint-L50/L49: the deferral "which three of the things I have told you matter most" got a work packet with none of
   // them, and the replayed step answered "continue: this turn's context does not include the broader history".
   const DENTIST = 'My dentist is Dr. Ortiz on Elm Street, and the cleaning is on Thursday.';
-  for (const size of ['fits', 'too-large'] as const) {
+  for (const size of ['fits', 'summarized', 'too-large'] as const) {
     const root = origin();
     try {
       const contexts: Record<string, unknown>[] = [];
       const w = world(root, { answer: question => question === INVOICE ? { reply: LATER, openLoops: [{ kind: 'deferral', quote: LATER, waitsOn: 'nothing' }] } : 'Noted.',
         work: context => { contexts.push(context); return { outcome: 'report', report: 'The invoice is for 120 dollars.' }; } });
       await w.say(DENTIST);
+      if (size === 'summarized') {
+        // Astra sb-w4-rollback round 4: the summary prose leaves exact facts to memoryItems, so the dentist fact lives
+        // only there once its message is behind the summary frontier; work must still get it, sourced.
+        const dentist = w.journal.view.order[0]!;
+        w.journal.append({ kind: 'summary-reserve', through: dentist.update, at: w.clock.now });
+        w.journal.append({ kind: 'summary', through: dentist.update, text: 'The operator mentioned a dental appointment.',
+          memoryItems: [{ source: dentist.id, quote: 'the cleaning is on Thursday' }], at: w.clock.now });
+      }
       await w.say(INVOICE);
       const sizes: number[] = [];
       if (size === 'too-large') {
@@ -1259,7 +1267,13 @@ it('gives scheduled work the operator\'s own earlier words, and drops them only 
       expect(w.workQuestions[0]).toContain('packet.memory holds what the operator told you');
       if (size === 'fits')
         expect(contexts[0]!.memory).toEqual({ operatorMessages: [expect.objectContaining({ text: DENTIST }), expect.objectContaining({ text: INVOICE })] });
-      else {
+      else if (size === 'summarized') {
+        const memory = contexts[0]!.memory as { summary: string; memoryItems: { source: string; quote: string }[]; operatorMessages: { text: string }[] };
+        expect(memory.summary).toBe('The operator mentioned a dental appointment.');
+        expect(memory.memoryItems).toEqual([expect.objectContaining({ source: w.journal.view.order[0]!.id, sourceKind: 'operator-stated',
+          quote: 'the cleaning is on Thursday' })]);
+        expect(memory.operatorMessages).toEqual([expect.objectContaining({ text: INVOICE })]);
+      } else {
         expect(sizes[0]!).toBeGreaterThan(sizes[1]!);
         expect(contexts[0]!.memory).toBeUndefined();
         expect(contexts[0]!.obligation).toBeDefined();

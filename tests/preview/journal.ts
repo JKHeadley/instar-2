@@ -2173,7 +2173,7 @@ export function obligationCapacity(view: JournalView): boolean {
 export const OBLIGATION_SUMMARY_CHARS = 4000, OBLIGATION_MEMORY_MESSAGES = 20, OBLIGATION_MEMORY_MESSAGE_CHARS = 500;
 /** The runner's bounds on a work step's report and note (obligationDecision); the question states them. */
 export const OBLIGATION_REPORT_CHARS = 1500, OBLIGATION_NOTE_CHARS = 500;
-export const OBLIGATION_WORK_QUESTION = 'packet.obligation is open work you own for the verified operator, due now. packet.obligation.yourReply was already sent to the operator: repeating or re-confirming it is not the work, so the report for a deferral or judgment is the deferred answer itself, never another acknowledgement. packet.memory holds what the operator told you (the newest summary and their messages after it): work about what they told you is done from it. Do it now with what you know; you have no external tools, and a reply reaches the operator only with their next message. A report is that later message: it is held now and delivered with their next message, never before it, so "answer later" or "not in this reply" is done by reporting now. Choose exactly one of these objects. For a request, promise, deferral or judgment: {"outcome":"report","report":<the completed result or decision, addressed to the operator, at most ' + String(OBLIGATION_REPORT_CHARS) + ' characters>} when you can finish it now; {"outcome":"continue","note":<the concrete progress and next step, at most ' + String(OBLIGATION_NOTE_CHARS) + ' characters>} when it genuinely needs more time; {"outcome":"waiting","waitsOn":"operator"|"external","note":<what exactly you now need, at most ' + String(OBLIGATION_NOTE_CHARS) + ' characters>} only when someone else must act first. When packet.waitingFor is present, you said you needed it earlier: check packet.operatorMessagesSince and continue with whatever now arrived. For a blocker-recheck, test the claim again against every avenue and packet.capabilities: {"outcome":"still-blocked","recheck":"YYYY-MM-DD" within 90 days,"avenues":[{"avenue","disposition":"outside-standing"|"inapplicable","evidence":<the packet.capabilities key that shows it>}],"constraint":<governingConstraints key those capabilities support>,"reason":<what you re-examined and why it still holds>} or {"outcome":"cleared","report":<what is now possible>}. You have attempted nothing outside this step, so never call an avenue tried. Follow packet.directives. Refuse only behind a packet.governingConstraints key. '
+export const OBLIGATION_WORK_QUESTION = 'packet.obligation is open work you own for the verified operator, due now. packet.obligation.yourReply was already sent to the operator: repeating or re-confirming it is not the work, so the report for a deferral or judgment is the deferred answer itself, never another acknowledgement. packet.memory holds what the operator told you (the newest summary, the exact facts it retains in memoryItems with their sources, and their messages after it): work about what they told you is done from it. Do it now with what you know; you have no external tools, and a reply reaches the operator only with their next message. A report is that later message: it is held now and delivered with their next message, never before it, so "answer later" or "not in this reply" is done by reporting now. Choose exactly one of these objects. For a request, promise, deferral or judgment: {"outcome":"report","report":<the completed result or decision, addressed to the operator, at most ' + String(OBLIGATION_REPORT_CHARS) + ' characters>} when you can finish it now; {"outcome":"continue","note":<the concrete progress and next step, at most ' + String(OBLIGATION_NOTE_CHARS) + ' characters>} when it genuinely needs more time; {"outcome":"waiting","waitsOn":"operator"|"external","note":<what exactly you now need, at most ' + String(OBLIGATION_NOTE_CHARS) + ' characters>} only when someone else must act first. When packet.waitingFor is present, you said you needed it earlier: check packet.operatorMessagesSince and continue with whatever now arrived. For a blocker-recheck, test the claim again against every avenue and packet.capabilities: {"outcome":"still-blocked","recheck":"YYYY-MM-DD" within 90 days,"avenues":[{"avenue","disposition":"outside-standing"|"inapplicable","evidence":<the packet.capabilities key that shows it>}],"constraint":<governingConstraints key those capabilities support>,"reason":<what you re-examined and why it still holds>} or {"outcome":"cleared","report":<what is now possible>}. You have attempted nothing outside this step, so never call an avenue tried. Follow packet.directives. Refuse only behind a packet.governingConstraints key. '
   + taskFields('the one object you chose');
 /** The same work step on the scoped-tool route: it can use the listed tools, and only their recorded calls ran. */
 export const OBLIGATION_WORK_QUESTION_TOOLS = replacedClause(replacedClause(OBLIGATION_WORK_QUESTION,
@@ -5235,6 +5235,13 @@ export function createJournalWorker(journal: ReturnType<typeof openPreviewJourna
   /** Turns whose reply this worker sent with a spoken continuity disclosure: the current episode (Rule 110). */
   const episodeSpoken = new Set<string>();
   const summaryFor = (through: number) => liveSummaries(journal.view).filter(item => item.through <= through).at(-1);
+  /** The summary's retained exact facts that no later correction or forget has touched, sourced and redacted: the
+   * one projection both an answer and scheduled work read (Rule 96). */
+  const summaryMemoryItems = (summary: { memoryItems?: SummaryMemoryItem[] }) => (summary.memoryItems ?? [])
+    .filter(item => !journal.view.memory.some(change => change.mode !== 'prefer' && change.source === item.source
+      && (item.quote.includes(change.quote) || change.quote.includes(item.quote))))
+    .map(item => ({ source: item.source, sourceKind: 'operator-stated' as MemorySourceKind,
+      sourceLabel: turnLabel(journal.view.turns.get(item.source)!), quote: clean(redact(item.quote).text, true, item.source) }));
   /** Rule 110: the continuity `turn`'s reply accounts for when its context was compacted through
    * `through`. Every such reply records the account, so what it accounted for stays inspectable; the
    * `spoken` flag decides whether its sentence is also said to the operator.
@@ -6427,11 +6434,7 @@ export function createJournalWorker(journal: ReturnType<typeof openPreviewJourna
       ...(suppliedSources === undefined ? {} : { sources: suppliedSources }),
       ...(reference ? { replyTo: reference } : {}),
       ...(summary ? { historyMode: 'summary-plus-recent', summary: { sourceKind: 'inferred-by-summary' as MemorySourceKind, sourceLabel: summaryLabel(summary), through: summary.through, text: clean(redact(summary.text).text, true, summary.through),
-        ...(summary.memoryItems?.length ? { memoryItems: summary.memoryItems.filter(item => !journal.view.memory.some(change =>
-          change.mode !== 'prefer' && change.source === item.source
-            && (item.quote.includes(change.quote) || change.quote.includes(item.quote)))).map(item => ({ source: item.source,
-          sourceKind: 'operator-stated' as MemorySourceKind,
-          sourceLabel: turnLabel(journal.view.turns.get(item.source)!), quote: clean(redact(item.quote).text, true, item.source) })) } : {}) } }
+        ...(summary.memoryItems?.length ? { memoryItems: summaryMemoryItems(summary) } : {}) } }
         : historySetAsideCount ? { historyMode: 'recent-only' } : { historyMode: 'complete' }),
       ...(journal.view.memory.length ? { memory: journal.view.memory.flatMap((change, index):
         Array<{ sourceKind: MemorySourceKind; mode: string; source: string; sourceLabel: string; trigger: string; reason?: string; replacement?: string }> => {
@@ -9655,7 +9658,9 @@ export function createJournalWorker(journal: ReturnType<typeof openPreviewJourna
       // the replayed work step (cint-L49 obligation:commitment:3, claude-sonnet-5) answered "continue: this turn's context
       // does not include the broader history" both times. Bounded; omitted only when the packet would not fit.
       const latest = summaryFor(Number.MAX_SAFE_INTEGER);
+      // The summary prose leaves its exact facts to memoryItems (the summary instructions say so), so work gets them too.
       const memory = { ...(latest ? { summary: clip(clean(redact(latest.text).text, true, latest.through), OBLIGATION_SUMMARY_CHARS) } : {}),
+        ...(latest?.memoryItems?.length && summaryMemoryItems(latest).length ? { memoryItems: summaryMemoryItems(latest) } : {}),
         operatorMessages: journal.view.order.filter(turn => verifiedOperatorTurn(journal.view, turn) && !probeTurn(journal.view, turn)
           && turn.update > (latest?.through ?? -1)).slice(-OBLIGATION_MEMORY_MESSAGES)
           .map(turn => ({ date: dated(turn), text: clip(clean(redact(turn.text).text, true, turn.id), OBLIGATION_MEMORY_MESSAGE_CHARS) })) };
