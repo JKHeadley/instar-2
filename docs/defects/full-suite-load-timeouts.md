@@ -240,3 +240,17 @@ says whether the clean end was recorded before the exit). Both were already capt
 away with it. The case now writes them to the run output when the exit is non-zero, before the unchanged
 assertion, so the next recurrence in any gate carries what it needs. No assertion, body or budget is changed,
 and nothing is skipped. Guarding `journal.close()` / `storage.close()` on a guess is still declined (Rule 116).
+
+**One branch narrowed, measured (same repair, 2026-10-05).** Instrumented over 8 further runs here, the woken
+stale owner's state after its exit was identical every time: `turns` 1 (it never intook the second update) and
+no poll recorded beyond the one already in flight when it was stopped. So on this machine the resume always
+lands in a `delay()` or in a poll that does not return a 200, and the loop breaks at the top of its next cycle
+on `!ownerHeld()` — the clean path. That leaves one branch of the resume **unobserved in 41 runs**: the
+in-flight long poll returning 200 after the resume, where the loop runs `worker.intake(batch)` — a journal
+write — before it next consults `ownerHeld()` (`journal-agent.mjs`, the poll block: the checks between the
+poll and the intake are `signalled`, `workerStop.value` and the stop path, none of which the lease loss has
+set yet). The fixture makes that branch reachable: the physical Telegram port is in-process, so it is frozen
+with the runner, and on resume it re-reads `updates.json`, which by then holds the second update. A failure in
+that window would carry `turns` 2 and one extra poll, which is why the evidence this repair adds (the child's
+`runs.jsonl` alongside its stderr) distinguishes it from the clean path without further instrumentation. This
+is a narrowing, not a cause: nothing observed shows that branch failing, and no guard is added for it.
