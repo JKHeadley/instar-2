@@ -140,3 +140,57 @@ that tree and eleven register builds. The branch did not grow the work: isolated
 `--maxWorkers 1` it took 37.1 s on cb7-r90 and 51.2 s on the main tree it builds on. Earlier full-suite gates took
 41 s to 72 s. The budget is now 300 s, about 2.4 times the worst full-suite duration seen. Its body and assertions
 are unchanged, and no case is skipped.
+
+## Recurrence 2026-10-04 (cint-L50 gate at 67544546, Studio): six cases on the global default timeout
+
+The gate run that started 00:01 UTC failed eight tests. Six belong to this record's class, and the cause is the
+**global default** `testTimeout` rather than any declared budget:
+
+| case | gate duration | isolated here (`nice -n 10`, `--maxWorkers 1`) | body |
+|---|---|---|---|
+| `tests/e2e/round10-conformance.test.ts` › `P11-NF-43 P11-NF-49 R10-F1 public production boot refuses a missing required method against durable storage` | 10 179 ms | 1 312 ms | sync |
+| `tests/preview/journal-burst.test.ts` › `fsyncs a ten-update burst in update order across a mid-batch crash, merges the edit, and sends once per other turn` | 12 929 ms | 1 056 ms | async |
+| `tests/e2e/part-eleven-round20.test.ts` › `round20 V16/V61/V62 lifecycle: live generation drift refuses without a durable disposition append` | 17 053 ms | 589 ms | sync |
+| `tests/preview/packet-growth-replay.test.ts` › `grounds a short accepted summary in every original turn, then switches at the fixed history budget` | 17 167 ms | about 130 ms | sync |
+| `tests/scheduled/review-round17.test.ts` › `P15 round-seventeen F2 compares first landing, then reports inapplicability while retaining baseline checks` | 25 207 ms | 273 ms | sync |
+| `tests/preview/journal-recall-rank.test.ts` › `Rule 11 … reproduces the miss through the real packet path where no stem is shared (sample B)` | 38 040 ms | about 325 ms | sync |
+
+None declares a timeout, so each ran on the 10 s default. Five of the six have **synchronous** bodies, which is why
+the reported durations exceed the bound they broke: a 10 s timer cannot fire while a synchronous body holds the
+event loop, so vitest records the real body time and then delivers the expired verdict. Measured directly on this
+runner with a scratch case whose body blocks for 20 s: `Error: Test timed out in 10000ms.`, duration 20.00 s, code
+frame on the `it(` line — the same shape the gate printed for `packet-growth-replay` (`:8:1`, its `it(` line).
+
+The branch did not grow the work. The previous full gate on the same tree 30 minutes earlier (bf76a6e9, 23:08 UTC)
+failed only the six `tests/e2e/register.test.ts` pin cases and passed all six cases above; everything 67544546 adds
+over it is `generated/*`, one owner-reference pin and a review record, none of which these cases read.
+
+**Repair (not a quarantine):** the global default is raised to 90 s in `vitest.config.ts` — 2.4x the worst duration
+seen here (38.0 s), the margin convention this record already applies. No case is skipped, no assertion or declared
+budget is changed, and a case needing a tighter bound still declares its own. A hung case still fails as a timeout
+(Rule 42); it now takes longer to say so.
+
+### Also in that run, and NOT of this class: the two-machine stale-owner exit code
+
+`tests/preview/two-machine-runner.test.ts` › `an owner that stalls past its term and comes back is stale: it sends
+nothing, retires, and is wanted back as the standby` failed at 8 225 ms on `expect(await studio.exited)
+.toMatchObject({ status: 0 })` with `{ status: 1, signal: null }`. The case declares 240 s, so the timeout repair
+above does not touch it.
+
+Reproduced on the Mama PC twice in fourteen targeted runs (about 14 %), then not once in twelve further runs with
+the child's stderr and `runs.jsonl` captured, so **its source is not yet named**. What the passing runs show is the
+intended end: `reason: "conversation ownership lost"`, `retired: "conversation ownership lost"`,
+`revival: "queued"`, exit 0. The exit-1 paths reachable in `tests/preview/journal-agent.mjs` were enumerated and
+none is satisfied by this scenario on inspection: poll exhaustion needs 5 consecutive 409s or 20 failures
+(`exhaustedPollReason`) and the fixture issues neither here; the run-log append failure needs an unwritable root;
+`shared.sync()` cannot throw (`authority.request` returns `{ok:false,reason:'unreachable'}` rather than throwing,
+`shipper.pump()` catches into `failed()`, `dispatch.flush/settle/outcome` only read typed answers, and
+`lease.renew()` is called with `.catch(() => {})`). The unguarded teardown steps in `main`'s inner `finally`
+(`gate.stop()`, `proxy.close()`, `journal.close()`, `storage.close()`, `ownerClaim.release()`) would produce exactly
+this shape — a recorded clean end followed by exit 1 — but nothing observed shows one of them rejecting, so they are
+left alone rather than guarded on a guess (Rule 116).
+
+**Disposition:** recorded, **not quarantined**. The case covers the Rules 31/63 replicated(1) floor, and
+`scripts/check-*-contract-map.mjs` refuses a skipped proof case, so a skip would cost real floor coverage and fail
+the post-test checkers. It stays active; a recurrence in the pipeline rerun carries the stderr needed to name the
+source.

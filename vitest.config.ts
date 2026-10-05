@@ -45,8 +45,16 @@ export default defineConfig({
     minWorkers: 1,
     maxWorkers: serialGate ? 1 : workerLimit,
     // Full-gate workers run at reduced priority and exercise durable multi-owner
-    // histories. Keep the runner deadline above the observed ~5.1s boundary so
-    // valid serialized tests are not reported as semantic failures under load.
-    testTimeout: 10_000,
+    // histories. Keep the runner deadline above the observed boundary so valid
+    // serialized tests are not reported as semantic failures under load.
+    // 2026-10-04 (cint-L50 gate at 67544546): six cases that take 0.1-1.4 s in
+    // isolation were reported as timed out at 10.2-38.0 s under this gate's six
+    // fork workers. Five of the six have synchronous bodies, so the 10 s timer
+    // could not fire until the starved body yielded: the verdict is a timeout and
+    // the reported duration is the real body time. Sized to 2.4x the worst such
+    // duration seen (38.0 s), the margin convention recorded in
+    // docs/defects/full-suite-load-timeouts.md. Every case that needs a tighter or
+    // wider bound still declares its own.
+    testTimeout: 90_000,
   },
 });
