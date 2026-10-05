@@ -1,9 +1,10 @@
 import { expect, it } from 'vitest';
-import { mkdtempSync, realpathSync, rmSync } from 'node:fs';
+import { mkdtempSync, readFileSync, realpathSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { createJournalWorker, openPreviewJournal, raiseJournalCaps } from './journal-test-worker.js';
-import { isStatusCommand, statusReply } from './status-command.js';
+import { isStatusCommand, STATUS_PENDING_LISTED, statusReply } from './status-command.js';
+import { TELEGRAM_MESSAGE_LIMIT } from './reply-parts.js';
 import { JEV_MODEL, jevQuestions, replyReviewContext } from './reply-check.js';
 
 const key = new Uint8Array(32).fill(13);
@@ -226,5 +227,35 @@ it('never repeats a status send whose Telegram result is unknown after restart',
     expect(journal.view.order[0]?.sent).toBeUndefined();
     expect(journal.view.order[1]?.sent).toBe(42);
     expect(journal.view.replies).toBe(2);
+  } finally { journal.close(); rmSync(root, { recursive: true, force: true }); }
+});
+
+// Pre-switch a2, 2026-10-05 (candidate 39d5d4fd, update 715674230): on a long-history root copy, 34 pending memory
+// decisions listed by update pushed the one-glance status answer to 4103 of Telegram's 4096 units in one message.
+// The count stays exact; only the longest-waiting STATUS_PENDING_LISTED are named.
+const OVER = JSON.parse(readFileSync(new URL('./fixtures/status-a2-over-limit-2026-10-05.json', import.meta.url), 'utf8')) as { reply: string };
+const units = (text: string) => text.length;
+it('names at most the longest-waiting pending decisions, so the recorded over-limit status answer fits one message', () => {
+  const root = path(), journal = openPreviewJournal(join(root, 'journal.encrypted'), key, { ...genesis, maxCalls: 40, maxReplies: 40, maxTurns: 40 });
+  try {
+    const add = (count: number) => {
+      for (let n = journal.view.order.length + 1, end = n + count; n < end; n++) {
+        const id = `t${String(n)}`;
+        journal.append({ kind: 'intake', id, update: n, text: 'Forget that', raw: JSON.stringify(update(n, 'Forget that')), accepted: true, cursor: n + 1, at });
+        journal.append({ kind: 'reserve', id, at });
+        journal.append({ kind: 'answer', id, text: 'uncertain', state: 'complete', memoryPending: true, at });
+      }
+    };
+    add(STATUS_PENDING_LISTED);
+    expect(statusReply(journal.view, at, 'America/Los_Angeles')).toContain('Pending memory decisions: 10 (updates 1, 2, 3, 4, 5, 6, 7, 8, 9, 10).');
+    add(1);
+    expect(statusReply(journal.view, at, 'America/Los_Angeles')).toContain('Pending memory decisions: 11 (updates 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, and 1 later).');
+    // The recorded shape: before, over the limit in one message; with its pending line bounded the same way, inside it.
+    const recorded = OVER.reply.split('\n'), at2 = recorded.findIndex(line => line.startsWith('Pending memory decisions: 34 ('));
+    expect(units(OVER.reply)).toBeGreaterThan(TELEGRAM_MESSAGE_LIMIT);
+    const ids = /\(updates ([^)]*)\)/u.exec(recorded[at2]!)![1]!.split(', ');
+    expect(ids).toHaveLength(34);
+    recorded[at2] = `Pending memory decisions: 34 (updates ${ids.slice(0, STATUS_PENDING_LISTED).join(', ')}, and 24 later).`;
+    expect(units(recorded.join('\n'))).toBeLessThanOrEqual(TELEGRAM_MESSAGE_LIMIT);
   } finally { journal.close(); rmSync(root, { recursive: true, force: true }); }
 });

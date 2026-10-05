@@ -38,6 +38,11 @@ export function heldReplies(view: JournalView): Map<string, number> {
   return held;
 }
 
+/** The pending memory decisions the status pull names by update: the longest-waiting ones; the count stays exact.
+ * The list grew with the journal and pushed the one-glance status answer past one Telegram message (pre-switch a2,
+ * 2026-10-05: 34 listed updates, 4103 of 4096 units on a long-history root copy). */
+export const STATUS_PENDING_LISTED = 10;
+
 export function statusReply(view: JournalView, now: number, zone: string, extra: readonly string[] = []): string {
   const local = localParts(now, zone);
   const today = `${String(local.year).padStart(4, '0')}-${String(local.month).padStart(2, '0')}-${String(local.day).padStart(2, '0')}`;
@@ -57,7 +62,8 @@ export function statusReply(view: JournalView, now: number, zone: string, extra:
     `Status (${today}, ${zone})`,
     `Turns today: ${turns}.`,
     `Held replies: ${held.size ? [...held].map(([reason, count]) => `${count} ${reason}`).join('; ') : 'none'}.`,
-    `Pending memory decisions: ${pending.length}${pending.length ? ` (updates ${pending.map(turn => turn.update).join(', ')})` : ''}.`,
+    `Pending memory decisions: ${pending.length}${pending.length ? ` (updates ${pending.slice(0, STATUS_PENDING_LISTED).map(turn => turn.update).join(', ')}${
+      pending.length > STATUS_PENDING_LISTED ? `, and ${String(pending.length - STATUS_PENDING_LISTED)} later` : ''})` : ''}.`,
     `Next dated item: ${nextText}.`,
     ...loopStatusLines(view, now),
     ...sentinelStatusLines(view),
