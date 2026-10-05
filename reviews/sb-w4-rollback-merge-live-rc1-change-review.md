@@ -13,6 +13,7 @@ Tier rationale: a merge of two already-reviewed and separately gated changes. On
 Side effects: tests/preview/tool-turn.mjs no longer exports unmountWithin, and tool-turn.test.ts no longer carries its test; unmountScratch now takes its bounds as options (tries, force, mounted) instead of the removed helper's positional arguments. Its retry shape changes to the live one: five attempts with a growing pause (0, 100, 200, 300, 400 ms) rather than six at a fixed 400 ms.
 Undo and recovery: revert this record, the replay commit, the pin commit and the merge commit. Nothing durable is written by the merge.
 Multi-machine posture: unchanged; preview test harness and a declaration pin only.
+Supersedes: reviews/sb-w4-rollback-repair1-change-review.md's decision sb-w4-rollback-r1-unmount-seam, which chose the extracted unmountWithin seam so the retry would be provable on a host without hdiutil. That reason is fully met by the live unmountScratch's injected tries/force/mounted, which this merge keeps, so the seam is removed rather than kept beside it. The earlier record stands as written; this line is where it is superseded.
 Layer below: reviews/rc-1-change-review.md (the live build merged in) and reviews/sb-w4-rollback-repair6-change-review.md with reviews/sb-w4-rollback-merge-d1b-change-review.md (this branch's side).
 Bug class: none
 Bug evidence: none
