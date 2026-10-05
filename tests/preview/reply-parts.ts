@@ -7,7 +7,8 @@ const MARKER_ROOM = 32;
 const PART_BUDGET = TELEGRAM_MESSAGE_LIMIT - MARKER_ROOM;
 /** A model answer is at most its route's 16384 output bytes; a reply adds bounded fixed text to it (the PREVIEW mark,
  * a continuity or approval disclosure, a requested action's header, an upcoming-dates line). */
-const MAX_ANSWER_BYTES = 16384, FIXED_TEXT_BYTES = 4096;
+export const MAX_ANSWER_BYTES = 16384;
+const FIXED_TEXT_BYTES = 4096;
 /** The most messages one reply is split into, derived so that every reply a route can produce fits: escaping turns
  * one byte into at most five ('&' becomes '&amp;'), every part but the last consumes more than half the budget
  * (`pieces` cuts only in the second half of the encoded bytes, and the cut-off code point costs at most five), and a
