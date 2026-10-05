@@ -1,0 +1,32 @@
+# Change review — sb-w4-intaketimeout repair: repin the assembly grounding sources this unit's bounded child calls changed
+
+Subject base: aa54f853f26f730ab5a4b609c5a227a0953bb0b6
+Review state: open
+Reviewed content: none
+Outcome: the full test run at aa54f853 passed every test (806 files, 6130 tests, 15 files / 205 tests skipped) and still exited 1. The whole gate log (lanes/par-qual/sb-w4-intaketimeout-aa54f853/gate.log, gate.exit 1) names one cause: check-p5-contract-map.mjs:76 calls checkProductionGroundingAssemblyEvidence, which threw "reviewed owner/factory/runner source changed: tests/assembly/production-grounding-evidence.mjs" at check-assembly-contracts.mjs:197. This unit's own commit bb091db1 gave the synchronous `git rev-parse` call in tests/assembly/production-grounding-evidence.mjs and tests/assembly/production-grounding-process-evidence.mjs a `timeout` and `killSignal` — the unit's intended fix for the hung full run — so the two reviewedSupportSources pins in tests/assembly/production-grounding-inventory.json trailed their own bytes. Fixed at the source with the desk repin chain only: the two trailing hashes, then the inventory's digest in check-assembly-contracts.mjs. Both pinned files are in `git diff --name-only origin/main HEAD`, so the chain repinned them rather than reporting them stale-not-changed-by-branch. Verified: all 223 reviewedSupportSources pins now match their bytes (0 mismatched), sha256 of the inventory equals the new REVIEWED_GROUNDING_INVENTORY, the pinned reviewedDependencyDigest already matched here (6f76399c…), and cases stayed 127. Driving the real checker with a synthetic successful report now reaches its process-exit check instead of the pin throw, so the gate's failing assertion is gone. No test was changed, skipped, restored or quarantined, and no pin was hand-edited.
+Affected rules: 37, 74, 101, 102, 116
+Affected floors: secrets — unchanged, no credential is read, written or printed; spend cap — unchanged, the change is two digests in gate checkers and spends nothing; stop — unchanged; no duplicate sends — unchanged, no send path is touched; durable intake — unchanged, no intake or durability code is touched
+Operator questions: none
+Suggested tier: significant
+Declared tier: significant
+Tier rationale: the subject is the gate's own evidence checker and its pinned inventory, so a wrong digest would let unreviewed owner/factory/runner bytes pass the production-grounding check. It is not critical: no consequential effect depends on it, it dispatches nothing, and it reaches no provider, send or operator surface.
+Side effects: none at runtime. src/, dist/, generated/ and register-source/ are untouched, so no shipped behavior changes; only the gate's accepted digests move to the bytes this branch already reviewed.
+Undo and recovery: revert this commit; the pins return to their prior values and the gate returns to its prior refusal.
+Multi-machine posture: unchanged. Nothing here is per-machine: the inventory digest and the two source hashes are content hashes of tracked bytes, and the pinned reviewedDependencyDigest was confirmed to reproduce on this machine (WSL) as well as on the Studio gate host.
+Layer below: docs/00-the-purpose.md, docs/01-the-rules.md; reviews/w4-intaketimeout-change-review.md and reviews/w4-intaketimeout-repair-change-review.md (the reviewed bytes whose pins these are)
+Bug class: none
+Bug evidence: none
+Hook bypass: none
+Convergence: none
+Decision: intaketimeout-r1-repin-not-revert | The two .mjs files changed because this unit deliberately bounded a synchronous child call (the hung-run fix the unit exists for). The trailing pins, not the bytes, are what is wrong, so the fix repins the reviewed digests instead of reverting the unit's own fix. | reported=/Users/dabombstudio/.instar/agents/echo/.instar/lanes/sb-w4-intaketimeout-repair-133513-PROGRESS.md
+Decision: intaketimeout-r1-desk-chain-only | The repin ran through the desk chain (desk-repin-chain.sh, adapted only for Linux: sha256sum for shasum, `sed -i` for `sed -i ''` as the brief directs) rather than by hand, so only hashes of files this branch actually changed moved and the second-level inventory digest was derived, never typed. | reported=/Users/dabombstudio/.instar/agents/echo/.instar/lanes/sb-w4-intaketimeout-repair-133513-PROGRESS.md
+Decision: intaketimeout-r1-no-quarantine | Rule 37 permits a quarantine only where no source fix exists. A source fix exists and is three lines, so no test is skipped and no docs/defects record is opened. | reported=/Users/dabombstudio/.instar/agents/echo/.instar/lanes/sb-w4-intaketimeout-repair-133513-PROGRESS.md
+Decision: intaketimeout-r1-sweep-sibling-pins | Rather than fix only the one path the gate named, every other pin the unrun checkers read was swept: the checker threw at the first mismatch but there were two, and the remaining checker JSON inventories (slice-contracts, assembly/operator/verification declarations) carry no path+hash pins, so this failure class is closed rather than deferred to the next 18-minute gate. | reported=/Users/dabombstudio/.instar/agents/echo/.instar/lanes/sb-w4-intaketimeout-repair-133513-PROGRESS.md
+
+Subject (2 paths): scripts/check-assembly-contracts.mjs, tests/assembly/production-grounding-inventory.json
+
+## Closing block
+
+simplestRobustRoute: this is it. The gate named one stale digest; the chain moved exactly the trailing hashes and the one derived inventory digest — three changed lines, no new machinery, no checker weakened and no test skipped. The simpler route (reverting the unit's bounded child call) would reintroduce the hung full run this unit was built to fix; the more complex route (teaching the checker to recompute its own pins) would delete the guarantee the pin exists for, since a self-refreshing pin accepts any bytes.
+80/20: tsc --noEmit clean; check-architecture passed; check-register-wiring 0 issues; register:check pass; the 7 test files that import the two changed files pass 101/101 (65 + 36, foreground, nice -n 10, --maxWorkers 1); the real checker now passes its pin block; `git diff --check origin/main...HEAD` clean. The 11 post-test contract checkers could not run here — the gate's results file is 2.3 MB and the Studio file API refuses over 1 MB — so the gate log is the evidence that checkers 1-6 passed at this head, and the pipeline's rerun runs all 11.
+VERDICT: author submission; the independent verdict is recorded as a pass
