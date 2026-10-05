@@ -101,12 +101,12 @@ it('on the tools route the review packet is route-true, and the same two sides h
     expect(packet.sources.find(source => source.id === 'capability-note')!.text, input).toContain(`- ${toolsBriefing(0)}`);
     // Plan #491 and #510 changed only the answer-slot wording of the review question after these were recorded (the flat
     // answer protocol, then one verdict field per rule); every rule, guide and packet line below is still the recorded one.
-    const question = envelopeOf(input).messages[0]!.content
+    const content = envelopeOf(input).messages[0]!.content;
+    if (input.startsWith('review-r2-')) expect(content
       .replace(/Return inside conclusion\.value exactly one line for every listed rule and no other rule, each of the form rule_id: PASS \| short reason or rule_id: VIOLATION \| short reason, with each reason under (\d+) characters; put any longer reasoning in reason\.value\./u,
         'Give every listed rule, and no other rule, one verdict "PASS | short reason" or "VIOLATION | short reason", with each reason under $1 characters; put any longer reasoning in reasoning.')
-      .replace('A reason that finds no breach belongs on a PASS line. No other text.', `A reason that finds no breach belongs on a PASS verdict. ${taskFields('{rule_id: its verdict, one field for each listed rule, named by that rule id}')}`);
-    if (input.startsWith('review-r2-')) expect(question, input).toBe(replyReviewQuestion(flagged));
-    else expect(question, input).not.toContain('in no broader terms');
+      .replace('A reason that finds no breach belongs on a PASS line. No other text.', `A reason that finds no breach belongs on a PASS verdict. ${taskFields('{rule_id: its verdict, one field for each listed rule, named by that rule id}')}`), input).toBe(replyReviewQuestion(flagged));
+    else expect(content, input).not.toContain('in no broader terms');
   }
   const BROAD = '- Log in to or change any website, bank portal, or account. This preview has no logged-in account access.';
   expect(packetOf('review-describe-input.json').packet.candidateReply).toContain(BROAD);
