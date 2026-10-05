@@ -6,7 +6,7 @@ import { tmpdir } from 'node:os';
 import { dirname, join } from 'node:path';
 import { afterEach, expect, it } from 'vitest';
 // @ts-expect-error The physical host remains JavaScript.
-import { createResourceOwner, RESOURCE_CEILINGS, readResourceOutcomes, hostQuery, cpuMilliseconds, LIMIT_FILE, LIMIT_FILE_TEXT, limitedFileArgv, HOST_BOUNDS, startIdentity } from '../../scripts/resource-owner.mjs';
+import { createResourceOwner, RESOURCE_CEILINGS, readResourceOutcomes, hostQuery, cpuMilliseconds, LIMIT_FILE, LIMIT_FILE_TEXT, limitedFileArgv, LIMIT_SHELL_CANDIDATES, limitShell, limitShellOf, shellCarriesProcessLimit, HOST_BOUNDS, startIdentity } from '../../scripts/resource-owner.mjs';
 import { shouldRunScheduledPriority } from '../../src/scheduled/shedding.js';
 import { createHostResourceAllocation } from '../preview/six-host-resources.js';
 
@@ -235,7 +235,7 @@ it('recovery joins a sandboxed launch row by its recorded sandbox: a root-cwd su
     writeFileSync(ledgerPath, JSON.stringify({ version: 1, launches: { native: { pid: 41001, start, owner: { pid: 41000, start },
       members: { 41001: start }, workingArea: area, sandboxArea: area, allocation: 'native-set' } } }));
     const query = async (file: string, args: string[]) => {
-      if (file === '/bin/sh') return '256\n1024\nunlimited\nunlimited\n1024\n2048\n';
+      if (file === limitShell()) return '256\n1024\nunlimited\nunlimited\n1024\n2048\n';
       if (file === '/bin/ps' && args[0] === '-U') return survivor === 'gone' ? '' : `41002 1 41002 501 4096 0:00.10 S ${childStart} /bin/sleep 60\n`;
       if (file === '/bin/ps' && args[0] === '-o') return args.at(-1) === '41002' && survivor !== 'gone' ? childStart : '';
       if (file === '/usr/sbin/lsof') return `p41002\nn${survivor === 'inside' ? area : '/'}\n`;
@@ -697,7 +697,7 @@ it('lowers the process limit without forking under it: a launch already at its l
   // A limit of 1 sits below every real user's process count: exactly the state a transport child
   // reaches when other processes started after its headroom was counted. The shim must still exec
   // (it once forked `$(ulimit -H)` after lowering the soft limit, so the send read UNKNOWN).
-  const launch = (executable: string, args: string[]) => execFileSync('/bin/sh', limitedFileArgv({ label: 'REQUEST', executable,
+  const launch = (executable: string, args: string[]) => execFileSync(limitShell(), limitedFileArgv({ label: 'REQUEST', executable,
     args, handles: 64, cpuSeconds: 5, processLimit: 1, env: { PATH: '/usr/bin:/bin' } }), { encoding: 'utf8', env: { PATH: '/usr/bin:/bin' } });
   expect(launch('/bin/echo', ['launched']).trim()).toBe('launched');
   expect(() => launch('/bin/sh', ['-c', '(/bin/echo forked); /bin/echo after'])).toThrow();
@@ -712,7 +712,7 @@ held.forEach(fd => closeSync(fd)); process.stdout.write(JSON.stringify({ args: p
   const argv = limitedFileArgv({ label: 'REQUEST', executable: process.execPath, args: [report, 'REQUEST'], handles: 64, cpuSeconds: 5,
     processLimit: null, env: { PATH: '/usr/bin:/bin' } });
   expect(argv[1]).toBe('REQUEST');
-  const out = JSON.parse(execFileSync('/bin/sh', argv, { encoding: 'utf8', env: { PATH: '/usr/bin:/bin' } }));
+  const out = JSON.parse(execFileSync(limitShell(), argv, { encoding: 'utf8', env: { PATH: '/usr/bin:/bin' } }));
   expect(out.args).toEqual(['REQUEST']);
   expect(out.handles).toBeLessThan(64);
 });
@@ -807,4 +807,26 @@ it('reads a single-digit-day start as the same incarnation the census records, a
   expect(startIdentity('Wed Sep 30 23:59:59 2026')).toBe('Wed Sep 30 23:59:59 2026');
   expect(startIdentity('Thu Oct  1 00:29:51 2026')).not.toBe(startIdentity('Thu Oct  1 00:29:52 2026'));
   expect(startIdentity(null)).toBe(null);
+});
+
+it('runs the limit shim under a shell whose ulimit carries -u, and never drops the process limit to find one', () => {
+  // The shim lowers RLIMIT_NPROC before every exec. Where /bin/sh has no `-u` (dash: Debian, Ubuntu,
+  // WSL) its own `exit 125` refused every launch of the host before it started, so the funnel resolves
+  // a shell that carries the option. Both sides of that choice, over the real builtin and over the
+  // decision itself.
+  expect(LIMIT_SHELL_CANDIDATES[0]).toBe('/bin/sh');
+  // The capability test reads the real builtin: a shell that answers with a bound carries the option.
+  expect(shellCarriesProcessLimit(limitShell())).toBe(true);
+  expect(shellCarriesProcessLimit('/bin/nonexistent-shell')).toBe(false);
+  // The choice: the first candidate that carries it; a candidate that does not is passed over.
+  expect(limitShellOf(() => true)).toBe('/bin/sh');
+  expect(limitShellOf((shell: string) => shell !== '/bin/sh')).toBe('/bin/bash');
+  // The other side of the refusal: with no capable shell the funnel keeps /bin/sh, so the shim's own
+  // `exit 125` refuses the launch. The limit is never skipped to make a launch succeed.
+  expect(limitShellOf(() => false)).toBe('/bin/sh');
+  expect(LIMIT_FILE_TEXT).toContain('lim -u "$3"');
+  expect(readFileSync(LIMIT_FILE, 'utf8')).toBe(LIMIT_FILE_TEXT);
+  // And the resolved shell really does run the shim through to its exec on this host.
+  expect(execFileSync(limitShell(), limitedFileArgv({ label: 'REQUEST', executable: '/bin/echo', args: ['launched'],
+    handles: 64, cpuSeconds: 5, processLimit: 1, env: {} }), { encoding: 'utf8', env: { PATH: '/usr/bin:/bin' } }).trim()).toBe('launched');
 });

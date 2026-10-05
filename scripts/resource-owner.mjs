@@ -56,7 +56,7 @@
 //
 // Waste and repair facts for each launch travel with its result (`resources`), and
 // the journal's call-outcome row keeps them durably; `outcomes` here is a bounded view.
-import { execFile, spawn } from 'node:child_process';
+import { execFile, spawn, spawnSync } from 'node:child_process';
 import { randomUUID } from 'node:crypto';
 import { closeSync, existsSync, fsyncSync, openSync, readFileSync, realpathSync, renameSync, statSync, writeFileSync } from 'node:fs';
 import { arch, cpus, hostname, platform } from 'node:os';
@@ -115,6 +115,33 @@ const LIMIT_SCRIPT = [
  * its request at argv[1]): the file drops the label, then runs LIMIT_SCRIPT unchanged. */
 export const LIMIT_FILE = fileURLToPath(new URL('./limit-exec.sh', import.meta.url));
 export const LIMIT_FILE_TEXT = `shift\n${LIMIT_SCRIPT}\n`;
+/** The shell the shim runs under. The shim lowers RLIMIT_NPROC (`ulimit -u`) before every exec, and
+ * that option is not in every POSIX shell's `ulimit` builtin: where `/bin/sh` is dash (Debian, Ubuntu,
+ * WSL) it is absent, so the shim's own `exit 125` refused every launch of the host before it started —
+ * the process limit was not dropped, the whole funnel was, and with it every provider call. The funnel
+ * resolves a shell that carries the option instead, so the limit keeps being applied (the ability is
+ * kept and the safeguard stays at the checkpoint). `/bin/sh` is tried first, so a host whose `sh` has
+ * the option (darwin) launches exactly as before. With no such shell the funnel keeps `/bin/sh` and the
+ * shim refuses the launch as it does today: the limit is never silently skipped. */
+export const LIMIT_SHELL_CANDIDATES = Object.freeze(['/bin/sh', '/bin/bash']);
+/** The choice itself, over an injected capability test: the first candidate whose `ulimit` carries
+ * `-u`, else the first candidate (whose shim then refuses the launch). */
+export function limitShellOf(carriesProcessLimit, candidates = LIMIT_SHELL_CANDIDATES) {
+  return candidates.find(shell => carriesProcessLimit(shell)) ?? candidates[0];
+}
+/** One probe per candidate: `ulimit -S -u` either prints a bound or the builtin refuses the option. */
+export function shellCarriesProcessLimit(shell) {
+  try {
+    const probe = spawnSync(shell, ['-c', 'ulimit -S -u'], { encoding: 'utf8', timeout: QUERY_TIMEOUT_MS,
+      env: { PATH: '/usr/bin:/bin' }, stdio: ['ignore', 'pipe', 'ignore'] });
+    return probe.status === 0 && /^(?:unlimited|[0-9]+)$/u.test(String(probe.stdout ?? '').trim());
+  } catch { return false; }
+}
+let limitShellResolution = null;
+/** Resolved once per process: each probe is a launch of its own, and the answer cannot change under it. */
+export function limitShell() {
+  return limitShellResolution ??= limitShellOf(shellCarriesProcessLimit);
+}
 export function limitedFileArgv({ label, executable, args, handles, cpuSeconds, processLimit, env }) {
   return [LIMIT_FILE, label, String(handles), String(cpuSeconds), processLimit === null ? '' : String(processLimit),
     SHELL_VARIABLES.filter(name => env?.[name] === undefined).join(' '), '', executable, ...args];
@@ -626,7 +653,7 @@ export function createResourceOwner(initialCeilings = RESOURCE_CEILINGS) {
     return new Promise(resolve => {
       let child;
       try {
-        child = spawn('/bin/sh', limitedArgv({ executable: input.executable, args: input.args, handles, cpuSeconds,
+        child = spawn(limitShell(), limitedArgv({ executable: input.executable, args: input.args, handles, cpuSeconds,
           processLimit: limitValue, env: input.env, gated: true }), {
           cwd: input.cwd, env: { ...input.env, __CF_USER_TEXT_ENCODING: undefined, NODE_V8_COVERAGE: undefined },
           shell: false, detached: true, stdio: ['pipe', 'pipe', 'ignore', 'pipe'] });
@@ -807,7 +834,7 @@ export function createResourceOwner(initialCeilings = RESOURCE_CEILINGS) {
     }
   }
   async function observeInherited() {
-    const text = await query('/bin/sh', ['-c', 'ulimit -S -n; ulimit -H -n; ulimit -S -t; ulimit -H -t; ulimit -S -u; ulimit -H -u']);
+    const text = await query(limitShell(), ['-c', 'ulimit -S -n; ulimit -H -n; ulimit -S -t; ulimit -H -t; ulimit -S -u; ulimit -H -u']);
     const values = text?.trim().split('\n').map(v => v.trim() === 'unlimited' ? 'unlimited' : Number(v));
     if (!values || values.length !== 6 || values.some(v => v !== 'unlimited' && !Number.isSafeInteger(v))) {
       inherited = { state: 'unknown' }; return inherited;

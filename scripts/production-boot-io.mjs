@@ -6,7 +6,7 @@ import { closeSync, constants, existsSync, fsyncSync, lstatSync, mkdirSync, open
 import { join, resolve, relative, isAbsolute } from 'node:path';
 import { homedir, userInfo } from 'node:os';
 import { fileURLToPath } from 'node:url';
-import { hostResources, limitedFileArgv } from './resource-owner.mjs';
+import { hostResources, limitedFileArgv, limitShell } from './resource-owner.mjs';
 
 /** The transport child's own bounds: per-process handles, and user-ID process headroom. */
 const TRANSPORT_LIMITS = Object.freeze({ handleCount: 256, processCount: 4 });
@@ -116,7 +116,7 @@ export function createProductionTelegramIO(root, captures, testEndpoint = null) 
     /** Sequential and waited on synchronously: short calls (identity, send, acknowledge). */
     invoke(input, credential) {
       const { env, timeout, argv } = launch(input);
-      const child = spawnSync('/bin/sh', argv, { input: credential, encoding: 'utf8', timeout, maxBuffer: MAX_TRANSPORT_BYTES,
+      const child = spawnSync(limitShell(), argv, { input: credential, encoding: 'utf8', timeout, maxBuffer: MAX_TRANSPORT_BYTES,
         env, stdio: ['pipe', 'pipe', 'ignore'] });
       // Rule 26: an error label is no proof. Only a child that never got a process id sent nothing.
       if (child.error) return settle(null, '', !child.pid);
@@ -129,7 +129,7 @@ export function createProductionTelegramIO(root, captures, testEndpoint = null) 
       const { env, timeout, argv } = launch(input);
       return new Promise(resolve => {
         let child;
-        try { child = spawn('/bin/sh', argv, { env, stdio: ['pipe', 'pipe', 'ignore'] }); }
+        try { child = spawn(limitShell(), argv, { env, stdio: ['pipe', 'pipe', 'ignore'] }); }
         catch { resolve(settle(null, '')); return; }
         let chunks = [], size = 0, failed = false;
         const fail = () => { failed = true; chunks = []; try { child.kill('SIGKILL'); } catch { /* already gone */ } };
