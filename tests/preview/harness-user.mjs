@@ -15,7 +15,7 @@
 import { createHash, randomBytes } from 'node:crypto';
 import { execFileSync } from 'node:child_process';
 import { chmodSync, copyFileSync, existsSync, lstatSync, mkdirSync, mkdtempSync, readdirSync, readFileSync, realpathSync, renameSync, rmSync, statSync, writeFileSync } from 'node:fs';
-import { dirname, join } from 'node:path';
+import { basename, dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 
 export const HARNESS_USER = '_instarharness';
@@ -73,7 +73,13 @@ export function grantAcl(paths, entries, exec = execFileSync) {
 }
 
 const sha256 = bytes => `sha256:${createHash('sha256').update(bytes).digest('hex')}`;
-const ensureDirectory = (path, mode = 0o700) => { mkdirSync(path, { recursive: true, mode }); if (lstatSync(path).isSymbolicLink()) throw Error(`preview: ${path} is a link`); };
+// mkdir's mode is narrowed by the process umask (a runner under umask 077 made a hook directory the harness user could not
+// enter), so the directory's mode is set explicitly after it exists.
+const ensureDirectory = (path, mode = 0o700) => {
+  mkdirSync(path, { recursive: true, mode });
+  if (lstatSync(path).isSymbolicLink()) throw Error(`preview: ${path} is a link`);
+  chmodSync(path, mode);
+};
 /** Installs `source` at `target` when absent or different (by content), through a temporary name and a rename, so a
  * reader never sees a half-written file. */
 function installFile(source, target, mode) {
@@ -99,9 +105,9 @@ export function harnessHookPath(from = HERE) {
   for (const name of HARNESS_HOOK_FILES) digest.update(name).update('\0').update(readFileSync(join(from, name)));
   return join(HARNESS_HOOKS, digest.digest('hex').slice(0, 16), HARNESS_HOOK_FILES[0]);
 }
-export function installHook(from = HERE) {
-  const directory = dirname(harnessHookPath(from));
-  ensureDirectory(HARNESS_HOOKS, 0o755);
+export function installHook(from = HERE, hooks = HARNESS_HOOKS) {
+  const directory = join(hooks, basename(dirname(harnessHookPath(from))));
+  ensureDirectory(hooks, 0o755);
   ensureDirectory(directory, 0o755);
   for (const name of HARNESS_HOOK_FILES) installFile(join(from, name), join(directory, name), 0o644);
   return join(directory, HARNESS_HOOK_FILES[0]);

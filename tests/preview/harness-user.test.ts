@@ -586,3 +586,27 @@ describe('a delegated session as the harness user', () => {
       login: () => { throw Error('the login custody file is not the runner\'s alone'); } })).toThrow(/not the runner's alone/u);
   });
 });
+
+describe('the admission hook copy', () => {
+  // The 17:51 cint-L52 canary: the runner, under umask 077, made the hook's digest directory 0700, so the harness user
+  // could not reach tool-admission-hook.mjs and every launch was held. The copy's directories are 0755 whatever the umask.
+  const install = (umask: string) => {
+    const hooks = join(fresh(`hooks-${umask}`), 'hook');
+    const module = new URL('./harness-user.mjs', import.meta.url).href;
+    const run = spawnSync('/bin/sh', ['-c', `umask ${umask}; exec "$0" --input-type=module -e "$1"`, process.execPath,
+      `const { installHook } = await import(${JSON.stringify(module)}); process.stdout.write(installHook(undefined, ${JSON.stringify(hooks)}));`], { encoding: 'utf8' });
+    expect(run.status, run.stderr).toBe(0);
+    return { hooks, hook: run.stdout };
+  };
+  it('installs a hook directory every local user may enter under a restrictive umask', () => {
+    const { hooks, hook } = install('077');
+    expect(lstatSync(hooks).mode & 0o777).toBe(0o755);
+    expect(lstatSync(join(hook, '..')).mode & 0o777).toBe(0o755);
+    expect(lstatSync(hook).mode & 0o777).toBe(0o644);
+  });
+  it('installs the same modes under the ordinary umask', () => {
+    const { hooks, hook } = install('022');
+    expect(lstatSync(hooks).mode & 0o777).toBe(0o755);
+    expect(lstatSync(join(hook, '..')).mode & 0o777).toBe(0o755);
+  });
+});
