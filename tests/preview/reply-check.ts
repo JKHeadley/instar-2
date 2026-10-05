@@ -651,12 +651,17 @@ export const substantiveReply = (text: string): boolean => text.trim().length > 
  * judged a token, and the runner's own reminder line (its expiry and recorded renewal step) is checked against the
  * record it came from (proof room 2, update 6232017: the same line was called an invented task and an unsupported
  * self-state claim when the reviewer had no record of it). Nothing is inferred from what a word looks like, and tool provenance is never disclosure authority. */
-const secretForms = (value: string): string[] => {
+/** A provider key's kind prefix (`sk-ant-oat01-`): the rest of the key, which the shape floor alone no longer recognises. */
+const KEY_PREFIX = /^sk-[a-z]+-[a-z]+\d*-/u;
+export const secretForms = (value: string): string[] => {
   const bytes = Buffer.from(value, 'utf8');
+  const bare = KEY_PREFIX.test(value) ? value.replace(KEY_PREFIX, '') : '';
   return [...new Set([value, bytes.toString('base64'), bytes.toString('base64').replace(/=+$/u, ''),
-    bytes.toString('base64url'), bytes.toString('hex'), encodeURIComponent(value)])].filter(form => form.length > 0);
+    bytes.toString('base64url'), bytes.toString('hex'), encodeURIComponent(value), JSON.stringify(value).slice(1, -1),
+    ...(bare.length >= 16 ? [bare] : [])])].filter(form => form.length > 0);
 };
-/** True when `text` carries a held secret value exactly or in a derived encoding (base64, base64url, hex, URL). */
+/** True when `text` carries a held secret value exactly or in a derived encoding (base64, base64url, hex, URL, JSON
+ * string escaping, or a provider key without its kind prefix). */
 export function secretMaterialIn(text: string, held: readonly string[]): boolean {
   return held.some(value => value.length > 0 && secretForms(value).some(form => text.includes(form)));
 }

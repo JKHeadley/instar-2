@@ -3655,7 +3655,25 @@ servers (Part Thirteen §9,
   at 6 turns or 512 KiB, on a compaction or a missing/unreadable transcript or record, and after an unsettled turn,
   and ends the session (transcript removed) when a turn is stopped, withdrawn or fails. The harness's own memory and
   automatic compaction are off. Each trace row's `session` says new or resumed and why; status counts them.
-- `tool-admission-hook.mjs` admits ordinary work: in-workspace file and notebook operations, sandboxed commands
+- `tool-admission-hook.mjs` admits ordinary work: a file read or search of the workspace, the shell's temporary
+  directory or the system files the sandbox also lets commands read (binaries, libraries, `/private/etc`), a file or
+  notebook write or edit inside the workspace or that temporary directory, each decided on the RESOLVED file (symlinks
+  followed where they stand, so `link/..` leaves through the link; `/etc` and `/private/etc` are one place; a dangling
+  link is refused as unresolvable) with the resolved path handed to the harness. This is a check at admission, not
+  at open: a directory the agent itself swaps for a link between the hook's check and the harness's open can still be
+  followed by Read, Write, Edit, Glob or Grep; a sandboxed command has no such window, because the kernel decides at
+  open. The kernel closes that race when the harness runs as its own macOS user (`--harness-user _instarharness`,
+  below): a swapped path then reaches only the harness's own area and world-readable files, and the harness's own
+  login is a held value the reply floor and the outbound check withhold. Without the switch, or with a harness user
+  that is not ready, every Claude Code tool turn is refused (never run as the operator's account): the answer is text
+  only, and stderr, `status` (`Harness identity: REFUSED … (<reason>)`) and a notice under that answer say why
+  (`docs/defects/2026-10-03-file-tool-swap-race.md`).
+  Separately, and narrowly: the journal and the vault are ciphertext under the storage key, which only the runner's
+  environment holds; an MCP server's credential given as a SecretRef is handed to that server's launcher alone and is
+  not written to the launch configuration; the admission record holds any credential a tool result carried in
+  plaintext while the turn runs and is scrubbed when the turn ends (a process death before that scrub leaves it);
+  `secret-at-rest.test.ts` checks these cases. This is not a claim that every file the runner writes is secret-free,
+  and it is not what closes the race. It also admits sandboxed commands
   whatever words they contain, a WebFetch (GET only) of a host whose every resolved address is public, a WebSearch,
   an MCP tool listed as a read, the harness's bookkeeping (ToolSearch, ListAgents, CronList, ReportFindings,
   TaskStop), a worktree inside the workspace, and a `worker` subagent within the turn's budget (rewritten to the
@@ -3676,8 +3694,9 @@ servers (Part Thirteen §9,
   agents they may start cannot be reserved before dispatch), and any other skill name is refused. A web read of a loopback, private or
   local-name host is refused; a tool the hook does not classify is refused. Each call takes one of
   the step's 32 slots (shared with the turn's subagents) by exclusive create, so overlapping calls cannot exceed the
-  cap. The sandbox refuses reads from `/` down except the scratch volume, the system files commands need and the
-  network tools' own locations (the runner's node and npm, the developer tools' git), writes outside the volume, unix
+  cap. The sandbox refuses reads from `/` down except the scratch volume, the system files commands need (it reopens the
+  `/etc` and `/var` symlinks themselves, so `/etc/hosts` reads as `/private/etc/hosts` does and nothing else behind them
+  opens) and the network tools' own locations (the runner's node and npm, the developer tools' git), writes outside the volume, unix
   sockets and signals to other processes; the harness's messaging socket and token are removed from every command.
 - Shell network (`egress-proxy.mjs`): the sandbox lets a command reach exactly one place, the turn's checkpoint, a
   proxy the runner starts on a loopback port before launch and stops after the turn (the settings' `httpProxyPort`).
@@ -3705,8 +3724,17 @@ servers (Part Thirteen §9,
   request is a POST and is refused, so `npm audit` does not work; SSH remotes do not work (only HTTP(S) reaches the
   checkpoint).
 - MCP: `ROOT/mcp.json` (the operator's file; absent means none) is `{"mcpServers": {name: {command, args?, env?}},
-  "reads": ["mcp__name__tool", …]}`. Its launch configuration, with any credential in `env`, is copied into the
-  turn's admission state, which no tool can read; servers run outside the sandbox as the runner's identity.
+  "reads": ["mcp__name__tool", …]}`. An `env` value is a plain string, kept as written, or `{"secretRef": "<name>"}`,
+  a credential in the root's custody vault: the runner opens it at the turn (a value it cannot open answers the turn
+  without tools, recorded) and hands it once, over a private socket with a per-turn nonce, to that server's launcher
+  (`mcp-launch.mjs`), which starts the server with it in its environment; the launch configuration holds no
+  SecretRef value. A credential in a recognised format written literally in a command, an argument or an env value is
+  refused, naming the SecretRef form; an opaque literal no pattern recognises is not detected and is kept in the
+  launch configuration as written.
+  Servers run outside the sandbox as the harness's identity (the runner's account, or the harness user with
+  `--harness-user`, whose launcher is its read-only copy beside the hook and whose socket lies in the harness area,
+  traversable by that user and the runner only); the sandboxed shell cannot reach the socket (no unix sockets). The turn's admission record is scrubbed when the turn ends: each served value is replaced by its
+  SecretRef marker and recognised credentials are redacted.
 - Subagents: at most 2 per turn at any depth (a `worker` may start its own), type `worker`, 4 model turns each. The
   hook records each child's start and stop (synced) before it acts; the journal's `tool-turn` trace carries one Rule
   114 edge per child, naming the subagent that started it (`parentAgent`, null for the turn) (`returned`,
@@ -3759,8 +3787,10 @@ user may read. No credential is in that set:
   unreviewed). Claude Code then reports an `oauth_token` login with no account fields; the shipped route
   accepts that shape only from a host IO that declares the hand-off (`descriptorLogin`), and refuses a stored
   `claude.ai` login there (a plain-text login the harness could open).
-- **MCP servers' credentials** (their `env`): the turn's `mcp.json` stays in the turn directory's runner-private
-  `private/`, and the launcher hands it to Claude Code as `--mcp-config /dev/fd/4`, a pipe read once.
+- **MCP servers' credentials** (their `env`): a credential the root's `mcp.json` names by SecretRef is resolved by the
+  runner and served once, on the turn's runner socket, to that server's launcher (`mcp-launch.mjs`); the turn's
+  `mcp.json` holds no value, stays in the turn directory's runner-private `private/`, and the launcher hands it to
+  Claude Code as `--mcp-config /dev/fd/4`, a pipe read once.
 - **The operator's /private/tmp files** (other sessions leave output there with default, world-readable permissions):
   a root step (`lanes/harness-user/tmp-acl.sh`) puts one inherited deny entry for the harness user on `/private/tmp`
   (`HARNESS_TMP_DENY`, `only_inherit`), so every entry created there afterwards, by any user and whatever its mode, is
@@ -3806,8 +3836,36 @@ and each tool trace row carries `harness: {user}`. The setup (after the root ste
 is `node --loader ./scripts/slice-ts-loader.mjs tests/preview/harness-user.mjs setup <operator profile.json>
 /Users/Shared/instar-harness/profile.json`; the new profile needs its own activation and its own login (above).
 
+With no `--harness-user` at all on a Claude Code tool route, the runner never runs a tool turn as its own account
+(plan #473): each is refused and answered text only (the packet names no tools), and stderr at launch, `status`
+(`Harness identity: REFUSED … (no --harness-user was given)`, and `Tool turns: … N because the separate harness user was
+not ready`) and a notice under each such answer say why.
+
+**Held secret values (plans #442, #473, #507).** The runner holds every secret value it can read: its own
+`INSTAR_SECRET_*` values, the preview vault, the root's MCP credentials, and with `--harness-user` the custody login and
+any login Claude Code writes into the harness profile. A value once read stays held for the runner's life, so a source
+that later changes, empties or becomes unreadable never drops it (`createHeldSecrets` in `tool-turn.mjs`). Each value is
+matched exactly and in its derived forms (base64, base64url, hex, URL and JSON escaping, a provider key without its kind
+prefix). It is withheld from every reply like credential-shaped text, refused at the outbound check, scrubbed from
+recorded tool excerpts, and checked before any outward tool request is dispatched:
+
+- the admission hook asks the runner (the turn's runner socket, or the host checkpoint on a checkpointed route) about
+  every string and property name an outward tool call carries (WebFetch, WebSearch, a Codex network read, an MCP or other outward tool,
+  an unsandboxed command) before anything is done for it, a name lookup included, and refuses one that carries a held
+  value; its record keeps `[withheld …]` instead of the input;
+- the shell's network checkpoint checks each request's host, path and headers (a CONNECT authority before its name is
+  resolved), a held git-fetch body whole, and a streamed body as it arrives, holding back the longest held form so no
+  part of a value is forwarded before all of it is seen; its record never keeps the value.
+
+The check fails closed (Rule 95: its miss is a secret leaving): a held source that cannot be read now (a registered or
+MCP-referenced credential whose sealed object cannot be opened counts: `custodyHeldSources`), a check that does
+not answer, an input over 1 MiB, or no check at all refuses the outward request. Ordinary web reads, searches and shell
+network are otherwise unchanged; nothing is added to a request on the runner's behalf.
+
 What the race still reaches, stated: the harness's own transcripts and turn state, and operator files that every local
-user may read outside `/private/tmp`.
+user may read outside `/private/tmp`. A held value read that way cannot leave through a reply, an outward tool request
+or the shell's network; a value the runner never held (another session's credential in a file every local user may
+read) is not covered by this check.
 
 ```bash
 npx vitest run --maxWorkers 1 tests/preview/harness-user.test.ts

@@ -6,15 +6,15 @@
 import { spawnSync } from 'node:child_process';
 import { existsSync, lstatSync, mkdirSync, mkdtempSync, readFileSync, readdirSync, realpathSync, rmSync, utimesSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
-import { join } from 'node:path';
+import { dirname, join } from 'node:path';
 import { afterEach, expect, it } from 'vitest';
 import { openPreviewJournal } from './journal.js';
-import { SUBSCRIPTION_SUBAGENT_TYPE, SUBSCRIPTION_TOOL_LIMITS, SUBSCRIPTION_TOOL_NAMES, SUBSCRIPTION_TOOLS_SYSTEM_PROMPT } from '../../src/assembly/production-provider.js';
+import { SUBSCRIPTION_SUBAGENT_TYPE, SUBSCRIPTION_TOOL_LIMITS, SUBSCRIPTION_TOOL_NAMES, SUBSCRIPTION_TOOL_RUNTIME_READS, SUBSCRIPTION_TOOLS_SYSTEM_PROMPT } from '../../src/assembly/production-provider.js';
 import { SINGLE_MACHINE_PROFILE } from './activation-authority.js';
 import { nestedSessionWorkEdge, type SessionWorkEdge } from '../../src/assembly/production-session-work.js';
 import { capabilityBriefing, TOOLS_BRIEFING, TOOLS_LIMITS, toolsBriefing } from './briefing.js';
 // @ts-expect-error The runner side stays plain JavaScript.
-import { TOOL_HOOK_SCRIPT, TOOL_NOTICE_MAX_BYTES, attachEgress, attachScratch, detachScratch, networkToolReads, openToolTurnSlugs, prepareToolTurn, pruneToolTurns, readRootMcp, readToolTrace, reconcileToolTurns, runToolTurn, scratchMounted, toolChildrenFit, toolStatusLines, toolTurnEligible, toolTurnFits, unmountScratch, workspaceBytes } from './tool-turn.mjs';
+import { TOOL_HOOK_SCRIPT, TOOL_MCP_LAUNCHER, TOOL_NOTICE_MAX_BYTES, attachEgress, attachScratch, detachScratch, networkToolReads, openToolTurnSlugs, prepareToolTurn, pruneToolTurns, readRootMcp, readToolTrace, reconcileToolTurns, runToolTurn, scratchMounted, toolChildrenFit, toolStatusLines, toolTurnEligible, toolTurnFits, unmountScratch, workspaceBytes } from './tool-turn.mjs';
 // @ts-expect-error The physical host remains JavaScript.
 import { createResourceOwner } from '../../scripts/resource-owner.mjs';
 
@@ -66,8 +66,11 @@ it('allocates a private, empty workspace and a separate admission state per turn
   expect(turn.scratch.startsWith(join(root, 'tool-turns'))).toBe(true);
   expect(turn.stateDirectory.startsWith(turn.scratch)).toBe(false);
   expect(JSON.parse(readFileSync(join(turn.stateDirectory, 'config.json'), 'utf8'))).toEqual({ workspace: turn.workspace,
-    tmp: join(turn.scratch, 'tmp'), maxCalls: SUBSCRIPTION_TOOL_LIMITS.maxToolCalls, maxWriteBytes: SUBSCRIPTION_TOOL_LIMITS.maxWriteBytes,
-    operations: [...SINGLE_MACHINE_PROFILE.operations], children: { max: 0, type: SUBSCRIPTION_SUBAGENT_TYPE }, mcpReads: [], authority: 'unrecorded' });
+    tmp: join(turn.scratch, 'tmp'), reads: [...SUBSCRIPTION_TOOL_RUNTIME_READS], maxCalls: SUBSCRIPTION_TOOL_LIMITS.maxToolCalls,
+    maxWriteBytes: SUBSCRIPTION_TOOL_LIMITS.maxWriteBytes, operations: [...SINGLE_MACHINE_PROFILE.operations], children: { max: 0, type: SUBSCRIPTION_SUBAGENT_TYPE }, mcpReads: [], authority: 'unrecorded',
+    heldCheck: turn.socket.path });
+  // Plan #507: the turn's runner socket (the held-secret check every outward request asks) sits in a private directory.
+  expect(lstatSync(dirname(turn.socket.path)).mode & 0o777).toBe(0o700);
   expect(turn.mcp).toBeUndefined();
   expect(turn.hook).toEqual({ node: process.execPath, script: TOOL_HOOK_SCRIPT });
   // The same attempt is never reused: a repeat allocation refuses rather than sharing a workspace.
@@ -364,7 +367,7 @@ it('keeps an interrupted turn\'s hook record past retention and journals its chi
   expect(reconcileToolTurns({ journal: done, root: fresh, redactText: (text: string) => text, now: () => 11 })).toEqual([]);
 });
 
-it('reads the root\'s MCP configuration: absent is none, malformed refuses, and its servers and credentials stay in the admission state', () => {
+it('reads the root\'s MCP configuration: absent is none, malformed refuses, a literal credential refuses, env settings and SecretRefs are kept, and its servers stay in the admission state', () => {
   const root = dir();
   expect(readRootMcp(root)).toBeNull();
   for (const bad of ['{', '{"mcpServers":[]}', '{"mcpServers":{"a b":{"command":"/x"}}}', '{"mcpServers":{"a":{}}}',
@@ -374,17 +377,43 @@ it('reads the root\'s MCP configuration: absent is none, malformed refuses, and 
   }
   writeFileSync(join(root, 'mcp.json'), '{"mcpServers":{}}');
   expect(readRootMcp(root)).toBeNull();
-  const config = { mcpServers: { dummy: { command: '/usr/bin/true', env: { TOKEN: 'DUMMY-NOT-A-SECRET' } } }, reads: ['mcp__dummy__lookup'] };
+  // The checkpoint (Rule 100): a recognised credential written literally (command, argument or env value) refuses, naming
+  // the SecretRef form; so does a malformed env value. An ordinary env setting, or any other launch key, is kept.
+  const synthetic = `ghp_${'0'.repeat(36)}`;
+  for (const [server, why] of [[{ command: '/usr/bin/true', args: [1] }, /args must be strings/u],
+    [{ command: '/usr/bin/true', args: ['--token', synthetic] }, /holds a credential literally in its command or args/u],
+    [{ command: `/usr/bin/env TOKEN=${synthetic}` }, /holds a credential literally in its command or args/u],
+    [{ command: '/usr/bin/true', env: { TOKEN: synthetic } }, /env TOKEN holds a credential literally; give it as \{"secretRef"/u],
+    [{ command: '/usr/bin/true', env: [] }, /env must be an object/u],
+    [{ command: '/usr/bin/true', env: { TOKEN: { secretRef: 'a b' } } }, /must be a string or \{"secretRef"/u],
+    [{ command: '/usr/bin/true', env: { TOKEN: { secretRef: 'a', extra: 1 } } }, /must be a string or \{"secretRef"/u]] as const) {
+    writeFileSync(join(root, 'mcp.json'), JSON.stringify({ mcpServers: { dummy: server } }));
+    expect(() => readRootMcp(root)).toThrow(why);
+  }
+  const config = { mcpServers: { dummy: { command: '/usr/bin/true', args: ['--log', '/tmp/x'], env: { LOG_LEVEL: 'info' }, cwd: '/tmp' } },
+    reads: ['mcp__dummy__lookup'] };
   writeFileSync(join(root, 'mcp.json'), JSON.stringify(config));
   const mcp = readRootMcp(root);
-  expect(mcp).toMatchObject({ servers: config.mcpServers, reads: config.reads, digest: expect.stringMatching(/^sha256:/u) });
+  expect(mcp).toMatchObject({ servers: config.mcpServers, reads: config.reads, secrets: { dummy: {} }, digest: expect.stringMatching(/^sha256:/u) });
   const turn = prepareToolTurn({ root, operation: 'telegram:1:update:9', attempt: 0, operations: [], mcp, scratch: plainScratch });
   expect(turn.mcp).toEqual({ config: join(turn.stateDirectory, 'mcp.json'), servers: ['dummy'] });
   expect(lstatSync(turn.mcp.config).mode & 0o777).toBe(0o600);
   expect(JSON.parse(readFileSync(turn.mcp.config, 'utf8'))).toEqual({ mcpServers: config.mcpServers });
   expect(JSON.parse(readFileSync(join(turn.stateDirectory, 'config.json'), 'utf8')).mcpReads).toEqual(['mcp__dummy__lookup']);
-  // The credential never lands where a tool can reach: not in the workspace or the scratch volume.
+  // The launch configuration lands in the admission state only: not in the workspace or the scratch volume.
   expect(JSON.stringify(readdirSync(turn.scratch, { recursive: true }))).not.toContain('mcp');
+  // A SecretRef server is launched through the launcher with its ordinary settings and no value; the others are unchanged.
+  writeFileSync(join(root, 'mcp.json'), JSON.stringify({ mcpServers: { ...config.mcpServers,
+    keyed: { command: '/usr/bin/srv', args: ['--x'], env: { TOKEN: { secretRef: 'chat-api-key-1' }, LOG_LEVEL: 'debug' } } } }));
+  const keyed = readRootMcp(root);
+  expect(keyed.secrets).toEqual({ dummy: {}, keyed: { TOKEN: 'chat-api-key-1' } });
+  const second = prepareToolTurn({ root, operation: 'telegram:1:update:3', attempt: 0, operations: [], mcp: keyed, scratch: plainScratch });
+  const written = JSON.parse(readFileSync(second.mcp.config, 'utf8')).mcpServers;
+  expect(written.dummy).toEqual(config.mcpServers.dummy);
+  expect(written.keyed).toEqual({ command: process.execPath, args: [TOOL_MCP_LAUNCHER, second.socket.path, 'keyed', second.mcp.nonces.keyed,
+    '/usr/bin/srv', '--x'], env: { LOG_LEVEL: 'debug' } });
+  expect(second.socket.path.length).toBeLessThan(100);
+  for (const each of [turn, second]) rmSync(join(each.socket.path, '..'), { recursive: true, force: true });
 });
 
 it('runs the shell\'s network checkpoint exactly as long as the turn: started before launch, named to the hook and the sandbox, recorded, stopped after', async () => {

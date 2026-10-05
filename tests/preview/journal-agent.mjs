@@ -12,11 +12,12 @@ import { openProductionStorage } from '../../src/assembly/production-storage.js'
 import { DEFAULT_SUBSCRIPTION_DOORWAY, subscriptionDoorway,
   SUBSCRIPTION_PREVIEW_EXPIRY, SUBSCRIPTION_TOOLS_SYSTEM_PROMPT } from '../../src/assembly/production-provider.js';
 import { attachEgress, attachSessionVolume, networkToolReads, readRootMcp, reconcileToolTurns, runToolTurn, toolPacketFits, toolStatusLines, toolTurnEligible, TOOL_NOTICE_MAX_BYTES,
-  TOOLS_DEFAULT_ACTIVATION } from './tool-turn.mjs';
+  TOOLS_DEFAULT_ACTIVATION, createHeldSecrets, custodyHeldSources, heldSpan, heldVerdict } from './tool-turn.mjs';
 import { prepareSessionAdmission, sessionAdmissionCommand, SESSION_ADMISSION_KEPT } from './session-admission.mjs';
 import { createAdmissionGate, createToolEffectOwner } from './admission-gate.mjs';
 import { admitToolCallEffect } from './tool-admission.mjs';
-import { grantVolume, HARNESS_SESSION_BRIDGE, harnessGate, harnessHookPath, harnessSessionAdmission, harnessSessionLayout, harnessStatusLine } from './harness-user.mjs';
+import { grantVolume, HARNESS_OFF_REASON, HARNESS_SESSION_BRIDGE, harnessCredentialValues, harnessGate, harnessHookPath, harnessRefusedNotice, harnessSessionAdmission,
+  harnessSessionLayout, harnessStatusLine, readHarnessLogin } from './harness-user.mjs';
 import { encoded } from '../../src/assembly/boundary.js';
 import { decodeEffectPolicy, DEFAULT_EFFECT_POLICY, effectDoorwayStatusLines, refusedEffectNotices, currentEffectPolicy } from './effect-doorway.mjs';
 import { redact } from '../../src/recall/redact.js';
@@ -33,7 +34,7 @@ import { createPreviewClock } from './clock.js';
 import { appendRun, heldNotices, heldRepliesToday, memoryHealthLine, readRuns, restartHandoff, selfState, selfStateBrief, selfStateSource, zoneFormatter } from './self-state.js';
 import { guidanceReport } from './guidance.js';
 import { memoryLearningLine, memoryLearningReport } from './memory-learning.js';
-import { JEV_MODEL, jevQuestions, publicCredentialRegister, secretMaterialIn, replyReviewContext, replyReviewQuestion, replyReviewRules, parseReplyReviewVerdict, replyReviewDiagnostics, parseJevResponse, replyRevisionQuestion, parseReplyRevision, REVIEW_MALFORMED, REVIEW_FORMAT_REMINDER } from './reply-check.js';
+import { JEV_MODEL, jevQuestions, publicCredentialRegister, concealSecretMaterial, secretMaterialIn, replyReviewContext, replyReviewQuestion, replyReviewRules, parseReplyReviewVerdict, replyReviewDiagnostics, parseJevResponse, replyRevisionQuestion, parseReplyRevision, REVIEW_MALFORMED, REVIEW_FORMAT_REMINDER } from './reply-check.js';
 import { interpretSummaryReview, SUMMARY_QUESTION } from './summary-check.js';
 import { assertLiveJudgment, modelCallRecord, sha256 } from './model-call-boundary.js';
 import { readAnswer, taskFields } from './answer-reading.js';
@@ -192,7 +193,8 @@ const required = (options, name) => { if (!options[name]) throw Error(`preview: 
  * the kernel checks each file the harness opens as an identity with no access to the operator account's private files.
  * Decided at launch from live state (harness-user.mjs harnessGate), never from the switch alone. Unavailable, every
  * harness launch is HELD (never run as the runner's own account) and the identity is decided again on a later launch;
- * the runner's journal, messaging and stop keep working, and the status line says why. Absent: null. */
+ * the runner's journal, messaging and stop keep working, and the status line says why. Absent: null (and plan #473: a
+ * Claude Code tool route then refuses every tool turn, `identityRefusalOf`). */
 const harnessOf = (options, root, doorway) => {
   const user = options['harness-user'];
   if (user === undefined) return null;
@@ -200,6 +202,14 @@ const harnessOf = (options, root, doorway) => {
     denied: [realpathSync(root), homedir(), process.cwd()], clock: () => performance.now(),
     unavailable: doorway.toolTurn?.harness ? 'the selected doorway is not the Claude Code harness' : null,
     adopt: uid => hostResources.adoptHarnessUid(uid), log: line => process.stderr.write(`preview: ${line}\n`) });
+};
+/** Plan #473: why a Claude Code tool turn is refused for its identity: no `--harness-user` at all on a Claude Code tool
+ * route (never the operator's account), said at launch. A configured user that is not ready holds every launch instead
+ * (harnessGate); a checkpointed harness runs under its own sandbox and is not gated by it. */
+const identityRefusalOf = (options, doorway) => {
+  if (options['harness-user'] !== undefined || doorway.toolTurn?.harness) return null;
+  process.stderr.write(`preview: ${harnessStatusLine({ ready: false, reason: HARNESS_OFF_REASON })}\n`);
+  return HARNESS_OFF_REASON;
 };
 /** The `runAs` a launch passes: the ready identity's command fields (throws while the identity is held). */
 const runAsOf = harness => { if (!harness) return null; const { user, launcher, login, plan } = harness.current(); return { user, launcher, login, plan }; };
@@ -1473,6 +1483,9 @@ async function main() {
       incarnation: `launcher:${process.pid}:${createHash('sha256').update(`${process.pid}:${wallNow()}:${performance.now()}`).digest('hex').slice(0, 16)}`,
       now: wallNow, monotonic: () => performance.now() });
     const harness = harnessOf(options, root, doorway);
+    // Plan #473: why a Claude Code tool turn is refused for its identity (null: a harness user is configured, or the
+    // doorway's checkpointed harness is not gated by it). The packet then names no tools, and runToolTurn refuses the turn.
+    const identityRefusal = identityRefusalOf(options, doorway);
     await hostResources.attach({ ledgerPath: launchesPath, statePath: resourcesPath, now: wallNow, allocation,
       ...(harness?.uid != null ? { harnessUid: harness.uid } : {}),
       ...(aggregateMemoryMib === undefined ? {} : { aggregateMemoryBytes: aggregateMemoryMib * 1024 * 1024 }),
@@ -1483,14 +1496,21 @@ async function main() {
         context)) });
     // Rule 100: credentials handed over in chat are stored before anything consumes them.
     const custody = createSecretCustody(root, key(), wallNow);
-    // Plan #442 (Rules 4, 86, 100): the secret values this runner holds (host custody and the preview vault), for the
-    // exact floor on every reply and send. Read in memory at each use; never recorded, logged or given to a model.
-    const heldSecretValues = () => {
-      const values = Object.entries(process.env).flatMap(([name, value]) => name.startsWith('INSTAR_SECRET_') && value ? [value] : []);
-      for (const record of custody.records()) if (record.custody === 'preview-vault')
-        try { values.push(custody.resolve(secretRef(record.name))); } catch { /* status reports the missing object */ }
-      return values;
-    };
+    // Plan #442 (Rules 4, 86, 100): the secret values this runner holds, for the exact floor on every reply and send and
+    // (plan #507) every outward tool request: host custody, the preview vault, the root's MCP credentials (served to a
+    // turn's servers) and, with a harness user, its login from the runner's custody and any login Claude Code wrote into
+    // the harness profile. Read in memory at each use; never recorded, logged or given to a model. A value once read stays
+    // held for the runner's life, so a source that later changes or becomes unreadable cannot drop a value an active
+    // context may already hold; a source that cannot be read now is reported unavailable (createHeldSecrets).
+    const harnessLoginProfile = options['harness-user'] === undefined ? null : JSON.parse(readFileSync(required(options, 'login-profile'), 'utf8'));
+    const heldSecrets = createHeldSecrets({
+      environment: () => Object.entries(process.env).flatMap(([name, value]) => name.startsWith('INSTAR_SECRET_') && value ? [value] : []),
+      ...custodyHeldSources(custody, () => readRootMcp(root)?.secrets ?? {}),
+      ...(harnessLoginProfile === null ? {} : {
+        'harness login': () => [readHarnessLogin(harnessLoginProfile)],
+        'harness profile login': () => harnessCredentialValues(harnessLoginProfile.configDirectory) }),
+    });
+    const heldSecretValues = () => heldSecrets().values;
     // Plans #446, #451: the register's public entries (names, labels, custody, expiry, renewal standing and step), given
     // to the full-context review as quoted recorded facts. An unreadable register gives none; the review then holds as before.
     const credentialRegister = () => { try { return publicCredentialRegister(custody.records(), heldSecretValues(), wallNow()); } catch { return []; } };
@@ -1551,7 +1571,7 @@ async function main() {
       const bytes = prepareJournalEnvelope(input, required(options, 'model'), g.grant, wallNow(), journal.view.limits.maxBytes);
       // A tool turn's longer system prompt must fit that room too; an overflow here makes the packet ladder yield, as
       // for the text-only prompt, instead of leaving the turn to fall back to a text-only answer.
-      if (toolsActive() && toolTurnEligible(input.id)
+      if (toolsActive() && identityRefusal === null && toolTurnEligible(input.id)
         && Buffer.byteLength(bytes) + Buffer.byteLength(doorway.toolTurn?.system ?? SUBSCRIPTION_TOOLS_SYSTEM_PROMPT) + TOOL_NOTICE_MAX_BYTES > toolPromptLimit())
         throw Error('preview: complete prompt overflow');
       return bytes;
@@ -1658,6 +1678,8 @@ async function main() {
     // Part Thirteen §9 (docs/17-harness-adapters): an eligible answer or work step runs as one scoped-tool turn (tool-turn.mjs runToolTurn).
     const invokeTools = async (prepared, id) => (await runToolTurn({ journal, root, id, prepared,
       promptLimit: toolPromptLimit(), mcp: readRootMcp(root),
+      // Rule 100: an MCP server's SecretRef is opened from this root's custody vault and handed to that server alone.
+      resolveSecret: name => createSecretCustody(root, key(), wallNow).resolve(secretRef(name)),
       authority: `${toolsRecord.reference} ${toolsRecord.invocationPolicyDigest}`,
       // MF5: the conversation's workspace persists across turns, and its kept harness session (in the login profile's
       // projects directory) is a cache bound to this authority, harness and model and to the journal's current facts.
@@ -1666,7 +1688,8 @@ async function main() {
       session: doorway.toolTurn?.harness ? null : { store: join(profile.configDirectory, 'projects'), harness: `${profile.version} ${required(options, 'model')}` },
       stopped: () => workerStop.value || existsSync(stopPath) || journal.view.stop !== null || !toolsActive(),
       deniedRoots: [realpathSync(root), profile.home, profile.configDirectory, profile.workingDirectory],
-      ...admissionConfig(), now: wallNow, redactText: text => redact(text).text, gate, owner: ownerMachine, harness: harness ? harness.current() : null,
+      ...admissionConfig(), now: wallNow, redactText: text => redact(concealSecretMaterial(text, heldSecretValues())).text, gate, owner: ownerMachine,
+      harness: identityRefusal !== null ? { ready: false, refused: true, reason: identityRefusal } : harness ? harness.current() : null, heldSecrets,
       ...(doorway.toolTurn ? { system: doorway.toolTurn.system, admission: doorway.toolTurn } : {}),
       fallback: async () => ({ result: await invokeSubscription(prepared, id) }),
       // Rules 33, 84: the workspace notice (files that may still disagree with memory, or a lost workspace) rides the packet.
@@ -1698,7 +1721,7 @@ async function main() {
       ...toolStatusLines(journal.view, toolsActive(), toolsOff ?? (toolsRecord
         ? 'withdrawn since launch: the activation record changed or its grant no longer resolves' : null), Boolean(doorway.toolTurn?.harness)),
       ...(toolsActive() || journal.view.effectDoorway ? effectDoorwayStatusLines(journal.view.effectDoorway) : []),
-      ...(harness ? [harnessStatusLine(harness.state)] : [])];
+      ...(harness ? [harnessStatusLine(harness.state)] : identityRefusal !== null ? [harnessStatusLine({ ready: false, reason: identityRefusal })] : [])];
     const statusExtraLines = () => [...proofLines(), ...ownerLines(), ...minimalLines()];
     const approvalSurface = approvalSurfaceOf(options), readOnly = readOnlyDashboardOf(options);
     // Rules 79, 81: the operator dashboard's snapshot, built at most every 15 seconds (and once at the end) while a page
@@ -1747,7 +1770,7 @@ async function main() {
       prepareModel: modelEnvelope,
       // Part Thirteen §9: the packet names the tools exactly when the model call will run on the tool route. The packet
       // is built before the answer's `reserve` or the work's `obligation-start` counts its base call, so that call is added here.
-      toolRoute: id => toolsActive() && toolTurnEligible(id) && toolPacketFits(journal.view),
+      toolRoute: id => toolsActive() && identityRefusal === null && toolTurnEligible(id) && toolPacketFits(journal.view),
       // Only scheduled obligation work is delegated; an operator answer is never handed to a session.
       // The session route is taken only while its grant holds and the call allowance can hold the
       // step's whole reserved liability on top of the obligation's own start.
@@ -1769,6 +1792,9 @@ async function main() {
         const now = wallNow(), notices = [];
         // Part Twelve: this answer's own refused effects ride first, so a refusal is reported even if the answer omits it.
         if (turn !== undefined) notices.push(...refusedEffectNotices(journal.view.effectDoorway?.recent ?? [], turn));
+        // Plan #473: an answer whose tool turn was refused for the harness identity says so under it.
+        if (turn !== undefined && identityRefusal !== null && (journal.view.toolTurns?.identityRefused ?? []).includes(turn))
+          notices.push({ key: `harness:${turn}`, line: harnessRefusedNotice(identityRefusal) });
         try { notices.push(...credentialNotices(dueCredentialReminders(createSecretCustody(root, key(), wallNow).records(), now), now)); } catch { /* status shows it */ }
         try { notices.push(...doorwayNotices(readDoorwayMap(doorwaysPath), now)); } catch { /* status shows it */ }
         return notices;
@@ -2025,7 +2051,7 @@ async function main() {
       const gateStopped = () => workerStop.value || existsSync(stopPath) || !ownerHeld() || journal.view.stop !== null
         || wallNow() >= journal.view.expires || !active();
       const appendWork = record => journal.append({ kind: 'session-work', record, at: wallNow() });
-      gate = await createAdmissionGate({ append: appendWork, stopped: gateStopped, now: wallNow,
+      gate = await createAdmissionGate({ append: appendWork, stopped: gateStopped, now: wallNow, held: heldVerdict(heldSecrets),
         effects: createToolEffectOwner({ decide: (tool, input) => admitToolCallEffect(tool, input, admissionConfig(), wallNow()),
           append: appendWork, stopped: gateStopped, now: wallNow, prepared: identity => (journal.view.toolEffects ?? []).includes(identity) }) });
     }
@@ -2097,7 +2123,7 @@ async function main() {
                 .forEach(({ name }) => rmSync(join(egressBase, name), { recursive: true, force: true }));
             }
             stepEgress.set(claim, (await attachEgress({ stateDirectory: state, ...(privateDirectory ? { privateDirectory } : {}), scratch: tmp,
-              home: join(tmp, 'home') }, undefined, networkToolReads())).proxy);
+              home: join(tmp, 'home') }, undefined, networkToolReads(), { check: heldVerdict(heldSecrets), span: () => heldSpan(heldSecrets) })).proxy);
             gate.open(claim, { framework, allowance: SESSION_WORK_LIMITS.maxCallsPerStep, edge }); },
           admissionState: claim => gate.state(claim),
           closeAdmission: claim => { gate.close(claim); closeStepEgress(claim).catch(() => {}); } },

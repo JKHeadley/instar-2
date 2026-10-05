@@ -42,6 +42,11 @@ const PROBE_GATE = 'http://127.0.0.1:4321/0123456789abcdef0123456789abcdef/probe
  * class). Reading anywhere else changes the secrets checkpoint, so it is a new class, not an edit of this list. */
 export const FULL_TOOLS_RUNTIME_READS = Object.freeze(['/bin', '/sbin', '/usr/bin', '/usr/sbin', '/usr/lib', '/usr/libexec',
   '/usr/share', '/System', '/private/var/select', '/private/etc', '/dev']);
+/** The two root-level links the shell's read exceptions name so `/etc/hosts` reads as `/private/etc/hosts` does
+ * (w4-toolpaths, plan #442). An entry for a link reopens the link node alone: the sandbox then checks the resolved target
+ * against the same list, so no file outside FULL_TOOLS_RUNTIME_READS becomes readable (/var/log stays refused) and the
+ * secrets checkpoint is unchanged. Exactly these two; any other link or path is still a new class. */
+export const FULL_TOOLS_RUNTIME_READ_LINKS = Object.freeze(['/etc', '/var']);
 
 function claudeCheckpoints(policy: Policy, args: readonly string[]): string | null {
   // The flags that skip settings hooks or permission checks, and the settings sources that could replace the per-turn settings.
@@ -92,7 +97,8 @@ export function claudeSettingsCheckpoints(json: string, egress: Readonly<{ port:
   for (const read of reads) {
     if (typeof read !== 'string' || !read.startsWith('/') || /(?:^|\/)\.\.?(?:\/|$)/u.test(read) || read.includes('*'))
       return 'the shell\'s read exceptions are not plain absolute paths';
-    if (!(within(read, PROBE.scratch) || FULL_TOOLS_RUNTIME_READS.includes(read) || (egress?.reads ?? []).includes(read)))
+    if (!(within(read, PROBE.scratch) || FULL_TOOLS_RUNTIME_READS.includes(read) || FULL_TOOLS_RUNTIME_READ_LINKS.includes(read)
+      || (egress?.reads ?? []).includes(read)))
       return `the shell reads ${read}, outside its workspace and the reviewed runtime list`;
     if (protectedPaths.some(path => within(path, read))) return `the shell reads ${read}, which holds the login home, admission state or a denied root`;
   }
