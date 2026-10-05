@@ -2,8 +2,8 @@ import { expect, it } from 'vitest';
 import { execFileSync } from 'node:child_process';
 import { existsSync, readFileSync } from 'node:fs';
 import { currentRuntime } from '../../scripts/composition-digest.mjs';
-import { lintClientImports, lintHarnessNames, lintParityRegister, lintReplacedStores, NATIVE_HARNESS, parityMatrix,
-  registerDeclarationSources, shippedClientFiles } from '../../scripts/check-architecture.mjs';
+import { buildCoreIfAbsent, currentPlatform, lintClientImports, lintHarnessNames, lintParityRegister, lintReplacedStores,
+  NATIVE_HARNESS, parityMatrix, registerDeclarationSources, shippedClientFiles } from '../../scripts/check-architecture.mjs';
 // @ts-expect-error The self-hosting harness is JavaScript.
 import { selfHostCompositionEvidence } from '../preview/self-host-harness.mjs';
 
@@ -151,4 +151,53 @@ it('R105 derives the parity matrix from the register declarations and refuses a 
   expect(clean).toEqual([]);
 // Bounded but heavy: each of the nine drift cases re-hashes the whole composition closure (typescript.js included), about 8 s
 // alone; under a loaded full suite it passed the 10 s default, so it gets its own ceiling.
+}, 60_000);
+
+it('R105 decides a certified composition on the host that can decide it: the build it needs, and the platform it names', () => {
+  const harness = 'src/assembly/harness.declarations.json';
+  const sources = registerDeclarationSources() as Record<string, { id: string; requiredFacts: { metrics: string[] } }[]>;
+  const where = 'preview-self-host-native × claude-code-subscription';
+  const elsewhere = currentPlatform() === 'darwin' ? 'linux' : 'darwin';
+  const onPlatform = (platform: string, edit: (metrics: string[]) => void = () => {}) => {
+    const copy = structuredClone(sources);
+    const metrics = copy[harness]![0]!.requiredFacts.metrics;
+    for (const [at, metric] of metrics.entries()) metrics[at] = metric.replace('.darwin.self-hosting', `.${platform}.self-hosting`);
+    edit(metrics);
+    return lintParityRegister(copy, read, ['claude-code-subscription']).map(issue => issue.detail);
+  };
+  const wrongRuntime = (metrics: string[]) => {
+    const at = metrics.findIndex(metric => metric.includes('.self-hosting.runtime='));
+    metrics[at] = metrics[at]!.replace(/runtime=.*$/u, `runtime=node-0.0.0@sha256:${'0'.repeat(64)}`);
+  };
+  // The platform a tuple names is the platform whose business it is whether this host is the certified
+  // machine. On that platform a runtime that is not this one is a finding; off it, the same declaration
+  // is not reported as a defect — the certified host decides it.
+  expect(onPlatform(currentPlatform(), wrongRuntime))
+    .toContain(`${where} × ${currentPlatform()} × self-hosting: certified on node-0.0.0@sha256:${'0'.repeat(64)}, running ${currentRuntime()}`);
+  expect(onPlatform(elsewhere, wrongRuntime).filter(detail => detail.includes('certified on node-0.0.0'))).toEqual([]);
+  // Nothing is hidden off that platform: the conformance is still held to the composition's exact bytes,
+  // because that digest hashes the declared runtime line and the closure's files, not this host.
+  expect(onPlatform(elsewhere)).toEqual([]);
+  const drifted = (path: string) => (file: string) => file === path ? `${read(file)}\n// changed executed bytes\n` : read(file);
+  for (const path of ['tests/preview/self-host-owners.ts', 'dist/index.js']) {
+    const copy = structuredClone(sources);
+    const metrics = copy[harness]![0]!.requiredFacts.metrics;
+    for (const [at, metric] of metrics.entries()) metrics[at] = metric.replace('.darwin.self-hosting', `.${elsewhere}.self-hosting`);
+    expect(lintParityRegister(copy, drifted(path), ['claude-code-subscription']).map(issue => issue.detail), path)
+      .toEqual([expect.stringContaining(`${where} × ${elsewhere} × self-hosting: conformance is not for the current composition bytes`)]);
+  }
+  // That composition executes the built core, which is generated and never committed, so the check builds
+  // it when it is absent rather than reading its absence as an incomplete declaration. A build that
+  // cannot be produced is the finding instead.
+  const never = () => { throw new Error('a present build is not rebuilt'); };
+  expect(buildCoreIfAbsent(() => true, never)).toEqual([]);
+  let produced = false;
+  expect(buildCoreIfAbsent(() => produced, () => { produced = true; return { status: 0, stdout: '', stderr: '' }; })).toEqual([]);
+  expect(buildCoreIfAbsent(() => false, () => ({ status: 2, stdout: '\nsrc/a.ts(1,1): error TS1005\n', stderr: '' })))
+    .toEqual([{ file: 'tsconfig.build.json', line: 0, rule: 'R105',
+      detail: 'the built core a certified composition executes is absent and could not be built: src/a.ts(1,1): error TS1005' }]);
+  // A build that claims success without producing the core is still absent, and says so.
+  expect(buildCoreIfAbsent(() => false, () => ({ status: 0, stdout: '', stderr: '' })))
+    .toEqual([{ file: 'tsconfig.build.json', line: 0, rule: 'R105',
+      detail: 'the built core a certified composition executes is absent and could not be built: tsc exited 0' }]);
 }, 60_000);
