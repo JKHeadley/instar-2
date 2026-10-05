@@ -78,18 +78,32 @@ it.skipIf(!available)('a compacted or respawned session comes back with identity
       ...env, process.execPath, harness]).status).toBe(0);
     return session;
   };
-  const pane = (session: string) => t(['capture-pane', '-p', '-J', '-t', `=${session}:`, '-S', '-200']).stdout;
+  const capture = (session: string) => t(['capture-pane', '-p', '-J', '-t', `=${session}:`, '-S', '-200']);
+  const pane = (session: string) => capture(session).stdout;
   // The stand-in prints its marker (BOOTED / COMPACTED / REGROUNDED) BEFORE it answers, so
   // seeing the marker is not seeing the answer. Wait, bounded, for the complete answer line
   // that follows the LAST marker and return it; an answer from before the marker (or from a
   // previous step still in scrollback) never counts. See docs/defects/awareness-continuity-respawn-flake.md.
+  // A capture that FAILS is not an empty pane: tmux exits 1 with empty stdout both when the
+  // session has gone and when the server is momentarily unreachable. Reporting the empty
+  // string for either is what made the 2026-10-05 gate failure unreadable, so a failed capture
+  // keeps the last real pane, and a session confirmed gone fails at once by that name.
   const answerAfter = (session: string, marker: string) => {
     let seen = '';
+    let failures = 0;
     for (let i = 0; i < 100; i++) {
-      seen = pane(session);
-      const at = seen.lastIndexOf(marker);
-      const answer = at < 0 ? undefined : seen.slice(at + marker.length).match(/\nCARRYING ON: (.*)\n❯/)?.[1];
-      if (answer !== undefined) return answer;
+      const captured = capture(session);
+      if (captured.status === 0 && captured.stdout !== null) {
+        failures = 0;
+        seen = captured.stdout;
+        const at = seen.lastIndexOf(marker);
+        const answer = at < 0 ? undefined : seen.slice(at + marker.length).match(/\nCARRYING ON: (.*)\n❯/)?.[1];
+        if (answer !== undefined) return answer;
+      } else if (++failures >= 3 && t(['has-session', '-t', `=${session}:`]).status !== 0) {
+        throw new Error(`the stand-in ${session} is gone before the answer after ${marker}`
+          + ` (capture: ${captured.status ?? captured.error?.message}; stderr: ${(captured.stderr ?? '').trim()})`
+          + `; last pane it showed:\n${seen}`);
+      }
       sleep(50);
     }
     throw new Error(`timed out waiting for the answer after ${marker}: ${seen}`);
