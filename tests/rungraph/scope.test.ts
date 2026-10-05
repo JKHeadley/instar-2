@@ -75,7 +75,10 @@ it('P5-NF-54 P3 validates the actual colocated feature declaration; wrong profil
   for (const status of ['live', 'soaking'])
     refused(decodeRunGraphRegistration({ ...registration, status }, context), 'liveProof');
   refused(decodeRunGraphRegistration({ ...registration, requiredFacts: { metrics: registration.requiredFacts.metrics } }, context), 'object');
-  expect(registration.requiredFacts.gate).toEqual({ test: 'P5-NF-54', deadline: Date.parse('2026-10-05T00:00:00Z') });
+  // a3f5ee3d moved this dark feature's graduation deadline to the one the build's other dark
+  // src/ features carry (the Telegram and Slack adapters); the original instant had passed, and a
+  // dark feature past its deadline is a deterministic register refusal. Gate test and status unchanged.
+  expect(registration.requiredFacts.gate).toEqual({ test: 'P5-NF-54', deadline: Date.parse('2030-01-01T00:00:00Z') });
   // Resolution belongs to the real P3 generation path, not the shape decoder.
   const run = setup();
   expect(() => governanceFixture(run.c, declarations => declarations.map(d => d.id === 'rungraph-core'
