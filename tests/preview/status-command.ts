@@ -3,7 +3,7 @@ import { redact } from '../../src/recall/redact.js';
 import { dueState, localParts } from './dated-memory.js';
 import { messageTime } from './self-state.js';
 import type { JournalView } from './journal.js';
-import { wholeReplySent } from './reply-parts.js';
+import { encodeReply, wholeReplySent } from './reply-parts.js';
 import { loopStatusLines } from './obligations.js';
 import { sentinelStatusLines } from './live-sentinels.js';
 import { retrospectiveStatusBrief } from './retrospective.js';
@@ -75,7 +75,41 @@ export function statusReply(view: JournalView, now: number, zone: string, extra:
     `Replies sent as your own words repeated back, without the second check: ${operatorEchoSent(view)}.`,
   ].join('\n');
 }
-/** The whole chat "status" answer: the fixed reply, then the host's pull lines. The chat reply and the operator dashboard
- * both read it from here, so the two can never say different things. */
+/** The units the whole status answer may use, as the send path measures them (the HTML-escaped body in UTF-8 bytes,
+ * which is never fewer than the plain text's). Telegram carries 4096; the rest is headroom for the PREVIEW mark and for
+ * the lines that grow with the journal. Pre-switch a2, 2026-10-05: on a long-history root copy the deferral lines
+ * pushed the answer to 4103 of 4096 units (update 715674230), so the bound is held here, where the answer is built. */
+export const STATUS_ANSWER_BUDGET = 3500;
+const statusUnits = (text: string) => Buffer.byteLength(encodeReply(text));
+const ELLIPSIS = '…';
+/** `line` within `cap` units: kept whole when it fits, else cut at the last space in its second half (or at a code
+ * point) and marked with an ellipsis, so its label and leading facts always stay. */
+function capLine(line: string, cap: number): string {
+  if (statusUnits(line) <= cap) return line;
+  const room = cap - statusUnits(ELLIPSIS);
+  if (room <= 0) return ELLIPSIS;
+  let head = '';
+  for (const point of line) {
+    if (statusUnits(head + point) > room) break;
+    head += point;
+  }
+  const space = head.lastIndexOf(' ');
+  return `${(space > head.length / 2 ? head.slice(0, space) : head).trimEnd()}${ELLIPSIS}`;
+}
+/** The status lines inside `budget` units, every line kept in order: when the whole answer is over, the longest lines
+ * are shortened to one shared cap, the largest cap that fits (short lines are never touched). */
+export function fitStatusLines(lines: readonly string[], budget = STATUS_ANSWER_BUDGET): string {
+  const whole = lines.join('\n');
+  if (statusUnits(whole) <= budget) return whole;
+  const fit = (cap: number) => lines.map(line => capLine(line, cap)).join('\n');
+  let low = 0, high = Math.max(0, ...lines.map(statusUnits));
+  while (low < high) {
+    const mid = Math.ceil((low + high) / 2);
+    if (statusUnits(fit(mid)) <= budget) low = mid; else high = mid - 1;
+  }
+  return fit(low);
+}
+/** The whole chat "status" answer: the fixed reply, then the host's pull lines, held inside STATUS_ANSWER_BUDGET. The
+ * chat reply and the operator dashboard both read it from here, so the two can never say different things. */
 export const statusAnswer = (view: JournalView, now: number, zone: string, extra: readonly string[] = [], lines: readonly string[] = []): string =>
-  [statusReply(view, now, zone, extra), ...lines].join('\n');
+  fitStatusLines([...statusReply(view, now, zone, extra).split('\n'), ...lines]);

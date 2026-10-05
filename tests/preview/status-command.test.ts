@@ -3,8 +3,8 @@ import { mkdtempSync, readFileSync, realpathSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { createJournalWorker, openPreviewJournal, raiseJournalCaps } from './journal-test-worker.js';
-import { isStatusCommand, STATUS_PENDING_LISTED, statusReply } from './status-command.js';
-import { TELEGRAM_MESSAGE_LIMIT } from './reply-parts.js';
+import { fitStatusLines, isStatusCommand, STATUS_ANSWER_BUDGET, STATUS_PENDING_LISTED, statusAnswer, statusReply } from './status-command.js';
+import { encodeReply, fitsOneMessage, TELEGRAM_MESSAGE_LIMIT } from './reply-parts.js';
 import { JEV_MODEL, jevQuestions, replyReviewContext } from './reply-check.js';
 
 const key = new Uint8Array(32).fill(13);
@@ -257,5 +257,57 @@ it('names at most the longest-waiting pending decisions, so the recorded over-li
     expect(ids).toHaveLength(34);
     recorded[at2] = `Pending memory decisions: 34 (updates ${ids.slice(0, STATUS_PENDING_LISTED).join(', ')}, and 24 later).`;
     expect(units(recorded.join('\n'))).toBeLessThanOrEqual(TELEGRAM_MESSAGE_LIMIT);
+  } finally { journal.close(); rmSync(root, { recursive: true, force: true }); }
+});
+
+// Observer #183 (a2): the whole status answer is held inside STATUS_ANSWER_BUDGET where it is built, with real headroom
+// under Telegram's 4096, rather than trimming one line by a few characters.
+const sent = (text: string) => Buffer.byteLength(encodeReply(text));
+const SPLIT = JSON.parse(readFileSync(new URL('./fixtures/status-reply-split-live-2026-10-03.json', import.meta.url), 'utf8')) as
+  { statusAnswers: { update: number; answer: string }[] };
+it('keeps an answer at the budget unchanged, and shortens one unit over it back inside, every line kept in order', () => {
+  const head = ['Status (2026-10-05, UTC)', 'Turns today: 1.'];
+  const filler = (size: number) => `Tools: ${'word '.repeat(size)}`.slice(0, size);
+  const room = STATUS_ANSWER_BUDGET - sent(head.join('\n')) - 1;
+  const at = [...head, filler(room)], over = [...head, filler(room + 1)];
+  expect(sent(at.join('\n'))).toBe(STATUS_ANSWER_BUDGET);
+  expect(fitStatusLines(at)).toBe(at.join('\n'));
+  expect(sent(over.join('\n'))).toBe(STATUS_ANSWER_BUDGET + 1);
+  const fitted = fitStatusLines(over).split('\n');
+  expect(sent(fitted.join('\n'))).toBeLessThanOrEqual(STATUS_ANSWER_BUDGET);
+  expect(fitted.slice(0, 2)).toEqual(head);
+  expect(fitted[2]).toMatch(/^Tools: word .*…$/u);
+});
+it.each([
+  ['pre-switch a2 update 715674230 (4103 units)', () => OVER.reply.replace(/^PREVIEW — /u, '')],
+  ['live 2026-10-03 update 6232050', () => SPLIT.statusAnswers.find(row => row.update === 6232050)!.answer],
+  ['live 2026-10-03 update 6232056', () => SPLIT.statusAnswers.find(row => row.update === 6232056)!.answer],
+])('holds the recorded over-limit status answer %s inside the budget, with every line and its label kept', (_name, read) => {
+  const lines = read().split('\n');
+  expect(sent(lines.join('\n'))).toBeGreaterThan(STATUS_ANSWER_BUDGET);
+  const fitted = fitStatusLines(lines);
+  expect(sent(fitted)).toBeLessThanOrEqual(STATUS_ANSWER_BUDGET);
+  expect(fitsOneMessage(`PREVIEW — ${fitted}`)).toBe(true);
+  const out = fitted.split('\n');
+  expect(out).toHaveLength(lines.length);
+  out.forEach((line, n) => {
+    const label = lines[n]!.split(':')[0]!;
+    expect(line.startsWith(label.slice(0, 40)), line).toBe(true);
+    if (line !== lines[n]) expect(line.endsWith('…')).toBe(true);
+  });
+  // The short lines (counts, held replies, the serving line) are never touched.
+  lines.filter(line => sent(line) < 200).forEach(line => expect(out).toContain(line));
+});
+it('builds the whole status answer inside the budget when the host lines grow without bound', () => {
+  const root = path(), journal = openPreviewJournal(join(root, 'journal.encrypted'), key, genesis);
+  try {
+    const host = Array.from({ length: 12 }, (_, n) => `Host line ${String(n)}: ${'detail & more '.repeat(40)}`);
+    const answer = statusAnswer(journal.view, at, 'UTC', [], host);
+    expect(sent(answer)).toBeLessThanOrEqual(STATUS_ANSWER_BUDGET);
+    expect(answer.startsWith('Status (')).toBe(true);
+    expect(answer).toContain('Spend allowance: ');
+    expect(answer.split('\n').filter(line => line.startsWith('Host line '))).toHaveLength(12);
+    // Both sides: a short host list is carried whole.
+    expect(statusAnswer(journal.view, at, 'UTC', [], ['Host line: short.'])).toBe(`${statusReply(journal.view, at, 'UTC')}\nHost line: short.`);
   } finally { journal.close(); rmSync(root, { recursive: true, force: true }); }
 });
