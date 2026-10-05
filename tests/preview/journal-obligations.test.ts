@@ -1233,14 +1233,32 @@ it('gives scheduled work the operator\'s own earlier words, and drops them only 
   // Live cint-L50/L49: the deferral "which three of the things I have told you matter most" got a work packet with none of
   // them, and the replayed step answered "continue: this turn's context does not include the broader history".
   const DENTIST = 'My dentist is Dr. Ortiz on Elm Street, and the cleaning is on Thursday.';
-  for (const size of ['fits', 'too-large'] as const) {
+  // Astra sb-w4-d1b round 2 (plan #547): the same fact once the summary frontier passes it. The summary writer keeps
+  // the exact clause in memoryItems and is told not to repeat it in its prose, so prose plus later messages hold none
+  // of it; a forgotten clause beside it must stay out, so the packet carries the ACTIVE facts, not every kept one.
+  const PLUMBER = 'My plumber is Ray at Dockside Plumbing, and he bills monthly.';
+  const FORGET = 'Forget what I told you about the plumber.';
+  for (const size of ['fits', 'summarized', 'too-large'] as const) {
     const root = origin();
     try {
       const contexts: Record<string, unknown>[] = [];
       const w = world(root, { answer: question => question === INVOICE ? { reply: LATER, openLoops: [{ kind: 'deferral', quote: LATER, waitsOn: 'nothing' }] } : 'Noted.',
         work: context => { contexts.push(context); return { outcome: 'report', report: 'The invoice is for 120 dollars.' }; } });
       await w.say(DENTIST);
+      if (size === 'summarized') await w.say(PLUMBER);
       await w.say(INVOICE);
+      if (size === 'summarized') {
+        await w.say(FORGET);
+        const [dentist, plumber, , forget] = w.journal.view.order;
+        // The summary this build writes over the first two messages: its prose names neither fact, because each
+        // exact clause is kept in memoryItems instead, and the later forget request supersedes one of them.
+        w.journal.append({ kind: 'summary-reserve', through: plumber!.update, maxInputTokens: 8000, maxOutputTokens: 2048, at: w.clock.now });
+        w.journal.append({ kind: 'summary', through: plumber!.update, text: 'Earlier turns covered two household contacts.',
+          memoryItems: [{ source: dentist!.id, quote: DENTIST }, { source: plumber!.id, quote: PLUMBER }],
+          memory: [{ mode: 'forget', source: plumber!.id, quote: PLUMBER, trigger: forget!.id }],
+          faithfulness: { path: 'exact', verdict: 'pass', score: null }, state: 'complete', at: w.clock.now });
+        expect(w.journal.view.summaries).toHaveLength(1);
+      }
       const sizes: number[] = [];
       if (size === 'too-large') {
         // The limit the packet is checked against: just under the packet with its memory, above the packet without it.
@@ -1259,7 +1277,17 @@ it('gives scheduled work the operator\'s own earlier words, and drops them only 
       expect(w.workQuestions[0]).toContain('packet.memory holds what the operator told you');
       if (size === 'fits')
         expect(contexts[0]!.memory).toEqual({ operatorMessages: [expect.objectContaining({ text: DENTIST }), expect.objectContaining({ text: INVOICE })] });
-      else {
+      else if (size === 'summarized') {
+        const memory = contexts[0]!.memory as { summary: string; facts?: { source: string; sourceLabel: string; quote: string }[];
+          operatorMessages: { text: string }[] };
+        // Only the messages after the frontier remain verbatim, and the prose carries neither fact.
+        expect(memory.operatorMessages.map(item => item.text)).toEqual([INVOICE, FORGET]);
+        expect(memory.summary).not.toContain('Ortiz');
+        // The retained fact survives, named by the operator turn it came from; the forgotten one does not.
+        expect(memory.facts).toEqual([{ source: w.journal.view.order[0]!.id, sourceKind: 'operator-stated',
+          sourceLabel: expect.stringContaining('conversation:operator/'), quote: DENTIST }]);
+        expect(JSON.stringify(contexts[0])).not.toContain('Dockside');
+      } else {
         expect(sizes[0]!).toBeGreaterThan(sizes[1]!);
         expect(contexts[0]!.memory).toBeUndefined();
         expect(contexts[0]!.obligation).toBeDefined();
@@ -1267,6 +1295,64 @@ it('gives scheduled work the operator\'s own earlier words, and drops them only 
       w.journal.close();
     } finally { rmSync(root, { recursive: true, force: true }); }
   }
+});
+
+it('projects a real recorded summary\'s retained facts into scheduled work, and leaves a forgotten one out (plan #547)', async () => {
+  // Observer #106: the recorded shapes, not a stub. Proof room one, group A, 2026-10-03 (cancel3-live fixture, the
+  // file cancel-not-forget.test.ts reads): the summary writer's OWN output over updates 715673209-715673211 — its
+  // prose, the exact clause it kept in memoryItems, and the forget it recorded in that same output. The recorded
+  // writer kept no item for the request it forgot in the same breath, so the superseded half of the rule is given
+  // that recorded forget's own source and quote: the item the writer would have kept had the forget come later.
+  const fixture = JSON.parse(readFileSync(new URL('./fixtures/cancel3-live-2026-10-03.json', import.meta.url), 'utf8')) as {
+    turns: { label: string; update: number; message: string }[]; summaryOutputAtRa3: { reply: string };
+    summaryRowMemoryAtRa3: { mode: 'forget'; source: string; quote: string; trigger: string }[] };
+  const written = JSON.parse(fixture.summaryOutputAtRa3.reply) as { summary: string; memoryItems: { source: string; quote: string }[] };
+  const turn = (label: string) => fixture.turns.find(item => item.label === label)!;
+  const forgotten = fixture.summaryRowMemoryAtRa3[0]!;
+  expect(written.memoryItems).toEqual([{ source: `telegram:8994258214:update:${String(turn('ra2').update)}`, quote: turn('ra2').message }]);
+  expect(forgotten).toMatchObject({ mode: 'forget', source: `telegram:8994258214:update:${String(turn('ra1').update)}`, quote: turn('ra1').message });
+  const root = origin();
+  try {
+    const clock = { now: Date.UTC(2026, 9, 3, 17, 25) };
+    const contexts: Record<string, unknown>[] = [];
+    const sent: string[] = [];
+    const journal = openPreviewJournal(join(root, 'journal.encrypted'), key,
+      { ...genesis(32000), bot: '8994258214', chat: '7812716706', operator: '7812716706' });
+    const worker = createJournalWorker(journal, { now: () => clock.now, stopped: () => false, timeZone: 'America/Los_Angeles',
+      prepareModel: input => input.context,
+      model: async input => {
+        if (input.id.startsWith('obligation:')) { contexts.push(JSON.parse(input.context) as Record<string, unknown>);
+          return JSON.stringify({ outcome: 'report', report: 'The plumber is booked for 10:40.' }); }
+        return JSON.stringify(input.question === INVOICE
+          ? { reply: LATER, memory: [], openLoops: [{ kind: 'deferral', quote: LATER, waitsOn: 'nothing' }] }
+          : { reply: 'Noted.', memory: [] });
+      },
+      send: async input => { sent.push(input.text); return sent.length; }, checkOutbound: () => {} });
+    const say = async (update: number, text: string) => {
+      worker.intake([{ update_id: update, message: { chat: { id: 7812716706, type: 'private' }, from: { id: 7812716706 },
+        text, date: Math.floor(clock.now / 1000) } }]);
+      await worker.drain();
+      clock.now += 60_000;
+    };
+    for (const label of ['ra1', 'ra2', 'ra3'] as const) await say(turn(label).update, turn(label).message);
+    // This turn is the test's own, not a recorded one: it opens the deferral whose scheduled work reads the packet.
+    await say(turn('ra3').update + 1, INVOICE);
+    const through = turn('ra2').update;
+    journal.append({ kind: 'summary-reserve', through, maxInputTokens: 32000, maxOutputTokens: 2048, at: clock.now });
+    journal.append({ kind: 'summary', through, text: written.summary,
+      memoryItems: [...written.memoryItems, { source: forgotten.source, quote: forgotten.quote }],
+      memory: [forgotten], faithfulness: { path: 'exact', verdict: 'pass', score: null }, state: 'complete', at: clock.now });
+    clock.now += LOOP_REVISIT_MS + 60_000;
+    expect(await worker.workObligations()).toBe(true);
+    const memory = contexts[0]!.memory as { summary: string; facts?: { source: string; quote: string }[]; operatorMessages: { text: string }[] };
+    // The recorded prose is carried, and the one active recorded clause rides beside it with its own source.
+    expect(memory.summary).toContain('operator asked whether stored memory/code or judgment wins');
+    expect(memory.facts).toEqual([{ source: written.memoryItems[0]!.source, sourceKind: 'operator-stated',
+      sourceLabel: expect.stringContaining('conversation:operator/'), quote: turn('ra2').message }]);
+    // The clause the recorded forget superseded is in no field of the packet.
+    expect(JSON.stringify(contexts[0])).not.toContain(forgotten.quote);
+    journal.close();
+  } finally { rmSync(root, { recursive: true, force: true }); }
 });
 
 it('names the operator in the packet by their own Telegram first name, and names no one without it (plan #510)', async () => {
