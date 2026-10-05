@@ -13,7 +13,9 @@ import { defaultPresenceConfig } from '../../src/sentinels/presence.js';
 
 const recorded = JSON.parse(readFileSync(new URL('./fixtures/held-reply-live-2026-09-27.json', import.meta.url), 'utf8'));
 
-async function launch(sentinels?: string, promise = false, pollDown = false) {
+/** `episode`: a poll-failure episode carried from an earlier launch (that many failed polls in a row) and this launch's
+ * cycle count. */
+async function launch(sentinels?: string, promise = false, pollDown = false, episode = { carried: 0, cycles: 4 }) {
   const world = successiveWorld(), root = join(world.directory, 'sentinel-journal');
   const activation = join(world.directory, 'activation.json'), profile = join(world.directory, 'profile.json');
   const log = join(world.directory, 'poll.log'), updates = join(world.directory, 'updates.json');
@@ -55,6 +57,9 @@ async function launch(sentinels?: string, promise = false, pollDown = false) {
     requestId = journal.view.order.at(-1).id;
   }
   journal.close();
+  if (episode.carried > 0) writeFileSync(join(root, 'runs.jsonl'), [JSON.stringify({ v: 1, launch: now - 1000, pid: 1 }),
+    ...Array.from({ length: episode.carried }, (_, i) => JSON.stringify({ v: 1, launch: now - 1000, poll: 'failed', at: now - 1000 + i }))]
+    .join('\n') + '\n');
   writeFileSync(updates, JSON.stringify([{ update_id: live.update + 10, message: { chat: { id: chat, type: 'private' },
     from: { id: operator }, text: 'What should I plant this week?' } }]));
   writeFileSync(provider, `export { SUBSCRIPTION_CONVERSATION_FRAMING, SUBSCRIPTION_PREVIEW_EXPIRY, subscriptionConversationPolicy,
@@ -101,9 +106,10 @@ export const createClaudeCodeSubscriptionRoute = () => ({kind:'Success',value:{i
       '--operator-sender-id', world.configuration.operatorSenderId, '--grant-reference', trial.id,
       '--configuration-digest', trial.configurationDigest, '--expires-at', String(trial.expiresAt),
       '--tools', 'off', '--activation-record', activation, '--operator-records', join(world.directory, 'operator-records'), '--login-profile', profile,
-      '--model', world.model, '--bot-username', world.configuration.botUsername, '--max-cycles', '4', '--max-poll-seconds', '1',
-      ...(sentinels === undefined ? [] : ['--sentinels', sentinels])], { cwd: process.cwd(), encoding: 'utf8', timeout: 50000, env });
-    expect(run.status, run.stderr).toBe(0);
+      '--model', world.model, '--bot-username', world.configuration.botUsername, '--max-cycles', String(episode.cycles), '--max-poll-seconds', '1',
+      ...(sentinels === undefined ? [] : ['--sentinels', sentinels])], { cwd: process.cwd(), encoding: 'utf8', timeout: 70000, env });
+    const runLog = readFileSync(join(root, 'runs.jsonl'), 'utf8').split('\n').filter(Boolean).map(line => JSON.parse(line));
+    expect(run.status, run.stderr + JSON.stringify(runLog.slice(-3))).toBe(0);
     const status = spawnSync(process.execPath, ['--no-warnings', '--loader', './scripts/slice-ts-loader.mjs', 'tests/preview/journal-agent.mjs',
       'status', '--root', root, ...(sentinels === undefined ? [] : ['--sentinels', sentinels])],
       { cwd: process.cwd(), env, encoding: 'utf8', timeout: 20000 });
@@ -111,7 +117,7 @@ export const createClaudeCodeSubscriptionRoute = () => ({kind:'Success',value:{i
     journal = openPreviewJournal(join(root, 'journal.encrypted'), OFFLINE_STORAGE_KEY);
     const view = journal.view; journal.close();
     return { status: JSON.parse(status.stdout), view, heldId, requestId, sends: readFileSync(log, 'utf8').split('sendMessage').length - 1,
-      sentTexts: readFileSync(log, 'utf8') };
+      sentTexts: readFileSync(log, 'utf8'), runLog };
   } finally { endpoint.kill('SIGTERM'); }
 }
 
@@ -174,3 +180,20 @@ it.each(['none', 'promise'])('with --sentinels %s, a due reminder waits while po
   if (family === 'promise')
     expect(out.status.liveSentinels.events.some(event => event.family === 'promise' && event.event === 'work-requested')).toBe(true);
 }, 60000);
+
+// Plan #548, unit review MUST-FIX 1: a temporary Telegram server failure (here a 503 on every getUpdates) is an outage,
+// not a refusal. Carried 19 failures in a row, the 20th (a 503) used to end the run with 'Telegram polling failed 20
+// times in a row'; now the breaker stays open and the run goes on to its cycle limit, its due work unaffected. The
+// healthy control: the same carried episode with a working poll records the restoration and ends normally.
+it.each([[true, 'a 503 outage keeps the run going'], [false, 'a healthy poll restores the carried episode']])(
+  'with a carried 19-failure episode, pollDown=%s: %s', async pollDown => {
+    const out = await launch(undefined, false, pollDown, { carried: 19, cycles: 1 });
+    const mine = out.runLog.filter(entry => entry.launch !== out.runLog[0].launch);
+    const ended = mine.find(entry => entry.exit !== undefined);
+    expect(ended?.reason).toBe('cycle limit reached');
+    expect(out.runLog.some(entry => String(entry.reason ?? '').startsWith('Telegram polling failed'))).toBe(false);
+    if (pollDown) {
+      expect(mine.filter(entry => entry.poll === 'failed').length).toBeGreaterThanOrEqual(1);
+      expect(mine.some(entry => entry.poll === 'restored')).toBe(false);
+    } else expect(mine.some(entry => entry.poll === 'restored')).toBe(true);
+  }, 90000);
