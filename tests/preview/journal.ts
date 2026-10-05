@@ -807,7 +807,10 @@ export interface ObligationWork { attempts: number; last: number; lastSlot: numb
   turnsSeen?: number;
   /** `boundTo` is the reply whose durable intent carries the result (it is never attached again); `delivered` is set
    * only by that reply's sent receipt. A bound result with no receipt is UNKNOWN: visible, unresolved, never resent. */
-  report?: { text: string; at: number; boundTo?: string; delivered?: string } }
+  report?: { text: string; at: number; boundTo?: string; delivered?: string };
+  /** A result a sent reply could not carry because its review objected to part of it: kept verbatim with the
+   * objection and the reply (`by`) that withheld it, and handed to the next work step to correct. */
+  withheld?: { text: string; at: number; by: string; objection: string } }
 /** Declarations an answer proposed that failed admission. A refused deferral, blocker or recheck forces the full
  * contextual review (`refusedObligation`); a refused fulfillment claim is only counted. */
 export interface RejectedObligations { loops?: number; blocker?: true; rechecks?: true;
@@ -1058,6 +1061,9 @@ export type JournalRecord =
     loops?: ReplyLoop[]; blocker?: ProposedBlocker; blockerRechecks?: BlockerRecheck[];
     /** Obligation work results this sent reply delivers; delivery settles the obligation (Rules 8, 92). */
     reports?: string[];
+    /** Attached results this sent reply does NOT carry in full because a pre-send review removed or rewrote part of
+     * them, each with that review's objection: the result returns to owned work for a correction (Rules 8, 22, 46). */
+    withheldReports?: { key: string; objection: string }[];
     /** Present when a pre-send review objected or could not decide; the reply was released anyway. */
     release?: ReplyRelease;
     /** Present when a mandatory floor kept the candidate back and this intent carries the holding notice. */
@@ -1992,9 +1998,13 @@ export function obligationSchedule(view: JournalView): { key: string; kind: 'com
     // operator dependency then waits for the operator's next message instead of the cadence.
     const first = waits === 'date' && due?.day ? wallEpoch(due.day, due.time ?? '09:00', due.zone)
       : note.waitsOn !== undefined ? source.at + revisit : undefined;
+    // A result a review withheld from the reply is owned work again, due at once (an interrupted attempt on the revisit
+    // cadence): left as a finished result, it was attached and withheld again on every reply and never drained.
+    const rework = work?.withheld !== undefined && work.inFlight === undefined && !pendingReport(work)
+      ? Math.max(work.lastSlot + 1, work.outcome === 'uncertain' ? work.last + revisit : work.withheld.at) : undefined;
     // A started step stays scheduled whatever dependency its predecessor left, so interrupted-start recovery owns it.
-    if (work?.inFlight === undefined && first === undefined && resume === undefined && !pendingReport(work)) return;
-    items.push({ key, kind: 'commitment', id, slot: work?.inFlight ?? resume ?? next(key, first ?? Infinity), inFlight: work?.inFlight !== undefined,
+    if (work?.inFlight === undefined && first === undefined && resume === undefined && rework === undefined && !pendingReport(work)) return;
+    items.push({ key, kind: 'commitment', id, slot: work?.inFlight ?? rework ?? resume ?? next(key, first ?? Infinity), inFlight: work?.inFlight !== undefined,
       awaitingDelivery: attachableReport(work), deliveryUnknown: pendingReport(work) && !attachableReport(work) });
   });
   openBlockers(view).forEach(({ id, note }) => {
@@ -2049,9 +2059,11 @@ function projectObligationWork(view: JournalView, row: Extract<JournalRecord, { 
   settleTokens(view, tokenKey, row.usage);
   // Each result is the current account: a dependency or note from an earlier result never outlives it. An uncertain
   // result is no account at all, so a waiting dependency (its need and what the operator sent since) is carried over.
-  const { inFlight: _done, waitsOn: _waits, note: _note, ...rest } = work;
+  const { inFlight: _done, waitsOn: _waits, note: _note, withheld, ...rest } = work;
   const carried = row.outcome === 'uncertain' && work.waitsOn !== undefined;
   view.obligationWork[row.obligation] = { ...rest, last: row.at, outcome: row.outcome,
+    // The withheld result and its objection stay the work's input until a step actually answers them.
+    ...(row.outcome === 'uncertain' && withheld !== undefined ? { withheld } : {}),
     turnsSeen: carried ? work.turnsSeen ?? view.order.length : view.order.length,
     ...(carried ? { waitsOn: work.waitsOn, ...(work.note === undefined ? {} : { note: work.note }) } : {}),
     ...(row.note === undefined ? {} : { note: row.note }), ...(row.waitsOn === undefined ? {} : { waitsOn: row.waitsOn }),
@@ -2135,7 +2147,7 @@ export const OBLIGATION_SUMMARY_CHARS = 4000, OBLIGATION_MEMORY_MESSAGES = 20, O
 export const OBLIGATION_MEMORY_FACTS = 20, OBLIGATION_MEMORY_FACT_CHARS = 500;
 /** The runner's bounds on a work step's report and note (obligationDecision); the question states them. */
 export const OBLIGATION_REPORT_CHARS = 1500, OBLIGATION_NOTE_CHARS = 500;
-export const OBLIGATION_WORK_QUESTION = 'packet.obligation is open work you own for the verified operator, due now. packet.obligation.yourReply was already sent to the operator: repeating or re-confirming it is not the work, so the report for a deferral or judgment is the deferred answer itself, never another acknowledgement. packet.memory holds what the operator told you (the newest summary, packet.memory.facts, which are the exact clauses that summary keeps by source instead of repeating them in its prose, and their messages after it): work about what they told you is done from it. Do it now with what you know; you have no external tools, and a reply reaches the operator only with their next message. A report is that later message: it is held now and delivered with their next message, never before it, so "answer later" or "not in this reply" is done by reporting now. Choose exactly one of these objects. For a request, promise, deferral or judgment: {"outcome":"report","report":<the completed result or decision, addressed to the operator, at most ' + String(OBLIGATION_REPORT_CHARS) + ' characters>} when you can finish it now; {"outcome":"continue","note":<the concrete progress and next step, at most ' + String(OBLIGATION_NOTE_CHARS) + ' characters>} when it genuinely needs more time; {"outcome":"waiting","waitsOn":"operator"|"external","note":<what exactly you now need, at most ' + String(OBLIGATION_NOTE_CHARS) + ' characters>} only when someone else must act first. When packet.waitingFor is present, you said you needed it earlier: check packet.operatorMessagesSince and continue with whatever now arrived. For a blocker-recheck, test the claim again against every avenue and packet.capabilities: {"outcome":"still-blocked","recheck":"YYYY-MM-DD" within 90 days,"avenues":[{"avenue","disposition":"outside-standing"|"inapplicable","evidence":<the packet.capabilities key that shows it>}],"constraint":<governingConstraints key those capabilities support>,"reason":<what you re-examined and why it still holds>} or {"outcome":"cleared","report":<what is now possible>}. You have attempted nothing outside this step, so never call an avenue tried. Follow packet.directives. Refuse only behind a packet.governingConstraints key. '
+export const OBLIGATION_WORK_QUESTION = 'packet.obligation is open work you own for the verified operator, due now. packet.obligation.yourReply was already sent to the operator: repeating or re-confirming it is not the work, so the report for a deferral or judgment is the deferred answer itself, never another acknowledgement. packet.memory holds what the operator told you (the newest summary, packet.memory.facts, which are the exact clauses that summary keeps by source instead of repeating them in its prose, and their messages after it): work about what they told you is done from it. Do it now with what you know; you have no external tools, and a reply reaches the operator only with their next message. A report is that later message: it is held now and delivered with their next message, never before it, so "answer later" or "not in this reply" is done by reporting now. Choose exactly one of these objects. For a request, promise, deferral or judgment: {"outcome":"report","report":<the completed result or decision, addressed to the operator, at most ' + String(OBLIGATION_REPORT_CHARS) + ' characters>} when you can finish it now; {"outcome":"continue","note":<the concrete progress and next step, at most ' + String(OBLIGATION_NOTE_CHARS) + ' characters>} when it genuinely needs more time; {"outcome":"waiting","waitsOn":"operator"|"external","note":<what exactly you now need, at most ' + String(OBLIGATION_NOTE_CHARS) + ' characters>} only when someone else must act first. When packet.waitingFor is present, you said you needed it earlier: check packet.operatorMessagesSince and continue with whatever now arrived. When packet.withheld is present, your earlier report was not delivered because a review objected to it (packet.withheld.objection): answer that objection with a corrected report it no longer applies to; a report that still cannot do the work says so plainly and names the packet.governingConstraints key behind it. For a blocker-recheck, test the claim again against every avenue and packet.capabilities: {"outcome":"still-blocked","recheck":"YYYY-MM-DD" within 90 days,"avenues":[{"avenue","disposition":"outside-standing"|"inapplicable","evidence":<the packet.capabilities key that shows it>}],"constraint":<governingConstraints key those capabilities support>,"reason":<what you re-examined and why it still holds>} or {"outcome":"cleared","report":<what is now possible>}. You have attempted nothing outside this step, so never call an avenue tried. Follow packet.directives. Refuse only behind a packet.governingConstraints key. '
   + taskFields('the one object you chose');
 /** The same work step on the scoped-tool route: it can use the listed tools, and only their recorded calls ran. */
 export const OBLIGATION_WORK_QUESTION_TOOLS = replacedClause(replacedClause(OBLIGATION_WORK_QUESTION,
@@ -2227,6 +2239,19 @@ function applyIntentObligations(view: JournalView, turn: Turn, row: Extract<Jour
         || !row.text.includes(view.obligationWork[key]!.report!.text))) throw Error('preview journal: invalid obligation report');
     // The durable intent binds each result to this reply so no other reply carries it; only its sent receipt settles it.
     for (const key of row.reports) view.obligationWork[key]!.report!.boundTo = turn.id;
+  }
+  if (row.withheldReports !== undefined) {
+    // Only a commitment's attached result that this reply's text does not carry, never one it also delivers.
+    const keys = row.withheldReports.map(item => item?.key);
+    if (!Array.isArray(row.withheldReports) || !row.withheldReports.length || new Set(keys).size !== keys.length
+      || row.withheldReports.some(item => typeof item?.key !== 'string' || !item.key.startsWith('commitment:')
+        || !boundedText(item.objection, 1, 1000) || !turn.answerReports?.includes(item.key) || row.reports?.includes(item.key)
+        || !attachableReport(view.obligationWork[item.key]) || row.text.includes(view.obligationWork[item.key]!.report!.text)))
+      throw Error('preview journal: invalid withheld report');
+    for (const { key, objection } of row.withheldReports) {
+      const { report, ...work } = view.obligationWork[key]!;
+      view.obligationWork[key] = { ...work, withheld: { text: report!.text, at: row.at, by: turn.id, objection } };
+    }
   }
   if (row.blockerRechecks !== undefined) {
     const open = new Set(openBlockers(view).map(item => item.id));
@@ -7608,6 +7633,8 @@ export function createJournalWorker(journal: ReturnType<typeof openPreviewJourna
         if (labels.length) reply += ` Upcoming: ${labels.join('; ')}.`;
         let mentionedKeys = mentioned.map(datedKey), heldBack = false;
         let release: ReplyRelease | undefined, held: ReplyHeld | undefined;
+        /** The review objection that removed or rewrote text this reply would otherwise have sent (Rules 8, 22, 46). */
+        let objection: string | undefined;
         // Rule 106 before the send: the link-shape predicate over the model-written text, and a named
         // topic called only by its number, are signals.
         const usableRefs = (text: string) => {
@@ -7838,8 +7865,10 @@ export function createJournalWorker(journal: ReturnType<typeof openPreviewJourna
               withheld = { rules: named.rules, removed: cut.removed, unlocated: cut.unlocated };
               if (cut.removed.length) {
                 const candidate = actionHeader === undefined ? disclosed(`PREVIEW — ${cut.text}`) : `${actionHeader}\n${cut.text}`;
-                if (substantiveReply(cut.text) && !redact(candidate).count && !secretMaterialIn(candidate, heldValues) && fits(candidate)) scoped = candidate;
-                else nothingLeft = true;
+                if (substantiveReply(cut.text) && !redact(candidate).count && !secretMaterialIn(candidate, heldValues) && fits(candidate)) {
+                  scoped = candidate;
+                  objection = named.findings.filter(finding => namedClaimsIn(finding.reason, body).length).map(finding => finding.reason).join(' ');
+                } else nothingLeft = true;
               }
             }
             const dispositions = turn.revision?.dispositions && validDispositions(turn.revision.dispositions, objections)
@@ -7847,7 +7876,7 @@ export function createJournalWorker(journal: ReturnType<typeof openPreviewJourna
             const skipped: ResponseSkipped | undefined = decision === 'violation' && ports.replyCheck.revise && originalPrompt !== undefined
               && !turn.revisionReserved ? !inTime() ? 'deadline' : journal.view.calls >= journal.view.limits.maxCalls ? 'call cap' : undefined : undefined;
             const note = reason ?? (decision === 'unavailable' || inTime() ? undefined : REPLY_CHECK_BUDGET_REASON);
-            if (revised !== undefined) { reply = revised; mentionedKeys = []; }
+            if (revised !== undefined) { reply = revised; mentionedKeys = []; objection = reason ?? objections.join(', '); }
             else if (scoped !== undefined) { reply = scoped; mentionedKeys = []; }
             else if (audienceUnreviewed || holding && (nothingLeft || withheld === undefined)) {
               reply = actionHeader === undefined ? disclosed(HOLDING_REPLY) : `${actionHeader}\n${HOLDING_REPLY.replace(/^PREVIEW — /u, '')}`;
@@ -7930,6 +7959,7 @@ export function createJournalWorker(journal: ReturnType<typeof openPreviewJourna
             && fulfillableCommitment(journal.view.commitments, item.id) && !journal.view.closed.has(item.id)
             && journal.view.commitments[item.id]!.source !== turn.id).map(item => item.id),
           ...(heldBack || reply === HOLDING_REPLY ? {} : sentObligations(turn, reply, intentAt)),
+          ...(heldBack || reply === HOLDING_REPLY ? {} : withheldReports(turn, reply, objection)),
           ...(continuity && turn.grounding ? { continuity: { prePauseInbound: continuity.before.id,
             capture: createHash('sha256').update(continuity.before.raw).digest('hex'), summarizedThrough: frontier!.through,
             ...(frontier!.basis === 'set-aside' ? { basis: 'set-aside' as const } : {}),
@@ -8468,6 +8498,16 @@ export function createJournalWorker(journal: ReturnType<typeof openPreviewJourna
       && attachableReport(journal.view.obligationWork[key]));
     return { ...(loops?.length ? { loops } : {}), ...(blocker ? { blocker } : {}), ...(rechecks ? { blockerRechecks: rechecks } : {}),
       ...(reports?.length ? { reports } : {}) };
+  };
+  /** Rules 8, 22, 46, 86: an attached result the review cut from the reply is not delivered and is not attached again
+   * unchanged (the same review would cut it again, on every reply, and the backlog would never drain). It returns to
+   * owned work with the objection, so the next step corrects it or records why it cannot be done. */
+  const withheldReports = (turn: Turn, reply: string, objection: string | undefined) => {
+    const text = objection === undefined ? '' : clip(clean(redact(objection).text, true), 1000);
+    const withheld = text ? turn.answerReports?.filter(key => key.startsWith('commitment:')
+      && attachableReport(journal.view.obligationWork[key]) && !reply.includes(journal.view.obligationWork[key]!.report!.text))
+      .map(key => ({ key, objection: text })) : undefined;
+    return withheld?.length ? { withheldReports: withheld } : {};
   };
   /** The latest scheduled work result on commitment `id`, for the answer packet (Rules 8, 64). */
   const workState = (id: number) => {
@@ -9600,6 +9640,8 @@ export function createJournalWorker(journal: ReturnType<typeof openPreviewJourna
       const packetWith = (withMemory: boolean) => JSON.stringify({ now: isoMinute(now), zone, today: localStamp(now, zone).slice(0, 10), obligation,
         ...(withMemory ? { memory } : {}),
         ...(work?.note && work.waitsOn === undefined ? { lastProgress: clean(redact(work.note).text, true) } : {}),
+        ...(work?.withheld ? { withheld: { report: clean(redact(work.withheld.text).text, true),
+          objection: clean(redact(work.withheld.objection).text, true) } } : {}),
         // A reassessment of waiting work sees what it waited for and every verified operator message since.
         ...(work?.waitsOn !== undefined && work.note ? { waitingFor: { waitsOn: work.waitsOn, need: clean(redact(work.note).text, true),
           since: isoMinute(work.last) }, operatorMessagesSince: journal.view.order.slice(work.turnsSeen ?? journal.view.order.length)

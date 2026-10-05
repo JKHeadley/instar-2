@@ -189,11 +189,12 @@ it('an acknowledgment that only promises the answer later is not completion: the
     expect(review.reviewed).toHaveLength(1);
     expect(review.reviewed[0]).toContain(quote);
     expect(sent).not.toContain(quote);
-    expect(w.journal.view.obligationWork[key]!.report!.delivered).toBeUndefined();
+    expect(w.journal.view.obligationWork[key]!.report).toBeUndefined();
+    expect(w.journal.view.obligationWork[key]!.withheld!.text).toContain(quote);
     expect(w.journal.view.closed.has(id)).toBe(false);
-    // Still owned: the result is not counted delivered (honest residue: it stays the pending result and is offered,
-    // and reviewed, again with the next message; the step does not re-run while it waits).
-    expect(loopHealth(w.journal.view, w.clock.now)).toMatchObject({ awaitingDelivery: 1 });
+    // Still owned: the result is not counted delivered, and it is not offered unchanged again (the same review would
+    // cut it on every reply): it returns to owned work with the objection, due now (w4-d1c unit review, MUST-FIX 1).
+    expect(loopHealth(w.journal.view, w.clock.now)).toMatchObject({ awaitingDelivery: 0, dueWork: 1 });
     expect(openLoops(w.journal.view, w.clock.now).some(loop => loop.id === key)).toBe(true);
     w.journal.close();
   } finally { rmSync(root, { recursive: true, force: true }); }
