@@ -276,9 +276,16 @@ it('offers a settled wall to the answer only while the constraint wording it res
     const root = origin();
     try {
       const route = { tools: settledOn };
-      const w = world(root, { toolRoute: () => route.tools,
-        answer: question => question.startsWith('Can you book') ? { reply: CLAIM, blocker: blocker() } : 'Noted.' });
+      // maxBytes is the live preview's, because the capability read and constraint wording this case reads are optional
+      // items that yield under byte pressure: at the default 8000 the neighbour's packet crosses the limit and cuts the
+      // very fields under test, which would prove nothing either way.
+      const w = world(root, { maxBytes: 32000, toolRoute: () => route.tools,
+        answer: question => question.startsWith('Can you book') ? { reply: CLAIM, blocker: blocker() }
+          : question === INVOICE ? { reply: LATER, openLoops: [{ kind: 'deferral', quote: LATER, waitsOn: 'nothing' }] } : 'Noted.' });
       await w.say('Can you book the dentist appointment online?');
+      // Review round 2, must-fix 2 (Rules 78, 84): the open-commitment neighbour, because the commitments guidance only
+      // rides when one is open, and that is where a second voice used to deny the tools the same packet's note lists.
+      await w.say(INVOICE);
       expect(openBlockers(w.journal.view), `${settledOn}`).toHaveLength(1);
       expect(settledConstraintWording(w.journal.view, w.journal.view.blockers[0]!)).toBe(governingConstraints(settledOn)['no-tools']);
       route.tools = askedOn;
@@ -291,6 +298,18 @@ it('offers a settled wall to the answer only while the constraint wording it res
       expect((JSON.parse(probe.context) as { capability: string }).capability.startsWith(askedOn
         ? 'Your capabilities are the capability-note source; describing yourself, give only its items and limits. Summary'
         : 'Your capabilities are the capability-note source. Summary')).toBe(true);
+      // Must-fix 2's two sides, on the one packet that carries both the commitments guidance and the route's capability
+      // read. The commitment is open, so its guidance is in this packet; what the packet says about tools is said once,
+      // by the route-specific read, and no second sentence contradicts it. On the tool route the read is 'listed'; on the
+      // text-only route the limit is still stated, by that same read and its constraint wording, so nothing is widened.
+      const answerPacket = JSON.parse(probe.context) as { commitments?: { items: unknown[] }[];
+        memoryDecision?: string; capabilities?: Record<string, string>; governingConstraints?: Record<string, string> };
+      expect(answerPacket.commitments?.length, `settled ${settledOn}, asked ${askedOn}`).toBe(1);
+      expect(answerPacket.capabilities, `asked ${askedOn}`).toEqual(previewCapabilities(askedOn));
+      expect(answerPacket.governingConstraints!['no-tools'], `asked ${askedOn}`)
+        .toBe(askedOn ? 'listed tools only' : 'no external tools or accounts');
+      for (const denial of ['You have no external tools', 'no external tools.', 'you have no external tools'])
+        expect(probe.context, `${denial} (asked ${askedOn})`).not.toContain(denial);
       // Withheld from the answer is not dropped: still open, still counted, its recheck still scheduled.
       expect(openBlockers(w.journal.view)).toHaveLength(1);
       expect(obligationSchedule(w.journal.view).filter(item => item.kind === 'blocker')).toHaveLength(1);
@@ -1363,13 +1382,38 @@ it('gives scheduled work the operator\'s own earlier words, and drops them only 
   // Live cint-L50/L49: the deferral "which three of the things I have told you matter most" got a work packet with none of
   // them, and the replayed step answered "continue: this turn's context does not include the broader history".
   const DENTIST = 'My dentist is Dr. Ortiz on Elm Street, and the cleaning is on Thursday.';
-  for (const size of ['fits', 'too-large'] as const) {
+  // Review round 2, must-fix 1 (Rule 96): once a summary covers the fact-bearing message, the fact is no longer in
+  // operatorMessages AND the summary writer is told to keep it out of its prose (journal.ts, the summary question:
+  // "Existing summary.memoryItems are already retained by source; do not repeat or paraphrase them in summary prose"),
+  // so the retained items are the only place it still lives. 'retained-facts' is that exact shape: the prose says an
+  // appointment was discussed and names nothing, and the clause rides in memoryItems. 'forgotten-fact' is the other
+  // side of the same filter — the operator's forgetting removes it from the packet, as it does from an ordinary answer.
+  const SUMMARY_PROSE = 'Earlier turns covered a dental appointment and the invoice question.';
+
+  for (const size of ['fits', 'retained-facts', 'forgotten-fact', 'too-large'] as const) {
     const root = origin();
     try {
       const contexts: Record<string, unknown>[] = [];
       const w = world(root, { answer: question => question === INVOICE ? { reply: LATER, openLoops: [{ kind: 'deferral', quote: LATER, waitsOn: 'nothing' }] } : 'Noted.',
         work: context => { contexts.push(context); return { outcome: 'report', report: 'The invoice is for 120 dollars.' }; } });
       await w.say(DENTIST);
+      const dentist = w.journal.view.order.at(-1)!.id;
+      const retained = size === 'retained-facts' || size === 'forgotten-fact';
+      if (retained) {
+        // A rolling summary as the writer records one: prose that names no appointment, and the exact clause kept by
+        // source. The record is appended directly, so the projection is put in the state a real pass leaves it in; for
+        // 'forgotten-fact' the operator's forgetting of that same clause is in the state too. The live write paths for
+        // both (the summary model, and a forget through the answer) are held by journal-correction-stall.test.ts and
+        // journal-memory-correction.test.ts; what is under test here is which of them reaches a work packet.
+        w.journal.append({ kind: 'summary-reserve', through: w.journal.view.order.at(-1)!.update,
+          maxInputTokens: w.journal.view.limits.maxBytes, maxOutputTokens: 2048, at: w.clock.now });
+        w.journal.append({ kind: 'summary', through: w.journal.view.order.at(-1)!.update, text: SUMMARY_PROSE,
+          memoryItems: [{ source: dentist, quote: DENTIST }],
+          ...(size === 'forgotten-fact' ? { memory: [{ mode: 'forget' as const, source: dentist, quote: DENTIST, trigger: dentist }] } : {}),
+          faithfulness: { path: 'exact', verdict: 'pass', score: null }, state: 'complete', at: w.clock.now });
+        expect(w.journal.view.summaries).toHaveLength(1);
+        expect(w.journal.view.memory).toHaveLength(size === 'forgotten-fact' ? 1 : 0);
+      }
       await w.say(INVOICE);
       const sizes: number[] = [];
       if (size === 'too-large') {
@@ -1387,9 +1431,29 @@ it('gives scheduled work the operator\'s own earlier words, and drops them only 
       w.clock.now += LOOP_REVISIT_MS + 60_000;
       expect(await w.worker.workObligations()).toBe(true);
       expect(w.workQuestions[0]).toContain('packet.memory holds what the operator told you');
+      expect(w.workQuestions[0]).toContain('facts: the exact clauses it retains');
       if (size === 'fits')
         expect(contexts[0]!.memory).toEqual({ operatorMessages: [expect.objectContaining({ text: DENTIST }), expect.objectContaining({ text: INVOICE })] });
-      else {
+      else if (retained) {
+        const memory = contexts[0]!.memory as { summary: string; facts?: { source: string; sourceKind: string; sourceLabel: string; quote: string }[];
+          operatorMessages: { text: string }[] };
+        // The summarized message is gone from operatorMessages, and the prose that replaced it names no appointment:
+        // without facts the step is told a dental appointment exists and nothing about it. This is the live shape, with
+        // the packet far inside its bound, so a missing fact is missing grounding and never resource pressure.
+        expect(memory.summary).toBe(SUMMARY_PROSE);
+        expect(memory.operatorMessages.map(item => item.text)).toEqual([INVOICE]);
+        expect(memory.summary).not.toContain('Ortiz');
+        expect(JSON.stringify(memory.operatorMessages)).not.toContain('Ortiz');
+        expect(Buffer.byteLength(JSON.stringify(contexts[0]))).toBeLessThan(w.journal.view.limits.maxBytes);
+        // The source link, the kind and the label are the ordinary answer's own projection of these items (one shared
+        // function, so the two packets cannot drift); recall-from-summary-only.test.ts holds the answer side of it.
+        if (size === 'retained-facts')
+          expect(memory.facts).toEqual([{ source: w.journal.view.order[0]!.id, sourceKind: 'operator-stated',
+            sourceLabel: expect.stringContaining('conversation:operator/'), quote: DENTIST }]);
+        // The other side of the one filter: the operator's forgetting removes the fact from the work packet too, so a
+        // forgotten clause is never handed to a work step that the answer would already refuse to repeat.
+        else expect(memory.facts).toBeUndefined();
+      } else {
         expect(sizes[0]!).toBeGreaterThan(sizes[1]!);
         expect(contexts[0]!.memory).toBeUndefined();
         expect(contexts[0]!.obligation).toBeDefined();

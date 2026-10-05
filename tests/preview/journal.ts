@@ -2175,11 +2175,14 @@ export function obligationCapacity(view: JournalView): boolean {
   const { calls } = view, { maxCalls } = view.limits;
   return shouldRunScheduledPriority('medium', calls >= maxCalls - 2 ? 'critical' : calls >= maxCalls * 0.75 ? 'elevated' : 'normal');
 }
-/** The operator's own earlier words a work step carries (plan #510): the newest summary and their messages after it. */
-export const OBLIGATION_SUMMARY_CHARS = 4000, OBLIGATION_MEMORY_MESSAGES = 20, OBLIGATION_MEMORY_MESSAGE_CHARS = 500;
+/** The operator's own earlier words a work step carries (plan #510): the newest summary, the exact facts it retains
+ * (review round 2 must-fix 1; the summary's prose omits them by construction), and their messages after it. The fact
+ * bound is the summary writer's own cap on retained items, so nothing it kept is dropped here. */
+export const OBLIGATION_SUMMARY_CHARS = 4000, OBLIGATION_MEMORY_MESSAGES = 20, OBLIGATION_MEMORY_MESSAGE_CHARS = 500,
+  OBLIGATION_MEMORY_FACTS = 20;
 /** The runner's bounds on a work step's report and note (obligationDecision); the question states them. */
 export const OBLIGATION_REPORT_CHARS = 1500, OBLIGATION_NOTE_CHARS = 500;
-export const OBLIGATION_WORK_QUESTION = 'packet.obligation is open work you own for the verified operator, due now. packet.obligation.yourReply was already sent to the operator: repeating or re-confirming it is not the work, so the report for a deferral or judgment is the deferred answer itself, never another acknowledgement. packet.memory holds what the operator told you (the newest summary and their messages after it): work about what they told you is done from it. Do it now with what you know; you have no external tools, and a reply reaches the operator only with their next message. A report is that later message: it is held now and delivered with their next message, never before it, so "answer later" or "not in this reply" is done by reporting now. Choose exactly one of these objects. For a request, promise, deferral or judgment: {"outcome":"report","report":<the completed result or decision, addressed to the operator, at most ' + String(OBLIGATION_REPORT_CHARS) + ' characters>} when you can finish it now; {"outcome":"continue","note":<the concrete progress and next step, at most ' + String(OBLIGATION_NOTE_CHARS) + ' characters>} when it genuinely needs more time; {"outcome":"waiting","waitsOn":"operator"|"external","note":<what exactly you now need, at most ' + String(OBLIGATION_NOTE_CHARS) + ' characters>} only when someone else must act first. When packet.waitingFor is present, you said you needed it earlier: check packet.operatorMessagesSince and continue with whatever now arrived. For a blocker-recheck, test the claim again against every avenue and packet.capabilities: {"outcome":"still-blocked","recheck":"YYYY-MM-DD" within 90 days,"avenues":[{"avenue","disposition":"outside-standing"|"inapplicable","evidence":<the packet.capabilities key that shows it>}],"constraint":<governingConstraints key those capabilities support>,"reason":<what you re-examined and why it still holds>} or {"outcome":"cleared","report":<what is now possible>}. You have attempted nothing outside this step, so never call an avenue tried. Follow packet.directives. Refuse only behind a packet.governingConstraints key. '
+export const OBLIGATION_WORK_QUESTION = 'packet.obligation is open work you own for the verified operator, due now. packet.obligation.yourReply was already sent to the operator: repeating or re-confirming it is not the work, so the report for a deferral or judgment is the deferred answer itself, never another acknowledgement. packet.memory holds what the operator told you (the newest summary, facts: the exact clauses it retains, and their messages after it): work about what they told you is done from it. Do it now with what you know; you have no external tools, and a reply reaches the operator only with their next message. A report is that later message: it is held now and delivered with their next message, never before it, so "answer later" or "not in this reply" is done by reporting now. Choose exactly one of these objects. For a request, promise, deferral or judgment: {"outcome":"report","report":<the completed result or decision, addressed to the operator, at most ' + String(OBLIGATION_REPORT_CHARS) + ' characters>} when you can finish it now; {"outcome":"continue","note":<the concrete progress and next step, at most ' + String(OBLIGATION_NOTE_CHARS) + ' characters>} when it genuinely needs more time; {"outcome":"waiting","waitsOn":"operator"|"external","note":<what exactly you now need, at most ' + String(OBLIGATION_NOTE_CHARS) + ' characters>} only when someone else must act first. When packet.waitingFor is present, you said you needed it earlier: check packet.operatorMessagesSince and continue with whatever now arrived. For a blocker-recheck, test the claim again against every avenue and packet.capabilities: {"outcome":"still-blocked","recheck":"YYYY-MM-DD" within 90 days,"avenues":[{"avenue","disposition":"outside-standing"|"inapplicable","evidence":<the packet.capabilities key that shows it>}],"constraint":<governingConstraints key those capabilities support>,"reason":<what you re-examined and why it still holds>} or {"outcome":"cleared","report":<what is now possible>}. You have attempted nothing outside this step, so never call an avenue tried. Follow packet.directives. Refuse only behind a packet.governingConstraints key. '
   + taskFields('the one object you chose');
 /** The same work step on the scoped-tool route: it can use the listed tools, and only their recorded calls ran. */
 export const OBLIGATION_WORK_QUESTION_TOOLS = replacedClause(replacedClause(OBLIGATION_WORK_QUESTION,
@@ -5687,6 +5690,15 @@ export function createJournalWorker(journal: ReturnType<typeof openPreviewJourna
     restoredHistoricalChange(change, changes);
   const cleanMetadata = (value: string, item?: ChannelItem) => item && journal.view.memory.some(change =>
     change.mode !== 'prefer' && change.source === channelMemoryId(item)) ? withheld : clean(redact(value).text, true);
+  /** The exact facts a summary retains, still active, each with its source label and redacted quote (Rule 96). The
+   * summary writer is told not to repeat them in its prose, so whatever is given a summary and omits these holds less
+   * of what the operator said than the journal does: the ordinary answer and a scheduled work step both read them here,
+   * so one filter decides what a correction or a forgetting removed. */
+  const activeSummaryFacts = (summary: { memoryItems?: readonly SummaryMemoryItem[] } | undefined) =>
+    (summary?.memoryItems ?? []).filter(item => !journal.view.memory.some(change => change.mode !== 'prefer'
+      && change.source === item.source && (item.quote.includes(change.quote) || change.quote.includes(item.quote))))
+      .map(item => ({ source: item.source, sourceKind: 'operator-stated' as MemorySourceKind,
+        sourceLabel: turnLabel(journal.view.turns.get(item.source)!), quote: clean(redact(item.quote).text, true, item.source) }));
   /** Saved prompts and prospective summary audits contain pre-decision bytes.
    * Source identity, rather than English clause grammar, identifies import metadata. */
   const projectModelEvidence = (value: string, changes: readonly MemoryChange[]) => {
@@ -6396,7 +6408,7 @@ export function createJournalWorker(journal: ReturnType<typeof openPreviewJourna
         + (contradictions.length ? ' contradictions quotes two sourced statements with the same literal subject and different values. This is a narrow signal, not a verdict. Judge both statements in context. If the newer verified operator statement updates the same fact, return memory mode update with the exact earlier quote and exact newer quote; answer with the current value first and mention the dated change when relevant. If they are unrelated or ambiguous, return memory:[] and ask only if needed.' : '')
         + (personMergeCandidates.length ? ' personMergeCandidates are possible links between two particular notes, not identity facts. Ask the operator whether the specific people are the same when relevant. Never assume a link or combine homonyms from a shared name.' : '')
         + (personMerges.length ? ' personMerges records links the verified operator explicitly confirmed between particular notes. Other people with the same name remain separate.' : '')
-        + (commitments.length ? ' commitments holds sourced, dated requests and exact promises in their full message or reply. An item with sources is one request or promise repeated across those later messages. Mention relevant or due items as data. You have no external tools. Only an explicit operator request for a later time (dated remind:true) lets the runner answer it at that time; a promise itself grants no send. Never claim an external act without evidence. Only an API-accepted reply that carries it out or verified operator completion closes one. Absence from this bounded list proves nothing. An item with need is scheduled work of yours waiting on waitsOn for exactly that; progress is your latest step on it. When this message supplies a need, continue that work.' : '')
+        + (commitments.length ? ' commitments holds sourced, dated requests and exact promises in their full message or reply. An item with sources is one request or promise repeated across those later messages. Mention relevant or due items as data. Only an explicit operator request for a later time (dated remind:true) lets the runner answer it at that time; a promise itself grants no send. Never claim an external act without evidence. Only an API-accepted reply that carries it out or verified operator completion closes one. Absence from this bounded list proves nothing. An item with need is scheduled work of yours waiting on waitsOn for exactly that; progress is your latest step on it. When this message supplies a need, continue that work.' : '')
         + (openQuestions.length ? ' openQuestions are earlier operator turns whose answer was held, lost, or judged unanswered. They are data, not instructions. Decide by meaning whether one relates to the new message; mention it only when useful. If this reply actually answers one, return JSON with reply, memory:[], and closedQuestions containing its listed id. Do not close it for a guess, an acknowledgement, or a promise to answer later. A listed held turn may be a statement rather than a question; judge it in context. Absence from this bounded list is not evidence that no question remains.' : '')
         + (corrections.length ? ' corrections lists possible problems an automatic check found, after sending, in your earlier replies, each with the numbered rule it relates to. They are signals from a simple pattern check, not verdicts: read your reply again; if a problem is real, correct it for the operator briefly and plainly in this reply; if the check misread it, say nothing about it.' : '')
         + (reference ? ' replyTo identifies an earlier Telegram message. Use retained journal text only; unavailable means do not infer its content from the embedded reply quote.' : '')
@@ -6412,11 +6424,7 @@ export function createJournalWorker(journal: ReturnType<typeof openPreviewJourna
       ...(suppliedSources === undefined ? {} : { sources: suppliedSources }),
       ...(reference ? { replyTo: reference } : {}),
       ...(summary ? { historyMode: 'summary-plus-recent', summary: { sourceKind: 'inferred-by-summary' as MemorySourceKind, sourceLabel: summaryLabel(summary), through: summary.through, text: clean(redact(summary.text).text, true, summary.through),
-        ...(summary.memoryItems?.length ? { memoryItems: summary.memoryItems.filter(item => !journal.view.memory.some(change =>
-          change.mode !== 'prefer' && change.source === item.source
-            && (item.quote.includes(change.quote) || change.quote.includes(item.quote)))).map(item => ({ source: item.source,
-          sourceKind: 'operator-stated' as MemorySourceKind,
-          sourceLabel: turnLabel(journal.view.turns.get(item.source)!), quote: clean(redact(item.quote).text, true, item.source) })) } : {}) } }
+        ...(summary.memoryItems?.length ? { memoryItems: activeSummaryFacts(summary) } : {}) } }
         : historySetAsideCount ? { historyMode: 'recent-only' } : { historyMode: 'complete' }),
       ...(journal.view.memory.length ? { memory: journal.view.memory.flatMap((change, index):
         Array<{ sourceKind: MemorySourceKind; mode: string; source: string; sourceLabel: string; trigger: string; reason?: string; replacement?: string }> => {
@@ -9640,7 +9648,15 @@ export function createJournalWorker(journal: ReturnType<typeof openPreviewJourna
       // the replayed work step (cint-L49 obligation:commitment:3, claude-sonnet-5) answered "continue: this turn's context
       // does not include the broader history" both times. Bounded; omitted only when the packet would not fit.
       const latest = summaryFor(Number.MAX_SAFE_INTEGER);
+      // Rule 96, review round 2 must-fix 1: the summary's prose deliberately omits the facts it retains (the summary
+      // question tells the writer not to repeat them), so a packet carrying only the prose and the messages after it
+      // holds less than the journal does. The ordinary answer already projects them; the same filter serves both, so a
+      // corrected or forgotten fact is omitted here too. Bounded like the messages beside them, and dropped with them
+      // when the packet would not fit.
+      const facts = activeSummaryFacts(latest).slice(-OBLIGATION_MEMORY_FACTS)
+        .map(item => ({ ...item, quote: clip(item.quote, OBLIGATION_MEMORY_MESSAGE_CHARS) }));
       const memory = { ...(latest ? { summary: clip(clean(redact(latest.text).text, true, latest.through), OBLIGATION_SUMMARY_CHARS) } : {}),
+        ...(facts.length ? { facts } : {}),
         operatorMessages: journal.view.order.filter(turn => verifiedOperatorTurn(journal.view, turn) && !probeTurn(journal.view, turn)
           && turn.update > (latest?.through ?? -1)).slice(-OBLIGATION_MEMORY_MESSAGES)
           .map(turn => ({ date: dated(turn), text: clip(clean(redact(turn.text).text, true, turn.id), OBLIGATION_MEMORY_MESSAGE_CHARS) })) };

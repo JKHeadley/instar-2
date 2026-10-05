@@ -99,7 +99,11 @@ export function detachSessionVolume(mount) {
  * retry (growing, so a volume the kernel is briefly still holding is given longer each time). One attempt is not enough:
  * in the sb-w4-selfdesc gate run of 2026-10-05 the detach immediately after the burst of writes that filled an 8 MB
  * volume left it mounted, and the very next call — the same code, milliseconds later — detached it. Unretried that
- * costs the conversation its next turn, because `attachScratch` refuses a volume it cannot unmount first. */
+ * costs the conversation its next turn, because `attachScratch` refuses a volume it cannot unmount first.
+ * What the retry costs, measured rather than guessed (Rule 13, review round 2 must-fix 3): the pauses total 1,000 ms
+ * (0 + 100 + 200 + 300 + 400), but each attempt is its own synchronous forced detach carrying the 60,000 ms timeout
+ * below, so attempts that all reach that timeout block the calling thread for up to 301,000 ms against the one
+ * attempt's 60,000 ms. A detach that completes at all returns in milliseconds, so the ordinary cost is the pauses. */
 const SCRATCH_UNMOUNT_TRIES = 5, SCRATCH_UNMOUNT_PAUSE_MS = 100;
 const forceDetach = mount => {
   try { execFileSync(HDIUTIL, ['detach', '-quiet', '-force', mount], { stdio: 'ignore', timeout: 60000 }); } catch { /* the mount decides, below */ }
