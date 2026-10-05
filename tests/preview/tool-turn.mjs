@@ -101,13 +101,28 @@ export function attachSessionVolume(root, { bytes = SESSION_VOLUME_BYTES, name =
 export function detachSessionVolume(mount) {
   try { execFileSync(HDIUTIL, ['detach', '-quiet', '-force', mount], { stdio: 'ignore', timeout: 60000 }); } catch { /* checked by the caller */ }
 }
+/** How many times a forced detach is attempted before a volume is reported still mounted, and the pause before each
+ * retry (growing, so a volume the kernel is briefly still holding is given longer each time). One attempt is not enough:
+ * in the sb-w4-selfdesc gate run of 2026-10-05 the detach immediately after the burst of writes that filled an 8 MB
+ * volume left it mounted, and the very next call — the same code, milliseconds later — detached it. Unretried that
+ * costs the conversation its next turn, because `attachScratch` refuses a volume it cannot unmount first.
+ * What the retry costs, measured rather than guessed (Rule 13, review round 2 must-fix 3): the pauses total 1,000 ms
+ * (0 + 100 + 200 + 300 + 400), but each attempt is its own synchronous forced detach carrying the 60,000 ms timeout
+ * below, so attempts that all reach that timeout block the calling thread for up to 301,000 ms against the one
+ * attempt's 60,000 ms. A detach that completes at all returns in milliseconds, so the ordinary cost is the pauses. */
+const SCRATCH_UNMOUNT_TRIES = 5, SCRATCH_UNMOUNT_PAUSE_MS = 100;
+const forceDetach = mount => {
+  try { execFileSync(HDIUTIL, ['detach', '-quiet', '-force', mount], { stdio: 'ignore', timeout: 60000 }); } catch { /* the mount decides, below */ }
+};
 /** Unmounts a directory's scratch volume and removes its mount point, keeping its image (and so its files). Returns false
- * when the volume is still mounted afterwards (the next attach or a later prune retries). */
-export function unmountScratch(dir) {
+ * when the volume is still mounted after `tries` forced detaches (the next attach or a later prune retries). `force` and
+ * `mounted` exist so a test can prove both sides of the retry without a real volume. */
+export function unmountScratch(dir, { tries = SCRATCH_UNMOUNT_TRIES, force = forceDetach, mounted = scratchMounted } = {}) {
   const mount = mountOf(dir);
-  if (scratchMounted(dir)) {
-    try { execFileSync(HDIUTIL, ['detach', '-quiet', '-force', mount], { stdio: 'ignore', timeout: 60000 }); } catch { /* checked below */ }
-    if (scratchMounted(dir)) return false;
+  for (let attempt = 0; mounted(dir); attempt++) {
+    if (attempt >= tries) return false;
+    if (attempt > 0) Atomics.wait(new Int32Array(new SharedArrayBuffer(4)), 0, 0, SCRATCH_UNMOUNT_PAUSE_MS * attempt);
+    force(mount);
   }
   if (mount !== null) try { rmdirSync(mount); } catch { /* already gone */ }
   return true;
@@ -914,7 +929,7 @@ export function toolStatusLines(view, enabled, off = null, gated = false) {
   return [gated ? 'Tools: a confined shell and patches in this conversation\'s private workspace, web search, subagents and the login\'s '
       + 'installed MCP tools, every model call and consequential tool through the admission checkpoint.' : `Tools: the harness's full built-in set (${SUBSCRIPTION_TOOL_NAMES.length} tools, each call decided at the admission hook) and the `
       + `root's MCP servers, in this conversation's private workspace (kept between turns, ${String(TOOL_SCRATCH_BYTES / 1048576)} MB); shell `
-      + 'sandboxed, its network through the turn\'s checkpoint (reads of public hosts admitted, writes refused at the effect doorway); '
+      + 'sandboxed, its network through the turn\'s checkpoint (reads of public hosts admitted, writes sent to the effect doorway); '
       + 'web reads only; subagents may delegate within the turn\'s budget; consequential effects go through the effect doorway.',
     `Tool turns: ${stats.invocations} run (${stats.reservedCalls} model attempts reserved for them), ${stats.toolCalls} tool calls admitted, `
       + `${stats.toolRefusals} refused, ${stats.refusedCap} turns answered without tools because the call allowance was short`
