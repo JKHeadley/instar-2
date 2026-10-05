@@ -53,6 +53,10 @@ export const FALLBACK_MS = 300_000;
 // shared lower call, because each is a public export with its own documented contract.
 export const SYNC_CALLS = ['spawnSync', 'execFileSync', 'execSync'];
 
+// The two of the three whose signature carries an optional arguments array before the options;
+// `execSync` takes a command string and its options only. See optionsSlot.
+export const ARGS_ARRAY_CALLS = ['spawnSync', 'execFileSync'];
+
 export const BOUNDED = Symbol.for('instar.tests.boundChildren');
 
 export function fallbackBound(env = process.env) {
@@ -73,11 +77,19 @@ export function boundOptions(options, bound, kill = constants.signals.SIGKILL) {
   return bound;
 }
 
-// Node's own rule: `spawnSync(file[, args][, options])` and `execFileSync(file[, args][,
-// options])` take the options object after an array of arguments, and `execSync(command[,
-// options])` has no array, so the options object is the first argument that is not an array.
-export function optionsSlot(args) {
-  return Array.isArray(args[1]) ? 2 : 1;
+// Which argument Node itself will read the options from. `spawnSync(file[, args][, options])`
+// and `execFileSync(file[, args][, options])` carry an OPTIONAL arguments array, and Node's
+// normalization treats second position as the options only when it holds a non-array object:
+// an array is the arguments, and `undefined`/`null` is an omitted arguments array that leaves
+// the options in third position (`spawnSync(file, undefined, options)` is a call Node accepts).
+// Reading `undefined` there as the options slot discards the caller's real options — including
+// an explicit `timeout` — so the omitted-array shapes must resolve to 2, not 1.
+// `execSync(command[, options])` has no arguments array at all, so its options are always
+// second, whatever sits there.
+export function optionsSlot(args, takesArgsArray = true) {
+  if (!takesArgsArray) return 1;
+  const second = args[1];
+  return typeof second === 'object' && second !== null && !Array.isArray(second) ? 1 : 2;
 }
 
 // The timeout kill as the public API reports it: `spawnSync` returns it on `result.error`, while
@@ -103,8 +115,9 @@ function boundError(file, bound, note, cause) {
 
 export function bindSyncCall(name, original, currentTimeout, fallback = fallbackBound,
   note = text => process.stderr.write(text)) {
+  const takesArgsArray = ARGS_ARRAY_CALLS.includes(name);
   const bounded = function boundSyncChild(...args) {
-    const slot = optionsSlot(args);
+    const slot = optionsSlot(args, takesArgsArray);
     const given = args[slot];
     const options = typeof given === 'object' && given !== null ? { ...given } : {};
     const bound = boundOptions(options, childBound(currentTimeout(), fallback()));

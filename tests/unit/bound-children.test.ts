@@ -51,6 +51,29 @@ describe('a hung child in a real process, through the imports a test writes', ()
     // Node reports the caller's own timeout through result.error; the doorway must not adopt it.
     expect(report.ownTimeout).toMatchObject({ threw: false, error: 'ETIMEDOUT' });
   }, 90_000);
+
+  // The arguments array is optional: `spawnSync(file, undefined, options)` and
+  // `execFileSync(file, null, options)` are calls Node accepts, with the options still third.
+  // Reading that omitted array as the options slot injected the bound into second position and
+  // discarded the caller's own options — a real regression on real children, which is why these
+  // cases run in the probe process rather than against a stub.
+  it('reads the options from third position when the arguments array is omitted', () => {
+    const report = JSON.parse(probe.stdout);
+    // The caller's input and encoding survive, so the child still does its work and returns it.
+    expect(report.omittedArrayFast).toMatchObject({ threw: false, error: null, stdout: 'ok' });
+    expect(report.omittedArrayFastExecFile).toMatchObject({ threw: false, stdout: 'ok' });
+  }, 90_000);
+
+  it('still bounds an omitted-array call, and still leaves its own timeout to it', () => {
+    const report = JSON.parse(probe.stdout);
+    // No timeout named: the injected bound reaches the child and kills it.
+    expect(report.omittedArrayHang).toMatchObject({ threw: true, code: 'ETIMEDOUT' });
+    expect(report.omittedArrayHang.message).toContain('was killed after the 1200 ms bound');
+    expect(report.omittedArrayHang.ms).toBeLessThan(30_000);
+    // A timeout named in that third position is the caller's own: it is honoured as written and
+    // never adopted as the bound. Discarding it would have raised the bound error here instead.
+    expect(report.omittedArrayOwnTimeout).toMatchObject({ threw: false, error: 'ETIMEDOUT' });
+  }, 90_000);
 });
 
 describe('why the export republish is the load-bearing line, in a real process', () => {
@@ -131,9 +154,18 @@ describe('bounding the options object', () => {
   it('finds the options slot Node itself would read, with and without an arguments array', () => {
     // spawnSync(file, args, options) and execFileSync(file, args, options)
     expect(optionsSlot(['node', ['-e', ''], { timeout: 1 }])).toBe(2);
-    // spawnSync(file, options) and execSync(command, options)
+    // spawnSync(file, options) and execFileSync(file, options): a non-array object IS the options
     expect(optionsSlot(['node', { timeout: 1 }])).toBe(1);
-    expect(optionsSlot(['true'])).toBe(1);
+    // The arguments array omitted as undefined/null, options still third — Node reads them there,
+    // so taking the omitted array for the options would discard them.
+    expect(optionsSlot(['node', undefined, { timeout: 1 }])).toBe(2);
+    expect(optionsSlot(['node', null, { timeout: 1 }])).toBe(2);
+    expect(optionsSlot(['node'])).toBe(2);
+    // A second argument Node itself rejects is left where it is, so it still raises there.
+    expect(optionsSlot(['node', '-e'])).toBe(2);
+    // execSync(command[, options]) has no arguments array at all: always second, even when absent
+    expect(optionsSlot(['true', { timeout: 1 }], false)).toBe(1);
+    expect(optionsSlot(['true'], false)).toBe(1);
   });
 
   it('names the timeout kill by the code the public API reports, and nothing else', () => {
@@ -213,6 +245,30 @@ describe('wrapping one synchronous call', () => {
       () => 11, () => 300_000, () => {});
     bounded('true', { encoding: 'utf8' });
     expect(seen[0]?.[1]).toEqual({ encoding: 'utf8', timeout: 11, killSignal: constants.signals.SIGKILL });
+  });
+
+  it('bounds the third-position options of an omitted arguments array, keeping what they said', () => {
+    for (const name of ['spawnSync', 'execFileSync']) {
+      const seen: unknown[][] = [];
+      const bounded = bindSyncCall(name, (...args: readonly unknown[]) => { seen.push([...args]); return {}; },
+        () => 11, () => 300_000, () => {});
+      bounded('node', undefined, { input: 'x', encoding: 'utf8' });
+      expect(seen[0]?.[1], name).toBeUndefined();
+      expect(seen[0]?.[2], name).toEqual({ input: 'x', encoding: 'utf8', timeout: 11,
+        killSignal: constants.signals.SIGKILL });
+    }
+  });
+
+  it('passes an omitted-array call that owns its timeout through byte-for-byte', () => {
+    const seen: unknown[][] = [];
+    const owned = { input: 'x', timeout: 5 };
+    const bounded = bindSyncCall('spawnSync', (...args: readonly unknown[]) => { seen.push([...args]); return {}; },
+      () => 11, () => 300_000, () => {});
+    bounded('node', null, owned);
+    // The caller's very object, in the position the caller put it.
+    expect(seen[0]).toEqual(['node', null, owned]);
+    expect(seen[0]?.[2]).toBe(owned);
+    expect(owned).toEqual({ input: 'x', timeout: 5 });
   });
 });
 
