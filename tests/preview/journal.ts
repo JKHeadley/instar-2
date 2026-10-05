@@ -1968,6 +1968,10 @@ export const commitmentWaitsOn = (view: JournalView, id: number): string | undef
 const pendingReport = (work: ObligationWork | undefined) => work?.report !== undefined && work.report.delivered === undefined;
 /** A finished result no reply has carried yet: the next operator answer may attach it. */
 const attachableReport = (work: ObligationWork | undefined) => pendingReport(work) && work!.report!.boundTo === undefined;
+/** An attempt that supplied no account of the work: `uncertain` was interrupted, `failed` is a provider failure
+ * or a malformed answer, and neither decided anything. What such a step was given to answer is therefore neither
+ * answered nor consumed, and its retry waits the revisit cadence instead of running again at once. */
+const noAccount = (outcome: ObligationOutcome | undefined) => outcome === 'uncertain' || outcome === 'failed';
 /** Rules 8, 22, 46, 92, 99, 102: each open agent-owned obligation that the agent can act on without anyone else,
  * with the slot its next scheduled work step is due. Derived from durable state only; the verified operator's own
  * message (or the agent's reply to it) is the authority, so a probe or another sender's message never schedules work. */
@@ -1998,10 +2002,11 @@ export function obligationSchedule(view: JournalView): { key: string; kind: 'com
     // operator dependency then waits for the operator's next message instead of the cadence.
     const first = waits === 'date' && due?.day ? wallEpoch(due.day, due.time ?? '09:00', due.zone)
       : note.waitsOn !== undefined ? source.at + revisit : undefined;
-    // A result a review withheld from the reply is owned work again, due at once (an interrupted attempt on the revisit
-    // cadence): left as a finished result, it was attached and withheld again on every reply and never drained.
+    // A result a review withheld from the reply is owned work again, due at once (an attempt that accounted for
+    // nothing on the revisit cadence): left as a finished result, it was attached and withheld again on every reply
+    // and never drained.
     const rework = work?.withheld !== undefined && work.inFlight === undefined && !pendingReport(work)
-      ? Math.max(work.lastSlot + 1, work.outcome === 'uncertain' ? work.last + revisit : work.withheld.at) : undefined;
+      ? Math.max(work.lastSlot + 1, noAccount(work.outcome) ? work.last + revisit : work.withheld.at) : undefined;
     // A started step stays scheduled whatever dependency its predecessor left, so interrupted-start recovery owns it.
     if (work?.inFlight === undefined && first === undefined && resume === undefined && rework === undefined && !pendingReport(work)) return;
     items.push({ key, kind: 'commitment', id, slot: work?.inFlight ?? rework ?? resume ?? next(key, first ?? Infinity), inFlight: work?.inFlight !== undefined,
@@ -2062,8 +2067,10 @@ function projectObligationWork(view: JournalView, row: Extract<JournalRecord, { 
   const { inFlight: _done, waitsOn: _waits, note: _note, withheld, ...rest } = work;
   const carried = row.outcome === 'uncertain' && work.waitsOn !== undefined;
   view.obligationWork[row.obligation] = { ...rest, last: row.at, outcome: row.outcome,
-    // The withheld result and its objection stay the work's input until a step actually answers them.
-    ...(row.outcome === 'uncertain' && withheld !== undefined ? { withheld } : {}),
+    // The withheld result and its objection stay the work's input until a step actually answers them: an attempt that
+    // accounted for nothing (interrupted, or a provider failure or malformed answer) supplied no correction, so
+    // consuming them there would drop both the rejected result and the objection from every later packet.
+    ...(noAccount(row.outcome) && withheld !== undefined ? { withheld } : {}),
     turnsSeen: carried ? work.turnsSeen ?? view.order.length : view.order.length,
     ...(carried ? { waitsOn: work.waitsOn, ...(work.note === undefined ? {} : { note: work.note }) } : {}),
     ...(row.note === undefined ? {} : { note: row.note }), ...(row.waitsOn === undefined ? {} : { waitsOn: row.waitsOn }),

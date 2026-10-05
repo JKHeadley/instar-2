@@ -185,6 +185,8 @@ const LIVE_REASON = 'defers_work: Reply says "Still working out the \\"three thi
 /** Reconstructed: the rework step's corrected result, answering the objection by naming the constraint behind it. */
 const CORRECTED_LIBRARY_REPORT = 'Library card D-112229: renewing it means signing in to your library account, and I hold no account-write access (governing constraint: no account writes). The renewal itself is yours to do on the library site; I can look up its public renewal rules for you.';
 
+/** `reworked` is the model's raw OUTPUT for a step that carries `packet.withheld`, so a test can hand back a
+ * malformed answer (a recorded failed attempt) as well as a corrected report. */
 function liveWorld(root: string, reworked: (packet: { withheld?: { report: string; objection: string } }) => string) {
   const journal = openPreviewJournal(join(root, 'journal.encrypted'), key, { kind: 'genesis', bot: '8989505249',
     chat: '7812716706', operator: '7812716706', grant: 'grant:preview', configurationDigest: 'sha256:offline',
@@ -200,7 +202,8 @@ function liveWorld(root: string, reworked: (packet: { withheld?: { report: strin
       if (input.id.startsWith('obligation:')) {
         const packet = JSON.parse(input.context) as { obligation: { quote: string }; withheld?: { report: string; objection: string } };
         packets.push(packet);
-        return JSON.stringify({ outcome: 'report', report: packet.withheld ? reworked(packet) : reports[packet.obligation.quote] ?? 'Done.' });
+        return packet.withheld ? reworked(packet)
+          : JSON.stringify({ outcome: 'report', report: reports[packet.obligation.quote] ?? 'Done.' });
       }
       if (input.id.startsWith('summary:')) return JSON.stringify({ summary: 'Earlier turns.', people: [],
         commitments: [], closed: [], memory: [] });
@@ -238,7 +241,7 @@ function liveWorld(root: string, reworked: (packet: { withheld?: { report: strin
 it('a result the recorded review withheld returns to owned work with its objection, and its correction is delivered (Rules 8, 22, 46, 86, 102)', async () => {
   const root = realpathSync(mkdtempSync(join(tmpdir(), 'preview-deliver-withheld-')));
   try {
-    const w = liveWorld(root, () => CORRECTED_LIBRARY_REPORT);
+    const w = liveWorld(root, () => JSON.stringify({ outcome: 'report', report: CORRECTED_LIBRARY_REPORT }));
     const hi = await w.setUp();
     // As live: the floor cut the deferral and the library result's two quoted sentences, and sent the rest.
     expect(hi).not.toContain(LIVE_DEFERRAL);
@@ -282,7 +285,7 @@ it('a result the recorded review withheld returns to owned work with its objecti
 it('a rework that repeats the objected claim is withheld again, never marked delivered, and costs one step per reply (Rules 2, 46, 86)', async () => {
   const root = realpathSync(mkdtempSync(join(tmpdir(), 'preview-deliver-rewithheld-')));
   try {
-    const w = liveWorld(root, packet => packet.withheld!.report);
+    const w = liveWorld(root, packet => JSON.stringify({ outcome: 'report', report: packet.withheld!.report }));
     await w.setUp();
     for (let n = 0; n < 2; n++) {
       const steps = w.packets.length;
@@ -296,6 +299,78 @@ it('a rework that repeats the objected claim is withheld again, never marked del
       expect(w.journal.view.closed.has(0)).toBe(false);
       expect(loopHealth(w.journal.view, w.clock.now)).toMatchObject({ awaitingDelivery: 0, dueWork: 1 });
     }
+    w.journal.close();
+  } finally { rmSync(root, { recursive: true, force: true }); }
+}, 120_000);
+
+// MUST-FIX 1 (integration review, 2026-10-05): the failed-outcome neighbour of the two tests above. A rework attempt
+// that supplies no corrected report at all — a provider failure, or a malformed answer (replayed here as the raw output
+// a step would return) — used to be projected as an ordinary result, which dropped `withheld`. The reviewer's probe
+// recorded the consequence: `firstAttempt: failed`, `retryHasObjection: false`, `regeneratedRejectedReport: true`,
+// `awaitingDelivery: 1` — the retry got no objection, regenerated the rejected library report verbatim, and that state
+// survived reopen, so the objection was consumed by an attempt that answered nothing (Rules 22, 46).
+it('a failed rework attempt keeps the withheld result and its objection, and retries on the revisit cadence (Rules 8, 22, 46)', async () => {
+  const root = realpathSync(mkdtempSync(join(tmpdir(), 'preview-deliver-failedrework-')));
+  try {
+    let attempt = 0;
+    const w = liveWorld(root, () => ++attempt === 1 ? 'I will get to this.'
+      : JSON.stringify({ outcome: 'report', report: CORRECTED_LIBRARY_REPORT }));
+    await w.setUp();
+    const withheldAt = w.journal.view.obligationWork['commitment:0']!.withheld!.at;
+    // First rework attempt: the answer is not a decision, so it is a recorded failed attempt with no report.
+    const seen = w.packets.length;
+    await w.tick();
+    expect(w.packets.slice(seen)).toHaveLength(1);
+    expect(attempt).toBe(1);
+    const failed = w.journal.view.obligationWork['commitment:0']!;
+    expect(failed.outcome).toBe('failed');
+    expect(failed.report).toBeUndefined();
+    // The fault was here: the objection and the rejected result stayed out of every later packet.
+    expect(failed.withheld).toMatchObject({ text: LIVE_LIBRARY_REPORT, at: withheldAt });
+    expect(failed.withheld!.objection).toContain('declaredObligations.blocker is null');
+    expect(w.journal.view.closed.has(0)).toBe(false);
+    // An attempt that accounted for nothing waits the revisit cadence: it is not due again at once.
+    expect(loopHealth(w.journal.view, w.clock.now)).toMatchObject({ awaitingDelivery: 0, dueWork: 0 });
+    await w.tick();
+    expect(w.packets).toHaveLength(seen + 1);
+    // Durable: the retained objection survives a reopen, and the cadence is held from the failed attempt.
+    w.journal.close();
+    const reopened = openPreviewJournal(join(root, 'journal.encrypted'), key);
+    expect(reopened.view.obligationWork['commitment:0']!.withheld).toMatchObject({ text: LIVE_LIBRARY_REPORT, at: withheldAt });
+    expect(reopened.view.obligationWork['commitment:0']!.outcome).toBe('failed');
+    expect(loopHealth(reopened.view, w.clock.now).dueWork).toBe(0);
+    expect(loopHealth(reopened.view, w.clock.now + REVISIT).dueWork).toBe(1);
+    reopened.close();
+  } finally { rmSync(root, { recursive: true, force: true }); }
+}, 120_000);
+
+it('the retry after a failed rework still carries the objection and never regenerates the rejected report (Rules 22, 46)', async () => {
+  const root = realpathSync(mkdtempSync(join(tmpdir(), 'preview-deliver-failedretry-')));
+  try {
+    let attempt = 0;
+    const w = liveWorld(root, () => ++attempt === 1 ? 'I will get to this.'
+      : JSON.stringify({ outcome: 'report', report: CORRECTED_LIBRARY_REPORT }));
+    await w.setUp();
+    await w.tick();
+    expect(w.journal.view.obligationWork['commitment:0']!.outcome).toBe('failed');
+    // After the cadence the retry runs, and its packet still holds the original and the objection to answer.
+    const seen = w.packets.length;
+    w.clock.now += REVISIT;
+    await w.tick();
+    expect(w.packets.slice(seen)).toHaveLength(1);
+    expect(w.packets[seen]!.withheld!.report).toBe(LIVE_LIBRARY_REPORT);
+    expect(w.packets[seen]!.withheld!.objection).toContain('declaredObligations.blocker is null');
+    // The correction, not the rejected report, is what now waits for the operator's next message and is delivered.
+    const corrected = w.journal.view.obligationWork['commitment:0']!;
+    expect(corrected.report!.text).toBe(CORRECTED_LIBRARY_REPORT);
+    expect(corrected.report!.text).not.toBe(LIVE_LIBRARY_REPORT);
+    expect(corrected.withheld).toBeUndefined();
+    const after = w.sent.length;
+    w.clock.now += MINUTE; await w.say('thanks', JSON.stringify({ reply: 'Any time.', memory: [] }));
+    const reply = w.sent.slice(after).join('\n');
+    expect(reply).toContain(CORRECTED_LIBRARY_REPORT);
+    expect(reply).not.toContain(LIVE_LIBRARY_REPORT);
+    expect(loopHealth(w.journal.view, w.clock.now)).toMatchObject({ awaitingDelivery: 0, dueWork: 0 });
     w.journal.close();
   } finally { rmSync(root, { recursive: true, force: true }); }
 }, 120_000);
