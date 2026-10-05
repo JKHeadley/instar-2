@@ -56,6 +56,9 @@ export function attachScratch(dir, name = `itt-${randomBytes(6).toString('hex')}
   if (!unmountScratch(dir)) throw Error('preview: a tool scratch volume left mounted will not unmount');
   const image = join(dir, SCRATCH_IMAGE), mount = join(realpathSync(mounts), name);
   mkdirSync(mount, { recursive: true, mode: 0o700 });
+  // Another directory's volume already at this mount point (a second root on the host, or one a crash left stuck): an
+  // attach on top of it attaches the image unmounted while the mount check sees the other volume, so refuse instead.
+  if (lstatSync(mount).dev !== lstatSync(dirname(mount)).dev) throw Error('preview: a tool scratch mount point is held by another volume');
   rmSync(join(dir, SCRATCH_LINK), { force: true });
   symlinkSync(mount, join(dir, SCRATCH_LINK));
   if (!existsSync(image)) execFileSync(HDIUTIL, ['create', '-quiet', '-size', `${String(Math.ceil(bytes / 1048576))}m`, '-type', 'SPARSE',

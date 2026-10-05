@@ -4,6 +4,7 @@
 // status names exactly the tools; and a stop ends a live turn, descendants included, by the launch's own process
 // group within the declared bound.
 import { spawnSync } from 'node:child_process';
+import { randomBytes } from 'node:crypto';
 import { existsSync, lstatSync, mkdirSync, mkdtempSync, readFileSync, readdirSync, realpathSync, rmSync, utimesSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
@@ -114,7 +115,9 @@ it.runIf(hdiutil)('bounds a workspace\'s whole storage: its volume refuses write
   // Ordinary storage, not the RAM disk: the sparse image is the turn's real allocation, as under a live root.
   const root = realpathSync(mkdtempSync('/private/tmp/tool-scratch-')); roots.push(root);
   const turn = join(root, 'turn'); mkdirSync(turn, { mode: 0o700 });
-  const volume = attachScratch(turn, 'itw-0123456789ab', 8 * 1048576);
+  // A name of this run's own: the mount point is host-wide, so a fixed name collides with any other run on the host.
+  const name = `itw-${randomBytes(6).toString('hex')}`;
+  const volume = attachScratch(turn, name, 8 * 1048576);
   try {
     expect(scratchMounted(turn)).toBe(true);
     expect(volume).toBe(realpathSync(join(turn, 'vol')));
@@ -132,12 +135,17 @@ it.runIf(hdiutil)('bounds a workspace\'s whole storage: its volume refuses write
     expect(unmountScratch(turn)).toBe(true);
     expect(scratchMounted(turn)).toBe(false);
     expect(existsSync(join(turn, 'scratch.sparseimage'))).toBe(true);
-    expect(attachScratch(turn, 'itw-0123456789ab', 8 * 1048576)).toBe(volume);
+    expect(attachScratch(turn, name, 8 * 1048576)).toBe(volume);
     expect(readFileSync(join(volume, 'f0')).byteLength).toBe(1048576);
     // A volume a crash left mounted is unmounted and mounted again by the next attach, files intact.
-    expect(attachScratch(turn, 'itw-0123456789ab', 8 * 1048576)).toBe(volume);
+    expect(attachScratch(turn, name, 8 * 1048576)).toBe(volume);
     expect(readFileSync(join(volume, 'f0')).byteLength).toBe(1048576);
     expect(() => attachScratch(turn, '../escape')).toThrow(/mount name/u);
+    // Another directory asking for the same mount point is refused while this volume holds it, and this one is untouched.
+    const other = join(root, 'other'); mkdirSync(other, { mode: 0o700 });
+    expect(() => attachScratch(other, name, 8 * 1048576)).toThrow(/held by another volume/u);
+    expect(existsSync(join(other, 'scratch.sparseimage'))).toBe(false);
+    expect(readFileSync(join(volume, 'f0')).byteLength).toBe(1048576);
   } finally { expect(detachScratch(turn)).toBe(true); }
   expect(scratchMounted(turn)).toBe(false);
   expect(existsSync(join(turn, 'scratch.sparseimage'))).toBe(false);
