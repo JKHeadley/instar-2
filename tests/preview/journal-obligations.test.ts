@@ -303,13 +303,15 @@ it('offers a settled wall to the answer only while the constraint wording it res
       // by the route-specific read, and no second sentence contradicts it. On the tool route the read is 'listed'; on the
       // text-only route the limit is still stated, by that same read and its constraint wording, so nothing is widened.
       const answerPacket = JSON.parse(probe.context) as { commitments?: { items: unknown[] }[];
-        memoryDecision?: string; capabilities?: Record<string, string>; governingConstraints?: Record<string, string> };
+        capabilities?: Record<string, string>; governingConstraints?: Record<string, string> };
       expect(answerPacket.commitments?.length, `settled ${settledOn}, asked ${askedOn}`).toBe(1);
       expect(answerPacket.capabilities, `asked ${askedOn}`).toEqual(previewCapabilities(askedOn));
-      expect(answerPacket.governingConstraints!['no-tools'], `asked ${askedOn}`)
-        .toBe(askedOn ? 'listed tools only' : 'no external tools or accounts');
-      for (const denial of ['You have no external tools', 'no external tools.', 'you have no external tools'])
-        expect(probe.context, `${denial} (asked ${askedOn})`).not.toContain(denial);
+      expect(answerPacket.governingConstraints, `asked ${askedOn}`).toEqual(governingConstraints(askedOn));
+      // Counted against the wording itself, never a restated copy of it, so a reword cannot leave this passing on a
+      // stale literal: the tool route's packet carries no no-tools wording at all, and the text-only route's carries it
+      // exactly once — its own constraint wording. One voice either way.
+      const denial = governingConstraints(false)['no-tools'];
+      expect(probe.context.split(denial).length - 1, `asked ${askedOn}`).toBe(askedOn ? 0 : 1);
       // Withheld from the answer is not dropped: still open, still counted, its recheck still scheduled.
       expect(openBlockers(w.journal.view)).toHaveLength(1);
       expect(obligationSchedule(w.journal.view).filter(item => item.kind === 'blocker')).toHaveLength(1);
