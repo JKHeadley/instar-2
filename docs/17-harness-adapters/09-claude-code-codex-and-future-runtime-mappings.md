@@ -42,8 +42,31 @@ The preview may run an answer or a scheduled work step as one Claude Code invoca
 existing provider path, with the pinned harness's whole built-in tool set, plus the MCP servers the
 root's own configuration names. No tool is left out to hold a safeguard: each tool's scope, finite
 resource bounds and durable cause are enforced per call before dispatch. A mandatory PreToolUse
-admission hook decides every call, and fails closed on any error. It admits ordinary work: file operations physically contained in the
-conversation's private workspace, workspace search, sandboxed commands (never judged by the words they
+admission hook decides every call, and fails closed on any error. It admits ordinary work: a file read or
+search of what a sandboxed command may also read (the conversation's volume and the system files commands need), a
+file write or edit inside the conversation's volume, each decided on the resolved file and handed to the harness as
+that resolved path, so no readable file is refused for its spelling. For a sandboxed command the kernel decides at
+open, so no symlink, alias or `..` spelling reaches past the boundary. For the in-process file tools (Read, Write,
+Edit, Glob, Grep) the hook decides on the realpath at admission, and a path the agent itself swaps for a link between
+admission and the harness's open could be followed. That race is closed by the kernel when the harness runs as its
+own macOS user (`--harness-user _instarharness`): every open the harness or its file tools make is checked as that
+user, which cannot read or write the operator account's home, keys, vault, agent configurations or preview roots, so
+a swapped path reaches only the harness's own area (its state and the workspace) and files every local user can read
+outside `/private/tmp` (whose new entries the kernel denies it from creation). Its login stays in the runner's custody
+and reaches it only through the launcher's one-shot pipe. Every secret value the runner holds (its own, the vault's,
+the root's MCP credentials, the harness login) is withheld from every reply and outbound text, and is refused in every
+outward tool request before it is dispatched: the hook asks the runner about every string a WebFetch, WebSearch,
+Codex network read, MCP or other outward tool, or unsandboxed command carries, before anything is done for it, and the
+shell's network checkpoint checks each request's host, path, headers and body. A value once read stays held; a held
+source that cannot be read, or a check that does not answer, refuses outward requests (fails closed). Without the
+switch, a Claude Code tool turn is refused, never run as the operator's account: the answer is text only, and the
+launch, the status answer and a notice under that answer name the reason; a configured user that is not ready holds
+every launch (`docs/defects/2026-10-03-file-tool-swap-race.md`). Separately, and narrowly: the tool runner's
+journal and vault are ciphertext under the storage key, which only the runner's environment holds, and an MCP server's
+credential given as a SecretRef is resolved by the runner and handed to that server's launcher alone, not written to
+the launch configuration. The admission record can hold a credential a tool result carried, in plaintext, until the
+end-of-turn scrub, and a literal credential in a format no pattern recognises is not detected; so this is not a claim
+that every file the runner writes is secret-free, and it is not what closes the race. It also admits sandboxed commands (never judged by the words they
 contain), a web read (WebFetch issues only a GET) of a host whose every resolved address is public,
 a web search, an MCP tool the root's configuration lists as a read, the harness's own bookkeeping, a
 worktree inside the workspace, and a subagent of the one registered type, started by the turn or by
@@ -58,7 +81,9 @@ skill that may fork). A web read of a loopback, private, link-local or local-nam
 because it reaches this machine and its network rather than the world. A tool the adapter has not
 classified is refused. The harness sandbox is where a command's reach is enforced: reads
 are refused from the filesystem root down except the conversation's volume and the system files
-commands need to run; writes reach only that volume; no unix socket and no signal to another process.
+commands need to run (the operating system's root-level links to those system files are reopened as
+links only, so a system file reads by either spelling and nothing behind the link opens); writes reach
+only that volume; no unix socket and no signal to another process.
 A command reaches the network only through the turn's egress checkpoint, a proxy the runner starts on
 a loopback port for the turn and stops with it, so the shell keeps its network reads while the
 floor is held at the checkpoint. The checkpoint intercepts HTTPS with the
@@ -77,8 +102,9 @@ of the shell and the harness live on that fixed-size volume, so a conversation's
 finite and cannot consume the journal's disk. The per-step tool-call count, shared by the turn and its subagents,
 is allocated atomically, so overlapping calls cannot exceed it. The launch has a clean environment;
 the harness's own messaging socket and token are removed from every command; an MCP server's launch
-configuration, with any credential it carries, lies in the turn's admission state, which no tool can
-read; and a workflow, scheduling, remote-trigger, monitor or messaging call is decided by the hook as
+configuration lies in the turn's admission state and carries its command, arguments and ordinary environment
+settings, with a credential only as a SecretRef that the runner resolves from custody and hands once to that
+server's launcher (a credential in a recognised format written literally is refused; an opaque one is not detected); and a workflow, scheduling, remote-trigger, monitor or messaging call is decided by the hook as
 above. Neither
 `--bare` nor `--safe-mode` is used, because both skip settings hooks, and managed policy that could
 disable hooks refuses the turn. Arbitrary-code execution is admitted only inside this demonstrated

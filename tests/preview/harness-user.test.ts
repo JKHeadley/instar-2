@@ -15,13 +15,13 @@ import { createResourceOwner, RESOURCE_CEILINGS, hostQuery } from '../../scripts
 // @ts-expect-error Physical host JavaScript stays outside pure core.
 import { createProcessInventory } from '../../scripts/process-inventory.mjs';
 // @ts-expect-error The runner side stays plain JavaScript.
-import { harnessExecutable, harnessReadiness, harnessStatusLine, HARNESS_PROFILE, removeHarnessState, grantVolume, HARNESS_VOLUME_MARK, harnessGate, HARNESS_RECHECK_MS, readHarnessLogin, storeHarnessLogin, plaintextLogins, closeOperatorTmp, tmpCanary, HARNESS_TMP } from './harness-user.mjs';
+import { harnessExecutable, harnessReadiness, harnessStatusLine, HARNESS_PROFILE, removeHarnessState, grantVolume, HARNESS_VOLUME_MARK, harnessGate, HARNESS_RECHECK_MS, readHarnessLogin, storeHarnessLogin, plaintextLogins, closeOperatorTmp, tmpCanary, HARNESS_TMP, harnessCredentialValues, harnessRefusedNotice, HARNESS_HOOK_FILES, HARNESS_OFF_REASON, harnessSocketDirectory } from './harness-user.mjs';
 // @ts-expect-error The runner side stays plain JavaScript.
 import { prepareSessionAdmission, sessionAdmissionCommand } from './session-admission.mjs';
 // @ts-expect-error The runner side stays plain JavaScript.
 import { harnessSessionCommand } from './harness-session.mjs';
 // @ts-expect-error The runner side stays plain JavaScript.
-import { prepareToolTurn, pruneToolTurns, runToolTurn, TOOL_TURN_PRIVATE } from './tool-turn.mjs';
+import { prepareToolTurn, pruneToolTurns, runToolTurn, serveTurnSocket, toolStatusLines, TOOL_MCP_LAUNCHER, TOOL_TURN_PRIVATE } from './tool-turn.mjs';
 
 const scratch = realpathSync(mkdtempSync(join(tmpdir(), 'harness-user-')));
 afterAll(() => rmSync(scratch, { recursive: true, force: true }));
@@ -130,6 +130,9 @@ describe('readiness: the switch is decided from live state, a refusal names its 
     expect(harnessStatusLine({ ready: false, reason: 'no user x' })).toMatch(/^Harness identity: UNAVAILABLE, so every Claude Code launch is held \(nothing runs as the operator's account\).*no user x/u);
     expect(harnessStatusLine({ ready: false, reason: 'no user x' })).not.toMatch(/FALLBACK/u);
     expect(harnessStatusLine(null)).toBeNull();
+    // With no switch at all the launch is not silent: tool turns are refused, and the reason names the missing switch.
+    expect(harnessStatusLine({ ready: false, reason: HARNESS_OFF_REASON })).toMatch(/REFUSED.*no --harness-user was given/u);
+    expect(harnessRefusedNotice('no user x')).toMatch(/^Tools: not run for this answer.*\(no user x\)/u);
   });
 });
 
@@ -397,7 +400,7 @@ describe('a tool turn in harness mode', () => {
   it('puts its admission state in the harness area (add-only, opened after the runner\'s files), its egress state under the root, and its hook copy in the settings', () => {
     const root = fresh('turn-root'), stateBase = fresh('turn-state'), granted: string[][] = [];
     let opened: string[] | null = null, volume: string | null = null;
-    const grant = { volume: (mounted: string) => { volume = mounted; },
+    const grant = { volume: (mounted: string) => { volume = mounted; }, socket: () => fresh(`turn-socket-${String(granted.length)}`),
       state: (directory: string) => { mkdirSync(directory, { mode: 0o700 }); granted.push([directory]);
         return { open: (readable: string[]) => { opened = readable.map(path => readFileSync(path, 'utf8').length > 0 ? path : ''); } }; } };
     const turn = prepareToolTurn({ root, operation: 'telegram:1:update:2', attempt: 0, operations: [], scratch: (dir: string) => {
@@ -431,6 +434,39 @@ describe('a tool turn in harness mode', () => {
     expect(removeHarnessState(link, stateBase)).toBe(false);
     expect(existsSync(outside)).toBe(true);
   });
+  it('launches a SecretRef MCP server through the harness\'s read-only launcher copy, over a socket in the harness area', async () => {
+    // The launcher is plain Node with no imports outside node:, so its copy beside the hook runs for a user who cannot read the repo.
+    expect(HARNESS_HOOK_FILES).toContain('mcp-launch.mjs');
+    expect(readFileSync(TOOL_MCP_LAUNCHER, 'utf8').match(/from '([^']+)'/gu)?.every(spec => /from 'node:/u.test(spec))).toBe(true);
+    const sockets = fresh('sockets'), acl: [string[], string[]][] = [];
+    const made = harnessSocketDirectory('_instarharness', sockets, (paths: string[], entries: string[]) => { acl.push([paths, entries]); });
+    expect(made.startsWith(`${sockets}/m-`)).toBe(true);
+    expect(lstatSync(made).mode & 0o777).toBe(0o700);
+    expect(acl).toEqual([[[sockets], ['user:_instarharness allow search']], [[made], ['user:_instarharness allow search']]]);
+    const root = fresh('mcp-root'), stateBase = fresh('mcp-state');
+    const grant = { volume: () => {}, socket: () => made,
+      state: (directory: string) => { mkdirSync(directory, { mode: 0o700 }); return { open: () => {} }; } };
+    const mcp = { servers: { keyed: { command: '/usr/bin/srv', args: ['--x'], env: { TOKEN: { secretRef: 'k1' }, LOG: 'debug' } } }, reads: [],
+      secrets: { keyed: { TOKEN: 'k1' } } };
+    const turn = prepareToolTurn({ root, operation: 'telegram:1:update:9', attempt: 0, operations: [], mcp, scratch: (dir: string) => {
+      mkdirSync(join(dir, 'vol'), { recursive: true, mode: 0o700 }); return realpathSync(join(dir, 'vol')); },
+    harness: { user: '_instarharness', runner: 'me', hookScript: '/h/hook/x/tool-admission-hook.mjs', rootState: stateBase }, grant });
+    expect(turn.socket).toEqual({ path: join(made, 's'), shared: true });
+    // The launch configuration holds no value and stays runner-private (handed over through the launcher, never opened).
+    expect(turn.mcp.config).toBe(join(turn.privateDirectory, 'mcp.json'));
+    expect(JSON.parse(readFileSync(join(turn.stateDirectory, 'config.json'), 'utf8')).heldCheck).toBe(join(made, 's'));
+    expect(JSON.parse(readFileSync(turn.mcp.config, 'utf8')).mcpServers.keyed).toEqual({ command: process.execPath,
+      args: ['/h/hook/x/mcp-launch.mjs', join(made, 's'), 'keyed', turn.mcp.nonces.keyed, '/usr/bin/srv', '--x'], env: { LOG: 'debug' } });
+    // The socket is writable by whoever can reach it (the harness user connects); without `shared` it keeps the default mode.
+    const close = await serveTurnSocket(turn.socket.path, { nonces: turn.mcp.nonces, values: { keyed: { TOKEN: 'v' } }, shared: true });
+    expect(lstatSync(turn.socket.path).mode & 0o777).toBe(0o666);
+    await close();
+    expect(existsSync(made)).toBe(false);
+    const own = join(fresh('own-socket'), 's');
+    const closeOwn = await serveTurnSocket(own);
+    expect(lstatSync(own).mode & 0o066).not.toBe(0o066);
+    await closeOwn();
+  });
   it('grants a volume once, never through a link', () => {
     const mounted = fresh('volume'), calls: string[][] = [];
     mkdirSync(join(mounted, 'ws')); writeFileSync(join(mounted, 'ws', 'a.txt'), 'a');
@@ -460,6 +496,56 @@ describe('the journal records which identity the harness ran as', () => {
     expect(journalWith({})).toThrow(/harness identity/u);
     expect(journalWith({ user: '' })).toThrow(/harness identity/u);
     expect(journalWith({ user: 'a', fallback: 'b' })).toThrow(/harness identity/u);
+  });
+});
+
+describe('plan #473: a tool turn never runs as the operator\'s account', () => {
+  const journalOf = (maxCalls: number) => openPreviewJournal(join(fresh(`refuse-${Math.random().toString(16).slice(2)}`), 'journal.encrypted'),
+    new Uint8Array(32).fill(5), { kind: 'genesis', bot: '1', chat: '2', operator: '2', grant: 'grant:x', configurationDigest: 'sha256:x',
+      expires: 9_999_999_999_999, maxCalls, maxReplies: 5, maxTurns: 5, maxBytes: 32768, cursor: 0 });
+  const turnWith = async (journal: ReturnType<typeof openPreviewJournal>, harness: unknown, admission?: unknown) => {
+    let launched = 0;
+    const out = await runToolTurn({ journal, root: scratch, id: 'telegram:2:update:9', prepared: 'x', promptLimit: 1 << 20, deniedRoots: [],
+      invoke: async () => { launched++; return { state: 'complete' }; }, fallback: async () => ({ result: 'text-only' }), now: () => 1,
+      redactText: (text: string) => text, harness, ...(admission ? { admission } : {}) });
+    return { out, launched, refused: (journal.view.toolTurns as { refusedIdentity?: number; identityRefused?: string[]; refusedCap: number } | undefined) };
+  };
+  it('refuses a Claude Code turn with no harness user: text only, recorded with its turn, nothing launched; an unready configured user is held', async () => {
+    const journal = journalOf(400);
+    for (let i = 0; i < 2; i++) {
+      const { out, launched } = await turnWith(journal, { ready: false, refused: true, reason: HARNESS_OFF_REASON, user: null });
+      expect([out, launched]).toEqual([{ result: 'text-only' }, 0]);
+    }
+    expect(journal.view.toolTurns).toMatchObject({ invocations: 0, refusedIdentity: 2, identityRefused: ['telegram:2:update:9', 'telegram:2:update:9'] });
+    expect(journal.view.calls).toBe(0);
+    expect(toolStatusLines(journal.view, true)[1]).toMatch(/2 because the separate harness user was not ready/u);
+    // A configured user that is not ready never reaches a turn as a refusal: it holds the launch (harnessGate).
+    await expect(turnWith(journal, { ready: false, reason: 'no user _instarharness', user: null })).rejects.toThrow(/harness identity is unavailable/u);
+    expect(journal.view.toolTurns?.refusedIdentity).toBe(2);
+  });
+  it('does not refuse for identity when the harness is its own user (the next check decides); a checkpointed turn with an unready user is held', async () => {
+    const ready = await turnWith(journalOf(1), { ready: true, user: '_instarharness', uid: 498 });
+    expect(ready.refused).toMatchObject({ refusedCap: 1 });
+    expect(ready.refused?.refusedIdentity).toBeUndefined();
+    const journal = journalOf(1);
+    await expect(turnWith(journal, { ready: false, reason: 'the selected doorway is not the Claude Code harness' },
+      { maxCalls: 8, harness: 'codex-cli', confinedShell: true })).rejects.toThrow(/harness identity is unavailable/u);
+    expect(journal.view.toolTurns?.refusedIdentity).toBeUndefined();
+  });
+});
+
+describe('plan #473 (2), #507: a login Claude Code writes into the harness profile is held, and unavailable is not absent', () => {
+  const login = 'sk-ant-oat01-SyntheticHarnessLoginValue0123456789abcdef';
+  const refresh = 'sk-ant-ort01-SyntheticRefreshValue0123456789abcdefghij';
+  it('reads every long string of the profile\'s login file, nothing when there is none, and throws when it cannot be read', () => {
+    const config = fresh('harness-config');
+    expect(harnessCredentialValues(config)).toEqual([]);
+    writeFileSync(join(config, '.credentials.json'), JSON.stringify({ claudeAiOauth: { accessToken: login, refreshToken: refresh, expiresAt: 1, scopes: ['user:inference'],
+      subscriptionType: 'max' } }), { mode: 0o600 });
+    expect(harnessCredentialValues(config)).toEqual([login, refresh]);
+    writeFileSync(join(config, '.credentials.json'), 'not json', { mode: 0o600 });
+    expect(() => harnessCredentialValues(config)).toThrow(/malformed/u);
+    expect(() => harnessCredentialValues(config, () => { throw Object.assign(Error('denied'), { code: 'EACCES' }); })).toThrow(/unreadable/u);
   });
 });
 

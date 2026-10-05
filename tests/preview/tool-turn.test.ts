@@ -7,15 +7,15 @@ import { spawnSync } from 'node:child_process';
 import { randomBytes } from 'node:crypto';
 import { existsSync, lstatSync, mkdirSync, mkdtempSync, readFileSync, readdirSync, realpathSync, rmSync, utimesSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
-import { join } from 'node:path';
+import { dirname, join } from 'node:path';
 import { afterEach, expect, it } from 'vitest';
 import { openPreviewJournal } from './journal.js';
-import { SUBSCRIPTION_SUBAGENT_TYPE, SUBSCRIPTION_TOOL_LIMITS, SUBSCRIPTION_TOOL_NAMES, SUBSCRIPTION_TOOLS_SYSTEM_PROMPT } from '../../src/assembly/production-provider.js';
+import { SUBSCRIPTION_SUBAGENT_TYPE, SUBSCRIPTION_TOOL_LIMITS, SUBSCRIPTION_TOOL_NAMES, SUBSCRIPTION_TOOL_RUNTIME_READS, SUBSCRIPTION_TOOLS_SYSTEM_PROMPT } from '../../src/assembly/production-provider.js';
 import { SINGLE_MACHINE_PROFILE } from './activation-authority.js';
 import { nestedSessionWorkEdge, type SessionWorkEdge } from '../../src/assembly/production-session-work.js';
-import { capabilityBriefing, TOOLS_BRIEFING } from './briefing.js';
+import { capabilityBriefing, TOOLS_BRIEFING, TOOLS_LIMITS, toolsBriefing } from './briefing.js';
 // @ts-expect-error The runner side stays plain JavaScript.
-import { TOOL_HOOK_SCRIPT, TOOL_NOTICE_MAX_BYTES, attachEgress, attachScratch, detachScratch, networkToolReads, openToolTurnSlugs, prepareToolTurn, pruneToolTurns, readRootMcp, readToolTrace, reconcileToolTurns, runToolTurn, scratchMounted, toolChildrenFit, toolStatusLines, toolTurnEligible, toolTurnFits, unmountScratch, unmountWithin, workspaceBytes } from './tool-turn.mjs';
+import { TOOL_HOOK_SCRIPT, TOOL_MCP_LAUNCHER, TOOL_NOTICE_MAX_BYTES, attachEgress, attachScratch, detachScratch, networkToolReads, openToolTurnSlugs, prepareToolTurn, pruneToolTurns, readRootMcp, readToolTrace, reconcileToolTurns, runToolTurn, scratchMounted, toolChildrenFit, toolStatusLines, toolTurnEligible, toolTurnFits, unmountScratch, workspaceBytes } from './tool-turn.mjs';
 // @ts-expect-error The physical host remains JavaScript.
 import { createResourceOwner } from '../../scripts/resource-owner.mjs';
 
@@ -67,8 +67,11 @@ it('allocates a private, empty workspace and a separate admission state per turn
   expect(turn.scratch.startsWith(join(root, 'tool-turns'))).toBe(true);
   expect(turn.stateDirectory.startsWith(turn.scratch)).toBe(false);
   expect(JSON.parse(readFileSync(join(turn.stateDirectory, 'config.json'), 'utf8'))).toEqual({ workspace: turn.workspace,
-    tmp: join(turn.scratch, 'tmp'), maxCalls: SUBSCRIPTION_TOOL_LIMITS.maxToolCalls, maxWriteBytes: SUBSCRIPTION_TOOL_LIMITS.maxWriteBytes,
-    operations: [...SINGLE_MACHINE_PROFILE.operations], children: { max: 0, type: SUBSCRIPTION_SUBAGENT_TYPE }, mcpReads: [], authority: 'unrecorded' });
+    tmp: join(turn.scratch, 'tmp'), reads: [...SUBSCRIPTION_TOOL_RUNTIME_READS], maxCalls: SUBSCRIPTION_TOOL_LIMITS.maxToolCalls,
+    maxWriteBytes: SUBSCRIPTION_TOOL_LIMITS.maxWriteBytes, operations: [...SINGLE_MACHINE_PROFILE.operations], children: { max: 0, type: SUBSCRIPTION_SUBAGENT_TYPE }, mcpReads: [], authority: 'unrecorded',
+    heldCheck: turn.socket.path });
+  // Plan #507: the turn's runner socket (the held-secret check every outward request asks) sits in a private directory.
+  expect(lstatSync(dirname(turn.socket.path)).mode & 0o777).toBe(0o700);
   expect(turn.mcp).toBeUndefined();
   expect(turn.hook).toEqual({ node: process.execPath, script: TOOL_HOOK_SCRIPT });
   // The same attempt is never reused: a repeat allocation refuses rather than sharing a workspace.
@@ -89,35 +92,15 @@ it('allocates a private, empty workspace and a separate admission state per turn
   expect(readdirSync(join(root, 'tool-turns'))).toHaveLength(2);
 });
 
-it('retries a busy scratch volume inside its bounded unmount wait, and reports one that never clears', () => {
-  // Live 2026-10-05 (sb-w4-rollback full-suite gate): a volume the turn had just filled refused its first
-  // `hdiutil detach -force` — right after a write macOS can hold a volume busy — and a single attempt turned that
-  // into a failed turn (`attachScratch` throws on it, and prune counts the turn failed and keeps its directory).
-  // A refusal that clears is retried; one that never clears is still reported, so a genuinely stuck volume is
-  // never read as unmounted.
-  const pauses: number[] = [], pause = (ms: number) => pauses.push(ms);
-  let tries = 0;
-  // Busy for the first two attempts, then gone: the wait reports it unmounted, and only paused between tries.
-  expect(unmountWithin(() => tries < 3, () => tries++, 6, pause)).toBe(true);
-  expect([tries, pauses]).toEqual([3, [400, 400]]);
-  // The other side: a volume that stays mounted is attempted exactly `attempts` times and reported still mounted.
-  tries = 0; pauses.length = 0;
-  expect(unmountWithin(() => true, () => tries++, 6, pause)).toBe(false);
-  expect([tries, pauses.length]).toEqual([6, 5]);
-  // A volume already unmounted is never attempted at all.
-  tries = 0; pauses.length = 0;
-  expect(unmountWithin(() => false, () => tries++, 6, pause)).toBe(true);
-  expect([tries, pauses.length]).toEqual([0, 0]);
-});
-
 const hdiutil = existsSync('/usr/bin/hdiutil');
 it.runIf(hdiutil)('bounds a workspace\'s whole storage: its volume refuses writes past its size, keeps its files across mounts, and goes when detached', { timeout: 120000 }, () => {
   // Ordinary storage, not the RAM disk: the sparse image is the turn's real allocation, as under a live root.
   const root = realpathSync(mkdtempSync('/private/tmp/tool-scratch-')); roots.push(root);
   const turn = join(root, 'turn'); mkdirSync(turn, { mode: 0o700 });
-  // A fresh conversation name per run: the mount point is machine-wide (/private/tmp), so a fixed name collides with the
-  // same test in another worktree, or with a volume an interrupted run left mounted there (a stacked mount that never
-  // reads as unmounted; live 2026-10-05, an orphan at the old fixed name failed every later run).
+  // The mount point sits in the host-wide /private/tmp, so its name is this run's own: two suites running at once on one
+  // host must never attach or detach each other's volume. Within the test it stays fixed, as a conversation's does.
+  // The same name also keeps a run clear of a volume an interrupted earlier run left mounted there: live 2026-10-05,
+  // an orphan at the old fixed name stacked a second mount that never read as unmounted, failing every later run.
   const name = `itw-${randomBytes(6).toString('hex')}`;
   const volume = attachScratch(turn, name, 8 * 1048576);
   try {
@@ -154,6 +137,24 @@ it.runIf(hdiutil)('bounds a workspace\'s whole storage: its volume refuses write
   expect(existsSync(stale)).toBe(false);
 });
 
+it('retries a forced unmount a bounded number of times, and reports a volume that will not unmount', () => {
+  // The gate run of 2026-10-05 lost a volume to a single forced detach that did not take (the next call, milliseconds
+  // later, detached it), so the retry is proved on both sides here without needing a real volume.
+  const turn = dir();
+  // Detaches only on the third forced attempt: the retry decides it, and the attempts stay bounded.
+  let left = 3, forced = 0;
+  expect(unmountScratch(turn, { tries: 5, force: () => { forced++; left--; }, mounted: () => left > 0 })).toBe(true);
+  expect(forced).toBe(3);
+  // Never unmounts: exactly `tries` forced attempts, then the volume is reported still mounted rather than looping.
+  let stuck = 0;
+  expect(unmountScratch(turn, { tries: 4, force: () => { stuck++; }, mounted: () => true })).toBe(false);
+  expect(stuck).toBe(4);
+  // Nothing mounted: no detach is attempted at all.
+  let idle = 0;
+  expect(unmountScratch(turn, { force: () => { idle++; }, mounted: () => false })).toBe(true);
+  expect(idle).toBe(0);
+});
+
 it('runs tools only for answer turns and scheduled work, never for reviews, summaries or benchmark reruns', () => {
   for (const id of ['telegram:8820318295:update:120', 'obligation:commitment:3:1790000000000']) expect(toolTurnEligible(id)).toBe(true);
   for (const id of ['telegram:1:update:2:reply-review', 'telegram:1:update:2:revision-review', 'summary:12', 'summary:12:review',
@@ -163,24 +164,34 @@ it('runs tools only for answer turns and scheduled work, never for reviews, summ
 it('tells the agent and the operator exactly which tools exist and where outward effects go, and says why tools are off', () => {
   const read = () => JSON.stringify({ generation: 'g', commit: 'c', launchers: { 'tests/preview/journal-agent.mjs': [] } });
   const withTools = capabilityBriefing(read, { providerAttempts: 50, expiresAt: 1, tools: true }).text;
-  expect(withTools).toContain(TOOLS_BRIEFING);
+  // The tools item joins the can-do list and the real limits follow it (w4-selfdesc, live K11a 2026-10-04).
+  expect(withTools).toContain(`What you can do for the operator here:\n- ${TOOLS_BRIEFING}`);
+  expect(withTools).toContain(TOOLS_LIMITS);
   // It describes the capability, never a hand-picked list: the whole set is offered and each call is decided at the hook.
-  expect(TOOLS_BRIEFING).toMatch(/^Tools: full Claude Code set \(files, shell, web reads, nested subagents\) and root MCP; outward effects via the doorway/u);
+  expect(TOOLS_BRIEFING).toMatch(/^tools: full Claude Code set \(files, shell, web reads, nested subagents\); MCP servers: unknown;/u);
   for (const name of SUBSCRIPTION_TOOL_NAMES) expect(TOOLS_BRIEFING).not.toContain(name);
-  // No longer than the no-tools line it replaces: the floor packet has no slack.
-  expect(Buffer.byteLength(TOOLS_BRIEFING)).toBeLessThanOrEqual(Buffer.byteLength('Nothing unlisted is available: no tools, browsing, running code '
-    + 'or acting outside this chat, and no message you start yourself beyond the listed answers to later-time requests.'));
+  // Outward writes and sends are an ability behind the doorway and the operator's grant, never a blanket denial.
+  expect(TOOLS_BRIEFING).toContain('network writes and outside sends via the doorway\'s four tests on operator grant');
+  expect(withTools).not.toMatch(/no account writes|standing block|no vault/u);
+  expect(TOOLS_LIMITS).toMatch(/^Limits: a sent credential is vaulted on arrival \(you see its SecretRef\), not tool-readable\.$/u);
+  // The MCP wording says what the root configures now: both sides of the count, and a configured server is never claimed
+  // as logged-in account access (review round 1, finding 4; selfdesc-abilities covers the unknown count too).
+  expect(toolsBriefing(0)).toContain('no MCP server, so no logged-in account access');
+  expect(toolsBriefing(2)).toContain('2 MCP server(s) (accounts only via their tools)');
+  expect(capabilityBriefing(read, { providerAttempts: 50, expiresAt: 1, tools: true, mcp: 0 }).text).toContain(`- ${toolsBriefing(0)}`);
+  // The attempt cap and the expiry stay in the note: the note is what the self-description is held to.
+  expect(withTools).toContain('at most 50 model attempts, ending at epoch ms 1.');
   expect(withTools).not.toContain('no tools, browsing, running code');
   const without = capabilityBriefing(read, { providerAttempts: 50, expiresAt: 1 }).text;
   expect(without).toContain('Nothing unlisted is available: no tools, browsing, running code');
-  expect(without).not.toContain(TOOLS_BRIEFING);
+  expect(without).not.toContain(TOOLS_BRIEFING); expect(without).not.toContain(TOOLS_LIMITS);
   const fallback = capabilityBriefing(() => { throw Error('absent'); }, { providerAttempts: 1, expiresAt: 1, tools: true }).text;
-  expect(fallback).toContain(TOOLS_BRIEFING); expect(fallback).not.toContain('You have no tools');
+  expect(fallback).toContain(`You have ${TOOLS_BRIEFING} ${TOOLS_LIMITS}`); expect(fallback).not.toContain('You have no tools');
   const view = { toolTurns: { invocations: 2, reservedCalls: 14, refusedCap: 1, toolCalls: 5, toolRefusals: 2, inconsistent: 0, open: [] } };
   expect(toolStatusLines(view, true)).toEqual([
     `Tools: the harness's full built-in set (${SUBSCRIPTION_TOOL_NAMES.length} tools, each call decided at the admission hook) and the root's `
       + 'MCP servers, in this conversation\'s private workspace (kept between turns, 128 MB); shell sandboxed, its network through the '
-      + 'turn\'s checkpoint (reads of public hosts admitted, writes refused at the effect doorway); web reads only; '
+      + 'turn\'s checkpoint (reads of public hosts admitted, writes sent to the effect doorway); web reads only; '
       + 'subagents may delegate within the turn\'s budget; consequential effects go through the effect doorway.',
     'Tool turns: 2 run (14 model attempts reserved for them), 5 tool calls admitted, 2 refused, 1 turns answered without tools because the call allowance was short.']);
   expect(toolStatusLines({ toolTurns: { ...view.toolTurns, open: ['x#3'] } }, true)[1]).toContain('1 without a recorded trace yet');
@@ -380,7 +391,7 @@ it('keeps an interrupted turn\'s hook record past retention and journals its chi
   expect(reconcileToolTurns({ journal: done, root: fresh, redactText: (text: string) => text, now: () => 11 })).toEqual([]);
 });
 
-it('reads the root\'s MCP configuration: absent is none, malformed refuses, and its servers and credentials stay in the admission state', () => {
+it('reads the root\'s MCP configuration: absent is none, malformed refuses, a literal credential refuses, env settings and SecretRefs are kept, and its servers stay in the admission state', () => {
   const root = dir();
   expect(readRootMcp(root)).toBeNull();
   for (const bad of ['{', '{"mcpServers":[]}', '{"mcpServers":{"a b":{"command":"/x"}}}', '{"mcpServers":{"a":{}}}',
@@ -390,17 +401,43 @@ it('reads the root\'s MCP configuration: absent is none, malformed refuses, and 
   }
   writeFileSync(join(root, 'mcp.json'), '{"mcpServers":{}}');
   expect(readRootMcp(root)).toBeNull();
-  const config = { mcpServers: { dummy: { command: '/usr/bin/true', env: { TOKEN: 'DUMMY-NOT-A-SECRET' } } }, reads: ['mcp__dummy__lookup'] };
+  // The checkpoint (Rule 100): a recognised credential written literally (command, argument or env value) refuses, naming
+  // the SecretRef form; so does a malformed env value. An ordinary env setting, or any other launch key, is kept.
+  const synthetic = `ghp_${'0'.repeat(36)}`;
+  for (const [server, why] of [[{ command: '/usr/bin/true', args: [1] }, /args must be strings/u],
+    [{ command: '/usr/bin/true', args: ['--token', synthetic] }, /holds a credential literally in its command or args/u],
+    [{ command: `/usr/bin/env TOKEN=${synthetic}` }, /holds a credential literally in its command or args/u],
+    [{ command: '/usr/bin/true', env: { TOKEN: synthetic } }, /env TOKEN holds a credential literally; give it as \{"secretRef"/u],
+    [{ command: '/usr/bin/true', env: [] }, /env must be an object/u],
+    [{ command: '/usr/bin/true', env: { TOKEN: { secretRef: 'a b' } } }, /must be a string or \{"secretRef"/u],
+    [{ command: '/usr/bin/true', env: { TOKEN: { secretRef: 'a', extra: 1 } } }, /must be a string or \{"secretRef"/u]] as const) {
+    writeFileSync(join(root, 'mcp.json'), JSON.stringify({ mcpServers: { dummy: server } }));
+    expect(() => readRootMcp(root)).toThrow(why);
+  }
+  const config = { mcpServers: { dummy: { command: '/usr/bin/true', args: ['--log', '/tmp/x'], env: { LOG_LEVEL: 'info' }, cwd: '/tmp' } },
+    reads: ['mcp__dummy__lookup'] };
   writeFileSync(join(root, 'mcp.json'), JSON.stringify(config));
   const mcp = readRootMcp(root);
-  expect(mcp).toMatchObject({ servers: config.mcpServers, reads: config.reads, digest: expect.stringMatching(/^sha256:/u) });
+  expect(mcp).toMatchObject({ servers: config.mcpServers, reads: config.reads, secrets: { dummy: {} }, digest: expect.stringMatching(/^sha256:/u) });
   const turn = prepareToolTurn({ root, operation: 'telegram:1:update:9', attempt: 0, operations: [], mcp, scratch: plainScratch });
   expect(turn.mcp).toEqual({ config: join(turn.stateDirectory, 'mcp.json'), servers: ['dummy'] });
   expect(lstatSync(turn.mcp.config).mode & 0o777).toBe(0o600);
   expect(JSON.parse(readFileSync(turn.mcp.config, 'utf8'))).toEqual({ mcpServers: config.mcpServers });
   expect(JSON.parse(readFileSync(join(turn.stateDirectory, 'config.json'), 'utf8')).mcpReads).toEqual(['mcp__dummy__lookup']);
-  // The credential never lands where a tool can reach: not in the workspace or the scratch volume.
+  // The launch configuration lands in the admission state only: not in the workspace or the scratch volume.
   expect(JSON.stringify(readdirSync(turn.scratch, { recursive: true }))).not.toContain('mcp');
+  // A SecretRef server is launched through the launcher with its ordinary settings and no value; the others are unchanged.
+  writeFileSync(join(root, 'mcp.json'), JSON.stringify({ mcpServers: { ...config.mcpServers,
+    keyed: { command: '/usr/bin/srv', args: ['--x'], env: { TOKEN: { secretRef: 'chat-api-key-1' }, LOG_LEVEL: 'debug' } } } }));
+  const keyed = readRootMcp(root);
+  expect(keyed.secrets).toEqual({ dummy: {}, keyed: { TOKEN: 'chat-api-key-1' } });
+  const second = prepareToolTurn({ root, operation: 'telegram:1:update:3', attempt: 0, operations: [], mcp: keyed, scratch: plainScratch });
+  const written = JSON.parse(readFileSync(second.mcp.config, 'utf8')).mcpServers;
+  expect(written.dummy).toEqual(config.mcpServers.dummy);
+  expect(written.keyed).toEqual({ command: process.execPath, args: [TOOL_MCP_LAUNCHER, second.socket.path, 'keyed', second.mcp.nonces.keyed,
+    '/usr/bin/srv', '--x'], env: { LOG_LEVEL: 'debug' } });
+  expect(second.socket.path.length).toBeLessThan(100);
+  for (const each of [turn, second]) rmSync(join(each.socket.path, '..'), { recursive: true, force: true });
 });
 
 it('runs the shell\'s network checkpoint exactly as long as the turn: started before launch, named to the hook and the sandbox, recorded, stopped after', async () => {
