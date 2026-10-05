@@ -194,3 +194,49 @@ left alone rather than guarded on a guess (Rule 116).
 `scripts/check-*-contract-map.mjs` refuses a skipped proof case, so a skip would cost real floor coverage and fail
 the post-test checkers. It stays active; a recurrence in the pipeline rerun carries the stderr needed to name the
 source.
+
+### Recurrence 2026-10-05 (sb-w4-workmemory gate at d9e34cce, Studio): the same stale-owner exit code
+
+The one failure in that gate run is the case above, with the same shape: `expect(await studio.exited)
+.toMatchObject({ status: 0 })` received `{ status: 1, signal: null }`, at 8 130 ms against the case's declared
+240 s (cint-L50 saw 8 225 ms). It is still **not quarantined**: the case carries the Rules 31/63 replicated(1)
+floor and `scripts/check-*-contract-map.mjs` refuses a skipped proof case.
+
+**Not reproduced here, in 33 targeted runs on the Mama PC** (WSL2, 10 CPUs, `nice -n 10`, `--maxWorkers 1`):
+12 sequential targeted runs; 12 runs as three concurrent instances (four rounds of three, i.e. self-contention
+rather than an arranged load run); 6 runs of a variant that sends `SIGCONT` immediately after the takeover
+instead of after the new owner reads the second message (the gate's gap between those two points is about a
+fifth of the one measured here, so that gap was the first suspect); and 3 runs of the whole file. Every run
+exited 0.
+
+**Timing, measured.** Instrumented here, the passing path is: studio owning at 1.0 s, standby at 4.0 s, cursor
+past the first update at 4.3 s, `SIGSTOP` at 4.3 s, takeover at 9.1 s (the authority's 6 s term, minus the time
+since the last renew), the new owner's second turn at 12.1 s, `SIGCONT` and exit at 12.1 s. The gate's 8.1 s is
+that same shape on a faster host (about 1.5 s to the cursor, the 6 s term, then under a second), so the run is
+**not** evidence that the studio child had already exited before the `SIGSTOP`; equally, nothing here excludes
+it, because a child that exits cleanly releases its lease and the takeover is then immediate, which also lands
+near 8 s. Both readings stay open.
+
+**Narrowed by reading, on this scenario (`--tools off`, no delegated session):**
+- `gate`, `stepEgress` and `sessionWork` are all null — `gate` is built only when a session setup exists or the
+  doorway carries a Claude Code tool turn — so three of the five unguarded teardown steps cint-L50 named
+  cannot run at all here. `ownerClaim.release()` is internally guarded (`conversation-owner.ts`, `try/catch`
+  around `held.close()`). Of that list only `journal?.close()` and `storage.close()` remain reachable.
+- The writer lease (`src/assembly/production-storage.ts`) is **PID-based with no TTL**, so a six-second
+  `SIGSTOP` cannot expire it and a write after the resume cannot be refused for a lapsed lease.
+- `await lane.settle()` and `if (lane.error() && !signalled) throw lane.error()` cannot fire here.
+  `lane.error()` is set only after **eight** consecutive failures with growing backoff (`createOrdinaryLane`,
+  `live-sentinels.ts`), which needs about two minutes, and the lane's job promise can only reject through
+  `ports.after()` — `summarizeLater`, whose three tails (`summarizeIfNeeded`, `checkSteps`, `retrospect`) are
+  all `async` in `journal.ts`, so a synchronous throw inside them becomes a rejection their own
+  `.catch(() => {})` absorbs.
+- Poll exhaustion still needs 5 consecutive 409s or 20 failures, and a woken stale owner breaks on
+  `ownerHeld()` after at most one poll.
+
+**Repaired here: the evidence, not the exit.** The cause is unnamed after two gates because the case discarded
+the only evidence that would name it — the child's stderr (which distinguishes a thrown `main` with its
+`preview refused to start or continue` line from an unhandled rejection's stack) and its `runs.jsonl` (which
+says whether the clean end was recorded before the exit). Both were already captured by the harness and thrown
+away with it. The case now writes them to the run output when the exit is non-zero, before the unchanged
+assertion, so the next recurrence in any gate carries what it needs. No assertion, body or budget is changed,
+and nothing is skipped. Guarding `journal.close()` / `storage.close()` on a guess is still declined (Rule 116).
