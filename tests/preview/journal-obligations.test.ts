@@ -1229,26 +1229,49 @@ it('bounded runner outcome lists leave room for every refusal beside the effect 
   }
 });
 
-it('gives scheduled work the operator\'s own earlier words, and drops them only when the packet would not fit (plan #510)', async () => {
+it('gives scheduled work the operator\'s own earlier words, and drops them only when the packet would not fit (plan #510, #538)', async () => {
   // Live cint-L50/L49: the deferral "which three of the things I have told you matter most" got a work packet with none of
   // them, and the replayed step answered "continue: this turn's context does not include the broader history".
+  // Astra cint-L50 MUST-FIX 1 (plan #538): the two summarized cases. Once a turn is behind the summary frontier its words
+  // are no longer in operatorMessages, and the summary writer is told to keep each exact fact in memoryItems by source and
+  // NOT to repeat it in prose -- so a packet carrying prose alone carried a summary with its facts deliberately removed.
+  // Her reproducer's fact was stored, active and 1180 of 32768 bytes clear of the bound, and the step still could not see
+  // it. 'summarized' is that case; 'items-dropped-first' pins the drop order, so adding the facts cannot cost a packet the
+  // prose and messages it already carried today.
   const DENTIST = 'My dentist is Dr. Ortiz on Elm Street, and the cleaning is on Thursday.';
-  for (const size of ['fits', 'too-large'] as const) {
+  const PROSE = 'The operator shared a scheduling fact, kept in memoryItems.';
+  /** The fact behind the summary frontier: prose that does not restate it, memoryItems that keep it by source. */
+  const summarize = (w: ReturnType<typeof world>) => {
+    const source = w.journal.view.order[0]!.id;
+    w.journal.append({ kind: 'summary-reserve', through: 1, maxInputTokens: 32768, maxOutputTokens: 2048, at: w.clock.now });
+    w.journal.append({ kind: 'summary', through: 1, text: PROSE, memoryItems: [{ source, quote: DENTIST }],
+      faithfulness: { path: 'exact', verdict: 'pass', score: null }, state: 'complete', at: w.clock.now });
+    return source;
+  };
+  for (const size of ['fits', 'too-large', 'summarized', 'items-dropped-first'] as const) {
+    const summarized = size === 'summarized' || size === 'items-dropped-first';
     const root = origin();
     try {
       const contexts: Record<string, unknown>[] = [];
       const w = world(root, { answer: question => question === INVOICE ? { reply: LATER, openLoops: [{ kind: 'deferral', quote: LATER, waitsOn: 'nothing' }] } : 'Noted.',
         work: context => { contexts.push(context); return { outcome: 'report', report: 'The invoice is for 120 dollars.' }; } });
       await w.say(DENTIST);
+      const source = summarized ? summarize(w) : undefined;
       await w.say(INVOICE);
       const sizes: number[] = [];
-      if (size === 'too-large') {
-        // The limit the packet is checked against: just under the packet with its memory, above the packet without it.
+      if (size === 'too-large' || size === 'items-dropped-first') {
+        // The limit the packet is checked against: just under the packet with the rung being dropped, at or above the
+        // next rung down. Measured on a probe journal of the same shape rather than guessed.
         const probeRoot = origin();
         const probe = world(probeRoot, { answer: question => question === INVOICE ? { reply: LATER, openLoops: [{ kind: 'deferral', quote: LATER, waitsOn: 'nothing' }] } : 'Noted.',
-          work: context => { sizes.push(Buffer.byteLength(JSON.stringify(context)), Buffer.byteLength(JSON.stringify({ ...context, memory: undefined })));
+          work: context => { const memory = context.memory as Record<string, unknown>;
+            sizes.push(Buffer.byteLength(JSON.stringify(context)),
+              Buffer.byteLength(JSON.stringify({ ...context, memory: { ...memory, memoryItems: undefined } })),
+              Buffer.byteLength(JSON.stringify({ ...context, memory: undefined })));
             return { outcome: 'report', report: 'x' }; } });
-        await probe.say(DENTIST); await probe.say(INVOICE);
+        await probe.say(DENTIST);
+        if (summarized) summarize(probe);
+        await probe.say(INVOICE);
         probe.clock.now += LOOP_REVISIT_MS + 60_000;
         expect(await probe.worker.workObligations()).toBe(true);
         probe.journal.close(); rmSync(probeRoot, { recursive: true, force: true });
@@ -1257,12 +1280,30 @@ it('gives scheduled work the operator\'s own earlier words, and drops them only 
       w.clock.now += LOOP_REVISIT_MS + 60_000;
       expect(await w.worker.workObligations()).toBe(true);
       expect(w.workQuestions[0]).toContain('packet.memory holds what the operator told you');
+      expect(w.workQuestions[0]).toContain('the exact facts memoryItems retains from the turns it covers');
+      const memory = contexts[0]!.memory as { summary?: string; memoryItems?: { source: string; sourceLabel: string; quote: string }[];
+        operatorMessages: { text: string }[] } | undefined;
       if (size === 'fits')
-        expect(contexts[0]!.memory).toEqual({ operatorMessages: [expect.objectContaining({ text: DENTIST }), expect.objectContaining({ text: INVOICE })] });
-      else {
-        expect(sizes[0]!).toBeGreaterThan(sizes[1]!);
-        expect(contexts[0]!.memory).toBeUndefined();
+        expect(memory).toEqual({ operatorMessages: [expect.objectContaining({ text: DENTIST }), expect.objectContaining({ text: INVOICE })] });
+      else if (size === 'too-large') {
+        expect(sizes[0]!).toBeGreaterThan(sizes[2]!);
+        expect(memory).toBeUndefined();
         expect(contexts[0]!.obligation).toBeDefined();
+      } else if (size === 'summarized') {
+        // Rule 96: the fact is reachable from the packet, and from nowhere else in it.
+        expect(memory!.summary).toBe(PROSE);
+        expect(memory!.summary).not.toContain('Ortiz');
+        expect(memory!.operatorMessages.map(item => item.text)).toEqual([INVOICE]);
+        expect(memory!.memoryItems).toEqual([{ source, sourceKind: 'operator-stated',
+          sourceLabel: expect.stringContaining('conversation:operator/'), quote: DENTIST }]);
+        expect(JSON.stringify(contexts[0]!)).toContain('Dr. Ortiz');
+      } else {
+        // The middle rung: the facts yield first, and what the packet carried before this change survives.
+        expect(sizes[0]!).toBeGreaterThan(sizes[1]!);
+        expect(sizes[1]!).toBeGreaterThan(sizes[2]!);
+        expect(memory!.memoryItems).toBeUndefined();
+        expect(memory!.summary).toBe(PROSE);
+        expect(memory!.operatorMessages.map(item => item.text)).toEqual([INVOICE]);
       }
       w.journal.close();
     } finally { rmSync(root, { recursive: true, force: true }); }

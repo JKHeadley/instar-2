@@ -2126,7 +2126,7 @@ export function obligationCapacity(view: JournalView): boolean {
 export const OBLIGATION_SUMMARY_CHARS = 4000, OBLIGATION_MEMORY_MESSAGES = 20, OBLIGATION_MEMORY_MESSAGE_CHARS = 500;
 /** The runner's bounds on a work step's report and note (obligationDecision); the question states them. */
 export const OBLIGATION_REPORT_CHARS = 1500, OBLIGATION_NOTE_CHARS = 500;
-export const OBLIGATION_WORK_QUESTION = 'packet.obligation is open work you own for the verified operator, due now. packet.obligation.yourReply was already sent to the operator: repeating or re-confirming it is not the work, so the report for a deferral or judgment is the deferred answer itself, never another acknowledgement. packet.memory holds what the operator told you (the newest summary and their messages after it): work about what they told you is done from it. Do it now with what you know; you have no external tools, and a reply reaches the operator only with their next message. A report is that later message: it is held now and delivered with their next message, never before it, so "answer later" or "not in this reply" is done by reporting now. Choose exactly one of these objects. For a request, promise, deferral or judgment: {"outcome":"report","report":<the completed result or decision, addressed to the operator, at most ' + String(OBLIGATION_REPORT_CHARS) + ' characters>} when you can finish it now; {"outcome":"continue","note":<the concrete progress and next step, at most ' + String(OBLIGATION_NOTE_CHARS) + ' characters>} when it genuinely needs more time; {"outcome":"waiting","waitsOn":"operator"|"external","note":<what exactly you now need, at most ' + String(OBLIGATION_NOTE_CHARS) + ' characters>} only when someone else must act first. When packet.waitingFor is present, you said you needed it earlier: check packet.operatorMessagesSince and continue with whatever now arrived. For a blocker-recheck, test the claim again against every avenue and packet.capabilities: {"outcome":"still-blocked","recheck":"YYYY-MM-DD" within 90 days,"avenues":[{"avenue","disposition":"outside-standing"|"inapplicable","evidence":<the packet.capabilities key that shows it>}],"constraint":<governingConstraints key those capabilities support>,"reason":<what you re-examined and why it still holds>} or {"outcome":"cleared","report":<what is now possible>}. You have attempted nothing outside this step, so never call an avenue tried. Follow packet.directives. Refuse only behind a packet.governingConstraints key. '
+export const OBLIGATION_WORK_QUESTION = 'packet.obligation is open work you own for the verified operator, due now. packet.obligation.yourReply was already sent to the operator: repeating or re-confirming it is not the work, so the report for a deferral or judgment is the deferred answer itself, never another acknowledgement. packet.memory holds what the operator told you (the newest summary, the exact facts memoryItems retains from the turns it covers, and their messages after it): work about what they told you is done from it. Do it now with what you know; you have no external tools, and a reply reaches the operator only with their next message. A report is that later message: it is held now and delivered with their next message, never before it, so "answer later" or "not in this reply" is done by reporting now. Choose exactly one of these objects. For a request, promise, deferral or judgment: {"outcome":"report","report":<the completed result or decision, addressed to the operator, at most ' + String(OBLIGATION_REPORT_CHARS) + ' characters>} when you can finish it now; {"outcome":"continue","note":<the concrete progress and next step, at most ' + String(OBLIGATION_NOTE_CHARS) + ' characters>} when it genuinely needs more time; {"outcome":"waiting","waitsOn":"operator"|"external","note":<what exactly you now need, at most ' + String(OBLIGATION_NOTE_CHARS) + ' characters>} only when someone else must act first. When packet.waitingFor is present, you said you needed it earlier: check packet.operatorMessagesSince and continue with whatever now arrived. For a blocker-recheck, test the claim again against every avenue and packet.capabilities: {"outcome":"still-blocked","recheck":"YYYY-MM-DD" within 90 days,"avenues":[{"avenue","disposition":"outside-standing"|"inapplicable","evidence":<the packet.capabilities key that shows it>}],"constraint":<governingConstraints key those capabilities support>,"reason":<what you re-examined and why it still holds>} or {"outcome":"cleared","report":<what is now possible>}. You have attempted nothing outside this step, so never call an avenue tried. Follow packet.directives. Refuse only behind a packet.governingConstraints key. '
   + taskFields('the one object you chose');
 /** The same work step on the scoped-tool route: it can use the listed tools, and only their recorded calls ran. */
 export const OBLIGATION_WORK_QUESTION_TOOLS = replacedClause(replacedClause(OBLIGATION_WORK_QUESTION,
@@ -5630,6 +5630,18 @@ export function createJournalWorker(journal: ReturnType<typeof openPreviewJourna
     : reminderDue(item) <= localStamp(ports.now(), item.zone) ? 'that time has already passed'
       : reminderDue(item) >= localStamp(journal.view.expires, item.zone) ? 'this preview ends before then' : null;
   const clean = (value: string, _derived = false, source?: string | number) => projectMemoryClause(journal.view, value, source);
+  /** Rule 96, plan #538 (Astra cint-L50 MUST-FIX 1): the active facts a summary keeps apart from its prose, projected
+   * once for every consumer. The summary writer is told its retained facts are kept by source and must not be repeated
+   * in prose, so a consumer that reads only the prose reads a summary with the facts deliberately removed. The ordinary
+   * answer packet and the scheduled work packet both read this, so deferred work grounds in the same retained facts an
+   * immediate answer does. A later verified correction or forget request drops its item here; every surviving quote
+   * carries its source label and passes the same redaction as the rest of the packet. */
+  const summaryMemoryItems = (summary: Extract<JournalRecord, { kind: 'summary' }>) =>
+    (summary.memoryItems ?? []).filter(item => !journal.view.memory.some(change =>
+      change.mode !== 'prefer' && change.source === item.source
+        && (item.quote.includes(change.quote) || change.quote.includes(item.quote))))
+      .map(item => ({ source: item.source, sourceKind: 'operator-stated' as MemorySourceKind,
+        sourceLabel: turnLabel(journal.view.turns.get(item.source)!), quote: clean(redact(item.quote).text, true, item.source) }));
   const restoredHistorical = (change: MemoryChange, changes: readonly MemoryChange[] = journal.view.memory) =>
     restoredHistoricalChange(change, changes);
   const cleanMetadata = (value: string, item?: ChannelItem) => item && journal.view.memory.some(change =>
@@ -6073,6 +6085,7 @@ export function createJournalWorker(journal: ReturnType<typeof openPreviewJourna
     saidRange?: { from: string; to: string; matched: number },
     selectedAttributes: readonly PersonAttribute[] = []) => {
     const summary = compact ? summaryFor(through) : undefined;
+    const summaryItems = summary ? summaryMemoryItems(summary) : [];
     const superseded = new Set(journal.view.order.filter(item => item.accepted && item.editOf && item.update <= through)
       .map(item => item.replaces!));
     const carriedHistory = groundingHistory(journal.view, through, summary?.through);
@@ -6343,11 +6356,7 @@ export function createJournalWorker(journal: ReturnType<typeof openPreviewJourna
       ...(suppliedSources === undefined ? {} : { sources: suppliedSources }),
       ...(reference ? { replyTo: reference } : {}),
       ...(summary ? { historyMode: 'summary-plus-recent', summary: { sourceKind: 'inferred-by-summary' as MemorySourceKind, sourceLabel: summaryLabel(summary), through: summary.through, text: clean(redact(summary.text).text, true, summary.through),
-        ...(summary.memoryItems?.length ? { memoryItems: summary.memoryItems.filter(item => !journal.view.memory.some(change =>
-          change.mode !== 'prefer' && change.source === item.source
-            && (item.quote.includes(change.quote) || change.quote.includes(item.quote)))).map(item => ({ source: item.source,
-          sourceKind: 'operator-stated' as MemorySourceKind,
-          sourceLabel: turnLabel(journal.view.turns.get(item.source)!), quote: clean(redact(item.quote).text, true, item.source) })) } : {}) } }
+        ...(summaryItems.length ? { memoryItems: summaryItems } : {}) } }
         : historySetAsideCount ? { historyMode: 'recent-only' } : { historyMode: 'complete' }),
       ...(journal.view.memory.length ? { memory: journal.view.memory.flatMap((change, index):
         Array<{ sourceKind: MemorySourceKind; mode: string; source: string; sourceLabel: string; trigger: string; reason?: string; replacement?: string }> => {
@@ -9571,12 +9580,20 @@ export function createJournalWorker(journal: ReturnType<typeof openPreviewJourna
       // the replayed work step (cint-L49 obligation:commitment:3, claude-sonnet-5) answered "continue: this turn's context
       // does not include the broader history" both times. Bounded; omitted only when the packet would not fit.
       const latest = summaryFor(Number.MAX_SAFE_INTEGER);
-      const memory = { ...(latest ? { summary: clip(clean(redact(latest.text).text, true, latest.through), OBLIGATION_SUMMARY_CHARS) } : {}),
+      // Plan #538 (Astra cint-L50 MUST-FIX 1, Rule 96): the summary's retained facts, not just its prose. The summary
+      // writer is instructed to keep each exact fact in memoryItems by source and NOT to repeat it in prose, so a work
+      // packet carrying prose alone carried a summary with its facts removed: the probe's source-linked appointment fact
+      // was stored, active and 1180 of 32768 bytes clear of the bound, and the step still could not see it. Already
+      // bounded at the write side (at most 20 items, each quote at most 300 bytes), and dropped before the prose and
+      // messages when the packet would not fit, so no packet that grounds today loses that grounding to this addition.
+      const memoryItems = latest ? summaryMemoryItems(latest) : [];
+      const memory = (withItems: boolean) => ({ ...(latest ? { summary: clip(clean(redact(latest.text).text, true, latest.through), OBLIGATION_SUMMARY_CHARS) } : {}),
+        ...(withItems && memoryItems.length ? { memoryItems } : {}),
         operatorMessages: journal.view.order.filter(turn => verifiedOperatorTurn(journal.view, turn) && !probeTurn(journal.view, turn)
           && turn.update > (latest?.through ?? -1)).slice(-OBLIGATION_MEMORY_MESSAGES)
-          .map(turn => ({ date: dated(turn), text: clip(clean(redact(turn.text).text, true, turn.id), OBLIGATION_MEMORY_MESSAGE_CHARS) })) };
-      const packetWith = (withMemory: boolean) => JSON.stringify({ now: isoMinute(now), zone, today: localStamp(now, zone).slice(0, 10), obligation,
-        ...(withMemory ? { memory } : {}),
+          .map(turn => ({ date: dated(turn), text: clip(clean(redact(turn.text).text, true, turn.id), OBLIGATION_MEMORY_MESSAGE_CHARS) })) });
+      const packetWith = (withMemory: 'facts-and-messages' | 'messages-only' | 'none') => JSON.stringify({ now: isoMinute(now), zone, today: localStamp(now, zone).slice(0, 10), obligation,
+        ...(withMemory === 'none' ? {} : { memory: memory(withMemory === 'facts-and-messages') }),
         ...(work?.note && work.waitsOn === undefined ? { lastProgress: clean(redact(work.note).text, true) } : {}),
         // A reassessment of waiting work sees what it waited for and every verified operator message since.
         ...(work?.waitsOn !== undefined && work.note ? { waitingFor: { waitsOn: work.waitsOn, need: clean(redact(work.note).text, true),
@@ -9585,8 +9602,12 @@ export function createJournalWorker(journal: ReturnType<typeof openPreviewJourna
             .map(turn => ({ date: dated(turn), text: clip(clean(redact(turn.text).text, true, turn.id), 1000) })) } : {}),
         directives: openDirectives(journal.view).map(({ id, note }) => ({ id, quote: clean(redact(note.quote).text, true, note.source) })),
         governingConstraints: governingConstraints(tools), capabilities: previewCapabilities(tools) });
-      const full = packetWith(true), context = Buffer.byteLength(full) <= journal.view.limits.maxBytes ? full : packetWith(false);
-      if (Buffer.byteLength(context) > journal.view.limits.maxBytes) return false;
+      let context: string | undefined;
+      for (const level of ['facts-and-messages', 'messages-only', 'none'] as const) {
+        const candidate = packetWith(level);
+        if (Buffer.byteLength(candidate) <= journal.view.limits.maxBytes) { context = candidate; break; }
+      }
+      if (context === undefined) return false;
       const question = tools ? OBLIGATION_WORK_QUESTION_TOOLS : OBLIGATION_WORK_QUESTION;
       // A session step carries its task in the session's own delivered text, not a provider
       // envelope, so no prepared envelope is built or required for it.
