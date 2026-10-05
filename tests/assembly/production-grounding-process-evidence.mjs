@@ -17,7 +17,7 @@ if(entry.endsWith('/vitest/vitest.mjs')&&realpathSync(process.cwd())===root){
     const path=resolve(root,output);
     const {productionGroundingSourceDigest}=await import('../../scripts/check-assembly-contracts.mjs');
     const sourceDigest=productionGroundingSourceDigest(root);
-    const revision=execFileSync('git',['rev-parse','HEAD'],{cwd:root,encoding:'utf8'}).trim();
+    const revision=execFileSync('git',['rev-parse','HEAD'],{cwd:root,encoding:'utf8',timeout:60000,killSignal:'SIGKILL'}).trim();
     process.on('exit',code=>{
       if(!path.startsWith(root+'/')||!existsSync(path))return;
       const report=JSON.parse(readFileSync(path,'utf8'));

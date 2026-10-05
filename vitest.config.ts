@@ -38,7 +38,11 @@ export default defineConfig({
     // 60s RPC deadline, which serialization and priority alone do not cure.
     // conversation-owners: each test file's runner children claim conversations in their own
     // temporary directory, never the real host directory (Rule 63 fence).
-    setupFiles: ['tests/setup/nice-worker.mjs', 'tests/setup/yield-worker.mjs', 'tests/setup/conversation-owners.mjs'],
+    // bound-children: give every synchronous child-process call a finite bound, so a child that
+    // blocks forever fails its own test instead of freezing the whole run (2026-10-05: one
+    // intake harness child sat at 0% CPU for 54 minutes and the full suite waited on it).
+    setupFiles: ['tests/setup/nice-worker.mjs', 'tests/setup/yield-worker.mjs', 'tests/setup/conversation-owners.mjs',
+      'tests/setup/bound-children.mjs'],
     pool: 'forks',
     isolate: true,
     fileParallelism: !serialGate,

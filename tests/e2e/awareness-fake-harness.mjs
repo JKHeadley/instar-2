@@ -20,7 +20,7 @@ const receipt = (kind, extra = {}) => {
 const sessionStart = source => {
   if (!hook) return { text: '', source };
   const out = spawnSync(process.execPath, [hook], { input: JSON.stringify({ session_id: 'fake', source, hook_event_name: 'SessionStart' }),
-    encoding: 'utf8', env: process.env });
+    encoding: 'utf8', env: process.env, timeout: 60_000, killSignal: 'SIGKILL' });
   try { return { text: JSON.parse(out.stdout).hookSpecificOutput.additionalContext, source }; } catch { return { text: '', source }; }
 };
 const consumed = result => {
