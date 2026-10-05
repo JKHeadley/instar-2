@@ -18,6 +18,13 @@ Bug class: none
 Bug evidence: none
 Hook bypass: none (plain commits and an ordinary merge; core.hooksPath is unset). The carried records each record their own.
 Convergence: none
+Deferral: tests/preview/journal-due-loop.test.ts:1 | not-a-deferral=a test comment describing the deferred task under test, not a commitment by this change (as in the carried reviews/w4-dueloop-change-review record)
+Deferral: tests/preview/journal-due-loop.test.ts:24 | not-a-deferral=a test helper comment naming the already-answered deferral, not a commitment by this change (as in the carried reviews/w4-dueloop-change-review record)
+Deferral: tests/preview/journal-due-loop.test.ts:25 | not-a-deferral=a test helper parameter naming the already-answered deferral, not a commitment by this change (as in the carried reviews/w4-dueloop-change-review record)
+Deferral: tests/preview/journal-due-loop.test.ts:30 | not-a-deferral=a test variable naming the already-answered deferral, not a commitment by this change (as in the carried reviews/w4-dueloop-change-review record)
+Deferral: tests/preview/journal-due-loop.test.ts:47 | not-a-deferral=a test variable naming the already-answered deferral, not a commitment by this change (as in the carried reviews/w4-dueloop-change-review record)
+Deferral: tests/preview/journal-due-loop.test.ts:100 | not-a-deferral=a test assertion on the follow-up delivery, not a commitment by this change (as in the carried reviews/w4-dueloop-change-review record)
+Deferral: tests/preview/journal-due-loop.test.ts:136 | not-a-deferral=a test assertion on the follow-up delivery, not a commitment by this change (as in the carried reviews/w4-dueloop-change-review record)
 Decision: sb-w4-dueloop-merge | merged w4-dueloop 3fe354ba onto cint-L50 57e12273 as one ordinary merge, which fast-forwarded because the unit was built on that head; no conflict to resolve, and the unit's generated/ files are kept as committed because the desk chain moved nothing | reported=/Users/dabombstudio/.instar/agents/echo/.instar/lanes/sb-w4-dueloop-PROGRESS.md
 Decision: sb-w4-dueloop-desk | desk chain on the merged tree: repin 0 (inventory unchanged, check-assembly-contracts digest unchanged), tsc 0, rehash 0 pins in every owner manifest; build-register --check is true, so no replay commit was needed | reported=/Users/dabombstudio/.instar/agents/echo/.instar/lanes/sb-w4-dueloop-PROGRESS.md
 Prompt review: no model-facing change: no prompt, packet field, parser or accept/escalate/refuse rule changed by the unit or by this build (as recorded in reviews/w4-dueloop-change-review.md). Always-sent answer bytes on a default root stay 22,887 (guard 22,959).
