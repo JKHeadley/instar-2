@@ -95,13 +95,24 @@ export function attachSessionVolume(root, { bytes = SESSION_VOLUME_BYTES, name =
 export function detachSessionVolume(mount) {
   try { execFileSync(HDIUTIL, ['detach', '-quiet', '-force', mount], { stdio: 'ignore', timeout: 60000 }); } catch { /* checked by the caller */ }
 }
+/** How many times a forced detach is attempted before a volume is reported still mounted, and the pause before each
+ * retry (growing, so a volume the kernel is briefly still holding is given longer each time). One attempt is not enough:
+ * in the sb-w4-selfdesc gate run of 2026-10-05 the detach immediately after the burst of writes that filled an 8 MB
+ * volume left it mounted, and the very next call — the same code, milliseconds later — detached it. Unretried that
+ * costs the conversation its next turn, because `attachScratch` refuses a volume it cannot unmount first. */
+const SCRATCH_UNMOUNT_TRIES = 5, SCRATCH_UNMOUNT_PAUSE_MS = 100;
+const forceDetach = mount => {
+  try { execFileSync(HDIUTIL, ['detach', '-quiet', '-force', mount], { stdio: 'ignore', timeout: 60000 }); } catch { /* the mount decides, below */ }
+};
 /** Unmounts a directory's scratch volume and removes its mount point, keeping its image (and so its files). Returns false
- * when the volume is still mounted afterwards (the next attach or a later prune retries). */
-export function unmountScratch(dir) {
+ * when the volume is still mounted after `tries` forced detaches (the next attach or a later prune retries). `force` and
+ * `mounted` exist so a test can prove both sides of the retry without a real volume. */
+export function unmountScratch(dir, { tries = SCRATCH_UNMOUNT_TRIES, force = forceDetach, mounted = scratchMounted } = {}) {
   const mount = mountOf(dir);
-  if (scratchMounted(dir)) {
-    try { execFileSync(HDIUTIL, ['detach', '-quiet', '-force', mount], { stdio: 'ignore', timeout: 60000 }); } catch { /* checked below */ }
-    if (scratchMounted(dir)) return false;
+  for (let attempt = 0; mounted(dir); attempt++) {
+    if (attempt >= tries) return false;
+    if (attempt > 0) Atomics.wait(new Int32Array(new SharedArrayBuffer(4)), 0, 0, SCRATCH_UNMOUNT_PAUSE_MS * attempt);
+    force(mount);
   }
   if (mount !== null) try { rmdirSync(mount); } catch { /* already gone */ }
   return true;

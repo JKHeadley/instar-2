@@ -128,6 +128,24 @@ it.runIf(hdiutil)('bounds a workspace\'s whole storage: its volume refuses write
   expect(existsSync(stale)).toBe(false);
 });
 
+it('retries a forced unmount a bounded number of times, and reports a volume that will not unmount', () => {
+  // The gate run of 2026-10-05 lost a volume to a single forced detach that did not take (the next call, milliseconds
+  // later, detached it), so the retry is proved on both sides here without needing a real volume.
+  const turn = dir();
+  // Detaches only on the third forced attempt: the retry decides it, and the attempts stay bounded.
+  let left = 3, forced = 0;
+  expect(unmountScratch(turn, { tries: 5, force: () => { forced++; left--; }, mounted: () => left > 0 })).toBe(true);
+  expect(forced).toBe(3);
+  // Never unmounts: exactly `tries` forced attempts, then the volume is reported still mounted rather than looping.
+  let stuck = 0;
+  expect(unmountScratch(turn, { tries: 4, force: () => { stuck++; }, mounted: () => true })).toBe(false);
+  expect(stuck).toBe(4);
+  // Nothing mounted: no detach is attempted at all.
+  let idle = 0;
+  expect(unmountScratch(turn, { force: () => { idle++; }, mounted: () => false })).toBe(true);
+  expect(idle).toBe(0);
+});
+
 it('runs tools only for answer turns and scheduled work, never for reviews, summaries or benchmark reruns', () => {
   for (const id of ['telegram:8820318295:update:120', 'obligation:commitment:3:1790000000000']) expect(toolTurnEligible(id)).toBe(true);
   for (const id of ['telegram:1:update:2:reply-review', 'telegram:1:update:2:revision-review', 'summary:12', 'summary:12:review',
