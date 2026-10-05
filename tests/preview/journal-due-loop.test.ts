@@ -12,7 +12,7 @@ import { createJournalWorker, obligationSchedule, openPreviewJournal } from './j
 import { createOrdinaryLane, sentinelCycle, waitWorking, WORK_TICK_MS } from './live-sentinels.js';
 import { loopHealth } from './obligations.js';
 // @ts-expect-error The poll breaker is a JS host module.
-import { exhaustedPollReason, pollBackoffMs, pollEndsRun } from './poll-failure-reason.mjs';
+import { exhaustedPollReason, pollBackoffMs, pollEndsRun, temporaryPollStatus } from './poll-failure-reason.mjs';
 
 const key = new Uint8Array(32).fill(73);
 const T0 = 1791059512000, MINUTE = 60_000, REVISIT = 15 * MINUTE;
@@ -153,6 +153,14 @@ it('the poll breaker ends the run only on a sustained conflict or refusal, never
   expect(pollEndsRun(5, 5, true)).toBe('Telegram polling conflict after 5 attempts');
   expect([1, 2, 8, 9, 100].map(n => pollBackoffMs(n, false))).toEqual([250, 500, 30000, 30000, 30000]);
   expect(pollBackoffMs(9, true)).toBe(2000);
+});
+
+it('a temporary server failure is an outage like no answer; a conflict or an authorization refusal stays definite', () => {
+  // Unit review MUST-FIX 1: 5xx and 429 keep the run going; 401, 403, 404, 400 and 409 do not count as temporary.
+  for (const status of [500, 502, 503, 504, 599, 429]) expect(temporaryPollStatus(status)).toBe(true);
+  for (const status of [200, 400, 401, 403, 404, 409, 600, Number.NaN, undefined]) expect(temporaryPollStatus(status)).toBe(false);
+  expect(pollEndsRun(20, 0, temporaryPollStatus(503))).toBeNull();
+  expect(pollEndsRun(20, 0, temporaryPollStatus(401))).toBe('Telegram polling failed 20 times in a row');
 });
 
 it('waitWorking offers the work job at most once per tick for the whole wait, and stops at a stop', async () => {

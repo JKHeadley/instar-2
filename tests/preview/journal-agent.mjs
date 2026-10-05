@@ -41,7 +41,7 @@ import { SUMMARY_FAITHFULNESS_QUESTION } from './summary-faithfulness.js';
 import { dueState } from './dated-memory.js';
 import { observedSubscriptionIO } from './call-diagnostics.mjs';
 import { agentState, importStorePass } from './channel-source.mjs';
-import { exhaustedPollReason, pollBackoffMs, pollEndsRun } from './poll-failure-reason.mjs';
+import { exhaustedPollReason, pollBackoffMs, pollEndsRun, temporaryPollStatus } from './poll-failure-reason.mjs';
 import { loopHealth } from './obligations.js';
 import { classifyTelegramSend } from './telegram-send-outcome.mjs';
 import { authoritySealKey, resolveActivationAuthority, resolveInstallationPolicy, sealAuthorityRecord, singleMachineProfileDigest, SINGLE_MACHINE_PROFILE } from './activation-authority.js';
@@ -2173,9 +2173,10 @@ async function main() {
     // The run log and ownership exist now: the launch's store comparisons execute as a recorded proof.
     recordProof(executeProof(PREVIEW_PROOF_PLANS.find(plan => plan.id === 'store-agreements'), proofPorts, generation, clock.elapsed));
     ({ failed: failedPolls, conflicted: conflictedPolls } = runs.pollPressure);
-    // Plan #548: `unreachable` is a poll that got no answer at all (the connection is down), as opposed to an answer
-    // Telegram gave that is not a usable result. A sustained conflict or refusal ends the run; a sustained unreachable
-    // connection keeps the poll breaker open at the capped trial cadence while due work goes on (waitWorking).
+    // Plan #548: `unreachable` is a poll that got no answer at all (the connection is down) or a temporary server
+    // failure (temporaryPollStatus: 5xx, 429), as opposed to a definite answer Telegram gave that is not a usable
+    // result. A sustained conflict or refusal ends the run; a sustained outage keeps the poll breaker open at the capped
+    // trial cadence while due work goes on (waitWorking).
     const pollFailure = async (conflict, unreachable = false) => {
       failedPolls++; routeHealthy = false;
       conflictedPolls = conflict ? conflictedPolls + 1 : 0;
@@ -2332,7 +2333,9 @@ async function main() {
       await new Promise(done => setImmediate(done));
       if (signalled || workerStop.value || existsSync(stopPath)) break;
       if (result.kind !== 'response' || result.status !== 200) {
-        if (!await pollFailure(result.kind === 'response' && result.status === 409, result.kind !== 'response')) break;
+        // A temporary server failure (5xx, 429) is an outage like no answer at all: due work goes on (MUST-FIX 1).
+        if (!await pollFailure(result.kind === 'response' && result.status === 409,
+          result.kind !== 'response' || temporaryPollStatus(result.status))) break;
         continue;
       }
       let updates;
