@@ -251,18 +251,23 @@ export const SUBSCRIPTION_SUBAGENT_DEFINITION = Object.freeze({ [SUBSCRIPTION_SU
     + 'with the result only. Report only what your tools actually produced; never claim an effect a tool did not report.',
   model: 'inherit', maxTurns: SUBSCRIPTION_TOOL_LIMITS.childMaxTurns, background: false }) });
 const NO_TOOLS_SENTENCE = 'You have no tools and cannot act beyond this answer; never claim otherwise.';
+/** Says what the checkpoints actually do, as the Codex sentence does: a shell network write goes to the effect doorway
+ * (tests/preview/egress-proxy.mjs), and a consequential effect runs once the operator registers and grants it. Live
+ * 2026-10-04 (cint-L49, K11a): "writes ... are refused" and "refused unless registered" were read as a standing block on
+ * every site and account write, a limit the design does not have (Rule 103). */
 const TOOLS_SENTENCE = 'In this turn you have the harness\'s full built-in tool set (your tool definitions list it), plus any MCP tools listed to you. '
   + 'Files and Bash work in this conversation\'s private, fixed-size workspace (your working directory); files stay for later turns. '
   + 'The current context outranks earlier turns of this session. '
   + 'Bash is sandboxed: no reads outside the workspace except the system files commands need, no writes outside it, '
   + 'no control of other processes; its network goes through a checkpoint: public reads work (GET, HEAD, git clone, package '
-  + 'installs), writes (other methods, git push, publish) and local addresses are refused. Clone git repositories under $TMPDIR. '
+  + 'installs), local addresses are refused, and writes (other methods, git push, publish) go to the effect doorway. Clone git '
+  + 'repositories under $TMPDIR. '
   + 'WebFetch and WebSearch read the public web (GET only). '
   + `Agent starts "${SUBSCRIPTION_SUBAGENT_TYPE}" subagents, which may start their own: at most ${SUBSCRIPTION_TOOL_LIMITS.maxChildren} in this `
   + `whole turn, each up to ${SUBSCRIPTION_TOOL_LIMITS.childMaxTurns} turns, each result returning to whoever started it. Each call is `
   + 'checked when made: consequential effects (sending outside this conversation, writing to the network or a third-party account, '
-  + 'spending, changing safeguards) go through the effect doorway and are refused unless registered, and a refusal names its reason; '
-  + 'say so plainly when one is refused. '
+  + 'spending, changing safeguards) go through the effect doorway: one runs once the operator registers and grants it, otherwise it '
+  + 'is refused and the refusal names its reason; say so plainly when one is refused. '
   + `Use at most ${SUBSCRIPTION_TOOL_LIMITS.maxToolCalls} tool calls. When your answer reports a value a tool produced, `
   + 'say in reasoning which tool call, by name and order, produced it. Never claim an effect no tool reported. '
   // Plan #510: without --safe-mode Claude Code adds its own "# userEmail" context naming the subscription login
@@ -307,8 +312,8 @@ const NATIVE_TOOLS_SENTENCE = 'You run inside Instar\'s own agent loop and never
   + 'of a public host). Files and Bash work in this conversation\'s private, fixed-size workspace (relative paths resolve there); '
   + 'files stay for later turns. Bash is sandboxed: no reads outside the workspace except the system files commands need to run, no '
   + 'writes outside it, no control of other processes; its network goes through a checkpoint: public reads work (GET, HEAD, git clone, '
-  + 'package installs), writes (other methods, git push, publish) and local addresses are refused. Consequential effects go through '
-  + 'the effect doorway and are refused unless registered. A refused call returns its reason. When remaining steps is 0, request no more calls and reply. '
+  + 'package installs), local addresses are refused, and writes (other methods, git push, publish) go to the effect doorway. Consequential '
+  + 'effects go through the effect doorway: one runs once the operator registers and grants it, otherwise it is refused. A refused call returns its reason. When remaining steps is 0, request no more calls and reply. '
   + 'Otherwise answer as below once you are done; when your answer reports a value a tool produced, say in reasoning which step and '
   + 'call produced it. Never claim an effect no tool result reported.';
 export const SUBSCRIPTION_NATIVE_SYSTEM_PROMPT = SUBSCRIPTION_CONVERSATION_SYSTEM_PROMPT.replace(NO_TOOLS_SENTENCE, NATIVE_TOOLS_SENTENCE);
@@ -331,8 +336,9 @@ export interface SubscriptionToolTurn {
   /** Roots a tool may never read, on top of /Users and /Volumes (the runner root, the login profile). */
   readonly deniedRoots: readonly string[];
   readonly hook: Readonly<{ node: string; script: string }>;
-  /** The root's MCP servers for this turn: their launch configuration, written inside the admission state directory (so
-   * no tool can read the credentials it may carry), and their names. Absent: no MCP server. */
+  /** The root's MCP servers for this turn: their launch configuration, written inside the admission state directory
+   * (a credential appears there only as a SecretRef the runner resolves and hands to that server's launcher, never as a
+   * value), and their names. Absent: no MCP server. */
   readonly mcp?: Readonly<{ config: string; servers: readonly string[] }>;
   /** The conversation's kept harness session (MF5): `resume` continues the runner's recorded session id, otherwise the id
    * starts a new one. A cache subordinate to the journal: the runner binds, rotates and deletes it. Absent: nothing is kept
@@ -366,6 +372,11 @@ export const SUBSCRIPTION_TOOL_SCRATCH_PATH_BYTES = 30;
  * sessions' temporary files, users' homes, mounted volumes and the runner root all lie outside this list. */
 export const SUBSCRIPTION_TOOL_RUNTIME_READS = Object.freeze(['/bin', '/sbin', '/usr/bin', '/usr/sbin', '/usr/lib', '/usr/libexec',
   '/usr/share', '/System', '/private/var/select', '/private/etc', '/dev']);
+/** Root-level symlinks whose targets hold a runtime read (/etc to /private/etc, /var to /private/var). The sandbox
+ * checks a link itself when a path is looked up through it, then checks the resolved target against the read list, so
+ * reopening the link alone makes `/etc/hosts` as readable as `/private/etc/hosts` and opens nothing else behind it
+ * (/var/log stays refused, as /private/var/log is). The admission hook resolves paths itself and needs no link entries. */
+export const SUBSCRIPTION_TOOL_RUNTIME_READ_LINKS = Object.freeze(['/etc', '/var']);
 /** Places Claude Code 2.1.280 lets every sandboxed command write by default (its shared temporary directory
  * and two home-directory logs). They lie outside the scratch volume, so a tool turn refuses them. */
 export const subscriptionToolDefaultWrites = (home: string) => Object.freeze(['/tmp/claude', '/private/tmp/claude',
@@ -388,7 +399,7 @@ export function subscriptionToolSettings(turn: SubscriptionToolTurn, home: strin
   ensure(!within(turn.stateDirectory, turn.scratch) && !within(turn.scratch, turn.stateDirectory)
     && !within(turn.hook.script, turn.scratch), 'tool turn: the admission state and hook lie outside the workspace');
   ensure([turn.stateDirectory, home, ...turn.deniedRoots].every(path => !within(path, turn.scratch)
-    && ![...SUBSCRIPTION_TOOL_RUNTIME_READS, ...egressReads].some(read => within(path, read) || within(read, path))),
+    && ![...SUBSCRIPTION_TOOL_RUNTIME_READS, ...SUBSCRIPTION_TOOL_RUNTIME_READ_LINKS, ...egressReads].some(read => within(path, read) || within(read, path))),
   'tool turn: a denied root, the admission state or the home lies under a readable path');
   ensure(!turn.egress || (Number.isSafeInteger(turn.egress.port) && turn.egress.port > 0 && turn.egress.port <= 65535),
     'tool turn: the egress checkpoint port is invalid');
@@ -407,7 +418,7 @@ export function subscriptionToolSettings(turn: SubscriptionToolTurn, home: strin
       network: { allowedDomains: [], allowUnixSockets: [], allowAllUnixSockets: false, allowLocalBinding: false,
         ...(turn.egress ? { httpProxyPort: turn.egress.port } : {}) },
       filesystem: { allowWrite: [turn.scratch], denyWrite: [...subscriptionToolDefaultWrites(home)],
-        denyRead: ['/'], allowRead: [turn.scratch, ...SUBSCRIPTION_TOOL_RUNTIME_READS, ...egressReads] } },
+        denyRead: ['/'], allowRead: [turn.scratch, ...SUBSCRIPTION_TOOL_RUNTIME_READS, ...SUBSCRIPTION_TOOL_RUNTIME_READ_LINKS, ...egressReads] } },
     permissions: { allow: [...SUBSCRIPTION_TOOL_NAMES, ...(turn.mcp?.servers ?? []).map(name => `mcp__${name}`)] },
     hooks: { PreToolUse: hook('pre'), PostToolUse: hook('post'), SubagentStart: hook('child-start'), SubagentStop: hook('child-stop') },
   });

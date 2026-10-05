@@ -12,6 +12,7 @@ import { canonical, decode } from '../../src/index.js';
 import { createClaudeCodeSubscriptionRoute, subscriptionConversationPolicy, subscriptionToolSettings, subscriptionToolsPolicy,
   SUBSCRIPTION_CONVERSATION_SYSTEM_PROMPT, SUBSCRIPTION_PREVIEW_EXPIRY, SUBSCRIPTION_TOOL_LIMITS,
   SUBSCRIPTION_SUBAGENT_TYPE, SUBSCRIPTION_TOOL_NAMES, SUBSCRIPTION_TOOLS_FRAMING, SUBSCRIPTION_TOOLS_SYSTEM_PROMPT, SUBSCRIPTION_CONVERSATION_FRAMING, SUBSCRIPTION_TOOL_RUNTIME_READS,
+  SUBSCRIPTION_TOOL_RUNTIME_READ_LINKS, SUBSCRIPTION_NATIVE_SYSTEM_PROMPT,
   validateSubscriptionActivation } from '../../src/assembly/production-provider.js';
 import type { SubscriptionActivationRecord, SubscriptionToolTurn } from '../../src/assembly/production-provider.js';
 import type { ProviderSubscriptionProfile } from '../../src/assembly/provider-credential-custodian.js';
@@ -67,16 +68,24 @@ it('tells the model it has the whole tool set and how each call is bounded, and 
   // The shell's network goes through the turn's checkpoint (w4-shellnet): the model is told what it can and cannot reach.
   expect(SUBSCRIPTION_TOOLS_SYSTEM_PROMPT).not.toMatch(/Bash is sandboxed: no network/u);
   expect(SUBSCRIPTION_TOOLS_SYSTEM_PROMPT).toContain('its network goes through a checkpoint: public reads work (GET, HEAD, git clone, package '
-    + 'installs), writes (other methods, git push, publish) and local addresses are refused. Clone git repositories under $TMPDIR.');
+    + 'installs), local addresses are refused, and writes (other methods, git push, publish) go to the effect doorway. Clone git '
+    + 'repositories under $TMPDIR.');
   expect(SUBSCRIPTION_TOOLS_SYSTEM_PROMPT).toMatch(/WebFetch and WebSearch read the public web \(GET only\)/u);
   expect(SUBSCRIPTION_TOOLS_SYSTEM_PROMPT).toContain(`"${SUBSCRIPTION_SUBAGENT_TYPE}" subagents, which may start their own: at most ${SUBSCRIPTION_TOOL_LIMITS.maxChildren} in this whole turn`);
-  expect(SUBSCRIPTION_TOOLS_SYSTEM_PROMPT).toMatch(/go through the effect doorway and are refused unless registered/u);
+  // What the checkpoints do, as the Codex sentence says it (w4-selfdesc, live K11a 2026-10-04): never a flat refusal of
+  // every outward write, which the reply read as a standing block the design does not have.
+  expect(SUBSCRIPTION_TOOLS_SYSTEM_PROMPT).toMatch(/go through the effect doorway: one runs once the operator registers and grants it, otherwise it is refused/u);
+  expect(SUBSCRIPTION_TOOLS_SYSTEM_PROMPT).not.toMatch(/writes \(other methods, git push, publish\) and local addresses are refused/u);
+  expect(SUBSCRIPTION_NATIVE_SYSTEM_PROMPT).toMatch(/writes \(other methods, git push, publish\) go to the effect doorway/u);
+  expect(SUBSCRIPTION_NATIVE_SYSTEM_PROMPT).toMatch(/one runs once the operator registers and grants it, otherwise it is refused/u);
   expect(SUBSCRIPTION_TOOLS_SYSTEM_PROMPT).toContain('which tool call, by name and order, produced it');
   expect(SUBSCRIPTION_CONVERSATION_SYSTEM_PROMPT).toContain('You have no tools and cannot act beyond this answer; never claim otherwise.');
   // Plan #510: the tool route runs without --safe-mode, so Claude Code injects its own account email; the prompt says that
   // login is never the operator (+187, live cint-L50 "Luna"). The bound stays: the tool sentence is still one paragraph.
+  // sb-w4-selfdesc: w4-selfdesc's effect-doorway wording lands on top of that +187, so the 1500 bound (not the unit's
+  // 1400, which predates +187) is the live one; default-context-floor measures the exact growth.
   expect(SUBSCRIPTION_TOOLS_SYSTEM_PROMPT).toContain('is the subscription login running you, never the operator');
-  expect(SUBSCRIPTION_TOOLS_SYSTEM_PROMPT.length - SUBSCRIPTION_CONVERSATION_SYSTEM_PROMPT.length).toBeLessThan(1500);
+  expect(SUBSCRIPTION_TOOLS_SYSTEM_PROMPT.length - SUBSCRIPTION_CONVERSATION_SYSTEM_PROMPT.length).toBeLessThan(1600);
 });
 
 it('writes settings that refuse every read from the root down except the scratch volume and the runtime, writes outside the volume, network and unix sockets, with the mandatory hook on both events', () => {
@@ -90,11 +99,11 @@ it('writes settings that refuse every read from the root down except the scratch
     network: { allowedDomains: [], allowUnixSockets: [], allowAllUnixSockets: false, allowLocalBinding: false },
     filesystem: { allowWrite: ['/r/tool-turns/a-0/vol'],
       denyWrite: ['/tmp/claude', '/private/tmp/claude', '/profile/home/.npm/_logs', '/profile/home/.claude/debug'],
-      denyRead: ['/'], allowRead: ['/r/tool-turns/a-0/vol', ...SUBSCRIPTION_TOOL_RUNTIME_READS] } });
+      denyRead: ['/'], allowRead: ['/r/tool-turns/a-0/vol', ...SUBSCRIPTION_TOOL_RUNTIME_READS, '/etc', '/var'] } });
   // With the turn's network checkpoint, the one reachable place is its loopback port, and its tools' locations are readable.
   const netted = JSON.parse(subscriptionToolSettings({ ...turn, egress: { port: 40001, reads: ['/usr/local/bin', '/Library/Developer/CommandLineTools'] } }, '/profile/home'));
   expect(netted.sandbox.network).toEqual({ allowedDomains: [], allowUnixSockets: [], allowAllUnixSockets: false, allowLocalBinding: false, httpProxyPort: 40001 });
-  expect(netted.sandbox.filesystem.allowRead).toEqual(['/r/tool-turns/a-0/vol', ...SUBSCRIPTION_TOOL_RUNTIME_READS, '/usr/local/bin', '/Library/Developer/CommandLineTools']);
+  expect(netted.sandbox.filesystem.allowRead).toEqual(['/r/tool-turns/a-0/vol', ...SUBSCRIPTION_TOOL_RUNTIME_READS, '/etc', '/var', '/usr/local/bin', '/Library/Developer/CommandLineTools']);
   expect(settings.sandbox.network.httpProxyPort).toBeUndefined();
   for (const port of [0, 70000, 1.5]) expect(() => subscriptionToolSettings({ ...turn, egress: { port, reads: [] } }, '/profile/home')).toThrow(/egress checkpoint port/u);
   // A tool location may never reopen the runner root, the login home or the admission state.
@@ -103,6 +112,9 @@ it('writes settings that refuse every read from the root down except the scratch
   expect(() => subscriptionToolSettings({ ...turn, egress: { port: 40001, reads: ['/usr/local bin'] } }, '/profile/home')).toThrow(/absolute and plain/u);
   // Nothing in the runtime list holds user, session or runner data.
   for (const read of SUBSCRIPTION_TOOL_RUNTIME_READS) expect(read).toMatch(/^\/(bin|sbin|usr\/(bin|sbin|lib|libexec|share)|System|private\/var\/select|private\/etc|dev)$/u);
+  // The two link spellings reopen only the root-level symlinks themselves (w4-toolpaths): each resolves on this platform to a
+  // listed read or to the directory holding one, so `/etc/hosts` is as readable as `/private/etc/hosts` and nothing more.
+  expect(SUBSCRIPTION_TOOL_RUNTIME_READ_LINKS).toEqual(['/etc', '/var']);
   expect(settings.permissions).toEqual({ allow: [...SUBSCRIPTION_TOOL_NAMES] });
   for (const [event, mode] of [['PreToolUse', 'pre'], ['PostToolUse', 'post'], ['SubagentStart', 'child-start'], ['SubagentStop', 'child-stop']] as const)
     expect(settings.hooks[event]).toEqual([{ matcher: '*', hooks: [{ type: 'command',

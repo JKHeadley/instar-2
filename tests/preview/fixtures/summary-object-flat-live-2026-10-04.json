@@ -1,0 +1,588 @@
+{
+ "source": "plan #507 (w4-cancelfix). REAL model runs on the Mama PC, 2026-10-04, model claude-sonnet-5, three passes of the proof check's own RA1/RA2/RA3 shape through the live worker: scripts/summary-object-live-model-run.mjs. Every `summary:` call -- the writer, each of its attempts, and its review -- is a real call on the prepared launcher envelope; the answer turns and the faithfulness Jev are canned. `recorded: true` entries are not model calls: they are the recorded live output of 2026-10-02 (cancel2-live-2026-10-02.json summaryOutputsAtRa3[1]) replayed as the first attempt, so the real second attempt is asked for cancelReminders exactly as the live retry is.",
+ "model": "claude-sonnet-5",
+ "calls": [
+  {
+   "label": "p1-summary-1",
+   "id": "summary:3",
+   "outputTokens": 615,
+   "topLevelFields": [
+    "reasoning",
+    "summary",
+    "memory",
+    "memoryItems",
+    "people",
+    "personAttributes",
+    "commitments",
+    "closed",
+    "questions",
+    "concepts"
+   ],
+   "ok": true,
+   "envelope": "flat",
+   "shape": "bare",
+   "objectAsText": false,
+   "consumer": {
+    "kind": "summary-writer",
+    "parsed": true,
+    "fields": [
+     "summary",
+     "memory",
+     "memoryItems",
+     "people",
+     "personAttributes",
+     "commitments",
+     "closed",
+     "questions",
+     "concepts"
+    ],
+    "memory": true,
+    "cancelReminders": null
+   },
+   "output": "{\"reasoning\":\"Operator set two reminders then cancelled the bird feeder one; summarize facts, close that commitment, keep plumber reminder, flag no unanswered questions.\",\"summary\":\"2026-10-04 main chat: Operator asked to be reminded today at 11:16 am (America/Los_Angeles) to refill the bird feeder (update:1), then also asked to be reminded today at 11:16 am to call the plumber (update:2). Both reminders were accepted. Operator then said \\\"Actually, cancel the bird feeder one.\\\" (update:3), cancelling the bird feeder reminder. The plumber reminder for 2026-10-04 11:16 (America/Los_Angeles) remains active.\",\"memory\":[],\"memoryItems\":[{\"source\":\"telegram:8994258214:update:2\",\"quote\":\"remind me today at 11:16 am to call the plumber\"}],\"people\":[],\"personAttributes\":[],\"commitments\":[{\"in\":\"reply\",\"quote\":\"I will act on this once at 2026-10-04 11:16 (America/Los_Angeles) and send you the result here.\",\"waitsOn\":\"date\"},{\"in\":\"message\",\"quote\":\"Also remind me today at 11:16 am to call the plumber\",\"waitsOn\":\"date\"}],\"closed\":[{\"id\":\"telegram:8994258214:update:1\",\"quote\":\"Actually, cancel the bird feeder one.\"}],\"questions\":[],\"concepts\":[{\"source\":\"telegram:8994258214:update:1\",\"terms\":[\"reminder\",\"bird feeder\",\"refill\",\"scheduled task\",\"today reminder\"]},{\"source\":\"telegram:8994258214:update:2\",\"terms\":[\"reminder\",\"plumber\",\"call\",\"scheduled task\",\"today reminder\"]},{\"source\":\"telegram:8994258214:update:3\",\"terms\":[\"cancel reminder\",\"withdraw\",\"bird feeder cancel\",\"undo request\"]}]}"
+  },
+  {
+   "label": "p1-review-3",
+   "id": "summary:3:review",
+   "outputTokens": 481,
+   "topLevelFields": [
+    "reasoning",
+    "verdict",
+    "reason"
+   ],
+   "ok": true,
+   "envelope": "flat",
+   "shape": "bare",
+   "objectAsText": false,
+   "consumer": {
+    "kind": "summary-review",
+    "verdict": "pass",
+    "retryable": false
+   },
+   "output": "{\"reasoning\":\"The summary states both reminders were accepted, then operator said \\\"Actually, cancel the bird feeder one.\\\" cancelling the bird feeder reminder, and the plumber reminder remains active. Checking against history: update:1 set bird feeder reminder, update:2 set plumber reminder, update:3 cancelled the bird feeder one. This matches the proposed commitments (agent commitment for plumber reminder remains, bird feeder commitment from update:1 is cancelled). The memoryItems also show the plumber reminder as the active item to remember. The summary accurately reflects: both reminders accepted, bird feeder cancelled by operator's explicit statement, plumber reminder remains active. No invented facts, no lost active facts - it correctly captures the cancellation and the surviving reminder. This matches the reminders list in context showing both reminder-18edbe5bc5 (bird feeder) and reminder-00bece72e0 (plumber) still listed, but the operator's update:3 explicitly cancels the bird feeder one, which the summary correctly states. The summary is faithful to the full conversation.\",\"verdict\":\"pass\",\"reason\":\"The summary accurately reflects all three turns: both reminders (bird feeder, plumber) were initially accepted, then the operator explicitly cancelled the bird feeder reminder, leaving the plumber reminder active. This matches the history and proposed commitments exactly, with no invented facts or lost active details.\"}"
+  },
+  {
+   "label": "p1-retry-summary-1",
+   "id": "summary:3",
+   "recorded": true,
+   "topLevelFields": [
+    "reply",
+    "cancelReminders",
+    "summary",
+    "people",
+    "personAttributes",
+    "commitments",
+    "closed",
+    "questions",
+    "memoryItems",
+    "concepts"
+   ],
+   "ok": true,
+   "envelope": "flat",
+   "shape": "bare",
+   "objectAsText": false,
+   "consumer": {
+    "kind": "summary-writer",
+    "parsed": true,
+    "fields": [
+     "reply",
+     "cancelReminders",
+     "summary",
+     "people",
+     "personAttributes",
+     "commitments",
+     "closed",
+     "questions",
+     "memoryItems",
+     "concepts"
+    ],
+    "memory": false,
+    "cancelReminders": [
+     {
+      "id": "reminder-c55ad3832d",
+      "quote": "Actually, cancel the bird feeder one."
+     }
+    ]
+   }
+  },
+  {
+   "label": "p1-retry-summary-2",
+   "id": "summary:3",
+   "outputTokens": 582,
+   "topLevelFields": [
+    "reasoning",
+    "summary",
+    "memory",
+    "people",
+    "personAttributes",
+    "commitments",
+    "closed",
+    "cancelReminders",
+    "questions",
+    "memoryItems",
+    "concepts"
+   ],
+   "ok": true,
+   "envelope": "flat",
+   "shape": "bare",
+   "objectAsText": false,
+   "consumer": {
+    "kind": "summary-writer",
+    "parsed": true,
+    "fields": [
+     "summary",
+     "memory",
+     "people",
+     "personAttributes",
+     "commitments",
+     "closed",
+     "cancelReminders",
+     "questions",
+     "memoryItems",
+     "concepts"
+    ],
+    "memory": true,
+    "cancelReminders": [
+     {
+      "id": "reminder-18edbe5bc5",
+      "quote": "cancel the bird feeder one"
+     }
+    ]
+   },
+   "output": "{\"reasoning\":\"The operator set two reminders then withdrew the bird feeder one; cancelReminders applies, and summary/memory must preserve both facts with the cancellation noted.\",\"summary\":\"In main chat on 2026-10-04: operator asked (18:01Z) to be reminded today at 11:16 am to refill the bird feeder; Instar confirmed. Operator then asked (18:02Z) to also be reminded today at 11:16 am to call the plumber; Instar confirmed, listing both as upcoming. At 18:03Z operator said \\\"Actually, cancel the bird feeder one,\\\" withdrawing the bird-feeder reminder; the plumber reminder remains active.\",\"memory\":[],\"people\":[],\"personAttributes\":[],\"commitments\":[{\"in\":\"message\",\"quote\":\"Also remind me today at 11:16 am to call the plumber\",\"waitsOn\":\"date\"}],\"closed\":[{\"id\":\"telegram:8994258214:update:1\",\"quote\":\"Actually, cancel the bird feeder one.\"}],\"cancelReminders\":[{\"id\":\"reminder-18edbe5bc5\",\"quote\":\"cancel the bird feeder one\"}],\"questions\":[],\"memoryItems\":[{\"source\":\"telegram:8994258214:update:2\",\"quote\":\"remind me today at 11:16 am to call the plumber\"}],\"concepts\":[{\"source\":\"telegram:8994258214:update:1\",\"terms\":[\"bird feeder\",\"reminder\",\"refill\",\"pet care\",\"today task\"]},{\"source\":\"telegram:8994258214:update:2\",\"terms\":[\"plumber\",\"call reminder\",\"household task\",\"repair\",\"today task\"]},{\"source\":\"telegram:8994258214:update:3\",\"terms\":[\"cancel reminder\",\"withdraw\",\"bird feeder\",\"change of plan\"]}]}"
+  },
+  {
+   "label": "p1-retry-review-3",
+   "id": "summary:3:review",
+   "outputTokens": 474,
+   "topLevelFields": [
+    "reasoning",
+    "verdict",
+    "reason"
+   ],
+   "ok": true,
+   "envelope": "flat",
+   "shape": "bare",
+   "objectAsText": false,
+   "consumer": {
+    "kind": "summary-review",
+    "verdict": "pass",
+    "retryable": false
+   },
+   "output": "{\"reasoning\":\"The summary states the operator at 18:03Z said \\\"Actually, cancel the bird feeder one,\\\" withdrawing the bird-feeder reminder and that the plumber reminder remains active. Checking against history: the bird feeder reminder was requested at 18:01Z, plumber at 18:02Z, and the cancellation message at 18:03Z explicitly says \\\"cancel the bird feeder one\\\" which clearly identifies and withdraws the bird feeder reminder (quote matches exactly, outcome marked \\\"memory correction pending\\\" since it's the current unresolved request). The summary correctly states the bird-feeder reminder is withdrawn and plumber remains active - this matches the proposed commitments and memoryItems which only retain the plumber reminder. No invented facts, no lost people/corrections, dates match (2026-10-04, 11:16 am for both), and the summary doesn't claim the cancellation reply was delivered (it describes the operator's request/action, not a delivered outcome). The summary is faithful to the packet.\",\"verdict\":\"pass\",\"reason\":\"Summary accurately reflects all three turns: bird feeder reminder requested and confirmed, plumber reminder requested and confirmed, then operator's 18:03Z message withdrawing the bird-feeder one, leaving only the plumber reminder active. This matches reminders, memoryItems, and commitments in the packet with no invented facts or lost details.\"}"
+  },
+  {
+   "label": "p2-summary-1",
+   "id": "summary:3",
+   "outputTokens": 703,
+   "topLevelFields": [
+    "reasoning",
+    "summary",
+    "memory",
+    "memoryDisposition",
+    "people",
+    "personAttributes",
+    "commitments",
+    "closed",
+    "questions",
+    "memoryItems",
+    "concepts"
+   ],
+   "ok": true,
+   "envelope": "flat",
+   "shape": "bare",
+   "objectAsText": false,
+   "consumer": {
+    "kind": "summary-writer",
+    "parsed": true,
+    "fields": [
+     "summary",
+     "memory",
+     "memoryDisposition",
+     "people",
+     "personAttributes",
+     "commitments",
+     "closed",
+     "questions",
+     "memoryItems",
+     "concepts"
+    ],
+    "memory": true,
+    "cancelReminders": null
+   },
+   "output": "{\"reasoning\":\"The operator set two reminders then cancelled the bird feeder one explicitly with a clear quote, so I close that commitment and summarize facts with sources.\",\"summary\":\"Main chat, 2026-10-04: Operator asked (18:01Z) to be reminded today at 11:16 am (America/Los_Angeles) to refill the bird feeder; Instar confirmed. At 18:02Z operator also asked to be reminded today at 11:16 am to call the plumber; Instar confirmed, noting the bird feeder reminder as upcoming. At 18:03Z operator said \\\"Actually, cancel the bird feeder one,\\\" withdrawing the bird feeder reminder. The plumber reminder for 2026-10-04 11:16 America/Los_Angeles remains active.\",\"memory\":[],\"memoryDisposition\":\"unresolved\",\"people\":[],\"personAttributes\":[],\"commitments\":[{\"in\":\"message\",\"quote\":\"Also remind me today at 11:16 am to call the plumber\",\"waitsOn\":\"date\"},{\"in\":\"message\",\"quote\":\"Remind me today at 11:16 am to refill the bird feeder\",\"waitsOn\":\"date\",\"closedBy\":\"Actually, cancel the bird feeder one.\"}],\"closed\":[{\"id\":\"reminder-18edbe5bc5\",\"quote\":\"Actually, cancel the bird feeder one.\"}],\"questions\":[],\"memoryItems\":[{\"source\":\"telegram:8994258214:update:2\",\"quote\":\"remind me today at 11:16 am to call the plumber\"}],\"concepts\":[{\"source\":\"telegram:8994258214:update:1\",\"terms\":[\"bird feeder reminder\",\"refill feeder\",\"daily reminder\",\"time-based task\",\"birdfeeder\",\"feeder refill\"]},{\"source\":\"telegram:8994258214:update:2\",\"terms\":[\"plumber call reminder\",\"call plumber\",\"home repair\",\"phone reminder\",\"maintenance task\",\"plumbing\"]},{\"source\":\"telegram:8994258214:update:3\",\"terms\":[\"cancel reminder\",\"withdraw request\",\"bird feeder cancellation\",\"remove task\",\"undo reminder\",\"cancel feeder\"]}]}"
+  },
+  {
+   "label": "p2-summary-2",
+   "id": "summary:3",
+   "outputTokens": 727,
+   "topLevelFields": [
+    "reasoning",
+    "summary",
+    "memory",
+    "people",
+    "personAttributes",
+    "commitments",
+    "closed",
+    "cancelReminders",
+    "questions",
+    "memoryItems",
+    "concepts"
+   ],
+   "ok": true,
+   "envelope": "flat",
+   "shape": "bare",
+   "objectAsText": false,
+   "consumer": {
+    "kind": "summary-writer",
+    "parsed": true,
+    "fields": [
+     "summary",
+     "memory",
+     "people",
+     "personAttributes",
+     "commitments",
+     "closed",
+     "cancelReminders",
+     "questions",
+     "memoryItems",
+     "concepts"
+    ],
+    "memory": true,
+    "cancelReminders": [
+     {
+      "id": "reminder-18edbe5bc5",
+      "quote": "Actually, cancel the bird feeder one."
+     }
+    ]
+   },
+   "output": "{\"reasoning\":\"Operator set two reminders then cancelled the bird feeder one; must forget that memory candidate, close that commitment, keep plumber reminder active.\",\"summary\":\"Main chat, 2026-10-04: Operator set two reminders for 11:16 America/Los_Angeles: refill the bird feeder and call the plumber. Operator then cancelled the bird feeder reminder; the plumber reminder remains active.\",\"memory\":[{\"mode\":\"forget\",\"source\":\"telegram:8994258214:update:1\",\"quote\":\"Remind me today at 11:16 am to refill the bird feeder\",\"replies\":[\"telegram:8994258214:update:1\",\"telegram:8994258214:update:2\"],\"summaryPassages\":[\"Operator set two reminders for 11:16 America/Los_Angeles: refill the bird feeder and call the plumber.\"]}],\"people\":[],\"personAttributes\":[],\"commitments\":[{\"in\":\"message\",\"quote\":\"Remind me today at 11:16 am to refill the bird feeder\",\"waitsOn\":\"date\",\"closedBy\":\"Actually, cancel the bird feeder one.\"},{\"in\":\"message\",\"quote\":\"Also remind me today at 11:16 am to call the plumber\",\"waitsOn\":\"date\"}],\"closed\":[{\"id\":\"reminder-18edbe5bc5\",\"quote\":\"Actually, cancel the bird feeder one.\"}],\"cancelReminders\":[{\"id\":\"reminder-18edbe5bc5\",\"quote\":\"Actually, cancel the bird feeder one.\"}],\"questions\":[],\"memoryItems\":[{\"source\":\"telegram:8994258214:update:2\",\"quote\":\"remind me today at 11:16 am to call the plumber\"}],\"concepts\":[{\"source\":\"telegram:8994258214:update:1\",\"terms\":[\"bird feeder reminder\",\"daily reminder\",\"pet bird care\",\"feeder refill\",\"scheduled task\"]},{\"source\":\"telegram:8994258214:update:2\",\"terms\":[\"plumber call\",\"home repair reminder\",\"maintenance task\",\"scheduled call\",\"household chore\"]},{\"source\":\"telegram:8994258214:update:3\",\"terms\":[\"cancel reminder\",\"withdraw request\",\"remove task\",\"undo reminder\",\"delete scheduled item\"]}]}"
+  },
+  {
+   "label": "p2-retry-summary-1",
+   "id": "summary:3",
+   "recorded": true,
+   "topLevelFields": [
+    "reply",
+    "cancelReminders",
+    "summary",
+    "people",
+    "personAttributes",
+    "commitments",
+    "closed",
+    "questions",
+    "memoryItems",
+    "concepts"
+   ],
+   "ok": true,
+   "envelope": "flat",
+   "shape": "bare",
+   "objectAsText": false,
+   "consumer": {
+    "kind": "summary-writer",
+    "parsed": true,
+    "fields": [
+     "reply",
+     "cancelReminders",
+     "summary",
+     "people",
+     "personAttributes",
+     "commitments",
+     "closed",
+     "questions",
+     "memoryItems",
+     "concepts"
+    ],
+    "memory": false,
+    "cancelReminders": [
+     {
+      "id": "reminder-c55ad3832d",
+      "quote": "Actually, cancel the bird feeder one."
+     }
+    ]
+   }
+  },
+  {
+   "label": "p3-summary-1",
+   "id": "summary:3",
+   "outputTokens": 517,
+   "topLevelFields": [
+    "reasoning",
+    "summary",
+    "memory",
+    "people",
+    "personAttributes",
+    "commitments",
+    "closed",
+    "questions",
+    "memoryItems",
+    "concepts"
+   ],
+   "ok": true,
+   "envelope": "flat",
+   "shape": "bare",
+   "objectAsText": false,
+   "consumer": {
+    "kind": "summary-writer",
+    "parsed": true,
+    "fields": [
+     "summary",
+     "memory",
+     "people",
+     "personAttributes",
+     "commitments",
+     "closed",
+     "questions",
+     "memoryItems",
+     "concepts"
+    ],
+    "memory": true,
+    "cancelReminders": null
+   },
+   "output": "{\"reasoning\":\"Operator set two reminders then cancelled the bird feeder one, which must be marked closed with exact quote; plumber reminder remains open.\",\"summary\":\"On 2026-10-04 in main chat, the operator set two reminders for 2026-10-04 11:16 (America/Los_Angeles): to refill the bird feeder, and to call the plumber. The operator then said \\\"Actually, cancel the bird feeder one,\\\" cancelling the refill-the-bird-feeder reminder. The call-the-plumber reminder remains active and pending.\",\"memory\":[],\"people\":[],\"personAttributes\":[],\"commitments\":[{\"in\":\"message\",\"quote\":\"Also remind me today at 11:16 am to call the plumber\",\"waitsOn\":\"date\"}],\"closed\":[{\"id\":\"reminder-18edbe5bc5\",\"quote\":\"Actually, cancel the bird feeder one.\"}],\"questions\":[],\"memoryItems\":[{\"source\":\"telegram:8994258214:update:2\",\"quote\":\"remind me today at 11:16 am to call the plumber\"}],\"concepts\":[{\"source\":\"telegram:8994258214:update:1\",\"terms\":[\"bird feeder reminder\",\"refill feeder\",\"morning reminder\",\"pet care task\",\"timed alert\"]},{\"source\":\"telegram:8994258214:update:2\",\"terms\":[\"plumber call\",\"home repair\",\"maintenance reminder\",\"service call\",\"timed alert\"]},{\"source\":\"telegram:8994258214:update:3\",\"terms\":[\"cancel reminder\",\"withdraw request\",\"remove bird feeder task\",\"undo reminder\"]}]}"
+  },
+  {
+   "label": "p3-review-3",
+   "id": "summary:3:review",
+   "outputTokens": 590,
+   "topLevelFields": [
+    "reasoning",
+    "verdict",
+    "reason"
+   ],
+   "ok": true,
+   "envelope": "flat",
+   "shape": "bare",
+   "objectAsText": false,
+   "consumer": {
+    "kind": "summary-review",
+    "verdict": "violation",
+    "retryable": false
+   },
+   "output": "{\"reasoning\":\"The summary states the operator set two reminders, then said \\\"Actually, cancel the bird feeder one,\\\" cancelling that reminder, and that the call-the-plumber reminder remains active and pending. Checking against the packet: the history shows update:3 (the cancellation message) has outcome \\\"pending\\\" - meaning the cancellation itself has not yet been processed/delivered, not that the cancellation didn't happen conceptually. The reminders list still shows both reminder-18edbe5bc5 (bird feeder) and reminder-00bece72e0 (plumber) as active entries with no indication either was removed. The summary asserts as fact that the bird feeder reminder was cancelled, but the actual outcome of that cancellation request is 'pending' - meaning it has not been confirmed/executed yet. The summary should not assert the cancellation as a settled fact when the system's own reminders list still shows the bird feeder reminder present and the action's outcome is pending/unresolved. This is treating a pending, unconfirmed action as a done deed, which the protocol explicitly warns against: 'pending or unknown outcomes must not be described as delivered.' The summary effectively describes the cancellation as accomplished fact without caveat, while the reminders array still lists the bird feeder reminder as active - a contradiction. This is a violation: the summary contradicts the active reminders list (which still has both reminders) and overstates a pending outcome as settled.\",\"verdict\":\"violation\",\"reason\":\"The summary asserts the bird feeder reminder was cancelled as settled fact, but the cancellation request's outcome is still 'pending' and the reminders list still shows both the bird feeder and plumber reminders as active \\u2014 the summary contradicts this still-active data by treating an unresolved cancellation as done.\"}"
+  },
+  {
+   "label": "p3-summary-2",
+   "id": "summary:3",
+   "outputTokens": 721,
+   "topLevelFields": [
+    "reasoning",
+    "summary",
+    "memory",
+    "memoryDisposition",
+    "people",
+    "personAttributes",
+    "commitments",
+    "closed",
+    "questions",
+    "memoryItems",
+    "concepts",
+    "cancelReminders"
+   ],
+   "ok": true,
+   "envelope": "flat",
+   "shape": "bare",
+   "objectAsText": false,
+   "consumer": {
+    "kind": "summary-writer",
+    "parsed": true,
+    "fields": [
+     "summary",
+     "memory",
+     "memoryDisposition",
+     "people",
+     "personAttributes",
+     "commitments",
+     "closed",
+     "questions",
+     "memoryItems",
+     "concepts",
+     "cancelReminders"
+    ],
+    "memory": true,
+    "cancelReminders": [
+     {
+      "id": "reminder-18edbe5bc5",
+      "quote": "Actually, cancel the bird feeder one."
+     }
+    ]
+   },
+   "output": "{\"reasoning\":\"Operator set two reminders then cancelled the bird feeder one; summarize all three facts, mark closure, cancel the matching reminder, and tag concepts.\",\"summary\":\"Main chat, 2026-10-04: Operator asked (18:01Z) to be reminded today at 11:16 am (America/Los_Angeles) to refill the bird feeder; Instar confirmed. Operator then asked (18:02Z) to also be reminded at the same time to call the plumber; Instar confirmed and listed both as upcoming. At 18:03Z operator said \\\"Actually, cancel the bird feeder one,\\\" withdrawing the bird feeder reminder; the plumber reminder remains active.\",\"memory\":[],\"memoryDisposition\":\"unresolved\",\"people\":[],\"personAttributes\":[],\"commitments\":[{\"in\":\"message\",\"quote\":\"Also remind me today at 11:16 am to call the plumber\",\"waitsOn\":\"date\"},{\"in\":\"reply\",\"quote\":\"I will act on this once at 2026-10-04 11:16 (America/Los_Angeles) and send you the result here. Upcoming: Remind me today at 11:16 am to refill the bird feeder (2026-10-04 11:16).\",\"waitsOn\":\"date\",\"closedBy\":\"Actually, cancel the bird feeder one.\"}],\"closed\":[],\"questions\":[],\"memoryItems\":[{\"source\":\"telegram:8994258214:update:2\",\"quote\":\"remind me today at 11:16 am to call the plumber\"}],\"concepts\":[{\"source\":\"telegram:8994258214:update:1\",\"terms\":[\"bird feeder reminder\",\"feeder refill\",\"daily task\",\"pet care reminder\",\"scheduled alert\"]},{\"source\":\"telegram:8994258214:update:2\",\"terms\":[\"plumber call\",\"home repair reminder\",\"maintenance task\",\"service call reminder\",\"appointment reminder\"]},{\"source\":\"telegram:8994258214:update:3\",\"terms\":[\"cancel reminder\",\"withdraw request\",\"undo bird feeder task\",\"reminder cancellation\"]}],\"cancelReminders\":[{\"id\":\"reminder-18edbe5bc5\",\"quote\":\"Actually, cancel the bird feeder one.\"}]}"
+  },
+  {
+   "label": "p3-retry-summary-1",
+   "id": "summary:3",
+   "recorded": true,
+   "topLevelFields": [
+    "reply",
+    "cancelReminders",
+    "summary",
+    "people",
+    "personAttributes",
+    "commitments",
+    "closed",
+    "questions",
+    "memoryItems",
+    "concepts"
+   ],
+   "ok": true,
+   "envelope": "flat",
+   "shape": "bare",
+   "objectAsText": false,
+   "consumer": {
+    "kind": "summary-writer",
+    "parsed": true,
+    "fields": [
+     "reply",
+     "cancelReminders",
+     "summary",
+     "people",
+     "personAttributes",
+     "commitments",
+     "closed",
+     "questions",
+     "memoryItems",
+     "concepts"
+    ],
+    "memory": false,
+    "cancelReminders": [
+     {
+      "id": "reminder-c55ad3832d",
+      "quote": "Actually, cancel the bird feeder one."
+     }
+    ]
+   }
+  },
+  {
+   "label": "p3-retry-summary-2",
+   "id": "summary:3",
+   "outputTokens": 705,
+   "topLevelFields": [
+    "reasoning",
+    "summary",
+    "memory",
+    "people",
+    "personAttributes",
+    "commitments",
+    "closed",
+    "cancelReminders",
+    "questions",
+    "memoryItems",
+    "concepts"
+   ],
+   "ok": true,
+   "envelope": "flat",
+   "shape": "bare",
+   "objectAsText": false,
+   "consumer": {
+    "kind": "summary-writer",
+    "parsed": true,
+    "fields": [
+     "summary",
+     "memory",
+     "people",
+     "personAttributes",
+     "commitments",
+     "closed",
+     "cancelReminders",
+     "questions",
+     "memoryItems",
+     "concepts"
+    ],
+    "memory": true,
+    "cancelReminders": [
+     {
+      "id": "reminder-18edbe5bc5",
+      "quote": "cancel the bird feeder one"
+     }
+    ]
+   },
+   "output": "{\"reasoning\":\"Operator set two reminders then cancelled the bird feeder one; I summarize facts, close that commitment, cancel the matching reminder, and tag concepts.\",\"summary\":\"2026-10-04, main chat: Operator asked for a reminder today at 11:16 am (America/Los_Angeles) to refill the bird feeder (#1), then added a second reminder for the same time to call the plumber (#2). Operator then said \\\"Actually, cancel the bird feeder one.\\\" (#3), withdrawing the bird feeder reminder; the plumber reminder at 2026-10-04 11:16 America/Los_Angeles remains active.\",\"memory\":[],\"people\":[],\"personAttributes\":[],\"commitments\":[{\"in\":\"reply\",\"quote\":\"I will act on this once at 2026-10-04 11:16 (America/Los_Angeles) and send you the result here.\",\"waitsOn\":\"date\",\"closedBy\":\"Actually, cancel the bird feeder one.\"},{\"in\":\"reply\",\"quote\":\"Upcoming: Remind me today at 11:16 am to refill the bird feeder (2026-10-04 11:16).\",\"waitsOn\":\"date\"}],\"closed\":[{\"id\":\"reminder-18edbe5bc5\",\"quote\":\"Actually, cancel the bird feeder one.\"}],\"cancelReminders\":[{\"id\":\"reminder-18edbe5bc5\",\"quote\":\"cancel the bird feeder one\"}],\"questions\":[],\"memoryItems\":[{\"source\":\"telegram:8994258214:update:2\",\"quote\":\"remind me today at 11:16 am to call the plumber\"}],\"concepts\":[{\"source\":\"telegram:8994258214:update:1\",\"terms\":[\"bird feeder reminder\",\"refill feeder\",\"daily reminder\",\"pet care task\",\"11:16am reminder\"]},{\"source\":\"telegram:8994258214:update:2\",\"terms\":[\"plumber call\",\"call plumber reminder\",\"home repair\",\"maintenance task\",\"phone call reminder\"]},{\"source\":\"telegram:8994258214:update:3\",\"terms\":[\"cancel reminder\",\"withdraw reminder\",\"remove bird feeder task\",\"undo reminder request\"]}]}"
+  },
+  {
+   "label": "p3-retry-review-3",
+   "id": "summary:3:review",
+   "outputTokens": 465,
+   "topLevelFields": [
+    "reasoning",
+    "verdict",
+    "reason"
+   ],
+   "ok": true,
+   "envelope": "flat",
+   "shape": "bare",
+   "objectAsText": false,
+   "consumer": {
+    "kind": "summary-review",
+    "verdict": "pass",
+    "retryable": false
+   },
+   "output": "{\"reasoning\":\"Checking the summary against the full packet. The summary states: operator asked for bird feeder reminder (#1) today at 11:16am, then added plumber reminder same time (#2), then said \\\"Actually, cancel the bird feeder one.\\\" (#3), withdrawing the bird feeder reminder, with the plumber reminder remaining active. This matches history exactly: update:1 is the bird feeder request, update:2 is the plumber request, update:3 cancels the bird feeder one. The commitments (agent's promises to act and send results) are proposed separately and not required to be in the summary prose. The closed item correctly references the cancellation quote. The summary doesn't invent facts, doesn't lose the plumber reminder (still active), correctly identifies which was cancelled. No contradiction with still-active facts. The memoryItems list the plumber reminder as the remaining one, consistent with summary. Everything checks out - no invented facts, no lost active facts, correct correction handling.\",\"verdict\":\"pass\",\"reason\":\"Summary accurately reflects history: bird feeder reminder (#1) and plumber reminder (#2) were both requested for 2026-10-04 11:16 America/Los_Angeles, then the operator's #3 message cancelled only the bird feeder one, leaving the plumber reminder active. This matches the closed item, memoryItems, and reminders list with no invented facts or lost active details.\"}"
+  }
+ ],
+ "passes": [
+  {
+   "pass": "p1",
+   "summaryThrough": 3,
+   "lastSummaryFailure": null,
+   "memoryUndecided": false,
+   "reminderCancels": 0,
+   "sent": "PREVIEW \u2014 Noted. Upcoming: Also remind me today at 11:16 am to call the plumber (2026-10-04 11:16)."
+  },
+  {
+   "pass": "p1-retry",
+   "summaryThrough": 3,
+   "lastSummaryFailure": {
+    "through": 3,
+    "reason": "malformed"
+   },
+   "memoryUndecided": false,
+   "reminderCancels": 1,
+   "sent": "PREVIEW \u2014 I reviewed your memory request. Upcoming: Also remind me today at 11:16 am to call the plumber (2026-10-04 11:16)."
+  },
+  {
+   "pass": "p2",
+   "summaryThrough": null,
+   "lastSummaryFailure": {
+    "through": 3,
+    "reason": "malformed"
+   },
+   "memoryUndecided": true,
+   "reminderCancels": 0,
+   "sent": "PREVIEW \u2014 Noted. Your open requests still stand and will be sent at their time: \"Remind me today at 11:16 am to refill the bird feeder\"; \"Also remind me today at 11:16 am to call the plumber\"."
+  },
+  {
+   "pass": "p2-retry",
+   "summaryThrough": null,
+   "lastSummaryFailure": {
+    "through": 3,
+    "reason": "malformed"
+   },
+   "memoryUndecided": true,
+   "reminderCancels": 0,
+   "sent": "PREVIEW \u2014 Noted. Your open requests still stand and will be sent at their time: \"Remind me today at 11:16 am to refill the bird feeder\"; \"Also remind me today at 11:16 am to call the plumber\"."
+  },
+  {
+   "pass": "p3",
+   "summaryThrough": null,
+   "lastSummaryFailure": {
+    "through": 3,
+    "reason": "malformed"
+   },
+   "memoryUndecided": true,
+   "reminderCancels": 0,
+   "sent": "PREVIEW \u2014 Noted. Your open requests still stand and will be sent at their time: \"Remind me today at 11:16 am to refill the bird feeder\"; \"Also remind me today at 11:16 am to call the plumber\"."
+  },
+  {
+   "pass": "p3-retry",
+   "summaryThrough": 3,
+   "lastSummaryFailure": {
+    "through": 3,
+    "reason": "malformed"
+   },
+   "memoryUndecided": false,
+   "reminderCancels": 1,
+   "sent": "PREVIEW \u2014 I reviewed your memory request. Upcoming: Also remind me today at 11:16 am to call the plumber (2026-10-04 11:16)."
+  }
+ ]
+}

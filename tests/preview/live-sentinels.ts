@@ -244,8 +244,9 @@ export type OrdinaryLane = ReturnType<typeof createOrdinaryLane>;
  * two machines the peer is current only while it holds the journal's whole length). Every step the tick requests
  * (pushed into `requested` by its ports, after its record) runs inside that same job, after the cycle's drain. A lane
  * that is busy, backing off or waiting on the peer defers the tick: nothing is recorded, so nothing counts as an
- * attempted recovery or a failed self-heal. A failed drain still lets the requested steps run, and then fails the job
- * (its backoff unchanged). Returns whether the job was admitted. */
+ * attempted recovery or a failed self-heal. A failed drain still lets the requested steps and the cycle's due work
+ * (`after`) run, and then fails the job (its backoff unchanged): a reply that cannot be drained never holds back an
+ * obligation step that falls due (plan #548). Returns whether the job was admitted. */
 export function sentinelCycle(lane: OrdinaryLane, input: { tick(): void; requested: (() => Promise<unknown>)[];
   drain(): Promise<unknown>; after(): Promise<unknown> }): boolean {
   return lane.submit(async () => {
@@ -254,7 +255,27 @@ export function sentinelCycle(lane: OrdinaryLane, input: { tick(): void; request
     let failure: { error: unknown } | null = null;
     try { await input.drain(); } catch (error) { failure = { error }; }
     for (const step of steps) try { await step(); } catch { /* the sentinel observes the outcome on its next tick */ }
-    if (failure) throw failure.error;
     await input.after();
+    if (failure) throw failure.error;
   });
+}
+
+/** How often a poll backoff offers the cycle's work job to the lane: often enough that a due step starts within a
+ * second of its slot, rare enough that an idle drain is not rerun ten times a second. */
+export const WORK_TICK_MS = 1000;
+/** Plan #548: due obligation work runs on its own schedule, never on the chat connection. While a Telegram poll backs
+ * off (one failed attempt or an open poll breaker), this wait keeps offering the cycle's work job (`work`) at most once
+ * per `everyMs`, so a step that falls due starts on time whatever the poll is doing. Only delivery needs Telegram: a
+ * finished result stays durable in the journal until a reply carries it. Returns when `ms` has passed or a stop holds. */
+export async function waitWorking(ports: { elapsed(): number; delay(ms: number): Promise<void>; stopped(): boolean; work(): void },
+  ms: number, everyMs = WORK_TICK_MS): Promise<void> {
+  const until = ports.elapsed() + ms;
+  let next = ports.elapsed();
+  while (!ports.stopped() && ports.elapsed() < until) {
+    if (ports.elapsed() >= next) {
+      try { ports.work(); } catch { /* a refused or failed submission is retried at the next tick */ }
+      next = ports.elapsed() + everyMs;
+    }
+    await ports.delay(Math.max(1, Math.min(100, until - ports.elapsed(), next - ports.elapsed())));
+  }
 }

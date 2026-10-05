@@ -5,7 +5,9 @@
 // (tests/fixtures/dashboard-recorded-shapes.json): full, empty, missing, unreadable, stale and stopped. Each floor is a
 // pure check over the rendered pages, and each has a negative control that must turn it red (the 1.x #1403 pattern),
 // plus population counts so a matcher that silently matches nothing fails loudly. It also checks that nothing is
-// exposed without the operator's passkey. It reads nothing from any live root and sends nothing.
+// exposed without the operator's passkey. The runner's READ-ONLY page (scripts/operator-dashboard-readonly.mjs, plan #502)
+// is crawled the same way behind its PIN sign-in: the same floors must hold on it, nothing shows without its session, and
+// it has no approval route. It reads nothing from any live root and sends nothing.
 import { createHash, generateKeyPairSync, randomBytes, sign } from 'node:crypto';
 import { chmodSync, mkdirSync, mkdtempSync, readFileSync, realpathSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
@@ -13,7 +15,8 @@ import { join, resolve } from 'node:path';
 import { pathToFileURL } from 'node:url';
 import { actChallenge, canonical } from './approval-surface-core.mjs';
 import { createApprovalSurface, DASHBOARD_APP, handle, serve } from './approval-surface.mjs';
-import { DASHBOARD_BOUNDS, DASHBOARD_FILE, DASHBOARD_STYLE, DASHBOARD_VIEWS } from './operator-dashboard.mjs';
+import { DASHBOARD_BOUNDS, DASHBOARD_FILE, DASHBOARD_STYLE, DASHBOARD_VIEWS, snapshotState } from './operator-dashboard.mjs';
+import { checkListen, createReadOnlyDashboard, handleReadOnly, pinCheckAt, READ_ONLY_LIMITS, readOnlyView, serveReadOnly } from './operator-dashboard-readonly.mjs';
 import { createApprovalSurfaceClient } from '../tests/preview/approval-surface-client.mjs';
 
 export const FLOORS = Object.freeze({
@@ -41,6 +44,10 @@ const JARGON = /sha256|\bjournal\b|\bcursor\b|snapshot|\bjson\b|\btoken\b|challe
 /** What every view of each lost state must say (scripts/operator-dashboard.mjs). */
 const NOTICE = { stale: 'Last updated by your agent', missing: 'has not shared its status here yet', invalid: 'latest status could not be read' };
 const RAW_ERROR = /\bundefined\b|\bNaN\b|\[object |Error:|\bnull\b|SyntaxError|ENOENT/u;
+/** A sign-in page's one allowed field: the operator's existing PIN, a password field a <label for> names. */
+const PIN_FIELD = /<input\b[^>]*\btype="password"[^>]*>/u, PIN_FIELDS = new RegExp(PIN_FIELD.source, 'gu');
+const labeled = (html, field) => { const id = field.match(/\bid="([\w-]+)"/u)?.[1];
+  return id !== undefined && new RegExp(`<label\\b[^>]*\\bfor="${id}"[^>]*>[^<]*\\S[^<]*</label>`, 'u').test(html); };
 
 /** The eleven floors over a set of rendered pages. `pages`: { state, path, status, html, front, signIn }; `fetch(path)`
  * renders a same-origin path with the session; `states` maps each special state to its overview page. */
@@ -58,7 +65,7 @@ export function floorVerdicts({ pages, fetch, states, script = DASHBOARD_APP, st
   out.F2 = verdict('F2', [...each('F2', ({ html }) => {
     const nav = html.match(/<nav class="views"[^>]*>([\s\S]*?)<\/nav>/u)?.[1];
     if (!nav) return 'no navigation';
-    const targets = hrefs(nav).map(href => href.replace(/^\/[a-f0-9]{32}\/dashboard\/?/u, ''));
+    const targets = hrefs(nav).map(href => href.replace(/^(?:\/[a-f0-9]{32})?\/dashboard\/?/u, ''));
     return views.every(path => targets.includes(path)) && targets.length === views.length ? null : 'a registered view is missing from the navigation';
   }), ...(/flex-wrap:\s*wrap/u.test(cssRule(style, '.views')) ? [] : ['the navigation does not wrap']),
   ...(/nowrap|overflow(?:-x)?:\s*(?:hidden|scroll|auto)/u.test(cssRule(style, '.views')) ? ['the navigation clips'] : [])],
@@ -72,14 +79,16 @@ export function floorVerdicts({ pages, fetch, states, script = DASHBOARD_APP, st
   ...(/overflow-wrap:\s*anywhere/u.test(cssRule(style, 'body')) ? [] : ['long words do not wrap']),
   ...(/nowrap/u.test(style) ? ['text is told not to wrap'] : []), ...wide.map(match => `fixed width ${match[1]}px`)],
   'device-width viewport, wrapping text, nothing fixed wider than a phone');
-  out.F5 = verdict('F5', pages.flatMap(({ state, path, html }) => [
+  out.F5 = verdict('F5', pages.flatMap(({ state, path, html, signIn }) => [
     ...[...html.matchAll(/<a\b([^>]*)>([\s\S]*?)<\/a>/gu)].filter(([, attrs, body]) => !/href="[^"]+"/u.test(attrs)
       || !visible(body) && !/aria-label="[^"]+"/u.test(attrs)).map(() => `${state} ${path}: an unlabeled link`),
     ...[...html.matchAll(/<button\b([^>]*)>([\s\S]*?)<\/button>/gu)].filter(([, attrs, body]) => !visible(body) && !/aria-label="[^"]+"/u.test(attrs))
       .map(() => `${state} ${path}: an unlabeled button`),
     ...[...html.matchAll(/<meter\b([^>]*)>/gu)].filter(([, attrs]) => !/aria-label="[^"]+"/u.test(attrs)).map(() => `${state} ${path}: an unlabeled meter`),
-    ...(/<input|<select|<textarea|contenteditable/iu.test(html) ? [`${state} ${path}: a field the operator would have to author`] : [])]),
-  'every link, button and meter is labeled; no field to author');
+    ...(/<input|<select|<textarea|contenteditable/iu.test(signIn ? html.replace(PIN_FIELDS, '') : html) ? [`${state} ${path}: a field the operator would have to author`] : []),
+    ...(signIn ? [...html.matchAll(/<input\b[^>]*>/gu)].filter(([field]) => !PIN_FIELD.test(field) || !labeled(html, field))
+      .map(() => `${state} ${path}: an unlabeled sign-in field`) : [])]),
+  'every link, button, meter and sign-in field is labeled; no field to author');
   const expected = { missing: 'has not shared its status', invalid: 'could not be read', stale: 'has not updated this page for' };
   out.F6 = verdict('F6', [...Object.entries(expected).flatMap(([state, phrase]) => !states[state] ? [`${state}: not rendered`]
     : visible(states[state]).includes(phrase) ? [] : [`${state}: the page does not say plainly what is going on`]),
@@ -170,7 +179,102 @@ export function fixtureSnapshots(recorded, now) {
     invalid: { ...full, requests: [{ ...full.requests[0], link: 'https://approvals.example.org.evil.test/pull/1/files' }] } };
 }
 
-/** Builds the throwaway page, renders every state and returns { floors, controls, exposure, population, pass }. */
+/** Population: enough pages, front pages, tiles and rows that a matcher matching nothing fails loudly. */
+const counted = list => ({ pages: list.length, fronts: list.filter(item => item.front).length,
+  tiles: list.reduce((n, item) => n + (item.html.match(/class="tile[" ]/gu) ?? []).length, 0),
+  rows: list.reduce((n, item) => n + (item.html.match(/class="row"/gu) ?? []).length, 0) });
+const enough = count => count.pages >= 40 && count.fronts === 6 && count.tiles >= 20 && count.rows >= 8;
+const FIXTURE_PIN = '246810';
+/** The read-only page over the same six states: its floors, its population, and its exposure checks (nothing without the
+ * PIN session; a wrong PIN, a forged or expired session, a paused or failed PIN check open nothing; no approval route;
+ * loopback or Tailscale only; the PIN check stays on loopback). */
+async function readOnlyChecks({ fixtures, recorded, secret, statusLine, shown }) {
+  let clock = 1_790_900_000_000, text = null;
+  const make = checkPin => createReadOnlyDashboard({ checkPin, now: () => clock,
+    state: () => text === null ? { kind: 'missing' } : snapshotState(text, clock) });
+  const dash = make(async pin => pin === FIXTURE_PIN);
+  const post = (target, body) => handleReadOnly(target, { method: 'POST', path: '/dashboard/sign-in', body });
+  const signIn = async (pin, target = dash) => { const out = await post(target, new URLSearchParams({ pin }).toString());
+    return { out, cookie: out.headers['set-cookie']?.split(';')[0] }; };
+  const first = await signIn(FIXTURE_PIN), session = first.cookie;
+  const get = (path, cookie = session) => readOnlyView(dash, { path, cookie });
+  const pages = [], states = {}, seen = new Set();
+  const crawl = (state, path, front = false) => {
+    const key = `${state} ${path}`;
+    if (seen.has(key) || pages.length > 400) return;
+    seen.add(key);
+    const out = get(path);
+    pages.push({ state, path, status: out.status, html: out.body, front });
+    for (const href of hrefs(out.body)) if (href.startsWith('/dashboard/') && out.status === 200) crawl(state, href);
+  };
+  for (const [state, snapshot] of [['empty', fixtures.empty], ['full', fixtures.full], ['missing', null], ['invalid', fixtures.invalid],
+    ['stale', fixtures.stale], ['stopped', fixtures.stopped]]) {
+    text = snapshot === null ? null : canonical(snapshot);
+    crawl(state, '/dashboard', true);
+    for (const view of DASHBOARD_VIEWS) crawl(state, `/dashboard${view.path ? `/${view.path}` : ''}`);
+    states[state] = pages.find(item => item.state === state && item.front).html;
+  }
+  const pageOf = (state, view) => pages.find(item => item.state === state && item.path === `/dashboard/${view}`)?.html;
+  states.emptyWaiting = pageOf('empty', 'waiting'); states.emptyMessages = pageOf('empty', 'messages');
+  const signInPage = get('/dashboard', null);
+  pages.push({ state: 'signed-out', path: '/dashboard', status: signInPage.status, html: signInPage.body, signIn: true });
+  text = canonical(fixtures.full);
+  const { verdicts } = floorVerdicts({ pages, fetch: (path, statusOnly) => { const out = get(path); return statusOnly ? out.status : out.body; },
+    states, script: '' });
+  const population = counted(pages);
+  population.ok = enough(population);
+
+  const signedOut = DASHBOARD_VIEWS.map(view => get(`/dashboard${view.path ? `/${view.path}` : ''}`, null));
+  const forged = get('/dashboard', `instar_dashboard_ro=${randomBytes(32).toString('hex')}`);
+  const wrong = await signIn('135791');
+  // A separate page for the pause, so the main session is untouched: five wrong PINs pause even the right one, until the window passes.
+  const paused = make(async pin => pin === FIXTURE_PIN);
+  for (let attempt = 0; attempt < READ_ONLY_LIMITS.failures; attempt++) await signIn('000000', paused);
+  const whilePaused = await signIn(FIXTURE_PIN, paused);
+  clock += READ_ONLY_LIMITS.failureWindowMs + 1;
+  const afterPause = await signIn(FIXTURE_PIN, paused);
+  clock -= READ_ONLY_LIMITS.failureWindowMs + 1;
+  const checkDown = await signIn(FIXTURE_PIN, make(async () => { throw Error('connection refused'); }));
+  clock += DASHBOARD_BOUNDS.sessionMs + 1;
+  const expired = get('/dashboard');
+  clock -= DASHBOARD_BOUNDS.sessionMs + 1;
+  const approvalRoutes = await Promise.all([['POST', '/dashboard/begin'], ['POST', '/dashboard/act'], ['POST', '/begin'], ['POST', '/act'],
+    ['GET', '/c/x'], ['POST', '/dashboard/stop'], ['GET', '/dashboard.js'], ['GET', '/dashboard/sign-in/begin']]
+    .map(([method, path]) => handleReadOnly(dash, { method, path, body: '{}', cookie: session })));
+  const refusesListen = value => { try { checkListen(value); return false; } catch { return true; } };
+  const refusesCheck = value => { try { pinCheckAt(value); return false; } catch { return true; } };
+  const server = serveReadOnly(dash, '127.0.0.1:0');
+  const address = await new Promise(done => server.once('listening', () => done(server.address())));
+  await new Promise(done => server.close(done));
+  const page = out => out.body, signInOnly = out => out.status === 401 && /id="signin-pin"/u.test(out.body) && !shown(out.body);
+  const refused = attempt => attempt.cookie === undefined && attempt.out.status >= 400 && !shown(attempt.out.body);
+  const stop = get('/dashboard/stop'), stopText = visible(stop.body);
+  const exposure = {
+    readOnlySignedOutShowsSignInOnly: { pass: signedOut.every(signInOnly), detail: 'read-only page: every view without a session shows only the PIN sign-in (401)' },
+    readOnlyForgedSessionRefused: { pass: signInOnly(forged), detail: 'read-only page: a made-up session value opens nothing' },
+    readOnlyWrongPinRefused: { pass: refused(wrong) && wrong.out.status === 401, detail: 'read-only page: a wrong PIN opens nothing' },
+    readOnlySignInPauses: { pass: refused(whilePaused) && whilePaused.out.status === 429 && afterPause.cookie !== undefined,
+      detail: `read-only page: ${READ_ONLY_LIMITS.failures} wrong PINs pause sign-in for ${READ_ONLY_LIMITS.failureWindowMs / 60000} minutes` },
+    readOnlyPinCheckDownRefused: { pass: refused(checkDown) && checkDown.out.status === 503, detail: 'read-only page: when the PIN cannot be checked, nothing opens' },
+    readOnlySessionExpires: { pass: signInOnly(expired), detail: `read-only page: a session ends after ${DASHBOARD_BOUNDS.sessionMs / 60000} minutes` },
+    readOnlyNoApprovalRoute: { pass: approvalRoutes.every(out => out.status === 404) && pages.every(item => !/\/c\/|data-decision|<button(?![^>]*id="signin-pin")/u.test(item.html)),
+      detail: 'read-only page: no approve, decline, stop or passkey route exists, and no page carries an approval control' },
+    readOnlyStopSaysHow: { pass: stop.status === 200 && stopText.includes('send /stop in your chat') && stopText.includes('cannot stop it or approve anything'),
+      detail: 'read-only page: the stop view says how to stop (send /stop in the chat) and that this page cannot' },
+    readOnlyListensPrivately: { pass: address.address === '127.0.0.1' && ['0.0.0.0:4071', '203.0.113.5:4071', '192.168.1.20:4071', 'localhost:4071']
+      .every(refusesListen) && !refusesListen('100.124.55.70:4071') && !refusesListen('127.0.0.1:4071'),
+    detail: 'read-only page: listens on loopback or a Tailscale address only, never a public or wildcard address' },
+    readOnlyPinCheckStaysLocal: { pass: ['https://example.org/dashboard/unlock', 'http://192.168.1.20:4042/dashboard/unlock', 'http://localhost:4042/dashboard/unlock']
+      .every(refusesCheck) && !refusesCheck('http://127.0.0.1:4042/dashboard/unlock'), detail: 'read-only page: the PIN is only ever checked on this machine' },
+    readOnlySignedInShowsContent: { pass: first.out.status === 303 && session !== undefined
+      && shown(page(get(`/dashboard/messages/${recorded.turns[0].update}`))) && shown(page(get('/dashboard/status'))),
+    detail: 'read-only page: with the PIN session the same views show the content (the positive neighbor)' },
+  };
+  const pass = Object.values(verdicts).every(item => item.pass) && population.ok;
+  return { floors: Object.fromEntries(Object.entries(verdicts).map(([id, item]) => [id, { ...item, floor: FLOORS[id] }])), population, exposure, pass };
+}
+
+/** Builds the throwaway page, renders every state and returns { floors, controls, exposure, population, readOnly, pass }. */
 export async function runDashboardChecks({ fixture = resolve('tests/fixtures/dashboard-recorded-shapes.json') } = {}) {
   const recorded = JSON.parse(readFileSync(fixture, 'utf8'));
   const root = realpathSync(mkdtempSync(join(tmpdir(), 'dashboard-floors-')));
@@ -285,14 +389,17 @@ export async function runDashboardChecks({ fixture = resolve('tests/fixtures/das
       signedInShowsContent: { pass: shown(fetch(`/${token}/dashboard/messages/${recorded.turns[0].update}`)) && shown(fetch(`/${token}/dashboard/status`)),
         detail: 'with the passkey session the same views show the content (the positive neighbor)' },
     };
-    const population = { pages: pages.length, states: Object.keys(fixtures).length + 1, fronts: pages.filter(item => item.front).length,
-      tiles: pages.reduce((n, item) => n + (item.html.match(/class="tile[" ]/gu) ?? []).length, 0),
-      rows: pages.reduce((n, item) => n + (item.html.match(/class="row"/gu) ?? []).length, 0) };
-    const populated = population.pages >= 40 && population.fronts === 6 && population.tiles >= 20 && population.rows >= 8;
+    const population = { ...counted(pages), states: Object.keys(fixtures).length + 1 };
+    const populated = enough(population);
+
+    // The runner's read-only page (plan #502): the same views from the same module, behind the operator's existing PIN.
+    const readOnly = await readOnlyChecks({ fixtures, recorded, secret, statusLine, shown });
+    Object.assign(exposure, readOnly.exposure);
     const pass = Object.values(verdicts).every(item => item.pass) && Object.values(controls).every(item => item === 'detected')
-      && Object.values(exposure).every(item => item.pass) && populated;
+      && Object.values(exposure).every(item => item.pass) && populated && readOnly.pass;
     return { floors: Object.fromEntries(Object.entries(verdicts).map(([id, item]) => [id, { ...item, floor: FLOORS[id] }])), controls, exposure,
-      population: { ...population, ok: populated }, pass };
+      population: { ...population, ok: populated },
+      readOnly: { floors: readOnly.floors, population: readOnly.population, pass: readOnly.pass }, pass };
   } finally { rmSync(root, { recursive: true, force: true }); }
 }
 

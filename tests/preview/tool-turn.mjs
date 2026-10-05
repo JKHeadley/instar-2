@@ -5,14 +5,18 @@
 // runner's working state; the journal row is the durable record, and nothing here is shared or resumed on another machine.
 import { execFileSync } from 'node:child_process';
 import { createHash, randomBytes, randomUUID } from 'node:crypto';
-import { chmodSync, existsSync, lstatSync, mkdirSync, readdirSync, readFileSync, readlinkSync, realpathSync, renameSync, rmdirSync, rmSync, statSync, symlinkSync, writeFileSync } from 'node:fs';
+import { chmodSync, existsSync, lstatSync, mkdirSync, mkdtempSync, readdirSync, readFileSync, readlinkSync, realpathSync, renameSync, rmdirSync, rmSync, statSync, symlinkSync, writeFileSync } from 'node:fs';
+import { createServer } from 'node:net';
+import { tmpdir } from 'node:os';
 import { dirname, join, relative } from 'node:path';
 import { fileURLToPath } from 'node:url';
-import { SUBSCRIPTION_SUBAGENT_TYPE, SUBSCRIPTION_TOOL_LIMITS, SUBSCRIPTION_TOOL_NAMES, SUBSCRIPTION_TOOLS_SYSTEM_PROMPT } from '../../src/assembly/production-provider.js';
+import { SUBSCRIPTION_SUBAGENT_TYPE, SUBSCRIPTION_TOOL_LIMITS, SUBSCRIPTION_TOOL_NAMES, SUBSCRIPTION_TOOL_RUNTIME_READS, SUBSCRIPTION_TOOLS_SYSTEM_PROMPT } from '../../src/assembly/production-provider.js';
 import { nestedSessionWorkClose } from '../../src/assembly/production-session-work.js';
-import { shellSandboxProfile, toolTrace } from './tool-admission.mjs';
+import { credentialSpans } from '../../src/recall/redact.js';
+import { secretForms, secretMaterialIn } from './reply-check.js';
+import { HELD_CHECK_MAX_BYTES, shellSandboxProfile, toolTrace } from './tool-admission.mjs';
 import { readEgressRecord, startEgressProxy } from './egress-proxy.mjs';
-import { grantVolume, harnessRootState, prepareHarnessState, removeHarnessState } from './harness-user.mjs';
+import { grantVolume, harnessRootState, harnessSocketDirectory, prepareHarnessState, removeHarnessState } from './harness-user.mjs';
 
 export const TOOL_TURNS_DIRECTORY = 'tool-turns';
 /** A turn directory's runner-only part when the harness runs as its own user (the egress checkpoint's state, and the MCP
@@ -25,6 +29,8 @@ export const TOOL_TURNS_KEPT = 16;
 /** Checkpoint decisions journaled per turn (the first ones; the trace counts them all). */
 export const TOOL_EGRESS_RECORDED = 64;
 export const TOOL_HOOK_SCRIPT = join(dirname(fileURLToPath(import.meta.url)), 'tool-admission-hook.mjs');
+/** Starts an MCP server whose environment names a credential by SecretRef (`readRootMcp`, `serveTurnSocket`). */
+export const TOOL_MCP_LAUNCHER = join(dirname(fileURLToPath(import.meta.url)), 'mcp-launch.mjs');
 /** Answer turns and scheduled obligation work run with tools; reviews, summaries and benchmark reruns never do. */
 export const toolTurnEligible = id => /^telegram:[0-9]+:update:[0-9]+$/u.test(id) || /^obligation:/u.test(id);
 
@@ -95,13 +101,28 @@ export function attachSessionVolume(root, { bytes = SESSION_VOLUME_BYTES, name =
 export function detachSessionVolume(mount) {
   try { execFileSync(HDIUTIL, ['detach', '-quiet', '-force', mount], { stdio: 'ignore', timeout: 60000 }); } catch { /* checked by the caller */ }
 }
+/** How many times a forced detach is attempted before a volume is reported still mounted, and the pause before each
+ * retry (growing, so a volume the kernel is briefly still holding is given longer each time). One attempt is not enough:
+ * in the sb-w4-selfdesc gate run of 2026-10-05 the detach immediately after the burst of writes that filled an 8 MB
+ * volume left it mounted, and the very next call — the same code, milliseconds later — detached it. Unretried that
+ * costs the conversation its next turn, because `attachScratch` refuses a volume it cannot unmount first.
+ * What the retry costs, measured rather than guessed (Rule 13, review round 2 must-fix 3): the pauses total 1,000 ms
+ * (0 + 100 + 200 + 300 + 400), but each attempt is its own synchronous forced detach carrying the 60,000 ms timeout
+ * below, so attempts that all reach that timeout block the calling thread for up to 301,000 ms against the one
+ * attempt's 60,000 ms. A detach that completes at all returns in milliseconds, so the ordinary cost is the pauses. */
+const SCRATCH_UNMOUNT_TRIES = 5, SCRATCH_UNMOUNT_PAUSE_MS = 100;
+const forceDetach = mount => {
+  try { execFileSync(HDIUTIL, ['detach', '-quiet', '-force', mount], { stdio: 'ignore', timeout: 60000 }); } catch { /* the mount decides, below */ }
+};
 /** Unmounts a directory's scratch volume and removes its mount point, keeping its image (and so its files). Returns false
- * when the volume is still mounted afterwards (the next attach or a later prune retries). */
-export function unmountScratch(dir) {
+ * when the volume is still mounted after `tries` forced detaches (the next attach or a later prune retries). `force` and
+ * `mounted` exist so a test can prove both sides of the retry without a real volume. */
+export function unmountScratch(dir, { tries = SCRATCH_UNMOUNT_TRIES, force = forceDetach, mounted = scratchMounted } = {}) {
   const mount = mountOf(dir);
-  if (scratchMounted(dir)) {
-    try { execFileSync(HDIUTIL, ['detach', '-quiet', '-force', mount], { stdio: 'ignore', timeout: 60000 }); } catch { /* checked below */ }
-    if (scratchMounted(dir)) return false;
+  for (let attempt = 0; mounted(dir); attempt++) {
+    if (attempt >= tries) return false;
+    if (attempt > 0) Atomics.wait(new Int32Array(new SharedArrayBuffer(4)), 0, 0, SCRATCH_UNMOUNT_PAUSE_MS * attempt);
+    force(mount);
   }
   if (mount !== null) try { rmdirSync(mount); } catch { /* already gone */ }
   return true;
@@ -124,14 +145,17 @@ export const toolTurnSlug = (operation, attempt) => `${createHash('sha256').upda
  * holding `ws` and `tmp`, all 0700 (`scratch(dir, name)` mounts it; tests may pass a stand-in). `volume` is the
  * conversation's workspace ({directory, name} from `conversationWorkspace`), whose files persist across turns; absent,
  * the turn gets its own fresh volume in its turn directory. `children` is the number of subagents this turn's
- * reservation covers; `mcp` is the root's MCP configuration ({servers, reads}) or null. The servers' launch configuration
- * is written into the state directory, which no tool can read. The config also carries the effect doorway's policy and
- * the register's irreversible term (Part Twelve; absent policy: nothing outward by default). `admission` is the doorway's
- * tool-turn layout: its call slots, the harness the hook stops past them, and whether the hook confines the shell; `gate`
- * is the host checkpoint's address for this turn when the doorway's harness runs through it (w4-sessiondriver). */
+ * reservation covers; `mcp` is the root's MCP configuration ({servers, reads, secrets}) or null. The servers' launch
+ * configuration is written into the state directory with no secret value: a server whose environment names a SecretRef
+ * is launched through `mcp-launch.mjs`, which takes the resolved values from the turn's socket (`serveTurnSocket`); with
+ * the harness as its own user, the launcher is its read-only copy beside the hook and the socket lies in the harness
+ * area (`harnessSocketDirectory`). The config also carries the effect doorway's policy and the register's irreversible
+ * term (Part Twelve; absent policy: nothing outward by default). `admission` is the doorway's tool-turn layout: its call
+ * slots, the harness the hook stops past them, and whether the hook confines the shell; `gate` is the host checkpoint's
+ * address for this turn when the doorway's harness runs through it (w4-sessiondriver). */
 export function prepareToolTurn({ root, operation, attempt, operations, effectPolicy, irreversibleTerm, children = 0, mcp = null,
   node = process.execPath, scratch = attachScratch, volume = null, authority = 'unrecorded', admission = CLAUDE_TOOL_ADMISSION, gate = null,
-  harness = null, grant = { volume: grantVolume, state: prepareHarnessState } }) {
+  harness = null, grant = { volume: grantVolume, state: prepareHarnessState, socket: harnessSocketDirectory } }) {
   const base = join(realpathSync(root), TOOL_TURNS_DIRECTORY);
   mkdirSync(base, { recursive: true, mode: 0o700 });
   const slug = toolTurnSlug(operation, attempt);
@@ -160,25 +184,42 @@ export function prepareToolTurn({ root, operation, attempt, operations, effectPo
   const servers = mcp ? Object.keys(mcp.servers) : [];
   const shellProfile = admission.confinedShell ? join(stateDirectory, 'shell.sb') : null;
   if (shellProfile) writeFileSync(shellProfile, shellSandboxProfile({ workspace, tmp }), { mode: 0o600 });
+  // The turn's runner socket (serveTurnSocket): the held-secret check every outward tool request asks before it is
+  // dispatched, and each SecretRef-bearing MCP server's credentials. A short private directory (a Unix socket path is
+  // limited to about 100 bytes); with the harness as its own user it lies in the harness area, traversable by that user
+  // alone besides the runner.
+  const socket = join(harness ? grant.socket(harness.user) : realpathSync(mkdtempSync(join(tmpdir(), 'itm-'))), 's');
   // A gated turn (`gate`, the checkpoint's address for this turn) has the harness's full tool set behind the checkpoint:
   // delegation becomes a child edge, network reads are admitted, consequential tools pass the effect owner.
-  writeFileSync(join(stateDirectory, 'config.json'), JSON.stringify({ workspace, tmp, maxCalls: admission.maxCalls,
+  writeFileSync(join(stateDirectory, 'config.json'), JSON.stringify({ workspace, tmp, reads: [...SUBSCRIPTION_TOOL_RUNTIME_READS], maxCalls: admission.maxCalls, heldCheck: socket,
     maxWriteBytes: SUBSCRIPTION_TOOL_LIMITS.maxWriteBytes, operations: [...operations],
     ...(shellProfile ? { shellProfile } : {}), ...(gate ? { gate, delegation: true, networkReads: true } : {}),
     children: { max: children, type: SUBSCRIPTION_SUBAGENT_TYPE }, mcpReads: mcp ? [...mcp.reads] : [], authority,
     ...(effectPolicy === undefined ? {} : { effectPolicy }), ...(irreversibleTerm === undefined ? {} : { irreversibleTerm }) }), { mode: 0o600 });
   let mcpTurn;
   if (servers.length) {
-    // The MCP servers' credentials (their `env`): as its own user the harness never gets a file of them it could open. The
-    // configuration stays runner-private and reaches the harness through the launcher's hand-off (harnessCommand).
+    const secretServers = servers.filter(name => Object.keys(mcp.secrets?.[name] ?? {}).length > 0);
+    // With the harness as its own user the launcher is its read-only copy beside its hook (the repository is out of that
+    // user's reach). The launch configuration holds no credential; as its own user the harness still never gets a file of
+    // it: it stays runner-private and reaches the harness through the launcher's hand-off (harnessCommand).
+    const launcher = harness ? join(dirname(harness.hookScript), 'mcp-launch.mjs') : TOOL_MCP_LAUNCHER;
+    const nonces = Object.fromEntries(secretServers.map(name => [name, randomBytes(16).toString('hex')]));
+    const launch = Object.fromEntries(servers.map(name => {
+      const server = mcp.servers[name];
+      if (!nonces[name]) return [name, server];
+      const { command, args = [], env = {}, ...rest } = server;
+      const plain = Object.fromEntries(Object.entries(env).filter(([, value]) => typeof value === 'string'));
+      return [name, { ...rest, command: node, args: [launcher, socket, name, nonces[name], command, ...args],
+        ...(Object.keys(plain).length ? { env: plain } : {}) }];
+    }));
     const config = join(privateDirectory, 'mcp.json');
-    writeFileSync(config, JSON.stringify({ mcpServers: mcp.servers }), { mode: 0o600 });
-    mcpTurn = { config, servers };
+    writeFileSync(config, JSON.stringify({ mcpServers: launch }), { mode: 0o600 });
+    mcpTurn = { config, servers, ...(Object.keys(nonces).length ? { nonces } : {}) };
   }
   // Only now may the harness enter its state: it reads the runner's config, adds its own files, and replaces none.
   if (opened) opened.open([join(stateDirectory, 'config.json')]);
   return { slug, directory: turn, volumeDirectory: volume ? volume.directory : turn, scratch: mounted, workspace, tmp, home, stateDirectory,
-    privateDirectory, hook: { node, script: harness ? harness.hookScript : TOOL_HOOK_SCRIPT },
+    privateDirectory, hook: { node, script: harness ? harness.hookScript : TOOL_HOOK_SCRIPT }, socket: { path: socket, shared: harness !== null },
     ...(mcpTurn ? { mcp: mcpTurn } : {}) };
 }
 
@@ -198,12 +239,13 @@ export function networkToolReads(execPath = process.execPath, exists = existsSyn
  * installed operations, the operator's effect policy and the irreversible term), so a shell request and a tool call meet
  * one effect doorway. Returns the proxy and the part of the turn the provider's sandbox settings need. `start` stands in
  * for startEgressProxy in tests. */
-export async function attachEgress(turn, start = undefined, tools = networkToolReads()) {
+export async function attachEgress(turn, start = undefined, tools = networkToolReads(), held = null) {
   const configPath = join(turn.stateDirectory, 'config.json');
   const config = JSON.parse(readFileSync(configPath, 'utf8'));
   const admission = { operations: config.operations, ...(config.effectPolicy === undefined ? {} : { effectPolicy: config.effectPolicy }),
     ...(config.irreversibleTerm === undefined ? {} : { irreversibleTerm: config.irreversibleTerm }) };
-  const ca = join(turn.scratch, 'egress-ca.pem'), input = { stateDirectory: turn.privateDirectory ?? turn.stateDirectory, caPath: ca, admission };
+  const ca = join(turn.scratch, 'egress-ca.pem'), input = { stateDirectory: turn.privateDirectory ?? turn.stateDirectory, caPath: ca, admission,
+    ...(held ? { held } : {}) };
   const proxy = start ? await start(input) : await startEgressProxy(input);
   try {
     mkdirSync(turn.home, { recursive: true, mode: 0o700 });
@@ -219,10 +261,15 @@ export async function attachEgress(turn, start = undefined, tools = networkToolR
 }
 
 /** The root's MCP configuration, read from `<root>/mcp.json` (the operator's file; absent means no MCP servers):
- * `{"mcpServers": {name: {command, args?, env?}}, "reads": ["mcp__name__tool", ...]}`. A tool the file lists in `reads`
- * is ordinary work; every other MCP tool is a consequential effect for the effect doorway. A malformed file refuses
- * (thrown) rather than guessing. Credentials in `env` stay in this file and in the turn's admission state, both
- * outside every path a tool can read. */
+ * `{"mcpServers": {name: {command, args?, env?, ...}}, "reads": ["mcp__name__tool", ...]}`. A tool the file lists in
+ * `reads` is ordinary work; every other MCP tool is a consequential effect for the effect doorway. A malformed file
+ * refuses (thrown) rather than guessing. An `env` value is either a plain string, kept as written, or
+ * `{"secretRef": "<name>"}`, a credential in the runner's custody vault: the runner resolves it at the turn and hands it to
+ * that server alone (`serveTurnSocket`), so the launch configuration holds no SecretRef value. The checkpoint (Rule 100): a
+ * credential in a recognised format written literally in a command, an argument or an env value is refused, with the
+ * SecretRef form named as the way to give it; an opaque literal (one no pattern recognises) is not detected and is kept
+ * in the launch configuration as written.
+ * `secrets` maps each server to its env names and the SecretRef names they resolve from. */
 export const TOOL_MCP_CONFIG = 'mcp.json';
 export function readRootMcp(root, read = path => readFileSync(path, 'utf8')) {
   let text;
@@ -233,10 +280,132 @@ export function readRootMcp(root, read = path => readFileSync(path, 'utf8')) {
   if (!names.length) return null;
   if (!names.every(name => /^[A-Za-z0-9_-]{1,64}$/u.test(name) && servers[name] && typeof servers[name].command === 'string'))
     throw Error('preview: root MCP server names must be plain and each must name a command');
+  const literal = text => typeof text === 'string' && credentialSpans(text).length > 0;
+  const secrets = {};
+  for (const name of names) {
+    const server = servers[name], args = server.args ?? [], env = server.env ?? {};
+    if (!Array.isArray(args) || !args.every(arg => typeof arg === 'string')) throw Error(`preview: root MCP server ${name} args must be strings`);
+    if (!env || typeof env !== 'object' || Array.isArray(env)) throw Error(`preview: root MCP server ${name} env must be an object`);
+    secrets[name] = {};
+    for (const [key, value] of Object.entries(env)) {
+      if (typeof value === 'string') { if (literal(value)) throw Error(`preview: root MCP server ${name} env ${key} holds a credential literally; give it as {"secretRef": "<name>"}`); continue; }
+      if (!value || typeof value !== 'object' || Object.keys(value).length !== 1 || typeof value.secretRef !== 'string' || !/^[A-Za-z0-9_.-]{1,128}$/u.test(value.secretRef))
+        throw Error(`preview: root MCP server ${name} env ${key} must be a string or {"secretRef": "<name>"}`);
+      secrets[name][key] = value.secretRef;
+    }
+    if ([server.command, ...args].some(literal))
+      throw Error(`preview: root MCP server ${name} holds a credential literally in its command or args; give it as an env {"secretRef": "<name>"}`);
+  }
   const reads = data.reads ?? [];
   if (!Array.isArray(reads) || !reads.every(tool => typeof tool === 'string' && names.some(name => tool.startsWith(`mcp__${name}__`))))
     throw Error('preview: root MCP reads must name tools of the configured servers');
-  return { servers, reads, digest: `sha256:${createHash('sha256').update(text, 'utf8').digest('hex')}` };
+  return { servers, reads, secrets, digest: `sha256:${createHash('sha256').update(text, 'utf8').digest('hex')}` };
+}
+
+/** Plan #507 (Rules 4, 95, 100): the runner's held secret values, every value once read kept for the runner's life.
+ * `sources` maps a name to a reader returning that source's current values; a reader that throws makes the source
+ * unavailable now (custody that cannot be read), which is not the same as a source that read and holds nothing (an
+ * established absence). Returns a function giving `{ values, unavailable }`: every value ever read, and why a source
+ * cannot be read now (null when every source read). Values already held are never dropped when a source later changes,
+ * empties or becomes unreadable: a credential a context may already hold stays withheld. */
+export function createHeldSecrets(sources) {
+  const kept = new Set();
+  return () => {
+    const failing = [];
+    for (const [name, read] of Object.entries(sources)) {
+      try { for (const value of read()) if (typeof value === 'string' && value.length > 0) kept.add(value); }
+      catch (error) { failing.push(`${name}: ${String(error?.message ?? error)}`); }
+    }
+    return { values: [...kept], unavailable: failing.length ? failing.join('; ') : null };
+  };
+}
+/** Plan #507 (Rule 95): the held-set readers over the runner's custody (`custody`, createSecretCustody) — `vault`, every
+ * registered preview-vault credential, and `mcp`, every credential the root's MCP servers reference (`mcpSecrets()`, server
+ * name to env name to secret name). A credential that cannot be resolved now throws, so its source reads unavailable and
+ * every outward request refuses: custody that cannot be opened is not an established absence, since a context kept from an
+ * earlier runner may still hold the value. No registered or referenced credential reads as an established absence. */
+export function custodyHeldSources(custody, mcpSecrets) {
+  const ref = name => ({ type: 'SecretRef', schemaVersion: 1, vault: 'preview', name });
+  return {
+    vault: () => custody.records().flatMap(record => record.custody === 'preview-vault' ? [custody.resolve(ref(record.name))] : []),
+    mcp: () => Object.values(mcpSecrets()).flatMap(refs => Object.values(refs).map(name => custody.resolve(ref(name)))),
+  };
+}
+/** The held-secret check one outward request asks before it is dispatched (the admission hook through the turn socket or
+ * the host checkpoint, and the shell's network checkpoint): `held` when `text` carries a held value in any recognised form
+ * (reply-check.ts secretMaterialIn, also case-folded), `unavailable` when a held source cannot be read now (Rule 95: this consumer fails
+ * closed, its miss being a secret leaving), else `clear`. `extra` adds values held for one turn (its served MCP
+ * credentials). A held set that cannot be read at all is unavailable. */
+export const heldVerdict = (heldSecrets, extra = []) => text => {
+  let state;
+  try { state = heldSecrets ? heldSecrets() : { values: [], unavailable: null }; } catch { return 'unavailable'; }
+  const values = [...state.values, ...extra], plain = String(text);
+  // Also case-folded: a host name is case-insensitive (a lowercased value in a name still reaches a resolver).
+  if (secretMaterialIn(plain, values) || secretMaterialIn(plain.toLowerCase(), values.map(value => value.toLowerCase()))) return 'held';
+  return state.unavailable === null ? 'clear' : 'unavailable';
+};
+/** The longest form of any held value, in bytes: how much of a streamed request body the network checkpoint holds back
+ * so a value split across two chunks is seen whole before any of it is forwarded. */
+export const heldSpan = (heldSecrets, extra = []) => {
+  let values;
+  try { values = [...(heldSecrets ? heldSecrets().values : []), ...extra]; } catch { values = extra; }
+  return values.flatMap(secretForms).reduce((max, form) => Math.max(max, Buffer.byteLength(form, 'utf8')), 0);
+};
+/** Serves the turn's runner socket: the held-secret check (`check <base64 text>` answers `clear`, `held` or
+ * `unavailable`, plan #507), and each SecretRef-bearing MCP server its resolved environment, once, to a launcher
+ * presenting that server's name and nonce (Rule 100: the launch configuration holds no SecretRef value). Returns a
+ * `close()` that stops serving and removes the socket's directory. */
+export async function serveTurnSocket(socket, { nonces = {}, values = {}, shared = false, check = () => 'unavailable' } = {}) {
+  const pending = new Map(Object.entries(values));
+  const server = createServer({ allowHalfOpen: true }, link => {
+    let text = '', over = false;
+    link.setEncoding('utf8');
+    link.on('data', chunk => { if (text.length + chunk.length > HELD_CHECK_MAX_BYTES * 2) over = true; else text = `${text}${chunk}`; });
+    link.on('end', () => {
+      const line = text.trim();
+      if (line.startsWith('check ')) {
+        if (over) { link.end('held'); return; }
+        let verdict;
+        try { verdict = check(Buffer.from(line.slice(6), 'base64').toString('utf8')); } catch { verdict = 'unavailable'; }
+        link.end(verdict === 'clear' || verdict === 'held' ? verdict : 'unavailable');
+        return;
+      }
+      const [name, nonce] = line.slice(0, 512).split(' ');
+      const env = pending.get(name);
+      if (env && nonces[name] === nonce) { pending.delete(name); link.end(JSON.stringify(env)); } else link.end('');
+    });
+    link.on('error', () => {});
+  });
+  await new Promise((resolve, reject) => { server.once('error', reject); server.listen(socket, resolve); });
+  // The harness's own user connects too (`shared`): the socket is writable by every identity that can reach it, and its
+  // directory is traversable only by the runner and that user (harness-user.mjs harnessSocketDirectory).
+  if (shared) chmodSync(socket, 0o666);
+  return () => new Promise(resolve => server.close(() => { rmSync(dirname(socket), { recursive: true, force: true }); resolve(); }));
+}
+
+/** Rewrites the turn's admission record with each served credential value replaced by its SecretRef marker and every
+ * recognised credential redacted (`redactText`), so the record a turn leaves holds no value (scrubbed when the turn ends;
+ * a tool result may carry one while the turn runs). */
+export function scrubAdmissionRecord(stateDirectory, served, redactText) {
+  const path = join(stateDirectory, 'admission.jsonl');
+  let text;
+  try { text = readFileSync(path, 'utf8'); } catch { return; }
+  const clean = value => {
+    if (typeof value === 'string') {
+      let out = value;
+      for (const [secret, marker] of served) for (const form of [secret, JSON.stringify(secret).slice(1, -1)]) out = out.split(form).join(marker);
+      return redactText(out);
+    }
+    if (Array.isArray(value)) return value.map(clean);
+    if (value && typeof value === 'object') return Object.fromEntries(Object.entries(value).map(([k, v]) => [k, clean(v)]));
+    return value;
+  };
+  const lines = text.split('\n').filter(line => line.length > 0).map(line => {
+    let row; try { row = JSON.parse(line); } catch { return clean(line); }
+    return JSON.stringify(clean(row));
+  });
+  writeFileSync(`${path}.scrub`, lines.length ? `${lines.join('\n')}\n` : '', { mode: 0o600 });
+  renameSync(`${path}.scrub`, path);
 }
 
 /** The trace of one finished turn, read from the hook's record. An absent record is an empty trace. */
@@ -604,20 +773,37 @@ export const toolChildrenFit = (view, unreserved = 0) => Math.max(0, Math.min(SU
 
 /**
  * One tool turn. `authority` names the activation the tools run under (its reference and tools policy digest); each
- * subagent edge carries it. `mcp` is `readRootMcp(root)`. `stopped()` reports whether the operator's stop or a withdrawal
+ * subagent edge carries it. `mcp` is `readRootMcp(root)`; `resolveSecret(name)` opens a SecretRef its servers name from the
+ * runner's custody (a server's credential that cannot be opened refuses the tool turn). `stopped()` reports whether the operator's stop or a withdrawal
  * ended the turn, so an edge without a result is recorded `cancelled` (else `unknown`).
  */
 export async function runToolTurn({ journal, root, id, prepared, promptLimit, deniedRoots, operations, effectPolicy, irreversibleTerm, invoke,
-  fallback, now, redactText, authority = 'unrecorded', mcp = null, stopped = () => false, scratch = attachScratch, detach = detachScratch, unmount = unmountScratch,
+  fallback, now, redactText, authority = 'unrecorded', mcp = null, resolveSecret = null, stopped = () => false, scratch = attachScratch, detach = detachScratch, unmount = unmountScratch,
   conversation = `${String(journal.view.genesis?.bot)}:${String(journal.view.genesis?.chat)}`, session = null,
   completed = result => result?.state === 'complete', egress = undefined, networkTools = networkToolReads,
-  system = SUBSCRIPTION_TOOLS_SYSTEM_PROMPT, admission = CLAUDE_TOOL_ADMISSION, gate = null, owner = 'this machine', harness = null }) {
-  // A configured harness user that is not ready never runs a turn, nor lets one fall back to the runner's own account.
-  if (harness && harness.ready !== true) throw Error(`preview: the harness identity is unavailable (${String(harness.reason ?? 'not ready')})`);
+  system = SUBSCRIPTION_TOOLS_SYSTEM_PROMPT, admission = CLAUDE_TOOL_ADMISSION, gate = null, owner = 'this machine', harness = null, heldSecrets = null }) {
   const extra = SUBSCRIPTION_TOOL_LIMITS.maxTurns - 1;
   const refuse = reason => { journal.append({ kind: 'tool-turn', phase: 'refused', id, reason, at: now() }); return fallback(); };
+  // Plan #473: a Claude Code turn with no harness user (`{ready: false, refused: true, reason}`, journal-agent.mjs
+  // identityRefusalOf) is refused and answered text only, never run as the operator's account.
+  if (!admission.harness && harness?.refused === true) return refuse('harness identity unavailable');
+  // Any other harness user that is not ready never runs a turn, nor lets one fall back to the runner's own account.
+  if (harness && harness.ready !== true) throw Error(`preview: the harness identity is unavailable (${String(harness.reason ?? 'not ready')})`);
   if (!toolTurnFits(journal.view)) return refuse('call cap');
   if (Buffer.byteLength(prepared) + Buffer.byteLength(system) + TOOL_NOTICE_MAX_BYTES > promptLimit) return refuse('prompt size');
+  // Rule 100: a server's SecretRefs are opened from custody before anything is reserved; held in memory only.
+  const mcpValues = {}, served = [];
+  try {
+    for (const [server, refs] of Object.entries(mcp?.secrets ?? {})) {
+      if (!Object.keys(refs).length) continue;
+      mcpValues[server] = Object.fromEntries(Object.entries(refs).map(([key, ref]) => {
+        const secret = resolveSecret(ref);
+        if (typeof secret !== 'string' || !secret) throw Error('empty');
+        served.push([secret, `[credential: SecretRef preview/${ref}]`]);
+        return [key, secret];
+      }));
+    }
+  } catch { return refuse('mcp credential unavailable'); }
   const attempt = journal.view.toolTurns?.invocations ?? 0;
   // A checkpointed harness's subagents spend from the turn's one allowance at the checkpoint (every model call of the
   // tree passes it), so no separate subagent budget is reserved for it.
@@ -636,7 +822,7 @@ export async function runToolTurn({ journal, root, id, prepared, promptLimit, de
     delegation: { children, turnsEach: SUBSCRIPTION_TOOL_LIMITS.childMaxTurns, type: SUBSCRIPTION_SUBAGENT_TYPE, authority },
     ...(mcp ? { mcp: { servers: Object.keys(mcp.servers), reads: mcp.reads.length, digest: mcp.digest } } : {}),
     workspace: { key: space.key, kept }, at: now() });
-  let turn = null, result, failure = null, plan = null, volume = null, notice = '', checkpoint = null, claim = null, gated = null;
+  let turn = null, result, failure = null, plan = null, volume = null, notice = '', closeSecrets = null, checkpoint = null, claim = null, gated = null;
   try {
     // A harness with no model-call limit of its own runs only through the checkpoint: no checkpoint, no tool turn.
     if (admission.harness && !gate) throw Error('preview: this tool turn needs the host admission checkpoint');
@@ -670,9 +856,14 @@ export async function runToolTurn({ journal, root, id, prepared, promptLimit, de
       writeSession(space.directory, { v: 1, id: plan.id, binding: `${authority} ${session.harness}`, facts, workspace: turn.workspace,
         turns: plan.turn, open: true, at: now() });
     }
+    // Plan #507: every outward tool request asks the held-secret check (the turn socket) before it is dispatched, and the
+    // shell's network checkpoint runs the same check; the turn's served MCP credentials are held with the runner's own.
+    const servedValues = served.map(([secret]) => secret);
+    const check = heldVerdict(heldSecrets, servedValues);
+    closeSecrets = await serveTurnSocket(turn.socket.path, { nonces: turn.mcp?.nonces ?? {}, values: mcpValues, shared: turn.socket.shared, check });
     // The shell's network checkpoint lives exactly as long as the turn: started here, stopped below whatever the outcome.
     // A confined shell reaches it through its own profile (the one network path it has); the harness's sandbox otherwise.
-    const attached = await attachEgress(turn, egress, networkTools());
+    const attached = await attachEgress(turn, egress, networkTools(), { check, span: () => heldSpan(heldSecrets, servedValues) });
     checkpoint = attached?.proxy ?? null;
     result = await invoke({ scratch: turn.scratch, workspace: turn.workspace, stateDirectory: turn.stateDirectory, hook: turn.hook, deniedRoots,
       ...(turn.mcp ? { mcp: turn.mcp } : {}), ...(plan ? { session: { id: plan.id, resume: plan.resume } } : {}),
@@ -688,6 +879,9 @@ export async function runToolTurn({ journal, root, id, prepared, promptLimit, de
       gate.settle(claim, nested.id);
     }
   }
+  if (closeSecrets) await closeSecrets();
+  else if (turn?.socket) rmSync(dirname(turn.socket.path), { recursive: true, force: true });
+  if (turn) scrubAdmissionRecord(turn.stateDirectory, served, redactText);
   const trace = turn ? readToolTrace(turn.stateDirectory) : { calls: [], children: [], consistent: true };
   const egressRecord = turn && checkpoint ? readEgressRecord(turn.privateDirectory) : null;
   const ended = stopped() ? 'cancelled' : 'unknown';
@@ -735,13 +929,15 @@ export function toolStatusLines(view, enabled, off = null, gated = false) {
   return [gated ? 'Tools: a confined shell and patches in this conversation\'s private workspace, web search, subagents and the login\'s '
       + 'installed MCP tools, every model call and consequential tool through the admission checkpoint.' : `Tools: the harness's full built-in set (${SUBSCRIPTION_TOOL_NAMES.length} tools, each call decided at the admission hook) and the `
       + `root's MCP servers, in this conversation's private workspace (kept between turns, ${String(TOOL_SCRATCH_BYTES / 1048576)} MB); shell `
-      + 'sandboxed, its network through the turn\'s checkpoint (reads of public hosts admitted, writes refused at the effect doorway); '
+      + 'sandboxed, its network through the turn\'s checkpoint (reads of public hosts admitted, writes sent to the effect doorway); '
       + 'web reads only; subagents may delegate within the turn\'s budget; consequential effects go through the effect doorway.',
     `Tool turns: ${stats.invocations} run (${stats.reservedCalls} model attempts reserved for them), ${stats.toolCalls} tool calls admitted, `
       + `${stats.toolRefusals} refused, ${stats.refusedCap} turns answered without tools because the call allowance was short`
       + `${stats.children ? `, ${stats.children.started} subagents started (${stats.children.returned} returned, ${stats.children.cancelled} cancelled, ${stats.children.unknown} unknown)` : ''}`
       + `${stats.network ? `, ${stats.network.admitted} shell network reads admitted and ${stats.network.refused} refused at the checkpoint` : ''}`
       + `${stats.refusedPrompt ? `, ${stats.refusedPrompt} because the packet left no room for the tool instructions` : ''}`
+      + `${stats.refusedCredential ? `, ${stats.refusedCredential} because an MCP server's stored credential could not be opened` : ''}`
+      + `${stats.refusedIdentity ? `, ${stats.refusedIdentity} because the separate harness user was not ready` : ''}`
       + `${stats.inconsistent ? `, ${stats.inconsistent} turns refused because a tool ran without its admission record` : ''}`
       + `${stats.open?.length ? `, ${stats.open.length} without a recorded trace yet (running now, or interrupted with an unknown outcome)` : ''}.`,
     ...(sessions ? [`Kept session: ${sessions.resumed} turns resumed it, ${sessions.fresh} started a new one (${sessions.changed} after the journal `
