@@ -41,7 +41,7 @@ import { SUMMARY_FAITHFULNESS_QUESTION } from './summary-faithfulness.js';
 import { dueState } from './dated-memory.js';
 import { observedSubscriptionIO } from './call-diagnostics.mjs';
 import { agentState, importStorePass } from './channel-source.mjs';
-import { exhaustedPollReason } from './poll-failure-reason.mjs';
+import { exhaustedPollReason, pollBackoffMs, pollEndsRun } from './poll-failure-reason.mjs';
 import { loopHealth } from './obligations.js';
 import { classifyTelegramSend } from './telegram-send-outcome.mjs';
 import { authoritySealKey, resolveActivationAuthority, resolveInstallationPolicy, sealAuthorityRecord, singleMachineProfileDigest, SINGLE_MACHINE_PROFILE } from './activation-authority.js';
@@ -71,7 +71,7 @@ import { doorwayFreshness, installDoorways, observeExchange, readDoorwayMap, sta
 import { createSecretCustody, dueCredentialReminders, reminderSchedule } from './secret-custody.js';
 import { credentialNotices, doorwayNotices, dueWithDelivery } from './credential-reminders.js';
 import { journalCapacity, packetCapacity } from './capacity-outcome.js';
-import { createLiveSentinels, createOrdinaryLane, sentinelCycle, sentinelReport } from './live-sentinels.js';
+import { createLiveSentinels, createOrdinaryLane, sentinelCycle, sentinelReport, waitWorking } from './live-sentinels.js';
 import { SENTINEL_FAMILIES } from './sentinel-record.js';
 
 const clock = createPreviewClock(() => Date.now(), () => performance.now());
@@ -2173,21 +2173,25 @@ async function main() {
     // The run log and ownership exist now: the launch's store comparisons execute as a recorded proof.
     recordProof(executeProof(PREVIEW_PROOF_PLANS.find(plan => plan.id === 'store-agreements'), proofPorts, generation, clock.elapsed));
     ({ failed: failedPolls, conflicted: conflictedPolls } = runs.pollPressure);
-    const pollFailure = async conflict => {
+    // Plan #548: `unreachable` is a poll that got no answer at all (the connection is down), as opposed to an answer
+    // Telegram gave that is not a usable result. A sustained conflict or refusal ends the run; a sustained unreachable
+    // connection keeps the poll breaker open at the capped trial cadence while due work goes on (waitWorking).
+    const pollFailure = async (conflict, unreachable = false) => {
       failedPolls++; routeHealthy = false;
       conflictedPolls = conflict ? conflictedPolls + 1 : 0;
       try { appendRun(runsPath, { v: 1, launch: launchedAt, poll: conflict ? 'conflicted' : 'failed', at: wallNow() }); }
       catch { endReason = 'run log unavailable'; process.exitCode = 1; return false; }
-      const reason = exhaustedPollReason(failedPolls, conflictedPolls);
+      const reason = pollEndsRun(failedPolls, conflictedPolls, unreachable);
       if (reason) {
         endReason = reason;
         process.exitCode = 1;
         return false;
       }
-      const until = clock.elapsed() + Math.min(conflict ? 2000 : 30000, 250 * 2 ** Math.min(failedPolls - 1, 7));
-      serviceBeat(false, conflict ? 'Telegram reports another poller' : 'polling Telegram is failing');
-      while (!workerStop.value && !existsSync(stopPath) && clock.elapsed() < until)
-        await delay(Math.min(100, until - clock.elapsed()));
+      serviceBeat(false, conflict ? 'Telegram reports another poller' : exhaustedPollReason(failedPolls, conflictedPolls)
+        ? 'poll breaker open after sustained failures' : 'polling Telegram is failing');
+      // The backoff never pauses the work schedule: the cycle's work job is offered to the lane throughout.
+      await waitWorking({ elapsed: clock.elapsed, delay, stopped: () => signalled || workerStop.value || existsSync(stopPath), work: workCycle },
+        pollBackoffMs(failedPolls, conflict));
       return true;
     };
     // An exhausted carried episode is an open breaker: one delayed trial poll per launch, never an immediate retry storm.
@@ -2256,6 +2260,25 @@ async function main() {
       // reminder, and only after a successful empty poll, so a waiting withdrawal is read and settled first (Rule 93).
       actOnPromise: id => { if (!id.startsWith('request:')) sentinelSteps.push(() => worker.workObligations()); } });
     const sentinelTick = () => { if (sentinelFamilies.size && !journal.readOnly) sentinels.tick(); };
+    // Rules 8, 22, 92, 99: the scheduled consumer of due obligation work, one bounded step per tick,
+    // runs after the ordinary drain inside the same background job, so it never blocks the minimal path.
+    // The sentinels tick only when that job is admitted, and their requested steps run inside it after the drain.
+    // Plan #548: it is offered once per cycle AND throughout every poll backoff (pollFailure), so it never waits on
+    // the Telegram connection or on an inbound message; only delivery of its result does.
+    const workCycle = () => {
+      if (journal.view.stop || !ownerHeld() || !activationMatchesJournal(journal.view, activation)) return;
+      sentinelCycle(lane, { tick: sentinelTick, requested: sentinelSteps, drain: () => worker.drain(),
+        after: async () => {
+          try { await worker.workObligations(); } catch { /* a stop or expiry ends the step; its start stays durable */ }
+        } });
+    };
+    // Plan #548, the desk's live check only: with --telegram-cut-file, while that file holds a future epoch-ms every
+    // poll fails as an unreachable connection without a network call. Never passed to the operator's runner.
+    const cutFile = options['telegram-cut-file'] ?? null;
+    const telegramCut = () => {
+      if (cutFile === null) return false;
+      try { return Number(readFileSync(cutFile, 'utf8').trim()) > wallNow(); } catch { return false; }
+    };
     for (let i = 0; i < cycles && !signalled; i++) {
       if (i > 0) await new Promise(done => setImmediate(done));
       if (signalled || workerStop.value || existsSync(stopPath) || journal.view.stop || !ownerHeld()) break;
@@ -2282,14 +2305,9 @@ async function main() {
       // A stop given on the independent surface latches here, before any poll or ordinary pass.
       if (journal.view.stop) break;
       if (renewedAway()) break;
-      // Rules 8, 22, 92, 99: the scheduled consumer of due obligation work, one bounded step per tick,
-      // runs after the ordinary drain inside the same background job, so it never blocks the minimal path.
-      // The sentinels tick only when that job is admitted, and their requested steps run inside it after the drain.
-      // A holding note the presence sentinel marks due goes out at the minimal path's next step after the poll.
-      sentinelCycle(lane, { tick: sentinelTick, requested: sentinelSteps, drain: () => worker.drain(),
-        after: async () => {
-          try { await worker.workObligations(); } catch { /* a stop or expiry ends the step; its start stays durable */ }
-        } });
+      // The scheduled work job (workCycle, above). A holding note the presence sentinel marks due goes out at the
+      // minimal path's next step after the poll.
+      workCycle();
       worker.gate();
       reportCap();
       runDueProof();
@@ -2303,17 +2321,18 @@ async function main() {
       // The long poll is awaited asynchronously: a synchronous wait froze every concurrent launch's
       // timers and exit events for up to its whole long-poll timeout (live 2026-09-29).
       const poll = physical.poll ? (input, credential) => physical.poll(input, credential) : (input, credential) => physical.invoke(input, credential);
-      try { result = await poll({ token: secretRef('telegram-bot-token'), method: 'getUpdates',
+      try { if (telegramCut()) throw Error('preview: Telegram connection cut by the live check');
+        result = await poll({ token: secretRef('telegram-bot-token'), method: 'getUpdates',
         // Two machines: Telegram is asked from the SHARED settled cursor, so it keeps every update the other machine lacks.
         body: { offset: shared ? shared.cursor : journal.view.cursor, limit: pollLimit,
           timeout: number(options['max-poll-seconds'] ?? '5', 'max-poll-seconds', 1, 5),
           allowed_updates: ['message', 'edited_message', 'callback_query'] },
         timeoutMs: 12000 }, token()); }
-      catch { if (!await pollFailure(false)) break; continue; }
+      catch { if (!await pollFailure(false, true)) break; continue; }
       await new Promise(done => setImmediate(done));
       if (signalled || workerStop.value || existsSync(stopPath)) break;
       if (result.kind !== 'response' || result.status !== 200) {
-        if (!await pollFailure(result.kind === 'response' && result.status === 409)) break;
+        if (!await pollFailure(result.kind === 'response' && result.status === 409, result.kind !== 'response')) break;
         continue;
       }
       let updates;
