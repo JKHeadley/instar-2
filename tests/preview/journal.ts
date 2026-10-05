@@ -2031,8 +2031,14 @@ export function obligationSchedule(view: JournalView): { key: string; kind: 'com
         view.order.slice(work.turnsSeen ?? view.order.length)
           .find(turn => verifiedOperatorTurn(view, turn) && !probeTurn(view, turn))?.at ?? Infinity)
       : work.last + revisit : undefined;
-    const first = waits === 'nothing' ? source.at + revisit
-      : waits === 'date' && due?.day ? wallEpoch(due.day, due.time ?? '09:00', due.zone) : undefined;
+    // Rules 8, 46, 83: every wait declared at creation carries the revisit cadence, `nothing` included. A dependency
+    // the reply itself declared names no need, and nothing records what would ever satisfy it, so scheduling only
+    // `nothing` and a dated promise left an agent-owned loop open with no cadence at all: it was never worked, never
+    // waiting work, and not owned work (live D1b, room two, 2026-10-04 23:33, declared waitsOn `operator`). Its first
+    // step is what records the real dependency and its need; from that result on, `resume` above governs, so an
+    // operator dependency then waits for the operator's next message instead of the cadence.
+    const first = waits === 'date' && due?.day ? wallEpoch(due.day, due.time ?? '09:00', due.zone)
+      : note.waitsOn !== undefined ? source.at + revisit : undefined;
     // A started step stays scheduled whatever dependency its predecessor left, so interrupted-start recovery owns it.
     if (work?.inFlight === undefined && first === undefined && resume === undefined && !pendingReport(work)) return;
     items.push({ key, kind: 'commitment', id, slot: work?.inFlight ?? resume ?? next(key, first ?? Infinity), inFlight: work?.inFlight !== undefined,
@@ -2169,11 +2175,14 @@ export function obligationCapacity(view: JournalView): boolean {
   const { calls } = view, { maxCalls } = view.limits;
   return shouldRunScheduledPriority('medium', calls >= maxCalls - 2 ? 'critical' : calls >= maxCalls * 0.75 ? 'elevated' : 'normal');
 }
-/** The operator's own earlier words a work step carries (plan #510): the newest summary and their messages after it. */
+/** The operator's own earlier words a work step carries (plan #510): the newest summary, the exact facts it
+ * keeps (plan #547), and their messages after it. The writer caps memoryItems at 20 quotes of 300 bytes; these
+ * bounds hold anyway, so a summary an older build wrote cannot push the rest of the memory block out. */
 export const OBLIGATION_SUMMARY_CHARS = 4000, OBLIGATION_MEMORY_MESSAGES = 20, OBLIGATION_MEMORY_MESSAGE_CHARS = 500;
+export const OBLIGATION_MEMORY_FACTS = 20, OBLIGATION_MEMORY_FACT_CHARS = 500;
 /** The runner's bounds on a work step's report and note (obligationDecision); the question states them. */
 export const OBLIGATION_REPORT_CHARS = 1500, OBLIGATION_NOTE_CHARS = 500;
-export const OBLIGATION_WORK_QUESTION = 'packet.obligation is open work you own for the verified operator, due now. packet.obligation.yourReply was already sent to the operator: repeating or re-confirming it is not the work, so the report for a deferral or judgment is the deferred answer itself, never another acknowledgement. packet.memory holds what the operator told you (the newest summary, the exact facts it retains in memoryItems with their sources, and their messages after it): work about what they told you is done from it. Do it now with what you know; you have no external tools, and a reply reaches the operator only with their next message. A report is that later message: it is held now and delivered with their next message, never before it, so "answer later" or "not in this reply" is done by reporting now. Choose exactly one of these objects. For a request, promise, deferral or judgment: {"outcome":"report","report":<the completed result or decision, addressed to the operator, at most ' + String(OBLIGATION_REPORT_CHARS) + ' characters>} when you can finish it now; {"outcome":"continue","note":<the concrete progress and next step, at most ' + String(OBLIGATION_NOTE_CHARS) + ' characters>} when it genuinely needs more time; {"outcome":"waiting","waitsOn":"operator"|"external","note":<what exactly you now need, at most ' + String(OBLIGATION_NOTE_CHARS) + ' characters>} only when someone else must act first. When packet.waitingFor is present, you said you needed it earlier: check packet.operatorMessagesSince and continue with whatever now arrived. For a blocker-recheck, test the claim again against every avenue and packet.capabilities: {"outcome":"still-blocked","recheck":"YYYY-MM-DD" within 90 days,"avenues":[{"avenue","disposition":"outside-standing"|"inapplicable","evidence":<the packet.capabilities key that shows it>}],"constraint":<governingConstraints key those capabilities support>,"reason":<what you re-examined and why it still holds>} or {"outcome":"cleared","report":<what is now possible>}. You have attempted nothing outside this step, so never call an avenue tried. Follow packet.directives. Refuse only behind a packet.governingConstraints key. '
+export const OBLIGATION_WORK_QUESTION = 'packet.obligation is open work you own for the verified operator, due now. packet.obligation.yourReply was already sent to the operator: repeating or re-confirming it is not the work, so the report for a deferral or judgment is the deferred answer itself, never another acknowledgement. packet.memory holds what the operator told you (the newest summary, packet.memory.facts, which are the exact clauses that summary keeps by source instead of repeating them in its prose, and their messages after it): work about what they told you is done from it. Do it now with what you know; you have no external tools, and a reply reaches the operator only with their next message. A report is that later message: it is held now and delivered with their next message, never before it, so "answer later" or "not in this reply" is done by reporting now. Choose exactly one of these objects. For a request, promise, deferral or judgment: {"outcome":"report","report":<the completed result or decision, addressed to the operator, at most ' + String(OBLIGATION_REPORT_CHARS) + ' characters>} when you can finish it now; {"outcome":"continue","note":<the concrete progress and next step, at most ' + String(OBLIGATION_NOTE_CHARS) + ' characters>} when it genuinely needs more time; {"outcome":"waiting","waitsOn":"operator"|"external","note":<what exactly you now need, at most ' + String(OBLIGATION_NOTE_CHARS) + ' characters>} only when someone else must act first. When packet.waitingFor is present, you said you needed it earlier: check packet.operatorMessagesSince and continue with whatever now arrived. For a blocker-recheck, test the claim again against every avenue and packet.capabilities: {"outcome":"still-blocked","recheck":"YYYY-MM-DD" within 90 days,"avenues":[{"avenue","disposition":"outside-standing"|"inapplicable","evidence":<the packet.capabilities key that shows it>}],"constraint":<governingConstraints key those capabilities support>,"reason":<what you re-examined and why it still holds>} or {"outcome":"cleared","report":<what is now possible>}. You have attempted nothing outside this step, so never call an avenue tried. Follow packet.directives. Refuse only behind a packet.governingConstraints key. '
   + taskFields('the one object you chose');
 /** The same work step on the scoped-tool route: it can use the listed tools, and only their recorded calls ran. */
 export const OBLIGATION_WORK_QUESTION_TOOLS = replacedClause(replacedClause(OBLIGATION_WORK_QUESTION,
@@ -5235,13 +5244,6 @@ export function createJournalWorker(journal: ReturnType<typeof openPreviewJourna
   /** Turns whose reply this worker sent with a spoken continuity disclosure: the current episode (Rule 110). */
   const episodeSpoken = new Set<string>();
   const summaryFor = (through: number) => liveSummaries(journal.view).filter(item => item.through <= through).at(-1);
-  /** The summary's retained exact facts that no later correction or forget has touched, sourced and redacted: the
-   * one projection both an answer and scheduled work read (Rule 96). */
-  const summaryMemoryItems = (summary: { memoryItems?: SummaryMemoryItem[] }) => (summary.memoryItems ?? [])
-    .filter(item => !journal.view.memory.some(change => change.mode !== 'prefer' && change.source === item.source
-      && (item.quote.includes(change.quote) || change.quote.includes(item.quote))))
-    .map(item => ({ source: item.source, sourceKind: 'operator-stated' as MemorySourceKind,
-      sourceLabel: turnLabel(journal.view.turns.get(item.source)!), quote: clean(redact(item.quote).text, true, item.source) }));
   /** Rule 110: the continuity `turn`'s reply accounts for when its context was compacted through
    * `through`. Every such reply records the account, so what it accounted for stays inspectable; the
    * `spoken` flag decides whether its sentence is also said to the operator.
@@ -5333,6 +5335,16 @@ export function createJournalWorker(journal: ReturnType<typeof openPreviewJourna
     const trigger = journal.view.turns.get(change.trigger)!;
     return `correction:operator/${conversationName(trigger.thread, topicNames(journal.view))}/${dated(trigger)}/#${trigger.update}`;
   };
+  /** Rules 11, 96: the active facts a summary keeps by source. The summary writer keeps each exact factual
+   * clause in memoryItems and tells the model not to repeat them in its prose, so prose alone is not the facts.
+   * One projection serves every packet that grounds on them: a clause a verified correction or forget request
+   * superseded is dropped, each remaining quote is redacted and cleaned, and each names the turn it came from. */
+  const summaryFacts = (summary: Extract<JournalRecord, { kind: 'summary' }>) =>
+    (summary.memoryItems ?? []).filter(item => journal.view.turns.has(item.source)
+      && !journal.view.memory.some(change => change.mode !== 'prefer' && change.source === item.source
+        && (item.quote.includes(change.quote) || change.quote.includes(item.quote))))
+      .map(item => ({ source: item.source, sourceKind: 'operator-stated' as MemorySourceKind,
+        sourceLabel: turnLabel(journal.view.turns.get(item.source)!), quote: clean(redact(item.quote).text, true, item.source) }));
   const age = (turn: Turn) => {
     const at = sentAt(turn), elapsed = at === null ? -1 : ports.now() - at;
     if (elapsed < 0) return 'age unknown';
@@ -6434,7 +6446,7 @@ export function createJournalWorker(journal: ReturnType<typeof openPreviewJourna
       ...(suppliedSources === undefined ? {} : { sources: suppliedSources }),
       ...(reference ? { replyTo: reference } : {}),
       ...(summary ? { historyMode: 'summary-plus-recent', summary: { sourceKind: 'inferred-by-summary' as MemorySourceKind, sourceLabel: summaryLabel(summary), through: summary.through, text: clean(redact(summary.text).text, true, summary.through),
-        ...(summary.memoryItems?.length ? { memoryItems: summaryMemoryItems(summary) } : {}) } }
+        ...(summary.memoryItems?.length ? { memoryItems: summaryFacts(summary) } : {}) } }
         : historySetAsideCount ? { historyMode: 'recent-only' } : { historyMode: 'complete' }),
       ...(journal.view.memory.length ? { memory: journal.view.memory.flatMap((change, index):
         Array<{ sourceKind: MemorySourceKind; mode: string; source: string; sourceLabel: string; trigger: string; reason?: string; replacement?: string }> => {
@@ -9658,9 +9670,14 @@ export function createJournalWorker(journal: ReturnType<typeof openPreviewJourna
       // the replayed work step (cint-L49 obligation:commitment:3, claude-sonnet-5) answered "continue: this turn's context
       // does not include the broader history" both times. Bounded; omitted only when the packet would not fit.
       const latest = summaryFor(Number.MAX_SAFE_INTEGER);
-      // The summary prose leaves its exact facts to memoryItems (the summary instructions say so), so work gets them too.
+      // Plan #547: the summary writer keeps each exact factual clause in memoryItems and is told not to repeat
+      // them in its prose, so prose plus later messages drops every fact the summary covers. Work about what the
+      // operator told you reads the same active, source-linked projection an ordinary answer grounds on, bounded
+      // here so a carried summary cannot cost the rest of this block its room.
+      const facts = latest ? summaryFacts(latest).slice(-OBLIGATION_MEMORY_FACTS)
+        .map(item => ({ ...item, quote: clip(item.quote, OBLIGATION_MEMORY_FACT_CHARS) })) : [];
       const memory = { ...(latest ? { summary: clip(clean(redact(latest.text).text, true, latest.through), OBLIGATION_SUMMARY_CHARS) } : {}),
-        ...(latest?.memoryItems?.length && summaryMemoryItems(latest).length ? { memoryItems: summaryMemoryItems(latest) } : {}),
+        ...(facts.length ? { facts } : {}),
         operatorMessages: journal.view.order.filter(turn => verifiedOperatorTurn(journal.view, turn) && !probeTurn(journal.view, turn)
           && turn.update > (latest?.through ?? -1)).slice(-OBLIGATION_MEMORY_MESSAGES)
           .map(turn => ({ date: dated(turn), text: clip(clean(redact(turn.text).text, true, turn.id), OBLIGATION_MEMORY_MESSAGE_CHARS) })) };
