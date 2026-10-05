@@ -6594,6 +6594,13 @@ export function createJournalWorker(journal: ReturnType<typeof openPreviewJourna
       : Buffer.byteLength(JSON.stringify((JSON.parse(completePacket) as { history: unknown[] }).history));
     const preferComplete = completeHistoryBytes <= PREVIEW_FULL_HISTORY_BYTES;
     let measuredPromptOverflow = false;
+    // A prepared prompt quotes its context whole (the envelope carries it in role:context), so a context that by itself
+    // leaves no room for the system prompt and the reply-review reserve cannot pass the headroom check below. Refusing
+    // it before the prompt is built records the same outcome (the measured-overflow verdict is only read at the
+    // reserve-waived rung, where this room is unbounded): a long conversation tries thousands of such variants per
+    // turn, and building each one made the answer path CPU-bound.
+    const reviewRoom = ports.replyCheck && ports.prepareModel && !reviewReserveWaived ? journal.view.limits.maxBytes
+      - Buffer.byteLength(SUBSCRIPTION_CONVERSATION_SYSTEM_PROMPT) - replyReviewReserveFor(journal.view.limits.maxBytes) : Infinity;
     let preparationUnavailable = false;
     const summaryFirstForPeople = journal.view.people.length > 0 && latestSummary !== undefined
       && (completeTooLarge || Buffer.byteLength(packetFor(before(turn.update), false, [], peopleFor(turn.text, latestSummary.through), [], turn.thread))
@@ -6778,9 +6785,18 @@ export function createJournalWorker(journal: ReturnType<typeof openPreviewJourna
         const variants = ordinaries.flatMap(ordinary => { const bare = withoutOffer(ordinary), base = bare ?? ordinary;
           const cut = yieldSources(base);
           return [ordinary, ...(bare ? [bare] : []), ...cut, ...floorGuide(cut[0] ?? base)]; });
-        for (const context of variants.flatMap(searchVariants)) {
+        // Every memory-search variant of a packet is that packet plus search items, so it is larger: a packet over the
+        // byte cap, or over the review room, rules out its whole family before the families are built.
+        const searchable = variants.filter(ordinary => {
+          const bytes = Buffer.byteLength(ordinary);
+          if (bytes > journal.view.limits.maxBytes) return false;
+          if (bytes <= reviewRoom) return true;
+          promptFit = true; preparationUnavailable = true; return false;
+        });
+        for (const context of searchable.flatMap(searchVariants)) {
         if (Buffer.byteLength(context) <= journal.view.limits.maxBytes) {
           promptFit = true;
+          if (Buffer.byteLength(context) > reviewRoom) { preparationUnavailable = true; continue; }
           try {
             const writer = sessionWriterOf(journal.view, turn);
             const prepared = ports.prepareModel?.({ question, context, id: turn.id, ...(writer ? { writer } : {}) });
