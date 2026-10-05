@@ -119,12 +119,18 @@ it('profiles full turns at 2000 turns with every memory source', async () => {
     // all wording: governingConstraints and capabilities name the bot's own messages ("bot: replies and requested reminders
     // or summaries") and say a sent credential is vaulted, never shown ("credentials vaulted, never shown"). Restoring the
     // four cint-L49 values reproduces a287adaa…4750d2 exactly.
+    // w4-selfdesc pipeline repair 4 re-pin (review round 2 must-fix, commit 22afaa6e): diffed field by field against
+    // the prior packet -- the key set is identical and exactly one field changed, `capability`, 3600 -> 3572 bytes, by
+    // the one removed sentence in the commitments guidance (" You have no external tools."): that guidance no longer
+    // denies the tools a second time, because this packet already states it once in capabilities.externalTools and
+    // governingConstraints["no-tools"]. Restoring just that sentence reproduces 1d20157b…eac6cc0 and bdf3fc8d…1cf32dd9
+    // exactly, so nothing else in the packet moved.
     const withoutLookup = JSON.parse(packetText) as Record<string, unknown>;
     expect(withoutLookup.memoryLookup).toBe('offered');
     delete withoutLookup.memoryLookup;
     expect(createHash('sha256').update(JSON.stringify(withoutLookup)).digest('hex'))
-      .toBe('1d20157b8f7940d7ae26a1f49a9fb074b362492a8c050c8c1c28d717deac6cc0');
-    expect(packetHash).toBe('bdf3fc8d6ea168326722d770a78b3c3623aa313cd2468a1bb5ac35a31cf32dd9');
+      .toBe('8a05c5653e21121e105e86196e583d0dd8302a69a4f0ca98d00178fe0b5e365f');
+    expect(packetHash).toBe('c4e38b84aac2b45e1459951080dc3ed26998db51113f68505c91d9aa9f024c5a');
     process.stdout.write(`recall latency 2000 turns all memory: probe p95=${p95(samples).toFixed(2)} ms packet=${packetHash}\n`);
     const turnSamples: number[] = [];
     const intakeSamples: number[] = [], drainSamples: number[] = [], coherenceSamples: number[] = [];
