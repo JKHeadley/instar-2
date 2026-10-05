@@ -14,14 +14,24 @@ type Ceilings = typeof RESOURCE_CEILINGS;
 const roots: string[] = [];
 afterEach(() => roots.splice(0).forEach(root => rmSync(root, { recursive: true, force: true })));
 const dir = () => { const root = mkdtempSync(join(tmpdir(), 'resource-owner-')); roots.push(root); return root; };
+// The launch process ceiling becomes the kernel limit of the whole user ID (its live census plus this
+// number), so a parallel suite's own churn spends the room a launch under the shipped 32 was given, and
+// the launch's fork is refused: a pid-less spawn. A test that asserts a tight process ceiling sets its
+// own; every other test here asserts membership and cleanup, so its room is roomy and still finite.
 const ceilings = (patch: { launch?: object; aggregate?: object; reserveLaunches?: number } = {}): Ceilings => ({
-  launch: { ...RESOURCE_CEILINGS.launch, ...patch.launch },
+  launch: { ...RESOURCE_CEILINGS.launch, processCount: 256, ...patch.launch },
   aggregate: { ...RESOURCE_CEILINGS.aggregate, ...patch.aggregate },
   reserveLaunches: patch.reserveLaunches ?? RESOURCE_CEILINGS.reserveLaunches, sampleMs: 100 });
 const script = (root: string, name: string, body: string) => { const path = join(root, name); writeFileSync(path, body); return path; };
 const input = (root: string, file: string, args: string[] = [], timeout = 15000) => ({ executable: process.execPath,
   args: [file, ...args], cwd: root, env: { PATH: '/usr/bin:/bin' }, stdin: '', timeout, maxBytes: 65536 });
-const alive = (pid: number) => { try { process.kill(pid, 0); return true; } catch { return false; } };
+// Rule 26: the real state, never a symbol standing for it. A launch whose fork was refused writes
+// `String(undefined)`, and reading that as `NaN` reported a process that never existed as a dead one —
+// a false pass where absence is asserted, and a false failure where the escapee must still be alive.
+const alive = (pid: number) => {
+  if (!Number.isSafeInteger(pid) || pid <= 1) throw Error(`resource owner test: ${pid} is no pid — this launch recorded no forked child`);
+  try { process.kill(pid, 0); return true; } catch { return false; }
+};
 const settle = (ms: number) => new Promise(resolve => setTimeout(resolve, ms));
 let incarnations = 0;
 /** The durable owner's Six allocation over the same root (a restart is a new incarnation). */
@@ -362,7 +372,8 @@ const c = spawn('/bin/sleep', ['20'], { detached: true, stdio: 'ignore' }); c.un
   const survivor = Number(readFileSync(join(shared, 'pids'), 'utf8'));
   try {
     expect(alive(survivor)).toBe(true);
-    expect(open.resources).toMatchObject({ membership: 'unconfined', cleanup: 'unconfined' });
+    // Unconfined means it reclaimed nothing, not merely that it said so: no join reached the escapee.
+    expect(open.resources).toMatchObject({ membership: 'unconfined', cleanup: 'unconfined', leakedDescendants: 0 });
     expect(open.resources.cleanup).not.toBe('verified');
   } finally { try { process.kill(survivor, 'SIGKILL'); } catch { /* ended */ } }
 });
