@@ -921,6 +921,42 @@ export function proposedConceptTerms(value: unknown): string[] | undefined {
   return found.length ? found : undefined;
 }
 
+/** This build's journal generation. It is bumped by exactly ONE whenever a frame kind is added, and it is
+ * the whole of how a reader tells a root written one build ahead (readable, below) from a root further
+ * ahead (refused). Rollback was one-way until this existed: on 2026-10-04 00:03 an older build refused a
+ * root a newer build had used, with `preview journal: orphan effect`, so switching back would have cost
+ * the operator's conversation. */
+export const JOURNAL_GENERATION = 1;
+/** A frame a NEWER build added, declared on the frame itself so a reader one build back needs no table of
+ * the future. `generation` is the writer's JOURNAL_GENERATION when the kind was introduced; `additive`
+ * asserts that a reader which skips this frame still holds a correct, if less complete, projection — the
+ * only claim under which skipping is honest. A new kind that is NOT additive (a stop, a cap, an authority,
+ * anything another frame's meaning depends on) carries no declaration, and an older build refuses the root
+ * rather than serve a projection it believes is whole. */
+export type ForwardDeclaration = { generation: number; additive: true };
+/** Every frame kind this build projects, so a kind absent from it is a FORWARD frame rather than a frame
+ * whose turn is missing. Telling those two apart is the entire rollback window: `project` used to read
+ * "a kind I never heard of" as "an effect whose turn is gone" and refuse the whole root. A kind added to
+ * JournalRecord and not added here fails tests/preview/journal-rollback-window.test.ts; adding it here is
+ * the reminder to bump JOURNAL_GENERATION and give it a ForwardDeclaration. */
+export const KNOWN_FRAME_KINDS: ReadonlySet<string> = new Set(['action-due', 'answer', 'answer-replace',
+  'approval-decision', 'approval-request', 'call-outcome', 'cap-report', 'caps', 'channel-item',
+  'channel-source-cursor', 'channel-source-error', 'coherence', 'expiry', 'format-retry', 'genesis',
+  'held-notice-intent', 'held-notice-sent', 'hold', 'import', 'index-reserve', 'intake', 'intent',
+  'legacy-call', 'legacy-reply', 'limited-intent', 'limited-sent', 'lookup', 'meaning-index',
+  'memory-undecided', 'minimal-outage', 'model-call', 'model-uncertain', 'notice', 'obligation-result',
+  'obligation-start', 'operator-result-intent', 'operator-result-sent', 'operator-review',
+  'operator-review-closed', 'operator-yes', 'reminder-grant', 'reminder-intent', 'reminder-sent',
+  'reply-check', 'reply-jev-reserve', 'reply-part-sent', 'reply-part-start', 'reply-review-reserve',
+  'reply-review-state', 'reply-revision', 'reply-revision-reserve', 'reply-revision-review',
+  'reply-revision-review-reserve', 'requested-reminder-intent', 'requested-reminder-sent', 'reserve',
+  'retract', 'retract-request', 'retract-request-sent', 'retro', 'retro-duty', 'retro-duty-reserve',
+  'retro-rerun', 'retro-rerun-reserve', 'retro-reserve', 'send-outcome', 'send-timing', 'sent',
+  'sentinel', 'session-work', 'status-answer', 'step-check', 'step-check-reserve', 'step-check-start',
+  'step-open', 'stop', 'stop-challenge', 'summary', 'summary-candidate', 'summary-check', 'summary-due',
+  'summary-failed', 'summary-faithfulness', 'summary-faithfulness-reserve', 'summary-integrity-reserve',
+  'summary-reserve', 'summary-review-reserve', 'summary-uncertain', 'tool-turn', 'waiting']);
+
 export type JournalRecord =
   | { kind: 'genesis'; bot: string; chat: string; operator: string; grant: string; configurationDigest: string; expires: number; maxCalls: number; maxReplies: number; maxTurns: number; maxBytes: number; cursor: number; importSource?: string; importCursor?: number;
     /** Rules 8, 92: this root's own open-loop revisit interval, fixed for its life. Absent keeps
@@ -1262,6 +1298,12 @@ export interface Turn { id: string; update: number; text: string; raw: string; a
 export interface JournalView { genesis: Extract<JournalRecord, {kind:'genesis'}>; cursor: number;
   /** Highest durable journal timestamp; a later wall-clock rollback cannot reorder frames. */
   clockFloor: number;
+  /** Rule 2: the forward frames THIS build skipped, named rather than dropped in silence. It is a
+   * per-reader observation of the bytes, not durable state, so it is left out of the snapshot and out of
+   * the projection digest — the build that projects these frames records nothing here. While it is
+   * non-empty the journal refuses to compact, because compaction would replace the frames with a
+   * projection that does not contain them. */
+  forwardFrames: { kind: string; generation: number; at: number }[];
   /** Derived in-memory index; snapshots rebuild it from the recorded turns. */
   turns: Map<string, Turn>; order: Turn[]; heldTurns: Set<Turn>; calls: number; replies: number; stop: string | null;
   /** Current emergency-stop challenges on the independent surface (every one unexpired when the latest was issued). */
@@ -1602,7 +1644,7 @@ export const PREVIEW_JOURNAL_COMPACT_BYTES = 8 * 1024 * 1024;
 const snapshotChunkBytes = 256 * 1024;
 type SnapshotStart = { kind: 'snapshot-start'; version: 1; chunks: number; bytes: number; digest: string };
 type SnapshotChunk = { kind: 'snapshot-chunk'; data: string };
-type Snapshot = { view: Omit<JournalView, 'turns' | 'order' | 'heldTurns' | 'channelItems' | 'summaryReservations' | 'summaryFailures' | 'failureClasses' | 'providerStates' | 'closed' | 'capReports' | 'stepChecks' | 'channelSources' | 'channelSourceErrors' | 'summaryRequired' | 'summaryCandidates' | 'summaryChecks' | 'summaryFaithfulness' | 'summaryReviews' | 'callOutcomeCounts' | 'questionsReviewed' | 'tokenCurrent' | 'mentionedDates' | 'reminders'> & {
+type Snapshot = { view: Omit<JournalView, 'turns' | 'order' | 'heldTurns' | 'forwardFrames' | 'channelItems' | 'summaryReservations' | 'summaryFailures' | 'failureClasses' | 'providerStates' | 'closed' | 'capReports' | 'stepChecks' | 'channelSources' | 'channelSourceErrors' | 'summaryRequired' | 'summaryCandidates' | 'summaryChecks' | 'summaryFaithfulness' | 'summaryReviews' | 'callOutcomeCounts' | 'questionsReviewed' | 'tokenCurrent' | 'mentionedDates' | 'reminders'> & {
   turns: [string, Turn][]; order: string[]; channelItems: [string, ChannelItem][]; summaryReservations: [number, number][];
   summaryFailures: [number, number][]; failureClasses: [ModelFailureClass, number][];
   providerStates: [string, number][]; closed: [number, CommitmentClosure][]; capReports: string[];
@@ -1613,7 +1655,7 @@ type Snapshot = { view: Omit<JournalView, 'turns' | 'order' | 'heldTurns' | 'cha
   retained: JournalRecord[] };
 
 function snapshotOf(view: JournalView, retained: JournalRecord[]): Snapshot {
-  const { heldTurns: _heldTurns, ...saved } = view;
+  const { heldTurns: _heldTurns, forwardFrames: _forwardFrames, ...saved } = view;
   return { view: { ...saved, turns: [...view.turns], order: view.order.map(turn => turn.id), channelItems: [...view.channelItems],
     summaryReservations: [...view.summaryReservations], summaryFailures: [...view.summaryFailures],
     failureClasses: [...view.failureClasses], providerStates: [...view.providerStates], closed: [...view.closed],
@@ -1639,7 +1681,7 @@ function restoreSnapshot(snapshot: Snapshot, genesis: JournalView['genesis']): J
     throw Error('preview journal: snapshot turn index differs');
   const legacyFloor = snapshot.retained.reduce((max, row) => 'at' in row ? Math.max(max, row.at) : max, 0);
   const clockFloor = saved.clockFloor ?? saved.turns.reduce((max, [, turn]) => Math.max(max, turn.at), legacyFloor);
-  const view: JournalView = { ...saved, personAttributes: saved.personAttributes ?? [], clockFloor, expires: saved.expires ?? genesis.expires, expiryAuthority: saved.expiryAuthority ?? null, operatorRequests: saved.operatorRequests ?? [],
+  const view: JournalView = { ...saved, forwardFrames: [], personAttributes: saved.personAttributes ?? [], clockFloor, expires: saved.expires ?? genesis.expires, expiryAuthority: saved.expiryAuthority ?? null, operatorRequests: saved.operatorRequests ?? [],
     tokenTotals: saved.tokenTotals ?? emptyTokenTotals(), tokenCalls: saved.tokenCalls ?? [],
     replyCheckPaths: { ...saved.replyCheckPaths, 'operator-echo': saved.replyCheckPaths?.['operator-echo'] ?? 0 },
     changeHistory: saved.changeHistory ?? [], undos: saved.undos ?? [],
@@ -1665,6 +1707,11 @@ function restoreSnapshot(snapshot: Snapshot, genesis: JournalView['genesis']): J
     summaryGrants: (saved.summaryGrants ?? []).map(grant => ({ id: grant.id, source: grant.source })), stopChallenges: saved.stopChallenges ?? [], waiting: saved.waiting ?? [],
     sendOutcomes: saved.sendOutcomes ?? [], speakers: saved.speakers ?? { agent: 0, infrastructure: 0 }, modelCalls: saved.modelCalls ?? emptyModelCalls(), retroPasses: saved.retroPasses ?? [],
     indexOffered: saved.indexOffered ?? [], indexConcepts: saved.indexConcepts ?? [], indexOpen: saved.indexOpen ?? null, indexUnknown: saved.indexUnknown ?? [] };
+  // Rule 42: a snapshot is the same history in another shape, so a kind this build does not project is
+  // admitted on exactly the test a raw frame meets — a newer build that compacted before the rollback must
+  // not turn a refusal into a read. Known kinds are already in the saved projection and are not replayed;
+  // only the per-reader observation `forwardFrames` is rebuilt, which also keeps compaction refused.
+  for (const row of snapshot.retained) if (!KNOWN_FRAME_KINDS.has(row.kind)) admitForwardFrame(view, row);
   verifyPendingEvidence(snapshot.retained, view);
   // Older snapshots retained the exact notice intents but did not project them
   // into awayEvents. Recover their times so the first upgraded send keeps its fence.
@@ -3167,8 +3214,36 @@ function projectToolTurn(view: JournalView, row: Extract<JournalRecord, { kind: 
   }
 }
 const emptySessionStats = () => ({ resumed: 0, fresh: 0, changed: 0, lost: 0, bounded: 0, ended: 0 });
+/** A frame kind this build does not project. Either a newer build added it — the rollback case — or the
+ * bytes are something this build must not pretend to have read. The two are told apart by the frame's own
+ * ForwardDeclaration, never by guessing, and the clock floor has already advanced so a skipped frame still
+ * fences a later append (both builds advance it the same way, so their projections stay comparable). */
+function admitForwardFrame(view: JournalView, row: JournalRecord): void {
+  const declared = (row as { forward?: unknown }).forward;
+  // An undeclared kind may be load-bearing — a stop, a cap, an authority, a frame another frame's meaning
+  // depends on — and skipping it would leave this build serving a projection it believes is whole. It stays
+  // a refusal, now named for what it actually is instead of misreported as an orphan effect.
+  if (typeof declared !== 'object' || declared === null) throw Error(`preview journal: unknown frame kind ${JSON.stringify(row.kind)}`);
+  const forward = declared as Partial<ForwardDeclaration>;
+  if (forward.additive !== true || !Number.isSafeInteger(forward.generation) || (forward.generation ?? 0) <= 0)
+    throw Error(`preview journal: unknown frame kind ${JSON.stringify(row.kind)}`);
+  const generation = forward.generation!;
+  // A kind this build does not have, declaring a generation this build has already reached, contradicts
+  // itself: the declaration is wrong or the bytes are not a newer build's. Refused, not skipped.
+  if (generation <= JOURNAL_GENERATION)
+    throw Error(`preview journal: frame kind ${JSON.stringify(row.kind)} claims generation ${generation}, which this build is already at`);
+  // The window is ONE build. Two generations ahead, this build cannot honestly claim its projection is
+  // merely less complete, so the root is refused whole rather than half-read — loudly, with the reason.
+  if (generation > JOURNAL_GENERATION + 1)
+    throw Error(`preview journal: root generation ${generation} is more than one build ahead of ${JOURNAL_GENERATION}`);
+  view.forwardFrames.push({ kind: row.kind, generation, at: 'at' in row ? row.at : 0 });
+}
 function project(view: JournalView, row: JournalRecord, system?: SystemCheck, admission: 'new' | 'replay' = 'new'): void {
   if ('at' in row) view.clockFloor = Math.max(view.clockFloor, row.at);
+  // Before any field is read: a kind this build does not know is skipped or refused as a whole, so no
+  // generic read (`'state' in row`, `'failureClass' in row`) can fold a newer build's frame into this
+  // build's counts and silently move the projection digest the two builds compare.
+  if (!KNOWN_FRAME_KINDS.has(row.kind)) { admitForwardFrame(view, row); return; }
   if (row.kind === 'hold') {
     for (let index = view.awayEvents.length - 1; index >= 0; index--) {
       const event = view.awayEvents[index]!;
@@ -4378,7 +4453,7 @@ export function openPreviewJournal(path: string, key: Uint8Array, initial?: Extr
       const { row } = decoded;
       if (!view) {
         if (row.kind !== 'genesis') throw Error('preview journal: genesis missing');
-        view = { genesis: row, cursor: row.cursor, clockFloor: 0, turns: new Map(), order: [], heldTurns: new Set(), awayEvents: [], channelItems: new Map(), channelSources: new Map(), channelSourceErrors: new Map(), calls: 0, replies: 0, stop: null, stopChallenges: [], waiting: [], tokenTotals: emptyTokenTotals(), tokenCalls: [], tokenCurrent: new Map(), limits: limitsOf(row), capAuthority: null, capRaisedAt: null, expires: row.expires, expiryAuthority: null, operatorRequests: [], capReports: new Set(), stepCheckStarted: false, stepCheckCleanup: false, stepChecks: new Map(), indexOffered: [], indexConcepts: [], indexOpen: null, indexUnknown: [], summaries: [], summaryReservations: new Map(), summaryRequired: new Set(), summaryCandidates: new Map(), summaryChecks: new Map(), summaryFaithfulness: new Map(), summaryReviews: new Set(), summaryCheckCounts: { pass: 0, violation: 0, unsure: 0, unavailable: 0 }, lastSummaryCheck: null, summaryFailures: new Map(), lastSummaryFailure: null, summaryOverCap: [], summaryOverCapFrontiers: [], summarySpanFailures: [], summaryFormatFailures: [], lastPrompt: null, failureClasses: new Map(), providerStates: new Map(), callOutcomes: [], callOutcomeCounts: new Map(), sourceStop: null, imported: false, operatorEvents: [], people: [], personAttributes: [], personMerges: [], commitments: [], closed: new Map(), memory: [], dated: [], conflicts: [], directives: [], blockers: [], commitmentRefusals: 0, obligationWork: {}, rejectedObligations: 0, changeHistory: [], undos: [], mentionedDates: new Set(), reminders: new Map(), reminderGrant: null, reminderCancels: [], summaryGrants: [], questions: [], questionsReviewed: new Set(), corrections: [], jevChecks: 0, replyCheckCounts: { pass: 0, violation: 0, unsure: 0, unavailable: 0 }, replyCheckPaths: { jev: 0, subscription: 0, holding: 0, 'operator-echo': 0 }, lastReplyCheck: null, sendOutcomes: [], speakers: { agent: 0, infrastructure: 0 }, modelCalls: emptyModelCalls(), retroPasses: [] };
+        view = { genesis: row, cursor: row.cursor, clockFloor: 0, forwardFrames: [], turns: new Map(), order: [], heldTurns: new Set(), awayEvents: [], channelItems: new Map(), channelSources: new Map(), channelSourceErrors: new Map(), calls: 0, replies: 0, stop: null, stopChallenges: [], waiting: [], tokenTotals: emptyTokenTotals(), tokenCalls: [], tokenCurrent: new Map(), limits: limitsOf(row), capAuthority: null, capRaisedAt: null, expires: row.expires, expiryAuthority: null, operatorRequests: [], capReports: new Set(), stepCheckStarted: false, stepCheckCleanup: false, stepChecks: new Map(), indexOffered: [], indexConcepts: [], indexOpen: null, indexUnknown: [], summaries: [], summaryReservations: new Map(), summaryRequired: new Set(), summaryCandidates: new Map(), summaryChecks: new Map(), summaryFaithfulness: new Map(), summaryReviews: new Set(), summaryCheckCounts: { pass: 0, violation: 0, unsure: 0, unavailable: 0 }, lastSummaryCheck: null, summaryFailures: new Map(), lastSummaryFailure: null, summaryOverCap: [], summaryOverCapFrontiers: [], summarySpanFailures: [], summaryFormatFailures: [], lastPrompt: null, failureClasses: new Map(), providerStates: new Map(), callOutcomes: [], callOutcomeCounts: new Map(), sourceStop: null, imported: false, operatorEvents: [], people: [], personAttributes: [], personMerges: [], commitments: [], closed: new Map(), memory: [], dated: [], conflicts: [], directives: [], blockers: [], commitmentRefusals: 0, obligationWork: {}, rejectedObligations: 0, changeHistory: [], undos: [], mentionedDates: new Set(), reminders: new Map(), reminderGrant: null, reminderCancels: [], summaryGrants: [], questions: [], questionsReviewed: new Set(), corrections: [], jevChecks: 0, replyCheckCounts: { pass: 0, violation: 0, unsure: 0, unavailable: 0 }, replyCheckPaths: { jev: 0, subscription: 0, holding: 0, 'operator-echo': 0 }, lastReplyCheck: null, sendOutcomes: [], speakers: { agent: 0, infrastructure: 0 }, modelCalls: emptyModelCalls(), retroPasses: [] };
         snapshotAllowed = true;
       } else if (row.kind === 'snapshot-start') {
         if (!snapshotAllowed || pendingSnapshot || row.version !== 1 || !Number.isSafeInteger(row.bytes) || row.bytes <= 0
@@ -4478,13 +4553,22 @@ export function openPreviewJournal(path: string, key: Uint8Array, initial?: Extr
       size = writeFrame(fd, row, key, size); fsyncSync(fd);
       if (row.kind === 'genesis') {
         if (view) throw Error('preview journal: duplicate genesis');
-        view = { genesis: row, cursor: row.cursor, clockFloor: 0, turns: new Map(), order: [], heldTurns: new Set(), awayEvents: [], channelItems: new Map(), channelSources: new Map(), channelSourceErrors: new Map(), calls: 0, replies: 0, stop: null, stopChallenges: [], waiting: [], tokenTotals: emptyTokenTotals(), tokenCalls: [], tokenCurrent: new Map(), limits: limitsOf(row), capAuthority: null, capRaisedAt: null, expires: row.expires, expiryAuthority: null, operatorRequests: [], capReports: new Set(), stepCheckStarted: false, stepCheckCleanup: false, stepChecks: new Map(), indexOffered: [], indexConcepts: [], indexOpen: null, indexUnknown: [], summaries: [], summaryReservations: new Map(), summaryRequired: new Set(), summaryCandidates: new Map(), summaryChecks: new Map(), summaryFaithfulness: new Map(), summaryReviews: new Set(), summaryCheckCounts: { pass: 0, violation: 0, unsure: 0, unavailable: 0 }, lastSummaryCheck: null, summaryFailures: new Map(), lastSummaryFailure: null, summaryOverCap: [], summaryOverCapFrontiers: [], summarySpanFailures: [], summaryFormatFailures: [], lastPrompt: null, failureClasses: new Map(), providerStates: new Map(), callOutcomes: [], callOutcomeCounts: new Map(), sourceStop: null, imported: false, operatorEvents: [], people: [], personAttributes: [], personMerges: [], commitments: [], closed: new Map(), memory: [], dated: [], conflicts: [], directives: [], blockers: [], commitmentRefusals: 0, obligationWork: {}, rejectedObligations: 0, changeHistory: [], undos: [], mentionedDates: new Set(), reminders: new Map(), reminderGrant: null, reminderCancels: [], summaryGrants: [], questions: [], questionsReviewed: new Set(), corrections: [], jevChecks: 0, replyCheckCounts: { pass: 0, violation: 0, unsure: 0, unavailable: 0 }, replyCheckPaths: { jev: 0, subscription: 0, holding: 0, 'operator-echo': 0 }, lastReplyCheck: null, sendOutcomes: [], speakers: { agent: 0, infrastructure: 0 }, modelCalls: emptyModelCalls(), retroPasses: [] };
+        view = { genesis: row, cursor: row.cursor, clockFloor: 0, forwardFrames: [], turns: new Map(), order: [], heldTurns: new Set(), awayEvents: [], channelItems: new Map(), channelSources: new Map(), channelSourceErrors: new Map(), calls: 0, replies: 0, stop: null, stopChallenges: [], waiting: [], tokenTotals: emptyTokenTotals(), tokenCalls: [], tokenCurrent: new Map(), limits: limitsOf(row), capAuthority: null, capRaisedAt: null, expires: row.expires, expiryAuthority: null, operatorRequests: [], capReports: new Set(), stepCheckStarted: false, stepCheckCleanup: false, stepChecks: new Map(), indexOffered: [], indexConcepts: [], indexOpen: null, indexUnknown: [], summaries: [], summaryReservations: new Map(), summaryRequired: new Set(), summaryCandidates: new Map(), summaryChecks: new Map(), summaryFaithfulness: new Map(), summaryReviews: new Set(), summaryCheckCounts: { pass: 0, violation: 0, unsure: 0, unavailable: 0 }, lastSummaryCheck: null, summaryFailures: new Map(), lastSummaryFailure: null, summaryOverCap: [], summaryOverCapFrontiers: [], summarySpanFailures: [], summaryFormatFailures: [], lastPrompt: null, failureClasses: new Map(), providerStates: new Map(), callOutcomes: [], callOutcomeCounts: new Map(), sourceStop: null, imported: false, operatorEvents: [], people: [], personAttributes: [], personMerges: [], commitments: [], closed: new Map(), memory: [], dated: [], conflicts: [], directives: [], blockers: [], commitmentRefusals: 0, obligationWork: {}, rejectedObligations: 0, changeHistory: [], undos: [], mentionedDates: new Set(), reminders: new Map(), reminderGrant: null, reminderCancels: [], summaryGrants: [], questions: [], questionsReviewed: new Set(), corrections: [], jevChecks: 0, replyCheckCounts: { pass: 0, violation: 0, unsure: 0, unavailable: 0 }, replyCheckPaths: { jev: 0, subscription: 0, holding: 0, 'operator-echo': 0 }, lastReplyCheck: null, sendOutcomes: [], speakers: { agent: 0, infrastructure: 0 }, modelCalls: emptyModelCalls(), retroPasses: [] };
       } else project(view!, row, systemCheck);
       boundary?.(`after:${row.kind}`);
-      if (row.kind !== 'genesis' && size > Math.max(compactBytes, snapshotBase * 2)) compact();
+      if (row.kind !== 'genesis' && compactable() && size > Math.max(compactBytes, snapshotBase * 2)) compact();
     };
+    /** Rule 2: compaction replaces the frames with THIS build's projection of them, and a forward frame
+     * this build skipped is not in that projection — so compacting would destroy a newer build's record
+     * for good, even though the bytes survive as retained evidence (restoring a snapshot never re-projects
+     * retained rows). The journal keeps reading, keeps answering and keeps appending; only the rewrite is
+     * refused, and `view.forwardFrames` says why. */
+    const compactable = () => view === undefined || view.forwardFrames.length === 0;
     function compact(): void {
       if (readOnly || closed || !view) throw Error('preview journal: compaction refused');
+      // Enforced here, not only at the two automatic callers: `compact` is returned to every holder of the
+      // journal, and an explicit call must not destroy a forward frame the automatic path preserves.
+      if (!compactable()) throw Error('preview journal: compaction refused while a forward frame is present');
       const temp = `${path}.compacting`;
       let tempFd: number | undefined;
       try {
@@ -4562,7 +4646,7 @@ export function openPreviewJournal(path: string, key: Uint8Array, initial?: Extr
         throw Error(`preview journal: revisit interval outside ${String(LOOP_REVISIT_MIN_MS)}..${String(LOOP_REVISIT_MAX_MS)} ms`);
       append(initial);
     }
-    if (!readOnly && size > Math.max(compactBytes, snapshotBase * 2)) compact();
+    if (!readOnly && compactable() && size > Math.max(compactBytes, snapshotBase * 2)) compact();
     return { get view() { return view!; }, get size() { return size; }, get compacted() { return snapshotBase > 0; }, readOnly, append, compact, signOutbound, verifyOutbound, systemWriter,
       close: () => { if (!closed) { closed = true; closeSync(fd); } } };
   } catch (error) { if (!closed) closeSync(fd); throw error; }
