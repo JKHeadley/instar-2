@@ -3153,7 +3153,33 @@ Rules 4, 14, 15, 52, 53, 77, 79, 80, 82, 86, 87, 88, 95 and 106 on the live runn
   group shared with the page's user) and refuses an outbox others can enter.
   Rule 81's eleven floors are checked on any tree by `node scripts/check-dashboard-floors.mjs`
   (one JSON object; exit 0 only when every floor holds, every floor's negative control is caught,
-  and nothing shows without the passkey); live-proof check Q81 runs it on the deployed tree.
+  and nothing shows without the passkey or, on the read-only page below, the PIN session);
+  live-proof check Q81 runs it on the deployed tree.
+- **The read-only operator dashboard (Rules 79, 81; plan #502).** Where no approval page is
+  installed (this deployment's approvals are the GitHub review and the chat, plan #91), the runner
+  serves the same dashboard itself, READ-ONLY: `run --dashboard-listen HOST:PORT
+  --dashboard-pin-check URL` (both or neither; off when absent). The views are the same module
+  and the same snapshot as above (`scripts/operator-dashboard.mjs`, rebuilt at most every 15
+  seconds from the journal and the chat status answer, kept in the runner's memory, never
+  written): status, the requests waiting with their existing links (the GitHub review page, or
+  the chat), recent messages, allowance and spend, and the stop, which says to send `/stop` in the
+  chat and tap Approve. It has no approval port: no approve, decline, stop or passkey route
+  exists, it sets no `approvalSurface`, and raises and stops keep their adopted routes; so it
+  changes no safeguard. Its sign-in is the operator's EXISTING dashboard PIN, checked by the
+  server that already holds it: `URL` is a loopback `http://127.0.0.1` endpoint that answers 200
+  for the PIN (an Instar 1.x host's `POST /dashboard/unlock`); the answer's body, which carries
+  that server's token, is never read, and the PIN never leaves the machine. Nothing from the agent
+  shows before sign-in (every view answers 401 with the sign-in page). A session is a random value
+  held hashed in the runner's memory for 30 minutes (at most 64), as an HttpOnly, SameSite=Strict
+  cookie on `/dashboard`; a runner restart signs everyone out. Five wrong PINs in five minutes
+  pause sign-in (the 1.x unlock keeps its own per-address limit too, and every check reaches it
+  from loopback). `HOST` is `127.0.0.1` or this machine's Tailscale address (100.64.0.0/10), so
+  there is no new public ingress ("nothing outward by default"); the operator's phone reaches it
+  over his own tailnet, which encrypts the traffic. A wildcard, LAN or public address, or a PIN
+  check off this machine, refuses the launch. The log line `preview: read-only operator dashboard
+  at http://HOST:PORT/dashboard` says where it is; a taken port is reported and never stops the
+  chat. To open it from a phone: turn Tailscale on, open `http://MACHINE.TAILNET.ts.net:PORT/dashboard`
+  (or the 100.x address), type the dashboard PIN, and reload to see newer details.
 - **Operator actions by explicit yes (Rules 28, 79, 82, 98; plan #91; `operator-yes.ts`).** The
   two declared operator actions, `raise-caps` and `renew-expiry`, can be requested in chat and
   completed by the verified operator's explicit yes, with no setup. The worker port is
