@@ -26,7 +26,7 @@ Decision: cint-L51-r201100-lint | npm run lint cannot pass on this host: R105 re
 
 Deferral: generated/register.json:1 | not-a-deferral=the register's generated outputs are regenerated in this change, not deferred
 
-Subject (11 paths): generated/capabilities.json, generated/capabilities.md, generated/coverage.md, generated/glossary.md, generated/register.json, generated/rules.md, generated/source.json, scripts/production-boot-io.mjs, scripts/resource-owner.mjs, src/rungraph/rungraph.declarations.json, tests/integration/resource-owner.test.ts
+Subject (12 paths): docs/defects/rule-60-61-funnel-fixture-unregistered.md, generated/capabilities.json, generated/capabilities.md, generated/coverage.md, generated/glossary.md, generated/register.json, generated/rules.md, generated/source.json, scripts/production-boot-io.mjs, scripts/resource-owner.mjs, src/rungraph/rungraph.declarations.json, tests/integration/resource-owner.test.ts
 
 ## Closing block
 

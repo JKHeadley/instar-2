@@ -46,6 +46,50 @@ activation changes a subject the recorded grant does not cover`. That is a tools
 defect in another unit's subject, reproduced identically on a clean `origin/cint-L45` worktree, so
 it is not this record's repair either.
 
+## Two causes of the Linux failures, measured (2026-10-04, cint-L51 repair 201100)
+
+"the host kernel answers differently" above was the right shape and the wrong level of detail. Two
+distinct causes stack on a host whose `/bin/sh` is dash (Debian, Ubuntu, WSL). The first is repaired;
+the second is recorded here because repairing it changes what the funnel's process limit is a limit
+*of*, and that cannot be verified on darwin from the Mama PC.
+
+**Cause 1 — the shim's shell had no `-u` (REPAIRED, commit c91a22d5).** `scripts/limit-exec.sh` lowers
+`RLIMIT_NPROC` with `ulimit -u`, and dash's `ulimit` builtin does not carry that option, so the shim's
+own `exit 125` preceded every `exec`. Measured:
+
+```
+$ /bin/sh scripts/limit-exec.sh REQUEST 64 5 1 "PWD SHLVL OLDPWD" "" /bin/echo launched
+scripts/limit-exec.sh: 4: ulimit: Illegal option -u      # exit 125
+$ /bin/bash scripts/limit-exec.sh REQUEST 64 5 1 "PWD SHLVL OLDPWD" "" /bin/echo launched
+launched                                                  # exit 0
+```
+
+Not a kernel difference at all: Linux carries `RLIMIT_NPROC`, the shell lacked the option. So no launch
+of this host ever started, which is why the failures reached far past this file — the preview launcher's
+authenticated `getMe` settled as `launch-refused` and `preview: bot identity refused` aborted it, failing
+34 cases across 10 preview files on a line of launcher stderr that names an unrelated P-08 warning. The
+funnel now resolves a shell whose `ulimit` carries `-u` (`limitShell()`, `/bin/sh` first, so darwin is
+unchanged); with no capable shell it keeps `/bin/sh` and the shim refuses as before. The limit is never
+skipped to let a launch through. This file went from 22 failed of 32 to 21 failed of 33.
+
+**Cause 2 — `RLIMIT_NPROC` counts threads on Linux, and the limit is computed from processes (OPEN).**
+With the shim now reaching its `exec`, the transport child starts and is killed immediately:
+
+```
+DIAGIO status=null signal=SIGABRT out=""      # scripts/production-boot-io.mjs invoke(), getMe
+```
+
+`transportProcessLimit()` (scripts/production-boot-io.mjs) counts the user's **processes**
+(`/bin/ps -U <uid> -o pid=`) and adds `TRANSPORT_LIMITS.processCount` (4). On darwin `RLIMIT_NPROC` is a
+process count, so that is the right subject. On Linux it bounds the user's **tasks** — every thread of
+every process of that uid — so the computed ceiling is far below the current task count, and `node`
+aborts before its first instruction. The repair is to count the limit's real subject per platform (on
+Linux, the uid's task count, for example by summing `/proc/<pid>/status:Threads` or reading
+`nproc`-equivalent task accounting) rather than to raise the headroom by a guess or to pass `null` — a
+`null` limit drops rule 60's per-user arm entirely, which the constitution's purpose clause refuses when
+the checkpoint can still enforce it. Until that lands, this host cannot run a launch of the preview
+launcher, so the P-08 cluster above stays red here and the funnel's proof stays on the Studio.
+
 ## Scope: this holder is ONE arm of each rule, not the whole of them
 
 Recorded because the register cannot say it. Rules 60 and 61 are cross-cutting: the design assigns
