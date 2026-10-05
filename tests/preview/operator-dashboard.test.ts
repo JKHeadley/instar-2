@@ -3,6 +3,8 @@
 // operator's passkey. Inputs are recorded live shapes (tests/fixtures/dashboard-recorded-shapes.json, observer #106).
 import { afterEach, expect, it } from 'vitest';
 import { chmodSync, lstatSync, mkdirSync, mkdtempSync, readFileSync, realpathSync, rmSync, symlinkSync, writeFileSync } from 'node:fs';
+import { createServer } from 'node:http';
+import { connect } from 'node:net';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { createJournalWorker, limitedAnswerText, openPreviewJournal } from './journal-test-worker.js';
@@ -11,9 +13,11 @@ import { dashboardSnapshot } from './operator-dashboard.js';
 import { SHARED_ACCESS_NOTE } from '../../src/operator/explicit-yes.js';
 import { statusAnswer, turnsToday } from './status-command.js';
 // @ts-expect-error The operator-run page is JavaScript.
-import { checkSnapshot, DASHBOARD_BOUNDS, DASHBOARD_FILE, DASHBOARD_VIEWS, DETAIL_PATH, readSnapshot, renderDashboard } from '../../scripts/operator-dashboard.mjs';
+import { checkSnapshot, DASHBOARD_BOUNDS, DASHBOARD_FILE, DASHBOARD_STYLE, DASHBOARD_VIEWS, DETAIL_PATH, readSnapshot, renderDashboard, renderPinSignIn, snapshotState } from '../../scripts/operator-dashboard.mjs';
 // @ts-expect-error The Q81 floor check is JavaScript.
-import { FLOORS, runDashboardChecks } from '../../scripts/check-dashboard-floors.mjs';
+import { floorVerdicts, FLOORS, runDashboardChecks } from '../../scripts/check-dashboard-floors.mjs';
+// @ts-expect-error The runner's read-only page is JavaScript.
+import { checkListen, createReadOnlyDashboard, pinCheckAt, serveReadOnly } from '../../scripts/operator-dashboard-readonly.mjs';
 // @ts-expect-error The runner client is JavaScript.
 import { createApprovalSurfaceClient } from './approval-surface-client.mjs';
 
@@ -271,5 +275,124 @@ it('P11-NF-52 Q81: all eleven floors hold on this tree, each floor\'s negative c
   expect(Object.values(report.controls)).toEqual(Array(11).fill('detected'));
   for (const [id, item] of Object.entries(report.exposure as Record<string, { pass: boolean }>)) expect(item.pass, id).toBe(true);
   expect(report.population.ok).toBe(true);
+  // Plan #502: the runner's read-only page holds the same eleven floors over the same states behind its PIN sign-in.
+  expect(Object.keys(report.readOnly.floors)).toEqual(Object.keys(FLOORS));
+  for (const [id, floor] of Object.entries(report.readOnly.floors as Record<string, { pass: boolean; detail: string }>)) expect(floor.pass, `read-only ${id}: ${floor.detail}`).toBe(true);
+  expect(report.readOnly.population.ok).toBe(true);
+  expect(Object.keys(report.exposure).filter(id => id.startsWith('readOnly')).length).toBe(11);
   expect(report.pass).toBe(true);
 }, 60000);
+
+it('F5: a sign-in page may hold only the labeled PIN field; an unlabeled or authored field turns it red', () => {
+  const page = (field: string) => `<!doctype html><html><head><meta name="viewport" content="width=device-width, initial-scale=1"><style>${DASHBOARD_STYLE}</style></head><body><main class="panel"><h1>Sign in</h1><p class="purpose">Your PIN confirms it is you before anything shows.</p>${field}</main></body></html>`;
+  const f5 = (html: string) => floorVerdicts({ pages: [{ state: 'signed-out', path: '/dashboard', status: 401, html, signIn: true }],
+    fetch: () => 200, states: {}, script: '' }).verdicts.F5;
+  expect(f5(renderPinSignIn(null)).pass).toBe(true);
+  expect(f5(page('<label class="label" for="pin">Your dashboard PIN</label><input class="field" id="pin" type="password">')).pass).toBe(true);
+  expect(f5(page('<input class="field" id="pin" type="password">')).detail).toContain('an unlabeled sign-in field');
+  expect(f5(page('<label class="label" for="note">Note</label><input class="field" id="note" type="text">')).detail).toContain('a field the operator would have to author');
+  expect(f5(page('<label class="label" for="pin">PIN</label><input class="field" id="pin" type="password"><textarea></textarea>')).pass).toBe(false);
+  // A signed-in page never holds a field, labeled PIN or not.
+  expect(floorVerdicts({ pages: [{ state: 'full', path: '/dashboard', status: 200, html: page('<label class="label" for="pin">PIN</label><input class="field" id="pin" type="password">') }],
+    fetch: () => 200, states: {}, script: '' }).verdicts.F5.pass).toBe(false);
+});
+
+it('plan #502: the read-only page over real HTTP shows nothing before the existing PIN signs in, and has no approval route', async () => {
+  // A stand-in for the operator's existing sign-in (an Instar 1.x unlock): 200 with a token for the PIN, 403 otherwise.
+  const unlocks: string[] = [];
+  const existing = createServer((request, response) => { let body = ''; request.on('data', chunk => { body += chunk; });
+    request.on('end', () => { const pin = JSON.parse(body).pin as string; unlocks.push(pin);
+      response.writeHead(pin === '246810' ? 200 : 403, { 'content-type': 'application/json' });
+      response.end(JSON.stringify(pin === '246810' ? { token: 'api-token-never-shown' } : { error: 'Incorrect PIN' })); }); });
+  await new Promise<void>(done => existing.listen(0, '127.0.0.1', done));
+  cleanup.push(() => existing.close());
+  const { journal } = recordedJournal();
+  const view = journal.view, statusText = statusAnswer(view, at, zone, [], []);
+  const text = JSON.stringify(dashboardSnapshot(view, { now: at, zone, statusText, bot: '@example_agent_bot', stopped: false }));
+  const dash = createReadOnlyDashboard({ state: () => snapshotState(text, at), now: () => at,
+    checkPin: pinCheckAt(`http://127.0.0.1:${String((existing.address() as { port: number }).port)}/dashboard/unlock`) });
+  const server = serveReadOnly(dash, '127.0.0.1:0');
+  cleanup.push(() => server.close());
+  await new Promise(done => server.once('listening', done));
+  const base = `http://127.0.0.1:${String((server.address() as { port: number }).port)}`;
+  const form = (pin: string) => ({ method: 'POST', redirect: 'manual' as const, headers: { 'content-type': 'application/x-www-form-urlencoded' }, body: `pin=${pin}` });
+  for (const path of ['/dashboard', '/dashboard/status', '/dashboard/messages', '/dashboard/waiting']) {
+    const out = await fetch(`${base}${path}`), body = await out.text();
+    expect([path, out.status]).toEqual([path, 401]);
+    expect(body).toContain('Your dashboard PIN');
+    expect(body).not.toContain('Turns today');
+  }
+  const wrong = await fetch(`${base}/dashboard/sign-in`, form('135791'));
+  expect([wrong.status, wrong.headers.get('set-cookie')]).toEqual([401, null]);
+  expect(await wrong.text()).toContain('That PIN was not accepted.');
+  const right = await fetch(`${base}/dashboard/sign-in`, form('246810'));
+  const cookie = right.headers.get('set-cookie')!;
+  expect(right.status).toBe(303);
+  expect(cookie).toMatch(/^instar_dashboard_ro=[a-f0-9]{64}; Path=\/dashboard; HttpOnly; SameSite=Strict; Max-Age=1800$/u);
+  expect(await right.text()).not.toContain('api-token-never-shown');
+  expect(unlocks).toEqual(['135791', '246810']);
+  const status = await fetch(`${base}/dashboard/status`, { headers: { cookie: cookie.split(';')[0]! } });
+  expect(status.status).toBe(200);
+  expect(status.headers.get('content-security-policy')).toContain("form-action 'self'");
+  const html = await status.text();
+  expect(html).toContain('Turns today:');
+  expect(html).not.toContain('<script');
+  for (const [method, path] of [['POST', '/dashboard/begin'], ['POST', '/dashboard/act'], ['POST', '/act'], ['GET', '/']] as const)
+    expect((await fetch(`${base}${path}`, { method, headers: { cookie: cookie.split(';')[0]! }, ...(method === 'POST' ? { body: '{}' } : {}) })).status).toBe(404);
+  // An existing sign-in that is down opens nothing.
+  existing.close();
+  const down = await fetch(`${base}/dashboard/sign-in`, form('246810'));
+  expect([down.status, down.headers.get('set-cookie')]).toEqual([503, null]);
+});
+
+it('plan #502 MF1: overlapping PIN checks are bounded before the verifier is awaited, and the slots return when they settle (Rule 60)', async () => {
+  // A slow verifier that holds every check open until released, counting how many run at once.
+  let running = 0, peak = 0, calls = 0, clock = at;
+  const held: ((ok: boolean) => void)[] = [];
+  const dash = createReadOnlyDashboard({ state: () => ({ kind: 'missing' }), now: () => clock,
+    checkPin: (pin: string) => { calls += 1; running += 1; peak = Math.max(peak, running);
+      return new Promise<boolean>(done => held.push(ok => { running -= 1; done(ok && pin === '246810'); })); } });
+  const server = serveReadOnly(dash, '127.0.0.1:0');
+  cleanup.push(() => server.close());
+  await new Promise(done => server.once('listening', done));
+  const port = (server.address() as { port: number }).port;
+  // 100 wrong-PIN sign-ins pipelined over ONE connection: the reviewer's reproduction of the unbounded fan-out.
+  const request = 'POST /dashboard/sign-in HTTP/1.1\r\nHost: x\r\ncontent-type: application/x-www-form-urlencoded\r\ncontent-length: 10\r\n\r\npin=000000';
+  const socket = connect(port, '127.0.0.1');
+  cleanup.push(() => socket.destroy());
+  let received = '';
+  socket.setEncoding('utf8');
+  socket.on('data', chunk => { received += chunk; });
+  socket.write(Array.from({ length: 100 }, () => request).join(''));
+  const statuses = () => received.match(/^HTTP\/1\.1 \d{3}/gmu) ?? [];
+  for (let spin = 0; spin < 200 && held.length < 5; spin += 1) await new Promise(done => setTimeout(done, 5));
+  await new Promise(done => setTimeout(done, 100)); // every pipelined request has reached signIn by now
+  expect([calls, peak]).toEqual([5, 5]);
+  // Overflow is refused without calling the verifier, on the direct path too, while five checks are in flight.
+  expect((await dash.signIn('246810')).kind).toBe('locked');
+  expect(calls).toBe(5);
+  // The held checks settle as refused: five 401s, then the 95 already-refused requests answer 429 in order.
+  for (const release of held.splice(0)) release(false);
+  for (let spin = 0; spin < 400 && statuses().length < 100; spin += 1) await new Promise(done => setTimeout(done, 5));
+  const counts = statuses().reduce<Record<string, number>>((all, line) => ({ ...all, [line.slice(9)]: (all[line.slice(9)] ?? 0) + 1 }), {});
+  expect([counts, calls, running]).toEqual([{ 401: 5, 429: 95 }, 5, 0]);
+  // After the failure window the slots and failures are free again: a fresh check reaches the verifier and signs in.
+  clock = at + 300_001;
+  const next = dash.signIn('246810');
+  expect(calls).toBe(6);
+  held.shift()!(true);
+  expect((await next).kind).toBe('ok');
+  // A thrown verifier releases its slot as well.
+  const throwing = createReadOnlyDashboard({ state: () => ({ kind: 'missing' }), now: () => at, checkPin: async () => { throw new Error('down'); } });
+  for (let tries = 0; tries < 10; tries += 1) expect((await throwing.signIn('246810')).kind).toBe('unavailable');
+});
+
+it('plan #502: the read-only page listens on loopback or Tailscale only, and checks the PIN only on this machine', () => {
+  expect(checkListen('127.0.0.1:4071')).toEqual({ host: '127.0.0.1', port: 4071 });
+  expect(checkListen('100.124.55.70:4071')).toEqual({ host: '100.124.55.70', port: 4071 });
+  for (const value of ['0.0.0.0:4071', '100.128.0.1:4071', '100.63.255.1:4071', '192.168.87.30:4071', '203.0.113.5:443', 'localhost:4071', '[::]:4071'])
+    expect(() => checkListen(value), value).toThrow();
+  expect(() => pinCheckAt('http://127.0.0.1:4042/dashboard/unlock')).not.toThrow();
+  for (const value of ['https://echo-studio.example.org/dashboard/unlock', 'http://100.124.55.70:4042/dashboard/unlock', 'http://user:pass@127.0.0.1:4042/x'])
+    expect(() => pinCheckAt(value), value).toThrow('loopback');
+});

@@ -6,6 +6,8 @@ import { execFileSync } from 'node:child_process';
 import { chmodSync, existsSync, lstatSync, mkdirSync, readdirSync, readFileSync, realpathSync, renameSync, rmSync, writeFileSync } from 'node:fs';
 import { dirname, resolve, join } from 'node:path';
 import { createProductionTelegramIO, createSubscriptionProviderIO, productionStorageIO } from '../../scripts/production-boot-io.mjs';
+import { snapshotState } from '../../scripts/operator-dashboard.mjs';
+import { checkListen, createReadOnlyDashboard, pinCheckAt, serveReadOnly } from '../../scripts/operator-dashboard-readonly.mjs';
 import { openProductionStorage } from '../../src/assembly/production-storage.js';
 import { DEFAULT_SUBSCRIPTION_DOORWAY, subscriptionDoorway,
   SUBSCRIPTION_PREVIEW_EXPIRY, SUBSCRIPTION_TOOLS_SYSTEM_PROMPT } from '../../src/assembly/production-provider.js';
@@ -139,6 +141,15 @@ const approvalSurfaceOf = options => {
   if (given.length !== 3) throw Error('preview: --approval-store, --approval-outbox and --approval-operator-uid go together');
   return createApprovalSurfaceClient({ store: options['approval-store'], outbox: options['approval-outbox'],
     operatorUid: number(options['approval-operator-uid'], 'approval-operator-uid', 0), now: wallNow });
+};
+// Rules 79, 81 (plan #502): the operator dashboard served READ-ONLY by this runner, with no approval port. Installed only when
+// both are given: where it listens (loopback or this machine's Tailscale address) and the loopback endpoint that checks the
+// operator's existing dashboard PIN (an Instar 1.x host's `POST /dashboard/unlock`). Approvals stay where they are answered.
+const readOnlyDashboardOf = options => {
+  const given = ['dashboard-listen', 'dashboard-pin-check'].filter(name => options[name] !== undefined);
+  if (!given.length) return null;
+  if (given.length !== 2) throw Error('preview: --dashboard-listen and --dashboard-pin-check go together');
+  return { listen: checkListen(options['dashboard-listen']), checkPin: pinCheckAt(options['dashboard-pin-check']) };
 };
 // Plan #91; Purpose, the approval-account exception: the desk-written explicit-yes installation record. A malformed
 // record refuses the launch; afterwards it is read afresh on every use, so a withdrawal the desk records on the
@@ -653,7 +664,8 @@ async function main() {
     return;
   }
   // Rules 30, 59: an unregistered doorway or an incomplete silent-stop table refuses the launch.
-  if (command === 'run') { admitHarness(); subscriptionDoorway(options.doorway ?? DEFAULT_SUBSCRIPTION_DOORWAY); }
+  // Plan #502: a half-given or public read-only dashboard refuses the launch before anything else starts.
+  if (command === 'run') { admitHarness(); subscriptionDoorway(options.doorway ?? DEFAULT_SUBSCRIPTION_DOORWAY); readOnlyDashboardOf(options); }
   // Rule 30: every activation check, policy bound and route construction below goes through the
   // selected doorway, so a root configured for another registered doorway runs on that doorway's
   // CLI, model shape and parser instead of the first one that happened to be written here.
@@ -1679,22 +1691,34 @@ async function main() {
       ...(toolsActive() || journal.view.effectDoorway ? effectDoorwayStatusLines(journal.view.effectDoorway) : []),
       ...(harness ? [harnessStatusLine(harness.state)] : [])];
     const statusExtraLines = () => [...proofLines(), ...ownerLines(), ...minimalLines()];
-    const approvalSurface = approvalSurfaceOf(options);
-    // Rules 79, 81: the operator dashboard's snapshot, published into this runner's own outbox at most every 15 seconds
-    // (and once at the end), only while the operator's approval page is installed. A failed publish is never fatal: the
-    // page shows how old its copy is, and status reports the page (approvalSurface).
-    let dashboardAt = -Infinity;
+    const approvalSurface = approvalSurfaceOf(options), readOnly = readOnlyDashboardOf(options);
+    // Rules 79, 81: the operator dashboard's snapshot, built at most every 15 seconds (and once at the end) while a page
+    // shows it: published into this runner's own outbox for the operator's approval page, and kept for the read-only page
+    // this runner serves. A failed build is never fatal: each page shows how old its copy is.
+    let dashboardAt = -Infinity, dashboardText = null;
     const publishDashboard = (force = false) => {
       const now = wallNow(), zone = timeZoneOf(options);
-      if (!approvalSurface || !force && now - dashboardAt < 15_000) return;
+      if (!approvalSurface && !readOnly || !force && now - dashboardAt < 15_000) return;
       dashboardAt = now;
       try {
-        approvalSurface.publish(dashboardSnapshot(journal.view, { now, zone, bot: options['bot-username'] ?? null,
+        const snapshot = dashboardSnapshot(journal.view, { now, zone, bot: options['bot-username'] ?? null,
           stopped: existsSync(stopPath), statusText: statusAnswer(journal.view, now, zone,
             // The memory-learning line the chat answer adds after the host's extra lines (journal.ts), so both read the same.
-            [...statusExtraLines(), memoryLearningLine(journal.view, turn => operatorWriter(journal.view, turn, true))], statusPullLines()) }));
+            [...statusExtraLines(), memoryLearningLine(journal.view, turn => operatorWriter(journal.view, turn, true))], statusPullLines()) });
+        dashboardText = JSON.stringify(snapshot);
+        approvalSurface?.publish(snapshot);
       } catch { /* the page reads its copy's age */ }
     };
+    const readOnlyServer = readOnly && serveReadOnly(createReadOnlyDashboard({ checkPin: readOnly.checkPin,
+      state: () => dashboardText === null ? { kind: 'missing' } : snapshotState(dashboardText, wallNow()) }),
+    `${readOnly.listen.host}:${String(readOnly.listen.port)}`);
+    if (readOnlyServer) {
+      // Never keeps the runner alive, and a failed listen (a taken port) is reported, never fatal to serving the chat.
+      readOnlyServer.unref();
+      readOnlyServer.on('error', error => process.stderr.write(`preview: read-only dashboard not served: ${error instanceof Error ? error.message : 'listen failed'}\n`));
+      readOnlyServer.on('listening', () => { const where = readOnlyServer.address();
+        process.stderr.write(`preview: read-only operator dashboard at http://${where.address}:${String(where.port)}/dashboard\n`); });
+    }
     const yesInstallation = explicitYesInstallationOf(options), reviewSource = reviewSourceOf(options, yesInstallation);
     // Plan #373: how long an operator request stays answerable (default 18 hours), never past the trial's current end.
     const requestHours = options['operator-request-hours'] === undefined ? undefined
@@ -2361,6 +2385,7 @@ async function main() {
     } finally { clearInterval(tailBeat); }
     reportCap();
     publishDashboard(true);
+    readOnlyServer?.close();
     endReason ??= 'cycle limit reached';
     function modelRoute(operation, toolTurn) {
       if (!active() || workerStop.value || existsSync(stopPath)) throw Error('preview: activation stopped');
