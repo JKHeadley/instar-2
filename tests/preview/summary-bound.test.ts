@@ -381,7 +381,7 @@ it('a root carrying the live format-2 failures advances on the next pass; the sa
     await w.fill(1, 6);
     w.carry(1, 2166);
     failures(w, 2);
-    expect(SUMMARY_FORMAT).toBe(3);
+    expect(SUMMARY_FORMAT).toBe(4);
     expect(summaryStoppedAt(w.journal.view)).toBeNull();
     // No hand step: the next pass is offered the spans again under this format and the frontier advances.
     await w.worker.summarizeIfNeeded(true);
