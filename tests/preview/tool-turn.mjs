@@ -95,14 +95,30 @@ export function attachSessionVolume(root, { bytes = SESSION_VOLUME_BYTES, name =
 export function detachSessionVolume(mount) {
   try { execFileSync(HDIUTIL, ['detach', '-quiet', '-force', mount], { stdio: 'ignore', timeout: 60000 }); } catch { /* checked by the caller */ }
 }
-/** Unmounts a directory's scratch volume and removes its mount point, keeping its image (and so its files). Returns false
- * when the volume is still mounted afterwards (the next attach or a later prune retries). */
+/** How many unmount attempts, and how long between them. A volume just written is briefly busy (its own indexer, the
+ * disk arbitration daemon), and `hdiutil detach -force` refuses while it is, so one refusal is not a stuck volume. */
+const UNMOUNT_ATTEMPTS = 6, UNMOUNT_WAIT_MS = 400;
+/** The bounded unmount wait, kept apart from the volume it unmounts so the retry itself is provable: `attempt` is
+ * tried while `mounted()` still says the volume is there, at most `attempts` times, pausing between tries. Returns
+ * whether it ended unmounted; an attempt's own exit status is never read as success. */
+export function unmountWithin(mounted, attempt, attempts = UNMOUNT_ATTEMPTS,
+  pause = ms => { Atomics.wait(new Int32Array(new SharedArrayBuffer(4)), 0, 0, ms); }) {
+  for (let tried = 0; mounted(); tried++) {
+    if (tried >= attempts) return false;
+    if (tried) pause(UNMOUNT_WAIT_MS);
+    attempt();
+  }
+  return true;
+}
+/** Unmounts a directory's scratch volume and removes its mount point, keeping its image (and so its files). A volume
+ * that refuses is retried inside the bounded wait above. Returns false when it is still mounted after that wait (the
+ * next attach or a later prune retries). */
 export function unmountScratch(dir) {
   const mount = mountOf(dir);
-  if (scratchMounted(dir)) {
-    try { execFileSync(HDIUTIL, ['detach', '-quiet', '-force', mount], { stdio: 'ignore', timeout: 60000 }); } catch { /* checked below */ }
-    if (scratchMounted(dir)) return false;
-  }
+  const detach = () => {
+    try { execFileSync(HDIUTIL, ['detach', '-quiet', '-force', mount], { stdio: 'ignore', timeout: 60000 }); } catch { /* checked by the wait */ }
+  };
+  if (!unmountWithin(() => scratchMounted(dir), detach)) return false;
   if (mount !== null) try { rmdirSync(mount); } catch { /* already gone */ }
   return true;
 }

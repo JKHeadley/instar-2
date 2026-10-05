@@ -14,7 +14,7 @@ import { SINGLE_MACHINE_PROFILE } from './activation-authority.js';
 import { nestedSessionWorkEdge, type SessionWorkEdge } from '../../src/assembly/production-session-work.js';
 import { capabilityBriefing, TOOLS_BRIEFING } from './briefing.js';
 // @ts-expect-error The runner side stays plain JavaScript.
-import { TOOL_HOOK_SCRIPT, TOOL_NOTICE_MAX_BYTES, attachEgress, attachScratch, detachScratch, networkToolReads, openToolTurnSlugs, prepareToolTurn, pruneToolTurns, readRootMcp, readToolTrace, reconcileToolTurns, runToolTurn, scratchMounted, toolChildrenFit, toolStatusLines, toolTurnEligible, toolTurnFits, unmountScratch, workspaceBytes } from './tool-turn.mjs';
+import { TOOL_HOOK_SCRIPT, TOOL_NOTICE_MAX_BYTES, attachEgress, attachScratch, detachScratch, networkToolReads, openToolTurnSlugs, prepareToolTurn, pruneToolTurns, readRootMcp, readToolTrace, reconcileToolTurns, runToolTurn, scratchMounted, toolChildrenFit, toolStatusLines, toolTurnEligible, toolTurnFits, unmountScratch, unmountWithin, workspaceBytes } from './tool-turn.mjs';
 // @ts-expect-error The physical host remains JavaScript.
 import { createResourceOwner } from '../../scripts/resource-owner.mjs';
 
@@ -86,6 +86,27 @@ it('allocates a private, empty workspace and a separate admission state per turn
   expect(pruneToolTurns(root, 2, keepDetached)).toEqual({ removed: 2, failed: 0 });
   expect(existsSync(turn.workspace)).toBe(false);
   expect(readdirSync(join(root, 'tool-turns'))).toHaveLength(2);
+});
+
+it('retries a busy scratch volume inside its bounded unmount wait, and reports one that never clears', () => {
+  // Live 2026-10-05 (sb-w4-rollback full-suite gate): a volume the turn had just filled refused its first
+  // `hdiutil detach -force` — right after a write macOS can hold a volume busy — and a single attempt turned that
+  // into a failed turn (`attachScratch` throws on it, and prune counts the turn failed and keeps its directory).
+  // A refusal that clears is retried; one that never clears is still reported, so a genuinely stuck volume is
+  // never read as unmounted.
+  const pauses: number[] = [], pause = (ms: number) => pauses.push(ms);
+  let tries = 0;
+  // Busy for the first two attempts, then gone: the wait reports it unmounted, and only paused between tries.
+  expect(unmountWithin(() => tries < 3, () => tries++, 6, pause)).toBe(true);
+  expect([tries, pauses]).toEqual([3, [400, 400]]);
+  // The other side: a volume that stays mounted is attempted exactly `attempts` times and reported still mounted.
+  tries = 0; pauses.length = 0;
+  expect(unmountWithin(() => true, () => tries++, 6, pause)).toBe(false);
+  expect([tries, pauses.length]).toEqual([6, 5]);
+  // A volume already unmounted is never attempted at all.
+  tries = 0; pauses.length = 0;
+  expect(unmountWithin(() => false, () => tries++, 6, pause)).toBe(true);
+  expect([tries, pauses.length]).toEqual([0, 0]);
 });
 
 const hdiutil = existsSync('/usr/bin/hdiutil');
