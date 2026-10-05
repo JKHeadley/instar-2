@@ -1984,8 +1984,14 @@ export function obligationSchedule(view: JournalView): { key: string; kind: 'com
         view.order.slice(work.turnsSeen ?? view.order.length)
           .find(turn => verifiedOperatorTurn(view, turn) && !probeTurn(view, turn))?.at ?? Infinity)
       : work.last + revisit : undefined;
-    const first = waits === 'nothing' ? source.at + revisit
-      : waits === 'date' && due?.day ? wallEpoch(due.day, due.time ?? '09:00', due.zone) : undefined;
+    // Rules 8, 46, 83: every wait declared at creation carries the revisit cadence, `nothing` included. A dependency
+    // the reply itself declared names no need, and nothing records what would ever satisfy it, so scheduling only
+    // `nothing` and a dated promise left an agent-owned loop open with no cadence at all: it was never worked, never
+    // waiting work, and not owned work (live D1b, room two, 2026-10-04 23:33, declared waitsOn `operator`). Its first
+    // step is what records the real dependency and its need; from that result on, `resume` above governs, so an
+    // operator dependency then waits for the operator's next message instead of the cadence.
+    const first = waits === 'date' && due?.day ? wallEpoch(due.day, due.time ?? '09:00', due.zone)
+      : note.waitsOn !== undefined ? source.at + revisit : undefined;
     // A started step stays scheduled whatever dependency its predecessor left, so interrupted-start recovery owns it.
     if (work?.inFlight === undefined && first === undefined && resume === undefined && !pendingReport(work)) return;
     items.push({ key, kind: 'commitment', id, slot: work?.inFlight ?? resume ?? next(key, first ?? Infinity), inFlight: work?.inFlight !== undefined,
