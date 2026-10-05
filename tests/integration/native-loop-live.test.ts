@@ -17,7 +17,7 @@ import type { ProviderSubscriptionProfile } from '../../src/assembly/provider-cr
 import { factsFixture, value } from '../facts/fixtures.js';
 import { openPreviewJournal } from '../preview/journal.js';
 import { prepareJournalEnvelope } from '../preview/journal-envelope.js';
-import { conclusionText, parseModelJson } from '../preview/model-json.js';
+import { readAnswer } from '../preview/answer-reading.js';
 import { modelCallRecord } from '../preview/model-call-boundary.js';
 import { SINGLE_MACHINE_PROFILE } from '../preview/activation-authority.js';
 import { redact } from '../../src/recall/redact.js';
@@ -94,14 +94,13 @@ async function liveCase(name: string, question: string, options: { operations?: 
               outcome: ['complete', 'rejected', 'uncertain'].includes(result.state) ? result.state as 'complete' : 'failed',
               latencyMs: performance.now() - begun, usage: result.usage ? { inputTokens: result.usage.inputTokens ?? null,
                 outputTokens: result.usage.outputTokens ?? null, charge: null } : null, at: Date.now() }));
-            const parsed = typeof result.bytes === 'string' ? parseModelJson(result.bytes, { wrapped: 'accept' }) : null;
-            const decision = parsed?.ok ? parsed.value as { conclusion?: { value?: unknown }; reason?: { value?: unknown } } : null;
-            const text = decision?.conclusion ? conclusionText(decision.conclusion.value as never) : null;
+            const reading = typeof result.bytes === 'string' ? readAnswer(result.bytes, { wrapped: 'accept' }) : null;
+            const text = reading?.ok ? reading.value : null, reason = reading?.ok ? reading.reason : null;
             steps.push({ envelope, raw: typeof result.bytes === 'string' ? result.bytes : null, state: result.state, value: text,
-              reason: decision?.reason?.value ?? null });
+              reason });
             if (result.state !== 'complete') return { state: result.state };
             if (text === null) return { state: 'complete', failureClass: 'malformed' };
-            return { state: 'complete', value: text, reason: decision?.reason?.value };
+            return { state: 'complete', value: text, reason };
           } });
       } finally { clearInterval(watcher); }
     } }).catch((error: Error) => ({ error: error.message, result: null }));

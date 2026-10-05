@@ -15,7 +15,7 @@
  *
  * The returned shape is content-free, so it may be counted in status without storing
  * model text. Callers keep every shape check they already apply after parsing. */
-export type ModelJsonShape = 'bare' | 'fenced' | 'prose-wrapped' | 'early-close';
+export type ModelJsonShape = 'bare' | 'fenced' | 'prose-wrapped' | 'early-close' | 'raw-control';
 /** Whether this consumer may discard text around one complete object (see above). */
 export type ModelJsonWrapped = 'accept' | 'refuse';
 export type ModelJsonMalformedShape = 'fenced' | 'prose-wrapped' | 'multiple-objects' | 'truncated' | 'not-json';
@@ -32,7 +32,7 @@ const parseObject = (text: string): Record<string, unknown> | null => {
 
 /** Top-level balanced `{...}` spans. Strings are tracked only inside an object,
  * so apostrophes and quotes in surrounding prose never confuse the scan. */
-const topLevelObjects = (text: string): { spans: string[]; starts: number[]; open: boolean } => {
+export const topLevelObjects = (text: string): { spans: string[]; starts: number[]; open: boolean } => {
   const spans: string[] = [], starts: number[] = [];
   let depth = 0, start = -1, inString = false, escaped = false;
   for (let index = 0; index < text.length; index++) {
@@ -66,13 +66,42 @@ const earlyClose = (text: string, spans: string[], starts: number[]): { value: R
   return { value, outside: text.slice(0, start) + text.slice(last + 1) };
 };
 
+/** JSON forbids a raw control character (U+0000-U+001F) inside a string, and the live model sometimes writes a
+ * multi-line answer with real line breaks in it (plan #491 real-model replay, a1 attempt 2 and a3 attempt 1 on
+ * claude-sonnet-5: "...undo.<LF>- The reply..."). Such a character has exactly one meaning, its escape, so writing the
+ * escape changes nothing the model wrote and discards nothing; it is read for every consumer, gates included. Strings
+ * are tracked only inside an object, as in `topLevelObjects`; text outside every object is left exactly as it is. */
+export const escapeRawControls = (text: string): string => {
+  let out = '', depth = 0, inString = false, escaped = false;
+  for (const char of text) {
+    if (depth > 0 && inString) {
+      if (escaped) escaped = false;
+      else if (char === '\\') escaped = true;
+      else if (char === '"') inString = false;
+      else if (char < ' ') { out += char === '\n' ? '\\n' : char === '\r' ? '\\r' : char === '\t' ? '\\t'
+        : `\\u${char.charCodeAt(0).toString(16).padStart(4, '0')}`; continue; }
+      out += char; continue;
+    }
+    if (depth > 0 && char === '"') inString = true;
+    else if (char === '{') depth++;
+    else if (char === '}' && depth > 0) depth--;
+    out += char;
+  }
+  return out;
+};
+
 /** Content-free class for a parse that failed, or parsed but failed the caller's field checks. */
 export type ModelJsonFailureShape = ModelJsonMalformedShape | `${ModelJsonShape}-wrong-fields`;
 export const failureShapeOf = (result: ModelJsonResult): ModelJsonFailureShape =>
   result.ok ? `${result.shape}-wrong-fields` : result.shape;
 
 export function parseModelJson(text: string, options: { wrapped?: ModelJsonWrapped } = {}): ModelJsonResult {
-  const trimmed = text.trim();
+  const raw = text.trim(), trimmed = escapeRawControls(raw);
+  const result = parseEscaped(trimmed, options);
+  return result.ok && result.shape === 'bare' && trimmed !== raw ? { ...result, shape: 'raw-control' } : result;
+}
+
+function parseEscaped(trimmed: string, options: { wrapped?: ModelJsonWrapped }): ModelJsonResult {
   let whole: unknown;
   try { whole = JSON.parse(trimmed); } catch { whole = undefined; }
   if (isObject(whole)) return { ok: true, value: whole, shape: 'bare' };

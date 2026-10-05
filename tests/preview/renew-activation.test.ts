@@ -43,7 +43,7 @@ it('pins the renewed expiry and leaves every invocation policy digest unchanged'
   // The live-fix conversation policy digest for claude-sonnet-5 (int11 was sha256:efe69876…; the 2026-09-28
   // declaration-slot system prompt needs a policy-successor record). The policy never carries the expiry.
   expect(encoded(subscriptionConversationPolicy(model)).hash)
-    .toBe('sha256:aced65e686a665f11a02d7480501170ad3e2f8664fa5858ec69f42374390374a');
+    .toBe('sha256:5817ae4bda9396f7f27a957b287c97b4965322128a03c401bc415166594e2255');
   expect(JSON.stringify([subscriptionConversationPolicy(model), subscriptionInvocationPolicy(model)]))
     .not.toMatch(new RegExp(`${PRIOR_EXPIRY}|${SUBSCRIPTION_PREVIEW_EXPIRY}`));
 });

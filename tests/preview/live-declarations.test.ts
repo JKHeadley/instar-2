@@ -86,7 +86,7 @@ it('parses the real reviewer verdict lines, still refusing any text around the o
 });
 
 it('states the declaration slot in the fixed system prompt and gives the answer model the capabilities its avenues cite', () => {
-  expect(SUBSCRIPTION_CONVERSATION_SYSTEM_PROMPT).toContain('<answer> is instead the object {"reply":<your plain-text reply>');
+  expect(SUBSCRIPTION_CONVERSATION_SYSTEM_PROMPT).toContain('write instead "reply":<your plain-text reply> and each applicable field');
   expect(SUBSCRIPTION_CONVERSATION_SYSTEM_PROMPT).toContain('directives, openLoops or blocker');
   expect(SUBSCRIPTION_CONVERSATION_SYSTEM_PROMPT).not.toContain('in plain text, using the sources');
   expect(OBLIGATION_DECISION).toContain('one packet.capabilities key');

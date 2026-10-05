@@ -31,7 +31,9 @@ export function promiseProposals(value: unknown, reply: string): PromiseProposal
   for (const item of value as { quote?: unknown; when?: unknown }[]) {
     if (!item || typeof item !== 'object' || !exactClause(item.quote, reply)) return undefined;
     const quote = item.quote as string;
-    if (item.when !== undefined && !(typeof item.when === 'string' && item.when.trim() === item.when
+    // An optional `when` written as null asserts no date, so it is read as absent. Plan #491 real-model replay (a5,
+    // claude-sonnet-5, final prompt): `"when":null` refused the whole list, and the promise was silently lost again.
+    if (item.when !== undefined && item.when !== null && !(typeof item.when === 'string' && item.when.trim() === item.when
       && item.when.length > 0 && Buffer.byteLength(item.when) <= 100 && quote.includes(item.when))) return undefined;
     if (!found.some(saved => saved.quote === quote))
       found.push({ quote, ...(typeof item.when === 'string' ? { when: item.when } : {}) });

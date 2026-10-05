@@ -17,7 +17,7 @@ import type { ProviderSubscriptionProfile } from '../../src/assembly/provider-cr
 import { factsFixture, value } from '../facts/fixtures.js';
 import { openPreviewJournal } from '../preview/journal.js';
 import { prepareJournalEnvelope } from '../preview/journal-envelope.js';
-import { parseModelJson, conclusionText } from '../preview/model-json.js';
+import { readAnswer } from '../preview/answer-reading.js';
 import { SINGLE_MACHINE_PROFILE } from '../preview/activation-authority.js';
 import { redact } from '../../src/recall/redact.js';
 // @ts-expect-error Physical host JavaScript stays outside pure core.
@@ -99,14 +99,13 @@ async function liveCase(name: string, question: string, options: { mcp?: object;
   const settled = performance.now();
   const { stateDirectory, observed, raw, stoppedAt } = seen;
   const admission = existsSync(join(stateDirectory, 'admission.jsonl')) ? readFileSync(join(stateDirectory, 'admission.jsonl'), 'utf8') : '';
-  const parsed = observed?.bytes ? parseModelJson(observed.bytes, { wrapped: 'accept' }) : null;
-  const decision = parsed?.ok ? parsed.value as { conclusion?: { value?: unknown }; reason?: { value?: unknown } } : null;
-  const answer = decision?.conclusion ? conclusionText(decision.conclusion.value as never) : null;
+  const reading = observed?.bytes ? readAnswer(observed.bytes, { wrapped: 'accept' }) : null;
+  const answer = reading?.ok ? reading.value : null;
   const rows = appended;
   const trace = journal.view.toolTurns;
   const record = { name, question, prepared, state: observed?.state ?? null, raw, answer,
     mountedAfter: stateDirectory ? scratchMounted(dirname(stateDirectory)) : null,
-    reason: decision?.reason?.value ?? null, admission, error: 'error' in outcome ? outcome.error : null,
+    reason: reading?.ok ? reading.reason : null, admission, error: 'error' in outcome ? outcome.error : null,
     egress: existsSync(join(stateDirectory, 'egress.jsonl')) ? readFileSync(join(stateDirectory, 'egress.jsonl'), 'utf8') : '',
     egressPort: existsSync(join(stateDirectory, 'config.json')) ? JSON.parse(readFileSync(join(stateDirectory, 'config.json'), 'utf8')).egress?.port ?? null : null,
     elapsedMs: Math.round(settled - started), stopToSettledMs: stoppedAt === null ? null : Math.round(settled - stoppedAt),

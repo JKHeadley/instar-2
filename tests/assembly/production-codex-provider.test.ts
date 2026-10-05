@@ -101,7 +101,7 @@ it('launches a tool-free, config-free, ephemeral read-only turn on the exact mod
   // binds their text into the digest an activation record is checked against.
   expect(codexConversationPolicy('gpt-5.6-sol').system).toBe(CODEX_CONVERSATION_SYSTEM_PROMPT);
   expect(CODEX_CONVERSATION_SYSTEM_PROMPT).toContain('run no commands, read no files, change nothing, and use no tools');
-  expect(CODEX_CONVERSATION_SYSTEM_PROMPT).toContain('"type":"Decision"');
+  expect(CODEX_CONVERSATION_SYSTEM_PROMPT).toContain('Respond with one flat JSON object');
   expect(hash(codexConversationPolicy('gpt-5.6-sol'))).not.toBe(hash(codexConversationPolicy('gpt-5.6-other')));
 });
 
