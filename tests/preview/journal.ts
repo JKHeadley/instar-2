@@ -5635,7 +5635,10 @@ export function createJournalWorker(journal: ReturnType<typeof openPreviewJourna
    * in prose, so a consumer that reads only the prose reads a summary with the facts deliberately removed. The ordinary
    * answer packet and the scheduled work packet both read this, so deferred work grounds in the same retained facts an
    * immediate answer does. A later verified correction or forget request drops its item here; every surviving quote
-   * carries its source label and passes the same redaction as the rest of the packet. */
+   * carries its source label and passes the same redaction as the rest of the packet. The answer packet keys the
+   * field's presence on the raw retained list, so a summary whose every item a correction removed still discloses the
+   * empty list beside the correction list that explains it; the work packet, which carries no correction list of its
+   * own, omits an empty one. */
   const summaryMemoryItems = (summary: Extract<JournalRecord, { kind: 'summary' }>) =>
     (summary.memoryItems ?? []).filter(item => !journal.view.memory.some(change =>
       change.mode !== 'prefer' && change.source === item.source
@@ -6356,7 +6359,7 @@ export function createJournalWorker(journal: ReturnType<typeof openPreviewJourna
       ...(suppliedSources === undefined ? {} : { sources: suppliedSources }),
       ...(reference ? { replyTo: reference } : {}),
       ...(summary ? { historyMode: 'summary-plus-recent', summary: { sourceKind: 'inferred-by-summary' as MemorySourceKind, sourceLabel: summaryLabel(summary), through: summary.through, text: clean(redact(summary.text).text, true, summary.through),
-        ...(summaryItems.length ? { memoryItems: summaryItems } : {}) } }
+        ...(summary.memoryItems?.length ? { memoryItems: summaryItems } : {}) } }
         : historySetAsideCount ? { historyMode: 'recent-only' } : { historyMode: 'complete' }),
       ...(journal.view.memory.length ? { memory: journal.view.memory.flatMap((change, index):
         Array<{ sourceKind: MemorySourceKind; mode: string; source: string; sourceLabel: string; trigger: string; reason?: string; replacement?: string }> => {
