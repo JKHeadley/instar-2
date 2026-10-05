@@ -12,7 +12,7 @@ import { canonical, decode } from '../../src/index.js';
 import { createClaudeCodeSubscriptionRoute, subscriptionConversationPolicy, subscriptionToolSettings, subscriptionToolsPolicy,
   SUBSCRIPTION_CONVERSATION_SYSTEM_PROMPT, SUBSCRIPTION_PREVIEW_EXPIRY, SUBSCRIPTION_TOOL_LIMITS,
   SUBSCRIPTION_SUBAGENT_TYPE, SUBSCRIPTION_TOOL_NAMES, SUBSCRIPTION_TOOLS_FRAMING, SUBSCRIPTION_TOOLS_SYSTEM_PROMPT, SUBSCRIPTION_CONVERSATION_FRAMING, SUBSCRIPTION_TOOL_RUNTIME_READS,
-  validateSubscriptionActivation } from '../../src/assembly/production-provider.js';
+  SUBSCRIPTION_TOOL_RUNTIME_READ_LINKS, validateSubscriptionActivation } from '../../src/assembly/production-provider.js';
 import type { SubscriptionActivationRecord, SubscriptionToolTurn } from '../../src/assembly/production-provider.js';
 import type { ProviderSubscriptionProfile } from '../../src/assembly/provider-credential-custodian.js';
 import { factsFixture, value } from '../facts/fixtures.js';
@@ -90,11 +90,11 @@ it('writes settings that refuse every read from the root down except the scratch
     network: { allowedDomains: [], allowUnixSockets: [], allowAllUnixSockets: false, allowLocalBinding: false },
     filesystem: { allowWrite: ['/r/tool-turns/a-0/vol'],
       denyWrite: ['/tmp/claude', '/private/tmp/claude', '/profile/home/.npm/_logs', '/profile/home/.claude/debug'],
-      denyRead: ['/'], allowRead: ['/r/tool-turns/a-0/vol', ...SUBSCRIPTION_TOOL_RUNTIME_READS] } });
+      denyRead: ['/'], allowRead: ['/r/tool-turns/a-0/vol', ...SUBSCRIPTION_TOOL_RUNTIME_READS, '/etc', '/var'] } });
   // With the turn's network checkpoint, the one reachable place is its loopback port, and its tools' locations are readable.
   const netted = JSON.parse(subscriptionToolSettings({ ...turn, egress: { port: 40001, reads: ['/usr/local/bin', '/Library/Developer/CommandLineTools'] } }, '/profile/home'));
   expect(netted.sandbox.network).toEqual({ allowedDomains: [], allowUnixSockets: [], allowAllUnixSockets: false, allowLocalBinding: false, httpProxyPort: 40001 });
-  expect(netted.sandbox.filesystem.allowRead).toEqual(['/r/tool-turns/a-0/vol', ...SUBSCRIPTION_TOOL_RUNTIME_READS, '/usr/local/bin', '/Library/Developer/CommandLineTools']);
+  expect(netted.sandbox.filesystem.allowRead).toEqual(['/r/tool-turns/a-0/vol', ...SUBSCRIPTION_TOOL_RUNTIME_READS, '/etc', '/var', '/usr/local/bin', '/Library/Developer/CommandLineTools']);
   expect(settings.sandbox.network.httpProxyPort).toBeUndefined();
   for (const port of [0, 70000, 1.5]) expect(() => subscriptionToolSettings({ ...turn, egress: { port, reads: [] } }, '/profile/home')).toThrow(/egress checkpoint port/u);
   // A tool location may never reopen the runner root, the login home or the admission state.
@@ -103,6 +103,9 @@ it('writes settings that refuse every read from the root down except the scratch
   expect(() => subscriptionToolSettings({ ...turn, egress: { port: 40001, reads: ['/usr/local bin'] } }, '/profile/home')).toThrow(/absolute and plain/u);
   // Nothing in the runtime list holds user, session or runner data.
   for (const read of SUBSCRIPTION_TOOL_RUNTIME_READS) expect(read).toMatch(/^\/(bin|sbin|usr\/(bin|sbin|lib|libexec|share)|System|private\/var\/select|private\/etc|dev)$/u);
+  // The two link spellings reopen only the root-level symlinks themselves (w4-toolpaths): each resolves on this platform to a
+  // listed read or to the directory holding one, so `/etc/hosts` is as readable as `/private/etc/hosts` and nothing more.
+  expect(SUBSCRIPTION_TOOL_RUNTIME_READ_LINKS).toEqual(['/etc', '/var']);
   expect(settings.permissions).toEqual({ allow: [...SUBSCRIPTION_TOOL_NAMES] });
   for (const [event, mode] of [['PreToolUse', 'pre'], ['PostToolUse', 'post'], ['SubagentStart', 'child-start'], ['SubagentStop', 'child-stop']] as const)
     expect(settings.hooks[event]).toEqual([{ matcher: '*', hooks: [{ type: 'command',

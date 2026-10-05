@@ -3,7 +3,8 @@
 // Every tool of the harness's built-in set is offered; this decides each call. Ordinary work is admitted; a consequential
 // effect goes to the effect doorway; a call whose liability the turn cannot reserve is refused for budget; a tool outside
 // the classified set (a harness the adapter has not been updated for) is refused, since nothing here says what it does.
-// - Ordinary: file tools (Read, Write, Edit, NotebookEdit) inside the workspace; workspace search; a sandboxed shell
+// - Ordinary: a file read or search of the workspace or the system files the shell may also read, and a file write or
+//   edit inside the workspace, each decided on the resolved file (toolRoots, resolvedPath); a sandboxed shell
 //   command (not judged by the words it contains: what it can reach is enforced where it runs: the sandbox's read, write,
 //   network and process scope, the turn's fixed-size scratch volume, the per-file limit); a web read (WebFetch is GET
 //   only, WebSearch is a search) of a public host; a subagent of the registered `worker` type within the turn's shared
@@ -31,7 +32,7 @@
 //   consequential tool passes its effect owner with the exact operation and input, and every shell command runs under
 //   the step's own confined sandbox profile (`config.shellProfile`). A route with no checkpoint refuses a delegation of
 //   that kind, and its consequential tools go to the effect doorway as above.
-import { basename, dirname, join, resolve, sep } from 'node:path';
+import { dirname, join, sep } from 'node:path';
 import { isIP } from 'node:net';
 import { admitEffect, decodeEffectPolicy, DEFAULT_EFFECT_POLICY, toolEffectProposal, UNAVAILABLE_EFFECT_POLICY } from './effect-doorway.mjs';
 
@@ -241,13 +242,41 @@ function policyNames(config, proposal) {
   return registered.length > 0 || matters.some(item => policy.policySensitive.includes(item));
 }
 
-/** Physical containment: resolve the symlinks of the longest existing prefix, then compare real paths. */
+/** The file a path names, resolved as the operating system resolves it: component by component (a relative path from
+ * the workspace), each symlink followed where it stands, so `link/..` leaves through the link's target rather than
+ * lexically. Components past the deepest existing one are kept as written. Null when a component is a symlink that
+ * does not resolve (dangling or looping): a write through it would create a file wherever it points. Null too when `..`
+ * follows an absent component (`missing/../x`): the operating system refuses that lookup, and collapsing it here would
+ * hand back a path whose remaining components were never resolved. `fs.exists` must not follow symlinks (lstat), so a
+ * dangling link counts as present and then fails to resolve. */
+export function resolvedPath(workspace, path, fs) {
+  const text = String(path), parts = text.split('/').filter(part => part !== '' && part !== '.');
+  let real = text.startsWith('/') ? '/' : workspace;
+  for (let i = 0; i < parts.length; i++) {
+    if (parts[i] === '..') { real = dirname(real); continue; }
+    const next = join(real, parts[i]);
+    if (!fs.exists(next)) return parts.slice(i + 1).includes('..') ? null : join(next, ...parts.slice(i + 1));
+    try { real = fs.realpath(next); } catch { return null; }
+  }
+  return real;
+}
+const under = (path, root) => path === root || path.startsWith(root === sep ? sep : root + sep);
+/** Physical containment: whether the path resolves (resolvedPath) inside the workspace. */
 export function containedIn(workspace, path, fs) {
-  let abs = resolve(workspace, String(path));
-  const rest = [];
-  while (!fs.exists(abs)) { rest.unshift(basename(abs)); const up = dirname(abs); if (up === abs) break; abs = up; }
-  const real = join(fs.realpath(abs), ...rest);
-  return real === workspace || real.startsWith(workspace + sep);
+  const real = resolvedPath(workspace, path, fs);
+  return real !== null && under(real, workspace);
+}
+/** Where a tool may write: the turn's workspace and the shell's temporary directory (both on the fixed-size scratch volume,
+ * the sandbox's only write root). Where it may read: those, plus the system locations the sandbox reopens for commands
+ * (`config.reads`, real paths: binaries, libraries, /private/etc). The hook and the sandbox share these sets and both
+ * decide on the resolved file, so no readable file is refused for how it was spelled. The sandbox decides at open (the
+ * kernel), so no spelling reaches past it; the hook decides before the harness opens, so it is an early refusal and a
+ * change the agent makes on that path between its check and the harness's open is not caught here: an OPEN race,
+ * pre-existing and closable only by running the harness as its own OS user (docs/defects/2026-10-03-file-tool-swap-race.md).
+ * Users' homes, keychains, the runner root, other roots and the admission state lie outside both sets. */
+export function toolRoots(config) {
+  const writes = [config.workspace, ...(typeof config.tmp === 'string' ? [config.tmp] : [])];
+  return { writes, reads: [...writes, ...(Array.isArray(config.reads) ? config.reads.filter(root => typeof root === 'string' && root.startsWith('/')) : [])] };
 }
 
 /** Whether an IP address is on the public internet (not loopback, private, link-local, shared, multicast or reserved). */
@@ -359,6 +388,40 @@ export function gitFetchRequest({ origin, path, headers, body, advertised }) {
   return lines > 0 ? { fetch: true, reason: 'git fetch' } : { fetch: false, reason: 'empty git request' };
 }
 
+/** Plan #507: the decision for an outward request whose text the held-secret check (`held`, text => 'clear' | 'held' |
+ * 'unavailable') did not clear, or null when it cleared. No check at all (`held` null) clears nothing an owner did not
+ * wire: callers that dispatch outward always pass one. */
+export function heldRefusal(held, text) {
+  if (typeof held !== 'function') return null;
+  let verdict;
+  try { verdict = held(text); } catch { verdict = 'unavailable'; }
+  if (verdict === 'clear') return null;
+  return verdict === 'held' ? { decision: 'deny', reason: 'the request carries a secret value the runner holds', kind: 'secret' }
+    : { decision: 'deny', reason: 'the held-secret check is unavailable, so the outward request is refused', kind: 'secret' };
+}
+/** Plan #507: the longest text one held-secret check carries (an outward tool call's input; larger is refused, never
+ * truncated, since a truncated check could miss a value in the part left out). */
+export const HELD_CHECK_MAX_BYTES = 1024 * 1024;
+/** Plan #507: the text an outward tool request carries off the machine (every string in its input, property names included), or null for a tool
+ * whose input does not leave it (a file tool, a search, a sandboxed shell command, whose network goes through the shell's
+ * checkpoint, a subagent). Outward: WebFetch, WebSearch, a Codex network read, a named outward tool, an MCP tool, and a
+ * shell command run outside the sandbox. */
+export function outwardText(tool, input) {
+  const name = String(tool ?? '');
+  const outward = name === 'WebFetch' || name === 'WebSearch' || CODEX_NETWORK_READ_TOOLS.includes(name) || Object.hasOwn(OUTWARD_TOOLS, name)
+    || name.startsWith('mcp__') || (name === 'Bash' && input?.dangerouslyDisableSandbox === true);
+  if (!outward) return null;
+  const strings = [];
+  const walk = value => {
+    if (typeof value === 'string') strings.push(value);
+    else if (Array.isArray(value)) value.forEach(walk);
+    // A property name leaves the machine too (an MCP map of query parameters or headers), so it is checked as a value is.
+    else if (value && typeof value === 'object') for (const [name, item] of Object.entries(value)) { strings.push(name); walk(item); }
+  };
+  walk(input);
+  return strings.join('\n');
+}
+
 /** The shell's network checkpoint (the egress proxy every sandboxed command is forced through): the decision for one HTTP
  * request it can see in full (method, host, path, headers), after TLS interception. A read is admitted: GET or HEAD, or a
  * git fetch proven by gitFetchRequest (`gitFetch`, its result), and only when no method-override header names anything
@@ -368,8 +431,14 @@ export function gitFetchRequest({ origin, path, headers, body, advertised }) {
  * request on, a package publish) is a network write the effect doorway decides as `tool:network-write` on the host:
  * unregistered, it is classified at its worst on all four tests and refused. `config` is the turn's admission config
  * ({operations, effectPolicy?, irreversibleTerm?}); `now` (ms) checks a grant's expiry. */
-export function admitEgress({ method, path, host = null, headers = {}, gitFetch = null }, config, now) {
+export function admitEgress({ method, path, host = null, headers = {}, gitFetch = null }, config, now, held = null) {
   const h = lower(headers), actual = String(method ?? '').trim().toUpperCase(), target = String(path ?? '');
+  // Plan #507 (secrets floor, Rule 4): a request whose host, path or any header carries a held secret value is refused
+  // before anything else is decided, whatever its method; a check that cannot decide refuses too (Rule 95: fail closed).
+  // `held` is the runner's check (tool-turn.mjs heldVerdict); the proxy always passes it.
+  const secret = heldRefusal(held, [String(host ?? ''), target, ...Object.entries(headers).map(([name, value]) =>
+    `${name}: ${Array.isArray(value) ? value.join(', ') : String(value)}`)].join('\n'));
+  if (secret) return secret;
   const on = host ? { target: String(host).slice(0, 256) } : {};
   // Every method the upstream could act on: the request line's and each one an override header names (a repeated header
   // is comma-joined). An override can never downgrade the request line, and no header can hide another's write.
@@ -414,20 +483,36 @@ export function admitToolCall(call, config, n, fs, child = 1, now) {
     return verdict.admitted ? { decision: 'allow', reason: verdict.reason, kind, doorway } : { ...deny(verdict.reason, kind), doorway }; };
   if (!Number.isSafeInteger(n) || n < 1) return deny('admission count unavailable');
   if (n > config.maxCalls) return deny(`per-step call cap ${config.maxCalls} reached (call ${n})`);
-  const inside = path => typeof path === 'string' && path.length > 0 && containedIn(config.workspace, path, fs);
+  // A file tool or search is decided on the file its path resolves to, against the turn's read or write set, and the
+  // harness is handed that resolved path, so re-pointing the presented alias after this check does not redirect the call.
+  // The resolved file or a directory on its path, changed after this check, still can: an OPEN race this check does not
+  // close (docs/defects/2026-10-03-file-tool-swap-race.md). This is a check at admission; only Bash is decided at open.
+  const roots = toolRoots(config);
+  const place = (path, set) => {
+    if (typeof path !== 'string' || path.length === 0) return { ok: false, why: 'path absent' };
+    const real = resolvedPath(config.workspace, path, fs);
+    if (real === null) return { ok: false, why: `path does not resolve: ${path} (a symlink in it points nowhere, or \`..\` follows a missing directory)` };
+    const via = real === path ? '' : ` (resolves to ${real})`;
+    return roots[set].some(root => under(real, root)) ? { ok: true, real, changed: real !== path }
+      : { ok: false, why: `${String(path)}${via}`, real };
+  };
+  const inside = path => place(path, 'writes').ok;
+  const rewrite = (key, at) => (at.changed ? { updatedInput: { ...input, [key]: at.real } } : {});
   if (FILE_TOOLS.includes(tool)) {
-    const path = tool === 'NotebookEdit' ? input.notebook_path : input.file_path;
-    if (!inside(path)) return deny(`path outside the workspace: ${String(path)}`, 'scope');
+    const key = tool === 'NotebookEdit' ? 'notebook_path' : 'file_path', path = input[key];
+    const at = place(path, tool === 'Read' ? 'reads' : 'writes');
+    if (!at.ok) return deny(tool === 'Read' ? `path outside the workspace and the system files: ${at.why}`
+      : `path outside the workspace: ${at.why}`, 'scope');
     if (tool === 'Write' && Buffer.byteLength(String(input.content ?? '')) > config.maxWriteBytes)
       return deny(`write larger than ${config.maxWriteBytes} bytes`, 'scope');
-    return { decision: 'allow', reason: 'ordinary in-workspace file operation' };
+    return { decision: 'allow', reason: tool === 'Read' ? 'ordinary file read' : 'ordinary in-workspace file operation', ...rewrite(key, at) };
   }
   if (SEARCH_TOOLS.includes(tool)) {
-    const path = input.path ?? config.workspace;
-    if (!inside(path)) return deny(`search outside the workspace: ${String(path)}`, 'scope');
+    const at = place(input.path ?? config.workspace, 'reads');
+    if (!at.ok) return deny(`search outside the workspace and the system files: ${at.why}`, 'scope');
     const shape = tool === 'Glob' ? String(input.pattern ?? '') : String(input.glob ?? '');
     if (shape.startsWith('/') || shape.includes('..')) return deny(`search pattern outside the workspace: ${shape}`, 'scope');
-    return { decision: 'allow', reason: 'ordinary in-workspace search' };
+    return { decision: 'allow', reason: 'ordinary search', ...(input.path === undefined ? {} : rewrite('path', at)) };
   }
   if (tool === 'Bash') {
     const command = String(input.command ?? '');
