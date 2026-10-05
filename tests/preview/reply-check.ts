@@ -613,7 +613,17 @@ function elidedClaimIn(text: string, named: string): boolean {
 }
 
 /** What survived, what was removed, and every named claim no sentence carried. Nothing is ever silently
- * dropped: an unlocated claim is reported to the caller, which records and counts it (Rules 2, 42). */
+ * dropped: an unlocated claim is reported to the caller, which records and counts it (Rules 2, 42).
+ *
+ * Every kept segment keeps the separator that originally followed it, so excising nothing returns the body
+ * unchanged and the text around a removal is never reflowed. The earlier join normalized every separator
+ * (a blank line became one newline, a wide gap one space), which rewrote passages no reviewer had named:
+ * the floor's own contract is that nothing is paraphrased, rewritten or added. Live 2026-10-05 (room two,
+ * D-proofroom2-20261005-112229, update 6232450, D1c): three finished results rode the reply, the floor
+ * removed one named claim, and the reflow silently changed a second result's text, so the settlement rule
+ * ("the claims are decided against the reply exactly as it is written") no longer found it. That result
+ * reached the operator in full and was never marked delivered, and the same reflow drops a reply's declared
+ * loops, promises and fulfilled commitments whose quote spans a normalized separator (Rules 2, 4, 8, 86). */
 export interface ClaimExcision { text: string; removed: string[]; unlocated: string[] }
 export function exciseNamedClaims(body: string, claims: readonly string[]): ClaimExcision {
   const segments = replySegments(body);
@@ -621,13 +631,28 @@ export function exciseNamedClaims(body: string, claims: readonly string[]): Clai
   const cut = new Set<number>(), located = new Set<string>();
   for (const claim of named) for (const [index, segment] of segments.entries())
     if (segmentCarries(segment.text, claim)) { cut.add(index); located.add(claim); }
-  const kept = segments.filter((_, index) => !cut.has(index));
+  const kept: { text: string; separator: string }[] = [];
+  let bridged = '';
+  for (const [index, segment] of segments.entries()) {
+    if (cut.has(index)) { bridged = widerSeparator(bridged, segment.separator); continue; }
+    if (kept.length) kept[kept.length - 1]!.separator = widerSeparator(kept[kept.length - 1]!.separator, bridged);
+    bridged = '';
+    kept.push({ ...segment });
+  }
   let text = '';
   for (const [index, segment] of kept.entries())
-    text += (index === 0 ? '' : kept[index - 1]!.separator.includes('\n') ? '\n' : ' ') + segment.text.trim();
+    text += segment.text + (index === kept.length - 1 ? '' : segment.separator);
   return { text: text.trim(), removed: segments.filter((_, index) => cut.has(index)).map(segment => segment.text.trim()),
     unlocated: named.filter(claim => !located.has(claim)) };
 }
+/** The gap left where a run of named sentences was removed: the widest separator that spanned it, so removing the
+ * last sentence of a paragraph does not run the next paragraph onto it. Between two sentences that were already
+ * adjacent nothing is bridged, and the separator the author wrote stands unchanged. */
+const widerSeparator = (left: string, right: string): string => {
+  const breaks = (value: string) => (value.match(/\n/gu) ?? []).length;
+  if (breaks(right) !== breaks(left)) return breaks(right) > breaks(left) ? right : left;
+  return right.length > left.length ? right : left;
+};
 
 /** Any text left after the removal is sent: only the reviewer's named claim is withheld, never the answer around
  * it, however short ("At 7 PM."). Only an empty remainder means the claim WAS the whole answer, and then the
