@@ -1,8 +1,10 @@
 // A real fresh process, so the doorway is proved against the ESM named imports a test actually
-// writes. Patching the child_process exports instead passes a stub test and never fires here:
-// `import { spawnSync } from 'node:child_process'` takes its binding from the builtin's exports
-// at instantiation. The bound comes from INSTAR_TEST_CHILD_BOUND_MS, since no vitest case is
-// running in this process.
+// writes. `import { spawnSync } from 'node:child_process'` takes its binding from the builtin's
+// exports at instantiation, so replacing those exports only reaches it once
+// `syncBuiltinESMExports()` republishes them — which tests/setup/bound-children.mjs does.
+// tests/unit/bound-children-unsynced-probe.mjs is the same assignment without that publish, and
+// shows the named import going unbounded. The bound here comes from INSTAR_TEST_CHILD_BOUND_MS,
+// since no vitest case is running in this process.
 import '../setup/bound-children.mjs';
 import { execFileSync, execSync, spawnSync } from 'node:child_process';
 
@@ -12,7 +14,7 @@ const run = (name, call) => {
   const started = process.hrtime.bigint();
   try {
     const result = call();
-    report[name] = { threw: false, error: result?.error?.code ?? null };
+    report[name] = { threw: false, error: result?.error?.code ?? null, signal: result?.signal ?? null };
   } catch (error) {
     report[name] = { threw: true, code: error.code, message: error.message };
   }

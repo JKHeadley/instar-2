@@ -1,31 +1,37 @@
 // Both sides of the bound: a call that names no timeout is bounded and a hung child fails its
 // own test with a named explanation; a call that names its own timeout (including 0) is
-// untouched. The decisive case runs a REAL fresh process through
-// tests/unit/bound-children-probe.mjs, so the doorway is proved against the real named
-// `spawnSync`/`execFileSync`/`execSync` imports a test writes and real hung children — not a
-// stub. The first attempt at this fix patched the child_process exports, passed its stub tests,
-// and never fired on those named imports (a 600 s probe child outlived a 4 s case), which is
-// why the live shape is the evidence here.
+// untouched. The decisive cases run REAL fresh processes, so the doorway is proved against the
+// real named `spawnSync`/`execFileSync`/`execSync` imports a test writes and real hung children
+// — not a stub. tests/unit/bound-children-probe.mjs is the doorway as shipped;
+// tests/unit/bound-children-unsynced-probe.mjs is the same export replacement with the one
+// `syncBuiltinESMExports()` line removed, and shows the named import going unbounded — which is
+// what makes that line the load-bearing part of the design rather than decoration.
 import { describe, it, expect } from 'vitest';
 import { getCurrentTest } from '@vitest/runner';
 import { spawnSync } from 'node:child_process';
+import type { SpawnSyncReturns } from 'node:child_process';
 import { constants } from 'node:os';
-import { boundMessage, boundOptions, childBound, fallbackBound, patchSpawnBinding, FALLBACK_MS, TIMED_OUT_ERRNO }
-  from '../setup/bound-children.mjs';
-import type { SpawnBindingOptions } from '../setup/bound-children.mjs';
+import { bindSyncCall, boundMessage, boundOptions, childBound, fallbackBound, optionsSlot,
+  patchChildProcess, timedOut, BOUNDED, FALLBACK_MS, SYNC_CALLS } from '../setup/bound-children.mjs';
+import type { SyncChildCall, SyncChildOptions } from '../setup/bound-children.mjs';
 
 const thrown = (fn: () => unknown): NodeJS.ErrnoException | null => {
   try { fn(); return null; } catch (error) { return error as NodeJS.ErrnoException; }
 };
 
+const freshProbe = (script: string, bound?: string): SpawnSyncReturns<string> =>
+  spawnSync(process.execPath, [script], {
+    encoding: 'utf8', timeout: 60_000, killSignal: 'SIGKILL',
+    env: bound === undefined ? { ...process.env } : { ...process.env, INSTAR_TEST_CHILD_BOUND_MS: bound },
+  });
+
 describe('a hung child in a real process, through the imports a test writes', () => {
-  const probe = spawnSync(process.execPath, ['tests/unit/bound-children-probe.mjs'],
-    { encoding: 'utf8', timeout: 60_000, killSignal: 'SIGKILL', env: { ...process.env, INSTAR_TEST_CHILD_BOUND_MS: '1200' } });
+  const probe = freshProbe('tests/unit/bound-children-probe.mjs', '1200');
 
   it('kills it and explains, for each of the three synchronous calls', () => {
     expect(probe.status, probe.stderr).toBe(0);
     const report = JSON.parse(probe.stdout);
-    for (const name of ['spawnSync', 'execFileSync', 'execSync']) {
+    for (const name of SYNC_CALLS) {
       expect(report[name], name).toMatchObject({ threw: true, code: 'ETIMEDOUT' });
       expect(report[name].message, name).toContain('was killed after the 1200 ms bound');
       expect(report[name].message, name).toContain('tests/setup/bound-children.mjs');
@@ -47,12 +53,27 @@ describe('a hung child in a real process, through the imports a test writes', ()
   }, 90_000);
 });
 
+describe('why the export republish is the load-bearing line, in a real process', () => {
+  it('without it the module object is bounded and the named import is not', () => {
+    const probe = freshProbe('tests/unit/bound-children-unsynced-probe.mjs');
+    expect(probe.status, probe.stderr).toBe(0);
+    const report = JSON.parse(probe.stdout);
+    // The wrapper was installed on the module object and fired there, at its 200 ms bound.
+    expect(report.wrapped).toBe(1);
+    expect(report.throughModuleObject.error).toBe('ETIMEDOUT');
+    // The named import never reached it: the 4 s child ran to completion, unbounded.
+    expect(report.throughNamedImport.error).toBeNull();
+    expect(report.throughNamedImport.ms).toBeGreaterThan(3_000);
+  }, 90_000);
+});
+
 describe('the bound a vitest case actually gets', () => {
   it('is that case\'s own declared timeout, read through the real runner', () => {
-    const seen: SpawnBindingOptions[] = [];
-    const binding = { spawn: (options: SpawnBindingOptions) => { seen.push({ ...options }); return {}; } };
-    patchSpawnBinding(binding, () => getCurrentTest()?.timeout, () => 300_000, () => {});
-    binding.spawn({ file: 'node' });
+    const seen: SyncChildOptions[] = [];
+    const bounded = bindSyncCall('spawnSync', (...args: readonly unknown[]) => {
+      seen.push({ ...(args[2] as SyncChildOptions) }); return {};
+    }, () => getCurrentTest()?.timeout, () => 300_000, () => {});
+    bounded('node', ['-e', '']);
     expect(getCurrentTest()?.timeout).toBe(37_000);
     expect(seen[0]?.timeout).toBe(37_000);
   }, 37_000);
@@ -88,27 +109,40 @@ describe('bound selection', () => {
   });
 });
 
-describe('bounding the binding options', () => {
+describe('bounding the options object', () => {
   it('injects the bound and a kill signal when the caller named neither', () => {
-    const options: SpawnBindingOptions = { file: 'node' };
+    const options: SyncChildOptions = { encoding: 'utf8' };
     expect(boundOptions(options, 7, 9)).toBe(7);
-    expect(options).toEqual({ file: 'node', timeout: 7, killSignal: 9 });
+    expect(options).toEqual({ encoding: 'utf8', timeout: 7, killSignal: 9 });
   });
 
   it('keeps a caller timeout, including a deliberate unbounded 0, and its own kill signal', () => {
-    const named: SpawnBindingOptions = { file: 'node', timeout: 500 };
+    const named: SyncChildOptions = { timeout: 500 };
     expect(boundOptions(named, 7, 9)).toBeNull();
-    expect(named).toEqual({ file: 'node', timeout: 500 });
-    const unbounded: SpawnBindingOptions = { file: 'node', timeout: 0 };
+    expect(named).toEqual({ timeout: 500 });
+    const unbounded: SyncChildOptions = { timeout: 0 };
     expect(boundOptions(unbounded, 7, 9)).toBeNull();
-    expect(unbounded).toEqual({ file: 'node', timeout: 0 });
-    const signalled: SpawnBindingOptions = { file: 'node', killSignal: 15 };
+    expect(unbounded).toEqual({ timeout: 0 });
+    const signalled: SyncChildOptions = { killSignal: 'SIGTERM' };
     expect(boundOptions(signalled, 7, 9)).toBe(7);
-    expect(signalled).toEqual({ file: 'node', killSignal: 15, timeout: 7 });
+    expect(signalled).toEqual({ killSignal: 'SIGTERM', timeout: 7 });
   });
 
-  it('names the platform errno libuv reports for the timeout kill', () => {
-    expect(TIMED_OUT_ERRNO).toBe(-constants.errno.ETIMEDOUT);
+  it('finds the options slot Node itself would read, with and without an arguments array', () => {
+    // spawnSync(file, args, options) and execFileSync(file, args, options)
+    expect(optionsSlot(['node', ['-e', ''], { timeout: 1 }])).toBe(2);
+    // spawnSync(file, options) and execSync(command, options)
+    expect(optionsSlot(['node', { timeout: 1 }])).toBe(1);
+    expect(optionsSlot(['true'])).toBe(1);
+  });
+
+  it('names the timeout kill by the code the public API reports, and nothing else', () => {
+    expect(timedOut(Object.assign(new Error('x'), { code: 'ETIMEDOUT' }))).toBe(true);
+    expect(timedOut({ code: 'ETIMEDOUT' })).toBe(true);
+    expect(timedOut(Object.assign(new Error('x'), { code: 'ENOENT' }))).toBe(false);
+    expect(timedOut(undefined)).toBe(false);
+    expect(timedOut(null)).toBe(false);
+    expect(timedOut('ETIMEDOUT')).toBe(false);
   });
 
   it('names the bound and the child in its message', () => {
@@ -117,36 +151,101 @@ describe('bounding the binding options', () => {
   });
 });
 
-describe('patching the doorway', () => {
-  it('bounds a fresh binding once, raises on its timeout errno, and is a no-op when applied again', () => {
-    const seen: SpawnBindingOptions[] = [];
+describe('wrapping one synchronous call', () => {
+  it('injects the bound, raises on a returned timeout, and explains on stderr once', () => {
+    const seen: unknown[][] = [];
     const notes: string[] = [];
-    const binding = { spawn: (options: SpawnBindingOptions) => { seen.push({ ...options }); return { error: TIMED_OUT_ERRNO }; } };
-    const patched = patchSpawnBinding(binding, () => 11, () => 300_000, text => { notes.push(text); }).spawn;
-    patchSpawnBinding(binding, () => 99, () => 300_000, () => {});
-    expect(binding.spawn).toBe(patched);
-    expect(thrown(() => binding.spawn({ file: 'node' }))?.message).toContain('after the 11 ms bound');
-    expect(seen).toEqual([{ file: 'node', timeout: 11, killSignal: constants.signals.SIGKILL }]);
+    const bounded = bindSyncCall('spawnSync', (...args: readonly unknown[]) => {
+      seen.push([...args]); return { error: Object.assign(new Error('t'), { code: 'ETIMEDOUT' }) };
+    }, () => 11, () => 300_000, text => { notes.push(text); });
+    expect(thrown(() => bounded('node', ['-e', '']))?.message).toContain('after the 11 ms bound');
+    expect(seen).toEqual([['node', ['-e', ''], { timeout: 11, killSignal: constants.signals.SIGKILL }]]);
     expect(notes).toHaveLength(1);
     expect(notes[0]?.endsWith('\n')).toBe(true);
   });
 
-  it('returns a non-timeout result untouched and never raises for a caller-owned timeout', () => {
-    const binding = { spawn: (_options: SpawnBindingOptions) => ({ status: 0, error: undefined }) };
-    patchSpawnBinding(binding, () => 11, () => 300_000, () => {});
-    expect(binding.spawn({ file: 'node' })).toEqual({ status: 0, error: undefined });
-    const owned = { spawn: (_options: SpawnBindingOptions) => ({ error: TIMED_OUT_ERRNO }) };
+  it('raises the same explanation when the call throws its timeout instead of returning it', () => {
     const notes: string[] = [];
-    patchSpawnBinding(owned, () => 11, () => 300_000, text => { notes.push(text); });
-    expect(owned.spawn({ file: 'node', timeout: 5 })).toEqual({ error: TIMED_OUT_ERRNO });
+    const bounded = bindSyncCall('execSync', () => {
+      throw Object.assign(new Error('spawnSync /bin/sh ETIMEDOUT'), { code: 'ETIMEDOUT' });
+    }, () => 11, () => 300_000, text => { notes.push(text); });
+    const error = thrown(() => bounded('true'));
+    expect(error?.code).toBe('ETIMEDOUT');
+    expect(error?.message).toContain('after the 11 ms bound');
+    expect((error as { cause?: NodeJS.ErrnoException }).cause?.message).toBe('spawnSync /bin/sh ETIMEDOUT');
+    expect(notes).toHaveLength(1);
+  });
+
+  it('passes any other failure through untouched, raised or returned', () => {
+    const enoent = Object.assign(new Error('nope'), { code: 'ENOENT' });
+    const raising = bindSyncCall('execSync', () => { throw enoent; }, () => 11, () => 300_000, () => {});
+    expect(thrown(() => raising('true'))).toBe(enoent);
+    const returning = bindSyncCall('spawnSync', () => ({ status: 0, error: undefined }), () => 11, () => 300_000, () => {});
+    expect(returning('node')).toEqual({ status: 0, error: undefined });
+  });
+
+  it('leaves a caller-owned timeout alone: its own options object, and no raise on its timeout', () => {
+    const seen: unknown[][] = [];
+    const notes: string[] = [];
+    const owned = { timeout: 5 };
+    const bounded = bindSyncCall('spawnSync', (...args: readonly unknown[]) => {
+      seen.push([...args]); return { error: Object.assign(new Error('t'), { code: 'ETIMEDOUT' }) };
+    }, () => 11, () => 300_000, text => { notes.push(text); });
+    const result = bounded('node', ['-e', ''], owned) as { error: NodeJS.ErrnoException };
+    expect(result.error.code).toBe('ETIMEDOUT');
+    // The very object the caller passed, not a bounded copy of it.
+    expect(seen[0]?.[2]).toBe(owned);
+    expect(owned).toEqual({ timeout: 5 });
     expect(notes).toEqual([]);
   });
 
   it('uses the collection-time fallback when no case declares a timeout', () => {
-    const seen: SpawnBindingOptions[] = [];
-    const binding = { spawn: (options: SpawnBindingOptions) => { seen.push({ ...options }); return {}; } };
-    patchSpawnBinding(binding, () => undefined, () => 123, () => {});
-    binding.spawn({ file: 'git' });
-    expect(seen[0]?.timeout).toBe(123);
+    const seen: unknown[][] = [];
+    const bounded = bindSyncCall('spawnSync', (...args: readonly unknown[]) => { seen.push([...args]); return {}; },
+      () => undefined, () => 123, () => {});
+    bounded('git', ['show']);
+    expect((seen[0]?.[2] as SyncChildOptions).timeout).toBe(123);
+  });
+
+  it('bounds a call whose options sit where no arguments array was given', () => {
+    const seen: unknown[][] = [];
+    const bounded = bindSyncCall('execSync', (...args: readonly unknown[]) => { seen.push([...args]); return ''; },
+      () => 11, () => 300_000, () => {});
+    bounded('true', { encoding: 'utf8' });
+    expect(seen[0]?.[1]).toEqual({ encoding: 'utf8', timeout: 11, killSignal: constants.signals.SIGKILL });
+  });
+});
+
+describe('patching the child_process exports', () => {
+  const fake = (): Record<string, SyncChildCall> => Object.fromEntries(
+    SYNC_CALLS.map(name => [name, () => name])) as Record<string, SyncChildCall>;
+
+  it('wraps all three synchronous exports and republishes them once', () => {
+    const published: number[] = [];
+    const exports_ = fake();
+    const originals = { ...exports_ };
+    patchChildProcess(exports_ as never, () => 11, () => 300_000, () => {}, () => { published.push(1); });
+    for (const name of SYNC_CALLS) {
+      expect(exports_[name], name).not.toBe(originals[name]);
+      expect(Reflect.get(exports_[name] as object, BOUNDED), name).toBe(true);
+    }
+    expect(published).toHaveLength(1);
+  });
+
+  it('is a no-op when applied again, and never republishes a second time', () => {
+    const published: number[] = [];
+    const exports_ = fake();
+    patchChildProcess(exports_ as never, () => 11, () => 300_000, () => {}, () => { published.push(1); });
+    const wrapped = { ...exports_ };
+    patchChildProcess(exports_ as never, () => 99, () => 300_000, () => {}, () => { published.push(1); });
+    for (const name of SYNC_CALLS) expect(exports_[name], name).toBe(wrapped[name]);
+    expect(published).toHaveLength(1);
+  });
+
+  it('marks the module itself so an unrelated object is still patchable', () => {
+    const exports_ = fake();
+    patchChildProcess(exports_ as never, () => 11, () => 300_000, () => {}, () => {});
+    expect(Reflect.get(exports_, BOUNDED)).toBe(true);
+    expect(Reflect.get(fake(), BOUNDED)).toBeUndefined();
   });
 });

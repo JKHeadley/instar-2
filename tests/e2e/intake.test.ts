@@ -13,8 +13,10 @@ import { privateKey } from '../facts/fixtures.js';
 // in well under a second; its three fsyncSync calls — one of them on a directory — are the only
 // unbounded waits in it, and on 2026-10-05 one such child sat at 0% CPU for 54 minutes and the
 // whole suite waited on it, because no callsite here named a timeout. 20 s is tighter than each
-// case's own 30 s budget, so a repeat raises the named explanation from
-// tests/setup/bound-children.mjs rather than a bare case timeout.
+// case's own 30 s budget, so a repeat fails inside the case on Node's own ETIMEDOUT naming this
+// child rather than freezing the run. A callsite that names its own timeout is left exactly as
+// written by tests/setup/bound-children.mjs, so this bound — not the doorway's — is the one in
+// force here, and the doorway's explanation is deliberately not raised for it.
 const harnessBound = { timeout: 20_000, killSignal: 'SIGKILL' } as const;
 
 it('P4-NF-01 P4-NF-03 P4-NF-04 P4-NF-06 P4-NF-11 P4-NF-14 public boot survives process death at each durable intake boundary', () => {
