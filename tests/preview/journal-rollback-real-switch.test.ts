@@ -50,3 +50,21 @@ it('records cint-L44 refusing cint-L45\'s root as an orphan effect, and this bui
       answer: 'Sam keeps the cedar map in the green drawer.', forward: [] });
   } finally { rmSync(temp, { recursive: true, force: true }); }
 }, 300000); // Three node subprocesses each carry their own 60 s bound; the test bound must exceed their sum under load.
+
+it('opens a root last written by the live build (cint-L50) with this build, conversation intact', async () => {
+  // sb-w4-rollback repair 3 (plan #578). The 2026-10-05 08:28 answer check refused on a copy of the live root
+  // with "preview: bot identity refused": the startup getMe transport failed before Telegram answered (the copy's
+  // sealed-capture folder was untouched), after this build had already opened the copied journal. This test is
+  // the switch the desk suspected: the live build writes the root, and this build must read it.
+  const temp = realpathSync(mkdtempSync(join(tmpdir(), 'rollback-live-')));
+  try {
+    const writer = join(temp, 'writer'), root = join(temp, 'root');
+    await checkout('57e12273', writer); mkdirSync(root);
+    const written = await run('write', writer, root);
+    expect(written.status, written.stderr).toBe(0);
+    const opened = await run('read', current, root);
+    expect(opened.status, opened.stderr).toBe(0);
+    expect(JSON.parse(opened.stdout)).toEqual({ cursor: 2, turns: [1],
+      answer: 'Sam keeps the cedar map in the green drawer.', forward: [] });
+  } finally { rmSync(temp, { recursive: true, force: true }); }
+}, 300000);
