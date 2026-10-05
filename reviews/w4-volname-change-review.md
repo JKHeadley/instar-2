@@ -7,8 +7,8 @@ Outcome: tests/preview/tool-turn.test.ts ("bounds a workspace's whole storage ..
 Affected rules: 34 (the unit test still exercises the real volume), 36 (both sides shown: the fixed name collides when run concurrently, the per-run name does not), 37 (fixed at source, not quarantined or retried), 60 (the volume's size bound is tested unchanged), 74 (this record), 101 (plain commits, no hook bypass), 116 (one random name, no lock or serialisation machinery)
 Affected floors: secrets — unchanged; spend cap — unchanged; stop — unchanged; no duplicate sends — unchanged; durable intake — unchanged
 Operator questions: none
-Suggested tier: minor
-Declared tier: minor
+Suggested tier: ordinary
+Declared tier: ordinary
 Tier rationale: a test-only change of one mount name; no product source changes.
 Side effects: none; the product's attachScratch and its naming are unchanged.
 Undo and recovery: revert the commit; no record or format changes.
