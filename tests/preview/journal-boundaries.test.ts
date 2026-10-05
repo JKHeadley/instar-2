@@ -3,6 +3,7 @@
  * journal record the live worker writes. The model and Telegram are stubs. */
 import { describe, expect, it } from 'vitest';
 import { mkdtempSync, readFileSync, realpathSync, rmSync } from 'node:fs';
+import { spawnSync } from 'node:child_process';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { createHash } from 'node:crypto';
@@ -48,6 +49,15 @@ function summarize(journal: ReturnType<typeof openPreviewJournal>, through: numb
   journal.append({ kind: 'summary-reserve', through, at: at + through });
   journal.append({ kind: 'summary', through, text, ...(concepts ? { concepts } : {}), at: at + through });
 }
+/** The desk's read-only surface, as the live check reads it. */
+const inspect = (dir: string, ...args: string[]) => {
+  const result = spawnSync(process.execPath, ['--no-warnings', '--loader', './scripts/slice-ts-loader.mjs',
+    'tests/preview/journal-agent.mjs', 'inspect', ...args, '--root', dir],
+  { cwd: process.cwd(), env: { ...process.env, INSTAR_SECRET_PREVIEW_STORAGE_KEY: Buffer.from(key).toString('hex') },
+    encoding: 'utf8', timeout: 20000 });
+  expect(result.status, result.stderr).toBe(0);
+  return JSON.parse(result.stdout) as unknown;
+};
 const probe = (worker: ReturnType<typeof createJournalWorker>, text: string) => {
   const result = worker.probe(text);
   if (!('context' in result)) throw Error(`probe held: ${JSON.stringify(result)}`);
@@ -563,5 +573,29 @@ describe('Rule 110: the first reply sent from a compacted context discloses it a
       expect(reopened.view.turns.get(id)!.continuity).toMatchObject({ basis: 'set-aside', summarizedThrough: 29, disclosure: setAsideWords });
       reopened.close();
     });
+  });
+  /** w4-a7c (live check A7c): the account names the frontier THIS reply was composed from, and a summary pass that
+   * advances the live frontier afterwards must not make that truthful account read as stale. `summaryFrontier` is read
+   * at inspect time and moves on; `reply.frontierAtCompose` is as of the reply, so the check is exact, not racy. */
+  it('inspect reports the as-of-reply frontier beside the live one, so a later summary pass cannot falsify the account', async () => {
+    const { dir, journal, worker, sent } = setup(7000, garden, () => 'Hi!');
+    try {
+      summarize(journal, 29, 'Twenty-nine garden updates.');
+      worker.intake([update(31, 'Hello again')]); await worker.drain();
+      expect(sent[0]).toMatch(disclosure);
+      const accounted = journal.view.turns.get('telegram:12345678:update:31')!;
+      expect(accounted.continuity!.summarizedThrough).toBe(29);
+      // The pass that moved the frontier after the reply: exactly what made the live check flaky.
+      summarize(journal, 31, 'Thirty-one garden updates and a greeting.');
+      expect(journal.view.summaries.at(-1)!.through).toBe(31);
+      journal.close();
+      const inspected = inspect(dir, '--update', '31') as { summaryFrontier: number;
+        reply: { continuity: { summarizedThrough: number }; frontierAtCompose: number | null } };
+      // The live frontier has moved on; the reply's own account has not, and both are now visible.
+      expect(inspected.summaryFrontier).toBe(31);
+      expect(inspected.reply.frontierAtCompose).toBe(29);
+      expect(inspected.reply.frontierAtCompose).toBe(inspected.reply.continuity.summarizedThrough);
+      expect(inspected.summaryFrontier).not.toBe(inspected.reply.continuity.summarizedThrough);
+    } finally { rmSync(dir, { recursive: true, force: true }); }
   });
 });
