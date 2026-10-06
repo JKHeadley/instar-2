@@ -43,10 +43,14 @@ const sessionStart = source => {
   let out;
   // A spawn that never started the hook (the host out of descriptors or processes) is retried
   // inside the same finite bound: it ran nothing, so it wrote no receipt and a retry duplicates
-  // nothing. A hook that DID run is taken as it stands, however it answered.
+  // nothing. A hook that DID run is taken as it stands, however it answered — including one the
+  // finite timeout below killed: a hung hook ran, may have written a receipt, and a retry would
+  // duplicate it, so a timeout ends the loop rather than repeating the call. The timeout is what
+  // keeps a hook that never returns from holding this synchronous call, and with it the case's
+  // own budget, open for the whole run.
   for (let attempt = 1; ; attempt++) {
-    out = spawnSync(process.execPath, [hook], { input, encoding: 'utf8', env: process.env });
-    if (out.error === undefined || attempt >= WRITE_ATTEMPTS) break;
+    out = spawnSync(process.execPath, [hook], { input, encoding: 'utf8', env: process.env, timeout: 60_000, killSignal: 'SIGKILL' });
+    if (out.error === undefined || out.error.code === 'ETIMEDOUT' || attempt >= WRITE_ATTEMPTS) break;
     pause(WRITE_PAUSE_MS);
   }
   try { return { text: JSON.parse(out.stdout).hookSpecificOutput.additionalContext, source }; } catch { return { text: '', source }; }

@@ -9,6 +9,16 @@ import { createFactStore } from '../../src/facts/index.js';
 import type { InboundRoute } from '../../src/intake/index.js';
 import { privateKey } from '../facts/fixtures.js';
 
+// Every child below is one fresh-process boot of scripts/test-intake-restart.mjs, which returns
+// in well under a second; its three fsyncSync calls — one of them on a directory — are the only
+// unbounded waits in it, and on 2026-10-05 one such child sat at 0% CPU for 54 minutes and the
+// whole suite waited on it, because no callsite here named a timeout. 20 s is tighter than each
+// case's own 30 s budget, so a repeat fails inside the case on Node's own ETIMEDOUT naming this
+// child rather than freezing the run. A callsite that names its own timeout is left exactly as
+// written by tests/setup/bound-children.mjs, so this bound — not the doorway's — is the one in
+// force here, and the doorway's explanation is deliberately not raised for it.
+const harnessBound = { timeout: 20_000, killSignal: 'SIGKILL' } as const;
+
 it('P4-NF-01 P4-NF-03 P4-NF-04 P4-NF-06 P4-NF-11 P4-NF-14 public boot survives process death at each durable intake boundary', () => {
   const f = intakeFixture(); f.bind();
   const base = { frames: f.frames, context: f.context, observer: f.deps.author.principal, privateKey,
@@ -19,12 +29,12 @@ it('P4-NF-01 P4-NF-03 P4-NF-04 P4-NF-06 P4-NF-11 P4-NF-14 public boot survives p
     const raw = cut === 'intake-stop' ? stop : message();
     try {
       const killed = spawnSync(process.execPath, ['scripts/test-intake-restart.mjs'], {
-        input: JSON.stringify({ ...base, directory, raw, cut }), encoding: 'utf8' });
+        input: JSON.stringify({ ...base, directory, raw, cut }), encoding: 'utf8', ...harnessBound });
       expect(killed.status, killed.stderr).toBe(86);
       const run = (raw: string, eventId = route.eventId) => JSON.parse(execFileSync(process.execPath, ['scripts/test-intake-restart.mjs'], {
-        input: JSON.stringify({ ...base, directory, raw, route: { ...route, eventId } }), encoding: 'utf8' }));
+        input: JSON.stringify({ ...base, directory, raw, route: { ...route, eventId } }), encoding: 'utf8', ...harnessBound }));
       const resumed = cut === 'intake-receipt' ? JSON.parse(execFileSync(process.execPath, ['scripts/test-intake-restart.mjs'], {
-        input: JSON.stringify({ ...base, directory, route: undefined, raw: undefined, recover: true, at: 500 }), encoding: 'utf8' })) : run(raw);
+        input: JSON.stringify({ ...base, directory, route: undefined, raw: undefined, recover: true, at: 500 }), encoding: 'utf8', ...harnessBound })) : run(raw);
       expect(resumed.rebuilt).toBe(true); expect(resumed.taint).toEqual([]);
       expect(resumed.registerChecks).toEqual(['extract', 'force', 'current']);
       expect(resumed.contextLivePrincipals).toEqual(['intake-observer']);
@@ -56,7 +66,7 @@ it('P4-NF-02 P4-NF-03 P4-NF-10 P4-NF-14 public fresh-process boot keeps requeste
     registerContext: f.r.context,registerInput: f.registerInput,
     evidence: value(f.deps.adapter.authenticate(message(),route,f.f.now)),at: 100 };
   const run=(raw: string,eventId=route.eventId) => JSON.parse(execFileSync(process.execPath,['scripts/test-intake-restart.mjs'],{
-    input: JSON.stringify({ ...base,raw,route: { ...route,eventId } }),encoding: 'utf8' }));
+    input: JSON.stringify({ ...base,raw,route: { ...route,eventId } }),encoding: 'utf8', ...harnessBound }));
   try {
     const admitted=run(message('Alice genuine event'));
     expect(admitted.outcome).toBe('admitted'); expect(admitted.taint).toEqual([]);
@@ -74,7 +84,7 @@ it('P4-NF-06 P4-NF-01 R7 fresh-process pending policy preserves input and drains
   const base = { frames: f.frames, context: f.context, observer: f.deps.author.principal, privateKey, directory,
     registerContext: f.r.context, registerInput: f.registerInput,
     evidence: value(f.deps.adapter.authenticate(message(), route, f.f.now)), route, raw: message(), at: 100 };
-  const run = (seed: object) => JSON.parse(execFileSync(process.execPath, ['scripts/test-intake-restart.mjs'], { input: JSON.stringify(seed), encoding: 'utf8' }));
+  const run = (seed: object) => JSON.parse(execFileSync(process.execPath, ['scripts/test-intake-restart.mjs'], { input: JSON.stringify(seed), encoding: 'utf8', ...harnessBound }));
   try {
     const pending = run({ ...base, registerInput: { ...base.registerInput, extract: { ...f.r.extract, rows: [] } } });
     expect(pending.registerChecks).toEqual(['extract', 'force', 'current']);
