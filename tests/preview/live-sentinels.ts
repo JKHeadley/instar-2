@@ -260,6 +260,14 @@ export function sentinelCycle(lane: OrdinaryLane, input: { tick(): void; request
   });
 }
 
+/** One minimal-path step of the runner loop (the worker's stop gate, its minimal step). The worker refuses by throwing
+ * once a stop latches or ownership is lost, and a stop can latch while the step is awaited. When the loop's own stop
+ * condition (`ended`) holds after a refusal, the refusal is that stop: the step reports `false` and the loop ends cleanly
+ * with its recorded stop reason, exactly as its other stop checks do. Any other failure is rethrown unchanged. */
+export async function untilStopped(step: () => unknown, ended: () => boolean): Promise<boolean> {
+  try { await step(); return true; } catch (error) { if (ended()) return false; throw error; }
+}
+
 /** How often a poll backoff offers the cycle's work job to the lane: often enough that a due step starts within a
  * second of its slot, rare enough that an idle drain is not rerun ten times a second. */
 export const WORK_TICK_MS = 1000;
