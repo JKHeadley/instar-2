@@ -60,3 +60,39 @@ real. There is no sleep-and-hope, and no timeout was raised. `it.skipIf(!availab
     (`neg-b-…`).
   - Re-ground delivery dropped: `expectGrounded` times out waiting for the answer after `REGROUNDED` (`neg-c-…`).
   - Fresh session launched without the hook: fails in `expectGrounded` (`neg-a-…`).
+
+## Second repair (2026-10-06, sb-w4-d1c pipeline repair): a failed tmux call was read as an empty pane
+
+**Status:** CLOSED 2026-10-06. Same case, a different observation defect; no quarantine was taken.
+
+The full run of sb-w4-d1c at `bc8097b1` (studio gate, 827 files, six fork workers) failed this case once:
+`Error: timed out waiting for the answer after REGROUNDED:` with **nothing after the colon** — the pane text the
+message interpolates was empty. Steps 1-3 and the step-4 `BOOTED hook=off` answer had all been read from that same
+pane, and `expect(regrounds()).toHaveLength(1)` had already passed, so the re-grounding was delivered.
+
+**Cause: the wait could not tell "no answer yet" from "nobody answered".** `pane()` returned
+`spawnSync(tmux, ['capture-pane', …]).stdout`, which is empty both when the pane says nothing *and* when the call
+fails — spawnSync itself erroring (EAGAIN: a loaded host cannot fork) or tmux exiting non-zero (its server gone,
+the session killed under it). `answerAfter` then counted that empty string as a poll. Because a failed call returns
+at once, the 100-poll bound was spent in milliseconds instead of the intended ~5 s, and the case reported a
+timeout with an empty pane and no cause named at all.
+
+**Repair (test only).** `capture()` returns either the pane text or a named failure (status, spawn error, stderr).
+`answerAfter` is bounded by a **wall-clock deadline** (15 s) rather than a poll count, retries a failed capture
+until that deadline, and names in the failure how many captures failed and the last reason. A transient
+fork failure now recovers inside the window; a genuinely gone session reads as a genuinely gone session. The case
+budget moves from 30 s to the configured full-suite bound (five waits of up to 15 s), and the unused `pane()`
+helper is gone. No assertion was weakened: the answer must still be the unanswered user message, alongside the
+delivered context.
+
+**Both sides (Rule 34), each mutation reverted; load-independent (observer #93: injected slow path, not host load).**
+- **Passing side:** 3 of 3 consecutive runs on an idle host, 3.16-3.32 s (unchanged from before the repair).
+- **A — the session is gone before the wait** (`kill-session` injected before step 4's `expectGrounded`): fails
+  with `262 capture(s) of instar20-… failed, last: status=1 error=none stderr=no server running on
+  /tmp/tmux-1000/instar20-aw-83d314ff` — the gate's empty-pane symptom, now diagnosed.
+- **B — the re-ground delivery dropped** (`paste-buffer` skipped for the respawn operation): fails with
+  `0 capture(s) … failed` and the real pane (`BOOTED hook=off` / `CARRYING ON: nothing known`). The two causes are
+  distinguishable from the message alone.
+- **C — starvation between `REGROUNDED` and the answer** (6 s pause injected in the stand-in): passes with the
+  repaired wait; the pre-repair poll-count wait fails on the same mutation with the same timeout shape. That is the
+  load dependence the deadline removes.

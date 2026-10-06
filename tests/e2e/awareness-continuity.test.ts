@@ -78,21 +78,41 @@ it.skipIf(!available)('a compacted or respawned session comes back with identity
       ...env, process.execPath, harness]).status).toBe(0);
     return session;
   };
-  const pane = (session: string) => t(['capture-pane', '-p', '-J', '-t', `=${session}:`, '-S', '-200']).stdout;
+  // A tmux invocation is not always answered: on a loaded host spawnSync itself can fail
+  // (EAGAIN when the host cannot fork) and tmux can exit non-zero (its server gone, the
+  // session killed under it). Both give empty stdout, so reading `.stdout` alone cannot
+  // tell "the pane says nothing yet" from "nobody answered". Report the failure instead of
+  // returning it as pane text.
+  const capture = (session: string) => {
+    const shot = t(['capture-pane', '-p', '-J', '-t', `=${session}:`, '-S', '-200']);
+    return shot.status === 0 && typeof shot.stdout === 'string' ? { text: shot.stdout, failure: null }
+      : { text: null, failure: `status=${shot.status ?? 'null'} error=${shot.error?.message ?? 'none'} stderr=${(shot.stderr ?? '').trim()}` };
+  };
   // The stand-in prints its marker (BOOTED / COMPACTED / REGROUNDED) BEFORE it answers, so
   // seeing the marker is not seeing the answer. Wait, bounded, for the complete answer line
   // that follows the LAST marker and return it; an answer from before the marker (or from a
   // previous step still in scrollback) never counts. See docs/defects/awareness-continuity-respawn-flake.md.
+  // The bound is a wall-clock deadline, not a fixed number of polls: a failed capture returns
+  // at once, so counting polls spent the whole wait in milliseconds on a host that was merely
+  // too busy to fork, and then reported a timeout with an empty pane and no cause named
+  // (the sb-w4-d1c gate run, 2026-10-06). A capture that fails is retried until the deadline
+  // and named in the failure, so a dead session reads as a dead session.
   const answerAfter = (session: string, marker: string) => {
-    let seen = '';
-    for (let i = 0; i < 100; i++) {
-      seen = pane(session);
-      const at = seen.lastIndexOf(marker);
-      const answer = at < 0 ? undefined : seen.slice(at + marker.length).match(/\nCARRYING ON: (.*)\n❯/)?.[1];
-      if (answer !== undefined) return answer;
+    const deadline = Date.now() + 15_000;
+    let seen = '', failures = 0, failure = '';
+    do {
+      const shot = capture(session);
+      if (shot.text === null) { failures += 1; failure = shot.failure; }
+      else {
+        seen = shot.text;
+        const at = seen.lastIndexOf(marker);
+        const answer = at < 0 ? undefined : seen.slice(at + marker.length).match(/\nCARRYING ON: (.*)\n❯/)?.[1];
+        if (answer !== undefined) return answer;
+      }
       sleep(50);
-    }
-    throw new Error(`timed out waiting for the answer after ${marker}: ${seen}`);
+    } while (Date.now() < deadline);
+    throw new Error(`timed out waiting for the answer after ${marker} `
+      + `(${failures} capture(s) of ${session} failed${failures > 0 ? `, last: ${failure}` : ''}): ${seen}`);
   };
   const context = (session: string) => existsSync(live.get(session)!.contextFile) ? readFileSync(live.get(session)!.contextFile, 'utf8') : '';
   // Grounded = the delivered grounding is in the session's context AND the answer it gave
@@ -154,4 +174,4 @@ it.skipIf(!available)('a compacted or respawned session comes back with identity
     t(['kill-server']);
     rmSync(root, { recursive: true, force: true });
   }
-}, 30_000);
+}, 90_000); // five bounded waits of up to 15 s each: the configured full-suite bound, not a tighter one
