@@ -7955,7 +7955,10 @@ export function createJournalWorker(journal: ReturnType<typeof openPreviewJourna
             // below; nothing the agent says releases a mandatory floor on its own (Rules 4, 57, 86).
             let revised: string | undefined;
             const originalPrompt = projectedReplyPrompt(turn.prompt) ?? reviewPrompt;
-            if (decision === 'violation' && ports.replyCheck.revise && originalPrompt !== undefined) {
+            // Rule 89: the status command's report is the runner's own fixed account, signed as infrastructure, so
+            // no model rewrites it; an objection to it stays a signal recorded with the send (Rule 86).
+            const revisable = !(isStatusCommand(turn.text) && !turn.reserved);
+            if (decision === 'violation' && revisable && ports.replyCheck.revise && originalPrompt !== undefined) {
               if (!turn.revisionReserved && journal.view.calls < journal.view.limits.maxCalls && inTime()) {
                 gate();
                 journal.append({ kind: 'reply-revision-reserve', id: turn.id, objections,
@@ -8047,7 +8050,7 @@ export function createJournalWorker(journal: ReturnType<typeof openPreviewJourna
             }
             const dispositions = turn.revision?.dispositions && validDispositions(turn.revision.dispositions, objections)
               ? turn.revision.dispositions : noDecisions(objections);
-            const skipped: ResponseSkipped | undefined = decision === 'violation' && ports.replyCheck.revise && originalPrompt !== undefined
+            const skipped: ResponseSkipped | undefined = decision === 'violation' && revisable && ports.replyCheck.revise && originalPrompt !== undefined
               && !turn.revisionReserved ? !inTime() ? 'deadline' : journal.view.calls >= journal.view.limits.maxCalls ? 'call cap' : undefined : undefined;
             const note = reason ?? (decision === 'unavailable' || inTime() ? undefined : REPLY_CHECK_BUDGET_REASON);
             if (revised !== undefined) { reply = revised; mentionedKeys = []; objection = reason ?? objections.join(', '); }

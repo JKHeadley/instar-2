@@ -1184,3 +1184,33 @@ it('a held candidate interrupted after its correction was reserved restarts with
   expect(turn.heldReview).toEqual({ objections: ['credential'], reason: 'Passes the operator\'s code to another person.',
     dispositions: [{ objection: 'credential', decision: 'no-decision' }] });
 });
+
+it.each([
+  ['the status command keeps its fixed report; the objection stays a signal', 'What is your status?', false],
+  ['an ordinary answer gets its one revision round', 'hello', true],
+] as const)('preference objection: %s (Rule 89)', async (_name, message, revisable) => {
+  const root = realpathSync(mkdtempSync(join(tmpdir(), 'preview-reply-status-revise-')));
+  try {
+    const journal = openPreviewJournal(join(root, 'journal.encrypted'), key, { kind: 'genesis', bot: '12345678',
+      chat: '7654321', operator: '7654321', grant: 'grant:preview', configurationDigest: 'sha256:offline',
+      expires: 9999999999999, maxCalls: 6, maxReplies: 2, maxTurns: 2, maxBytes: 32768, cursor: 0 });
+    let sent = '', revisions = 0;
+    const worker = createJournalWorker(journal, { now: () => 1000, stopped: () => false,
+      prepareModel: input => prepareJournalEnvelope(input, 'claude-sonnet-4-5', 'grant:preview', 1000),
+      model: async () => 'Here is a long answer.', checkOutbound: () => {},
+      replyCheck: { elapsedMs: () => 100, jev: async () => ({ value: scores({ raw_path: 0.91 }), latencyMs: 160 }),
+        escalate: async (_text, _id, _prompt, _rules, _deadline, operation) => operation === 'revision'
+          ? { verdict: 'pass', ruleIds: [], confidence: null, latencyMs: 400 }
+          : { verdict: 'violation', ruleIds: ['breaks_preference'], confidence: null, latencyMs: 400,
+            reason: "breaks_preference: Operator's active preference limits replies to two sentences; this multi-paragraph status report vastly exceeds that and the current message doesn't request an exception." },
+        revise: async () => { revisions++; return { state: 'complete', text: 'Short.' }; } },
+      send: async input => { sent = input.expectedText; return 8; } });
+    worker.intake([{ update_id: 1, message: { chat: { id: 7654321, type: 'private' },
+      from: { id: 7654321 }, text: message } }]);
+    await worker.drain();
+    expect(revisions).toBe(revisable ? 1 : 0);
+    if (revisable) expect(sent).toBe('PREVIEW — Short.');
+    else { expect(sent).toContain('Retrospective review:'); expect(sent).not.toContain('Short.'); }
+    journal.close();
+  } finally { rmSync(root, { recursive: true, force: true }); }
+});
