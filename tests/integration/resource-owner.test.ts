@@ -808,3 +808,36 @@ it('reads a single-digit-day start as the same incarnation the census records, a
   expect(startIdentity('Thu Oct  1 00:29:51 2026')).not.toBe(startIdentity('Thu Oct  1 00:29:52 2026'));
   expect(startIdentity(null)).toBe(null);
 });
+
+it('retries an unknown cleanup census inside its bounded wait, instead of ending the wait on the first one', { timeout: 60000 }, async () => {
+  // Live 2026-10-05 (sb-w4-rollback full-suite gate): under the parallel suite a census can be briefly incomplete or
+  // failed (a candidate's working directory or start evidence unreadable while the host is loaded). The bounded wait
+  // ended on the first such reading, so a launch whose members were in fact reclaimed was recorded `unresolved`: its
+  // durable row stayed and its Six debit stayed reserved. Only the census is injected here; the owner, the wait and
+  // the ledger are real. The census call is the one carrying `-ww`; the user-ID process query is a different one.
+  const quiet = (root: string) => { const path = join(root, 'quick.mjs'); writeFileSync(path, 'process.stdout.write("done");'); return path; };
+  const run = async (unknownCensuses: number) => {
+    const root = dir(), ledgerPath = join(root, 'owned-launches.json');
+    let unknown = 0, censuses = 0;
+    const query = async (file: string, args: string[]) => {
+      if (file === '/bin/ps' && args[2] === '-ww') { censuses++; return unknown-- > 0 ? null : ''; }
+      return hostQuery(file, args);
+    };
+    const owner = createResourceOwner({ ...ceilings(), sampleMs: 60000 });
+    await owner.attach({ ledgerPath, allocation: six(root), query });
+    unknown = unknownCensuses;
+    const result = await owner.execute(input(root, quiet(root)), 'maintenance');
+    return { result, censuses, rows: Object.keys(JSON.parse(readFileSync(ledgerPath, 'utf8')).launches) };
+  };
+  // Two unknown readings, then a complete one: the launch is verified gone and its debit returns.
+  const healed = await run(2);
+  expect(healed.censuses).toBeGreaterThanOrEqual(3);
+  expect(healed.result.resources).toMatchObject({ cleanup: 'verified', leakedDescendants: 0, membership: 'working-area-joined',
+    allocation: { state: 'returned' } });
+  expect(healed.rows).toEqual([]);
+  // The other side: a census that never clears is never read as quiescence. Cleanup stays unresolved, and the row
+  // and the debit are kept so recovery settles them later.
+  const blind = await run(Number.MAX_SAFE_INTEGER);
+  expect(blind.result.resources).toMatchObject({ cleanup: 'unresolved', allocation: { state: 'reserved' } });
+  expect(blind.rows).toHaveLength(1);
+});

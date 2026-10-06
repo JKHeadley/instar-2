@@ -575,7 +575,12 @@ export function createResourceOwner(initialCeilings = RESOURCE_CEILINGS) {
     const reclaimed = new Set();
     for (let attempt = 0; attempt < 20 && !quiet; attempt++) {
       const living = await liveMembers(lease);
-      if (living === null) { unresolved = true; break; }
+      // An incomplete or failed census is unknown, never quiescence — but one unknown reading is not a verdict
+      // either: under host load a candidate's working directory or start evidence can be briefly unreadable, and
+      // ending the bounded wait on the first such reading left a launch whose members were in fact reclaimed
+      // recorded as unresolved, keeping its row and its Six debit. Retry inside the same bounded wait; only a wait
+      // that never produces a complete census stays unresolved (`!quiet` below), and nothing unknown is signalled.
+      if (living === null) { await new Promise(done => setTimeout(done, 100)); continue; }
       if (!living.length && !living.waiting) { quiet = true; break; }
       let discovered = false;
       for (const [pid, start] of living) if (!lease.known.has(pid)) { lease.known.set(pid, start); discovered = true; }

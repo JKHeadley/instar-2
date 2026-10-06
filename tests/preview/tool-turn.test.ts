@@ -99,7 +99,9 @@ it.runIf(hdiutil)('bounds a workspace\'s whole storage: its volume refuses write
   const turn = join(root, 'turn'); mkdirSync(turn, { mode: 0o700 });
   // The mount point sits in the host-wide /private/tmp, so its name is this run's own: a fixed literal let two runs of
   // this case at once (two gates on one host) mount over each other, and one's detach found the other's volume. Within
-  // the test it stays fixed, as a conversation's does.
+  // the test it stays fixed, as a conversation's does. The same name also keeps a run clear of a volume an interrupted
+  // earlier run left mounted there: live 2026-10-05, an orphan at the old fixed name stacked a second mount that never
+  // read as unmounted, failing every later run.
   const name = `itw-${randomBytes(6).toString('hex')}`;
   const volume = attachScratch(turn, name, 8 * 1048576);
   try {
