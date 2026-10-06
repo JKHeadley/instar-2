@@ -21,9 +21,18 @@ import { harnessCredentialValues } from './harness-user.mjs';
 import { createAdmissionGate } from './admission-gate.mjs';
 import { secretMaterialIn } from './reply-check.js';
 import { createSecretCustody } from './secret-custody.js';
+import { SUBSCRIPTION_TOOL_RUNTIME_READS } from '../../src/assembly/production-provider.js';
 import { redact } from '../../src/recall/redact.js';
 
-const scratch = realpathSync(mkdtempSync(join(tmpdir(), 'held-egress-')));
+/** The cases plant a credential file OUTSIDE the workspace and expect the hook to refuse it, so the root has to sit
+ * outside every runtime read root. The suite's Linux RAM temporary root is /dev/shm (tests/setup/test-tmp.ts picks the
+ * first verified tmpfs), and /dev/shm is inside `/dev`, which production declares a runtime read: under tmpdir() there
+ * the planted credential is admitted because the whole root is readable, for a reason that has nothing to do with this
+ * unit. The choice is made from the read list itself, not from the platform, so it holds if either one moves. /var/tmp
+ * is outside them all and holds the handful of small files these cases write. */
+const inRuntimeRead = (path: string) => SUBSCRIPTION_TOOL_RUNTIME_READS.some(read => path === read || path.startsWith(`${read}/`));
+const SCRATCH_ROOT = inRuntimeRead(realpathSync(tmpdir())) ? '/var/tmp' : tmpdir();
+const scratch = realpathSync(mkdtempSync(join(SCRATCH_ROOT, 'held-egress-')));
 afterAll(() => rmSync(scratch, { recursive: true, force: true }));
 const closers: (() => Promise<void>)[] = [];
 afterEach(async () => { for (const close of closers.splice(0)) await close(); });
