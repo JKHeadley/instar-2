@@ -21,7 +21,7 @@ import { createHash, randomBytes } from 'node:crypto';
 import http from 'node:http';
 import https from 'node:https';
 import { nestedSessionWorkClose, nestedSessionWorkEdge, sessionWorkEffect } from '../../src/assembly/production-session-work.js';
-import { doorwayRecord } from './tool-admission.mjs';
+import { doorwayRecord, HELD_CHECK_MAX_BYTES, heldRefusal } from './tool-admission.mjs';
 
 /** Where each harness's model calls go after admission: fixed, so this server can never be used to reach anything else. */
 export const MODEL_UPSTREAMS = Object.freeze({ 'claude-code': Object.freeze({ host: 'api.anthropic.com', port: 443, secure: true }),
@@ -29,7 +29,7 @@ export const MODEL_UPSTREAMS = Object.freeze({ 'claude-code': Object.freeze({ ho
 /** Requests that reach the model endpoint but start no model call: counted as nothing. Every other POST is a call. */
 const UNCOUNTED = Object.freeze([/^\/v1\/messages\/count_tokens(?:\?|$)/u]);
 const claimPattern = /^[A-Za-z0-9][A-Za-z0-9._-]{0,120}$/u;
-const MAX_ADMIT_BYTES = 262144;
+const MAX_ADMIT_BYTES = HELD_CHECK_MAX_BYTES * 2 + 65536;
 /** Delegation tools whose return is the new child's handle, never its result (Codex 0.156.1, recorded 2026-10-03). */
 const ASYNC_SPAWN_TOOLS = Object.freeze(['spawn_agent', 'collaborationspawn_agent']);
 /** A tool excerpt as the hook sends it (JSON text, possibly of a JSON string): its value, unwrapped; null if unreadable. */
@@ -85,9 +85,10 @@ export function createToolEffectOwner({ decide, append, prepared, stopped, now }
 /**
  * Starts the checkpoint. `append` writes one durable record (a child edge, its close, an effect record) and throws when it
  * cannot; `effects` is the effect owner; `stopped` is the runner's stop authority. `upstreams` and `request` exist so a test
- * can stand in for the provider; production uses the fixed upstreams over TLS.
+ * can stand in for the provider; production uses the fixed upstreams over TLS. `held` is the runner's held-secret check
+ * (tool-turn.mjs heldVerdict) for `kind: 'held'`; absent, every such check refuses.
  */
-export async function createAdmissionGate({ append, effects, stopped, now, upstreams = MODEL_UPSTREAMS, request = null }) {
+export async function createAdmissionGate({ append, effects, stopped, now, held = () => 'unavailable', upstreams = MODEL_UPSTREAMS, request = null }) {
   const secret = randomBytes(16).toString('hex');
   const claims = new Map();
   const reply = (res, status, body) => { res.writeHead(status, { 'content-type': 'application/json' }); res.end(JSON.stringify(body)); };
@@ -97,6 +98,12 @@ export async function createAdmissionGate({ append, effects, stopped, now, upstr
     const tool = String(call.tool_name ?? ''), id = String(call.tool_use_id ?? '');
     if (!/^[A-Za-z0-9._:-]{1,200}$/u.test(id)) return { decision: 'deny', reason: 'admission: exact tool call identity required' };
     if (call.kind === 'tool') return { decision: 'allow', reason: 'admission: the step is open and no stop is held' };
+    // Plan #507: the text an outward tool request would carry, checked against the runner's held secret values before it
+    // is dispatched (tool-turn.mjs heldVerdict); a check that cannot decide refuses (fails closed).
+    if (call.kind === 'held') {
+      const refused = heldRefusal(held, typeof call.text === 'string' ? call.text : '');
+      return refused ? { decision: 'deny', reason: refused.reason } : { decision: 'allow', reason: 'held-secret check: clear' };
+    }
     if (call.kind === 'wait') {
       // The harness's own wait on its children. A wait that returns is a wake-up (any mailbox activity, a progress
       // message included), never by itself a child's completion. An edge closes only on per-child terminal evidence:

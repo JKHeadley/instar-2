@@ -115,12 +115,22 @@ it('profiles full turns at 2000 turns with every memory source', async () => {
     // added (memoryFailureDecision and searchedTurn: the memory-failure offer, since this answer follows a sent reply)
     // and memorySearch, which only uses leftover room, holds 2 items instead of 5. Removing those two fields and restoring
     // the 5 search items reproduces the cint-L43 packet exactly (key order included).
+    // w4-selfdesc re-pin (live K11a, Rule 103): diffed field by field against the cint-L49 packet, only four values changed,
+    // all wording: governingConstraints and capabilities name the bot's own messages ("bot: replies and requested reminders
+    // or summaries") and say a sent credential is vaulted, never shown ("credentials vaulted, never shown"). Restoring the
+    // four cint-L49 values reproduces a287adaa…4750d2 exactly.
+    // w4-selfdesc pipeline repair 4 re-pin (review round 2 must-fix, commit 22afaa6e): diffed field by field against
+    // the prior packet -- the key set is identical and exactly one field changed, `capability`, 3600 -> 3572 bytes, by
+    // the one removed sentence in the commitments guidance (" You have no external tools."): that guidance no longer
+    // denies the tools a second time, because this packet already states it once in capabilities.externalTools and
+    // governingConstraints["no-tools"]. Restoring just that sentence reproduces 1d20157b…eac6cc0 and bdf3fc8d…1cf32dd9
+    // exactly, so nothing else in the packet moved.
     const withoutLookup = JSON.parse(packetText) as Record<string, unknown>;
     expect(withoutLookup.memoryLookup).toBe('offered');
     delete withoutLookup.memoryLookup;
     expect(createHash('sha256').update(JSON.stringify(withoutLookup)).digest('hex'))
-      .toBe('a287adaa51e512b2425eac20207b2227544cdb84440b9abb8f33912d1d4750d2');
-    expect(packetHash).toBe('fc04a39228688dcfe207af3be6fbb99a0fd75a5c3bb6f9b8806172cee0b8ad71');
+      .toBe('8a05c5653e21121e105e86196e583d0dd8302a69a4f0ca98d00178fe0b5e365f');
+    expect(packetHash).toBe('c4e38b84aac2b45e1459951080dc3ed26998db51113f68505c91d9aa9f024c5a');
     process.stdout.write(`recall latency 2000 turns all memory: probe p95=${p95(samples).toFixed(2)} ms packet=${packetHash}\n`);
     const turnSamples: number[] = [];
     const intakeSamples: number[] = [], drainSamples: number[] = [], coherenceSamples: number[] = [];

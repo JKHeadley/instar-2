@@ -23,6 +23,8 @@ const run = promisify(execFile);
 const cleanup: (() => Promise<void> | void)[] = [];
 afterEach(async () => { for (const step of cleanup.splice(0).reverse()) await step(); });
 const PUBLIC = '93.184.215.14';
+/** Plan #507: a held-secret check that holds nothing (every request clear), for cases not about held values. */
+const CLEAR = { check: () => 'clear', span: () => 0 };
 type Seen = { method: string; url: string; host: string; body: string };
 
 /** A local HTTPS server with its own root, standing in for a public host; it records every request it receives. */
@@ -44,14 +46,14 @@ async function upstream(names: string[]) {
 
 /** A checkpoint as a turn runs it, its upstream reached through `dial`. `addresses` is what each name resolves to. */
 async function checkpoint(up: { ca: string; port: number }, options: { admission?: object; limits?: object; addresses?: Record<string, string[]>;
-  plainPort?: number } = {}) {
+  plainPort?: number; held?: { check: (text: string) => string; span: () => number } | null; resolved?: string[] } = {}) {
   const dir = realpathSync(mkdtempSync(join(tmpdir(), 'egress-turn-')));
   cleanup.push(() => rmSync(dir, { recursive: true, force: true }));
   const state = join(dir, 'state'); mkdirSync(state, { mode: 0o700 });
   const resolved: Record<string, string[]> = { 'example.test': [PUBLIC], ...options.addresses };
   const proxy = await startEgressProxy({ stateDirectory: state, caPath: join(dir, 'ca.pem'),
-    admission: options.admission ?? { operations: [...SINGLE_MACHINE_PROFILE.operations] },
-    limits: { ...EGRESS_LIMITS, ...options.limits }, resolve: async (host: string) => resolved[host] ?? [],
+    admission: options.admission ?? { operations: [...SINGLE_MACHINE_PROFILE.operations] }, ...(options.held === null ? {} : { held: options.held ?? CLEAR }),
+    limits: { ...EGRESS_LIMITS, ...options.limits }, resolve: async (host: string) => { options.resolved?.push(host); return resolved[host] ?? []; },
     upstream: { ca: up.ca }, dial: (_address: string, port: number) => ({ host: '127.0.0.1', port: port === 443 ? up.port : options.plainPort ?? port }) });
   cleanup.push(() => proxy.close());
   /** The sandboxed shell's own client, pointed at the checkpoint exactly as the shell prefix points it. */
@@ -250,7 +252,7 @@ it('an upstream certificate the system does not trust is refused (the checkpoint
   const up = await upstream(['example.test']);
   const dir = realpathSync(mkdtempSync(join(tmpdir(), 'egress-untrusted-'))); cleanup.push(() => rmSync(dir, { recursive: true, force: true }));
   const state = join(dir, 'state'); mkdirSync(state);
-  const proxy = await startEgressProxy({ stateDirectory: state, caPath: join(dir, 'ca.pem'), admission: { operations: [] }, resolve: async () => [PUBLIC],
+  const proxy = await startEgressProxy({ stateDirectory: state, caPath: join(dir, 'ca.pem'), admission: { operations: [] }, held: CLEAR, resolve: async () => [PUBLIC],
     dial: () => ({ host: '127.0.0.1', port: up.port }) });
   cleanup.push(() => proxy.close());
   const { stdout } = await run('/usr/bin/curl', ['-sS', '-m', '15', '-D', '-', '--proxy', `http://127.0.0.1:${String(proxy.port)}`, '--cacert', join(dir, 'ca.pem'),
@@ -328,7 +330,7 @@ it('a request waiting on name resolution when the turn stops never connects or r
   const state = join(dir, 'state'); mkdirSync(state);
   let release: (addresses: string[]) => void = () => undefined, asked: () => void = () => undefined;
   const pending = new Promise<void>(done => { asked = done; });
-  const proxy = await startEgressProxy({ stateDirectory: state, caPath: join(dir, 'ca.pem'), admission: { operations: [] },
+  const proxy = await startEgressProxy({ stateDirectory: state, caPath: join(dir, 'ca.pem'), admission: { operations: [] }, held: CLEAR,
     resolve: () => { asked(); return new Promise<string[]>(done => { release = done; }); },
     dial: () => ({ host: '127.0.0.1', port: (plain.address() as { port: number }).port }) });
   cleanup.push(() => proxy.close());
@@ -344,10 +346,70 @@ it('a request waiting on name resolution when the turn stops never connects or r
   // The other side: the same delayed resolution, answered while the turn runs, is forwarded.
   const dir2 = realpathSync(mkdtempSync(join(tmpdir(), 'egress-stop-'))); cleanup.push(() => rmSync(dir2, { recursive: true, force: true }));
   const state2 = join(dir2, 'state'); mkdirSync(state2);
-  const live = await startEgressProxy({ stateDirectory: state2, caPath: join(dir2, 'ca.pem'), admission: { operations: [] },
+  const live = await startEgressProxy({ stateDirectory: state2, caPath: join(dir2, 'ca.pem'), admission: { operations: [] }, held: CLEAR,
     resolve: () => new Promise<string[]>(done => setTimeout(() => done([PUBLIC]), 50)),
     dial: () => ({ host: '127.0.0.1', port: (plain.address() as { port: number }).port }) });
   cleanup.push(() => live.close());
   const { stdout } = await run('/usr/bin/curl', ['-sS', '-m', '15', '--proxy', `http://127.0.0.1:${String(live.port)}`, 'http://example.test/x'], { encoding: 'utf8' });
   expect(stdout).toBe('late'); expect(connections).toBe(1);
+});
+
+// Plan #507 (review round 5 of w4-toolpaths, MF1): the shell's network checkpoint runs the runner's held-secret check on
+// every request before any of it moves. The synthetic login is the reviewer's; the check is the runner's own
+// (tool-turn.mjs createHeldSecrets + heldVerdict + heldSpan), never a stand-in.
+const LOGIN = 'sk-ant-oat01-SyntheticHarnessLoginValue0123456789abcdef';
+const BARE = LOGIN.replace(/^sk-[a-z]+-[a-z]+\d*-/u, '');
+const heldOf = async (values: () => string[]) => {
+  // @ts-expect-error The runner side stays plain JavaScript.
+  const { createHeldSecrets, heldSpan, heldVerdict } = await import('./tool-turn.mjs');
+  const held = createHeldSecrets({ login: values });
+  return { check: heldVerdict(held) as (text: string) => string, span: () => heldSpan(held) as number };
+};
+
+it('plan #507: a held value in the path, a header or the CONNECT authority is refused before it moves; the record never keeps it; an ordinary read is forwarded', async () => {
+  const up = await upstream(['example.test']);
+  const resolved: string[] = [];
+  const { curl, record } = await checkpoint(up, { held: await heldOf(() => [LOGIN]), resolved, addresses: { [`${BARE.toLowerCase()}.example.test`]: [PUBLIC] } });
+  for (const args of [[`https://example.test/?q=${LOGIN}`], [`https://example.test/?q=${BARE}`], [`https://example.test/?q=${encodeURIComponent(LOGIN)}`],
+    ['-H', `X-Token: ${BARE}`, 'https://example.test/'], [`https://${BARE.toLowerCase()}.example.test/`]]) {
+    const got = await curl(...args);
+    expect(got.out).toMatch(/403|refused/iu);
+  }
+  // The authority carrying the value was never resolved (a lookup would already have carried it out).
+  expect(resolved.some(host => host.includes(BARE.toLowerCase()))).toBe(false);
+  expect(up.seen).toEqual([]);
+  const text = JSON.stringify(record());
+  expect(text).not.toContain(BARE); expect(text).not.toContain(BARE.toLowerCase());
+  expect(record().requests.filter((row: { kind: string }) => row.kind === 'secret').length).toBeGreaterThanOrEqual(4);
+  // The neighbour: an ordinary read through the same checkpoint is forwarded unchanged.
+  const ordinary = await curl('https://example.test/page?q=ordinary');
+  expect(ordinary.out).toContain('hello from example.test');
+  expect(up.seen.map(row => row.url)).toEqual(['/page?q=ordinary']);
+});
+
+it('plan #507: an admitted write whose streamed body carries a held value is cut before any part of the value is forwarded; a clean body passes', async () => {
+  const up = await upstream(['example.test']);
+  const admission = { operations: [...SINGLE_MACHINE_PROFILE.operations], effectPolicy: { type: 'PreviewEffectPolicy',
+    resourceLevelUsd: 0, policySensitive: [], registered: [{ effect: 'tool:network-write', target: 'example.test', consequence: 'data',
+      reversibility: 'reversible', reach: 'world', costUsd: 0, source: 'telegram:102965:121996' }],
+    grants: [{ id: 'g-api', effect: 'tool:network-write', target: 'example.test', approves: ['scope'], source: 'telegram:102965:121996',
+      custodian: 'desk', recovery: 'remove the grant' }] } };
+  const { curl, state } = await checkpoint(up, { admission, held: await heldOf(() => [LOGIN]) });
+  const leaky = join(state, 'leaky.txt'), clean = join(state, 'clean.txt');
+  writeFileSync(leaky, `${'a'.repeat(200000)}${BARE}${'b'.repeat(5000)}`);
+  writeFileSync(clean, `${'a'.repeat(200000)}${'b'.repeat(5000)}`);
+  await curl('-X', 'POST', '--data-binary', `@${leaky}`, 'https://example.test/upload');
+  expect(up.seen.some(row => row.body.includes(BARE.slice(0, 8)))).toBe(false);
+  const ok = await curl('-X', 'POST', '--data-binary', `@${clean}`, 'https://example.test/upload');
+  expect(ok.out).toContain('hello from example.test');
+  expect(up.seen.at(-1)?.body.length).toBe(205000);
+});
+
+it('plan #507: with no held-secret check wired, or one that cannot read its sources, nothing is forwarded (fails closed)', async () => {
+  const up = await upstream(['example.test']);
+  const unwired = await checkpoint(up, { held: null });
+  expect((await unwired.curl('https://example.test/page')).out).toMatch(/403/u);
+  const unreadable = await checkpoint(up, { held: await heldOf(() => { throw Error('custody unreadable'); }) });
+  expect((await unreadable.curl('https://example.test/page')).out).toMatch(/held-secret check is unavailable/u);
+  expect(up.seen).toEqual([]);
 });

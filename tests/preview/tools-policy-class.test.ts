@@ -139,6 +139,11 @@ it('the class reads the effective checkpoints, not labels: a reopened read or a 
     expect(claudeSettingsCheckpoints(reopen([...settings.sandbox.filesystem.allowRead, '/Users/p/root/x']), e)).toMatch(/outside its workspace/u);
     expect(claudeSettingsCheckpoints(reopen(['/private/var/x/s/../../../Users']), e)).toMatch(/not plain absolute/u);
     expect(claudeSettingsCheckpoints(reopen(['/private/var/x/s/w']), e)).toBeNull();          // narrower reads stay in the class
+    // w4-toolpaths: the build's own reads include the /etc and /var link entries (each reopens the link node alone); another
+    // root link, or a path under one of them, is still outside the class.
+    expect(settings.sandbox.filesystem.allowRead).toEqual(expect.arrayContaining(['/etc', '/var']));
+    expect(claudeSettingsCheckpoints(reopen([...settings.sandbox.filesystem.allowRead, '/tmp']), e)).toMatch(/the shell reads \/tmp, outside/u);
+    expect(claudeSettingsCheckpoints(reopen([...settings.sandbox.filesystem.allowRead, '/var/log']), e)).toMatch(/the shell reads \/var\/log, outside/u);
   }
   const policyArgs = codexToolsPolicy(MODEL).args;
   const hookArgs = codexToolHookArgs({ ...turn, gate });

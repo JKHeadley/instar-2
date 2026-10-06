@@ -106,10 +106,12 @@ it('discards the wrapper, so nothing beside the object can reach the answer', ()
 it('the shipped launcher parses with a per-consumer policy, and only the answer side may discard a wrapper', () => {
   const launcher = readFileSync(join(process.cwd(), 'tests/preview/journal-agent.mjs'), 'utf8');
   expect(launcher).toContain("const wrappedPolicyOf = role => role === 'answer' ? 'accept' : 'refuse';");
+  // Plan #507: the second per-consumer declaration beside it -- whose answer IS a JSON object.
+  expect(launcher).toContain("const objectAnswerOf = id => /^summary:/u.test(id);");
   // The one reading (answer-reading.ts readAnswer, which calls parseModelJson) is the launcher's only parse site.
   expect(launcher.match(/parseModelJson\(/gu)).toBeNull();
   const sites = launcher.match(/readAnswer\([^;]*?\);/gu) ?? [];
-  expect(sites).toEqual(['readAnswer(result.bytes, { wrapped: wrappedPolicyOf(role), evidence: [id] });']);
+  expect(sites).toEqual(['readAnswer(result.bytes, { wrapped: wrappedPolicyOf(role), evidence: [id],\n        ...(objectAnswerOf(id) ? { object: true } : {}) });']);
   expect(launcher).toContain('const role = roleOf(id);');
 });
 

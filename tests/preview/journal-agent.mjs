@@ -6,15 +6,18 @@ import { execFileSync } from 'node:child_process';
 import { chmodSync, existsSync, lstatSync, mkdirSync, readdirSync, readFileSync, realpathSync, renameSync, rmSync, writeFileSync } from 'node:fs';
 import { dirname, resolve, join } from 'node:path';
 import { createProductionTelegramIO, createSubscriptionProviderIO, productionStorageIO } from '../../scripts/production-boot-io.mjs';
+import { snapshotState } from '../../scripts/operator-dashboard.mjs';
+import { checkListen, createReadOnlyDashboard, pinCheckAt, serveReadOnly } from '../../scripts/operator-dashboard-readonly.mjs';
 import { openProductionStorage } from '../../src/assembly/production-storage.js';
 import { DEFAULT_SUBSCRIPTION_DOORWAY, subscriptionDoorway,
   SUBSCRIPTION_PREVIEW_EXPIRY, SUBSCRIPTION_TOOLS_SYSTEM_PROMPT } from '../../src/assembly/production-provider.js';
 import { attachEgress, attachSessionVolume, networkToolReads, readRootMcp, reconcileToolTurns, runToolTurn, toolPacketFits, toolStatusLines, toolTurnEligible, TOOL_NOTICE_MAX_BYTES,
-  TOOLS_DEFAULT_ACTIVATION } from './tool-turn.mjs';
+  TOOLS_DEFAULT_ACTIVATION, createHeldSecrets, custodyHeldSources, heldSpan, heldVerdict } from './tool-turn.mjs';
 import { prepareSessionAdmission, sessionAdmissionCommand, SESSION_ADMISSION_KEPT } from './session-admission.mjs';
 import { createAdmissionGate, createToolEffectOwner } from './admission-gate.mjs';
 import { admitToolCallEffect } from './tool-admission.mjs';
-import { grantVolume, HARNESS_SESSION_BRIDGE, harnessGate, harnessHookPath, harnessSessionAdmission, harnessSessionLayout, harnessStatusLine } from './harness-user.mjs';
+import { grantVolume, HARNESS_OFF_REASON, HARNESS_SESSION_BRIDGE, harnessCredentialValues, harnessGate, harnessHookPath, harnessRefusedNotice, harnessSessionAdmission,
+  harnessSessionLayout, harnessStatusLine, readHarnessLogin } from './harness-user.mjs';
 import { encoded } from '../../src/assembly/boundary.js';
 import { decodeEffectPolicy, DEFAULT_EFFECT_POLICY, effectDoorwayStatusLines, refusedEffectNotices, currentEffectPolicy } from './effect-doorway.mjs';
 import { redact } from '../../src/recall/redact.js';
@@ -31,7 +34,7 @@ import { createPreviewClock } from './clock.js';
 import { appendRun, heldNotices, heldRepliesToday, memoryHealthLine, readRuns, restartHandoff, selfState, selfStateBrief, selfStateSource, zoneFormatter } from './self-state.js';
 import { guidanceReport } from './guidance.js';
 import { memoryLearningLine, memoryLearningReport } from './memory-learning.js';
-import { JEV_MODEL, jevQuestions, publicCredentialRegister, secretMaterialIn, replyReviewContext, replyReviewQuestion, replyReviewRules, parseReplyReviewVerdict, replyReviewDiagnostics, parseJevResponse, replyRevisionQuestion, parseReplyRevision, REVIEW_MALFORMED, REVIEW_FORMAT_REMINDER } from './reply-check.js';
+import { JEV_MODEL, jevQuestions, publicCredentialRegister, concealSecretMaterial, secretMaterialIn, replyReviewContext, replyReviewQuestion, replyReviewRules, parseReplyReviewVerdict, replyReviewDiagnostics, parseJevResponse, replyRevisionQuestion, parseReplyRevision, REVIEW_MALFORMED, REVIEW_FORMAT_REMINDER } from './reply-check.js';
 import { interpretSummaryReview, SUMMARY_QUESTION } from './summary-check.js';
 import { assertLiveJudgment, modelCallRecord, sha256 } from './model-call-boundary.js';
 import { readAnswer, taskFields } from './answer-reading.js';
@@ -41,7 +44,7 @@ import { SUMMARY_FAITHFULNESS_QUESTION } from './summary-faithfulness.js';
 import { dueState } from './dated-memory.js';
 import { observedSubscriptionIO } from './call-diagnostics.mjs';
 import { agentState, importStorePass } from './channel-source.mjs';
-import { exhaustedPollReason } from './poll-failure-reason.mjs';
+import { exhaustedPollReason, pollBackoffMs, pollEndsRun, temporaryPollStatus } from './poll-failure-reason.mjs';
 import { loopHealth } from './obligations.js';
 import { classifyTelegramSend } from './telegram-send-outcome.mjs';
 import { authoritySealKey, resolveActivationAuthority, resolveInstallationPolicy, sealAuthorityRecord, singleMachineProfileDigest, SINGLE_MACHINE_PROFILE } from './activation-authority.js';
@@ -71,7 +74,7 @@ import { doorwayFreshness, installDoorways, observeExchange, readDoorwayMap, sta
 import { createSecretCustody, dueCredentialReminders, reminderSchedule } from './secret-custody.js';
 import { credentialNotices, doorwayNotices, dueWithDelivery } from './credential-reminders.js';
 import { journalCapacity, packetCapacity } from './capacity-outcome.js';
-import { createLiveSentinels, createOrdinaryLane, sentinelCycle, sentinelReport } from './live-sentinels.js';
+import { createLiveSentinels, createOrdinaryLane, sentinelCycle, sentinelReport, waitWorking } from './live-sentinels.js';
 import { SENTINEL_FAMILIES } from './sentinel-record.js';
 
 const clock = createPreviewClock(() => Date.now(), () => performance.now());
@@ -140,6 +143,15 @@ const approvalSurfaceOf = options => {
   return createApprovalSurfaceClient({ store: options['approval-store'], outbox: options['approval-outbox'],
     operatorUid: number(options['approval-operator-uid'], 'approval-operator-uid', 0), now: wallNow });
 };
+// Rules 79, 81 (plan #502): the operator dashboard served READ-ONLY by this runner, with no approval port. Installed only when
+// both are given: where it listens (loopback or this machine's Tailscale address) and the loopback endpoint that checks the
+// operator's existing dashboard PIN (an Instar 1.x host's `POST /dashboard/unlock`). Approvals stay where they are answered.
+const readOnlyDashboardOf = options => {
+  const given = ['dashboard-listen', 'dashboard-pin-check'].filter(name => options[name] !== undefined);
+  if (!given.length) return null;
+  if (given.length !== 2) throw Error('preview: --dashboard-listen and --dashboard-pin-check go together');
+  return { listen: checkListen(options['dashboard-listen']), checkPin: pinCheckAt(options['dashboard-pin-check']) };
+};
 // Plan #91; Purpose, the approval-account exception: the desk-written explicit-yes installation record. A malformed
 // record refuses the launch; afterwards it is read afresh on every use, so a withdrawal the desk records on the
 // operator's word stops consumption from the next poll (an unreadable record admits nothing).
@@ -181,7 +193,8 @@ const required = (options, name) => { if (!options[name]) throw Error(`preview: 
  * the kernel checks each file the harness opens as an identity with no access to the operator account's private files.
  * Decided at launch from live state (harness-user.mjs harnessGate), never from the switch alone. Unavailable, every
  * harness launch is HELD (never run as the runner's own account) and the identity is decided again on a later launch;
- * the runner's journal, messaging and stop keep working, and the status line says why. Absent: null. */
+ * the runner's journal, messaging and stop keep working, and the status line says why. Absent: null (and plan #473: a
+ * Claude Code tool route then refuses every tool turn, `identityRefusalOf`). */
 const harnessOf = (options, root, doorway) => {
   const user = options['harness-user'];
   if (user === undefined) return null;
@@ -189,6 +202,14 @@ const harnessOf = (options, root, doorway) => {
     denied: [realpathSync(root), homedir(), process.cwd()], clock: () => performance.now(),
     unavailable: doorway.toolTurn?.harness ? 'the selected doorway is not the Claude Code harness' : null,
     adopt: uid => hostResources.adoptHarnessUid(uid), log: line => process.stderr.write(`preview: ${line}\n`) });
+};
+/** Plan #473: why a Claude Code tool turn is refused for its identity: no `--harness-user` at all on a Claude Code tool
+ * route (never the operator's account), said at launch. A configured user that is not ready holds every launch instead
+ * (harnessGate); a checkpointed harness runs under its own sandbox and is not gated by it. */
+const identityRefusalOf = (options, doorway) => {
+  if (options['harness-user'] !== undefined || doorway.toolTurn?.harness) return null;
+  process.stderr.write(`preview: ${harnessStatusLine({ ready: false, reason: HARNESS_OFF_REASON })}\n`);
+  return HARNESS_OFF_REASON;
 };
 /** The `runAs` a launch passes: the ready identity's command fields (throws while the identity is held). */
 const runAsOf = harness => { if (!harness) return null; const { user, launcher, login, plan } = harness.current(); return { user, launcher, login, plan }; };
@@ -371,14 +392,23 @@ const turnSources = (root, options, view, runs, current = () => undefined, hando
   toolsOn = () => options['tools-activation'] !== undefined) => {
   // The standing mind-held instructions ride every prepared envelope; a changed rule book refuses launch.
   verifyMindRules(path => readFileSync(resolve(process.cwd(), path), 'utf8'));
-  // Both briefings are built once; each turn carries the one that matches whether its tools are on now (default on,
-  // withdrawn when the record is removed or its grant no longer resolves).
-  const packets = new Map([true, false].map(tools => [tools, sourcePacket(path => readFileSync(resolve(process.cwd(), path), 'utf8'), SOURCE_PINS,
-    { providerAttempts: view.limits.maxCalls, expiresAt: view.expires, tools }).sources]));
+  // Each turn carries the briefing that matches whether its tools are on now (default on, withdrawn when the record is
+  // removed or its grant no longer resolves) and how many MCP servers the root configures now (read at each turn, as the
+  // tool turn reads them; unknown when the configuration is unreadable). Each distinct briefing is built once.
+  const packets = new Map();
+  const packetFor = (tools, mcp) => {
+    const key = `${String(tools)}:${String(mcp)}`;
+    if (!packets.has(key)) packets.set(key, sourcePacket(path => readFileSync(resolve(process.cwd(), path), 'utf8'), SOURCE_PINS,
+      { providerAttempts: view.limits.maxCalls, expiresAt: view.expires, tools, ...(tools && mcp !== undefined ? { mcp } : {}) }).sources);
+    return packets.get(key);
+  };
+  const mcpCount = () => { try { return Object.keys(readRootMcp(root)?.servers ?? {}).length; } catch { return undefined; } };
+  // Built now, so a changed source document still refuses launch rather than a later turn.
+  packetFor(true, mcpCount()); packetFor(false, undefined);
   const deskStatusPath = resolve(options['desk-status'] ?? join(root, 'desk-status.md'));
   return turn => {
     const now = wallNow(), log = runs();
-    const sources = packets.get(Boolean(toolsOn()));
+    const tools = Boolean(toolsOn()), sources = packetFor(tools, tools ? mcpCount() : undefined);
     const desk = deskStatusSource(readDeskStatus(deskStatusPath), now, deskStatusPath);
     const note = handoff();
     return [...sources, disciplineSource(view), selfStateSource(selfStateBrief(view, log, now, timeZoneOf(options), current())), desk, ...(note ? [note] : [])];
@@ -530,6 +560,13 @@ const roleOf = id => id.endsWith(':reply-review') || id.endsWith(':revision-revi
  * and no later review would catch it. Nothing branches on what the text means, only on which consumer asked.
  */
 const wrappedPolicyOf = role => role === 'answer' ? 'accept' : 'refuse';
+/** Plan #507, the same declaration one layer deeper: is this task's ANSWER itself a JSON object? The three summary-side
+ * calls are -- the rolling summary (`summary:<through>`, whose object carries the memory decision and the reminder
+ * withdrawal), its review (`summary:<through>:review`, {verdict, reason}) and the meaning index
+ * (`summary:index:<n>`, {concepts}) -- and each of their consumers parses the answer as JSON. For them the runner
+ * serializes the object, never the model (answer-reading.ts). Every other call's answer is prose or the conversation
+ * protocol's own flat fields. Nothing branches on what the text means, only on which consumer asked. */
+const objectAnswerOf = id => /^summary:/u.test(id);
 /** The registered live judgment a subscription call serves (model-call-boundary.ts). A revised
  * reply's held-class review is a reply review; the revision is the agent's own response to the
  * objections, with its own floor. A retrospective pass is its own judgment, and so is its duty follow-up
@@ -653,7 +690,8 @@ async function main() {
     return;
   }
   // Rules 30, 59: an unregistered doorway or an incomplete silent-stop table refuses the launch.
-  if (command === 'run') { admitHarness(); subscriptionDoorway(options.doorway ?? DEFAULT_SUBSCRIPTION_DOORWAY); }
+  // Plan #502: a half-given or public read-only dashboard refuses the launch before anything else starts.
+  if (command === 'run') { admitHarness(); subscriptionDoorway(options.doorway ?? DEFAULT_SUBSCRIPTION_DOORWAY); readOnlyDashboardOf(options); }
   // Rule 30: every activation check, policy bound and route construction below goes through the
   // selected doorway, so a root configured for another registered doorway runs on that doorway's
   // CLI, model shape and parser instead of the first one that happened to be written here.
@@ -1456,6 +1494,9 @@ async function main() {
       incarnation: `launcher:${process.pid}:${createHash('sha256').update(`${process.pid}:${wallNow()}:${performance.now()}`).digest('hex').slice(0, 16)}`,
       now: wallNow, monotonic: () => performance.now() });
     const harness = harnessOf(options, root, doorway);
+    // Plan #473: why a Claude Code tool turn is refused for its identity (null: a harness user is configured, or the
+    // doorway's checkpointed harness is not gated by it). The packet then names no tools, and runToolTurn refuses the turn.
+    const identityRefusal = identityRefusalOf(options, doorway);
     await hostResources.attach({ ledgerPath: launchesPath, statePath: resourcesPath, now: wallNow, allocation,
       ...(harness?.uid != null ? { harnessUid: harness.uid } : {}),
       ...(aggregateMemoryMib === undefined ? {} : { aggregateMemoryBytes: aggregateMemoryMib * 1024 * 1024 }),
@@ -1466,14 +1507,21 @@ async function main() {
         context)) });
     // Rule 100: credentials handed over in chat are stored before anything consumes them.
     const custody = createSecretCustody(root, key(), wallNow);
-    // Plan #442 (Rules 4, 86, 100): the secret values this runner holds (host custody and the preview vault), for the
-    // exact floor on every reply and send. Read in memory at each use; never recorded, logged or given to a model.
-    const heldSecretValues = () => {
-      const values = Object.entries(process.env).flatMap(([name, value]) => name.startsWith('INSTAR_SECRET_') && value ? [value] : []);
-      for (const record of custody.records()) if (record.custody === 'preview-vault')
-        try { values.push(custody.resolve(secretRef(record.name))); } catch { /* status reports the missing object */ }
-      return values;
-    };
+    // Plan #442 (Rules 4, 86, 100): the secret values this runner holds, for the exact floor on every reply and send and
+    // (plan #507) every outward tool request: host custody, the preview vault, the root's MCP credentials (served to a
+    // turn's servers) and, with a harness user, its login from the runner's custody and any login Claude Code wrote into
+    // the harness profile. Read in memory at each use; never recorded, logged or given to a model. A value once read stays
+    // held for the runner's life, so a source that later changes or becomes unreadable cannot drop a value an active
+    // context may already hold; a source that cannot be read now is reported unavailable (createHeldSecrets).
+    const harnessLoginProfile = options['harness-user'] === undefined ? null : JSON.parse(readFileSync(required(options, 'login-profile'), 'utf8'));
+    const heldSecrets = createHeldSecrets({
+      environment: () => Object.entries(process.env).flatMap(([name, value]) => name.startsWith('INSTAR_SECRET_') && value ? [value] : []),
+      ...custodyHeldSources(custody, () => readRootMcp(root)?.secrets ?? {}),
+      ...(harnessLoginProfile === null ? {} : {
+        'harness login': () => [readHarnessLogin(harnessLoginProfile)],
+        'harness profile login': () => harnessCredentialValues(harnessLoginProfile.configDirectory) }),
+    });
+    const heldSecretValues = () => heldSecrets().values;
     // Plans #446, #451: the register's public entries (names, labels, custody, expiry, renewal standing and step), given
     // to the full-context review as quoted recorded facts. An unreadable register gives none; the review then holds as before.
     const credentialRegister = () => { try { return publicCredentialRegister(custody.records(), heldSecretValues(), wallNow()); } catch { return []; } };
@@ -1534,7 +1582,7 @@ async function main() {
       const bytes = prepareJournalEnvelope(input, required(options, 'model'), g.grant, wallNow(), journal.view.limits.maxBytes);
       // A tool turn's longer system prompt must fit that room too; an overflow here makes the packet ladder yield, as
       // for the text-only prompt, instead of leaving the turn to fall back to a text-only answer.
-      if (toolsActive() && toolTurnEligible(input.id)
+      if (toolsActive() && identityRefusal === null && toolTurnEligible(input.id)
         && Buffer.byteLength(bytes) + Buffer.byteLength(doorway.toolTurn?.system ?? SUBSCRIPTION_TOOLS_SYSTEM_PROMPT) + TOOL_NOTICE_MAX_BYTES > toolPromptLimit())
         throw Error('preview: complete prompt overflow');
       return bytes;
@@ -1625,13 +1673,16 @@ async function main() {
       // Plan #491 (answer-reading.ts): the model returns one flat object and the runner builds the Decision from its own
       // values; a wrapped object passes exactly the checks an unwrapped one does, and only the wrapper is dropped.
       // Rule 57: a returned floor may only echo the envelope's own; it never defines or widens it.
-      const reading = readAnswer(result.bytes, { wrapped: wrappedPolicyOf(role), evidence: [id] });
+      const reading = readAnswer(result.bytes, { wrapped: wrappedPolicyOf(role), evidence: [id],
+        ...(objectAnswerOf(id) ? { object: true } : {}) });
       if (!reading.ok) {
         recordShape(shapesPath, role, 'decision', 'malformed', reading.shape);
         // The defect is content-free protocol text; the format re-ask names it so the model can correct exactly that.
         return { state: 'complete', failureClass: 'malformed', defect: reading.defect, usage: result.usage };
       }
       if (reading.shape !== 'bare') recordShape(shapesPath, role, 'decision', 'tolerated', reading.shape);
+      // Rule 2: an object task's answer the runner had to read out of JSON text is a visible deviation, not a silent one.
+      if (reading.objectAsText) recordShape(shapesPath, role, 'decision', 'tolerated', 'object-as-text');
       const value = reading.value;
       if (!value.trim()) return { state: 'complete', failureClass: 'empty', usage: result.usage };
       // Rule 108: the stated reason is recorded beside the conclusion (build 8).
@@ -1641,6 +1692,8 @@ async function main() {
     // Part Thirteen §9 (docs/17-harness-adapters): an eligible answer or work step runs as one scoped-tool turn (tool-turn.mjs runToolTurn).
     const invokeTools = async (prepared, id) => (await runToolTurn({ journal, root, id, prepared,
       promptLimit: toolPromptLimit(), mcp: readRootMcp(root),
+      // Rule 100: an MCP server's SecretRef is opened from this root's custody vault and handed to that server alone.
+      resolveSecret: name => createSecretCustody(root, key(), wallNow).resolve(secretRef(name)),
       authority: `${toolsRecord.reference} ${toolsRecord.invocationPolicyDigest}`,
       // MF5: the conversation's workspace persists across turns, and its kept harness session (in the login profile's
       // projects directory) is a cache bound to this authority, harness and model and to the journal's current facts.
@@ -1649,7 +1702,8 @@ async function main() {
       session: doorway.toolTurn?.harness ? null : { store: join(profile.configDirectory, 'projects'), harness: `${profile.version} ${required(options, 'model')}` },
       stopped: () => workerStop.value || existsSync(stopPath) || journal.view.stop !== null || !toolsActive(),
       deniedRoots: [realpathSync(root), profile.home, profile.configDirectory, profile.workingDirectory],
-      ...admissionConfig(), now: wallNow, redactText: text => redact(text).text, gate, owner: ownerMachine, harness: harness ? harness.current() : null,
+      ...admissionConfig(), now: wallNow, redactText: text => redact(concealSecretMaterial(text, heldSecretValues())).text, gate, owner: ownerMachine,
+      harness: identityRefusal !== null ? { ready: false, refused: true, reason: identityRefusal } : harness ? harness.current() : null, heldSecrets,
       ...(doorway.toolTurn ? { system: doorway.toolTurn.system, admission: doorway.toolTurn } : {}),
       fallback: async () => ({ result: await invokeSubscription(prepared, id) }),
       // Rules 33, 84: the workspace notice (files that may still disagree with memory, or a lost workspace) rides the packet.
@@ -1681,24 +1735,36 @@ async function main() {
       ...toolStatusLines(journal.view, toolsActive(), toolsOff ?? (toolsRecord
         ? 'withdrawn since launch: the activation record changed or its grant no longer resolves' : null), Boolean(doorway.toolTurn?.harness)),
       ...(toolsActive() || journal.view.effectDoorway ? effectDoorwayStatusLines(journal.view.effectDoorway) : []),
-      ...(harness ? [harnessStatusLine(harness.state)] : [])];
+      ...(harness ? [harnessStatusLine(harness.state)] : identityRefusal !== null ? [harnessStatusLine({ ready: false, reason: identityRefusal })] : [])];
     const statusExtraLines = () => [...proofLines(), ...ownerLines(), ...minimalLines()];
-    const approvalSurface = approvalSurfaceOf(options);
-    // Rules 79, 81: the operator dashboard's snapshot, published into this runner's own outbox at most every 15 seconds
-    // (and once at the end), only while the operator's approval page is installed. A failed publish is never fatal: the
-    // page shows how old its copy is, and status reports the page (approvalSurface).
-    let dashboardAt = -Infinity;
+    const approvalSurface = approvalSurfaceOf(options), readOnly = readOnlyDashboardOf(options);
+    // Rules 79, 81: the operator dashboard's snapshot, built at most every 15 seconds (and once at the end) while a page
+    // shows it: published into this runner's own outbox for the operator's approval page, and kept for the read-only page
+    // this runner serves. A failed build is never fatal: each page shows how old its copy is.
+    let dashboardAt = -Infinity, dashboardText = null;
     const publishDashboard = (force = false) => {
       const now = wallNow(), zone = timeZoneOf(options);
-      if (!approvalSurface || !force && now - dashboardAt < 15_000) return;
+      if (!approvalSurface && !readOnly || !force && now - dashboardAt < 15_000) return;
       dashboardAt = now;
       try {
-        approvalSurface.publish(dashboardSnapshot(journal.view, { now, zone, bot: options['bot-username'] ?? null,
+        const snapshot = dashboardSnapshot(journal.view, { now, zone, bot: options['bot-username'] ?? null,
           stopped: existsSync(stopPath), statusText: statusAnswer(journal.view, now, zone,
             // The memory-learning line the chat answer adds after the host's extra lines (journal.ts), so both read the same.
-            [...statusExtraLines(), memoryLearningLine(journal.view, turn => operatorWriter(journal.view, turn, true))], statusPullLines()) }));
+            [...statusExtraLines(), memoryLearningLine(journal.view, turn => operatorWriter(journal.view, turn, true))], statusPullLines()) });
+        dashboardText = JSON.stringify(snapshot);
+        approvalSurface?.publish(snapshot);
       } catch { /* the page reads its copy's age */ }
     };
+    const readOnlyServer = readOnly && serveReadOnly(createReadOnlyDashboard({ checkPin: readOnly.checkPin,
+      state: () => dashboardText === null ? { kind: 'missing' } : snapshotState(dashboardText, wallNow()) }),
+    `${readOnly.listen.host}:${String(readOnly.listen.port)}`);
+    if (readOnlyServer) {
+      // Never keeps the runner alive, and a failed listen (a taken port) is reported, never fatal to serving the chat.
+      readOnlyServer.unref();
+      readOnlyServer.on('error', error => process.stderr.write(`preview: read-only dashboard not served: ${error instanceof Error ? error.message : 'listen failed'}\n`));
+      readOnlyServer.on('listening', () => { const where = readOnlyServer.address();
+        process.stderr.write(`preview: read-only operator dashboard at http://${where.address}:${String(where.port)}/dashboard\n`); });
+    }
     const yesInstallation = explicitYesInstallationOf(options), reviewSource = reviewSourceOf(options, yesInstallation);
     // Plan #373: how long an operator request stays answerable (default 18 hours), never past the trial's current end.
     const requestHours = options['operator-request-hours'] === undefined ? undefined
@@ -1718,7 +1784,7 @@ async function main() {
       prepareModel: modelEnvelope,
       // Part Thirteen §9: the packet names the tools exactly when the model call will run on the tool route. The packet
       // is built before the answer's `reserve` or the work's `obligation-start` counts its base call, so that call is added here.
-      toolRoute: id => toolsActive() && toolTurnEligible(id) && toolPacketFits(journal.view),
+      toolRoute: id => toolsActive() && identityRefusal === null && toolTurnEligible(id) && toolPacketFits(journal.view),
       // Only scheduled obligation work is delegated; an operator answer is never handed to a session.
       // The session route is taken only while its grant holds and the call allowance can hold the
       // step's whole reserved liability on top of the obligation's own start.
@@ -1740,6 +1806,9 @@ async function main() {
         const now = wallNow(), notices = [];
         // Part Twelve: this answer's own refused effects ride first, so a refusal is reported even if the answer omits it.
         if (turn !== undefined) notices.push(...refusedEffectNotices(journal.view.effectDoorway?.recent ?? [], turn));
+        // Plan #473: an answer whose tool turn was refused for the harness identity says so under it.
+        if (turn !== undefined && identityRefusal !== null && (journal.view.toolTurns?.identityRefused ?? []).includes(turn))
+          notices.push({ key: `harness:${turn}`, line: harnessRefusedNotice(identityRefusal) });
         try { notices.push(...credentialNotices(dueCredentialReminders(createSecretCustody(root, key(), wallNow).records(), now), now)); } catch { /* status shows it */ }
         try { notices.push(...doorwayNotices(readDoorwayMap(doorwaysPath), now)); } catch { /* status shows it */ }
         return notices;
@@ -1996,7 +2065,7 @@ async function main() {
       const gateStopped = () => workerStop.value || existsSync(stopPath) || !ownerHeld() || journal.view.stop !== null
         || wallNow() >= journal.view.expires || !active();
       const appendWork = record => journal.append({ kind: 'session-work', record, at: wallNow() });
-      gate = await createAdmissionGate({ append: appendWork, stopped: gateStopped, now: wallNow,
+      gate = await createAdmissionGate({ append: appendWork, stopped: gateStopped, now: wallNow, held: heldVerdict(heldSecrets),
         effects: createToolEffectOwner({ decide: (tool, input) => admitToolCallEffect(tool, input, admissionConfig(), wallNow()),
           append: appendWork, stopped: gateStopped, now: wallNow, prepared: identity => (journal.view.toolEffects ?? []).includes(identity) }) });
     }
@@ -2068,7 +2137,7 @@ async function main() {
                 .forEach(({ name }) => rmSync(join(egressBase, name), { recursive: true, force: true }));
             }
             stepEgress.set(claim, (await attachEgress({ stateDirectory: state, ...(privateDirectory ? { privateDirectory } : {}), scratch: tmp,
-              home: join(tmp, 'home') }, undefined, networkToolReads())).proxy);
+              home: join(tmp, 'home') }, undefined, networkToolReads(), { check: heldVerdict(heldSecrets), span: () => heldSpan(heldSecrets) })).proxy);
             gate.open(claim, { framework, allowance: SESSION_WORK_LIMITS.maxCallsPerStep, edge }); },
           admissionState: claim => gate.state(claim),
           closeAdmission: claim => { gate.close(claim); closeStepEgress(claim).catch(() => {}); } },
@@ -2177,21 +2246,26 @@ async function main() {
     // The run log and ownership exist now: the launch's store comparisons execute as a recorded proof.
     recordProof(executeProof(PREVIEW_PROOF_PLANS.find(plan => plan.id === 'store-agreements'), proofPorts, generation, clock.elapsed));
     ({ failed: failedPolls, conflicted: conflictedPolls } = runs.pollPressure);
-    const pollFailure = async conflict => {
+    // Plan #548: `unreachable` is a poll that got no answer at all (the connection is down) or a temporary server
+    // failure (temporaryPollStatus: 5xx, 429), as opposed to a definite answer Telegram gave that is not a usable
+    // result. A sustained conflict or refusal ends the run; a sustained outage keeps the poll breaker open at the capped
+    // trial cadence while due work goes on (waitWorking).
+    const pollFailure = async (conflict, unreachable = false) => {
       failedPolls++; routeHealthy = false;
       conflictedPolls = conflict ? conflictedPolls + 1 : 0;
       try { appendRun(runsPath, { v: 1, launch: launchedAt, poll: conflict ? 'conflicted' : 'failed', at: wallNow() }); }
       catch { endReason = 'run log unavailable'; process.exitCode = 1; return false; }
-      const reason = exhaustedPollReason(failedPolls, conflictedPolls);
+      const reason = pollEndsRun(failedPolls, conflictedPolls, unreachable);
       if (reason) {
         endReason = reason;
         process.exitCode = 1;
         return false;
       }
-      const until = clock.elapsed() + Math.min(conflict ? 2000 : 30000, 250 * 2 ** Math.min(failedPolls - 1, 7));
-      serviceBeat(false, conflict ? 'Telegram reports another poller' : 'polling Telegram is failing');
-      while (!workerStop.value && !existsSync(stopPath) && clock.elapsed() < until)
-        await delay(Math.min(100, until - clock.elapsed()));
+      serviceBeat(false, conflict ? 'Telegram reports another poller' : exhaustedPollReason(failedPolls, conflictedPolls)
+        ? 'poll breaker open after sustained failures' : 'polling Telegram is failing');
+      // The backoff never pauses the work schedule: the cycle's work job is offered to the lane throughout.
+      await waitWorking({ elapsed: clock.elapsed, delay, stopped: () => signalled || workerStop.value || existsSync(stopPath), work: workCycle },
+        pollBackoffMs(failedPolls, conflict));
       return true;
     };
     // An exhausted carried episode is an open breaker: one delayed trial poll per launch, never an immediate retry storm.
@@ -2260,6 +2334,25 @@ async function main() {
       // reminder, and only after a successful empty poll, so a waiting withdrawal is read and settled first (Rule 93).
       actOnPromise: id => { if (!id.startsWith('request:')) sentinelSteps.push(() => worker.workObligations()); } });
     const sentinelTick = () => { if (sentinelFamilies.size && !journal.readOnly) sentinels.tick(); };
+    // Rules 8, 22, 92, 99: the scheduled consumer of due obligation work, one bounded step per tick,
+    // runs after the ordinary drain inside the same background job, so it never blocks the minimal path.
+    // The sentinels tick only when that job is admitted, and their requested steps run inside it after the drain.
+    // Plan #548: it is offered once per cycle AND throughout every poll backoff (pollFailure), so it never waits on
+    // the Telegram connection or on an inbound message; only delivery of its result does.
+    const workCycle = () => {
+      if (journal.view.stop || !ownerHeld() || !activationMatchesJournal(journal.view, activation)) return;
+      sentinelCycle(lane, { tick: sentinelTick, requested: sentinelSteps, drain: () => worker.drain(),
+        after: async () => {
+          try { await worker.workObligations(); } catch { /* a stop or expiry ends the step; its start stays durable */ }
+        } });
+    };
+    // Plan #548, the desk's live check only: with --telegram-cut-file, while that file holds a future epoch-ms every
+    // poll fails as an unreachable connection without a network call. Never passed to the operator's runner.
+    const cutFile = options['telegram-cut-file'] ?? null;
+    const telegramCut = () => {
+      if (cutFile === null) return false;
+      try { return Number(readFileSync(cutFile, 'utf8').trim()) > wallNow(); } catch { return false; }
+    };
     for (let i = 0; i < cycles && !signalled; i++) {
       if (i > 0) await new Promise(done => setImmediate(done));
       if (signalled || workerStop.value || existsSync(stopPath) || journal.view.stop || !ownerHeld()) break;
@@ -2286,14 +2379,9 @@ async function main() {
       // A stop given on the independent surface latches here, before any poll or ordinary pass.
       if (journal.view.stop) break;
       if (renewedAway()) break;
-      // Rules 8, 22, 92, 99: the scheduled consumer of due obligation work, one bounded step per tick,
-      // runs after the ordinary drain inside the same background job, so it never blocks the minimal path.
-      // The sentinels tick only when that job is admitted, and their requested steps run inside it after the drain.
-      // A holding note the presence sentinel marks due goes out at the minimal path's next step after the poll.
-      sentinelCycle(lane, { tick: sentinelTick, requested: sentinelSteps, drain: () => worker.drain(),
-        after: async () => {
-          try { await worker.workObligations(); } catch { /* a stop or expiry ends the step; its start stays durable */ }
-        } });
+      // The scheduled work job (workCycle, above). A holding note the presence sentinel marks due goes out at the
+      // minimal path's next step after the poll.
+      workCycle();
       worker.gate();
       reportCap();
       runDueProof();
@@ -2307,17 +2395,20 @@ async function main() {
       // The long poll is awaited asynchronously: a synchronous wait froze every concurrent launch's
       // timers and exit events for up to its whole long-poll timeout (live 2026-09-29).
       const poll = physical.poll ? (input, credential) => physical.poll(input, credential) : (input, credential) => physical.invoke(input, credential);
-      try { result = await poll({ token: secretRef('telegram-bot-token'), method: 'getUpdates',
+      try { if (telegramCut()) throw Error('preview: Telegram connection cut by the live check');
+        result = await poll({ token: secretRef('telegram-bot-token'), method: 'getUpdates',
         // Two machines: Telegram is asked from the SHARED settled cursor, so it keeps every update the other machine lacks.
         body: { offset: shared ? shared.cursor : journal.view.cursor, limit: pollLimit,
           timeout: number(options['max-poll-seconds'] ?? '5', 'max-poll-seconds', 1, 5),
           allowed_updates: ['message', 'edited_message', 'callback_query'] },
         timeoutMs: 12000 }, token()); }
-      catch { if (!await pollFailure(false)) break; continue; }
+      catch { if (!await pollFailure(false, true)) break; continue; }
       await new Promise(done => setImmediate(done));
       if (signalled || workerStop.value || existsSync(stopPath)) break;
       if (result.kind !== 'response' || result.status !== 200) {
-        if (!await pollFailure(result.kind === 'response' && result.status === 409)) break;
+        // A temporary server failure (5xx, 429) is an outage like no answer at all: due work goes on (MUST-FIX 1).
+        if (!await pollFailure(result.kind === 'response' && result.status === 409,
+          result.kind !== 'response' || temporaryPollStatus(result.status))) break;
         continue;
       }
       let updates;
@@ -2365,6 +2456,7 @@ async function main() {
     } finally { clearInterval(tailBeat); }
     reportCap();
     publishDashboard(true);
+    readOnlyServer?.close();
     endReason ??= 'cycle limit reached';
     function modelRoute(operation, toolTurn) {
       if (!active() || workerStop.value || existsSync(stopPath)) throw Error('preview: activation stopped');

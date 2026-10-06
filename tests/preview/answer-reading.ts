@@ -16,13 +16,31 @@ import { conclusionText, escapeRawControls, failureShapeOf, parseModelJson, topL
  * The runner builds the Decision from its own values: the answer subject and predicate, the turn's evidence, and the
  * local floor with its default. It then applies the one acceptance check every Decision already passes. A floor the
  * model still writes must equal the local one; it never defines or widens it (Rule 57). A legacy full Decision
- * (recorded replays, offline fakes) is read through the same check. */
+ * (recorded replays, offline fakes) is read through the same check.
+ *
+ * `object: true` is the same move one layer deeper, for a runner task whose answer IS a JSON object (plan #507): the
+ * rolling summary, its review, and the meaning index. Those three answers are parsed as JSON by their consumers, so
+ * an answer written as JSON TEXT inside `answer` puts every brace and every escape of the real decision back in the
+ * model's hands -- the exact slip plan #491 took out of the Decision envelope. It cost the live cancel of
+ * 2026-10-04 (proof room 1 RA3, cint-L49 ddfc8f67): `summary:715673799`'s first attempt was spent because its review
+ * verdict could not be read (`summary-review/verdict/malformed/not-json`), its second was refused by the summary's
+ * own field gate, the turn settled memory-undecided, and "Actually, cancel the bird feeder one." was answered "I
+ * couldn't record that memory change. Please send it again." while the reminder stayed open and fired. Under the
+ * final flat prompt the real model still writes that shape: the recorded `summary:715673532:review` came back as
+ * {"reasoning":...,"answer":"{\"verdict\":\"pass\",\"reason\":...}"}.
+ * So where the answer is an object, a string that opens with `{` is read as the object it was meant to be: the runner
+ * re-serializes it, so what reaches the consumer is the runner's JSON either way, and a string that is not one
+ * complete object is a named format defect instead of text swallowed by a consumer's empty catch (Rule 2). A string
+ * that does not open with `{` is left exactly as it was: a plain-prose summary is a tolerated answer, not a defect. */
 export const ANSWER_SUBJECT = 'preview-stage2-answer';
 /** Envelope metadata the runner supplies; a flat object that repeats one is read without it. */
 const RUNNER_SUPPLIED = new Set(['reasoning', 'floor', 'schemaVersion', 'id', 'at', 'by', 'evidence']);
 
 export type AnswerReading =
-  | { ok: true; value: string; reason: string; shape: ModelJsonShape; envelope: 'flat' | 'decision' }
+  | { ok: true; value: string; reason: string; shape: ModelJsonShape; envelope: 'flat' | 'decision';
+    /** The answer was an object written as JSON text inside `answer`, and the runner re-serialized it (`object`
+     * tasks only). Recorded as a tolerated shape, so the deviation is visible rather than silent (Rule 2). */
+    objectAsText?: true }
   | { ok: false; shape: ModelJsonFailureShape; defect: string };
 
 const isObject = (value: unknown): value is Record<string, unknown> =>
@@ -78,6 +96,10 @@ const openBraces = (text: string): number => {
   return depth;
 };
 
+/** Named when an `object` task's answer was written as JSON text inside `answer` and that text is not one complete
+ * JSON object. Content-free protocol text, like every other defect here. */
+export const OBJECT_AS_TEXT_DEFECT = 'the answer object was written as JSON text inside "answer" and that text is not one complete JSON object; write the object\'s own fields directly beside "reasoning" instead, and the application will serialize them';
+
 /** The defect a refused parse names in the one format re-ask, so the model can correct exactly that. */
 export function parseDefect(text: string, extracted: ModelJsonResult): string {
   if (extracted.ok) return 'it is not an answer object';
@@ -102,8 +124,11 @@ export function parseDefect(text: string, extracted: ModelJsonResult): string {
  * Decision, check it. `wrapped: 'accept'` (the answer side, Rule 95) may also discard prose around the object; there,
  * prose that itself carries brackets or a brace pair (`dated:[]`, `[withheld]`, `{reply, dated:[...]}`) is discarded only
  * when exactly one top-level span parses as an object at all, it is not written as a list element, and it is the protocol's answer (one with `answer`, `reply` or `reasoning`, or a legacy Decision with
- * the answer subject). A gate keeps the narrow reading, so a written rejection beside its verdict is never dropped. */
-export function readAnswer(text: string, options: { wrapped?: ModelJsonWrapped; evidence?: readonly string[] } = {}): AnswerReading {
+ * the answer subject). A gate keeps the narrow reading, so a written rejection beside its verdict is never dropped.
+ * `object: true` names a task whose answer is itself a JSON object (see the header): nothing branches on what the
+ * text means, only on which consumer asked, exactly as `wrapped` already does. */
+export function readAnswer(text: string, options: { wrapped?: ModelJsonWrapped; evidence?: readonly string[];
+  object?: true } = {}): AnswerReading {
   let extracted = parseModelJson(text, { wrapped: options.wrapped ?? 'refuse' });
   // A whole-response fence is read above; a fence inside prose (live cint-L50 obligation:commitment:0:1791141513158:
   // prose quoting `"tools":[]`, then a ```json fence holding the flat object) is the same wrapper, on the same terms.
@@ -126,8 +151,17 @@ export function readAnswer(text: string, options: { wrapped?: ModelJsonWrapped; 
   const { decision } = built;
   if (decision.conclusion.subject !== ANSWER_SUBJECT) return wrong(`conclusion.subject is not "${ANSWER_SUBJECT}"`);
   if (!decisionWithinFloor(decision)) return wrong('"floor" differs from the local floor; leave it out, the runner supplies it');
-  const value = conclusionText(decision.conclusion.value);
+  let answer = decision.conclusion.value, objectAsText = false;
+  // An object task's answer written as JSON text: read it as the object it was meant to be, so the runner — never the
+  // model — serializes what the consumer parses. Only a string that opens with `{` was an attempt at the object;
+  // anything else is left as written (a plain-prose summary stays a tolerated answer).
+  if (options.object === true && typeof answer === 'string' && answer.trim().startsWith('{')) {
+    const inner = parseModelJson(answer);
+    if (!inner.ok) return { ok: false, shape: inner.shape, defect: `${OBJECT_AS_TEXT_DEFECT}. The text's own defect: ${parseDefect(answer, inner)}` };
+    answer = inner.value; objectAsText = true;
+  }
+  const value = conclusionText(answer);
   if (value === null) return wrong('the answer is neither text nor a JSON object');
   return { ok: true, value, reason: reasonText(decision.reason?.value), shape: extracted.shape,
-    envelope: extracted.value.type === 'Decision' ? 'decision' : 'flat' };
+    envelope: extracted.value.type === 'Decision' ? 'decision' : 'flat', ...(objectAsText ? { objectAsText: true as const } : {}) };
 }

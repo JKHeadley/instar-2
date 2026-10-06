@@ -7,7 +7,7 @@ import { chmodSync, mkdirSync, mkdtempSync, readFileSync, realpathSync, rmSync }
 import { tmpdir } from 'node:os';
 import { spawnSync } from 'node:child_process';
 import { join } from 'node:path';
-import { createJournalWorker, openPreviewJournal, openBlockers, openDirectives, declaredObligations, dueObligationWork, obligationSchedule,
+import { createJournalWorker, openPreviewJournal, openBlockers, openDirectives, settledConstraintWording, currentBlockers, declaredObligations, dueObligationWork, obligationSchedule,
   LOOP_REVISIT_MS, BLOCKER_RECHECK_MAX_MS, DIRECTIVE_SHARE, OBLIGATION_WORK_QUESTION, OBLIGATION_WORK_QUESTION_TOOLS, previewCapabilities,
   TOOL_ATTEMPTS_MEANING, TOOL_ATTEMPTS_PARTIAL_MEANING, TOOL_ATTEMPTS_REVIEWED, governingConstraints, OBLIGATION_DECISION,
   OBLIGATION_FLOOR_PACKET_BYTES, OBLIGATION_DECISION_TOOLS } from './journal-test-worker.js';
@@ -17,6 +17,7 @@ import { SUBSCRIPTION_TOOL_LIMITS } from '../../src/assembly/production-provider
 // @ts-expect-error Plain JavaScript.
 import { toolTrace } from './tool-admission.mjs';
 import { loopHealth, loopStatusLines, BACKLOG_AGE_LIMIT_MS } from './obligations.js';
+import { SOURCE_PINS, sourcePacket, TOOLS_BRIEFING, TOOLS_LIMITS } from './briefing.js';
 import { statusReply } from './status-command.js';
 import { DECLARED_OBLIGATIONS_GUIDE, HOLDING_REPLY, REPLY_RULES, replySegments, replyReviewContext, replyReviewQuestion, type ObjectionDisposition, type ReplyRule } from './reply-check.js';
 import { prepareJournalEnvelope } from './journal-envelope.js';
@@ -43,7 +44,7 @@ type Review = { jev?: (text: string) => Partial<Record<ReplyRule, number>>;
     dispositions?: ObjectionDisposition[]; blocker?: unknown }> };
 function world(root: string, options: { maxBytes?: number; maxCalls?: number; answer?: (question: string, context: string) => Answer;
   waitsOn?: boolean; work?: (context: Record<string, unknown>) => Answer | Promise<Answer>; review?: Review; stopped?: () => boolean;
-  receipt?: (text: string) => boolean; nextUpdate?: number; toolRoute?: (id: string) => boolean } = {}) {
+  receipt?: (text: string) => boolean; nextUpdate?: number; toolRoute?: (id: string) => boolean; sources?: readonly unknown[] } = {}) {
   const path = join(root, 'journal.encrypted');
   const journal = openPreviewJournal(path, key, genesis(options.maxBytes, options.maxCalls));
   const clock = { now: T0 };
@@ -54,6 +55,7 @@ function world(root: string, options: { maxBytes?: number; maxCalls?: number; an
     prepareModel: input => input.context,
     replyNotices: (turn) => refusedEffectNotices(journal.view.effectDoorway?.recent ?? [], turn),
     ...(options.toolRoute ? { toolRoute: options.toolRoute } : {}),
+    ...(options.sources ? { sources: options.sources } : {}),
     ...(review ? { replyCheck: { elapsedMs: () => 0,
       jev: async (text: string, questions?: Record<string, unknown>) => ({ latencyMs: 0, value: { model: 'jev-1.13.0',
         answers: Object.fromEntries(Object.keys(questions ?? REPLY_RULES).map(rule => [rule,
@@ -263,6 +265,116 @@ it('settles a cannot-do claim only with a finite, governed investigation record,
       w.journal.close();
     } finally { rmSync(root, { recursive: true, force: true }); }
   }
+});
+
+it('offers a settled wall to the answer only while the constraint wording it rests on still holds (Rules 20, 99, 103)', async () => {
+  // Live 2026-10-04 (cint-L49, K11a, update 6232231): walls settled under an earlier capability read ("no account writes",
+  // "live secrets stay in custody") were restated as standing limits after the read widened. A wall rests on the wording
+  // of its constraint when it was settled; when that wording changes the wall is not offered as settled, and it stays
+  // recorded, open, counted and due on its own recheck day.
+  for (const [settledOn, askedOn, offered] of [[false, false, true], [false, true, false], [true, true, true]] as const) {
+    const root = origin();
+    try {
+      const route = { tools: settledOn };
+      // maxBytes is the live preview's, because the capability read and constraint wording this case reads are optional
+      // items that yield under byte pressure: at the default 8000 the neighbour's packet crosses the limit and cuts the
+      // very fields under test, which would prove nothing either way.
+      const w = world(root, { maxBytes: 32000, toolRoute: () => route.tools,
+        answer: question => question.startsWith('Can you book') ? { reply: CLAIM, blocker: blocker() }
+          : question === INVOICE ? { reply: LATER, openLoops: [{ kind: 'deferral', quote: LATER, waitsOn: 'nothing' }] } : 'Noted.' });
+      await w.say('Can you book the dentist appointment online?');
+      // Review round 2, must-fix 2 (Rules 78, 84): the open-commitment neighbour, because the commitments guidance only
+      // rides when one is open, and that is where a second voice used to deny the tools the same packet's note lists.
+      await w.say(INVOICE);
+      expect(openBlockers(w.journal.view), `${settledOn}`).toHaveLength(1);
+      expect(settledConstraintWording(w.journal.view, w.journal.view.blockers[0]!)).toBe(governingConstraints(settledOn)['no-tools']);
+      route.tools = askedOn;
+      const probe = w.worker.probe('What can you do here, and what can you not do?');
+      if ('reason' in probe) throw Error(probe.reason);
+      const shown = (JSON.parse(probe.context) as { blockers?: { claim: string }[] }).blockers ?? [];
+      expect(shown.map(item => item.claim), `settled ${settledOn}, asked ${askedOn}`).toEqual(offered ? [CLAIM] : []);
+      // On the tool route the self-description is held to the note's items and limits; the text-only note already closes
+      // with "Nothing unlisted is available", so its guidance is unchanged.
+      expect((JSON.parse(probe.context) as { capability: string }).capability.startsWith(askedOn
+        ? 'Your capabilities are the capability-note source; describing yourself, give only its items and limits. Summary'
+        : 'Your capabilities are the capability-note source. Summary')).toBe(true);
+      // Must-fix 2's two sides, on the one packet that carries both the commitments guidance and the route's capability
+      // read. The commitment is open, so its guidance is in this packet; what the packet says about tools is said once,
+      // by the route-specific read, and no second sentence contradicts it. On the tool route the read is 'listed'; on the
+      // text-only route the limit is still stated, by that same read and its constraint wording, so nothing is widened.
+      const answerPacket = JSON.parse(probe.context) as { commitments?: { items: unknown[] }[];
+        capabilities?: Record<string, string>; governingConstraints?: Record<string, string> };
+      expect(answerPacket.commitments?.length, `settled ${settledOn}, asked ${askedOn}`).toBe(1);
+      expect(answerPacket.capabilities, `asked ${askedOn}`).toEqual(previewCapabilities(askedOn));
+      expect(answerPacket.governingConstraints, `asked ${askedOn}`).toEqual(governingConstraints(askedOn));
+      // Counted against the wording itself, never a restated copy of it, so a reword cannot leave this passing on a
+      // stale literal: the tool route's packet carries no no-tools wording at all, and the text-only route's carries it
+      // exactly once — its own constraint wording. One voice either way.
+      const denial = governingConstraints(false)['no-tools'];
+      expect(probe.context.split(denial).length - 1, `asked ${askedOn}`).toBe(askedOn ? 0 : 1);
+      // Withheld from the answer is not dropped: still open, still counted, its recheck still scheduled.
+      expect(openBlockers(w.journal.view)).toHaveLength(1);
+      expect(obligationSchedule(w.journal.view).filter(item => item.kind === 'blocker')).toHaveLength(1);
+      w.journal.close();
+    } finally { rmSync(root, { recursive: true, force: true }); }
+  }
+});
+
+it('the answer and its reply review read the same current walls, and a renewal under the current wording restores one (Rules 20, 45, 99, 103; review round 1, finding 3)', async () => {
+  // The reviewer's two reproductions, turned around: a wall settled under the text-only wording is withheld from BOTH the
+  // answer packet and the review's settled evidence of a tool-routed turn; a still-blocked recheck under the tool wording
+  // makes it current again for both; a later change of wording withholds it again. Throughout it stays open and scheduled.
+  const root = origin();
+  try {
+    const route = { tools: false };
+    const w = world(root, { toolRoute: () => route.tools,
+      answer: question => question.startsWith('Can you book') ? { reply: CLAIM, blocker: blocker() } : 'Noted.',
+      work: () => ({ outcome: 'still-blocked', recheck: day(T0 + 61 * DAY), ...REASSESSMENT }) });
+    await w.say('Can you book the dentist appointment online?');
+    const shown = () => {
+      const probe = w.worker.probe('What is blocked?');
+      if ('reason' in probe) throw Error(probe.reason);
+      return ((JSON.parse(probe.context) as { blockers?: { claim: string }[] }).blockers ?? []).map(item => item.claim);
+    };
+    // The review consumer of a later turn on the given route (its route is the turn's latest tool-turn record).
+    const reviewed = async (tools: boolean) => {
+      await w.say(`Anything else? ${String(w.clock.now)}`);
+      const id = w.journal.view.order.at(-1)!.id;
+      if (tools) w.journal.append({ kind: 'tool-turn', phase: 'reserved', id, attempt: 0, calls: 1, at: w.clock.now });
+      return declaredObligations(w.journal.view, id, w.clock.now).settled.map(item => item.claim);
+    };
+    // Unchanged wording: offered to both.
+    expect(shown()).toEqual([CLAIM]);
+    expect(await reviewed(false)).toEqual([CLAIM]);
+    expect(currentBlockers(w.journal.view, false)).toHaveLength(1);
+    // The route widened: withheld from both, still open and scheduled.
+    route.tools = true;
+    expect(shown()).toEqual([]);
+    expect(await reviewed(true)).toEqual([]);
+    expect(openBlockers(w.journal.view)).toHaveLength(1);
+    expect(obligationSchedule(w.journal.view).filter(item => item.kind === 'blocker')).toHaveLength(1);
+    // Its recheck falls due and is reassessed on the tool route: the renewal records the wording it was shown.
+    w.clock.now = T0 + 31 * DAY;
+    expect(await w.worker.workObligations()).toBe(true);
+    const renewal = w.journal.view.blockers[0]!.rechecks.at(-1)!;
+    expect(renewal.outcome).toBe('still-blocked');
+    expect(renewal.assessment?.wording).toBe(governingConstraints(true)['no-tools']);
+    expect(settledConstraintWording(w.journal.view, w.journal.view.blockers[0]!)).toBe(governingConstraints(true)['no-tools']);
+    expect(shown()).toEqual([CLAIM]);
+    expect(await reviewed(true)).toEqual([CLAIM]);
+    // The wording changes again (the text-only route): the renewal no longer rests on it, so it is withheld again.
+    route.tools = false;
+    expect(shown()).toEqual([]);
+    expect(await reviewed(false)).toEqual([]);
+    expect(openBlockers(w.journal.view)).toHaveLength(1);
+    w.journal.close();
+    // A renewal recorded before this repair carries no wording: read as current, as an unknown settlement always was.
+    const reopened = openPreviewJournal(w.path, key, genesis());
+    expect(reopened.view.blockers[0]!.rechecks.at(-1)?.assessment?.wording).toBe(governingConstraints(true)['no-tools']);
+    const legacy = { ...reopened.view.blockers[0]!, rechecks: [{ ...renewal, assessment: { ...REASSESSMENT } as never }] };
+    expect(settledConstraintWording(reopened.view, legacy)).toBeUndefined();
+    reopened.close();
+  } finally { rmSync(root, { recursive: true, force: true }); }
 });
 
 it('records a deferral the reply itself declares, in the same intent, and nothing the reply does not say (Rules 6, 22)', async () => {
@@ -894,6 +1006,41 @@ it('revives a queued runner, stops on inhibited or none, and bounds relaunches a
   } finally { rmSync(root, { recursive: true, force: true }); }
 });
 
+it('a tool-bearing work step carries the capability note its pointers name: the supplied tool note, else its tools item and limits (Rules 45, 78, 84; review round 1, finding 2)', async () => {
+  const read = (path: string) => readFileSync(join(process.cwd(), path), 'utf8');
+  const noteOf = (tools: boolean) => sourcePacket(read, SOURCE_PINS, { providerAttempts: 400, expiresAt: 9999999999999, tools,
+    ...(tools ? { mcp: 0 } : {}) }).sources.find(source => source.id === 'capability-note')!;
+  // The tool note the runner supplies (as journal-agent builds it for a root without MCP), the text-only note (the activation
+  // off while a delegated session still has tools), and none.
+  for (const [label, supplied, expected] of [
+    ['tool note', noteOf(true), noteOf(true).text],
+    ['text-only note', noteOf(false), `You have ${TOOLS_BRIEFING} ${TOOLS_LIMITS}`],
+  ] as const) {
+    const root = origin();
+    try {
+      const contexts: Record<string, unknown>[] = [];
+      const route = { tools: false };
+      const w = world(root, { toolRoute: () => route.tools, sources: [supplied],
+        answer: question => question.startsWith('Can you book') ? { reply: CLAIM, blocker: blocker() } : 'Noted.',
+        work: context => { contexts.push(context); return { outcome: 'still-blocked', recheck: day(T0 + 61 * DAY), ...REASSESSMENT }; } });
+      await w.say('Can you book the dentist appointment online?');
+      route.tools = true;
+      w.clock.now = T0 + 31 * DAY;
+      expect(await w.worker.workObligations()).toBe(true);
+      // The blocker recheck the reviewer reproduced: its pointers now resolve inside the packet it receives.
+      const packet = contexts[0]! as { capabilities: Record<string, unknown>; governingConstraints: Record<string, string>;
+        sources: { id: string; text: string }[]; obligation: { kind: string } };
+      expect(packet.obligation.kind, label).toBe('blocker-recheck');
+      expect(packet.capabilities, label).toMatchObject({ accounts: 'listed', secretCustody: 'see Limits' });
+      expect(packet.governingConstraints['secret-custody'], label).toBe('see Limits');
+      expect(packet.sources.map(source => source.text), label).toEqual([expected]);
+      expect(packet.sources[0]!.text, label).toContain(TOOLS_LIMITS);
+      expect(packet.sources[0]!.text, label).toContain(TOOLS_BRIEFING.slice(0, 40));
+      w.journal.close();
+    } finally { rmSync(root, { recursive: true, force: true }); }
+  }
+});
+
 it('tells scheduled work and the reply review what the call actually had: no tools on the text-only route, the recorded tool calls on the tool route (Part Thirteen §9; review round 1, finding 5)', async () => {
   for (const tools of [false, true]) {
     const root = origin();
@@ -908,7 +1055,11 @@ it('tells scheduled work and the reply review what the call actually had: no too
       expect(w.workQuestions).toEqual([tools ? OBLIGATION_WORK_QUESTION_TOOLS : OBLIGATION_WORK_QUESTION]);
       expect(contexts[0]!.capabilities).toEqual(previewCapabilities(tools));
       expect((contexts[0]!.governingConstraints as Record<string, string>)['no-tools'])
-        .toBe(tools ? 'listed tools; no account writes' : 'no external tools or accounts');
+        .toBe(tools ? 'listed tools only' : 'no external tools or accounts');
+      // Review round 1, finding 2: the tool route's entries point at the note ("listed", "see Limits"), so the tool step
+      // carries it; with no note supplied, the note's own tools item and limits, the MCP count unknown, never guessed.
+      if (tools) expect(contexts[0]!.sources).toEqual([{ id: 'capability-note', text: `You have ${TOOLS_BRIEFING} ${TOOLS_LIMITS}` }]);
+      else expect(contexts[0]).not.toHaveProperty('sources');
       if (tools) {
         expect(w.workQuestions[0]).not.toContain('you have no external tools');
         expect(w.workQuestions[0]).not.toContain('You have attempted nothing outside this step');
@@ -949,7 +1100,7 @@ it('tells scheduled work and the reply review what the call actually had: no too
       { role: 'context', content: JSON.stringify({ packet: { audience: 'operator', history: [] } }) }] });
     const context = JSON.parse(replyReviewContext(envelope, recorded.answer, [], declared)) as
       { declaredObligations: { capabilities: { externalTools: string }; toolAttempts: { calls: { result: string | null }[] } } };
-    expect(context.declaredObligations.capabilities.externalTools).toBe('as listed');
+    expect(context.declaredObligations.capabilities.externalTools).toBe('listed');
     expect(context.declaredObligations.toolAttempts.calls[2]!.result).toMatch(/\b11\b/u);
     // Replay keeps the same read.
     w.journal.close();
@@ -976,7 +1127,7 @@ it('names tools in the packet exactly when its dispatch, after the base call is 
       expect(w.journal.view.calls).toBe(0);
       await w.say(INVOICE);
       const expected = remaining > extra;
-      expect(seen).toEqual([{ packet: expected ? 'as listed' : 'none', dispatch: expected }]);
+      expect(seen).toEqual([{ packet: expected ? 'listed' : 'none', dispatch: expected }]);
       w.journal.close();
     } finally { rmSync(root, { recursive: true, force: true }); }
   }
@@ -1002,7 +1153,7 @@ it('names tools in the packet exactly when its dispatch, after the base call is 
       w.clock.now += LOOP_REVISIT_MS + 60_000;
       expect(await w.worker.workObligations()).toBe(true);
       const expected = remaining > extra;
-      expect(seen).toEqual([{ packet: expected ? 'as listed' : 'none', dispatch: expected }]);
+      expect(seen).toEqual([{ packet: expected ? 'listed' : 'none', dispatch: expected }]);
       w.journal.close();
     } finally { rmSync(root, { recursive: true, force: true }); }
   }
@@ -1043,7 +1194,7 @@ it('re-reads the tool route for a format re-ask or timeout replacement after a t
             promptLimit: 32768, deniedRoots: [root], operations: [], now: () => now, redactText: (s: string) => s,
             scratch: (turn: string) => { const vol = join(turn, 'vol'); mkdirSync(vol, { recursive: true }); return vol; }, detach: () => true, unmount: () => true,
             fallback: async () => { actual = 'none'; return { result: 'A short answer.' }; },
-            invoke: async () => { actual = 'as listed'; return first && mode === 'format-retry' ? { state: 'complete', failureClass: 'malformed' } : 'A short answer.'; } });
+            invoke: async () => { actual = 'listed'; return first && mode === 'format-retry' ? { state: 'complete', failureClass: 'malformed' } : 'A short answer.'; } });
           seen.push({ packet: (JSON.parse(input.context) as Packet & { capabilities: { externalTools: string } }).capabilities.externalTools, actual });
           if (first && mode === 'answer-replace') {
             const { id: _id, role, at: _at, ...outcome } = timedOut;
@@ -1055,8 +1206,8 @@ it('re-reads the tool route for a format re-ask or timeout replacement after a t
       worker.intake([{ update_id: 1, message: { chat: { id: 7654321, type: 'private' }, from: { id: 7654321 },
         date: Math.floor(now / 1000), text: 'What tools can you use now?' } }]);
       await worker.drain();
-      const tools = cap === 18, final = tools ? 'as listed' : 'none';
-      expect(seen).toEqual([{ packet: 'as listed', actual: 'as listed' }, { packet: final, actual: final }]);
+      const tools = cap === 18, final = tools ? 'listed' : 'none';
+      expect(seen).toEqual([{ packet: 'listed', actual: 'listed' }, { packet: final, actual: final }]);
       const id = journal.view.order[0]!.id;
       expect(declaredObligations(journal.view, id, now).capabilities.externalTools).toBe(final);
       // The contextual review reads the final attempt's packet: capabilities, constraints and instructions agree with
@@ -1238,7 +1389,15 @@ it('gives scheduled work the operator\'s own earlier words, and drops them only 
   // of it; a forgotten clause beside it must stay out, so the packet carries the ACTIVE facts, not every kept one.
   const PLUMBER = 'My plumber is Ray at Dockside Plumbing, and he bills monthly.';
   const FORGET = 'Forget what I told you about the plumber.';
-  for (const size of ['fits', 'summarized', 'too-large'] as const) {
+  // Review round 2, must-fix 1 (Rule 96): once a summary covers the fact-bearing message, the fact is no longer in
+  // operatorMessages AND the summary writer is told to keep it out of its prose (journal.ts, the summary question:
+  // "Existing summary.memoryItems are already retained by source; do not repeat or paraphrase them in summary prose"),
+  // so the retained items are the only place it still lives. 'retained-facts' is that exact shape: the prose says an
+  // appointment was discussed and names nothing, and the clause rides in memoryItems. 'forgotten-fact' is the other
+  // side of the same filter — the operator's forgetting removes it from the packet, as it does from an ordinary answer.
+  const SUMMARY_PROSE = 'Earlier turns covered a dental appointment and the invoice question.';
+
+  for (const size of ['fits', 'summarized', 'retained-facts', 'forgotten-fact', 'too-large'] as const) {
     const root = origin();
     try {
       const contexts: Record<string, unknown>[] = [];
@@ -1246,6 +1405,23 @@ it('gives scheduled work the operator\'s own earlier words, and drops them only 
         work: context => { contexts.push(context); return { outcome: 'report', report: 'The invoice is for 120 dollars.' }; } });
       await w.say(DENTIST);
       if (size === 'summarized') await w.say(PLUMBER);
+      const dentist = w.journal.view.order.at(-1)!.id;
+      const retained = size === 'retained-facts' || size === 'forgotten-fact';
+      if (retained) {
+        // A rolling summary as the writer records one: prose that names no appointment, and the exact clause kept by
+        // source. The record is appended directly, so the projection is put in the state a real pass leaves it in; for
+        // 'forgotten-fact' the operator's forgetting of that same clause is in the state too. The live write paths for
+        // both (the summary model, and a forget through the answer) are held by journal-correction-stall.test.ts and
+        // journal-memory-correction.test.ts; what is under test here is which of them reaches a work packet.
+        w.journal.append({ kind: 'summary-reserve', through: w.journal.view.order.at(-1)!.update,
+          maxInputTokens: w.journal.view.limits.maxBytes, maxOutputTokens: 2048, at: w.clock.now });
+        w.journal.append({ kind: 'summary', through: w.journal.view.order.at(-1)!.update, text: SUMMARY_PROSE,
+          memoryItems: [{ source: dentist, quote: DENTIST }],
+          ...(size === 'forgotten-fact' ? { memory: [{ mode: 'forget' as const, source: dentist, quote: DENTIST, trigger: dentist }] } : {}),
+          faithfulness: { path: 'exact', verdict: 'pass', score: null }, state: 'complete', at: w.clock.now });
+        expect(w.journal.view.summaries).toHaveLength(1);
+        expect(w.journal.view.memory).toHaveLength(size === 'forgotten-fact' ? 1 : 0);
+      }
       await w.say(INVOICE);
       if (size === 'summarized') {
         await w.say(FORGET);
@@ -1275,6 +1451,7 @@ it('gives scheduled work the operator\'s own earlier words, and drops them only 
       w.clock.now += LOOP_REVISIT_MS + 60_000;
       expect(await w.worker.workObligations()).toBe(true);
       expect(w.workQuestions[0]).toContain('packet.memory holds what the operator told you');
+      expect(w.workQuestions[0]).toContain('packet.memory.facts, which are the exact clauses that summary keeps by source');
       if (size === 'fits')
         expect(contexts[0]!.memory).toEqual({ operatorMessages: [expect.objectContaining({ text: DENTIST }), expect.objectContaining({ text: INVOICE })] });
       else if (size === 'summarized') {
@@ -1287,6 +1464,25 @@ it('gives scheduled work the operator\'s own earlier words, and drops them only 
         expect(memory.facts).toEqual([{ source: w.journal.view.order[0]!.id, sourceKind: 'operator-stated',
           sourceLabel: expect.stringContaining('conversation:operator/'), quote: DENTIST }]);
         expect(JSON.stringify(contexts[0])).not.toContain('Dockside');
+      } else if (retained) {
+        const memory = contexts[0]!.memory as { summary: string; facts?: { source: string; sourceKind: string; sourceLabel: string; quote: string }[];
+          operatorMessages: { text: string }[] };
+        // The summarized message is gone from operatorMessages, and the prose that replaced it names no appointment:
+        // without facts the step is told a dental appointment exists and nothing about it. This is the live shape, with
+        // the packet far inside its bound, so a missing fact is missing grounding and never resource pressure.
+        expect(memory.summary).toBe(SUMMARY_PROSE);
+        expect(memory.operatorMessages.map(item => item.text)).toEqual([INVOICE]);
+        expect(memory.summary).not.toContain('Ortiz');
+        expect(JSON.stringify(memory.operatorMessages)).not.toContain('Ortiz');
+        expect(Buffer.byteLength(JSON.stringify(contexts[0]))).toBeLessThan(w.journal.view.limits.maxBytes);
+        // The source link, the kind and the label are the ordinary answer's own projection of these items (one shared
+        // function, so the two packets cannot drift); recall-from-summary-only.test.ts holds the answer side of it.
+        if (size === 'retained-facts')
+          expect(memory.facts).toEqual([{ source: w.journal.view.order[0]!.id, sourceKind: 'operator-stated',
+            sourceLabel: expect.stringContaining('conversation:operator/'), quote: DENTIST }]);
+        // The other side of the one filter: the operator's forgetting removes the fact from the work packet too, so a
+        // forgotten clause is never handed to a work step that the answer would already refuse to repeat.
+        else expect(memory.facts).toBeUndefined();
       } else {
         expect(sizes[0]!).toBeGreaterThan(sizes[1]!);
         expect(contexts[0]!.memory).toBeUndefined();
