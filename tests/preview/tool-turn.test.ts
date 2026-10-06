@@ -97,8 +97,9 @@ it.runIf(hdiutil)('bounds a workspace\'s whole storage: its volume refuses write
   // Ordinary storage, not the RAM disk: the sparse image is the turn's real allocation, as under a live root.
   const root = realpathSync(mkdtempSync('/private/tmp/tool-scratch-')); roots.push(root);
   const turn = join(root, 'turn'); mkdirSync(turn, { mode: 0o700 });
-  // The mount point sits in the host-wide /private/tmp, so its name is this run's own: two suites running at once on one
-  // host must never attach or detach each other's volume. Within the test it stays fixed, as a conversation's does.
+  // The mount point sits in the host-wide /private/tmp, so its name is this run's own: a fixed literal let two runs of
+  // this case at once (two gates on one host) mount over each other, and one's detach found the other's volume. Within
+  // the test it stays fixed, as a conversation's does.
   const name = `itw-${randomBytes(6).toString('hex')}`;
   const volume = attachScratch(turn, name, 8 * 1048576);
   try {
