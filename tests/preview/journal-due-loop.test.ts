@@ -9,7 +9,7 @@ import { mkdtempSync, realpathSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { createJournalWorker, obligationSchedule, openPreviewJournal } from './journal-test-worker.js';
-import { createOrdinaryLane, sentinelCycle, waitWorking, WORK_TICK_MS } from './live-sentinels.js';
+import { createOrdinaryLane, sentinelCycle, untilStopped, waitWorking, WORK_TICK_MS } from './live-sentinels.js';
 import { loopHealth } from './obligations.js';
 // @ts-expect-error The poll breaker is a JS host module.
 import { exhaustedPollReason, pollBackoffMs, pollEndsRun, temporaryPollStatus } from './poll-failure-reason.mjs';
@@ -175,4 +175,32 @@ it('waitWorking offers the work job at most once per tick for the whole wait, an
   await waitWorking({ elapsed: () => clock.now, delay, stopped: () => calls >= 2, work: () => { calls++; throw Error('lane refused'); } }, 30_000);
   expect(calls).toBe(2);
   expect(clock.now).toBeLessThan(60_000);
+});
+
+// The 2026-10-05 gate (two-machine-floors, the stop floor): under load the operator's stop latched while the runner's
+// minimal step was awaited, the worker's gate refused by throwing, and the stopped runner exited 1 instead of 0.
+it('a stop that latches during the minimal step ends the loop cleanly; the same refusal without a stop is rethrown', async () => {
+  const root = realpathSync(mkdtempSync(join(tmpdir(), 'preview-due-loop-stop-')));
+  try {
+    const journal = openPreviewJournal(join(root, 'journal.encrypted'), key, { kind: 'genesis', bot: '8989505249', chat: '7812716706',
+      operator: '7812716706', grant: 'grant:preview', configurationDigest: 'sha256:offline', expires: 9999999999999,
+      maxCalls: 10, maxReplies: 10, maxTurns: 10, maxBytes: 409600, cursor: 0 });
+    const stop = { file: false, ended: false };
+    const worker = createJournalWorker(journal, { now: () => T0, stopped: () => stop.file, model: async () => '{}',
+      send: async () => 1, checkOutbound: () => {} });
+    // The stop file appears while the step is awaited: the worker's own gate refuses it by throwing.
+    const step = async () => { worker.gate(); await Promise.resolve(); stop.file = true; await worker.minimal(); };
+    await expect(step()).rejects.toThrow('preview stopped');
+    stop.file = false;
+    // As the runner wires it: the loop's stop condition holds, so the refusal is that stop and the loop ends cleanly.
+    expect(await untilStopped(step, () => stop.file)).toBe(false);
+    stop.file = false;
+    // No stop and no refusal: the step ran.
+    expect(await untilStopped(() => worker.gate(), () => stop.file)).toBe(true);
+    // The other side: a refusal while the loop's stop condition does NOT hold is a real failure, rethrown unchanged.
+    await expect(untilStopped(step, () => stop.ended)).rejects.toThrow('preview stopped');
+    await expect(untilStopped(() => { throw Error('lane failed'); }, () => true)).resolves.toBe(false);
+    await expect(untilStopped(() => { throw Error('lane failed'); }, () => false)).rejects.toThrow('lane failed');
+    journal.close();
+  } finally { rmSync(root, { recursive: true, force: true }); }
 });

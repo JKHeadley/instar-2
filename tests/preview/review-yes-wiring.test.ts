@@ -10,7 +10,7 @@ import { decisionWithinFloor } from './model-call-boundary.js';
 import { createJournalWorker, openPreviewJournal, operatorRequestsReport, previewTestContext, projectionDigest } from './journal-test-worker.js';
 import { approvalDisclosureText, replyReviewReserveFor } from './journal.js';
 import { SUBSCRIPTION_CONVERSATION_SYSTEM_PROMPT } from '../../src/assembly/production-provider.js';
-import { APPROVAL_REPORT, JEV_MODEL, jevQuestions } from './reply-check.js';
+import { APPROVAL_REPORT, JEV_MODEL, jevQuestions, REPLY_CHECK_BUDGET_MS } from './reply-check.js';
 import { operatorActionSurface, operatorResultText, operatorYesAuthority, explicitYesStatus } from './operator-yes.js';
 import { createReviewYesSource, type GitHubReview, type GitHubReviewClient } from './review-yes-source.js';
 import { createGitHubReviewClient } from './github-review-client.js';
@@ -306,7 +306,7 @@ it('asks the reply reviewer whether an answer reports a shared-access approval, 
   expect(recorded()).toEqual({ request: done.request.id, answer: 'unreadable' });
   expect(h.sent.at(-1)!.text).toContain(approvalDisclosureText(done));
   // A review timeout: its "no" arrives after the shared deadline, so nothing readable decided this text, and the note rides.
-  reviewer.report = () => 0.02; reviewer.late = 30_001;
+  reviewer.report = () => 0.02; reviewer.late = REPLY_CHECK_BUDGET_MS + 1;
   h.worker.intake([message(8, h.sent.at(-1)!.id + 1, 'umbrella for the weekend?')]); await h.worker.drain();
   expect(recorded()).toEqual({ request: done.request.id, answer: 'unreadable' });
   expect(h.sent.at(-1)!.text).toContain('umbrella');
