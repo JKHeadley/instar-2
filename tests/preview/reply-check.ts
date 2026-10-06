@@ -71,7 +71,11 @@ export const guidanceReviewRules = (ruleIds: readonly ReplyRule[], shared = fals
 export type ReplyVerdict = 'pass' | 'violation' | 'unsure' | 'unavailable';
 export type ReplyPath = 'jev' | 'subscription' | 'holding' | 'operator-echo';
 export const JEV_MODEL = 'jev-1.13.0';
-export const REPLY_CHECK_BUDGET_MS = 30_000;
+/** Sized to measured latency (plan #593): on 2026-10-05 completed first reviews took 9.4-26.8 s, so a 30 s budget
+ * cut the slowest reviews mid-call and left no room for the one format re-ask, and nearly every unavailable
+ * subscription check was that cut. 60 s holds the slowest measured review plus its re-ask, or a review plus one
+ * revision and its review; past it the outcome stays an honest `unavailable`, never an unchecked pass. */
+export const REPLY_CHECK_BUDGET_MS = 60_000;
 export const REPLY_CHECK_BUDGET_REASON = 'reply check budget exceeded';
 export const JEV_RESPONSE_MAX_BYTES = 4096;
 /** One rule's own contextual conclusion and its separate reason (Rules 41, 58, 108). A batched review

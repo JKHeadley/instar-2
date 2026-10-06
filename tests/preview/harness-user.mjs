@@ -196,6 +196,16 @@ export function closeOperatorTmp(base = '/private/tmp', uid = process.getuid()) 
   }
   return { entries, failed };
 }
+/** Whether a swept entry is still one the sweep closes: the runner's own entry, not a link, on /private/tmp's own device.
+ * Another root's tool turn can create its mount point (`itw-<key>`, a plain 0700 directory) just before the sweep and
+ * attach its workspace volume there, granted to the harness on purpose (`grantVolume`), before the probe: a mount point
+ * the sweep would now skip, so its readable answer is that volume's, not an exposed runner entry. */
+export function sweptEntryHeld(path, base = '/private/tmp', uid = process.getuid()) {
+  try {
+    const info = lstatSync(path);
+    return !info.isSymbolicLink() && info.uid === uid && info.dev === statSync(base).dev;
+  } catch { return false; }
+}
 /** A fresh runner-owned file in /private/tmp with the default world-readable mode, made AFTER the readiness sweep: the
  * kernel must refuse it to the harness user at once (only the inherited deny entry can, since no sweep has touched it).
  * Returns its path and its removal. */
@@ -230,7 +240,7 @@ export function probeAccess(specs, { user = HARNESS_USER, launcher = HARNESS_LAU
  */
 export function harnessReadiness({ user = HARNESS_USER, profile, denied, exec = execFileSync, probe = probeAccess,
   install = { launcher: installLauncher, hook: installHook, tmp: () => installTmp(user) }, digestOf = path => sha256(readFileSync(path)),
-  login = readHarnessLogin, custody = [HARNESS_CUSTODY, HARNESS_LOGIN], plaintext = plaintextLogins, tmp = closeOperatorTmp, canary = tmpCanary }) {
+  login = readHarnessLogin, custody = [HARNESS_CUSTODY, HARNESS_LOGIN], plaintext = plaintextLogins, tmp = closeOperatorTmp, canary = tmpCanary, held = sweptEntryHeld }) {
   let uid;
   try { uid = Number(exec('/usr/bin/id', ['-u', user], { encoding: 'utf8', timeout: 2000, stdio: ['ignore', 'pipe', 'ignore'] }).trim()); }
   catch { return { ready: false, reason: `no user ${user}` }; }
@@ -265,8 +275,10 @@ export function harnessReadiness({ user = HARNESS_USER, profile, denied, exec = 
   const allowedCount = own.length + writable.length;
   const missing = rows.slice(0, allowedCount).find(row => !row.ok);
   if (missing) return no(`the harness user cannot ${missing.mode === 'w' ? 'write' : 'read'} ${missing.path}`);
-  // A /private/tmp entry removed between the sweep and the probe is simply gone (ENOENT): only an open that succeeded exposes.
-  const exposed = rows.slice(allowedCount, -1).find(row => row.ok);
+  // A /private/tmp entry removed between the sweep and the probe is simply gone (ENOENT): only an open that succeeded exposes,
+  // and of the swept entries only one the sweep would still close (`held`), never one that has since become a turn's mount.
+  const sweptFrom = allowedCount + denied.length + custody.length;
+  const exposed = rows.slice(allowedCount, -1).find((row, index) => row.ok && (allowedCount + index < sweptFrom || held(row.path)));
   if (exposed) return no(`the harness user can read ${exposed.path}`);
   // The fresh canary: only the kernel's inherited entry can refuse it (EACCES); any other outcome is not that refusal.
   if (rows.at(-1).ok || rows.at(-1).code !== 'EACCES')
