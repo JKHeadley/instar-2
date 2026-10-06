@@ -60,3 +60,57 @@ real. There is no sleep-and-hope, and no timeout was raised. `it.skipIf(!availab
     (`neg-b-…`).
   - Re-ground delivery dropped: `expectGrounded` times out waiting for the answer after `REGROUNDED` (`neg-c-…`).
   - Fresh session launched without the hook: fails in `expectGrounded` (`neg-a-…`).
+
+## Second failure mode, repaired 2026-10-05 (pipeline repair of sb-w4-a7c, plan row #542)
+
+**What the gate saw.** The full run on `sb-w4-a7c` head `29062b71` failed this one case at the
+COMPACTION step: `Error: timed out waiting for the answer after COMPACTED:` — and nothing after
+the colon. The timeout message interpolates the last pane it captured, so the pane was the empty
+string. That is not a blank pane: `tmux capture-pane` answers a session it cannot find with exit
+status **1 and empty stdout** (verified: `can't find session`/`no server running`), while a live
+but blank pane answers status 0 with newlines. So the stand-in's tmux session had **gone**, and
+the case reported it as an unreadable blank. This is a different cause from the 2026-09-29
+closure above (which was the case reading the pane before the answer was written); that repair
+stands and is untouched.
+
+**Cause.** `tests/e2e/awareness-fake-harness.mjs` mirrored its context and its receipts to disk
+with bare `writeFileSync`/`renameSync` inside the `for await` input loop. Any write that failed —
+the host out of descriptors under an 819-file run, the shared scratch volume momentarily gone,
+a full RAM volume (the ENOSPC class already recorded in `full-suite-load-timeouts.md` and seen on
+the cint-L50 gate) — threw out of that loop, ended the process, and took the tmux session with
+it. Nothing printed, nothing logged: the session simply disappeared. Same for a `spawnSync` of
+the SessionStart hook that never started (EAGAIN/EMFILE), which silently became "no grounding".
+
+**Repair (test and stand-in only; no product file touched).**
+- The stand-in's two mirror writes go through `mirror()`, a finite retry (20 attempts, 25 ms
+  apart, directory re-created first). Both files are mirrors of what the stand-in already holds
+  in memory, so a retry invents nothing and the bytes written are unchanged.
+- A `spawnSync` that *never started* the hook is retried inside the same bound; it wrote no
+  receipt, so a retry duplicates nothing. A hook that did run is taken exactly as it answered.
+- Every way the input loop can end (exhausted, or throwing) now prints `HARNESS INPUT ENDED` or
+  `HARNESS FAILED: <code> <message>` **into the pane** and holds the session open on a bounded
+  timer (`HARNESS_HOLD_MS`, default 120 s) instead of exiting. The stand-in can no longer vanish
+  without saying why.
+- `answerAfter` in the case separates a *failed* capture from an empty pane: it keeps the last
+  real pane, and after three consecutive failed captures it confirms with `has-session` and fails
+  at once naming the gone stand-in, the capture status and tmux's own stderr.
+
+**Both sides (Rule 34).** Proven with an injected write fault at the compaction step (a scratch
+driver, not committed; a `chmod 444` on the context file, cleared from another process):
+
+| injected fault | stand-in before the repair | stand-in after the repair |
+|---|---|---|
+| none | passes | passes |
+| cleared inside the retry window | **session gone, capture exit 1, empty stdout, no answer** — the gate's exact signature | **recovers, answers correctly** |
+| permanent | session gone, empty capture | session alive, pane reads `HARNESS FAILED: EACCES …` |
+
+And for the case's own guard: killing the stand-in's tmux server as soon as its session exists
+now fails in 216 ms with `the stand-in instar20-… is gone before the answer after BOOTED hook=on
+(capture: 1; stderr: no server running on …)` instead of spinning for five seconds and printing
+a blank.
+
+**Not reproducible under WSL.** The external trigger is host-side (macOS `/Volumes` scratch
+mounts, descriptor exhaustion, or a full RAM volume on the Studio under an 819-file run) and
+cannot be raised on the Mama PC. What is proven here is the fault *class* and that the stand-in
+survives it or names it; the repair removes the silent death, which is what made the gate failure
+unreadable. No quarantine was added and none is needed — the case stays armed.

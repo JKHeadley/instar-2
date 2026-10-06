@@ -15,7 +15,7 @@ import { SINGLE_MACHINE_PROFILE } from './activation-authority.js';
 import { nestedSessionWorkEdge, type SessionWorkEdge } from '../../src/assembly/production-session-work.js';
 import { capabilityBriefing, TOOLS_BRIEFING, TOOLS_LIMITS, toolsBriefing } from './briefing.js';
 // @ts-expect-error The runner side stays plain JavaScript.
-import { TOOL_HOOK_SCRIPT, TOOL_MCP_LAUNCHER, TOOL_NOTICE_MAX_BYTES, attachEgress, attachScratch, detachScratch, networkToolReads, openToolTurnSlugs, prepareToolTurn, pruneToolTurns, readRootMcp, readToolTrace, reconcileToolTurns, runToolTurn, scratchMounted, toolChildrenFit, toolStatusLines, toolTurnEligible, toolTurnFits, unmountScratch, workspaceBytes } from './tool-turn.mjs';
+import { TOOL_HOOK_SCRIPT, TOOL_MCP_LAUNCHER, TOOL_NOTICE_MAX_BYTES, attachEgress, attachScratch, detachScratch, networkToolReads, openToolTurnSlugs, prepareToolTurn, pruneToolTurns, readRootMcp, readToolTrace, reconcileToolTurns, runToolTurn, scratchMounted, toolChildrenFit, toolStatusLines, toolTurnEligible, toolTurnFits, unmountScratch, unmountWithin, workspaceBytes } from './tool-turn.mjs';
 // @ts-expect-error The physical host remains JavaScript.
 import { createResourceOwner } from '../../scripts/resource-owner.mjs';
 
@@ -92,6 +92,27 @@ it('allocates a private, empty workspace and a separate admission state per turn
   expect(readdirSync(join(root, 'tool-turns'))).toHaveLength(2);
 });
 
+it('retries a busy scratch volume inside its bounded unmount wait, and reports one that never clears', () => {
+  // Live 2026-10-05 (sb-w4-rollback full-suite gate): a volume the turn had just filled refused its first
+  // `hdiutil detach -force` — right after a write macOS can hold a volume busy — and a single attempt turned that
+  // into a failed turn (`attachScratch` throws on it, and prune counts the turn failed and keeps its directory).
+  // A refusal that clears is retried; one that never clears is still reported, so a genuinely stuck volume is
+  // never read as unmounted.
+  const pauses: number[] = [], pause = (ms: number) => pauses.push(ms);
+  let tries = 0;
+  // Busy for the first two attempts, then gone: the wait reports it unmounted, and only paused between tries.
+  expect(unmountWithin(() => tries < 3, () => tries++, 6, pause)).toBe(true);
+  expect([tries, pauses]).toEqual([3, [400, 400]]);
+  // The other side: a volume that stays mounted is attempted exactly `attempts` times and reported still mounted.
+  tries = 0; pauses.length = 0;
+  expect(unmountWithin(() => true, () => tries++, 6, pause)).toBe(false);
+  expect([tries, pauses.length]).toEqual([6, 5]);
+  // A volume already unmounted is never attempted at all.
+  tries = 0; pauses.length = 0;
+  expect(unmountWithin(() => false, () => tries++, 6, pause)).toBe(true);
+  expect([tries, pauses.length]).toEqual([0, 0]);
+});
+
 const hdiutil = existsSync('/usr/bin/hdiutil');
 it.runIf(hdiutil)('bounds a workspace\'s whole storage: its volume refuses writes past its size, keeps its files across mounts, and goes when detached', { timeout: 120000 }, () => {
   // Ordinary storage, not the RAM disk: the sparse image is the turn's real allocation, as under a live root.
@@ -127,6 +148,11 @@ it.runIf(hdiutil)('bounds a workspace\'s whole storage: its volume refuses write
     expect(attachScratch(turn, name, 8 * 1048576)).toBe(volume);
     expect(readFileSync(join(volume, 'f0')).byteLength).toBe(1048576);
     expect(() => attachScratch(turn, '../escape')).toThrow(/mount name/u);
+    // Another directory asking for the same mount point is refused while this volume holds it, and this one is untouched.
+    const other = join(root, 'other'); mkdirSync(other, { mode: 0o700 });
+    expect(() => attachScratch(other, name, 8 * 1048576)).toThrow(/held by another volume/u);
+    expect(existsSync(join(other, 'scratch.sparseimage'))).toBe(false);
+    expect(readFileSync(join(volume, 'f0')).byteLength).toBe(1048576);
   } finally { expect(detachScratch(turn)).toBe(true); }
   expect(scratchMounted(turn)).toBe(false);
   expect(existsSync(join(turn, 'scratch.sparseimage'))).toBe(false);

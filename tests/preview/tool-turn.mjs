@@ -62,6 +62,9 @@ export function attachScratch(dir, name = `itt-${randomBytes(6).toString('hex')}
   if (!unmountScratch(dir)) throw Error('preview: a tool scratch volume left mounted will not unmount');
   const image = join(dir, SCRATCH_IMAGE), mount = join(realpathSync(mounts), name);
   mkdirSync(mount, { recursive: true, mode: 0o700 });
+  // Another directory's volume already at this mount point (a second root on the host, or one a crash left stuck): an
+  // attach on top of it attaches the image unmounted while the mount check sees the other volume, so refuse instead.
+  if (lstatSync(mount).dev !== lstatSync(dirname(mount)).dev) throw Error('preview: a tool scratch mount point is held by another volume');
   rmSync(join(dir, SCRATCH_LINK), { force: true });
   symlinkSync(mount, join(dir, SCRATCH_LINK));
   if (!existsSync(image)) execFileSync(HDIUTIL, ['create', '-quiet', '-size', `${String(Math.ceil(bytes / 1048576))}m`, '-type', 'SPARSE',
@@ -101,29 +104,38 @@ export function attachSessionVolume(root, { bytes = SESSION_VOLUME_BYTES, name =
 export function detachSessionVolume(mount) {
   try { execFileSync(HDIUTIL, ['detach', '-quiet', '-force', mount], { stdio: 'ignore', timeout: 60000 }); } catch { /* checked by the caller */ }
 }
-/** How many times a forced detach is attempted before a volume is reported still mounted, and the pause before each
- * retry (growing, so a volume the kernel is briefly still holding is given longer each time). One attempt is not enough:
- * in the sb-w4-selfdesc gate run of 2026-10-05 the detach immediately after the burst of writes that filled an 8 MB
+/** How many unmount attempts, and how long between them. A volume just written is briefly busy (its own indexer, the
+ * disk arbitration daemon), and `hdiutil detach -force` refuses while it is, so one refusal is not a stuck volume: in
+ * the sb-w4-selfdesc gate run of 2026-10-05 the detach immediately after the burst of writes that filled an 8 MB
  * volume left it mounted, and the very next call — the same code, milliseconds later — detached it. Unretried that
  * costs the conversation its next turn, because `attachScratch` refuses a volume it cannot unmount first.
- * What the retry costs, measured rather than guessed (Rule 13, review round 2 must-fix 3): the pauses total 1,000 ms
- * (0 + 100 + 200 + 300 + 400), but each attempt is its own synchronous forced detach carrying the 60,000 ms timeout
- * below, so attempts that all reach that timeout block the calling thread for up to 301,000 ms against the one
- * attempt's 60,000 ms. A detach that completes at all returns in milliseconds, so the ordinary cost is the pauses. */
-const SCRATCH_UNMOUNT_TRIES = 5, SCRATCH_UNMOUNT_PAUSE_MS = 100;
+ * What the retry costs, measured rather than guessed (Rule 13): the pauses total 2,000 ms (five waits of 400 ms
+ * between six attempts), but each attempt is its own synchronous forced detach carrying the 60,000 ms timeout below,
+ * so attempts that all reach that timeout block the calling thread for up to 362,000 ms against the one attempt's
+ * 60,000 ms. A detach that completes at all returns in milliseconds, so the ordinary cost is the pauses. */
+const UNMOUNT_ATTEMPTS = 6, UNMOUNT_WAIT_MS = 400;
 const forceDetach = mount => {
   try { execFileSync(HDIUTIL, ['detach', '-quiet', '-force', mount], { stdio: 'ignore', timeout: 60000 }); } catch { /* the mount decides, below */ }
 };
-/** Unmounts a directory's scratch volume and removes its mount point, keeping its image (and so its files). Returns false
- * when the volume is still mounted after `tries` forced detaches (the next attach or a later prune retries). `force` and
- * `mounted` exist so a test can prove both sides of the retry without a real volume. */
-export function unmountScratch(dir, { tries = SCRATCH_UNMOUNT_TRIES, force = forceDetach, mounted = scratchMounted } = {}) {
-  const mount = mountOf(dir);
-  for (let attempt = 0; mounted(dir); attempt++) {
-    if (attempt >= tries) return false;
-    if (attempt > 0) Atomics.wait(new Int32Array(new SharedArrayBuffer(4)), 0, 0, SCRATCH_UNMOUNT_PAUSE_MS * attempt);
-    force(mount);
+/** The bounded unmount wait, kept apart from the volume it unmounts so the retry itself is provable: `attempt` is
+ * tried while `mounted()` still says the volume is there, at most `attempts` times, pausing between tries. Returns
+ * whether it ended unmounted; an attempt's own exit status is never read as success. */
+export function unmountWithin(mounted, attempt, attempts = UNMOUNT_ATTEMPTS,
+  pause = ms => { Atomics.wait(new Int32Array(new SharedArrayBuffer(4)), 0, 0, ms); }) {
+  for (let tried = 0; mounted(); tried++) {
+    if (tried >= attempts) return false;
+    if (tried) pause(UNMOUNT_WAIT_MS);
+    attempt();
   }
+  return true;
+}
+/** Unmounts a directory's scratch volume and removes its mount point, keeping its image (and so its files). A volume
+ * that refuses is retried inside the bounded wait above. Returns false when it is still mounted after `tries` forced
+ * detaches (the next attach or a later prune retries). `tries`, `force` and `mounted` exist so a test can prove both
+ * sides of the retry through this function too, without a real volume. */
+export function unmountScratch(dir, { tries = UNMOUNT_ATTEMPTS, force = forceDetach, mounted = scratchMounted } = {}) {
+  const mount = mountOf(dir);
+  if (!unmountWithin(() => mounted(dir), () => force(mount), tries)) return false;
   if (mount !== null) try { rmdirSync(mount); } catch { /* already gone */ }
   return true;
 }
