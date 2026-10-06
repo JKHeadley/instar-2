@@ -6170,6 +6170,7 @@ export function createJournalWorker(journal: ReturnType<typeof openPreviewJourna
     saidRange?: { from: string; to: string; matched: number },
     selectedAttributes: readonly PersonAttribute[] = []) => {
     const summary = compact ? summaryFor(through) : undefined;
+    const summaryItems = summary ? summaryFacts(summary) : [];
     const superseded = new Set(journal.view.order.filter(item => item.accepted && item.editOf && item.update <= through)
       .map(item => item.replaces!));
     const carriedHistory = groundingHistory(journal.view, through, summary?.through);
@@ -6444,7 +6445,7 @@ export function createJournalWorker(journal: ReturnType<typeof openPreviewJourna
       ...(suppliedSources === undefined ? {} : { sources: suppliedSources }),
       ...(reference ? { replyTo: reference } : {}),
       ...(summary ? { historyMode: 'summary-plus-recent', summary: { sourceKind: 'inferred-by-summary' as MemorySourceKind, sourceLabel: summaryLabel(summary), through: summary.through, text: clean(redact(summary.text).text, true, summary.through),
-        ...(summary.memoryItems?.length ? { memoryItems: summaryFacts(summary) } : {}) } }
+        ...(summary.memoryItems?.length ? { memoryItems: summaryItems } : {}) } }
         : historySetAsideCount ? { historyMode: 'recent-only' } : { historyMode: 'complete' }),
       ...(journal.view.memory.length ? { memory: journal.view.memory.flatMap((change, index):
         Array<{ sourceKind: MemorySourceKind; mode: string; source: string; sourceLabel: string; trigger: string; reason?: string; replacement?: string }> => {
@@ -9687,19 +9688,21 @@ export function createJournalWorker(journal: ReturnType<typeof openPreviewJourna
       // the replayed work step (cint-L49 obligation:commitment:3, claude-sonnet-5) answered "continue: this turn's context
       // does not include the broader history" both times. Bounded; omitted only when the packet would not fit.
       const latest = summaryFor(Number.MAX_SAFE_INTEGER);
-      // Plan #547: the summary writer keeps each exact factual clause in memoryItems and is told not to repeat
-      // them in its prose, so prose plus later messages drops every fact the summary covers. Work about what the
-      // operator told you reads the same active, source-linked projection an ordinary answer grounds on, bounded
-      // here so a carried summary cannot cost the rest of this block its room.
+      // Plan #538 (Astra cint-L50 MUST-FIX 1) and plan #547 (Rule 96): the summary writer keeps each exact fact in
+      // memoryItems by source and is told NOT to repeat it in prose, so a work packet carrying prose alone carried a
+      // summary with its facts removed. Work about what the operator told you reads the same active, source-linked
+      // projection an ordinary answer grounds on, bounded here so a carried summary cannot cost the rest of this block
+      // its room, and dropped before the prose and messages when the packet would not fit, so no packet that grounds
+      // today loses that grounding to this addition.
       const facts = latest ? summaryFacts(latest).slice(-OBLIGATION_MEMORY_FACTS)
         .map(item => ({ ...item, quote: clip(item.quote, OBLIGATION_MEMORY_FACT_CHARS) })) : [];
-      const memory = { ...(latest ? { summary: clip(clean(redact(latest.text).text, true, latest.through), OBLIGATION_SUMMARY_CHARS) } : {}),
-        ...(facts.length ? { facts } : {}),
+      const memory = (withFacts: boolean) => ({ ...(latest ? { summary: clip(clean(redact(latest.text).text, true, latest.through), OBLIGATION_SUMMARY_CHARS) } : {}),
+        ...(withFacts && facts.length ? { facts } : {}),
         operatorMessages: journal.view.order.filter(turn => verifiedOperatorTurn(journal.view, turn) && !probeTurn(journal.view, turn)
           && turn.update > (latest?.through ?? -1)).slice(-OBLIGATION_MEMORY_MESSAGES)
-          .map(turn => ({ date: dated(turn), text: clip(clean(redact(turn.text).text, true, turn.id), OBLIGATION_MEMORY_MESSAGE_CHARS) })) };
-      const packetWith = (withMemory: boolean) => JSON.stringify({ now: isoMinute(now), zone, today: localStamp(now, zone).slice(0, 10), obligation,
-        ...(withMemory ? { memory } : {}),
+          .map(turn => ({ date: dated(turn), text: clip(clean(redact(turn.text).text, true, turn.id), OBLIGATION_MEMORY_MESSAGE_CHARS) })) });
+      const packetWith = (withMemory: 'facts-and-messages' | 'messages-only' | 'none') => JSON.stringify({ now: isoMinute(now), zone, today: localStamp(now, zone).slice(0, 10), obligation,
+        ...(withMemory === 'none' ? {} : { memory: memory(withMemory === 'facts-and-messages') }),
         ...(work?.note && work.waitsOn === undefined ? { lastProgress: clean(redact(work.note).text, true) } : {}),
         // A reassessment of waiting work sees what it waited for and every verified operator message since.
         ...(work?.waitsOn !== undefined && work.note ? { waitingFor: { waitsOn: work.waitsOn, need: clean(redact(work.note).text, true),
@@ -9709,8 +9712,12 @@ export function createJournalWorker(journal: ReturnType<typeof openPreviewJourna
         directives: openDirectives(journal.view).map(({ id, note }) => ({ id, quote: clean(redact(note.quote).text, true, note.source) })),
         governingConstraints: governingConstraints(tools), capabilities: previewCapabilities(tools),
         ...(tools ? { sources: [toolNote()] } : {}) });
-      const full = packetWith(true), context = Buffer.byteLength(full) <= journal.view.limits.maxBytes ? full : packetWith(false);
-      if (Buffer.byteLength(context) > journal.view.limits.maxBytes) return false;
+      let context: string | undefined;
+      for (const level of ['facts-and-messages', 'messages-only', 'none'] as const) {
+        const candidate = packetWith(level);
+        if (Buffer.byteLength(candidate) <= journal.view.limits.maxBytes) { context = candidate; break; }
+      }
+      if (context === undefined) return false;
       const question = tools ? OBLIGATION_WORK_QUESTION_TOOLS : OBLIGATION_WORK_QUESTION;
       // A session step carries its task in the session's own delivered text, not a provider
       // envelope, so no prepared envelope is built or required for it.

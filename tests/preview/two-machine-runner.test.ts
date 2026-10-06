@@ -139,7 +139,13 @@ it('an owner that stalls past its term and comes back is stale: it sends nothing
 
   // The stale owner wakes: its lease is gone, so it neither polls nor sends again; it retires with a recorded reason.
   studio.child.kill('SIGCONT');
-  expect(await studio.exited).toMatchObject({ status: 0 });
+  const ended = await studio.exited;
+  // Rule 2: a non-zero exit here reached two gates with no evidence of its cause, because the child's
+  // captured stderr and run log were discarded with the harness (docs/defects/full-suite-load-timeouts.md,
+  // "the two-machine stale-owner exit code"). They are already in hand, so the failure carries them.
+  if (ended.status !== 0) process.stderr.write(`the stale owner exited ${JSON.stringify(ended)} instead of retiring cleanly.`
+    + `\nits stderr:\n${studio.output.stderr}\nits runs.jsonl:\n${readFileSync(join(t.rootOf('studio'), 'runs.jsonl'), 'utf8')}\n`);
+  expect(ended).toMatchObject({ status: 0 });
   expect(t.polls('studio').length).toBeLessThanOrEqual(stalePolls + 1);
   expect(readRuns(join(t.rootOf('studio'), 'runs.jsonl')).launches.at(-1)).toMatchObject({ reason: 'conversation ownership lost',
     retired: 'conversation ownership lost', revival: 'queued' });

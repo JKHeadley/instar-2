@@ -1380,13 +1380,18 @@ it('bounded runner outcome lists leave room for every refusal beside the effect 
   }
 });
 
-it('gives scheduled work the operator\'s own earlier words, and drops them only when the packet would not fit (plan #510)', async () => {
+it('gives scheduled work the operator\'s own earlier words, and drops them only when the packet would not fit (plan #510, #538)', async () => {
   // Live cint-L50/L49: the deferral "which three of the things I have told you matter most" got a work packet with none of
   // them, and the replayed step answered "continue: this turn's context does not include the broader history".
+  // Astra cint-L50 MUST-FIX 1 (plan #538): the two summarized cases. Once a turn is behind the summary frontier its words
+  // are no longer in operatorMessages, and the summary writer is told to keep each exact fact in memoryItems by source and
+  // NOT to repeat it in prose -- so a packet carrying prose alone carried a summary with its facts deliberately removed.
+  // Her reproducer's fact was stored, active and 1180 of 32768 bytes clear of the bound, and the step still could not see
+  // it. 'summarized' is that case; 'items-dropped-first' pins the drop order, so adding the facts cannot cost a packet the
+  // prose and messages it already carried today.
   const DENTIST = 'My dentist is Dr. Ortiz on Elm Street, and the cleaning is on Thursday.';
-  // Astra sb-w4-d1b round 2 (plan #547): the same fact once the summary frontier passes it. The summary writer keeps
-  // the exact clause in memoryItems and is told not to repeat it in its prose, so prose plus later messages hold none
-  // of it; a forgotten clause beside it must stay out, so the packet carries the ACTIVE facts, not every kept one.
+  // Astra sb-w4-d1b round 2 (plan #547): the same fact once the summary frontier passes it, beside a forgotten clause
+  // that must stay out, so the packet carries the ACTIVE facts, not every kept one.
   const PLUMBER = 'My plumber is Ray at Dockside Plumbing, and he bills monthly.';
   const FORGET = 'Forget what I told you about the plumber.';
   // Review round 2, must-fix 1 (Rule 96): once a summary covers the fact-bearing message, the fact is no longer in
@@ -1396,8 +1401,16 @@ it('gives scheduled work the operator\'s own earlier words, and drops them only 
   // appointment was discussed and names nothing, and the clause rides in memoryItems. 'forgotten-fact' is the other
   // side of the same filter — the operator's forgetting removes it from the packet, as it does from an ordinary answer.
   const SUMMARY_PROSE = 'Earlier turns covered a dental appointment and the invoice question.';
-
-  for (const size of ['fits', 'summarized', 'retained-facts', 'forgotten-fact', 'too-large'] as const) {
+  const PROSE = 'The operator shared a scheduling fact, kept in memoryItems.';
+  /** The fact behind the summary frontier: prose that does not restate it, memoryItems that keep it by source. */
+  const summarize = (w: ReturnType<typeof world>) => {
+    const source = w.journal.view.order[0]!.id;
+    w.journal.append({ kind: 'summary-reserve', through: 1, maxInputTokens: 32768, maxOutputTokens: 2048, at: w.clock.now });
+    w.journal.append({ kind: 'summary', through: 1, text: PROSE, memoryItems: [{ source, quote: DENTIST }],
+      faithfulness: { path: 'exact', verdict: 'pass', score: null }, state: 'complete', at: w.clock.now });
+    return source;
+  };
+  for (const size of ['fits', 'summarized', 'retained-facts', 'forgotten-fact', 'too-large', 'items-dropped-first'] as const) {
     const root = origin();
     try {
       const contexts: Record<string, unknown>[] = [];
@@ -1422,6 +1435,7 @@ it('gives scheduled work the operator\'s own earlier words, and drops them only 
         expect(w.journal.view.summaries).toHaveLength(1);
         expect(w.journal.view.memory).toHaveLength(size === 'forgotten-fact' ? 1 : 0);
       }
+      const source = size === 'items-dropped-first' ? summarize(w) : undefined;
       await w.say(INVOICE);
       if (size === 'summarized') {
         await w.say(FORGET);
@@ -1436,13 +1450,19 @@ it('gives scheduled work the operator\'s own earlier words, and drops them only 
         expect(w.journal.view.summaries).toHaveLength(1);
       }
       const sizes: number[] = [];
-      if (size === 'too-large') {
-        // The limit the packet is checked against: just under the packet with its memory, above the packet without it.
+      if (size === 'too-large' || size === 'items-dropped-first') {
+        // The limit the packet is checked against: just under the packet with the rung being dropped, at or above the
+        // next rung down. Measured on a probe journal of the same shape rather than guessed.
         const probeRoot = origin();
         const probe = world(probeRoot, { answer: question => question === INVOICE ? { reply: LATER, openLoops: [{ kind: 'deferral', quote: LATER, waitsOn: 'nothing' }] } : 'Noted.',
-          work: context => { sizes.push(Buffer.byteLength(JSON.stringify(context)), Buffer.byteLength(JSON.stringify({ ...context, memory: undefined })));
+          work: context => { const memory = context.memory as Record<string, unknown>;
+            sizes.push(Buffer.byteLength(JSON.stringify(context)),
+              Buffer.byteLength(JSON.stringify({ ...context, memory: { ...memory, facts: undefined } })),
+              Buffer.byteLength(JSON.stringify({ ...context, memory: undefined })));
             return { outcome: 'report', report: 'x' }; } });
-        await probe.say(DENTIST); await probe.say(INVOICE);
+        await probe.say(DENTIST);
+        if (size === 'items-dropped-first') summarize(probe);
+        await probe.say(INVOICE);
         probe.clock.now += LOOP_REVISIT_MS + 60_000;
         expect(await probe.worker.workObligations()).toBe(true);
         probe.journal.close(); rmSync(probeRoot, { recursive: true, force: true });
@@ -1452,41 +1472,48 @@ it('gives scheduled work the operator\'s own earlier words, and drops them only 
       expect(await w.worker.workObligations()).toBe(true);
       expect(w.workQuestions[0]).toContain('packet.memory holds what the operator told you');
       expect(w.workQuestions[0]).toContain('packet.memory.facts, which are the exact clauses that summary keeps by source');
+      const memory = contexts[0]!.memory as { summary?: string;
+        facts?: { source: string; sourceKind: string; sourceLabel: string; quote: string }[];
+        operatorMessages: { text: string }[] } | undefined;
       if (size === 'fits')
-        expect(contexts[0]!.memory).toEqual({ operatorMessages: [expect.objectContaining({ text: DENTIST }), expect.objectContaining({ text: INVOICE })] });
+        expect(memory).toEqual({ operatorMessages: [expect.objectContaining({ text: DENTIST }), expect.objectContaining({ text: INVOICE })] });
       else if (size === 'summarized') {
-        const memory = contexts[0]!.memory as { summary: string; facts?: { source: string; sourceLabel: string; quote: string }[];
-          operatorMessages: { text: string }[] };
         // Only the messages after the frontier remain verbatim, and the prose carries neither fact.
-        expect(memory.operatorMessages.map(item => item.text)).toEqual([INVOICE, FORGET]);
-        expect(memory.summary).not.toContain('Ortiz');
-        // The retained fact survives, named by the operator turn it came from; the forgotten one does not.
-        expect(memory.facts).toEqual([{ source: w.journal.view.order[0]!.id, sourceKind: 'operator-stated',
+        expect(memory!.operatorMessages.map(item => item.text)).toEqual([INVOICE, FORGET]);
+        expect(memory!.summary).not.toContain('Ortiz');
+        // Rule 96: the retained fact survives, named by the operator turn it came from; the forgotten one does not.
+        expect(memory!.facts).toEqual([{ source: w.journal.view.order[0]!.id, sourceKind: 'operator-stated',
           sourceLabel: expect.stringContaining('conversation:operator/'), quote: DENTIST }]);
         expect(JSON.stringify(contexts[0])).not.toContain('Dockside');
       } else if (retained) {
-        const memory = contexts[0]!.memory as { summary: string; facts?: { source: string; sourceKind: string; sourceLabel: string; quote: string }[];
-          operatorMessages: { text: string }[] };
         // The summarized message is gone from operatorMessages, and the prose that replaced it names no appointment:
         // without facts the step is told a dental appointment exists and nothing about it. This is the live shape, with
         // the packet far inside its bound, so a missing fact is missing grounding and never resource pressure.
-        expect(memory.summary).toBe(SUMMARY_PROSE);
-        expect(memory.operatorMessages.map(item => item.text)).toEqual([INVOICE]);
-        expect(memory.summary).not.toContain('Ortiz');
-        expect(JSON.stringify(memory.operatorMessages)).not.toContain('Ortiz');
+        expect(memory!.summary).toBe(SUMMARY_PROSE);
+        expect(memory!.operatorMessages.map(item => item.text)).toEqual([INVOICE]);
+        expect(memory!.summary).not.toContain('Ortiz');
+        expect(JSON.stringify(memory!.operatorMessages)).not.toContain('Ortiz');
         expect(Buffer.byteLength(JSON.stringify(contexts[0]))).toBeLessThan(w.journal.view.limits.maxBytes);
         // The source link, the kind and the label are the ordinary answer's own projection of these items (one shared
         // function, so the two packets cannot drift); recall-from-summary-only.test.ts holds the answer side of it.
         if (size === 'retained-facts')
-          expect(memory.facts).toEqual([{ source: w.journal.view.order[0]!.id, sourceKind: 'operator-stated',
+          expect(memory!.facts).toEqual([{ source: w.journal.view.order[0]!.id, sourceKind: 'operator-stated',
             sourceLabel: expect.stringContaining('conversation:operator/'), quote: DENTIST }]);
         // The other side of the one filter: the operator's forgetting removes the fact from the work packet too, so a
         // forgotten clause is never handed to a work step that the answer would already refuse to repeat.
-        else expect(memory.facts).toBeUndefined();
-      } else {
-        expect(sizes[0]!).toBeGreaterThan(sizes[1]!);
-        expect(contexts[0]!.memory).toBeUndefined();
+        else expect(memory!.facts).toBeUndefined();
+      } else if (size === 'too-large') {
+        expect(sizes[0]!).toBeGreaterThan(sizes[2]!);
+        expect(memory).toBeUndefined();
         expect(contexts[0]!.obligation).toBeDefined();
+      } else {
+        // The middle rung: the facts yield first, and what the packet carried before them survives.
+        expect(source).toBeDefined();
+        expect(sizes[0]!).toBeGreaterThan(sizes[1]!);
+        expect(sizes[1]!).toBeGreaterThan(sizes[2]!);
+        expect(memory!.facts).toBeUndefined();
+        expect(memory!.summary).toBe(PROSE);
+        expect(memory!.operatorMessages.map(item => item.text)).toEqual([INVOICE]);
       }
       w.journal.close();
     } finally { rmSync(root, { recursive: true, force: true }); }
