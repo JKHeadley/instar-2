@@ -14,7 +14,7 @@ Side effects: P2-OCC-07 takes about four more turns per history (nine instead of
 Undo and recovery: revert the one commit; nothing is persisted.
 Multi-machine posture: none; a unit test.
 Layer below: createFactStore's running snapshot and prepareSnapshot (unchanged); the test's setup() fixture (unchanged).
-Bug class: test-measurement
+Bug class: unit
 Bug evidence: reproducer=tests/facts/incremental-status.test.ts
 Hook bypass: none
 Convergence: none
