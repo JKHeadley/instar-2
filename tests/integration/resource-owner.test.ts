@@ -582,10 +582,22 @@ writeFileSync(process.argv[2], String(spawn('/bin/sleep', ['30'], { stdio: 'igno
 });
 
 it('does not hold a tree process ceiling: with baseline churn and a concurrent launch, a tree can exceed it', { timeout: 30000 }, async () => {
-  const root = dir(), go = join(root, 'go');
-  // Baseline processes of the same user, counted into the user-ID limit at launch time.
-  const baseline = Array.from({ length: 12 }, () => spawn('/bin/sleep', ['30'], { detached: true, stdio: 'ignore' }));
-  const forker = script(root, 'forker.mjs', `import { spawn } from 'node:child_process'; import { existsSync } from 'node:fs';
+  const root = dir(), lead = { go: join(root, 'go-lead'), ready: join(root, 'ready-lead') },
+    follow = { go: join(root, 'go-follow'), ready: join(root, 'ready-follow') };
+  // Baseline processes of the same user, counted into the user-ID limit at launch time. The room they
+  // free on exit is the room a tree then grows into, so it is kept wider than the churn a parallel suite
+  // adds in the same second: with twelve, roughly six slots taken by unrelated same-user work left both
+  // trees at exactly their own ceiling of 4 and this proof flipped (rule 110 flake, 6 pass / 5 fail).
+  const baseline = Array.from({ length: 32 }, () => {
+    const child = spawn('/bin/sleep', ['30'], { detached: true, stdio: 'ignore' });
+    // A refused baseline spawn is asserted below rather than thrown as an uncaught child error.
+    child.on('error', () => { /* asserted below */ });
+    return child;
+  });
+  // Each launch reports when its tree is running. By then the shim has already applied the user-ID limit
+  // that launch was given, so the churn below provably happens after both limits were set.
+  const forker = script(root, 'forker.mjs', `import { spawn } from 'node:child_process'; import { existsSync, writeFileSync } from 'node:fs';
+writeFileSync(process.argv[3], '');
 const wait = () => existsSync(process.argv[2]) ? run() : setTimeout(wait, 25);
 const run = () => { const kids = []; let refused = 0;
   for (let i = 0; i < 8; i++) { const c = spawn('/bin/sleep', ['5'], { stdio: 'ignore' }); c.on('error', () => { refused++; }); kids.push(c); }
@@ -593,18 +605,28 @@ const run = () => { const kids = []; let refused = 0;
     process.stdout.write(JSON.stringify({ started, refused })); }, 300); };
 wait();`);
   try {
-    await settle(150);
+    // The room the churn will free is asserted, never assumed: a host that refused these spawns leaves
+    // a tree no room to grow into, and that must read as a failed setup rather than a failed proof.
+    expect(baseline.filter(child => typeof child.pid === 'number').length).toBeGreaterThanOrEqual(24);
     // No sampler acts: only what the kernel holds is in play.
     const owner = createResourceOwner({ ...ceilings({ launch: { processCount: 4 } }), sampleMs: 60000 });
     await owner.attach({});
-    const first = owner.execute(input(root, forker, [go]), 'answer');
-    const second = owner.execute(input(root, forker, [go]), 'review');
-    await settle(700);
-    // Churn: unrelated processes of the same user exit after both limits were set.
-    baseline.forEach(child => { try { process.kill(child.pid!, 'SIGKILL'); } catch { /* ended */ } });
-    await settle(200);
-    writeFileSync(go, '');
-    const results = await Promise.all([first, second]);
+    const answer = owner.execute(input(root, forker, [lead.go, lead.ready], 20000), 'answer');
+    const review = owner.execute(input(root, forker, [follow.go, follow.ready], 20000), 'review');
+    for (let i = 0; i < 400 && !(existsSync(lead.ready) && existsSync(follow.ready)); i++) await settle(25);
+    expect([existsSync(lead.ready), existsSync(follow.ready)]).toEqual([true, true]);
+    // Churn: unrelated processes of the same user exit after both limits were set. Their exit is awaited
+    // rather than slept on, because a zombie still counts against the user-ID limit it was counted into.
+    await Promise.all(baseline.map(child => new Promise<void>(resolve => {
+      if (child.exitCode !== null || child.signalCode !== null) { resolve(); return; }
+      child.once('exit', () => resolve());
+      try { process.kill(child.pid!, 'SIGKILL'); } catch { resolve(); }
+    })));
+    // One tree forks into that room first, so the proof never rests on how two trees split it.
+    writeFileSync(lead.go, '');
+    await settle(500);
+    writeFileSync(follow.go, '');
+    const results = await Promise.all([answer, review]);
     const started = results.map((r: { stdout: string }) => JSON.parse(r.stdout).started as number);
     // A tree grew past its own ceiling of 4 after the churn: the user-ID limit is not a tree bound.
     expect(Math.max(...started)).toBeGreaterThan(4);
