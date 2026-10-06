@@ -1,5 +1,6 @@
 import { availableParallelism } from 'node:os';
 import { defineConfig } from 'vitest/config';
+import { resolveTestWorkerLimit } from './tests/setup/worker-limit.js';
 
 // VITEST_SERIAL_GATE=1 is the exact serial comparator (one fork worker, no file
 // parallelism) without editing source between evidence runs; the transitional FINAL
@@ -8,7 +9,13 @@ const serialGate = process.env.VITEST_SERIAL_GATE === '1';
 // Bounded fork parallelism: half the available logical CPUs, capped at six (16 CPUs → 6,
 // 4 → 2, 2 → 1). A conservative engineering starting point that bounds resource
 // pressure, not a measured optimum for every runner.
-const workerLimit = Math.max(1, Math.min(6, Math.floor(availableParallelism() / 2)));
+const hostWorkerLimit = Math.max(1, Math.min(6, Math.floor(availableParallelism() / 2)));
+// INSTAR_TEST_MAX_WORKERS lowers that for one run: the desk launches each full test with four,
+// so two concurrent full runs cannot saturate the host. It never raises the host formula, an
+// unset value leaves it exactly as it was, and VITEST_SERIAL_GATE's single worker still wins.
+const { limit: workerLimit, ignoredValue } = resolveTestWorkerLimit(process.env.INSTAR_TEST_MAX_WORKERS, hostWorkerLimit);
+if (ignoredValue !== null)
+  process.stderr.write(`INSTAR_TEST_MAX_WORKERS=${ignoredValue} is not a positive integer; running ${workerLimit} workers\n`);
 
 export default defineConfig({
   test: {
