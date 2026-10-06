@@ -15,7 +15,7 @@ import { createResourceOwner, RESOURCE_CEILINGS, hostQuery } from '../../scripts
 // @ts-expect-error Physical host JavaScript stays outside pure core.
 import { createProcessInventory } from '../../scripts/process-inventory.mjs';
 // @ts-expect-error The runner side stays plain JavaScript.
-import { harnessExecutable, harnessReadiness, harnessStatusLine, HARNESS_PROFILE, removeHarnessState, grantVolume, HARNESS_VOLUME_MARK, harnessGate, HARNESS_RECHECK_MS, readHarnessLogin, storeHarnessLogin, plaintextLogins, closeOperatorTmp, tmpCanary, HARNESS_TMP, harnessCredentialValues, harnessRefusedNotice, HARNESS_HOOK_FILES, HARNESS_OFF_REASON, harnessSocketDirectory } from './harness-user.mjs';
+import { harnessExecutable, harnessReadiness, harnessStatusLine, HARNESS_PROFILE, removeHarnessState, grantVolume, HARNESS_VOLUME_MARK, harnessGate, HARNESS_RECHECK_MS, readHarnessLogin, storeHarnessLogin, plaintextLogins, closeOperatorTmp, sweptEntryHeld, tmpCanary, HARNESS_TMP, harnessCredentialValues, harnessRefusedNotice, HARNESS_HOOK_FILES, HARNESS_OFF_REASON, harnessSocketDirectory } from './harness-user.mjs';
 // @ts-expect-error The runner side stays plain JavaScript.
 import { prepareSessionAdmission, sessionAdmissionCommand } from './session-admission.mjs';
 // @ts-expect-error The runner side stays plain JavaScript.
@@ -79,7 +79,7 @@ describe('readiness: the switch is decided from live state, a refusal names its 
   });
   const ready = (overrides: Record<string, unknown> = {}) => harnessReadiness({ profile, denied: ['/root', '/Users/operator'], exec: exec('498'),
     install, probe: probe(null, null), digestOf: () => 'sha256:good', login: () => 'token', custody: ['/h/custody', '/h/custody/login.json'],
-    plaintext: () => [], tmp: () => ({ entries: ['/private/tmp/closed'], failed: 0 }), canary, ...overrides });
+    plaintext: () => [], tmp: () => ({ entries: ['/private/tmp/closed'], failed: 0 }), canary, held: () => true, ...overrides });
   it('is ready when the user, launcher, hook, pinned copy, custody login, closed /private/tmp and the kernel\'s answers all hold', () => {
     expect(ready()).toEqual({ ready: true, user: '_instarharness', uid: 498, hookScript: '/h/hook/x/tool-admission-hook.mjs' });
   });
@@ -104,6 +104,19 @@ describe('readiness: the switch is decided from live state, a refusal names its 
       .toBe('the harness login is unusable: the custody login is bound to another account, organization or plan');
     expect(ready({ probe: probe('/private/tmp/closed', null) }).reason).toBe('the harness user can read /private/tmp/closed');
     expect(ready({ tmp: () => ({ entries: [], failed: 2 }) }).reason).toMatch(/2 of the runner's \/private\/tmp entries cannot be closed/u);
+  });
+  it('does not count a swept entry that became another turn\'s mounted volume before the probe, and still counts every other one', () => {
+    // Plan #542: a concurrent root's tool turn made its `itw-<key>` mount point before the sweep and attached its workspace
+    // volume (granted to the harness) before the probe; the sweep would now skip it, so it is not an exposure.
+    const asked: string[] = [];
+    const mounted = (path: string) => { asked.push(path); return path !== '/private/tmp/closed'; };
+    expect(ready({ probe: probe('/private/tmp/closed', null), held: mounted })).toEqual({ ready: true, user: '_instarharness', uid: 498, hookScript: '/h/hook/x/tool-admission-hook.mjs' });
+    expect(asked).toEqual(['/private/tmp/closed']);
+    // The entry is still the runner's own plain entry: readable is an exposure, so every launch holds.
+    expect(ready({ probe: probe('/private/tmp/closed', null), held: () => true }).reason).toBe('the harness user can read /private/tmp/closed');
+    // The denied paths and the custody are never excused by the held check, whatever it answers.
+    expect(ready({ probe: probe('/Users/operator', null), held: () => false }).reason).toBe('the harness user can read /Users/operator');
+    expect(ready({ probe: probe('/h/custody/login.json', null), held: () => false }).reason).toBe('the harness user can read /h/custody/login.json');
     expect(ready({ tmp: () => { throw Error('EACCES'); } }).reason).toMatch(/cannot be listed/u);
   });
   it('is ready only while the kernel refuses a /private/tmp file created after the sweep, and always removes that canary', () => {
@@ -243,6 +256,17 @@ describe('the login custody and the runner\'s /private/tmp entries', () => {
     expect(lstatSync(join(base, 'open.log')).mode & 0o777).toBe(0o600);
     expect(lstatSync(join(base, 'open-dir')).mode & 0o777).toBe(0o700);
     expect(lstatSync(join(base, 'link')).isSymbolicLink()).toBe(true);
+  });
+  it('holds a swept entry only while it is still the runner\'s own plain entry on the base\'s device', () => {
+    const base = fresh('held-base');
+    mkdirSync(join(base, 'itw-0123456789ab'), { mode: 0o700 });
+    symlinkSync('/etc/hosts', join(base, 'link'));
+    expect(sweptEntryHeld(join(base, 'itw-0123456789ab'), base)).toBe(true);
+    // Another device than the base's (as a mounted volume is): not what the sweep closes.
+    expect(sweptEntryHeld(join(base, 'itw-0123456789ab'), '/dev')).toBe(false);
+    expect(sweptEntryHeld(join(base, 'itw-0123456789ab'), base, process.getuid!() + 1)).toBe(false);
+    expect(sweptEntryHeld(join(base, 'link'), base)).toBe(false);
+    expect(sweptEntryHeld(join(base, 'gone'), base)).toBe(false);
   });
 });
 
