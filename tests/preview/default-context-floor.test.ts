@@ -40,7 +40,8 @@ async function firstTurn(maxBytes: number, tools = false) {
       expires: 9_999_999_999_999, maxCalls: PREVIEW_LIVE_LIMITS.calls, maxReplies: PREVIEW_LIVE_LIMITS.replies,
       maxTurns: PREVIEW_LIVE_LIMITS.turns, maxBytes, cursor: 0 });
     const briefing = sourcePacket(path => readFileSync(resolve(process.cwd(), path), 'utf8'), SOURCE_PINS,
-      { providerAttempts: journal.view.limits.maxCalls, expiresAt: journal.view.expires, tools }).sources;
+      // With tools, the longest live MCP wording: a one-digit count of root MCP servers (no root configures ten).
+      { providerAttempts: journal.view.limits.maxCalls, expiresAt: journal.view.expires, tools, ...(tools ? { mcp: 9 } : {}) }).sources;
     const runs = { launches: [{ at: now - 60_000, pid: 1 }], exits: [] };
     // Larger than its cut bound, so the measured shape is the one every answer carries under pressure.
     const desk = { text: `# desk\n${'Preview work remains a supervised private chat trial with a reviewed activation.\n'.repeat(40)}`,
@@ -265,21 +266,27 @@ it('keeps a tool turn\'s always-sent parts inside the same measured floor (Part 
   // cint-L44), whose sentence says the shell's network goes through the turn's checkpoint (public reads work; writes and
   // local addresses are refused) and where to clone repositories (+200); 1287 with the flat answer protocol (plan #491),
   // whose tool sentence names "reasoning" instead of "reason.value" (-3); 1474 with plan #510's sentence that the account
-  // email the harness itself injects is the subscription login, never the operator (+187).
-  expect(growth).toBe(1474);
+  // email the harness itself injects is the subscription login, never the operator (+187); 1544 at sb-w4-selfdesc,
+  // whose sentence says a network write goes to the effect doorway and a consequential effect runs once the operator
+  // registers and grants it (+70 on the 1474 live wording).
+  expect(growth).toBe(1544);
   // The packet names what the call really has (review round 1, finding 5): the text-only route keeps the no-tools read and
-  // its "attempted nothing" guidance; the tool route says the tools are as listed and that only its recorded calls ran.
+  // its "attempted nothing" guidance; the tool route says the tools are listed (in the note's tools item) and that only its recorded calls ran.
   expect(plain.packet?.capabilities?.externalTools).toBe('none');
   expect(plain.packet?.obligationDecision).toBe(OBLIGATION_DECISION);
   expect(plain.packet?.governingConstraints?.['no-tools']).toBe('no external tools or accounts');
   expect(tools.packet?.capabilities).toEqual(previewCapabilities(true));
-  expect(tools.packet?.capabilities?.externalTools).toBe('as listed');
+  expect(tools.packet?.capabilities?.externalTools).toBe('listed');
   expect(tools.packet?.obligationDecision).toBe(OBLIGATION_DECISION_TOOLS);
   expect(tools.packet?.obligationDecision).not.toContain('You attempted nothing outside this reply');
-  expect(tools.packet?.governingConstraints?.['no-tools']).toBe('listed tools; no account writes');
-  const plainPacket = plain.answerTotal! - bytes(SUBSCRIPTION_CONVERSATION_SYSTEM_PROMPT);
+  expect(tools.packet?.governingConstraints?.['no-tools']).toBe('listed tools only');
+  // The tool packet stays within the same measured fixed parts as the text-only one (PREVIEW_FIXED_PROMPT_BYTES). Since
+  // w4-selfdesc it is a little longer than the text-only packet (its note lists the tools item and the real limits, which
+  // the text-only route's no-tools sentence does not), paid for by the shorter note trial line, so the bound is the guard
+  // itself, not the other route's packet.
   const toolsPacket = tools.answerTotal! - bytes(SUBSCRIPTION_TOOLS_SYSTEM_PROMPT);
-  expect(toolsPacket).toBeLessThanOrEqual(plainPacket);
+  expect(toolsPacket).toBeLessThanOrEqual(PREVIEW_FIXED_PROMPT_BYTES - bytes(SUBSCRIPTION_CONVERSATION_SYSTEM_PROMPT));
+  expect(plain.answerTotal!).toBeLessThanOrEqual(PREVIEW_FIXED_PROMPT_BYTES);
   expect(tools.answerTotal!).toBeLessThanOrEqual(PREVIEW_FIXED_PROMPT_BYTES + growth);
   expect(tools.answerTotal!).toBeLessThanOrEqual(Math.max(floor, 32768));
 }, 60_000);

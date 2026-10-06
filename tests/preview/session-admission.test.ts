@@ -17,7 +17,7 @@ import { prepareSessionAdmission, sessionAdmissionCommand } from './session-admi
 // @ts-expect-error see above
 import { admitToolCallEffect, toolTrace } from './tool-admission.mjs';
 // @ts-expect-error see above
-import { attachEgress } from './tool-turn.mjs';
+import { attachEgress, createHeldSecrets, heldVerdict } from './tool-turn.mjs';
 // @ts-expect-error see above
 import { startEgressProxy } from './egress-proxy.mjs';
 // @ts-expect-error see above
@@ -37,6 +37,7 @@ const sandboxWorks = spawnSync('/usr/bin/sandbox-exec', ['-p', '(version 1)(allo
 type Row = { type: string; id: string; state?: string; parent?: string; drawsOn?: string; operation?: string };
 
 type Policy = Record<string, unknown>;
+const HELD_SYNTHETIC = 'zq-held-synthetic-value-0123456789abcdef';
 async function step(options: { maxCalls?: number; policy?: Policy; gatePolicy?: Policy; stopped?: () => boolean } = {}) {
   const root = realpathSync(mkdtempSync(join(tmpdir(), 'session-admission-'))); roots.push(root);
   const ws = join(root, 'ws'), outside = join(root, 'outside'), base = join(root, 'admission');
@@ -46,6 +47,8 @@ async function step(options: { maxCalls?: number; policy?: Policy; gatePolicy?: 
   const rows: Row[] = [], prepared = new Set<string>();
   const append = (row: Row) => { rows.push(row); if (row.type === 'SessionWorkEffect' && row.state === 'prepared') prepared.add(row.id); };
   const gate = await createAdmissionGate({ append, stopped: options.stopped ?? (() => false), now: () => 1_000,
+    // Plan #507: the runner's held-secret check, holding one synthetic value (the runner wires its own held set).
+    held: heldVerdict(createHeldSecrets({ synthetic: () => [HELD_SYNTHETIC] })),
     // The effect owner decides by the doorway's four tests under the installation's current policy, as the runner wires it.
     effects: createToolEffectOwner({ decide: (tool: string, input: unknown) => admitToolCallEffect(tool, input,
       { operations: [], ...((options.gatePolicy ?? options.policy) ? { effectPolicy: options.gatePolicy ?? options.policy } : {}) }, 1_000),
@@ -101,6 +104,9 @@ it('admits the full tool set: ordinary work, network reads, delegation as a chil
   expect(await decide('apply_patch', { command: `*** Begin Patch\n*** Add File: ${join(s.outside, 'n.txt')}\n+hi\n*** End Patch` })).toBe('deny');
   expect(await decide('apply_patch', { command: 'not a patch' })).toBe('deny');
   expect(await decide('WebFetch', { url: 'https://example.com' })).toBe('allow');
+  // Plan #507: the same read carrying a value the runner holds is refused at the checkpoint before anything is done for it.
+  expect(await decide('WebFetch', { url: `https://example.com/?q=${HELD_SYNTHETIC}` })).toBe('deny');
+  expect(await decide('webrun', { search_query: [{ q: HELD_SYNTHETIC }] })).toBe('deny');
   expect(await decide('TodoWrite', { todos: [] })).toBe('allow');
   // A delegation is admitted only once its child edge is durable: the edge is in the record before the hook answered.
   expect(s.rows).toHaveLength(0);
@@ -114,7 +120,7 @@ it('admits the full tool set: ordinary work, network reads, delegation as a chil
   expect(await decide('SomethingNew', {})).toBe('deny');
   // Each call takes one tool-call slot; the model-call ceiling is the checkpoint's.
   const record = toolTrace(recordOf(s.state).split('\n').filter(Boolean));
-  expect(record.calls.map((c: { n: number }) => c.n)).toEqual([1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11]);
+  expect(record.calls.map((c: { n: number }) => c.n)).toEqual([1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13]);
 });
 
 it('a delegation whose return is interrupted keeps its open edge: the obligation survives for the parent to settle', async () => {
@@ -285,7 +291,7 @@ it.skipIf(!sandboxWorks)('gives the confined shell the step\'s network checkpoin
   const tmp = join(s.ws, '.tmp');
   const { proxy } = await attachEgress({ stateDirectory: s.state, scratch: tmp, home: join(tmp, 'home') },
     (input: object) => startEgressProxy({ ...input, resolve: async () => ['93.184.216.34'], dial: () => ({ host: '127.0.0.1', port }) }),
-    { reads: [], path: undefined, developer: undefined });
+    { reads: [], path: undefined, developer: undefined }, { check: () => 'clear', span: () => 0 });
   try {
     const run = async (command: string, id: string) => {
       const admitted = await hook(s.state, call('Bash', { command }, id));

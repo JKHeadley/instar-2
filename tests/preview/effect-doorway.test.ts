@@ -5,14 +5,15 @@
 // spike's real WebFetch calls and the live scope turn), and one tool turn on a scratch root through runToolTurn:
 // an ordinary write admitted with no doorway call and a consequential effect refused, journaled, counted in
 // status and carried below the answer.
-import { spawnSync } from 'node:child_process';
+import { spawn, spawnSync } from 'node:child_process';
 import { mkdirSync, mkdtempSync, readFileSync, realpathSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
-import { afterEach, expect, it } from 'vitest';
+import { afterAll, afterEach, beforeAll, expect, it } from 'vitest';
 import { deriveProfile } from '../../src/index.js';
 import { openPreviewJournal } from './journal.js';
 import { SINGLE_MACHINE_PROFILE } from './activation-authority.js';
+import { startClearHeldCheck } from './held-check-stub.js';
 import { openReplyNotices, validAnswerNotices } from './credential-reminders.js';
 import { SUBSCRIPTION_TOOL_LIMITS } from '../../src/assembly/production-provider.js';
 // @ts-expect-error The doorway, the hook and the runner side stay plain JavaScript: the harness runs them without a loader.
@@ -135,17 +136,32 @@ it('routes only the tools that could make a consequential effect', () => {
     expect(toolEffectProposal(tool, input)).toBeNull();
 });
 
+// Plan #507: outward calls ask the runner's held-secret check first; a stand-in answers `clear` (held-check-stub.ts).
+let HELD_CHECK = '';
+let stopHeldCheck = () => {};
+beforeAll(async () => { const stub = await startClearHeldCheck(); HELD_CHECK = stub.path; stopHeldCheck = stub.stop; });
+afterAll(() => stopHeldCheck());
 /** A turn's state laid out as prepareToolTurn writes it, for the real hook. */
 function hookTurn(over: object = {}) {
   const root = dir('effect-hook-');
   for (const sub of ['ws', 'state', 'tmp']) mkdirSync(join(root, sub));
   const ws = join(root, 'ws'), state = join(root, 'state');
   writeFileSync(join(state, 'config.json'), JSON.stringify({ workspace: ws, tmp: join(root, 'tmp'), maxCalls: 50, maxWriteBytes: 1048576,
-    operations: OPS, irreversibleTerm: SHAPE.derivedFrom.irreversible, ...over }));
+    operations: OPS, irreversibleTerm: SHAPE.derivedFrom.irreversible, heldCheck: HELD_CHECK, ...over }));
   return { root, ws, state };
 }
 const runHook = (state: string, call: object, mode = 'pre') => spawnSync(process.execPath, [TOOL_HOOK_SCRIPT, mode, state],
   { input: JSON.stringify(call), encoding: 'utf8' });
+/** The same hook, run without blocking this process: inside runToolTurn the runner answers the hook's held-secret check
+ * on its turn socket in this process (plan #507), as the real runner does while the harness waits on its hook. */
+const runHookAsync = (state: string, call: object, mode = 'pre') => new Promise<{ status: number | null; stdout: string }>((resolve, reject) => {
+  const child = spawn(process.execPath, [TOOL_HOOK_SCRIPT, mode, state]);
+  let stdout = '';
+  child.stdout.on('data', chunk => { stdout += chunk; });
+  child.on('error', reject);
+  child.on('close', status => resolve({ status, stdout }));
+  child.stdin.end(JSON.stringify(call));
+});
 const admissionRows = (state: string) => readFileSync(join(state, 'admission.jsonl'), 'utf8').trim().split('\n').map(line => JSON.parse(line));
 
 it('replays the recorded tool calls of real harness runs through the real hook: the doorway fires exactly on the consequential ones (Rule 106)', () => {
@@ -223,12 +239,12 @@ it('one tool turn on a scratch root: an ordinary write is admitted with no doorw
         const config = JSON.parse(readFileSync(join(turn.stateDirectory, 'config.json'), 'utf8'));
         expect(config.irreversibleTerm).toEqual(SHAPE.derivedFrom.irreversible);
         const write = { tool_name: 'Write', tool_input: { file_path: join(turn.workspace, 'note.txt'), content: 'hello doorway' }, tool_use_id: 'w' };
-        expect(runHook(turn.stateDirectory, write).stdout).toBe('');
+        expect((await runHookAsync(turn.stateDirectory, write)).stdout).toBe('');
         writeFileSync(join(turn.workspace, 'note.txt'), 'hello doorway');
-        expect(runHook(turn.stateDirectory, { ...write, tool_response: 'created' }, 'post').status).toBe(0);
+        expect((await runHookAsync(turn.stateDirectory, { ...write, tool_response: 'created' }, 'post')).status).toBe(0);
         const effect = { ...consequential, tool_use_id: 'c' };
-        const r = runHook(turn.stateDirectory, effect);
-        if (!/"permissionDecision":"deny"/u.test(r.stdout)) runHook(turn.stateDirectory, { ...effect, tool_response: 'ok' }, 'post');
+        const r = await runHookAsync(turn.stateDirectory, effect);
+        if (!/"permissionDecision":"deny"/u.test(r.stdout)) await runHookAsync(turn.stateDirectory, { ...effect, tool_response: 'ok' }, 'post');
         return 'answer';
       } });
     expect(outcome.result).toBe('answer');

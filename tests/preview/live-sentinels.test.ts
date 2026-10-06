@@ -199,7 +199,7 @@ it('wiring, two machines: the tick\'s own record cannot revoke its admission; th
   } finally { world.close(); }
 });
 
-it('wiring: a backing-off or peer-waiting lane defers the tick; a failed drain still runs the requested step', async () => {
+it('wiring: a backing-off or peer-waiting lane defers the tick; a failed drain still runs the requested step and the due work', async () => {
   const world = harness({ families: ['context'] });
   try {
     world.worker.intake([update(1, `Please read all of this: ${'lorem ipsum '.repeat(2000)}`)]);
@@ -217,7 +217,8 @@ it('wiring: a backing-off or peer-waiting lane defers the tick; a failed drain s
     peer = true;
     expect(cycle(async () => { throw Error('drain failed'); })).toBe(true);
     await lane.settle();
-    expect(ran).toEqual(['recover']);
+    // Plan #548: the cycle's due work (after) runs even though the drain failed; the job still fails and backs off.
+    expect(ran).toEqual(['recover', 'after']);
     // The failure backs the lane off: the next cycle is deferred and records nothing new.
     const counts = { ...world.journal.view.sentinels!.counts };
     world.clock.now += 500;
