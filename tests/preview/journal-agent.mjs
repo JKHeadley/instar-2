@@ -74,7 +74,7 @@ import { doorwayFreshness, installDoorways, observeExchange, readDoorwayMap, sta
 import { createSecretCustody, dueCredentialReminders, reminderSchedule } from './secret-custody.js';
 import { credentialNotices, doorwayNotices, dueWithDelivery } from './credential-reminders.js';
 import { journalCapacity, packetCapacity } from './capacity-outcome.js';
-import { createLiveSentinels, createOrdinaryLane, sentinelCycle, sentinelReport, waitWorking } from './live-sentinels.js';
+import { createLiveSentinels, createOrdinaryLane, sentinelCycle, sentinelReport, untilStopped, waitWorking } from './live-sentinels.js';
 import { SENTINEL_FAMILIES } from './sentinel-record.js';
 
 const clock = createPreviewClock(() => Date.now(), () => performance.now());
@@ -2375,14 +2375,16 @@ async function main() {
         }
       }
       if (lane.error()) throw lane.error();
-      worker.gate(); await worker.minimal();
+      // A stop that latches during a worker step ends the loop here, cleanly, like every check above.
+      const ended = () => signalled || workerStop.value || existsSync(stopPath) || journal.view.stop !== null || !ownerHeld();
+      if (!await untilStopped(async () => { worker.gate(); await worker.minimal(); }, ended)) break;
       // A stop given on the independent surface latches here, before any poll or ordinary pass.
       if (journal.view.stop) break;
       if (renewedAway()) break;
       // The scheduled work job (workCycle, above). A holding note the presence sentinel marks due goes out at the
       // minimal path's next step after the poll.
       workCycle();
-      worker.gate();
+      if (!await untilStopped(() => worker.gate(), ended)) break;
       reportCap();
       runDueProof();
       checkDoorways();
@@ -2432,7 +2434,7 @@ async function main() {
       // A full held page was preserved and passed: read the rest of the backlog now, so an exact /stop
       // behind it latches before any further processing (Rule 4; bounded by the waiting store).
       if (worker.readAhead() && batch.length >= pollLimit) continue;
-      await worker.minimal();
+      if (!await untilStopped(() => worker.minimal(), ended)) break;
       if (journal.view.stop) break;
       if (renewedAway()) break;
       // Reminders go out only after a successful poll returned nothing new and no ordinary drain is
