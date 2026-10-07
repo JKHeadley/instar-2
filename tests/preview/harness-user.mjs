@@ -73,7 +73,15 @@ export function grantAcl(paths, entries, exec = execFileSync) {
 }
 
 const sha256 = bytes => `sha256:${createHash('sha256').update(bytes).digest('hex')}`;
-const ensureDirectory = (path, mode = 0o700) => { mkdirSync(path, { recursive: true, mode }); if (lstatSync(path).isSymbolicLink()) throw Error(`preview: ${path} is a link`); };
+/** Creates `path` (when absent) and gives it exactly `mode`. mkdir's mode is masked by the caller's umask (the desk's
+ * launchers run under `umask 077`), so a directory the harness user must traverse, such as a new content-addressed hook
+ * copy, would otherwise be created 0700 and refused to it (live 2026-10-07: "the harness user cannot read .../hook/
+ * ca6d6d2798618af3/tool-admission-hook.mjs"); an existing directory left at a masked mode is corrected the same way. */
+export const ensureDirectory = (path, mode = 0o700) => {
+  mkdirSync(path, { recursive: true, mode });
+  if (lstatSync(path).isSymbolicLink()) throw Error(`preview: ${path} is a link`);
+  chmodSync(path, mode);
+};
 /** Installs `source` at `target` when absent or different (by content), through a temporary name and a rename, so a
  * reader never sees a half-written file. */
 function installFile(source, target, mode) {
