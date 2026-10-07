@@ -68,12 +68,33 @@ export function installationRows(runsText: string): (Installation & { launch: nu
   return rows.sort((a, b) => a.launch - b.launch);
 }
 
-const same = (a: Installation, b: Installation) => a.codeDigest === b.codeDigest && a.briefingDigest === b.briefingDigest;
 /**
- * The update that installed the current code: the last recorded launch on different code, and
- * the first launch on this code after it. A restart on the same code keeps the same update, so a
+ * The same installed build: the same executed bytes, the same briefing, and the same revision the
+ * agent reports as its build. A relaunch on a different revision whose executed closure happens to
+ * be byte-identical is still a changed installation — the checkout moved, so files outside that
+ * closure changed and the status line names a different build, which the agent must know it is
+ * running (Rules 26, 44). Where either revision is unknown the digests decide alone: an unknown
+ * revision cannot prove a change, and an unrecorded earlier launch already differs by its digest.
+ */
+const sameRevision = (a: InstalledCode, b: InstalledCode) => a.revision === null || b.revision === null
+  || a.revision === b.revision;
+const same = (a: Installation, b: Installation) => a.codeDigest === b.codeDigest && a.briefingDigest === b.briefingDigest
+  && sameRevision(a, b);
+/**
+ * The installed files are no longer what this process runs: changed executed bytes, or a different
+ * revision installed under it. One rule for both readers (the status lines and the status JSON), so
+ * an in-place switch that was never restarted is visible on either (Rules 26, 33).
+ */
+export function staleAgainst(launched: InstalledCode, installedNow: InstalledCode): boolean {
+  return installedNow.codeDigest !== launched.codeDigest || !sameRevision(launched, installedNow);
+}
+/**
+ * The update that installed the current build: the last recorded launch on a different build, and
+ * the first launch on this build after it. A restart on the same build keeps the same update, so a
  * briefing change is never lost because the runner restarted before delivering it. A first
- * recorded installation is not an update.
+ * recorded installation is not an update. An in-place relaunch of one root on a new revision takes
+ * `from` from that previous launch and `at` from the launch that installed it, so the delivering
+ * reply is the first one sent after the switch rather than one from the earlier build's run.
  */
 export function installedUpdateFrom(rows: readonly (Installation & { launch: number })[], current: Installation,
   launchedAt: number): InstalledUpdate | null {
@@ -117,7 +138,7 @@ export function installationStatusLines(launched: Installation, launchedAt: numb
   const short = (value: string | null, digest: string) => value ? value.slice(0, 8) : digest.slice(7, 15);
   const time = new Intl.DateTimeFormat('en-CA', { timeZone: zone, year: 'numeric', month: '2-digit', day: '2-digit',
     hour: '2-digit', minute: '2-digit', hourCycle: 'h23' }).format(launchedAt).replace(',', '');
-  const stale = installedNow !== null && installedNow.codeDigest !== launched.codeDigest;
+  const stale = installedNow !== null && staleAgainst(launched, installedNow);
   return [
     `Build: ${short(launched.revision, launched.codeDigest)} running since ${time}; ${installedNow === null ? 'installed files could not be re-read'
       : stale ? `installed files changed to ${short(installedNow.revision, installedNow.codeDigest)} — a restart is needed to run them`

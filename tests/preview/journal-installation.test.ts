@@ -4,7 +4,9 @@ import { lstatSync, readFileSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { cutoverHarness } from './journal-cutover-harness.mjs';
 import { offlineProfile, successiveWorld } from './successive-fixture.js';
-import { codeDigestOf, installationRows, installationStatusLines, installedCodeOf, installedUpdateFrom, updateDelivery, updatePacketItem } from './installation.js';
+import { UNRECORDED, codeDigestOf, installationRows, installationStatusLines, installedCodeOf, installedUpdateFrom, staleAgainst,
+  updateDelivery, updatePacketItem } from './installation.js';
+import { createHash } from 'node:crypto';
 
 const message = (world, id, text) => ({ update_id: id, message: { message_id: 100 + id,
   from: { id: Number(world.configuration.operatorSenderId), is_bot: false, first_name: 'Justin' },
@@ -12,6 +14,8 @@ const message = (world, id, text) => ({ update_id: id, message: { message_id: 10
 const install = (codeDigest, briefingDigest, revision = null) => ({ revision, codeDigest, briefingDigest, files: 1,
   harness: 'preview-journal-native', stallClasses: 9, doorway: 'claude-code-subscription' });
 const row = (launch, value) => JSON.stringify({ v: 1, launch, pid: 1, install: value });
+/** J.sh's J1e excludes the operator's own "status" message by the sha of its text. */
+const STATUS_SHA = `sha256:${createHash('sha256').update('status', 'utf8').digest('hex')}`;
 
 it('a first recorded installation is not an update; changed code is, and a restart keeps the same update (Rule 44)', () => {
   const old = install('sha256:old', 'sha256:brief-a', 'aaaa1111'), now = install('sha256:new', 'sha256:brief-b', 'bbbb2222');
@@ -84,4 +88,62 @@ it('a change to executed code outside the import graph (the Telegram bridge, the
   const next = { ...launched, codeDigest: bridgeOnly.codeDigest };
   expect(installedUpdateFrom(installationRows(row(10, launched)), next, 20)).toMatchObject({ from: { codeDigest: current.codeDigest },
     to: { codeDigest: bridgeOnly.codeDigest }, briefingChanged: false });
+});
+
+/**
+ * Plan #616: the live build d4d33e16 failed J1e (rule 44) where bc10e616 passed. The two builds
+ * differ in seventeen files and not one of them is in the runner's executed closure, so both
+ * launches recorded the same codeDigest; the sameness test read only the digests, so the relaunch
+ * of one root onto the new build was not an update. The record then kept the first build's install
+ * time and lost its `from`, and the reply the status named as the delivering one was an hour and a
+ * half older than the first reply after the switch.
+ */
+it('a relaunch on a new revision is an update even when the executed bytes are identical (Rule 44)', () => {
+  const old = install('sha256:same-code', 'sha256:same-briefing', 'bc10e616');
+  const now = install('sha256:same-code', 'sha256:same-briefing', 'd4d33e16');
+  // The defect: identical digests, different revision, one root relaunched in place.
+  const update = installedUpdateFrom(installationRows([row(10, old), row(20, old), row(30, now)].join('\n')), now, 31);
+  expect(update).toMatchObject({ at: 30, from: { revision: 'bc10e616', codeDigest: 'sha256:same-code' },
+    to: { revision: 'd4d33e16' }, briefingChanged: false });
+  // The other side: a restart on the same build is not a new update, and keeps the one it carries.
+  expect(installedUpdateFrom(installationRows([row(10, old), row(20, now), row(30, now)].join('\n')), now, 31)?.at).toBe(20);
+  expect(installedUpdateFrom(installationRows([row(10, now), row(20, now)].join('\n')), now, 21)).toBeNull();
+  // A fresh genesis is not an update, and an earlier launch that recorded nothing stays unrecorded.
+  expect(installedUpdateFrom(installationRows(row(10, now)), now, 11)).toBeNull();
+  expect(installedUpdateFrom(installationRows([JSON.stringify({ v: 1, launch: 10, pid: 1 }), row(20, now)].join('\n')), now, 21))
+    .toMatchObject({ at: 20, from: { revision: null, codeDigest: 'unrecorded' }, briefingChanged: null });
+  // An unknown revision on either side cannot prove a change: the digests decide alone.
+  const unknown = install('sha256:same-code', 'sha256:same-briefing', null);
+  expect(installedUpdateFrom(installationRows([row(10, unknown), row(20, now)].join('\n')), now, 21)).toBeNull();
+  expect(installedUpdateFrom(installationRows([row(10, old), row(20, unknown)].join('\n')), unknown, 21)).toBeNull();
+  // The same rule decides staleness, so an in-place switch that was never restarted is visible.
+  expect(staleAgainst(old, now)).toBe(true);
+  expect(staleAgainst(old, old)).toBe(false);
+  expect(staleAgainst(old, unknown)).toBe(false);
+  expect(staleAgainst(old, { ...now, revision: 'bc10e616', codeDigest: 'sha256:other-code' })).toBe(true);
+  expect(installationStatusLines(old, 0, now, null, null, 'UTC')[0]).toContain('a restart is needed to run them');
+  expect(installationStatusLines(old, 0, old, null, null, 'UTC')[0]).toContain('running code matches the installed files');
+});
+
+it('the live proof room\'s own run log and sent turns now name the reply that carried the update (Rule 44)', () => {
+  const live = JSON.parse(readFileSync(new URL('./fixtures/installation-relaunch-live-2026-10-07.json', import.meta.url), 'utf8')) as {
+    observed: { update: { at: number }; updateDelivered: { deliveredInReplyTo: number } };
+    runLog: Record<string, unknown>[];
+    turns: { update: number; sentAt: number | null; prompted: boolean; textSha256: string; replyPrefix: string }[] };
+  const rows = installationRows(live.runLog.map(entry => JSON.stringify(entry)).join('\n'));
+  const last = rows.filter(entry => entry.codeDigest !== UNRECORDED).at(-1)!;
+  expect(last.revision).toBe('d4d33e16e2c381a74216c339196f0ab71e4ef658');
+  const update = installedUpdateFrom(rows, last, last.launch + 1)!;
+  expect(update).toMatchObject({ at: last.launch, from: { revision: 'bc10e61632fbc9bba0b559218ae81b6eac7b2b35' },
+    to: { revision: 'd4d33e16e2c381a74216c339196f0ab71e4ef658' } });
+  // J1e's rule, over the turns the live run recorded: the first model-prompted reply sent at or
+  // after the update, status replies excluded. It is the reply the live status named as delivering.
+  const firstSent = (at: number) => live.turns.filter(turn => typeof turn.sentAt === 'number' && turn.sentAt >= at
+    && turn.prompted && turn.textSha256 !== STATUS_SHA && !turn.replyPrefix.startsWith('PREVIEW — Status ('))
+    .sort((a, b) => a.sentAt! - b.sentAt!)[0]?.update ?? null;
+  expect(firstSent(update.at)).toBe(live.observed.updateDelivered.deliveredInReplyTo);
+  // The recorded failure: the shipped record's `at` was the first build's install time, so J1e read
+  // a reply sent an hour and a half before the switch.
+  expect(live.observed.update.at).toBeLessThan(update.at);
+  expect(firstSent(live.observed.update.at)).not.toBe(live.observed.updateDelivered.deliveredInReplyTo);
 });
