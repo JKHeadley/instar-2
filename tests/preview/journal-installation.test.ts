@@ -155,3 +155,32 @@ it('the live proof room\'s own run log and sent turns now name the reply that ca
   expect(live.observed.update.at).toBeLessThan(update.at);
   expect(firstSent(live.observed.update.at)).not.toBe(live.observed.updateDelivered.deliveredInReplyTo);
 });
+
+/**
+ * The live scenario at the launch site, not only at the status read: the note the agent is told
+ * comes from the update computed at launch, from a run log that does not yet hold this launch's
+ * row. Proof room 2's relaunch changed only the revision — its digests were byte-identical — so
+ * before the fix that site computed no update at all and the agent was never told its build moved.
+ */
+it('a relaunch whose only change is the revision is computed at launch and carried into the next reply (Rule 44)', () => {
+  const world = successiveWorld(), harness = cutoverHarness(world, offlineProfile);
+  harness.setUpdates([message(world, 1, 'What is the marker? Juniper.')]);
+  expect(harness.launchLive(2).status).toBe(0);
+  const first = JSON.parse(harness.status().stdout).installation;
+  expect(typeof first.lastLaunch.revision).toBe('string');
+  expect(first.update).toBeNull();
+
+  // The root was installed by an earlier build of the same executed bytes: only the revision differs.
+  const runsPath = join(harness.liveRoot, 'runs.jsonl');
+  const older = 'bc10e61632fbc9bba0b559218ae81b6eac7b2b35';
+  writeFileSync(runsPath, readFileSync(runsPath, 'utf8').replaceAll(first.lastLaunch.revision, older));
+  harness.setUpdates([message(world, 1, 'What is the marker? Juniper.'), message(world, 2, 'What can you do now?')]);
+  expect(harness.launchLive(2).status).toBe(0);
+  const updated = JSON.parse(harness.status().stdout).installation;
+  expect(updated.update).toMatchObject({ from: { revision: older, codeDigest: first.lastLaunch.codeDigest },
+    to: { revision: first.lastLaunch.revision, codeDigest: first.lastLaunch.codeDigest }, briefingChanged: false });
+  // at is this launch's install time, not the earlier build's: it is after the rewritten rows.
+  expect(updated.update.at).toBe(updated.lastLaunch.launch);
+  // The agent was actually told: the update rode the very next reply, which is the delivering one.
+  expect(updated.updateDelivered).toEqual({ deliveredInReplyTo: 2 });
+}, 90000);
