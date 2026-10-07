@@ -22,6 +22,19 @@ import { createSubscriptionProviderIO } from '../../scripts/production-boot-io.m
 
 const roots: string[] = [];
 afterEach(() => { for (const root of roots.splice(0)) rmSync(root, { recursive: true, force: true }); });
+/** The fixture's runner root holds the login home, the admission state and the turn's denied root, and production
+ * refuses a turn whose home, state or denied root lies under a runtime read root (subscriptionToolSettings) — so this
+ * root has to sit outside every one of them. The suite's Linux RAM temporary root is /dev/shm (tests/setup/test-tmp.ts
+ * picks the first verified tmpfs), and /dev/shm is inside `/dev`, which production declares a runtime read: under
+ * tmpdir() there the whole root is readable and the route refuses for a reason that has nothing to do with this unit.
+ * The choice is made from the read lists themselves, not from the platform, so it holds if either one moves. The
+ * fallback is the host's real temporary root, which is outside both lists on each supported platform (/tmp on Linux,
+ * and /tmp resolving to /private/tmp on darwin — the same root this fixture's scratch volume already uses). /var/tmp,
+ * which tests/preview/held-egress.test.ts picks, is not usable here: it lies under `/var`, a declared read LINK, and
+ * this check reads the link list as well as the read list. */
+const inRuntimeRead = (path: string) => [...SUBSCRIPTION_TOOL_RUNTIME_READS, ...SUBSCRIPTION_TOOL_RUNTIME_READ_LINKS]
+  .some(read => path === read || path.startsWith(`${read}/`));
+const RUNNER_TMP_ROOT = inRuntimeRead(realpathSync(tmpdir())) ? realpathSync('/tmp') : tmpdir();
 const hash = (v: unknown) => (canonical(v) as { kind: 'Success'; value: { hash: string } }).value.hash;
 /** The pinned harness's built-in tool set as its `--tools default` init frame lists it (Claude Code 2.1.280, recorded
  * 2026-10-03 under a throwaway profile: no model call), with Task named Agent, plus the tools it offers only when named
@@ -146,7 +159,7 @@ it('writes settings that refuse every read from the root down except the scratch
 });
 
 function fixture(options: { outputTokens?: number } = {}) {
-  const f = factsFixture(), root = realpathSync(mkdtempSync(join(tmpdir(), 'subscription-tools-'))); roots.push(root);
+  const f = factsFixture(), root = realpathSync(mkdtempSync(join(RUNNER_TMP_ROOT, 'subscription-tools-'))); roots.push(root);
   const home = join(root, 'home'), configDirectory = join(root, 'config'), workingDirectory = join(root, 'work');
   // The scratch volume's mount point is short (the harness temporary directory must fit 44 bytes), as the runner allocates it.
   const scratch = realpathSync(mkdtempSync('/private/tmp/itt-')); roots.push(scratch);
