@@ -74,8 +74,14 @@ it('reads a reply review\'s verdicts written as one field per rule, and refuses 
   expect(() => parseReplyReviewVerdict(JSON.stringify({ ...fields, quits_on_self: 'looks fine' }), rules)).toThrow('malformed');
   // The legacy lines in "answer" are still read.
   expect(parseReplyReviewVerdict('raw_path: PASS | no path', ['raw_path'])).toMatchObject({ verdict: 'pass' });
-  // The live review of the d1 reply wrote the same fields with an unescaped quote: refused, as before.
-  expect(read(fixture.live.replyReviewFieldsBroken.output, 'refuse').ok).toBe(false);
+  // The live review of the d1 reply wrote unescaped quotes inside its leading reasoning only, so its one reading is
+  // read (w4-d1chold, answer-reading.ts quotedReasoning) and its verdicts stand exactly as written: the review's real
+  // objections to the unevidenced "couldn't record" claim, which the refusal had turned into an unchecked release.
+  const broken = read(fixture.live.replyReviewFieldsBroken.output, 'refuse');
+  expect(broken).toMatchObject({ ok: true, shape: 'reasoning-quotes' });
+  if (!broken.ok) throw Error('unreachable');
+  expect(parseReplyReviewVerdict(broken.value)).toMatchObject({ verdict: 'violation',
+    ruleIds: ['claims_blocked', 'unrecorded_blocker', 'self_state_claim'] });
 });
 
 it('reads every replayed runner task on this tree\'s wording, inside the output cap (Rule 106)', () => {

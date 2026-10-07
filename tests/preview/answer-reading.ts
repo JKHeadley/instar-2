@@ -120,6 +120,41 @@ export function parseDefect(text: string, extracted: ModelJsonResult): string {
   }
 }
 
+/** The live hand-over of 2026-10-06 (proof room 2, rc-2 7d2ba68b, update 6232582): both reply reviews judged every rule
+ * PASS, but each quoted the reply's own `Follow-up on "..."` text inside `reasoning` without escaping the quotes, so both
+ * whole objects were refused (`reply-review/decision/malformed/prose-wrapped`, the format re-ask included), the verdict
+ * became `unavailable`, and the reply left with no completed review. In a response that is one whole object (nothing
+ * outside it) and opens with `reasoning`, that string ends at the first `", "<field>":` after it opens. Read there, an
+ * unescaped `"` inside it has exactly one meaning, its escape; every later field is parsed exactly as written and may
+ * not repeat `reasoning`. If the text after that first boundary is not valid as written, nothing is read: a later
+ * boundary is never tried, because that would fold a field the model wrote into `reasoning`. Nothing is discarded,
+ * so a gate keeps its narrow reading (Rule 95).
+ *
+ * "One whole object" is the gate's own count, not the opening field and a final `}`: a response whose leading object
+ * CLOSES before the end holds that object plus something else -- a second object, or a written rejection beside it
+ * (`{"reasoning":"first"} VIOLATION: do not release {"reasoning":"second","unrecorded_blocker":"PASS | ..."}`).
+ * Searching on from there escapes the close and everything after it into the first `reasoning`, which turns an
+ * intervening refusal into an accepted PASS. So the leading `{` must either never close -- the slip's own odd quote
+ * leaves the final `}` inside a string, which is how the refused review reaches here -- or close exactly once, at the
+ * last character. Anything else keeps the multiple-objects refusal it arrived with (Rules 42, 95 and 4). */
+export function quotedReasoning(text: string): Record<string, unknown> | null {
+  const trimmed = escapeRawControls(text.trim());
+  const head = /^\{\s*"reasoning"\s*:\s*"/u.exec(trimmed);
+  if (!head || !trimmed.endsWith('}')) return null;
+  const { spans, starts, open } = topLevelObjects(trimmed);
+  if (!(open ? spans.length === 0 : spans.length === 1 && starts[0] === 0 && spans[0]!.length === trimmed.length)) return null;
+  const end = /"\s*,\s*"[A-Za-z_][A-Za-z0-9_]*"\s*:/gu;
+  end.lastIndex = head[0].length;
+  const boundary = end.exec(trimmed);
+  if (!boundary) return null;
+  const written = trimmed.slice(head[0].length, boundary.index);
+  try {
+    const reasoning: unknown = JSON.parse(`"${written.replace(/\\([\s\S])|"/gu, (whole, escaped?: string) => escaped === undefined ? '\\"' : whole)}"`);
+    const rest: unknown = JSON.parse(`{${trimmed.slice(boundary.index + 1).replace(/^\s*,/u, '')}`);
+    return typeof reasoning === 'string' && isObject(rest) && !Object.hasOwn(rest, 'reasoning') ? { reasoning, ...rest } : null;
+  } catch { return null; }
+}
+
 /** The one reading of a subscription answer-side or task result (journal-agent invokeSubscription): parse, build the
  * Decision, check it. `wrapped: 'accept'` (the answer side, Rule 95) may also discard prose around the object; there,
  * prose that itself carries brackets or a brace pair (`dated:[]`, `[withheld]`, `{reply, dated:[...]}`) is discarded only
@@ -143,6 +178,10 @@ export function readAnswer(text: string, options: { wrapped?: ModelJsonWrapped; 
     // fields (an obligation step's `outcome` and `note`) are recognised as well as a reply.
     if (sole && (sole.type === 'Decision' ? isObject(sole.conclusion) && sole.conclusion.subject === ANSWER_SUBJECT
       : 'answer' in sole || 'reply' in sole || 'reasoning' in sole)) extracted = { ok: true, value: sole, shape: extracted.shape === 'fenced' ? 'fenced' : 'prose-wrapped' };
+  }
+  if (!extracted.ok) {
+    const repaired = quotedReasoning(text);
+    if (repaired) extracted = { ok: true, value: repaired, shape: 'reasoning-quotes' };
   }
   if (!extracted.ok) return { ok: false, shape: extracted.shape, defect: parseDefect(text, extracted) };
   const built = answerDecision(extracted.value, options.evidence ?? []);
