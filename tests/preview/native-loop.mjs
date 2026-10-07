@@ -14,6 +14,7 @@ import { existsSync, readFileSync, realpathSync, writeFileSync } from 'node:fs';
 import { join, sep } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { NATIVE_TOOL_LIMITS, NATIVE_TOOL_NAMES, SUBSCRIPTION_TOOL_RUNTIME_READS } from '../../src/assembly/production-provider.js';
+import { SHELL_HOST_CONFIG_READS, SHELL_HOST_RECORD_READS } from './tool-admission.mjs';
 
 /** The message role that carries the loop's state to the model; the system prompt names it. */
 export const NATIVE_STEPS_ROLE = 'tool-steps';
@@ -23,7 +24,9 @@ const clip = (text, chars = NATIVE_TOOL_LIMITS.resultChars) => text.length > cha
 
 /**
  * The tools' sandbox profile (Seatbelt, the mechanism the harness sandbox uses on this platform), from the harness sandbox's
- * own inputs: reads refused from the filesystem root down except the turn's scratch volume, SUBSCRIPTION_TOOL_RUNTIME_READS and
+ * own inputs: reads refused from the filesystem root down except the turn's scratch volume, SUBSCRIPTION_TOOL_RUNTIME_READS,
+ * the host configuration a command needs to run (SHELL_HOST_CONFIG_READS, minus the host's own record,
+ * SHELL_HOST_RECORD_READS, which a later rule refuses on the resolved path) and
  * the one node executable the file worker runs on (`node`, the hook's own runtime);
  * writes only to the scratch volume and the null devices; no unix socket, no mach service, no signal or process
  * inspection outside this sandbox. File metadata stays readable (path resolution); contents do not. The network is refused,
@@ -35,15 +38,17 @@ export function nativeShellProfile(scratch, node, egress = null) {
   const plain = path => typeof path === 'string' && SAFE_PATH.test(path) && !/(?:^|\/)\.\.?(?:\/|$)/u.test(path);
   if (!plain(scratch)) throw Error('native loop: scratch path must be absolute and plain');
   if (!plain(node) || within(node, scratch)) throw Error('native loop: node path must be absolute, plain and outside the scratch volume');
-  if (SUBSCRIPTION_TOOL_RUNTIME_READS.some(read => within(scratch, read) || within(read, scratch))) throw Error('native loop: scratch overlaps the runtime reads');
+  if ([...SUBSCRIPTION_TOOL_RUNTIME_READS, ...SHELL_HOST_CONFIG_READS].some(read => within(scratch, read) || within(read, scratch))) throw Error('native loop: scratch overlaps the runtime reads');
   const port = egress?.port, extra = egress ? egress.reads : [];
   if (egress && (!Number.isSafeInteger(port) || port < 1 || port > 65535 || !Array.isArray(extra)
     || !extra.every(read => plain(read) && !within(scratch, read) && !within(read, scratch))))
     throw Error('native loop: the egress checkpoint must name a port and plain reads outside the scratch volume');
-  const reads = [...[scratch, ...SUBSCRIPTION_TOOL_RUNTIME_READS, ...extra].map(path => `(subpath "${path}")`), `(literal "${node}")`].join(' ');
+  const reads = [...[scratch, ...SUBSCRIPTION_TOOL_RUNTIME_READS, ...SHELL_HOST_CONFIG_READS, ...extra].map(path => `(subpath "${path}")`), `(literal "${node}")`].join(' ');
   return ['(version 1)', '(deny default)', '(allow process-exec process-fork)', '(allow sysctl-read)',
     '(allow file-read-metadata)', '(allow file-read-data (literal "/"))',
     `(allow file-read* file-map-executable ${reads})`,
+    // Last rule wins in SBPL: the host's own record is refused on the resolved path whatever the allow above reopened.
+    `(deny file-read-data ${SHELL_HOST_RECORD_READS.map(path => `(subpath "${path}")`).join(' ')})`,
     `(allow file-write* (subpath "${scratch}") (literal "/dev/null") (literal "/dev/zero") (literal "/dev/tty") (regex #"^/dev/fd/"))`,
     '(allow file-ioctl (literal "/dev/null") (literal "/dev/tty"))',
     '(allow signal (target same-sandbox))', '(allow process-info* (target same-sandbox))',

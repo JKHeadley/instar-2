@@ -197,6 +197,17 @@ it('a checkpointed route sends consequential tools and delegations to its checkp
   expect(confined.updatedInput.command).not.toContain('HTTPS_PROXY');
   const profile = shellSandboxProfile({ workspace: ws, tmp, egress: { port: 40003, reads: ['/usr/local/bin', `${tmp}/egress-ca.pem`], writes: [`${tmp}/home`] } });
   expect(profile).toContain('(deny network*)\n(allow network-outbound (remote ip "localhost:40003"))\n');
+  // Both sides of the host configuration (the gate run of 2026-10-07: a confined shell with no readable /private/etc
+  // reached its own checkpoint in neither profile). It is reopened as machinery, by both spellings, and the host's own
+  // record is refused after it — last rule wins in SBPL, and the kernel decides on the resolved path, so every spelling
+  // of the hosts file is one refused target.
+  for (const text of [profile, shellSandboxProfile({ workspace: ws, tmp })] as string[]) {
+    expect(text).toMatch(/\(allow file-read-data \(literal "\/"\).*\(subpath "\/private\/etc"\).*\(subpath "\/etc"\)/u);
+    expect(text).toContain('(deny file-read-data (subpath "/private/etc/hosts"))');
+    const lines = text.split('\n');
+    expect(lines.findIndex(line => line.startsWith('(deny file-read-data (subpath "/private/etc/hosts")')))
+      .toBeGreaterThan(lines.findIndex(line => line.startsWith('(allow file-read-data (literal "/")')));
+  }
   expect(shellSandboxProfile({ workspace: ws, tmp })).not.toContain('network-outbound');
   expect(() => shellSandboxProfile({ workspace: ws, tmp, egress: { port: 0 } })).toThrow(/egress port/u);
   expect(() => shellSandboxProfile({ workspace: ws, tmp, egress: { port: 1, reads: ['relative'] } })).toThrow(/absolute and plain/u);
