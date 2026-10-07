@@ -74,9 +74,11 @@ export function installationRows(runsText: string): (Installation & { launch: nu
  * be byte-identical is still a changed installation — the checkout moved, so files outside that
  * closure changed and the status line names a different build, which the agent must know it is
  * running (Rules 26, 44). Where either revision is unknown the digests decide alone: an unknown
- * revision cannot prove a change, and an unrecorded earlier launch already differs by its digest.
+ * revision cannot prove a change — including a launch row from a build that recorded no revision at
+ * all — and an unrecorded earlier launch already differs by its digest.
  */
-const sameRevision = (a: InstalledCode, b: InstalledCode) => a.revision === null || b.revision === null
+const known = (value: InstalledCode['revision']) => typeof value === 'string' && value !== '';
+const sameRevision = (a: InstalledCode, b: InstalledCode) => !known(a.revision) || !known(b.revision)
   || a.revision === b.revision;
 const same = (a: Installation, b: Installation) => a.codeDigest === b.codeDigest && a.briefingDigest === b.briefingDigest
   && sameRevision(a, b);

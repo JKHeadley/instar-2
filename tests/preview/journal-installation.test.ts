@@ -116,6 +116,14 @@ it('a relaunch on a new revision is an update even when the executed bytes are i
   const unknown = install('sha256:same-code', 'sha256:same-briefing', null);
   expect(installedUpdateFrom(installationRows([row(10, unknown), row(20, now)].join('\n')), now, 21)).toBeNull();
   expect(installedUpdateFrom(installationRows([row(10, old), row(20, unknown)].join('\n')), unknown, 21)).toBeNull();
+  // A launch row from a build that recorded no revision key at all is unknown too, not a change,
+  // and its changed code is still an update.
+  const noKey = JSON.stringify({ v: 1, launch: 10, pid: 1, install: { codeDigest: 'sha256:same-code',
+    briefingDigest: 'sha256:same-briefing', files: 1, harness: 'preview-journal-native', stallClasses: 9,
+    doorway: 'claude-code-subscription' } });
+  expect(installedUpdateFrom(installationRows(noKey), now, 11)).toBeNull();
+  expect(installedUpdateFrom(installationRows(noKey), install('sha256:later-code', 'sha256:same-briefing', 'd4d33e16'), 11))
+    .toMatchObject({ at: 11, from: { codeDigest: 'sha256:same-code' }, to: { revision: 'd4d33e16' } });
   // The same rule decides staleness, so an in-place switch that was never restarted is visible.
   expect(staleAgainst(old, now)).toBe(true);
   expect(staleAgainst(old, old)).toBe(false);
