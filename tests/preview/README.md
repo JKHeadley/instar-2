@@ -2811,6 +2811,9 @@ The fixed subscription route keeps its 2048 output-token ceiling and reviewed
 invocation policy digest. Its Claude CLI process gets that ceiling through
 `CLAUDE_CODE_MAX_OUTPUT_TOKENS`; the fixed arguments have no per-call thinking
 control. Changing the CLI effort arguments would need a new activation.
+A tool turn's process gets its route's whole-turn bound (2048 for each of its
+turns) as that per-message cap instead (plan #612): with 2048 the CLI cut a long
+answer, resumed it in a second message, and returned only that fragment.
 
 Desk live check for this compact path: [reviewer-compact-call-live-test.md](live-tests-archive/reviewer-compact-call-live-test.md).
 

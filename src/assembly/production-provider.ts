@@ -564,8 +564,14 @@ export function createClaudeCodeSubscriptionRoute(input:
           && Buffer.byteLength(system, 'utf8') + Buffer.byteLength(bytes, 'utf8') <= promptBytes,
         'subscription invocation bounds differ');
         // A tool turn's harness keeps its own temporary files (the shell's cwd record) on the turn's scratch volume.
+        // The per-message output cap is the policy's own bound (plan #612). A tool turn's bound covers the whole turn
+        // (SUBSCRIPTION_MAX_OUTPUT_TOKENS for each of its maxTurns); a per-message cap of 2048 inside it made the CLI cut a long answer
+        // and resume in a second message, and `result` carries only that last message: live rc-2 proof room 1 got the
+        // fragment as the answer (update 715674603 began mid-string, 2250 output tokens; 715674595 began "Finishing
+        // the thought:", 2686), counted malformed. The total admitted is unchanged: the frame check below still
+        // refuses more than policy.maxTokens. A single-call policy's bound is 2048, so its cap is unchanged.
         const env = Object.freeze({ PATH: policy.path, HOME: profile.home, CLAUDE_CONFIG_DIR: profile.configDirectory,
-          CLAUDE_CODE_MAX_RETRIES: '0', CLAUDE_CODE_MAX_OUTPUT_TOKENS: String(SUBSCRIPTION_MAX_OUTPUT_TOKENS),
+          CLAUDE_CODE_MAX_RETRIES: '0', CLAUDE_CODE_MAX_OUTPUT_TOKENS: String(policy.maxTokens),
           CLAUDE_CODE_DISABLE_NONESSENTIAL_TRAFFIC: '1', ...SUBSCRIPTION_THINKING_ENV,
           ...(config.toolTurn ? { CLAUDE_CODE_TMPDIR: config.toolTurn.scratch, ...SUBSCRIPTION_TOOL_SESSION_ENV } : {}) });
         const command = async (args: readonly string[], stdin: string, timeout: number, maxBytes: number,
