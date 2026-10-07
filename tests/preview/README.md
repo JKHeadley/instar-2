@@ -3656,10 +3656,11 @@ servers (Part Thirteen §9,
   and ends the session (transcript removed) when a turn is stopped, withdrawn or fails. The harness's own memory and
   automatic compaction are off. Each trace row's `session` says new or resumed and why; status counts them.
 - `tool-admission-hook.mjs` admits ordinary work: a file read or search of the workspace, the shell's temporary
-  directory or the system files the sandbox also lets commands read (binaries, libraries, `/private/etc`), a file or
-  notebook write or edit inside the workspace or that temporary directory, each decided on the RESOLVED file (symlinks
-  followed where they stand, so `link/..` leaves through the link; `/etc` and `/private/etc` are one place; a dangling
-  link is refused as unresolvable) with the resolved path handed to the harness. This is a check at admission, not
+  directory or the system files the sandbox also lets commands read (binaries, libraries, `/System`, device nodes), a
+  file or notebook write or edit inside the workspace or that temporary directory, each decided on the RESOLVED file
+  (symlinks followed where they stand, so `link/..` leaves through the link; `/etc` and `/private/etc` are one place,
+  and since w4-t2boundary neither is readable, so both spellings of the hosts file are refused; a dangling link is
+  refused as unresolvable) with the resolved path handed to the harness. This is a check at admission, not
   at open: a directory the agent itself swaps for a link between the hook's check and the harness's open can still be
   followed by Read, Write, Edit, Glob or Grep; a sandboxed command has no such window, because the kernel decides at
   open. The kernel closes that race when the harness runs as its own macOS user (`--harness-user _instarharness`,
@@ -3695,8 +3696,9 @@ servers (Part Thirteen §9,
   local-name host is refused; a tool the hook does not classify is refused. Each call takes one of
   the step's 32 slots (shared with the turn's subagents) by exclusive create, so overlapping calls cannot exceed the
   cap. The sandbox refuses reads from `/` down except the scratch volume, the system files commands need (it reopens the
-  `/etc` and `/var` symlinks themselves, so `/etc/hosts` reads as `/private/etc/hosts` does and nothing else behind them
-  opens) and the network tools' own locations (the runner's node and npm, the developer tools' git), writes outside the volume, unix
+  `/var` symlink itself, so a `/var/...` spelling reads what `/private/var/...` does and nothing else behind it opens;
+  the host's own configuration is not among them, so `/etc/hosts` and `/private/etc/hosts` are both refused at open,
+  however a command spells them — w4-t2boundary, plan #615) and the network tools' own locations (the runner's node and npm, the developer tools' git), writes outside the volume, unix
   sockets and signals to other processes; the harness's messaging socket and token are removed from every command.
 - Shell network (`egress-proxy.mjs`): the sandbox lets a command reach exactly one place, the turn's checkpoint, a
   proxy the runner starts on a loopback port before launch and stops after the turn (the settings' `httpProxyPort`).

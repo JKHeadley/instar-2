@@ -99,22 +99,25 @@ it('writes settings that refuse every read from the root down except the scratch
     network: { allowedDomains: [], allowUnixSockets: [], allowAllUnixSockets: false, allowLocalBinding: false },
     filesystem: { allowWrite: ['/r/tool-turns/a-0/vol'],
       denyWrite: ['/tmp/claude', '/private/tmp/claude', '/profile/home/.npm/_logs', '/profile/home/.claude/debug'],
-      denyRead: ['/'], allowRead: ['/r/tool-turns/a-0/vol', ...SUBSCRIPTION_TOOL_RUNTIME_READS, '/etc', '/var'] } });
+      denyRead: ['/'], allowRead: ['/r/tool-turns/a-0/vol', ...SUBSCRIPTION_TOOL_RUNTIME_READS, '/var'] } });
   // With the turn's network checkpoint, the one reachable place is its loopback port, and its tools' locations are readable.
   const netted = JSON.parse(subscriptionToolSettings({ ...turn, egress: { port: 40001, reads: ['/usr/local/bin', '/Library/Developer/CommandLineTools'] } }, '/profile/home'));
   expect(netted.sandbox.network).toEqual({ allowedDomains: [], allowUnixSockets: [], allowAllUnixSockets: false, allowLocalBinding: false, httpProxyPort: 40001 });
-  expect(netted.sandbox.filesystem.allowRead).toEqual(['/r/tool-turns/a-0/vol', ...SUBSCRIPTION_TOOL_RUNTIME_READS, '/etc', '/var', '/usr/local/bin', '/Library/Developer/CommandLineTools']);
+  expect(netted.sandbox.filesystem.allowRead).toEqual(['/r/tool-turns/a-0/vol', ...SUBSCRIPTION_TOOL_RUNTIME_READS, '/var', '/usr/local/bin', '/Library/Developer/CommandLineTools']);
   expect(settings.sandbox.network.httpProxyPort).toBeUndefined();
   for (const port of [0, 70000, 1.5]) expect(() => subscriptionToolSettings({ ...turn, egress: { port, reads: [] } }, '/profile/home')).toThrow(/egress checkpoint port/u);
   // A tool location may never reopen the runner root, the login home or the admission state.
   expect(() => subscriptionToolSettings({ ...turn, egress: { port: 40001, reads: ['/r'] } }, '/profile/home')).toThrow(/under a readable path/u);
   expect(() => subscriptionToolSettings({ ...turn, egress: { port: 40001, reads: ['/profile'] } }, '/profile/home')).toThrow(/under a readable path/u);
   expect(() => subscriptionToolSettings({ ...turn, egress: { port: 40001, reads: ['/usr/local bin'] } }, '/profile/home')).toThrow(/absolute and plain/u);
-  // Nothing in the runtime list holds user, session or runner data.
-  for (const read of SUBSCRIPTION_TOOL_RUNTIME_READS) expect(read).toMatch(/^\/(bin|sbin|usr\/(bin|sbin|lib|libexec|share)|System|private\/var\/select|private\/etc|dev)$/u);
-  // The two link spellings reopen only the root-level symlinks themselves (w4-toolpaths): each resolves on this platform to a
-  // listed read or to the directory holding one, so `/etc/hosts` is as readable as `/private/etc/hosts` and nothing more.
-  expect(SUBSCRIPTION_TOOL_RUNTIME_READ_LINKS).toEqual(['/etc', '/var']);
+  // Nothing in the runtime list holds user, session or runner data, and the host's own configuration is not on it
+  // (w4-t2boundary, plan #615: /private/etc left the list, so a tool reads the machinery a command runs on and no more).
+  for (const read of SUBSCRIPTION_TOOL_RUNTIME_READS) expect(read).toMatch(/^\/(bin|sbin|usr\/(bin|sbin|lib|libexec|share)|System|private\/var\/select|dev)$/u);
+  expect(SUBSCRIPTION_TOOL_RUNTIME_READS).not.toContain('/private/etc');
+  // The link spelling reopens only the root-level symlink itself (w4-toolpaths): it resolves on this platform to the
+  // directory holding a listed read, so nothing behind it that is not separately listed becomes readable. `/etc` was
+  // such an entry while /private/etc was listed; it is not, so neither spelling of the hosts file is reopened.
+  expect(SUBSCRIPTION_TOOL_RUNTIME_READ_LINKS).toEqual(['/var']);
   expect(settings.permissions).toEqual({ allow: [...SUBSCRIPTION_TOOL_NAMES] });
   for (const [event, mode] of [['PreToolUse', 'pre'], ['PostToolUse', 'post'], ['SubagentStart', 'child-start'], ['SubagentStop', 'child-stop']] as const)
     expect(settings.hooks[event]).toEqual([{ matcher: '*', hooks: [{ type: 'command',
@@ -136,7 +139,7 @@ it('writes settings that refuse every read from the root down except the scratch
   expect(() => subscriptionToolSettings({ ...turn, workspace: '/r/../ws' }, home)).toThrow(/absolute and plain/u);
   expect(() => subscriptionToolSettings({ ...turn, workspace: '/r/tool-turns/a-0/ws' }, home)).toThrow(/inside its scratch volume/u);
   expect(() => subscriptionToolSettings({ ...turn, deniedRoots: ['/usr/share/runner'] }, home)).toThrow(/under a readable path/u);
-  expect(() => subscriptionToolSettings(turn, '/private/etc/home')).toThrow(/under a readable path/u);
+  expect(() => subscriptionToolSettings(turn, '/private/var/select/home')).toThrow(/under a readable path/u);
   // A mount point too long for the harness's per-user temporary directory would push it to the shared /tmp/claude-<uid>.
   expect(() => subscriptionToolSettings({ ...turn, scratch: '/r/tool-turns/0123456789abcdef-0/vol', workspace: '/r/tool-turns/0123456789abcdef-0/vol/ws' }, home))
     .toThrow(/too long for the harness temporary directory/u);

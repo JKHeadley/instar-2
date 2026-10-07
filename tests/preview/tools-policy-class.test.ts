@@ -139,9 +139,13 @@ it('the class reads the effective checkpoints, not labels: a reopened read or a 
     expect(claudeSettingsCheckpoints(reopen([...settings.sandbox.filesystem.allowRead, '/Users/p/root/x']), e)).toMatch(/outside its workspace/u);
     expect(claudeSettingsCheckpoints(reopen(['/private/var/x/s/../../../Users']), e)).toMatch(/not plain absolute/u);
     expect(claudeSettingsCheckpoints(reopen(['/private/var/x/s/w']), e)).toBeNull();          // narrower reads stay in the class
-    // w4-toolpaths: the build's own reads include the /etc and /var link entries (each reopens the link node alone); another
-    // root link, or a path under one of them, is still outside the class.
-    expect(settings.sandbox.filesystem.allowRead).toEqual(expect.arrayContaining(['/etc', '/var']));
+    // w4-toolpaths: the build's own reads include the /var link entry (it reopens the link node alone); another root
+    // link, or a path under one of them, is still outside the class. w4-t2boundary (plan #615): `/etc` is no longer one
+    // of them, because the host's own configuration left the runtime list and nothing behind that link is readable. The
+    // reviewed class still admits it, so dropping it narrows the build INSIDE the class rather than making a new one.
+    expect(settings.sandbox.filesystem.allowRead).toEqual(expect.arrayContaining(['/var']));
+    expect(settings.sandbox.filesystem.allowRead).not.toContain('/etc');
+    expect(claudeSettingsCheckpoints(reopen([...settings.sandbox.filesystem.allowRead, '/etc']), e)).toBeNull();
     expect(claudeSettingsCheckpoints(reopen([...settings.sandbox.filesystem.allowRead, '/tmp']), e)).toMatch(/the shell reads \/tmp, outside/u);
     expect(claudeSettingsCheckpoints(reopen([...settings.sandbox.filesystem.allowRead, '/var/log']), e)).toMatch(/the shell reads \/var\/log, outside/u);
   }
