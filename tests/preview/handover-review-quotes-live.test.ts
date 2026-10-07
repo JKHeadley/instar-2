@@ -114,6 +114,16 @@ it('only the one meaning is read: prose outside, a defect in a later field, or a
   expect(laterField).not.toBe(raw);
   expect(quotedReasoning(laterField)).toBeNull();
   expect(readAnswer(laterField, { wrapped: 'refuse' }).ok).toBe(false);
+  // A closed leading object plus something else: a second object, with or without an intervening rejection. The
+  // boundary search must not cross that close -- escaping it, and everything after it, into the first `reasoning`
+  // left only `{"unrecorded_blocker":"PASS | no blocker"}`, which the exact-selected-rules check then accepted as a
+  // pass while the written VIOLATION outside was gone. The multiple-objects refusal it arrived with stands.
+  for (const between of [' VIOLATION: do not release ', '']) {
+    const two = `{"reasoning":"first answer"}${between}{"reasoning":"second answer","unrecorded_blocker":"PASS | no blocker"}`;
+    expect(parseModelJson(two, { wrapped: 'refuse' }), between).toEqual({ ok: false, shape: 'multiple-objects' });
+    expect(quotedReasoning(two), between).toBeNull();
+    expect(readAnswer(two, { wrapped: 'refuse' }), between).toMatchObject({ ok: false, shape: 'multiple-objects' });
+  }
   // A second `reasoning`, a reasoning that is not first, and a response that is not one object.
   expect(quotedReasoning('{"reasoning":"he said "hi"","claims_blocked":"PASS | a","reasoning":"x"}')).toBeNull();
   expect(quotedReasoning('{"claims_blocked":"PASS | a","reasoning":"he said "hi""}')).toBeNull();

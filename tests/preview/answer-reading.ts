@@ -128,11 +128,21 @@ export function parseDefect(text: string, extracted: ModelJsonResult): string {
  * unescaped `"` inside it has exactly one meaning, its escape; every later field is parsed exactly as written and may
  * not repeat `reasoning`. If the text after that first boundary is not valid as written, nothing is read: a later
  * boundary is never tried, because that would fold a field the model wrote into `reasoning`. Nothing is discarded,
- * so a gate keeps its narrow reading (Rule 95). */
+ * so a gate keeps its narrow reading (Rule 95).
+ *
+ * "One whole object" is the gate's own count, not the opening field and a final `}`: a response whose leading object
+ * CLOSES before the end holds that object plus something else -- a second object, or a written rejection beside it
+ * (`{"reasoning":"first"} VIOLATION: do not release {"reasoning":"second","unrecorded_blocker":"PASS | ..."}`).
+ * Searching on from there escapes the close and everything after it into the first `reasoning`, which turns an
+ * intervening refusal into an accepted PASS. So the leading `{` must either never close -- the slip's own odd quote
+ * leaves the final `}` inside a string, which is how the refused review reaches here -- or close exactly once, at the
+ * last character. Anything else keeps the multiple-objects refusal it arrived with (Rules 42, 95 and 4). */
 export function quotedReasoning(text: string): Record<string, unknown> | null {
   const trimmed = escapeRawControls(text.trim());
   const head = /^\{\s*"reasoning"\s*:\s*"/u.exec(trimmed);
   if (!head || !trimmed.endsWith('}')) return null;
+  const { spans, starts, open } = topLevelObjects(trimmed);
+  if (!(open ? spans.length === 0 : spans.length === 1 && starts[0] === 0 && spans[0]!.length === trimmed.length)) return null;
   const end = /"\s*,\s*"[A-Za-z_][A-Za-z0-9_]*"\s*:/gu;
   end.lastIndex = head[0].length;
   const boundary = end.exec(trimmed);
