@@ -155,6 +155,13 @@ export async function doorwayProvider({ doorwayId, io, profile, activation, mode
     routeFactory: stage2RouteFactory({ activation, profile, model, io, now, active: () => !stopped(), framing, create: doorway.create }) });
 }
 
+/**
+ * The CLI's `--login-profile` loading point. The host owns this descriptor, so it is frozen where it
+ * is read: the credential custodian accepts only the immutable object, and every other shipped client
+ * loads its profile the same way.
+ */
+export const loadLoginProfile = path => Object.freeze(JSON.parse(readFileSync(path, 'utf8')));
+
 export const SELF_HOST_CONTEXT = Object.freeze({ site: 'preview.journal', preserved: 'preview:self-host', register: {
   generation: { owner: 'part-three', name: 'RegisterGeneration', id: 'preview:register' },
   entries: ['preview.journal', 'preview', 'host'], producers: ['host'], methods: [], actions: {}, subjects: {},
@@ -182,10 +189,7 @@ const main = async () => {
   const model = options.model, stopped = stoppedAt(root);
   const { createSubscriptionProviderIO } = await import('../../scripts/production-boot-io.mjs');
   const activation = JSON.parse(readFileSync(options['activation-record'], 'utf8'));
-  // The provider credential custodian requires the host-owned login descriptor to be frozen, so the
-  // one loading point freezes it (the shape journal-agent.mjs already loads it in). Unfrozen, the route
-  // is refused before any provider call, and this command cannot reach its doorway at all (Rules 2, 115).
-  const profile = Object.freeze(JSON.parse(readFileSync(options['login-profile'], 'utf8')));
+  const profile = loadLoginProfile(options['login-profile']);
   const provider = await doorwayProvider({ doorwayId: options.doorway, io: createSubscriptionProviderIO({ repository: process.cwd(), stopped }),
     profile, activation, model, stopped });
   const report = await selfHost({ task: options.task, provider, repo: process.cwd(), root, grants, context: SELF_HOST_CONTEXT,

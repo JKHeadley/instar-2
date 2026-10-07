@@ -71,12 +71,35 @@ function egressEnvironment(egress) {
  * prefixes and the command-line developer tools that `python3` and `git` resolve through). Nothing under a home,
  * a mounted volume, a login profile or the runner root is on it. */
 export const SHELL_RUNTIME_READS = Object.freeze(['/bin', '/sbin', '/usr/bin', '/usr/sbin', '/usr/lib', '/usr/libexec', '/usr/share',
-  '/usr/local', '/opt/homebrew', '/System', '/Library/Developer/CommandLineTools', '/private/var/select', '/private/etc', '/dev']);
+  '/usr/local', '/opt/homebrew', '/System', '/Library/Developer/CommandLineTools', '/private/var/select', '/dev']);
+/**
+ * The host's configuration directory, by both of its spellings (`/etc` is the link, `/private/etc` the directory it
+ * resolves to). It is machinery a command needs to run: the network client of a confined shell reads it before it can
+ * reach even a numeric address on loopback, which is the turn's own network checkpoint. It left both read lists in the
+ * cint-L45 repair (plan #615) to close the host's own record, and that closed the shell's checkpoint with it: the gate
+ * run of 2026-10-07 shows a real `curl` reaching the checkpoint in neither profile. The purpose document decides which
+ * way that is repaired — "the agent's ability is never reduced to satisfy a safeguard that a checkpoint can enforce
+ * instead" — so the directory is machinery again here and the safeguard is enforced where a command's reads are actually
+ * decided, by the kernel, on the resolved path: SHELL_HOST_RECORD_READS below.
+ */
+export const SHELL_HOST_CONFIG_READS = Object.freeze(['/private/etc', '/etc']);
+/**
+ * The host's own record of itself, never readable by the agent's work however it is spelled. This is what group T's
+ * check T2c refuses (rules 1 and 57: the live 2026-10-03 shell read and the 2026-10-06 `Read`), and the kernel is the
+ * one place that can hold it for a shell command: a Seatbelt rule after the allow above decides on the RESOLVED path, so
+ * `/etc/hosts`, `/private/et""c/hosts`, `/private/e?c/hosts` and a `..` escape are one target and all are refused at
+ * open — the guarantee the lexical command-text check that preceded it could not make. The admission hook refuses a FILE
+ * tool's read of it too, and for an independent reason: the host configuration is on neither of the hook's read roots
+ * (`toolRoots`), so nothing here widens what a file tool may read.
+ */
+export const SHELL_HOST_RECORD_READS = Object.freeze(['/private/etc/hosts']);
 const SBPL_PATH = /^\/[A-Za-z0-9_./@-]+$/u;
 /**
  * The confined shell's macOS sandbox profile (`shell-sandbox-v1`), for a harness whose own sandbox is not used: a
  * delegated session, and the Codex tool turn (`codex exec` cannot confine reads itself). File contents are readable
- * only from the workspace, its temporary directory and the runtime list; writes reach only those two; there is no
+ * only from the workspace, its temporary directory, the runtime list and the host configuration a command needs to run
+ * (SHELL_HOST_CONFIG_READS, minus the host's own record, SHELL_HOST_RECORD_READS, which a later rule refuses on the
+ * resolved path); writes reach only the workspace and its temporary directory; there is no
  * network, no signal to any other process, and no keychain service. A path's existence stays visible (metadata),
  * its contents do not. Every `Bash` call is rewritten to run under it (`sandboxedShellCommand`).
  */
@@ -91,7 +114,10 @@ export function shellSandboxProfile({ workspace, tmp, egress = null }) {
   // shell makes is decided there by the same effect doorway as a tool call, under its request and byte bounds.
   return ['(version 1)', '(allow default)', '(deny network*)',
     ...(egress !== null ? [`(allow network-outbound (remote ip "localhost:${String(egress.port)}"))`] : []),
-    '(deny file-read-data (subpath "/"))', `(allow file-read-data (literal "/") ${subpaths([...SHELL_RUNTIME_READS, workspace, tmp, ...reads, ...writes])})`,
+    '(deny file-read-data (subpath "/"))',
+    `(allow file-read-data (literal "/") ${subpaths([...SHELL_RUNTIME_READS, ...SHELL_HOST_CONFIG_READS, workspace, tmp, ...reads, ...writes])})`,
+    // Last rule wins in SBPL, so this refuses the host's own record on the resolved path whatever the allow above reopened.
+    `(deny file-read-data ${subpaths(SHELL_HOST_RECORD_READS)})`,
     '(deny file-write* (subpath "/"))',
     `(allow file-write* ${subpaths([workspace, tmp, ...writes])} (literal "/dev/null") (literal "/dev/zero") (regex #"^/dev/tty") (regex #"^/dev/fd/"))`,
     '(deny signal)', '(allow signal (target self))',
@@ -268,12 +294,15 @@ export function containedIn(workspace, path, fs) {
 }
 /** Where a tool may write: the turn's workspace and the shell's temporary directory (both on the fixed-size scratch volume,
  * the sandbox's only write root). Where it may read: those, plus the system locations the sandbox reopens for commands
- * (`config.reads`, real paths: binaries, libraries, /private/etc). The hook and the sandbox share these sets and both
- * decide on the resolved file, so no readable file is refused for how it was spelled. The sandbox decides at open (the
- * kernel), so no spelling reaches past it; the hook decides before the harness opens, so it is an early refusal and a
- * change the agent makes on that path between its check and the harness's open is not caught here: an OPEN race,
- * pre-existing and closable only by running the harness as its own OS user (docs/defects/2026-10-03-file-tool-swap-race.md).
- * Users' homes, keychains, the runner root, other roots and the admission state lie outside both sets. */
+ * (`config.reads`, real paths: binaries, libraries, device nodes). The hook and the sandbox share these sets and both
+ * decide on the resolved file, so no readable file is refused for how it was spelled, and nothing the sandbox refuses at
+ * open is a file tool's to read either — the host's own configuration left both sets together (rules 1 and 57, plan #615:
+ * SUBSCRIPTION_TOOL_RUNTIME_READS no longer carries /private/etc), which is why a Read of `/etc/hosts` is refused here by
+ * every spelling and a command naming it is refused at open. The sandbox decides at open (the kernel), so no spelling
+ * reaches past it; the hook decides before the harness opens, so it is an early refusal and a change the agent makes on
+ * that path between its check and the harness's open is not caught here: an OPEN race, pre-existing and closable only by
+ * running the harness as its own OS user (docs/defects/2026-10-03-file-tool-swap-race.md). Users' homes, keychains, the
+ * runner root, other roots and the admission state lie outside both sets. */
 export function toolRoots(config) {
   const writes = [config.workspace, ...(typeof config.tmp === 'string' ? [config.tmp] : [])];
   return { writes, reads: [...writes, ...(Array.isArray(config.reads) ? config.reads.filter(root => typeof root === 'string' && root.startsWith('/')) : [])] };

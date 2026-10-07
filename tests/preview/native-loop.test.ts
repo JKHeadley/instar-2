@@ -300,6 +300,18 @@ describe('the shell boundary', () => {
       expect(() => nativeShellProfile('/private/tmp/itt-abc', '/usr/local/bin/node', bad)).toThrow(/egress checkpoint/u);
     expect(profile).toContain('(allow file-write* (subpath "/private/tmp/itt-abc")');
     expect(profile).toContain('(subpath "/usr/bin")');
+    // Both sides of the host configuration (the gate run of 2026-10-07: a confined shell with no readable /private/etc
+    // reached its own checkpoint in neither profile). It is machinery again, by both spellings, and the host's own record
+    // is refused after it — last rule wins in SBPL, and the kernel decides on the resolved path, so `/etc/hosts`, a
+    // concatenated or globbed spelling of it and a `..` escape are one refused target.
+    for (const text of [profile, reach] as string[]) {
+      expect(text).toMatch(/\(allow file-read\* file-map-executable .*\(subpath "\/private\/etc"\).*\(subpath "\/etc"\)/u);
+      expect(text).toContain('(deny file-read-data (subpath "/private/etc/hosts"))');
+      const lines = text.split('\n');
+      expect(lines.findIndex(line => line.startsWith('(deny file-read-data (subpath "/private/etc/hosts")')))
+        .toBeGreaterThan(lines.findIndex(line => line.startsWith('(allow file-read* file-map-executable')));
+    }
+    expect(() => nativeShellProfile('/private/etc/x', '/usr/local/bin/node')).toThrow(/overlaps/u);
     expect(() => nativeShellProfile('/private/tmp/a b', '/usr/local/bin/node')).toThrow(/absolute and plain/u);
     expect(() => nativeShellProfile('/usr/share/x', '/usr/local/bin/node')).toThrow(/overlaps/u);
     expect(() => nativeShellProfile('/private/tmp/itt-abc', '/private/tmp/itt-abc/node')).toThrow(/outside the scratch/u);
