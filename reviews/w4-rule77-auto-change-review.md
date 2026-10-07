@@ -23,6 +23,9 @@ Decision: rule77-reuse-memory-undecided | the settle reuses the existing `memory
 Decision: rule77-await-an-inflight-summary | a deciding summary still reserved at a frontier covering the turn is skipped by this settle, so a reachable judgment is never cut short; that case already belongs to the pre-existing `summary-uncertain` settle in the drain loop, which fires exactly while a reservation is open | reported=/Users/dabombstudio/.instar/agents/echo/.instar/lanes/w4-rule77-auto-PROGRESS.md
 Decision: rule77-top-of-pass-recovers-a-wedged-root | the settle is called once per drain pass before anything is held behind it, so a journal already wedged by this build recovers on its next pass with no hand edit — the same recovery property the correction-wedge unit established | reported=/Users/dabombstudio/.instar/agents/echo/.instar/lanes/w4-rule77-auto-PROGRESS.md
 Prompt review: no prompt text changed. No model call is added or removed by this change; the settle is a journal append.
+Prompt finding: 849db3a6296a | protocol-literal | an existing memory-list reply literal in journal.ts, unchanged by this change (as dispositioned in reviews/rc-2-pipeline-repair-change-review.md and reviews/w4-d1c-repair1-change-review.md)
+Prompt finding: bd01de21286a | protocol-literal | existing memory-grounding prompt wording in journal.ts, unchanged by this change (as dispositioned in reviews/rc-2-pipeline-repair-change-review.md and reviews/w4-d1c-repair1-change-review.md)
+Prompt finding: fb5fa7e706c8 | protocol-literal | existing memory-grounding prompt wording in journal.ts, unchanged by this change (as dispositioned in reviews/rc-2-pipeline-repair-change-review.md and reviews/w4-d1c-repair1-change-review.md)
 Deferral: none
 
 Subject (2 paths): tests/preview/journal-passed-frontier-wedge.test.ts, tests/preview/journal.ts
