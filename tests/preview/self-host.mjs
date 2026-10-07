@@ -155,6 +155,16 @@ export async function doorwayProvider({ doorwayId, io, profile, activation, mode
     routeFactory: stage2RouteFactory({ activation, profile, model, io, now, active: () => !stopped(), framing, create: doorway.create }) });
 }
 
+/**
+ * The CLI's `--login-profile` loading point, as the provider credential custodian requires it: the
+ * host's own frozen descriptor ("host-owned frozen subscription descriptor required",
+ * src/assembly/provider-credential-custodian.ts). The host owns this descriptor, so it is frozen
+ * where it is read, and every other shipped client loads its profile the same way. A plain parse
+ * leaves the file's object mutable, so the custodian refuses every valid profile and the route is
+ * never constructed — the shipped CLI reports "preview: subscription route refused" with no call.
+ */
+export const loadLoginProfile = path => Object.freeze(JSON.parse(readFileSync(path, 'utf8')));
+
 export const SELF_HOST_CONTEXT = Object.freeze({ site: 'preview.journal', preserved: 'preview:self-host', register: {
   generation: { owner: 'part-three', name: 'RegisterGeneration', id: 'preview:register' },
   entries: ['preview.journal', 'preview', 'host'], producers: ['host'], methods: [], actions: {}, subjects: {},
@@ -164,14 +174,6 @@ const GRANTS = new Set(['local-install', 'operator-storage-key']);
 /** The owner's credential resolution: only the named reference, only from the operator-supplied environment. */
 const operatorCredential = reference => reference === 'preview-storage-key' && process.env.INSTAR_SECRET_PREVIEW_STORAGE_KEY
   ? { env: 'INSTAR_SECRET_PREVIEW_STORAGE_KEY', value: process.env.INSTAR_SECRET_PREVIEW_STORAGE_KEY } : null;
-
-/**
- * The CLI's login profile as the provider credential custodian requires it: the host's own frozen
- * descriptor ("host-owned frozen subscription descriptor required", src/assembly/provider-credential-custodian.ts).
- * A plain parse leaves the file's object mutable, so the custodian refuses every valid profile and the
- * route is never constructed — the shipped CLI reports "preview: subscription route refused" with no call.
- */
-export const loadLoginProfile = path => Object.freeze(JSON.parse(readFileSync(path, 'utf8')));
 
 const main = async () => {
   const [command, ...rest] = process.argv.slice(2), options = {};

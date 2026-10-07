@@ -3,7 +3,8 @@ import { copyFileSync, mkdtempSync, readFileSync, realpathSync, rmSync } from 'n
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { createJournalWorker, openPreviewJournal, type JournalView } from './journal.js';
-import { GRAVITY_WELLS, RETRO_DUTY_FOLLOWUP_QUESTION, RETRO_DUTY_UNINSPECTED_NOTE, RETROSPECTIVE_DUTIES, WAIVER_EVIDENCE_UNAVAILABLE,
+import { GRAVITY_WELLS, RETRO_DUTY_FOLLOWUP_QUESTION, RETRO_DUTY_NO_CASES_NOTE, RETRO_DUTY_ROWS_NOTE, RETRO_DUTY_UNINSPECTED_NOTE,
+  RETRO_ROW_BACKED_DUTIES, RETROSPECTIVE_DUTIES, WAIVER_EVIDENCE_UNAVAILABLE,
   disciplineSource, dutiesLeftUninspected, dutyFollowUpPacket, mergeDutyFollowUp, owedCases, retroCallReserve, retrospectiveStatusLine,
   validateRetrospective, type RetroCase, type RetroPass, type RetroResult, type RetrospectiveDuty, type RetrospectivePlan } from './retrospective.js';
 import { isStatusCommand } from './status-command.js';
@@ -36,6 +37,16 @@ const i1b = (duties: readonly { duty: string; disposition: string }[]) => duties
 /** The I.sh I1d predicate on a reply text. */
 const i1d = (text: string) => text.includes('Retrospective review') && text.includes('inspected') && text.includes('efficiency duty ran');
 const LIVE_SIX = ['unsupported-reversal', 'removable-attention', 'workaround', 'process-tier', 'proportionality', 'benchmark-divergence'];
+/** Whether the plan, not the answer's list, decides a duty (RETRO_ROW_BACKED_DUTIES): its kind has no supplied case,
+ * or at least one supplied case of its kind was inspected with its row accepted. */
+const planDecides = (result: Pick<RetroResult, 'inspected'>, cases: readonly RetroCase[] = plan.cases) => (duty: string) => {
+  const category = (RETRO_ROW_BACKED_DUTIES as Record<string, string>)[duty];
+  if (category === undefined) return false;
+  const kind = cases.filter(item => item.category === category);
+  return !kind.length || kind.some(item => result.inspected.includes(item.id));
+};
+/** The worker's packets hold no rerun case, so benchmark-divergence is the plan's to decide and never asked. */
+const WORKER_ASKED = LIVE_SIX.filter(duty => duty !== 'benchmark-divergence');
 
 describe('which duties the follow-up asks about, on recorded shapes', () => {
   it('the live cint-L43 pass 0: exactly the six duties left uninspected with evidence present, never waiver-recurrence', () => {
@@ -47,11 +58,64 @@ describe('which duties the follow-up asks about, on recorded shapes', () => {
   it('the six real answers to the cint-L40 packet: the follow-up fires for calls 1, 2, 4 and 5 and NOT for 3 and 6', () => {
     expect(plan.waiverAvailable).toBe(false);
     for (const { call, answer } of calls) {
-      const asked = dutiesLeftUninspected(validate(answer));
-      const expected = (answer.uninspected as string[]).filter(duty => duty !== 'waiver-recurrence');
+      const result = validate(answer), asked = dutiesLeftUninspected(result);
+      const expected = (answer.uninspected as string[]).filter(duty => duty !== 'waiver-recurrence' && !planDecides(result)(duty));
       expect(asked, String(call)).toEqual(RETROSPECTIVE_DUTIES.filter(duty => expected.includes(duty)));
       expect(asked.length > 0, String(call)).toBe([1, 2, 4, 5].includes(call));
     }
+  });
+});
+
+describe('row-backed duties are decided by the plan, not the answer\'s list (live 2026-10-07 I1b)', () => {
+  const answerOf = (call: number) => calls.find(row => row.call === call)!.answer;
+  const rowOf = (result: RetroResult, duty: RetrospectiveDuty) => result.duties.find(row => row.duty === duty)!;
+  const verdict = plan.cases.find(item => item.category === 'verdict')!.id;
+
+  it('real call 1 lists standing-grant and benchmark-divergence over a packet with no authorization or rerun case: inspected, nothing to review', () => {
+    expect((answerOf(1).uninspected as string[])).toEqual(expect.arrayContaining(['standing-grant', 'benchmark-divergence']));
+    const result = validate(answerOf(1));
+    for (const duty of ['standing-grant', 'benchmark-divergence'] as const)
+      expect(rowOf(result, duty), duty).toEqual({ duty, disposition: 'inspected', note: RETRO_DUTY_NO_CASES_NOTE });
+    expect(dutiesLeftUninspected(result)).not.toContain('standing-grant');
+  });
+
+  it('real call 2 lists refuted-reason while grading the supplied verdict: inspected through its accepted grade row', () => {
+    expect((answerOf(2).uninspected as string[])).toContain('refuted-reason');
+    const result = validate(answerOf(2));
+    expect(result.inspected).toContain(verdict);
+    expect(rowOf(result, 'refuted-reason')).toEqual({ duty: 'refuted-reason', disposition: 'inspected', note: RETRO_DUTY_ROWS_NOTE });
+  });
+
+  it('the other side, on a real answer: call 4 lists refuted-reason and its verdict row is not accepted, so the duty stays not inspected', () => {
+    expect((answerOf(4).uninspected as string[])).toContain('refuted-reason');
+    const result = validate(answerOf(4));
+    expect(result.inspected).not.toContain(verdict);
+    expect(result.omitted.map(row => row.case)).toContain(verdict);
+    expect(rowOf(result, 'refuted-reason')).toEqual({ duty: 'refuted-reason', disposition: 'unavailable', note: RETRO_DUTY_UNINSPECTED_NOTE });
+  });
+
+  it('the other side: with the verdict case omitted, no grade row stood behind the duty, so refuted-reason stays not inspected', () => {
+    const answer = answerOf(2);
+    const omittedVerdict = { ...answer, inspected: (answer.inspected as string[]).filter(id => id !== verdict),
+      omitted: [...(answer.omitted as unknown[] ?? []), { case: verdict, reason: 'answer budget' }],
+      grades: (answer.grades as { case: string }[]).filter(row => row.case !== verdict) };
+    const result = validate(omittedVerdict);
+    expect(result.inspected).not.toContain(verdict);
+    expect(rowOf(result, 'refuted-reason')).toEqual({ duty: 'refuted-reason', disposition: 'unavailable', note: RETRO_DUTY_UNINSPECTED_NOTE });
+    expect(dutiesLeftUninspected(result)).toContain('refuted-reason');
+    // A verdict whose grade row is missing stays owed too, and still discharges nothing.
+    const ungraded = validate({ ...answer, grades: (answer.grades as { case: string }[]).filter(row => row.case !== verdict) });
+    expect(ungraded.inspected).not.toContain(verdict);
+    expect(rowOf(ungraded, 'refuted-reason').disposition).toBe('unavailable');
+  });
+
+  it('a duty the answer did NOT list keeps its own derivation, and a refused finding keeps its own note', () => {
+    const answer = answerOf(3);
+    expect(answer.uninspected).toEqual(['waiver-recurrence']);
+    const refused = validate({ ...answer, findings: [...(answer.findings as unknown[]),
+      { duty: 'standing-grant', refs: [], summary: 'nothing found', disposition: { declined: 'none' } }] });
+    expect(rowOf(refused, 'standing-grant').disposition).toBe('unavailable');
+    expect(rowOf(refused, 'standing-grant').note).not.toBe(RETRO_DUTY_NO_CASES_NOTE);
   });
 });
 
@@ -187,11 +251,11 @@ describe('the pass\'s duty follow-up in the worker', () => {
       await w.worker.retrospect('sha256:config-a');
       expect(w.asks.map(ask => [ask.id, ask.question])).toEqual([['retrospective:0', undefined],
         ['retrospective:0:duties', RETRO_DUTY_FOLLOWUP_QUESTION]]);
-      expect((JSON.parse(w.asks[1]!.state) as { followUpDuties: string[] }).followUpDuties).toEqual(LIVE_SIX);
+      expect((JSON.parse(w.asks[1]!.state) as { followUpDuties: string[] }).followUpDuties).toEqual(WORKER_ASKED);
       expect({ ...JSON.parse(w.asks[1]!.state) as object, followUpDuties: undefined }).toEqual({ ...JSON.parse(w.asks[0]!.state) as object, followUpDuties: undefined });
       expect(w.journal.view.calls).toBe(before + 2);
       const pass = w.journal.view.retroPasses[0]!;
-      expect(pass).toMatchObject({ state: 'complete', dutyFollowUp: { duties: LIVE_SIX, state: 'complete' }, outputTokens: 50 });
+      expect(pass).toMatchObject({ state: 'complete', dutyFollowUp: { duties: WORKER_ASKED, state: 'complete' }, outputTokens: 50 });
       expect(pass.reason).toBeUndefined();
       expect(i1b(pass.result!.duties)).toBe(true);
       const line = retrospectiveStatusLine(w.journal.view);
@@ -233,9 +297,9 @@ describe('the pass\'s duty follow-up in the worker', () => {
       expect(w.asks.map(ask => ask.id)).toEqual(['retrospective:0']);
       const pass = w.journal.view.retroPasses[0]!;
       expect(pass).toMatchObject({ state: 'complete', reason: 'duty follow-up: not run, model attempts kept in reserve for replies' });
-      expect(dutiesLeftUninspected(pass.result!)).toEqual(LIVE_SIX);
+      expect(dutiesLeftUninspected(pass.result!)).toEqual(WORKER_ASKED);
       expect(i1b(pass.result!.duties)).toBe(false);
-      expect(retrospectiveStatusLine(w.journal.view)).toContain(`duties not inspected although their evidence was present: ${LIVE_SIX.join(', ')} (duty follow-up: not run`);
+      expect(retrospectiveStatusLine(w.journal.view)).toContain(`duties not inspected although their evidence was present: ${WORKER_ASKED.join(', ')} (duty follow-up: not run`);
     } finally { w.done(); }
   });
 
@@ -250,7 +314,7 @@ describe('the pass\'s duty follow-up in the worker', () => {
         await w.worker.retrospect('sha256:config-a');
         const pass = w.journal.view.retroPasses[0]!;
         expect(pass, reason).toMatchObject({ state: 'complete', reason });
-        expect(dutiesLeftUninspected(pass.result!), reason).toEqual(LIVE_SIX);
+        expect(dutiesLeftUninspected(pass.result!), reason).toEqual(WORKER_ASKED);
         expect(pass.dutyFollowUp!.state, reason).toBe(reply === 'throw' || (typeof reply === 'object' && reply.state === 'uncertain') ? 'unknown' : 'failed');
         await w.worker.retrospect('sha256:config-a');
         expect(w.asks.filter(ask => ask.id.endsWith(':duties')), reason).toHaveLength(1);
@@ -269,7 +333,7 @@ describe('the pass\'s duty follow-up in the worker', () => {
       try {
         const pending = resumed.journal.view.retroPasses[0]!;
         expect(pending.state).toBeUndefined();
-        expect(pending.dutyFollowUp).toMatchObject({ duties: LIVE_SIX });
+        expect(pending.dutyFollowUp).toMatchObject({ duties: WORKER_ASKED });
         expect(pending.dutyFollowUp!.state).toBeUndefined();
         await resumed.worker.retrospect('sha256:config-a');
         const pass = resumed.journal.view.retroPasses[0]!;
@@ -318,7 +382,10 @@ describe('the follow-up on REAL model answers (rule 106)', () => {
   const heldOf = (call: number) => validate(calls.find(row => row.call === call)!.answer);
 
   it('replays the very ask each real answer was given', () => {
-    for (const row of REAL_FOLLOWUPS.calls) expect(row.asked, String(row.heldCall)).toEqual(dutiesLeftUninspected(heldOf(row.heldCall)));
+    // Recorded under the earlier rule, when the answer's list also decided the row-backed duties: today's ask is that
+    // recorded ask less the duties the plan now decides, and nothing else.
+    for (const row of REAL_FOLLOWUPS.calls) { const held = heldOf(row.heldCall);
+      expect(dutiesLeftUninspected(held), String(row.heldCall)).toEqual(row.asked.filter(duty => !planDecides(held)(duty))); }
   });
 
   it('the shipped question: each real follow-up answer completes the duty set of its held real answer (I1b)', () => {
@@ -337,7 +404,7 @@ describe('the follow-up on REAL model answers (rule 106)', () => {
     const draft = REAL_FOLLOWUPS.calls.find(row => row.question === 'first-draft')!;
     const held = heldOf(draft.heldCall), merged = merge(JSON.parse(draft.answer), held);
     expect((JSON.parse(draft.answer) as { findings: { refs: unknown[] }[] }).findings.every(item => item.refs.length === 0)).toBe(true);
-    expect(dutiesLeftUninspected(merged)).toEqual(draft.asked);
+    expect(dutiesLeftUninspected(merged)).toEqual(draft.asked.filter(duty => !planDecides(held)(duty)));
     expect(merged.duties).toEqual(held.duties);
     expect(RETRO_DUTY_FOLLOWUP_QUESTION).toContain('Never write a finding to say that nothing was found');
   });

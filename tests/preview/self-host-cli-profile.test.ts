@@ -1,4 +1,4 @@
-// @ts-nocheck -- the registered doorway's physical IO is its captured-frame conformance fixture; every other step is the shipped path.
+// @ts-nocheck -- the registered doorway's physical IO is its captured-frame conformance fixture; every other step is the shipped CLI path.
 // Rules 2, 70, 115, 116 (assembly §9): the shipped self-host CLI reads its login profile from the file named by
 // --login-profile, and the provider credential custodian admits only the host's own frozen descriptor
 // ("host-owned frozen subscription descriptor required", src/assembly/provider-credential-custodian.ts). The CLI
@@ -10,11 +10,15 @@
 // These tests exercise the CLI's own loading function (`loadLoginProfile`, the shipped loading point) with the
 // existing valid-profile fixture, and cover both sides of the custodian's decision: the loaded profile dispatches
 // through the registered doorway, and the same file bytes left mutable — exactly what the CLI did before — still refuse.
+// Two branches found this defect independently (sb-w4-updaterecord and sb-w4-t2boundary) and each wrote this file;
+// the merge keeps both sides' coverage. The first three cases are the updaterecord side, driving the loading point
+// with a minimal recorded plan; the fourth is the t2boundary side, driving the CLI's own whole dispatch composition
+// (its real question and prompt) and asserting both neighbours inside one case.
 import { expect, it } from 'vitest';
 import { mkdtempSync, readFileSync, realpathSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
-import { doorwayProvider, loadLoginProfile } from './self-host.mjs';
+import { SELF_HOST_QUESTION, doorwayProvider, loadLoginProfile, selfHostPrompt } from './self-host.mjs';
 import { dispatchOwnedProvider } from './self-host-owners.ts';
 import { stoppedAt } from './self-host-harness.mjs';
 import { DOORWAY_CONFORMANCE } from './doorway-conformance.js';
@@ -76,3 +80,52 @@ it('the same profile bytes left mutable — the plain parse the CLI used — are
     expect(result.message).toContain('preview: subscription route refused');
   } finally { rmSync(root, { recursive: true, force: true }); }
 }, 60_000);
+
+const CLI_ANSWER = JSON.stringify({ files: [{ path: 'word-count.mjs', content: 'export const wordCount = () => 0;\n' }],
+  tools: [{ operation: 'package-test', params: ['word-count.test.mjs'] }],
+  package: { namespace: 'agent.word-count', version: '1.0.0', entrypoints: [{ id: 'word-count', path: 'word-count.mjs' }],
+    probe: { entrypoint: 'word-count', export: 'wordCount', input: 'x', expect: 0 } } });
+
+/**
+ * The CLI's own dispatch composition: the profile it loaded from its `--login-profile` file, through
+ * the registered doorway's captured-frame fixture, into the shipped provider attempt the run makes.
+ */
+const dispatchCliTurn = async (root, profile) => {
+  const state = { outcome: 'complete', calls: 0, stdin: [], answer: () => CLI_ANSWER };
+  const provider = await doorwayProvider({ doorwayId: DOORWAY, io: DOORWAY_CONFORMANCE[DOORWAY].io(state), profile,
+    activation: world.activation(), model: world.model, stopped: stoppedAt(root), now: () => NOW });
+  const call = await dispatchOwnedProvider({ root, task: 'cli-profile', question: SELF_HOST_QUESTION,
+    conversation: [{ request: JSON.parse(selfHostPrompt('Build a word-count capability.', null)) }],
+    allowance: 3, provider, stopped: stoppedAt(root), now: () => NOW })
+    .then(result => ({ answer: result.answer })).catch(error => ({ refused: String(error?.message ?? error) }));
+  return { state, call };
+};
+
+it('the CLI login-profile loading point yields the frozen descriptor the credential custodian requires (Rules 2, 115, 116)', async () => {
+  const directory = temp();
+  try {
+    const file = join(directory, 'profile.json');
+    writeFileSync(file, JSON.stringify(DOORWAY_CONFORMANCE[DOORWAY].profile), { mode: 0o600 });
+    const loaded = loadLoginProfile(file);
+    expect(Object.isFrozen(loaded)).toBe(true);
+    expect({ ...loaded }).toEqual({ ...DOORWAY_CONFORMANCE[DOORWAY].profile });
+
+    // The positive neighbor: the loaded profile reaches the doorway, which is dispatched once and read.
+    const good = temp();
+    try {
+      const { state, call } = await dispatchCliTurn(good, loaded);
+      expect(call.refused).toBe(undefined);
+      expect(JSON.parse(call.answer.trim()).package.namespace).toBe('agent.word-count');
+      expect(state.calls).toBe(1);
+    } finally { rmSync(good, { recursive: true, force: true }); }
+
+    // The negative neighbor: the same bytes parsed without the loading point's freeze are refused by
+    // the credential custodian before any provider call.
+    const mutable = temp();
+    try {
+      const { state, call } = await dispatchCliTurn(mutable, JSON.parse(JSON.stringify(DOORWAY_CONFORMANCE[DOORWAY].profile)));
+      expect(call.refused).toMatch(/subscription route refused/u);
+      expect(state.calls).toBe(0);
+    } finally { rmSync(mutable, { recursive: true, force: true }); }
+  } finally { rmSync(directory, { recursive: true, force: true }); }
+}, 120_000);

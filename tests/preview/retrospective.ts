@@ -160,6 +160,18 @@ export const RETRO_OUTCOME_UNSETTLED_REASON = 'graded met or unmet with no evide
 /** The note a duty carries when the answer reported it unavailable although the plan supplied its evidence. The
  * plan still decides availability, so this is NOT recorded as inspected: it is an honest "not done". */
 export const RETRO_DUTY_UNINSPECTED_NOTE = 'reported unavailable although its evidence was present; not inspected';
+/** Three duties are discharged by per-case rows this validator already enforces, never by the answer's list:
+ * standing-grant by an authorization row per authorization case, refuted-reason by a grade (its stated reason assessed
+ * separately, a contradicted one rederived) per verdict case, benchmark-divergence by a comparison row per rerun case.
+ * An inspected case of the kind whose row is missing or refused stays owed. So the plan decides these duties: one whose
+ * kind the pass held no case of was inspected with nothing to review, and one whose rows were accepted for at least one
+ * case was inspected through them. Live 2026-10-07 (preswitch sb-w4-t2boundary, room three, pass 0) the answer and its
+ * follow-up both listed all three uninspected over a pass holding no authorization or rerun case and a graded verdict,
+ * and the pass recorded honest work as not done (group I's I1b). */
+export const RETRO_ROW_BACKED_DUTIES = Object.freeze({ 'standing-grant': 'authorization', 'refuted-reason': 'verdict',
+  'benchmark-divergence': 'rerun' } as const);
+export const RETRO_DUTY_NO_CASES_NOTE = 'inspected; this pass held no case of the kind it reviews';
+export const RETRO_DUTY_ROWS_NOTE = 'inspected through its accepted per-case rows; nothing found';
 /** The note a duty carries when the answer marked it `f` (a finding opened) but this answer holds no such finding —
  * the model wrote none, or the only one it wrote was refused under its own rules. The claim behind the `f` is not
  * in the answer, so the duty is NOT recorded as inspected: an honest "not done", exactly like a `u` with evidence
@@ -1205,6 +1217,15 @@ export function validateRetrospective(raw: unknown, plan: Pick<RetrospectivePlan
     const bare = row.disposition === 'inspected' && !backed(duty);
     duties[index] = { duty, disposition: bare ? 'unavailable' : row.disposition,
       note: clip(`${bare ? RETRO_DUTY_FINDING_REFUSED_NOTE : row.note} (${refused})`, RETRO_OUTCOME_REASON_CHARS * 2) };
+  }
+  // Row-backed duties (RETRO_ROW_BACKED_DUTIES): only the answer's plain `u` is replaced, never a refusal's own note.
+  for (const [duty, category] of Object.entries(RETRO_ROW_BACKED_DUTIES) as [RetrospectiveDuty, CaseCategory][]) {
+    const index = RETROSPECTIVE_DUTIES.indexOf(duty), row = duties[index]!;
+    if (row.disposition !== 'unavailable' || row.note !== RETRO_DUTY_UNINSPECTED_NOTE) continue;
+    const supplied = plan.cases.filter(item => item.category === category);
+    if (!supplied.length) duties[index] = { duty, disposition: 'inspected', note: RETRO_DUTY_NO_CASES_NOTE };
+    else if (supplied.some(item => looked.has(item.id)))
+      duties[index] = { duty, disposition: 'inspected', note: backed(duty) ? RETRO_DUTY_CODES.f : RETRO_DUTY_ROWS_NOTE };
   }
   const inspected = claimed.filter(id => looked.has(id));
   const result: RetroResult = { inspected, omitted, duties, gravityWells, efficiency, findings, grades, feedback, authorizations, closures, comparisons,

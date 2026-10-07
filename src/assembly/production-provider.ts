@@ -367,16 +367,23 @@ const within = (path: string, root: string) => path === root || path.startsWith(
 /** The longest scratch-volume path a tool turn admits (see subscriptionToolSettings). */
 export const SUBSCRIPTION_TOOL_SCRATCH_PATH_BYTES = 30;
 /** System locations a sandboxed shell reads to run at all: binaries, their libraries and the dynamic
- * loader's cache (/System), the selected `sh` (/private/var/select), device nodes and system configuration
- * (/private/etc: name resolution, certificates). Nothing else outside the scratch volume is readable: other
- * sessions' temporary files, users' homes, mounted volumes and the runner root all lie outside this list. */
+ * loader's cache (/System), the selected `sh` (/private/var/select) and device nodes. The host's own configuration
+ * (/private/etc) is NOT one of them: binaries, libraries and OS data are the machinery a command runs on, while
+ * /private/etc is the host's record of itself, and reading it is what group T's check T2c refuses (rules 1 and 57,
+ * plan #615; live 2026-10-03 through the shell, 2026-10-06 through Read). The two things it was carried for are
+ * supplied elsewhere: a name is resolved at the turn's network checkpoint, which the shell reaches by address on
+ * loopback, and the trust root that checkpoint hands the shell is one of `egress.reads`; with no checkpoint the shell
+ * has no network at all. Nothing else outside the scratch volume is readable: other sessions' temporary files, users'
+ * homes, mounted volumes and the runner root all lie outside this list. */
 export const SUBSCRIPTION_TOOL_RUNTIME_READS = Object.freeze(['/bin', '/sbin', '/usr/bin', '/usr/sbin', '/usr/lib', '/usr/libexec',
-  '/usr/share', '/System', '/private/var/select', '/private/etc', '/dev']);
-/** Root-level symlinks whose targets hold a runtime read (/etc to /private/etc, /var to /private/var). The sandbox
- * checks a link itself when a path is looked up through it, then checks the resolved target against the read list, so
- * reopening the link alone makes `/etc/hosts` as readable as `/private/etc/hosts` and opens nothing else behind it
- * (/var/log stays refused, as /private/var/log is). The admission hook resolves paths itself and needs no link entries. */
-export const SUBSCRIPTION_TOOL_RUNTIME_READ_LINKS = Object.freeze(['/etc', '/var']);
+  '/usr/share', '/System', '/private/var/select', '/dev']);
+/** Root-level symlinks whose targets hold a runtime read (/var to /private/var). The sandbox checks a link itself when
+ * a path is looked up through it, then checks the resolved target against the read list, so an entry here reopens the
+ * link node alone and opens nothing behind it (/var/log stays refused, as /private/var/log is). `/etc` was such an entry
+ * while /private/etc was readable; it is not, so the link leads nowhere a tool may read and is gone with it, and
+ * `/etc/hosts` is refused at open by the kernel exactly as `/private/etc/hosts` is, by every spelling a command can
+ * write. The admission hook resolves paths itself and needs no link entries. */
+export const SUBSCRIPTION_TOOL_RUNTIME_READ_LINKS = Object.freeze(['/var']);
 /** Places Claude Code 2.1.280 lets every sandboxed command write by default (its shared temporary directory
  * and two home-directory logs). They lie outside the scratch volume, so a tool turn refuses them. */
 export const subscriptionToolDefaultWrites = (home: string) => Object.freeze(['/tmp/claude', '/private/tmp/claude',

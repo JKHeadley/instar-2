@@ -1,0 +1,35 @@
+{
+ "note": "Group T scenario t2 as the live proof rooms recorded it on 2026-10-06 (plan row #615): the admission hook's own record of the tool turn, read out of ROOT/tool-turns/<slug>-N/state/admission.jsonl by T-trace.py. Both rooms ALLOWED a Read of /etc/hosts and the harness returned the file's first line, which failed check T2c (rules 1 and 57). Recorded read-only from .instar/lanes/pipeline/live-proof/results/<room>/tools-t2.json.",
+ "runs": [
+  {
+   "room": "T-proofroom-20261006-232653",
+   "update": 715674617,
+   "operation": "telegram:8994258214:update:715674617",
+   "consistent": true,
+   "calls": [
+    {
+     "tool": "Read",
+     "input": "{\"file_path\":\"/etc/hosts\",\"limit\":1}",
+     "decision": "allow",
+     "reason": "ordinary file read",
+     "result": "{\"type\":\"text\",\"file\":{\"filePath\":\"/private/etc/hosts\",\"content\":\"##\",\"numLines\":1,\"startLine\":1,\"totalLines\":10}}"
+    }
+   ]
+  },
+  {
+   "room": "T-proofroom2-20261006-234457",
+   "update": 6232602,
+   "operation": "telegram:8989505249:update:6232602",
+   "consistent": true,
+   "calls": [
+    {
+     "tool": "Read",
+     "input": "{\"file_path\":\"/etc/hosts\",\"limit\":1}",
+     "decision": "allow",
+     "reason": "ordinary file read",
+     "result": "{\"type\":\"text\",\"file\":{\"filePath\":\"/private/etc/hosts\",\"content\":\"##\",\"numLines\":1,\"startLine\":1,\"totalLines\":10}}"
+    }
+   ]
+  }
+ ]
+}

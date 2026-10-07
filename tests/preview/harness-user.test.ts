@@ -15,7 +15,7 @@ import { createResourceOwner, RESOURCE_CEILINGS, hostQuery } from '../../scripts
 // @ts-expect-error Physical host JavaScript stays outside pure core.
 import { createProcessInventory } from '../../scripts/process-inventory.mjs';
 // @ts-expect-error The runner side stays plain JavaScript.
-import { harnessExecutable, harnessReadiness, harnessStatusLine, HARNESS_PROFILE, removeHarnessState, grantVolume, HARNESS_VOLUME_MARK, harnessGate, HARNESS_RECHECK_MS, readHarnessLogin, storeHarnessLogin, plaintextLogins, closeOperatorTmp, sweptEntryHeld, tmpCanary, HARNESS_TMP, harnessCredentialValues, harnessRefusedNotice, HARNESS_HOOK_FILES, HARNESS_OFF_REASON, harnessSocketDirectory } from './harness-user.mjs';
+import { harnessExecutable, harnessReadiness, harnessStatusLine, HARNESS_PROFILE, removeHarnessState, grantVolume, HARNESS_VOLUME_MARK, harnessGate, HARNESS_RECHECK_MS, readHarnessLogin, storeHarnessLogin, plaintextLogins, closeOperatorTmp, sweptEntryHeld, tmpCanary, HARNESS_TMP, harnessCredentialValues, harnessRefusedNotice, HARNESS_HOOK_FILES, HARNESS_OFF_REASON, harnessSocketDirectory, ensureDirectory } from './harness-user.mjs';
 // @ts-expect-error The runner side stays plain JavaScript.
 import { prepareSessionAdmission, sessionAdmissionCommand } from './session-admission.mjs';
 // @ts-expect-error The runner side stays plain JavaScript.
@@ -129,6 +129,25 @@ describe('readiness: the switch is decided from live state, a refusal names its 
     expect(ready({ canary: () => { throw Error('EEXIST'); } }).reason).toMatch(/canary cannot be created/u);
     expect(ready({ probe: () => null }).reason).toMatch(/not permitted/u);
     expect(removed).toBe(4);
+  });
+  it('gives a directory exactly its mode whatever the umask masked: a hook directory left 0700 opens to 0755, a private one stays 0700', () => {
+    // Live 2026-10-07: the desk's runner (umask 077) created the content-addressed hook copy's directory 0700, so the
+    // harness user could not read the hook and every launch was held. The same shape: an existing directory at the
+    // masked mode, and a fresh one created under that mask, are both given the requested mode.
+    const masked = fresh('hook-masked');
+    chmodSync(masked, 0o700);
+    ensureDirectory(masked, 0o755);
+    expect(lstatSync(masked).mode & 0o777).toBe(0o755);
+    const created = join(fresh('hook-parent'), 'ca6d6d2798618af3');
+    ensureDirectory(created, 0o755);
+    expect(lstatSync(created).mode & 0o777).toBe(0o755);
+    const closed = fresh('custody-like');
+    chmodSync(closed, 0o755);
+    ensureDirectory(closed, 0o700);
+    expect(lstatSync(closed).mode & 0o777).toBe(0o700);
+    const link = join(scratch, `ensure-link-${process.pid}`);
+    symlinkSync(masked, link);
+    expect(() => ensureDirectory(link, 0o755)).toThrow(/is a link/u);
   });
   it('makes the canary world-readable, in the given directory, under a fresh name', () => {
     const base = fresh('canary-base');

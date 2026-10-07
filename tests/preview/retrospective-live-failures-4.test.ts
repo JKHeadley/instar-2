@@ -3,7 +3,7 @@ import { createHash } from 'node:crypto';
 import { readFileSync } from 'node:fs';
 import { SUBSCRIPTION_MAX_OUTPUT_TOKENS } from '../../src/assembly/production-provider.js';
 import type { JournalView } from './journal.js';
-import { RETROSPECTIVE_DUTIES, RETRO_DUTIES_UNREADABLE_NOTE, RETRO_DUTY_PART_UNREADABLE_NOTE, RETRO_DUTY_UNCORROBORATED_NOTE,
+import { RETROSPECTIVE_DUTIES, RETRO_DUTIES_UNREADABLE_NOTE, RETRO_DUTY_PART_UNREADABLE_NOTE, RETRO_DUTY_ROWS_NOTE, RETRO_DUTY_UNCORROBORATED_NOTE, RETRO_DUTY_UNINSPECTED_NOTE,
   RETRO_UNACCOUNTED_REASON, owedCases, rowMissingReason, rowRefusedReason, validateRetrospective, type RetroCase, type RetroPass, type RetroResult, type RetrospectivePlan } from './retrospective.js';
 
 /** Plan row #412 (w3-retrocut). Room two's only pass on the cint-L40 root was discarded whole with 'a verdict case
@@ -64,7 +64,13 @@ describe('the live pass-0 refusal of room two under cint-L40, replayed on its ow
         { case: verdict, reason: 'grade row missing; deferred to a later pass' }]);
       expect(cut.grades.map(row => row.case), call).not.toContain(verdict);
       // Nothing else the review produced is lost to that one row.
-      expect(cut.duties, call).toEqual(whole.duties);
+      // ...except refuted-reason where only the cut verdict's grade row stood behind it (RETRO_ROW_BACKED_DUTIES): with
+      // that row gone the answer's own `u` stands.
+      const other = (rows: typeof whole.duties) => rows.filter(row => row.duty !== 'refuted-reason');
+      expect(other(cut.duties), call).toEqual(other(whole.duties));
+      const refuted = (rows: typeof whole.duties) => rows.find(row => row.duty === 'refuted-reason')!;
+      expect(refuted(cut.duties), call).toEqual(refuted(whole.duties).note === RETRO_DUTY_ROWS_NOTE
+        ? { duty: 'refuted-reason', disposition: 'unavailable', note: RETRO_DUTY_UNINSPECTED_NOTE } : refuted(whole.duties));
       expect(cut.findings, call).toEqual(whole.findings);
       expect(cut.efficiency, call).toEqual(whole.efficiency);
       expect(owedAfter(cut), call).toContain(verdict);
