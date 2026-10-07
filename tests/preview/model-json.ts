@@ -15,7 +15,7 @@
  *
  * The returned shape is content-free, so it may be counted in status without storing
  * model text. Callers keep every shape check they already apply after parsing. */
-export type ModelJsonShape = 'bare' | 'fenced' | 'prose-wrapped' | 'early-close' | 'raw-control';
+export type ModelJsonShape = 'bare' | 'fenced' | 'prose-wrapped' | 'early-close' | 'raw-control' | 'reasoning-quotes';
 /** Whether this consumer may discard text around one complete object (see above). */
 export type ModelJsonWrapped = 'accept' | 'refuse';
 export type ModelJsonMalformedShape = 'fenced' | 'prose-wrapped' | 'multiple-objects' | 'truncated' | 'not-json';

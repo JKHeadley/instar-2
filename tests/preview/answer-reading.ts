@@ -120,6 +120,31 @@ export function parseDefect(text: string, extracted: ModelJsonResult): string {
   }
 }
 
+/** The live hand-over of 2026-10-06 (proof room 2, rc-2 7d2ba68b, update 6232582): both reply reviews judged every rule
+ * PASS, but each quoted the reply's own `Follow-up on "..."` text inside `reasoning` without escaping the quotes, so both
+ * whole objects were refused (`reply-review/decision/malformed/prose-wrapped`, the format re-ask included), the verdict
+ * became `unavailable`, and the reply left with no completed review. In a response that is one whole object (nothing
+ * outside it) and opens with `reasoning`, that string ends at the first `", "<field>":` after it opens. Read there, an
+ * unescaped `"` inside it has exactly one meaning, its escape; every later field is parsed exactly as written and may
+ * not repeat `reasoning`. If the text after that first boundary is not valid as written, nothing is read: a later
+ * boundary is never tried, because that would fold a field the model wrote into `reasoning`. Nothing is discarded,
+ * so a gate keeps its narrow reading (Rule 95). */
+export function quotedReasoning(text: string): Record<string, unknown> | null {
+  const trimmed = escapeRawControls(text.trim());
+  const head = /^\{\s*"reasoning"\s*:\s*"/u.exec(trimmed);
+  if (!head || !trimmed.endsWith('}')) return null;
+  const end = /"\s*,\s*"[A-Za-z_][A-Za-z0-9_]*"\s*:/gu;
+  end.lastIndex = head[0].length;
+  const boundary = end.exec(trimmed);
+  if (!boundary) return null;
+  const written = trimmed.slice(head[0].length, boundary.index);
+  try {
+    const reasoning: unknown = JSON.parse(`"${written.replace(/\\([\s\S])|"/gu, (whole, escaped?: string) => escaped === undefined ? '\\"' : whole)}"`);
+    const rest: unknown = JSON.parse(`{${trimmed.slice(boundary.index + 1).replace(/^\s*,/u, '')}`);
+    return typeof reasoning === 'string' && isObject(rest) && !Object.hasOwn(rest, 'reasoning') ? { reasoning, ...rest } : null;
+  } catch { return null; }
+}
+
 /** The one reading of a subscription answer-side or task result (journal-agent invokeSubscription): parse, build the
  * Decision, check it. `wrapped: 'accept'` (the answer side, Rule 95) may also discard prose around the object; there,
  * prose that itself carries brackets or a brace pair (`dated:[]`, `[withheld]`, `{reply, dated:[...]}`) is discarded only
@@ -143,6 +168,10 @@ export function readAnswer(text: string, options: { wrapped?: ModelJsonWrapped; 
     // fields (an obligation step's `outcome` and `note`) are recognised as well as a reply.
     if (sole && (sole.type === 'Decision' ? isObject(sole.conclusion) && sole.conclusion.subject === ANSWER_SUBJECT
       : 'answer' in sole || 'reply' in sole || 'reasoning' in sole)) extracted = { ok: true, value: sole, shape: extracted.shape === 'fenced' ? 'fenced' : 'prose-wrapped' };
+  }
+  if (!extracted.ok) {
+    const repaired = quotedReasoning(text);
+    if (repaired) extracted = { ok: true, value: repaired, shape: 'reasoning-quotes' };
   }
   if (!extracted.ok) return { ok: false, shape: extracted.shape, defect: parseDefect(text, extracted) };
   const built = answerDecision(extracted.value, options.evidence ?? []);
