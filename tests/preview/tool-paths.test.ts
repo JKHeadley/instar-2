@@ -227,10 +227,19 @@ it.runIf(darwin)('runs the shell under the sandbox profile the settings produce:
   expect(recorded).toHaveLength(5);
   // Review MF1's spellings the command text cannot see: shell quote concatenation and a glob, both naming exactly
   // /private/etc/hosts, beside the plain and `..` spellings.
+  // Two things are asserted per spelling: no byte of the file reaches the command, and the read itself was refused.
+  // The exit status is the read's verdict only where the command IS the read. The third recorded command ends in
+  // `cat -A … | head -n 3`, so its status is head's — 0, reading the empty pipe a refused `cat` leaves — however both
+  // of its reads were refused, which is what the gate run of 2026-10-07 saw (no byte read, status 0). Measured on
+  // exactly this shape against a file the kernel refuses: a single read exits 1, that pipeline exits 0, and both
+  // refusals are on stderr. So where a command continues past the read, the refusal is read from stderr instead,
+  // which states the kernel's verdict directly rather than through the shell's choice of which status to report.
+  const isTheRead = (command: string) => !/[;|&]/u.test(command);
   for (const command of [...recorded, 'cat /private/et""c/hosts', 'cat /private/e?c/hosts', 'head -n 1 /etc/hosts',
     'cat /etc/../etc/hosts', `cat ${'../'.repeat(8)}etc/hosts`]) {
     const got = run(command);
-    expect([command, got.stdout.includes(hosts.trim()), got.status === 0]).toEqual([command, false, false]);
+    const refused = isTheRead(command) ? got.status !== 0 : /Operation not permitted/u.test(got.stderr);
+    expect([command, got.stdout.includes(hosts.trim()), refused]).toEqual([command, false, true]);
   }
   // Required runtime inputs are retained: a command still starts and reads the machinery it runs on.
   expect(run('/bin/echo ok').stdout).toBe('ok\n');
