@@ -12,7 +12,7 @@ import { canonical, decode } from '../../src/index.js';
 import { createClaudeCodeSubscriptionRoute, subscriptionConversationPolicy, subscriptionToolSettings, subscriptionToolsPolicy,
   SUBSCRIPTION_CONVERSATION_SYSTEM_PROMPT, SUBSCRIPTION_PREVIEW_EXPIRY, SUBSCRIPTION_TOOL_LIMITS,
   SUBSCRIPTION_SUBAGENT_TYPE, SUBSCRIPTION_TOOL_NAMES, SUBSCRIPTION_TOOLS_FRAMING, SUBSCRIPTION_TOOLS_SYSTEM_PROMPT, SUBSCRIPTION_CONVERSATION_FRAMING, SUBSCRIPTION_TOOL_RUNTIME_READS,
-  SUBSCRIPTION_TOOL_RUNTIME_READ_LINKS, SUBSCRIPTION_NATIVE_SYSTEM_PROMPT,
+  SUBSCRIPTION_TOOL_RUNTIME_READ_LINKS, SUBSCRIPTION_NATIVE_SYSTEM_PROMPT, SUBSCRIPTION_MAX_OUTPUT_TOKENS,
   validateSubscriptionActivation } from '../../src/assembly/production-provider.js';
 import type { SubscriptionActivationRecord, SubscriptionToolTurn } from '../../src/assembly/production-provider.js';
 import type { ProviderSubscriptionProfile } from '../../src/assembly/provider-credential-custodian.js';
@@ -145,7 +145,7 @@ it('writes settings that refuse every read from the root down except the scratch
     .toThrow(/too long for the harness temporary directory/u);
 });
 
-function fixture() {
+function fixture(options: { outputTokens?: number } = {}) {
   const f = factsFixture(), root = realpathSync(mkdtempSync(join(tmpdir(), 'subscription-tools-'))); roots.push(root);
   const home = join(root, 'home'), configDirectory = join(root, 'config'), workingDirectory = join(root, 'work');
   // The scratch volume's mount point is short (the harness temporary directory must fit 44 bytes), as the runner allocates it.
@@ -158,11 +158,12 @@ function fixture() {
     orgId: 'synthetic-organization', orgName: 'synthetic', subscriptionType: 'max' };
   const answer = JSON.stringify({ ...f.decisionInput(), conclusion: { ...f.decisionInput().conclusion, subject: 'preview-stage2-answer', predicate: 'answer-text', value: '11' } });
   const terminal = JSON.stringify({ type: 'result', subtype: 'success', is_error: false, result: answer, num_turns: 4,
-    session_id: 'synthetic-call', usage: { input_tokens: 10, output_tokens: 300 }, total_cost_usd: 0.05 });
+    session_id: 'synthetic-call', usage: { input_tokens: 10, output_tokens: options.outputTokens ?? 300 }, total_cost_usd: 0.05 });
   const source = `#!${process.execPath}\nimport {appendFileSync} from 'node:fs';
     let stdin='';for await(const chunk of process.stdin)stdin+=chunk;
     appendFileSync(${JSON.stringify(report)},JSON.stringify({args:process.argv.slice(2),cwd:process.cwd(),stdin,tmpdir:process.env.CLAUDE_CODE_TMPDIR??null,
-      memory:process.env.CLAUDE_CODE_DISABLE_AUTO_MEMORY??null,compact:process.env.DISABLE_AUTO_COMPACT??null})+'\\n');
+      memory:process.env.CLAUDE_CODE_DISABLE_AUTO_MEMORY??null,compact:process.env.DISABLE_AUTO_COMPACT??null,
+      maxOut:process.env.CLAUDE_CODE_MAX_OUTPUT_TOKENS??null})+'\\n');
     if(process.argv[2]==='--version')process.stdout.write('2.1.280 (Claude Code)\\n');
     else if(process.argv[2]==='auth')process.stdout.write(${JSON.stringify(JSON.stringify(status))});
     else process.stdout.write(${JSON.stringify(terminal)});\n`;
@@ -223,6 +224,20 @@ it('runs the model command in the turn workspace with the per-turn settings appe
   // turns off the harness's own memory and its silent compaction.
   expect(commands.map(c => c.tmpdir)).toEqual([f.toolTurn.scratch, f.toolTurn.scratch, f.toolTurn.scratch]);
   expect(commands.map(c => [c.memory, c.compact])).toEqual([['1', '1'], ['1', '1'], ['1', '1']]);
+});
+
+// Plan #612 (live rc-2 proof room 1, updates 715674595 and 715674603): under a per-message cap of 2048 the CLI cut a long
+// answer and resumed it in a second message, and the JSON result carried only that last fragment. The tool route's
+// per-message cap is its own whole-turn bound, so the CLI never splits an answer the provider would admit; the
+// single-call routes keep 2048 (production-provider-subscription.test.ts). The total the provider admits is unchanged.
+it('gives the tool turn a per-message output cap equal to the route bound, and still refuses a frame over that bound', async () => {
+  const f = fixture(), policy = subscriptionToolsPolicy(f.model);
+  expect(policy.maxTokens).toBe(SUBSCRIPTION_MAX_OUTPUT_TOKENS * SUBSCRIPTION_TOOL_LIMITS.maxTurns);
+  expect(await value(createClaudeCodeSubscriptionRoute(f.input())).invoke('{"question":"long"}', f.bounds)).toMatchObject({ state: 'complete' });
+  expect(f.commands().map(c => c.maxOut)).toEqual(Array(3).fill(String(policy.maxTokens)));
+  const over = fixture({ outputTokens: policy.maxTokens + 1 });
+  expect(await value(createClaudeCodeSubscriptionRoute(over.input())).invoke('{"question":"long"}', over.bounds))
+    .toMatchObject({ state: 'uncertain', bytes: null });
 });
 
 it('starts or resumes the kept session the runner names, on the model command only, and refuses a malformed session id', async () => {
