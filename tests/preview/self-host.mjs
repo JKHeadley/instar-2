@@ -165,6 +165,14 @@ const GRANTS = new Set(['local-install', 'operator-storage-key']);
 const operatorCredential = reference => reference === 'preview-storage-key' && process.env.INSTAR_SECRET_PREVIEW_STORAGE_KEY
   ? { env: 'INSTAR_SECRET_PREVIEW_STORAGE_KEY', value: process.env.INSTAR_SECRET_PREVIEW_STORAGE_KEY } : null;
 
+/**
+ * The CLI's login profile as the provider credential custodian requires it: the host's own frozen
+ * descriptor ("host-owned frozen subscription descriptor required", src/assembly/provider-credential-custodian.ts).
+ * A plain parse leaves the file's object mutable, so the custodian refuses every valid profile and the
+ * route is never constructed — the shipped CLI reports "preview: subscription route refused" with no call.
+ */
+export const loadLoginProfile = path => Object.freeze(JSON.parse(readFileSync(path, 'utf8')));
+
 const main = async () => {
   const [command, ...rest] = process.argv.slice(2), options = {};
   for (let i = 0; i < rest.length; i += 2) {
@@ -182,7 +190,7 @@ const main = async () => {
   const model = options.model, stopped = stoppedAt(root);
   const { createSubscriptionProviderIO } = await import('../../scripts/production-boot-io.mjs');
   const activation = JSON.parse(readFileSync(options['activation-record'], 'utf8'));
-  const profile = JSON.parse(readFileSync(options['login-profile'], 'utf8'));
+  const profile = loadLoginProfile(options['login-profile']);
   const provider = await doorwayProvider({ doorwayId: options.doorway, io: createSubscriptionProviderIO({ repository: process.cwd(), stopped }),
     profile, activation, model, stopped });
   const report = await selfHost({ task: options.task, provider, repo: process.cwd(), root, grants, context: SELF_HOST_CONTEXT,

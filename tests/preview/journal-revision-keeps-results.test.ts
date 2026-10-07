@@ -9,6 +9,12 @@
 // review-withheld (status-d1hi.json `awaitingDelivery: 0`, `dueWork: 3`) although no objection named them.
 // Fix: the revision rewrites only the agent's prose; each result line it carried is attached again exactly as
 // written, before the revision's own review, so that review sees the text that is sent (Rules 8, 22, 46, 86, 92).
+// What this fixture is, against that recorded case. Replayed verbatim: the revision text below is the recorded
+// reply-d1hi.json bytes, its library-card blocker clause included. Reduced deliberately, and so NOT a replay of the
+// whole recorded turn: two finished results wait here rather than the recorded three (status-d1hi-before.json
+// `awaitingDelivery: 3`); the candidate carries one of the two objections the live check returned (self_state_claim;
+// the live `lastReplyCheck` also returned unrecorded_blocker on the library sentence); and the revision's own review
+// is a passing stub here, not a model call. It is a focused regression on the result-preservation step.
 import { expect, it } from 'vitest';
 import { mkdtempSync, realpathSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
@@ -33,8 +39,13 @@ const SELF_CLAIM = 'I already delivered the deferred answer earlier in our conve
 const HI_BODY = `Hi Justin! ${SELF_CLAIM} Here is what I owe you.`;
 const FINDINGS: ReplyFinding[] = [{ rule: 'self_state_claim', verdict: 'violation',
   reason: 'self_state_claim: Claims "delivered the deferred answer...in my next message" / "already completed earlier in our conversation", but history shows no prior message ever delivered that three-item ranking answer — only a confirmation of holding it open.' }];
-/** The recorded revision (reply-d1hi.json, update 46039598): the reviser's own wording of the results, no runner lines. */
-const REVISED = 'PREVIEW — Hi Justin! Since you just said hi, let me go ahead and give you that deferred answer now: the three things you\'ve told me that matter most for planning your week are (1) library card D-4\'s renewal; (2) your standing rule that every shopping list I write for you ends with "— K"; and (3) the pancake shopping list, which is already drafted and ready to use.\n\nLet me know if you want me to reorder these or add anything else.';
+/**
+ * The recorded revision, reply-d1hi.json (update 46039598), byte for byte: the reviser's own wording of the results,
+ * carrying no runner `Follow-up on "…"` line. Its library-card clause ("— still open, since I have no account
+ * access…", 195 characters) is part of the recorded text and is kept here; an earlier version of this fixture
+ * dropped it while claiming to be the recorded revision.
+ */
+const REVISED = 'PREVIEW — Hi Justin! Since you just said hi, let me go ahead and give you that deferred answer now: the three things you\'ve told me that matter most for planning your week are (1) library card D-4\'s renewal — still open, since I have no account access to log into the city library\'s site myself, so I need either you to renew it directly or the library\'s name/URL from you so I can summarize the steps; (2) your standing rule that every shopping list I write for you ends with "— K"; and (3) the pancake shopping list, which is already drafted and ready to use.\n\nLet me know if you want me to reorder these or add anything else.';
 
 const loopAnswer = (reply: string, quote: string) => JSON.stringify({ reply, memory: [],
   openLoops: [{ kind: 'deferral', quote, waitsOn: 'nothing' }] });
