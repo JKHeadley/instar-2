@@ -176,6 +176,17 @@ it('refuses contradicted/expired activation, changed artifact, wrong account, st
   writeFileSync(f.input.profile.executable, 'changed');
   expect(createClaudeCodeSubscriptionRoute(f.input).kind).toBe('Refused'); expect(f.commands()).toHaveLength(0);
 });
+// Rules 2 and 115: the custodian's frozen-descriptor check is the one that kept the shipped self-host
+// command away from its own doorway when the command handed over a plain `JSON.parse` result. Both arms
+// are stated here so a later repair of that command cannot be mistaken for loosening this check.
+it('admits a frozen host-owned descriptor and refuses the same descriptor unfrozen, with no dispatch', () => {
+  const f = fixture();
+  expect(createClaudeCodeSubscriptionRoute(f.input).kind).toBe('Success');
+  const mutable = { ...f.input.profile } as ProviderSubscriptionProfile;
+  expect(Object.isFrozen(mutable)).toBe(false);
+  expect(createClaudeCodeSubscriptionRoute({ ...f.input, profile: mutable, resolveProfile: () => mutable }).kind).toBe('Refused');
+  expect(f.commands()).toHaveLength(0);
+});
 it('refuses managed helpers and path swaps before dispatch', async () => {
   const f = fixture(); const route = value(createClaudeCodeSubscriptionRoute(f.input));
   writeFileSync(join(f.input.profile.configDirectory, 'managed-settings.json'), JSON.stringify({ apiKeyHelper: 'never-run' }));
