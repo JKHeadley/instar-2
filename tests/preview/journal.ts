@@ -5742,6 +5742,18 @@ export function createJournalWorker(journal: ReturnType<typeof openPreviewJourna
       // Old summary frames had no request disposition. Their covered turns are
       // already settled; attempting to summarize the same frontier cannot work.
       || summary.memoryFor === undefined && !turn.memoryPending && summary.through >= turn.update));
+  /** Whether any turn in the journal ever asked for a memory decision -- pendingMemory()'s own candidate test without
+   * its settlement clause. A correction hold with no such turn behind it at all (one an older build recorded whose
+   * request row is gone) keeps int11's held notice; one whose request has since settled is released, by whichever of
+   * the settlement routes pendingMemory() itself accepts. Live 2026-10-07 (proof room two, build 670853ef, update
+   * 6232680): the request settled through a summary frame carrying no memoryFor, which is neither of the two shapes
+   * the release looked for, so the hold outlived its cause with no route out while updates 6232681-6232683 were
+   * answered -- a latch, not a wait (Rules 15, 77, 95's open side). Strictly wider than the two shapes it replaces:
+   * a memoryUndecided item and a memoryFor-named item are both request candidates by construction.
+   */
+  const correctionRequestBehind = () => journal.view.order.some(turn => remembered(turn) && fromOperator(turn)
+    && turn.noticeClass !== 'too-long-input' && Buffer.byteLength(turn.text) <= journal.view.limits.maxBytes
+    && (turn.editOf || memoryCue(turn) || preferenceCue(turn) || turn.memoryPending));
   // A correction still being decided holds every proactive send until its judgment lands.
   const unresolvedReminderMemory = () => pendingMemory() !== undefined;
   // A later verified-operator turn may withdraw a reminder. Until its meaning is
@@ -7154,10 +7166,8 @@ export function createJournalWorker(journal: ReturnType<typeof openPreviewJourna
           delete turn.held;
         // A settled request (decided or recorded undecided, e.g. across a restart) releases
         // its correction hold; a hold with no request behind it keeps int11's held notice.
-        if (!pendingMemory() && turn.held === 'memory correction pending'
-          && journal.view.order.some(item => (item.memoryUndecided
-            || journal.view.summaries.some(summary => summary.memoryFor?.includes(item.id))))) {
-          delete turn.held; delete turn.heldSince;
+        if (!pendingMemory() && turn.held === 'memory correction pending' && correctionRequestBehind()) {
+          delete turn.held; delete turn.heldSince; journal.view.heldTurns.delete(turn);
         }
         if (turn.held === 'earlier turn pending' && !blockedEarlier) { delete turn.held; delete turn.heldSince; }
         // A request settled undecided because its own span cannot be summarized: that preflight refusal concerns the
