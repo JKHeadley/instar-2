@@ -7700,7 +7700,7 @@ export function createJournalWorker(journal: ReturnType<typeof openPreviewJourna
               .filter(item => item.id !== turn.id && item.intent === undefined).flatMap(item => item.answerReports ?? []));
             if (replying)
               for (const item of pendingReports(journal.view).filter(entry => !carried.has(entry.key))) {
-                const line = `\n\nFollow-up on "${clip(clean(redact(item.subject).text, true), 160)}": ${item.text}`;
+                const line = reportLine(item);
                 if (Buffer.byteLength(text) + Buffer.byteLength(line) > MAX_ANSWER_BYTES) break;
                 text = `${text.trimEnd()}${line}`; reports.push(item.key);
               }
@@ -7955,6 +7955,13 @@ export function createJournalWorker(journal: ReturnType<typeof openPreviewJourna
             // below; nothing the agent says releases a mandatory floor on its own (Rules 4, 57, 86).
             let revised: string | undefined;
             const originalPrompt = projectedReplyPrompt(turn.prompt) ?? reviewPrompt;
+            // Rules 8, 22, 92: the finished results this reply carries are the runner's lines, not the agent's draft. A
+            // revision rewrites only the agent's prose; each result line is attached again exactly as written, so the
+            // review of the revision sees it and an objection to the prose never withholds a result (live pre-switch
+            // sb-w4-updaterecord 04bed622, room four, D1c: the revision folded three results into its own wording, so
+            // none occurred verbatim and all three went back to owned work).
+            const resultLines = pendingReports(journal.view).filter(item => turn.answerReports?.includes(item.key))
+              .map(reportLine).filter(line => reply.includes(line));
             // Rule 89: the status command's report is the runner's own fixed account, signed as infrastructure, so
             // no model rewrites it; an objection to it stays a signal recorded with the send (Rule 86).
             const revisable = !(isStatusCommand(turn.text) && !turn.reserved);
@@ -7964,8 +7971,10 @@ export function createJournalWorker(journal: ReturnType<typeof openPreviewJourna
                 journal.append({ kind: 'reply-revision-reserve', id: turn.id, objections,
                   maxInputTokens: journal.view.limits.maxBytes, maxOutputTokens: subscriptionOutputMaximum, at: ports.now() });
                 let outcome: Awaited<ReturnType<NonNullable<NonNullable<PreviewPorts['replyCheck']>['revise']>>> | { state: 'failed'; text?: undefined; usage?: undefined; dispositions?: undefined; blocker?: undefined };
-                // The draft is revised without its Rule 110 disclosure, which code adds back to the final text.
-                const draft = continuity?.spoken ? reply.replace(`${continuity.disclosure} `, '') : reply;
+                // The draft is revised without its Rule 110 disclosure, which code adds back to the final text, and
+                // without the runner's own result lines, which code attaches again verbatim below.
+                const draft = resultLines.reduce((text, line) => text.replace(line, ''),
+                  continuity?.spoken ? reply.replace(`${continuity.disclosure} `, '') : reply);
                 try { outcome = await ports.replyCheck.revise({ text: concealSecretMaterial(redact(draft).text, heldValues), id: turn.id, originalPrompt,
                   ruleIds: objections.filter(item => item !== BARE_TOPIC_OBJECTION) as ReplyRule[], objections,
                   ...(checkRow?.findings ? { findings: checkRow.findings } : {}),
@@ -7988,7 +7997,8 @@ export function createJournalWorker(journal: ReturnType<typeof openPreviewJourna
               if (turn.revision?.state === 'complete' && turn.revision.text) {
                 let body = turn.revision.text.replace(/^PREVIEW(?=$|[\s:—])(?:\s*[:—])?\s*/u, '');
                 if (continuity && body.startsWith(continuity.disclosure)) body = body.slice(continuity.disclosure.length).trimStart();
-                const candidate = actionHeader === undefined ? disclosed(`PREVIEW — ${body}`) : `${actionHeader}\n${body}`;
+                const prose = actionHeader === undefined ? disclosed(`PREVIEW — ${body}`) : `${actionHeader}\n${body}`;
+                const candidate = `${prose.trimEnd()}${resultLines.filter(line => !prose.includes(line)).join('')}`;
                 // The agent keeping its draft unchanged is its answer, not a new candidate: nothing to re-review.
                 // The same text with a newly declared investigation record is a new candidate (plan #104).
                 if ((candidate !== reply || turn.revision.blocker !== undefined) && !redact(candidate).count && !secretMaterialIn(candidate, heldValues) && fits(candidate))
@@ -8663,6 +8673,9 @@ export function createJournalWorker(journal: ReturnType<typeof openPreviewJourna
     }
     return result;
   };
+  /** The runner's line that carries one finished result in a reply (Rules 8, 92). */
+  const reportLine = (item: { subject: string; text: string }) =>
+    `\n\nFollow-up on "${clip(clean(redact(item.subject).text, true), 160)}": ${item.text}`;
   /** The declared obligations a reply about to be sent actually says (Rules 6, 20-23, 99). */
   const sentObligations = (turn: Turn, reply: string, at: number) => {
     const open = new Set(openBlockers(journal.view).map(item => item.id));
