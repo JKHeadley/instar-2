@@ -3,9 +3,11 @@
 // Every tool of the harness's built-in set is offered; this decides each call. Ordinary work is admitted; a consequential
 // effect goes to the effect doorway; a call whose liability the turn cannot reserve is refused for budget; a tool outside
 // the classified set (a harness the adapter has not been updated for) is refused, since nothing here says what it does.
-// - Ordinary: a file read or search of the workspace or the system files the shell may also read, and a file write or
-//   edit inside the workspace, each decided on the resolved file (toolRoots, resolvedPath); a sandboxed shell
-//   command (not judged by the words it contains: what it can reach is enforced where it runs: the sandbox's read, write,
+// - Ordinary: a file read, search, write or edit of the turn's own workspace and the shell's temporary directory beside
+//   it, each decided on the resolved file (toolRoots, resolvedPath): a file tool reads the agent's own place and nothing
+//   else, whatever the sandbox additionally reopens so that a command can run at all; a sandboxed shell
+//   command that names no path under the host's own configuration (HOST_CONFIG_ROOTS, commandPaths), and otherwise not
+//   judged by the words it contains: what it can reach is enforced where it runs: the sandbox's read, write,
 //   network and process scope, the turn's fixed-size scratch volume, the per-file limit); a web read (WebFetch is GET
 //   only, WebSearch is a search) of a public host; a subagent of the registered `worker` type within the turn's shared
 //   subagent budget, started by the turn or by another subagent, recorded as a Rule 114 edge; an MCP tool the root's
@@ -72,6 +74,30 @@ function egressEnvironment(egress) {
  * a mounted volume, a login profile or the runner root is on it. */
 export const SHELL_RUNTIME_READS = Object.freeze(['/bin', '/sbin', '/usr/bin', '/usr/sbin', '/usr/lib', '/usr/libexec', '/usr/share',
   '/usr/local', '/opt/homebrew', '/System', '/Library/Developer/CommandLineTools', '/private/var/select', '/private/etc', '/dev']);
+/**
+ * The host's own configuration, by both spellings (`/etc` is a link to `/private/etc` on macOS and a directory of its own
+ * elsewhere). Rules 1 and 57 (plan #615): the sandbox has to keep this readable for a command to run at all — name
+ * resolution reads `/etc/hosts` itself, zsh its startup files, a trust store its certificates — so the kernel cannot
+ * close it without stopping every command that resolves a name. Its content is the host's, not the agent's work, so the
+ * admission boundary closes it instead: a file tool never reads outside the workspace (toolRoots), and a shell command
+ * that NAMES a path resolving here is refused (admitToolCall). Nothing else the sandbox reopens carries the host's or the
+ * operator's own material — binaries, libraries and OS data are the machinery a command runs on — and every path beyond
+ * them is already refused at open by the sandbox, so this is the one place a name check adds a refusal.
+ */
+export const HOST_CONFIG_ROOTS = Object.freeze(['/etc', '/private/etc']);
+const COMMAND_PATH = /(?<![A-Za-z0-9_.@~/+-])(?:\/|\.\.\/)[A-Za-z0-9_./@~+-]*/gu;
+/**
+ * The paths a shell command names, as written: each run of path characters that starts a token (at the start of the
+ * command, or after anything that is not itself part of a path) with `/` or with `..`. Runs of slashes are collapsed, so
+ * a `file:///etc/hosts` names `/etc/hosts`; a URL's authority (`https://host/x`) collapses to a path that resolves
+ * nowhere under the host configuration, which is all this is asked. A run that stops early at a character outside the
+ * set (a glob, a redirection, a quote) yields the path's leading part, which is a directory on its way — enough to
+ * decide the root it lies under. A spelling this does not see is still bounded where the command runs: the hook is an
+ * early refusal here, the sandbox is the floor.
+ */
+export function commandPaths(command) {
+  return [...String(command).matchAll(COMMAND_PATH)].map(match => match[0].replace(/\/{2,}/gu, '/')).filter(path => path.length > 1);
+}
 const SBPL_PATH = /^\/[A-Za-z0-9_./@-]+$/u;
 /**
  * The confined shell's macOS sandbox profile (`shell-sandbox-v1`), for a harness whose own sandbox is not used: a
@@ -266,17 +292,19 @@ export function containedIn(workspace, path, fs) {
   const real = resolvedPath(workspace, path, fs);
   return real !== null && under(real, workspace);
 }
-/** Where a tool may write: the turn's workspace and the shell's temporary directory (both on the fixed-size scratch volume,
- * the sandbox's only write root). Where it may read: those, plus the system locations the sandbox reopens for commands
- * (`config.reads`, real paths: binaries, libraries, /private/etc). The hook and the sandbox share these sets and both
- * decide on the resolved file, so no readable file is refused for how it was spelled. The sandbox decides at open (the
- * kernel), so no spelling reaches past it; the hook decides before the harness opens, so it is an early refusal and a
- * change the agent makes on that path between its check and the harness's open is not caught here: an OPEN race,
- * pre-existing and closable only by running the harness as its own OS user (docs/defects/2026-10-03-file-tool-swap-race.md).
- * Users' homes, keychains, the runner root, other roots and the admission state lie outside both sets. */
+/** Where a file tool may read and write: the turn's workspace and the shell's temporary directory beside it (both on the
+ * fixed-size scratch volume, the sandbox's only write root) — one set for both directions, decided on the resolved file,
+ * so no spelling of a path outside the agent's own place crosses in either direction. The system locations the sandbox
+ * additionally reopens (`config.reads`: binaries, libraries, the host configuration) are there so that a COMMAND can run
+ * at all; they are not a file tool's to read, and a file tool that named one was how the agent read and quoted
+ * `/etc/hosts` live on 2026-10-06 (rules 1 and 57, plan #615). The sandbox decides at open (the kernel), so no spelling
+ * reaches past it; the hook decides before the harness opens, so it is an early refusal and a change the agent makes on
+ * that path between its check and the harness's open is not caught here: an OPEN race, pre-existing and closable only by
+ * running the harness as its own OS user (docs/defects/2026-10-03-file-tool-swap-race.md). Users' homes, keychains, the
+ * runner root, other roots and the admission state lie outside this set, as the system locations now do. */
 export function toolRoots(config) {
   const writes = [config.workspace, ...(typeof config.tmp === 'string' ? [config.tmp] : [])];
-  return { writes, reads: [...writes, ...(Array.isArray(config.reads) ? config.reads.filter(root => typeof root === 'string' && root.startsWith('/')) : [])] };
+  return { writes, reads: writes };
 }
 
 /** Whether an IP address is on the public internet (not loopback, private, link-local, shared, multicast or reserved). */
@@ -501,15 +529,14 @@ export function admitToolCall(call, config, n, fs, child = 1, now) {
   if (FILE_TOOLS.includes(tool)) {
     const key = tool === 'NotebookEdit' ? 'notebook_path' : 'file_path', path = input[key];
     const at = place(path, tool === 'Read' ? 'reads' : 'writes');
-    if (!at.ok) return deny(tool === 'Read' ? `path outside the workspace and the system files: ${at.why}`
-      : `path outside the workspace: ${at.why}`, 'scope');
+    if (!at.ok) return deny(`path outside the workspace: ${at.why}`, 'scope');
     if (tool === 'Write' && Buffer.byteLength(String(input.content ?? '')) > config.maxWriteBytes)
       return deny(`write larger than ${config.maxWriteBytes} bytes`, 'scope');
     return { decision: 'allow', reason: tool === 'Read' ? 'ordinary file read' : 'ordinary in-workspace file operation', ...rewrite(key, at) };
   }
   if (SEARCH_TOOLS.includes(tool)) {
     const at = place(input.path ?? config.workspace, 'reads');
-    if (!at.ok) return deny(`search outside the workspace and the system files: ${at.why}`, 'scope');
+    if (!at.ok) return deny(`search outside the workspace: ${at.why}`, 'scope');
     const shape = tool === 'Glob' ? String(input.pattern ?? '') : String(input.glob ?? '');
     if (shape.startsWith('/') || shape.includes('..')) return deny(`search pattern outside the workspace: ${shape}`, 'scope');
     return { decision: 'allow', reason: 'ordinary search', ...(input.path === undefined ? {} : rewrite('path', at)) };
@@ -517,6 +544,16 @@ export function admitToolCall(call, config, n, fs, child = 1, now) {
   if (tool === 'Bash') {
     const command = String(input.command ?? '');
     if (!command.trim()) return deny('empty command');
+    // Rules 1 and 57 (plan #615): a command that NAMES the host's own configuration is refused here, because that is the
+    // one thing the sandbox cannot refuse at open (HOST_CONFIG_ROOTS: closing it would stop every command that resolves a
+    // name). Live on 2026-10-03 the model read the whole of /etc/hosts this way, by its /private spelling, after the hook
+    // had refused the same file to Read. Every other path beyond the turn's volume is refused at open by the sandbox, so
+    // nothing else here is judged by the words the command contains.
+    const named = commandPaths(command).find(path => {
+      const real = resolvedPath(config.workspace, path, fs);
+      return real !== null && HOST_CONFIG_ROOTS.some(root => under(real, root));
+    });
+    if (named !== undefined) return deny(`command names a path outside the workspace, in the host's own configuration: ${named}`, 'scope');
     // A confined shell (`shellProfile` set) runs every command under the step's own sandbox profile, whatever the
     // harness asked for; otherwise the harness's own sandbox bounds it and an unsandboxed request is an effect.
     if (config.shellProfile) return { decision: 'allow', reason: 'confined command',
