@@ -204,7 +204,7 @@ function draft(base, title) {
     ...hits.deferrals.map(h => `Deferral: ${h} | commitment=<ref> or not-a-deferral=<reason>`),
     ...hits.skips.map(h => `Skip: ${h} | quarantine=<docs/defects/...> or scope=<reason>`),
     '', `Subject (${subject.length} paths): ${subject.join(', ')}`, '', '## Closing block', '',
-    'simplestRobustRoute: ', '80/20: ', 'VERDICT: author submission; the independent verdict is recorded as a pass'];
+    'simplestRobustRoute: ', '80/20: ', 'VERDICT: author submission; this record asserts no independent verdict — the review desk records its own'];
   console.log(out.join('\n'));
 }
 
