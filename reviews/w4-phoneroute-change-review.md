@@ -17,7 +17,7 @@ Layer below: Purpose's account-access exception; Rules 79/82; glossary's operato
 Bug class: unit
 Bug evidence: reproducer=tests/preview/phone-route-proof.test.ts
 Hook bypass: none; core.hooksPath unset and default hooks directory contains only sample files, inspected 2026-10-08.
-Convergence: none; author submission for the pipeline's independent review.
+Convergence: none
 Decision: connect-existing-review | the current desk acceptance names the same trial as both rooms, so use existing explicit-yes flags and the agent GitHub token without buying a Telegram identity or accepting chat impersonation | reported=/Users/dabombstudio/.instar/agents/echo/.instar/lanes/w4-phoneroute-PROGRESS.md
 Decision: ceiling-is-untested | Rule 79 says every action needing the operator is phone-completable; a trial already at the reviewed maximum offers no renewal on any surface, so classify that proof UNTESTED without changing the limit or granting PASS | reported=/Users/dabombstudio/.instar/agents/echo/.instar/lanes/w4-phoneroute-PROGRESS.md
 Decision: one-proof-predicate | M and Q use one versioned read-only predicate to prevent their connection/disclosure requirements drifting; missing files, declarations, source facts or available routes remain FAIL | reported=/Users/dabombstudio/.instar/agents/echo/.instar/lanes/w4-phoneroute-PROGRESS.md
