@@ -60,7 +60,12 @@ it.each([['bounded', 0], ['oversized', 5000]])('polls status at the call cap and
       '--configuration-digest', trial.configurationDigest, '--expires-at', String(trial.expiresAt),
       '--tools', 'off', '--activation-record', activation, '--operator-records', join(world.directory, 'operator-records'), '--login-profile', profile, '--model', world.model,
       '--bot-username', world.configuration.botUsername, '--max-cycles', '2', '--max-poll-seconds', '1'],
-      { cwd: process.cwd(), encoding: 'utf8', timeout: 10000, env });
+      // The launch boots the runner and spawns one bounded transport child per Telegram call through the
+      // resource owner's limit shim, so its wall time is process-start cost, not work. tests/preview/
+      // journal-agent-resources.test.ts budgets the same launch shape (one cycle more) at 30s under a 45s
+      // test; this one's 10s was the outlier and the gate's loaded full run crossed it after the run had
+      // already printed its final paused notice. Every assertion below is unchanged.
+      { cwd: process.cwd(), encoding: 'utf8', timeout: 30000, env });
     expect(run.status, run.stderr).toBe(0);
     expect(readFileSync(log, 'utf8')).toContain('getUpdates');
     journal = openPreviewJournal(join(root, 'journal.encrypted'), OFFLINE_STORAGE_KEY);
@@ -79,7 +84,7 @@ it.each([['bounded', 0], ['oversized', 5000]])('polls status at the call cap and
     }
     journal.close();
   } finally { endpoint.kill('SIGTERM'); }
-}, 30000);
+}, 45000);
 
 it.each(['SIGINT','SIGTERM','SIGHUP'])('pauses on %s during synchronous idle polls and resumes on launch', async signal => {
   const world = successiveWorld(), root = join(world.directory, 'idle-journal');
