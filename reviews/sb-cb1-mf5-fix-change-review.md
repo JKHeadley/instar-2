@@ -26,8 +26,16 @@ Prompt finding: 849db3a6296a | protocol-literal | Existing fixed reply literal i
 Prompt finding: bd01de21286a | protocol-literal | Existing capability guidance in journal.ts, unchanged
 Prompt finding: fb5fa7e706c8 | protocol-literal | Existing capability guidance in journal.ts, unchanged
 
+## Retained CB1-MF5 obligation — OPEN / BLOCKED
+
+The declaration split is partial work; CB1-MF5 is not closed. All three second rungs still use `decidesAlone: ruled-three` with `decidesAloneBasis: recorded-governed-state` and no `enforces` record/decoder pair. `bindPreviewBlockingSites` checks those labels, while `checkGovernedState` checks record consumption and approved history only for the `governed-state` category. Passing schema binding, unchanged journal replay and sealed activation evidence do not establish P3-NF-26/27 conformance. The unsupported supersession/closure claim is withdrawn (Astra sb-cb1-mf5-fix round 1 MUST-FIX 1).
+
+Owner: existing Part Two version-chain and register/landing-provider owners. Dependency: CB7-R90's verified explicit-yes authorization plus the actual entering-force/extract/landing provider and required separations; implementation and wiring remain agent work. Next recheck: every combined-build integration review and when the named dependency lands; the desk checks the ledger each status post.
+
+Closure evidence: supply the governed trial-limits record/schema, actually read it and invoke its decoder at the gate, establish approved history and operator-writer/executor separation through the existing sealed authority, then split stop from governed expiry/capacity rungs. Prove authorized and missing/unapproved/self-writable neighbors. Preserve stop, expiry, resource bounds, retained input and all agent abilities. A cosmetic relabel, preview-owned substitute or widened replay exception does not close the obligation. The exact carried obligation remains in /Users/dabombstudio/.instar/agents/echo/.instar/lanes/constitution-audit/blocked-items.md, restored from the accepted flap-a round-four ledger.
+
 ## Closing block
 
-simplestRobustRoute: This is the simplest robust route: ordinary merge of the reviewed declaration correction, then existing desk regeneration and targeted checks. Existing multi-rung bindings prevent misleading single-cause declarations without a new authority system. Start guards are composition validation; runtime stop, expiry, spend and capacity limits remain intact; the end state is a coherent committed binding and generated register. No new autonomous behavior or unattended-completion claim.
+simplestRobustRoute: This is the simplest robust route: ordinary merge of the reviewed declaration correction, then existing desk regeneration and targeted checks. Existing multi-rung bindings prevent misleading single-cause declarations without a new authority system. Start guards are composition validation; runtime stop, expiry, spend and capacity limits remain intact; the end state is a coherent committed binding and generated register. No new autonomous behavior, unattended-completion or governed-authority closure claim; the retained CB1-MF5 obligation above remains open.
 80/20: Verify both causes and their boundary neighbors, durable expiry, polling through capacity, spend-cap regressions, context floor and register e2e. Independent convergence and the full-suite landing gate belong to the pipeline.
 VERDICT: author submission; this record asserts no independent verdict — the review desk records its own
