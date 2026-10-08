@@ -1,4 +1,6 @@
 import { describe, expect, it } from 'vitest';
+import { createHash } from 'node:crypto';
+import { readAnswer } from './answer-reading.js';
 import { copyFileSync, mkdtempSync, readFileSync, realpathSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
@@ -216,7 +218,8 @@ function world(maxCalls = genesis.maxCalls, path?: string) {
   const file = path ?? join(root, 'journal.encrypted');
   const journal = openPreviewJournal(file, key, { ...genesis, maxCalls });
   const asks: { id: string; question: string | undefined; state: string }[] = [], modelIds: string[] = [];
-  let followUp: (state: string) => Reply = () => ({ state: 'complete', value: JSON.stringify({ uninspected: [], findings: [] }) });
+  let followUp: (state: string) => Reply = state => ({ state: 'complete',
+    value: JSON.stringify({ inspectedDuties: (JSON.parse(state) as { followUpDuties: string[] }).followUpDuties, findings: [] }) });
   let first: (state: string) => string = state => firstAnswer(state);
   let during: (id: string) => void = () => {};
   const worker = createJournalWorker(journal, { now: () => start, stopped: () => false, timeZone: 'America/Los_Angeles',
@@ -407,5 +410,85 @@ describe('the follow-up on REAL model answers (rule 106)', () => {
     expect(dutiesLeftUninspected(merged)).toEqual(draft.asked.filter(duty => !planDecides(held)(duty)));
     expect(merged.duties).toEqual(held.duties);
     expect(RETRO_DUTY_FOLLOWUP_QUESTION).toContain('Never write a finding to say that nothing was found');
+  });
+});
+
+
+describe('train-1 I1b: explicit inspections on the exact failed packet', () => {
+  const recorded = JSON.parse(readFileSync(new URL('./fixtures/retrospective-duty-followup-train-1-2026-10-08.json', import.meta.url), 'utf8')) as {
+    plan: Pick<RetrospectivePlan, 'cases' | 'omitted' | 'waiverAvailable' | 'waiverRefs'>;
+    at: number; contextDigest: string; held: RetroResult; firstAnswer: string; oldFollowUp: string;
+    question: string; questionSha256: string; otherShapes: { kind: string; id: string; raw: string; source: string }[]; calls: { raw: string; answer: string; outputTokens: number }[] };
+  const mergeRecorded = (answer: unknown) => mergeDutyFollowUp(answer, recorded.plan, view, 0, recorded.held, recorded.at, recorded.contextDigest);
+  const asked = dutiesLeftUninspected(recorded.held);
+
+  it('reproduces the recorded contradiction without rewriting the old judgment as success', () => {
+    const first = validateRetrospective(JSON.parse(recorded.firstAnswer), recorded.plan, view, 0, recorded.at, recorded.contextDigest);
+    expect(first.duties).toEqual(recorded.held.duties);
+    expect(asked).toEqual(['unsupported-reversal', 'recurrence', 'removable-attention', 'workaround', 'process-tier', 'proportionality']);
+    expect((JSON.parse(recorded.oldFollowUp) as { reasoning: string }).reasoning).toContain('Others: nothing found');
+    expect(dutiesLeftUninspected(mergeRecorded(JSON.parse(recorded.oldFollowUp))))
+      .toEqual(['removable-attention', 'workaround', 'process-tier', 'proportionality']);
+  });
+
+  it('three real calls with the shipped question inspect all asked duties and preserve first-pass accounting', () => {
+    expect(recorded.question).toBe(RETRO_DUTY_FOLLOWUP_QUESTION);
+    expect(recorded.questionSha256).toBe(createHash('sha256').update(RETRO_DUTY_FOLLOWUP_QUESTION).digest('hex'));
+    expect(recorded.calls).toHaveLength(3);
+    for (const call of recorded.calls) {
+      const reading = readAnswer(call.raw, { wrapped: 'refuse', evidence: ['retrospective:0:duties'] });
+      expect(reading.ok).toBe(true);
+      if (!reading.ok) throw Error(reading.defect);
+      expect(reading.value).toBe(call.answer);
+      const result = mergeRecorded(JSON.parse(reading.value));
+      expect(i1b(result.duties)).toBe(true);
+      expect(call.outputTokens).toBeLessThan(2048);
+      for (const field of ['inspected', 'omitted', 'grades', 'feedback', 'authorizations', 'comparisons', 'closures', 'efficiency', 'gravityWells'] as const)
+        expect(result[field], field).toEqual(recorded.held[field]);
+    }
+  });
+
+  it('recorded summary, Jev, reply-review and delivered/empty reply shapes cannot claim a duty inspection', () => {
+    expect(recorded.otherShapes.map(row => row.kind)).toEqual(['summary-writer', 'summary-uncertain', 'jev-undecided',
+      'jev-unsure', 'reply-review', 'delivered-reply', 'empty-reply-in-recorded-context']);
+    for (const row of recorded.otherShapes) {
+      const reading = readAnswer(row.raw, { wrapped: 'refuse', evidence: [row.id] });
+      let value: unknown;
+      try { value = JSON.parse(reading.ok ? reading.value : row.raw) as unknown; } catch { value = row.raw; }
+      if (typeof value !== 'object' || value === null || Array.isArray(value)) {
+        expect(() => mergeRecorded(value), row.kind).toThrow();
+      } else {
+        const result = mergeRecorded(value);
+        expect(result.duties, row.kind).toEqual(recorded.held.duties);
+        expect(result.grades, row.kind).toEqual(recorded.held.grades);
+      }
+    }
+  });
+
+  it('an omitted duty stays uninspected; only explicitly inspected duties are taken', () => {
+    const partial = mergeRecorded({ inspectedDuties: asked.slice(1), findings: [] });
+    expect(dutiesLeftUninspected(partial)).toEqual([asked[0]]);
+    expect(i1b(partial.duties)).toBe(false);
+    expect(mergeRecorded({ inspectedDuties: [], findings: [] }).duties).toEqual(recorded.held.duties);
+  });
+
+  it('malformed, unknown, outside-ask and conflicting lists never fall back to an all-inspected claim', () => {
+    for (const fields of [{}, { inspectedDuties: null }, { inspectedDuties: 'all' }, { inspectedDuties: ['typo'] },
+      { inspectedDuties: [...asked, 'waiver-recurrence'] }, { inspectedDuties: asked, uninspected: [] }])
+      expect(mergeRecorded({ ...fields, findings: [] }).duties).toEqual(recorded.held.duties);
+  });
+
+  it('explicit inspection still needs valid evidence for a claimed finding', () => {
+    for (const refs of [[], ['answer:absent']]) {
+      const result = mergeRecorded({ inspectedDuties: asked,
+        findings: [{ duty: asked[0], refs, summary: 'A claimed reversal', disposition: { owner: 'agent', next: 'investigate' } }] });
+      expect(dutiesLeftUninspected(result)).toEqual([asked[0]]);
+      expect(result.findings).toEqual(recorded.held.findings);
+    }
+    const result = mergeRecorded({ inspectedDuties: asked,
+      findings: [{ duty: 'workaround', refs: [recorded.plan.cases[0]!.id], summary: 'Review a manual step',
+        disposition: { owner: 'agent', next: 'investigate' } }] });
+    expect(i1b(result.duties)).toBe(true);
+    expect(result.findings.at(-1)).toMatchObject({ duty: 'workaround', id: 'retro:0:duties:0' });
   });
 });
