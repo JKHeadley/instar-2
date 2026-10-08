@@ -30,7 +30,7 @@ Prompt finding: bd01de21286a | protocol-literal | existing memory-grounding prom
 Prompt finding: fb5fa7e706c8 | protocol-literal | existing memory-grounding prompt wording in journal.ts, unchanged by this change (as dispositioned in reviews/rc-2-pipeline-repair-change-review.md and reviews/w4-d1c-repair1-change-review.md)
 Deferral: none
 
-Subject (2 paths): tests/preview/journal-exhausted-settle-drain.test.ts, tests/preview/journal.ts
+Subject (9 paths): generated/capabilities.json, generated/capabilities.md, generated/coverage.md, generated/glossary.md, generated/register.json, generated/rules.md, generated/source.json, tests/preview/journal-exhausted-settle-drain.test.ts, tests/preview/journal.ts
 
 ## Closing block
 
