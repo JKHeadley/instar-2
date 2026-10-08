@@ -417,7 +417,7 @@ export function removeHarnessState(link, base = HARNESS_TURNS) {
 export const HARNESS_OFF_REASON = 'no --harness-user was given';
 /** The operator's status line for the harness identity (Rule 84). Not ready is never a fallback: launches are held. */
 export const harnessStatusLine = harness => harness?.ready
-  ? `Harness identity: Claude Code runs as its own macOS user (${harness.user}). The kernel refuses its opens of the operator account's private files; its login and MCP credentials reach it only through a one-shot hand-off, never a file it can open; new /private/tmp entries are denied to it from creation; operator files every local user may read elsewhere stay readable to it.`
+  ? `Harness identity: Claude Code runs as its own macOS user (${harness.user}). The kernel refuses its opens of the operator account's private files; its login and MCP credentials reach it only through a one-shot hand-off, never a file it can open; new entries in the system temporary folder are denied to it from creation; operator files every local user may read elsewhere stay readable to it.`
   : harness?.reason === HARNESS_OFF_REASON ? `Harness identity: REFUSED, tool turns are not run, because Claude Code would run as the operator's account (${harness.reason}); `
     + 'answers are text only until the separate harness user is ready.'
   : harness?.reason ? `Harness identity: UNAVAILABLE, so every Claude Code launch is held (nothing runs as the operator's account) until the separate harness user is ready again: ${harness.reason}.`
