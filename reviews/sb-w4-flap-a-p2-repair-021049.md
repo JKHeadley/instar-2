@@ -27,6 +27,8 @@ Prompt finding: fb5fa7e706c8 | protocol-literal | Existing operator-history guid
 
 Verification: Five new regression cases fail against base journal.ts. Repaired tree passes all 58 tests in business-step-supervision, flap-a-declarations, journal-requested-action and format-retry. Positive and repeated-invalid replacements bind two new checks before retry reservation; violation and outage at both boundaries prevent a second call/send and survive journal reopen. Typecheck passes. Desk rehash and inventory repin found zero changed pins; generated register replay follows the source commit. Studio saved gate results exceed the read-only API's size limit; no synthetic full-suite result replaces them.
 
+Register replay: Regenerated generated/ against source repair c706f4a8. Owner manifest rehash and inventory repin found no changes; no pin was edited by hand.
+
 ## Closing block
 
 simplestRobustRoute: This is the simplest robust route: extract the existing due-packet checkpoint into a local helper and reuse it before the declaration/format replacement. The credible failure is a retry executing with judgments bound to its old packet. Start is a requested-action retry candidate; end is a supervised bounded retry and existing send path, or a durable hold. Existing cap, stop, exact validators and one-retry bounds remain. Captured-output replay exercises the shipped worker; no new unattended live-provider proof is claimed.
