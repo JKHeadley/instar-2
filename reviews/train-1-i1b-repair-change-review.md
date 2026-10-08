@@ -21,22 +21,26 @@ Convergence: none
 Decision: train-1-i1b-positive | Replace inverse follow-up accounting with explicit inspections; do not reinterpret the old contradictory answer, infer from prose, or add another retry | reported=/Users/dabombstudio/.instar/agents/echo/.instar/lanes/train-1-repair-PROGRESS.md
 Decision: train-1-i1b-evidence | Check saved root-bound artifacts at their unchanged original root without rewriting results or rebinding the old process to a new tree; the automatic pipeline supplies fresh whole-run evidence | reported=/Users/dabombstudio/.instar/agents/echo/.instar/lanes/train-1-repair-PROGRESS.md
 Prompt review: General duty instructions, no copied scenario trigger or answer hint. Fixture pins the exact question and its SHA-256. Three real claude-sonnet-5 replies to the failed room packet pass through the shipped readAnswer and mergeDutyFollowUp; 294/297/326 output tokens, within 2048. Additional recorded shapes are negative cross-role controls, not substituted successful inspections. Summary 715672480, uncertain 715672483, Jev undecided 715672482 and unsure 969389570, reviewer 969390016, delivered 715672479, empty reply context 715672550. The empty candidate has no delivery claim: no actually empty sent intent remained in the read-only live journal queried. End-to-end fresh pre-switch proof remains the pipeline's next run.
-Deferral: tests/preview/fixtures/retrospective-duty-followup-train-1-2026-10-08.json:165 | not-a-deferral=verbatim recorded model evidence, not a new work commitment
-Deferral: tests/preview/fixtures/retrospective-duty-followup-train-1-2026-10-08.json:169 | not-a-deferral=verbatim recorded model evidence, not a new work commitment
-Deferral: tests/preview/fixtures/retrospective-duty-followup-train-1-2026-10-08.json:173 | not-a-deferral=verbatim recorded model evidence, not a new work commitment
-Deferral: tests/preview/fixtures/retrospective-duty-followup-train-1-2026-10-08.json:177 | not-a-deferral=verbatim recorded model evidence, not a new work commitment
-Deferral: tests/preview/fixtures/retrospective-duty-followup-train-1-2026-10-08.json:181 | not-a-deferral=verbatim recorded model evidence, not a new work commitment
-Deferral: tests/preview/fixtures/retrospective-duty-followup-train-1-2026-10-08.json:185 | not-a-deferral=verbatim recorded model evidence, not a new work commitment
-Deferral: tests/preview/fixtures/retrospective-duty-followup-train-1-2026-10-08.json:189 | not-a-deferral=verbatim recorded model evidence, not a new work commitment
-Deferral: tests/preview/fixtures/retrospective-duty-followup-train-1-2026-10-08.json:193 | not-a-deferral=verbatim recorded model evidence, not a new work commitment
-Deferral: tests/preview/fixtures/retrospective-duty-followup-train-1-2026-10-08.json:197 | not-a-deferral=verbatim recorded model evidence, not a new work commitment
-Deferral: tests/preview/fixtures/retrospective-duty-followup-train-1-2026-10-08.json:201 | not-a-deferral=verbatim recorded model evidence, not a new work commitment
-Deferral: tests/preview/fixtures/retrospective-duty-followup-train-1-2026-10-08.json:205 | not-a-deferral=verbatim recorded model evidence, not a new work commitment
-Deferral: tests/preview/fixtures/retrospective-duty-followup-train-1-2026-10-08.json:209 | not-a-deferral=verbatim recorded model evidence, not a new work commitment
-Deferral: tests/preview/fixtures/retrospective-duty-followup-train-1-2026-10-08.json:645 | not-a-deferral=verbatim recorded model evidence, not a new work commitment
-Deferral: tests/preview/fixtures/retrospective-duty-followup-train-1-2026-10-08.json:652 | not-a-deferral=verbatim recorded model evidence, not a new work commitment
-Deferral: tests/preview/fixtures/retrospective-duty-followup-train-1-2026-10-08.json:683 | not-a-deferral=verbatim recorded model evidence, not a new work commitment
-Deferral: tests/preview/fixtures/retrospective-duty-followup-train-1-2026-10-08.json:689 | not-a-deferral=verbatim recorded model evidence, not a new work commitment
+
+Deferral: generated/register.json:1 | not-a-deferral=generated constitutional text or verbatim recorded evidence, not a new commitment
+Deferral: tests/preview/fixtures/retrospective-duty-followup-train-1-2026-10-08.json:165 | not-a-deferral=generated constitutional text or verbatim recorded evidence, not a new commitment
+Deferral: tests/preview/fixtures/retrospective-duty-followup-train-1-2026-10-08.json:169 | not-a-deferral=generated constitutional text or verbatim recorded evidence, not a new commitment
+Deferral: tests/preview/fixtures/retrospective-duty-followup-train-1-2026-10-08.json:173 | not-a-deferral=generated constitutional text or verbatim recorded evidence, not a new commitment
+Deferral: tests/preview/fixtures/retrospective-duty-followup-train-1-2026-10-08.json:177 | not-a-deferral=generated constitutional text or verbatim recorded evidence, not a new commitment
+Deferral: tests/preview/fixtures/retrospective-duty-followup-train-1-2026-10-08.json:181 | not-a-deferral=generated constitutional text or verbatim recorded evidence, not a new commitment
+Deferral: tests/preview/fixtures/retrospective-duty-followup-train-1-2026-10-08.json:185 | not-a-deferral=generated constitutional text or verbatim recorded evidence, not a new commitment
+Deferral: tests/preview/fixtures/retrospective-duty-followup-train-1-2026-10-08.json:189 | not-a-deferral=generated constitutional text or verbatim recorded evidence, not a new commitment
+Deferral: tests/preview/fixtures/retrospective-duty-followup-train-1-2026-10-08.json:193 | not-a-deferral=generated constitutional text or verbatim recorded evidence, not a new commitment
+Deferral: tests/preview/fixtures/retrospective-duty-followup-train-1-2026-10-08.json:197 | not-a-deferral=generated constitutional text or verbatim recorded evidence, not a new commitment
+Deferral: tests/preview/fixtures/retrospective-duty-followup-train-1-2026-10-08.json:201 | not-a-deferral=generated constitutional text or verbatim recorded evidence, not a new commitment
+Deferral: tests/preview/fixtures/retrospective-duty-followup-train-1-2026-10-08.json:205 | not-a-deferral=generated constitutional text or verbatim recorded evidence, not a new commitment
+Deferral: tests/preview/fixtures/retrospective-duty-followup-train-1-2026-10-08.json:209 | not-a-deferral=generated constitutional text or verbatim recorded evidence, not a new commitment
+Deferral: tests/preview/fixtures/retrospective-duty-followup-train-1-2026-10-08.json:645 | not-a-deferral=generated constitutional text or verbatim recorded evidence, not a new commitment
+Deferral: tests/preview/fixtures/retrospective-duty-followup-train-1-2026-10-08.json:652 | not-a-deferral=generated constitutional text or verbatim recorded evidence, not a new commitment
+Deferral: tests/preview/fixtures/retrospective-duty-followup-train-1-2026-10-08.json:683 | not-a-deferral=generated constitutional text or verbatim recorded evidence, not a new commitment
+Deferral: tests/preview/fixtures/retrospective-duty-followup-train-1-2026-10-08.json:689 | not-a-deferral=generated constitutional text or verbatim recorded evidence, not a new commitment
+
+Register provenance: source repair 5b0c0c58; delegated rehash/repin scripts reported zero pin changes; register replay committed in f92594f9. This record covers source, generated publication and this review commit.
 
 ## Closing block
 
