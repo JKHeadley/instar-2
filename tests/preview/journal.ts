@@ -5742,6 +5742,25 @@ export function createJournalWorker(journal: ReturnType<typeof openPreviewJourna
       // Old summary frames had no request disposition. Their covered turns are
       // already settled; attempting to summarize the same frontier cannot work.
       || summary.memoryFor === undefined && !turn.memoryPending && summary.through >= turn.update));
+  /** Whether a memory decision was ever asked for behind a correction hold: either turn still carries
+   * pendingMemory()'s own candidate shape, or an explicit settlement row names it -- a turn recorded
+   * memoryUndecided, or a summary whose memoryFor names it. The union is needed because neither side contains the
+   * other. The summary writer's fallback trigger picks an ordinary UNCUED operator turn and writes memoryFor when
+   * the model returns a memory change (so a memoryFor-named or memoryUndecided turn need not carry any cue, editOf
+   * or memoryPending); and a request that settled through a summary frame carrying no memoryFor is named by no
+   * explicit row at all. A hold with no request behind it on either side keeps int11's held notice. Because
+   * !pendingMemory() already holds at the callsite, every candidate turn has settled by one of pendingMemory()'s
+   * own routes, so matching the candidate shape is enough. Live 2026-10-07 (proof room two, build 670853ef, update
+   * 6232680): the request settled through a summary frame carrying no memoryFor, which is neither explicit shape,
+   * so the hold outlived its cause with no route out while updates 6232681-6232683 were answered -- a latch, not a
+   * wait (Rules 15, 77, 95's open side). Strictly wider than the two explicit shapes alone, by union.
+   */
+  const explicitlySettled = (turn: Turn) => turn.memoryUndecided
+    || journal.view.summaries.some(summary => summary.memoryFor?.includes(turn.id));
+  const correctionRequestBehind = () => journal.view.order.some(turn => explicitlySettled(turn)
+    || remembered(turn) && fromOperator(turn)
+      && turn.noticeClass !== 'too-long-input' && Buffer.byteLength(turn.text) <= journal.view.limits.maxBytes
+      && (turn.editOf || memoryCue(turn) || preferenceCue(turn) || turn.memoryPending));
   // A correction still being decided holds every proactive send until its judgment lands.
   const unresolvedReminderMemory = () => pendingMemory() !== undefined;
   // A later verified-operator turn may withdraw a reminder. Until its meaning is
@@ -7169,10 +7188,8 @@ export function createJournalWorker(journal: ReturnType<typeof openPreviewJourna
           delete turn.held;
         // A settled request (decided or recorded undecided, e.g. across a restart) releases
         // its correction hold; a hold with no request behind it keeps int11's held notice.
-        if (!pendingMemory() && turn.held === 'memory correction pending'
-          && journal.view.order.some(item => (item.memoryUndecided
-            || journal.view.summaries.some(summary => summary.memoryFor?.includes(item.id))))) {
-          delete turn.held; delete turn.heldSince;
+        if (!pendingMemory() && turn.held === 'memory correction pending' && correctionRequestBehind()) {
+          delete turn.held; delete turn.heldSince; journal.view.heldTurns.delete(turn);
         }
         if (turn.held === 'earlier turn pending' && !blockedEarlier) { delete turn.held; delete turn.heldSince; }
         // A request settled undecided because its own span cannot be summarized: that preflight refusal concerns the
