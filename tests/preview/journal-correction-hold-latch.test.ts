@@ -37,8 +37,9 @@ const update = (n: number, text: string) => ({ update_id: n,
 const tmp = (name: string) => realpathSync(mkdtempSync(join(tmpdir(), `preview-hold-latch-${name}-`)));
 
 /** The recorded room, rebuilt: a settled correction request, an ordinary turn already held for it, and one later
- * ordinary turn. The summary covering them carries no memoryFor, which is exactly what that room recorded. */
-const world = (root: string, request: string) => {
+ * ordinary turn. The summary covering them carries no memoryFor by default, which is exactly what that room
+ * recorded; passing memoryFor rebuilds instead the shape where a summary names the turn it settled. */
+const world = (root: string, request: string, memoryFor?: string[]) => {
   const sent: string[] = [];
   const path = join(root, 'journal.encrypted');
   const journal = openPreviewJournal(path, key, genesis);
@@ -52,7 +53,8 @@ const world = (root: string, request: string) => {
   worker.intake([update(1, request), update(2, HELD_TEXT), update(3, LATER_TEXT)]);
   journal.append({ kind: 'hold', id: id(2), reason: 'memory correction pending', at: start + 4 * 60_000 });
   journal.append({ kind: 'summary-reserve', through: 3, at: start + 5 * 60_000 });
-  journal.append({ kind: 'summary', through: 3, text: 'The operator asked about the kettle.', at: start + 5 * 60_000 });
+  journal.append({ kind: 'summary', through: 3, text: 'The operator asked about the kettle.',
+    ...memoryFor === undefined ? {} : { memoryFor }, at: start + 5 * 60_000 });
   return { journal, worker, sent };
 };
 
@@ -81,6 +83,27 @@ it('keeps a correction hold that has no request behind it at all', async () => {
     expect(w.sent.some(text => text.includes(HELD_TEXT))).toBe(false);
     // The rest of the channel keeps being answered either way.
     expect(w.sent.some(text => text.includes(LATER_TEXT))).toBe(true);
+    w.journal.close();
+  } finally { rmSync(root, { recursive: true, force: true }); }
+});
+
+// The release must keep accepting the two explicit settlement rows as well, because neither side of the test
+// contains the other. The summary writer's fallback trigger picks an ordinary UNCUED operator turn and writes
+// memoryFor when the model returns a memory change, so a memoryFor-named turn carries no cue, no editOf and no
+// memoryPending -- it is named by no candidate shape. Testing only the candidate shape dropped this previously
+// released case (found in this branch's unit review, round 1); the hold stayed latched while the later ordinary
+// turn was answered, the same Rule 77 / 95 failure the branch exists to fix, in the other direction.
+it('answers a turn held for an uncued request that a summary settled through memoryFor', async () => {
+  const root = tmp('uncued-settled');
+  try {
+    const w = world(root, PLAIN, [id(1)]);
+    await w.worker.drain(); await w.worker.drain();
+    const held = w.journal.view.order.find(turn => turn.id === id(2))!;
+    // The later turn proves nothing was holding ordinary answers; the held one must not be the only turn left out.
+    expect(w.sent.some(text => text.includes(LATER_TEXT))).toBe(true);
+    expect(held.held).toBeUndefined();
+    expect(w.journal.view.heldTurns.size).toBe(0);
+    expect(w.sent.some(text => text.includes(HELD_TEXT))).toBe(true);
     w.journal.close();
   } finally { rmSync(root, { recursive: true, force: true }); }
 });
