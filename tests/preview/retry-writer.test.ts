@@ -19,7 +19,7 @@ const key = new Uint8Array(32).fill(36);
 const start = Date.UTC(2026, 9, 6, 17);
 const question = 'Remind me today at 10:01 am to take a short walk';
 
-for (const principal of ['operator', 'scheduler'] as const) for (const recovery of ['none', 'format', 'timeout'] as const) {
+for (const principal of ['operator', 'scheduler'] as const) for (const recovery of ['declaration', 'format', 'timeout'] as const) {
   it(`${principal} writer survives ${recovery} and journal reopen`, async () => {
     expect(outputs).toHaveLength(2);
     expect(readAnswer(outputs[0]!)).toMatchObject({ ok: false });
@@ -60,12 +60,15 @@ for (const principal of ['operator', 'scheduler'] as const) for (const recovery 
       if (principal === 'scheduler') { now += 60000; await worker.sendRequested(); }
       const expected = principal === 'operator' ? { id: '7654321', kind: 'person', adapter: 'telegram-bot-api' }
         : { id: 'preview-scheduler:12345678', kind: 'system', adapter: 'preview-scheduler' };
-      expect(calls).toBe(recovery === 'none' ? 1 : 2);
+      // The recorded parseable output fulfills promise 0, absent in this replay's packet.
+      // It gets one declaration re-ask unless the malformed-format retry already used it.
+      expect(calls).toBe(recovery === 'timeout' ? 3 : 2);
       // Due packets have no tool capability reroute; the timeout reuses the original envelope.
-      expect(writers).toHaveLength(principal === 'scheduler' && recovery === 'timeout' ? 1 : calls);
+      expect(writers).toHaveLength(principal === 'scheduler' && recovery === 'timeout' ? calls - 1 : calls);
       for (const writer of writers) expect(writer).toEqual(expected);
       const turn = journal.view.order.at(-1)!;
-      expect(turn.answerRetried === true).toBe(recovery === 'format');
+      expect(turn.answerRetried).toBe(true);
+      expect(journal.view.closed.has(0)).toBe(false);
       expect(turn.answerReplaced === true).toBe(recovery === 'timeout');
       expect(sends).toBe(principal === 'operator' ? 1 : 2);
       journal.close();
