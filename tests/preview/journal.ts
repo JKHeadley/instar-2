@@ -7265,8 +7265,9 @@ export function createJournalWorker(journal: ReturnType<typeof openPreviewJourna
           let { context, prepared } = selected;
           // Rule 38 / scheduled work §5: a requested action's due selection and prepared packet are validated before
           // its model call. The pipeline fails closed: a violation or an unavailable check holds it, visibly.
-          if (turn.requestedAction !== undefined) {
-            const packet = prepared ?? JSON.stringify({ question, context });
+          const validateRequestedPacket = async (packetContext: string, packetPrepared: string | undefined): Promise<boolean> => {
+            if (turn.requestedAction === undefined) return true;
+            const packet = packetPrepared ?? JSON.stringify({ question, context: packetContext });
             const digest = packetDigest(packet);
             const outcome = await validateBefore([
               { id: `select-due:${turn.id}:${digest}`, evidence: () => actionDueEvidence(turn, `select-due:${turn.id}:${digest}`) },
@@ -7274,8 +7275,10 @@ export function createJournalWorker(journal: ReturnType<typeof openPreviewJourna
                 request: turn.text, ...packetEvidence(packet) }) }]);
             const hold = outcome === 'violation' ? 'step check violation' : outcome === 'unavailable' ? 'step check unavailable'
               : outcome === 'pending' ? 'call cap' : null;
-            if (hold) { if (turn.held !== hold) journal.append({ kind: 'hold', id: turn.id, reason: hold, at: ports.now() }); continue; }
-          }
+            if (hold && turn.held !== hold) journal.append({ kind: 'hold', id: turn.id, reason: hold, at: ports.now() });
+            return hold === null;
+          };
+          if (!await validateRequestedPacket(context, prepared)) continue;
           journal.append({ kind: 'reserve', id: turn.id, ...(prepared === undefined ? {} : { prompt: prepared }),
             corrections: carried, grounding, packetDropped: dropped, packetLimit: journal.view.limits.maxBytes,
             maxInputTokens: journal.view.limits.maxBytes, maxOutputTokens: subscriptionOutputMaximum, at: ports.now() }); gate();
@@ -7289,7 +7292,7 @@ export function createJournalWorker(journal: ReturnType<typeof openPreviewJourna
           // Rule 116: a real model sometimes answers in prose instead of the required Decision. Ask the same turn
           // once more with a runner-authored format reminder in the packet (never in the operator's message),
           // reserved against the same call cap and only while not stopped; a second miss is refused as before.
-          // Returns false when the re-ask's outcome is unknown (its reservation then stays UNKNOWN).
+          // Returns false when replacement supervision holds the turn, or the re-ask is unknown (reservation stays UNKNOWN).
           // Part Thirteen §9 (Rules 78, 84): a re-ask or replacement reuses this packet, but an earlier tool turn may have
           // reserved the allowance its own tools would need. Its capability entries are re-read for the call about to run
           // (its base call not yet reserved, as at preparation), so the packet never claims tools its call will not get.
@@ -7340,6 +7343,10 @@ export function createJournalWorker(journal: ReturnType<typeof openPreviewJourna
             if (prepared !== undefined) try { retryPrepared = ports.prepareModel?.({ question, context: retryContext, id: turn.id }); }
             catch { preparable = false; }
             if (!preparable || halted() || journal.view.calls >= journal.view.limits.maxCalls - (ports.replyCheck ? 1 : 0)) return given;
+            // A declaration repair changes the packet: validate that exact replacement before reserving or
+            // invoking it. A held check must not fall through to the original answer/send path either (Rule 38).
+            if (!await validateRequestedPacket(retryContext, retryPrepared)) return false;
+            if (halted() || journal.view.calls >= journal.view.limits.maxCalls - (ports.replyCheck ? 1 : 0)) return given;
             journal.append({ kind: 'format-retry', id: turn.id, role: 'answer', state: 'complete', failureClass: 'malformed',
               ...(retryPrepared === undefined ? {} : { prompt: retryPrepared }), ...(typeof given !== 'string' && given.usage ? { usage: given.usage } : {}), maxInputTokens: journal.view.limits.maxBytes,
               maxOutputTokens: subscriptionOutputMaximum, at: ports.now() });
@@ -7378,7 +7385,7 @@ export function createJournalWorker(journal: ReturnType<typeof openPreviewJourna
           };
           const answerText = (given: Answer) => typeof given === 'string' ? given : 'text' in given ? given.text : undefined;
           const first = await settled(answer);
-          if (first === false) continue; // the retry or replacement reservation remains UNKNOWN
+          if (first === false) continue; // a supervision hold, or an UNKNOWN retry/replacement reservation
           answer = first;
           // Rule 11 (Part 21 §2): the answer model may ask for ONE memory lookup instead of replying. Its phrases are
           // data: bounded, redacted like any packet field, and used only as a search query. The second answer call is
