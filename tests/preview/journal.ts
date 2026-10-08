@@ -7248,6 +7248,8 @@ export function createJournalWorker(journal: ReturnType<typeof openPreviewJourna
           }
           const { question, carried, dropped, grounding } = selected;
           let { context, prepared } = selected;
+          // Rule 29 (plan #636): the writer this turn's packet was prepared for; a re-ask or replacement below re-prepares for it too.
+          const writer = sessionWriterOf(journal.view, turn);
           // Rule 38 / scheduled work §5: a requested action's due selection and prepared packet are validated before
           // its model call. The pipeline fails closed: a violation or an unavailable check holds it, visibly.
           if (turn.requestedAction !== undefined) {
@@ -7290,7 +7292,7 @@ export function createJournalWorker(journal: ReturnType<typeof openPreviewJourna
               || given.failureClass !== 'malformed' || turn.answerRetried) return given;
             const retryContext = routedContext(withFormatReminder(context, answerFormatReminder('defect' in given ? given.defect : undefined)));
             let retryPrepared: string | undefined, preparable = true;
-            if (prepared !== undefined) try { retryPrepared = ports.prepareModel?.({ question, context: retryContext, id: turn.id }); }
+            if (prepared !== undefined) try { retryPrepared = ports.prepareModel?.({ question, context: retryContext, id: turn.id, ...(writer ? { writer } : {}) }); }
             catch { preparable = false; }
             if (!preparable || halted() || journal.view.calls >= journal.view.limits.maxCalls - (ports.replyCheck ? 1 : 0)) return given;
             journal.append({ kind: 'format-retry', id: turn.id, role: 'answer', state: 'complete', failureClass: 'malformed',
@@ -7312,7 +7314,7 @@ export function createJournalWorker(journal: ReturnType<typeof openPreviewJourna
             const replaceContext = routedContext(context);
             let replacePrepared = prepared;
             if (replaceContext !== context && prepared !== undefined) {
-              try { replacePrepared = ports.prepareModel?.({ question, context: replaceContext, id: turn.id }); } catch { return given; }
+              try { replacePrepared = ports.prepareModel?.({ question, context: replaceContext, id: turn.id, ...(writer ? { writer } : {}) }); } catch { return given; }
             }
             journal.append({ kind: 'answer-replace', id: turn.id, state: 'uncertain',
               ...(replacePrepared === undefined || replacePrepared === prepared ? {} : { prompt: replacePrepared }),
