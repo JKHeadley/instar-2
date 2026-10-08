@@ -92,7 +92,7 @@ it('Jev itself unavailable + malformed review: no check decided, so the reply is
 
 // Build 3 (Rules 4, 77, 86): an ordinary review objection is a signal released with the reply; only a
 // review naming a credential, an untracked deferral or an unevidenced cannot-do claim holds.
-it('an ordinary review violation is released with its objection; a review naming a holding rule sends the holding reply', async () => {
+it('Rule 89 X4: an ordinary review violation speaks as agent; a completed holding review speaks as infrastructure', async () => {
   await withJournal(async path => {
     const sent: string[] = [];
     const journal = openPreviewJournal(path, key, genesis());
@@ -103,6 +103,7 @@ it('an ordinary review violation is released with its objection; a review naming
     worker.intake([update(1, 'Remind me on Friday at 9')]); await worker.drain();
     expect(sent).toEqual([CANDIDATE]);
     expect(journal.view.order[0]?.release).toMatchObject({ review: 'violation', objections: ['claims_blocked'], revised: false });
+    expect(journal.view.speakers).toEqual({ agent: 1, infrastructure: 0 });
     worker.intake([update(2, 'And again on Monday')]); await worker.drain();
     expect(sent).toEqual([CANDIDATE, CANDIDATE]);
     expect(journal.view.order[1]?.release).toBeUndefined();
@@ -112,6 +113,7 @@ it('an ordinary review violation is released with its objection; a review naming
   await withJournal(async path => {
     const sent: string[] = [];
     const journal = openPreviewJournal(path, key, genesis());
+    const before = { ...journal.view.speakers };
     // As live, the violation quotes the claim it objects to. Here that claim is the whole one-sentence answer,
     // so nothing survives the claim-scoped removal and the notice stands in for no surviving content (plan #215).
     const worker = createJournalWorker(journal, ports(sent, jevFlags('defers_work'), async () =>
@@ -120,10 +122,20 @@ it('an ordinary review violation is released with its objection; a review naming
           reason: `The reply promises "${CANDIDATE.replace(/^PREVIEW — /u, '')}" and declaredObligations.loops is empty.` }] })));
     worker.intake([update(1, 'Remind me on Friday at 9')]); await worker.drain();
     expect(sent).toEqual([HOLDING_REPLY]);
+    expect(journal.view.speakers.infrastructure - before.infrastructure).toBe(1);
+    expect(journal.view.speakers.agent - before.agent).toBe(0);
+    expect(journal.view.order[0]?.replyChecks?.at(-1)).toMatchObject({ path: 'subscription', verdict: 'violation' });
+    expect(journal.view.order[0]?.sent).toBe(1);
     expect(journal.view.order[0]?.release).toBeUndefined();
     expect(journal.view.order[0]?.heldReview?.withheld)
       .toEqual({ rules: ['defers_work'], removed: [CANDIDATE.replace(/^PREVIEW — /u, '')], unlocated: [] });
     journal.close();
+    // Durable replay keeps the speaker counts and cannot dispatch the holding reply twice.
+    const reopened = openPreviewJournal(path, key, genesis());
+    await createJournalWorker(reopened, ports(sent, jevFlags(), async () => { throw Error('no second review'); })).drain();
+    expect(sent).toEqual([HOLDING_REPLY]);
+    expect(reopened.view.speakers).toEqual({ agent: 0, infrastructure: 1 });
+    reopened.close();
   });
 });
 
