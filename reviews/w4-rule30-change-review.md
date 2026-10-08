@@ -1,6 +1,8 @@
 # Change review — R30e route coverage for both registered doorways
 
 Subject base: 1c3447786f1ca9721b4b6b58774edc51eb59b1a3
+Original unit head: 852578a48e7d240b51e576aa4b439a42df6bb29b
+Unit review binding: 1c3447786f1ca9721b4b6b58774edc51eb59b1a3..852578a48e7d240b51e576aa4b439a42df6bb29b (two files; 90 insertions, one deletion). The broader 7964cd5a33d4132ce6dc58842e6508d6b861e89e..852578a48e7d240b51e576aa4b439a42df6bb29b train is outside this unit assessment and retains its separate review evidence.
 Review state: open
 Reviewed content: none
 Outcome: repair missing proof coverage for the registered Codex doorway without changing product behavior or claiming native-harness certification. R30e inspected only the Claude conformance file although the deployed register enumerated both doorways.
