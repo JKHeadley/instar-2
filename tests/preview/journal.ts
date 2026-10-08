@@ -7300,16 +7300,46 @@ export function createJournalWorker(journal: ReturnType<typeof openPreviewJourna
             return JSON.stringify({ ...packet, obligationDecision: tools ? OBLIGATION_DECISION_TOOLS : OBLIGATION_DECISION,
               governingConstraints: governingConstraints(tools), capabilities: previewCapabilities(tools) });
           };
+          const offeredPromises = () => new Set(((JSON.parse(context) as { commitments?: { items?: { id?: number; owner?: string }[] }[] })
+            .commitments ?? []).flatMap(group => group.items ?? []).filter(item => item.owner === 'agent' && Number.isSafeInteger(item.id))
+            .map(item => item.id!));
+          // Rule 10: a readable answer can still carry an unreadable declaration. The recorded A5b/RA2
+          // failures quoted the old promise or changed the operator's words. Give these exact validation
+          // failures the existing single format re-ask, before recording an answer or sending anything.
+          // No meaning is inferred and no citation is repaired by code; the same validators decide again.
+          const declarationDefect = (given: Answer): string | undefined => {
+            const text = typeof given === 'string' ? given : 'text' in given ? given.text : undefined;
+            if (text === undefined) return undefined;
+            let value: Record<string, unknown>;
+            try { value = JSON.parse(text) as Record<string, unknown>; } catch { return undefined; }
+            if (!value || typeof value !== 'object' || Array.isArray(value)) return undefined;
+            const reply = value.reply;
+            const body = typeof reply === 'string' ? reply : reply && typeof reply === 'object' && !Array.isArray(reply)
+              && 'answer' in reply && typeof reply.answer === 'string' ? reply.answer : undefined;
+            if (body === undefined) return undefined;
+            if (promiseProposals(value.promises, body) === undefined)
+              return 'promises must quote an exact sentence of this reply; when, if present, must be copied from that sentence';
+            if (fulfillmentProposals(value.fulfilled, body,
+              item => offeredPromises().has(item.id) && fulfillmentSupported(item, body, journal.view.commitments)) === undefined)
+              return 'fulfilled must name an offered agent promise and quote an exact excerpt of this new reply, not the old promise; omit it if no promise was carried out';
+            if (value.dated !== undefined && datedFrom(value.dated, turn) === undefined)
+              return 'dated must quote this operator message exactly, including case, with when copied from that quote; do not invent or paraphrase a citation';
+            return undefined;
+          };
           const formatReask = async (given: Answer): Promise<Answer | false> => {
-            if (typeof given === 'string' || !('failureClass' in given) || given.state !== 'complete'
-              || given.failureClass !== 'malformed' || turn.answerRetried) return given;
-            const retryContext = routedContext(withFormatReminder(context, answerFormatReminder('defect' in given ? given.defect : undefined)));
+            if (turn.answerRetried || typeof given !== 'string' && given.state !== undefined && given.state !== 'complete') return given;
+            const malformed = typeof given !== 'string' && 'failureClass' in given && given.failureClass === 'malformed';
+            const defect = malformed ? ('defect' in given ? given.defect : undefined) : declarationDefect(given);
+            if (!malformed && defect === undefined) return given;
+            const reminder = malformed ? answerFormatReminder(defect)
+              : `Your answer's declaration was refused: ${defect}. Return the complete corrected answer object with reasoning. The operator's message is unchanged.`;
+            const retryContext = routedContext(withFormatReminder(context, reminder));
             let retryPrepared: string | undefined, preparable = true;
             if (prepared !== undefined) try { retryPrepared = ports.prepareModel?.({ question, context: retryContext, id: turn.id }); }
             catch { preparable = false; }
             if (!preparable || halted() || journal.view.calls >= journal.view.limits.maxCalls - (ports.replyCheck ? 1 : 0)) return given;
             journal.append({ kind: 'format-retry', id: turn.id, role: 'answer', state: 'complete', failureClass: 'malformed',
-              ...(retryPrepared === undefined ? {} : { prompt: retryPrepared }), ...(given.usage ? { usage: given.usage } : {}), maxInputTokens: journal.view.limits.maxBytes,
+              ...(retryPrepared === undefined ? {} : { prompt: retryPrepared }), ...(typeof given !== 'string' && given.usage ? { usage: given.usage } : {}), maxInputTokens: journal.view.limits.maxBytes,
               maxOutputTokens: subscriptionOutputMaximum, at: ports.now() });
             try { return await ports.model({ question, context: retryContext, id: turn.id,
               ...(retryPrepared === undefined ? {} : { prepared: retryPrepared }) }); }
@@ -7448,13 +7478,10 @@ export function createJournalWorker(journal: ReturnType<typeof openPreviewJourna
                 // Rule 10: the model reads whether its reply promises or carries out a promise; code keeps
                 // only exact quotes of this reply, ids this packet actually offered, and — by the one shared
                 // support rule the replay also applies — commitments this reply may carry out at all.
-                const offeredPromises = new Set(((JSON.parse(context) as { commitments?: { items?: { id?: number; owner?: string }[] }[] })
-                  .commitments ?? []).flatMap(group => group.items ?? []).filter(item => item.owner === 'agent' && Number.isSafeInteger(item.id))
-                  .map(item => item.id!));
                 const answerText = replyAnswer ?? (typeof replyValue === 'string' ? replyValue : '');
                 promises = promiseProposals(parsed.promises, answerText) ?? [];
                 const proposed = fulfillmentProposals(parsed.fulfilled, answerText,
-                  item => offeredPromises.has(item.id) && fulfillmentSupported(item, answerText, journal.view.commitments));
+                  item => offeredPromises().has(item.id) && fulfillmentSupported(item, answerText, journal.view.commitments));
                 fulfills = proposed ?? [];
                 // Rules 2, 10: a claim the support rule refuses is recorded as refused, never dropped in silence.
                 if (proposed === undefined) refusedFulfills = Math.min(AGENT_PROMISE_LIMIT,

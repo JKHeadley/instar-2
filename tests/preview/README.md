@@ -1462,27 +1462,26 @@ evidence, not real-model reading. Justin's check is
 
 ### Remembering commitments
 
-An explicit first-person promise in the agent's **actual send intent** is captured immediately,
-before any rolling summary. The deterministic detector accepts a narrow sentence beginning
-`I'll`/`I will` (including `I’ll`) with `remind you`, `remind you to`, `check`, `follow up`, `send`, `tell`,
-`update`, or `keep`; quoted lines, code blocks, conditional or negated language do not qualify.
-The encrypted intent carries the exact quote, agent ownership, the next-relevant-reply wait,
-and any supported `today`, `tomorrow`, or `on YYYY-MM-DD` due date resolved in the configured
-time zone. An unsent candidate creates no commitment. An intent with an unknown send remains
-open because it may have reached Telegram. Replay reconstructs the same item without another
-store. Summary extraction skips an already captured promise rather than duplicating it.
+The answering model declares a promise with `promises:[{quote, when?}]` and a fulfillment
+with `fulfilled:[{id, quote}]`. Code verifies the declaration against the exact reply text;
+a fulfillment must name an offered agent promise and quote the new answer, not the old
+promise. Meaning remains the model's decision. The encrypted send intent records the
+admitted promises and fulfillment ids. A promise closes only after the complete reply is
+API-accepted; an unknown or refused send leaves it open. Replay preserves that outcome.
 
-Open agent promises enter the next reply packet even before compaction. Due or overdue ones
-take priority under the existing ten-item and prompt bounds; the existing memory sentinel
-selects older promises related to the current message. The model judges relevance and
-can mention a due promise only in a normal reply to a new operator message: this preview has
-no scheduler, tools, or unprompted send. A later API-accepted reply saying exactly
-`Reminder: <promised action>` closes a matching reminder once its due day arrives; an
-early or unreceipted send does not.
-Promises to check, send, or perform external work remain open until the verified operator
-reports completion or withdrawal through the existing summary closure path. No bare claim
-of having checked the world counts as evidence. For the supervised operator-channel check,
-see [agent-commitment-live-test.md](live-tests-archive/agent-commitment-live-test.md).
+A readable answer with an invalid promise, fulfillment, or dated-item declaration uses the
+same single format re-ask as an unreadable answer. The runner supplies the exact validation
+defect in the packet and keeps the operator message unchanged. It never repairs a citation
+or infers fulfillment itself. This re-ask occurs before the answer record and send, consumes
+the existing call/token budget, obeys stop, and shares the one-retry limit with envelope
+repairs. A second invalid declaration remains refused; unavailable capacity or an unknown
+replacement is not a successful repair. No new journal record kind or retry budget is added.
+
+This is deterministic validation and bounded recovery, not a guarantee that a model will
+produce a valid declaration on its second attempt. `flap-a-declarations.test.ts` replays the
+recorded failures at updates 715674119 and 715674175 and checks both repair and refusal,
+including cap, stop, uncertain replacement, and restart. The fulfillment repair uses recorded passing output 6232374; the date repair is explicitly
+synthetic. Passing declarations 6232373/6232376 remain single calls.
 
 The same summary call also lists what the operator asked the agent to remember or do
 (`in: "message"`, quoted from their message) and what the agent said in its own reply that
