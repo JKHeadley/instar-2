@@ -7,8 +7,8 @@ Outcome: Carry only e95701aa onto the live sb-w4-flap-a-p2 base: the fixed harne
 Affected rules: 106, 80 (human-readable status); 26, 34, 36, 70 (captured replies and actual worker); 28, 29 (preserve verified writers); 4, 86 (no new blocker); 49, 74, 111 (scope, side effects and foundation); 66, 69, 90 (generated register); 37, 107, 108 (honest targeted evidence and host limits); 101, 102, 112, 113, 116 (hooks, decisions, history, posture and simplicity)
 Affected floors: secrets — custody and outbound checks unchanged; spend cap — no new model call; stop — readiness and stop predicates unchanged; no duplicate sends — regression sends once and retry reopen sends nothing; durable intake — existing journal intent equals sent text, no schema change
 Operator questions: none
-Suggested tier: small
-Declared tier: small
+Suggested tier: critical
+Declared tier: ordinary
 Tier rationale: One fixed status sentence and its regression assertions; no model prompt, parser, acceptance, authority or execution policy changes.
 Side effects: Host logs share the renderer and receive the clearer wording. The separate M106e quoted-localhost extraction finding remains outside this source repair; no whole live-proof group success is claimed. Platform-dependent launcher tests require the desk's host.
 Undo and recovery: Revert the carried template/test commit and regenerate the register. No new durable state or migration exists.
