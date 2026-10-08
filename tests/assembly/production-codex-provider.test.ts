@@ -6,7 +6,7 @@ import { createHash } from 'node:crypto';
 import { chmodSync, mkdirSync, mkdtempSync, readFileSync, realpathSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
-import { afterEach, expect, it } from 'vitest';
+import { afterEach, describe, expect, it } from 'vitest';
 import { canonical, decode } from '../../src/index.js';
 import { CODEX_ADMITTED_ITEM_TYPES, CODEX_CONVERSATION_FRAMING, CODEX_CONVERSATION_SYSTEM_PROMPT, CODEX_HOOK_TRUST_NOTICE,
   CODEX_TOOL_ITEM_TYPES, CODEX_TOOL_LIMITS, CODEX_TOOLS_FRAMING, CODEX_TOOLS_SYSTEM_PROMPT, codexToolHookArgs, codexToolsPolicy,
@@ -170,6 +170,63 @@ function fixture() {
     serveText: (text: string, code: number) => { stream = text; exit = code; plan(); },
     commands: () => { try { return readFileSync(report, 'utf8').trim().split('\n').map(line => JSON.parse(line)); } catch { return []; } } };
 }
+
+// R30e checks route parity, not native-harness certification. Keep these four cases on the
+// registered interface and reuse the real captured Codex frames; the native tuple stays unproven.
+describe('doorway codex-cli-subscription captured-frame route cases (Rules 30, 115)', () => {
+  const doorway = subscriptionDoorway(CODEX_SUBSCRIPTION_DOORWAY_ID);
+
+  it('admits the route and captures the exact submitted context', async () => {
+    const f = fixture(), submitted = '{"context":"conformance-context-marker"}';
+    const route = value(doorway.create(f.input()));
+    expect(await route.invoke(submitted, f.bounds)).toMatchObject({ state: 'complete', bytes: 'OK' });
+    expect(f.commands().at(-1).stdin).toBe(`${CODEX_CONVERSATION_SYSTEM_PROMPT}\n\n${submitted}`);
+  });
+
+  it('never reports an unobserved charge as zero', async () => {
+    const f = fixture();
+    const result = await value(doorway.create(f.input())).invoke('{"q":1}', f.bounds);
+    expect(result.state).toBe('complete');
+    expect(result.usage.charge).toBeNull();
+  });
+
+  it('keeps a refused, timed-out or over-cap call from becoming an answer, without retrying it', async () => {
+    for (const outcome of ['refused', 'timeout', 'over-cap']) {
+      const f = fixture(); let calls = 0;
+      if (outcome === 'refused') f.serve('turnFailed');
+      // A mutated neighbor of the recorded completion crosses only the output-token bound.
+      if (outcome === 'over-cap') f.serveText(recorded.streams.ok!.split('\n').map(line => {
+        if (!line) return line;
+        const event = JSON.parse(line);
+        if (event.type === 'turn.completed') event.usage.output_tokens = f.bounds.maxTokens + 1;
+        return JSON.stringify(event);
+      }).join('\n'), 0);
+      const io = { ...f.io, execute: async (command: Parameters<typeof directExecute>[0]) => {
+        if (command.args[0] === 'exec') {
+          calls++;
+          // Inject the host's timeout outcome; no sleeping or load generator is needed.
+          if (outcome === 'timeout') return { code: null, limited: true, localLimit: 'timeout' as const,
+            stdout: '', stdoutBytes: new Uint8Array() };
+        }
+        return f.io.execute(command);
+      } };
+      const route = value(doorway.create(f.input({ io })));
+      const result = await route.invoke('{"q":1}', f.bounds);
+      expect(result.state).not.toBe('complete');
+      expect(result.bytes).toBeNull();
+      expect(calls).toBe(1);
+    }
+  });
+
+  it('refuses a call once the run is stopped, before any provider dispatch', async () => {
+    const f = fixture(); let active = true;
+    const route = value(doorway.create(f.input({ active: () => active })));
+    active = false;
+    const stopped = await route.invoke('{"q":1}', f.bounds).catch(() => ({ state: 'refused' }));
+    expect(stopped.state).not.toBe('complete');
+    expect(f.commands()).toHaveLength(0);
+  });
+});
 
 it('answers from a real completed turn: version and sign-in preflights first, then the model command on stdin', async () => {
   const f = fixture();
