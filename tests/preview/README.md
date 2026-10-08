@@ -1476,6 +1476,9 @@ or infers fulfillment itself. This re-ask occurs before the answer record and se
 the existing call/token budget, obeys stop, and shares the one-retry limit with envelope
 repairs. A second invalid declaration remains refused; unavailable capacity or an unknown
 replacement is not a successful repair. No new journal record kind or retry budget is added.
+Runner-authored requested-action turns discard operator date declarations, so those fields
+do not trigger a repair. Their original due-selection and packet supervision remain bound
+to the single answer call; the turn still cannot create a new operator-authorized date.
 
 This is deterministic validation and bounded recovery, not a guarantee that a model will
 produce a valid declaration on its second attempt. `flap-a-declarations.test.ts` replays the

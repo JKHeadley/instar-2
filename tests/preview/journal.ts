@@ -7322,7 +7322,9 @@ export function createJournalWorker(journal: ReturnType<typeof openPreviewJourna
             if (fulfillmentProposals(value.fulfilled, body,
               item => offeredPromises().has(item.id) && fulfillmentSupported(item, body, journal.view.commitments)) === undefined)
               return 'fulfilled must name an offered agent promise and quote an exact excerpt of this new reply, not the old promise; omit it if no promise was carried out';
-            if (value.dated !== undefined && datedFrom(value.dated, turn) === undefined)
+            // Runner-authored due turns discard operator date declarations below; repairing one would
+            // spend a call on authority this turn cannot use and replace its supervised packet.
+            if (!turn.requestedAction && value.dated !== undefined && datedFrom(value.dated, turn) === undefined)
               return 'dated must quote this operator message exactly, including case, with when copied from that quote; do not invent or paraphrase a citation';
             return undefined;
           };

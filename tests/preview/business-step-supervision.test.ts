@@ -2,11 +2,12 @@
 // preparation and due selection — and scheduled work is validated after its Result and before the next
 // consequential step. Missing supervision stays missing; each pipeline keeps its failure direction.
 import { expect, it } from 'vitest';
-import { mkdtempSync, realpathSync, rmSync } from 'node:fs';
+import { mkdtempSync, readFileSync, realpathSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { createJournalWorker, openPreviewJournal } from './journal-test-worker.js';
 import { STEP_SUPERVISOR_EXHAUSTED, type JournalRecord } from './journal.js';
+import { readAnswer } from './answer-reading.js';
 import { stepCoverage } from './proofs.js';
 import { interpretStepJev, stepQuestionFor, stepQuestionsFor } from './step-check.js';
 
@@ -28,7 +29,7 @@ const decide = (input: Input) => {
 /** Jev answers whichever step question it is asked; `score` picks the probability per step id. */
 const answer = (questions: Record<string, unknown> | undefined, value: number) => ({ model: 'jev-1.13.0',
   answers: Object.fromEntries(Object.keys(questions ?? { unsupported_effect: 1 }).map(id => [id, { type: 'noul', noul: value }])) });
-function world(options: { stepCheck?: 'pass' | ((step: string) => number | 'outage'); maxCalls?: number } = {}) {
+function world(options: { stepCheck?: 'pass' | ((step: string) => number | 'outage'); maxCalls?: number; dueDated?: unknown; dueAnswer?: string } = {}) {
   const root = realpathSync(mkdtempSync(join(tmpdir(), 'business-steps-')));
   const journal = openPreviewJournal(join(root, 'journal.encrypted'), key, { ...genesis, maxCalls: options.maxCalls ?? genesis.maxCalls });
   const frames: JournalRecord[] = [];
@@ -38,7 +39,11 @@ function world(options: { stepCheck?: 'pass' | ((step: string) => number | 'outa
   const score = options.stepCheck === 'pass' ? () => 0.01 : options.stepCheck;
   const worker = createJournalWorker(journal, { now: () => state.now, stopped: () => false, timeZone: zone,
     prepareModel: input => JSON.stringify({ messages: [{ role: 'context', content: input.context }, { role: 'user', content: input.question }] }),
-    model: async (input: Input) => { state.models.push(input.id); return decide(input); }, checkOutbound: () => {},
+    model: async (input: Input) => { state.models.push(input.id);
+      if (input.id.startsWith('requested-action:') && options.dueAnswer !== undefined) return options.dueAnswer;
+      if (input.id.startsWith('requested-action:') && options.dueDated !== undefined)
+        return JSON.stringify({ reply: 'Time to call Priya.', memory: [], dated: options.dueDated });
+      return decide(input); }, checkOutbound: () => {},
     send: async (value: { expectedText: string }) => { state.sent.push(value.expectedText); return state.sent.length; },
     ...(score ? { stepCheck: { jev: async (text: string, questions?: Record<string, unknown>) => {
       const step = String((JSON.parse(text) as { step?: unknown }).step);
@@ -63,6 +68,8 @@ it("a requested action's due selection and packet are validated before its model
     w.state.now = friday9; await w.worker.sendRequested();
     const due = w.journal.view.order.find(turn => turn.requestedAction)!;
     expect(due.sent).toBeDefined();
+    expect(w.state.models.filter(id => id === due.id)).toHaveLength(1);
+    expect(due.answerRetried).toBeUndefined();
     expect(w.state.sent.at(-1)).toMatch(/^PREVIEW — You asked on .*\nTime to call Priya\.$/u);
     // Both judgments are durable before the reservation that precedes the model call.
     const order = w.kinds(), reserveAt = w.frames.findIndex(frame => frame.kind === 'reserve' && frame.id === due.id);
@@ -74,6 +81,44 @@ it("a requested action's due selection and packet are validated before its model
     expect(row(coverage, 'requested-action', 'select-due')).toMatchObject({ state: 'validated', population: 1 });
     expect(row(coverage, 'requested-action', 'prepare-packet')).toMatchObject({ state: 'validated', population: 1 });
     expect(stepCoverage(w.journal.view, on)).not.toHaveProperty('requested-reminder');
+  } finally { w.close(); }
+});
+
+it.each([null, 'invalid declaration', [{ quote: priya, when: 'Friday at 9 am', remind: true }]])(
+  'a runner-authored due turn ignores dated=%j without a retry or new operator authority', async dueDated => {
+    const w = world({ stepCheck: 'pass', dueDated });
+    try {
+      w.worker.intake([update(1, priya)]); await w.worker.drain();
+      const dates = w.journal.view.dated.map(item => ({ ...item }));
+      w.state.now = friday9; await w.worker.sendRequested(); await w.worker.sendRequested();
+      const due = w.journal.view.order.find(turn => turn.requestedAction)!;
+      expect(w.state.models.filter(id => id === due.id)).toHaveLength(1);
+      expect(due.answerRetried).toBeUndefined();
+      expect(w.journal.view.dated).toEqual(dates);
+      expect(w.state.sent.filter(text => text.startsWith('PREVIEW — You asked on'))).toHaveLength(1);
+      const coverage = stepCoverage(w.journal.view, on);
+      expect(row(coverage, 'requested-action', 'select-due')).toMatchObject({ state: 'validated', population: 1 });
+      expect(row(coverage, 'requested-action', 'prepare-packet')).toMatchObject({ state: 'validated', population: 1 });
+    } finally { w.close(); }
+  });
+
+it('recorded dated output 6232376 grants no new date and needs no repair on a runner-authored due turn', async () => {
+  const fixture = JSON.parse(readFileSync(new URL('./fixtures/flap-a-declarations-2026-10-04.json', import.meta.url), 'utf8')) as {
+    rows: { row: { kind: string; id: string; output?: string } }[] };
+  const recorded = fixture.rows.find(item => item.row.kind === 'model-call' && item.row.id.endsWith(':6232376'))!.row;
+  const reading = readAnswer(recorded.output!, { wrapped: 'accept' });
+  if (!reading.ok) throw Error(reading.defect);
+  const w = world({ stepCheck: 'pass', dueAnswer: reading.value });
+  try {
+    w.worker.intake([update(1, priya)]); await w.worker.drain();
+    const dates = w.journal.view.dated.map(item => ({ ...item }));
+    w.state.now = friday9; await w.worker.sendRequested();
+    const due = w.journal.view.order.find(turn => turn.requestedAction)!;
+    expect(due.sent).toBeDefined();
+    expect(w.state.models.filter(id => id === due.id)).toHaveLength(1);
+    expect(due.answerRetried).toBeUndefined();
+    expect(w.journal.view.dated).toEqual(dates);
+    expect(row(stepCoverage(w.journal.view, on), 'requested-action', 'select-due').state).toBe('validated');
   } finally { w.close(); }
 });
 
