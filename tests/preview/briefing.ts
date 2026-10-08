@@ -6,10 +6,10 @@ export const SUCCESSIVE_CONTEXT_VERSION = 'successive-context-v1';
 const sha256 = (bytes: string) => `sha256:${createHash('sha256').update(bytes, 'utf8').digest('hex')}`;
 
 /** Exact selected purpose excerpts. Each is pinned by its SHA-256; a changed
- * source document refuses composition instead of silently shipping drift. */
+ * excerpt refuses composition instead of silently shipping drift. Naming-history prose is
+ * not needed on every answer: the capability note already names Instar. Keep the
+ * purpose and pillars verbatim, with their source locations and verified excerpt hashes. */
 export const SOURCE_EXCERPTS = Object.freeze([
-  Object.freeze({ id: 'purpose:name', path: 'docs/00-the-purpose.md', start: '**Value — the project is called Instar.**',
-    end: 'name.', title: 'The name' }),
   Object.freeze({ id: 'purpose:purpose', path: 'docs/00-the-purpose.md', start: 'The organizational purpose is unchanged',
     end: '> **Make coherence something an AI cannot lose.**', title: 'The purpose' }),
   Object.freeze({ id: 'purpose:coherency', path: 'docs/00-the-purpose.md', start: '**Value — coherency is the root,',
@@ -80,8 +80,8 @@ export function capabilityBriefing(readSource: (path: string) => string,
     // cint-L27: the header's "one-line summaries from this installation's register; current state in the status
     // reply" went to pay for the lookup sentence; the register-tooling and status-command lines below state both.
     'This is a private Instar 2.0 PREVIEW trial in the operator\'s direct Telegram chat and its topics.',
-    'What you can do for the operator here:', ...available.filter(f => f.userFacing).map(item), ...limits.tools ? [`- ${tools}`] : [],
-    'Internal machinery running under you:', ...available.filter(f => !f.userFacing).map(item),
+    'Available here:', ...available.filter(f => f.userFacing).map(item), ...limits.tools ? [`- ${tools}`] : [],
+    'Internal:', ...available.filter(f => !f.userFacing).map(item),
     ...off.length ? [`In the code but switched off here, so not available: ${off.map(f => f.id).join(', ')}.`] : [],
     // Live 2026-10-02 (room two, build e26a8c1b): this line used to end "and no scheduled work, nudges or other
     // unprompted messages", which denies `preview-requested-actions` listed two lines above it. The reply to
@@ -103,18 +103,19 @@ export function sourcePacket(readSource: (path: string) => string, pins: Readonl
     const digest = sha256(text);
     if (pins[excerpt.id] !== digest) throw Error(`preview: source excerpt ${excerpt.id} changed`);
     const line = document.slice(0, from).split('\n').length;
-    return { id: excerpt.id, title: excerpt.title, text, provenance: { path: excerpt.path, fileSha256: sha256(document),
+    // The verified excerpt hash identifies the exact text the model receives. A second,
+    // whole-document hash on every excerpt adds no admission check or source location.
+    return { id: excerpt.id, title: excerpt.title, text, provenance: { path: excerpt.path,
       firstLine: line, lastLine: line + text.split('\n').length - 1, excerptSha256: digest } };
   });
   const briefing = capabilityBriefing(readSource, limits);
-  sources.push({ id: 'capability-note', title: 'Preview capabilities and status (generated)', text: briefing.text,
+  sources.push({ id: 'capability-note', title: 'Capabilities (generated)', text: briefing.text,
     provenance: { path: CAPABILITY_BRIEFING_PATH, launcher: CAPABILITY_LAUNCHER, generation: briefing.generation,
       commit: briefing.commit, excerptSha256: sha256(briefing.text) } });
   return Object.freeze({ version: SUCCESSIVE_CONTEXT_VERSION, sources });
 }
 /** The reviewed digests of the exact excerpts above (2.0 main `docs/00-the-purpose.md`). */
 export const SOURCE_PINS = Object.freeze({
-  'purpose:name': 'sha256:936d4bdf6dc13976f7af73e0d48f9d11b78b9b844fa16beac9e950dbe7bf495e',
   'purpose:purpose': 'sha256:5d4b2142593c5a9569cb90cbffe20242c5ab2cf8d13f6929c888ec4166f87e51',
   'purpose:coherency': 'sha256:9a9e2145435171267cf760bfc34f999f40cbc63afc2fb8ac66caec16ef122ad1',
 });

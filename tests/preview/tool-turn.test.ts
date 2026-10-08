@@ -192,7 +192,7 @@ it('tells the agent and the operator exactly which tools exist and where outward
   const read = () => JSON.stringify({ generation: 'g', commit: 'c', launchers: { 'tests/preview/journal-agent.mjs': [] } });
   const withTools = capabilityBriefing(read, { providerAttempts: 50, expiresAt: 1, tools: true }).text;
   // The tools item joins the can-do list and the real limits follow it (w4-selfdesc, live K11a 2026-10-04).
-  expect(withTools).toContain(`What you can do for the operator here:\n- ${TOOLS_BRIEFING}`);
+  expect(withTools).toContain(`Available here:\n- ${TOOLS_BRIEFING}`);
   expect(withTools).toContain(TOOLS_LIMITS);
   // It describes the capability, never a hand-picked list: the whole set is offered and each call is decided at the hook.
   expect(TOOLS_BRIEFING).toMatch(/^tools: full Claude Code set \(files, shell, web reads, nested subagents\); MCP servers: unknown;/u);

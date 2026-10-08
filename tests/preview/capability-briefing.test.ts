@@ -3,7 +3,7 @@
 import { expect, it } from 'vitest';
 import { execFileSync } from 'node:child_process';
 import { readFileSync } from 'node:fs';
-import { CAPABILITY_BRIEFING_PATH, CAPABILITY_LAUNCHER, capabilityBriefing, sourcePacket, SOURCE_PINS } from './briefing.js';
+import { CAPABILITY_BRIEFING_PATH, CAPABILITY_LAUNCHER, capabilityBriefing, sourcePacket, SOURCE_PINS, SOURCE_EXCERPTS } from './briefing.js';
 
 type Feature = { id: string; status: string; availability: string; userFacing: boolean; text: string | null };
 const generated = JSON.parse(readFileSync(CAPABILITY_BRIEFING_PATH, 'utf8')) as { generation: string; commit: string; launchers: Record<string, Feature[]> };
@@ -84,3 +84,21 @@ it('the read-only inspection path shows the generated capability note and its re
     }
   } finally { rmSync(root, { recursive: true, force: true }); }
 }, 60_000);
+
+it('keeps the purpose and pillars verbatim and refuses either changed excerpt after the fixed-text trim', () => {
+  const read = (path: string) => readFileSync(path, 'utf8');
+  const sources = sourcePacket(read, SOURCE_PINS, limits).sources;
+  expect(sources.map(source => source.id)).toEqual(['purpose:purpose', 'purpose:coherency', 'capability-note']);
+  for (const excerpt of SOURCE_EXCERPTS) {
+    const source = sources.find(item => item.id === excerpt.id)!;
+    const document = read(excerpt.path);
+    const from = document.indexOf(excerpt.start), to = document.indexOf(excerpt.end, from) + excerpt.end.length;
+    expect(source.text).toBe(document.slice(from, to));
+    expect(source.provenance.excerptSha256).toBe(SOURCE_PINS[excerpt.id]);
+    expect(source.provenance.firstLine).toBe(document.slice(0, from).split('\n').length);
+    expect(source.provenance).not.toHaveProperty('fileSha256');
+    expect(() => sourcePacket(path => path === excerpt.path
+      ? document.slice(0, from + excerpt.start.length) + 'changed' + document.slice(from + excerpt.start.length)
+      : read(path), SOURCE_PINS, limits)).toThrow(`source excerpt ${excerpt.id} changed`);
+  }
+});
