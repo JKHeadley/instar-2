@@ -5777,8 +5777,6 @@ export function createJournalWorker(journal: ReturnType<typeof openPreviewJourna
     return { change: journal.view.changeHistory.length - 1, kind: change.kind, source };
   };
   const settleExhaustedEdit = () => {
-    const request = pendingMemory();
-    const previous = request ? summaryFor(request.update)?.through ?? -1 : -1;
     // A failed prefix before the request also prevents its judgment from being reached: an edit or a
     // cued correction ("Actually, cancel ...") alike. Settled as undecided, it releases ordinary answers,
     // so one exhausted frontier never holds every later turn: a keyword cue only schedules judgment (Rule 10), and
@@ -5788,40 +5786,33 @@ export function createJournalWorker(journal: ReturnType<typeof openPreviewJourna
     // 2026-10-01 proof room 2, update 6230467: the carried summary had outgrown the 24 KiB summary prompt, and
     // "Actually, cancel the bird feeder one." waited 24 minutes with no reply, no call and its reminder unfired).
     // Exhausted under the current summary format: a span an older build exhausted may be tried again (SUMMARY_FORMAT).
-    if (request && (journal.view.summaryFormatFailures.some(({ through }) => through > previous && summaryFormatFailures(journal.view, through) >= 2)
-      || journal.view.order.some(turn => turn.update > previous && turn.update <= request.update
-        && (turn.held === 'summary oversized turn' || turn.held === 'summary preflight unavailable'))))
-      journal.append({ kind: 'memory-undecided', id: request.id, reason: 'summary-failed', at: ports.now() });
+    // EVERY request exhausted at this moment is settled, not only the first. The summarizer spends two attempts per
+    // frontier and descends through the pending turns, so two requests can stand exhausted in one pass; the caller's
+    // catch-up loop then breaks as soon as a pass adds no accepted summary, and a second exhausted request left
+    // pending here reaches the "memory correction pending" hold, sets `blockedEarlier`, and holds the next ordinary
+    // turn "earlier turn pending". Live proof room 2 of 2026-10-07 (root proofroom2-q-20261007-135832, build
+    // f3299d37): update 6232688 already carried its two failures (at 1791412453691 and 1791412512572) when the
+    // summary at 6232687 failed, so the single settle took 6232687 (1791412530114), held update 6232680 "memory
+    // correction pending" (1791412530119) and update 6232689's plain "are you there?" "earlier turn pending"
+    // (1791412530124). 6232688 was settled only by the next pass (1791412592079) and 6232689 answered at
+    // 1791412603856 -- held 73.7 s, an 87,917 ms reply (group Q, Q77c and Q77d). Draining settles both in the one
+    // pass, so the plain question is answered instead of held (Rules 15, 77; Rule 95's open side -- reachability to
+    // the operator fails open). The exhaustion predicate itself is unchanged, so "exhausted under the current
+    // format" keeps its meaning for every other consumer of `summaryFormatFailures`. Each settle records
+    // `memoryUndecided`, which `pendingMemory()` skips, so the loop strictly shrinks its own input and terminates.
+    for (let request = pendingMemory(); request; request = pendingMemory()) {
+      const { id, update } = request, previous = summaryFor(update)?.through ?? -1;
+      if (!(journal.view.summaryFormatFailures.some(({ through }) => through > previous && summaryFormatFailures(journal.view, through) >= 2)
+        || journal.view.order.some(turn => turn.update > previous && turn.update <= update
+          && (turn.held === 'summary oversized turn' || turn.held === 'summary preflight unavailable')))) return;
+      journal.append({ kind: 'memory-undecided', id, reason: 'summary-failed', at: ports.now() });
+    }
   };
   /** A request whose span lies more than one summary pass past the frontier is settled undecided at once instead of
    * driving the whole catch-up synchronously: its reply, and every reply queued behind it, would otherwise wait for
    * every pass before it (Rule 15). Justin's root goes live 328 turns behind: a correction there would wait about 80
    * summary calls, 30-60 minutes. The answer may still decide it (w3-correctionstall), and the background passes
    * catch the frontier up beside the poll loop. Within one pass the request is still decided by its own summary. */
-  /** A `memoryPending` latch an accepted summary has already passed. `memoryPending` is set only by a failed
-   * summary (`memoryPendingFor`), and `pendingMemory()` clears it only through a summary that names the turn in
-   * `memoryFor`; a summary prompt covers its own span, so once an accepted frontier has moved at or past the turn no
-   * later summary will ever re-ask about it. Left pending, that latch keeps `pendingMemory()` truthy forever, which
-   * holds its own reply "memory correction pending" and every later ordinary turn "earlier turn pending" -- and a held
-   * turn is not eligible for the minimal path (`limitedReason`), so the MINIMAL_WORKER_WAIT_MS answer floor stops
-   * applying to it. `settleExhaustedEdit` does not reach this: its counter (`summaryFormatFailures`) is cleared by every
-   * accepted summary, so on a root that keeps summarizing successfully the two-failure threshold never arrives.
-   * Live proof room 2 of 2026-10-07 (root proofroom2-q-20261007-135832, build f3299d37, the root this build created the
-   * same day): 13 turns latched this way, update 6232680 held "memory correction pending" for over 90 minutes, update
-   * 6232688's answer missed the 120 s floor (group Q, Q77c) and update 6232689's plain "are you there?" was held
-   * "earlier turn pending" (Q77d). Settled undecided it releases ordinary answers, and its own answer may still decide
-   * it; the packet still withholds the corrected clause, so nothing stale returns (Rules 15, 77; Rule 95's open side --
-   * reachability to the operator fails open). A deciding summary still in flight at a frontier covering the turn is
-   * awaited, so a reachable judgment is never cut short. */
-  const settlePassedFrontier = () => {
-    for (const turn of journal.view.order) {
-      if (!turn.accepted || !turn.memoryPending || turn.memoryUndecided) continue;
-      if (journal.view.summaries.some(summary => summary.memoryFor?.includes(turn.id))) continue;
-      if (!liveSummaries(journal.view).some(summary => summary.through >= turn.update)) continue;
-      if ([...journal.view.summaryReservations.keys()].some(through => through >= turn.update)) continue;
-      journal.append({ kind: 'memory-undecided', id: turn.id, reason: 'summary-failed', at: ports.now() });
-    }
-  };
   const settleBehind = () => {
     for (let request = pendingMemory(); request; request = pendingMemory()) {
       const previous = summaryFor(request.update)?.through ?? -1;
@@ -7115,8 +7106,6 @@ export function createJournalWorker(journal: ReturnType<typeof openPreviewJourna
     working = true; workingSince = ports.now();
     try {
       completeApprovals();
-      // An unreachable memory judgment is settled before anything is held behind it (Rules 15, 77; Rule 95's open side).
-      settlePassedFrontier();
       // A split reply left part-way by a restart continues before anything new is answered.
       for (const turn of journal.view.order) if (turn.replyParts?.length) await sendReplyParts(turn);
       if (due) scheduleRequests();
