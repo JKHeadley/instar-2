@@ -2,7 +2,7 @@ import { expect, it } from 'vitest';
 import { mkdtempSync, realpathSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
-import { createJournalWorker, openPreviewJournal } from './journal-test-worker.js';
+import { createJournalWorker, MEMORY_UNDECIDED_REPLY, openPreviewJournal } from './journal-test-worker.js';
 
 // Live proof room 2 of 2026-10-07 (root proofroom2-q-20261007-135832, build f3299d37; group Q results
 // Q-proofroom2-20261007-153049 and -153506). The root reported "13 unresolved operator memory corrections" with
@@ -73,6 +73,11 @@ it('settles a memory correction an accepted summary frontier has passed, and ans
     expect(question.held).toBeUndefined();
     expect(question.intent).toBeDefined();
     expect(w.sent.some(text => text.includes(`Answered: ${plain}`))).toBe(true);
+    // Constraint 2, nothing that mattered is silently lost: the correction is not dropped quietly. Its own reply is
+    // the honest fixed notice that asks the operator to send it again -- the reply the live root never sent at all
+    // (update 6232680 sat held for over 90 minutes behind only its generic held notice).
+    expect(correction.memoryPending).toBe(true);
+    expect(w.sent).toContain(MEMORY_UNDECIDED_REPLY);
     // Rule 7 still holds: settling undecided records that the judgment could not be reached; it never applies the
     // correction, so no corrected-away clause is committed as fact.
     expect(w.journal.view.memory).toEqual([]);
