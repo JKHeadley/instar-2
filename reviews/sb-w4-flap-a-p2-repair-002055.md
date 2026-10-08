@@ -25,10 +25,10 @@ Prompt finding: 849db3a6296a | protocol-literal | Existing fixed empty-memory re
 Prompt finding: bd01de21286a | protocol-literal | Existing sourceLabel instruction is unchanged; its test checks delivery.
 Prompt finding: fb5fa7e706c8 | protocol-literal | Existing operator-history guidance is unchanged; its test checks delivery.
 
+Register validation: The delegated owner-manifest rehash and inventory repin both found zero changed pins. The register was replayed against repair commit 9337201ed22640c2566c15c71893df18cf144a36; only generated outputs changed. No pin was edited by hand.
+
 ## Closing block
 
 simplestRobustRoute: This is the simplest robust route: align one retry predicate with the existing downstream authority rule, instead of adding state, a judge, or weakening packet-digest evidence. Start is a runner-authored requested-action turn; end is its unchanged answer/send path with no new operator dates; existing shared cap, stop and one-retry limit remain. Recorded-output worker replay proves branch selection, not a new unattended provider exchange.
 80/20: Reproduce the exact full-gate failure, test ignored declarations and recorded positive/negative operator neighbors, then regenerate and run cheap checks. Full-suite and independent landing evidence belong to the desk pipeline.
 VERDICT: author submission; this record asserts no independent verdict — the review desk records its own
-
-Register validation: The delegated owner-manifest rehash and inventory repin both found zero changed pins. The register was replayed against repair commit 9337201ed22640c2566c15c71893df18cf144a36; only generated outputs changed. No pin was edited by hand.
