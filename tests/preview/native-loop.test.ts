@@ -28,7 +28,11 @@ import { createResourceOwner, RESOURCE_CEILINGS } from '../../scripts/resource-o
 
 type Owner = { execute: (input: unknown, work?: string) => Promise<unknown>; attach: (options: object) => Promise<unknown> };
 let owner: Owner;
-beforeAll(async () => { owner = createResourceOwner(); await owner.attach({}); });
+// RLIMIT_NPROC counts the whole user ID: other gate workers can consume the 32 slots between
+// census and fork. Match resource-owner.test.ts's finite fixture allowance for non-cap tests.
+// The dedicated memory/process-ceiling cases below still construct their own tight owners.
+const fixtureCeilings = { ...RESOURCE_CEILINGS, launch: { ...RESOURCE_CEILINGS.launch, processCount: 256 } };
+beforeAll(async () => { owner = createResourceOwner(fixtureCeilings); await owner.attach({}); });
 
 const key = new Uint8Array(32).fill(9);
 const roots: string[] = [];
@@ -624,7 +628,7 @@ child.unref(); process.stdout.write(String(child.pid));`;
         ['Bash', { command: 'echo after' }]), answer('done')]);
       expect(performance.now() - started).toBeLessThan(10000);
       const posts = admission(run.stateDirectory).filter(row => row.phase === 'post').map(row => JSON.parse(row.result));
-      expect(posts[0]).toMatchObject({ stdout: 'planted\n', exitCode: 0 });
+      expect(posts[0]).toEqual({ stdout: 'planted\n', stderr: '', exitCode: 0 });
       expect(posts[1]).toMatchObject({ stdout: 'after\n', exitCode: 0 });
       expect(run.outcome.result).toMatchObject({ native: { ended: 'answered', unresolved: [] } });
       expect(alive(neighbor.pid)).toBe(true);
