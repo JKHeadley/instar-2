@@ -13,7 +13,8 @@ const read = (path: string): Declaration[] => JSON.parse(readFileSync(path, 'utf
 const committed = () => ({ journal: read('tests/preview/journal.declarations.json'), replyCheck: read('tests/preview/reply-check.declarations.json'),
   redact: read('src/recall/redact.declarations.json'), resourceOwner: read('scripts/resource-owner.declarations.json') });
 const edited = (list: Declaration[], id: string, edit: (d: Declaration) => Declaration) => list.map(d => d.id === id ? edit(d) : d);
-const facts = (patch: Record<string, Json>) => (d: Declaration) => ({ ...d, requiredFacts: { ...d.requiredFacts, ...patch } });
+const rungs = (edit: (r: Record<string, Json>, i: number) => Record<string, Json>) => (d: Declaration) =>
+  ({ ...d, requiredFacts: { ...d.requiredFacts, rungs: d.requiredFacts.rungs!.map(edit) } });
 
 describe('the preview runner binds every blocking site it enforces', () => {
   it('binds the committed declarations, one per enforced checkpoint', () => {
@@ -24,12 +25,12 @@ describe('the preview runner binds every blocking site it enforces', () => {
     const base = committed();
     const cases: [string, Parameters<typeof bindPreviewBlockingSites>[0]][] = [
       // The stop gate declared safety-open: the code holds closed.
-      ['preview.journal.gate', { ...base, journal: edited(base.journal, 'preview.journal.gate', facts({ failDirection: 'open' })) }],
+      ['preview.journal.gate', { ...base, journal: edited(base.journal, 'preview.journal.gate', rungs(r => ({ ...r, failDirection: 'open' }))) }],
       // The cap claimed under another admission.
-      ['preview.journal.capacityRefused', { ...base, journal: edited(base.journal, 'preview.journal.capacityRefused', facts({ decidesAloneBasis: 'operator-emergency-stop' })) }],
+      ['preview.journal.capacityRefused', { ...base, journal: edited(base.journal, 'preview.journal.capacityRefused', rungs(r => ({ ...r, decidesAloneBasis: 'operator-emergency-stop' }))) }],
       // The poll gate re-declared as asking the mind.
-      ['preview.journal.pollLimit', { ...base, journal: edited(base.journal, 'preview.journal.pollLimit', d => {
-        const { decidesAloneBasis: _basis, ...rest } = d.requiredFacts; return { ...d, requiredFacts: { ...rest, decidesAlone: 'no', model: 'preview-subscription-claude' } }; }) }],
+      ['preview.journal.pollLimit', { ...base, journal: edited(base.journal, 'preview.journal.pollLimit', rungs(r => {
+        const { decidesAloneBasis: _basis, ...rest } = r; return { ...rest, decidesAlone: 'no', model: 'preview-subscription-claude' }; })) }],
       // The reviewer's floor rung flipped open.
       ['preview.reply-check.reviewReply', { ...base, replyCheck: edited(base.replyCheck, 'preview.reply-check.reviewReply', d => ({ ...d,
         requiredFacts: { ...d.requiredFacts, rungs: d.requiredFacts.rungs!.map(r => ({ ...r, failDirection: 'open' })) } })) }],
@@ -38,6 +39,26 @@ describe('the preview runner binds every blocking site it enforces', () => {
       ['resource-owner.admit', { ...base, resourceOwner: base.resourceOwner.filter(d => d.id !== 'resource-owner.admit') }],
     ];
     for (const [id, declarations] of cases) expect(() => bindPreviewBlockingSites(declarations)).toThrow(`blocking site ${id}`);
+  });
+  it.each(['preview.journal.gate', 'preview.journal.pollLimit', 'preview.journal.capacityRefused'])
+  ('refuses the old single-cause declaration and either misclassified cause at %s', id => {
+    const base = committed(), site = base.journal.find(d => d.id === id)!;
+    const declared = site.requiredFacts.rungs!;
+    expect(declared.map(r => [r.decidesAloneBasis, r.failDirection])).toEqual([
+      [id.endsWith('capacityRefused') ? 'spend-past-a-cap' : 'operator-emergency-stop', 'closed'],
+      ['recorded-governed-state', 'closed'],
+    ]);
+    const badLists = [declared.slice(0, 1), declared.slice(1),
+      declared.map(r => ({ ...r, decidesAloneBasis: declared[0]!.decidesAloneBasis! })),
+      declared.map(r => ({ ...r, decidesAloneBasis: 'recorded-governed-state' }))];
+    for (const list of badLists) {
+      const journal = edited(base.journal, id, d => ({ ...d, requiredFacts: { ...d.requiredFacts, rungs: list } }));
+      expect(() => bindPreviewBlockingSites({ ...base, journal })).toThrow(`blocking site ${id}`);
+    }
+    for (const index of [0, 1]) {
+      const journal = edited(base.journal, id, rungs((r, i) => i === index ? { ...r, failDirection: 'open' } : r));
+      expect(() => bindPreviewBlockingSites({ ...base, journal })).toThrow(`blocking site ${id}`);
+    }
   });
 });
 
