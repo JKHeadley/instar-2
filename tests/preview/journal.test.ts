@@ -429,11 +429,14 @@ it('does not notify while the model invocation is still in flight', async () => 
   try {
     const journal = openPreviewJournal(join(root, 'journal.encrypted'), key, genesis());
     let finish!: (value: { state: 'uncertain' }) => void, sends = 0;
+    let started!: () => void;
+    const invoking = new Promise<void>(resolve => { started = resolve; });
     const worker = createJournalWorker(journal, { now: () => 1000, stopped: () => false,
-      model: () => new Promise(resolve => { finish = resolve; }), checkOutbound: () => {},
+      model: () => new Promise(resolve => { finish = resolve; started(); }), checkOutbound: () => {},
       send: async () => { sends++; return 1; } });
     worker.intake([update(1)]);
     const draining = worker.drain();
+    await invoking;
     expect(journal.view.order[0]?.reserved).toBe(true);
     expect(journal.view.order[0]?.answer).toBeUndefined();
     expect(journal.view.order[0]?.noticeClass).toBeUndefined();

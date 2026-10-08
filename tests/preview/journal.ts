@@ -5742,6 +5742,25 @@ export function createJournalWorker(journal: ReturnType<typeof openPreviewJourna
       // Old summary frames had no request disposition. Their covered turns are
       // already settled; attempting to summarize the same frontier cannot work.
       || summary.memoryFor === undefined && !turn.memoryPending && summary.through >= turn.update));
+  /** Whether a memory decision was ever asked for behind a correction hold: either turn still carries
+   * pendingMemory()'s own candidate shape, or an explicit settlement row names it -- a turn recorded
+   * memoryUndecided, or a summary whose memoryFor names it. The union is needed because neither side contains the
+   * other. The summary writer's fallback trigger picks an ordinary UNCUED operator turn and writes memoryFor when
+   * the model returns a memory change (so a memoryFor-named or memoryUndecided turn need not carry any cue, editOf
+   * or memoryPending); and a request that settled through a summary frame carrying no memoryFor is named by no
+   * explicit row at all. A hold with no request behind it on either side keeps int11's held notice. Because
+   * !pendingMemory() already holds at the callsite, every candidate turn has settled by one of pendingMemory()'s
+   * own routes, so matching the candidate shape is enough. Live 2026-10-07 (proof room two, build 670853ef, update
+   * 6232680): the request settled through a summary frame carrying no memoryFor, which is neither explicit shape,
+   * so the hold outlived its cause with no route out while updates 6232681-6232683 were answered -- a latch, not a
+   * wait (Rules 15, 77, 95's open side). Strictly wider than the two explicit shapes alone, by union.
+   */
+  const explicitlySettled = (turn: Turn) => turn.memoryUndecided
+    || journal.view.summaries.some(summary => summary.memoryFor?.includes(turn.id));
+  const correctionRequestBehind = () => journal.view.order.some(turn => explicitlySettled(turn)
+    || remembered(turn) && fromOperator(turn)
+      && turn.noticeClass !== 'too-long-input' && Buffer.byteLength(turn.text) <= journal.view.limits.maxBytes
+      && (turn.editOf || memoryCue(turn) || preferenceCue(turn) || turn.memoryPending));
   // A correction still being decided holds every proactive send until its judgment lands.
   const unresolvedReminderMemory = () => pendingMemory() !== undefined;
   // A later verified-operator turn may withdraw a reminder. Until its meaning is
@@ -5777,8 +5796,6 @@ export function createJournalWorker(journal: ReturnType<typeof openPreviewJourna
     return { change: journal.view.changeHistory.length - 1, kind: change.kind, source };
   };
   const settleExhaustedEdit = () => {
-    const request = pendingMemory();
-    const previous = request ? summaryFor(request.update)?.through ?? -1 : -1;
     // A failed prefix before the request also prevents its judgment from being reached: an edit or a
     // cued correction ("Actually, cancel ...") alike. Settled as undecided, it releases ordinary answers,
     // so one exhausted frontier never holds every later turn: a keyword cue only schedules judgment (Rule 10), and
@@ -5788,10 +5805,27 @@ export function createJournalWorker(journal: ReturnType<typeof openPreviewJourna
     // 2026-10-01 proof room 2, update 6230467: the carried summary had outgrown the 24 KiB summary prompt, and
     // "Actually, cancel the bird feeder one." waited 24 minutes with no reply, no call and its reminder unfired).
     // Exhausted under the current summary format: a span an older build exhausted may be tried again (SUMMARY_FORMAT).
-    if (request && (journal.view.summaryFormatFailures.some(({ through }) => through > previous && summaryFormatFailures(journal.view, through) >= 2)
-      || journal.view.order.some(turn => turn.update > previous && turn.update <= request.update
-        && (turn.held === 'summary oversized turn' || turn.held === 'summary preflight unavailable'))))
-      journal.append({ kind: 'memory-undecided', id: request.id, reason: 'summary-failed', at: ports.now() });
+    // EVERY request exhausted at this moment is settled, not only the first. The summarizer spends two attempts per
+    // frontier and descends through the pending turns, so two requests can stand exhausted in one pass; the caller's
+    // catch-up loop then breaks as soon as a pass adds no accepted summary, and a second exhausted request left
+    // pending here reaches the "memory correction pending" hold, sets `blockedEarlier`, and holds the next ordinary
+    // turn "earlier turn pending". Live proof room 2 of 2026-10-07 (root proofroom2-q-20261007-135832, build
+    // f3299d37): update 6232688 already carried its two failures (at 1791412453691 and 1791412512572) when the
+    // summary at 6232687 failed, so the single settle took 6232687 (1791412530114), held update 6232680 "memory
+    // correction pending" (1791412530119) and update 6232689's plain "are you there?" "earlier turn pending"
+    // (1791412530124). 6232688 was settled only by the next pass (1791412592079) and 6232689 answered at
+    // 1791412603856 -- held 73.7 s, an 87,917 ms reply (group Q, Q77c and Q77d). Draining settles both in the one
+    // pass, so the plain question is answered instead of held (Rules 15, 77; Rule 95's open side -- reachability to
+    // the operator fails open). The exhaustion predicate itself is unchanged, so "exhausted under the current
+    // format" keeps its meaning for every other consumer of `summaryFormatFailures`. Each settle records
+    // `memoryUndecided`, which `pendingMemory()` skips, so the loop strictly shrinks its own input and terminates.
+    for (let request = pendingMemory(); request; request = pendingMemory()) {
+      const { id, update } = request, previous = summaryFor(update)?.through ?? -1;
+      if (!(journal.view.summaryFormatFailures.some(({ through }) => through > previous && summaryFormatFailures(journal.view, through) >= 2)
+        || journal.view.order.some(turn => turn.update > previous && turn.update <= update
+          && (turn.held === 'summary oversized turn' || turn.held === 'summary preflight unavailable')))) return;
+      journal.append({ kind: 'memory-undecided', id, reason: 'summary-failed', at: ports.now() });
+    }
   };
   /** A request whose span lies more than one summary pass past the frontier is settled undecided at once instead of
    * driving the whole catch-up synchronously: its reply, and every reply queued behind it, would otherwise wait for
@@ -7154,10 +7188,8 @@ export function createJournalWorker(journal: ReturnType<typeof openPreviewJourna
           delete turn.held;
         // A settled request (decided or recorded undecided, e.g. across a restart) releases
         // its correction hold; a hold with no request behind it keeps int11's held notice.
-        if (!pendingMemory() && turn.held === 'memory correction pending'
-          && journal.view.order.some(item => (item.memoryUndecided
-            || journal.view.summaries.some(summary => summary.memoryFor?.includes(item.id))))) {
-          delete turn.held; delete turn.heldSince;
+        if (!pendingMemory() && turn.held === 'memory correction pending' && correctionRequestBehind()) {
+          delete turn.held; delete turn.heldSince; journal.view.heldTurns.delete(turn);
         }
         if (turn.held === 'earlier turn pending' && !blockedEarlier) { delete turn.held; delete turn.heldSince; }
         // A request settled undecided because its own span cannot be summarized: that preflight refusal concerns the
@@ -7231,10 +7263,13 @@ export function createJournalWorker(journal: ReturnType<typeof openPreviewJourna
           }
           const { question, carried, dropped, grounding } = selected;
           let { context, prepared } = selected;
+          // Rule 29 (plan #636): the writer this turn's packet was prepared for; a re-ask or replacement below re-prepares for it too.
+          const writer = sessionWriterOf(journal.view, turn);
           // Rule 38 / scheduled work §5: a requested action's due selection and prepared packet are validated before
           // its model call. The pipeline fails closed: a violation or an unavailable check holds it, visibly.
-          if (turn.requestedAction !== undefined) {
-            const packet = prepared ?? JSON.stringify({ question, context });
+          const validateRequestedPacket = async (packetContext: string, packetPrepared: string | undefined): Promise<boolean> => {
+            if (turn.requestedAction === undefined) return true;
+            const packet = packetPrepared ?? JSON.stringify({ question, context: packetContext });
             const digest = packetDigest(packet);
             const outcome = await validateBefore([
               { id: `select-due:${turn.id}:${digest}`, evidence: () => actionDueEvidence(turn, `select-due:${turn.id}:${digest}`) },
@@ -7242,8 +7277,10 @@ export function createJournalWorker(journal: ReturnType<typeof openPreviewJourna
                 request: turn.text, ...packetEvidence(packet) }) }]);
             const hold = outcome === 'violation' ? 'step check violation' : outcome === 'unavailable' ? 'step check unavailable'
               : outcome === 'pending' ? 'call cap' : null;
-            if (hold) { if (turn.held !== hold) journal.append({ kind: 'hold', id: turn.id, reason: hold, at: ports.now() }); continue; }
-          }
+            if (hold && turn.held !== hold) journal.append({ kind: 'hold', id: turn.id, reason: hold, at: ports.now() });
+            return hold === null;
+          };
+          if (!await validateRequestedPacket(context, prepared)) continue;
           journal.append({ kind: 'reserve', id: turn.id, ...(prepared === undefined ? {} : { prompt: prepared }),
             corrections: carried, grounding, packetDropped: dropped, packetLimit: journal.view.limits.maxBytes,
             maxInputTokens: journal.view.limits.maxBytes, maxOutputTokens: subscriptionOutputMaximum, at: ports.now() }); gate();
@@ -7257,7 +7294,7 @@ export function createJournalWorker(journal: ReturnType<typeof openPreviewJourna
           // Rule 116: a real model sometimes answers in prose instead of the required Decision. Ask the same turn
           // once more with a runner-authored format reminder in the packet (never in the operator's message),
           // reserved against the same call cap and only while not stopped; a second miss is refused as before.
-          // Returns false when the re-ask's outcome is unknown (its reservation then stays UNKNOWN).
+          // Returns false when replacement supervision holds the turn, or the re-ask is unknown (reservation stays UNKNOWN).
           // Part Thirteen §9 (Rules 78, 84): a re-ask or replacement reuses this packet, but an earlier tool turn may have
           // reserved the allowance its own tools would need. Its capability entries are re-read for the call about to run
           // (its base call not yet reserved, as at preparation), so the packet never claims tools its call will not get.
@@ -7268,16 +7305,52 @@ export function createJournalWorker(journal: ReturnType<typeof openPreviewJourna
             return JSON.stringify({ ...packet, obligationDecision: tools ? OBLIGATION_DECISION_TOOLS : OBLIGATION_DECISION,
               governingConstraints: governingConstraints(tools), capabilities: previewCapabilities(tools) });
           };
+          const offeredPromises = () => new Set(((JSON.parse(context) as { commitments?: { items?: { id?: number; owner?: string }[] }[] })
+            .commitments ?? []).flatMap(group => group.items ?? []).filter(item => item.owner === 'agent' && Number.isSafeInteger(item.id))
+            .map(item => item.id!));
+          // Rule 10: a readable answer can still carry an unreadable declaration. The recorded A5b/RA2
+          // failures quoted the old promise or changed the operator's words. Give these exact validation
+          // failures the existing single format re-ask, before recording an answer or sending anything.
+          // No meaning is inferred and no citation is repaired by code; the same validators decide again.
+          const declarationDefect = (given: Answer): string | undefined => {
+            const text = typeof given === 'string' ? given : 'text' in given ? given.text : undefined;
+            if (text === undefined) return undefined;
+            let value: Record<string, unknown>;
+            try { value = JSON.parse(text) as Record<string, unknown>; } catch { return undefined; }
+            if (!value || typeof value !== 'object' || Array.isArray(value)) return undefined;
+            const reply = value.reply;
+            const body = typeof reply === 'string' ? reply : reply && typeof reply === 'object' && !Array.isArray(reply)
+              && 'answer' in reply && typeof reply.answer === 'string' ? reply.answer : undefined;
+            if (body === undefined) return undefined;
+            if (promiseProposals(value.promises, body) === undefined)
+              return 'promises must quote an exact sentence of this reply; when, if present, must be copied from that sentence';
+            if (fulfillmentProposals(value.fulfilled, body,
+              item => offeredPromises().has(item.id) && fulfillmentSupported(item, body, journal.view.commitments)) === undefined)
+              return 'fulfilled must name an offered agent promise and quote an exact excerpt of this new reply, not the old promise; omit it if no promise was carried out';
+            // Runner-authored due turns discard operator date declarations below; repairing one would
+            // spend a call on authority this turn cannot use and replace its supervised packet.
+            if (!turn.requestedAction && value.dated !== undefined && datedFrom(value.dated, turn) === undefined)
+              return 'dated must quote this operator message exactly, including case, with when copied from that quote; do not invent or paraphrase a citation';
+            return undefined;
+          };
           const formatReask = async (given: Answer): Promise<Answer | false> => {
-            if (typeof given === 'string' || !('failureClass' in given) || given.state !== 'complete'
-              || given.failureClass !== 'malformed' || turn.answerRetried) return given;
-            const retryContext = routedContext(withFormatReminder(context, answerFormatReminder('defect' in given ? given.defect : undefined)));
+            if (turn.answerRetried || typeof given !== 'string' && given.state !== undefined && given.state !== 'complete') return given;
+            const malformed = typeof given !== 'string' && 'failureClass' in given && given.failureClass === 'malformed';
+            const defect = malformed ? ('defect' in given ? given.defect : undefined) : declarationDefect(given);
+            if (!malformed && defect === undefined) return given;
+            const reminder = malformed ? answerFormatReminder(defect)
+              : `Your answer's declaration was refused: ${defect}. Return the complete corrected answer object with reasoning. The operator's message is unchanged.`;
+            const retryContext = routedContext(withFormatReminder(context, reminder));
             let retryPrepared: string | undefined, preparable = true;
-            if (prepared !== undefined) try { retryPrepared = ports.prepareModel?.({ question, context: retryContext, id: turn.id }); }
+            if (prepared !== undefined) try { retryPrepared = ports.prepareModel?.({ question, context: retryContext, id: turn.id, ...(writer ? { writer } : {}) }); }
             catch { preparable = false; }
             if (!preparable || halted() || journal.view.calls >= journal.view.limits.maxCalls - (ports.replyCheck ? 1 : 0)) return given;
+            // A declaration repair changes the packet: validate that exact replacement before reserving or
+            // invoking it. A held check must not fall through to the original answer/send path either (Rule 38).
+            if (!await validateRequestedPacket(retryContext, retryPrepared)) return false;
+            if (halted() || journal.view.calls >= journal.view.limits.maxCalls - (ports.replyCheck ? 1 : 0)) return given;
             journal.append({ kind: 'format-retry', id: turn.id, role: 'answer', state: 'complete', failureClass: 'malformed',
-              ...(retryPrepared === undefined ? {} : { prompt: retryPrepared }), ...(given.usage ? { usage: given.usage } : {}), maxInputTokens: journal.view.limits.maxBytes,
+              ...(retryPrepared === undefined ? {} : { prompt: retryPrepared }), ...(typeof given !== 'string' && given.usage ? { usage: given.usage } : {}), maxInputTokens: journal.view.limits.maxBytes,
               maxOutputTokens: subscriptionOutputMaximum, at: ports.now() });
             try { return await ports.model({ question, context: retryContext, id: turn.id,
               ...(retryPrepared === undefined ? {} : { prepared: retryPrepared }) }); }
@@ -7295,7 +7368,7 @@ export function createJournalWorker(journal: ReturnType<typeof openPreviewJourna
             const replaceContext = routedContext(context);
             let replacePrepared = prepared;
             if (replaceContext !== context && prepared !== undefined) {
-              try { replacePrepared = ports.prepareModel?.({ question, context: replaceContext, id: turn.id }); } catch { return given; }
+              try { replacePrepared = ports.prepareModel?.({ question, context: replaceContext, id: turn.id, ...(writer ? { writer } : {}) }); } catch { return given; }
             }
             journal.append({ kind: 'answer-replace', id: turn.id, state: 'uncertain',
               ...(replacePrepared === undefined || replacePrepared === prepared ? {} : { prompt: replacePrepared }),
@@ -7314,7 +7387,7 @@ export function createJournalWorker(journal: ReturnType<typeof openPreviewJourna
           };
           const answerText = (given: Answer) => typeof given === 'string' ? given : 'text' in given ? given.text : undefined;
           const first = await settled(answer);
-          if (first === false) continue; // the retry or replacement reservation remains UNKNOWN
+          if (first === false) continue; // a supervision hold, or an UNKNOWN retry/replacement reservation
           answer = first;
           // Rule 11 (Part 21 §2): the answer model may ask for ONE memory lookup instead of replying. Its phrases are
           // data: bounded, redacted like any packet field, and used only as a search query. The second answer call is
@@ -7416,13 +7489,10 @@ export function createJournalWorker(journal: ReturnType<typeof openPreviewJourna
                 // Rule 10: the model reads whether its reply promises or carries out a promise; code keeps
                 // only exact quotes of this reply, ids this packet actually offered, and — by the one shared
                 // support rule the replay also applies — commitments this reply may carry out at all.
-                const offeredPromises = new Set(((JSON.parse(context) as { commitments?: { items?: { id?: number; owner?: string }[] }[] })
-                  .commitments ?? []).flatMap(group => group.items ?? []).filter(item => item.owner === 'agent' && Number.isSafeInteger(item.id))
-                  .map(item => item.id!));
                 const answerText = replyAnswer ?? (typeof replyValue === 'string' ? replyValue : '');
                 promises = promiseProposals(parsed.promises, answerText) ?? [];
                 const proposed = fulfillmentProposals(parsed.fulfilled, answerText,
-                  item => offeredPromises.has(item.id) && fulfillmentSupported(item, answerText, journal.view.commitments));
+                  item => offeredPromises().has(item.id) && fulfillmentSupported(item, answerText, journal.view.commitments));
                 fulfills = proposed ?? [];
                 // Rules 2, 10: a claim the support rule refuses is recorded as refused, never dropped in silence.
                 if (proposed === undefined) refusedFulfills = Math.min(AGENT_PROMISE_LIMIT,
