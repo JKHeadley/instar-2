@@ -158,7 +158,7 @@ describe('readiness: the switch is decided from live state, a refusal names its 
     expect([existsSync(one.path), existsSync(two.path)]).toEqual([false, false]);
   });
   it('says which identity the harness runs as, and an unavailable one as held, never as a fallback', () => {
-    expect(harnessStatusLine({ ready: true, user: '_instarharness' })).toMatch(/own macOS user \(_instarharness\).*new \/private\/tmp entries are denied to it from creation/u);
+    expect(harnessStatusLine({ ready: true, user: '_instarharness' })).toMatch(/own macOS user \(_instarharness\).*new entries in the system temporary folder are denied to it from creation/u);
     expect(harnessStatusLine({ ready: false, reason: 'no user x' })).toMatch(/^Harness identity: UNAVAILABLE, so every Claude Code launch is held \(nothing runs as the operator's account\).*no user x/u);
     expect(harnessStatusLine({ ready: false, reason: 'no user x' })).not.toMatch(/FALLBACK/u);
     expect(harnessStatusLine(null)).toBeNull();
