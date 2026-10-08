@@ -156,9 +156,12 @@ export async function doorwayProvider({ doorwayId, io, profile, activation, mode
 }
 
 /**
- * The CLI's `--login-profile` loading point. The host owns this descriptor, so it is frozen where it
- * is read: the credential custodian accepts only the immutable object, and every other shipped client
- * loads its profile the same way.
+ * The CLI's `--login-profile` loading point, as the provider credential custodian requires it: the
+ * host's own frozen descriptor ("host-owned frozen subscription descriptor required",
+ * src/assembly/provider-credential-custodian.ts). The host owns this descriptor, so it is frozen
+ * where it is read, and every other shipped client loads its profile the same way. A plain parse
+ * leaves the file's object mutable, so the custodian refuses every valid profile and the route is
+ * never constructed — the shipped CLI reports "preview: subscription route refused" with no call.
  */
 export const loadLoginProfile = path => Object.freeze(JSON.parse(readFileSync(path, 'utf8')));
 
