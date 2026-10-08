@@ -6,7 +6,7 @@ import { mkdtempSync, readFileSync, realpathSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { createJournalWorker, openPreviewJournal } from './journal-test-worker.js';
-import { STEP_SUPERVISOR_EXHAUSTED, packetDigest, type JournalRecord } from './journal.js';
+import { packetDigest, STEP_SUPERVISOR_EXHAUSTED, type JournalRecord } from './journal.js';
 import { readAnswer } from './answer-reading.js';
 import { stepCoverage } from './proofs.js';
 import { interpretStepJev, stepQuestionFor, stepQuestionsFor } from './step-check.js';
@@ -36,14 +36,13 @@ function world(options: { stepCheck?: 'pass' | ((step: string) => number | 'outa
   const append = journal.append;
   journal.append = row => { frames.push(row); append(row); };
   const state = { now: start, sent: [] as string[], models: [] as string[], asked: [] as string[] };
+  let dueCalls = 0;
   const score = options.stepCheck === 'pass' ? () => 0.01 : options.stepCheck;
   const worker = createJournalWorker(journal, { now: () => state.now, stopped: () => false, timeZone: zone,
     prepareModel: input => JSON.stringify({ messages: [{ role: 'context', content: input.context }, { role: 'user', content: input.question }] }),
     model: async (input: Input) => { state.models.push(input.id);
-      if (input.id.startsWith('requested-action:') && options.dueAnswers) {
-        const attempt = state.models.filter(id => id === input.id).length - 1;
-        return options.dueAnswers[Math.min(attempt, options.dueAnswers.length - 1)]!;
-      }
+      if (input.id.startsWith('requested-action:') && options.dueAnswers !== undefined)
+        return options.dueAnswers[Math.min(dueCalls++, options.dueAnswers.length - 1)]!;
       if (input.id.startsWith('requested-action:') && options.dueAnswer !== undefined) return options.dueAnswer;
       if (input.id.startsWith('requested-action:') && options.dueDated !== undefined)
         return JSON.stringify({ reply: 'Time to call Priya.', memory: [], dated: options.dueDated });
@@ -88,70 +87,74 @@ it("a requested action's due selection and packet are validated before its model
   } finally { w.close(); }
 });
 
-const invalidPromise = JSON.stringify({ reply: 'Time to call Priya.', promises: [{ quote: 'not in this reply' }] });
-const validReplacement = JSON.stringify({ reply: 'Time to call Priya.' });
-const recordedAnswer = (id: number) => {
-  const fixture = JSON.parse(readFileSync(new URL('./fixtures/flap-a-declarations-2026-10-04.json', import.meta.url), 'utf8')) as {
-    rows: { row: { kind: string; id: string; output?: string } }[] };
-  const reading = readAnswer(fixture.rows.find(item => item.row.kind === 'model-call' && item.row.id.endsWith(`:${id}`))!.row.output!,
-    { wrapped: 'accept' });
-  if (!reading.ok) throw Error(reading.defect);
-  return reading.value;
-};
+const invalidPromise = JSON.stringify({ reply: 'Time to call Priya.', memory: [], dated: [], promises: [{ quote: 'not in this reply' }] });
+const validRepair = JSON.stringify({ reply: 'Time to call Priya.', memory: [], dated: [] });
 
-it.each(['repaired promise', 'repeated invalid promise', 'recorded fulfillment 715674119'])(
-  'a %s retry validates its exact replacement packet before the call and sends only once', async shape => {
-    const first = shape === 'recorded fulfillment 715674119' ? recordedAnswer(715674119) : invalidPromise;
-    const second = shape === 'repeated invalid promise' ? first : validReplacement;
-    const w = world({ stepCheck: 'pass', dueAnswers: [first, second] });
-    try {
-      w.worker.intake([update(1, priya)]); await w.worker.drain();
-      w.state.now = friday9; await w.worker.sendRequested(); await w.worker.sendRequested();
-      const due = w.journal.view.order.find(turn => turn.requestedAction)!;
-      expect(due.answerRetried).toBe(true);
-      expect(w.state.models.filter(id => id === due.id)).toHaveLength(2);
-      expect(w.state.sent.filter(text => text.startsWith('PREVIEW — You asked on'))).toHaveLength(1);
-      const digest = packetDigest(due.prompt!);
-      const retryAt = w.frames.findIndex(frame => frame.kind === 'format-retry' && frame.id === due.id);
-      for (const prefix of ['select-due', 'prepare']) {
-        const checks = w.frames.filter((frame): frame is Extract<JournalRecord, { kind: 'step-check' }> =>
-          frame.kind === 'step-check' && frame.step.startsWith(`${prefix}:${due.id}:`));
-        expect(checks).toHaveLength(2);
-        expect(checks[0]!.step).not.toBe(checks[1]!.step);
-        expect(checks[1]).toMatchObject({ step: `${prefix}:${due.id}:${digest}`, result: { verdict: 'pass' } });
-        expect(w.frames.indexOf(checks[1]!)).toBeLessThan(retryAt);
-      }
-      expect(due.prompt).toContain('declaration was refused');
-      const coverage = stepCoverage(w.journal.view, on);
-      expect(row(coverage, 'requested-action', 'select-due').state).toBe('validated');
-      expect(row(coverage, 'requested-action', 'prepare-packet').state).toBe('validated');
-      // Neither an invalid promise nor a declaration omitted by its repair creates an obligation.
-      expect(w.journal.view.commitments.filter(item => item.agentPromise)).toHaveLength(0);
-    } finally { w.close(); }
-  });
-
-it.each([
-  ['select-due', 0.95, 'step check violation'], ['prepare', 0.95, 'step check violation'],
-  ['select-due', 'outage', 'step check unavailable'], ['prepare', 'outage', 'step check unavailable'],
-] as const)('a retry with %s=%s holds before its replacement call or send', async (prefix, verdict, reason) => {
-  let matching = 0;
-  const w = world({ dueAnswers: [invalidPromise, validReplacement], stepCheck: step =>
-    step.startsWith(`${prefix}:requested-action:`) && ++matching === 2 ? verdict : 0.01 });
+it.each([validRepair, invalidPromise])('a declaration retry validates its replacement packet before calling and sends once: %s', async replacement => {
+  const w = world({ stepCheck: 'pass', dueAnswers: [invalidPromise, replacement] });
   try {
     w.worker.intake([update(1, priya)]); await w.worker.drain();
     w.state.now = friday9; await w.worker.sendRequested(); await w.worker.sendRequested();
     const due = w.journal.view.order.find(turn => turn.requestedAction)!;
-    expect(due.held).toBe(reason);
-    expect(due.answerRetried).toBeUndefined();
-    expect(due.intent).toBeUndefined();
-    expect(w.state.models.filter(id => id === due.id)).toHaveLength(1);
-    expect(w.state.sent.filter(text => text.startsWith('PREVIEW — You asked on'))).toHaveLength(0);
-    expect(w.frames.some(frame => frame.kind === 'format-retry' && frame.id === due.id)).toBe(false);
-    const checks = w.frames.filter((frame): frame is Extract<JournalRecord, { kind: 'step-check' }> =>
-      frame.kind === 'step-check' && frame.step.startsWith(`${prefix}:${due.id}:`));
-    expect(checks).toHaveLength(2);
-    expect(checks[0]!.result.verdict).toBe('pass');
-    expect(checks[1]!.result.verdict).toBe(verdict === 'outage' ? 'unavailable' : 'violation');
+    expect(due.sent).toBeDefined();
+    expect(due.answerRetried).toBe(true);
+    expect(w.state.models.filter(id => id === due.id)).toHaveLength(2);
+    expect(w.state.sent.filter(text => text.startsWith('PREVIEW — You asked on'))).toHaveLength(1);
+    expect(w.journal.view.commitments.filter(item => item.agentPromise)).toHaveLength(0);
+    const retryAt = w.frames.findIndex(frame => frame.kind === 'format-retry' && frame.id === due.id);
+    const digest = packetDigest(due.prompt!);
+    for (const prefix of ['select-due', 'prepare']) {
+      const checks = w.frames.filter((frame): frame is Extract<JournalRecord, { kind: 'step-check' }> =>
+        frame.kind === 'step-check' && frame.step.startsWith(`${prefix}:${due.id}:`));
+      expect(checks).toHaveLength(2);
+      expect(checks[0]!.step).not.toBe(checks[1]!.step);
+      expect(checks[1]).toMatchObject({ step: `${prefix}:${due.id}:${digest}`, result: { verdict: 'pass' } });
+      expect(w.frames.indexOf(checks[1]!)).toBeLessThan(retryAt);
+    }
+    const coverage = stepCoverage(w.journal.view, on);
+    expect(row(coverage, 'requested-action', 'select-due')).toMatchObject({ state: 'validated', population: 1 });
+    expect(row(coverage, 'requested-action', 'prepare-packet')).toMatchObject({ state: 'validated', population: 1 });
+  } finally { w.close(); }
+});
+
+it.each(['select-due', 'prepare'])('refused or unavailable replacement %s holds before a retry call and survives reopen', async boundary => {
+  for (const [verdict, reason] of [[0.95, 'step check violation'], ['outage', 'step check unavailable']] as const) {
+    let checks = 0;
+    const w = world({ dueAnswers: [invalidPromise, validRepair], stepCheck: step =>
+      step.startsWith(`${boundary}:requested-action:`) && ++checks === 2 ? verdict : 0.01 });
+    try {
+      w.worker.intake([update(1, priya)]); await w.worker.drain();
+      w.state.now = friday9; await w.worker.sendRequested(); await w.worker.sendRequested();
+      const due = w.journal.view.order.find(turn => turn.requestedAction)!;
+      expect(due.held).toBe(reason);
+      expect(due.answerRetried).toBeUndefined();
+      expect(due.intent).toBeUndefined();
+      expect(w.state.models.filter(id => id === due.id)).toHaveLength(1);
+      expect(w.frames.filter(frame => frame.kind === 'format-retry' && frame.id === due.id)).toEqual([]);
+      expect(w.state.sent.filter(text => text.startsWith('PREVIEW — You asked on'))).toEqual([]);
+      const replay = openPreviewJournal(join(w.root, 'journal.encrypted'), key, undefined, undefined, true);
+      try { expect(replay.view.turns.get(due.id)?.held).toBe(reason); } finally { replay.close(); }
+    } finally { w.close(); }
+  }
+});
+
+it('recorded invalid fulfillment 715674119 reaches replacement supervision in a requested action', async () => {
+  const fixture = JSON.parse(readFileSync(new URL('./fixtures/flap-a-declarations-2026-10-04.json', import.meta.url), 'utf8')) as {
+    rows: { row: { kind: string; id: string; output?: string } }[] };
+  const recorded = fixture.rows.find(item => item.row.kind === 'model-call' && item.row.id.endsWith(':715674119'))!.row;
+  const reading = readAnswer(recorded.output!, { wrapped: 'accept' });
+  if (!reading.ok) throw Error(reading.defect);
+  const w = world({ stepCheck: 'pass', dueAnswers: [reading.value, validRepair] });
+  try {
+    w.worker.intake([update(1, priya)]); await w.worker.drain();
+    w.state.now = friday9; await w.worker.sendRequested();
+    const due = w.journal.view.order.find(turn => turn.requestedAction)!;
+    expect(due.answerRetried).toBe(true);
+    expect(due.prompt).toContain('not the old promise');
+    expect(w.state.models.filter(id => id === due.id)).toHaveLength(2);
+    expect(due.sent).toBeDefined();
+    expect(row(stepCoverage(w.journal.view, on), 'requested-action', 'select-due').state).toBe('validated');
+    expect(row(stepCoverage(w.journal.view, on), 'requested-action', 'prepare-packet').state).toBe('validated');
   } finally { w.close(); }
 });
 

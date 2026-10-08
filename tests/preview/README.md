@@ -1477,8 +1477,11 @@ the existing call/token budget, obeys stop, and shares the one-retry limit with 
 repairs. A second invalid declaration remains refused; unavailable capacity or an unknown
 replacement is not a successful repair. No new journal record kind or retry budget is added.
 Runner-authored requested-action turns discard operator date declarations, so those fields
-do not trigger a repair. Their original due-selection and packet supervision remain bound
-to the single answer call; the turn still cannot create a new operator-authorized date.
+do not trigger a repair; the turn still cannot create a new operator-authorized date.
+A promise, fulfillment or format repair prepares a replacement packet and passes that exact
+packet through the same due-selection and preparation supervision before its retry reservation
+and model call. A refused or unavailable replacement check holds the turn without another
+call or send. Coverage remains bound to the packet actually used, never to an earlier digest.
 
 This is deterministic validation and bounded recovery, not a guarantee that a model will
 produce a valid declaration on its second attempt. `flap-a-declarations.test.ts` replays the
