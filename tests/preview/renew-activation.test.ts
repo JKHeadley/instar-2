@@ -2,9 +2,10 @@
 import { expect, it } from 'vitest';
 import { spawnSync } from 'node:child_process';
 import { createHash } from 'node:crypto';
-import { existsSync, mkdtempSync, readFileSync, realpathSync, rmSync, unlinkSync, writeFileSync } from 'node:fs';
+import { existsSync, mkdtempSync, readFileSync, realpathSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
-import { join } from 'node:path';
+import { dirname, join, resolve } from 'node:path';
+import { productionGroundingSourceDigest } from '../../scripts/check-assembly-contracts.mjs';
 import { SUBSCRIPTION_CONVERSATION_FRAMING, SUBSCRIPTION_PREVIEW_EXPIRY, subscriptionConversationPolicy,
   subscriptionInvocationPolicy, validateSubscriptionActivation } from '../../src/assembly/production-provider.js';
 import { encoded } from './stage2-provider.js';
@@ -295,13 +296,28 @@ it('the policy-successor flag creates only a new valid record and never replaces
   } finally { rmSync(root, { recursive: true, force: true }); }
 });
 
+// Historical modules live outside the checkout: grounding hashes src/ and tests/ while
+// other files execute. Rebind only relative imports to the same current dependencies the
+// former sibling files used; the historical module body still comes from git.
+function historicalModule(root: string, revision: string, file: string) {
+  const source = spawnSync('git', ['show', `${revision}:${file}`], { cwd: process.cwd(), encoding: 'utf8' });
+  expect(source.status, source.stderr).toBe(0);
+  const body = source.stdout.replace(/from (['"])(\.\.?\/[^'"]+)\1/g, (_match, _quote, specifier) => {
+    const absolute = resolve(dirname(resolve(file)), specifier);
+    const typescript = absolute.replace(/\.js$/, '.ts');
+    return `from ${JSON.stringify(existsSync(typescript) ? typescript : absolute)}`;
+  });
+  const path = join(root, file.split('/').at(-1)!);
+  writeFileSync(path, body);
+  return path;
+}
+
 it('the build with the previous conversation policy refuses the policy successor', async () => {
-  const oldSource = spawnSync('git', ['show', '0a61aaf8:src/assembly/production-provider.ts'],
-    { cwd: process.cwd(), encoding: 'utf8' });
-  expect(oldSource.status, oldSource.stderr).toBe(0);
-  const provider = join(process.cwd(), `src/assembly/.old-policy-provider-${String(process.pid)}.ts`);
+  const checkoutDigest = productionGroundingSourceDigest();
+  const root = realpathSync(mkdtempSync(join(tmpdir(), 'preview-old-policy-')));
   try {
-    writeFileSync(provider, oldSource.stdout);
+    const provider = historicalModule(root, '0a61aaf8', 'src/assembly/production-provider.ts');
+    expect(productionGroundingSourceDigest()).toBe(checkoutDigest);
     const old = await import(provider);
     expect(encoded(old.subscriptionConversationPolicy(model)).hash).toBe(OLD_POLICY_DIGEST);
     // That build carried the 2026-10-05 expiry; compare at its own expiry so only the policy digest differs.
@@ -311,18 +327,17 @@ it('the build with the previous conversation policy refuses the policy successor
     const { record } = policySuccessor();
     expect(() => old.validateSubscriptionActivation({ ...record, expiresAt: PRIOR_EXPIRY }, profile, model, NOW,
       SUBSCRIPTION_CONVERSATION_FRAMING)).toThrow('artifact or policy differs');
-  } finally { if (existsSync(provider)) unlinkSync(provider); }
+  } finally { rmSync(root, { recursive: true, force: true }); }
 }, 30_000);
 
 const prior = spawnSync('git', ['cat-file', '-e', `${PRIOR_COMMIT}^{commit}`], { cwd: process.cwd() }).status === 0;
 it.runIf(prior)('the prior live build refuses the renewed record, and reads the renewed journal at its new end so its own record no longer matches', async () => {
-  const show = (path: string) => spawnSync('git', ['show', `${PRIOR_COMMIT}:${path}`], { cwd: process.cwd(), encoding: 'utf8' }).stdout;
-  const provider = join(process.cwd(), `src/assembly/.prior-production-provider-${String(process.pid)}.ts`);
-  const journalModule = join(process.cwd(), `tests/preview/.prior-journal-${String(process.pid)}.ts`);
+  const checkoutDigest = productionGroundingSourceDigest();
   const root = realpathSync(mkdtempSync(join(tmpdir(), 'preview-renew-prior-'))), path = join(root, 'journal.encrypted');
   try {
-    writeFileSync(provider, show('src/assembly/production-provider.ts'));
-    writeFileSync(journalModule, show('tests/preview/journal.ts'));
+    const provider = historicalModule(root, PRIOR_COMMIT, 'src/assembly/production-provider.ts');
+    const journalModule = historicalModule(root, PRIOR_COMMIT, 'tests/preview/journal.ts');
+    expect(productionGroundingSourceDigest()).toBe(checkoutDigest);
     const old = await import(provider), oldJournal = await import(journalModule);
     expect(old.SUBSCRIPTION_PREVIEW_EXPIRY).toBe(PRIOR_EXPIRY);
     const { record } = renewActivation({ current, currentBytes, profile, observation, now: NOW });
@@ -343,7 +358,6 @@ it.runIf(prior)('the prior live build refuses the renewed record, and reads the 
       .toEqual([false, true]);
     replayed.close();
   } finally {
-    for (const temp of [provider, journalModule]) if (existsSync(temp)) unlinkSync(temp);
     rmSync(root, { recursive: true, force: true });
   }
 }, 30_000);
