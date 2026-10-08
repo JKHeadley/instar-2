@@ -51,7 +51,7 @@ it('shows the contradiction the live model was given, and that this checkout no 
  * together, because the live reply's denial came from the briefing while the receipt came from the code. */
 it('carries no denial of later-time sending anywhere in the always-sent text', () => {
   const always = [ANSWER_INSTRUCTIONS,
-    ...sourcePacket(readSource, SOURCE_PINS, LIMITS).sources.map(item => `${item.title}\n${item.text}`)].join('\n');
+    ...sourcePacket(readSource, SOURCE_PINS, LIMITS).sources.map(item => JSON.stringify(item))].join('\n');
   expect(always).toContain('preview-requested-actions');
   for (const denial of ['no scheduler', 'no scheduled work', 'unprompted', 'background process'])
     expect(always, denial).not.toContain(denial);
