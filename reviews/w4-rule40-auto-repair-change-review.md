@@ -10,8 +10,8 @@ Operator questions: none
 Suggested tier: critical
 Declared tier: critical
 Tier rationale: the change is in tests/preview/journal.ts, the preview's answer path, and it decides whether an operator turn gets a reply.
-Side effects: a turn already held "memory correction pending" on a live root whose request settled through an explicit memoryUndecided or memoryFor row is answered on the next ordinary pass -- which is the behaviour head 152625ab removed and this restores. Holds whose request settled through a summary frame carrying no memoryFor keep the release the submitted commit added. No other hold reason is touched, the hold is still recorded and shown while it stands, and no row kind or format changes.
-Undo and recovery: revert this commit to return to head 152625ab's narrower predicate (which reintroduces the regression); revert both commits to return to the pre-branch two-shape release (which reintroduces the live latch). No record, row kind or format changes, so a reverted build reads the same journals.
+Side effects: a turn already held "memory correction pending" on a live root whose request settled through an explicit memoryUndecided or memoryFor row is answered on the next ordinary pass -- which is the behaviour head 152625ab removed and this restores. Holds whose request settled through a summary frame carrying no memoryFor keep the release the submitted commit added. No other hold reason is touched, the hold is still recorded and shown while it stands, and no row kind or format changes. generated/ is re-derived by the register replay at dfd9bd1c because the changed bytes of tests/preview/journal.ts moved the source-wiring pin; the replay is shape-only and asserts no new authority (register check passes, 282 entries, 116 rules, authority shape-only).
+Undo and recovery: revert this commit to return to head 152625ab's narrower predicate (which reintroduces the regression); revert both commits to return to the pre-branch two-shape release (which reintroduces the live latch). No record, row kind or format changes, so a reverted build reads the same journals. A revert must also re-run the register replay so generated/ follows the reverted source bytes.
 Multi-machine posture: machine-local; the hold and its release are projections of the local journal. No cross-machine state, lease, replication or peer dependency is involved, and a single-machine installation behaves identically.
 Layer below: the journal projection's hold, memoryUndecided and summary rows, pendingMemory()'s three settlement routes, and the summary writer's uncued fallback trigger selection and memoryFor write -- all read to establish that a memoryFor-named turn need carry no candidate shape, and none of them changed.
 Bug class: unit
@@ -27,7 +27,7 @@ Prompt finding: 849db3a6296a | protocol-literal | an existing fixed reply litera
 Prompt finding: bd01de21286a | protocol-literal | existing capability-guidance wording in journal.ts, unchanged by this change
 Prompt finding: fb5fa7e706c8 | protocol-literal | existing capability-guidance wording in journal.ts, unchanged by this change
 
-Subject (2 paths): tests/preview/journal-correction-hold-latch.test.ts, tests/preview/journal.ts
+Subject (9 paths): generated/capabilities.json, generated/capabilities.md, generated/coverage.md, generated/glossary.md, generated/register.json, generated/rules.md, generated/source.json, tests/preview/journal-correction-hold-latch.test.ts, tests/preview/journal.ts
 
 ## Closing block
 
