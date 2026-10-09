@@ -48,8 +48,8 @@ it('opens and replays a journal holding every removed frame kind; nothing in it 
     expect(result.replayed).toEqual({ legacySummaryTurns: [{ intent: true, sent: true }], channelItems: 0, requested: 2 });
     expect(result.afterReplay).toBe(0);
     expect(result.sent).toEqual([
-      'PREVIEW — Okay. Date 1: 2026-09-27 09:00 (America/Los_Angeles). I will act on this once at 2026-09-27 09:00 (America/Los_Angeles) and send you the result here.',
-      'PREVIEW — You asked on 2026-09-26 10:06: "remind me tomorrow at 9 am to stretch" (due 2026-09-27 09:00 America/Los_Angeles)\nTime to stretch.']);
+      'Okay. Date 1: 2026-09-27 09:00 (America/Los_Angeles). I will act on this once at 2026-09-27 09:00 (America/Los_Angeles) and send you the result here.',
+      'You asked on 2026-09-26 10:06: "remind me tomorrow at 9 am to stretch" (due 2026-09-27 09:00 America/Los_Angeles)\nTime to stretch.']);
     expect(result.dueTurns).toBe(1);
   } finally { rmSync(temp, { recursive: true, force: true }); }
 }, 180000);

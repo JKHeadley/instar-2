@@ -103,13 +103,13 @@ export function writeOperatorRecords(directory: string, messages = [offlineOpera
 /** The recorded operator authority the offline launchers resolve an activation against: an
  * activation grant plus a bounded one-week renewal grant, and the waiver of the departed rules,
  * sealed as the desk's disposition under the offline trial's storage key. */
-export const offlineActivationAuthority = (activation: Record<string, any>) => sealAuthorityRecord({ type: 'PreviewActivationAuthority', schemaVersion: 1,
+export const offlineActivationAuthority = (activation: Record<string, any>, maxExtensionMs = 604_800_000) => sealAuthorityRecord({ type: 'PreviewActivationAuthority', schemaVersion: 1,
   grants: [{ id: 'offline-standing-grant', grantor: String(OPERATOR), grantee: 'echo-desk', words: OFFLINE_GRANT_WORDS,
     source: { kind: 'telegram-message', topicId: 1, messageId: 1 }, issuedAt: START, actions: ['activate-subscription-preview', 'renew-subscription-activation'],
     scope: { trial: activation.trial, model: activation.model, expectedAccount: activation.expectedAccount,
       executable: activation.executable, artifact: activation.artifact, version: activation.version,
       invocationPolicyDigest: activation.invocationPolicyDigest, profileDigest: activation.profileDigest },
-    renewal: { maxExtensionMs: 604_800_000, latestExpiresAt: activation.expiresAt } }],
+    renewal: { maxExtensionMs, latestExpiresAt: activation.expiresAt } }],
   waivers: [{ reference: activation.waiver, rules: ['rule:38'], grantor: String(OPERATOR), recordedAt: START,
     source: { kind: 'telegram-message', topicId: 1, messageId: 2 }, words: OFFLINE_WAIVER_WORDS }],
   revocations: [] }, authoritySealKey(OFFLINE_STORAGE_KEY));

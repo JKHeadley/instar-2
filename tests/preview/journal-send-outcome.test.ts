@@ -42,7 +42,7 @@ it.each(['real-connect-recovery', 'real-lost-receipt'])(
         send: async input => {
           sends++;
           if (sends === 1) return 1;
-          expect(input.expectedText).toBe(fixture.candidate);
+          expect(fixture.candidate).toBe(`PREVIEW — ${input.expectedText}`);
           const count = join(dir, 'count.json');
           const request = Buffer.from(JSON.stringify({ method: 'sendMessage', body: { chat_id: input.chat,
             text: input.text, parse_mode: 'HTML' }, timeoutMs: 10_000 })).toString('base64url');

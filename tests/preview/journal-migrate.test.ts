@@ -1,7 +1,7 @@
 // @ts-nocheck -- offline old-root export/import integration fixture.
 import { expect, it } from 'vitest';
 import { spawnSync } from 'node:child_process';
-import { createHash } from 'node:crypto';
+import { createCipheriv, createDecipheriv, createHash, randomBytes } from 'node:crypto';
 import { existsSync, mkdirSync, readFileSync, rmSync, statSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { pathToFileURL } from 'node:url';
@@ -13,6 +13,26 @@ const migrate = (args, key, extraEnv = {}) => spawnSync(process.execPath,
   ['--no-warnings', '--loader', './scripts/slice-ts-loader.mjs', 'tests/preview/journal-migrate.mjs', ...args],
   { cwd: process.cwd(), env: { ...process.env, INSTAR_SECRET_PREVIEW_STORAGE_KEY: Buffer.from(key).toString('hex'), ...extraEnv },
     encoding: 'utf8', timeout: 30000 });
+// Rewrite only this offline fixture's sealed outbound facts; exercise historical rendering
+// and malformed neighbours without altering any live root or captured journal.
+const rewriteReplies = (root, transform, withoutAnswer = false) => {
+  const path = join(root, '.successive', 'facts.encrypted');
+  const sealed = JSON.parse(readFileSync(path, 'utf8'));
+  const aad = Buffer.from('machine-a:store:fact:facts');
+  const reader = createDecipheriv('aes-256-gcm', OFFLINE_STORAGE_KEY, Buffer.from(sealed.nonce, 'hex'));
+  reader.setAAD(aad); reader.setAuthTag(Buffer.from(sealed.tag, 'hex'));
+  const rows = JSON.parse(Buffer.concat([reader.update(Buffer.from(sealed.ciphertext, 'base64')), reader.final()]).toString());
+  const changed = rows.filter(bytes => !withoutAnswer || JSON.parse(bytes).kind !== 'judgment-provider-ProviderAnswerAcceptance').map(bytes => {
+    const fact = JSON.parse(bytes), record = fact.body?.record ?? fact.body;
+    if (fact.kind === 'effect-OutboundMessage' && record.purpose === 'ordinary-reply') record.text = transform(record.text);
+    return JSON.stringify(fact);
+  });
+  const nonce = randomBytes(12), writer = createCipheriv('aes-256-gcm', OFFLINE_STORAGE_KEY, nonce);
+  writer.setAAD(aad);
+  const ciphertext = Buffer.concat([writer.update(JSON.stringify(changed)), writer.final()]);
+  writeFileSync(path, JSON.stringify({ ...sealed, nonce: nonce.toString('hex'), tag: writer.getAuthTag().toString('hex'),
+    ciphertext: ciphertext.toString('base64') }));
+};
 const keyEnv = { ...process.env, INSTAR_SECRET_PREVIEW_STORAGE_KEY: Buffer.from(OFFLINE_STORAGE_KEY).toString('hex') };
 const status = target => spawnSync(process.execPath,
   ['--no-warnings', '--loader', './scripts/slice-ts-loader.mjs', 'tests/preview/journal-agent.mjs', 'status', '--root', target],
@@ -153,7 +173,7 @@ it.each(['before:genesis', 'after:answer'])('refuses an interrupted %s import wi
   expect(migrate(['import', '--export-file', output, '--new-root', join(world.directory, 'other-journal')], OFFLINE_STORAGE_KEY).status).not.toBe(0);
 }, 120000);
 
-it('keeps a sent-but-unconfirmed old reply fenced after import', async () => {
+it.each(['current', 'legacy'])('keeps a sent-but-unconfirmed %s reply fenced after import', async rendering => {
   const world = successiveWorld();
   world.say('Please answer once.'); world.answer('One answer.');
   const composition = world.compose({ telegramIO: physical => ({ invoke(request, credential) {
@@ -163,6 +183,9 @@ it('keeps a sent-but-unconfirmed old reply fenced after import', async () => {
   try { await composition.run({ maxCycles: 3, baseBackoffMs: 1, maxBackoffMs: 2, sleep: world.sleep }); }
   finally { composition.close(); }
   world.state().latchStop('operator');
+  const { prefix: legacyPrefix } = JSON.parse(readFileSync(new URL('./fixtures/legacy-successive-rendering.json', import.meta.url), 'utf8'));
+  // No accepted-answer row: the migration must recover the entire answer from its intent.
+  rewriteReplies(world.root, text => rendering === 'legacy' ? legacyPrefix + text : text, true);
   const output = join(world.directory, 'uncertain.enc'), target = join(world.directory, 'journal-uncertain');
   expect(migrate(['export', '--old-root', world.root, '--export-file', output,
     '--bot-id', world.configuration.botId, '--chat-id', world.configuration.chatId,
@@ -170,7 +193,17 @@ it('keeps a sent-but-unconfirmed old reply fenced after import', async () => {
   expect(migrate(['import', '--export-file', output, '--new-root', target], OFFLINE_STORAGE_KEY).status).toBe(0);
   const journal = openPreviewJournal(join(target, 'journal.encrypted'), OFFLINE_STORAGE_KEY);
   try {
-    expect(journal.view.order[0]?.intent).toContain('One answer.');
+    expect(journal.view.order[0]?.intent).toBe(rendering === 'legacy' ? legacyPrefix + 'One answer.' : 'One answer.');
+    expect(journal.view.order[0]?.answer).toBe('One answer.');
     expect(journal.view.order[0]?.sent).toBeUndefined();
   } finally { journal.close(); }
+  for (const malformed of ['', null]) {
+    rewriteReplies(world.root, () => malformed);
+    const refused = migrate(['export', '--old-root', world.root, '--export-file', join(world.directory, `bad-${String(malformed)}.enc`),
+      '--bot-id', world.configuration.botId, '--chat-id', world.configuration.chatId,
+      '--operator-sender-id', world.configuration.operatorSenderId], OFFLINE_STORAGE_KEY);
+    expect(refused.status).not.toBe(0);
+    expect(refused.stderr).toContain('preview migration refused');
+    expect(existsSync(join(world.directory, `bad-${String(malformed)}.enc`))).toBe(false);
+  }
 }, 120000);

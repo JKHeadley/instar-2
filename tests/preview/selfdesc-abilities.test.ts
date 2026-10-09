@@ -1,6 +1,7 @@
 import { expect, it } from 'vitest';
 import { readFileSync } from 'node:fs';
 import { resolve } from 'node:path';
+import { SUBSCRIPTION_TOOLS_SYSTEM_PROMPT } from '../../src/assembly/production-provider.js';
 import { capabilityBriefing, TOOLS_LIMITS, toolsBriefing } from './briefing.js';
 import { governingConstraints, previewCapabilities, settledConstraintWording, type BlockerNote, type JournalView } from './journal.js';
 
@@ -38,15 +39,27 @@ it('the replayed K11a inputs carry exactly what this build derives for a tool-ro
   const note = capabilityBriefing(path => readFileSync(resolve(process.cwd(), path), 'utf8'),
     { providerAttempts: 1000, expiresAt: 1791232800000, tools: true, mcp: 0 }).text;
   const replays = JSON.parse(read('k11a-replays.json')) as { note: string; runs: { kind: string; input: string; verdict: string; reply: string }[] };
-  // A change to the note voids the record: the replays must be re-run on the new note before this passes again.
-  expect(replays.note).toBe(note);
+  // Historical captures remain immutable; fresh real-model replays bind the current identity and briefing.
+  const current = JSON.parse(read('k11a-agentready-replays.json')) as { note: string; system: string;
+    runs: { kind: string; input: Envelope; raw: string; reply: string; judge: { verdict: string; rubric: string } }[] };
+  expect(current.note).toBe(note);
+  expect(current.system).toBe(SUBSCRIPTION_TOOLS_SYSTEM_PROMPT);
+  expect(current.runs.map(run => run.kind)).toEqual(['worst', 'chain']);
+  for (const run of current.runs) {
+    const packet = packetOf(run.input);
+    expect(packet.sources.find(source => source.id === 'capability-note')!.text).toBe(note);
+    expect(packet.capabilities).toEqual(previewCapabilities(true));
+    expect(packet.governingConstraints).toEqual(governingConstraints(true));
+    expect(JSON.parse(run.raw).answer).toBe(run.reply);
+    expect(run.judge).toMatchObject({ verdict: 'PASS', rubric: 'k11a-rubric-v2' });
+  }
   expect(note).toContain(`What you can do for the operator here:`);
   expect(note).toContain(`- ${toolsBriefing(0)}`);
   expect(note).toContain(TOOLS_LIMITS);
   expect(note).toContain('at most 1000 model attempts, ending at epoch ms 1791232800000.');
   for (const name of ['k11a-worst-input.json', 'k11a-chain-input.json']) {
     const packet = packetOf(JSON.parse(read(name)) as Envelope);
-    expect(packet.sources.find(source => source.id === 'capability-note')!.text, name).toBe(note);
+    expect(packet.sources.find(source => source.id === 'capability-note')!.text, name).toBe(replays.note);
     expect(packet.capabilities, name).toEqual(previewCapabilities(true));
     expect(packet.governingConstraints, name).toEqual(governingConstraints(true));
     expect(packet.capability, name).toMatch(/^Your capabilities are the capability-note source; describing yourself, give only its items and limits\. /u);

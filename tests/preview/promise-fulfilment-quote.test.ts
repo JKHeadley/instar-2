@@ -99,7 +99,8 @@ it('the live answer shape — the whole reply quoted as the excerpt — closes t
       fulfilled: [{ id: offered.find(item => item.owner === 'agent')!.id, quote: A5B.answer }] }));
     expectRecordedPromise(w);
     expect(Buffer.byteLength(A5B.answer)).toBeGreaterThan(500);
-    expect(w.last.intent).toBe(A5B.sent);
+    expect(A5B.sent).toBe(`PREVIEW — ${A5B.answer}`); // immutable historical delivery
+    expect(w.last.intent).toBe(A5B.answer); // current rendering
     expect(w.last.proposedFulfills).toEqual([{ id: w.promised, quote: A5B.answer }]);
     expect(w.last.intentFulfills).toEqual([w.promised]);
     expect(w.rejected()).toBe(0);

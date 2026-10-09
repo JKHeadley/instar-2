@@ -1,0 +1,5 @@
+{
+  "source": "ceae2dd950a8944c69cb259960459fc4c6e9219f:src/rungraph/accepted-reply.ts",
+  "purpose": "Exact emitted header from the historical acceptedReplyPreviewText implementation; immutable compatibility data, not model instructions.",
+  "prefix": "PREVIEW — experimental test agent; production safeguards incomplete.\n"
+}

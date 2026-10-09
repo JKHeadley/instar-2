@@ -33,7 +33,7 @@ function status(checkoutPath: string, root: string) {
       encoding: 'utf8', timeout: 30000 });
 }
 
-it('opens the frozen14 journal and answers identically; frozen13 refuses the renewed format before status or mutation', async () => {
+it('opens the frozen14 journal and preserves state with current reply rendering; frozen13 refuses the renewed format before status or mutation', async () => {
   const temp = realpathSync(mkdtempSync(join(tmpdir(), 'preview-upgrade-')));
   try {
     const base = join(temp, 'base'), older = join(temp, 'older'), seed = join(temp, 'seed');
@@ -52,23 +52,25 @@ it('opens the frozen14 journal and answers identically; frozen13 refuses the ren
     const { holds: baseHolds, self: baseSelf, digest: _removedDigest, ...baseState } = baseView;
     expect(nextState).toMatchObject(baseState);
     expect(nextHolds.map((item: { update: number }) => item.update)).toEqual(baseHolds.map((item: { update: number }) => item.update));
-    for (const line of ['Operator messages received: 3 today, 3 in this trial', 'My replies Telegram accepted: 2 today, 2 in this trial'])
-      expect([baseSelf, nextSelf].every(text => text.includes(line))).toBe(true);
+    for (const line of ['Operator messages received: 3 today, 3 in this trial', 'My replies Telegram accepted: 2 today, 2 in this trial']) {
+      expect(baseSelf).toContain(line);
+      expect(nextSelf).toContain(line.replace('in this trial', 'so far'));
+    }
     const baseAnswer = await fixtureRun('exercise', base, baseRoot);
     const nextAnswer = await fixtureRun('exercise', current, nextRoot);
     expect(baseAnswer.status, baseAnswer.stderr).toBe(0);
     expect(nextAnswer.status, nextAnswer.stderr).toBe(0);
     // The probe packet carries int11/int12 instructions and projections; the replayed state,
-    // the answer and the single send must match the frozen14 build exactly.
+    // the answer and single send match frozen14 apart from the retired presentation prefix.
     const { probe: nextProbe, ...nextRun } = JSON.parse(nextAnswer.stdout);
     const { probe: baseProbe, ...baseRun } = JSON.parse(baseAnswer.stdout);
-    expect(nextRun).toEqual(baseRun);
+    expect(nextRun).toEqual({ ...baseRun, sent: baseRun.sent.map((text: string) => text.replace(/^PREVIEW — /u, '')) });
     expect(nextProbe.memory).toEqual(baseProbe.memory);
     expect(nextProbe.historyMode).toBe(baseProbe.historyMode);
     expect(JSON.parse(nextAnswer.stdout)).toMatchObject({
       before: { cursor: 4, calls: 3, replies: 2, held: [[3, 'reply check unavailable']],
         expires: 1791232800000, shapes: { version: 1, counts: { 'answer/decision/tolerated/fenced': 1 } } },
-      sent: ['PREVIEW — Sam keeps the cedar map in the green drawer.'], answer: 'Sam keeps the cedar map in the green drawer.', cursor: 5 });
+      sent: ['Sam keeps the cedar map in the green drawer.'], answer: 'Sam keeps the cedar map in the green drawer.', cursor: 5 });
     const before = digest(join(seed, 'journal.encrypted'));
     const sidecarBefore = digest(join(seed, 'model-json-shapes.json'));
     const refused = await status(older, seed);

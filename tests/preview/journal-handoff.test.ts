@@ -61,7 +61,7 @@ it('keeps shared durable facts and one-shot effects across build switch and comp
 
     const resumed = run(root, 'resume');
     expect(lines(root, 'sends.log').map(line => JSON.parse(line))).toEqual([
-      { update: 4, text: 'PREVIEW — Answer for telegram:12345678:update:4' },
+      { update: 4, text: 'Answer for telegram:12345678:update:4' },
     ]);
     expect(lines(root, 'models.log')).toEqual(['telegram:12345678:update:4']);
     expect(run(root, 'inspect')).toEqual(resumed);

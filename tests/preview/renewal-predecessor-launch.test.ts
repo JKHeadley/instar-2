@@ -6,7 +6,7 @@ import { existsSync, readFileSync, writeFileSync } from 'node:fs';
 import { join, resolve } from 'node:path';
 import { SUBSCRIPTION_CONVERSATION_FRAMING, SUBSCRIPTION_PREVIEW_EXPIRY, SUBSCRIPTION_PREVIEW_PREDECESSOR_EXPIRY,
   validateSubscriptionActivation } from '../../src/assembly/production-provider.js';
-import { successiveWorld, offlineProfile, OFFLINE_STORAGE_KEY } from './successive-fixture.js';
+import { successiveWorld, offlineProfile, offlineActivationAuthority, OFFLINE_STORAGE_KEY } from './successive-fixture.js';
 import { createJournalWorker, openPreviewJournal, previewTestContext } from './journal-test-worker.js';
 import { activationMatchesJournal } from './journal.js';
 import { conclusionText, parseModelJson } from './model-json.js';
@@ -41,6 +41,7 @@ async function renewalWorld() {
   const world = successiveWorld(), root = join(world.directory, 'renewal-journal'), journalPath = join(root, 'journal.encrypted');
   const trial = world.state().read().trial, c = world.configuration;
   const v6 = world.activation(), v5 = { ...v6, expiresAt: P };
+  writeFileSync(join(world.directory, 'activation-authority.json'), JSON.stringify(offlineActivationAuthority(v6, G - P)));
   const file = (name: string, value: unknown) => { const path = join(world.directory, name); writeFileSync(path, JSON.stringify(value)); return path; };
   const paths = { v5: file('activation-talk-v5.json', v5), v6: file('activation-talk-v6.json', v6),
     other: file('activation-talk-other.json', { ...v6, expiresAt: P + 86_400_000 }), profile: file('profile.json', offlineProfile),
@@ -94,6 +95,11 @@ it('before the renewal only the predecessor-end record starts; after it only the
     expect(started.status, started.stderr).toBe(0);
     expect(w.lastExit()).toMatchObject({ reason: 'cycle limit reached' });
     // The status branch with the same renewal options names the phone route (the request this runner proposes).
+    // A grant short by one millisecond cannot make the renewal available.
+    const authorityPath = join(w.world.directory, 'activation-authority.json');
+    writeFileSync(authorityPath, JSON.stringify(offlineActivationAuthority(v6, G - P - 1)));
+    expect(w.status().operatorActionSurface.renewExpiry).not.toBe(PHONE);
+    writeFileSync(authorityPath, JSON.stringify(offlineActivationAuthority(v6, G - P)));
     const before = w.status();
     expect([before.expires, before.operatorActionSurface.renewExpiry]).toEqual([P, PHONE]);
 
