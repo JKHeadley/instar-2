@@ -12,9 +12,11 @@ import { readFileSync, writeFileSync } from 'node:fs';
 import { resolve } from 'node:path';
 import { GUIDANCE_FAMILY, guidanceQuality, guidanceReport, guidanceVerdicts, preferenceRecurrences } from './guidance.js';
 import { CONTEXT_RULES, REPLY_RULES, exciseNamedClaims, guidanceReviewRules, jevQuestions, parseReplyReviewVerdict, quotedSpans,
-  replyReviewContext, replyReviewQuestion, reviewReply, segmentCarries, type ReplyCheckPorts, type ReplyRule } from './reply-check.js';
+  replyReviewContext, replyReviewQuestion, reviewReply, segmentCarries, substantiveReply, type ReplyCheckPorts, type ReplyRule } from './reply-check.js';
 import type { Turn } from './journal.js';
 import { conclusionText } from './model-json.js';
+import { SOURCE_PINS, sourcePacket } from './briefing.js';
+import { prepareJournalEnvelope } from './journal-envelope.js';
 
 const FIXTURE = resolve(process.cwd(), 'tests/preview/fixtures/guidance-live-2026-10-03.json');
 type Sample = { scenario: string; update: number; rules: ReplyRule[]; model: string; promptSha256: string; raw: string };
@@ -139,6 +141,55 @@ describe('P14-NF-73/75: real reviewer outputs on recorded answer packets, this b
       for (const rule of CONTEXT_RULES) expect(sample.rules).toContain(rule);
       expect(parsed(sample).findings!.map(finding => finding.rule).sort()).toEqual([...sample.rules].sort());
     }
+  });
+  it('replays the recorded reviewers with the trimmed briefing reaching the contextual review', async () => {
+    const data = fixture();
+    const sources = sourcePacket(path => readFileSync(path, 'utf8'), SOURCE_PINS,
+      { providerAttempts: 16, expiresAt: 9999999999999 }).sources;
+    for (const sample of data.samples) {
+      const recorded = turn(data, sample.update);
+      const candidate = recorded.reviewCandidate ?? recorded.intent ?? recorded.answer!;
+      expect(typeof candidate).toBe('string');
+      const prompt = prepareJournalEnvelope({ id: recorded.id, question: recorded.text,
+        context: JSON.stringify({ sources, audience: { surface: 'telegram-private-chat' },
+          history: [{ user: recorded.text, answer: recorded.answer }], preferences: data.memory }) },
+      sample.model, 'grant:offline-replay', recorded.at);
+      let reviewed = false;
+      const result = await reviewReply(candidate, recorded.id, {
+        jev: async () => { throw Error('already at the recorded contextual review'); },
+        reserveEscalation: () => true, elapsedMs: () => 0, record: () => {},
+        escalate: async (reply, _id, original, rules) => {
+          const context = JSON.parse(replyReviewContext(original!, reply, rules));
+          expect(context.sources.map((source: { id: string }) => source.id))
+            .toEqual(['purpose:purpose', 'purpose:coherency', 'capability-note']);
+          expect(context.candidateReply).toBe(candidate);
+          reviewed = true;
+          return { ...parsed(sample), confidence: null, latencyMs: 1 };
+        },
+      }, sample.rules, prompt);
+      expect(reviewed, String(sample.update)).toBe(true);
+      expect(result.outcome, String(sample.update)).toBe(parsed(sample).verdict);
+    }
+  });
+  it('keeps captured delivered and empty reply bytes distinct through the trimmed context', () => {
+    const shapes = JSON.parse(readFileSync(new URL('./fixtures/retrospective-duty-followup-train-1-2026-10-08.json',
+      import.meta.url), 'utf8')) as { otherShapes: { kind: string; id: string; raw: string }[] };
+    const sources = sourcePacket(path => readFileSync(path, 'utf8'), SOURCE_PINS,
+      { providerAttempts: 16, expiresAt: 9999999999999 }).sources;
+    const replies = shapes.otherShapes.filter(row => row.kind === 'delivered-reply' || row.kind === 'empty-reply-in-recorded-context');
+    expect(replies.map(row => row.id)).toEqual(['telegram:8994258214:update:715672479', 'telegram:8994258214:update:715672550']);
+    for (const row of replies) {
+      const prompt = prepareJournalEnvelope({ id: row.id, question: 'Review the recorded candidate.',
+        context: JSON.stringify({ sources, audience: { surface: 'telegram-private-chat' }, history: [] }) },
+      'claude-sonnet-5', 'grant:offline-replay', 1790762566638);
+      const context = JSON.parse(replyReviewContext(prompt, row.raw));
+      expect(context.sources.map((source: { id: string }) => source.id))
+        .toEqual(['purpose:purpose', 'purpose:coherency', 'capability-note']);
+      expect(context.candidateReply).toBe(row.raw);
+      expect(substantiveReply(context.candidateReply)).toBe(row.kind === 'delivered-reply');
+    }
+    // The empty bytes were captured inside a journal context. This is no claim
+    // that Telegram accepted an empty send; no transport is invoked by this replay.
   });
   it('correction learning fires on the recorded three-sentence reply after the preference (969389923), and not on the two-sentence one (969389925)', () => {
     const { samples } = fixture();

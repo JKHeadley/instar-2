@@ -388,6 +388,10 @@ it('keeps the declaration duty in every packet of a default-size root under byte
   const run = await conversation(limit, [...Array.from({ length: 20 }, (_, index) => gardenLog(index + 1)),
     ...room1.turns.map(turn => turn.text)], new Map(), room2.genesis,
   Array.from({ length: 24 }, (_, index) => first + index), { ...shapes,
+    // The trimmed briefing now leaves an extra kilobyte. Keep this pressure proof
+    // on its intended last rungs with explicit inert fixed input, not larger caps
+    // or weaker assertions; the ordinary default-root cases above use no padding.
+    runtimeSources: [...shapes.runtimeSources, { id: 'fixture-pressure', text: 'x'.repeat(1024) }],
     answer: (id, context) => extra.get(Number(id.split(':').at(-1)))?.realModel.output ?? shapes.answer(id, context) });
   const tail = run.report.slice(20);
   for (const turn of tail) expect(turn.sent, `turn ${String(turn.n)}: held ${turn.held ?? '-'} notice ${turn.notice ?? '-'}`).toBe(true);

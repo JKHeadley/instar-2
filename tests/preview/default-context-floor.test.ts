@@ -32,7 +32,7 @@ const DESK_PATH = '/offline/desk-status.md';
 
 /** One fresh root, one ordinary operator turn, the real briefing from this checkout, reply review wired
  * and the concurrent-work row a live runner always sends. Returns what the provider would receive. */
-async function firstTurn(maxBytes: number, tools = false) {
+async function firstTurn(maxBytes: number, tools = false, fixedGrowth = 0) {
   const root = realpathSync(mkdtempSync(join(tmpdir(), 'preview-default-floor-')));
   try {
     const journal = openPreviewJournal(join(root, 'journal.encrypted'), key, { kind: 'genesis', bot: '12345678',
@@ -42,6 +42,8 @@ async function firstTurn(maxBytes: number, tools = false) {
     const briefing = sourcePacket(path => readFileSync(resolve(process.cwd(), path), 'utf8'), SOURCE_PINS,
       // With tools, the longest live MCP wording: a one-digit count of root MCP servers (no root configures ten).
       { providerAttempts: journal.view.limits.maxCalls, expiresAt: journal.view.expires, tools, ...(tools ? { mcp: 9 } : {}) }).sources;
+    // Inject fixed-source growth without changing a rule, a live root or the guard.
+    briefing[0]!.text += 'x'.repeat(fixedGrowth);
     const runs = { launches: [{ at: now - 60_000, pid: 1 }], exits: [] };
     // Larger than its cut bound, so the measured shape is the one every answer carries under pressure.
     const desk = { text: `# desk\n${'Preview work remains a supervised private chat trial with a reviewed activation.\n'.repeat(40)}`,
@@ -120,15 +122,16 @@ it('keeps the always-sent prompt parts inside what the measured floor allows, wi
     expect(measured.keys, required).toContain(required);
   // The drift guard. `PREVIEW_FIXED_PROMPT_BYTES` is the recorded measurement; if a longer system
   // prompt, rule row, briefing excerpt or guidance block pushes the real parts past it, this fails
-  // here rather than in a live chat that answers once and goes quiet. A trim lowers the constant.
+  // here rather than in a live chat that answers once and goes quiet. Trims leave maintenance
+  // headroom inside the existing allowance; they do not lower it back to the measured byte.
   expect(measured.answerTotal!).toBeLessThanOrEqual(PREVIEW_FIXED_PROMPT_BYTES);
   // And the parts must fit beside the reply review's own room at the floor, by the same inequality the
   // answer path applies.
   expect(PREVIEW_FIXED_PROMPT_BYTES).toBeLessThanOrEqual(floor - replyReviewReserveFor(floor));
   // The reserve is sized from what the review really needs, so the review of THIS turn -- with a candidate
-  // reply at the send path's own bound -- fits in the room the reserve sets aside. This is the half the flat
-  // 8192 only guessed at: measured here, it is 5132 (4096 reply bound + 1036 review-only parts, inside the 2540 the
-  // reserve keeps; 6636 at cint-L27 and 6775 at cint-L25, before the review packet stopped repeating its rule texts).
+  // reply at the send path's own bound -- fits in the room the reserve sets aside. Keep measuring
+  // both envelopes: the current delta is 6270, so the older 5132 measurement is not room we can
+  // reassign. The unchanged reserve is 4096 reply-bound bytes plus 2540 review-only bytes.
   expect(measured.reviewTotal).not.toBeNull();
   expect(measured.reviewTotal! - measured.answerTotal!).toBeLessThanOrEqual(replyReviewReserveFor(floor));
   expect(measured.reviewTotal! - measured.answerTotal!)
@@ -182,9 +185,12 @@ it('states the floor from the measured parts and refuses a limit below it on bot
   expect(unservableContextReason(below)).toContain('cannot serve one ordinary turn');
   expect(unservableContextReason(0)).not.toBeNull();
   expect(unservableContextReason(1.5)).not.toBeNull();
-  // Below the floor the parts really do not fit: the full obligation guide yields to get under, but only to its floor
+  // Consume the measured maintenance margin, then cross the real fit boundary by one byte:
+  // the full obligation guide yields to get under, but only to its floor
   // form, so the turn can still declare a directive or a blocker (live 2026-10-03, proof room one).
-  const squeezed = await firstTurn(PREVIEW_MIN_SERVABLE_CONTEXT_BYTES - 1024);
+  const measured = await firstTurn(PREVIEW_MIN_SERVABLE_CONTEXT_BYTES);
+  const margin = PREVIEW_FIXED_PROMPT_BYTES - measured.answerTotal!;
+  const squeezed = await firstTurn(PREVIEW_MIN_SERVABLE_CONTEXT_BYTES - margin - 1);
   expect(squeezed.sent).toBe(true);
   expect(squeezed.packet?.obligationDecision).toBe(OBLIGATION_DECISION_FLOOR);
   expect(squeezed.keys).not.toContain('capabilities');
@@ -289,4 +295,26 @@ it('keeps a tool turn\'s always-sent parts inside the same measured floor (Part 
   expect(plain.answerTotal!).toBeLessThanOrEqual(PREVIEW_FIXED_PROMPT_BYTES);
   expect(tools.answerTotal!).toBeLessThanOrEqual(PREVIEW_FIXED_PROMPT_BYTES + growth);
   expect(tools.answerTotal!).toBeLessThanOrEqual(Math.max(floor, 32768));
+}, 60_000);
+
+it('allows fixed-text growth up to the unchanged answer budget and detects crossing it', async () => {
+  const floor = PREVIEW_MIN_SERVABLE_CONTEXT_BYTES;
+  const plain = await firstTurn(floor);
+  const assertFixedParts = (measured: Awaited<ReturnType<typeof firstTurn>>) => {
+    expect(measured.sent).toBe(true);
+    expect(measured.packet?.obligationDecision).toBe(OBLIGATION_DECISION);
+    expect(measured.keys).toContain('capabilities');
+    expect(measured.answerTotal!).toBeLessThanOrEqual(PREVIEW_FIXED_PROMPT_BYTES);
+  };
+  // At the exact byte boundary the full shape fits; one more byte makes the ladder
+  // shed required fixed parts, which must fail the same full-shape guard, not pass
+  // merely because the degraded packet is smaller. This is offline fault injection.
+  const margin = PREVIEW_FIXED_PROMPT_BYTES - plain.answerTotal!;
+  const at = await firstTurn(floor, false, margin);
+  assertFixedParts(at);
+  expect(at.answerTotal).toBe(PREVIEW_FIXED_PROMPT_BYTES);
+  const over = await firstTurn(floor, false, margin + 1);
+  expect(() => assertFixedParts(over)).toThrow();
+  expect(over.packet?.obligationDecision).toBe(OBLIGATION_DECISION_FLOOR);
+  expect(over.keys).not.toContain('capabilities');
 }, 60_000);
