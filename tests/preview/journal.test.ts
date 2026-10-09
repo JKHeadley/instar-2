@@ -617,12 +617,19 @@ it('durably latches observed expiry while refusing non-operator stop requests', 
     const worker = createJournalWorker(journal, { now: () => now, stopped: () => false,
       model: async () => 'ok', send: async () => 1, checkOutbound: () => {} });
     expect(() => worker.gate()).not.toThrow();
-    now = 1000;
+    expect(() => worker.pollGate()).not.toThrow();
+    now = 999; // Equality is already expired, not one tick later.
     expect(() => worker.gate()).toThrow('stopped');
+    expect(() => worker.pollGate()).toThrow('stopped');
     expect(journal.view.stop).toBe('trial expired');
+    now = 998; // The durable latch survives a clock moving back.
+    expect(() => worker.gate()).toThrow('stopped');
+    expect(() => worker.pollGate()).toThrow('stopped');
     expect(() => worker.stop('transport-breaker')).toThrow('only operator stop');
     expect(journal.view.stop).toBe('trial expired');
     journal.close();
+    const replay = openPreviewJournal(join(root, 'journal.encrypted'), key);
+    try { expect(replay.view.stop).toBe('trial expired'); } finally { replay.close(); }
   } finally { rmSync(root, {recursive:true,force:true}); }
 });
 

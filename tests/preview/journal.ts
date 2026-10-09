@@ -2569,7 +2569,7 @@ export function reachedJournalCap(view: JournalView): { reason: 'calls' | 'repli
   return null;
 }
 /** The trial allowance, refused before the file (the blocking site `preview.journal.capacityRefused`, Rule 4's
- * spend-past-a-cap admission): every model call is preceded by one of the reservation records below and every send
+ * spend and recorded-state admissions): every model call is preceded by one of the reservation records below and every send
  * by an intent, so a record this refuses never reaches the journal and nothing is spent past the cap. The turn
  * itself stays recorded and pending, so a raise of the allowance resumes it. */
 export function capacityRefused(view: JournalView, row: JournalRecord): boolean {
@@ -2589,12 +2589,21 @@ export function capacityRefused(view: JournalView, row: JournalRecord): boolean 
  * (another category, admission or fail direction), or that is missing or no longer live, refuses the launch. */
 export function bindPreviewBlockingSites(declarations: { journal: Json; replyCheck: Json; redact: Json; resourceOwner: Json }): string[] {
   return [
-    // The worker's stop/expiry gate (`gate()` in createJournalWorker): nothing is dispatched after either.
-    bindBlockingSite(declarations.journal, 'preview.journal.gate', [{ decidesAlone: 'ruled-three', decidesAloneBasis: 'operator-emergency-stop', failDirection: 'closed' }]),
+    // Stop and the recorded trial expiry are distinct Rule 4 admissions, including a latched expiry.
+    bindBlockingSite(declarations.journal, 'preview.journal.gate', [
+      { decidesAlone: 'ruled-three', decidesAloneBasis: 'operator-emergency-stop', failDirection: 'closed' },
+      { decidesAlone: 'ruled-three', decidesAloneBasis: 'recorded-governed-state', failDirection: 'closed' },
+    ]),
     // The poll gate (`pollGate()`): stop and expiry end polling; a resource ceiling never does.
-    bindBlockingSite(declarations.journal, 'preview.journal.pollLimit', [{ decidesAlone: 'ruled-three', decidesAloneBasis: 'operator-emergency-stop', failDirection: 'closed' }]),
-    // The durable append's allowance test (`capacityRefused`, above).
-    bindBlockingSite(declarations.journal, 'preview.journal.capacityRefused', [{ decidesAlone: 'ruled-three', decidesAloneBasis: 'spend-past-a-cap', failDirection: 'closed' }]),
+    bindBlockingSite(declarations.journal, 'preview.journal.pollLimit', [
+      { decidesAlone: 'ruled-three', decidesAloneBasis: 'operator-emergency-stop', failDirection: 'closed' },
+      { decidesAlone: 'ruled-three', decidesAloneBasis: 'recorded-governed-state', failDirection: 'closed' },
+    ]),
+    // Reservations enforce spend; intake, reply and minimal-reserve bounds enforce recorded capacity.
+    bindBlockingSite(declarations.journal, 'preview.journal.capacityRefused', [
+      { decidesAlone: 'ruled-three', decidesAloneBasis: 'spend-past-a-cap', failDirection: 'closed' },
+      { decidesAlone: 'ruled-three', decidesAloneBasis: 'recorded-governed-state', failDirection: 'closed' },
+    ]),
     // reviewReply asks the mind: its credential/deferral floor holds closed, every other objection is a signal.
     bindBlockingSite(declarations.replyCheck, 'preview.reply-check.reviewReply', [{ decidesAlone: 'no', failDirection: 'closed' }, { decidesAlone: 'no', failDirection: 'open' }]),
     // The outbound credential wall the runner hands its outbound check (`redact`).

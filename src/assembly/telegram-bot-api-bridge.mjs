@@ -293,16 +293,36 @@ function sealIdentity(bytes, directory) {
     byteLength: Buffer.byteLength(bytes, 'utf8') };
 }
 
+// Only connection setup failures prove that no HTTP request reached Telegram. A reset,
+// response timeout or missing cause can follow a delivered send and must never be repeated.
+// Node can aggregate failed IPv4/IPv6 connects: every member must prove the same thing.
+function connectionNeverOpened(cause, depth = 0) {
+  if (!cause || depth > 2) return false;
+  if (cause instanceof AggregateError)
+    return cause.errors.length > 0 && cause.errors.length <= 8
+      && cause.errors.every(error => connectionNeverOpened(error, depth + 1));
+  return cause.code === 'UND_ERR_CONNECT_TIMEOUT'
+    || cause.code === 'ECONNREFUSED' && cause.syscall === 'connect'
+    || (cause.code === 'ENOTFOUND' || cause.code === 'EAI_AGAIN') && cause.syscall === 'getaddrinfo';
+}
+
 let provider;
-try {
-  provider = await fetch(`${testEndpoint ?? 'https://api.telegram.org'}/bot${token}/${request.method}`, {
-    method: 'POST', redirect: 'manual', headers: { 'content-type': 'application/json' },
-    body: JSON.stringify(request.body), signal: AbortSignal.timeout(request.timeoutMs),
-  });
-} catch (error) {
-  const timeout = error instanceof Error && (error.name === 'TimeoutError' || error.name === 'AbortError');
-  uncertain(timeout ? 'fetch-timeout' : 'fetch-failure', timeout ? 'timeout' : 'transport');
-  process.exit(0);
+const signal = AbortSignal.timeout(request.timeoutMs);
+for (let attempt = 0; attempt < 2; attempt++) {
+  try {
+    provider = await fetch(`${testEndpoint ?? 'https://api.telegram.org'}/bot${token}/${request.method}`, {
+      method: 'POST', redirect: 'manual', headers: { 'content-type': 'application/json' },
+      body: JSON.stringify(request.body), signal,
+    });
+    break;
+  } catch (error) {
+    // Stay inside the original physical admission and elapsed bound, including on replicated
+    // installations. No second dispatch claim, renewed timeout, or ambiguous-send retry.
+    if (attempt === 0 && !signal.aborted && connectionNeverOpened(error?.cause)) continue;
+    const timeout = error instanceof Error && (error.name === 'TimeoutError' || error.name === 'AbortError');
+    uncertain(timeout ? 'fetch-timeout' : 'fetch-failure', timeout ? 'timeout' : 'transport');
+    process.exit(0);
+  }
 }
 
 let bytes;

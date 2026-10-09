@@ -30,6 +30,31 @@ function run(mode: string, method: 'getMe' | 'getUpdates' | 'sendMessage' = 'sen
 }
 
 describe('D01 fixed confined-child failure stages', () => {
+  test.each(['connect-refused', 'connect-dns', 'connect-notfound', 'connect-timeout', 'connect-aggregate',
+    'connect-width-limit', 'connect-depth-limit'])(
+    '%s retries only a proven connection failure, within the same child', mode => {
+      const observed = run(mode);
+      expect(observed.reply.kind).toBe('response');
+      expect(observed.counts).toEqual({ fetches: 2, reads: 1, redirect: 'manual' });
+      expect(observed.child.stderr).toBe('');
+      expect(observed.child.stdout).not.toContain(observed.secret);
+    });
+
+  test.each(['connect-empty', 'connect-mixed', 'connect-wrong-syscall', 'connect-socket', 'connect-aborted',
+    'connect-too-wide', 'connect-too-deep'])(
+    '%s cannot authorize a second attempt', mode => {
+      const observed = run(mode);
+      expect(observed.reply).toEqual({ kind: 'uncertain', limitation: 'transport', stage: 'fetch-failure' });
+      expect(observed.counts).toEqual({ fetches: 1, reads: 0, redirect: 'manual' });
+      expect(observed.child.stdout).not.toContain(observed.secret);
+    });
+
+  test('a persistent connection failure stops at two attempts', () => {
+    const observed = run('connect-persistent');
+    expect(observed.reply).toEqual({ kind: 'uncertain', limitation: 'transport', stage: 'fetch-failure' });
+    expect(observed.counts.fetches).toBe(2);
+  });
+
   test('classifies resolver and child launch failures without diagnostic payloads', () => {
     const resolver = telegramBridgeReplyFromExecution({ resolver: 'failed', status: null,
       stdout: 'resolver marker https://untrusted.invalid' });
