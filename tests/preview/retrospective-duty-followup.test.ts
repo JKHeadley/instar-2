@@ -186,9 +186,11 @@ describe('mergeDutyFollowUp on real held answers', () => {
   });
 
   it('the follow-up packet is the pass\'s own packet plus the asked duties', () => {
-    const packet = JSON.parse(dutyFollowUpPacket(plan.state, ['workaround'])) as Record<string, unknown>;
+    const held = { duties: [{ duty: 'workaround' as const, disposition: 'unavailable' as const, note: RETRO_DUTY_UNINSPECTED_NOTE }] };
+    const packet = JSON.parse(dutyFollowUpPacket(plan.state, held)) as Record<string, unknown>;
+    expect(packet.followUpReasons).toEqual(held.duties.map(({ duty, note }) => ({ duty, note })));
     expect(packet.followUpDuties).toEqual(['workaround']);
-    expect({ ...packet, followUpDuties: undefined }).toEqual({ ...JSON.parse(plan.state) as object, followUpDuties: undefined });
+    expect({ ...packet, followUpDuties: undefined, followUpReasons: undefined }).toEqual({ ...JSON.parse(plan.state) as object, followUpDuties: undefined, followUpReasons: undefined });
     expect(RETRO_DUTY_FOLLOWUP_QUESTION).toContain('followUpDuties');
   });
 });
@@ -255,7 +257,9 @@ describe('the pass\'s duty follow-up in the worker', () => {
       expect(w.asks.map(ask => [ask.id, ask.question])).toEqual([['retrospective:0', undefined],
         ['retrospective:0:duties', RETRO_DUTY_FOLLOWUP_QUESTION]]);
       expect((JSON.parse(w.asks[1]!.state) as { followUpDuties: string[] }).followUpDuties).toEqual(WORKER_ASKED);
-      expect({ ...JSON.parse(w.asks[1]!.state) as object, followUpDuties: undefined }).toEqual({ ...JSON.parse(w.asks[0]!.state) as object, followUpDuties: undefined });
+      const followUp = JSON.parse(w.asks[1]!.state) as { followUpReasons: { duty: string; note: string }[] };
+      expect(followUp.followUpReasons).toEqual(WORKER_ASKED.map(duty => ({ duty, note: RETRO_DUTY_UNINSPECTED_NOTE })));
+      expect({ ...JSON.parse(w.asks[1]!.state) as object, followUpDuties: undefined, followUpReasons: undefined }).toEqual({ ...JSON.parse(w.asks[0]!.state) as object, followUpDuties: undefined, followUpReasons: undefined });
       expect(w.journal.view.calls).toBe(before + 2);
       const pass = w.journal.view.retroPasses[0]!;
       expect(pass).toMatchObject({ state: 'complete', dutyFollowUp: { duties: WORKER_ASKED, state: 'complete' }, outputTokens: 50 });
@@ -431,9 +435,9 @@ describe('train-1 I1b: explicit inspections on the exact failed packet', () => {
       .toEqual(['removable-attention', 'workaround', 'process-tier', 'proportionality']);
   });
 
-  it('three real calls with the shipped question inspect all asked duties and preserve first-pass accounting', () => {
-    expect(recorded.question).toBe(RETRO_DUTY_FOLLOWUP_QUESTION);
-    expect(recorded.questionSha256).toBe(createHash('sha256').update(RETRO_DUTY_FOLLOWUP_QUESTION).digest('hex'));
+  it('three earlier real calls still inspect all asked duties and preserve first-pass accounting', () => {
+    expect(recorded.question).toContain('inspectedDuties');
+    expect(recorded.questionSha256).toBe(createHash('sha256').update(recorded.question).digest('hex'));
     expect(recorded.calls).toHaveLength(3);
     for (const call of recorded.calls) {
       const reading = readAnswer(call.raw, { wrapped: 'refuse', evidence: ['retrospective:0:duties'] });
@@ -490,5 +494,75 @@ describe('train-1 I1b: explicit inspections on the exact failed packet', () => {
         disposition: { owner: 'agent', next: 'investigate' } }] });
     expect(i1b(result.duties)).toBe(true);
     expect(result.findings.at(-1)).toMatchObject({ duty: 'workaround', id: 'retro:0:duties:0' });
+  });
+});
+
+describe('credname preswitch I1b: repair the refused recurrence in the existing follow-up', () => {
+  const recorded = JSON.parse(readFileSync(new URL('./fixtures/retrospective-duty-followup-credname-2026-10-09.json', import.meta.url), 'utf8')) as {
+    plan: Pick<RetrospectivePlan, 'cases' | 'omitted' | 'waiverAvailable' | 'waiverRefs'>;
+    at: number; contextDigest: string; held: RetroResult; firstAnswer: string; oldFollowUp: string;
+    packet: Record<string, unknown>; followUpPacket: Record<string, unknown>;
+    question: string; questionSha256: string; otherShapes: { kind: string; id: string; raw: string; source: string }[];
+    calls: { raw: string; answer: string; outputTokens: number }[] };
+  const mergeRecorded = (answer: unknown) => mergeDutyFollowUp(answer, recorded.plan, view, 0, recorded.held, recorded.at, recorded.contextDigest);
+  const asked = dutiesLeftUninspected(recorded.held);
+
+  it('reproduces both recorded failures; the repair packet carries the actual rejection without changing evidence', () => {
+    const first = validateRetrospective(JSON.parse(recorded.firstAnswer), recorded.plan, view, 0, recorded.at, recorded.contextDigest);
+    expect(first.duties).toEqual(recorded.held.duties);
+    const old = mergeRecorded(JSON.parse(recorded.oldFollowUp));
+    expect(dutiesLeftUninspected(old)).toEqual(['recurrence']);
+    expect(i1b(old.duties)).toBe(false);
+    const packet = JSON.parse(dutyFollowUpPacket(JSON.stringify(recorded.packet), first)) as Record<string, unknown>;
+    expect(packet).toEqual(recorded.followUpPacket);
+    expect(packet.followUpReasons).toEqual(first.duties.filter(row => asked.includes(row.duty)).map(({ duty, note }) => ({ duty, note })));
+    expect(packet.followUpReasons).toContainEqual({ duty: 'recurrence', note: expect.stringContaining('a recurrence names what it repeats') });
+    expect({ ...packet, followUpDuties: undefined, followUpReasons: undefined })
+      .toEqual({ ...recorded.packet, followUpDuties: undefined, followUpReasons: undefined });
+  });
+
+  it('three real calls on the failed journal packet pass I1b through the shipped parser and retain all first-pass accounting', () => {
+    expect(recorded.question).toBe(RETRO_DUTY_FOLLOWUP_QUESTION);
+    expect(recorded.questionSha256).toBe(createHash('sha256').update(recorded.question).digest('hex'));
+    expect(recorded.calls).toHaveLength(3);
+    for (const call of recorded.calls) {
+      const reading = readAnswer(call.raw, { wrapped: 'refuse', evidence: ['retrospective:0:duties'] });
+      expect(reading.ok).toBe(true);
+      if (!reading.ok) throw Error(reading.defect);
+      expect(reading.value).toBe(call.answer);
+      const result = mergeRecorded(JSON.parse(reading.value));
+      expect(i1b(result.duties)).toBe(true);
+      expect(dutiesLeftUninspected(result)).toEqual([]);
+      expect(call.outputTokens).toBeLessThan(2048);
+      for (const field of ['inspected', 'omitted', 'grades', 'feedback', 'authorizations', 'comparisons', 'closures', 'efficiency', 'gravityWells'] as const)
+        expect(result[field], field).toEqual(recorded.held[field]);
+    }
+  });
+
+  it('still refuses missing, empty or unknown recurrence predecessors and accepts a cited earlier occurrence', () => {
+    const refs = recorded.plan.cases.filter(row => row.id.startsWith('turn:')).map(row => row.id);
+    const finding = { duty: 'recurrence', refs: [refs.at(-1)!], summary: 'Repeated questions merit review',
+      rootCause: 'Repeated probing', structuralRemedy: { none: 'No bounded change warranted' },
+      disposition: { owner: 'agent', next: 'Review the repeated work' } };
+    for (const fields of [{}, { recurs: [] }, { recurs: ['turn:absent'] }]) {
+      const result = mergeRecorded({ inspectedDuties: asked, findings: [{ ...finding, ...fields }] });
+      expect(dutiesLeftUninspected(result)).toEqual(['recurrence']);
+      expect(result.findings).toEqual(recorded.held.findings);
+    }
+    const result = mergeRecorded({ inspectedDuties: asked, findings: [{ ...finding, recurs: [refs[0]!] }] });
+    expect(i1b(result.duties)).toBe(true);
+    expect(result.findings.at(-1)).toMatchObject({ duty: 'recurrence', recurs: [refs[0]!] });
+  });
+
+  it('real summary uncertainty, Jev uncertainty, reply-review and delivered/empty replies cannot stand in for duty inspection', () => {
+    expect(recorded.otherShapes.map(row => row.kind)).toEqual(['summary-writer', 'summary-uncertain', 'jev-undecided',
+      'jev-unsure', 'reply-review', 'delivered-reply', 'empty-reply-in-recorded-context']);
+    for (const row of recorded.otherShapes) {
+      const reading = readAnswer(row.raw, { wrapped: 'refuse', evidence: [row.id] });
+      let value: unknown;
+      try { value = JSON.parse(reading.ok ? reading.value : row.raw) as unknown; } catch { value = row.raw; }
+      if (typeof value !== 'object' || value === null || Array.isArray(value)) expect(() => mergeRecorded(value), row.kind).toThrow();
+      else expect(mergeRecorded(value).duties, row.kind).toEqual(recorded.held.duties);
+    }
   });
 });

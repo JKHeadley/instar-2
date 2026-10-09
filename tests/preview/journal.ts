@@ -9827,7 +9827,7 @@ export function createJournalWorker(journal: ReturnType<typeof openPreviewJourna
     const settle = (state: 'complete' | 'failed' | 'unknown', reason: string | undefined, usage: ModelUsage | undefined) =>
       journal.append({ kind: 'retro-duty', pass, state, ...(reason === undefined ? {} : { reason }), ...(usage ? { usage } : {}), at: ports.now() });
     let answer: Awaited<ReturnType<NonNullable<PreviewPorts['retrospect']>>>;
-    try { gate(); answer = await ports.retrospect!(dutyFollowUpPacket(plan.state, asked), `retrospective:${String(pass)}:duties`, RETRO_DUTY_FOLLOWUP_QUESTION); }
+    try { gate(); answer = await ports.retrospect!(dutyFollowUpPacket(plan.state, held), `retrospective:${String(pass)}:duties`, RETRO_DUTY_FOLLOWUP_QUESTION); }
     catch { settle('unknown', 'model call failed or was stopped', undefined); return kept('model call failed or was stopped, outcome unknown'); }
     if (answer.state === 'uncertain') { settle('unknown', 'model outcome uncertain', answer.usage); return kept('model outcome uncertain'); }
     if (!('value' in answer)) {
