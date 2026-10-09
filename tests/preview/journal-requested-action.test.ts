@@ -18,7 +18,7 @@ const update = (id: number, text: string, sender = 7654321, thread?: number) => 
     date: Math.floor(start / 1000) + id * 60, ...(thread === undefined ? {} : { message_thread_id: thread }) } });
 const priya = 'remind me Friday at 9 am to call Priya';
 const header = (asked: string, request: string, due = '2026-10-02 09:00') =>
-  `PREVIEW — You asked on 2026-09-26 ${asked}: "${request}" (due ${due} America/Los_Angeles)`;
+  `You asked on 2026-09-26 ${asked}: "${request}" (due ${due} America/Los_Angeles)`;
 const priyaHeader = header('10:01', priya);
 type Input = { id: string; question: string; context: string };
 /** A model stand-in. It decides meaning the way the answer packet asks; a due turn gets the operator's own
@@ -65,7 +65,7 @@ const harness = (root: string, maxReplies = genesis.maxReplies, limits: Partial<
     checkOutbound: () => {},
     send: async (value: { expectedText: string; thread?: number }) => {
       state.sent.push({ text: value.expectedText, ...(value.thread === undefined ? {} : { thread: value.thread }) });
-      return state.fail && value.expectedText.startsWith('PREVIEW — You asked on') ? null : state.sent.length;
+      return state.fail && value.expectedText.startsWith('You asked on') ? null : state.sent.length;
     } };
   const path = join(root, 'journal.encrypted');
   const open = (first = false) => {
@@ -73,7 +73,7 @@ const harness = (root: string, maxReplies = genesis.maxReplies, limits: Partial<
     current = journal;
     return { journal, worker: createJournalWorker(journal, ports) };
   };
-  const pushes = () => state.sent.filter(item => item.text.startsWith('PREVIEW — You asked on')).map(item => item.text);
+  const pushes = () => state.sent.filter(item => item.text.startsWith('You asked on')).map(item => item.text);
   return { state, open, pushes };
 };
 const tmp = (name: string) => realpathSync(mkdtempSync(join(tmpdir(), `preview-requested-${name}-`)));
@@ -118,7 +118,7 @@ it('answers a requested action once at its due time as an ordinary turn, stating
       dueTurns: [{ update: 1 + 1 / 1024, requests: 1, state: 'accepted' }] });
     // The status command reads the real wall clock, so its "today" is the day the suite runs, not the simulated
     // Friday the due turn was sent on; only the trial-wide count is fixed here.
-    expect(report.self).toMatch(/Requested actions Telegram accepted: [01] today, 1 in this trial; 0 requested and not yet sent\./u);
+    expect(report.self).toMatch(/Requested actions Telegram accepted: [01] today, 1 so far; 0 requested and not yet sent\./u);
   } finally { rmSync(root, { recursive: true, force: true }); }
 });
 
@@ -251,10 +251,10 @@ it('groups requests due together in one conversation into one answered message, 
     await worker.sendRequested();
     expect(pushes()).toHaveLength(2);
     expect(state.dueCalls).toBe(2);
-    const topic17 = state.sent.find(item => item.thread === 17 && item.text.startsWith('PREVIEW — You asked on'))!;
+    const topic17 = state.sent.find(item => item.thread === 17 && item.text.startsWith('You asked on'))!;
     expect(topic17.text).toBe(`${priyaHeader}\n${header('10:02', 'tell me Oct 2 whether the rent is paid')}\n`
       + `Doing what you asked: ${priya} / tell me Oct 2 whether the rent is paid.`);
-    expect(state.sent.find(item => item.thread === 23 && item.text.startsWith('PREVIEW — You asked on'))!.text).toContain('water plants');
+    expect(state.sent.find(item => item.thread === 23 && item.text.startsWith('You asked on'))!.text).toContain('water plants');
     await worker.sendRequested();
     expect(pushes()).toHaveLength(2);
     journal.close();
@@ -457,7 +457,7 @@ it('answers an ordinary question with a plain reply while a request is open, lea
     expect(probe).toMatchObject({ answer: `Your test marker is "probe-9f77778e."\n\n${unchangedLine}` });
     expect(probe.memoryPending).toBeUndefined();
     expect(probe.held).toBeUndefined();
-    expect(state.sent.at(-1)!.text).toBe(`PREVIEW — Your test marker is "probe-9f77778e."\n\n${unchangedLine}`);
+    expect(state.sent.at(-1)!.text).toBe(`Your test marker is "probe-9f77778e."\n\n${unchangedLine}`);
     expect(state.sent.some(item => item.text.includes(MEMORY_UNDECIDED_REPLY))).toBe(false);
     expect(journal.view.reminderCancels).toEqual([]);
     // No decision was recorded, so nothing changed: the request still falls due, once, even with a plain-text model.
@@ -485,7 +485,7 @@ it('never treats a plain-text reply to a cancellation as a decision: the request
     await worker.summarizeIfNeeded();
     expect(journal.view.order[1]?.memoryPending).toBeUndefined();
     expect(journal.view.reminderCancels).toEqual([]);
-    expect(state.sent.at(-1)!.text).toBe(`PREVIEW — Okay, I cancelled the Priya reminder.\n\n${unchangedLine}`);
+    expect(state.sent.at(-1)!.text).toBe(`Okay, I cancelled the Priya reminder.\n\n${unchangedLine}`);
     journal.close(); ({ journal, worker } = open());
     state.now = friday9; state.plain = false;
     await worker.drain(); await worker.sendRequested();
@@ -507,7 +507,7 @@ it('cancels only by a recorded decision, and an ambiguous one leaves the request
       // cint-L27 (w3-cancelpath): a cancellation that could not be carried out also names what still stands,
       // so the operator is never left assuming it is gone (Rules 2, 57, 93).
       if (which === 'ambiguous') {
-        expect(state.sent.at(-1)!.text).toContain('PREVIEW — Okay. I could not tell which request to cancel, so none was cancelled.');
+        expect(state.sent.at(-1)!.text).toContain('Okay. I could not tell which request to cancel, so none was cancelled.');
         expect(state.sent.at(-1)!.text).toContain('Your open request still stands and will be sent at its time: "remind me Friday at 9 am to call Priya".');
       }
       expect(state.sent.some(item => item.text.includes(MEMORY_UNDECIDED_REPLY))).toBe(false);
@@ -550,7 +550,7 @@ it('writes out at most the bounded number of due requests and counts the rest in
     // Rule 52: one push per conversation; what is not written out is one count line, never a later push.
     expect(pushes()).toHaveLength(1);
     expect(state.dueCalls).toBe(1);
-    const lines = pushes()[0]!.split('\n'), listed = lines.filter(line => line.startsWith('PREVIEW — You asked on'));
+    const lines = pushes()[0]!.split('\n'), listed = lines.filter(line => line.startsWith('You asked on'));
     expect(listed).toHaveLength(REQUEST_ITEM_LIMIT);
     expect(lines[REQUEST_ITEM_LIMIT]).toBe(requestOverflowLine(8 - REQUEST_ITEM_LIMIT));
     await worker.sendRequested();

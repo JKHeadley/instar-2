@@ -209,7 +209,7 @@ it('the neighbor: a short complete answer survives the removal and is sent, not 
   const { sends, release, withholds } = await replay({ operator: 'What time is the meeting?', answer: `At 7 PM. ${claim}`,
     review: { verdict: 'violation', ruleIds: ['defers_work'],
       findings: [{ rule: 'defers_work', verdict: 'violation', reason: `The promise "${claim}" is not recorded.` }] } });
-  expect(sends).toEqual(['PREVIEW — At 7 PM.']);
+  expect(sends).toEqual(['At 7 PM.']);
   expect(release?.withheld).toEqual({ rules: ['defers_work'], removed: [claim], unlocated: [] });
   expect(withholds).toMatchObject({ trimmed: 1, heldWithNothingLeft: 0, sentencesRemoved: 1 });
 });
@@ -220,7 +220,7 @@ it('a complete quote removes only its own sentence, never a different one sharin
   const { sends, release } = await replay({ operator: 'What is recorded?', answer: `${kept} ${claim} You can read the existing entry here.`,
     review: { verdict: 'violation', ruleIds: ['defers_work'],
       findings: [{ rule: 'defers_work', verdict: 'violation', reason: `The promise "${claim}" has no recorded loop.` }] } });
-  expect(sends).toEqual([`PREVIEW — ${kept} You can read the existing entry here.`]);
+  expect(sends).toEqual([`${kept} You can read the existing entry here.`]);
   expect(release?.withheld?.removed).toEqual([claim]);
 });
 
@@ -228,7 +228,7 @@ it('an objection whose reason quotes no claim releases the answer unchanged and 
   const { sends, release, withholds } = await replay({ operator: K2_OPERATOR, answer: K2_ANSWER,
     review: { verdict: 'violation', ruleIds: ['defers_work'], reason: 'defers_work: the deferral is not recorded.',
       findings: [{ rule: 'defers_work', verdict: 'violation', reason: 'The deferral is not recorded anywhere.' }] } });
-  expect(sends).toEqual([`PREVIEW — ${K2_ANSWER}`]);
+  expect(sends).toEqual([`${K2_ANSWER}`]);
   expect(release?.withheld).toEqual({ rules: ['defers_work'], removed: [], unlocated: [] });
   expect(withholds).toMatchObject({ trimmed: 0, sentencesRemoved: 0, unlocatedClaims: 0, byRule: { defers_work: 1 } });
 });
@@ -238,7 +238,7 @@ it('a named claim no sentence carries is recorded as unlocated, not silently dro
   const { sends, release, withholds } = await replay({ operator: K2_OPERATOR, answer: K2_ANSWER,
     review: { verdict: 'violation', ruleIds: ['defers_work'], reason: `defers_work: promises "${absent}".`,
       findings: [{ rule: 'defers_work', verdict: 'violation', reason: `The reply promises "${absent}" with no recorded loop.` }] } });
-  expect(sends).toEqual([`PREVIEW — ${K2_ANSWER}`]);
+  expect(sends).toEqual([`${K2_ANSWER}`]);
   expect(release?.withheld).toEqual({ rules: ['defers_work'], removed: [], unlocated: [absent] });
   expect(withholds).toMatchObject({ trimmed: 0, unlocatedClaims: 1 });
 });
@@ -248,7 +248,7 @@ it('a revision that clears the floor still wins: the floor never overrides a rev
   const { sends, release, withholds } = await replay({ operator: K2_OPERATOR, answer: K2_ANSWER,
     review: { verdict: 'violation', ruleIds: ['defers_work'], reason: K2_REASON, findings: K2_FINDINGS },
     revision: fixed, revisionReview: 'pass' });
-  expect(sends).toEqual([`PREVIEW — ${fixed}`]);
+  expect(sends).toEqual([`${fixed}`]);
   expect(release).toMatchObject({ revised: true });
   expect(release?.withheld).toBeUndefined();
   expect(withholds.trimmed).toBe(0);
@@ -257,7 +257,7 @@ it('a revision that clears the floor still wins: the floor never overrides a rev
 it('an unavailable review on an ordinary objection is still a release, not a trim (Rules 77, 95)', async () => {
   const { sends, release } = await replay({ operator: K2_OPERATOR, answer: K2_ANSWER,
     jev: { parks_on_user: 0.91 }, review: 'unavailable' });
-  expect(sends).toEqual([`PREVIEW — ${K2_ANSWER}`]);
+  expect(sends).toEqual([`${K2_ANSWER}`]);
   expect(release).toMatchObject({ review: 'unavailable', objections: ['parks_on_user'] });
   expect(release?.withheld).toBeUndefined();
 });

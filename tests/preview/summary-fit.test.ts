@@ -429,7 +429,7 @@ it('stops a catch-up at the call cap with the existing cap report', async () => 
     expect(w.calls).toHaveLength(20);
     const lines: string[] = [];
     expect(reportJournalCap(journal, w.clock.now, line => lines.push(line))).toBe('model attempt cap reached');
-    expect(lines.at(-1)).toBe('PREVIEW — calls cap reached; work paused. Check status for held work.\n');
+    expect(lines.at(-1)).toBe('calls cap reached; work paused. Check status for held work.\n');
     expect(journal.view.summaries.at(-1)!.through).toBe(frontier);
     journal.close();
   } finally { rmSync(root, { recursive: true, force: true }); }

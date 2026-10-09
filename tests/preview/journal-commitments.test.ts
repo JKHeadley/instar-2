@@ -557,7 +557,7 @@ it('the live script reaches compaction and the question carries the open commitm
     // first reply sent from a compacted context, bound to the exact text sent.
     expect(inspected.summaryFrontier).toBe(journal.view.summaries.at(-1)!.through);
     const accounted = journal.view.order.find(turn => turn.continuity)!;
-    expect(accounted.intent!.startsWith(`PREVIEW — ${accounted.continuity!.disclosure} `)).toBe(true);
+    expect(accounted.intent!.startsWith(`${accounted.continuity!.disclosure} `)).toBe(true);
     expect(run(root, 'inspect', '--update', String(accounted.update)).reply.continuity).toEqual(accounted.continuity);
     // The read-only inspect surface names the standing instructions the prepared prompt carried.
     expect(last.instructions.rules).toEqual(MIND_RULES.map(([rule]) => rule));

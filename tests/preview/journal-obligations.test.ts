@@ -730,7 +730,7 @@ it('gives a held deferral one bounded correction: a revalidated correction is se
       // An identical draft is the agent's answer, not a new candidate: no second review of the same text.
       expect(w.reviews, label).toHaveLength(label === 'agent keeps the draft unchanged' || !correction ? 1 : 2);
       if (outcome === 'sent') {
-        expect(w.sent, label).toEqual([`PREVIEW — ${DONE}`]);
+        expect(w.sent, label).toEqual([`${DONE}`]);
         expect(turn.release, label).toMatchObject({ review: 'violation', objections: ['defers_work'], revised: true,
           dispositions: [{ objection: 'defers_work', decision: 'accept', reason: 'I can do it now.' }] });
         expect(turn.heldReview, label).toBeUndefined();
@@ -804,7 +804,7 @@ it('sends a true can\'t-do answer once its correction declares the investigation
       expect(revisions[0]!.objections, label).toEqual(['unrecorded_blocker']);
       expect(w.sent, label).toHaveLength(1);
       if (sends) {
-        expect(w.sent[0], label).toBe(`PREVIEW — ${CLAIM}`);
+        expect(w.sent[0], label).toBe(`${CLAIM}`);
         // The same words with a newly declared record are a new candidate: judged once more, with that record.
         expect(w.reviews, label).toHaveLength(2);
         expect((w.reviews[1]!.declaredObligations as { blocker: { claim: string } }).blocker.claim, label).toBe(CLAIM);
@@ -882,7 +882,7 @@ it('judges a restated can\'t-do answer against the limit it already settled, and
       if (between === 'none' || between === 'queued-fresh') expect(w.contexts.get(DMV_ASK), label).toContain('A settled blocker covers only its own claim');
       if (between.startsWith('queued')) expect(turn.at, label).toBeLessThan(due);
       if (sends) {
-        expect(w.sent.at(-1), label).toBe(`PREVIEW — ${DMV_AGAIN}`);
+        expect(w.sent.at(-1), label).toBe(`${DMV_AGAIN}`);
         expect(turn.heldReview, label).toBeUndefined();
       } else {
         // Plan #215: an unevidenced restatement no longer silences the whole answer. The sentence carrying the

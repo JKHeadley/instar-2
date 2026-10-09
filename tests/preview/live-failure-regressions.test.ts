@@ -49,12 +49,12 @@ it('thinking overflow: a 2048-cap answer reporting 8192 output tokens is rejecte
     worker.intake([update(1, 'First live question')]); await worker.drain();
     expect(journal.view.order[0]).toMatchObject({ modelState: 'rejected', failureClass: 'rejected',
       answer: MODEL_FAILURE_REPLY });
-    expect(journal.view.order[0]?.intent).toBe(`PREVIEW — ${MODEL_FAILURE_REPLY}`);
+    expect(journal.view.order[0]?.intent).toBe(`${MODEL_FAILURE_REPLY}`);
     expect(journal.view.callOutcomes).toMatchObject([{ role: 'model',
       outcome: { localLimit: 'output-cap', outputTokens: 8192 } }]);
     worker.intake([update(2, 'Second live question')]); await worker.drain();
     expect(calls.filter(id => id.endsWith(':1'))).toHaveLength(1);
-    expect(journal.view.order[1]?.intent).toBe('PREVIEW — The second answer is available.');
+    expect(journal.view.order[1]?.intent).toBe('The second answer is available.');
     expect(journal.view.order[1]?.modelState).toBe('complete');
     expect(sent).toHaveLength(2);
   });
@@ -82,7 +82,7 @@ it('review thinking overflow: a 3617-token review outcome releases the candidate
     expect(journal.view.callOutcomes).toMatchObject([{ role: 'reply-review',
       outcome: { localLimit: 'output-cap', outputTokens: 3617 } }]);
     expect(reviews).toBe(1);
-    expect(sent).toEqual(['PREVIEW — The candidate answer.']);
+    expect(sent).toEqual(['The candidate answer.']);
   });
 });
 
@@ -108,7 +108,7 @@ it('wrapped Decision JSON: an unavailable full-context review is recorded, never
     expect(journal.view.order[0]?.release).toMatchObject({ review: 'unavailable' });
     expect(sent).toHaveLength(1);
     worker.intake([update(2, 'What does this journal hold?')]); await worker.drain();
-    expect(sent[1]).toBe('PREVIEW — The journal remembers this trial.');
+    expect(sent[1]).toBe('The journal remembers this installation.');
   });
 });
 
@@ -152,11 +152,11 @@ it('uncertain effect: a charged unknown answer gets only its loss notice and is 
         usage: { inputTokens: 512, outputTokens: 3617, charge: null } } : answer('The next turn works.'); }, sent));
     worker.intake([update(1, 'Uncertain first turn')]); await worker.drain(); await worker.drain();
     expect(journal.view.order[0]).toMatchObject({ reserved: true, modelState: 'uncertain' });
-    expect(journal.view.order[0]?.intent).toBe(`PREVIEW — ${UNKNOWN_ANSWER_NOTICE}`);
+    expect(journal.view.order[0]?.intent).toBe(`${UNKNOWN_ANSWER_NOTICE}`);
     worker.intake([update(2, 'Independent next turn')]); await worker.drain();
     expect(calls.filter(id => id.endsWith(':1'))).toHaveLength(1);
-    expect(journal.view.order[1]?.intent).toBe('PREVIEW — The next turn works.');
-    expect(sent).toEqual([`PREVIEW — ${UNKNOWN_ANSWER_NOTICE}`, 'PREVIEW — The next turn works.']);
+    expect(journal.view.order[1]?.intent).toBe('The next turn works.');
+    expect(sent).toEqual([`${UNKNOWN_ANSWER_NOTICE}`, 'The next turn works.']);
   });
 });
 
@@ -190,7 +190,7 @@ it('memory denial: full-context review objects to a false no-memory claim and th
     expect(JSON.parse(packets[0]!).capability).toContain('capability-note source');
     expect(JSON.parse(packets[0]!).sources.find((s: { id: string }) => s.id === 'capability-note').text)
       .toContain('an encrypted local journal of messages, summaries and memory that survives restarts');
-    expect(sent).toEqual(['PREVIEW — Yes: this trial keeps a durable journal of what you tell me.',
+    expect(sent).toEqual(['Yes: this installation keeps a durable journal of what you tell me.',
       'PREVIEW — I can use this trial journal to remember earlier turns.']);
     expect(journal.view.order[0]?.release).toMatchObject({ review: 'violation', objections: ['claims_blocked'], revised: true });
   });

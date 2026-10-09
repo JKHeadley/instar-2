@@ -134,7 +134,7 @@ const exhaustedPrefix = async (w: ReturnType<typeof world>) => {
   }
   await w.worker.summarizeIfNeeded(true); await w.worker.summarizeIfNeeded(true);
 };
-const pushes = (sent: string[]) => sent.filter(text => text.startsWith('PREVIEW — You asked on'));
+const pushes = (sent: string[]) => sent.filter(text => text.startsWith('You asked on'));
 
 it('fires a request made after an undecided correction once at its due minute through the scheduler writer, and never again after a restart', async () => {
   const root = tmp('due-after-undecided');

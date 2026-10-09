@@ -75,7 +75,7 @@ it('drains a batched oversized correction and retires its stale holds across res
     journal.append({ kind: 'hold', id: journal.view.order[0]!.id, reason: 'memory correction pending', at: 1000 });
     journal.append({ kind: 'hold', id: journal.view.order[1]!.id, reason: 'summary oversized turn', at: 1000 });
     await worker.drain();
-    expect(sent).toEqual(['PREVIEW — First answer', TOO_LONG_INPUT_NOTICE]);
+    expect(sent).toEqual(['First answer', TOO_LONG_INPUT_NOTICE]);
     expect(journal.view.order.map(turn => turn.held)).toEqual([undefined, undefined]);
     journal.close();
     const replay = openPreviewJournal(path, key);
@@ -235,8 +235,8 @@ it('sends a full reply at the Telegram boundary, and a longer or HTML-expanded a
         model: async () => answer, send: async ({ text }) => { sent.push(text); return message++; }, checkOutbound: () => {} });
       worker.intake([update(1, 'Short question')]); await worker.drain();
       expect(journal.view.order[0]?.answer).toBe(answer);
-      expect(journal.view.order[0]?.intent).toBe(`PREVIEW — ${answer}`);
-      expect(sent).toHaveLength(Buffer.byteLength(`PREVIEW — ${answer}`) <= 4096 && answer[0] !== '<' ? 1 : 2);
+      expect(journal.view.order[0]?.intent).toBe(`${answer}`);
+      expect(sent).toHaveLength(Buffer.byteLength(`${answer}`) <= 4096 && answer[0] !== '<' ? 1 : 2);
       for (const body of sent) expect(Buffer.byteLength(body)).toBeLessThanOrEqual(4096);
       expect(status(dir).tooLong).toEqual([]);
       expect(status(dir).unknownSends).toBe(0);

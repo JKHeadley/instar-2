@@ -102,5 +102,5 @@ it('live risk: the real model\'s plain-text confirmation after the raise grants 
   const plain = await run(question => question.includes(ASK) ? 'Sure — I\'ll send you a rundown of today at 6 pm.' : 'Good morning!');
   expect(plain.limits.maxCalls).toBe(2);
   expect(plain.grants).toBe(0);
-  expect(plain.sent[1]).toBe('PREVIEW — Sure — I\'ll send you a rundown of today at 6 pm.');
+  expect(plain.sent[1]).toBe('Sure — I\'ll send you a rundown of today at 6 pm.');
 });

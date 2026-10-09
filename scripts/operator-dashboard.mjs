@@ -20,7 +20,7 @@ export const DASHBOARD_VIEWS = Object.freeze([
   { id: 'waiting', path: 'waiting', title: 'Waiting for you', purpose: 'Requests that need your yes or no, each with a direct link to answer it.' },
   { id: 'messages', path: 'messages', title: 'Recent messages', purpose: 'Your latest messages to your agent and what it did with each one.' },
   { id: 'status', path: 'status', title: 'Status', purpose: 'The same report your agent sends when you write "status" in your chat.' },
-  { id: 'allowance', path: 'allowance', title: 'Allowance and spend', purpose: "How much of this trial's allowance your agent has used so far." },
+  { id: 'allowance', path: 'allowance', title: 'Allowance and spend', purpose: "How much of this installation's allowance your agent has used so far." },
   { id: 'stop', path: 'stop', title: 'Stop', purpose: 'Stop your agent at once. After you confirm, nothing more is sent or spent.' },
 ]);
 const DETAIL = Object.freeze({
@@ -189,14 +189,14 @@ export function renderDashboard({ token, view, state, pending, readOnly = false 
     ? s.turns.map(turn => row({ href: dashboardPath(token, `messages/${turn.update}`),
       title: turn.message.length > 90 ? `${turn.message.slice(0, 89)}…` : turn.message || '(no text)',
       meta: `${turn.time} · ${turn.from === 'you' ? 'From you' : 'Scheduled'} · ${turn.state}` })).join('')
-    : '<p class="note">No messages yet in this trial.</p>'));
+    : '<p class="note">No messages yet in this installation.</p>'));
   if (view === 'status') return page(token, 'status', VIEW.status, state, !s ? ''
     : `<ul class="lines">${s.status.map(line => `<li>${escape(line)}</li>`).join('')}</ul>`);
   if (view === 'allowance') return page(token, 'allowance', VIEW.allowance, state, !s ? ''
     : `<ul class="facts">${s.allowance.map(item => `<li>${escape(`${item.label}: ${item.used} of ${item.max} used.`)}<meter aria-label="${escape(item.label)} used" min="0" max="${item.max}" value="${Math.min(item.used, item.max)}"></meter></li>`).join('')}
-<li>${escape(`Model tokens this trial: ${s.tokens.input.toLocaleString('en-US')} in, ${s.tokens.output.toLocaleString('en-US')} out.`)}</li>
+<li>${escape(`Model tokens so far: ${s.tokens.input.toLocaleString('en-US')} in, ${s.tokens.output.toLocaleString('en-US')} out.`)}</li>
 <li>${escape(`Model calls whose size was not reported: ${s.tokens.unknownCalls}.`)}</li>
-<li>Dollar spend is not recorded for this trial.</li></ul>`);
+<li>Dollar spend is not recorded for this installation.</li></ul>`);
   if (view === 'stop' && readOnly) return page(token, 'stop', VIEW.stop, state, readOnlyStop(s, state));
   if (view === 'stop') return page(token, 'stop', VIEW.stop, state, s?.state === 'stopped'
     ? `<p class="headline">${state.kind === 'stale' ? 'Your agent was stopped when it last reported.' : 'Your agent is already stopped.'}</p>`

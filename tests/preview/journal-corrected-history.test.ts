@@ -71,7 +71,7 @@ it('answers the recorded k6 "what was it before" with the corrected-away value l
     expect(w.journal.view.memory).toMatchObject([{ mode: 'correct', quote: OLD, replacement: NEW }]);
     expect(w.journal.view.memory[0]?.historical).toBeFalsy();
     // reply-k5.json, without the delivery-time line.
-    expect(w.sends[1]).toBe(`PREVIEW — Changed ${OLD} → ${NEW}.`);
+    expect(w.sends[1]).toBe(`Changed ${OLD} → ${NEW}.`);
     await w.say(K6.update, K6.text);
     const answer = w.journal.view.order.at(-1)!;
     expect(answer.answer).not.toBe(MODEL_FAILURE_REPLY);

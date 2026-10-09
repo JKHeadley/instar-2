@@ -61,7 +61,7 @@ it('answers from an exact journal quote after a lossy summary and restart, keepi
     const answered = journal.view.order[5]!;
     expect(sent.at(-1)).toBe(answered.intent);
     expect(answered.continuity?.prePauseInbound).toBe(journal.view.order[4]!.id);
-    expect(replyBody(answered)).toBe('PREVIEW — The route was 3.25 miles.');
+    expect(replyBody(answered)).toBe('The route was 3.25 miles.');
     expect(journal.view.order[5]?.sent).toBe(6);
     journal.close();
   } finally { rmSync(root, { recursive: true, force: true }); }

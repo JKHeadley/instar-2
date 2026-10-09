@@ -48,7 +48,7 @@ it('records a fact edit against the original turn, corrects memory, and never re
     expect(journal.view.memory).toMatchObject([{ source: journal.view.order[0]!.id,
       trigger: journal.view.order[1]!.id, replacement: 'The launch is on Thursday.' }]);
     const state = selfState(journal.view, { launches: [], unreadable: 0 }, 1790002000000, 'UTC');
-    expect(state).toContain('1 in this trial');
+    expect(state).toContain('1 so far');
     expect(state).toContain('Telegram edits recorded: 1');
     journal.close();
     journal = openPreviewJournal(path, key);

@@ -96,8 +96,8 @@ it('fsyncs the exact HTML body and expected visible text before dispatch', async
       model: async () => '<&>', checkOutbound: () => {},
       send: async input => { sent = input; return 5; } });
     worker.intake([update(1)]); await worker.drain();
-    expect(sent?.text).toBe('PREVIEW — &lt;&amp;&gt;');
-    expect(sent?.expectedText).toBe('PREVIEW — <&>');
+    expect(sent?.text).toBe('&lt;&amp;&gt;');
+    expect(sent?.expectedText).toBe('<&>');
     expect(journal.view.order[0]?.intentBody).toBe(sent?.text);
     expect(journal.view.order[0]?.sent).toBe(5);
     journal.close();
@@ -105,12 +105,12 @@ it('fsyncs the exact HTML body and expected visible text before dispatch', async
 });
 
 it.each([
-  ['PREVIEW: answer', 'PREVIEW — answer'],
-  ['PREVIEW — answer', 'PREVIEW — answer'],
-  ['answer', 'PREVIEW — answer'],
-  ['PREVIEW: PREVIEW: answer', 'PREVIEW — PREVIEW: answer'],
-  ['PREVIEWING answer', 'PREVIEW — PREVIEWING answer'],
-])('adds one runner marker to model answer %s', async (answer, expected) => {
+  ['PREVIEW: answer', 'answer'],
+  ['PREVIEW — answer', 'answer'],
+  ['answer', 'answer'],
+  ['PREVIEW: PREVIEW: answer', 'PREVIEW: answer'],
+  ['PREVIEWING answer', 'PREVIEWING answer'],
+])('removes the leading legacy runner marker from model answer %s', async (answer, expected) => {
   const root = origin();
   try {
     const journal = openPreviewJournal(join(root, 'journal.encrypted'), key, genesis());
@@ -201,7 +201,7 @@ it.each(['before:intake', 'after:intake', 'before:reserve', 'after:reserve', 'be
       expect(turn.answer).toBeUndefined();
       expect(turn.intent).toBeUndefined();
     } else if (['after:intent','before:sent'].includes(stage)) {
-      expect(turn.intent).toBe('PREVIEW — first answer');
+      expect(turn.intent).toBe('first answer');
       expect(turn.sent).toBeUndefined();
     } else expect(turn.sent).toBe(stage === 'after:sent' ? 42 : 43);
     next.journal.close();
@@ -232,7 +232,7 @@ it('survives actual SIGKILL before and after every turn-path durable boundary', 
         expect(turn.answer, stage).toBeUndefined();
         expect(turn.intent, stage).toBeUndefined();
       } else if (stage === 'after:intent' || stage === 'before:sent') {
-        expect(turn.intent, stage).toBe('PREVIEW — answer');
+        expect(turn.intent, stage).toBe('answer');
         expect(turn.sent, stage).toBeUndefined();
       } else expect(turn.sent, stage).toBeGreaterThan(0);
       resumed.journal.close();
@@ -264,8 +264,8 @@ it('sends one fixed checked reply for a definite failure and counts the spent ca
     let checks = 0, sends = 0;
     const worker = createJournalWorker(journal, { now: () => 1000, stopped: () => false,
       model: async () => ({ state: 'rejected', failureClass: 'rejected' }),
-      checkOutbound: text => { checks++; expect(text).toBe(`PREVIEW — ${MODEL_FAILURE_REPLY}`); },
-      send: async input => { sends++; expect(input.expectedText).toBe(`PREVIEW — ${MODEL_FAILURE_REPLY}`); return 7; } });
+      checkOutbound: text => { checks++; expect(text).toBe(`${MODEL_FAILURE_REPLY}`); },
+      send: async input => { sends++; expect(input.expectedText).toBe(`${MODEL_FAILURE_REPLY}`); return 7; } });
     worker.intake([update(1, 'Reply with an exact path')]); await worker.drain(); await worker.drain();
     expect({ checks, sends, calls: journal.view.calls, replies: journal.view.replies }).toEqual({ checks: 1, sends: 1, calls: 1, replies: 1 });
     expect(Object.fromEntries(journal.view.failureClasses)).toEqual({ rejected: 1 });
@@ -339,8 +339,8 @@ it('records an ended UNKNOWN answer, sends one checked notice, and preserves UNK
     let calls = 0, sends = 0, checks = 0;
     const worker = createJournalWorker(first, { now: () => 1000, stopped: () => false,
       model: async () => { calls++; return { state: 'uncertain' }; },
-      checkOutbound: text => { checks++; expect(text).toBe(`PREVIEW — ${UNKNOWN_ANSWER_NOTICE}`); },
-      send: async input => { sends++; expect(input.expectedText).toBe(`PREVIEW — ${UNKNOWN_ANSWER_NOTICE}`); return 7; } });
+      checkOutbound: text => { checks++; expect(text).toBe(`${UNKNOWN_ANSWER_NOTICE}`); },
+      send: async input => { sends++; expect(input.expectedText).toBe(`${UNKNOWN_ANSWER_NOTICE}`); return 7; } });
     worker.intake([update(1)]); await worker.drain(); await worker.drain(); first.close();
     const second = openPreviewJournal(join(root, 'journal.encrypted'), key);
     const resumed = createJournalWorker(second, { now: () => 2000, stopped: () => false,
@@ -353,7 +353,7 @@ it('records an ended UNKNOWN answer, sends one checked notice, and preserves UNK
     expect(Object.fromEntries(second.view.failureClasses)).toEqual({});
     expect(second.view.order[0]?.answer).toBeUndefined();
     expect(second.view.order[0]).toMatchObject({ modelState: 'uncertain', noticeDueAt: 1000,
-      noticeClass: 'unknown-answer', intent: `PREVIEW — ${UNKNOWN_ANSWER_NOTICE}`, sent: 7 });
+      noticeClass: 'unknown-answer', intent: `${UNKNOWN_ANSWER_NOTICE}`, sent: 7 });
     const status = spawnSync(process.execPath,
       ['--no-warnings', '--loader', './scripts/slice-ts-loader.mjs', 'tests/preview/journal-agent.mjs', 'status', '--root', root],
       { cwd: process.cwd(), env: { ...process.env, INSTAR_SECRET_PREVIEW_STORAGE_KEY: Buffer.from(key).toString('hex') }, encoding: 'utf8', timeout: 10000 });
@@ -404,7 +404,7 @@ it('never redispatches an UNKNOWN notice send after restart', async () => {
     await resumed.drain();
     expect({ sends, replies: second.view.replies, sent: second.view.order[0]?.sent,
       intent: second.view.order[0]?.intent }).toEqual({ sends: 1, replies: 1, sent: undefined,
-        intent: `PREVIEW — ${UNKNOWN_ANSWER_NOTICE}` });
+        intent: `${UNKNOWN_ANSWER_NOTICE}` });
     second.close();
   } finally { rmSync(root, { recursive: true, force: true }); }
 });
@@ -540,7 +540,7 @@ it('resumes a durable definite failure after restart and sends exactly once', as
     expect({ calls, sends, spent: second.view.calls, failures: Object.fromEntries(second.view.failureClasses) })
       .toEqual({ calls: 2, sends: 1, spent: 2, failures: { malformed: 2 } }); // the miss, then its one format re-ask, both refused
     expect(second.view.order[0]?.answerRetried).toBe(true);
-    expect(second.view.order[0]?.intent).toBe(`PREVIEW — ${MODEL_FAILURE_REPLY}`);
+    expect(second.view.order[0]?.intent).toBe(`${MODEL_FAILURE_REPLY}`);
     expect(second.view.order[0]?.sent).toBe(9);
     second.close();
   } finally { rmSync(root, { recursive: true, force: true }); }
@@ -1239,7 +1239,7 @@ it.each(['summary', 'failed', 'preflight', 'last-call'] as const)('answers over-
       expect(packet.historySetAside).toEqual({ count: 1, through: 1, note: expect.stringContaining('kept and still searchable') });
       // Rule 110: the sent reply accounts for the set-aside truthfully (kept, unsummarized) and the last inbound's outcome.
       expect(turn.continuity).toMatchObject({ summarizedThrough: 1, basis: 'set-aside', disposition: 'addressed' });
-      expect(turn.intent).toMatch(/^PREVIEW — Earlier conversation up to #1 no longer fits in my view; it is kept and I can search it, but it is not summarized; /u);
+      expect(turn.intent).toMatch(/^Earlier conversation up to #1 no longer fits in my view; it is kept and I can search it, but it is not summarized; /u);
       // The spend floor is unchanged: no extra call is spent to answer with less, and a refused span keeps its
       // second attempt for a later pass rather than being burned here.
       expect(journal.view.calls).toBe(route === 'failed' ? 3 : 2);
@@ -1388,7 +1388,7 @@ it('physical Telegram bridge fences a send accepted by a fake endpoint that drop
     expect(secretAttempt).toMatchObject({kind:'uncertain',stage:'scan-policy'});
     const first = world(root, { send: () => {
       const result = physical.invoke({ token: { type: 'SecretRef', schemaVersion: 1, vault: 'preview', name: 'telegram-bot-token' },
-        method: 'sendMessage', body: { chat_id: '7654321', text: 'PREVIEW — answer question 1', parse_mode: 'HTML' },
+        method: 'sendMessage', body: { chat_id: '7654321', text: 'answer question 1', parse_mode: 'HTML' },
         timeoutMs: 1000 }, token);
       expect(result.kind).toBe('uncertain'); return null;
     } });

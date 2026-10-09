@@ -73,7 +73,7 @@ it("a requested action's due selection and packet are validated before its model
     expect(due.sent).toBeDefined();
     expect(w.state.models.filter(id => id === due.id)).toHaveLength(1);
     expect(due.answerRetried).toBeUndefined();
-    expect(w.state.sent.at(-1)).toMatch(/^PREVIEW — You asked on .*\nTime to call Priya\.$/u);
+    expect(w.state.sent.at(-1)).toMatch(/^You asked on .*\nTime to call Priya\.$/u);
     // Both judgments are durable before the reservation that precedes the model call.
     const order = w.kinds(), reserveAt = w.frames.findIndex(frame => frame.kind === 'reserve' && frame.id === due.id);
     expect(order.slice(0, reserveAt)).toEqual(expect.arrayContaining(['step-check:select-due', 'step-check:prepare']));
@@ -99,7 +99,7 @@ it.each([validRepair, invalidPromise])('a declaration retry validates its replac
     expect(due.sent).toBeDefined();
     expect(due.answerRetried).toBe(true);
     expect(w.state.models.filter(id => id === due.id)).toHaveLength(2);
-    expect(w.state.sent.filter(text => text.startsWith('PREVIEW — You asked on'))).toHaveLength(1);
+    expect(w.state.sent.filter(text => text.startsWith('You asked on'))).toHaveLength(1);
     expect(w.journal.view.commitments.filter(item => item.agentPromise)).toHaveLength(0);
     const retryAt = w.frames.findIndex(frame => frame.kind === 'format-retry' && frame.id === due.id);
     const digest = packetDigest(due.prompt!);
@@ -131,7 +131,7 @@ it.each(['select-due', 'prepare'])('refused or unavailable replacement %s holds 
       expect(due.intent).toBeUndefined();
       expect(w.state.models.filter(id => id === due.id)).toHaveLength(1);
       expect(w.frames.filter(frame => frame.kind === 'format-retry' && frame.id === due.id)).toEqual([]);
-      expect(w.state.sent.filter(text => text.startsWith('PREVIEW — You asked on'))).toEqual([]);
+      expect(w.state.sent.filter(text => text.startsWith('You asked on'))).toEqual([]);
       const replay = openPreviewJournal(join(w.root, 'journal.encrypted'), key, undefined, undefined, true);
       try { expect(replay.view.turns.get(due.id)?.held).toBe(reason); } finally { replay.close(); }
     } finally { w.close(); }
@@ -169,7 +169,7 @@ it.each([null, 'invalid declaration', [{ quote: priya, when: 'Friday at 9 am', r
       expect(w.state.models.filter(id => id === due.id)).toHaveLength(1);
       expect(due.answerRetried).toBeUndefined();
       expect(w.journal.view.dated).toEqual(dates);
-      expect(w.state.sent.filter(text => text.startsWith('PREVIEW — You asked on'))).toHaveLength(1);
+      expect(w.state.sent.filter(text => text.startsWith('You asked on'))).toHaveLength(1);
       const coverage = stepCoverage(w.journal.view, on);
       expect(row(coverage, 'requested-action', 'select-due')).toMatchObject({ state: 'validated', population: 1 });
       expect(row(coverage, 'requested-action', 'prepare-packet')).toMatchObject({ state: 'validated', population: 1 });
@@ -206,7 +206,7 @@ it('a requested action fails closed: a violation or an unavailable check holds i
       expect(due).toMatchObject({ held: reason, reserved: false });
       expect(w.state.models.filter(id => id === due.id)).toEqual([]);
       expect(w.state.asked.filter(step => step.startsWith('select-due:'))).toHaveLength(1);
-      expect(w.state.sent.filter(text => text.startsWith('PREVIEW — You asked on'))).toEqual([]);
+      expect(w.state.sent.filter(text => text.startsWith('You asked on'))).toEqual([]);
     } finally { w.close(); }
   }
 });
@@ -216,7 +216,7 @@ it('with the step supervisor off, a requested action still answers and its steps
   try {
     w.worker.intake([update(1, priya)]); await w.worker.drain();
     w.state.now = friday9; await w.worker.sendRequested();
-    expect(w.state.sent.filter(text => text.startsWith('PREVIEW — You asked on'))).toHaveLength(1);
+    expect(w.state.sent.filter(text => text.startsWith('You asked on'))).toHaveLength(1);
     expect(w.frames.some(frame => frame.kind === 'step-open' || frame.kind === 'step-check-start')).toBe(false);
     const coverage = stepCoverage(w.journal.view, { ...on, stepCheck: false });
     expect(row(coverage, 'requested-action', 'select-due').state).toBe('missing');

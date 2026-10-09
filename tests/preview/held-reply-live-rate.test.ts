@@ -97,7 +97,7 @@ it('releases a loss notice after completed full-context PASS and keeps the answe
     await worker.drain();
     expect(journal.view.order[0]).toMatchObject({ modelState: 'uncertain', sent: 7 });
     expect(journal.view.order[0]?.held).toBeUndefined();
-    expect(sent).toBe(`PREVIEW — ${UNKNOWN_ANSWER_NOTICE}`);
+    expect(sent).toBe(`${UNKNOWN_ANSWER_NOTICE}`);
     journal.close();
   } finally { rmSync(dir, { recursive: true, force: true }); }
 });
@@ -125,7 +125,7 @@ it('keeps the captured one uncertain send fenced after journal replay', async ()
     expect(captured.unknownSendCount).toBe(1);
     expect({ sends, replies: reopened.view.replies, intent: reopened.view.order[0]?.intent,
       sent: reopened.view.order[0]?.sent }).toEqual({ sends: 1, replies: 1,
-        intent: 'PREVIEW — safe ordinary reply', sent: undefined });
+        intent: 'safe ordinary reply', sent: undefined });
     reopened.close();
   } finally { rmSync(dir, { recursive: true, force: true }); }
 });

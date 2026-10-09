@@ -70,7 +70,7 @@ it('969389800 live shape: an unsure credential score whose stronger review ends 
   expect(checks[0]?.scores?.credential).toBe(0.51);
   expect(calls).toEqual({ jev: 1, review: 1 });
   expect(turn.held).toBeUndefined();
-  expect(sends).toEqual([`PREVIEW — ${ANSWER_800}`]);
+  expect(sends).toEqual([`${ANSWER_800}`]);
   // The escalation outcome stays recorded with the send: the flag is a signal, not erased (Rules 41, 42).
   expect(turn.release).toMatchObject({ review: 'unavailable', objections: ['credential'], reason: 'review unavailable', revised: false });
 });
@@ -87,7 +87,7 @@ it('969389800 restart before the send: the new build answers the same recorded r
   const { sends, calls, turn } = await flow({ jev: JEV_800, answer: ANSWER_800, review: 'unknown', crashAt: 'before:intent' });
   expect(calls).toEqual({ jev: 1, review: 1 });
   expect(turn.held).toBeUndefined();
-  expect(sends).toEqual([`PREVIEW — ${ANSWER_800}`]);
+  expect(sends).toEqual([`${ANSWER_800}`]);
 });
 
 it('969389804 neighbour: credential 0.48 is a Jev pass and needs no review', async () => {
@@ -95,7 +95,7 @@ it('969389804 neighbour: credential 0.48 is a Jev pass and needs no review', asy
     .map(([rule, noul]) => [rule, { type: 'noul', noul }])) });
   const { sends, calls } = await flow({ jev, answer: ANSWER_800, review: 'unknown' });
   expect(calls).toEqual({ jev: 1, review: 0 });
-  expect(sends).toEqual([`PREVIEW — ${ANSWER_800}`]);
+  expect(sends).toEqual([`${ANSWER_800}`]);
 });
 
 it('the floor holds: a confident Jev credential flag (0.70 and above) with an UNKNOWN review stays held', async () => {
@@ -146,5 +146,5 @@ it('969389800 recorded answer carrying the harness login (prefix removed) is wit
 it('969389800 recorded answer with held values that it does not carry is answered exactly as before', async () => {
   const { sends, calls } = await flow({ jev: JEV_800, answer: ANSWER_800, review: 'unknown', held: [HARNESS_LOGIN] });
   expect(calls).toEqual({ jev: 1, review: 1 });
-  expect(sends).toEqual([`PREVIEW — ${ANSWER_800}`]);
+  expect(sends).toEqual([`${ANSWER_800}`]);
 });

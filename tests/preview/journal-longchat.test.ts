@@ -206,10 +206,10 @@ describe('Rule 110: the compaction sentence is said when it tells the operator s
       // Said exactly once, by the first reply from a compacted context.
       expect(spoken).toHaveLength(1);
       expect(spoken[0]!.update).toBe(compacted[0]!.update);
-      expect(spoken[0]!.intent!.startsWith(`PREVIEW — ${spoken[0]!.continuity!.disclosure} `)).toBe(true);
+      expect(spoken[0]!.intent!.startsWith(`${spoken[0]!.continuity!.disclosure} `)).toBe(true);
       // One seam throughout, so no basis change was owed a second sentence; exactly one went out.
       expect(new Set(compacted.map(turn => turn.continuity!.basis ?? 'summary')).size).toBe(1);
-      expect(sent.filter(text => text.startsWith('PREVIEW — Earlier conversation up to #'))).toHaveLength(1);
+      expect(sent.filter(text => text.startsWith('Earlier conversation up to #'))).toHaveLength(1);
       // Each turn's own flag is what the predicate decides from the last sentence actually delivered.
       let delivered: ContinuityAccount | undefined;
       for (const turn of compacted) {
@@ -261,7 +261,7 @@ describe('Rule 110: the compaction sentence is said when it tells the operator s
       journal.append({ kind: 'summary', through: 29, text: 'The operator keeps a garden log.', at });
       let worker = createJournalWorker(journal, ports(at + 100_000));
       worker.intake([update(31, 'How is the garden?')]); await worker.drain();
-      expect(sent.at(-1)).toMatch(/^PREVIEW — Earlier conversation up to #29 is now summarized for me;/u);
+      expect(sent.at(-1)).toMatch(/^Earlier conversation up to #29 is now summarized for me;/u);
       journal.append({ kind: 'summary-reserve', through: 31, at: at + 1 });
       journal.append({ kind: 'summary', through: 31, text: 'The operator keeps a garden log and asked how it is.', at: at + 1 });
       journal.close();
@@ -272,18 +272,18 @@ describe('Rule 110: the compaction sentence is said when it tells the operator s
       expect(resumed.continuity).toMatchObject({ summarizedThrough: 31, prePauseInbound: 'telegram:12345678:update:31',
         disposition: 'addressed' });
       expect(resumed.continuity!.spoken).toBeUndefined();
-      expect(sent.at(-1)).toBe(`PREVIEW — ${resumed.continuity!.disclosure} Noted.`);
+      expect(sent.at(-1)).toBe(`${resumed.continuity!.disclosure} Noted.`);
       // The neighbour: the next routine reply of the same run, over the same frontier, stays quiet.
       worker.intake([update(33, 'And the tomatoes?')]); await worker.drain();
       expect(journal.view.turns.get('telegram:12345678:update:33')!.continuity!.spoken).toBe(false);
-      expect(sent.at(-1)).toBe('PREVIEW — Noted.');
+      expect(sent.at(-1)).toBe('Noted.');
       // A resume with no newer frontier than the one already said is not newly compacted history: quiet.
       journal.close();
       journal = openPreviewJournal(path, key);
       worker = createJournalWorker(journal, ports(at + 2 * 86_400_000));
       worker.intake([update(34, 'Back once more.')]); await worker.drain();
       expect(journal.view.turns.get('telegram:12345678:update:34')!.continuity!.spoken).toBe(false);
-      expect(sent.at(-1)).toBe('PREVIEW — Noted.');
+      expect(sent.at(-1)).toBe('Noted.');
     } finally { journal.close(); rmSync(dir, { recursive: true, force: true }); }
   }, 30000);
 
@@ -363,10 +363,10 @@ describe('Rule 110: the compaction sentence is said when it tells the operator s
     };
     // A silent account whose reply does open with the sentence, and a spoken one whose reply does not:
     // both would make the record disagree with what the operator read, so replay refuses each.
-    attempt(false, `PREVIEW — ${disclosure} Hi!`, run => expect(run).toThrow('continuity account refused'));
-    attempt(true, 'PREVIEW — Hi!', run => expect(run).toThrow('continuity account refused'));
+    attempt(false, `${disclosure} Hi!`, run => expect(run).toThrow('continuity account refused'));
+    attempt(true, 'Hi!', run => expect(run).toThrow('continuity account refused'));
     // The matching pair of each is accepted.
-    attempt(false, 'PREVIEW — Hi!', (run, read) => { run(); expect(read()?.spoken).toBe(false); });
-    attempt(true, `PREVIEW — ${disclosure} Hi!`, (run, read) => { run(); expect(read()?.spoken).toBeUndefined(); });
+    attempt(false, 'Hi!', (run, read) => { run(); expect(read()?.spoken).toBe(false); });
+    attempt(true, `${disclosure} Hi!`, (run, read) => { run(); expect(read()?.spoken).toBeUndefined(); });
   });
 });

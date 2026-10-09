@@ -60,7 +60,7 @@ it('answers, reviews a clean reply, and records a contradictory one-line review 
     worker.intake([update(1, 'What color is it?')]); await worker.drain();
     worker.intake([update(2, 'And the other color?')]); await worker.drain();
     worker.intake([update(3, 'And one more color?')]); await worker.drain();
-    expect(sent.map(item => item.expectedText)).toEqual(['PREVIEW — The answer is violet.', 'PREVIEW — The answer is amber.',
+    expect(sent.map(item => item.expectedText)).toEqual(['The answer is violet.', 'The answer is amber.',
       'PREVIEW — The answer is scarlet.']);
     // The malformed verdict is re-asked once with the same context (Rule 116); both misses release as before.
     expect(reviewPackets).toHaveLength(3);
@@ -70,7 +70,7 @@ it('answers, reviews a clean reply, and records a contradictory one-line review 
     expect(reviewPackets[0].rules).toContain('raw_path');
     expect(journal.view.order[2].answer).toBe('The answer is scarlet.');
     // A malformed review is never a pass, and never a veto either (Rules 86, 95).
-    expect(journal.view.order[2].intent).toBe('PREVIEW — The answer is scarlet.');
+    expect(journal.view.order[2].intent).toBe('The answer is scarlet.');
     expect(journal.view.order[2].held).toBeUndefined();
     expect(journal.view.order[2].release).toMatchObject({ review: 'unavailable' });
     expect(status(root)).toMatchObject({ turns: 3, calls: 6, replies: 3,
@@ -188,7 +188,7 @@ it('upgrades the frozen live-format journal in place and preserves an UNKNOWN se
   let journal = openPreviewJournal(path, key);
   let sends = 1; // the fixture has one physical send attempt with UNKNOWN result
   try {
-    expect(journal.view.order[0].intent).toBe('PREVIEW — violet');
+    expect(journal.view.order[0].intent).toBe('violet');
     journal.close(); journal = openPreviewJournal(path, key);
     const resumed = createJournalWorker(journal, { now: () => at, stopped: () => false,
       model: async () => 'amber', checkOutbound: () => {},

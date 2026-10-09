@@ -124,11 +124,11 @@ async function promiseOf(raw: string) {
 
 it('a5: the recorded answer put promises beside conclusion.value and none was recorded; the flat answer records it', async () => {
   const before = await promiseOf(recorded('a5-1').output);
-  expect(before.intent).toMatch(/^PREVIEW — Deal — I promise that in my next reply I will give you three tips/u);
+  expect(before.intent).toMatch(/^Deal — I promise that in my next reply I will give you three tips/u);
   expect(before.promises).toEqual([]); // check A5a FAILED live for exactly this
   expect((JSON.parse(recorded('a5-1').output) as { conclusion: { promises?: unknown } }).conclusion.promises).toBeDefined();
   const after = await promiseOf(replayed('a5-1').output);
-  expect(after.intent).toMatch(/^PREVIEW — Got it — in my next reply, I'll give you three tips for watering your tomato plants\./u);
+  expect(after.intent).toMatch(/^Got it — in my next reply, I'll give you three tips for watering your tomato plants\./u);
   expect(after.promises).toEqual(["Got it — in my next reply, I'll give you three tips for watering your tomato plants."]);
 });
 

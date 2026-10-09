@@ -46,7 +46,7 @@ const seed = async (w: ReturnType<typeof world>) => { for (const [id, text] of l
 describe('the exact operator-echo test', () => {
   const own = locker.map(item => item[1]);
   it('passes only when every non-connective token appears verbatim and in order in ONE operator message', () => {
-    expect(repeatsOperatorOnly('PREVIEW — You told me the gym locker code is 5823 now, not 4417.', own)).toBe(true);
+    expect(repeatsOperatorOnly('You told me the gym locker code is 5823 now, not 4417.', own)).toBe(true);
     expect(repeatsOperatorOnly('Your gym locker code is 4417.', own)).toBe(true);
     // Any added word, even a harmless one, keeps the review.
     expect(repeatsOperatorOnly('The current code is 5823.', own)).toBe(false);
@@ -95,11 +95,11 @@ describe('operator echo in the journal runner', () => {
       await w.say(3, question);
       const turn = w.journal.view.order[2]!;
       expect(turn.sent).toBe(1);
-      expect(turn.intent).toBe(`PREVIEW — ${answer}`);
+      expect(turn.intent).toBe(`${answer}`);
       expect(w.calls.jev.length).toBe(jevBefore);
       expect(w.calls.reviews).toBe(0);
       expect(turn.replyChecks).toEqual([expect.objectContaining({ verdict: 'pass', path: 'operator-echo' })]);
-      expect(w.calls.outbound.at(-1)).toBe(`PREVIEW — ${answer}`);
+      expect(w.calls.outbound.at(-1)).toBe(`${answer}`);
       expect(w.journal.view.replyCheckPaths['operator-echo']).toBe(1);
       expect(statusReply(w.journal.view, now, 'UTC'))
         .toContain('Replies sent as your own words repeated back, without the second check: 1.');
@@ -138,7 +138,7 @@ describe('operator echo in the journal runner', () => {
       expect(w.calls.reviews).toBe(2); // the malformed verdict and its one format re-ask (Rule 116)
       // Not an echo: Jev and the full-context review both ran. The review gave no verdict and
       // Jev's flags name no secret, so under Rule 86 they only signal and the reply is sent.
-      expect(turn.intent).toBe('PREVIEW — The gym locker code is 5823 now. The spare locker code is 9911.');
+      expect(turn.intent).toBe('The gym locker code is 5823 now. The spare locker code is 9911.');
       expect(turn.replyChecks?.map(row => [row.path, row.verdict])).toEqual([['jev', 'violation'], ['subscription', 'unavailable']]);
       expect(reviewUnavailableReleases(w.journal.view)).toEqual({ total: 1, byRule: { claims_blocked: 1, parks_on_user: 1 } });
       expect(w.journal.view.replyCheckPaths['operator-echo']).toBe(0);
@@ -205,7 +205,7 @@ describe('operator echo in the journal runner', () => {
       await second.worker.drain();
       const turn = second.journal.view.order[2]!;
       expect(turn.sent).toBe(1);
-      expect(turn.intent).toBe(`PREVIEW — ${answer}`);
+      expect(turn.intent).toBe(`${answer}`);
       expect(second.calls.jev).toEqual([]);
       expect(second.calls.sends).toBe(1);
       expect(second.journal.view.replyCheckPaths['operator-echo']).toBe(1);
@@ -245,7 +245,7 @@ describe('Astra repair witnesses under the Rules 4/10 reading', () => {
       worker.intake([{ update_id: 1, message: { chat: { id: 7654321, type: 'private' }, from: { id: 7654321 },
         text: own, date: Math.floor(now / 1000) } }]);
       await worker.drain();
-      const expected = echo ? `PREVIEW — ${reply}` : HOLDING_REPLY;
+      const expected = echo ? reply : HOLDING_REPLY;
       expect([jev, reviews]).toEqual(echo ? [0, 0] : [1, 1]);
       expect(journal.view.order[0]?.replyChecks?.[0]?.path).toBe(echo ? 'operator-echo' : 'jev');
       expect(journal.view.replyCheckPaths['operator-echo']).toBe(echo ? 1 : 0);

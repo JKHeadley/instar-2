@@ -180,7 +180,7 @@ it('labels a runner notice as infrastructure speech, never as the agent', async 
     const worker = createJournalWorker(journal, { now: () => 1000, stopped: () => false, checkOutbound: () => {},
       model: async () => ({ state: 'rejected' as const, failureClass: 'rejected' as const }), send: async () => 3 });
     worker.intake([update(1)]); await worker.drain();
-    expect(journal.view.order[0]?.intent).toBe(`PREVIEW — ${MODEL_FAILURE_REPLY}`);
+    expect(journal.view.order[0]?.intent).toBe(`${MODEL_FAILURE_REPLY}`);
     expect(journal.view.speakers).toEqual({ agent: 0, infrastructure: 1 });
     journal.close();
   } finally { rmSync(dir, { recursive: true, force: true }); }

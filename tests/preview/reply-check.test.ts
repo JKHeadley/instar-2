@@ -92,7 +92,7 @@ it('keeps the complete answer grounding for the blocking reviewer and selects on
     operatorMessage: 'What did I say?', candidateReply: 'PREVIEW — candidate' });
   // The rule texts ride the review question once (replyReviewQuestion), never a second copy in the packet.
   expect(JSON.parse(replyReviewContext(prompt, 'PREVIEW — candidate'))).not.toHaveProperty('rules');
-  expect(() => replyReviewContext(prompt, 'PREVIEW — candidate', ['no_such_rule' as never])).toThrow('preview: reply-review rule absent');
+  expect(() => replyReviewContext(prompt, 'candidate', ['no_such_rule' as never])).toThrow('preview: reply-review rule absent');
   const large = prepareJournalEnvelope({ question: 'Question?',
     context: JSON.stringify({ audience: { operator: 'verified' },
       history: [{ user: 'a'.repeat(6000) }, { user: 'recent' }] }), id: 'turn:3' },
@@ -203,7 +203,7 @@ it('sends an operator-supplied personal code by the exact operator-echo path, wi
     await worker.drain();
     expect(reviewed).toBe(false);
     expect(reviewContext).toBeUndefined();
-    expect(sent).toBe('PREVIEW — Your gym locker code is 3310.');
+    expect(sent).toBe('Your gym locker code is 3310.');
     expect(journal.view.lastReplyCheck).toMatchObject({ verdict: 'pass', path: 'operator-echo' });
     journal.close();
   } finally { rmSync(root, { recursive: true, force: true }); }
@@ -258,12 +258,12 @@ it('durably checks before intent, releases the candidate with its objection on v
       replyCheck: { elapsedMs: () => 100, jev: async () => ({ value: scores({ raw_path: 0.91 }), latencyMs: 170 }),
         escalate: async () => ({ verdict: 'violation', ruleIds: ['raw_path'], confidence: null, latencyMs: 500, reason: 'shows a path' }) },
       send: async input => { exact = input.expectedText; expect(journal.view.lastReplyCheck?.verdict).toBe('violation');
-        expect(journal.view.order[0]?.intent).toBe('PREVIEW — bad candidate'); return 5; } });
+        expect(journal.view.order[0]?.intent).toBe('bad candidate'); return 5; } });
     worker.intake([{ update_id: 1, message: { chat: { id: 7654321, type: 'private' },
       from: { id: 7654321 }, text: 'hello' } }]);
     await worker.drain();
     // Rules 77/86: an ordinary objection is a signal; the substantive reply is sent, never replaced.
-    expect(exact).toBe('PREVIEW — bad candidate');
+    expect(exact).toBe('bad candidate');
     expect(journal.view.order[0]?.held).toBeUndefined();
     expect(journal.view.order[0]?.release).toEqual({ review: 'violation', objections: ['raw_path'], reason: 'shows a path', revised: false,
       dispositions: [{ objection: 'raw_path', decision: 'no-decision' }] });
@@ -292,7 +292,7 @@ it('revises an objected draft once within the call cap, then sends the revision 
       replyCheck: { elapsedMs: () => 100, jev: async () => ({ value: scores({ raw_path: 0.91 }), latencyMs: 170 }),
         // The revised text gets its own held-class review (Rules 6, 8); only the held classes are asked.
         escalate: async (text, _id, _prompt, rules, _deadline, operation) => operation === 'revision'
-          ? (expect(text).toBe('PREVIEW — It is in your notes folder.'),
+          ? (expect(text).toBe('It is in your notes folder.'),
             expect(rules).toEqual(['credential', 'defers_work', 'unrecorded_blocker']),
             { verdict: 'pass', ruleIds: [], confidence: null, latencyMs: 400 })
           : { verdict: 'violation', ruleIds: ['raw_path'], confidence: null, latencyMs: 500, reason: 'shows a path' },
@@ -308,7 +308,7 @@ it('revises an objected draft once within the call cap, then sends the revision 
       from: { id: 7654321 }, text: 'where is it?' } }]);
     await worker.drain();
     expect(revisions).toBe(1);
-    expect(sends).toEqual(['PREVIEW — It is in your notes folder.']);
+    expect(sends).toEqual(['It is in your notes folder.']);
     expect(journal.view.calls).toBe(4);
     expect(journal.view.order[0]?.revisionReview).toEqual({ verdict: 'pass', ruleIds: [] });
     expect(journal.view.order[0]?.release).toMatchObject({ review: 'violation', objections: ['raw_path'], revised: true });
@@ -375,7 +375,7 @@ it.each([
     const journal = openPreviewJournal(path, key);
     await createJournalWorker(journal, ports(journal, false)).drain();
     const turn = journal.view.order[0]!;
-    expect(sends).toEqual([`PREVIEW — ${BILL_ANSWER}`]);
+    expect(sends).toEqual([`${BILL_ANSWER}`]);
     expect(sends.join('\n')).not.toContain("I'll pull up");
     expect(turn.sent).toBe(1);
     expect(turn.release).toMatchObject({ review: 'violation', revised: false });
@@ -387,8 +387,8 @@ it.each([
       : verdict === 'unavailable' ? { verdict, ruleIds: [] } : undefined);
     expect(turn.revisionReviewReserved).toBe(maxCalls === 3 ? undefined : true);
     expect(journal.view.calls).toBe(maxCalls === 3 ? 3 : 4);
-    expect(reviewed).toEqual(maxCalls === 3 || crashAt ? [`PREVIEW — ${BILL_ANSWER}`]
-      : [`PREVIEW — ${BILL_ANSWER}`, `PREVIEW — ${BILL_REVISION}`]);
+    expect(reviewed).toEqual(maxCalls === 3 || crashAt ? [`${BILL_ANSWER}`]
+      : [`${BILL_ANSWER}`, `${BILL_REVISION}`]);
     journal.close();
   } finally { rmSync(root, { recursive: true, force: true }); }
 });
@@ -421,7 +421,7 @@ it('never repeats an interrupted revision: restart releases the original with it
         escalate: async () => { throw Error('review repeated'); }, revise: async () => { throw Error('revision repeated'); } } });
     await recovered.drain();
     await recovered.drain();
-    expect(sends).toEqual(['PREVIEW — Please do it yourself.']);
+    expect(sends).toEqual(['Please do it yourself.']);
     expect(second.view.calls).toBe(3);
     // The interrupted response is UNKNOWN: no answer from the agent is invented for its objection.
     expect(second.view.order[0]?.release).toEqual({ review: 'violation', objections: ['parks_on_user'], revised: false,
@@ -448,7 +448,7 @@ it('spends no revision past the existing call cap and releases the original with
     await worker.drain();
     expect(journal.view.calls).toBe(2);
     expect(journal.view.order[0]?.revisionReserved).toBeUndefined();
-    expect(sends).toEqual(['PREVIEW — candidate']);
+    expect(sends).toEqual(['candidate']);
     // The skipped response is recorded as non-admission, never as an answer from the agent.
     expect(journal.view.order[0]?.release).toMatchObject({ responseSkipped: 'call cap',
       dispositions: [{ objection: 'raw_path', decision: 'no-decision' }] });
@@ -531,7 +531,7 @@ it('records no send time for UNKNOWN, reads a legacy send-timing frame, and neve
     journal.close();
     const replay = openPreviewJournal(path, key);
     expect(replyTimings(replay.view).perReply[0]?.sendMs).toBe(75);
-    expect(replay.view.order[0]?.intent).toBe('PREVIEW — candidate');
+    expect(replay.view.order[0]?.intent).toBe('candidate');
     expect(replay.view.order[0]?.sent).toBeUndefined();
     const recovered = createJournalWorker(replay, { now: () => clock, stopped: () => false,
       model: async () => { throw Error('model repeated'); }, checkOutbound: () => {},
@@ -565,7 +565,7 @@ it('releases an expired reserved check after restart without another review, rec
     await worker.drain();
     expect(invoked).toBe(0);
     // Rule 95: an advisory reviewer outage fails toward reachability, recorded, once.
-    expect(sends).toEqual(['PREVIEW — candidate']);
+    expect(sends).toEqual(['candidate']);
     expect(replay.view.order[0]?.held).toBeUndefined();
     expect(replay.view.lastReplyCheck?.reason).toBe(REPLY_CHECK_BUDGET_REASON);
     expect(replay.view.order[0]?.release).toMatchObject({ review: 'unavailable', reason: REPLY_CHECK_BUDGET_REASON, revised: false });
@@ -657,7 +657,7 @@ it('withholds credential-shaped text before Jev can receive it, with an honest s
 });
 
 it.each([
-  ['clean revision', 'I cannot repeat that key here; it is stored in your vault.', 'PREVIEW — I cannot repeat that key here; it is stored in your vault.', 3],
+  ['clean revision', 'I cannot repeat that key here; it is stored in your vault.', 'I cannot repeat that key here; it is stored in your vault.', 3],
   ['revision still shaped like a secret', 'It is sk-BBBBBBBBBBBBBBBBBBBBBBBB', CREDENTIAL_SHAPE_NOTICE, 2],
 ] as const)('credential shape: %s', async (_name, revised, expected, calls) => {
   const root = realpathSync(mkdtempSync(join(tmpdir(), 'preview-reply-secret-revise-')));
@@ -714,7 +714,7 @@ it('escalates an interrupted Jev check without repeating Jev after restart', asy
       replyCheck: { elapsedMs: () => 100, jev: async () => { throw Error('Jev must not repeat'); },
         escalate: async () => { reviewed++; return { verdict: 'pass', ruleIds: [] as [], confidence: null, latencyMs: 500 }; } } });
     await recovered.drain();
-    expect(sent).toBe('PREVIEW — candidate');
+    expect(sent).toBe('candidate');
     expect(reviewed).toBe(1);
     expect(second.view.jevChecks).toBe(1);
     expect(second.view.calls).toBe(2);
@@ -766,7 +766,7 @@ it('reviews every rule after reopening a pre-upgrade mixed Jev verdict', async (
         } } });
     await recovered.drain();
     expect(reviews).toBe(1);
-    expect(sent).toBe('PREVIEW — Please handle this yourself.');
+    expect(sent).toBe('Please handle this yourself.');
     expect(second.view.order[0]?.release).toMatchObject({ review: 'violation', objections: ['parks_on_user'] });
     expect(second.view.lastReplyCheck?.ruleIds).toEqual(['parks_on_user']);
     expect(second.view.calls).toBe(2);
@@ -801,12 +801,12 @@ it('does not repeat an interrupted paid review and releases the candidate once w
         escalate: async () => { throw Error('review repeated'); } } });
     await recovered.drain();
     await recovered.drain();
-    expect(sent).toEqual(['PREVIEW — candidate']);
+    expect(sent).toEqual(['candidate']);
     expect(second.view.calls).toBe(2);
     expect(second.view.lastReplyCheck?.path).toBe('subscription');
     expect(second.view.lastReplyCheck?.verdict).toBe('unavailable');
     expect(second.view.order[0]?.answer).toBe('candidate');
-    expect(second.view.order[0]?.intent).toBe('PREVIEW — candidate');
+    expect(second.view.order[0]?.intent).toBe('candidate');
     expect(second.view.order[0]?.held).toBeUndefined();
     expect(second.view.order[0]?.release).toMatchObject({ review: 'unavailable', revised: false });
     expect(replyTimings(second.view).perReply[0]?.fallbackMs).toBeNull();
@@ -857,13 +857,13 @@ it('answers a long, summarized conversation when Jev is unsure: grounded review 
       text: 'What was the first unique memory?' } }]);
     await worker.drain();
     const last = journal.view.order.at(-1)!;
-    expect(sent.at(-1)).toBe('PREVIEW — I recall it was orchid.');
+    expect(sent.at(-1)).toBe('I recall it was orchid.');
     expect(last.sent).toBe(33);
     expect(last.replyChecks?.map(row => [row.path, row.verdict])).toEqual([['jev', 'unsure'], ['subscription', 'pass']]);
     // The deciding review sees the summary even when earlier turns leave recent history.
     expect(reviewed).toHaveLength(1);
     expect(reviewed[0]).toMatchObject({ operatorMessage: 'What was the first unique memory?',
-      candidateReply: 'PREVIEW — I recall it was orchid.' });
+      candidateReply: 'I recall it was orchid.' });
     expect(reviewed[0]!.summary!.text).toContain('orchid');
     expect(reviewed[0]!.history).toBeDefined();
     // Jev's unresolved rule plus the guidance family's context questions (Part 18 §16), in one review.
@@ -872,7 +872,7 @@ it('answers a long, summarized conversation when Jev is unsure: grounded review 
       text: 'Please repeat the first unique memory.' } }]);
     await worker.drain();
     const pass = journal.view.order.at(-1)!;
-    expect(sent.at(-1)).toBe('PREVIEW — I recall it was orchid.');
+    expect(sent.at(-1)).toBe('I recall it was orchid.');
     expect(pass.sent).toBe(34);
     expect(pass.replyChecks?.map(row => [row.path, row.verdict])).toEqual([['jev', 'pass']]);
     expect(reviewed).toHaveLength(1);
@@ -906,7 +906,7 @@ it('sends the reply once when Jev and the full-context review both fail; a resta
     const worker = createJournalWorker(first, ports);
     worker.intake(hello);
     await worker.drain();
-    expect(sends).toEqual(['PREVIEW — candidate']);
+    expect(sends).toEqual(['candidate']);
     expect(first.view.order[0]?.held).toBeUndefined();
     expect(first.view.order[0]?.release).toMatchObject({ review: 'unavailable', reason: 'review unavailable' });
     first.close();
@@ -914,7 +914,7 @@ it('sends the reply once when Jev and the full-context review both fail; a resta
     await createJournalWorker(second, { ...ports, model: async () => { throw Error('model repeated'); },
       replyCheck: { elapsedMs: () => 100, jev: async () => { throw Error('Jev repeated'); },
         escalate: async () => { throw Error('review repeated'); } } }).drain();
-    expect(sends).toEqual(['PREVIEW — candidate']);
+    expect(sends).toEqual(['candidate']);
     expect(second.view.order[0]?.answer).toBe('candidate');
     expect(second.view.calls).toBe(2);
     second.close();
@@ -937,7 +937,7 @@ it('holds at the shared call cap and answers with a completed review after an au
     await worker.drain();
     expect(journal.view.calls).toBe(2);
     expect(reviewed).toBe(1);
-    expect(sends).toEqual(['PREVIEW — candidate']);
+    expect(sends).toEqual(['candidate']);
     worker.intake([{ update_id: 2, message: { chat: { id: 7654321, type: 'private' as const }, from: { id: 7654321 }, text: 'again' } }]);
     await worker.drain();
     // The capped message gets one limited answer from the reserve (Rule 15), not silence.
@@ -948,7 +948,7 @@ it('holds at the shared call cap and answers with a completed review after an au
     await worker.drain();
     expect(journal.view.order[1]?.answer).toBe('candidate');
     expect(reviewed).toBe(2);
-    expect([sends[0], sends[2]]).toEqual(['PREVIEW — candidate', 'PREVIEW — candidate']);
+    expect([sends[0], sends[2]]).toEqual(['candidate', 'candidate']);
     expect(sends).toHaveLength(3);
     journal.close();
   } finally { rmSync(root, { recursive: true, force: true }); }
@@ -1110,11 +1110,11 @@ async function flow(options: Flow, crashAt?: string) {
     return result;
   } finally { rmSync(root, { recursive: true, force: true }); }
 }
-const DRAFT = 'PREVIEW — Set notifications.email.enabled to on.';
+const DRAFT = 'Set notifications.email.enabled to on.';
 
 it('a clear pass sends the draft with no review, response or release record', async () => {
   const { sends, calls, turn } = await flow({ answer: 'They are in your notes app.' });
-  expect(sends).toEqual(['PREVIEW — They are in your notes app.']);
+  expect(sends).toEqual(['They are in your notes app.']);
   expect(calls).toEqual({ jev: 1, review: 0, revisionReview: 0, revise: 0 });
   expect(turn.release).toBeUndefined();
 });
@@ -1132,7 +1132,7 @@ it('a contextual false positive: Jev flags the setting key, the contextual findi
 it('a real advisory flaw: the agent accepts it, the revision is revalidated and sent, and the acceptance is recorded', async () => {
   const { sends, calls, turn } = await flow({ jev: { config_key: 0.93 }, review: 'violation',
     revise: { text: 'Turn on email notifications in your settings.', dispositions: [{ objection: 'config_key', decision: 'accept' }] } });
-  expect(sends).toEqual(['PREVIEW — Turn on email notifications in your settings.']);
+  expect(sends).toEqual(['Turn on email notifications in your settings.']);
   expect(calls).toEqual({ jev: 1, review: 1, revisionReview: 1, revise: 1 });
   expect(turn.revision?.dispositions).toEqual([{ objection: 'config_key', decision: 'accept' }]);
   expect(turn.release).toMatchObject({ review: 'violation', objections: ['config_key'], revised: true,
@@ -1209,7 +1209,7 @@ it.each([
       from: { id: 7654321 }, text: message } }]);
     await worker.drain();
     expect(revisions).toBe(revisable ? 1 : 0);
-    if (revisable) expect(sent).toBe('PREVIEW — Short.');
+    if (revisable) expect(sent).toBe('Short.');
     else { expect(sent).toContain('Retrospective review:'); expect(sent).not.toContain('Short.'); }
     journal.close();
   } finally { rmSync(root, { recursive: true, force: true }); }

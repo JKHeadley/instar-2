@@ -80,7 +80,7 @@ export const createClaudeCodeSubscriptionRoute = config => ({ kind: 'Success', v
     { cwd: process.cwd(), encoding: 'utf8', timeout: 30000, env });
     expect(run.status, run.stderr).toBe(0);
     const sent = readFileSync(`${log}.sends`, 'utf8');
-    expect(sent).toContain('PREVIEW — Noted.');
+    expect(sent).toContain('Noted.');
     expect(sent).not.toContain(TOKEN);
     // The model never received the secret; it saw the stored reference instead.
     const seen = readFileSync(prompts, 'utf8');

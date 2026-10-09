@@ -48,7 +48,7 @@ describe('P14-NF-70: the family is the one reply review, never a second gate', (
     const ports: ReplyCheckPorts = { jev: async () => ({ value: null, latencyMs: 1 }),
       escalate: async (_text, _id, _prompt, rules) => { seen.push(rules); return { verdict: 'pass', ruleIds: [], confidence: null, latencyMs: 1 }; },
       reserveEscalation: () => true, record: () => undefined, elapsedMs: () => 0 };
-    expect((await reviewReply('PREVIEW — reply', 'turn', ports, ['defers_work'])).outcome).toBe('pass');
+    expect((await reviewReply('reply', 'turn', ports, ['defers_work'])).outcome).toBe('pass');
     expect(seen).toEqual([['defers_work', 'self_state_claim', 'breaks_preference']]);
   });
 });
@@ -279,7 +279,7 @@ describe('P14-NF-71/72: wired on the live worker path (constructed ports, real j
   it('a broken preference is answered by the agent and its revision is sent; the verdict is read back from the durable journal', async () => {
     const sends: string[] = [];
     const durable = await runTurn(async text => { sends.push(text); return sends.length; });
-    expect(sends).toEqual(['PREVIEW — Seventeen times three is fifty-one. Ask me again any time.']);
+    expect(sends).toEqual(['Seventeen times three is fifty-one. Ask me again any time.']);
     expect(durable.held).toBeUndefined();
     expect(durable.sent).toBe(1);
     expect(guidanceVerdicts([durable]).find(item => item.member === 'correction-learning'))

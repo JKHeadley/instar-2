@@ -52,7 +52,7 @@ it('keeps reading past the turn allowance and gives a burst one limited answer, 
   raiseJournalCaps(replay, { maxCalls: 8, maxReplies: 8, maxTurns: 4, authority: 'test raise', at: clock });
   await resumed.drain();
   expect(calls).toHaveLength(4);
-  expect(sends.slice(3).map(item => item.text)).toEqual(['PREVIEW — ordinary answer', 'PREVIEW — ordinary answer']);
+  expect(sends.slice(3).map(item => item.text)).toEqual(['ordinary answer', 'ordinary answer']);
   replay.close();
 }));
 
@@ -187,7 +187,7 @@ it('past 60 ordinary and every reserve message, a stop press and a /stop behind 
   worker.intake([...Array.from({ length: MINIMAL_RESERVE.turns - 1 }, (_, index) => message(61 + index, `r${index}`)), message(last, '/stop')]);
   await worker.minimal();
   const confirm = sends.at(-1)!;
-  expect(confirm.text).toBe(`PREVIEW — ${STOP_CONFIRM_TEXT}`);
+  expect(confirm.text).toBe(`${STOP_CONFIRM_TEXT}`);
   expect(journal.view.order).toHaveLength(last);
   const cursor = journal.view.cursor;
   expect(worker.pollLimit()).toBe(MINIMAL_POLL_LIMIT);
@@ -228,7 +228,7 @@ it('an ordinary worker blocked on its model does not silence the minimal path: l
   expect(sends[0]!.text.startsWith(limitedAnswerText(journal.view, 'turns', 2))).toBe(true);
   worker.intake([message(4, '/stop')]);
   await worker.minimal();
-  expect(sends.at(-1)?.text).toBe(`PREVIEW — ${STOP_CONFIRM_TEXT}`);
+  expect(sends.at(-1)?.text).toBe(`${STOP_CONFIRM_TEXT}`);
   worker.intake([press(5, sends.at(-1)!.markup!.inline_keyboard[0]![0]!.callback_data!)]);
   expect(journal.view.stop).toBe('operator');
   // Receipt-to-response and stop-to-halt, measured on this host while the model is still blocked.
@@ -331,7 +331,7 @@ it('a blocked ordinary model below every cap cannot strand a stop: the minimal p
   await new Promise(done => setImmediate(done));
   worker.intake([message(2, '/stop')]);
   await worker.minimal(); await worker.minimal();
-  expect(sends.map(item => item.text)).toEqual([`PREVIEW — ${STOP_CONFIRM_TEXT}`]);
+  expect(sends.map(item => item.text)).toEqual([`${STOP_CONFIRM_TEXT}`]);
   expect(journal.view.order[1]?.limited?.reason).toBe('worker');
   worker.intake([press(3, sends[0]!.markup!.inline_keyboard[0]![0]!.callback_data!)]);
   expect(journal.view.stop).toBe('operator');
@@ -405,7 +405,7 @@ it('when the blocked model recovers, the ordinary answer goes and the stop is ne
   await worker.minimal();
   release('ordinary answer');
   await pass; await worker.drain(); await worker.minimal();
-  expect(sends.map(item => item.text)).toEqual([`PREVIEW — ${STOP_CONFIRM_TEXT}`, 'PREVIEW — ordinary answer']);
+  expect(sends.map(item => item.text)).toEqual([`${STOP_CONFIRM_TEXT}`, 'ordinary answer']);
   expect(journal.view.stop).toBeNull();
   journal.close();
 }));
@@ -499,12 +499,12 @@ it('a failed ordinary worker leaves the minimal path answering at once, and a la
   // The ordinary answer still follows once the ordinary worker recovers; the limited answer is not repeated.
   lost = false;
   await worker.drain(); await worker.minimal();
-  expect(sends.map(item => item.text)).toEqual([limitedAnswerText(journal.view, 'worker', 1), 'PREVIEW — ordinary answer']);
+  expect(sends.map(item => item.text)).toEqual([limitedAnswerText(journal.view, 'worker', 1), 'ordinary answer']);
   lost = true;
   worker.intake([message(2, 'still there?'), message(3, '/stop')]);
   await expect(worker.drain()).rejects.toThrow('ordinary worker lost');
   await worker.minimal();
-  expect(sends.slice(2).map(item => item.text)).toEqual([limitedAnswerText(journal.view, 'worker', 1), `PREVIEW — ${STOP_CONFIRM_TEXT}`]);
+  expect(sends.slice(2).map(item => item.text)).toEqual([limitedAnswerText(journal.view, 'worker', 1), `${STOP_CONFIRM_TEXT}`]);
   worker.intake([press(4, sends.at(-1)!.markup!.inline_keyboard[0]![0]!.callback_data!)]);
   expect(journal.view.stop).toBe('operator');
   journal.close();

@@ -254,7 +254,7 @@ export const createClaudeCodeSubscriptionRoute = () => ({kind:'Success',value:{i
     expect(sends).toHaveLength(2);
     expect(sends[0].message_thread_id).toBeUndefined();
     expect(sends[1]).toMatchObject({chat_id:world.configuration.chatId,message_thread_id:7});
-    expect(answerOf(sends[1].text)).toBe('PREVIEW — Your sister is Wren; you told me in the main chat.');
+    expect(answerOf(sends[1].text)).toBe('Your sister is Wren; you told me in the main chat.');
     expect(JSON.parse(spawnSync(process.execPath,
       ['--no-warnings','--loader','./scripts/slice-ts-loader.mjs','tests/preview/journal-agent.mjs','status','--root',root],
       {cwd:process.cwd(),env,encoding:'utf8',timeout:10000}).stdout)).toMatchObject({calls:4,replies:2,unknownCalls:2,unknownCallBreakdown:{ jev:2,total:2 },unknownSends:unknown,
@@ -350,7 +350,7 @@ export const createClaudeCodeSubscriptionRoute = () => ({kind:'Success',value:{i
     const sends = existsSync(`${log}.sends`) ? readFileSync(`${log}.sends`,'utf8').trim().split('\n').map(line => JSON.parse(line)) : [];
     // A contradicted review is unavailable, never a pass and never a veto (Rules 77, 86, 95).
     // An answer that stays malformed after its one re-ask is never sent; every other mode still answers.
-    expect(sends.some(send => answerOf(send.text) === 'PREVIEW — Noted.')).toBe(
+    expect(sends.some(send => answerOf(send.text) === 'Noted.')).toBe(
       !['answer-two-objects', 'answer-list-wrapped', 'answer-prose-wrong-fields'].includes(mode));
     const status = JSON.parse(spawnSync(process.execPath,
       ['--no-warnings','--loader','./scripts/slice-ts-loader.mjs','tests/preview/journal-agent.mjs','status','--root',root],

@@ -79,8 +79,8 @@ it('answers two naturally polled turns with prior history and sources at provide
   expect(second.context.packet.now.epochMs).toBeGreaterThan(0);
   expect(second.context.packet.audience.participants).toEqual([`telegram:v1:user:${OPERATOR}`]);
   expect(world.sends().map(send => send.body.text)).toEqual([
-    'PREVIEW — experimental test agent; production safeguards incomplete.\nInstar exists to make coherence something an AI cannot lose.',
-    'PREVIEW — experimental test agent; production safeguards incomplete.\nYou first asked what Instar is for.']);
+    'Instar exists to make coherence something an AI cannot lose.',
+    'You first asked what Instar is for.']);
 
   // Restart: a fresh process, a foreign sender's message and a distinct third turn.
   world.say('Someone else asks for the secret plan.', 999001, 999001);

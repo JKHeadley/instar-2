@@ -176,7 +176,7 @@ it('a scheduled reminder\'s fractional update publishes and opens its own page; 
 it('every view, detail pages included, states a stale or unreadable snapshot (the loss detector, purpose Rule 2)', () => {
   const { journal } = recordedJournal();
   const stale = { ...snapshotOf(journal.view), turns: [{ update: 7, time: '2026-10-03 14:00', from: 'you', message: 'hi', reply: null, state: 'Waiting for my answer' }],
-    requests: [{ title: 'Extend this trial', state: 'Approved and done', open: false, route: 'chat', link: null, sharedAccess: null }] };
+    requests: [{ title: 'Extend this installation', state: 'Approved and done', open: false, route: 'chat', link: null, sharedAccess: null }] };
   const later = at + 7 * 60_000;
   for (const view of [...DASHBOARD_VIEWS.map((item: { id: string }) => item.id), 'messages/7', 'requests/0', 'nowhere']) {
     expect(render(stale, view, later), view).toContain('Last updated by your agent 7 minutes ago');
@@ -199,7 +199,7 @@ it('an open recorded GitHub-review request links straight to its review; a lapse
   // The stub reproduces the recorded status row exactly, so the mapping below runs on the live shape.
   expect(operatorRequestsReport(view, at)).toEqual([row]);
   const open = dashboardSnapshot(view, { now: at, zone, statusText: 'Status', bot: null, stopped: false });
-  expect(open.requests).toEqual([{ title: "Let me continue past this trial's allowance", state: 'Waiting for your answer', open: true,
+  expect(open.requests).toEqual([{ title: "Let me continue past this installation's allowance", state: 'Waiting for your answer', open: true,
     route: 'github-review', link: 'https://github.com/JKHeadley/instar-2/pull/145/files', sharedAccess: null }]);
   expect(open.counts.waiting).toBe(1);
   const lapsed = dashboardSnapshot(view, { now: at + 3_600_001, zone, statusText: 'Status', bot: null, stopped: false });
@@ -221,7 +221,7 @@ it('the page treats the snapshot as untrusted: closed shape, bounded, links only
   const good = { type: 'PreviewOperatorDashboard', schemaVersion: 1, asOf: now, zone, state: 'running', until: '2026-10-12 13:40',
     status: recorded.statusNormal.text.split('\n'), counts: { turnsToday: 1, held: 0, waiting: 1 },
     allowance: [{ label: 'Model calls', used: 1, max: 4 }], tokens: { input: 1, output: 1, unknownCalls: 0 },
-    requests: [{ title: 'Extend this trial', state: 'Waiting for your answer', open: true, route: 'github-review', link: 'https://github.com/a/b/pull/1/files', sharedAccess: null }],
+    requests: [{ title: 'Extend this installation', state: 'Waiting for your answer', open: true, route: 'github-review', link: 'https://github.com/a/b/pull/1/files', sharedAccess: null }],
     turns: [{ update: 1, time: '2026-10-03 14:00', from: 'you', message: '<script>alert(1)</script>', reply: null, state: 'Waiting for my answer' }], chat: null };
   const write = (value: unknown, mode = 0o644) => { writeFileSync(join(outbox, DASHBOARD_FILE), JSON.stringify(value), { mode }); chmodSync(join(outbox, DASHBOARD_FILE), mode); };
   expect(readSnapshot(outbox, now)).toEqual({ kind: 'missing' });

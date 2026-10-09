@@ -108,7 +108,7 @@ function world(root: string, opts: { answer: (input: Input) => string; summaryRe
   return { journal, worker: createJournalWorker(journal, ports), sent, offers };
 }
 const tmp = (name: string) => realpathSync(mkdtempSync(join(tmpdir(), `preview-cancelpath-${name}-`)));
-const pushes = (sent: string[]) => sent.filter(text => text.startsWith('PREVIEW — You asked on'));
+const pushes = (sent: string[]) => sent.filter(text => text.startsWith('You asked on'));
 const turnOf = (w: ReturnType<typeof world>, text: string) => w.journal.view.order.find(turn => turn.text === text)!;
 
 /** The live sequence up to the withdrawal: the two 6:50 requests, each recorded open. */

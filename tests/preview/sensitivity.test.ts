@@ -126,7 +126,7 @@ describe('P14-NF-76/77/78: recorded live shapes (fixture captured from a copy of
     expect(answered.dispositions).toEqual([expect.objectContaining({ objection: 'sensitive_disclosure', decision: 'accept' })]);
     expect(answered.text).not.toContain('5521');
     expect(answered.text.trim().length).toBeGreaterThan(0);
-    expect(check.candidate).toBe(`PREVIEW — ${answered.text}`);
+    expect(check.candidate).toBe(`${answered.text}`);
     expect(check.rules).toEqual([...REVIEW_HOLDING_RULES]);
     const verdict = parseReplyReviewVerdict(decisionValue(check), check.rules);
     expect(verdict.findings!.find(item => item.rule === 'sensitive_disclosure')!.verdict).toBe('pass');
@@ -163,7 +163,7 @@ describe('P14-NF-76/77/78: recorded live shapes (fixture captured from a copy of
     // value is caught the same for the operator's chat and for a group, before any review or send.
     const keyShaped = `PREVIEW — Here it is: sk-${'a1B2c3D4'.repeat(5)}`;
     expect(redact(keyShaped).count).toBeGreaterThan(0);
-    expect(redact(`PREVIEW — ${recorded.answer}`).count).toBe(0);
+    expect(redact(`${recorded.answer}`).count).toBe(0);
   });
 });
 
@@ -218,7 +218,7 @@ describe('P14-NF-77: wired on the live worker path (recorded model outputs, real
   it('the agent\'s recorded discreet rewrite is what is sent, and the verdict is read back from the durable journal', async () => {
     const { durable, sends } = await runTurn('recorded');
     expect(sends).toHaveLength(1);
-    expect(sends[0]).toMatch(/^PREVIEW — I do have a current gym locker code on record/u);
+    expect(sends[0]).toMatch(/^I do have a current gym locker code on record/u);
     expect(sends[0]).not.toContain('5521');
     expect(durable.held).toBeUndefined();
     expect(guidanceVerdicts([durable]).find(item => item.member === 'sensitivity'))
@@ -234,7 +234,7 @@ describe('P14-NF-77: wired on the live worker path (recorded model outputs, real
   });
   it('with no rewrite, only the named sentences are removed and the rest of the answer is sent (constructed extra sentence)', async () => {
     const { durable, sends } = await runTurn('none', `${fixture().turns.private.answer}\nThe gym is open until 10 PM tonight.`);
-    expect(sends).toEqual(['PREVIEW — The gym is open until 10 PM tonight.']);
+    expect(sends).toEqual(['The gym is open until 10 PM tonight.']);
     expect(durable.release?.withheld?.removed.join(' ')).toContain('5521');
     expect(guidanceVerdicts([durable]).find(item => item.member === 'sensitivity')).toMatchObject({ verdict: 'fired', landing: 'excised' });
   });
@@ -321,7 +321,7 @@ describe('P14-NF-77: a shared audience is released only on a completed review (u
     expect(long.sends).toEqual([HOLDING]);
     expect(long.turn.heldReview?.withheld?.removed).toEqual(['Your locker code is 5521.']);
     const mixed = await runGroup('Code: 5521.\nThe gym is open until 10 PM tonight.', { quote: 'Code: 5521.' });
-    expect(mixed.sends).toEqual(['PREVIEW — The gym is open until 10 PM tonight.']);
+    expect(mixed.sends).toEqual(['The gym is open until 10 PM tonight.']);
   });
   it('a short quote names only a whole sentence: a fragment of a longer sentence stays unnamed (both sides)', () => {
     expect(namedClaimsIn('reveals "Code: 5521."', 'Code: 5521. The gym is open.')).toEqual(['Code: 5521.']);
@@ -340,7 +340,7 @@ describe('P14-NF-77: a shared audience is released only on a completed review (u
     const own = await runGroup('Your locker code is 5521.', { seedPrivate: true, shared: false });
     expect(own.escalations).toHaveLength(0);
     expect(own.turn.replyChecks?.at(-1)?.path).toBe('operator-echo');
-    expect(own.sends).toEqual(['PREVIEW — Your locker code is 5521.']);
+    expect(own.sends).toEqual(['Your locker code is 5521.']);
   });
   it('an unavailable review sends the content-free holding note to a shared audience; the operator\'s chat keeps its release', async () => {
     const group = await runGroup('Your locker code is 5521.', { review: 'throw' });
@@ -349,7 +349,7 @@ describe('P14-NF-77: a shared audience is released only on a completed review (u
     expect(group.turn.answer).toContain('5521');
     const own = await runGroup('Your locker code is 5521.', { review: 'throw', shared: false, jevScores: { raw_path: 0.6 } });
     expect(own.escalations).toHaveLength(1);
-    expect(own.sends).toEqual(['PREVIEW — Your locker code is 5521.']);
+    expect(own.sends).toEqual(['Your locker code is 5521.']);
     expect(own.turn.release?.review).toBe('unavailable');
   });
   it('an exhausted call cap or the shared deadline is the same: no disclosure without a completed review', async () => {
@@ -358,19 +358,19 @@ describe('P14-NF-77: a shared audience is released only on a completed review (u
     const data = fixture(), jev = data.turns.private.replyChecks.find(check => check.path === 'jev')!;
     const refused: ReplyCheckPorts = { jev: async () => ({ value: jevAnswer(jev), latencyMs: 1 }),
       escalate: async () => { throw Error('never called'); }, reserveEscalation: () => false, record: () => undefined, elapsedMs: () => 0 };
-    expect(await checkReply(`PREVIEW — ${data.turns.private.answer}`, 'turn', refused, envelopeWith(GROUP(data.turns.private.audience))))
+    expect(await checkReply(`${data.turns.private.answer}`, 'turn', refused, envelopeWith(GROUP(data.turns.private.audience))))
       .toEqual({ outcome: 'unavailable', path: 'holding', capRefused: true });
     const late = await runGroup('Your locker code is 5521.', { lateJev: true });
     expect(late.escalations).toHaveLength(0);
     expect(late.sends).toEqual([HOLDING]);
     const ordinary = await runGroup('Stretch for ten minutes after your workout.', { review: 'pass' });
-    expect(ordinary.sends).toEqual(['PREVIEW — Stretch for ten minutes after your workout.']);
+    expect(ordinary.sends).toEqual(['Stretch for ten minutes after your workout.']);
   });
   it('a Jev pass interrupted before its review completes is not a completed review for a shared audience', async () => {
     const group = await runGroup('Your locker code is 5521.', { crashAfterReserve: true });
     expect(group.sends).toEqual([HOLDING]);
     const own = await runGroup('Your locker code is 5521.', { crashAfterReserve: true, shared: false, jevScores: { raw_path: 0.6 } });
-    expect(own.sends).toEqual(['PREVIEW — Your locker code is 5521.']);
+    expect(own.sends).toEqual(['Your locker code is 5521.']);
   });
 });
 

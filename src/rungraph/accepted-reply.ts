@@ -54,7 +54,7 @@ export function acceptedReplyPreviewText(facts: readonly FactEnvelope[], replyRu
   const conclusion = object(object(body.decision).conclusion);
   need(conclusion.subject === 'preview-stage2-answer' && conclusion.predicate === 'answer-text'
     && typeof conclusion.value === 'string' && conclusion.value.length > 0, 'preview answer conclusion differs');
-  const text = 'PREVIEW — experimental test agent; production safeguards incomplete.' + '\n' + conclusion.value;
+  const text = conclusion.value;
   need(!/[\u0000-\u0008\u000b\u000c\u000e-\u001f\u007f]/u.test(text), 'preview answer contains unsupported controls');
   const rendered = text.replace(/&/gu, '&amp;').replace(/</gu, '&lt;').replace(/>/gu, '&gt;');
   need(new TextEncoder().encode(rendered).length <= 4096, 'preview answer exceeds byte bound');

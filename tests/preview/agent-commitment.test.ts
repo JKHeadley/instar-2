@@ -54,7 +54,7 @@ it('decides a fulfillment claim by one rule: an exact quote of the reply and the
 it('keeps the legacy closure rule only for replaying journal rows written under it', () => {
   const legacy = { quote: 'I’ll remind you to call the dentist tomorrow.', action: 'remind' as const, owner: 'agent' as const,
     waitsOn: 'next-relevant-reply' as const };
-  expect(legacyFulfillsReminder(legacy, 'PREVIEW — Reminder: call the dentist.')).toBe(true);
+  expect(legacyFulfillsReminder(legacy, 'Reminder: call the dentist.')).toBe(true);
   expect(legacyFulfillsReminder(legacy, 'Reminder: call the doctor.')).toBe(false);
   expect(legacyFulfillsReminder({ ...legacy, action: 'promised' }, 'Reminder: call the dentist.')).toBe(false);
 });

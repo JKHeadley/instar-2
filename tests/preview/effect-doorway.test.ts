@@ -339,7 +339,7 @@ it('a long answer is shortened to keep its own refused effect in the one send (P
   const { journal, sent, say } = await refusalWorker(`Here is the answer. ${'x'.repeat(3300)}`);
   await say('Run echo outside-sandbox without the sandbox.');
   expect(sent).toHaveLength(1);
-  expect(sent[0]).toMatch(/^PREVIEW — Here is the answer\. x+…\n\nEffect doorway: a tool:unsandboxed step was refused/u);
+  expect(sent[0]).toMatch(/^Here is the answer\. x+…\n\nEffect doorway: a tool:unsandboxed step was refused/u);
   expect(journal.view.effectDoorway).toMatchObject({ proposed: 1, refused: 1 });
   // A long answer with no refusal of its own is sent whole, with nothing appended.
   await say('Thanks.');

@@ -49,7 +49,7 @@ const RECORDED_LIVE = Object.freeze({ run: 'O-proofroom-20260930-220749', build:
 const key = new Uint8Array(32).fill(95);
 const now = 1790000000000;
 const ANSWER = 'I set your reminder for Friday at 9.';
-const CANDIDATE = `PREVIEW — ${ANSWER}`;
+const CANDIDATE = ANSWER;
 const update = (id: number, text: string) => ({ update_id: id,
   message: { chat: { id: 7654321, type: 'private' as const }, from: { id: 7654321 }, text } });
 const genesis = () => ({ kind: 'genesis' as const, bot: '12345678', chat: '7654321', operator: '7654321',

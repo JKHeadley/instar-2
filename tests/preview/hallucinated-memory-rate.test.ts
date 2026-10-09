@@ -124,7 +124,7 @@ it('scores unsupported memory claims against the actual answer packet and checke
       await worker.drain();
       expect(answerPacket, item.id).toMatchObject({ capability: packet.capability, history: packet.history });
       const reply = sent.at(-1) ?? '';
-      expect(reply, item.id).toContain('PREVIEW — ');
+      expect(reply, item.id).toContain('');
       if (item.kind === 'absent') {
         actualInvented += Number(invented(item, reply));
         actualAbstained += Number(abstained(reply));

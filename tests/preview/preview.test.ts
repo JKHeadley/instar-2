@@ -5,7 +5,7 @@ import { join } from 'node:path';
 import { spawnSync } from 'node:child_process';
 import { afterEach, describe, expect, it } from 'vitest';
 import { productionStorageIO } from '../../scripts/production-boot-io.mjs';
-import { FIXED_LIMITED_RESPONSE, PREVIEW_LABEL, PREVIEW_STAND_IN_LEDGER, createPreviewComposition } from './composition.js';
+import { FIXED_LIMITED_RESPONSE, PREVIEW_STAND_IN_LEDGER, createPreviewComposition } from './composition.js';
 import { openPreviewState, previewTurnId } from './state.js';
 
 const roots: string[] = [];
@@ -193,7 +193,7 @@ describe('Stage 1 preview driver (recorded transport only)', () => {
     expect(document.turns[previewTurnId('9001', 102)].contextReferences).toHaveLength(2);
     expect(sends(telegram)).toHaveLength(2);
     expect(durableKinds).toContain('intake-collapse');
-    expect(sends(telegram).every(call => call.body.text === FIXED_LIMITED_RESPONSE && call.body.text.startsWith(PREVIEW_LABEL))).toBe(true);
+    expect(sends(telegram).every(call => call.body.text === FIXED_LIMITED_RESPONSE && !call.body.text.startsWith('PREVIEW'))).toBe(true);
     for (const id of [100, 102]) {
       const proof = JSON.parse(readFileSync(document.turns[previewTurnId('9001', id)].runEvidence, 'utf8'));
       expect(proof.facts.some(row => row.kind === 'run-opening')).toBe(true);

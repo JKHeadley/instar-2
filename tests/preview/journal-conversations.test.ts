@@ -62,7 +62,7 @@ it('carries a topic fact to the main chat across a restart, never repeats a rede
   try {
     const first = world(root, { send: input => input.thread === 7 ? null : 1 });
     first.worker.intake([update(1, 'The boat is moored at berth K4.', 7)]); await first.worker.drain();
-    expect(first.journal.view.turns.get('telegram:12345678:update:1')).toMatchObject({ thread: 7, intent: 'PREVIEW — noted' });
+    expect(first.journal.view.turns.get('telegram:12345678:update:1')).toMatchObject({ thread: 7, intent: 'noted' });
     expect(first.journal.view.turns.get('telegram:12345678:update:1')?.sent).toBeUndefined();
     first.journal.close();
     const second = world(root);

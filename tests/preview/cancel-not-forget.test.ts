@@ -100,7 +100,7 @@ function world(root: string, answer: (input: Input) => string, clock: { now: num
   return { journal, worker: createJournalWorker(journal, ports), sent };
 }
 const tmp = (name: string) => realpathSync(mkdtempSync(join(tmpdir(), `preview-cancel3-${name}-`)));
-const pushes = (sent: string[]) => sent.filter(text => text.startsWith('PREVIEW — You asked on'));
+const pushes = (sent: string[]) => sent.filter(text => text.startsWith('You asked on'));
 /** The model as recorded: shown the bird-feeder request it cancels it (a real replay); not shown it, it answers as
  * it did live (prose before the JSON, no cancellation). */
 const recordedModel = () => {

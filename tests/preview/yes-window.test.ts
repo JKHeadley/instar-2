@@ -122,7 +122,7 @@ it('states the lapse in UTC, in the operator\'s local time where known, and name
   const clamped = proposeOperatorRequest(state(), { action: 'raise-caps' }, 'turn-1', SUBSCRIPTION_PREVIEW_PREDECESSOR_EXPIRY - 3 * HOUR);
   if (clamped.kind !== 'request') throw Error('no request');
   expect(operatorLapseDetail(clamped.request, current, ZONE))
-    .toBe(' That is Mon, Oct 5, 13:40 PDT your time (America/Los_Angeles), and the trial\'s current end, which a request cannot outlast.');
+    .toBe(' That is Mon, Oct 12, 13:40 PDT your time (America/Los_Angeles), and the trial\'s current end, which a request cannot outlast.');
   expect(operatorLapseDetail(clamped.request, current)).toBe(' That is the trial\'s current end, which a request cannot outlast.');
   expect(operatorLapseDetail(made.request, current)).toBe('');
 });
@@ -176,7 +176,7 @@ it('cuts the window at the trial\'s current end when that is nearer, says so, an
     await root.ask(RENEW, near + 60_000, recorded(RENEW).message, () => journaled(RENEW));
     const raise = root.request('raise-caps'), renew = root.request('renew-expiry');
     expect([raise.request.expiresAt, renew.request.expiresAt]).toEqual([SUBSCRIPTION_PREVIEW_PREDECESSOR_EXPIRY, SUBSCRIPTION_PREVIEW_PREDECESSOR_EXPIRY]);
-    const stated = 'This request lapses at 2026-10-05 20:40 UTC. That is Mon, Oct 5, 13:40 PDT your time (America/Los_Angeles), and the trial\'s current end, which a request cannot outlast.';
+    const stated = 'This request lapses at 2026-10-12 20:40 UTC. That is Mon, Oct 12, 13:40 PDT your time (America/Los_Angeles), and the trial\'s current end, which a request cannot outlast.';
     for (const id of [raise.request.id, renew.request.id])
       expect(root.sent.some(item => item.text.includes(`Request ${id}:`) && item.text.includes(stated))).toBe(true);
     expect(root.opened.map(item => item.body.includes(`${stated}\n\nMerging is not needed.`) && item.content.includes(stated))).toEqual([true, true]);

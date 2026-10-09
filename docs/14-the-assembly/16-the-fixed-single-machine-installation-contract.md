@@ -695,14 +695,13 @@ minutes before the unchanged trial expiry 2026-09-28T20:40:00Z.
 
 PREVIEW-S2 adds the fixed `acceptedReplyPreviewText` projection over owner-validated same-store
 facts. It reads the signed acceptance's decoded Decision, requires conclusion subject
-`preview-stage2-answer`, predicate `answer-text` and a nonempty string value, and prefixes
-`PREVIEW — experimental test agent; production safeguards incomplete.` plus one newline.
+`preview-stage2-answer`, predicate `answer-text` and a nonempty string value, and uses that value directly as the reply text.
 It escapes `&`, `<`, `>` in that order, rejects unsupported controls and rendered UTF-8 overflow,
 and neither repairs nor truncates a Decision. The helper grants no authority; current accepted
 answer consumption and grounding remain mandatory. The original raw-answer path remains valid.
 
 For PREVIEW-S2, the reply message text must equal either the unchanged raw accepted-answer bytes
-under their digest or Five's exact signed-Decision PREVIEW projection. Prefix, value, acceptance,
+under their digest or Five's exact signed-Decision PREVIEW projection. Value, acceptance,
 conversation and current authority checks remain owner checks at reservation and dispatch; the
 adapter cannot rewrite prepared text. The complete canonical OutboundMessage, including all
 identities, sourceResult and JSON escaping, must fit the existing OperationDefinition maximum

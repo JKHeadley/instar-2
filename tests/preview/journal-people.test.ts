@@ -458,11 +458,11 @@ it('carries two distinct people into the reply call and sends one short clarific
     await w.say(n, 'What did Sam do?');
     const ambiguous = w.journal.view.order.at(-1)!;
     // Rule 110: a first reply from a newly compacted context carries the fixed disclosure first.
-    expect(replyBody(ambiguous)).toBe('PREVIEW — Do you mean Sam Patel from accounting or Sam Ruiz, your neighbour?');
+    expect(replyBody(ambiguous)).toBe('Do you mean Sam Patel from accounting or Sam Ruiz, your neighbour?');
     expect(ambiguous.intent?.match(/\?/gu)).toHaveLength(1);
     expect(ambiguous.sent).toBe(1);
     await w.say(n + 1, 'What did Sam Ruiz do?');
-    expect(replyBody(w.journal.view.order.at(-1)!)).toBe('PREVIEW — Sam Ruiz lent you a ladder.');
+    expect(replyBody(w.journal.view.order.at(-1)!)).toBe('Sam Ruiz lent you a ladder.');
     expect(w.journal.view.order.at(-1)?.sent).toBe(1);
     w.journal.close();
   } finally { rmSync(root, { recursive: true, force: true }); }
@@ -484,9 +484,9 @@ it('keeps disagreeing active facts in context for clarification and answers a qu
     await w.say(1, 'The Atlas launch is on October 8.');
     await w.say(2, 'The Atlas launch is on November 12.');
     await w.say(3, 'When is the Atlas launch?');
-    expect(w.journal.view.order.at(-1)?.intent).toBe('PREVIEW — Which Atlas launch date should I use, October 8 or November 12?');
+    expect(w.journal.view.order.at(-1)?.intent).toBe('Which Atlas launch date should I use, October 8 or November 12?');
     await w.say(4, 'What October date did I mention for Atlas?');
-    expect(w.journal.view.order.at(-1)?.intent).toBe('PREVIEW — October 8.');
+    expect(w.journal.view.order.at(-1)?.intent).toBe('October 8.');
     expect(w.journal.view.replies).toBe(4);
     w.journal.close();
   } finally { rmSync(root, { recursive: true, force: true }); }

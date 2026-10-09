@@ -68,7 +68,7 @@ async function renewalWorld() {
   // The desk's option-(b) run line: the launch record, plus the renewal record and the explicit-yes options.
   const runArgs = (activation: string, cycles: number) => ['run', '--root', root, '--bot-id', c.botId, '--chat-id', c.chatId,
     '--operator-sender-id', c.operatorSenderId, '--grant-reference', trial.id, '--configuration-digest', trial.configurationDigest,
-    '--expires-at', '2026-10-05T20:40:00Z', '--tools', 'off', '--activation-record', activation, '--renewal-activation', paths.v6,
+    '--expires-at', new Date(P).toISOString(), '--tools', 'off', '--activation-record', activation, '--renewal-activation', paths.v6,
     '--explicit-yes-installation', paths.installation, '--operator-records', paths.records, '--login-profile', paths.profile,
     '--model', world.model, '--bot-username', c.botUsername, '--max-cycles', String(cycles), '--max-poll-seconds', '1'];
   const run = (activation: string) => spawnSync(process.execPath, argv(runArgs(activation, 1), './tests/preview/model-failure-loader.mjs'),

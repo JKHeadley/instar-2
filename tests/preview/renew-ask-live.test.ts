@@ -103,10 +103,10 @@ it('opens the renewal request with its working approval link on every recorded c
     const result = await turn(item.now, item.message, () => livePort(item.raw));
     expect(result.requests, label).toEqual([{ action: 'renew-expiry', expires: SUBSCRIPTION_PREVIEW_EXPIRY, limits: undefined,
       review: { repository: REPO, pullRequest: 145, head: HEAD } }]);
-    expect(result.sent[0], label).toContain('extend this trial\'s end from 2026-10-05 20:40 UTC to 2026-10-12 20:40 UTC');
+    expect(result.sent[0], label).toContain('extend this installation\'s end from 2026-10-12 20:40 UTC to 2026-11-12 21:40 UTC');
     expect(result.sent[0], label).toContain(`open https://github.com/${REPO}/pull/145/files and approve the pull request`);
     expect(result.applied, label).toMatchObject({ expires: SUBSCRIPTION_PREVIEW_EXPIRY });
-    expect(result.applied!.line, label).toContain('is done: extended this trial\'s end from 2026-10-05 20:40 UTC to 2026-10-12 20:40 UTC');
+    expect(result.applied!.line, label).toContain('is done: extended this installation\'s end from 2026-10-12 20:40 UTC to 2026-11-12 21:40 UTC');
   }
 });
 

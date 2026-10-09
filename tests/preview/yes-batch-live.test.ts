@@ -141,7 +141,7 @@ it('applies a raise and a renewal approved together, each from its own review, w
     expect(raise.approved!.reference).toContain('7001');
     expect(renew.approved!.reference).toContain('7002');
     expect(root.sent.filter(text => text.startsWith(`Request ${raise.request.id} is done: raised the model-call allowance from 2500 to 5000`))).toHaveLength(1);
-    expect(root.sent.filter(text => text.startsWith(`Request ${renew.request.id} is done: extended this trial's end from 2026-10-05 20:40 UTC to 2026-10-12 20:40 UTC`))).toHaveLength(1);
+    expect(root.sent.filter(text => text.startsWith(`Request ${renew.request.id} is done: extended this installation's end from 2026-10-12 20:40 UTC to 2026-11-12 21:40 UTC`))).toHaveLength(1);
     // Polling again changes nothing and sends nothing (no duplicate send).
     const before = root.sent.length; await root.poll();
     expect(root.sent).toHaveLength(before);
@@ -326,7 +326,7 @@ it('the request\'s pull request names only the review route; a chat "yes" is nev
       }
     }
     expect(root.opened[0]!.body).toContain(`raise the model-call allowance from 2500 to 5000 (2500 more model calls)`);
-    expect(root.opened[1]!.body).toContain('extend this trial\'s end from 2026-10-05 20:40 UTC to 2026-10-12 20:40 UTC');
+    expect(root.opened[1]!.body).toContain('extend this installation\'s end from 2026-10-12 20:40 UTC to 2026-11-12 21:40 UTC');
     // The chat reply keeps its direct link.
     expect(root.sent[0]).toContain(`open https://github.com/${REPO}/pull/146/files and approve the pull request`);
     root.journal.close();

@@ -46,7 +46,7 @@ it('sends more due requests than are written out as one push with a count line, 
   state.now = sixPm; await tick(worker); await tick(worker); await tick(worker);
   const pushes = state.sent.slice(before);
   expect(pushes).toHaveLength(1);
-  expect((pushes[0]!.text.match(/^PREVIEW — You asked on /gmu) ?? [])).toHaveLength(REQUEST_ITEM_LIMIT);
+  expect((pushes[0]!.text.match(/^You asked on /gmu) ?? [])).toHaveLength(REQUEST_ITEM_LIMIT);
   expect(pushes[0]!.text).toContain(`\n${requestOverflowLine(16 - REQUEST_ITEM_LIMIT)}\n`);
   expect(journal.view.order.filter(turn => turn.requestedAction)).toHaveLength(1);
 }));
@@ -61,7 +61,7 @@ it('a due answer too long for one message goes out whole, in order, under its re
   const pushes = state.sent.slice(before);
   expect(pushes).toHaveLength(2);
   for (const push of pushes) expect(Buffer.byteLength(push.text)).toBeLessThanOrEqual(4096);
-  expect(pushes[0]!.text).toMatch(/^PREVIEW — You asked on .*\nDone\. Done\./u);
+  expect(pushes[0]!.text).toMatch(/^You asked on .*\nDone\. Done\./u);
   expect(pushes[0]!.text.endsWith(' (1/2)')).toBe(true);
   expect(pushes[1]!.text).toMatch(/^PREVIEW \(2\/2\) — Done\./u);
   expect(pushes.map(push => push.disposition)).toEqual(['result', 'result']);

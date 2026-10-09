@@ -13,8 +13,8 @@ import { renewActivation } from './renew-activation.mjs';
 import { activationMatchesJournal, openPreviewJournal, renewJournalExpiry } from './journal.js';
 import { offlineOperatorMessage, writeOperatorRecords } from './successive-fixture.js';
 
-const PRIOR_EXPIRY = 1791232800000; // 2026-10-05T20:40:00Z, the record being renewed (itself renewed from 2026-09-28).
-const PRIOR_COMMIT = '08220af9'; // live runner-frozen-cint-L33 build.
+const PRIOR_EXPIRY = 1791837600000; // 2026-10-12T20:40:00Z, the record being renewed (itself renewed from 2026-09-28).
+const PRIOR_COMMIT = 'a735faee'; // live runner-frozen-cint-L33 build.
 const NOW = 1790520000000; // 2026-09-27T14:40:00Z, fixed so no assertion reads the host clock.
 const model = 'claude-sonnet-5';
 const profile = Object.freeze({ type: 'ProviderSubscriptionProfile', schemaVersion: 1, reference: 'preview-s2-profile-test',
@@ -39,8 +39,8 @@ const conversation = (record, p = profile, now = NOW) =>
   validateSubscriptionActivation(record, p, model, now, SUBSCRIPTION_CONVERSATION_FRAMING);
 
 it('pins the renewed expiry and leaves every invocation policy digest unchanged', () => {
-  expect(SUBSCRIPTION_PREVIEW_EXPIRY).toBe(Date.UTC(2026, 9, 12, 20, 40));
-  expect(SUBSCRIPTION_PREVIEW_EXPIRY - PRIOR_EXPIRY).toBe(7 * 24 * 3600 * 1000);
+  expect(SUBSCRIPTION_PREVIEW_EXPIRY).toBe(Date.UTC(2026, 10, 12, 21, 40));
+  expect(SUBSCRIPTION_PREVIEW_EXPIRY - PRIOR_EXPIRY).toBe(31 * 24 * 3600 * 1000 + 3600 * 1000);
   // The live-fix conversation policy digest for claude-sonnet-5 (int11 was sha256:efe69876…; the 2026-09-28
   // declaration-slot system prompt needs a policy-successor record). The policy never carries the expiry.
   expect(encoded(subscriptionConversationPolicy(model)).hash)
@@ -198,13 +198,13 @@ it('the desk script writes new files only and the renew-expiry command binds tha
     // The launcher suppresses error details by design; each refusal differs from the success below
     // in exactly one input, and none of them moves the journal's expiry.
     const expires = () => JSON.parse(node(['tests/preview/journal-agent.mjs', 'status', '--root', root], env).stdout).expires;
-    expect(agent('renew-expiry', currentPath, '2026-10-05T20:40:00Z').status).toBe(1); // old record
-    expect(agent('renew-expiry', out, '2026-10-05T20:40:00Z').status).toBe(1); // flag disagrees with record
+    expect(agent('renew-expiry', currentPath, '2026-10-12T20:40:00Z').status).toBe(1); // old record
+    expect(agent('renew-expiry', out, '2026-10-12T20:40:00Z').status).toBe(1); // flag disagrees with record
     // Rules 94/98/103/104: the renewal is exercised under the recorded standing grant (the earlier
     // yes to bounded status-quo renewals), never under its reference strings. No record refuses;
     // a grant that does not cover this subject refuses; the in-scope grant renews with no new yes.
     // The launcher suppresses details; each reason is proven by activation-authority.test.ts.
-    const refusedWith = (_reason: string) => { expect(agent('renew-expiry', out, '2026-10-12T20:40:00Z').status).toBe(1);
+    const refusedWith = (_reason: string) => { expect(agent('renew-expiry', out, '2026-11-12T21:40:00Z').status).toBe(1);
       expect(expires()).toBe(PRIOR_EXPIRY); };
     // Rule 79: status names renewal as a phone action only when `--renewal-activation` validates exactly as `run`
     // validates it (activation, operator authority, a later end than the journal's); otherwise the host fallback.
@@ -230,7 +230,7 @@ it('the desk script writes new files only and the renew-expiry command binds tha
       source: { kind: 'telegram-message', topicId: 52075, messageId: 101315 }, issuedAt: 1790500000000, actions: ['renew-subscription-activation'],
       scope: { trial: renewed.trial, model, expectedAccount: renewed.expectedAccount, executable: renewed.executable,
         artifact: renewed.artifact, version: renewed.version, invocationPolicyDigest: renewed.invocationPolicyDigest, profileDigest: renewed.profileDigest },
-      renewal: { maxExtensionMs: 604_800_000, latestExpiresAt: SUBSCRIPTION_PREVIEW_EXPIRY } };
+      renewal: { maxExtensionMs: SUBSCRIPTION_PREVIEW_EXPIRY - PRIOR_EXPIRY, latestExpiresAt: SUBSCRIPTION_PREVIEW_EXPIRY } };
     const draft = (g = grant) => ({ type: 'PreviewActivationAuthority', schemaVersion: 1, grants: [g],
       waivers: [{ reference: renewed.waiver, rules: ['rule:38'], grantor: '7654321', recordedAt: 1790000000000,
         source: { kind: 'telegram-message', topicId: 52075, messageId: 107907 }, words: WAIVER_WORDS }], revocations: [] });
@@ -264,12 +264,12 @@ it('the desk script writes new files only and the renew-expiry command binds tha
     authority();
     expect(renewSurface()).toBe(chatRoute);
     expect(renewSurface(currentPath)).toBe(fallback);                // the current record ends at the journal's end
-    const ok = agent('renew-expiry', out, '2026-10-12T20:40:00Z');
+    const ok = agent('renew-expiry', out, '2026-11-12T21:40:00Z');
     expect(ok.status, ok.stderr).toBe(0);
     const status = node(['tests/preview/journal-agent.mjs', 'status', '--root', root], env);
     expect(JSON.parse(status.stdout)).toMatchObject({ expires: SUBSCRIPTION_PREVIEW_EXPIRY,
       expiryAuthority: expect.stringMatching(/^status-quo renewal; preapproval note #30 \[grant observer-note-30; waiver waiver; record sha256:[a-f0-9]{64}\]$/u) });
-    expect(agent('renew-expiry', out, '2026-10-12T20:40:00Z').status).toBe(1); // one renewal per expiry
+    expect(agent('renew-expiry', out, '2026-11-12T21:40:00Z').status).toBe(1); // one renewal per expiry
     expect(expires()).toBe(SUBSCRIPTION_PREVIEW_EXPIRY);
     expect(renewSurface()).toBe(fallback);                           // renewed: no later reviewed end to renew to
   } finally { rmSync(root, { recursive: true, force: true }); }
@@ -321,11 +321,11 @@ it('the build with the previous conversation policy refuses the policy successor
     const old = await import(provider);
     expect(encoded(old.subscriptionConversationPolicy(model)).hash).toBe(OLD_POLICY_DIGEST);
     // That build carried the 2026-10-05 expiry; compare at its own expiry so only the policy digest differs.
-    expect(old.SUBSCRIPTION_PREVIEW_EXPIRY).toBe(PRIOR_EXPIRY);
-    expect(() => old.validateSubscriptionActivation({ ...policyPredecessor, expiresAt: PRIOR_EXPIRY }, profile, model, NOW,
+    expect(old.SUBSCRIPTION_PREVIEW_EXPIRY).toBe(1791232800000);
+    expect(() => old.validateSubscriptionActivation({ ...policyPredecessor, expiresAt: 1791232800000 }, profile, model, NOW,
       SUBSCRIPTION_CONVERSATION_FRAMING)).not.toThrow();
     const { record } = policySuccessor();
-    expect(() => old.validateSubscriptionActivation({ ...record, expiresAt: PRIOR_EXPIRY }, profile, model, NOW,
+    expect(() => old.validateSubscriptionActivation({ ...record, expiresAt: 1791232800000 }, profile, model, NOW,
       SUBSCRIPTION_CONVERSATION_FRAMING)).toThrow('artifact or policy differs');
   } finally { rmSync(root, { recursive: true, force: true }); }
 }, 30_000);

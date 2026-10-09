@@ -83,7 +83,7 @@ async function assertReopened(root: string, clock: () => number, before: unknown
     expect(new Set(calls(root)).size).toBe(calls(root).length);
     expect(calls(root)).not.toContain(journal.view.order[2]!.id);
     expect(journal.view.order[2]?.answer).toBeUndefined();
-    expect(journal.view.order[3]?.intent).toBe('PREVIEW — Silver otter 731');
+    expect(journal.view.order[3]?.intent).toBe('Silver otter 731');
     expect(journal.view.order[3]?.sent).toBeUndefined();
     expect(journal.view.order[1]?.intent).toBeUndefined();
     expect(journal.view.order[1]?.heldNoticeSent !== undefined).toBe(heldPushed);

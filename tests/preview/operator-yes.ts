@@ -88,8 +88,8 @@ export const validRetractUpdates = (updates: unknown): updates is number[] => Ar
  * bounds the shape, the lifetime and the trial state, exactly as a raise is bounded. */
 export function proposeRetractRequest(state: Pick<ProposalState, 'expires' | 'stopped' | 'grant' | 'base'>, updates: readonly number[],
   reason: string, carrier: string, now: number): { kind: 'request'; request: OperatorRequest } | { kind: 'refused'; reason: string } {
-  if (state.stopped) return { kind: 'refused', reason: 'this trial is stopped' };
-  if (now >= state.expires) return { kind: 'refused', reason: 'this trial has ended' };
+  if (state.stopped) return { kind: 'refused', reason: 'this installation is stopped' };
+  if (now >= state.expires) return { kind: 'refused', reason: 'this installation has ended' };
   if (!validRetractUpdates(updates)) return { kind: 'refused', reason: `the list must hold 1 to ${RETRACT_UPDATES_LIMIT} distinct update ids in ascending order` };
   if (!validReason(reason)) return { kind: 'refused', reason: 'the reason must be one line of 8 to 300 bytes' };
   const id = operatorRequestId(carrier, 'retract-turns', state.base);
@@ -107,8 +107,8 @@ export function proposeOperatorRequest(state: ProposalState, proposal: OperatorA
   windowMs = OPERATOR_REQUEST_MS):
   { kind: 'request'; request: OperatorRequest } | { kind: 'refused'; reason: string } {
   const refused = (reason: string) => ({ kind: 'refused' as const, reason });
-  if (state.stopped) return refused('this trial is stopped');
-  if (now >= state.expires) return refused('this trial has ended');
+  if (state.stopped) return refused('this installation is stopped');
+  if (now >= state.expires) return refused('this installation has ended');
   if (!Number.isSafeInteger(windowMs) || windowMs <= 0 || windowMs > OPERATOR_REQUEST_MAX_MS) throw Error('preview: operator request window out of bounds');
   const lifetime = { issuedAt: now, expiresAt: Math.min(state.expires, now + windowMs) };
   if (proposal.action === 'raise-caps') {
@@ -163,7 +163,7 @@ export function operatorLapseDetail(request: OperatorRequest, current: { expires
 const requestChange = (request: OperatorRequest, current: { limits: CapLimits; expires: number }) => request.action === 'raise-caps'
   ? KEYS.filter(key => request.limits![key] !== current.limits[key]).map(key =>
     `the ${LIMIT_NAMES[key][0]} allowance from ${current.limits[key]} to ${request.limits![key]} (${request.limits![key] - current.limits[key]} more ${LIMIT_NAMES[key][1]})`).join(' and ')
-  : `this trial's end from ${minute(current.expires)} to ${minute(request.expires!)}`;
+  : `this installation's end from ${minute(current.expires)} to ${minute(request.expires!)}`;
 /** What the operator reads of a retraction besides its count (plan #389): the first and last listed turn, each
  * already redacted and clipped by the journal, which computes this from its own turns on issue and on replay. */
 export interface RetractRendering { first: { update: number; text: string }; last: { update: number; text: string } }
@@ -206,7 +206,7 @@ export function operatorReviewBodyText(request: OperatorRequest, current: { limi
 export const operatorRequestTarget = (request: OperatorRequest): string => request.action === 'raise-caps'
   ? `set the ${KEYS.map(key => `${LIMIT_NAMES[key][0]} allowance to ${request.limits![key]}`).join(', the ')}`
   : request.action === 'retract-turns' ? `stopped treating ${messages(request.updates!.length)} sent through your account as yours`
-    : `extended this trial's end to ${minute(request.expires!)}`;
+    : `extended this installation's end to ${minute(request.expires!)}`;
 /** The fixed line the operator receives when a review-approved request completes. Under an operator acceptance of
  * shared account access it carries the disclosure (Purpose, the approval-account exception), written once. */
 export function operatorResultText(request: OperatorRequest, before: { limits: CapLimits; expires: number }, shared: boolean): string {
@@ -230,7 +230,7 @@ export function explicitYesStatus(installation: ExplicitYesInstallation | undefi
     ? 'the installation record says the agent can speak as the operator in this chat (P-05), so a chat reply is not the operator\'s yes'
     : !installation.chat.agentHoldsNoAccess ? 'no P-02 record that the agent holds no access to the operator chat account'
       : installation.chat.boundChatId !== bound.chat || installation.chat.operatorAccountId !== bound.operator
-        ? 'the installation record names a different chat or operator account than this trial' : undefined;
+        ? 'the installation record names a different chat or operator account than this installation' : undefined;
   const access = githubAccountAccess(installation), acceptance = installation.github?.acceptance ?? null;
   const reviewReason = access.kind === 'refused' ? access.detail
     : bound.trial !== undefined && installation.installation !== undefined && installation.installation !== bound.trial

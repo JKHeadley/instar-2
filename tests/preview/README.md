@@ -2,7 +2,7 @@
 
 This is a machine-local, supervised test driver, not the production entry or production-admission evidence. It uses the real production Telegram custodian and physical bridge, long-poll ingress, Four intake, Five run graph, fixture Six admission callbacks, and the real Eight Telegram reply operation. It stops before every provider/model path and can send only this model-independent text:
 
-> PREVIEW — experimental test agent; production safeguards incomplete. Your message was preserved and grounded for this supervised trial. No model was called.
+> Your message was preserved and grounded. No model was called.
 
 The prefix is present before HTML rendering, digesting, and Eight preparation. There is no provider SecretRef, route, model call, tool call, or model spend. `stage2GuardedProviderPath` is selected only by explicit Stage 2 activation; the Stage 1 path remains closed to model work.
 
@@ -10,8 +10,8 @@ The prefix is present before HTML rendering, digesting, and Eight preparation. T
 
 The journal runner's capability briefing is generated from these lines and the feature declarations in `journal.declarations.json`; see `generated/capabilities.json`. Add a line here and a declaration there together, or the register build fails. Each line is the one-line briefing text; its indented `Details:` line keeps the full description, which the briefing does not carry.
 
-- `preview-conversation`: answers the operator in their private Telegram chat and topics, one PREVIEW-prefixed reply per admitted message.
-  Details: answers the verified operator in their private Telegram chat and its topics, with at most one plain-text reply per admitted message; every reply starts with PREVIEW, and an outcome the system could not confirm is marked unknown and never resent.
+- `preview-conversation`: answers the operator in their private Telegram chat and topics, one reply per admitted message.
+  Details: answers the verified operator in their private Telegram chat and its topics, with at most one plain-text reply per admitted message; an outcome the system could not confirm is marked unknown and never resent.
 - `preview-durable-memory`: an encrypted local journal of messages, summaries and memory that survives restarts; the operator can correct or forget a fact.
   Details: keeps accepted messages, summaries and validated memory changes in one encrypted local journal that survives restarts and spans the trial's topics; the operator can ask to correct or forget a recorded fact, later replies withhold the old claim, and the original audit record stays in the journal. It is not production or other-agent memory.
 - `preview-status-command`: "status" and "how are you doing" are answered from the journal without a model call.
@@ -102,7 +102,7 @@ Four preserves all recorded neighbours. A wrong verified bot identity refuses co
 | `fixture-reply-nine-assessor` | present in the fixture but deliberately disconnected via `assessment: null` | M4 G6, including Nine |
 | `real-telegram-effect` | actual Bot API `sendMessage`; exact API acceptance only | M5 |
 
-The actual live-effect authorization still comes from the separately recorded operator trial grant and any required waivers. This code and its PREVIEW label grant none.
+The actual live-effect authorization still comes from the separately recorded operator trial grant and any required waivers. This code grants none.
 
 ## Recorded verification
 
@@ -119,7 +119,7 @@ Graduation requires replacing every stand-in with its named hardening unit, espe
 `run --stage 2` explicitly selects the implemented provider path. Stage 1 remains the default and
 refuses a root with a Stage 2 sidecar. Stage 2 accepts only bot `8820318295` /
 `@echo_mmtest_seam_b27x_bot`, private chat and sender `7812716706`, with no topic. Its fixed expiry
-is `2026-10-12T20:40:00Z` (`1791837600000`), a one-week status-quo renewal of `2026-10-05T20:40:00Z`,
+is `2026-11-12T21:40:00Z` (`1794519600000`), a status-quo renewal of `2026-10-12T20:40:00Z`,
 itself a renewal of `2026-09-28T20:40:00Z` (see "Activation renewal" below). Existing trial limits, cursor and counters carry forward.
 This is the recorded supervised, unconfined preview waiver, not production admission or a
 replacement for M3/M4/M5. No code default supplies the model, login profile or activation record.
@@ -171,7 +171,7 @@ operatorAssertion, assertedAt, observer, observedAt, method, safeCaptureReferenc
 extraUsage: "observed-disabled" | "operator-asserted/unobservable" | "contradicted"
 extraUsageReason
 subscriptionLimit: "available" | "unobservable" | "exhausted"
-subscriptionLimitReason, acceptedResiduals: string[], expiresAt: 1791837600000
+subscriptionLimitReason, acceptedResiduals: string[], expiresAt: 1794519600000
 ```
 
 Digests are canonical SHA-256: profileDigest over the frozen descriptor, invocationPolicyDigest
@@ -232,7 +232,7 @@ Stage 2 connects actual Four input, a pending Five provider Run, genuine Six aut
 request/receipt, Eight dispatch/settlement, Nine output assessment and Seven acceptance in one
 signed owner store. Five opens and grounds the one dependent reply Run; Six admits its fixed pair
 and genuine reservation/claim/dispatch; Eight prepares the exact Telegram message. The text comes
-from the signed accepted Decision, with the fixed PREVIEW label and deterministic HTML escaping.
+from the signed accepted Decision, with deterministic HTML escaping and no preview label.
 The complete canonical OutboundMessage must fit the existing <=4096 definition, including metadata
 and escaping. Overflow holds even when the visible text itself fits. No adapter rewrites it.
 
@@ -285,7 +285,7 @@ an exhausted limit, an unknown observation field or a record this build refuses 
 Outputs are created exclusively and never replace an existing file.
 
 A build also carries its predecessor's reviewed end (`SUBSCRIPTION_PREVIEW_PREDECESSOR_EXPIRY`,
-2026-10-05T20:40:00Z for the 2026-10-12 build). `run` and each model call accept a record ending
+2026-10-12T20:40:00Z for the 2026-11-12 build). `run` and each model call accept a record ending
 there only while the journal's current end is that same end, so a runner can stay on the current
 record with `--renewal-activation` naming the renewed one, propose the renewal from the phone and
 complete it on the operator's yes. Once the expiry frame lands only the governed end is accepted:
@@ -320,7 +320,7 @@ once per reviewed expiry and only before it lapses, under the writer lease:
 node --loader ./scripts/slice-ts-loader.mjs tests/preview/journal-agent.mjs renew-expiry \
   --root /ABSOLUTE/ROOT --activation-record /ABSOLUTE/activation-next.json \
   --login-profile /ABSOLUTE/profile.json --model DESK_EXACT_CLAUDE_MODEL_ID \
-  --expires-at 2026-10-12T20:40:00Z --authority "WHO APPROVED, WHERE, WHEN" \
+  --expires-at 2026-11-12T21:40:00Z --authority "WHO APPROVED, WHERE, WHEN" \
   --operator-records /ABSOLUTE/AGENT/.instar
 ```
 
@@ -1097,7 +1097,7 @@ before them, so an authorized cap raise can fetch them again.
 
 At 80% of the call or reply limit, the runner writes one plain local terminal
 line with the used and remaining slots. At a cap it writes a final line:
-`PREVIEW — calls|replies|turns|bytes cap reached; work paused. Check status for held work.`
+`calls|replies|turns|bytes cap reached; work paused. Check status for held work.`
 The encrypted journal fences each 80% and final line per cap kind and limit
 across restarts; `status.capReports` shows those fences (for example
 `calls:80:16` and `calls:16`). If a single poll crosses 80% and reaches the
@@ -1122,7 +1122,7 @@ node --loader ./scripts/slice-ts-loader.mjs tests/preview/journal-agent.mjs run 
   --root /ABSOLUTE/NEW_ROOT --bot-id BOT_ID --bot-username @BOT_USERNAME \
   --operator-sender-id OPERATOR_ID --chat-id PRIVATE_CHAT_ID \
   --grant-reference TRIAL_ID --configuration-digest sha256:TRIAL_CONFIGURATION_DIGEST \
-  --expires-at 2026-10-12T20:40:00Z --activation-record /ABSOLUTE/activation.json \
+  --expires-at 2026-11-12T21:40:00Z --activation-record /ABSOLUTE/activation.json \
   --login-profile /ABSOLUTE/profile.json --model DESK_EXACT_CLAUDE_MODEL_ID \
   --max-calls 16 --max-replies 16 --max-turns 20 --max-context-bytes 32768 \
   --time-zone America/Los_Angeles \
@@ -1858,7 +1858,7 @@ asked and when it is due. The ordinary answer path then answers it: its due sele
 packet are validated when the step supervisor is on (fail closed), then the call and reply caps, the
 model call, the reply check and review, the outbound secret check, one exact send intent and the
 UNKNOWN fence. The reply's first lines state why it was sent (Rule 54):
-`PREVIEW — You asked on <asked local time>: "<request>" (due <day time zone>)`, then the answer. An
+`You asked on <asked local time>: "<request>" (due <day time zone>)`, then the answer. An
 UNKNOWN or failed model result sends a truthful line under the same header, never a made-up result;
 a model call that dies with no recorded outcome is an orphaned UNKNOWN and is never repeated. A
 request not yet due stays open; a later request in the same conversation gets its own turn when it

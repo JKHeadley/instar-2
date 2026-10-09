@@ -102,7 +102,7 @@ it('offers the raise on the approval page while the chat answer is inhibited, an
   t.worker.intake([message(1, 'one')]); await t.worker.drain();
   t.worker.intake([message(2, 'two')]); await t.worker.drain(); await t.worker.minimal();
   // Nothing goes to the chat for the capped message: the minimal path is not admitted (live posture).
-  expect(t.sent).toEqual(['PREVIEW — ordinary answer']);
+  expect(t.sent).toEqual(['ordinary answer']);
   const lead = t.journal.view.order[1]!;
   expect(lead.minimalOutage?.missing).toEqual(expect.arrayContaining(['register', 'lease']));
   const challenge = lead.approval!.challenge!;
@@ -132,7 +132,7 @@ it('offers the raise on the approval page while the chat answer is inhibited, an
   expect(t.journal.view.capAuthority).toBe(`verified-approval:${lead.approval!.id}:${challenge.id}`);
   expect(t.journal.view.order[1]!.approval?.verified?.receipt).toMatch(/^sha256:[a-f0-9]{64}$/u);
   await t.worker.drain();
-  expect(t.sent).toEqual(['PREVIEW — ordinary answer', 'PREVIEW — ordinary answer']);
+  expect(t.sent).toEqual(['ordinary answer', 'ordinary answer']);
   // One use on both sides: the page refuses a second decision, the runner a second consumption.
   expect(JSON.parse(t.decide(nameOf(challenge.id), 'approve').body).error).toMatch(/unknown request|already decided/u);
   const recorded = readFileSync(join(t.store, 'acts', `${nameOf(challenge.id)}.json`), 'utf8');

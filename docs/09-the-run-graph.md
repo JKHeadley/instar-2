@@ -261,8 +261,7 @@ and any dependent work must satisfy the run's pending obligations and its own ad
 
 PREVIEW-S2 adds the fixed `acceptedReplyPreviewText` projection over owner-validated same-store
 facts. It reads the signed acceptance's decoded Decision, requires conclusion subject
-`preview-stage2-answer`, predicate `answer-text` and a nonempty string value, and prefixes
-`PREVIEW — experimental test agent; production safeguards incomplete.` plus one newline.
+`preview-stage2-answer`, predicate `answer-text` and a nonempty string value, and uses that value directly as the reply text.
 It escapes `&`, `<`, `>` in that order, rejects unsupported controls and rendered UTF-8 overflow,
 and neither repairs nor truncates a Decision. The helper grants no authority; current accepted
 answer consumption and grounding remain mandatory. The original raw-answer path remains valid.

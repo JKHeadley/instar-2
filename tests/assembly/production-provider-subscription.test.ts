@@ -339,8 +339,8 @@ for (const change of ['missing', 'changed', 'duplicated']) it(`synthetic CLI ref
 // w3-renewal1012 option (b): a record at the predecessor's reviewed end runs only while the journal's current end is that
 // end, so a runner on it can propose the renewal; the build alone names both ends, and nothing reads an end from the record.
 it('accepts the predecessor end only while the journal is still at it, and the governed end always', () => {
-  expect(SUBSCRIPTION_PREVIEW_PREDECESSOR_EXPIRY).toBe(Date.UTC(2026, 9, 5, 20, 40));
-  expect(SUBSCRIPTION_PREVIEW_EXPIRY - SUBSCRIPTION_PREVIEW_PREDECESSOR_EXPIRY).toBe(7 * 24 * 3600 * 1000);
+  expect(SUBSCRIPTION_PREVIEW_PREDECESSOR_EXPIRY).toBe(Date.UTC(2026, 9, 12, 20, 40));
+  expect(SUBSCRIPTION_PREVIEW_EXPIRY - SUBSCRIPTION_PREVIEW_PREDECESSOR_EXPIRY).toBe(31 * 24 * 3600 * 1000 + 3600 * 1000);
   const P = SUBSCRIPTION_PREVIEW_PREDECESSOR_EXPIRY, G = SUBSCRIPTION_PREVIEW_EXPIRY;
   expect([subscriptionActivationEndAllowed(P, P), subscriptionActivationEndAllowed(P, G), subscriptionActivationEndAllowed(P),
     subscriptionActivationEndAllowed(G, P), subscriptionActivationEndAllowed(G, G), subscriptionActivationEndAllowed(G)])

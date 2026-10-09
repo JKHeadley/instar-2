@@ -480,7 +480,7 @@ it('never sends a rejected acknowledgement after a later no-request decision', a
     const reopened = openPreviewJournal(path, key);
     await createJournalWorker(reopened, ports).drain();
     expect(reopened.view.memory).toEqual([]);
-    expect(reopened.view.order[1]?.intent).toBe('PREVIEW — I reviewed your memory request.');
+    expect(reopened.view.order[1]?.intent).toBe('I reviewed your memory request.');
     reopened.close();
   } finally { rmSync(root, { recursive: true, force: true }); }
 }, 10000);
@@ -500,10 +500,10 @@ it('supersedes an old fact after rolling summary, leaves a similar fact intact, 
     // reply first discloses it and accounts for the last message (Rule 110), then answers.
     const asked = w.journal.view.order.at(-1)!;
     expect(asked.answer?.endsWith('Your gym locker code is 3310.')).toBe(true);
-    expect(asked.intent!.startsWith('PREVIEW — Earlier conversation up to #')).toBe(asked.continuity !== undefined);
+    expect(asked.intent!.startsWith('Earlier conversation up to #')).toBe(asked.continuity !== undefined);
     await w.say(id++, 'Actually my gym locker code is 4412, not 3310.');
     expect(w.journal.view.memory).toHaveLength(1);
-    expect(replyBody(w.journal.view.order.at(-1)!)).toBe('PREVIEW — Changed My gym locker code is 3310 → my gym locker code is 4412.');
+    expect(replyBody(w.journal.view.order.at(-1)!)).toBe('Changed My gym locker code is 3310 → my gym locker code is 4412.');
     w.journal.close(); w = world(root);
     await w.say(id++, question);
     const corrected = JSON.parse(w.prompts.get(question)!);
@@ -517,7 +517,7 @@ it('supersedes an old fact after rolling summary, leaves a similar fact intact, 
     if (!('reason' in sam)) expect(JSON.parse(sam.context).people).toBeUndefined();
     await w.say(id++, 'Forget my gym locker code.');
     expect(w.journal.view.memory).toHaveLength(2);
-    expect(w.journal.view.order.at(-1)?.intent).toBe('PREVIEW — Forgot the requested information.');
+    expect(w.journal.view.order.at(-1)?.intent).toBe('Forgot the requested information.');
     w.journal.append({ kind: 'coherence', id: w.journal.view.order.at(-1)!.id,
       findings: [{ rule: 96, check: 'possible stale quote', excerpt: 'My gym locker code is 3310' }],
       at: 1790000000000 });
@@ -840,7 +840,7 @@ it('settles an undecidable correction with one honest reply and keeps answering 
     await worker.drain(); await worker.drain();
     expect(sends).toHaveLength(3);
     expect(sends[1]).toBe(MEMORY_UNDECIDED_REPLY);
-    expect(sends[2]).toBe('PREVIEW — Plain answer.');
+    expect(sends[2]).toBe('Plain answer.');
     expect(journal.view.order.every(turn => turn.held === undefined)).toBe(true);
     expect(journal.view.summaryReservations.size).toBe(1); // the UNKNOWN summary is never repeated
     journal.close();

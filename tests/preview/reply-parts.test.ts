@@ -22,7 +22,7 @@ const LIVE = JSON.parse(readFileSync(new URL('./fixtures/status-reply-split-live
     duties: { duty: RetrospectiveDuty; disposition: 'inspected' | 'unavailable'; note: string }[] }[] };
 const answerOf = (update: number) => LIVE.statusAnswers.find(row => row.update === update)!.answer;
 const reassembled = (parts: readonly string[]) => parts.map((part, index) => index === 0 ? part.replace(/ \(1\/\d+\)$/u, '')
-  : part.replace(/^PREVIEW \(\d+\/\d+\) — /u, '')).join('\n');
+  : part.replace(/^\(\d+\/\d+\) — /u, '')).join('\n');
 /** The I.sh I1d predicate on a reply text. */
 const i1d = (text: string) => text.includes('Retrospective review') && text.includes('inspected') && text.includes('efficiency duty ran');
 
@@ -33,20 +33,20 @@ const genesis = () => ({ kind: 'genesis' as const, bot: '12345678', chat: '76543
 
 describe('splitReply: at, and just over, the Telegram limit', () => {
   it('a reply exactly at the limit is one message, unchanged; one byte over is two, in order, losing nothing', () => {
-    const at = `PREVIEW — ${'a'.repeat(TELEGRAM_MESSAGE_LIMIT - Buffer.byteLength('PREVIEW — '))}`;
+    const at = `${'a'.repeat(TELEGRAM_MESSAGE_LIMIT - Buffer.byteLength(''))}`;
     expect(Buffer.byteLength(at)).toBe(TELEGRAM_MESSAGE_LIMIT);
     expect(splitReply(at)).toEqual([at]);
     const over = `${at}a`;
     const parts = splitReply(over)!;
     expect(parts).toHaveLength(2);
     expect(parts[0]!.endsWith(' (1/2)')).toBe(true);
-    expect(parts[1]!.startsWith('PREVIEW (2/2) — ')).toBe(true);
+    expect(parts[1]!.startsWith('(2/2) — ')).toBe(true);
     expect(parts.every(fitsOneMessage)).toBe(true);
     expect(reassembled(parts).replaceAll('\n', '')).toBe(over);
   });
 
   it('measures the HTML body Telegram receives: 1200 "<" (4800 encoded bytes) is split, not refused', () => {
-    const reply = `PREVIEW — ${'<'.repeat(1200)}`;
+    const reply = `${'<'.repeat(1200)}`;
     expect(fitsOneMessage(reply)).toBe(false);
     const parts = splitReply(reply)!;
     expect(parts.length).toBe(2);
@@ -56,7 +56,7 @@ describe('splitReply: at, and just over, the Telegram limit', () => {
   it('keeps a request tail whole in the last message', () => {
     const body = Array.from({ length: 80 }, (_, index) => `Line ${String(index)}: ${'detail '.repeat(10)}`).join('\n');
     const tail = '\n\nApprove raising the reply cap to 40? Reply yes to approve.';
-    const parts = splitReply(`PREVIEW — ${body}${tail}`, tail)!;
+    const parts = splitReply(`${body}${tail}`, tail)!;
     expect(parts.length).toBeGreaterThan(1);
     expect(parts.at(-1)!.endsWith(tail.trim())).toBe(true);
     expect(parts.slice(0, -1).some(part => part.includes('Approve raising'))).toBe(false);
@@ -64,8 +64,8 @@ describe('splitReply: at, and just over, the Telegram limit', () => {
 
   it('the other side: past MAX_REPLY_PARTS messages it is null (the notice remains, for that alone)', () => {
     const words = 'word '.repeat(Math.ceil(TELEGRAM_MESSAGE_LIMIT * MAX_REPLY_PARTS / 5) + 100);
-    expect(splitReply(`PREVIEW — ${words}`)).toBeNull();
-    expect(splitReply(`PREVIEW — ${'word '.repeat(Math.floor(TELEGRAM_MESSAGE_LIMIT * (MAX_REPLY_PARTS - 2) / 5))}`)).not.toBeNull();
+    expect(splitReply(`${words}`)).toBeNull();
+    expect(splitReply(`${'word '.repeat(Math.floor(TELEGRAM_MESSAGE_LIMIT * (MAX_REPLY_PARTS - 2) / 5))}`)).not.toBeNull();
   });
 
   // Review round 2 (cint-L48): escaping expands an answer, so the part bound covers the ENCODED size of every answer a
@@ -73,7 +73,7 @@ describe('splitReply: at, and just over, the Telegram limit', () => {
   it('the review\'s encoding-boundary probe: a 15625-byte answer of "& < > " (41625 encoded bytes) is split, never refused', () => {
     const answer = `Compare these operators: ${'& < > '.repeat(2600)}`.trimEnd();
     expect(Buffer.byteLength(answer)).toBe(15624);
-    const reply = `PREVIEW — ${answer}`;
+    const reply = `${answer}`;
     const parts = splitReply(reply)!;
     expect(parts).not.toBeNull();
     expect(parts.length).toBeGreaterThan(10);
@@ -82,7 +82,7 @@ describe('splitReply: at, and just over, the Telegram limit', () => {
   });
 
   it('the worst case the bound is derived from still splits: 16384 bytes of "&" plus 4096 bytes of fixed "<"', () => {
-    const reply = `PREVIEW — ${'&'.repeat(16384)}${'<'.repeat(4096 - 'PREVIEW — '.length)}`;
+    const reply = `${'&'.repeat(16384)}${'<'.repeat(4096 - ''.length)}`;
     const parts = splitReply(reply)!;
     expect(parts).not.toBeNull();
     expect(parts.length).toBeLessThanOrEqual(MAX_REPLY_PARTS);
@@ -93,14 +93,14 @@ describe('splitReply: at, and just over, the Telegram limit', () => {
     // Plain characters, then a space, then "&" (five encoded bytes each): by characters the space sits past the middle,
     // by encoded bytes it sits well before it, so a character-measured half would cut a tiny first part.
     const unit = `${'a'.repeat(1500)} ${'&'.repeat(600)} `;
-    const parts = splitReply(`PREVIEW — ${unit.repeat(8)}`)!;
+    const parts = splitReply(`${unit.repeat(8)}`)!;
     for (const part of parts.slice(0, -1)) expect(Buffer.byteLength(encodeReply(part))).toBeGreaterThan((TELEGRAM_MESSAGE_LIMIT - 32) / 2 - 40);
   });
 
   it('replays the three recorded status answers: 3240 bytes is one message; 4139 and 4184 are two, cut at a line break', () => {
-    expect(splitReply(`PREVIEW — ${answerOf(6232038)}`)).toHaveLength(1);
+    expect(splitReply(`${answerOf(6232038)}`)).toHaveLength(1);
     for (const update of [6232050, 6232056]) {
-      const reply = `PREVIEW — ${answerOf(update)}`;
+      const reply = `${answerOf(update)}`;
       expect(fitsOneMessage(reply), String(update)).toBe(false);
       const parts = splitReply(reply)!;
       expect(parts, String(update)).toHaveLength(2);
@@ -139,7 +139,7 @@ describe('the worker sends a long answer as several messages, in order, once eac
     try {
       w.worker.intake([update(1, 'Tell me everything.')]); await w.worker.drain();
       const turn = w.journal.view.order[0]!;
-      expect(turn.intent).toBe(`PREVIEW — ${recorded}`);
+      expect(turn.intent).toBe(`${recorded}`);
       expect(turn.intent).not.toBe(TOO_LONG_REPLY_NOTICE);
       expect(w.sent.map(item => item.target)).toEqual([`reply:${turn.id}`, `reply-part:2:${turn.id}`]);
       expect(reassembled(w.sent.map(item => item.text))).toBe(turn.intent);
@@ -163,7 +163,7 @@ describe('the worker sends a long answer as several messages, in order, once eac
     try {
       w.worker.intake([update(1, 'Compare the operators.')]); await w.worker.drain();
       const turn = w.journal.view.order[0]!;
-      expect(turn.intent).toBe(`PREVIEW — ${probe}`);
+      expect(turn.intent).toBe(`${probe}`);
       expect(w.sent.length).toBeGreaterThan(10);
       expect(w.sent.map(item => item.target)).toEqual([`reply:${turn.id}`,
         ...turn.replyParts!.map((_, index) => `reply-part:${String(index + 2)}:${turn.id}`)]);
@@ -316,7 +316,7 @@ describe('the status reply carries the retrospective line in brief (I1d), and on
       const full = lines.findIndex(line => line.startsWith('Retrospective review:'));
       expect(i1d(lines[full]!), String(update)).toBe(true);
       lines[full] = brief;
-      const reply = `PREVIEW — ${lines.join('\n')}`;
+      const reply = `${lines.join('\n')}`;
       expect(fitsOneMessage(reply), String(update)).toBe(true);
       expect(i1d(reply), String(update)).toBe(true);
     }
@@ -360,7 +360,7 @@ describe('a split reply reads as answered only when every message carrying it wa
       expect(replyOutcomeOf(w.journal.view, turn)).toMatchObject({ outcome: { kind: 'accepted' }, of: 2 });
       expect(wholeReplySent(turn)).toBe(true);
       expect(turnOutcome(w.journal.view, turn).state).toBe('Answered');
-      expect(delivered(w.journal.view)).toContain('1 in this trial');
+      expect(delivered(w.journal.view)).toContain('1 so far');
       w.worker.intake([update(2, 'Thanks.')]); await w.worker.drain();
       expect(contexts[1]).toContain('Telegram API accepted');
     } finally { w.done(); }
@@ -378,7 +378,7 @@ describe('a split reply reads as answered only when every message carrying it wa
         expect(state).not.toBe('Answered');
         expect(state).toContain('Part 2 of 2 of my reply');
         expect(state).toContain(verdict === 'refused' ? 'was refused and not delivered' : 'delivery is UNKNOWN');
-        expect(delivered(w.journal.view)).toContain('0 in this trial');
+        expect(delivered(w.journal.view)).toContain('0 so far');
         expect(sendOutcomeCounts(w.journal.view)).toMatchObject({ accepted: 1, [verdict]: 1 });
         w.worker.intake([update(2, 'Thanks.')]); await w.worker.drain();
         // The history the mind reads names the partial delivery, not "Telegram API accepted", and nothing is re-sent.
@@ -394,7 +394,7 @@ describe('a split reply reads as answered only when every message carrying it wa
     try {
       expect(replyOutcomeOf(w.journal.view, turn)).toMatchObject({ part: 2, of: 2, started: false });
       expect(turnOutcome(w.journal.view, turn).state).toBe('Sending part 2 of 2 of my reply: not confirmed delivered yet');
-      expect(delivered(w.journal.view)).toContain('0 in this trial');
+      expect(delivered(w.journal.view)).toContain('0 so far');
     } finally { w.done(); }
   });
 });

@@ -999,7 +999,7 @@ async function main() {
       replyGrounding: { recorded: view.view.order.filter(t => t.intent && t.grounding).length,
         unavailableLegacy: view.view.order.filter(t => t.intent && !t.grounding).length },
       answerProvenance: { unlabeledRecallReplies: view.view.order.filter(t => t.unlabeledRecall
-        && t.answer !== undefined && t.intent === `PREVIEW — ${t.answer}`).length },
+        && t.answer !== undefined && t.intent?.replace(/^PREVIEW — /u, '') === t.answer).length },
 
       summaries: view.view.summaries.map((s, index) => ({ through: s.through, people: s.people ? s.people.length : null,
         commitments: s.commitments ? s.commitments.length : null, closed: s.closed?.length ?? 0,

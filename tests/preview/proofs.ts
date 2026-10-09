@@ -509,7 +509,7 @@ const verdictState = (verdict: string | undefined): StepState => verdict === 'pa
 /** The flagged content did not leave. Either the fixed notice went out in place of the answer (Rules 4, 86), or
  * the claim-scoped floor removed the sentences the review named and sent the rest (plan #215): in both cases the
  * named content never reached the operator, which is supervision working rather than failing. */
-const heldNotice = (turn: Turn) => { const body = replyBody(turn);
+const heldNotice = (turn: Turn) => { const body = replyBody(turn)?.replace(/^PREVIEW — /u, '');
   return (turn.release?.withheld?.removed.length ?? 0) > 0
     || (body !== undefined && [HOLDING_REPLY, CREDENTIAL_SHAPE_NOTICE].some(text => body === text
       || body.endsWith(`\n${text.replace(/^PREVIEW — /u, '')}`))); };

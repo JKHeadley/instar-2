@@ -56,7 +56,7 @@ it('records the live decision that was right, and the reply and reminders that w
   expect(fixture.answerRowAtRa3.text).toBe(ANSWER.reply);
   expect(fixture.answerRowAtRa3.memoryPending).toBe(true);
   // The fixed notice was put up for review, and what survived the review's withhold reached the operator.
-  expect(fixture.reviewCandidateAtRa3.startsWith(MEMORY_UNDECIDED_REPLY)).toBe(true);
+  expect(fixture.reviewCandidateAtRa3.replace(/^PREVIEW — /u, '').startsWith(MEMORY_UNDECIDED_REPLY)).toBe(true);
   expect(recorded('ra3').reply.startsWith('PREVIEW — Please send it again.')).toBe(true);
   expect(fixture.intentAtRa3).toBe(recorded('ra3').reply);
   // Nothing was cancelled; both requests fired at 10:34.
@@ -109,7 +109,7 @@ function world(root: string, answer: (input: Input) => unknown, clock: { now: nu
   return { journal, worker: createJournalWorker(journal, ports), sent };
 }
 const tmp = (name: string) => realpathSync(mkdtempSync(join(tmpdir(), `preview-cancel2-${name}-`)));
-const pushes = (sent: string[]) => sent.filter(text => text.startsWith('PREVIEW — You asked on'));
+const pushes = (sent: string[]) => sent.filter(text => text.startsWith('You asked on'));
 
 /** The live sequence: the two 10:34 requests, then the withdrawal drained until its summary span is spent. */
 async function replay(answer: (input: Input) => unknown, name: string,

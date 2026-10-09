@@ -164,7 +164,7 @@ it('projects a committed correction before reply escalation, including after rec
     // The candidate itself is the validated correction acknowledgement (old → new, sent only to
     // the operator); every other part of the review context is projected.
     const { candidateReply, ...context } = JSON.parse(reviewed[0]!) as { candidateReply: string };
-    expect(candidateReply).toBe('PREVIEW — Changed My archive code is ORBIT7319. → My archive code is NOVA4826.');
+    expect(candidateReply).toBe('Changed My archive code is ORBIT7319. → My archive code is NOVA4826.');
     expect(JSON.stringify(context)).not.toContain('ORBIT7319');
     expect(JSON.stringify(context)).toContain('NOVA4826');
   } finally { journal.close(); rmSync(root, { recursive: true, force: true }); }

@@ -276,12 +276,12 @@ export function selfState(view: JournalView, runs: RunLog, now: number, timeZone
     summaryPending, heldNoticeCount, refused, when, left } = stateFacts(view, now, timeZone, stopped);
   const lines = [
     `As of ${when(now)} (time zone ${timeZone}; "today" means ${today} there).`,
-    `Operator messages received: ${String(incoming.today)} today, ${String(incoming.total)} in this trial (including the one being answered now).`,
+    `Operator messages received: ${String(incoming.today)} today, ${String(incoming.total)} so far (including the one being answered now).`,
     edits ? `Telegram edits recorded: ${String(edits)}; each revises an earlier message and opens no reply.` : '',
-    `My replies Telegram accepted: ${String(delivered.today)} today, ${String(delivered.total)} in this trial (the reply to the current message is not sent yet).`,
-    `Requested actions Telegram accepted: ${String(requestsToday)} today, ${String(requestSends.length)} in this trial; ${String(openRequests(view).length)} requested and not yet sent.`,
+    `My replies Telegram accepted: ${String(delivered.today)} today, ${String(delivered.total)} so far (the reply to the current message is not sent yet).`,
+    `Requested actions Telegram accepted: ${String(requestsToday)} today, ${String(requestSends.length)} so far; ${String(openRequests(view).length)} requested and not yet sent.`,
     `Messages exchanged today: ${String(incoming.today + delivered.today)} (received plus replies accepted).`,
-    `My memory: ${String(incoming.total)} accepted operator turns, ${String(view.summaries.length)} summaries and ${String(view.memory.length)} validated memory changes in this trial's encrypted local journal. It survives runner restarts and spans this trial's topics; I can recall it while the trial is active. The verified operator can ask me to correct or forget a recorded fact. Later reply packets withhold the old claim, but the original audit record remains in the journal. This is not production or other-agent memory.`,
+    `My memory: ${String(incoming.total)} accepted operator turns, ${String(view.summaries.length)} summaries and ${String(view.memory.length)} validated memory changes in my encrypted local journal. It survives runner restarts and spans our topics; I can recall it while this installation is active. The verified operator can ask me to correct or forget a recorded fact. Later reply packets withhold the old claim, but the original audit record remains in the journal. This does not include other-agent memory.`,
     `Model attempts: ${left(view.limits.maxCalls, view.calls)} (answers, summaries and reply reviews share them). Replies: ${left(view.limits.maxReplies, view.replies)}. Admitted updates: ${left(view.limits.maxTurns, view.order.length)}.`,
     `Model tokens by call kind (input/output; missing usage counts at its reservation): ${Object.entries(view.tokenTotals)
       .map(([kind, total]) => `${kind} ${String(total.inputTokens)}/${String(total.outputTokens)} (${String(total.calls)} calls, ${String(total.unknownCalls)} unmeasured)`)
@@ -326,9 +326,9 @@ export function selfStateBrief(view: JournalView, runs: RunLog, now: number, tim
   const held = [...holds.values()].reduce((sum, n) => sum + n, 0);
   return [
     `As of ${when(now)} (${timeZone}; "today" is ${today}).`,
-    `Operator messages received: ${String(incoming.today)} today, ${String(incoming.total)} in this trial (including the one being answered now).`
+    `Operator messages received: ${String(incoming.today)} today, ${String(incoming.total)} so far (including the one being answered now).`
       + (edits ? ` Edits: ${String(edits)}.` : '') + (refused ? ` Refused non-operator updates: ${String(refused)}.` : ''),
-    `My replies Telegram accepted: ${String(delivered.today)} today, ${String(delivered.total)} in this trial (this reply not yet sent).`,
+    `My replies Telegram accepted: ${String(delivered.today)} today, ${String(delivered.total)} so far (this reply not yet sent).`,
     `Messages exchanged today: ${String(incoming.today + delivered.today)}.`,
     `Model attempts: ${left(view.limits.maxCalls, view.calls)}. Replies: ${left(view.limits.maxReplies, view.replies)}. `
       + `Admitted updates: ${left(view.limits.maxTurns, view.order.length)}.${exhausted.length ? ` Exhausted: ${exhausted.join(', ')}.` : ''}`,
@@ -339,7 +339,7 @@ export function selfStateBrief(view: JournalView, runs: RunLog, now: number, tim
     obligations([['held replies', held], ['replies held today', heldToday.count], ['requested actions open', openRequests(view).length],
       ['UNKNOWN model calls', unknownCalls], ['UNKNOWN sends', unknownSends], ['summary calls in flight or unknown', summaryPending],
       ['unresolved memory corrections', corrections]]),
-    `Requested actions sent: ${String(requestsToday)} today, ${String(requestSends.length)} in this trial. Summaries: ${String(view.summaries.length)}.`,
+    `Requested actions sent: ${String(requestsToday)} today, ${String(requestSends.length)} so far. Summaries: ${String(view.summaries.length)}.`,
     `Memory: ${String(view.memory.length)} validated changes; a forgotten fact is withheld from later packets; a corrected fact stays recallable only as labelled earlier history; both keep their original audit record.`,
     ...runLines(runs, now, format, current),
     'Not shown here: memory health, tokens, failures, hold reasons, retrospective detail (in the runner\'s read-only status record).',

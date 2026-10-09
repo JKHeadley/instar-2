@@ -287,7 +287,7 @@ it.each([
   expect(sent(lines.join('\n'))).toBeGreaterThan(STATUS_ANSWER_BUDGET);
   const fitted = fitStatusLines(lines);
   expect(sent(fitted)).toBeLessThanOrEqual(STATUS_ANSWER_BUDGET);
-  expect(fitsOneMessage(`PREVIEW — ${fitted}`)).toBe(true);
+  expect(fitsOneMessage(`${fitted}`)).toBe(true);
   const out = fitted.split('\n');
   expect(out).toHaveLength(lines.length);
   out.forEach((line, n) => {

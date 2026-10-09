@@ -199,7 +199,7 @@ it('the floor: no reply is held for size, and the turns it set aside stay recall
     expect(first.grounding?.compactedThrough).toBeUndefined();
     expect(floored[0]!.packet.continuity).toMatchObject({ through: firstAside.through, basis: 'set-aside', state: 'addressed' });
     expect(first.continuity).toMatchObject({ summarizedThrough: firstAside.through, basis: 'set-aside', disposition: 'addressed' });
-    expect(first.intent!.startsWith(`PREVIEW — Earlier conversation up to #${String(firstAside.through)} no longer fits in my view; `
+    expect(first.intent!.startsWith(`Earlier conversation up to #${String(firstAside.through)} no longer fits in my view; `
       + 'it is kept and I can search it, but it is not summarized; your previous message (')).toBe(true);
     expect(first.intent).not.toMatch(/is now summarized/u);
     const firstContinuity = first.continuity;

@@ -34,7 +34,7 @@ async function answerWith(answer: (question: string) => string) {
 
 it('real-model shape: a plain-text confirmation schedules nothing (live risk), the declared field does', async () => {
   const plain = await answerWith(() => 'Sure — I\'ll send you a rundown of today at 6 pm.');
-  expect(plain.sent).toEqual(['PREVIEW — Sure — I\'ll send you a rundown of today at 6 pm.']);
+  expect(plain.sent).toEqual(['Sure — I\'ll send you a rundown of today at 6 pm.']);
   expect(plain.grants).toBe(0);
   const declared = await answerWith(question => JSON.stringify({ reply: 'Sure — I\'ll send you a rundown of today at 6 pm.',
     memory: [], dated: [{ quote: question, when: 'today at 6 pm', remind: true }] }));

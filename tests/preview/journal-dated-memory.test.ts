@@ -579,7 +579,7 @@ it('fits an upcoming clause inside visible and encoded limits, leaving an omitte
       worker.intake([update(1, 'Invoice due Oct 3 at 8 am.')]); await worker.drain();
       now = Date.UTC(2026, 9, 1, 15);
       worker.intake([update(2, 'Long')]); await worker.drain();
-      expect(sends[1]).toBe(`PREVIEW — ${answer}${included ? ' Upcoming: Invoice due Oct 3 at 8 am. (2026-10-03 08:00).' : ''}`);
+      expect(sends[1]).toBe(`${answer}${included ? ' Upcoming: Invoice due Oct 3 at 8 am. (2026-10-03 08:00).' : ''}`);
       expect(checked[1]).toBe(sends[1]);
       expect(journal.view.order[1]?.held).toBeUndefined();
       expect(journal.view.mentionedDates.size).toBe(included ? 1 : 0);
@@ -663,7 +663,7 @@ it('keeps an imminent item eligible when an objected reply is revised without it
     worker.intake([update(1, 'Invoice due Oct 3 at 8 am.')]); await worker.drain();
     now = Date.UTC(2026, 9, 1, 15);
     worker.intake([update(2, 'Hello')]); await worker.drain();
-    expect(sends[1]).toBe('PREVIEW — Okay, noted.');
+    expect(sends[1]).toBe('Okay, noted.');
     expect(journal.view.mentionedDates.size).toBe(0);
     worker.intake([update(3, 'Another question')]); await worker.drain();
     expect(sends[2]).toContain('Upcoming: Invoice due Oct 3 at 8 am.');
@@ -721,7 +721,7 @@ it('replays the exact completed paid review when the 48-hour edge moves', async 
       send: async (input: { expectedText: string }) => { sends.push(input.expectedText); return sends.length; }, checkOutbound: () => {},
       replyCheck: {
         jev: async (text: string) => ({ value: { model: JEV_MODEL, answers: Object.fromEntries(Object.keys(REPLY_RULES)
-          .map(id => [id, { type: 'noul', noul: text === 'PREVIEW — Okay.' && now !== start && id === 'raw_path' ? 0.5 : 0 }])) }, latencyMs: 1 }),
+          .map(id => [id, { type: 'noul', noul: text === 'Okay.' && now !== start && id === 'raw_path' ? 0.5 : 0 }])) }, latencyMs: 1 }),
         escalate: async () => { reviews++; stopAfterReview = true;
           return { verdict: 'pass' as const, ruleIds: [], confidence: 1, latencyMs: 1 }; },
         elapsedMs: () => 0 } };
@@ -736,7 +736,7 @@ it('replays the exact completed paid review when the 48-hour edge moves', async 
     now = Date.UTC(2026, 9, 1, 15); stopAfterReview = false;
     await worker.drain();
     expect(reviews).toBe(1);
-    expect(sends[1]).toBe('PREVIEW — Okay.');
+    expect(sends[1]).toBe('Okay.');
     expect(journal.view.order[1]?.held).toBeUndefined();
     expect(journal.view.mentionedDates.size).toBe(0);
     worker.intake([update(3, 'Next')]); await worker.drain();

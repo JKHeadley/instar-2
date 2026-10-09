@@ -130,7 +130,7 @@ export function repeatsOperatorOnly(reply: string, operatorMessages: readonly st
   });
 }
 
-export const HOLDING_REPLY = 'PREVIEW — I need to check that answer before I can send it.';
+export const HOLDING_REPLY = 'I need to check that answer before I can send it.';
 /** Every rule an unselected review judges on the operator's own chat; the audience question is added only by selection. */
 const rules = (Object.keys(REPLY_RULES) as ReplyRule[]).filter(id => !isAudienceRule(id));
 const jevRules = rules.filter((id): id is JevRule => !isContextRule(id));

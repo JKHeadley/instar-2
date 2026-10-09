@@ -31,7 +31,7 @@ it.each([1, null])('records exact full-history IDs before an accepted or UNKNOWN
     expect(audit.recalled).toEqual([]);
     expect(audit.channelItems).toEqual([]);
     expect(audit.packetSha256).toBe(createHash('sha256').update(contexts.get(id(2))!).digest('hex'));
-    expect(turn.intent).toBe('PREVIEW — answer');
+    expect(turn.intent).toBe('answer');
     expect(turn.sent).toBe(receipt ?? undefined);
     journal.close();
     if (receipt !== null) {
@@ -45,7 +45,7 @@ it.each([1, null])('records exact full-history IDs before an accepted or UNKNOWN
       { cwd: process.cwd(), env: { ...process.env, INSTAR_SECRET_PREVIEW_STORAGE_KEY: Buffer.from(key).toString('hex') }, encoding: 'utf8' });
       expect(status.status, status.stderr).toBe(0);
       expect(JSON.parse(status.stdout).replyGrounding).toEqual({ recorded: 2, unavailableLegacy: 0 });
-      expect(output.reply).toEqual({ update: 2, text: 'PREVIEW — answer', telegramMessageId: 1,
+      expect(output.reply).toEqual({ update: 2, text: 'answer', telegramMessageId: 1,
         outcome: 'api-accepted', grounding: audit, answerReason: null, retrospectiveGrade: null });
     }
     const replay = openPreviewJournal(path, key);

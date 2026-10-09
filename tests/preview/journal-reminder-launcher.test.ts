@@ -71,7 +71,7 @@ it.each([
       expect(journal.view.order.find(turn => turn.text === 'cancel the Priya reminder')?.modelState).toBe('uncertain');
       expect(due).toEqual([]);
     } else {
-      expect(sends.match(/PREVIEW — You asked on/gu)).toHaveLength(1);
+      expect(sends.match(/You asked on/gu)).toHaveLength(1);
       expect(sends).toContain('call Priya');
       expect(sends).toContain("I lost my answer to this: the model call's outcome is unknown");
       expect(due).toHaveLength(1);

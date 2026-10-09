@@ -35,7 +35,7 @@ it('F01 thinking overflow: an over-cap review stays charged and held after repla
         raw: JSON.stringify(update(index, 'Check this answer')), accepted: true, cursor: index + 1, at: 1000 + index });
       journal.append({ kind: 'reserve', id, at: 1000 + index });
       journal.append({ kind: 'answer', id, text: 'candidate', state: 'complete', at: 1000 + index });
-      journal.append({ kind: 'reply-review-reserve', id, candidate: 'PREVIEW — candidate', at: 1000 + index });
+      journal.append({ kind: 'reply-review-reserve', id, candidate: 'candidate', at: 1000 + index });
       journal.append({ kind: 'reply-review-state', id, state,
         diagnostics: replyReviewDiagnostics({ outputTokens: tokens }), at: 1000 + index });
       if (state === 'uncertain') journal.append({ kind: 'hold', id, reason: 'reply check unavailable', at: 1000 + index });
@@ -98,12 +98,12 @@ it('F04 too-long answer: a short answer sends whole; an oversized answer sends w
   // Live failure: a reply beyond Telegram's limit must not send a truncated prefix. Since plan #466 (w4-statuslen) it is
   // never refused either: the whole answer goes out in order across messages, and nothing is sent again on replay.
   const long = 'x'.repeat(4085);
-  const cases: [string, string[], string][] = [['short answer', ['PREVIEW — short answer'], 'PREVIEW — short answer'],
-    [long, splitReply(`PREVIEW — ${long}`)!, `PREVIEW — ${long}`]];
+  const cases: [string, string[], string][] = [['short answer', ['short answer'], 'short answer'],
+    [long, splitReply(`${long}`)!, `${long}`]];
   const [first, second] = cases[1]![1];
   expect(cases[1]![1]).toHaveLength(2);
-  expect(first!.endsWith(' (1/2)') && second!.startsWith('PREVIEW (2/2) — ')).toBe(true);
-  expect(`${first!.slice(0, -' (1/2)'.length)}${second!.slice('PREVIEW (2/2) — '.length)}`).toBe(`PREVIEW — ${long}`);
+  expect(first!.endsWith(' (1/2)') && second!.startsWith('(2/2) — ')).toBe(true);
+  expect(`${first!.slice(0, -' (1/2)'.length)}${second!.slice('(2/2) — '.length)}`).toBe(`${long}`);
   for (const [answer, sends, intent] of cases) {
     await inJournal(async path => {
       const journal = openPreviewJournal(path, key, genesis());

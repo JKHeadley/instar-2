@@ -1,12 +1,11 @@
 /** Telegram's per-message bound, as the send path measures it: the HTML-escaped body in UTF-8 bytes (never fewer
  * than its characters), and the plain text Telegram echoes back. */
 export const TELEGRAM_MESSAGE_LIMIT = 4096;
-/** Room kept in every part for its position marker (" (1/2)" on the first, "PREVIEW (2/2) — " on the rest). */
+/** Room kept in every part for its position marker (" (1/2)" on the first, "(2/2) — " on the rest). */
 const MARKER_ROOM = 32;
 /** The encoded bytes every part's text may use. */
 const PART_BUDGET = TELEGRAM_MESSAGE_LIMIT - MARKER_ROOM;
-/** A model answer is at most its route's 16384 output bytes; a reply adds bounded fixed text to it (the PREVIEW mark,
- * a continuity or approval disclosure, a requested action's header, an upcoming-dates line). */
+/** A model answer is at most its route's 16384 output bytes; a reply adds bounded fixed text to it (a continuity or approval disclosure, a requested action's header, an upcoming-dates line). */
 export const MAX_ANSWER_BYTES = 16384;
 const FIXED_TEXT_BYTES = 4096;
 /** The most messages one reply is split into, derived so that every reply a route can produce fits: escaping turns
@@ -62,8 +61,8 @@ function pieces(text: string, budget: number): string[] {
 
 /** One reply as the messages that carry it, in order (the operator's direction of 2026-10-03: an answer too long for
  * one Telegram message is never refused; it is split, in order). A reply that fits is one message, unchanged. A longer
- * one is cut at natural breaks; the first part ends " (1/N)" and each later part opens "PREVIEW (k/N) — ", so every
- * message stays PREVIEW-marked and its place is readable. `tail` is a suffix kept whole in the LAST part (an operator
+ * one is cut at natural breaks; the first part ends " (1/N)" and each later part opens "(k/N) — ", so every
+ * message's place is readable. `tail` is a suffix kept whole in the LAST part (an operator
  * request line and its disclosure, which the operator answers by replying to the message that carries it). Returns
  * null only for a reply needing more than MAX_REPLY_PARTS messages, or a tail no single message can carry. */
 export function splitReply(reply: string, tail = ''): string[] | null {
@@ -81,7 +80,7 @@ export function splitReply(reply: string, tail = ''): string[] | null {
   if (parts.length > MAX_REPLY_PARTS) return null;
   const total = parts.length;
   const marked = parts.map((part, index) => index === 0 ? `${part} (1/${String(total)})`
-    : `PREVIEW (${String(index + 1)}/${String(total)}) — ${part.replace(PREFIX, '')}`);
+    : `(${String(index + 1)}/${String(total)}) — ${part.replace(PREFIX, '')}`);
   return marked.every(fitsOneMessage) ? marked : null;
 }
 /** Whether every message carrying a reply has Telegram's receipt: the whole answer delivered (Rule 42). A split

@@ -290,13 +290,13 @@ export const MEMORY_ITEM_SHAPE = 'Each memory item has exactly this shape: {"mod
   + 'the new clause copied word for word from the operator\'s current message>,"replies":<optional: ids of memoryCandidates whose '
   + 'reply restates the old fact>,"summaryPassages":<optional: exact passages of the prior summary that express the old fact>}. '
   + 'packet.memory lists changes already recorded, in a display shape; never copy that shape.';
-export const MEMORY_UNDECIDED_REPLY = 'PREVIEW — I couldn\'t record that memory change. Please send it again.';
+export const MEMORY_UNDECIDED_REPLY = 'I couldn\'t record that memory change. Please send it again.';
 export const UNKNOWN_ANSWER_NOTICE = 'I lost my answer to that message. Please send it again.';
-export const TOO_LONG_INPUT_NOTICE = 'PREVIEW — Your message was saved, but I could not fit it with the needed context. Please send a shorter message or labelled parts.';
-export const TOO_LONG_REPLY_NOTICE = 'PREVIEW — I produced an answer, but it was too long for one Telegram reply. I did not send part of it. Please ask for a shorter answer.';
+export const TOO_LONG_INPUT_NOTICE = 'Your message was saved, but I could not fit it with the needed context. Please send a shorter message or labelled parts.';
+export const TOO_LONG_REPLY_NOTICE = 'I produced an answer, but it was too long for one Telegram reply. I did not send part of it. Please ask for a shorter answer.';
 /** The one withholding floor on a reply's content (Rule 4): text SHAPED like a credential.
  * A shape match is a conservative superset of a live secret, never proof of one. */
-export const CREDENTIAL_SHAPE_NOTICE = 'PREVIEW — My answer contained text shaped like a password or access key, so I did not send it. Your message is saved; ask again if you still need an answer.';
+export const CREDENTIAL_SHAPE_NOTICE = 'My answer contained text shaped like a password or access key, so I did not send it. Your message is saved; ask again if you still need an answer.';
 /** A reply released after a pre-send review that objected or could not decide (Rules 77, 86, 95).
  * The objections are signals recorded with the send, never a hold. */
 export interface ReplyRelease { review: 'violation' | 'unavailable'; objections: string[]; reason?: string; revised: boolean;
@@ -378,9 +378,9 @@ export const continuitySpoken = (last: { disclosure: string; basis?: 'set-aside'
 export const replyBody = (turn: { intent?: string; continuity?: ContinuityAccount }) =>
   turn.intent === undefined || !turn.continuity || turn.continuity.spoken === false
     ? turn.intent : turn.intent.replace(`${turn.continuity.disclosure} `, '');
-/** The reply with the disclosure as its first sentence, after the surface marker. */
+/** The reply with the disclosure as its first sentence; strip the marker on older replies. */
 export const withDisclosure = (reply: string, disclosure: string) =>
-  reply.startsWith('PREVIEW — ') ? `PREVIEW — ${disclosure} ${reply.slice('PREVIEW — '.length)}` : `${disclosure} ${reply}`;
+  `${disclosure} ${reply.replace(/^PREVIEW — /u, '')}`;
 export const HELD_NOTICE_AFTER_MS = 600_000;
 /** Rule 95: every live gate of this runner and the way it fails when it cannot decide, chosen by who
  * bears the miss. `closed` gates are only the exact floors Rule 4 names (credential shape as its
@@ -562,7 +562,7 @@ const raiseText = (from: RaiseLimits, next: RaiseLimits, reason: RaiseReason) =>
   const [what, was, to, effect] = reason === 'calls' ? ['model call', from.maxCalls, next.maxCalls, 'model calls I may spend']
     : reason === 'replies' ? ['reply', from.maxReplies, next.maxReplies, 'replies I may send']
       : ['message', from.maxTurns, next.maxTurns, 'messages I may take'];
-  return `Approve raising the ${what} allowance from ${was} to ${to}? That adds ${to - was} ${effect} in this trial.`;
+  return `Approve raising the ${what} allowance from ${was} to ${to}? That adds ${to - was} ${effect} for this agent.`;
 };
 export function approvalRequestText(view: JournalView, reason: RaiseReason): string {
   return raiseText(view.limits, proposedLimits(view, reason), reason);
@@ -571,10 +571,11 @@ export function approvalRequestText(view: JournalView, reason: RaiseReason): str
  * makes before verified-act intake): its request, base, limits and grant, and the rendered request
  * wording from the current limits. Recomputed at completion, so limits substituted into the
  * agent-writable journal cannot ride a genuine proof. */
-export function raiseSubject(view: JournalView, id: string, base: string, reason: RaiseReason, limits: RaiseLimits) {
+export function raiseSubject(view: JournalView, id: string, base: string, reason: RaiseReason, limits: RaiseLimits, legacy = false) {
   const hash = (value: string) => `sha256:${createHash('sha256').update(value).digest('hex')}` as Hash;
   return { requestDigest: hash(JSON.stringify([id, 'raise-caps', base, limits, view.genesis.grant])),
-    renderingDigest: hash(raiseText(view.limits, limits, reason)) };
+    renderingDigest: hash(legacy ? raiseText(view.limits, limits, reason).replace('for this agent.', 'in this trial.')
+      : raiseText(view.limits, limits, reason)) };
 }
 /** The emergency stop's exact subject on the independent surface: the tuple src/operator/surface.ts's
  * `stopChallenge` binds (action, audience, the operator requesting it for themself), over this trial's
@@ -604,17 +605,18 @@ function validApproval(view: JournalView, turnId: string, approval: ApprovalRequ
   return approval.action === action && approval.base === approvalBase(view) && approval.id === approvalId(turnId, action, approval.base)
     && view.stop === null && (action === 'stop' ? approval.limits === undefined && text.includes(STOP_CONFIRM_TEXT)
     : reason !== undefined && reason !== 'worker' && JSON.stringify(approval.limits) === JSON.stringify(proposedLimits(view, reason))
-      && text.includes(approvalRequestText(view, reason))
+      && (text.includes(approvalRequestText(view, reason))
+        || text.includes(approvalRequestText(view, reason).replace('for this agent.', 'in this trial.')))
       && (approval.challenge === undefined || approval.challenge.request === approval.id && approval.challenge.base === approval.base
         && approval.challenge.action === 'raise-caps' && approval.challenge.singleUse === true
         && approval.challenge.operator === approvalOperator(view)));
 }
 /** The limited answer's fixed wording: what happened, what it needs, nothing it cannot keep. */
 export function limitedAnswerText(view: JournalView, reason: LimitedReason, count: number): string {
-  if (reason === 'worker') return `PREVIEW — I got your ${count === 1 ? 'message' : `${count} messages`} and saved ${count === 1 ? 'it' : 'them'}, but my ordinary responder is busy or unavailable right now. ${count === 1 ? 'It' : 'They'} will be answered when it recovers; nothing is needed from you.`;
+  if (reason === 'worker') return `I got your ${count === 1 ? 'message' : `${count} messages`} and saved ${count === 1 ? 'it' : 'them'}, but my ordinary responder is busy or unavailable right now. ${count === 1 ? 'It' : 'They'} will be answered when it recovers; nothing is needed from you.`;
   const what = reason === 'turns' ? `${view.limits.maxTurns} messages` : reason === 'calls'
     ? `${view.limits.maxCalls} model calls` : `${view.limits.maxReplies} replies`;
-  return `PREVIEW — I got your ${count === 1 ? 'message' : `${count} messages`} and saved ${count === 1 ? 'it' : 'them'}, but I can't answer yet: this trial's allowance of ${what} is used up. ${count === 1 ? 'It' : 'They'} will be answered once the allowance is raised, which needs your approval.`;
+  return `I got your ${count === 1 ? 'message' : `${count} messages`} and saved ${count === 1 ? 'it' : 'them'}, but I can't answer yet: my allowance of ${what} is used up. ${count === 1 ? 'It' : 'They'} will be answered once the allowance is raised, which needs your approval.`;
 }
 const conflictQuestion = (item: Pick<MemoryConflict, 'first' | 'second'>) =>
   `I have two conflicting memories: “${item.first.quote}” and “${item.second.quote}”. Which is right?`;
@@ -2429,7 +2431,7 @@ export const requestOverflowLine = (count: number) =>
 export const requestedActionHeader = (view: JournalView, turn: Turn) => {
   const due = turn.requestedAction!, overflow = due.overflow?.length ?? 0;
   return [...due.items.map(ref => requestItem(view, ref)!).map(item =>
-    `PREVIEW — You asked on ${askedAt(view, item)}: "${item.quote}" (due ${reminderDue(item)} ${item.zone})`),
+    `You asked on ${askedAt(view, item)}: "${item.quote}" (due ${reminderDue(item)} ${item.zone})`),
   ...overflow ? [requestOverflowLine(overflow)] : []].join('\n');
 };
 /** The operator's own request text, answered as an ordinary turn at its due time. */
@@ -2502,7 +2504,7 @@ export const projectMemoryText = (view: JournalView, value: string) => view.memo
   return projected;
 }, value);
 export function openQuestionCandidates(view: JournalView): OpenQuestion[] {
-  const closed = new Set(view.order.filter(turn => wholeReplySent(turn) && turn.intent === `PREVIEW — ${turn.answer}`)
+  const closed = new Set(view.order.filter(turn => wholeReplySent(turn) && turn.intent?.replace(/^PREVIEW — /u, '') === turn.answer)
     .flatMap(turn => turn.closedQuestions ?? []));
   const open = new Map<string, OpenQuestion>();
   for (const turn of view.order) {
@@ -2516,7 +2518,7 @@ export function openQuestionCandidates(view: JournalView): OpenQuestion[] {
     const turn = view.turns.get(id);
     if (closed.has(id) || view.memory.some(change => change.mode === 'forget' && change.source === id)
       || !view.questions.some(note => note.source === id)
-        && turn && wholeReplySent(turn) && turn.noticeClass === undefined && turn.intent === `PREVIEW — ${turn.answer}`
+        && turn && wholeReplySent(turn) && turn.noticeClass === undefined && turn.intent?.replace(/^PREVIEW — /u, '') === turn.answer
         && turn.answer !== MODEL_FAILURE_REPLY) open.delete(id);
   }
   return [...open.values()];
@@ -2621,7 +2623,7 @@ export function reportJournalCap(journal: ReturnType<typeof openPreviewJournal>,
     ['replies', journal.view.replies, journal.view.limits.maxReplies]] as const) {
     if (used < limit - Math.floor(limit / 5) || journal.view.capReports.has(capKey(reason, limit, 'near'))) continue;
     journal.append({ kind: 'cap-report', reason, limit, level: 'near', at });
-    writeLine(`PREVIEW — ${reason} trial cap at least 80% used (${used}/${limit}); ${Math.max(0, limit - used)} remain.\n`);
+    writeLine(`${reason} trial cap at least 80% used (${used}/${limit}); ${Math.max(0, limit - used)} remain.\n`);
   }
   const cap = reachedJournalCap(journal.view);
   if (!cap) return null;
@@ -2633,7 +2635,7 @@ export function reportJournalCap(journal: ReturnType<typeof openPreviewJournal>,
   for (const item of caps) {
     if (journal.view.capReports.has(capKey(item.reason, item.limit))) continue;
     journal.append({ kind: 'cap-report', ...item, at });
-    writeLine(`PREVIEW — ${item.reason} cap reached; work paused. Check status for held work.\n`);
+    writeLine(`${item.reason} cap reached; work paused. Check status for held work.\n`);
   }
   return cap.reason === 'turns' ? 'update cap reached'
     : cap.reason === 'calls' ? 'model attempt cap reached'
@@ -2917,14 +2919,15 @@ export const requestOccurrence = (id: string, items: readonly ReminderRef[]) => 
 function addOperatorRequest(view: JournalView, request: OperatorRequest, carrier: string, via: OperatorRequestState['via'],
   thread: number | null, text: string, at: number, review?: OperatorReviewRef, scope?: unknown): void {
   const current = { limits: view.limits, expires: view.expires };
+  const rendered = review === undefined ? operatorRequestText(request, current, null, retractRendering(view, request))
+    : operatorReviewRequestText(request, current, reviewLink(review.repository, review.pullRequest), null, retractRendering(view, request));
   if (!wellFormedRequest(request, carrier, view.genesis.grant) || request.base !== approvalBase(view) || view.stop !== null
     || request.issuedAt > at || request.expiresAt > view.expires || view.operatorRequests.some(item => item.request.id === request.id)
     || review !== undefined && (!/^[A-Za-z0-9_.-]+\/[A-Za-z0-9_.-]+$/u.test(review.repository)
       || !Number.isSafeInteger(review.pullRequest) || review.pullRequest <= 0 || !/^[0-9a-f]{40}$/u.test(review.head))
     || (via === 'retract') !== (request.action === 'retract-turns')
     || request.action === 'retract-turns' && (scope !== 'action' || retractRefusal(view, request.updates!) !== null)
-    || !text.includes(review === undefined ? operatorRequestText(request, current, null, retractRendering(view, request))
-      : operatorReviewRequestText(request, current, reviewLink(review.repository, review.pullRequest), null, retractRendering(view, request)))
+    || !(text.includes(rendered) || text.includes(rendered.replace("this installation's end", "this trial's end")))
     || request.action === 'raise-caps' && (['maxCalls', 'maxReplies', 'maxTurns'] as const).some(key => request.limits![key] < view.limits[key])
     || request.action === 'renew-expiry' && !(request.expires! > view.expires) || scope !== undefined && scope !== 'action')
     throw Error('preview journal: operator request refused');
@@ -3962,15 +3965,15 @@ function project(view: JournalView, row: JournalRecord, system?: SystemCheck, ad
   if (row.kind === 'held-notice-intent') {
     const lastNotice = lastHeldNoticeAt(view, row.id);
     const heldCount = view.order.filter(item => item.accepted && item.held !== undefined && item.intent === undefined).length;
-    const legacyText = /^PREVIEW — I'm holding my answer to your message from [0-2][0-9]:[0-5][0-9]; it will follow or I'll tell you why$/u.test(row.text);
-    const countedText = new RegExp(`^PREVIEW — I'm holding ${heldCount} ${heldCount === 1 ? 'answer' : 'answers'}, including your message from [0-2][0-9]:[0-5][0-9]; it will follow or I'll tell you why$`, 'u').test(row.text);
+    const legacyText = /^(?:PREVIEW — )?I'm holding my answer to your message from [0-2][0-9]:[0-5][0-9]; it will follow or I'll tell you why$/u.test(row.text);
+    const countedText = new RegExp(`^(?:PREVIEW — )?I'm holding ${heldCount} ${heldCount === 1 ? 'answer' : 'answers'}, including your message from [0-2][0-9]:[0-5][0-9]; it will follow or I'll tell you why$`, 'u').test(row.text);
     if (!turn.accepted || !heldNoticeReason(turn.held) || turn.heldSince === undefined
       || row.at <= turn.heldSince + HELD_NOTICE_AFTER_MS || turn.intent !== undefined
       || turn.heldNoticeIntent !== undefined || view.replies >= view.limits.maxReplies
       || !legacyText && row.at < lastNotice + HELD_NOTICE_WINDOW_MS
       || row.chat !== view.genesis.chat || row.thread !== turn.thread || row.update !== turn.update
       || row.grant !== view.genesis.grant || !(legacyText || countedText || turn.requestedAction?.legacy === 'summary'
-        && /^PREVIEW — I'm holding the summary you asked for \(due [0-9-]{10} [0-2][0-9]:[0-5][0-9]\); it will follow or I'll tell you why$/u.test(row.text)))
+        && /^(?:PREVIEW — )?I'm holding the summary you asked for \(due [0-9-]{10} [0-2][0-9]:[0-5][0-9]\); it will follow or I'll tell you why$/u.test(row.text)))
       throw Error('preview journal: held notice intent order');
     const covered = (row.covers ?? []).map(id => view.turns.get(id));
     if (row.covers !== undefined && (!Array.isArray(row.covers) || new Set(row.covers).size !== row.covers.length
@@ -4429,7 +4432,7 @@ function project(view: JournalView, row: JournalRecord, system?: SystemCheck, ad
     if (row.heldReview) turn.heldReview = row.heldReview;
     if (row.approval) turn.approval = { ...row.approval };
     const conflict = view.conflicts.find(item => item.askedBy === (turn.askConflict ?? turn.id));
-    if (conflict && row.text === `PREVIEW — ${conflictQuestion(conflict)}`) conflict.asked = true;
+    if (conflict && row.text.replace(/^PREVIEW — /u, '') === conflictQuestion(conflict)) conflict.asked = true;
     if (row.promises?.some(promise => !row.text.includes(promise.quote) || promise.owner !== 'agent'
       || promise.waitsOn !== 'next-relevant-reply')) throw Error('preview journal: invalid agent promise');
     // The same `fulfillableCommitment` rule the answer frame uses, so the one load-bearing condition is never
@@ -4442,7 +4445,7 @@ function project(view: JournalView, row: JournalRecord, system?: SystemCheck, ad
       // text actually sent. A spoken account's disclosure is that reply's first sentence; a silent one
       // (`spoken: false`) records the same accounting and the reply must NOT open with it.
       const account = row.continuity, before = view.turns.get(account.prePauseInbound), frontier = continuityFrontier(turn.grounding);
-      const opens = row.text.startsWith(withDisclosure('PREVIEW — ', account.disclosure).trimEnd());
+      const opens = row.text.replace(/^PREVIEW — /u, '').startsWith(account.disclosure);
       if (!before || before.update >= turn.update || turn.requestedAction || !isJournalUpdate(account.summarizedThrough)
         || account.summarizedThrough >= turn.update || !frontier || frontier.through !== account.summarizedThrough
         || (account.basis ?? 'summary') !== frontier.basis || account.basis !== undefined && account.basis !== 'set-aside'
@@ -5311,8 +5314,12 @@ export function createJournalWorker(journal: ReturnType<typeof openPreviewJourna
       const reason = lead.limited?.reason ?? lead.approvalReason;
       const subject = reason === undefined || reason === 'worker' || !approval.limits ? null
         : raiseSubject(journal.view, approval.id, approval.base, reason, approval.limits);
+      // Existing challenges remain bound to their exact pre-label-removal rendering.
+      const legacySubject = reason === undefined || reason === 'worker' || !approval.limits ? null
+        : raiseSubject(journal.view, approval.id, approval.base, reason, approval.limits, true);
       if (!subject || challenge.request !== approval.id || challenge.base !== approval.base
-        || challenge.requestDigest !== subject.requestDigest || challenge.renderingDigest !== subject.renderingDigest) {
+        || challenge.requestDigest !== subject.requestDigest || challenge.renderingDigest !== subject.renderingDigest
+          && challenge.renderingDigest !== legacySubject?.renderingDigest) {
         journal.append({ kind: 'approval-decision', id: lead.id, request: approval.id, decision: act.decision, outcome: 'refused', at: ports.now() });
         continue;
       }
@@ -5380,9 +5387,9 @@ export function createJournalWorker(journal: ReturnType<typeof openPreviewJourna
     // A receipt proves the text was delivered, not that it answered: a delivered failure,
     // loss, holding or size notice leaves the message open with its real outcome (Rule 26).
     const notice = before.sent === undefined ? undefined : knownNonAnswer(before) ? outcome(before)
-      : replyBody(before) === TOO_LONG_REPLY_NOTICE ? 'too-long reply notice delivered'
-        : replyBody(before) === MEMORY_UNDECIDED_REPLY ? 'memory-not-recorded notice delivered'
-          : replyBody(before) === HOLDING_REPLY ? 'holding reply delivered' : undefined;
+      : replyBody(before)?.replace(/^PREVIEW — /u, '') === TOO_LONG_REPLY_NOTICE ? 'too-long reply notice delivered'
+        : replyBody(before)?.replace(/^PREVIEW — /u, '') === MEMORY_UNDECIDED_REPLY ? 'memory-not-recorded notice delivered'
+          : replyBody(before)?.replace(/^PREVIEW — /u, '') === HOLDING_REPLY ? 'holding reply delivered' : undefined;
     const [disposition, reference]: [ContinuityAccount['disposition'], string] = edit ? ['superseded', `your edit #${edit.update}`]
       : notice !== undefined ? ['pending', `${notice} as Telegram message ${before.sent}, not an answer`]
         : before.sent !== undefined ? ['addressed', `Telegram message ${before.sent}`]
@@ -5924,7 +5931,7 @@ export function createJournalWorker(journal: ReturnType<typeof openPreviewJourna
     };
     if (!valid(pair.first) || !valid(pair.second) || pair.first.source === pair.second.source
       || pair.first.quote === pair.second.quote) return undefined;
-    const encoded = `PREVIEW — ${conflictQuestion({ first: pair.first, second: pair.second })}`
+    const encoded = `${conflictQuestion({ first: pair.first, second: pair.second })}`
       .replaceAll('&', '&amp;').replaceAll('<', '&lt;').replaceAll('>', '&gt;');
     if (Buffer.byteLength(encoded) > 4096 || Array.from(encoded).length > 4096) return undefined;
     return { first: pair.first, second: pair.second };
@@ -5965,7 +5972,7 @@ export function createJournalWorker(journal: ReturnType<typeof openPreviewJourna
       + shown.join('\n')
       + (entries.length > shown.length ? `\nThere are ${entries.length - shown.length} older active items not shown.` : '');
     const fits = (body: string) => {
-      const encoded = encodeReply(`PREVIEW — ${body}`);
+      const encoded = encodeReply(body);
       return Buffer.byteLength(encoded) <= 4096 && Array.from(encoded).length <= 4096;
     };
     for (const item of entries.slice(0, 20)) {
@@ -5998,7 +6005,7 @@ export function createJournalWorker(journal: ReturnType<typeof openPreviewJourna
     const detail = changes.map(change => change.mode === 'correct'
       ? `Changed ${change.quote.trim().replace(/\s+/gu, ' ')} → ${change.replacement!.trim().replace(/\s+/gu, ' ')}`
       : 'Forgot the requested information').join('; ');
-    return `PREVIEW — ${detail}${/[.!?]$/u.test(detail) ? '' : '.'}`;
+    return `${detail}${/[.!?]$/u.test(detail) ? '' : '.'}`;
   };
   /** A saved packet is evidence of what the model saw, not proof of which input it used.
    * Older journal frames may have only the prepared Seven envelope, or no packet at all. */
@@ -6101,8 +6108,7 @@ export function createJournalWorker(journal: ReturnType<typeof openPreviewJourna
   const modelFailure = (item: Turn) => item.answer === MODEL_FAILURE_REPLY
     && (item.failureClass !== undefined || item.modelState === 'rejected');
   const sizeRefused = (item: Turn) => item.noticeClass === 'too-long-input';
-  const holdingText = (item: Turn, text: string) => item.intent === text
-    || item.continuity !== undefined && item.intent === withDisclosure(text, item.continuity.disclosure);
+  const holdingText = (item: Turn, text: string) => replyBody(item)?.replace(/^PREVIEW — /u, '') === text;
   const holdingReply = (item: Turn) => (holdingText(item, HOLDING_REPLY) || holdingText(item, CREDENTIAL_SHAPE_NOTICE))
     && item.replyChecks?.some(check => check.verdict === 'violation') === true;
   const knownNonAnswer = (item: Turn) => item.noticeClass !== undefined || modelFailure(item) || holdingReply(item);
@@ -6124,17 +6130,17 @@ export function createJournalWorker(journal: ReturnType<typeof openPreviewJourna
     return whole && whole.outcome.kind !== 'accepted' ? text.replace('delivery UNKNOWN', partialReplyLabel(whole)) : text;
   };
   const unsettledOutcome = (item: Turn, delivered: boolean) => delivered ? (lostNotice(item) ? 'loss notice delivered; model UNKNOWN'
-      : sizeRefused(item) ? item.intent === TOO_LONG_INPUT_NOTICE ? 'too-long notice Telegram API accepted'
+      : sizeRefused(item) ? item.intent?.replace(/^PREVIEW — /u, '') === TOO_LONG_INPUT_NOTICE ? 'too-long notice Telegram API accepted'
         : 'holding reply delivered in place of the too-long notice'
       : item.noticeClass ? 'holding reply delivered in place of the loss notice; model UNKNOWN'
-        : holdingReply(item) ? replyBody(item) === CREDENTIAL_SHAPE_NOTICE ? 'answer withheld: credential-shaped text; notice delivered'
+        : holdingReply(item) ? replyBody(item)?.replace(/^PREVIEW — /u, '') === CREDENTIAL_SHAPE_NOTICE ? 'answer withheld: credential-shaped text; notice delivered'
           : 'holding reply delivered after review violation'
           : modelFailure(item) ? `model failure notice delivered (${item.failureClass ?? 'rejected'})` : 'Telegram API accepted')
     : item.intent ? (lostNotice(item) ? 'loss notice delivery UNKNOWN; model UNKNOWN'
-      : sizeRefused(item) ? item.intent === TOO_LONG_INPUT_NOTICE ? 'too-long notice delivery UNKNOWN'
+      : sizeRefused(item) ? item.intent?.replace(/^PREVIEW — /u, '') === TOO_LONG_INPUT_NOTICE ? 'too-long notice delivery UNKNOWN'
         : 'holding reply delivery UNKNOWN in place of the too-long notice'
       : item.noticeClass ? 'holding reply delivery UNKNOWN; model UNKNOWN'
-        : holdingReply(item) ? replyBody(item) === CREDENTIAL_SHAPE_NOTICE ? 'answer withheld: credential-shaped text; notice delivery UNKNOWN'
+        : holdingReply(item) ? replyBody(item)?.replace(/^PREVIEW — /u, '') === CREDENTIAL_SHAPE_NOTICE ? 'answer withheld: credential-shaped text; notice delivery UNKNOWN'
           : 'holding reply delivery UNKNOWN after review violation'
           : modelFailure(item) ? `model failure notice delivery UNKNOWN (${item.failureClass ?? 'rejected'})` : 'delivery UNKNOWN')
     : item.heldNoticeIntent || item.limited ? 'answer pending'
@@ -7838,8 +7844,8 @@ export function createJournalWorker(journal: ReturnType<typeof openPreviewJourna
         const requestDecided = turn.memoryUndecided === true && turn.reminderDecided === true;
         let reply = turn.noticeClass === 'too-long-input' ? TOO_LONG_INPUT_NOTICE
           : turn.memoryPending && turn.memoryUndecided && !requestDecided ? MEMORY_UNDECIDED_REPLY
-          : memoryAcknowledgement(turn) ?? (turn.memoryPending && !requestDecided ? 'PREVIEW — I reviewed your memory request.'
-            : `PREVIEW — ${turn.answer?.replace(/^PREVIEW(?=$|[\s:—])(?:\s*[:—])?\s*/u, '') ?? UNKNOWN_ANSWER_NOTICE}`);
+          : memoryAcknowledgement(turn) ?? (turn.memoryPending && !requestDecided ? 'I reviewed your memory request.'
+            : `${turn.answer?.replace(/^PREVIEW(?=$|[\s:—])(?:\s*[:—])?\s*/u, '') ?? UNKNOWN_ANSWER_NOTICE}`);
         // Rule 110: a reply sent from a compacted context records its continuity account, and opens with the
         // fixed disclosure when that sentence is owed, on whatever text is finally sent (answer, loss, size or
         // holding notice). A silent account changes no text; its record still binds the text actually sent.
@@ -8076,7 +8082,7 @@ export function createJournalWorker(journal: ReturnType<typeof openPreviewJourna
               if (turn.revision?.state === 'complete' && turn.revision.text) {
                 let body = turn.revision.text.replace(/^PREVIEW(?=$|[\s:—])(?:\s*[:—])?\s*/u, '');
                 if (continuity && body.startsWith(continuity.disclosure)) body = body.slice(continuity.disclosure.length).trimStart();
-                const prose = actionHeader === undefined ? disclosed(`PREVIEW — ${body}`) : `${actionHeader}\n${body}`;
+                const prose = actionHeader === undefined ? disclosed(body) : `${actionHeader}\n${body}`;
                 const candidate = `${prose.trimEnd()}${resultLines.filter(line => !prose.includes(line)).join('')}`;
                 // The agent keeping its draft unchanged is its answer, not a new candidate: nothing to re-review.
                 // The same text with a newly declared investigation record is a new candidate (plan #104).
@@ -8130,7 +8136,7 @@ export function createJournalWorker(journal: ReturnType<typeof openPreviewJourna
               const cut = exciseNamedClaims(body, claims);
               withheld = { rules: named.rules, removed: cut.removed, unlocated: cut.unlocated };
               if (cut.removed.length) {
-                const candidate = actionHeader === undefined ? disclosed(`PREVIEW — ${cut.text}`) : `${actionHeader}\n${cut.text}`;
+                const candidate = actionHeader === undefined ? disclosed(cut.text) : `${actionHeader}\n${cut.text}`;
                 if (substantiveReply(cut.text) && !redact(candidate).count && !secretMaterialIn(candidate, heldValues) && fits(candidate)) {
                   scoped = candidate;
                   objection = named.findings.filter(finding => namedClaimsIn(finding.reason, body).length).map(finding => finding.reason).join(' ');
@@ -8622,7 +8628,7 @@ export function createJournalWorker(journal: ReturnType<typeof openPreviewJourna
         : group.reason === 'worker' || openApproval(journal.view, 'raise-caps', ports.now()) ? undefined : issueRaise(lead, group.reason);
       const link = approval?.challenge ? approvalLink(approval.challenge) : null;
       const yesRequest = group.stop || approval !== undefined || group.reason === 'worker' ? undefined : await limitedOperatorRequest(lead, group.reason);
-      const text = group.stop ? `PREVIEW — ${STOP_CONFIRM_TEXT}` : `${limitedAnswerText(journal.view, group.reason, group.turns.length)}${approval
+      const text = group.stop ? STOP_CONFIRM_TEXT : `${limitedAnswerText(journal.view, group.reason, group.turns.length)}${approval
         && group.reason !== 'worker' ? `\n\n${approvalRequestText(journal.view, group.reason)} ${link ? RAISE_LINK_HINT : RAISE_SURFACE_HINT}` : ''}${
         yesRequest ? `\n\n${yesRequest.text}` : ''}`;
       ports.checkOutbound(text);

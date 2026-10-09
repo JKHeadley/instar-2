@@ -89,8 +89,8 @@ export const createClaudeCodeSubscriptionRoute = () => ({kind:'Success',value:{i
     expect(prompt[0]).toContain('That is the first recorded launch');
     expect(prompt[0]).toMatch(/This run started 2026-\d\d-\d\d \d\d:\d\d P[DS]T; uptime \d+m\./u);
     // The burst intake admits every waiting update before reply work, so both are already received.
-    expect(prompt[0]).toContain('Operator messages received: 2 today, 2 in this trial');
-    expect(prompt[1]).toContain('My replies Telegram accepted: 1 today, 1 in this trial');
+    expect(prompt[0]).toContain('Operator messages received: 2 today, 2 so far');
+    expect(prompt[1]).toContain('My replies Telegram accepted: 1 today, 1 so far');
     expect(prompt[1]).toContain('Model attempts: 1 of 3 used, 2 left');
     expect(readFileSync(prompts, 'utf8').trim().split('\n').every(line =>
       !packetOf(line).sources.some(source => source.id === 'restart-handoff'))).toBe(true);
@@ -111,8 +111,8 @@ export const createClaudeCodeSubscriptionRoute = () => ({kind:'Success',value:{i
       .toContain('pending turns 0; held items 0; UNKNOWN model outcomes 0; UNKNOWN sends 0; lost-answer notices due 0');
     expect(packetOf(lines[3]).sources.some(source => source.id === 'restart-handoff')).toBe(false);
     const now = prompt[2];
-    expect(now).toContain('Operator messages received: 4 today, 4 in this trial (including the one being answered now)');
-    expect(now).toContain('My replies Telegram accepted: 2 today, 2 in this trial');
+    expect(now).toContain('Operator messages received: 4 today, 4 so far (including the one being answered now)');
+    expect(now).toContain('My replies Telegram accepted: 2 today, 2 so far');
     expect(now).toContain('Messages exchanged today: 6');
     expect(now).toContain('Model attempts: 2 of 6 used, 4 left');
     expect(now).toContain('on the authority "Justin, offline test"');
@@ -122,8 +122,8 @@ export const createClaudeCodeSubscriptionRoute = () => ({kind:'Success',value:{i
     expect(s.launches).toHaveLength(2);
     expect(s.launches[1].reason).toBe('cycle limit reached');
     // Status, read afterwards, agrees on the same restart and includes the fourth reply.
-    expect(s.self).toContain('Operator messages received: 4 today, 4 in this trial');
-    expect(s.self).toContain('My replies Telegram accepted: 4 today, 4 in this trial');
+    expect(s.self).toContain('Operator messages received: 4 today, 4 so far');
+    expect(s.self).toContain('My replies Telegram accepted: 4 today, 4 so far');
     expect(s.self).toContain('Messages exchanged today: 8');
     expect(s.self).toContain(now.match(/Last restart: [^.]*\./u)[0]);
     expect(s.self).toContain('ended'); // the latest launch has recorded its end

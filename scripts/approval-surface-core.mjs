@@ -49,20 +49,20 @@ export function checkChallenge(challenge, { operator, maxLifetime, now }) {
   return challenge;
 }
 
-const RAISE = /^Approve raising the (model call|reply|message) allowance from (\d{1,9}) to (\d{1,9})\? That adds (\d{1,9}) (model calls I may spend|replies I may send|messages I may take) in this trial\.$/u;
+const RAISE = /^Approve raising the (model call|reply|message) allowance from (\d{1,9}) to (\d{1,9})\? That adds (\d{1,9}) (model calls I may spend|replies I may send|messages I may take) (?:in this trial|for this agent)\.$/u;
 const EFFECTS = { 'model call': 'model calls I may spend', reply: 'replies I may send', message: 'messages I may take' };
 /** What the operator is shown, derived by the surface itself. A raise's wording must match the one
  * fixed template exactly and hash to the challenge's rendering digest; anything else is refused, so no
  * requester prose ever reaches the page. */
 export function renderChallenge(challenge, text) {
   if (challenge.action === 'emergency-stop') return { kind: 'stop', title: 'Stop this preview agent permanently?',
-    effect: 'It stops at once. Nothing more will be sent or spent in this trial, and it cannot be restarted from here.',
+    effect: 'It stops at once. Nothing more will be sent or spent in this installation, and it cannot be restarted from here.',
     approve: 'Stop now', decline: null };
   const match = typeof text === 'string' ? RAISE.exec(text) : null;
   check(match !== null && EFFECTS[match[1]] === match[5] && Number(match[3]) > Number(match[2])
     && Number(match[3]) - Number(match[2]) === Number(match[4]), 'request wording is not the fixed raise template');
   check(`sha256:${hex(text)}` === challenge.renderingDigest, 'request wording differs from the challenge');
-  return { kind: 'raise', title: text, effect: 'Approving lets this trial continue past its current allowance. Your saved messages are then answered. You can still stop the trial at any time.',
+  return { kind: 'raise', title: text, effect: 'Approving lets this installation continue past its current allowance. Your saved messages are then answered. You can still stop the agent at any time.',
     approve: 'Approve', decline: 'Decline' };
 }
 

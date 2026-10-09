@@ -125,7 +125,7 @@ export const createClaudeCodeSubscriptionRoute = () => ({ kind: 'Success', value
         ? { id: world.configuration.operatorSenderId, kind: 'person', adapter: 'telegram-bot-api:offline-test-endpoint' } : runner);
       if (mode !== 'summary-contradiction') {
         const reviewed = rows.find(row => row.role === 'reply-review').context;
-        expect(answerOf(reviewed.candidateReply)).toBe(`PREVIEW — ${reply}`);
+        expect(answerOf(reviewed.candidateReply)).toBe(`${reply}`);
         expect(reviewed).toMatchObject({
           operatorMessage: operatorText,
           audience: { surface: 'telegram-private-chat' },
@@ -187,7 +187,7 @@ export const createClaudeCodeSubscriptionRoute = () => ({ kind: 'Success', value
           'reply-review/decision/tolerated/fenced': mode === 'reply-contradiction' ? 2 : 1,
           'summary-review/decision/tolerated/fenced': 1 });
       if (mode === 'wrapped') {
-        expect(sends.map(send => answerOf(send.text))).toEqual([`PREVIEW — ${reply}`]);
+        expect(sends.map(send => answerOf(send.text))).toEqual([`${reply}`]);
         expect(view.summaries).toHaveLength(1);
         expect(view.summaryChecks.pass).toBe(1);
         // int11's reply verdict is one exact line, so no JSON wrapper is tolerated or recorded.
@@ -197,7 +197,7 @@ export const createClaudeCodeSubscriptionRoute = () => ({ kind: 'Success', value
         // Jev is unsure (0.5) on every rule, credential included: below Jev's confident credential line, so with
         // no review verdict the reply is sent once with the unavailable review recorded (plan #102). The summary
         // contradiction keeps its own hold, and nothing is sent there.
-        if (mode === 'reply-contradiction') expect(sends.map(send => answerOf(send.text))).toEqual([`PREVIEW — ${reply}`]);
+        if (mode === 'reply-contradiction') expect(sends.map(send => answerOf(send.text))).toEqual([`${reply}`]);
         else expect(sends).toHaveLength(0);
         expect(view.modelJsonShapes.counts).toMatchObject({
           [mode === 'reply-contradiction' ? 'reply-review/verdict/malformed/not-json'

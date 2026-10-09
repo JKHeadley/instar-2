@@ -172,7 +172,7 @@ it('records no second blocker for another instance of a settled action, and stil
     // One record for one limit, its single Rule 99 recheck intact, and the operator got the whole answer.
     expect(openBlockers(r.journal.view)).toHaveLength(1);
     expect(r.journal.view.rejectedObligations).toBe(0);
-    expect(r.sent.at(-1)).toBe(`PREVIEW — ${RESTATED}`);
+    expect(r.sent.at(-1)).toBe(`${RESTATED}`);
     expect(r.journal.view.order.at(-1)!.release?.withheld).toBeUndefined();
     expect(r.settledSeen.at(-1)).toMatchObject([{ claim: PAID_CLAIM, constraint: 'no-tools' }]);
   } finally { r.close(); }

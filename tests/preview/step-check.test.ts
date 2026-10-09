@@ -62,7 +62,7 @@ it('records pass and violation verdicts without changing sends, then replays the
     expect(answerStates(states)[0]).toContain('"memoryChanges":[]');
     expect(journal.view.stepChecks.get('answer:telegram:12345678:update:1')?.result?.verdict).toBe('violation');
     expect(journal.view.stepChecks.get('answer:telegram:12345678:update:2')?.result?.verdict).toBe('pass');
-    expect(sends).toEqual(['PREVIEW — I recorded a memory change.', 'PREVIEW — I recorded a memory change.']);
+    expect(sends).toEqual(['I recorded a memory change.', 'I recorded a memory change.']);
     journal.close();
     const replay = openPreviewJournal(path, key, undefined, undefined, true);
     expect(answerVerdicts(replay.view.stepChecks)).toEqual(['violation', 'pass']);

@@ -303,7 +303,7 @@ it('renews the trial end to the reviewed expiry on a yes, and refuses a renewal 
   worker.intake([message(1, 50, 'please extend the trial')]); await worker.drain();
   const request = latest(journal)!;
   expect(request.request.expires).toBe(SUBSCRIPTION_PREVIEW_EXPIRY);
-  expect(sent.at(-1)!.text).toContain('extend this trial\'s end');
+  expect(sent.at(-1)!.text).toContain('extend this installation\'s end');
   worker.intake([message(2, request.message! + 1, 'yes')]);
   expect(journal.view.expires).toBe(SUBSCRIPTION_PREVIEW_EXPIRY);
   expect(journal.view.expiryAuthority).toBe(operatorYesAuthority(request.request.id, latest(journal)!.approved!.reference));

@@ -77,7 +77,7 @@ const world = (root: string, opts: { bigSummary: boolean; decides: boolean }, cl
   return { journal, worker: createJournalWorker(journal, ports), calls, sent, offered, opts };
 };
 const tmp = (name: string) => realpathSync(mkdtempSync(join(tmpdir(), `preview-correction-stall-${name}-`)));
-const pushes = (sent: string[]) => sent.filter(text => text.startsWith('PREVIEW — You asked on'));
+const pushes = (sent: string[]) => sent.filter(text => text.startsWith('You asked on'));
 const turnOf = (w: ReturnType<typeof world>, text: string) => w.journal.view.order.find(turn => turn.text === text)!;
 
 /** The recorded sequence up to the cancel: garden logs carried by a summary near the summary prompt cap, one more

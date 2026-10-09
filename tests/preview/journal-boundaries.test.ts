@@ -300,7 +300,7 @@ describe('Rule 110: the first reply sent from a compacted context discloses it a
   };
   const garden = [...Array.from({ length: 29 }, (_, i) => `Update ${i}: ${'garden '.repeat(240)}`), 'The latest short message.'];
   const errands = [...Array.from({ length: 29 }, (_, i) => `Update ${i}: errands.`), plumber];
-  const disclosure = /^PREVIEW — Earlier conversation up to #29 is now summarized for me; your previous message \(#30, [^)]+\) was answered\. /u;
+  const disclosure = /^Earlier conversation up to #29 is now summarized for me; your previous message \(#30, [^)]+\) was answered\. /u;
 
   it('a context reduced to summary-plus-recent is a compaction even while the last message is still verbatim', async () => {
     const { dir, journal, worker, sent } = setup(7000, garden, () => 'Hi!');
@@ -316,12 +316,12 @@ describe('Rule 110: the first reply sent from a compacted context discloses it a
       const turn = journal.view.turns.get('telegram:12345678:update:31')!;
       expect(turn.continuity).toMatchObject({ prePauseInbound: 'telegram:12345678:update:30', summarizedThrough: 29,
         disposition: 'addressed', reference: 'Telegram message 30', grounding: turn.grounding!.packetSha256 });
-      expect(sent[0]!.startsWith(`PREVIEW — ${turn.continuity!.disclosure} `)).toBe(true);
+      expect(sent[0]!.startsWith(`${turn.continuity!.disclosure} `)).toBe(true);
       // The next reply owes no sentence: the seam and that message are already disclosed and answered.
       // The packet still tells the model its context is compacted, and the record is still written --
       // silently, so what the reply accounted for stays inspectable.
       worker.intake([update(32, 'And one more thing')]); await worker.drain();
-      expect(sent[1]).toBe('PREVIEW — Hi!');
+      expect(sent[1]).toBe('Hi!');
       expect(probe(worker, 'Hello').continuity).toEqual({ through: 29, lastInbound: 'telegram:12345678:update:32', state: 'addressed' });
       const silent = journal.view.turns.get('telegram:12345678:update:32')!;
       expect(silent.continuity).toMatchObject({ spoken: false, prePauseInbound: 'telegram:12345678:update:31',
@@ -352,8 +352,8 @@ describe('Rule 110: the first reply sent from a compacted context discloses it a
     try {
       summarize(tooLong.journal, 30, 'Errands and a plumber quote question.');
       tooLong.worker.intake([update(31, 'Hello again')]); await tooLong.worker.drain();
-      expect(tooLong.sent[0]).toMatch(/^PREVIEW — Earlier conversation up to #30 is now summarized for me; your previous message \(#30, [^)]+\) was answered\. x+ \(1\/2\)$/u);
-      expect(tooLong.sent[1]).toMatch(/^PREVIEW \(2\/2\) — x+$/u);
+      expect(tooLong.sent[0]).toMatch(/^Earlier conversation up to #30 is now summarized for me; your previous message \(#30, [^)]+\) was answered\. x+ \(1\/2\)$/u);
+      expect(tooLong.sent[1]).toMatch(/^\(2\/2\) — x+$/u);
       const turn = tooLong.journal.view.turns.get('telegram:12345678:update:31')!;
       expect(turn.continuity?.replyDigest).toBe(createHash('sha256').update(turn.intent!).digest('hex'));
       tooLong.journal.close();
@@ -388,9 +388,9 @@ describe('Rule 110: the first reply sent from a compacted context discloses it a
       summarize(revised.journal, 29, 'Twenty-nine garden updates.');
       revised.worker.intake([update(31, 'Hello again')]); await revised.worker.drain();
       const turn = revised.journal.view.turns.get('telegram:12345678:update:31')!;
-      expect(drafts).toEqual(['PREVIEW — Look in /Users/me/notes for it.']);
+      expect(drafts).toEqual(['Look in /Users/me/notes for it.']);
       expect(turn.release).toMatchObject({ review: 'violation', objections: ['raw_path'], revised: true });
-      expect(revised.sent[0]).toBe(withDisclosure('PREVIEW — It is in your notes folder.', turn.continuity!.disclosure));
+      expect(revised.sent[0]).toBe(withDisclosure('It is in your notes folder.', turn.continuity!.disclosure));
       expect(turn.continuity?.replyDigest).toBe(createHash('sha256').update(turn.intent!).digest('hex'));
       revised.journal.close();
       const reopened = openPreviewJournal(join(revised.dir, 'journal.encrypted'), key);
@@ -441,7 +441,7 @@ describe('Rule 110: the first reply sent from a compacted context discloses it a
           // The neighbour: a delivered reply is answered, and once the episode is disclosed that account stays
           // silent (plan #251), the shape live fill-36 and a6q recorded.
           expect(account).toMatchObject({ disposition: 'addressed', reference: `Telegram message ${before.sent}`, spoken: false });
-          expect(sent[2]).toBe('PREVIEW — Noted.');
+          expect(sent[2]).toBe('Noted.');
         }
         journal.close();
       } finally { rmSync(dir, { recursive: true, force: true }); }
@@ -489,7 +489,7 @@ describe('Rule 110: the first reply sent from a compacted context discloses it a
       expect(second.continuity).toMatchObject({ prePauseInbound: 'telegram:12345678:update:30', summarizedThrough: 29, disposition: 'addressed' });
       // Once delivered, the same frontier owes nothing more (the accepted-send positive).
       worker.intake([update(33, 'Thanks')]); await worker.drain();
-      expect(sent[2]).toBe('PREVIEW — Hi!');
+      expect(sent[2]).toBe('Hi!');
       journal.close();
     } finally { rmSync(dir, { recursive: true, force: true }); }
   });

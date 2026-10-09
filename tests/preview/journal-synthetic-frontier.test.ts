@@ -61,7 +61,7 @@ it('answers after a summary that ends on a fired reminder, and the journal reope
     expect(next.update).toBe(4);
     expect(next.grounding?.compactedThrough).toBe(due.update);
     expect(next.sent).toBeDefined();
-    expect(state.sent.at(-1)).toBe('PREVIEW — Noted.');
+    expect(state.sent.at(-1)).toBe('Noted.');
     journal.close();
     const reopened = openPreviewJournal(path, key);
     expect(reopened.view.turns.get(next.id)).toMatchObject({ reserved: true, answer: 'Noted.' });
@@ -184,7 +184,7 @@ it('runs a lookup turn after a summary that ends on a fired reminder: the lookup
     expect(next.lookup!.found.length).toBeGreaterThan(0);
     expect(next.grounding?.compactedThrough).toBe(due.update);
     expect(next.sent).toBeDefined();
-    expect(state.sent.at(-1)).toBe('PREVIEW — You wanted to call Priya.');
+    expect(state.sent.at(-1)).toBe('You wanted to call Priya.');
     journal.close();
     const reopened = openPreviewJournal(path, key);
     expect(reopened.view.turns.get(next.id)?.lookup).toEqual(next.lookup);

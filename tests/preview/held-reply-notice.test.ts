@@ -148,7 +148,7 @@ it('fences an uncertain limited answer and later releases the capped answer once
     raiseJournalCaps(second, { maxCalls: 3, maxReplies: 3, maxTurns: 3, authority: 'test operator', at: now + 1 });
     const resumed = createJournalWorker(second, { now: () => now + 2, stopped: () => false,
       model: async () => { throw Error('model repeated'); }, checkOutbound: () => {},
-      send: async input => { sends++; expect(input.expectedText).toBe('PREVIEW — answer'); return 15; } });
+      send: async input => { sends++; expect(input.expectedText).toBe('answer'); return 15; } });
     const before = resumed.probe('next');
     if (!('context' in before)) throw Error('expected a packet');
     const packet = JSON.parse(before.context);

@@ -30,7 +30,7 @@ it('requires the installed renewal route below the ceiling, and never turns the 
   expect(phoneRouteProof({ ...configured(true), expires: SUBSCRIPTION_PREVIEW_EXPIRY - 1 }).actions).toBe(true);
   expect(phoneRouteProof({ ...configured(false), expires: SUBSCRIPTION_PREVIEW_EXPIRY - 1 }).actions).toBe(false);
   for (const installed of [false, true]) expect(phoneRouteProof(configured(installed)).actions).toBeNull();
-  for (const expires of [undefined, null, 0, -1, '1791837600000', SUBSCRIPTION_PREVIEW_EXPIRY + 1])
+  for (const expires of [undefined, null, 0, -1, String(SUBSCRIPTION_PREVIEW_EXPIRY), SUBSCRIPTION_PREVIEW_EXPIRY + 1])
     expect(phoneRouteProof({ ...configured(true), expires }).actions).toBe(false);
   for (const ceiling of [0, -1, Number.NaN]) expect(prove(configured(true), ceiling).actions).toBe(false);
 });

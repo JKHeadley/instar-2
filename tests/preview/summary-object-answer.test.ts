@@ -202,7 +202,7 @@ function world(root: string, summaryCancel: (input: Input) => unknown, clock = {
   return { journal, worker: createJournalWorker(journal, ports), sent };
 }
 const tmp = (name: string) => realpathSync(mkdtempSync(join(tmpdir(), `preview-summaryobject-${name}-`)));
-const pushes = (sent: string[]) => sent.filter(text => text.startsWith('PREVIEW — You asked on'));
+const pushes = (sent: string[]) => sent.filter(text => text.startsWith('You asked on'));
 
 const drive = async (w: ReturnType<typeof world>) => {
   let id = 1;

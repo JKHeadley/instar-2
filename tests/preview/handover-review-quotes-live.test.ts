@@ -90,7 +90,7 @@ it('a genuinely bad reply is still objected to and held: the same slip on a real
   // Live 2026-10-04: the review of "I couldn't record that memory change. Please send it again." had the same
   // unescaped quotes in reasoning; refused, it became an unchecked release. Read now, its holding objection stands.
   const earlierRun = ports([earlier], EARLIER_RULES);
-  expect(await checkReply('PREVIEW — I couldn\'t record that memory change. Please send it again.', 'earlier', earlierRun.port))
+  expect(await checkReply('I couldn\'t record that memory change. Please send it again.', 'earlier', earlierRun.port))
     .toEqual({ outcome: 'violation', path: 'subscription' });
   const objection = earlierRun.recorded.at(-1)!;
   expect(objection.ruleIds).toEqual(['claims_blocked', 'unrecorded_blocker', 'self_state_claim']);
