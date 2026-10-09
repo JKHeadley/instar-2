@@ -32,5 +32,5 @@ Prompt finding: fb5fa7e706c8 | protocol-literal | Existing operator-history grou
 ## Closing block
 
 simplestRobustRoute: Update the existing reviewed expiry pair and existing text producers/readers. Add no service, store or gate. Compatibility alternatives prevent old durable notices and signed approvals from becoming unreadable after a presentation-only update. Existing start, expiry, stop, spend, ownership and durable-send guards stay in place; no autonomous-completion claim is made.
-80/20: Author submission covering the implementation, both design-version entries, and the follow-up replay/crash assertion corrections. Targeted checks and remaining platform evidence are listed in the report for independent landing review.
+80/20: Author submission covering the implementation, both design-version entries, and the follow-up replay/crash and shared-audience historical-fixture assertion corrections. Targeted checks and remaining platform evidence are listed in the report for independent landing review.
 VERDICT: author submission; this record asserts no independent verdict — the review desk records its own

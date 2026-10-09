@@ -126,7 +126,7 @@ describe('P14-NF-76/77/78: recorded live shapes (fixture captured from a copy of
     expect(answered.dispositions).toEqual([expect.objectContaining({ objection: 'sensitive_disclosure', decision: 'accept' })]);
     expect(answered.text).not.toContain('5521');
     expect(answered.text.trim().length).toBeGreaterThan(0);
-    expect(check.candidate).toBe(`${answered.text}`);
+    expect(check.candidate).toBe(`PREVIEW — ${answered.text}`);
     expect(check.rules).toEqual([...REVIEW_HOLDING_RULES]);
     const verdict = parseReplyReviewVerdict(decisionValue(check), check.rules);
     expect(verdict.findings!.find(item => item.rule === 'sensitive_disclosure')!.verdict).toBe('pass');
@@ -311,7 +311,7 @@ describe('P14-NF-77: a shared audience is released only on a completed review (u
       return { sends, escalations, turn: last };
     } finally { rmSync(root, { recursive: true, force: true }); }
   };
-  const HOLDING = 'PREVIEW — I need to check that answer before I can send it.';
+  const HOLDING = 'I need to check that answer before I can send it.';
 
   it('a short exact quoted sentence is removed after a confirmed violation; the long sentence is the control', async () => {
     const short = await runGroup('Code: 5521.');
