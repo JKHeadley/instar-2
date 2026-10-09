@@ -3,7 +3,7 @@
 Subject base: 41e10082f6dc0bf4037f0d233ae7e67ffe0cd6cc
 Review state: open
 Reviewed content: none
-Outcome: The composed answer, harness-tool and native prompts and both capability-briefing paths identify the agent as Instar in its current installation; the stop page no longer calls it a preview agent. Actual limits and protocols remain intact. Verify the existing assertion repair at the consumer.
+Outcome: The composed answer, harness-tool and native prompts and both capability-briefing paths identify the agent as Instar in its current installation; the stop page no longer calls it a preview agent. Actual limits and protocols remain intact. Verify the existing assertion repair at the consumer. Update the subscription consumer’s current-policy digest assertion for the changed prompt; retain its thinking-environment exclusion checks.
 Affected rules: 1, 26, 34, 36, 37, 44, 45, 49, 74, 80, 82, 84, 98, 101, 102, 110, 111, 113, 116
 Affected floors: secrets — unchanged credential handling and refusal; spend cap — same finite limits, reservations and UNKNOWN charges; stop — unchanged admission and permanent-stop action; no duplicate sends — unchanged durable intent and receipt replay; durable intake — unchanged encrypted journal and accepted messages
 Operator questions: none

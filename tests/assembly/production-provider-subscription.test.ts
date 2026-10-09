@@ -109,10 +109,10 @@ it('spawns the synthetic subscription CLI with exact bytes, args and allowlisted
 // were held. MAX_THINKING_TOKENS=0 is the pinned CLI's env-only thinking-off control.
 // The conversation digest is int11's policy (reviewer-compact-call and related fields);
 // the live frozen14 build pins sha256:557a62fa…, so an int11 switch needs a new record.
-const RECORDED_DIGESTS = { 'preview-decision-system-v2': 'sha256:234293e8e209f210b23cdcf5322202065766dfe64f532f85bbea69486c0260b4',
-  // 2026-10-04 flat answer protocol (plan #491: the runner builds the Decision); its predecessor sha256:aced65e6…
-  // (the 2026-09-28 declaration-slot prompt, itself after efe69876…) needs a policy-successor record.
-  [SUBSCRIPTION_CONVERSATION_FRAMING]: 'sha256:5817ae4bda9396f7f27a957b287c97b4965322128a03c401bc415166594e2255' } as const;
+const CURRENT_DIGESTS = { 'preview-decision-system-v2': 'sha256:234293e8e209f210b23cdcf5322202065766dfe64f532f85bbea69486c0260b4',
+  // 2026-10-09 agent identity repair retains the flat answer protocol.
+  // The preceding sha256:5817ae4b… policy needs the existing policy-successor record.
+  [SUBSCRIPTION_CONVERSATION_FRAMING]: 'sha256:b746a83d18e99f08a94f0f6c8efe84e7d086e2f44ed716be6f3114ba51ac234b' } as const;
 for (const conversation of [false, true]) it(`sends thinking off on the ${conversation ? 'conversation' : 'decision'} framing, args unchanged`, async () => {
   const f = fixture({ conversation });
   expect((await value(createClaudeCodeSubscriptionRoute(f.input)).invoke('request', f.bounds)).state).toBe('complete');
@@ -123,15 +123,15 @@ for (const conversation of [false, true]) it(`sends thinking off on the ${conver
   expect(model[0].args).toEqual((conversation ? subscriptionConversationPolicy : subscriptionInvocationPolicy)(f.input.model).args);
   expect(model[0].args.some((arg: string) => /thinking|effort/iu.test(arg))).toBe(false);
 });
-it('keeps both recorded activation policy digests; a policy-borne thinking field would void the activation', () => {
+it('keeps both current activation policy digests; a policy-borne thinking field would void the activation', () => {
   const f = fixture({ conversation: true }), model = 'claude-sonnet-5';
-  for (const [framing, digest] of Object.entries(RECORDED_DIGESTS)) {
-    const { policy } = subscriptionPolicyFor(model, framing as keyof typeof RECORDED_DIGESTS);
+  for (const [framing, digest] of Object.entries(CURRENT_DIGESTS)) {
+    const { policy } = subscriptionPolicyFor(model, framing as keyof typeof CURRENT_DIGESTS);
     expect(hash(policy)).toBe(digest);
     expect(Object.keys(policy)).not.toContain('MAX_THINKING_TOKENS');
     expect(hash({ ...policy, ...SUBSCRIPTION_THINKING_ENV })).not.toBe(digest);
   }
-  const live = { ...f.input.activation, model, invocationPolicyDigest: RECORDED_DIGESTS[SUBSCRIPTION_CONVERSATION_FRAMING] };
+  const live = { ...f.input.activation, model, invocationPolicyDigest: CURRENT_DIGESTS[SUBSCRIPTION_CONVERSATION_FRAMING] };
   expect(() => validateSubscriptionActivation(live, f.input.profile, model, 1000, SUBSCRIPTION_CONVERSATION_FRAMING)).not.toThrow();
   const moved = { ...live, invocationPolicyDigest: hash({ ...subscriptionConversationPolicy(model), ...SUBSCRIPTION_THINKING_ENV }) };
   expect(() => validateSubscriptionActivation(moved, f.input.profile, model, 1000, SUBSCRIPTION_CONVERSATION_FRAMING))
