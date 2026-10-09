@@ -5,7 +5,7 @@ export function credentialDisplayLabel(record: { readonly kind: string; readonly
   if (record.displayLabel?.trim()) return record.displayLabel.trim();
   switch (record.kind) {
     case 'activation': return 'your activation';
-    case 'subscription-login': return `your Claude subscription sign-in (${record.identity})`;
+    case 'subscription-login': return `your subscription sign-in (${record.identity})`;
     case 'telegram-bot-token': return 'your Telegram bot token';
     case 'api-key': return 'your API key';
     default: return 'your stored credential';
