@@ -2,13 +2,14 @@
 // one of accepted, refused or unknown; infrastructure notices never speak as the agent.
 import { expect, it } from 'vitest';
 import { spawn, spawnSync } from 'node:child_process';
-import { mkdtempSync, realpathSync, rmSync } from 'node:fs';
+import { mkdtempSync, readFileSync, realpathSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
-import { join } from 'node:path';
+import { join, resolve } from 'node:path';
 import { createJournalWorker, openPreviewJournal, sendOutcomeCounts, MODEL_FAILURE_REPLY } from './journal-test-worker.js';
 import { outboundSigner, settleSendOutcome, type SendOutcome } from './outbound-provenance.js';
 import { classifyTelegramSend } from './telegram-send-outcome.mjs';
 import { createServer } from 'node:net';
+import { loopHealth } from './obligations.js';
 
 const key = new Uint8Array(32).fill(7);
 const genesis = { kind: 'genesis' as const, bot: '12345678', chat: '7654321', operator: '7654321', grant: 'grant:preview',
@@ -17,6 +18,64 @@ const genesis = { kind: 'genesis' as const, bot: '12345678', chat: '7654321', op
 const update = (id: number, text = `question ${id}`) => ({ update_id: id,
   message: { chat: { id: 7654321, type: 'private' }, from: { id: 7654321 }, text } });
 const root = () => realpathSync(mkdtempSync(join(tmpdir(), 'preview-send-outcome-')));
+
+// D1c, update 46039703: the live answer already contained its finished follow-up, but the
+// bridge collapsed all native fetch failures to UNKNOWN. Replay its bytes through the real
+// bridge and journal. The local provider exercises both connection refusal and lost receipt.
+it.each(['real-connect-recovery', 'real-lost-receipt'])(
+  'recorded D1c follow-up through %s preserves delivery and no-duplicate boundaries', async mode => {
+    const dir = root();
+    const fixture = JSON.parse(readFileSync(new URL('./fixtures/deferral-send-failure-2026-10-08.json', import.meta.url), 'utf8')) as {
+      update: number; deferredUpdate: number; request: string; acknowledgement: string; quote: string;
+      greeting: string; report: string; candidate: string; sendOutcome: { reason: string } };
+    let now = 1791501522043;
+    const journal = openPreviewJournal(join(dir, 'journal.encrypted'), key, { ...genesis, loopRevisitMs: 15 * 60_000 });
+    let sends = 0, answers = 0;
+    try {
+      const worker = createJournalWorker(journal, { now: () => now, stopped: () => false, checkOutbound: () => {},
+        model: async input => input.id.startsWith('obligation:')
+          ? JSON.stringify({ outcome: 'report', report: fixture.report })
+          : input.id.startsWith('summary:')
+            ? JSON.stringify({ summary: 'Earlier turns.', people: [], commitments: [], closed: [], memory: [] })
+            : JSON.stringify({ reply: answers++ === 0 ? fixture.acknowledgement : fixture.greeting, memory: [],
+              ...(answers === 1 ? { openLoops: [{ kind: 'deferral', quote: fixture.quote, waitsOn: 'nothing' }] } : {}) }),
+        send: async input => {
+          sends++;
+          if (sends === 1) return 1;
+          expect(input.expectedText).toBe(fixture.candidate);
+          const count = join(dir, 'count.json');
+          const request = Buffer.from(JSON.stringify({ method: 'sendMessage', body: { chat_id: input.chat,
+            text: input.text, parse_mode: 'HTML' }, timeoutMs: 10_000 })).toString('base64url');
+          const response = JSON.stringify({ ok: true, result: { message_id: 2, chat: { id: Number(input.chat) },
+            text: input.expectedText } });
+          const child = spawnSync(process.execPath, ['--import', resolve('tests/assembly/telegram-bot-api-round6-transport.mjs'),
+            resolve('src/assembly/telegram-bot-api-bridge.mjs'), request], { input: '12345678:AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA',
+            encoding: 'utf8', timeout: 15_000, env: { ...process.env, INSTAR_ROUND6_FAILURE: mode,
+              INSTAR_ROUND6_COUNT_FILE: count, INSTAR_ROUND6_RESPONSE_BASE64: Buffer.from(response).toString('base64') } });
+          expect(child.status, child.stderr).toBe(0);
+          expect(JSON.parse(readFileSync(count, 'utf8'))).toMatchObject({
+            fetches: mode === 'real-connect-recovery' ? 2 : 1, requests: 1 });
+          return classifyTelegramSend(JSON.parse(child.stdout), { chat: input.chat, expectedText: input.expectedText });
+        } });
+      worker.intake([update(fixture.deferredUpdate, fixture.request)]); await worker.drain();
+      now += 25 * 60_000;
+      await worker.workObligations();
+      expect(loopHealth(journal.view, now).awaitingDelivery).toBe(1);
+      expect(sends).toBe(1); // no unsolicited message
+      worker.intake([update(fixture.update, 'hi')]); await worker.drain();
+      expect(sends).toBe(2);
+      expect(loopHealth(journal.view, now)).toMatchObject({ awaitingDelivery: 0,
+        deliveryUnknown: mode === 'real-connect-recovery' ? 0 : 1 });
+      expect(journal.view.order.at(-1)?.sent).toBe(mode === 'real-connect-recovery' ? 2 : undefined);
+      if (mode === 'real-lost-receipt')
+        expect(journal.view.sendOutcomes.at(-1)?.reason).toBe(fixture.sendOutcome.reason);
+      journal.close();
+      const reopened = world(dir, () => { throw Error('send repeated'); });
+      await reopened.worker.drain();
+      expect(reopened.seen).toHaveLength(0);
+      reopened.journal.close();
+    } finally { journal.close(); rmSync(dir, { recursive: true, force: true }); }
+  }, 60_000);
 
 function world(dir: string, send: (input: { target?: string; provenance?: unknown }) => number | null | SendOutcome) {
   const journal = openPreviewJournal(join(dir, 'journal.encrypted'), key, genesis);
