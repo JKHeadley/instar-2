@@ -15,7 +15,7 @@ Undo and recovery: Revert this repair before use to restore the previous reader.
 Multi-machine posture: The offline fixtures and migration files are machine-local. Existing source stop, lease, sealed storage, audience and one-use lineage checks remain the authority across machines; this adds no new state or replication behavior.
 Layer below: Inspected signed accepted-reply projection, old encrypted fact/capture export, journal import and replay, activation authority extension bounds, launcher renewal admission, recorded K11a inputs and current briefing derivation. Verified historical reply prefix from origin/main, rather than inventing a fixture spelling.
 Bug class: durability
-Bug evidence: reproducer=/Users/dabombstudio/.instar/agents/echo/.instar/lanes/sb-w4-agentready-repair-PROGRESS.md; restart=/Users/dabombstudio/.instar/agents/echo/.instar/lanes/sb-w4-agentready-repair-PROGRESS.md
+Bug evidence: reproducer=tests/preview/journal-migrate.test.ts; restart=/Users/dabombstudio/.instar/agents/echo/.instar/lanes/sb-w4-agentready-repair-evidence/migration-final.json
 Hook bypass: none
 Convergence: none
 Decision: repair-current-historical | Preserve old captured bytes and distinguish historical deliveries from new rendering; add real current K11a answer/judge captures instead of editing historical inputs | reported=/Users/dabombstudio/.instar/agents/echo/.instar/lanes/sb-w4-agentready-repair-PROGRESS.md
