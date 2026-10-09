@@ -20,6 +20,7 @@ Hook bypass: none
 Convergence: none
 Decision: w4-credname-repair-124824-neutral-fallback | use the review's provider-neutral fallback and retain explicit labels; this fixes the false Codex provider claim without a classifier or new registry | reported=/Users/dabombstudio/.instar/agents/echo/.instar/lanes/w4-credname-repair-124824-PROGRESS.md
 Prompt review: Only the credential label supplied in existing review facts changes. No prompt question, verdict parser, dispatch, acceptance, escalation or refusal logic changes. Existing captured proof-room replays exercise updates 715673352, 715673353 and 6232017, preserving recorded answer bodies, Jev uncertainty, review PASS/VIOLATION and uncertain revision behavior. This is recorded-shape replay, not a fresh model judgment or live-channel completion claim.
+Register maintenance: The desk's supplied rehash tool refreshed the existing journal-agent-resources owner-reference hash, and build-register replay regenerated generated/ from commit 4319c050a81c953bff9fc52ad947ac2856634152. The repin chain found no inventory changes. These are source-pin refreshes required by the repair brief, not changes to registry membership or authority.
 
 ## Closing block
 
