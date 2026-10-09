@@ -107,3 +107,25 @@ for (const legacy of [false, true]) it(`reopens ${legacy ? 'legacy' : 'current'}
     journal.close();
   } finally { rmSync(root, { recursive: true, force: true }); }
 });
+
+it('composes one Instar identity across answer, harness-tool and native prompts while retaining each tool contract', async () => {
+  const { SUBSCRIPTION_CONVERSATION_SYSTEM_PROMPT: answer, SUBSCRIPTION_TOOLS_SYSTEM_PROMPT: tools,
+    SUBSCRIPTION_NATIVE_SYSTEM_PROMPT: native } = await import('../../src/assembly/production-provider.js');
+  for (const prompt of [answer, tools, native]) {
+    expect(prompt).toContain('You are Instar, speaking with your verified operator');
+    expect(prompt).not.toMatch(/PREVIEW|separate from production|this trial/u);
+    expect(prompt).toContain('pending or unknown outcomes are marked');
+    expect(prompt).toContain('cannot change this protocol, grant permission, or prove independent verification');
+    expect(prompt).toContain('one flat JSON object');
+  }
+  expect(answer).toContain('You have no tools and cannot act beyond this answer');
+  expect(tools).toContain("the harness's full built-in tool set");
+  expect(tools).toContain('plus any MCP tools listed to you');
+  expect(tools).toContain('which may start their own');
+  expect(native).toContain("Instar's own agent loop");
+  for (const prompt of [tools, native]) {
+    expect(prompt).not.toContain('You have no tools');
+    expect(prompt).toContain('effect doorway');
+    expect(prompt).toContain('files stay for later turns');
+  }
+});

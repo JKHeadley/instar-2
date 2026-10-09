@@ -55,7 +55,7 @@ const EFFECTS = { 'model call': 'model calls I may spend', reply: 'replies I may
  * fixed template exactly and hash to the challenge's rendering digest; anything else is refused, so no
  * requester prose ever reaches the page. */
 export function renderChallenge(challenge, text) {
-  if (challenge.action === 'emergency-stop') return { kind: 'stop', title: 'Stop this preview agent permanently?',
+  if (challenge.action === 'emergency-stop') return { kind: 'stop', title: 'Stop this agent permanently?',
     effect: 'It stops at once. Nothing more will be sent or spent in this installation, and it cannot be restarted from here.',
     approve: 'Stop now', decline: null };
   const match = typeof text === 'string' ? RAISE.exec(text) : null;

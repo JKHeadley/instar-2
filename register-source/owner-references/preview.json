@@ -7,7 +7,7 @@
       "stage": "build",
       "artifact": {
         "path": "tests/preview/journal-agent.test.ts",
-        "hash": "sha256:2c9ef778f459a8baf281731537ed05c1f094804f53dcd7c6d57c7d3d4d41932e"
+        "hash": "sha256:11a0f585914a4fdb97bfbec119d9fc72d8a683549a1cf5b599b9a81511ec3fc3"
       }
     },
     {
@@ -15,7 +15,7 @@
       "stage": "build",
       "artifact": {
         "path": "tests/preview/journal-memory-correction.test.ts",
-        "hash": "sha256:142a1ef30c2010852a89810c6e32bc289491281a54c423db2d7b14d5ce9e48cc"
+        "hash": "sha256:9ea2c0069c88a38101bb77e6af17eb970e6ac5c6a9bd682a83ae4c6ba72eb67b"
       }
     },
     {
@@ -23,7 +23,7 @@
       "stage": "build",
       "artifact": {
         "path": "tests/preview/status-command.test.ts",
-        "hash": "sha256:d837a7540bf3b15f48ff6af186ed353566e1cae3ee2a33a01b15a570affb6983"
+        "hash": "sha256:3959a1dcca1154fb4df6cbb896cba433671f32c5b01666e86261b79fa4116d4a"
       }
     },
     {
@@ -31,7 +31,7 @@
       "stage": "build",
       "artifact": {
         "path": "tests/preview/journal-dated-memory.test.ts",
-        "hash": "sha256:bd88d89f7683f30cf95287abbb714c14a9f62188b6dd72c636114ca5ad6d9edb"
+        "hash": "sha256:981184b838adf39e182433b3aa3b0e1aac1f9481a111791eeb40e25de18bba4f"
       }
     },
     {
@@ -39,7 +39,7 @@
       "stage": "build",
       "artifact": {
         "path": "tests/preview/journal-requested-action.test.ts",
-        "hash": "sha256:1f0d4ac5ac5a17fad235f907ed1915a07c85fd5ef2c877db742716276c486426"
+        "hash": "sha256:e449e8c5ab11f7c207e30e51ac6eb3a803e0d01a1d3b6f66e3ea45c5dcd920cc"
       }
     },
     {
@@ -47,7 +47,7 @@
       "stage": "build",
       "artifact": {
         "path": "tests/preview/journal-obligations.test.ts",
-        "hash": "sha256:5a4ecd9e332d895b91489fc34da04612b3ee899e234fff19b34ba0abc007355d"
+        "hash": "sha256:05571b90980b5c4b3fa0f54b311634675ba81f29c7e75f6d539c6bf0e7a42f66"
       }
     },
     {
@@ -55,7 +55,7 @@
       "stage": "build",
       "artifact": {
         "path": "tests/preview/journal-spend-cap.test.ts",
-        "hash": "sha256:3eccd30c04aad2b9c21d4283b1595ce5918fe4e5cf7e5982e1a44bdbf5d0aa2f"
+        "hash": "sha256:38390029e069738e7dc3c8d636dc8d07df45698db201896237aed09ad253e35b"
       }
     },
     {
@@ -63,7 +63,7 @@
       "stage": "build",
       "artifact": {
         "path": "tests/preview/reply-check.test.ts",
-        "hash": "sha256:ddf607bcec11f6db106069179803bb28fe83acc68f65678536b7d86d02cca344"
+        "hash": "sha256:968fbb467652a70570fb66ab8dd1177d74b215ba5768f798ede79f9cb43b183f"
       }
     },
     {
@@ -119,7 +119,7 @@
       "stage": "build",
       "artifact": {
         "path": "tests/preview/journal-agent-resources.test.ts",
-        "hash": "sha256:7534be6f43d1b9e5a172eb540b36651e833868414c1691f280bfbc58b3b4c024"
+        "hash": "sha256:0313476e7a40c3e1eefbd0b2a0a38496b78284ff3df0af5cddc47121c5b49c6a"
       }
     }
   ],

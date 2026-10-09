@@ -38,13 +38,13 @@ const observation = { reference: profile.activationReference, reviewedHead: 'bl-
 const conversation = (record, p = profile, now = NOW) =>
   validateSubscriptionActivation(record, p, model, now, SUBSCRIPTION_CONVERSATION_FRAMING);
 
-it('pins the renewed expiry and leaves every invocation policy digest unchanged', () => {
+it('pins the reviewed expiry and identity policy while keeping expiry out of invocation policies', () => {
   expect(SUBSCRIPTION_PREVIEW_EXPIRY).toBe(Date.UTC(2026, 10, 12, 21, 40));
   expect(SUBSCRIPTION_PREVIEW_EXPIRY - PRIOR_EXPIRY).toBe(31 * 24 * 3600 * 1000 + 3600 * 1000);
-  // The live-fix conversation policy digest for claude-sonnet-5 (int11 was sha256:efe69876…; the 2026-09-28
-  // declaration-slot system prompt needs a policy-successor record). The policy never carries the expiry.
+  // The identity wording changes the policy, so existing installations need a policy-successor record.
+  // The expiry itself never enters an invocation policy.
   expect(encoded(subscriptionConversationPolicy(model)).hash)
-    .toBe('sha256:5817ae4bda9396f7f27a957b287c97b4965322128a03c401bc415166594e2255');
+    .toBe('sha256:b746a83d18e99f08a94f0f6c8efe84e7d086e2f44ed716be6f3114ba51ac234b');
   expect(JSON.stringify([subscriptionConversationPolicy(model), subscriptionInvocationPolicy(model)]))
     .not.toMatch(new RegExp(`${PRIOR_EXPIRY}|${SUBSCRIPTION_PREVIEW_EXPIRY}`));
 });
@@ -360,4 +360,28 @@ it.runIf(prior)('the prior live build refuses the renewed record, and reads the 
   } finally {
     rmSync(root, { recursive: true, force: true });
   }
+}, 30_000);
+
+it('migrates the actual pre-repair identity policies through the existing successor for all three framings', async () => {
+  const root = realpathSync(mkdtempSync(join(tmpdir(), 'agentready-policy-')));
+  try {
+    const old = await import(historicalModule(root, '0c936d4b', 'src/assembly/production-provider.ts'));
+    const next = await import('../../src/assembly/production-provider.js');
+    for (const framing of [next.SUBSCRIPTION_CONVERSATION_FRAMING, next.SUBSCRIPTION_TOOLS_FRAMING, next.SUBSCRIPTION_NATIVE_FRAMING]) {
+      const predecessor = { ...current, expiresAt: SUBSCRIPTION_PREVIEW_EXPIRY,
+        invocationPolicyDigest: encoded(old.subscriptionPolicyFor(model, framing).policy).hash };
+      const bytes = JSON.stringify(predecessor);
+      expect(() => next.validateSubscriptionActivation(predecessor, profile, model, NOW, framing)).toThrow('artifact or policy differs');
+      const { record, profile: changedProfile } = renewActivation({ current: predecessor, currentBytes: bytes,
+        profile, observation, now: NOW, framing, policySuccessor: true });
+      expect(changedProfile).toBeNull();
+      expect(record).toEqual({ ...predecessor, ...observation,
+        invocationPolicyDigest: encoded(next.subscriptionPolicyFor(model, framing).policy).hash,
+        previousInvocationPolicyDigest: predecessor.invocationPolicyDigest,
+        predecessor: { reference: predecessor.reference, digest: `sha256:${createHash('sha256').update(bytes).digest('hex')}` } });
+      expect(() => next.validateSubscriptionActivation(record, profile, model, NOW, framing)).not.toThrow();
+      expect(() => old.validateSubscriptionActivation(record, profile, model, NOW, framing)).toThrow('artifact or policy differs');
+      expect(JSON.stringify(predecessor)).toBe(bytes);
+    }
+  } finally { rmSync(root, { recursive: true, force: true }); }
 }, 30_000);

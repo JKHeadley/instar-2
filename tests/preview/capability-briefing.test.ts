@@ -102,3 +102,20 @@ it('keeps the purpose and pillars verbatim and refuses either changed excerpt af
       : read(path), SOURCE_PINS, limits)).toThrow(`source excerpt ${excerpt.id} changed`);
   }
 });
+
+it('briefs the installation identity with and without the generated register, preserving tool and runtime limits', () => {
+  for (const tools of [false, true]) for (const available of [false, true]) {
+    const read = available ? (path: string) => readFileSync(path, 'utf8') : () => { throw Error('absent'); };
+    const { text } = capabilityBriefing(read, { ...limits, tools });
+    expect(text).toContain("This is Instar in the operator's direct Telegram chat and its topics.");
+    expect(text).not.toMatch(/PREVIEW trial|This trial|Instar 2\.0/u);
+    expect(text).toContain(`at most ${limits.providerAttempts} model attempts, ending at epoch ms ${limits.expiresAt}`);
+    expect(text).toContain('Charges, and unconfirmed calls or deliveries, are recorded unknown.');
+    expect(text).toContain('Production safeguards are incomplete.');
+    if (tools) {
+      expect(text).not.toContain('You have no tools');
+      expect(text).toContain("doorway\'s four tests");
+    } else expect(text).toMatch(/no tools/u);
+    expect(text.includes('capability briefing is unavailable')).toBe(!available);
+  }
+});

@@ -110,7 +110,7 @@ it('offers the raise on the approval page while the chat answer is inhibited, an
   // The page lists the standing stop first, then the raise, in the surface's own fixed wording.
   const index = t.call('GET', '/');
   expect(index.status).toBe(200);
-  expect(index.body.indexOf('Stop this preview agent permanently?')).toBeLessThan(index.body.indexOf('allowance from 1 to 2'));
+  expect(index.body.indexOf('Stop this agent permanently?')).toBeLessThan(index.body.indexOf('allowance from 1 to 2'));
   expect(index.headers['content-security-policy']).toContain("default-src 'none'");
   const page = t.call('GET', `/c/${nameOf(challenge.id)}`).body;
   expect(page).toContain(approvalRequestText(t.journal.view, 'calls'));

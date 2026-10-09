@@ -247,7 +247,7 @@ it('still serves the live recorded answers after the guidance rewording', async 
   const note = second.sources.find(item => item.id === 'capability-note')!;
   expect(note.text).toContain('- preview-conversation: ');
   expect(note.text).toContain('Nothing unlisted is available: no tools');
-  expect(note.text).toContain('This trial allows at most');
+  expect(note.text).toContain('This installation allows at most');
 }, 120_000);
 
 it('leaves the measured headroom the twenty-turn conversation needs', () => {

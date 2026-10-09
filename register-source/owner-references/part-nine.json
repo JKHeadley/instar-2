@@ -39,7 +39,7 @@
       "stage": "build",
       "artifact": {
         "path": "tests/preview/step-check.test.ts",
-        "hash": "sha256:125dc3204b7c280badc4a1fe2d7c3a9732a74f9d220c24f5363c0f5458fac82c"
+        "hash": "sha256:2dc66f022c2eb7924cf11072abf28b375e4314311609327dbcf06b2ff50e3df5"
       }
     }
   ],
