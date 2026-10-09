@@ -43,13 +43,17 @@ it('durably records each physical model result before returning, without recordi
   const io = observedSubscriptionIO(physicalIO, policy, 'summary:2', row => rows.push(row),
     { elapsed: () => (elapsed += 5), at: () => 123 });
   await io.execute({ args: ['--version'], stdin: '', timeout: 5000 });
+  await io.execute({ args: ['auth', 'status', '--json'], stdin: '', timeout: 5000 });
   expect(rows).toHaveLength(0);
   const result = await io.execute({ args: policy.args, stdin: 'prompt', timeout: 120000 });
   expect(result.stdout).toContain('provider text');
   expect(rows).toMatchObject([{ kind: 'call-outcome', role: 'summary', id: 'summary:2', at: 123,
     outcome: { localLimit: 'output-cap', elapsedMs: 5, promptBytes: 6, outputTokens: 2049 } }]);
   expect(JSON.stringify(rows)).not.toContain('provider text');
-  expect(commands).toHaveLength(2);
+  expect(commands).toHaveLength(3);
+  await io.execute({ args: [...policy.args, '--settings', '{}', '--resume', 'session'], stdin: 'tool prompt' });
+  expect(rows).toHaveLength(2);
+  expect(rows[1]).toMatchObject({ id: 'summary:2', outcome: { promptBytes: 11, outputTokens: 2049 } });
   const failureRows = [];
   const failing = observedSubscriptionIO({ execute: async () => { throw Error('provider prose'); } }, policy,
     'turn:1:reply-review', row => failureRows.push(row));

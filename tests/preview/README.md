@@ -3663,6 +3663,11 @@ servers (Part Thirteen §9,
   at 6 turns or 512 KiB, on a compaction or a missing/unreadable transcript or record, and after an unsettled turn,
   and ends the session (transcript removed) when a turn is stopped, withdrawn or fails. The harness's own memory and
   automatic compaction are off. Each trace row's `session` says new or resumed and why; status counts them.
+  A rejected resume with complete zero input/output token accounting and no tool or child calls gets one fresh
+  session attempt from the same durable packet. The original rejection and ended session stay recorded; the
+  recovery reserves its entire liability, including a new base call, and rechecks the normal admission boundaries.
+  Unknown usage, partial work, a stop, or insufficient call allowance keeps the original outcome without retry.
+  Physical outcome diagnostics include tool settings and session invocations, excluding empty-input preflights.
 - `tool-admission-hook.mjs` admits ordinary work: a file read or search of the workspace, the shell's temporary
   directory or the system files the sandbox also lets commands read (binaries, libraries, `/System`, device nodes), a
   file or notebook write or edit inside the workspace or that temporary directory, each decided on the RESOLVED file

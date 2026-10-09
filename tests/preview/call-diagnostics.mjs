@@ -51,7 +51,9 @@ export function observedSubscriptionIO(physicalIO, policy, operation, append,
     || operation.endsWith(':revision-review') ? 'reply-review'
     : operation.startsWith('summary:') ? 'summary' : 'model';
   return { ...physicalIO, execute: async command => {
-    if (JSON.stringify(command.args) !== JSON.stringify(policy.args)) return physicalIO.execute(command);
+    // Preflights carry no input; model commands carry the prepared packet. Tool
+    // settings, MCP and session arguments extend the policy's base arguments.
+    if (typeof command.stdin !== 'string' || command.stdin.length === 0) return physicalIO.execute(command);
     const start = clock.elapsed();
     let result, failed = false;
     try { result = await physicalIO.execute(command); }

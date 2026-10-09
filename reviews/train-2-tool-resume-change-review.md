@@ -1,0 +1,29 @@
+# Change review — recover a rejected tool-session resume
+
+Subject base: c2c8969573ec86c9d22b1596bed5ed06b0a138af
+Review state: open
+Reviewed content: none
+Outcome: A resumed tool session rejected with complete zero-token accounting and no tool or child work receives one fresh session attempt from the same durable journal packet. The existing turn path reserves the whole recovery liability including its base call, rotates the failed cache and preserves the original trace. Physical diagnostics now record model commands carrying per-turn settings and session arguments, which previously escaped the exact-argument comparison.
+Affected rules: 1, 2, 34, 36, 37, 39, 41, 49, 55, 58, 60, 61, 70, 74, 75, 88, 96, 101, 102, 111, 112, 113, 116
+Affected floors: secrets — existing separate harness identity, admission hook, sandbox and outbound checks unchanged; spend cap — recovery reserves a new base plus full turn and child liability before dispatch; stop — stopped work cannot recover and the normal route rechecks stop and authority; no duplicate sends — only rejected zero-token zero-tool work can recover, no send is retried; durable intake — same recorded packet, existing reservations and traces, no live journal mutation
+Operator questions: none
+Suggested tier: significant
+Declared tier: significant
+Tier rationale: Source repair of a user-facing tool turn, with one bounded provider recovery and durable accounting.
+Side effects: An eligible rejection may consume one additional reserved tool turn and its bounded time; unknown usage, partial work, a fresh session rejection, stop, insufficient cap and a second rejection do not retry. Diagnostic counts now include tool calls that were already physically running. No capability is removed or narrowed. No new persistent schema or authority is introduced.
+Undo and recovery: Revert this source/test/documentation change and regenerate pins/register using the desk scripts. Existing tool-turn rows remain replayable. Session/workspace custody is unchanged; a crash still leaves an open turn and rotates the interrupted session on recovery.
+Multi-machine posture: Session cache, workspace and physical-call diagnostics remain machine-local by design. Each conversation owner independently uses its journal and existing authority/replication checkpoints. No session moves across machines and no peer dependency is added.
+Layer below: Inspected runToolTurn reservation/trace/session retirement; planSession and sessionFactsDigest; production-provider result classification and inputComplete cache accounting; invokeSubscription and callSubscription; observedSubscriptionIO; actual failed journal and original gate evidence. The original provider error detail was discarded, so no specific API rejection cause is claimed. Two recorded prompts replayed successfully on a fresh isolated harness before repair; failure to recover an otherwise safe rejected resume and missing diagnostics are the source defects addressed.
+Bug class: integration
+Bug evidence: reproducer=tests/preview/tool-persist.test.ts; live=tests/preview/fixtures/resume-rejected-46039724-2026-10-08.json
+Hook bypass: none
+Convergence: none
+Decision: train2-rejected-resume | Recover only a definite zero-work resumed rejection through the existing turn path, once; reserve a new base call and retain all original evidence. Do not retry uncertainty or partial work. | reported=/Users/dabombstudio/.instar/agents/echo/.instar/lanes/train-2-repair-PROGRESS.md
+Decision: train2-tool-diagnostics | Identify model exchanges by their nonempty prepared input, as the existing doorway observer does, so per-turn argument extensions cannot hide outcomes. | reported=/Users/dabombstudio/.instar/agents/echo/.instar/lanes/train-2-repair-PROGRESS.md
+Prompt review: No model instructions, output parsing, verdict interpretation or authority changes. Recovery consumes the actual recorded port rejection from proofroom4-dshort15-20261008-201501 update 46039724 following 46039723. The regression replays that shape; recorded summary writers 715672480/481/484, uncertain summary 715672483, Jev unsure 715672486 and undecided 715672482, reply review and delivered reply 715672479 are unchanged negative neighbors. Empty output remains distinct from rejected zero work. The isolated live recovery injected the recorded rejection on the resumed call, then the shipped path started a fresh harness session and admitted Bash create/read/count, reporting the observed 24 bytes (no newline). Before repair the two-prompt replay reported 25 bytes with a newline. These are exact observed counts, not an inferred tool success or a new Telegram proof.
+
+## Closing block
+
+simplestRobustRoute: This is the simplest robust route: reuse session retirement and runToolTurn, with one exact recovery predicate and one extra complete reservation. A session cache must not turn a definite zero-work rejection into a permanent failed request. No new scheduler, queue, model judge or fallback harness is needed. Start guards are zero accounted model work and empty consistent tool trace, a resumed session, no stop and sufficient allowance. End and limit guards are the existing admission/trace checks plus one recovery maximum. Real isolated harness recovery evidence is committed with the fixture; the pipeline owns the fresh messaging proof and full suite.
+80/20: Targeted tests exercise both sides of recovery, full accounting, stop, repeated rejection and durable trace replay; existing persistence tests retain workspace/session behavior. Typecheck, architecture, lint, register reproduction, change-review, whitespace and all eleven original-root saved-report checkers are required. No full suite or load test runs here. Author submission only; independent convergence remains with the desk.
+VERDICT: author submission; this record asserts no independent verdict — the review desk records its own

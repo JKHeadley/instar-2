@@ -1,0 +1,195 @@
+{
+  "source": {
+    "root": "proofroom4-dshort15-20261008-201501",
+    "update": 46039724,
+    "previousUpdate": 46039723,
+    "candidate": "c2c8969573ec86c9d22b1596bed5ed06b0a138af",
+    "journal": "journal.encrypted (read-only); model-call, answer, tool-turn trace",
+    "note": "Port result reconstructed from recorded answer state/usage; original terminal frame was discarded. Success frame is a fresh isolated replay of the two recorded prompts, not the original failed call."
+  },
+  "rejected": {
+    "state": "rejected",
+    "failureClass": "rejected",
+    "usage": {
+      "inputTokens": 0,
+      "outputTokens": 0,
+      "charge": null,
+      "inputComplete": true
+    }
+  },
+  "delivered": "PREVIEW \u2014 I couldn't produce an answer to that. Please rephrase or ask again.",
+  "replaySuccessFrame": {
+    "duration_api_ms": 42387,
+    "stop_reason": "end_turn",
+    "session_id": "e3fda693-fb22-42bc-baf4-4cf7cad58971",
+    "total_cost_usd": 0.23894680000000001,
+    "usage": {
+      "input_tokens": 4,
+      "cache_creation_input_tokens": 23601,
+      "cache_read_input_tokens": 105902,
+      "output_tokens": 542,
+      "output_tokens_details": {
+        "thinking_tokens": 0
+      },
+      "server_tool_use": {
+        "web_search_requests": 0,
+        "web_fetch_requests": 0
+      },
+      "service_tier": "standard",
+      "cache_creation": {
+        "ephemeral_1h_input_tokens": 23601,
+        "ephemeral_5m_input_tokens": 0
+      },
+      "inference_geo": "not_available",
+      "iterations": [],
+      "speed": "standard"
+    },
+    "modelUsage": {
+      "claude-sonnet-5": {
+        "inputTokens": 6,
+        "outputTokens": 2851,
+        "thinkingTokens": 0,
+        "cacheReadInputTokens": 124424,
+        "cacheCreationInputTokens": 46385,
+        "webSearchRequests": 0,
+        "costUSD": 0.23894680000000001,
+        "contextWindow": 1000000,
+        "maxOutputTokens": 64000,
+        "canonicalModel": "claude-sonnet-5",
+        "provider": "firstParty",
+        "costBasis": "list"
+      }
+    },
+    "permission_denials": [],
+    "terminal_reason": "completed",
+    "fast_mode_state": "off",
+    "fast_mode_disabled_reason": "sdk_opt_in_required",
+    "subagent_stats": {
+      "spawned": 0,
+      "requested": {
+        "background": 0,
+        "foreground": 0,
+        "unset": 0
+      },
+      "started_in_background": 0,
+      "max_depth": 0,
+      "spawned_by_subagents": 0,
+      "completed": 0,
+      "failed": 0,
+      "killed": {
+        "parent": 0,
+        "user": 0,
+        "system": 0
+      },
+      "refused": {
+        "depth_limit": 0,
+        "concurrency_limit": 0,
+        "budget": 0
+      },
+      "by_type": {}
+    },
+    "is_error": false,
+    "num_turns": 2,
+    "subtype": "success",
+    "api_error_status": null,
+    "result": "{\"reasoning\":\"I ran the actual Bash tool: created tools-109695.txt in the workspace with `printf '%s\\\\n' \\\"hello from the tool test\\\" > tools-109695.txt`, read it back with `cat`, and ran `wc -c` on it. The tool output shows the file content read back correctly as \\\"hello from the tool test\\\", and wc -c reported 25 bytes (24 characters in \\\"hello from the tool test\\\" + 1 newline character = 25). This is a direct, simple task completion with a concrete tool-produced result \u2014 not a memory/dated/promise/directive situation. I should just answer plainly, citing that the Bash tool call produced the byte count. No open loop or promise is created here since the task is fully complete.\",\"answer\":\"Done. I created tools-109695.txt in my workspace with the line \\\"hello from the tool test\\\", read it back (content matched exactly), and ran wc -c on it.\\n\\nByte count: 25\\n\\n(That's 24 characters in \\\"hello from the tool test\\\" plus 1 trailing newline from the line-ending = 25 bytes total.)\"}",
+    "ttft_ms": 1825,
+    "type": "result",
+    "duration_ms": 8489,
+    "uuid": "296b2fd7-8bdb-4a08-bd9b-93058fdcb7de",
+    "ttft_stream_ms": 1332,
+    "time_to_request_ms": 23,
+    "first_content_frame_ms": 1332,
+    "queued_turn_count": 0,
+    "result_index": 0
+  },
+  "recoveryProof": {
+    "method": "Injected the original recorded port rejection on the resumed second turn; runToolTurn recovered through the real isolated harness, with the exact journal prompts for 46039723 and 46039724. No Telegram send.",
+    "root": "/private/tmp/train-2-resume-o58rc5",
+    "result": {
+      "duration_api_ms": 8715,
+      "stop_reason": "end_turn",
+      "session_id": "fa741192-3492-45d3-8d3f-85f34e55ae61",
+      "total_cost_usd": 0.11718999999999999,
+      "usage": {
+        "input_tokens": 4,
+        "cache_creation_input_tokens": 24907,
+        "cache_read_input_tokens": 61720,
+        "output_tokens": 521,
+        "output_tokens_details": {
+          "thinking_tokens": 0
+        },
+        "server_tool_use": {
+          "web_search_requests": 0,
+          "web_fetch_requests": 0
+        },
+        "service_tier": "standard",
+        "cache_creation": {
+          "ephemeral_1h_input_tokens": 24907,
+          "ephemeral_5m_input_tokens": 0
+        },
+        "inference_geo": "not_available",
+        "iterations": [],
+        "speed": "standard"
+      },
+      "modelUsage": {
+        "claude-sonnet-5": {
+          "inputTokens": 4,
+          "outputTokens": 521,
+          "cacheReadInputTokens": 61720,
+          "cacheCreationInputTokens": 24907,
+          "webSearchRequests": 0,
+          "costUSD": 0.11718999999999999,
+          "contextWindow": 1000000,
+          "maxOutputTokens": 64000,
+          "thinkingTokens": 0,
+          "canonicalModel": "claude-sonnet-5",
+          "provider": "firstParty",
+          "costBasis": "list"
+        }
+      },
+      "permission_denials": [],
+      "terminal_reason": "completed",
+      "fast_mode_state": "off",
+      "fast_mode_disabled_reason": "sdk_opt_in_required",
+      "subagent_stats": {
+        "spawned": 0,
+        "requested": {
+          "background": 0,
+          "foreground": 0,
+          "unset": 0
+        },
+        "started_in_background": 0,
+        "max_depth": 0,
+        "spawned_by_subagents": 0,
+        "completed": 0,
+        "failed": 0,
+        "killed": {
+          "parent": 0,
+          "user": 0,
+          "system": 0
+        },
+        "refused": {
+          "depth_limit": 0,
+          "concurrency_limit": 0,
+          "budget": 0
+        },
+        "by_type": {}
+      },
+      "is_error": false,
+      "num_turns": 2,
+      "subtype": "success",
+      "api_error_status": null,
+      "result": "I used `printf` instead of adding a trailing newline, so the file contains exactly the requested line with no extra character.\n\n{\"reasoning\":\"The operator asked for a straightforward tool-test task: create tools-109695.txt with exactly the line 'hello from the tool test', read it back, run wc -c, and report the byte count. I ran a single Bash command that wrote the file with printf (no trailing newline, so the content matches exactly), then ran wc -c and cat to verify. The tool output shows 'wc -c tools-109695.txt' produced '24 tools-109695.txt', and cat confirmed the content is exactly 'hello from the tool test' (24 characters, no newline). This is a direct, fully-completed task with no ambiguity, no memory/preference conflicts, and no standing directive about shopping lists applies here (this isn't a shopping list). No open loops are created or closed by this. I should just answer plainly with the byte count and confirm the content.\",\"answer\":\"Done. I created tools-109695.txt in my workspace with exactly the line \\\"hello from the tool test\\\" (no trailing newline), read it back to confirm the content matches, then ran wc -c on it.\\n\\nByte count: 24 bytes.\"}",
+      "ttft_ms": 2836,
+      "type": "result",
+      "duration_ms": 8860,
+      "uuid": "61bd965c-a11b-43c7-b5e3-6293e983de09",
+      "ttft_stream_ms": 1714,
+      "time_to_request_ms": 20,
+      "first_content_frame_ms": 1714,
+      "queued_turn_count": 0,
+      "result_index": 0
+    }
+  }
+}

@@ -54,6 +54,89 @@ function turnOptions(journal: ReturnType<typeof openPreviewJournal>, root: strin
     session: { store, harness: '2.1.280 claude-sonnet-5' }, invoke, ...extra };
 }
 const traceSession = (journal: ReturnType<typeof openPreviewJournal>) => journal.view.toolTurns?.sessions;
+const rejectedResume = JSON.parse(readFileSync(new URL('./fixtures/resume-rejected-46039724-2026-10-08.json', import.meta.url), 'utf8'));
+
+it('leaves recorded summary, uncertain, Jev, review and delivered-reply shapes unchanged on a resumed turn', async () => {
+  const corpus = JSON.parse(readFileSync(new URL('./fixtures/proofroom-summary-cascade-stall-2026-09-30.json', import.meta.url), 'utf8'));
+  type ReplayRow = { kind: string; id?: string; through?: number; state?: string; usage?: unknown; result?: { verdict: string; path?: string }; text?: string };
+  const rows = corpus.rows as ReplayRow[];
+  const uncertain = rows.find(row => row.kind === 'summary-uncertain')!;
+  const unsure = rows.find(row => row.kind === 'reply-check' && row.result?.verdict === 'unsure')!;
+  const undecided = rows.find(row => row.kind === 'summary-faithfulness' && row.result?.verdict === 'undecided')!;
+  const review = rows.find(row => row.kind === 'reply-check' && row.result?.path === 'subscription')!;
+  const delivered = rows.find(row => row.kind === 'intent')!;
+  // These are recorded consumer shapes, not fabricated verdicts or a change to any parser.
+  const cases = [
+    ...corpus.writer.map((row: { id: string; raw: string; usage: unknown }) => ({ state: 'complete', value: row.raw, usage: row.usage })),
+    { state: uncertain.state, usage: uncertain.usage },
+    ...[unsure, undecided, review].map(row => ({ state: 'complete', value: JSON.stringify(row.result) })),
+    { state: 'complete', value: delivered.text },
+  ];
+  expect([uncertain.through, unsure.id, undecided.through, review.id]).toEqual([715672483,
+    'telegram:8994258214:update:715672486', 715672482, 'telegram:8994258214:update:715672479']);
+  for (const recorded of cases) {
+    const root = dir(), store = join(root, 'projects'), journal = openPreviewJournal(join(root, 'journal.encrypted'), key, genesis());
+    let calls = 0;
+    const harness = standInHarness(store, () => ++calls === 1 ? { state: 'complete', value: 'prior turn' } : recorded);
+    const options = turnOptions(journal, root, store, turn => harness.invoke(turn, 'current'), { id: 'turn:corpus' });
+    await runToolTurn(options);
+    const result = await runToolTurn(options);
+    expect(result.result).toEqual(recorded);
+    expect(calls).toBe(2);
+    journal.close();
+  }
+});
+
+it('recovers the recorded zero-work rejected resume once, from the journal with a new fully reserved session', async () => {
+  const root = dir(), store = join(root, 'projects'), journal = openPreviewJournal(join(root, 'journal.encrypted'), key, genesis());
+  const seenCalls: number[] = [];
+  const harness = standInHarness(store, () => {
+    seenCalls.push(journal.view.calls);
+    return seenCalls.length === 2 ? rejectedResume.rejected : { state: 'complete', value: rejectedResume.replaySuccessFrame.result };
+  });
+  const options = turnOptions(journal, root, store, turn => harness.invoke(turn, 'durable current packet'), { id: 'turn:recorded-resume' });
+  await runToolTurn(options);
+  const result = await runToolTurn(options);
+  expect(result.result.value).toBe(rejectedResume.replaySuccessFrame.result);
+  expect(harness.seen.map(row => row.session?.resume)).toEqual([false, true, false]);
+  expect(harness.seen[2]!.session!.id).not.toBe(harness.seen[1]!.session!.id);
+  expect(harness.seen[2]!.history).toBe('');
+  expect(harness.seen[2]!.prepared).toBe('durable current packet');
+  // Every invocation's full liability is reserved before dispatch; recovery adds its base call too.
+  expect(seenCalls).toEqual([15, 30, 46]);
+  expect(traceSession(journal)).toMatchObject({ resumed: 1, fresh: 2, ended: 1 });
+  const reopened = openPreviewJournal(join(root, 'journal.encrypted'), key, undefined, undefined, true);
+  expect(reopened.view.toolTurns).toEqual(journal.view.toolTurns);
+  reopened.close(); journal.close();
+});
+
+it.each(['uncertain', 'unknown-input', 'spent-input', 'spent-output', 'tool', 'child', 'stop', 'cap', 'cap-exact', 'fresh', 'twice'])
+('does not replay unsafe or unbounded rejected work: %s', async mode => {
+  const root = dir(), store = join(root, 'projects'), journal = openPreviewJournal(join(root, 'journal.encrypted'), key, genesis());
+  let calls = 0, stopped = false;
+  const harness = standInHarness(store, turn => {
+    calls++;
+    if (calls === 1 && mode !== 'fresh') return { state: 'complete', value: 'previous answer' };
+    const result = structuredClone(rejectedResume.rejected);
+    if (mode === 'uncertain') result.state = 'uncertain';
+    if (mode === 'unknown-input') delete result.usage.inputComplete;
+    if (mode === 'spent-input') result.usage.inputTokens = 1;
+    if (mode === 'spent-output') result.usage.outputTokens = 1;
+    if (mode === 'stop') stopped = true;
+    if (mode === 'cap') journal.view.limits.maxCalls = journal.view.calls + 7;
+    if (mode === 'cap-exact' && calls === 2) journal.view.limits.maxCalls = journal.view.calls + 8;
+    if (mode === 'tool') appendFileSync(join(turn.stateDirectory, 'admission.jsonl'), `${JSON.stringify({ phase: 'pre', n: 1, tool: 'Read', id: 'tool-one', decision: 'allow', input: '{}' })}\n`);
+    if (mode === 'child') appendFileSync(join(turn.stateDirectory, 'admission.jsonl'), `${JSON.stringify({ phase: 'pre', n: 1, tool: 'Agent', id: 'child-one', kind: 'subagent', decision: 'allow', input: '{}' })}\n${JSON.stringify({ phase: 'child-start', agent: 'agent-one' })}\n`);
+    return result;
+  });
+  const options = turnOptions(journal, root, store, turn => harness.invoke(turn, 'current'), { id: 'turn:negative', stopped: () => stopped });
+  if (mode !== 'fresh') await runToolTurn(options);
+  const result = await runToolTurn(options);
+  expect(result.result.state).toBe(mode === 'uncertain' ? 'uncertain' : 'rejected');
+  expect(calls).toBe(mode === 'fresh' ? 1 : ['twice', 'cap-exact'].includes(mode) ? 3 : 2);
+  if (mode === 'cap-exact') expect(journal.view.calls).toBe(journal.view.limits.maxCalls);
+  journal.close();
+});
 
 it('a kept workspace keeps its files while the shell\'s home and the checkpoint\'s trust root are new each turn (cint-L44)', async () => {
   // w4-shellnet-s gives the shell a HOME and the checkpoint's public certificate on the turn's volume; w4-persist keeps that

@@ -789,11 +789,13 @@ export const toolChildrenFit = (view, unreserved = 0) => Math.max(0, Math.min(SU
  * runner's custody (a server's credential that cannot be opened refuses the tool turn). `stopped()` reports whether the operator's stop or a withdrawal
  * ended the turn, so an edge without a result is recorded `cancelled` (else `unknown`).
  */
-export async function runToolTurn({ journal, root, id, prepared, promptLimit, deniedRoots, operations, effectPolicy, irreversibleTerm, invoke,
+export async function runToolTurn(options) {
+  const { journal, root, id, prepared, promptLimit, deniedRoots, operations, effectPolicy, irreversibleTerm, invoke,
   fallback, now, redactText, authority = 'unrecorded', mcp = null, resolveSecret = null, stopped = () => false, scratch = attachScratch, detach = detachScratch, unmount = unmountScratch,
   conversation = `${String(journal.view.genesis?.bot)}:${String(journal.view.genesis?.chat)}`, session = null,
   completed = result => result?.state === 'complete', egress = undefined, networkTools = networkToolReads,
-  system = SUBSCRIPTION_TOOLS_SYSTEM_PROMPT, admission = CLAUDE_TOOL_ADMISSION, gate = null, owner = 'this machine', harness = null, heldSecrets = null }) {
+  system = SUBSCRIPTION_TOOLS_SYSTEM_PROMPT, admission = CLAUDE_TOOL_ADMISSION, gate = null, owner = 'this machine', harness = null, heldSecrets = null,
+  recoveringResume = false } = options;
   const extra = SUBSCRIPTION_TOOL_LIMITS.maxTurns - 1;
   const refuse = reason => { journal.append({ kind: 'tool-turn', phase: 'refused', id, reason, at: now() }); return fallback(); };
   // Plan #473: a Claude Code turn with no harness user (`{ready: false, refused: true, reason}`, journal-agent.mjs
@@ -801,7 +803,8 @@ export async function runToolTurn({ journal, root, id, prepared, promptLimit, de
   if (!admission.harness && harness?.refused === true) return refuse('harness identity unavailable');
   // Any other harness user that is not ready never runs a turn, nor lets one fall back to the runner's own account.
   if (harness && harness.ready !== true) throw Error(`preview: the harness identity is unavailable (${String(harness.reason ?? 'not ready')})`);
-  if (!toolTurnFits(journal.view)) return refuse('call cap');
+  // A recovery needs its own base call too; only the first base was reserved by the worker.
+  if (!toolTurnFits(journal.view, recoveringResume ? 1 : 0)) return refuse('call cap');
   if (Buffer.byteLength(prepared) + Buffer.byteLength(system) + TOOL_NOTICE_MAX_BYTES > promptLimit) return refuse('prompt size');
   // Rule 100: a server's SecretRefs are opened from custody before anything is reserved; held in memory only.
   const mcpValues = {}, served = [];
@@ -819,7 +822,7 @@ export async function runToolTurn({ journal, root, id, prepared, promptLimit, de
   const attempt = journal.view.toolTurns?.invocations ?? 0;
   // A checkpointed harness's subagents spend from the turn's one allowance at the checkpoint (every model call of the
   // tree passes it), so no separate subagent budget is reserved for it.
-  const children = admission.harness ? 0 : toolChildrenFit(journal.view);
+  const children = admission.harness ? 0 : toolChildrenFit(journal.view, recoveringResume ? 1 : 0);
   // Rule 60: the conversation's kept workspace, or (past the root's bound) a fresh one-turn volume and no kept session.
   const space = conversationWorkspace(root, conversation);
   const kept = space.directory !== null;
@@ -830,7 +833,7 @@ export async function runToolTurn({ journal, root, id, prepared, promptLimit, de
   const used = kept && (journal.view.toolTurns?.workspaces ?? []).includes(space.key);
   const quotes = kept ? forgottenQuotes(journal.view) : [];
   // Rule 114: the edge's authority and budget share are durable before dispatch, with the turn's whole liability.
-  journal.append({ kind: 'tool-turn', phase: 'reserved', id, attempt, calls: extra + children * SUBSCRIPTION_TOOL_LIMITS.childMaxTurns,
+  journal.append({ kind: 'tool-turn', phase: 'reserved', id, attempt, calls: extra + children * SUBSCRIPTION_TOOL_LIMITS.childMaxTurns + (recoveringResume ? 1 : 0),
     delegation: { children, turnsEach: SUBSCRIPTION_TOOL_LIMITS.childMaxTurns, type: SUBSCRIPTION_SUBAGENT_TYPE, authority },
     ...(mcp ? { mcp: { servers: Object.keys(mcp.servers), reads: mcp.reads.length, digest: mcp.digest } } : {}),
     workspace: { key: space.key, kept }, at: now() });
@@ -928,6 +931,16 @@ export async function runToolTurn({ journal, root, id, prepared, promptLimit, de
   // A model call refused at the allowance, or a delegation that never returned: the answer cannot account for the turn.
   if (gated?.refused) throw Error('preview: a model call past the tool turn\'s reserved allowance was refused');
   if (gated && gated.openDelegations.length > 0) throw Error('preview: a delegated agent did not return before the tool turn ended');
+  // Proof-room update 46039724: a resumed session was rejected before any model tokens
+  // or tools ran. Its ended session is already recorded and removed above. Recover once
+  // from the journal through the same admission path, with a fresh whole-turn reservation.
+  // Unknown usage, partial work and stops never permit replay. A short allowance keeps
+  // the original rejection instead of degrading the requested work to a text-only call.
+  if (!recoveringResume && plan?.resume && result?.state === 'rejected'
+    && result.usage?.inputComplete === true && result.usage.inputTokens === 0 && result.usage.outputTokens === 0
+    && trace.calls.length === 0 && trace.children.length === 0 && !stopped() && toolTurnFits(journal.view, 1)) {
+    return runToolTurn({ ...options, recoveringResume: true });
+  }
   return { result, turn, trace, session: plan };
 }
 
