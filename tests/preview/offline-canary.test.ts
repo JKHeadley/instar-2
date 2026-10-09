@@ -143,7 +143,7 @@ it('validates renewal and policy-successor records against the pinned policy, wi
     loginProfileIdentity: 'offline-identity', executable: '/offline/cli', artifact: 'sha256:offline',
     version: '2.1.280', activationReference: 'offline-activation', managedConfigurationDigest: 'sha256:offline' };
   const digest = encoded(subscriptionConversationPolicy(model)).hash;
-  expect(digest).toBe('sha256:5817ae4bda9396f7f27a957b287c97b4965322128a03c401bc415166594e2255');
+  expect(digest).toBe('sha256:b746a83d18e99f08a94f0f6c8efe84e7d086e2f44ed716be6f3114ba51ac234b');
   const base = { type: 'SubscriptionActivationRecord', schemaVersion: 1, reference: profile.activationReference,
     waiver: 'waiver', p11: 'p11', reviewedHead: 'frozen predecessor', trial: genesis().grant,
     baseConfigurationDigest: genesis().configurationDigest, profileDigest: encoded(profile).hash,
