@@ -12,6 +12,8 @@ Declared tier: significant
 Tier rationale: Small model-context repair in an existing retrospective call; no authority, effects, persistence, dispatch or validator expansion.
 Side effects: Follow-up context grows by at most the fixed duty roster's existing bounded notes. The prompt distinguishes inspection with no finding from an evidence-backed recurrence. Old recorded answers keep their original refusal; historical fixtures remain unchanged. The new fixture contains the captured failed packet and three bounded real subscription-model outputs, plus existing recorded neighboring shapes.
 Undo and recovery: Revert this repair and regenerate the register with existing desk tools. No durable state conversion or journal rewriting is needed.
+Register evidence: Ran both delegated desk pin tools after the source commit: zero owner pin or inventory changes. Replayed the register at 6fb5e2ecfb1f6b0ffb9316fe865fdf9e6e970432; 282 entries, 116 rules, 34 terms, shape-only authority. Generated outputs bind the changed shipped code without changing governed population.
+
 Multi-machine posture: Identical pure packet generation wherever the existing conversation owner runs; no new store, replication path, machine dependency or capability restriction.
 Layer below: Inspected the recorded first answer, held duty rows, follow-up and complete pass; inspected validateRetrospective, mergeDutyFollowUp, worker reserve/stop settlement and the actual model answer reader. The missing recurrence predecessor remains refused. Checked the supplied gate report and source-bound contract artifacts without manufacturing fresh process evidence.
 Bug class: live-path
