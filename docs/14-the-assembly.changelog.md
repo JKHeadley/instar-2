@@ -4,6 +4,10 @@ _Generated from `14-the-assembly.changelog.json` by `scripts/render-changelog.mj
 The document itself reads as a first version; every change to it is recorded here, newest first,
 each linked to the git change that made it (rule 91).
 
+## Revision 24 · 2026-10-09 · draft — Operator direction via observer #202: remove the preview framing (w4-agentready).
+
+- **The accepted-reply projection renders the accepted answer without the preview label.** — Present Instar as the agent while preserving acceptance, grounding, escaping and size checks. _(w4-agentready; observer #202)_
+
 ## Revision 23 · 2026-10-03 · draft — Unit w4-persist (plan row #400): operator re-grounding, Justin 10:45 PDT 2026-10-03 via observer #149, and message 121996 (the 'handicapped' fresh-per-turn result rejected): a persistent workspace per conversation and a kept harness session subordinate to the journal, satisfying the full-tool ruling's MF5. No constitution change.
 
 - **Operator question 2: a conversation keeps its private workspace, bounded by its fixed-size volume and the root's count of kept workspaces, and a harness session that is only a cache of the journal, replaced whenever a journal fact, the authority or the harness changes.** — A fresh, empty workspace and a discarded session every turn left the agent unable to keep a file or a project between messages; persistence is added under the same boundary and floors. _(lanes/w4-persist-PROGRESS.md; lanes/astra-fulltool-ruling.md (MF5); LIVE-PATH-PLAN.md row #400)_
