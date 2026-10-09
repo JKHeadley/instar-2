@@ -30,7 +30,8 @@ function run(mode: string, method: 'getMe' | 'getUpdates' | 'sendMessage' = 'sen
 }
 
 describe('D01 fixed confined-child failure stages', () => {
-  test.each(['connect-refused', 'connect-dns', 'connect-notfound', 'connect-timeout', 'connect-aggregate'])(
+  test.each(['connect-refused', 'connect-dns', 'connect-notfound', 'connect-timeout', 'connect-aggregate',
+    'connect-width-limit', 'connect-depth-limit'])(
     '%s retries only a proven connection failure, within the same child', mode => {
       const observed = run(mode);
       expect(observed.reply.kind).toBe('response');
@@ -39,7 +40,8 @@ describe('D01 fixed confined-child failure stages', () => {
       expect(observed.child.stdout).not.toContain(observed.secret);
     });
 
-  test.each(['connect-empty', 'connect-mixed', 'connect-wrong-syscall', 'connect-socket', 'connect-aborted'])(
+  test.each(['connect-empty', 'connect-mixed', 'connect-wrong-syscall', 'connect-socket', 'connect-aborted',
+    'connect-too-wide', 'connect-too-deep'])(
     '%s cannot authorize a second attempt', mode => {
       const observed = run(mode);
       expect(observed.reply).toEqual({ kind: 'uncertain', limitation: 'transport', stage: 'fetch-failure' });

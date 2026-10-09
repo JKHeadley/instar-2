@@ -1,6 +1,6 @@
 # Change review — D1c connection recovery
 
-Subject base: cefa872a74604f57ee060585f55ad07119dca0ab
+Subject base: e1dc1ddd60d72355f6442daebf084467a945c0f3
 Review state: open
 Reviewed content: none
 Outcome: A transient failure to open the Telegram connection gets one more connection attempt within the existing admitted physical call and original timeout. Any possibly delivered send remains UNKNOWN and is never repeated. D1c update 46039703 already contained the finished garden-blog result but settled fetch-failure; the old record lacks a native cause, so this repair does not assert which connection phase failed historically.
@@ -24,9 +24,11 @@ Prompt review: No model-facing change: prompts, model output parsers and model a
 Deferral: tests/preview/journal-send-outcome.test.ts:22 | not-a-deferral=Comment describes the recorded completed follow-up regression, not unfinished work.
 Deferral: tests/preview/journal-send-outcome.test.ts:26 | not-a-deferral=Test title for the recorded completed follow-up, not a promised task.
 
-Validation: Typecheck and build pass. Focused journal-send-outcome and telegram-bot-api-round6 files: 37 passed, five explicit pre-existing NON-EXECUTABLE-UNTIL representation-extension grant cases held (not Rule 37 quarantines). Native harness contract: 9 passed after generator-derived composition recertification. Both native ECONNREFUSED recovery and actual receipt loss use the recorded D1c bytes, with exactly one server request and no replay on restart. Synthetic neighbors cover DNS, connect timeout, all-failed address aggregates, mixed/empty aggregates, wrong syscall, socket ambiguity, persistent connection failure, expired shared deadline, and unchanged success/secret/redirect behavior. The pipeline supplies the fresh full-suite and live pre-switch verdict.
+Validation: Typecheck and build pass. Focused journal-send-outcome and telegram-bot-api-round6 files: 41 passed, five explicit pre-existing NON-EXECUTABLE-UNTIL representation-extension grant cases held (not Rule 37 quarantines). Native harness contract: 9 passed after generator-derived composition recertification. Both native ECONNREFUSED recovery and actual receipt loss use the recorded D1c bytes, with exactly one server request and no replay on restart. Synthetic neighbors cover DNS, connect timeout, all-failed address aggregates, mixed/empty aggregates, both sides of aggregate depth/width limits, wrong syscall, socket ambiguity, persistent connection failure, expired shared deadline, and unchanged success/secret/redirect behavior. The pipeline supplies the fresh full-suite and live pre-switch verdict.
 
 Register evidence: The desk rehash and repin-chain scripts ran; owner/inventory pins were already current. The generated register is replayed from 063ed20e94b633cd9e4eff84596ee738d005c7a6. Seven saved-report checkers pass locally; the four root-bound checks validate at the original gate root read-only. No copied evidence is relabelled as a new full run. Details and exact checker outputs are in the repair PROGRESS record.
+
+Integration: The starting local checkout lagged the remote frozen candidate. Merge origin/sb-cb1-mf5-fix e1dc1ddd without rewriting history; all runtime/source merges are mechanical, with only generated files conflicting. Restore the remote generated snapshot as the intermediate merge state and replay it from the integrated source commit. The subject base now names that exact frozen candidate, so this review covers the D1c repair while preserving the already reviewed train work. Regenerate the native composition digest and repeat the focused tests and final cheap checks on the integrated tree.
 
 ## Closing block
 

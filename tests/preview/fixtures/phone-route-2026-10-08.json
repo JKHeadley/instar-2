@@ -1,0 +1,80 @@
+{
+  "provenance": "Read-only excerpts of recorded proof statuses; installation is the existing desk record, not a new grant. No model output is parsed by this proof.",
+  "records": [
+    {
+      "source": "M-proofroom-20261008-044057/status-m1.json",
+      "update": 715674868,
+      "status": {
+        "expires": 1791837600000,
+        "explicitYes": {
+          "connected": false,
+          "chat": {
+            "admissible": false,
+            "reason": "no explicit-yes installation record is configured"
+          },
+          "review": {
+            "admissible": false,
+            "reason": "no explicit-yes installation record is configured"
+          }
+        },
+        "operatorActionSurface": {
+          "raiseCaps": "host command line on the trial machine (journal-agent.mjs)",
+          "renewExpiry": "host command line on the trial machine (journal-agent.mjs)"
+        }
+      }
+    },
+    {
+      "source": "Q-proofroom2-20261008-044518/status-q1.json",
+      "update": 6232820,
+      "status": {
+        "expires": 1791837600000,
+        "explicitYes": {
+          "connected": false,
+          "chat": {
+            "admissible": false,
+            "reason": "no explicit-yes installation record is configured"
+          },
+          "review": {
+            "admissible": false,
+            "reason": "no explicit-yes installation record is configured"
+          }
+        },
+        "operatorActionSurface": {
+          "raiseCaps": "host command line on the trial machine (journal-agent.mjs)",
+          "renewExpiry": "host command line on the trial machine (journal-agent.mjs)"
+        }
+      }
+    }
+  ],
+  "installation": {
+    "type": "ExplicitYesInstallation",
+    "schemaVersion": 1,
+    "installation": "preview-trial:6218fbb5-769e-4c43-9de2-8a34bd117b4f",
+    "adapter": "github-api",
+    "machine": "Mac Studio",
+    "agentSpeaksAsOperatorInChat": true,
+    "chat": {
+      "method": "telegram-sender",
+      "boundChatId": "7812716706",
+      "operatorAccountId": "7812716706",
+      "agentHoldsNoAccess": false
+    },
+    "github": {
+      "method": "github-review",
+      "repository": "JKHeadley/instar-2",
+      "operatorLogin": "JKHeadley",
+      "agentHoldsNoAccess": false,
+      "acceptance": {
+        "account": "JKHeadley",
+        "installation": "preview-trial:6218fbb5-769e-4c43-9de2-8a34bd117b4f",
+        "operatorMessages": [
+          "telegram:topic:102965:message:121802",
+          "telegram:topic:102965:message:121804",
+          "telegram:topic:102965:message:121824"
+        ],
+        "acceptedAt": "2026-10-02T20:01:17Z",
+        "withdrawn": null
+      }
+    }
+  }
+}
