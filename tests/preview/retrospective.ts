@@ -804,7 +804,8 @@ export const RETRO_DUTY_FOLLOWUP_QUESTION = [
   'outcome and refuted-reason: inspect conclusions, their separately stated reasons and later outcomes independently; uncertainty is not proof of success. feedback: inspect corrections, reported failures and behavior preferences. standing-grant: inspect authorizations for repeated requests that could become standing candidates; this review grants nothing. benchmark-divergence: compare reruns with their original answers and graded outcomes. waiver-recurrence: inspect the supplied waiver/act evidence for repeated waivers or acts without prior waiver; missing producer evidence cannot be inspected.',
   'A finding is ONLY something you found, and it must cite the context refs that show it: a finding with no refs is refused, and a refused finding records its duty NOT inspected. Never write a finding to say that nothing was found, that no case applies, or to decline. A duty with nothing found belongs in inspectedDuties with NO finding. Every finding names an asked duty and has refs, summary and disposition {"owner":"agent"|"operator","next":text} or {"declined":reason}. Cite only ids present in the context.',
   'Do not repeat case accounting, grades, feedback, authorizations, comparisons or closures: the first answer already recorded them. Write wells only if gravity-well was asked and eff only if waste was asked. Keep the whole JSON within answerBudgetBytes; keep each prose field within 100 characters.',
-  taskFields('{"inspectedDuties":[asked duty ids actually inspected, including those with nothing found],"findings":[{"duty":duty,"refs":[],"summary":text,"recurs":[],"rootCause":text,"structuralRemedy":{},"disposition":{}}],"wells":[0|[refs]],"eff":text}', RETRO_REASONING_CHARS),
+  'For each finding, disposition MUST be {"owner":"agent"|"operator","next":nonempty action} or {"declined":nonempty reason}. An empty object is invalid. Include recurs, rootCause and structuralRemedy only for recurrence, with the evidence and values described above. If you found nothing actionable, write findings: [] rather than an incomplete finding. Omit optional fields that were not asked for.',
+  taskFields('{"inspectedDuties":[asked duty ids actually inspected, including those with nothing found],"findings":[{"duty":asked duty,"refs":[context ids],"summary":nonempty text,"disposition":{"owner":"agent"|"operator","next":nonempty action}}]} (findings may be []; a finding may instead use disposition {"declined":nonempty reason}; recurrence also requires recurs, rootCause and structuralRemedy; include wells or eff only when asked)', RETRO_REASONING_CHARS),
 ].join('\n');
 /** The reason a COMPLETE pass carries when duties it owed stayed uninspected after the follow-up was due: what the
  * follow-up did (or why it did not run), so the status line can say it. Each such duty keeps its own not-inspected row. */
@@ -822,7 +823,7 @@ export const dutyFollowUpPacket = (state: string, held: Pick<RetroResult, 'dutie
 /** Merges a follow-up answer into the pass's held first result. The follow-up is read by the SAME validator under the
  * same rules: its answer is wrapped into a first-answer shape that claims no case (every case's accounting, grade and
  * feedback stays the first answer's), and only its rows for the follow-up duties are taken. Every other duty keeps the
- * first answer's row exactly. A follow-up duty the answer still did not inspect keeps a not-inspected note. */
+ * first answer's row exactly. Uninspected duties keep their latest specific rejection, or the held omission note. */
 export function mergeDutyFollowUp(raw: unknown, plan: Pick<RetrospectivePlan, 'cases'> & Partial<Pick<RetrospectivePlan, 'omitted' | 'prior' | 'waiverAvailable' | 'waiverRefs'>>,
   view: JournalView, pass: number, held: RetroResult, at = 0, contextDigest = 'sha256:unbound'): RetroResult {
   const asked = new Set(dutiesLeftUninspected(held));
@@ -841,9 +842,11 @@ export function mergeDutyFollowUp(raw: unknown, plan: Pick<RetrospectivePlan, 'c
     wells: asked.has('gravity-well') ? body.wells : GRAVITY_WELLS.map(() => 0),
     eff: asked.has('waste') ? body.eff : held.efficiency.summary }, plan, view, pass, at, contextDigest);
   const subRow = (duty: RetrospectiveDuty) => sub.duties[RETROSPECTIVE_DUTIES.indexOf(duty)]!;
-  // Only an inspection is taken from the follow-up; a duty it still did not inspect keeps the first answer's row.
+  // Keep the latest specific validation failure instead of hiding it behind the first answer's generic omission.
+  // An omitted duty or unreadable inspection list still preserves the held row; neither claims a new inspection.
   const taken = (duty: RetrospectiveDuty) => asked.has(duty) && subRow(duty).disposition === 'inspected';
-  const duties = held.duties.map(row => taken(row.duty) ? subRow(row.duty) : row);
+  const duties = held.duties.map(row => taken(row.duty)
+    || asked.has(row.duty) && readable && subRow(row.duty).note !== RETRO_DUTY_UNINSPECTED_NOTE ? subRow(row.duty) : row);
   const findings = [...held.findings, ...sub.findings.filter(item => asked.has(item.duty))
     .map((item, index) => ({ ...item, id: `retro:${String(pass)}:duties:${String(index)}` }))];
   const refusedRows = [...held.refusedRows ?? [], ...(sub.refusedRows ?? []).map(row => `follow-up ${row}`),
