@@ -1,6 +1,6 @@
 # Change review — bind the R30e unit assessment to its actual base
 
-Subject base: 852578a48e7d240b51e576aa4b439a42df6bb29b
+Subject base: 1c3447786f1ca9721b4b6b58774edc51eb59b1a3
 Review state: open
 Reviewed content: none
 Outcome: correct the unit evidence scope to 1c3447786f1ca9721b4b6b58774edc51eb59b1a3..852578a48e7d240b51e576aa4b439a42df6bb29b; retain the train's separate evidence.
@@ -21,7 +21,7 @@ Convergence: none
 Decision: rule30-repair-binding | honor the existing reviewBase at the unit launcher and set the exact original parent through the desk patch queue; preserve the original reviewer verdict and separate train evidence | reported=/Users/dabombstudio/.instar/agents/echo/.instar/lanes/w4-rule30-repair-PROGRESS.md
 Deferral: none
 
-Subject (0 paths): review records only; desk changes and their replay are recorded in the repair progress report.
+Subject (1 paths): tests/assembly/production-codex-provider.test.ts. This record binds the original unit plus its review-only repair commits; the test bytes remain exactly those at 852578a48e7d240b51e576aa4b439a42df6bb29b. Desk changes and their replay are recorded in the repair progress report.
 
 ## Closing block
 
