@@ -38,6 +38,8 @@ Deferral: tests/preview/retrospective-duty-followup.test.ts:584 | not-a-deferral
 
 Subject (3 paths): tests/preview/fixtures/retrospective-duty-followup-disposition-2026-10-09.json, tests/preview/retrospective-duty-followup.test.ts, tests/preview/retrospective.ts
 
+Register evidence: Both delegated desk repin tools ran with zero owner or inventory changes. Replayed generated/ at source commit 95d305a34a8ea85ad9e446cf0e5f7cd4547fc2fc: 282 entries, 116 rules, 34 terms, unchanged shape-only authority. This same review covers the generated-source refresh.
+
 ## Closing block
 
 simplestRobustRoute: This is the simplest robust route: repair the misleading empty output template and preserve the already-computed rejection note. No extra call, retry loop, acceptance relaxation or tool restriction. Existing budget/stop admission is the start guard, the strict validator is the end guard, and the single-call cap is the limit. Three unattended real claude-sonnet-5 calls on the failed packet pass I1b at 288, 216 and 360 output tokens; worker integration proves the same prompt reaches the existing call.
