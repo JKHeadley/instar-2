@@ -63,7 +63,7 @@ it('a due answer too long for one message goes out whole, in order, under its re
   for (const push of pushes) expect(Buffer.byteLength(push.text)).toBeLessThanOrEqual(4096);
   expect(pushes[0]!.text).toMatch(/^You asked on .*\nDone\. Done\./u);
   expect(pushes[0]!.text.endsWith(' (1/2)')).toBe(true);
-  expect(pushes[1]!.text).toMatch(/^PREVIEW \(2\/2\) — Done\./u);
+  expect(pushes[1]!.text).toMatch(/^\(2\/2\) — Done\./u);
   expect(pushes.map(push => push.disposition)).toEqual(['result', 'result']);
   const turn = journal.view.order.find(item => item.requestedAction)!;
   expect(turn.answer?.startsWith('Done.')).toBe(true);

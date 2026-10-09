@@ -97,7 +97,7 @@ it('F06 prose-wrapped answer: the answer side reads one wrapped object; a list, 
 it('F04 too-long answer: a short answer sends whole; an oversized answer sends whole across two messages, once, across replay', async () => {
   // Live failure: a reply beyond Telegram's limit must not send a truncated prefix. Since plan #466 (w4-statuslen) it is
   // never refused either: the whole answer goes out in order across messages, and nothing is sent again on replay.
-  const long = 'x'.repeat(4085);
+  const long = 'x'.repeat(4097);
   const cases: [string, string[], string][] = [['short answer', ['short answer'], 'short answer'],
     [long, splitReply(`${long}`)!, `${long}`]];
   const [first, second] = cases[1]![1];

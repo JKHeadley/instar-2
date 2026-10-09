@@ -61,7 +61,7 @@ it('answers, reviews a clean reply, and records a contradictory one-line review 
     worker.intake([update(2, 'And the other color?')]); await worker.drain();
     worker.intake([update(3, 'And one more color?')]); await worker.drain();
     expect(sent.map(item => item.expectedText)).toEqual(['The answer is violet.', 'The answer is amber.',
-      'PREVIEW — The answer is scarlet.']);
+      'The answer is scarlet.']);
     // The malformed verdict is re-asked once with the same context (Rule 116); both misses release as before.
     expect(reviewPackets).toHaveLength(3);
     expect(reviewPackets[2]).toEqual(reviewPackets[1]);
@@ -188,7 +188,7 @@ it('upgrades the frozen live-format journal in place and preserves an UNKNOWN se
   let journal = openPreviewJournal(path, key);
   let sends = 1; // the fixture has one physical send attempt with UNKNOWN result
   try {
-    expect(journal.view.order[0].intent).toBe('violet');
+    expect(journal.view.order[0].intent).toBe('PREVIEW — violet');
     journal.close(); journal = openPreviewJournal(path, key);
     const resumed = createJournalWorker(journal, { now: () => at, stopped: () => false,
       model: async () => 'amber', checkOutbound: () => {},
@@ -196,7 +196,7 @@ it('upgrades the frozen live-format journal in place and preserves an UNKNOWN se
     resumed.intake([update(1, 'What color?'), update(2, 'Another color?')]); await resumed.drain();
     expect(sends).toBe(2);
     expect(journal.view.order.map(turn => [turn.update, turn.intent, turn.sent])).toEqual([
-      [1, 'PREVIEW — violet', undefined], [2, 'PREVIEW — amber', 2] ]);
+      [1, 'PREVIEW — violet', undefined], [2, 'amber', 2] ]);
     expect(status(root)).toMatchObject({ cursor: 3, turns: 2, replies: 2, unknownSends: 1,
       unknownCallBreakdown: { total: 0 }, stop: null });
     expect(readFileSync(path, 'utf8')).not.toContain('What color?');

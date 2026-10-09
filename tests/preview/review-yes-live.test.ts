@@ -249,8 +249,8 @@ it('replays the real reviewer: the note rides unless it answered a confident no'
   for (const item of jevRecorded) {
     const label = `${item.case} run ${item.run}`;
     const result = await jevCase(item.case, async (text, questions) => {
-      // A strict replay: the worker asks exactly what the real reviewer was asked.
-      expect(text, label).toBe(item.text);
+      // Replay the recorded body and questions, accounting only for the removed surface prefix.
+      expect(text, label).toBe(item.text.replace(/^PREVIEW — /u, ''));
       expect(createHash('sha256').update(JSON.stringify(questions)).digest('hex'), label).toBe(item.questionsSha256);
       return JSON.parse(item.raw) as unknown;
     });

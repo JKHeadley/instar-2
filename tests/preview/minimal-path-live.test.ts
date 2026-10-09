@@ -39,7 +39,7 @@ it('without the accepted single-machine policy the message past the allowance is
   harness.setUpdates(twoMessages(world));
   const run = await harness.runLive(4, ONE_TURN);
   expect(run.status, run.stderr).toBe(0);
-  expect(run.stderr).toContain('limited answers past a cap are inhibited: no operator acceptance of the single-machine profile (P-08) is recorded for this installation');
+  expect(run.stderr).toContain('limited answers past a cap are inhibited: no operator acceptance of the single-machine profile (P-08) is recorded for this trial');
   // Only the ordinary answer inside the allowance went out.
   expect(sends(harness)).toHaveLength(1);
   const status = await statusOf(harness);

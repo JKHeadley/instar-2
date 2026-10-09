@@ -108,7 +108,7 @@ it('wrapped Decision JSON: an unavailable full-context review is recorded, never
     expect(journal.view.order[0]?.release).toMatchObject({ review: 'unavailable' });
     expect(sent).toHaveLength(1);
     worker.intake([update(2, 'What does this journal hold?')]); await worker.drain();
-    expect(sent[1]).toBe('The journal remembers this installation.');
+    expect(sent[1]).toBe('The journal remembers this trial.');
   });
 });
 
@@ -190,8 +190,8 @@ it('memory denial: full-context review objects to a false no-memory claim and th
     expect(JSON.parse(packets[0]!).capability).toContain('capability-note source');
     expect(JSON.parse(packets[0]!).sources.find((s: { id: string }) => s.id === 'capability-note').text)
       .toContain('an encrypted local journal of messages, summaries and memory that survives restarts');
-    expect(sent).toEqual(['Yes: this installation keeps a durable journal of what you tell me.',
-      'PREVIEW — I can use this trial journal to remember earlier turns.']);
+    expect(sent).toEqual(['Yes: this trial keeps a durable journal of what you tell me.',
+      'I can use this trial journal to remember earlier turns.']);
     expect(journal.view.order[0]?.release).toMatchObject({ review: 'violation', objections: ['claims_blocked'], revised: true });
   });
 });

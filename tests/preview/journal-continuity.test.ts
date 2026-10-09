@@ -44,7 +44,7 @@ it.each(boundaries)('restarts after %s without duplicate sends or lost memory', 
       const sends = lines(root, 'sends.log').map(line => JSON.parse(line) as { update: number; text: string });
       expect(new Set(sends.map(send => send.update)).size, cut).toBe(sends.length);
       expect(sends.filter(send => send.update === 4), cut).toEqual([
-        { update: 4, text: 'PREVIEW — Silver otter 731' },
+        { update: 4, text: 'Silver otter 731' },
       ]);
       const calls = lines(root, 'models.log');
       expect(new Set(calls).size, cut).toBe(calls.length);

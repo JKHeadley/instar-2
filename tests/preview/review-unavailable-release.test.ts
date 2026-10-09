@@ -17,7 +17,7 @@ const genesis = (maxCalls = 120) => ({ kind: 'genesis' as const, bot: '12345678'
   operator: '7654321', grant: 'grant:preview', configurationDigest: 'sha256:offline', expires: 9999999999999,
   maxCalls, maxReplies: 80, maxTurns: 80, maxBytes: 32768, cursor: 0 });
 const answer = (reply: string) => JSON.stringify({ reply, memory: [] });
-const CANDIDATE = 'PREVIEW — I set your reminder for Friday at 9.';
+const CANDIDATE = 'I set your reminder for Friday at 9.';
 const jevFlags = (...flagged: ReplyRule[]) => async () => ({ value: { model: JEV_MODEL,
   answers: Object.fromEntries(Object.keys(REPLY_RULES).map(id => [id,
     { type: 'noul', noul: flagged.includes(id as ReplyRule) ? 0.93 : 0.02 }])) }, latencyMs: 0 });
