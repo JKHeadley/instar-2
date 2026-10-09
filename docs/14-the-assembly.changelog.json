@@ -1,5 +1,21 @@
 [
   {
+    "revision": 24,
+    "date": "2026-10-09",
+    "status": "draft",
+    "cause": {
+      "kind": "conversation",
+      "note": "Operator direction via observer #202: remove the preview framing (w4-agentready)."
+    },
+    "changes": [
+      {
+        "what": "The accepted-reply projection renders the accepted answer without the preview label.",
+        "why": "Present Instar as the agent while preserving acceptance, grounding, escaping and size checks.",
+        "ref": "w4-agentready; observer #202"
+      }
+    ]
+  },
+  {
     "revision": 23,
     "date": "2026-10-03",
     "status": "draft",
