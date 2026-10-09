@@ -22,6 +22,8 @@ Decision: sb-w4-credname-repair-132124-merge | Ordinary merge of origin/main ret
 
 Decision: sb-w4-credname-repair-132124-docs | Regenerate the run-graph and assembly Markdown changelogs from existing JSON to repair document-check drift, using the existing renderer; desk pin tools verify that no hash changes are needed | reported=/Users/dabombstudio/.instar/agents/echo/.instar/lanes/sb-w4-credname-repair-132124-PROGRESS.md
 
+Decision: sb-w4-credname-repair-132124-register | Replay the existing register against the committed repaired tree; population and authority remain unchanged, only generated commit bindings refresh | reported=/Users/dabombstudio/.instar/agents/echo/.instar/lanes/sb-w4-credname-repair-132124-PROGRESS.md
+
 ## Closing block
 
 simplestRobustRoute: This is the simplest robust route: merge the current main and use existing targeted tests and evidence checkers. No new machinery or changed ability. Start guards are clean branch and exact main; end guards are targeted checks and committed evidence; all five safety floors stay held. No live or autonomous completion claim.
