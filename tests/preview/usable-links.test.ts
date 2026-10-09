@@ -74,7 +74,7 @@ it('checks the final candidate: a revision that introduces a localhost link is r
       revise: async () => ({ state: 'complete', text: 'Open http://localhost:4042/new-report for your report.' }) },
     send: async input => { sent.push(input.expectedText); return sent.length; } });
   worker.intake(hello); await worker.drain();
-  const final = 'PREVIEW — Open http://localhost:4042/new-report for your report.';
+  const final = 'Open http://localhost:4042/new-report for your report.';
   expect(sent).toEqual([final]);
   const release = journal.view.order[0]?.release;
   expect(release?.revised).toBe(true);

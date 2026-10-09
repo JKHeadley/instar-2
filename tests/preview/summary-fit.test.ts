@@ -334,7 +334,7 @@ it('answers an operator message that arrives mid catch-up while the pass is stil
   } finally { rmSync(root, { recursive: true, force: true }); }
 }, 120000);
 
-for (const [label, answer, reply] of [['decided by its answer', decidingAnswer, 'PREVIEW — Done, the bird feeder reminder is cancelled.'],
+for (const [label, answer, reply] of [['decided by its answer', decidingAnswer, 'Done, the bird feeder reminder is cancelled.'],
   ['left undecided by its answer', undecidedAnswer, MEMORY_UNDECIDED_REPLY]] as const)
   it(`answers a correction sent while the frontier is far behind without waiting for the catch-up (${label})`, async () => {
     const root = tmp('behind');
