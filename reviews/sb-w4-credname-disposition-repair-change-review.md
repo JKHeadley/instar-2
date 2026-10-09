@@ -14,7 +14,7 @@ Side effects: Recorded malformed findings remain uninspected but now expose the 
 Undo and recovery: Revert these changes and regenerate register evidence. No state migration or journal rewrite is needed.
 Multi-machine posture: Pure prompt and merge behavior shared by every existing conversation owner; no new store, replication protocol, peer dependency or machine-specific permission.
 Layer below: Read the encrypted proofroom3 journal read-only: original first answer, held duty rows, follow-up and completed pass. Inspected validateRetrospective disposition/refusal handling, mergeDutyFollowUp and taskFields. Replayed the shipped worker admission/reserve/uncertain/crash controls and status reply I1d. Saved contract evidence stays bound to its original gate process.
-Bug class: live
+Bug class: live-path
 Bug evidence: reproducer=tests/preview/retrospective-duty-followup.test.ts; live=tests/preview/fixtures/retrospective-duty-followup-disposition-2026-10-09.json
 Hook bypass: none
 Convergence: none
