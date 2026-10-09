@@ -126,10 +126,10 @@ export const createClaudeCodeSubscriptionRoute = config => ({ kind: 'Success', v
     expect(status.doorways.map.doorways[0].models[0]).toMatchObject({ strength: 'provider-reported' });
     // Rule 100: the vault record and the installed credentials' identity and expiry.
     const names = status.credentials.records.map(r => r.name);
-    expect(names).toEqual(expect.arrayContaining(['telegram-bot-token', 'typesafe-key', 'preview-activation']));
-    expect(status.credentials.records.find(r => r.name === 'preview-activation')).toMatchObject({
+    expect(names).toEqual(expect.arrayContaining(['your Telegram bot token', 'your API key', 'your activation']));
+    expect(status.credentials.records.find(r => r.name === 'your activation')).toMatchObject({
       expiresAt: trial.expiresAt, expirySource: 'activation-record', reminders: expect.arrayContaining([trial.expiresAt]) });
-    expect(status.credentials.records.find(r => r.name.startsWith('chat-github-token-'))).toMatchObject({ custody: 'preview-vault' });
+    expect(status.credentials.records.find(r => r.name === 'your stored credential')).toMatchObject({ custody: 'preview-vault' });
     expect(status.credentials.referencedIn).toEqual([1]);
     // Custody is intact and checked live: the original capture and the stored secret both open.
     expect(status.credentials.custody).toEqual({ stored: 1, failed: [], missing: [] });
