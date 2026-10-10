@@ -6490,7 +6490,7 @@ export function createJournalWorker(journal: ReturnType<typeof openPreviewJourna
       { id: string; title?: string; text?: unknown } | undefined;
     return note && typeof note.text === 'string' && note.text.includes(TOOLS_LIMITS)
       ? { id: note.id, ...(note.title === undefined ? {} : { title: note.title }), text: note.text }
-      : { id: 'capability-note', text: `You have ${TOOLS_BRIEFING} ${TOOLS_LIMITS}` };
+      : { id: 'capability-note', text: `${TOOLS_BRIEFING} ${TOOLS_LIMITS}` };
   };
   /** Under byte pressure, a source that declares `yieldBytes` (the desk report) is cut to that many bytes before
    * conversation history or reply guidance yields. The cut is labelled and names where the full text is; [] when
@@ -6730,7 +6730,7 @@ export function createJournalWorker(journal: ReturnType<typeof openPreviewJourna
       // conditional abilities rather than closing with that sentence, the agent describing itself gives only the note's
       // items and limits: live 2026-10-04 (cint-L49, K11a, update 6232231) replays restated earlier
       // refusals in history as standing limits the note does not have (Rule 103; lanes/w4-selfdesc-PROGRESS.md).
-      capability: `Your capabilities are the capability-note source${toolRouted ? '; describing yourself, give only its items and limits' : ''}. Summary covers earlier turns; history has later turns. For a question about what the operator said, state a remembered detail only when the offered journal evidence supports that exact detail, not a similar name, event or date, a summary inference, your earlier reply or the question's premise; otherwise say "I don't know from this journal", never that the operator did not say it. Cite sourceLabel for supported remembered facts. Say when the source is unknown.`
+      capability: `Your capabilities are the capability-note source; describe their useful outcomes in plain language. Summary covers earlier turns; history has later turns. For a question about what the operator said, state a remembered detail only when the offered journal evidence supports that exact detail, not a similar name, event or date, a summary inference, your earlier reply or the question's premise; otherwise say "I don't have enough information to recall that", never that the operator did not say it. Cite sourceLabel for supported remembered facts. Say when the source is unknown.`
         // Hold guidance rides only while a held item is visible (history, recall, or today's status); exact-unit guidance only with a number carrying a unit or currency.
         // Rule 19, live 2026-10-03 (I-proofroom2-20261003-061647, I3b, update 6231611): the operator answered
         // "17 × 3 = 51" with "No, it's 41." and the reply asked which earlier answer was meant without naming any

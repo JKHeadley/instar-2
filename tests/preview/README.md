@@ -10,22 +10,22 @@ The prefix is present before HTML rendering, digesting, and Eight preparation. T
 
 The journal runner's capability briefing is generated from these lines and the feature declarations in `journal.declarations.json`; see `generated/capabilities.json`. Add a line here and a declaration there together, or the register build fails. Each line is the one-line briefing text; its indented `Details:` line keeps the full description, which the briefing does not carry.
 
-- `preview-conversation`: answers the operator in the configured private Telegram chat or forum group, returning each reply to its originating topic.
+- `preview-conversation`: I keep track across topics and answer you where you asked.
   Details: only the verified operator is admitted; a forum journal serves all topics of one configured group, including General, with topic-specific recent history and harness sessions. Unknown send outcomes are never resent.
-- `preview-durable-memory`: an encrypted local journal of messages, summaries and memory that survives restarts; the operator can correct or forget a fact.
+- `preview-durable-memory`: I remember what matters across all our conversations; tell me if I have something wrong, or ask me to forget it.
   Details: keeps accepted messages, summaries and validated memory changes in one encrypted local journal that survives restarts and spans the trial's topics; the operator can ask to correct or forget a recorded fact, later replies withhold the old claim, and the original audit record stays in the journal. It is not production or other-agent memory.
-- `preview-status-command`: "status" and "how are you doing" are answered from the journal without a model call.
+- `preview-status-command`: I can tell you how I am doing from my current records.
   Details: the exact messages status and how are you doing are answered from the durable journal without generating an answer.
-- `preview-upcoming-date-mention`: a saved date within 48 hours can get one short mention in the next reply.
+- `preview-upcoming-date-mention`: I can mention an important date coming up in the next two days.
   Details: when a saved date is within 48 hours, the next ordinary reply can include one short upcoming-date clause; the mention is remembered across restarts.
-- `preview-requested-actions`: an explicit later-time request is answered once at that time, or daily or weekdays until cancelled, with no new operator message.
+- `preview-requested-actions`: I can keep reminders and repeating tasks, once, daily or on weekdays, until you cancel them.
   Details: when the operator explicitly asks for something at a settled later day and time (a reminder is one case), the runner brings that request back as an ordinary turn at the time asked, with no new operator message, and the answer is sent then through the same checks, first quoting the request and when it was made; requests due together in a conversation share one message, inside the reply limit. Daily or weekday requests at a local time repeat until cancelled; missed occurrences combine into one on recovery. Each occurrence uses the existing spend, stop and delivery limits. A later request for the same time adds a request; only the operator withdrawing one cancels it.
-- `preview-owned-obligations`: keeps standing instructions and works the promises its replies leave open, holding results for the next message.
+- `preview-owned-obligations`: I carry your instructions forward and work on my promises, bringing results back when we next talk.
   Details: keeps the operator's standing instructions until superseded or done, and works the deferrals and promises its replies leave open, holding each result for the operator's next message.
-- `preview.rolling-summary`: keeps a faithfulness-checked rolling summary of earlier turns.
-- `preview.coherence-check`: checks each reply against remembered earlier turns without a model call.
+- `preview.rolling-summary`: I keep the important context from earlier conversations.
+- `preview.coherence-check`: I check my replies against what I remember.
   Details: checks each reply against remembered earlier turns, without a model call, and records the findings.
-- `preview.step-check`: off unless launched with it; independently checks each business step and changes nothing.
+- `preview.step-check`: An optional independent check can review my work; it is off unless enabled.
   Details: off unless the runner is launched with it; records an independent check of each business step and changes nothing.
 
 ## Prerequisites and exact invocation
