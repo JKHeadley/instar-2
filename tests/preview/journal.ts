@@ -4963,7 +4963,8 @@ export function topicNames(view: JournalView): ReadonlyMap<number, string> {
     if (!turn.raw.includes('"forum_topic_')) continue;
     let message: (TelegramMessage & { forum_topic_created?: { name?: unknown }; forum_topic_edited?: { name?: unknown } }) | undefined;
     try { const update = JSON.parse(turn.raw) as TelegramUpdate; message = update.message ?? update.edited_message; } catch { continue; }
-    const thread = boundThread(view.genesis, message?.message_thread_id), raw = message?.forum_topic_created?.name ?? message?.forum_topic_edited?.name;
+    const thread = view.genesis.forum && message?.message_thread_id === 1 ? 1
+      : boundThread(view.genesis, message?.message_thread_id), raw = message?.forum_topic_created?.name ?? message?.forum_topic_edited?.name;
     if (!matchesBoundChat(view.genesis, message?.chat)
       || !Number.isSafeInteger(thread) || thread! <= 0 || typeof raw !== 'string') continue;
     const name = Array.from(raw.replace(/[\p{Cc}\p{Cf}]+/gu, ' ').replace(/\s+/gu, ' ').trim()).slice(0, TOPIC_NAME_MAX).join('');
@@ -5618,15 +5619,23 @@ export function createJournalWorker(journal: ReturnType<typeof openPreviewJourna
   /** Recall scores the answer itself: a generated Rule 110 disclosure (its date and turn number) is not what the turn said. */
   const recallReply = (turn: Turn) => replyBody(turn)?.replace(/^PREVIEW — /u, '');
   const dated = (turn: Turn) => { const at = sentAt(turn); return at === null ? 'date unknown' : isoMinute(at); };
+  const packetConversation = (thread: number | undefined) => journal.view.genesis.forum && thread === undefined
+    ? topicNames(journal.view).has(1) ? conversationName(1, topicNames(journal.view)) : 'General'
+    : conversationName(thread, topicNames(journal.view));
   const turnLabel = (turn: Turn) =>
-    `conversation:${fromOperator(turn) ? 'operator' : 'other sender'}/${conversationName(turn.thread, topicNames(journal.view))}/${dated(turn)}/#${turn.update}`;
+    `conversation:${fromOperator(turn) ? 'operator' : 'other sender'}/${packetConversation(turn.thread)}/${dated(turn)}/#${turn.update}`;
+  // Shared forum facts retain the same source identity used by history and recall. Private bytes stay unchanged.
+  const forumSource = (id: string) => {
+    const source = journal.view.genesis.forum ? journal.view.turns.get(id) : undefined;
+    return source ? { conversation: packetConversation(source.thread), sourceLabel: turnLabel(source) } : {};
+  };
   const channelLabel = (item: ChannelItem) =>
     `import:${item.source}/${cleanMetadata(item.conversation ?? 'unknown conversation', item).replace(/\s+/gu, ' ').slice(0, 40)}/${isoMinute(item.at)}/${createHash('sha256').update(channelKey(item)).digest('hex').slice(0, 12)}`;
   const summaryLabel = (summary: Extract<JournalRecord, {kind:'summary'}>) =>
     `summary:all conversations/${isoMinute(summary.at)}/through #${summary.through}`;
   const memoryLabel = (change: MemoryChange) => {
     const trigger = journal.view.turns.get(change.trigger)!;
-    return `correction:operator/${conversationName(trigger.thread, topicNames(journal.view))}/${dated(trigger)}/#${trigger.update}`;
+    return `correction:operator/${packetConversation(trigger.thread)}/${dated(trigger)}/#${trigger.update}`;
   };
   /** Rules 11, 96: the active facts a summary keeps by source. The summary writer keeps each exact factual
    * clause in memoryItems and tells the model not to repeat them in its prose, so prose alone is not the facts.
@@ -6229,7 +6238,7 @@ export function createJournalWorker(journal: ReturnType<typeof openPreviewJourna
     if (packet && !includeRecorded) return { update: target.update, reply: replyFor(target), recorded: null,
       missing: 'The recorded packet did not fit this bounded reply context.' };
     return { guidance: 'This is one candidate reply. Judge whether it matches the question. This redacted view of its recorded packet shows inputs available to the model, not which ones it actually relied on. If the target or packet is missing, say so; do not infer a reason from current history.',
-      update: target.update, conversation: conversationName(target.thread, topicNames(journal.view)), reply: replyFor(target),
+      update: target.update, conversation: packetConversation(target.thread), reply: replyFor(target),
       delivery: outcome(target), ...(target.replyChecks?.length ? { replyCheck: target.replyChecks.at(-1) } : {}),
       ...(packet && includeRecorded && !superseded ? { recorded: safeProvenance(Object.fromEntries(
         ['now', 'sources', 'historyMode', 'summary', 'memory', 'history', 'recalled', 'people', 'commitments', 'channelMemory', 'corrections']
@@ -6416,7 +6425,7 @@ export function createJournalWorker(journal: ReturnType<typeof openPreviewJourna
         && (!memoryTriggers.has(item.id) || journal.view.memory.some(change => change.source === item.id
           || change.trigger === item.id && change.historical)))
         .map(item => ({ id: item.id, text: item.text, at: sentAt(item) ?? 0, source: `turn ${item.update}`,
-          date: dated(item), conversation: conversationName(item.thread, topicNames(journal.view)) })),
+          date: dated(item), conversation: packetConversation(item.thread) })),
       ...[...journal.view.channelItems.values()].filter(item => item.at < turn.at)
         .map(item => ({ id: channelMemoryId(item), text: item.text, at: item.at,
           source: `${item.source} ${publicMemoryId(channelMemoryId(item))} (export)`, date: isoMinute(item.at),
@@ -6537,7 +6546,7 @@ export function createJournalWorker(journal: ReturnType<typeof openPreviewJourna
     const undecidedEdits = undecidedAll.slice(-PREVIEW_UNDECIDED_LIMIT).map(item => ({ ...item,
       ...(item.previous === undefined ? {} : { previous: item.previous.slice(0, 600) }), current: item.current.slice(0, 600) }));
     const moreUndecidedEdits = undecidedAll.length - undecidedEdits.length;
-    const elsewhere = (item: Turn) => item.thread === current && !labelAll && !saidRange ? {} : { conversation: conversationName(item.thread, topicNames(journal.view)), date: dated(item) };
+    const elsewhere = (item: Turn) => item.thread === current && !labelAll && !saidRange ? {} : { conversation: packetConversation(item.thread), date: dated(item) };
     const history = earlier.map(item => ({ id: item.id, sourceKind: sourceKindOf(item), sourceLabel: turnLabel(item), ...elsewhere(item), ...(item.editOf ? { editedTurn: item.editOf } : {}), ...(fromOperator(item) ? {} : { from: speakerOf(item) }),
       user: sizeRefused(item) ? '[Message saved verbatim but too long for the preview context; ask the operator for shorter labelled parts.]'
         : clean(redact(item.text).text, true, item.id),
@@ -6561,7 +6570,7 @@ export function createJournalWorker(journal: ReturnType<typeof openPreviewJourna
       ...(turn ? { source: turn.id } : { source: item!.source }),
       from: turn ? speakerOf(turn) : `${cleanMetadata(item!.from, item)} (export sender metadata, unverified)`,
       date: turn ? dated(turn) : isoMinute(item!.at),
-      ...(turn ? (turn.thread === current ? {} : { conversation: conversationName(turn.thread, topicNames(journal.view)) })
+      ...(turn ? (turn.thread === current ? {} : { conversation: packetConversation(turn.thread) })
         : { account: cleanMetadata(item!.account, item),
           ...(item!.conversation === undefined ? {} : { conversation: cleanMetadata(item!.conversation, item) }) }),
       message: turn ? clean(redact(turn.text).text, true, turn.id)
@@ -6596,7 +6605,7 @@ export function createJournalWorker(journal: ReturnType<typeof openPreviewJourna
     }
     const commitments = [...promised.values()].sort((a, b) => a.turn.update - b.turn.update || (a.side === 'message' ? -1 : 1))
       .map(({ turn, side, items }) => ({ source: turn.id, sourceKind: side === 'message' ? sourceKindOf(turn) : 'inferred-by-summary' as MemorySourceKind, sourceLabel: turnLabel(turn), from: side === 'message' ? speakerOf(turn) : 'you, in your own earlier reply', date: dated(turn), age: age(turn),
-        ...(turn.thread === current ? {} : { conversation: conversationName(turn.thread, topicNames(journal.view)) }),
+        ...(turn.thread === current ? {} : { conversation: packetConversation(turn.thread) }),
         ...(side === 'message' ? { message: clean(redact(turn.text).text, true, turn.id) }
           : { reply: replyFor(turn), answering: clean(redact(turn.text).text, true, turn.id), delivery: outcome(turn) }),
         items: items.map(item => {
@@ -6615,7 +6624,7 @@ export function createJournalWorker(journal: ReturnType<typeof openPreviewJourna
             ...(note.sources?.length ? { sources: note.sources.map(source => {
             const original = journal.view.turns.get(source.source)!;
             return { sourceLabel: turnLabel(original), from: note.in === 'message' ? speakerOf(original) : 'you, in your own earlier reply',
-              date: dated(original), ...(original.thread === current ? {} : { conversation: conversationName(original.thread, topicNames(journal.view)) }),
+              date: dated(original), ...(original.thread === current ? {} : { conversation: packetConversation(original.thread) }),
               ...(note.in === 'message' ? { message: clean(redact(original.text).text, true, original.id) }
                 : { reply: replyFor(original), delivery: outcome(original) }), quote: clean(source.quote, true, original.id) };
           }) } : {}) };
@@ -6624,7 +6633,7 @@ export function createJournalWorker(journal: ReturnType<typeof openPreviewJourna
       [entry.turn.id, ...entry.items.flatMap(item => journal.view.commitments[item.id]?.sources?.map(source => source.source) ?? [])])]);
     const recall = summary || saidRange ? recalled.filter(item => (saidRange || !cited.has(item.id)) && !superseded.has(item.id)).sort((a, b) => a.update - b.update).map(item => ({ id: item.id, sourceKind: sourceKindOf(item), sourceLabel: turnLabel(item), date: dated(item),
 
-      ...(item.thread === current ? {} : { conversation: conversationName(item.thread, topicNames(journal.view)) }),
+      ...(item.thread === current ? {} : { conversation: packetConversation(item.thread) }),
       ...(item.editOf ? { editedTurn: item.editOf } : {}),
       ...(fromOperator(item) ? {} : { from: speakerOf(item) }),
       user: sizeRefused(item) ? '[Message saved verbatim but too long for the preview context; ask the operator for shorter labelled parts]'
@@ -6637,7 +6646,7 @@ export function createJournalWorker(journal: ReturnType<typeof openPreviewJourna
     const corrections = flagged.filter(item => !journal.view.memory.some(change => change.mode !== 'prefer' &&
       (change.source === item.id || change.replies?.includes(item.id)))).map(item => ({ source: item.id, sourceLabel: turnLabel(item), update: item.update, date: dated(item),
 
-      ...(item.thread === current ? {} : { conversation: conversationName(item.thread, topicNames(journal.view)) }),
+      ...(item.thread === current ? {} : { conversation: packetConversation(item.thread) }),
       findings: correctionNote(item.checked ?? []).map(finding => ({ ...finding,
         possibleProblem: clean(finding.possibleProblem, true, item.id), inYourReply: clean(finding.inYourReply, true, item.id) })) }));
     const channelMemory = channels.map(item => ({ sourceLabel: channelLabel(item), sourceKind: 'channel-import' as MemorySourceKind, source: item.source, account: cleanMetadata(item.account, item),
@@ -6649,7 +6658,7 @@ export function createJournalWorker(journal: ReturnType<typeof openPreviewJourna
       ...(item.conversation === undefined ? {} : { conversation: cleanMetadata(item.conversation, item) }),
       quote: clean(redact(item.text).text, true) }));
     const openQuestions = questions.map(note => { const source = journal.view.turns.get(note.source)!;
-      return { id: note.source, date: dated(source), ...(source.thread === current ? {} : { conversation: conversationName(source.thread, topicNames(journal.view)) }),
+      return { id: note.source, date: dated(source), ...(source.thread === current ? {} : { conversation: packetConversation(source.thread) }),
         from: speakerOf(source), question: clean(redact(note.quote).text, true), reason: note.reason }; });
     const crossed = [...earlier, ...(summary ? recalled : [])].some(item => item.thread !== current);
     const activeDated = journal.view.dated.filter(item => !journal.view.memory.some(change =>
@@ -6658,19 +6667,19 @@ export function createJournalWorker(journal: ReturnType<typeof openPreviewJourna
       && clean(item.quote, true, item.source) === item.quote);
     const selectedDated = datedSelection(activeDated, question?.text ?? '', ports.now(),
       ports.timeZone ?? 'America/Los_Angeles');
-    const due = selectedDated.items.map(item => ({ ...item,
+    const due = selectedDated.items.map(item => ({ ...item, ...forumSource(item.source),
       quote: redact(item.quote).text, when: redact(item.when).text }));
     const pendingDates = journal.view.order.filter(item => remembered(item) && item.update <= through && item.datedPending
       && !journal.view.memory.some(change => change.mode !== 'prefer' && change.in !== 'reply' && change.source === item.id));
     const datedPending = pendingDates.slice(0, 3)
-      .map(item => ({ update: item.update, message: clean(redact(item.text).text, true, item.id).slice(0, 500) }));
+      .map(item => ({ update: item.update, ...forumSource(item.id), message: clean(redact(item.text).text, true, item.id).slice(0, 500) }));
     const previous = awayFor && journal.view.order.filter(item => remembered(item) && fromOperator(item) && item.update < awayFor.update).at(-1);
     const previousMessage = previous ? clean(redact(previous.text).text, true, previous.id) : undefined;
     const selectedName = previous?.lastNamedPerson;
     const lastNamedPerson = selectedName && previousMessage?.includes(selectedName)
       && clean(redact(selectedName).text, true, previous.id) === selectedName
       ? { name: selectedName, from: speakerOf(previous), date: dated(previous),
-        ...(previous.thread === current ? {} : { conversation: conversationName(previous.thread, topicNames(journal.view)) }),
+        ...(previous.thread === current ? {} : { conversation: packetConversation(previous.thread) }),
         message: previousMessage } : undefined;
     const preferences = preferenceState();
     const reference = awayFor === undefined ? undefined : referenceFor(awayFor);
@@ -6781,7 +6790,7 @@ export function createJournalWorker(journal: ReturnType<typeof openPreviewJourna
         + (reference ? ' replyTo identifies an earlier Telegram message. Use retained journal text only; unavailable means do not infer its content from the embedded reply quote.' : '')
         + (undecidedEdits.length ? ' undecidedEdits records revisions and operator corrections whose fact change could not be judged. Use the current revision or correction and treat any conflicting prior claim as uncertain. moreUndecidedEdits counts older unresolved items omitted by the bound; an earlier claim they may concern is uncertain too.' : '')
         + (journal.view.genesis.forum === true
-          ? ' History and recalled items name their original topic in this group. Replies are visible to the group, not just the operator. Do not disclose private sources to this audience.'
+          ? ' audience.conversation is the topic of the current message and reply. Shared memory items name their source topic in conversation or sourceLabel; a remembered fact does not change the current topic. Use facts across topics and say where you learned them. Replies are visible to the group, not just the operator. Do not disclose private sources to this audience.'
           : labelAll ? ' Every history item names the conversation of this private chat it was said in, with its date.'
           : crossed ? ' Items with a conversation field were said by the same operator in another conversation of this private chat, named there with its date; the operator is the only audience of every conversation, so they are your shared memory and may be used here.' : ''),
       ...(operatorRequest ? { operatorRequest } : {}), ...(otherOperatorRequest ? { otherOperatorRequest } : {}),
@@ -6791,7 +6800,7 @@ export function createJournalWorker(journal: ReturnType<typeof openPreviewJourna
       audience: { surface: journalAudience(journal.view.genesis), chat: journal.view.genesis.chat,
         ...(journal.view.genesis.forum === true ? { conversationId: journalConversation(journal.view.genesis, current), recipients: 'configured forum group' } : {}),
         operator: journal.view.genesis.operator, ...(operatorName(journal.view) === undefined ? {} : { operatorName: operatorName(journal.view) }),
-        ...(current === undefined && !crossed ? {} : { conversation: conversationName(current, topicNames(journal.view)) }) },
+        ...(current === undefined && !crossed && !journal.view.genesis.forum ? {} : { conversation: packetConversation(current) }) },
       ...(suppliedSources === undefined ? {} : { sources: suppliedSources }),
       ...(reference ? { replyTo: reference } : {}),
       ...(summary ? { historyMode: 'summary-plus-recent', summary: { sourceKind: 'inferred-by-summary' as MemorySourceKind, sourceLabel: summaryLabel(summary), through: summary.through, text: clean(redact(summary.text).text, true, summary.through),
@@ -6882,9 +6891,9 @@ export function createJournalWorker(journal: ReturnType<typeof openPreviewJourna
       summary: latestSummary?.text ?? '',
       candidates: older.map(item => ({ text: `${clean(item.text, true, item.id)} ${replyFor(item)}`, at: sentAt(item) ?? 0 })) });
     const recentAnswer = older.map(item => item.intent !== undefined && item.noticeClass === undefined).lastIndexOf(true);
-    const candidates = [...new Set([...(recentAnswer < 0 ? [] : [recentAnswer]), ...ranked])].slice(0, 5).map(index => ({ id: older[index]!.id, sourceLabel: turnLabel(older[index]!), sourceKind: 'operator-stated' as MemorySourceKind,
+    const candidates = [...new Set([...(recentAnswer < 0 ? [] : [recentAnswer]), ...ranked])].slice(0, 5).map(index => ({ id: older[index]!.id, ...forumSource(older[index]!.id), sourceLabel: turnLabel(older[index]!), sourceKind: 'operator-stated' as MemorySourceKind,
       message: clean(redact(older[index]!.text).text, true, older[index]!.id).slice(0, 1000), reply: replyFor(older[index]!).slice(0, 1000) }));
-    const preferenceCandidates = activePreferences().map(item => ({ id: item.source, sourceKind: 'operator-stated' as MemorySourceKind,
+    const preferenceCandidates = activePreferences().map(item => ({ id: item.source, ...forumSource(item.source), sourceKind: 'operator-stated' as MemorySourceKind,
       message: redact(item.quote).text.slice(0, 1000), reply: '' }));
     const saidOlder = older.map(item => ({ text: clean(item.text, true, item.id),
       at: journal.view.memory.some(change => change.mode === 'forget' && change.source === item.id) ? 0 : sentAt(item) ?? 0 }));
@@ -9460,9 +9469,9 @@ export function createJournalWorker(journal: ReturnType<typeof openPreviewJourna
         const recentAnswer = older.map(item => item.intent !== undefined && item.noticeClass === undefined).lastIndexOf(true);
         const memoryCandidates = [...(journal.view.groupCarry ? groupCarryPacket(journal.view.groupCarry, trigger?.text ?? '', ports.now(), journal.view.limits.maxBytes, journal.view).entries
           .filter(item => item.kind === 'recall' || item.kind === 'preference' || item.kind === 'correction')
-          .map(item => ({ id: item.source, sourceKind: 'operator-stated' as MemorySourceKind, message: item.text, reply: '' })) : []), ...(replaced ? [{ id: replaced.id, sourceKind: 'operator-stated' as MemorySourceKind, message: redact(replaced.text).text,
-          reply: replyFor(replaced) }] : []), ...activePreferences().map(item => ({ id: item.source, sourceKind: 'operator-stated' as MemorySourceKind, message: redact(item.quote).text, reply: '' })),
-          ...[...new Set([...(recentAnswer < 0 ? [] : [recentAnswer]), ...ranked])].slice(0, 5).map(index => ({ id: older[index]!.id, sourceKind: 'operator-stated' as MemorySourceKind, message: clean(redact(older[index]!.text).text, true, older[index]!.id),
+          .map(item => ({ id: item.source, sourceKind: 'operator-stated' as MemorySourceKind, message: item.text, reply: '' })) : []), ...(replaced ? [{ id: replaced.id, ...forumSource(replaced.id), sourceKind: 'operator-stated' as MemorySourceKind, message: redact(replaced.text).text,
+          reply: replyFor(replaced) }] : []), ...activePreferences().map(item => ({ id: item.source, ...forumSource(item.source), sourceKind: 'operator-stated' as MemorySourceKind, message: redact(item.quote).text, reply: '' })),
+          ...[...new Set([...(recentAnswer < 0 ? [] : [recentAnswer]), ...ranked])].slice(0, 5).map(index => ({ id: older[index]!.id, ...forumSource(older[index]!.id), sourceKind: 'operator-stated' as MemorySourceKind, message: clean(redact(older[index]!.text).text, true, older[index]!.id),
           reply: replyFor(older[index]!) })).filter(item => item.id !== replaced?.id), ...(trigger ? channelCandidates(trigger, summaryFor(trigger.update)?.text) : [])];
         const unanswered = overCapRetry ? [] : unreviewedQuestions(through).slice(0, PREVIEW_QUESTION_LIMIT);
         // A briefing-free fallback is reached only when no packet that carries the sources was chosen.
