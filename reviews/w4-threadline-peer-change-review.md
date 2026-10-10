@@ -7,8 +7,8 @@ Outcome: Record why a scope grant and pairing cannot enable a Threadline send th
 Affected rules: 1, 26, 28, 29, 34, 42, 49, 62, 74, 94, 101, 102, 103, 113, 116
 Affected floors: secrets, spend cap, stop, no duplicate sends and durable intake remain unchanged; no runtime code, grant, pairing or live state is modified.
 Operator questions: The requested grant-only activation on the current single-machine installation conflicts with the purpose's fixed irreversible-operation set. A replicated installation with an admitted Threadline operation is a compliant alternative; widening the single-machine set requires an operator-approved constitutional change, not an effect-policy override.
-Suggested tier: editorial
-Declared tier: editorial
+Suggested tier: ordinary
+Declared tier: ordinary
 Tier rationale: Evidence record and focused existing-floor regression test only; no runtime implementation or behavioral change.
 Side effects: This record does not enable messaging or change the agent's self-description. The requested capability remains absent.
 Undo and recovery: Remove this review record if superseded by a completed implementation; no runtime rollback is needed.
