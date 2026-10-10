@@ -7,7 +7,7 @@ import { createClaudeCodeSubscriptionRoute, SUBSCRIPTION_CONVERSATION_FRAMING,
   subscriptionConversationPolicy } from '../../src/assembly/production-provider.js';
 import { offlineProfile, successiveWorld } from './successive-fixture.js';
 import { encoded } from './stage2-provider.js';
-import { openPreviewJournal } from './journal.js';
+import { openPreviewJournal, createJournalWorker, createModelLaunchBoundary, ModelNotStarted, MODEL_NOT_STARTED_REPLY, pendingUnknownCalls } from './journal-test-worker.js';
 
 it('invokes the existing subscription route with one bounded prepared journal envelope and UNKNOWN charge', async () => {
   const world = successiveWorld(), model = world.model, policy = subscriptionConversationPolicy(model);
@@ -25,6 +25,7 @@ it('invokes the existing subscription route with one bounded prepared journal en
     maxMetadataBytes: policy.maxMetadataBytes, maxRawTerminalBytes: policy.maxRawTerminalBytes,
     maxCaptureBytes: policy.maxCaptureBytes };
   let modelCalls = 0, outcome = 'success', cacheCreation = 0, cacheRead = 0;
+  const launch = createModelLaunchBoundary();
   const io = { realpath: path => path,
     executableBytes: () => Buffer.from('offline executable bytes'),
     inspectSubscriptionProfile: profile => ({ loginProfileIdentity: profile.loginProfileIdentity,
@@ -36,7 +37,7 @@ it('invokes the existing subscription route with one bounded prepared journal en
         apiProvider: 'firstParty', analyticsDisabled: true, projectsDirectory: `${offlineProfile.configDirectory}/projects`,
         configDirectory: offlineProfile.configDirectory, email: offlineProfile.expectedAccount,
         orgId: offlineProfile.organization, orgName: 'Offline', subscriptionType: 'max' });
-      else { modelCalls++;
+      else { launch.started(); modelCalls++;
         expect(command.args).toEqual(policy.args);
         expect(command.env.CLAUDE_CODE_MAX_OUTPUT_TOKENS).toBe('2048');
         expect(command.env.MAX_THINKING_TOKENS).toBe('0');
@@ -154,5 +155,31 @@ it('invokes the existing subscription route with one bounded prepared journal en
       maxCharge:0,automaticRetries:0})).state).toBe('uncertain');
   }
   expect(modelCalls).toBe(14);
+  // Real adapter admission after construction: no version/auth/model command can pass this check.
+  io.inspectSubscriptionProfile = () => { throw Error('subscription server policy requires reviewed effective configuration'); };
+  const invoke = () => launch.run(() => route.value.invoke(bytes, { operation: 'turn:prelaunch', deadline: now + 180000,
+    timeout: policy.timeout, maxOutputBytes: policy.maxOutputBytes, maxTokens: policy.maxTokens, maxCharge: 0, automaticRetries: 0 }));
+  await expect(invoke()).rejects.toBeInstanceOf(ModelNotStarted);
+  const heldRoot = realpathSync(mkdtempSync(join(tmpdir(), 'preview-real-admission-')));
+  const heldPath = join(heldRoot, 'journal.encrypted');
+  try {
+    const held = openPreviewJournal(heldPath, key, { kind: 'genesis', bot: '12345678', chat: '-1001234', operator: '7654321', forum: true,
+      grant: 'grant:preview', configurationDigest: 'sha256:offline', expires: 9999999999999, maxCalls: 8, maxReplies: 8,
+      maxTurns: 8, maxBytes: 32768, cursor: 0 });
+    const sends = [];
+    const ports = { now: () => now, stopped: () => false, checkOutbound: () => {}, model: invoke,
+      send: async input => { sends.push(input); return 17; } };
+    const worker = createJournalWorker(held, ports);
+    worker.intake([{ update_id: 1, message: { message_id: 1, from: { id: 7654321 },
+      chat: { id: -1001234, type: 'supergroup', is_forum: true }, message_thread_id: 3, text: 'Can you answer?' } }]);
+    await worker.drain();
+    expect(sends).toHaveLength(1); expect(sends[0]).toMatchObject({ text: MODEL_NOT_STARTED_REPLY, thread: 3 });
+    expect(held.view.calls).toBe(0); expect(pendingUnknownCalls(held.view)).toEqual([]);
+    held.close();
+    const reopened = openPreviewJournal(heldPath, key);
+    await createJournalWorker(reopened, ports).drain();
+    expect(sends).toHaveLength(1); expect(modelCalls).toBe(14);
+    reopened.close();
+  } finally { rmSync(heldRoot, { recursive: true, force: true }); }
 
 });

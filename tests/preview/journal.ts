@@ -481,6 +481,34 @@ export const GROUP_DISCLOSURE_HOLD = 'group disclosure refused';
 export class ModelDisclosureRefused extends Error {
   constructor() { super(GROUP_DISCLOSURE_HOLD); }
 }
+/** Host-only proof that this whole answer attempted no provider launch. */
+export const MODEL_NOT_STARTED_HOLD = 'model not started';
+export class ModelNotStarted extends Error {
+  constructor() { super(MODEL_NOT_STARTED_HOLD); }
+}
+export const MODEL_NOT_STARTED_REPLY = "I couldn't start my model right now. Your message is saved; please resend it to try again.";
+/** Mark before handing a model command to the executor, never after it returns. An unrelated
+ * concurrent launch conservatively keeps UNKNOWN; a later failure can never refund an earlier call. */
+export function createModelLaunchBoundary() {
+  let launches = 0;
+  return {
+    started: () => { launches++; },
+    async run<T extends { state: string }>(work: () => Promise<T>): Promise<T> {
+      const before = launches;
+      try {
+        const result = await work();
+        if (result.state === 'uncertain' && launches === before) throw new ModelNotStarted();
+        return result;
+      } catch (error) {
+        if (error instanceof ModelDisclosureRefused) throw error;
+        if (launches === before) throw new ModelNotStarted();
+        // Even a typed refusal from a later attempt cannot undo an earlier launch in this turn.
+        if (error instanceof ModelNotStarted) throw Error('model outcome unknown after launch');
+        throw error;
+      }
+    },
+  };
+}
 /** The one push such a hold allows (Rule 87 action-needed; Rule 88 after the self-heal window): content-free, so it
  * reveals nothing private to whoever is in the group now. The disclosure gate admits exactly this text. */
 export const GROUP_DISCLOSURE_HOLD_NOTICE = 'PREVIEW — I\'m holding a reply until this group\'s audience check passes again; nothing is lost, and it will follow then.';
@@ -1289,7 +1317,7 @@ export interface Turn { id: string; update: number; text: string; raw: string; a
   toolRouted?: boolean;
   /** Rules 28/29: the session writer verified at intake (operator person or scheduler system). */
   writer?: WriterRecord;
-  reserved: boolean; prompt?: string; promptKind?: 'reserve' | 'lookup' | 'format-retry' | 'answer-replace'; recallHits?: number; channelRecallHits?: number; packetDropped?: PacketDrop[]; packetLimit?: number; grounding?: ReplyGrounding; failureClass?: ModelFailureClass; modelState?: 'complete' | 'rejected' | 'uncertain'; noticeDueAt?: number; noticeClass?: 'unknown-answer' | 'too-long-input'; intent?: string; intentAt?: number; intentBody?: string; sent?: number; sentAt?: number; held?: string; heldSince?: number; heldNoticeIntent?: string; heldNoticeSent?: number; heldNoticeSentAt?: number; memoryPending?: true; memoryUndecided?: true; datedPending?: true;
+  reserved: boolean; unusedToolCalls?: number; prompt?: string; promptKind?: 'reserve' | 'lookup' | 'format-retry' | 'answer-replace'; recallHits?: number; channelRecallHits?: number; packetDropped?: PacketDrop[]; packetLimit?: number; grounding?: ReplyGrounding; failureClass?: ModelFailureClass; modelState?: 'complete' | 'rejected' | 'uncertain'; noticeDueAt?: number; noticeClass?: 'unknown-answer' | 'too-long-input'; intent?: string; intentAt?: number; intentBody?: string; sent?: number; sentAt?: number; held?: string; heldSince?: number; heldNoticeIntent?: string; heldNoticeSent?: number; heldNoticeSentAt?: number; memoryPending?: true; memoryUndecided?: true; datedPending?: true;
   /** This turn's own answer decided what it withdrew: the keys it cancelled, or none. Rules 57, 93: a
    * recorded decision, including "withdraws none", settles the reminder question this turn opened. */
   reminderDecided?: true; askConflict?: string; lastNamedPerson?: string;
@@ -3317,6 +3345,7 @@ function projectToolTurn(view: JournalView, row: Extract<JournalRecord, { kind: 
     if (w !== undefined && (!/^[0-9a-f]{12}$/u.test(String(w.key)) || typeof w.kept !== 'boolean'))
       throw Error('preview journal: tool turn workspace');
     view.calls += row.calls;
+    if (routed) routed.unusedToolCalls = (routed.unusedToolCalls ?? 0) + row.calls;
     view.toolTurns = { ...stats, invocations: stats.invocations + 1, reservedCalls: stats.reservedCalls + row.calls, open: [...stats.open, key],
       ...(w?.kept === false ? { overflow: (stats.overflow ?? 0) + 1 } : {}),
       ...(w?.kept === true && !(stats.workspaces ?? []).includes(w.key) ? { workspaces: [...(stats.workspaces ?? []), w.key] } : {}) };
@@ -4606,13 +4635,19 @@ function project(view: JournalView, row: JournalRecord, system?: SystemCheck, ad
     delete turn.held; delete turn.heldSince; view.heldTurns.delete(turn); turn.wasHeld = true;
   } else if (row.kind === 'hold') {
     if (row.unusedModel) {
-      if (row.reason !== GROUP_DISCLOSURE_HOLD || !turn.reserved || turn.answer !== undefined
+      if (![GROUP_DISCLOSURE_HOLD, MODEL_NOT_STARTED_HOLD].includes(row.reason) || !turn.reserved || turn.answer !== undefined
         || turn.modelState !== undefined || turn.intent !== undefined || turn.answerRetried
         || !view.tokenCurrent.has(`answer:${turn.id}`) || !Array.isArray(row.unusedModel.corrections)
         || row.unusedModel.corrections.some(id => !view.turns.has(id)))
         throw Error('preview journal: unused model reservation order');
       settleTokens(view, `answer:${turn.id}`, { inputTokens: 0, outputTokens: 0, inputComplete: true, charge: null });
-      view.calls--; turn.reserved = false; delete turn.reservedAt;
+      view.calls--;
+      if (row.reason === MODEL_NOT_STARTED_HOLD && turn.unusedToolCalls) {
+        view.calls -= turn.unusedToolCalls;
+        if (view.toolTurns) view.toolTurns.reservedCalls -= turn.unusedToolCalls;
+        delete turn.unusedToolCalls;
+      }
+      turn.reserved = false; delete turn.reservedAt;
       view.corrections = [...new Set([...row.unusedModel.corrections, ...view.corrections])];
     }
     if (heldNoticeReason(row.reason)) {
@@ -7539,7 +7574,9 @@ export function createJournalWorker(journal: ReturnType<typeof openPreviewJourna
           catch (error) {
             if (error instanceof ModelDisclosureRefused) journal.append({ kind: 'hold', id: turn.id,
               reason: GROUP_DISCLOSURE_HOLD, unusedModel: { corrections: carried }, at: ports.now() });
-            continue; // Every other failure leaves the reservation UNKNOWN.
+            else if (error instanceof ModelNotStarted) journal.append({ kind: 'hold', id: turn.id,
+              reason: MODEL_NOT_STARTED_HOLD, unusedModel: { corrections: carried }, at: ports.now() });
+            continue; // Every failure that could have launched leaves the reservation UNKNOWN.
           }
           // Rule 116: a real model sometimes answers in prose instead of the required Decision. Ask the same turn
           // once more with a runner-authored format reminder in the packet (never in the operator's message),
@@ -8500,6 +8537,7 @@ export function createJournalWorker(journal: ReturnType<typeof openPreviewJourna
   const limitedReason = (turn: Turn): LimitedReason | null => {
     if (!turn.accepted || turn.intent !== undefined || turn.limited !== undefined || turn.requestedAction !== undefined
       || turn.held === 'superseded by edit' || turn.heldNoticeIntent !== undefined || turn.heldNoticeCoveredBy !== undefined) return null;
+    if (turn.held === MODEL_NOT_STARTED_HOLD) return 'worker';
     const capped = outsideAllowance(journal.view, turn) ? 'turns' as const : turn.held === 'call cap' ? 'calls' as const
       : turn.held === 'reply cap' ? 'replies' as const : null;
     if (capped) return capped;
@@ -8839,7 +8877,7 @@ export function createJournalWorker(journal: ReturnType<typeof openPreviewJourna
       // The emergency stop stays reachable past every ordinary cap: its confirmation rides the reserve.
       if (isStopCommand(turn.text)) { groups.set(`stop:${turn.id}`, { ...(turn.thread === undefined ? {} : { thread: turn.thread }),
         turns: [turn], reason, stop: true }); continue; }
-      const key = JSON.stringify(turn.thread ?? null), group = groups.get(key);
+      const key = JSON.stringify([turn.thread ?? null, turn.held === MODEL_NOT_STARTED_HOLD]), group = groups.get(key);
       if (group) group.turns.push(turn);
       else groups.set(key, { ...(turn.thread === undefined ? {} : { thread: turn.thread }), turns: [turn], reason });
     }
@@ -8863,7 +8901,7 @@ export function createJournalWorker(journal: ReturnType<typeof openPreviewJourna
         : group.reason === 'worker' || openApproval(journal.view, 'raise-caps', ports.now()) ? undefined : issueRaise(lead, group.reason);
       const link = approval?.challenge ? approvalLink(approval.challenge) : null;
       const yesRequest = group.stop || approval !== undefined || group.reason === 'worker' ? undefined : await limitedOperatorRequest(lead, group.reason);
-      const text = group.stop ? STOP_CONFIRM_TEXT : `${limitedAnswerText(journal.view, group.reason, group.turns.length)}${approval
+      const text = group.stop ? STOP_CONFIRM_TEXT : lead.held === MODEL_NOT_STARTED_HOLD ? MODEL_NOT_STARTED_REPLY : `${limitedAnswerText(journal.view, group.reason, group.turns.length)}${approval
         && group.reason !== 'worker' ? `\n\n${approvalRequestText(journal.view, group.reason)} ${link ? RAISE_LINK_HINT : RAISE_SURFACE_HINT}` : ''}${
         yesRequest ? `\n\n${yesRequest.text}` : ''}`;
       ports.checkOutbound(text);

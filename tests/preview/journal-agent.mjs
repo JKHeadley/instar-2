@@ -32,7 +32,7 @@ import { SOURCE_PINS, sourcePacket, deskStatusSource, readDeskStatus, verifyMind
 import { admitPreviewHarness, PREVIEW_JOURNAL_HARNESS, PREVIEW_JOURNAL_STALL_COVERAGE } from './stall-coverage.js';
 import { UNRECORDED, briefingDigestOf, codeDigestOf, installedCodeOf, installationRows, installationStatusLines, installedUpdateFrom,
   staleAgainst, updateDelivery, updatePacketItem } from './installation.js';
-import { bindPreviewBlockingSites, projectionDigest, summaryStoppedAt, loopRevisitMs, LOOP_REVISIT_MIN_MS, LOOP_REVISIT_MAX_MS, SUMMARY_REASON_CHARS, GROUP_DISCLOSURE_HOLD_NOTICE, ModelDisclosureRefused } from './journal.js';
+import { bindPreviewBlockingSites, projectionDigest, summaryStoppedAt, loopRevisitMs, LOOP_REVISIT_MIN_MS, LOOP_REVISIT_MAX_MS, SUMMARY_REASON_CHARS, GROUP_DISCLOSURE_HOLD_NOTICE, ModelDisclosureRefused, createModelLaunchBoundary } from './journal.js';
 import { openPreviewJournal as openJournal, createJournalWorker, raiseJournalCaps, renewJournalExpiry, activationMatchesJournal, activePersonMerges, openQuestionCandidates, projectMemoryText, unansweredCue, reportJournalCap, unknownCallCounts, pendingUnknownCalls, replyTimings, reviewUnavailableReleases, claimScopedWithholds, MINIMAL_RESERVE, reserveTurnsUsed, reserveRepliesUsed, openRequests, actionWithdrawn, reminderDue, operatorRequestsReport, retrospectiveCases, openBlockers, openDirectives, declaredObligations, sendOutcomeCounts, sendOutcomeOf, unsentLabel, replyTarget, replyOutcomeOf, partialReplyLabel, reminderOutcome, envelopeWriter, PREVIEW_LIVE_LIMITS, unservableContextReason, PREVIEW_JOURNAL_COMPACT_BYTES, activeMemoryConflicts, TOO_LONG_INPUT_NOTICE, TOO_LONG_REPLY_NOTICE , probeTurn, operatorWriter, isJournalUpdate, retractRefusal, retractRendering, retractCarrier, retractedTurn, liveSummaries, continuityFrontier, withinOperatorHours, OPERATOR_HOURS, withFormatReminder, concurrentWorkItem, latestOwnedLaunch, ownedProcessOf, meaningIndexStatus, LIMITED_ANSWER_OPERATION, MISSING_INSTALLATION_POLICY } from './journal.js';
 import { createPreviewClock } from './clock.js';
 import { appendRun, heldNotices, heldRepliesToday, memoryHealthLine, readRuns, restartHandoff, selfState, selfStateBrief, selfStateSource, zoneFormatter } from './self-state.js';
@@ -1670,6 +1670,7 @@ async function main() {
     // Rules 41, 57 and 75: the ONLY two places this launcher reaches a model. Each call's exact
     // input, output, actual route, outcome, latency and usage (or its written exception) is
     // durably journaled before any caller reads the result; an unregistered judgment refuses.
+    const modelLaunch = createModelLaunchBoundary();
     const recordModelCall = entry => journal.append(modelCallRecord({ ...entry, at: wallNow() }));
     // replicated(1): a provider call is an irreversible act too. On two machines its reservation row (already in the
     // journal) is acknowledged by the other machine before the call launches; until then the call waits. It ends
@@ -1906,7 +1907,7 @@ async function main() {
         if (typeof prepared !== 'string') throw Error('preview: prepared model input absent');
         const callsBefore = journal.view.modelCalls.total;
         let result;
-        try { result = toolsActive() && toolTurnEligible(id) ? await invokeTools(prepared, id) : await invokeSubscription(prepared, id); }
+        try { result = await modelLaunch.run(() => toolsActive() && toolTurnEligible(id) ? invokeTools(prepared, id) : invokeSubscription(prepared, id)); }
         catch (error) {
           // A resumed tool turn may already have invoked a provider before a later disclosure refusal.
           if (error instanceof ModelDisclosureRefused && journal.view.modelCalls.total !== callsBefore)
@@ -2581,6 +2582,7 @@ async function main() {
         stopped: () => workerStop.value || existsSync(stopPath) || !active()
           || (toolTurn !== undefined && (journal.view.stop !== null || !toolsActive())), work });
       const physicalIO = { ...launchIO, execute: async input => {
+        if (typeof input.stdin === 'string' && input.stdin.length > 0) modelLaunch.started();
         const result = await launchIO.execute(input);
         // Only the model command is the exchange: it alone carries the prepared prompt on stdin; the
         // version and auth preflights send none and print no result frame.
