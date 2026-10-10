@@ -7552,8 +7552,15 @@ export function createJournalWorker(journal: ReturnType<typeof openPreviewJourna
             const packet = JSON.parse(value) as Record<string, unknown>;
             if (!('capabilities' in packet)) return value;
             const tools = ports.toolRoute?.(turn.id) === true;
+            // Rules 26, 45, 84: the prose source and its provenance must describe this call too.
+            // Keep the rest of the fitted packet, including any already-shortened sources.
+            const supplied = typeof ports.sources === 'function' ? ports.sources(turn) : ports.sources;
+            const isCapabilityNote = (source: unknown) => (source as { id?: unknown } | null)?.id === 'capability-note';
+            const note = supplied?.find(isCapabilityNote);
             return JSON.stringify({ ...packet, obligationDecision: tools ? OBLIGATION_DECISION_TOOLS : OBLIGATION_DECISION,
-              governingConstraints: governingConstraints(tools), capabilities: previewCapabilities(tools) });
+              governingConstraints: governingConstraints(tools), capabilities: previewCapabilities(tools),
+              ...(note && Array.isArray(packet.sources)
+                ? { sources: packet.sources.map(source => isCapabilityNote(source) ? note : source) } : {}) });
           };
           const offeredPromises = () => new Set(((JSON.parse(context) as { commitments?: { items?: { id?: number; owner?: string }[] }[] })
             .commitments ?? []).flatMap(group => group.items ?? []).filter(item => item.owner === 'agent' && Number.isSafeInteger(item.id))
