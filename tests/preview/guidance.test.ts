@@ -17,6 +17,7 @@ import type { Turn } from './journal.js';
 import { conclusionText } from './model-json.js';
 import { SOURCE_PINS, sourcePacket } from './briefing.js';
 import { prepareJournalEnvelope } from './journal-envelope.js';
+import { journalAudience } from './forum-routing.js';
 
 const FIXTURE = resolve(process.cwd(), 'tests/preview/fixtures/guidance-live-2026-10-03.json');
 type Sample = { scenario: string; update: number; rules: ReplyRule[]; model: string; promptSha256: string; raw: string };
@@ -142,7 +143,7 @@ describe('P14-NF-73/75: real reviewer outputs on recorded answer packets, this b
       expect(parsed(sample).findings!.map(finding => finding.rule).sort()).toEqual([...sample.rules].sort());
     }
   });
-  it('replays the recorded reviewers with the trimmed briefing reaching the contextual review', async () => {
+  it.each([false, true])('replays recorded reviewers with the current briefing and forum=%s audience', async forum => {
     const data = fixture();
     const sources = sourcePacket(path => readFileSync(path, 'utf8'), SOURCE_PINS,
       { providerAttempts: 16, expiresAt: 9999999999999 }).sources;
@@ -151,7 +152,7 @@ describe('P14-NF-73/75: real reviewer outputs on recorded answer packets, this b
       const candidate = recorded.reviewCandidate ?? recorded.intent ?? recorded.answer!;
       expect(typeof candidate).toBe('string');
       const prompt = prepareJournalEnvelope({ id: recorded.id, question: recorded.text,
-        context: JSON.stringify({ sources, audience: { surface: 'telegram-private-chat' },
+        context: JSON.stringify({ sources, audience: { surface: journalAudience({ bot: '8994258214', chat: forum ? '-1001234' : '7654321', operator: '7654321', ...(forum ? { forum: true } : {}) }) },
           history: [{ user: recorded.text, answer: recorded.answer }], preferences: data.memory }) },
       sample.model, 'grant:offline-replay', recorded.at);
       let reviewed = false;
@@ -171,7 +172,7 @@ describe('P14-NF-73/75: real reviewer outputs on recorded answer packets, this b
       expect(result.outcome, String(sample.update)).toBe(parsed(sample).verdict);
     }
   });
-  it('keeps captured delivered and empty reply bytes distinct through the trimmed context', () => {
+  it.each([false, true])('keeps captured delivered and empty reply bytes distinct with forum=%s', forum => {
     const shapes = JSON.parse(readFileSync(new URL('./fixtures/retrospective-duty-followup-train-1-2026-10-08.json',
       import.meta.url), 'utf8')) as { otherShapes: { kind: string; id: string; raw: string }[] };
     const sources = sourcePacket(path => readFileSync(path, 'utf8'), SOURCE_PINS,
@@ -180,7 +181,7 @@ describe('P14-NF-73/75: real reviewer outputs on recorded answer packets, this b
     expect(replies.map(row => row.id)).toEqual(['telegram:8994258214:update:715672479', 'telegram:8994258214:update:715672550']);
     for (const row of replies) {
       const prompt = prepareJournalEnvelope({ id: row.id, question: 'Review the recorded candidate.',
-        context: JSON.stringify({ sources, audience: { surface: 'telegram-private-chat' }, history: [] }) },
+        context: JSON.stringify({ sources, audience: { surface: journalAudience({ bot: '8994258214', chat: forum ? '-1001234' : '7654321', operator: '7654321', ...(forum ? { forum: true } : {}) }) }, history: [] }) },
       'claude-sonnet-5', 'grant:offline-replay', 1790762566638);
       const context = JSON.parse(replyReviewContext(prompt, row.raw));
       expect(context.sources.map((source: { id: string }) => source.id))
