@@ -8,7 +8,7 @@ Affected rules: 26, 45, 69, 74, 90, 101, 111, 112, 113, 116.
 Affected floors: secrets — generated content only; spend cap — unchanged; stop — unchanged; no duplicate sends — unchanged; durable intake — unchanged.
 Operator questions: none
 Suggested tier: critical
-Declared tier: small
+Declared tier: ordinary
 Tier rationale: Mechanical output of the existing register replay; no source policy or runtime changes.
 Side effects: Generated source/generation identities change to bind the existing source graph. Owner-manifest rehash and desk chain refresh changed no pins.
 Undo and recovery: Revert the audit source if necessary and rerun the existing register generator; no journal migration or authority changes.
@@ -19,7 +19,7 @@ Bug evidence: none
 Hook bypass: none
 Convergence: none
 <!-- Rule 102: record each mid-run engineering decision as a line: Decision: <id> | <what was decided, and why> | reported=<report that names the id> -->
-Deferral: generated/register.json:1 | commitment=<ref> or not-a-deferral=<reason>
+Deferral: generated/register.json:1 | not-a-deferral=Existing generated register descriptions retained by mechanical replay; this change adds no deferred work.
 
 Subject (7 paths): generated/capabilities.json, generated/capabilities.md, generated/coverage.md, generated/glossary.md, generated/register.json, generated/rules.md, generated/source.json
 
