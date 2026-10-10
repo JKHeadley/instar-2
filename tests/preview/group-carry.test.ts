@@ -3,7 +3,7 @@ import { mkdtempSync, readFileSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { appendGroupCarry, buildCarriedMemory, groupCarryPacket, validCarriedMemory } from './group-carry.js';
-import { createJournalWorker, openPreviewJournal, openRequests, type JournalRecord } from './journal-test-worker.js';
+import { createJournalWorker, openPreviewJournal, openRequests, CARRIED_MEMORY_ITEM_SOURCE, MEMORY_ITEM_SHAPE, type JournalRecord } from './journal-test-worker.js';
 import { resolveGroupDisclosure, verifyGroupAudience } from './group-disclosure.js';
 import { now, key, sealKey, scope, records, authority, membership, permissionFor } from './group-carry-fixture.js';
 
@@ -110,6 +110,25 @@ it('the actual worker offers lineage to its model, rechecks before dispatch, and
   without.intake([update(3, 'Recall it again.', true)]); await without.drain();
   expect(calls).toBe(1); expect(sends).toBe(0);
   replay.close(); w.source.close();
+});
+
+it('names carried sources in memory guidance only for a carried root; a root without a carry keeps the shape byte for byte', async () => {
+  const w = await world();
+  const decision = (context: string) => (JSON.parse(context) as { memoryDecision?: string }).memoryDecision ?? '';
+  let plain = '';
+  const uncarried = createJournalWorker(w.source, { now: () => now - 1000, stopped: () => false,
+    model: async input => { plain = input.context; return 'Noted.'; }, send: async () => 11, checkOutbound: () => {} });
+  uncarried.intake([update(2, 'Where do we meet?')]); await uncarried.drain();
+  expect(decision(plain)).toContain(`style. ${MEMORY_ITEM_SHAPE} For an earlier answer`);
+  expect(plain).not.toContain(CARRIED_MEMORY_ITEM_SOURCE); expect(plain).not.toContain('predecessorMemory');
+  appendGroupCarry(w.destination, w.source, scope, permission(), true, now, () => false);
+  let carried = '';
+  const worker = createJournalWorker(w.destination, { now: () => now + 1000, stopped: () => false,
+    groupDisclosure: async () => true, model: async input => { carried = input.context; return 'The arboretum.'; },
+    send: async () => 1, checkOutbound: () => {} });
+  worker.intake([update(2, 'Where do we meet?', true)]); await worker.drain();
+  expect(decision(carried)).toContain(`style. ${MEMORY_ITEM_SHAPE} ${CARRIED_MEMORY_ITEM_SOURCE} For an earlier answer`);
+  w.destination.close(); w.source.close();
 });
 
 it('replays the real proof-room journal including uncertain summaries and reply reviews before carrying only its settled memory', () => {

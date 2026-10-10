@@ -287,11 +287,14 @@ export function lookupWords(output: string): string[] | undefined {
  * the terse prose guidance left the model to copy packet.memory's display rows (mode "corrected", no quote, a
  * paraphrased replacement), which the validator refuses, so every correction after the first recorded one failed. */
 export const MEMORY_ITEM_SHAPE = 'Each memory item has exactly this shape: {"mode":"correct"|"forget"|"update"|"prefer",'
-  + '"source":<an id from memoryCandidates or a source from predecessorMemory.entries; for prefer, preferenceSource>,"quote":<the complete old clause copied word for word '
-  + 'from that source\'s message or carried entry text; for prefer, the style clause from the current message>,"replacement":<correct and update only: '
+  + '"source":<an id from memoryCandidates; for prefer, preferenceSource>,"quote":<the complete old clause copied word for word '
+  + 'from that source\'s message; for prefer, the style clause from the current message>,"replacement":<correct and update only: '
   + 'the new clause copied word for word from the operator\'s current message>,"replies":<optional: ids of memoryCandidates whose '
   + 'reply restates the old fact>,"summaryPassages":<optional: exact passages of the prior summary that express the old fact>}. '
   + 'packet.memory lists changes already recorded, in a display shape; never copy that shape.';
+/** Only a root carrying a group lineage offers predecessorMemory, so only its memory guidance names it; a root without a
+ * carry keeps MEMORY_ITEM_SHAPE byte for byte. */
+export const CARRIED_MEMORY_ITEM_SOURCE = 'A source may also be a source from predecessorMemory.entries, quoting that carried entry text word for word.';
 export const MEMORY_UNDECIDED_REPLY = 'I couldn\'t record that memory change. Please send it again.';
 export const UNKNOWN_ANSWER_NOTICE = 'I lost my answer to that message. Please send it again.';
 export const TOO_LONG_INPUT_NOTICE = 'Your message was saved, but I could not fit it with the needed context. Please send a shorter message or labelled parts.';
@@ -7085,7 +7088,7 @@ export function createJournalWorker(journal: ReturnType<typeof openPreviewJourna
             found: lookup.found.filter(item => datedBase.includes(JSON.stringify(item.id))).length, note: LOOKUP_DONE_GUIDANCE } }
             : compact && summary && lookupOffered ? { memoryLookup: LOOKUP_OFFERED } : {}),
           // Update mode and new conflicts can only cite an offered candidate or contradiction, so their guidance rides with those.
-          ...(fromOperator(turn) ? { memoryDecision: `Return memory:[] unless the verified operator corrects, forgets or sets reply style. ${MEMORY_ITEM_SHAPE} For an earlier answer use in:"reply" with its exact old reply clause and keep the question. `
+          ...(fromOperator(turn) ? { memoryDecision: `Return memory:[] unless the verified operator corrects, forgets or sets reply style. ${MEMORY_ITEM_SHAPE}${journal.view.groupCarry ? ` ${CARRIED_MEMORY_ITEM_SOURCE}` : ''} For an earlier answer use in:"reply" with its exact old reply clause and keep the question. `
             + (offered.length || (JSON.parse(datedBase) as { contradictions?: unknown[] }).contradictions?.length ? 'A newer operator statement of the same fact without correction words uses mode:"update", an exact old clause from an offered operator memoryCandidate or contradiction (hints only) and the exact new clause from this turn; the old dated value stays retrievable. ' : '')
             + 'Unknown target: memoryDisposition:"unresolved". Undo only via undoDecision.', preferenceSource: turn.id,
             ...(failureOffer ? { memoryFailureDecision: MEMORY_FAILURE_DECISION, searchedTurn: failureOffer.id } : {}),
