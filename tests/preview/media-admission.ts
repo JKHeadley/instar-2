@@ -2,9 +2,11 @@
 // reservation/claim/consume. Like six-host-resources, the preview uses the
 // fixture signing identity; this is not evidence of independently held keys.
 import { createHash } from 'node:crypto';
+import { readFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { canonical, consumeResult, defineDecoder, deriveThrough } from '../../src/index.js';
 import type { Result } from '../../src/index.js';
+import { bindBlockingSite } from '../../src/register/governance.js';
 import { authorAndAppend, createFactStore } from '../../src/facts/index.js';
 import { createTransportAuthority, createTransportSpine, decodeLoopPolicy, registerTransportBodies,
   transportSchemas } from '../../src/transport/index.js';
@@ -44,6 +46,10 @@ export function createMediaAdmission(options: {
   source(source: string, media: TelegramInboundMedia): MediaSource;
   policy(): unknown;
 }): MediaAdmission {
+  bindBlockingSite(JSON.parse(readFileSync(new URL('./media-admission.declarations.json', import.meta.url), 'utf8')),
+    'preview.media-admission.createMediaAdmission', [
+      { decidesAlone: 'ruled-three', decidesAloneBasis: 'recorded-governed-state', failDirection: 'closed' },
+    ]);
   const admission: MediaAdmission = { admit(source, media) {
     const origin = options.source(source, media);
     if (!origin.grant || !origin.account || !origin.conversation || !origin.intakeDigest || !media.fileId)
