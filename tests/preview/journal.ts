@@ -7756,7 +7756,7 @@ export function createJournalWorker(journal: ReturnType<typeof openPreviewJourna
               const receipt = dated.map((item, index) => (item.day
                 ? `Date ${index + 1}: ${item.day}${item.time ? ` ${item.time}` : ''} (${item.zone})${item.ambiguity ? `; ${item.ambiguity}` : ''}.`
                 : `Date ${index + 1}: unresolved (${item.ambiguity ?? 'ambiguous'}). Please give an absolute date.`)
-                + (item.remind && item.recurrence ? ` I will act on this ${item.recurrence === 'daily' ? 'every day' : 'every weekday'} at ${item.time} (${item.zone}), first due ${item.day}, while this preview is running and within its spend and stop limits. Ask me to cancel this request to stop the series. Missed occurrences are combined into one on recovery.`
+                + (item.remind && item.recurrence ? ` I will act on this ${item.recurrence === 'daily' ? 'every day' : 'every weekday'} at ${item.time} (${item.zone}), first due ${item.day}, while I am running and within my spend and stop limits. Ask me to cancel this request to stop the series. Missed occurrences are combined into one on recovery.`
                   : item.remind ? ` I will act on this once at ${reminderDue(item)} (${item.zone})${item.time ? '' : ' because you gave no time'} and send you the result here.`
                   : requested[index] ? ` I did not schedule what you asked for: ${reminderRefusal(item) ?? 'it could not be granted'}.`
                   : item.day ? ' I recorded this date; I act on a date only when you ask me to.' : '')).join(' ');
