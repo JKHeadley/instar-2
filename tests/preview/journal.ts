@@ -6343,7 +6343,7 @@ export function createJournalWorker(journal: ReturnType<typeof openPreviewJourna
   };
   const smallest = (value: string) => Math.min(...[value, ...yieldSources(value)].map(item => Buffer.byteLength(item)));
   const packetFor = (through: number, compact: boolean, recalled: readonly Turn[] = [], named: readonly PersonNote[] = [],
-    open: readonly Open[] = [], current?: number, labelAll = false, flagged: readonly Turn[] = [], channels: readonly ChannelItem[] = [], dateQuestion = false, awayFor?: Turn,
+    open: readonly Open[] = [], current?: number, forSummary = false, flagged: readonly Turn[] = [], channels: readonly ChannelItem[] = [], dateQuestion = false, awayFor?: Turn,
     inventory?: { total: number; items: { kind: string; source: string; date: string; text?: string; from?: string; status?: string }[] }, search?: ReturnType<typeof searchFor>,
     contradictions: ReturnType<typeof contradictionFor> = [], questions: readonly OpenQuestion[] = [], question?: Turn, includeRecorded = true,
     saidRange?: { from: string; to: string; matched: number },
@@ -6371,14 +6371,16 @@ export function createJournalWorker(journal: ReturnType<typeof openPreviewJourna
     const undecidedEdits = undecidedAll.slice(-PREVIEW_UNDECIDED_LIMIT).map(item => ({ ...item,
       ...(item.previous === undefined ? {} : { previous: item.previous.slice(0, 600) }), current: item.current.slice(0, 600) }));
     const moreUndecidedEdits = undecidedAll.length - undecidedEdits.length;
-    const elsewhere = (item: Turn) => item.thread === current && !labelAll && !saidRange ? {} : { conversation: conversationName(item.thread, topicNames(journal.view)), date: dated(item) };
+    const elsewhere = (item: Turn) => item.thread === current && !forSummary && !saidRange ? {} : { conversation: conversationName(item.thread, topicNames(journal.view)), date: dated(item) };
+    // Summary instructions require exact excerpts from history (Rules 11, 96).
+    // Keep memory suppression/redaction, but reserve friendly labels for answer display.
+    const historyClean = forSummary ? memoryClean : clean;
+    const historyReply = forSummary ? memoryReplyFor : replyFor;
     const history = earlier.map(item => ({ id: item.id, sourceKind: sourceKindOf(item), sourceLabel: turnLabel(item), ...elsewhere(item), ...(item.editOf ? { editedTurn: item.editOf } : {}), ...(fromOperator(item) ? {} : { from: speakerOf(item) }),
       user: sizeRefused(item) ? '[Message saved verbatim but too long for the preview context; ask the operator for shorter labelled parts.]'
-        : clean(redact(item.text).text, true, item.id),
-
-
-      answer: item.noticeClass || item.intent === undefined ? null : replyFor(item),
-      ...(item.noticeClass && item.intent ? { notice: replyFor(item) } : {}),
+        : historyClean(redact(item.text).text, true, item.id),
+      answer: item.noticeClass || item.intent === undefined ? null : historyReply(item),
+      ...(item.noticeClass && item.intent ? { notice: historyReply(item) } : {}),
       ...(item.heldNoticeIntent ? { heldNotice: true, heldNoticeOutcome: heldNoticeOutcome(item) } : {}),
       ...(item.limited ? { limitedAnswer: true, limitedAnswerOutcome: limitedOutcome(item) } : {}), outcome: outcome(item) }));
     // Each note renders its whole source message, so a quote is never read out of its context.
@@ -6613,7 +6615,7 @@ export function createJournalWorker(journal: ReturnType<typeof openPreviewJourna
         + (corrections.length ? ' corrections lists possible problems an automatic check found, after sending, in your earlier replies, each with the numbered rule it relates to. They are signals from a simple pattern check, not verdicts: read your reply again; if a problem is real, correct it for the operator briefly and plainly in this reply; if the check misread it, say nothing about it.' : '')
         + (reference ? ' replyTo identifies an earlier Telegram message. Use retained journal text only; unavailable means do not infer its content from the embedded reply quote.' : '')
         + (undecidedEdits.length ? ' undecidedEdits records revisions and operator corrections whose fact change could not be judged. Use the current revision or correction and treat any conflicting prior claim as uncertain. moreUndecidedEdits counts older unresolved items omitted by the bound; an earlier claim they may concern is uncertain too.' : '')
-        + (labelAll ? ' Every history item names the conversation of this private chat it was said in, with its date.'
+        + (forSummary ? ' Every history item names the conversation of this private chat it was said in, with its date.'
           : crossed ? ' Items with a conversation field were said by the same operator in another conversation of this private chat, named there with its date; the operator is the only audience of every conversation, so they are your shared memory and may be used here.' : ''),
       ...(operatorRequest ? { operatorRequest } : {}), ...(otherOperatorRequest ? { otherOperatorRequest } : {}),
       ...(pendingReminders.length ? { reminders: pendingReminders.map(item => ({ id: reminderId(item),
@@ -6665,7 +6667,7 @@ export function createJournalWorker(journal: ReturnType<typeof openPreviewJourna
       // journal; recall and memorySearch above reach them, so an answer that needs one asks or names the gap.
       ...(historySetAsideCount ? { historySetAside: { count: historySetAsideCount, through: historySetAside,
         note: 'Older messages of this conversation are not shown verbatim here: they did not fit this prompt. They are kept and still searchable, and recalled/memorySearch may already carry the relevant ones. If an answer needs one that is not here, say so plainly or ask, and never state the gap as something that did not happen.' } } : {}), history,
-      ...(labelAll || question === undefined ? {} : { replyProvenance: replyProvenanceFor(question, includeRecorded) }) });
+      ...(forSummary || question === undefined ? {} : { replyProvenance: replyProvenanceFor(question, includeRecorded) }) });
 
     return packet;
   };

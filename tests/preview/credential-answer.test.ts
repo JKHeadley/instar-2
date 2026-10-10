@@ -269,3 +269,91 @@ it('preserves captured delivered and empty reply evidence in memory candidates',
     } finally { journal.close(); rmSync(root, { recursive: true, force: true }); }
   }
 });
+
+// Reviewer reproduction: the summary writer copies the actual history it receives.
+// Valid quotes must survive admission and reopen; invented text must still be rejected.
+it.each([
+  { format: false, invalid: false }, { format: true, invalid: false },
+  { format: false, invalid: true }, { format: true, invalid: true },
+])('retains exact summary history facts (formatter=$format, invented=$invalid)', async ({ format, invalid }) => {
+  const root = realpathSync(mkdtempSync(join(tmpdir(), 'credential-summary-history-')));
+  const path = join(root, 'journal.encrypted');
+  const original = 'The preview-activation renewal day is Friday.';
+  const reply = 'I will review preview-activation on Friday.';
+  let journal = openPreviewJournal(path, key, { kind: 'genesis', bot: '8820318295', chat: '7654321', operator: '7654321',
+    grant: 'grant:preview', configurationDigest: 'sha256:offline', expires: activation.expiresAt,
+    maxCalls: 40, maxReplies: 20, maxTurns: 20, maxBytes: 40000, cursor: 0 });
+  const offered: { id: string; user: string; answer: string | null }[] = [];
+  try {
+    const worker = createJournalWorker(journal, { now: () => live.at, stopped: () => false,
+      ...(format ? { credentialWording: () => credentialTextRenderer([]) } : {}),
+      model: async input => {
+        if (!input.id.startsWith('summary:')) return reply;
+        const packet = JSON.parse(input.context);
+        offered.push(...packet.history);
+        return JSON.stringify({ summary: 'The operator shared a renewal detail.', people: [], memory: [],
+          commitments: packet.history.map((item: { answer: string }) => ({
+            in: 'reply', quote: item.answer + (invalid ? ' invented' : ''), waitsOn: 'date',
+          })),
+          memoryItems: packet.history.map((item: { id: string; user: string }) => ({
+            source: item.id, quote: item.user + (invalid ? ' invented' : ''),
+          })) });
+      }, checkOutbound: () => {}, send: async () => 1 });
+    worker.intake([{ update_id: 1, message: { chat: { id: 7654321, type: 'private' }, from: { id: 7654321 },
+      date: Math.floor(live.at / 1000), text: original } }]);
+    await worker.drain(); await worker.summarizeIfNeeded(true);
+    expect(offered).toHaveLength(1);
+    expect(offered[0]!.user).toBe(original);
+    expect(offered[0]!.answer).toBe(reply);
+    const retained = invalid ? [] : [{ source: offered[0]!.id, quote: original }];
+    expect(journal.view.summaries.at(-1)?.through).toBe(1);
+    expect(journal.view.summaries.at(-1)?.memoryItems ?? []).toEqual(retained);
+    expect(journal.view.commitments.map(item => ({ in: item.in, quote: item.quote })))
+      .toEqual(invalid ? [] : [{ in: 'reply', quote: reply }]);
+    journal.close(); journal = openPreviewJournal(path, key);
+    expect(journal.view.summaries.at(-1)?.through).toBe(1);
+    expect(journal.view.summaries.at(-1)?.memoryItems ?? []).toEqual(retained);
+    expect(journal.view.commitments.map(item => ({ in: item.in, quote: item.quote })))
+      .toEqual(invalid ? [] : [{ in: 'reply', quote: reply }]);
+    expect(journal.view.order[0]!.text).toBe(original);
+  } finally { journal.close(); rmSync(root, { recursive: true, force: true }); }
+});
+
+it('offers recorded activation replies and empty context replies unchanged in summary history', async () => {
+  const shapes = JSON.parse(readFileSync(new URL('./fixtures/retrospective-duty-followup-train-1-2026-10-08.json',
+    import.meta.url), 'utf8')) as { otherShapes: { id: string; kind: string; raw: string }[] };
+  const rows = [
+    ...live.history.map(row => ({ id: row.id, user: row.user, answer: row.answer })),
+    { id: 'telegram:8820318295:update:969390298', user: live.question, answer: live.delivered },
+    ...shapes.otherShapes.filter(row => row.kind === 'delivered-reply' || row.kind === 'empty-reply-in-recorded-context')
+      .map(row => ({ id: row.id, user: 'Review the recorded reply.', answer: row.raw.replace(/^PREVIEW — /u, '') })),
+  ];
+  for (const row of rows) {
+    const root = realpathSync(mkdtempSync(join(tmpdir(), 'credential-summary-recorded-')));
+    const path = join(root, 'journal.encrypted');
+    const journal = openPreviewJournal(path, key, { kind: 'genesis', bot: '8820318295', chat: '7654321', operator: '7654321',
+      grant: 'grant:preview', configurationDigest: 'sha256:offline', expires: activation.expiresAt,
+      maxCalls: 20, maxReplies: 10, maxTurns: 10, maxBytes: 40000, cursor: 0 });
+    const offered: { id: string; user: string; answer: string | null }[] = [];
+    try {
+      const update = Number(row.id.split(':').at(-1));
+      journal.append({ kind: 'intake', id: row.id, update, text: row.user, accepted: true,
+        raw: JSON.stringify({ message: { from: { id: 7654321 } } }), cursor: update + 1, at: live.at - 1000 });
+      // Replay captured context; an empty answer here is not evidence of an empty Telegram delivery.
+      journal.view.order[0]!.intent = row.answer ?? undefined;
+      // A synthetic terminal marker admits this captured context to the summary pass, not a transport assertion.
+      journal.view.order[0]!.sent = 1;
+      const worker = createJournalWorker(journal, { now: () => live.at, stopped: () => false,
+        credentialWording: () => credentialTextRenderer([]), checkOutbound: () => {},
+        model: async input => {
+          offered.push(...JSON.parse(input.context).history);
+          return JSON.stringify({ summary: 'The recorded conversation is retained.', people: [], memory: [], questions: [] });
+        }, send: async () => { throw Error('summary replay must not send'); } });
+      // Installs the same formatter as ordinary answer preparation, then exercises the summary packet.
+      worker.probe('What was the previous reply?');
+      await worker.summarizeIfNeeded(true);
+      expect(offered, row.id).toEqual([expect.objectContaining({ id: row.id, user: row.user, answer: row.answer })]);
+      expect(journal.view.summaries.at(-1)?.through, row.id).toBe(update);
+    } finally { journal.close(); rmSync(root, { recursive: true, force: true }); }
+  }
+});
