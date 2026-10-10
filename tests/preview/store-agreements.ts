@@ -19,6 +19,7 @@ import { dirname } from 'node:path';
 import { auditJournal } from './journal-audit.mjs';
 import { projectionDigest } from './journal.js';
 import type { JournalView } from './journal.js';
+import type { MediaCustodyResult } from './telegram-media.js';
 import { loopHealth } from './obligations.js';
 import type { OwnerObservation } from './conversation-owner.js';
 import type { RunLog } from './self-state.js';
@@ -28,6 +29,7 @@ export interface AgreementInput {
   readonly root: string; readonly now: number;
   /** Replays the durable journal bytes read-only and returns that projection's digest (absent where no key is held). */
   readonly replay?: () => string;
+  readonly verifyMedia?: (result: MediaCustodyResult) => boolean;
 }
 /** `agree: null` means the comparison could not be made from here (never counted as agreement). */
 export type AgreementVerdict = Readonly<{ agree: boolean | null; detail: string }>;
@@ -47,6 +49,14 @@ export interface AgreementRecord { v: 1; id: string; at: number; agree: boolean 
 const HOUR = 3_600_000;
 
 export const STORE_AGREEMENTS: readonly StoreAgreement[] = Object.freeze([
+  { id: 'media-custody', question: 'Are the files recorded as saved still in encrypted custody on this machine?',
+    authoritative: 'journal media custody outcomes', projection: 'encrypted local media files', cadenceMs: HOUR,
+    check: ({ view, verifyMedia }) => {
+      const stored = view.order.filter(turn => turn.media?.state === 'stored');
+      if (stored.length && !verifyMedia) return { agree: null, detail: 'local media custody cannot be verified from here' };
+      const missing = stored.filter(turn => !verifyMedia!(turn.media!));
+      return { agree: missing.length === 0, detail: `${stored.length} stored; ${missing.length} missing or corrupt locally` };
+    } },
   { id: 'memory-provenance', question: 'What does the agent remember, and which operator message is it from?',
     authoritative: 'journal operator turns and corrections', projection: 'active memory and the last recorded model packet',
     cadenceMs: 6 * HOUR,

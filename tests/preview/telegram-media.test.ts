@@ -154,10 +154,21 @@ it('the shipped status command detects a missing media file without exposing byt
     expect(child.status, child.stderr).toBe(0); expect(child.stdout).not.toContain(token);
     return JSON.parse(child.stdout) as { media: { stored: number; missing: number[] } };
   };
+  const agreement = () => {
+    const child = spawnSync(process.execPath, ['--no-warnings', '--loader', './scripts/slice-ts-loader.mjs',
+      'tests/preview/journal-agent.mjs', 'check-agreements', '--root', root, '--conversation-owners', join(root, 'owners')],
+    { encoding: 'utf8', timeout: 30000,
+      env: { ...process.env, INSTAR_SECRET_PREVIEW_STORAGE_KEY: Buffer.from(key).toString('hex') } });
+    expect(child.status, child.stderr).toBe(0);
+    return (JSON.parse(child.stdout) as { records: { id: string; agree: boolean | null }[] }).records
+      .find(row => row.id === 'media-custody')!.agree;
+  };
+  expect(agreement()).toBe(true);
   expect(status().media).toMatchObject({ stored: 1, missing: [] });
   if (result.state !== 'stored') throw Error('fixture failed');
   rmSync(join(root, 'media', `${result.reference}.sealed`));
   expect(status().media).toMatchObject({ stored: 1, missing: [update.update_id] });
+  expect(agreement()).toBe(false);
 }));
 
 it.each(['cap', 'stop'])('%s prevents download while keeping the accepted turn', mode => withRoot(async root => {

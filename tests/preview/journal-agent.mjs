@@ -722,6 +722,7 @@ async function main() {
   const ownerMachine = options['owner-machine'] ?? hostname();
   // Rule 33: the one input every declared store agreement is checked against (the loop's cadence and the offline check).
   const agreementInput = (view, now) => ({ view, runs: readRuns(runsPath), root, now,
+    verifyMedia: createTelegramMediaCustody(root, key(), { token: () => '', stopped: () => true }).verify,
     ownership: observeConversationOwner({ directory: ownersDirectory(), bot: view.genesis.bot, chat: view.genesis.chat, machine: ownerMachine,
       probePid: pid => process.kill(pid, 0), now }),
     replay: () => { const replayed = openPreviewJournal(journalPath, key(), undefined, undefined, true);

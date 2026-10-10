@@ -4006,7 +4006,8 @@ uniqueness checks still hold. A stopped or displaced owner aborts its download.
 
 Media bytes are deliberately machine-local encrypted custody, not replicated
 journal payloads. Replicated journal rows retain the original reference and result;
-`status.media.missing` checks each stored reference on the current machine and reports
+The media store is declared beside its existing durable-write primitive. The existing
+hourly `media-custody` store agreement and `status.media.missing` check each stored reference on the current machine and reports
 missing or corrupt custody. A crash after storing a file but before the result row
 reuses the exact encrypted file without another fetch. A crash before a complete
 file exists leaves the captured turn pending. After a recorded failure there is no
