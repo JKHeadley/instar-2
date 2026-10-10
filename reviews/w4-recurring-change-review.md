@@ -10,7 +10,7 @@ Operator questions: none
 Suggested tier: critical
 Declared tier: critical
 Tier rationale: Recurring operator-facing effects must retain existing authority, spend, cancellation and dispatch floors.
-Side effects: Generated register and capability summaries are refreshed from the committed source. Calendar recall expands daily/weekday occurrences within its existing bounded window; open-request status continues to show the active series and advances its due date. One-time and weekly calendar items retain their prior behavior.
+Side effects: The preview owner reference is repinned to the added delayed-intake and signature tests. Generated register and capability summaries are refreshed from the committed source. Calendar recall expands daily/weekday occurrences within its existing bounded window; open-request status continues to show the active series and advances its due date. One-time and weekly calendar items retain their prior behavior.
 Undo and recovery: Revert the source change only after withdrawing active recurring series. Older code does not interpret the new recurrence metadata or occurrence signature; do not roll back a live root containing these frames without an explicit migration. No live root was changed by this builder.
 Multi-machine posture: No new state store or owner. The encrypted journal carries the series and per-occurrence writer authorization. Existing conversation ownership and single-writer admission still apply; this change claims no new replication guarantee.
 Layer below: Existing request intake, cancellation, signed system-writer authorization, action-due replay validation, shared allowance and outbound intent/receipt handling; dated-memory calendar parsing.
