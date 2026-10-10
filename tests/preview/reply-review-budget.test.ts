@@ -7,7 +7,7 @@ import fixture from './fixtures/forum-review-budget-2026-10-10.json' with { type
 import { subscriptionConversationPolicy } from '../../src/assembly/production-provider.js';
 import { readAnswer } from './answer-reading.js';
 import { createJournalWorker, openPreviewJournal } from './journal-test-worker.js';
-import { HOLDING_REPLY, parseReplyReviewVerdict, replyReviewQuestion } from './reply-check.js';
+import { GROUP_REVIEW_FINAL_NOTICE, HOLDING_REPLY, parseReplyReviewVerdict, replyReviewQuestion } from './reply-check.js';
 
 const rules = ['parks_on_user', 'defers_work', 'self_state_claim', 'breaks_preference', 'sensitive_disclosure'] as const;
 const original = JSON.parse(fixture.original.input);
@@ -35,7 +35,7 @@ it('replays the actual over-cap forum review and its real bounded-prompt replace
   expect(review.findings?.some(f => f.reason.length > 160)).toBe(true);
 });
 
-it.each(['complete', 'uncertain'] as const)('the real forum candidate %s review sends once or stays held, including restart', async state => {
+it.each(['complete', 'uncertain'] as const)('the real forum candidate %s review sends one answer or final notice, including restart', async state => {
   const root = mkdtempSync(join(tmpdir(), 'review-budget-')); roots.push(root);
   const path = join(root, 'journal'), key = new Uint8Array(32).fill(41);
   const genesis = { kind: 'genesis' as const, bot: '8994258214', chat: packet.audience.chat,
@@ -63,7 +63,7 @@ it.each(['complete', 'uncertain'] as const)('the real forum candidate %s review 
     chat: { id: Number(genesis.chat), type: 'supergroup', is_forum: true },
     from: { id: Number(genesis.operator) }, text: packet.operatorMessage } }]);
   await worker.drain();
-  expect(sent).toEqual([state === 'complete' ? packet.candidateReply : HOLDING_REPLY]);
+  expect(sent).toEqual([state === 'complete' ? packet.candidateReply : GROUP_REVIEW_FINAL_NOTICE]);
   expect(journal.view.order[0]?.answer).toBe(packet.candidateReply);
   expect(journal.view.calls).toBe(2);
   journal.close();
