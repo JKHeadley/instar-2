@@ -9,13 +9,13 @@ Affected floors: secrets — no credential or outbound changes; spend cap — no
 Operator questions: none
 Suggested tier: critical
 Declared tier: critical
-Tier rationale: Conservative register-evidence tier; only generated hashes and repository provenance change.
+Tier rationale: Conservative register-evidence tier; only generated hashes and repository provenance change. This is evidence regeneration, with no implementation or reproducer change; the existing seven failing cases are rerun as verification.
 Side effects: Fifteen probe references now resolve the already committed proofs-launcher test bytes. Generated register, briefing and source provenance refer to the repaired commit. No runtime code, prompts, parsing, capabilities or test assertions change.
 Undo and recovery: Recompute manifest hashes from the desired committed proof source with the desk rehash tool, commit, then replay the register and commit generated output. Reverting only the new hashes would restore the original defect.
 Multi-machine posture: Repository metadata travels through git identically on all machines. No new machine-local runtime state or peer dependency.
 Layer below: Inspected all seven saved failure stacks, register-owner-references artifact hash validation, build-register committed-source loading, and both failing test files. All failures share the proofs-launcher hash mismatch. The prior expectation repair committed the test without refreshing its fifteen owner references. Exact stale, spoofed and wrong-owner refusal paths remain exercised by the existing tests.
-Bug class: unit
-Bug evidence: reproducer=tests/e2e/register.test.ts
+Bug class: none
+Bug evidence: none
 Hook bypass: none (core.hooksPath unset; common hooks directory contains sample files only; plain git commits).
 Convergence: none
 Decision: media2-repair-pins | Use the authorized desk rehash and repin scripts, then committed register replay, to repair stale metadata while retaining exact hash refusal and all runtime ability. | reported=/Users/dabombstudio/.instar/agents/echo/.instar/lanes/sb-w4-media2-repair-PROGRESS.md
