@@ -14,8 +14,9 @@ Side effects: only the conformance declaration, review records and generated reg
 Undo and recovery: revert the declaration and generated metadata together; the architecture checker will again refuse the stale conformance for these composition bytes. There are no production state changes to undo.
 Multi-machine posture: deliberately macOS runtime-specific evidence; the active journal owner's sending fence and peer acknowledgements remain unchanged. Other tuples retain their existing status.
 Layer below: inspected compositionClosure/compositionDigest/currentRuntime, selfHostCompositionEvidence and the named native contract. Its 253-file closure is complete, its runtime exactly matches the declared executable, and its positive native launch/install plus stop/refused/timeout checks run through existing owners.
-Bug class: integration
-Bug evidence: reproducer=tests/preview/native-harness-contract.test.ts
+Bug class: none
+Bug evidence: none
+Classification: conformance metadata renewal only; no runtime bug fix or changed reproducer. The existing unchanged contract and its red-before/green-after results are recorded below.
 Hook bypass: none
 Convergence: none
 Decision: honest2-renew-conformance | retain the computed candidate only after the unchanged named contract passes on its exact macOS runtime | reported=/Users/dabombstudio/.instar/agents/echo/.instar/lanes/w4-holding-honest2-repair2-PROGRESS.md
