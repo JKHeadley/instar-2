@@ -15,7 +15,7 @@ Undo and recovery: Revert the source change before any new remainder reservation
 Multi-machine posture: Each serving worker uses the existing disclosure resolver and current membership at the existing external boundaries. No new store, leader, peer dependency or replication policy. The optional candidate and verdict travel with existing encrypted journal records; restart and compaction retain them. Telegram's existing membership-read-to-send race remains unchanged.
 Layer below: checked the sealed group-disclosure resolver and actual membership verification, worker model/review/send guards, durable revision-review reservation and token settlement, claim extraction and sentence preservation, production review envelope/parser, credential wall and send-intent replay. Related native carry CLI tests use the real confined HTTP membership bridge on this Studio.
 Bug class: user-facing
-Bug evidence: reproducer=tests/preview/group-audience.test.ts live=tests/preview/fixtures/group-audience-live-2026-10-10.json
+Bug evidence: reproducer=tests/preview/group-audience.test.ts; live=tests/preview/fixtures/group-audience-live-2026-10-10.json
 Hook bypass: none
 Convergence: none
 Decision: audience-standing | reuse current group-carry disclosure evidence in the packet; retain the sensitivity question for third-party confidences rather than treating a group as an unrestricted private surface | reported=/Users/dabombstudio/.instar/agents/echo/.instar/lanes/w4-group-audience-PROGRESS.md
@@ -25,6 +25,10 @@ Prompt review: The audience rule describes verified standing and own-information
 Prompt finding: 849db3a6296a | protocol-literal | existing memory-list reply wording, unchanged by this patch
 Prompt finding: bd01de21286a | protocol-literal | existing source citation guidance, unchanged by this patch
 Prompt finding: fb5fa7e706c8 | protocol-literal | existing source grounding guidance, unchanged by this patch
+
+Deferral: tests/preview/fixtures/group-audience-live-2026-10-10.json:170 | not-a-deferral=verbatim recorded model reasoning about whether the candidate defers work; this is evidence, not a builder commitment
+Deferral: tests/preview/fixtures/group-audience-live-2026-10-10.json:184 | not-a-deferral=verbatim recorded model reasoning about the defers_work rule; no work is postponed by this change
+Deferral: tests/preview/reply-check.declarations.json:13 | not-a-deferral=existing blocking-site semantics describe untracked promises and their immediate review; the added remainder review ships in this change
 
 ## Closing block
 

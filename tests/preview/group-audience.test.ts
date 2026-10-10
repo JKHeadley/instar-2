@@ -132,7 +132,7 @@ for (const outcome of ['fragment', 'coherence-only', 'coherent', 'unavailable', 
           // Isolate the recorded coherence finding from the separate disclosure finding: a coherent-answer
           // requirement must itself hold even if every privacy finding passed (constructed boundary control).
           return { ...result, ...(outcome === 'coherence-only' ? { ruleIds: ['incoherent_remainder' as const],
-            findings: result.findings?.filter(f => f.rule === 'incoherent_remainder') } : {}), confidence: null, latencyMs: 1 };
+            findings: result.findings!.filter(f => f.rule === 'incoherent_remainder') } : {}), confidence: null, latencyMs: 1 };
         } },
     });
     let worker = make();
