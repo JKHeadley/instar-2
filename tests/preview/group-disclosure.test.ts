@@ -37,6 +37,9 @@ it('verifies both identified members, the bot identity, forum and count, with no
   expect(await verifyGroupAudience(scope, membership((m, _b, v) => m === 'getMe' ? { id: 99, is_bot: true } : v))).toBe(false);
   expect(await verifyGroupAudience(scope, membership((m, _b, v) => m === 'getChatMember'
     ? { status: 'member', user: { id: 99, is_bot: false } } : v))).toBe(false);
+  for (const exposure of [{ username: 'public_forum' }, { active_usernames: ['public_forum'] },
+    { linked_chat_id: -100999 }, { is_forum: false }, { id: -100999 }])
+    expect(await verifyGroupAudience(scope, membership((m, _b, v) => m === 'getChat' ? { ...v as object, ...exposure } : v))).toBe(false);
   let counts = 0;
   expect(await verifyGroupAudience(scope, membership((m, _b, v) => m === 'getChatMemberCount' ? ++counts === 1 ? 2 : 3 : v))).toBe(false);
 });

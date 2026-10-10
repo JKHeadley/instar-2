@@ -58,6 +58,9 @@ export async function verifyGroupAudience(scope: GroupCarryScope, read: Membersh
       || scope.operator === scope.bot || !/^-[1-9][0-9]*$/u.test(scope.chat)) return false;
     const chat = object(result(await read('getChat', { chat_id: scope.chat })));
     if (String(chat.id) !== scope.chat || chat.type !== 'supergroup' || chat.is_forum !== true) return false;
+    // Two joined members is not a private audience when non-members can browse a public or linked chat.
+    if (chat.username !== undefined || chat.linked_chat_id !== undefined
+      || chat.active_usernames !== undefined && (!Array.isArray(chat.active_usernames) || chat.active_usernames.length > 0)) return false;
     const me = object(result(await read('getMe', {})));
     if (String(me.id) !== scope.bot || me.is_bot !== true) return false;
     if (result(await read('getChatMemberCount', { chat_id: scope.chat })) !== 2) return false;

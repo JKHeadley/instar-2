@@ -106,7 +106,8 @@ authenticated `source` message reference, matching `issuedAt`, optional `expires
 These are schema placeholders, not an operator grant. The existing authority sealer and authenticated
 operator records must substantiate the disclosure. Existing `revocations` withdraw it. Actual
 Telegram reads must establish a forum with exactly two members: the named human operator and the
-named agent bot. Unknown membership, another member, expiry, revocation or mismatched scope refuses
+named agent bot, with no public username or linked chat admitting a wider audience.
+Unknown membership, another member, expiry, revocation or mismatched scope refuses
 the copy. Keep the same authority and operator-record paths on subsequent `run` invocations.
 Model/review calls and group sends recheck authority and membership; Telegram does not provide an
 atomic membership-and-send operation, so a membership change after its last response remains a race.
