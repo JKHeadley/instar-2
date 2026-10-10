@@ -13,6 +13,7 @@ Tier rationale: Changes the effective configuration digest used by provider admi
 Side effects: Existing profiles that include a stamp need their digest re-derived once because the projection changes; subsequent freshness confirmations do not invalidate them. Identity, content hash, stamp presence and effective restrictions still participate. All inspection consumers share this projection.
 Undo and recovery: Revert this commit and re-derive profile/activation bindings together. Do not delete cache files or automatically renew grants. An old digest safely holds calls until the desk updates its consumers.
 Multi-machine posture: Machine-local, deliberately: each host inspects its own isolated CLI cache. No ownership transfer, replication or remote authority is introduced.
+Register maintenance: Replayed generated register artifacts against the source repair commit with build-register; no pin was hand-edited.
 Layer below: Complete stamp shape validation, cache identity/content fields, activation digest comparison, and physical child dispatch test. The WSL resource shim returned exit 125 for a standalone node version probe; physical launch evidence remains unavailable here.
 Bug class: integration
 Bug evidence: reproducer=tests/assembly/production-provider-subscription.test.ts
