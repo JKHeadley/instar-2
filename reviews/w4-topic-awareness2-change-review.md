@@ -3,14 +3,14 @@
 Subject base: afa6be392876eb17c2789651090fa90b83a81f92
 Review state: open
 Reviewed content: none
-Outcome: The forum packet always identifies the current message topic, including General, and shared datedPending, dated and memory candidates carry their original topic with the existing source label. Recall and other existing provenance use the same name for General. Known topic names, including a renamed General, come from captured service events. Recent history and reply destinations remain per topic; facts remain shared.
+Outcome: The forum packet always identifies the current message topic, including General, and shared datedPending, dated and memory candidates carry their original topic with the existing source label. Recall and other existing provenance use the same name for General. Known topic names, including a renamed General with an absent thread field or explicit thread 1, come from captured service events. Recent history and reply destinations remain per topic; facts remain shared.
 Affected rules: 2, 7, 11, 26, 34, 36, 49, 70, 74, 89, 96, 101, 106, 111, 113, 116
 Affected floors: secrets — existing redaction, group disclosure and outbound checks; spend cap — no added call or changed reservation; stop — unchanged checks; no duplicate sends — unchanged intent and delivery state; durable intake — unchanged capture and replay
 Operator questions: none
 Suggested tier: critical
 Declared tier: critical
 Tier rationale: Changes model-facing context used for a user-visible forum reply, without changing effect authorization or journal schema.
-Side effects: Forum packets gain bounded per-item topic/source fields and a clearer current-topic instruction. General's source labels now say General instead of main chat; a captured General rename is retained in the existing topic-name projection. Added bytes participate in existing packet limits and omission counts. Private packets retain identical bytes, verified against afa6be39. No new persisted state, migration, model round, dependency or service. Register replay pins source commit 8c1e1b1a45bb50ba283caa3358140d3770d1fef5.
+Side effects: Forum packets gain bounded per-item topic/source fields and a clearer current-topic instruction. General's source labels now say General instead of main chat; a captured General rename is retained in the existing topic-name projection. Added bytes participate in existing packet limits and omission counts. Private packets retain identical bytes, verified against afa6be39. No new persisted state, migration, model round, dependency or service. Register replay is regenerated after the final source commit.
 Undo and recovery: Revert the source change and replay the register. Existing journals remain readable in both directions; topic labels are derived on replay, so no data rollback is needed. Do not replay prior send intents.
 Multi-machine posture: Pure projection from the existing replicated journal on each serving host; no new store, authority or ownership. The existing conversation owner and disclosure checks remain the effect boundaries.
 Layer below: Forum boundThread canonicalizes General to undefined; topicNames reads only matching-chat service events; turnLabel supplies existing provenance; packet selection bounds optional material; reserve/intent/sent records and the existing disclosure gate retain their floors.

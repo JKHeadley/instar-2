@@ -4963,7 +4963,7 @@ export function topicNames(view: JournalView): ReadonlyMap<number, string> {
     if (!turn.raw.includes('"forum_topic_')) continue;
     let message: (TelegramMessage & { forum_topic_created?: { name?: unknown }; forum_topic_edited?: { name?: unknown } }) | undefined;
     try { const update = JSON.parse(turn.raw) as TelegramUpdate; message = update.message ?? update.edited_message; } catch { continue; }
-    const thread = view.genesis.forum && message?.message_thread_id === 1 ? 1
+    const thread = view.genesis.forum && (message?.message_thread_id === undefined || message.message_thread_id === 1) ? 1
       : boundThread(view.genesis, message?.message_thread_id), raw = message?.forum_topic_created?.name ?? message?.forum_topic_edited?.name;
     if (!matchesBoundChat(view.genesis, message?.chat)
       || !Number.isSafeInteger(thread) || thread! <= 0 || typeof raw !== 'string') continue;

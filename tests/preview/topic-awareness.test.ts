@@ -68,7 +68,7 @@ it.each([undefined, 1, 3, 8])('replays CEDAR with current topic %s separate from
   } finally { journal.close(); }
 });
 
-it.each([3, 1])('uses the recorded topic name for topic %s and the matching source labels', async topic => {
+it.each([3, 1, undefined])('uses the recorded topic name for topic %s and the matching source labels', async topic => {
   const journal = seed();
   try {
     // Telegram service updates are captured even though they have no accepted text.
