@@ -1,4 +1,5 @@
 import { expect, it } from 'vitest';
+import { selfStateBrief, selfStateSource } from './self-state.js';
 import { mkdtempSync, readFileSync, realpathSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
@@ -81,7 +82,9 @@ async function replay(options: Run) {
   const worker = createJournalWorker(journal, { now: () => clock.now, stopped: () => false,
     prepareModel: (input: Parameters<typeof prepareJournalEnvelope>[0]) =>
       prepareJournalEnvelope(input, 'claude-sonnet-5', 'grant:preview', clock.now),
-    model: async () => {
+    sources: () => [selfStateSource(selfStateBrief(journal.view, { launches: [], unreadable: 0 }, clock.now, 'UTC'))],
+    model: async (input: { context: string }) => {
+      expect(JSON.parse(input.context).sources[0].text).toContain('Activation: your activation; ends');
       if (options.toolOutput !== undefined) {
         const id = journal.view.order[0]!.id;
         journal.append({ kind: 'tool-turn', phase: 'reserved', id, attempt: 0, calls: 0, at: clock.now });

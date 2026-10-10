@@ -7,6 +7,7 @@ import { dirname } from 'node:path';
 import { redact } from '../../src/recall/redact.js';
 import { openRequests, replyOutcomeOf, sendOutcomeCounts, unknownCallCounts, type JournalView, type Turn } from './journal.js';
 import { wholeReplySent, wholeReplySentAt } from './reply-parts.js';
+import { credentialDisplayLabel } from './credential-display.js';
 
 /** One line per launch, one per recorded end of that launch (paired by `launch`), and one per poll attempt that
  * changes the failure episode (Rule 55): each failure is durable when it happens, and a successful poll after
@@ -334,7 +335,8 @@ export function selfStateBrief(view: JournalView, runs: RunLog, now: number, tim
       + `Admitted updates: ${left(view.limits.maxTurns, view.order.length)}.${exhausted.length ? ` Exhausted: ${exhausted.join(', ')}.` : ''}`,
     view.capAuthority === null ? 'Caps not raised.'
       : `Caps last raised ${view.capRaisedAt ? when(view.capRaisedAt) : 'at an unrecorded time'} on the authority "${redact(view.capAuthority).text}".`,
-    view.stop ? `Permanent stop latched: ${view.stop}.` : `Trial ends ${when(view.expires)}.`,
+    view.stop ? `Permanent stop latched: ${view.stop}.`
+      : `Activation: ${credentialDisplayLabel({ kind: 'activation', identity: view.genesis.grant })}; ends ${when(view.expires)}.`,
     // One line per owned obligation class; a class with nothing open is named once, so its absence is a stated fact.
     obligations([['held replies', held], ['replies held today', heldToday.count], ['requested actions open', openRequests(view).length],
       ['UNKNOWN model calls', unknownCalls], ['UNKNOWN sends', unknownSends], ['summary calls in flight or unknown', summaryPending],
