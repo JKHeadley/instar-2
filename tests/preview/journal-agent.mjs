@@ -74,6 +74,7 @@ import { liveMeasurement, measuredTimings, renderMeasured, resourceCompare, reso
 import { doorwayFreshness, installDoorways, observeExchange, readDoorwayMap, standingDoorwayCheck, subscriptionExchange, usageReconciliation, writeDoorwayMap } from './doorway-map.js';
 import { credentialDisplayLabel } from './credential-display.js';
 import { createSecretCustody, dueCredentialReminders, reminderSchedule } from './secret-custody.js';
+import { createTelegramMediaCustody } from './telegram-media.js';
 import { credentialNotices, doorwayNotices, dueWithDelivery } from './credential-reminders.js';
 import { journalCapacity, packetCapacity } from './capacity-outcome.js';
 import { createLiveSentinels, createOrdinaryLane, sentinelCycle, sentinelReport, untilStopped, waitWorking } from './live-sentinels.js';
@@ -887,6 +888,13 @@ async function main() {
       resources: resourceStatus(resourcesPath, view.view),
       doorways: (() => { const map = readDoorwayMap(doorwaysPath);
         return map ? { map, ...doorwayFreshness(map, statusNow), standing: map.check ?? null } : { map: null, fresh: false, models: [], prices: [], standing: null }; })(),
+      media: (() => {
+        const turns = view.view.order.filter(turn => turn.media);
+        const custody = createTelegramMediaCustody(root, key(), { token: () => '', stopped: () => true });
+        return { stored: turns.filter(turn => turn.media.state === 'stored').length,
+          unavailable: turns.filter(turn => turn.media.state !== 'stored').map(turn => ({ update: turn.update, state: turn.media.state })),
+          missing: turns.filter(turn => turn.media.state === 'stored' && !custody.verify(turn.media)).map(turn => turn.update) };
+      })(),
       credentials: (() => {
         // Rule 100 + purpose Rule 2: custody dispositions are durable on the intake rows, and every
         // referenced vault object (original capture, stored secret, vaulted registry row) is
@@ -1514,6 +1522,9 @@ async function main() {
         context)) });
     // Rule 100: credentials handed over in chat are stored before anything consumes them.
     const custody = createSecretCustody(root, key(), wallNow);
+    const mediaCustody = createTelegramMediaCustody(root, key(), { token,
+      stopped: () => signalled || workerStop.value || existsSync(stopPath) || journal.view.stop !== null
+        || wallNow() >= journal.view.expires || !ownerHeld() });
     // Plan #442 (Rules 4, 86, 100): the secret values this runner holds, for the exact floor on every reply and send and
     // (plan #507) every outward tool request: host custody, the preview vault, the root's MCP credentials (served to a
     // turn's servers) and, with a harness user, its login from the runner's custody and any login Claude Code wrote into
@@ -1830,6 +1841,7 @@ async function main() {
       checkOutbound: text => { if (redact(text).count || secretMaterialIn(text, heldSecretValues())) throw Error('preview: outbound secret refused'); },
       heldSecrets: heldSecretValues,
       secrets: custody,
+      media: mediaCustody,
       model: async ({ id, prepared }) => {
         if (typeof prepared !== 'string') throw Error('preview: prepared model input absent');
         const result = toolsActive() && toolTurnEligible(id) ? await invokeTools(prepared, id) : await invokeSubscription(prepared, id);
