@@ -26,6 +26,8 @@ Prompt finding: fb5fa7e706c8 | protocol-literal | unchanged instruction and no n
 
 Subject (2 paths): tests/preview/credential-answer.test.ts, tests/preview/journal.ts
 
+Register regeneration: delegated rehash and repin changed zero manifest/inventory pins. The register builder replay refreshed generated/ against source commit f99cbf6926c7d9f43cccda05a5e392d61cb470d0; no pin was hand-edited.
+
 ## Closing block
 
 simplestRobustRoute: reuse memoryClean and memoryReplyFor for summary history, because the model must return exact excerpts; apply friendly wording only to answer display. This is the simplest route and adds no gate, fuzzy match, model call or storage. Intake, source authority, stop, spend and receipt checks remain the guards.
