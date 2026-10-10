@@ -90,7 +90,11 @@ globalThis.fetch = async (url, init) => {
     username: 'echo_mmtest_seam_b27x_bot', first_name: 'ordinary' } });
   if (process.env.INSTAR_ROUND6_RESPONSE_BASE64)
     bytes = Buffer.from(process.env.INSTAR_ROUND6_RESPONSE_BASE64, 'base64').toString('utf8');
-  if (mode === 'invalid-response') status = 500;
+  if (mode === 'invalid-response') status = 400;
+  if (mode.startsWith('transient-identity-')) {
+    status = Number(mode.slice('transient-identity-'.length));
+    bytes = JSON.stringify({ ok: false, description: `provider marker ${token} https://untrusted.invalid` });
+  }
   if (mode === 'redirect-response') status = 307;
   if (mode === 'scan-policy') bytes = JSON.stringify({ ok: true, result: { text: token } });
   if (mode === 'scan-budget') bytes = 'x'.repeat(2 * 1024 * 1024 + 1);
