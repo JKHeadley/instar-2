@@ -1,6 +1,6 @@
 # Change review — correct send replay evidence scope
 
-Subject base: bb90c3802d28a0c705d5de94acb9bbcf4a501796
+Subject base: d35d6e0176b683df3b3c94a1ed7ec11e5d879eb9
 Review state: open
 Reviewed content: none
 Outcome: Correct MUST-FIX 1 in the external combine report and preserve the corrected evidence statement in this pushed record: “The recorded candidate content, with the retired historical reply prefix removed, is rendered through the current journal and exercised through the real bridge against loopback transport; this is not a byte-identical historical wire replay.”
@@ -9,11 +9,11 @@ Affected floors: secrets — unchanged; spend cap — unchanged; stop — unchan
 Operator questions: none
 Suggested tier: ordinary
 Declared tier: ordinary
-Tier rationale: Evidence wording only; no implementation, test, prompt or policy changes.
+Tier rationale: This is an editorial addendum to the existing integration publication review. Its subject includes the seven unchanged generated publication files from bb90c380; the repair itself changes evidence wording only, with no implementation, test, prompt or policy changes.
 Side effects: Removes an overstated exact-byte replay claim. Preserves the recorded D1c update provenance and the warning that discarded historical native causes cannot prove non-delivery.
 Undo and recovery: Correct any subsequent evidence error in a new report/review amendment; no runtime recovery is needed. Do not restore the false exact-byte claim.
 Multi-machine posture: External desk report remains machine-local at the required absolute lanes path; this review records the correction in git for other machines. No runtime posture changes.
-Layer below: Inspected tests/preview/journal-send-outcome.test.ts:45–48: fixture.candidate equals PREVIEW prefix plus input.expectedText, while the bridge receives rendered input.text. Verified the external report now carries the exact requested sentence and retains provenance and the historical-unknown warning.
+Layer below: The seven generated publication files are byte-identical to bb90c380 and register:check passes; their original review is reviews/sb-w4-send-neveropened-change-review.md. Inspected tests/preview/journal-send-outcome.test.ts:45–48: fixture.candidate equals PREVIEW prefix plus input.expectedText, while the bridge receives rendered input.text. Verified the external report now carries the exact requested sentence and retains provenance and the historical-unknown warning.
 Bug class: none
 Bug evidence: none
 Hook bypass: none
