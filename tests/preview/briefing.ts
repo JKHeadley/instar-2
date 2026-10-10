@@ -87,7 +87,7 @@ export function capabilityBriefing(readSource: (path: string) => string,
   if (!features) return { text: `${identity} `
     + 'The generated capability briefing is unavailable in this deployment, so your capabilities cannot be listed here; say so plainly if asked, and do not guess. '
     + (limits.live ? `${liveBriefing(limits)}\n` : '')
-    + (limits.tools ? `You have ${tools} ${TOOLS_LIMITS} ` : 'You have no tools and cannot act outside this chat. ') + trial, generation, commit };
+    + (limits.tools ? `You have ${tools} ${TOOLS_LIMITS} ` : limits.live ? 'This turn has no tools. ' : 'You have no tools and cannot act outside this chat. ') + trial, generation, commit };
   const item = (f: BriefedFeature) => `- ${f.id}: ${f.text}`;
   const available = features.filter(f => f.availability === 'available');
   const off = features.filter(f => f.availability === 'switched-off');

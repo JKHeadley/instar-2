@@ -37,8 +37,11 @@ it('describes resolved tools, schedules, channel and media limits on both sides 
     expect(text).toContain('at most 1000 model attempts');
   }
   // Missing generated descriptions do not erase the resolved launch facts or invent other abilities.
-  expect(capabilityBriefing(() => { throw Error('absent'); }, { ...limits, tools: false,
-    live: { forum: true, scheduledTools: false, toolsGranted: false } }).text).toContain('Tools OFF');
+  const unavailable = capabilityBriefing(() => { throw Error('absent'); }, { ...limits, tools: false,
+    live: { forum: true, scheduledTools: true, toolsGranted: false } }).text;
+  expect(unavailable).toContain('Tools OFF');
+  expect(unavailable).toContain('Scheduled tool sessions ON.');
+  expect(unavailable).not.toContain('cannot act outside this chat');
 });
 
 it('rebuilds the capability source for recorded K11a answer/review packets, retaining their historical bytes', () => {
