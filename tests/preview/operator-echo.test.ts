@@ -106,7 +106,7 @@ describe('operator echo in the journal runner', () => {
     } finally { w.journal.close(); rmSync(root, { recursive: true, force: true }); }
   });
 
-  it('still sends an echo whose answer declared a deferral the runner refused to the contextual review (build 4, Rule 6)', async () => {
+  it('still sends an echo whose answer declared a deferral the runner refused to the contextual review, and releases it when that review is unavailable', async () => {
     const root = temp();
     const answer = 'You told me the gym locker code is 5823 now, not 4417.';
     const w = world(root, answer, { openLoops: [{ kind: 'deferral', quote: 'A clause that was never in this reply.', waitsOn: 'nothing' }] });
@@ -116,14 +116,17 @@ describe('operator echo in the journal runner', () => {
       await w.say(3, question);
       const turn = w.journal.view.order[2]!;
       expect(turn.answerRejected).toEqual({ loops: 1 });
-      // Same exact echo text, but the refused declaration keeps the review: no echo shortcut, no Jev,
-      // and with no review verdict and no Jev flag Rule 86 has nothing to release, so it stays held.
+      // Same exact echo text, but the refused declaration keeps the review: no echo shortcut, no Jev.
+      // The review gave no verdict, and only a full-context violation may hold a non-secret reply (Rule 86);
+      // reachability fails open (Rules 77, 95), so the reply goes out once with the review recorded unavailable.
       expect(w.journal.view.replyCheckPaths['operator-echo']).toBe(0);
       expect(w.calls.jev.length).toBe(jevBefore);
       expect(w.calls.reviews).toBe(2); // the malformed verdict and its one format re-ask (Rule 116)
-      expect(turn.sent).toBeUndefined();
+      expect(turn.sent).toBe(1);
+      expect(turn.intent).toBe(answer);
+      expect(turn.held).toBeUndefined();
       expect(turn.replyChecks?.map(row => [row.path, row.verdict])).toEqual([['subscription', 'unavailable']]);
-      expect(reviewUnavailableReleases(w.journal.view).total).toBe(0);
+      expect(reviewUnavailableReleases(w.journal.view)).toEqual({ total: 1, byRule: {} });
     } finally { w.journal.close(); rmSync(root, { recursive: true, force: true }); }
   });
 

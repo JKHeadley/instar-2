@@ -114,7 +114,7 @@ it('refuses the claim at the writer, still delivers the reminder, counts it, and
   } finally { rmSync(root, { recursive: true, force: true }); }
 });
 
-it('a refused fulfillment claim alone never holds the reply when the reviewer is down; a refused deferral still does', async () => {
+it('a refused fulfillment claim or a refused deferral never holds the reply when the reviewer is down', async () => {
   // Rules 77, 86, 95: the recorded row's text and claim, answered to the operator with reply review wired: Jev
   // passes every rule in its recorded answer shape, and the contextual reviewer is unavailable.
   for (const deferral of [false, true]) {
@@ -148,15 +148,18 @@ it('a refused fulfillment claim alone never holds the reply when the reviewer is
         expect(turn.sent).toBe(1);
         expect(turn.intent).toContain(QUOTE);
       } else {
-        // Build 4's floor is untouched: a refused deferral skips Jev, needs the review, and stays held without it.
+        // A refused deferral still skips Jev and forces the contextual review. Only that review's violation may
+        // hold the reply (Rule 86); when it cannot decide, reachability fails open (Rules 77, 95), so the reply
+        // goes out once and the declaration stays refused, never accepted (Rule 42).
         expect(turn.answerRejected).toEqual({ loops: 1, fulfills: 1 });
         expect(journal.view.rejectedObligations).toBe(2);
         expect(calls.jev).toBe(0);
         expect(calls.reviews).toBeGreaterThan(0);
         expect(turn.replyChecks?.at(-1)).toEqual(expect.objectContaining({ path: 'subscription', verdict: 'unavailable' }));
-        expect(turn.held).toBe('reply check unavailable');
-        expect(turn.sent).toBeUndefined();
-        expect(calls.sends).toBe(0);
+        expect(turn.held).toBeUndefined();
+        expect(turn.release).toMatchObject({ review: 'unavailable' });
+        expect(turn.sent).toBe(1);
+        expect(calls.sends).toBe(1);
       }
       journal.close();
     } finally { rmSync(root, { recursive: true, force: true }); }
