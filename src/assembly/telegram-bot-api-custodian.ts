@@ -26,6 +26,12 @@ type PublishedIdentity = Readonly<{
 
 export type TelegramBridgeFailureStage = 'resolver' | 'child-exit' | 'fetch-timeout' | 'fetch-failure'
   | 'body-read' | 'invalid-response' | 'scan-policy' | 'scan-budget' | 'sealed-capture';
+const transportCodes = ['ECONNRESET', 'ENOTFOUND', 'ECONNREFUSED', 'ETIMEDOUT', 'EAI_AGAIN',
+  'UND_ERR_CONNECT_TIMEOUT', 'UND_ERR_SOCKET', 'UND_ERR_HEADERS_TIMEOUT', 'UND_ERR_BODY_TIMEOUT',
+  'UND_ERR_ABORTED', 'EPIPE'] as const;
+const transportSyscalls = ['connect', 'getaddrinfo', 'read', 'write'] as const;
+type TransportCode = typeof transportCodes[number];
+type TransportSyscall = typeof transportSyscalls[number];
 type TelegramIdentityProjection = Readonly<{
   id: number;
   is_bot: true;
@@ -42,7 +48,8 @@ export type TelegramBridgeReply = Readonly<{
 }> | Readonly<{
   kind: 'identity'; status: 200; identity: TelegramIdentityProjection; capture: TelegramSealedCaptureReceipt;
 }> | Readonly<{
-  kind: 'uncertain'; limitation: 'timeout' | 'transport'; stage?: TelegramBridgeFailureStage;
+  kind: 'uncertain'; limitation: 'timeout' | 'transport'; stage?: TelegramBridgeFailureStage; sent?: false;
+  transportErrors?: readonly Readonly<{ code: TransportCode; syscall?: TransportSyscall }>[];
 }>;
 export function telegramBridgeReplyFromExecution(input: Readonly<{
   resolver: 'ok' | 'failed';
@@ -66,8 +73,16 @@ export function telegramBridgeReplyFromExecution(input: Readonly<{
     if (reply.kind === 'uncertain' && (reply.limitation === 'timeout' || reply.limitation === 'transport')
       && (reply.stage === undefined || stages.includes(reply.stage as TelegramBridgeFailureStage))) {
       const limitation = reply.limitation;
-      return reply.stage === undefined ? { kind: 'uncertain', limitation }
-        : { kind: 'uncertain', limitation, stage: reply.stage as TelegramBridgeFailureStage };
+      const transportErrors = Array.isArray(reply.transportErrors) ? reply.transportErrors.slice(0, 8)
+        .filter((error: unknown): error is Record<string, unknown> => error !== null && typeof error === 'object')
+        .filter(error => transportCodes.includes(error.code as TransportCode))
+        .map(error => ({ code: error.code as TransportCode,
+          ...(transportSyscalls.includes(error.syscall as TransportSyscall)
+            ? { syscall: error.syscall as TransportSyscall } : {}) })) : [];
+      return { kind: 'uncertain', limitation,
+        ...(reply.stage === undefined ? {} : { stage: reply.stage as TelegramBridgeFailureStage }),
+        ...(reply.stage === 'fetch-failure' && reply.sent === false ? { sent: false as const } : {}),
+        ...(transportErrors.length ? { transportErrors } : {}) };
     }
   } catch { /* A child protocol failure has no public diagnostic payload. */ }
   return { kind: 'uncertain', limitation: 'transport', stage: 'child-exit' };
