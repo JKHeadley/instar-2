@@ -1,0 +1,38 @@
+# Change review — scoped private-to-forum journal carry
+
+Subject base: c54befc70b5802319236d4be42b83619be207d66
+Review state: open
+Reviewed content: none
+Outcome: Adds an inert carry-group command. Only a sealed, sourced exact-scope disclosure grant plus actual operator-and-bot-only membership permits a one-time encrypted memory snapshot. The private source stays unchanged. Subsequent model and send consumers require current permission and membership. No real grant is created and no real memory is carried. Author validation is blocked on the named macOS conformance and recorded-shape evidence gaps; no readiness is asserted.
+Affected rules: 4, 26, 28, 98, 104 (explicit sourced disclosure and audience); 7, 32, 33, 44, 89, 96, 113 (durable lineage and read-only source); 34, 36, 42, 49, 74, 108 (consumer evidence and honest refusals); 60, 75 (finite storage and context); 83, 93 (source-owned open obligations); 101, 102 (plain commits and reported decisions); 105 (composition changed, real macOS conformance remains required); 116 (reuse existing authority, journal, selector and physical bridge)
+Affected floors: secrets — private lineage needs sourced consent and current audience; spend cap — no imported charges, reset or automatic raise; stop — checked before carry and at dispatch after audience reads; no duplicate sends — old effects and scheduler ownership never replayed; durable intake — existing journal intake remains unchanged
+Operator questions: none
+Suggested tier: critical
+Declared tier: critical
+Tier rationale: disclosure of private memory into a group and the model/send refusal boundary change.
+Side effects: one non-additive group-carry frame, journal generation 2, optional groupDisclosure worker port, and three additional read methods in the existing confined Telegram bridge. Snapshot storage is bounded at 128 KiB; selected context at one fifth of the current packet cap and at most 12000 bytes. Telegram has no atomic membership-and-send transaction; a membership change after the final read remains a race. The optional port adds no asynchronous admission delay to an ordinary journal.
+Undo and recovery: before any real carry, revert normally. After carry, stop the group and keep a supported reader that enforces disclosure; older binaries refuse the new frame, including compacted snapshots. Do not strip its frame or downgrade past the disclosure gate. The untouched private source remains available under its own authority.
+Multi-machine posture: carry installation requires the existing machine-local exclusive writer and identical storage custody. Replicated journal frames retain lineage. Every serving host needs a current grant for the recorded destination path plus actual membership; missing resolution refuses disclosure. No mesh leadership or scheduler is added.
+Layer below: existing authority seal and authenticated operator messages establish consent; existing Telegram custody and confined physical bridge establish membership; encrypted journal and compaction persist memory; existing recall selector chooses bounded context; existing worker and physical boundaries enforce disclosure.
+Bug class: none
+Bug evidence: none
+Hook bypass: none
+Convergence: none
+Decision: w4-group-carry2-authority | reuse the existing sealed authority and exact operator-message provenance for an explicit path/chat/operator/bot disclosure scope; broad activation permission is insufficient | reported=/Users/dabombstudio/.instar/agents/echo/.instar/lanes/w4-group-carry2-PROGRESS.md
+Decision: w4-group-carry2-snapshot | one immutable source-labelled snapshot carries projected memory and open obligation context; no old actions or scheduler transfer, preventing duplicate delivery and preserving source bytes | reported=/Users/dabombstudio/.instar/agents/echo/.instar/lanes/w4-group-carry2-PROGRESS.md
+Decision: w4-group-carry2-disclosure | gate every model/review/send consumer after import, because group descendants can contain private information even when the initial snapshot is no longer in the prompt | reported=/Users/dabombstudio/.instar/agents/echo/.instar/lanes/w4-group-carry2-PROGRESS.md
+Decision: w4-group-carry2-bounds | keep the finite snapshot whole and reuse signal-only recall selection with explicit omission counts so the default group cap need not be raised | reported=/Users/dabombstudio/.instar/agents/echo/.instar/lanes/w4-group-carry2-PROGRESS.md
+Decision: w4-group-carry2-host-proof | extend the existing confined bridge instead of adding an unconfined transport; its changed macOS composition needs an actual host conformance run, never a fabricated repin | reported=/Users/dabombstudio/.instar/agents/echo/.instar/lanes/w4-group-carry2-PROGRESS.md
+Prompt review: predecessorMemory is historical source-labelled data with explicit uncertainty, omission and source-owned execution guidance. No extra model call is introduced. Grant/audience refusal gates all model and send ports for carried roots. Replay uses all 384 rows of proofroom-summary-cascade-stall-2026-09-30.json (updates 715672479–715672500), accepted summaries 480/481/484, uncertain reservations 492/496/497, Jev unsure/unavailable and reply-review/delivery rows. A real delivered-empty-bubble capture is unavailable from this WSL host; this required evidence remains a readiness blocker. The worker tests show actual packet inclusion and denial between model and dispatch. Always-sent bytes for roots without carry are unchanged.
+Prompt finding: 849db3a6296a | protocol-literal | existing fixed memory-list reply wording, unchanged by this patch
+Prompt finding: bd01de21286a | protocol-literal | existing source citation guidance, unchanged by this patch
+Prompt finding: fb5fa7e706c8 | protocol-literal | existing source grounding guidance, unchanged by this patch
+Skip: tests/preview/group-carry-cli.test.ts:12 | scope=the shipped process-limit shim and confinement contract are macOS-specific; the assigned desk must run this whole CLI case on the Studio, while the same bridge's real HTTP integration runs on WSL
+
+Subject (14 paths): src/assembly/telegram-bot-api-bridge.mjs, src/assembly/telegram-bot-api-custodian.ts, tests/preview/README.md, tests/preview/activation-authority.ts, tests/preview/group-carry-cli.test.ts, tests/preview/group-carry-fixture.ts, tests/preview/group-carry.test.ts, tests/preview/group-carry.ts, tests/preview/group-disclosure.test.ts, tests/preview/group-disclosure.ts, tests/preview/group-membership-io.mjs, tests/preview/group-membership-io.test.ts, tests/preview/journal-agent.mjs, tests/preview/journal.ts
+
+## Closing block
+
+simplestRobustRoute: use the sealed authority, projected journal, recall selector and Telegram bridge already present. One new snapshot avoids copying effect state; a current disclosure check is needed because copied memory can survive in later group replies and summaries. No scheduler, service, key store or new model round.
+80/20: implementation and targeted consumer evidence are present; macOS composition conformance and the required empty-bubble real capture remain must-fix readiness blockers. The desk receives the pushed work and the exact evidence gaps.
+VERDICT: author submission; this record asserts no independent verdict — the review desk records its own

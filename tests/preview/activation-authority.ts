@@ -166,6 +166,10 @@ const sealed = (record: Record<string, unknown>, sealKey: Uint8Array | null) => 
   return expected.length === actual.length && timingSafeEqual(expected, actual);
 };
 
+/** Shared seal verification for scoped disclosure grants in the same authority record. */
+export const authorityRecordIsSealed = (record: unknown, sealKey: Uint8Array | null): boolean =>
+  sealed(row(record), sealKey);
+
 /** Resolves the activation's act against the desk's sealed authority record. `baseExpiry` is the
  * trial's own genesis expiry: an activation ending there is the original activation; a later one is
  * a renewal. `sealKey` is the trial's (`authoritySealKey`); without it nothing resolves. `policy` is

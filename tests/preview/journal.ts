@@ -1,3 +1,4 @@
+import { groupCarryPacket, validCarriedMemory, type CarriedMemory } from './group-carry.js';
 import { boundThread, journalAudience, journalConversation, matchesBoundChat, validateChatBinding } from './forum-routing.js';
 /** The machine-local preview's only conversation and effect ledger. Records are
  * individually authenticated so replay reads the file once at boot; hot turns
@@ -944,7 +945,7 @@ export function proposedConceptTerms(value: unknown): string[] | undefined {
  * ahead (refused). Rollback was one-way until this existed: on 2026-10-04 00:03 an older build refused a
  * root a newer build had used, with `preview journal: orphan effect`, so switching back would have cost
  * the operator's conversation. */
-export const JOURNAL_GENERATION = 1;
+export const JOURNAL_GENERATION = 2;
 /** A frame a NEWER build added, declared on the frame itself so a reader one build back needs no table of
  * the future. `generation` is the writer's JOURNAL_GENERATION when the kind was introduced; `additive`
  * asserts that a reader which skips this frame still holds a correct, if less complete, projection — the
@@ -957,7 +958,7 @@ export type ForwardDeclaration = { generation: number; additive: true };
  * "a kind I never heard of" as "an effect whose turn is gone" and refuse the whole root. A kind added to
  * JournalRecord and not added here fails tests/preview/journal-rollback-window.test.ts; adding it here is
  * the reminder to bump JOURNAL_GENERATION and give it a ForwardDeclaration. */
-export const KNOWN_FRAME_KINDS: ReadonlySet<string> = new Set(['action-due', 'answer', 'answer-replace',
+export const KNOWN_FRAME_KINDS: ReadonlySet<string> = new Set(['group-carry', 'action-due', 'answer', 'answer-replace',
   'approval-decision', 'approval-request', 'call-outcome', 'cap-report', 'caps', 'channel-item',
   'channel-source-cursor', 'channel-source-error', 'coherence', 'expiry', 'format-retry', 'genesis',
   'held-notice-intent', 'held-notice-sent', 'hold', 'import', 'index-reserve', 'intake', 'intent',
@@ -1029,6 +1030,7 @@ export type JournalRecord =
   /** The approved retraction, applied once at its journal position under the consumed explicit yes. From here on the listed
    * turns are never the operator's in any store; every earlier row stays and replays unchanged (Rule 7: hidden, never deleted). */
   | { kind: 'retract'; request: string; updates: number[]; reason: string; authority: string; at: number }
+  | { kind: 'group-carry'; memory: CarriedMemory; at: number }
   | { kind: 'channel-item'; item: ChannelItem; at: number }
   | { kind: 'channel-source-cursor'; source: 'telegram' | 'slack'; cursor: ChannelSourceCursor; reset?: true; at: number }
   | { kind: 'channel-source-error'; source: 'telegram' | 'slack'; error: string | null; at: number }
@@ -1335,6 +1337,8 @@ export interface JournalView { genesis: Extract<JournalRecord, {kind:'genesis'}>
   awayEvents: { kind: 'hold' | 'caps' | 'reserve' | 'summary-reserve' | 'model-uncertain' | 'notice' | 'intent' | 'held-notice-intent';
     at: number; id?: string; through?: number; reason?: string }[];
 
+  /** Non-additive: older readers must refuse, including after compaction; descendants depend on its disclosure gate. */
+  groupCarry?: CarriedMemory;
   channelItems: Map<string, ChannelItem>;
   channelSources: Map<'telegram' | 'slack', ChannelSourceCursor>;
   channelSourceErrors: Map<'telegram' | 'slack', string>;
@@ -3495,6 +3499,13 @@ function project(view: JournalView, row: JournalRecord, system?: SystemCheck, ad
     if (view.stepCheckBusiness && row.accepted) view.stepChecks.set(`intake:${row.id}`, {});
     return;
   }
+  if (row.kind === 'group-carry') {
+    const scope = row.memory.scope;
+    if (view.groupCarry || view.genesis.forum !== true || scope.chat !== view.genesis.chat
+      || scope.operator !== view.genesis.operator || scope.bot !== view.genesis.bot
+      || !validCarriedMemory(row.memory)) throw Error('preview journal: group lineage refused');
+    view.groupCarry = row.memory; return;
+  }
   if (row.kind === 'channel-item') {
     if (view.genesis.forum === true) throw Error('preview journal: external history has no group disclosure grant');
     // Inert: an item from the removed email import route replays but is never recalled or acted on.
@@ -5007,6 +5018,8 @@ export function concurrentWorkItem(input: { now: number; current: { owner: strin
 }
 
 export interface PreviewPorts {
+  /** Current scoped authority and real group membership, checked afresh before every model or send port. */
+  groupDisclosure?(): Promise<boolean>;
   now(): number; stopped(): boolean;
   /** Part 18: whether the presence sentinel is enabled this launch (its off-switch); absent means enabled. A disabled
    * family keeps its recorded decisions for audit, but a holding note it marked due earlier no longer goes out. */
@@ -5117,6 +5130,31 @@ export interface PreviewPorts {
 /** Exactly one worker calls drain. A reserved call or prepared send with no
  * durable result is UNKNOWN on restart and never replayed. */
 export function createJournalWorker(journal: ReturnType<typeof openPreviewJournal>, ports: PreviewPorts) {
+  // Every host of this worker inherits the floor, not only the shipped CLI. A snapshot without
+  // its current disclosure resolver is readable for audit but cannot leave through a model or send.
+  const original = ports;
+  const disclosure = async () => {
+    if (!journal.view.groupCarry) return true;
+    try { return await original.groupDisclosure?.() === true; } catch { return false; }
+  };
+  const guarded = <A extends unknown[], R>(method: (...args: A) => Promise<R>) => async (...args: A): Promise<R> => {
+    if (journal.view.groupCarry && !await disclosure()) throw Error('group carry: disclosure authority or audience refused');
+    return method(...args);
+  };
+  ports = { ...original, model: guarded(original.model),
+    send: async input => !journal.view.groupCarry || await disclosure() ? original.send(input)
+      : { kind: 'refused', reason: 'group disclosure authority or audience refused' },
+    ...(original.sessionWork ? { sessionWork: guarded(original.sessionWork) } : {}),
+    ...(original.retrospect ? { retrospect: guarded(original.retrospect) } : {}),
+    ...(original.stepCheck ? { stepCheck: { jev: guarded(original.stepCheck.jev) } } : {}),
+    ...(original.recallReranker ? { recallReranker: { ...original.recallReranker,
+      rerank: guarded(async (query: string, candidates: readonly string[]) => original.recallReranker!.rerank(query, candidates)) } } : {}),
+    ...(original.summaryCheck ? { summaryCheck: guarded(original.summaryCheck) } : {}),
+    ...(original.replyCheck ? { replyCheck: { ...original.replyCheck,
+      jev: guarded(original.replyCheck.jev), escalate: guarded(original.replyCheck.escalate),
+      ...(original.replyCheck.revise ? { revise: guarded(original.replyCheck.revise) } : {}),
+      ...(original.replyCheck.summaryReview ? { summaryReview: guarded(original.replyCheck.summaryReview) } : {}) } } : {}) };
+
   let working = false, workingSince = 0, ordinaryFailedSince: number | null = null;
   /** Every live send consumes its durable signed intent; a refusal or unknown outcome is recorded, never
    * retried. The one exception is the transport's own proof that it never made the network call: nothing
@@ -6557,6 +6595,7 @@ export function createJournalWorker(journal: ReturnType<typeof openPreviewJourna
       weekday: new Intl.DateTimeFormat('en-US', { timeZone: zone, weekday: 'long' }).format(now) },
       ...(resume ? { resume: { previous: turnLabel(journal.view.turns.get(resume.previous)!), elapsedHours: resume.elapsedHours,
         guidance: 'Reconcile this clock with dated items and open commitments before answering. Words such as today, tomorrow and next week in earlier messages or summaries referred to their original day, not this one. State the current local day accurately; distinguish passed, due and upcoming dates. Keep open commitments open unless a verified later message closed them.' } } : {}),
+      ...(journal.view.groupCarry ? { predecessorMemory: groupCarryPacket(journal.view.groupCarry, question?.text ?? '', now, journal.view.limits.maxBytes) } : {}),
       memoryVersion: journal.view.memory.length, purpose: 'Make coherence something an AI cannot lose.',
       // What you can do is the generated capability-note source; this field carries only how to use the packet.
       // The capability-note source already states that it is generated from the register and that nothing

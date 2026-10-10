@@ -73,6 +73,53 @@ admission remain unchanged. Use a fresh root for the forum; never relabel the pr
 configuration belongs to the journal launcher. The older `production-conversation-host.ts` successive
 fixture still takes one owner-admitted binding and one fixed target; these flags do not widen it.
 
+## Granted private-to-forum memory carry
+
+`journal-agent.mjs carry-group --root GROUP_ROOT --source-root PRIVATE_ROOT
+--authority-record AUTHORITY_JSON --operator-records OWNER_RECORDS --bot-username BOT_USERNAME`
+copies one source-labelled memory snapshot into an existing forum journal. Use the installation's
+existing storage and Telegram credential custody. Both roots must share that storage custody; the
+source is opened read-only, and the destination takes its existing exclusive single-machine writer.
+This command does not create or infer an approval. An activation grant alone cannot authorize it.
+
+The existing sealed `PreviewActivationAuthority` record must contain a `groupDisclosureGrants`
+entry with `id`, `grantor` (operator ID), `grantee: "echo-desk"`, the exact operator `words`, their
+authenticated `source` message reference, matching `issuedAt`, optional `expiresAt`, and:
+
+```json
+{
+  "action": "carry-private-journal",
+  "scope": {
+    "sourceRoot": "PRIVATE_ROOT_ABSOLUTE_REAL_PATH",
+    "destinationRoot": "GROUP_ROOT_ABSOLUTE_PATH",
+    "chat": "NEGATIVE_FORUM_CHAT_ID",
+    "operator": "OPERATOR_USER_ID",
+    "bot": "AGENT_BOT_ID"
+  },
+  "audience": "operator-and-agent-bot-only",
+  "surface": "telegram-forum",
+  "custodian": "OPERATOR_USER_ID",
+  "recovery": "stop-use-on-revocation-or-audience-change"
+}
+```
+
+These are schema placeholders, not an operator grant. The existing authority sealer and authenticated
+operator records must substantiate the disclosure. Existing `revocations` withdraw it. Actual
+Telegram reads must establish a forum with exactly two members: the named human operator and the
+named agent bot. Unknown membership, another member, expiry, revocation or mismatched scope refuses
+the copy. Keep the same authority and operator-record paths on subsequent `run` invocations.
+Model/review calls and group sends recheck authority and membership; Telegram does not provide an
+atomic membership-and-send operation, so a membership change after its last response remains a race.
+
+The snapshot retains projected recall, active preferences, corrections, settled summary prose and
+facts, and open promises/reminders. It retains the original source references and counts any facts
+omitted from a bounded prompt selection. It does not copy intake, counters, approvals or send records.
+The private journal keeps ownership of promise/reminder execution: copying context never replays an
+old send or starts a second scheduler. Repeating the same carry is a no-op, including after restart
+and compaction; a different predecessor is refused. Later private activity is not automatically
+synced. Older builds refuse the new non-additive journal frame. A carried group must keep a build
+that enforces its disclosure condition, even if the snapshot is not selected in the current prompt.
+
 ## Stops, bounds, and status
 
 Use the identical configuration with `status` or `stop` instead of `run`. Both are pull-only local operations; there is no server or dashboard. `stop` writes a separate monotonic latch. SIGINT and SIGTERM write the same latch. Grounding and dispatch are separate launcher steps: after durable grounding the launcher yields to the event loop, then the dispatch gate checks the latch before any reply call.
