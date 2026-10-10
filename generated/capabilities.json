@@ -1,6 +1,6 @@
 {
-  "generation": "sha256:46b32a90c9906dd3e1bc1a9edc211293121a18b9eff7b6f726db603344c73f0f",
-  "commit": "7ea42a159d8294918488ff3c82e05bee0e0f9969",
+  "generation": "sha256:37d9ce0c51da2130d216c99df13a372ecd5d65aa75f544aca8e651c36fd413d5",
+  "commit": "97aafe30689ed52cbabacc0f4d1cade52a84f711",
   "launchers": {
     "bin/instar-production.mjs": [
       {
@@ -49,7 +49,7 @@
         "module": "tests/preview",
         "availability": "not-loaded",
         "userFacing": true,
-        "text": "an explicit request for a settled later day and time (a reminder) is answered once at that time, with no new operator message."
+        "text": "an explicit later-time request is answered once at that time, or daily or weekdays until cancelled, with no new operator message."
       },
       {
         "id": "preview-status-command",
@@ -179,7 +179,7 @@
         "module": "tests/preview",
         "availability": "not-loaded",
         "userFacing": true,
-        "text": "an explicit request for a settled later day and time (a reminder) is answered once at that time, with no new operator message."
+        "text": "an explicit later-time request is answered once at that time, or daily or weekdays until cancelled, with no new operator message."
       },
       {
         "id": "preview-status-command",
@@ -309,7 +309,7 @@
         "module": "tests/preview",
         "availability": "not-loaded",
         "userFacing": true,
-        "text": "an explicit request for a settled later day and time (a reminder) is answered once at that time, with no new operator message."
+        "text": "an explicit later-time request is answered once at that time, or daily or weekdays until cancelled, with no new operator message."
       },
       {
         "id": "preview-status-command",
@@ -439,7 +439,7 @@
         "module": "tests/preview",
         "availability": "not-loaded",
         "userFacing": true,
-        "text": "an explicit request for a settled later day and time (a reminder) is answered once at that time, with no new operator message."
+        "text": "an explicit later-time request is answered once at that time, or daily or weekdays until cancelled, with no new operator message."
       },
       {
         "id": "preview-status-command",
@@ -569,7 +569,7 @@
         "module": "tests/preview",
         "availability": "available",
         "userFacing": true,
-        "text": "an explicit request for a settled later day and time (a reminder) is answered once at that time, with no new operator message."
+        "text": "an explicit later-time request is answered once at that time, or daily or weekdays until cancelled, with no new operator message."
       },
       {
         "id": "preview-status-command",
