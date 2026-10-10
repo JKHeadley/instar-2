@@ -16,6 +16,7 @@ Multi-machine posture: original intake and custody outcome follow the existing j
 Layer below: verified intake principal binding; encrypted append/cursor ordering; durablePreviewWrite flush/readback; bounded stream reads and fixed-origin Telegram URLs; existing answer preparation, cap/stop and send uniqueness; production launcher text-only provider input. No configured image or local transcription path was found.
 Bug class: unit
 Bug evidence: reproducer=tests/preview/telegram-media.test.ts
+Evidence binding: register-source/owner-references/preview.json registers PREVIEW-MEDIA-CUSTODY against the committed disk and shipped-launcher tests; generated artifacts carry that retained-store declaration and source pin.
 Hook bypass: none
 Convergence: none
 Decision: media2-custody | retain the original first, then use one bounded host download and encrypted per-turn blob with one journal outcome; this prevents post-cursor loss and plaintext disclosure without another queue or reply path | reported=/Users/dabombstudio/.instar/agents/echo/.instar/lanes/w4-media2-PROGRESS.md
