@@ -18,7 +18,7 @@ Bug class: none
 Bug evidence: none
 Hook bypass: none; core.hooksPath is unset and the resolved common hooks directory contains only samples. Ordinary merge and plain commits.
 Convergence: none
-Decision: w4-group-carry2 | integrate the exact reviewed unit head 3808b5e3 and its two repair rounds by ordinary fast-forward; its report carries the unit evidence and limitations | reported=/Users/dabombstudio/.instar/agents/echo/.instar/lanes/w4-group-carry3-PROGRESS.md
+Decision: w4-group-carry3-order | carry the approved predecessor-first ownership transfer in the exact reviewed unit head 3808b5e3 and its two repair rounds by ordinary fast-forward; the cited unit report records this decision and its evidence | reported=/Users/dabombstudio/.instar/agents/echo/.instar/lanes/w4-group-carry3-PROGRESS.md
 Decision: sb-w4-group-carry2-desk | reuse cint-L37 repin/build/rehash/replay chain; no source or owner pins needed repair, generated source/generation references refreshed | reported=/Users/dabombstudio/.instar/agents/echo/.instar/lanes/sb-w4-group-carry2-PROGRESS.md
 Decision: sb-w4-group-carry2-workers | use one foreground worker at nice 10 to honor the stricter Studio resource cap; run targeted chunks only | reported=/Users/dabombstudio/.instar/agents/echo/.instar/lanes/sb-w4-group-carry2-PROGRESS.md
 Decision: sb-w4-group-carry2-macos | omit the requested macOS-only CLI confinement case and run the platform-neutral origin cases from the same file | reported=/Users/dabombstudio/.instar/agents/echo/.instar/lanes/sb-w4-group-carry2-PROGRESS.md
