@@ -1,6 +1,6 @@
 {
-  "generation": "sha256:2ce290acdeac23b694316417e9fd0f294de1300be6a987abba597c5846f53bd7",
-  "commit": "cac8df241d8b7679a68edab4fcd1e140840f5b53",
+  "generation": "sha256:d1a83e3f74b42c7b6bab3b01d65b58d861bafc1076f39fbbd9be272ec0f50f82",
+  "commit": "dba7b9bfd287a09f2b26c09e608581b1c8736258",
   "launchers": {
     "bin/instar-production.mjs": [
       {
@@ -25,7 +25,7 @@
         "module": "tests/preview",
         "availability": "not-loaded",
         "userFacing": true,
-        "text": "answers the operator in the configured private Telegram chat or forum group, returning each reply to its originating topic."
+        "text": "answers the operator in chat/topics; journal intake saves photos, audio and files encrypted, with text descriptions."
       },
       {
         "id": "preview-durable-memory",
@@ -155,7 +155,7 @@
         "module": "tests/preview",
         "availability": "not-loaded",
         "userFacing": true,
-        "text": "answers the operator in the configured private Telegram chat or forum group, returning each reply to its originating topic."
+        "text": "answers the operator in chat/topics; journal intake saves photos, audio and files encrypted, with text descriptions."
       },
       {
         "id": "preview-durable-memory",
@@ -285,7 +285,7 @@
         "module": "tests/preview",
         "availability": "not-loaded",
         "userFacing": true,
-        "text": "answers the operator in the configured private Telegram chat or forum group, returning each reply to its originating topic."
+        "text": "answers the operator in chat/topics; journal intake saves photos, audio and files encrypted, with text descriptions."
       },
       {
         "id": "preview-durable-memory",
@@ -415,7 +415,7 @@
         "module": "tests/preview",
         "availability": "not-loaded",
         "userFacing": true,
-        "text": "answers the operator in the configured private Telegram chat or forum group, returning each reply to its originating topic."
+        "text": "answers the operator in chat/topics; journal intake saves photos, audio and files encrypted, with text descriptions."
       },
       {
         "id": "preview-durable-memory",
@@ -545,7 +545,7 @@
         "module": "tests/preview",
         "availability": "available",
         "userFacing": true,
-        "text": "answers the operator in the configured private Telegram chat or forum group, returning each reply to its originating topic."
+        "text": "answers the operator in chat/topics; journal intake saves photos, audio and files encrypted, with text descriptions."
       },
       {
         "id": "preview-durable-memory",
