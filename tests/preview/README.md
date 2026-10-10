@@ -3962,3 +3962,14 @@ npx vitest run --maxWorkers 1 tests/preview/native-loop.test.ts
 npx vitest run --maxWorkers 1 tests/preview/native-loop-replay.test.ts
 INSTAR_NATIVE_LOOP_LIVE_TEST=1 npx vitest run --maxWorkers 1 tests/integration/native-loop-live.test.ts   # three real native turns
 ```
+
+### Credential display names
+
+`credential-display.ts` keeps operator wording separate from custody keys. Installed
+records carry an optional `displayLabel`; old records derive the same plain label
+from their kind (and the subscription account). Reminder text, public credential
+facts supplied to reply review, and credential status name/identity fields use
+that label. Internal registry names, identity references and journal notice keys
+stay unchanged, so existing sent or uncertain reminders remain spent on restart.
+No journal rewrite is needed. A custom label still passes the existing public-label
+secret checks before it is included in model facts.

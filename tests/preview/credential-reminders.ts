@@ -33,7 +33,7 @@ export const credentialKey = (due: Pick<DueReminder, 'name' | 'expiresAt' | 'sta
 export function credentialNotices(due: readonly DueReminder[], now: number): ReplyNotice[] {
   return [...due].sort((a, b) => a.expiresAt - b.expiresAt || a.name.localeCompare(b.name)).map(item => ({
     key: credentialKey(item),
-    line: `Reminder: the credential "${item.name}" (${item.identity}) ${remainingText(item.expiresAt - now)}. `
+    line: `Reminder: ${item.displayLabel ?? 'your stored credential'} ${remainingText(item.expiresAt - now)}. `
       + `Smallest step for you: ${item.smallestHumanAction}.` }));
 }
 

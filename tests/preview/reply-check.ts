@@ -1,3 +1,4 @@
+import { credentialDisplayLabel } from './credential-display.js';
 import { machineLink } from './coherence-check.js';
 /** Live preview reply supervision. Jev's eight measured message questions and two detection
  * questions are batched with one result per question; each unresolved question then gets its own
@@ -700,7 +701,7 @@ export function concealSecretMaterial(text: string, held: readonly string[]): st
   return forms.reduce((out, form) => out.split(form).join(redactionMark), text);
 }
 /** The fields of a credential record the register shows the operator and gives the model: never a value. */
-export interface PublicCredentialRecord { readonly name: string; readonly kind: string; readonly custody: string;
+export interface PublicCredentialRecord { readonly displayLabel?: string; readonly name: string; readonly kind: string; readonly custody: string;
   readonly identity: string; readonly expiresAt?: number | null; readonly expirySource?: string;
   readonly renewal?: { readonly standing?: string; readonly smallestHumanAction?: string } }
 /** One register entry as the full-context review reads it: the record's public fields, its expiry as the reminder line
@@ -719,9 +720,11 @@ export function publicCredentialRegister(records: readonly PublicCredentialRecor
     const fields = [record.name, record.identity, record.kind, record.custody, record.renewal?.standing ?? 'none',
       record.renewal?.smallestHumanAction ?? ''].map(field => (typeof field === 'string' ? field.trim() : ''));
     if (!fields.every(field => publicLabel(field, held))) return [];
-    const [name, identity, kind, custody, standing, smallestHumanAction] = fields as [string, string, string, string, string, string];
+    const [, , kind, custody, standing, smallestHumanAction] = fields as [string, string, string, string, string, string];
     const expiry = typeof record.expiresAt === 'number' ? remainingText(record.expiresAt - now)
       : record.expirySource === 'none' ? 'no fixed expiry' : 'expiry unknown';
-    return [{ name, identity, kind, custody, expiry, renewal: { standing, smallestHumanAction } }];
+    const label = credentialDisplayLabel(record);
+    if (!publicLabel(label, held)) return [];
+    return [{ name: label, identity: label, kind, custody, expiry, renewal: { standing, smallestHumanAction } }];
   });
 }

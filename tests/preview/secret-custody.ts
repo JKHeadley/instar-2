@@ -17,6 +17,7 @@ import type { DecodeContext, SecretRef } from '../../src/index.js';
 import { credentialSpans } from '../../src/recall/redact.js';
 import { durablePreviewWrite } from './durable-write.js';
 import type { IntakeCustody } from './journal.js';
+import { credentialDisplayLabel } from './credential-display.js';
 import { liveMeasurement, renderMeasured } from './measured.js';
 
 export const VAULT = 'preview';
@@ -25,7 +26,7 @@ const HOUR = 60 * 60 * 1000, DAY = 24 * HOUR;
 export const REMINDER_OFFSETS_MS = Object.freeze([7 * DAY, 3 * DAY, DAY, 6 * HOUR, HOUR]);
 
 export interface CredentialRecord {
-  readonly name: string; readonly kind: string;
+  readonly name: string; readonly kind: string; readonly displayLabel?: string;
   readonly custody: 'preview-vault' | 'host-environment' | 'cli-custody' | 'activation-record';
   readonly identity: string; readonly recordedAt: number;
   readonly expiresAt: number | null; readonly expirySource: 'jwt-exp' | 'activation-record' | 'unknown' | 'none';
@@ -33,7 +34,7 @@ export interface CredentialRecord {
   /** No standing renewal authority exists here: renewal is the smallest human action. */
   readonly renewal: Readonly<{ standing: 'none'; smallestHumanAction: string }>;
 }
-export interface DueReminder { readonly name: string; readonly identity: string; readonly stage: number;
+export interface DueReminder { readonly name: string; readonly identity: string; readonly displayLabel?: string; readonly stage: number;
   readonly dueAt: number; readonly expiresAt: number; readonly remaining: string; readonly smallestHumanAction: string }
 
 const context: DecodeContext = { preserved: 'preview:secret-custody', captures: {}, register: {
@@ -63,8 +64,8 @@ export function dueCredentialReminders(records: readonly CredentialRecord[], now
     if (record.expiresAt === null) return [];
     const stage = record.reminders.filter(at => at <= now).length - 1;
     if (stage < 0) return [];
-    return [{ name: record.name, identity: record.identity, stage, dueAt: record.reminders[stage]!, expiresAt: record.expiresAt,
-      remaining: renderMeasured(liveMeasurement('credential-remaining', record.name, record.expiresAt - now, now)),
+    return [{ name: record.name, identity: record.identity, displayLabel: credentialDisplayLabel(record), stage, dueAt: record.reminders[stage]!, expiresAt: record.expiresAt,
+      remaining: renderMeasured(liveMeasurement('credential-remaining', credentialDisplayLabel(record), record.expiresAt - now, now)),
       smallestHumanAction: record.renewal.smallestHumanAction }];
   });
 }

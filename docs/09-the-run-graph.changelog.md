@@ -4,6 +4,10 @@ _Generated from `09-the-run-graph.changelog.json` by `scripts/render-changelog.m
 The document itself reads as a first version; every change to it is recorded here, newest first,
 each linked to the git change that made it (rule 91).
 
+## Revision 5 · 2026-10-09 · draft — Operator direction via observer #202: remove the preview framing (w4-agentready).
+
+- **The accepted-reply projection renders the accepted answer without the preview label.** — Present Instar as the agent while preserving acceptance, grounding, escaping and size checks. _(w4-agentready; observer #202)_
+
 ## Revision 4 · 2026-09-23 · draft — PREVIEW-S2 design as amended by astra-preview-s2-bytecap.md; reviewed landing remains desk-owned
 
 - **Document the exact signed-Decision PREVIEW projection and unchanged raw-answer alternative.** — Use one accepted answer without releasing UNKNOWN provider obligations or broadening the existing Eight definitions. _(PREVIEW-S2 / ROUND 2)_
