@@ -17,22 +17,24 @@ const answerOf = (text: string) => {
   return answer;
 };
 
-it.each([['bounded', 0], ['oversized', 5000]])('polls status at the call cap and %s Jev response follows the byte bound', async (_name, padding) => {
+it.each([['bounded', 0, false], ['oversized', 5000, false], ['forum', 0, true]])('polls status at the call cap and %s Jev response follows the byte bound', async (_name, padding, forum) => {
   const world = successiveWorld(), root = join(world.directory, 'status-cap-journal');
   const activation = join(world.directory, 'activation.json'), profile = join(world.directory, 'profile.json');
   const log = join(world.directory, 'poll.log'), updates = join(world.directory, 'updates.json');
   const preload = join(world.directory, 'jev.mjs');
+  const chat = forum ? '-1001234' : world.configuration.chatId;
   writeFileSync(activation, JSON.stringify(world.activation()));
   writeFileSync(profile, JSON.stringify(offlineProfile));
   writeFileSync(updates, JSON.stringify([{ update_id: 1, message: { chat: {
-    id: Number(world.configuration.chatId), type: 'private' },
+    id: Number(chat), type: forum ? 'supergroup' : 'private', ...(forum ? { is_forum: true } : {}) },
+    ...(forum ? { message_thread_id: 7 } : {}),
     from: { id: Number(world.configuration.operatorSenderId) }, text: 'status' } }]));
   writeFileSync(preload, `globalThis.fetch = async () => new Response(JSON.stringify({
     model: 'jev-1.13.0', padding: 'x'.repeat(${padding}),
     answers: Object.fromEntries(['raw_path','cli_command','config_key','credential','api_endpoint',
       'quits_on_self','claims_blocked','parks_on_user','defers_work','unrecorded_blocker'].map(rule => [rule,{type:'noul',noul:0.01}])) }));\n`);
   let journal = openPreviewJournal(join(root, 'journal.encrypted'), OFFLINE_STORAGE_KEY, {
-    kind: 'genesis', origin: 'test', bot: world.configuration.botId, chat: world.configuration.chatId,
+    kind: 'genesis', origin: 'test', bot: world.configuration.botId, chat, ...(forum ? { forum: true } : {}),
     operator: world.configuration.operatorSenderId, grant: world.state().read().trial.id,
     configurationDigest: world.state().read().trial.configurationDigest,
     expires: world.state().read().trial.expiresAt, maxCalls: 16, maxReplies: 16,
@@ -55,7 +57,7 @@ it.each([['bounded', 0], ['oversized', 5000]])('polls status at the call cap and
     const trial = world.state().read().trial;
     const run = spawnSync(process.execPath, ['--no-warnings', '--loader', './scripts/slice-ts-loader.mjs',
       '--import', preload, 'tests/preview/journal-agent.mjs', 'run', '--root', root,
-      '--bot-id', world.configuration.botId, '--chat-id', world.configuration.chatId,
+      '--bot-id', world.configuration.botId, '--chat-id', chat, ...(forum ? ['--forum', 'true'] : []),
       '--operator-sender-id', world.configuration.operatorSenderId, '--grant-reference', trial.id,
       '--configuration-digest', trial.configurationDigest, '--expires-at', String(trial.expiresAt),
       '--tools', 'off', '--activation-record', activation, '--operator-records', join(world.directory, 'operator-records'), '--login-profile', profile, '--model', world.model,
@@ -71,6 +73,12 @@ it.each([['bounded', 0], ['oversized', 5000]])('polls status at the call cap and
     journal = openPreviewJournal(join(root, 'journal.encrypted'), OFFLINE_STORAGE_KEY);
     expect(journal.view.order).toHaveLength(1);
     expect(journal.view.calls).toBe(16);
+    if (forum) {
+      expect(journal.view.order[0]?.thread).toBe(7);
+      const sends = readFileSync(`${log}.sends`, 'utf8').trim().split('\n').map(line => JSON.parse(line));
+      expect(sends).toHaveLength(1);
+      expect(sends[0]).toMatchObject({ chat_id: '-1001234', message_thread_id: 7 });
+    }
     if (padding === 0) {
       expect(journal.view.order[0]?.replyChecks?.[0]?.verdict).toBe('pass');
       expect(journal.view.replies).toBe(1);

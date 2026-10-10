@@ -8,7 +8,7 @@ const BRIDGE_STAGES = new Set(['resolver', 'child-exit', 'fetch-timeout', 'fetch
   // The transport's own pre-network refusals (scripts/production-boot-io.mjs): the host would not start
   // the child, or the launcher refused before its exec. Both carry `sent: false`.
   'spawn-refused', 'launch-refused']);
-export function classifyTelegramSend(reply, { chat, expectedText, thread }) {
+export function classifyTelegramSend(reply, { chat, expectedText, thread, forum = false }) {
   if (!reply || reply.kind !== 'response') {
     const reason = reply?.kind === 'uncertain' ? `transport ${String(reply.limitation)}${
       BRIDGE_STAGES.has(reply.stage) ? ` at ${reply.stage}` : ''}` : 'no transport response';
@@ -25,7 +25,8 @@ export function classifyTelegramSend(reply, { chat, expectedText, thread }) {
       ? `: ${payload.description.slice(0, 120)}` : ''}` };
   if (reply.status !== 200 || payload?.ok !== true) return { kind: 'unknown', reason: `telegram status ${String(reply.status)}` };
   return String(payload.result?.chat?.id) === chat && payload.result?.text === expectedText
-    && (thread === undefined || payload.result?.message_thread_id === thread)
+    && (thread === undefined ? !forum || payload.result?.message_thread_id === undefined || payload.result?.message_thread_id === 1
+      : payload.result?.message_thread_id === thread)
     && Number.isSafeInteger(payload.result?.message_id) && payload.result.message_id > 0
     ? { kind: 'accepted', message: payload.result.message_id } : { kind: 'unknown', reason: 'receipt differs from intent' };
 }
