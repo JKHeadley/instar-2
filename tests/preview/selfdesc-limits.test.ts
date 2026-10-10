@@ -1,7 +1,7 @@
 import { expect, it } from 'vitest';
 import { readFileSync } from 'node:fs';
 import { resolve } from 'node:path';
-import { CLAIM_SCOPED_RULES, DECLARED_OBLIGATIONS_GUIDE, exciseNamedClaims, namedClaimsIn, parseReplyReviewVerdict, quotedSpans,
+import { CLAIM_SCOPED_RULES, DECLARED_OBLIGATIONS_GUIDE, REPLY_REVIEW_REASONING_CHARS, exciseNamedClaims, namedClaimsIn, parseReplyReviewVerdict, quotedSpans,
   replyReviewQuestion, substantiveReply, type ReplyRule } from './reply-check.js';
 import { SOURCE_PINS, sourcePacket, TOOLS_BRIEFING, TOOLS_LIMITS, toolsBriefing } from './briefing.js';
 import { taskFields } from './answer-reading.js';
@@ -99,13 +99,14 @@ it('on the tools route the review packet is route-true, and the same two sides h
     expect(packet.obligationDecision, input).toBe(OBLIGATION_DECISION_TOOLS);
     expect(packet.declaredObligations.toolAttempts, input).toEqual({ meaning: TOOL_ATTEMPTS_MEANING, calls: [] });
     expect(packet.sources.find(source => source.id === 'capability-note')!.text, input).toContain(`- ${toolsBriefing(0)}`);
-    // Plan #491 and #510 changed only the answer-slot wording of the review question after these were recorded (the flat
-    // answer protocol, then one verdict field per rule); every rule, guide and packet line below is still the recorded one.
+    // Plan #491 and #510 changed the answer-slot wording after these were recorded (the flat answer protocol, then one
+    // verdict field per rule); the review-budget repair also bounded reasoning. Translate only those protocol changes;
+    // every rule, guide and packet line must still match the recorded one.
     const content = envelopeOf(input).messages[0]!.content;
     if (input.startsWith('review-r2-')) expect(content
       .replace(/Return inside conclusion\.value exactly one line for every listed rule and no other rule, each of the form rule_id: PASS \| short reason or rule_id: VIOLATION \| short reason, with each reason under (\d+) characters; put any longer reasoning in reason\.value\./u,
-        'Give every listed rule, and no other rule, one verdict "PASS | short reason" or "VIOLATION | short reason", with each reason under $1 characters; put any longer reasoning in reasoning.')
-      .replace('A reason that finds no breach belongs on a PASS line. No other text.', `A reason that finds no breach belongs on a PASS verdict. ${taskFields('{rule_id: its verdict, one field for each listed rule, named by that rule id}')}`), input).toBe(replyReviewQuestion(flagged));
+        'Give every listed rule, and no other rule, one verdict "PASS | short reason" or "VIOLATION | short reason", with each reason under $1 characters; keep reasoning concise within its separate budget.')
+      .replace('A reason that finds no breach belongs on a PASS line. No other text.', `A reason that finds no breach belongs on a PASS verdict. ${taskFields('{rule_id: its verdict, one field for each listed rule, named by that rule id}', REPLY_REVIEW_REASONING_CHARS)}`), input).toBe(replyReviewQuestion(flagged));
     else expect(content, input).not.toContain('in no broader terms');
   }
   const BROAD = '- Log in to or change any website, bank portal, or account. This preview has no logged-in account access.';
