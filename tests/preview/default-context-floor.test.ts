@@ -41,7 +41,7 @@ async function firstTurn(maxBytes: number, tools = false, fixedGrowth = 0) {
       maxTurns: PREVIEW_LIVE_LIMITS.turns, maxBytes, cursor: 0 });
     const briefing = sourcePacket(path => readFileSync(resolve(process.cwd(), path), 'utf8'), SOURCE_PINS,
       // With tools, the longest live MCP wording: a one-digit count of root MCP servers (no root configures ten).
-      { providerAttempts: journal.view.limits.maxCalls, expiresAt: journal.view.expires, tools, ...(tools ? { mcp: 9 } : {}) }).sources;
+      { providerAttempts: journal.view.limits.maxCalls, expiresAt: journal.view.expires, tools, live: { forum: false, scheduledTools: false, toolsGranted: true }, ...(tools ? { mcp: 9 } : {}) }).sources;
     // Inject fixed-source growth without changing a rule, a live root or the guard.
     briefing[0]!.text += 'x'.repeat(fixedGrowth);
     const runs = { launches: [{ at: now - 60_000, pid: 1 }], exits: [] };

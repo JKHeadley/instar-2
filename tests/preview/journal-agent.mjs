@@ -394,17 +394,17 @@ const capabilityReport = (joined, reading, log, status, now) => capabilityRows(j
  * The self-state is recomputed at each turn from the journal and the run log; the desk's
  * report (optional) covers only other work. */
 const turnSources = (root, options, view, runs, current = () => undefined, handoff = () => null,
-  toolsOn = () => options['tools-activation'] !== undefined) => {
+  toolsOn = () => options['tools-activation'] !== undefined, liveState = () => undefined) => {
   // The standing mind-held instructions ride every prepared envelope; a changed rule book refuses launch.
   verifyMindRules(path => readFileSync(resolve(process.cwd(), path), 'utf8'));
   // Each turn carries the briefing that matches whether its tools are on now (default on, withdrawn when the record is
   // removed or its grant no longer resolves) and how many MCP servers the root configures now (read at each turn, as the
   // tool turn reads them; unknown when the configuration is unreadable). Each distinct briefing is built once.
   const packets = new Map();
-  const packetFor = (tools, mcp) => {
-    const key = `${String(tools)}:${String(mcp)}`;
+  const packetFor = (tools, mcp, live) => {
+    const key = JSON.stringify([tools, mcp, live, view.limits.maxCalls, view.expires]);
     if (!packets.has(key)) packets.set(key, sourcePacket(path => readFileSync(resolve(process.cwd(), path), 'utf8'), SOURCE_PINS,
-      { providerAttempts: view.limits.maxCalls, expiresAt: view.expires, tools, ...(tools && mcp !== undefined ? { mcp } : {}) }).sources);
+      { providerAttempts: view.limits.maxCalls, expiresAt: view.expires, tools, ...(live ? { live } : {}), ...(tools && mcp !== undefined ? { mcp } : {}) }).sources);
     return packets.get(key);
   };
   const mcpCount = () => { try { return Object.keys(readRootMcp(root)?.servers ?? {}).length; } catch { return undefined; } };
@@ -413,7 +413,7 @@ const turnSources = (root, options, view, runs, current = () => undefined, hando
   const deskStatusPath = resolve(options['desk-status'] ?? join(root, 'desk-status.md'));
   return turn => {
     const now = wallNow(), log = runs();
-    const tools = Boolean(toolsOn()), sources = packetFor(tools, tools ? mcpCount() : undefined);
+    const tools = Boolean(toolsOn(turn)), sources = packetFor(tools, tools ? mcpCount() : undefined, liveState());
     const desk = deskStatusSource(readDeskStatus(deskStatusPath), now, deskStatusPath);
     const note = handoff();
     return [...sources, disciplineSource(view), selfStateSource(selfStateBrief(view, log, now, timeZoneOf(options), current())), desk, ...(note ? [note] : [])];
@@ -1856,15 +1856,21 @@ async function main() {
     bindPreviewBlockingSites({ journal: declarationsOf('journal.declarations'), replyCheck: declarationsOf('reply-check.declarations'),
       redact: JSON.parse(readFileSync(resolve(process.cwd(), 'src/recall/redact.declarations.json'), 'utf8')),
       resourceOwner: JSON.parse(readFileSync(resolve(process.cwd(), 'scripts/resource-owner.declarations.json'), 'utf8')) });
+    // Use the same resolved route for the ability note and packet constraints. A granted
+    // activation alone does not establish usable tools (identity and packet floors still hold).
+    const toolRoute = id => toolsActive() && identityRefusal === null && toolTurnEligible(id) && toolPacketFits(journal.view);
     worker = createJournalWorker(journal, { ...(approvalSurface ? { approvalSurface } : {}), ...(explicitYes ? { explicitYes } : {}), now: wallNow, elapsed: clock.elapsed, origin, stopped: () => workerStop.value || existsSync(stopPath) || !ownerHeld(), timeZone: timeZoneOf(options),
       groupDisclosure: async () => { await requireGroupDisclosure(journal.view); return true; },
       presenceNotes: sentinelFamilies.has('presence'),
       sources: turnSources(root, options, journal.view, () => runs, () => launchedAt ?? undefined,
-        () => journal.view.order.some(turn => turn.reserved && !reservedAtLaunch.has(turn.id)) ? null : handoff, () => toolsActive()),
+        () => journal.view.order.some(turn => turn.reserved && !reservedAtLaunch.has(turn.id)) ? null : handoff,
+        turn => turn ? toolRoute(turn.id) : toolsActive() && identityRefusal === null && toolPacketFits(journal.view),
+        () => ({ forum: journal.view.genesis.forum === true, toolsGranted: toolsActive(),
+          scheduledTools: sessionWork !== null && sessionWork.port.available() })),
       prepareModel: modelEnvelope,
       // Part Thirteen §9: the packet names the tools exactly when the model call will run on the tool route. The packet
       // is built before the answer's `reserve` or the work's `obligation-start` counts its base call, so that call is added here.
-      toolRoute: id => toolsActive() && identityRefusal === null && toolTurnEligible(id) && toolPacketFits(journal.view),
+      toolRoute,
       // Only scheduled obligation work is delegated; an operator answer is never handed to a session.
       // The session route is taken only while its grant holds and the call allowance can hold the
       // step's whole reserved liability on top of the obligation's own start.

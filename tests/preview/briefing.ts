@@ -50,8 +50,20 @@ export function toolsBriefing(mcp?: number) {
 }
 export const TOOLS_BRIEFING = toolsBriefing();
 export const TOOLS_LIMITS = 'Limits: a sent credential is vaulted on arrival (you see its SecretRef), not tool-readable.';
+/** Resolved runner facts, not another capability store. Omitted by offline callers that
+ * cannot establish launch state; the live runner supplies them again at every turn. */
+export type LiveBriefing = { forum: boolean; scheduledTools: boolean; toolsGranted: boolean };
+type BriefingLimits = { providerAttempts: number; expiresAt: number; tools?: boolean; mcp?: number; live?: LiveBriefing };
+const liveBriefing = (limits: BriefingLimits) => limits.live ? [
+  limits.tools ? 'Tools ON: file reads/edits, commands, web fetch/search, subagents.'
+    : limits.live.toolsGranted ? 'Tools OFF this turn (granted, route unavailable).'
+      : 'Tools OFF (no active grant).',
+  limits.live.forum ? 'Chat: forum topics.' : 'Chat: private; no forum connected.',
+  limits.live.scheduledTools ? 'Scheduled tool sessions ON.' : 'Scheduled tool sessions OFF; listed timed/repeating replies work.',
+  'Media: text/captions only; no photo, voice or file-content I/O here.',
+].join('\n') : '';
 export function capabilityBriefing(readSource: (path: string) => string,
-  limits: { providerAttempts: number; expiresAt: number; tools?: boolean; mcp?: number }, launcher = CAPABILITY_LAUNCHER) {
+  limits: BriefingLimits, launcher = CAPABILITY_LAUNCHER) {
   // Rule 116: retain the actual limits when correcting the installation's identity. The
   // no-tools sentence stays verbatim: the live answer model quotes it
   // as its blocker avenue evidence (fixtures/live-declarations-2026-09-28.json) and journal-awareness pins it.
@@ -61,6 +73,8 @@ export function capabilityBriefing(readSource: (path: string) => string,
     + 'A subscription model answers. Charges, and unconfirmed calls or deliveries, are recorded unknown. '
     + 'Production safeguards are incomplete.';
   const tools = toolsBriefing(limits.mcp);
+  const identity = limits.live?.forum ? 'This is Instar in the operator\'s configured Telegram forum group.'
+    : 'This is Instar in the operator\'s direct Telegram chat and its topics.';
   let generation = 'unavailable', commit = 'unavailable', features: BriefedFeature[] | undefined;
   try {
     const data = JSON.parse(readSource(CAPABILITY_BRIEFING_PATH)) as { generation?: unknown; commit?: unknown; launchers?: Record<string, unknown> };
@@ -70,8 +84,9 @@ export function capabilityBriefing(readSource: (path: string) => string,
       generation = data.generation; commit = data.commit; features = listed as BriefedFeature[];
     }
   } catch { features = undefined; }
-  if (!features) return { text: 'This is Instar in the operator\'s direct Telegram chat and its topics. '
+  if (!features) return { text: `${identity} `
     + 'The generated capability briefing is unavailable in this deployment, so your capabilities cannot be listed here; say so plainly if asked, and do not guess. '
+    + (limits.live ? `${liveBriefing(limits)}\n` : '')
     + (limits.tools ? `You have ${tools} ${TOOLS_LIMITS} ` : 'You have no tools and cannot act outside this chat. ') + trial, generation, commit };
   const item = (f: BriefedFeature) => `- ${f.id}: ${f.text}`;
   const available = features.filter(f => f.availability === 'available');
@@ -79,7 +94,8 @@ export function capabilityBriefing(readSource: (path: string) => string,
   return { generation, commit, text: [
     // cint-L27: the header's "one-line summaries from this installation's register; current state in the status
     // reply" went to pay for the lookup sentence; the register-tooling and status-command lines below state both.
-    'This is Instar in the operator\'s direct Telegram chat and its topics.',
+    identity,
+    ...(limits.live ? [liveBriefing(limits)] : []),
     'What you can do for the operator here:', ...available.filter(f => f.userFacing).map(item), ...limits.tools ? [`- ${tools}`] : [],
     'Internal machinery running under you:', ...available.filter(f => !f.userFacing).map(item),
     ...off.length ? [`In the code but switched off here, so not available: ${off.map(f => f.id).join(', ')}.`] : [],
@@ -87,12 +103,12 @@ export function capabilityBriefing(readSource: (path: string) => string,
     // unprompted messages", which denies `preview-requested-actions` listed two lines above it. The reply to
     // "Remind me today at 1:25 am" opened "I can't actually do this one - I have no scheduler" and then carried
     // the runner's own "I will act on this once at ..." receipt. A blanket denial may never contradict the list.
-    ...limits.tools ? [TOOLS_LIMITS] : ['Nothing unlisted is available: no tools, browsing, running code or acting outside this chat, and no message you start yourself beyond the listed answers to later-time requests.'],
+    ...limits.tools ? [TOOLS_LIMITS] : limits.live ? ['This turn has no tools: no browsing, commands or file edits. Listed scheduled work is separate.'] : ['Nothing unlisted is available: no tools, browsing, running code or acting outside this chat, and no message you start yourself beyond the listed answers to later-time requests.'],
     trial].join('\n') };
 }
 /** Reads each excerpt exactly from the repository, verifying the pinned digest. */
 export function sourcePacket(readSource: (path: string) => string, pins: Readonly<Record<string, string>>,
-  limits: { providerAttempts: number; expiresAt: number; tools?: boolean; mcp?: number }) {
+  limits: BriefingLimits) {
   const sources: { id: string; text: string; provenance: Record<string, string | number> }[]
     = SOURCE_EXCERPTS.map(excerpt => {
     const document = readSource(excerpt.path);
