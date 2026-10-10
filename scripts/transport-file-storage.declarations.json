@@ -19,5 +19,28 @@
       32
     ],
     "holds": []
+  },
+  {
+    "type": "Declaration",
+    "schemaVersion": 1,
+    "status": "live",
+    "holds": [],
+    "id": "media-claims.createTransportFileStorage",
+    "kind": "stores",
+    "standards": [
+      7,
+      32,
+      60,
+      113
+    ],
+    "requiredFacts": {
+      "growth": "unbounded",
+      "holdsAgentMemory": "yes",
+      "machineScope": {
+        "kind": "machine-local",
+        "reason": "Per-source signed Six facts retain the bounded media request and one-use claim beside local encrypted media. Conversation ownership fences dispatch; intake and outcome use existing journal replication. No cross-machine media-claim replication or independent key custody is claimed."
+      },
+      "agreesWith": []
+    }
   }
 ]

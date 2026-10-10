@@ -1,3 +1,5 @@
+import { createTelegramMediaCustody, journalMediaSource } from './telegram-media.js';
+import { createMediaAdmission, DEFAULT_EFFECT_POLICY, MEDIA_OPERATION } from './media-admission.js';
 import { expect, it } from 'vitest';
 import { mkdtempSync, realpathSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
@@ -28,7 +30,13 @@ async function flow(options: Flow) {
   const genesis = { kind: 'genesis' as const, bot: '12345678', chat: options.forum ? '-1001234' : '7654321', ...(options.forum ? { forum: true as const } : {}), operator: '7654321', grant: 'grant:preview',
     configurationDigest: 'sha256:offline', expires: 9999999999999, maxCalls: 6, maxReplies: 3, maxTurns: 3, maxBytes: 32768, cursor: 0 };
   const calls = { jev: 0, review: 0 }, sends: string[] = [], clock = { now: 1790817641423 };
-  const ports = (fresh: boolean) => ({ now: () => clock.now, stopped: () => false,
+  let mediaJournal: ReturnType<typeof openPreviewJournal>;
+  const custody = createTelegramMediaCustody(root, key, { token: () => '12345678:synthetic', stopped: () => false,
+    admission: createMediaAdmission({ root, incarnation: 'recorded-reply-replay', now: () => clock.now, monotonic: () => 0,
+      stopped: () => false, source: (source, media) => journalMediaSource(mediaJournal.view, source, media),
+      policy: () => ({ ...DEFAULT_EFFECT_POLICY, policySensitive: [MEDIA_OPERATION.effect] }) }),
+    fetch: async () => { throw Error('refused replay must not fetch'); } });
+  const ports = (fresh: boolean) => ({ ...(options.media ? { media: custody } : {}), now: () => clock.now, stopped: () => false,
     prepareModel: (input: Parameters<typeof prepareJournalEnvelope>[0]) => prepareJournalEnvelope(input, 'claude-sonnet-5', 'grant:preview', clock.now),
     model: async (input: { question: string }) => { if (!fresh) throw Error('model repeated');
       if (options.media) { expect(input.question).toContain('Received voice note'); expect(input.question).toContain('cannot listen'); }
@@ -52,6 +60,7 @@ async function flow(options: Flow) {
   try {
     const first = openPreviewJournal(path, key, genesis, options.crashAt === undefined ? undefined
       : stage => { if (stage === options.crashAt) throw Error('crash'); });
+    mediaJournal = first;
     const worker = createJournalWorker(first, ports(true));
     worker.intake([{ update_id: 969389800, message: { chat: options.forum ? { id: -1001234, type: 'supergroup', is_forum: true } : { id: 7654321, type: 'private' }, ...(options.forum ? { message_thread_id: 7 } : {}), from: { id: 7654321 },
       ...(options.media ? { caption: OPERATOR_TEXT, voice: { file_id: 'AwACAgEAAxkBAAIC-voice', file_size: 11520 } } : { text: OPERATOR_TEXT }) } }]);
@@ -60,6 +69,7 @@ async function flow(options: Flow) {
     if (options.preHeld) first.append({ kind: 'hold', id: first.view.order[0]!.id, reason: 'reply check unavailable', at: clock.now });
     first.close();
     const journal = openPreviewJournal(path, key);
+    mediaJournal = journal;
     const again = createJournalWorker(journal, ports(false));
     await again.drain(); await again.drain();
     const turn = journal.view.order[0]!;
@@ -73,7 +83,7 @@ it.each([false, true])('969389800 live shape: an unsure credential score whose s
   // The captured answer and judgments stay exact; only the offline input envelope
   // gains observer #207's voice metadata, to exercise the new consumer path.
   const { sends, calls, turn, checks } = await flow({ media, jev: JEV_800, answer: ANSWER_800, review: 'unknown' });
-  if (media) expect(turn.media).toEqual({ state: 'unavailable' });
+  if (media) expect(turn.media).toEqual({ state: 'failed', reason: 'admission-refused' });
   expect(checks.map(check => `${check.path}/${check.verdict}`)).toEqual(['jev/unsure', 'subscription/unavailable']);
   expect(checks[0]?.scores?.credential).toBe(0.51);
   expect(calls).toEqual({ jev: 1, review: 1 });

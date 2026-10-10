@@ -3,7 +3,8 @@ import { spawnSync } from 'node:child_process';
 import { mkdtempSync, readFileSync, readdirSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
-import { telegramInboundMedia, createTelegramMediaCustody, MEDIA_MAX_BYTES, MEDIA_STORE_MAX_BYTES } from './telegram-media.js';
+import { telegramInboundMedia, createTelegramMediaCustody, MEDIA_MAX_BYTES, MEDIA_STORE_MAX_BYTES, journalMediaSource } from './telegram-media.js';
+import { createMediaAdmission, DEFAULT_EFFECT_POLICY, MEDIA_OPERATION } from './media-admission.js';
 import { createSecretCustody } from './secret-custody.js';
 import { createJournalWorker, openPreviewJournal } from './journal-test-worker.js';
 
@@ -18,6 +19,11 @@ const withRoot = async (run: (root: string) => Promise<void>) => {
   const root = mkdtempSync(join(tmpdir(), 'telegram-media-'));
   try { await run(root); } finally { rmSync(root, { recursive: true, force: true }); }
 };
+// Synthetic admission source; the integration below also checks retained intake at dispatch.
+const admissionFor = (root: string, overrides: Partial<Parameters<typeof createMediaAdmission>[0]> = {}) => createMediaAdmission({
+  root, incarnation: 'test:media', now: () => 1000, monotonic: () => 100, stopped: () => false,
+  source: () => ({ grant: genesis.grant, account: genesis.bot, conversation: `${genesis.chat}:3`, intakeDigest: 'sha256:synthetic' }),
+  policy: () => DEFAULT_EFFECT_POLICY, ...overrides });
 const response = (value: unknown) => new Response(JSON.stringify(value), { status: 200 });
 function transport(fileId: string, bytes: Buffer, urls: string[] = []): typeof fetch {
   return async (input, options) => {
@@ -37,12 +43,21 @@ it.each(['photo', 'voice', 'document'])('observer #207 %s fixture reaches the mo
   if (kind === 'photo') expect(media.fileId).toBe('AgACAgEAAxkBAAIB-large');
   const secret = `ghp_${'A7'.repeat(18)}`, bytes = Buffer.alloc(media.size!, 42); bytes.write(secret);
   const urls: string[] = [], physical = transport(media.fileId!, bytes, urls);
-  const custody = createTelegramMediaCustody(root, key, { token: () => token, stopped: () => false,
+  const custody = createTelegramMediaCustody(root, key, { admission: admissionFor(root, {
+    source: (source, media) => journalMediaSource(journal.view, source, media) }), token: () => token, stopped: () => false,
     fetch: async (url, options) => {
       // The consumer opens the actual journal at the download boundary: EDITED is not DURABLE.
       const reader = openPreviewJournal(join(root, 'journal.encrypted'), key, undefined, undefined, true);
       expect(reader.view.cursor).toBe(update.update_id + 1);
       expect(reader.view.order[0]?.raw).toContain(media.fileId); reader.close();
+      const directories = readdirSync(join(root, 'media-claims'));
+      expect(directories).toHaveLength(1);
+      const facts = JSON.parse(readFileSync(join(root, 'media-claims', directories[0]!, 'facts.json'), 'utf8')) as {
+        body: { request?: string; record?: { type: string; state?: string; digest?: string } } }[];
+      const request = JSON.parse(facts.find(row => row.body.request)!.body.request!) as { plan: Record<string, unknown> };
+      expect(request.plan).toMatchObject({ operation: 'fetch-inbound-media', source: journal.view.order[0]!.id,
+        account: genesis.bot, conversation: `${genesis.chat}:3`, maxBytes: MEDIA_MAX_BYTES, requests: 2 });
+      expect(facts.filter(row => row.body.record?.type === 'AdmissionReservation').at(-1)?.body.record?.state).toBe('consumed');
       return physical(url, options);
     } });
   let journal = openPreviewJournal(join(root, 'journal.encrypted'), key, genesis);
@@ -103,23 +118,23 @@ it('wrong sender, chat, sender-chat and a service event cause no file fetch or m
 it('file size boundaries, unknown size streaming, hostile paths and transport errors are bounded and secret-safe', () => withRoot(async root => {
   let calls = 0;
   const base = telegramInboundMedia(fixture('document').message)!;
-  const reject = createTelegramMediaCustody(root, key, { token: () => token, stopped: () => false,
+  const reject = createTelegramMediaCustody(root, key, { admission: admissionFor(root), token: () => token, stopped: () => false,
     fetch: async () => { calls++; throw Error(`https://api.telegram.org/bot${token}`); } });
   expect(await reject.receive('too-big', { ...base, size: MEDIA_MAX_BYTES + 1 })).toEqual({ state: 'file-limit' });
   expect(await reject.receive('bad', { ...base, fileId: null })).toEqual({ state: 'malformed' });
   expect(calls).toBe(0); expect(await reject.receive('failure', base)).toEqual({ state: 'failed' }); expect(calls).toBe(1);
-  const exact = createTelegramMediaCustody(root, key, { token: () => token, stopped: () => false,
+  const exact = createTelegramMediaCustody(root, key, { admission: admissionFor(root), token: () => token, stopped: () => false,
     fetch: transport(base.fileId!, Buffer.alloc(MEDIA_MAX_BYTES)) });
   const atLimit = await exact.receive('exact', { ...base, size: MEDIA_MAX_BYTES }); expect(atLimit.state).toBe('stored');
   expect(exact.verify(atLimit)).toBe(true);
   for (const filePath of ['../token', 'documents/../token', 'https://evil.invalid/steal', 'documents/%2e%2e/token']) {
     let requests = 0;
-    const badPath = createTelegramMediaCustody(root, key, { token: () => token, stopped: () => false,
+    const badPath = createTelegramMediaCustody(root, key, { admission: admissionFor(root), token: () => token, stopped: () => false,
       fetch: async () => { requests++; return response({ ok: true, result: { file_id: base.fileId, file_path: filePath } }); } });
     expect(await badPath.receive(filePath, base)).toEqual({ state: 'failed' }); expect(requests).toBe(1);
   }
   let requests = 0, cancelled = false;
-  const streaming = createTelegramMediaCustody(root, key, { token: () => token, stopped: () => false, fetch: async () => {
+  const streaming = createTelegramMediaCustody(root, key, { admission: admissionFor(root), token: () => token, stopped: () => false, fetch: async () => {
     if (++requests === 1) return response({ ok: true, result: { file_id: base.fileId, file_path: 'documents/file.bin' } });
     return new Response(new ReadableStream({ start(controller) { controller.enqueue(new Uint8Array(MEDIA_MAX_BYTES + 1)); },
       cancel() { cancelled = true; } }));
@@ -131,7 +146,7 @@ it('file size boundaries, unknown size streaming, hostile paths and transport er
 
 it('download recovery reuses the encrypted file after a crash before its journal disposition', () => withRoot(async root => {
   const media = telegramInboundMedia(fixture('document').message)!, urls: string[] = [];
-  const custody = createTelegramMediaCustody(root, key, { token: () => token, stopped: () => false,
+  const custody = createTelegramMediaCustody(root, key, { admission: admissionFor(root), token: () => token, stopped: () => false,
     fetch: transport(media.fileId!, Buffer.alloc(media.size!), urls) });
   const first = await custody.receive('captured-turn', media);
   expect(first.state).toBe('stored'); expect(await custody.receive('captured-turn', media)).toEqual(first); expect(urls).toHaveLength(2);
@@ -142,7 +157,7 @@ it('download recovery reuses the encrypted file after a crash before its journal
 it('the shipped status command detects a missing media file without exposing bytes or credentials', () => withRoot(async root => {
   const update = fixture('document'), media = telegramInboundMedia(update.message)!;
   const journal = openPreviewJournal(join(root, 'journal.encrypted'), key, genesis);
-  const custody = createTelegramMediaCustody(root, key, { token: () => token, stopped: () => false,
+  const custody = createTelegramMediaCustody(root, key, { admission: admissionFor(root), token: () => token, stopped: () => false,
     fetch: transport(media.fileId!, Buffer.alloc(media.size!)) });
   const worker = createJournalWorker(journal, { origin: 'test', now: () => 1000, stopped: () => false, media: custody,
     model: async () => 'Received.', send: async () => 1, checkOutbound: () => {} });
@@ -203,7 +218,7 @@ it('a failed host download is a durable plain-language result and still gets one
 it('an injected slow download aborts on stop without delaying intake or starting the model', () => withRoot(async root => {
   let stopped = false, began!: () => void, cancelled = false;
   const started = new Promise<void>(resolve => { began = resolve; });
-  const custody = createTelegramMediaCustody(root, key, { token: () => token, stopped: () => stopped,
+  const custody = createTelegramMediaCustody(root, key, { admission: admissionFor(root), token: () => token, stopped: () => stopped,
     fetch: async (_url, options) => { began(); return await new Promise<Response>((_resolve, reject) => {
       options!.signal!.addEventListener('abort', () => { cancelled = true; reject(Error('aborted')); }, { once: true });
     }); } });
@@ -225,12 +240,88 @@ it.each(recorded.otherShapes.filter(row => ['delivered-reply', 'empty-reply-in-r
   const journal = openPreviewJournal(join(root, 'journal.encrypted'), key, genesis);
   const sends: string[] = []; let calls = 0;
   const worker = createJournalWorker(journal, { origin: 'test', now: () => 1000, stopped: () => false,
-    model: async input => { calls++; expect(input.question).toContain('Received document'); return sample.raw; },
+    media: createTelegramMediaCustody(root, key, { token: () => token, stopped: () => false,
+      admission: admissionFor(root, { source: (source, media) => journalMediaSource(journal.view, source, media),
+        policy: () => ({ ...DEFAULT_EFFECT_POLICY, policySensitive: [MEDIA_OPERATION.effect] }) }),
+      fetch: async () => { throw Error('refused recorded replay must not fetch'); } }),
+    model: async input => { calls++; expect(input.question).toContain('Received document');
+      expect(input.question).toContain('refused by operation admission'); return sample.raw; },
     send: async input => { sends.push(input.expectedText); return 1; }, checkOutbound: () => {} });
   worker.intake([fixture('document')]); await worker.drain();
-  expect(calls).toBeGreaterThan(0); expect(journal.view.order[0]?.media).toEqual({ state: 'unavailable' });
+  expect(calls).toBeGreaterThan(0); expect(journal.view.order[0]?.media).toEqual({ state: 'failed', reason: 'admission-refused' });
   expect(sends.every(text => text.trim().length > 0)).toBe(true);
   if (sample.kind === 'delivered-reply') expect(sends[0]).toBe(sample.raw.replace(/^PREVIEW — /u, ''));
   else expect(sample.raw).toBe('');
   journal.close();
+}));
+
+it.each(['missing', 'refused', 'revoked', 'unreadable'] as const)
+('%s media admission makes zero requests, retains intake, and records an honest outcome', mode => withRoot(async root => {
+  const journal = openPreviewJournal(join(root, 'journal.encrypted'), key, genesis);
+  let requests = 0, policyReads = 0, question = '';
+  const denied = { ...DEFAULT_EFFECT_POLICY, policySensitive: [MEDIA_OPERATION.effect] };
+  const admission = admissionFor(root, {
+    source: (source, media) => journalMediaSource(journal.view, source, media),
+    policy: () => {
+      policyReads++;
+      if (mode === 'unreadable') throw Error('policy unavailable');
+      return mode === 'revoked' && policyReads === 1 ? DEFAULT_EFFECT_POLICY : denied;
+    } });
+  const custody = createTelegramMediaCustody(root, key, { token: () => token, stopped: () => false,
+    ...(mode === 'missing' ? {} : { admission }), fetch: async () => { requests++; throw Error('must not fetch'); } });
+  const worker = createJournalWorker(journal, { origin: 'test', now: () => 1000, stopped: () => false, media: custody,
+    model: async input => { question = input.question; return 'I received the message; the file download was refused.'; },
+    send: async () => 1, checkOutbound: () => {} });
+  const update = fixture('document'); worker.intake([update]); await worker.drain();
+  expect(requests).toBe(0); expect(journal.view.order[0]?.accepted).toBe(true);
+  expect(journal.view.order[0]?.raw).toContain('BQACAgE');
+  expect(journal.view.order[0]?.media).toEqual({ state: 'failed', reason: 'admission-refused' });
+  expect(question).toContain('refused by operation admission');
+  journal.close();
+  const reopened = openPreviewJournal(join(root, 'journal.encrypted'), key);
+  expect(reopened.view.order[0]?.media).toEqual({ state: 'failed', reason: 'admission-refused' }); reopened.close();
+}));
+
+it('a policy revoked after metadata prevents the binary request', () => withRoot(async root => {
+  let revoked = false, requests = 0;
+  const media = telegramInboundMedia(fixture('document').message)!;
+  const custody = createTelegramMediaCustody(root, key, { admission: admissionFor(root, {
+    policy: () => revoked ? { ...DEFAULT_EFFECT_POLICY, policySensitive: [MEDIA_OPERATION.effect] } : DEFAULT_EFFECT_POLICY }),
+  token: () => token, stopped: () => false, fetch: async () => {
+    requests++; revoked = true;
+    return response({ ok: true, result: { file_id: media.fileId, file_path: 'documents/file.bin' } });
+  } });
+  expect(await custody.receive('revoked-after-metadata', media)).toEqual({ state: 'failed', reason: 'admission-refused' });
+  expect(requests).toBe(1);
+}));
+
+it('a prepared claim is bound to the retained source and is one-use across reconstruction', () => withRoot(async root => {
+  const journal = openPreviewJournal(join(root, 'journal.encrypted'), key, genesis);
+  const worker = createJournalWorker(journal, { origin: 'test', now: () => 1000, stopped: () => false,
+    model: async () => 'received', send: async () => 1, checkOutbound: () => {} });
+  const update = fixture('document'); worker.intake([update]);
+  const source = journal.view.order[0]!.id, media = telegramInboundMedia(update.message)!;
+  const options = { source: (id: string, value: typeof media) => journalMediaSource(journal.view, id, value) };
+  const admission = admissionFor(root, options);
+  expect(() => admission.admit('other-turn', media)).toThrow('intake');
+  expect(() => admission.admit(source, { ...media, fileId: 'other-file' })).toThrow('exact retained file');
+  const claim = admission.admit(source, media); let requests = 0;
+  expect(() => claim.request('bytes', () => requests++)).toThrow('consumed');
+  claim.request('metadata', () => requests++);
+  expect(() => claim.request('metadata', () => requests++)).toThrow('consumed');
+  claim.request('bytes', () => requests++);
+  expect(() => claim.request('bytes', () => requests++)).toThrow('consumed');
+  expect(requests).toBe(2);
+  expect(() => admissionFor(root, options).admit(source, media)).toThrow('no retry');
+  journal.close();
+}));
+
+it('an uncertain fetch without complete bytes never issues another request after restart', () => withRoot(async root => {
+  let requests = 0;
+  const media = telegramInboundMedia(fixture('document').message)!;
+  const open = () => createTelegramMediaCustody(root, key, { admission: admissionFor(root), token: () => token,
+    stopped: () => false, fetch: async () => { requests++; throw Error('connection lost'); } });
+  expect(await open().receive('uncertain-fetch', media)).toEqual({ state: 'failed' });
+  expect(await open().receive('uncertain-fetch', media)).toEqual({ state: 'failed', reason: 'admission-refused' });
+  expect(requests).toBe(1);
 }));

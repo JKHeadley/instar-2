@@ -4,6 +4,7 @@ import { createCipheriv, createDecipheriv, createHash, randomBytes } from 'node:
 import { existsSync, readdirSync, readFileSync, statSync } from 'node:fs';
 import { join } from 'node:path';
 import { durablePreviewWrite } from './durable-write.js';
+import { isMediaAdmission, MEDIA_OPERATION, type MediaAdmission, type MediaDispatch, type MediaSource } from './media-admission.js';
 
 /** Structural metadata only. The intake owner still verifies the sender and captures
  * the original update before a custodian may fetch anything (Rules 28, 46, 100). */
@@ -35,11 +36,26 @@ export function telegramInboundMedia(message: unknown): TelegramInboundMedia | n
     ? file.file_name.slice(0, 256) : kind === 'photo' ? 'photo.jpg' : kind === 'voice' ? 'voice.ogg' : kind };
 }
 
-export const MEDIA_MAX_BYTES = 8 * 1024 * 1024;
-export const MEDIA_STORE_MAX_BYTES = 96 * 1024 * 1024;
+/** The launcher reads the actual accepted journal turn at each admission check,
+ * so a caller cannot authorize another file, account or conversation by name. */
+export function journalMediaSource(view: {
+  genesis: { grant: string; bot: string; chat: string };
+  turns: ReadonlyMap<string, { raw: string; accepted: boolean; reserved: boolean; answer?: string; thread?: number }>;
+}, source: string, media: TelegramInboundMedia): MediaSource {
+  const turn = view.turns.get(source);
+  if (!turn?.accepted || turn.reserved || turn.answer !== undefined) throw Error('media: retained verified intake required');
+  const update = JSON.parse(turn.raw) as { edited_message?: unknown; message?: unknown };
+  if (JSON.stringify(telegramInboundMedia(update.edited_message ?? update.message)) !== JSON.stringify(media))
+    throw Error('media: exact retained file required');
+  return { grant: view.genesis.grant, account: view.genesis.bot, conversation: `${view.genesis.chat}:${turn.thread ?? 0}`,
+    intakeDigest: `sha256:${createHash('sha256').update(turn.raw).digest('hex')}` };
+}
+
+export const MEDIA_MAX_BYTES = MEDIA_OPERATION.maxBytes;
+export const MEDIA_STORE_MAX_BYTES = MEDIA_OPERATION.storeBytes;
 export type MediaCustodyResult =
   | { state: 'stored'; reference: string; bytes: number }
-  | { state: 'unavailable' | 'failed' | 'file-limit' | 'store-limit' | 'malformed' };
+  | { state: 'unavailable' | 'failed' | 'file-limit' | 'store-limit' | 'malformed'; reason?: 'admission-refused' };
 
 export function mediaCustodyText(result: MediaCustodyResult): string {
   switch (result.state) {
@@ -48,14 +64,16 @@ export function mediaCustodyText(result: MediaCustodyResult): string {
     case 'store-limit': return 'The file was not downloaded: the encrypted media store is full. The original message is retained.';
     case 'malformed': return 'The file could not be downloaded because its file metadata is malformed. The original message is retained.';
     case 'unavailable': return 'File download is unavailable in this host. The original message is retained.';
-    case 'failed': return 'File download or encrypted storage failed. The original message is retained; do not claim the file was saved.';
+    case 'failed': return result.reason === 'admission-refused'
+      ? 'File download was refused by operation admission or its authority was withdrawn. The original message is retained; do not claim the file was saved.'
+      : 'File download or encrypted storage failed. The original message is retained; do not claim the file was saved.';
   }
 }
 
 /** Fixed Telegram origin, no redirects or provider-supplied absolute URLs, bounded
  * streaming and lifetime, no retries. The bot credential stays in the host closure. */
 export function createTelegramMediaCustody(root: string, key: Uint8Array, ports: {
-  token(): string; stopped(): boolean; fetch?: typeof fetch;
+  token(): string; stopped(): boolean; fetch?: typeof fetch; admission?: MediaAdmission;
 }) {
   if (key.byteLength !== 32) throw Error('media: key refused');
   const directory = join(root, 'media'), request = ports.fetch ?? fetch;
@@ -86,9 +104,13 @@ export function createTelegramMediaCustody(root: string, key: Uint8Array, ports:
     if (media.size !== null && media.size > MEDIA_MAX_BYTES) return { state: 'file-limit' };
     const reference = referenceFor(source);
     const controller = new AbortController();
-    const timer = setTimeout(() => controller.abort(), 20_000);
-    const stopTimer = setInterval(() => { if (ports.stopped()) controller.abort(); }, 100);
-    const check = () => { if (ports.stopped() || controller.signal.aborted) throw Error('media: stopped or timed out'); };
+    const timer = setTimeout(() => controller.abort(), MEDIA_OPERATION.timeout);
+    let dispatch: MediaDispatch | undefined, refused = false;
+    const check = () => {
+      if (ports.stopped() || controller.signal.aborted) throw Error('media: stopped or timed out');
+      try { dispatch?.current(); } catch { refused = true; throw Error('media: admission withdrawn'); }
+    };
+    const stopTimer = setInterval(() => { try { check(); } catch { controller.abort(); } }, 100);
     const bounded = async (response: Response, max: number): Promise<Buffer> => {
       if (!response.ok || !response.body) throw Error('media: response refused');
       const announced = response.headers.get('content-length');
@@ -116,12 +138,16 @@ export function createTelegramMediaCustody(root: string, key: Uint8Array, ports:
       // Reserve for the worst case including base64 inside encrypted JSON. One
       // journal worker owns this store, so simultaneous downloads cannot oversubscribe it.
       if (used + MEDIA_MAX_BYTES * 2 > MEDIA_STORE_MAX_BYTES) return { state: 'store-limit' };
+      try {
+        if (!isMediaAdmission(ports.admission)) throw Error('media: registered admission required');
+        dispatch = ports.admission.admit(source, media);
+      } catch { refused = true; throw Error('media: admission refused'); }
       check(); const token = ports.token();
-      if (!/^[0-9]+:[A-Za-z0-9_-]+$/u.test(token)) throw Error('media: credential refused');
+      if (!/^[0-9]+:[A-Za-z0-9_-]+$/u.test(token) || token.split(':')[0] !== dispatch.account) throw Error('media: credential refused');
       const options = { signal: controller.signal, redirect: 'error' as const };
-      const metadata = JSON.parse((await bounded(await request(`https://api.telegram.org/bot${token}/getFile`, {
+      const metadata = JSON.parse((await bounded(await dispatch.request('metadata', () => request(`https://api.telegram.org/bot${token}/getFile`, {
         ...options, method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ file_id: media.fileId }),
-      }), 16 * 1024)).toString('utf8')) as { ok?: boolean; result?: { file_id?: string; file_path?: string; file_size?: number } };
+      })), MEDIA_OPERATION.metadataBytes)).toString('utf8')) as { ok?: boolean; result?: { file_id?: string; file_path?: string; file_size?: number } };
       const file = metadata.result;
       if (metadata.ok !== true || file?.file_id !== media.fileId || typeof file.file_path !== 'string'
         || file.file_path.length > 1024 || !/^[A-Za-z0-9_-]+(?:\/[A-Za-z0-9_.-]+)+$/u.test(file.file_path)
@@ -129,7 +155,7 @@ export function createTelegramMediaCustody(root: string, key: Uint8Array, ports:
       if (file.file_size !== undefined && (!Number.isSafeInteger(file.file_size) || file.file_size < 0)) throw Error('media: size refused');
       if (file.file_size !== undefined && file.file_size > MEDIA_MAX_BYTES) return { state: 'file-limit' };
       check();
-      const bytes = await bounded(await request(`https://api.telegram.org/file/bot${token}/${file.file_path}`, options), MEDIA_MAX_BYTES);
+      const bytes = await bounded(await dispatch.request('bytes', () => request(`https://api.telegram.org/file/bot${token}/${file.file_path}`, options)), MEDIA_MAX_BYTES);
       if (file.file_size !== undefined && bytes.length !== file.file_size
         || media.size !== null && bytes.length !== media.size) throw Error('media: incomplete file');
       check();
@@ -141,7 +167,7 @@ export function createTelegramMediaCustody(root: string, key: Uint8Array, ports:
       return { state: 'stored', reference, bytes: bytes.length };
     } catch {
       // Never propagate transport errors: their text may contain a bot-token URL.
-      return { state: 'failed' };
+      return { state: 'failed', ...(refused ? { reason: 'admission-refused' as const } : {}) };
     } finally { clearTimeout(timer); clearInterval(stopTimer); }
   };
   return Object.freeze({ receive, verify });

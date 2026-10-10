@@ -1,3 +1,5 @@
+import { createTelegramMediaCustody, journalMediaSource } from './telegram-media.js';
+import { createMediaAdmission, DEFAULT_EFFECT_POLICY, MEDIA_OPERATION } from './media-admission.js';
 import { expect, it } from 'vitest';
 import { selfStateBrief, selfStateSource } from './self-state.js';
 import { SOURCE_PINS, sourcePacket } from './briefing.js';
@@ -56,7 +58,12 @@ function world(writer: Step[], forum = false, media = false) {
   const journal = openPreviewJournal(path, key, forum ? { ...genesis, chat: '-1001234', forum: true } : genesis);
   const throughs: number[] = [], log: string[] = [];
   let clock = 0, calls = 0;
-  const worker = createJournalWorker(journal, { now: () => START + clock, elapsed: () => clock, stopped: () => false,
+  const custody = createTelegramMediaCustody(root, key, { token: () => `${genesis.bot}:synthetic`, stopped: () => false,
+    admission: createMediaAdmission({ root, incarnation: 'recorded-summary-replay', now: () => START + clock, monotonic: () => 0,
+      stopped: () => false, source: (source, media) => journalMediaSource(journal.view, source, media),
+      policy: () => ({ ...DEFAULT_EFFECT_POLICY, policySensitive: [MEDIA_OPERATION.effect] }) }),
+    fetch: async () => { throw Error('refused replay must not fetch'); } });
+  const worker = createJournalWorker(journal, { ...(media ? { media: custody } : {}), now: () => START + clock, elapsed: () => clock, stopped: () => false,
     sources: () => [...sourcePacket(path => readFileSync(path, 'utf8'), SOURCE_PINS,
       { providerAttempts: genesis.maxCalls, expiresAt: genesis.expires }).sources,
       selfStateSource(selfStateBrief(journal.view, { launches: [], unreadable: 0 }, START + clock, 'UTC'))],
@@ -151,7 +158,7 @@ it.each([[false, false], [true, false], [true, true]])('the recorded stall (foru
     // The room still answers.
     w.intake(715672501, 'What is my test marker?'); await w.worker.drain();
     expect(view.order.at(-1)?.sent).toBeDefined();
-    if (media) expect(view.order.at(-1)?.media).toEqual({ state: 'unavailable' });
+    if (media) expect(view.order.at(-1)?.media).toEqual({ state: 'failed', reason: 'admission-refused' });
     // The rows replay to the same summary state.
     const summaries = view.summaries.map(item => item.through), failures = [...view.summarySpanFailures];
     w.closeJournal();

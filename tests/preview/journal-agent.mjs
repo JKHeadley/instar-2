@@ -74,7 +74,8 @@ import { liveMeasurement, measuredTimings, renderMeasured, resourceCompare, reso
 import { doorwayFreshness, installDoorways, observeExchange, readDoorwayMap, standingDoorwayCheck, subscriptionExchange, usageReconciliation, writeDoorwayMap } from './doorway-map.js';
 import { credentialDisplayLabel } from './credential-display.js';
 import { createSecretCustody, dueCredentialReminders, reminderSchedule } from './secret-custody.js';
-import { createTelegramMediaCustody } from './telegram-media.js';
+import { createTelegramMediaCustody, journalMediaSource } from './telegram-media.js';
+import { createMediaAdmission } from './media-admission.js';
 import { credentialNotices, doorwayNotices, dueWithDelivery } from './credential-reminders.js';
 import { journalCapacity, packetCapacity } from './capacity-outcome.js';
 import { createLiveSentinels, createOrdinaryLane, sentinelCycle, sentinelReport, untilStopped, waitWorking } from './live-sentinels.js';
@@ -1523,9 +1524,12 @@ async function main() {
         context)) });
     // Rule 100: credentials handed over in chat are stored before anything consumes them.
     const custody = createSecretCustody(root, key(), wallNow);
-    const mediaCustody = createTelegramMediaCustody(root, key(), { token,
-      stopped: () => signalled || workerStop.value || existsSync(stopPath) || journal.view.stop !== null
-        || wallNow() >= journal.view.expires || !ownerHeld() });
+    const mediaStopped = () => signalled || workerStop.value || existsSync(stopPath) || journal.view.stop !== null
+      || wallNow() >= journal.view.expires || !ownerHeld();
+    const mediaAdmission = createMediaAdmission({ root, incarnation: `media:${process.pid}:${launchedAt}`,
+      now: wallNow, monotonic: () => performance.now(), stopped: mediaStopped, policy: () => effectPolicyOf(),
+      source: (source, media) => journalMediaSource(journal.view, source, media) });
+    const mediaCustody = createTelegramMediaCustody(root, key(), { token, stopped: mediaStopped, admission: mediaAdmission });
     // Plan #442 (Rules 4, 86, 100): the secret values this runner holds, for the exact floor on every reply and send and
     // (plan #507) every outward tool request: host custody, the preview vault, the root's MCP credentials (served to a
     // turn's servers) and, with a harness user, its login from the runner's custody and any login Claude Code wrote into

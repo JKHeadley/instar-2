@@ -1,0 +1,81 @@
+[
+  {
+    "type": "Declaration",
+    "schemaVersion": 1,
+    "status": "dark",
+    "holds": [],
+    "id": "fetch-inbound-media",
+    "kind": "features",
+    "profile": {
+      "type": "Profile",
+      "schemaVersion": 1,
+      "consequence": "data",
+      "reversibility": "reversible",
+      "reach": "world",
+      "surface": "none",
+      "repeats": {
+        "kind": "no"
+      }
+    },
+    "standards": [
+      1,
+      39,
+      60,
+      63,
+      66,
+      84,
+      116
+    ],
+    "requiredFacts": {
+      "metrics": [
+        "status.media.stored",
+        "status.media.unavailable",
+        "status.media.missing"
+      ],
+      "gate": {
+        "test": "PREVIEW-MEDIA-CUSTODY",
+        "deadline": 1794355200000
+      }
+    }
+  },
+  {
+    "type": "Declaration",
+    "schemaVersion": 1,
+    "status": "live",
+    "holds": [],
+    "id": "preview.media-admission.createMediaAdmission",
+    "kind": "blocking sites",
+    "profile": {
+      "type": "Profile",
+      "schemaVersion": 1,
+      "consequence": "data",
+      "reversibility": "reversible",
+      "reach": "world",
+      "surface": "none",
+      "repeats": {
+        "kind": "no"
+      }
+    },
+    "standards": [
+      1,
+      4,
+      60,
+      63,
+      66,
+      95
+    ],
+    "requiredFacts": {
+      "authority": "block",
+      "inspectedBy": "PREVIEW-MEDIA-CUSTODY",
+      "rungs": [
+        {
+          "decidesAlone": "ruled-three",
+          "decidesAloneBasis": "recorded-governed-state",
+          "criticality": "The registered fetch-inbound-media operation consumes Eight four-test policy admission and a Six reservation/claim/consume before network dispatch. Exact retained intake, bot account, topic, file digest, custodian and finite bounds are bound in a local durable request. A revoked policy, owner, stop or lifetime prevents dispatch; prior claims never authorize retries.",
+          "failDirection": "closed",
+          "preservesInput": "Original encrypted journal intake remains accepted; failed admission is a source-linked media-custody outcome and does not prevent the ordinary answer."
+        }
+      ]
+    }
+  }
+]
