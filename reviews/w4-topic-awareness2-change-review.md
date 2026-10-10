@@ -24,6 +24,8 @@ Prompt finding: bd01de21286a | protocol-literal | existing source citation guida
 Prompt finding: fb5fa7e706c8 | protocol-literal | existing grounding protocol guidance, unchanged
 Decision: w4-topic-awareness2-labels | reuse topicNames and turnLabel, add fields only for forum roots, and identify the current topic through the existing audience.conversation field | reported=/Users/dabombstudio/.instar/agents/echo/.instar/lanes/w4-topic-awareness2-PROGRESS.md
 
+Deferral: tests/preview/fixtures/topic-awareness-live-2026-10-10.json:173 | not-a-deferral=capture provenance describes the attribution question as a follow-up test; this records completed model replay and defers no work
+
 ## Closing block
 
 simplestRobustRoute: This is the simplest robust route: use the existing current-topic and source-label projections. The missing labels caused the concrete CEDAR failure; no new state or gate is needed. Start guards are authenticated topic identity and current disclosure, the end state is a correctly grounded answer, and existing packet/spend/send limits remain unchanged. Actual model replay identifies General and the source topic without assistance; live installation certification belongs to the pipeline after push.
