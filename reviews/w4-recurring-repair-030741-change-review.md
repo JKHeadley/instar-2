@@ -8,9 +8,9 @@ Affected rules: 28, 34, 37, 49, 62, 74, 80, 93, 101, 102, 111, 113, 116.
 Affected floors: secrets — unchanged outbound scrub; spend cap — unchanged admission and explicit limit disclosure; stop — unchanged checks and disclosure; no duplicate sends — unchanged occurrence identity and durable intent; durable intake — unchanged encrypted journal.
 Operator questions: none
 Suggested tier: critical
-Declared tier: local
+Declared tier: ordinary
 Tier rationale: MF1 requests a single deterministic receipt wording correction; no prompt, parser, decision boundary, scheduling or authorization change.
-Side effects: Only the recurring acceptance receipt's self-reference changes; schedule, zone, first due date, cancellation and recovery disclosure remain byte-identical.
+Side effects: Generated register and capability artifacts are replayed from committed source 10e5fba9 to refresh the receipt source pin. The delegated owner-manifest and inventory rehash tools found no changed hashes. Only the recurring acceptance receipt's self-reference changes; schedule, zone, first due date, cancellation and recovery disclosure remain byte-identical.
 Undo and recovery: Revert this wording-only commit; no stored state, migration or recurrence metadata changes. Reverting restores the rejected terminology and therefore requires resolving the standing directive.
 Multi-machine posture: Same receipt on each machine running this version; existing single-owner journal and dispatch fencing remain unchanged. No state or replication change.
 Layer below: Inspected the dated/remind/recurrence branch of the receipt construction and existing daily-series consumer test, which observes the sent acceptance and exercises due delivery, restart and withdrawal.
@@ -24,7 +24,7 @@ Prompt finding: 849db3a6296a | protocol-literal | Existing journal protocol lite
 Prompt finding: bd01de21286a | protocol-literal | Existing journal protocol literal unchanged by this receipt repair.
 Prompt finding: fb5fa7e706c8 | protocol-literal | Existing journal protocol literal unchanged by this receipt repair.
 
-Subject (1 paths): tests/preview/journal.ts
+Subject (8 paths): tests/preview/journal.ts; generated/capabilities.json; generated/capabilities.md; generated/coverage.md; generated/glossary.md; generated/register.json; generated/rules.md; generated/source.json
 
 ## Closing block
 
