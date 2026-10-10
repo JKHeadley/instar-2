@@ -1,3 +1,4 @@
+import { boundThread, journalAudience, journalConversation, matchesBoundChat, validateChatBinding } from './forum-routing.js';
 /** The machine-local preview's only conversation and effect ledger. Records are
  * individually authenticated so replay reads the file once at boot; hot turns
  * append one frame and update only the in-memory projection. */
@@ -975,7 +976,7 @@ export const KNOWN_FRAME_KINDS: ReadonlySet<string> = new Set(['action-due', 'an
   'summary-reserve', 'summary-review-reserve', 'summary-uncertain', 'tool-turn', 'waiting']);
 
 export type JournalRecord =
-  | { kind: 'genesis'; bot: string; chat: string; operator: string; grant: string; configurationDigest: string; expires: number; maxCalls: number; maxReplies: number; maxTurns: number; maxBytes: number; cursor: number; importSource?: string; importCursor?: number;
+  | { kind: 'genesis'; bot: string; chat: string; operator: string; forum?: true; grant: string; configurationDigest: string; expires: number; maxCalls: number; maxReplies: number; maxTurns: number; maxBytes: number; cursor: number; importSource?: string; importCursor?: number;
     /** Rules 8, 92: this root's own open-loop revisit interval, fixed for its life. Absent keeps
      * `LOOP_REVISIT_MS`, so every root created before this field behaves exactly as it did. */
     loopRevisitMs?: number;
@@ -1247,7 +1248,7 @@ export type JournalRecord =
   | SentinelRecord;
 
 /** A conversation is the operator's private chat or one of its Telegram topics
- * (`thread`); every one has the operator as its only audience. */
+ * (`thread`), or an explicitly configured forum topic. Forum replies have a group audience. */
 export interface PacketDrop { kind: string; source: string; reason: string }
 /** Rule 100 / docs/08 intake step 2: the durable custody disposition of a message whose credential
  * spans were routed to the secret store. `stored`: the original bytes are sealed in custody under
@@ -2136,10 +2137,11 @@ export function obligationSchedule(view: JournalView): { key: string; kind: 'com
 export const dueObligationWork = (view: JournalView, now: number) =>
   obligationSchedule(view).filter(item => !item.inFlight && !item.awaitingDelivery && !item.deliveryUnknown && item.slot <= now);
 /** Completed results waiting for a reply to carry them: the reply-only grant has no unsolicited send. */
-export const pendingReports = (view: JournalView) => obligationSchedule(view).filter(item => item.awaitingDelivery)
+export const pendingReports = (view: JournalView, topic?: { thread: number | undefined }) => obligationSchedule(view).filter(item => item.awaitingDelivery)
   .map(item => { const note = item.kind === 'commitment' ? view.commitments[item.id]! : view.blockers[item.id]!;
     return { key: item.key, text: view.obligationWork[item.key]!.report!.text, source: note.source,
-      subject: 'quote' in note ? note.quote : note.claim }; });
+      subject: 'quote' in note ? note.quote : note.claim }; })
+  .filter(item => view.genesis.forum !== true || topic === undefined || view.turns.get(item.source)?.thread === topic.thread);
 function workTarget(view: JournalView, key: string): 'commitment' | 'blocker' | undefined {
   const match = /^(commitment|blocker):(0|[1-9][0-9]*)$/u.exec(key);
   if (!match) return undefined;
@@ -2490,9 +2492,10 @@ export const PROBE_TAG = /^(?:Build|Renewal|Canary) check [0-9a-f]{7,40}: /u;
 export const probeTurn = (view: JournalView, turn: Turn) => retractedTurn(view, turn.id) || PROBE_TAG.test(turn.text) && operatorTurn(view, turn);
 /** The turns a packet grounds on in order, through `through`: every accepted turn except a desk probe and an edited
  * message's replaced original, after the rolling summary when there is one (Rule 96). The packet and its audit both read this. */
-export const groundingHistory = (view: JournalView, through: number, summaryThrough?: number) => {
+export const groundingHistory = (view: JournalView, through: number, summaryThrough?: number, topic?: { thread: number | undefined }) => {
   const superseded = new Set(view.order.filter(item => item.accepted && item.editOf && item.update <= through).map(item => item.replaces!));
   return view.order.filter(item => item.accepted && !probeTurn(view, item) && item.update <= through
+    && (view.genesis.forum !== true || topic === undefined || item.thread === topic.thread)
     && !superseded.has(item.id) && (summaryThrough === undefined || item.update > summaryThrough));
 };
 /** The retrospective review's population: the operator's own messages (never probes, edits or runner-authored due turns) and their consequences. */
@@ -3493,6 +3496,7 @@ function project(view: JournalView, row: JournalRecord, system?: SystemCheck, ad
     return;
   }
   if (row.kind === 'channel-item') {
+    if (view.genesis.forum === true) throw Error('preview journal: external history has no group disclosure grant');
     // Inert: an item from the removed email import route replays but is never recalled or acted on.
     if ((row.item.source as string) === 'email') return;
     const item = row.item, key = channelKey(item);
@@ -4311,6 +4315,7 @@ function project(view: JournalView, row: JournalRecord, system?: SystemCheck, ad
     }
     if (row.reports !== undefined) {
       if (!Array.isArray(row.reports) || !row.reports.length || new Set(row.reports).size !== row.reports.length
+        || view.genesis.forum === true && row.reports.some(key => !pendingReports(view, { thread: turn.thread }).some(item => item.key === key))
         || row.reports.some(key => !attachableReport(view.obligationWork[key]) || !row.text.includes(view.obligationWork[key]!.report!.text)))
         throw Error('preview journal: invalid obligation report');
       turn.answerReports = row.reports;
@@ -4648,6 +4653,7 @@ export function openPreviewJournal(path: string, key: Uint8Array, initial?: Extr
       if ((row.kind === 'genesis' ? row.origin : view?.genesis.origin) !== 'test'
         && (row.kind === 'intake' || row.kind === 'action-due') && testOriginWriter(row.writer))
         throw Error('preview journal: test-origin identity refused by a production store');
+      if (row.kind === 'genesis' && row.forum !== undefined) validateChatBinding(row);
       if (row.kind === 'genesis' && row.origin !== undefined && row.origin !== 'test') throw Error('preview journal: invalid genesis origin');
       if ((row.kind === 'intent' || row.kind === 'held-notice-intent' || row.kind === 'limited-intent' || row.kind === 'operator-result-intent'
         || row.kind === 'retract-request') && row.provenance !== undefined && !verifyOutbound(row.provenance, outboundSubjectOf(row)))
@@ -4753,6 +4759,7 @@ export function openPreviewJournal(path: string, key: Uint8Array, initial?: Extr
     }
     if (!view) {
       if (!initial) throw Error('preview journal: identity absent');
+      if (initial.forum !== undefined) validateChatBinding(initial);
       if (!initial.bot || !initial.chat || !initial.operator || !initial.grant || !initial.configurationDigest
         || !Number.isSafeInteger(initial.expires) || initial.expires <= 0
         || ![initial.maxCalls, initial.maxReplies, initial.maxTurns, initial.maxBytes].every(n => Number.isSafeInteger(n) && n > 0)
@@ -4766,6 +4773,9 @@ export function openPreviewJournal(path: string, key: Uint8Array, initial?: Extr
         throw Error(`preview journal: revisit interval outside ${String(LOOP_REVISIT_MIN_MS)}..${String(LOOP_REVISIT_MAX_MS)} ms`);
       append(initial);
     }
+    if (view!.genesis.forum !== undefined) validateChatBinding(view!.genesis);
+    if (initial && (initial.forum === true) !== (view!.genesis.forum === true))
+      throw Error('preview journal: forum mode differs from journal');
     if (!readOnly && compactable() && size > Math.max(compactBytes, snapshotBase * 2)) compact();
     return { get view() { return view!; }, get size() { return size; }, get compacted() { return snapshotBase > 0; }, readOnly, append, compact, signOutbound, verifyOutbound, systemWriter,
       close: () => { if (!closed) { closed = true; closeSync(fd); } } };
@@ -4777,6 +4787,7 @@ export function openPreviewJournal(path: string, key: Uint8Array, initial?: Extr
  * becomes visible in the projection; replay after a crash resumes at the first missing source id. */
 export function importChannelItems(journal: ReturnType<typeof openPreviewJournal>, rows: readonly unknown[], agentAccount: string, now: number,
   stopped: () => boolean = () => false, origin?: 'stored-log') {
+  if (journal.view.genesis.forum === true) throw Error('preview journal: external history has no group disclosure grant');
   if (journal.readOnly || journal.view.stop || stopped() || now >= journal.view.expires) throw Error('preview journal: channel import stopped');
   if (!agentAccount.trim() || rows.length > 2000) throw Error('preview journal: channel import scope or capacity');
   const clean = (value: unknown, max: number) => {
@@ -4805,7 +4816,7 @@ export function importChannelItems(journal: ReturnType<typeof openPreviewJournal
   return added;
 }
 
-type TelegramMessage = { message_id?: number; chat?: { id: number; type?: string }; from?: { id: number; first_name?: string }; text?: string; caption?: string; message_thread_id?: number; date?: number; edit_date?: number;
+type TelegramMessage = { message_id?: number; chat?: { id: number; type?: string; is_forum?: boolean }; sender_chat?: unknown; from?: { id: number; first_name?: string }; text?: string; caption?: string; message_thread_id?: number; date?: number; edit_date?: number;
   reply_to_message?: { message_id?: number; chat?: { id: number }; from?: { id: number }; message_thread_id?: number } };
 type TelegramUpdate = { update_id: number; message?: TelegramMessage; edited_message?: TelegramMessage;
   callback_query?: { id?: string; from?: { id: number }; message?: TelegramMessage; data?: string } };
@@ -4816,16 +4827,17 @@ export const UNREADABLE_OPERATOR_MESSAGE = '[The operator sent something with no
 /** Exact identity and binding decide admission (Rule 4). A verified operator message with no
  * text, or with only a caption, is delivered to the mind with a flag, never dropped (Rule 14).
  * Rule 28: admission accepts only the verified principal minted from this update at intake,
- * and it must be the bound operator on the bound private chat, over this store's transport. */
+ * and it must be the bound operator on the configured chat, over this store's transport. */
 export function admittedUpdate(genesis: JournalView['genesis'], update: TelegramUpdate, principal: VerifiedPrincipal | null) {
   if (!Number.isSafeInteger(update.update_id) || update.update_id < 0) throw Error('preview journal: malformed update');
-  const message = update.edited_message ?? update.message, thread = message?.message_thread_id;
+  const message = update.edited_message ?? update.message, thread = boundThread(genesis, message?.message_thread_id);
   const content = typeof message?.text === 'string' || typeof message?.caption === 'string'
     || OPERATOR_CONTENT_KINDS.some(kind => (message as Record<string, unknown> | undefined)?.[kind] !== undefined);
   // A service message (topic created, pin, and similar) is preserved with the cursor but is not a turn.
-  const accepted = content && message?.chat?.type === 'private' && String(message.chat.id) === genesis.chat
+  const accepted = content && matchesBoundChat(genesis, message?.chat)
+    && (genesis.forum !== true || message?.sender_chat === undefined)
     && verifiedAtIntake(principal) && principal.kind === 'person' && principal.id === genesis.operator
-    && principal.id === String(message.from?.id) && principalBoundToUpdate(principal, update)
+    && principal.id === String(message?.from?.id) && principalBoundToUpdate(principal, update)
     && principal.provenance.adapter === TELEGRAM_ADAPTER[genesis.origin ?? 'production']
     && (thread === undefined || Number.isSafeInteger(thread) && thread > 0);
   const text = typeof message?.text === 'string' ? message.text
@@ -4838,7 +4850,7 @@ export function admittedUpdate(genesis: JournalView['genesis'], update: Telegram
 export const UNLINKED_EDIT_FLAG = '[Edited message; I do not have the original in my history.]';
 /** Telegram's topic-name bound; a longer or control-bearing name is shortened and cleaned. */
 export const TOPIC_NAME_MAX = 128;
-/** Rule 106: the name each topic of the bound private chat was last given, read from the
+/** Rule 106: the name each topic of the configured chat was last given, read from the
  * `forum_topic_created`/`forum_topic_edited` service updates the journal already preserves with the
  * cursor. Nothing new is written, so a journal from before this reader gains its names on replay.
  * Only the bound chat names a topic; an icon-only edit keeps the earlier name. */
@@ -4852,8 +4864,8 @@ export function topicNames(view: JournalView): ReadonlyMap<number, string> {
     if (!turn.raw.includes('"forum_topic_')) continue;
     let message: (TelegramMessage & { forum_topic_created?: { name?: unknown }; forum_topic_edited?: { name?: unknown } }) | undefined;
     try { const update = JSON.parse(turn.raw) as TelegramUpdate; message = update.message ?? update.edited_message; } catch { continue; }
-    const thread = message?.message_thread_id, raw = message?.forum_topic_created?.name ?? message?.forum_topic_edited?.name;
-    if (message?.chat?.type !== 'private' || String(message.chat.id) !== view.genesis.chat
+    const thread = boundThread(view.genesis, message?.message_thread_id), raw = message?.forum_topic_created?.name ?? message?.forum_topic_edited?.name;
+    if (!matchesBoundChat(view.genesis, message?.chat)
       || !Number.isSafeInteger(thread) || thread! <= 0 || typeof raw !== 'string') continue;
     const name = Array.from(raw.replace(/[\p{Cc}\p{Cf}]+/gu, ' ').replace(/\s+/gu, ' ').trim()).slice(0, TOPIC_NAME_MAX).join('');
     if (name) names.set(thread!, name);
@@ -5257,10 +5269,10 @@ export function createJournalWorker(journal: ReturnType<typeof openPreviewJourna
    * while the cursor is held is not a second decision. */
   const decideApproval = (update: TelegramUpdate, held: boolean): boolean => {
     const query = update.callback_query!, match = /^(ap|dc):([0-9a-f]{16})$/u.exec(query.data ?? '');
-    const verified = String(query.from?.id) === journal.view.genesis.operator && query.message?.chat?.type === 'private'
-      && String(query.message.chat.id) === journal.view.genesis.chat;
+    const verified = String(query.from?.id) === journal.view.genesis.operator && matchesBoundChat(journal.view.genesis, query.message?.chat);
     const lead = match && verified ? journal.view.order.find(turn => turn.approval?.id === match[2]) : undefined;
-    if (!lead || !match) return false;
+    if (!lead || !match || (journal.view.genesis.forum === true
+      && boundThread(journal.view.genesis, query.message?.message_thread_id) !== lead.thread)) return false;
     const approval = lead.approval!, decision = match[1] === 'ap' ? 'approve' as const : 'decline' as const;
     const toast = (text: string) => { try { if (typeof query.id === 'string') ports.acknowledge?.(query.id, text); } catch { /* never required */ } };
     if (approval.action === 'raise-caps' && decision === 'approve') { toast(RAISE_NEEDS_SURFACE); return false; }
@@ -6155,7 +6167,8 @@ export function createJournalWorker(journal: ReturnType<typeof openPreviewJourna
     const messageId = target?.message_id;
     if (typeof messageId !== 'number' || !Number.isSafeInteger(messageId) || messageId <= 0 || !target) return undefined;
     const unavailable = { messageId, status: 'referenced message unavailable in retained journal' };
-    if (String(target.chat?.id) !== journal.view.genesis.chat || target.message_thread_id !== turn.thread) return unavailable;
+    if (String(target.chat?.id) !== journal.view.genesis.chat
+      || boundThread(journal.view.genesis, target.message_thread_id) !== turn.thread) return unavailable;
     const match = journal.view.order.find(item => {
       if (!item.accepted || item.update >= turn.update || item.thread !== turn.thread) return false;
       if (String(target.from?.id) === journal.view.genesis.bot) return item.sent === messageId;
@@ -6340,9 +6353,9 @@ export function createJournalWorker(journal: ReturnType<typeof openPreviewJourna
     const summaryItems = summary ? summaryFacts(summary) : [];
     const superseded = new Set(journal.view.order.filter(item => item.accepted && item.editOf && item.update <= through)
       .map(item => item.replaces!));
-    const carriedHistory = groundingHistory(journal.view, through, summary?.through);
+    const carriedHistory = groundingHistory(journal.view, through, summary?.through, labelAll ? undefined : { thread: current });
     const earlier = carriedHistory.filter(item => item.update > historySetAside);
-    const historySetAsideCount = carriedHistory.length - earlier.length;
+    const historySetAsideCount = carriedHistory.filter(item => item.update <= historySetAside).length;
     const undecidedAll = journal.view.order.filter(item => item.editOf && item.memoryUndecided && item.update <= through)
       .map((item): { previous?: string; current: string; state: string } => ({ previous: clean(redact(journal.view.turns.get(item.replaces!)!.text).text, true, item.replaces),
         current: clean(redact(item.text).text, true, item.id),
@@ -6601,12 +6614,15 @@ export function createJournalWorker(journal: ReturnType<typeof openPreviewJourna
         + (corrections.length ? ' corrections lists possible problems an automatic check found, after sending, in your earlier replies, each with the numbered rule it relates to. They are signals from a simple pattern check, not verdicts: read your reply again; if a problem is real, correct it for the operator briefly and plainly in this reply; if the check misread it, say nothing about it.' : '')
         + (reference ? ' replyTo identifies an earlier Telegram message. Use retained journal text only; unavailable means do not infer its content from the embedded reply quote.' : '')
         + (undecidedEdits.length ? ' undecidedEdits records revisions and operator corrections whose fact change could not be judged. Use the current revision or correction and treat any conflicting prior claim as uncertain. moreUndecidedEdits counts older unresolved items omitted by the bound; an earlier claim they may concern is uncertain too.' : '')
-        + (labelAll ? ' Every history item names the conversation of this private chat it was said in, with its date.'
+        + (journal.view.genesis.forum === true
+          ? ' History and recalled items name their original topic in this group. Replies are visible to the group, not just the operator. Do not disclose private sources to this audience.'
+          : labelAll ? ' Every history item names the conversation of this private chat it was said in, with its date.'
           : crossed ? ' Items with a conversation field were said by the same operator in another conversation of this private chat, named there with its date; the operator is the only audience of every conversation, so they are your shared memory and may be used here.' : ''),
       ...(operatorRequest ? { operatorRequest } : {}), ...(otherOperatorRequest ? { otherOperatorRequest } : {}),
       ...(pendingReminders.length ? { reminders: pendingReminders.map(item => ({ id: reminderId(item),
         quote: clean(redact(item.quote).text, true), due: `${reminderDue(item)} ${item.zone}` })) } : {}),
-      audience: { surface: 'telegram-private-chat', chat: journal.view.genesis.chat,
+      audience: { surface: journalAudience(journal.view.genesis), chat: journal.view.genesis.chat,
+        ...(journal.view.genesis.forum === true ? { conversationId: journalConversation(journal.view.genesis, current), recipients: 'configured forum group' } : {}),
         operator: journal.view.genesis.operator, ...(operatorName(journal.view) === undefined ? {} : { operatorName: operatorName(journal.view) }),
         ...(current === undefined && !crossed ? {} : { conversation: conversationName(current, topicNames(journal.view)) }) },
       ...(suppliedSources === undefined ? {} : { sources: suppliedSources }),
@@ -6994,9 +7010,8 @@ export function createJournalWorker(journal: ReturnType<typeof openPreviewJourna
               summaryThrough: packet.summary?.through ?? (packet.memorySummary ? summaryFor(before(turn.update))?.through ?? null : null),
               ...(packet.summary ? { compactedThrough: packet.summary.through } : {}),
               ...(packet.historySetAside ? { setAsideThrough: packet.historySetAside.through } : {}),
-              history: journal.view.order.filter(item => remembered(item) && item.update < turn.update
-                && item.update > setAside
-                && (!packet.summary || item.update > packet.summary.through)).map(item => item.id),
+              history: groundingHistory(journal.view, before(turn.update), packet.summary?.through, { thread: turn.thread })
+                .filter(item => item.update > setAside).map(item => item.id),
               recalled: selectedRecall.filter(item => !new Set([...shownPeople.map(note => note.source),
                 ...shownOpen.map(item => item.turn?.id)].filter(Boolean)).has(item.id)).map(item => item.id),
               people: [...new Set(shownPeople.map(item => item.source))], commitments: shownOpen.map(item => item.id),
@@ -7045,7 +7060,7 @@ export function createJournalWorker(journal: ReturnType<typeof openPreviewJourna
     try {
       let setAside = -1, attempt = preparedFor(turn, true, setAside);
       for (;;) {
-        const carried = groundingHistory(journal.view, before(turn.update)).filter(item => item.update > setAside);
+        const carried = groundingHistory(journal.view, before(turn.update), undefined, { thread: turn.thread }).filter(item => item.update > setAside);
         if (!('reason' in attempt)) return attempt;
         if (!carried.length) break;
         setAside = carried[Math.ceil(carried.length / 2) - 1]!.update;
@@ -7073,7 +7088,12 @@ export function createJournalWorker(journal: ReturnType<typeof openPreviewJourna
    * become ONE durable runner-authored turn; the ordinary answer path then answers, checks and sends it once. A
    * conversation whose due turn is still on its way to a send gets no second one (Rule 52). */
   const scheduleRequests = () => {
-    if (journal.view.stop || ports.stopped() || ports.now() >= journal.view.expires || unresolvedReminderMemory()) return;
+    if (journal.view.stop || ports.stopped() || ports.now() >= journal.view.expires) return;
+    // Background summaries can exhaust memory retries after the last ordinary drain. Settle that evidence
+    // on idle polls too, before testing the hold: otherwise only a new inbound turn can free a due request
+    // (live 2026-10-09, updates 6233067/6233075; Rules 93, 95). Later unanswered withdrawals still hold below.
+    settleExhaustedEdit();
+    if (unresolvedReminderMemory()) return;
     // The spend floor: a due turn is created only when its model call and its one reply both fit the caps.
     if (journal.view.replies >= journal.view.limits.maxReplies
       || journal.view.calls >= journal.view.limits.maxCalls - (ports.replyCheck ? 1 : 0)) return;
@@ -7238,7 +7258,7 @@ export function createJournalWorker(journal: ReturnType<typeof openPreviewJourna
         gate();
         if (turn.answer === undefined && !turn.reserved && !turn.noticeClass && isStopCommand(turn.text)) {
           const prompt = JSON.stringify({ messages: [{ role: 'context', content: JSON.stringify({ packet: {
-            audience: { surface: 'telegram-private-chat', chat: journal.view.genesis.chat, operator: journal.view.genesis.operator },
+            audience: { surface: journalAudience(journal.view.genesis), chat: journal.view.genesis.chat, operator: journal.view.genesis.operator },
             history: [], stopConfirmation: true } }) }, { role: 'user', content: redact(turn.text).text }] });
           journal.append({ kind: 'status-answer', id: turn.id, text: STOP_CONFIRM_TEXT, prompt, at: ports.now() });
         }
@@ -7789,7 +7809,7 @@ export function createJournalWorker(journal: ReturnType<typeof openPreviewJourna
             const reports: string[] = [], carried = new Set(journal.view.order
               .filter(item => item.id !== turn.id && item.intent === undefined).flatMap(item => item.answerReports ?? []));
             if (replying)
-              for (const item of pendingReports(journal.view).filter(entry => !carried.has(entry.key))) {
+              for (const item of pendingReports(journal.view, { thread: turn.thread }).filter(entry => !carried.has(entry.key))) {
                 const line = reportLine(item);
                 if (Buffer.byteLength(text) + Buffer.byteLength(line) > MAX_ANSWER_BYTES) break;
                 text = `${text.trimEnd()}${line}`; reports.push(item.key);
@@ -7928,7 +7948,7 @@ export function createJournalWorker(journal: ReturnType<typeof openPreviewJourna
           const reviewPrompt = projectedReplyPrompt(turn.prompt) ?? (turn.noticeClass === 'too-long-input'
             ? JSON.stringify({ messages: [
               { role: 'user', content: '[operator message saved verbatim but omitted from this review because it exceeds the context bound]' },
-              { role: 'context', content: JSON.stringify({ packet: { audience: { surface: 'telegram-private-chat',
+              { role: 'context', content: JSON.stringify({ packet: { audience: { surface: journalAudience(journal.view.genesis),
                 chat: journal.view.genesis.chat, operator: journal.view.genesis.operator }, history: [] } }) }] })
             : undefined);
           // Least revelation (Part 18 §16): a reply for any audience other than the verified operator alone is released
@@ -9627,7 +9647,7 @@ export function createJournalWorker(journal: ReturnType<typeof openPreviewJourna
     if (ports.stepCheck && !journal.view.stepCheckBusiness)
       journal.append({ kind: 'step-check-start', boundaries: ['business'], at: ports.now() });
   };
-  const operatorBinding = () => ({ operator: journal.view.genesis.operator, chat: journal.view.genesis.chat, chatType: 'private' });
+  const operatorBinding = () => ({ operator: journal.view.genesis.operator, chat: journal.view.genesis.chat, chatType: journal.view.genesis.forum === true ? 'supergroup' : 'private' });
   /** The journal evidence each observed step's question needs, rebuilt from the durable view. */
   /** Rule 42: step evidence reads the one send-outcome lookup, so a definite refusal is never UNKNOWN. */
   /** A split reply is accepted only when every message carrying it was (`replyOutcomeOf`). */

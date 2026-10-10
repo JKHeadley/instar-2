@@ -21,11 +21,11 @@ const JEV_804_SCORES = { raw_path: 0.01, cli_command: 0.02, config_key: 0.02, cr
 const REVIEW_UNKNOWN = 'preview: reply review unavailable';
 const key = new Uint8Array(32).fill(5);
 
-interface Flow { jev: string; answer: string; review: 'unknown' | 'pass' | 'violation'; crashAt?: string; preHeld?: boolean; held?: string[] }
+interface Flow { forum?: boolean; jev: string; answer: string; review: 'unknown' | 'pass' | 'violation'; crashAt?: string; preHeld?: boolean; held?: string[] }
 async function flow(options: Flow) {
   const root = realpathSync(mkdtempSync(join(tmpdir(), 'preview-holdcascade-')));
   const path = join(root, 'journal.encrypted');
-  const genesis = { kind: 'genesis' as const, bot: '12345678', chat: '7654321', operator: '7654321', grant: 'grant:preview',
+  const genesis = { kind: 'genesis' as const, bot: '12345678', chat: options.forum ? '-1001234' : '7654321', ...(options.forum ? { forum: true as const } : {}), operator: '7654321', grant: 'grant:preview',
     configurationDigest: 'sha256:offline', expires: 9999999999999, maxCalls: 6, maxReplies: 3, maxTurns: 3, maxBytes: 32768, cursor: 0 };
   const calls = { jev: 0, review: 0 }, sends: string[] = [], clock = { now: 1790817641423 };
   const ports = (fresh: boolean) => ({ now: () => clock.now, stopped: () => false,
@@ -44,12 +44,14 @@ async function flow(options: Flow) {
           : { verdict: 'violation' as const, ruleIds: ['credential' as const], confidence: null, latencyMs: 0, reason: 'credential: leaves',
             findings: [{ rule: 'credential' as const, verdict: 'violation' as const, reason: 'Passes a code to another person.' }] };
       } },
-    send: async (input: { expectedText: string }) => { sends.push(input.expectedText); return sends.length; } });
+    send: async (input: { expectedText: string; chat: string; thread?: number }) => {
+      if (options.forum) { expect(input.chat).toBe('-1001234'); expect(input.thread).toBe(7); }
+      sends.push(input.expectedText); return sends.length; } });
   try {
     const first = openPreviewJournal(path, key, genesis, options.crashAt === undefined ? undefined
       : stage => { if (stage === options.crashAt) throw Error('crash'); });
     const worker = createJournalWorker(first, ports(true));
-    worker.intake([{ update_id: 969389800, message: { chat: { id: 7654321, type: 'private' }, from: { id: 7654321 }, text: OPERATOR_TEXT } }]);
+    worker.intake([{ update_id: 969389800, message: { chat: options.forum ? { id: -1001234, type: 'supergroup', is_forum: true } : { id: 7654321, type: 'private' }, ...(options.forum ? { message_thread_id: 7 } : {}), from: { id: 7654321 }, text: OPERATOR_TEXT } }]);
     if (options.crashAt) await expect(worker.drain()).rejects.toThrow('crash'); else await worker.drain();
     // The durable state the cint-L13 build left on the live preview: the same rows, ending in its hold.
     if (options.preHeld) first.append({ kind: 'hold', id: first.view.order[0]!.id, reason: 'reply check unavailable', at: clock.now });
@@ -148,4 +150,17 @@ it('969389800 recorded answer with held values that it does not carry is answere
   const { sends, calls } = await flow({ jev: JEV_800, answer: ANSWER_800, review: 'unknown', held: [HARNESS_LOGIN] });
   expect(calls).toEqual({ jev: 1, review: 1 });
   expect(sends).toEqual([`${ANSWER_800}`]);
+});
+
+
+it('replays the recorded unsure/UNKNOWN reply checks in a forum and keeps a held notice in its topic', async () => {
+  const uncertain = await flow({ forum: true, jev: JEV_800, answer: ANSWER_800, review: 'unknown' });
+  expect(uncertain.checks.map(check => `${check.path}/${check.verdict}`)).toEqual(['jev/unsure', 'subscription/unavailable']);
+  expect(uncertain.turn.thread).toBe(7);
+  // The same uncertain credential release allowed in the private replay above
+  // must not disclose the operator's value to a group audience.
+  expect(uncertain.sends).toEqual([HOLDING_REPLY]);
+  const held = await flow({ forum: true, jev: JEV_800, answer: ANSWER_800, review: 'violation' });
+  expect(held.sends).toEqual([HOLDING_REPLY]);
+  expect(held.turn.thread).toBe(7);
 });

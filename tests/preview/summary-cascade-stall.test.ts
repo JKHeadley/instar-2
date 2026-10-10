@@ -49,10 +49,10 @@ function livePort(raw: string, usage: ModelUsage) {
 }
 
 type Step = { kind: 'over-cap'; index: number } | { kind: 'complete'; output: Output };
-function world(writer: Step[]) {
+function world(writer: Step[], forum = false) {
   const root = realpathSync(mkdtempSync(join(tmpdir(), 'preview-summary-stall-')));
   const path = join(root, 'journal.encrypted');
-  const journal = openPreviewJournal(path, key, genesis);
+  const journal = openPreviewJournal(path, key, forum ? { ...genesis, chat: '-1001234', forum: true } : genesis);
   const throughs: number[] = [], log: string[] = [];
   let clock = 0, calls = 0;
   const worker = createJournalWorker(journal, { now: () => START + clock, elapsed: () => clock, stopped: () => false,
@@ -91,20 +91,36 @@ function world(writer: Step[]) {
     send: async input => input.update, checkOutbound: () => {} });
   let open = true;
   return { path, journal, worker, throughs, log,
+    intake: (id: number, text: string) => {
+      const message = update(id, text);
+      worker.intake([forum ? { ...message, message: { ...message.message, chat: { id: -1001234, type: 'supergroup', is_forum: true }, message_thread_id: 7 } } : message]);
+    },
     /** The room's recorded rows in their journal order, then half an hour later (past the UNKNOWN recovery delay).
      * Its failures are stamped with the current summary format, as this build writes them: an older build's failures
      * would not spend this build's attempts (SUMMARY_FORMAT), and this file proves the selection under one format. */
     replayLiveRoom: () => {
-      for (const row of fixture.rows) journal.append(row.kind === 'summary-failed' ? { ...row, format: SUMMARY_FORMAT } : row);
+      for (const original of fixture.rows) {
+        // Recorded model outputs and decisions stay verbatim. Only the transport
+        // envelope is mapped into the offline forum, never a live destination.
+        let row = original;
+        if (forum && row.kind === 'intake') {
+          const raw = JSON.parse(row.raw);
+          raw.message.chat = { id: -1001234, type: 'supergroup', is_forum: true };
+          raw.message.message_thread_id = 7;
+          row = { ...row, raw: JSON.stringify(raw), ...(row.accepted ? { thread: 7 } : {}) };
+        }
+        if (forum && 'chat' in row) row = { ...row, chat: '-1001234', thread: 7 } as typeof row;
+        journal.append(row.kind === 'summary-failed' ? { ...row, format: SUMMARY_FORMAT } : row);
+      }
       clock = fixture.rows.at(-1)!.at - START + 30 * 60_000;
     },
     closeJournal: () => { if (open) journal.close(); open = false; },
     close: () => { if (open) journal.close(); open = false; rmSync(root, { recursive: true, force: true }); } };
 }
 
-it('the recorded stall: from base #484 a frontier is offered again and a summary is accepted', async () => {
+it.each([false, true])('the recorded stall (forum=%s): from base #484 a frontier is offered again and a summary is accepted', async forum => {
   // First the real over-cap result, then the real #484 writer output, which Jev's real 0.38 leaves undecided.
-  const w = world([{ kind: 'over-cap', index: 0 }, { kind: 'complete', output: WRITER_484 }]);
+  const w = world([{ kind: 'over-cap', index: 0 }, { kind: 'complete', output: WRITER_484 }], forum);
   try {
     w.replayLiveRoom();
     const view = w.journal.view;
@@ -123,7 +139,7 @@ it('the recorded stall: from base #484 a frontier is offered again and a summary
     expect(view.summaryReservations.size).toBe(0);
     for (const through of [715672492, 715672496, 715672497]) expect(view.tokenCurrent.has(`summary:${String(through)}`)).toBe(false);
     // The room still answers.
-    w.worker.intake([update(715672501, 'What is my test marker?')]); await w.worker.drain();
+    w.intake(715672501, 'What is my test marker?'); await w.worker.drain();
     expect(view.order.at(-1)?.sent).toBeDefined();
     // The rows replay to the same summary state.
     const summaries = view.summaries.map(item => item.through), failures = [...view.summarySpanFailures];
