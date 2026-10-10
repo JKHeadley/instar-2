@@ -35,19 +35,23 @@ it('reads the wording each live wall was settled behind from its recorded answer
   expect(settledConstraintWording(live(6232224), wall(6232224, 'no-such-constraint'))).toBeUndefined();
 });
 
-it('the replayed K11a inputs carry exactly what this build derives for a tool-route answer in a root with no MCP server', () => {
+it('the recorded K11a briefing differs only in the newly configured conversation audience', () => {
   const note = capabilityBriefing(path => readFileSync(resolve(process.cwd(), path), 'utf8'),
     { providerAttempts: 1000, expiresAt: 1791232800000, tools: true, mcp: 0 }).text;
   const replays = JSON.parse(read('k11a-replays.json')) as { note: string; runs: { kind: string; input: string; verdict: string; reply: string }[] };
-  // Historical captures remain immutable; fresh real-model replays bind the current identity and briefing.
+  // Captured model results stay historical. Forum routing widens only the declared
+  // conversation capability; the tool, account, custody and authority wording stays exact.
   const current = JSON.parse(read('k11a-agentready-replays.json')) as { note: string; system: string;
     runs: { kind: string; input: Envelope; raw: string; reply: string; judge: { verdict: string; rubric: string } }[] };
-  expect(current.note).toBe(note);
+  const oldConversation = '- preview-conversation: answers the operator in their private Telegram chat and topics, one reply per admitted message.';
+  const forumConversation = '- preview-conversation: answers the operator in the configured private Telegram chat or forum group, returning each reply to its originating topic.';
+  expect(current.note.split(oldConversation)).toHaveLength(2);
+  expect(current.note.replace(oldConversation, forumConversation)).toBe(note);
   expect(current.system).toBe(SUBSCRIPTION_TOOLS_SYSTEM_PROMPT);
   expect(current.runs.map(run => run.kind)).toEqual(['worst', 'chain']);
   for (const run of current.runs) {
     const packet = packetOf(run.input);
-    expect(packet.sources.find(source => source.id === 'capability-note')!.text).toBe(note);
+    expect(packet.sources.find(source => source.id === 'capability-note')!.text).toBe(current.note);
     expect(packet.capabilities).toEqual(previewCapabilities(true));
     expect(packet.governingConstraints).toEqual(governingConstraints(true));
     expect(JSON.parse(run.raw).answer).toBe(run.reply);
