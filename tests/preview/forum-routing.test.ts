@@ -43,14 +43,19 @@ it('drains two topics and General to their own targets, separates recent history
   };
   try {
     let run = open();
+    const reference = (id: number, text: string, thread: number, targetId: number, targetThread: number) => ({
+      ...update(id, text, thread), message: { ...update(id, text, thread).message,
+        reply_to_message: { message_id: targetId, chat: { id: -1001234 }, from: { id: 7654321 }, message_thread_id: targetThread } } });
     for (const message of [update(1, 'Topic seven history.', 7), update(2, 'Topic nine history.', 9),
-      update(3, 'General history.'), update(4, 'More in General.', 1), update(5, 'Continue seven.', 7)]) {
+      update(3, 'General history.'), reference(4, 'More in General.', 1, 3, 1), reference(5, 'Continue seven.', 7, 2, 9)]) {
       run.worker.intake([message]); await run.worker.drain();
     }
     expect(sent.map(item => item.thread)).toEqual([7, 9, undefined, undefined, 7]);
     expect(sent.every(item => item.chat === genesis.chat)).toBe(true);
     expect(packets.get('telegram:12345678:update:2')!.history).toEqual([]);
     expect(packets.get('telegram:12345678:update:5')!.history).toMatchObject([{ user: 'Topic seven history.' }]);
+    expect(packets.get('telegram:12345678:update:4')!.replyTo).toMatchObject({ update: 3, user: 'General history.' });
+    expect(packets.get('telegram:12345678:update:5')!.replyTo).toMatchObject({ status: 'referenced message unavailable in retained journal' });
     expect(packets.get('telegram:12345678:update:5')!.audience).toMatchObject({ surface: 'telegram-group-topic',
       conversationId: 'telegram/bot-12345678/chat--1001234/topic-7' });
     const last = run.journal.view.order.at(-1)!;
