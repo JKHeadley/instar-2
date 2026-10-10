@@ -83,6 +83,15 @@ command takes both roots' existing exclusive single-machine writers, so it refus
 runner is live; park the private root (stop it) first.
 This command does not create or infer an approval. An activation grant alone cannot authorize it.
 
+Every model/review/send boundary still checks current disclosure authority and actual membership.
+Answer and review packets identify a currently verified operator-and-bot-only audience, which may
+receive the operator's own private information. Other members or unavailable membership evidence
+keep the existing disclosure hold; third-party confidences and credential protections remain intact.
+Claim removal uses the existing bounded revision review to judge the exact remainder against the
+question and the removed claims. Without a coherent cleared remainder, the content-free holding
+notice is sent. The reserved remainder and its verdict survive restart; an uncertain review is never
+repeated. A review slot already spent on another rewrite cannot clear a different remainder.
+
 The existing sealed `PreviewActivationAuthority` record must contain a `groupDisclosureGrants`
 entry with `id`, `grantor` (operator ID), `grantee: "echo-desk"`, the exact operator `words`, their
 authenticated `source` message reference, matching `issuedAt`, optional `expiresAt`, and:

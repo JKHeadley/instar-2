@@ -18,7 +18,7 @@ import { buildWorkIndex, detectOverlaps, workForTopic, type SessionActivity } fr
 import { MAX_RAISED_SUBSCRIPTION_PROMPT_BYTES, SUBSCRIPTION_CONVERSATION_SYSTEM_PROMPT, SUBSCRIPTION_MAX_OUTPUT_TOKENS, SUBSCRIPTION_PREVIEW_EXPIRY } from '../../src/assembly/production-provider.js';
 import { hasClaim, replaceClaim, supersedesCorrection } from './claim-match.mjs';
 import { checkReply as checkCoherenceOf, correctionNote, releaseFindings, COHERENCE_FINDING_LIMIT, type CoherenceFinding } from './coherence-check.js';
-import { checkReply, reviewReply, repeatsOperatorOnly, HOLDING_REPLY, jevRequestBody, JEV_RESPONSE_MAX_BYTES, REPLY_CHECK_BUDGET_MS, REPLY_CHECK_BUDGET_REASON, LINK_SHAPE_REASON, linkShapeRules, bareTopicReferences, topicNameReason, BARE_TOPIC_OBJECTION, noDecisions, validDispositions, jevConfidentCredential, concealSecretMaterial, secretMaterialIn, CLAIM_SCOPED_RULES, namedClaimsIn, exciseNamedClaims, substantiveReply, sharedAudience, AUDIENCE_RULES, type ApprovalFacts } from './reply-check.js';
+import { checkReply, reviewReply, repeatsOperatorOnly, HOLDING_REPLY, jevRequestBody, JEV_RESPONSE_MAX_BYTES, REPLY_CHECK_BUDGET_MS, REPLY_CHECK_BUDGET_REASON, LINK_SHAPE_REASON, linkShapeRules, bareTopicReferences, topicNameReason, BARE_TOPIC_OBJECTION, noDecisions, validDispositions, jevConfidentCredential, concealSecretMaterial, secretMaterialIn, CLAIM_SCOPED_RULES, namedClaimsIn, exciseNamedClaims, substantiveReply, replyRemainderPrompt, sharedAudience, AUDIENCE_RULES, type ApprovalFacts } from './reply-check.js';
 import { latestRecurringDay, nextRecurringDay, parseDatedItem, restatedDatePhrase, dueState, selectDatedItems, withinNext48Hours, localParts, type DatedItem } from './dated-memory.js';
 import { isStatusCommand, isStopCommand, statusAnswer, STOP_CONFIRM_TEXT } from './status-command.js';
 import { AGENT_PROMISE_LIMIT, fulfillableCommitment, fulfillmentProposals, fulfillmentSupported, legacyFulfillsReminder, promiseProposals, recordedPromises, type AgentPromise, type FulfillmentProposal, type PromiseProposal } from './agent-commitment.js';
@@ -328,8 +328,8 @@ const validWithheld = (value: unknown): boolean => {
 /** A candidate kept back by a mandatory floor after its one bounded correction did not clear it: the holding notice
  * was sent in its place, and the agent's answer to each objection is recorded here (Rules 4, 41, 86). */
 export interface ReplyHeld { objections: string[]; reason?: string; dispositions: ObjectionDisposition[]; responseSkipped?: ResponseSkipped;
-  /** Present when the claim-scoped floor ran and nothing substantive survived the removal: the named claim WAS
-   * the whole answer, so the notice stands in for no surviving content (plan #215). */
+  /** Present when the claim-scoped floor ran and no coherent remainder was established after removal:
+   * the full-context review rejected it or could not complete within the existing allowance. */
   withheld?: ClaimWithheld }
 export type ResponseSkipped = 'deadline' | 'call cap';
 const RESPONSE_SKIPPED: readonly unknown[] = ['deadline', 'call cap'];
@@ -1095,7 +1095,7 @@ export type JournalRecord =
      * #104): admitted by the same checks as an answer's blocker, only when the answer admitted none. */
     blocker?: ProposedBlocker; usage?: ModelUsage; at: number }
   /** One bounded held-class review of the revised text, inside the same call cap; no result is UNKNOWN, never repeated. */
-  | { kind: 'reply-revision-review-reserve'; id: string; maxInputTokens?: number; maxOutputTokens?: number; at: number }
+  | { kind: 'reply-revision-review-reserve'; id: string; remainder?: string; maxInputTokens?: number; maxOutputTokens?: number; at: number }
   | { kind: 'reply-revision-review'; id: string; verdict: 'pass' | 'violation' | 'unavailable'; ruleIds: ReplyRule[]; reason?: string;
     findings?: ReplyFinding[]; usage?: ModelUsage; at: number }
   /** One bounded re-ask after a format miss (Rule 116): records the refused first call and reserves the second against the same cap. */
@@ -1302,7 +1302,9 @@ export interface Turn { id: string; update: number; text: string; raw: string; a
   revisionReserved?: true; revisionReservedAt?: number; revisionObjections?: string[];
   revision?: { state: 'complete' | 'rejected' | 'uncertain' | 'failed'; text?: string; dispositions?: ObjectionDisposition[]; blocker?: ProposedBlocker };
   release?: ReplyRelease; heldReview?: ReplyHeld;
-  revisionReviewReserved?: true; revisionReview?: { verdict: 'pass' | 'violation' | 'unavailable'; ruleIds: ReplyRule[]; reason?: string; findings?: ReplyFinding[] };
+  revisionReviewReserved?: true;
+  /** Exact claim-trimmed candidate using the existing revision-review operation. */
+  revisionReviewRemainder?: string; revisionReview?: { verdict: 'pass' | 'violation' | 'unavailable'; ruleIds: ReplyRule[]; reason?: string; findings?: ReplyFinding[] };
   /** Admitted by the minimal reserve past the ordinary turn allowance. */
   reserve?: true;
   /** The limited answer covering this message (`lead` names the turn that carries the send). */
@@ -1546,8 +1548,8 @@ const credentialHeldClass = (turn: Turn, candidateDigest: string): boolean =>
 const refusedObligation = (turn: Turn): boolean =>
   Boolean(turn.answerRejected?.loops || turn.answerRejected?.blocker || turn.answerRejected?.rechecks);
 /** Content-free status: what the claim-scoped floor did (plan #215). `trimmed` counts answers sent with the named
- * sentences removed, `sentencesRemoved` those sentences, `heldWithNothingLeft` the answers that were ENTIRELY the
- * named claim (notice sent), and `unlocatedClaims` the named claims no sentence carried, which released the answer
+ * sentences removed, `sentencesRemoved` those sentences, `heldWithNothingLeft` the answers with no established coherent
+ * remainder after removal (notice sent), and `unlocatedClaims` the named claims no sentence carried, which released the answer
  * unchanged. A rising `unlocatedClaims` means reviewers are not quoting their claims, not that the floor is idle. */
 export function claimScopedWithholds(view: JournalView): { trimmed: number; sentencesRemoved: number;
   heldWithNothingLeft: number; unlocatedClaims: number; byRule: Partial<Record<ReplyRule, number>> } {
@@ -4186,11 +4188,14 @@ function project(view: JournalView, row: JournalRecord, system?: SystemCheck, ad
     return;
   }
   if (row.kind === 'reply-revision-review-reserve') {
-    if (turn.revision?.state !== 'complete' || turn.revisionReviewReserved || turn.intent !== undefined
+    if ((row.remainder === undefined ? turn.revision?.state !== 'complete'
+      : typeof row.remainder !== 'string' || !row.remainder.trim() || row.remainder.length > 32000) || turn.revisionReviewReserved || turn.intent !== undefined
       || view.calls >= view.limits.maxCalls) throw Error('preview journal: revision review reservation order or cap');
     reserveTokens(view, `revision-review:${row.id}`, 'replyCheck', row.maxInputTokens ?? view.limits.maxBytes,
       row.maxOutputTokens ?? subscriptionOutputMaximum);
-    turn.revisionReviewReserved = true; view.calls++; return;
+    turn.revisionReviewReserved = true;
+    if (row.remainder !== undefined) turn.revisionReviewRemainder = row.remainder;
+    view.calls++; return;
   }
   if (row.kind === 'reply-revision-review') {
     if (!turn.revisionReviewReserved || turn.revisionReview !== undefined || turn.intent !== undefined
@@ -5223,9 +5228,11 @@ export function createJournalWorker(journal: ReturnType<typeof openPreviewJourna
   // Every host of this worker inherits the floor, not only the shipped CLI. A snapshot without
   // its current disclosure resolver is readable for audit but cannot leave through a model or send.
   const original = ports;
+  let operatorOnlyVerified = false;
   const disclosure = async () => {
     if (!journal.view.groupCarry) return true;
-    try { return await original.groupDisclosure?.() === true; } catch { return false; }
+    try { operatorOnlyVerified = await original.groupDisclosure?.() === true; } catch { operatorOnlyVerified = false; }
+    return operatorOnlyVerified;
   };
   const guarded = <A extends unknown[], R>(method: (...args: A) => Promise<R>) => async (...args: A): Promise<R> => {
     if (journal.view.groupCarry && !await disclosure()) throw Error('group carry: disclosure authority or audience refused');
@@ -6087,7 +6094,18 @@ export function createJournalWorker(journal: ReturnType<typeof openPreviewJourna
   };
   const projectedReplyPrompt = (prompt: string | undefined) => {
     if (prompt === undefined) return undefined;
-    try { return projectModelEvidence(prompt, journal.view.memory); }
+    try {
+      const projected = projectModelEvidence(prompt, journal.view.memory);
+      if (journal.view.genesis.forum !== true) return projected;
+      const envelope = JSON.parse(projected) as { messages: { role: string; content: string }[] };
+      const context = envelope.messages.find(message => message.role === 'context');
+      if (context) {
+        const value = JSON.parse(context.content);
+        if (value.packet?.audience) value.packet.audience.operatorOnlyVerified = operatorOnlyVerified;
+        context.content = JSON.stringify(value);
+      }
+      return JSON.stringify(envelope);
+    }
     catch { return undefined; } // The reviewer cannot consume malformed legacy evidence.
   };
   const supersededCorrection = (change: MemoryChange) => journal.view.memory
@@ -6781,7 +6799,7 @@ export function createJournalWorker(journal: ReturnType<typeof openPreviewJourna
         + (reference ? ' replyTo identifies an earlier Telegram message. Use retained journal text only; unavailable means do not infer its content from the embedded reply quote.' : '')
         + (undecidedEdits.length ? ' undecidedEdits records revisions and operator corrections whose fact change could not be judged. Use the current revision or correction and treat any conflicting prior claim as uncertain. moreUndecidedEdits counts older unresolved items omitted by the bound; an earlier claim they may concern is uncertain too.' : '')
         + (journal.view.genesis.forum === true
-          ? ' History and recalled items name their original topic in this group. Replies are visible to the group, not just the operator. Do not disclose private sources to this audience.'
+          ? ' History and recalled items name their original topic in this group. Replies are visible to packet.audience. Only when operatorOnlyVerified is true may you use the operator’s own private information as in their private chat; protect third-party confidences and secrets.'
           : labelAll ? ' Every history item names the conversation of this private chat it was said in, with its date.'
           : crossed ? ' Items with a conversation field were said by the same operator in another conversation of this private chat, named there with its date; the operator is the only audience of every conversation, so they are your shared memory and may be used here.' : ''),
       ...(operatorRequest ? { operatorRequest } : {}), ...(otherOperatorRequest ? { otherOperatorRequest } : {}),
@@ -6789,7 +6807,7 @@ export function createJournalWorker(journal: ReturnType<typeof openPreviewJourna
         quote: clean(redact(item.quote).text, true), due: `${reminderDue(item)} ${item.zone}`,
         ...(item.recurrence ? { recurrence: item.recurrence, time: item.time, zone: item.zone, stop: 'Ask to cancel this request.' } : {}) })) } : {}),
       audience: { surface: journalAudience(journal.view.genesis), chat: journal.view.genesis.chat,
-        ...(journal.view.genesis.forum === true ? { conversationId: journalConversation(journal.view.genesis, current), recipients: 'configured forum group' } : {}),
+        ...(journal.view.genesis.forum === true ? { conversationId: journalConversation(journal.view.genesis, current), recipients: 'configured forum group', operatorOnlyVerified } : {}),
         operator: journal.view.genesis.operator, ...(operatorName(journal.view) === undefined ? {} : { operatorName: operatorName(journal.view) }),
         ...(current === undefined && !crossed ? {} : { conversation: conversationName(current, topicNames(journal.view)) }) },
       ...(suppliedSources === undefined ? {} : { sources: suppliedSources }),
@@ -8320,6 +8338,29 @@ export function createJournalWorker(journal: ReturnType<typeof openPreviewJourna
                   revised = candidate;
               }
             }
+            // Claim excision changes the answer's meaning. Reuse the one revision-review slot to judge
+            // the exact remainder with full context; never infer coherence from nonempty text. If that slot
+            // already reviewed a different rewrite, keep the holding notice rather than reuse its verdict.
+            let withheld: ClaimWithheld | undefined, scoped: string | undefined, nothingLeft = false;
+            if (revised === undefined && (!turn.revisionReviewReserved || turn.revisionReviewRemainder !== undefined) && holding && !audienceUnreviewed && !credentialHeldClass(turn, candidateDigest)) {
+              const named = reviewHoldingFindings(turn, candidateDigest);
+              const stripped = (actionHeader === undefined ? reply : reply.slice(actionHeader.length + 1))
+                .replace(/^PREVIEW(?=$|[\s:—])(?:\s*[:—])?\s*/u, '');
+              const body = continuity && stripped.startsWith(continuity.disclosure)
+                ? stripped.slice(continuity.disclosure.length).trimStart() : stripped;
+              const claims = named.findings.flatMap(finding => namedClaimsIn(finding.reason, body));
+              const cut = exciseNamedClaims(body, claims);
+              withheld = { rules: named.rules, removed: cut.removed, unlocated: cut.unlocated };
+              if (cut.removed.length) {
+                nothingLeft = true; // Held until the full-context reviewer clears this exact remainder.
+                const candidate = actionHeader === undefined ? disclosed(cut.text) : `${actionHeader}\n${cut.text}`;
+                if ((turn.revisionReviewRemainder === undefined || turn.revisionReviewRemainder === candidate)
+                  && substantiveReply(cut.text) && !redact(candidate).count && !secretMaterialIn(candidate, heldValues) && fits(candidate)) {
+                  scoped = candidate; revised = candidate;
+                  objection = named.findings.filter(finding => namedClaimsIn(finding.reason, body).length).map(finding => finding.reason).join(' ');
+                } else nothingLeft = true;
+              }
+            }
             // Rules 6, 8: the revised text is a new candidate. It carries only the original answer's admitted
             // declarations (filtered against its text at the intent), so it is selected only when one bounded
             // contextual review of exactly this text, with that declared record, clears the held classes. No
@@ -8329,11 +8370,12 @@ export function createJournalWorker(journal: ReturnType<typeof openPreviewJourna
             if (revised !== undefined) {
               if (!turn.revisionReviewReserved && journal.view.calls < journal.view.limits.maxCalls && inTime()) {
                 gate();
-                journal.append({ kind: 'reply-revision-review-reserve', id: turn.id,
+                journal.append({ kind: 'reply-revision-review-reserve', id: turn.id, ...(scoped === undefined ? {} : { remainder: scoped }),
                   maxInputTokens: journal.view.limits.maxBytes, maxOutputTokens: subscriptionOutputMaximum, at: ports.now() });
                 let result: { verdict: 'pass' | 'violation' | 'unavailable'; ruleIds: ReplyRule[]; reason?: string; findings?: ReplyFinding[]; usage?: ModelUsage };
                 try {
-                  const reviewed = await ports.replyCheck.escalate(revised, turn.id, originalPrompt, revisionReviewRules(originalPrompt),
+                  const reviewed = await ports.replyCheck.escalate(revised, turn.id, scoped !== undefined && originalPrompt !== undefined
+                    ? replyRemainderPrompt(originalPrompt, withheld!.removed) : originalPrompt, [...revisionReviewRules(originalPrompt), ...(scoped === undefined ? [] : ['incoherent_remainder' as const])],
                     loopDeadline, 'revision');
                   result = { verdict: reviewed.verdict === 'pass' ? 'pass' : 'violation',
                     ruleIds: Array.isArray(reviewed.ruleIds) ? reviewed.ruleIds.filter(rule => typeof rule === 'string') : [],
@@ -8345,32 +8387,9 @@ export function createJournalWorker(journal: ReturnType<typeof openPreviewJourna
               }
               const check = turn.revisionReview;
               if (!(check?.verdict === 'pass' || check?.verdict === 'violation'
-                && !check.ruleIds.some(rule => REVIEW_HOLDING_RULES.includes(rule)))) revised = undefined;
-            }
-            // THE CLAIM-SCOPED FLOOR (plan #215; Rules 2, 4, 42, 77, 86, 95): a gate withholds only what it
-            // NAMED. The two credential floors keep the whole-reply notice, because what they name is the reply's
-            // fitness to leave at all. A full-context objection on an untracked deferral or an unevidenced
-            // cannot-do claim names CONTENT, and its reason quotes that claim, so the sentences carrying the claim
-            // are removed from the reviewed candidate and the rest of the answer is sent. Nothing is paraphrased,
-            // rewritten or added, and no further call is made: this is deterministic enforcement of the recorded
-            // judgment, not a second judgment. What was removed, and any named claim no sentence carried, is
-            // recorded with the send and counted, so neither a withholding nor a pass is silent.
-            let withheld: ClaimWithheld | undefined, scoped: string | undefined, nothingLeft = false;
-            if (revised === undefined && holding && !audienceUnreviewed && !credentialHeldClass(turn, candidateDigest)) {
-              const named = reviewHoldingFindings(turn, candidateDigest);
-              const stripped = (actionHeader === undefined ? reply : reply.slice(actionHeader.length + 1))
-                .replace(/^PREVIEW(?=$|[\s:—])(?:\s*[:—])?\s*/u, '');
-              const body = continuity && stripped.startsWith(continuity.disclosure)
-                ? stripped.slice(continuity.disclosure.length).trimStart() : stripped;
-              const claims = named.findings.flatMap(finding => namedClaimsIn(finding.reason, body));
-              const cut = exciseNamedClaims(body, claims);
-              withheld = { rules: named.rules, removed: cut.removed, unlocated: cut.unlocated };
-              if (cut.removed.length) {
-                const candidate = actionHeader === undefined ? disclosed(cut.text) : `${actionHeader}\n${cut.text}`;
-                if (substantiveReply(cut.text) && !redact(candidate).count && !secretMaterialIn(candidate, heldValues) && fits(candidate)) {
-                  scoped = candidate;
-                  objection = named.findings.filter(finding => namedClaimsIn(finding.reason, body).length).map(finding => finding.reason).join(' ');
-                } else nothingLeft = true;
+                && !check.ruleIds.some(rule => REVIEW_HOLDING_RULES.includes(rule) || scoped !== undefined && rule === 'incoherent_remainder'))) revised = undefined;
+              if (scoped !== undefined) {
+                scoped = revised; revised = undefined;
               }
             }
             const dispositions = turn.revision?.dispositions && validDispositions(turn.revision.dispositions, objections)
