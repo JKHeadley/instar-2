@@ -74,7 +74,7 @@ it.each([3, 1, undefined])('uses the recorded topic name for topic %s and the ma
     // Telegram service updates are captured even though they have no accepted text.
     const worker = createJournalWorker(journal, { now: () => now, stopped: () => false,
       model: async () => 'Noted.', send: async () => 50, checkOutbound: () => {} });
-    const service = { update_id: 969390332, message: { message_thread_id: topic,
+    const service = { update_id: 969390332, message: { ...(topic === undefined ? {} : { message_thread_id: topic }),
       chat: { id: Number(capture.genesis.chat), type: 'supergroup', is_forum: true },
       forum_topic_edited: { name: 'Garden' } } };
     worker.intake([service]);

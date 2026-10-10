@@ -27,5 +27,5 @@ Decision: w4-topic-awareness2-labels | reuse topicNames and turnLabel, add field
 ## Closing block
 
 simplestRobustRoute: This is the simplest robust route: use the existing current-topic and source-label projections. The missing labels caused the concrete CEDAR failure; no new state or gate is needed. Start guards are authenticated topic identity and current disclosure, the end state is a correctly grounded answer, and existing packet/spend/send limits remain unchanged. Actual model replay identifies General and the source topic without assistance; live installation certification belongs to the pipeline after push.
-80/20: Targeted routing, memory, recorded-shape and model-replay tests pass; typecheck and architecture pass. Private packet equality is measured against the original build. No independent convergence or full-suite result is claimed by this author submission.
+80/20: Targeted routing, memory, recorded-shape and model-replay tests pass, including 11 topic-awareness cases; typecheck and architecture pass. Private packet equality is measured against the original build. No independent convergence or full-suite result is claimed by this author submission.
 VERDICT: author submission; independent review and full-suite gate belong to the pipeline
