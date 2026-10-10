@@ -7,7 +7,7 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { createHash } from 'node:crypto';
 import { appendGroupCarry, validCarriedMemory } from './group-carry.js';
-import { createJournalWorker, GROUP_DISCLOSURE_HOLD, GROUP_DISCLOSURE_HOLD_NOTICE, openPreviewJournal, openRequests, ModelDisclosureRefused, type JournalRecord } from './journal-test-worker.js';
+import { createJournalWorker, GROUP_DISCLOSURE_HOLD, GROUP_DISCLOSURE_HOLD_NOTICE, openPreviewJournal, openRequests, ModelDisclosureRefused, createModelLaunchBoundary, type JournalRecord } from './journal-test-worker.js';
 import { key, scope, permissionFor } from './group-carry-fixture.js';
 
 const dirs: string[] = [];
@@ -282,6 +282,7 @@ it.each([['model', false], ['subscription', false], ['send', false], ['model', t
   appendGroupCarry(w.destination, w.source, scope, permission(), true, start + 3600_000, () => false); w.source.close();
   let activeJournal = w.destination;
   const journalProxy = new Proxy(w.destination, { get: (_target, prop) => Reflect.get(activeJournal, prop) });
+  const modelLaunch = createModelLaunchBoundary();
   let restored = initiallyAdmitted, providerCalls = 0, networkSends = 0;
   const requireAt = (which: string) => async () => {
     if (!restored && boundary === which) throw Error('group carry: disclosure grant or operator-only audience refused');
@@ -292,12 +293,12 @@ it.each([['model', false], ['subscription', false], ['send', false], ['model', t
   const subscription = Function('journal', 'requireGroupDisclosure', 'ModelDisclosureRefused', 'assertLiveJudgment', 'shared',
     'modelRoute', 'performance', 'required', 'options', 'recordModelCall', `return (async ${subscriptionCode});`)(
     journalProxy, requireAt('subscription'), ModelDisclosureRefused, () => {}, null,
-    () => ({ invoke: async () => { providerCalls++; return { state: 'complete', bytes: recorded.text }; } }),
+    () => ({ invoke: async () => { modelLaunch.started(); providerCalls++; return { state: 'complete', bytes: recorded.text }; } }),
     { now: () => 0 }, () => 'fixture', {}, () => {});
-  const model = Function('journal', 'requireGroupDisclosure', 'toolsActive', 'toolTurnEligible', 'invokeTools', 'invokeSubscription', 'recordedUsage', 'ModelDisclosureRefused', `return (${modelFunction});`)(
+  const model = Function('journal', 'requireGroupDisclosure', 'toolsActive', 'toolTurnEligible', 'invokeTools', 'invokeSubscription', 'recordedUsage', 'ModelDisclosureRefused', 'modelLaunch', `return (${modelFunction});`)(
     journalProxy, requireAt('model'), () => false, () => false, () => { throw Error('unused'); },
     async (prepared: string, id: string) => { const result = await subscription('answer', prepared, id, {}); return { state: result.state, value: result.bytes }; },
-    (x: unknown) => x, ModelDisclosureRefused);
+    (x: unknown) => x, ModelDisclosureRefused, modelLaunch);
   let claims = 0;
   const shared = { admit: async () => {
     expect(activeJournal.view.order.find(t => t.requestedAction)?.intent).toBeDefined(); claims++; return null;
@@ -346,8 +347,8 @@ it('the shipped model wrapper never releases an invocation that already reached 
   appendGroupCarry(w.destination, w.source, scope, permission(), true, start + 3600_000, () => false); w.source.close();
   let calls = 0;
   const model = Function('journal', 'requireGroupDisclosure', 'toolsActive', 'toolTurnEligible', 'invokeTools',
-    'ModelDisclosureRefused', `return (${modelFunction});`)(w.destination, async () => {}, () => true, () => true,
-    async () => { calls++; w.destination.view.modelCalls.total++; throw new ModelDisclosureRefused(); }, ModelDisclosureRefused);
+    'ModelDisclosureRefused', 'modelLaunch', `return (${modelFunction});`)(w.destination, async () => {}, () => true, () => true,
+    async () => { calls++; w.destination.view.modelCalls.total++; throw new ModelDisclosureRefused(); }, ModelDisclosureRefused, createModelLaunchBoundary());
   const bindings = { now: () => friday9, stopped: () => false, groupDisclosure: async () => true, checkOutbound: () => {},
     prepareModel: () => '{}', model, send: async () => { throw Error('must not send'); } };
   const worker = createJournalWorker(w.destination, bindings);
