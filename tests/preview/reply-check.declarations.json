@@ -10,9 +10,9 @@
       "rungs": [
         {
           "decidesAlone": "no",
-          "criticality": "Mandatory floors (Rules 4, 86): exact credential-shaped text never leaves; a candidate the contextual reviewer finds exposing a credential, deferring untracked work or declaring an unevidenced final cannot-do, and any answer whose declared deferral or blocker the runner refused, gets one bounded correction inside the shared 60-second loop deadline and the call cap. It is sent only when a contextual review of the corrected text clears those classes; otherwise the holding notice is sent in its place with the agent's answer to each objection recorded. When the review gives no verdict and Jev completed a credential flag, or the runner refused a declaration, nothing is sent and the turn stays held.",
+          "criticality": "Mandatory floors (Rules 4, 86): exact credential-shaped text never leaves; a candidate the contextual reviewer finds exposing a credential, deferring untracked work or declaring an unevidenced final cannot-do, and a refused deferral or blocker whose contextual review also returned a violation, gets one bounded correction inside the shared 60-second loop deadline and the call cap. It is sent only when a contextual review of the corrected text clears those classes; otherwise the holding notice is sent in its place with the agent's answer to each objection recorded. When the review gives no verdict and Jev completed a confident credential flag, the holding notice is sent instead of the candidate. A refused declaration alone never holds a reply when the contextual review is unavailable; the rejected declaration stays rejected.",
           "failDirection": "closed",
-          "preservesInput": "encrypted preview journal: the turn, its candidate, every check row, the correction and its review stay recorded; a held turn stays pending for raise-caps or recovery",
+          "preservesInput": "encrypted preview journal: the turn, its candidate, every check row, the correction and its review stay recorded; withheld text stays in the journal and the content-free holding notice follows the ordinary durable send path",
           "model": "preview-subscription-claude"
         },
         {

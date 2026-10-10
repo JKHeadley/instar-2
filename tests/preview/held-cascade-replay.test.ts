@@ -75,12 +75,12 @@ it('969389800 live shape: an unsure credential score whose stronger review ends 
   expect(turn.release).toMatchObject({ review: 'unavailable', objections: ['credential'], reason: 'review unavailable', revised: false });
 });
 
-it('969389800 durable replay: the hold the old build recorded stays as recorded (no stale backlog flush, Rule 52) and no paid call repeats', async () => {
+it('969389800 durable replay: a silent unavailable hold recovers once and no paid call repeats', async () => {
   const { sends, calls, turn } = await flow({ jev: JEV_800, answer: ANSWER_800, review: 'unknown', crashAt: 'before:intent', preHeld: true });
   expect(calls).toEqual({ jev: 1, review: 1 });
-  expect(turn.held).toBe('reply check unavailable');
-  expect(turn.intent).toBeUndefined();
-  expect(sends).toEqual([]);
+  expect(turn.held).toBeUndefined();
+  expect(turn.release?.review).toBe('unavailable');
+  expect(sends).toEqual([ANSWER_800]);
 });
 
 it('969389800 restart before the send: the new build answers the same recorded rows once, never repeating Jev or the review', async () => {
@@ -101,8 +101,9 @@ it('969389804 neighbour: credential 0.48 is a Jev pass and needs no review', asy
 it('the floor holds: a confident Jev credential flag (0.70 and above) with an UNKNOWN review stays held', async () => {
   const confident = JEV_800.replace('"noul":0.51', '"noul":0.70');
   const { sends, turn } = await flow({ jev: confident, answer: ANSWER_800, review: 'unknown' });
-  expect(sends).toEqual([]);
-  expect(turn.held).toBe('reply check unavailable');
+  expect(sends).toEqual([HOLDING_REPLY]);
+  expect(turn.heldReview?.objections).toContain('credential');
+  expect(turn.held).toBeUndefined();
 });
 
 it('the floor holds: a review that names a credential leak keeps the holding notice, whatever Jev scored', async () => {

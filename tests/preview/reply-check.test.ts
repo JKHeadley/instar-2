@@ -1156,9 +1156,9 @@ it('a review outage releases an advisory-only draft once with no decision record
   expect(advisory.turn.release).toEqual({ review: 'unavailable', objections: ['config_key'], reason: 'review unavailable', revised: false,
     dispositions: [{ objection: 'config_key', decision: 'no-decision' }] });
   const mandatory = await flow({ jev: { credential: 0.8 }, review: 'down', answer: 'Your gym code is written down.' });
-  expect(mandatory.sends).toEqual([]);
-  expect(mandatory.turn.held).toBe('reply check unavailable');
-  expect(mandatory.turn.intent).toBeUndefined();
+  expect(mandatory.sends).toEqual([HOLDING_REPLY]);
+  expect(mandatory.turn.held).toBeUndefined();
+  expect(mandatory.turn.heldReview?.objections).toContain('credential');
   expect(mandatory.calls).toMatchObject({ review: 1, revise: 0 });
 });
 

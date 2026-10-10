@@ -2670,8 +2670,8 @@ three UNKNOWN review calls and one review with a physical `output-cap` result;
 they do not contain the candidate or reviewer text, nor do they attribute the
 UNKNOWN send to an update. The worker replay therefore tests those observed
 boundaries with offline stubs and does not claim an exact reproduction of unseen
-provider output. It confirms that each review-unavailable turn keeps its reply
-held after restart, a completed review PASS releases a loss notice, and a send
+provider output. It confirms that each review-unavailable turn sends its loss notice
+once across restart, a completed review PASS also releases the notice, and a send
 with no receipt is not repeated. Run only the focused regression file:
 
 ```sh
@@ -2699,17 +2699,21 @@ never holds (Rules 4, 77, 86, 95): on a violation the mind gets one revision rou
 within the existing call cap, then the not-yet-sent reply (revised or original) is
 sent with the surviving objections recorded on its intent (`release`) and carried
 to the next packet's `corrections`. A deferral or blocker the answer declared but
-the runner refused always goes to the contextual review, and is held unless that
-review passes (build 4, Rules 6, 20, 21, 23). If no check can decide (review
+the runner refused always goes to the contextual review. A completed violation
+can withhold its claim (build 4, Rules 6, 20, 21, 23); an unavailable review
+releases the reply while the rejected declaration remains rejected. If no check can decide (review
 budget exhausted, reviewer outage, malformed output, or no call left for review),
 the reply is sent once with the review recorded unavailable; a malformed review is
-never a pass. When Jev had completed and flagged only non-secret rules,
-`status.reviewUnavailableReleases` counts those sends by flagged rule, without
-content. Rule 86's secrets exception still holds: when Jev flagged `credential` and
-no review verdict exists, the turn stays held as `reply check unavailable`; when
+never a pass. `status.reviewUnavailableReleases` counts released intents even
+without a Jev result, with any non-secret Jev flags counted by rule, without
+content. Holding notices do not count as releases. Rule 86's secrets exception
+still holds: when Jev confidently flagged `credential` and no review verdict
+exists, the content-free holding reply is sent instead of the candidate; when
 the review's violation names `credential`, or build 4's `defers_work` or
 `unrecorded_blocker` (an untracked deferral or an unevidenced cannot-do claim), the
-holding reply is sent instead.
+holding reply is sent instead. Earlier unavailable holds with no reply intent or
+holding notice resume through the same bounded send path, without repeating
+a paid review. Already-noticed holds remain recorded.
 Stop and expiry still gate every send. New answers
 leave one shared call-budget slot available for a possible review. The deterministic credential wall runs
 before Jev disclosure and again on the final send body.
@@ -2806,7 +2810,7 @@ The check result is encrypted and fsynced before the send intent; `status` and
 `inspect` report verdict counts, path counts, and the last result. A crashed
 subscription review is not retried or charged again from this runner; the reply
 is sent once with the review recorded unavailable (unless Jev flagged
-`credential`, which holds it). An interrupted revision is likewise never
+`credential`, which withholds the candidate and sends the holding notice). An interrupted revision is likewise never
 repeated: the original is released with its objection.
 An interrupted Jev check escalates without repeating Jev.
 `status.lastReplyTiming` derives intake-to-Bot-API-acceptance milliseconds and

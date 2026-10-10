@@ -1514,7 +1514,8 @@ const reviewHoldingFlag = (turn: Turn, candidateDigest: string): boolean =>
 const credentialHeldClass = (turn: Turn, candidateDigest: string): boolean =>
   jevCredentialFlag(turn, candidateDigest) || reviewHoldingFindings(turn, candidateDigest).rules.includes('credential');
 /** Build 4's obligation floor (Rules 6, 20, 21, 23) against reachability (Rules 77, 86, 95): only a refused deferral,
- * blocker or recheck forces the contextual review and its mandatory hold. A refused fulfillment claim has already
+ * blocker or recheck forces the contextual review. Only a completed violation can hold it;
+ * an unavailable review releases the reply while the refused declaration stays refused. A refused fulfillment claim has already
  * lost its one authority (it closes no commitment), so it stays a counted signal and its reply takes the ordinary
  * review route: an unavailable review cannot silence a reply over it. */
 const refusedObligation = (turn: Turn): boolean =>
@@ -1538,16 +1539,17 @@ export function claimScopedWithholds(view: JournalView): { trimmed: number; sent
   }
   return { trimmed, sentencesRemoved, heldWithNothingLeft, unlocatedClaims, byRule };
 }
-/** Content-free status: replies sent on Jev's non-secret flags while the review was unavailable. */
+/** Content-free status: reply intents released with an unavailable review, including checks without Jev flags. */
 export function reviewUnavailableReleases(view: JournalView): { total: number; byRule: Partial<Record<ReplyRule, number>> } {
   const byRule: Partial<Record<ReplyRule, number>> = {};
   let total = 0;
   for (const turn of view.order) {
+    if (turn.heldReview) continue;
     const flags = turn.intent !== undefined && turn.replyChecks?.at(-1)?.verdict === 'unavailable'
       ? jevNonSecretFlags(turn) : undefined;
-    if (!flags) continue;
+    if (!flags && !(turn.intent !== undefined && turn.release?.review === 'unavailable')) continue;
     total++;
-    for (const rule of flags) byRule[rule] = (byRule[rule] ?? 0) + 1;
+    for (const rule of flags ?? []) byRule[rule] = (byRule[rule] ?? 0) + 1;
   }
   return { total, byRule };
 }
@@ -7224,10 +7226,13 @@ export function createJournalWorker(journal: ReturnType<typeof openPreviewJourna
           } else if ('reason' in preparedFor(turn)) await summarizeIfNeeded(true);
           delete turn.held; delete turn.heldSince; journal.view.heldTurns.delete(turn);
         }
-        // A review hold recorded by an earlier build stays as recorded: its notice already went out,
-        // and releasing a backlog of stale replies at once would itself flood (Rule 52). It stays
-        // visible in status and to the mind as an open question; new turns are never review-held.
-        if (turn.held) continue;
+        // Rules 2, 77, 95: older builds could hold an unavailable review before recording either a
+        // reply intent or a holding notice. Resume only those silent holds through the ordinary bounded
+        // send path; durable reservations prevent repeated paid checks and intents prevent duplicate sends.
+        const silentReviewHold = (turn.held === 'reply check unavailable' || turn.held === REPLY_CHECK_BUDGET_REASON)
+          && turn.replyChecks?.at(-1)?.verdict === 'unavailable' && turn.intent === undefined
+          && turn.heldNoticeIntent === undefined && turn.heldNoticeSent === undefined && turn.heldNoticeCoveredBy === undefined;
+        if (turn.held && !silentReviewHold) continue;
         // The minimal path already owns this stop (confirmation sent or latched): never a second one.
         if (turn.limited && isStopCommand(turn.text)) continue;
         gate();
@@ -8005,22 +8010,15 @@ export function createJournalWorker(journal: ReturnType<typeof openPreviewJourna
           // Held classes, never released as advisory signals: Rule 86's secrets exception (Jev's credential
           // flag with no review verdict, or a review naming a credential), and build 4's obligation floor
           // (Rules 6, 20, 21, 23): a review naming an untracked deferral or an unevidenced cannot-do claim,
-          // and any answer whose declared deferral or blocker the runner refused, unless its review passed.
+          // and a refused declaration when the contextual review also returned a violation.
           // Every other objection, and an unavailable review, is a signal released with the reply below.
           const holding = !credentialShape && (decision === 'unavailable'
-            ? jevCredentialFlag(turn, candidateDigest) || refusedObligation(turn)
+            ? jevCredentialFlag(turn, candidateDigest)
             : decision === 'violation' && (reviewHoldingFlag(turn, candidateDigest) || refusedObligation(turn)));
           // A shared audience whose review did not complete (unavailable, call cap, deadline) has no established
           // permission to disclose: the draft stays in the journal and the content-free holding note is sent
           // (purpose's least revelation; Rules 57, 95). The operator's own chat keeps its advisory release.
           const audienceUnreviewed = !credentialShape && !holding && decision === 'unavailable' && audienceShared;
-          if (holding && decision === 'unavailable') {
-            // A refused review reservation waits on `raise-caps` like any call-cap hold.
-            journal.append({ kind: 'hold', id: turn.id, reason: capRefused ? 'call cap'
-              : turn.replyChecks?.at(-1)?.reason === 'reply check budget exceeded' ? 'reply check budget exceeded'
-                : 'reply check unavailable', at: ports.now() });
-            continue;
-          }
           const linkOnly = decision === 'pass' && linkRules.length > 0;
           if (linkOnly) decision = 'violation';
           if (decision === 'violation' || decision === 'unavailable') {

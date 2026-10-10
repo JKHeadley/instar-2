@@ -1,8 +1,8 @@
 import { expect, it } from 'vitest';
-import { copyFileSync, mkdtempSync, realpathSync, rmSync } from 'node:fs';
+import { copyFileSync, mkdtempSync, readFileSync, realpathSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
-import { createJournalWorker, openPreviewJournal, type PreviewPorts } from './journal-test-worker.js';
+import { createJournalWorker, openPreviewJournal, type PreviewPorts, type JournalRecord } from './journal-test-worker.js';
 import { reviewUnavailableReleases } from './journal.js';
 import { prepareJournalEnvelope } from './journal-envelope.js';
 import { HOLDING_REPLY, JEV_MODEL, REPLY_RULES, type ReplyCheckPorts, type ReplyRule } from './reply-check.js';
@@ -66,15 +66,16 @@ it('credential among the Jev flags + malformed review: the reply stays held (sec
     const worker = createJournalWorker(journal, ports(sent, jevFlags('credential', 'claims_blocked'), malformed));
     worker.intake([update(1, 'Remind me on Friday at 9')]);
     await worker.drain(); await worker.drain();
-    expect(sent).toEqual([]);
-    expect(journal.view.order[0]?.held).toBe('reply check unavailable');
+    expect(sent).toEqual([HOLDING_REPLY]);
+    expect(journal.view.order[0]?.heldReview?.objections).toContain('credential');
+    expect(journal.view.order[0]?.held).toBeUndefined();
     expect(reviewUnavailableReleases(journal.view).total).toBe(0);
     journal.close();
   });
 });
 
 // Build 3 (Rules 77, 95): with no Jev result and no review verdict, the reply is released once with
-// the review recorded unavailable; it is not counted as a release on Jev's flags, because there were none.
+// the review recorded unavailable and counted even though there were no Jev flags.
 it('Jev itself unavailable + malformed review: no check decided, so the reply is released once, recorded unavailable', async () => {
   await withJournal(async path => {
     const sent: string[] = [];
@@ -85,7 +86,7 @@ it('Jev itself unavailable + malformed review: no check decided, so the reply is
     expect(sent).toEqual([CANDIDATE]);
     expect(journal.view.order[0]?.held).toBeUndefined();
     expect(journal.view.order[0]?.release).toMatchObject({ review: 'unavailable', revised: false });
-    expect(reviewUnavailableReleases(journal.view).total).toBe(0);
+    expect(reviewUnavailableReleases(journal.view)).toEqual({ total: 1, byRule: {} });
     journal.close();
   });
 });
@@ -175,5 +176,82 @@ it('an interrupted (UNKNOWN) review is never repeated; after restart the non-sec
     expect(sent).toEqual([CANDIDATE]);
     expect(restarted.view.order[0]?.replyChecks?.at(-1)).toMatchObject({ path: 'subscription', verdict: 'unavailable' });
     restarted.close();
+  });
+});
+
+// Exact answer/check/outcome rows from the live proof room, stripped only of unrelated private context.
+const live = JSON.parse(readFileSync(new URL('./fixtures/review-unavailable-2026-10-09.json', import.meta.url), 'utf8')) as {
+  operatorText: string; turns: { update: number;
+    answer: Omit<Extract<JournalRecord, { kind: 'answer' }>, 'kind' | 'id'>;
+    reviewOutcome: Extract<JournalRecord, { kind: 'call-outcome' }>['outcome'];
+    reviewState: 'uncertain'; reviewDiagnostics: { outputTokens: number; thinkingPresent: 'unobservable' };
+    check: Extract<JournalRecord, { kind: 'reply-check' }>['result']; delivered: null }[] };
+
+it.each(live.turns)('live $update: rejected blocker + output-capped UNKNOWN review releases once', async captured => {
+  await withJournal(async path => {
+    const sent: string[] = []; let reviews = 0, jev = 0, clock = now;
+    const journal = openPreviewJournal(path, key, genesis());
+    const p = ports(sent, async () => { jev++; return jevFlags()(); }, async (_text, id) => {
+      reviews++; clock += captured.check.latencyMs;
+      journal.append({ kind: 'call-outcome', id: `${id}:reply-review`, role: 'reply-review', outcome: captured.reviewOutcome, at: now });
+      journal.append({ kind: 'reply-review-state', id, state: captured.reviewState, diagnostics: captured.reviewDiagnostics, at: now });
+      // The installed port throws this when the recorded result is uncertain (output null).
+      throw Error('preview: reply review unavailable');
+    });
+    p.now = () => clock;
+    p.replyCheck!.elapsedMs = () => clock;
+    const worker = createJournalWorker(journal, p);
+    worker.intake([update(captured.update, live.operatorText)]);
+    const id = journal.view.order[0]!.id;
+    journal.append({ kind: 'reserve', id, prompt: JSON.stringify({ messages: [
+      { role: 'user', content: live.operatorText }, { role: 'context', content: JSON.stringify({ packet: {
+        audience: { surface: 'telegram-private-chat', chat: '7654321', operator: '7654321' } } }) }] }), at: now });
+    journal.append({ kind: 'answer', id, ...captured.answer });
+    await worker.drain(); await worker.drain();
+    expect(jev).toBe(0); // The rejected blocker takes the direct full-context review route, as live.
+    expect(reviews).toBe(1);
+    expect(sent).toEqual([captured.answer.text]);
+    expect(journal.view.order[0]).toMatchObject({ answerRejected: { blocker: true }, reviewState: 'uncertain',
+      release: { review: 'unavailable' }, sent: 1 });
+    expect(journal.view.order[0]?.held).toBeUndefined();
+    expect(journal.view.blockers).toEqual([]); // Release does not accept the refused blocker.
+    expect(reviewUnavailableReleases(journal.view)).toEqual({ total: 1, byRule: {} });
+    journal.close();
+    const reopened = openPreviewJournal(path, key);
+    await createJournalWorker(reopened, p).drain();
+    expect(sent).toHaveLength(1); expect(reviews).toBe(1);
+    expect(reviewUnavailableReleases(reopened.view).total).toBe(1);
+    reopened.close();
+  });
+});
+
+it.each(live.turns.flatMap(captured => [false, true].map(noticed => ({ ...captured, noticed }))))(
+  'live $update: old unavailable hold recovery, prior notice=$noticed', async captured => {
+  await withJournal(async path => {
+    const journal = openPreviewJournal(path, key, genesis()), sent: string[] = [];
+    const p = ports(sent, async () => { throw Error('must not repeat Jev'); }, async () => { throw Error('must not repeat review'); });
+    const worker = createJournalWorker(journal, p);
+    worker.intake([update(captured.update, live.operatorText)]);
+    const id = journal.view.order[0]!.id;
+    journal.append({ kind: 'reserve', id, at: now });
+    journal.append({ kind: 'answer', id, ...captured.answer });
+    journal.append({ kind: 'reply-review-reserve', id, candidate: captured.answer.text, at: now });
+    journal.append({ kind: 'reply-review-state', id, state: captured.reviewState, diagnostics: captured.reviewDiagnostics, at: now });
+    journal.append({ kind: 'reply-check', id, result: captured.check, at: now });
+    journal.append({ kind: 'hold', id, reason: 'reply check unavailable', at: now });
+    if (captured.noticed) {
+      journal.append({ kind: 'held-notice-intent', id, text: "I'm holding my answer to your message from 12:00; it will follow or I'll tell you why",
+        chat: '7654321', update: captured.update, grant: 'grant:preview', at: journal.view.order[0]!.heldSince! + 600_001 });
+      journal.append({ kind: 'held-notice-sent', id, message: 7, at: journal.view.order[0]!.heldSince! + 600_002 });
+    }
+    const calls = journal.view.calls;
+    journal.close();
+    const reopened = openPreviewJournal(path, key);
+    await createJournalWorker(reopened, p).drain(); await createJournalWorker(reopened, p).drain();
+    expect(reopened.view.calls).toBe(calls);
+    expect(sent).toEqual(captured.noticed ? [] : [captured.answer.text]);
+    expect(reopened.view.order[0]?.held).toBe(captured.noticed ? 'reply check unavailable' : undefined);
+    expect(reviewUnavailableReleases(reopened.view)).toEqual({ total: captured.noticed ? 0 : 1, byRule: {} });
+    reopened.close();
   });
 });

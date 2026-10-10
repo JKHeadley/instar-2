@@ -18,7 +18,7 @@ import { createJournalWorker, openPreviewJournal, type PreviewPorts } from './jo
 import { PREVIEW_LIVE_GATES, reviewUnavailableReleases } from './journal.js';
 import type { JournalView } from './journal.js';
 import { prepareJournalEnvelope } from './journal-envelope.js';
-import { JEV_MODEL, jevQuestions, type JevRule, type ReplyCheckPorts } from './reply-check.js';
+import { HOLDING_REPLY, JEV_MODEL, jevQuestions, type JevRule, type ReplyCheckPorts } from './reply-check.js';
 import { LIVE_JUDGMENTS } from './model-call-boundary.js';
 import { CRITICAL_PIPELINES, stepCoverage } from './proofs.js';
 
@@ -135,8 +135,8 @@ it('the other side: a review that answers releases nothing, so O95d is UNTESTED 
 
 it('open is declared for the advisory class only: a confident Jev credential flag with no review verdict still holds', async () => {
   const secret = await turn({ jev: jevBody({ ...LIVE_PASS_SCORES, credential: 0.93 }), escalate: reviewUnknown });
-  expect(secret.sent).toEqual([]);
-  expect(secret.held).toBe('reply check unavailable');
+  expect(secret.sent).toEqual([HOLDING_REPLY]);
+  expect(secret.held).toBeUndefined();
   expect(secret.releases).toEqual({ total: 0, byRule: {} });
   // The floors are declared closed in the same gate table the direction above comes from.
   const closed = PREVIEW_LIVE_GATES.filter(entry => entry.gate.startsWith('credential'));
