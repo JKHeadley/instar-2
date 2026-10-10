@@ -10,10 +10,10 @@ Operator questions: none
 Suggested tier: critical
 Declared tier: critical
 Tier rationale: Merge imports the live recurring-request scheduling and model-facing date instruction into the media intake branch; verify their interaction and historical model shapes.
-Side effects: Combined capability briefing contains both media intake and recurring requests. Calendar schedules retain local-day identity through DST and collapse missed occurrences at recovery. Generated metadata comes from the combined committed source. Historical fixtures remain unchanged; the briefing expectation composes the declared deltas from both parents.
+Side effects: Combined capability briefing contains both media intake and recurring requests. Calendar schedules retain local-day identity through DST and collapse missed occurrences at recovery. Generated metadata comes from the combined committed source, including the desk-refreshed owner reference to the expanded recurring replay. Historical fixtures remain unchanged; the briefing expectation composes the declared deltas from both parents.
 Undo and recovery: Revert the merge relative to its first parent and regenerate the register through desk tools. Existing recurring journals require compatibility review before deploying such a rollback; do not retry an uncertain send. No live deployment or journal mutation is performed by this repair.
 Multi-machine posture: Repository merge and generated artifacts propagate through git. Existing single-owner journal, signed scheduler writer and effect admission remain in force; no new machine-local store or peer dependency.
-Layer below: Inspected recurring calendar parsing, requestOccurrence binding, durable action-due and intent replay, existing media intake, capability generation and exact-source owner manifests. Desk rehash and inventory repin found zero stale hashes; register replay restores the combined declaration population.
+Layer below: Inspected recurring calendar parsing, requestOccurrence binding, durable action-due and intent replay, existing media intake, capability generation and exact-source owner manifests. Initial desk rehash and inventory repin found zero stale hashes; expanding the recorded-shape test then required one preview owner artifact hash refresh. Desk regeneration and committed register replay restore the combined declaration population and exact proof reference.
 Bug class: none
 Bug evidence: none
 Hook bypass: none
