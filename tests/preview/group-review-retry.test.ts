@@ -78,7 +78,10 @@ async function scenario(mode: 'transient' | 'persistent' | 'changed' | 'charged'
     else { await worker.drain(); await worker.drain(); }
     const turn = journal.view.order[0]!;
     const results = [...turn.replyChecks ?? []];
-    if (mode === 'transient') expect(replyTimings(journal.view).perReply[0]?.fallbackMs).toBe(750);
+    if (mode === 'transient') {
+      expect(replyTimings(journal.view).perReply[0]?.fallbackMs).toBe(750);
+      expect(results.map(row => [row.path, row.verdict])).toEqual([['jev', 'pass'], ['holding', 'unavailable'], ['subscription', 'pass']]);
+    }
     if (mode === 'persistent') expect(replyTimings(journal.view).perReply[0]?.fallbackMs).toBe(1000);
     if (mode === 'stop') {
       expect(sent).toEqual([]); expect(providerCalls).toBe(0);

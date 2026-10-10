@@ -1591,7 +1591,7 @@ export function replyTimings(view: JournalView) {
   const perReply = view.order.filter(turn => turn.accepted).map(turn => ({ update: turn.update,
     answerMs: turn.answerMs ?? null,
     jevMs: duration(turn.replyChecks?.find(check => check.path === 'jev')),
-    fallbackMs: duration(turn.replyChecks?.find(check => check.path === 'subscription' && !check.retryBeforeDispatch)),
+    fallbackMs: duration(turn.replyChecks?.find(check => check.path === 'subscription')),
     sendMs: turn.sendMs ?? null }));
   const distribution = (field: 'answerMs' | 'jevMs' | 'fallbackMs' | 'sendMs') => {
     const values = perReply.map(reply => reply[field]).filter((value): value is number => value !== null)
@@ -4229,7 +4229,7 @@ function project(view: JournalView, row: JournalRecord, system?: SystemCheck, ad
       if (row.prompt !== undefined) throw Error('preview journal: format retry order or cap');
       if (row.state !== undefined || replyCandidate === undefined || !turn.reviewReserved || turn.reviewRetried
         || turn.reviewState !== undefined && turn.reviewState !== 'complete'
-        || turn.replyChecks?.some(item => item.path === 'subscription' && !item.retryBeforeDispatch)) throw Error('preview journal: format retry order or cap');
+        || turn.replyChecks?.some(item => item.path === 'subscription')) throw Error('preview journal: format retry order or cap');
       reserveTokens(view, `review:${row.id}`, 'replyCheck', row.maxInputTokens ?? view.limits.maxBytes,
         row.maxOutputTokens ?? subscriptionOutputMaximum);
       delete turn.reviewState; turn.reviewRetried = true;
@@ -4277,8 +4277,6 @@ function project(view: JournalView, row: JournalRecord, system?: SystemCheck, ad
   }
   if (row.kind === 'reply-check') {
     if (replyCandidate === undefined || turn.intent !== undefined) throw Error('preview journal: reply check order');
-    if (row.result.retryBeforeDispatch !== undefined && (row.result.retryBeforeDispatch !== true
-      || row.result.path !== 'subscription' || row.result.verdict !== 'unavailable')) throw Error('preview journal: invalid pre-dispatch retry row');
     if (row.result.path === 'jev' && !turn.jevReserved) throw Error('preview journal: Jev call unreserved');
     if (row.result.path === 'subscription' && !turn.reviewReserved) throw Error('preview journal: review call unreserved');
     if (row.result.path === 'operator-echo' && (turn.jevReserved || turn.reviewReserved || row.result.verdict !== 'pass'))
@@ -8200,7 +8198,7 @@ export function createJournalWorker(journal: ReturnType<typeof openPreviewJourna
             && (!audienceShared || previous.path === 'subscription')) decision = 'pass';
           else if (turn.reviewReserved) {
             // A failed or interrupted paid review is UNKNOWN: it is never repeated.
-            if (previous?.path !== 'subscription' || previous.retryBeforeDispatch) journal.append({ kind: 'reply-check', id: turn.id, result: { verdict: 'unavailable',
+            if (previous?.path !== 'subscription') journal.append({ kind: 'reply-check', id: turn.id, result: { verdict: 'unavailable',
               ruleIds: previous?.ruleIds ?? [], confidence: null, path: 'subscription', latencyMs: 0, candidateDigest,
               reason: REVIEW_INTERRUPTED_REASON }, at: ports.now() });
             decision = 'unavailable';

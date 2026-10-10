@@ -87,8 +87,6 @@ export interface ReplyCheckResult { verdict: ReplyVerdict; ruleIds: ReplyRule[];
   /** Present only when the reviewer judged each selected rule on its own; absent on a legacy combined verdict. */
   findings?: ReplyFinding[];
   durationMeasured?: true;
-  /** Intermediate pre-dispatch failure, recorded before the one live retry; never permission to retry on restart. */
-  retryBeforeDispatch?: true;
   /** Present only on a Jev check that was asked the approval-report question. */
   approvalReport?: ApprovalReport;
   usage?: { inputTokens: number | null; outputTokens: number | null; charge: null; inputComplete?: true } }
@@ -509,8 +507,10 @@ export async function reviewReply(text: string, id: string, ports: ReplyCheckPor
           || ports.deadlineAt !== undefined && ports.now !== undefined && ports.deadlineAt - ports.now() <= 500) throw error;
         // No provider was reached: the original durable reservation still covers this attempt.
         // A crash still leaves UNKNOWN and is never replayed. This live retry has one brake and one backoff.
-        ports.record({ verdict: 'unavailable', ruleIds, confidence: null, path: 'subscription',
-          latencyMs: Math.max(0, ports.elapsedMs() - fallbackStarted), reason: error.causeCode, retryBeforeDispatch: true });
+        // The existing holding path means the provider was not reached. It also leaves the
+        // existing format-retry sequence and UNKNOWN-on-restart rule intact, without a new row shape.
+        ports.record({ verdict: 'unavailable', ruleIds, confidence: null, path: 'holding',
+          latencyMs: Math.max(0, ports.elapsedMs() - fallbackStarted), reason: error.causeCode });
         retriedBeforeDispatch = true;
         await ports.waitForRetry(500);
         if (expired(ports)) throw error;
