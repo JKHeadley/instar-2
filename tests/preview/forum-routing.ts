@@ -1,3 +1,5 @@
+import type { JournalView } from './journal.js';
+
 /** Part 16 §§4–5: the configured group selects the audience; its topic selects
  * the conversation. Omitted forum mode preserves every existing private key. */
 export interface TelegramChatBinding {
@@ -22,6 +24,17 @@ export function journalConversation(binding: TelegramChatBinding, thread?: numbe
   const base = `telegram/bot-${binding.bot}/chat-${binding.chat}`;
   return binding.forum === true ? `${base}/${boundThread(binding, thread) === undefined
     ? 'general' : `topic-${String(thread)}`}` : base;
+}
+
+/** Rules 33, 45, 96: background work resumes its source conversation's workspace
+ * and kept session, using the same durable source reference as its eventual report. */
+export function journalWorkConversation(view: Pick<JournalView, 'genesis' | 'turns' | 'commitments' | 'blockers'>,
+  id: string): string {
+  const obligation = /^obligation:(commitment|blocker):(0|[1-9][0-9]*):[0-9]+$/u.exec(id);
+  const source = obligation
+    ? (obligation[1] === 'commitment' ? view.commitments : view.blockers)[Number(obligation[2])]?.source
+    : id;
+  return journalConversation(view.genesis, source === undefined ? undefined : view.turns.get(source)?.thread);
 }
 
 export function validateChatBinding(binding: TelegramChatBinding): void {

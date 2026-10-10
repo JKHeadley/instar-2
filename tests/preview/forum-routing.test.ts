@@ -1,10 +1,12 @@
 import { expect, it } from 'vitest';
-import { mkdtempSync, rmSync } from 'node:fs';
+import { mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { createJournalWorker, independentSurface, openPreviewJournal } from './journal-test-worker.js';
 import { importChannelItems, LOOP_REVISIT_MS, pendingReports } from './journal.js';
-import { boundThread, journalConversation, matchesBoundChat, validateChatBinding } from './forum-routing.js';
+import { boundThread, journalConversation, journalWorkConversation, matchesBoundChat, validateChatBinding } from './forum-routing.js';
+// @ts-expect-error The physical workspace host remains JavaScript.
+import { conversationWorkspace, toolTurnEligible } from './tool-turn.mjs';
 import { classifyTelegramSend } from './telegram-send-outcome.mjs';
 import { auditPacket } from './journal-audit.mjs';
 
@@ -15,6 +17,69 @@ const genesis = { kind: 'genesis' as const, bot: '12345678', chat: '-1001234', o
 const update = (id: number, text: string, thread?: number) => ({ update_id: id,
   message: { message_id: id, chat: { id: -1001234, type: 'supergroup', is_forum: true },
     from: { id: 7654321 }, text, ...(thread === undefined ? {} : { message_thread_id: thread }) } });
+
+it.each([true, false])('keeps commitment and blocker tool work in its source workspace across restart (forum=%s)', async forum => {
+  const root = mkdtempSync(join(tmpdir(), 'forum-workspace-'));
+  const path = join(root, 'journal.encrypted');
+  const binding = forum ? genesis : { ...genesis, forum: undefined, chat: genesis.operator };
+  const { forum: mode, ...rest } = binding;
+  let journal = openPreviewJournal(path, key, { ...rest, ...(mode ? { forum: mode } : {}) });
+  let now = 1790000000000;
+  const observed = new Map<string, string>();
+  // Exercise the exact expression handed to runToolTurn by the shipped launcher, not a parallel test selector.
+  const launcher = readFileSync(new URL('./journal-agent.mjs', import.meta.url), 'utf8');
+  const expression = /conversation: (.+),\n\s*\/\/ The kept session/u.exec(launcher)?.[1];
+  expect(expression).toBeDefined();
+  const select = new Function('journal', 'id', 'journalWorkConversation', 'conversationOf', `return ${expression};`);
+  const conversation = (id: string): string => select(journal, id, journalWorkConversation, journalConversation);
+  const worker = () => createJournalWorker(journal, { now: () => now, stopped: () => false,
+    model: async input => {
+      if (toolTurnEligible(input.id)) observed.set(input.id, conversation(input.id));
+      if (input.id.startsWith('obligation:blocker:')) return JSON.stringify({ outcome: 'cleared', report: 'The blocker cleared.' });
+      if (input.id.startsWith('obligation:')) return JSON.stringify({ outcome: 'report', report: 'The work is finished.' });
+      if (input.question === 'Book the appointment.') {
+        const claim = 'I cannot book it: this preview has no browser or accounts.';
+        return JSON.stringify({ reply: claim, blocker: { kind: 'cannot-do', claim,
+          avenues: [{ avenue: 'booking tool', disposition: 'outside-standing', evidence: 'externalTools' }],
+          constraint: 'no-tools', outsideAction: 'Book it on the clinic site.', recheck: '2026-09-22' } });
+      }
+      const reply = 'I will check the invoice and report back.';
+      return JSON.stringify({ reply, openLoops: [{ kind: 'deferral', quote: reply, waitsOn: 'nothing' }] });
+    }, checkOutbound: () => {}, send: async () => 1 });
+  try {
+    const first = worker();
+    for (const [index, thread] of [7, 9, undefined, 1].entries()) {
+      for (const [offset, question] of ['Check the invoice.', 'Book the appointment.'].entries()) {
+        const message = update(index * 2 + offset + 1, question, thread);
+        if (!forum) { message.message.chat.id = 7654321; message.message.chat.type = 'private'; }
+        first.intake([message]); await first.drain();
+      }
+    }
+    expect(journal.view.commitments).toHaveLength(4);
+    expect(journal.view.blockers).toHaveLength(4);
+    const turns = journal.view.order.map(turn => turn.id);
+    const spaces = turns.map(id => conversationWorkspace(root, conversation(id)));
+    for (const space of spaces) writeFileSync(join(space.directory, 'prepared.txt'), space.key);
+    expect(spaces[0].key === spaces[2].key).toBe(!forum);
+    expect(spaces[4].key).toBe(spaces[6].key);
+    journal.close(); journal = openPreviewJournal(path, key);
+    now += 4 * 86400000;
+    const resumed = worker();
+    for (let step = 0; step < 8; step++) expect(await resumed.workObligations()).toBe(true);
+    const work = [...observed].filter(([id]) => id.startsWith('obligation:'));
+    expect(work).toHaveLength(8);
+    for (const [id, selected] of work) {
+      const [, kind, index] = id.split(':');
+      const note = (kind === 'commitment' ? journal.view.commitments : journal.view.blockers)[Number(index)]!;
+      expect(selected).toBe(observed.get(note.source));
+      const space = conversationWorkspace(root, selected);
+      expect(readFileSync(join(space.directory, 'prepared.txt'), 'utf8')).toBe(space.key);
+      expect(space).toEqual(conversationWorkspace(root, conversation(note.source)));
+    }
+    expect(journalWorkConversation(journal.view, 'obligation:commitment:999:1')).toBe(journalConversation(journal.view.genesis));
+    expect(journalWorkConversation(journal.view, 'obligation:other:0:1')).toBe(journalConversation(journal.view.genesis));
+  } finally { journal.close(); rmSync(root, { recursive: true, force: true }); }
+});
 
 it('uses distinct stable topic/session identities and one General identity without changing private keys', () => {
   expect(journalConversation(genesis, 7)).not.toBe(journalConversation(genesis, 9));

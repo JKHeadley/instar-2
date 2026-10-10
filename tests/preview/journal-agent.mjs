@@ -1,5 +1,5 @@
 #!/usr/bin/env node
-import { journalConversation, validateChatBinding } from './forum-routing.js';
+import { journalConversation, journalWorkConversation, validateChatBinding } from './forum-routing.js';
 // Small, machine-local preview launcher. Only this file owns process, clock and
 // physical ports. The worker owns all durable conversation/effect transitions.
 import { createHash, randomBytes } from 'node:crypto';
@@ -1703,7 +1703,7 @@ async function main() {
       authority: `${toolsRecord.reference} ${toolsRecord.invocationPolicyDigest}`,
       // MF5: the conversation's workspace persists across turns, and its kept harness session (in the login profile's
       // projects directory) is a cache bound to this authority, harness and model and to the journal's current facts.
-      conversation: conversationOf(journal.view.genesis, journal.view.turns.get(id)?.thread),
+      conversation: journalWorkConversation(journal.view, id),
       // The kept session is Claude Code's (its projects directory); a checkpointed harness keeps none.
       session: doorway.toolTurn?.harness ? null : { store: join(profile.configDirectory, 'projects'), harness: `${profile.version} ${required(options, 'model')}` },
       stopped: () => workerStop.value || existsSync(stopPath) || journal.view.stop !== null || !toolsActive(),
