@@ -10,7 +10,7 @@ The prefix is present before HTML rendering, digesting, and Eight preparation. T
 
 The journal runner's capability briefing is generated from these lines and the feature declarations beside the shipped sources; see `generated/capabilities.json`. Add a line here and a declaration there together, or the register build fails. Each line is the one-line briefing text; its indented `Details:` line keeps the full description, which the briefing does not carry.
 
-- `fetch-inbound-media`: Retain inbound Telegram files through the registered, bounded media operation; a refused or withdrawn admission preserves the message and reports that the file was not saved.
+- `fetch-inbound-media`: saves inbound Telegram files with bounded effect admission; refused downloads retain the original message.
 - `preview-conversation`: answers the operator in chat/topics; journal intake saves photos, audio and files encrypted, with text descriptions.
   Details: only the verified operator is admitted; a forum journal serves all topics of one configured group, including General, with topic-specific recent history and harness sessions. Unknown send outcomes are never resent.
 - `preview-durable-memory`: an encrypted local journal of messages, summaries and memory that survives restarts; the operator can correct or forget a fact.
