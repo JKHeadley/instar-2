@@ -213,7 +213,8 @@ it.each([['before-model', false], ['before-model', true], ['before-send', false]
   let reads = 0, restored = false;
   const base = ports(group, true);
   const bound = { ...base, groupDisclosure: async () => {
-    const allowed = restored || ++reads < (boundary === 'before-model' ? 2 : 3);
+    // Bind the send-side loss to the completed model call, not the number of admission reads.
+    const allowed = restored || (boundary === 'before-model' ? ++reads < 2 : group.due === 0);
     if (!allowed && readFailure) throw Error('membership read unavailable');
     return allowed;
   } };
