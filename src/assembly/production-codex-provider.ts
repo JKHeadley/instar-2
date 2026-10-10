@@ -1,3 +1,4 @@
+import { READ_BEFORE_ANSWER } from './tool-answer-guidance.js';
 import { createHash } from 'node:crypto';
 import { hashBytes } from '../facts/index.js';
 import type { Result } from '../index.js';
@@ -73,7 +74,7 @@ export const CODEX_HOOK_TRUST_NOTICE = '`--dangerously-bypass-hook-trust` is ena
 export const CODEX_TOOL_KINDS = Object.freeze(['command_execution', 'file_change', 'web_search', 'mcp_tool_call', 'collab_tool_call']);
 /** The item kinds a Codex tool turn may contain: its message and reasoning, and the tool items above. */
 export const CODEX_TOOL_ITEM_TYPES = Object.freeze(['agent_message', 'reasoning', ...CODEX_TOOL_KINDS]);
-const CODEX_TOOLS_SENTENCE = 'In this turn you have your own tools: your shell and apply_patch, live web search, subagents, and the MCP tools '
+const CODEX_TOOLS_SENTENCE = READ_BEFORE_ANSWER + 'In this turn you have your own tools: your shell and apply_patch, live web search, subagents, and the MCP tools '
   + 'installed for you. (This overrides the capability note\'s tool line, which describes another route.) The shell and patches work '
   + 'inside this turn\'s private, new workspace (your working directory); every shell command runs confined: no reads outside the '
   + 'workspace except the system files commands need to run, no writes outside it, no control of other processes, and its network '
