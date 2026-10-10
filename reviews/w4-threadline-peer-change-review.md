@@ -9,7 +9,7 @@ Affected floors: secrets, spend cap, stop, no duplicate sends and durable intake
 Operator questions: The requested grant-only activation on the current single-machine installation conflicts with the purpose's fixed irreversible-operation set. A replicated installation with an admitted Threadline operation is a compliant alternative; widening the single-machine set requires an operator-approved constitutional change, not an effect-policy override.
 Suggested tier: editorial
 Declared tier: editorial
-Tier rationale: Evidence and blocker record only; no implementation or behavioral change.
+Tier rationale: Evidence record and focused existing-floor regression test only; no runtime implementation or behavioral change.
 Side effects: This record does not enable messaging or change the agent's self-description. The requested capability remains absent.
 Undo and recovery: Remove this review record if superseded by a completed implementation; no runtime rollback is needed.
 Multi-machine posture: The inspected group launcher has no conversation authority or replica configuration. The existing runner has a replicated conversation path, but its tool admission still passes SINGLE_MACHINE_PROFILE.operations unconditionally. An eventual Threadline operation must preserve exact causal-prefix replication and ownership admission; adding its name to the single-machine list is not permitted.
@@ -41,6 +41,9 @@ names what would admit a refused one` passed in the foreground with nice level 1
 Vitest worker. It proves the refusal of an irreversible MCP send under scope/resource grants
 and the neighboring acceptance of an ordinary Telegram reply in the fixed operation set.
 This is evidence of the blocker only, not tests of a new Threadline send or receive path.
+The focused `tests/preview/threadline-peer-floor.test.ts` also checks the exact proposed
+paired-send effect with missing, live, wrong-peer and expired grants, alongside the permitted
+Telegram reply. It must not be represented as implementation of a peer transport.
 
 Echo's Studio health response at `2026-10-10T22:50:55.568Z` reported connected relay,
 identity public key `63b1dbb21646e2f5f860441f6c6443ad259e81bdad48227a8f87e2d00ec89bef`,
