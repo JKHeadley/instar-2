@@ -121,6 +121,98 @@ it('at the configured quota threshold switches before dispatch; below, stale or 
   expect(createHarnessLoginPool(f.settings).select().index).toBe(0);
 });
 
+const capacity = (f, measuredAt = f.clock.at) => ({ version: 1, accounts: f.configuration.entries.map(({ profile }) => ({
+  email: profile.expectedAccount, configHome: profile.configDirectory,
+  lastQuota: { measuredAt: new Date(measuredAt).toISOString(),
+    fiveHour: { utilizationPct: 0, resetsAt: new Date(f.clock.at + 5 * 3600_000).toISOString() },
+    sevenDay: { utilizationPct: 0, resetsAt: new Date(f.clock.at + 7 * 86400_000).toISOString() } },
+})) });
+const exhaustSessions = pool => {
+  const observation = { kind: 'Success', value: { phase: 'pause-observed', detail: 'rate-limited' } };
+  for (let n = 0; n < 2; n++) expect(observeHarnessSessionLimit(pool, pool.select('session'), observation)).toBe(observation);
+  expect(() => pool.select('session')).toThrow(/no reviewed login/);
+};
+
+it.each([false, true])('recovers both unknown session holds from newer complete capacity and persists it (reopened=%s)', reopened => {
+  const f = fixture(); let reading = null;
+  let pool = createHarnessLoginPool({ ...f.settings, usage: () => reading });
+  exhaustSessions(pool);
+  f.clock.at += 8 * 86400_000;
+  reading = capacity(f);
+  if (reopened) pool = createHarnessLoginPool({ ...f.settings, usage: () => reading });
+  expect(pool.select('session').index).toBe(1);
+  expect(f.checked.at(-1)).toEqual(['serving-b', 'session']);
+  expect(pool.state.holds).toEqual({});
+  expect(createHarnessLoginPool(f.settings).state.holds).toEqual({});
+  // A new limit still holds: the same pre-limit measurement cannot release it again.
+  pool.observe(pool.select(), limit);
+  expect(pool.select().index).toBe(0);
+  expect(pool.state.holds[1].resetAt).toBeNull();
+});
+
+it.each(['stale', 'same-time', 'future', 'partial', 'malformed-window', 'expired-reset', 'wrong-email', 'wrong-home', 'drifted', 'duplicate', 'weekly-exhausted'])(
+  'preserves unknown holds when capacity evidence is %s', kind => {
+    const f = fixture(); exhaustSessions(f.pool); const heldAt = f.clock.at;
+    f.clock.at += 1000; const reading = capacity(f);
+    for (const row of reading.accounts) {
+      if (kind === 'stale') row.lastQuota.measuredAt = new Date(f.clock.at - 300001).toISOString();
+      if (kind === 'same-time') row.lastQuota.measuredAt = new Date(heldAt).toISOString();
+      if (kind === 'future') row.lastQuota.measuredAt = new Date(f.clock.at + 1).toISOString();
+      if (kind === 'partial') delete row.lastQuota.sevenDay;
+      if (kind === 'malformed-window') row.lastQuota.sevenDay.utilizationPct = -1;
+      if (kind === 'expired-reset') row.lastQuota.sevenDay.resetsAt = new Date(f.clock.at).toISOString();
+      if (kind === 'wrong-email') row.email = 'other@example.invalid';
+      if (kind === 'wrong-home') row.configHome = '/elsewhere';
+      if (kind === 'drifted') row.identityDrifted = true;
+      if (kind === 'weekly-exhausted') row.lastQuota.sevenDay.utilizationPct = 95;
+    }
+    if (kind === 'duplicate') reading.accounts.push(...structuredClone(reading.accounts));
+    const pool = createHarnessLoginPool({ ...f.settings, usage: () => reading });
+    expect(() => pool.select()).toThrow(/no reviewed login/);
+    expect(Object.values(pool.state.holds).every(hold => hold.resetAt === null)).toBe(true);
+    expect(() => createHarnessLoginPool(f.settings).select()).toThrow(/no reviewed login/);
+  });
+
+it('complete low readings preserve an active known weekly hold; legacy unknown holds recover after a durable freshness boundary', () => {
+  const f = fixture(['serving-a']); const a = f.pool.select();
+  f.pool.observe(a, { failure: { failureClass: 'limit', resetAt: f.clock.at + 7 * 86400_000 } });
+  f.clock.at += 1000;
+  expect(() => createHarnessLoginPool({ ...f.settings, usage: () => capacity(f) }).select()).toThrow(/no reviewed login/);
+  const legacy = f.pool.state; legacy.holds[0] = { reason: 'provider-limit', resetAt: null };
+  writeFileSync(f.settings.statePath, JSON.stringify(legacy));
+  const pool = createHarnessLoginPool({ ...f.settings, usage: () => capacity(f) });
+  expect(() => pool.select()).toThrow(/no reviewed login/);
+  expect(createHarnessLoginPool(f.settings).state.holds[0].observedAt).toBe(f.clock.at);
+  f.clock.at += 1000;
+  expect(createHarnessLoginPool({ ...f.settings, usage: () => capacity(f) }).select().index).toBe(0);
+});
+
+it.each([null, false, 42, 'row', [], {}, { email: 'serving-a@example.invalid', lastQuota: null }])(
+  'malformed optional quota rows are unavailable and preserve existing holds: %j', row => {
+    const f = fixture(); const settings = { ...f.settings, usage: () => ({ version: 1, accounts: [row] }) };
+    expect(createHarnessLoginPool(settings).select().index).toBe(0);
+    f.pool.observe(f.pool.select(), limit);
+    const pool = createHarnessLoginPool(settings);
+    expect(pool.select().index).toBe(1);
+    expect(pool.state.holds).toEqual(f.pool.state.holds);
+    pool.observe(pool.select(), limit);
+    expect(() => pool.select()).toThrow(/no reviewed login/);
+  });
+
+it('quota unavailability never swallows authority failures and recovery never swallows persistence failures', () => {
+  const f = fixture(['serving-a']);
+  expect(createHarnessLoginPool({ ...f.settings, usage: () => { throw Error('reader failed'); } }).select().index).toBe(0);
+  expect(() => createHarnessLoginPool({ ...f.settings, usage: () => ({ version: 1, accounts: [null] }),
+    validate: () => { throw Error('activation withdrawn'); } }).select()).toThrow('activation withdrawn');
+  f.pool.observe(f.pool.select(), limit); f.clock.at += 1000;
+  const pool = createHarnessLoginPool({ ...f.settings, usage: () => capacity(f), write: () => { throw Error('disk unavailable'); } });
+  expect(() => pool.select()).toThrow('disk unavailable');
+  expect(pool.state.holds).toEqual(f.pool.state.holds);
+  expect(createHarnessLoginPool(f.settings).state.holds).toEqual(f.pool.state.holds);
+  expect(() => createHarnessLoginPool({ ...f.settings, usage: () => capacity(f),
+    validate: () => { throw Error('stop active'); } }).select()).toThrow('stop active');
+});
+
 it('transport, policy, local timeout, uncertain judgment and empty answers do not exhaust a login', () => {
   const f = fixture(), selected = f.pool.select();
   for (const failureClass of ['timeout', 'transport', 'policy', 'unknown']) f.pool.observe(selected, { state: 'uncertain', failure: { failureClass } });
@@ -138,7 +230,7 @@ it('a short quota window cannot shorten a provider weekly hold or clear an unkno
         utilizationPct: 99, resetsAt: new Date(f.clock.at + 1000).toISOString() } },
     }] }) });
     const b = pool.select(); expect(b.index).toBe(1);
-    expect(pool.state.holds[0]).toEqual({ reason: 'provider-limit', resetAt });
+    expect(pool.state.holds[0]).toMatchObject({ reason: 'provider-limit', resetAt });
     pool.observe(b, limit); f.clock.at += 1001;
     expect(() => createHarnessLoginPool(f.settings).select()).toThrow(/no reviewed login/);
     f.clock.at += 7000;
@@ -169,13 +261,17 @@ it('replays recorded summary/Jev/review/delivered/empty-context shapes unchanged
   for (const row of corpus.otherShapes) {
     const f = fixture();
     f.pool.observe(f.pool.select(), { state: 'rejected', failure: classifyProviderFailure({ code: 1, limited: false, stdout, now: f.clock.at }) });
-    const next = f.pool.select(); expect(next.profile.reference, row.kind).toBe('serving-b');
+    f.pool.observe(f.pool.select(), limit);
+    f.clock.at += 8 * 86400_000;
+    const recovered = createHarnessLoginPool({ ...f.settings, usage: () => capacity(f) });
+    const next = recovered.select(); expect(next.profile.reference, row.kind).toBe('serving-b');
+    expect(recovered.state.holds).toEqual({});
     // The pool has no judgment parser: recorded uncertainty is not provider capacity evidence.
     const returned = { state: row.kind === 'summary-uncertain' ? 'uncertain' : 'complete', bytes: row.raw };
     const before = JSON.stringify(returned);
-    f.pool.observe(next, returned);
+    recovered.observe(next, returned);
     expect(JSON.stringify(returned), row.id).toBe(before);
-    expect(f.pool.select()).toBe(next); expect(f.pool.state.switches).toHaveLength(1);
+    expect(recovered.select()).toBe(next); expect(recovered.state.switches).toHaveLength(1);
   }
 });
 

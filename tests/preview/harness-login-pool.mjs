@@ -59,26 +59,36 @@ export function loadHarnessLogins(options, readText = read) {
  * or the reviewed usageAccount id (the pool may poll the same account in its original home);
  * stale, unavailable, mismatched and malformed readings are not evidence of exhaustion.
  * The provider result remains authoritative when a reading cannot be obtained. */
-export function harnessQuotaLimit(document, profile, threshold, now, usageAccount) {
+function harnessQuotaReading(document, profile, now, usageAccount) {
   if (document?.version !== 1 || !Array.isArray(document.accounts)) return null;
-  const matches = document.accounts.filter(account => account.email === profile.expectedAccount
+  const matches = document.accounts.filter(account => account && typeof account === 'object' && account.email === profile.expectedAccount
     && account.identityDrifted !== true
     && (usageAccount === undefined ? account.configHome === profile.configDirectory : account.id === usageAccount));
   if (matches.length !== 1) return null;
   const quota = matches[0].lastQuota;
-  const at = Date.parse(quota?.measuredAt);
+  const at = typeof quota?.measuredAt === 'string' ? Date.parse(quota.measuredAt) : NaN;
   if (!Number.isFinite(at) || at > now || now - at > 5 * 60_000) return null;
-  const windows = [quota?.fiveHour, quota?.sevenDay].filter(window => window
-    && Number.isFinite(window.utilizationPct) && window.utilizationPct >= threshold && window.utilizationPct <= 100
-    && Number.isFinite(Date.parse(window.resetsAt)) && Date.parse(window.resetsAt) > now);
-  return windows.length ? { reason: 'usage-threshold', resetAt: Math.max(...windows.map(window => Date.parse(window.resetsAt))) } : null;
+  const windows = [quota?.fiveHour, quota?.sevenDay].map(window => window
+    && Number.isFinite(window.utilizationPct) && window.utilizationPct >= 0 && window.utilizationPct <= 100
+    && typeof window.resetsAt === 'string' && Number.isFinite(Date.parse(window.resetsAt)) && Date.parse(window.resetsAt) > now
+    ? { utilizationPct: window.utilizationPct, resetAt: Date.parse(window.resetsAt) } : null);
+  return { at, windows };
+}
+
+function quotaLimit(reading, threshold) {
+  const windows = reading?.windows.filter(window => window && window.utilizationPct >= threshold) ?? [];
+  return windows.length ? { reason: 'usage-threshold', resetAt: Math.max(...windows.map(window => window.resetAt)) } : null;
+}
+
+export function harnessQuotaLimit(document, profile, threshold, now, usageAccount) {
+  return quotaLimit(harnessQuotaReading(document, profile, now, usageAccount), threshold);
 }
 
 /** The root's existing writer lease serializes this small durable selection record. History contains
  * only profile references, causes and times; retained for audit, never model text or credentials.
  * A missing initial record is installed durably before use; corrupt/mismatched state holds admission.
  * No timer retries: an exhausted profile becomes eligible after a provider/reading reset time.
- * Unknown reset times stay exhausted until the desk reviews a new pool configuration. */
+ * Unknown resets recover from newer matched readings with capacity in both quota windows. */
 export function createHarnessLoginPool({ configuration, statePath, now, validate,
   readText = read, write = durablePreviewWrite, previouslyLaunched = () => false, usage = () => configuration.usageFile
     ? JSON.parse(readText(configuration.usageFile)) : null }) {
@@ -95,21 +105,29 @@ export function createHarnessLoginPool({ configuration, statePath, now, validate
     || !entries[state.active] || !state.holds || typeof state.holds !== 'object' || Array.isArray(state.holds) || !Array.isArray(state.switches)) fail('state differs; desk migration required');
   for (const [index, hold] of Object.entries(state.holds))
     if (!/^[0-7]$/u.test(index) || !entries[index] || !['provider-limit', 'usage-threshold'].includes(hold?.reason)
-      || !(hold.resetAt === null || Number.isSafeInteger(hold.resetAt))) fail('hold is malformed');
+      || !(hold.resetAt === null || Number.isSafeInteger(hold.resetAt))
+      || (hold.observedAt !== undefined && !Number.isSafeInteger(hold.observedAt))) fail('hold is malformed');
   for (const [index, event] of state.switches.entries())
     if (event?.sequence !== index + 1 || !Number.isSafeInteger(event.at)
       || !entries.some(entry => entry.profile.reference === event.from)
       || !entries.some(entry => entry.profile.reference === event.to) || event.from === event.to
       || !['provider-limit', 'usage-threshold'].includes(event.reason)) fail('switch history is malformed');
   const persist = next => { write(statePath, next); state = next; };
+  // Legacy holds have no observation time. Establish a durable freshness boundary once;
+  // only a subsequent measurement can release one, including after another restart.
+  const legacy = Object.entries(state.holds).filter(([, hold]) => hold.observedAt === undefined);
+  if (legacy.length) persist({ ...state, holds: { ...state.holds,
+    ...Object.fromEntries(legacy.map(([index, hold]) => [index, { ...hold, observedAt: now() }])) } });
   const hold = (entry, evidence) => {
     const previous = state.holds[entry.index];
     // A shorter quota window cannot erase a still-active weekly/provider hold.
     if (previous && (previous.resetAt === null || previous.resetAt > now())) evidence = {
       reason: previous.reason === 'provider-limit' ? previous.reason : evidence.reason,
+      observedAt: Math.max(previous.observedAt, evidence.observedAt),
       resetAt: previous.resetAt === null || evidence.resetAt === null ? null : Math.max(previous.resetAt, evidence.resetAt),
     };
-    if (previous?.reason === evidence.reason && previous.resetAt === evidence.resetAt) return;
+    if (previous?.reason === evidence.reason && previous.resetAt === evidence.resetAt
+      && previous.observedAt === evidence.observedAt) return;
     persist({ ...state, holds: { ...state.holds, [entry.index]: evidence } });
   };
   const admitted = (entry, tools) => {
@@ -123,8 +141,16 @@ export function createHarnessLoginPool({ configuration, statePath, now, validate
       let reading = null;
       try { reading = usage(); } catch { /* A failed quota observation cannot create a limit. */ }
       for (const entry of entries) {
-        const limit = harnessQuotaLimit(reading, entry.profile, configuration.threshold, at, entry.usageAccount);
-        if (limit) hold(entry, limit);
+        const quota = harnessQuotaReading(reading, entry.profile, at, entry.usageAccount);
+        const limit = quotaLimit(quota, configuration.threshold);
+        if (limit) hold(entry, { ...limit, observedAt: quota.at });
+        const previous = state.holds[entry.index];
+        if (previous?.resetAt === null && quota && quota.at > previous.observedAt
+          && quota.windows.every(window => window && window.utilizationPct < configuration.threshold)) {
+          const holds = { ...state.holds };
+          delete holds[entry.index];
+          persist({ ...state, holds });
+        }
       }
       const limited = index => state.holds[index] && (state.holds[index].resetAt === null || state.holds[index].resetAt > at);
       if (!limited(state.active)) return admitted(entries[state.active], tools);
@@ -143,7 +169,7 @@ export function createHarnessLoginPool({ configuration, statePath, now, validate
       if (entries[entry?.index] !== entry) fail('observation names an unreviewed login');
       if (result?.failure?.failureClass !== 'limit') return;
       const reset = result.failure.resetAt;
-      hold(entry, { reason: 'provider-limit', resetAt: Number.isSafeInteger(reset) && reset > now() ? reset : null });
+      hold(entry, { reason: 'provider-limit', observedAt: now(), resetAt: Number.isSafeInteger(reset) && reset > now() ? reset : null });
     },
     notices: () => state.switches.map(event => ({ key: `doorway:harness-login:${identity}:${event.sequence}`,
       line: `The model login reached its ${event.reason === 'usage-threshold' ? 'configured usage threshold' : 'usage limit'}. I switched to the next approved login for this runner.` })),

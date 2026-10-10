@@ -3995,7 +3995,10 @@ Optional `usageFile` names a read-only 1.x SubscriptionPool JSON snapshot (`vers
 the profile's exact account and config directory (or the entry's explicitly reviewed `usageAccount` id when the pool polls
 the account in its original config home), at most five minutes old and with no reported identity drift, can trigger the configured threshold
 (default 95 percent). Missing/stale/unreadable readings provide no exhaustion evidence; provider errors still do. A known
-reset time restores eligibility then; an unknown reset stays held until the desk reviews a new configuration. Exhausting
+reset time restores eligibility then. An unknown reset recovers when a newer, fresh, identity-matched
+reading shows both five-hour and seven-day windows below the threshold with valid future resets.
+Recovery is durable; missing, stale, partial or mismatched evidence preserves the hold. Legacy holds
+without observation times gain a durable freshness boundary on first reopen and need a later reading. Exhausting
 all listed members holds calls; it never picks an unlisted account. Status reports capacity for the whole list.
 
 `<root>/harness-login-pool.json` retains active selection, holds and all switch records through atomic fsynced writes under
