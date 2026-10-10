@@ -99,12 +99,14 @@ it('on the tools route the review packet is route-true, and the same two sides h
     expect(packet.obligationDecision, input).toBe(OBLIGATION_DECISION_TOOLS);
     expect(packet.declaredObligations.toolAttempts, input).toEqual({ meaning: TOOL_ATTEMPTS_MEANING, calls: [] });
     expect(packet.sources.find(source => source.id === 'capability-note')!.text, input).toContain(`- ${toolsBriefing(0)}`);
-    // Plan #491 and #510 changed only the answer-slot wording of the review question after these were recorded (the flat
-    // answer protocol, then one verdict field per rule); every rule, guide and packet line below is still the recorded one.
+    // The flat answer protocol, one verdict field per rule and bounded output allocation changed after these captures.
+    // Translate those exact historical instructions; every rule, guide and packet line remains compared in full.
     const content = envelopeOf(input).messages[0]!.content;
     if (input.startsWith('review-r2-')) expect(content
       .replace(/Return inside conclusion\.value exactly one line for every listed rule and no other rule, each of the form rule_id: PASS \| short reason or rule_id: VIOLATION \| short reason, with each reason under (\d+) characters; put any longer reasoning in reason\.value\./u,
         'Give every listed rule, and no other rule, one verdict "PASS | short reason" or "VIOLATION | short reason", with each reason under $1 characters; put any longer reasoning in reasoning.')
+      .replace('with each reason under 300 characters; put any longer reasoning in reasoning.',
+        'with each reason under 160 characters. Keep reasoning under 400 characters and the entire JSON response under 4000 characters so every verdict fits the existing output allowance. Allocate the response to the verdicts, without repeating the rules or context.')
       .replace('A reason that finds no breach belongs on a PASS line. No other text.', `A reason that finds no breach belongs on a PASS verdict. ${taskFields('{rule_id: its verdict, one field for each listed rule, named by that rule id}')}`), input).toBe(replyReviewQuestion(flagged));
     else expect(content, input).not.toContain('in no broader terms');
   }

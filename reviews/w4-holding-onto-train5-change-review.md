@@ -4,7 +4,7 @@ Subject base: 4e808bf858213964be9f3bb954d46b66871f4d10
 Review state: open
 Reviewed content: none
 Outcome: Merge sb-w4-holding-honest2 2a77c531 into train-5 by ordinary merge, retaining current group audience standing, coherent remainder review, bounded typed pre-dispatch retries and content-free final notices.
-Affected rules: 1, 4, 26, 28, 34, 36, 37, 41, 42, 46, 49, 55, 57, 60, 63, 66, 69, 70, 74, 75, 77, 86, 88, 95, 101, 102, 111, 112, 113, 116; purpose least revelation and durable cause
+Affected rules: 1, 4, 26, 28, 34, 36, 37, 41, 42, 46, 49, 55, 57, 60, 63, 66, 67, 69, 70, 74, 75, 77, 86, 88, 89, 95, 101, 102, 107, 111, 112, 113, 116; purpose least revelation and durable cause
 Affected floors: secrets — disclosure checkpoints and contextual audience/remainder review remain mandatory for answer content; spend cap — retry reuses only an unused reservation under the existing deadline and call cap; stop — existing gates run after retry waits and before dispatch; no duplicate sends — UNKNOWN calls and durable send intents are never repeated; durable intake — original drafts and accepted turns remain in the encrypted journal
 Operator questions: none
 Suggested tier: critical
@@ -18,16 +18,18 @@ Bug class: none
 Bug evidence: none
 Hook bypass: none; core.hooksPath is unset and the common hooks directory contains samples only
 Convergence: none
-Decision: holding-train5-wrapper | Combine the disclosure wrapper by resetting verified standing before checking, preserving typed pre-dispatch errors and setting standing only on success; keep both import sets. | reported=/Users/dabombstudio/.instar/agents/echo/.instar/lanes/w4-holding-onto-train5-PROGRESS.md
-Decision: holding-train5-declarations | Retain both audience/remainder and bounded retry/final-notice semantics; refresh owner hashes and regenerate all seven generated conflicts with the existing desk chain. | reported=/Users/dabombstudio/.instar/agents/echo/.instar/lanes/w4-holding-onto-train5-PROGRESS.md
-Decision: holding-train5-boundaries | Update obsolete silence and uncertain-review holding expectations to exact content-free final notices, and exercise recovery before review plus membership change before send against the captured audience case. | reported=/Users/dabombstudio/.instar/agents/echo/.instar/lanes/w4-holding-onto-train5-PROGRESS.md
-Decision: holding-train5-evidence | Run changed tests and direct import consumers with nice 10 and two workers as specifically instructed; leave macOS-only tests and live journal reads to the Studio and replay committed recorded shapes locally. | reported=/Users/dabombstudio/.instar/agents/echo/.instar/lanes/w4-holding-onto-train5-PROGRESS.md
+Decision: holding-train5-wrapper | Combine the disclosure wrapper by resetting verified standing before checking, preserving typed pre-dispatch errors and setting standing only on success; keep both import sets. | reported=/Users/dabombstudio/.instar/agents/echo/.instar/lanes/w4-holding-onto-train5-repair-125906-PROGRESS.md
+Decision: holding-train5-declarations | Retain both audience/remainder and bounded retry/final-notice semantics; refresh owner hashes and regenerate all seven generated conflicts with the existing desk chain. | reported=/Users/dabombstudio/.instar/agents/echo/.instar/lanes/w4-holding-onto-train5-repair-125906-PROGRESS.md
+Decision: holding-train5-boundaries | Update obsolete silence and uncertain-review holding expectations to exact content-free final notices, and exercise recovery before review plus membership change before send against the captured audience case. | reported=/Users/dabombstudio/.instar/agents/echo/.instar/lanes/w4-holding-onto-train5-repair-125906-PROGRESS.md
+Decision: holding-train5-evidence | Run changed tests and direct import consumers with nice 10 and two workers as specifically instructed; leave macOS-only tests and live journal reads to the Studio and replay committed recorded shapes locally. | reported=/Users/dabombstudio/.instar/agents/echo/.instar/lanes/w4-holding-onto-train5-repair-125906-PROGRESS.md
 Prompt review: No new model instruction or parser is authored. The merged worker must still project current verified standing into review evidence. Recorded audience update 969390330 and topic evidence, held CEDAR update 969390331, uncertain reply-review updates 715675322/715675327, unsure Jev cases 969389800/969389804 and archived summary/reviewer/reply shapes are replayed through existing consumers. New failure timing controls are synthetic and explicitly distinct from captured model output. No live-provider or new delivered-bubble claim is made; the carried unit records no captured real empty delivered bubble.
 Prompt finding: 849db3a6296a | protocol-literal | unchanged fixed memory-list reply
 Prompt finding: bd01de21286a | protocol-literal | unchanged source citation instruction
 Prompt finding: fb5fa7e706c8 | protocol-literal | unchanged source grounding instruction
 Deferral: tests/preview/reply-check.declarations.json:13 | not-a-deferral=declaration describes enforced runtime handling of rejected promises, not deferred builder work
 Deferral: generated/register.json:1 | not-a-deferral=generated register quotes the rule book, not a deferred commitment
+
+Rule mapping supplement: Rule 67 — unavailable or unknown model review never grants heuristic permission; Rule 89 — infrastructure-authored final notices remain infrastructure-labelled and use the signed send path; Rule 107 — the deterministic selfdesc-limits failure was disclosed as red and is repaired by the accompanying exact historical-question translation, without claiming a full-suite green run.
 
 Register evidence: Existing desk chain refreshed two preview owner hashes; generated artifacts now bind the merged source commit 15cb885db39540e9735da93ef8737d4f56d897da. Build, typecheck, architecture, lint and register:check passed on WSL.
 
