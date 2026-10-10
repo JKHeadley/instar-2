@@ -85,6 +85,12 @@ export function configureTrust(root, action, request) {
       || (mcp.reads ?? []).some(name => !(oldMcp.reads ?? []).includes(name)))
       throw Error('tighten cannot widen standing trust');
     policy.registered = oldPolicy.registered;
+    policy.policySensitive = oldPolicy.policySensitive;
+  }
+  if (action === 'revoke' && oldPolicy) {
+    decodeEffectPolicy(oldPolicy);
+    policy.registered = oldPolicy.registered.map(entry => ({ ...entry, reach: 'world' }));
+    policy.policySensitive = oldPolicy.policySensitive;
   }
   mkdirSync(root, { recursive: true, mode: 0o700 });
   for (const [path, old, next] of [[policyPath, oldPolicy, policy], [mcpPath, oldMcp, mcp]]) {

@@ -22,7 +22,7 @@ Prompt review: Reviewed both tool briefings for fixture-trigger phrases and neut
 Prompt finding: 450c79237a95 | protocol-literal | Existing conversation-prompt wording about ambiguous memory items is unchanged; the new tool briefing does not copy a fixture trigger.
 Decision: trust-reuse | Reuse operator effect registrations and grants rather than inventing a trust engine; unregistered writes stay irreversible. | reported=/Users/dabombstudio/.instar/agents/echo/.instar/lanes/w4-trust-default-PROGRESS.md
 Decision: trust-request-scope | Bind reversible network writes to exact method and path because a host-wide registration also admits unrelated sends. | reported=/Users/dabombstudio/.instar/agents/echo/.instar/lanes/w4-trust-default-PROGRESS.md
-Decision: trust-tighten | Preserve existing classifications while removing grants or lowering ceilings so revocation cannot restore a permissive default. | reported=/Users/dabombstudio/.instar/agents/echo/.instar/lanes/w4-trust-default-PROGRESS.md
+Decision: trust-tighten | Preserve existing classifications and policy-sensitive restrictions while removing grants or lowering ceilings so revocation cannot restore a permissive default. | reported=/Users/dabombstudio/.instar/agents/echo/.instar/lanes/w4-trust-default-PROGRESS.md
 
 ## Closing block
 

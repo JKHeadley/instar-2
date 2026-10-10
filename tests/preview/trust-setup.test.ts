@@ -39,7 +39,7 @@ it('tightens cost and scope, rejects widening, and revoke is idempotent', () => 
   configureTrust(r, 'tighten', { ...req, effects: [], mcp: { mcpServers: {}, reads: [] } });
   expect(load(r).grants).toEqual([]);
   configureTrust(r, 'revoke'); configureTrust(r, 'revoke');
-  expect(load(r).registered).toEqual([]); expect(readRootMcp(r)).toBeNull();
+  expect(load(r).registered).toHaveLength(2); expect(readRootMcp(r)).toBeNull();
 });
 it('rejects missing operator provenance, unbounded cost and literal env secrets', () => {
   expect(() => setupTrustPolicy({ ...request(), source: '' })).toThrow();
@@ -84,4 +84,15 @@ it('replays real summary, Jev, reviewer and delivered/empty outputs without turn
     expect(() => configureTrust(r, 'setup', output), `${row.kind}: ${row.id}`).toThrow();
     expect(readFileSync(join(r, 'effect-policy.json'), 'utf8')).toBe(before);
   }
+});
+
+it('tighten and revoke preserve existing policy-sensitive read restrictions', () => {
+  const r = root(); configureTrust(r, 'setup', request());
+  const p = load(r); p.policySensitive = ['sensitive.example'];
+  writeFileSync(join(r, 'effect-policy.json'), JSON.stringify(p));
+  const input = { method: 'GET', host: 'sensitive.example', path: '/' };
+  configureTrust(r, 'tighten', { ...request(), effects: [] });
+  expect(admitEgress(input, { effectPolicy: load(r), operations: [] }, 0).decision).toBe('deny');
+  configureTrust(r, 'revoke');
+  expect(admitEgress(input, { effectPolicy: load(r), operations: [] }, 0).decision).toBe('deny');
 });
