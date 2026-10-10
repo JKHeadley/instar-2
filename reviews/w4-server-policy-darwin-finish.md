@@ -1,6 +1,6 @@
 # Change review — Verify server-policy freshness repair on Darwin
 
-Subject base: 03351d139a0b1db1d878c0d4be0ce7f20b93ba2d
+Subject base: 06792bbb960e6f50b185a84907f704137b564958
 Review state: open
 Reviewed content: none
 Outcome: Certify the changed native harness composition after the freshness repair and verify real physical launches on Darwin. Valid timestamp-only cache refreshes keep working; unknown policy and changed identity/content remain held.
