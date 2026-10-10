@@ -69,7 +69,7 @@ const isContextRule = (id: ReplyRule): id is ContextRule => (CONTEXT_RULES as re
 /** The contextual review's selection: what Jev left unresolved (or every rule), plus the context questions, plus the
  * audience question when, and only when, the reply's audience is not the verified operator alone. */
 export const guidanceReviewRules = (ruleIds: readonly ReplyRule[], shared = false): ReplyRule[] =>
-  [...new Set([...ruleIds.filter(id => shared || !isAudienceRule(id)), ...CONTEXT_RULES, ...(shared ? AUDIENCE_RULES : [])])];
+  [...new Set([...ruleIds.filter(id => id !== 'incoherent_remainder' && (shared || !isAudienceRule(id))), ...CONTEXT_RULES, ...(shared ? AUDIENCE_RULES : [])])];
 export type ReplyVerdict = 'pass' | 'violation' | 'unsure' | 'unavailable';
 export type ReplyPath = 'jev' | 'subscription' | 'holding' | 'operator-echo';
 export const JEV_MODEL = 'jev-1.13.0';
