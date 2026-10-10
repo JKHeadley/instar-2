@@ -22,7 +22,7 @@ const root = () => realpathSync(mkdtempSync(join(tmpdir(), 'preview-send-outcome
 // D1c, update 46039703: the live answer already contained its finished follow-up, but the
 // bridge collapsed all native fetch failures to UNKNOWN. Replay its bytes through the real
 // bridge and journal. The local provider exercises both connection refusal and lost receipt.
-it.each(['real-connect-recovery', 'real-lost-receipt'])(
+it.each(['real-connect-recovery', 'real-connect-persistent', 'real-lost-receipt'])(
   'recorded D1c follow-up through %s preserves delivery and no-duplicate boundaries', async mode => {
     const dir = root();
     const fixture = JSON.parse(readFileSync(new URL('./fixtures/deferral-send-failure-2026-10-08.json', import.meta.url), 'utf8')) as {
@@ -50,11 +50,12 @@ it.each(['real-connect-recovery', 'real-lost-receipt'])(
             text: input.expectedText } });
           const child = spawnSync(process.execPath, ['--import', resolve('tests/assembly/telegram-bot-api-round6-transport.mjs'),
             resolve('src/assembly/telegram-bot-api-bridge.mjs'), request], { input: '12345678:AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA',
-            encoding: 'utf8', timeout: 15_000, env: { ...process.env, INSTAR_ROUND6_FAILURE: mode,
+            encoding: 'utf8', timeout: 15_000, env: { ...process.env, INSTAR_ROUND6_FAILURE: mode === 'real-connect-persistent' && sends > 2 ? 'real-connect-recovery' : mode,
               INSTAR_ROUND6_COUNT_FILE: count, INSTAR_ROUND6_RESPONSE_BASE64: Buffer.from(response).toString('base64') } });
           expect(child.status, child.stderr).toBe(0);
           expect(JSON.parse(readFileSync(count, 'utf8'))).toMatchObject({
-            fetches: mode === 'real-connect-recovery' ? 2 : 1, requests: 1 });
+            fetches: mode === 'real-lost-receipt' ? 1 : 2,
+            requests: mode === 'real-connect-persistent' && sends === 2 ? 0 : 1 });
           return classifyTelegramSend(JSON.parse(child.stdout), { chat: input.chat, expectedText: input.expectedText });
         } });
       worker.intake([update(fixture.deferredUpdate, fixture.request)]); await worker.drain();
@@ -63,12 +64,12 @@ it.each(['real-connect-recovery', 'real-lost-receipt'])(
       expect(loopHealth(journal.view, now).awaitingDelivery).toBe(1);
       expect(sends).toBe(1); // no unsolicited message
       worker.intake([update(fixture.update, 'hi')]); await worker.drain();
-      expect(sends).toBe(2);
+      expect(sends).toBe(mode === 'real-connect-persistent' ? 3 : 2);
       expect(loopHealth(journal.view, now)).toMatchObject({ awaitingDelivery: 0,
-        deliveryUnknown: mode === 'real-connect-recovery' ? 0 : 1 });
-      expect(journal.view.order.at(-1)?.sent).toBe(mode === 'real-connect-recovery' ? 2 : undefined);
+        deliveryUnknown: mode === 'real-lost-receipt' ? 1 : 0 });
+      expect(journal.view.order.at(-1)?.sent).toBe(mode === 'real-lost-receipt' ? undefined : 2);
       if (mode === 'real-lost-receipt')
-        expect(journal.view.sendOutcomes.at(-1)?.reason).toBe(fixture.sendOutcome.reason);
+        expect(journal.view.sendOutcomes.at(-1)?.reason).toBe(`${fixture.sendOutcome.reason} (UND_ERR_SOCKET)`);
       journal.close();
       const reopened = world(dir, () => { throw Error('send repeated'); });
       await reopened.worker.drain();
@@ -76,6 +77,35 @@ it.each(['real-connect-recovery', 'real-lost-receipt'])(
       reopened.journal.close();
     } finally { journal.close(); rmSync(dir, { recursive: true, force: true }); }
   }, 60_000);
+
+it('persistent native connection refusal stops after one outer retry and remains refused after restart', async () => {
+  const dir = root();
+  try {
+    const w = world(dir, () => {
+      const count = join(dir, 'count.json');
+      const request = Buffer.from(JSON.stringify({ method: 'sendMessage', body: {}, timeoutMs: 10_000 })).toString('base64url');
+      const child = spawnSync(process.execPath, ['--import', resolve('tests/assembly/telegram-bot-api-round6-transport.mjs'),
+        resolve('src/assembly/telegram-bot-api-bridge.mjs'), request], { input: '12345678:AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA',
+        encoding: 'utf8', timeout: 15_000, env: { ...process.env, INSTAR_ROUND6_FAILURE: 'real-connect-persistent',
+          INSTAR_ROUND6_COUNT_FILE: count, INSTAR_ROUND6_RESPONSE_BASE64: Buffer.from('{}').toString('base64') } });
+      expect(child.status, child.stderr).toBe(0);
+      expect(JSON.parse(readFileSync(count, 'utf8'))).toMatchObject({ fetches: 2, requests: 0 });
+      const reply = JSON.parse(child.stdout);
+      expect(reply).toMatchObject({ sent: false, transportErrors: [{ code: 'ECONNREFUSED', syscall: 'connect' }] });
+      return classifyTelegramSend(reply, { chat: genesis.chat, expectedText: 'an answer' });
+    });
+    w.worker.intake([update(1)]); await w.worker.drain();
+    expect(w.seen).toHaveLength(2);
+    expect(w.journal.view.sendOutcomes).toHaveLength(1);
+    expect(w.journal.view.sendOutcomes[0]).toMatchObject({ outcome: 'refused',
+      reason: expect.stringContaining('ECONNREFUSED/connect') });
+    w.journal.close();
+    const reopened = world(dir, () => { throw Error('terminal refusal repeated'); });
+    await reopened.worker.drain();
+    expect(reopened.seen).toHaveLength(0);
+    reopened.journal.close();
+  } finally { rmSync(dir, { recursive: true, force: true }); }
+}, 60_000);
 
 function world(dir: string, send: (input: { target?: string; provenance?: unknown }) => number | null | SendOutcome) {
   const journal = openPreviewJournal(join(dir, 'journal.encrypted'), key, genesis);
@@ -219,7 +249,7 @@ it('an uncertain send keeps the bridge stage in its recorded reason (the 17:39 "
     .toEqual({ kind: 'unknown', reason: 'transport transport' });
 });
 
-it('the real bridge child, refused a connection, records the send as unknown at fetch-failure', { timeout: 30000 }, async () => {
+it('the real production bridge, refused a connection, proves non-delivery with closed diagnostics', { timeout: 30000 }, async () => {
   const dir = root();
   try {
     // A port that was just free: nothing listens, so the real fetch is refused before any request is written.
@@ -236,9 +266,10 @@ it('the real bridge child, refused a connection, records the send as unknown at 
       `http://127.0.0.1:${address.port}`);
     const reply = telegram.invoke({ method: 'sendMessage', body: { chat_id: '7', text: 'hi', parse_mode: 'HTML' }, timeoutMs: 5000 },
       '12345678:AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA');
-    expect(reply).toEqual({ kind: 'uncertain', limitation: 'transport', stage: 'fetch-failure' });
+    expect(reply).toEqual({ kind: 'uncertain', limitation: 'transport', stage: 'fetch-failure', sent: false,
+      transportErrors: [{ code: 'ECONNREFUSED', syscall: 'connect' }] });
     expect(classifyTelegramSend(reply, { chat: '7', expectedText: 'hi' }))
-      .toEqual({ kind: 'unknown', reason: 'transport transport at fetch-failure' });
+      .toEqual({ kind: 'not-sent', reason: 'not sent: transport transport at fetch-failure (ECONNREFUSED/connect)' });
   } finally { rmSync(dir, { recursive: true, force: true }); }
 });
 

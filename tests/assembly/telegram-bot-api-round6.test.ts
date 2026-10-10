@@ -4,6 +4,7 @@ import { tmpdir } from 'node:os';
 import { join, resolve } from 'node:path';
 import { spawnSync } from 'node:child_process';
 import { describe, expect, test } from 'vitest';
+import { classifyTelegramSend } from '../preview/telegram-send-outcome.mjs';
 import { telegramBridgeReplyFromExecution } from '../../src/assembly/index.js';
 
 const token = () => `1234567890:${randomBytes(26).toString('base64url')}`;
@@ -31,7 +32,7 @@ function run(mode: string, method: 'getMe' | 'getUpdates' | 'sendMessage' = 'sen
 
 describe('D01 fixed confined-child failure stages', () => {
   test.each(['connect-refused', 'connect-dns', 'connect-notfound', 'connect-timeout', 'connect-aggregate',
-    'connect-width-limit', 'connect-depth-limit'])(
+    'connect-width-limit', 'connect-depth-limit', 'connect-os-timeout'])(
     '%s retries only a proven connection failure, within the same child', mode => {
       const observed = run(mode);
       expect(observed.reply.kind).toBe('response');
@@ -40,19 +41,72 @@ describe('D01 fixed confined-child failure stages', () => {
       expect(observed.child.stdout).not.toContain(observed.secret);
     });
 
-  test.each(['connect-empty', 'connect-mixed', 'connect-wrong-syscall', 'connect-socket', 'connect-aborted',
-    'connect-too-wide', 'connect-too-deep'])(
+  test.each(['connect-empty', 'connect-mixed', 'connect-wrong-syscall', 'connect-socket',
+    'connect-too-wide', 'connect-too-deep', 'read-timeout', 'bare-timeout', 'write-reset',
+    'connect-reset', 'headers-timeout', 'unlisted-diagnostics', 'unlisted-syscall'])(
     '%s cannot authorize a second attempt', mode => {
       const observed = run(mode);
-      expect(observed.reply).toEqual({ kind: 'uncertain', limitation: 'transport', stage: 'fetch-failure' });
+      expect(observed.reply).toMatchObject({ kind: 'uncertain', limitation: 'transport', stage: 'fetch-failure' });
+      expect(observed.reply).not.toHaveProperty('sent');
       expect(observed.counts).toEqual({ fetches: 1, reads: 0, redirect: 'manual' });
       expect(observed.child.stdout).not.toContain(observed.secret);
     });
 
   test('a persistent connection failure stops at two attempts', () => {
     const observed = run('connect-persistent');
-    expect(observed.reply).toEqual({ kind: 'uncertain', limitation: 'transport', stage: 'fetch-failure' });
+    expect(observed.reply).toEqual({ kind: 'uncertain', limitation: 'transport', stage: 'fetch-failure',
+      sent: false, transportErrors: [{ code: 'ECONNREFUSED', syscall: 'connect' }] });
     expect(observed.counts.fetches).toBe(2);
+  });
+
+  test.each(['persistent-aggregate', 'persistent-dns', 'persistent-connect-timeout', 'connect-aborted'])(
+    '%s preserves positive proof even when the child cannot retry again', mode => {
+      const observed = run(mode);
+      expect(observed.reply).toMatchObject({ sent: false });
+      expect(classifyTelegramSend(observed.reply, { chat: '1', expectedText: 'reply' }).kind).toBe('not-sent');
+      expect(observed.counts.fetches).toBe(mode === 'connect-aborted' ? 1 : 2);
+    });
+
+  test.each(['refused-then-reset', 'refused-then-timeout'])(
+    '%s cannot reuse the first attempt proof', mode => {
+      const observed = run(mode);
+      expect(observed.counts.fetches).toBe(2);
+      expect(observed.reply).not.toHaveProperty('sent');
+      expect(classifyTelegramSend(observed.reply, { chat: '1', expectedText: 'reply' }).kind).toBe('unknown');
+    });
+
+  test.each([
+    ['write-reset', [{ code: 'ECONNRESET', syscall: 'write' }]],
+    ['read-timeout', [{ code: 'ETIMEDOUT', syscall: 'read' }]],
+    ['unlisted-syscall', [{ code: 'ECONNRESET' }]],
+    ['connect-mixed', [{ code: 'ECONNREFUSED', syscall: 'connect' }, { code: 'ECONNRESET', syscall: 'read' }]],
+  ] as const)('%s retains only closed diagnostics through the child and decoder', (mode, errors) => {
+    const observed = run(mode);
+    expect(JSON.parse(observed.child.stdout).transportErrors).toEqual(errors);
+    expect(observed.reply).toHaveProperty('transportErrors', errors);
+    expect(observed.child.stdout).not.toContain(observed.secret);
+    const outcome = classifyTelegramSend(observed.reply, { chat: '1', expectedText: 'reply' });
+    expect(outcome).toMatchObject({ kind: 'unknown' });
+    expect(outcome).toHaveProperty('reason', expect.stringContaining(errors[0].code));
+  });
+
+  test('a coded response-body timeout remains unknown after the request was written', () => {
+    const observed = run('body-timeout');
+    expect(observed.reply).toEqual({ kind: 'uncertain', limitation: 'transport', stage: 'body-read',
+      transportErrors: [{ code: 'UND_ERR_BODY_TIMEOUT' }] });
+    expect(observed.counts).toEqual({ fetches: 1, reads: 1, redirect: 'manual' });
+    expect(classifyTelegramSend(observed.reply, { chat: '1', expectedText: 'reply' }))
+      .toEqual({ kind: 'unknown', reason: 'transport transport at body-read (UND_ERR_BODY_TIMEOUT)' });
+  });
+
+  test('decoder and reason omit arbitrary diagnostic strings and non-boolean proof', () => {
+    const raw = { kind: 'uncertain', limitation: 'transport', stage: 'fetch-failure', sent: 'false',
+      transportErrors: [{ code: 'secret', syscall: 'secret' }, { code: 'ECONNRESET', syscall: 'secret' }] };
+    const reply = telegramBridgeReplyFromExecution({ resolver: 'ok', status: 0, stdout: JSON.stringify(raw) });
+    expect(reply).toEqual({ kind: 'uncertain', limitation: 'transport', stage: 'fetch-failure',
+      transportErrors: [{ code: 'ECONNRESET' }] });
+    for (const input of [raw, reply]) expect(classifyTelegramSend(input, { chat: '1', expectedText: 'reply' }))
+      .toEqual({ kind: 'unknown', reason: 'transport transport at fetch-failure (ECONNRESET)' });
   });
 
   test('classifies resolver and child launch failures without diagnostic payloads', () => {
