@@ -2,7 +2,7 @@ import { expect, it } from 'vitest';
 import { mkdtempSync, realpathSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
-import { AUDIENCE_RULES, BARE_TOPIC_OBJECTION, CONTEXT_RULES, checkReply, HOLDING_REPLY, interpretJev, noDecisions, parseReplyRevision, replyRevisionQuestion, validDispositions, jevQuestions, REPLY_RULES, replyReviewContext, replyReviewQuestion, replyReviewRules, parseReplyReviewVerdict, parseJevResponse, JEV_RESPONSE_MAX_BYTES, REPLY_CHECK_BUDGET_MS, REPLY_CHECK_BUDGET_REASON, REPLY_REVIEW_REASON_MAX } from './reply-check.js';
+import { AUDIENCE_RULES, BARE_TOPIC_OBJECTION, CONTEXT_RULES, checkReply, HOLDING_REPLY, interpretJev, noDecisions, parseReplyRevision, replyRevisionQuestion, validDispositions, jevQuestions, REPLY_RULES, replyReviewContext, replyReviewQuestion, replyReviewRules, parseReplyReviewVerdict, parseJevResponse, JEV_RESPONSE_MAX_BYTES, REPLY_CHECK_BUDGET_MS, REPLY_CHECK_BUDGET_REASON, REPLY_REVIEW_REASON_MAX, REPLY_REVIEW_REASONING_CHARS } from './reply-check.js';
 
 
 import type { ObjectionDisposition, ReplyCheckResult, ReplyFinding, ReplyRule } from './reply-check.js';
@@ -168,7 +168,7 @@ it('gives full-context review the actual operator request and the flat answer sl
   expect(question).toContain('packet.operatorMessage');
   // Plan #510: each rule's verdict is its own field beside reasoning (the one runner-task field protocol).
   expect(question).toContain('one field for each listed rule, named by that rule id');
-  expect(question).toContain(taskFields('{rule_id: its verdict, one field for each listed rule, named by that rule id}'));
+  expect(question).toContain(taskFields('{rule_id: its verdict, one field for each listed rule, named by that rule id}', REPLY_REVIEW_REASONING_CHARS));
   expect(question).toContain('explicit request for the command');
   expect(question).toContain('authentication secret');
   expect(question).not.toContain('Jev cleared');
