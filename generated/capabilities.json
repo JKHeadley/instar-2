@@ -1,6 +1,6 @@
 {
-  "generation": "sha256:234f1f3dfc4e9352846c10d6d11b071ab1b714943275f0725f6b3b339e3f6d2c",
-  "commit": "9f58513cb4850a301156cc842ac8f633e175a8fc",
+  "generation": "sha256:f765afe055b9c1c6c29a41905907bbe066fff5132553f8158246354145688eb3",
+  "commit": "8e484224cfb731d49fc5c3b0d99061c9728969d0",
   "launchers": {
     "bin/instar-production.mjs": [
       {
@@ -25,7 +25,7 @@
         "module": "tests/preview",
         "availability": "not-loaded",
         "userFacing": true,
-        "text": "answers the operator in their private Telegram chat and topics, one reply per admitted message."
+        "text": "answers the operator in the configured private Telegram chat or forum group, returning each reply to its originating topic."
       },
       {
         "id": "preview-durable-memory",
@@ -155,7 +155,7 @@
         "module": "tests/preview",
         "availability": "not-loaded",
         "userFacing": true,
-        "text": "answers the operator in their private Telegram chat and topics, one reply per admitted message."
+        "text": "answers the operator in the configured private Telegram chat or forum group, returning each reply to its originating topic."
       },
       {
         "id": "preview-durable-memory",
@@ -285,7 +285,7 @@
         "module": "tests/preview",
         "availability": "not-loaded",
         "userFacing": true,
-        "text": "answers the operator in their private Telegram chat and topics, one reply per admitted message."
+        "text": "answers the operator in the configured private Telegram chat or forum group, returning each reply to its originating topic."
       },
       {
         "id": "preview-durable-memory",
@@ -415,7 +415,7 @@
         "module": "tests/preview",
         "availability": "not-loaded",
         "userFacing": true,
-        "text": "answers the operator in their private Telegram chat and topics, one reply per admitted message."
+        "text": "answers the operator in the configured private Telegram chat or forum group, returning each reply to its originating topic."
       },
       {
         "id": "preview-durable-memory",
@@ -545,7 +545,7 @@
         "module": "tests/preview",
         "availability": "available",
         "userFacing": true,
-        "text": "answers the operator in their private Telegram chat and topics, one reply per admitted message."
+        "text": "answers the operator in the configured private Telegram chat or forum group, returning each reply to its originating topic."
       },
       {
         "id": "preview-durable-memory",
