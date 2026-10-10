@@ -22,7 +22,7 @@ Decision: holding-train5-repair-optional-anchor | Add allow_sending_without_repl
 Decision: holding-train5-repair-pin-refresh | Regenerate affected source pins with the delegated desk scripts and register generator; never edit pin values by hand. | reported=/Users/dabombstudio/.instar/agents/echo/.instar/lanes/w4-holding-onto-train5-repair-131012-PROGRESS.md
 Prompt review: No model-facing change. Targeted existing tests also replay the recorded CEDAR answer for update 969390331 and the captured unavailable-review fixture; the missing-original transport responses are explicitly constructed controls.
 
-Subject (outside reviews): tests/preview/journal-agent.mjs; tests/preview/group-carry-requests.test.ts; generated source-pin outputs if required by the register checks.
+Subject (outside reviews): tests/preview/journal-agent.mjs; tests/preview/group-carry-requests.test.ts; generated/capabilities.json; generated/capabilities.md; generated/coverage.md; generated/glossary.md; generated/register.json; generated/rules.md; generated/source.json. Register replay binds generation sha256:d502010e115576cb553f1d2e220f286dffa7fd81e4106d3ed6c6d2567897ebb5 to source commit 586b12a54012ad378bc722366c1d458cebbb7d72; no owner-manifest or grounding-inventory pin changed.
 
 ## Closing block
 
