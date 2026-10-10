@@ -40,13 +40,19 @@ it('the recorded K11a briefing differs only in the declared conversation and med
     { providerAttempts: 1000, expiresAt: 1791232800000, tools: true, mcp: 0 }).text;
   const replays = JSON.parse(read('k11a-replays.json')) as { note: string; runs: { kind: string; input: string; verdict: string; reply: string }[] };
   // Captured model results stay historical. Forum routing and media intake widen only the declared
-  // conversation capability; the tool, account, custody and authority wording stays exact.
+  // conversation capability and add the registered media admission item; the tool,
+  // account, custody and authority wording stays exact.
   const current = JSON.parse(read('k11a-agentready-replays.json')) as { note: string; system: string;
     runs: { kind: string; input: Envelope; raw: string; reply: string; judge: { verdict: string; rubric: string } }[] };
   const oldConversation = '- preview-conversation: answers the operator in their private Telegram chat and topics, one reply per admitted message.';
   const currentConversation = '- preview-conversation: answers the operator in chat/topics; journal intake saves photos, audio and files encrypted, with text descriptions.';
+  const internalHeading = 'Internal machinery running under you:\n';
+  const mediaAdmission = '- fetch-inbound-media: saves inbound Telegram files with bounded effect admission; refused downloads retain the original message.\n';
   expect(current.note.split(oldConversation)).toHaveLength(2);
-  expect(current.note.replace(oldConversation, currentConversation)).toBe(note);
+  expect(current.note.split(internalHeading)).toHaveLength(2);
+  expect(current.note).not.toContain(mediaAdmission);
+  expect(current.note.replace(oldConversation, currentConversation)
+    .replace(internalHeading, internalHeading + mediaAdmission)).toBe(note);
   expect(current.system).toBe(SUBSCRIPTION_TOOLS_SYSTEM_PROMPT);
   expect(current.runs.map(run => run.kind)).toEqual(['worst', 'chain']);
   for (const run of current.runs) {
