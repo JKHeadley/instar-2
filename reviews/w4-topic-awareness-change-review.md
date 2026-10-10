@@ -10,12 +10,12 @@ Operator questions: none
 Suggested tier: critical
 Declared tier: critical
 Tier rationale: This changes model-facing context used for a user-visible answer.
-Side effects: Forum provenance says General instead of main chat, including retained General renames. Forum dated/pending entries and local summary/preference candidates gain provenance fields, consuming bounded packet space; existing byte selection remains in force. Recall and existing labels use the same naming function. Private mode keeps its prior bytes. No routing, authority, storage or memory-selection policy changes.
+Side effects: Forum provenance says General instead of main chat, including retained General renames. Forum dated/pending entries and local summary/preference candidates gain provenance fields, consuming bounded packet space; existing byte selection remains in force. Recall and existing labels use the same naming function. Private mode keeps its prior bytes. No routing, authority, storage or memory-selection policy changes. Generated register publications replay source commit 10f1b57b45a562e21baeae984e8aad606bbc15cc in shape-only mode; this is evidence wiring, not runtime authority.
 Undo and recovery: Revert this source change and replay the generated register before deployment rollback. Old journals need no migration: names and sources derive from retained intake. No send or provider effect is replayed by rollback.
 Multi-machine posture: Deterministic projection from the existing journal on each serving host. No new state, cross-machine dependency or ownership mechanism; existing replication/writer fencing remains authoritative.
 Layer below: Durable bot/chat/topic normalization, authenticated service-name capture, source turn lookup and labels, packet byte selection, topic-specific groundingHistory and send destinations, journal replay validators.
 Bug class: user-facing
-Bug evidence: reproducer=tests/preview/topic-awareness.test.ts; live=/home/echo/.instar/agents/echo/.instar/state/w4-topic-awareness.md
+Bug evidence: reproducer=tests/preview/topic-awareness.test.ts; live=/Users/dabombstudio/.instar/agents/echo/.instar/lanes/w4-topic-awareness-PROGRESS.md
 Hook bypass: none
 Convergence: none
 Decision: topic-awareness-projection | Reuse audience.conversation and sourceLabel; add forum-only projections instead of partitioning shared memory or adding state | reported=/Users/dabombstudio/.instar/agents/echo/.instar/lanes/w4-topic-awareness-PROGRESS.md
