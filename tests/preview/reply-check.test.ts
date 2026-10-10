@@ -13,7 +13,7 @@ import { CREDENTIAL_SHAPE_NOTICE, replyTimings, type JournalView } from './journ
 import { prepareJournalEnvelope } from './journal-envelope.js';
 
 const scores = (overrides: Record<string, number> = {}) => ({ model: 'jev-1.13.0', answers: Object.fromEntries(
-  Object.keys(REPLY_RULES).map(id => [id, { type: 'noul', noul: overrides[id] ?? 0.01 }])) });
+  Object.keys(REPLY_RULES).filter(id => id !== 'incoherent_remainder').map(id => [id, { type: 'noul', noul: overrides[id] ?? 0.01 }])) });
 const key = new Uint8Array(32).fill(3);
 // Memory holds the sent text without the PREVIEW surface marker.
 const HOLDING_TEXT = HOLDING_REPLY.replace(/^PREVIEW — /u, '');
@@ -217,9 +217,9 @@ it.each([
   // Every contextual review also carries the guidance family's context questions (Part 18 §16).
   ['one uncertain rule', PRIVATE_AUDIENCE, scores({ claims_blocked: 0.5 }), ['claims_blocked', ...CONTEXT_RULES]],
   ['positive plus uncertain', PRIVATE_AUDIENCE, scores({ raw_path: 0.9, parks_on_user: 0.5 }), ['raw_path', 'parks_on_user', ...CONTEXT_RULES]],
-  ['Jev unavailable', PRIVATE_AUDIENCE, null, Object.keys(REPLY_RULES).filter(id => !(AUDIENCE_RULES as readonly string[]).includes(id))],
+  ['Jev unavailable', PRIVATE_AUDIENCE, null, Object.keys(REPLY_RULES).filter(id => id !== 'incoherent_remainder').filter(id => !(AUDIENCE_RULES as readonly string[]).includes(id))],
   ['one uncertain rule, unnamed audience', UNNAMED_AUDIENCE, scores({ claims_blocked: 0.5 }), ['claims_blocked', ...CONTEXT_RULES, ...AUDIENCE_RULES]],
-  ['Jev unavailable, unnamed audience', UNNAMED_AUDIENCE, null, Object.keys(REPLY_RULES)],
+  ['Jev unavailable, unnamed audience', UNNAMED_AUDIENCE, null, Object.keys(REPLY_RULES).filter(id => id !== 'incoherent_remainder')],
 ] as const)('%s: review receives every unresolved rule and full context', async (_name, audience, answer, expected) => {
   const prompt = prepareJournalEnvelope({ question: 'What did I say?',
     context: JSON.stringify({ audience, sources: [{ id: 'source:1' }],
@@ -747,7 +747,7 @@ it('reviews every rule after reopening a pre-upgrade mixed Jev verdict', async (
     // Base-format mixed verdicts retained uncertain scores but only positive rule IDs.
     first.append({ kind: 'reply-check', id, result: { verdict: 'violation', ruleIds: ['raw_path'],
       confidence: 0.91, path: 'jev', latencyMs: 170,
-      scores: Object.fromEntries(Object.keys(REPLY_RULES).map(rule =>
+      scores: Object.fromEntries(Object.keys(REPLY_RULES).filter(id => id !== 'incoherent_remainder').map(rule =>
         [rule, rule === 'raw_path' ? 0.91 : rule === 'parks_on_user' ? 0.5 : 0.01])) as Record<keyof typeof REPLY_RULES, number> }, at: 1000 });
     first.close();
 
@@ -759,7 +759,7 @@ it('reviews every rule after reopening a pre-upgrade mixed Jev verdict', async (
       replyCheck: { elapsedMs: () => 100, jev: async () => { throw Error('Jev repeated'); },
         escalate: async (text, _id, originalPrompt, ruleIds) => {
           reviews++;
-          expect(ruleIds).toEqual(Object.keys(REPLY_RULES));
+          expect(ruleIds).toEqual(Object.keys(REPLY_RULES).filter(id => id !== 'incoherent_remainder'));
           expect(JSON.parse(replyReviewContext(originalPrompt!, text))).toMatchObject({
             audience: { operator: 'verified' }, operatorMessage: 'hello' });
           return { verdict: 'violation', ruleIds: ['parks_on_user'], confidence: null, latencyMs: 500 };

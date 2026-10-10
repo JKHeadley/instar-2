@@ -1,0 +1,37 @@
+# Change review — sb-w4-group-combo integration
+
+Subject base: fd934b6def73d3236cc825a72dcb1d98ffe0da66
+Review state: open
+Reviewed content: none
+Outcome: Ordinary two-parent merge of group-audience 5afe1cb9 onto topic-awareness2 fd934b6d, retaining lineage relocation repair 049f847a. The single journal conflict combines current/source topic guidance with verified operator-only audience disclosure. No new behavior is introduced.
+Affected rules: 37, 66, 69, 90, 102, 112; purpose least revelation; 2, 4, 10, 12, 26, 28, 34, 36, 41, 42, 49, 55, 57, 58, 60, 70, 74, 75, 77, 86, 95, 101, 108, 111, 113, 116
+Affected floors: secrets — exact credential checks unchanged and audience proof comes from the existing current disclosure resolver; spend cap — same shared deadline, call allowance, token reservation and single revision-review slot; stop — existing admission and dispatch checks retained; no duplicate sends — original durable intent and UNKNOWN semantics retained, remainder reservation survives restart; durable intake — original question, candidate, reviews and withholding stay in the encrypted journal
+Operator questions: none
+Suggested tier: critical
+Declared tier: critical
+Tier rationale: changes the interpretation of disclosure standing and the selection of text sent to a person.
+Side effects: Preserve both parent behaviors. Initial carry remains path-bound; serving checks immutable lineage, current grant and current membership. Topic source labels stay distinct from the current topic. Reply review uses verified membership and the existing bounded remainder review; unavailable or incoherent remainder produces the plain holding notice. Seven generated conflicts are rebuilt, not text-merged. README merged both branches without conflict.
+Undo and recovery: Revert the source change before any new remainder reservation is written. After one is written, keep this reader or a newer compatible reader: an older reader may reject a remainder-only reservation because it expects a model revision first. Do not delete journal rows or repeat uncertain review/send operations. Restarts reuse a completed remainder verdict only for the identical recorded candidate; an UNKNOWN remainder review sends the notice without another model call. Full candidates remain available for audit.
+Multi-machine posture: Each serving worker uses the existing disclosure resolver and current membership at the existing external boundaries. No new store, leader, peer dependency or replication policy. The optional candidate and verdict travel with existing encrypted journal records; restart and compaction retain them. Telegram's existing membership-read-to-send race remains unchanged.
+Layer below: Read the full purpose and rules from origin/main; inspected both parent diffs, journal topic/audience packet construction, the path binding repair, current membership resolver and bounded remainder-review code. Reuse committed live fixtures and the shipped CLI relocation replay; no new live deployment is claimed.
+Bug class: none
+Bug evidence: none
+Hook bypass: none; core.hooksPath is unset and the common hooks directory contains only sample files
+Convergence: none
+Prompt review: The audience rule describes verified standing and own-information scope; the remainder question asks about the actual request, surviving text and removed claims, without phrases copied from the failure. Real claude-sonnet-5 reviewer outputs on live update 969390330 are committed with prompt hashes: operator-only PASS, shared VIOLATION, fragment incoherent_remainder VIOLATION, coherent withholding statement PASS. Earlier malformed and inadequate-context captures remain as adverse evidence. The exact historical review, rewrite and unavailable revision-review shapes also replay through a real worker. Guidance replay also preserves recorded delivered text at update 715672479 and empty reply bytes in the recorded context at 715672550 (retrospective-duty-followup-train-1-2026-10-08.json), without claiming Telegram accepted an empty send. The remainder question is excluded from ordinary guidance selection and Jev; its presence does not add an ordinary question. Existing group-carry replay covers all 384 proofroom-summary-cascade-stall-2026-09-30 rows (updates 715672479–715672500), accepted summaries 480/481/484, uncertain summary reservations 492/496/497, unsure/unavailable Jev and reply-review records, and the undecided cancellation after 715672494. No recorded empty delivered bubble exists in these sources (existing desk ruling documented in group-carry-requests.test.ts); its labelled synthetic empty-answer control passes. The existing sensitivity capture-only test is not rerun; its committed recorded outputs are replayed.
+Prompt finding: 849db3a6296a | protocol-literal | existing memory-list reply wording, unchanged by this patch
+Prompt finding: bd01de21286a | protocol-literal | existing source citation guidance, unchanged by this patch
+Prompt finding: fb5fa7e706c8 | protocol-literal | existing source grounding guidance, unchanged by this patch
+
+Deferral: tests/preview/fixtures/group-audience-live-2026-10-10.json:170 | not-a-deferral=verbatim recorded model reasoning about whether the candidate defers work; this is evidence, not a builder commitment
+Deferral: tests/preview/fixtures/group-audience-live-2026-10-10.json:184 | not-a-deferral=verbatim recorded model reasoning about the defers_work rule; no work is postponed by this change
+Deferral: tests/preview/reply-check.declarations.json:13 | not-a-deferral=existing blocking-site semantics describe untracked promises and their immediate review; the added remainder review ships in this change
+
+Decision: sb-w4-group-combo-merge | retain topic/source attribution and verified audience wording in the only source conflict; rebuild seven generated conflicts with existing desk tools, preserving both histories | reported=/Users/dabombstudio/.instar/agents/echo/.instar/lanes/sb-w4-group-combo-PROGRESS.md
+Decision: sb-w4-group-combo-evidence | replay committed live captures and foreground targeted tests; leave live deployment and platform-only checks to the desk, with missing Studio report paths explicitly reported | reported=/Users/dabombstudio/.instar/agents/echo/.instar/lanes/sb-w4-group-combo-PROGRESS.md
+
+## Closing block
+
+simplestRobustRoute: This is the simplest robust route: an ordinary merge preserving both parent histories and behaviors, one combined guidance sentence, and regeneration through existing desk tools. No machinery or authority is added. Start guards are current disclosure and ownership, end guards are exact candidate review and durable send, and existing spend/stop bounds remain. Recorded worker and shipped CLI replays verify the merged path; this is not a new live deployment claim.
+80/20: Run foreground targeted tests covering both branches and their direct consumers, recorded-shape replay, typecheck, architecture, lint, register and change-review checks. Full suite and macOS gate execution belong to the desk; no independent convergence is claimed.
+VERDICT: author submission; this record asserts no independent verdict — the review desk records its own

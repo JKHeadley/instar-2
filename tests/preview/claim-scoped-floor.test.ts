@@ -73,6 +73,7 @@ interface Replay {
   /** Present when the live run's one revision round ran: its text, then its own review (unavailable, as live). */
   revision?: string;
   revisionReview?: 'unavailable' | 'pass';
+  remainderReview?: 'unavailable' | 'pass' | 'violation';
 }
 async function replay(options: Replay) {
   const root = realpathSync(mkdtempSync(join(tmpdir(), 'preview-claimfloor-')));
@@ -93,6 +94,11 @@ async function replay(options: Replay) {
         operation?: 'revision') => {
         if (operation === 'revision') {
           calls.revisionReview++;
+          if (_rules?.includes('incoherent_remainder')) {
+            if (options.remainderReview === 'unavailable') throw Error(REVIEW_UNKNOWN);
+            return { verdict: options.remainderReview === 'violation' ? 'violation' as const : 'pass' as const,
+              ruleIds: options.remainderReview === 'violation' ? ['incoherent_remainder' as const] : [], confidence: null, latencyMs: 1 };
+          }
           if (options.revisionReview !== 'pass') throw Error(REVIEW_UNKNOWN);
           return { verdict: 'pass' as const, ruleIds: [], confidence: null, latencyMs: 9000 };
         }
@@ -126,8 +132,8 @@ async function replay(options: Replay) {
 it('k2 (969389898, defers_work): the untracked promise is removed and the rest of the answer is sent', async () => {
   const { sends, calls, release, heldReview, withholds, durable } = await replay({ operator: K2_OPERATOR, answer: K2_ANSWER,
     review: { verdict: 'violation', ruleIds: ['defers_work'], reason: K2_REASON, findings: K2_FINDINGS },
-    revision: `${K2_ANSWER} Promise.` });
-  // The live run made all four calls and still sent only the notice. The answer now goes.
+    revision: K2_ANSWER });
+  // A constructed unchanged revision leaves the slot for a passing remainder review; recorded findings are unchanged.
   expect(calls).toEqual({ jev: 1, review: 1, revision: 1, revisionReview: 1 });
   expect(sends).toHaveLength(1);
   expect(sends[0]).not.toBe(HOLDING_REPLY);
