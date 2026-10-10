@@ -1,6 +1,6 @@
 import { expect, it } from 'vitest';
 import { spawnSync } from 'node:child_process';
-import { mkdtempSync, realpathSync, rmSync } from 'node:fs';
+import { mkdtempSync, readFileSync, realpathSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { createJournalWorker, MEMORY_UNDECIDED_REPLY, openPreviewJournal, openRequests, REQUEST_ITEM_LIMIT,
@@ -43,7 +43,7 @@ const decide = (input: Input) => {
 };
 const harness = (root: string, maxReplies = genesis.maxReplies, limits: Partial<typeof genesis> = {}) => {
   const state = { now: start, stopped: false, stopWhenQueued: false, fail: false, uncertain: false, plain: false, crashDue: false,
-    plainCalls: 0,
+    plainCalls: 0, recordedDue: undefined as string | { state: 'uncertain' } | undefined,
     plainText: 'Okay, I cancelled the Priya reminder.', summaryCancel: undefined as undefined | 'keep' | 'cancel' | 'omit',
     sent: [] as { text: string; thread?: number }[], dueCalls: 0 };
   let current: ReturnType<typeof OpenJournal> | undefined;
@@ -57,6 +57,7 @@ const harness = (root: string, maxReplies = genesis.maxReplies, limits: Partial<
       }
       if (input.id.startsWith('requested-action:')) {
         state.dueCalls++;
+        if (state.recordedDue !== undefined) return state.recordedDue;
         if (state.crashDue) throw Error('crash during the due turn\'s model call');
       }
       // plain: a model that answers every call (answer, summary or due turn alike) in plain text.
@@ -635,4 +636,33 @@ it('recovers a queued series occurrence once after downtime, without immediately
     state.now += 86400000; await worker.sendRequested(); expect(pushes()).toHaveLength(2);
     journal.close();
   } finally { rmSync(root, { recursive: true, force: true }); }
+});
+
+/** Captured bytes remain verbatim; only the new series grant and the clock are synthetic. */
+it('keeps a series open across recorded delivered, empty and uncertain model outcomes without repeating an occurrence', async () => {
+  const captured = JSON.parse(readFileSync(new URL('./fixtures/retrospective-duty-followup-train-1-2026-10-08.json',
+    import.meta.url), 'utf8')) as { otherShapes: { kind: string; id: string; raw: string }[] };
+  const shapes = captured.otherShapes.filter(row => ['delivered-reply', 'empty-reply-in-recorded-context', 'summary-uncertain'].includes(row.kind));
+  expect(shapes.map(row => row.id)).toEqual(['715672483', 'telegram:8994258214:update:715672479', 'telegram:8994258214:update:715672550']);
+  for (const shape of shapes) {
+    const root = tmp('series-recorded');
+    try {
+      const { state, open } = harness(root, 30, { maxCalls: 100, maxTurns: 40, maxBytes: 64000 });
+      let { journal, worker } = open(true);
+      worker.intake([update(1, 'remind me every morning at 8 to call Priya')]); await worker.drain();
+      // The uncertain state comes from the recorded writer result, not a fabricated outcome.
+      state.recordedDue = shape.kind === 'summary-uncertain' ? JSON.parse(shape.raw) as { state: 'uncertain' } : shape.raw;
+      state.now = Date.UTC(2026, 8, 27, 15);
+      await worker.sendRequested(); await worker.sendRequested();
+      expect(state.dueCalls, shape.id).toBe(1);
+      expect(journal.view.order.filter(turn => turn.requestedAction), shape.id).toHaveLength(1);
+      expect(openRequests(journal.view), shape.id).toHaveLength(1);
+      journal.close(); ({ journal, worker } = open());
+      await worker.sendRequested(); expect(state.dueCalls, shape.id).toBe(1);
+      state.now += 86400000; await worker.sendRequested();
+      expect(state.dueCalls, shape.id).toBe(2);
+      expect(state.sent.every(send => send.text.trim().length > 0), shape.id).toBe(true);
+      journal.close();
+    } finally { rmSync(root, { recursive: true, force: true }); }
+  }
 });
