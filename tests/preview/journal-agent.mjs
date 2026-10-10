@@ -1222,7 +1222,11 @@ async function main() {
   };
   const groupPermission = scope => {
     try {
-      if (scope.destinationRoot !== root) return { kind: 'refused', reason: 'destination root differs' };
+      // Bind the initial carry to its physical destination. Serving authenticates the immutable
+      // journal lineage instead: a move/canary copy keeps that scope, grant and conversation.
+      // Journal replay checks bot/chat/operator; ownership and current audience still gate effects.
+      if (command === 'carry-group' && scope.destinationRoot !== root)
+        return { kind: 'refused', reason: 'destination root differs' };
       const path = options['authority-record'] ?? join(dirname(resolve(required(options, 'activation-record'))), 'activation-authority.json');
       return resolveGroupDisclosure(scope, JSON.parse(readFileSync(path, 'utf8')), wallNow(),
         operatorRecords(options['operator-records']), authoritySealKey(key()));

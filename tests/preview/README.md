@@ -110,6 +110,9 @@ Telegram reads must establish a forum with exactly two members: the named human 
 named agent bot, with no public username or linked chat admitting a wider audience.
 Unknown membership, another member, expiry, revocation or mismatched scope refuses
 the copy. Keep the same authority and operator-record paths on subsequent `run` invocations.
+The initial carry binds the physical destination root. Serving a moved or copied encrypted journal
+keeps that original lineage scope; it does not require a new grant for the filesystem path.
+Replay verifies the same bot, operator and group, and conversation ownership still admits one runner.
 Model/review calls and group sends recheck authority and membership; Telegram does not provide an
 atomic membership-and-send operation, so a membership change after its last response remains a race.
 Local zero-charge semantic rerankers remain available, including on carried roots. A host binding
