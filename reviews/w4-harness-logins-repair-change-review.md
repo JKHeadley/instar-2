@@ -18,6 +18,7 @@ Bug class: durability
 Bug evidence: reproducer=tests/preview/harness-login-pool.test.ts exhausts both session accounts and proves recovery after eight days plus stale/incomplete/mismatched negatives and malformed-row neighbors; restart=the same file proves reopen recovery, durable hold removal, legacy timestamp migration and failed-write preservation
 Hook bypass: none
 Convergence: none
+Deferral: generated/register.json:1 | not-a-deferral=Mechanical replay retains the existing registry pending-landing and owned-loop vocabulary; this repair adds no deferred work.
 Decision: HL-R1 | Reuse quota observation and the existing durable sidecar; timestamp holds to refuse older capacity evidence and migrate legacy holds once. Both windows must establish capacity, and known active horizons remain held. | reported=/Users/dabombstudio/.instar/agents/echo/.instar/lanes/w4-harness-logins-repair-PROGRESS.md
 Decision: HL-R2 | Validate optional quota row/date shapes at observation decoding; preserve authority and persistence failures. | reported=/Users/dabombstudio/.instar/agents/echo/.instar/lanes/w4-harness-logins-repair-PROGRESS.md
 Prompt review: No prompt or model-output parser changes. Real recorded summary, uncertain summary, Jev undecided/unsure, reply-review, delivered reply and empty recorded-context bytes traverse the repaired recovery path unchanged; provenance/update IDs are in PROGRESS. Captured provider-limit bytes still drive the initial exhaustion. The empty candidate is not claimed as an actually delivered empty bubble.
