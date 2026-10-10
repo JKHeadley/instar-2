@@ -10,7 +10,7 @@ The prefix is present before HTML rendering, digesting, and Eight preparation. T
 
 The journal runner's capability briefing is generated from these lines and the feature declarations in `journal.declarations.json`; see `generated/capabilities.json`. Add a line here and a declaration there together, or the register build fails. Each line is the one-line briefing text; its indented `Details:` line keeps the full description, which the briefing does not carry.
 
-- `preview-conversation`: answers the operator in the configured private Telegram chat or forum group, returning each reply to its originating topic; receives photos, audio and files with encrypted custody and text descriptions.
+- `preview-conversation`: answers the operator in chat/topics; journal intake saves photos, audio and files encrypted, with text descriptions.
   Details: only the verified operator is admitted; a forum journal serves all topics of one configured group, including General, with topic-specific recent history and harness sessions. Unknown send outcomes are never resent.
 - `preview-durable-memory`: an encrypted local journal of messages, summaries and memory that survives restarts; the operator can correct or forget a fact.
   Details: keeps accepted messages, summaries and validated memory changes in one encrypted local journal that survives restarts and spans the trial's topics; the operator can ask to correct or forget a recorded fact, later replies withhold the old claim, and the original audit record stays in the journal. It is not production or other-agent memory.

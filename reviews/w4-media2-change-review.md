@@ -15,7 +15,7 @@ Undo and recovery: retain journal and media files. Stop affected roots before ro
 Multi-machine posture: original intake and custody outcome follow the existing journal replication and conversation owner. Large secret-bearing file bytes deliberately remain local to the downloading host, encrypted with its root key; copying a journal does not claim to copy its media. The local status reader verifies availability. Ownership loss aborts a current download; no second poller or reply path is introduced.
 Layer below: verified intake principal binding; encrypted append/cursor ordering; durablePreviewWrite flush/readback; bounded stream reads and fixed-origin Telegram URLs; existing answer preparation, cap/stop and send uniqueness; production launcher text-only provider input. No configured image or local transcription path was found.
 Bug class: unit
-Bug evidence: tests/preview/telegram-media.test.ts
+Bug evidence: reproducer=tests/preview/telegram-media.test.ts
 Hook bypass: none
 Convergence: none
 Decision: media2-custody | retain the original first, then use one bounded host download and encrypted per-turn blob with one journal outcome; this prevents post-cursor loss and plaintext disclosure without another queue or reply path | reported=/Users/dabombstudio/.instar/agents/echo/.instar/lanes/w4-media2-PROGRESS.md
@@ -24,6 +24,10 @@ Decision: media2-harness | the current launcher exposes text input and no local 
 Decision: media2-parser | the core adapter already recognizes media metadata, so put the journal-specific structural helper beside its actual consumer; this avoids unrelated native-harness composition changes and certification churn | reported=/Users/dabombstudio/.instar/agents/echo/.instar/lanes/w4-media2-PROGRESS.md
 Decision: media2-local | keep secret-bearing media bytes machine-local while replicating their intake and result through the existing journal; expose missing local custody on status instead of assuming availability after takeover | reported=/Users/dabombstudio/.instar/agents/echo/.instar/lanes/w4-media2-PROGRESS.md
 Prompt review: Descriptions contain only kind, name, size, caption, fixed custody outcome and honest text-only limitations. They are data attached to the existing verified turn and pass the existing secret-redaction and audience path. Observer #207 explicitly supplies synthesized photo 715709001, voice 715709002 and document 715709003 fixtures; their _fixture labels remain committed. Observer #106 replay retains the exact proof-room summary writer/review at 715672484, uncertain writer results 715672492/496/497, Jev undecided 0.38, reply answer/Jev unsure 0.51/subscription UNKNOWN at 969389800, delivered reply 715672479, and empty context reply 715672550. Synthetic media envelopes are identified separately; no recorded output is rewritten and no empty-context byte is called proof of an empty Telegram delivery. Stubs additionally cover transport failures, file/store limits, crash reuse, sender/chat rejection and an injected slow stop. A real media send remains the desk's live proof.
+
+Prompt finding: 849db3a6296a | protocol-literal | Existing fixed empty-memory reply, unchanged by media intake; the memory-list test verifies that literal.
+Prompt finding: bd01de21286a | protocol-literal | Existing source-label grounding guidance, unchanged by media intake; the hallucination-rate test verifies its inclusion.
+Prompt finding: fb5fa7e706c8 | protocol-literal | Existing guidance for questions about operator history, unchanged by media intake; the hallucination-rate test verifies its inclusion.
 
 ## Closing block
 
