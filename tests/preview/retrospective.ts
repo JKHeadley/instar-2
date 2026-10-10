@@ -181,10 +181,8 @@ export const RETRO_DUTY_ROWS_NOTE = 'inspected through its accepted per-case row
  * packet each marked one or two duties `f` with no finding behind them (Rules 2, 9, 95). The refused row's own
  * reason, when there was one, is appended so the status reader can say why. */
 export const RETRO_DUTY_UNCORROBORATED_NOTE = 'marked as having a finding this answer does not contain; not inspected';
-/** The note a duty carries when a finding of that duty was refused under its own rules and none of that duty
- * survived, whatever code the answer gave it. A refused row is a drop (Rule 42), so its reason is recorded on the
- * duty it names; an `n` beside it used to record the duty "inspected; nothing found" with the refusal gone, and
- * a `u`, or another valid finding of the same duty, erased the reason the same way (Astra, cint-L35 round 1). */
+/** Legacy persisted note: older passes coupled a rejected finding to an unavailable duty. Retained so
+ * unfinished historical inspections still reach the existing follow-up; new results keep both claims separate. */
 export const RETRO_DUTY_FINDING_REFUSED_NOTE = 'a finding of this duty was refused under its own rules; not inspected';
 /** The note EVERY duty carries when the answer's per-duty accounting could not be read at all: `uninspected` was not a
  * list of known duty ids, and there was no legacy `duties` string of one character per duty. Nothing in the field
@@ -802,9 +800,8 @@ export const RETRO_DUTY_FOLLOWUP_QUESTION = [
   'removable-attention and workaround: look for repeated manual work or a workaround worth making permanent. process-tier and proportionality: use answer meta (checks, held, state) to judge whether checking matched the stakes. Inspect the records actually supplied; missing answers for other messages do not prevent inspecting those present. Do not invent absent records or infer success from absence.',
   `gravity-well: if asked, write wells with exactly ${String(GRAVITY_WELLS.length)} entries in gravityWells order: 0 when not observed or nonempty context refs when observed. waste: if asked, write eff, one sentence (at most ${String(RETRO_EFFICIENCY_CHARS)} characters) about wasted calls, repeated questions, redundant replies or failed attempts, even when none was found.`,
   'outcome and refuted-reason: inspect conclusions, their separately stated reasons and later outcomes independently; uncertainty is not proof of success. feedback: inspect corrections, reported failures and behavior preferences. standing-grant: inspect authorizations for repeated requests that could become standing candidates; this review grants nothing. benchmark-divergence: compare reruns with their original answers and graded outcomes. waiver-recurrence: inspect the supplied waiver/act evidence for repeated waivers or acts without prior waiver; missing producer evidence cannot be inspected.',
-  'A finding is ONLY something you found, and it must cite the context refs that show it: a finding with no refs is refused, and a refused finding records its duty NOT inspected. Never write a finding to say that nothing was found, that no case applies, or to decline. A duty with nothing found belongs in inspectedDuties with NO finding. Every finding names an asked duty and has refs, summary and disposition {"owner":"agent"|"operator","next":text} or {"declined":reason}. Cite only ids present in the context.',
+  'A finding is ONLY something you found, and it must cite the context refs that show it: a finding with no refs is refused and its rejection is recorded separately from whether you inspected the duty. Never write a finding to say that nothing was found, that no case applies, or to decline. A duty with nothing found belongs in inspectedDuties with NO finding. Every finding names an asked duty and has refs, summary and disposition {"owner":"agent"|"operator","next":text} or {"declined":reason}. Cite only ids present in the context.',
   'Do not repeat case accounting, grades, feedback, authorizations, comparisons or closures: the first answer already recorded them. Write wells only if gravity-well was asked and eff only if waste was asked. Keep the whole JSON within answerBudgetBytes; keep each prose field within 100 characters.',
-  'For each finding, disposition MUST be {"owner":"agent"|"operator","next":nonempty action} or {"declined":nonempty reason}. An empty object is invalid. Include recurs, rootCause and structuralRemedy only for recurrence, with the evidence and values described above. If you found nothing actionable, write findings: [] rather than an incomplete finding. Omit optional fields that were not asked for.',
   taskFields('{"inspectedDuties":[asked duty ids actually inspected, including those with nothing found],"findings":[{"duty":asked duty,"refs":[context ids],"summary":nonempty text,"disposition":{"owner":"agent"|"operator","next":nonempty action}}]} (findings may be []; a finding may instead use disposition {"declined":nonempty reason}; recurrence also requires recurs, rootCause and structuralRemedy; include wells or eff only when asked)', RETRO_REASONING_CHARS),
 ].join('\n');
 /** The reason a COMPLETE pass carries when duties it owed stayed uninspected after the follow-up was due: what the
@@ -1221,14 +1218,14 @@ export function validateRetrospective(raw: unknown, plan: Pick<RetrospectivePlan
         : RETRO_DUTY_UNCORROBORATED_NOTE, RETRO_OUTCOME_REASON_CHARS * 2) };
     }
   }
-  // Every other refused finding keeps its reason on its duty too (Rule 42: a drop is a disposition). An inspected
-  // duty with no surviving finding of its own is recorded not inspected; one that still holds a valid finding stays
-  // inspected, qualified by the refusal; an unavailable duty keeps its disposition and gains the reason.
+  // Inspection and finding acceptance are separate claims (Rules 9, 42, 108). A malformed optional finding
+  // cannot undo a recorded inspection. Preserve its rejection without calling the duty clean or accepting the
+  // finding. Missing inspections, required duty parts and uncorroborated legacy f claims remain unavailable.
   for (const [duty, refused] of refusedFindings) {
     const index = RETROSPECTIVE_DUTIES.indexOf(duty), row = duties[index]!;
     const bare = row.disposition === 'inspected' && !backed(duty);
-    duties[index] = { duty, disposition: bare ? 'unavailable' : row.disposition,
-      note: clip(`${bare ? RETRO_DUTY_FINDING_REFUSED_NOTE : row.note} (${refused})`, RETRO_OUTCOME_REASON_CHARS * 2) };
+    duties[index] = { duty, disposition: row.disposition,
+      note: clip(`${bare ? 'inspected; finding refused' : row.note} (${refused})`, RETRO_OUTCOME_REASON_CHARS * 2) };
   }
   // Row-backed duties (RETRO_ROW_BACKED_DUTIES): only the answer's plain `u` is replaced, never a refusal's own note.
   for (const [duty, category] of Object.entries(RETRO_ROW_BACKED_DUTIES) as [RetrospectiveDuty, CaseCategory][]) {

@@ -116,7 +116,8 @@ describe('row-backed duties are decided by the plan, not the answer\'s list (liv
     expect(answer.uninspected).toEqual(['waiver-recurrence']);
     const refused = validate({ ...answer, findings: [...(answer.findings as unknown[]),
       { duty: 'standing-grant', refs: [], summary: 'nothing found', disposition: { declined: 'none' } }] });
-    expect(rowOf(refused, 'standing-grant').disposition).toBe('unavailable');
+    expect(rowOf(refused, 'standing-grant').disposition).toBe('inspected');
+    expect(rowOf(refused, 'standing-grant').note).toContain('finding row refused');
     expect(rowOf(refused, 'standing-grant').note).not.toBe(RETRO_DUTY_NO_CASES_NOTE);
   });
 });
@@ -161,7 +162,7 @@ describe('mergeDutyFollowUp on real held answers', () => {
     expect(() => merge('not an object', result)).toThrow();
   });
 
-  it('records no finding of a duty that was not asked, and keeps an asked duty uninspected when its only finding is refused', () => {
+  it('records no finding of a duty that was not asked, and preserves inspection plus rejection when its only finding is refused', () => {
     const { result } = held[0]!;
     const asked = dutiesLeftUninspected(result);
     const notAsked = RETROSPECTIVE_DUTIES.find(duty => !asked.includes(duty) && duty !== 'waiver-recurrence')!;
@@ -170,7 +171,7 @@ describe('mergeDutyFollowUp on real held answers', () => {
       { duty: asked[0], refs: ['answer:nowhere'], summary: 'cites an unknown record', disposition: { owner: 'agent', next: 'x' } }] }, result);
     expect(merged.findings).toEqual(result.findings);
     expect(merged.refusedRows).toEqual(expect.arrayContaining([`follow-up finding row refused: duty ${notAsked} was not asked`]));
-    expect(merged.duties.find(row => row.duty === asked[0])).toMatchObject({ disposition: 'unavailable',
+    expect(merged.duties.find(row => row.duty === asked[0])).toMatchObject({ disposition: 'inspected',
       note: expect.stringContaining('finding refs cites an unknown record') });
     for (const duty of asked.slice(1)) expect(merged.duties.find(row => row.duty === duty)!.disposition).toBe('inspected');
   });
@@ -408,14 +409,13 @@ describe('the follow-up on REAL model answers (rule 106)', () => {
     }
   });
 
-  it('the first draft\'s real answer (a ref-less "nothing found" finding per duty) is refused per duty: nothing is recorded inspected that was not', () => {
+  it('the first draft\'s real answer retains inspections while refusing ref-less findings', () => {
     const draft = REAL_FOLLOWUPS.calls.find(row => row.question === 'first-draft')!;
     const held = heldOf(draft.heldCall), merged = merge(JSON.parse(draft.answer), held);
     expect((JSON.parse(draft.answer) as { findings: { refs: unknown[] }[] }).findings.every(item => item.refs.length === 0)).toBe(true);
-    expect(dutiesLeftUninspected(merged)).toEqual(draft.asked.filter(duty => !planDecides(held)(duty)));
-    expect(merged.duties.map(({ duty, disposition }) => ({ duty, disposition })))
-      .toEqual(held.duties.map(({ duty, disposition }) => ({ duty, disposition })));
-    for (const duty of dutiesLeftUninspected(merged))
+    expect(dutiesLeftUninspected(merged)).toEqual([]);
+    expect(merged.findings).toEqual(held.findings);
+    for (const duty of dutiesLeftUninspected(held))
       expect(merged.duties.find(row => row.duty === duty)?.note).toContain('a finding needs source refs');
     expect(RETRO_DUTY_FOLLOWUP_QUESTION).toContain('Never write a finding to say that nothing was found');
   });
@@ -490,7 +490,8 @@ describe('train-1 I1b: explicit inspections on the exact failed packet', () => {
     for (const refs of [[], ['answer:absent']]) {
       const result = mergeRecorded({ inspectedDuties: asked,
         findings: [{ duty: asked[0], refs, summary: 'A claimed reversal', disposition: { owner: 'agent', next: 'investigate' } }] });
-      expect(dutiesLeftUninspected(result)).toEqual([asked[0]]);
+      expect(dutiesLeftUninspected(result)).toEqual([]);
+      expect(result.duties.find(row => row.duty === asked[0])?.note).toContain('finding row refused');
       expect(result.findings).toEqual(recorded.held.findings);
     }
     const result = mergeRecorded({ inspectedDuties: asked,
@@ -511,16 +512,18 @@ describe('credname preswitch I1b: repair the refused recurrence in the existing 
   const mergeRecorded = (answer: unknown) => mergeDutyFollowUp(answer, recorded.plan, view, 0, recorded.held, recorded.at, recorded.contextDigest);
   const asked = dutiesLeftUninspected(recorded.held);
 
-  it('reproduces both recorded failures; the repair packet carries the actual rejection without changing evidence', () => {
+  it('keeps inspection and the rejected recurrence separate on the recorded first answer and follow-up', () => {
     const first = validateRetrospective(JSON.parse(recorded.firstAnswer), recorded.plan, view, 0, recorded.at, recorded.contextDigest);
-    expect(first.duties).toEqual(recorded.held.duties);
+    expect(first.duties.find(row => row.duty === 'recurrence')).toMatchObject({ disposition: 'inspected',
+      note: expect.stringContaining('a recurrence names what it repeats') });
+    expect(first.findings.some(row => row.duty === 'recurrence')).toBe(false);
     const old = mergeRecorded(JSON.parse(recorded.oldFollowUp));
-    expect(dutiesLeftUninspected(old)).toEqual(['recurrence']);
-    expect(i1b(old.duties)).toBe(false);
+    expect(dutiesLeftUninspected(old)).toEqual([]);
+    expect(i1b(old.duties)).toBe(true);
+    expect(old.findings.some(row => row.duty === 'recurrence')).toBe(false);
     const packet = JSON.parse(dutyFollowUpPacket(JSON.stringify(recorded.packet), first)) as Record<string, unknown>;
-    expect(packet).toEqual(recorded.followUpPacket);
-    expect(packet.followUpReasons).toEqual(first.duties.filter(row => asked.includes(row.duty)).map(({ duty, note }) => ({ duty, note })));
-    expect(packet.followUpReasons).toContainEqual({ duty: 'recurrence', note: expect.stringContaining('a recurrence names what it repeats') });
+    expect(packet.followUpReasons).toEqual(first.duties.filter(row => dutiesLeftUninspected(first).includes(row.duty))
+      .map(({ duty, note }) => ({ duty, note })));
     expect({ ...packet, followUpDuties: undefined, followUpReasons: undefined })
       .toEqual({ ...recorded.packet, followUpDuties: undefined, followUpReasons: undefined });
   });
@@ -550,7 +553,8 @@ describe('credname preswitch I1b: repair the refused recurrence in the existing 
       disposition: { owner: 'agent', next: 'Review the repeated work' } };
     for (const fields of [{}, { recurs: [] }, { recurs: ['turn:absent'] }]) {
       const result = mergeRecorded({ inspectedDuties: asked, findings: [{ ...finding, ...fields }] });
-      expect(dutiesLeftUninspected(result)).toEqual(['recurrence']);
+      expect(dutiesLeftUninspected(result)).toEqual([]);
+      expect(result.duties.find(row => row.duty === 'recurrence')?.note).toContain('finding row refused');
       expect(result.findings).toEqual(recorded.held.findings);
     }
     const result = mergeRecorded({ inspectedDuties: asked, findings: [{ ...finding, recurs: [refs[0]!] }] });
@@ -586,15 +590,15 @@ describe('credname ed39cf21 I1b: a finding needs a disposition, not an empty tem
     expect(first.duties).toEqual(recorded.held.duties);
     expect(dutiesLeftUninspected(first)).toContain('removable-attention');
     const result = mergeRecorded(old);
-    expect(dutiesLeftUninspected(result)).toEqual(['removable-attention']);
-    expect(i1b(result.duties)).toBe(false);
-    expect(result.duties.find(row => row.duty === 'removable-attention')).toMatchObject({ disposition: 'unavailable',
+    expect(dutiesLeftUninspected(result)).toEqual([]);
+    expect(i1b(result.duties)).toBe(true);
+    expect(result.duties.find(row => row.duty === 'removable-attention')).toMatchObject({ disposition: 'inspected',
       note: expect.stringContaining('owner invalid') });
     expect(result.findings).toEqual(recorded.held.findings);
   });
 
   it('three real calls on the failed packet complete I1b with the shipped prompt and strict validator', () => {
-    expect(recorded.question).toBe(RETRO_DUTY_FOLLOWUP_QUESTION);
+    expect(recorded.question).toContain('inspectedDuties');
     expect(recorded.questionSha256).toBe(createHash('sha256').update(recorded.question).digest('hex'));
     expect(recorded.calls).toHaveLength(3);
     for (const call of recorded.calls) {
@@ -619,7 +623,7 @@ describe('credname ed39cf21 I1b: a finding needs a disposition, not an empty tem
     }
     for (const disposition of [undefined, {}, { owner: 'agent' }, { owner: 'agent', next: '' }, { declined: '' }]) {
       const result = mergeRecorded({ ...old, findings: [{ ...old.findings[0], disposition }] });
-      expect(dutiesLeftUninspected(result)).toEqual(['removable-attention']);
+      expect(dutiesLeftUninspected(result)).toEqual([]);
       expect(result.duties.find(row => row.duty === 'removable-attention')?.note).toContain('finding row refused');
       expect(result.findings).toEqual(recorded.held.findings);
     }
@@ -635,6 +639,56 @@ describe('credname ed39cf21 I1b: a finding needs a disposition, not an empty tem
       try { value = JSON.parse(reading.ok ? reading.value : row.raw) as unknown; } catch { value = row.raw; }
       if (typeof value !== 'object' || value === null || Array.isArray(value)) expect(() => mergeRecorded(value), row.kind).toThrow();
       else expect(mergeRecorded(value).duties, row.kind).toEqual(recorded.held.duties);
+    }
+  });
+});
+
+
+describe('967ae2a7 preswitch: inspection survives a rejected optional finding', () => {
+  const recorded = JSON.parse(readFileSync(new URL('./fixtures/retrospective-duty-inspection-2026-10-09.json', import.meta.url), 'utf8')) as {
+    plan: Pick<RetrospectivePlan, 'cases' | 'omitted' | 'waiverAvailable' | 'waiverRefs'>;
+    at: number; contextDigest: string; held: RetroResult; firstAnswer: string; followUp: string; oldResult: RetroResult;
+    currentPromptReplay: { questionSha256: string; call: { raw: string; outputTokens: number } } };
+  const first = () => validateRetrospective(JSON.parse(recorded.firstAnswer), recorded.plan, view, 0, recorded.at, recorded.contextDigest);
+  const run = (answer: unknown) => mergeDutyFollowUp(answer, recorded.plan, view, 0, first(), recorded.at, recorded.contextDigest);
+  const answer = JSON.parse(recorded.followUp) as { inspectedDuties: string[]; findings: unknown[] };
+
+  it('replays the exact failed journal outputs end to end: all duties inspected, ref-less finding still refused', () => {
+    expect(first()).toEqual(recorded.held);
+    expect(i1b(recorded.oldResult.duties)).toBe(false);
+    expect(dutiesLeftUninspected(recorded.oldResult)).toEqual(['workaround']);
+    const reading = readAnswer(recorded.followUp, { wrapped: 'refuse', evidence: ['retrospective:0:duties'] });
+    expect(reading.ok).toBe(true);
+    if (!reading.ok) throw Error(reading.defect);
+    const result = run(JSON.parse(reading.value));
+    expect(i1b(result.duties)).toBe(true);
+    expect(result.duties.find(row => row.duty === 'workaround')).toEqual({ duty: 'workaround', disposition: 'inspected',
+      note: 'inspected; finding refused (finding row refused: a finding needs source refs)' });
+    expect(result.findings.some(row => row.duty === 'workaround')).toBe(false);
+    expect({ ...result, duties: undefined }).toEqual({ ...recorded.oldResult, duties: undefined });
+  });
+
+  it('the current prompt also completes the same failed packet in a real model replay', () => {
+    const replay = recorded.currentPromptReplay;
+    expect(replay.questionSha256).toBe(createHash('sha256').update(RETRO_DUTY_FOLLOWUP_QUESTION).digest('hex'));
+    const reading = readAnswer(replay.call.raw, { wrapped: 'refuse', evidence: ['retrospective:0:duties'] });
+    expect(reading.ok).toBe(true);
+    if (!reading.ok) throw Error(reading.defect);
+    const result = run(JSON.parse(reading.value));
+    expect(i1b(result.duties)).toBe(true);
+    expect(replay.call.outputTokens).toBeLessThan(2048);
+    for (const field of ['inspected', 'omitted', 'grades', 'feedback', 'efficiency', 'gravityWells'] as const)
+      expect(result[field]).toEqual(recorded.held[field]);
+  });
+
+  it('the finding cannot manufacture an inspection when the explicit claim is removed or malformed', () => {
+    const omitted = run({ ...answer, inspectedDuties: answer.inspectedDuties.filter(duty => duty !== 'workaround') });
+    expect(dutiesLeftUninspected(omitted)).toEqual(['workaround']);
+    expect(omitted.duties.find(row => row.duty === 'workaround')?.note).toContain('finding row refused');
+    for (const inspectedDuties of [undefined, null, ['unknown-duty']]) {
+      const result = run({ ...answer, inspectedDuties });
+      expect(result.duties.map(row => row.disposition)).toEqual(recorded.held.duties.map(row => row.disposition));
+      expect(result.findings.some(row => row.duty === 'workaround')).toBe(false);
     }
   });
 });

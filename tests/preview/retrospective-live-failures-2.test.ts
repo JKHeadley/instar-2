@@ -2,7 +2,7 @@ import { describe, expect, it } from 'vitest';
 import { createHash } from 'node:crypto';
 import { readFileSync } from 'node:fs';
 import type { JournalView } from './journal.js';
-import { RETROSPECTIVE_DUTIES, RETRO_DUTY_CODES, RETRO_DUTY_FINDING_REFUSED_NOTE, RETRO_DUTY_UNCORROBORATED_NOTE,
+import { RETROSPECTIVE_DUTIES, RETRO_DUTY_CODES, RETRO_DUTY_UNCORROBORATED_NOTE,
   RETRO_DUTY_PART_UNREADABLE_NOTE, RETRO_DUTY_UNINSPECTED_NOTE, WAIVER_EVIDENCE_UNAVAILABLE, rowRefusedReason,
   dutyLeftUninspected, validateRetrospective, type RetroCase, type RetrospectivePlan } from './retrospective.js';
 
@@ -101,8 +101,8 @@ describe('the live pass-0 refusal of room two under cint-L33, replayed on its ow
     const withCode = (code: string) => { const answer = answerOf(3);
       const codes = answer.duties as string; return { ...answer, duties: codes.slice(0, at('recurrence')) + code + codes.slice(at('recurrence') + 1) }; };
     const n = validate(withCode('n'));
-    expect(n.duties[at('recurrence')]).toEqual({ duty: 'recurrence', disposition: 'unavailable', note: `${RETRO_DUTY_FINDING_REFUSED_NOTE} ${refused}` });
-    expect(dutyLeftUninspected(n.duties[at('recurrence')]!)).toBe(true);
+    expect(n.duties[at('recurrence')]).toEqual({ duty: 'recurrence', disposition: 'inspected', note: `inspected; finding refused ${refused}` });
+    expect(dutyLeftUninspected(n.duties[at('recurrence')]!)).toBe(false);
     const u = validate(withCode('u'));
     expect(u.duties[at('recurrence')]).toEqual({ duty: 'recurrence', disposition: 'unavailable', note: `${RETRO_DUTY_UNINSPECTED_NOTE} ${refused}` });
     expect(dutyLeftUninspected(u.duties[at('recurrence')]!)).toBe(true);
