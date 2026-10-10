@@ -287,8 +287,8 @@ export function lookupWords(output: string): string[] | undefined {
  * the terse prose guidance left the model to copy packet.memory's display rows (mode "corrected", no quote, a
  * paraphrased replacement), which the validator refuses, so every correction after the first recorded one failed. */
 export const MEMORY_ITEM_SHAPE = 'Each memory item has exactly this shape: {"mode":"correct"|"forget"|"update"|"prefer",'
-  + '"source":<an id from memoryCandidates; for prefer, preferenceSource>,"quote":<the complete old clause copied word for word '
-  + 'from that source\'s message; for prefer, the style clause from the current message>,"replacement":<correct and update only: '
+  + '"source":<an id from memoryCandidates or a source from predecessorMemory.entries; for prefer, preferenceSource>,"quote":<the complete old clause copied word for word '
+  + 'from that source\'s message or carried entry text; for prefer, the style clause from the current message>,"replacement":<correct and update only: '
   + 'the new clause copied word for word from the operator\'s current message>,"replies":<optional: ids of memoryCandidates whose '
   + 'reply restates the old fact>,"summaryPassages":<optional: exact passages of the prior summary that express the old fact>}. '
   + 'packet.memory lists changes already recorded, in a display shape; never copy that shape.';
@@ -1638,7 +1638,7 @@ const restoredHistoricalChange = (change: MemoryChange, changes: readonly Memory
 };
 // Ordinary facts project across occurrences; retired preferences belong only to their source.
 // The worker's history projection and conflict activity share this one projection.
-const projectMemoryClause = (view: JournalView, value: string, source?: string | number) => {
+export const projectMemoryClause = (view: JournalView, value: string, source?: string | number) => {
   const lineage = memoryPreferenceState(view).lineage;
   return view.memory.filter(change => {
     if (change.mode === 'prefer') return false;
@@ -5168,7 +5168,7 @@ export interface PreviewPorts {
   boundary?(stage: string): void;
   /** Optional semantic stage of the recall owner (`composeRecall`). Ordinary conversation reserves
    * no helper spend (Part 21 §7), so a charging port is refused as over budget; none is bound live. */
-  recallReranker?: RecallRerankPort;
+  recallReranker?: RecallRerankPort & { /** External effects must declare their boundary; local callbacks reveal nothing. */ external?: true };
 }
 
 /** Exactly one worker calls drain. A reserved call or prepared send with no
@@ -5193,18 +5193,40 @@ export function createJournalWorker(journal: ReturnType<typeof openPreviewJourna
     ...(original.sessionWork ? { sessionWork: guarded(original.sessionWork) } : {}),
     ...(original.retrospect ? { retrospect: guarded(original.retrospect) } : {}),
     ...(original.stepCheck ? { stepCheck: { jev: guarded(original.stepCheck.jev) } } : {}),
-    ...(original.recallReranker ? { recallReranker: { ...original.recallReranker,
-      rerank: (query: string, candidates: readonly string[]) => {
-        // This packet doorway is synchronous: it cannot await a fresh audience read. Keep its
-        // deterministic fallback on carried roots; never start an unawaited external helper.
-        if (journal.view.groupCarry) throw Error('group carry: synchronous reranker cannot prove current disclosure');
-        return original.recallReranker!.rerank(query, candidates);
-      } } } : {}),
     ...(original.summaryCheck ? { summaryCheck: guarded(original.summaryCheck) } : {}),
     ...(original.replyCheck ? { replyCheck: { ...original.replyCheck,
       jev: guarded(original.replyCheck.jev), escalate: guarded(original.replyCheck.escalate),
       ...(original.replyCheck.revise ? { revise: guarded(original.replyCheck.revise) } : {}),
       ...(original.replyCheck.summaryReview ? { summaryReview: guarded(original.replyCheck.summaryReview) } : {}) } } : {}) };
+
+  // Local rerankers do not disclose data. External bindings are collected during synchronous
+  // packet preparation, then awaited at their own disclosure checkpoint and reused by that packet.
+  // The ordinary recall owner's zero helper-spend limit still admits or refuses each call first.
+  type Reranked = Awaited<ReturnType<RecallRerankPort['rerank']>>;
+  let rerankBatch: Map<string, { query: string; candidates: readonly string[]; result?: Reranked }> | undefined;
+  if (original.recallReranker?.external) ports.recallReranker = { ...original.recallReranker,
+    rerank: (query, candidates) => {
+      const key = JSON.stringify([query, candidates]);
+      const known = rerankBatch?.get(key);
+      if (known?.result) return known.result;
+      if (rerankBatch && !known) rerankBatch.set(key, { query, candidates });
+      throw Error('external recall awaits disclosure admission');
+    } };
+  const prepareRecall = async <T>(prepare: () => T): Promise<T> => {
+    if (!original.recallReranker?.external) return prepare();
+    const batch = new Map<string, { query: string; candidates: readonly string[]; result?: Reranked }>();
+    rerankBatch = batch;
+    try {
+      prepare();
+      for (const item of [...batch.values()]) {
+        if (!await disclosure()) break;
+        gate();
+        try { item.result = await original.recallReranker.rerank(item.query, item.candidates); }
+        catch { /* The owner reports a failed semantic stage; the packet retains its other recall. */ }
+      }
+      return prepare();
+    } finally { rerankBatch = undefined; }
+  };
 
   let working = false, workingSince = 0, ordinaryFailedSince: number | null = null;
   /** Every live send consumes its durable signed intent; a refusal or unknown outcome is recorded, never
@@ -5215,12 +5237,16 @@ export function createJournalWorker(journal: ReturnType<typeof openPreviewJourna
   const NOT_SENT_ATTEMPTS = 2;
   const dispatch = async (target: string, provenance: OutboundProvenance | undefined,
     input: { text: string; expectedText: string; chat: string; thread?: number; update: number;
-      kind?: OutboundKind; disposition?: OutboundDisposition; replyMarkup?: unknown }): Promise<SettledSendOutcome> => {
+      kind?: OutboundKind; disposition?: OutboundDisposition; replyMarkup?: unknown }, admitted?: () => void): Promise<SettledSendOutcome> => {
+    if (admitted) {
+      if (!await disclosure()) return { kind: 'refused', reason: GROUP_DISCLOSURE_HOLD };
+      gate(); admitted();
+    }
     const subject = { target, chat: input.chat, ...(input.thread === undefined ? {} : { thread: input.thread }), body: input.text };
     let attempted: SendOutcome = { kind: 'unknown', reason: 'send port failed' };
     if (!journal.verifyOutbound(provenance, subject)) attempted = { kind: 'refused', reason: 'outbound provenance unsigned' };
     else for (let attempt = 0; attempt < NOT_SENT_ATTEMPTS; attempt++) {
-      try { attempted = settleSendOutcome(await ports.send({ ...input, target, provenance: provenance! })); }
+      try { attempted = settleSendOutcome(await (admitted ? original.send : ports.send)({ ...input, target, provenance: provenance! })); }
       catch { attempted = { kind: 'unknown', reason: 'send port failed' }; }
       if (attempted.kind !== 'not-sent') break;
     }
@@ -5269,10 +5295,10 @@ export function createJournalWorker(journal: ReturnType<typeof openPreviewJourna
   /** The one outbound boundary for every push the worker makes (Rules 52, 87, 106). It dispatches the
    * durable signed intent and returns its closed outcome (Rules 42, 89). */
   const push = (kind: OutboundKind, target: string, provenance: OutboundProvenance | undefined,
-    input: { text: string; expectedText: string; chat: string; thread?: number; update: number; replyMarkup?: unknown }) => {
+    input: { text: string; expectedText: string; chat: string; thread?: number; update: number; replyMarkup?: unknown }, admitted?: () => void) => {
     const disposition: OutboundDisposition = OUTBOUND_DISPOSITIONS[kind];
     if (disposition === 'status') throw Error('preview: status is pull-only and never pushed');
-    return dispatch(target, provenance, { ...input, kind, disposition });
+    return dispatch(target, provenance, { ...input, kind, disposition }, admitted);
   };
   // Reading never stops at a capacity bound: stop and approval presses must stay reachable. A message
   // past every bound waits at Telegram (the cursor holds before it) while later presses are still read.
@@ -6646,7 +6672,7 @@ export function createJournalWorker(journal: ReturnType<typeof openPreviewJourna
       weekday: new Intl.DateTimeFormat('en-US', { timeZone: zone, weekday: 'long' }).format(now) },
       ...(resume ? { resume: { previous: turnLabel(journal.view.turns.get(resume.previous)!), elapsedHours: resume.elapsedHours,
         guidance: 'Reconcile this clock with dated items and open commitments before answering. Words such as today, tomorrow and next week in earlier messages or summaries referred to their original day, not this one. State the current local day accurately; distinguish passed, due and upcoming dates. Keep open commitments open unless a verified later message closed them.' } } : {}),
-      ...(journal.view.groupCarry ? { predecessorMemory: groupCarryPacket(journal.view.groupCarry, question?.text ?? '', now, journal.view.limits.maxBytes) } : {}),
+      ...(journal.view.groupCarry ? { predecessorMemory: groupCarryPacket(journal.view.groupCarry, question?.text ?? '', now, journal.view.limits.maxBytes, journal.view) } : {}),
       memoryVersion: journal.view.memory.length, purpose: 'Make coherence something an AI cannot lose.',
       // What you can do is the generated capability-note source; this field carries only how to use the packet.
       // The capability-note source already states that it is generated from the register and that nothing
@@ -7364,7 +7390,7 @@ export function createJournalWorker(journal: ReturnType<typeof openPreviewJourna
             // Nothing that could make it fit has changed: only the summary pass may release it.
             await summarizeIfNeeded(true);
             if (heldFitKey() === key) break;
-          } else if ('reason' in preparedFor(turn)) await summarizeIfNeeded(true);
+          } else if ('reason' in (await prepareRecall(() => preparedFor(turn)))) await summarizeIfNeeded(true);
           delete turn.held; delete turn.heldSince; journal.view.heldTurns.delete(turn);
         }
         // Rules 2, 77, 95: older builds could hold an unavailable review before recording either a
@@ -7397,15 +7423,15 @@ export function createJournalWorker(journal: ReturnType<typeof openPreviewJourna
           if (journal.view.calls >= journal.view.limits.maxCalls - (ports.replyCheck ? 1 : 0)) {
             journal.append({kind:'hold',id:turn.id,reason:'call cap',at:ports.now()}); continue;
           }
-          let selected = preparedFor(turn);
+          let selected = await prepareRecall(() => preparedFor(turn));
           if ('reason' in selected) {
             await summarizeIfNeeded(true);
-            selected = preparedFor(turn);
+            selected = await prepareRecall(() => preparedFor(turn));
           }
           // The summary had its chance and the prompt still cannot be built: history itself yields (Rule 95's
           // open side -- reachability to the operator). A size hold here would be the agent made unreachable by
           // its own growth, which is the whole wedge this closes.
-          if ('reason' in selected) selected = preparedWithFloor(turn);
+          if ('reason' in selected) selected = await prepareRecall(() => preparedWithFloor(turn));
           if ('reason' in selected && (selected.measuredPromptOverflow
             || selected.reason === 'context overflow' && (journal.view.limits.maxBytes >= 4096
               || journal.view.limits.maxReplies > 1))) {
@@ -7442,6 +7468,13 @@ export function createJournalWorker(journal: ReturnType<typeof openPreviewJourna
             return hold === null;
           };
           if (!await validateRequestedPacket(context, prepared)) continue;
+          // Refusal here proves that no provider call started. Keep the existing durable hold,
+          // and reserve only after this final asynchronous admission read, immediately before dispatch.
+          if (!await disclosure()) {
+            journal.append({ kind: 'hold', id: turn.id, reason: GROUP_DISCLOSURE_HOLD, at: ports.now() });
+            continue;
+          }
+          gate();
           journal.append({ kind: 'reserve', id: turn.id, ...(prepared === undefined ? {} : { prompt: prepared }),
             corrections: carried, grounding, packetDropped: dropped, packetLimit: journal.view.limits.maxBytes,
             maxInputTokens: journal.view.limits.maxBytes, maxOutputTokens: subscriptionOutputMaximum, at: ports.now() }); gate();
@@ -7449,7 +7482,7 @@ export function createJournalWorker(journal: ReturnType<typeof openPreviewJourna
           type Answer = Awaited<ReturnType<PreviewPorts['model']>>;
           let answer: Answer;
           const answerStarted = elapsedMs();
-          try { answer = await ports.model({ question, context, id: turn.id,
+          try { answer = await original.model({ question, context, id: turn.id,
             ...(prepared === undefined ? {} : { prepared }) }); }
           catch { continue; } // reservation remains UNKNOWN
           // Rule 116: a real model sometimes answers in prose instead of the required Decision. Ask the same turn
@@ -7564,7 +7597,7 @@ export function createJournalWorker(journal: ReturnType<typeof openPreviewJourna
               && journal.view.calls < journal.view.limits.maxCalls - (ports.replyCheck ? 1 : 0)) {
               matched = lookupRecall(turn, through, words);
               activeLookup = { id: turn.id, words, found: matched };
-              try { again = preparedFor(turn); } finally { activeLookup = undefined; }
+              try { again = await prepareRecall(() => preparedFor(turn)); } finally { activeLookup = undefined; }
             }
             if (again && !('reason' in again)) {
               const found = (JSON.parse(again.context) as { recalled?: { id: string }[] }).recalled ?? [];
@@ -7712,12 +7745,13 @@ export function createJournalWorker(journal: ReturnType<typeof openPreviewJourna
                   operatorAction = parsed.operatorAction === undefined ? undefined : parseOperatorAction(parsed.operatorAction);
                   unreadAction = operatorAction === undefined;
                 }
-                const decision = JSON.parse(context) as { memoryCandidates?: { id: string; message: string }[];
+                const decision = JSON.parse(context) as { predecessorMemory?: { entries: CarriedMemory['entries'] }; memoryCandidates?: { id: string; message: string }[];
                   contradictions?: ReturnType<typeof contradictionFor>;
                   memorySummary?: { text: string }; summary?: { text: string };
                   personMergeCandidates?: ReturnType<typeof mergeCandidates>; openQuestions?: { id: string }[];
                   openConflicts?: Pick<MemoryConflict, 'first' | 'second'>[] };
-                const offered = new Set([...decision.memoryCandidates?.map(item => item.id) ?? [],
+                const offered = new Set([...decision.predecessorMemory?.entries.map(item => item.source) ?? [],
+                  ...decision.memoryCandidates?.map(item => item.id) ?? [],
                   ...decision.contradictions?.map(item => item.earlier.id) ?? []]);
                 const updateEvidence = [...decision.memoryCandidates ?? [],
                   ...decision.contradictions?.map(item => ({ id: item.earlier.id, message: item.earlier.quote })) ?? []];
@@ -8358,7 +8392,7 @@ export function createJournalWorker(journal: ReturnType<typeof openPreviewJourna
         const provenance = journal.signOutbound(speaker, { target: `reply:${turn.id}`, chat: journal.view.genesis.chat, ...thread, body });
         const parts = split.slice(1).map((text, index) => ({ text, body: encodeReply(text), provenance: journal.signOutbound(speaker,
           { target: replyPartTarget(turn.id, index + 2), chat: journal.view.genesis.chat, ...thread, body: encodeReply(text) }) }));
-        journal.append({ kind: 'intent', id: turn.id, text: reply, body, chat: journal.view.genesis.chat, ...thread, provenance,
+        const admitReply = () => journal.append({ kind: 'intent', id: turn.id, text: reply, body, chat: journal.view.genesis.chat, ...thread, provenance,
           ...(parts.length ? { parts } : {}),
           ...(approval ? { approval } : {}), ...(offer?.request ? { operatorRequest: offer.request, requestScope: 'action' as const } : {}),
           ...(offer?.request && offer.review ? { operatorReview: offer.review } : {}),
@@ -8381,7 +8415,11 @@ export function createJournalWorker(journal: ReturnType<typeof openPreviewJourna
         gate();
         const sendStarted = elapsedMs();
         const outcome = await push(approval ? 'approval' : 'reply', `reply:${turn.id}`, provenance, { text: body, expectedText: split[0]!,
-          chat: journal.view.genesis.chat, ...thread, update: turn.update, ...(approval ? { replyMarkup: approvalMarkup(approval.id) } : {}) });
+          chat: journal.view.genesis.chat, ...thread, update: turn.update, ...(approval ? { replyMarkup: approvalMarkup(approval.id) } : {}) }, admitReply);
+        if (turn.intent === undefined) {
+          journal.append({ kind: 'hold', id: turn.id, reason: GROUP_DISCLOSURE_HOLD, at: ports.now() });
+          continue;
+        }
         // The receipt carries the measured duration; an UNKNOWN or refused attempt records no timing.
         // A failed receipt write leaves the exact intent UNKNOWN; it is never re-sent.
         if (outcome.kind === 'accepted') try {
@@ -9029,6 +9067,8 @@ export function createJournalWorker(journal: ReturnType<typeof openPreviewJourna
       const original = typeof rawSource === 'string' ? journal.view.turns.get(rawSource) : undefined;
       const channel = channelAlias ?? (typeof rawSource === 'string' && rawSource.startsWith('channel:')
         ? journal.view.channelItems.get(rawSource.slice('channel:'.length)) : undefined);
+      const carried = journal.view.groupCarry?.entries.filter(item => item.source === rawSource
+        && (item.kind === 'recall' || item.kind === 'preference' || item.kind === 'correction'));
       const activePreference = preferences.active.has(JSON.stringify([rawSource, quote]));
       if ((mode !== 'correct' && mode !== 'forget' && mode !== 'prefer' && mode !== 'update')
         || side !== undefined && (side !== 'reply' || mode !== 'correct')
@@ -9038,7 +9078,7 @@ export function createJournalWorker(journal: ReturnType<typeof openPreviewJourna
           || !redact(trigger.text).text.includes(quote) || replacement !== undefined
           || replies !== undefined && (!Array.isArray(replies) || replies.length > 0)
           || summaryPassages !== undefined && (!Array.isArray(summaryPassages) || summaryPassages.length > 0))
-        || mode !== 'prefer' && (!original?.accepted && !channel)
+        || mode !== 'prefer' && (!original?.accepted && !channel && !carried?.length)
         || original !== undefined && !fromOperator(original)
         || mode !== 'prefer' && !offered.has(source as string)
         || original !== undefined && original.update >= trigger.update && mode !== 'prefer'
@@ -9050,8 +9090,9 @@ export function createJournalWorker(journal: ReturnType<typeof openPreviewJourna
           ? original.intent !== undefined && original.noticeClass === undefined
             && redact(sentText(original) ?? '').text.includes(quote)
           : redact(original.text).text.includes(quote))
-          || channel && redact(channel.text).text.includes(quote))
-        || side === 'reply' && channel !== undefined
+          || channel && redact(channel.text).text.includes(quote)
+          || carried?.some(item => projectMemoryClause(journal.view, item.text, item.source).includes(quote)))
+        || side === 'reply' && (channel !== undefined || !!carried?.length)
         || seen.has(JSON.stringify([rawSource, quote]))
         || mode !== 'prefer' && preferences.lineage.has(JSON.stringify([rawSource, quote]))
           && !preferences.active.has(JSON.stringify([rawSource, quote]))) return undefined;
@@ -9067,8 +9108,8 @@ export function createJournalWorker(journal: ReturnType<typeof openPreviewJourna
       // Rule 93: the forget is held, never dropped, and held whole: it passes every check below and keeps its
       // replies and summary passages. The answer applies it once it records that request's cancellation, or tells
       // the operator the text was kept because the request still stands.
-      const heldForget = mode === 'forget' && original !== undefined && openRequests(journal.view).some(request =>
-        request.source === original.id && (request.quote.includes(quote) || quote.includes(request.quote)));
+      const heldForget = mode === 'forget' && typeof rawSource === 'string' && openRequests(journal.view).some(request =>
+        request.source === rawSource && (request.quote.includes(quote) || quote.includes(request.quote)));
       if (mode === 'update' && (!original || !updateEvidence.some(item => item.id === source && item.message.includes(quote)))) return undefined;
       if (replies !== undefined && (!Array.isArray(replies) || replies.length > 5 || replies.some(id =>
         typeof id !== 'string' || !offered.has(id) || journal.view.turns.get(id)?.intent === undefined
@@ -9360,7 +9401,9 @@ export function createJournalWorker(journal: ReturnType<typeof openPreviewJourna
           summary: summaryFor(trigger.update)?.text ?? '', candidates: older.map(item => ({ text: `${clean(item.text, true, item.id)} ${replyFor(item)}`, at: sentAt(item) ?? 0 })) }) : [];
         const replaced = trigger?.replaces ? journal.view.turns.get(trigger.replaces) : undefined;
         const recentAnswer = older.map(item => item.intent !== undefined && item.noticeClass === undefined).lastIndexOf(true);
-        const memoryCandidates = [...(replaced ? [{ id: replaced.id, sourceKind: 'operator-stated' as MemorySourceKind, message: redact(replaced.text).text,
+        const memoryCandidates = [...(journal.view.groupCarry ? groupCarryPacket(journal.view.groupCarry, trigger?.text ?? '', ports.now(), journal.view.limits.maxBytes, journal.view).entries
+          .filter(item => item.kind === 'recall' || item.kind === 'preference' || item.kind === 'correction')
+          .map(item => ({ id: item.source, sourceKind: 'operator-stated' as MemorySourceKind, message: item.text, reply: '' })) : []), ...(replaced ? [{ id: replaced.id, sourceKind: 'operator-stated' as MemorySourceKind, message: redact(replaced.text).text,
           reply: replyFor(replaced) }] : []), ...activePreferences().map(item => ({ id: item.source, sourceKind: 'operator-stated' as MemorySourceKind, message: redact(item.quote).text, reply: '' })),
           ...[...new Set([...(recentAnswer < 0 ? [] : [recentAnswer]), ...ranked])].slice(0, 5).map(index => ({ id: older[index]!.id, sourceKind: 'operator-stated' as MemorySourceKind, message: clean(redact(older[index]!.text).text, true, older[index]!.id),
           reply: replyFor(older[index]!) })).filter(item => item.id !== replaced?.id), ...(trigger ? channelCandidates(trigger, summaryFor(trigger.update)?.text) : [])];

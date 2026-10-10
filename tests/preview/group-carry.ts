@@ -4,7 +4,7 @@
 import { createHash } from 'node:crypto';
 import { selectRecall } from './memory-sentinel.js';
 import { redact } from '../../src/recall/redact.js';
-import { liveSummaries, openRequests, operatorWriter, probeTurn, projectionDigest, projectMemoryText, retractedTurn,
+import { liveSummaries, openRequests, operatorWriter, probeTurn, projectionDigest, projectMemoryText, projectMemoryClause, retractedTurn,
   type JournalView, type openPreviewJournal } from './journal.js';
 import { type GroupCarryScope, type DisclosureVerdict } from './group-disclosure.js';
 import { type DatedItem } from './dated-memory.js';
@@ -145,7 +145,10 @@ export function appendGroupCarry(destination: ReturnType<typeof openPreviewJourn
 /** Reuse the journal's signal-only recall selector; omission is counted, never evidence of absence.
  * The durable snapshot is whole. The packet is bounded so a default-size group can use it without
  * raising a spend/context grant, and every selected fact retains its original source and time. */
-export function groupCarryPacket(memory: CarriedMemory, question: string, now: number, maxBytes: number) {
+export function groupCarryPacket(memory: CarriedMemory, question: string, now: number, maxBytes: number, destination?: JournalView) {
+  // The snapshot remains immutable provenance; every serving read uses the destination correction/forget projection.
+  if (destination) memory = { ...memory, entries: memory.entries.map(item => ({ ...item,
+    text: projectMemoryClause(destination, item.text, item.source) })).filter(item => item.text.trim()) };
   const budget = Math.min(12000, Math.floor(maxBytes / 5));
   const entries: CarriedMemory['entries'] = [], chosen = new Set<number>();
   const summary = memory.entries.find(e => e.kind === 'summary')?.text ?? '';

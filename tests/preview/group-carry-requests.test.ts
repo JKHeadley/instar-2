@@ -204,3 +204,67 @@ it('a carried due request whose model answer is empty sends no empty bubble and 
   expect(openRequests(w.destination.view)).toEqual([]);
   w.destination.close();
 });
+
+it.each([['before-model', false], ['before-model', true], ['before-send', false], ['before-send', true]] as const)('recovers disclosure lost %s (read failure: %s) without losing or repeating the carried request', async (boundary, readFailure) => {
+  const w = await world();
+  appendGroupCarry(w.destination, w.source, scope, permission(), true, start + 3600_000, () => false); w.source.close();
+  const group = { now: friday9, due: 0, sent: [] as { text: string; thread?: number }[] };
+  let reads = 0, restored = false;
+  const base = ports(group, true);
+  const bound = { ...base, groupDisclosure: async () => {
+    const allowed = restored || ++reads < (boundary === 'before-model' ? 2 : 3);
+    if (!allowed && readFailure) throw Error('membership read unavailable');
+    return allowed;
+  } };
+  await createJournalWorker(w.destination, bound).sendRequested();
+  const due = w.destination.view.order.find(turn => turn.requestedAction)!;
+  expect(due.held).toBe(GROUP_DISCLOSURE_HOLD);
+  expect(due.reserved).toBe(boundary === 'before-send');
+  expect(due.intent).toBeUndefined();
+  expect(group.due).toBe(boundary === 'before-send' ? 1 : 0);
+  expect(group.sent).toEqual([]);
+  expect(openRequests(w.destination.view)).toHaveLength(1);
+  expect(w.destination.view.tokenTotals.answer.unknownCalls).toBe(boundary === 'before-model' ? 0 : 1);
+  w.destination.compact(); w.destination.close();
+  const resumed = openPreviewJournal(w.target, key);
+  restored = true;
+  const worker = createJournalWorker(resumed, bound);
+  await worker.sendRequested(); await worker.sendRequested();
+  expect(group.due).toBe(1);
+  expect(pushes(group.sent)).toEqual([`${header}\nDoing what you asked: ${priya}.`]);
+  expect(openRequests(resumed.view)).toEqual([]);
+  resumed.close();
+});
+
+it.each(['model', 'send'] as const)('does not repeat a genuinely uncertain %s after disclosure returns', async boundary => {
+  const w = await world();
+  appendGroupCarry(w.destination, w.source, scope, permission(), true, start + 3600_000, () => false); w.source.close();
+  const group = { now: friday9, due: 0, sent: [] as { text: string }[] };
+  const base = ports(group, true);
+  let models = 0, sends = 0;
+  const bound = { ...base, model: async (input: Input) => {
+    models++; if (boundary === 'model') throw Error('provider outcome unknown'); return base.model(input);
+  }, send: async () => { sends++; throw Error('transport outcome unknown'); } };
+  const worker = createJournalWorker(w.destination, bound);
+  await worker.sendRequested(); await worker.sendRequested();
+  w.destination.compact(); w.destination.close();
+  const resumed = openPreviewJournal(w.target, key);
+  await createJournalWorker(resumed, bound).sendRequested();
+  expect(models).toBe(1); expect(sends).toBe(boundary === 'send' ? 1 : 0);
+  resumed.close();
+});
+
+it('forgetting carried request text cannot silently cancel the owned request', async () => {
+  const w = await world();
+  const source = w.source.view.order[0]!.id;
+  appendGroupCarry(w.destination, w.source, scope, permission(), true, start + 3600_000, () => false); w.source.close();
+  const group = { now: start + 7200_000, due: 0, sent: [] as { text: string }[] };
+  const worker = createJournalWorker(w.destination, { ...ports(group, true), model: async () => JSON.stringify({
+    reply: 'Okay.', memory: [{ mode: 'forget', source, quote: priya }], dated: [] }) });
+  worker.intake([update(100, `I want you to forget this phrase: ${priya}`, true)]); await worker.drain();
+  expect(w.destination.view.memory).toEqual([]);
+  expect(openRequests(w.destination.view).map(item => item.quote)).toEqual([priya]);
+  expect(w.destination.view.order.at(-1)!.memoryPending).toBeUndefined();
+  expect(group.sent).toHaveLength(1);
+  w.destination.close();
+});

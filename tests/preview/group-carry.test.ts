@@ -157,3 +157,106 @@ it('replays the real proof-room journal including uncertain summaries and reply 
   expect(readFileSync(path)).toEqual(sourceBytes);
   destination.close(); source.close();
 });
+
+it.each(['correct', 'forget', 'bad-source', 'bad-quote'] as const)('resolves carried evidence through durable memory: %s', async mode => {
+  const w = await world();
+  appendGroupCarry(w.destination, w.source, scope, permission(), true, now, () => false);
+  const snapshot = JSON.stringify(w.destination.view.groupCarry);
+  const source = w.source.view.order[0]!.id;
+  const quote = 'My preferred meeting place is the arboretum.';
+  const replacement = 'My preferred meeting place is the library.';
+  const worker = createJournalWorker(w.destination, { now: () => now + 1000, stopped: () => false,
+    groupDisclosure: async () => true, checkOutbound: () => {}, send: async () => 2,
+    model: async input => JSON.stringify({ ...(input.id.startsWith('summary:')
+      ? { summary: 'The operator requested a memory change.', people: [] } : { reply: 'Okay.' }), memory: [{ mode: mode === 'forget' ? mode : 'correct',
+      source: mode === 'bad-source' ? 'missing:source' : source, quote: mode === 'bad-quote' ? 'Invented old meeting location.' : quote,
+      ...(mode === 'forget' ? {} : { replacement }) }] }) });
+  worker.intake([update(2, mode === 'forget' ? `Forget this: ${quote}` : `Correction: ${replacement}`, true)]);
+  await worker.drain();
+  const valid = mode === 'correct' || mode === 'forget';
+  expect(w.destination.view.memory).toHaveLength(valid ? 1 : 0);
+  expect(!!w.destination.view.order.at(-1)!.memoryPending).toBe(!valid);
+  expect(JSON.stringify(w.destination.view.groupCarry)).toBe(snapshot);
+  w.destination.compact(); w.destination.close(); w.source.close();
+  const resumed = openPreviewJournal(w.target, key);
+  const packet = groupCarryPacket(resumed.view.groupCarry!, 'meeting', now + 2000, 409600, resumed.view);
+  if (valid) expect(JSON.stringify(packet)).not.toContain('arboretum');
+  else expect(JSON.stringify(packet)).toContain('arboretum');
+  if (mode === 'correct') {
+    const view = createJournalWorker(resumed, { now: () => now + 2000, stopped: () => false,
+      model: async () => 'unused', send: async () => 1, checkOutbound: () => {} }).probe('Where do I meet?');
+    expect('context' in view && view.context).toContain('library');
+  }
+  resumed.close();
+});
+
+it.each([
+  { external: false, allowed: true, charge: 0 },
+  { external: false, allowed: false, charge: 0 },
+  { external: true, allowed: true, charge: 0 },
+  { external: true, allowed: false, charge: 0 },
+  { external: true, allowed: true, charge: 1 },
+])('retains semantic recall and enforces external disclosure/spend: %j', async ({ external, allowed, charge }) => {
+  const w = await world();
+  appendGroupCarry(w.destination, w.source, scope, permission(), true, now, () => false);
+  w.source.close();
+  for (let i = 10; i < 36; i++) {
+    const text = i === 10 ? 'The bicycle combination is 4471.' : `A quiet afternoon note number ${i}.`;
+    const id = `telegram:${scope.bot}:update:${i}`;
+    w.destination.append({ kind: 'intake', id, update: i, text, accepted: true,
+      raw: JSON.stringify(update(i, text, true)), cursor: i + 1, at: now + i });
+    w.destination.append({ kind: 'reserve', id, at: now + i });
+    w.destination.append({ kind: 'answer', id, text: 'Noted.', state: 'complete', at: now + i });
+    w.destination.append({ kind: 'intent', id, text: 'Noted.', chat: scope.chat, update: i, grant: genesis.grant, at: now + i });
+    w.destination.append({ kind: 'sent', id, message: i, at: now + i });
+  }
+  w.destination.append({ kind: 'summary-reserve', through: 35, at: now + 40 });
+  w.destination.append({ kind: 'summary', through: 35, text: 'The operator keeps afternoon notes.', at: now + 40 });
+  let calls = 0, reads = 0, context = '';
+  const worker = createJournalWorker(w.destination, { now: () => now + 1000, stopped: () => false,
+    // Admit the pass, then exercise the external rerank's own asynchronous checkpoint.
+    groupDisclosure: async () => ++reads === 1 || allowed,
+    model: async input => { context = input.context; return JSON.stringify({ reply: 'Noted.', memory: [] }); },
+    send: async () => 50, checkOutbound: () => {},
+    recallReranker: { id: 'semantic-test', chargePerCall: charge, ...(external ? { external: true as const } : {}),
+      rerank: (_query, candidates) => {
+        calls++;
+        const value = { kind: 'Success' as const, value: candidates.flatMap((text, i) => text.includes('4471') ? [i] : []) } as never;
+        return external ? Promise.resolve(value) : value;
+      } } });
+  if (external) {
+    worker.intake([update(40, 'What is the combination for my bike?', true)]); await worker.drain();
+    expect(calls > 0).toBe(allowed && charge === 0);
+    if (allowed && charge === 0) expect(context).toContain('4471');
+    if (!allowed) expect(context).toBe('');
+  } else {
+    const packet = worker.probe('What is the combination for my bike?');
+    expect(calls).toBeGreaterThan(0);
+    expect('context' in packet && packet.context).toContain('4471');
+    expect(reads).toBe(0); // a local computation has no disclosure effect to admit
+  }
+  w.destination.close();
+});
+
+it('recovers a held real recorded answer (proof-room update 715672480) without calling the model twice', async () => {
+  const capture = JSON.parse(readFileSync(new URL('./fixtures/proofroom-summary-cascade-stall-2026-09-30.json', import.meta.url), 'utf8')) as { rows: JournalRecord[] };
+  const recorded = capture.rows.find((row): row is Extract<JournalRecord, { kind: 'answer' }> =>
+    row.kind === 'answer' && row.id.endsWith(':715672480'))!;
+  const w = await world();
+  appendGroupCarry(w.destination, w.source, scope, permission(), true, now, () => false); w.source.close();
+  let allowed = true, calls = 0;
+  const sends: string[] = [];
+  const ports = { now: () => now + 1000, stopped: () => false, groupDisclosure: async () => allowed,
+    model: async () => { calls++; allowed = false; return recorded.text; },
+    send: async (input: { expectedText: string }) => { sends.push(input.expectedText); return 1; }, checkOutbound: () => {} };
+  const worker = createJournalWorker(w.destination, ports);
+  worker.intake([update(2, 'Continue the conversation.', true)]); await worker.drain();
+  expect(w.destination.view.order[0]!.held).toBe('group disclosure refused');
+  expect(sends).toEqual([]);
+  w.destination.compact(); w.destination.close();
+  const resumed = openPreviewJournal(w.target, key); allowed = true;
+  const restarted = createJournalWorker(resumed, ports);
+  await restarted.drain(); await restarted.drain();
+  expect(calls).toBe(1); expect(sends).toHaveLength(1); expect(sends[0]).toContain(recorded.text);
+  resumed.close();
+});

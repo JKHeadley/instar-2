@@ -112,12 +112,18 @@ Unknown membership, another member, expiry, revocation or mismatched scope refus
 the copy. Keep the same authority and operator-record paths on subsequent `run` invocations.
 Model/review calls and group sends recheck authority and membership; Telegram does not provide an
 atomic membership-and-send operation, so a membership change after its last response remains a race.
-The optional synchronous external recall reranker cannot await that check, so carried roots use the
-existing deterministic recall fallback. Ordinary roots retain their configured reranker.
+Local zero-charge semantic rerankers remain available, including on carried roots. A host binding
+that performs external reranking declares `external: true`; answer preparation gathers its bounded
+queries, checks disclosure asynchronously before each dispatch, awaits the results, then builds the
+packet with those results. The same zero helper-spend limit refuses charging callbacks. Read-only
+synchronous probes run local rerankers only and never start an external call.
 
 The snapshot retains projected recall, active preferences, corrections, settled summary prose and
 facts, and open promise context. It retains the original source references and counts any facts
 omitted from a bounded prompt selection. It does not copy intake, counters, approvals or send records.
+The ordinary answer and summary memory decisions can cite the carried source and its exact quote
+for correction or forgetting. Serving applies the destination's memory projection to each carried
+entry; the original snapshot remains immutable provenance.
 
 Execution of the operator's open dated requests moves exactly once. Before the group snapshot is
 written, the private journal records a `request-transfer` naming the group root and those requests;
@@ -132,7 +138,11 @@ context in both roots; a promise grants no send. Nothing is recorded in the priv
 there is nothing to move.
 
 While the disclosure grant or the operator-only audience cannot be shown, every turn of the carried
-group, a due request included, is held unreserved and unsent, and continues once both hold again.
+group, a due request included, is held unsent and continues once both hold again. The final model
+admission read precedes its reservation. The final send admission read precedes its durable intent;
+if disclosure disappears after the answer, the answer is kept for delivery without another model
+call. These proven pre-dispatch refusals retain the existing durable hold. A provider call or send
+that actually started and has an uncertain outcome remains non-repeatable.
 After ten minutes of such a hold, one fixed content-free notice goes to the group (at most one per
 hour) so the hold is never silent; it names no private item.
 
