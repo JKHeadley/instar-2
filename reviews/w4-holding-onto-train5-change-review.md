@@ -32,5 +32,6 @@ Deferral: generated/register.json:1 | not-a-deferral=generated register quotes t
 ## Closing block
 
 simplestRobustRoute: This is the simplest robust route: ordinary merge, a combined existing disclosure wrapper, existing retry/release machinery and existing desk repin/build/rehash/register replay. No new mechanism. Start guards are current disclosure and durable reservation; end guards are contextual answer review and durable signed send; limits are the existing call cap, deadline, stop and ownership checks. Typed pre-dispatch proof prevents retrying charged UNKNOWN work. This submission is offline integration evidence, not unattended live deployment certification.
+Register evidence: Existing desk chain refreshed two preview owner hashes; generated artifacts now bind the merged source commit 15cb885db39540e9735da93ef8737d4f56d897da. Build, typecheck, architecture, lint and register:check passed on WSL.
 80/20: Target the changed files and their direct import consumers, plus required machine checks. The pipeline owns full-suite and independent merged-hunk review. Report platform limitations and any red evidence explicitly; do not claim an independent verdict.
 VERDICT: author submission; independent landing verdict belongs to the pipeline
