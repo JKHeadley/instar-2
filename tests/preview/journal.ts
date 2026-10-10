@@ -7071,7 +7071,12 @@ export function createJournalWorker(journal: ReturnType<typeof openPreviewJourna
    * become ONE durable runner-authored turn; the ordinary answer path then answers, checks and sends it once. A
    * conversation whose due turn is still on its way to a send gets no second one (Rule 52). */
   const scheduleRequests = () => {
-    if (journal.view.stop || ports.stopped() || ports.now() >= journal.view.expires || unresolvedReminderMemory()) return;
+    if (journal.view.stop || ports.stopped() || ports.now() >= journal.view.expires) return;
+    // Background summaries can exhaust memory retries after the last ordinary drain. Settle that evidence
+    // on idle polls too, before testing the hold: otherwise only a new inbound turn can free a due request
+    // (live 2026-10-09, updates 6233067/6233075; Rules 93, 95). Later unanswered withdrawals still hold below.
+    settleExhaustedEdit();
+    if (unresolvedReminderMemory()) return;
     // The spend floor: a due turn is created only when its model call and its one reply both fit the caps.
     if (journal.view.replies >= journal.view.limits.maxReplies
       || journal.view.calls >= journal.view.limits.maxCalls - (ports.replyCheck ? 1 : 0)) return;
