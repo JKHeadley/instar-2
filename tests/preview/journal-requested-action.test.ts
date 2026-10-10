@@ -1,10 +1,11 @@
 import { expect, it } from 'vitest';
 import { spawnSync } from 'node:child_process';
-import { mkdtempSync, realpathSync, rmSync } from 'node:fs';
+import { mkdtempSync, readFileSync, realpathSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { createJournalWorker, MEMORY_UNDECIDED_REPLY, openPreviewJournal, openRequests, REQUEST_ITEM_LIMIT,
-  requestOverflowLine } from './journal-test-worker.js';
+  requestOccurrence, requestOverflowLine } from './journal-test-worker.js';
+import { writerRecord } from './intake-principal.js';
 import type { openPreviewJournal as OpenJournal } from './journal.js';
 
 const key = new Uint8Array(32).fill(29);
@@ -43,7 +44,7 @@ const decide = (input: Input) => {
 };
 const harness = (root: string, maxReplies = genesis.maxReplies, limits: Partial<typeof genesis> = {}) => {
   const state = { now: start, stopped: false, stopWhenQueued: false, fail: false, uncertain: false, plain: false, crashDue: false,
-    plainCalls: 0,
+    plainCalls: 0, recordedDue: undefined as string | { state: 'uncertain' } | undefined,
     plainText: 'Okay, I cancelled the Priya reminder.', summaryCancel: undefined as undefined | 'keep' | 'cancel' | 'omit',
     sent: [] as { text: string; thread?: number }[], dueCalls: 0 };
   let current: ReturnType<typeof OpenJournal> | undefined;
@@ -57,6 +58,7 @@ const harness = (root: string, maxReplies = genesis.maxReplies, limits: Partial<
       }
       if (input.id.startsWith('requested-action:')) {
         state.dueCalls++;
+        if (state.recordedDue !== undefined) return state.recordedDue;
         if (state.crashDue) throw Error('crash during the due turn\'s model call');
       }
       // plain: a model that answers every call (answer, summary or due turn alike) in plain text.
@@ -557,5 +559,155 @@ it('writes out at most the bounded number of due requests and counts the rest in
     expect(pushes()).toHaveLength(1);
     journal.close();
     expect(JSON.parse(status(root).stdout).requestedActions).toMatchObject({ open: [], dueTurns: [{ requests: 8, state: 'accepted' }] });
+  } finally { rmSync(root, { recursive: true, force: true }); }
+});
+
+it('runs a daily series on consecutive days once each, replays without duplicates, and withdrawal ends the series', async () => {
+  const root = tmp('daily-series');
+  try {
+    const { state, open, pushes } = harness(root, 30, { maxCalls: 100, maxTurns: 40, maxBytes: 64000 });
+    let { journal, worker } = open(true);
+    const request = 'remind me every morning at 8 to call Priya';
+    worker.intake([update(1, request)]); await worker.drain();
+    expect(journal.view.dated).toMatchObject([{ recurrence: 'daily', day: '2026-09-27', time: '08:00', remind: true }]);
+    expect(state.sent[0]!.text).toContain('every day at 08:00 (America/Los_Angeles)');
+    expect(state.sent[0]!.text).toContain('cancel this request');
+    const first = Date.UTC(2026, 8, 27, 15);
+    state.now = first - 1; await worker.sendRequested(); expect(pushes()).toHaveLength(0);
+    state.now = first; await worker.sendRequested(); await worker.sendRequested();
+    expect(pushes()).toHaveLength(1);
+    journal.close(); ({ journal, worker } = open());
+    await worker.sendRequested(); expect(pushes()).toHaveLength(1);
+    state.now = first + 86400000; await worker.sendRequested(); await worker.sendRequested();
+    expect(pushes()).toHaveLength(2);
+    expect(pushes()[1]).toContain('due 2026-09-28 08:00');
+    expect(openRequests(journal.view)).toHaveLength(1);
+    worker.intake([update(2, 'cancel the Priya request')]); await worker.drain();
+    expect(openRequests(journal.view)).toHaveLength(0);
+    journal.close(); ({ journal, worker } = open());
+    state.now += 86400000; await worker.sendRequested(); expect(pushes()).toHaveLength(2);
+    journal.close();
+  } finally { rmSync(root, { recursive: true, force: true }); }
+});
+
+it('collapses missed daily occurrences into one recovery turn and respects weekdays, stop and spend limits', async () => {
+  for (const phrase of ['every day at 8 am', 'every weekday at 8 am']) {
+    const root = tmp('series-recovery');
+    try {
+      const { state, open, pushes } = harness(root, 30, { maxCalls: 100, maxTurns: 40, maxBytes: 64000 });
+      let { journal, worker } = open(true);
+      worker.intake([update(1, `remind me ${phrase} to call Priya`)]); await worker.drain();
+      // Recovery on Wednesday after several missed days emits only Wednesday's occurrence.
+      journal.close(); ({ journal, worker } = open());
+      state.now = Date.UTC(2026, 8, 30, 15); state.stopped = true;
+      await worker.sendRequested();
+      expect(pushes()).toHaveLength(0); state.stopped = false;
+      await worker.sendRequested(); await worker.sendRequested();
+      expect(pushes()).toHaveLength(1); expect(pushes()[0]).toContain('due 2026-09-30 08:00');
+      journal.close(); ({ journal, worker } = open());
+      await worker.sendRequested(); expect(pushes()).toHaveLength(1);
+      state.now = Date.UTC(2026, 9, 2, 15); await worker.sendRequested();
+      expect(pushes()).toHaveLength(2);
+      state.now = Date.UTC(2026, 9, 3, 15); await worker.sendRequested();
+      expect(pushes()).toHaveLength(phrase.includes('weekday') ? 2 : 3);
+      // Existing allowance, never a fresh allowance per occurrence.
+      journal.view.limits.maxReplies = journal.view.replies;
+      state.now = Date.UTC(2026, 9, 5, 15); await worker.sendRequested();
+      expect(pushes()).toHaveLength(phrase.includes('weekday') ? 2 : 3);
+      journal.close();
+    } finally { rmSync(root, { recursive: true, force: true }); }
+  }
+});
+
+it('recovers a queued series occurrence once after downtime, without immediately sending a second catch-up', async () => {
+  const root = tmp('series-queued-recovery');
+  try {
+    const { state, open, pushes } = harness(root, 30, { maxCalls: 100, maxTurns: 40, maxBytes: 64000 });
+    let { journal, worker } = open(true);
+    worker.intake([update(1, 'remind me every morning at 8 to call Priya')]); await worker.drain();
+    state.now = Date.UTC(2026, 8, 27, 15); state.stopWhenQueued = true;
+    await expect(worker.sendRequested()).rejects.toThrow('preview stopped');
+    expect(pushes()).toHaveLength(0);
+    journal.close(); ({ journal, worker } = open());
+    state.stopWhenQueued = false; state.now = Date.UTC(2026, 8, 30, 15);
+    await worker.sendRequested(); await worker.sendRequested();
+    expect(pushes()).toHaveLength(1);
+    journal.close(); ({ journal, worker } = open());
+    await worker.sendRequested(); expect(pushes()).toHaveLength(1);
+    state.now += 86400000; await worker.sendRequested(); expect(pushes()).toHaveLength(2);
+    journal.close();
+  } finally { rmSync(root, { recursive: true, force: true }); }
+});
+
+/** Captured bytes remain verbatim; only the new series grant and the clock are synthetic. */
+it('keeps a series open across recorded delivered, empty and uncertain model outcomes without repeating an occurrence', async () => {
+  const captured = JSON.parse(readFileSync(new URL('./fixtures/retrospective-duty-followup-train-1-2026-10-08.json',
+    import.meta.url), 'utf8')) as { otherShapes: { kind: string; id: string; raw: string }[] };
+  const shapes = captured.otherShapes.filter(row => ['delivered-reply', 'empty-reply-in-recorded-context', 'summary-uncertain'].includes(row.kind));
+  expect(shapes.map(row => row.id)).toEqual(['715672483', 'telegram:8994258214:update:715672479', 'telegram:8994258214:update:715672550']);
+  for (const shape of shapes) {
+    const root = tmp('series-recorded');
+    try {
+      const { state, open } = harness(root, 30, { maxCalls: 100, maxTurns: 40, maxBytes: 64000 });
+      let { journal, worker } = open(true);
+      worker.intake([update(1, 'remind me every morning at 8 to call Priya')]); await worker.drain();
+      // The uncertain state comes from the recorded writer result, not a fabricated outcome.
+      state.recordedDue = shape.kind === 'summary-uncertain' ? JSON.parse(shape.raw) as { state: 'uncertain' } : shape.raw;
+      state.now = Date.UTC(2026, 8, 27, 15);
+      await worker.sendRequested(); await worker.sendRequested();
+      expect(state.dueCalls, shape.id).toBe(1);
+      expect(journal.view.order.filter(turn => turn.requestedAction), shape.id).toHaveLength(1);
+      expect(openRequests(journal.view), shape.id).toHaveLength(1);
+      journal.close(); ({ journal, worker } = open());
+      await worker.sendRequested(); expect(state.dueCalls, shape.id).toBe(1);
+      state.now += 86400000; await worker.sendRequested();
+      expect(state.dueCalls, shape.id).toBe(2);
+      expect(state.sent.every(send => send.text.trim().length > 0), shape.id).toBe(true);
+      journal.close();
+    } finally { rmSync(root, { recursive: true, force: true }); }
+  }
+});
+
+it('admits a delayed standing request but still refuses a delayed one-time request', async () => {
+  for (const when of ['every morning at 8', 'tomorrow at 8 am']) {
+    const root = tmp('series-delayed-intake');
+    try {
+      const { state, open, pushes } = harness(root, 30, { maxCalls: 100, maxTurns: 40, maxBytes: 64000 });
+      const { journal, worker } = open(true);
+      state.now = Date.UTC(2026, 8, 30, 15);
+      worker.intake([update(1, `remind me ${when} to call Priya`)]); await worker.drain();
+      await worker.sendRequested(); await worker.sendRequested();
+      expect(pushes()).toHaveLength(when.startsWith('every') ? 1 : 0);
+      if (when.startsWith('every')) expect(pushes()[0]).toContain('due 2026-09-30 08:00');
+      else expect(state.sent[0]!.text).toContain('that time has already passed');
+      journal.close();
+    } finally { rmSync(root, { recursive: true, force: true }); }
+  }
+});
+
+it('binds the owner-signed recurring due frame to its exact local occurrence and refuses repetition', async () => {
+  const root = tmp('series-occurrence-authority');
+  try {
+    const { state, open, pushes } = harness(root, 30, { maxCalls: 100, maxTurns: 40, maxBytes: 64000 });
+    const { journal, worker } = open(true);
+    worker.intake([update(1, 'remind me every morning at 8 to call Priya')]); await worker.drain();
+    state.now = Date.UTC(2026, 8, 27, 15);
+    const item = journal.view.dated[0]!;
+    const ref = (occurrence?: string) => ({ source: item.source, quote: item.quote, when: item.when,
+      ...(occurrence === undefined ? {} : { occurrence }) });
+    const frame = (occurrence?: string, ordinal = 0) => {
+      const id = `requested-action:${ordinal}`, items = [ref(occurrence)];
+      const writer = writerRecord(journal.systemWriter('requested-action', requestOccurrence(id, items), state.now)!);
+      return { kind: 'action-due' as const, id, items, writer, update: 1 + (ordinal + 1) / 1024, at: state.now };
+    };
+    expect(() => journal.append(frame())).toThrow('requested action refused');
+    expect(() => journal.append(frame('2026-09-28'))).toThrow('requested action refused');
+    const signed = frame('2026-09-27');
+    expect(() => journal.append({ ...signed, items: [ref('2026-09-26')] })).toThrow('requested action refused');
+    journal.append(signed); await worker.sendRequested();
+    expect(pushes()).toHaveLength(1);
+    expect(() => journal.append(frame('2026-09-27', 1))).toThrow('requested action refused');
+    state.now += 86400000; await worker.sendRequested(); expect(pushes()).toHaveLength(2);
+    journal.close();
   } finally { rmSync(root, { recursive: true, force: true }); }
 });

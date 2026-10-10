@@ -4,10 +4,10 @@
 import { createHash } from 'node:crypto';
 import { selectRecall } from './memory-sentinel.js';
 import { redact } from '../../src/recall/redact.js';
-import { liveSummaries, openRequests, operatorWriter, probeTurn, projectionDigest, projectMemoryText, projectMemoryClause, retractedTurn,
+import { liveSummaries, lastRecurringOccurrence, openRequests, operatorWriter, probeTurn, projectionDigest, projectMemoryText, projectMemoryClause, retractedTurn,
   type JournalView, type openPreviewJournal } from './journal.js';
 import { type GroupCarryScope, type DisclosureVerdict } from './group-disclosure.js';
-import { type DatedItem } from './dated-memory.js';
+import { nextRecurringDay, type DatedItem } from './dated-memory.js';
 
 export interface CarriedMemory {
   scope: GroupCarryScope; sourceDigest: string; grant: string; authorityDigest: string; at: number;
@@ -24,7 +24,8 @@ const requestShape = (value: CarriedRequest) => {
     && ['source', 'quote', 'when', 'zone', 'day'].every(field => typeof item[field] === 'string')
     && (item.time === undefined || typeof item.time === 'string') && item.ambiguity === undefined
     && (item.repeat === undefined || item.repeat === 'weekly')
-    && Object.keys(item).every(field => ['source', 'quote', 'when', 'zone', 'day', 'time', 'repeat', 'remind'].includes(field));
+    && (item.recurrence === undefined || item.recurrence === 'daily' || item.recurrence === 'weekdays')
+    && Object.keys(item).every(field => ['source', 'quote', 'when', 'zone', 'day', 'time', 'repeat', 'recurrence', 'remind'].includes(field));
 };
 const hash = (value: unknown) => createHash('sha256').update(JSON.stringify(value)).digest('hex');
 export const CARRY_MAX_BYTES = 128 * 1024;
@@ -82,7 +83,10 @@ export function buildCarriedMemory(source: JournalView, scope: GroupCarryScope,
     const item = source.dated.find(d => d.source === ref.source && d.quote === ref.quote && d.when === ref.when);
     const turn = source.turns.get(ref.source);
     if (!item || !turn) throw Error('group carry: transferred request is not in the predecessor');
-    return { item: { ...item }, askedAt: sentAt(turn.raw, turn.at) };
+    // Keep the next unconsumed occurrence even after the transfer hides the series in its predecessor.
+    const last = item.recurrence ? lastRecurringOccurrence(source, item) : undefined;
+    return { item: { ...item, ...(last === undefined ? {} : { day: nextRecurringDay(item, last) }) },
+      askedAt: sentAt(turn.raw, turn.at) };
   });
   const body = { scope, sourceDigest: projectionDigest(source), grant: permission.grant, authorityDigest: permission.digest, at, entries, requests };
   const carried = { ...body, digest: hash(body) };

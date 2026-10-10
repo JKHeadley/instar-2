@@ -160,7 +160,7 @@
       "reach": "user",
       "surface": "chat",
       "repeats": {
-        "kind": "no"
+        "kind": "unbounded"
       }
     },
     "standards": [

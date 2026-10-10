@@ -5,7 +5,8 @@ import { afterEach, expect, it } from 'vitest';
 import { copyFileSync, mkdtempSync, readFileSync, realpathSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
-import { appendGroupCarry } from './group-carry.js';
+import { createHash } from 'node:crypto';
+import { appendGroupCarry, validCarriedMemory } from './group-carry.js';
 import { createJournalWorker, GROUP_DISCLOSURE_HOLD, GROUP_DISCLOSURE_HOLD_NOTICE, openPreviewJournal, openRequests, ModelDisclosureRefused, type JournalRecord } from './journal-test-worker.js';
 import { key, scope, permissionFor } from './group-carry-fixture.js';
 
@@ -355,4 +356,45 @@ it('the shipped model wrapper never releases an invocation that already reached 
   expect(calls).toBe(1); expect(turn.reserved).toBe(true); expect(turn.held).not.toBe(GROUP_DISCLOSURE_HOLD);
   expect(w.destination.view.tokenTotals.answer.unknownCalls).toBe(1);
   w.destination.close();
+});
+
+it('carries a daily series after dispatch without repeating that day, then resumes and cancels it in the group', async () => {
+  const dir = realpathSync(mkdtempSync(join(tmpdir(), 'group-carry-recurring-'))); dirs.push(dir);
+  const source = openPreviewJournal(join(dir, 'private.encrypted'), key, genesis);
+  const target = join(dir, 'group.encrypted');
+  let destination = openPreviewJournal(target, key, { ...genesis, chat: scope.chat, forum: true });
+  const request = 'remind me every day at 11 am to call Priya';
+  const privateState = { now: start, due: 0, sent: [] as { text: string }[] };
+  const privateWorker = createJournalWorker(source, ports(privateState));
+  privateWorker.intake([update(1, request)]); await privateWorker.drain();
+  privateState.now = start + 3600_000; await privateWorker.sendRequested();
+  expect(pushes(privateState.sent)).toHaveLength(1);
+  expect(appendGroupCarry(destination, source, scope, permission(), true, privateState.now, () => false)).toBe('carried');
+  expect(destination.view.groupCarry!.requests[0]!.item).toMatchObject({ recurrence: 'daily', day: '2026-10-11' });
+  for (const recurrence of ['daily', 'weekdays', 'monthly'] as const) {
+    const { digest: _digest, ...body } = structuredClone(destination.view.groupCarry!);
+    Object.assign(body.requests[0]!.item, { recurrence });
+    const digest = createHash('sha256').update(JSON.stringify(body)).digest('hex');
+    expect(validCarriedMemory({ ...body, digest })).toBe(recurrence !== 'monthly');
+  }
+  expect(openRequests(source.view)).toEqual([]);
+  const group = { now: privateState.now, due: 0, sent: [] as { text: string }[] };
+  await createJournalWorker(destination, ports(group, true)).sendRequested();
+  expect(pushes(group.sent)).toEqual([]);
+  destination.close(); destination = openPreviewJournal(target, key);
+  let worker = createJournalWorker(destination, ports(group, true));
+  group.now += 86400_000; privateState.now = group.now;
+  await privateWorker.sendRequested(); await worker.sendRequested(); await worker.sendRequested();
+  expect(pushes(privateState.sent)).toHaveLength(1);
+  expect(pushes(group.sent)).toHaveLength(1);
+  expect(pushes(group.sent)[0]).toContain('due 2026-10-11 11:00 America/Los_Angeles');
+  destination.close(); destination = openPreviewJournal(target, key);
+  worker = createJournalWorker(destination, ports(group, true));
+  group.now += 86400_000; await worker.sendRequested();
+  expect(pushes(group.sent)).toHaveLength(2);
+  worker.intake([update(100, 'cancel the Priya reminder please', true)]); await worker.drain();
+  expect(openRequests(destination.view)).toEqual([]);
+  group.now += 86400_000; await worker.sendRequested();
+  expect(pushes(group.sent)).toHaveLength(2);
+  source.close(); destination.close();
 });
