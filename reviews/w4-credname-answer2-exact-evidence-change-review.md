@@ -26,6 +26,8 @@ Prompt finding: fb5fa7e706c8 | protocol-literal | unchanged instruction; no new 
 
 Subject (2 paths): tests/preview/credential-answer.test.ts, tests/preview/journal.ts
 
+Register regeneration: delegated rehash and repin reported zero changed pins. The register builder replay regenerated generated/ against source commit 076e1c780b8a0fdbfd620dc12c6f5d01004396ca; no pin was edited by hand.
+
 ## Closing block
 
 simplestRobustRoute: this is the simplest route: use the existing redacted memory projection for exact evidence and apply credential wording only to display prose. One reply projection is shared by evidence and display. It prevents a copied candidate being rejected, without fuzzy matching or new machinery. Existing intake, source authority, stop, spend and receipt checks remain the guards.
