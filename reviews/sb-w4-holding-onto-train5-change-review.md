@@ -27,6 +27,10 @@ Prompt finding: bd01de21286a | protocol-literal | unchanged source citation inst
 Prompt finding: fb5fa7e706c8 | protocol-literal | unchanged source grounding instruction
 Deferral: tests/preview/reply-check.declarations.json:13 | not-a-deferral=declaration describes enforced runtime handling of rejected promises, not deferred builder work
 Deferral: generated/register.json:1 | not-a-deferral=generated register quotes the governing rule book, not deferred work
+Deferral: tests/preview/fixtures/group-audience-live-2026-10-10.json:170 | not-a-deferral=captured model review discusses deferral language; immutable replay evidence, not a builder commitment
+Deferral: tests/preview/fixtures/group-audience-live-2026-10-10.json:184 | not-a-deferral=captured model review judges the withholding reply; replay evidence, not deferred work
+Deferral: tests/preview/fixtures/topic-awareness-live-2026-10-10.json:173 | not-a-deferral=fixture provenance identifies an explicit follow-up question used in a completed recorded replay
+Deferral: tests/preview/obligation-task-answer-live.test.ts:113 | not-a-deferral=test verdict diagnoses a candidate promise of future work; it does not defer builder work
 
 ## Closing block
 
