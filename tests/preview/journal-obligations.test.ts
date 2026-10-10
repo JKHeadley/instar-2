@@ -526,10 +526,12 @@ it('keeps waiting work owned: the packet shows its current need, the operator\'s
   const seen: Record<string, unknown>[] = [];
   try {
     let hang = false;
+    let providerEntered!: () => void;
+    const providerStarted = new Promise<void>(resolve => { providerEntered = resolve; });
     const answer = (question: string): Answer => question === INVOICE
       ? { reply: LATER, openLoops: [{ kind: 'deferral', quote: LATER, waitsOn: 'nothing' }] } : 'Thanks.';
     const work = (context: Record<string, unknown>): Answer | Promise<Answer> => { seen.push(context);
-      if (hang) return new Promise<Answer>(() => {});
+      if (hang) { providerEntered(); return new Promise<Answer>(() => {}); }
       const since = (context.operatorMessagesSince as { text: string }[] | undefined) ?? [];
       return since.some(item => item.text.includes('INV-42'))
         ? { outcome: 'report', report: 'Invoice INV-42 is for 120 dollars and is due on Friday.' }
@@ -561,7 +563,10 @@ it('keeps waiting work owned: the packet shows its current need, the operator\'s
     expect(dueObligationWork(w.journal.view, w.clock.now)).toMatchObject([{ key: 'commitment:0' }]);
     hang = true;
     void w.worker.workObligations();
-    while (w.journal.view.obligationWork['commitment:0']!.inFlight === undefined) await new Promise(resolve => setTimeout(resolve, 5));
+    // Reservation precedes the asynchronous disclosure guard. Crash only after the provider
+    // actually enters, so the journal cannot close while dispatch is still pending.
+    await providerStarted;
+    expect(w.journal.view.obligationWork['commitment:0']!.inFlight).toBeDefined();
     expect(seen).toHaveLength(3);
     w.journal.close();
     hang = false;
