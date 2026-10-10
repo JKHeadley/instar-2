@@ -1,16 +1,8 @@
 {
-  "generation": "sha256:5c60793650b752506bb1c017fa7ff5d558edaba5a21beab5a6350e825cd64e4b",
-  "commit": "a449f9d0d410cd174bf541596791131e08dd82d7",
+  "generation": "sha256:e47428ccc1108cedcd3a8791cbe55eb4d9b7409913cfc76691049f1b9b9e7c5c",
+  "commit": "ca80da798e68cf86fb7c8fddc554c9bee9805d3b",
   "launchers": {
     "bin/instar-production.mjs": [
-      {
-        "id": "fetch-inbound-media",
-        "status": "dark",
-        "module": "tests/preview",
-        "availability": "not-loaded",
-        "userFacing": false,
-        "text": "saves inbound Telegram files with bounded effect admission; refused downloads retain the original message."
-      },
       {
         "id": "harness-doorway-parity",
         "status": "live",
@@ -33,7 +25,7 @@
         "module": "tests/preview",
         "availability": "not-loaded",
         "userFacing": true,
-        "text": "answers the operator in chat/topics; journal intake saves photos, audio and files encrypted, with text descriptions."
+        "text": "answers the operator in the configured private Telegram chat or forum group, returning each reply to its originating topic."
       },
       {
         "id": "preview-durable-memory",
@@ -142,14 +134,6 @@
     ],
     "scripts/host-watch.mjs": [
       {
-        "id": "fetch-inbound-media",
-        "status": "dark",
-        "module": "tests/preview",
-        "availability": "not-loaded",
-        "userFacing": false,
-        "text": "saves inbound Telegram files with bounded effect admission; refused downloads retain the original message."
-      },
-      {
         "id": "harness-doorway-parity",
         "status": "live",
         "module": "src/assembly",
@@ -171,7 +155,7 @@
         "module": "tests/preview",
         "availability": "not-loaded",
         "userFacing": true,
-        "text": "answers the operator in chat/topics; journal intake saves photos, audio and files encrypted, with text descriptions."
+        "text": "answers the operator in the configured private Telegram chat or forum group, returning each reply to its originating topic."
       },
       {
         "id": "preview-durable-memory",
@@ -280,14 +264,6 @@
     ],
     "tests/preview/agent.mjs": [
       {
-        "id": "fetch-inbound-media",
-        "status": "dark",
-        "module": "tests/preview",
-        "availability": "not-loaded",
-        "userFacing": false,
-        "text": "saves inbound Telegram files with bounded effect admission; refused downloads retain the original message."
-      },
-      {
         "id": "harness-doorway-parity",
         "status": "live",
         "module": "src/assembly",
@@ -309,7 +285,7 @@
         "module": "tests/preview",
         "availability": "not-loaded",
         "userFacing": true,
-        "text": "answers the operator in chat/topics; journal intake saves photos, audio and files encrypted, with text descriptions."
+        "text": "answers the operator in the configured private Telegram chat or forum group, returning each reply to its originating topic."
       },
       {
         "id": "preview-durable-memory",
@@ -418,14 +394,6 @@
     ],
     "tests/preview/conversation-authority-server.mjs": [
       {
-        "id": "fetch-inbound-media",
-        "status": "dark",
-        "module": "tests/preview",
-        "availability": "not-loaded",
-        "userFacing": false,
-        "text": "saves inbound Telegram files with bounded effect admission; refused downloads retain the original message."
-      },
-      {
         "id": "harness-doorway-parity",
         "status": "live",
         "module": "src/assembly",
@@ -447,7 +415,7 @@
         "module": "tests/preview",
         "availability": "not-loaded",
         "userFacing": true,
-        "text": "answers the operator in chat/topics; journal intake saves photos, audio and files encrypted, with text descriptions."
+        "text": "answers the operator in the configured private Telegram chat or forum group, returning each reply to its originating topic."
       },
       {
         "id": "preview-durable-memory",
@@ -556,14 +524,6 @@
     ],
     "tests/preview/journal-agent.mjs": [
       {
-        "id": "fetch-inbound-media",
-        "status": "dark",
-        "module": "tests/preview",
-        "availability": "available",
-        "userFacing": false,
-        "text": "saves inbound Telegram files with bounded effect admission; refused downloads retain the original message."
-      },
-      {
         "id": "harness-doorway-parity",
         "status": "live",
         "module": "src/assembly",
@@ -585,7 +545,7 @@
         "module": "tests/preview",
         "availability": "available",
         "userFacing": true,
-        "text": "answers the operator in chat/topics; journal intake saves photos, audio and files encrypted, with text descriptions."
+        "text": "answers the operator in the configured private Telegram chat or forum group, returning each reply to its originating topic."
       },
       {
         "id": "preview-durable-memory",
