@@ -47,7 +47,7 @@ it('the recorded K11a briefing differs only in the declared audience and recurri
   const forumConversation = '- preview-conversation: answers the operator in the configured private Telegram chat or forum group, returning each reply to its originating topic.';
   expect(current.note.split(oldConversation)).toHaveLength(2);
   const oldRequests = "- preview-requested-actions: an explicit request for a settled later day and time (a reminder) is answered once at that time, with no new operator message.";
-  const recurringRequests = "- preview-requested-actions: an explicit request for a settled later day and time is answered then, with no new operator message. Daily or weekday requests at a local time repeat until cancelled; missed occurrences combine into one on recovery. Each occurrence uses the existing spend, stop and delivery limits.";
+  const recurringRequests = "- preview-requested-actions: an explicit later-time request is answered once at that time, or daily or weekdays until cancelled, with no new operator message.";
   expect(current.note.split(oldRequests)).toHaveLength(2);
   expect(note).toContain(recurringRequests);
   expect(current.note.replace(oldConversation, forumConversation).replace(oldRequests, recurringRequests)).toBe(note);
