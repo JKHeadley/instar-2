@@ -8,10 +8,20 @@ const BRIDGE_STAGES = new Set(['resolver', 'child-exit', 'fetch-timeout', 'fetch
   // The transport's own pre-network refusals (scripts/production-boot-io.mjs): the host would not start
   // the child, or the launcher refused before its exec. Both carry `sent: false`.
   'spawn-refused', 'launch-refused']);
+const TRANSPORT_CODES = new Set(['ECONNRESET', 'ENOTFOUND', 'ECONNREFUSED', 'ETIMEDOUT',
+  'EAI_AGAIN', 'UND_ERR_CONNECT_TIMEOUT', 'UND_ERR_SOCKET', 'UND_ERR_HEADERS_TIMEOUT',
+  'UND_ERR_BODY_TIMEOUT', 'UND_ERR_ABORTED', 'EPIPE']);
+const TRANSPORT_SYSCALLS = new Set(['connect', 'getaddrinfo', 'read', 'write']);
+function transportReason(reply) {
+  if (!Array.isArray(reply.transportErrors)) return '';
+  const errors = reply.transportErrors.slice(0, 8).filter(error => TRANSPORT_CODES.has(error?.code))
+    .map(error => `${error.code}${TRANSPORT_SYSCALLS.has(error.syscall) ? `/${error.syscall}` : ''}`);
+  return errors.length ? ` (${[...new Set(errors)].join(', ')})` : '';
+}
 export function classifyTelegramSend(reply, { chat, expectedText, thread, forum = false }) {
   if (!reply || reply.kind !== 'response') {
     const reason = reply?.kind === 'uncertain' ? `transport ${String(reply.limitation)}${
-      BRIDGE_STAGES.has(reply.stage) ? ` at ${reply.stage}` : ''}` : 'no transport response';
+      BRIDGE_STAGES.has(reply.stage) ? ` at ${reply.stage}` : ''}${transportReason(reply)}` : 'no transport response';
     // A transport that states the network call was never made is a definite non-delivery, not UNKNOWN:
     // nothing can have reached Telegram, so this exact intent may be dispatched again without any risk
     // of a duplicate. Only the transport asserts this; a missing field is never read as proof.
