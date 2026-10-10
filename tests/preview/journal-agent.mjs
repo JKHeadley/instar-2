@@ -71,6 +71,7 @@ import { shouldRunScheduledPriority } from '../../src/scheduled/shedding.js';
 import { reconcileProcessIncarnation } from '../../src/measurement/index.js';
 import { liveMeasurement, measuredTimings, renderMeasured, resourceCompare, resourcePointClaims } from './measured.js';
 import { doorwayFreshness, installDoorways, observeExchange, readDoorwayMap, standingDoorwayCheck, subscriptionExchange, usageReconciliation, writeDoorwayMap } from './doorway-map.js';
+import { credentialDisplayLabel } from './credential-display.js';
 import { createSecretCustody, dueCredentialReminders, reminderSchedule } from './secret-custody.js';
 import { credentialNotices, doorwayNotices, dueWithDelivery } from './credential-reminders.js';
 import { journalCapacity, packetCapacity } from './capacity-outcome.js';
@@ -895,7 +896,10 @@ async function main() {
         try { const vault = createSecretCustody(root, key(), wallNow), records = vault.records();
           custody.missing = vault.missing([...turns.flatMap(t => t.custody.state === 'stored' ? [t.custody.capture, ...t.custody.secrets] : []),
             ...records.filter(r => r.custody === 'preview-vault').map(r => r.name)]);
-          return { records, due: dueWithDelivery(dueCredentialReminders(records, statusNow), view.view.order), custody,
+          const labels = new Map(records.map(record => [record.name, credentialDisplayLabel(record)]));
+          return { records: records.map(record => ({ ...record, name: labels.get(record.name), identity: labels.get(record.name) })),
+            due: dueWithDelivery(dueCredentialReminders(records, statusNow), view.view.order)
+              .map(item => ({ ...item, name: labels.get(item.name), identity: labels.get(item.name) })), custody,
             intact: custody.failed.length === 0 && custody.missing.length === 0,
             referencedIn: view.view.order.filter(turn => turn.text.includes('[credential stored before use: SecretRef ')).map(turn => turn.update) };
         } catch { return { records: null, due: null, custody, intact: false, error: 'registry unreadable' }; } })(),
@@ -2176,7 +2180,7 @@ async function main() {
         expiresAt: null, expirySource: 'unknown', smallestHumanAction: 'sign the subscription login back in' },
       { name: 'preview-activation', kind: 'activation', custody: 'activation-record', identity: activation.reference,
         expiresAt: journal.view.expires, expirySource: 'activation-record', smallestHumanAction: 'approve a renewed activation record' }])
-      custody.register({ name: record.name, kind: record.kind, custody: record.custody, identity: record.identity, recordedAt,
+      custody.register({ displayLabel: credentialDisplayLabel(record), name: record.name, kind: record.kind, custody: record.custody, identity: record.identity, recordedAt,
         expiresAt: record.expiresAt, expirySource: record.expirySource, reminders: reminderSchedule(record.expiresAt),
         renewal: { standing: 'none', smallestHumanAction: record.smallestHumanAction } });
     const captures = new Map();

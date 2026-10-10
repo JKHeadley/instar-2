@@ -126,16 +126,17 @@ async function replay(options: Run) {
 
 const violation = (reason: string) => ({ verdict: 'violation' as const, ruleIds: ['credential' as ReplyRule], reason: `credential: ${reason}`,
   findings: [{ rule: 'credential' as ReplyRule, verdict: 'violation' as const, reason }] });
-const activationFact = (expiry: string): RecordedCredentialFact => ({ name: 'preview-activation', identity: LABEL, kind: 'activation',
+const activationFact = (expiry: string): RecordedCredentialFact => ({ name: 'your activation', identity: 'your activation', kind: 'activation',
   custody: 'activation-record', expiry, renewal: { standing: 'none', smallestHumanAction: 'approve a renewed activation record' } });
 
 it('715673352 replayed: the reviewers read the reply as sent; the review reads the register as recorded facts; a PASS sends it', async () => {
   const { sends, calls, jevTexts, reviewTexts, reviewPackets, turn, release, heldReview, durableIntent } = await replay({ answer: T.answerBody });
-  // The runner composed exactly the recorded answer: the model's body plus its own reminder line.
-  expect(turn.answer).toBe(T.recordedAnswer);
+  // The recorded body is unchanged; the runner now adds the plain display label.
+  expect(turn.answer).toBe(T.recordedAnswer.replace(`the credential "preview-activation" (${LABEL})`, 'your activation'));
   // Both reviewers ran on the reply exactly as composed: nothing masked or rewritten.
   expect(calls).toMatchObject({ jev: 1, review: 1 });
-  expect(jevTexts[0]).toContain(LABEL);
+  expect(jevTexts[0]).toContain('Reminder: your activation');
+  expect(jevTexts[0]).not.toContain(LABEL);
   expect(reviewTexts[0]).toContain(turn.answer!);
   // The full-context review reads the activation record the reminder line came from, as a recorded fact.
   expect(reviewPackets[0]!.candidateReply).toBe(reviewTexts[0]);
@@ -144,7 +145,7 @@ it('715673352 replayed: the reviewers read the reply as sent; the review reads t
   expect(sends).toHaveLength(1);
   expect(sends[0]).not.toBe(T.recordedIntent);
   expect(sends[0]).toContain('The byte count is 25');
-  expect(sends[0]).toContain(LABEL);
+  expect(sends[0]).toContain('Reminder: your activation');
   // The send is exactly the text the reviewers judged.
   expect(sends[0]).toBe(reviewTexts[0]);
   expect(durableIntent).toBe(sends[0]);
@@ -160,10 +161,10 @@ it('the other side: a credential VIOLATION the reviewer still makes holds the wh
   expect(heldReview?.objections).toContain('credential');
 });
 
-it('6232017 replayed (proof room 2): the review reads the record behind the reminder line; a PASS sends the recorded answer', async () => {
+it('6232017 replayed (proof room 2): the review reads the record behind the reminder line; a PASS sends the recorded body with the plain reminder', async () => {
   const { sends, calls, reviewTexts, reviewPackets, turn, heldReview } = await replay({ shape: recorded2, answer: T2.answerBody,
     toolOutput: T2.toolResult });
-  expect(turn.answer).toBe(T2.recordedAnswer);
+  expect(turn.answer).toBe(T2.recordedAnswer.replace(`the credential "preview-activation" (${LABEL})`, 'your activation'));
   expect(calls).toMatchObject({ jev: 1, review: 1 });
   // The expiry and the renewal step the reply states are exactly the register's recorded entry.
   const fact = activationFact('expires in 1 day 16 h');
@@ -230,7 +231,7 @@ it('the other side: a real secret value from a test SecretRef is withheld on eve
 it('holding a secret does not disturb the label answer: the same replay with a held SecretRef is still sent', async () => {
   const { sends } = await replay({ answer: T.answerBody, holdSecret: true });
   expect(sends).toHaveLength(1);
-  expect(sends[0]).toContain(LABEL);
+  expect(sends[0]).toContain('Reminder: your activation');
   expect(sends[0]).not.toContain('I need to check that answer');
 });
 
@@ -293,7 +294,7 @@ for (const [name, toolOutput] of [['a longer output line', JSON.stringify({ stdo
   it(`the other side: a mixed finding on a tool-read password is held (${name})`, async () => {
     const { sends, reviewTexts, heldReview, turn } = await replay({ answer: 'The vendor portal password is marigold.',
       toolOutput, review: violation(MIXED) });
-    expect(turn.answer).toContain('Reminder: the credential');
+    expect(turn.answer).toContain('Reminder: your activation');
     expect(reviewTexts[0]).toContain('marigold');
     expect(sends).toEqual([HOLDING_REPLY]);
     expect(sends.join('')).not.toContain('marigold');
@@ -304,7 +305,7 @@ for (const [name, toolOutput] of [['a longer output line', JSON.stringify({ stdo
 it('the recorded replay with its recorded tool output is still sent: the operator supplied the line the reply repeats', async () => {
   const { sends } = await replay({ answer: T.answerBody, toolOutput: T.toolResult });
   expect(sends).toHaveLength(1);
-  expect(sends[0]).toContain(LABEL);
+  expect(sends[0]).toContain('Reminder: your activation');
   expect(sends[0]).toContain('The byte count is 25');
 });
 
@@ -329,8 +330,8 @@ it('register: each public entry is a recorded fact; an entry with a field carryi
   const now = T.answeredAt, entries = publicCredentialRegister(recorded.register, [], now);
   expect(entries).toHaveLength(4);
   expect(entries).toContainEqual(activationFact('expires in 1 day 19 h'));
-  expect(entries.find(entry => entry.name === 'telegram-bot-token')?.expiry).toBe('no fixed expiry');
-  expect(entries.find(entry => entry.name === 'typesafe-key')?.expiry).toBe('expiry unknown');
+  expect(entries.find(entry => entry.name === 'your Telegram bot token')?.expiry).toBe('no fixed expiry');
+  expect(entries.find(entry => entry.name === 'your API key')?.expiry).toBe('expiry unknown');
   // No value field exists: only the public fields are given.
   for (const entry of entries) expect(Object.keys(entry).sort()).toEqual(['custody', 'expiry', 'identity', 'kind', 'name', 'renewal']);
   const activation = recorded.register[3]!;

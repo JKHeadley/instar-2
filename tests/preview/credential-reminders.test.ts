@@ -15,6 +15,31 @@ const genesis = () => ({ kind: 'genesis' as const, bot: '12345678', chat: '76543
   configurationDigest: 'sha256:offline', expires: 9999999999999, maxCalls: 400, maxReplies: 200, maxTurns: 200, maxBytes: 8000, cursor: 0 });
 const ACTION = 'approve a renewed activation record';
 
+it('loads an old journal and keeps its delivered reminder spent after adding a display label', async () => {
+  const root = origin(), expiresAt = T0 + 7 * DAY;
+  try {
+    const custody = activation(root, expiresAt, () => T0);
+    const prior = custody.records()[0]!;
+    const oldNotice = { key: `credential:preview-activation:${expiresAt}:0`,
+      line: `Reminder: the credential "preview-activation" (activation act-7) expires in 7 days. Smallest step for you: ${ACTION}.` };
+    const w = world(root, () => [oldNotice]);
+    await w.say('Hello.');
+    expect(w.sent[0]).toContain(oldNotice.line);
+    w.journal.close();
+    custody.register({ ...prior, displayLabel: 'your activation', recordedAt: T0 + HOUR });
+    const reopenedCustody = createSecretCustody(root, key, () => T0);
+    expect(reopenedCustody.records()).toEqual([{ ...prior, displayLabel: 'your activation' }]);
+    const journal = openPreviewJournal(join(root, 'journal.encrypted'), key);
+    try {
+      const due = dueCredentialReminders(reopenedCustody.records(), T0);
+      expect(credentialNotices(due, T0)[0]!.line).toContain('Reminder: your activation');
+      expect(openReplyNotices(journal.view.order, credentialNotices(due, T0), 'new')).toEqual([]);
+      expect(dueWithDelivery(due, journal.view.order)[0]!.delivered?.current).toBe(true);
+      expect(journal.view.order[0]!.intent).toContain(oldNotice.line);
+    } finally { journal.close(); }
+  } finally { rmSync(root, { recursive: true, force: true }); }
+});
+
 function activation(root: string, expiresAt: number, now: () => number) {
   const custody = createSecretCustody(root, key, now);
   custody.register({ name: 'preview-activation', kind: 'activation', custody: 'activation-record', identity: 'activation act-7',
@@ -48,7 +73,7 @@ it('makes the activation reminder due exactly at 7 days before expiry, not 1 ms 
     const due = dueCredentialReminders(custody.records(), T0);
     expect(due).toMatchObject([{ name: 'preview-activation', stage: 0, smallestHumanAction: ACTION }]);
     expect(credentialNotices(due, T0)).toEqual([{ key: `credential:preview-activation:${expiresAt}:0`,
-      line: `Reminder: the credential "preview-activation" (activation act-7) expires in 7 days. Smallest step for you: ${ACTION}.` }]);
+      line: `Reminder: your activation expires in 7 days. Smallest step for you: ${ACTION}.` }]);
     expect(credentialNotices(dueCredentialReminders(custody.records(), expiresAt - 3 * DAY), expiresAt - 3 * DAY)[0]!.key)
       .toBe(`credential:preview-activation:${expiresAt}:1`);
   } finally { rmSync(root, { recursive: true, force: true }); }
@@ -84,7 +109,7 @@ it('carries one reminder line on the next answer, never repeats it, and shows th
     expect(w.sent[2]).not.toContain('Model route check');
     // The next stage is a new key: it rides the next answer once.
     w.clock.now = expiresAt - 3 * DAY; await w.say('Still there?');
-    expect(w.sent[3]).toContain('Reminder: the credential "preview-activation" (activation act-7) expires in 3 days.');
+    expect(w.sent[3]).toContain('Reminder: your activation expires in 3 days.');
     expect(dueWithDelivery(dueCredentialReminders(custody.records(), w.clock.now), w.journal.view.order))
       .toMatchObject([{ stage: 1, delivered: { stage: 1, current: true } }]);
     // Replay rebuilds the same delivery from the durable journal.
@@ -102,7 +127,7 @@ it('starts a renewed credential lifetime undelivered: its next answer carries on
     const notices = () => credentialNotices(dueCredentialReminders(custody.records(), w.clock.now), w.clock.now);
     const w = world(root, notices);
     await w.say('Hello.');
-    expect(w.sent[0]).toContain('(activation act-7) expires in 7 days.');
+    expect(w.sent[0]).toContain('your activation expires in 7 days.');
     // Renewed under the same name with a new expiry; the journal is reopened before the next answer.
     w.clock.now = T0 + DAY;
     custody.register({ name: 'preview-activation', kind: 'activation', custody: 'activation-record', identity: 'activation act-8',
@@ -121,7 +146,7 @@ it('starts a renewed credential lifetime undelivered: its next answer carries on
         date: Math.floor(clock.now / 1000) } }]);
       await worker.drain(); clock.now += HOUR;
     }
-    expect(sent[0]).toContain('(activation act-8) expires in 7 days.');
+    expect(sent[0]).toContain('your activation expires in 7 days.');
     expect(sent[1]).not.toContain('Reminder:');
     expect(dueWithDelivery(dueCredentialReminders(custody.records(), clock.now), reopened.view.order))
       .toMatchObject([{ identity: 'activation act-8', stage: 0, delivered: { stage: 0, at: T0 + DAY, current: true } }]);
