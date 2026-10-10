@@ -34,6 +34,8 @@ async function flow(options: Flow) {
   const custody = createTelegramMediaCustody(root, key, { token: () => '12345678:synthetic', stopped: () => false,
     admission: createMediaAdmission({ root, incarnation: 'recorded-reply-replay', now: () => clock.now, monotonic: () => 0,
       stopped: () => false, source: (source, media) => journalMediaSource(mediaJournal.view, source, media),
+      claimed: id => mediaJournal.view.turns.get(id)?.mediaClaim !== undefined,
+      retainClaim: (id, digest) => mediaJournal.append({ kind: 'media-claim', id, digest, at: clock.now }),
       policy: () => ({ ...DEFAULT_EFFECT_POLICY, policySensitive: [MEDIA_OPERATION.effect] }) }),
     fetch: async () => { throw Error('refused replay must not fetch'); } });
   const ports = (fresh: boolean) => ({ ...(options.media ? { media: custody } : {}), now: () => clock.now, stopped: () => false,

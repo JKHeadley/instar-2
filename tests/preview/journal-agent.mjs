@@ -1528,7 +1528,9 @@ async function main() {
       || wallNow() >= journal.view.expires || !ownerHeld();
     const mediaAdmission = createMediaAdmission({ root, incarnation: `media:${process.pid}:${launchedAt}`,
       now: wallNow, monotonic: () => performance.now(), stopped: mediaStopped, policy: () => effectPolicyOf(),
-      source: (source, media) => journalMediaSource(journal.view, source, media) });
+      source: (source, media) => journalMediaSource(journal.view, source, media),
+      claimed: id => journal.view.turns.get(id)?.mediaClaim !== undefined,
+      retainClaim: (id, digest) => journal.append({ kind: 'media-claim', id, digest, at: wallNow() }) });
     const mediaCustody = createTelegramMediaCustody(root, key(), { token, stopped: mediaStopped, admission: mediaAdmission });
     // Plan #442 (Rules 4, 86, 100): the secret values this runner holds, for the exact floor on every reply and send and
     // (plan #507) every outward tool request: host custody, the preview vault, the root's MCP credentials (served to a

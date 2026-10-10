@@ -61,6 +61,8 @@ function world(writer: Step[], forum = false, media = false) {
   const custody = createTelegramMediaCustody(root, key, { token: () => `${genesis.bot}:synthetic`, stopped: () => false,
     admission: createMediaAdmission({ root, incarnation: 'recorded-summary-replay', now: () => START + clock, monotonic: () => 0,
       stopped: () => false, source: (source, media) => journalMediaSource(journal.view, source, media),
+      claimed: id => journal.view.turns.get(id)?.mediaClaim !== undefined,
+      retainClaim: (id, digest) => journal.append({ kind: 'media-claim', id, digest, at: START + clock }),
       policy: () => ({ ...DEFAULT_EFFECT_POLICY, policySensitive: [MEDIA_OPERATION.effect] }) }),
     fetch: async () => { throw Error('refused replay must not fetch'); } });
   const worker = createJournalWorker(journal, { ...(media ? { media: custody } : {}), now: () => START + clock, elapsed: () => clock, stopped: () => false,

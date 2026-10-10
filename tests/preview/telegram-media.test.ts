@@ -1,6 +1,6 @@
 import { expect, it } from 'vitest';
 import { spawnSync } from 'node:child_process';
-import { mkdtempSync, readFileSync, readdirSync, rmSync, writeFileSync } from 'node:fs';
+import { existsSync, mkdirSync, mkdtempSync, readFileSync, readdirSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { telegramInboundMedia, createTelegramMediaCustody, MEDIA_MAX_BYTES, MEDIA_STORE_MAX_BYTES, journalMediaSource } from './telegram-media.js';
@@ -23,7 +23,7 @@ const withRoot = async (run: (root: string) => Promise<void>) => {
 const admissionFor = (root: string, overrides: Partial<Parameters<typeof createMediaAdmission>[0]> = {}) => createMediaAdmission({
   root, incarnation: 'test:media', now: () => 1000, monotonic: () => 100, stopped: () => false,
   source: () => ({ grant: genesis.grant, account: genesis.bot, conversation: `${genesis.chat}:3`, intakeDigest: 'sha256:synthetic' }),
-  policy: () => DEFAULT_EFFECT_POLICY, ...overrides });
+  claimed: () => false, retainClaim: () => {}, policy: () => DEFAULT_EFFECT_POLICY, ...overrides });
 const response = (value: unknown) => new Response(JSON.stringify(value), { status: 200 });
 function transport(fileId: string, bytes: Buffer, urls: string[] = []): typeof fetch {
   return async (input, options) => {
@@ -44,12 +44,15 @@ it.each(['photo', 'voice', 'document'])('observer #207 %s fixture reaches the mo
   const secret = `ghp_${'A7'.repeat(18)}`, bytes = Buffer.alloc(media.size!, 42); bytes.write(secret);
   const urls: string[] = [], physical = transport(media.fileId!, bytes, urls);
   const custody = createTelegramMediaCustody(root, key, { admission: admissionFor(root, {
-    source: (source, media) => journalMediaSource(journal.view, source, media) }), token: () => token, stopped: () => false,
+    source: (source, media) => journalMediaSource(journal.view, source, media),
+    claimed: id => journal.view.turns.get(id)?.mediaClaim !== undefined,
+    retainClaim: (id, digest) => journal.append({ kind: 'media-claim', id, digest, at: 1000 }) }), token: () => token, stopped: () => false,
     fetch: async (url, options) => {
       // The consumer opens the actual journal at the download boundary: EDITED is not DURABLE.
       const reader = openPreviewJournal(join(root, 'journal.encrypted'), key, undefined, undefined, true);
       expect(reader.view.cursor).toBe(update.update_id + 1);
-      expect(reader.view.order[0]?.raw).toContain(media.fileId); reader.close();
+      expect(reader.view.order[0]?.raw).toContain(media.fileId);
+      expect(reader.view.order[0]?.mediaClaim).toMatch(/^[a-f0-9]{64}$/u); reader.close();
       const directories = readdirSync(join(root, 'media-claims'));
       expect(directories).toHaveLength(1);
       const facts = JSON.parse(readFileSync(join(root, 'media-claims', directories[0]!, 'facts.json'), 'utf8')) as {
@@ -157,7 +160,10 @@ it('download recovery reuses the encrypted file after a crash before its journal
 it('the shipped status command detects a missing media file without exposing bytes or credentials', () => withRoot(async root => {
   const update = fixture('document'), media = telegramInboundMedia(update.message)!;
   const journal = openPreviewJournal(join(root, 'journal.encrypted'), key, genesis);
-  const custody = createTelegramMediaCustody(root, key, { admission: admissionFor(root), token: () => token, stopped: () => false,
+  const custody = createTelegramMediaCustody(root, key, { admission: admissionFor(root, {
+    source: (source, media) => journalMediaSource(journal.view, source, media),
+    claimed: id => journal.view.turns.get(id)?.mediaClaim !== undefined,
+    retainClaim: (id, digest) => journal.append({ kind: 'media-claim', id, digest, at: 1000 }) }), token: () => token, stopped: () => false,
     fetch: transport(media.fileId!, Buffer.alloc(media.size!)) });
   const worker = createJournalWorker(journal, { origin: 'test', now: () => 1000, stopped: () => false, media: custody,
     model: async () => 'Received.', send: async () => 1, checkOutbound: () => {} });
@@ -178,6 +184,19 @@ it('the shipped status command detects a missing media file without exposing byt
     return (JSON.parse(child.stdout) as { records: { id: string; agree: boolean | null }[] }).records
       .find(row => row.id === 'media-custody')!.agree;
   };
+  expect(agreement()).toBe(true);
+  const claimRoot = join(root, 'media-claims'), claimDir = join(claimRoot, result.state === 'stored' ? result.reference : 'invalid');
+  const claimFile = join(claimDir, 'facts.json'), original = readFileSync(claimFile);
+  // Parseable substitution, truncation and total directory loss are all detected
+  // by the shipped consumer, while the attachment and original intake survive.
+  for (const corrupt of ['[]', '{}', original.subarray(0, original.length - 1)]) {
+    writeFileSync(claimFile, corrupt); expect(agreement()).toBe(false);
+    expect(status().media).toMatchObject({ stored: 1, missing: [] });
+    writeFileSync(claimFile, original); expect(agreement()).toBe(true);
+  }
+  rmSync(claimRoot, { recursive: true }); expect(agreement()).toBe(false);
+  expect(existsSync(claimRoot)).toBe(false); // The detector must not recreate evidence.
+  mkdirSync(claimDir, { recursive: true }); writeFileSync(claimFile, original);
   expect(agreement()).toBe(true);
   expect(status().media).toMatchObject({ stored: 1, missing: [] });
   if (result.state !== 'stored') throw Error('fixture failed');
@@ -324,4 +343,74 @@ it('an uncertain fetch without complete bytes never issues another request after
   expect(await open().receive('uncertain-fetch', media)).toEqual({ state: 'failed' });
   expect(await open().receive('uncertain-fetch', media)).toEqual({ state: 'failed', reason: 'admission-refused' });
   expect(requests).toBe(1);
+}));
+
+it.each(['failed', 'interrupted'])('claim loss after %s download is visible through check-agreements', outcome => withRoot(async root => {
+  const update = fixture('document'), media = telegramInboundMedia(update.message)!;
+  const path = join(root, 'journal.encrypted');
+  let journal = openPreviewJournal(path, key, genesis), requests = 0;
+  const custody = createTelegramMediaCustody(root, key, { token: () => token, stopped: () => false,
+    admission: admissionFor(root, { source: (source, media) => journalMediaSource(journal.view, source, media),
+      claimed: id => journal.view.turns.get(id)?.mediaClaim !== undefined,
+    retainClaim: (id, digest) => journal.append({ kind: 'media-claim', id, digest, at: 1000 }) }),
+    fetch: async () => { requests++; throw Error('offline transport failure'); } });
+  const worker = createJournalWorker(journal, { origin: 'test', now: () => 1000, stopped: () => false, media: custody,
+    model: async () => 'Received.', send: async () => 1, checkOutbound: () => {} });
+  worker.intake([update]);
+  if (outcome === 'failed') await worker.drain();
+  else expect(await custody.receive(journal.view.order[0]!.id, media)).toEqual({ state: 'failed' });
+  const claim = journal.view.order[0]!.mediaClaim; expect(claim).toMatch(/^[a-f0-9]{64}$/u);
+  journal.compact(); journal.close(); journal = openPreviewJournal(path, key);
+  expect(journal.view.order[0]!.mediaClaim).toBe(claim);
+  if (outcome === 'interrupted') expect(journal.view.order[0]!.media).toBeUndefined();
+  journal.close();
+  const agreement = () => {
+    const child = spawnSync(process.execPath, ['--no-warnings', '--loader', './scripts/slice-ts-loader.mjs',
+      'tests/preview/journal-agent.mjs', 'check-agreements', '--root', root, '--conversation-owners', join(root, 'owners')],
+    { encoding: 'utf8', timeout: 30000,
+      env: { ...process.env, INSTAR_SECRET_PREVIEW_STORAGE_KEY: Buffer.from(key).toString('hex') } });
+    expect(child.status, child.stderr).toBe(0);
+    return (JSON.parse(child.stdout) as { records: { id: string; agree: boolean | null; detail: string }[] }).records
+      .find(row => row.id === 'media-custody')!;
+  };
+  expect(agreement()).toMatchObject({ agree: true });
+  rmSync(join(root, 'media-claims'), { recursive: true });
+  expect(agreement()).toMatchObject({ agree: false });
+  expect(agreement().detail).toContain('1 missing or corrupt causal records');
+  if (outcome === 'interrupted') {
+    journal = openPreviewJournal(path, key);
+    let sent = 0;
+    const resumed = createJournalWorker(journal, { origin: 'test', now: () => 1000, stopped: () => false, media: custody,
+      model: async () => 'Received; file could not be saved.', send: async () => ++sent, checkOutbound: () => {} });
+    await resumed.drain(); await resumed.drain();
+    expect(requests).toBe(1); expect(sent).toBe(1);
+    expect(journal.view.order[0]!.media?.state).toBe('failed');
+    expect(journal.view.order[0]!.mediaClaim).toBe(claim);
+    journal.close();
+    expect(agreement().agree).toBe(false);
+  }
+}));
+
+it('a journal expectation that cannot be retained prevents physical dispatch', () => withRoot(async root => {
+  let requests = 0;
+  const custody = createTelegramMediaCustody(root, key, { token: () => token, stopped: () => false,
+    admission: admissionFor(root, { retainClaim: () => { throw Error('journal full'); } }),
+    fetch: async () => { requests++; throw Error('must not dispatch'); } });
+  expect(await custody.receive('journal-unavailable', telegramInboundMedia(fixture('document').message)!)).toEqual({ state: 'failed' });
+  expect(requests).toBe(0);
+}));
+
+it('the journal admits a source-bound claim once and rejects malformed or orphan claims', () => withRoot(async root => {
+  const journal = openPreviewJournal(join(root, 'journal.encrypted'), key, genesis);
+  try {
+    const worker = createJournalWorker(journal, { origin: 'test', now: () => 1000, stopped: () => false,
+      model: async () => 'Received.', send: async () => 1, checkOutbound: () => {} });
+    worker.intake([fixture('document')]);
+    const id = journal.view.order[0]!.id;
+    expect(() => journal.append({ kind: 'media-claim', id, digest: 'bad', at: 1000 })).toThrow('media claim refused');
+    expect(() => journal.append({ kind: 'media-claim', id: 'missing', digest: 'a'.repeat(64), at: 1000 })).toThrow('media claim refused');
+    journal.append({ kind: 'media-claim', id, digest: 'a'.repeat(64), at: 1000 });
+    expect(journal.view.order[0]!.mediaClaim).toBe('a'.repeat(64));
+    expect(() => journal.append({ kind: 'media-claim', id, digest: 'b'.repeat(64), at: 1000 })).toThrow('media claim refused');
+  } finally { journal.close(); }
 }));

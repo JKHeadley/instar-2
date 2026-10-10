@@ -20,6 +20,7 @@ import { auditJournal } from './journal-audit.mjs';
 import { projectionDigest } from './journal.js';
 import type { JournalView } from './journal.js';
 import type { MediaCustodyResult } from './telegram-media.js';
+import { mediaClaimDigest } from './media-admission.js';
 import { loopHealth } from './obligations.js';
 import type { OwnerObservation } from './conversation-owner.js';
 import type { RunLog } from './self-state.js';
@@ -49,13 +50,20 @@ export interface AgreementRecord { v: 1; id: string; at: number; agree: boolean 
 const HOUR = 3_600_000;
 
 export const STORE_AGREEMENTS: readonly StoreAgreement[] = Object.freeze([
-  { id: 'media-custody', question: 'Are the files recorded as saved still in encrypted custody on this machine?',
-    authoritative: 'journal media custody outcomes', projection: 'encrypted local media files', cadenceMs: HOUR,
-    check: ({ view, verifyMedia }) => {
+  { id: 'media-custody', question: 'Are saved media and their recorded admission claims intact on this machine?',
+    authoritative: 'journal media custody outcomes and pre-dispatch claim fingerprints', projection: 'encrypted local media files and source-bound claim facts', cadenceMs: HOUR,
+    check: ({ view, verifyMedia, root }) => {
       const stored = view.order.filter(turn => turn.media?.state === 'stored');
       if (stored.length && !verifyMedia) return { agree: null, detail: 'local media custody cannot be verified from here' };
       const missing = stored.filter(turn => !verifyMedia!(turn.media!));
-      return { agree: missing.length === 0, detail: `${stored.length} stored; ${missing.length} missing or corrupt locally` };
+      const expected = view.order.filter(turn => turn.mediaClaim !== undefined);
+      const lost = expected.filter(turn => {
+        try { return mediaClaimDigest(root, turn.id) !== turn.mediaClaim; } catch { return true; }
+      });
+      const unmeasured = stored.filter(turn => turn.mediaClaim === undefined);
+      return { agree: missing.length || lost.length ? false : unmeasured.length ? null : true,
+        detail: `${stored.length} stored; ${missing.length} missing or corrupt locally; ${expected.length} admission claims; `
+          + `${lost.length} missing or corrupt causal records; ${unmeasured.length} legacy stored files without a claim fingerprint` };
     } },
   { id: 'memory-provenance', question: 'What does the agent remember, and which operator message is it from?',
     authoritative: 'journal operator turns and corrections', projection: 'active memory and the last recorded model packet',

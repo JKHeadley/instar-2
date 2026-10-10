@@ -34,6 +34,12 @@ export interface MediaAdmission { admit(source: string, media: TelegramInboundMe
 const admissions = new WeakSet<object>();
 export const isMediaAdmission = (value: unknown): value is MediaAdmission =>
   typeof value === 'object' && value !== null && admissions.has(value);
+/** Read-only fingerprint of the exact retained causal prefix. The journal keeps
+ * this independently before dispatch; filenames or parseable JSON alone are not evidence. */
+export function mediaClaimDigest(root: string, source: string): string {
+  const identity = createHash('sha256').update(source).digest('hex');
+  return createHash('sha256').update(readFileSync(join(root, 'media-claims', identity, 'facts.json'))).digest('hex');
+}
 const take = <T>(r: Result<T>): T => consumeResult(r, { Success: v => v, Refused: r => { throw Error(r.detail); } });
 const digest = (value: unknown) => take(canonical(value)).hash;
 
@@ -45,12 +51,15 @@ export function createMediaAdmission(options: {
   root: string; incarnation: string; now(): number; monotonic(): number; stopped(): boolean;
   source(source: string, media: TelegramInboundMedia): MediaSource;
   policy(): unknown;
+  claimed(source: string): boolean;
+  retainClaim(source: string, digest: string): void;
 }): MediaAdmission {
   bindBlockingSite(JSON.parse(readFileSync(new URL('./media-admission.declarations.json', import.meta.url), 'utf8')),
     'preview.media-admission.createMediaAdmission', [
       { decidesAlone: 'ruled-three', decidesAloneBasis: 'recorded-governed-state', failDirection: 'closed' },
     ]);
   const admission: MediaAdmission = { admit(source, media) {
+    if (options.claimed(source)) throw Error('media admission: journal retains prior attempt; no retry');
     const origin = options.source(source, media);
     if (!origin.grant || !origin.account || !origin.conversation || !origin.intakeDigest || !media.fileId)
       throw Error('media admission: exact source required');
@@ -117,7 +126,10 @@ export function createMediaAdmission(options: {
     return Object.freeze({ account: origin.account, current, request: <T>(next: 'metadata' | 'bytes', invoke: () => T): T => {
       current();
       if (next !== (stage === 0 ? 'metadata' : stage === 1 ? 'bytes' : null)) throw Error('media admission: request already consumed');
-      if (stage === 0) take(six.consume(claim, fence));
+      if (stage === 0) {
+        take(six.consume(claim, fence));
+        options.retainClaim(source, mediaClaimDigest(options.root, source));
+      }
       current(); stage++;
       return invoke();
     } });

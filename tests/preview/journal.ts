@@ -945,7 +945,7 @@ export function proposedConceptTerms(value: unknown): string[] | undefined {
  * ahead (refused). Rollback was one-way until this existed: on 2026-10-04 00:03 an older build refused a
  * root a newer build had used, with `preview journal: orphan effect`, so switching back would have cost
  * the operator's conversation. */
-export const JOURNAL_GENERATION = 1;
+export const JOURNAL_GENERATION = 2;
 /** A frame a NEWER build added, declared on the frame itself so a reader one build back needs no table of
  * the future. `generation` is the writer's JOURNAL_GENERATION when the kind was introduced; `additive`
  * asserts that a reader which skips this frame still holds a correct, if less complete, projection — the
@@ -962,7 +962,7 @@ export const KNOWN_FRAME_KINDS: ReadonlySet<string> = new Set(['action-due', 'an
   'approval-decision', 'approval-request', 'call-outcome', 'cap-report', 'caps', 'channel-item',
   'channel-source-cursor', 'channel-source-error', 'coherence', 'expiry', 'format-retry', 'genesis',
   'held-notice-intent', 'held-notice-sent', 'hold', 'import', 'index-reserve', 'intake', 'intent',
-  'legacy-call', 'legacy-reply', 'limited-intent', 'limited-sent', 'lookup', 'meaning-index', 'media-custody',
+  'legacy-call', 'legacy-reply', 'limited-intent', 'limited-sent', 'lookup', 'meaning-index', 'media-claim', 'media-custody',
   'memory-undecided', 'minimal-outage', 'model-call', 'model-uncertain', 'notice', 'obligation-result',
   'obligation-start', 'operator-result-intent', 'operator-result-sent', 'operator-review',
   'operator-review-closed', 'operator-yes', 'reminder-grant', 'reminder-intent', 'reminder-sent',
@@ -977,6 +977,8 @@ export const KNOWN_FRAME_KINDS: ReadonlySet<string> = new Set(['action-due', 'an
   'summary-reserve', 'summary-review-reserve', 'summary-uncertain', 'tool-turn', 'waiting']);
 
 export type JournalRecord =
+  // Non-additive: an older writer must not discard the no-repeat expectation.
+  | { kind: 'media-claim'; id: string; digest: string; at: number }
   | { kind: 'media-custody'; id: string; result: MediaCustodyResult; at: number }
   | { kind: 'genesis'; bot: string; chat: string; operator: string; forum?: true; grant: string; configurationDigest: string; expires: number; maxCalls: number; maxReplies: number; maxTurns: number; maxBytes: number; cursor: number; importSource?: string; importCursor?: number;
     /** Rules 8, 92: this root's own open-loop revisit interval, fixed for its life. Absent keeps
@@ -1262,6 +1264,8 @@ export type IntakeCustody = { state: 'stored'; arrival: string; capture: string;
 export interface ReplyPart { text: string; body: string; provenance: OutboundProvenance }
 export interface Turn { id: string; update: number; text: string; raw: string; accepted: boolean; at: number; thread?: number; editOf?: string; replaces?: string; custody?: IntakeCustody; answer?: string;
   media?: MediaCustodyResult;
+  /** Expected causal prefix, retained before the first media request. */
+  mediaClaim?: string;
   /** Part Thirteen §9: the scoped-tool calls of every attempt of this turn's answer, in order (bounded), read by its reply review. */
   toolAttempts?: ToolAttempt[];
   /** The later messages of a reply split across several (part 2 onward, in order), with each one's dispatch start and receipt. */
@@ -3496,6 +3500,15 @@ function project(view: JournalView, row: JournalRecord, system?: SystemCheck, ad
       ...(row.reserve ? { reserve: true as const } : {}) };
     view.turns.set(row.id, turn); view.order.push(turn); view.cursor = Math.max(view.cursor, row.cursor);
     if (view.stepCheckBusiness && row.accepted) view.stepChecks.set(`intake:${row.id}`, {});
+    return;
+  }
+  if (row.kind === 'media-claim') {
+    const turn = view.turns.get(row.id);
+    if (!turn?.accepted || turn.mediaClaim || turn.media || turn.reserved || turn.answer !== undefined
+      || !/^[a-f0-9]{64}$/u.test(row.digest)) throw Error('preview journal: media claim refused');
+    const update = JSON.parse(turn.raw) as TelegramUpdate;
+    if (!telegramInboundMedia(update.edited_message ?? update.message)) throw Error('preview journal: media source missing');
+    turn.mediaClaim = row.digest;
     return;
   }
   if (row.kind === 'media-custody') {

@@ -150,6 +150,6 @@ it('media-custody is true for intact custody, false for loss, and unknown withou
   expect(media({ view: { order: [] } }).agree).toBe(true);
   const view = { order: [{ media: { state: 'stored', reference: 'a'.repeat(64), bytes: 3 } }] };
   expect(media({ view }).agree).toBeNull();
-  expect(media({ view, verifyMedia: () => true }).agree).toBe(true);
+  expect(media({ view, verifyMedia: () => true }).agree).toBeNull(); // Legacy custody has no retained claim fingerprint.
   expect(media({ view, verifyMedia: () => false }).agree).toBe(false);
 });
