@@ -1,5 +1,8 @@
 // Process-level fixture: only the physical Telegram port and model route are replaced.
 export async function resolve(specifier, context, next) {
+  if (context.parentURL?.endsWith('/journal-agent.mjs') && specifier.endsWith('/production-session-work.js')
+    && process.env.INSTAR_PREVIEW_CUTOVER_SESSION_PORT)
+    return { url: process.env.INSTAR_PREVIEW_CUTOVER_SESSION_PORT, shortCircuit: true };
   if (context.parentURL?.endsWith('/journal-agent.mjs') && specifier.endsWith('/production-boot-io.mjs'))
     return { url: new URL('./journal-cutover-ports.mjs', import.meta.url).href, shortCircuit: true };
   // With a named doorway the runner keeps that doorway's real adapter code; only its physical IO is captured frames.
