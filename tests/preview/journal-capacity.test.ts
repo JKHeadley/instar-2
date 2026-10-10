@@ -5,7 +5,7 @@ import { tmpdir } from 'node:os';
 import { dirname, join } from 'node:path';
 import { classifyProviderFailure } from '../../src/assembly/provider-failure.js';
 import { createJournalWorker, openPreviewJournal, MODEL_CAPACITY_HOLD, modelCapacityReply, pendingUnknownCalls,
-  type JournalRecord, type PreviewPorts } from './journal-test-worker.js';
+  capacityAlerts, ModelNotStarted, MODEL_NOT_STARTED_HOLD, MODEL_NOT_STARTED_REPLY, type CallOutcome, type JournalRecord, type PreviewPorts } from './journal-test-worker.js';
 
 const roots: string[] = [];
 afterEach(() => { for (const root of roots.splice(0)) rmSync(root, { recursive: true, force: true }); });
@@ -137,4 +137,87 @@ it('retains recorded uncertain summaries, Jev/reply reviews and deliveries while
   expect(sent.some(text => text.includes('after 6pm'))).toBe(true);
   expect(pendingUnknownCalls(journal.view)).toHaveLength(unknown); expect(alerts(journal)).toHaveLength(1);
   journal.close();
+});
+
+// The recorded local timeout for live update 6230665 exercises replacement without real load.
+const timeoutCapture = JSON.parse(readFileSync(new URL('./fixtures/lostanswer-live-2026-10-02.json', import.meta.url), 'utf8'));
+const { id: _id, role: _role, at: _at, ...timeoutOutcome } = timeoutCapture.lostFirstCall.callOutcomes[0];
+
+it.each(['capacity', 'not-started', 'unknown', 'success'] as const)(
+  'handles a format retry ending in %s without refunding the first call', async outcome => {
+    const { journal, path } = setup(); let calls = 0; const sent: string[] = [];
+    const ports: PreviewPorts = { now: () => 1000, stopped: () => false, checkOutbound: () => {},
+      model: async ({ id }) => {
+        calls++;
+        // Each invocation may reserve tool liability. Only the unlaunched invocation's share is released.
+        journal.append({ kind: 'tool-turn', phase: 'reserved', id, attempt: calls - 1, calls: 3, at: 1000 });
+        journal.append({ kind: 'tool-turn', phase: 'trace', id, attempt: calls - 1, calls: [], consistent: true, workspaceBytes: null, at: 1000 });
+        if (calls === 1) return { state: 'complete', failureClass: 'malformed', usage: { ...usage, inputTokens: 20, outputTokens: 10 } };
+        if (outcome === 'not-started') throw new ModelNotStarted();
+        if (outcome === 'unknown') throw Error('receipt lost after launch');
+        return outcome === 'capacity' ? limit() : { state: 'complete', text: 'Recovered answer', usage: { ...usage, inputTokens: 5, outputTokens: 2 } };
+      }, send: async input => { sent.push(input.text); return sent.length; } };
+    const worker = createJournalWorker(journal, ports);
+    worker.intake([message(1)]); await worker.drain();
+    expect(calls).toBe(2);
+    expect(journal.view.calls).toBe(outcome === 'not-started' ? 4 : 8);
+    expect(journal.view.toolTurns?.reservedCalls).toBe(outcome === 'not-started' ? 3 : 6);
+    expect(journal.view.tokenCalls[0]).toMatchObject({ input: 20, output: 10, observedInput: true, observedOutput: true });
+    if (outcome === 'capacity') {
+      expect(sent).toHaveLength(1); expect(sent[0]).toContain('after 6pm');
+      expect(journal.view.order[0]?.held).toBe(MODEL_CAPACITY_HOLD); expect(capacityAlerts(journal.view)).toHaveLength(1);
+    } else if (outcome === 'not-started') {
+      expect(sent).toEqual([MODEL_NOT_STARTED_REPLY]); expect(journal.view.order[0]?.held).toBe(MODEL_NOT_STARTED_HOLD);
+      expect(journal.view.tokenTotals.answer).toMatchObject({ inputTokens: 20, outputTokens: 10, unknownCalls: 0 });
+    } else if (outcome === 'success') expect(sent[0]).toContain('Recovered answer');
+    else expect(sent).toEqual([]);
+    expect(pendingUnknownCalls(journal.view)).toHaveLength(outcome === 'unknown' ? 1 : 0);
+    journal.compact(); journal.close(); const reopened = openPreviewJournal(path, key);
+    await createJournalWorker(reopened, ports).drain(); expect(calls).toBe(2);
+    expect(reopened.view.calls).toBe(outcome === 'not-started' ? 4 : 8); reopened.close();
+  });
+
+it.each(['capacity', 'not-started'] as const)('handles %s on the replacement of the recorded timeout while retaining UNKNOWN', async outcome => {
+  const { journal } = setup(); let calls = 0; const sent: string[] = [];
+  const worker = createJournalWorker(journal, { now: () => 1000, stopped: () => false, checkOutbound: () => {},
+    model: async ({ id }) => {
+      if (++calls === 1) {
+        journal.append({ kind: 'call-outcome', id, role: 'model', outcome: timeoutOutcome as CallOutcome, at: 1000 });
+        return { state: 'uncertain' };
+      }
+      if (outcome === 'not-started') throw new ModelNotStarted();
+      return limit(captured);
+    }, send: async input => { sent.push(input.text); return sent.length; } });
+  worker.intake([message(1)]); await worker.drain();
+  expect(calls).toBe(2); expect(journal.view.calls).toBe(outcome === 'capacity' ? 2 : 1);
+  expect(journal.view.order[0]?.answerReplaced).toBe(true);
+  expect(pendingUnknownCalls(journal.view)).toEqual([`answer-replaced:${journal.view.order[0]!.id}`]);
+  expect(journal.view.tokenTotals.answer.unknownCalls).toBe(1);
+  expect(sent).toHaveLength(1); expect(sent[0]).toContain(outcome === 'capacity' ? 'usage limit' : "couldn't start my model");
+  journal.close();
+});
+
+it('keeps the active desk alert after eight other events, compaction and restart, until a successful answer', async () => {
+  const opened = setup(); let journal = opened.journal;
+  let outcome: 'capacity' | 'not-started' | 'success' = 'capacity';
+  const ports: PreviewPorts = { now: () => 1000, stopped: () => false, checkOutbound: () => {},
+    model: async () => { if (outcome === 'not-started') throw new ModelNotStarted(); return outcome === 'capacity' ? limit() : 'Recovered'; },
+    send: async () => 1 };
+  let worker = createJournalWorker(journal, ports);
+  worker.intake([message(1)]); await worker.drain(); const active = capacityAlerts(journal.view);
+  outcome = 'not-started';
+  for (let id = 2; id <= 9; id++) { worker.intake([message(id)]); await worker.drain(); }
+  expect(alerts(journal)).toEqual([]); expect(capacityAlerts(journal.view)).toEqual(active);
+  outcome = 'capacity'; worker.intake([message(10)]); await worker.drain();
+  expect(alerts(journal)).toEqual([]); expect(capacityAlerts(journal.view)).toEqual(active);
+  journal.compact(); journal.close(); journal = openPreviewJournal(opened.path, key);
+  const status = JSON.parse(execFileSync(process.execPath, ['--no-warnings', '--loader', './scripts/slice-ts-loader.mjs',
+    'tests/preview/journal-agent.mjs', 'status', '--root', dirname(realpathSync(opened.path))], {
+    cwd: process.cwd(), encoding: 'utf8', timeout: 15000,
+    env: { ...process.env, INSTAR_SECRET_PREVIEW_STORAGE_KEY: Buffer.from(key).toString('hex') } }));
+  expect(status.capacityAlerts).toEqual(active);
+  worker = createJournalWorker(journal, ports); outcome = 'success'; worker.intake([message(11)]); await worker.drain();
+  expect(capacityAlerts(journal.view)).toEqual([]);
+  outcome = 'capacity'; worker.intake([message(12)]); await worker.drain();
+  expect(capacityAlerts(journal.view)).toEqual([expect.objectContaining({ update: 12 })]); journal.close();
 });
