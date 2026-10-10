@@ -5490,7 +5490,7 @@ export function createJournalWorker(journal: ReturnType<typeof openPreviewJourna
     const topic = terms(turn.text).filter(term => !['first', 'earliest', 'oldest', 'original'].includes(term));
     const earliest = /\b(?:first|earliest|oldest|original)\b/iu.test(turn.text) && topic.length
       ? older.find(item => {
-        const words = new Set(terms(clean(item.text, true, item.id)));
+        const words = new Set(terms(memoryClean(item.text, true, item.id)));
         return topic.every(term => words.has(term));
       }) : undefined;
     const texts = older.map(item => `${clean(item.text, true, item.id)} ${clean(recallReply(item) ?? '', true, item.id)}`);
@@ -5501,7 +5501,7 @@ export function createJournalWorker(journal: ReturnType<typeof openPreviewJourna
       PREVIEW_RECALL_LIMIT).order.map(index => older[index]!);
     // A nearby date is useful context, but five unrelated dates must not hide
     // the source that actually matches the question.
-    const dated = asksForUpcoming(turn.text) ? older.filter(item => dueSoon(clean(item.text, true))).at(-1) : undefined;
+    const dated = asksForUpcoming(turn.text) ? older.filter(item => dueSoon(memoryClean(item.text, true))).at(-1) : undefined;
     // A terse reply ("second", "the dentist one") may answer the agent's question from
     // one or two turns back. Keep those exchanges beside it even after compaction; the
     // model, not a word match, decides whether the new message answers either one.
@@ -5535,13 +5535,13 @@ export function createJournalWorker(journal: ReturnType<typeof openPreviewJourna
       candidates: items.map(item => ({ text: clean(`${item.from} ${item.text}`, true), at: item.at })) })
       .map(index => items[index]!);
     const dated = prioritizeDates && asksForUpcoming(turn.text)
-      ? items.filter(item => dueSoon(clean(item.text, true))).at(-1) : undefined;
+      ? items.filter(item => dueSoon(memoryClean(item.text, true))).at(-1) : undefined;
     return [...new Map([...(dated ? [dated] : []), ...ranked].map(item => [channelMemoryId(item), item])).values()]
       .slice(0, PREVIEW_RECALL_LIMIT);
   };
   // A correction needs the target source; reply-only date priority must not crowd it out.
   const channelCandidates = (turn: Turn, summary?: string) => channelFor(turn, summary, false)
-    .filter(item => clean(item.id, true) === item.id).map(item => ({
+    .filter(item => memoryClean(item.id, true) === item.id).map(item => ({
 
     id: publicMemoryId(channelMemoryId(item)), sourceKind: 'channel-import' as const, sourceLabel: channelLabel(item), source: 'channel-import',
     message: clean(redact(item.text).text, true).trim(), reply: '' }));
@@ -5883,8 +5883,12 @@ export function createJournalWorker(journal: ReturnType<typeof openPreviewJourna
     : reminderDue(item) <= localStamp(ports.now(), item.zone) ? 'that time has already passed'
       : reminderDue(item) >= localStamp(journal.view.expires, item.zone) ? 'this preview ends before then' : null;
   let credentialWording = (text: string) => text;
-  const clean = (value: string, _derived = false, source?: string | number) =>
-    credentialWording(projectMemoryClause(journal.view, value, source));
+  // Eligibility and quote identity use memory validity only. Display labels must never
+  // withdraw accepted work or make an unchanged source look corrected (Rules 4, 83, 93).
+  const memoryClean = (value: string, _derived = false, source?: string | number) =>
+    projectMemoryClause(journal.view, value, source);
+  const clean = (value: string, derived = false, source?: string | number) =>
+    credentialWording(memoryClean(value, derived, source));
   const restoredHistorical = (change: MemoryChange, changes: readonly MemoryChange[] = journal.view.memory) =>
     restoredHistoricalChange(change, changes);
   const cleanMetadata = (value: string, item?: ChannelItem) => item && journal.view.memory.some(change =>
@@ -5931,7 +5935,7 @@ export function createJournalWorker(journal: ReturnType<typeof openPreviewJourna
       const text = source?.accepted && fromOperator(source) && source.update <= trigger.update ? redact(source.text).text
         : channel && channelMemoryId(channel) === part.source && channel.at < trigger.at
           ? redact(channel.text).text : undefined;
-      return text?.includes(part.quote) === true && clean(part.quote, true, part.source) === part.quote;
+      return text?.includes(part.quote) === true && memoryClean(part.quote, true, part.source) === part.quote;
     };
     if (!valid(pair.first) || !valid(pair.second) || pair.first.source === pair.second.source
       || pair.first.quote === pair.second.quote) return undefined;
@@ -6295,7 +6299,7 @@ export function createJournalWorker(journal: ReturnType<typeof openPreviewJourna
         : clean(correction ? correction.replacement! : source.text, true, source.id);
       // Rule 7: a correction archives the old value as labelled history while its replacement is live; forgetting
       // withholds it. The old clause still passes every other change, so a separately forgotten clause stays withheld.
-      const was = correction && clean(correction.replacement!, true, source.id) === correction.replacement
+      const was = correction && memoryClean(correction.replacement!, true, source.id) === correction.replacement
         ? projectMemoryClause({ ...journal.view, memory: journal.view.memory.filter(change => change !== correction) },
           correction.quote, source.id) : undefined;
       items.push({ source: source.source, date: source.date,
@@ -6484,7 +6488,7 @@ export function createJournalWorker(journal: ReturnType<typeof openPreviewJourna
     const activeDated = journal.view.dated.filter(item => !journal.view.memory.some(change =>
       change.mode !== 'prefer' && change.in !== 'reply' && change.source === item.source
         && (item.quote.includes(change.quote) || change.quote.includes(item.quote)))
-      && clean(item.quote, true, item.source) === item.quote);
+      && memoryClean(item.quote, true, item.source) === item.quote);
     const selectedDated = datedSelection(activeDated, question?.text ?? '', ports.now(),
       ports.timeZone ?? 'America/Los_Angeles');
     const due = selectedDated.items.map(item => ({ ...item,
@@ -6494,13 +6498,13 @@ export function createJournalWorker(journal: ReturnType<typeof openPreviewJourna
     const datedPending = pendingDates.slice(0, 3)
       .map(item => ({ update: item.update, message: clean(redact(item.text).text, true, item.id).slice(0, 500) }));
     const previous = awayFor && journal.view.order.filter(item => remembered(item) && fromOperator(item) && item.update < awayFor.update).at(-1);
-    const previousMessage = previous ? clean(redact(previous.text).text, true, previous.id) : undefined;
+    const previousMessage = previous ? memoryClean(redact(previous.text).text, true, previous.id) : undefined;
     const selectedName = previous?.lastNamedPerson;
     const lastNamedPerson = selectedName && previousMessage?.includes(selectedName)
-      && clean(redact(selectedName).text, true, previous.id) === selectedName
+      && memoryClean(redact(selectedName).text, true, previous.id) === selectedName
       ? { name: selectedName, from: speakerOf(previous), date: dated(previous),
         ...(previous.thread === current ? {} : { conversation: conversationName(previous.thread, topicNames(journal.view)) }),
-        message: previousMessage } : undefined;
+        message: credentialWording(previousMessage) } : undefined;
     const preferences = preferenceState();
     const reference = awayFor === undefined ? undefined : referenceFor(awayFor);
     const now = ports.now(), zone = ports.timeZone ?? 'America/Los_Angeles';
@@ -6878,12 +6882,12 @@ export function createJournalWorker(journal: ReturnType<typeof openPreviewJourna
       });
       const pinnedFacts = new Set(learnedLessons().pinned);
       recalled.forEach((item, index) => {
-        const due = dueSoon(clean(item.text, true));
+        const due = dueSoon(memoryClean(item.text, true));
         optional.push({ kind: due ? 'dated' : 'recent', key: item.id, signal: item.id, rank: due || lookedUp.has(item.id) || pinnedFacts.has(item.id) ? 1 : 4,
           match: matches(item.text), recent: sentAt(item) ?? 0, index });
       });
       channels.forEach((item, index) => {
-        const due = dueSoon(clean(item.text, true));
+        const due = dueSoon(memoryClean(item.text, true));
         optional.push({ kind: due ? 'dated' : 'recent', key: publicMemoryId(channelMemoryId(item)), signal: channelMemoryId(item), rank: due ? 1 : 4,
           match: matches(item.text), recent: item.at, index: recalled.length + index });
       });
@@ -7090,7 +7094,7 @@ export function createJournalWorker(journal: ReturnType<typeof openPreviewJourna
       || journal.view.calls >= journal.view.limits.maxCalls - (ports.replyCheck ? 1 : 0)) return;
     const now = ports.now(), groups = new Map<string, DatedItem[]>();
     for (const item of pendingRequests(journal.view)) {
-      if (clean(item.quote) !== item.quote || reminderDue(item) > localStamp(now, item.zone) || reminderUnsettled(item)) continue;
+      if (memoryClean(item.quote) !== item.quote || reminderDue(item) > localStamp(now, item.zone) || reminderUnsettled(item)) continue;
       const key = JSON.stringify(journal.view.turns.get(item.source)!.thread ?? null);
       groups.set(key, [...groups.get(key) ?? [], item]);
     }
@@ -7115,7 +7119,7 @@ export function createJournalWorker(journal: ReturnType<typeof openPreviewJourna
     if (!due) return null;
     if (due.legacy !== undefined || actionWithdrawn(journal.view, turn)) return 'withdrawn';
     return due.items.map(item => requestItem(journal.view, item))
-      .some(item => !item || clean(item.quote) !== item.quote || reminderUnsettled(item)) ? 'unsettled' : null;
+      .some(item => !item || memoryClean(item.quote) !== item.quote || reminderUnsettled(item)) ? 'unsettled' : null;
   };
   /** The later messages of a split reply, in order (reply-parts.ts). Each is sent only after the one before it was
    * accepted; its durable start is written before its dispatch, so a part started with no receipt (a crash, or an
@@ -7652,8 +7656,8 @@ export function createJournalWorker(journal: ReturnType<typeof openPreviewJourna
                     else if (prior) { askConflict = prior.askedBy; text = conflictQuestion(prior); }
                     else { conflict = pair; text = conflictQuestion(pair); }
                   } else if (open && winner && !pair && memory?.length === 0 && fromOperator(turn)
-                    && clean(open.first.quote, true, open.first.source) === open.first.quote
-                    && clean(open.second.quote, true, open.second.source) === open.second.quote) {
+                    && memoryClean(open.first.quote, true, open.first.source) === open.first.quote
+                    && memoryClean(open.second.quote, true, open.second.source) === open.second.quote) {
                     const loser = winner === open.first.source ? open.second : open.first;
                     const chosen = winner === open.first.source ? open.first : open.second;
                     resolveConflict = { askedBy: open.askedBy, winner };

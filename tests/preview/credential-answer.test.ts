@@ -107,3 +107,65 @@ it('keeps account identities and unrelated text, handles literal names, and neve
   expect(credentialTextRenderer([{ ...activation, displayLabel: 'your work activation' }])('preview-activation'))
     .toBe('your work activation');
 });
+
+// Synthetic regression from the unit review: display wording must not cancel accepted work.
+it.each(['active', 'withdrawn', 'corrected'] as const)('keeps credential-bearing reminders valid only while %s', async disposition => {
+  const root = realpathSync(mkdtempSync(join(tmpdir(), 'credential-answer-reminder-')));
+  const path = join(root, 'journal.encrypted');
+  const start = Date.UTC(2026, 9, 2, 8, 9);
+  let now = start;
+  let journal = openPreviewJournal(path, key, { kind: 'genesis', bot: '8820318295', chat: '7654321', operator: '7654321',
+    grant: 'grant:preview', configurationDigest: 'sha256:offline', expires: Date.UTC(2026, 9, 10),
+    maxCalls: 40, maxReplies: 20, maxTurns: 20, maxBytes: 40000, cursor: 0 });
+  const quote = 'Remind me today at 1:25 am to renew preview-activation';
+  const withdrawal = 'Cancel that activation reminder';
+  const replacement = 'Remind me tomorrow at 1:25 am to renew preview-activation';
+  const sent: string[] = [];
+  let dueCalls = 0;
+  const ports = { now: () => now, stopped: () => false, timeZone: 'America/Los_Angeles',
+    credentialWording: () => credentialTextRenderer([]),
+    model: async (input: { id: string; question: string; context: string }) => {
+      if (input.id.startsWith('requested-action:')) { dueCalls++; return 'Time to renew your activation.'; }
+      if (input.question === quote) return JSON.stringify({ reply: 'Okay.', memory: [],
+        dated: [{ quote, when: 'today at 1:25 am', remind: true }] });
+      if (disposition === 'withdrawn') {
+        const packet = JSON.parse(input.context) as { reminders: { id: string }[] };
+        return JSON.stringify({ reply: 'Cancelled.', memory: [], dated: [],
+          cancelReminders: packet.reminders.map(item => ({ id: item.id, quote: withdrawal })) });
+      }
+      return JSON.stringify({ reply: 'Corrected.', dated: [], memory: [{ mode: 'correct',
+        source: journal.view.order[0]!.id, quote, replacement }] });
+    },
+    checkOutbound: () => {}, send: async (value: { expectedText: string }) => { sent.push(value.expectedText); return sent.length; } };
+  const update = (id: number, text: string) => ({ update_id: id, message: {
+    chat: { id: 7654321, type: 'private' }, from: { id: 7654321 }, text, date: Math.floor(now / 1000) } });
+  try {
+    let worker = createJournalWorker(journal, ports);
+    worker.intake([update(1, quote)]); await worker.drain();
+    expect(journal.view.dated).toMatchObject([{ quote, remind: true }]);
+    expect(sent[0]).toContain('I will act on this once at 2026-10-02 01:25');
+    const probe = worker.probe('Which reminders are open?');
+    if ('reason' in probe) throw Error(probe.reason);
+    expect(JSON.parse(probe.context).reminders).toHaveLength(1);
+    if (disposition !== 'active') {
+      worker.intake([update(2, disposition === 'withdrawn' ? withdrawal : `Correction: ${replacement}`)]);
+      await worker.drain();
+      if (disposition === 'withdrawn') expect(journal.view.reminderCancels).toHaveLength(1);
+      else expect(journal.view.memory).toMatchObject([{ mode: 'correct', quote, replacement }]);
+    }
+    const beforeDue = sent.length;
+    now = Date.UTC(2026, 9, 2, 8, 26);
+    await worker.sendRequested();
+    expect(dueCalls).toBe(disposition === 'active' ? 1 : 0);
+    expect(sent).toHaveLength(beforeDue + (disposition === 'active' ? 1 : 0));
+    expect(journal.view.order.filter(turn => turn.requestedAction)).toHaveLength(disposition === 'active' ? 1 : 0);
+    journal.close(); journal = openPreviewJournal(path, key);
+    worker = createJournalWorker(journal, ports);
+    // Reinstall the formatter before checking a replayed request, as normal answer preparation does.
+    worker.probe('Which reminders are open?');
+    await worker.sendRequested(); await worker.sendRequested();
+    expect(dueCalls).toBe(disposition === 'active' ? 1 : 0);
+    expect(sent).toHaveLength(beforeDue + (disposition === 'active' ? 1 : 0));
+    expect(journal.view.dated[0]!.quote).toBe(quote);
+  } finally { journal.close(); rmSync(root, { recursive: true, force: true }); }
+});
