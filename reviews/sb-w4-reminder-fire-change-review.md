@@ -5,7 +5,7 @@ Review state: open
 Reviewed content: none
 Outcome: integrate w4-reminder-fire 680aecce0682ec44248fe1a2c5f3bc22decce028 onto the exact live sb-w4-agentready head; an idle poll settles exhausted background memory judgments so an already requested due reminder can fire without another inbound message.
 Affected rules: 29, 34, 36, 52, 57, 69, 70, 74, 87, 90, 93, 95, 101, 102, 111, 112, 113, 116
-Affected floors: secrets and durable intake unchanged; stop and expiry precede settlement; spend caps, cancellation holds, verified scheduler principal, aggregation and durable send deduplication remain in the existing path. Always-sent envelope measures 21675 bytes under the unchanged 22959-byte guard.
+Affected floors: secrets and durable intake unchanged; stop and expiry precede settlement; spend caps, cancellation holds, verified scheduler principal, aggregation and the no duplicate sends floor through durable send deduplication remain in the existing path. Always-sent envelope measures 21675 bytes under the unchanged 22959-byte guard.
 Operator questions: none
 Suggested tier: critical
 Declared tier: critical
