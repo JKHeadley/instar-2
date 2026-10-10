@@ -1,7 +1,7 @@
 /** Calendar interpretation for the preview's operator-authored dated clauses. */
 export interface DatedItem { source: string; quote: string; when: string; zone: string;
   day?: string; time?: string; ambiguity?: string; repeat?: 'weekly'; recurrence?: 'daily' | 'weekdays';
-  /** The verified operator explicitly asked to be reminded: the scoped grant for this one send. */
+  /** The verified operator explicitly asked to be reminded: the scoped grant for one occurrence or the declared recurring series. */
   remind?: true }
 
 const weekdays = ['Sunday', 'Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday'];

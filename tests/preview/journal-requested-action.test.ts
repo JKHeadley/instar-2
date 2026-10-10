@@ -4,7 +4,8 @@ import { mkdtempSync, readFileSync, realpathSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { createJournalWorker, MEMORY_UNDECIDED_REPLY, openPreviewJournal, openRequests, REQUEST_ITEM_LIMIT,
-  requestOverflowLine } from './journal-test-worker.js';
+  requestOccurrence, requestOverflowLine } from './journal-test-worker.js';
+import { writerRecord } from './intake-principal.js';
 import type { openPreviewJournal as OpenJournal } from './journal.js';
 
 const key = new Uint8Array(32).fill(29);
@@ -665,4 +666,48 @@ it('keeps a series open across recorded delivered, empty and uncertain model out
       journal.close();
     } finally { rmSync(root, { recursive: true, force: true }); }
   }
+});
+
+it('admits a delayed standing request but still refuses a delayed one-time request', async () => {
+  for (const when of ['every morning at 8', 'tomorrow at 8 am']) {
+    const root = tmp('series-delayed-intake');
+    try {
+      const { state, open, pushes } = harness(root, 30, { maxCalls: 100, maxTurns: 40, maxBytes: 64000 });
+      const { journal, worker } = open(true);
+      state.now = Date.UTC(2026, 8, 30, 15);
+      worker.intake([update(1, `remind me ${when} to call Priya`)]); await worker.drain();
+      await worker.sendRequested(); await worker.sendRequested();
+      expect(pushes()).toHaveLength(when.startsWith('every') ? 1 : 0);
+      if (when.startsWith('every')) expect(pushes()[0]).toContain('due 2026-09-30 08:00');
+      else expect(state.sent[0]!.text).toContain('that time has already passed');
+      journal.close();
+    } finally { rmSync(root, { recursive: true, force: true }); }
+  }
+});
+
+it('binds the owner-signed recurring due frame to its exact local occurrence and refuses repetition', async () => {
+  const root = tmp('series-occurrence-authority');
+  try {
+    const { state, open, pushes } = harness(root, 30, { maxCalls: 100, maxTurns: 40, maxBytes: 64000 });
+    const { journal, worker } = open(true);
+    worker.intake([update(1, 'remind me every morning at 8 to call Priya')]); await worker.drain();
+    state.now = Date.UTC(2026, 8, 27, 15);
+    const item = journal.view.dated[0]!;
+    const ref = (occurrence?: string) => ({ source: item.source, quote: item.quote, when: item.when,
+      ...(occurrence === undefined ? {} : { occurrence }) });
+    const frame = (occurrence?: string, ordinal = 0) => {
+      const id = `requested-action:${ordinal}`, items = [ref(occurrence)];
+      const writer = writerRecord(journal.systemWriter('requested-action', requestOccurrence(id, items), state.now)!);
+      return { kind: 'action-due' as const, id, items, writer, update: 1 + (ordinal + 1) / 1024, at: state.now };
+    };
+    expect(() => journal.append(frame())).toThrow('requested action refused');
+    expect(() => journal.append(frame('2026-09-28'))).toThrow('requested action refused');
+    const signed = frame('2026-09-27');
+    expect(() => journal.append({ ...signed, items: [ref('2026-09-26')] })).toThrow('requested action refused');
+    journal.append(signed); await worker.sendRequested();
+    expect(pushes()).toHaveLength(1);
+    expect(() => journal.append(frame('2026-09-27', 1))).toThrow('requested action refused');
+    state.now += 86400000; await worker.sendRequested(); expect(pushes()).toHaveLength(2);
+    journal.close();
+  } finally { rmSync(root, { recursive: true, force: true }); }
 });

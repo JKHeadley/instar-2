@@ -28,7 +28,10 @@ Decision: w4-recurring-calendar | Use daily or weekday local calendar days, one 
 Decision: w4-recurring-journal | Put the occurrence in the existing signed due-frame reference and retain series-level cancellation; replay derives progress without another store. | reported=/Users/dabombstudio/.instar/agents/echo/.instar/lanes/w4-recurring-PROGRESS.md
 Decision: w4-recurring-recovery | Coalesce missed days using the latest due day and durable dispatch time, including recovery of an already queued occurrence; declare the standing series lifetime as unbounded until withdrawn, rather than falsely claiming a paired register bound; each dispatch retains the existing finite preview allowance and expiry. | reported=/Users/dabombstudio/.instar/agents/echo/.instar/lanes/w4-recurring-PROGRESS.md
 
-Subject (5 paths): tests/preview/README.md, tests/preview/dated-memory.ts, tests/preview/journal-requested-action.test.ts, tests/preview/journal.ts, tests/preview/recurring-calendar.test.ts
+Decision: w4-recurring-prompt-budget | Keep recurring guidance within the original instruction budget; do not grow the bounded packet to compensate for a verbose instruction. | reported=/Users/dabombstudio/.instar/agents/echo/.instar/lanes/w4-recurring-PROGRESS.md
+Decision: w4-recurring-delayed-intake | A standing request accepted after its first due date catches up once; an expired one-time request is still refused. | reported=/Users/dabombstudio/.instar/agents/echo/.instar/lanes/w4-recurring-PROGRESS.md
+
+Subject source paths: tests/preview/README.md, tests/preview/dated-memory.ts, tests/preview/journal-requested-action.test.ts, tests/preview/journal.ts, tests/preview/recurring-calendar.test.ts, tests/preview/requested-action-live-test.md. Capability declarations, owner pins and generated register files accompany the source.
 
 ## Closing block
 
