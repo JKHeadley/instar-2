@@ -121,6 +121,14 @@
         "path": "tests/preview/journal-agent-resources.test.ts",
         "hash": "sha256:393406b4c5d3f7c4219d13b9b125b01d944bb87f2e196cb972bb1d132244693a"
       }
+    },
+    {
+      "id": "PREVIEW-MEDIA-CUSTODY",
+      "stage": "build",
+      "artifact": {
+        "path": "tests/preview/telegram-media.test.ts",
+        "hash": "sha256:3bc28107e114a7c565ce395a6a400af62cb04a1ea1e5c2e302587f80f687f022"
+      }
     }
   ],
   "probes": [],
