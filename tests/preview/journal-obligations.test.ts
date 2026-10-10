@@ -52,7 +52,9 @@ function world(root: string, options: { maxBytes?: number; maxCalls?: number; an
   const workQuestions: string[] = [];
   const review = options.review;
   const worker = createJournalWorker(journal, { now: () => clock.now, stopped: options.stopped ?? (() => false), timeZone: 'UTC',
-    prepareModel: input => input.context,
+    // The remainder review edits the same envelope the launcher retains, not a bare packet.
+    prepareModel: input => review ? JSON.stringify({ messages: [{ role: 'user', content: input.question },
+      { role: 'context', content: JSON.stringify({ packet: JSON.parse(input.context) }) }] }) : input.context,
     replyNotices: (turn) => refusedEffectNotices(journal.view.effectDoorway?.recent ?? [], turn),
     ...(options.toolRoute ? { toolRoute: options.toolRoute } : {}),
     ...(options.sources ? { sources: options.sources } : {}),
@@ -61,11 +63,8 @@ function world(root: string, options: { maxBytes?: number; maxCalls?: number; an
         answers: Object.fromEntries(Object.keys(questions ?? REPLY_RULES).map(rule => [rule,
           { type: 'noul', noul: review.jev?.(text)[rule as ReplyRule] ?? 0.01 }])) } }),
       escalate: async (text: string, id: string, originalPrompt?: string, rules?: readonly ReplyRule[]) => {
-        // The same context the live runner builds: the answer's packet plus its declared record. This world's
-        // prepared prompt is the bare packet, so it is wrapped the way the live envelope carries it.
-        const envelope = JSON.stringify({ messages: [{ role: 'user', content: journal.view.turns.get(id)!.text },
-          { role: 'context', content: JSON.stringify({ packet: JSON.parse(originalPrompt!) }) }] });
-        const context = JSON.parse(replyReviewContext(envelope, text, rules, declaredObligations(journal.view, id, clock.now))) as Record<string, unknown>;
+        // The same context the live runner builds: the retained envelope plus its current declared record.
+        const context = JSON.parse(replyReviewContext(originalPrompt!, text, rules, declaredObligations(journal.view, id, clock.now))) as Record<string, unknown>;
         reviews.push(context);
         const verdict = review.verdict?.(context) ?? 'pass';
         const named: ReplyRule[] = verdict === 'pass' ? [] : [rules?.includes('defers_work') ? 'defers_work' : rules?.[0] ?? 'defers_work'];
@@ -740,11 +739,12 @@ it('gives a held deferral one bounded correction: a revalidated correction is se
         expect(w.sent.join('\n'), label).not.toContain('later today');
         expect(turn.release, label).toBeUndefined();
         // The agent's answer is recorded as given; an unavailable response is no decision, never a rejection.
-        // Plan #215: the whole answer WAS the named deferral, so nothing survived the claim-scoped removal and the
-        // notice stands in for no surviving content — recorded, so this case is countable rather than silent.
+        // A rejected rewrite used the sole revision-review slot, so no different remainder is reviewed or removed.
+        // With no rewrite, the whole answer is the named deferral: removal leaves nothing to send.
         expect(turn.heldReview, label).toEqual({ objections: ['defers_work'],
           dispositions: correction ? correction.dispositions : [{ objection: 'defers_work', decision: 'no-decision' }],
-          withheld: { rules: ['defers_work'], removed: [LATER], unlocated: [] } });
+          ...(label === 'correction still defers' ? {} : { withheld: { rules: ['defers_work'], removed: [LATER], unlocated: [] } }) });
+        expect(turn.revisionReview?.verdict, label).toBe(label === 'correction still defers' ? 'violation' : undefined);
       }
       expect(w.journal.view.commitments.filter(note => note.loop), label).toHaveLength(0);
       w.journal.close();
@@ -844,6 +844,13 @@ it('judges a restated can\'t-do answer against the limit it already settled, and
   const matter = (text: string) => ['DMV', 'library'].find(word => text.includes(word));
   const reviewer = { jev: (text: string) => (text.includes('can\'t browse') ? { unrecorded_blocker: 0.98 } : {}),
     verdict: (context: Record<string, unknown>) => {
+      // The remainder carries the practical answer but no cannot-do claim; judge this new candidate separately.
+      if (Array.isArray(context.withheldClaims)) {
+        expect(context.withheldClaims).toEqual([DMV_AGAIN.split('. ')[0] + '.']);
+        expect(context.candidateReply).not.toContain('I still can\'t');
+        expect(context.candidateReply).toContain('You\'d need to renew your car registration yourself');
+        return 'pass' as const;
+      }
       const declared = context.declaredObligations as { blocker: { claim: string; constraint: string } | null;
         settled?: { claim: string; constraint: string }[] };
       const records = [declared.blocker, ...(declared.settled ?? [])];
@@ -876,7 +883,7 @@ it('judges a restated can\'t-do answer against the limit it already settled, and
       const before = w.reviews.length;
       await w.say(DMV_ASK, () => { if (between === 'queued-due') w.clock.now = due + 60_000; });
       const turn = w.journal.view.order.find(item => item.text === DMV_ASK)!;
-      expect(w.reviews.length, label).toBe(before + 1);
+      expect(w.reviews.length, label).toBe(before + (sends ? 1 : 2));
       expect(turn.answerBlocker, label).toBeUndefined();
       // Live 969389730: the writer relied on a settled record of a different action (looking up a bill, not paying it).
       if (between === 'none' || between === 'queued-fresh') expect(w.contexts.get(DMV_ASK), label).toContain('A settled blocker covers only its own claim');
