@@ -265,9 +265,9 @@ const TOOLS_SENTENCE = 'In this turn you have the harness\'s full built-in tool 
   + 'WebFetch and WebSearch read the public web (GET only). '
   + `Agent starts "${SUBSCRIPTION_SUBAGENT_TYPE}" subagents, which may start their own: at most ${SUBSCRIPTION_TOOL_LIMITS.maxChildren} in this `
   + `whole turn, each up to ${SUBSCRIPTION_TOOL_LIMITS.childMaxTurns} turns, each result returning to whoever started it. Each call is `
-  + 'checked when made: consequential effects (sending outside this conversation, writing to the network or a third-party account, '
-  + 'spending, changing safeguards) go through the effect doorway: one runs once the operator registers and grants it, otherwise it '
-  + 'is refused and the refusal names its reason; say so plainly when one is refused. '
+  + 'checked when made. Workspace work and public reads are already allowed. Registered effects covered by standing grants '
+  + 'run without another yes. The operator can tighten or revoke trust through setup-standing-trust. Irreversible outward '
+  + 'sends remain outside the one-machine closed set. The effect doorway reports any refusal and its reason; say so plainly. '
   + `Use at most ${SUBSCRIPTION_TOOL_LIMITS.maxToolCalls} tool calls. When your answer reports a value a tool produced, `
   + 'say in reasoning which tool call, by name and order, produced it. Never claim an effect no tool reported. '
   // Plan #510: without --safe-mode Claude Code adds its own "# userEmail" context naming the subscription login

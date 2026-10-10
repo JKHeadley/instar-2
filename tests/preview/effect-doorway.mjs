@@ -36,6 +36,7 @@ const CONSEQUENCE = Object.freeze(['none', 'attention', 'data', 'money', 'identi
  * (its spend stays inside the turn's own bounded model budget). */
 export const TOOL_EFFECT_DEFAULTS = Object.freeze({
   'tool:mcp': Object.freeze({ consequence: 'external', reversibility: 'irreversible', reach: 'world', costUsd: null }),
+  'tool:network-write': Object.freeze({ consequence: 'external', reversibility: 'irreversible', reach: 'world', costUsd: null }),
   'tool:unsandboxed': Object.freeze({ consequence: 'control', reversibility: 'irreversible', reach: 'world', costUsd: null }),
   'tool:network': Object.freeze({ consequence: 'external', reversibility: 'reversible', reach: 'world', costUsd: 0 }) });
 
@@ -50,6 +51,9 @@ export const UNAVAILABLE_EFFECT_POLICY = 'PreviewEffectPolicyUnavailable';
 const text = (value, max = 256) => typeof value === 'string' && value.length > 0 && value.length <= max;
 const strings = (value, max = 64) => Array.isArray(value) && value.length <= max && value.every(item => text(item));
 const level = value => typeof value === 'number' && Number.isFinite(value) && value >= 0;
+const requestScope = (entry) => entry.request === undefined || (entry.effect === 'tool:network-write'
+  && entry.request && Object.keys(entry.request).length === 2 && /^[A-Z]+$/u.test(entry.request.method)
+  && text(entry.request.path, 2048) && entry.request.path.startsWith('/'));
 const effectId = value => text(value, 64) && /^[a-z]+:[a-z0-9:-]+$/u.test(value);
 
 /** Decodes an operator effect policy (the file `--effect-policy` names). Closed: an unknown field, a grant without its
@@ -67,14 +71,14 @@ export function decodeEffectPolicy(value) {
   const registered = value.registered.map(entry => {
     if (!entry || typeof entry !== 'object' || !effectId(entry.effect) || (entry.target !== undefined && !text(entry.target))
       || !CONSEQUENCE.includes(entry.consequence) || !REVERSIBILITY.includes(entry.reversibility) || !REACH.includes(entry.reach)
-      || !(entry.costUsd === null || level(entry.costUsd)) || (entry.matters !== undefined && !strings(entry.matters)) || !text(entry.source))
+      || !requestScope(entry) || !(entry.costUsd === null || level(entry.costUsd)) || (entry.matters !== undefined && !strings(entry.matters)) || !text(entry.source))
       fail('registration');
     return Object.freeze({ ...entry, ...(entry.matters ? { matters: Object.freeze([...entry.matters]) } : {}) });
   });
   if (!Array.isArray(value.grants) || value.grants.length > 64) fail('grants');
   const grants = value.grants.map(grant => {
     if (!grant || typeof grant !== 'object' || !text(grant.id, 128) || !effectId(grant.effect) || (grant.target !== undefined && !text(grant.target))
-      || !Array.isArray(grant.approves) || grant.approves.length === 0
+      || !requestScope(grant) || !Array.isArray(grant.approves) || grant.approves.length === 0
       || !grant.approves.every(test => ['scope', 'resources', 'policySensitive'].includes(test))
       || (grant.approves.includes('resources') ? !level(grant.resourceLevelUsd) : grant.resourceLevelUsd !== undefined) || !text(grant.source)
       || !text(grant.custodian) || !text(grant.recovery, 1024)
@@ -95,7 +99,8 @@ export function termHolds(term, profile, depth = 0) {
   throw Error('effect doorway: malformed term');
 }
 
-const covers = (entry, proposal) => entry.effect === proposal.effect && (entry.target === undefined || entry.target === proposal.target);
+const covers = (entry, proposal) => entry.effect === proposal.effect && (entry.target === undefined || entry.target === proposal.target)
+  && (entry.request === undefined || (entry.request.method === proposal.request?.method && entry.request.path === proposal.request?.path));
 const live = (grant, now) => grant.expiresAt === undefined || (Number.isSafeInteger(now) && now < grant.expiresAt);
 
 /** The configured effect policy as it reads at this moment (`read` returns the file's text): decoded, or, when it cannot

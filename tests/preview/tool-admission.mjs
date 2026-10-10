@@ -478,7 +478,8 @@ export function admitEgress({ method, path, host = null, headers = {}, gitFetch 
   const doorway = (proposal, kind, why) => { const verdict = admitToolEffect(proposal, config, now);
     return verdict.admitted ? { decision: 'allow', reason: verdict.reason, kind }
       : { decision: 'deny', reason: why ? `${why}: ${verdict.reason}` : verdict.reason, kind }; };
-  const write = reason => doorway({ effect: 'tool:network-write', ...on }, 'network-write', reason);
+  const write = reason => doorway({ effect: 'tool:network-write', ...on,
+    ...(verbs.every(v => v === actual) ? { request: { method: actual, path: target } } : {}) }, 'network-write', reason);
   const admitRead = reason => policyNames(config, { effect: 'tool:network', ...on })
     ? doorway({ effect: 'tool:network', ...on }, 'network-read', null) : { decision: 'allow', reason, kind: 'network-read' };
   if (service === 'git-receive-pack' || route.endsWith('/git-receive-pack')) return write('a git push');
