@@ -23,10 +23,10 @@ Deferral: tests/preview/obligation-task-answer-live.test.ts:113 | not-a-deferral
 
 Subject (source repair plus generated pins/register): tests/preview/credential-label-boundary.test.ts, tests/preview/journal-obligations.test.ts, tests/preview/obligation-task-answer-live.test.ts
 
+Evidence: Recorded obligation calls commitment:3:1791099042440 and commitment:3:1791099958095 from cint-L46, plus all 20 captured step outputs and update 6232091; credential turns 715673352, 715673353 and 6232017; group audience and remainder verdicts from update 969390330; proofroom journal updates 715672479–715672500 including uncertain summary reservations 715672492/496/497 and undecided cancellation; delivered and empty reply context bytes at 715672479 and 715672550. Fixtures are read-only committed captures, never presented as new live calls.
+
 ## Closing block
 
 simplestRobustRoute: This is the simplest robust route: update the three obsolete fixture adapters and their precise assertions, preserving the merged full-context checkpoint. No new runtime mechanism. Existing current-standing, secret, cap, stop, durable-intent and exact-candidate guards remain in force. This is no claim of a new autonomous capability or live deployment.
 80/20: 71 tests pass in the three repaired files; 13 selected recorded-shape and boundary tests pass in group-audience, group-carry and guidance (42 unrelated tests excluded by name filter, no source skip added). Typecheck, build and architecture pass. Saved gate JSON has exactly the four repaired failures; all eleven post-test checkers stop at their required-success guard. No fresh full-suite run is claimed; the pipeline owns it. Final post-commit cheap check results are recorded in the external progress report.
 VERDICT: author submission; this record asserts no independent verdict — the review desk records its own
-
-Evidence: Recorded obligation calls commitment:3:1791099042440 and commitment:3:1791099958095 from cint-L46, plus all 20 captured step outputs and update 6232091; credential turns 715673352, 715673353 and 6232017; group audience and remainder verdicts from update 969390330; proofroom journal updates 715672479–715672500 including uncertain summary reservations 715672492/496/497 and undecided cancellation; delivered and empty reply context bytes at 715672479 and 715672550. Fixtures are read-only committed captures, never presented as new live calls.
