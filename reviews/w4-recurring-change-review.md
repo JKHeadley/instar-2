@@ -31,7 +31,11 @@ Decision: w4-recurring-recovery | Coalesce missed days using the latest due day 
 Decision: w4-recurring-prompt-budget | Keep recurring guidance within the original instruction budget; do not grow the bounded packet to compensate for a verbose instruction. | reported=/Users/dabombstudio/.instar/agents/echo/.instar/lanes/w4-recurring-PROGRESS.md
 Decision: w4-recurring-delayed-intake | A standing request accepted after its first due date catches up once; an expired one-time request is still refused. | reported=/Users/dabombstudio/.instar/agents/echo/.instar/lanes/w4-recurring-PROGRESS.md
 
-Subject source paths: tests/preview/README.md, tests/preview/dated-memory.ts, tests/preview/journal-requested-action.test.ts, tests/preview/journal.ts, tests/preview/recurring-calendar.test.ts, tests/preview/requested-action-live-test.md. Capability declarations, owner pins and generated register files accompany the source.
+Decision: w4-recurring-replay-contract | Preserve historical captures; compare the current briefing after only the declared audience/recurrence substitutions and restore the date instruction and its newly fitting third search item before checking both historical packet hashes. All other bytes remain equal. | reported=/Users/dabombstudio/.instar/agents/echo/.instar/lanes/w4-recurring-PROGRESS.md
+
+Decision: w4-recurring-test-yield | Yield between synchronous recall benchmark samples outside measured spans so Vitest can receive task updates; the passing 84-second case otherwise hit the runner RPC deadline. | reported=/Users/dabombstudio/.instar/agents/echo/.instar/lanes/w4-recurring-PROGRESS.md
+
+Subject source paths: tests/preview/README.md, tests/preview/dated-memory.ts, tests/preview/journal-requested-action.test.ts, tests/preview/journal.ts, tests/preview/recurring-calendar.test.ts, tests/preview/requested-action-live-test.md, tests/preview/selfdesc-abilities.test.ts, tests/preview/recall-latency.test.ts. Capability declarations, owner pins and generated register files accompany the source.
 
 ## Closing block
 

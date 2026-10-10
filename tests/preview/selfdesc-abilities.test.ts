@@ -35,18 +35,22 @@ it('reads the wording each live wall was settled behind from its recorded answer
   expect(settledConstraintWording(live(6232224), wall(6232224, 'no-such-constraint'))).toBeUndefined();
 });
 
-it('the recorded K11a briefing differs only in the newly configured conversation audience', () => {
+it('the recorded K11a briefing differs only in the declared audience and recurring-request capabilities', () => {
   const note = capabilityBriefing(path => readFileSync(resolve(process.cwd(), path), 'utf8'),
     { providerAttempts: 1000, expiresAt: 1791232800000, tools: true, mcp: 0 }).text;
   const replays = JSON.parse(read('k11a-replays.json')) as { note: string; runs: { kind: string; input: string; verdict: string; reply: string }[] };
   // Captured model results stay historical. Forum routing widens only the declared
-  // conversation capability; the tool, account, custody and authority wording stays exact.
+  // conversation and recurring-request capabilities; tool, account, custody and authority wording stays exact.
   const current = JSON.parse(read('k11a-agentready-replays.json')) as { note: string; system: string;
     runs: { kind: string; input: Envelope; raw: string; reply: string; judge: { verdict: string; rubric: string } }[] };
   const oldConversation = '- preview-conversation: answers the operator in their private Telegram chat and topics, one reply per admitted message.';
   const forumConversation = '- preview-conversation: answers the operator in the configured private Telegram chat or forum group, returning each reply to its originating topic.';
   expect(current.note.split(oldConversation)).toHaveLength(2);
-  expect(current.note.replace(oldConversation, forumConversation)).toBe(note);
+  const oldRequests = "- preview-requested-actions: an explicit request for a settled later day and time (a reminder) is answered once at that time, with no new operator message.";
+  const recurringRequests = "- preview-requested-actions: an explicit request for a settled later day and time is answered then, with no new operator message. Daily or weekday requests at a local time repeat until cancelled; missed occurrences combine into one on recovery. Each occurrence uses the existing spend, stop and delivery limits.";
+  expect(current.note.split(oldRequests)).toHaveLength(2);
+  expect(note).toContain(recurringRequests);
+  expect(current.note.replace(oldConversation, forumConversation).replace(oldRequests, recurringRequests)).toBe(note);
   expect(current.system).toBe(SUBSCRIPTION_TOOLS_SYSTEM_PROMPT);
   expect(current.runs.map(run => run.kind)).toEqual(['worst', 'chain']);
   for (const run of current.runs) {
