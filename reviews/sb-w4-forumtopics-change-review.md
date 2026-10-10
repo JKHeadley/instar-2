@@ -24,6 +24,10 @@ Prompt review: No additional prompt or parser change in this combine. Carried un
 
 Unit reports: /Users/dabombstudio/.instar/agents/echo/.instar/lanes/w4-forumtopics-PROGRESS.md and /Users/dabombstudio/.instar/agents/echo/.instar/lanes/w4-forumtopics-repair-181657-PROGRESS.md.
 
+Prompt finding: 849db3a6296a | protocol-literal | the existing fixed no-memory reply is unchanged; its test asserts the product text.
+Prompt finding: bd01de21286a | protocol-literal | the existing instruction to cite sourceLabel is unchanged; its test verifies the instruction reaches the packet.
+Prompt finding: fb5fa7e706c8 | protocol-literal | the existing instruction for questions about the operator's own words is unchanged; its test verifies the instruction reaches the packet.
+
 ## Closing block
 
 simplestRobustRoute: This is the simplest robust route: one ordinary merge, existing desk pin/replay tools and targeted consumer tests. No new mechanism or authority is added. Existing intake, stop, spend, disclosure and delivery guards remain in force. No live activation or autonomous shipped-path completion is claimed.
