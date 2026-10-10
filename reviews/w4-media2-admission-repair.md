@@ -16,7 +16,7 @@ Multi-machine posture: Original intake and outcome retain existing journal repli
 Layer below: Existing four-test admitEffect/decodeEffectPolicy; Six reserve/claim/consume and monotonic lease; signed P2 envelopes and physical transport-file-storage flush/readback; journal intake principal/cursor ordering; existing encrypted media writer, fixed-origin bounds, stop/owner callback and answer/send deduplication.
 Bug class: unit
 Bug evidence: reproducer=tests/preview/telegram-media.test.ts
-Evidence binding: PREVIEW-MEDIA-CUSTODY points to the targeted test, whose physical transport reads durable intake and consumed Six claims before returning bytes; owner source pins are refreshed by the delegated desk tools. Recorded-output replay additionally uses held-cascade-replay and summary-cascade-stall.
+Evidence binding: PREVIEW-MEDIA-CUSTODY points to the targeted test, whose physical transport reads durable intake and consumed Six claims before returning bytes; owner source pins are refreshed by the delegated desk tools. Recorded-output replay additionally uses held-cascade-replay and summary-cascade-stall. The four-file targeted run including capability-briefing passes 45/45 tests; generated capabilities report fetch-inbound-media available on journal-agent.
 Hook bypass: none
 Convergence: none
 Decision: media2-repair-admission | reuse the live four-test boundary and Six reservation/claim/consume for the exact registered fetch, with a source-bound default conversation grant and fresh policy checks; this prevents privileged requests without causal authority while retaining ordinary media ability | reported=/Users/dabombstudio/.instar/agents/echo/.instar/lanes/w4-media2-repair-034807-PROGRESS.md
