@@ -7,6 +7,7 @@ tests/assembly/fixed-worker-monitor-native.test.ts
 tests/assembly/process-inventory.test.ts
 tests/integration/host-watch.test.ts
 tests/integration/native-loop-live.test.ts
+tests/preview/group-carry-cli.test.ts
 tests/preview/native-harness-contract.test.ts
 tests/preview/native-loop-replay.test.ts
 tests/preview/native-loop.test.ts

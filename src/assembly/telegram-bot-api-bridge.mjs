@@ -34,7 +34,8 @@ if (testEndpoint !== undefined && (token !== TEST_TOKEN || !testMatch
   || Number(testMatch[1]) < 1 || Number(testMatch[1]) > 65535)) process.exit(2);
 // answerCallbackQuery only clears a pressed button with a short toast; it carries no message.
 const validMethod = request?.method === 'getMe' || request?.method === 'getUpdates' || request?.method === 'sendMessage'
-  || request?.method === 'answerCallbackQuery';
+  || request?.method === 'answerCallbackQuery'
+  || request?.method === 'getChat' || request?.method === 'getChatMemberCount' || request?.method === 'getChatMember';
 const identityRequestPresent = request?.method !== 'getMe' || (
   typeof request.captureDirectory === 'string' && request.captureDirectory.length > 0
   && record(request.identityBinding));

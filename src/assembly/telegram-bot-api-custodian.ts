@@ -10,7 +10,7 @@ import type { InboundRoute } from '../intake/index.js';
 import type { VerificationRuntimePort } from '../verification/index.js';
 import { boundary, ensure, freeze, take } from './boundary.js';
 
-type ProviderMethod = 'getMe' | 'getUpdates' | 'sendMessage';
+type ProviderMethod = 'getMe' | 'getUpdates' | 'sendMessage' | 'getChat' | 'getChatMemberCount' | 'getChatMember';
 type ProviderBody = Readonly<Record<string, string | number>>;
 type CapturedResponse = Readonly<{ bytes: string; reference: string; hash: Hash }>;
 type IdentityEvidence = Readonly<{

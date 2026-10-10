@@ -1,4 +1,7 @@
 #!/usr/bin/env node
+import { groupMembershipReader } from './group-membership-io.mjs';
+import { appendGroupCarry } from './group-carry.js';
+import { resolveGroupDisclosure, verifyGroupAudience } from './group-disclosure.js';
 import { journalConversation, journalWorkConversation, validateChatBinding } from './forum-routing.js';
 // Small, machine-local preview launcher. Only this file owns process, clock and
 // physical ports. The worker owns all durable conversation/effect transitions.
@@ -29,7 +32,7 @@ import { SOURCE_PINS, sourcePacket, deskStatusSource, readDeskStatus, verifyMind
 import { admitPreviewHarness, PREVIEW_JOURNAL_HARNESS, PREVIEW_JOURNAL_STALL_COVERAGE } from './stall-coverage.js';
 import { UNRECORDED, briefingDigestOf, codeDigestOf, installedCodeOf, installationRows, installationStatusLines, installedUpdateFrom,
   staleAgainst, updateDelivery, updatePacketItem } from './installation.js';
-import { bindPreviewBlockingSites, projectionDigest, summaryStoppedAt, loopRevisitMs, LOOP_REVISIT_MIN_MS, LOOP_REVISIT_MAX_MS, SUMMARY_REASON_CHARS } from './journal.js';
+import { bindPreviewBlockingSites, projectionDigest, summaryStoppedAt, loopRevisitMs, LOOP_REVISIT_MIN_MS, LOOP_REVISIT_MAX_MS, SUMMARY_REASON_CHARS, GROUP_DISCLOSURE_HOLD_NOTICE, ModelDisclosureRefused } from './journal.js';
 import { openPreviewJournal as openJournal, createJournalWorker, raiseJournalCaps, renewJournalExpiry, activationMatchesJournal, activePersonMerges, openQuestionCandidates, projectMemoryText, unansweredCue, reportJournalCap, unknownCallCounts, pendingUnknownCalls, replyTimings, reviewUnavailableReleases, claimScopedWithholds, MINIMAL_RESERVE, reserveTurnsUsed, reserveRepliesUsed, openRequests, actionWithdrawn, reminderDue, operatorRequestsReport, retrospectiveCases, openBlockers, openDirectives, declaredObligations, sendOutcomeCounts, sendOutcomeOf, unsentLabel, replyTarget, replyOutcomeOf, partialReplyLabel, reminderOutcome, envelopeWriter, PREVIEW_LIVE_LIMITS, unservableContextReason, PREVIEW_JOURNAL_COMPACT_BYTES, activeMemoryConflicts, TOO_LONG_INPUT_NOTICE, TOO_LONG_REPLY_NOTICE , probeTurn, operatorWriter, isJournalUpdate, retractRefusal, retractRendering, retractCarrier, retractedTurn, liveSummaries, continuityFrontier, withinOperatorHours, OPERATOR_HOURS, withFormatReminder, concurrentWorkItem, latestOwnedLaunch, ownedProcessOf, meaningIndexStatus, LIMITED_ANSWER_OPERATION, MISSING_INSTALLATION_POLICY } from './journal.js';
 import { createPreviewClock } from './clock.js';
 import { appendRun, heldNotices, heldRepliesToday, memoryHealthLine, readRuns, restartHandoff, selfState, selfStateBrief, selfStateSource, zoneFormatter } from './self-state.js';
@@ -685,7 +688,7 @@ async function main() {
   const retrospectiveEnabled = options.retrospective !== 'false';
   // Part 18 (plan #402): the live sentinels, all on by default; `--sentinels none` (or a subset) is the off-switch.
   const sentinelFamilies = sentinelFamiliesOf(options.sentinels);
-  if (!['run', 'status', 'stop', 'raise-caps', 'renew-expiry', 'inspect', 'import-store', 'audit', 'export-memory', 'seal-authority', 'record-live-proof', 'check-agreements', 'propose-retract'].includes(command)) throw Error('preview: unknown command');
+  if (!['run', 'status', 'stop', 'raise-caps', 'renew-expiry', 'inspect', 'import-store', 'carry-group', 'audit', 'export-memory', 'seal-authority', 'record-live-proof', 'check-agreements', 'propose-retract'].includes(command)) throw Error('preview: unknown command');
   if (command === 'seal-authority') {
     // The desk's recording step: seals the authority record it decided, under the trial's storage
     // SecretRef, into a new file (never replacing one). Nothing else is read or written.
@@ -1205,7 +1208,7 @@ async function main() {
     } finally { check.close(); }
   }
   // Rule 35: a test composition never takes the writer lease of a production root (or the reverse).
-  if (command === 'run' && existsSync(journalPath)) {
+  if ((command === 'run' || command === 'carry-group') && existsSync(journalPath)) {
     const composed = process.env.INSTAR_PREVIEW_TEST_TELEGRAM_ENDPOINT ? 'test' : 'production';
     const peek = openPreviewJournal(journalPath, key(), undefined, undefined, true);
     try { if ((peek.view.genesis.origin ?? 'production') !== composed) throw Error('preview: composition origin differs from journal'); }
@@ -1214,6 +1217,70 @@ async function main() {
   const machine = options.machine ?? 'preview-local-machine';
   const storage = take(openProductionStorage({ root: join(root, '.writer'), machine,
     key: key(), policy: 'preview-journal', store: 'preview-journal', context, io: productionStorageIO }));
+  let membershipPhysical;
+  const membershipReadFor = scope => {
+    if (!membershipPhysical) {
+      const captures = new Map();
+      membershipPhysical = createProductionTelegramIO(join(root, '.writer'), {
+        preserve(ref, bytes) { captures.set(ref, bytes); return true; }, read: ref => captures.get(ref) ?? null,
+      }, process.env.INSTAR_PREVIEW_TEST_TELEGRAM_ENDPOINT);
+    }
+    return groupMembershipReader(membershipPhysical, token, secretRef('telegram-bot-token'), {
+      id: Number(scope.bot),
+      username: required(options, 'bot-username').replace(/^@/, ''),
+    });
+  };
+  const groupPermission = scope => {
+    try {
+      if (scope.destinationRoot !== root) return { kind: 'refused', reason: 'destination root differs' };
+      const path = options['authority-record'] ?? join(dirname(resolve(required(options, 'activation-record'))), 'activation-authority.json');
+      return resolveGroupDisclosure(scope, JSON.parse(readFileSync(path, 'utf8')), wallNow(),
+        operatorRecords(options['operator-records']), authoritySealKey(key()));
+    } catch { return { kind: 'refused', reason: 'group disclosure authority unavailable' }; }
+  };
+  const requireGroupDisclosure = async view => {
+    if (!view.groupCarry) return;
+    const scope = view.groupCarry.scope;
+    if (groupPermission(scope).kind !== 'resolved' || !await verifyGroupAudience(scope, membershipReadFor(scope))
+      || groupPermission(scope).kind !== 'resolved') throw Error('group carry: disclosure grant or operator-only audience refused');
+  };
+  if (command === 'carry-group') {
+    let destination, source, sourceStorage;
+    try {
+      if (posture !== 'single-machine') throw Error('group carry: carry requires the local exclusive writer');
+      destination = openPreviewJournal(journalPath, key());
+      if ((destination.view.genesis.origin ?? 'production') !== (process.env.INSTAR_PREVIEW_TEST_TELEGRAM_ENDPOINT ? 'test' : 'production'))
+        throw Error('group carry: transport origin differs');
+      const sourceRoot = realpathSync(required(options, 'source-root'));
+      if (sourceRoot !== resolve(required(options, 'source-root')) || sourceRoot === root) throw Error('group carry: source root differs');
+      const scope = { sourceRoot, destinationRoot: root, chat: destination.view.genesis.chat,
+        operator: destination.view.genesis.operator, bot: destination.view.genesis.bot };
+      let permission = groupPermission(scope);
+      if (permission.kind !== 'resolved') throw Error(`group carry: ${permission.reason}`);
+      const audience = await verifyGroupAudience(scope, membershipReadFor(scope));
+      if (!audience) throw Error('group carry: operator-only audience refused');
+      permission = groupPermission(scope);
+      // The predecessor uses this installation's storage custody; no key is copied into the new root. It records the
+      // transfer of its open requests, so it is opened under its own writer lease: a live private runner refuses this
+      // carry (Rules 52, 63). Rule 35: its origin is read before that lease is taken.
+      const sourcePath = join(sourceRoot, 'journal.encrypted');
+      const peek = openPreviewJournal(sourcePath, key(), undefined, undefined, true);
+      try { if ((peek.view.genesis.origin ?? 'production') !== (destination.view.genesis.origin ?? 'production')) throw Error('group carry: predecessor origin differs'); }
+      finally { peek.close(); }
+      sourceStorage = take(openProductionStorage({ root: join(sourceRoot, '.writer'), machine,
+        key: key(), policy: 'preview-journal', store: 'preview-journal', context, io: productionStorageIO }));
+      source = openPreviewJournal(sourcePath, key());
+      const result = appendGroupCarry(destination, source, scope, permission, audience, wallNow(), () => existsSync(stopPath));
+      // Rule 2: what moved and what stayed are both named; a kept request is never silently dropped.
+      const carried = destination.view.groupCarry;
+      process.stdout.write(`${JSON.stringify({ result, predecessor: sourceRoot, digest: carried.digest,
+        transferredRequests: carried.requests.length, keptByPredecessor: carried.entries.filter(e => e.kind === 'reminder').length })}\n`);
+    } catch (error) {
+      const reason = error instanceof Error && error.message.startsWith('group carry:') ? error.message : 'group carry: preparation failed';
+      process.stderr.write(`${reason}\n`); process.exitCode = 1;
+    } finally { source?.close(); sourceStorage?.close(); destination?.close(); storage.close(); }
+    return;
+  }
   if (command === 'import-store') {
     let storeJournal;
     try {
@@ -1628,6 +1695,7 @@ async function main() {
     const peerHolds = async () => await shared.replicated(() => workerStop.value || existsSync(stopPath)
       || wallNow() >= journal.view.expires || journal.view.stop || !ownerHeld() ? 'stopped' : null) === null;
     const callSubscription = async (judgment, prepared, id, invocation, toolTurn) => {
+      try { await requireGroupDisclosure(journal.view); } catch { throw new ModelDisclosureRefused(); }
       assertLiveJudgment(judgment, 'preview-subscription');
       if (shared !== null && !await peerHolds()) throw Error('preview: activation stopped');
       const route = modelRoute(id, toolTurn), start = performance.now();
@@ -1649,6 +1717,7 @@ async function main() {
       return result;
     };
     const callJev = async (judgment, state, questions, timeoutMs = 2000, occurrence) => {
+      await requireGroupDisclosure(journal.view);
       assertLiveJudgment(judgment, 'typesafe-jev');
       if (shared !== null && !await peerHolds()) throw Error('preview: Jev unavailable');
       const start = performance.now(), body = JSON.stringify({ state, model: JEV_MODEL, questions });
@@ -1806,6 +1875,7 @@ async function main() {
       redact: JSON.parse(readFileSync(resolve(process.cwd(), 'src/recall/redact.declarations.json'), 'utf8')),
       resourceOwner: JSON.parse(readFileSync(resolve(process.cwd(), 'scripts/resource-owner.declarations.json'), 'utf8')) });
     worker = createJournalWorker(journal, { ...(approvalSurface ? { approvalSurface } : {}), ...(explicitYes ? { explicitYes } : {}), now: wallNow, elapsed: clock.elapsed, origin, stopped: () => workerStop.value || existsSync(stopPath) || !ownerHeld(), timeZone: timeZoneOf(options),
+      groupDisclosure: async () => { await requireGroupDisclosure(journal.view); return true; },
       presenceNotes: sentinelFamilies.has('presence'),
       sources: turnSources(root, options, journal.view, () => runs, () => launchedAt ?? undefined,
         () => journal.view.order.some(turn => turn.reserved && !reservedAtLaunch.has(turn.id)) ? null : handoff, () => toolsActive()),
@@ -1820,6 +1890,7 @@ async function main() {
         sessionRoute: id => sessionWork !== null && id.startsWith('obligation:') && sessionWork.port.available()
           && journal.view.calls + 1 + SESSION_WORK_LIMITS.maxCallsPerStep <= journal.view.limits.maxCalls,
         sessionWork: async ({ question, context: packet, id }) => {
+          await requireGroupDisclosure(journal.view);
           const outcome = await sessionWork.port.run({ operation: id.replaceAll(':', '-'), question, context: packet,
             authority: sessionWork.authority });
           if (outcome.state === 'complete') return { state: 'complete', text: outcome.text, usage: { inputTokens: null, outputTokens: null, charge: null } };
@@ -1850,8 +1921,17 @@ async function main() {
       secrets: custody,
       media: mediaCustody,
       model: async ({ id, prepared }) => {
+        try { await requireGroupDisclosure(journal.view); } catch { throw new ModelDisclosureRefused(); }
         if (typeof prepared !== 'string') throw Error('preview: prepared model input absent');
-        const result = toolsActive() && toolTurnEligible(id) ? await invokeTools(prepared, id) : await invokeSubscription(prepared, id);
+        const callsBefore = journal.view.modelCalls.total;
+        let result;
+        try { result = toolsActive() && toolTurnEligible(id) ? await invokeTools(prepared, id) : await invokeSubscription(prepared, id); }
+        catch (error) {
+          // A resumed tool turn may already have invoked a provider before a later disclosure refusal.
+          if (error instanceof ModelDisclosureRefused && journal.view.modelCalls.total !== callsBefore)
+            throw Error('preview: disclosure refused after a provider attempt');
+          throw error;
+        }
         if (result.state !== 'complete' || result.failureClass) return { ...result,
           ...(result.usage ? { usage: recordedUsage(result.usage) } : {}) };
         return { state: 'complete', text: result.value, ...(result.reason ? { reason: result.reason } : {}),
@@ -1971,7 +2051,8 @@ async function main() {
       },
       // Rules 42 and 89: the physical send consumes the journal's signed intent and returns a
       // closed accepted / refused / unknown outcome; nothing dispatched is ever a refusal.
-      send: async ({ text, expectedText, chat, thread, replyMarkup, target, provenance }) => {
+      sendAdmits: true,
+      send: async ({ text, expectedText, chat, thread, replyMarkup, target, provenance, admit }) => {
         if (!journal.verifyOutbound(provenance, { target, chat, ...(thread === undefined ? {} : { thread }), body: text }))
           return { kind: 'refused', reason: 'outbound provenance unsigned' };
         if (workerStop.value || existsSync(stopPath) || wallNow() >= journal.view.expires || journal.view.stop)
@@ -1979,6 +2060,13 @@ async function main() {
         // Rule 63: the fence is consumed immediately before dispatch. Without it nothing is sent: a definite
         // refusal (Rule 42), never repeated.
         if (!ownerHeld()) return { kind: 'refused', reason: 'conversation ownership lost before dispatch' };
+        // The fixed content-free hold notice is the one send a refused disclosure admits (journal GROUP_DISCLOSURE_HOLD_NOTICE).
+        if (!(target?.startsWith('held-notice:') && text === GROUP_DISCLOSURE_HOLD_NOTICE && expectedText === GROUP_DISCLOSURE_HOLD_NOTICE))
+          try { await requireGroupDisclosure(journal.view); }
+          catch { return { kind: 'refused', reason: 'group disclosure grant or audience refused before dispatch' }; }
+        if (workerStop.value || existsSync(stopPath) || !ownerHeld() || journal.view.stop || wallNow() >= journal.view.expires)
+          return { kind: 'refused', reason: 'stopped during audience check' };
+        admit?.(); // Durable intent only after disclosure; replication below includes it.
         if (shared) {
           // replicated(1): the journal through this send's signed intent is on the other machine, and the one
           // dispatch-claim for this target is taken, immediately before the physical send. Until then it waits.
@@ -1986,6 +2074,8 @@ async function main() {
             ? 'stopped before dispatch' : !ownerHeld() ? 'conversation ownership lost before dispatch' : null);
           if (refused !== null) return refused;
         }
+        if (workerStop.value || existsSync(stopPath) || !ownerHeld() || journal.view.stop || wallNow() >= journal.view.expires)
+          return { kind: 'refused', reason: 'stopped before physical dispatch' };
         let outcome = { kind: 'unknown', reason: 'send port failed' };
         try {
           const reply = physical.invoke({ token: secretRef('telegram-bot-token'), method: 'sendMessage',

@@ -1,3 +1,4 @@
+import { groupCarryPacket, validCarriedMemory, type CarriedMemory } from './group-carry.js';
 import { boundThread, journalAudience, journalConversation, matchesBoundChat, validateChatBinding } from './forum-routing.js';
 /** The machine-local preview's only conversation and effect ledger. Records are
  * individually authenticated so replay reads the file once at boot; hot turns
@@ -292,6 +293,9 @@ export const MEMORY_ITEM_SHAPE = 'Each memory item has exactly this shape: {"mod
   + 'the new clause copied word for word from the operator\'s current message>,"replies":<optional: ids of memoryCandidates whose '
   + 'reply restates the old fact>,"summaryPassages":<optional: exact passages of the prior summary that express the old fact>}. '
   + 'packet.memory lists changes already recorded, in a display shape; never copy that shape.';
+/** Only a root carrying a group lineage offers predecessorMemory, so only its memory guidance names it; a root without a
+ * carry keeps MEMORY_ITEM_SHAPE byte for byte. */
+export const CARRIED_MEMORY_ITEM_SOURCE = 'A source may also be a source from predecessorMemory.entries, quoting that carried entry text word for word.';
 export const MEMORY_UNDECIDED_REPLY = 'I couldn\'t record that memory change. Please send it again.';
 export const UNKNOWN_ANSWER_NOTICE = 'I lost my answer to that message. Please send it again.';
 export const TOO_LONG_INPUT_NOTICE = 'Your message was saved, but I could not fit it with the needed context. Please send a shorter message or labelled parts.';
@@ -470,7 +474,17 @@ export const HELD_NOTICE_WINDOW_MS = 3_600_000;
  * when the check returns, so "busy or unavailable; answered when it recovers; nothing is needed from you" is true. */
 export const PRESENCE_NOTE_HOLDS: ReadonlySet<string> = new Set(['reply check unavailable', 'step check unavailable']);
 const heldNoticeReason = (reason: string | undefined) => reason === 'reply check unavailable' || reason === 'step check unavailable'
-  || reason === 'call cap' || reason === 'memory correction pending';
+  || reason === 'call cap' || reason === 'memory correction pending' || reason === GROUP_DISCLOSURE_HOLD;
+/** A carried root whose disclosure grant or operator-only audience cannot be shown now: its turns (a due carried
+ * request included) are kept unanswered and unsent, never reserved, and answered once both hold again. */
+export const GROUP_DISCLOSURE_HOLD = 'group disclosure refused';
+/** Host-only proof: thrown at a disclosure checkpoint before invoking a provider, never for a provider error. */
+export class ModelDisclosureRefused extends Error {
+  constructor() { super(GROUP_DISCLOSURE_HOLD); }
+}
+/** The one push such a hold allows (Rule 87 action-needed; Rule 88 after the self-heal window): content-free, so it
+ * reveals nothing private to whoever is in the group now. The disclosure gate admits exactly this text. */
+export const GROUP_DISCLOSURE_HOLD_NOTICE = 'PREVIEW — I\'m holding a reply until this group\'s audience check passes again; nothing is lost, and it will follow then.';
 /** Rule 87: every push is classified at the one send boundary. `status` is pull-only (status,
  * self-state, digest) and is never pushed; a limited answer to an incoming message is its result. */
 export type OutboundDisposition = 'result' | 'action-needed' | 'status';
@@ -958,7 +972,7 @@ export type ForwardDeclaration = { generation: number; additive: true };
  * "a kind I never heard of" as "an effect whose turn is gone" and refuse the whole root. A kind added to
  * JournalRecord and not added here fails tests/preview/journal-rollback-window.test.ts; adding it here is
  * the reminder to bump JOURNAL_GENERATION and give it a ForwardDeclaration. */
-export const KNOWN_FRAME_KINDS: ReadonlySet<string> = new Set(['action-due', 'answer', 'answer-replace',
+export const KNOWN_FRAME_KINDS: ReadonlySet<string> = new Set(['group-carry', 'request-transfer', 'action-due', 'answer', 'answer-replace',
   'approval-decision', 'approval-request', 'call-outcome', 'cap-report', 'caps', 'channel-item',
   'channel-source-cursor', 'channel-source-error', 'coherence', 'expiry', 'format-retry', 'genesis',
   'held-notice-intent', 'held-notice-sent', 'hold', 'import', 'index-reserve', 'intake', 'intent',
@@ -1033,6 +1047,10 @@ export type JournalRecord =
   /** The approved retraction, applied once at its journal position under the consumed explicit yes. From here on the listed
    * turns are never the operator's in any store; every earlier row stays and replays unchanged (Rule 7: hidden, never deleted). */
   | { kind: 'retract'; request: string; updates: number[]; reason: string; authority: string; at: number }
+  | { kind: 'group-carry'; memory: CarriedMemory; at: number }
+  /** Written to the PRIVATE predecessor before its group carry: these open requests now execute only in the named
+   * group root. Non-additive: a reader that skipped it would fire them a second time (Rules 52, 57, 93). */
+  | { kind: 'request-transfer'; destinationRoot: string; chat: string; requests: ReminderRef[]; at: number }
   | { kind: 'channel-item'; item: ChannelItem; at: number }
   | { kind: 'channel-source-cursor'; source: 'telegram' | 'slack'; cursor: ChannelSourceCursor; reset?: true; at: number }
   | { kind: 'channel-source-error'; source: 'telegram' | 'slack'; error: string | null; at: number }
@@ -1169,7 +1187,9 @@ export type JournalRecord =
   | { kind: 'summary-due'; id: string; grant: string; slot: string; update: number; at: number }
   | { kind: 'reminder-grant'; reference: string; trial: string; surface: 'telegram-private-chat';
     scope: 'initiated-dated-reminders'; custodian: string; recovery: 'unknown-never-retry'; at: number }
-  | { kind: 'hold'; id: string; reason: string; at: number }
+  | { kind: 'hold'; id: string; reason: string; at: number;
+    /** Host proved this answer invocation never dispatched; restore its unused reservation and carried corrections. */
+    unusedModel?: { corrections: string[] } }
   | { kind: 'stop'; reason: string; at: number;
     /** An exact /stop the minimal path could not confirm by message latches at once; its update is kept. */
     update?: number; raw?: string;
@@ -1342,6 +1362,10 @@ export interface JournalView { genesis: Extract<JournalRecord, {kind:'genesis'}>
   awayEvents: { kind: 'hold' | 'caps' | 'reserve' | 'summary-reserve' | 'model-uncertain' | 'notice' | 'intent' | 'held-notice-intent';
     at: number; id?: string; through?: number; reason?: string }[];
 
+  /** Non-additive: older readers must refuse, including after compaction; descendants depend on its disclosure gate. */
+  groupCarry?: CarriedMemory;
+  /** Predecessor only: open requests whose execution moved to a group root, once. Never fired from here again. */
+  requestTransfer?: { destinationRoot: string; chat: string; requests: ReminderRef[]; at: number };
   channelItems: Map<string, ChannelItem>;
   channelSources: Map<'telegram' | 'slack', ChannelSourceCursor>;
   channelSourceErrors: Map<'telegram' | 'slack', string>;
@@ -1630,7 +1654,7 @@ const restoredHistoricalChange = (change: MemoryChange, changes: readonly Memory
 };
 // Ordinary facts project across occurrences; retired preferences belong only to their source.
 // The worker's history projection and conflict activity share this one projection.
-const projectMemoryClause = (view: JournalView, value: string, source?: string | number) => {
+export const projectMemoryClause = (view: JournalView, value: string, source?: string | number) => {
   const lineage = memoryPreferenceState(view).lineage;
   return view.memory.filter(change => {
     if (change.mode === 'prefer') return false;
@@ -1804,7 +1828,7 @@ function retainedEvidence(rows: JournalRecord[], view: JournalView): JournalReco
   const evidence: JournalRecord[] = [];
   const holds = new Map<string, Extract<JournalRecord, {kind:'hold'}>>();
   for (const row of rows) {
-    if (row.kind === 'hold') { if (open.has(row.id)) holds.set(row.id, row); continue; }
+    if (row.kind === 'hold' && !row.unusedModel) { if (open.has(row.id)) holds.set(row.id, row); continue; }
     if ((row.kind === 'reserve' || row.kind === 'lookup' || row.kind === 'format-retry' || row.kind === 'answer-replace')
       && row.prompt !== undefined && settledPrompt(view.turns.get(row.id)) === row.prompt) {
       // Rule 58: once the answer call is settled, the snapshot turn keeps the exact final answer packet for inspect
@@ -2409,11 +2433,32 @@ export const REQUEST_ITEM_LIMIT = 5;
 const requestKeys = (turn: Turn) => turn.requestedAction === undefined ? []
   : [...turn.requestedAction.items, ...turn.requestedAction.overflow ?? []].map(reminderKey);
 /** The verified operator's explicit dated requests (`remind: true`) that are still active and not cancelled. */
-const activeRequests = (view: JournalView) => activeDated(view).filter(item => {
-  const source = view.turns.get(item.source);
-  return item.remind === true && item.day !== undefined && item.ambiguity === undefined && source !== undefined
-    && verifiedOperatorTurn(view, source) && !view.reminderCancels.includes(datedKey(item));
-});
+const activeRequests = (view: JournalView) => {
+  const moved = new Set(view.requestTransfer?.requests.map(reminderKey) ?? []);
+  // A carried request was the verified operator's own in the predecessor, whose operator this root's genesis
+  // matches (checked at carry and at projection); it is withdrawable here exactly like a local one.
+  return [...carriedRequests(view).filter(item => !view.reminderCancels.includes(datedKey(item))),
+    ...activeDated(view).filter(item => {
+      const source = view.turns.get(item.source);
+      return item.remind === true && item.day !== undefined && item.ambiguity === undefined && source !== undefined
+        && verifiedOperatorTurn(view, source) && !view.reminderCancels.includes(datedKey(item)) && !moved.has(datedKey(item));
+    })];
+};
+/** Requests whose execution a group carry transferred into this root (Rules 57, 93: exactly one owner). */
+export const carriedRequests = (view: JournalView): DatedItem[] => (view.groupCarry?.requests ?? []).map(request => request.item)
+  // A later correction here that rewrites its words withdraws it, as a correction of a local request's source does.
+  .filter(item => projectMemoryClause(view, item.quote, item.source) === item.quote);
+/** Where a request was asked: its local turn, or for a carried request its predecessor time. A carried request is
+ * older than every turn here and is answered in the group's General topic. */
+export const requestSource = (view: JournalView, item: Pick<DatedItem, 'source' | 'quote' | 'when'>) => {
+  const carried = view.groupCarry?.requests.find(request => datedKey(request.item) === datedKey(item as DatedItem));
+  if (carried) return { update: -1, at: carried.askedAt, sentAt: carried.askedAt, thread: undefined as number | undefined };
+  const turn = view.turns.get(item.source);
+  return turn ? { update: turn.update, at: turn.at, sentAt: turnSentAt(turn), thread: turn.thread } : undefined;
+};
+/** A request by its key, local or carried. */
+export const requestByKey = (view: JournalView, key: string) =>
+  view.dated.find(item => datedKey(item) === key) ?? carriedRequests(view).find(item => datedKey(item) === key);
 /** Rules 57, 93: a due turn created but not yet sent is withdrawn once any request it carries is cancelled, corrected
  * or forgotten. It is never answered or sent; its other requests fall due again on their own. */
 export const actionWithdrawn = (view: JournalView, turn: Turn) => {
@@ -2422,7 +2467,7 @@ export const actionWithdrawn = (view: JournalView, turn: Turn) => {
   return requestKeys(turn).some(key => !active.has(key));
 };
 /** The same durable due frame binds its local occurrence; dispatch also consumes missed days through recovery. */
-const lastRecurringOccurrence = (view: JournalView, item: DatedItem) => {
+export const lastRecurringOccurrence = (view: JournalView, item: DatedItem) => {
   const occurrences = view.order.filter(turn => !actionWithdrawn(view, turn)).flatMap(turn =>
     [...turn.requestedAction?.items ?? [], ...turn.requestedAction?.overflow ?? []]
       .filter(ref => reminderKey(ref) === datedKey(item)).map(ref => {
@@ -2446,7 +2491,7 @@ export const openRequests = (view: JournalView) => {
 export const pendingRequests = (view: JournalView, at?: number) => {
   const queued = new Set(view.order.filter(turn => turn.intent === undefined && !actionWithdrawn(view, turn)).flatMap(requestKeys));
   return openRequests(view).flatMap(open => {
-    const item = open.recurrence ? view.dated.find(value => datedKey(value) === datedKey(open))! : open;
+    const item = open.recurrence ? requestByKey(view, datedKey(open))! : open;
     if (!item.recurrence) return queued.has(datedKey(item)) ? [] : [item];
     const last = lastRecurringOccurrence(view, item);
     const next = last === undefined ? item.day! : nextRecurringDay(item, last);
@@ -2455,10 +2500,10 @@ export const pendingRequests = (view: JournalView, at?: number) => {
   });
 };
 const requestItem = (view: JournalView, ref: ReminderRef) => {
-  const item = view.dated.find(item => datedKey(item) === reminderKey(ref));
+  const item = requestByKey(view, reminderKey(ref));
   return item && ref.occurrence !== undefined ? { ...item, day: ref.occurrence } : item;
 };
-const askedAt = (view: JournalView, item: DatedItem) => localStamp(turnSentAt(view.turns.get(item.source)!), item.zone);
+const askedAt = (view: JournalView, item: DatedItem) => localStamp(requestSource(view, item)!.sentAt, item.zone);
 /** Rule 52: requests beyond the written-out ones become one count line, never another push. */
 export const requestOverflowLine = (count: number) =>
   `And ${count} more request${count === 1 ? '' : 's'} of yours ${count === 1 ? 'is' : 'are'} due now; ask me and I'll list ${count === 1 ? 'it' : 'them'}.`;
@@ -3548,6 +3593,24 @@ function project(view: JournalView, row: JournalRecord, system?: SystemCheck, ad
     turn.text += `\n[Media custody: ${mediaCustodyText(result)}]`;
     return;
   }
+  if (row.kind === 'group-carry') {
+    const scope = row.memory.scope;
+    if (view.groupCarry || view.genesis.forum !== true || scope.chat !== view.genesis.chat
+      || scope.operator !== view.genesis.operator || scope.bot !== view.genesis.bot
+      || !validCarriedMemory(row.memory)) throw Error('preview journal: group lineage refused');
+    view.groupCarry = row.memory; return;
+  }
+  if (row.kind === 'request-transfer') {
+    const open = new Set(openRequests(view).map(datedKey)), keys = Array.isArray(row.requests) ? row.requests.map(reminderKey) : [];
+    if (view.requestTransfer || view.groupCarry || view.genesis.forum === true || !Array.isArray(row.requests)
+      || new Set(keys).size !== keys.length || keys.some(key => !open.has(key))
+      || typeof row.destinationRoot !== 'string' || !row.destinationRoot.startsWith('/') || typeof row.chat !== 'string'
+      || !/^-[1-9][0-9]*$/u.test(row.chat) || !Number.isSafeInteger(row.at) || row.at <= 0)
+      throw Error('preview journal: request transfer refused');
+    view.requestTransfer = { destinationRoot: row.destinationRoot, chat: row.chat,
+      requests: row.requests.map(ref => ({ source: ref.source, quote: ref.quote, when: ref.when })), at: row.at };
+    return;
+  }
   if (row.kind === 'channel-item') {
     if (view.genesis.forum === true) throw Error('preview journal: external history has no group disclosure grant');
     // Inert: an item from the removed email import route replays but is never recalled or acted on.
@@ -3982,10 +4045,10 @@ function project(view: JournalView, row: JournalRecord, system?: SystemCheck, ad
       && (item.recurrence ? ref.occurrence === item.day : ref.occurrence === undefined)));
     const items = Array.isArray(row.items) ? found(row.items) : [];
     const overflow = row.overflow === undefined ? [] : Array.isArray(row.overflow) && row.overflow.length ? found(row.overflow) : [undefined];
-    const all = [...items, ...overflow], source = items[0] && view.turns.get(items[0].source);
+    const all = [...items, ...overflow], source = items[0] && requestSource(view, items[0]);
     const number = view.order.filter(turn => turn.requestedAction !== undefined && turn.requestedAction.legacy === undefined).length;
     if (!source || items.length > REQUEST_ITEM_LIMIT || all.some(item => !item || reminderDue(item) > localStamp(row.at, item.zone)
-        || view.turns.get(item.source)?.thread !== source.thread) || new Set(all).size !== all.length
+        || requestSource(view, item)?.thread !== source.thread) || new Set(all).size !== all.length
       || row.id !== `requested-action:${String(number)}` || view.turns.has(row.id) || view.stop || row.at >= view.expires
       || view.order.length >= view.limits.maxTurns || row.update !== nextSyntheticUpdate(view)
       // Rule 29: the scheduler writes this turn as a verified system principal, signed by the owner over these exact requests.
@@ -4032,7 +4095,8 @@ function project(view: JournalView, row: JournalRecord, system?: SystemCheck, ad
       || turn.heldNoticeIntent !== undefined || view.replies >= view.limits.maxReplies
       || !legacyText && row.at < lastNotice + HELD_NOTICE_WINDOW_MS
       || row.chat !== view.genesis.chat || row.thread !== turn.thread || row.update !== turn.update
-      || row.grant !== view.genesis.grant || !(legacyText || countedText || turn.requestedAction?.legacy === 'summary'
+      || row.grant !== view.genesis.grant || !(legacyText || countedText
+        || turn.held === GROUP_DISCLOSURE_HOLD && row.text === GROUP_DISCLOSURE_HOLD_NOTICE || turn.requestedAction?.legacy === 'summary'
         && /^(?:PREVIEW — )?I'm holding the summary you asked for \(due [0-9-]{10} [0-2][0-9]:[0-5][0-9]\); it will follow or I'll tell you why$/u.test(row.text)))
       throw Error('preview journal: held notice intent order');
     const covered = (row.covers ?? []).map(id => view.turns.get(id));
@@ -4570,6 +4634,16 @@ function project(view: JournalView, row: JournalRecord, system?: SystemCheck, ad
     // As before, this hold supersedes the turn's earlier hold, and the exhausted frontier releases it at once.
     delete turn.held; delete turn.heldSince; view.heldTurns.delete(turn); turn.wasHeld = true;
   } else if (row.kind === 'hold') {
+    if (row.unusedModel) {
+      if (row.reason !== GROUP_DISCLOSURE_HOLD || !turn.reserved || turn.answer !== undefined
+        || turn.modelState !== undefined || turn.intent !== undefined || turn.answerRetried
+        || !view.tokenCurrent.has(`answer:${turn.id}`) || !Array.isArray(row.unusedModel.corrections)
+        || row.unusedModel.corrections.some(id => !view.turns.has(id)))
+        throw Error('preview journal: unused model reservation order');
+      settleTokens(view, `answer:${turn.id}`, { inputTokens: 0, outputTokens: 0, inputComplete: true, charge: null });
+      view.calls--; turn.reserved = false; delete turn.reservedAt;
+      view.corrections = [...new Set([...row.unusedModel.corrections, ...view.corrections])];
+    }
     if (heldNoticeReason(row.reason)) {
       const holds = view.awayEvents.filter(event => event.kind === 'hold' && event.id === turn.id);
       let since = row.at;
@@ -5067,6 +5141,8 @@ export function concurrentWorkItem(input: { now: number; current: { owner: strin
 }
 
 export interface PreviewPorts {
+  /** Current scoped authority and real group membership, checked afresh before every model or send port. */
+  groupDisclosure?(): Promise<boolean>;
   now(): number; stopped(): boolean;
   /** Part 18: whether the presence sentinel is enabled this launch (its off-switch); absent means enabled. A disabled
    * family keeps its recorded decisions for audit, but a holding note it marked due earlier no longer goes out. */
@@ -5112,7 +5188,9 @@ export interface PreviewPorts {
    * is the journal's signature over exactly `target`, `chat`, `thread` and `text`. */
   send(input: { text: string; expectedText: string; chat: string; thread?: number; update: number;
     kind?: OutboundKind; disposition?: OutboundDisposition; replyMarkup?: unknown;
-    target?: string; provenance?: OutboundProvenance }): Promise<number | null | SendOutcome>;
+    target?: string; provenance?: OutboundProvenance; admit?: () => void }): Promise<number | null | SendOutcome>;
+  /** The host calls input.admit after its last disclosure read, before replication/dispatch. */
+  sendAdmits?: true;
   checkOutbound(text: string): void;
   /** Clears a pressed button on the operator's phone with a short toast; never a push, never required. */
   acknowledge?(callbackId: string, text: string): void;
@@ -5173,12 +5251,66 @@ export interface PreviewPorts {
   boundary?(stage: string): void;
   /** Optional semantic stage of the recall owner (`composeRecall`). Ordinary conversation reserves
    * no helper spend (Part 21 §7), so a charging port is refused as over budget; none is bound live. */
-  recallReranker?: RecallRerankPort;
+  recallReranker?: RecallRerankPort & { /** External effects must declare their boundary; local callbacks reveal nothing. */ external?: true };
 }
 
 /** Exactly one worker calls drain. A reserved call or prepared send with no
  * durable result is UNKNOWN on restart and never replayed. */
 export function createJournalWorker(journal: ReturnType<typeof openPreviewJournal>, ports: PreviewPorts) {
+  // Every host of this worker inherits the floor, not only the shipped CLI. A snapshot without
+  // its current disclosure resolver is readable for audit but cannot leave through a model or send.
+  const original = ports;
+  const disclosure = async () => {
+    if (!journal.view.groupCarry) return true;
+    try { return await original.groupDisclosure?.() === true; } catch { return false; }
+  };
+  const guarded = <A extends unknown[], R>(method: (...args: A) => Promise<R>) => async (...args: A): Promise<R> => {
+    if (journal.view.groupCarry && !await disclosure()) throw Error('group carry: disclosure authority or audience refused');
+    return method(...args);
+  };
+  ports = { ...original, model: guarded(original.model),
+    // The fixed content-free hold notice is the one outbound a refused disclosure admits: it names no private item.
+    send: async input => !journal.view.groupCarry || await disclosure() || input.target?.startsWith('held-notice:') === true
+      && input.text === GROUP_DISCLOSURE_HOLD_NOTICE && input.expectedText === GROUP_DISCLOSURE_HOLD_NOTICE ? original.send(input)
+      : { kind: 'refused', reason: 'group disclosure authority or audience refused' },
+    ...(original.sessionWork ? { sessionWork: guarded(original.sessionWork) } : {}),
+    ...(original.retrospect ? { retrospect: guarded(original.retrospect) } : {}),
+    ...(original.stepCheck ? { stepCheck: { jev: guarded(original.stepCheck.jev) } } : {}),
+    ...(original.summaryCheck ? { summaryCheck: guarded(original.summaryCheck) } : {}),
+    ...(original.replyCheck ? { replyCheck: { ...original.replyCheck,
+      jev: guarded(original.replyCheck.jev), escalate: guarded(original.replyCheck.escalate),
+      ...(original.replyCheck.revise ? { revise: guarded(original.replyCheck.revise) } : {}),
+      ...(original.replyCheck.summaryReview ? { summaryReview: guarded(original.replyCheck.summaryReview) } : {}) } } : {}) };
+
+  // Local rerankers do not disclose data. External bindings are collected during synchronous
+  // packet preparation, then awaited at their own disclosure checkpoint and reused by that packet.
+  // The ordinary recall owner's zero helper-spend limit still admits or refuses each call first.
+  type Reranked = Awaited<ReturnType<RecallRerankPort['rerank']>>;
+  let rerankBatch: Map<string, { query: string; candidates: readonly string[]; result?: Reranked }> | undefined;
+  if (original.recallReranker?.external) ports.recallReranker = { ...original.recallReranker,
+    rerank: (query, candidates) => {
+      const key = JSON.stringify([query, candidates]);
+      const known = rerankBatch?.get(key);
+      if (known?.result) return known.result;
+      if (rerankBatch && !known) rerankBatch.set(key, { query, candidates });
+      throw Error('external recall awaits disclosure admission');
+    } };
+  const prepareRecall = async <T>(prepare: () => T): Promise<T> => {
+    if (!original.recallReranker?.external) return prepare();
+    const batch = new Map<string, { query: string; candidates: readonly string[]; result?: Reranked }>();
+    rerankBatch = batch;
+    try {
+      prepare();
+      for (const item of [...batch.values()]) {
+        if (!await disclosure()) break;
+        gate();
+        try { item.result = await original.recallReranker.rerank(item.query, item.candidates); }
+        catch { /* The owner reports a failed semantic stage; the packet retains its other recall. */ }
+      }
+      return prepare();
+    } finally { rerankBatch = undefined; }
+  };
+
   let working = false, workingSince = 0, ordinaryFailedSince: number | null = null;
   /** Every live send consumes its durable signed intent; a refusal or unknown outcome is recorded, never
    * retried. The one exception is the transport's own proof that it never made the network call: nothing
@@ -5188,15 +5320,23 @@ export function createJournalWorker(journal: ReturnType<typeof openPreviewJourna
   const NOT_SENT_ATTEMPTS = 2;
   const dispatch = async (target: string, provenance: OutboundProvenance | undefined,
     input: { text: string; expectedText: string; chat: string; thread?: number; update: number;
-      kind?: OutboundKind; disposition?: OutboundDisposition; replyMarkup?: unknown }): Promise<SettledSendOutcome> => {
+      kind?: OutboundKind; disposition?: OutboundDisposition; replyMarkup?: unknown }, admitted?: () => void): Promise<SettledSendOutcome> => {
+    let prepared = admitted === undefined;
+    const admit = () => { if (!prepared) { gate(); admitted!(); prepared = true; } };
+    if (admitted) {
+      if (!await disclosure()) return { kind: 'refused', reason: GROUP_DISCLOSURE_HOLD };
+      if (!original.sendAdmits) admit();
+    }
     const subject = { target, chat: input.chat, ...(input.thread === undefined ? {} : { thread: input.thread }), body: input.text };
     let attempted: SendOutcome = { kind: 'unknown', reason: 'send port failed' };
     if (!journal.verifyOutbound(provenance, subject)) attempted = { kind: 'refused', reason: 'outbound provenance unsigned' };
     else for (let attempt = 0; attempt < NOT_SENT_ATTEMPTS; attempt++) {
-      try { attempted = settleSendOutcome(await ports.send({ ...input, target, provenance: provenance! })); }
+      try { attempted = settleSendOutcome(await (admitted ? original.send : ports.send)({ ...input, target, provenance: provenance!, ...(admitted && original.sendAdmits ? { admit } : {}) })); }
       catch { attempted = { kind: 'unknown', reason: 'send port failed' }; }
       if (attempted.kind !== 'not-sent') break;
     }
+    // No intent means the host refused before admission. The caller keeps the saved answer in its durable hold.
+    if (!prepared) return { kind: 'refused', reason: GROUP_DISCLOSURE_HOLD };
     const outcome: SettledSendOutcome = attempted.kind === 'not-sent'
       ? { kind: 'refused', reason: attempted.reason } : attempted;
     if (outcome.kind !== 'accepted') {
@@ -5242,10 +5382,10 @@ export function createJournalWorker(journal: ReturnType<typeof openPreviewJourna
   /** The one outbound boundary for every push the worker makes (Rules 52, 87, 106). It dispatches the
    * durable signed intent and returns its closed outcome (Rules 42, 89). */
   const push = (kind: OutboundKind, target: string, provenance: OutboundProvenance | undefined,
-    input: { text: string; expectedText: string; chat: string; thread?: number; update: number; replyMarkup?: unknown }) => {
+    input: { text: string; expectedText: string; chat: string; thread?: number; update: number; replyMarkup?: unknown }, admitted?: () => void) => {
     const disposition: OutboundDisposition = OUTBOUND_DISPOSITIONS[kind];
     if (disposition === 'status') throw Error('preview: status is pull-only and never pushed');
-    return dispatch(target, provenance, { ...input, kind, disposition });
+    return dispatch(target, provenance, { ...input, kind, disposition }, admitted);
   };
   // Reading never stops at a capacity bound: stop and approval presses must stay reachable. A message
   // past every bound waits at Telegram (the cursor holds before it) while later presses are still read.
@@ -5859,7 +5999,7 @@ export function createJournalWorker(journal: ReturnType<typeof openPreviewJourna
   // settled by a recorded decision, a cap, an UNKNOWN or failed call, or a
   // content-free notice keeps that reminder unsent (Rules 57, 93).
   const reminderUnsettled = (item: DatedItem) => {
-    const source = journal.view.turns.get(item.source);
+    const source = requestSource(journal.view, item);
     return source === undefined || journal.view.order.some(turn => turn.update > source.update
       && turn.accepted && fromOperator(turn) && (turn.answer === undefined || turn.failureClass !== undefined
         || turn.modelState === 'uncertain' || turn.modelState === 'rejected'
@@ -6619,6 +6759,7 @@ export function createJournalWorker(journal: ReturnType<typeof openPreviewJourna
       weekday: new Intl.DateTimeFormat('en-US', { timeZone: zone, weekday: 'long' }).format(now) },
       ...(resume ? { resume: { previous: turnLabel(journal.view.turns.get(resume.previous)!), elapsedHours: resume.elapsedHours,
         guidance: 'Reconcile this clock with dated items and open commitments before answering. Words such as today, tomorrow and next week in earlier messages or summaries referred to their original day, not this one. State the current local day accurately; distinguish passed, due and upcoming dates. Keep open commitments open unless a verified later message closed them.' } } : {}),
+      ...(journal.view.groupCarry ? { predecessorMemory: groupCarryPacket(journal.view.groupCarry, question?.text ?? '', now, journal.view.limits.maxBytes, journal.view) } : {}),
       memoryVersion: journal.view.memory.length, purpose: 'Make coherence something an AI cannot lose.',
       // What you can do is the generated capability-note source; this field carries only how to use the packet.
       // The capability-note source already states that it is generated from the register and that nothing
@@ -7010,7 +7151,7 @@ export function createJournalWorker(journal: ReturnType<typeof openPreviewJourna
             found: lookup.found.filter(item => datedBase.includes(JSON.stringify(item.id))).length, note: LOOKUP_DONE_GUIDANCE } }
             : compact && summary && lookupOffered ? { memoryLookup: LOOKUP_OFFERED } : {}),
           // Update mode and new conflicts can only cite an offered candidate or contradiction, so their guidance rides with those.
-          ...(fromOperator(turn) ? { memoryDecision: `Return memory:[] unless the verified operator corrects, forgets or sets reply style. ${MEMORY_ITEM_SHAPE} For an earlier answer use in:"reply" with its exact old reply clause and keep the question. `
+          ...(fromOperator(turn) ? { memoryDecision: `Return memory:[] unless the verified operator corrects, forgets or sets reply style. ${MEMORY_ITEM_SHAPE}${journal.view.groupCarry ? ` ${CARRIED_MEMORY_ITEM_SOURCE}` : ''} For an earlier answer use in:"reply" with its exact old reply clause and keep the question. `
             + (offered.length || (JSON.parse(datedBase) as { contradictions?: unknown[] }).contradictions?.length ? 'A newer operator statement of the same fact without correction words uses mode:"update", an exact old clause from an offered operator memoryCandidate or contradiction (hints only) and the exact new clause from this turn; the old dated value stays retrievable. ' : '')
             + 'Unknown target: memoryDisposition:"unresolved". Undo only via undoDecision.', preferenceSource: turn.id,
             ...(failureOffer ? { memoryFailureDecision: MEMORY_FAILURE_DECISION, searchedTurn: failureOffer.id } : {}),
@@ -7163,7 +7304,7 @@ export function createJournalWorker(journal: ReturnType<typeof openPreviewJourna
     const now = ports.now(), groups = new Map<string, DatedItem[]>();
     for (const item of pendingRequests(journal.view, now)) {
       if (clean(item.quote) !== item.quote || reminderDue(item) > localStamp(now, item.zone) || reminderUnsettled(item)) continue;
-      const key = JSON.stringify(journal.view.turns.get(item.source)!.thread ?? null);
+      const key = JSON.stringify(requestSource(journal.view, item)!.thread ?? null);
       groups.set(key, [...groups.get(key) ?? [], item]);
     }
     const ref = (item: DatedItem): ReminderRef => ({ source: item.source, quote: item.quote, when: item.when,
@@ -7180,6 +7321,28 @@ export function createJournalWorker(journal: ReturnType<typeof openPreviewJourna
       if (scheduler === null) continue;
       journal.append({ kind: 'action-due', id, items, ...(overflow.length ? { overflow } : {}), update, writer: writerRecord(scheduler), at: now });
     }
+  };
+  /** Rules 2, 87, 88: a disclosure hold past the self-heal window is told once, content-free, per notice window; the
+   * held turns are named only by this fixed text. Its intent precedes dispatch and an UNKNOWN is never repeated. */
+  const noticeDisclosureHolds = async () => {
+    const now = ports.now();
+    if (journal.view.stop || ports.stopped() || now >= journal.view.expires || journal.view.replies >= journal.view.limits.maxReplies
+      || now < lastHeldNoticeAt(journal.view) + HELD_NOTICE_WINDOW_MS) return;
+    const held = journal.view.order.filter(turn => turn.accepted && turn.held === GROUP_DISCLOSURE_HOLD && turn.intent === undefined
+      && turn.heldNoticeIntent === undefined && turn.heldNoticeCoveredBy === undefined && turn.heldSince !== undefined);
+    const lead = held.find(turn => now > turn.heldSince! + HELD_NOTICE_AFTER_MS);
+    if (!lead) return;
+    const covers = held.filter(turn => turn !== lead && turn.thread === lead.thread).map(turn => turn.id);
+    const text = GROUP_DISCLOSURE_HOLD_NOTICE, chat = journal.view.genesis.chat, target = `held-notice:${lead.id}`;
+    const thread = lead.thread === undefined ? {} : { thread: lead.thread };
+    ports.checkOutbound(text);
+    const provenance = journal.signOutbound('infrastructure', { target, chat, ...thread, body: text });
+    journal.append({ kind: 'held-notice-intent', id: lead.id, text, chat, ...thread, update: lead.update,
+      grant: journal.view.genesis.grant, ...(covers.length ? { covers } : {}), provenance, at: now });
+    gate();
+    const outcome = await push('incident', target, provenance, { text, expectedText: text, chat, ...thread, update: lead.update });
+    if (outcome.kind === 'accepted') try { journal.append({ kind: 'held-notice-sent', id: lead.id, message: outcome.message, at: ports.now() }); }
+    catch { /* the notice stays UNKNOWN; never repeated */ }
   };
   /** A created due turn is never answered or sent once withdrawn (or from a removed feature), and waits while a later
    * verified-operator turn that may withdraw one of its requests is unsettled (Rules 57, 93). */
@@ -7225,6 +7388,8 @@ export function createJournalWorker(journal: ReturnType<typeof openPreviewJourna
     if (working) throw Error('preview journal: second worker refused');
     working = true; workingSince = ports.now();
     try {
+      // One fresh read per pass decides which turns may proceed; the model and send ports still re-read their own.
+      const audienceHolds = !journal.view.groupCarry || await disclosure();
       completeApprovals();
       // A split reply left part-way by a restart continues before anything new is answered.
       for (const turn of journal.view.order) if (turn.replyParts?.length) await sendReplyParts(turn);
@@ -7241,6 +7406,13 @@ export function createJournalWorker(journal: ReturnType<typeof openPreviewJourna
             journal.append({ kind: 'hold', id: turn.id, reason: 'superseded by edit', at: ports.now() });
           continue;
         }
+        // Least revelation: a carried root without current permission and operator-only audience reserves nothing and
+        // sends nothing for this turn; it is kept (a due request stays unconsumed) and proceeds once both hold again.
+        if (!audienceHolds && !isStopCommand(turn.text)) {
+          if (turn.held === undefined) journal.append({ kind: 'hold', id: turn.id, reason: GROUP_DISCLOSURE_HOLD, at: ports.now() });
+          continue;
+        }
+        if (turn.held === GROUP_DISCLOSURE_HOLD) { delete turn.held; delete turn.heldSince; journal.view.heldTurns.delete(turn); }
         // int11 answers a status command and a too-long-input notice even while a
         // correction holds ordinary answers; the burst ordering hold keeps that exemption.
         if (blockedEarlier && turn.modelState !== 'uncertain' && !isStatusCommand(turn.text)
@@ -7307,7 +7479,7 @@ export function createJournalWorker(journal: ReturnType<typeof openPreviewJourna
             // Nothing that could make it fit has changed: only the summary pass may release it.
             await summarizeIfNeeded(true);
             if (heldFitKey() === key) break;
-          } else if ('reason' in preparedFor(turn)) await summarizeIfNeeded(true);
+          } else if ('reason' in (await prepareRecall(() => preparedFor(turn)))) await summarizeIfNeeded(true);
           delete turn.held; delete turn.heldSince; journal.view.heldTurns.delete(turn);
         }
         // Rules 2, 77, 95: older builds could hold an unavailable review before recording either a
@@ -7351,15 +7523,15 @@ export function createJournalWorker(journal: ReturnType<typeof openPreviewJourna
               journal.append({ kind: 'media-custody', id: turn.id, result, at: ports.now() });
             }
           }
-          let selected = preparedFor(turn);
+          let selected = await prepareRecall(() => preparedFor(turn));
           if ('reason' in selected) {
             await summarizeIfNeeded(true);
-            selected = preparedFor(turn);
+            selected = await prepareRecall(() => preparedFor(turn));
           }
           // The summary had its chance and the prompt still cannot be built: history itself yields (Rule 95's
           // open side -- reachability to the operator). A size hold here would be the agent made unreachable by
           // its own growth, which is the whole wedge this closes.
-          if ('reason' in selected) selected = preparedWithFloor(turn);
+          if ('reason' in selected) selected = await prepareRecall(() => preparedWithFloor(turn));
           if ('reason' in selected && (selected.measuredPromptOverflow
             || selected.reason === 'context overflow' && (journal.view.limits.maxBytes >= 4096
               || journal.view.limits.maxReplies > 1))) {
@@ -7396,6 +7568,13 @@ export function createJournalWorker(journal: ReturnType<typeof openPreviewJourna
             return hold === null;
           };
           if (!await validateRequestedPacket(context, prepared)) continue;
+          // Refusal here proves that no provider call started. Keep the existing durable hold,
+          // and reserve only after this final asynchronous admission read, immediately before dispatch.
+          if (!await disclosure()) {
+            journal.append({ kind: 'hold', id: turn.id, reason: GROUP_DISCLOSURE_HOLD, at: ports.now() });
+            continue;
+          }
+          gate();
           journal.append({ kind: 'reserve', id: turn.id, ...(prepared === undefined ? {} : { prompt: prepared }),
             corrections: carried, grounding, packetDropped: dropped, packetLimit: journal.view.limits.maxBytes,
             maxInputTokens: journal.view.limits.maxBytes, maxOutputTokens: subscriptionOutputMaximum, at: ports.now() }); gate();
@@ -7403,9 +7582,13 @@ export function createJournalWorker(journal: ReturnType<typeof openPreviewJourna
           type Answer = Awaited<ReturnType<PreviewPorts['model']>>;
           let answer: Answer;
           const answerStarted = elapsedMs();
-          try { answer = await ports.model({ question, context, id: turn.id,
+          try { answer = await original.model({ question, context, id: turn.id,
             ...(prepared === undefined ? {} : { prepared }) }); }
-          catch { continue; } // reservation remains UNKNOWN
+          catch (error) {
+            if (error instanceof ModelDisclosureRefused) journal.append({ kind: 'hold', id: turn.id,
+              reason: GROUP_DISCLOSURE_HOLD, unusedModel: { corrections: carried }, at: ports.now() });
+            continue; // Every other failure leaves the reservation UNKNOWN.
+          }
           // Rule 116: a real model sometimes answers in prose instead of the required Decision. Ask the same turn
           // once more with a runner-authored format reminder in the packet (never in the operator's message),
           // reserved against the same call cap and only while not stopped; a second miss is refused as before.
@@ -7518,7 +7701,7 @@ export function createJournalWorker(journal: ReturnType<typeof openPreviewJourna
               && journal.view.calls < journal.view.limits.maxCalls - (ports.replyCheck ? 1 : 0)) {
               matched = lookupRecall(turn, through, words);
               activeLookup = { id: turn.id, words, found: matched };
-              try { again = preparedFor(turn); } finally { activeLookup = undefined; }
+              try { again = await prepareRecall(() => preparedFor(turn)); } finally { activeLookup = undefined; }
             }
             if (again && !('reason' in again)) {
               const found = (JSON.parse(again.context) as { recalled?: { id: string }[] }).recalled ?? [];
@@ -7666,12 +7849,13 @@ export function createJournalWorker(journal: ReturnType<typeof openPreviewJourna
                   operatorAction = parsed.operatorAction === undefined ? undefined : parseOperatorAction(parsed.operatorAction);
                   unreadAction = operatorAction === undefined;
                 }
-                const decision = JSON.parse(context) as { memoryCandidates?: { id: string; message: string }[];
+                const decision = JSON.parse(context) as { predecessorMemory?: { entries: CarriedMemory['entries'] }; memoryCandidates?: { id: string; message: string }[];
                   contradictions?: ReturnType<typeof contradictionFor>;
                   memorySummary?: { text: string }; summary?: { text: string };
                   personMergeCandidates?: ReturnType<typeof mergeCandidates>; openQuestions?: { id: string }[];
                   openConflicts?: Pick<MemoryConflict, 'first' | 'second'>[] };
-                const offered = new Set([...decision.memoryCandidates?.map(item => item.id) ?? [],
+                const offered = new Set([...decision.predecessorMemory?.entries.map(item => item.source) ?? [],
+                  ...decision.memoryCandidates?.map(item => item.id) ?? [],
                   ...decision.contradictions?.map(item => item.earlier.id) ?? []]);
                 const updateEvidence = [...decision.memoryCandidates ?? [],
                   ...decision.contradictions?.map(item => ({ id: item.earlier.id, message: item.earlier.quote })) ?? []];
@@ -7842,7 +8026,7 @@ export function createJournalWorker(journal: ReturnType<typeof openPreviewJourna
             // Rules 42, 52: an outcome list names at most three items, each clipped, and counts the rest, so the
             // runner's own lines stay bounded and always leave room for every refusal this answer must carry.
             else if (reminderCancels?.length && !invalidMemory) text = `${text.trim()} Cancelled request${reminderCancels.length > 1 ? 's' : ''}: `
-              + `${nameQuotes(reminderCancels.map(key => journal.view.dated.find(item => datedKey(item) === key)!.quote))}.`.trim();
+              + `${nameQuotes(reminderCancels.map(key => requestByKey(journal.view, key)!.quote))}.`.trim();
             if (forgotten.length && text.trim()) text = `${text.trim()} Also forgot the text of ${forgotten.length > 1 ? 'those requests' : 'that request'}.`;
             if (kept.length && text.trim()) text = `${text.trim()} I did not forget the text of ${kept.length > 1 ? 'requests that are' : 'a request that is'} `
               + `still open, so nothing is lost: ${nameQuotes(kept.map(change => clean(redact(change.quote).text, true)))}. `
@@ -8313,7 +8497,7 @@ export function createJournalWorker(journal: ReturnType<typeof openPreviewJourna
         const provenance = journal.signOutbound(speaker, { target: `reply:${turn.id}`, chat: journal.view.genesis.chat, ...thread, body });
         const parts = split.slice(1).map((text, index) => ({ text, body: encodeReply(text), provenance: journal.signOutbound(speaker,
           { target: replyPartTarget(turn.id, index + 2), chat: journal.view.genesis.chat, ...thread, body: encodeReply(text) }) }));
-        journal.append({ kind: 'intent', id: turn.id, text: reply, body, chat: journal.view.genesis.chat, ...thread, provenance,
+        const admitReply = () => journal.append({ kind: 'intent', id: turn.id, text: reply, body, chat: journal.view.genesis.chat, ...thread, provenance,
           ...(parts.length ? { parts } : {}),
           ...(approval ? { approval } : {}), ...(offer?.request ? { operatorRequest: offer.request, requestScope: 'action' as const } : {}),
           ...(offer?.request && offer.review ? { operatorReview: offer.review } : {}),
@@ -8336,7 +8520,11 @@ export function createJournalWorker(journal: ReturnType<typeof openPreviewJourna
         gate();
         const sendStarted = elapsedMs();
         const outcome = await push(approval ? 'approval' : 'reply', `reply:${turn.id}`, provenance, { text: body, expectedText: split[0]!,
-          chat: journal.view.genesis.chat, ...thread, update: turn.update, ...(approval ? { replyMarkup: approvalMarkup(approval.id) } : {}) });
+          chat: journal.view.genesis.chat, ...thread, update: turn.update, ...(approval ? { replyMarkup: approvalMarkup(approval.id) } : {}) }, admitReply);
+        if (turn.intent === undefined) {
+          journal.append({ kind: 'hold', id: turn.id, reason: GROUP_DISCLOSURE_HOLD, at: ports.now() });
+          continue;
+        }
         // The receipt carries the measured duration; an UNKNOWN or refused attempt records no timing.
         // A failed receipt write leaves the exact intent UNKNOWN; it is never re-sent.
         if (outcome.kind === 'accepted') try {
@@ -8345,8 +8533,9 @@ export function createJournalWorker(journal: ReturnType<typeof openPreviewJourna
         // The rest of a split reply follows at once, before any later reply.
         if (parts.length) await sendReplyParts(turn);
       }
+      if (!audienceHolds) await noticeDisclosureHolds();
       // Rule 87: an unchanged held status is pull-only (status, self-state, the mind's packet). Earlier
-      // held-notice rows still replay; no new held notice is ever pushed.
+      // held-notice rows still replay; no other held notice is ever pushed.
       if (!due) await answerLimited();
       // Edits consume the existing summary judgment, never the reply doorway.
       if (!due && pendingMemory()?.editOf) settleBehind();
@@ -8983,6 +9172,8 @@ export function createJournalWorker(journal: ReturnType<typeof openPreviewJourna
       const original = typeof rawSource === 'string' ? journal.view.turns.get(rawSource) : undefined;
       const channel = channelAlias ?? (typeof rawSource === 'string' && rawSource.startsWith('channel:')
         ? journal.view.channelItems.get(rawSource.slice('channel:'.length)) : undefined);
+      const carried = journal.view.groupCarry?.entries.filter(item => item.source === rawSource
+        && (item.kind === 'recall' || item.kind === 'preference' || item.kind === 'correction'));
       const activePreference = preferences.active.has(JSON.stringify([rawSource, quote]));
       if ((mode !== 'correct' && mode !== 'forget' && mode !== 'prefer' && mode !== 'update')
         || side !== undefined && (side !== 'reply' || mode !== 'correct')
@@ -8992,7 +9183,7 @@ export function createJournalWorker(journal: ReturnType<typeof openPreviewJourna
           || !redact(trigger.text).text.includes(quote) || replacement !== undefined
           || replies !== undefined && (!Array.isArray(replies) || replies.length > 0)
           || summaryPassages !== undefined && (!Array.isArray(summaryPassages) || summaryPassages.length > 0))
-        || mode !== 'prefer' && (!original?.accepted && !channel)
+        || mode !== 'prefer' && (!original?.accepted && !channel && !carried?.length)
         || original !== undefined && !fromOperator(original)
         || mode !== 'prefer' && !offered.has(source as string)
         || original !== undefined && original.update >= trigger.update && mode !== 'prefer'
@@ -9004,8 +9195,9 @@ export function createJournalWorker(journal: ReturnType<typeof openPreviewJourna
           ? original.intent !== undefined && original.noticeClass === undefined
             && redact(sentText(original) ?? '').text.includes(quote)
           : redact(original.text).text.includes(quote))
-          || channel && redact(channel.text).text.includes(quote))
-        || side === 'reply' && channel !== undefined
+          || channel && redact(channel.text).text.includes(quote)
+          || carried?.some(item => projectMemoryClause(journal.view, item.text, item.source).includes(quote)))
+        || side === 'reply' && (channel !== undefined || !!carried?.length)
         || seen.has(JSON.stringify([rawSource, quote]))
         || mode !== 'prefer' && preferences.lineage.has(JSON.stringify([rawSource, quote]))
           && !preferences.active.has(JSON.stringify([rawSource, quote]))) return undefined;
@@ -9021,8 +9213,8 @@ export function createJournalWorker(journal: ReturnType<typeof openPreviewJourna
       // Rule 93: the forget is held, never dropped, and held whole: it passes every check below and keeps its
       // replies and summary passages. The answer applies it once it records that request's cancellation, or tells
       // the operator the text was kept because the request still stands.
-      const heldForget = mode === 'forget' && original !== undefined && openRequests(journal.view).some(request =>
-        request.source === original.id && (request.quote.includes(quote) || quote.includes(request.quote)));
+      const heldForget = mode === 'forget' && typeof rawSource === 'string' && openRequests(journal.view).some(request =>
+        request.source === rawSource && (request.quote.includes(quote) || quote.includes(request.quote)));
       if (mode === 'update' && (!original || !updateEvidence.some(item => item.id === source && item.message.includes(quote)))) return undefined;
       if (replies !== undefined && (!Array.isArray(replies) || replies.length > 5 || replies.some(id =>
         typeof id !== 'string' || !offered.has(id) || journal.view.turns.get(id)?.intent === undefined
@@ -9314,7 +9506,9 @@ export function createJournalWorker(journal: ReturnType<typeof openPreviewJourna
           summary: summaryFor(trigger.update)?.text ?? '', candidates: older.map(item => ({ text: `${clean(item.text, true, item.id)} ${replyFor(item)}`, at: sentAt(item) ?? 0 })) }) : [];
         const replaced = trigger?.replaces ? journal.view.turns.get(trigger.replaces) : undefined;
         const recentAnswer = older.map(item => item.intent !== undefined && item.noticeClass === undefined).lastIndexOf(true);
-        const memoryCandidates = [...(replaced ? [{ id: replaced.id, sourceKind: 'operator-stated' as MemorySourceKind, message: redact(replaced.text).text,
+        const memoryCandidates = [...(journal.view.groupCarry ? groupCarryPacket(journal.view.groupCarry, trigger?.text ?? '', ports.now(), journal.view.limits.maxBytes, journal.view).entries
+          .filter(item => item.kind === 'recall' || item.kind === 'preference' || item.kind === 'correction')
+          .map(item => ({ id: item.source, sourceKind: 'operator-stated' as MemorySourceKind, message: item.text, reply: '' })) : []), ...(replaced ? [{ id: replaced.id, sourceKind: 'operator-stated' as MemorySourceKind, message: redact(replaced.text).text,
           reply: replyFor(replaced) }] : []), ...activePreferences().map(item => ({ id: item.source, sourceKind: 'operator-stated' as MemorySourceKind, message: redact(item.quote).text, reply: '' })),
           ...[...new Set([...(recentAnswer < 0 ? [] : [recentAnswer]), ...ranked])].slice(0, 5).map(index => ({ id: older[index]!.id, sourceKind: 'operator-stated' as MemorySourceKind, message: clean(redact(older[index]!.text).text, true, older[index]!.id),
           reply: replyFor(older[index]!) })).filter(item => item.id !== replaced?.id), ...(trigger ? channelCandidates(trigger, summaryFor(trigger.update)?.text) : [])];
@@ -9942,7 +10136,7 @@ export function createJournalWorker(journal: ReturnType<typeof openPreviewJourna
   const actionDueEvidence = (turn: Turn, step: string): object => ({ step, selectedAt: isoMinute(turn.at),
     requests: turn.requestedAction!.items.map(ref => {
       const item = requestItem(journal.view, ref);
-      return item ? { request: clean(redact(item.quote).text, true, item.source), requestedAt: isoMinute(journal.view.turns.get(item.source)!.at),
+      return item ? { request: clean(redact(item.quote).text, true, item.source), requestedAt: isoMinute(requestSource(journal.view, item)!.at),
         when: item.when, due: `${reminderDue(item)} ${item.zone}` } : { error: 'request not recorded' };
     }), moreRequests: turn.requestedAction!.overflow?.length ?? 0 });
   /** Opens (once) and judges the pre-send steps named here. 'validated' lets the next consequential step run; a
