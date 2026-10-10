@@ -26,8 +26,10 @@ const grantAt = (directory: string, record: Record<string, unknown>) => {
   writeFileSync(join(directory, 'activation-authority.json'), JSON.stringify(offlineActivationAuthority(record)));
   return join(directory, 'session-activation.json');
 };
-const lastRun = (root: string) => readFileSync(join(root, 'runs.jsonl'), 'utf8').split('\n').filter(line => line.trim())
-  .map(line => JSON.parse(line) as Record<string, unknown>).filter(row => 'exit' in row).at(-1) ?? {};
+const lastRun = (root: string) => existsSync(join(root, 'runs.jsonl'))
+  ? readFileSync(join(root, 'runs.jsonl'), 'utf8').split('\n').filter(line => line.trim())
+    .map(line => JSON.parse(line) as Record<string, unknown>).filter(row => 'exit' in row).at(-1) ?? {}
+  : {};
 
 it('refuses an answer activation offered as a session grant, and admits a sealed session grant', async () => {
   const world = successiveWorld(), harness = cutoverHarness(world, offlineProfile);
@@ -82,6 +84,7 @@ it.each([false, true])('drains a queued group turn despite the poll/audience int
   writeFileSync(authorityPath, JSON.stringify(authority));
   const membership = join(world.directory, 'membership.mjs'), loader = join(world.directory, 'membership-loader.mjs');
   writeFileSync(membership, `import { writeFileSync, rmSync } from 'node:fs';
+  export { requireGroupDisclosureFor } from ${JSON.stringify(pathToFileURL(join(process.cwd(), 'tests/preview/group-membership-io.mjs')).href)};
   let count = 0;
   const marker = ${JSON.stringify(join(world.directory, 'audience-busy'))};
   export const groupMembershipReader = () => async (method, body) => {
@@ -94,7 +97,8 @@ it.each([false, true])('drains a queued group turn despite the poll/audience int
       : method === 'getChatMemberCount' ? 2 : { status: 'member', user: { id: Number(body.user_id), is_bot: body.user_id === scope.bot } } };
   };`);
   writeFileSync(loader, `export async function resolve(s,c,n) {
-    if (s.endsWith('/group-membership-io.mjs')) return {url:${JSON.stringify(pathToFileURL(membership).href)},shortCircuit:true};
+    if (c.parentURL?.endsWith('/journal-agent.mjs') && s.endsWith('/group-membership-io.mjs'))
+      return {url:${JSON.stringify(pathToFileURL(membership).href)},shortCircuit:true};
     return n(s,c);
   }`);
   harness.setUpdates([{ update_id: 969390337, message: { message_id: 10, message_thread_id: 3,
