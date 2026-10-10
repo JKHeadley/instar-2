@@ -25,6 +25,8 @@ Prompt review: Carries the unit's model-facing sentence and recorded-shape tests
 
 Deferral: generated/register.json:1 | not-a-deferral=generated register output quotes existing constitutional wording, not a new deferred commitment
 
+Validation: After the fixture-budget repair, the same desk chain ran at 452475162dfbc9c082a9c3b7c942e2b1e2831cf1: zero inventory or owner pin changes, successful build, and register generation sha256:dd89a8c6da67d1065553618eaafedc3079bfa11816e71bc452010910e01da969. Original failed and repaired test results are retained in the handoff report.
+
 ## Closing block
 
 simplestRobustRoute: This is the simplest robust route: merge the reviewed one-sentence change unchanged and use the existing desk regeneration tools and targeted tests. No extra parser, gate, formatter or service. The register fixture receives the neighboring test's 120-second execution budget after its unchanged assertions passed in 56.6 seconds isolated but timed out at 60 seconds beside another serial runner; no product or assertion bound changes. Start guard: exact clean live base; end-state: pushed build with targeted checks and intact history; limits: existing secrets, spend, stop, durable intake and send receipts. No new autonomous capability or unattended live-completion claim.
