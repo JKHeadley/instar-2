@@ -23,6 +23,8 @@ Prompt review: No model-facing prompt, output parser, acceptance, escalation or 
 
 Subject: tests/preview/journal-agent.mjs, tests/preview/journal-cutover-loader.mjs, tests/preview/journal-cutover-ports.mjs, tests/preview/journal-session-work-launch.test.ts; derived owner pins and register replay.
 
+Validation: 128 targeted foreground tests passed with one worker, including session activation on/off under the forced audience/poll interleaving, due session obligations, bounded same-topic holding, recorded group-carry outputs, runner cutover, overlap, native harnesses and two-machine floors. Typecheck, build, architecture, register wiring and register replay checks passed. The register is replayed against source commit de1295d2eb7b239304c656bceccf6b2dfd782a6b; this follow-up carries its derived outputs.
+
 ## Closing block
 
 simplestRobustRoute: This is the simplest robust route: every admitted job uses the existing work cycle and drains accepted ordinary intake first. The pre-poll and post-poll jobs no longer compete with different obligations. Existing admission, spend, stop, disclosure and durable-send guards are retained. No autonomous live-completion claim is made: the deterministic runner reproducer fails before and passes after; the desk owns the real preview switch and gate.
