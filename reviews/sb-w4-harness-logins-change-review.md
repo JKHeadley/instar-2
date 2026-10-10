@@ -18,7 +18,7 @@ Bug class: none
 Bug evidence: none
 Hook bypass: none
 Convergence: none
-Decision: sb-hl-unit | Carry the reviewed unit and its recovery repair byte-for-byte through one fast-forward merge; no conflicts or docs/changelog edits. | reported=/Users/dabombstudio/.instar/agents/echo/.instar/lanes/w4-harness-logins-PROGRESS.md
+Decision: HL-1 | Carry the unit's profile-keyed custody decision, reviewed implementation and recovery repair byte-for-byte through one fast-forward merge; no conflicts or docs/changelog edits. | reported=/Users/dabombstudio/.instar/agents/echo/.instar/lanes/w4-harness-logins-PROGRESS.md
 Decision: sb-hl-desk | Reuse the cint-L37 desk chain: repin, TypeScript build, every owner-reference rehash, register replay at da8d1990. No new machinery or authority. | reported=/Users/dabombstudio/.instar/agents/echo/.instar/lanes/sb-w4-harness-logins-PROGRESS.md
 Decision: sb-hl-tests | Foreground targeted tests use nice -n 10 and maxWorkers 1; the five macOS live harness cases remain disabled and the full suite belongs to the pipeline. | reported=/Users/dabombstudio/.instar/agents/echo/.instar/lanes/sb-w4-harness-logins-PROGRESS.md
 Deferral: generated/register.json:1 | not-a-deferral=Mechanical replay preserves existing register vocabulary, including pending-landing and owned commitments; this integration adds no deferred work.
