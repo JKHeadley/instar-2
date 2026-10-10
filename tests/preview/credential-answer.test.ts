@@ -147,6 +147,7 @@ it.each(['active', 'withdrawn', 'corrected'] as const)('keeps credential-bearing
     const probe = worker.probe('Which reminders are open?');
     if ('reason' in probe) throw Error(probe.reason);
     expect(JSON.parse(probe.context).reminders).toHaveLength(1);
+    expect(JSON.parse(probe.context).dated).toMatchObject([{ quote: 'Remind me today at 1:25 am to renew your activation' }]);
     if (disposition !== 'active') {
       worker.intake([update(2, disposition === 'withdrawn' ? withdrawal : `Correction: ${replacement}`)]);
       await worker.drain();

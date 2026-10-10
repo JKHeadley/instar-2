@@ -6305,7 +6305,7 @@ export function createJournalWorker(journal: ReturnType<typeof openPreviewJourna
       items.push({ source: source.source, date: source.date,
         ...(source.conversation ? { conversation: source.conversation } : {}),
         status: correction ? 'corrected' : 'current', quote: redact(quote).text.slice(0, 1000),
-        ...(was === undefined ? {} : { was: redact(was).text.slice(0, 1000) }),
+        ...(was === undefined ? {} : { was: credentialWording(redact(was).text).slice(0, 1000) }),
         ...(trigger ? { correctedBy: `turn ${trigger.update}`, correctedAt: dated(trigger) } : {}) });
     }
     return { items, forgotten, truncated };
@@ -6492,7 +6492,7 @@ export function createJournalWorker(journal: ReturnType<typeof openPreviewJourna
     const selectedDated = datedSelection(activeDated, question?.text ?? '', ports.now(),
       ports.timeZone ?? 'America/Los_Angeles');
     const due = selectedDated.items.map(item => ({ ...item,
-      quote: redact(item.quote).text, when: redact(item.when).text }));
+      quote: credentialWording(redact(item.quote).text), when: redact(item.when).text }));
     const pendingDates = journal.view.order.filter(item => remembered(item) && item.update <= through && item.datedPending
       && !journal.view.memory.some(change => change.mode !== 'prefer' && change.in !== 'reply' && change.source === item.id));
     const datedPending = pendingDates.slice(0, 3)
