@@ -1,5 +1,5 @@
 import { expect, it } from 'vitest';
-import { appendFileSync, mkdtempSync, realpathSync, rmSync, statSync } from 'node:fs';
+import { appendFileSync, mkdtempSync, readFileSync, realpathSync, rmSync, statSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { spawn } from 'node:child_process';
@@ -8,6 +8,7 @@ import { auditJournal, auditPacket } from './journal-audit.mjs';
 import { OBLIGATION_FLOOR_PACKET_BYTES, createJournalWorker, importChannelItems, openPreviewJournal, probeTurn } from './journal-test-worker.js';
 import { memoryHealthLine } from './self-state.js';
 import { prepareJournalEnvelope } from './journal-envelope.js';
+import type { MediaCustodyResult } from './telegram-media.js';
 
 const key = new Uint8Array(32).fill(41);
 
@@ -84,6 +85,74 @@ it.each([false, true])('checks every ordinary accepted turn with and without a l
     journal.close();
     const replay = openPreviewJournal(join(root, 'journal.encrypted'), key);
     expect(auditJournal(replay.view).findings).toEqual([]);
+    replay.close();
+    const audit = await runAgent(['audit', '--root', root]);
+    expect(audit.status, audit.stderr).toBe(0);
+    expect(JSON.parse(audit.stdout).findings).toEqual([]);
+  } finally { rmSync(root, { recursive: true, force: true }); }
+});
+
+it.each(['photo', 'voice', 'audio', 'document'])('audits authenticated %s media and exact custody through compacted replay', async kind => {
+  const root = realpathSync(mkdtempSync(join(tmpdir(), 'preview-audit-media-')));
+  try {
+    type Update = Parameters<ReturnType<typeof createJournalWorker>['intake']>[0][number];
+    // Existing synthetic Telegram fixtures; these are not live-platform evidence.
+    const original = JSON.parse(readFileSync(new URL(`./fixtures/telegram-media/${kind === 'audio' ? 'voice' : kind}.json`,
+      import.meta.url), 'utf8')) as Update & { message: { audio?: unknown; voice?: unknown } };
+    if (kind === 'audio') { original.message!.audio = original.message!.voice; delete original.message!.voice; }
+    const binding = { ...genesis, forum: true as const, chat: String(original.message!.chat!.id),
+      operator: String(original.message!.from!.id), maxBytes: 65536 };
+    const path = join(root, 'journal.encrypted');
+    const journal = openPreviewJournal(path, key, binding);
+    const outcomes: MediaCustodyResult[] = [{ state: 'stored', reference: 'a'.repeat(64), bytes: 512 },
+      { state: 'unavailable' }, { state: 'failed' }, { state: 'failed', reason: 'admission-refused' },
+      { state: 'file-limit' }, { state: 'store-limit' }, { state: 'malformed' }];
+    let outcome = outcomes[0]!;
+    const worker = createJournalWorker(journal, { now: () => 1790000000000, stopped: () => false,
+      media: { receive: async () => outcome },
+      prepareModel: input => JSON.stringify({ messages: [{ role: 'user', content: input.question },
+        { role: 'context', content: JSON.stringify({ packet: JSON.parse(input.context) }) }] }),
+      model: async () => 'Received.', send: async () => 1, checkOutbound: () => {} });
+    for (const [index, result] of outcomes.entries()) {
+      outcome = result;
+      worker.intake([{ ...original, update_id: original.update_id + index }]);
+      expect(auditJournal(journal.view).findings, `before custody ${result.state}`).toEqual([]);
+      await worker.drain();
+      expect(journal.view.order.at(-1)!.media).toEqual(result);
+      expect(auditJournal(journal.view).findings, `after custody ${result.state}`).toEqual([]);
+    }
+    journal.compact(); journal.close();
+    const replay = openPreviewJournal(path, key);
+    expect(auditJournal(replay.view).findings).toEqual([]);
+    expect(auditJournal(replay.view).items.filter((item: { kind: string }) => item.kind === 'conversation-turn'))
+      .toHaveLength(outcomes.length);
+    for (const field of ['text', 'caption', 'name', 'size', 'missing-media', 'custody-text', 'custody-state', 'custody-bytes',
+      'custody-absent', 'sender', 'chat', 'type', 'forum', 'update', 'accepted']) {
+      const forged = structuredClone(replay.view), turn = forged.order[0]!;
+      const raw = JSON.parse(turn.raw);
+      if (field === 'text') turn.text = 'Invented operator content.';
+      if (field === 'caption') raw.message.caption = 'A different caption.';
+      if (field === 'name') (kind === 'photo' ? raw.message.photo.at(-1) : raw.message[kind]).file_name = 'different.bin';
+      if (field === 'size') (kind === 'photo' ? raw.message.photo.at(-1) : raw.message[kind]).file_size++;
+      if (field === 'missing-media') { delete raw.message[kind]; raw.message.text = turn.text; }
+      if (field === 'custody-text') turn.text += '\nInvented custody annotation.';
+      if (field === 'custody-state') turn.media = { state: 'failed' };
+      if (field === 'custody-bytes') turn.media = { state: 'stored', reference: 'a'.repeat(64), bytes: 513 };
+      if (field === 'custody-absent') delete turn.media;
+      if (field === 'sender') raw.message.from.id++;
+      if (field === 'chat') raw.message.chat.id++;
+      if (field === 'type') raw.message.chat.type = 'private';
+      if (field === 'forum') delete raw.message.chat.is_forum;
+      if (field === 'update') raw.update_id++;
+      if (field === 'accepted') {
+        turn.accepted = false;
+        // A still-active derived memory cannot cite an unaccepted turn.
+        forged.memory.push({ mode: 'prefer', source: turn.id, quote: turn.text, trigger: forged.order[1]!.id });
+      }
+      turn.raw = JSON.stringify(raw);
+      expect(auditJournal(forged).findings.map((item: { code: string }) => item.code), field)
+        .toContain('memory-operator-source-absent');
+    }
     replay.close();
     const audit = await runAgent(['audit', '--root', root]);
     expect(audit.status, audit.stderr).toBe(0);

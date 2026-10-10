@@ -4956,6 +4956,18 @@ const OPERATOR_CONTENT_KINDS = ['photo', 'voice', 'video', 'video_note', 'audio'
   'location', 'contact', 'poll', 'venue', 'dice'] as const;
 /** Flag for an operator message the preview cannot read as text (Rule 14: deliver, flagged). */
 export const UNREADABLE_OPERATOR_MESSAGE = '[The operator sent something with no text I can read here, for example a photo, voice note or sticker.]';
+/** The exact intake representation, shared with the read-only provenance audit (Rules 26, 45). */
+export function operatorMessageText(message: TelegramMessage | undefined): string {
+  const media = telegramInboundMedia(message);
+  const limitation = media?.kind === 'photo' ? 'This harness has no image-input path; I cannot see the photo.'
+    : media?.kind === 'voice' || media?.kind === 'audio' ? 'No local transcription path is installed; I cannot listen to this audio yet.'
+      : 'The document contents have not been read.';
+  return media ? `[Received ${media.kind === 'voice' ? 'voice note' : media.kind}: name ${JSON.stringify(media.name)}, size ${media.size === null ? 'unknown' : `${media.size} bytes`}. ${limitation}]`
+    + (typeof message?.caption === 'string' && message.caption.trim() ? `\nCaption: ${message.caption}` : '')
+    : typeof message?.text === 'string' ? message.text
+    : typeof message?.caption === 'string' && message.caption.trim() ? `${message.caption}\n${UNREADABLE_OPERATOR_MESSAGE}`
+      : UNREADABLE_OPERATOR_MESSAGE;
+}
 /** Exact identity and binding decide admission (Rule 4). A verified operator message with no
  * text, or with only a caption, is delivered to the mind with a flag, never dropped (Rule 14).
  * Rule 28: admission accepts only the verified principal minted from this update at intake,
@@ -4972,15 +4984,7 @@ export function admittedUpdate(genesis: JournalView['genesis'], update: Telegram
     && principal.id === String(message?.from?.id) && principalBoundToUpdate(principal, update)
     && principal.provenance.adapter === TELEGRAM_ADAPTER[genesis.origin ?? 'production']
     && (thread === undefined || Number.isSafeInteger(thread) && thread > 0);
-  const media = telegramInboundMedia(message);
-  const limitation = media?.kind === 'photo' ? 'This harness has no image-input path; I cannot see the photo.'
-    : media?.kind === 'voice' || media?.kind === 'audio' ? 'No local transcription path is installed; I cannot listen to this audio yet.'
-      : 'The document contents have not been read.';
-  const text = media ? `[Received ${media.kind === 'voice' ? 'voice note' : media.kind}: name ${JSON.stringify(media.name)}, size ${media.size === null ? 'unknown' : `${media.size} bytes`}. ${limitation}]`
-    + (typeof message?.caption === 'string' && message.caption.trim() ? `\nCaption: ${message.caption}` : '')
-    : typeof message?.text === 'string' ? message.text
-    : typeof message?.caption === 'string' && message.caption.trim() ? `${message.caption}\n${UNREADABLE_OPERATOR_MESSAGE}`
-      : UNREADABLE_OPERATOR_MESSAGE;
+  const text = operatorMessageText(message);
   return { id: previewTurnId(genesis.bot, update.update_id), accepted, text: accepted ? text : '',
     ...(accepted && thread !== undefined ? { thread } : {}) };
 }
