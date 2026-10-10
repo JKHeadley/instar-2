@@ -24,6 +24,10 @@ Prompt finding: 849db3a6296a | protocol-literal | Existing fixed empty-memory re
 Prompt finding: bd01de21286a | protocol-literal | Existing sourceLabel protocol field instruction, unchanged.
 Prompt finding: fb5fa7e706c8 | protocol-literal | Existing recall task guidance, unchanged; no fixture-specific trigger is added.
 
+Generated evidence: Ran the delegated desk rehash and repin tools; all owner manifests and the inventory were already current (zero pin edits). Rebuilt generated/ with build-register --replay --commit ece70e0bf388a2d118390ea87f05bf94a0da5fbd. Generation contains 286 entries and all 116 rules. No pin was hand-edited.
+Deferral: generated/register.json:1 | not-a-deferral=Generated projection of existing registered declarations; this repair adds no deferred work.
+Validation: 44 targeted recovery/diagnostics/timeout/writer cases and 22 recorded summary/reply/self-description cases pass; all commands used nice -n 10 and --maxWorkers 1. The exact failed copy was read-only. Four bounded provider diagnosis/replay calls were made, no Telegram send. Saved contract report remains byte-for-byte unchanged and globally red on the previously repaired selfdesc-limits assertion; no new full suite is run on this machine.
+
 ## Closing block
 
 simplestRobustRoute: This is the simplest robust route: extend the existing one-replacement journal record and call-cap checkpoint instead of adding a retry loop, model fallback or new store. The credible failure is a temporary ended provider rejection permanently consuming an otherwise answerable intake; complete cleanup, no tool work, known-refusal exclusions, stop, expiry, one replacement and durable send fences are the start/limit/end guards. Recorded failed update 715675390 reaches the real recovered answer in the worker replay and survives restart without another send. A new unattended live Telegram check remains the pipeline's responsibility, not a claim made by this author record.
