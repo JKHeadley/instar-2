@@ -15,7 +15,7 @@ Undo and recovery: Revert the repair commits with ordinary reviewed git history.
 Multi-machine posture: Deliberately runner-local evidence under the existing root writer lease. Every host retains its own account identity, profile, quota snapshot, custody and admission grants. No new replication or account sharing.
 Layer below: Inspected durablePreviewWrite atomic rename/file and directory fsync; selector validates each chosen member after capacity reconciliation; harnessQuotaReading retains exact account/home or reviewed account-id binding and unique matching; observeHarnessSessionLimit continues preserving the original pause observation. Existing shared cap, stop and effect doorway are unchanged.
 Bug class: durability
-Bug evidence: reproducer=tests/preview/harness-login-pool.test.ts exhausts both session accounts and proves recovery after eight days plus stale/incomplete/mismatched negatives and malformed-row neighbors; restart=the same file proves reopen recovery, durable hold removal, legacy timestamp migration and failed-write preservation
+Bug evidence: reproducer=tests/preview/harness-login-pool.test.ts; restart=tests/preview/harness-login-pool.test.ts
 Hook bypass: none
 Convergence: none
 Deferral: generated/register.json:1 | not-a-deferral=Mechanical replay retains the existing registry pending-landing and owned-loop vocabulary; this repair adds no deferred work.
