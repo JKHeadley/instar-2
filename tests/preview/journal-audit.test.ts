@@ -44,33 +44,50 @@ const genesis = { kind: 'genesis' as const, bot: '12345678', chat: '7654321', op
 const update = (id: number, text: string) => ({ update_id: id, message: {
   chat: { id: 7654321, type: 'private' }, from: { id: 7654321 }, text, date: 1790000000 + id * 60 } });
 
-it('checks every ordinary accepted turn with and without a latest packet', async () => {
+it.each([false, true])('checks every ordinary accepted turn with and without a latest packet (forum=%s)', async forum => {
   const root = realpathSync(mkdtempSync(join(tmpdir(), 'preview-audit-turns-')));
   try {
-    const journal = openPreviewJournal(join(root, 'journal.encrypted'), key, genesis);
+    const binding = { ...genesis, ...(forum ? { forum: true as const, chat: '-1007654321' } : {}) };
+    const journal = openPreviewJournal(join(root, 'journal.encrypted'), key, binding);
+    const envelope = (id: number, text: string) => {
+      const raw = update(id, text);
+      return { ...raw, message: { ...raw.message, chat: { id: Number(binding.chat),
+        type: forum ? 'supergroup' : 'private', ...(forum ? { is_forum: true } : {}) } } };
+    };
     const worker = createJournalWorker(journal, { now: () => 1790000000000, stopped: () => false,
       prepareModel: input => JSON.stringify({ messages: [{ role: 'user', content: input.question },
         { role: 'context', content: JSON.stringify({ packet: JSON.parse(input.context) }) }] }),
       model: async () => 'Noted.', send: async () => 1, checkOutbound: () => {} });
-    worker.intake([update(1, 'First ordinary message.')]); await worker.drain();
-    worker.intake([update(2, 'Second ordinary message.')]); await worker.drain();
+    worker.intake([envelope(1, 'First ordinary message.')]); await worker.drain();
+    worker.intake([envelope(2, 'Second ordinary message.')]); await worker.drain();
+    expect(journal.view.order.every(turn => turn.accepted)).toBe(true);
     for (const noPacket of [false, true]) {
       const clean = structuredClone(journal.view);
       if (noPacket) clean.lastPrompt = null;
       expect(auditJournal(clean).findings).toEqual([]);
       expect(auditJournal(clean).items.filter((item: { kind: string }) => item.kind === 'conversation-turn')).toHaveLength(2);
-      const forged = structuredClone(clean);
-      const first = forged.turns.get(forged.order[0]!.id)!;
-      const raw = JSON.parse(first.raw);
-      raw.message.text = 'A different message.';
-      first.raw = JSON.stringify(raw);
-      expect(auditJournal(forged).findings.map((item: { code: string }) => item.code))
-        .toContain('memory-operator-source-absent');
+      for (const field of ['text', 'sender', 'chat', 'type', 'update', ...(forum ? ['forum'] : [])]) {
+        const forged = structuredClone(clean);
+        const first = forged.turns.get(forged.order[0]!.id)!;
+        const raw = JSON.parse(first.raw);
+        if (field === 'text') raw.message.text = 'A different message.';
+        if (field === 'sender') raw.message.from.id++;
+        if (field === 'chat') raw.message.chat.id++;
+        if (field === 'type') raw.message.chat.type = forum ? 'private' : 'supergroup';
+        if (field === 'update') raw.update_id++;
+        if (field === 'forum') delete raw.message.chat.is_forum;
+        first.raw = JSON.stringify(raw);
+        expect(auditJournal(forged).findings.map((item: { code: string }) => item.code), field)
+          .toContain('memory-operator-source-absent');
+      }
     }
     journal.close();
     const replay = openPreviewJournal(join(root, 'journal.encrypted'), key);
     expect(auditJournal(replay.view).findings).toEqual([]);
     replay.close();
+    const audit = await runAgent(['audit', '--root', root]);
+    expect(audit.status, audit.stderr).toBe(0);
+    expect(JSON.parse(audit.stdout).findings).toEqual([]);
   } finally { rmSync(root, { recursive: true, force: true }); }
 });
 

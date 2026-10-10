@@ -4,6 +4,7 @@ import { isoMinute } from '../../src/recall/ground.js';
 import { statedFacts } from './memory-sentinel.js';
 import { hasClaim, replaceClaim, supersedesCorrection } from './claim-match.mjs';
 import { activePersonMerges, before, groundingHistory, isJournalUpdate } from './journal.js';
+import { matchesBoundChat } from './forum-routing.js';
 
 const RUNNER_SPEAKER = 'the runner, carrying out a request the operator made earlier (no operator authority)';
 /** A due turn is written by the verified scheduler, never by the operator (Rule 29). It traces to the
@@ -368,9 +369,8 @@ export function auditActiveMemory(view) {
     const turn = view.turns.get(id);
     let raw;
     try { raw = JSON.parse(turn?.raw); } catch { /* missing authenticated envelope */ }
-    if (!turn?.accepted || raw?.update_id !== turn.update || raw?.message?.chat?.type !== 'private'
+    if (!turn?.accepted || raw?.update_id !== turn.update || !matchesBoundChat(view.genesis, raw?.message?.chat)
       || String(raw?.message?.from?.id) !== view.genesis.operator
-      || String(raw?.message?.chat?.id) !== view.genesis.chat
       || raw?.message?.text !== turn.text) {
       fault('memory-operator-source-absent', at); checkedOperators.set(id, null); return null;
     }
