@@ -24,10 +24,10 @@ Prompt finding: 849db3a6296a | protocol-literal | Existing memory-list or source
 Prompt finding: bd01de21286a | protocol-literal | Existing memory-list or source-grounding protocol wording; unchanged by this repair.
 Prompt finding: fb5fa7e706c8 | protocol-literal | Existing memory-list or source-grounding protocol wording; unchanged by this repair.
 
-Subject (4 paths): tests/preview/journal-agent.mjs, tests/preview/journal-capacity.test.ts, tests/preview/journal-recall-lookup.test.ts, tests/preview/journal.ts
+Subject: tests/preview/journal-agent.mjs, tests/preview/journal-capacity.test.ts, tests/preview/journal-recall-lookup.test.ts, tests/preview/journal.ts, and generated register artifacts.
 
 ## Closing block
 
 simplestRobustRoute: This is the simplest robust route: share one disposition at the existing invocation boundary, settle only its reservation, and derive the active alert from existing durable episode facts. The tool allowance delta prevents refunding earlier launched tool calls. No notification loop or store. Existing admission/stop/caps are start/limit guards, and durable limited intent is the send guard. Evidence is offline shipped-worker/status replay, not a production deployment claim.
-80/20: Focused capacity/prelaunch/lookup regressions passed; final checks are recorded in the lane PROGRESS. Both reported failures are fixed at their sources. No quarantine, full suite or load test run on this machine. The specified saved gate report is absent, so post-test contract checks cannot consume it; the pushed pipeline owns that evidence.
+80/20: All 52 tests pass in the three focused capacity/prelaunch/lookup files; final typecheck, build and architecture pass. Desk owner rehash and inventory repin found no changed pins. Register replay against 5817f842 regenerated seven artifacts (generation sha256:2bcfc1e0cc1eccc978e5b1d99d0d41ee563b2d6412c56b1192b212518e70e0c0); final checks are recorded in the lane PROGRESS. Both reported failures are fixed at their sources. No quarantine, full suite or load test run on this machine. The specified saved gate report is absent, so post-test contract checks cannot consume it; the pushed pipeline owns that evidence.
 VERDICT: author submission; this record asserts no independent verdict — the review desk records its own
