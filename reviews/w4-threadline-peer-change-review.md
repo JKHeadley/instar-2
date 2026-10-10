@@ -44,6 +44,8 @@ This is evidence of the blocker only, not tests of a new Threadline send or rece
 The focused `tests/preview/threadline-peer-floor.test.ts` also checks the exact proposed
 paired-send effect with missing, live, wrong-peer and expired grants, alongside the permitted
 Telegram reply. It must not be represented as implementation of a peer transport.
+The test follows the existing doorway test's annotated import of the executable JavaScript
+module, which has no TypeScript declaration file.
 
 Echo's Studio health response at `2026-10-10T22:50:55.568Z` reported connected relay,
 identity public key `63b1dbb21646e2f5f860441f6c6443ad259e81bdad48227a8f87e2d00ec89bef`,

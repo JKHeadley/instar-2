@@ -1,5 +1,6 @@
 import { expect, it } from 'vitest';
 import { SINGLE_MACHINE_PROFILE } from './activation-authority.js';
+// @ts-expect-error The executable hook's shared .mjs module has no declaration file.
 import { admitEffect, decodeEffectPolicy } from './effect-doorway.mjs';
 
 it('keeps a paired Threadline send outside the single-machine irreversible set even under an exact scope grant', () => {
