@@ -35,6 +35,8 @@ Deferral: tests/preview/retrospective.ts:185 | not-a-deferral=Historical recorde
 
 Subject (4 paths): tests/preview/fixtures/retrospective-duty-inspection-2026-10-09.json, tests/preview/retrospective-duty-followup.test.ts, tests/preview/retrospective-live-failures-2.test.ts, tests/preview/retrospective.ts
 
+Register evidence: Delegated rehash and repin tools ran with zero manifest/inventory changes. Replayed generated/ at 631f3c3d818d5437f2651bb03dbfc96820244ec7: 282 entries, 116 rules, 34 terms, unchanged shape-only authority. This record also covers the generated-source refresh.
+
 ## Closing block
 
 simplestRobustRoute: This is the simplest robust route: remove the conditional that conflated looking with accepting a finding; keep the existing evidence validator and rejection note. Three prompt-only repairs had failed on different malformed optional fields. No retry, extra production model call, policy, or authority change. Start guards remain spend/stop admission; end guards remain valid duty accounting and finding validation; bounded follow-up is the limit guard. The real unattended proofroom3 answer now passes I1b through the shipped parser while its invalid finding remains refused.
