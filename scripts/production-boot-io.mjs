@@ -232,6 +232,10 @@ function subscriptionServerPolicy(configDirectory) {
         hold(`${name}.confirmed_at: expected nonnegative safe integer`);
       empty(settings.hipaa_seen, `${name}.hipaa_seen`);
       if (!names.includes('policy-limits.json')) hold(`${name}: missing policy-limits.json`);
+      // Cache confirmation refreshes do not change policy or authority. Validate the
+      // complete stamp above, then bind only its identity/content fields to activation.
+      const { confirmed_at, ...binding } = settings;
+      settings = binding;
     }
     return { path, settings };
   });
@@ -291,7 +295,7 @@ export function createSubscriptionProviderIO({ repository, stopped, work = 'answ
       policy.push({ path, settings });
     }
     // Include every reviewed cache file in the same activation-bound digest.
-    // Adding, changing or removing one holds existing launches until re-recorded.
+    // Effective policy or identity/content changes hold launches; cache freshness does not.
     policy.push(...subscriptionServerPolicy(profile.configDirectory));
     lastPolicy = policy;
     return Object.freeze({ loginProfileIdentity: subscriptionProfileIdentity(bindings), managedConfigurationDigest: digest(policy) });

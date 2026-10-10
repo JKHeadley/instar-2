@@ -318,8 +318,8 @@ it('accepts the real 2.1.280 server policy only after the profile and activation
   expect(f.commands()).toHaveLength(3);
   const stamp = JSON.parse(serverPolicyFixture('policy-limits.json.stamp.json'));
   writeFileSync(join(profile.configDirectory, 'policy-limits.json.stamp.json'), JSON.stringify({ ...stamp, confirmed_at: stamp.confirmed_at + 1 }));
-  expect((await renewedRoute.invoke('request', f.bounds)).state).toBe('uncertain');
-  expect(f.commands()).toHaveLength(3);
+  expect((await renewedRoute.invoke('request', f.bounds)).state).toBe('complete');
+  expect(f.commands()).toHaveLength(6);
 });
 
 const capturedPolicy = () => JSON.parse(serverPolicyFixture('policy-limits.json'));
@@ -366,12 +366,17 @@ it('binds each accepted file and its removal to the managed digest; permits only
   for (const [name, settings] of [
     ['policy-limits.json', { ...capturedPolicy(), restrictions: { another_restriction: { allowed: false } } }],
     ['policy-limits.json', { ...capturedPolicy(), restrictions: {}, defaults: {} }],
-    ['policy-limits.json.stamp.json', { ...capturedStamp(), confirmed_at: capturedStamp().confirmed_at + 1 }],
+    ['policy-limits.json.stamp.json', { ...capturedStamp(), identity: 'a'.repeat(64) }],
+    ['policy-limits.json.stamp.json', { ...capturedStamp(), sha: `sha256:${'b'.repeat(64)}` }],
   ] as const) {
     writeFileSync(join(directory, name), JSON.stringify(settings));
     expect(inspect()).not.toBe(initial);
     installServerPolicy(directory);
   }
+  // An unchanged-cache confirmation is freshness only, after full schema validation.
+  writeFileSync(join(directory, 'policy-limits.json.stamp.json'),
+    JSON.stringify({ ...capturedStamp(), confirmed_at: capturedStamp().confirmed_at + 1 }));
+  expect(inspect()).toBe(initial);
   // Parsed content, not whitespace, is the effective configuration.
   writeFileSync(join(directory, 'policy-limits.json'), JSON.stringify(capturedPolicy()));
   expect(inspect()).toBe(initial);
