@@ -16,6 +16,7 @@ Multi-machine posture: Claim files and encrypted attachments remain machine-loca
 Layer below: Six consumes a durably written signed prefix before retainClaim; transport-file-storage uses atomic rename and fsync; the journal append precedes both physical requests; snapshotOf retains the per-turn fingerprint; check-agreements uses the same STORE_AGREEMENTS input as runtime proofs. The restart test deletes local claims and proves the consumed expectation prevents recreating evidence and reissuing the fetch.
 Bug class: unit
 Bug evidence: reproducer=tests/preview/telegram-media.test.ts
+Evidence binding: PREVIEW-MEDIA-CUSTODY uses the physical consumer tests. The delegated desk repin refreshed preview owner references, and build-register replay regenerated seven generated artifacts from committed source c2ba9e4c4a8226d8f298bd4b41b98f70ee67c3ab. 65 distinct targeted tests pass; final changed-guard run 41/41 and typecheck pass.
 Hook bypass: none
 Convergence: none
 Decision: media2-mf2-journal-anchor | Retain a source-bound consumed-prefix fingerprint before physical dispatch and consult the journal prior attempt before creating claims; loss cannot erase expectation or permit reconstruction and repeat. | reported=/Users/dabombstudio/.instar/agents/echo/.instar/lanes/w4-media2-repair-041207-PROGRESS.md
@@ -26,7 +27,7 @@ Prompt finding: 849db3a6296a | protocol-literal | Existing journal prompt guidan
 Prompt finding: bd01de21286a | protocol-literal | Existing journal prompt guidance or fixed response; this repair changes only media claim recording and leaves that prompt text untouched.
 Prompt finding: fb5fa7e706c8 | protocol-literal | Existing journal prompt guidance or fixed response; this repair changes only media claim recording and leaves that prompt text untouched.
 
-Subject (10 paths): register-source/owner-references/preview.json, scripts/transport-file-storage.declarations.json, tests/preview/held-cascade-replay.test.ts, tests/preview/journal-agent.mjs, tests/preview/journal.ts, tests/preview/media-admission.ts, tests/preview/store-agreements.test.ts, tests/preview/store-agreements.ts, tests/preview/summary-cascade-stall.test.ts, tests/preview/telegram-media.test.ts
+Subject (17 paths): generated/capabilities.json, generated/capabilities.md, generated/coverage.md, generated/glossary.md, generated/register.json, generated/rules.md, generated/source.json, register-source/owner-references/preview.json, scripts/transport-file-storage.declarations.json, tests/preview/held-cascade-replay.test.ts, tests/preview/journal-agent.mjs, tests/preview/journal.ts, tests/preview/media-admission.ts, tests/preview/store-agreements.test.ts, tests/preview/store-agreements.ts, tests/preview/summary-cascade-stall.test.ts, tests/preview/telegram-media.test.ts
 
 ## Closing block
 
