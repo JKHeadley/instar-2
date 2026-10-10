@@ -14,8 +14,8 @@ Side effects: MEMORY_ITEM_SHAPE returns to its pre-carry text. The carried-sourc
 Undo and recovery: Revert the commit; no stored frame, journal generation or durable state changes.
 Multi-machine posture: Machine-local packet construction only; no store, owner or replication change.
 Layer below: Packet assembly in tests/preview/journal.ts (memoryDecision), byte-budget fallback ordering, the memory-item validator's accepted sources, and the platform split list's detector.
-Bug class: logic
-Bug evidence: reproducer=tests/preview/journal.test.ts; restart=/Users/dabombstudio/.instar/agents/echo/.instar/lanes/sb-w4-group-carry2-PROGRESS.md
+Bug class: unit
+Bug evidence: reproducer=tests/preview/group-carry.test.ts
 Hook bypass: none
 Convergence: none
 Prompt review: Model-facing guidance text changed. Uncarried roots receive the pre-carry bytes exactly (recall-latency packet digest pin matches). Carried roots replay the real proof-room capture (updates 715672479–715672500, including uncertain summaries, Jev unsure/unavailable, reply reviews and delivery) and the held recorded answer 715672480 through group-carry.test.ts and group-carry-requests.test.ts; a new two-sided test asserts the clause appears only for a carried root, and a mutation making it unconditional fails both that test and the overflow bound.
