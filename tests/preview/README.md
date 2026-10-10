@@ -55,6 +55,8 @@ alongside the existing `--bot-id`, `--bot-username`, `--grant-reference`, `--con
 `--expires-at`, `--activation-record`, `--operator-records`, `--login-profile` and model/limit options.
 Do not pass a fixed `--message-thread-id`: this mode admits every topic in that one group. The bot must
 receive the operator's messages in the group. Group replies are visible to the group's audience.
+Keep only one active polling root per bot. If reusing the private chat's bot, stop that runner
+before starting the forum root; keep its private journal intact for a later private-mode restart.
 
 The encrypted genesis stores `forum: true`, `chat`, `bot`, and `operator`. Mode cannot be changed on an
 existing journal. General (absent topic or topic 1) has one identity; other topics retain their exact
@@ -2568,7 +2570,7 @@ private-chat procedure is in
 
 ### One memory across conversations
 
-The runner serves every conversation in the operator's own private chat: the main
+In the default private mode, the runner serves every conversation in the operator's own private chat: the main
 chat and any Telegram topic in it (Bot API 9.3 private-chat topics,
 `message_thread_id`). Each is a conversation whose only audience is the verified
 operator, so no fact reaches anyone beyond the standing it came from. Anything
@@ -2576,7 +2578,7 @@ elsewhere stays refused. That includes a group or a group forum topic, even one
 where the operator writes, and any other sender. Those updates are kept encrypted
 for diagnosis and never read.
 
-There is no second store. The one journal is the agent's memory: every intake
+There is no second store. In private mode the one journal is the agent's memory: every intake
 records its topic (`thread`), and every packet carries the history of all
 conversations in update order. A turn from another conversation is labelled with
 its `conversation` ("main chat" or "topic N") and its Telegram date, and the
@@ -2588,6 +2590,8 @@ result counts as a receipt only if it names that topic; otherwise the send is
 UNKNOWN and is never resent. Intake durability, update-ID deduplication, one stop,
 one attempt cap and one reply cap are shared by every conversation. Journals
 written before this change replay unchanged; their turns belong to the main chat.
+The explicitly configured forum mode described above instead admits one group and gives each
+topic its own recent history and session, while retaining source-labelled shared group memory.
 
 
 The offline 60-turn assembled-path regression polls through the real Telegram
