@@ -345,7 +345,11 @@ describe('compiled register build adapter lifecycle', () => {
       const manifest = JSON.parse(readFileSync(manifestPath, 'utf8')); manifest.owner = 'part-five'; writeFileSync(manifestPath, JSON.stringify(manifest));
       const wrongOwner = await run(); expect(wrongOwner.status).not.toBe(0); expect(wrongOwner.stderr).toContain('owner');
     } finally { rmSync(root, { recursive: true, force: true }); }
-  }, 60_000);
+  // Eight repository-building CLI runs took 56.6s isolated on WSL and hit the old 60s
+  // execution budget beside another serial test runner. This is a fixture hang bound,
+  // not a product latency assertion; retain every acceptance/refusal check.
+  // Evidence: docs/defects/register-intake-cli-wsl-budget.md.
+  }, 120_000);
   it('P3-P5 shipped CLI defaults resolve committed owner bindings, but never spoofed calls or stale artifacts', async () => {
     const root = mkdtempSync(join(tmpdir(), 'instar-owner-cli-'));
     try {
