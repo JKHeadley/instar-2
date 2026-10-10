@@ -2089,7 +2089,7 @@ async function main() {
         try {
           const reply = physical.invoke({ token: secretRef('telegram-bot-token'), method: 'sendMessage',
             body: { chat_id: chat, text, parse_mode: 'HTML', ...(thread === undefined ? {} : { message_thread_id: thread }),
-              ...(replyTo === undefined ? {} : { reply_parameters: { message_id: replyTo } }),
+              ...(replyTo === undefined ? {} : { reply_parameters: { message_id: replyTo, allow_sending_without_reply: true } }),
               ...(replyMarkup === undefined ? {} : { reply_markup: replyMarkup }) },
             timeoutMs: 30000 }, token());
           outcome = classifyTelegramSend(reply, { chat, expectedText, forum: g.forum === true, ...(thread === undefined ? {} : { thread }) });

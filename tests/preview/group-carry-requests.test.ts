@@ -1,4 +1,5 @@
-import { isGroupReviewFinalNotice } from './reply-check.js';
+import { isGroupReviewFinalNotice, GROUP_MEMBERSHIP_FINAL_NOTICE, GROUP_REVIEW_FINAL_NOTICE } from './reply-check.js';
+import { classifyTelegramSend } from './telegram-send-outcome.mjs';
 // Execution ownership of the operator's open dated requests moves from the private root to the group root exactly
 // once (Rules 52, 57, 93): the predecessor records the transfer first and never fires them again, including when it
 // is resumed for rollback; the group fires each once, can withdraw it, and holds it while disclosure fails.
@@ -277,6 +278,37 @@ const modelCode = host.split('      model: async ({ id, prepared }) => {')[1]!.s
 const modelFunction = 'async ({ id, prepared }) => {' + modelCode.trimEnd().replace(/,$/, '');
 const sendCode = host.split('      send: async ({ text, expectedText, chat, thread, replyTo, replyMarkup, target, provenance, admit }) => {')[1]!.split('\n    if (existsSync(stopPath))')[0]!;
 const sendFunction = 'async ({ text, expectedText, chat, thread, replyTo, replyMarkup, target, provenance, admit }) => {' + sendCode.slice(0, sendCode.lastIndexOf(' });'));
+
+it.each([true, false])('shipped send delivers answers and terminal notices when original exists: %s', async originalExists => {
+  for (const text of ['A reviewed answer.', GROUP_MEMBERSHIP_FINAL_NOTICE, GROUP_REVIEW_FINAL_NOTICE]) {
+    let admitted = 0, networkSends = 0;
+    const outcomes: string[] = [];
+    const send = Function('journal', 'workerStop', 'existsSync', 'stopPath', 'wallNow', 'ownerHeld', 'shared',
+      'GROUP_DISCLOSURE_HOLD_NOTICE', 'isGroupReviewFinalNotice', 'requireGroupDisclosure', 'physical', 'secretRef',
+      'token', 'classifyTelegramSend', 'g', `return (${sendFunction});`)(
+      { verifyOutbound: () => true, view: { expires: friday9 + 1000, stop: false } },
+      { value: false }, () => false, '/test/stop', () => friday9, () => true,
+      { admit: async () => { expect(admitted).toBe(1); return null; },
+        outcome: async (_target: string, kind: string) => { outcomes.push(kind); } },
+      GROUP_DISCLOSURE_HOLD_NOTICE, isGroupReviewFinalNotice, async () => {},
+      { invoke: ({ body }: { body: { chat_id: string; text: string; message_thread_id: number;
+        reply_parameters: { message_id: number; allow_sending_without_reply?: boolean } } }) => {
+        expect(admitted).toBe(1); networkSends++;
+        expect(body.chat_id).toBe(scope.chat); expect(body.message_thread_id).toBe(3);
+        expect(body.reply_parameters.message_id).toBe(6);
+        // Constructed Telegram API-contract response, not a live capture: a missing original
+        // rejects without the optional-anchor flag. The real classifier consumes this response.
+        if (!originalExists && body.reply_parameters.allow_sending_without_reply !== true)
+          return { kind: 'response', status: 400, bytes: JSON.stringify({ ok: false,
+            description: 'Bad Request: message to be replied not found' }) };
+        return { kind: 'response', status: 200, bytes: JSON.stringify({ ok: true, result: {
+          chat: { id: Number(body.chat_id) }, text: body.text, message_thread_id: body.message_thread_id, message_id: 7 } }) };
+      } }, (x: string) => x, () => 'TEST', classifyTelegramSend, { forum: true });
+    expect(await send({ text, expectedText: text, chat: scope.chat, thread: 3, replyTo: 6,
+      target: 'TEST-reply', provenance: {}, admit: () => { admitted++; } })).toEqual({ kind: 'accepted', message: 7 });
+    expect(networkSends).toBe(1); expect(admitted).toBe(1); expect(outcomes).toEqual(['accepted']);
+  }
+});
 
 it.each([['model', false], ['subscription', false], ['send', false], ['model', true], ['subscription', true], ['send', true]] as const)('exact shipped %s boundary recovers recorded answer after disclosure loss (authorized control: %s)', async (boundary, initiallyAdmitted) => {
   const w = await world();
