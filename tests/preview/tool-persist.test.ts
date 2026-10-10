@@ -110,7 +110,7 @@ it('recovers the recorded zero-work rejected resume once, from the journal with 
   reopened.close(); journal.close();
 });
 
-it.each(['uncertain', 'unknown-input', 'spent-input', 'spent-output', 'tool', 'child', 'stop', 'cap', 'cap-exact', 'fresh', 'twice'])
+it.each(['uncertain', 'capacity', 'unknown-input', 'spent-input', 'spent-output', 'tool', 'child', 'stop', 'cap', 'cap-exact', 'fresh', 'twice'])
 ('does not replay unsafe or unbounded rejected work: %s', async mode => {
   const root = dir(), store = join(root, 'projects'), journal = openPreviewJournal(join(root, 'journal.encrypted'), key, genesis());
   let calls = 0, stopped = false;
@@ -119,6 +119,7 @@ it.each(['uncertain', 'unknown-input', 'spent-input', 'spent-output', 'tool', 'c
     if (calls === 1 && mode !== 'fresh') return { state: 'complete', value: 'previous answer' };
     const result = structuredClone(rejectedResume.rejected);
     if (mode === 'uncertain') result.state = 'uncertain';
+    if (mode === 'capacity') result.capacity = { resetHint: '6:00pm', resetAt: null };
     if (mode === 'unknown-input') delete result.usage.inputComplete;
     if (mode === 'spent-input') result.usage.inputTokens = 1;
     if (mode === 'spent-output') result.usage.outputTokens = 1;

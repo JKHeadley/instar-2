@@ -487,6 +487,25 @@ export class ModelNotStarted extends Error {
   constructor() { super(MODEL_NOT_STARTED_HOLD); }
 }
 export const MODEL_NOT_STARTED_REPLY = "I couldn't start my model right now. Your message is saved; please resend it to try again.";
+export const MODEL_CAPACITY_HOLD = 'provider usage limit; resend required';
+export const MODEL_CAPACITY_ALERT = 'provider usage limit; saved turns need resend';
+export type ModelCapacity = { resetHint: string | null; resetAt: number | null };
+const validCapacity = (value: ModelCapacity) => (value.resetHint === null || /^(?:[1-9]|1[0-2]):[0-5][0-9](?:am|pm)$/.test(value.resetHint))
+  && (value.resetAt === null || Number.isSafeInteger(value.resetAt) && value.resetAt >= 0);
+export const modelCapacityReply = (capacity: ModelCapacity, zone = 'UTC') => {
+  const reset = capacity.resetHint?.replace(':00', '')
+    ?? (capacity.resetAt === null ? null : `${localStamp(capacity.resetAt, zone)} (${zone})`);
+  return `I've hit my usage limit${reset ? `; I can answer again after ${reset}` : ''}. Your messages are saved; please resend them ${reset ? 'then' : 'when capacity returns'} to get an answer.`;
+};
+/** A successful model answer, not the clock or a status reply, ends a quota episode. */
+const capacityEpisode = (view: JournalView): string | undefined => {
+  for (let index = view.order.length - 1; index >= 0; index--) {
+    const turn = view.order[index]!;
+    if (turn.capacity) return turn.capacity.episode;
+    if (turn.modelState === 'complete' && !turn.failureClass) return undefined;
+  }
+  return undefined;
+};
 /** Mark before handing a model command to the executor, never after it returns. An unrelated
  * concurrent launch conservatively keeps UNKNOWN; a later failure can never refund an earlier call. */
 export function createModelLaunchBoundary() {
@@ -665,7 +684,7 @@ const conflictQuestion = (item: Pick<MemoryConflict, 'first' | 'second'>) =>
   `I have two conflicting memories: “${item.first.quote}” and “${item.second.quote}”. Which is right?`;
 const conflictKey = (item: Pick<MemoryConflict, 'first' | 'second'>) =>
   JSON.stringify([item.first, item.second].map(part => [part.source, part.quote]).sort((a, b) => JSON.stringify(a).localeCompare(JSON.stringify(b))));
-export type ModelFailureClass = 'rejected' | 'malformed' | 'empty';
+export type ModelFailureClass = 'rejected' | 'malformed' | 'empty' | 'capacity';
 type ModelUsage = { inputTokens: number | null; outputTokens: number | null; charge: null; inputComplete?: true };
 export type CallKind = 'answer' | 'summary' | 'replyCheck';
 export type TokenTotals = Record<CallKind, { calls: number; inputTokens: number; outputTokens: number; unknownCalls: number }>;
@@ -1212,6 +1231,8 @@ export type JournalRecord =
   | { kind: 'reminder-grant'; reference: string; trial: string; surface: 'telegram-private-chat';
     scope: 'initiated-dated-reminders'; custodian: string; recovery: 'unknown-never-retry'; at: number }
   | { kind: 'hold'; id: string; reason: string; at: number;
+    /** Launched quota refusal: meter the attempt, retain intake, ask for a resend. */
+    capacity?: ModelCapacity & { usage: ModelUsage };
     /** Host proved this answer invocation never dispatched; restore its unused reservation and carried corrections. */
     unusedModel?: { corrections: string[] } }
   | { kind: 'stop'; reason: string; at: number;
@@ -1335,6 +1356,7 @@ export interface Turn { id: string; update: number; text: string; raw: string; a
   reserve?: true;
   /** The limited answer covering this message (`lead` names the turn that carries the send). */
   limited?: { text: string; at: number; lead: string; reason: LimitedReason }; limitedSent?: number;
+  capacity?: ModelCapacity & { episode: string };
   /** The owned minimal-path outage for this preserved message: which required dependency was missing. */
   minimalOutage?: { missing: string[]; at: number };
   /** The capped allowance an `approval-request` row offered to raise (its limited answer carries it otherwise). */
@@ -2634,7 +2656,7 @@ const capKey = (reason: 'calls' | 'replies' | 'turns' | 'bytes', limit: number, 
 /** Reservations spend once, even when their external outcome is unknown. */
 /** Each still-UNKNOWN call by a stable key; unknownCallCounts is its per-kind size. */
 export function unknownCallKeys(view: JournalView) {
-  const answers = [...view.order.filter(turn => turn.reserved && (turn.modelState === 'uncertain' || turn.answer === undefined))
+  const answers = [...view.order.filter(turn => turn.reserved && !turn.capacity && (turn.modelState === 'uncertain' || turn.answer === undefined))
     .map(turn => `answer:${turn.id}`),
     // A replaced timed-out call stays UNKNOWN under its own key whatever its replacement concludes.
     ...view.order.filter(turn => turn.answerReplaced).map(turn => `answer-replaced:${turn.id}`)];
@@ -4634,6 +4656,22 @@ function project(view: JournalView, row: JournalRecord, system?: SystemCheck, ad
     // As before, this hold supersedes the turn's earlier hold, and the exhausted frontier releases it at once.
     delete turn.held; delete turn.heldSince; view.heldTurns.delete(turn); turn.wasHeld = true;
   } else if (row.kind === 'hold') {
+    if (row.capacity) {
+      if (row.reason !== MODEL_CAPACITY_HOLD || row.unusedModel || !turn.reserved || turn.answer !== undefined
+        || turn.modelState !== undefined || turn.intent !== undefined || !validCapacity(row.capacity)
+        || row.capacity.usage.outputTokens !== 0 || row.capacity.usage.inputTokens !== 0
+        || row.capacity.usage.inputComplete !== true || row.capacity.usage.charge !== null)
+        throw Error('preview journal: capacity refusal order or usage');
+      const episode = capacityEpisode(view) ?? turn.id;
+      turn.capacity = { resetHint: row.capacity.resetHint, resetAt: row.capacity.resetAt, episode };
+      turn.modelState = 'rejected';
+      turn.failureClass = 'capacity';
+      view.failureClasses.set('capacity', (view.failureClasses.get('capacity') ?? 0) + 1);
+      view.providerStates.set('rejected', (view.providerStates.get('rejected') ?? 0) + 1);
+      settleTokens(view, `answer:${turn.id}`, row.capacity.usage);
+      // Existing operator-event/hold surface is the durable desk alert. One per account episode.
+      if (episode === turn.id) operatorEvent(view, row.at, turn.update, MODEL_CAPACITY_ALERT);
+    }
     if (row.unusedModel) {
       if (![GROUP_DISCLOSURE_HOLD, MODEL_NOT_STARTED_HOLD].includes(row.reason) || !turn.reserved || turn.answer !== undefined
         || turn.modelState !== undefined || turn.intent !== undefined || turn.answerRetried
@@ -4658,7 +4696,8 @@ function project(view: JournalView, row: JournalRecord, system?: SystemCheck, ad
       }
       turn.heldSince = since;
     } else delete turn.heldSince;
-    turn.held = row.reason; view.heldTurns.add(turn); turn.wasHeld = true; operatorEvent(view, row.at, turn.update, `held (${row.reason})`);
+    turn.held = row.reason; view.heldTurns.add(turn); turn.wasHeld = true;
+    if (!row.capacity) operatorEvent(view, row.at, turn.update, `held (${row.reason})`);
   }
   if (row.kind === 'memory-undecided') {
     if (!turn.accepted || turn.memoryUndecided) throw Error('preview journal: memory undecided order');
@@ -5182,6 +5221,7 @@ export interface PreviewPorts {
   sessionWork?(input: { question: string; context: string; id: string }): ReturnType<PreviewPorts['model']>;
   model(input: { question: string; context: string; id: string; prepared?: string }): Promise<string | {state?: 'complete'; text:string;
     usage: ModelUsage; /** The Decision's separately stated reason claim (Rule 108), kept beside its conclusion. */ reason?: string} | {state:'rejected' | 'complete'; failureClass:ModelFailureClass; usage?: ModelUsage;
+      /** Exact zero-token provider quota refusal, carried separately from semantic rejection. */ capacity?: ModelCapacity;
       /** A malformed answer's exact protocol defect (answer-reading.ts), named in the one format re-ask. */ defect?: string}
     | {state:'uncertain'; usage?: ModelUsage}>;
   /** Rule 42: a message id (accepted), null (UNKNOWN) or a closed outcome. Rule 89: `provenance`
@@ -7578,6 +7618,13 @@ export function createJournalWorker(journal: ReturnType<typeof openPreviewJourna
               reason: MODEL_NOT_STARTED_HOLD, unusedModel: { corrections: carried }, at: ports.now() });
             continue; // Every failure that could have launched leaves the reservation UNKNOWN.
           }
+          if (typeof answer !== 'string' && 'capacity' in answer && answer.capacity && answer.state === 'rejected'
+            && answer.usage?.inputTokens === 0 && answer.usage.inputComplete === true
+            && answer.usage.outputTokens === 0 && answer.usage.charge === null && validCapacity(answer.capacity)) {
+            journal.append({ kind: 'hold', id: turn.id, reason: MODEL_CAPACITY_HOLD,
+              capacity: { ...answer.capacity, usage: answer.usage }, at: ports.now() });
+            continue;
+          }
           // Rule 116: a real model sometimes answers in prose instead of the required Decision. Ask the same turn
           // once more with a runner-authored format reminder in the packet (never in the operator's message),
           // reserved against the same call cap and only while not stopped; a second miss is refused as before.
@@ -8538,6 +8585,8 @@ export function createJournalWorker(journal: ReturnType<typeof openPreviewJourna
     if (!turn.accepted || turn.intent !== undefined || turn.limited !== undefined || turn.requestedAction !== undefined
       || turn.held === 'superseded by edit' || turn.heldNoticeIntent !== undefined || turn.heldNoticeCoveredBy !== undefined) return null;
     if (turn.held === MODEL_NOT_STARTED_HOLD) return 'worker';
+    if (turn.capacity) return journal.view.order.some(item => item.thread === turn.thread
+      && item.capacity?.episode === turn.capacity!.episode && item.limited !== undefined) ? null : 'worker';
     const capped = outsideAllowance(journal.view, turn) ? 'turns' as const : turn.held === 'call cap' ? 'calls' as const
       : turn.held === 'reply cap' ? 'replies' as const : null;
     if (capped) return capped;
@@ -8877,7 +8926,7 @@ export function createJournalWorker(journal: ReturnType<typeof openPreviewJourna
       // The emergency stop stays reachable past every ordinary cap: its confirmation rides the reserve.
       if (isStopCommand(turn.text)) { groups.set(`stop:${turn.id}`, { ...(turn.thread === undefined ? {} : { thread: turn.thread }),
         turns: [turn], reason, stop: true }); continue; }
-      const key = JSON.stringify([turn.thread ?? null, turn.held === MODEL_NOT_STARTED_HOLD]), group = groups.get(key);
+      const key = JSON.stringify([turn.thread ?? null, turn.held === MODEL_NOT_STARTED_HOLD, turn.capacity?.episode]), group = groups.get(key);
       if (group) group.turns.push(turn);
       else groups.set(key, { ...(turn.thread === undefined ? {} : { thread: turn.thread }), turns: [turn], reason });
     }
@@ -8901,7 +8950,8 @@ export function createJournalWorker(journal: ReturnType<typeof openPreviewJourna
         : group.reason === 'worker' || openApproval(journal.view, 'raise-caps', ports.now()) ? undefined : issueRaise(lead, group.reason);
       const link = approval?.challenge ? approvalLink(approval.challenge) : null;
       const yesRequest = group.stop || approval !== undefined || group.reason === 'worker' ? undefined : await limitedOperatorRequest(lead, group.reason);
-      const text = group.stop ? STOP_CONFIRM_TEXT : lead.held === MODEL_NOT_STARTED_HOLD ? MODEL_NOT_STARTED_REPLY : `${limitedAnswerText(journal.view, group.reason, group.turns.length)}${approval
+      const text = group.stop ? STOP_CONFIRM_TEXT : lead.capacity ? modelCapacityReply(lead.capacity, ports.timeZone)
+        : lead.held === MODEL_NOT_STARTED_HOLD ? MODEL_NOT_STARTED_REPLY : `${limitedAnswerText(journal.view, group.reason, group.turns.length)}${approval
         && group.reason !== 'worker' ? `\n\n${approvalRequestText(journal.view, group.reason)} ${link ? RAISE_LINK_HINT : RAISE_SURFACE_HINT}` : ''}${
         yesRequest ? `\n\n${yesRequest.text}` : ''}`;
       ports.checkOutbound(text);
