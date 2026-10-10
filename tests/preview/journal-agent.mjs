@@ -32,7 +32,7 @@ import { SOURCE_PINS, sourcePacket, deskStatusSource, readDeskStatus, verifyMind
 import { admitPreviewHarness, PREVIEW_JOURNAL_HARNESS, PREVIEW_JOURNAL_STALL_COVERAGE } from './stall-coverage.js';
 import { UNRECORDED, briefingDigestOf, codeDigestOf, installedCodeOf, installationRows, installationStatusLines, installedUpdateFrom,
   staleAgainst, updateDelivery, updatePacketItem } from './installation.js';
-import { bindPreviewBlockingSites, projectionDigest, summaryStoppedAt, loopRevisitMs, LOOP_REVISIT_MIN_MS, LOOP_REVISIT_MAX_MS, SUMMARY_REASON_CHARS } from './journal.js';
+import { bindPreviewBlockingSites, projectionDigest, summaryStoppedAt, loopRevisitMs, LOOP_REVISIT_MIN_MS, LOOP_REVISIT_MAX_MS, SUMMARY_REASON_CHARS, GROUP_DISCLOSURE_HOLD_NOTICE } from './journal.js';
 import { openPreviewJournal as openJournal, createJournalWorker, raiseJournalCaps, renewJournalExpiry, activationMatchesJournal, activePersonMerges, openQuestionCandidates, projectMemoryText, unansweredCue, reportJournalCap, unknownCallCounts, pendingUnknownCalls, replyTimings, reviewUnavailableReleases, claimScopedWithholds, MINIMAL_RESERVE, reserveTurnsUsed, reserveRepliesUsed, openRequests, actionWithdrawn, reminderDue, operatorRequestsReport, retrospectiveCases, openBlockers, openDirectives, declaredObligations, sendOutcomeCounts, sendOutcomeOf, unsentLabel, replyTarget, replyOutcomeOf, partialReplyLabel, reminderOutcome, envelopeWriter, PREVIEW_LIVE_LIMITS, unservableContextReason, PREVIEW_JOURNAL_COMPACT_BYTES, activeMemoryConflicts, TOO_LONG_INPUT_NOTICE, TOO_LONG_REPLY_NOTICE , probeTurn, operatorWriter, isJournalUpdate, retractRefusal, retractRendering, retractCarrier, retractedTurn, liveSummaries, continuityFrontier, withinOperatorHours, OPERATOR_HOURS, withFormatReminder, concurrentWorkItem, latestOwnedLaunch, ownedProcessOf, meaningIndexStatus, LIMITED_ANSWER_OPERATION, MISSING_INSTALLATION_POLICY } from './journal.js';
 import { createPreviewClock } from './clock.js';
 import { appendRun, heldNotices, heldRepliesToday, memoryHealthLine, readRuns, restartHandoff, selfState, selfStateBrief, selfStateSource, zoneFormatter } from './self-state.js';
@@ -1235,7 +1235,7 @@ async function main() {
       || groupPermission(scope).kind !== 'resolved') throw Error('group carry: disclosure grant or operator-only audience refused');
   };
   if (command === 'carry-group') {
-    let destination, source;
+    let destination, source, sourceStorage;
     try {
       if (posture !== 'single-machine') throw Error('group carry: carry requires the local exclusive writer');
       destination = openPreviewJournal(journalPath, key());
@@ -1250,14 +1250,25 @@ async function main() {
       const audience = await verifyGroupAudience(scope, membershipReadFor(scope));
       if (!audience) throw Error('group carry: operator-only audience refused');
       permission = groupPermission(scope);
-      // The predecessor uses this installation's storage custody; no key is copied into the new root.
-      source = openPreviewJournal(join(sourceRoot, 'journal.encrypted'), key(), undefined, undefined, true);
+      // The predecessor uses this installation's storage custody; no key is copied into the new root. It records the
+      // transfer of its open requests, so it is opened under its own writer lease: a live private runner refuses this
+      // carry (Rules 52, 63). Rule 35: its origin is read before that lease is taken.
+      const sourcePath = join(sourceRoot, 'journal.encrypted');
+      const peek = openPreviewJournal(sourcePath, key(), undefined, undefined, true);
+      try { if ((peek.view.genesis.origin ?? 'production') !== (destination.view.genesis.origin ?? 'production')) throw Error('group carry: predecessor origin differs'); }
+      finally { peek.close(); }
+      sourceStorage = take(openProductionStorage({ root: join(sourceRoot, '.writer'), machine,
+        key: key(), policy: 'preview-journal', store: 'preview-journal', context, io: productionStorageIO }));
+      source = openPreviewJournal(sourcePath, key());
       const result = appendGroupCarry(destination, source, scope, permission, audience, wallNow(), () => existsSync(stopPath));
-      process.stdout.write(`${JSON.stringify({ result, predecessor: sourceRoot, digest: destination.view.groupCarry.digest })}\n`);
+      // Rule 2: what moved and what stayed are both named; a kept request is never silently dropped.
+      const carried = destination.view.groupCarry;
+      process.stdout.write(`${JSON.stringify({ result, predecessor: sourceRoot, digest: carried.digest,
+        transferredRequests: carried.requests.length, keptByPredecessor: carried.entries.filter(e => e.kind === 'reminder').length })}\n`);
     } catch (error) {
       const reason = error instanceof Error && error.message.startsWith('group carry:') ? error.message : 'group carry: preparation failed';
       process.stderr.write(`${reason}\n`); process.exitCode = 1;
-    } finally { source?.close(); destination?.close(); storage.close(); }
+    } finally { source?.close(); sourceStorage?.close(); destination?.close(); storage.close(); }
     return;
   }
   if (command === 'import-store') {
@@ -2028,8 +2039,10 @@ async function main() {
             ? 'stopped before dispatch' : !ownerHeld() ? 'conversation ownership lost before dispatch' : null);
           if (refused !== null) return refused;
         }
-        try { await requireGroupDisclosure(journal.view); }
-        catch { return { kind: 'refused', reason: 'group disclosure grant or audience refused before dispatch' }; }
+        // The fixed content-free hold notice is the one send a refused disclosure admits (journal GROUP_DISCLOSURE_HOLD_NOTICE).
+        if (!(target?.startsWith('held-notice:') && text === GROUP_DISCLOSURE_HOLD_NOTICE && expectedText === GROUP_DISCLOSURE_HOLD_NOTICE))
+          try { await requireGroupDisclosure(journal.view); }
+          catch { return { kind: 'refused', reason: 'group disclosure grant or audience refused before dispatch' }; }
         if (workerStop.value || existsSync(stopPath) || !ownerHeld() || journal.view.stop || wallNow() >= journal.view.expires)
           return { kind: 'refused', reason: 'stopped during audience check' };
         let outcome = { kind: 'unknown', reason: 'send port failed' };

@@ -78,8 +78,9 @@ fixture still takes one owner-admitted binding and one fixed target; these flags
 `journal-agent.mjs carry-group --root GROUP_ROOT --source-root PRIVATE_ROOT
 --authority-record AUTHORITY_JSON --operator-records OWNER_RECORDS --bot-username BOT_USERNAME`
 copies one source-labelled memory snapshot into an existing forum journal. Use the installation's
-existing storage and Telegram credential custody. Both roots must share that storage custody; the
-source is opened read-only, and the destination takes its existing exclusive single-machine writer.
+existing storage and Telegram credential custody. Both roots must share that storage custody. The
+command takes both roots' existing exclusive single-machine writers, so it refuses while the private
+runner is live; park the private root (stop it) first.
 This command does not create or infer an approval. An activation grant alone cannot authorize it.
 
 The existing sealed `PreviewActivationAuthority` record must contain a `groupDisclosureGrants`
@@ -115,13 +116,32 @@ The optional synchronous external recall reranker cannot await that check, so ca
 existing deterministic recall fallback. Ordinary roots retain their configured reranker.
 
 The snapshot retains projected recall, active preferences, corrections, settled summary prose and
-facts, and open promises/reminders. It retains the original source references and counts any facts
+facts, and open promise context. It retains the original source references and counts any facts
 omitted from a bounded prompt selection. It does not copy intake, counters, approvals or send records.
-The private journal keeps ownership of promise/reminder execution: copying context never replays an
-old send or starts a second scheduler. Repeating the same carry is a no-op, including after restart
-and compaction; a different predecessor is refused. Later private activity is not automatically
-synced. Older builds refuse the new non-additive journal frame. A carried group must keep a build
-that enforces its disclosure condition, even if the snapshot is not selected in the current prompt.
+
+Execution of the operator's open dated requests moves exactly once. Before the group snapshot is
+written, the private journal records a `request-transfer` naming the group root and those requests;
+from then on the private root never fires them, including when it is resumed for rollback. The group
+root then owns them as ordinary requests: each fires once at its due time in the forum's General
+topic, and the operator can withdraw it there. A crash between the two records leaves a request
+owned by neither until the same command is run again, which reuses the recorded transfer; it never
+leaves two owners. A request that a later, still-unsettled private message may have withdrawn is not
+moved: the private root keeps holding it as before, and the group sees it only as labelled context.
+The command's output counts both (`transferredRequests`, `keptByPredecessor`). Agent promises are
+context in both roots; a promise grants no send. Nothing is recorded in the private journal when
+there is nothing to move.
+
+While the disclosure grant or the operator-only audience cannot be shown, every turn of the carried
+group, a due request included, is held unreserved and unsent, and continues once both hold again.
+After ten minutes of such a hold, one fixed content-free notice goes to the group (at most one per
+hour) so the hold is never silent; it names no private item.
+
+Repeating the same carry is a no-op, including after restart and compaction; a different predecessor
+is refused, and a predecessor whose requests already moved to one group cannot move them to another.
+Later private activity is not automatically synced. Older builds refuse the new non-additive journal
+frames, in the group and in a private root that recorded a transfer, so neither can fire a moved
+request twice. A carried group must keep a build that enforces its disclosure condition, even if the
+snapshot is not selected in the current prompt.
 
 ## Stops, bounds, and status
 

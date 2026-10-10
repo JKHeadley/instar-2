@@ -470,7 +470,13 @@ export const HELD_NOTICE_WINDOW_MS = 3_600_000;
  * when the check returns, so "busy or unavailable; answered when it recovers; nothing is needed from you" is true. */
 export const PRESENCE_NOTE_HOLDS: ReadonlySet<string> = new Set(['reply check unavailable', 'step check unavailable']);
 const heldNoticeReason = (reason: string | undefined) => reason === 'reply check unavailable' || reason === 'step check unavailable'
-  || reason === 'call cap' || reason === 'memory correction pending';
+  || reason === 'call cap' || reason === 'memory correction pending' || reason === GROUP_DISCLOSURE_HOLD;
+/** A carried root whose disclosure grant or operator-only audience cannot be shown now: its turns (a due carried
+ * request included) are kept unanswered and unsent, never reserved, and answered once both hold again. */
+export const GROUP_DISCLOSURE_HOLD = 'group disclosure refused';
+/** The one push such a hold allows (Rule 87 action-needed; Rule 88 after the self-heal window): content-free, so it
+ * reveals nothing private to whoever is in the group now. The disclosure gate admits exactly this text. */
+export const GROUP_DISCLOSURE_HOLD_NOTICE = 'PREVIEW — I\'m holding a reply until this group\'s audience check passes again; nothing is lost, and it will follow then.';
 /** Rule 87: every push is classified at the one send boundary. `status` is pull-only (status,
  * self-state, digest) and is never pushed; a limited answer to an incoming message is its result. */
 export type OutboundDisposition = 'result' | 'action-needed' | 'status';
@@ -958,7 +964,7 @@ export type ForwardDeclaration = { generation: number; additive: true };
  * "a kind I never heard of" as "an effect whose turn is gone" and refuse the whole root. A kind added to
  * JournalRecord and not added here fails tests/preview/journal-rollback-window.test.ts; adding it here is
  * the reminder to bump JOURNAL_GENERATION and give it a ForwardDeclaration. */
-export const KNOWN_FRAME_KINDS: ReadonlySet<string> = new Set(['group-carry', 'action-due', 'answer', 'answer-replace',
+export const KNOWN_FRAME_KINDS: ReadonlySet<string> = new Set(['group-carry', 'request-transfer', 'action-due', 'answer', 'answer-replace',
   'approval-decision', 'approval-request', 'call-outcome', 'cap-report', 'caps', 'channel-item',
   'channel-source-cursor', 'channel-source-error', 'coherence', 'expiry', 'format-retry', 'genesis',
   'held-notice-intent', 'held-notice-sent', 'hold', 'import', 'index-reserve', 'intake', 'intent',
@@ -1031,6 +1037,9 @@ export type JournalRecord =
    * turns are never the operator's in any store; every earlier row stays and replays unchanged (Rule 7: hidden, never deleted). */
   | { kind: 'retract'; request: string; updates: number[]; reason: string; authority: string; at: number }
   | { kind: 'group-carry'; memory: CarriedMemory; at: number }
+  /** Written to the PRIVATE predecessor before its group carry: these open requests now execute only in the named
+   * group root. Non-additive: a reader that skipped it would fire them a second time (Rules 52, 57, 93). */
+  | { kind: 'request-transfer'; destinationRoot: string; chat: string; requests: ReminderRef[]; at: number }
   | { kind: 'channel-item'; item: ChannelItem; at: number }
   | { kind: 'channel-source-cursor'; source: 'telegram' | 'slack'; cursor: ChannelSourceCursor; reset?: true; at: number }
   | { kind: 'channel-source-error'; source: 'telegram' | 'slack'; error: string | null; at: number }
@@ -1339,6 +1348,8 @@ export interface JournalView { genesis: Extract<JournalRecord, {kind:'genesis'}>
 
   /** Non-additive: older readers must refuse, including after compaction; descendants depend on its disclosure gate. */
   groupCarry?: CarriedMemory;
+  /** Predecessor only: open requests whose execution moved to a group root, once. Never fired from here again. */
+  requestTransfer?: { destinationRoot: string; chat: string; requests: ReminderRef[]; at: number };
   channelItems: Map<string, ChannelItem>;
   channelSources: Map<'telegram' | 'slack', ChannelSourceCursor>;
   channelSourceErrors: Map<'telegram' | 'slack', string>;
@@ -2406,11 +2417,32 @@ export const REQUEST_ITEM_LIMIT = 5;
 const requestKeys = (turn: Turn) => turn.requestedAction === undefined ? []
   : [...turn.requestedAction.items, ...turn.requestedAction.overflow ?? []].map(reminderKey);
 /** The verified operator's explicit dated requests (`remind: true`) that are still active and not cancelled. */
-const activeRequests = (view: JournalView) => activeDated(view).filter(item => {
-  const source = view.turns.get(item.source);
-  return item.remind === true && item.day !== undefined && item.ambiguity === undefined && source !== undefined
-    && verifiedOperatorTurn(view, source) && !view.reminderCancels.includes(datedKey(item));
-});
+const activeRequests = (view: JournalView) => {
+  const moved = new Set(view.requestTransfer?.requests.map(reminderKey) ?? []);
+  // A carried request was the verified operator's own in the predecessor, whose operator this root's genesis
+  // matches (checked at carry and at projection); it is withdrawable here exactly like a local one.
+  return [...carriedRequests(view).filter(item => !view.reminderCancels.includes(datedKey(item))),
+    ...activeDated(view).filter(item => {
+      const source = view.turns.get(item.source);
+      return item.remind === true && item.day !== undefined && item.ambiguity === undefined && source !== undefined
+        && verifiedOperatorTurn(view, source) && !view.reminderCancels.includes(datedKey(item)) && !moved.has(datedKey(item));
+    })];
+};
+/** Requests whose execution a group carry transferred into this root (Rules 57, 93: exactly one owner). */
+export const carriedRequests = (view: JournalView): DatedItem[] => (view.groupCarry?.requests ?? []).map(request => request.item)
+  // A later correction here that rewrites its words withdraws it, as a correction of a local request's source does.
+  .filter(item => projectMemoryClause(view, item.quote, item.source) === item.quote);
+/** Where a request was asked: its local turn, or for a carried request its predecessor time. A carried request is
+ * older than every turn here and is answered in the group's General topic. */
+export const requestSource = (view: JournalView, item: Pick<DatedItem, 'source' | 'quote' | 'when'>) => {
+  const carried = view.groupCarry?.requests.find(request => datedKey(request.item) === datedKey(item as DatedItem));
+  if (carried) return { update: -1, at: carried.askedAt, sentAt: carried.askedAt, thread: undefined as number | undefined };
+  const turn = view.turns.get(item.source);
+  return turn ? { update: turn.update, at: turn.at, sentAt: turnSentAt(turn), thread: turn.thread } : undefined;
+};
+/** A request by its key, local or carried. */
+export const requestByKey = (view: JournalView, key: string) =>
+  view.dated.find(item => datedKey(item) === key) ?? carriedRequests(view).find(item => datedKey(item) === key);
 /** Rules 57, 93: a due turn created but not yet sent is withdrawn once any request it carries is cancelled, corrected
  * or forgotten. It is never answered or sent; its other requests fall due again on their own. */
 export const actionWithdrawn = (view: JournalView, turn: Turn) => {
@@ -2430,8 +2462,8 @@ export const pendingRequests = (view: JournalView) => {
   const queued = new Set(view.order.filter(turn => turn.intent === undefined && !actionWithdrawn(view, turn)).flatMap(requestKeys));
   return openRequests(view).filter(item => !queued.has(datedKey(item)));
 };
-const requestItem = (view: JournalView, ref: ReminderRef) => view.dated.find(item => datedKey(item) === reminderKey(ref));
-const askedAt = (view: JournalView, item: DatedItem) => localStamp(turnSentAt(view.turns.get(item.source)!), item.zone);
+const requestItem = (view: JournalView, ref: ReminderRef) => requestByKey(view, reminderKey(ref));
+const askedAt = (view: JournalView, item: DatedItem) => localStamp(requestSource(view, item)!.sentAt, item.zone);
 /** Rule 52: requests beyond the written-out ones become one count line, never another push. */
 export const requestOverflowLine = (count: number) =>
   `And ${count} more request${count === 1 ? '' : 's'} of yours ${count === 1 ? 'is' : 'are'} due now; ask me and I'll list ${count === 1 ? 'it' : 'them'}.`;
@@ -3506,6 +3538,17 @@ function project(view: JournalView, row: JournalRecord, system?: SystemCheck, ad
       || !validCarriedMemory(row.memory)) throw Error('preview journal: group lineage refused');
     view.groupCarry = row.memory; return;
   }
+  if (row.kind === 'request-transfer') {
+    const open = new Set(openRequests(view).map(datedKey)), keys = Array.isArray(row.requests) ? row.requests.map(reminderKey) : [];
+    if (view.requestTransfer || view.groupCarry || view.genesis.forum === true || !Array.isArray(row.requests)
+      || new Set(keys).size !== keys.length || keys.some(key => !open.has(key))
+      || typeof row.destinationRoot !== 'string' || !row.destinationRoot.startsWith('/') || typeof row.chat !== 'string'
+      || !/^-[1-9][0-9]*$/u.test(row.chat) || !Number.isSafeInteger(row.at) || row.at <= 0)
+      throw Error('preview journal: request transfer refused');
+    view.requestTransfer = { destinationRoot: row.destinationRoot, chat: row.chat,
+      requests: row.requests.map(ref => ({ source: ref.source, quote: ref.quote, when: ref.when })), at: row.at };
+    return;
+  }
   if (row.kind === 'channel-item') {
     if (view.genesis.forum === true) throw Error('preview journal: external history has no group disclosure grant');
     // Inert: an item from the removed email import route replays but is never recalled or acted on.
@@ -3939,10 +3982,10 @@ function project(view: JournalView, row: JournalRecord, system?: SystemCheck, ad
     const found = (refs: readonly ReminderRef[]) => refs.map(ref => pending.find(item => datedKey(item) === reminderKey(ref)));
     const items = Array.isArray(row.items) ? found(row.items) : [];
     const overflow = row.overflow === undefined ? [] : Array.isArray(row.overflow) && row.overflow.length ? found(row.overflow) : [undefined];
-    const all = [...items, ...overflow], source = items[0] && view.turns.get(items[0].source);
+    const all = [...items, ...overflow], source = items[0] && requestSource(view, items[0]);
     const number = view.order.filter(turn => turn.requestedAction !== undefined && turn.requestedAction.legacy === undefined).length;
     if (!source || items.length > REQUEST_ITEM_LIMIT || all.some(item => !item || reminderDue(item) > localStamp(row.at, item.zone)
-        || view.turns.get(item.source)?.thread !== source.thread) || new Set(all).size !== all.length
+        || requestSource(view, item)?.thread !== source.thread) || new Set(all).size !== all.length
       || row.id !== `requested-action:${String(number)}` || view.turns.has(row.id) || view.stop || row.at >= view.expires
       || view.order.length >= view.limits.maxTurns || row.update !== nextSyntheticUpdate(view)
       // Rule 29: the scheduler writes this turn as a verified system principal, signed by the owner over these exact requests.
@@ -3989,7 +4032,8 @@ function project(view: JournalView, row: JournalRecord, system?: SystemCheck, ad
       || turn.heldNoticeIntent !== undefined || view.replies >= view.limits.maxReplies
       || !legacyText && row.at < lastNotice + HELD_NOTICE_WINDOW_MS
       || row.chat !== view.genesis.chat || row.thread !== turn.thread || row.update !== turn.update
-      || row.grant !== view.genesis.grant || !(legacyText || countedText || turn.requestedAction?.legacy === 'summary'
+      || row.grant !== view.genesis.grant || !(legacyText || countedText
+        || turn.held === GROUP_DISCLOSURE_HOLD && row.text === GROUP_DISCLOSURE_HOLD_NOTICE || turn.requestedAction?.legacy === 'summary'
         && /^(?:PREVIEW — )?I'm holding the summary you asked for \(due [0-9-]{10} [0-2][0-9]:[0-5][0-9]\); it will follow or I'll tell you why$/u.test(row.text)))
       throw Error('preview journal: held notice intent order');
     const covered = (row.covers ?? []).map(id => view.turns.get(id));
@@ -5142,7 +5186,9 @@ export function createJournalWorker(journal: ReturnType<typeof openPreviewJourna
     return method(...args);
   };
   ports = { ...original, model: guarded(original.model),
-    send: async input => !journal.view.groupCarry || await disclosure() ? original.send(input)
+    // The fixed content-free hold notice is the one outbound a refused disclosure admits: it names no private item.
+    send: async input => !journal.view.groupCarry || await disclosure() || input.target?.startsWith('held-notice:') === true
+      && input.text === GROUP_DISCLOSURE_HOLD_NOTICE && input.expectedText === GROUP_DISCLOSURE_HOLD_NOTICE ? original.send(input)
       : { kind: 'refused', reason: 'group disclosure authority or audience refused' },
     ...(original.sessionWork ? { sessionWork: guarded(original.sessionWork) } : {}),
     ...(original.retrospect ? { retrospect: guarded(original.retrospect) } : {}),
@@ -5840,7 +5886,7 @@ export function createJournalWorker(journal: ReturnType<typeof openPreviewJourna
   // settled by a recorded decision, a cap, an UNKNOWN or failed call, or a
   // content-free notice keeps that reminder unsent (Rules 57, 93).
   const reminderUnsettled = (item: DatedItem) => {
-    const source = journal.view.turns.get(item.source);
+    const source = requestSource(journal.view, item);
     return source === undefined || journal.view.order.some(turn => turn.update > source.update
       && turn.accepted && fromOperator(turn) && (turn.answer === undefined || turn.failureClass !== undefined
         || turn.modelState === 'uncertain' || turn.modelState === 'rejected'
@@ -7144,7 +7190,7 @@ export function createJournalWorker(journal: ReturnType<typeof openPreviewJourna
     const now = ports.now(), groups = new Map<string, DatedItem[]>();
     for (const item of pendingRequests(journal.view)) {
       if (clean(item.quote) !== item.quote || reminderDue(item) > localStamp(now, item.zone) || reminderUnsettled(item)) continue;
-      const key = JSON.stringify(journal.view.turns.get(item.source)!.thread ?? null);
+      const key = JSON.stringify(requestSource(journal.view, item)!.thread ?? null);
       groups.set(key, [...groups.get(key) ?? [], item]);
     }
     const ref = (item: DatedItem): ReminderRef => ({ source: item.source, quote: item.quote, when: item.when });
@@ -7160,6 +7206,28 @@ export function createJournalWorker(journal: ReturnType<typeof openPreviewJourna
       if (scheduler === null) continue;
       journal.append({ kind: 'action-due', id, items, ...(overflow.length ? { overflow } : {}), update, writer: writerRecord(scheduler), at: now });
     }
+  };
+  /** Rules 2, 87, 88: a disclosure hold past the self-heal window is told once, content-free, per notice window; the
+   * held turns are named only by this fixed text. Its intent precedes dispatch and an UNKNOWN is never repeated. */
+  const noticeDisclosureHolds = async () => {
+    const now = ports.now();
+    if (journal.view.stop || ports.stopped() || now >= journal.view.expires || journal.view.replies >= journal.view.limits.maxReplies
+      || now < lastHeldNoticeAt(journal.view) + HELD_NOTICE_WINDOW_MS) return;
+    const held = journal.view.order.filter(turn => turn.accepted && turn.held === GROUP_DISCLOSURE_HOLD && turn.intent === undefined
+      && turn.heldNoticeIntent === undefined && turn.heldNoticeCoveredBy === undefined && turn.heldSince !== undefined);
+    const lead = held.find(turn => now > turn.heldSince! + HELD_NOTICE_AFTER_MS);
+    if (!lead) return;
+    const covers = held.filter(turn => turn !== lead && turn.thread === lead.thread).map(turn => turn.id);
+    const text = GROUP_DISCLOSURE_HOLD_NOTICE, chat = journal.view.genesis.chat, target = `held-notice:${lead.id}`;
+    const thread = lead.thread === undefined ? {} : { thread: lead.thread };
+    ports.checkOutbound(text);
+    const provenance = journal.signOutbound('infrastructure', { target, chat, ...thread, body: text });
+    journal.append({ kind: 'held-notice-intent', id: lead.id, text, chat, ...thread, update: lead.update,
+      grant: journal.view.genesis.grant, ...(covers.length ? { covers } : {}), provenance, at: now });
+    gate();
+    const outcome = await push('incident', target, provenance, { text, expectedText: text, chat, ...thread, update: lead.update });
+    if (outcome.kind === 'accepted') try { journal.append({ kind: 'held-notice-sent', id: lead.id, message: outcome.message, at: ports.now() }); }
+    catch { /* the notice stays UNKNOWN; never repeated */ }
   };
   /** A created due turn is never answered or sent once withdrawn (or from a removed feature), and waits while a later
    * verified-operator turn that may withdraw one of its requests is unsettled (Rules 57, 93). */
@@ -7205,6 +7273,8 @@ export function createJournalWorker(journal: ReturnType<typeof openPreviewJourna
     if (working) throw Error('preview journal: second worker refused');
     working = true; workingSince = ports.now();
     try {
+      // One fresh read per pass decides which turns may proceed; the model and send ports still re-read their own.
+      const audienceHolds = !journal.view.groupCarry || await disclosure();
       completeApprovals();
       // A split reply left part-way by a restart continues before anything new is answered.
       for (const turn of journal.view.order) if (turn.replyParts?.length) await sendReplyParts(turn);
@@ -7221,6 +7291,13 @@ export function createJournalWorker(journal: ReturnType<typeof openPreviewJourna
             journal.append({ kind: 'hold', id: turn.id, reason: 'superseded by edit', at: ports.now() });
           continue;
         }
+        // Least revelation: a carried root without current permission and operator-only audience reserves nothing and
+        // sends nothing for this turn; it is kept (a due request stays unconsumed) and proceeds once both hold again.
+        if (!audienceHolds && !isStopCommand(turn.text)) {
+          if (turn.held === undefined) journal.append({ kind: 'hold', id: turn.id, reason: GROUP_DISCLOSURE_HOLD, at: ports.now() });
+          continue;
+        }
+        if (turn.held === GROUP_DISCLOSURE_HOLD) { delete turn.held; delete turn.heldSince; journal.view.heldTurns.delete(turn); }
         // int11 answers a status command and a too-long-input notice even while a
         // correction holds ordinary answers; the burst ordering hold keeps that exemption.
         if (blockedEarlier && turn.modelState !== 'uncertain' && !isStatusCommand(turn.text)
@@ -7810,7 +7887,7 @@ export function createJournalWorker(journal: ReturnType<typeof openPreviewJourna
             // Rules 42, 52: an outcome list names at most three items, each clipped, and counts the rest, so the
             // runner's own lines stay bounded and always leave room for every refusal this answer must carry.
             else if (reminderCancels?.length && !invalidMemory) text = `${text.trim()} Cancelled request${reminderCancels.length > 1 ? 's' : ''}: `
-              + `${nameQuotes(reminderCancels.map(key => journal.view.dated.find(item => datedKey(item) === key)!.quote))}.`.trim();
+              + `${nameQuotes(reminderCancels.map(key => requestByKey(journal.view, key)!.quote))}.`.trim();
             if (forgotten.length && text.trim()) text = `${text.trim()} Also forgot the text of ${forgotten.length > 1 ? 'those requests' : 'that request'}.`;
             if (kept.length && text.trim()) text = `${text.trim()} I did not forget the text of ${kept.length > 1 ? 'requests that are' : 'a request that is'} `
               + `still open, so nothing is lost: ${nameQuotes(kept.map(change => clean(redact(change.quote).text, true)))}. `
@@ -8313,8 +8390,9 @@ export function createJournalWorker(journal: ReturnType<typeof openPreviewJourna
         // The rest of a split reply follows at once, before any later reply.
         if (parts.length) await sendReplyParts(turn);
       }
+      if (!audienceHolds) await noticeDisclosureHolds();
       // Rule 87: an unchanged held status is pull-only (status, self-state, the mind's packet). Earlier
-      // held-notice rows still replay; no new held notice is ever pushed.
+      // held-notice rows still replay; no other held notice is ever pushed.
       if (!due) await answerLimited();
       // Edits consume the existing summary judgment, never the reply doorway.
       if (!due && pendingMemory()?.editOf) settleBehind();
@@ -9909,7 +9987,7 @@ export function createJournalWorker(journal: ReturnType<typeof openPreviewJourna
   const actionDueEvidence = (turn: Turn, step: string): object => ({ step, selectedAt: isoMinute(turn.at),
     requests: turn.requestedAction!.items.map(ref => {
       const item = requestItem(journal.view, ref);
-      return item ? { request: clean(redact(item.quote).text, true, item.source), requestedAt: isoMinute(journal.view.turns.get(item.source)!.at),
+      return item ? { request: clean(redact(item.quote).text, true, item.source), requestedAt: isoMinute(requestSource(journal.view, item)!.at),
         when: item.when, due: `${reminderDue(item)} ${item.zone}` } : { error: 'request not recorded' };
     }), moreRequests: turn.requestedAction!.overflow?.length ?? 0 });
   /** Opens (once) and judges the pre-send steps named here. 'validated' lets the next consequential step run; a

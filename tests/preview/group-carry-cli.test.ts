@@ -5,7 +5,7 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { execFile } from 'node:child_process';
 import { promisify } from 'node:util';
-import { createJournalWorker, openPreviewJournal } from './journal-test-worker.js';
+import { createJournalWorker, openPreviewJournal, openRequests } from './journal-test-worker.js';
 import { authority, key, records, scope, now } from './group-carry-fixture.js';
 
 // The shipped process-limit shim is a macOS launch contract; the desk runs this whole CLI case there.
@@ -17,10 +17,16 @@ it.skipIf(process.platform !== 'darwin')('the shipped carry-group command reads 
     grant: 'TEST-cli-carry', configurationDigest: 'sha256:offline', expires: 9999999999999,
     maxCalls: 20, maxReplies: 20, maxTurns: 20, maxBytes: 409600, cursor: 0 };
   const source = openPreviewJournal(sourcePath, key, genesis);
-  const worker = createJournalWorker(source, { origin: 'test', now: () => now, stopped: () => false,
-    model: async () => 'Noted.', send: async () => 1, checkOutbound: () => {} });
+  const ask = 'remind me Friday at 9 am to call Priya';
+  const worker = createJournalWorker(source, { origin: 'test', now: () => now, stopped: () => false, timeZone: 'UTC',
+    model: async ({ question }) => question === ask
+      ? JSON.stringify({ reply: 'Okay.', memory: [], dated: [{ quote: ask, when: 'Friday at 9 am', remind: true }] }) : 'Noted.',
+    send: async () => 1, checkOutbound: () => {} });
   worker.intake([{ update_id: 1, message: { chat: { id: Number(scope.operator), type: 'private' },
     from: { id: Number(scope.operator) }, text: 'I keep the itinerary in the blue folder.' } }]); await worker.drain();
+  worker.intake([{ update_id: 2, message: { chat: { id: Number(scope.operator), type: 'private' },
+    from: { id: Number(scope.operator) }, text: ask, date: Math.floor(now / 1000) } }]); await worker.drain();
+  expect(openRequests(source.view)).toHaveLength(1);
   source.close();
   openPreviewJournal(destinationPath, key, { ...genesis, chat: scope.chat, forum: true }).close();
   const untouched = readFileSync(sourcePath);
@@ -50,17 +56,30 @@ it.skipIf(process.platform !== 'darwin')('the shipped carry-group command reads 
       INSTAR_SECRET_PREVIEW_TELEGRAM_BOT_TOKEN: '12345678:AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA',
       INSTAR_PREVIEW_TEST_TELEGRAM_ENDPOINT: `http://127.0.0.1:${address.port}` }, timeout: 30000, maxBuffer: 1024 * 1024 });
   try {
+    // A live private runner holds the predecessor's writer lease: the carry refuses and writes nothing to either root.
+    const lease = join(sourceRoot, '.writer', '.boot-lease'); mkdirSync(lease, { recursive: true });
+    writeFileSync(join(lease, 'owner.json'), JSON.stringify({ pid: process.pid, machine: 'preview-local-machine', nonce: 'live-private-runner' }));
+    const emptyGroup = readFileSync(destinationPath);
+    await expect(run()).rejects.toThrow(/preparation failed/u);
+    expect(readFileSync(destinationPath)).toEqual(emptyGroup); expect(readFileSync(sourcePath)).toEqual(untouched);
+    rmSync(lease, { recursive: true });
     const carried = await run(); expect(JSON.parse(carried.stdout).result).toBe('carried');
     const size = readFileSync(destinationPath).length;
     expect(JSON.parse((await run()).stdout).result).toBe('already-carried');
     expect(readFileSync(destinationPath).length).toBe(size);
     count = 3; await expect(run()).rejects.toThrow(/operator-only audience refused/u);
     expect(readFileSync(destinationPath).length).toBe(size);
-    expect(readFileSync(sourcePath)).toEqual(untouched);
+    // The predecessor keeps every earlier byte and gains exactly its one transfer record.
+    const after = readFileSync(sourcePath);
+    expect(after.subarray(0, untouched.length)).toEqual(untouched); expect(after.length).toBeGreaterThan(untouched.length);
     expect(seen).toContain('getChatMember'); expect(seen).not.toContain('sendMessage');
     const replay = openPreviewJournal(destinationPath, key, undefined, undefined, true);
     expect(replay.view.groupCarry!.entries.some(e => e.text.includes('blue folder'))).toBe(true);
-    expect(replay.view.groupCarry!.scope.sourceRoot).toBe(sourceRoot); replay.close();
+    expect(replay.view.groupCarry!.scope.sourceRoot).toBe(sourceRoot);
+    expect(openRequests(replay.view).map(item => item.quote)).toEqual([ask]); replay.close();
+    const predecessor = openPreviewJournal(sourcePath, key, undefined, undefined, true);
+    expect(openRequests(predecessor.view)).toEqual([]);
+    expect(predecessor.view.requestTransfer).toMatchObject({ destinationRoot, chat: scope.chat }); predecessor.close();
   } finally { await new Promise<void>(resolve => server.close(() => resolve())); rmSync(root, { recursive: true, force: true }); }
 }, 90000);
 

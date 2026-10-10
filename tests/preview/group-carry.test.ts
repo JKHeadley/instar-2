@@ -3,7 +3,7 @@ import { mkdtempSync, readFileSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { appendGroupCarry, buildCarriedMemory, groupCarryPacket, validCarriedMemory } from './group-carry.js';
-import { createJournalWorker, openPreviewJournal, type JournalRecord } from './journal-test-worker.js';
+import { createJournalWorker, openPreviewJournal, openRequests, type JournalRecord } from './journal-test-worker.js';
 import { resolveGroupDisclosure, verifyGroupAudience } from './group-disclosure.js';
 import { now, key, sealKey, scope, records, authority, membership, permissionFor } from './group-carry-fixture.js';
 
@@ -24,11 +24,12 @@ async function world() {
     model: async () => 'Noted.', send: async () => 10, checkOutbound: () => {} });
   worker.intake([update(1, 'My preferred meeting place is the arboretum.')]); await worker.drain();
   writer.close();
-  const source = openPreviewJournal(path, key, undefined, undefined, true);
+  // The carry holds the predecessor's writer (it records any request transfer); with nothing open it writes nothing there.
+  const source = openPreviewJournal(path, key);
   const destination = openPreviewJournal(target, key, { ...genesis, chat: scope.chat, forum: true });
   return { path, target, source, destination };
 }
-it('carries once under sourced grant and verified audience, survives compaction, and never changes the predecessor', async () => {
+it('carries once under sourced grant and verified audience, survives compaction, and leaves a predecessor with no open request byte-identical', async () => {
   const w = await world(), bytes = readFileSync(w.path);
   const audience = await verifyGroupAudience(scope, membership());
   expect(appendGroupCarry(w.destination, w.source, scope, permission(), audience, now, () => false)).toBe('carried');
@@ -63,7 +64,7 @@ it('refuses a missing grant, other member, unknown membership, stop, wrong ident
   expect(() => attempt(permission(), true, false, { ...scope, sourceRoot: '/other' })).toThrow(/permission/u);
   w.destination.close(); w.source.close();
 });
-it('carries corrected facts, active preferences, summaries and open promises/reminders without transferring their execution', async () => {
+it('carries corrected facts, active preferences, summaries and promise context; open requests travel as live requests, not context', async () => {
   const w = await world();
   const source = w.source.view, id = source.order[0]!.id;
   // Unit-level projection states; integration above and recorded-journal replay below use real persisted rows.
@@ -77,8 +78,11 @@ it('carries corrected facts, active preferences, summaries and open promises/rem
   source.dated.push({ source: id, quote: 'Remind me to check the venue tomorrow.', when: 'tomorrow',
     day: '2026-10-11', zone: 'UTC', remind: true });
   const p = permission(); if (p.kind !== 'resolved') throw Error(p.reason);
-  const memory = buildCarriedMemory(source, scope, p, now), all = JSON.stringify(memory.entries);
-  expect(memory.entries.map(e => e.kind)).toEqual(expect.arrayContaining(['recall', 'preference', 'correction', 'summary', 'promise', 'reminder']));
+  const memory = buildCarriedMemory(source, scope, p, now, [source.dated[0]!]), all = JSON.stringify(memory.entries);
+  expect(memory.entries.map(e => e.kind)).toEqual(expect.arrayContaining(['recall', 'preference', 'correction', 'summary', 'promise']));
+  expect(memory.entries.some(e => e.kind === 'reminder')).toBe(false);
+  expect(memory.requests).toEqual([{ item: source.dated[0], askedAt: now - 2000 }]);
+  expect(buildCarriedMemory(source, scope, p, now).requests).toEqual([]);
   expect(all).toContain('library'); expect(all).not.toContain('arboretum');
   expect(all).not.toContain('Already finished.'); expect(all).toContain('Use short replies.');
   expect(memory.entries).toContainEqual(expect.objectContaining({ kind: 'recall', text: 'My preferred meeting place is the library.' }));
@@ -120,7 +124,7 @@ it('replays the real proof-room journal including uncertain summaries and reply 
   expect([...seed.view.summaryReservations.keys()]).toEqual([715672492, 715672496, 715672497]);
   expect(seed.view.order.some(t => t.replyChecks?.some(c => c.verdict === 'unsure' || c.verdict === 'unavailable'))).toBe(true);
   seed.close();
-  const sourceBytes = readFileSync(path), source = openPreviewJournal(path, key, undefined, undefined, true);
+  const sourceBytes = readFileSync(path), source = openPreviewJournal(path, key);
   const exact = { ...scope, operator: capture.genesis.operator, bot: capture.genesis.bot };
   const destination = openPreviewJournal(target, key, { ...genesis, operator: exact.operator, bot: exact.bot, chat: exact.chat, forum: true });
   // The authority fixture is TEST-only. Its seal/provenance resolution is covered separately; this
@@ -131,6 +135,14 @@ it('replays the real proof-room journal including uncertain summaries and reply 
   expect(memory.entries.filter(e => e.kind === 'summary').map(e => e.source)).toEqual(['summary:715672484']);
   expect(memory.entries.some(e => e.kind === 'recall' && e.source.endsWith('715672500'))).toBe(true);
   expect(memory.entries.some(e => e.source === 'summary:715672497')).toBe(false);
+  // Recorded shape: 715672494 asked for 2:55 pm, and 715672496 "Actually, cancel the bird feeder one." came back malformed
+  // with its memory request undecided. The runner holds that request, so it stays with the predecessor (no transfer
+  // record, predecessor bytes unchanged) and reaches the group only as labelled context, never as a live request.
+  expect(memory.requests).toEqual([]);
+  expect(source.view.requestTransfer).toBeUndefined();
+  expect(openRequests(source.view).map(item => item.source)).toEqual(['telegram:8994258214:update:715672494']);
+  expect(memory.entries.filter(e => e.kind === 'reminder').map(e => e.source)).toEqual(['telegram:8994258214:update:715672494']);
+  expect(openRequests(destination.view)).toEqual([]);
   const worker = createJournalWorker(destination, { now: () => now, stopped: () => false, groupDisclosure: async () => true,
     model: async () => 'Unused.', send: async () => 1, checkOutbound: () => {} });
   const packet = worker.probe('What do you remember from the prior conversation?');
