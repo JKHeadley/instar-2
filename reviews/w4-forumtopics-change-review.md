@@ -28,6 +28,8 @@ Prompt finding: 849db3a6296a | protocol-literal | the existing fixed no-memory r
 Prompt finding: bd01de21286a | protocol-literal | the existing instruction to cite sourceLabel is unchanged; its test verifies the instruction reaches the packet.
 Prompt finding: fb5fa7e706c8 | protocol-literal | the existing instruction for questions about the operator's own words is unchanged; its test verifies the instruction reaches the packet.
 
+Generated publication: generated capabilities and register outputs are rebuilt from c5812ed793a56673b87ddd64c58f41f9dadf578b. The self-description replay consumer verifies the exact new forum capability sentence and unchanged surrounding tool/account/custody wording.
+
 ## Closing block
 
 simplestRobustRoute: reuse the journal's existing turn.thread routes, durable intake, stop, caps, summary/memory and send guard. A small pure helper supplies configured group admission and canonical identity; no registry, service or per-topic poller is added. Filter recent history and pending reports at their existing consumers.
