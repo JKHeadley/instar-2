@@ -24,6 +24,8 @@ Prompt finding: 849db3a6296a | protocol-literal | unchanged memory-list reply li
 Prompt finding: bd01de21286a | protocol-literal | unchanged source-label guidance
 Prompt finding: fb5fa7e706c8 | protocol-literal | unchanged remembered-fact guidance
 
+Register regeneration: delegated desk rehash and repin scripts reported zero changed pins; build-register replay refreshed generated outputs against source commit 3721f3e7005fed741327504787243cdee6d142fb. No pin was edited manually.
+
 ## Closing block
 
 simplestRobustRoute: this is the existing memory-validity projection reused separately from credential prose; no added classifier, persistence, model call or gate. The named failure is an exact comparison mistaking a display label for a change in authority. Existing start, stop, spend, due-time and send-receipt checks remain the guards.
