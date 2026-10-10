@@ -13,7 +13,7 @@ import { spawnSync } from 'node:child_process';
 import { readFileSync, writeFileSync } from 'node:fs';
 import { resolve } from 'node:path';
 import { GUIDANCE_FAMILY, guidanceVerdicts } from './guidance.js';
-import { AUDIENCE_RULES, CLAIM_SCOPED_RULES, CONTEXT_RULES, JEV_MODEL, OPERATOR_PRIVATE_SURFACE, REPLY_RULES, checkReply,
+import { GROUP_REVIEW_FINAL_NOTICE, AUDIENCE_RULES, CLAIM_SCOPED_RULES, CONTEXT_RULES, JEV_MODEL, OPERATOR_PRIVATE_SURFACE, REPLY_RULES, checkReply,
   exciseNamedClaims, guidanceReviewRules, jevQuestions, parseReplyReviewVerdict, parseReplyRevision, quotedSpans, namedClaimsIn,
   replyReviewContext, replyReviewQuestion, replyRevisionQuestion, sharedAudience, type ReplyCheckPorts, type ReplyFinding,
   type ReplyRule } from './reply-check.js';
@@ -342,10 +342,10 @@ describe('P14-NF-77: a shared audience is released only on a completed review (u
     expect(own.turn.replyChecks?.at(-1)?.path).toBe('operator-echo');
     expect(own.sends).toEqual(['Your locker code is 5521.']);
   });
-  it('an unavailable review sends the content-free holding note to a shared audience; the operator\'s chat keeps its release', async () => {
+  it('an unavailable review sends the honest content-free final notice to a shared audience; the operator\'s chat keeps its release', async () => {
     const group = await runGroup('Your locker code is 5521.', { review: 'throw' });
-    expect(group.sends).toEqual([HOLDING]);
-    expect(group.turn.heldReview).toMatchObject({ reason: 'review unavailable' });
+    expect(group.sends).toEqual([GROUP_REVIEW_FINAL_NOTICE]);
+    expect(group.turn.heldReview).toMatchObject({ reason: 'preview: reply review unavailable' });
     expect(group.turn.answer).toContain('5521');
     const own = await runGroup('Your locker code is 5521.', { review: 'throw', shared: false, jevScores: { raw_path: 0.6 } });
     expect(own.escalations).toHaveLength(1);
@@ -362,13 +362,13 @@ describe('P14-NF-77: a shared audience is released only on a completed review (u
       .toEqual({ outcome: 'unavailable', path: 'holding', capRefused: true });
     const late = await runGroup('Your locker code is 5521.', { lateJev: true });
     expect(late.escalations).toHaveLength(0);
-    expect(late.sends).toEqual([HOLDING]);
+    expect(late.sends).toEqual([GROUP_REVIEW_FINAL_NOTICE]);
     const ordinary = await runGroup('Stretch for ten minutes after your workout.', { review: 'pass' });
     expect(ordinary.sends).toEqual(['Stretch for ten minutes after your workout.']);
   });
   it('a Jev pass interrupted before its review completes is not a completed review for a shared audience', async () => {
     const group = await runGroup('Your locker code is 5521.', { crashAfterReserve: true });
-    expect(group.sends).toEqual([HOLDING]);
+    expect(group.sends).toEqual([GROUP_REVIEW_FINAL_NOTICE]);
     const own = await runGroup('Your locker code is 5521.', { crashAfterReserve: true, shared: false, jevScores: { raw_path: 0.6 } });
     expect(own.sends).toEqual(['Your locker code is 5521.']);
   });

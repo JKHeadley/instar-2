@@ -908,7 +908,7 @@ it('sends the reply once when Jev and the full-context review both fail; a resta
     await worker.drain();
     expect(sends).toEqual(['candidate']);
     expect(first.view.order[0]?.held).toBeUndefined();
-    expect(first.view.order[0]?.release).toMatchObject({ review: 'unavailable', reason: 'review unavailable' });
+    expect(first.view.order[0]?.release).toMatchObject({ review: 'unavailable', reason: 'reply review failed; provider outcome unknown' });
     first.close();
     const second = openPreviewJournal(path, key);
     await createJournalWorker(second, { ...ports, model: async () => { throw Error('model repeated'); },
@@ -1153,7 +1153,7 @@ it('a review outage releases an advisory-only draft once with no decision record
   const advisory = await flow({ jev: { config_key: 0.93 }, review: 'down' });
   expect(advisory.sends).toEqual([DRAFT]);
   expect(advisory.calls).toMatchObject({ review: 1, revise: 0 });
-  expect(advisory.turn.release).toEqual({ review: 'unavailable', objections: ['config_key'], reason: 'review unavailable', revised: false,
+  expect(advisory.turn.release).toEqual({ review: 'unavailable', objections: ['config_key'], reason: 'reply review failed; provider outcome unknown', revised: false,
     dispositions: [{ objection: 'config_key', decision: 'no-decision' }] });
   const mandatory = await flow({ jev: { credential: 0.8 }, review: 'down', answer: 'Your gym code is written down.' });
   expect(mandatory.sends).toEqual([HOLDING_REPLY]);

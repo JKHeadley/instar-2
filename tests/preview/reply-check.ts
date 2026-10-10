@@ -87,6 +87,8 @@ export interface ReplyCheckResult { verdict: ReplyVerdict; ruleIds: ReplyRule[];
   /** Present only when the reviewer judged each selected rule on its own; absent on a legacy combined verdict. */
   findings?: ReplyFinding[];
   durationMeasured?: true;
+  /** Intermediate pre-dispatch failure, recorded before the one live retry; never permission to retry on restart. */
+  retryBeforeDispatch?: true;
   /** Present only on a Jev check that was asked the approval-report question. */
   approvalReport?: ApprovalReport;
   usage?: { inputTokens: number | null; outputTokens: number | null; charge: null; inputComplete?: true } }
@@ -131,7 +133,27 @@ export function repeatsOperatorOnly(reply: string, operatorMessages: readonly st
   });
 }
 
+export const REVIEW_INTERRUPTED_REASON = 'review interrupted; provider outcome unknown';
 export const HOLDING_REPLY = 'I need to check that answer before I can send it.';
+/** Issued only at a host disclosure checkpoint BEFORE any provider dispatch. */
+export class ModelDisclosureRefused extends Error {
+  constructor(readonly causeCode: 'group-disclosure-refused' | 'group-membership-unavailable' | 'group-membership-changed' | 'group-grant-refused' = 'group-disclosure-refused',
+    readonly retryable = false) { super(causeCode); }
+}
+export const GROUP_MEMBERSHIP_FINAL_NOTICE = "I couldn't confirm who is in this group, so I didn't send my answer. Please resend your message.";
+export const GROUP_PERMISSION_FINAL_NOTICE = "This group's disclosure permission could not be confirmed, so I didn't send my answer. Please resend your message once it is restored.";
+export const GROUP_REVIEW_FINAL_NOTICE = "I couldn't complete the review this group reply needs, so I didn't send my answer. Please resend your message.";
+export const groupReviewFinalNotice = (reason: string | undefined): string =>
+  reason === 'group-membership-unavailable' || reason === 'group-membership-changed' ? GROUP_MEMBERSHIP_FINAL_NOTICE
+    : reason === 'group-grant-refused' || reason === 'group-disclosure-refused' ? GROUP_PERMISSION_FINAL_NOTICE : GROUP_REVIEW_FINAL_NOTICE;
+/** These exact content-free notices reveal none of the held answer, even when membership cannot be read. */
+export const isGroupReviewFinalNotice = (text: string, expected: string): boolean => text === expected
+  && [GROUP_MEMBERSHIP_FINAL_NOTICE, GROUP_PERMISSION_FINAL_NOTICE, GROUP_REVIEW_FINAL_NOTICE].includes(text);
+const unavailableReason = (error: unknown): string => error instanceof ModelDisclosureRefused ? error.causeCode
+  : error instanceof Error && [REVIEW_MALFORMED, 'preview: reply review unavailable',
+    'preview: full reply-review context absent', REPLY_CHECK_BUDGET_REASON].includes(error.message) ? error.message
+    : 'reply review failed; provider outcome unknown';
+
 /** Every rule an unselected review judges on the operator's own chat; the audience question is added only by selection. */
 const rules = (Object.keys(REPLY_RULES) as ReplyRule[]).filter(id => !isAudienceRule(id));
 const jevRules = rules.filter((id): id is JevRule => !isContextRule(id));
@@ -322,6 +344,8 @@ export interface ReplyCheckPorts {
     findings?: ReplyFinding[];
     usage?: { inputTokens: number | null; outputTokens: number | null; charge: null; inputComplete?: true } }>;
 
+  /** The host's bounded backoff; absent means pre-dispatch failures are not retried. */
+  waitForRetry?(milliseconds: number): Promise<void>;
   reserveEscalation(text: string, originalPrompt?: string): boolean;
   /** Reserve the one format re-ask after a malformed verdict under the same call cap; false when capped or stopped. */
   reserveFormatRetry?(): boolean;
@@ -476,16 +500,34 @@ export async function reviewReply(text: string, id: string, ports: ReplyCheckPor
   try {
     // Part 18 §16: the guidance family's context questions ride this same batched call (never a second gate).
     const reviewRules = guidanceReviewRules(ruleIds.length ? ruleIds : rules, sharedAudience(originalPrompt));
+    let retriedBeforeDispatch = false;
+    const invoke = async (formatRetry?: boolean) => {
+      try { return await ports.escalate(text, id, originalPrompt, reviewRules, ports.deadlineAt, undefined, formatRetry); }
+      catch (error) {
+        if (!(error instanceof ModelDisclosureRefused) || !error.retryable || retriedBeforeDispatch
+          || !ports.waitForRetry || expired(ports)
+          || ports.deadlineAt !== undefined && ports.now !== undefined && ports.deadlineAt - ports.now() <= 500) throw error;
+        // No provider was reached: the original durable reservation still covers this attempt.
+        // A crash still leaves UNKNOWN and is never replayed. This live retry has one brake and one backoff.
+        ports.record({ verdict: 'unavailable', ruleIds, confidence: null, path: 'subscription',
+          latencyMs: Math.max(0, ports.elapsedMs() - fallbackStarted), reason: error.causeCode, retryBeforeDispatch: true });
+        retriedBeforeDispatch = true;
+        await ports.waitForRetry(500);
+        if (expired(ports)) throw error;
+        return ports.escalate(text, id, originalPrompt, reviewRules, ports.deadlineAt, undefined, formatRetry);
+      }
+    };
     let result;
-    try { result = await ports.escalate(text, id, originalPrompt, reviewRules, ports.deadlineAt); }
+    try { result = await invoke(); }
     catch (error) {
       // Rule 116: one bounded re-ask when the verdict missed its exact format; a second miss is refused as before.
       if (!(error instanceof Error) || error.message !== REVIEW_MALFORMED || expired(ports) || !ports.reserveFormatRetry?.()) throw error;
-      result = await ports.escalate(text, id, originalPrompt, reviewRules, ports.deadlineAt, undefined, true);
+      result = await invoke(true);
     }
     // A returned VIOLATION is a real refusal: keep it even if the deadline passed meanwhile (Rule 42).
     if (result.verdict === 'violation') {
-      ports.record({ ...result, path: 'subscription' });
+      ports.record({ ...result, path: 'subscription', ...(retriedBeforeDispatch
+        ? { latencyMs: Math.max(0, ports.elapsedMs() - fallbackStarted), durationMeasured: true as const } : {}) });
       return { outcome: 'violation', path: 'subscription' };
     }
     if (expired(ports)) {
@@ -493,12 +535,14 @@ export async function reviewReply(text: string, id: string, ports: ReplyCheckPor
       return { outcome: 'unavailable', path: 'subscription' };
     }
 
-    ports.record({ ...result, path: 'subscription' });
+    ports.record({ ...result, path: 'subscription', ...(retriedBeforeDispatch
+        ? { latencyMs: Math.max(0, ports.elapsedMs() - fallbackStarted), durationMeasured: true as const } : {}) });
     return { outcome: result.verdict === 'pass' ? 'pass' : 'violation', path: 'subscription' };
-  } catch {
+  } catch (error) {
     ports.record({ verdict: 'unavailable', ruleIds, confidence: null, path: 'subscription',
       latencyMs: Math.max(0, ports.elapsedMs() - fallbackStarted),
-      ...(expired(ports) ? { reason: REPLY_CHECK_BUDGET_REASON } : {}) });
+      reason: error instanceof ModelDisclosureRefused ? error.causeCode
+        : expired(ports) ? REPLY_CHECK_BUDGET_REASON : unavailableReason(error) });
     return { outcome: 'unavailable', path: 'subscription' };
   }
 }

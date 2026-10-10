@@ -2822,6 +2822,18 @@ the review's violation names `credential`, or build 4's `defers_work` or
 holding reply is sent instead. Earlier unavailable holds with no reply intent or
 holding notice resume through the same bounded send path, without repeating
 a paid review. Already-noticed holds remain recorded.
+Shared audiences require a completed full-context review. A transient group-membership
+read (timeout, HTTP 429 or 5xx) gets one read-only retry after 250 ms. If the
+pre-provider disclosure checkpoint still fails transiently, the existing review
+gets one retry after 500 ms inside its shared deadline, using its original unused
+call reservation. The unavailable attempt records its cause; a successful review
+releases the saved answer through the existing send path in its source topic,
+replying to the original message. Definite audience changes and withdrawn grants
+are never retried. A charged, interrupted or otherwise unknown provider call is
+never repeated. If no review completes, one content-free final notice names the
+failed check and asks for a resend; it promises no later work. The exact fixed
+notice can pass a failed audience check, but still consumes the normal signed
+intent, ownership, stop and no-duplicate-send checks. No draft or context rides it.
 Stop and expiry still gate every send. New answers
 leave one shared call-budget slot available for a possible review. The deterministic credential wall runs
 before Jev disclosure and again on the final send body.

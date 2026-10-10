@@ -18,7 +18,7 @@ import { buildWorkIndex, detectOverlaps, workForTopic, type SessionActivity } fr
 import { MAX_RAISED_SUBSCRIPTION_PROMPT_BYTES, SUBSCRIPTION_CONVERSATION_SYSTEM_PROMPT, SUBSCRIPTION_MAX_OUTPUT_TOKENS, SUBSCRIPTION_PREVIEW_EXPIRY } from '../../src/assembly/production-provider.js';
 import { hasClaim, replaceClaim, supersedesCorrection } from './claim-match.mjs';
 import { checkReply as checkCoherenceOf, correctionNote, releaseFindings, COHERENCE_FINDING_LIMIT, type CoherenceFinding } from './coherence-check.js';
-import { checkReply, reviewReply, repeatsOperatorOnly, HOLDING_REPLY, jevRequestBody, JEV_RESPONSE_MAX_BYTES, REPLY_CHECK_BUDGET_MS, REPLY_CHECK_BUDGET_REASON, LINK_SHAPE_REASON, linkShapeRules, bareTopicReferences, topicNameReason, BARE_TOPIC_OBJECTION, noDecisions, validDispositions, jevConfidentCredential, concealSecretMaterial, secretMaterialIn, CLAIM_SCOPED_RULES, namedClaimsIn, exciseNamedClaims, substantiveReply, sharedAudience, AUDIENCE_RULES, type ApprovalFacts } from './reply-check.js';
+import { checkReply, reviewReply, repeatsOperatorOnly, HOLDING_REPLY, REVIEW_INTERRUPTED_REASON, ModelDisclosureRefused, groupReviewFinalNotice, isGroupReviewFinalNotice, jevRequestBody, JEV_RESPONSE_MAX_BYTES, REPLY_CHECK_BUDGET_MS, REPLY_CHECK_BUDGET_REASON, LINK_SHAPE_REASON, linkShapeRules, bareTopicReferences, topicNameReason, BARE_TOPIC_OBJECTION, noDecisions, validDispositions, jevConfidentCredential, concealSecretMaterial, secretMaterialIn, CLAIM_SCOPED_RULES, namedClaimsIn, exciseNamedClaims, substantiveReply, sharedAudience, AUDIENCE_RULES, type ApprovalFacts } from './reply-check.js';
 import { latestRecurringDay, nextRecurringDay, parseDatedItem, restatedDatePhrase, dueState, selectDatedItems, withinNext48Hours, localParts, type DatedItem } from './dated-memory.js';
 import { isStatusCommand, isStopCommand, statusAnswer, STOP_CONFIRM_TEXT } from './status-command.js';
 import { AGENT_PROMISE_LIMIT, fulfillableCommitment, fulfillmentProposals, fulfillmentSupported, legacyFulfillsReminder, promiseProposals, recordedPromises, type AgentPromise, type FulfillmentProposal, type PromiseProposal } from './agent-commitment.js';
@@ -478,9 +478,7 @@ const heldNoticeReason = (reason: string | undefined) => reason === 'reply check
  * request included) are kept unanswered and unsent, never reserved, and answered once both hold again. */
 export const GROUP_DISCLOSURE_HOLD = 'group disclosure refused';
 /** Host-only proof: thrown at a disclosure checkpoint before invoking a provider, never for a provider error. */
-export class ModelDisclosureRefused extends Error {
-  constructor() { super(GROUP_DISCLOSURE_HOLD); }
-}
+export { ModelDisclosureRefused } from './reply-check.js';
 /** The one push such a hold allows (Rule 87 action-needed; Rule 88 after the self-heal window): content-free, so it
  * reveals nothing private to whoever is in the group now. The disclosure gate admits exactly this text. */
 export const GROUP_DISCLOSURE_HOLD_NOTICE = 'PREVIEW — I\'m holding a reply until this group\'s audience check passes again; nothing is lost, and it will follow then.';
@@ -1583,6 +1581,7 @@ export function reviewUnavailableReleases(view: JournalView): { total: number; b
 export function replyTimings(view: JournalView) {
   const duration = (check: ReplyCheckResult | undefined): number | null => {
     if (check?.latencyMs === undefined) return null;
+    if (check.latencyMs === 0 && !check.durationMeasured && check.reason === REVIEW_INTERRUPTED_REASON) return null;
     // Older crash-recovery frames used zero for an unknown duration. A new
     // measured zero carries an explicit marker when its shape is ambiguous.
     if (check.latencyMs === 0 && check.verdict === 'unavailable' && !check.durationMeasured
@@ -1592,7 +1591,7 @@ export function replyTimings(view: JournalView) {
   const perReply = view.order.filter(turn => turn.accepted).map(turn => ({ update: turn.update,
     answerMs: turn.answerMs ?? null,
     jevMs: duration(turn.replyChecks?.find(check => check.path === 'jev')),
-    fallbackMs: duration(turn.replyChecks?.find(check => check.path === 'subscription')),
+    fallbackMs: duration(turn.replyChecks?.find(check => check.path === 'subscription' && !check.retryBeforeDispatch)),
     sendMs: turn.sendMs ?? null }));
   const distribution = (field: 'answerMs' | 'jevMs' | 'fallbackMs' | 'sendMs') => {
     const values = perReply.map(reply => reply[field]).filter((value): value is number => value !== null)
@@ -4230,7 +4229,7 @@ function project(view: JournalView, row: JournalRecord, system?: SystemCheck, ad
       if (row.prompt !== undefined) throw Error('preview journal: format retry order or cap');
       if (row.state !== undefined || replyCandidate === undefined || !turn.reviewReserved || turn.reviewRetried
         || turn.reviewState !== undefined && turn.reviewState !== 'complete'
-        || turn.replyChecks?.some(item => item.path === 'subscription')) throw Error('preview journal: format retry order or cap');
+        || turn.replyChecks?.some(item => item.path === 'subscription' && !item.retryBeforeDispatch)) throw Error('preview journal: format retry order or cap');
       reserveTokens(view, `review:${row.id}`, 'replyCheck', row.maxInputTokens ?? view.limits.maxBytes,
         row.maxOutputTokens ?? subscriptionOutputMaximum);
       delete turn.reviewState; turn.reviewRetried = true;
@@ -4278,6 +4277,8 @@ function project(view: JournalView, row: JournalRecord, system?: SystemCheck, ad
   }
   if (row.kind === 'reply-check') {
     if (replyCandidate === undefined || turn.intent !== undefined) throw Error('preview journal: reply check order');
+    if (row.result.retryBeforeDispatch !== undefined && (row.result.retryBeforeDispatch !== true
+      || row.result.path !== 'subscription' || row.result.verdict !== 'unavailable')) throw Error('preview journal: invalid pre-dispatch retry row');
     if (row.result.path === 'jev' && !turn.jevReserved) throw Error('preview journal: Jev call unreserved');
     if (row.result.path === 'subscription' && !turn.reviewReserved) throw Error('preview journal: review call unreserved');
     if (row.result.path === 'operator-echo' && (turn.jevReserved || turn.reviewReserved || row.result.verdict !== 'pass'))
@@ -5151,7 +5152,7 @@ export interface PreviewPorts {
     | {state:'uncertain'; usage?: ModelUsage}>;
   /** Rule 42: a message id (accepted), null (UNKNOWN) or a closed outcome. Rule 89: `provenance`
    * is the journal's signature over exactly `target`, `chat`, `thread` and `text`. */
-  send(input: { text: string; expectedText: string; chat: string; thread?: number; update: number;
+  send(input: { text: string; expectedText: string; chat: string; thread?: number; replyTo?: number; update: number;
     kind?: OutboundKind; disposition?: OutboundDisposition; replyMarkup?: unknown;
     target?: string; provenance?: OutboundProvenance; admit?: () => void }): Promise<number | null | SendOutcome>;
   /** The host calls input.admit after its last disclosure read, before replication/dispatch. */
@@ -5187,7 +5188,7 @@ export interface PreviewPorts {
     requestWindowMs?: number;
     /** Plan #389: the desk's current retraction proposal, read from the root by the host (propose-retract), or none. */
     retractProposal?(): RetractProposal | undefined };
-  replyCheck?: Pick<ReplyCheckPorts, 'jev' | 'escalate' | 'elapsedMs'> & { summaryReview?(state: string, through: number): Promise<{
+  replyCheck?: Pick<ReplyCheckPorts, 'jev' | 'escalate' | 'elapsedMs' | 'waitForRetry'> & { summaryReview?(state: string, through: number): Promise<{
     verdict: 'pass' | 'violation' | 'unavailable'; latencyMs: number; retryable?: true; usage?: ModelUsage }>;
     /** The mind's one revision of an objected draft (same model envelope as review). Absent: no revision round. */
     revise?(input: { text: string; id: string; originalPrompt: string; ruleIds: ReplyRule[]; reason?: string;
@@ -5223,17 +5224,21 @@ export function createJournalWorker(journal: ReturnType<typeof openPreviewJourna
   // Every host of this worker inherits the floor, not only the shipped CLI. A snapshot without
   // its current disclosure resolver is readable for audit but cannot leave through a model or send.
   const original = ports;
+  const requireDisclosure = async () => {
+    if (!journal.view.groupCarry) return;
+    // Preserve host proof of a transient failure before dispatch; a false/untyped refusal is never retryable.
+    if (await original.groupDisclosure?.() !== true) throw new ModelDisclosureRefused();
+  };
   const disclosure = async () => {
-    if (!journal.view.groupCarry) return true;
-    try { return await original.groupDisclosure?.() === true; } catch { return false; }
+    try { await requireDisclosure(); return true; } catch { return false; }
   };
   const guarded = <A extends unknown[], R>(method: (...args: A) => Promise<R>) => async (...args: A): Promise<R> => {
-    if (journal.view.groupCarry && !await disclosure()) throw Error('group carry: disclosure authority or audience refused');
+    await requireDisclosure();
     return method(...args);
   };
   ports = { ...original, model: guarded(original.model),
     // The fixed content-free hold notice is the one outbound a refused disclosure admits: it names no private item.
-    send: async input => !journal.view.groupCarry || await disclosure() || input.target?.startsWith('held-notice:') === true
+    send: async input => !journal.view.groupCarry || isGroupReviewFinalNotice(input.text, input.expectedText) || await disclosure() || input.target?.startsWith('held-notice:') === true
       && input.text === GROUP_DISCLOSURE_HOLD_NOTICE && input.expectedText === GROUP_DISCLOSURE_HOLD_NOTICE ? original.send(input)
       : { kind: 'refused', reason: 'group disclosure authority or audience refused' },
     ...(original.sessionWork ? { sessionWork: guarded(original.sessionWork) } : {}),
@@ -5287,14 +5292,18 @@ export function createJournalWorker(journal: ReturnType<typeof openPreviewJourna
     let prepared = admitted === undefined;
     const admit = () => { if (!prepared) { gate(); admitted!(); prepared = true; } };
     if (admitted) {
-      if (!await disclosure()) return { kind: 'refused', reason: GROUP_DISCLOSURE_HOLD };
+      if (!isGroupReviewFinalNotice(input.text, input.expectedText) && !await disclosure()) return { kind: 'refused', reason: GROUP_DISCLOSURE_HOLD };
       if (!original.sendAdmits) admit();
     }
     const subject = { target, chat: input.chat, ...(input.thread === undefined ? {} : { thread: input.thread }), body: input.text };
+    // The forum reply anchor comes from durable intake, not a model-selected message or another topic.
+    const sourceTurn = journal.view.genesis.forum && target.startsWith('reply:')
+      ? journal.view.turns.get(target.slice('reply:'.length)) : undefined;
+    const replyTo = sourceTurn && sourceTurn.update === input.update && sourceTurn.thread === input.thread ? turnMessageId(sourceTurn) : null;
     let attempted: SendOutcome = { kind: 'unknown', reason: 'send port failed' };
     if (!journal.verifyOutbound(provenance, subject)) attempted = { kind: 'refused', reason: 'outbound provenance unsigned' };
     else for (let attempt = 0; attempt < NOT_SENT_ATTEMPTS; attempt++) {
-      try { attempted = settleSendOutcome(await (admitted ? original.send : ports.send)({ ...input, target, provenance: provenance!, ...(admitted && original.sendAdmits ? { admit } : {}) })); }
+      try { attempted = settleSendOutcome(await (admitted ? original.send : ports.send)({ ...input, ...(replyTo === null ? {} : { replyTo }), target, provenance: provenance!, ...(admitted && original.sendAdmits ? { admit } : {}) })); }
       catch { attempted = { kind: 'unknown', reason: 'send port failed' }; }
       if (attempted.kind !== 'not-sent') break;
     }
@@ -8191,11 +8200,15 @@ export function createJournalWorker(journal: ReturnType<typeof openPreviewJourna
             && (!audienceShared || previous.path === 'subscription')) decision = 'pass';
           else if (turn.reviewReserved) {
             // A failed or interrupted paid review is UNKNOWN: it is never repeated.
-            if (previous?.path !== 'subscription') journal.append({ kind: 'reply-check', id: turn.id, result: { verdict: 'unavailable',
-              ruleIds: previous?.ruleIds ?? [], confidence: null, path: 'subscription', latencyMs: 0, candidateDigest }, at: ports.now() });
+            if (previous?.path !== 'subscription' || previous.retryBeforeDispatch) journal.append({ kind: 'reply-check', id: turn.id, result: { verdict: 'unavailable',
+              ruleIds: previous?.ruleIds ?? [], confidence: null, path: 'subscription', latencyMs: 0, candidateDigest,
+              reason: REVIEW_INTERRUPTED_REASON }, at: ports.now() });
             decision = 'unavailable';
           } else {
             const checkPorts = { ...ports.replyCheck, now: ports.now,
+              ...(ports.replyCheck.waitForRetry ? { waitForRetry: async (ms: number) => {
+                await ports.replyCheck!.waitForRetry!(ms); gate();
+              } } : {}),
               deadlineAt: (turn.jevReservedAt ?? ports.now()) + REPLY_CHECK_BUDGET_MS,
               reserveEscalation: (candidate: string, originalPrompt?: string) => {
                 gate();
@@ -8381,7 +8394,10 @@ export function createJournalWorker(journal: ReturnType<typeof openPreviewJourna
             if (revised !== undefined) { reply = revised; mentionedKeys = []; objection = reason ?? objections.join(', '); }
             else if (scoped !== undefined) { reply = scoped; mentionedKeys = []; }
             else if (audienceUnreviewed || holding && (nothingLeft || withheld === undefined)) {
-              reply = actionHeader === undefined ? disclosed(HOLDING_REPLY) : `${actionHeader}\n${HOLDING_REPLY.replace(/^PREVIEW — /u, '')}`;
+              // An unavailable group review is terminal after its bounded pre-dispatch retry; promise no later check.
+              // No action header or continuity text may ride this content-free notice.
+              reply = audienceUnreviewed ? groupReviewFinalNotice(reason)
+                : actionHeader === undefined ? disclosed(HOLDING_REPLY) : `${actionHeader}\n${HOLDING_REPLY.replace(/^PREVIEW — /u, '')}`;
               heldBack = true; speaker = 'infrastructure';
               held = { objections, ...(note === undefined ? {} : { reason: note }), dispositions, ...(skipped ? { responseSkipped: skipped } : {}),
                 ...(withheld === undefined ? {} : { withheld }) };
