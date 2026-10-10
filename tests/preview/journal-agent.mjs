@@ -1198,7 +1198,7 @@ async function main() {
     } finally { check.close(); }
   }
   // Rule 35: a test composition never takes the writer lease of a production root (or the reverse).
-  if (command === 'run' && existsSync(journalPath)) {
+  if ((command === 'run' || command === 'carry-group') && existsSync(journalPath)) {
     const composed = process.env.INSTAR_PREVIEW_TEST_TELEGRAM_ENDPOINT ? 'test' : 'production';
     const peek = openPreviewJournal(journalPath, key(), undefined, undefined, true);
     try { if ((peek.view.genesis.origin ?? 'production') !== composed) throw Error('preview: composition origin differs from journal'); }

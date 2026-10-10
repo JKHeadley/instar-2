@@ -1,5 +1,5 @@
 import { expect, it } from 'vitest';
-import { mkdtempSync, mkdirSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
+import { existsSync, mkdtempSync, mkdirSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
 import { createServer } from 'node:http';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
@@ -63,3 +63,23 @@ it.skipIf(process.platform !== 'darwin')('the shipped carry-group command reads 
     expect(replay.view.groupCarry!.scope.sourceRoot).toBe(sourceRoot); replay.close();
   } finally { await new Promise<void>(resolve => server.close(() => resolve())); rmSync(root, { recursive: true, force: true }); }
 }, 90000);
+
+it.each(['production', 'test'] as const)('checks %s origin before taking the carry writer lease', async origin => {
+  const root = mkdtempSync(join(tmpdir(), 'carry-origin-')), path = join(root, 'journal.encrypted');
+  openPreviewJournal(path, key, { kind: 'genesis', ...(origin === 'test' ? { origin } : {}), bot: scope.bot, operator: scope.operator, chat: scope.chat, forum: true,
+    grant: 'TEST-origin-refusal', configurationDigest: 'sha256:offline', expires: 9999999999999,
+    maxCalls: 20, maxReplies: 20, maxTurns: 20, maxBytes: 409600, cursor: 0 }).close();
+  const before = readFileSync(path);
+  try {
+    await expect(promisify(execFile)(process.execPath, ['--no-warnings', '--loader', './scripts/slice-ts-loader.mjs',
+      'tests/preview/journal-agent.mjs', 'carry-group', '--root', root], {
+      env: { ...process.env, INSTAR_SECRET_PREVIEW_STORAGE_KEY: Buffer.from(key).toString('hex'),
+        INSTAR_SECRET_PREVIEW_TELEGRAM_BOT_TOKEN: '12345678:AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA',
+        INSTAR_PREVIEW_TEST_TELEGRAM_ENDPOINT: 'http://127.0.0.1:1' }, timeout: 30000,
+    })).rejects.toThrow();
+    expect(readFileSync(path)).toEqual(before);
+    // Matching TEST origin reaches the writer, then refuses the deliberately absent source/grant.
+    // Production origin must refuse earlier, so it cannot repair a tail or touch the writer files.
+    expect(existsSync(join(root, '.writer'))).toBe(origin === 'test');
+  } finally { rmSync(root, { recursive: true, force: true }); }
+}, 40000);
