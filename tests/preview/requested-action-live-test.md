@@ -41,3 +41,22 @@ replacement and cancelled the first. The state expectations above already covere
 The repair is w3-reminderwords (`tests/preview/reminder-words.test.ts`,
 `tests/preview/fixtures/reminderwords-live-2026-10-02.json`), which proves both sides offline; these
 steps are how the live run confirms it.
+
+For a recurring-series proof, the desk uses the same approved operator chat and sole writer,
+with enough activation lifetime and allowance for two consecutive occurrences and cancellation:
+
+1. Ask “Every morning at 8 tell me what I asked you to remember.” Verify the receipt states
+   the local zone, daily schedule, how to cancel, and the preview's spend/stop limitations.
+2. At the first due time, record exactly one due turn and one send outcome. Restart the same
+   root and poll again; neither the model attempt nor the send may repeat.
+3. On the next day, record one new due turn for the new local date. The standing request must
+   still be visible as open. Ask to cancel it; the following occurrence must not run.
+4. In a separately accepted weekday series, verify that the weekend produces no occurrence.
+   After approved downtime spanning several due dates, recovery may answer once for the latest
+   missed occurrence, never emit one reply for every missed day. Include the case where a turn
+   was already queued before downtime, and restart again after that recovery dispatch.
+
+Record the source update, local occurrence dates, due-frame IDs, send outcomes and the withdrawal
+update. An empty recorded model reply is not evidence that Telegram accepted an empty bubble;
+record the actual delivered text and receipt separately. Do not renew allowances or relax stop
+for this proof. These steps are a desk procedure, not a claim that this builder ran a live trial.

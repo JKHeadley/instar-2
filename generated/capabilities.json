@@ -1,16 +1,8 @@
 {
-  "generation": "sha256:3cbdd5ecf61302c13f7b3dc8eb7ba8a4a02bff9c48004d3ea9c1b91bad6d4074",
-  "commit": "7feab9119f16521daaac2b55c1eaf1ba6650e77a",
+  "generation": "sha256:7455b31da62f3b7244716c3e47b342b9d0de0edd925b7ccdc302c9aaaac811b5",
+  "commit": "1b90a62aff21c86d6de839a128afa42806148431",
   "launchers": {
     "bin/instar-production.mjs": [
-      {
-        "id": "fetch-inbound-media",
-        "status": "dark",
-        "module": "tests/preview",
-        "availability": "not-loaded",
-        "userFacing": false,
-        "text": "saves inbound Telegram files with bounded effect admission; refused downloads retain the original message."
-      },
       {
         "id": "harness-doorway-parity",
         "status": "live",
@@ -33,7 +25,7 @@
         "module": "tests/preview",
         "availability": "not-loaded",
         "userFacing": true,
-        "text": "answers the operator in chat/topics; journal intake saves photos, audio and files encrypted, with text descriptions."
+        "text": "answers the operator in the configured private Telegram chat or forum group, returning each reply to its originating topic."
       },
       {
         "id": "preview-durable-memory",
@@ -57,7 +49,7 @@
         "module": "tests/preview",
         "availability": "not-loaded",
         "userFacing": true,
-        "text": "an explicit request for a settled later day and time (a reminder) is answered once at that time, with no new operator message."
+        "text": "an explicit later-time request is answered once at that time, or daily or weekdays until cancelled, with no new operator message."
       },
       {
         "id": "preview-status-command",
@@ -142,14 +134,6 @@
     ],
     "scripts/host-watch.mjs": [
       {
-        "id": "fetch-inbound-media",
-        "status": "dark",
-        "module": "tests/preview",
-        "availability": "not-loaded",
-        "userFacing": false,
-        "text": "saves inbound Telegram files with bounded effect admission; refused downloads retain the original message."
-      },
-      {
         "id": "harness-doorway-parity",
         "status": "live",
         "module": "src/assembly",
@@ -171,7 +155,7 @@
         "module": "tests/preview",
         "availability": "not-loaded",
         "userFacing": true,
-        "text": "answers the operator in chat/topics; journal intake saves photos, audio and files encrypted, with text descriptions."
+        "text": "answers the operator in the configured private Telegram chat or forum group, returning each reply to its originating topic."
       },
       {
         "id": "preview-durable-memory",
@@ -195,7 +179,7 @@
         "module": "tests/preview",
         "availability": "not-loaded",
         "userFacing": true,
-        "text": "an explicit request for a settled later day and time (a reminder) is answered once at that time, with no new operator message."
+        "text": "an explicit later-time request is answered once at that time, or daily or weekdays until cancelled, with no new operator message."
       },
       {
         "id": "preview-status-command",
@@ -280,14 +264,6 @@
     ],
     "tests/preview/agent.mjs": [
       {
-        "id": "fetch-inbound-media",
-        "status": "dark",
-        "module": "tests/preview",
-        "availability": "not-loaded",
-        "userFacing": false,
-        "text": "saves inbound Telegram files with bounded effect admission; refused downloads retain the original message."
-      },
-      {
         "id": "harness-doorway-parity",
         "status": "live",
         "module": "src/assembly",
@@ -309,7 +285,7 @@
         "module": "tests/preview",
         "availability": "not-loaded",
         "userFacing": true,
-        "text": "answers the operator in chat/topics; journal intake saves photos, audio and files encrypted, with text descriptions."
+        "text": "answers the operator in the configured private Telegram chat or forum group, returning each reply to its originating topic."
       },
       {
         "id": "preview-durable-memory",
@@ -333,7 +309,7 @@
         "module": "tests/preview",
         "availability": "not-loaded",
         "userFacing": true,
-        "text": "an explicit request for a settled later day and time (a reminder) is answered once at that time, with no new operator message."
+        "text": "an explicit later-time request is answered once at that time, or daily or weekdays until cancelled, with no new operator message."
       },
       {
         "id": "preview-status-command",
@@ -418,14 +394,6 @@
     ],
     "tests/preview/conversation-authority-server.mjs": [
       {
-        "id": "fetch-inbound-media",
-        "status": "dark",
-        "module": "tests/preview",
-        "availability": "not-loaded",
-        "userFacing": false,
-        "text": "saves inbound Telegram files with bounded effect admission; refused downloads retain the original message."
-      },
-      {
         "id": "harness-doorway-parity",
         "status": "live",
         "module": "src/assembly",
@@ -447,7 +415,7 @@
         "module": "tests/preview",
         "availability": "not-loaded",
         "userFacing": true,
-        "text": "answers the operator in chat/topics; journal intake saves photos, audio and files encrypted, with text descriptions."
+        "text": "answers the operator in the configured private Telegram chat or forum group, returning each reply to its originating topic."
       },
       {
         "id": "preview-durable-memory",
@@ -471,7 +439,7 @@
         "module": "tests/preview",
         "availability": "not-loaded",
         "userFacing": true,
-        "text": "an explicit request for a settled later day and time (a reminder) is answered once at that time, with no new operator message."
+        "text": "an explicit later-time request is answered once at that time, or daily or weekdays until cancelled, with no new operator message."
       },
       {
         "id": "preview-status-command",
@@ -556,14 +524,6 @@
     ],
     "tests/preview/journal-agent.mjs": [
       {
-        "id": "fetch-inbound-media",
-        "status": "dark",
-        "module": "tests/preview",
-        "availability": "available",
-        "userFacing": false,
-        "text": "saves inbound Telegram files with bounded effect admission; refused downloads retain the original message."
-      },
-      {
         "id": "harness-doorway-parity",
         "status": "live",
         "module": "src/assembly",
@@ -585,7 +545,7 @@
         "module": "tests/preview",
         "availability": "available",
         "userFacing": true,
-        "text": "answers the operator in chat/topics; journal intake saves photos, audio and files encrypted, with text descriptions."
+        "text": "answers the operator in the configured private Telegram chat or forum group, returning each reply to its originating topic."
       },
       {
         "id": "preview-durable-memory",
@@ -609,7 +569,7 @@
         "module": "tests/preview",
         "availability": "available",
         "userFacing": true,
-        "text": "an explicit request for a settled later day and time (a reminder) is answered once at that time, with no new operator message."
+        "text": "an explicit later-time request is answered once at that time, or daily or weekdays until cancelled, with no new operator message."
       },
       {
         "id": "preview-status-command",

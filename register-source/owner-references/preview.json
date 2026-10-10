@@ -39,7 +39,7 @@
       "stage": "build",
       "artifact": {
         "path": "tests/preview/journal-requested-action.test.ts",
-        "hash": "sha256:e449e8c5ab11f7c207e30e51ac6eb3a803e0d01a1d3b6f66e3ea45c5dcd920cc"
+        "hash": "sha256:dbcd5d71f7a1ac3c2b6f215079ba828e4b27ba8f671002699bdadf9fce1ca241"
       }
     },
     {
