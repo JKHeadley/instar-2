@@ -3,8 +3,10 @@ import { createHash } from 'node:crypto';
 import { isoMinute } from '../../src/recall/ground.js';
 import { statedFacts } from './memory-sentinel.js';
 import { hasClaim, replaceClaim, supersedesCorrection } from './claim-match.mjs';
-import { activePersonMerges, before, groundingHistory, isJournalUpdate } from './journal.js';
+import { activePersonMerges, admittedUpdate, before, groundingHistory, isJournalUpdate } from './journal.js';
 import { matchesBoundChat } from './forum-routing.js';
+import { authenticateTelegramSender, writerBoundToRaw } from './intake-principal.js';
+import { mediaCustodyText, telegramInboundMedia } from './telegram-media.js';
 
 const RUNNER_SPEAKER = 'the runner, carrying out a request the operator made earlier (no operator authority)';
 /** A due turn is written by the verified scheduler, never by the operator (Rule 29). It traces to the
@@ -364,6 +366,18 @@ export function auditActiveMemory(view) {
   const fault = (code, at) => findings.push({ code, at });
   const add = (kind, at, chain) => items.push({ kind, at, chain });
   const checkedOperators = new Map();
+  const contentMatches = (turn, raw) => {
+    if (!telegramInboundMedia(raw?.message)) return raw?.message?.text === turn.text && turn.media === undefined;
+    // The encrypted journal authenticates these retained bytes. Replay the existing intake
+    // derivation, then the exact recorded custody annotation; a media label proves neither.
+    if (!turn.writer || !writerBoundToRaw(turn.writer, turn.raw, turn.custody?.arrival)) return false;
+    try {
+      const parsed = admittedUpdate(view.genesis, raw,
+        authenticateTelegramSender(raw, view.genesis.origin ?? 'production', turn.at));
+      return parsed.accepted && turn.text === parsed.text
+        + (turn.media === undefined ? '' : `\n[Media custody: ${mediaCustodyText(turn.media)}]`);
+    } catch { return false; }
+  };
   const operator = (id, at) => {
     if (checkedOperators.has(id)) return checkedOperators.get(id);
     const turn = view.turns.get(id);
@@ -371,7 +385,7 @@ export function auditActiveMemory(view) {
     try { raw = JSON.parse(turn?.raw); } catch { /* missing authenticated envelope */ }
     if (!turn?.accepted || raw?.update_id !== turn.update || !matchesBoundChat(view.genesis, raw?.message?.chat)
       || String(raw?.message?.from?.id) !== view.genesis.operator
-      || raw?.message?.text !== turn.text) {
+      || !contentMatches(turn, raw)) {
       fault('memory-operator-source-absent', at); checkedOperators.set(id, null); return null;
     }
     const link = { kind: 'operator-turn', id, update: turn.update };

@@ -1,5 +1,5 @@
 import { expect, it } from 'vitest';
-import { appendFileSync, mkdtempSync, realpathSync, rmSync, statSync } from 'node:fs';
+import { appendFileSync, mkdtempSync, realpathSync, readFileSync, rmSync, statSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { spawn } from 'node:child_process';
@@ -8,6 +8,8 @@ import { auditJournal, auditPacket } from './journal-audit.mjs';
 import { OBLIGATION_FLOOR_PACKET_BYTES, createJournalWorker, importChannelItems, openPreviewJournal, probeTurn } from './journal-test-worker.js';
 import { memoryHealthLine } from './self-state.js';
 import { prepareJournalEnvelope } from './journal-envelope.js';
+import type { MediaCustodyResult } from './telegram-media.js';
+import { authenticateTelegramSender, writerRecord } from './intake-principal.js';
 
 const key = new Uint8Array(32).fill(41);
 
@@ -90,6 +92,74 @@ it.each([false, true])('checks every ordinary accepted turn with and without a l
     expect(JSON.parse(audit.stdout).findings).toEqual([]);
   } finally { rmSync(root, { recursive: true, force: true }); }
 });
+
+// These committed envelopes are synthetic Telegram fixtures, not a live-platform claim.
+it.each(['photo', 'voice', 'document'])('audits authenticated %s media and rejects tampering after compacted replay', async kind => {
+  const root = realpathSync(mkdtempSync(join(tmpdir(), 'preview-audit-media-')));
+  const path = join(root, 'journal.encrypted');
+  try {
+    const fixture = JSON.parse(readFileSync(new URL(`./fixtures/telegram-media/${kind}.json`, import.meta.url), 'utf8'));
+    const binding = { ...genesis, bot: '123456789', operator: String(fixture.message.from.id),
+      chat: String(fixture.message.chat.id), forum: true as const, maxBytes: 65536 };
+    let journal = openPreviewJournal(path, key, binding);
+    const outcomes: MediaCustodyResult[] = [{ state: 'stored', reference: 'a'.repeat(64), bytes: 42 },
+      { state: 'unavailable' }, { state: 'failed' }, { state: 'failed', reason: 'admission-refused' },
+      { state: 'file-limit' }, { state: 'store-limit' }, { state: 'malformed' }];
+    let outcome = outcomes[0]!;
+    const worker = createJournalWorker(journal, { now: () => 1790000000000, stopped: () => false,
+      media: { receive: async () => outcome },
+      prepareModel: input => JSON.stringify({ messages: [{ role: 'user', content: input.question },
+        { role: 'context', content: JSON.stringify({ packet: JSON.parse(input.context) }) }] }),
+      model: async () => 'Noted.', send: async () => 1, checkOutbound: () => {} });
+    for (const [index, result] of outcomes.entries()) {
+      outcome = result;
+      worker.intake([{ ...fixture, update_id: fixture.update_id + index }]);
+      // Accepted intake remains auditable before custody completes too.
+      expect(auditJournal(journal.view).findings).toEqual([]);
+      await worker.drain();
+      expect(journal.view.order.at(-1)!.media).toEqual(result);
+      expect(auditJournal(journal.view).findings).toEqual([]);
+    }
+    const checkTampering = () => {
+      for (const field of ['caption', 'name', 'size', 'file', 'sender', 'chat', 'type', 'forum', 'update',
+        'accepted', 'text', 'annotation', 'outcome', 'missing-outcome', 'media-label']) {
+        const forged = structuredClone(journal.view);
+        const turn = forged.turns.get(forged.order[0]!.id)!;
+        const raw = JSON.parse(turn.raw);
+        const media = kind === 'photo' ? raw.message.photo.at(-1) : raw.message[kind];
+        if (field === 'caption') raw.message.caption = 'Invented caption.';
+        if (field === 'name') media.file_name = 'invented.bin';
+        if (field === 'size') media.file_size++;
+        if (field === 'file') media.file_id = 'different-file';
+        if (field === 'sender') raw.message.from.id++;
+        if (field === 'chat') raw.message.chat.id++;
+        if (field === 'type') raw.message.chat.type = 'private';
+        if (field === 'forum') delete raw.message.chat.is_forum;
+        if (field === 'update') raw.update_id++;
+        if (field === 'accepted') turn.accepted = false;
+        if (field === 'text') turn.text = 'Invented media description.';
+        if (field === 'annotation') turn.text += '\n[Media custody: invented success]';
+        if (field === 'outcome') turn.media = { state: 'failed' };
+        if (field === 'missing-outcome') delete turn.media;
+        if (field === 'media-label') { delete raw.message[kind]; raw.message.text = turn.text; }
+        turn.raw = JSON.stringify(raw);
+        // Rebind metadata changes so these neighbors exercise content derivation itself.
+        if (['caption', 'name', 'size'].includes(field))
+          turn.writer = writerRecord(authenticateTelegramSender(raw, 'production', turn.at)!);
+        expect(auditJournal(forged).findings.map(item => item.code), field)
+          .toContain(field === 'accepted' ? 'history-coverage' : 'memory-operator-source-absent');
+      }
+    };
+    checkTampering();
+    journal.compact(); journal.close(); journal = openPreviewJournal(path, key);
+    expect(auditJournal(journal.view).findings).toEqual([]);
+    checkTampering();
+    journal.close();
+    const cli = await runAgent(['audit', '--root', root]);
+    expect(cli.status, cli.stderr).toBe(0);
+    expect(JSON.parse(cli.stdout).findings).toEqual([]);
+  } finally { rmSync(root, { recursive: true, force: true }); }
+}, AGENT_WATCHDOG_MS + 30_000);
 
 it('keeps a desk canary out of expected packet history while an ordinary omission still fails', async () => {
   const root = realpathSync(mkdtempSync(join(tmpdir(), 'preview-audit-canary-')));
