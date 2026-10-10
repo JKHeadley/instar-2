@@ -1,6 +1,6 @@
 /** Calendar interpretation for the preview's operator-authored dated clauses. */
 export interface DatedItem { source: string; quote: string; when: string; zone: string;
-  day?: string; time?: string; ambiguity?: string; repeat?: 'weekly';
+  day?: string; time?: string; ambiguity?: string; repeat?: 'weekly'; recurrence?: 'daily' | 'weekdays';
   /** The verified operator explicitly asked to be reminded: the scoped grant for this one send. */
   remind?: true }
 
@@ -49,6 +49,8 @@ export function parseDatedItem(source: string, quote: string, when: string, at: 
   const expression = phrase.replace(/\.$/u, '');
   const timed = /^(.+?)\s+at\s+(\d{1,2})(?::(\d{2}))?\s*(am|pm)?$/iu.exec(expression);
   const date = timed?.[1] ?? expression;
+  const recurrence = /^(?:every day|daily|every morning)$/iu.test(date) ? 'daily' as const
+    : /^(?:every weekday|weekdays)$/iu.test(date) ? 'weekdays' as const : undefined;
   const iso = /^(\d{4})-(\d{1,2})-(\d{1,2})$/u.exec(date);
   const named = /^(January|February|March|April|May|June|July|August|September|October|November|December|Jan|Feb|Mar|Apr|Jun|Jul|Aug|Sep|Sept|Oct|Nov|Dec)\.?\s+(\d{1,2})(?:st|nd|rd|th)?(?:,?\s+(\d{4}))?$/iu.exec(date);
   const weekday = /^(?:(this|next|every)\s+)?(Sunday|Monday|Tuesday|Wednesday|Thursday|Friday|Saturday)$/iu.exec(date);
@@ -79,17 +81,24 @@ export function parseDatedItem(source: string, quote: string, when: string, at: 
     const value = new Date(Date.UTC(today.year, today.month - 1, today.day + 1));
     day = dayKey(value.getUTCFullYear(), value.getUTCMonth() + 1, value.getUTCDate());
   } else if (/^today$/iu.test(date)) day = localToday;
+  else if (recurrence) day = localToday;
   else ambiguity = 'date expression unresolved';
   let time: string | undefined;
   if (timed) {
     const hour = Number(timed[2]), minute = Number(timed[3] ?? 0);
-    const meridiem = timed[4]?.toLowerCase();
+    const meridiem = timed[4]?.toLowerCase() ?? (/^every morning$/iu.test(date) ? 'am' : undefined);
     if (minute > 59 || hour > 23 || (meridiem && (hour < 1 || hour > 12))) ambiguity = 'invalid time';
     else if (meridiem) time = `${String(hour % 12 + (meridiem === 'pm' ? 12 : 0)).padStart(2, '0')}:${String(minute).padStart(2, '0')}`;
     else if (timed[3] && (hour === 0 || hour > 12)) time = `${String(hour).padStart(2, '0')}:${String(minute).padStart(2, '0')}`;
     else ambiguity = ambiguity ?? 'AM or PM unspecified';
   }
-  return { source, quote, when: phrase, zone, ...(day ? { day } : {}), ...(time ? { time } : {}),
+  if (recurrence && !timed) ambiguity = 'recurring request needs a local time';
+  if (recurrence && day && time && !ambiguity) {
+    const clock = `${String(today.hour).padStart(2, '0')}:${String(today.minute).padStart(2, '0')}`;
+    if (time <= clock) day = addDay(day, 1);
+    day = eligibleRecurringDay(day, recurrence, 1);
+  }
+  return { source, quote, when: phrase, zone, ...(recurrence ? { recurrence } : {}), ...(day ? { day } : {}), ...(time ? { time } : {}),
     ...(weekday?.[1]?.toLowerCase() === 'every' && day ? { repeat: 'weekly' as const } : {}),
     ...(ambiguity ? { ambiguity } : {}) };
 }
@@ -187,11 +196,13 @@ export function selectDatedItems(items: readonly DatedItem[], question: string, 
       candidates.push({ ...item, state: 'ambiguous' });
       continue;
     }
-    if (item.repeat === 'weekly') {
+    if (item.repeat === 'weekly' || item.recurrence) {
       const first = window ? addDay(window.start, -2) : localDay(now, item.zone);
-      const elapsed = Math.max(0, Math.ceil((Date.parse(`${first}T00:00:00Z`) - Date.parse(`${item.day}T00:00:00Z`)) / (7 * 86_400_000)));
+      const interval = item.recurrence ? 1 : 7;
+      const elapsed = Math.max(0, Math.ceil((Date.parse(`${first}T00:00:00Z`) - Date.parse(`${item.day}T00:00:00Z`)) / (interval * 86_400_000)));
       const end = window ? addDay(window.end, 2) : item.day > addDay(first, 6) ? item.day : addDay(first, 6);
-      for (let day = addDay(item.day, elapsed * 7); day <= end; day = addDay(day, 7)) {
+      for (let day = addDay(item.day, elapsed * interval); day <= end; day = addDay(day, interval)) {
+        if (item.recurrence && eligibleRecurringDay(day, item.recurrence, 1) !== day) continue;
         const { repeat: _repeat, ...once } = item;
         const occurrence = { ...once, day }, shownDay = queryDay(occurrence, zone);
         if (day >= first)
@@ -234,3 +245,22 @@ export function selectDatedItems(items: readonly DatedItem[], question: string, 
   const selected = [...shown, ...fallback.slice(0, fallbackLimit)];
   return { items: selected, omitted: Math.max(0, candidates.length - selected.length), window };
 }
+
+/** Calendar arithmetic, never 24-hour delays: DST cannot create a second occurrence on one local day. */
+const eligibleRecurringDay = (day: string, recurrence: 'daily' | 'weekdays', direction: 1 | -1) => {
+  if (recurrence === 'daily') return day;
+  const weekday = new Date(`${day}T00:00:00Z`).getUTCDay();
+  return weekday === 0 ? addDay(day, direction === 1 ? 1 : -2)
+    : weekday === 6 ? addDay(day, direction === 1 ? 2 : -1) : day;
+};
+export const nextRecurringDay = (item: DatedItem, after: string) =>
+  eligibleRecurringDay(addDay(after, 1), item.recurrence!, 1);
+/** Collapse downtime to the most recent due local occurrence; never enumerate a backlog. */
+export const latestRecurringDay = (item: DatedItem, now: number) => {
+  const parts = localParts(now, item.zone);
+  let day = dayKey(parts.year, parts.month, parts.day);
+  const clock = `${String(parts.hour).padStart(2, '0')}:${String(parts.minute).padStart(2, '0')}`;
+  if (clock < item.time!) day = addDay(day, -1);
+  day = eligibleRecurringDay(day, item.recurrence!, -1);
+  return day < item.day! ? item.day! : day;
+};

@@ -160,7 +160,8 @@
       "reach": "user",
       "surface": "chat",
       "repeats": {
-        "kind": "no"
+        "kind": "bounded",
+        "by": "preview.spend-cap.refusal"
       }
     },
     "standards": [
