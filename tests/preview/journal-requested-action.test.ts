@@ -640,11 +640,14 @@ it('recovers a queued series occurrence once after downtime, without immediately
 });
 
 /** Captured bytes remain verbatim; only the new series grant and the clock are synthetic. */
-it('keeps a series open across recorded delivered, empty and uncertain model outcomes without repeating an occurrence', async () => {
+it('keeps a series open across recorded summary, Jev, review, delivered and empty outcomes without repeating an occurrence', async () => {
   const captured = JSON.parse(readFileSync(new URL('./fixtures/retrospective-duty-followup-train-1-2026-10-08.json',
     import.meta.url), 'utf8')) as { otherShapes: { kind: string; id: string; raw: string }[] };
-  const shapes = captured.otherShapes.filter(row => ['delivered-reply', 'empty-reply-in-recorded-context', 'summary-uncertain'].includes(row.kind));
-  expect(shapes.map(row => row.id)).toEqual(['715672483', 'telegram:8994258214:update:715672479', 'telegram:8994258214:update:715672550']);
+  const shapes = captured.otherShapes;
+  expect(shapes.map(row => row.kind)).toEqual(['summary-writer', 'summary-uncertain', 'jev-undecided',
+    'jev-unsure', 'reply-review', 'delivered-reply', 'empty-reply-in-recorded-context']);
+  expect(shapes.map(row => row.id)).toEqual(['summary:715672480', '715672483', '715672482', '969389570',
+    '969389923', 'telegram:8994258214:update:715672479', 'telegram:8994258214:update:715672550']);
   for (const shape of shapes) {
     const root = tmp('series-recorded');
     try {

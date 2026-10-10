@@ -1,3 +1,5 @@
+import { createTelegramMediaCustody, journalMediaSource } from './telegram-media.js';
+import { createMediaAdmission, DEFAULT_EFFECT_POLICY, MEDIA_OPERATION } from './media-admission.js';
 import { expect, it } from 'vitest';
 import { selfStateBrief, selfStateSource } from './self-state.js';
 import { SOURCE_PINS, sourcePacket } from './briefing.js';
@@ -50,13 +52,20 @@ function livePort(raw: string, usage: ModelUsage) {
 }
 
 type Step = { kind: 'over-cap'; index: number } | { kind: 'complete'; output: Output };
-function world(writer: Step[], forum = false) {
+function world(writer: Step[], forum = false, media = false) {
   const root = realpathSync(mkdtempSync(join(tmpdir(), 'preview-summary-stall-')));
   const path = join(root, 'journal.encrypted');
   const journal = openPreviewJournal(path, key, forum ? { ...genesis, chat: '-1001234', forum: true } : genesis);
   const throughs: number[] = [], log: string[] = [];
   let clock = 0, calls = 0;
-  const worker = createJournalWorker(journal, { now: () => START + clock, elapsed: () => clock, stopped: () => false,
+  const custody = createTelegramMediaCustody(root, key, { token: () => `${genesis.bot}:synthetic`, stopped: () => false,
+    admission: createMediaAdmission({ root, incarnation: 'recorded-summary-replay', now: () => START + clock, monotonic: () => 0,
+      stopped: () => false, source: (source, media) => journalMediaSource(journal.view, source, media),
+      claimed: id => journal.view.turns.get(id)?.mediaClaim !== undefined,
+      retainClaim: (id, digest) => journal.append({ kind: 'media-claim', id, digest, at: START + clock }),
+      policy: () => ({ ...DEFAULT_EFFECT_POLICY, policySensitive: [MEDIA_OPERATION.effect] }) }),
+    fetch: async () => { throw Error('refused replay must not fetch'); } });
+  const worker = createJournalWorker(journal, { ...(media ? { media: custody } : {}), now: () => START + clock, elapsed: () => clock, stopped: () => false,
     sources: () => [...sourcePacket(path => readFileSync(path, 'utf8'), SOURCE_PINS,
       { providerAttempts: genesis.maxCalls, expiresAt: genesis.expires }).sources,
       selfStateSource(selfStateBrief(journal.view, { launches: [], unreadable: 0 }, START + clock, 'UTC'))],
@@ -66,7 +75,12 @@ function world(writer: Step[], forum = false) {
       const sources = (JSON.parse(input.context) as { sources: { id: string; text: string }[] }).sources;
       expect(sources.map(source => source.id)).toEqual(['purpose:purpose', 'purpose:coherency', 'capability-note', 'self-state']);
       expect(sources.at(-1)!.text).toContain('Activation: your activation; ends');
-      if (!input.id.startsWith('summary:')) return 'Noted.';
+      if (!input.id.startsWith('summary:')) {
+        if (media && input.id.endsWith('715672501')) {
+          expect(input.question).toContain('Received photo'); expect(input.question).toContain('cannot see the photo');
+        }
+        return 'Noted.';
+      }
       throughs.push(Number(input.id.slice(8))); log.push('summary');
       // After the scripted steps the writer keeps returning the live room's recorded over-cap results.
       const step = writer[calls] ?? { kind: 'over-cap', index: calls % OVER_CAP.length }; calls++;
@@ -95,7 +109,9 @@ function world(writer: Step[], forum = false) {
   let open = true;
   return { path, journal, worker, throughs, log,
     intake: (id: number, text: string) => {
-      const message = update(id, text);
+      const { text: _text, ...envelope } = update(id, text).message;
+      const message = media ? { update_id: id, message: { ...envelope, caption: text,
+        photo: [{ file_id: 'AgACAgEAAxkBAAIB-large', file_size: 84211, width: 1280, height: 960 }] } } : update(id, text);
       worker.intake([forum ? { ...message, message: { ...message.message, chat: { id: -1001234, type: 'supergroup', is_forum: true }, message_thread_id: 7 } } : message]);
     },
     /** The room's recorded rows in their journal order, then half an hour later (past the UNKNOWN recovery delay).
@@ -121,9 +137,9 @@ function world(writer: Step[], forum = false) {
     close: () => { if (open) journal.close(); open = false; rmSync(root, { recursive: true, force: true }); } };
 }
 
-it.each([false, true])('the recorded stall (forum=%s): from base #484 a frontier is offered again and a summary is accepted', async forum => {
+it.each([[false, false], [true, false], [true, true]])('the recorded stall (forum=%s, synthetic media=%s): from base #484 a frontier is offered again and a summary is accepted', async (forum, media) => {
   // First the real over-cap result, then the real #484 writer output, which Jev's real 0.38 leaves undecided.
-  const w = world([{ kind: 'over-cap', index: 0 }, { kind: 'complete', output: WRITER_484 }], forum);
+  const w = world([{ kind: 'over-cap', index: 0 }, { kind: 'complete', output: WRITER_484 }], forum, media);
   try {
     w.replayLiveRoom();
     const view = w.journal.view;
@@ -144,6 +160,7 @@ it.each([false, true])('the recorded stall (forum=%s): from base #484 a frontier
     // The room still answers.
     w.intake(715672501, 'What is my test marker?'); await w.worker.drain();
     expect(view.order.at(-1)?.sent).toBeDefined();
+    if (media) expect(view.order.at(-1)?.media).toEqual({ state: 'failed', reason: 'admission-refused' });
     // The rows replay to the same summary state.
     const summaries = view.summaries.map(item => item.through), failures = [...view.summarySpanFailures];
     w.closeJournal();

@@ -39,7 +39,7 @@
       "stage": "build",
       "artifact": {
         "path": "tests/preview/journal-requested-action.test.ts",
-        "hash": "sha256:dbcd5d71f7a1ac3c2b6f215079ba828e4b27ba8f671002699bdadf9fce1ca241"
+        "hash": "sha256:7557400031dceafae36c1901d3313081882c0acff1e250a47f82b50047208ca6"
       }
     },
     {
@@ -120,6 +120,14 @@
       "artifact": {
         "path": "tests/preview/journal-agent-resources.test.ts",
         "hash": "sha256:393406b4c5d3f7c4219d13b9b125b01d944bb87f2e196cb972bb1d132244693a"
+      }
+    },
+    {
+      "id": "PREVIEW-MEDIA-CUSTODY",
+      "stage": "build",
+      "artifact": {
+        "path": "tests/preview/telegram-media.test.ts",
+        "hash": "sha256:92647658654142bcbf8719a691be82715e17d6a5ae78826bf716baa87708bb88"
       }
     }
   ],

@@ -19,5 +19,36 @@
       32
     ],
     "holds": []
+  },
+  {
+    "type": "Declaration",
+    "schemaVersion": 1,
+    "id": "preview.media-custody.durablePreviewWrite",
+    "kind": "stores",
+    "status": "live",
+    "requiredFacts": {
+      "growth": "unbounded",
+      "holdsAgentMemory": "yes",
+      "machineScope": {
+        "kind": "machine-local",
+        "reason": "Binary media is encrypted under the receiving journal root key and never deleted or replaced by media intake. New writes are refused at 8 MiB per file or 96 MiB encrypted store capacity; retained bytes are not pruned. Original intake and custody outcomes follow journal replication, but transferring secret-bearing blobs is not implemented. A takeover reports missing local media, never assumes the bytes followed the journal."
+      },
+      "agreesWith": [
+        {
+          "store": "preview.journal.openPreviewJournal",
+          "invariant": "Every stored media outcome names an authenticated encrypted local blob with the recorded byte length. Readback verifies at admission; status and the existing hourly media-custody agreement report missing or corrupt custody without deleting or rewriting either store.",
+          "check": "PREVIEW-MEDIA-CUSTODY"
+        }
+      ]
+    },
+    "standards": [
+      7,
+      32,
+      33,
+      60,
+      100,
+      113
+    ],
+    "holds": []
   }
 ]

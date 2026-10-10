@@ -4,6 +4,7 @@ import { boundThread, journalAudience, journalConversation, matchesBoundChat, va
  * individually authenticated so replay reads the file once at boot; hot turns
  * append one frame and update only the in-memory projection. */
 import { createCipheriv, createDecipheriv, createHash, randomBytes } from 'node:crypto';
+import { telegramInboundMedia, type TelegramInboundMedia, mediaCustodyText, type MediaCustodyResult } from './telegram-media.js';
 import { brotliCompressSync, brotliDecompressSync, constants as zlibConstants } from 'node:zlib';
 import { closeSync, constants, existsSync, fsyncSync, mkdirSync, openSync, readFileSync, readSync, writeSync, ftruncateSync, statSync, lstatSync, realpathSync, renameSync, unlinkSync } from 'node:fs';
 import { dirname, resolve } from 'node:path';
@@ -975,7 +976,7 @@ export const KNOWN_FRAME_KINDS: ReadonlySet<string> = new Set(['group-carry', 'r
   'approval-decision', 'approval-request', 'call-outcome', 'cap-report', 'caps', 'channel-item',
   'channel-source-cursor', 'channel-source-error', 'coherence', 'expiry', 'format-retry', 'genesis',
   'held-notice-intent', 'held-notice-sent', 'hold', 'import', 'index-reserve', 'intake', 'intent',
-  'legacy-call', 'legacy-reply', 'limited-intent', 'limited-sent', 'lookup', 'meaning-index',
+  'legacy-call', 'legacy-reply', 'limited-intent', 'limited-sent', 'lookup', 'meaning-index', 'media-claim', 'media-custody',
   'memory-undecided', 'minimal-outage', 'model-call', 'model-uncertain', 'notice', 'obligation-result',
   'obligation-start', 'operator-result-intent', 'operator-result-sent', 'operator-review',
   'operator-review-closed', 'operator-yes', 'reminder-grant', 'reminder-intent', 'reminder-sent',
@@ -990,6 +991,9 @@ export const KNOWN_FRAME_KINDS: ReadonlySet<string> = new Set(['group-carry', 'r
   'summary-reserve', 'summary-review-reserve', 'summary-uncertain', 'tool-turn', 'waiting']);
 
 export type JournalRecord =
+  // Non-additive: an older writer must not discard the no-repeat expectation.
+  | { kind: 'media-claim'; id: string; digest: string; at: number }
+  | { kind: 'media-custody'; id: string; result: MediaCustodyResult; at: number }
   | { kind: 'genesis'; bot: string; chat: string; operator: string; forum?: true; grant: string; configurationDigest: string; expires: number; maxCalls: number; maxReplies: number; maxTurns: number; maxBytes: number; cursor: number; importSource?: string; importCursor?: number;
     /** Rules 8, 92: this root's own open-loop revisit interval, fixed for its life. Absent keeps
      * `LOOP_REVISIT_MS`, so every root created before this field behaves exactly as it did. */
@@ -1279,6 +1283,9 @@ export type IntakeCustody = { state: 'stored'; arrival: string; capture: string;
 /** One later message of a reply split across several: its plain text, its Telegram body, and its own signed provenance. */
 export interface ReplyPart { text: string; body: string; provenance: OutboundProvenance }
 export interface Turn { id: string; update: number; text: string; raw: string; accepted: boolean; at: number; thread?: number; editOf?: string; replaces?: string; custody?: IntakeCustody; answer?: string;
+  media?: MediaCustodyResult;
+  /** Expected causal prefix, retained before the first media request. */
+  mediaClaim?: string;
   /** Part Thirteen §9: the scoped-tool calls of every attempt of this turn's answer, in order (bounded), read by its reply review. */
   toolAttempts?: ToolAttempt[];
   /** The later messages of a reply split across several (part 2 onward, in order), with each one's dispatch start and receipt. */
@@ -3566,6 +3573,28 @@ function project(view: JournalView, row: JournalRecord, system?: SystemCheck, ad
     if (view.stepCheckBusiness && row.accepted) view.stepChecks.set(`intake:${row.id}`, {});
     return;
   }
+  if (row.kind === 'media-claim') {
+    const turn = view.turns.get(row.id);
+    if (!turn?.accepted || turn.mediaClaim || turn.media || turn.reserved || turn.answer !== undefined
+      || !/^[a-f0-9]{64}$/u.test(row.digest)) throw Error('preview journal: media claim refused');
+    const update = JSON.parse(turn.raw) as TelegramUpdate;
+    if (!telegramInboundMedia(update.edited_message ?? update.message)) throw Error('preview journal: media source missing');
+    turn.mediaClaim = row.digest;
+    return;
+  }
+  if (row.kind === 'media-custody') {
+    const turn = view.turns.get(row.id), result = row.result;
+    if (!turn?.accepted || turn.media || turn.reserved || turn.answer !== undefined
+      || !result || !['stored', 'unavailable', 'failed', 'file-limit', 'store-limit', 'malformed'].includes(result.state)
+      || result.state === 'stored' && (!/^[a-f0-9]{64}$/u.test(result.reference)
+        || !Number.isSafeInteger(result.bytes) || result.bytes < 0 || result.bytes > 8 * 1024 * 1024))
+      throw Error('preview journal: media custody refused');
+    const update = JSON.parse(turn.raw) as TelegramUpdate;
+    if (!telegramInboundMedia(update.edited_message ?? update.message)) throw Error('preview journal: media source missing');
+    turn.media = result;
+    turn.text += `\n[Media custody: ${mediaCustodyText(result)}]`;
+    return;
+  }
   if (row.kind === 'group-carry') {
     const scope = row.memory.scope;
     if (view.groupCarry || view.genesis.forum !== true || scope.chat !== view.genesis.chat
@@ -4944,7 +4973,13 @@ export function admittedUpdate(genesis: JournalView['genesis'], update: Telegram
     && principal.id === String(message?.from?.id) && principalBoundToUpdate(principal, update)
     && principal.provenance.adapter === TELEGRAM_ADAPTER[genesis.origin ?? 'production']
     && (thread === undefined || Number.isSafeInteger(thread) && thread > 0);
-  const text = typeof message?.text === 'string' ? message.text
+  const media = telegramInboundMedia(message);
+  const limitation = media?.kind === 'photo' ? 'This harness has no image-input path; I cannot see the photo.'
+    : media?.kind === 'voice' || media?.kind === 'audio' ? 'No local transcription path is installed; I cannot listen to this audio yet.'
+      : 'The document contents have not been read.';
+  const text = media ? `[Received ${media.kind === 'voice' ? 'voice note' : media.kind}: name ${JSON.stringify(media.name)}, size ${media.size === null ? 'unknown' : `${media.size} bytes`}. ${limitation}]`
+    + (typeof message?.caption === 'string' && message.caption.trim() ? `\nCaption: ${message.caption}` : '')
+    : typeof message?.text === 'string' ? message.text
     : typeof message?.caption === 'string' && message.caption.trim() ? `${message.caption}\n${UNREADABLE_OPERATOR_MESSAGE}`
       : UNREADABLE_OPERATOR_MESSAGE;
   return { id: previewTurnId(genesis.bot, update.update_id), accepted, text: accepted ? text : '',
@@ -5217,6 +5252,8 @@ export interface PreviewPorts {
   retrospectiveEvidence?(): RetroSiblingEvidence;
   /** Rule 100: vault-first custody of the credentials in a verified operator message, before it is recorded. */
   secrets?: { custody(input: { text: string; raw: string; source: string }): { text: string; raw: string; custody?: IntakeCustody } };
+  /** Host-only bounded encrypted custody, after durable intake and before model preparation. */
+  media?: { receive(source: string, media: TelegramInboundMedia): Promise<MediaCustodyResult> };
   boundary?(stage: string): void;
   /** Optional semantic stage of the recall owner (`composeRecall`). Ordinary conversation reserves
    * no helper spend (Part 21 §7), so a charging port is refused as over budget; none is bound live. */
@@ -7501,6 +7538,17 @@ export function createJournalWorker(journal: ReturnType<typeof openPreviewJourna
           // Leave a shared-budget slot for a full-context review if Jev cannot pass.
           if (journal.view.calls >= journal.view.limits.maxCalls - (ports.replyCheck ? 1 : 0)) {
             journal.append({kind:'hold',id:turn.id,reason:'call cap',at:ports.now()}); continue;
+          }
+          if (!turn.media) {
+            const update = JSON.parse(turn.raw) as TelegramUpdate;
+            const media = telegramInboundMedia(update.edited_message ?? update.message);
+            if (media) {
+              let result: MediaCustodyResult;
+              try { result = ports.media ? await ports.media.receive(turn.id, media) : { state: 'unavailable' }; }
+              catch { result = { state: 'failed' }; }
+              gate();
+              journal.append({ kind: 'media-custody', id: turn.id, result, at: ports.now() });
+            }
           }
           let selected = await prepareRecall(() => preparedFor(turn));
           if ('reason' in selected) {

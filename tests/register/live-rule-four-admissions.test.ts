@@ -42,7 +42,10 @@ describe('the live enumeration rule 4 asks for', () => {
   });
   it('the live ruled-three roster is exactly this set, so a new site cannot join it unnoticed', () => {
     expect(ruledThree.map(d => d.id).sort()).toEqual(['intake.stop', 'preview.journal.capacityRefused', 'preview.journal.gate',
-      'preview.journal.pollLimit', 'recall.redact',
+      'preview.journal.pollLimit',
+      // Rule 4's recorded-governed-state admission: media fetch dispatches only on an exact match of a
+      // recorded policy admission and a consumed reservation; anything else fails closed and keeps the intake.
+      'preview.media-admission.createMediaAdmission', 'recall.redact',
       'resource-owner.admit', 'rungraph.exhaustion', 'rungraph.stop', 'rungraph.unreachable']);
   });
   it('rules 60 and 61 each have a live holder, and its honesty class says what is still owed', () => {
