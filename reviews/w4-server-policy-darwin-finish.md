@@ -16,6 +16,7 @@ Multi-machine posture: Machine-local, deliberately. Each host inspects its own C
 Layer below: Rebuilt dist with npm run build; the architecture checker re-derived the composition digest; all 9 native harness contracts passed against it, including actual confined launch, durable owner admission, stop, refusal and timeout. All 81 subscription tests passed, including six physical child commands across the initial and timestamp-refreshed invocations and zero commands for unsafe policy.
 Bug class: integration
 Bug evidence: reproducer=tests/assembly/production-provider-subscription.test.ts
+Register maintenance: Replayed the seven generated register outputs from source commit ca80da798e68cf86fb7c8fddc554c9bee9805d3b; generation sha256:e47428ccc1108cedcd3a8791cbe55eb4d9b7409913cfc76691049f1b9b9e7c5c. Final lint and register:check passed with no wiring issues. This record covers both the declaration and its generated register publication.
 Hook bypass: none
 Convergence: none
 Decision: server-policy-minimal-finish | MUST-FIX 2 is a pre-existing gap owned by w4-prelaunch-honest under observer #222/#224. At step-1 completion on 2026-10-10 14:29 PDT, driver.log had no unit Astra YES and the companion report was BLOCKED; do not merge or wait. | reported=/Users/dabombstudio/.instar/agents/echo/.instar/lanes/w4-server-policy-finish-PROGRESS.md
