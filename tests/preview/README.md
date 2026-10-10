@@ -110,6 +110,8 @@ named agent bot. Unknown membership, another member, expiry, revocation or misma
 the copy. Keep the same authority and operator-record paths on subsequent `run` invocations.
 Model/review calls and group sends recheck authority and membership; Telegram does not provide an
 atomic membership-and-send operation, so a membership change after its last response remains a race.
+The optional synchronous external recall reranker cannot await that check, so carried roots use the
+existing deterministic recall fallback. Ordinary roots retain their configured reranker.
 
 The snapshot retains projected recall, active preferences, corrections, settled summary prose and
 facts, and open promises/reminders. It retains the original source references and counts any facts

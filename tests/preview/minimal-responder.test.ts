@@ -162,7 +162,7 @@ it('exposes no conversation-creating method at the one Telegram boundary (Rule 5
   const bridge = readFileSync(join(process.cwd(), 'src/assembly/telegram-bot-api-bridge.mjs'), 'utf8');
   const line = /const validMethod = ([^;]+);/u.exec(bridge)?.[1] ?? '';
   expect([...line.matchAll(/request\?\.method === '([A-Za-z]+)'/gu)].map(match => match[1]).sort())
-    .toEqual(['answerCallbackQuery', 'getMe', 'getUpdates', 'sendMessage']);
+    .toEqual(['answerCallbackQuery', 'getChat', 'getChatMember', 'getChatMemberCount', 'getMe', 'getUpdates', 'sendMessage']);
   expect(bridge).not.toMatch(/createForumTopic|createChatInviteLink|sendMessage.*chat_id:\s*['"]@/u);
 });
 

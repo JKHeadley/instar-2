@@ -5148,7 +5148,12 @@ export function createJournalWorker(journal: ReturnType<typeof openPreviewJourna
     ...(original.retrospect ? { retrospect: guarded(original.retrospect) } : {}),
     ...(original.stepCheck ? { stepCheck: { jev: guarded(original.stepCheck.jev) } } : {}),
     ...(original.recallReranker ? { recallReranker: { ...original.recallReranker,
-      rerank: guarded(async (query: string, candidates: readonly string[]) => original.recallReranker!.rerank(query, candidates)) } } : {}),
+      rerank: (query: string, candidates: readonly string[]) => {
+        // This packet doorway is synchronous: it cannot await a fresh audience read. Keep its
+        // deterministic fallback on carried roots; never start an unawaited external helper.
+        if (journal.view.groupCarry) throw Error('group carry: synchronous reranker cannot prove current disclosure');
+        return original.recallReranker!.rerank(query, candidates);
+      } } } : {}),
     ...(original.summaryCheck ? { summaryCheck: guarded(original.summaryCheck) } : {}),
     ...(original.replyCheck ? { replyCheck: { ...original.replyCheck,
       jev: guarded(original.replyCheck.jev), escalate: guarded(original.replyCheck.escalate),
