@@ -242,3 +242,30 @@ it.each(['operator', 'reply', 'channel', 'summary-operator', 'summary-channel'] 
       expect((packet.memorySummary ?? packet.summary)?.text ?? '').not.toContain(original);
     } finally { journal.close(); rmSync(root, { recursive: true, force: true }); }
   });
+
+it('preserves captured delivered and empty reply evidence in memory candidates', () => {
+  const shapes = JSON.parse(readFileSync(new URL('./fixtures/retrospective-duty-followup-train-1-2026-10-08.json',
+    import.meta.url), 'utf8')) as { otherShapes: { kind: string; id: string; raw: string }[] };
+  const rows = shapes.otherShapes.filter(row => row.kind === 'delivered-reply' || row.kind === 'empty-reply-in-recorded-context');
+  expect(rows.map(row => row.id)).toEqual(['telegram:8994258214:update:715672479', 'telegram:8994258214:update:715672550']);
+  for (const row of rows) {
+    const root = realpathSync(mkdtempSync(join(tmpdir(), 'credential-recorded-reply-')));
+    const journal = openPreviewJournal(join(root, 'journal.encrypted'), key, { kind: 'genesis', bot: '8994258214',
+      chat: '7654321', operator: '7654321', grant: 'grant:preview', configurationDigest: 'sha256:offline',
+      expires: activation.expiresAt, maxCalls: 10, maxReplies: 10, maxTurns: 10, maxBytes: 40000, cursor: 0 });
+    try {
+      const update = Number(row.id.split(':').at(-1));
+      journal.append({ kind: 'intake', id: row.id, update, text: 'Review the recorded reply.', accepted: true,
+        raw: JSON.stringify({ message: { from: { id: 7654321 } } }), cursor: update + 1, at: live.at - 1000 });
+      // Replay the captured projection only. Empty context bytes are not proof of an empty Telegram send.
+      journal.view.order[0]!.intent = row.raw;
+      const worker = createJournalWorker(journal, { now: () => live.at, stopped: () => false,
+        credentialWording: () => credentialTextRenderer([]), checkOutbound: () => {},
+        model: async () => { throw Error('read-only replay'); }, send: async () => { throw Error('read-only replay'); } });
+      const probe = worker.probe('What was the previous reply?');
+      if ('reason' in probe) throw Error(probe.reason);
+      expect(JSON.parse(probe.context).memoryCandidates.find((item: { id: string }) => item.id === row.id).reply)
+        .toBe(row.raw.replace(/^PREVIEW — /u, '').slice(0, 1000));
+    } finally { journal.close(); rmSync(root, { recursive: true, force: true }); }
+  }
+});
