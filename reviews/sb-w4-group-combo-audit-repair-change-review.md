@@ -10,7 +10,7 @@ Operator questions: none
 Suggested tier: significant
 Declared tier: significant
 Tier rationale: Repairs the shipped audit command and memory provenance diagnostics; exact source predicate only, no model prompt or authority change.
-Side effects: The auditor now uses the existing intake matchesBoundChat helper, including bound id, supergroup type and is_forum for configured forums. Sender, accepted turn, update and exact text checks remain. Generated register source pins are refreshed through build-register; delegated desk rehash/repin produced no owner-manifest or inventory changes.
+Side effects: The auditor now uses the existing intake matchesBoundChat helper, including bound id, supergroup type and is_forum for configured forums. Sender, accepted turn, update and exact text checks remain. Generated register source pins are refreshed through build-register --replay at e7139754759fed47e851b811da2dbc6861fa608a; delegated desk rehash/repin produced no owner-manifest or inventory changes.
 Undo and recovery: Revert the audit predicate and test changes and regenerate the register. No durable data migration or state mutation; reverting reintroduces the false forum diagnostic.
 Multi-machine posture: Read-only journal-derived diagnostics on each machine, with identical configured binding checks. No state, ownership, replication or effect behavior added.
 Layer below: Inspected matchesBoundChat in forum-routing.ts and admittedUpdate in journal.ts: exact configured chat and transport shape plus authenticated operator admission. Inspected strict read-only replay and the shipped audit CLI exit-code path.
@@ -21,7 +21,7 @@ Convergence: none
 <!-- Rule 102: record each mid-run engineering decision as a line: Decision: <id> | <what was decided, and why> | reported=<report that names the id> -->
 Prompt review: No prompt/parser/model decision changed. The audit module is classified as a prompt source by the scanner but this diff only changes the exact envelope provenance predicate.
 
-Subject (2 paths): tests/preview/journal-audit.mjs, tests/preview/journal-audit.test.ts
+Subject (9 paths): tests/preview/journal-audit.mjs, tests/preview/journal-audit.test.ts, generated/capabilities.json, generated/capabilities.md, generated/coverage.md, generated/glossary.md, generated/register.json, generated/rules.md, generated/source.json
 
 ## Closing block
 
