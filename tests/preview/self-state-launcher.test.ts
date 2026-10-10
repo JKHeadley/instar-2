@@ -73,7 +73,7 @@ export const createClaudeCodeSubscriptionRoute = () => ({kind:'Success',value:{i
     const packetOf = line => JSON.parse(JSON.parse(JSON.parse(line)).messages.find(m => m.role === 'context').content).packet;
     const selfOf = line => packetOf(line).sources.find(source => source.id === 'self-state').text;
     // Run 1: two messages fill the reply cap; one call slot stays available for review.
-    writeFileSync(updates, JSON.stringify([message(1, 'first'), message(2, 'second')]));
+    writeFileSync(updates, JSON.stringify([message(1, 'which activation are you running under, and until when?'), message(2, 'second')]));
     const firstLaunch = run(4);
     let s = status();
     expect(s.self).toContain(s.memoryHealth);
@@ -87,6 +87,14 @@ export const createClaudeCodeSubscriptionRoute = () => ({kind:'Success',value:{i
     expect(s.launches[0].reason).toBe('cycle limit reached');
     let prompt = readFileSync(prompts, 'utf8').trim().split('\n').map(selfOf);
     expect(prompt[0]).toContain('That is the first recorded launch');
+    expect(prompt[0]).toContain('Activation: your activation; ends');
+    const record = JSON.parse(readFileSync(join(root, 'credentials.json'), 'utf8')).records
+      .find(item => item.kind === 'activation');
+    expect(record.name).toBe('preview-activation');
+    expect(record.identity).toBe(world.activation().reference);
+    expect(record.expiresAt).toBe(trial.expiresAt);
+    expect(prompt[0]).not.toContain(record.name);
+    expect(prompt[0]).not.toContain(record.identity);
     expect(prompt[0]).toMatch(/This run started 2026-\d\d-\d\d \d\d:\d\d P[DS]T; uptime \d+m\./u);
     // The burst intake admits every waiting update before reply work, so both are already received.
     expect(prompt[0]).toContain('Operator messages received: 2 today, 2 so far');
@@ -98,7 +106,7 @@ export const createClaudeCodeSubscriptionRoute = () => ({kind:'Success',value:{i
     const raised = agent('raise-caps', '--root', root, '--max-calls', '6', '--max-replies', '5', '--max-turns', '6',
       '--authority', 'Justin, offline test');
     expect(raised.status, raised.stderr).toBe(0);
-    writeFileSync(updates, JSON.stringify([message(1, 'first'), message(2, 'second'),
+    writeFileSync(updates, JSON.stringify([message(1, 'which activation are you running under, and until when?'), message(2, 'second'),
       message(3, 'how many messages have we exchanged today and when did you last restart?'),
       message(4, 'one more question')]));
     const secondLaunch = run(4);

@@ -1,4 +1,5 @@
 import { expect, it } from 'vitest';
+import { selfStateBrief, selfStateSource } from './self-state.js';
 import { SOURCE_PINS, sourcePacket } from './briefing.js';
 import { mkdtempSync, readFileSync, realpathSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
@@ -56,13 +57,15 @@ function world(writer: Step[]) {
   const throughs: number[] = [], log: string[] = [];
   let clock = 0, calls = 0;
   const worker = createJournalWorker(journal, { now: () => START + clock, elapsed: () => clock, stopped: () => false,
-    sources: () => sourcePacket(path => readFileSync(path, 'utf8'), SOURCE_PINS,
+    sources: () => [...sourcePacket(path => readFileSync(path, 'utf8'), SOURCE_PINS,
       { providerAttempts: genesis.maxCalls, expiresAt: genesis.expires }).sources,
+      selfStateSource(selfStateBrief(journal.view, { launches: [], unreadable: 0 }, START + clock, 'UTC'))],
     model: async input => {
       // Replay the captured writers/uncertain outcomes through the trimmed briefing,
       // not just an empty fixture context. Both governed excerpts still reach the call.
-      const sources = (JSON.parse(input.context) as { sources: { id: string }[] }).sources;
-      expect(sources.map(source => source.id)).toEqual(['purpose:purpose', 'purpose:coherency', 'capability-note']);
+      const sources = (JSON.parse(input.context) as { sources: { id: string; text: string }[] }).sources;
+      expect(sources.map(source => source.id)).toEqual(['purpose:purpose', 'purpose:coherency', 'capability-note', 'self-state']);
+      expect(sources.at(-1)!.text).toContain('Activation: your activation; ends');
       if (!input.id.startsWith('summary:')) return 'Noted.';
       throughs.push(Number(input.id.slice(8))); log.push('summary');
       // After the scripted steps the writer keeps returning the live room's recorded over-cap results.

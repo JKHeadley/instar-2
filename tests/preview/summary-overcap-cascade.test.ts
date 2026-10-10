@@ -1,4 +1,5 @@
 import { expect, it } from 'vitest';
+import { selfStateBrief, selfStateSource } from './self-state.js';
 import { mkdtempSync, readFileSync, realpathSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
@@ -58,7 +59,9 @@ function world(writer: Step[], jev: string[], review: () => 'pass' | 'violation'
   };
   let clock = 0, calls = 0, jevCalls = 0;
   const worker = createJournalWorker(journal, { now: () => 1790700000000 + clock, elapsed: () => clock, stopped: () => false,
+    sources: () => [selfStateSource(selfStateBrief(journal.view, { launches: [], unreadable: 0 }, 1790700000000 + clock, 'UTC'))],
     model: async input => {
+      expect(JSON.parse(input.context).sources[0].text).toContain('Activation: your activation; ends');
       if (!input.id.startsWith('summary:')) return ANSWERS.get(Number(input.id.split(':').at(-1))) ?? 'Noted.';
       log.push('summary'); throughs.push(Number(input.id.slice(8)));
       // After the scripted calls the writer keeps producing the largest recorded over-cap result.
