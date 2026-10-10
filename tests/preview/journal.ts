@@ -670,9 +670,21 @@ const timedOutCall = (view: JournalView, id: string): boolean => {
   }
   return false;
 };
+/** One retry of an ended zero-output rejection, never a replay of tools or a known policy/usage refusal.
+ * The historical outcome has no failureClass; new physical rows retain the provider classifier's closed enum. */
+const rejectedEmptyCall = (view: JournalView, id: string): boolean => {
+  const turn = view.turns.get(id);
+  if (!turn || turn.toolAttempts?.length || turn.toolAttemptsOmitted || turn.toolTraceConsistent === false
+    || turn.toolRouted && (turn.toolAttempts === undefined || turn.toolTraceConsistent !== true)) return false;
+  const row = [...view.callOutcomes].reverse().find(item => item.id === id && item.role === 'model');
+  const o = row?.outcome;
+  return o !== undefined && o.type === 'result' && o.isError === true && o.outputTokens === 0
+    && o.exitCode !== null && o.localLimit === null && o.resources?.cleanup === 'verified'
+    && o.failureClass !== 'policy' && o.failureClass !== 'limit';
+};
 export interface CallOutcome { exitCode: number | null; localLimit: 'timeout' | 'size' | 'output-cap' | 'memory' | 'processes' | 'cpu' | 'aggregate' | 'capacity' | null;
   elapsedMs: number; type: 'result' | 'other' | null; subtype: 'success' | 'error_max_turns' | 'error_during_execution' | 'error_max_budget_usd' | 'other' | null;
-  isError: boolean | null; outputTokens: number | null; promptBytes: number; resources?: LaunchResources }
+  isError: boolean | null; outputTokens: number | null; promptBytes: number; failureClass?: 'limit' | 'policy' | 'timeout' | 'transport' | 'unknown'; resources?: LaunchResources }
 /** Rules 60/61: content-free resource facts of the owned launch behind a call (optional; older rows carry none). */
 export interface LaunchResources { enforcement: Record<'cpuPerProcess' | 'handlesPerProcess' | 'processGrowth' | 'treeHandles' | 'memory' | 'treeCpu', 'hard' | 'sampled' | 'unavailable' | 'unsupported'>;
   /** The kernel process limit actually held, with its subject (a user ID, never the launched tree). */
@@ -1111,7 +1123,7 @@ export type JournalRecord =
   | { kind: 'format-retry'; id: string; role: 'answer' | 'reply-review'; state?: 'complete'; failureClass?: 'malformed'; undecided?: true; prompt?: string; usage?: ModelUsage; maxInputTokens?: number; maxOutputTokens?: number; at: number }
   /** The one replacement of an answer call that ended at the local timeout (docs/09: a replacement takes separate
    * capacity). The timed-out call stays UNKNOWN and charged; the replacement is reserved under the same cap. */
-  | { kind: 'answer-replace'; id: string; state: 'uncertain'; prompt?: string; usage?: ModelUsage; latencyMs?: number; maxInputTokens?: number; maxOutputTokens?: number; at: number }
+  | { kind: 'answer-replace'; id: string; state: 'uncertain' | 'rejected'; prompt?: string; usage?: ModelUsage; latencyMs?: number; maxInputTokens?: number; maxOutputTokens?: number; at: number }
   | { kind: 'call-outcome'; id: string; role: 'model' | 'summary' | 'reply-review'; outcome: CallOutcome; at: number }
 
 
@@ -1288,6 +1300,8 @@ export interface Turn { id: string; update: number; text: string; raw: string; a
   mediaClaim?: string;
   /** Part Thirteen §9: the scoped-tool calls of every attempt of this turn's answer, in order (bounded), read by its reply review. */
   toolAttempts?: ToolAttempt[];
+  /** A missing/inconsistent trace cannot establish that a rejected tool turn had no effects. */
+  toolTraceConsistent?: boolean;
   /** The later messages of a reply split across several (part 2 onward, in order), with each one's dispatch start and receipt. */
   replyParts?: (ReplyPart & { started?: true; sent?: number; sentAt?: number })[];
   /** Calls the turn made beyond `toolAttempts` (the review bound); the review is told its excerpt is incomplete. */
@@ -1303,7 +1317,7 @@ export interface Turn { id: string; update: number; text: string; raw: string; a
 
 
   wasHeld?: true; heldNoticeCoveredBy?: string; closedQuestions?: string[]; checked?: CoherenceFinding[]; checkFailed?: true; unlabeledRecall?: boolean;
-  replyChecks?: ReplyCheckResult[]; jevReserved?: boolean; jevReservedAt?: number; reviewReserved?: boolean; reviewReservedAt?: number; reviewState?: 'complete' | 'rejected' | 'uncertain'; answerRetried?: true; answerReplaced?: true; lookup?: { words: string[]; found: string[] }; reviewRetried?: true; reviewDiagnostics?: ReplyReviewDiagnostics;
+  replyChecks?: ReplyCheckResult[]; jevReserved?: boolean; jevReservedAt?: number; reviewReserved?: boolean; reviewReservedAt?: number; reviewState?: 'complete' | 'rejected' | 'uncertain'; answerRetried?: true; answerReplaced?: true | 'rejected'; lookup?: { words: string[]; found: string[] }; reviewRetried?: true; reviewDiagnostics?: ReplyReviewDiagnostics;
   answerMs?: number; sendMs?: number; answerReason?: string;
   reviewCandidate?: string; reviewMentionedDates?: string[];
   revisionReserved?: true; revisionReservedAt?: number; revisionObjections?: string[];
@@ -2618,7 +2632,7 @@ export function unknownCallKeys(view: JournalView) {
   const answers = [...view.order.filter(turn => turn.reserved && (turn.modelState === 'uncertain' || turn.answer === undefined))
     .map(turn => `answer:${turn.id}`),
     // A replaced timed-out call stays UNKNOWN under its own key whatever its replacement concludes.
-    ...view.order.filter(turn => turn.answerReplaced).map(turn => `answer-replaced:${turn.id}`)];
+    ...view.order.filter(turn => turn.answerReplaced === true).map(turn => `answer-replaced:${turn.id}`)];
   const summaries = [...view.summaryReservations.keys()].map(through => `summary:${String(through)}`);
   const reviews = [...view.order.filter(turn => turn.reviewReserved && turn.reviewState !== 'complete' && turn.reviewState !== 'rejected'
     && !turn.replyChecks?.some(check => check.path === 'subscription' && (check.verdict === 'pass' || check.verdict === 'violation')))
@@ -2835,6 +2849,7 @@ function validateCallOutcome(view: JournalView, row: Extract<JournalRecord, { ki
     || ![null, 'result', 'other'].includes(o.type)
     || ![null, 'success', 'error_max_turns', 'error_during_execution', 'error_max_budget_usd', 'other'].includes(o.subtype)
     || ![null, true, false].includes(o.isError)
+    || o.failureClass !== undefined && !['limit', 'policy', 'timeout', 'transport', 'unknown'].includes(o.failureClass)
     || o.resources !== undefined && !validLaunchResources(o.resources)) throw Error('preview journal: call outcome malformed');
 }
 function validLaunchResources(r: LaunchResources): boolean {
@@ -3359,6 +3374,7 @@ function projectToolTurn(view: JournalView, row: Extract<JournalRecord, { kind: 
   if (turn) {
     // Every attempt's calls accumulate in order (a format re-ask's second tool attempt does not erase the first's):
     // the excerpt keeps the first calls up to the bound and counts every later one as omitted (Rules 45, 58, 84).
+    turn.toolTraceConsistent = turn.toolTraceConsistent !== false && row.consistent;
     const shown = turn.toolAttempts ?? [], room = Math.max(0, TOOL_ATTEMPTS_REVIEWED - shown.length);
     turn.toolAttempts = [...shown, ...row.calls.slice(0, room).map(call => ({ n: call.n, tool: String(call.tool),
       decision: String(call.decision), input: attemptExcerpt(String(call.input)), result: call.result === null ? null : attemptExcerpt(String(call.result)) }))];
@@ -4275,13 +4291,15 @@ function project(view: JournalView, row: JournalRecord, system?: SystemCheck, ad
     // docs/09 "a reservation survives uncertain execution": the timed-out call keeps its full reservation (never
     // settled here), and its replacement takes separate capacity under the same cap, once per turn (Rule 55).
     if (!turn.reserved || turn.answer !== undefined || turn.modelState !== undefined || turn.intent !== undefined
-      || turn.answerReplaced || row.state !== 'uncertain' || view.calls >= view.limits.maxCalls || !timedOutCall(view, row.id))
+      || turn.answerReplaced || view.calls >= view.limits.maxCalls
+      || !(row.state === 'uncertain' ? timedOutCall(view, row.id) : row.state === 'rejected' && rejectedEmptyCall(view, row.id)))
       throw Error('preview journal: answer replacement order or cap');
+    if (row.state === 'rejected') settleTokens(view, `answer:${row.id}`, row.usage);
     const timedOut = view.tokenCurrent.get(`answer:${row.id}`);
     if (timedOut !== undefined) { view.tokenCurrent.delete(`answer:${row.id}`); view.tokenCurrent.set(`answer-replaced:${row.id}`, timedOut); }
     reserveTokens(view, `answer:${row.id}`, 'answer', row.maxInputTokens ?? view.limits.maxBytes,
       row.maxOutputTokens ?? subscriptionOutputMaximum);
-    turn.answerReplaced = true; view.calls++;
+    turn.answerReplaced = row.state === 'rejected' ? 'rejected' : true; view.calls++;
     if (row.prompt !== undefined) { turn.prompt = row.prompt; turn.promptKind = 'answer-replace'; }
     return;
   }
@@ -7684,18 +7702,19 @@ export function createJournalWorker(journal: ReturnType<typeof openPreviewJourna
           // docs/09, live 2026-10-02 (S update 6230861 after its lookup, A update 6230665, S update 6230832): an answer
           // call the local timeout ended stays UNKNOWN and charged, and the turn asks once more under the same cap, on
           // the same packet, before any send. Only a recorded timeout with confirmed cleanup qualifies; any other
-          // UNKNOWN outcome, or a second one, keeps the loss notice. Returns false when the replacement's own outcome
+          // UNKNOWN outcome, or a second one, keeps the loss notice. An ended zero-output rejection without tool work
+          // also gets this one replacement; its known usage settles instead of staying UNKNOWN. Returns false when the replacement's own outcome
           // is unknown (its reservation then stays UNKNOWN).
-          const replaceTimedOut = async (given: Answer): Promise<Answer | false> => {
-            if (typeof given === 'string' || !('state' in given) || given.state !== 'uncertain' || turn.answerReplaced
-              || !timedOutCall(journal.view, turn.id) || halted()
+          const replaceFailed = async (given: Answer): Promise<Answer | false> => {
+            if (typeof given === 'string' || !('state' in given) || (given.state !== 'uncertain' && given.state !== 'rejected') || turn.answerReplaced
+              || !(given.state === 'uncertain' ? timedOutCall(journal.view, turn.id) : rejectedEmptyCall(journal.view, turn.id)) || halted()
               || journal.view.calls >= journal.view.limits.maxCalls - (ports.replyCheck ? 1 : 0)) return given;
             const replaceContext = routedContext(context);
             let replacePrepared = prepared;
             if (replaceContext !== context && prepared !== undefined) {
               try { replacePrepared = ports.prepareModel?.({ question, context: replaceContext, id: turn.id, ...(writer ? { writer } : {}) }); } catch { return given; }
             }
-            journal.append({ kind: 'answer-replace', id: turn.id, state: 'uncertain',
+            journal.append({ kind: 'answer-replace', id: turn.id, state: given.state,
               ...(replacePrepared === undefined || replacePrepared === prepared ? {} : { prompt: replacePrepared }),
               ...('usage' in given && given.usage ? { usage: given.usage } : {}), latencyMs: duration(answerStarted),
               maxInputTokens: journal.view.limits.maxBytes, maxOutputTokens: subscriptionOutputMaximum, at: ports.now() }); gate();
@@ -7705,10 +7724,10 @@ export function createJournalWorker(journal: ReturnType<typeof openPreviewJourna
           };
           /** One answer call's settled result: a timed-out call replaced once, then a format miss re-asked once. */
           const settled = async (given: Answer): Promise<Answer | false> => {
-            const replaced = await replaceTimedOut(given);
+            const replaced = await replaceFailed(given);
             if (replaced === false) return false;
             const reasked = await formatReask(replaced);
-            return reasked === false ? false : replaceTimedOut(reasked);
+            return reasked === false ? false : replaceFailed(reasked);
           };
           const answerText = (given: Answer) => typeof given === 'string' ? given : 'text' in given ? given.text : undefined;
           const first = await settled(answer);

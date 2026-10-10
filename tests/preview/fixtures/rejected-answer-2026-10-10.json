@@ -1,0 +1,409 @@
+{
+  "source": "Read-only forum-answer-copy-20261010-125741/journal.encrypted; update 715675390, failed train-5 e4f96d28 answer check on 2026-10-10. Selected original rows, excluding prompts and signatures. Replacement is a real same-prompt replay through pinned Claude 2.1.280 / claude-sonnet-5 and physical provider IO with the tools system prompt, no tool execution, 2026-10-10; original root never run or written.",
+  "update": 715675390,
+  "rows": [
+    {
+      "kind": "intake",
+      "id": "telegram:8994258214:update:715675390",
+      "update": 715675390,
+      "text": "From Echo (the desk), test: Canary check e4f96d28: automated desk check (Forum answer check), nothing here to remember or act on. Please reply with exactly this text: probe-cb79e572",
+      "raw": "{\"update_id\":715675390,\"message\":{\"message_id\":28,\"from\":{\"id\":7812716706,\"is_bot\":false,\"first_name\":\"Justin\",\"last_name\":\"Headley\",\"language_code\":\"en\"},\"chat\":{\"id\":-1004367556355,\"title\":\"Instar 2.0 test\",\"is_forum\":true,\"type\":\"supergroup\"},\"date\":1791662284,\"text\":\"From Echo (the desk), test: Canary check e4f96d28: automated desk check (Forum answer check), nothing here to remember or act on. Please reply with exactly this text: probe-cb79e572\"}}",
+      "accepted": true,
+      "cursor": 715675391,
+      "at": 1791662284759
+    },
+    {
+      "kind": "tool-turn",
+      "phase": "reserved",
+      "id": "telegram:8994258214:update:715675390",
+      "attempt": 0,
+      "calls": 15,
+      "delegation": {
+        "children": 2,
+        "turnsEach": 4,
+        "type": "worker",
+        "authority": "preview-harness-profile-justin-gmail-v1-activation sha256:a2f087e548dfad54ba8f04130faf161667f295460c704dd623e98c662d5928c4"
+      },
+      "workspace": {
+        "key": "f9e72cd81622",
+        "kept": true
+      },
+      "at": 1791662287553
+    },
+    {
+      "kind": "call-outcome",
+      "id": "telegram:8994258214:update:715675390",
+      "role": "model",
+      "outcome": {
+        "exitCode": 1,
+        "localLimit": null,
+        "elapsedMs": 2267,
+        "type": "result",
+        "subtype": "success",
+        "isError": true,
+        "outputTokens": 0,
+        "promptBytes": 21787,
+        "resources": {
+          "enforcement": {
+            "cpuPerProcess": "hard",
+            "handlesPerProcess": "hard",
+            "processGrowth": "sampled",
+            "treeHandles": "unsupported",
+            "memory": "sampled",
+            "treeCpu": "sampled"
+          },
+          "uidProcesses": {
+            "state": "hard",
+            "subject": "uid:501",
+            "limit": 587
+          },
+          "admission": {
+            "work": "answer",
+            "concurrent": 1,
+            "waitedMs": 152
+          },
+          "peakMemoryBytes": 61587456,
+          "peakProcesses": 3,
+          "treeCpuMilliseconds": 50,
+          "census": "complete",
+          "leakedDescendants": 0,
+          "cleanup": "verified",
+          "membership": "working-area-joined",
+          "allocation": {
+            "set": "allocation:sha256:23676bf2da759ff9f6f9f3bb6abe6737718a7c8e01eecdccf4e216f1e6f4310c",
+            "state": "returned"
+          }
+        }
+      },
+      "at": 1791662294421
+    },
+    {
+      "kind": "tool-turn",
+      "phase": "trace",
+      "id": "telegram:8994258214:update:715675390",
+      "attempt": 0,
+      "consistent": true,
+      "calls": [],
+      "edges": [],
+      "workspaceBytes": 0,
+      "volume": {
+        "lost": false,
+        "reconciled": 0
+      },
+      "harness": {
+        "user": "_instarharness"
+      },
+      "session": {
+        "id": "618408a4-f53e-4e89-85d1-efc3e3344801",
+        "mode": "new",
+        "reason": "new",
+        "turn": 1,
+        "kept": false,
+        "ended": "the answer did not complete",
+        "transcriptBytes": 91681
+      },
+      "at": 1791662295060
+    },
+    {
+      "kind": "answer",
+      "id": "telegram:8994258214:update:715675390",
+      "text": "I couldn't produce an answer to that. Please rephrase or ask again.",
+      "state": "rejected",
+      "failureClass": "rejected",
+      "usage": {
+        "inputTokens": 0,
+        "outputTokens": 0,
+        "charge": null,
+        "inputComplete": true
+      },
+      "latencyMs": 7908,
+      "at": 1791662295158
+    },
+    {
+      "kind": "reply-check",
+      "id": "telegram:8994258214:update:715675390",
+      "result": {
+        "verdict": "violation",
+        "ruleIds": [
+          "claims_blocked",
+          "parks_on_user",
+          "unrecorded_blocker"
+        ],
+        "confidence": 0.88,
+        "path": "jev",
+        "latencyMs": 183,
+        "scores": {
+          "raw_path": 0.01,
+          "cli_command": 0.12,
+          "config_key": 0.05,
+          "credential": 0.04,
+          "api_endpoint": 0.02,
+          "quits_on_self": 0.19,
+          "claims_blocked": 0.69,
+          "parks_on_user": 0.75,
+          "defers_work": 0.13,
+          "unrecorded_blocker": 0.88
+        },
+        "usage": {
+          "inputTokens": 705,
+          "outputTokens": 184,
+          "charge": null
+        },
+        "candidateDigest": "97f74d4ed6ce7797ca10f8fcf1a442a7320dae03b63a3093667f3727782ed486"
+      },
+      "at": 1791662295366
+    },
+    {
+      "kind": "call-outcome",
+      "id": "telegram:8994258214:update:715675390:reply-review",
+      "role": "reply-review",
+      "outcome": {
+        "exitCode": 1,
+        "localLimit": null,
+        "elapsedMs": 921,
+        "type": "result",
+        "subtype": "success",
+        "isError": true,
+        "outputTokens": 0,
+        "promptBytes": 24908,
+        "resources": {
+          "enforcement": {
+            "cpuPerProcess": "hard",
+            "handlesPerProcess": "hard",
+            "processGrowth": "sampled",
+            "treeHandles": "unsupported",
+            "memory": "sampled",
+            "treeCpu": "sampled"
+          },
+          "uidProcesses": {
+            "state": "hard",
+            "subject": "uid:501",
+            "limit": 586
+          },
+          "admission": {
+            "work": "review",
+            "concurrent": 1,
+            "waitedMs": 192
+          },
+          "peakMemoryBytes": 0,
+          "peakProcesses": 0,
+          "treeCpuMilliseconds": 0,
+          "census": "none",
+          "leakedDescendants": 0,
+          "cleanup": "verified",
+          "membership": "working-area-joined",
+          "allocation": {
+            "set": "allocation:sha256:63fc6da75f8633d1863aa030b074cea1a4f7563746985399a47fa8e67418d849",
+            "state": "returned"
+          }
+        }
+      },
+      "at": 1791662297808
+    },
+    {
+      "kind": "reply-review-state",
+      "id": "telegram:8994258214:update:715675390",
+      "state": "rejected",
+      "diagnostics": {
+        "outputTokens": 0,
+        "thinkingPresent": "unobservable"
+      },
+      "usage": {
+        "inputTokens": 0,
+        "outputTokens": 0,
+        "charge": null,
+        "inputComplete": true
+      },
+      "at": 1791662297819
+    },
+    {
+      "kind": "reply-check",
+      "id": "telegram:8994258214:update:715675390",
+      "result": {
+        "verdict": "unavailable",
+        "ruleIds": [
+          "claims_blocked",
+          "parks_on_user",
+          "unrecorded_blocker"
+        ],
+        "confidence": null,
+        "path": "subscription",
+        "latencyMs": 2447.535499999998,
+        "candidateDigest": "97f74d4ed6ce7797ca10f8fcf1a442a7320dae03b63a3093667f3727782ed486"
+      },
+      "at": 1791662297823
+    },
+    {
+      "kind": "intent",
+      "id": "telegram:8994258214:update:715675390",
+      "text": "I need to check that answer before I can send it.",
+      "body": "I need to check that answer before I can send it.",
+      "chat": "-1004367556355",
+      "heldReview": {
+        "objections": [
+          "claims_blocked",
+          "parks_on_user",
+          "unrecorded_blocker"
+        ],
+        "reason": "review unavailable",
+        "dispositions": [
+          {
+            "objection": "claims_blocked",
+            "decision": "no-decision"
+          },
+          {
+            "objection": "parks_on_user",
+            "decision": "no-decision"
+          },
+          {
+            "objection": "unrecorded_blocker",
+            "decision": "no-decision"
+          }
+        ]
+      },
+      "promises": [],
+      "fulfills": [],
+      "update": 715675390,
+      "grant": "preview-trial:6218fbb5-769e-4c43-9de2-8a34bd117b4f",
+      "at": 1791662297828
+    },
+    {
+      "kind": "sent",
+      "id": "telegram:8994258214:update:715675390",
+      "message": 29,
+      "latencyMs": 758,
+      "at": 1791662298587
+    }
+  ],
+  "replacement": {
+    "duration_api_ms": 3590,
+    "stop_reason": "end_turn",
+    "session_id": "e5ee99b2-7d8e-4b51-8a10-e24e55b1f0ec",
+    "total_cost_usd": 0.042722,
+    "usage": {
+      "input_tokens": 2,
+      "cache_creation_input_tokens": 10217,
+      "cache_read_input_tokens": 0,
+      "output_tokens": 185,
+      "output_tokens_details": {
+        "thinking_tokens": 0
+      },
+      "server_tool_use": {
+        "web_search_requests": 0,
+        "web_fetch_requests": 0
+      },
+      "service_tier": "standard",
+      "cache_creation": {
+        "ephemeral_1h_input_tokens": 10217,
+        "ephemeral_5m_input_tokens": 0
+      },
+      "inference_geo": "global",
+      "iterations": [],
+      "speed": "standard"
+    },
+    "modelUsage": {
+      "claude-sonnet-5": {
+        "inputTokens": 2,
+        "outputTokens": 185,
+        "cacheReadInputTokens": 0,
+        "cacheCreationInputTokens": 10217,
+        "webSearchRequests": 0,
+        "costUSD": 0.042722,
+        "contextWindow": 1000000,
+        "maxOutputTokens": 64000,
+        "thinkingTokens": 0,
+        "canonicalModel": "claude-sonnet-5",
+        "provider": "firstParty",
+        "costBasis": "list"
+      }
+    },
+    "permission_denials": [],
+    "terminal_reason": "completed",
+    "fast_mode_state": "off",
+    "fast_mode_disabled_reason": "sdk_opt_in_required",
+    "subagent_stats": {
+      "spawned": 0,
+      "requested": {
+        "background": 0,
+        "foreground": 0,
+        "unset": 0
+      },
+      "started_in_background": 0,
+      "max_depth": 0,
+      "spawned_by_subagents": 0,
+      "completed": 0,
+      "failed": 0,
+      "killed": {
+        "parent": 0,
+        "user": 0,
+        "system": 0
+      },
+      "refused": {
+        "depth_limit": 0,
+        "concurrency_limit": 0,
+        "budget": 0
+      },
+      "by_type": {}
+    },
+    "is_error": false,
+    "num_turns": 1,
+    "subtype": "success",
+    "api_error_status": null,
+    "result": "{\"reasoning\":\"This is a canary/probe check from Echo (the desk), explicitly stated to be nothing to remember or act on, just asking for an exact reply string. This is a direct reply style request - the operator (well, the message is attributed to 'Echo (the desk)' but comes through as a user message in the current turn) is asking for an exact text reply. The message itself says nothing here to remember or act on, so no memory, dated, directives, openLoops, or blocker fields apply. I should just reply with the exact requested text.\",\"answer\":\"probe-cb79e572\"}",
+    "ttft_ms": 3588,
+    "type": "result",
+    "duration_ms": 3604,
+    "uuid": "809413b7-4362-43cf-92c2-6bf1e0687b90",
+    "ttft_stream_ms": 1132,
+    "time_to_request_ms": 14,
+    "first_content_frame_ms": 1132,
+    "queued_turn_count": 0,
+    "result_index": 0
+  },
+  "emptyCanary": {
+    "source": "/Users/dabombstudio/.instar/agents/echo/.instar/lanes/preview-trial-root/canary-20260927-071127/journal.encrypted (read-only 2026-10-10); preview-deploy reported an empty reply, not an API-accepted empty send",
+    "update": 969389586,
+    "state": "complete",
+    "failureClass": "malformed",
+    "answer": "I couldn't produce an answer to that. Please rephrase or ask again.",
+    "intent": null,
+    "sent": null,
+    "checks": [
+      {
+        "verdict": "unsure",
+        "ruleIds": [
+          "claims_blocked",
+          "parks_on_user"
+        ],
+        "confidence": 0.8,
+        "path": "jev",
+        "latencyMs": 231,
+        "scores": {
+          "raw_path": 0.02,
+          "cli_command": 0.04,
+          "config_key": 0.09,
+          "credential": 0.04,
+          "api_endpoint": 0.08,
+          "quits_on_self": 0.29,
+          "claims_blocked": 0.8,
+          "parks_on_user": 0.77
+        },
+        "usage": {
+          "inputTokens": 581,
+          "outputTokens": 144,
+          "charge": null
+        }
+      },
+      {
+        "verdict": "unavailable",
+        "ruleIds": [
+          "claims_blocked",
+          "parks_on_user"
+        ],
+        "confidence": null,
+        "path": "subscription",
+        "latencyMs": 9899.618416000001
+      }
+    ]
+  }
+}

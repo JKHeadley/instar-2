@@ -1,3 +1,5 @@
+import { classifyProviderFailure } from '../../src/assembly/provider-failure.js';
+
 /** Physical limits a launch can end at: its elapsed and output bounds, and the
  * host resource owner's memory/process/CPU/aggregate ceilings and admission. */
 export const RESOURCE_LIMITS = Object.freeze(['timeout', 'size', 'memory', 'processes', 'cpu', 'aggregate', 'capacity']);
@@ -19,7 +21,7 @@ export function subscriptionCallOutcome(result, promptBytes, elapsedMs, maxToken
     : !result.limited && type === 'result' && typeof object.result === 'string'
       && Buffer.byteLength(object.result) > maxOutputBytes ? 'size' : null;
   return { exitCode: code, localLimit, elapsedMs: Math.max(0, Math.round(elapsedMs)), type, subtype, isError,
-    outputTokens, promptBytes, ...(result.resources ? { resources: launchResources(result.resources) } : {}) };
+    outputTokens, promptBytes, ...(isError === true ? { failureClass: classifyProviderFailure({ ...result, now: 0 }).failureClass } : {}), ...(result.resources ? { resources: launchResources(result.resources) } : {}) };
 }
 
 /** The content-free resource facts of one owned launch: which bounds held hard (and on which subject),

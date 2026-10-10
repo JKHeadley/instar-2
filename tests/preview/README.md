@@ -2196,6 +2196,17 @@ caps, counters, UNKNOWN calls and sends, held update IDs and plain notices, and 
 completion. After pausing the runner and verifying the operator's authority, the
 desk can raise all or some of the finite limits with:
 
+Before recording a fixed failure reply, an ended answer rejection with zero output tokens,
+verified cleanup and a complete, consistent trace of no tool calls can use the existing
+single `answer-replace` allowance. It keeps the same packet and model/tool doorway, consumes
+another call slot (leaving room for reply review), and respects stop and expiry. Known provider
+policy and usage-limit failures are not replaced; their closed failure class is recorded in
+physical diagnostics without provider prose. A rejected call's reported usage settles, while a
+replaced timeout remains UNKNOWN and charged. A failed replacement is never repeated, including
+after restart or compaction. `rejected-answer.test.ts` replays the failed forum update 715675390
+and its real model replay, plus refusal neighbors; the original provider error's text was not
+retained by that older runner, so its specific cause is unknown.
+
 A validated terminal provider failure envelope, or a completed success envelope
 with empty or malformed answer content, is recorded with a bounded, content-free
 failure class and provider state. The counted call gets one fixed PREVIEW reply

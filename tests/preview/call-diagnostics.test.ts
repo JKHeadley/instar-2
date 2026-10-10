@@ -15,7 +15,7 @@ it('extracts only metadata from a genuine redacted Claude Code result capture', 
   const stdout = readFileSync(join(process.cwd(), 'tests/fixtures/provider-failure/claude-limit-result.json'), 'utf8');
   const outcome = subscriptionCallOutcome(physical(stdout, { code: 1 }), 100, 50, 2048, 16384);
   expect(outcome).toMatchObject({ exitCode: 1, localLimit: null, type: 'result', subtype: 'success',
-    isError: true, outputTokens: 0, promptBytes: 100 });
+    isError: true, outputTokens: 0, promptBytes: 100, failureClass: 'limit' });
   expect(JSON.stringify(outcome)).not.toContain(JSON.parse(stdout).result);
 });
 
@@ -192,4 +192,11 @@ it('keeps each owned launch\'s resource facts on its durable call-outcome row ac
       membership: 'working-area-joined', allocation: { state: 'reserved' } });
     replayed.close();
   } finally { rmSync(root, { recursive: true, force: true }); }
+});
+
+it('retains the recorded policy text in its assumed envelope as a closed class, never as provider prose', () => {
+  const stdout = readFileSync(join(process.cwd(), 'tests/fixtures/provider-failure/claude-policy-assumed-result.json'), 'utf8');
+  const outcome = subscriptionCallOutcome(physical(stdout, { code: 1 }), 100, 50, 2048, 16384);
+  expect(outcome.failureClass).toBe('policy');
+  expect(JSON.stringify(outcome)).not.toContain(JSON.parse(stdout).result);
 });
