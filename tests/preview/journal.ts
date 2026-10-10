@@ -5544,7 +5544,7 @@ export function createJournalWorker(journal: ReturnType<typeof openPreviewJourna
     .filter(item => memoryClean(item.id, true) === item.id).map(item => ({
 
     id: publicMemoryId(channelMemoryId(item)), sourceKind: 'channel-import' as const, sourceLabel: channelLabel(item), source: 'channel-import',
-    message: clean(redact(item.text).text, true).trim(), reply: '' }));
+    message: memoryClean(redact(item.text).text, true).trim(), reply: '' }));
   /** Notes sharing any name term with the new message ("Sam" also finds "Sam Ruiz"), from
    * turns a summary already covers. Candidate selection only: identity is the model's judgment. */
   /** A sender label from fixture metadata is an asserted identity, never a verified principal. */
@@ -5883,8 +5883,8 @@ export function createJournalWorker(journal: ReturnType<typeof openPreviewJourna
     : reminderDue(item) <= localStamp(ports.now(), item.zone) ? 'that time has already passed'
       : reminderDue(item) >= localStamp(journal.view.expires, item.zone) ? 'this preview ends before then' : null;
   let credentialWording = (text: string) => text;
-  // Eligibility and quote identity use memory validity only. Display labels must never
-  // withdraw accepted work or make an unchanged source look corrected (Rules 4, 83, 93).
+  // Eligibility and model decision evidence use memory validity only. Exact quotes must
+  // survive the round trip; display labels are prose, never correction evidence (Rules 4, 85, 93).
   const memoryClean = (value: string, _derived = false, source?: string | number) =>
     projectMemoryClause(journal.view, value, source);
   const clean = (value: string, derived = false, source?: string | number) =>
@@ -5990,13 +5990,14 @@ export function createJournalWorker(journal: ReturnType<typeof openPreviewJourna
     }
     return render(lines);
   };
-  const replyFor = (turn: Turn) => turn.noticeClass ? clean(redact(sentText(turn) ?? '').text, true, turn.id)
+  const memoryReplyFor = (turn: Turn) => turn.noticeClass ? memoryClean(redact(sentText(turn) ?? '').text, true, turn.id)
     : journal.view.memory.some(change => change.mode !== 'prefer' && (change.source === turn.id || change.replies?.includes(turn.id)
       || journal.view.commitments.some(note => [note, ...note.sources ?? []].some(item => item.source === turn.id)
         && [note, ...note.sources ?? []].some(item => item.source === change.source
           && (item.quote.includes(change.quote) || change.quote.includes(item.quote)))))
       || change.mode === 'correct' && change.trigger === turn.id)
-      ? withheld : clean(redact(sentText(turn) ?? '').text, true, turn.id);
+      ? withheld : memoryClean(redact(sentText(turn) ?? '').text, true, turn.id);
+  const replyFor = (turn: Turn) => credentialWording(memoryReplyFor(turn));
   // Acknowledgements use accepted journal changes, not the model's claim that it changed memory.
   const memoryAcknowledgement = (turn: Turn) => {
     // int11's answer-correction path (in: 'reply') keeps the model's corrected answer.
@@ -6624,7 +6625,7 @@ export function createJournalWorker(journal: ReturnType<typeof openPreviewJourna
         source && typeof source === 'object' && 'text' in source && typeof source.text === 'string'
           ? { ...source, text: credentialWording(source.text) } : source) }),
       ...(reference ? { replyTo: reference } : {}),
-      ...(summary ? { historyMode: 'summary-plus-recent', summary: { sourceKind: 'inferred-by-summary' as MemorySourceKind, sourceLabel: summaryLabel(summary), through: summary.through, text: clean(redact(summary.text).text, true, summary.through),
+      ...(summary ? { historyMode: 'summary-plus-recent', summary: { sourceKind: 'inferred-by-summary' as MemorySourceKind, sourceLabel: summaryLabel(summary), through: summary.through, text: memoryClean(redact(summary.text).text, true, summary.through),
         ...(summary.memoryItems?.length ? { memoryItems: summaryItems } : {}) } }
         : historySetAsideCount ? { historyMode: 'recent-only' } : { historyMode: 'complete' }),
       ...(journal.view.memory.length ? { memory: journal.view.memory.flatMap((change, index):
@@ -6715,7 +6716,7 @@ export function createJournalWorker(journal: ReturnType<typeof openPreviewJourna
       candidates: older.map(item => ({ text: `${clean(item.text, true, item.id)} ${replyFor(item)}`, at: sentAt(item) ?? 0 })) });
     const recentAnswer = older.map(item => item.intent !== undefined && item.noticeClass === undefined).lastIndexOf(true);
     const candidates = [...new Set([...(recentAnswer < 0 ? [] : [recentAnswer]), ...ranked])].slice(0, 5).map(index => ({ id: older[index]!.id, sourceLabel: turnLabel(older[index]!), sourceKind: 'operator-stated' as MemorySourceKind,
-      message: clean(redact(older[index]!.text).text, true, older[index]!.id).slice(0, 1000), reply: replyFor(older[index]!).slice(0, 1000) }));
+      message: memoryClean(redact(older[index]!.text).text, true, older[index]!.id).slice(0, 1000), reply: memoryReplyFor(older[index]!).slice(0, 1000) }));
     const preferenceCandidates = activePreferences().map(item => ({ id: item.source, sourceKind: 'operator-stated' as MemorySourceKind,
       message: redact(item.quote).text.slice(0, 1000), reply: '' }));
     const saidOlder = older.map(item => ({ text: clean(item.text, true, item.id),
@@ -6927,7 +6928,7 @@ export function createJournalWorker(journal: ReturnType<typeof openPreviewJourna
         const offered = [...preferenceCandidates, ...candidates.filter((_, index) => has('candidate', index)), ...candidateChannels.filter((_, index) =>
           has('candidate', candidates.length + index)).map(item => ({
           id: publicMemoryId(channelMemoryId(item)), sourceKind: 'channel-import' as MemorySourceKind, source: 'channel-import',
-          message: clean(redact(item.text).text, true).trim().slice(0, 1000), reply: '' }))];
+          message: memoryClean(redact(item.text).text, true).trim().slice(0, 1000), reply: '' }))];
         for (const datedBase of datedVariants(base)) {
         const installedUpdate = fromOperator(turn) ? ports.installedUpdate?.() ?? null : null;
         const setAsideBase = (JSON.parse(datedBase) as { historySetAside?: { through: number } }).historySetAside;
@@ -6956,7 +6957,7 @@ export function createJournalWorker(journal: ReturnType<typeof openPreviewJourna
           ...(fromOperator(turn) && offered.length && !('conflictDecision' in (JSON.parse(datedBase) as object)) ? { conflictDecision: CONFLICT_DECISION } : {}),
           // The compact packet's summary already serves as the correction reference; only complete history needs a copy.
           ...(fromOperator(turn) && summaryFor(before(turn.update)) && !('summary' in (JSON.parse(datedBase) as object))
-            ? { memorySummary: { sourceKind: 'inferred-by-summary' as MemorySourceKind, text: clean(redact(summaryFor(before(turn.update))!.text).text, true,
+            ? { memorySummary: { sourceKind: 'inferred-by-summary' as MemorySourceKind, text: memoryClean(redact(summaryFor(before(turn.update))!.text).text, true,
               summaryFor(before(turn.update))!.through) } } : {}),
           ...(offered.length ? { memoryCandidates: offered } : fromOperator(turn) ? { preferenceDecision: { source: turn.id, rule: 'Only a direct reply style may use mode:prefer with this turn and exact quote.' } } : {}),
           ...(fromOperator(turn) && (JSON.parse(base) as { personMergeCandidates?: unknown[] }).personMergeCandidates?.length
@@ -9238,9 +9239,9 @@ export function createJournalWorker(journal: ReturnType<typeof openPreviewJourna
         const replaced = trigger?.replaces ? journal.view.turns.get(trigger.replaces) : undefined;
         const recentAnswer = older.map(item => item.intent !== undefined && item.noticeClass === undefined).lastIndexOf(true);
         const memoryCandidates = [...(replaced ? [{ id: replaced.id, sourceKind: 'operator-stated' as MemorySourceKind, message: redact(replaced.text).text,
-          reply: replyFor(replaced) }] : []), ...activePreferences().map(item => ({ id: item.source, sourceKind: 'operator-stated' as MemorySourceKind, message: redact(item.quote).text, reply: '' })),
-          ...[...new Set([...(recentAnswer < 0 ? [] : [recentAnswer]), ...ranked])].slice(0, 5).map(index => ({ id: older[index]!.id, sourceKind: 'operator-stated' as MemorySourceKind, message: clean(redact(older[index]!.text).text, true, older[index]!.id),
-          reply: replyFor(older[index]!) })).filter(item => item.id !== replaced?.id), ...(trigger ? channelCandidates(trigger, summaryFor(trigger.update)?.text) : [])];
+          reply: memoryReplyFor(replaced) }] : []), ...activePreferences().map(item => ({ id: item.source, sourceKind: 'operator-stated' as MemorySourceKind, message: redact(item.quote).text, reply: '' })),
+          ...[...new Set([...(recentAnswer < 0 ? [] : [recentAnswer]), ...ranked])].slice(0, 5).map(index => ({ id: older[index]!.id, sourceKind: 'operator-stated' as MemorySourceKind, message: memoryClean(redact(older[index]!.text).text, true, older[index]!.id),
+          reply: memoryReplyFor(older[index]!) })).filter(item => item.id !== replaced?.id), ...(trigger ? channelCandidates(trigger, summaryFor(trigger.update)?.text) : [])];
         const unanswered = overCapRetry ? [] : unreviewedQuestions(through).slice(0, PREVIEW_QUESTION_LIMIT);
         // A briefing-free fallback is reached only when no packet that carries the sources was chosen.
         for (const base of bases) if (!(chosen && fallback.has(base))) for (let kept = closable.length; kept >= 0; kept--) {
@@ -9250,7 +9251,7 @@ export function createJournalWorker(journal: ReturnType<typeof openPreviewJourna
             const plain = kept || includeMemory || unanswered.length ? JSON.stringify({ ...JSON.parse(base) as object,
               ...(kept ? { openCommitments: offered } : {}),
               ...(unanswered.length ? { unansweredCandidates: unanswered.map(item => ({ id: item.id, question: clean(redact(item.text).text, true, item.id), reply: replyFor(item) })) } : {}),
-              ...(includeMemory ? { memoryRequest: { id: trigger.id, message: clean(redact(trigger.text).text, false, trigger.id),
+              ...(includeMemory ? { memoryRequest: { id: trigger.id, message: memoryClean(redact(trigger.text).text, false, trigger.id),
                 ...(trigger.editOf ? { editedTurn: trigger.editOf, replaces: trigger.replaces, instruction: editInstruction } : {}) },
                 memoryCandidates: memoryCandidates.slice(0, count) } : {}),
               ...(includeMemory && reminderOffer.length ? { reminders: reminderOffer.map(item => ({ id: reminderId(item),
@@ -9372,7 +9373,7 @@ export function createJournalWorker(journal: ReturnType<typeof openPreviewJourna
             const pending = new Set(openRequests(journal.view).map(datedKey));
             const ids = new Map(reminderOffer.filter(item => pending.has(datedKey(item))).map(item => [reminderId(item), datedKey(item)]));
             // Exactly the text the packet showed as memoryRequest.message, so a legitimate quote of it always matches.
-            const shown = trigger ? clean(redact(trigger.text).text, false, trigger.id) : '';
+            const shown = trigger ? memoryClean(redact(trigger.text).text, false, trigger.id) : '';
             const withdrawn = (value: unknown): string | undefined => {
               if (typeof value === 'string') return ids.has(value) ? value : undefined;
               if (value === null || typeof value !== 'object' || Array.isArray(value)) return undefined;

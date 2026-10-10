@@ -5,7 +5,7 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { credentialTextRenderer } from './credential-display.js';
 import { createSecretCustody } from './secret-custody.js';
-import { createJournalWorker, openPreviewJournal, type OperatorRequestState } from './journal-test-worker.js';
+import { createJournalWorker, importChannelItems, openPreviewJournal, type OperatorRequestState } from './journal-test-worker.js';
 import live from './fixtures/credential-answer-live-2026-10-09.json' with { type: 'json' };
 
 const activation = { name: 'preview-activation', kind: 'activation', identity: 'preview-harness-profile-justin-gmail-v1-activation',
@@ -55,12 +55,14 @@ it('renders the recorded activation answer context in operator wording and prese
     };
     expect(probe(false)).toContain('preview-harness-profile-v1-activation');
     const context = probe(true), packet = JSON.parse(context);
-    expect(context).not.toContain('preview-activation');
-    expect(context).not.toContain('preview-harness-profile-v1-activation');
+    expect(JSON.stringify(packet.history)).not.toContain('preview-activation');
+    expect(JSON.stringify(packet.history)).not.toContain('preview-harness-profile-v1-activation');
     expect(context).toContain('your activation');
     expect(packet.history).toHaveLength(live.history.length);
     expect(packet.history[0].answer).toContain('your activation');
-    expect(packet.memoryCandidates.some((item: { reply: string }) => item.reply.includes('your activation'))).toBe(true);
+    // Decision evidence preserves the exact recorded reply, including its public credential labels.
+    expect(packet.memoryCandidates.find((item: { id: string }) => item.id === live.history[0]!.id)?.reply)
+      .toBe(live.history[0]!.answer);
     expect(packet.operatorRequest).toMatchObject({ id: '87432af9acef18cc', action: 'renew-expiry', trialEnd: '2026-11-12T21:40Z' });
     expect(packet.operatorRequest.state).toContain('approved by the operator and applied');
     expect(packet.operatorRequest.state).toContain('I can also use that account');
@@ -109,7 +111,7 @@ it('keeps account identities and unrelated text, handles literal names, and neve
 });
 
 // Synthetic regression from the unit review: display wording must not cancel accepted work.
-it.each(['active', 'withdrawn', 'corrected'] as const)('keeps credential-bearing reminders valid only while %s', async disposition => {
+it.each(['active', 'withdrawn', 'corrected', 'invalid-quote'] as const)('keeps credential-bearing reminders valid only while %s', async disposition => {
   const root = realpathSync(mkdtempSync(join(tmpdir(), 'credential-answer-reminder-')));
   const path = join(root, 'journal.encrypted');
   const start = Date.UTC(2026, 9, 2, 8, 9);
@@ -133,8 +135,10 @@ it.each(['active', 'withdrawn', 'corrected'] as const)('keeps credential-bearing
         return JSON.stringify({ reply: 'Cancelled.', memory: [], dated: [],
           cancelReminders: packet.reminders.map(item => ({ id: item.id, quote: withdrawal })) });
       }
+      const packet = JSON.parse(input.context) as { memoryCandidates: { id: string; message: string }[] };
+      const candidate = packet.memoryCandidates.find(item => item.id === journal.view.order[0]!.id)!;
       return JSON.stringify({ reply: 'Corrected.', dated: [], memory: [{ mode: 'correct',
-        source: journal.view.order[0]!.id, quote, replacement }] });
+        source: candidate.id, quote: disposition === 'invalid-quote' ? `${candidate.message} invented` : candidate.message, replacement }] });
     },
     checkOutbound: () => {}, send: async (value: { expectedText: string }) => { sent.push(value.expectedText); return sent.length; } };
   const update = (id: number, text: string) => ({ update_id: id, message: {
@@ -152,7 +156,13 @@ it.each(['active', 'withdrawn', 'corrected'] as const)('keeps credential-bearing
       worker.intake([update(2, disposition === 'withdrawn' ? withdrawal : `Correction: ${replacement}`)]);
       await worker.drain();
       if (disposition === 'withdrawn') expect(journal.view.reminderCancels).toHaveLength(1);
-      else expect(journal.view.memory).toMatchObject([{ mode: 'correct', quote, replacement }]);
+      else if (disposition === 'corrected') expect(journal.view.memory).toMatchObject([{ mode: 'correct', quote, replacement }]);
+      else {
+        expect(journal.view.memory).toHaveLength(0);
+        expect(sent).toHaveLength(1);
+        expect(journal.view.order[1]!.memoryPending).toBe(true);
+        return;
+      }
     }
     const beforeDue = sent.length;
     now = Date.UTC(2026, 9, 2, 8, 26);
@@ -170,3 +180,65 @@ it.each(['active', 'withdrawn', 'corrected'] as const)('keeps credential-bearing
     expect(journal.view.dated[0]!.quote).toBe(quote);
   } finally { journal.close(); rmSync(root, { recursive: true, force: true }); }
 });
+
+// Copy actual offered evidence on both answer and summary decision paths; never fixture quotes.
+it.each(['operator', 'reply', 'channel', 'summary-operator', 'summary-channel'] as const)(
+  'round-trips exact %s correction evidence with credential wording installed', async kind => {
+    const root = realpathSync(mkdtempSync(join(tmpdir(), 'credential-decision-')));
+    const path = join(root, 'journal.encrypted');
+    const now = live.at;
+    const original = 'The preview-activation renewal day is Friday.';
+    const replacement = 'The preview-activation renewal day is Saturday.';
+    const channel = kind.endsWith('channel'), summaryDecision = kind.startsWith('summary-');
+    const sends: string[] = [], decisions: string[] = [];
+    let journal = openPreviewJournal(path, key, { kind: 'genesis', bot: '8820318295', chat: '7654321', operator: '7654321',
+      grant: 'grant:preview', configurationDigest: 'sha256:offline', expires: activation.expiresAt,
+      maxCalls: 40, maxReplies: 20, maxTurns: 20, maxBytes: 40000, cursor: 0 });
+    const ports = { now: () => now, stopped: () => false, credentialWording: () => credentialTextRenderer([]),
+      model: async (input: { id: string; question: string; context: string }) => {
+        const packet = JSON.parse(input.context);
+        if (!input.id.startsWith('summary:') && !input.question.startsWith('Correction:'))
+          return JSON.stringify({ reply: kind === 'reply' ? original : 'Okay.', memory: [] });
+        if (summaryDecision && !input.id.startsWith('summary:')) return 'I am reviewing the correction.';
+        const candidate = packet.memoryCandidates.find((item: { sourceKind: string }) =>
+          item.sourceKind === (channel ? 'channel-import' : 'operator-stated'));
+        const quote = kind === 'reply' ? candidate.reply : candidate.message;
+        const request = packet.memoryRequest?.message ?? input.question;
+        const passage = (packet.memorySummary ?? packet.summary).text;
+        expect(quote).toBe(original);
+        expect(passage).toBe(original);
+        expect(request).toContain(replacement);
+        decisions.push(input.id);
+        const memory = [{ mode: 'correct', source: candidate.id, quote,
+          replacement: request.slice('Correction: '.length), summaryPassages: [passage],
+          ...(kind === 'reply' ? { in: 'reply' } : {}) }];
+        return JSON.stringify(input.id.startsWith('summary:')
+          ? { summary: replacement, people: [], memory }
+          : { reply: 'Corrected.', memory });
+      }, checkOutbound: () => {}, send: async (value: { expectedText: string }) => {
+        sends.push(value.expectedText); return sends.length;
+      } };
+    const update = (id: number, text: string) => ({ update_id: id, message: {
+      chat: { id: 7654321, type: 'private' }, from: { id: 7654321 }, text, date: Math.floor(now / 1000) } });
+    try {
+      if (channel) importChannelItems(journal, [{ source: 'conversation', account: 'agent@example.test', id: 'renewal-day',
+        from: 'operator@example.test', at: now - 1000, conversation: 'Renewal', text: original }], 'agent@example.test', now);
+      const worker = createJournalWorker(journal, ports);
+      worker.intake([update(1, channel || kind === 'reply' ? 'Which day is activation renewal?' : original)]);
+      await worker.drain();
+      journal.append({ kind: 'summary-reserve', through: 1, at: now });
+      journal.append({ kind: 'summary', through: 1, text: original, at: now });
+      worker.intake([update(2, `Correction: ${replacement}`)]); await worker.drain();
+      if (summaryDecision) { await worker.summarizeIfNeeded(true); await worker.drain(); }
+      expect(decisions.some(id => id.startsWith('summary:'))).toBe(summaryDecision);
+      expect(journal.view.memory).toMatchObject([{ mode: 'correct', quote: original, replacement,
+        summaryPassages: [original], ...(kind === 'reply' ? { in: 'reply' } : {}) }]);
+      expect(sends).toHaveLength(2);
+      journal.close(); journal = openPreviewJournal(path, key);
+      expect(journal.view.memory).toHaveLength(1);
+      const probe = createJournalWorker(journal, ports).probe('What do you remember about activation renewal?');
+      if ('reason' in probe) throw Error(probe.reason);
+      const packet = JSON.parse(probe.context);
+      expect((packet.memorySummary ?? packet.summary)?.text ?? '').not.toContain(original);
+    } finally { journal.close(); rmSync(root, { recursive: true, force: true }); }
+  });
