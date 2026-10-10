@@ -1,4 +1,5 @@
 #!/usr/bin/env node
+import { journalConversation, journalWorkConversation, validateChatBinding } from './forum-routing.js';
 // Small, machine-local preview launcher. Only this file owns process, clock and
 // physical ports. The worker owns all durable conversation/effect transitions.
 import { createHash, randomBytes } from 'node:crypto';
@@ -433,7 +434,7 @@ const installedCode = () => {
  * owned preview runners. Each is read from its own run log only; a bounded number of roots and bytes. */
 const OWNED_ROOT_LIMIT = 256, OWNED_RUN_LOG_BYTES = 1024 * 1024;
 /** The conversation a runner polls, recorded on its launch row so a sibling can see a shared conversation. */
-const conversationOf = genesis => `telegram/bot-${genesis.bot}/chat-${genesis.chat}`;
+const conversationOf = journalConversation;
 /** Whether a possible root another runner's flattened command line could name exists now; only a path proven
  * missing (ENOENT, ENOTDIR, or a name too long to exist) is ruled out, so an unreadable one keeps it unknown. */
 const PATH_MISSING = new Set(['ENOENT', 'ENOTDIR', 'ENAMETOOLONG']);
@@ -1472,9 +1473,11 @@ async function main() {
     if (offlineEndpoint && (token() !== '12345678:AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA'
       || !/^http:\/\/127\.0\.0\.1:[0-9]+$/u.test(offlineEndpoint))) throw Error('preview: offline endpoint refused');
     const origin = offlineEndpoint ? 'test' : 'production';
+    if (options.forum !== undefined && !['true', 'false'].includes(options.forum))
+      throw Error('preview: invalid forum mode');
     const initial = command !== 'run' ? undefined : {
       kind: 'genesis', bot: required(options, 'bot-id'), chat: required(options, 'chat-id'), ...(origin === 'test' ? { origin } : {}),
-      operator: required(options, 'operator-sender-id'), grant: required(options, 'grant-reference'),
+      operator: required(options, 'operator-sender-id'), ...(options.forum === 'true' ? { forum: true } : {}), grant: required(options, 'grant-reference'),
       configurationDigest: required(options, 'configuration-digest'), expires: expiry(required(options, 'expires-at')),
       maxCalls, maxReplies, maxTurns, maxBytes, cursor: 0,
       ...(revisitMinutes === undefined ? {} : { loopRevisitMs: revisitMinutes * 60_000 }) };
@@ -1541,8 +1544,11 @@ async function main() {
     if (revisitMinutes !== undefined && revisitMinutes * 60_000 !== loopRevisitMs(journal.view))
       throw Error('preview: loop-revisit-minutes differs from journal');
     if (g.importSource !== undefined && !journal.view.imported) throw Error('preview: migration incomplete');
-    if (String(number(g.bot, 'bot-id')) !== g.bot || String(number(g.chat, 'chat-id')) !== g.chat
-      || g.chat !== g.operator) throw Error('preview: private operator binding differs');
+    validateChatBinding(g);
+    if (g.forum === true && options['agent-state-dir'])
+      throw Error('preview: external history has no group disclosure grant');
+    if (options.forum !== undefined && options.forum !== String(g.forum === true))
+      throw Error('preview: forum mode differs from journal');
     for (const [name, value] of [['bot-id', g.bot], ['chat-id', g.chat], ['operator-sender-id', g.operator],
       ['grant-reference', g.grant], ['configuration-digest', g.configurationDigest]])
       if (options[name] && options[name] !== value) throw Error(`preview: ${name} differs from journal`);
@@ -1701,7 +1707,7 @@ async function main() {
       authority: `${toolsRecord.reference} ${toolsRecord.invocationPolicyDigest}`,
       // MF5: the conversation's workspace persists across turns, and its kept harness session (in the login profile's
       // projects directory) is a cache bound to this authority, harness and model and to the journal's current facts.
-      conversation: conversationOf(journal.view.genesis),
+      conversation: journalWorkConversation(journal.view, id),
       // The kept session is Claude Code's (its projects directory); a checkpointed harness keeps none.
       session: doorway.toolTurn?.harness ? null : { store: join(profile.configDirectory, 'projects'), harness: `${profile.version} ${required(options, 'model')}` },
       stopped: () => workerStop.value || existsSync(stopPath) || journal.view.stop !== null || !toolsActive(),
@@ -1967,7 +1973,7 @@ async function main() {
             body: { chat_id: chat, text, parse_mode: 'HTML', ...(thread === undefined ? {} : { message_thread_id: thread }),
               ...(replyMarkup === undefined ? {} : { reply_markup: replyMarkup }) },
             timeoutMs: 30000 }, token());
-          outcome = classifyTelegramSend(reply, { chat, expectedText, ...(thread === undefined ? {} : { thread }) });
+          outcome = classifyTelegramSend(reply, { chat, expectedText, forum: g.forum === true, ...(thread === undefined ? {} : { thread }) });
           return outcome;
         } finally { if (shared) await shared.outcome(target, outcome.kind); }
       } });

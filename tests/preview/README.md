@@ -10,8 +10,8 @@ The prefix is present before HTML rendering, digesting, and Eight preparation. T
 
 The journal runner's capability briefing is generated from these lines and the feature declarations in `journal.declarations.json`; see `generated/capabilities.json`. Add a line here and a declaration there together, or the register build fails. Each line is the one-line briefing text; its indented `Details:` line keeps the full description, which the briefing does not carry.
 
-- `preview-conversation`: answers the operator in their private Telegram chat and topics, one reply per admitted message.
-  Details: answers the verified operator in their private Telegram chat and its topics, with at most one plain-text reply per admitted message; an outcome the system could not confirm is marked unknown and never resent.
+- `preview-conversation`: answers the operator in the configured private Telegram chat or forum group, returning each reply to its originating topic.
+  Details: only the verified operator is admitted; a forum journal serves all topics of one configured group, including General, with topic-specific recent history and harness sessions. Unknown send outcomes are never resent.
 - `preview-durable-memory`: an encrypted local journal of messages, summaries and memory that survives restarts; the operator can correct or forget a fact.
   Details: keeps accepted messages, summaries and validated memory changes in one encrypted local journal that survives restarts and spans the trial's topics; the operator can ask to correct or forget a recorded fact, later replies withhold the old claim, and the original audit record stays in the journal. It is not production or other-agent memory.
 - `preview-status-command`: "status" and "how are you doing" are answered from the journal without a model call.
@@ -46,6 +46,32 @@ node --loader ./scripts/slice-ts-loader.mjs tests/preview/agent.mjs run --root /
 ```
 
 Replace the example expiry and placeholders with the desk-approved values. Private chat is first-class and is the narrowest audience. For an authorized forum topic, use `--chat-kind group-topic --chat-id -100… --forum true --message-thread-id TOPIC_ID`. Only the bound operator can trigger a reply, but a group/topic reply is visible to everyone who can see that group/topic; sender binding does not make it private.
+
+## All-topic forum mode in the journal launcher
+
+The agent's journal launcher is `tests/preview/journal-agent.mjs`. On a fresh, separately authorized
+root, pass `--forum true --chat-id NEGATIVE_FORUM_GROUP_ID --operator-sender-id OPERATOR_USER_ID`
+alongside the existing `--bot-id`, `--bot-username`, `--grant-reference`, `--configuration-digest`,
+`--expires-at`, `--activation-record`, `--operator-records`, `--login-profile` and model/limit options.
+Do not pass a fixed `--message-thread-id`: this mode admits every topic in that one group. The bot must
+receive the operator's messages in the group. Group replies are visible to the group's audience.
+Keep only one active polling root per bot. If reusing the private chat's bot, stop that runner
+before starting the forum root; keep its private journal intact for a later private-mode restart.
+
+The encrypted genesis stores `forum: true`, `chat`, `bot`, and `operator`. Mode cannot be changed on an
+existing journal. General (absent topic or topic 1) has one identity; other topics retain their exact
+Telegram thread ID. Conversation/session keys include bot, group and topic, while one durable poll
+cursor, stop latch and spend/reply caps cover the whole group. Restart preserves these identities.
+Recent conversational history stays within its topic. The existing source-labelled summaries and
+memory remain shared within this operator's configured group; moving topics does not forget facts.
+External/private history imports (`--agent-state-dir`) are refused in forum mode without a group
+source-disclosure grant. Reminder results, status, held replies and approval links use their source
+turn's topic. Telegram callbacks cannot decide an approval copied to a different topic.
+
+For existing private journals omit `--forum` (or pass `--forum false`); their keys, history and chat
+admission remain unchanged. Use a fresh root for the forum; never relabel the private journal. This
+configuration belongs to the journal launcher. The older `production-conversation-host.ts` successive
+fixture still takes one owner-admitted binding and one fixed target; these flags do not widen it.
 
 ## Stops, bounds, and status
 
@@ -2544,7 +2570,7 @@ private-chat procedure is in
 
 ### One memory across conversations
 
-The runner serves every conversation in the operator's own private chat: the main
+In the default private mode, the runner serves every conversation in the operator's own private chat: the main
 chat and any Telegram topic in it (Bot API 9.3 private-chat topics,
 `message_thread_id`). Each is a conversation whose only audience is the verified
 operator, so no fact reaches anyone beyond the standing it came from. Anything
@@ -2552,7 +2578,7 @@ elsewhere stays refused. That includes a group or a group forum topic, even one
 where the operator writes, and any other sender. Those updates are kept encrypted
 for diagnosis and never read.
 
-There is no second store. The one journal is the agent's memory: every intake
+There is no second store. In private mode the one journal is the agent's memory: every intake
 records its topic (`thread`), and every packet carries the history of all
 conversations in update order. A turn from another conversation is labelled with
 its `conversation` ("main chat" or "topic N") and its Telegram date, and the
@@ -2564,6 +2590,8 @@ result counts as a receipt only if it names that topic; otherwise the send is
 UNKNOWN and is never resent. Intake durability, update-ID deduplication, one stop,
 one attempt cap and one reply cap are shared by every conversation. Journals
 written before this change replay unchanged; their turns belong to the main chat.
+The explicitly configured forum mode described above instead admits one group and gives each
+topic its own recent history and session, while retaining source-labelled shared group memory.
 
 
 The offline 60-turn assembled-path regression polls through the real Telegram
