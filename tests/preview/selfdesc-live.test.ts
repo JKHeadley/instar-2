@@ -1,10 +1,11 @@
 // @ts-nocheck -- physical ports in the process fixture are plain JavaScript.
 import { expect, it } from 'vitest';
-import { readFileSync, writeFileSync } from 'node:fs';
+import { mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
+import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { pathToFileURL } from 'node:url';
 import { capabilityBriefing, SOURCE_PINS, sourcePacket } from './briefing.js';
-import { openPreviewJournal } from './journal.js';
+import { createJournalWorker, openPreviewJournal } from './journal.js';
 import { cutoverHarness } from './journal-cutover-harness.mjs';
 import { successiveWorld, offlineProfile, OFFLINE_STORAGE_KEY } from './successive-fixture.js';
 import { authoritySealKey, sealAuthorityRecord } from './activation-authority.js';
@@ -32,7 +33,7 @@ it('describes resolved tools, schedules, channel and media limits on both sides 
   for (const text of [on, off]) {
     expect(text).toContain('daily or weekdays until cancelled');
     expect(text).toContain('rolling summary');
-    expect(text).toContain('Media: text/captions only; no photo, voice or file-content I/O here.');
+    expect(text).toContain('Telegram media: captions only; no photo, voice or attachment-content I/O.');
     expect(text).toContain('at most 1000 model attempts');
   }
   // Missing generated descriptions do not erase the resolved launch facts or invent other abilities.
@@ -68,7 +69,7 @@ it('the real launcher briefs its resolved default-on grant, explicit off, and un
   for (const mode of ['on', 'off', 'identity-unavailable']) {
     const world = successiveWorld();
     // The real launcher, authority resolver, journal and packet construction run. Only
-    // physical Telegram/provider IO and the macOS harness are replaced on this WSL host.
+    // physical Telegram/provider IO and the harness identity are replaced.
     const toolModule = join(world.directory, 'tools.mjs'), harnessModule = join(world.directory, 'harness.mjs');
     const loader = join(world.directory, 'selfdesc-loader.mjs');
     const url = path => pathToFileURL(join(process.cwd(), path)).href;
@@ -116,3 +117,47 @@ export const harnessGate = () => { const state = { ready: true, user: 'offline',
     } finally { journal.close(); }
   }
 }, 120_000);
+
+// Exact live answer and persisted judgments from Justin's group. This exercises the new
+// source in the worker; replaying an old answer is not a fresh model quality verdict.
+const liveTurn = JSON.parse(read('tests/preview/fixtures/selfdesc-live-2026-10-10.json'));
+it.each([[true, false], [false, false], [true, true], [false, true]])(
+  'replays live update 969390342 (tools=%s, synthetic empty-output control=%s)', async (tools, empty) => {
+  const directory = mkdtempSync(join(tmpdir(), 'selfdesc-recorded-'));
+  const journal = openPreviewJournal(join(directory, 'journal.encrypted'), new Uint8Array(32).fill(17), {
+    kind: 'genesis', bot: '12345678', chat: '-1001234', forum: true, operator: '7654321',
+    grant: 'grant:preview', configurationDigest: 'sha256:offline', expires: 9999999999999,
+    maxCalls: 20, maxReplies: 10, maxTurns: 10, maxBytes: 65536, cursor: 0,
+  });
+  const sent = [], packets = [];
+  const worker = createJournalWorker(journal, {
+    now: () => 1791672000000, stopped: () => false, toolRoute: () => tools,
+    sources: () => sourcePacket(read, SOURCE_PINS, { ...limits, tools, mcp: 0,
+      live: { forum: true, scheduledTools: false, toolsGranted: tools } }).sources,
+    model: async input => { packets.push(JSON.parse(input.context)); return empty ? '' : liveTurn.answer; },
+    replyCheck: { elapsedMs: () => 0,
+      // Reconstruct only the Jev port envelope from the journal's recorded scores.
+      jev: async () => ({ value: { model: 'jev-1.13.0', answers: Object.fromEntries(
+        Object.entries(liveTurn.checks[0].scores).map(([rule, noul]) => [rule, { type: 'noul', noul }])) }, latencyMs: 185 }),
+      escalate: async () => liveTurn.checks[1],
+    },
+    checkOutbound: () => {}, send: async input => { sent.push(input.expectedText); return sent.length; },
+  });
+  try {
+    worker.intake([{ update_id: liveTurn.update, message: { chat: { id: -1001234, type: 'supergroup', is_forum: true },
+      from: { id: 7654321 }, message_thread_id: 3, text: liveTurn.operatorMessage } }]);
+    await worker.drain(); await worker.drain();
+    expect(packets).toHaveLength(1);
+    expect(packets[0].sources.find(source => source.id === 'capability-note').text).toBe(note(tools));
+    expect(packets[0].capabilities.externalTools).toBe(tools ? 'listed' : 'none');
+    if (empty) {
+      // No captured empty delivery exists in the three journals checked read-only on
+      // 2026-10-10; this is a synthetic output control, never labelled recorded evidence.
+      expect(sent).toHaveLength(1);
+      expect(sent.every(text => text.trim().length > 0)).toBe(true);
+    } else {
+      expect(journal.view.order[0].replyChecks.map(check => check.verdict)).toEqual(['violation', 'pass']);
+      expect(sent).toEqual([liveTurn.intent]);
+    }
+  } finally { journal.close(); rmSync(directory, { recursive: true, force: true }); }
+});

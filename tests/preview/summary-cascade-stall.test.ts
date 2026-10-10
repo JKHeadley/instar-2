@@ -50,7 +50,7 @@ function livePort(raw: string, usage: ModelUsage) {
 }
 
 type Step = { kind: 'over-cap'; index: number } | { kind: 'complete'; output: Output };
-function world(writer: Step[], forum = false) {
+function world(writer: Step[], forum = false, tools = false) {
   const root = realpathSync(mkdtempSync(join(tmpdir(), 'preview-summary-stall-')));
   const path = join(root, 'journal.encrypted');
   const journal = openPreviewJournal(path, key, forum ? { ...genesis, chat: '-1001234', forum: true } : genesis);
@@ -58,7 +58,8 @@ function world(writer: Step[], forum = false) {
   let clock = 0, calls = 0;
   const worker = createJournalWorker(journal, { now: () => START + clock, elapsed: () => clock, stopped: () => false,
     sources: () => [...sourcePacket(path => readFileSync(path, 'utf8'), SOURCE_PINS,
-      { providerAttempts: genesis.maxCalls, expiresAt: genesis.expires }).sources,
+      { providerAttempts: genesis.maxCalls, expiresAt: genesis.expires, tools, mcp: 0,
+        live: { forum, scheduledTools: false, toolsGranted: tools } }).sources,
       selfStateSource(selfStateBrief(journal.view, { launches: [], unreadable: 0 }, START + clock, 'UTC'))],
     model: async input => {
       // Replay the captured writers/uncertain outcomes through the trimmed briefing,
@@ -66,6 +67,9 @@ function world(writer: Step[], forum = false) {
       const sources = (JSON.parse(input.context) as { sources: { id: string; text: string }[] }).sources;
       expect(sources.map(source => source.id)).toEqual(['purpose:purpose', 'purpose:coherency', 'capability-note', 'self-state']);
       expect(sources.at(-1)!.text).toContain('Activation: your activation; ends');
+      const ability = sources.find(source => source.id === 'capability-note')!.text;
+      expect(ability).toContain(tools ? 'Tools ON: file reads/edits, commands, web fetch/search' : 'Tools OFF');
+      expect(ability).toContain('Telegram media: captions only');
       if (!input.id.startsWith('summary:')) return 'Noted.';
       throughs.push(Number(input.id.slice(8))); log.push('summary');
       // After the scripted steps the writer keeps returning the live room's recorded over-cap results.
@@ -121,9 +125,9 @@ function world(writer: Step[], forum = false) {
     close: () => { if (open) journal.close(); open = false; rmSync(root, { recursive: true, force: true }); } };
 }
 
-it.each([false, true])('the recorded stall (forum=%s): from base #484 a frontier is offered again and a summary is accepted', async forum => {
+it.each([[false, false], [false, true], [true, false], [true, true]])('the recorded stall (forum=%s, tools=%s): a frontier is offered again and a summary is accepted', async (forum, tools) => {
   // First the real over-cap result, then the real #484 writer output, which Jev's real 0.38 leaves undecided.
-  const w = world([{ kind: 'over-cap', index: 0 }, { kind: 'complete', output: WRITER_484 }], forum);
+  const w = world([{ kind: 'over-cap', index: 0 }, { kind: 'complete', output: WRITER_484 }], forum, tools);
   try {
     w.replayLiveRoom();
     const view = w.journal.view;

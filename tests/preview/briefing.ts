@@ -60,7 +60,7 @@ const liveBriefing = (limits: BriefingLimits) => limits.live ? [
       : 'Tools OFF (no active grant).',
   limits.live.forum ? 'Chat: forum topics.' : 'Chat: private; no forum connected.',
   limits.live.scheduledTools ? 'Scheduled tool sessions ON.' : 'Scheduled tool sessions OFF; listed timed/repeating replies work.',
-  'Media: text/captions only; no photo, voice or file-content I/O here.',
+  'Telegram media: captions only; no photo, voice or attachment-content I/O.',
 ].join('\n') : '';
 export function capabilityBriefing(readSource: (path: string) => string,
   limits: BriefingLimits, launcher = CAPABILITY_LAUNCHER) {

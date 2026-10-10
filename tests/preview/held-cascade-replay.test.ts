@@ -1,6 +1,7 @@
 import { expect, it } from 'vitest';
-import { mkdtempSync, realpathSync, rmSync } from 'node:fs';
+import { mkdtempSync, readFileSync, realpathSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
+import { SOURCE_PINS, sourcePacket } from './briefing.js';
 import { join } from 'node:path';
 import { openPreviewJournal, createJournalWorker } from './journal.js';
 import { prepareJournalEnvelope } from './journal-envelope.js';
@@ -29,8 +30,14 @@ async function flow(options: Flow) {
     configurationDigest: 'sha256:offline', expires: 9999999999999, maxCalls: 6, maxReplies: 3, maxTurns: 3, maxBytes: 32768, cursor: 0 };
   const calls = { jev: 0, review: 0 }, sends: string[] = [], clock = { now: 1790817641423 };
   const ports = (fresh: boolean) => ({ now: () => clock.now, stopped: () => false,
+    sources: () => sourcePacket(path => readFileSync(path, 'utf8'), SOURCE_PINS, { providerAttempts: genesis.maxCalls,
+      expiresAt: genesis.expires, tools: false, live: { forum: options.forum === true, scheduledTools: false, toolsGranted: false } }).sources,
     prepareModel: (input: Parameters<typeof prepareJournalEnvelope>[0]) => prepareJournalEnvelope(input, 'claude-sonnet-5', 'grant:preview', clock.now),
-    model: async () => { if (!fresh) throw Error('model repeated'); return options.answer; },
+    model: async (input: { context: string }) => {
+      expect((JSON.parse(input.context) as { sources: { id: string; text: string }[] }).sources
+        .find(source => source.id === 'capability-note')!.text).toContain('Tools OFF');
+      if (!fresh) throw Error('model repeated'); return options.answer;
+    },
     checkOutbound: () => {},
     ...(options.held ? { heldSecrets: () => options.held ?? [] } : {}),
     replyCheck: { elapsedMs: () => 0,
