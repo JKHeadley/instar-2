@@ -293,8 +293,114 @@ it('spends preflight time inside the reply-review deadline and dispatches only w
   }
 });
 
-it('refuses cached remote/server policy and orphan signature files before any child', async () => {
-  for (const name of ['remote-settings.json', 'remote-settings.json.signature.json', 'policy-limits.json.signature-iat.json']) {
+const serverPolicyFixture = (name: string) => readFileSync(new URL(`../fixtures/claude-server-policy-2.1.280/${name}`, import.meta.url), 'utf8');
+const serverPolicyFiles = ['policy-limits.json', 'policy-limits.json.stamp.json', 'remote-settings.json'];
+function installServerPolicy(directory: string) {
+  for (const name of serverPolicyFiles) writeFileSync(join(directory, name), serverPolicyFixture(name));
+}
+
+it('accepts the real 2.1.280 server policy only after the profile and activation are re-derived', async () => {
+  const f = fixture();
+  const staleRoute = value(createClaudeCodeSubscriptionRoute(f.input));
+  installServerPolicy(f.input.profile.configDirectory);
+  const observed = f.input.io.inspectSubscriptionProfile(f.input.profile);
+  expect(observed.loginProfileIdentity).toBe(f.input.profile.loginProfileIdentity);
+  expect(observed.managedConfigurationDigest).not.toBe(f.input.profile.managedConfigurationDigest);
+  expect((await staleRoute.invoke('request', f.bounds)).state).toBe('uncertain');
+  expect(f.commands()).toHaveLength(0);
+  const profile = Object.freeze({ ...f.input.profile, ...observed });
+  expect(createClaudeCodeSubscriptionRoute({ ...f.input, profile }).kind).toBe('Refused');
+  const input = { ...f.input, profile, resolveProfile: () => profile,
+    adapterEvidenceContract: { ...f.input.adapterEvidenceContract, version: hash(profile) },
+    activation: { ...f.input.activation, profileDigest: hash(profile) } };
+  const renewedRoute = value(createClaudeCodeSubscriptionRoute(input));
+  expect((await renewedRoute.invoke('request', f.bounds)).state).toBe('complete');
+  expect(f.commands()).toHaveLength(3);
+  const stamp = JSON.parse(serverPolicyFixture('policy-limits.json.stamp.json'));
+  writeFileSync(join(profile.configDirectory, 'policy-limits.json.stamp.json'), JSON.stringify({ ...stamp, confirmed_at: stamp.confirmed_at + 1 }));
+  expect((await renewedRoute.invoke('request', f.bounds)).state).toBe('complete');
+  expect(f.commands()).toHaveLength(6);
+});
+
+const capturedPolicy = () => JSON.parse(serverPolicyFixture('policy-limits.json'));
+const capturedStamp = () => JSON.parse(serverPolicyFixture('policy-limits.json.stamp.json'));
+
+it.each([
+  ['policy-limits.json', null, 'expected object'],
+  ['policy-limits.json', [], 'expected object'],
+  ['policy-limits.json', { ...capturedPolicy(), extra: false }, 'extra: unexpected key'],
+  ['policy-limits.json', {}, 'restrictions: missing key'],
+  ['policy-limits.json', { ...capturedPolicy(), restrictions: [] }, 'restrictions: expected object'],
+  ...[null, {}, { allowed: true }, { allowed: 0 }, { allowed: 'false' }, { allowed: false, extra: false }]
+    .map<[string, unknown, string]>(value => ['policy-limits.json', { ...capturedPolicy(), restrictions: { enforce_web_search_mcp_isolation: value } },
+      'restrictions.enforce_web_search_mcp_isolation']),
+  ...[null, ['taint']].map<[string, unknown, string]>(value => ['policy-limits.json', { ...capturedPolicy(), compliance_taints: value }, 'compliance_taints: expected []']),
+  ['policy-limits.json', { ...capturedPolicy(), monitoring_notice: '' }, 'monitoring_notice: expected null'],
+  ['policy-limits.json', { ...capturedPolicy(), defaults: null }, 'defaults: expected object'],
+  ['policy-limits.json', { ...capturedPolicy(), defaults: { extra: false } }, 'defaults.extra: unexpected key'],
+  ['policy-limits.json', { ...capturedPolicy(), defaults: { remote_control_at_startup: true } }, 'remote_control_at_startup: expected false'],
+  ['remote-settings.json', { extra: false }, 'extra: unexpected key'],
+  ['remote-settings.json', [], 'expected object'],
+  ['remote-settings.json', null, 'expected object'],
+  ['policy-limits.json.stamp.json', { ...capturedStamp(), extra: false }, 'extra: unexpected key'],
+  ['policy-limits.json.stamp.json', {}, 'v: missing key'],
+  ...Object.entries({ v: 2, identity: 'opaque', kind: 'org', sha: 'opaque', confirmed_at: -1, hipaa_seen: ['taint'] })
+    .map<[string, unknown, string]>(([key, value]) => ['policy-limits.json.stamp.json', { ...capturedStamp(), [key]: value }, `${key}: expected`]),
+  ['policy-limits.json.stamp.json', { ...capturedStamp(), confirmed_at: 1.5 }, 'confirmed_at: expected'],
+  ['policy-limits.json.stamp.json', { ...capturedStamp(), confirmed_at: '123' }, 'confirmed_at: expected'],
+  ['policy-limits.json.stamp.json', { ...capturedStamp(), hipaa_seen: null }, 'hipaa_seen: expected'],
+] as const)('refuses unreviewed server policy %s: %j (%s)', async (name, settings, reason) => {
+  const f = fixture(); const route = value(createClaudeCodeSubscriptionRoute(f.input));
+  installServerPolicy(f.input.profile.configDirectory);
+  writeFileSync(join(f.input.profile.configDirectory, name), JSON.stringify(settings));
+  expect(() => f.input.io.inspectSubscriptionProfile(f.input.profile)).toThrow(reason);
+  expect((await route.invoke('request', f.bounds)).state).toBe('uncertain');
+  expect(f.commands()).toHaveLength(0);
+});
+
+it('binds each accepted file and its removal to the managed digest; permits only restrictive additions', () => {
+  const f = fixture(), directory = f.input.profile.configDirectory;
+  installServerPolicy(directory);
+  const inspect = () => f.input.io.inspectSubscriptionProfile(f.input.profile).managedConfigurationDigest;
+  const initial = inspect();
+  for (const [name, settings] of [
+    ['policy-limits.json', { ...capturedPolicy(), restrictions: { another_restriction: { allowed: false } } }],
+    ['policy-limits.json', { ...capturedPolicy(), restrictions: {}, defaults: {} }],
+    ['policy-limits.json.stamp.json', { ...capturedStamp(), identity: 'a'.repeat(64) }],
+    ['policy-limits.json.stamp.json', { ...capturedStamp(), sha: `sha256:${'b'.repeat(64)}` }],
+  ] as const) {
+    writeFileSync(join(directory, name), JSON.stringify(settings));
+    expect(inspect()).not.toBe(initial);
+    installServerPolicy(directory);
+  }
+  // An unchanged-cache confirmation is freshness only, after full schema validation.
+  writeFileSync(join(directory, 'policy-limits.json.stamp.json'),
+    JSON.stringify({ ...capturedStamp(), confirmed_at: capturedStamp().confirmed_at + 1 }));
+  expect(inspect()).toBe(initial);
+  // Parsed content, not whitespace, is the effective configuration.
+  writeFileSync(join(directory, 'policy-limits.json'), JSON.stringify(capturedPolicy()));
+  expect(inspect()).toBe(initial);
+  for (const name of ['remote-settings.json', 'policy-limits.json.stamp.json']) {
+    rmSync(join(directory, name)); expect(inspect()).not.toBe(initial); installServerPolicy(directory);
+  }
+  rmSync(join(directory, 'policy-limits.json'));
+  expect(inspect).toThrow('policy-limits.json.stamp.json: missing policy-limits.json');
+});
+
+it('refuses malformed, oversized and redirected server policy files', () => {
+  const f = fixture(), directory = f.input.profile.configDirectory, path = join(directory, 'remote-settings.json');
+  for (const bytes of ['{', '{} trailing', '{}'.padEnd(65537)]) {
+    writeFileSync(path, bytes);
+    expect(() => f.input.io.inspectSubscriptionProfile(f.input.profile)).toThrow('remote-settings.json:');
+  }
+  rmSync(path); symlinkSync(join(directory, 'elsewhere'), path);
+  expect(() => f.input.io.inspectSubscriptionProfile(f.input.profile)).toThrow('remote-settings.json: unsafe path or size');
+  rmSync(path); mkdirSync(path);
+  expect(() => f.input.io.inspectSubscriptionProfile(f.input.profile)).toThrow('remote-settings.json: unsafe path or size');
+});
+
+it('holds added remote/server policy and orphan signature files before any child', async () => {
+  for (const name of ['remote-settings.json', 'remote-settings.json.signature.json', 'remote-settings.other', 'policy-limits.json.signature-iat.json', 'policy-limits.json.extra']) {
     const f = fixture(); const route = value(createClaudeCodeSubscriptionRoute(f.input));
     writeFileSync(join(f.input.profile.configDirectory, name), '{}');
     expect((await route.invoke('request', f.bounds)).state).toBe('uncertain');

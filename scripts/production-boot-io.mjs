@@ -180,6 +180,67 @@ export function subscriptionProfileIdentity(bindings) {
   return `sha256:${createHash('sha256').update(JSON.stringify(rows)).digest('hex')}`;
 }
 
+/** The reviewed Claude Code 2.1.280 cache shape. Unknown policy effects hold
+ * activation; accepted content remains bound by the existing profile digest. */
+function subscriptionServerPolicy(configDirectory) {
+  const names = readdirSync(configDirectory).filter(name =>
+    name.startsWith('policy-limits.json') || name.startsWith('remote-settings')).sort();
+  const reviewed = ['policy-limits.json', 'policy-limits.json.stamp.json', 'remote-settings.json'];
+  const hold = reason => { throw Error(`subscription server policy: ${reason}; activation hold`); };
+  const object = (value, field) => {
+    if (value === null || typeof value !== 'object' || Array.isArray(value)) hold(`${field}: expected object`);
+  };
+  const keys = (value, expected, field, required = expected) => {
+    object(value, field);
+    for (const key of Object.keys(value)) if (!expected.includes(key)) hold(`${field}.${key}: unexpected key`);
+    for (const key of required) if (!Object.hasOwn(value, key)) hold(`${field}.${key}: missing key`);
+  };
+  const empty = (value, field) => {
+    if (!Array.isArray(value) || value.length !== 0) hold(`${field}: expected []`);
+  };
+  return names.map(name => {
+    if (!reviewed.includes(name)) hold(`${name}: unexpected file`);
+    const path = join(configDirectory, name), info = lstatSync(path);
+    if (!info.isFile() || info.size > 65536 || realpathSync(path) !== path) hold(`${name}: unsafe path or size`);
+    let settings;
+    try { settings = JSON.parse(readFileSync(path, 'utf8')); }
+    catch { hold(`${name}: unreadable JSON`); }
+    if (name === 'policy-limits.json') {
+      keys(settings, ['restrictions', 'compliance_taints', 'monitoring_notice', 'defaults'], name);
+      object(settings.restrictions, `${name}.restrictions`);
+      for (const [restriction, value] of Object.entries(settings.restrictions)) {
+        const field = `${name}.restrictions.${restriction}`;
+        keys(value, ['allowed'], field);
+        if (value.allowed !== false) hold(`${field}.allowed: expected false`);
+      }
+      empty(settings.compliance_taints, `${name}.compliance_taints`);
+      if (settings.monitoring_notice !== null) hold(`${name}.monitoring_notice: expected null`);
+      keys(settings.defaults, ['remote_control_at_startup'], `${name}.defaults`, []);
+      if (Object.hasOwn(settings.defaults, 'remote_control_at_startup') && settings.defaults.remote_control_at_startup !== false)
+        hold(`${name}.defaults.remote_control_at_startup: expected false`);
+    } else if (name === 'remote-settings.json') {
+      keys(settings, [], name);
+    } else {
+      keys(settings, ['v', 'identity', 'kind', 'sha', 'confirmed_at', 'hipaa_seen'], name);
+      if (settings.v !== 1) hold(`${name}.v: expected 1`);
+      if (typeof settings.identity !== 'string' || !/^[0-9a-f]{64}$/u.test(settings.identity))
+        hold(`${name}.identity: expected 64 lowercase hex characters`);
+      if (settings.kind !== 'token') hold(`${name}.kind: expected token`);
+      if (typeof settings.sha !== 'string' || !/^sha256:[0-9a-f]{64}$/u.test(settings.sha))
+        hold(`${name}.sha: expected sha256 digest`);
+      if (!Number.isSafeInteger(settings.confirmed_at) || settings.confirmed_at < 0)
+        hold(`${name}.confirmed_at: expected nonnegative safe integer`);
+      empty(settings.hipaa_seen, `${name}.hipaa_seen`);
+      if (!names.includes('policy-limits.json')) hold(`${name}: missing policy-limits.json`);
+      // Cache confirmation refreshes do not change policy or authority. Validate the
+      // complete stamp above, then bind only its identity/content fields to activation.
+      const { confirmed_at, ...binding } = settings;
+      settings = binding;
+    }
+    return { path, settings };
+  });
+}
+
 /** Preview-only provider host. No secret file or Keychain contents are read here. `runAs` (harness-user.mjs readiness:
  * `{ user, launcher, login, plan }`, or null) runs every harness command (version, auth status, model call) as the
  * harness's own user through the one sudoers rule: `sudo -n -u USER LAUNCHER --handoff ENV... -- EXECUTABLE ARGS`, the
@@ -233,12 +294,9 @@ export function createSubscriptionProviderIO({ repository, stopped, work = 'answ
         throw Error('subscription managed configuration unsupported');
       policy.push({ path, settings });
     }
-    // Unknown server policy formats are an activation hold, never ignored.
-    // 2.1.280 also reads remote-settings plus signed/cache companions. Never
-    // adopt an opaque cached server policy (including an orphan companion).
-    if (readdirSync(profile.configDirectory).some(name =>
-      name.startsWith('policy-limits.json') || name.startsWith('remote-settings')))
-      throw Error('subscription server policy requires reviewed effective configuration');
+    // Include every reviewed cache file in the same activation-bound digest.
+    // Effective policy or identity/content changes hold launches; cache freshness does not.
+    policy.push(...subscriptionServerPolicy(profile.configDirectory));
     lastPolicy = policy;
     return Object.freeze({ loginProfileIdentity: subscriptionProfileIdentity(bindings), managedConfigurationDigest: digest(policy) });
   };
@@ -294,8 +352,7 @@ export function createSubscriptionProviderIO({ repository, stopped, work = 'answ
  * arguments, so sudo needs no SETENV and its own environment is only a plain PATH. What the harness user must never be able
  * to open travels in the launcher's stdin hand-off line instead: the login (`runAs.login()`, read from the runner's custody
  * for each command) and the file of an `--mcp-config PATH` argument (read here; the argument becomes /dev/fd/4). A handed-
- * over login carries no plan, so the CLI would fetch and cache server policy for it (which the profile inspection then
- * refuses, rightly, as unreviewed); the custody binds the login to `runAs.plan`, declared here as the CLI's
+ * over login carries no plan; the custody binds the login to `runAs.plan`, declared here as the CLI's
  * CLAUDE_CODE_SUBSCRIPTION_TYPE, as a stored claude.ai login's own record would. */
 export const HARNESS_MCP_DESCRIPTOR = '/dev/fd/4';
 export function harnessCommand(input, runAs, read = path => readFileSync(path, 'utf8')) {
