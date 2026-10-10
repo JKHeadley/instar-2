@@ -6,7 +6,7 @@ import { copyFileSync, mkdtempSync, readFileSync, realpathSync, rmSync } from 'n
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { appendGroupCarry } from './group-carry.js';
-import { createJournalWorker, GROUP_DISCLOSURE_HOLD, GROUP_DISCLOSURE_HOLD_NOTICE, openPreviewJournal, openRequests } from './journal-test-worker.js';
+import { createJournalWorker, GROUP_DISCLOSURE_HOLD, GROUP_DISCLOSURE_HOLD_NOTICE, openPreviewJournal, openRequests, ModelDisclosureRefused, type JournalRecord } from './journal-test-worker.js';
 import { key, scope, permissionFor } from './group-carry-fixture.js';
 
 const dirs: string[] = [];
@@ -266,5 +266,93 @@ it('forgetting carried request text cannot silently cancel the owned request', a
   expect(openRequests(w.destination.view).map(item => item.quote)).toEqual([priya]);
   expect(w.destination.view.order.at(-1)!.memoryPending).toBeUndefined();
   expect(group.sent).toHaveLength(1);
+  w.destination.close();
+});
+
+// Round-two reproduction uses the shipped host bodies with only external dependencies substituted.
+const host = readFileSync(new URL('./journal-agent.mjs', import.meta.url), 'utf8');
+const modelCode = host.split('      model: async ({ id, prepared }) => {')[1]!.split('\n      summaryCheck:')[0]!;
+const modelFunction = 'async ({ id, prepared }) => {' + modelCode.trimEnd().replace(/,$/, '');
+const sendCode = host.split('      send: async ({ text, expectedText, chat, thread, replyMarkup, target, provenance, admit }) => {')[1]!.split('\n    if (existsSync(stopPath))')[0]!;
+const sendFunction = 'async ({ text, expectedText, chat, thread, replyMarkup, target, provenance, admit }) => {' + sendCode.slice(0, sendCode.lastIndexOf(' });'));
+
+it.each([['model', false], ['subscription', false], ['send', false], ['model', true], ['subscription', true], ['send', true]] as const)('exact shipped %s boundary recovers recorded answer after disclosure loss (authorized control: %s)', async (boundary, initiallyAdmitted) => {
+  const w = await world();
+  appendGroupCarry(w.destination, w.source, scope, permission(), true, start + 3600_000, () => false); w.source.close();
+  let activeJournal = w.destination;
+  const journalProxy = new Proxy(w.destination, { get: (_target, prop) => Reflect.get(activeJournal, prop) });
+  let restored = initiallyAdmitted, providerCalls = 0, networkSends = 0;
+  const requireAt = (which: string) => async () => {
+    if (!restored && boundary === which) throw Error('group carry: disclosure grant or operator-only audience refused');
+  };
+  const subscriptionCode = host.split('    const callSubscription = async ')[1]!.split('    const callJev =')[0]!.trim().replace(/;$/, '');
+  const recorded = (JSON.parse(readFileSync(new URL('./fixtures/proofroom-summary-cascade-stall-2026-09-30.json', import.meta.url), 'utf8')) as { rows: JournalRecord[] })
+    .rows.find((row): row is Extract<JournalRecord, { kind: 'answer' }> => row.kind === 'answer' && row.id.endsWith(':715672480'))!;
+  const subscription = Function('journal', 'requireGroupDisclosure', 'ModelDisclosureRefused', 'assertLiveJudgment', 'shared',
+    'modelRoute', 'performance', 'required', 'options', 'recordModelCall', `return (async ${subscriptionCode});`)(
+    journalProxy, requireAt('subscription'), ModelDisclosureRefused, () => {}, null,
+    () => ({ invoke: async () => { providerCalls++; return { state: 'complete', bytes: recorded.text }; } }),
+    { now: () => 0 }, () => 'fixture', {}, () => {});
+  const model = Function('journal', 'requireGroupDisclosure', 'toolsActive', 'toolTurnEligible', 'invokeTools', 'invokeSubscription', 'recordedUsage', 'ModelDisclosureRefused', `return (${modelFunction});`)(
+    journalProxy, requireAt('model'), () => false, () => false, () => { throw Error('unused'); },
+    async (prepared: string, id: string) => { const result = await subscription('answer', prepared, id, {}); return { state: result.state, value: result.bytes }; },
+    (x: unknown) => x, ModelDisclosureRefused);
+  let claims = 0;
+  const shared = { admit: async () => {
+    expect(activeJournal.view.order.find(t => t.requestedAction)?.intent).toBeDefined(); claims++; return null;
+  }, outcome: async () => {} };
+  const send = Function('journal', 'workerStop', 'existsSync', 'stopPath', 'wallNow', 'ownerHeld', 'shared', 'GROUP_DISCLOSURE_HOLD_NOTICE', 'requireGroupDisclosure', 'physical', 'secretRef', 'token', 'classifyTelegramSend', 'g', `return (${sendFunction});`)(
+    journalProxy, { value: false }, () => false, '/test/stop', () => friday9, () => true, shared,
+    GROUP_DISCLOSURE_HOLD_NOTICE, requireAt('send'), { invoke: () => { expect(claims).toBe(1); networkSends++; return {}; } },
+    (x: string) => x, () => 'TEST', () => ({ kind: 'accepted', message: 1 }), w.destination.view.genesis);
+  const bindings = { now: () => friday9, stopped: () => false, timeZone: 'America/Los_Angeles',
+    ...(host.includes('      sendAdmits: true,') ? { sendAdmits: true as const } : {}), checkOutbound: () => {}, groupDisclosure: async () => true, prepareModel: (input: Input) => JSON.stringify({ messages: [{ role: 'context', content: input.context }, { role: 'user', content: input.question }] }), model, send };
+  await createJournalWorker(w.destination, bindings).sendRequested();
+  await createJournalWorker(w.destination, bindings).sendRequested();
+  const before = w.destination.view.order.find(t => t.requestedAction)!;
+  if (!initiallyAdmitted) {
+    expect(before.held).toBe(GROUP_DISCLOSURE_HOLD);
+    expect(before.reserved).toBe(boundary === 'send');
+    expect(before.intent).toBeUndefined();
+    expect(providerCalls).toBe(boundary === 'send' ? 1 : 0);
+    expect(networkSends).toBe(0); expect(claims).toBe(0);
+    expect(openRequests(w.destination.view)).toHaveLength(1);
+    if (boundary !== 'send') {
+      expect(w.destination.view.calls).toBe(0);
+      expect(w.destination.view.tokenTotals.answer.unknownCalls).toBe(0);
+      expect(w.destination.view.tokenTotals.answer.inputTokens).toBe(0);
+      expect(() => w.destination.append({ kind: 'hold', id: before.id, reason: GROUP_DISCLOSURE_HOLD,
+        unusedModel: { corrections: [] }, at: friday9 })).toThrow('unused model reservation order');
+    }
+  }
+  w.destination.close();
+  const rawReplay = openPreviewJournal(w.target, key);
+  expect(rawReplay.view.order.find(t => t.requestedAction)?.reserved).toBe(before.reserved);
+  expect(rawReplay.view.calls).toBe(w.destination.view.calls);
+  rawReplay.compact(); rawReplay.close();
+  const resumed = openPreviewJournal(w.target, key); activeJournal = resumed; restored = true;
+  const recovery = createJournalWorker(resumed, bindings);
+  await recovery.sendRequested(); await recovery.sendRequested();
+  expect(openRequests(resumed.view)).toEqual([]);
+  expect(resumed.view.order.find(t => t.requestedAction)?.intent).toContain(recorded.text);
+  resumed.close();
+  expect(providerCalls).toBe(1);
+  expect(networkSends).toBe(1);
+});
+
+it('the shipped model wrapper never releases an invocation that already reached a provider before a later disclosure refusal', async () => {
+  const w = await world();
+  appendGroupCarry(w.destination, w.source, scope, permission(), true, start + 3600_000, () => false); w.source.close();
+  let calls = 0;
+  const model = Function('journal', 'requireGroupDisclosure', 'toolsActive', 'toolTurnEligible', 'invokeTools',
+    'ModelDisclosureRefused', `return (${modelFunction});`)(w.destination, async () => {}, () => true, () => true,
+    async () => { calls++; w.destination.view.modelCalls.total++; throw new ModelDisclosureRefused(); }, ModelDisclosureRefused);
+  const bindings = { now: () => friday9, stopped: () => false, groupDisclosure: async () => true, checkOutbound: () => {},
+    prepareModel: () => '{}', model, send: async () => { throw Error('must not send'); } };
+  const worker = createJournalWorker(w.destination, bindings);
+  await worker.sendRequested(); await worker.sendRequested();
+  const turn = w.destination.view.order.find(t => t.requestedAction)!;
+  expect(calls).toBe(1); expect(turn.reserved).toBe(true); expect(turn.held).not.toBe(GROUP_DISCLOSURE_HOLD);
+  expect(w.destination.view.tokenTotals.answer.unknownCalls).toBe(1);
   w.destination.close();
 });

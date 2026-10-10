@@ -474,6 +474,10 @@ const heldNoticeReason = (reason: string | undefined) => reason === 'reply check
 /** A carried root whose disclosure grant or operator-only audience cannot be shown now: its turns (a due carried
  * request included) are kept unanswered and unsent, never reserved, and answered once both hold again. */
 export const GROUP_DISCLOSURE_HOLD = 'group disclosure refused';
+/** Host-only proof: thrown at a disclosure checkpoint before invoking a provider, never for a provider error. */
+export class ModelDisclosureRefused extends Error {
+  constructor() { super(GROUP_DISCLOSURE_HOLD); }
+}
 /** The one push such a hold allows (Rule 87 action-needed; Rule 88 after the self-heal window): content-free, so it
  * reveals nothing private to whoever is in the group now. The disclosure gate admits exactly this text. */
 export const GROUP_DISCLOSURE_HOLD_NOTICE = 'PREVIEW — I\'m holding a reply until this group\'s audience check passes again; nothing is lost, and it will follow then.';
@@ -1176,7 +1180,9 @@ export type JournalRecord =
   | { kind: 'summary-due'; id: string; grant: string; slot: string; update: number; at: number }
   | { kind: 'reminder-grant'; reference: string; trial: string; surface: 'telegram-private-chat';
     scope: 'initiated-dated-reminders'; custodian: string; recovery: 'unknown-never-retry'; at: number }
-  | { kind: 'hold'; id: string; reason: string; at: number }
+  | { kind: 'hold'; id: string; reason: string; at: number;
+    /** Host proved this answer invocation never dispatched; restore its unused reservation and carried corrections. */
+    unusedModel?: { corrections: string[] } }
   | { kind: 'stop'; reason: string; at: number;
     /** An exact /stop the minimal path could not confirm by message latches at once; its update is kept. */
     update?: number; raw?: string;
@@ -1812,7 +1818,7 @@ function retainedEvidence(rows: JournalRecord[], view: JournalView): JournalReco
   const evidence: JournalRecord[] = [];
   const holds = new Map<string, Extract<JournalRecord, {kind:'hold'}>>();
   for (const row of rows) {
-    if (row.kind === 'hold') { if (open.has(row.id)) holds.set(row.id, row); continue; }
+    if (row.kind === 'hold' && !row.unusedModel) { if (open.has(row.id)) holds.set(row.id, row); continue; }
     if ((row.kind === 'reserve' || row.kind === 'lookup' || row.kind === 'format-retry' || row.kind === 'answer-replace')
       && row.prompt !== undefined && settledPrompt(view.turns.get(row.id)) === row.prompt) {
       // Rule 58: once the answer call is settled, the snapshot turn keeps the exact final answer packet for inspect
@@ -4571,6 +4577,16 @@ function project(view: JournalView, row: JournalRecord, system?: SystemCheck, ad
     // As before, this hold supersedes the turn's earlier hold, and the exhausted frontier releases it at once.
     delete turn.held; delete turn.heldSince; view.heldTurns.delete(turn); turn.wasHeld = true;
   } else if (row.kind === 'hold') {
+    if (row.unusedModel) {
+      if (row.reason !== GROUP_DISCLOSURE_HOLD || !turn.reserved || turn.answer !== undefined
+        || turn.modelState !== undefined || turn.intent !== undefined || turn.answerRetried
+        || !view.tokenCurrent.has(`answer:${turn.id}`) || !Array.isArray(row.unusedModel.corrections)
+        || row.unusedModel.corrections.some(id => !view.turns.has(id)))
+        throw Error('preview journal: unused model reservation order');
+      settleTokens(view, `answer:${turn.id}`, { inputTokens: 0, outputTokens: 0, inputComplete: true, charge: null });
+      view.calls--; turn.reserved = false; delete turn.reservedAt;
+      view.corrections = [...new Set([...row.unusedModel.corrections, ...view.corrections])];
+    }
     if (heldNoticeReason(row.reason)) {
       const holds = view.awayEvents.filter(event => event.kind === 'hold' && event.id === turn.id);
       let since = row.at;
@@ -5109,7 +5125,9 @@ export interface PreviewPorts {
    * is the journal's signature over exactly `target`, `chat`, `thread` and `text`. */
   send(input: { text: string; expectedText: string; chat: string; thread?: number; update: number;
     kind?: OutboundKind; disposition?: OutboundDisposition; replyMarkup?: unknown;
-    target?: string; provenance?: OutboundProvenance }): Promise<number | null | SendOutcome>;
+    target?: string; provenance?: OutboundProvenance; admit?: () => void }): Promise<number | null | SendOutcome>;
+  /** The host calls input.admit after its last disclosure read, before replication/dispatch. */
+  sendAdmits?: true;
   checkOutbound(text: string): void;
   /** Clears a pressed button on the operator's phone with a short toast; never a push, never required. */
   acknowledge?(callbackId: string, text: string): void;
@@ -5238,18 +5256,22 @@ export function createJournalWorker(journal: ReturnType<typeof openPreviewJourna
   const dispatch = async (target: string, provenance: OutboundProvenance | undefined,
     input: { text: string; expectedText: string; chat: string; thread?: number; update: number;
       kind?: OutboundKind; disposition?: OutboundDisposition; replyMarkup?: unknown }, admitted?: () => void): Promise<SettledSendOutcome> => {
+    let prepared = admitted === undefined;
+    const admit = () => { if (!prepared) { gate(); admitted!(); prepared = true; } };
     if (admitted) {
       if (!await disclosure()) return { kind: 'refused', reason: GROUP_DISCLOSURE_HOLD };
-      gate(); admitted();
+      if (!original.sendAdmits) admit();
     }
     const subject = { target, chat: input.chat, ...(input.thread === undefined ? {} : { thread: input.thread }), body: input.text };
     let attempted: SendOutcome = { kind: 'unknown', reason: 'send port failed' };
     if (!journal.verifyOutbound(provenance, subject)) attempted = { kind: 'refused', reason: 'outbound provenance unsigned' };
     else for (let attempt = 0; attempt < NOT_SENT_ATTEMPTS; attempt++) {
-      try { attempted = settleSendOutcome(await (admitted ? original.send : ports.send)({ ...input, target, provenance: provenance! })); }
+      try { attempted = settleSendOutcome(await (admitted ? original.send : ports.send)({ ...input, target, provenance: provenance!, ...(admitted && original.sendAdmits ? { admit } : {}) })); }
       catch { attempted = { kind: 'unknown', reason: 'send port failed' }; }
       if (attempted.kind !== 'not-sent') break;
     }
+    // No intent means the host refused before admission. The caller keeps the saved answer in its durable hold.
+    if (!prepared) return { kind: 'refused', reason: GROUP_DISCLOSURE_HOLD };
     const outcome: SettledSendOutcome = attempted.kind === 'not-sent'
       ? { kind: 'refused', reason: attempted.reason } : attempted;
     if (outcome.kind !== 'accepted') {
@@ -7484,7 +7506,11 @@ export function createJournalWorker(journal: ReturnType<typeof openPreviewJourna
           const answerStarted = elapsedMs();
           try { answer = await original.model({ question, context, id: turn.id,
             ...(prepared === undefined ? {} : { prepared }) }); }
-          catch { continue; } // reservation remains UNKNOWN
+          catch (error) {
+            if (error instanceof ModelDisclosureRefused) journal.append({ kind: 'hold', id: turn.id,
+              reason: GROUP_DISCLOSURE_HOLD, unusedModel: { corrections: carried }, at: ports.now() });
+            continue; // Every other failure leaves the reservation UNKNOWN.
+          }
           // Rule 116: a real model sometimes answers in prose instead of the required Decision. Ask the same turn
           // once more with a runner-authored format reminder in the packet (never in the operator's message),
           // reserved against the same call cap and only while not stopped; a second miss is refused as before.
