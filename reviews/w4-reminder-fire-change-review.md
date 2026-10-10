@@ -18,12 +18,16 @@ Bug class: live-path
 Bug evidence: reproducer=tests/preview/journal-reminder-idle.test.ts; live=/Users/dabombstudio/.instar/agents/echo/.instar/lanes/w4-reminder-fire-replay-green.log
 Hook bypass: none
 Convergence: none
-Prompt review: no prompt, parser, model routing or output interpretation changes.
+Prompt review: no prompt, parser, model routing or output interpretation changes; existing fixture literals and neutral dispatch remain unchanged.
+Prompt finding: 849db3a6296a | protocol-literal | existing fixed reply for absent saved memory; this change leaves its text unchanged.
+Prompt finding: bd01de21286a | protocol-literal | existing packet instruction to cite sourceLabel; unchanged by scheduling settlement.
+Prompt finding: fb5fa7e706c8 | protocol-literal | existing packet instruction for questions about what the operator said; unchanged.
 
-simplestRobustRoute: call the existing exhaustion settlement before the existing scheduler memory hold. This is the simplest route; no new mechanism. Stop and expiry precede settlement; spend, cancellation, aggregation, verified principal, durable intent and send guards remain. Both recorded reminders fire once in offline copies of their complete live journal prefixes, including after restart. Actual post-deployment Telegram proof belongs to the pipeline; the builder sent nothing into the room.
 
 Root cause: scheduleRequests returned at unresolvedReminderMemory because background summary-failed records left older turns memoryPending. settleExhaustedEdit was reached only while processing an ordinary pending reply (or edit), so an idle chat had no route to record their already exhausted judgments. Run 1 held on updates 6233049 and 6233055; the inbound 6233068 settled both at 17:06:09. Run 2 held on 6233063 and 6233066. The earlier evening-summary request 6233050 had already settled undecided at 16:40:26 and was not the outstanding hold.
 
 Validation: regression fails on the base and passes with the fix; complete encrypted-prefix replay on the base produces zero due turns and on this change produces one send for each reminder, with none repeated across restart. Replays at 16:49:30 and 17:18:30 use the recorded exhaustion evidence within each due minute. At the exact due second the recorded summary retries were still active, so that existing hold remains intentional. Thirteen targeted files pass (184 tests), with nice -n 10 and --maxWorkers 1, in the foreground. Typecheck and architecture pass. Register wiring reports only the permitted desk-owned source pin for tests/preview/journal.ts.
 
+simplestRobustRoute: call the existing exhaustion settlement before the existing scheduler memory hold. This is the simplest route; no new mechanism. Stop and expiry precede settlement; spend, cancellation, aggregation, verified principal, durable intent and send guards remain. Both recorded reminders fire once in offline copies of their complete live journal prefixes, including after restart. Actual post-deployment Telegram proof belongs to the pipeline; the builder sent nothing into the room.
+80/20: the existing settlement is reused; red/green recorded regressions, full-journal offline replay, 184 targeted tests, typecheck and architecture pass. Independent live pipeline gate remains required.
 VERDICT: author submission; independent pipeline gate pending
