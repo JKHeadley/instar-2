@@ -19,13 +19,14 @@ Bug evidence: reproducer=tests/preview/reply-review-budget.test.ts
 Hook bypass: none; core.hooksPath unset and common hooks directory contains only samples, checked locally
 Convergence: none
 Prompt review: Rule meanings, verdict completeness and full-context inputs are unchanged; only prose allocation changes. No literal test answer, keyword decision, authority widening or additional paid retry is introduced. The real claude-sonnet-5 replay uses the captured review envelope with only its task question replaced; the exact prompt SHA is asserted in the regression.
-Decision: bounded-review-prose | Reuse the existing reviewer and unchanged provider ceiling; ask for all verdicts in compact form instead of enlarging caps or releasing unreviewed shared replies | reported=sb-w4-group-combo-repair-PROGRESS.md
+Decision: bounded-review-prose | Reuse the existing reviewer and unchanged provider ceiling; ask for all verdicts in compact form instead of enlarging caps or releasing unreviewed shared replies | reported=/Users/dabombstudio/.instar/agents/echo/.instar/lanes/sb-w4-group-combo-repair-PROGRESS.md
 
 Evidence: Read-only forum-answer-copy-20261010-115108 update 715675387, journal SHA and exact review input retained in fixtures/forum-review-budget-2026-10-10.json. Original Jev unsure, subscription uncertain, delivered holding notice and the new real reviewer output are captured. Worker replay proves complete review sends the candidate exactly once and unavailable review still holds across restart. Recorded disclosure refusal and fragment/coherent verdicts from update 969390330 remain enforced. Existing proof-room replay includes summary uncertain and Jev undecided at 715672479–715672500; captured delivered/empty context bytes at 715672479/715672550 remain distinct. Empty context is not represented as an actual empty Telegram send.
+
+Register provenance regenerated from source commit 3b48822aa328b900f72e91be7fc74950ffb6e6da after the delegated owner-manifest and chain repin tools found no stale owner hashes.
 
 ## Closing block
 
 simplestRobustRoute: This is the simplest robust route: make the existing review ask fit its already enforced allowance. No new gate, service, retry or parsing rule. Start guards retain exact audience and context; the end guard requires all verdicts; token/call/deadline limits, stop, credential wall, durable cause and no duplicate sends remain enforced. A real isolated model replay completed unattended at 1048 tokens; this is not a claim of deployment or a fresh Telegram answer check.
-Register provenance regenerated from source commit 3b48822aa328b900f72e91be7fc74950ffb6e6da after the delegated owner-manifest and chain repin tools found no stale owner hashes.
 80/20: Focused reply-check and recorded-budget worker regressions pass 70/70. Twelve selected recorded-shape tests, typecheck and build also pass; saved full-gate contracts are checked at their original root without altering receipts. No full suite run on this machine and no fresh full-suite claim. The pipeline owns the next live answer check and gate.
 VERDICT: author submission; this record asserts no independent verdict — the review desk records its own
