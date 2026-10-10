@@ -17,8 +17,8 @@ Layer below: createOrdinaryLane and sentinelCycle admission in tests/preview/liv
 Bug class: integration
 Bug evidence: reproducer=tests/preview/journal-session-work-launch.test.ts
 Hook bypass: none
-Convergence: Author submission to the independent desk; no independent verdict asserted.
-Decision: one-cycle | Reuse workCycle for both admission points instead of adding another lane, retries, or a special session-enabled answer path. | reported=w4-sessionwork-stall-PROGRESS.md
+Convergence: none
+Decision: one-cycle | Reuse workCycle for both admission points instead of adding another lane, retries, or a special session-enabled answer path. | reported=/Users/dabombstudio/.instar/agents/echo/.instar/lanes/w4-sessionwork-stall-PROGRESS.md
 Prompt review: No model-facing prompt, output parser, acceptance, escalation or refusal rule changed. Only scheduling changes. The session-route test substitutes session execution to inspect routing; existing session execution remains unchanged. Recorded proof-room summary/review shapes are replayed by the targeted group-carry regression.
 
 Subject: tests/preview/journal-agent.mjs, tests/preview/journal-cutover-loader.mjs, tests/preview/journal-cutover-ports.mjs, tests/preview/journal-session-work-launch.test.ts; derived owner pins and register replay.
