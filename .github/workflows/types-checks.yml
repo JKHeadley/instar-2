@@ -1,5 +1,10 @@
 name: constitutional-types
 on: [push, pull_request]
+# A newer push to the same branch cancels the older run, so proof-branch pushes cannot pile up and hold the account's
+# Actions capacity (2026-10-10: 42 runs, contract jobs 1-2+ h, queued instar 1.x required checks for 3 h).
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
 jobs:
   contract:
     strategy:
@@ -11,6 +16,7 @@ jobs:
           - os: ubuntu-24.04-arm
             arch: arm64
     runs-on: ${{ matrix.os }}
+    timeout-minutes: 45
     steps:
       - uses: actions/checkout@v4
         with:
@@ -52,6 +58,7 @@ jobs:
         run: cmp register-artifacts/register-ubuntu-latest/register.json register-artifacts/register-ubuntu-24.04-arm/register.json
   p3-body-seam:
     runs-on: ubuntu-24.04
+    timeout-minutes: 20
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-node@v4
