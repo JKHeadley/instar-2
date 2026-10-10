@@ -1,0 +1,29 @@
+[
+  {
+    "type": "Declaration",
+    "schemaVersion": 1,
+    "id": "preview.harness-login-pool.createHarnessLoginPool",
+    "kind": "stores",
+    "status": "live",
+    "requiredFacts": {
+      "growth": "unbounded",
+      "holdsAgentMemory": "no",
+      "machineScope": {
+        "kind": "machine-local",
+        "reason": "The runner root writer lease owns harness-login-pool.json: active reviewed profile index, observed capacity holds and retained switch history. The existing runs.jsonl launch record names the configuration and detects a missing sidecar after launch. Atomic fsynced replacement detects malformed state and configuration mismatch on replay; unknown reset times stay held. History retains content-free switch evidence and notice keys. No credentials or model content are stored. Each machine enrolls its own profiles, custody and activations; a replica cannot use another machine's login paths."
+      },
+      "agreesWith": []
+    },
+    "standards": [
+      7,
+      32,
+      41,
+      52,
+      60,
+      100,
+      113,
+      116
+    ],
+    "holds": []
+  }
+]

@@ -169,7 +169,7 @@ describe('readiness: the switch is decided from live state, a refusal names its 
 });
 
 describe('the gate: an unavailable harness user holds every launch, a ready one runs it', () => {
-  const profile = { expectedAccount: 'a@example.invalid', organization: 'org', plan: 'max' };
+  const profile = { reference: 'test-a', expectedAccount: 'a@example.invalid', organization: 'org', plan: 'max' };
   const gateWith = (results: Array<Record<string, unknown>>, clock: { t: number }, adopt: ((uid: number) => void) | null = () => {}) => {
     const lines: string[] = [];
     const gate = harnessGate({ profile, denied: [], clock: () => clock.t, runner: () => 'operator', log: (line: string) => lines.push(line),
@@ -246,7 +246,7 @@ describe('the gate: an unavailable harness user holds every launch, a ready one 
 });
 
 describe('the login custody and the runner\'s /private/tmp entries', () => {
-  const profile = { expectedAccount: 'a@example.invalid', organization: 'org', plan: 'max', configDirectory: '/h/config', home: '/h/home' };
+  const profile = { reference: 'test-a', expectedAccount: 'a@example.invalid', organization: 'org', plan: 'max', configDirectory: '/h/config', home: '/h/home' };
   it('stores and reads back a login bound to the profile, the runner\'s alone, and refuses anything else by name', () => {
     const path = join(fresh('custody-root'), 'custody', 'login.json');
     storeHarnessLogin(profile, 'sk-ant-oat01-synthetic-login-token', path);
@@ -616,7 +616,7 @@ describe('a delegated session as the harness user', () => {
     expect(existsSync(join(state, 'config.json'))).toBe(true);
   });
   it('runs the pane\'s harness as the harness user in the launcher\'s terminal mode, the login only in the stdin hand-off', () => {
-    const profile = { expectedAccount: 'a@example.invalid', organization: 'org', plan: 'max' };
+    const profile = { reference: 'test-a', expectedAccount: 'a@example.invalid', organization: 'org', plan: 'max' };
     const command = harnessSessionCommand({ user: '_instarharness', profile, executable: '/h/bin/claude-2.1.280', args: ['--session-id', 'x'],
       env: { PATH: '/usr/bin:/bin', HOME: '/h/home', ANTHROPIC_BASE_URL: 'http://127.0.0.1:4000/g' }, login: () => 'sk-ant-oat01-synthetic-login' });
     expect(command.executable).toBe('/usr/bin/sudo');

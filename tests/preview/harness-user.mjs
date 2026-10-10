@@ -39,7 +39,12 @@ export const HARNESS_TMP_DENY = 'user:_instarharness deny list,search,add_file,a
  * harness user), holding `{v: 1, token, account, organization, plan}`. The token is a long-lived Claude Code login token
  * (`claude setup-token`); the account fields bind it to one profile. */
 export const HARNESS_CUSTODY = join(HARNESS_BASE, 'custody');
-export const HARNESS_LOGIN = join(HARNESS_CUSTODY, 'login.json');
+/** No singleton fallback: a missing profile-specific entry holds that profile's launch. */
+export function harnessLoginPath(profile, base = HARNESS_CUSTODY) {
+  if (typeof profile?.reference !== 'string' || !/^[a-zA-Z0-9][a-zA-Z0-9._-]{0,127}$/u.test(profile.reference))
+    throw Error('preview: invalid harness profile reference');
+  return join(base, `${profile.reference}.login.json`);
+}
 const HERE = dirname(fileURLToPath(import.meta.url));
 export const HARNESS_LAUNCHER_SOURCE = join(HERE, 'harness-launch.mjs');
 /** The runner-side command a delegated session's pane runs the harness through (harness-session.mjs). */
@@ -126,7 +131,8 @@ export function installExecutable(source, version, artifact) {
 
 /** The unprivileged setup (run once by the desk's account after the root step): the area, its ACLs, the launcher, the
  * hook copy, the pinned harness copy, the harness profile's three directories and the login custody. Idempotent. */
-export function setupHarnessArea({ user = HARNESS_USER, source, version, artifact }) {
+export function setupHarnessArea({ user = HARNESS_USER, source, version, artifact, reference }) {
+  harnessLoginPath({ reference });
   const runner = runnerUser();
   ensureDirectory(HARNESS_BASE, 0o700);
   chmodSync(HARNESS_BASE, 0o700);
@@ -142,7 +148,10 @@ export function setupHarnessArea({ user = HARNESS_USER, source, version, artifac
   // The login custody: the runner's alone (no entry for the harness user); filled by `harness-user.mjs login`.
   ensureDirectory(HARNESS_CUSTODY, 0o700);
   chmodSync(HARNESS_CUSTODY, 0o700);
-  const dirs = ['home', 'config', 'work'].map(name => join(HARNESS_PROFILE, name));
+  const profileBase = join(HARNESS_PROFILE, reference);
+  ensureDirectory(profileBase, 0o700);
+  grantAcl([profileBase], [harnessAcl.search(user)]);
+  const dirs = ['home', 'config', 'work'].map(name => join(profileBase, name));
   for (const dir of dirs) { ensureDirectory(dir, 0o700); chmodSync(dir, 0o700); }
   grantAcl(dirs, [harnessAcl.full(user), harnessAcl.full(runner)]);
   return { executable, home: dirs[0], configDirectory: dirs[1], workingDirectory: dirs[2] };
@@ -159,7 +168,7 @@ export function installTmp(user = HARNESS_USER, runner = runnerUser(), grant = g
 /** The login a profile's harness commands receive, read from the runner's custody: its token, or an Error naming why it
  * cannot be used. The custody must be the runner's alone (owner, modes; readiness also has the kernel confirm the harness
  * user cannot open it) and bound to this profile's account, organization and plan. */
-export function readHarnessLogin(profile, path = HARNESS_LOGIN) {
+export function readHarnessLogin(profile, path = harnessLoginPath(profile)) {
   const own = typeof process.getuid === 'function' ? process.getuid() : -1;
   const dir = lstatSync(dirname(path)), file = lstatSync(path);
   if (!dir.isDirectory() || dir.uid !== own || (dir.mode & 0o777) !== 0o700) throw Error('the login custody directory is not the runner\'s alone');
@@ -168,18 +177,18 @@ export function readHarnessLogin(profile, path = HARNESS_LOGIN) {
   try { record = JSON.parse(readFileSync(path, 'utf8')); } catch { throw Error('the login custody file is unreadable'); }
   if (!record || record.v !== 1 || typeof record.token !== 'string' || !/^[\x21-\x7e]{16,4096}$/u.test(record.token))
     throw Error('the login custody file holds no usable login');
-  if (record.account !== profile.expectedAccount || record.organization !== profile.organization || record.plan !== profile.plan)
+  if (record.reference !== profile.reference || record.account !== profile.expectedAccount || record.organization !== profile.organization || record.plan !== profile.plan)
     throw Error('the custody login is bound to another account, organization or plan');
   return record.token;
 }
 /** Stores a login in the runner's custody for `profile` (replacing any earlier one), through a temporary name. */
-export function storeHarnessLogin(profile, token, path = HARNESS_LOGIN) {
+export function storeHarnessLogin(profile, token, path = harnessLoginPath(profile)) {
   if (typeof token !== 'string' || !/^[\x21-\x7e]{16,4096}$/u.test(token)) throw Error('preview: not a login token');
   ensureDirectory(dirname(path), 0o700);
   chmodSync(dirname(path), 0o700);
   const temporary = `${path}.${process.pid}.pending`;
   rmSync(temporary, { force: true });
-  writeFileSync(temporary, JSON.stringify({ v: 1, token, account: profile.expectedAccount, organization: profile.organization, plan: profile.plan }), { mode: 0o600 });
+  writeFileSync(temporary, JSON.stringify({ v: 1, reference: profile.reference, token, account: profile.expectedAccount, organization: profile.organization, plan: profile.plan }), { mode: 0o600 });
   renameSync(temporary, path);
   return path;
 }
@@ -248,7 +257,7 @@ export function probeAccess(specs, { user = HARNESS_USER, launcher = HARNESS_LAU
  */
 export function harnessReadiness({ user = HARNESS_USER, profile, denied, exec = execFileSync, probe = probeAccess,
   install = { launcher: installLauncher, hook: installHook, tmp: () => installTmp(user) }, digestOf = path => sha256(readFileSync(path)),
-  login = readHarnessLogin, custody = [HARNESS_CUSTODY, HARNESS_LOGIN], plaintext = plaintextLogins, tmp = closeOperatorTmp, canary = tmpCanary, held = sweptEntryHeld }) {
+  login = readHarnessLogin, custody = [HARNESS_CUSTODY, harnessLoginPath(profile)], plaintext = plaintextLogins, tmp = closeOperatorTmp, canary = tmpCanary, held = sweptEntryHeld }) {
   let uid;
   try { uid = Number(exec('/usr/bin/id', ['-u', user], { encoding: 'utf8', timeout: 2000, stdio: ['ignore', 'pipe', 'ignore'] }).trim()); }
   catch { return { ready: false, reason: `no user ${user}` }; }
@@ -461,7 +470,7 @@ export async function harnessProfile(source, area, reference = 'preview-harness-
   return Object.freeze({ ...draft, loginProfileIdentity: observed.loginProfileIdentity, managedConfigurationDigest: observed.managedConfigurationDigest });
 }
 
-// `node tests/preview/harness-user.mjs setup <source profile.json> <out profile.json>`: the unprivileged setup after the
+// `node tests/preview/harness-user.mjs setup <source profile.json> <out profile.json> [reference]`: the unprivileged setup after the
 // root step (lanes/harness-user/root-steps.sh), then the harness profile. Prints only paths and digests.
 // `node tests/preview/harness-user.mjs login <harness profile.json>` with the login token on stdin (e.g. piped from
 // `claude setup-token` run for the profile's account): stores it in the runner's custody. Prints only the path.
@@ -473,11 +482,12 @@ if (invoked && process.argv[2] === 'login') {
   process.stdout.write(`${JSON.stringify({ stored: storeHarnessLogin(JSON.parse(readFileSync(path, 'utf8')), token) })}\n`);
 }
 if (invoked && process.argv[2] === 'setup') {
-  const [source, out] = process.argv.slice(3);
-  if (!source || !out) throw Error('usage: harness-user.mjs setup <source profile.json> <out profile.json>');
+  const [source, out, requestedReference] = process.argv.slice(3);
+  if (!source || !out) throw Error('usage: harness-user.mjs setup <source profile.json> <out profile.json> [reference]');
   const profile = JSON.parse(readFileSync(source, 'utf8'));
-  const area = setupHarnessArea({ source: profile.executable, version: profile.version, artifact: profile.artifact });
-  const derived = await harnessProfile(profile, area);
+  const reference = requestedReference ?? `${profile.reference}-harness`;
+  const area = setupHarnessArea({ source: profile.executable, version: profile.version, artifact: profile.artifact, reference });
+  const derived = await harnessProfile(profile, area, reference);
   writeFileSync(out, `${JSON.stringify(derived, null, 2)}\n`, { mode: 0o600 });
   process.stdout.write(`${JSON.stringify({ out, executable: derived.executable, loginProfileIdentity: derived.loginProfileIdentity,
     managedConfigurationDigest: derived.managedConfigurationDigest })}\n`);

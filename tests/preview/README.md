@@ -3904,11 +3904,11 @@ hook's decision and the tool's open (docs/defects/2026-10-03-file-tool-swap-race
 may open: its own area (its transcripts, a turn's admission state, the workspace), and operator files that every local
 user may read. No credential is in that set:
 
-- **The login** stays in the runner's custody (`/Users/Shared/instar-harness/custody/login.json`, the runner's alone:
+- **The login** stays in the runner's custody (`/Users/Shared/instar-harness/custody/<profile.reference>.login.json`, the runner's alone:
   no ACL entry for the harness user) and reaches each command through the launcher's stdin hand-off, which passes it
   to Claude Code on a pipe (`CLAUDE_CODE_OAUTH_TOKEN_FILE_DESCRIPTOR=3`), read once and never written to a file, an
   argument or the environment. Store one with `node tests/preview/harness-user.mjs login <harness profile.json>`, the
-  token (from `claude setup-token` for the profile's account) on stdin; the record binds it to that account,
+  token (from `claude setup-token` for the profile's account) on stdin; the record binds it to that profile reference, account,
   organization and plan; each command declares that plan (`CLAUDE_CODE_SUBSCRIPTION_TYPE`), as a stored login's record
   would, so the CLI fetches and caches no server policy into the profile (which the profile inspection would refuse as
   unreviewed). Claude Code then reports an `oauth_token` login with no account fields; the shipped route
@@ -3961,7 +3961,50 @@ runner started is added to the resource owner's census the first time it is read
 Ready, `status` names the user
 and each tool trace row carries `harness: {user}`. The setup (after the root step, `lanes/harness-user/root-steps.sh`)
 is `node --loader ./scripts/slice-ts-loader.mjs tests/preview/harness-user.mjs setup <operator profile.json>
-/Users/Shared/instar-harness/profile.json`; the new profile needs its own activation and its own login (above).
+/Users/Shared/instar-harness/profile-<runner>.json <runner-reference>`; setup creates separate
+`profile/<runner-reference>/{home,config,work}` directories. The new profile needs its own activation and its own login (above).
+
+A runner may name an ordered pool with `--login-pool /ABSOLUTE/runner-logins.json`. Its first entry must match
+`--login-profile` and `--activation-record` (and any explicit authority/tool/session paths). Every account has its own
+profile, custody record and sealed activation authority; accounts and profile directories must be distinct within the list.
+Use disjoint lists/accounts for serving, the parked private runner, each proof room and answer checks. Nothing discovers
+accounts outside the list, inherits another member's grant, or falls back to the old singleton custody file.
+
+```json
+{
+  "version": 1,
+  "thresholdPercent": 95,
+  "logins": [
+    { "profile": "/ABSOLUTE/serving-a-profile.json", "activation": "/ABSOLUTE/serving-a-activation.json",
+      "authority": "/ABSOLUTE/serving-a-authority.sealed.json", "toolsActivation": "/ABSOLUTE/serving-a-tools.json" },
+    { "profile": "/ABSOLUTE/serving-b-profile.json", "activation": "/ABSOLUTE/serving-b-activation.json",
+      "authority": "/ABSOLUTE/serving-b-authority.sealed.json", "toolsActivation": "/ABSOLUTE/serving-b-tools.json" }
+  ]
+}
+```
+
+The existing provider adapter's session/weekly-limit result holds only that login. On the next call, selection walks the
+reviewed list in order and chooses the next member with capacity, under that member's current activation. A failed call is
+never replayed. An in-flight tool turn keeps the login it was admitted with. A delegated step selects once before its durable
+edge; it carries that member's `sessionActivation`, and the existing session driver's `rate-limited` observation holds that
+member for subsequent calls/steps. Session calls already inside a running step keep their original credential; the held step
+ends uncertain and is never automatically repeated. Call, turn, step and spend caps do not increase on a switch.
+
+Optional `usageFile` names a read-only 1.x SubscriptionPool JSON snapshot (`version: 1`, `accounts[].email`, `configHome`,
+`lastQuota.measuredAt`, `lastQuota.fiveHour`/`sevenDay` with `utilizationPct` and ISO `resetsAt`). Only a reading matching
+the profile's exact account and config directory (or the entry's explicitly reviewed `usageAccount` id when the pool polls
+the account in its original config home), at most five minutes old and with no reported identity drift, can trigger the configured threshold
+(default 95 percent). Missing/stale/unreadable readings provide no exhaustion evidence; provider errors still do. A known
+reset time restores eligibility then; an unknown reset stays held until the desk reviews a new configuration. Exhausting
+all listed members holds calls; it never picks an unlisted account. Status reports capacity for the whole list.
+
+`<root>/harness-login-pool.json` retains active selection, holds and all switch records through atomic fsynced writes under
+the root's writer lease. The existing run log names the pool configuration, so loss of its state after launch refuses instead of silently resetting.
+A changed manifest is refused until restart, and a state/configuration mismatch requires desk
+migration (archive the old state with the stopped runner, then initialize the new reviewed list). Do not delete a live
+selection file. Switch notices use the existing journal-deduplicated doorway notice on the next eligible operator reply:
+one line per switch, never a new chat, no account identities or tokens. Machine-local deliberately: each machine needs
+its own custody, profiles and grants; this file is not shared login authority.
 
 With no `--harness-user` at all on a Claude Code tool route, the runner never runs a tool turn as its own account
 (plan #473): each is refused and answered text only (the packet names no tools), and stderr at launch, `status`

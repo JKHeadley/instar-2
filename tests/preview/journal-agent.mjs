@@ -1,4 +1,5 @@
 #!/usr/bin/env node
+import { loadHarnessLogins, createHarnessLoginPool, observeHarnessSessionLimit, harnessPoolPreviouslyLaunched } from './harness-login-pool.mjs';
 import { groupMembershipReader } from './group-membership-io.mjs';
 import { appendGroupCarry } from './group-carry.js';
 import { resolveGroupDisclosure, verifyGroupAudience } from './group-disclosure.js';
@@ -1567,7 +1568,14 @@ async function main() {
     const allocation = createHostResourceAllocation({ root, machine: HOST_IDENTITY.machine, ceilings: allocationCeilings,
       incarnation: `launcher:${process.pid}:${createHash('sha256').update(`${process.pid}:${wallNow()}:${performance.now()}`).digest('hex').slice(0, 16)}`,
       now: wallNow, monotonic: () => performance.now() });
+    let loginConfiguration = options['login-pool'] !== undefined || options['harness-user'] !== undefined
+      ? loadHarnessLogins(options) : null;
+    if (options['login-pool'] !== undefined && doorway.toolTurn?.harness)
+      throw Error('preview: this doorway does not use harness login custody');
     const harness = harnessOf(options, root, doorway);
+    const loginRuntimes = new Map();
+    let loginPool = null;
+    const selectLogin = tools => loginPool ? loginPool.select(tools) : loginConfiguration.entries[0];
     // Plan #473: why a Claude Code tool turn is refused for its identity (null: a harness user is configured, or the
     // doorway's checkpointed harness is not gated by it). The packet then names no tools, and runToolTurn refuses the turn.
     const identityRefusal = identityRefusalOf(options, doorway);
@@ -1587,13 +1595,13 @@ async function main() {
     // the harness profile. Read in memory at each use; never recorded, logged or given to a model. A value once read stays
     // held for the runner's life, so a source that later changes or becomes unreadable cannot drop a value an active
     // context may already hold; a source that cannot be read now is reported unavailable (createHeldSecrets).
-    const harnessLoginProfile = options['harness-user'] === undefined ? null : JSON.parse(readFileSync(required(options, 'login-profile'), 'utf8'));
+    const harnessLoginProfiles = options['harness-user'] === undefined ? [] : loginConfiguration.entries.map(entry => entry.profile);
     const heldSecrets = createHeldSecrets({
       environment: () => Object.entries(process.env).flatMap(([name, value]) => name.startsWith('INSTAR_SECRET_') && value ? [value] : []),
       ...custodyHeldSources(custody, () => readRootMcp(root)?.secrets ?? {}),
-      ...(harnessLoginProfile === null ? {} : {
-        'harness login': () => [readHarnessLogin(harnessLoginProfile)],
-        'harness profile login': () => harnessCredentialValues(harnessLoginProfile.configDirectory) }),
+      ...(harnessLoginProfiles.length === 0 ? {} : {
+        'harness login': () => harnessLoginProfiles.map(profile => readHarnessLogin(profile)),
+        'harness profile login': () => harnessLoginProfiles.flatMap(profile => harnessCredentialValues(profile.configDirectory)) }),
     });
     const heldSecretValues = () => heldSecrets().values;
     // Plans #446, #451: the register's public entries (names, labels, custody, expiry, renewal standing and step), given
@@ -1676,11 +1684,12 @@ async function main() {
     // only in the states that already end a call: a stop, the expiry, or a lost conversation.
     const peerHolds = async () => await shared.replicated(() => workerStop.value || existsSync(stopPath)
       || wallNow() >= journal.view.expires || journal.view.stop || !ownerHeld() ? 'stopped' : null) === null;
-    const callSubscription = async (judgment, prepared, id, invocation, toolTurn) => {
+    const callSubscription = async (judgment, prepared, id, invocation, toolTurn, selectedLogin) => {
       try { await requireGroupDisclosure(journal.view); } catch { throw new ModelDisclosureRefused(); }
       assertLiveJudgment(judgment, 'preview-subscription');
       if (shared !== null && !await peerHolds()) throw Error('preview: activation stopped');
-      const route = modelRoute(id, toolTurn), start = performance.now();
+      const selected = selectedLogin ?? selectLogin(Boolean(toolTurn));
+      const route = modelRoute(id, toolTurn, selected), start = performance.now();
       const inputRef = judgment === 'answer' && journal.view.turns.get(id)?.prompt === prepared
         ? `${journal.view.turns.get(id)?.promptKind ?? 'reserve'}:${id}` : undefined;
       // Rule 58: the journal occurrence is the operation id itself (turn, operation or summary).
@@ -1696,6 +1705,7 @@ async function main() {
         outcome: ['complete', 'rejected', 'uncertain'].includes(result.state) ? result.state : 'failed',
         latencyMs: performance.now() - start, usage: result.usage ? { inputTokens: result.usage.inputTokens ?? null,
           outputTokens: result.usage.outputTokens ?? null, charge: null } : null });
+      loginPool?.observe(selected, result);
       return result;
     };
     const callJev = async (judgment, state, questions, timeoutMs = 2000, occurrence) => {
@@ -1732,14 +1742,14 @@ async function main() {
     // model-call-boundary:end
     /** A refused review verdict's defect, kept only until that review's one format re-ask reads it (content-free protocol text). */
     const reviewDefects = new Map();
-    const invokeSubscription = async (prepared, id, reviewTurnId, deadlineAt, toolTurn) => {
+    const invokeSubscription = async (prepared, id, reviewTurnId, deadlineAt, toolTurn, selectedLogin) => {
       const policy = doorway.policyFor(required(options, 'model'),
         toolTurn ? doorway.toolsFraming ?? doorway.conversationFraming : doorway.conversationFraming);
       const deadline = Math.min(journal.view.expires, deadlineAt ?? wallNow() + policy.timeout + 60000);
       if (deadline - wallNow() <= 100) throw Error('preview: reply check budget exceeded');
       const result = await callSubscription(judgmentOf(id), prepared, id, { operation: id, deadline,
         timeout: policy.timeout, maxOutputBytes: policy.maxOutputBytes, maxTokens: policy.maxTokens,
-        maxCharge: 0, automaticRetries: 0 }, toolTurn);
+        maxCharge: 0, automaticRetries: 0 }, toolTurn, selectedLogin);
       if (reviewTurnId) journal.append({ kind: 'reply-review-state', id: reviewTurnId, state: result.state,
         diagnostics: replyReviewDiagnostics(result.usage),
         ...(result.usage ? { usage: recordedUsage(result.usage) } : {}), at: wallNow() });
@@ -1769,11 +1779,16 @@ async function main() {
       return { state: 'complete', value, ...(reason.trim() ? { reason } : {}), usage: result.usage };
     };
     // Part Thirteen §9 (docs/17-harness-adapters): an eligible answer or work step runs as one scoped-tool turn (tool-turn.mjs runToolTurn).
-    const invokeTools = async (prepared, id) => (await runToolTurn({ journal, root, id, prepared,
+    const invokeTools = async (prepared, id) => {
+      const selected = selectLogin(true), profile = selected.profile;
+      const runtime = loginRuntimes.get(selected.index);
+      const turnHarness = runtime?.harness ?? harness;
+      const turnActivation = runtime?.toolsRecord ?? toolsRecord;
+      return (await runToolTurn({ journal, root, id, prepared,
       promptLimit: toolPromptLimit(), mcp: readRootMcp(root),
       // Rule 100: an MCP server's SecretRef is opened from this root's custody vault and handed to that server alone.
       resolveSecret: name => createSecretCustody(root, key(), wallNow).resolve(secretRef(name)),
-      authority: `${toolsRecord.reference} ${toolsRecord.invocationPolicyDigest}`,
+      authority: `${turnActivation.reference} ${turnActivation.invocationPolicyDigest}`,
       // MF5: the conversation's workspace persists across turns, and its kept harness session (in the login profile's
       // projects directory) is a cache bound to this authority, harness and model and to the journal's current facts.
       conversation: journalWorkConversation(journal.view, id),
@@ -1782,11 +1797,12 @@ async function main() {
       stopped: () => workerStop.value || existsSync(stopPath) || journal.view.stop !== null || !toolsActive(),
       deniedRoots: [realpathSync(root), profile.home, profile.configDirectory, profile.workingDirectory],
       ...admissionConfig(), now: wallNow, redactText: text => redact(concealSecretMaterial(text, heldSecretValues())).text, gate, owner: ownerMachine,
-      harness: identityRefusal !== null ? { ready: false, refused: true, reason: identityRefusal } : harness ? harness.current() : null, heldSecrets,
+      harness: identityRefusal !== null ? { ready: false, refused: true, reason: identityRefusal } : turnHarness ? turnHarness.current() : null, heldSecrets,
       ...(doorway.toolTurn ? { system: doorway.toolTurn.system, admission: doorway.toolTurn } : {}),
-      fallback: async () => ({ result: await invokeSubscription(prepared, id) }),
+      fallback: async () => ({ result: await invokeSubscription(prepared, id, undefined, undefined, undefined, selected) }),
       // Rules 33, 84: the workspace notice (files that may still disagree with memory, or a lost workspace) rides the packet.
-      invoke: (toolTurn, notice) => invokeSubscription(withWorkspaceNotice(prepared, notice), id, undefined, undefined, toolTurn) })).result;
+      invoke: (toolTurn, notice) => invokeSubscription(withWorkspaceNotice(prepared, notice), id, undefined, undefined, toolTurn, selected) })).result;
+    };
     const proofLines = () => {
       if (!proofLaunch) return [];
       const unavailable = proofStoreFailed ? ['Proofs: the durable proof log cannot be written right now; nothing new counts as proven until it can.'] : [];
@@ -1814,6 +1830,7 @@ async function main() {
       ...toolStatusLines(journal.view, toolsActive(), toolsOff ?? (toolsRecord
         ? 'withdrawn since launch: the activation record changed or its grant no longer resolves' : null), Boolean(doorway.toolTurn?.harness)),
       ...(toolsActive() || journal.view.effectDoorway ? effectDoorwayStatusLines(journal.view.effectDoorway) : []),
+      ...(loginPool ? [loginPool.status()] : []),
       ...(harness ? [harnessStatusLine(harness.state)] : identityRefusal !== null ? [harnessStatusLine({ ready: false, reason: identityRefusal })] : [])];
     const statusExtraLines = () => [...proofLines(), ...ownerLines(), ...minimalLines()];
     const approvalSurface = approvalSurfaceOf(options), readOnly = readOnlyDashboardOf(options);
@@ -1873,6 +1890,7 @@ async function main() {
           && journal.view.calls + 1 + SESSION_WORK_LIMITS.maxCallsPerStep <= journal.view.limits.maxCalls,
         sessionWork: async ({ question, context: packet, id }) => {
           await requireGroupDisclosure(journal.view);
+          sessionWork.select?.();
           const outcome = await sessionWork.port.run({ operation: id.replaceAll(':', '-'), question, context: packet,
             authority: sessionWork.authority });
           if (outcome.state === 'complete') return { state: 'complete', text: outcome.text, usage: { inputTokens: null, outputTokens: null, charge: null } };
@@ -1890,6 +1908,7 @@ async function main() {
         // Plan #473: an answer whose tool turn was refused for the harness identity says so under it.
         if (turn !== undefined && identityRefusal !== null && (journal.view.toolTurns?.identityRefused ?? []).includes(turn))
           notices.push({ key: `harness:${turn}`, line: harnessRefusedNotice(identityRefusal) });
+        notices.push(...(loginPool?.notices() ?? []));
         try { notices.push(...credentialNotices(dueCredentialReminders(createSecretCustody(root, key(), wallNow).records(), now), now)); } catch { /* status shows it */ }
         try { notices.push(...doorwayNotices(readDoorwayMap(doorwaysPath), now)); } catch { /* status shows it */ }
         return notices;
@@ -2071,6 +2090,7 @@ async function main() {
     const activationPath = required(options, 'activation-record');
     const activationBytes = readFileSync(activationPath, 'utf8');
     const activation = JSON.parse(activationBytes), profile = Object.freeze(JSON.parse(readFileSync(required(options, 'login-profile'), 'utf8')));
+    loginConfiguration ??= loadHarnessLogins(options);
     active = () => { try { return readFileSync(activationPath, 'utf8') === activationBytes; } catch { return false; } };
     doorway.validateActivation(activation, profile, required(options, 'model'), wallNow(), doorway.conversationFraming, journal.view.expires);
     requireAuthority(options, activation, activationPath, journal.view, wallNow());
@@ -2139,6 +2159,46 @@ async function main() {
     if (toolsRecord && toolsResolution) process.stderr.write(`preview: tools on: grant ${toolsResolution.grant}`
       + (toolsResolution.policyClass ? ` (class ${toolsResolution.policyClass.name})` : ' (exact policy)')
       + ` covers tools policy ${toolsRecord.invocationPolicyDigest}\n`);
+    // Each pool member has independent activation/authority withdrawal handles. No grant is
+    // inherited from another account; default tool records still resolve the member's own grant.
+    if (options['login-pool'] !== undefined) {
+      for (const entry of loginConfiguration.entries) {
+        const bytes = readFileSync(entry.activation, 'utf8'), record = JSON.parse(bytes);
+        const profileBytes = readFileSync(entry.profilePath, 'utf8');
+        const toolPath = entry.toolsActivation;
+        const toolBytes = toolsMode === 'off' ? null : toolPath ? readFileSync(toolPath, 'utf8')
+          : JSON.stringify({ ...record, invocationPolicyDigest: encoded(doorway.policyFor(options.model, doorway.toolsFraming)).hash });
+        const toolRecord = toolBytes === null ? null : JSON.parse(toolBytes);
+        const sessionPath = entry.sessionActivation;
+        const sessionBytes = sessionPath ? readFileSync(sessionPath, 'utf8') : null;
+        const sessionRecord = sessionBytes === null ? null : JSON.parse(sessionBytes);
+        const memberHarness = entry.index === 0 ? harness : harnessOf(entry.options, root, doorway);
+        const check = mode => {
+          const tools = mode === true, session = mode === 'session';
+          if (!loginConfiguration.current() || readFileSync(entry.activation, 'utf8') !== bytes
+            || readFileSync(entry.profilePath, 'utf8') !== profileBytes
+            || (tools && toolPath && readFileSync(toolPath, 'utf8') !== toolBytes)
+            || (session && sessionPath && readFileSync(sessionPath, 'utf8') !== sessionBytes))
+            throw Error('preview: harness login activation or profile withdrawn');
+          const target = session ? sessionRecord : tools ? toolRecord : record;
+          if (!target) throw Error('preview: harness login has no activation for this route');
+          const framing = tools ? doorway.toolsFraming : doorway.conversationFraming;
+          if (session) doorway.session.validateActivation(target, entry.profile, options.model, wallNow(), journal.view.expires);
+          else doorway.validateActivation(target, entry.profile, options.model, wallNow(), framing, journal.view.expires);
+          requireAuthority(entry.options, target, session ? sessionPath : tools && toolPath ? toolPath : entry.activation,
+            journal.view, wallNow(), tools ? doorway.policyFor(options.model, framing) : undefined);
+          if (!activationMatchesJournal(journal.view, target)) throw Error('preview: pool activation differs from journal');
+        };
+        const live = tools => { try { check(tools); return true; } catch { return false; } };
+        check(false); if (toolRecord) check(true);
+        if (options['session-work-activation'] !== undefined) check('session');
+        loginRuntimes.set(entry.index, { activation: record, toolsRecord: toolRecord, sessionRecord, harness: memberHarness, check, live });
+      }
+      loginPool = createHarnessLoginPool({ configuration: loginConfiguration,
+        statePath: join(root, 'harness-login-pool.json'), now: wallNow,
+        previouslyLaunched: () => harnessPoolPreviouslyLaunched(runsPath, loginConfiguration.identity),
+        validate: (entry, tools) => { const runtime = loginRuntimes.get(entry.index); runtime.check(tools); runtime.harness.current(); } });
+    }
     const effectPolicyPath = options['effect-policy'];
     if (effectPolicyPath !== undefined) {
       decodeEffectPolicy(JSON.parse(readFileSync(effectPolicyPath, 'utf8')));
@@ -2170,11 +2230,13 @@ async function main() {
           append: appendWork, stopped: gateStopped, now: wallNow, prepared: identity => (journal.view.toolEffects ?? []).includes(identity) }) });
     }
     if (sessionSetup !== null) {
+      let selectedSession = loginConfiguration.entries[0], profile = selectedSession.profile;
+      let sessionHarness = harness;
       const sessionBytes = readFileSync(sessionSetup.activation, 'utf8'), sessionActivation = JSON.parse(sessionBytes);
       doorway.session.validateActivation(sessionActivation, profile, required(options, 'model'), wallNow(), journal.view.expires);
       requireAuthority(options, sessionActivation, sessionSetup.activation, journal.view, wallNow());
       if (!activationMatchesJournal(journal.view, sessionActivation)) throw Error('preview: session work activation differs from journal');
-      const sessionActive = () => { try { return readFileSync(sessionSetup.activation, 'utf8') === sessionBytes; } catch { return false; } };
+      const sessionActive = () => { try { return loginPool ? loginRuntimes.get(selectedSession.index).live('session') : readFileSync(sessionSetup.activation, 'utf8') === sessionBytes; } catch { return false; } };
       // Rule 60: the session's working scope is a persistent fixed-size volume (tool-turn.mjs attachSessionVolume), mounted
       // before the first step, so every file a step writes, however many, is bounded together. Run as the harness user
       // (--harness-user), the same volume mounts where that user can reach it (harness-user.mjs harnessSessionLayout),
@@ -2188,21 +2250,27 @@ async function main() {
         if (attachSessionVolume(root, layout ? { at: layout.mount } : {}) !== project) throw Error('preview: the session volume is not the working scope');
         if (identity) grantVolume(project, identity.user, identity.runner);
       };
-      const physical = createProductionSessionIO({ stateDirectory: join(root, 'session-work-state'), tmuxPath: sessionSetup.tmux,
+      const physicalFor = () => createProductionSessionIO({ stateDirectory: join(root, 'session-work-state'), tmuxPath: sessionSetup.tmux,
         home: profile.home, configHome: profile.configDirectory, cwd: project });
+      let physical = physicalFor();
       const stoppedNow = () => workerStop.value || existsSync(stopPath) || !ownerHeld() || journal.view.stop !== null
         || wallNow() >= journal.view.expires || !active() || !sessionActive();
       // The step's preflights run as the identity its session will (harness-user: held, never the runner's, while unready).
       const admissionIO = () => createSubscriptionProviderIO({ repository: process.cwd(), stopped: stoppedNow, work: 'maintenance',
-        runAs: runAsOf(harness) });
+        runAs: runAsOf(sessionHarness) });
       // Every tool call of the child (its subagents' too) passes the admission hook before dispatch: its slots are
       // the step's reserved call liability, MCP and other consequential tools go to the effect doorway, and every
       // shell command runs confined. The state lives beside the working scope, never inside it.
       const admissionBase = layout ? layout.admission : join(root, 'session-work-state', 'admission');
       const closeStepEgress = async claim => { const proxy = stepEgress.get(claim); stepEgress.delete(claim); if (proxy) await proxy.close(); };
-      sessionWork = { authority: `session work grant ${sessionActivation.reference}: one scheduled work step for the verified operator, `
-        + 'with the full tool set behind the admission hook, its result returned by file', port: take(createSessionWorkPort({
-        createDriver: resolveIntake => createProductionSessionDriver({ operatorOwnUse: true, confinement: 'admitted',
+      sessionWork = { select() {
+        selectedSession = selectLogin('session'); profile = selectedSession.profile;
+        sessionHarness = loginRuntimes.get(selectedSession.index)?.harness ?? harness;
+        physical = physicalFor();
+      }, get authority() { return `session work grant ${(loginRuntimes.get(selectedSession.index)?.sessionRecord ?? sessionActivation).reference}: one scheduled work step for the verified operator, `
+        + 'with the full tool set behind the admission hook, its result returned by file'; }, port: take(createSessionWorkPort({
+        createDriver: resolveIntake => {
+          const create = () => createProductionSessionDriver({ operatorOwnUse: true, confinement: 'admitted',
           toolAdmission: { command: sessionAdmissionCommand({ base: admissionBase, ...(layout ? { script: harnessHookPath() } : {}) }),
             timeoutSeconds: Math.ceil(SESSION_WORK_LIMITS.deadlineMs / 1000) }, modelGate: claim => gate.base(claim),
           framework, executable: profile.executable, cwd: project, home: profile.home, configHome: profile.configDirectory,
@@ -2211,11 +2279,22 @@ async function main() {
           readyTimeoutMs: 30000, protectedSessions: [],
           // As the harness user: the pane runs the harness through the bridge, which hands it the custody login.
           ...(layout ? { launchVia: [process.execPath, HARNESS_SESSION_BRIDGE, options['harness-user'],
-            realpathSync(required(options, 'login-profile')), '--'] } : {}) }),
+            realpathSync(selectedSession.profilePath), '--'] } : {}) });
+          let driver = create();
+          // Each step is fresh and the port permits only one in flight. Rebuild only between steps;
+          // the port keeps one shared step/call ceiling across all selected logins.
+          return { owner: driver.owner, launch: input => { driver = create(); return driver.launch(input); },
+            deliver: input => driver.deliver(input), observe: input => {
+              const observed = driver.observe(input);
+              // Reuse the session adapter's existing typed rate-limit observation. The step remains
+              // uncertain and is never replayed; a subsequent step/call selects another reviewed login.
+              return observeHarnessSessionLimit(loginPool, selectedSession, observed);
+            }, stop: () => driver.stop() };
+        },
         io: { readResult: (path, maxBytes) => physical.readResult(path, maxBytes), clearResult: path => physical.clearResult(path),
           modelCalls: since => physical.modelCalls(framework, project, profile.configDirectory, since), wait: delay,
           prepareAdmission: async (claim, edge) => {
-            const identity = harness ? harness.current() : null;
+            const identity = sessionHarness ? sessionHarness.current() : null;
             mountVolume(identity);
             await closeStepEgress(claim);
             if (identity) harnessSessionAdmission(root, identity.user);
@@ -2242,7 +2321,8 @@ async function main() {
           admissionState: claim => gate.state(claim),
           closeAdmission: claim => { gate.close(claim); closeStepEgress(claim).catch(() => {}); } },
         resources: { admit: async () => {
-          doorway.session.validateActivation(sessionActivation, profile, required(options, 'model'), wallNow(), journal.view.expires);
+          if (loginPool) loginRuntimes.get(selectedSession.index).check('session');
+          else doorway.session.validateActivation(sessionActivation, profile, required(options, 'model'), wallNow(), journal.view.expires);
           await doorway.session.admit({ profile, io: admissionIO(), deadline: wallNow() + 15000, now: wallNow });
           const held = await hostResources.hold('maintenance', { timeout: 30000, stopped: stoppedNow });
           return held === null ? null : { attach: child => held.attach({ pid: Number(child.split(':')[1]), cwd: project }),
@@ -2272,8 +2352,8 @@ async function main() {
         expiresAt: null, expirySource: 'none', smallestHumanAction: 'rotate the bot token with BotFather and rebind the host secret' },
       { name: 'typesafe-key', kind: 'api-key', custody: 'host-environment', identity: 'TypeSafe Jev route',
         expiresAt: null, expirySource: 'unknown', smallestHumanAction: 'replace the TypeSafe key in host custody' },
-      { name: profile.reference, kind: 'subscription-login', custody: 'cli-custody', identity: profile.expectedAccount,
-        expiresAt: null, expirySource: 'unknown', smallestHumanAction: 'sign the subscription login back in' },
+      ...loginConfiguration.entries.map(({ profile }) => ({ name: profile.reference, kind: 'subscription-login', custody: 'cli-custody', identity: profile.expectedAccount,
+        expiresAt: null, expirySource: 'unknown', smallestHumanAction: 'sign the subscription login back in' })),
       { name: 'preview-activation', kind: 'activation', custody: 'activation-record', identity: activation.reference,
         expiresAt: journal.view.expires, expirySource: 'activation-record', smallestHumanAction: 'approve a renewed activation record' }])
       custody.register({ displayLabel: credentialDisplayLabel(record), name: record.name, kind: record.kind, custody: record.custody, identity: record.identity, recordedAt,
@@ -2330,7 +2410,7 @@ async function main() {
     let priorRuns = null;
     try { priorRuns = existsSync(runsPath) ? readFileSync(runsPath, 'utf8') : ''; } catch { /* readRuns reports readFailed */ }
     if (priorRuns !== null) installUpdate = installedUpdateFrom(installationRows(priorRuns), installation, launchedAt);
-    appendRun(runsPath, { v: 1, launch: launchedAt, pid: process.pid, install: installation, work: { conversation: conversationOf(g) },
+    appendRun(runsPath, { v: 1, launch: launchedAt, pid: process.pid, ...(loginPool ? { harnessLoginPool: loginConfiguration.identity } : {}), install: installation, work: { conversation: conversationOf(g) },
       // Plan #449: the tools authority this launch resolved (grant, class, policy digest), or why tools are off (only --tools off).
       tools: toolsRecord && toolsResolution ? { state: 'on', grant: toolsResolution.grant, policyClass: toolsResolution.policyClass?.name ?? null,
         policyDigest: toolsRecord.invocationPolicyDigest } : { state: 'off', reason: toolsOff ?? 'no tool route' },
@@ -2560,25 +2640,30 @@ async function main() {
     publishDashboard(true);
     readOnlyServer?.close();
     endReason ??= 'cycle limit reached';
-    function modelRoute(operation, toolTurn) {
-      if (!active() || workerStop.value || existsSync(stopPath)) throw Error('preview: activation stopped');
+    function modelRoute(operation, toolTurn, selected) {
+      const profile = selected.profile, runtime = loginRuntimes.get(selected.index);
+      const selectedActivation = runtime?.activation ?? activation;
+      const selectedTools = runtime?.toolsRecord ?? toolsRecord;
+      const selectedActive = () => active() && (!runtime || runtime.live(Boolean(toolTurn)));
+      const selectedHarness = runtime?.harness ?? harness;
+      if (!selectedActive() || workerStop.value || existsSync(stopPath)) throw Error('preview: activation stopped');
       if (toolTurn && !toolsActive()) throw Error('preview: tool activation withdrawn');
       // Rule 30: the doorway was selected by its registered id above; its parser, terminal contract,
       // framings and invocation policy stay in the adapter that owns them.
       const framing = toolTurn ? doorway.toolsFraming ?? doorway.conversationFraming : doorway.conversationFraming;
       const policy = doorway.policyFor(options.model, framing);
-      const contract = { reference: activation.reference, version: activation.profileDigest,
+      const contract = { reference: selectedActivation.reference, version: selectedActivation.profileDigest,
         ...doorway.contract, successfulFinalReplyReasons: [...doorway.contract.successfulFinalReplyReasons],
         endpoint: profile.loginProfileIdentity,
         account: profile.expectedAccount, credentialReference: profile.reference, controller: 'preview-journal',
-        sourceEvidence: [activation.reference], terminalEvidence: activation.reference,
+        sourceEvidence: [selectedActivation.reference], terminalEvidence: selectedActivation.reference,
         strength: 'attestation', maxMetadataBytes: policy.maxMetadataBytes,
         maxRawTerminalBytes: policy.maxRawTerminalBytes, maxCaptureBytes: policy.maxCaptureBytes };
       const work = operation.startsWith('summary:') ? 'maintenance' : operation.endsWith(':reply-review') ? 'review' : 'answer';
       // A tool turn also ends on the journal's latched /stop and on tool-activation withdrawal: the resource
       // owner polls this every 25 ms and SIGKILLs the launch's own process group by its exact pid.
-      const launchIO = createSubscriptionProviderIO({ repository: process.cwd(), runAs: runAsOf(harness),
-        stopped: () => workerStop.value || existsSync(stopPath) || !active()
+      const launchIO = createSubscriptionProviderIO({ repository: process.cwd(), runAs: runAsOf(selectedHarness),
+        stopped: () => workerStop.value || existsSync(stopPath) || !selectedActive()
           || (toolTurn !== undefined && (journal.view.stop !== null || !toolsActive())), work });
       const physicalIO = { ...launchIO, execute: async input => {
         const result = await launchIO.execute(input);
@@ -2592,10 +2677,10 @@ async function main() {
         { elapsed: () => performance.now(), at: wallNow });
       return take(doorway.create({ context, credential: secretRef(profile.reference), profile,
         resolveProfile: () => profile, provider: doorway.provider, model: options.model, route: 'preview-subscription',
-        disclosure: 'Subscription preview; charge UNKNOWN', activation: toolTurn ? toolsRecord : activation,
+        disclosure: 'Subscription preview; charge UNKNOWN', activation: toolTurn ? selectedTools : selectedActivation,
         framing, ...(toolTurn ? { toolTurn } : {}),
         journalEnd: () => journal.view.expires, io,
-        now: wallNow, active: () => !workerStop.value && !existsSync(stopPath) && active() && !journal.view.stop,
+        now: wallNow, active: () => !workerStop.value && !existsSync(stopPath) && selectedActive() && !journal.view.stop,
         adapterEvidenceContract: contract,
         ...(journal.view.limits.maxBytes > doorway.policyFor(options.model, doorway.conversationFraming).maxPromptBytes
           ? { raisedPromptBytes: journal.view.limits.maxBytes, promptAuthority: journal.view.capAuthority } : {}) }));
