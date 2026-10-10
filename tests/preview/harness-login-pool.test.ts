@@ -1,10 +1,10 @@
 // @ts-nocheck -- host composition and real on-disk custody, without touching Shared or live runners.
 import { afterEach, expect, it } from 'vitest';
-import { mkdtempSync, readFileSync, realpathSync, rmSync, writeFileSync } from 'node:fs';
+import { chmodSync, existsSync, mkdtempSync, readFileSync, realpathSync, rmSync, symlinkSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { createHarnessLoginPool, loadHarnessLogins, harnessQuotaLimit, observeHarnessSessionLimit, harnessPoolPreviouslyLaunched } from './harness-login-pool.mjs';
-import { harnessLoginPath, readHarnessLogin, storeHarnessLogin } from './harness-user.mjs';
+import { harnessGate, harnessLoginPath, migrateHarnessLogin, readHarnessLogin, storeHarnessLogin } from './harness-user.mjs';
 import { classifyProviderFailure } from '../../src/assembly/provider-failure.js';
 import { openReplyNotices, validAnswerNotices } from './credential-reminders.js';
 
@@ -69,6 +69,65 @@ it('binds every custody record to its profile reference, account, org and plan, 
   storeHarnessLogin(b, tokenB, join(root, 'login.json'));
   rmSync(pathB);
   expect(() => readHarnessLogin(b, harnessLoginPath(b, root))).toThrow(/ENOENT/);
+});
+
+const legacyCustody = () => {
+  const root = fresh(), selected = profile('installed'), token = 'sk-ant-oat01-synthetic-installed-only';
+  const legacy = join(root, 'login.json');
+  writeFileSync(legacy, JSON.stringify({ v: 1, token, account: selected.expectedAccount,
+    organization: selected.organization, plan: selected.plan }), { mode: 0o600 });
+  return { root, selected, token, legacy, target: harnessLoginPath(selected, root) };
+};
+
+it('migrates legacy single-login custody once, preserves the old bytes and binds dispatch to the profile', () => {
+  const f = legacyCustody(), before = readFileSync(f.legacy);
+  expect(() => readHarnessLogin(f.selected, f.target)).toThrow(/ENOENT/);
+  expect(migrateHarnessLogin(f.selected, f.root)).toBe(true);
+  expect(readHarnessLogin(f.selected, f.target)).toBe(f.token);
+  expect(readFileSync(f.legacy)).toEqual(before);
+  expect(migrateHarnessLogin(f.selected, f.root)).toBe(false);
+  expect(() => readHarnessLogin({ ...f.selected, reference: 'other' }, f.target)).toThrow(/another account/);
+});
+
+it.each(['expectedAccount', 'organization', 'plan', 'reference'])('refuses legacy identity mismatch: %s', field => {
+  const f = legacyCustody();
+  if (field === 'reference') {
+    const record = JSON.parse(readFileSync(f.legacy, 'utf8'));
+    writeFileSync(f.legacy, JSON.stringify({ ...record, reference: 'another-profile' }));
+  } else f.selected[field] = 'another';
+  expect(() => migrateHarnessLogin(f.selected, f.root)).toThrow(/another account/);
+  expect(existsSync(f.target)).toBe(false);
+});
+
+it.each(['directory-mode', 'file-mode', 'link', 'malformed', 'missing'])('refuses unsafe legacy custody: %s', shape => {
+  const f = legacyCustody();
+  if (shape === 'directory-mode') chmodSync(f.root, 0o755);
+  if (shape === 'file-mode') chmodSync(f.legacy, 0o644);
+  if (shape === 'link') { const source = join(f.root, 'token.json'); writeFileSync(source, readFileSync(f.legacy)); rmSync(f.legacy); symlinkSync(source, f.legacy); }
+  if (shape === 'malformed') writeFileSync(f.legacy, '{}');
+  if (shape === 'missing') rmSync(f.legacy);
+  expect(() => migrateHarnessLogin(f.selected, f.root)).toThrow();
+  expect(existsSync(f.target)).toBe(false);
+});
+
+it.each(['valid', 'malformed', 'dangling-link'])('never replaces existing profile custody: %s', shape => {
+  const f = legacyCustody();
+  if (shape === 'valid') storeHarnessLogin(f.selected, 'sk-ant-oat01-synthetic-newer-login', f.target);
+  if (shape === 'malformed') writeFileSync(f.target, '{}', { mode: 0o600 });
+  if (shape === 'dangling-link') symlinkSync(join(f.root, 'missing'), f.target);
+  expect(migrateHarnessLogin(f.selected, f.root)).toBe(false);
+  if (shape === 'valid') expect(readHarnessLogin(f.selected, f.target)).toBe('sk-ant-oat01-synthetic-newer-login');
+  else expect(() => readHarnessLogin(f.selected, f.target)).toThrow();
+});
+
+it.each([true, false])('readiness migrates only an explicitly enabled single-login runner: %s', migrateLegacy => {
+  const f = legacyCustody();
+  const gate = harnessGate({ profile: f.selected, denied: [], clock: () => 1, runner: () => 'fixture', migrateLegacy,
+    migrate: p => migrateHarnessLogin(p, f.root), login: p => readHarnessLogin(p, f.target),
+    check: ({ profile: p }) => { try { readHarnessLogin(p, f.target); return { ready: true }; } catch { return { ready: false, reason: 'missing login' }; } } });
+  expect(gate.state.ready).toBe(migrateLegacy);
+  if (migrateLegacy) expect(gate.current().login()).toBe(f.token);
+  else expect(() => gate.current()).toThrow();
 });
 
 it('a proof-room call only opens the proof-room custody, even when serving is exhausted', () => {
@@ -259,6 +318,9 @@ it('replays recorded summary/Jev/review/delivered/empty-context shapes unchanged
     'jev-unsure', 'reply-review', 'delivered-reply', 'empty-reply-in-recorded-context']);
   const stdout = readFileSync(new URL('../fixtures/provider-failure/claude-limit-result.json', import.meta.url), 'utf8');
   for (const row of corpus.otherShapes) {
+    const installed = legacyCustody();
+    expect(migrateHarnessLogin(installed.selected, installed.root), row.id).toBe(true);
+    expect(readHarnessLogin(installed.selected, installed.target), row.id).toBe(installed.token);
     const f = fixture();
     f.pool.observe(f.pool.select(), { state: 'rejected', failure: classifyProviderFailure({ code: 1, limited: false, stdout, now: f.clock.at }) });
     f.pool.observe(f.pool.select(), limit);

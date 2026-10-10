@@ -10,11 +10,11 @@ import { encoded } from './stage2-provider.js';
 import { openPreviewJournal } from './journal.js';
 import { harnessLoginPath, storeHarnessLogin } from './harness-user.mjs';
 
-it('shipped launcher replays the captured A limit, admits B under B authority, records one switch and sends one notice', async () => {
+it.each(['pool', 'legacy'])('shipped launcher answers through %s custody with exact activation and no repeated send', async mode => {
   const world = successiveWorld(), directory = world.directory, root = join(directory, 'pool-runner');
   const absolute = relative => pathToFileURL(join(process.cwd(), relative)).href;
   const log = join(directory, 'telegram.log'), updates = join(directory, 'updates.json'), calls = join(directory, 'calls.jsonl');
-  const logins = ['serving-a', 'serving-b'].map(name => {
+  const logins = (mode === 'pool' ? ['serving-a', 'serving-b'] : ['serving-b']).map(name => {
     const profile = { ...offlineProfile, reference: name, activationReference: `${name}-activation`, expectedAccount: `${name}@example.invalid`,
       home: `/offline/${name}/home`, configDirectory: `/offline/${name}/config`, workingDirectory: `/offline/${name}/work` };
     const activation = { ...world.activation(), reference: profile.activationReference, profileDigest: encoded(profile).hash,
@@ -23,20 +23,24 @@ it('shipped launcher replays the captured A limit, admits B under B authority, r
       authority: join(directory, `${name}-authority.json`) };
     writeFileSync(row.profile, JSON.stringify(profile)); writeFileSync(row.activation, JSON.stringify(activation));
     writeFileSync(row.authority, JSON.stringify(offlineActivationAuthority(activation)));
-    storeHarnessLogin(profile, `sk-ant-oat01-synthetic-${name}-only`, harnessLoginPath(profile, join(directory, 'custody')));
+    const custodyPath = mode === 'pool' ? harnessLoginPath(profile, join(directory, 'custody')) : join(directory, 'custody', 'login.json');
+    storeHarnessLogin(profile, `sk-ant-oat01-synthetic-${name}-only`, custodyPath);
+    if (mode === 'legacy') {
+      const record = JSON.parse(readFileSync(custodyPath, 'utf8')); delete record.reference;
+      writeFileSync(custodyPath, JSON.stringify(record));
+    }
     return row;
   });
   const manifest = join(directory, 'pool.json'); writeFileSync(manifest, JSON.stringify({ version: 1, logins }));
   const harness = join(directory, 'harness.mjs'), io = join(directory, 'io.mjs'), loader = join(directory, 'loader.mjs');
   writeFileSync(harness, `export * from ${JSON.stringify(absolute('tests/preview/harness-user.mjs'))};
-import { readHarnessLogin as read, harnessLoginPath } from ${JSON.stringify(absolute('tests/preview/harness-user.mjs'))};
+import { harnessGate as gate, migrateHarnessLogin, readHarnessLogin as read, harnessLoginPath } from ${JSON.stringify(absolute('tests/preview/harness-user.mjs'))};
 export const readHarnessLogin = profile => read(profile, harnessLoginPath(profile, ${JSON.stringify(join(directory, 'custody'))}));
 export const harnessCredentialValues = () => [];
-export const harnessGate = ({profile}) => {
- const state = {ready:true,user:'offline-harness',runner:'offline-runner',launcher:'/offline/launcher',
-   plan:profile.plan,login:()=>readHarnessLogin(profile)};
- return {state,current:()=>state};
-};`);
+export const harnessGate = ({profile,migrateLegacy}) => gate({profile,migrateLegacy,denied:[],clock:()=>1,runner:()=> 'offline-runner',
+ migrate:profile=>migrateHarnessLogin(profile,${JSON.stringify(join(directory, 'custody'))}),login:readHarnessLogin,
+ check:()=>{try{readHarnessLogin(profile);return {ready:true,user:'offline-harness'};}catch{return {ready:false,reason:'missing login'};}}
+});`);
   writeFileSync(io, `export * from ${JSON.stringify(absolute('scripts/production-boot-io.mjs'))};
 import {appendFileSync,readFileSync} from 'node:fs';
 import {productionProviderIO} from ${JSON.stringify(absolute('scripts/production-boot-io.mjs'))};
@@ -85,7 +89,7 @@ export const createSubscriptionProviderIO = ({runAs,stopped}) => ({...production
       'tests/preview/journal-agent.mjs', 'run', '--root', root, '--bot-id', world.configuration.botId, '--chat-id', world.configuration.chatId,
       '--operator-sender-id', world.configuration.operatorSenderId, '--grant-reference', trial.id, '--configuration-digest', trial.configurationDigest,
       '--expires-at', String(trial.expiresAt), '--tools', 'off', '--activation-record', logins[0].activation, '--login-profile', logins[0].profile,
-      '--login-pool', manifest, '--harness-user', 'offline-harness', '--operator-records', join(directory, 'operator-records'), '--model', world.model,
+      ...(mode === 'pool' ? ['--login-pool', manifest] : []), '--harness-user', 'offline-harness', '--operator-records', join(directory, 'operator-records'), '--model', world.model,
       '--bot-username', world.configuration.botUsername, '--max-cycles', '6', '--max-poll-seconds', '1'];
     const env = { ...process.env, INSTAR_SECRET_PREVIEW_STORAGE_KEY: Buffer.from(OFFLINE_STORAGE_KEY).toString('hex'),
       INSTAR_SECRET_PREVIEW_TYPESAFE_KEY: 'synthetic', INSTAR_SECRET_PREVIEW_TELEGRAM_BOT_TOKEN: '12345678:AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA',
@@ -101,21 +105,26 @@ export const createSubscriptionProviderIO = ({runAs,stopped}) => ({...production
       throw Error(first.stderr + JSON.stringify(detail));
     }
     const rows = readFileSync(calls, 'utf8').trim().split('\n').map(JSON.parse);
-    expect(rows[0].account).toBe('serving-a'); expect(rows.slice(1).every(row => row.account === 'serving-b')).toBe(true);
+    expect(rows[0].account).toBe(mode === 'pool' ? 'serving-a' : 'serving-b'); expect(rows.slice(1).every(row => row.account === 'serving-b')).toBe(true);
     expect(rows.length).toBeGreaterThan(1);
-    const state = JSON.parse(readFileSync(join(root, 'harness-login-pool.json'), 'utf8'));
-    expect(state.active).toBe(1); expect(state.switches).toHaveLength(1);
+    if (mode === 'pool') {
+      const state = JSON.parse(readFileSync(join(root, 'harness-login-pool.json'), 'utf8'));
+      expect(state.active).toBe(1); expect(state.switches).toHaveLength(1);
+    } else {
+      expect(existsSync(join(root, 'harness-login-pool.json'))).toBe(false);
+      expect(existsSync(harnessLoginPath(JSON.parse(readFileSync(logins[0].profile, 'utf8')), join(directory, 'custody')))).toBe(true);
+    }
     const sends = readFileSync(`${log}.sends`, 'utf8').trim().split('\n').map(JSON.parse);
     const diagnostic = openPreviewJournal(join(root, 'journal.encrypted'), OFFLINE_STORAGE_KEY, undefined, undefined, true);
     const detail = {modelCalls:diagnostic.view.modelCalls, calls:diagnostic.view.calls, limits:diagnostic.view.limits, turns:diagnostic.view.order.map(turn => ({ id: turn.id, held: turn.held, failure: turn.failureClass, state: turn.modelState, answer: turn.answer, notices: turn.answerNotices, reserved:turn.reserved, accepted:turn.accepted }))};
     diagnostic.close();
-    expect(sends.filter(row => row.text.includes('next approved login')), JSON.stringify({ sends, detail, rows, stdout:first.stdout, stderr:first.stderr })).toHaveLength(1);
+    expect(sends.filter(row => row.text.includes('next approved login')), JSON.stringify({ sends, detail, rows, stdout:first.stdout, stderr:first.stderr })).toHaveLength(mode === 'pool' ? 1 : 0);
     expect(sends.some(row => row.text.includes('second approved login answered'))).toBe(true);
     const journal = openPreviewJournal(join(root, 'journal.encrypted'), OFFLINE_STORAGE_KEY, undefined, undefined, true);
-    expect(journal.view.order[0].modelState).toBe('rejected'); journal.close();
+    expect(journal.view.order[0].modelState).toBe(mode === 'pool' ? 'rejected' : 'complete'); journal.close();
     const before = readFileSync(calls, 'utf8');
     // Withdrawal of B's own sealed authority stops restart before any call; A's grant cannot substitute.
-    writeFileSync(logins[1].authority, '{}');
+    writeFileSync(logins.at(-1).authority, '{}');
     const withdrawn = run(); expect(withdrawn.status).not.toBe(0); expect(withdrawn.stderr).toContain('refused to start or continue');
     expect(readFileSync(calls, 'utf8')).toBe(before);
   } finally {

@@ -205,6 +205,7 @@ const harnessOf = (options, root, doorway) => {
   const user = options['harness-user'];
   if (user === undefined) return null;
   return harnessGate({ user, profile: JSON.parse(readFileSync(required(options, 'login-profile'), 'utf8')),
+    migrateLegacy: options['login-pool'] === undefined,
     denied: [realpathSync(root), homedir(), process.cwd()], clock: () => performance.now(),
     unavailable: doorway.toolTurn?.harness ? 'the selected doorway is not the Claude Code harness' : null,
     adopt: uid => hostResources.adoptHarnessUid(uid), log: line => process.stderr.write(`preview: ${line}\n`) });

@@ -3964,6 +3964,14 @@ is `node --loader ./scripts/slice-ts-loader.mjs tests/preview/harness-user.mjs s
 /Users/Shared/instar-harness/profile-<runner>.json <runner-reference>`; setup creates separate
 `profile/<runner-reference>/{home,config,work}` directories. The new profile needs its own activation and its own login (above).
 
+Existing single-login runners (no `--login-pool`) migrate the legacy custody `login.json`
+once at harness readiness when their profile-specific file is absent. Migration requires the
+runner-only directory/file permissions and exact account, organization and plan; a legacy
+reference, if present, must also match. The new record is reference-bound, fsynced and installed
+without replacing an existing file. Existing malformed entries remain refused, and the legacy
+file is retained for older runners. Dispatch reads only the profile-specific record. Pools never
+use this migration: provision each reviewed member explicitly before enabling the pool.
+
 A runner may name an ordered pool with `--login-pool /ABSOLUTE/runner-logins.json`. Its first entry must match
 `--login-profile` and `--activation-record` (and any explicit authority/tool/session paths). Every account has its own
 profile, custody record and sealed activation authority; accounts and profile directories must be distinct within the list.
