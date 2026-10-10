@@ -1,3 +1,4 @@
+import { credentialTextRenderer } from './credential-display.js';
 import { expect, it } from 'vitest';
 import { mkdtempSync, readFileSync, realpathSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
@@ -78,7 +79,7 @@ async function replay(options: Run) {
   const heldValue = options.heldValue ?? (options.holdSecret ? TEST_SECRET : undefined);
   const held = heldValue === undefined ? [] : [custody.resolve(custody.store({ value: heldValue, kind: 'test-secret', source: 'this test' }))];
   const journal = openPreviewJournal(path, key, genesis);
-  const worker = createJournalWorker(journal, { now: () => clock.now, stopped: () => false,
+  const worker = createJournalWorker(journal, { credentialWording: () => credentialTextRenderer([]), now: () => clock.now, stopped: () => false,
     prepareModel: (input: Parameters<typeof prepareJournalEnvelope>[0]) =>
       prepareJournalEnvelope(input, 'claude-sonnet-5', 'grant:preview', clock.now),
     model: async () => {

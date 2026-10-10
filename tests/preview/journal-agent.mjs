@@ -71,7 +71,7 @@ import { shouldRunScheduledPriority } from '../../src/scheduled/shedding.js';
 import { reconcileProcessIncarnation } from '../../src/measurement/index.js';
 import { liveMeasurement, measuredTimings, renderMeasured, resourceCompare, resourcePointClaims } from './measured.js';
 import { doorwayFreshness, installDoorways, observeExchange, readDoorwayMap, standingDoorwayCheck, subscriptionExchange, usageReconciliation, writeDoorwayMap } from './doorway-map.js';
-import { credentialDisplayLabel } from './credential-display.js';
+import { credentialDisplayLabel, credentialTextRenderer } from './credential-display.js';
 import { createSecretCustody, dueCredentialReminders, reminderSchedule } from './secret-custody.js';
 import { credentialNotices, doorwayNotices, dueWithDelivery } from './credential-reminders.js';
 import { journalCapacity, packetCapacity } from './capacity-outcome.js';
@@ -414,6 +414,13 @@ const turnSources = (root, options, view, runs, current = () => undefined, hando
     const note = handoff();
     return [...sources, disciplineSource(view), selfStateSource(selfStateBrief(view, log, now, timeZoneOf(options), current())), desk, ...(note ? [note] : [])];
   };
+};
+// Wording must not add a dependency gate to answering. Status reports an unreadable registry;
+// the legacy activation labels can still be rendered while it is unavailable.
+const credentialWordingOf = custody => {
+  let records = [];
+  try { records = custody.records(); } catch { /* status reports registry errors */ }
+  return credentialTextRenderer(records);
 };
 /** The installed runner, read from this checkout: repository paths only, never outside it. */
 const repoRead = path => { try { return readFileSync(resolve(process.cwd(), path), 'utf8'); } catch { return null; } };
@@ -1137,6 +1144,7 @@ async function main() {
       if (options.text !== undefined) {
         const refuse = () => { throw Error('preview: inspect never calls or sends'); };
         const probe = createJournalWorker(view, { now: wallNow, stopped: () => true, timeZone: timeZoneOf(options), sources: turnSources(root, options, view.view, () => readRuns(runsPath)),
+          credentialWording: () => credentialWordingOf(createSecretCustody(root, key(), wallNow)),
           prepareModel: input => prepareJournalEnvelope(input, required(options, 'model'), view.view.genesis.grant, wallNow(), view.view.limits.maxBytes),
           model: refuse, send: refuse, checkOutbound: refuse }).probe(options.text);
         next = 'reason' in probe ? { held: probe.reason } : recallView(JSON.parse(probe.context));
@@ -1783,6 +1791,7 @@ async function main() {
       resourceOwner: JSON.parse(readFileSync(resolve(process.cwd(), 'scripts/resource-owner.declarations.json'), 'utf8')) });
     worker = createJournalWorker(journal, { ...(approvalSurface ? { approvalSurface } : {}), ...(explicitYes ? { explicitYes } : {}), now: wallNow, elapsed: clock.elapsed, origin, stopped: () => workerStop.value || existsSync(stopPath) || !ownerHeld(), timeZone: timeZoneOf(options),
       presenceNotes: sentinelFamilies.has('presence'),
+      credentialWording: () => credentialWordingOf(custody),
       sources: turnSources(root, options, journal.view, () => runs, () => launchedAt ?? undefined,
         () => journal.view.order.some(turn => turn.reserved && !reservedAtLaunch.has(turn.id)) ? null : handoff, () => toolsActive()),
       prepareModel: modelEnvelope,

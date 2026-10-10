@@ -5017,6 +5017,8 @@ export interface PreviewPorts {
   origin?: WriteOrigin;
   /** Static sources, or a function read at each turn (for the desk's report). */
   sources?: readonly unknown[] | ((turn?: Turn) => readonly unknown[]);
+  /** Operator wording for credential mentions in prose; stored identities never pass through this view. */
+  credentialWording?(): (text: string) => string;
   /** Rule 29: `writer` is the turn's verified session writer, carried into the session envelope. */
   prepareModel?(input: { question: string; context: string; id: string; writer?: SessionWriter }): string;
   /** Part Thirteen §9: whether the model call for `id` runs on the scoped-tool route; its packet then names the tools. */
@@ -5880,7 +5882,9 @@ export function createJournalWorker(journal: ReturnType<typeof openPreviewJourna
     ? 'its day or time is not settled; restate it with a day and time such as Friday at 9 am'
     : reminderDue(item) <= localStamp(ports.now(), item.zone) ? 'that time has already passed'
       : reminderDue(item) >= localStamp(journal.view.expires, item.zone) ? 'this preview ends before then' : null;
-  const clean = (value: string, _derived = false, source?: string | number) => projectMemoryClause(journal.view, value, source);
+  let credentialWording = (text: string) => text;
+  const clean = (value: string, _derived = false, source?: string | number) =>
+    credentialWording(projectMemoryClause(journal.view, value, source));
   const restoredHistorical = (change: MemoryChange, changes: readonly MemoryChange[] = journal.view.memory) =>
     restoredHistoricalChange(change, changes);
   const cleanMetadata = (value: string, item?: ChannelItem) => item && journal.view.memory.some(change =>
@@ -6022,10 +6026,15 @@ export function createJournalWorker(journal: ReturnType<typeof openPreviewJourna
         && Array.isArray((source as Record<string, unknown>).history) ? source as Record<string, unknown> : null;
     } catch { return null; }
   };
-  const safeProvenance = (value: unknown): unknown => {
-    if (typeof value === 'string') return clean(redact(value).text, true);
-    if (Array.isArray(value)) return value.map(safeProvenance);
-    if (value && typeof value === 'object') return Object.fromEntries(Object.entries(value).map(([key, item]) => [key, safeProvenance(item)]));
+  const safeProvenance = (value: unknown, field = ''): unknown => {
+    if (typeof value === 'string') {
+      const projected = projectMemoryClause(journal.view, redact(value).text);
+      // A historical packet is evidence too: relabel its prose, never its source or record identity.
+      return ['id', 'source', 'sourceLabel', 'reference', 'name', 'identity', 'path', 'hash', 'digest', 'generation'].includes(field)
+        ? projected : credentialWording(projected);
+    }
+    if (Array.isArray(value)) return value.map(item => safeProvenance(item, field));
+    if (value && typeof value === 'object') return Object.fromEntries(Object.entries(value).map(([key, item]) => [key, safeProvenance(item, key)]));
     return value;
   };
   // This cue only offers evidence. The model still decides what the operator means.
@@ -6607,7 +6616,9 @@ export function createJournalWorker(journal: ReturnType<typeof openPreviewJourna
       audience: { surface: 'telegram-private-chat', chat: journal.view.genesis.chat,
         operator: journal.view.genesis.operator, ...(operatorName(journal.view) === undefined ? {} : { operatorName: operatorName(journal.view) }),
         ...(current === undefined && !crossed ? {} : { conversation: conversationName(current, topicNames(journal.view)) }) },
-      ...(suppliedSources === undefined ? {} : { sources: suppliedSources }),
+      ...(suppliedSources === undefined ? {} : { sources: suppliedSources.map(source =>
+        source && typeof source === 'object' && 'text' in source && typeof source.text === 'string'
+          ? { ...source, text: credentialWording(source.text) } : source) }),
       ...(reference ? { replyTo: reference } : {}),
       ...(summary ? { historyMode: 'summary-plus-recent', summary: { sourceKind: 'inferred-by-summary' as MemorySourceKind, sourceLabel: summaryLabel(summary), through: summary.through, text: clean(redact(summary.text).text, true, summary.through),
         ...(summary.memoryItems?.length ? { memoryItems: summaryItems } : {}) } }
@@ -6674,6 +6685,8 @@ export function createJournalWorker(journal: ReturnType<typeof openPreviewJourna
   /** One preparation attempt at one history floor. `setAside` defaults to no floor, so an ordinary call behaves
    * exactly as before and also clears any floor a previous attempt published (see `historySetAside`). */
   const preparedFor = (turn: Turn, includeRecorded = true, setAside = -1) => {
+    // Snapshot the register once per preparation, never once per history quote or budget variant.
+    credentialWording = ports.credentialWording?.() ?? (text => text);
     historySetAside = setAside;
     const question = redact(turn.text).text;
     // Rules 9, 96, 114: the concurrent owned-work view is read once per preparation, never per packet variant.

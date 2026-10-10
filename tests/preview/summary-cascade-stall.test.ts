@@ -1,3 +1,4 @@
+import { credentialTextRenderer } from './credential-display.js';
 import { expect, it } from 'vitest';
 import { SOURCE_PINS, sourcePacket } from './briefing.js';
 import { mkdtempSync, readFileSync, realpathSync, rmSync } from 'node:fs';
@@ -55,7 +56,7 @@ function world(writer: Step[]) {
   const journal = openPreviewJournal(path, key, genesis);
   const throughs: number[] = [], log: string[] = [];
   let clock = 0, calls = 0;
-  const worker = createJournalWorker(journal, { now: () => START + clock, elapsed: () => clock, stopped: () => false,
+  const worker = createJournalWorker(journal, { credentialWording: () => credentialTextRenderer([]), now: () => START + clock, elapsed: () => clock, stopped: () => false,
     sources: () => sourcePacket(path => readFileSync(path, 'utf8'), SOURCE_PINS,
       { providerAttempts: genesis.maxCalls, expiresAt: genesis.expires }).sources,
     model: async input => {

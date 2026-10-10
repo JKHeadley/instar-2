@@ -1,3 +1,4 @@
+import { credentialTextRenderer } from './credential-display.js';
 import { expect, it } from 'vitest';
 import { mkdtempSync, readFileSync, realpathSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
@@ -57,7 +58,7 @@ function world(writer: Step[], jev: string[], review: () => 'pass' | 'violation'
     return append(row);
   };
   let clock = 0, calls = 0, jevCalls = 0;
-  const worker = createJournalWorker(journal, { now: () => 1790700000000 + clock, elapsed: () => clock, stopped: () => false,
+  const worker = createJournalWorker(journal, { credentialWording: () => credentialTextRenderer([]), now: () => 1790700000000 + clock, elapsed: () => clock, stopped: () => false,
     model: async input => {
       if (!input.id.startsWith('summary:')) return ANSWERS.get(Number(input.id.split(':').at(-1))) ?? 'Noted.';
       log.push('summary'); throughs.push(Number(input.id.slice(8)));
