@@ -1,6 +1,6 @@
 {
-  "generation": "sha256:2ce290acdeac23b694316417e9fd0f294de1300be6a987abba597c5846f53bd7",
-  "commit": "cac8df241d8b7679a68edab4fcd1e140840f5b53",
+  "generation": "sha256:cd0c1f2d77d040088241a06d20833901ad7a7510c18b8425faa5a359be54e3a2",
+  "commit": "6acc92316b3dab39d633873f99d3fda77c24ef0a",
   "launchers": {
     "bin/instar-production.mjs": [
       {
@@ -49,7 +49,7 @@
         "module": "tests/preview",
         "availability": "not-loaded",
         "userFacing": true,
-        "text": "an explicit request for a settled later day and time (a reminder) is answered once at that time, with no new operator message."
+        "text": "an explicit request for a settled later day and time is answered then, with no new operator message. Daily or weekday requests at a local time repeat until cancelled; missed occurrences combine into one on recovery. Each occurrence uses the existing spend, stop and delivery limits."
       },
       {
         "id": "preview-status-command",
@@ -179,7 +179,7 @@
         "module": "tests/preview",
         "availability": "not-loaded",
         "userFacing": true,
-        "text": "an explicit request for a settled later day and time (a reminder) is answered once at that time, with no new operator message."
+        "text": "an explicit request for a settled later day and time is answered then, with no new operator message. Daily or weekday requests at a local time repeat until cancelled; missed occurrences combine into one on recovery. Each occurrence uses the existing spend, stop and delivery limits."
       },
       {
         "id": "preview-status-command",
@@ -309,7 +309,7 @@
         "module": "tests/preview",
         "availability": "not-loaded",
         "userFacing": true,
-        "text": "an explicit request for a settled later day and time (a reminder) is answered once at that time, with no new operator message."
+        "text": "an explicit request for a settled later day and time is answered then, with no new operator message. Daily or weekday requests at a local time repeat until cancelled; missed occurrences combine into one on recovery. Each occurrence uses the existing spend, stop and delivery limits."
       },
       {
         "id": "preview-status-command",
@@ -439,7 +439,7 @@
         "module": "tests/preview",
         "availability": "not-loaded",
         "userFacing": true,
-        "text": "an explicit request for a settled later day and time (a reminder) is answered once at that time, with no new operator message."
+        "text": "an explicit request for a settled later day and time is answered then, with no new operator message. Daily or weekday requests at a local time repeat until cancelled; missed occurrences combine into one on recovery. Each occurrence uses the existing spend, stop and delivery limits."
       },
       {
         "id": "preview-status-command",
@@ -569,7 +569,7 @@
         "module": "tests/preview",
         "availability": "available",
         "userFacing": true,
-        "text": "an explicit request for a settled later day and time (a reminder) is answered once at that time, with no new operator message."
+        "text": "an explicit request for a settled later day and time is answered then, with no new operator message. Daily or weekday requests at a local time repeat until cancelled; missed occurrences combine into one on recovery. Each occurrence uses the existing spend, stop and delivery limits."
       },
       {
         "id": "preview-status-command",

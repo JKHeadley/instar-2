@@ -10,7 +10,7 @@ Operator questions: none
 Suggested tier: critical
 Declared tier: critical
 Tier rationale: Recurring operator-facing effects must retain existing authority, spend, cancellation and dispatch floors.
-Side effects: Calendar recall expands daily/weekday occurrences within its existing bounded window; open-request status continues to show the active series and advances its due date. One-time and weekly calendar items retain their prior behavior.
+Side effects: Generated register and capability summaries are refreshed from the committed source. Calendar recall expands daily/weekday occurrences within its existing bounded window; open-request status continues to show the active series and advances its due date. One-time and weekly calendar items retain their prior behavior.
 Undo and recovery: Revert the source change only after withdrawing active recurring series. Older code does not interpret the new recurrence metadata or occurrence signature; do not roll back a live root containing these frames without an explicit migration. No live root was changed by this builder.
 Multi-machine posture: No new state store or owner. The encrypted journal carries the series and per-occurrence writer authorization. Existing conversation ownership and single-writer admission still apply; this change claims no new replication guarantee.
 Layer below: Existing request intake, cancellation, signed system-writer authorization, action-due replay validation, shared allowance and outbound intent/receipt handling; dated-memory calendar parsing.
@@ -33,5 +33,5 @@ Subject (5 paths): tests/preview/README.md, tests/preview/dated-memory.ts, tests
 ## Closing block
 
 simplestRobustRoute: This is the simplest robust route: retain the accepted dated request and existing scheduler, attach a local calendar-day occurrence to its existing due frame, and project progress from that durable frame. No timer service, new store, model call or worker is added. The occurrence prevents duplicate sends after a repeated local hour or restart. Dispatch time coalesces downtime after a queued turn. Start guards are verified operator requests, a settled local time and existing owner admission; end guards are durable dispatch and withdrawal; limits are existing calls, replies, turns, expiry and stop. This author submission makes no unattended live-completion claim.
-80/20: Calendar and scheduler regression tests pass locally; broader direct-import checks and recorded-shape replays are reported in the builder report. Independent landing and live proof remain the desk responsibility; no independent verdict is asserted.
+80/20: Calendar and scheduler regression tests pass locally; broader direct-import checks and recorded-shape replays (including captured delivered, empty and uncertain outcomes through the new series path) are reported in the builder report. Independent landing and live proof remain the desk responsibility; no independent verdict is asserted.
 VERDICT: author submission; this record asserts no independent verdict — the review desk records its own
