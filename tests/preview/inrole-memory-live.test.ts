@@ -23,7 +23,7 @@ for (const recorded of fixture.cases) it(`replays real update ${recorded.update}
   // Preserve the real capture's digest while accounting for the sole system identity edit.
   // Check outside the model port: the worker records thrown model errors as unknown outcomes.
   const capturedSystem = SUBSCRIPTION_CONVERSATION_SYSTEM_PROMPT.replace(
-    "You are Justin's Instar 2.0 agent,", 'You are Instar,');
+    "You are an Instar 2.0 agent,", 'You are Instar,');
   expect(createHash('sha256').update(capturedSystem).digest('hex')).toBe(recorded.systemSha256);
   const root = realpathSync(mkdtempSync(join(tmpdir(), 'inrole-memory-'))), path = join(root, 'journal');
   let journal = openPreviewJournal(path, key, genesis);

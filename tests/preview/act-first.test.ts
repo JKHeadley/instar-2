@@ -20,7 +20,7 @@ const fixture = () => JSON.parse(readFileSync(new URL('./fixtures/act-first-2026
 // Historical captures keep their original identity. Only the identity prefix changed;
 // the read-first, tool, authority and response contracts must still match byte for byte.
 const capturedSystem = SUBSCRIPTION_TOOLS_SYSTEM_PROMPT.replace(
-  "You are Justin's Instar 2.0 agent,", 'You are Instar,');
+  "You are an Instar 2.0 agent,", 'You are Instar,');
 const decode = (run: Capture) => {
   const reading = readAnswer(JSON.parse(run.raw).result, { wrapped: 'accept' });
   expect(reading.ok, run.name).toBe(true);

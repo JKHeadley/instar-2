@@ -98,7 +98,10 @@ it('on the tools route the review packet is route-true, and the same two sides h
     expect(packet.governingConstraints, input).toEqual(governingConstraints(true));
     expect(packet.obligationDecision, input).toBe(OBLIGATION_DECISION_TOOLS);
     expect(packet.declaredObligations.toolAttempts, input).toEqual({ meaning: TOOL_ATTEMPTS_MEANING, calls: [] });
-    expect(packet.sources.find(source => source.id === 'capability-note')!.text, input).toContain(`- ${toolsBriefing(0)}`);
+    // Retain historical capture; translate only the clarified standing-grant condition.
+    expect(packet.sources.find(source => source.id === 'capability-note')!.text
+      .replace("via the doorway's four tests on operator grant.",
+        "via the doorway's four tests; standing grants need no new approval."), input).toContain(`- ${toolsBriefing(0)}`);
     // Plan #491 and #510 changed the answer-slot wording after capture; the October 10 budget repair then shortened
     // requested reasons and bounded the whole response. Translate those exact historical instructions only:
     // every rule, guide and packet line must still match. reply-review-budget.test.ts replays the new budget's real call.
