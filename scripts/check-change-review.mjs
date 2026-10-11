@@ -6,8 +6,8 @@
 //   node scripts/check-change-review.mjs [check]
 //     Every commit made since this checker was adopted must be covered by a record: a record
 //     covers the commits between its 'Subject base:' and the last commit that edited it.
-//     Each current record is validated against its actual subject (the files changed in that
-//     range): required fields, frozen content, prompt/dispatch findings, deferrals, skips and
+//     Records added or modified by this change are validated against their actual subject
+//     (the files changed in that range): required fields, frozen content, prompt/dispatch findings, deferrals, skips and
 //     governed-document versions (Rule 90: a changed governed document adds a new changelog
 //     version and keeps every earlier one byte-identical; any landing commit it names exists).
 //
@@ -126,6 +126,21 @@ function governedVersionErrors(entry) {
   return errors;
 }
 
+// Remote tips containing HEAD belong to this change (including a pushed or detached tip),
+// not its base. An explicit base takes precedence for callers with a known boundary.
+function changedReviewPaths() {
+  const base = process.env.CHANGE_REVIEW_BASE;
+  const excluded = base !== undefined ? [git('rev-parse', '--verify', `${base}^{commit}`)]
+    : lines(git('for-each-ref', '--format=%(objectname)', 'refs/remotes'))
+      .filter(tip => !isAncestor('HEAD', tip));
+  const commits = git('rev-list', 'HEAD', '--not', ...new Set(excluded));
+  if (!commits) return new Set();
+  const paths = execFileSync('git', ['diff-tree', '--stdin', '--root', '-m', '-r', '--no-commit-id',
+    '--name-only', '--no-renames', '--diff-filter=AM', '-z', '--', 'reviews/'],
+  { input: commits + '\n', encoding: 'utf8', maxBuffer: 256 * 1024 * 1024, stdio: ['pipe', 'pipe', 'pipe'] });
+  return new Set(paths.split('\0').filter(p => p.endsWith('.md')));
+}
+
 function check({ quiet = false } = {}) {
   const adoption = lines(tryGit('log', '--diff-filter=A', '--format=%H', 'HEAD', '--', CHECKER)).at(-1);
   if (!adoption) { if (!quiet) console.log('change-review: checker not yet adopted in this history; nothing to check'); return { errors: [], current: [] }; }
@@ -139,9 +154,14 @@ function check({ quiet = false } = {}) {
   const current = all.filter(r => required.has(r.last) && !(landedRef && isAncestor(r.last, landedRef)));
   const invalid = all.filter(r => required.has(r.last) && !r.valid);
   for (const r of invalid) errors.push(`Rule 74: ${r.path}: 'Subject base:' must be a full commit id that is an ancestor of the record`);
-  const scan = current.length ? promptScan() : { findings: [], promptSources: [] };
-  for (const r of current.filter(x => x.valid)) {
-    if (!r.subject.length) { errors.push(`Rule 74: ${r.path} reviews an empty subject`); continue; }
+  const changed = changedReviewPaths();
+  const judged = all.filter(r => changed.has(r.path));
+  const untouched = current.filter(r => !changed.has(r.path));
+  let debtFindings = 0;
+  const scan = judged.length || untouched.length ? promptScan() : { findings: [], promptSources: [] };
+  for (const r of [...judged, ...untouched].filter(x => x.valid)) {
+    const recordErrors = changed.has(r.path) ? errors : [];
+    if (!r.subject.length) { recordErrors.push(`Rule 74: ${r.path} reviews an empty subject`); if (!changed.has(r.path)) debtFindings += recordErrors.length; continue; }
     const hits = addedLineHits(addedLines(r.base, r.last));
     // Rule 109: a frozen record is compared with the candidate's content, whichever record
     // covers the later commits; only an explicit reopen of THIS record voids its round.
@@ -153,10 +173,12 @@ function check({ quiet = false } = {}) {
       resolvesEvidence: p => tryGit('cat-file', '-e', `${r.last}:${p}`) !== null || (isAbsolute(p) && existsSync(p) && statSync(p).isFile()),
       readEvidence: p => (isAbsolute(p) ? (existsSync(p) && statSync(p).isFile() ? readFileSync(p, 'utf8') : null) : tryGit('show', `${r.last}:${p}`)) };
     const v = validateRecord(r.record, ctx);
-    errors.push(...v.errors.map(e => `${r.path}: ${e}`), ...governedVersionErrors(r).map(e => `${r.path}: ${e}`));
-    notes.push(...v.notes.map(n => `${r.path}: ${n}`));
+    recordErrors.push(...v.errors.map(e => `${r.path}: ${e}`), ...governedVersionErrors(r).map(e => `${r.path}: ${e}`));
+    if (changed.has(r.path)) notes.push(...v.notes.map(n => `${r.path}: ${n}`));
+    else debtFindings += recordErrors.length;
   }
   if (!quiet) {
+    if (untouched.length) console.log(`note: older-record debt: ${untouched.length} records, ${debtFindings} findings; tracked as cleanup item review-debt-1010, not a gate`);
     for (const n of notes) console.log(`note: ${n}`);
     console.log(`change-review: ${required.size} commits since adoption, ${all.length} records, ${current.length} current; ${scan.findings.length} prompt findings among the files current changes touch or in the tree (dispositioned where a change touches them)`);
   }

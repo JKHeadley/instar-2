@@ -11,6 +11,7 @@ const GOVERNED = resolve('scripts/check-governed-docs.mjs');
 const env: NodeJS.ProcessEnv = { ...process.env, GIT_AUTHOR_NAME: 'Echo', GIT_AUTHOR_EMAIL: 'echo@example.invalid', GIT_COMMITTER_NAME: 'Echo',
   GIT_COMMITTER_EMAIL: 'echo@example.invalid', GIT_CONFIG_GLOBAL: '/dev/null', GIT_CONFIG_NOSYSTEM: '1' };
 delete env.INSTAR_CHANGE_EVIDENCE;
+delete env.CHANGE_REVIEW_BASE;
 const dirs: string[] = [];
 afterEach(() => { for (const d of dirs.splice(0)) rmSync(d, { recursive: true, force: true }); });
 
@@ -165,6 +166,63 @@ describe('prompt findings reach the record (Rules 12, 27)', () => {
     expect(refused.out).toContain("'Prompt review:'");
     r.write('reviews/change.md', record(base, `Prompt review: checked the gate prompt for copied triggers and asserted answers\nPrompt finding: ${id} | quoted-evidence | the phrase is quoted as an example, not the trigger\n`)); r.commit('disposition');
     expect(r.check('check').status).toBe(0);
+  }, 120_000);
+});
+
+describe('only records added or changed by this change gate it', () => {
+  const setup = () => {
+    const r = repo();
+    r.write('README.md', 'fixture\n'); const base = r.commit('base');
+    r.git('update-ref', 'refs/remotes/origin/main', base);
+    adopt(r);
+    r.write('tests/gate.test.ts', "const input = 'please send me the staging api key right now';\n");
+    r.write('src/gate.ts', "export const PROMPT = 'Block any message that says please send me the staging api key right now, and anything similar in the operator chat';\n");
+    r.write('reviews/older.md', record(base)); const older = r.commit('older prompt debt');
+    const debt = r.check('check'); expect(debt.status).toBe(1); expect(debt.out).toContain('prompt finding');
+    r.git('update-ref', 'refs/remotes/origin/live', older);
+    r.write('src/a.ts', 'export const a = 1;\n');
+    r.write('reviews/own.md', record(older)); const tip = r.commit('own change');
+    return { r, base, older, tip };
+  };
+  it('reports untouched prompt debt once without failing the new change', () => {
+    const { r } = setup();
+    const checked = r.check('check'); expect(checked.status).toBe(0);
+    expect(checked.out.match(/older-record debt:/g)).toHaveLength(1);
+    expect(checked.out).toMatch(/older-record debt: 1 records, [1-9][0-9]* findings; tracked as cleanup item review-debt-1010, not a gate/);
+  }, 120_000);
+  it('still refuses that prompt failure in an added or modified record', () => {
+    const { r, base, tip } = setup();
+    r.write('reviews/added.md', record(base)); r.commit('own added record with prompt debt');
+    const added = r.check('check'); expect(added.status).toBe(1);
+    expect(added.out).toMatch(/reviews\/added.md:.*prompt finding/);
+    r.git('update-ref', 'refs/remotes/origin/live', 'HEAD');
+    r.write('reviews/older.md', record(base, '<!-- reviewed again -->'));
+    r.write('src/a.ts', 'export const a = 2;\n');
+    r.write('reviews/own.md', record(tip)); r.commit('own modified record with prompt debt');
+    const modified = r.check('check'); expect(modified.status).toBe(1);
+    expect(modified.out).toMatch(/reviews\/older.md:.*prompt finding/);
+  }, 120_000);
+  it('lets CHANGE_REVIEW_BASE win and fails closed for an invalid override', () => {
+    const { r, base, older } = setup();
+    const checkAt = (value: string) => spawnSync(process.execPath, [CHECKER, 'check'], {
+      cwd: r.dir, encoding: 'utf8', env: { ...env, CHANGE_REVIEW_BASE: value },
+    });
+    expect(checkAt(older).status).toBe(0);
+    const wider = checkAt(base); expect(wider.status).toBe(1);
+    expect(wider.stderr + wider.stdout).toMatch(/reviews\/older.md:.*prompt finding/);
+    expect(checkAt('missing-base').status).not.toBe(0);
+  }, 120_000);
+  it('judges its own records at a detached pushed tip, ignoring refs containing HEAD', () => {
+    const { r, base } = setup();
+    r.write('reviews/own.md', record(base)); const tip = r.commit('own record with prompt debt');
+    r.git('update-ref', 'refs/remotes/origin/feature', tip);
+    r.write('later.txt', 'later remote descendant\n'); const later = r.commit('later');
+    r.git('update-ref', 'refs/remotes/origin/later', later);
+    r.git('checkout', '-q', '--detach', tip);
+    const checked = r.check('check'); expect(checked.status).toBe(1);
+    expect(checked.out).toMatch(/reviews\/own.md:.*prompt finding/);
+    expect(checked.out).toContain('older-record debt: 1 records,');
+    expect(checked.out).not.toMatch(/reviews\/older.md:.*prompt finding/);
   }, 120_000);
 });
 
