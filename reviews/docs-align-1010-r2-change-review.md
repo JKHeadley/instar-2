@@ -10,7 +10,7 @@ Operator questions: Final-head code-owner approval for docs/ remains the desk's 
 Suggested tier: ordinary
 Declared tier: ordinary
 Tier rationale: Three prose repairs and the review inventory; no runtime source, model prompt, parser, executable test contract or authority change.
-Side effects: Future implementers use current standing rather than an absent legacy flag; sign-off eligibility cannot be mistaken for live-review eligibility. Derived publication may change with the corrected source.
+Side effects: Future implementers use current standing rather than an absent legacy flag; sign-off eligibility cannot be mistaken for live-review eligibility. Derived publication is regenerated from source commit 24cf0d58b70e5b77f01089eb39ed213dac5b3d54; existing Decision report paths point to the desk-copy destination for this round.
 Undo and recovery: Publish a new documentation version and regenerate from that source; preserve all earlier history.
 Multi-machine posture: Shared documentation and deterministic publication only; no runtime machine state, leases, replication or transport changes.
 Layer below: Read docs/00-the-purpose.md and docs/01-the-rules.md in full, identical to origin/main; checked section 4 migration cases, glossary consequential-and-ordinary, recall section 8 selector, Rule 91, changelog ownership, change-review and register scripts, and the full Astra round 1 review.
