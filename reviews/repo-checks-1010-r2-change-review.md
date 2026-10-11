@@ -23,5 +23,6 @@ Decision: repo-checks-r2-generated | Resolve generated-only conflicts by running
 ## Closing block
 
 simplestRobustRoute: This is the simplest robust route: ordinary merge, existing register generation and replay, and targeted checks. It adds no machinery, preserves safety floors and history, and makes no autonomous runtime-completion claim.
+Publication source: 80092c03393158eb6e5e473ef6ead5f766bab632 (the merge commit with both parents); regenerated with the real clock and no --now override.
 80/20: Validate the merged publication at the register consumer with real-clock replay and register E2E, plus typecheck, architecture, lint, change-review and whitespace checks. The Studio-only report path is explicitly reported as unavailable under WSL; independent landing review remains the desk's responsibility.
 VERDICT: author submission; independent landing review pending
