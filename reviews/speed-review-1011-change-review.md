@@ -19,9 +19,14 @@ Bug evidence: reproducer=tests/preview/operator-group-cascade.test.ts; live=test
 Hook bypass: none; inspected core.hooksPath (unset) and common hooks directory (sample files only). Plain commits.
 Convergence: none
 Prompt review: No model question, threshold, output parser or semantic rule changed. New tests feed the real 969390381 answer/review bytes through their shipped readers, real scores through interpretJev, and recorded uncertain/undecided/summary/delivery shapes through both routes. Empty context remains empty context, not a claim of a delivered Telegram bubble.
+Prompt finding: 849db3a6296a | protocol-literal | Unchanged fixed memory-inventory response, not an intent classifier.
+Prompt finding: bd01de21286a | protocol-literal | Unchanged source-label instruction asserted by the existing grounding test.
+Prompt finding: fb5fa7e706c8 | protocol-literal | Unchanged semantic retrieval instruction asserted by the existing grounding test.
 Decision: operator-only-confidence | Keep sharedAudience semantics and introduce a narrow confident-pass route using the current verified group audience; uncertain/positive/unavailable and every other audience retain review. | reported=/Users/dabombstudio/.instar/agents/echo/.instar/lanes/speed-review-1011-PROGRESS.md
 Decision: conservative-recovery | Reuse a durable Jev pass only with all ten clear scores and no reserved review; otherwise preserve existing contextual review/recovery. | reported=/Users/dabombstudio/.instar/agents/echo/.instar/lanes/speed-review-1011-PROGRESS.md
 Verification: Targeted routing, audience, cascade and floor tests; tsc, architecture, lint, register and change-review outputs in the absolute desk PROGRESS/evidence directory. Full suite and independent landing review belong to the pipeline. Before/after copied-root worker replay uses speed-hold's exact recorded prefixes, outputs and injected timings. Plain question: full-review 11.856 to 0 seconds; total 46.888 to 35.032. Lookup neighbor: full-review 17.436 to 0; total 80.703 to 63.267. These are controlled replay timings, not new live provider latency or an under-15-second claim.
+
+Generated publication: Register generation from source commit 05cd8a8512635152e566853b99ca1356659584c5 produced sha256:b790f0733cd38c7d2bc54a3b73996ed1424845c71d2a03c6bfbb3caf02bc0507. Seven generated publications refresh their pins without manual hash edits.
 
 ## Closing block
 
