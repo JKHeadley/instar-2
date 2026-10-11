@@ -4,6 +4,10 @@ _Generated from `22-the-commons.changelog.json` by `scripts/render-changelog.mjs
 The document itself reads as a first version; every change to it is recorded here, newest first,
 each linked to the git change that made it (rule 91).
 
+## Revision 6 · 2026-10-10 · draft — Justin, docs-align-1010: align design parts with the constitution amendments merged in PR #154; final-head code-owner approval pending.
+
+- **Inherit the fixed sign-off list separately from verification and consume role-covered sharing grants without a second enrollment approval.** — The governing purpose fixes agency, identity, onboarding, sign-off and acceptance; design prose must not impose incompatible defaults or claim readiness from verification alone. _(`fc0e3c20`, docs/00-the-purpose.md; docs/01-the-rules.md; reviews/docs-align-1010-change-review.md)_
+
 ## Revision 5 · 2026-09-14 · draft — Operator-directed repair round 4 of third independent re-review AC-01–AC-04 at 0f2de7dacc0d919c5c096a9425177b609be80434; verdict .instar/lanes/astra-design-commons-0f2de7da.md.
 
 - **Require Four/Ten restricted, secret-safe intake preservation before front validation or rejection, bind every refusal to its preserved receipt, and limit Commons logs and collective storage to safe metadata. Add F28 and its NF mappings.** — AC-01 requires mandatory input preservation under rule 4 and Four without disclosing rejected payloads or widening custody access. _(AC-01; sections 3/12/13; F28; docs/08-the-intake.md:214,241,481)_

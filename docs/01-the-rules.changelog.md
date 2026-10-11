@@ -4,6 +4,10 @@ _Generated from `01-the-rules.changelog.json` by `scripts/render-changelog.mjs` 
 The document itself reads as a first version; every change to it is recorded here, newest first,
 each linked to the git change that made it (rule 91).
 
+## Revision 13 · 2026-10-10 · draft — Justin, topic 102965, 2026-10-10 17:23 PDT: "Yes, I like this ... I approve the changes"; constitution-amendments-approved-2026-10-10.md, observer #239; final-head GitHub approval and merge pending.
+
+- **Align sovereignty, self-unblocking, awareness, sourced limits, standing grants and the verification rows with the purpose; distinguish testing and model supervision from the person’s sign-off.** — Role grants permit ordinary work without repeated approval; verification and real-use evidence remain requirements, not extra sign-off conditions. _(Justin, topic 102965, 2026-10-10 17:23 PDT: "Yes, I like this ... I approve the changes"; constitution-amendments-approved-2026-10-10.md, observer #239; final-head GitHub approval and merge pending.)_
+
 ## Revision 12 · 2026-09-23 · approved — Justin adopted the 17-line simplicity audit and directed a fundamental Occam standard on 2026-09-23; Astra Occam ruling supersedes the earlier Rule 116 checker proposal. Exact content approved by the operator in topic 52075 at 15:58Z 2026-09-24 ('approved'); merged as PR 116.
 
 - **Widen Rule 116 to Occam's Razor / Simplest Robust Route, add its value rationale, move it to Held by the mind, and require simplestRobustRoute in the existing independent design and landing review. Update group counts to 21/9/73/13, total 116.** — The fundamental standard applies across architecture and process; existing review can judge whether added machinery prevents a credible failure the simpler route cannot handle. _(astra-occam-standard-ruling.md section 1; topic 52075, 2026-09-23 operator direction)_

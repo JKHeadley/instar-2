@@ -1,5 +1,21 @@
 [
   {
+    "revision": 13,
+    "date": "2026-10-10",
+    "status": "draft",
+    "cause": {
+      "kind": "conversation",
+      "note": "Justin, topic 102965, 2026-10-10 17:23 PDT: \"Yes, I like this ... I approve the changes\"; constitution-amendments-approved-2026-10-10.md, observer #239; final-head GitHub approval and merge pending."
+    },
+    "changes": [
+      {
+        "what": "Insert all six amendments exactly as approved: relationship mission, agency and sourced limits, identity and self-knowledge, onboarding grants, the five sign-off conditions, and real-use acceptance including the constraint-3 sentence and not-knowing rule. Align the pillar and constraint counts and the ordinary reversible-operation cross-reference.",
+        "why": "Justin approved all six as worded; the obsolete four-test cross-reference must resolve to the new sign-off list without changing durable-cause protection.",
+        "ref": "Justin, topic 102965, 2026-10-10 17:23 PDT: \"Yes, I like this ... I approve the changes\"; constitution-amendments-approved-2026-10-10.md, observer #239; final-head GitHub approval and merge pending."
+      }
+    ]
+  },
+  {
     "revision": 12,
     "date": "2026-10-03",
     "status": "approved",

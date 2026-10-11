@@ -137,7 +137,7 @@ Basis for decision 3: Rule 77; section 7 owns the initial two-second ordinary an
 
 Basis for decision 4: Purpose, wisdom Value, evidence constraint and “Who decides what”; section 10 owns P21-HUMAN-01 and the initial four-week horizon; OD-04. No paid study is authorized.
 
-Basis for decision 5: Purpose’s sole consequential-effect definition, PR #71, operator-approved and merged at e281a2c2; sections 1/8 selector and governing-rule reconciliation; section 12 activation; OD-05. The class allowlist is a proposal within that boundary, not a second constitutional definition or an approved runtime exception.
+Basis for decision 5: [Purpose](../00-the-purpose.md#the-purpose), “Patterns are judged in retrospect. A moment is judged live only when it is irreversible.” and “sign-off is kept for a short, fixed list”; sections 1/8 selector and governing-rule reconciliation; section 12 activation; OD-05. The class allowlist is a proposal within that boundary, not a second constitutional definition or an approved runtime exception.
 
 Basis for decision 6: Rule 95; section 7 owns the initial five-minute window, at most two rechecks and one logical notice; sections 12/14 retain activation and owner dependencies; OD-06.
 
@@ -153,8 +153,8 @@ before any evaluation, including the proposed C unnecessary-hold target below 1%
 small pilot cannot certify.
 
 OD-04 maps to `P21-HUMAN-01` in section 10, with independently graded dimensions and a frozen
-population, tools, time allowances and precision plan. OD-05 inherits consequential
-classification from the purpose by reference. The operator retains ownership of resource
+population, tools, time allowances and precision plan. OD-05 inherits the purpose's irreversible-moment boundary for live review
+and its separate five-condition sign-off list by reference. The operator retains ownership of resource
 thresholds and policy-sensitive markings. History-review candidates are section 8’s
 selected actions whose earlier promises, restrictions or conflicting statements matter;
 selection grants no waiver. The live before/after-review choice remains deferred. Section 8's rulebook
@@ -177,7 +177,7 @@ No decision here changes that posture.
 Questions for the operator: none. The live-policy choice for OD-05 is decided (check all listed
 history-dependent actions before acting, proven first in an isolated trial; recorded in decision 5
 above). Enabling that check for real actions is a separate activation condition, not a pending
-question. The purpose settles consequential classification and permission boundaries, not that
+question. The purpose settles sign-off classification, live-review and permission boundaries, not that
 selection. Section 8 records the candidate narrow exception for that governing process; it is not
 an approved purpose or rule change. The choice is resolved, so the no-pending-policy status holds. OD-02/06 retain their constitutional boundaries; OD-01/03/04
 and OD-06's numeric settings remain agent-owned. Engineering settings live in sections 7/10 and

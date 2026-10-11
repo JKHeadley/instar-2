@@ -1,7 +1,7 @@
 # Generated glossary
 
-Register generation: sha256:a64f0e204917654e8329b1db5690253c494741f101fdc00548b279d724c2ffff
-Source commit: 888afb83138703982b61cb5922a1c55e8abc8e1c
+Register generation: sha256:6c5d87bf357392482ecc9b4d2b1c2a523487c41290ca14d1a0b9d847d663e48d
+Source commit: 24cf0d58b70e5b77f01089eb39ed213dac5b3d54
 Extract vector: genesis:empty-extract
 Authority: shape-only; entering-force verification required at consumption.
 
@@ -42,7 +42,7 @@ Used by: (unused)
 
 ## critical
 
-A thing is *critical* when it is *consequential* as the purpose defines it, read
+A thing is *critical* for verification when, read
 from its profile: its `consequence` is `identity`, `security`, `money`, `control`, or `external`,
 **or** its `reversibility` is `irreversible`, **or** its `reach` is `world`.
 
@@ -202,9 +202,8 @@ Used by: rule:41
 
 ## significant
 
-A thing is *significant* exactly when it is *critical*: both words resolve to the
-purpose's single definition of a consequential effect. A feature is significant when at least one
-of its effects is consequential.
+A thing is *significant* for verification exactly when it is *critical*. A feature
+is significant when at least one of its effects meets the critical verification profile.
 
 Used by: rule:34
 

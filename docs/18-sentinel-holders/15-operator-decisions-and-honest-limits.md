@@ -14,15 +14,7 @@
 
 **Value — decision 2: which fixes may run automatically.**
 
-**Question:** Which kinds of recovery may happen without asking for approval each time?
-
-**Background:** Automatic recovery can restore service quickly, but a mistaken recovery can also interrupt work or change important state.
-
-**Choices:** Allow none; approve reversible, low-risk kinds one at a time; or allow every kind after it passes its tests.
-
-**What it changes:** None gives maximum control but slower recovery; one-at-a-time approval limits harm while gaining speed; allowing every tested kind is fastest but gives the system the broadest authority.
-
-**Recommendation:** Approve reversible, low-risk kinds one at a time after a watch-only trial and failure review because that grows authority from observed evidence.
+The [purpose](../00-the-purpose.md#the-purpose) states: “What is agreed is recorded as standing grants. Inside its role the agent acts without asking again.” Onboarding covers the recovery needed for the role. A tested recovery inside those grants runs without another approval unless one of the purpose's five sign-off conditions holds. An uncovered recovery refuses and names the grant needed; widening that role requires the person's sign-off. Rules 34, 55, 60, 61, 63 and 68 retain tested effects, finite resources, ownership and durable work. Neither passing tests nor observing a failure creates standing. P14-NF-40–47/51–53 pair covered recovery without a prompt with missing-standing, stopped, over-cap and uncertain-prior-effect refusals.
 
 **Value — decision 3: how often failed self-repair should alert you.**
 
