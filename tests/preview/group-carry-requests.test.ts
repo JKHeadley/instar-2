@@ -1,4 +1,4 @@
-import { isGroupReviewFinalNotice, GROUP_REVIEW_FINAL_NOTICE, GROUP_REVIEW_FINAL_NOTICE } from './reply-check.js';
+import { isGroupReviewFinalNotice, GROUP_REVIEW_FINAL_NOTICE } from './reply-check.js';
 import { classifyTelegramSend } from './telegram-send-outcome.mjs';
 // Execution ownership of the operator's open dated requests moves from the private root to the group root exactly
 // once (Rules 52, 57, 93): the predecessor records the transfer first and never fires them again, including when it
@@ -281,7 +281,7 @@ const sendCode = host.split('      send: async ({ text, expectedText, chat, thre
 const sendFunction = 'async ({ text, expectedText, chat, thread, replyTo, replyMarkup, target, provenance, admit }) => {' + sendCode.slice(0, sendCode.lastIndexOf(' });'));
 
 it.each([true, false])('shipped send delivers answers and terminal notices when original exists: %s', async originalExists => {
-  for (const text of ['A reviewed answer.', GROUP_REVIEW_FINAL_NOTICE, GROUP_REVIEW_FINAL_NOTICE]) {
+  for (const text of ['A reviewed answer.', GROUP_REVIEW_FINAL_NOTICE]) {
     let admitted = 0, networkSends = 0;
     const outcomes: string[] = [];
     const send = Function('journal', 'workerStop', 'existsSync', 'stopPath', 'wallNow', 'ownerHeld', 'shared',
