@@ -45,7 +45,7 @@ import { createProductionSessionIO } from '../../scripts/production-session-io.m
 import { createProductionSessionDriver } from '../../src/assembly/production-session-driver.js';
 import { assemblyRuntimeFixture } from '../assembly/runtime-fixture.js';
 // @ts-expect-error The runner side stays plain JavaScript.
-import { closeOperatorTmp, grantVolume, harnessGate, harnessHookPath, harnessSessionLayout, HARNESS_BASE, HARNESS_LOGIN, HARNESS_SESSION_BRIDGE, HARNESS_USER, installHook, plaintextLogins, probeAccess, runnerUser, storeHarnessLogin } from '../preview/harness-user.mjs';
+import { closeOperatorTmp, grantVolume, harnessGate, harnessHookPath, harnessSessionLayout, HARNESS_BASE, harnessLoginPath, HARNESS_SESSION_BRIDGE, HARNESS_USER, installHook, plaintextLogins, probeAccess, runnerUser, storeHarnessLogin } from '../preview/harness-user.mjs';
 
 const LIVE = process.env.INSTAR_TOOL_TURN_HARNESS_USER_LIVE_TEST === '1';
 const ONLY = process.env.INSTAR_TOOL_TURN_CASE;
@@ -117,7 +117,7 @@ it.runIf(run('race'))('the swap race: admitted by the real hook, swapped, then o
       unlinkSync(safe);
     }
     // The real custody and the profile hold no plain-text login the harness user could open.
-    if (existsSync(HARNESS_LOGIN)) expect(probeAccess([`r:${HARNESS_LOGIN}`])![0]).toMatchObject({ ok: false, code: 'EACCES' });
+    if (existsSync(harnessLoginPath(profile))) expect(probeAccess([`r:${harnessLoginPath(profile)}`])![0]).toMatchObject({ ok: false, code: 'EACCES' });
     expect(plaintextLogins(profile)).toEqual([]);
     // An ordinary workspace file stays readable and writable as the harness user.
     const plain = join(ws, 'plain.txt'); writeFileSync(plain, 'ordinary');
