@@ -205,7 +205,7 @@ it('tells the agent and the operator exactly which tools exist and where outward
   expect(TOOLS_BRIEFING).toMatch(/^tools: full Claude Code set \(files, shell, web reads, nested subagents\); MCP servers: unknown;/u);
   for (const name of SUBSCRIPTION_TOOL_NAMES) expect(TOOLS_BRIEFING).not.toContain(name);
   // Outward writes and sends are an ability behind the doorway and the operator's grant, never a blanket denial.
-  expect(TOOLS_BRIEFING).toContain('network writes and outside sends via the doorway\'s four tests on operator grant');
+  expect(TOOLS_BRIEFING).toContain('network writes and outside sends via the doorway\'s four tests; standing grants need no new approval');
   expect(withTools).not.toMatch(/no account writes|standing block|no vault/u);
   expect(TOOLS_LIMITS).toMatch(/^Limits: a sent credential is vaulted on arrival \(you see its SecretRef\), not tool-readable\.$/u);
   // The MCP wording says what the root configures now: both sides of the count, and a configured server is never claimed

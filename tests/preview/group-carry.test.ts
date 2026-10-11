@@ -6,7 +6,8 @@ import { appendGroupCarry, buildCarriedMemory, groupCarryPacket, validCarriedMem
 import { createJournalWorker, openPreviewJournal, openRequests, CARRIED_MEMORY_ITEM_SOURCE, MEMORY_ITEM_SHAPE, type JournalRecord } from './journal-test-worker.js';
 import { resolveGroupDisclosure, verifyGroupAudience } from './group-disclosure.js';
 import { now, key, sealKey, scope, records, authority, membership, permissionFor } from './group-carry-fixture.js';
-import { SELF_DESCRIPTION, SOURCE_PINS, sourcePacket } from './briefing.js';
+import { prepareJournalEnvelope } from './journal-envelope.js';
+import { SELF_DESCRIPTION, SELF_IDENTITY, SOURCE_PINS, sourcePacket } from './briefing.js';
 
 const dirs: string[] = [];
 afterEach(() => { for (const dir of dirs.splice(0)) rmSync(dir, { recursive: true, force: true }); });
@@ -296,11 +297,15 @@ it('replays all recorded model shapes through carried recall after the disclosur
     const worker = createJournalWorker(w.destination, { now: () => now + 1000, stopped: () => false,
       sources,
       groupDisclosure: async () => allowed,
+      prepareModel: input => prepareJournalEnvelope(input, 'claude-sonnet-5', genesis.grant, now, genesis.maxBytes),
       model: async input => {
         calls++;
         const packet = JSON.parse(input.context);
         expect(packet.predecessorMemory.entries.length, shape.id).toBeGreaterThan(0);
         expect(packet.sources.find((source: { id: string }) => source.id === 'capability-note').text, shape.id)
+          .toContain(SELF_IDENTITY);
+        const envelope = JSON.parse(String(input.prepared));
+        expect(envelope.messages.find((message: { role: string }) => message.role === 'instructions').content, shape.id)
           .toContain(SELF_DESCRIPTION);
         return shape.kind === 'summary-uncertain' ? JSON.parse(shape.raw) as { state: 'uncertain' } : shape.raw;
       },

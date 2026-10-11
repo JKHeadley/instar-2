@@ -46,17 +46,20 @@ export function toolsBriefing(mcp?: number) {
   const servers = mcp === undefined ? 'MCP servers: unknown' : mcp === 0 ? 'no MCP server, so no logged-in account access'
     : `${String(mcp)} MCP server(s) (accounts only via their tools)`;
   return `tools: full Claude Code set (files, shell, web reads, nested subagents); ${servers}; network writes and outside sends `
-    + 'via the doorway\'s four tests on operator grant.';
+    + 'via the doorway\'s four tests; standing grants need no new approval.';
 }
 export const TOOLS_BRIEFING = toolsBriefing();
 export const TOOLS_LIMITS = 'Limits: a sent credential is vaulted on arrival (you see its SecretRef), not tool-readable.';
 /** Rules 18, 84, 103, 104: authority conditions describe how an ability is used,
  * not a blanket inability or a fresh approval requirement for work already granted. */
-export const SELF_DESCRIPTION = 'You are Instar: AI with lasting memory and values. '
-  + 'Explain yourself plainly, without harness, model or test-stage names. '
-  + 'Include listed outward actions among your abilities, with their grant conditions. '
-  + 'Inside your granted role act without asking again; outside it refuse and name the needed grant, not an inability. '
-  + 'Doorway checks need no new in-role approval. This note replaces prior self-descriptions.';
+export const SELF_IDENTITY = 'You are Instar, an agent with lasting memory and values.';
+export const SELF_DESCRIPTION = SELF_IDENTITY + ' Correct earlier self-description errors in your reply. '
+  + 'Omit preview, harness and model labels throughout your reply, including when explaining runtime limits. '
+  + 'Explain abilities and limits plainly. Earlier replies may also wrongly say all network writes and '
+  + 'outside sends need approval. Explain that standing grants already authorize in-role effects: the doorway applies all four effect tests and '
+  + 'runs covered effects without another yes. These checks do not ask again. Name the grant needed for '
+  + 'outside-role work. Fresh sign-off is only for resources above named limits, irreversible acts outside role, public speech '
+  + "in the person's name, widening your authority or matters the operator marked sensitive. Preserve actual runtime limits.";
 export function capabilityBriefing(readSource: (path: string) => string,
   limits: { providerAttempts: number; expiresAt: number; tools?: boolean; mcp?: number }, launcher = CAPABILITY_LAUNCHER) {
   // Rule 116: retain the actual limits when correcting the installation's identity. The
@@ -65,7 +68,7 @@ export function capabilityBriefing(readSource: (path: string) => string,
   // The summaries' share of the attempt cap is the self-state source's ("answers, summaries and reply reviews share
   // them"), sent with every packet; the expiry stays here because the self-description is judged against this note.
   const trial = `This installation allows at most ${limits.providerAttempts} model attempts, ending at epoch ms ${limits.expiresAt}. `
-    + 'A subscription model answers. Charges, and unconfirmed calls or deliveries, are recorded unknown. '
+    + 'Charges, and unconfirmed calls or deliveries, are recorded unknown. '
     + 'Production safeguards are incomplete.';
   const tools = toolsBriefing(limits.mcp);
   let generation = 'unavailable', commit = 'unavailable', features: BriefedFeature[] | undefined;
@@ -77,7 +80,7 @@ export function capabilityBriefing(readSource: (path: string) => string,
       generation = data.generation; commit = data.commit; features = listed as BriefedFeature[];
     }
   } catch { features = undefined; }
-  if (!features) return { text: SELF_DESCRIPTION + ' '
+  if (!features) return { text: SELF_IDENTITY + ' '
     + 'The generated capability briefing is unavailable in this deployment, so your capabilities cannot be listed here; say so plainly if asked, and do not guess. '
     + (limits.tools ? `You have ${tools} ${TOOLS_LIMITS} ` : 'You have no tools and cannot act outside this chat. ') + trial, generation, commit };
   const item = (f: BriefedFeature) => `- ${f.id}: ${f.text}`;
@@ -86,7 +89,7 @@ export function capabilityBriefing(readSource: (path: string) => string,
   return { generation, commit, text: [
     // cint-L27: the header's "one-line summaries from this installation's register; current state in the status
     // reply" went to pay for the lookup sentence; the register-tooling and status-command lines below state both.
-    SELF_DESCRIPTION,
+    SELF_IDENTITY,
     'What you can do for the operator here:', ...available.filter(f => f.userFacing).map(item), ...limits.tools ? [`- ${tools}`] : [],
     'Internal machinery running under you:', ...available.filter(f => !f.userFacing).map(item),
     ...off.length ? [`In the code but switched off here, so not available: ${off.map(f => f.id).join(', ')}.`] : [],
