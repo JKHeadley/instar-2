@@ -9,7 +9,7 @@ Affected floors: secrets, spend cap, stop, no duplicate sends and durable intake
 Operator questions: none
 Suggested tier: critical
 Declared tier: critical
-Tier rationale: historical subject includes approved constitutional text; this branch changes only graduation metadata, its assertion and generated publication
+Tier rationale: historical subject includes approved constitutional text; this branch changes only graduation metadata, its assertions and generated publication
 Side effects: the register admits the dark feature until the new finite deadline; missing live proof continues to prevent promotion and expiry continues to fail
 Undo and recovery: revert this repair with an ordinary commit; the original overdue deadline will fail again; never rewrite the approved main commits
 Multi-machine posture: shared repository metadata and generated publication are identical across machines; local checking grants no runtime authority
@@ -22,6 +22,8 @@ Decision: repo-checks-renew | Renew to 2026-10-25 UTC because the user-facing fe
 Decision: repo-checks-merge-143 | Cover 15518cdb4a569aa497ff43d9e9a53eef729821a6 from reviewed second parent f52c7214d96edd3ebc28c53296fa6dd97b4c0f55: git diff between those trees is empty, so the merge introduces no unreviewed content. Keep the original promotion review and history. | reported=/Users/dabombstudio/.instar/agents/echo/.instar/lanes/repo-checks-1010-PROGRESS.md
 Decision: repo-checks-merge-144 | Cover d4a3170d29b0863c6a54ee747956cc1a35afcea4: its tree equals reviewed second parent fff2e8db32465f9e0ff2e01926452a561c96cbc6. Existing amendment review and approved changelog remain intact. | reported=/Users/dabombstudio/.instar/agents/echo/.instar/lanes/repo-checks-1010-PROGRESS.md
 Decision: repo-checks-request-152 | Cover a035d5ed1206d72d26a81861283dbbebe8f221f7, whose sole change is requests/87432af9acef18cc.md. Recording the request does not attest that an unexpired authorization was consumed or that the installation was extended. | reported=/Users/dabombstudio/.instar/agents/echo/.instar/lanes/repo-checks-1010-PROGRESS.md
+
+The closure-registration historical byte assertion explicitly permits only the named deadline renewal in addition to its existing Rule 39 metadata exception. All other declaration bytes and additive-operation refusals remain checked.
 
 ## Closing block
 
