@@ -2,12 +2,27 @@
 // Machine-local (Rules 32/113); the journal remains the intake and reply authority.
 import { chmodSync, mkdtempSync, readdirSync, rmSync, writeFileSync } from 'node:fs';
 import { extname, join } from 'node:path';
+import { concealSecretMaterial } from './reply-check.js';
 
 export const MEDIA_UNREADABLE = 'The received file could not be read here. Say so honestly; do not invent its contents.';
 export function voiceNotice(saved) {
   return saved.transcription?.state === 'complete'
     ? `Voice note, transcribed locally (may contain recognition errors):\n${saved.transcription.text}`
     : 'The voice note is saved, but local transcription was unavailable, failed, or interrupted. Say that honestly; do not invent words.';
+}
+
+/** Rule 100: source-bound encrypted media stays authoritative. Only the protected
+ * derivative crosses into the harness. Latin-1 is a reversible byte view for binary
+ * attachments; UTF-8 documents retain their original encoding and non-ASCII text. */
+export function protectMediaBytes(bytes, source, custody, heldSecrets) {
+  const utf8 = bytes.toString('utf8');
+  const encoding = Buffer.from(utf8, 'utf8').equals(bytes) ? 'utf8' : 'latin1';
+  const text = bytes.toString(encoding);
+  const protectedText = custody.custody({ text, raw: JSON.stringify({ text }), source });
+  if (protectedText.custody?.state === 'failed') throw Error('media credential custody unavailable');
+  const held = heldSecrets();
+  if (held.unavailable !== null) throw Error('media held credentials unavailable');
+  return Buffer.from(concealSecretMaterial(protectedText.text, held.values), encoding);
 }
 
 /** The caller obtains saved only through custody.open with the current accepted
@@ -17,16 +32,17 @@ export function voiceNotice(saved) {
 export function clearTurnMedia(tmp) {
   for (const name of readdirSync(tmp)) if (name.startsWith('inbound-media-')) rmSync(join(tmp, name), { recursive: true, force: true });
 }
-export async function withMediaFile({ tmp, media, saved }, invoke) {
+export async function withMediaFile({ tmp, media, saved, protect }, invoke) {
   if (media.kind === 'voice' || media.kind === 'audio') return invoke(voiceNotice(saved));
   let directory, path;
   try {
     clearTurnMedia(tmp);
+    const bytes = protect(saved.bytes);
     directory = mkdtempSync(join(tmp, 'inbound-media-'));
     chmodSync(directory, 0o700);
     const suffix = media.kind === 'photo' ? '.jpg' : extname(media.name);
     path = join(directory, `attachment${/^\.[a-zA-Z0-9]{1,10}$/u.test(suffix) ? suffix : '.bin'}`);
-    writeFileSync(path, saved.bytes, { mode: 0o600, flag: 'wx' });
+    writeFileSync(path, bytes, { mode: 0o600, flag: 'wx' });
   } catch {
     if (directory) rmSync(directory, { recursive: true, force: true });
     return invoke(MEDIA_UNREADABLE);
@@ -46,9 +62,9 @@ export function prepareMediaInput(input, lookup, redactText) {
   } catch { notice = MEDIA_UNREADABLE; }
   return notice ? { ...input, question: `${input.question}\n${redactText(notice)}` } : input;
 }
-export async function invokeMediaTurn(id, turn, lookup, answer) {
+export async function invokeMediaTurn(id, turn, lookup, answer, protect) {
   let attachment;
   try { attachment = lookup(id); } catch { return answer(MEDIA_UNREADABLE); }
   if (!attachment || ['voice', 'audio'].includes(attachment.media.kind)) return answer('');
-  return withMediaFile({ tmp: join(turn.scratch, 'tmp'), ...attachment }, answer);
+  return withMediaFile({ tmp: join(turn.scratch, 'tmp'), ...attachment, protect: bytes => protect(bytes, id) }, answer);
 }

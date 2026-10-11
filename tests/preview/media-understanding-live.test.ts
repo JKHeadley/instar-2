@@ -11,6 +11,7 @@ import { factsFixture, value } from '../facts/fixtures.js';
 import { openPreviewJournal } from './journal.js';
 import { prepareJournalEnvelope, withWorkspaceNotice } from './journal-envelope.js';
 import { SINGLE_MACHINE_PROFILE } from './activation-authority.js';
+import { createSecretCustody } from './secret-custody.js';
 import { redact } from '../../src/recall/redact.js';
 // @ts-expect-error Physical host JavaScript stays outside pure core.
 import { createSubscriptionProviderIO } from '../../scripts/production-boot-io.mjs';
@@ -22,7 +23,7 @@ import { runToolTurn } from './tool-turn.mjs';
 import { harnessGate, HARNESS_USER, plaintextLogins } from './harness-user.mjs';
 
 // @ts-expect-error Host media bridge.
-import { prepareMediaInput, invokeMediaTurn } from './media-understanding.mjs';
+import { prepareMediaInput, invokeMediaTurn, protectMediaBytes } from './media-understanding.mjs';
 // @ts-expect-error Offline host transcriber.
 import { createLocalTranscriber } from '../../scripts/local-transcriber.mjs';
 const LIVE = process.env.INSTAR_MEDIA_LIVE_TEST === '1';
@@ -89,7 +90,9 @@ async function liveTurn(name: string, question: string, stopWhen?: (rows: Record
       const watcher = stopWhen ? setInterval(() => { if (!stop && stopWhen(rowsOf(turn.stateDirectory))) { stop = true; stoppedAt = performance.now(); } }, 20) : undefined;
       try {
         return await invokeMediaTurn(id, turn, lookup, (notice: string) => route.invoke(withWorkspaceNotice(prepared, notice), { operation: id, deadline: Date.now() + policy.timeout + 30000, timeout: policy.timeout,
-          maxOutputBytes: policy.maxOutputBytes, maxTokens: policy.maxTokens, maxCharge: 0, automaticRetries: 0 }));
+          maxOutputBytes: policy.maxOutputBytes, maxTokens: policy.maxTokens, maxCharge: 0, automaticRetries: 0 }),
+          (bytes: Buffer, source: string) => protectMediaBytes(bytes, source,
+            createSecretCustody(root, new Uint8Array(32).fill(3), () => Date.now()), () => ({ values: [], unavailable: null })));
       } finally { clearInterval(watcher); }
     } }).catch((error: Error) => ({ error: error.message }));
   const settled = performance.now();

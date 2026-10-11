@@ -79,7 +79,7 @@ import { credentialDisplayLabel } from './credential-display.js';
 import { createSecretCustody, dueCredentialReminders, reminderSchedule } from './secret-custody.js';
 import { createTelegramMediaCustody, journalMediaSource, telegramInboundMedia } from './telegram-media.js';
 import { createLocalTranscriber } from '../../scripts/local-transcriber.mjs';
-import { prepareMediaInput, invokeMediaTurn } from './media-understanding.mjs';
+import { prepareMediaInput, invokeMediaTurn, protectMediaBytes } from './media-understanding.mjs';
 import { createMediaAdmission } from './media-admission.js';
 import { credentialNotices, doorwayNotices, dueWithDelivery } from './credential-reminders.js';
 import { journalCapacity, packetCapacity } from './capacity-outcome.js';
@@ -1831,7 +1831,8 @@ async function main() {
       // Rules 33, 84: the workspace notice (files that may still disagree with memory, or a lost workspace) rides the packet.
       invoke: async (toolTurn, notice) => {
         const answer = mediaNotice => invokeSubscription(withWorkspaceNotice(prepared, [notice, mediaNotice].filter(Boolean).join('\n')), id, undefined, undefined, toolTurn);
-        return invokeMediaTurn(id, toolTurn, currentMedia, answer);
+        return invokeMediaTurn(id, toolTurn, currentMedia, answer,
+          (bytes, source) => protectMediaBytes(bytes, source, custody, heldSecrets));
       } })).result;
     const proofLines = () => {
       if (!proofLaunch) return [];

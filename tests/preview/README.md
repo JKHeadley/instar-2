@@ -4148,3 +4148,12 @@ The photo, voice and document fixtures in `fixtures/telegram-media` were supplie
 the desk under observer #207, synthesized from Telegram's API documentation, and are
 labelled as such. They are not recorded platform evidence. A live Telegram media
 proof and macOS confinement verification belong to the desk's gate host.
+
+Media attachment exposure holds Rules 4/86/100 at the host boundary: source-bound
+originals remain encrypted in media custody, recognized document credentials enter
+the existing vault before a temporary copy is created, and held secret material is
+redacted from that copy. Clean bytes retain their encoding. Missing custody or held
+credential state yields the ordinary unreadable attachment notice with tools enabled.
+Local ffmpeg and whisper-cli launches use the shared host resource owner as maintenance
+work, including Six allocation, answer reserve, tree census, stop and bounded output/time.
+Both run in the same private per-transcription directory, removed after completion.
