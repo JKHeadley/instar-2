@@ -1,6 +1,6 @@
 {
-  "generation": "sha256:e47428ccc1108cedcd3a8791cbe55eb4d9b7409913cfc76691049f1b9b9e7c5c",
-  "commit": "ca80da798e68cf86fb7c8fddc554c9bee9805d3b",
+  "generation": "sha256:d75b90db97f9a9736612c363e06414f9852900ea496d1b7baa6cc22787ac4cf7",
+  "commit": "cdf694ee4f9e25e2f164ae4399ad5d83e32e1d0e",
   "launchers": {
     "bin/instar-production.mjs": [
       {
@@ -9,7 +9,7 @@
         "module": "src/assembly",
         "availability": "available",
         "userFacing": false,
-        "text": "binds each supported harness and model doorway to certified code; the rest are marked unproven."
+        "text": "I distinguish tested ways of running from ones that have not been verified."
       },
       {
         "id": "intake-slice",
@@ -17,7 +17,7 @@
         "module": "src/intake",
         "availability": "available",
         "userFacing": false,
-        "text": "captures and receipts or holds every inbound message before any work; an uncertain arrival is kept."
+        "text": "I preserve incoming messages before working on them, including arrivals I need to verify."
       },
       {
         "id": "preview-conversation",
@@ -25,7 +25,7 @@
         "module": "tests/preview",
         "availability": "not-loaded",
         "userFacing": true,
-        "text": "answers the operator in the configured private Telegram chat or forum group, returning each reply to its originating topic."
+        "text": "I keep track across topics and answer you where you asked."
       },
       {
         "id": "preview-durable-memory",
@@ -33,7 +33,7 @@
         "module": "tests/preview",
         "availability": "not-loaded",
         "userFacing": true,
-        "text": "an encrypted local journal of messages, summaries and memory that survives restarts; the operator can correct or forget a fact."
+        "text": "I remember what matters across all our conversations; tell me if I have something wrong, or ask me to forget it."
       },
       {
         "id": "preview-owned-obligations",
@@ -41,7 +41,7 @@
         "module": "tests/preview",
         "availability": "not-loaded",
         "userFacing": true,
-        "text": "keeps standing instructions and works the promises its replies leave open, holding results for the next message."
+        "text": "I carry your instructions forward and work on my promises, bringing results back when we next talk."
       },
       {
         "id": "preview-requested-actions",
@@ -49,7 +49,7 @@
         "module": "tests/preview",
         "availability": "not-loaded",
         "userFacing": true,
-        "text": "an explicit later-time request is answered once at that time, or daily or weekdays until cancelled, with no new operator message."
+        "text": "I can keep reminders and repeating tasks, once, daily or on weekdays, until you cancel them."
       },
       {
         "id": "preview-status-command",
@@ -57,7 +57,7 @@
         "module": "tests/preview",
         "availability": "not-loaded",
         "userFacing": true,
-        "text": "\"status\" and \"how are you doing\" are answered from the journal without a model call."
+        "text": "I can tell you how I am doing from my current records."
       },
       {
         "id": "preview-upcoming-date-mention",
@@ -65,7 +65,7 @@
         "module": "tests/preview",
         "availability": "not-loaded",
         "userFacing": true,
-        "text": "a saved date within 48 hours can get one short mention in the next reply."
+        "text": "I can mention an important date coming up in the next two days."
       },
       {
         "id": "preview.coherence-check",
@@ -73,7 +73,7 @@
         "module": "tests/preview",
         "availability": "not-loaded",
         "userFacing": false,
-        "text": "checks each reply against remembered earlier turns without a model call."
+        "text": "I check my replies against what I remember."
       },
       {
         "id": "preview.rolling-summary",
@@ -81,7 +81,7 @@
         "module": "tests/preview",
         "availability": "not-loaded",
         "userFacing": false,
-        "text": "keeps a faithfulness-checked rolling summary of earlier turns."
+        "text": "I keep the important context from earlier conversations."
       },
       {
         "id": "preview.step-check",
@@ -89,7 +89,7 @@
         "module": "tests/preview",
         "availability": "not-loaded",
         "userFacing": false,
-        "text": "off unless launched with it; independently checks each business step and changes nothing."
+        "text": "An optional independent check can review my work; it is off unless enabled."
       },
       {
         "id": "register-tooling",
@@ -97,7 +97,7 @@
         "module": "src/register",
         "availability": "available",
         "userFacing": false,
-        "text": "generates the register, rule book, glossary and this briefing from the declarations in code."
+        "text": "My description of what I can do comes from the features installed here."
       },
       {
         "id": "rungraph-core",
@@ -105,7 +105,7 @@
         "module": "src/rungraph",
         "availability": "switched-off",
         "userFacing": true,
-        "text": "records each run as signed facts and refuses a step outside its budget or grant."
+        "text": "Track tasks with a durable work history and enforce their agreed budget and permissions."
       },
       {
         "id": "slack-conversation-adapter",
@@ -113,7 +113,7 @@
         "module": "src/conversation",
         "availability": "switched-off",
         "userFacing": true,
-        "text": "receives Slack Socket Mode messages from one bound direct message or thread into intake; it is dark and has no live proof."
+        "text": "Receive messages in a connected Slack direct message or thread."
       },
       {
         "id": "slack-ordinary-reply",
@@ -121,7 +121,7 @@
         "module": "src/conversation",
         "availability": "switched-off",
         "userFacing": true,
-        "text": "prepares a plain-text Slack reply to the bound direct message or thread; it is dark and refuses to send."
+        "text": "Reply in a connected Slack direct message or thread."
       },
       {
         "id": "telegram-conversation-adapter",
@@ -129,7 +129,7 @@
         "module": "src/conversation",
         "availability": "switched-off",
         "userFacing": true,
-        "text": "long-polls the bound Telegram bot and hands one reply per admitted message to the effect doorway."
+        "text": "An additional Telegram connection for receiving messages and replying."
       }
     ],
     "scripts/host-watch.mjs": [
@@ -139,7 +139,7 @@
         "module": "src/assembly",
         "availability": "available",
         "userFacing": false,
-        "text": "binds each supported harness and model doorway to certified code; the rest are marked unproven."
+        "text": "I distinguish tested ways of running from ones that have not been verified."
       },
       {
         "id": "intake-slice",
@@ -147,7 +147,7 @@
         "module": "src/intake",
         "availability": "available",
         "userFacing": false,
-        "text": "captures and receipts or holds every inbound message before any work; an uncertain arrival is kept."
+        "text": "I preserve incoming messages before working on them, including arrivals I need to verify."
       },
       {
         "id": "preview-conversation",
@@ -155,7 +155,7 @@
         "module": "tests/preview",
         "availability": "not-loaded",
         "userFacing": true,
-        "text": "answers the operator in the configured private Telegram chat or forum group, returning each reply to its originating topic."
+        "text": "I keep track across topics and answer you where you asked."
       },
       {
         "id": "preview-durable-memory",
@@ -163,7 +163,7 @@
         "module": "tests/preview",
         "availability": "not-loaded",
         "userFacing": true,
-        "text": "an encrypted local journal of messages, summaries and memory that survives restarts; the operator can correct or forget a fact."
+        "text": "I remember what matters across all our conversations; tell me if I have something wrong, or ask me to forget it."
       },
       {
         "id": "preview-owned-obligations",
@@ -171,7 +171,7 @@
         "module": "tests/preview",
         "availability": "not-loaded",
         "userFacing": true,
-        "text": "keeps standing instructions and works the promises its replies leave open, holding results for the next message."
+        "text": "I carry your instructions forward and work on my promises, bringing results back when we next talk."
       },
       {
         "id": "preview-requested-actions",
@@ -179,7 +179,7 @@
         "module": "tests/preview",
         "availability": "not-loaded",
         "userFacing": true,
-        "text": "an explicit later-time request is answered once at that time, or daily or weekdays until cancelled, with no new operator message."
+        "text": "I can keep reminders and repeating tasks, once, daily or on weekdays, until you cancel them."
       },
       {
         "id": "preview-status-command",
@@ -187,7 +187,7 @@
         "module": "tests/preview",
         "availability": "not-loaded",
         "userFacing": true,
-        "text": "\"status\" and \"how are you doing\" are answered from the journal without a model call."
+        "text": "I can tell you how I am doing from my current records."
       },
       {
         "id": "preview-upcoming-date-mention",
@@ -195,7 +195,7 @@
         "module": "tests/preview",
         "availability": "not-loaded",
         "userFacing": true,
-        "text": "a saved date within 48 hours can get one short mention in the next reply."
+        "text": "I can mention an important date coming up in the next two days."
       },
       {
         "id": "preview.coherence-check",
@@ -203,7 +203,7 @@
         "module": "tests/preview",
         "availability": "not-loaded",
         "userFacing": false,
-        "text": "checks each reply against remembered earlier turns without a model call."
+        "text": "I check my replies against what I remember."
       },
       {
         "id": "preview.rolling-summary",
@@ -211,7 +211,7 @@
         "module": "tests/preview",
         "availability": "not-loaded",
         "userFacing": false,
-        "text": "keeps a faithfulness-checked rolling summary of earlier turns."
+        "text": "I keep the important context from earlier conversations."
       },
       {
         "id": "preview.step-check",
@@ -219,7 +219,7 @@
         "module": "tests/preview",
         "availability": "not-loaded",
         "userFacing": false,
-        "text": "off unless launched with it; independently checks each business step and changes nothing."
+        "text": "An optional independent check can review my work; it is off unless enabled."
       },
       {
         "id": "register-tooling",
@@ -227,7 +227,7 @@
         "module": "src/register",
         "availability": "available",
         "userFacing": false,
-        "text": "generates the register, rule book, glossary and this briefing from the declarations in code."
+        "text": "My description of what I can do comes from the features installed here."
       },
       {
         "id": "rungraph-core",
@@ -235,7 +235,7 @@
         "module": "src/rungraph",
         "availability": "switched-off",
         "userFacing": true,
-        "text": "records each run as signed facts and refuses a step outside its budget or grant."
+        "text": "Track tasks with a durable work history and enforce their agreed budget and permissions."
       },
       {
         "id": "slack-conversation-adapter",
@@ -243,7 +243,7 @@
         "module": "src/conversation",
         "availability": "switched-off",
         "userFacing": true,
-        "text": "receives Slack Socket Mode messages from one bound direct message or thread into intake; it is dark and has no live proof."
+        "text": "Receive messages in a connected Slack direct message or thread."
       },
       {
         "id": "slack-ordinary-reply",
@@ -251,7 +251,7 @@
         "module": "src/conversation",
         "availability": "switched-off",
         "userFacing": true,
-        "text": "prepares a plain-text Slack reply to the bound direct message or thread; it is dark and refuses to send."
+        "text": "Reply in a connected Slack direct message or thread."
       },
       {
         "id": "telegram-conversation-adapter",
@@ -259,7 +259,7 @@
         "module": "src/conversation",
         "availability": "switched-off",
         "userFacing": true,
-        "text": "long-polls the bound Telegram bot and hands one reply per admitted message to the effect doorway."
+        "text": "An additional Telegram connection for receiving messages and replying."
       }
     ],
     "tests/preview/agent.mjs": [
@@ -269,7 +269,7 @@
         "module": "src/assembly",
         "availability": "available",
         "userFacing": false,
-        "text": "binds each supported harness and model doorway to certified code; the rest are marked unproven."
+        "text": "I distinguish tested ways of running from ones that have not been verified."
       },
       {
         "id": "intake-slice",
@@ -277,7 +277,7 @@
         "module": "src/intake",
         "availability": "available",
         "userFacing": false,
-        "text": "captures and receipts or holds every inbound message before any work; an uncertain arrival is kept."
+        "text": "I preserve incoming messages before working on them, including arrivals I need to verify."
       },
       {
         "id": "preview-conversation",
@@ -285,7 +285,7 @@
         "module": "tests/preview",
         "availability": "not-loaded",
         "userFacing": true,
-        "text": "answers the operator in the configured private Telegram chat or forum group, returning each reply to its originating topic."
+        "text": "I keep track across topics and answer you where you asked."
       },
       {
         "id": "preview-durable-memory",
@@ -293,7 +293,7 @@
         "module": "tests/preview",
         "availability": "not-loaded",
         "userFacing": true,
-        "text": "an encrypted local journal of messages, summaries and memory that survives restarts; the operator can correct or forget a fact."
+        "text": "I remember what matters across all our conversations; tell me if I have something wrong, or ask me to forget it."
       },
       {
         "id": "preview-owned-obligations",
@@ -301,7 +301,7 @@
         "module": "tests/preview",
         "availability": "not-loaded",
         "userFacing": true,
-        "text": "keeps standing instructions and works the promises its replies leave open, holding results for the next message."
+        "text": "I carry your instructions forward and work on my promises, bringing results back when we next talk."
       },
       {
         "id": "preview-requested-actions",
@@ -309,7 +309,7 @@
         "module": "tests/preview",
         "availability": "not-loaded",
         "userFacing": true,
-        "text": "an explicit later-time request is answered once at that time, or daily or weekdays until cancelled, with no new operator message."
+        "text": "I can keep reminders and repeating tasks, once, daily or on weekdays, until you cancel them."
       },
       {
         "id": "preview-status-command",
@@ -317,7 +317,7 @@
         "module": "tests/preview",
         "availability": "not-loaded",
         "userFacing": true,
-        "text": "\"status\" and \"how are you doing\" are answered from the journal without a model call."
+        "text": "I can tell you how I am doing from my current records."
       },
       {
         "id": "preview-upcoming-date-mention",
@@ -325,7 +325,7 @@
         "module": "tests/preview",
         "availability": "not-loaded",
         "userFacing": true,
-        "text": "a saved date within 48 hours can get one short mention in the next reply."
+        "text": "I can mention an important date coming up in the next two days."
       },
       {
         "id": "preview.coherence-check",
@@ -333,7 +333,7 @@
         "module": "tests/preview",
         "availability": "not-loaded",
         "userFacing": false,
-        "text": "checks each reply against remembered earlier turns without a model call."
+        "text": "I check my replies against what I remember."
       },
       {
         "id": "preview.rolling-summary",
@@ -341,7 +341,7 @@
         "module": "tests/preview",
         "availability": "not-loaded",
         "userFacing": false,
-        "text": "keeps a faithfulness-checked rolling summary of earlier turns."
+        "text": "I keep the important context from earlier conversations."
       },
       {
         "id": "preview.step-check",
@@ -349,7 +349,7 @@
         "module": "tests/preview",
         "availability": "not-loaded",
         "userFacing": false,
-        "text": "off unless launched with it; independently checks each business step and changes nothing."
+        "text": "An optional independent check can review my work; it is off unless enabled."
       },
       {
         "id": "register-tooling",
@@ -357,7 +357,7 @@
         "module": "src/register",
         "availability": "available",
         "userFacing": false,
-        "text": "generates the register, rule book, glossary and this briefing from the declarations in code."
+        "text": "My description of what I can do comes from the features installed here."
       },
       {
         "id": "rungraph-core",
@@ -365,7 +365,7 @@
         "module": "src/rungraph",
         "availability": "switched-off",
         "userFacing": true,
-        "text": "records each run as signed facts and refuses a step outside its budget or grant."
+        "text": "Track tasks with a durable work history and enforce their agreed budget and permissions."
       },
       {
         "id": "slack-conversation-adapter",
@@ -373,7 +373,7 @@
         "module": "src/conversation",
         "availability": "switched-off",
         "userFacing": true,
-        "text": "receives Slack Socket Mode messages from one bound direct message or thread into intake; it is dark and has no live proof."
+        "text": "Receive messages in a connected Slack direct message or thread."
       },
       {
         "id": "slack-ordinary-reply",
@@ -381,7 +381,7 @@
         "module": "src/conversation",
         "availability": "switched-off",
         "userFacing": true,
-        "text": "prepares a plain-text Slack reply to the bound direct message or thread; it is dark and refuses to send."
+        "text": "Reply in a connected Slack direct message or thread."
       },
       {
         "id": "telegram-conversation-adapter",
@@ -389,7 +389,7 @@
         "module": "src/conversation",
         "availability": "switched-off",
         "userFacing": true,
-        "text": "long-polls the bound Telegram bot and hands one reply per admitted message to the effect doorway."
+        "text": "An additional Telegram connection for receiving messages and replying."
       }
     ],
     "tests/preview/conversation-authority-server.mjs": [
@@ -399,7 +399,7 @@
         "module": "src/assembly",
         "availability": "not-loaded",
         "userFacing": false,
-        "text": "binds each supported harness and model doorway to certified code; the rest are marked unproven."
+        "text": "I distinguish tested ways of running from ones that have not been verified."
       },
       {
         "id": "intake-slice",
@@ -407,7 +407,7 @@
         "module": "src/intake",
         "availability": "not-loaded",
         "userFacing": false,
-        "text": "captures and receipts or holds every inbound message before any work; an uncertain arrival is kept."
+        "text": "I preserve incoming messages before working on them, including arrivals I need to verify."
       },
       {
         "id": "preview-conversation",
@@ -415,7 +415,7 @@
         "module": "tests/preview",
         "availability": "not-loaded",
         "userFacing": true,
-        "text": "answers the operator in the configured private Telegram chat or forum group, returning each reply to its originating topic."
+        "text": "I keep track across topics and answer you where you asked."
       },
       {
         "id": "preview-durable-memory",
@@ -423,7 +423,7 @@
         "module": "tests/preview",
         "availability": "not-loaded",
         "userFacing": true,
-        "text": "an encrypted local journal of messages, summaries and memory that survives restarts; the operator can correct or forget a fact."
+        "text": "I remember what matters across all our conversations; tell me if I have something wrong, or ask me to forget it."
       },
       {
         "id": "preview-owned-obligations",
@@ -431,7 +431,7 @@
         "module": "tests/preview",
         "availability": "not-loaded",
         "userFacing": true,
-        "text": "keeps standing instructions and works the promises its replies leave open, holding results for the next message."
+        "text": "I carry your instructions forward and work on my promises, bringing results back when we next talk."
       },
       {
         "id": "preview-requested-actions",
@@ -439,7 +439,7 @@
         "module": "tests/preview",
         "availability": "not-loaded",
         "userFacing": true,
-        "text": "an explicit later-time request is answered once at that time, or daily or weekdays until cancelled, with no new operator message."
+        "text": "I can keep reminders and repeating tasks, once, daily or on weekdays, until you cancel them."
       },
       {
         "id": "preview-status-command",
@@ -447,7 +447,7 @@
         "module": "tests/preview",
         "availability": "not-loaded",
         "userFacing": true,
-        "text": "\"status\" and \"how are you doing\" are answered from the journal without a model call."
+        "text": "I can tell you how I am doing from my current records."
       },
       {
         "id": "preview-upcoming-date-mention",
@@ -455,7 +455,7 @@
         "module": "tests/preview",
         "availability": "not-loaded",
         "userFacing": true,
-        "text": "a saved date within 48 hours can get one short mention in the next reply."
+        "text": "I can mention an important date coming up in the next two days."
       },
       {
         "id": "preview.coherence-check",
@@ -463,7 +463,7 @@
         "module": "tests/preview",
         "availability": "not-loaded",
         "userFacing": false,
-        "text": "checks each reply against remembered earlier turns without a model call."
+        "text": "I check my replies against what I remember."
       },
       {
         "id": "preview.rolling-summary",
@@ -471,7 +471,7 @@
         "module": "tests/preview",
         "availability": "not-loaded",
         "userFacing": false,
-        "text": "keeps a faithfulness-checked rolling summary of earlier turns."
+        "text": "I keep the important context from earlier conversations."
       },
       {
         "id": "preview.step-check",
@@ -479,7 +479,7 @@
         "module": "tests/preview",
         "availability": "not-loaded",
         "userFacing": false,
-        "text": "off unless launched with it; independently checks each business step and changes nothing."
+        "text": "An optional independent check can review my work; it is off unless enabled."
       },
       {
         "id": "register-tooling",
@@ -487,7 +487,7 @@
         "module": "src/register",
         "availability": "not-loaded",
         "userFacing": false,
-        "text": "generates the register, rule book, glossary and this briefing from the declarations in code."
+        "text": "My description of what I can do comes from the features installed here."
       },
       {
         "id": "rungraph-core",
@@ -495,7 +495,7 @@
         "module": "src/rungraph",
         "availability": "not-loaded",
         "userFacing": true,
-        "text": "records each run as signed facts and refuses a step outside its budget or grant."
+        "text": "Track tasks with a durable work history and enforce their agreed budget and permissions."
       },
       {
         "id": "slack-conversation-adapter",
@@ -503,7 +503,7 @@
         "module": "src/conversation",
         "availability": "not-loaded",
         "userFacing": true,
-        "text": "receives Slack Socket Mode messages from one bound direct message or thread into intake; it is dark and has no live proof."
+        "text": "Receive messages in a connected Slack direct message or thread."
       },
       {
         "id": "slack-ordinary-reply",
@@ -511,7 +511,7 @@
         "module": "src/conversation",
         "availability": "not-loaded",
         "userFacing": true,
-        "text": "prepares a plain-text Slack reply to the bound direct message or thread; it is dark and refuses to send."
+        "text": "Reply in a connected Slack direct message or thread."
       },
       {
         "id": "telegram-conversation-adapter",
@@ -519,7 +519,7 @@
         "module": "src/conversation",
         "availability": "not-loaded",
         "userFacing": true,
-        "text": "long-polls the bound Telegram bot and hands one reply per admitted message to the effect doorway."
+        "text": "An additional Telegram connection for receiving messages and replying."
       }
     ],
     "tests/preview/journal-agent.mjs": [
@@ -529,7 +529,7 @@
         "module": "src/assembly",
         "availability": "available",
         "userFacing": false,
-        "text": "binds each supported harness and model doorway to certified code; the rest are marked unproven."
+        "text": "I distinguish tested ways of running from ones that have not been verified."
       },
       {
         "id": "intake-slice",
@@ -537,7 +537,7 @@
         "module": "src/intake",
         "availability": "available",
         "userFacing": false,
-        "text": "captures and receipts or holds every inbound message before any work; an uncertain arrival is kept."
+        "text": "I preserve incoming messages before working on them, including arrivals I need to verify."
       },
       {
         "id": "preview-conversation",
@@ -545,7 +545,7 @@
         "module": "tests/preview",
         "availability": "available",
         "userFacing": true,
-        "text": "answers the operator in the configured private Telegram chat or forum group, returning each reply to its originating topic."
+        "text": "I keep track across topics and answer you where you asked."
       },
       {
         "id": "preview-durable-memory",
@@ -553,7 +553,7 @@
         "module": "tests/preview",
         "availability": "available",
         "userFacing": true,
-        "text": "an encrypted local journal of messages, summaries and memory that survives restarts; the operator can correct or forget a fact."
+        "text": "I remember what matters across all our conversations; tell me if I have something wrong, or ask me to forget it."
       },
       {
         "id": "preview-owned-obligations",
@@ -561,7 +561,7 @@
         "module": "tests/preview",
         "availability": "available",
         "userFacing": true,
-        "text": "keeps standing instructions and works the promises its replies leave open, holding results for the next message."
+        "text": "I carry your instructions forward and work on my promises, bringing results back when we next talk."
       },
       {
         "id": "preview-requested-actions",
@@ -569,7 +569,7 @@
         "module": "tests/preview",
         "availability": "available",
         "userFacing": true,
-        "text": "an explicit later-time request is answered once at that time, or daily or weekdays until cancelled, with no new operator message."
+        "text": "I can keep reminders and repeating tasks, once, daily or on weekdays, until you cancel them."
       },
       {
         "id": "preview-status-command",
@@ -577,7 +577,7 @@
         "module": "tests/preview",
         "availability": "available",
         "userFacing": true,
-        "text": "\"status\" and \"how are you doing\" are answered from the journal without a model call."
+        "text": "I can tell you how I am doing from my current records."
       },
       {
         "id": "preview-upcoming-date-mention",
@@ -585,7 +585,7 @@
         "module": "tests/preview",
         "availability": "available",
         "userFacing": true,
-        "text": "a saved date within 48 hours can get one short mention in the next reply."
+        "text": "I can mention an important date coming up in the next two days."
       },
       {
         "id": "preview.coherence-check",
@@ -593,7 +593,7 @@
         "module": "tests/preview",
         "availability": "available",
         "userFacing": false,
-        "text": "checks each reply against remembered earlier turns without a model call."
+        "text": "I check my replies against what I remember."
       },
       {
         "id": "preview.rolling-summary",
@@ -601,7 +601,7 @@
         "module": "tests/preview",
         "availability": "available",
         "userFacing": false,
-        "text": "keeps a faithfulness-checked rolling summary of earlier turns."
+        "text": "I keep the important context from earlier conversations."
       },
       {
         "id": "preview.step-check",
@@ -609,7 +609,7 @@
         "module": "tests/preview",
         "availability": "available",
         "userFacing": false,
-        "text": "off unless launched with it; independently checks each business step and changes nothing."
+        "text": "An optional independent check can review my work; it is off unless enabled."
       },
       {
         "id": "register-tooling",
@@ -617,7 +617,7 @@
         "module": "src/register",
         "availability": "available",
         "userFacing": false,
-        "text": "generates the register, rule book, glossary and this briefing from the declarations in code."
+        "text": "My description of what I can do comes from the features installed here."
       },
       {
         "id": "rungraph-core",
@@ -625,7 +625,7 @@
         "module": "src/rungraph",
         "availability": "switched-off",
         "userFacing": true,
-        "text": "records each run as signed facts and refuses a step outside its budget or grant."
+        "text": "Track tasks with a durable work history and enforce their agreed budget and permissions."
       },
       {
         "id": "slack-conversation-adapter",
@@ -633,7 +633,7 @@
         "module": "src/conversation",
         "availability": "switched-off",
         "userFacing": true,
-        "text": "receives Slack Socket Mode messages from one bound direct message or thread into intake; it is dark and has no live proof."
+        "text": "Receive messages in a connected Slack direct message or thread."
       },
       {
         "id": "slack-ordinary-reply",
@@ -641,7 +641,7 @@
         "module": "src/conversation",
         "availability": "switched-off",
         "userFacing": true,
-        "text": "prepares a plain-text Slack reply to the bound direct message or thread; it is dark and refuses to send."
+        "text": "Reply in a connected Slack direct message or thread."
       },
       {
         "id": "telegram-conversation-adapter",
@@ -649,7 +649,7 @@
         "module": "src/conversation",
         "availability": "switched-off",
         "userFacing": true,
-        "text": "long-polls the bound Telegram bot and hands one reply per admitted message to the effect doorway."
+        "text": "An additional Telegram connection for receiving messages and replying."
       }
     ]
   }
