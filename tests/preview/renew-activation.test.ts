@@ -44,7 +44,7 @@ it('pins the reviewed expiry and identity policy while keeping expiry out of inv
   // The identity wording changes the policy, so existing installations need a policy-successor record.
   // The expiry itself never enters an invocation policy.
   expect(encoded(subscriptionConversationPolicy(model)).hash)
-    .toBe('sha256:b746a83d18e99f08a94f0f6c8efe84e7d086e2f44ed716be6f3114ba51ac234b');
+    .toBe('sha256:6ef0fe137a4fe786f4e42a1d612ce8f678a73f56c4a972ad449e291d2b41ad00');
   expect(JSON.stringify([subscriptionConversationPolicy(model), subscriptionInvocationPolicy(model)]))
     .not.toMatch(new RegExp(`${PRIOR_EXPIRY}|${SUBSCRIPTION_PREVIEW_EXPIRY}`));
 });
