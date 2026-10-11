@@ -24,6 +24,8 @@ Prompt finding: 849db3a6296a | protocol-literal | unchanged memory-list explanat
 Prompt finding: bd01de21286a | protocol-literal | unchanged sourceLabel citation protocol, not a copied answer or fixed trigger
 Prompt finding: fb5fa7e706c8 | protocol-literal | unchanged recall-grounding guidance; this repair changes memoryDecision wording only
 
+Verification: 184 targeted tests pass on final source (158 packet regressions and 26 latency/pressure/recorded-shape checks); tsc and build pass. All tests ran foreground at nice -n 10 with --maxWorkers 1. Desk rehash/repin scripts made no owner/inventory changes; build-register --replay at f589c692 regenerated seven artifacts, committed in 20386e92. Historical contract maps pass through their coverage/source checks; P5/assembly require a new current-source full-process receipt and P11 requires a current full-checkout report, both deliberately left to the pipeline. No skips or quarantines were added.
+
 ## Closing block
 
 simplestRobustRoute: shorten the existing guidance while preserving its decisions and schema, leaving the byte envelope and evidence priorities intact. This is the simplest robust route: no new mechanism. Start guards remain durable verified intake; end-state checks replay real output shapes and exercise the reported packet failures; resource, authority and effect guards are unchanged. No autonomous deployed-completion claim is made.
