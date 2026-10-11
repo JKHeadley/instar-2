@@ -1,5 +1,21 @@
 [
   {
+    "revision": 13,
+    "date": "2026-10-10",
+    "status": "draft",
+    "cause": {
+      "kind": "conversation",
+      "note": "Justin, topic 102965, 2026-10-10 17:23 PDT: \"Yes, I like this ... I approve the changes\"; constitution-amendments-approved-2026-10-10.md, observer #239; final-head GitHub approval and merge pending."
+    },
+    "changes": [
+      {
+        "what": "Align sovereignty, self-unblocking, awareness, sourced limits, standing grants and the verification rows with the purpose; distinguish testing and model supervision from the person’s sign-off.",
+        "why": "Role grants permit ordinary work without repeated approval; verification and real-use evidence remain requirements, not extra sign-off conditions.",
+        "ref": "Justin, topic 102965, 2026-10-10 17:23 PDT: \"Yes, I like this ... I approve the changes\"; constitution-amendments-approved-2026-10-10.md, observer #239; final-head GitHub approval and merge pending."
+      }
+    ]
+  },
+  {
     "revision": 12,
     "date": "2026-09-23",
     "status": "approved",
