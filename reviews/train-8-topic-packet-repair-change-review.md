@@ -1,6 +1,6 @@
 # Change review — preserve the historical topic-awareness packet proof
 
-Subject base: 4dcf0fd9e564e9b452bad4f8eb363d5200f6692b
+Subject base: f24f9d426e0bb5412a1366ad17b0994a0e35765d
 Review state: open
 Reviewed content: none
 Outcome: The private-chat regression test retains its afa6be39 digest while accounting for the memoryDecision wording already changed in f589c692. It verifies current guidance separately and restores only that historical field from the existing immutable live capture before hashing. All other packet bytes remain covered by the original digest.
@@ -18,7 +18,7 @@ Bug class: integration
 Bug evidence: reproducer=tests/preview/topic-awareness.test.ts
 Hook bypass: none; core.hooksPath is unset and the hooks directory contains only samples.
 Convergence: none
-Decision: train8-topic-historical-field | Preserve the old digest and restore only the reviewed field from the existing capture, asserting current guidance separately; no production rollback, increased cap or new fixture is needed. | reported=/Users/dabombstudio/.instar/agents/echo/.instar/lanes/train-8-repair-PROGRESS.md
+Decision: train8-topic-historical-field | Preserve the old digest and restore only the reviewed field from the existing capture, asserting current guidance separately; no production rollback, increased cap or new fixture is needed. | reported=/Users/dabombstudio/.instar/agents/echo/.instar/lanes/inrole-act-live-repair-PROGRESS.md
 Prompt review: No model-facing change. Existing topic-awareness cases replay real updates 969390330–969390332 and two subscription-model outputs through context construction, parsing and captured delivery. Historical wording comes from the committed inrole-memory capture. This test-only repair claims no new model judgment or live deployment.
 
 Subject (1 paths): tests/preview/topic-awareness.test.ts
