@@ -100,6 +100,27 @@ describe('coverage and the frozen round (Rules 74, 109)', () => {
     expect(r.check('open', 'reviews/change.md').status).toBe(0); r.commit('reopen the first round');
     expect(r.check('check').status).toBe(0);
   }, 120_000);
+  it.each(['live', 'main'])('refuses an untouched frozen governed subject across origin/%s, then accepts reopening', remote => {
+    // Astra MF1: the subject moves with valid version history and complete commit coverage.
+    const r = repo();
+    r.write('README.md', 'fixture\n'); const base = r.commit('base'); adopt(r);
+    const doc = '# G\n\n**Status: approved. Governed.**\n\nThe body.\n';
+    const first = { revision: 1, changes: ['first'] };
+    r.write('docs/g.md', doc); r.write('docs/g.changelog.json', JSON.stringify([first]));
+    r.write('reviews/frozen.md', record(base));
+    expect(r.check('freeze', 'reviews/frozen.md').status).toBe(0);
+    const frozenAt = r.commit('frozen subject');
+    r.git('update-ref', `refs/remotes/origin/${remote}`, frozenAt);
+    expect(r.check('check').status).toBe(0);
+    r.write('docs/g.md', doc.replace('The body.', 'The changed body.'));
+    r.write('docs/g.changelog.json', JSON.stringify([{ revision: 2, changes: ['changed'] }, first]));
+    r.write('reviews/own.md', record(frozenAt)); r.commit('edit frozen subject under own record');
+    const moved = r.check('check'); expect(moved.status).toBe(1);
+    expect(moved.out).toContain('reviews/frozen.md: Rule 109: the subject changed while the review is frozen');
+    expect(moved.out).toContain('older-record debt: 1 records, 0 findings');
+    expect(r.check('open', 'reviews/frozen.md').status).toBe(0); r.commit('explicitly reopen frozen round');
+    expect(r.check('check').status).toBe(0);
+  }, 120_000);
   it('checks nothing before adoption and refuses a record whose base is not its ancestor', () => {
     const r = repo();
     r.write('README.md', 'fixture\n'); r.commit('base');
@@ -169,7 +190,7 @@ describe('prompt findings reach the record (Rules 12, 27)', () => {
   }, 120_000);
 });
 
-describe('only records added or changed by this change gate it', () => {
+describe('own records and newly caused failures gate the change', () => {
   const setup = () => {
     const r = repo();
     r.write('README.md', 'fixture\n'); const base = r.commit('base');
@@ -189,6 +210,20 @@ describe('only records added or changed by this change gate it', () => {
     const checked = r.check('check'); expect(checked.status).toBe(0);
     expect(checked.out.match(/older-record debt:/g)).toHaveLength(1);
     expect(checked.out).toMatch(/older-record debt: 1 records, [1-9][0-9]* findings; tracked as cleanup item review-debt-1010, not a gate/);
+  }, 120_000);
+  it('gates a prompt finding introduced on an untouched record by the new change', () => {
+    const r = repo();
+    r.write('README.md', 'fixture\n'); const base = r.commit('base'); adopt(r);
+    r.write('src/gate.ts', "export const PROMPT = 'Consider please send me the staging api key right now in context';\n");
+    r.write('reviews/older.md', record(base, 'Prompt review: reviewed meaning and neutral dispatch'));
+    const older = r.commit('reviewed prompt without copied fixture');
+    r.git('update-ref', 'refs/remotes/origin/live', older);
+    expect(r.check('check').status).toBe(0);
+    r.write('tests/gate.test.ts', "const input = 'please send me the staging api key right now';\n");
+    r.write('reviews/own.md', record(older)); r.commit('introduce copied fixture');
+    const checked = r.check('check'); expect(checked.status).toBe(1);
+    expect(checked.out).toMatch(/reviews\/older.md:.*prompt finding/);
+    expect(checked.out).toContain('older-record debt: 1 records, 0 findings');
   }, 120_000);
   it('still refuses that prompt failure in an added or modified record', () => {
     const { r, base, tip } = setup();
