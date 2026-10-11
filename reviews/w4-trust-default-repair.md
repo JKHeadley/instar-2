@@ -23,6 +23,10 @@ Prompt finding: 450c79237a95 | protocol-literal | Existing ambiguous-memory conv
 
 Subject (7 paths): docs/standing-trust-setup.md, src/assembly/harness.declarations.json, src/assembly/production-codex-provider.ts, src/assembly/production-provider.ts, tests/preview/tool-turn.mjs, tests/preview/tool-turn.test.ts, tests/preview/trust-setup.test.ts
 
+Register maintenance: Ran delegated owner-manifest rehash and desk repin chain; no owner/inventory pins changed. Replayed generated register from b1a0532d07f924c40776870ad92ed67b20184c22, generation sha256:118747f543ce46d70f8b4ee8d64fd1d77df827cc8d0182fa45714644ad68a50d. This record covers the source repair and generated publication.
+
+Evidence: Typecheck/build pass; setup 8, Codex adapter 18, tool-turn 15 and native contract 9 tests pass (50 total, foreground nice -n 10, one worker). Eight saved-report contract checkers pass; p5/assembly require current-revision process/assertion evidence and p11 requires the new setup file absent from the parent report. The new file passes targeted. Full gate remains pipeline-owned; no current full-run result is asserted.
+
 ## Closing block
 
 simplestRobustRoute: This is the simplest robust route: pass the exact prepared vault-wrapped launches to the existing Codex TOML configuration mechanism. It prevents the observed silent loss of setup servers without new IO in core, registry, authority classifier, or live model call. Existing admission and model budget hooks remain start/limit guards; actual CLI consumption/removal and native contract verify end state.
