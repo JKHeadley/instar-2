@@ -14,6 +14,7 @@ Side effects: Review reasoning is requested in at most two short sentences, with
 Undo and recovery: Revert the source, fixture, test and review in a new commit, then regenerate the register from the restored source. No journal migration or live-root edit is required.
 Multi-machine posture: Same prompt on every machine; no new state, ownership, lease, replication or cross-machine communication. Offline replay journals and desk evidence are deliberately machine-local.
 Layer below: Inspected the physical provider's 2048-token refusal, the recorded output-cap outcome, invokeSubscription's uncertain mapping, full-context rule selection, the shared-audience hold, the one bounded revision and its review, and the journal's one-send receipt. The group disclosure checkpoint remains closed on unavailable review.
+Register publication: Rebuilt generated/ from source commit 5de41bab7ac7003f0a079baa7210f505a02526aa using build-register --replay. The delegated owner-manifest and inventory-chain repin tools found zero stale pins; no pins were hand-edited. This record covers the mechanical publication commit as well.
 Bug class: integration
 Bug evidence: reproducer=tests/preview/reply-review-output-budget.test.ts
 Hook bypass: none
