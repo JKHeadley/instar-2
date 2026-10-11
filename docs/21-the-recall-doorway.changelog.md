@@ -4,6 +4,10 @@ _Generated from `21-the-recall-doorway.changelog.json` by `scripts/render-change
 The document itself reads as a first version; every change to it is recorded here, newest first,
 each linked to the git change that made it (rule 91).
 
+## Revision 6 · 2026-10-10 · draft — operator review on PR #157; Astra round 1, head 309cf8e22f305c5490d9220608497076c380d14c; docs-align-1010 round 2 repair.
+
+- **Point the ownership glossary and live-review introduction to the purpose sign-off list and glossary meaning; describe live-review eligibility separately.** — N1: sign-off classification and selective irreversible history review have distinct governing conditions. _(`309cf8e22`, lanes/astra-unit-docs-align-1010-review.r1.md; reviews/docs-align-1010-r2-change-review.md)_
+
 ## Revision 5 · 2026-10-10 · draft — Justin, docs-align-1010: align design parts with the constitution amendments merged in PR #154; final-head code-owner approval pending.
 
 - **Separate sign-off from irreversible live-review selection and correct the reversible outside-role and sensitive controls.** — The governing purpose fixes agency, identity, onboarding, sign-off and acceptance; design prose must not impose incompatible defaults or claim readiness from verification alone. _(`fc0e3c20`, docs/00-the-purpose.md; docs/01-the-rules.md; reviews/docs-align-1010-change-review.md)_

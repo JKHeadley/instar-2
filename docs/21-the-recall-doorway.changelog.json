@@ -1,5 +1,25 @@
 [
   {
+    "revision": 6,
+    "date": "2026-10-10",
+    "status": "draft",
+    "cause": {
+      "kind": "review",
+      "pr": 157,
+      "note": "Astra round 1, head 309cf8e22f305c5490d9220608497076c380d14c; docs-align-1010 round 2 repair."
+    },
+    "changes": [
+      {
+        "what": "Point the ownership glossary and live-review introduction to the purpose sign-off list and glossary meaning; describe live-review eligibility separately.",
+        "why": "N1: sign-off classification and selective irreversible history review have distinct governing conditions.",
+        "commits": [
+          "309cf8e22f305c5490d9220608497076c380d14c"
+        ],
+        "ref": "lanes/astra-unit-docs-align-1010-review.r1.md; reviews/docs-align-1010-r2-change-review.md"
+      }
+    ]
+  },
+  {
     "revision": 5,
     "date": "2026-10-10",
     "status": "draft",

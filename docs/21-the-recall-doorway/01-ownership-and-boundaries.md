@@ -77,7 +77,7 @@ sources only; research method names identify experiment evidence, not consumed c
 | Derived belief | A source-linked interpretation of what appears true, including validity interval, uncertainty and contradiction. It is not the speaker's own statement. |
 | Procedural lesson | A proposed or accepted way to act, with originating evidence and evaluation. It is neither an episode nor a standing grant. |
 | Evidence frontier | The per-lineage admitted-history boundary visible for this attempt, plus each queried index's covered spans and holes. It is not “all history everywhere.” |
-| Consequential effect | Inherits only [the purpose’s definition](../00-the-purpose.md#the-purpose), without a local restatement or narrower classification. |
+| Consequential effect | Uses [the purpose’s sign-off list](../00-the-purpose.md#the-purpose) and [the glossary’s sign-off meaning](../03-the-glossary.md#consequential-and-ordinary). Selection for extra live history review is separate, as defined in section 8. |
 | History-review candidates | A policy-selected subset of irreversible effects eligible for extra history review. Section 8 selects concrete operations within approved classes only when a declared historical dependency or concrete unresolved source conflict is present; membership alone does not authorize semantic blocking. |
 | Meaning-based search index | A searchable representation that finds related meaning even when the query and source use different words. |
 | Coherence opportunity | A later behavior whose permitted source evidence and expected use can be assessed against the recorded criteria. Unlabeled turns are not assumed successes. |

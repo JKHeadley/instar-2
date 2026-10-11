@@ -3,8 +3,11 @@
 **Rule — policy selects history-review candidates; the sentinel does not acquire authority.**
 Rules 4, 28, 42, 57, 66, 77, 86, 95 and 103; **checks: P21-NF-03/04/07/13/14/24**.
 Proposal C is selective, owner-policy-governed live review for history-review candidates only.
-Consequential classification inherits the purpose’s definition through section 1; selection
-for extra history review is a separate, narrower policy decision.
+Sign-off classification follows [the purpose’s sign-off list](../00-the-purpose.md#the-purpose)
+and [the glossary’s sign-off meaning](../03-the-glossary.md#consequential-and-ordinary).
+Selection for extra live history review is a separate policy decision: only irreversible
+operations in an approved class with a declared historical dependency or a concrete unresolved
+source conflict qualify.
 Deterministic checks precede semantic work. Ordinary conversation, acknowledgments and other
 nonqualifying work use retrospective review as their default; a vague memory-risk phrase does
 not insert a live blocking reviewer. This design does not adopt R5's optional ordinary-chat
