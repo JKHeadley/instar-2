@@ -287,12 +287,12 @@ export function lookupWords(output: string): string[] | undefined {
 /** Rule 7: the answer path's one statement of a memory decision item. Live 2026-09-30 (updates 969389720, 969389737)
  * the terse prose guidance left the model to copy packet.memory's display rows (mode "corrected", no quote, a
  * paraphrased replacement), which the validator refuses, so every correction after the first recorded one failed. */
-export const MEMORY_ITEM_SHAPE = 'Each memory item has exactly this shape: {"mode":"correct"|"forget"|"update"|"prefer",'
-  + '"source":<an id from memoryCandidates; for prefer, preferenceSource>,"quote":<the complete old clause copied word for word '
-  + 'from that source\'s message; for prefer, the style clause from the current message>,"replacement":<correct and update only: '
-  + 'the new clause copied word for word from the operator\'s current message>,"replies":<optional: ids of memoryCandidates whose '
-  + 'reply restates the old fact>,"summaryPassages":<optional: exact passages of the prior summary that express the old fact>}. '
-  + 'packet.memory lists changes already recorded, in a display shape; never copy that shape.';
+export const MEMORY_ITEM_SHAPE = 'Memory item: {"mode":"correct"|"forget"|"update"|"prefer",'
+  + '"source":<memoryCandidates id; for prefer, preferenceSource>,"quote":<complete old clause verbatim '
+  + 'from source.message; for prefer, current message style clause>,"replacement":<correct and update only: '
+  + 'new clause verbatim from current operator message>,"replies":<optional: ids of memoryCandidates whose '
+  + 'reply restates the old fact>,"summaryPassages":<optional: exact passages of the prior summary expressing the old fact>}. '
+  + 'Never copy packet.memory display rows (recorded changes).';
 /** Only a root carrying a group lineage offers predecessorMemory, so only its memory guidance names it; a root without a
  * carry keeps MEMORY_ITEM_SHAPE byte for byte. */
 export const CARRIED_MEMORY_ITEM_SOURCE = 'A source may also be a source from predecessorMemory.entries, quoting that carried entry text word for word.';
@@ -7285,7 +7285,7 @@ export function createJournalWorker(journal: ReturnType<typeof openPreviewJourna
             found: lookup.found.filter(item => datedBase.includes(JSON.stringify(item.id))).length, note: LOOKUP_DONE_GUIDANCE } }
             : compact && summary && lookupOffered ? { memoryLookup: LOOKUP_OFFERED } : {}),
           // Update mode and new conflicts can only cite an offered candidate or contradiction, so their guidance rides with those.
-          ...(fromOperator(turn) ? { memoryDecision: `This verified operator message is already saved in the durable conversation journal and remains available after restart. A request to remember an ordinary in-role fact is fulfilled by that record: acknowledge it without asking again. Preserve the statement's wording and attribution rather than inventing an owner for the fact. Return memory:[] unless the verified operator corrects, forgets or sets reply style; an empty memory list means no such change, not an unsaved message. ${MEMORY_ITEM_SHAPE}${journal.view.groupCarry ? ` ${CARRIED_MEMORY_ITEM_SOURCE}` : ''} For an earlier answer use in:"reply" with its exact old reply clause and keep the question. `
+          ...(fromOperator(turn) ? { memoryDecision: `Ordinary facts are journaled across restarts: acknowledge it without asking again; keep wording and attribution. memory:[] means no edits. Return memory:[] unless the verified operator corrects, forgets or sets reply style. ${MEMORY_ITEM_SHAPE}${journal.view.groupCarry ? ` ${CARRIED_MEMORY_ITEM_SOURCE}` : ''} For an earlier answer use in:"reply", exact old reply clause; keep the question. `
             + (offered.length || (JSON.parse(datedBase) as { contradictions?: unknown[] }).contradictions?.length ? 'A newer operator statement of the same fact without correction words uses mode:"update", an exact old clause from an offered operator memoryCandidate or contradiction (hints only) and the exact new clause from this turn; the old dated value stays retrievable. ' : '')
             + 'Unknown target: memoryDisposition:"unresolved". Undo only via undoDecision.', preferenceSource: turn.id,
             ...(failureOffer ? { memoryFailureDecision: MEMORY_FAILURE_DECISION, searchedTurn: failureOffer.id } : {}),
@@ -9489,7 +9489,7 @@ export function createJournalWorker(journal: ReturnType<typeof openPreviewJourna
       + 'For a correction to your earlier answer, use mode:"correct", in:"reply", its candidate id and an exact old reply clause; preserve its original question. '
       + 'If the operator corrects your earlier answer rather than an operator/source fact, use mode:"correct", in:"reply", the answer candidate id, and an exact old clause from its reply. Preserve the original question. '
       + 'For a correction, preserve the new fact and omit the old claim from the summary. For forget, omit the item entirely. '
-      + 'For each memory action, include replies: ids of memoryCandidates whose reply repeats or restates the old fact, including short answers, and summaryPassages: exact passages of the prior summary that express the old fact; leave unrelated material alone. '
+      + 'For each memory action, include replies: ids of memoryCandidates whose reply repeats or restates the old fact, including short answers, and summaryPassages: exact passages of the prior summary expressing the old fact; leave unrelated material alone. '
       + 'Return memory: [] when no direct request applies; set memoryDisposition: "unresolved" when a direct request has no identifiable source. '
       + `Keep the complete JSON response within ${SUMMARY_TARGET_OUTPUT_TOKENS} output tokens; use concise summary prose and exact short quotes. `
       + `Put the summary prose in the summary field. Keep the summary prose within ${String(summaryTextBound())} bytes of UTF-8: a plain ASCII character is one byte, an accented or non-Latin character two to four, so non-ASCII prose holds fewer characters; that keeps the whole answer inside its output limit. `
