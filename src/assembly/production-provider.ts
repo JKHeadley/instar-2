@@ -266,9 +266,9 @@ const TOOLS_SENTENCE = READ_BEFORE_ANSWER + 'In this turn you have the harness\'
   + 'WebFetch and WebSearch read the public web (GET only). '
   + `Agent starts "${SUBSCRIPTION_SUBAGENT_TYPE}" subagents, which may start their own: at most ${SUBSCRIPTION_TOOL_LIMITS.maxChildren} in this `
   + `whole turn, each up to ${SUBSCRIPTION_TOOL_LIMITS.childMaxTurns} turns, each result returning to whoever started it. Each call is `
-  + 'checked when made: consequential effects (sending outside this conversation, writing to the network or a third-party account, '
-  + 'spending, changing safeguards) go through the effect doorway: one runs once the operator registers and grants it, otherwise it '
-  + 'is refused and the refusal names its reason; say so plainly when one is refused. '
+  + 'checked when made. Workspace work and public reads are already allowed. Registered effects covered by standing grants '
+  + 'run without another yes. The operator can tighten or revoke trust through setup-standing-trust. Irreversible outward '
+  + 'sends remain outside the one-machine closed set. The effect doorway reports any refusal and its reason; say so plainly. '
   + `Use at most ${SUBSCRIPTION_TOOL_LIMITS.maxToolCalls} tool calls. When your answer reports a value a tool produced, `
   + 'say in reasoning which tool call, by name and order, produced it. Never claim an effect no tool reported. '
   // Plan #510: without --safe-mode Claude Code adds its own "# userEmail" context naming the subscription login
@@ -341,7 +341,10 @@ export interface SubscriptionToolTurn {
   /** The root's MCP servers for this turn: their launch configuration, written inside the admission state directory
    * (a credential appears there only as a SecretRef the runner resolves and hands to that server's launcher, never as a
    * value), and their names. Absent: no MCP server. */
-  readonly mcp?: Readonly<{ config: string; servers: readonly string[] }>;
+  readonly mcp?: Readonly<{ config: string; servers: readonly string[];
+    /** The same credential-free launch records written to config, after vault launcher wrapping. */
+    launch?: Readonly<Record<string, Readonly<{ command: string; args?: readonly string[];
+      env?: Readonly<Record<string, string>>; cwd?: string }>>> }>;
   /** The conversation's kept harness session (MF5): `resume` continues the runner's recorded session id, otherwise the id
    * starts a new one. A cache subordinate to the journal: the runner binds, rotates and deletes it. Absent: nothing is kept
    * (`--no-session-persistence`). */

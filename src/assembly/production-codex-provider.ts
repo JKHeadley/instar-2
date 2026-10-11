@@ -82,7 +82,9 @@ const CODEX_TOOLS_SENTENCE = READ_BEFORE_ANSWER + 'In this turn you have your ow
   + 'network write is decided by the effect doorway. Web search and opening pages are live. A subagent shares this turn\'s limits and '
   + 'must return before you answer. A read of a host or matter the operator marked policy-sensitive, an MCP tool call, and any other '
   + 'step that acts outside this turn pass the effect doorway: ordinary work and work the operator has granted run; a consequential '
-  + 'step without a grant is refused, and a refusal is an answer you report, not something to route around. Repeating the same '
+  + 'step without a grant is refused. Existing standing grants already authorize their scoped work; do not ask for the same yes again. '
+  + 'The operator can tighten or revoke standing trust through setup-standing-trust. Irreversible outward sends remain outside '
+  + 'the one-machine closed set. A refusal is an answer you report, not something to route around. Repeating the same '
   + `consequential step with the same input is refused. The whole turn, subagents included, has at most `
   + `${CODEX_TOOL_LIMITS.maxTurns} model calls; a call past them is refused and the turn ends with no answer. When your answer reports `
   + 'a value a tool produced, say in reasoning which tool call, by name and order, produced it. Never claim an effect no tool '
@@ -114,7 +116,24 @@ export function codexToolHookArgs(turn: SubscriptionToolTurn): readonly string[]
   const gate = modelGateLaunch('codex-cli', turn.gate);
   const hook = (mode: 'pre' | 'post') => `[{matcher='*',hooks=[{type='command',command='${turn.hook.node} ${turn.hook.script} ${mode} `
     + `${turn.stateDirectory}',timeout=${Math.ceil(CODEX_TOOL_LIMITS.timeout / 1000)}}]}]`;
-  return ['-c', `hooks.PreToolUse=${hook('pre')}`, '-c', `hooks.PostToolUse=${hook('post')}`, ...gate.args, '-C', turn.workspace, '-'];
+  // Codex consumes TOML overrides, not Claude's JSON file. Pass the exact prepared launch records;
+  // vault references have already become the existing socket-backed launcher, never secret values.
+  // Per-invocation overrides leave the login home untouched, so removal applies on the next turn.
+  const mcp: string[] = [];
+  if (turn.mcp) {
+    const { servers, launch } = turn.mcp;
+    ensure(launch !== undefined && servers.length > 0 && Object.keys(launch).length === servers.length
+      && servers.every(name => /^[A-Za-z0-9_-]{1,64}$/u.test(name) && Object.hasOwn(launch, name)),
+    'codex tool turn: prepared MCP launch configuration required');
+    for (const name of servers) {
+      const server = launch![name]!;
+      const fields = [`command=${JSON.stringify(server.command)}`, `args=${JSON.stringify(server.args ?? [])}`];
+      if (server.cwd !== undefined) fields.push(`cwd=${JSON.stringify(server.cwd)}`);
+      fields.push(`env={${Object.entries(server.env ?? {}).map(([key, value]) => `${JSON.stringify(key)}=${JSON.stringify(value)}`).join(',')}}`);
+      mcp.push('-c', `mcp_servers.${name}={${fields.join(',')}}`);
+    }
+  }
+  return ['-c', `hooks.PreToolUse=${hook('pre')}`, '-c', `hooks.PostToolUse=${hook('post')}`, ...gate.args, ...mcp, '-C', turn.workspace, '-'];
 }
 /** The exact arguments and bounds of one Codex answer turn. `system` is a policy field, not an
  * argument, because `codex exec` has no system-prompt flag: the instructions are prepended to

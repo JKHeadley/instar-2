@@ -36,7 +36,7 @@ it('reads the wording each live wall was settled behind from its recorded answer
   expect(settledConstraintWording(live(6232224), wall(6232224, 'no-such-constraint'))).toBeUndefined();
 });
 
-it('the recorded K11a briefing differs only in the declared conversation, media, recurring-request capabilities and read-first guidance', () => {
+it('the recorded K11a briefing differs only in the declared conversation, media, recurring-request capabilities and read-first and standing-trust guidance', () => {
   const note = capabilityBriefing(path => readFileSync(resolve(process.cwd(), path), 'utf8'),
     { providerAttempts: 1000, expiresAt: 1791232800000, tools: true, mcp: 0 }).text;
   const replays = JSON.parse(read('k11a-replays.json')) as { note: string; runs: { kind: string; input: string; verdict: string; reply: string }[] };
@@ -54,6 +54,13 @@ it('the recorded K11a briefing differs only in the declared conversation, media,
   const recurringRequests = '- preview-requested-actions: an explicit later-time request is answered once at that time, or daily or weekdays until cancelled, with no new operator message.';
   expect(current.note.split(oldRequests)).toHaveLength(2);
   expect(note).toContain(recurringRequests);
+  const oldGrant = 'checked when made: consequential effects (sending outside this conversation, writing to the network or a third-party account, '
+    + 'spending, changing safeguards) go through the effect doorway: one runs once the operator registers and grants it, otherwise it '
+    + 'is refused and the refusal names its reason; say so plainly when one is refused. ';
+  const standingTrust = 'checked when made. Workspace work and public reads are already allowed. Registered effects covered by standing grants '
+    + 'run without another yes. The operator can tighten or revoke trust through setup-standing-trust. Irreversible outward '
+    + 'sends remain outside the one-machine closed set. The effect doorway reports any refusal and its reason; say so plainly. ';
+  expect(current.system.split(oldGrant)).toHaveLength(2);
   expect(current.note.split(internalHeading)).toHaveLength(2);
   expect(current.note).not.toContain(mediaAdmission);
   expect(current.note.replace(oldConversation, currentConversation)
@@ -66,7 +73,8 @@ it('the recorded K11a briefing differs only in the declared conversation, media,
   expect(current.system.replace(" In this turn you have the harness's full built-in tool set",
     ` ${READ_BEFORE_ANSWER}In this turn you have the harness's full built-in tool set`)
     .replace('Respond with one flat JSON object', 'First complete needed reads through the actual harness tool interface; '
-      + 'the JSON format below applies only to your final answer. Respond with one flat JSON object'))
+      + 'the JSON format below applies only to your final answer. Respond with one flat JSON object')
+    .replace(oldGrant, standingTrust))
     .toBe(SUBSCRIPTION_TOOLS_SYSTEM_PROMPT);
   expect(current.runs.map(run => run.kind)).toEqual(['worst', 'chain']);
   for (const run of current.runs) {
