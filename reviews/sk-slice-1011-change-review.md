@@ -3,7 +3,7 @@
 Subject base: 4ba07c4a67650e9c394273b460890f9f6bf037e7
 Review state: open
 Reviewed content: none
-Outcome: The live conversation and tool routes receive an everyday Instar agent identity from the shared capability note, including when the generated register is unavailable. The tools line names the built-in tool set without naming a harness. The desk clock label no longer calls the agent a preview. Actual capabilities still come from the generated register; tool, custody, attempt and expiry limits are retained. Historical model captures are unchanged and require Studio re-capture before this can be READY.
+Outcome: The live conversation and tool routes receive an everyday Instar agent identity from the shared capability note, including when the generated register is unavailable. The tools line names the built-in tool set without naming a harness. The desk clock label no longer calls the agent a preview. The journal-awareness clock assertion and tool-turn briefing assertion pin these exact wording changes. Actual capabilities still come from the generated register; tool, custody, attempt and expiry limits are retained. Historical model captures are unchanged and require Studio re-capture before this can be READY.
 Affected rules: Purpose amendment 3; 30, 47, 49, 74, 78, 84, 101, 102, 113, 116
 Affected floors: secrets — custody limit retained, no enforcement change; spend cap — attempt and expiry text retained, no enforcement change; stop — unchanged; no duplicate sends — unchanged; durable intake — unchanged
 Operator questions: none
