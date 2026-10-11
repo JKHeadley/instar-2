@@ -1,8 +1,8 @@
 /** Bounded, read-only operator review of the journal's memory projection. */
 import { redact } from '../../src/recall/redact.js';
-import { retractedTurn, type JournalView } from './journal.js';
+import { projectMemoryClause, retractedTurn, type JournalView } from './journal.js';
 
-type Action = { mode: 'correct' | 'forget' | 'prefer'; source: string; quote: string; trigger: string; replacement?: string };
+type Action = { mode: 'correct' | 'forget' | 'prefer' | 'remember'; source: string; quote: string; trigger: string; replacement?: string };
 type Dated = { source: string; quote: string; when: string; day?: string; time?: string; ambiguity?: string; zone: string };
 type ExportView = JournalView & { dated?: Dated[] };
 
@@ -13,7 +13,7 @@ const MAX_FIELD_BYTES = 700;
 export function memoryReport(view: ExportView): string {
   const actions = view.memory as Action[];
   // A retired exact clause can occur in another displayed field.
-  const hidden = actions.filter(item => item.mode !== 'prefer').flatMap(item => [item.quote]);
+  const hidden = actions.filter(item => (item.mode === 'correct' || item.mode === 'forget')).flatMap(item => [item.quote]);
   const safe = (value: string, retiredClauses = true): string => {
     // Redact the original before a recorded clause can remove a credential label.
     let text = redact(value).text;
@@ -33,20 +33,23 @@ export function memoryReport(view: ExportView): string {
   const lines: string[] = ['# Preview memory review', '', 'Read-only view of the encrypted journal for the bound operator. Imported sender metadata comes from an export fixture. Omitted entries remain in the journal.', ''];
   const sections: { title: string; rows: string[] }[] = [];
   // Plan #389: a people note whose source turn an approved retraction says was never the operator's is not shown.
-  const people = view.people.filter(note => !retractedTurn(view, note.source) && !actions.some(change => change.mode !== 'prefer' && change.source === note.source
+  const people = view.people.filter(note => !retractedTurn(view, note.source) && !actions.some(change => (change.mode === 'correct' || change.mode === 'forget') && change.source === note.source
     && (change.quote.includes(note.quote) || note.quote.includes(change.quote))));
   sections.push({ title: 'People notes', rows: people.map(note => {
     const turn = view.turns.get(note.source);
     return `- **${safe(note.name)}** — ${turn ? safe(turn.text) : '[source unavailable]'}; source: ${source(note.source)}`;
   }) });
+  sections.push({ title: 'Saved facts', rows: actions.filter(item => item.mode === 'remember'
+    && projectMemoryClause(view, item.quote, item.source) === item.quote).map(item =>
+    `- ${safe(item.quote)}; source: ${source(item.source)}`) });
   const corrections = actions.filter((item, index) => item.mode === 'correct' && item.replacement
-    && !actions.slice(index + 1).some(later => later.mode !== 'prefer' && later.source === item.trigger
+    && !actions.slice(index + 1).some(later => (later.mode === 'correct' || later.mode === 'forget') && later.source === item.trigger
       && (later.quote.includes(item.replacement!) || item.replacement!.includes(later.quote))));
   sections.push({ title: 'Corrections', rows: corrections.map(item =>
     `- ${safe(item.replacement!, false)}; original: ${source(item.source)}; corrected by ${source(item.trigger)}`) });
   sections.push({ title: 'Forgotten markers', rows: actions.filter(item => item.mode === 'forget').map(item =>
     `- Content withheld; original: ${source(item.source)}; requested by ${source(item.trigger)}`) });
-  const dated = (view.dated ?? []).filter(item => !actions.some(change => change.mode !== 'prefer'
+  const dated = (view.dated ?? []).filter(item => !actions.some(change => (change.mode === 'correct' || change.mode === 'forget')
     && change.source === item.source && (change.quote.includes(item.quote) || item.quote.includes(change.quote))));
   sections.push({ title: 'Dated items', rows: dated.map(item =>
     `- ${safe(item.quote)}; ${safe(item.day ?? item.when)}${item.time ? ` ${safe(item.time)}` : ''}${item.ambiguity ? ` (${safe(item.ambiguity)})` : ''}; source: ${source(item.source)}`) });
@@ -61,7 +64,7 @@ export function memoryReport(view: ExportView): string {
     `- ${safe(item.quote)}; source: ${source(item.source)}`) });
   sections.push({ title: 'Channel items', rows: [...view.channelItems.values()].map(item => {
     const id = `channel:${JSON.stringify([item.source, item.account, item.id])}`;
-    const retired = actions.some(change => change.mode !== 'prefer' && change.source === id);
+    const retired = actions.some(change => (change.mode === 'correct' || change.mode === 'forget') && change.source === id);
     return `- ${retired ? '[affected content withheld]' : safe(item.text)}; source: ${source(id)}${item.conversation ? `; conversation: ${safe(item.conversation)}` : ''}`;
   }) });
   // Newest evidence gets the finite display slots. Counts make every omission visible.

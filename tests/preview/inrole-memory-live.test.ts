@@ -31,12 +31,12 @@ for (const recorded of fixture.cases) it(`replays real update ${recorded.update}
     prepareModel: input => prepareJournalEnvelope(input, 'claude-sonnet-5', genesis.grant, now, genesis.maxBytes),
     model: async input => {
       const packet = JSON.parse(input.context) as { memoryDecision: string };
-      // Recorded output stays immutable; replay it against today's concise equivalent guidance.
-      expect(packet.memoryDecision).toContain('Ordinary facts are journaled across restarts');
-      expect(packet.memoryDecision).toContain('keep wording and attribution');
-      expect(packet.memoryDecision).toContain('memory:[] means no edits');
+      // Recorded output stays immutable; replay it against the new explicit fact guidance.
+      expect(packet.memoryDecision).toContain('Conversation is journaled');
+      expect(packet.memoryDecision).toContain('Keep attribution');
+      expect(packet.memoryDecision).toContain('Otherwise memory:[]');
       expect(createHash('sha256').update(SUBSCRIPTION_CONVERSATION_SYSTEM_PROMPT).digest('hex')).toBe(recorded.systemSha256);
-      expect(packet.memoryDecision).toContain('acknowledge it without asking again');
+      expect(packet.memoryDecision).toContain('mode:"remember"');
       // The real storage boundary, before even the answer call: reopen the actual encrypted file.
       const persisted = openPreviewJournal(path, key, undefined, undefined, true);
       try { expect(persisted.view.turns.get(recorded.id)?.text).toBe(recorded.text); }
@@ -58,7 +58,7 @@ for (const recorded of fixture.cases) it(`replays real update ${recorded.update}
       expect(recorded.oldReply).toContain('If you want it to stick, let me know');
       expect(sent[0]).toMatch(/green/iu);
       expect(sent[0]).not.toMatch(/if you want|let me know|confirm|cannot|can't/iu);
-      // memory is a mutation ledger, not all remembered facts. The original remains available with no mutation.
+      // This historical model output has no insert. Preserve its intake without claiming a saved fact.
       expect(journal.view.memory).toEqual([]);
       const probe = resumed.probe('What is my favourite colour?');
       if ('reason' in probe) throw Error(probe.reason);

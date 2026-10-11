@@ -162,7 +162,7 @@ export function memoryHealthLine(view: JournalView): string {
     + ` (through Telegram update ${latest === undefined ? 'none' : String(latest.through)}); `
     + `${String(sum('recallHits'))} original-turn recall-sentinel hits and ${String(sum('channelRecallHits'))} channel-item recall-sentinel hits`
     + ` in ${String(measured.length)} recorded model prompts (${String(unmeasured)} unmeasured legacy prompts); `
-    + `${String(view.memory.filter(change => change.mode !== 'prefer').length)} old-claim items withheld; ${String(unresolved)} unresolved operator memory corrections; `
+    + `${String(view.memory.filter(change => (change.mode === 'correct' || change.mode === 'forget')).length)} old-claim items withheld; ${String(unresolved)} unresolved operator memory corrections; `
     + `${String(view.channelSources.size)} channel-import cursors recorded (${String(view.channelItems.size)} imported channel items); `
     + `${String(unknownCalls)} turn-model calls and ${String(view.summaryReservations.size)} summary-model calls without a durable result (in flight or UNKNOWN); `
     + `${String(unknownSends)} send(s) without a durable result (in flight or UNKNOWN).`;

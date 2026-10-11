@@ -49,11 +49,11 @@ export function statusReply(view: JournalView, now: number, zone: string, extra:
   const turns = turnsToday(view, now, zone);
   const held = heldReplies(view);
   const pending = view.order.filter(turn => turn.accepted && (
-    (turn.datedPending && !view.memory.some(change => change.mode !== 'prefer' && change.source === turn.id))
+    (turn.datedPending && !view.memory.some(change => (change.mode === 'correct' || change.mode === 'forget') && change.source === turn.id))
     || (!turn.memoryUndecided && (turn.memoryPending || turn.held === 'memory correction pending')
       && !view.summaries.some(summary => summary.memoryFor?.includes(turn.id)))));
   const dated = view.dated.filter(item => item.day && !item.ambiguity && dueState(item, now) !== 'overdue'
-    && !view.memory.some(change => change.mode !== 'prefer' && change.source === item.source
+    && !view.memory.some(change => (change.mode === 'correct' || change.mode === 'forget') && change.source === item.source
       && (item.quote.includes(change.quote) || change.quote.includes(item.quote))))
     .sort((a, b) => `${a.day} ${a.time ?? '00:00'}`.localeCompare(`${b.day} ${b.time ?? '00:00'}`));
   const next = dated[0];

@@ -181,7 +181,7 @@ export function memoryFailures(view: JournalView, operator: (item: Turn) => bool
 
 /** A source the operator later withdrew or replaced teaches nothing (Rule 7: what was withdrawn is not carried). */
 const withdrawn = (memory: readonly MemoryChange[], source: string) => memory.some(change =>
-  change.mode !== 'prefer' && change.source === source && (change.mode === 'forget' || !change.historical));
+  (change.mode === 'correct' || change.mode === 'forget') && change.source === source && (change.mode === 'forget' || !change.historical));
 
 /** The words of a question, as meaning cues: the same bounded, normalized shape the write-side index stores. */
 export function learnedCues(question: string): string[] {

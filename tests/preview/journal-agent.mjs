@@ -545,7 +545,7 @@ const withheldView = view => {
     else if (change.mode === 'correct' && preferenceKeys.has(JSON.stringify([change.source, change.quote])))
       preferenceKeys.add(JSON.stringify([change.trigger, change.replacement]));
   }
-  return view.memory.filter(change => change.mode !== 'prefer').map(change => ({
+  return view.memory.filter(change => (change.mode === 'correct' || change.mode === 'forget')).map(change => ({
     ...(change.source.startsWith('channel:')
       ? { channelSource: view.channelItems.get(change.source.slice('channel:'.length))?.source,
         channelSourceId: redact(view.channelItems.get(change.source.slice('channel:'.length))?.id ?? '').text }
@@ -1066,12 +1066,12 @@ async function main() {
               : actionWithdrawn(view.view, t) ? 'withdrawn, not sent'
               : t.held ? `held (${t.held})` : t.reserved && t.answer === undefined && t.modelState === undefined ? 'model UNKNOWN' : 'pending' })) };
       })(),
-      dated: view.view.dated.filter(item => !view.view.memory.some(change => change.mode !== 'prefer' && change.in !== 'reply' && change.source === item.source
+      dated: view.view.dated.filter(item => !view.view.memory.some(change => (change.mode === 'correct' || change.mode === 'forget') && change.in !== 'reply' && change.source === item.source
         && (item.quote.includes(change.quote) || change.quote.includes(item.quote)))).map(item => ({ sourceUpdate: view.view.turns.get(item.source)?.update,
 
         quote: redact(item.quote).text, when: redact(item.when).text, zone: item.zone, day: item.day ?? null,
         time: item.time ?? null, repeat: item.repeat ?? null, ambiguity: item.ambiguity ?? null, state: dueState(item, wallNow()) })),
-      datedPending: view.view.order.filter(item => item.datedPending && !probeTurn(view.view, item) && !view.view.memory.some(change => change.mode !== 'prefer' && change.in !== 'reply' && change.source === item.id))
+      datedPending: view.view.order.filter(item => item.datedPending && !probeTurn(view.view, item) && !view.view.memory.some(change => (change.mode === 'correct' || change.mode === 'forget') && change.in !== 'reply' && change.source === item.id))
         .map(item => ({ update: item.update, message: redact(item.text).text.slice(0, 500) })),
       summaryPending: view.view.summaryReservations.size,
 
@@ -1929,7 +1929,12 @@ async function main() {
       redact: JSON.parse(readFileSync(resolve(process.cwd(), 'src/recall/redact.declarations.json'), 'utf8')),
       resourceOwner: JSON.parse(readFileSync(resolve(process.cwd(), 'scripts/resource-owner.declarations.json'), 'utf8')) });
     worker = createJournalWorker(journal, { ...(approvalSurface ? { approvalSurface } : {}), ...(explicitYes ? { explicitYes } : {}), now: wallNow, elapsed: clock.elapsed, origin, stopped: () => workerStop.value || existsSync(stopPath) || !ownerHeld(), timeZone: timeZoneOf(options),
-      groupDisclosure: async () => { await requireGroupDisclosure(journal.view); return true; },
+      groupDisclosure: async () => {
+        if (journal.view.groupCarry) { await requireGroupDisclosure(journal.view); return true; }
+        const scope = { sourceRoot: root, destinationRoot: root, chat: journal.view.genesis.chat,
+          operator: journal.view.genesis.operator, bot: journal.view.genesis.bot };
+        return verifyGroupAudience(scope, membershipReadFor(scope));
+      },
       presenceNotes: sentinelFamilies.has('presence'),
       sources: turnSources(root, options, journal.view, () => runs, () => launchedAt ?? undefined,
         () => journal.view.order.some(turn => turn.reserved && !reservedAtLaunch.has(turn.id)) ? null : handoff, preparation.active),
