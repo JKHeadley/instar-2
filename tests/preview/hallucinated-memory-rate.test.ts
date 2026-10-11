@@ -63,7 +63,7 @@ const update = (id: number, message: string) => ({ update_id: id,
 type Case = (typeof corpus)[number];
 type Packet = { capability: string; history: { user: string; sourceLabel: string }[] };
 const hasPrecisionInstruction = (packet: Packet) => packet.capability.includes('state a remembered detail only when the offered journal evidence supports that exact detail')
-  && packet.capability.includes('I don\'t know from this journal');
+  && packet.capability.includes('I don\'t recall that detail');
 const withoutPrecisionInstruction = (packet: Packet): Packet => {
   const start = packet.capability.indexOf('For a question about what the operator said');
   const last = 'Cite sourceLabel for supported remembered facts.';
@@ -78,16 +78,16 @@ const withoutPrecisionInstruction = (packet: Packet): Packet => {
  * nearby fact to it. The instruction-aware version abstains on that same packet. */
 function stubAnswer(item: Case, packet: Packet): string {
   if (item.kind === 'supported') {
-    if (!packet.history.some(turn => turn.user === item.said)) return 'I don\'t know from this journal.';
+    if (!packet.history.some(turn => turn.user === item.said)) return 'I don\'t recall that detail.';
     return item.supported;
   }
   return hasPrecisionInstruction(packet)
-    ? 'I don\'t know from this journal what you said about that exact detail.'
+    ? 'I don\'t recall that detail.'
     : item.tempting;
 }
 
 const invented = (item: Case, answer: string) => item.kind === 'absent' && answer.includes(item.tempting);
-const abstained = (answer: string) => answer.includes('I don\'t know from this journal');
+const abstained = (answer: string) => answer.includes('I don\'t recall that detail');
 
 it('scores unsupported memory claims against the actual answer packet and checked send path', async () => {
   let baselineInvented = 0, actualInvented = 0, actualAbstained = 0, supportedAnswered = 0;
@@ -124,16 +124,15 @@ it('scores unsupported memory claims against the actual answer packet and checke
       await worker.drain();
       expect(answerPacket, item.id).toMatchObject({ capability: packet.capability, history: packet.history });
       const reply = sent.at(-1) ?? '';
-      expect(reply, item.id).toContain('');
       if (item.kind === 'absent') {
         actualInvented += Number(invented(item, reply));
         actualAbstained += Number(abstained(reply));
-        expect(reply, item.id).toContain('I don\'t know from this journal');
+        expect(reply, item.id).toContain('I don\'t recall that detail');
         expect(reply, item.id).not.toContain(item.tempting);
       } else {
         supportedAnswered += Number(reply.includes(item.supported));
         expect(reply, item.id).toContain(item.supported);
-        expect(reply, item.id).not.toContain('I don\'t know');
+        expect(abstained(reply), item.id).toBe(false);
       }
       expect(journal.view.order.at(-1)?.intent, item.id).toBe(reply);
       journal.close();

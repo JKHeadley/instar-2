@@ -21,3 +21,16 @@ Two runs recorded unhandled runner errors `[vitest-worker]: Timeout calling "onT
 **Repair and closure:** the owner (1) identifies the starving file or the host condition from the worker trace, (2) confirms the resolved vitest package is the worktree's intended version, not a sibling's, and (3) repairs the cause, for example by an async yield in a long synchronous file, lower worker count or a per-worktree install. Closure needs a full run with zero runner errors under the original conditions. If a later run shows the error again, this record reopens.
 
 **Multi-machine posture:** runner and host are machine-local. This record travels with the repository.
+
+**Pipeline repair (2026-10-10, sb-w4-self-knowledge):** the laptop gate at
+`e3f70fbc68037f3824751628a7eded89c4d1d294` reported a 62.422s boundary case in
+`tests/e2e/harness-adapters-round7-regression.test.ts` and one unassigned task-update
+RPC timeout. That case synchronously launched nineteen children without yielding,
+which exceeds the worker RPC deadline. All children in this file now use the
+existing awaited `runChild` helper, including the formerly unbounded concurrent
+readers (now 30s each). Each of the nine independent append cuts has its own case;
+the successful successor control is separate. All crash, uncertainty, stale-write,
+and poison-evidence assertions remain. This removes a demonstrated starvation path;
+it does not attribute the unassigned runner error exclusively to this file. No
+quarantine or skipped proof is introduced. Full-run closure remains the pipeline's
+check under the original conditions.

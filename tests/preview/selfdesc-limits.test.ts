@@ -83,7 +83,7 @@ it('on the tools route the review packet is route-true, and the same two sides h
   // tool obligation instructions. Asserting them against the code makes a stale packet fail here, not pass a hand-written
   // review. The described reply is a recorded real answer to the K11a question (k11a-replays.json, worst). Round 1 inputs
   // (review-describe, review-decline) carry the guide before review round 1, finding 1; the round 2 inputs (review-r2-*)
-  // are the same packets under the current guide, with only the question (and, for the neighbour, one reply line) changed.
+  // are the same packets under the then-current guide, with only the question (and, for the neighbour, one reply line) changed.
   const recorded = (name: string) => readFileSync(resolve(process.cwd(), 'tests/preview/fixtures/selfdesc-2026-10-04', name), 'utf8');
   const envelopeOf = (input: string) => JSON.parse(recorded(input)) as { messages: { content: string }[] };
   const packetOf = (input: string) => JSON.parse(envelopeOf(input).messages[1]!.content) as { packet: { capabilities: unknown;
@@ -100,11 +100,12 @@ it('on the tools route the review packet is route-true, and the same two sides h
     expect(packet.declaredObligations.toolAttempts, input).toEqual({ meaning: TOOL_ATTEMPTS_MEANING, calls: [] });
     expect(packet.sources.find(source => source.id === 'capability-note')!.text, input).toContain('no MCP server, so no logged-in account access'); // Historical wording; new replay covers the replacement.
     // Plan #491 and #510 changed only the answer-slot wording of the review question after these were recorded (the flat
-    // answer protocol, then one verdict field per rule); every rule, guide and packet line below is still the recorded one.
+    // answer protocol, then one verdict field per rule); the output-budget repair also bounds reasoning.
+    // Normalize only those recorded protocol differences; every rule, guide and packet line stays exact.
     const content = envelopeOf(input).messages[0]!.content;
     if (input.startsWith('review-r2-')) expect(content
       .replace(/Return inside conclusion\.value exactly one line for every listed rule and no other rule, each of the form rule_id: PASS \| short reason or rule_id: VIOLATION \| short reason, with each reason under (\d+) characters; put any longer reasoning in reason\.value\./u,
-        'Give every listed rule, and no other rule, one verdict "PASS | short reason" or "VIOLATION | short reason", with each reason under $1 characters; put any longer reasoning in reasoning.')
+        'Give every listed rule, and no other rule, one verdict "PASS | short reason" or "VIOLATION | short reason", with each reason under $1 characters. Keep reasoning to at most two short sentences (400 characters); do not repeat the per-rule findings there. The complete response, including reasoning and all verdicts, must fit within 1500 tokens, leaving headroom under the provider output cap.')
       .replace('A reason that finds no breach belongs on a PASS line. No other text.', `A reason that finds no breach belongs on a PASS verdict. ${taskFields('{rule_id: its verdict, one field for each listed rule, named by that rule id}')}`), input).toBe(replyReviewQuestion(flagged));
     else expect(content, input).not.toContain('in no broader terms');
   }

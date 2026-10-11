@@ -122,4 +122,6 @@ it('answers 200 mixed-length turns in one day with bounded review context and ea
     expect(reopened.view.summaries.at(-1)?.text).toContain(earlyFacts[0]);
     reopened.close();
   } finally { rmSync(root, { recursive: true, force: true }); }
-}, 120000);
+// Functional 200-turn/restart coverage, not a latency benchmark. The laptop gate
+// needed 122.6s; use the existing 2.4x full-suite timing margin (300s rounded).
+}, 300000);

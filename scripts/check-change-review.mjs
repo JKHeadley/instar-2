@@ -329,6 +329,8 @@ const headTree = () => ({ head: git('rev-parse', 'HEAD'), tree: git('rev-parse',
 const GATE = ['run', 'test:gate'];
 const RESULTS = '.test-results.json';
 function gateRun() {
+  const split = process.env.INSTAR_TEST_PLATFORM_SPLIT;
+  if (split) throw Error(`refusing to run the whole gate under INSTAR_TEST_PLATFORM_SPLIT=${split}; run the halves separately, then npm run test:split-checks`);
   const runId = randomUUID(); const start = headTree();
   // No evidence-producing work runs before its start is durable: a start that cannot be
   // recorded refuses the run, so a result can never be produced and then silently lost.
