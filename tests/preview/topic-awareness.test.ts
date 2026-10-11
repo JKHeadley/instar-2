@@ -3,7 +3,7 @@ import { mkdtempSync, readFileSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { createHash } from 'node:crypto';
-import { createJournalWorker, openPreviewJournal, type JournalRecord } from './journal-test-worker.js';
+import { createJournalWorker, MEMORY_ITEM_SHAPE, openPreviewJournal, type JournalRecord } from './journal-test-worker.js';
 
 const capture = JSON.parse(readFileSync(new URL('./fixtures/topic-awareness-live-2026-10-10.json', import.meta.url), 'utf8')) as {
   genesis: Extract<JournalRecord, { kind: 'genesis' }>; rows: JournalRecord[];
@@ -105,13 +105,23 @@ it('labels resolved dates, recalled turns and preference candidates with their o
   } finally { journal.close(); }
 });
 
-it('keeps the private-chat packet byte-identical to afa6be39 for the same recorded turns', async () => {
+it('keeps private-chat packet bytes from afa6be39 apart from the reviewed memory guidance', async () => {
   const journal = seed(true);
   try {
     const { context, value } = await packet(journal, undefined, true);
     expect(value.audience.conversation).toBeUndefined();
     expect(value.datedPending.every((item: object) => !('conversation' in item) && !('sourceLabel' in item))).toBe(true);
-    expect(createHash('sha256').update(context).digest('hex')).toBe('4f9861f1b198353ff376439dfdfdeb783be92d17167ca2b056d34613f4a04736');
+    expect(value.memoryDecision).toContain('Ordinary facts are journaled across restarts: acknowledge it without asking again; keep wording and attribution. memory:[] means no edits.');
+    expect(value.memoryDecision).toContain(MEMORY_ITEM_SHAPE);
+    // f589c692 shortened this one field. Restore its afa6be39 wording from the
+    // immutable live capture, retaining the original digest for every other byte.
+    const recorded = JSON.parse(readFileSync(new URL('./fixtures/inrole-memory-live-2026-10-11.json', import.meta.url), 'utf8'));
+    const guide = recorded.cases[0].memoryDecision as string;
+    expect(guide).toContain('Each memory item');
+    const historical = JSON.parse(context);
+    historical.memoryDecision = 'Return memory:[] unless the verified operator corrects, forgets or sets reply style. '
+      + guide.slice(guide.indexOf('Each memory item'));
+    expect(createHash('sha256').update(JSON.stringify(historical)).digest('hex')).toBe('4f9861f1b198353ff376439dfdfdeb783be92d17167ca2b056d34613f4a04736');
   } finally { journal.close(); }
 });
 
