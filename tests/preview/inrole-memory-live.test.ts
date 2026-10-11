@@ -31,7 +31,10 @@ for (const recorded of fixture.cases) it(`replays real update ${recorded.update}
     prepareModel: input => prepareJournalEnvelope(input, 'claude-sonnet-5', genesis.grant, now, genesis.maxBytes),
     model: async input => {
       const packet = JSON.parse(input.context) as { memoryDecision: string };
-      expect(packet.memoryDecision).toContain(recorded.memoryDecision.split('Each memory item')[0]);
+      // Recorded output stays immutable; replay it against today's concise equivalent guidance.
+      expect(packet.memoryDecision).toContain('Ordinary facts are journaled across restarts');
+      expect(packet.memoryDecision).toContain('keep wording and attribution');
+      expect(packet.memoryDecision).toContain('memory:[] means no edits');
       expect(createHash('sha256').update(SUBSCRIPTION_CONVERSATION_SYSTEM_PROMPT).digest('hex')).toBe(recorded.systemSha256);
       expect(packet.memoryDecision).toContain('acknowledge it without asking again');
       // The real storage boundary, before even the answer call: reopen the actual encrypted file.

@@ -294,7 +294,10 @@ it('replays all recorded model shapes through carried recall after the disclosur
       groupDisclosure: async () => allowed,
       model: async input => {
         calls++;
-        expect(JSON.parse(input.context).predecessorMemory.entries.length, shape.id).toBeGreaterThan(0);
+        const packet = JSON.parse(input.context);
+        expect(packet.predecessorMemory.entries.length, shape.id).toBeGreaterThan(0);
+        expect(packet.memoryDecision, shape.id).toContain('Ordinary facts are journaled across restarts');
+        expect(packet.memoryDecision, shape.id).toContain(MEMORY_ITEM_SHAPE);
         return shape.kind === 'summary-uncertain' ? JSON.parse(shape.raw) as { state: 'uncertain' } : shape.raw;
       },
       send: async input => { sends.push(input.expectedText); return sends.length; }, checkOutbound: () => {} });
