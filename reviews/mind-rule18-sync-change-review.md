@@ -1,6 +1,6 @@
 # Change review — sync the briefed constitution with the amendments
 
-Subject base: 253f1c6ab52a0d164510abd7436c48052999120b
+Subject base: 6c63ef8486440c62e4ba3576d70065c12fc6fff0
 Review state: open
 Reviewed content: none
 Outcome: The preview briefing's copy of rule 18 and its pinned digest of the purpose's coherency section now match the constitution as amended in PR #154 (Justin approved 2026-10-10 17:23 and on GitHub). The runner's refusal-on-mismatch stays; it now passes on the approved text.
@@ -14,7 +14,7 @@ Side effects: the model's standing instructions now state rule 18 in its approve
 Undo and recovery: revert this commit (the runner then refuses on main's rule book again)
 Multi-machine posture: repository source only; identical on every machine
 Layer below: docs/01-the-rules.md Held-by-the-mind table, docs/00-the-purpose.md coherency section, verifyMindRules and sourcePacket in tests/preview/briefing.ts
-Bug class: missed consumer of a governed document change
+Bug class: live-path
 Bug evidence: lanes/preview-deploy.log 18:47-19:02 "candidate exited early" x4; forum-answer-copy-20261010-190127/runs.jsonl "refused before launch: preview: mind rule 18 changed"
 Hook bypass: none
 Convergence: none
