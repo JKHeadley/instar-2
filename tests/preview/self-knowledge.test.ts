@@ -4,7 +4,7 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { SELF_DESCRIPTION_GUIDANCE, CAPABILITY_BRIEFING_PATH, CAPABILITY_LAUNCHER, capabilityBriefing, sourcePacket, SOURCE_PINS } from './briefing.js';
 import { createJournalWorker, openPreviewJournal } from './journal.js';
-import { SUBSCRIPTION_CONVERSATION_SYSTEM_PROMPT } from '../../src/assembly/production-provider.js';
+import { SUBSCRIPTION_CONVERSATION_SYSTEM_PROMPT, SUBSCRIPTION_TOOLS_SYSTEM_PROMPT } from '../../src/assembly/production-provider.js';
 import type { ReplyCheckResult } from './reply-check.js';
 
 const read = (path: string) => readFileSync(path, 'utf8');
@@ -17,17 +17,26 @@ const live = JSON.parse(read('tests/preview/fixtures/self-knowledge-live-2026-10
 it.each([false, true])('describes Instar 2.0 and live outcomes without builder terms (tools=%s)', tools => {
   const note = capabilityBriefing(read, { ...limits, tools, mcp: 0 }).text;
   expect(note).toContain(`Instar 2.0 agent (software version ${JSON.parse(read('package.json')).version})`);
-  for (const text of ['make coherence something an AI cannot lose', 'remember what matters and keep my promises',
-    'a constitution I am held to', 'any framework or model, or without a framework',
+  for (const text of ['Instar is the software that helps me stay the same agent over time',
+    'memory, values and commitments', 'across conversations and restarts',
+    'build on our work together instead of starting over',
     'I remember what matters across all our conversations', 'tell me if I have something wrong, or ask me to forget it',
     'keep track across topics', 'reminders and repeating tasks', 'photos, voice and files']) expect(note).toContain(text);
   expect(note).not.toMatch(banned);
+  expect(note).not.toMatch(/\b(?:Claude|Codex|GPT(?:-\w+)?|Opus|Sonnet|Gemini|Haiku)\b/iu);
   expect(note).not.toMatch(/restricted by default|this conversation/u);
   expect(note.includes('I can find things out on the web')).toBe(tools);
   expect(note.includes('work with files and documents, run commands and tasks')).toBe(tools);
   expect(note.includes('you can turn these tools on')).toBe(!tools);
   if (tools) expect(note).toContain('Account connections are off here; you can turn them on.');
 });
+
+it.each([SUBSCRIPTION_CONVERSATION_SYSTEM_PROMPT, SUBSCRIPTION_TOOLS_SYSTEM_PROMPT])(
+  'both answer routes explain identity in the person’s language without naming their underlying software', prompt => {
+    expect(prompt).toContain("Explain what you are, what Instar is, why it is different and what you can do from the current capability-note, in everyday words in the person's language.");
+    expect(prompt).toContain('Never name your harness or model when describing yourself.');
+    expect(prompt).not.toMatch(/\b(?:Claude|Codex|GPT(?:-\w+)?|Opus|Sonnet|Gemini|Haiku)\b/iu);
+  });
 
 it('takes feature availability from the generated inventory, with available, off, unloaded and missing neighbors', () => {
   const original = JSON.parse(read(CAPABILITY_BRIEFING_PATH));
@@ -95,7 +104,7 @@ it.each([false, true])('replays update 969390343 and its Jev/stronger verdicts w
   } finally { journal.close(); rmSync(directory, { recursive: true, force: true }); }
 });
 
-it('real-model reruns of the 16:16 question show the new identity and plain outcomes on both routes', () => {
+it('preserves historical real-model reruns of the 16:16 question as evidence of the earlier wording', () => {
   const replay = JSON.parse(read('tests/preview/fixtures/self-knowledge-model-replays-2026-10-10.json')) as {
     update: number; runs: { name: string; tools: boolean; finalSystem: boolean; raw: string; answer: string }[] };
   expect(replay.update).toBe(live.update);

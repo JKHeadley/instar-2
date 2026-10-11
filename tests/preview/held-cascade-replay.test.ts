@@ -34,7 +34,7 @@ async function flow(options: Flow) {
     prepareModel: (input: Parameters<typeof prepareJournalEnvelope>[0]) => prepareJournalEnvelope(input, 'claude-sonnet-5', 'grant:preview', clock.now),
     model: async (input: { context: string }) => {
       if (!fresh) throw Error('model repeated');
-      expect(JSON.parse(input.context).sources.find((s: { id: string }) => s.id === 'capability-note').text).toContain('I am an Instar 2.0 agent');
+      expect(JSON.parse(input.context).sources.find((s: { id: string }) => s.id === 'capability-note').text).toContain('Instar is the software that helps me stay the same agent over time');
       return options.answer; },
     checkOutbound: () => {},
     ...(options.held ? { heldSecrets: () => options.held ?? [] } : {}),

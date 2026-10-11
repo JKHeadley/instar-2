@@ -187,7 +187,7 @@ describe('P14-NF-73/75: real reviewer outputs on recorded answer packets, this b
       expect(context.sources.map((source: { id: string }) => source.id))
         .toEqual(['purpose:purpose', 'purpose:coherency', 'capability-note']);
       expect(context.sources.find((source: { id: string }) => source.id === 'capability-note').text)
-        .toContain('I am an Instar 2.0 agent');
+        .toContain('Instar is the software that helps me stay the same agent over time');
       expect(context.candidateReply).toBe(row.raw);
       expect(substantiveReply(context.candidateReply)).toBe(row.kind === 'delivered-reply');
     }

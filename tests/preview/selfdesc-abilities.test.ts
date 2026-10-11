@@ -50,7 +50,7 @@ it('keeps historical K11a results and replaces the old description with current 
   expect(note).toContain('I can keep reminders and repeating tasks');
   expect(current.note).not.toBe(note);
   expect(note).toContain('Instar 2.0');
-  expect(note).not.toContain('Claude Code');
+  expect(note).not.toMatch(/\b(?:Claude|Codex|GPT(?:-\w+)?|Opus|Sonnet|Gemini|Haiku)\b/iu);
   expect(current.system).not.toBe(SUBSCRIPTION_TOOLS_SYSTEM_PROMPT);
   expect(SUBSCRIPTION_TOOLS_SYSTEM_PROMPT).toContain('You are an Instar 2.0 agent');
   expect(current.runs.map(run => run.kind)).toEqual(['worst', 'chain']);

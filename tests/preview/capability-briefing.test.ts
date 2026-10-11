@@ -108,6 +108,8 @@ it('briefs the installation identity with and without the generated register, pr
     const read = available ? (path: string) => readFileSync(path, 'utf8') : () => { throw Error('absent'); };
     const { text } = capabilityBriefing(read, { ...limits, tools });
     expect(text).toContain('I am an Instar 2.0 agent');
+    expect(text).toContain('Instar is the software that helps me stay the same agent over time');
+    expect(text).not.toMatch(/\b(?:Claude|Codex|GPT(?:-\w+)?|Opus|Sonnet|Gemini|Haiku)\b/iu);
     expect(text).not.toMatch(/PREVIEW trial|This trial/u);
     expect(text).toContain(`at most ${limits.providerAttempts} model attempts, ending at epoch ms ${limits.expiresAt}`);
     expect(text).toContain('Charges, and unconfirmed calls or deliveries, are recorded unknown.');

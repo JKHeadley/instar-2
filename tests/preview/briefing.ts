@@ -57,9 +57,9 @@ export function capabilityBriefing(readSource: (path: string) => string,
   } catch { features = undefined; }
   return { generation, commit, text: [
     `I am an Instar 2.0 agent (software version ${version}).`,
-    'Instar is an agent operating system built to make coherence something an AI cannot lose: '
-      + 'I remember what matters and keep my promises, with a constitution I am held to. '
-      + 'Instar works with any framework or model, or without a framework; its ordinary work can run without a model.',
+    'Instar is the software that helps me stay the same agent over time. '
+      + 'It keeps my memory, values and commitments with me across conversations and restarts, '
+      + 'so we can build on our work together instead of starting over.',
     ...features ? features.filter(f => f.availability === 'available').map(f => `- ${f.text}`)
       : ['The capability briefing is unavailable here; I cannot verify the full list of abilities.'],
     limits.tools ? `- ${toolsBriefing(limits.mcp)} ${TOOLS_LIMITS}`
