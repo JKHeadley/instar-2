@@ -83,7 +83,15 @@ else { const t=readFileSync(${JSON.stringify(frame)},'utf8'); process.stdout.wri
     const parked = warm ? physical.prestart(subscriptionModelCommand(profile, model, framing,
       framing === SUBSCRIPTION_TOOLS_FRAMING ? scope : undefined)) : null;
     const routeIO = parked ? { ...createSubscriptionProviderIO({ repository: process.cwd(), stopped: () => false,
-      prestarted: { consume: (input: unknown) => { const result = parked.consume(input); if (result !== null) warmUses++; return result; },
+      prestarted: { consume: (input: unknown) => {
+        const result = parked.consume(input);
+        if (result === null) return null;
+        warmUses++;
+        return result.then((outcome: { resources: { admission: { work: string } } }) => {
+          expect(outcome.resources.admission.work).toBe('answer');
+          return outcome;
+        });
+      },
         close: () => parked.close() } }), managedHooksDisabled: () => false } : io;
     const { policy, route: r } = route(framing, routeIO);
     try { return await r.invoke('{"replay":true}', { operation: 'replay', deadline: 10_000_000, timeout: 20000, maxOutputBytes: policy.maxOutputBytes,

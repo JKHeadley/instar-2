@@ -373,6 +373,36 @@ export function createResourceOwner(initialCeilings = RESOURCE_CEILINGS) {
       memoryBytes: 0, processes: 0 }; }
     wake(); persist(true);
   }
+  /** Transfer a ready speculative process through ordinary answer admission. Reserve first,
+   * then durably name the same process under the new allocation before returning the old
+   * debit. A crash between these steps conservatively retains both rows for recovery. */
+  function adoptAnswer(lease) {
+    if (lease.work !== 'maintenance' || !lease.running || lease.limit || !launches.has(lease.id)) return false;
+    const answer = tryReserve('answer');
+    if (!answer) return false;
+    try {
+      ledger(rows => {
+        if (!rows[lease.id]) throw Error('resource owner: speculative launch evidence absent');
+        rows[answer.id] = { ...rows[lease.id], allocation: answer.allocation?.set ?? null };
+      });
+    } catch {
+      closeAllocationOf(answer, `never-launched:${answer.id}`);
+      release(answer);
+      return false;
+    }
+    const previous = { id: lease.id, allocation: lease.allocation };
+    launches.delete(lease.id);
+    launches.delete(answer.id);
+    Object.assign(lease, { id: answer.id, work: 'answer', allocation: answer.allocation, admission: answer.admission,
+      retired: previous });
+    launches.set(lease.id, lease);
+    // A failed return stays attached to the process and is retried at verified cleanup.
+    const returned = closeAllocationOf(previous, `transferred-to:${lease.id}`);
+    if (returned)
+      try { ledger(rows => { delete rows[previous.id]; }); } catch { /* recovery retains both rows */ }
+    persist(true);
+    return returned;
+  }
   /** Signal only pids attributed in this sample or re-verified against their recorded start evidence. */
   function terminate(lease, reason, members = lease.members) {
     if (lease.limit) return;
@@ -699,6 +729,8 @@ export function createResourceOwner(initialCeilings = RESOURCE_CEILINGS) {
           // A verified cleanup returns the Six debit citing that evidence, then drops the row; if the
           // return cannot land the row keeps the allocation, and recovery returns it once later.
           if (!unresolved) closeAllocation(gateOpened ? `cleanup-verified:${lease.id}` : `never-launched:${lease.id}`);
+          if (!unresolved && lease.retired && closeAllocationOf(lease.retired, `transferred-to:${lease.id}`))
+            try { ledger(rows => { delete rows[lease.retired.id]; }); } catch { /* recovery retains the prior row */ }
           if (!unresolved && (!lease.allocation || lease.allocation.closed))
             try { ledger(rows => { delete rows[lease.id]; }); } catch { /* observed at the next attach */ }
           // An unresolved launch keeps every discovered incarnation durably (a member whose earlier
@@ -712,6 +744,8 @@ export function createResourceOwner(initialCeilings = RESOURCE_CEILINGS) {
             treeCpuMilliseconds: lease.cpuMilliseconds, census: lease.census, leakedDescendants: leaked,
             membership: lease.sandboxArea ? 'sandbox-joined' : lease.workingArea ? 'working-area-joined' : 'unconfined',
             cleanup: unresolved ? 'unresolved' : lease.workingArea ? 'verified' : 'unconfined',
+            ...(lease.retired?.allocation ? { retiredAllocation: { set: lease.retired.allocation.set,
+              state: lease.retired.allocation.closed ? 'returned' : 'reserved' } } : {}),
             allocation: lease.allocation ? { set: lease.allocation.set, operation: lease.allocation.operation,
               state: lease.allocation.closed ? 'returned' : 'reserved', settlement: lease.allocation.closed ?? null } : null };
           lastLaunch = { work: lease.work, at: ports.now(), ...resources };
@@ -885,7 +919,10 @@ export function createResourceOwner(initialCeilings = RESOURCE_CEILINGS) {
       if (input.stopped?.()) return { code: null, limited: true, localLimit: null, stdout: '', stdoutBytes: new Uint8Array() };
       const lease = await admit(work, input.timeout, input.stopped);
       if (!lease) return { code: null, limited: true, localLimit: input.stopped?.() ? null : 'capacity', stdout: '', stdoutBytes: new Uint8Array() };
-      try { return await run(input, lease, await processLimit()); }
+      try {
+        input.onAdoption?.(() => !input.stopped?.() && adoptAnswer(lease));
+        return await run(input, lease, await processLimit());
+      }
       finally { counters.completed++; release(lease); }
     },
     /**

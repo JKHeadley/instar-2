@@ -1,11 +1,13 @@
 import { beforeEach, expect, it, vi } from 'vitest';
 
-type Command = { stdin: string; initialInput?: string; deferredInput?: Promise<string>; stopped?: () => boolean };
+type Command = { stdin: string; initialInput?: string; deferredInput?: Promise<string>; stopped?: () => boolean;
+  onAdoption?: (adopt: () => boolean) => void };
 const capture = vi.hoisted(() => ({ commands: [] as Command[] }));
 vi.mock('../../scripts/resource-owner.mjs', async importOriginal => ({
   ...await importOriginal<object>(),
   hostResources: { execute: async (input: Command) => {
     capture.commands.push(input);
+    input.onAdoption?.(() => true);
     const text = input.deferredInput ? `${input.initialInput ?? ''}${await input.deferredInput}` : input.stdin;
     return { code: 0, limited: input.stopped?.() === true, stdout: text,
       stdoutBytes: new TextEncoder().encode(text), resources: { cleanup: 'verified' } };
