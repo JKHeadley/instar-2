@@ -4,6 +4,10 @@ _Generated from `23-judgment-of-use.changelog.json` by `scripts/render-changelog
 The document itself reads as a first version; every change to it is recorded here, newest first,
 each linked to the git change that made it (rule 91).
 
+## Revision 10 · 2026-10-10 · draft — Justin, docs-align-1010: align design parts with the constitution amendments merged in PR #154; final-head code-owner approval pending.
+
+- **Quote the fixed sign-off list, retain separate verification profiles, and exercise all five conditions with ordinary and outside-grant controls.** — The governing purpose fixes agency, identity, onboarding, sign-off and acceptance; design prose must not impose incompatible defaults or claim readiness from verification alone. _(`fc0e3c20`, docs/00-the-purpose.md; docs/01-the-rules.md; reviews/docs-align-1010-change-review.md)_
+
 ## Revision 9 · 2026-09-14 · draft — Part Twenty-Three repair round 7; ninth independent re-review at b3fdd6b522b5497fa876de71d472ecfb3175f837; Echo recall-boundary and membership directions
 
 - **JU-01: Reconcile assessment attachment, S dependencies, acceptance and crash cuts to the granted recall/first-use boundary; admission-time attachment is optional.** — Row 116 grants recall-boundary attachment, not a prerequisite on source admission. Never-used unassessed facts remain coverage debt; a before-attachment first-use crash preserves durable work and no use. Rows 115/116 stay unchanged. _(astra-design-judgment-of-use-b3fdd6b5.md JU-01; Echo repair-round-7 directions; docs/23-judgment-of-use/02-sensitivity-attached-to-every-learned-fact.md; docs/23-judgment-of-use/seams/source-assessment-and-recall.md)_

@@ -97,6 +97,21 @@ amend its policy. A pending definition is reviewable but cannot grant dispatch p
 | custody and disclosure | SecretRef requirements, capture policy, permitted destinations/readers, scrub rules and external disclosure scope. |
 | observation and activation | Required parser fixtures, metrics, supervisor point where applicable, live probe, wiring/isolation evidence and supported operation modes. |
 
+**Rule — sign-off follows the purpose.** The following is quoted from [the purpose](00-the-purpose.md#the-purpose); P8-NF-06/07/16 exercise each listed condition and its ordinary neighbor.
+
+**Rule — sign-off is kept for a short, fixed list.** An effect needs the person's sign-off before it happens only when one of these holds:
+- it commits money or a resource above the level the person named;
+- it cannot be undone and falls outside the agent's role;
+- it speaks publicly in the person's name;
+- it widens the agent's own role or authority;
+- it touches a matter the person marked as sensitive.
+
+Everything else inside the agent's role is ordinary, including sending messages and using the accounts that go with the role. **Check:** the effect doorway classifies every registered effect against this list at registration. An effect not on the list and inside a granted role is dispatched without a prompt.
+
+**Value — the rest is held the way a trusted colleague is held.** Full records, review after the fact by the best judgment available, and corrections that last. Patterns are judged in retrospect. A moment is judged live only when it is irreversible.
+
+The five-field Profile determines verification obligations under the glossary, not extra sign-off. An ordinary message inside the recorded role dispatches without a prompt; the same message speaking publicly in the person's name requires sign-off. Standing, least revelation, secrets, spend caps, stop, durable cause and no-repeat checks apply to both. An action outside every grant is refused with the grant needed, even when it is not on the sign-off list.
+
 **Rule — classification is about what will actually execute.** Rules 28, 57, 82 and 103;
 P4-NF-18. The doorway decodes the final parameters and derives action and scope through the
 current OperationDefinition. A proposal labelled “inspect” that asks the adapter to delete,
@@ -250,19 +265,21 @@ supported under the purpose's fully functional single-machine Rule; local launch
 M4-L's implementation/admission hold. An independently administered process on that machine is
 not a durability peer.
 
-This boundary follows the purpose's four consequential-effect tests, Eight §§2–3/5–6, and
+This boundary follows the purpose's five sign-off conditions, Eight §§2–3/5–6, and
 Ten §§3–4/12. Generic ownership of process effects supplies neither an approved definition nor
 a callable message encoding. An `ordinary-reply`, `context-delivery`, provider call or fact append
 cannot authorize process creation. Recording a launch after spawning supplies neither a
 before-dispatch claim nor its durable cause. Six's primitive scheduling power cannot launch
 business workers. An operator-started restricted worker is physical-boundary evidence only.
 
-| Constitutional test | Required disposition for this ordinary launch |
+| Sign-off condition or separately named floor | Required disposition for this ordinary launch |
 |---|---|
-| Cannot be undone by the agent alone | The only effect is finite local worker/resource occupation in a disposable scope. The admitted boundary enforces expiry of the whole process tree and all queued dispatch rights without a subsequent discretionary action; externally perceptible disclosure, messaging, provider work and persistent authoritative mutation are unreachable. Absence of that proof makes this arm unsupported. |
+| It cannot be undone and falls outside the agent's role; ordinary local durability additionally requires reversibility | The only effect is finite local worker/resource occupation in a disposable scope. The admitted boundary enforces expiry of the whole process tree and all queued dispatch rights without a subsequent discretionary action; externally perceptible disclosure, messaging, provider work and persistent authoritative mutation are unreachable. Absence of that proof makes this arm unsupported. |
 | Commits resources above the operator's level | The installed finite resource declaration and Six allocation stay within the operator's approved threshold, including worst-case expiry and observation work. Missing limits or a larger exposure refuse; costly is not automatically irreversible. |
-| Reaches outside granted scope | Derive machine, installation, principal, run/step, incarnation, executable/artifact, boundary, working area and permitted handles from the exact approved definition and actual parameters. Any mismatch refuses before invoking the OS; the executor must hold the checked executable/profile identity through invocation, so a path or symlink replacement cannot change the admitted bytes. |
-| Touches policy-sensitive matters | Check the actual scope against current policy-sensitive designations. This operation supplies no protected mutation, credential access or policy exception. A sensitive scope requires its existing authorization/supervision and cannot be called ordinary by its label. |
+| Standing floor: outside every grant refuses under “a role is granted once, at onboarding” | Derive machine, installation, principal, run/step, incarnation, executable/artifact, boundary, working area and permitted handles from the exact approved definition and actual parameters. Any mismatch refuses before invoking the OS; the executor must hold the checked executable/profile identity through invocation, so a path or symlink replacement cannot change the admitted bytes. |
+| It touches a matter the person marked as sensitive | Check the actual scope against current policy-sensitive designations. This operation supplies no protected mutation, credential access or policy exception. A sensitive scope requires its existing authorization/supervision and cannot be called ordinary by its label. |
+| It speaks publicly in the person's name | This loading-only launch cannot publish or send; a separate public-speaking operation requires sign-off even inside the role. |
+| It widens the agent's own role or authority | The launch consumes current grants and cannot widen them; an authority change requires sign-off. |
 
 The exact five-field Profile is `consequence: control`, `reversibility: costly`, `reach: agent`,
 `surface: none`, `repeats: { kind: bounded, by: native-confined-launch }`; the feature binds
@@ -273,7 +290,7 @@ Seven-supervised finite stage even when this individual launch is ordinary; admi
 supervisor's own call does not require a second model to authorize it.
 
 **Rule — expiry is part of the admitted effect, not a hidden kill port.** Eight's ordinary
-reversible/costly rule requires all four consequential-effect tests to be false, finite enforced
+reversible/costly rule requires none of the five sign-off conditions to hold, finite enforced
 bounds and at least local durability of the complete causal closure. The
 resource contract names finite wall lifetime, CPU time, memory, processes/descendants, open
 handles, input/output and scratch bytes, queue length and outstanding dispatches, plus observation
@@ -293,8 +310,7 @@ No new Seven supervision interface is granted.
 
 `ordinary-local-durability-scope` is RESOLVED by the purpose's fully functional single-machine
 Rule and its ordinary bounded-operation Rule. The provider/reply closed-set acceptance and exact
-membership check govern irreversible effects; ordinary operations require all four tests to be
-false, finite enforced bounds and the whole causal record durable at least locally. P-08 checks enforcing
+membership check govern irreversible effects; ordinary reversible operations require none of the five sign-off conditions to hold, finite enforced bounds and the whole causal record durable at least locally. P-08 checks enforcing
 the broader exclusion still need their own named grant; this document supplies none.
 M4-L and all implementation/evidence holds remain open. Approval starts nothing.
 
@@ -517,7 +533,7 @@ after each evidence, settlement and accounting append and verifies no unsupporte
 local-durable and inhibits local admission without waiting for replication or quorum. It
 cannot acquire an ordinary irreversible-operation requirement from this default. The primitive
 floor uses its original part's durability contract. Reversible/costly ordinary operations follow
-the purpose's ordinary bounded-operation Rule: all four consequential-effect tests must be false,
+the purpose's ordinary bounded-operation Rule: none of the five sign-off conditions may hold,
 bounds must be finite and enforced, and the whole causal record must be retained durably at least
 locally, with its complete required prefix durable before dispatch. Their demand is strengthened
 where declared loss consequences require it.

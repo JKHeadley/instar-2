@@ -301,11 +301,12 @@ what the tests, the probes, and the sentinels are for. The register tells them w
 
 ## What this makes checkable
 
-Before the register, from step one: **19 of 89** rules checkable by a script.
+The register enumerates the subjects that checks must cover and the evidence each holder supplies.
+A declaration does not prove its holder works, and a rule count does not prove a useful agent.
+The [purpose, constraint 6](00-the-purpose.md#the-six-constraints) states: “The rule count is a floor beneath that, never the score.”
+A readiness claim cites a recorded real conversation judged against mission, agency and self-knowledge.
+The rule book permits a shared review to hold several mind-held rules; it does not require a watcher for each.
 
-With the register and the glossary (step three): rules 4, 7, 8, 9, 32, 33, 34, 36, 38, 39, 43,
-56, 57, 62, 66, 72, 73, 76, 79, 82, 86 move to checkable — **21 more, for 40 of 89**. Rules 78
-and 84 become free, as step one predicted. The held-by-the-mind group gains a named watcher each.
 
 ---
 

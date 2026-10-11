@@ -423,9 +423,10 @@ document's work, not this one's; this document only fixes the shape it runs in.
 ## What this makes checkable
 
 Rules 34, 38, 43, 62, 76 — the five step one named — become checkable the moment the profile is
-declared on the relevant register kinds. With steps one through three approved: **40 of 89** by
-script, exactly as step two projected. The terms registry adds finding 4 itself to the checkable
-set, and the runaway rule gives the flood ceiling (1.x's bounded-notification standard) a
+declared on the relevant register kinds. These are verification floors, not an acceptance score.
+The [purpose, constraint 6](00-the-purpose.md#the-six-constraints) states: “The rule count is a floor beneath that, never the score.”
+A ready claim needs a recorded real conversation judged against mission, agency and self-knowledge.
+The terms registry adds finding 4 itself to the checkable set, and the runaway rule gives the flood ceiling (1.x's bounded-notification standard) a
 definition to enforce against rather than a primitive to guard. Rule 90 makes rule 69
 checkable from the rule's side (`enforcedBy`), and turns "is the rule book a tree?" from a
 reading exercise into a build check.

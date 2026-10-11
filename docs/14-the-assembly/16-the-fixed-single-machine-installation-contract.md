@@ -102,9 +102,9 @@ is named `replicated(0)`.
 
 **Rule — ordinary bounded operations have their own local durability rule.** Owner: Eight;
 predicates: P10-SI-04/36. `ordinary-local-durability-scope` is RESOLVED by the purpose's fully
-functional single-machine Rule and its ordinary bounded-operation Rule. The provider/reply closed set
-and its exact membership check govern irreversible effects. An ordinary operation requires all
-four consequential-effect tests to be false, finite enforced bounds and the whole causal record
+functional single-machine Rule and its ordinary bounded-operation Rule. The [purpose](../00-the-purpose.md#the-purpose) states: “An ordinary reversible operation may run on one machine outside the irreversible provider/reply set.” The provider/reply closed set
+and its exact membership check govern irreversible effects. An ordinary reversible operation requires none
+of the five sign-off conditions to hold, finite enforced bounds and the whole causal record
 retained durably at least locally, with its complete required prefix durable before dispatch.
 Corresponding P-08 interpretations/checks enforcing the broader exclusion still require a named
 grant before changing; this document grants no such edits. M4-L and all implementation/evidence
@@ -1985,7 +1985,7 @@ that endpoint and current installation/run/incarnation; all other IPC/network/ef
 are denied and an additional endpoint is unsupported. There is no
 command text, arbitrary executable, new outbound-purpose literal, automatic restart/replacement,
 provider access or implicit readiness. The exact five-field control/costly/agent/none/bounded
-profile and all four constitutional tests are enforced at registration and actual use.
+profile and all five purpose sign-off conditions and the separate standing and reversibility floors are enforced at registration and actual use.
 
 **Rule — the first loading worker anchors on Five's admitted unfinished Run.** Owners: Five
 for unchanged Run admission/read and actual-start grounding; Eight for initial-launch identity
@@ -2123,7 +2123,7 @@ implementation approval or runtime admission.
 
 | Hold | Closure evidence and owner |
 |---|---|
-| `ordinary-local-durability-scope` | RESOLVED by the purpose's fully functional single-machine Rule and its ordinary bounded-operation Rule: the irreversible provider/reply set and membership check stay intact; ordinary operations require all four tests to be false, finite enforced bounds and the whole causal record durable at least locally. Any corresponding P-08 check change still needs a named grant. Approval starts nothing and closes no implementation/evidence hold. |
+| `ordinary-local-durability-scope` | RESOLVED by the purpose's fully functional single-machine Rule and its ordinary bounded-operation Rule: the irreversible provider/reply set and membership check stay intact; ordinary reversible operations require none of the five sign-off conditions to hold, finite enforced bounds and the whole causal record durable at least locally. Any corresponding P-08 check change still needs a named grant. Approval starts nothing and closes no implementation/evidence hold. |
 | `M4-L — fixed confined-launch owner operation and exact grant` | OPEN: Eight's approved definition/v2 admission/no-repeat implementation, Ten's real integrated restricted execution and expiry/attack/allowed-port evidence, applicable Nine assessment, desk-reviewed exact grants/pins and operator approval of protected content. Resolution of the governing-document gap supplies no implementation/admission evidence or authority-conferring runtime flag. |
 | `general-process-execution` | Separate Eight contracts/grants and actual evidence for arbitrary executables/shells, broader modes, cancellation/cleanup, automatic restart/replacement/retry. This breadth is deferred, not a prerequisite for this one operation. |
 | `M3-S — fixed-installation record granularity and strict-consumer performance` | Existing structural/performance owner evidence and full affected checks; no timeout increase or bypass supplied here. |

@@ -4,6 +4,10 @@ _Generated from `02-the-register.changelog.json` by `scripts/render-changelog.mj
 The document itself reads as a first version; every change to it is recorded here, newest first,
 each linked to the git change that made it (rule 91).
 
+## Revision 6 · 2026-10-10 · draft — Justin, docs-align-1010: align design parts with the constitution amendments merged in PR #154; final-head code-owner approval pending.
+
+- **Replace numeric readiness projections with real-use acceptance and shared review under the purpose and Rule 116.** — The governing purpose fixes agency, identity, onboarding, sign-off and acceptance; design prose must not impose incompatible defaults or claim readiness from verification alone. _(`fc0e3c20`, docs/00-the-purpose.md; docs/01-the-rules.md; reviews/docs-align-1010-change-review.md)_
+
 ## Revision 5 · 2026-09-04 · draft — part-four bundle (atomic): approval fields are pending-landing and completed at the bundle's merge
 
 - **The parsers kind gains authenticationClass, eventIdAuthority, and ackPolicy; the blocking-site kind gains the enforces companion fact for governed-state sites.** — Intake adapters' facts must fit their kind rather than live in prose, and amendment one's checkable-not-claimable requirement needs its register row. _(part four, shape amendments)_

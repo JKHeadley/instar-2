@@ -58,4 +58,4 @@ but fixed identity, privacy, money and approval checks remain authoritative. Str
 counts complement semantic cases; rejecting all positives does not pass. Fresh running proofs
 and an independently reachable status path are mandatory for ongoing service.
 
-Basis: Purpose's sole consequential-effect definition; rules 34/38/43/62/65/69/77/95/111; E12.
+Basis: [Purpose](../00-the-purpose.md#the-purpose), “sign-off is kept for a short, fixed list”; glossary verification profiles; rules 34/38/43/62/65/69/77/95/111; E12.

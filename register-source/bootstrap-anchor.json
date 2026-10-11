@@ -4,9 +4,9 @@
   "shape": "sha256:25ee29a3eac960ce783f87fe1cd329833c4643cab7cfa7195e44b09d363b688c",
   "documents": {
     "docs/01-the-rules.md": "sha256:4a37cdf0535408003d73aa7e934e67bc196925530b6addfc40fbb80e0a90d423",
-    "docs/02-the-register.md": "sha256:206e4995e8707590f8bd07f643100fbb5cd4112ae6f8b466f314329b551f056b",
-    "docs/03-the-glossary.md": "sha256:3ce8385de121a4e88bb46b6a2674a739507f3dcd474458bcfe23568292f7d4c3",
-    "docs/07-the-declarations.md": "sha256:c5cb704ed2245f433a1d385f4b9128aa0110ae2b2b33562ee40a5f097f20559e",
+    "docs/02-the-register.md": "sha256:9e229cfae1fb784736286f72b16124a461e473f93cbe0e284cd75f1e7c282db5",
+    "docs/03-the-glossary.md": "sha256:68ca7a31f025c270a1b90ced1df965671c3e188df7076e6dde1c50d3c9f7cba0",
+    "docs/07-the-declarations.md": "sha256:be690d1a07a73287d36b4e3dff9d927271c1b94e5d90611b33b215b69408734b",
     "docs/rules/91-a-document-reads-as-its-first-version.md": "sha256:49e37e4f31009804f28a2dd38f67b3c894a5d662d3a4ea2d9c703310252492a0"
   },
   "rules": [

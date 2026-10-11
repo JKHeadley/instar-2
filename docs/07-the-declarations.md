@@ -568,9 +568,9 @@ Continuing the cross-part convention: **P3-NF-nn**, each with its stage (`decode
 
 ## What this part makes checkable
 
-The register document promised 21 rules move to checkable — 4, 7, 8, 9, 32, 33, 34, 36, 38, 39,
-43, 56, 57, 62, 66, 72, 73, 76, 79, 82, 86 — and this part is that machinery, with each rule's
-home component named rather than waved at: single-fact and closed-list checks land as declaration
+The register supplies enumeration and evidence for rules 4, 7, 8, 9, 32, 33, 34, 36, 38, 39,
+43, 56, 57, 62, 66, 72, 73, 76, 79, 82 and 86, with each rule's
+home component named: single-fact and closed-list checks land as declaration
 decode refusals; conditional checks (7's memory-and-deletes, 39's empty metrics, 62's liveProof,
 72/73's gate) land in the per-kind invariant layer; enumeration completeness (4, 66, 86) lands in
 the sweep plus the governed ports; agreement and scope (32, 33) land in the generated entries
@@ -578,7 +578,7 @@ part two's fixtures already test; and the **time-dependent checks** — 56's ver
 72/73's deadlines, the `gap` deadlines — land in a named **deadline walker**: a build-stage check
 that takes `now` as an explicit argument in part one's convention, runs beside the generator, and
 never writes into the register bytes, so determinism (P3-NF-07) and time-awareness coexist
-instead of contradicting. Rules 78 and 84 become free (the briefing is a rendering). Rule 69
+instead of contradicting. Rules 78 and 84 require the generated briefing to reach the agent; rendering alone does not prove awareness. The [purpose](00-the-purpose.md#the-purpose) states: “An Instar agent can tell the person it works with what it is, what Instar is, why it is different, and what it can do, in everyday words, without naming the harness or model it runs on.” The real conversation must match current abilities. The [purpose, constraint 6](00-the-purpose.md#the-six-constraints) states: “The rule count is a floor beneath that, never the score.” Rule 69
 moves to held globally, with the honesty classes and the `held*` rendering keeping the report
 from becoming the lie it replaces. Rule 90's generator is built here for every governing kind;
 rule 112 gains its check-run record; rule 26 gets its subject in both the anchored generation and
