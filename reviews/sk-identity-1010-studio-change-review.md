@@ -15,7 +15,7 @@ Undo and recovery: revert these metadata commits and regenerate the register fro
 Multi-machine posture: shared declaration and register metadata; native proof is for the declared Darwin runtime. No new machine-local product state or ownership changes.
 Layer below: inspected compositionClosure/compositionDigest/currentRuntime, the native adapter's matching predicate, the contract's declaration equality assertion, owner manifests, desk rehash/repin scripts and PR #156 checker scope. The conformance candidate excludes its own declaration from the hashed closure.
 Bug class: integration
-Bug evidence: integration=tests/preview/journal-commitments.test.ts; regression=tests/preview/journal-dated-memory.test.ts
+Bug evidence: reproducer=/Users/dabombstudio/.instar/agents/echo/.instar/lanes/sk-identity-1010-studio-evidence/runtime.log
 Hook bypass: none; core.hooksPath unset and common hooks directory sample-only, checked on Studio.
 Convergence: none
 Decision: studio-conformance | compute an uncertified declaration candidate in a detached scratch tree using repository helpers; copy it to the primary tree only after the unchanged full native contract passes | reported=/Users/dabombstudio/.instar/agents/echo/.instar/lanes/sk-identity-1010-studio-PROGRESS.md
