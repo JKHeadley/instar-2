@@ -3,9 +3,9 @@
   "approvalBasis": "Repository replay publication pin; exact operator approval is recorded in PR/changelog history; replay has no entering-force authority.",
   "shape": "sha256:25ee29a3eac960ce783f87fe1cd329833c4643cab7cfa7195e44b09d363b688c",
   "documents": {
-    "docs/01-the-rules.md": "sha256:d9e51b6d049d877511600b974eb334f4bfade433703cecda0545987579fbbb61",
+    "docs/01-the-rules.md": "sha256:4a37cdf0535408003d73aa7e934e67bc196925530b6addfc40fbb80e0a90d423",
     "docs/02-the-register.md": "sha256:206e4995e8707590f8bd07f643100fbb5cd4112ae6f8b466f314329b551f056b",
-    "docs/03-the-glossary.md": "sha256:088932b96860c9f27a6b25e4493646bb16776fef20d779ea255e7efde86fe459",
+    "docs/03-the-glossary.md": "sha256:3ce8385de121a4e88bb46b6a2674a739507f3dcd474458bcfe23568292f7d4c3",
     "docs/07-the-declarations.md": "sha256:c5cb704ed2245f433a1d385f4b9128aa0110ae2b2b33562ee40a5f097f20559e",
     "docs/rules/91-a-document-reads-as-its-first-version.md": "sha256:49e37e4f31009804f28a2dd38f67b3c894a5d662d3a4ea2d9c703310252492a0"
   },
@@ -157,7 +157,7 @@
     },
     {
       "number": 84,
-      "declarationHash": "sha256:010bfde980098866e81b2dcc019df67391dcd4d4e7dfb2e12e06dd36bcd10feb",
+      "declarationHash": "sha256:820f65ccf46c43a4bc5bf9a7d0c4781721789a42dce198a5444cbec8095235ff",
       "owner": "part-three-bootstrap:operator-policy-prerequisite"
     },
     {
@@ -237,7 +237,7 @@
     },
     {
       "number": 23,
-      "declarationHash": "sha256:aee418d73ae02274c7e799a73a6e375b752ba6e22aa34ce373adf2f0a5e2efa0",
+      "declarationHash": "sha256:ce0e8e084be0b5c143b2629b490c3ff8557794839380d8b1ab5f45a0e94a9283",
       "owner": "part-three-bootstrap:operator-policy-prerequisite"
     },
     {
@@ -282,7 +282,7 @@
     },
     {
       "number": 34,
-      "declarationHash": "sha256:13d2979bd3321b8c475519ac2c0ebcf357419d4e5ab044dc4902b7b104a71360",
+      "declarationHash": "sha256:14461639b6d456b3a71a7cb23bb1a4e7486561bff03c1dd2f30bae6935ba024a",
       "owner": "part-three-bootstrap:operator-policy-prerequisite"
     },
     {
@@ -292,7 +292,7 @@
     },
     {
       "number": 38,
-      "declarationHash": "sha256:5259e9ac1581dd6b2b49929f920babe601fd53f414293c931420fb1e3f902470",
+      "declarationHash": "sha256:6648351fcf10bfd14a2d0112a7ab73ffe13303aac376b0f8dc976f66ce0c1abc",
       "owner": "part-three-bootstrap:operator-policy-prerequisite"
     },
     {
@@ -312,7 +312,7 @@
     },
     {
       "number": 43,
-      "declarationHash": "sha256:c541f8e470b33e6ebdb9fab87ea64f9b5f50ea23274612c6ba80e6d6ee8fe3a7",
+      "declarationHash": "sha256:6449ed9bfd1a9b4bf27d0a73d46cec7d8e52b2660f2ead3f1bda1d1eee19582e",
       "owner": "part-three-bootstrap:operator-policy-prerequisite"
     },
     {
@@ -332,7 +332,7 @@
     },
     {
       "number": 62,
-      "declarationHash": "sha256:e3a345fbf123ca3be5b7e5359236d1f7ad582bbe49755d179592623a63a9a47b",
+      "declarationHash": "sha256:bed577806427144a169b9a8d8c7355da18246210fc5f2e609b3eee324ee3d5bc",
       "owner": "part-three-bootstrap:operator-policy-prerequisite"
     },
     {
@@ -367,7 +367,7 @@
     },
     {
       "number": 76,
-      "declarationHash": "sha256:9a12864a2ea23087bde3a4ea146a0e6662dee7865d143cb7bc593147a3b31386",
+      "declarationHash": "sha256:a6bf1bfc58c4613fb3007437403e095e2e40d613d68df851d83124564950f4d2",
       "owner": "part-three-bootstrap:operator-policy-prerequisite"
     },
     {
@@ -472,12 +472,12 @@
     },
     {
       "number": 103,
-      "declarationHash": "sha256:78c26e243157b48e5122201a302fd27a1181d790db9440347934422946d59353",
+      "declarationHash": "sha256:97ac3903fa3d3ad37cd9b453034b9e4aa7c6b27cc83a4bb42e280977a5dfe6be",
       "owner": "part-three-bootstrap:operator-policy-prerequisite"
     },
     {
       "number": 104,
-      "declarationHash": "sha256:60e6ba119042d95ffd2292765445522af4247e80129a9c95b2409187b128d147",
+      "declarationHash": "sha256:1d99bdb001f1c65bfdf4c95351eda46bddd9270d99033831c211c8892e5c63d3",
       "owner": "part-three-bootstrap:operator-policy-prerequisite"
     },
     {
@@ -542,7 +542,7 @@
     },
     {
       "number": 18,
-      "declarationHash": "sha256:598999bd874fe2db0a5320b1b31987c593f11633219cc66ccaf9b341a5aae324",
+      "declarationHash": "sha256:69f1465c3024bbf775c6665e621bdc06714cbbc8629280a773861665fc75f518",
       "owner": "part-three-bootstrap:operator-policy-prerequisite"
     },
     {
