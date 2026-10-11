@@ -19,7 +19,7 @@ import { buildWorkIndex, detectOverlaps, workForTopic, type SessionActivity } fr
 import { MAX_RAISED_SUBSCRIPTION_PROMPT_BYTES, SUBSCRIPTION_CONVERSATION_SYSTEM_PROMPT, SUBSCRIPTION_MAX_OUTPUT_TOKENS, SUBSCRIPTION_PREVIEW_EXPIRY } from '../../src/assembly/production-provider.js';
 import { hasClaim, replaceClaim, supersedesCorrection } from './claim-match.mjs';
 import { checkReply as checkCoherenceOf, correctionNote, releaseFindings, COHERENCE_FINDING_LIMIT, type CoherenceFinding } from './coherence-check.js';
-import { checkReply, reviewReply, repeatsOperatorOnly, HOLDING_REPLY, jevRequestBody, JEV_RESPONSE_MAX_BYTES, REPLY_CHECK_BUDGET_MS, REPLY_CHECK_BUDGET_REASON, LINK_SHAPE_REASON, linkShapeRules, bareTopicReferences, topicNameReason, BARE_TOPIC_OBJECTION, noDecisions, validDispositions, jevConfidentCredential, concealSecretMaterial, secretMaterialIn, CLAIM_SCOPED_RULES, namedClaimsIn, exciseNamedClaims, substantiveReply, replyRemainderPrompt, sharedAudience, AUDIENCE_RULES, type ApprovalFacts } from './reply-check.js';
+import { checkReply, reviewReply, repeatsOperatorOnly, HOLDING_REPLY, REVIEW_INTERRUPTED_REASON, GROUP_REVIEW_FINAL_NOTICE, isGroupReviewFinalNotice, jevRequestBody, JEV_RESPONSE_MAX_BYTES, REPLY_CHECK_BUDGET_MS, REPLY_CHECK_BUDGET_REASON, LINK_SHAPE_REASON, linkShapeRules, bareTopicReferences, topicNameReason, BARE_TOPIC_OBJECTION, noDecisions, validDispositions, jevConfidentCredential, concealSecretMaterial, secretMaterialIn, CLAIM_SCOPED_RULES, namedClaimsIn, exciseNamedClaims, substantiveReply, replyRemainderPrompt, sharedAudience, AUDIENCE_RULES, type ApprovalFacts } from './reply-check.js';
 import { latestRecurringDay, nextRecurringDay, parseDatedItem, restatedDatePhrase, dueState, selectDatedItems, withinNext48Hours, localParts, type DatedItem } from './dated-memory.js';
 import { isStatusCommand, isStopCommand, statusAnswer, STOP_CONFIRM_TEXT } from './status-command.js';
 import { AGENT_PROMISE_LIMIT, fulfillableCommitment, fulfillmentProposals, fulfillmentSupported, legacyFulfillsReminder, promiseProposals, recordedPromises, type AgentPromise, type FulfillmentProposal, type PromiseProposal } from './agent-commitment.js';
@@ -1649,6 +1649,7 @@ export function reviewUnavailableReleases(view: JournalView): { total: number; b
 export function replyTimings(view: JournalView) {
   const duration = (check: ReplyCheckResult | undefined): number | null => {
     if (check?.latencyMs === undefined) return null;
+    if (check.latencyMs === 0 && !check.durationMeasured && check.reason === REVIEW_INTERRUPTED_REASON) return null;
     // Older crash-recovery frames used zero for an unknown duration. A new
     // measured zero carries an explicit marker when its shape is ambiguous.
     if (check.latencyMs === 0 && check.verdict === 'unavailable' && !check.durationMeasured
@@ -5296,7 +5297,7 @@ export interface PreviewPorts {
     | {state:'uncertain'; usage?: ModelUsage}>;
   /** Rule 42: a message id (accepted), null (UNKNOWN) or a closed outcome. Rule 89: `provenance`
    * is the journal's signature over exactly `target`, `chat`, `thread` and `text`. */
-  send(input: { text: string; expectedText: string; chat: string; thread?: number; update: number;
+  send(input: { text: string; expectedText: string; chat: string; thread?: number; replyTo?: number; update: number;
     kind?: OutboundKind; disposition?: OutboundDisposition; replyMarkup?: unknown;
     target?: string; provenance?: OutboundProvenance; admit?: () => void }): Promise<number | null | SendOutcome>;
   /** The host calls input.admit after its last disclosure read, before replication/dispatch. */
@@ -5382,7 +5383,7 @@ export function createJournalWorker(journal: ReturnType<typeof openPreviewJourna
   };
   ports = { ...original, model: guarded(original.model),
     // The fixed content-free hold notice is the one outbound a refused disclosure admits: it names no private item.
-    send: async input => !journal.view.groupCarry || await disclosure() || input.target?.startsWith('held-notice:') === true
+    send: async input => !journal.view.groupCarry || isGroupReviewFinalNotice(input.text, input.expectedText) || await disclosure() || input.target?.startsWith('held-notice:') === true
       && input.text === GROUP_DISCLOSURE_HOLD_NOTICE && input.expectedText === GROUP_DISCLOSURE_HOLD_NOTICE ? original.send(input)
       : { kind: 'refused', reason: 'group disclosure authority or audience refused' },
     ...(original.sessionWork ? { sessionWork: guarded(original.sessionWork) } : {}),
@@ -5436,14 +5437,18 @@ export function createJournalWorker(journal: ReturnType<typeof openPreviewJourna
     let prepared = admitted === undefined;
     const admit = () => { if (!prepared) { gate(); admitted!(); prepared = true; } };
     if (admitted) {
-      if (!await disclosure()) return { kind: 'refused', reason: GROUP_DISCLOSURE_HOLD };
+      if (!isGroupReviewFinalNotice(input.text, input.expectedText) && !await disclosure()) return { kind: 'refused', reason: GROUP_DISCLOSURE_HOLD };
       if (!original.sendAdmits) admit();
     }
     const subject = { target, chat: input.chat, ...(input.thread === undefined ? {} : { thread: input.thread }), body: input.text };
+    // The forum reply anchor comes from durable intake, not a model-selected message or another topic.
+    const sourceTurn = journal.view.genesis.forum && target.startsWith('reply:')
+      ? journal.view.turns.get(target.slice('reply:'.length)) : undefined;
+    const replyTo = sourceTurn && sourceTurn.update === input.update && sourceTurn.thread === input.thread ? turnMessageId(sourceTurn) : null;
     let attempted: SendOutcome = { kind: 'unknown', reason: 'send port failed' };
     if (!journal.verifyOutbound(provenance, subject)) attempted = { kind: 'refused', reason: 'outbound provenance unsigned' };
     else for (let attempt = 0; attempt < NOT_SENT_ATTEMPTS; attempt++) {
-      try { attempted = settleSendOutcome(await (admitted ? original.send : ports.send)({ ...input, target, provenance: provenance!, ...(admitted && original.sendAdmits ? { admit } : {}) })); }
+      try { attempted = settleSendOutcome(await (admitted ? original.send : ports.send)({ ...input, ...(replyTo === null ? {} : { replyTo }), target, provenance: provenance!, ...(admitted && original.sendAdmits ? { admit } : {}) })); }
       catch { attempted = { kind: 'unknown', reason: 'send port failed' }; }
       if (attempted.kind !== 'not-sent') break;
     }
@@ -8387,7 +8392,8 @@ export function createJournalWorker(journal: ReturnType<typeof openPreviewJourna
           else if (turn.reviewReserved) {
             // A failed or interrupted paid review is UNKNOWN: it is never repeated.
             if (previous?.path !== 'subscription') journal.append({ kind: 'reply-check', id: turn.id, result: { verdict: 'unavailable',
-              ruleIds: previous?.ruleIds ?? [], confidence: null, path: 'subscription', latencyMs: 0, candidateDigest }, at: ports.now() });
+              ruleIds: previous?.ruleIds ?? [], confidence: null, path: 'subscription', latencyMs: 0, candidateDigest,
+              reason: REVIEW_INTERRUPTED_REASON }, at: ports.now() });
             decision = 'unavailable';
           } else {
             const checkPorts = { ...ports.replyCheck, now: ports.now,
@@ -8577,7 +8583,10 @@ export function createJournalWorker(journal: ReturnType<typeof openPreviewJourna
             if (revised !== undefined) { reply = revised; mentionedKeys = []; objection = reason ?? objections.join(', '); }
             else if (scoped !== undefined) { reply = scoped; mentionedKeys = []; }
             else if (audienceUnreviewed || holding && (nothingLeft || withheld === undefined)) {
-              reply = actionHeader === undefined ? disclosed(HOLDING_REPLY) : `${actionHeader}\n${HOLDING_REPLY.replace(/^PREVIEW — /u, '')}`;
+              // An unavailable group review is terminal; promise no later check.
+              // No action header or continuity text may ride this content-free notice.
+              reply = audienceUnreviewed ? GROUP_REVIEW_FINAL_NOTICE
+                : actionHeader === undefined ? disclosed(HOLDING_REPLY) : `${actionHeader}\n${HOLDING_REPLY.replace(/^PREVIEW — /u, '')}`;
               heldBack = true; speaker = 'infrastructure';
               held = { objections, ...(note === undefined ? {} : { reason: note }), dispositions, ...(skipped ? { responseSkipped: skipped } : {}),
                 ...(withheld === undefined ? {} : { withheld }) };

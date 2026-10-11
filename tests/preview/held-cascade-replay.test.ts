@@ -7,7 +7,7 @@ import { join } from 'node:path';
 import { openPreviewJournal, createJournalWorker } from './journal.js';
 import { prepareJournalEnvelope } from './journal-envelope.js';
 import { CREDENTIAL_SHAPE_NOTICE } from './journal.js';
-import { HOLDING_REPLY, interpretJev, jevConfidentCredential } from './reply-check.js';
+import { GROUP_REVIEW_FINAL_NOTICE, HOLDING_REPLY, interpretJev, jevConfidentCredential } from './reply-check.js';
 
 // Plan #144: the REAL recorded shapes of Justin's preview turn 969389800 ("What's my current gym locker code?",
 // 2026-09-30 18:20 PDT, build cint-L13 72fb5a82). Jev's reply check answered credential 0.51 (its unsure band;
@@ -177,7 +177,7 @@ it('replays the recorded unsure/UNKNOWN reply checks in a forum and keeps a held
   expect(uncertain.turn.thread).toBe(7);
   // The same uncertain credential release allowed in the private replay above
   // must not disclose the operator's value to a group audience.
-  expect(uncertain.sends).toEqual([HOLDING_REPLY]);
+  expect(uncertain.sends).toEqual([GROUP_REVIEW_FINAL_NOTICE]);
   const held = await flow({ forum: true, jev: JEV_800, answer: ANSWER_800, review: 'violation' });
   expect(held.sends).toEqual([HOLDING_REPLY]);
   expect(held.turn.thread).toBe(7);

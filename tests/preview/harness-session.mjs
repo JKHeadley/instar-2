@@ -16,7 +16,7 @@ import { spawn } from 'node:child_process';
 import { readFileSync, realpathSync } from 'node:fs';
 import { fileURLToPath } from 'node:url';
 import { harnessCommand } from '../../scripts/production-boot-io.mjs';
-import { HARNESS_LAUNCHER, HARNESS_LOGIN, readHarnessLogin } from './harness-user.mjs';
+import { HARNESS_LAUNCHER, readHarnessLogin } from './harness-user.mjs';
 
 /** The sudo command for one interactive harness launch: harnessCommand's, in the launcher's terminal mode. */
 export function harnessSessionCommand({ user, profile, executable, args, env, login = readHarnessLogin }) {
@@ -30,9 +30,9 @@ export function harnessSessionCommand({ user, profile, executable, args, env, lo
 const invoked = process.argv[1] && realpathSync(process.argv[1]) === fileURLToPath(import.meta.url);
 if (invoked) {
   const words = process.argv.slice(2);
-  const custody = words[0] === '--custody' ? words.splice(0, 2)[1] : HARNESS_LOGIN;
+  const custody = words[0] === '--custody' ? words.splice(0, 2)[1] : undefined;
   const [user, profilePath, split, executable, ...args] = words;
-  if (!custody?.startsWith('/') || !user || !profilePath || split !== '--' || !executable) {
+  if ((custody !== undefined && !custody.startsWith('/')) || !user || !profilePath || split !== '--' || !executable) {
     process.stderr.write('usage: harness-session.mjs [--custody LOGIN.json] USER PROFILE.json -- EXECUTABLE ARG ...\n');
     process.exit(125);
   }

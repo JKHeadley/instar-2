@@ -132,6 +132,12 @@ export function repeatsOperatorOnly(reply: string, operatorMessages: readonly st
   });
 }
 
+export const REVIEW_INTERRUPTED_REASON = 'review interrupted; provider outcome unknown';
+export const GROUP_REVIEW_FINAL_NOTICE = "I couldn't complete the review this group reply needs, so I didn't send my answer. Please resend your message.";
+/** This exact content-free notice reveals none of the held answer. */
+export const isGroupReviewFinalNotice = (text: string, expected: string): boolean =>
+  text === expected && text === GROUP_REVIEW_FINAL_NOTICE;
+
 export const HOLDING_REPLY = 'I need to check that answer before I can send it.';
 /** Every rule an unselected review judges on the operator's own chat; the audience question is added only by selection. */
 const rules = (Object.keys(REPLY_RULES) as ReplyRule[]).filter(id => !isAudienceRule(id) && id !== 'incoherent_remainder');

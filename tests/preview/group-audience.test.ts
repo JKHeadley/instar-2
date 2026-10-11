@@ -7,7 +7,7 @@ import { prepareJournalEnvelope } from './journal-envelope.js';
 import { appendGroupCarry } from './group-carry.js';
 import { verifyGroupAudience } from './group-disclosure.js';
 import { key, scope, now, permissionFor, membership } from './group-carry-fixture.js';
-import { HOLDING_REPLY, parseReplyReviewVerdict, type ReplyRule } from './reply-check.js';
+import { GROUP_REVIEW_FINAL_NOTICE, HOLDING_REPLY, parseReplyReviewVerdict, type ReplyRule } from './reply-check.js';
 import { readAnswer } from './answer-reading.js';
 
 const fixture = JSON.parse(readFileSync(new URL('./fixtures/group-audience-live-2026-10-10.json', import.meta.url), 'utf8')) as {
@@ -68,7 +68,7 @@ for (const audience of ['verified', 'other-member', 'unverified', 'changed-befor
       expect(sends).toEqual([fixture.recorded.answer]); expect(models).toBe(1); expect(reviews).toBe(1);
       expect(audiences).toEqual([true, true]);
     } else {
-      expect(sends).toEqual([]); expect(reviews).toBe(0);
+      expect(sends).toEqual(audience === 'changed-before-review' ? [GROUP_REVIEW_FINAL_NOTICE] : []); expect(reviews).toBe(0);
       expect(models).toBe(audience === 'changed-before-review' ? 1 : 0);
     }
     journal.close();
