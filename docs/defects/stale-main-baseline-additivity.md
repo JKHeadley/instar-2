@@ -1,6 +1,6 @@
 # First-landing and additivity checks refuse a branch that does not contain the current main tip (Rule 37 quarantine)
 
-**Status:** OPEN. **Owner:** constitutional-build integration desk (Echo). **Opened:** 2026-09-28.
+**Status:** CLOSED (2026-10-10). **Owner:** constitutional-build integration desk (Echo). **Opened:** 2026-09-28.
 
 On branch `cint-1` (full runs retained as `/private/tmp/claude-501/cint1-livefix/full2.log` and `re1.log`, and a pristine built checkout of `2988aa95` as `base-re1.log`), these cases fail deterministically, on this change and on its base alike:
 - `tests/assembly/round8-additivity.test.ts` — `R8-F1 compares pre-existing Part Ten fixture outcomes on P11 first landing`, `V72 compares Part Ten decoder field deletions on P11 first landing`.
@@ -28,3 +28,5 @@ On branch `cint-1` (full runs retained as `/private/tmp/claude-501/cint1-livefix
 **Re-check on cint-L3b post-check repair (2026-09-29):** `HEAD` now contains the local and remote `main` tip `02753cdc`. `SLB-LEGACY-ALL-KINDS-93 SLB-LEGACY-TEXT-RANGES-111 compares 1313 signed legacy mutations on loop A1 first landing` is restored and passes (3/3 in `tests/transport/loop-main-head-mutation.test.ts`; it reports the comparison inapplicable because the unit is already on the current-main baseline), because `scripts/check-transport-contracts.mjs` requires it as seam evidence. That case is no longer covered here. The other cases listed above stay quarantined in this repair; with `main` now contained they are expected to pass and are the next to restore.
 
 **Multi-machine posture:** the tests are machine-local. This record and the quarantine travel with the repository.
+
+**Closure (2026-10-10, sb-w4-dispatch-now):** the source repair at `1e7b3bc83dd34eb20b069eb2b993cd3641f28df9` recognizes an already-landed unit from every evidence path in the actual shared ancestor; an unlanded or partially landed unit still refuses a stale baseline. P15 uses the same helper. After the ordinary merge of origin/main `6c63ef8486440c62e4ba3576d70065c12fc6fff0`, all cases listed here are active and pass: 82 tests across the 13 baseline files, plus the first-landing Git fixture proving accepted and refused neighbors. No local main ref was moved, skip added, or saved gate result rewritten. Earlier quarantine dispositions above are historical; none remains for these cases. The pipeline supplies the fresh full-suite report.
