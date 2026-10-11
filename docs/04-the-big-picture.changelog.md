@@ -4,6 +4,10 @@ _Generated from `04-the-big-picture.changelog.json` by `scripts/render-changelog
 The document itself reads as a first version; every change to it is recorded here, newest first,
 each linked to the git change that made it (rule 91).
 
+## Revision 3 · 2026-10-10 · draft — Justin, docs-align-1010: align design parts with the constitution amendments merged in PR #154; final-head code-owner approval pending.
+
+- **Place mission, default identity, role-based agency and real-use acceptance in the architecture contract.** — The governing purpose fixes agency, identity, onboarding, sign-off and acceptance; design prose must not impose incompatible defaults or claim readiness from verification alone. _(`fc0e3c20`, docs/00-the-purpose.md; docs/01-the-rules.md; reviews/docs-align-1010-change-review.md)_
+
 ## Revision 2 · 2026-09-01 · approved — operator review on PR #12; operator's first review: make fractal self-hosting, recursive session composition, the native harness, Grok Build, and scoped degradation explicit
 
 - **Self-hosting and local evolution made architectural: every development tool ships as a capability, each agent can build and preserve local capability packages, and the observe-change-verify-graduate loop repeats fractally at platform, agent, feature, and run-group scale.** — Rule 2 existed, but the first draft did not show how an individual agent remains able to evolve without waiting for the official source. _(PR #12 review comment 3910394463)_

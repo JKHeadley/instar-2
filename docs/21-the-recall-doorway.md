@@ -20,7 +20,7 @@ model use, and the user's outcome are four separate evidence claims.
 The design combines **Proposal A**, accounting for what actually reached the model, with
 **Proposal B**, bounded recall before drafting the main answer or choosing an external action.
 **Proposal C**, selective live semantic review—comparing a claim’s meaning with its supporting
-evidence—is a separately governed intervention for history-review candidates (a policy-selected subset of consequential effects).
+evidence—is a separately governed intervention for history-review candidates (a policy-selected subset of irreversible effects).
 Fixed checks enforced by the component responsible for the action run first; review after
 the fact is the default elsewhere.
 The [accepted research](21-the-recall-doorway/research/05-proposals-and-evaluation.md)
@@ -48,4 +48,3 @@ This design is split into one file per section so each renders on GitHub and can
 13. [Negative contract fixtures](21-the-recall-doorway/13-negative-contract-fixtures.md)
 14. [Inherited duties and disposition](21-the-recall-doorway/14-inherited-duties-and-disposition.md)
 15. [Operator decisions and honest limits](21-the-recall-doorway/15-operator-decisions-and-honest-limits.md)
-16. [Memory failures and the learning loop](21-the-recall-doorway/16-memory-failures-and-the-learning-loop.md)
