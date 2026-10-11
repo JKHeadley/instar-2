@@ -15,7 +15,7 @@ Undo and recovery: Retain encrypted journal/media and causal claims. Roll forwar
 Multi-machine posture: Encrypted original media and free transcription model remain machine-local deliberately. Each current conversation owner uses its own installed transcriber. The original turn's transcript follows existing encrypted journal replication and recall; another machine without source bytes reports unavailability instead of opening another conversation's file or refetching an uncertain claim. No additional replication or key authority is claimed.
 Layer below: Inspected AES-GCM source-bound custody, durablePreviewWrite, journal claim reuse, existing admission hooks and volume ACLs, the subscription route's no-session-persistence behavior, and the actual whisper-cli and ffmpeg executables. The confined live route used the matching installed custody profile, the real Read tool, existing route caps and actual process execution. The 1.x voice path uses paid Groq/OpenAI APIs, so it is unsuitable for the required free local route; its ordinary source-labelled turn behavior is retained.
 Bug class: user-facing
-Bug evidence: reproducer=tests/preview/telegram-media.test.ts live=tests/preview/fixtures/media-understanding/recorded/image.json
+Bug evidence: reproducer=tests/preview/telegram-media.test.ts; live=tests/preview/fixtures/media-understanding/recorded/image.json
 Hook bypass: none
 Convergence: none
 Decision: media-existing-confinement | Reuse the existing turn volume, tool admission and model route; generate filenames and clean them instead of giving the harness the media store or its key. | reported=/Users/dabombstudio/.instar/agents/echo/.instar/lanes/media-understand-1010-PROGRESS.md
