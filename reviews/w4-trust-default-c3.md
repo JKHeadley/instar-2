@@ -18,9 +18,9 @@ Bug class: integration
 Bug evidence: reproducer=tests/preview/trust-signoff.test.ts
 Hook bypass: none
 Convergence: none
-Decision: trust-c3-separate-classifications | Preserve legacy risk flags for replay and duplicate identity; record the five sign-off conditions and durability independently | reported=/Users/dabombstudio/.instar/agents/echo/.instar/lanes/w4-trust-default-PROGRESS.md
-Decision: trust-c3-existing-role-store | Record role/account/channel/trust with the existing grant policy and add explicit installer revise; do not create an agent self-administration path | reported=/Users/dabombstudio/.instar/agents/echo/.instar/lanes/w4-trust-default-PROGRESS.md
-Decision: trust-c3-replicated-fixture | Reuse P8’s real prepare/dispatch and replica receipt consumer to prove logical two-machine admission; keep single-machine profile untouched | reported=/Users/dabombstudio/.instar/agents/echo/.instar/lanes/w4-trust-default-PROGRESS.md
+Decision: trust-c3-separate-classifications | Preserve legacy risk flags for replay and duplicate identity; record the five sign-off conditions and durability independently | reported=/Users/dabombstudio/.instar/agents/echo/.instar/lanes/w4-trust-default-r2b-PROGRESS.md
+Decision: trust-c3-existing-role-store | Record role/account/channel/trust with the existing grant policy and add explicit installer revise; do not create an agent self-administration path | reported=/Users/dabombstudio/.instar/agents/echo/.instar/lanes/w4-trust-default-r2b-PROGRESS.md
+Decision: trust-c3-replicated-fixture | Reuse P8’s real prepare/dispatch and replica receipt consumer to prove logical two-machine admission; keep single-machine profile untouched | reported=/Users/dabombstudio/.instar/agents/echo/.instar/lanes/w4-trust-default-r2b-PROGRESS.md
 Prompt review: No model prompt or output parser changes. Tool-refusal text changes to name role/sign-off/durability independently. Real recorded tool-call replay exercises the new refusal. Summary, uncertain summary, Jev undecided/unsure, reply-review, delivered reply and empty recorded candidate are replayed against setup and revise and cannot create authority; fixture provenance and update ids are in the report.
 Prompt finding: 849db3a6296a | quoted-evidence | Existing memory-reply and recall prompt wording is untouched; journal change is only effect-decision validation.
 Prompt finding: bd01de21286a | quoted-evidence | Existing memory-reply and recall prompt wording is untouched; journal change is only effect-decision validation.
