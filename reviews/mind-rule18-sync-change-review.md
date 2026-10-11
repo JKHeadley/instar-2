@@ -15,7 +15,7 @@ Undo and recovery: revert this commit (the runner then refuses on main's rule bo
 Multi-machine posture: repository source only; identical on every machine
 Layer below: docs/01-the-rules.md Held-by-the-mind table, docs/00-the-purpose.md coherency section, verifyMindRules and sourcePacket in tests/preview/briefing.ts
 Bug class: live-path
-Bug evidence: lanes/preview-deploy.log 18:47-19:02 "candidate exited early" x4; forum-answer-copy-20261010-190127/runs.jsonl "refused before launch: preview: mind rule 18 changed"
+Bug evidence: reproducer=tests/preview/constitution-briefing-sync.test.ts (2 failed on the pre-fix briefing, 2 passed after); live=/Users/dabombstudio/.instar/agents/echo/.instar/lanes/preview-trial-root/forum-answer-copy-20261010-190127/runs.jsonl (refused before launch: preview: mind rule 18 changed)
 Hook bypass: none
 Convergence: none
 Prompt review: model-facing standing instruction text changes only to the approved constitutional wording, verbatim; no instruction added or removed
