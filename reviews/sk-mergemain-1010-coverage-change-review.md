@@ -34,6 +34,8 @@ Prompt finding: e2d2f84aa62a | quoted-evidence | continuity explanation asserted
 Prompt finding: fb5fa7e706c8 | protocol-literal | existing evidence-grounded recall instruction, unchanged by the unit.
 Deferral: generated/register.json:1 | not-a-deferral=derived publication of existing source obligations and constitutional prose; not a new builder deferral
 
+History publication validation: all five recovered changelogs validate; governed-document check passes (37 bodies, 116 indexed sections, 26 changelogs). The repaired review check passes over 1880 commits and 517 records. Readable changelog twins are generated from restored JSON. Register replay and real-clock check at aacff715 pass; architecture/lint pass with issues=[]. Main JSON entry bytes and all prior branch entry content are verified preserved. Final publication commit coverage is included by this record.
+
 simplestRobustRoute: ordinary merge plus the existing source-pinned register replay and exact-build policy grant helper; no new machinery. Start guards are the constitution pins and tool grants; end-state evidence is targeted recorded-case replay and final checks; existing secret, spend, stop, duplicate-send and intake floors remain intact.
 80/20: verify the two-line merge integration and its direct consumers, preserve recorded evidence and prior history, and leave full-suite and independent landing judgment to the pipeline.
 VERDICT: author submission; independent landing review pending
