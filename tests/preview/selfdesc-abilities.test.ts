@@ -35,7 +35,7 @@ it('reads the wording each live wall was settled behind from its recorded answer
   expect(settledConstraintWording(live(6232224), wall(6232224, 'no-such-constraint'))).toBeUndefined();
 });
 
-it('the recorded K11a briefing differs only in the declared audience and recurring-request capabilities', () => {
+it('keeps historical K11a results and replaces the old description with current user outcomes', () => {
   const note = capabilityBriefing(path => readFileSync(resolve(process.cwd(), path), 'utf8'),
     { providerAttempts: 1000, expiresAt: 1791232800000, tools: true, mcp: 0 }).text;
   const replays = JSON.parse(read('k11a-replays.json')) as { note: string; runs: { kind: string; input: string; verdict: string; reply: string }[] };
@@ -44,14 +44,15 @@ it('the recorded K11a briefing differs only in the declared audience and recurri
   const current = JSON.parse(read('k11a-agentready-replays.json')) as { note: string; system: string;
     runs: { kind: string; input: Envelope; raw: string; reply: string; judge: { verdict: string; rubric: string } }[] };
   const oldConversation = '- preview-conversation: answers the operator in their private Telegram chat and topics, one reply per admitted message.';
-  const forumConversation = '- preview-conversation: answers the operator in the configured private Telegram chat or forum group, returning each reply to its originating topic.';
   expect(current.note.split(oldConversation)).toHaveLength(2);
   const oldRequests = "- preview-requested-actions: an explicit request for a settled later day and time (a reminder) is answered once at that time, with no new operator message.";
-  const recurringRequests = "- preview-requested-actions: an explicit later-time request is answered once at that time, or daily or weekdays until cancelled, with no new operator message.";
   expect(current.note.split(oldRequests)).toHaveLength(2);
-  expect(note).toContain(recurringRequests);
-  expect(current.note.replace(oldConversation, forumConversation).replace(oldRequests, recurringRequests)).toBe(note);
-  expect(current.system).toBe(SUBSCRIPTION_TOOLS_SYSTEM_PROMPT);
+  expect(note).toContain('I can keep reminders and repeating tasks');
+  expect(current.note).not.toBe(note);
+  expect(note).toContain('Instar 2.0');
+  expect(note).not.toContain('Claude Code');
+  expect(current.system).not.toBe(SUBSCRIPTION_TOOLS_SYSTEM_PROMPT);
+  expect(SUBSCRIPTION_TOOLS_SYSTEM_PROMPT).toContain('You are an Instar 2.0 agent');
   expect(current.runs.map(run => run.kind)).toEqual(['worst', 'chain']);
   for (const run of current.runs) {
     const packet = packetOf(run.input);
@@ -61,7 +62,7 @@ it('the recorded K11a briefing differs only in the declared audience and recurri
     expect(JSON.parse(run.raw).answer).toBe(run.reply);
     expect(run.judge).toMatchObject({ verdict: 'PASS', rubric: 'k11a-rubric-v2' });
   }
-  expect(note).toContain(`What you can do for the operator here:`);
+  expect(note).toContain('I can find things out on the web');
   expect(note).toContain(`- ${toolsBriefing(0)}`);
   expect(note).toContain(TOOLS_LIMITS);
   expect(note).toContain('at most 1000 model attempts, ending at epoch ms 1791232800000.');
@@ -105,14 +106,14 @@ it('states the MCP count it read and claims no account access from it: zero, a c
   // names only), so a positive count says account access goes only through its tools and never asserts one exists; an
   // unreadable configuration is said as unknown; none configured is the one case that settles it: no logged-in account.
   const accessClaim = /logged-in account access\)|\(logged-in account/u;
-  expect(toolsBriefing(0)).toContain('no MCP server, so no logged-in account access');
+  expect(toolsBriefing(0)).toContain('Account connections are off here; you can turn them on.');
   for (const count of [1, 3]) {
-    expect(toolsBriefing(count)).toContain(`${String(count)} MCP server(s) (accounts only via their tools)`);
+    expect(toolsBriefing(count)).toContain(`${String(count)} service connection(s) configured; I check what each supports before using it.`);
     expect(toolsBriefing(count)).not.toMatch(accessClaim);
   }
-  expect(toolsBriefing(undefined)).toContain('MCP servers: unknown');
+  expect(toolsBriefing(undefined)).toContain('Account connections are not yet verified.');
   expect(toolsBriefing(undefined)).not.toMatch(accessClaim);
   expect(toolsBriefing(undefined)).not.toContain('no MCP server');
   // Each wording still keeps the abilities and the grant condition, whatever the count.
-  for (const count of [undefined, 0, 1]) expect(toolsBriefing(count)).toMatch(/full Claude Code set \(files, shell, web reads, nested subagents\);.*network writes and outside sends via the doorway's four tests on operator grant\.$/u);
+  for (const count of [undefined, 0, 1]) expect(toolsBriefing(count)).toContain('I act within the access you have already given me; I ask only when an action needs new permission.');
 });

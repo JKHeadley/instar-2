@@ -111,8 +111,8 @@ it('spawns the synthetic subscription CLI with exact bytes, args and allowlisted
 // the live frozen14 build pins sha256:557a62fa…, so an int11 switch needs a new record.
 const CURRENT_DIGESTS = { 'preview-decision-system-v2': 'sha256:234293e8e209f210b23cdcf5322202065766dfe64f532f85bbea69486c0260b4',
   // 2026-10-09 agent identity repair retains the flat answer protocol.
-  // The preceding sha256:5817ae4b… policy needs the existing policy-successor record.
-  [SUBSCRIPTION_CONVERSATION_FRAMING]: 'sha256:b746a83d18e99f08a94f0f6c8efe84e7d086e2f44ed716be6f3114ba51ac234b' } as const;
+  // Self-knowledge framing changes the system prompt only; the prior b746a83d… activation needs the existing policy-successor record.
+  [SUBSCRIPTION_CONVERSATION_FRAMING]: 'sha256:f76625d0edaee8c21b7eb20e6cda9b32bce434b006ea2278967c01c11bd91bbe' } as const;
 for (const conversation of [false, true]) it(`sends thinking off on the ${conversation ? 'conversation' : 'decision'} framing, args unchanged`, async () => {
   const f = fixture({ conversation });
   expect((await value(createClaudeCodeSubscriptionRoute(f.input)).invoke('request', f.bounds)).state).toBe('complete');

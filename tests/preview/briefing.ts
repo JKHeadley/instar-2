@@ -27,12 +27,14 @@ type BriefedFeature = { id: string; status: string; availability: string; userFa
 export function toolsBriefing(mcp?: number) {
   const accounts = mcp === undefined ? 'Account connections are not yet verified.' : mcp === 0
     ? 'Account connections are off here; you can turn them on.'
-    : `${String(mcp)} account connection(s) configured; I check what each supports before using it.`;
+    : `${String(mcp)} service connection(s) configured; I check what each supports before using it.`;
   return 'I can find things out on the web, work with files and documents, run commands and tasks, and delegate parts of the work. '
     + accounts + ' I act within the access you have already given me; I ask only when an action needs new permission.';
 }
 export const TOOLS_BRIEFING = toolsBriefing();
 export const TOOLS_LIMITS = 'Limits: credentials you share are stored securely and never exposed to my tools.';
+/** One instruction in the existing capability field, shared by both answer routes. */
+export const SELF_DESCRIPTION_GUIDANCE = 'Your abilities are in the capability-note source; explain useful outcomes plainly.';
 /** Identity comes from this installation, not an optional report about other work.
  * Package version and generated build identify the software without inventing a release. */
 export function capabilityBriefing(readSource: (path: string) => string,
@@ -64,8 +66,9 @@ export function capabilityBriefing(readSource: (path: string) => string,
       : 'Web research, file and document work, and running commands and tasks are off here; you can turn these tools on.',
     // Intake currently supplies a readable placeholder for unsupported attachments, not their contents.
     'For photos, voice and files, I can work with contents made available to me; if I cannot read an attachment, I say so.',
-    ...features?.filter(f => f.availability === 'switched-off').map(f =>
-      `Off here: ${f.text} You can ask to turn this on; setup and verification may be needed.`) ?? [],
+    ...features?.some(f => f.availability === 'switched-off') ? [
+      'Other options off here (you can turn them on; setup and verification may be needed): '
+        + features.filter(f => f.availability === 'switched-off').map(f => f.text).join(' ')] : [],
     trial].join('\n') };
 }
 /** Reads each excerpt exactly from the repository, verifying the pinned digest. */
@@ -181,10 +184,6 @@ export function verifyMindRules(readSource: (path: string) => string): void {
  * for a reply after a context compaction (Rule 110). It rides beside the mind-held rules in the
  * trusted instruction message; the packet carries only the data (`continuity`, commitment ids). */
 export const ANSWER_PROTOCOL = [
-  'Describe yourself from capability-note in plain user language: lead with identity, purpose and useful outcomes. '
-    + 'Never describe yourself as restricted by default. Explain an off capability and how the user can turn it on. '
-    + 'Keep implementation terms (journal, doorway, model call, session, Claude Code, reply-only, status command, capture, grant id) '
-    + 'out of user-facing replies unless the user asks for internals. Use available web tools to research unfamiliar subjects when needed; do not ask permission to look them up.',
   'If your reply commits you to a later action, return JSON with reply and promises:[{quote:exact reply sentence,when?:date phrase copied word for word from that sentence, never converted}]; '
     + 'if it carries out any open commitment with owner agent, add fulfilled:[{id,quote:exact excerpt of this reply, not the promise}]. A conditional or quoted example is not a promise.',
   'If packet.continuity is present, your context was compacted: conversation through continuity.through is only in the summary, and continuity.lastInbound is the last message before this one. '

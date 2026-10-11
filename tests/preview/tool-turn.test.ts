@@ -192,28 +192,28 @@ it('tells the agent and the operator exactly which tools exist and where outward
   const read = () => JSON.stringify({ generation: 'g', commit: 'c', launchers: { 'tests/preview/journal-agent.mjs': [] } });
   const withTools = capabilityBriefing(read, { providerAttempts: 50, expiresAt: 1, tools: true }).text;
   // The tools item joins the can-do list and the real limits follow it (w4-selfdesc, live K11a 2026-10-04).
-  expect(withTools).toContain(`What you can do for the operator here:\n- ${TOOLS_BRIEFING}`);
+  expect(withTools).toContain(`- ${TOOLS_BRIEFING}`);
   expect(withTools).toContain(TOOLS_LIMITS);
   // It describes the capability, never a hand-picked list: the whole set is offered and each call is decided at the hook.
-  expect(TOOLS_BRIEFING).toMatch(/^tools: full Claude Code set \(files, shell, web reads, nested subagents\); MCP servers: unknown;/u);
+  expect(TOOLS_BRIEFING).toContain('I can find things out on the web, work with files and documents, run commands and tasks');
   for (const name of SUBSCRIPTION_TOOL_NAMES) expect(TOOLS_BRIEFING).not.toContain(name);
   // Outward writes and sends are an ability behind the doorway and the operator's grant, never a blanket denial.
-  expect(TOOLS_BRIEFING).toContain('network writes and outside sends via the doorway\'s four tests on operator grant');
+  expect(TOOLS_BRIEFING).toContain('I act within the access you have already given me');
   expect(withTools).not.toMatch(/no account writes|standing block|no vault/u);
-  expect(TOOLS_LIMITS).toMatch(/^Limits: a sent credential is vaulted on arrival \(you see its SecretRef\), not tool-readable\.$/u);
+  expect(TOOLS_LIMITS).toBe('Limits: credentials you share are stored securely and never exposed to my tools.');
   // The MCP wording says what the root configures now: both sides of the count, and a configured server is never claimed
   // as logged-in account access (review round 1, finding 4; selfdesc-abilities covers the unknown count too).
-  expect(toolsBriefing(0)).toContain('no MCP server, so no logged-in account access');
-  expect(toolsBriefing(2)).toContain('2 MCP server(s) (accounts only via their tools)');
+  expect(toolsBriefing(0)).toContain('Account connections are off here; you can turn them on.');
+  expect(toolsBriefing(2)).toContain('2 service connection(s) configured; I check what each supports before using it.');
   expect(capabilityBriefing(read, { providerAttempts: 50, expiresAt: 1, tools: true, mcp: 0 }).text).toContain(`- ${toolsBriefing(0)}`);
   // The attempt cap and the expiry stay in the note: the note is what the self-description is held to.
   expect(withTools).toContain('at most 50 model attempts, ending at epoch ms 1.');
   expect(withTools).not.toContain('no tools, browsing, running code');
   const without = capabilityBriefing(read, { providerAttempts: 50, expiresAt: 1 }).text;
-  expect(without).toContain('Nothing unlisted is available: no tools, browsing, running code');
+  expect(without).toContain('you can turn these tools on');
   expect(without).not.toContain(TOOLS_BRIEFING); expect(without).not.toContain(TOOLS_LIMITS);
   const fallback = capabilityBriefing(() => { throw Error('absent'); }, { providerAttempts: 1, expiresAt: 1, tools: true }).text;
-  expect(fallback).toContain(`You have ${TOOLS_BRIEFING} ${TOOLS_LIMITS}`); expect(fallback).not.toContain('You have no tools');
+  expect(fallback).toContain(`${TOOLS_BRIEFING} ${TOOLS_LIMITS}`); expect(fallback).not.toContain('You have no tools');
   const view = { toolTurns: { invocations: 2, reservedCalls: 14, refusedCap: 1, toolCalls: 5, toolRefusals: 2, inconsistent: 0, open: [] } };
   expect(toolStatusLines(view, true)).toEqual([
     `Tools: the harness's full built-in set (${SUBSCRIPTION_TOOL_NAMES.length} tools, each call decided at the admission hook) and the root's `

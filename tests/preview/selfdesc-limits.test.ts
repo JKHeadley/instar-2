@@ -3,7 +3,7 @@ import { readFileSync } from 'node:fs';
 import { resolve } from 'node:path';
 import { CLAIM_SCOPED_RULES, DECLARED_OBLIGATIONS_GUIDE, exciseNamedClaims, namedClaimsIn, parseReplyReviewVerdict, quotedSpans,
   replyReviewQuestion, substantiveReply, type ReplyRule } from './reply-check.js';
-import { SOURCE_PINS, sourcePacket, TOOLS_BRIEFING, TOOLS_LIMITS, toolsBriefing } from './briefing.js';
+import { SOURCE_PINS, sourcePacket, TOOLS_BRIEFING, TOOLS_LIMITS } from './briefing.js';
 import { taskFields } from './answer-reading.js';
 import { governingConstraints, OBLIGATION_DECISION_TOOLS, previewCapabilities, TOOL_ATTEMPTS_MEANING } from './journal.js';
 
@@ -70,7 +70,7 @@ it('the guide distinguishes describing a listed limit from declining asked work,
     { providerAttempts: 1, expiresAt: 1 }).sources;
   expect(sources.map(source => source.id)).toContain('capability-note');
   // Without tools the note's closing line lists the limits; with tools it names the tools and what does not exist.
-  expect(sources.find(source => source.id === 'capability-note')!.text).toContain('Nothing unlisted is available: no tools, browsing');
+  expect(sources.find(source => source.id === 'capability-note')!.text).toContain('you can turn these tools on');
   const tools = sourcePacket(path => readFileSync(resolve(process.cwd(), path), 'utf8'), SOURCE_PINS,
     { providerAttempts: 1, expiresAt: 1, tools: true }).sources.find(source => source.id === 'capability-note')!.text;
   expect(tools).toContain(`- ${TOOLS_BRIEFING}`);
@@ -98,7 +98,7 @@ it('on the tools route the review packet is route-true, and the same two sides h
     expect(packet.governingConstraints, input).toEqual(governingConstraints(true));
     expect(packet.obligationDecision, input).toBe(OBLIGATION_DECISION_TOOLS);
     expect(packet.declaredObligations.toolAttempts, input).toEqual({ meaning: TOOL_ATTEMPTS_MEANING, calls: [] });
-    expect(packet.sources.find(source => source.id === 'capability-note')!.text, input).toContain(`- ${toolsBriefing(0)}`);
+    expect(packet.sources.find(source => source.id === 'capability-note')!.text, input).toContain('no MCP server, so no logged-in account access'); // Historical wording; new replay covers the replacement.
     // Plan #491 and #510 changed only the answer-slot wording of the review question after these were recorded (the flat
     // answer protocol, then one verdict field per rule); every rule, guide and packet line below is still the recorded one.
     const content = envelopeOf(input).messages[0]!.content;

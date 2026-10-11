@@ -39,8 +39,8 @@ it('shows the contradiction the live model was given, and that this checkout no 
 
   const note = capabilityBriefing(readSource, LIMITS).text;
   // The capability is still listed, and now says plainly when it is sent and that nothing more is needed.
-  expect(note).toContain('- preview-requested-actions: ');
-  expect(note).toMatch(/- preview-requested-actions: .*answered once at that time.*no new operator message\./u);
+  expect(note).toContain('I can keep reminders and repeating tasks');
+  expect(note).toContain('once, daily or on weekdays, until you cancel them');
   // No blanket denial of it anywhere in the note.
   expect(note).not.toContain('no scheduled work');
   expect(note).not.toContain('unprompted messages');
@@ -52,7 +52,7 @@ it('shows the contradiction the live model was given, and that this checkout no 
 it('carries no denial of later-time sending anywhere in the always-sent text', () => {
   const always = [ANSWER_INSTRUCTIONS,
     ...sourcePacket(readSource, SOURCE_PINS, LIMITS).sources.map(item => JSON.stringify(item))].join('\n');
-  expect(always).toContain('preview-requested-actions');
+  expect(always).toContain('I can keep reminders and repeating tasks');
   for (const denial of ['no scheduler', 'no scheduled work', 'unprompted', 'background process'])
     expect(always, denial).not.toContain(denial);
 });
@@ -189,7 +189,7 @@ it('leaves an undated promise unsettled without any denial in what the model is 
     expect(state.sent).toHaveLength(1);
     const packets = seen.join('\n');
     // The capability note really is in what the model was given, and it no longer denies the capability.
-    expect(packets).toContain('- preview-requested-actions: ');
+    expect(packets).toContain('I can keep reminders and repeating tasks');
     for (const denial of ['no scheduler', 'no scheduled work', 'unprompted', 'background process'])
       expect(packets, denial).not.toContain(denial);
     expect(recorded('a5').reply).toContain('I have no scheduler or background process');

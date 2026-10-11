@@ -23,7 +23,7 @@ import { latestRecurringDay, nextRecurringDay, parseDatedItem, restatedDatePhras
 import { isStatusCommand, isStopCommand, statusAnswer, STOP_CONFIRM_TEXT } from './status-command.js';
 import { AGENT_PROMISE_LIMIT, fulfillableCommitment, fulfillmentProposals, fulfillmentSupported, legacyFulfillsReminder, promiseProposals, recordedPromises, type AgentPromise, type FulfillmentProposal, type PromiseProposal } from './agent-commitment.js';
 import { messageTime, zoneFormatter } from './self-state.js';
-import { TOOLS_BRIEFING, TOOLS_LIMITS } from './briefing.js';
+import { SELF_DESCRIPTION_GUIDANCE, TOOLS_BRIEFING, TOOLS_LIMITS } from './briefing.js';
 import type { ObjectionDisposition, ReplyCheckResult, ReplyCheckPorts, ReplyDecision, ReplyFinding, ReplyReviewDiagnostics, ReplyRule } from './reply-check.js';
 import { SUMMARY_QUESTION, interpretSummaryJev, type SummaryCheckResult } from './summary-check.js';
 import { exactSummaryFaithfulness, interpretSummaryJev as interpretFaithfulnessJev, summaryFaithfulnessEvidence, summaryJevScore, summaryJevUsage } from './summary-faithfulness.js';
@@ -6724,13 +6724,9 @@ export function createJournalWorker(journal: ReturnType<typeof openPreviewJourna
         guidance: 'Reconcile this clock with dated items and open commitments before answering. Words such as today, tomorrow and next week in earlier messages or summaries referred to their original day, not this one. State the current local day accurately; distinguish passed, due and upcoming dates. Keep open commitments open unless a verified later message closed them.' } } : {}),
       ...(journal.view.groupCarry ? { predecessorMemory: groupCarryPacket(journal.view.groupCarry, question?.text ?? '', now, journal.view.limits.maxBytes, journal.view) } : {}),
       memoryVersion: journal.view.memory.length, purpose: 'Make coherence something an AI cannot lose.',
-      // What you can do is the generated capability-note source; this field carries only how to use the packet.
-      // The capability-note source already states that it is generated from the register and that nothing
-      // unlisted is available, so that sentence is not repeated here (Rule 116). On the tool route, whose note lists
-      // conditional abilities rather than closing with that sentence, the agent describing itself gives only the note's
-      // items and limits: live 2026-10-04 (cint-L49, K11a, update 6232231) replays restated earlier
-      // refusals in history as standing limits the note does not have (Rule 103; lanes/w4-selfdesc-PROGRESS.md).
-      capability: `Your capabilities are the capability-note source; describe their useful outcomes in plain language. Summary covers earlier turns; history has later turns. For a question about what the operator said, state a remembered detail only when the offered journal evidence supports that exact detail, not a similar name, event or date, a summary inference, your earlier reply or the question's premise; otherwise say "I don't have enough information to recall that", never that the operator did not say it. Cite sourceLabel for supported remembered facts. Say when the source is unknown.`
+      // The generated note owns ability claims on both routes. Explain outcomes; do not
+      // promote an earlier refusal in history into a standing limit (Rules 78, 84, 103).
+      capability: `${SELF_DESCRIPTION_GUIDANCE} Summary precedes history. For a question about what the operator said, state a remembered detail only when the offered journal evidence supports that exact detail, not a similar name, event or date, a summary inference, your earlier reply or the question's premise; otherwise say "I don't recall that detail", never that the operator did not say it. Cite sourceLabel for supported remembered facts. Say when the source is unknown.`
         // Hold guidance rides only while a held item is visible (history, recall, or today's status); exact-unit guidance only with a number carrying a unit or currency.
         // Rule 19, live 2026-10-03 (I-proofroom2-20261003-061647, I3b, update 6231611): the operator answered
         // "17 × 3 = 51" with "No, it's 41." and the reply asked which earlier answer was meant without naming any
@@ -7550,10 +7546,15 @@ export function createJournalWorker(journal: ReturnType<typeof openPreviewJourna
           // (its base call not yet reserved, as at preparation), so the packet never claims tools its call will not get.
           const routedContext = (value: string): string => {
             const packet = JSON.parse(value) as Record<string, unknown>;
-            if (!('capabilities' in packet)) return value;
             const tools = ports.toolRoute?.(turn.id) === true;
-            return JSON.stringify({ ...packet, obligationDecision: tools ? OBLIGATION_DECISION_TOOLS : OBLIGATION_DECISION,
-              governingConstraints: governingConstraints(tools), capabilities: previewCapabilities(tools) });
+            const supplied = typeof ports.sources === 'function' ? ports.sources(turn) : ports.sources;
+            const isCapabilityNote = (source: unknown) => (source as { id?: unknown } | null)?.id === 'capability-note';
+            const note = supplied?.find(isCapabilityNote);
+            return JSON.stringify({ ...packet, ...('capabilities' in packet ? {
+              obligationDecision: tools ? OBLIGATION_DECISION_TOOLS : OBLIGATION_DECISION,
+              governingConstraints: governingConstraints(tools), capabilities: previewCapabilities(tools) } : {}),
+              ...(note && Array.isArray(packet.sources)
+                ? { sources: packet.sources.map(source => isCapabilityNote(source) ? note : source) } : {}) });
           };
           const offeredPromises = () => new Set(((JSON.parse(context) as { commitments?: { items?: { id?: number; owner?: string }[] }[] })
             .commitments ?? []).flatMap(group => group.items ?? []).filter(item => item.owner === 'agent' && Number.isSafeInteger(item.id))
