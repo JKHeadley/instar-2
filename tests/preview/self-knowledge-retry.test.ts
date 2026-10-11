@@ -105,4 +105,3 @@ it.each(['format-retry', 'answer-replace'])('keeps the complete-prompt bound whe
     expect(journal.view.calls).toBe(1);
   } finally { journal.close(); rmSync(directory, { recursive: true, force: true }); }
 });
-
