@@ -24,6 +24,10 @@ Subject (4 paths): register-source/owner-references/preview.json, tests/preview/
 
 Evidence: Targeted failing cases: 3 passed. Journal boundaries, obligations, selfdesc-abilities and group-carry: 81 passed. Recorded shapes replayed from fixtures/retrospective-duty-followup-train-1-2026-10-08.json: summary 715672480; uncertain summary 715672483; Jev uncertain 715672482; Jev undecided 969389570; reply review 969389923; delivered reply 715672479; empty bubble 715672550. Five recorded capability answers from fixtures/capsentence-2026-10-11.json (update 840342287, runs 5–9) exercise the rendered paragraph and digest-bound verdicts. No new model-facing implementation change.
 
+Deferral: generated/register.json:1 | not-a-deferral=Existing compiled register prose regenerated unchanged except source provenance; no builder work is deferred.
+
+Contract checks: All eleven required scripts were invoked and read; each reaches ENOENT for .test-results.json. The assigned gate worktree and local checkout have no saved report, and fast-fail evidence contains only fast.log, not JSON results. No unrelated report is substituted and no fresh full-run result is claimed. The pipeline supplies the full report.
+
 ## Closing block
 
 simplestRobustRoute: This is the simplest robust route: repair the three obsolete assertions using the existing renderer and constitutional Rule 18, without adding machinery or changing model instructions. Start guard is the reported failing base; end guards are the repaired tests, real recorded replay neighbors and cheap gate checks; all runtime limits remain unchanged. No autonomous deployment claim.
