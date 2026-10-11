@@ -38,6 +38,9 @@ Deferral: tests/preview/fixtures/self-knowledge-model-replays-2026-10-10.json:51
 Deferral: tests/preview/fixtures/self-knowledge-model-replays-2026-10-10.json:185 | not-a-deferral=retained historical model output, not a builder commitment.
 Deferral: tests/preview/fixtures/self-knowledge-model-replays-2026-10-10.json:186 | not-a-deferral=retained historical model output, not a builder commitment.
 
+
+Validation: the unchanged 22,959-byte floor guard passes: plain always-sent 22,208 bytes (751 spare), tools 23,933 including their larger system prompt (570 spare against the existing 24,503 bound). Targeted smoke and real-shape tests pass; exact remaining counts and skips are in the shared PROGRESS record. Lint, typecheck, architecture and register check pass. Change-review check exits 1: five new prompt overlaps require 359 dispositions across 242 older current records. Both this record and the unit record carry those dispositions. No historical record, checker or fixture is changed to evade this gate; no readiness or independent acceptance is claimed while it remains red.
+
 simplestRobustRoute: ordinary merge of the reviewed unit and standard desk generation, plus required review metadata. This is the simplest route; no new runtime machinery. Existing route and availability are start guards, recorded-shape and packet tests check the outcome, and unchanged spend/stop/context limits bound it. No live deployment claim.
-80/20: targeted verification is recorded in the shared PROGRESS report; the pipeline owns the full suite and live landing gate.
+80/20: BLOCKED by the recorded change-review gate failure; targeted verification is in the shared PROGRESS report. The pipeline owns the full suite and live landing gate.
 VERDICT: author submission; this record asserts no independent verdict
