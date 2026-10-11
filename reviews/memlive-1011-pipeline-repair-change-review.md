@@ -25,6 +25,8 @@ Prompt finding: bd01de21286a | protocol-literal | Unchanged source-label groundi
 Prompt finding: fb5fa7e706c8 | protocol-literal | Unchanged semantic retrieval instruction.
 Verification: Foreground nice -n 10 vitest run --maxWorkers 1: journal.test.ts, journal-conversations.test.ts and journal-memory-save-live.test.ts passed 98 tests with no skips. tsc --noEmit and architecture passed. Isolated authenticated pre-turn journal replay of update 969390379 passed. Gate report is absent at both the specified gate path and this worktree: all eleven contract checkers were invoked and reported ENOENT, not a contract finding; no report was fabricated and no full suite was run. Cheap final-head checks are recorded in the desk PROGRESS report.
 
+Generated publication: Delegated owner-manifest and assembly-chain repin tools ran with zero changed pins. Register replay from source commit c010fd84922b7afb47eb9997af686b9bee16a661 generated sha256:148c01db18af69bd6c200ccd8e816b69b42cf46ede751928612a2c427b5c4994. Seven generated publications carry the new source and generation; no manual pin edit.
+
 ## Closing block
 
 simplestRobustRoute: This is the simplest robust route: remove redundant words from existing guidance, preserve all behavior and keep the original byte-bound regressions. No machinery is added. Start/end/limit guards remain authenticated durable intake, exact validated memory, caps, stop, secrets and durable send settlement. Captured-output shipped-worker replay passes; no new unattended live-model claim.
