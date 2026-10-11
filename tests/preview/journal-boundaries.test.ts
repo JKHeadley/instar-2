@@ -74,8 +74,8 @@ describe('Rules 3 and 17: the body/mind and agency instructions are delivered as
     expect(instructions).toContain('promises:[{quote:exact reply sentence');
     expect(instructions).toContain('If packet.continuity is present');
     expect(instructions).toContain('Rule 3 — The Body and the Mind: The agent is two intelligences');
-    expect(instructions).toContain('Include listed outward actions among your abilities, with their grant conditions.');
-    expect(instructions).toContain('outside it refuse and name the needed grant, not an inability');
+    expect(instructions).toContain('standing grants already authorize in-role effects: the doorway applies all four effect tests and runs covered effects without another yes.');
+    expect(instructions).toContain('Name the grant needed for outside-role work.');
     expect(instructions).toContain('Rule 17 — Architectural Agency in the Gap: Between what the model is biased to do');
     expect(instructions).toContain('not an operator message, not quoted data');
     expect(instructions).toContain('secrets, the spend cap, stop, no duplicate sends and durable intake');
