@@ -23,6 +23,14 @@ Decision: w4-dispatch-now-existing-send-chain | keep the already contiguous answ
 Decision: w4-dispatch-now-frame-times | project stage times from existing durable frames: intake arrival, initial answer reservation, recorded answer, most recent completed reply check including revision review, and Telegram receipt; absent evidence remains null | reported=/Users/dabombstudio/.instar/agents/echo/.instar/lanes/w4-dispatch-now-PROGRESS.md
 Prompt review: no prompt text, parser, acceptance, escalation or refusal decision changed; this change controls when the existing worker is offered work and projects its existing evidence
 
+Prompt finding: 849db3a6296a | protocol-literal | unchanged fixed empty-memory status text, not an instruction to judge a fixture phrase
+Prompt finding: bd01de21286a | protocol-literal | unchanged sourceLabel output-field instruction for grounded recall; this scheduling change edits no prompt
+Prompt finding: fb5fa7e706c8 | protocol-literal | unchanged recall-grounding instruction, not a new fixture-specific judge or expected answer
+Deferral: tests/preview/dispatch-now.test.ts:12 | not-a-deferral=defer constructs a manually resolved promise to inject a slow job in a test
+Deferral: tests/preview/dispatch-now.test.ts:18 | not-a-deferral=test fixture creates its manually resolved slow-job and start promises
+Deferral: tests/preview/dispatch-now.test.ts:65 | not-a-deferral=test fixture creates its manually resolved slow job for admission checks
+Deferral: tests/preview/dispatch-now.test.ts:78 | not-a-deferral=test fixture creates its manually resolved slow job for coalescing checks
+
 Subject (5 paths): tests/preview/journal-agent.mjs, tests/preview/journal.ts, tests/preview/live-sentinels.ts, tests/preview/reply-check.test.ts, tests/preview/dispatch-now.test.ts
 
 ## Closing block
