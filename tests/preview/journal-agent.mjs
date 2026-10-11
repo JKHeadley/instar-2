@@ -2054,14 +2054,10 @@ async function main() {
           // The reply verdict is one exact line per selected rule (rule_id: PASS | reason); the whole-line
           // pattern admits no surrounding text, so a written rejection can never be discarded around it.
           let parsed;
-          // Each selected rule gets its own line, conclusion and reason; a missing or added rule, or the legacy
-          // combined line (one shared reason for every rule), is a format miss.
+          // Every selected rule must be answered. The parser also retains extra known findings, including
+          // violations; missing/unknown/malformed findings and legacy combined verdicts still refuse.
           try { parsed = parseReplyReviewVerdict(result.value, Object.keys(selectedRules)); }
           catch (error) { recordShape(shapesPath, 'reply-review', 'verdict', 'malformed', 'not-json'); throw error; }
-          if (parsed.ruleIds.some(rule => !Object.hasOwn(selectedRules, rule))) {
-            recordShape(shapesPath, 'reply-review', 'verdict', 'malformed', 'not-json');
-            throw Error(REVIEW_MALFORMED);
-          }
           return { verdict: parsed.verdict, ruleIds: parsed.ruleIds, confidence: null,
             latencyMs: Math.round(performance.now() - start), reason: parsed.reason,
             ...(parsed.findings ? { findings: parsed.findings } : {}), usage: recordedUsage(result.usage) };
