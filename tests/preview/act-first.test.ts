@@ -1,4 +1,5 @@
 import { readFileSync } from 'node:fs';
+import { createHash } from 'node:crypto';
 import { expect, it } from 'vitest';
 import { READ_BEFORE_ANSWER } from '../../src/assembly/tool-answer-guidance.js';
 import { SUBSCRIPTION_CONVERSATION_SYSTEM_PROMPT, SUBSCRIPTION_NATIVE_SYSTEM_PROMPT,
@@ -81,9 +82,12 @@ it('replays the real reviewer on both the unperformed lookup and actual read out
   }
 });
 
-it('retains a real post-search malformed answer as a refusal, never a usable answer', () => {
+it('retains the historical post-search malformed answer as a refusal, never a usable answer', () => {
   const run = fixture().formatFailure;
-  expect(run.system).toBe(SUBSCRIPTION_TOOLS_SYSTEM_PROMPT);
+  // This historical failure predates the composed prompt; preserve every captured byte.
+  // Current-prompt behavior is proved by the fresh successful and failed-read captures above.
+  expect(createHash('sha256').update(JSON.stringify(run)).digest('hex'))
+    .toBe('944e686434b078b44810fd16da15b39da708b285a35c228344d02caaa5612dc9');
   expect(readAnswer(JSON.parse(run.raw).result, { wrapped: 'accept' }).ok).toBe(false);
   expect(run.answer).toBeNull();
   expect(toolTrace(run.admission.trim().split('\n')).calls.some((call: { tool: string }) => call.tool === 'WebSearch')).toBe(true);

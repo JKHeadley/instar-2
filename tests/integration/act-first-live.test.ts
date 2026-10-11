@@ -24,18 +24,20 @@ import { createSubscriptionProviderIO } from '../../scripts/production-boot-io.m
 import { runToolTurn, scratchMounted } from '../preview/tool-turn.mjs';
 
 // @ts-expect-error Physical host JavaScript.
-import { harnessGate } from '../preview/harness-user.mjs';
+import { HARNESS_CUSTODY, HARNESS_LOGIN, harnessGate, harnessReadiness, readHarnessLogin } from '../preview/harness-user.mjs';
 // @ts-expect-error Physical host JavaScript.
 import { hostResources } from '../../scripts/resource-owner.mjs';
 
 let attached = false;
 const LIVE = process.env.INSTAR_ACT_FIRST_LIVE === '1';
 const PROFILE = process.env.INSTAR_ACT_FIRST_PROFILE ?? '';
+const CUSTODY = process.env.INSTAR_ACT_FIRST_CUSTODY ?? '';
 const MODEL = 'claude-sonnet-5';
 const RECORD = process.env.INSTAR_ACT_FIRST_RECORD ?? '';
 const CAPTURE = process.env.INSTAR_ACT_FIRST_CAPTURE ?? '';
-if (LIVE && (!PROFILE || !RECORD.startsWith('/') || !CAPTURE.startsWith('/')))
-  throw Error('Live replay requires an explicit harness profile and absolute capture/evidence paths');
+if (LIVE && (!PROFILE || !CUSTODY.startsWith('/') || CUSTODY === HARNESS_LOGIN
+  || !RECORD.startsWith('/') || !CAPTURE.startsWith('/')))
+  throw Error('Live replay requires an explicit builder profile, isolated custody and absolute capture/evidence paths');
 const scratch = LIVE ? realpathSync(mkdtempSync('/private/tmp/act-first-live-')) : '';
 afterAll(() => { if (scratch) rmSync(scratch, { recursive: true, force: true }); });
 /** The register's own irreversible term, read from the committed shape as the runner reads it. */
@@ -46,7 +48,9 @@ const hash = (v: unknown) => (canonical(v) as { kind: 'Success'; value: { hash: 
 async function liveCase(name: string, question: string, options: { prepared?: string; review?: boolean } = {}) {
   const f = factsFixture(), root = join(scratch, name); mkdirSync(root, { mode: 0o700 });
   const profile: ProviderSubscriptionProfile = Object.freeze(JSON.parse(readFileSync(PROFILE, 'utf8')));
-  const gate = harnessGate({ profile, denied: [realpathSync(root), homedir(), process.cwd()], clock: () => performance.now() });
+  const login = (selected: ProviderSubscriptionProfile) => readHarnessLogin(selected, CUSTODY);
+  const gate = harnessGate({ profile, denied: [realpathSync(root), homedir(), process.cwd()], clock: () => performance.now(),
+    login, check: (input: object) => harnessReadiness({ ...input, login, custody: [HARNESS_CUSTODY, HARNESS_LOGIN, dirname(CUSTODY), CUSTODY] }) });
   expect(gate.state, gate.state.reason).toMatchObject({ ready: true });
   const harness = gate.current();
   if (!attached) { await hostResources.attach({ harnessUid: harness.uid }); attached = true; }
