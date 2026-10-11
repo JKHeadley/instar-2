@@ -1,5 +1,6 @@
 #!/usr/bin/env node
-import { groupMembershipReader } from './group-membership-io.mjs';
+import { isGroupReviewFinalNotice } from './reply-check.js';
+import { groupMembershipReader, requireGroupDisclosureFor } from './group-membership-io.mjs';
 import { appendGroupCarry } from './group-carry.js';
 import { resolveGroupDisclosure, verifyGroupAudience } from './group-disclosure.js';
 import { journalConversation, journalWorkConversation, validateChatBinding } from './forum-routing.js';
@@ -1246,8 +1247,7 @@ async function main() {
   const requireGroupDisclosure = async view => {
     if (!view.groupCarry) return;
     const scope = view.groupCarry.scope;
-    if (groupPermission(scope).kind !== 'resolved' || !await verifyGroupAudience(scope, membershipReadFor(scope))
-      || groupPermission(scope).kind !== 'resolved') throw Error('group carry: disclosure grant or operator-only audience refused');
+    await requireGroupDisclosureFor(scope, () => groupPermission(scope), membershipReadFor(scope));
   };
   if (command === 'carry-group') {
     let destination, source, sourceStorage;
@@ -1701,7 +1701,8 @@ async function main() {
     const peerHolds = async () => await shared.replicated(() => workerStop.value || existsSync(stopPath)
       || wallNow() >= journal.view.expires || journal.view.stop || !ownerHeld() ? 'stopped' : null) === null;
     const callSubscription = async (judgment, prepared, id, invocation, toolTurn) => {
-      try { await requireGroupDisclosure(journal.view); } catch { throw new ModelDisclosureRefused(); }
+      await requireGroupDisclosure(journal.view);
+      if (wallNow() >= invocation.deadline) throw Error('preview: reply check budget exceeded');
       assertLiveJudgment(judgment, 'preview-subscription');
       if (shared !== null && !await peerHolds()) throw Error('preview: activation stopped');
       const route = modelRoute(id, toolTurn), start = performance.now();
@@ -1714,6 +1715,8 @@ async function main() {
       try { result = await route.invoke(prepared, invocation); }
       catch (error) {
         recordModelCall({ ...base, output: null, outcome: 'failed', latencyMs: performance.now() - start, usage: null });
+        // Typed pre-dispatch proof cannot survive a provider attempt, even if a provider throws that class.
+        if (error instanceof ModelDisclosureRefused) throw Error('preview: disclosure refused after a provider attempt');
         throw error;
       }
       recordModelCall({ ...base, output: typeof result.bytes === 'string' ? result.bytes : null,
@@ -1930,7 +1933,7 @@ async function main() {
       secrets: custody,
       media: mediaCustody,
       model: async ({ id, prepared }) => {
-        try { await requireGroupDisclosure(journal.view); } catch { throw new ModelDisclosureRefused(); }
+        await requireGroupDisclosure(journal.view);
         if (typeof prepared !== 'string') throw Error('preview: prepared model input absent');
         const callsBefore = journal.view.modelCalls.total;
         let result;
@@ -1948,6 +1951,7 @@ async function main() {
       },
       summaryCheck: async evidence => (await callJev('jev-summary-faithfulness', evidence, SUMMARY_FAITHFULNESS_QUESTION)).value,
       replyCheck: {
+        waitForRetry: delay,
         elapsedMs: () => performance.now(),
         jev: (text, questions = jevQuestions, timeoutMs, occurrence) => callJev(questions === SUMMARY_QUESTION ? 'jev-summary-integrity' : 'jev-reply-check',
           text, questions, timeoutMs, occurrence),
@@ -2061,7 +2065,7 @@ async function main() {
       // Rules 42 and 89: the physical send consumes the journal's signed intent and returns a
       // closed accepted / refused / unknown outcome; nothing dispatched is ever a refusal.
       sendAdmits: true,
-      send: async ({ text, expectedText, chat, thread, replyMarkup, target, provenance, admit }) => {
+      send: async ({ text, expectedText, chat, thread, replyTo, replyMarkup, target, provenance, admit }) => {
         if (!journal.verifyOutbound(provenance, { target, chat, ...(thread === undefined ? {} : { thread }), body: text }))
           return { kind: 'refused', reason: 'outbound provenance unsigned' };
         if (workerStop.value || existsSync(stopPath) || wallNow() >= journal.view.expires || journal.view.stop)
@@ -2070,7 +2074,8 @@ async function main() {
         // refusal (Rule 42), never repeated.
         if (!ownerHeld()) return { kind: 'refused', reason: 'conversation ownership lost before dispatch' };
         // The fixed content-free hold notice is the one send a refused disclosure admits (journal GROUP_DISCLOSURE_HOLD_NOTICE).
-        if (!(target?.startsWith('held-notice:') && text === GROUP_DISCLOSURE_HOLD_NOTICE && expectedText === GROUP_DISCLOSURE_HOLD_NOTICE))
+        if (!isGroupReviewFinalNotice(text, expectedText)
+          && !(target?.startsWith('held-notice:') && text === GROUP_DISCLOSURE_HOLD_NOTICE && expectedText === GROUP_DISCLOSURE_HOLD_NOTICE))
           try { await requireGroupDisclosure(journal.view); }
           catch { return { kind: 'refused', reason: 'group disclosure grant or audience refused before dispatch' }; }
         if (workerStop.value || existsSync(stopPath) || !ownerHeld() || journal.view.stop || wallNow() >= journal.view.expires)
@@ -2089,6 +2094,7 @@ async function main() {
         try {
           const reply = physical.invoke({ token: secretRef('telegram-bot-token'), method: 'sendMessage',
             body: { chat_id: chat, text, parse_mode: 'HTML', ...(thread === undefined ? {} : { message_thread_id: thread }),
+              ...(replyTo === undefined ? {} : { reply_parameters: { message_id: replyTo, allow_sending_without_reply: true } }),
               ...(replyMarkup === undefined ? {} : { reply_markup: replyMarkup }) },
             timeoutMs: 30000 }, token());
           outcome = classifyTelegramSend(reply, { chat, expectedText, forum: g.forum === true, ...(thread === undefined ? {} : { thread }) });

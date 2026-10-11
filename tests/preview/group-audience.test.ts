@@ -7,7 +7,7 @@ import { prepareJournalEnvelope } from './journal-envelope.js';
 import { appendGroupCarry } from './group-carry.js';
 import { verifyGroupAudience } from './group-disclosure.js';
 import { key, scope, now, permissionFor, membership } from './group-carry-fixture.js';
-import { HOLDING_REPLY, parseReplyReviewVerdict, type ReplyRule } from './reply-check.js';
+import { GROUP_PERMISSION_FINAL_NOTICE, HOLDING_REPLY, ModelDisclosureRefused, parseReplyReviewVerdict, type ReplyRule } from './reply-check.js';
 import { readAnswer } from './answer-reading.js';
 
 const fixture = JSON.parse(readFileSync(new URL('./fixtures/group-audience-live-2026-10-10.json', import.meta.url), 'utf8')) as {
@@ -34,7 +34,7 @@ it('real reviewer on update 969390330: own information passes verified membershi
   expect(verdict('coherent')).toMatchObject({ verdict: 'pass' });
 });
 
-for (const audience of ['verified', 'other-member', 'unverified', 'changed-before-review'] as const) {
+for (const audience of ['verified', 'other-member', 'unverified', 'changed-before-review', 'transient-before-review', 'changed-before-send'] as const) {
   it(`worker uses current membership, never a stored group label: ${audience}`, async () => {
     const root = mkdtempSync(join(tmpdir(), 'group-audience-')); dirs.push(root);
     const source = openPreviewJournal(join(root, 'source'), key, genesis);
@@ -42,7 +42,7 @@ for (const audience of ['verified', 'other-member', 'unverified', 'changed-befor
     appendGroupCarry(journal, source, scope, permissionFor(scope), true, now, () => false);
     source.close();
     let changed = false, models = 0, reviews = 0;
-    const sends: string[] = [], audiences: boolean[] = [];
+    const sends: string[] = [], audiences: boolean[] = [], waits: number[] = [];
     const checkAudience = (prompt: string) => {
       const context = JSON.parse(prompt).messages.find((m: { role: string }) => m.role === 'context');
       const packet = JSON.parse(context.content).packet;
@@ -50,27 +50,34 @@ for (const audience of ['verified', 'other-member', 'unverified', 'changed-befor
       expect(packet.audience.surface).toBe('telegram-group-topic');
     };
     const worker = createJournalWorker(journal, { now: () => now, stopped: () => false,
-      groupDisclosure: async () => audience === 'unverified' ? false : verifyGroupAudience(scope,
-        membership((method, _body, value) => method === 'getChatMemberCount' && (audience === 'other-member' || changed) ? 3 : value)),
+      groupDisclosure: async () => {
+        if (audience === 'transient-before-review' && changed) throw new ModelDisclosureRefused('group-membership-unavailable', true);
+        return audience === 'unverified' ? false : verifyGroupAudience(scope,
+          membership((method, _body, value) => method === 'getChatMemberCount' && (audience === 'other-member' || changed) ? 3 : value));
+      },
       prepareModel: input => prepareJournalEnvelope(input, 'claude-sonnet-5', genesis.grant, now),
-      model: async prompt => { models++; checkAudience(prompt.prepared!); changed = audience === 'changed-before-review'; return fixture.recorded.answer; },
+      model: async prompt => { models++; checkAudience(prompt.prepared!); changed = audience === 'changed-before-review' || audience === 'transient-before-review'; return fixture.recorded.answer; },
       checkOutbound: () => {}, send: async input => { sends.push(input.expectedText); return sends.length; },
       replyCheck: { elapsedMs: () => 0,
+        waitForRetry: async ms => { waits.push(ms); changed = false; },
         jev: async () => ({ value: { model: 'jev-1.13.0', answers: Object.fromEntries(Object.entries(fixture.recorded.checks[0]!.scores!)
           .map(([rule, noul]) => [rule, { type: 'noul', noul }])) }, latencyMs: 0 }),
-        escalate: async (_text, _id, prompt) => { reviews++; checkAudience(prompt!);
+        escalate: async (_text, _id, prompt) => { reviews++; checkAudience(prompt!); changed = audience === 'changed-before-send';
           return { ...verdict('operator-only'), confidence: null, latencyMs: 1 }; } },
     });
     worker.intake([{ update_id: 1, message: { message_id: 1, chat: { id: Number(scope.chat), type: 'supergroup', is_forum: true },
       from: { id: Number(scope.operator) }, text: fixture.recorded.text } }]);
     await worker.drain();
-    if (audience === 'verified') {
+    if (audience === 'verified' || audience === 'transient-before-review') {
       expect(sends).toEqual([fixture.recorded.answer]); expect(models).toBe(1); expect(reviews).toBe(1);
       expect(audiences).toEqual([true, true]);
     } else {
-      expect(sends).toEqual([]); expect(reviews).toBe(0);
-      expect(models).toBe(audience === 'changed-before-review' ? 1 : 0);
+      expect(sends).toEqual(audience === 'changed-before-review' ? [GROUP_PERMISSION_FINAL_NOTICE] : []);
+      expect(sends).not.toContain(fixture.recorded.answer);
+      expect(reviews).toBe(audience === 'changed-before-send' ? 1 : 0);
+      expect(models).toBe(audience === 'changed-before-review' || audience === 'changed-before-send' ? 1 : 0);
     }
+    expect(waits).toEqual(audience === 'transient-before-review' ? [500] : []);
     journal.close();
   });
 }

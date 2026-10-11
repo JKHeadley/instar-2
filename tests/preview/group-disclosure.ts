@@ -46,13 +46,20 @@ export function resolveGroupDisclosure(scope: GroupCarryScope, record: unknown, 
   return refuse('no current, sourced operator grant covers this exact private-to-group lineage');
 }
 
+/** A transport read failed, as distinct from a completed read proving an audience change. */
+export class MembershipUnavailable extends Error {
+  constructor(readonly transient: boolean, readonly causeCode: 'timeout' | 'rate-limit' | 'server-error' | 'unavailable') {
+    super(`group membership read ${causeCode}`);
+  }
+}
 export type MembershipRead = (method: 'getChat' | 'getChatMemberCount' | 'getChatMember' | 'getMe',
   body: Record<string, string>) => Promise<unknown>;
 const result = (value: unknown) => { const r = object(value); if (r.ok !== true) throw Error('membership unavailable'); return r.result; };
 /** Two members, both identified: a count alone or an administrator list cannot establish the audience.
  * Read count at both ends to reject an observed join during the probe. Unknown/restricted/left refuses.
  * Telegram offers no atomic membership-and-send transaction; the runner probes again at each dispatch. */
-export async function verifyGroupAudience(scope: GroupCarryScope, read: MembershipRead): Promise<boolean> {
+export async function verifyGroupAudience(scope: GroupCarryScope, read: MembershipRead,
+  unavailable?: (error: unknown) => void): Promise<boolean> {
   try {
     if (!/^[1-9][0-9]*$/u.test(scope.operator) || !/^[1-9][0-9]*$/u.test(scope.bot)
       || scope.operator === scope.bot || !/^-[1-9][0-9]*$/u.test(scope.chat)) return false;
@@ -70,5 +77,5 @@ export async function verifyGroupAudience(scope: GroupCarryScope, read: Membersh
       if (String(user.id) !== id || user.is_bot !== bot || !['creator', 'administrator', 'member'].includes(String(member.status))) return false;
     }
     return result(await read('getChatMemberCount', { chat_id: scope.chat })) === 2;
-  } catch { return false; }
+  } catch (error) { unavailable?.(error); return false; }
 }

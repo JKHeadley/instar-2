@@ -359,6 +359,13 @@ if (typeof bytes !== 'string' || Buffer.byteLength(bytes, 'utf8') > REPRESENTATI
   uncertain('scan-budget'); process.exit(0);
 }
 
+// Identity reads must retain transient HTTP status so the read-only caller can retry once.
+// Never return provider error text (it may contain credentials), or label an identity mismatch transient.
+if (request.method === 'getMe' && (provider.status === 429 || provider.status >= 500 && provider.status <= 599)) {
+  process.stdout.write(JSON.stringify({ kind: 'response', status: provider.status, bytes: '{"ok":false}' }));
+  process.exit(0);
+}
+
 if (request.method === 'getMe') {
   let capture;
   try { capture = sealIdentity(bytes, request.captureDirectory); }
