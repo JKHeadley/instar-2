@@ -3587,10 +3587,14 @@ function project(view: JournalView, row: JournalRecord, system?: SystemCheck, ad
     if (!turn?.accepted || turn.media || turn.reserved || turn.answer !== undefined
       || !result || !['stored', 'unavailable', 'failed', 'file-limit', 'store-limit', 'malformed'].includes(result.state)
       || result.state === 'stored' && (!/^[a-f0-9]{64}$/u.test(result.reference)
-        || !Number.isSafeInteger(result.bytes) || result.bytes < 0 || result.bytes > 8 * 1024 * 1024))
+        || !Number.isSafeInteger(result.bytes) || result.bytes < 0 || result.bytes > 8 * 1024 * 1024
+        || result.transcript !== undefined && (typeof result.transcript !== 'string' || !result.transcript.trim() || Buffer.byteLength(result.transcript) > 16384)))
       throw Error('preview journal: media custody refused');
     const update = JSON.parse(turn.raw) as TelegramUpdate;
-    if (!telegramInboundMedia(update.edited_message ?? update.message)) throw Error('preview journal: media source missing');
+    const media = telegramInboundMedia(update.edited_message ?? update.message);
+    if (!media) throw Error('preview journal: media source missing');
+    if (result.state === 'stored' && result.transcript !== undefined && !['voice', 'audio'].includes(media.kind))
+      throw Error('preview journal: transcript source refused');
     turn.media = result;
     turn.text += `\n[Media custody: ${mediaCustodyText(result)}]`;
     return;
@@ -4961,7 +4965,7 @@ export const UNREADABLE_OPERATOR_MESSAGE = '[The operator sent something with no
  * text, or with only a caption, is delivered to the mind with a flag, never dropped (Rule 14).
  * Rule 28: admission accepts only the verified principal minted from this update at intake,
  * and it must be the bound operator on the configured chat, over this store's transport. */
-export function admittedUpdate(genesis: JournalView['genesis'], update: TelegramUpdate, principal: VerifiedPrincipal | null) {
+export function admittedUpdate(genesis: JournalView['genesis'], update: TelegramUpdate, principal: VerifiedPrincipal | null, legacyMedia = false) {
   if (!Number.isSafeInteger(update.update_id) || update.update_id < 0) throw Error('preview journal: malformed update');
   const message = update.edited_message ?? update.message, thread = boundThread(genesis, message?.message_thread_id);
   const content = typeof message?.text === 'string' || typeof message?.caption === 'string'
@@ -4974,7 +4978,7 @@ export function admittedUpdate(genesis: JournalView['genesis'], update: Telegram
     && principal.provenance.adapter === TELEGRAM_ADAPTER[genesis.origin ?? 'production']
     && (thread === undefined || Number.isSafeInteger(thread) && thread > 0);
   const media = telegramInboundMedia(message);
-  const limitation = media?.kind === 'photo' ? 'This harness has no image-input path; I cannot see the photo.'
+  const limitation = !legacyMedia ? 'Contents are not yet read; use the current turn media access notice and report an unreadable file honestly.' : media?.kind === 'photo' ? 'This harness has no image-input path; I cannot see the photo.'
     : media?.kind === 'voice' || media?.kind === 'audio' ? 'No local transcription path is installed; I cannot listen to this audio yet.'
       : 'The document contents have not been read.';
   const text = media ? `[Received ${media.kind === 'voice' ? 'voice note' : media.kind}: name ${JSON.stringify(media.name)}, size ${media.size === null ? 'unknown' : `${media.size} bytes`}. ${limitation}]`

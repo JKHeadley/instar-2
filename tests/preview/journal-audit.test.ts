@@ -105,6 +105,7 @@ it.each(['photo', 'voice', 'document'])('audits authenticated %s media and rejec
     const outcomes: MediaCustodyResult[] = [{ state: 'stored', reference: 'a'.repeat(64), bytes: 42 },
       { state: 'unavailable' }, { state: 'failed' }, { state: 'failed', reason: 'admission-refused' },
       { state: 'file-limit' }, { state: 'store-limit' }, { state: 'malformed' }];
+    if (kind === 'voice') outcomes.push({ state: 'stored', reference: 'b'.repeat(64), bytes: 42, transcript: 'Meet on Tuesday at nine.' });
     let outcome = outcomes[0]!;
     const worker = createJournalWorker(journal, { now: () => 1790000000000, stopped: () => false,
       media: { receive: async () => outcome },

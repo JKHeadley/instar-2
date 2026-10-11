@@ -1,0 +1,82 @@
+{
+  "name": "unreadable",
+  "question": "What is in this photo?",
+  "error": null,
+  "answer": "{\"reasoning\":\"The workspace message told me to read the attached file with my file-reading tool before answering. The Read tool call failed, reporting the bytes are not a valid image format. I then used Bash to confirm with `file` and `head -c 500`: the file is ASCII text containing the literal string \\\"synthetic corrupt image\\\" \u2014 it is not an actual photo at all, just a placeholder/test file mislabeled as .jpg. I should report this honestly rather than guessing or fabricating image contents, per the instruction to say so if the tool cannot read it.\",\"answer\":\"I can't actually see a photo here \u2014 the file that came through isn't a real image. When I tried to read it, it failed validation (not valid JPEG/PNG/GIF/WebP data), and checking the raw bytes shows it's just text content: \\\"synthetic corrupt image.\\\" So it looks like a placeholder or test attachment rather than an actual picture. If you meant to send a real photo, could you try sending it again?\"}",
+  "state": "complete",
+  "rows": [
+    {
+      "phase": "pre",
+      "id": "toolu_01QTiqrhjsvf6BqX67iRxJ97",
+      "n": 1,
+      "tool": "Read",
+      "input": "{\"file_path\":\"/private/tmp/itw-e2d24c47ba97/tmp/inbound-media-FAOTTX/attachment.jpg\"}",
+      "decision": "allow",
+      "reason": "ordinary file read"
+    },
+    {
+      "phase": "pre",
+      "id": "toolu_013r6yeEmyfY42om4BkoLSSZ",
+      "n": 2,
+      "tool": "Bash",
+      "input": "{\"command\":\"file \\\"/private/tmp/itw-e2d24c47ba97/tmp/inbound-media-FAOTTX/attachment.jpg\\\"; echo \\\"---\\\"; head -c 500 \\\"/private/tmp/itw-e2d24c47ba97/tmp/inbound-media-FAOTTX/attachment.jpg\\\"\",\"description\":\"Inspect attachment file type and contents\"}",
+      "decision": "allow",
+      "reason": "sandboxed command"
+    },
+    {
+      "phase": "post",
+      "id": "toolu_013r6yeEmyfY42om4BkoLSSZ",
+      "tool": "Bash",
+      "result": "{\"stdout\":\"/private/tmp/itw-e2d24c47ba97/tmp/inbound-media-FAOTTX/attachment.jpg: ASCII text, with no line terminators\\n---\\nsynthetic corrupt image\",\"stderr\":\"\",\"interrupted\":false,\"isImage\":false,\"noOutputExpected\":false}"
+    }
+  ],
+  "trace": {
+    "kind": "tool-turn",
+    "phase": "trace",
+    "id": "telegram:12345678:update:1",
+    "attempt": 0,
+    "consistent": true,
+    "calls": [
+      {
+        "n": 1,
+        "tool": "Read",
+        "input": "{\"file_path\":\"/private/tmp/itw-e2d24c47ba97/tmp/inbound-media-FAOTTX/attachment.jpg\"}",
+        "decision": "allow",
+        "reason": "ordinary file read",
+        "result": null
+      },
+      {
+        "n": 2,
+        "tool": "Bash",
+        "input": "{\"command\":\"file \\\"/private/tmp/itw-e2d24c47ba97/tmp/inbound-media-FAOTTX/attachment.jpg\\\"; echo \\\"---\\\"; head -c 500 \\\"/private/tmp/itw-e2d24c47ba97/tmp/inbound-media-FAOTTX/attachment.jpg\\\"\",\"description\":\"Inspect attachment file type and contents\"}",
+        "decision": "allow",
+        "reason": "sandboxed command",
+        "result": "{\"stdout\":\"/private/tmp/itw-e2d24c47ba97/tmp/inbound-media-FAOTTX/attachment.jpg: ASCII text, with no line terminators\\n---\\nsynthetic corrupt image\",\"stderr\":\"\",\"interrupted\":false,\"isImage\":false,\"noOutputExpected\":false}"
+      }
+    ],
+    "edges": [],
+    "workspaceBytes": 0,
+    "volume": {
+      "lost": false,
+      "reconciled": 0
+    },
+    "harness": {
+      "user": "_instarharness"
+    },
+    "at": 1791695422514
+  },
+  "toolTurns": {
+    "invocations": 1,
+    "reservedCalls": 15,
+    "refusedCap": 0,
+    "toolCalls": 2,
+    "toolRefusals": 0,
+    "inconsistent": 0,
+    "open": [],
+    "workspaces": [
+      "e2d24c47ba97"
+    ]
+  },
+  "plaintextLoginsAfter": [],
+  "provenance": "2026-10-10 real Claude Code confined tool route on synthetic media; no Telegram send or live media copy"
+}

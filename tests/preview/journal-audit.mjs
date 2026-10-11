@@ -374,8 +374,10 @@ export function auditActiveMemory(view) {
     try {
       const parsed = admittedUpdate(view.genesis, raw,
         authenticateTelegramSender(raw, view.genesis.origin ?? 'production', turn.at));
-      return parsed.accepted && turn.text === parsed.text
-        + (turn.media === undefined ? '' : `\n[Media custody: ${mediaCustodyText(turn.media)}]`);
+      const legacy = admittedUpdate(view.genesis, raw,
+        authenticateTelegramSender(raw, view.genesis.origin ?? 'production', turn.at), true);
+      const suffix = turn.media === undefined ? '' : `\n[Media custody: ${mediaCustodyText(turn.media)}]`;
+      return parsed.accepted && [parsed.text, legacy.text].some(text => turn.text === text + suffix);
     } catch { return false; }
   };
   const operator = (id, at) => {

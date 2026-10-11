@@ -77,7 +77,7 @@ function world(writer: Step[], forum = false, media = false) {
       expect(sources.at(-1)!.text).toContain('Activation: your activation; ends');
       if (!input.id.startsWith('summary:')) {
         if (media && input.id.endsWith('715672501')) {
-          expect(input.question).toContain('Received photo'); expect(input.question).toContain('cannot see the photo');
+          expect(input.question).toContain('Received photo'); expect(input.question).toContain('current turn media access notice');
         }
         return 'Noted.';
       }

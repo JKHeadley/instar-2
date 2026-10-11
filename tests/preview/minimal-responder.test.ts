@@ -138,13 +138,13 @@ it('delivers an operator photo and an unlinked edit to the mind with flags; serv
     { update_id: 5, edited_message: { message_id: 78, chat: { id: 7654321, type: 'private' }, from: { id: 999 }, text: 'stranger edit' } },
   ] as never);
   expect(journal.view.order.filter(turn => turn.accepted).map(turn => turn.text)).toEqual([
-    '[Received photo: name "photo.jpg", size unknown. This harness has no image-input path; I cannot see the photo.]\nCaption: my desk',
-    '[Received voice note: name "voice.ogg", size unknown. No local transcription path is installed; I cannot listen to this audio yet.]',
+    '[Received photo: name "photo.jpg", size unknown. Contents are not yet read; use the current turn media access notice and report an unreadable file honestly.]\nCaption: my desk',
+    '[Received voice note: name "voice.ogg", size unknown. Contents are not yet read; use the current turn media access notice and report an unreadable file honestly.]',
     `${UNLINKED_EDIT_FLAG}\nfixed typo`]);
   expect(journal.view.order.filter(turn => !turn.accepted)).toHaveLength(2);
   await worker.drain();
-  expect(questions.some(question => question.includes('I cannot see the photo'))).toBe(true);
-  expect(questions.some(question => question.includes('I cannot listen to this audio yet'))).toBe(true);
+  expect(questions.some(question => question.includes('current turn media access notice'))).toBe(true);
+  expect(questions.some(question => question.includes('current turn media access notice'))).toBe(true);
   expect(sends).toHaveLength(3);
   journal.close();
 }));

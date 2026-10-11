@@ -41,7 +41,7 @@ async function flow(options: Flow) {
   const ports = (fresh: boolean) => ({ ...(options.media ? { media: custody } : {}), now: () => clock.now, stopped: () => false,
     prepareModel: (input: Parameters<typeof prepareJournalEnvelope>[0]) => prepareJournalEnvelope(input, 'claude-sonnet-5', 'grant:preview', clock.now),
     model: async (input: { question: string }) => { if (!fresh) throw Error('model repeated');
-      if (options.media) { expect(input.question).toContain('Received voice note'); expect(input.question).toContain('cannot listen'); }
+      if (options.media) { expect(input.question).toContain('Received voice note'); expect(input.question).toContain('current turn media access notice'); }
       return options.answer; },
     checkOutbound: () => {},
     ...(options.held ? { heldSecrets: () => options.held ?? [] } : {}),
