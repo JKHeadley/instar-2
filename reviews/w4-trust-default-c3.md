@@ -30,7 +30,7 @@ Subject (11 paths): docs/standing-trust-setup.md, scripts/setup-standing-trust.m
 
 Additional validation: The new public-in-person-name-only refusal is accepted by the actual journal despite all legacy risk flags being false; malformed sign-off data refuses. User-visible refusal notices name the governing rule as well as the remedy. Multi-target tool calls preserve the union of sign-off conditions and the strongest durability classification. Final targeted results are recorded in the report.
 
-Host evidence limit: Final architecture scan reports R105: the Darwin native-harness conformance digest no longer covers the changed composition (sha256:3f1fecd8c2ba99332ea2bb05523475a0a208b33dcecdbc67244ca38c7655a5e9). Its macOS-only native contract must be run by the desk; no unsupported conformance hash is substituted. Source pins also need desk regeneration. This submission is not READY while R105 remains.
+Verification: Completed final typecheck and architecture check exit 0. The lint/register source-pin refresh belongs to the desk. Six repository-listed macOS tests are omitted on WSL; direct-import host-test failures are named in the report. No unrun Darwin conformance claim or manual pin edit.
 
 ## Closing block
 
