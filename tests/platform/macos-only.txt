@@ -1,0 +1,42 @@
+# Studio-only test placement for the Linux/macOS split gate.
+# Seed: train-5b f34d2b940c1da2678bfe7b32ce70ca5f58fd0784 (17 entries).
+# Includes host-bound launch and permission tests, not only macOS APIs.
+# One path per line; the split consumer ignores blank lines and # comments.
+tests/assembly/fixed-installation-live.test.ts
+tests/assembly/fixed-worker-monitor-native.test.ts
+tests/assembly/process-inventory.test.ts
+tests/assembly/production-provider-subscription.test.ts # Physical subscription-provider launch through the host resource limit shim.
+tests/assembly/production-provider-tools.test.ts # Physical tools-provider launch through the host resource limit shim.
+tests/assembly/provider-response-evidence.test.ts # Physical provider stdout evidence requires successful host resource-limited launch.
+tests/integration/host-watch-journal.test.ts # Physical incident delivery needs the host transport and resource-limited launcher.
+tests/integration/host-watch.test.ts
+tests/integration/native-loop-live.test.ts
+tests/integration/resource-owner.test.ts # Physical resource-owner limit shim needs /bin/sh ulimit -u, unsupported by WSL dash.
+tests/preview/approval-surface.test.ts # Host umask 0022 assumed for forged fixture file; WSL 0002 leaves it group-writable.
+tests/preview/group-carry-cli.test.ts
+tests/preview/harness-user.test.ts # Host harness-user launcher, descriptor handoff and filesystem permission assumptions.
+tests/preview/journal-agent-resources.test.ts # Real journal resource-funnel launcher requires host transport and harness startup.
+tests/preview/journal-agent.test.ts # Real journal launcher needs the host physical transport for bot-identity admission.
+tests/preview/journal-send-outcome.test.ts # Physical Telegram bridge must reach transport beyond the host resource limit shim.
+tests/preview/journal.test.ts # Physical provider and Telegram bridge launch through the host resource limit shim.
+tests/preview/live-sentinels-launch.test.ts # Real sentinel launcher requires host transport for bot-identity admission.
+tests/preview/native-harness-contract.test.ts
+tests/preview/native-loop-replay.test.ts
+tests/preview/native-loop.test.ts
+tests/preview/operator-dashboard-launcher.test.ts # Real dashboard launcher requires host transport and harness startup.
+tests/preview/renewal-predecessor-launch.test.ts # Real renewal launcher requires host transport and harness startup.
+tests/preview/review-layers-canary.test.ts # Real review-canary launcher requires host transport and harness startup.
+tests/preview/self-host-cli-profile.test.ts
+tests/preview/self-host-flat-live.test.ts
+tests/preview/self-host-tools.test.ts
+tests/preview/self-host.test.ts
+tests/preview/self-state-launcher.test.ts # Real self-state launcher requires host transport and harness startup.
+tests/preview/session-admission.test.ts
+tests/preview/session-volume.test.ts
+tests/preview/stage2-recovery.test.ts # Physical async launcher cases require the host resource-limited synthetic CLI launch.
+tests/preview/tool-paths.test.ts
+tests/preview/tool-turn-replay.test.ts # Darwin /private/tmp fixture layout is part of the tool confinement path boundary.
+tests/preview/tool-turn.test.ts # Physical resource-owner child launch uses /bin/sh ulimit -u; WSL dash refuses before PID creation.
+tests/preview/tools-default.test.ts # Real journal launcher requires host transport and harness startup.
+tests/types/shipped-clients.test.ts
+tests/unit/test-tmp-redirect.test.ts # Real-disk fixture needs writable /var/tmp; this Mama execution host mounts it read-only.
