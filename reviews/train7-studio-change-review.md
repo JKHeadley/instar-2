@@ -1,0 +1,30 @@
+# Change review — train-7 Darwin certification and upstream integration
+
+Subject base: 82e742d1725829f5df08dae1500cdfdf64e01ed7
+Review state: open
+Reviewed content: none
+Outcome: Certify the merged train-7 composition on its declared Darwin runtime and retain the latest train-6 historical review-budget assertions.
+Affected rules: 1, 26, 34, 36, 37, 41, 49, 58, 70, 74, 95, 101, 102, 105, 111, 112, 113, 115, 116
+Affected floors: secrets — unchanged custody and confinement checks; spend cap — unchanged charged-call limits; stop — native contract proves refusal before launch; no duplicate sends — native restart and bridge outcome contracts; durable intake — unchanged journal and exact recorded evidence.
+Operator questions: none
+Suggested tier: ordinary
+Declared tier: ordinary
+Tier rationale: No new runtime behavior; host certification and historical replay assertion integration only.
+Side effects: The supported tuple now names the merged composition that passed its Darwin behavioral contract. The historical budget replay additionally checks the complete current instruction suffix while retaining Mama's exact historical rule reconstruction. No captured bytes or production prompts change.
+Undo and recovery: Revert this certification and regenerate derived register artifacts through the desk chain. A restored old digest deliberately fails certification for the merged bytes; re-run the contract before any replacement declaration.
+Multi-machine posture: Shared source and evidence through git; conformance is deliberately bound to Darwin and the exact declared Node binary. No Linux certification, account migration, ownership change or deployment is claimed.
+Layer below: Reviewed selfHostCompositionEvidence, compositionClosure/currentRuntime, native contract owner admission and durable cause assertions, stop and charged-no-retry checks, recorded request hashes and current instruction suffix. Existing machinery computes the digest from executed closure bytes.
+Bug class: integration
+Bug evidence: reproducer=tests/preview/native-harness-contract.test.ts
+Hook bypass: none
+Convergence: none
+Decision: train7-studio-upstream | Merge updated train-6 with both its new historical hash/suffix assertions and Mama's two-rule reconstruction; preserve all runtime behavior decisions. | reported=/Users/dabombstudio/.instar/agents/echo/.instar/lanes/train7-studio-PROGRESS.md
+Decision: train7-studio-evidence | Pass the native behavioral contract before computing and declaring its digest, then verify certificate equality and physical launcher/bridge cases. Reuse existing desk generation tools. | reported=/Users/dabombstudio/.instar/agents/echo/.instar/lanes/train7-studio-PROGRESS.md
+
+Subject (2 paths): src/assembly/harness.declarations.json, tests/preview/reply-review-budget.test.ts
+
+## Closing block
+
+simplestRobustRoute: This is the simplest robust route: reuse the native contract, exact composition digest and register generation chain. No new machinery or policy. Start guards are the merged source and declared runtime; end guards are passing host contracts and a pushed commit; limit guards remain custody, spend, stop, durable cause and send-once checks. No autonomous capability or deployment claim.
+80/20: Native behavior passed before re-declaration. Final host, replay, briefing, architecture, register and change-review results are recorded in the absolute Studio PROGRESS file; the pipeline owns the full suite. No independent convergence is claimed.
+VERDICT: author submission; this record asserts no independent verdict — the review desk records its own
