@@ -97,46 +97,46 @@ to which machine serves a conversation is — the user meets it as a pause — a
 
 ### Critical
 
-**Definition.** A thing is *critical* when it is *consequential* as the purpose defines it, read
+**Definition.** A thing is *critical* for verification when, read
 from its profile: its `consequence` is `identity`, `security`, `money`, `control`, or `external`,
 **or** its `reversibility` is `irreversible`, **or** its `reach` is `world`.
 
-In words: the purpose's four tests, each answered from the plain facts. It cannot be undone by the
-agent alone (`irreversible`, or an `external` effect such as a message sent or a payment made); it
-commits money or a resource (`money` — the level above which spend is consequential is the
-operator's, so every money consequence is declared and the level decides at run time); it reaches
-outside the work's granted scope (`world` — a third party or external service); or it touches a
-matter the operator's policy governs (`identity`, `security`, `control` — who someone is, a secret,
-the life of a session, machine or channel).
+These are verification risks, not sign-off conditions. The profile describes the worst failure
+an operation can produce; it does not contain the person's current role, spending level or
+sensitive-matter designations. `world` is reach, not proof of being outside a granted role;
+`money` is a resource consequence, not proof of exceeding the person's level. Irreversibility
+alone is not a sign-off condition. The effect doorway checks the purpose's five conditions
+against the actual operation and current standing grants. Testing, supervision, durable cause,
+secret protection, the spend cap and emergency stop keep their own requirements.
 
 **Used by.** Rule 38 (every critical pipeline has a model watching each step), rule 43 (every
 critical outcome has a live probe), the register's *critical outcomes* kind.
 
 **What it excludes, on purpose.** A feature whose failure bothers the user a bounded number of
 times (`consequence: attention`) and that can be undone is not critical, however visible.
-Visibility is *user-facing*; consequence is *critical*. 1.x blurred these, which is why the alerts
+Visibility is *user-facing*; verification risk is *critical*. 1.x blurred these, which is why the alerts
 channel was treated as critical and the secret store was not.
 
 **What this includes.** A failure that makes a channel unusable — a flood, a notifier with no
 bound — is `control` under the runaway rule, and therefore critical. A single flood message
 merely bothers; the flood takes the interface away, and taking the interface away *is* damage.
-Anything declared `irreversible` is critical whatever its consequence: a one-shot notice that
-changes what a person knows cannot be taken back, so it cannot be ordinary.
+Anything declared `irreversible` is critical for verification whatever its consequence. A one-shot
+notice inside the granted role remains ordinary for sign-off when none of the five conditions
+holds; its irreversibility still requires durable cause and appropriate verification.
 
 ### Significant
 
-**Definition.** A thing is *significant* exactly when it is *critical*: both words resolve to the
-purpose's single definition of a consequential effect. A feature is significant when at least one
-of its effects is consequential.
+**Definition.** A thing is *significant* for verification exactly when it is *critical*. A feature
+is significant when at least one of its effects meets the critical verification profile.
 
-In words: anything whose effect is consequential. Being seen by a person is *user-facing*, which
+In words: anything whose effect meets that verification profile. Being seen by a person is *user-facing*, which
 carries its own obligations (live-surface proof, fixes ship live); it does not by itself make a
 thing significant.
 
 **Used by.** Rule 34 (every significant feature has all three test tiers), rule 48's tier signal.
 
-**What it excludes.** Ordinary work: reversible, bounded, within scope, touching no
-policy-governed matter — a refactor, a cache, a log line, a reversible display change. Those get
+**What it excludes.** Work outside that verification profile: reversible, bounded, within scope,
+touching no policy-governed matter — a refactor, a cache, a log line, a reversible display change. Those get
 unit tests and a review; they do not pay for integration and live end-to-end proof. A user-facing
 ordinary change still needs its live-surface proof under rule 62.
 
@@ -144,11 +144,30 @@ ordinary change still needs its live-surface proof under rule 62.
 
 | | Not user-facing | User-facing |
 |---|---|---|
-| **Not consequential** | ordinary — unit tests, review | *user-facing* — live proof through its surface before done, fixes ship live |
-| **Consequential** | *critical and significant* — three tiers, supervised, probed | *critical and significant* — all of the above, and fixes ship live |
+| **Not critical for verification** | unit tests, review | *user-facing* — live proof through its surface before done, fixes ship live |
+| **Critical for verification** | *critical and significant* — three tiers, supervised, probed | *critical and significant* — all of the above, and fixes ship live |
 
 Add *irreversible* as a flag on any cell: it raises the review to live and the judgment floor to
 its strictest.
+
+### Consequential and ordinary
+
+**Definition.** For sign-off, a *consequential* effect is one on the purpose's short, fixed list:
+it commits money or a resource above the person's named level; it cannot be undone and falls
+outside the agent's role; it speaks publicly in the person's name; it widens the agent's own
+role or authority; or it touches a matter the person marked as sensitive. Everything else inside
+the granted role is *ordinary*, including messages and use of the accounts that go with it.
+
+**Test.** A message inside the role with none of these conditions needs no prompt. Public speech
+in the person's name needs sign-off even when the account is granted. An irreversible action
+inside the role does not need sign-off solely because it cannot be undone; the same action
+outside the role does. Spending below the named level does not trigger the resource condition;
+spending above it does. A sensitive matter or widening the agent's authority triggers sign-off
+independently. An action outside every grant is refused and names the grant needed; absence
+from the sign-off list never supplies missing standing.
+
+**Used by.** The purpose's onboarding and sign-off rules and the effect doorway's classification.
+The verification adjectives above do not grant authority or add sign-off conditions.
 
 ---
 
