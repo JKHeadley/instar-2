@@ -29,6 +29,8 @@ Prompt finding: 45e37ea2e9e9 | protocol-literal | unchanged standing-trust proto
 Prompt finding: 6af48f94b789 | protocol-literal | unchanged standing-trust protocol text in production-provider.ts, already compared by the existing historical selfdesc test; this change adds no such prompt text
 Prompt finding: b00ed403060a | protocol-literal | unchanged standing-trust protocol text in production-provider.ts, already compared by the existing historical selfdesc test; this change adds no such prompt text
 
+Deferral: tests/preview/fixtures/selfdesc-2026-10-11.json:74 | not-a-deferral=Verbatim model stdout captured for a historical-input replay and retained as evidence, not a project promise or deferred implementation. Changing the captured wording would falsify the evidence.
+
 ## Closing block
 
 simplestRobustRoute: change the existing briefing words and their assertions; add no inventory, parser, memory store, journal behavior or new model call. Start guard: sourcePacket still checks the exact constitutional excerpt hashes. End-state evidence: fresh current-note model captures, preserved historical replays and targeted Studio checks. Limit guard: existing default-context-floor and unchanged runtime limits. No autonomous completion claim is made.
