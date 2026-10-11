@@ -8,7 +8,7 @@ Affected rules: 1, 26, 32, 37, 49, 69, 70, 74, 101, 111, 112, 113, 116
 Affected floors: secrets — existing disclosure checkpoints unchanged; spend cap — existing reservations and caps unchanged; stop — existing stop checks unchanged; no duplicate sends — no send or receipt changes; durable intake — no intake, journal or durable format changes
 Operator questions: none
 Suggested tier: critical
-Declared tier: routine
+Declared tier: ordinary
 Tier rationale: Derived publication metadata only; declarations, capabilities, runtime code and authority policy are unchanged.
 Side effects: Seven generated artifacts point to source commit 74dd6744ddd8bcbb6bf70b70d45a6049f2fe9a83 and its new generation. The register's 286 entry base references change with the source commit; declarations are byte-equivalent as parsed objects. This remains a shape-only replay, not runtime authority or deployment.
 Undo and recovery: Revert the generated publication commit and this review commit with ordinary git commits. That restores the old publication and its known stale-source failure; regenerate against the desired committed source before landing. No runtime state migration or external effects.
