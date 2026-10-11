@@ -53,14 +53,13 @@ it('the recorded K11a briefing differs only in the declared audience, recurring 
   expect(note).toContain(recurringRequests);
   expect(current.note.replace(oldConversation, forumConversation).replace(oldRequests, recurringRequests)).toBe(note);
   // Preserve the captured prompt; the act-first fixture separately replays the new wording.
-  const toolBoundary = " In this turn you have the harness's full built-in tool set";
-  expect(current.system.split(toolBoundary)).toHaveLength(2);
+  expect(current.system.split(" In this turn you have the harness's full built-in tool set")).toHaveLength(2);
   expect(current.system).not.toContain(READ_BEFORE_ANSWER);
-  const answerBoundary = 'Respond with one flat JSON object';
-  expect(current.system.split(answerBoundary)).toHaveLength(2);
-  expect(current.system.replace(toolBoundary, ` ${READ_BEFORE_ANSWER}${toolBoundary.trimStart()}`)
-    .replace(answerBoundary, 'First complete needed reads through the actual harness tool interface; '
-      + 'the JSON format below applies only to your final answer. ' + answerBoundary))
+  expect(current.system.split('Respond with one flat JSON object')).toHaveLength(2);
+  expect(current.system.replace(" In this turn you have the harness's full built-in tool set",
+    ` ${READ_BEFORE_ANSWER}In this turn you have the harness's full built-in tool set`)
+    .replace('Respond with one flat JSON object', 'First complete needed reads through the actual harness tool interface; '
+      + 'the JSON format below applies only to your final answer. Respond with one flat JSON object'))
     .toBe(SUBSCRIPTION_TOOLS_SYSTEM_PROMPT);
   expect(current.runs.map(run => run.kind)).toEqual(['worst', 'chain']);
   for (const run of current.runs) {

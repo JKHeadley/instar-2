@@ -10,18 +10,16 @@ Operator questions: none
 Suggested tier: ordinary
 Declared tier: ordinary
 Tier rationale: Only three test consumers change; no runtime, fixture, prompt, parser, authority, or state changes.
-Side effects: The capacity case adapts to prompt length by measuring actual ordinary and empty-inventory candidate envelopes; it fails if either side disappears or an inventory candidate fits under the selected cap. Exact historical prompt equality now allows only the two declared read-first insertions.
+Side effects: Prompt-boundary expected strings stay inside expect assertions, so Rules 12/27 correctly distinguish expected prompt text from model fixture input. The capacity case adapts to prompt length by measuring actual ordinary and empty-inventory candidate envelopes; it fails if either side disappears or an inventory candidate fits under the selected cap. Exact historical prompt equality now allows only the two declared read-first insertions.
 Undo and recovery: Revert this repair commit. Runtime and journals require no migration or recovery; reverting restores the stale failing test assumptions.
 Multi-machine posture: Test-only changes; shared runtime, ownership and checkpoint behavior on every machine remain identical. No new state or peer requirement.
 Layer below: Read both governing documents in full, the fail-fast findings, actual journal fitter and read-only probe, envelope assembly and memory-lookup availability, shared tool guidance, historical K11a captures and act-first replays. Existing compiled register and architecture checks pass without repinning.
 Bug class: none
-Bug evidence: Provided fast.log reproduces all three original failures. Foreground nice -n 10 vitest with --maxWorkers 1: 35/35 passed across the three changed files plus act-first recorded-shape replay; typecheck and build pass. Evidence: /Users/dabombstudio/.instar/agents/echo/.instar/lanes/sb-w4-act-first-repair-tests.log.
+Bug evidence: Provided fast.log reproduces all three original failures. Foreground nice -n 10 vitest with --maxWorkers 1: 35/35 passed, then selfdesc 4/4 after assertion-scope repair, across the three changed files plus act-first recorded-shape replay; typecheck and build pass. Evidence: /Users/dabombstudio/.instar/agents/echo/.instar/lanes/sb-w4-act-first-repair-tests.log.
 Hook bypass: none
 Convergence: none
+Decision: repair-assertion-scope | Keep expected prompt-boundary literals inside assertions, as the existing scanner specifies, preserving exact equality and historical evidence without changing scanner rules or old reviews. | reported=/Users/dabombstudio/.instar/agents/echo/.instar/lanes/sb-w4-act-first-repair-PROGRESS.md
 Decision: repair-test-assumptions | Fix exact assertions and derive the capacity window from prepared bytes; keep the reviewed runtime unchanged. | reported=/Users/dabombstudio/.instar/agents/echo/.instar/lanes/sb-w4-act-first-repair-PROGRESS.md
-Prompt finding: 19f601351a87 | protocol-literal | Exact boundary in the existing tool prompt, quoted only to verify the historical capture differs by the declared read-first insertions; no production prompt or classifier changes.
-Prompt finding: 83812befa673 | protocol-literal | Exact boundary in the existing tool prompt, quoted only to verify the historical capture differs by the declared read-first insertions; no production prompt or classifier changes.
-Prompt finding: 9248e5418f4f | protocol-literal | Exact boundary in the existing tool prompt, quoted only to verify the historical capture differs by the declared read-first insertions; no production prompt or classifier changes.
 
 Subject (3 paths): tests/preview/journal-commitments.test.ts, tests/preview/journal-memory-inventory.test.ts, tests/preview/selfdesc-abilities.test.ts
 
