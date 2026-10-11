@@ -6,11 +6,12 @@
 //   node scripts/check-change-review.mjs [check]
 //     Every commit made since this checker was adopted must be covered by a record: a record
 //     covers the commits between its 'Subject base:' and the last commit that edited it.
-//     Records added or modified by this change are validated against their actual subject
-//     (the files changed in that range): required fields, frozen content, prompt/dispatch findings, deferrals, skips and
+//     Each current record is validated against its actual subject (the files changed in that
+//     range): required fields, frozen content, prompt/dispatch findings, deferrals, skips and
 //     governed-document versions (Rule 90: a changed governed document adds a new changelog
 //     version and keeps every earlier one byte-identical; any landing commit it names exists).
-//     Untouched records gate only failures absent at the change base.
+//     Only prompt dispositions on records untouched by this change are counted as debt.
+//     CHANGE_REVIEW_BASE overrides the remote-reachability boundary for own commits.
 //
 // Authoring:
 //   draft --base <sha> [--title T]  print a record skeleton for the working tree's change
@@ -81,10 +82,7 @@ function addedLines(base, last) {
   }
   return out;
 }
-function promptScan(commit) {
-  if (commit) return scanPrompts(lines(git('ls-tree', '-r', '--name-only', commit))
-    .filter(p => (isTestFile(p) || isPromptSourceFile(p)) && /\.(ts|mts|mjs|js)$/.test(p))
-    .map(path => ({ path, text: git('show', `${commit}:${path}`) })));
+function promptScan() {
   const files = lines(git('ls-files')).filter(p => (isTestFile(p) || isPromptSourceFile(p)) && /\.(ts|mts|mjs|js)$/.test(p) && existsSync(p))
     .map(path => ({ path, text: readFileSync(path, 'utf8') }));
   return scanPrompts(files);
@@ -138,13 +136,11 @@ function changeScope() {
     : lines(git('for-each-ref', '--format=%(objectname)', 'refs/remotes'))
       .filter(tip => !isAncestor('HEAD', tip));
   const commits = git('rev-list', 'HEAD', '--not', ...new Set(excluded));
-  const own = new Set(lines(commits));
-  const baseTip = lines(git('rev-list', '--topo-order', 'HEAD')).find(c => !own.has(c));
-  if (!commits) return { paths: new Set(), baseTip };
+  if (!commits) return new Set();
   const paths = execFileSync('git', ['diff-tree', '--stdin', '--root', '-m', '-r', '--no-commit-id',
     '--name-only', '--no-renames', '--diff-filter=AM', '-z', '--', 'reviews/'],
   { input: commits + '\n', encoding: 'utf8', maxBuffer: 256 * 1024 * 1024, stdio: ['pipe', 'pipe', 'pipe'] });
-  return { paths: new Set(paths.split('\0').filter(p => p.endsWith('.md'))), baseTip };
+  return new Set(paths.split('\0').filter(p => p.endsWith('.md')));
 }
 
 function check({ quiet = false } = {}) {
@@ -160,15 +156,11 @@ function check({ quiet = false } = {}) {
   const current = all.filter(r => required.has(r.last) && !(landedRef && isAncestor(r.last, landedRef)));
   const invalid = all.filter(r => required.has(r.last) && !r.valid);
   for (const r of invalid) errors.push(`Rule 74: ${r.path}: 'Subject base:' must be a full commit id that is an ancestor of the record`);
-  const { paths: changed, baseTip } = changeScope();
-  const judged = all.filter(r => changed.has(r.path));
-  const untouched = all.filter(r => !changed.has(r.path));
-  let debtFindings = 0;
-  const scan = judged.length || untouched.length ? promptScan() : { findings: [], promptSources: [] };
-  const baseScan = untouched.length && baseTip ? promptScan(baseTip) : { findings: [], promptSources: [] };
-  for (const r of [...judged, ...untouched].filter(x => x.valid)) {
-    const recordErrors = [];
-    if (!r.subject.length) { recordErrors.push(`Rule 74: ${r.path} reviews an empty subject`); if (changed.has(r.path)) errors.push(...recordErrors); else debtFindings += recordErrors.length; continue; }
+  const changed = changeScope();
+  let debtRecords = 0; let debtFindings = 0;
+  const scan = current.length ? promptScan() : { findings: [], promptSources: [] };
+  for (const r of current.filter(x => x.valid)) {
+    if (!r.subject.length) { errors.push(`Rule 74: ${r.path} reviews an empty subject`); continue; }
     const hits = addedLineHits(addedLines(r.base, r.last));
     // Rule 109: a frozen record is compared with the candidate's content, whichever record
     // covers the later commits; only an explicit reopen of THIS record voids its round.
@@ -180,27 +172,16 @@ function check({ quiet = false } = {}) {
       resolvesEvidence: p => tryGit('cat-file', '-e', `${r.last}:${p}`) !== null || (isAbsolute(p) && existsSync(p) && statSync(p).isFile()),
       readEvidence: p => (isAbsolute(p) ? (existsSync(p) && statSync(p).isFile() ? readFileSync(p, 'utf8') : null) : tryGit('show', `${r.last}:${p}`)) };
     const v = validateRecord(r.record, ctx);
-    const versionErrors = governedVersionErrors(r);
-    recordErrors.push(...v.errors.map(e => `${r.path}: ${e}`), ...versionErrors.map(e => `${r.path}: ${e}`));
-    if (changed.has(r.path)) {
-      errors.push(...recordErrors);
-      notes.push(...v.notes.map(n => `${r.path}: ${n}`));
-    } else {
-      // An untouched record can acquire a new failure when this change edits its subject.
-      // Compare with the newest ancestor outside the own-commit set, using the same validator.
-      // The record's historical subject, added lines and evidence stay fixed at r.last.
-      const before = baseTip ? validateRecord(r.record, { ...ctx, digest: digestAt(baseTip, r.subject),
-        promptFindings: baseScan.findings.filter(f => r.subject.includes(f.promptFile) || (f.fixtureFile && r.subject.includes(f.fixtureFile))),
-        promptSourcesChanged: r.subject.filter(p => baseScan.promptSources.includes(p)) }).errors : [];
-      const inherited = new Set([...before, ...versionErrors].map(e => `${r.path}: ${e}`));
-      for (const error of recordErrors) {
-        if (inherited.has(error)) debtFindings++;
-        else errors.push(error);
-      }
-    }
+    // Only missing/invalid prompt dispositions are older-record debt. Every other
+    // validation (including frozen content and Prompt review) keeps its existing bar.
+    const promptDebt = changed.has(r.path) ? [] : v.errors.filter(e => e.startsWith('Rules 12/27: prompt finding ') && e.includes("needs 'Prompt finding:"));
+    if (promptDebt.length) { debtRecords++; debtFindings += promptDebt.length; }
+    errors.push(...v.errors.filter(e => !promptDebt.includes(e)).map(e => `${r.path}: ${e}`),
+      ...governedVersionErrors(r).map(e => `${r.path}: ${e}`));
+    notes.push(...v.notes.map(n => `${r.path}: ${n}`));
   }
   if (!quiet) {
-    if (untouched.length) console.log(`note: older-record debt: ${untouched.length} records, ${debtFindings} findings; tracked as cleanup item review-debt-1010, not a gate`);
+    if (debtRecords) console.log(`note: older-record prompt debt: ${debtRecords} records, ${debtFindings} findings; cleanup item review-debt-1010`);
     for (const n of notes) console.log(`note: ${n}`);
     console.log(`change-review: ${required.size} commits since adoption, ${all.length} records, ${current.length} current; ${scan.findings.length} prompt findings among the files current changes touch or in the tree (dispositioned where a change touches them)`);
   }
