@@ -127,7 +127,7 @@
       "stage": "build",
       "artifact": {
         "path": "tests/preview/telegram-media.test.ts",
-        "hash": "sha256:92647658654142bcbf8719a691be82715e17d6a5ae78826bf716baa87708bb88"
+        "hash": "sha256:7506f07453d13944b99927a25edcd61875ec98a828b504dd5c0ae0c355b83351"
       }
     }
   ],
