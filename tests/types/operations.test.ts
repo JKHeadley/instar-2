@@ -53,7 +53,7 @@ describe('pure constitutional operations', () => {
   });
   it('evaluates the same derivedFrom expressions supplied by the terms owner', () => {
     const f = fixture();
-    // The purpose's single consequential-effect definition: critical and significant are the same expression.
+    // The glossary's verification profile: critical and significant share an expression, separate from sign-off.
     const consequential: ProfileExpression = { any: [{ field: 'consequence', in: ['identity', 'security', 'money', 'control', 'external'] }, { field: 'reversibility', in: ['irreversible'] }, { field: 'reach', in: ['world'] }] };
     const userFacing: ProfileExpression = { any: [{ field: 'reach', in: ['user', 'operator'] }, { field: 'surface', in: ['chat', 'dashboard', 'link', 'device'] }] };
     const terms: ProfileTermsReadPort = { owner: 'part-three', derivedFrom: { critical: consequential, userFacing, irreversible: { field: 'reversibility', in: ['irreversible'] }, significant: consequential } };
