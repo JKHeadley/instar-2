@@ -7,7 +7,7 @@ import { journalConversation, journalWorkConversation, validateChatBinding } fro
 // physical ports. The worker owns all durable conversation/effect transitions.
 import { createHash, randomBytes } from 'node:crypto';
 import { execFileSync } from 'node:child_process';
-import { chmodSync, existsSync, lstatSync, mkdirSync, readdirSync, readFileSync, realpathSync, renameSync, rmSync, writeFileSync } from 'node:fs';
+import { chmodSync, existsSync, lstatSync, mkdirSync, readdirSync, readFileSync, realpathSync, renameSync, rmSync, statSync, writeFileSync } from 'node:fs';
 import { dirname, resolve, join } from 'node:path';
 import { createProductionTelegramIO, createSubscriptionProviderIO, productionStorageIO } from '../../scripts/production-boot-io.mjs';
 import { snapshotState } from '../../scripts/operator-dashboard.mjs';
@@ -287,13 +287,32 @@ const context = { site: 'preview.journal', preserved: 'preview:host', register: 
 /** Rules 28/82: the messaging owner's records (its state directory: the sender-authenticated message
  * log, the provenance ledger and the topic-operator bindings). Absent, unreadable or malformed →
  * null, which resolves no grant. */
+// One process-local parsed snapshot, never an authority verdict. Each lookup checks every
+// owner's file; the resolver still rereads the sealed grant and checks the current clock.
+let operatorRecordsCache = null;
 const operatorRecords = directory => {
-  if (!directory) return null;
+  if (!directory) { operatorRecordsCache = null; return null; }
+  const paths = ['telegram-messages.jsonl', 'asp-classifications.jsonl', 'state/topic-operators.json']
+    .map(name => join(directory, name));
+  const identity = () => paths.map(path => {
+    const s = statSync(path, { bigint: true });
+    return [s.dev, s.ino, s.size, s.mtimeNs, s.ctimeNs, s.mode].join(':');
+  }).join('|');
   // Every complete line must parse (a skipped line could hide a second row for the same message);
   // only a trailing fragment still being appended is left out.
   const lines = name => readFileSync(join(directory, name), 'utf8').split('\n').slice(0, -1).filter(Boolean).map(line => JSON.parse(line));
-  try { return { messages: lines('telegram-messages.jsonl'), provenance: lines('asp-classifications.jsonl'),
-    bindings: JSON.parse(readFileSync(join(directory, 'state', 'topic-operators.json'), 'utf8')) }; } catch { return null; }
+  try {
+    const before = identity();
+    if (operatorRecordsCache?.directory === directory && operatorRecordsCache.identity === before)
+      return operatorRecordsCache.records;
+    operatorRecordsCache = null;
+    const records = { messages: lines('telegram-messages.jsonl'), provenance: lines('asp-classifications.jsonl'),
+      bindings: JSON.parse(readFileSync(join(directory, 'state', 'topic-operators.json'), 'utf8')) };
+    // A concurrent append/replacement must not leave a mixed snapshot cached as current.
+    if (identity() !== before) return null;
+    operatorRecordsCache = { directory, identity: before, records };
+    return records;
+  } catch { operatorRecordsCache = null; return null; }
 };
 /** Rules 94/98/103/104: the activation is exercised only under a recorded operator authority that
  * covers this exact act: the original activation, or a bounded renewal inside the standing grant.
