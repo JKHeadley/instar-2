@@ -83,6 +83,7 @@ it('replays real summary, Jev, reviewer and delivered/empty outputs without turn
   for (const row of captured.otherShapes) {
     let output: unknown; try { output = JSON.parse(row.raw); } catch { output = row.raw; }
     expect(() => configureTrust(r, 'setup', output), `${row.kind}: ${row.id}`).toThrow();
+    expect(() => configureTrust(r, 'revise', output), `${row.kind}: ${row.id}`).toThrow();
     expect(readFileSync(join(r, 'effect-policy.json'), 'utf8')).toBe(before);
   }
 });
@@ -132,4 +133,41 @@ it('setup MCP launches reach the real Codex configuration consumer and revoke re
   configureTrust(r, 'revoke');
   const next = codexToolHookArgs({ ...prepare(1), deniedRoots: [], gate });
   expect(list(next.filter(arg => arg.startsWith('mcp_servers.')))).toEqual([]);
+});
+
+it('records one onboarding conversation in the existing grant store and accepts a later role conversation', () => {
+  const r = root(), role = { description: 'Manage drafts and private correspondence', accounts: ['mail:team'],
+    channels: ['private-mail'], trust: 'Act inside this role up to two dollars per operation' };
+  configureTrust(r, 'setup', { ...request(), role });
+  expect(load(r).role).toEqual(role);
+  const edit = { effect: 'tool:mcp', target: 'mcp__drafts__edit' };
+  const first = admitEffect(edit, load(r));
+  expect(first).toMatchObject({ admitted: true, signOffRequired: false });
+  expect(load(r).registered.every((entry: { classification: object }) => entry.classification)).toBe(true);
+  const widened = { ...request(), role: { ...role, accounts: [...role.accounts, 'drafts:team'] }, effects: [...request().effects,
+    { ...request().effects[0]!, target: 'mcp__drafts__rename' }] };
+  configureTrust(r, 'revise', widened);
+  expect(admitEffect({ ...edit, target: 'mcp__drafts__rename' }, load(r))).toMatchObject({ admitted: true, signOffRequired: false });
+  configureTrust(r, 'revise', { ...request(), role, effects: [] });
+  const refused = admitEffect(edit, load(r));
+  expect(refused).toMatchObject({ admitted: false, refusedFor: expect.arrayContaining(['role']) });
+  expect(refused.admits).toContain('operator grant placing tool:mcp');
+});
+
+it('registers private email as no sign-off separately from its irreversible durability demand', () => {
+  const p = setupTrustPolicy(request());
+  const mail = p.registered.find((entry: { target: string }) => entry.target === 'mcp__mail__send');
+  expect(mail.classification).toEqual({ signOff: { resources: false, irreversibleOutsideRole: false,
+    publicInPersonName: false, widensAuthority: false, policySensitive: false },
+    durability: { irreversible: true, demand: 'installed-operation', rule: 'an irreversible act follows its durable cause' } });
+  const refused = admitEffect({ effect: 'tool:mcp', target: 'mcp__mail__send' }, p);
+  expect(refused).toMatchObject({ admitted: false, signOffRequired: false, refusedFor: ['durability'] });
+  expect(refused.reason).toContain('a single-machine installation is a supported deployment shape');
+  expect(refused.reason).toContain('a second enrolled machine');
+});
+
+it('onboarding a role does not silently sign off on a matter the person marked sensitive', () => {
+  const p = setupTrustPolicy({ ...request(), policySensitive: ['mcp__drafts__edit'] });
+  expect(admitEffect({ effect: 'tool:mcp', target: 'mcp__drafts__edit' }, p)).toMatchObject({ admitted: false,
+    signOffRequired: true, refusedFor: ['sign-off'] });
 });

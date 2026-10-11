@@ -253,7 +253,8 @@ export function admitToolCallEffect(tool, input, config, now) {
 /** A doorway verdict as the admission record carries it (Rule 41): enough for status and the answer's refusal notice. */
 export function doorwayRecord(verdict) {
   return { effect: verdict.effect, ...(verdict.target ? { target: verdict.target } : {}), tests: verdict.tests,
-    disposition: verdict.disposition, ...(verdict.grant ? { grant: verdict.grant } : {}), ...(verdict.admits ? { admits: verdict.admits } : {}) };
+    disposition: verdict.disposition, ...(verdict.signOff ? { signOff: verdict.signOff, durability: verdict.durability } : {}),
+    ...(verdict.refusedFor ? { refusedFor: verdict.refusedFor } : {}), ...(verdict.grant ? { grant: verdict.grant } : {}), ...(verdict.admits ? { admits: verdict.admits } : {}) };
 }
 
 /** Whether the turn's effect policy registers this proposal's effect (and target) or marks the effect, its target or a

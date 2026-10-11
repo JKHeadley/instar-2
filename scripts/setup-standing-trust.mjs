@@ -6,7 +6,7 @@ register('./slice-ts-loader.mjs', import.meta.url);
 const { configureTrust } = await import('../tests/preview/trust-setup.mjs');
 const [action, root, requestPath] = process.argv.slice(2);
 if (!root || (action !== 'revoke' && !requestPath)) {
-  process.stderr.write('Usage: node scripts/setup-standing-trust.mjs setup|tighten ROOT OPERATOR-REQUEST.json\n       node scripts/setup-standing-trust.mjs revoke ROOT\n');
+  process.stderr.write('Usage: node scripts/setup-standing-trust.mjs setup|revise|tighten ROOT OPERATOR-REQUEST.json\n       node scripts/setup-standing-trust.mjs revoke ROOT\n');
   process.exitCode = 1;
 } else {
   const result = configureTrust(root, action, requestPath ? JSON.parse(readFileSync(requestPath, 'utf8')) : undefined);

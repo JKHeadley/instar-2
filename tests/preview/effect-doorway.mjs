@@ -1,21 +1,16 @@
-// The effect doorway's admission on the live answer and work path (Part Twelve §§2–3, docs/12-the-effect-doorway.md;
-// the purpose's four consequential-effect tests, docs/00-the-purpose.md). Pure: every input is passed in, so the
-// executable tool hook, the runner and the tests run the same functions, and the hook needs no loader.
-//
-// Only a proposed effect that could be consequential reaches it. Ordinary work in the agent's own workspace (file
-// tools, searches, the sandboxed shell) is admitted by the tool hook without a doorway call: the sandbox, not a
-// classification, bounds what it can reach. A proposal is classified against the four tests, once, from its
-// registered classification (or the worst reachable one when nothing is registered):
-//   irreversible    — it cannot be undone by the agent alone (the register's `irreversible` term over its profile);
-//   resources       — it commits money or a resource above the level the operator names (an unknown cost is above it);
-//   scope           — it reaches outside the scope the operator granted for the work (nothing outward by default);
-//   policySensitive — it touches a matter the operator marked policy-sensitive.
-// All four false: ordinary, admitted. Any true: consequential, admitted only when every held test is answered —
-// an irreversible effect only as an operation of the installation's accepted closed set (on one machine that set is
-// fixed by the purpose's single-machine Rule, so no tool effect joins it),
-// a resource or policy-sensitive effect only under a recorded operator grant that names it. A refusal names the
-// tests that held and what would admit the effect.
-
+// Role admission, the purpose's five sign-off conditions, and durability are separate.
+// The legacy `tests`/`consequential` fields remain the journal and never-twice protocol:
+// irreversible work still uses a stable identity even when it needs no sign-off.
+// `operations` comes from the installation owner, never a role grant. On one machine
+// it remains P-08's fixed provider/Telegram/Slack set; replicated operations must
+// pass the existing effect owner's exact durable-prefix check before dispatch.
+export const SIGN_OFF_TESTS = Object.freeze(['resources', 'irreversibleOutsideRole', 'publicInPersonName', 'widensAuthority', 'policySensitive']);
+const SIGN_OFF_WORDS = Object.freeze({
+  resources: 'it may commit money or a resource above the level the person named',
+  irreversibleOutsideRole: 'it cannot be undone and falls outside the recorded role',
+  publicInPersonName: 'it speaks publicly in the person’s name',
+  widensAuthority: 'it widens the agent’s own role or authority',
+  policySensitive: 'it touches a matter the person marked sensitive' });
 export const CONSEQUENTIAL_TESTS = Object.freeze(['irreversible', 'resources', 'scope', 'policySensitive']);
 const TEST_WORDS = Object.freeze({
   irreversible: 'it cannot be undone by the agent alone',
@@ -40,7 +35,7 @@ export const TOOL_EFFECT_DEFAULTS = Object.freeze({
   'tool:unsandboxed': Object.freeze({ consequence: 'control', reversibility: 'irreversible', reach: 'world', costUsd: null }),
   'tool:network': Object.freeze({ consequence: 'external', reversibility: 'reversible', reach: 'world', costUsd: 0 }) });
 
-/** Nothing outward by default: no grant, no registration, a zero resource level and nothing marked sensitive. */
+/** Before onboarding there is no recorded role. Onboarding records its standing grants here. */
 export const DEFAULT_EFFECT_POLICY = Object.freeze({ type: 'PreviewEffectPolicy', resourceLevelUsd: 0, policySensitive: Object.freeze([]),
   registered: Object.freeze([]), grants: Object.freeze([]) });
 
@@ -57,12 +52,12 @@ const requestScope = (entry) => entry.request === undefined || (entry.effect ===
 const effectId = value => text(value, 64) && /^[a-z]+:[a-z0-9:-]+$/u.test(value);
 
 /** Decodes an operator effect policy (the file `--effect-policy` names). Closed: an unknown field, a grant without its
- * recorded operator source, custodian and recovery obligation (nothing outward by default: a grant names its surface,
+ * recorded operator source, custodian and recovery obligation (a role grant names its surface,
  * custodian and recovery), or a registration outside the profile vocabulary refuses the whole policy. */
 export function decodeEffectPolicy(value) {
   const fail = why => { throw Error(`effect policy: ${why}`); };
   if (!value || typeof value !== 'object' || Array.isArray(value)) fail('not an object');
-  const known = ['type', 'resourceLevelUsd', 'policySensitive', 'registered', 'grants'];
+  const known = ['type', 'resourceLevelUsd', 'policySensitive', 'registered', 'grants', 'role'];
   for (const key of Object.keys(value)) if (!known.includes(key)) fail(`unknown field ${key}`);
   if (value.type !== 'PreviewEffectPolicy') fail('type');
   if (!level(value.resourceLevelUsd)) fail('resourceLevelUsd');
@@ -71,6 +66,7 @@ export function decodeEffectPolicy(value) {
   const registered = value.registered.map(entry => {
     if (!entry || typeof entry !== 'object' || !effectId(entry.effect) || (entry.target !== undefined && !text(entry.target))
       || !CONSEQUENCE.includes(entry.consequence) || !REVERSIBILITY.includes(entry.reversibility) || !REACH.includes(entry.reach)
+      || ['publicInPersonName', 'widensAuthority'].some(key => entry[key] !== undefined && typeof entry[key] !== 'boolean')
       || !requestScope(entry) || !(entry.costUsd === null || level(entry.costUsd)) || (entry.matters !== undefined && !strings(entry.matters)) || !text(entry.source))
       fail('registration');
     return Object.freeze({ ...entry, ...(entry.matters ? { matters: Object.freeze([...entry.matters]) } : {}) });
@@ -79,15 +75,25 @@ export function decodeEffectPolicy(value) {
   const grants = value.grants.map(grant => {
     if (!grant || typeof grant !== 'object' || !text(grant.id, 128) || !effectId(grant.effect) || (grant.target !== undefined && !text(grant.target))
       || !requestScope(grant) || !Array.isArray(grant.approves) || grant.approves.length === 0
-      || !grant.approves.every(test => ['scope', 'resources', 'policySensitive'].includes(test))
+      || !grant.approves.every(test => ['scope', 'resources', 'policySensitive', 'publicInPersonName', 'widensAuthority'].includes(test))
       || (grant.approves.includes('resources') ? !level(grant.resourceLevelUsd) : grant.resourceLevelUsd !== undefined) || !text(grant.source)
       || !text(grant.custodian) || !text(grant.recovery, 1024)
       || (grant.expiresAt !== undefined && !Number.isSafeInteger(grant.expiresAt))) fail(`grant ${String(grant?.id)}`);
     return Object.freeze({ ...grant, approves: Object.freeze([...grant.approves]) });
   });
-  // The decoded policy keeps its type, so the runner can hand it on to the hook's config and the hook decodes it again.
-  return Object.freeze({ type: 'PreviewEffectPolicy', resourceLevelUsd: value.resourceLevelUsd, policySensitive: Object.freeze([...value.policySensitive]),
-    registered: Object.freeze(registered), grants: Object.freeze(grants) });
+  if (value.role !== undefined && (!value.role || !text(value.role.description, 2048)
+    || !strings(value.role.accounts) || !strings(value.role.channels) || !text(value.role.trust, 1024))) fail('role');
+  const role = value.role === undefined ? {} : { role: Object.freeze({ description: value.role.description,
+    accounts: Object.freeze([...value.role.accounts]), channels: Object.freeze([...value.role.channels]), trust: value.role.trust }) };
+  const policy = { type: 'PreviewEffectPolicy', resourceLevelUsd: value.resourceLevelUsd,
+    policySensitive: Object.freeze([...value.policySensitive]), registered, grants: Object.freeze(grants), ...role };
+  // Recompute on every decode: editing grants/limits cannot retain a stale registration verdict.
+  // Expiring grants are rechecked at use, so this record is registration-time classification only.
+  policy.registered = Object.freeze(registered.map(entry => {
+    const c = classifyEffect(entry, policy);
+    return Object.freeze({ ...entry, classification: Object.freeze({ signOff: c.signOff, durability: c.durability }) });
+  }));
+  return Object.freeze(policy);
 }
 
 /** Evaluates one register term expression over a profile (part one's `deriveProfile`, the same three forms). */
@@ -112,10 +118,10 @@ export function currentEffectPolicy(read) {
 }
 
 /**
- * Classifies one proposal `{effect, target, matters?}` against the four tests. The classification is the operator's
+ * Classifies one proposal against role, the five sign-off cases, and durability separately. The classification is the operator's
  * registration for exactly this effect (and target, when the registration names one) or the effect's worst reachable
  * default; an effect with neither is classified worst-case on every test. A live scope grant for this effect places it
- * inside the granted scope. Returns {profile, tests, consequential, registration}.
+ * inside the granted scope. Legacy risk flags are retained for never-twice identity, not sign-off.
  */
 export function classifyEffect(proposal, policy = DEFAULT_EFFECT_POLICY, { irreversibleTerm = IRREVERSIBLE_TERM, now } = {}) {
   const registration = policy.registered.find(entry => covers(entry, proposal)) ?? null;
@@ -129,7 +135,18 @@ export function classifyEffect(proposal, policy = DEFAULT_EFFECT_POLICY, { irrev
     resources: base.costUsd === null || base.costUsd > policy.resourceLevelUsd,
     scope: !INTERNAL_REACH.includes(profile.reach) && !grants.some(grant => grant.approves.includes('scope')),
     policySensitive: matters.some(item => policy.policySensitive.includes(item)) });
-  return { profile, costUsd: base.costUsd, tests, consequential: CONSEQUENTIAL_TESTS.some(test => tests[test]),
+  const signOff = Object.freeze({
+    resources: tests.resources && !(base.costUsd !== null && grants.some(grant => grant.approves.includes('resources')
+      && base.costUsd <= grant.resourceLevelUsd)),
+    irreversibleOutsideRole: tests.irreversible && tests.scope,
+    publicInPersonName: base.publicInPersonName === true,
+    widensAuthority: base.widensAuthority === true,
+    policySensitive: tests.policySensitive });
+  const durability = Object.freeze({ irreversible: tests.irreversible,
+    demand: tests.irreversible ? 'installed-operation' : 'local-durable',
+    rule: tests.irreversible ? 'an irreversible act follows its durable cause' : 'ordinary bounded operations retain their whole cause at least locally' });
+  return { profile, costUsd: base.costUsd, tests, signOff, signOffRequired: SIGN_OFF_TESTS.some(test => signOff[test]), durability,
+    consequential: CONSEQUENTIAL_TESTS.some(test => tests[test]) || SIGN_OFF_TESTS.some(test => signOff[test]),
     registration: registration ? registration.source : null, grants };
 }
 
@@ -138,7 +155,7 @@ function admitsBy(test, proposal, operations) {
   if (test === 'irreversible') return `a second enrolled machine and ${proposal.effect} registered as an operation with replicated durability `
     + `(one machine dispatches irreversible effects only for its fixed closed set: ${operations.join(', ') || 'none'})`;
   if (test === 'resources') return `a registered cost for it within the level an operator grant names`;
-  if (test === 'scope') return `an operator grant placing ${proposal.effect} in this work's scope (nothing outward is on by default)`;
+  if (test === 'scope') return `an operator grant placing ${proposal.effect}${proposal.target ? ` (${proposal.target})` : ''} in this work's scope (purpose: a role is granted once, at onboarding)`;
   return `an operator grant approving ${proposal.effect} for this policy-sensitive matter`;
 }
 
@@ -150,30 +167,32 @@ function admitsBy(test, proposal, operations) {
  */
 export function admitEffect(proposal, policy = DEFAULT_EFFECT_POLICY, operations = [], options = {}) {
   const c = classifyEffect(proposal, policy, options);
-  const held = CONSEQUENTIAL_TESTS.filter(test => c.tests[test]);
-  const head = { effect: proposal.effect, ...(proposal.target ? { target: proposal.target } : {}), tests: c.tests, consequential: c.consequential };
-  if (!c.consequential) return { ...head, admitted: true, disposition: 'ordinary',
-    reason: `effect doorway: ${proposal.effect} is ordinary (none of the four consequential-effect tests holds); admitted` };
+  const head = { effect: proposal.effect, ...(proposal.target ? { target: proposal.target } : {}), tests: c.tests,
+    consequential: c.consequential, signOff: c.signOff, signOffRequired: c.signOffRequired, durability: c.durability };
   const inClosedSet = operations.includes(proposal.effect);
-  const unanswered = held.filter(test => {
-    if (test === 'irreversible') return !inClosedSet;
-    if (test === 'scope') return true;
-    // A grant names its own level; an unknown cost is above every level, so only a registered cost can be approved.
-    if (test === 'resources') return !(c.costUsd !== null && c.grants.some(grant => grant.approves.includes('resources')
-      && c.costUsd <= grant.resourceLevelUsd));
-    return !c.grants.some(grant => grant.approves.includes('policySensitive'));
-  });
-  if (!unanswered.length) {
-    const grant = c.grants.find(item => item.approves.some(test => held.includes(test)));
-    return { ...head, admitted: true, disposition: grant ? 'granted' : 'closed-set', ...(grant ? { grant: grant.id } : {}),
-      reason: `effect doorway: ${proposal.effect} is consequential (${held.map(test => TEST_WORDS[test]).join('; ')}); admitted `
-        + (grant ? `under the operator's recorded grant ${grant.id}` : 'as an operation in the installation\'s accepted closed set') };
+  const missingSignOff = SIGN_OFF_TESTS.filter(test => c.signOff[test]
+    && !c.grants.some(grant => grant.approves.includes(test)));
+  // Unknown or above-level cost cannot be covered by a resource grant merely naming the test.
+  if (c.signOff.resources && !missingSignOff.includes('resources')) missingSignOff.push('resources');
+  const missing = [];
+  if (c.tests.irreversible && !inClosedSet) missing.push(['durability',
+    'purpose: a single-machine installation is a supported deployment shape; an irreversible act follows its durable cause',
+    admitsBy('irreversible', proposal, operations)]);
+  if (c.tests.scope) missing.push(['role', 'purpose: a role is granted once, at onboarding', admitsBy('scope', proposal, operations)]);
+  if (missingSignOff.length) missing.push(['sign-off', 'purpose: sign-off is kept for a short, fixed list',
+    missingSignOff.map(test => test === 'resources' || test === 'policySensitive' ? admitsBy(test, proposal, operations)
+      : `the person’s sign-off for ${proposal.effect}: ${SIGN_OFF_WORDS[test]}`).join('; ')]);
+  if (missing.length) {
+    const admits = missing.map(item => item[2]).join('; and ');
+    return { ...head, admitted: false, disposition: 'refused', refusedFor: missing.map(item => item[0]), admits,
+      reason: `effect doorway refused ${proposal.effect}${proposal.target ? ` (${proposal.target})` : ''}: `
+        + missing.map(item => `${item[0]} (${item[1]})`).join('; ') + `. What would admit it: ${admits}. Nothing was done; `
+        + 'tell the user plainly that this step was refused, why, and what would admit it.' };
   }
-  const admits = unanswered.map(test => admitsBy(test, proposal, operations)).join('; and ');
-  return { ...head, admitted: false, disposition: 'refused', admits,
-    reason: `effect doorway refused ${proposal.effect}${proposal.target ? ` (${proposal.target})` : ''}: it is consequential because `
-      + `${held.map(test => TEST_WORDS[test]).join('; ')}. What would admit it: ${admits}. Nothing was done; tell the user plainly that this `
-      + 'step was refused, why, and what would admit it.' };
+  const grant = c.grants.find(item => item.approves.some(test => c.tests[test] || c.signOff[test]));
+  const disposition = !c.consequential ? 'ordinary' : grant ? 'granted' : 'closed-set';
+  return { ...head, admitted: true, disposition, ...(grant ? { grant: grant.id } : {}),
+    reason: `effect doorway: ${proposal.effect} is ${disposition}; admitted under its recorded role and installed durability path` };
 }
 
 /** The proposal a consequential tool call makes, or null for ordinary in-workspace work (never routed here). */
@@ -194,7 +213,7 @@ export const EFFECT_NOTICE_MAX_CHARS = 600;
 export function refusedEffectNotices(decisions, turn) {
   return decisions.filter(item => item.disposition === 'refused' && (turn === undefined || item.turn === turn)).map(item => {
     const line = `Effect doorway: a ${item.effect} step${item.target ? ` (${item.target})` : ''} was refused, because `
-      + `${CONSEQUENTIAL_TESTS.filter(test => item.tests[test]).map(test => TEST_WORDS[test]).join('; ')}. `
+      + `${item.refusedFor?.length ? item.refusedFor.join('; ') : CONSEQUENTIAL_TESTS.filter(test => item.tests[test]).map(test => TEST_WORDS[test]).join('; ')}. `
       + `What would admit it: ${item.admits ?? 'a recorded operator grant naming it'}.`;
     return { key: `effect:${item.turn}#${String(item.attempt)}:${String(item.n)}`,
       line: line.length > EFFECT_NOTICE_MAX_CHARS ? `${line.slice(0, EFFECT_NOTICE_MAX_CHARS - 1)}…` : line };

@@ -3211,10 +3211,12 @@ function applyRetract(view: JournalView, row: Extract<JournalRecord, { kind: 're
 export interface ToolTraceCall { n: number; tool: string; input: string; decision: string; reason: string; kind?: string;
   /** Present exactly when the call reached the effect doorway (Part Twelve; tests/preview/effect-doorway.mjs). */
   doorway?: EffectDoorwayCall; result: string | null }
-/** The effect doorway's decision on one tool call: the four consequential-effect tests and the disposition. */
+/** Legacy risk flags retain replay and never-twice identity; new records separate sign-off from durability. */
 export interface EffectDoorwayCall { effect: string; target?: string;
   tests: { irreversible: boolean; resources: boolean; scope: boolean; policySensitive: boolean };
-  disposition: 'ordinary' | 'granted' | 'closed-set' | 'refused'; grant?: string; admits?: string }
+  disposition: 'ordinary' | 'granted' | 'closed-set' | 'refused'; grant?: string; admits?: string;
+  signOff?: { resources: boolean; irreversibleOutsideRole: boolean; publicInPersonName: boolean; widensAuthority: boolean; policySensitive: boolean };
+  durability?: { irreversible: boolean; demand: string; rule: string }; refusedFor?: string[] }
 /** One doorway decision as status and the answer's notice read it. */
 export interface EffectDoorwayDecision extends EffectDoorwayCall { turn: string; attempt: number; n: number; at: number }
 /** Counts of the doorway's decisions on tool calls and the most recent ones (bounded). */
@@ -3223,16 +3225,23 @@ export interface EffectDoorwayStats { proposed: number; ordinary: number; grante
 /** Recent doorway decisions kept in the view (the trace rows keep every one). */
 export const EFFECT_DECISIONS_KEPT = 16;
 const DOORWAY_DISPOSITIONS = ['ordinary', 'granted', 'closed-set', 'refused'] as const;
+const SIGN_OFF_TESTS = ['resources', 'irreversibleOutsideRole', 'publicInPersonName', 'widensAuthority', 'policySensitive'] as const;
 const DOORWAY_TESTS = ['irreversible', 'resources', 'scope', 'policySensitive'] as const;
 function validDoorwayCall(value: unknown): value is EffectDoorwayCall {
   if (!value || typeof value !== 'object') return false;
   const d = value as Record<string, unknown>, tests = d.tests as Record<string, unknown> | undefined;
+  const signOff = d.signOff as Record<string, unknown> | undefined, durability = d.durability as Record<string, unknown> | undefined;
   return boundedText(d.effect, 1, 64) && (d.target === undefined || boundedText(d.target, 1, 256))
     && !!tests && typeof tests === 'object' && DOORWAY_TESTS.every(test => typeof tests[test] === 'boolean')
     && DOORWAY_DISPOSITIONS.includes(d.disposition as typeof DOORWAY_DISPOSITIONS[number])
     && (d.grant === undefined || boundedText(d.grant, 1, 128)) && (d.admits === undefined || boundedText(d.admits, 1, 2048))
-    // Ordinary exactly when no test held: a consequential effect is granted, in the closed set, or refused.
-    && (d.disposition === 'ordinary') === !DOORWAY_TESTS.some(test => tests[test] === true);
+    // Old rows replay unchanged; new rows carry both classifications, never inferred from the disposition.
+    && (signOff === undefined || (!!signOff && typeof signOff === 'object' && SIGN_OFF_TESTS.every(test => typeof signOff[test] === 'boolean')
+      && !!durability && typeof durability.irreversible === 'boolean'
+      && ['installed-operation', 'local-durable'].includes(String(durability.demand)) && boundedText(durability.rule, 1, 256)))
+    && (d.refusedFor === undefined || (Array.isArray(d.refusedFor) && d.refusedFor.every(reason => ['role', 'durability', 'sign-off'].includes(String(reason)))))
+    && (d.disposition === 'ordinary') === !(DOORWAY_TESTS.some(test => tests[test] === true)
+      || (signOff !== undefined && SIGN_OFF_TESTS.some(test => signOff[test] === true)));
 }
 /** One request the shell's network checkpoint decided (tests/preview/egress-proxy.mjs): admitted reads of public hosts,
  * refused writes (the effect doorway's reason) and refused hosts; `status`/`bytes` once its response finished. */

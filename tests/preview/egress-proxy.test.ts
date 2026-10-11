@@ -101,7 +101,7 @@ it('a write is refused at the effect doorway and never reaches the host; an oper
   expect(got.out).toContain('hello from example.test');
   expect(up.seen).toEqual([{ method: 'POST', url: '/api', host: 'example.test', body: 'note=hi' }]);
   expect(open.record().requests.at(-1)).toMatchObject({ method: 'POST', decision: 'allow', kind: 'network-write',
-    reason: expect.stringContaining('tool:network-write is ordinary (none of the four consequential-effect tests holds); admitted') });
+    reason: expect.stringContaining('tool:network-write is ordinary; admitted under its recorded role and installed durability path') });
 });
 
 it('the Host header must name the admitted host: a request admitted for one host never reaches another through Host', async () => {

@@ -1,5 +1,5 @@
 // Part Twelve on the live answer and work path (tests/preview/effect-doorway.mjs): a tool call that could make a
-// consequential effect reaches the effect doorway, which admits or refuses it by the purpose's four
+// consequential effect reaches the effect doorway, which admits or refuses it by the journal's four legacy
 // consequential-effect tests; ordinary work in the turn's own workspace never calls it. Both sides of every test,
 // the policy decoder, the register term it reads, the real executable hook on recorded tool calls (Rule 106: the
 // spike's real WebFetch calls and the live scope turn), and one tool turn on a scratch root through runToolTurn:
@@ -44,7 +44,7 @@ it('reads the register\'s own irreversible term, and evaluates it as part one\'s
   }
 });
 
-it('holds each of the four consequential-effect tests on one side and not on the other', () => {
+it('holds each of the legacy risk flags and the separate sign-off tests on one side and not on the other', () => {
   // All four false: a registered internal, reversible, free effect is ordinary and admitted.
   const internal = policy({ registered: [{ effect: 'tool:mcp', target: 'mcp__notes__append', consequence: 'data', reversibility: 'reversible',
     reach: 'agent', costUsd: 0, source: 'telegram:102965:121996' }] });
@@ -82,7 +82,7 @@ it('admits a consequential effect only when every held test is answered, and nam
     approves: ['scope', 'resources'], resourceLevelUsd: 5 })] }), OPS);
   expect(send).toMatchObject({ admitted: false, disposition: 'refused', consequential: true });
   expect(held(send)).toEqual(['irreversible', 'resources']);
-  expect(send.reason).toMatch(/consequential because it cannot be undone by the agent alone/u);
+  expect(send.reason).toMatch(/durability.*an irreversible act follows its durable cause/u);
   expect(send.admits).toMatch(/second enrolled machine/u);
   expect(send.admits).toContain('provider-call, telegram:ordinary-reply, slack:ordinary-reply');
   expect(send.reason).toMatch(/tell the user plainly/u);
@@ -104,7 +104,7 @@ it('admits a consequential effect only when every held test is answered, and nam
   expect(sensitive(['scope', 'policySensitive'])).toMatchObject({ admitted: true, disposition: 'granted' });
   // Scope alone: refused by default, ordinary once granted.
   expect(admitEffect({ effect: 'tool:network', target: 'example.com' }, DEFAULT_EFFECT_POLICY, OPS))
-    .toMatchObject({ admitted: false, admits: expect.stringContaining('nothing outward is on by default') });
+    .toMatchObject({ admitted: false, admits: expect.stringContaining('a role is granted once, at onboarding') });
   expect(admitEffect({ effect: 'tool:network', target: 'example.com' }, policy({ grants: [grant({})] }), OPS))
     .toMatchObject({ admitted: true, disposition: 'ordinary' });
 });
@@ -209,7 +209,9 @@ it('replays the recorded tool calls of real harness runs through the real hook: 
   const live = JSON.parse(readFileSync(join(__dirname, 'fixtures/tool-turn/live-2026-10-03/doorway.json'), 'utf8'));
   const liveDeny = String(live.admission).trim().split('\n').map((line: string) => JSON.parse(line)).find((row: { tool: string; phase: string }) => row.tool === 'Bash' && row.phase === 'pre');
   const replayDeny = admissionRows(state).find(row => row.tool === 'Bash' && row.doorway);
-  expect(replayDeny.reason).toBe(liveDeny.reason);
+  expect(liveDeny.decision).toBe('deny');
+  expect(replayDeny.doorway.refusedFor).toEqual(['durability', 'role', 'sign-off']);
+  expect(replayDeny.reason).toContain('an irreversible act follows its durable cause');
   expect(String(live.answer)).toMatch(/refused, not executed/u);
   expect(String(live.answer)).toContain('What would admit it');
   const notice = refusedEffectNotices(live.effectDoorway.recent.map((item: object) => ({ ...item, turn: 'telegram:12345678:update:1', attempt: 0, n: 2 })),
@@ -261,7 +263,7 @@ it('one tool turn on a scratch root: an ordinary write is admitted with no doorw
   // The refusal rides below this answer as one notice the journal accepts, and only on this turn's answer.
   const notices = refusedEffectNotices(refused.view.effectDoorway!.recent, id);
   expect(notices).toHaveLength(1);
-  expect(notices[0].line).toMatch(/^Effect doorway: a tool:unsandboxed step was refused, because it cannot be undone by the agent alone/u);
+  expect(notices[0].line).toMatch(/^Effect doorway: a tool:unsandboxed step was refused, because durability; role; sign-off/u);
   expect(notices[0].line).toMatch(/What would admit it: a second enrolled machine/u);
   expect(validAnswerNotices([notices[0]], `answer\n\n${notices[0].line}`)).toBe(true);
   expect(openReplyNotices([], notices, id)).toHaveLength(1);

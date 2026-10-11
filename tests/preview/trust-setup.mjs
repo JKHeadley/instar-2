@@ -27,10 +27,10 @@ export function setupTrustPolicy(request) {
     const id = `operator-trust:${createHash('sha256').update(JSON.stringify([request.source, effect.effect, effect.target, scoped])).digest('hex')}`;
     if (grants.some(grant => grant.id === id)) throw Error('duplicate effect scope');
     grants.push({ ...scoped, id, effect: effect.effect, target: effect.target,
-      approves: ['scope', 'resources', 'policySensitive'], resourceLevelUsd: request.resourceLevelUsd,
+      approves: ['scope', 'resources'], resourceLevelUsd: request.resourceLevelUsd,
       source: request.source, custodian: request.custodian, recovery: effect.recovery });
   }
-  return decodeEffectPolicy({ ...DEFAULT_EFFECT_POLICY, registered, grants });
+  return decodeEffectPolicy({ ...DEFAULT_EFFECT_POLICY, ...(request.role ? { role: request.role } : {}), policySensitive: request.policySensitive ?? [], registered, grants });
 }
 
 /** Credentials enter through the vault, never through setup input. Environment values are references only. */
@@ -65,18 +65,20 @@ function replace(path, value) {
  * Existing runners reload the policy at each turn; restart after changing MCP configuration. */
 export function configureTrust(root, action, request) {
   const policyPath = join(root, 'effect-policy.json'), mcpPath = join(root, 'mcp.json');
-  if (!['setup', 'tighten', 'revoke'].includes(action)) throw Error('choose setup, tighten or revoke');
-  const oldPolicy = read(policyPath), oldMcp = read(mcpPath);
+  if (!['setup', 'revise', 'tighten', 'revoke'].includes(action)) throw Error('choose setup, revise, tighten or revoke');
+  const oldRawPolicy = read(policyPath), oldPolicy = oldRawPolicy === null ? null : decodeEffectPolicy(oldRawPolicy), oldMcp = read(mcpPath);
   const policy = action === 'revoke' ? { ...DEFAULT_EFFECT_POLICY } : { ...setupTrustPolicy(request) };
   const mcp = action === 'revoke' ? { mcpServers: {}, reads: [] } : { ...setupMcp(request.mcp),
     operatorGrant: { source: request.source, custodian: request.custodian, recovery: request.recovery } };
   if (action === 'setup') {
     if ((oldPolicy && !same(oldPolicy, policy)) || (oldMcp && !same(oldMcp, mcp)))
-      throw Error('setup already has different operator choices; use tighten or revoke');
+      throw Error('setup already has different operator choices; use revise, tighten or revoke');
+  } else if (action === 'revise') {
+    if (!oldPolicy || !oldMcp || !request.role) throw Error('revise requires an existing setup and the person’s recorded role conversation');
   } else if (action === 'tighten') {
     if (!oldPolicy || !oldMcp) throw Error('tighten requires an existing setup');
     decodeEffectPolicy(oldPolicy);
-    if (policy.registered.some(r => !oldPolicy.registered.some(old => same(old, r)))
+    if (policy.registered.some(r => !oldPolicy.registered.some(old => same({ ...old, classification: undefined }, { ...r, classification: undefined })))
       || policy.grants.some(g => !oldPolicy.grants.some(old => old.effect === g.effect && old.target === g.target
         && same(old.request, g.request) && old.source === g.source && old.custodian === g.custodian && old.recovery === g.recovery
         && old.expiresAt === undefined && g.resourceLevelUsd <= old.resourceLevelUsd
@@ -92,8 +94,10 @@ export function configureTrust(root, action, request) {
     policy.registered = oldPolicy.registered.map(entry => ({ ...entry, reach: 'world' }));
     policy.policySensitive = oldPolicy.policySensitive;
   }
+  // Reclassify retained registrations after narrowing or revoking grants.
+  const decoded = decodeEffectPolicy(policy);
   mkdirSync(root, { recursive: true, mode: 0o700 });
-  for (const [path, old, next] of [[policyPath, oldPolicy, policy], [mcpPath, oldMcp, mcp]]) {
+  for (const [path, old, next] of [[policyPath, oldRawPolicy, decoded], [mcpPath, oldMcp, mcp]]) {
     if (same(old, next)) continue;
     if (old === null) durableWrite(path, next);
     else replace(path, next);
