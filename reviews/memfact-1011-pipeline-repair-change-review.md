@@ -8,7 +8,7 @@ Affected rules: 26, 37, 49, 69, 70, 74, 90, 101, 111, 112, 113, 116
 Affected floors: secrets — unchanged; spend cap — unchanged; stop — unchanged; no duplicate sends — unchanged; durable intake — unchanged. Only generated provenance changes; no runtime behavior or authority changes.
 Operator questions: none
 Suggested tier: critical
-Declared tier: maintenance
+Declared tier: ordinary
 Tier rationale: The critical suggestion comes from generated register paths. This repair changes generation and source-commit metadata only, with unchanged capabilities, entries, policies and implementation.
 Side effects: The seven generated projections now identify the committed memory fact source graph instead of the preceding graph. Canonical owner manifests and the grounding support inventory already match their source bytes, as verified by the delegated repin tools. No manual pin edits, new dependencies or runtime changes.
 Undo and recovery: Revert this generated-output commit together with the associated source change or regenerate against the chosen committed source revision. Reverting generated metadata alone deliberately restores the stale-pin failure; retain the checking boundary.
