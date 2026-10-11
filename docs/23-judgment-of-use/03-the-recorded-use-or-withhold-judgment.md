@@ -54,7 +54,7 @@ Logs, audit projections and grader inputs are additional disclosure surfaces.
 A withhold hook records the goal and expected missed benefit or avoided harm;
 a missed deadline remains evidence even if the user approved the silence.
 
-Basis: Purpose's trust and consequential-effect definition; rules 57/58/95/108;
+Basis: Purpose's trust value and “sign-off is kept for a short, fixed list”; rules 57/58/95/108;
 [R2 §4](research/02-sensitivity-and-disclosure-models.md), Eight effect contract.
 
 **Value — alternatives are useful only when permitted.** A scheduling constraint

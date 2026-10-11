@@ -4,15 +4,18 @@
 
 Instar is an agent operating system: it receives a principal's intent, keeps work alive across
 sessions and machines, lets a model make bounded judgments, changes the world through explicit
-doorways, and learns from what happened. The design is small because the constitution is large.
-Instead of asking every feature to remember 115 rules, the system gives each kind of action one
-path and makes that path hold the rules for every caller.
+doorways, and learns from what happened. The design chooses the simplest robust route under Rule 116, with shared doorways for
+named safety, authority, durability and resource floors and judgment for contextual choices.
 
 This document is the plain-language design. Every architectural claim is marked either **Rule**
 (with the constitutional rules that require it and the check that holds it) or **Value** (a
 deliberate choice the constitution does not force). There is no unlabeled third category.
 
 ---
+
+**Value — the relationship is the purpose of the architecture.** The [purpose](00-the-purpose.md#the-purpose) states: “Instar exists to improve the relationship between AI and humans.” The durable history, judgment and recovery paths serve that relationship through coherent work and care.
+
+**Rule — the complete agent is the default.** The [purpose](00-the-purpose.md#the-purpose) states: “Identity, self-knowledge, reflection and the means to evolve are part of every Instar agent, not an option chosen at setup.” Its role rule states: “Inside its role the agent acts without asking again.” The assembly and harness conformance cases exercise those defaults through onboarding, ordinary role-covered work, self-description and sourced lookup. A missing default or a prompt outside the purpose's sign-off list fails review. A ready claim also meets purpose constraint 6: “The rule count is a floor beneath that, never the score.” The evidence is a recorded real conversation judged against mission, agency and self-knowledge.
 
 ## The whole system in one picture
 

@@ -44,19 +44,23 @@ Basis: [Purpose — least revelation](../00-the-purpose.md#the-purpose), trust, 
 [Part 21 §5](https://github.com/JKHeadley/instar-2/blob/b579d0b928a618e73ce10e1529f45d691400e32e/docs/21-the-recall-doorway/05-identity-scope-and-cross-conversation-joins.md),
 [Part 21 §15 OD-02](https://github.com/JKHeadley/instar-2/blob/b579d0b928a618e73ce10e1529f45d691400e32e/docs/21-the-recall-doorway/15-operator-decisions-and-honest-limits.md).
 
-**Rule — inherit consequential classification exactly.**
-**Checks: P23-NF-02/06/19.** The effect doorway applies the purpose's four tests:
-not undoable by the agent alone; resource commitment above the operator's named
-level; outside granted scope; or operator-marked policy sensitivity. User-facing
-means perceptible by a person outside the agent's processes, including the
-operator. Significant and critical resolve through consequential effects.
-Sensitivity severity is not another effect class. Missing operator thresholds
-are unknown inputs, never numbers invented by a learner. Classification neither
-authorizes an effect nor installs a semantic blocking reviewer. Part 21's
-history-review candidates remain a distinct, narrower policy selection.
+**Rule — inherit sign-off classification exactly.**
+**Checks: P23-NF-02/06/19.** The exact [purpose](../00-the-purpose.md#the-purpose) contract is:
 
-Basis: [Purpose](../00-the-purpose.md), sole consequential-effect definition;
-rules 34/38/43/57/62/76/95.
+**Rule — sign-off is kept for a short, fixed list.** An effect needs the person's sign-off before it happens only when one of these holds:
+- it commits money or a resource above the level the person named;
+- it cannot be undone and falls outside the agent's role;
+- it speaks publicly in the person's name;
+- it widens the agent's own role or authority;
+- it touches a matter the person marked as sensitive.
+
+Everything else inside the agent's role is ordinary, including sending messages and using the accounts that go with the role. **Check:** the effect doorway classifies every registered effect against this list at registration. An effect not on the list and inside a granted role is dispatched without a prompt.
+
+**Value — the rest is held the way a trusted colleague is held.** Full records, review after the fact by the best judgment available, and corrections that last. Patterns are judged in retrospect. A moment is judged live only when it is irreversible.
+
+User-facing, significant and critical retain their [glossary](../03-the-glossary.md) verification meanings. Sensitivity severity is not another sign-off condition. Missing role, threshold or sensitive-matter facts remain unknown, never invented by a learner. Classification supplies no standing and no semantic blocking permission; Part 21's history-review candidates are a separately governed selection restricted to irreversible moments.
+
+Basis: Purpose's quoted sign-off rule and retrospective-review value; rules 34/38/43/57/62/76/95.
 
 **Value — evidence posture.** R1/R2 are bounded source audits; R3 is a literature
 review; R4/R5 provide the accepted design evidence. No source label proves a

@@ -4,6 +4,10 @@ _Generated from `07-the-declarations.changelog.json` by `scripts/render-changelo
 The document itself reads as a first version; every change to it is recorded here, newest first,
 each linked to the git change that made it (rule 91).
 
+## Revision 8 · 2026-10-10 · draft — Justin, docs-align-1010: align design parts with the constitution amendments merged in PR #154; final-head code-owner approval pending.
+
+- **Describe verification coverage without a numeric readiness promise and require demonstrated awareness beyond generated briefing bytes.** — The governing purpose fixes agency, identity, onboarding, sign-off and acceptance; design prose must not impose incompatible defaults or claim readiness from verification alone. _(`fc0e3c20`, docs/00-the-purpose.md; docs/01-the-rules.md; reviews/docs-align-1010-change-review.md)_
+
 ## Revision 7 · 2026-09-24 · approved — Justin adopted the simplicity audit and requested a fundamental Occam standard; Astra specified the smallest replay publication fix. Exact content approved by the operator in topic 52075 at 15:58Z 2026-09-24 ('approved'); merged as PR 116.
 
 - **Clarify that approved repository replay revisions use authored Markdown and refreshed derived publication pins, while runtime bootstrap and subsequent anchored changes retain their existing authority path.** — The first offline conversion must not prohibit later reviewed rule-book publication or imply that replay grants entering-force authority. _(astra-occam-standard-ruling.md section 2)_

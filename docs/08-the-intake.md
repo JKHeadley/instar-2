@@ -349,7 +349,7 @@ since-revoked standing nor pretend it arrived now.
 
 ---
 
-## Standing is resolved, and exceeding it routes
+## Standing is resolved; an uncovered action refuses with the grant needed
 
 The doorway's answer to "may they?" has exactly three outcomes, and none of them is silence:
 within standing, the work proceeds, owned, under the directives in force; unresolvable, held as
@@ -368,10 +368,15 @@ directives in force, the organization's intent constraints, the judgment doorway
 effect doorway's profile-gated irreversibles — and *those* are the answer to "what stops a
 requester misusing the agent," not a standing check this doorway does not have.
 
-**Rule — a beyond-standing request routes; it is never refused on standing alone, and never
-guessed into permission.** Rules 82 and 79; rule 23's discipline (what the agent's own standing
-covers, it does — an unnecessary approval is a burden shifted to a human, P4-NF-16). The
-request becomes a **pre-filled authorization request** — a kind-4 operator-action entry,
+**Rule — onboarding records the role.** P4-NF-16/18/21 compare the complete onboarding grants with actual operation scope. [The purpose](00-the-purpose.md#the-purpose) supplies the exact contract:
+
+**Rule — a role is granted once, at onboarding.** Setting up an Instar agent is a brief onboarding, like bringing on a new member of a team. In one conversation, the person says what the agent's role is, which accounts and channels go with it, and how much trust it starts with. The aim is always a highly trusted member. Where a given agent starts on that range is the person's choice in that conversation. What is agreed is recorded as standing grants. Inside its role the agent acts without asking again. The person can widen or narrow the role at any time, in conversation. **Check:** a fresh installation completes onboarding in one conversation and ends with recorded grants covering the role. No ability inside a granted role prompts for approval. An ability outside every grant is refused, and the refusal says which grant would allow it.
+
+The positive case completes one onboarding conversation and then performs an ordinary role-covered action without asking again. The negative case attempts the same action outside every grant: execution refuses and names the grant needed. A proposed grant change is separately prepared for the person; its existence never authorizes the refused action. Sign-off for a covered action is limited to the purpose's five conditions.
+
+**Rule — a beyond-standing action refuses and can propose the grant it needs.** Rules 82 and 79; rule 23's discipline (what the agent's own standing
+covers, it does — an unnecessary approval is a burden shifted to a human, P4-NF-16). The refused action names the missing grant; a proposal to change that grant
+becomes a **pre-filled authorization request** — a kind-4 operator-action entry,
 structured, completable from a phone, authored by the system. Three hard edges, each the answer
 to an attack the first review named:
 
@@ -619,7 +624,7 @@ the operator surfaces where authorizations complete and bindings are established
    the parsers kind gains `authenticationClass`, `eventIdAuthority`, and `ackPolicy`; the
    glossary's profile-declaring kinds gain parsers; and the blocking-site kind gains the `enforces`
    companion row. Striking any item returns the whole to review. Approve the bundle?
-3. **Beyond-standing requests route, bounded and quoted.** The approver sees the system's
+3. **Beyond-standing actions refuse; grant proposals route, bounded and quoted.** The approver sees the system's
    framing with the sender quoted as untrusted content; needed standing is computed from the
    operation, not the phrasing; requests coalesce per requester and class. The receipt does
    *not* name the approver by default. Right lines?

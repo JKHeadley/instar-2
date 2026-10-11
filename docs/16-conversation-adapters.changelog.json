@@ -1,0 +1,59 @@
+[
+  {
+    "revision": 3,
+    "date": "2026-10-10",
+    "status": "draft",
+    "cause": {
+      "kind": "review",
+      "pr": 157,
+      "note": "Astra round 1, head 309cf8e22f305c5490d9220608497076c380d14c; docs-align-1010 round 2 repair."
+    },
+    "changes": [
+      {
+        "what": "Align P12-NF-52 with the three migration cases: preserve explicit opt-outs, refuse missing standing with the needed grant, and admit covered ordinary output without another opt-in.",
+        "why": "MF1: the fixture must agree with section 4 while retaining authority-inert imports, missing-payload/receipt holds and uncertain-send no-repeat.",
+        "commits": [
+          "309cf8e22f305c5490d9220608497076c380d14c"
+        ],
+        "ref": "lanes/astra-unit-docs-align-1010-review.r1.md; reviews/docs-align-1010-r2-change-review.md"
+      }
+    ]
+  },
+  {
+    "revision": 2,
+    "date": "2026-10-10",
+    "status": "draft",
+    "cause": {
+      "kind": "conversation",
+      "note": "Justin, docs-align-1010: align design parts with PR #154; final-head code-owner approval pending."
+    },
+    "changes": [
+      {
+        "what": "Replace blanket inherited send-disabled defaults with current onboarding grants and preserved explicit opt-outs; test ordinary covered output without another prompt.",
+        "why": "The purpose requires role-covered capabilities by default and reserves sign-off for its fixed list.",
+        "commits": [
+          "fc0e3c20"
+        ],
+        "ref": "docs/00-the-purpose.md; reviews/docs-align-1010-change-review.md"
+      }
+    ]
+  },
+  {
+    "revision": 1,
+    "date": "2026-09-09",
+    "status": "draft",
+    "cause": {
+      "kind": "draft",
+      "note": "Initial conversation adapter design."
+    },
+    "changes": [
+      {
+        "what": "Initial design and indexed sections.",
+        "why": "Define conversation adapters under shared intake, effect and recovery owners.",
+        "commits": [
+          "6c25455e0aaa86bb18c6072a012806ad462c3289"
+        ]
+      }
+    ]
+  }
+]
