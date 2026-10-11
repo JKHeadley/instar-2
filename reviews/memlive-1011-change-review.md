@@ -25,6 +25,10 @@ Prompt finding: fb5fa7e706c8 | protocol-literal | Unchanged semantic retrieval i
 Decision: repair-existing-declaration | Use memoryFrom for the existing single bounded format re-ask; do not accept an unoffered citation or rewrite the mode in code. | reported=/Users/dabombstudio/.instar/agents/echo/.instar/lanes/memlive-1011-PROGRESS.md
 Decision: exact-outcome-notice | An exact infrastructure string reports the recorded undecided failure after secret checks; model-written text and extra content retain review. | reported=/Users/dabombstudio/.instar/agents/echo/.instar/lanes/memlive-1011-PROGRESS.md
 
+Verification: Final targeted memory/packet/audience run passed 21 files / 246 tests. Declaration/repair consumers passed 6 files / 50 tests; native shape and compatibility run passed 9 files / 91 tests. Typecheck, build and architecture pass. Copied-root before/after/failure results and complete commands are recorded in the absolute desk PROGRESS record. Full suite is pipeline-owned.
+
+Generated publication: The existing register replay generator ran from source commit 0b7a39645e2eb334bf39d99e1681644d10246944, producing generation sha256:fa757b7e6f7b93b7712fffcaf4372a8500d5a4c929989cb0adce2731bc7a0d70. Seven publication files refresh source/generation pins only; no manual hash edit.
+
 ## Closing block
 
 simplestRobustRoute: This is the simplest robust route: clarify existing guidance and reuse the existing declaration repair and exact outcome record. The named failure is an otherwise complete model answer with an invalid source that previously fell into unrelated summary/reply recovery. No new model service, retry loop or store. Start guards are durable authenticated intake and verified audience; end guard is an accepted exact memory record; limits remain caps, stop, secrets and durable send settlement. Exact copied-root recorded-output replay passes; no new unattended live-model or Telegram deployment claim.
