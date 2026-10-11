@@ -45,7 +45,10 @@ describe('the live enumeration rule 4 asks for', () => {
       'preview.journal.pollLimit',
       // Rule 4's recorded-governed-state admission: media fetch dispatches only on an exact match of a
       // recorded policy admission and a consumed reservation; anything else fails closed and keeps the intake.
-      'preview.media-admission.createMediaAdmission', 'recall.redact',
+      'preview.media-admission.createMediaAdmission',
+      // Rule 4's live-secret-leaving admission: custody protects model-visible derivatives;
+      // a refusal retains the encrypted original in inbound media custody and the journal.
+      'preview.media-understanding.protectMediaBytes', 'recall.redact',
       'resource-owner.admit', 'rungraph.exhaustion', 'rungraph.stop', 'rungraph.unreachable']);
   });
   it('rules 60 and 61 each have a live holder, and its honesty class says what is still owed', () => {

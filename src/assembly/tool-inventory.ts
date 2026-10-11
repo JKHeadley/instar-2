@@ -74,6 +74,8 @@ export const DEVELOPMENT_TOOLS: readonly DevelopmentTool[] = freeze([
     packageScripts: [], grants: [], feature: 'local-capability-packages' },
   { id: 'install-package', phase: 'install', run: { kind: 'port', port: 'installLocalCapability' }, params: null, options: packageOptions,
     packageScripts: [], grants: ['local-install'], feature: 'local-capability-packages' },
+  { id: 'install-media', phase: 'install', run: { kind: 'process', argv: ['node', 'scripts/install-local-media.mjs'] }, params: null,
+    packageScripts: ['install:media'], grants: ['local-install'], feature: 'media-understanding' },
   { id: 'journal-migrate', phase: 'migrate', run: { kind: 'process', argv: loaded('tests/preview/journal-migrate.mjs') }, params: null,
     subcommands: {
       export: [option('old-root', 'root'), option('export-file', 'file'), option('bot-id', 'account'), option('chat-id', 'account'),
