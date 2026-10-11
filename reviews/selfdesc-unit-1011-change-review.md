@@ -31,12 +31,6 @@ Deferral: tests/preview/fixtures/doorway-notice-offload-review-2026-10-11.json:1
 Deferral: tests/preview/fixtures/selfdesc-unit-2026-10-11.json:13 | not-a-deferral=Immutable captured model output, not a new promise.
 Deferral: tests/preview/fixtures/selfdesc-unit-2026-10-11.json:14 | not-a-deferral=Immutable captured model output, not a new promise.
 
-## Closing block
-
-simplestRobustRoute: This is the simplest route: repair shared briefing and notice text, with no new gate, runtime model call or authority. Existing admission, secret, spend, stop and durable send checks remain. No unattended deployment claim; pipeline owns live acceptance.
-80/20: Only named checks, direct importers and the fast pinned set, foreground at nice 10 and one worker. Real recorded evidence and one bounded model replay supply model-facing proof; no full suite on Studio.
-VERDICT: author submission; this record asserts no independent verdict — the review desk records its own
-
 Verification: Final wording keeps the tool-route fixed packet at 22910 bytes within the unchanged 22959 floor. A new real-model reply passes k11a-rubric-v2 (digest 5a6f3fa0ff2deb8750bd26794ae51b04166b432fb1f660bbbbc3a39eba6923e9). The standalone journal-agent suite passes 19 tests; pinned briefing and real recorded notice/group-carry replays pass. The real default-root pressure conversation passes with final wording. Register generation from 7a7398a12b6a282ed99b10904458b53701db879c preserves the capability inventory exactly and refreshes only source provenance. Final verification commands and outputs are in the absolute desk PROGRESS record.
 
 Fixture sizing: The imminent-date revision fixture now gives its two short turns 22528 bytes, keeping the test about notice revision instead of incidental compaction disclosure after added standing instructions. Production limits and every revision/eligibility assertion remain unchanged. Commitment fixtures likewise retain forced summary and trimming while leaving their intended evidence room.
@@ -44,3 +38,9 @@ Fixture sizing: The imminent-date revision fixture now gives its two short turns
 Pin completeness: Refresh the dated-memory fixture's owner-reference hash as well as the journal-agent fixture's hash; both are registered artifacts. Regenerate derived source metadata from that committed owner manifest.
 
 Final generation: ba22ddba155b1c9e2e75caacad11fd55d7c316579dbaaf20de7a9f3ab463c765 from source 88fc1e1693b46bcb402b0235f60226d19b416651; 289 entries, 116 rules, 34 terms, shape-only authority. Capability inventory remains unchanged.
+
+## Closing block
+
+simplestRobustRoute: This is the simplest route: repair shared briefing and notice text, with no new gate, runtime model call or authority. Existing admission, secret, spend, stop and durable send checks remain. No unattended deployment claim; pipeline owns live acceptance.
+80/20: Only named checks, direct importers and the fast pinned set, foreground at nice 10 and one worker. Real recorded evidence and one bounded model replay supply model-facing proof; no full suite on Studio.
+VERDICT: author submission; this record asserts no independent verdict — the review desk records its own
