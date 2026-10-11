@@ -1305,6 +1305,8 @@ export interface Turn { id: string; update: number; text: string; raw: string; a
   wasHeld?: true; heldNoticeCoveredBy?: string; closedQuestions?: string[]; checked?: CoherenceFinding[]; checkFailed?: true; unlabeledRecall?: boolean;
   replyChecks?: ReplyCheckResult[]; jevReserved?: boolean; jevReservedAt?: number; reviewReserved?: boolean; reviewReservedAt?: number; reviewState?: 'complete' | 'rejected' | 'uncertain'; answerRetried?: true; answerReplaced?: true; lookup?: { words: string[]; found: string[] }; reviewRetried?: true; reviewDiagnostics?: ReplyReviewDiagnostics;
   answerMs?: number; sendMs?: number; answerReason?: string;
+  /** Stage boundaries projected from durable frames; absent evidence stays unknown. */
+  answerAt?: number; checkDoneAt?: number;
   reviewCandidate?: string; reviewMentionedDates?: string[];
   revisionReserved?: true; revisionReservedAt?: number; revisionObjections?: string[];
   revision?: { state: 'complete' | 'rejected' | 'uncertain' | 'failed'; text?: string; dispositions?: ObjectionDisposition[]; blocker?: ProposedBlocker };
@@ -1599,6 +1601,8 @@ export function replyTimings(view: JournalView) {
     return check.latencyMs;
   };
   const perReply = view.order.filter(turn => turn.accepted).map(turn => ({ update: turn.update,
+    intakeAt: turn.at ?? null, turnStartAt: turn.reservedAt ?? null,
+    answerAt: turn.answerAt ?? null, checkDoneAt: turn.checkDoneAt ?? null, sentAt: turn.sentAt ?? null,
     answerMs: turn.answerMs ?? null,
     jevMs: duration(turn.replyChecks?.find(check => check.path === 'jev')),
     fallbackMs: duration(turn.replyChecks?.find(check => check.path === 'subscription')),
@@ -4231,6 +4235,7 @@ function project(view: JournalView, row: JournalRecord, system?: SystemCheck, ad
       || !['pass', 'violation', 'unavailable'].includes(row.verdict) || !Array.isArray(row.ruleIds)
       || row.ruleIds.some(rule => typeof rule !== 'string') || row.reason !== undefined && typeof row.reason !== 'string')
       throw Error('preview journal: revision review result order');
+    turn.checkDoneAt = row.at;
     turn.revisionReview = { verdict: row.verdict, ruleIds: [...row.ruleIds], ...(row.reason === undefined ? {} : { reason: row.reason }),
       ...(row.findings === undefined ? {} : { findings: row.findings.map(item => ({ ...item })) }) };
     if (row.verdict !== 'unavailable') settleTokens(view, `revision-review:${row.id}`, row.usage);
@@ -4320,7 +4325,7 @@ function project(view: JournalView, row: JournalRecord, system?: SystemCheck, ad
       settleTokens(view, `jev:${row.id}`, row.result.usage, true);
     if (row.result.path === 'subscription' && row.result.verdict !== 'unavailable' && turn.reviewState !== 'uncertain')
       settleTokens(view, `review:${row.id}`, row.result.usage);
-    turn.replyChecks ??= []; turn.replyChecks.push(row.result);
+    turn.replyChecks ??= []; turn.replyChecks.push(row.result); turn.checkDoneAt = row.at;
     view.replyCheckCounts[row.result.verdict]++; view.replyCheckPaths[row.result.path]++;
     view.lastReplyCheck = row.result; return;
   }
@@ -4396,6 +4401,7 @@ function project(view: JournalView, row: JournalRecord, system?: SystemCheck, ad
     if (row.lastNamedPerson !== undefined && (row.lastNamedPerson.trim() !== row.lastNamedPerson
       || !row.lastNamedPerson || Buffer.byteLength(row.lastNamedPerson) > 100 || !turn.accepted
       || !turn.text.includes(row.lastNamedPerson))) throw Error('preview journal: unsupported person cue');
+    turn.answerAt = row.at;
     turn.answer = row.text; if (row.reason !== undefined) turn.answerReason = row.reason;
     if (row.operatorAction !== undefined) {
       if (!verifiedOperatorTurn(view, turn) || turn.requestedAction !== undefined
@@ -8921,6 +8927,9 @@ export function createJournalWorker(journal: ReturnType<typeof openPreviewJourna
     }
     for (const group of groups.values()) {
       gate();
+      // An earlier group's send can yield to ordinary recovery, including its exclusive stop claim.
+      group.turns = group.turns.filter(turn => limitedReason(turn) === group.reason);
+      if (!group.turns.length) continue;
       // A stop confirmation is bounded by the reserve turn that carried it, not by the answer budget.
       if (!group.stop && reserveRepliesUsed(journal.view, ports.now()) >= MINIMAL_RESERVE.replies) continue;
       const lead = group.turns[0]!, base = approvalBase(journal.view);
@@ -8939,6 +8948,9 @@ export function createJournalWorker(journal: ReturnType<typeof openPreviewJourna
         : group.reason === 'worker' || openApproval(journal.view, 'raise-caps', ports.now()) ? undefined : issueRaise(lead, group.reason);
       const link = approval?.challenge ? approvalLink(approval.challenge) : null;
       const yesRequest = group.stop || approval !== undefined || group.reason === 'worker' ? undefined : await limitedOperatorRequest(lead, group.reason);
+      // Request preparation can also yield. Leave a changed group for the next minimal pass
+      // to rebuild rather than commit stale recipients.
+      if (group.turns.some(turn => limitedReason(turn) !== group.reason)) continue;
       const text = group.stop ? STOP_CONFIRM_TEXT : `${limitedAnswerText(journal.view, group.reason, group.turns.length)}${approval
         && group.reason !== 'worker' ? `\n\n${approvalRequestText(journal.view, group.reason)} ${link ? RAISE_LINK_HINT : RAISE_SURFACE_HINT}` : ''}${
         yesRequest ? `\n\n${yesRequest.text}` : ''}`;

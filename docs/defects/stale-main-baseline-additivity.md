@@ -1,14 +1,6 @@
 # First-landing and additivity checks refuse a branch that does not contain the current main tip (Rule 37 quarantine)
 
-**Status:** CLOSED (2026-10-10). **Owner:** constitutional-build integration desk (Echo). **Opened:** 2026-09-28.
-
-**Closure evidence:** train-5b ordinary merge `b03297eb` contains current `origin/main`
-`c1e290e1` and the unchanged local `main` baseline `fc0e3c20`. Every case listed below
-is enabled. All 84 tests in the 15 first-landing and baseline files passed in a foreground
-`nice -n 10 npx vitest run --maxWorkers 1` run, including all 15 measurement lifecycle
-cases. First-landing fixtures prove additions accepted, foreign edits refused and
-post-landing structural checks retained. No local main ref was moved, and no skip was
-added. The historical quarantine and rechecks below describe the earlier state.
+**Status:** OPEN. **Owner:** constitutional-build integration desk (Echo). **Opened:** 2026-09-28.
 
 On branch `cint-1` (full runs retained as `/private/tmp/claude-501/cint1-livefix/full2.log` and `re1.log`, and a pristine built checkout of `2988aa95` as `base-re1.log`), these cases fail deterministically, on this change and on its base alike:
 - `tests/assembly/round8-additivity.test.ts` — `R8-F1 compares pre-existing Part Ten fixture outcomes on P11 first landing`, `V72 compares Part Ten decoder field deletions on P11 first landing`.

@@ -2429,7 +2429,10 @@ async function main() {
     // breaker and end the run for the host supervisor (Rules 15, 55; Eleven §5's ordinary-worker cut).
     // Two machines: ordinary work (model calls, replies, reminders) starts only while the other machine holds the
     // whole journal, so nothing is spent or prepared on local durability while the peer is away. Input is still read.
-    const lane = createOrdinaryLane({ elapsed: clock.elapsed, peerCurrent: () => shared === null || shared.peerCurrent(), after: summarizeLater });
+    const lane = createOrdinaryLane({ elapsed: clock.elapsed,
+      peerCurrent: () => !signalled && !workerStop.value && !existsSync(stopPath) && !journal.view.stop
+        && ownerHeld() && activationMatchesJournal(journal.view, activation) && (shared === null || shared.peerCurrent()),
+      after: summarizeLater });
     // A message past every bound waits at Telegram; later presses behind it are re-read after this pause.
     const waitHeld = async () => {
       const until = clock.elapsed() + 3000;
@@ -2461,15 +2464,16 @@ async function main() {
     // The sentinels tick only when that job is admitted, and their requested steps run inside it after the drain.
     // Plan #548: it is offered once per cycle AND throughout every poll backoff (pollFailure), so it never waits on
     // the Telegram connection or on an inbound message; only delivery of its result does.
-    const workCycle = (requested = false) => {
+    const workCycle = (requested = false, wake = false) => {
       if (journal.view.stop || !ownerHeld() || !activationMatchesJournal(journal.view, activation)) return;
       sentinelCycle(lane, { tick: sentinelTick, requested: sentinelSteps, drain: async () => {
+        if (journal.view.stop || !ownerHeld() || !activationMatchesJournal(journal.view, activation)) return;
         await worker.drain();
         if (requested) await worker.sendRequested();
       },
         after: async () => {
           try { await worker.workObligations(); } catch { /* a stop or expiry ends the step; its start stays durable */ }
-        } });
+        } }, wake);
     };
     // Plan #548, the desk's live check only: with --telegram-cut-file, while that file holds a future epoch-ms every
     // poll fails as an unreachable connection without a network call. Never passed to the operator's runner.
@@ -2559,7 +2563,12 @@ async function main() {
       // A full held page was preserved and passed: read the rest of the backlog now, so an exact /stop
       // behind it latches before any further processing (Rule 4; bounded by the waiting store).
       if (worker.readAhead() && batch.length >= pollLimit) continue;
-      if (!await untilStopped(() => worker.minimal(), ended)) break;
+      // Start the minimal path's synchronous stop handling before ordinary work can claim a stop turn.
+      // Do not await its longer work before offering the durable intake: a busy lane retains one wake
+      // and drains it as soon as the current job finishes, without a poll tick.
+      const minimalStep = untilStopped(() => worker.minimal(), ended);
+      if (batch.length > 0) workCycle(false, true);
+      if (!await minimalStep) break;
       if (journal.view.stop) break;
       if (renewedAway()) break;
       // Reminders go out only after a successful poll returned nothing new and no ordinary drain is

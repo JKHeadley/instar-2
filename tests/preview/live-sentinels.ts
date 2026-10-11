@@ -225,17 +225,25 @@ export function sentinelStatusLines(view: JournalView): string[] {
  * that ends the run for the host supervisor (Rule 55). With two machines, work starts only while the peer is current. */
 export function createOrdinaryLane(ports: { elapsed(): number; peerCurrent(): boolean; after(): unknown }) {
   let job: Promise<void> | null = null, error: unknown = null, failures = 0, retryAt = 0;
+  let pending: (() => Promise<unknown>) | null = null;
   const admissible = () => job === null && ports.elapsed() >= retryAt && ports.peerCurrent();
-  const submit = (run: () => Promise<unknown>): boolean => {
-    if (!admissible()) return false;
+  const submit = (run: () => Promise<unknown>, wake = false): boolean => {
+    // Intake needs one wake after a busy job, not a queue of jobs or a new timer. The journal is the queue.
+    // Backoff and peer durability still govern admission when this wake is consumed.
+    if (!admissible()) { if (wake && job !== null) pending = run; return false; }
     job = run().then(() => { failures = 0; }, failed => {
       failures++;
       retryAt = ports.elapsed() + Math.min(300_000, 1000 * 2 ** Math.min(failures - 1, 9));
       if (failures >= 8) error ??= failed;
-    }).then(() => { ports.after(); }).finally(() => { job = null; });
+    }).finally(() => {
+      job = null;
+      const next = pending; pending = null;
+      if (next && submit(next)) return;
+      ports.after();
+    });
     return true;
   };
-  return { admissible, submit, settle: async () => { await job; }, error: () => error };
+  return { admissible, submit, settle: async () => { while (job !== null) await job; }, error: () => error };
 }
 export type OrdinaryLane = ReturnType<typeof createOrdinaryLane>;
 
@@ -248,7 +256,7 @@ export type OrdinaryLane = ReturnType<typeof createOrdinaryLane>;
  * (`after`) run, and then fails the job (its backoff unchanged): a reply that cannot be drained never holds back an
  * obligation step that falls due (plan #548). Returns whether the job was admitted. */
 export function sentinelCycle(lane: OrdinaryLane, input: { tick(): void; requested: (() => Promise<unknown>)[];
-  drain(): Promise<unknown>; after(): Promise<unknown> }): boolean {
+  drain(): Promise<unknown>; after(): Promise<unknown> }, wake = false): boolean {
   return lane.submit(async () => {
     try { input.tick(); } catch { /* silence: a failed tick requests nothing beyond what it recorded */ }
     const steps = input.requested.splice(0);
@@ -257,7 +265,7 @@ export function sentinelCycle(lane: OrdinaryLane, input: { tick(): void; request
     for (const step of steps) try { await step(); } catch { /* the sentinel observes the outcome on its next tick */ }
     await input.after();
     if (failure) throw failure.error;
-  });
+  }, wake);
 }
 
 /** One minimal-path step of the runner loop (the worker's stop gate, its minimal step). The worker refuses by throwing
