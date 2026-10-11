@@ -23,6 +23,7 @@ Prompt review: The prompt still gives the entire memory edit shape and requires 
 Prompt finding: 849db3a6296a | protocol-literal | unchanged memory-list explanatory text already exercised by the memory-list fixture; no new meaning decision based on that phrase
 Prompt finding: bd01de21286a | protocol-literal | unchanged sourceLabel citation protocol, not a copied answer or fixed trigger
 Prompt finding: fb5fa7e706c8 | protocol-literal | unchanged recall-grounding guidance; this repair changes memoryDecision wording only
+Prompt finding: 391404b34c83 | protocol-literal | The latency test restores the immutable historical memoryDecision protocol solely to verify the existing historical hashes. This is an explicit byte comparison, not a model trigger or expected reply.
 
 Verification: 184 targeted tests pass on final source (158 packet regressions and 26 latency/pressure/recorded-shape checks); tsc and build pass. All tests ran foreground at nice -n 10 with --maxWorkers 1. Desk rehash/repin scripts made no owner/inventory changes; build-register --replay at f589c692 regenerated seven artifacts, committed in 20386e92. Historical contract maps pass through their coverage/source checks; P5/assembly require a new current-source full-process receipt and P11 requires a current full-checkout report, both deliberately left to the pipeline. No skips or quarantines were added.
 
