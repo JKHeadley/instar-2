@@ -296,7 +296,8 @@ it('replays all recorded model shapes through carried recall after the disclosur
     const sends: string[] = [];
     const worker = createJournalWorker(w.destination, { now: () => now + 1000, stopped: () => false,
       sources,
-      groupDisclosure: async () => allowed,
+      groupDisclosure: () => verifyGroupAudience(scope,
+        membership((method, _body, value) => method === 'getChatMemberCount' && !allowed ? 3 : value)),
       prepareModel: input => prepareJournalEnvelope(input, 'claude-sonnet-5', genesis.grant, now, genesis.maxBytes),
       model: async input => {
         calls++;
