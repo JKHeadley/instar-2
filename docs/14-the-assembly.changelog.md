@@ -4,21 +4,25 @@ _Generated from `14-the-assembly.changelog.json` by `scripts/render-changelog.mj
 The document itself reads as a first version; every change to it is recorded here, newest first,
 each linked to the git change that made it (rule 91).
 
-## Revision 24 · 2026-10-09 · draft — Operator direction via observer #202: remove the preview framing (w4-agentready).
+## Revision 25 · 2026-10-09 · draft — Operator direction via observer #202: remove the preview framing (w4-agentready).
 
 - **The accepted-reply projection renders the accepted answer without the preview label.** — Present Instar as the agent while preserving acceptance, grounding, escaping and size checks. _(w4-agentready; observer #202)_
 
-## Revision 23 · 2026-10-03 · draft — Unit w4-persist (plan row #400): operator re-grounding, Justin 10:45 PDT 2026-10-03 via observer #149, and message 121996 (the 'handicapped' fresh-per-turn result rejected): a persistent workspace per conversation and a kept harness session subordinate to the journal, satisfying the full-tool ruling's MF5. No constitution change.
+## Revision 24 · 2026-10-03 · draft — Unit w4-persist (plan row #400): operator re-grounding, Justin 10:45 PDT 2026-10-03 via observer #149, and message 121996 (the 'handicapped' fresh-per-turn result rejected): a persistent workspace per conversation and a kept harness session subordinate to the journal, satisfying the full-tool ruling's MF5. No constitution change.
 
 - **Operator question 2: a conversation keeps its private workspace, bounded by its fixed-size volume and the root's count of kept workspaces, and a harness session that is only a cache of the journal, replaced whenever a journal fact, the authority or the harness changes.** — A fresh, empty workspace and a discarded session every turn left the agent unable to keep a file or a project between messages; persistence is added under the same boundary and floors. _(lanes/w4-persist-PROGRESS.md; lanes/astra-fulltool-ruling.md (MF5); LIVE-PATH-PLAN.md row #400)_
 
-## Revision 22 · 2026-10-03 · draft — Unit w4-toolsfull (plan row #395): operator direction, Justin, topic 102965 message 121996, 10:15 PDT 2026-10-03, recorded as a Rule 104 standing grant: tools on by default with the full Claude Code tool set, consequential effects through the effect doorway, every subagent a Rule 114 edge. No constitution change.
+## Revision 23 · 2026-10-03 · draft — Unit w4-toolsfull (plan row #395): operator direction, Justin, topic 102965 message 121996, 10:15 PDT 2026-10-03, recorded as a Rule 104 standing grant: tools on by default with the full Claude Code tool set, consequential effects through the effect doorway, every subagent a Rule 114 edge. No constitution change.
 
 - **Operator question 2: the preview's tools are on by default under the operator's recorded grant, run under Part Thirteen's demonstrated boundary, and send every consequential effect to the effect doorway.** — The full tool set replaces the scoped first slice; the statement that the boundary is not §4 confinement and waives no floor is unchanged. _(lanes/w4-toolsfull-PROGRESS.md; lanes/astra-fulltool-ruling.md (MF2-MF7 floors); LIVE-PATH-PLAN.md row #395)_
 
-## Revision 21 · 2026-10-03 · draft — Unit w4-toolsreal: the full-tool ruling's replacement text, adapted to the reuse route (Justin 2026-10-02 00:43, topic 102965 message 121912; desk decision 2026-10-01 17:49, message 121586). No constitution change.
+## Revision 22 · 2026-10-03 · draft — Unit w4-toolsreal: the full-tool ruling's replacement text, adapted to the reuse route (Justin 2026-10-02 00:43, topic 102965 message 121912; desk decision 2026-10-01 17:49, message 121586). No constitution change.
 
 - **Operator question 2 states that the preview's ordinary scoped tools are supported ordinary work under Part Thirteen's demonstrated boundary (admission hook, harness sandbox, clean environment), which is not §4 confinement and grants no governed or protected status.** — Replaces the proposed full-tool exception the ruling rejected (MF2, MF3); no preview label waives a floor. _(lanes/astra-fulltool-ruling.md (replacement text); lanes/w4-toolsreuse-PROGRESS.md (proven configuration); lanes/w4-toolsreal-PROGRESS.md; LIVE-PATH-PLAN.md rows #358, #363, #367)_
+
+## Revision 21 · 2026-10-10 · draft — Justin, docs-align-1010: align design parts with the constitution amendments merged in PR #154; final-head code-owner approval pending.
+
+- **Align fixed-installation ordinary durability and launch predicates with five sign-off conditions while preserving separate reversibility and standing floors.** — The governing purpose fixes agency, identity, onboarding, sign-off and acceptance; design prose must not impose incompatible defaults or claim readiness from verification alone. _(`fc0e3c20`, docs/00-the-purpose.md; docs/01-the-rules.md; reviews/docs-align-1010-change-review.md)_
 
 ## Revision 20 · 2026-09-29 · approved — Operator Justin (verified) approved the exact amendment wording with 'Yes' at 18:57 PDT 2026-09-29 in topic 102965 (message 2227093), relayed to the desk by the topic session and observer note #91: 'Instar may accept a recorded, one-use approval of an exact, unexpired request from an operator account held with a named service that the agent cannot use or administer, without a separate device signature or independent approval verifier, while independently enforced safeguards remain independently administered.' His 18:08 yes adopted the approval design (plan rows #91, #93).
 

@@ -31,15 +31,7 @@ can run the same service code; operating it grants no governing authority.
 Background: Even a report without message content can reveal patterns. Permission for one
 recipient does not cover another recipient or a more revealing payload.
 
-Question: How should participation begin?
-
-Choices: Keep sharing off; explicitly join with the permitted content-free fields; or separately
-authorize richer evidence after seeing the exact payload. These choices progressively widen
-what the named recipient can see and must remain independently revocable.
-
-Recommendation: Keep sharing off until explicit enrollment, then require separate permission
-for richer sharing. The purpose's sovereignty and non-widening-authority constraint decide
-this boundary. An update or address change cannot grant permission.
+The [purpose](../00-the-purpose.md#the-purpose) states: “In one conversation, the person says what the agent's role is, which accounts and channels go with it, and how much trust it starts with.” Enrollment records the destination, content scope and trust agreed in that onboarding conversation. A covered private transfer uses those grants without asking again, unless a purpose sign-off condition applies. A role that excludes commons sharing keeps it unavailable with the missing grant named. Richer sharing inside an existing grant needs no second prompt; widening the role, public speech in the person's name or a sensitive matter requires sign-off. An update or address change supplies no missing standing. Least revelation still checks every field and recipient.
 
 **Value — tune implementation within fixed constraints.**
 Background: Transport, queue limits, worker counts, retry timing and statistical sampling
@@ -225,4 +217,4 @@ Basis: G1, “choose the evidence and risk policy for releases”: operator depl
 Basis: G2, “choose attachment and cache retention terms”: rule 7 and Purpose permanent-memory posture; Part Two [fact/capture redaction contract](../06-the-fact-envelope.md), Part Nine [retention contract](../13-the-verification-holders.md) §8, ST non-deleting curated decisions; operator settings under “Who decides what” only within those limits; sections 2/4/6/8; no enrollment, new redaction reason or aggregate privacy-budget approval implied.
 Basis: G3, “decide how to judge competing harms”: Purpose “wisdom is what coherence is for” and “a design question this document cannot decide is a gap in this document”; candidate general amendment “scoped accountable harm criteria”; Part 23 judgment-of-use owner via JU, row 112, after convergence/approval; Part 22 consumes, never invents, the criterion; rules 57/108; R5 G3.
 Basis: G4, “choose a release and trial mandate”: operator deployment policy under Purpose “Who decides what,” operator-only authority/build/spend boundary; R5 G4/E8/E11; sections 6/10; EX operator deployment standing and EV arm B exposure approval remain separate gates.
-Basis: Honest limits and introductory rule: Purpose constraints 1–4, gap Rule, sole consequential-effect/user-facing definition and authority boundary; rules 13/49/65/69/90/95/108/111; R1–R5; section 14 and [verbatim grants](seam-requests/seam-response-commons-grants.md), SEAM-LEDGER rows 102–114.
+Basis: Honest limits and introductory rule: Purpose constraints 1–4, gap Rule, “sign-off is kept for a short, fixed list” and the glossary's separate verification profiles and authority boundary; rules 13/49/65/69/90/95/108/111; R1–R5; section 14 and [verbatim grants](seam-requests/seam-response-commons-grants.md), SEAM-LEDGER rows 102–114.

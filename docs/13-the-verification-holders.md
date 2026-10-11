@@ -18,6 +18,18 @@ foundations. The approved register's `redacts` value is consumed without a new s
 
 ---
 
+**Rule — acceptance is evidenced by use.** [Purpose constraint 6 and “not knowing is a task”](00-the-purpose.md#the-six-constraints) govern the acceptance evidence:
+
+**Rule 6 — the agent is accepted by being used.** No count of passing rules is a measure of whether an Instar agent is what this document describes. An agent is accepted when a person has used it as they would in ordinary life and it met the mission, agency and self-knowledge statements above. The rule count is a floor beneath that, never the score. **Check:** a release or status that calls the agent ready cites a recorded real conversation and its judgment against those statements. Citing a rule count alone fails review.
+
+**Rule — not knowing is a task.** When an agent is asked something it does not know and has a way to find out, it finds out before it answers, and says where the answer came from. "I don't know" is an answer only after trying. **Check:** in a recorded conversation, a question answerable with the agent's own tools is answered with a source. A refusal to look is a defect.
+
+[Purpose constraint 3](00-the-purpose.md#the-six-constraints) states: “For anything a person will use, evidence at the tier that matters is that a person used it.” P9-NF-62/63 therefore require a recorded real conversation and judgment against mission, agency and self-knowledge for a ready claim; an all-green rule table without that evidence fails. A holder coverage table reports protection only, never product acceptance. A sourced answer reached through available tools is the positive neighbor of an unattempted “I don't know.”
+
+The [purpose](00-the-purpose.md#the-purpose) states: “Patterns are judged in retrospect. A moment is judged live only when it is irreversible.” Critical/significant profiles retain their glossary verification duties; they do not add operator sign-off conditions. Existing retrospective review can hold several mind-held rules, as Rule 116 requires; no separate watcher per rule is required.
+
+---
+
 ## 1. What this part owns
 
 **Rule — types have one owner.** Rules 1, 30, 49, 69 and 90; **checks: P9-NF-01/02/03**.
@@ -124,9 +136,9 @@ model call. Missing evidence affects only that pipeline's declared integrity adm
 become a global conversational gate. Semantic adequacy remains independently reviewed inference.
 
 **Value — intelligence holds meaning, checks hold its attendance.** No deterministic check can
-prove that a watcher noticed every subtle failure. The plan requires a watcher and review for
-each mind-held rule, while coverage honestly separates their execution, semantic review and
-remaining limits. Agreement between two models is still inference, not deterministic proof.
+prove that a watcher noticed every subtle failure. The plan names the delivered instructions and recorded judgment holding
+each mind-held rule; a shared review can hold several standards. Coverage honestly separates
+execution, semantic review and remaining limits. Agreement between two models is still inference, not deterministic proof.
 
 ---
 

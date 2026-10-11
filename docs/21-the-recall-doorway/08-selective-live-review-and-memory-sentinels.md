@@ -3,8 +3,11 @@
 **Rule — policy selects history-review candidates; the sentinel does not acquire authority.**
 Rules 4, 28, 42, 57, 66, 77, 86, 95 and 103; **checks: P21-NF-03/04/07/13/14/24**.
 Proposal C is selective, owner-policy-governed live review for history-review candidates only.
-Consequential classification inherits the purpose’s definition through section 1; selection
-for extra history review is a separate, narrower policy decision.
+Sign-off classification follows [the purpose’s sign-off list](../00-the-purpose.md#the-purpose)
+and [the glossary’s sign-off meaning](../03-the-glossary.md#consequential-and-ordinary).
+Selection for extra live history review is a separate policy decision: only irreversible
+operations in an approved class with a declared historical dependency or a concrete unresolved
+source conflict qualify.
 Deterministic checks precede semantic work. Ordinary conversation, acknowledgments and other
 nonqualifying work use retrospective review as their default; a vague memory-risk phrase does
 not insert a live blocking reviewer. This design does not adopt R5's optional ordinary-chat
@@ -28,7 +31,7 @@ second sentinel lifecycle. Each hook declares its input, output, budget, purpose
 **checks: P21-NF-08/13/14**. The selector proposed for OD-05 (section 15) first classifies the admitted operation
 using the effect registry, then resolves deterministic prerequisites and exact target. Hard
 owner violations follow the existing refusal. If those pass, live semantic review is eligible
-only for history-review candidates: constitutionally consequential operations in an approved
+only for history-review candidates: irreversible operations in an approved
 class with a declared historical dependency or a concrete unresolved source conflict. Examples
 are a promised email deadline, a public claim about an
 earlier exchange, a deployment's remembered prerequisite, or a payment amount tied to a recorded
@@ -40,7 +43,7 @@ money movement and other specifically registered irreversible actions. An email 
 historical dependency does not automatically invoke a model reviewer. An ordinary chat does
 not qualify because its prose mentions money or deployment; an actual nested payment operation
 qualifies as a history-review candidate only when that policy and historical selector match.
-A reversible operation outside granted scope or marked policy-sensitive remains consequential
+A reversible operation outside granted scope still refuses for missing standing; a matter the person marked sensitive still needs sign-off
 even if it is outside the history-review candidate set. Unknown class or missing policy means
 semantic review is not enabled; existing
 effect authority and integrity checks still apply. Policy absence cannot be exploited to
@@ -52,6 +55,8 @@ Those missing subjects are **NON-EXECUTABLE-UNTIL-row-96-effect-recall-operation
 then until the approved implementation lands; the request file and existing narrower typed
 payload grants are named in section 14. An interest in extra review never authorizes the
 underlying action or a new operation definition.
+
+**Rule — sign-off and live review are separate boundaries.** [The purpose](../00-the-purpose.md#the-purpose) states: “Patterns are judged in retrospect. A moment is judged live only when it is irreversible.” It also states: “Everything else inside the agent's role is ordinary, including sending messages and using the accounts that go with the role.” P21-NF-13/14 pair a selected irreversible historical dependency with reversible sensitive and outside-grant controls. Sign-off alone never selects live semantic review; irreversibility alone never adds operator sign-off inside a role. Missing standing still refuses and names the grant needed. The separate governing-rule exception and owner implementation requirements remain applicable.
 
 **Rule — findings bind exact evidence, bytes and audience.** Rules 41, 42, 57, 89 and 108;
 **checks: P21-NF-05/07/13/14/15**. The review request includes the exact prepared operation,

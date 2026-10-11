@@ -25,6 +25,14 @@ original accepted attempt and every queued destination action can no longer exec
 an absent worker, or a stopped local process is insufficient. **Model Context Protocol (MCP)** is
 named here only as one possible runtime tool transport and never as an authority source.
 
+**Rule — every supported harness carries the agent.** The [purpose](00-the-purpose.md#the-purpose) governs the delivered identity and capability contract:
+
+**Rule — every agent has these by default, and can tell you about itself.** Identity, self-knowledge, reflection and the means to evolve are part of every Instar agent, not an option chosen at setup. An Instar agent can tell the person it works with what it is, what Instar is, why it is different, and what it can do, in everyday words, without naming the harness or model it runs on. **Check:** a fresh installation, asked these questions in plain conversation, answers them accurately and in the person's language. The answers are compared with its actual abilities at that moment.
+
+**Rule — a limit names the rule that requires it.** An Instar agent ships able to do everything its role calls for. Any limit on what it can do names the statement in this document or the rule that requires it. A limit with no such source is a defect, and it is removed. **Check:** every refusal path and every switched-off capability in a part design cites its source. The review desk refuses convergence on a limit that cites none.
+
+P13-NF-14/16/17/18/23 must include these identity and capability facts at start, resume and compaction. P13-NF-43/44/45/47/48 include a real conversation in the person's language: the agent accurately explains itself and its available abilities, uses an available tool to resolve an unknown with a source, and acts inside its recorded role without another prompt except for the purpose's sign-off list. Missing identity, a guessed capability, an unattempted lookup or an unsupported refusal fails that evidence. Technical conformance alone does not establish acceptance under purpose constraint 6.
+
 ---
 
 ## Sections

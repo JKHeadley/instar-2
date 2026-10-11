@@ -1,5 +1,24 @@
 [
   {
+    "revision": 3,
+    "date": "2026-10-10",
+    "status": "draft",
+    "cause": {
+      "kind": "conversation",
+      "note": "Justin, docs-align-1010: align design parts with the constitution amendments merged in PR #154; final-head code-owner approval pending."
+    },
+    "changes": [
+      {
+        "what": "Place mission, default identity, role-based agency and real-use acceptance in the architecture contract.",
+        "why": "The governing purpose fixes agency, identity, onboarding, sign-off and acceptance; design prose must not impose incompatible defaults or claim readiness from verification alone.",
+        "commits": [
+          "fc0e3c20"
+        ],
+        "ref": "docs/00-the-purpose.md; docs/01-the-rules.md; reviews/docs-align-1010-change-review.md"
+      }
+    ]
+  },
+  {
     "revision": 2,
     "date": "2026-09-01",
     "status": "approved",
