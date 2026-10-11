@@ -590,11 +590,15 @@ export function createClaudeCodeSubscriptionRoute(input:
           allowFailureFrame = false) => {
           await new Promise<void>(resolve => setImmediate(resolve));
           check();
-          ensure(Number.isSafeInteger(bounds.deadline) && config.now() + timeout <= bounds.deadline,
+          // Current authority/profile checks can be slow. Compute the model's remaining time
+          // AFTER them, at dispatch; a timeout chosen before check() can already be stale.
+          const now = config.now();
+          const commandTimeout = stdin.length > 0 ? Math.min(timeout, bounds.deadline - now - 100) : timeout;
+          ensure(Number.isSafeInteger(bounds.deadline) && commandTimeout > 0 && now + commandTimeout <= bounds.deadline,
             'subscription owner deadline has insufficient command time');
           const result = await config.io.execute({ executable: profile.executable, args,
             cwd: config.toolTurn && stdin.length > 0 ? config.toolTurn.workspace : profile.workingDirectory,
-            env, stdin, timeout, maxBytes });
+            env, stdin, timeout: commandTimeout, maxBytes });
           lastFailure = classifyProviderFailure({ ...result, now: config.now(), localClockResetAt: config.io.localClockResetAt,
             calendarResetAt: config.io.calendarResetAt });
           ensure(!result.limited && (result.code === 0 || (allowFailureFrame && Number.isSafeInteger(result.code)
@@ -609,13 +613,10 @@ export function createClaudeCodeSubscriptionRoute(input:
         ensure(claudeSubscriptionStatusAccepted(JSON.parse((await command(['auth', 'status', '--json'], '', 5000, 8192)).text), profile,
           config.io.descriptorLogin === true),
           'subscription authentication status refused');
-        // Preflight consumes the same absolute deadline. Give the model only the time
-        // still available after version and auth, retaining a small dispatch margin.
-        const modelTimeout = Math.min(bounds.timeout, bounds.deadline - config.now() - 100);
-        ensure(modelTimeout > 0, 'subscription owner deadline exhausted before model command');
+
         const modelArgs = toolSettings === null ? policy.args : [...policy.args,
           ...(config.toolTurn?.mcp ? ['--mcp-config', config.toolTurn.mcp.config] : []), '--settings', toolSettings, ...sessionArgs];
-        const returned = await command(modelArgs, bytes, modelTimeout, policy.maxRawTerminalBytes, true);
+        const returned = await command(modelArgs, bytes, bounds.timeout, policy.maxRawTerminalBytes, true);
         const frame = JSON.parse(returned.text);
         const integer = (v: unknown) => typeof v === 'number' && Number.isSafeInteger(v) && v >= 0;
         if (frame && typeof frame === 'object' && !Array.isArray(frame) && frame.type === 'result'

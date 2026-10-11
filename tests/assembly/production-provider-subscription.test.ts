@@ -10,7 +10,7 @@ import { createClaudeCodeSubscriptionRoute, subscriptionInvocationPolicy, subscr
   SUBSCRIPTION_THINKING_ENV, subscriptionActivationEndAllowed, subscriptionPolicyFor,
   validateSubscriptionActivation, subscriptionDoorway, subscriptionSessionPolicy, claudeSubscriptionStatusAccepted } from '../../src/assembly/production-provider.js';
 import { SESSION_WORK_RESIDUAL } from '../../src/assembly/production-session-work.js';
-import type { SubscriptionActivationRecord } from '../../src/assembly/production-provider.js';
+import type { ProductionProviderIO, SubscriptionActivationRecord } from '../../src/assembly/production-provider.js';
 import type { ProviderSubscriptionProfile } from '../../src/assembly/provider-credential-custodian.js';
 import { factsFixture, value } from '../facts/fixtures.js';
 // @ts-expect-error Physical host JavaScript stays outside pure core.
@@ -290,6 +290,39 @@ it('spends preflight time inside the reply-review deadline and dispatches only w
     const result = await route.invoke('request', { ...f.bounds, deadline: 31000, timeout: 29900 });
     expect(result.state).toBe(preflightMs < 29950 ? 'complete' : 'uncertain');
     expect(f.commands()).toHaveLength(preflightMs < 29950 ? 3 : 2);
+  }
+});
+
+// Regression from forum answer update 715675453: the model produced its answer, but the
+// review never reached its model command. Current authority checks consumed the dispatch margin.
+it.each([250, 58_900, 59_000])('recomputes review time after a %i ms authority check', async checkMs => {
+  const capture = JSON.parse(readFileSync('tests/preview/fixtures/forum-review-budget-2026-10-10.json', 'utf8'));
+  // Real forum review input and recorded bounded-review output, not a hand-authored verdict.
+  const terminal = JSON.stringify({ type: 'result', subtype: capture.replay.subtype, is_error: capture.replay.is_error,
+    result: capture.replay.output, usage: capture.replay.usage, session_id: 'recorded-review-replay' });
+  const f = fixture({ conversation: true, terminal });
+  let clock = 1000, checked = false, modelTimeout: number | undefined;
+  const input = { ...f.input, now: () => clock,
+    active: () => {
+      if (!checked && f.commands().length === 2) { checked = true; clock += checkMs; }
+      return true;
+    },
+    io: { ...f.input.io, execute: async (command: Parameters<ProductionProviderIO['execute']>[0]) => {
+      if (command.stdin) modelTimeout = command.timeout;
+      const result = await f.input.io.execute(command);
+      if (command.args[0] === 'auth') clock += 1000;
+      return result;
+    } } };
+  const result = await value(createClaudeCodeSubscriptionRoute(input)).invoke(capture.original.input,
+    { ...f.bounds, deadline: 61_000, timeout: 60_000 });
+  const remaining = 61_000 - clock - 100;
+  expect(checked).toBe(true);
+  expect(result.state).toBe(remaining > 0 ? 'complete' : 'uncertain');
+  expect(modelTimeout).toBe(remaining > 0 ? remaining : undefined);
+  expect(f.commands()).toHaveLength(remaining > 0 ? 3 : 2);
+  if (remaining > 0) {
+    expect(f.commands()[2].stdin).toBe(capture.original.input);
+    expect(result.bytes).toBe(capture.replay.output);
   }
 });
 

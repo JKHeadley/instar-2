@@ -171,6 +171,30 @@ function fixture() {
     commands: () => { try { return readFileSync(report, 'utf8').trim().split('\n').map(line => JSON.parse(line)); } catch { return []; } } };
 }
 
+it.each([250, 58_900, 59_000])('recomputes Codex review time after a %i ms authority check', async checkMs => {
+  const f = fixture();
+  let clock = 1000, checked = false, modelTimeout: number | undefined;
+  const input = f.input({ now: () => clock,
+    active: () => {
+      if (!checked && f.commands().length === 2) { checked = true; clock += checkMs; }
+      return true;
+    },
+    io: { ...f.io, execute: async (command: Parameters<typeof directExecute>[0]) => {
+      if (command.stdin) modelTimeout = command.timeout;
+      const result = await f.io.execute(command);
+      if (command.args[0] === 'login') clock += 1000;
+      return result;
+    } } });
+  // The physical fixture returns the real captured Codex completion stream, unchanged.
+  const result = await value(createCodexSubscriptionRoute(input)).invoke('request',
+    { ...f.bounds, deadline: 61_000, timeout: 60_000 });
+  const remaining = 61_000 - clock - 100;
+  expect(checked).toBe(true);
+  expect(result.state).toBe(remaining > 0 ? 'complete' : 'uncertain');
+  expect(modelTimeout).toBe(remaining > 0 ? remaining : undefined);
+  expect(f.commands()).toHaveLength(remaining > 0 ? 3 : 2);
+});
+
 // R30e checks route parity, not native-harness certification. Keep these four cases on the
 // registered interface and reuse the real captured Codex frames; the native tuple stays unproven.
 describe('doorway codex-cli-subscription captured-frame route cases (Rules 30, 115)', () => {
