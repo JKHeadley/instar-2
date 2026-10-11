@@ -32,6 +32,11 @@ Additional validation: The new public-in-person-name-only refusal is accepted by
 
 Verification: Completed final typecheck and architecture check exit 0. The lint/register source-pin refresh belongs to the desk. Six repository-listed macOS tests are omitted on WSL; direct-import host-test failures are named in the report. No unrun Darwin conformance claim or manual pin edit.
 
+Prompt finding: 034c5250da92 | quoted-evidence | The self-description regression explicitly quotes the shipped standing-trust passage to compare with historical K11a system bytes; no prompt was derived from fixture trigger text and no historical verdict is claimed for the new prompt.
+Prompt finding: 45e37ea2e9e9 | quoted-evidence | The self-description regression explicitly quotes the shipped standing-trust passage to compare with historical K11a system bytes; no prompt was derived from fixture trigger text and no historical verdict is claimed for the new prompt.
+Prompt finding: 6af48f94b789 | quoted-evidence | The self-description regression explicitly quotes the shipped standing-trust passage to compare with historical K11a system bytes; no prompt was derived from fixture trigger text and no historical verdict is claimed for the new prompt.
+Prompt finding: b00ed403060a | quoted-evidence | The self-description regression explicitly quotes the shipped standing-trust passage to compare with historical K11a system bytes; no prompt was derived from fixture trigger text and no historical verdict is claimed for the new prompt.
+
 ## Closing block
 
 simplestRobustRoute: This is the simplest robust route: extend existing policy registration, installer and doorway instead of adding a grant store or approval engine. Keep legacy risk flags because removing them would allow irreversible retries to gain new identities. Store independent sign-off/durability facts so a durability refusal cannot be mistaken for missing consent. Existing grant, stop, cap and durable-prefix gates are the start/limit guards; real hook replay and P8 fixture dispatch verify the end state. Installer CLI consumption is tested unattended; no live conversational onboarding or external email-delivery claim.

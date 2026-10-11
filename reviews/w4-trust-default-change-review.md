@@ -24,6 +24,15 @@ Decision: trust-reuse | Reuse operator effect registrations and grants rather th
 Decision: trust-request-scope | Bind reversible network writes to exact method and path because a host-wide registration also admits unrelated sends. | reported=/Users/dabombstudio/.instar/agents/echo/.instar/lanes/w4-trust-default-r2b-PROGRESS.md
 Decision: trust-tighten | Preserve existing classifications and policy-sensitive restrictions while removing grants or lowering ceilings so revocation cannot restore a permissive default. | reported=/Users/dabombstudio/.instar/agents/echo/.instar/lanes/w4-trust-default-r2b-PROGRESS.md
 
+Prompt finding: 849db3a6296a | quoted-evidence | Existing memory-reply and recall prompt wording is untouched; journal change is only effect-decision validation.
+Prompt finding: bd01de21286a | quoted-evidence | Existing memory-reply and recall prompt wording is untouched; journal change is only effect-decision validation.
+Prompt finding: fb5fa7e706c8 | quoted-evidence | Existing memory-reply and recall prompt wording is untouched; journal change is only effect-decision validation.
+
+Prompt finding: 034c5250da92 | quoted-evidence | The self-description regression explicitly quotes the shipped standing-trust passage to compare with historical K11a system bytes; no prompt was derived from fixture trigger text and no historical verdict is claimed for the new prompt.
+Prompt finding: 45e37ea2e9e9 | quoted-evidence | The self-description regression explicitly quotes the shipped standing-trust passage to compare with historical K11a system bytes; no prompt was derived from fixture trigger text and no historical verdict is claimed for the new prompt.
+Prompt finding: 6af48f94b789 | quoted-evidence | The self-description regression explicitly quotes the shipped standing-trust passage to compare with historical K11a system bytes; no prompt was derived from fixture trigger text and no historical verdict is claimed for the new prompt.
+Prompt finding: b00ed403060a | quoted-evidence | The self-description regression explicitly quotes the shipped standing-trust passage to compare with historical K11a system bytes; no prompt was derived from fixture trigger text and no historical verdict is claimed for the new prompt.
+
 ## Closing block
 
 simplestRobustRoute: This is the simplest robust route: an operator setup entry point writes the existing two configuration files; the existing doorway, vault and turn reload hold the floors. The only new admission field is exact method/path scope, needed because a host-only registration cannot distinguish a draft edit from a send on the same service. Setup refuses conflicting existing state; tightening cannot widen grants; revoke removes setup trust. The unattended CLI test reads the resulting files through the real consumers. Live Darwin conformance and operator surface verification are desk work, not claimed here.

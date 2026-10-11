@@ -35,7 +35,7 @@ it('reads the wording each live wall was settled behind from its recorded answer
   expect(settledConstraintWording(live(6232224), wall(6232224, 'no-such-constraint'))).toBeUndefined();
 });
 
-it('the recorded K11a briefing differs only in the declared audience and recurring-request capabilities', () => {
+it('the recorded K11a briefing differs only in audience, recurring requests and standing-trust guidance', () => {
   const note = capabilityBriefing(path => readFileSync(resolve(process.cwd(), path), 'utf8'),
     { providerAttempts: 1000, expiresAt: 1791232800000, tools: true, mcp: 0 }).text;
   const replays = JSON.parse(read('k11a-replays.json')) as { note: string; runs: { kind: string; input: string; verdict: string; reply: string }[] };
@@ -51,7 +51,16 @@ it('the recorded K11a briefing differs only in the declared audience and recurri
   expect(current.note.split(oldRequests)).toHaveLength(2);
   expect(note).toContain(recurringRequests);
   expect(current.note.replace(oldConversation, forumConversation).replace(oldRequests, recurringRequests)).toBe(note);
-  expect(current.system).toBe(SUBSCRIPTION_TOOLS_SYSTEM_PROMPT);
+  // Preserve the captured system and judge results as historical evidence. The trust unit changed
+  // this exact passage; every other system-prompt byte must still match the captured briefing.
+  const oldGrant = 'checked when made: consequential effects (sending outside this conversation, writing to the network or a third-party account, '
+    + 'spending, changing safeguards) go through the effect doorway: one runs once the operator registers and grants it, otherwise it '
+    + 'is refused and the refusal names its reason; say so plainly when one is refused. ';
+  const standingTrust = 'checked when made. Workspace work and public reads are already allowed. Registered effects covered by standing grants '
+    + 'run without another yes. The operator can tighten or revoke trust through setup-standing-trust. Irreversible outward '
+    + 'sends remain outside the one-machine closed set. The effect doorway reports any refusal and its reason; say so plainly. ';
+  expect(current.system.split(oldGrant)).toHaveLength(2);
+  expect(current.system.replace(oldGrant, standingTrust)).toBe(SUBSCRIPTION_TOOLS_SYSTEM_PROMPT);
   expect(current.runs.map(run => run.kind)).toEqual(['worst', 'chain']);
   for (const run of current.runs) {
     const packet = packetOf(run.input);
