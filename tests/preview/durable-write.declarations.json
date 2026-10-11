@@ -10,7 +10,7 @@
       "holdsAgentMemory": "no",
       "machineScope": {
         "kind": "machine-local",
-        "reason": "Single-machine supported installation (P-08): each file it writes is one machine-local control document (the runner's stop latch, the conversation holder, the doorway map, the credential registry), and an atomic replace discards the previous value."
+        "reason": "Single-machine supported installation (P-08): each file it writes is one machine-local control document (the runner's stop latch, the conversation holder, the doorway map, the credential registry, the harness login pool), and an atomic replace discards the previous value. The harness login pool retains profile references, capacity holds with observation times and all switch/notice history under the root writer lease; runs.jsonl detects a missing pool sidecar. Unknown-reset holds require newer complete identity-matched capacity evidence to recover, with a durable freshness boundary for legacy holds. It contains no credentials or model content; each host provisions its own profiles and activations."
       },
       "agreesWith": []
     },
