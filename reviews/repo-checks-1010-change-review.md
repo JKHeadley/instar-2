@@ -15,7 +15,7 @@ Undo and recovery: revert this repair with an ordinary commit; the original over
 Multi-machine posture: shared repository metadata and generated publication are identical across machines; local checking grants no runtime authority
 Layer below: src/register/declarations.ts feature-live-proof invariant; src/rulegraph/graph.ts checkDeadlines; scripts/check-change-review.mjs ancestry-based coverage; original reviews/promote-L9-change-review.md, reviews/amend-approval-override-change-review.md, reviews/amend-ability-change-review.md and reviews/w4-r105-change-review.md
 Bug class: integration
-Bug evidence: reproducer=tests/e2e/register.test.ts
+Bug evidence: reproducer=tests/rungraph/scope.test.ts
 Hook bypass: none
 Convergence: none
 Decision: repo-checks-renew | Renew to 2026-10-25 UTC because the user-facing feature lacks a production liveProof reference and rungraph.bound explicitly records production probe evidence as unestablished. Keep the existing graduation test, dark status and strict expiry enforcement. The desk owns reassessment by that date using real production evidence. | reported=/Users/dabombstudio/.instar/agents/echo/.instar/lanes/repo-checks-1010-PROGRESS.md
