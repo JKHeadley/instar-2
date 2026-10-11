@@ -3,7 +3,7 @@
 import { expect, it } from 'vitest';
 import { execFileSync } from 'node:child_process';
 import { readFileSync } from 'node:fs';
-import { CAPABILITY_BRIEFING_PATH, CAPABILITY_LAUNCHER, capabilityBriefing, sourcePacket, SOURCE_PINS, SOURCE_EXCERPTS } from './briefing.js';
+import { CAPABILITY_BRIEFING_PATH, CAPABILITY_LAUNCHER, capabilityBriefing, sourcePacket, SOURCE_PINS, SOURCE_EXCERPTS, SELF_DESCRIPTION } from './briefing.js';
 
 type Feature = { id: string; status: string; availability: string; userFacing: boolean; text: string | null };
 const generated = JSON.parse(readFileSync(CAPABILITY_BRIEFING_PATH, 'utf8')) as { generation: string; commit: string; launchers: Record<string, Feature[]> };
@@ -107,7 +107,12 @@ it('briefs the installation identity with and without the generated register, pr
   for (const tools of [false, true]) for (const available of [false, true]) {
     const read = available ? (path: string) => readFileSync(path, 'utf8') : () => { throw Error('absent'); };
     const { text } = capabilityBriefing(read, { ...limits, tools });
-    expect(text).toContain("This is Instar in the operator's direct Telegram chat and its topics.");
+    expect(text).toContain(SELF_DESCRIPTION);
+    expect(SELF_DESCRIPTION).toContain('AI with lasting memory and values');
+    expect(SELF_DESCRIPTION).toContain('everyday words');
+    expect(SELF_DESCRIPTION).toContain('name Instar, not your harness, model or test stage');
+    expect(SELF_DESCRIPTION).not.toMatch(/preview/iu);
+    expect(text).not.toMatch(/Claude|Codex|GPT|Opus|Gemini/iu);
     expect(text).not.toMatch(/PREVIEW trial|This trial|Instar 2\.0/u);
     expect(text).toContain(`at most ${limits.providerAttempts} model attempts, ending at epoch ms ${limits.expiresAt}`);
     expect(text).toContain('Charges, and unconfirmed calls or deliveries, are recorded unknown.');

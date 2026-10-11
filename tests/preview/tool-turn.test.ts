@@ -202,7 +202,7 @@ it('tells the agent and the operator exactly which tools exist and where outward
   expect(withTools).toContain(`What you can do for the operator here:\n- ${TOOLS_BRIEFING}`);
   expect(withTools).toContain(TOOLS_LIMITS);
   // It describes the capability, never a hand-picked list: the whole set is offered and each call is decided at the hook.
-  expect(TOOLS_BRIEFING).toMatch(/^tools: full Claude Code set \(files, shell, web reads, nested subagents\); MCP servers: unknown;/u);
+  expect(TOOLS_BRIEFING).toMatch(/^tools: full built-in set \(files, shell, web reads, nested subagents\); MCP servers: unknown;/u);
   for (const name of SUBSCRIPTION_TOOL_NAMES) expect(TOOLS_BRIEFING).not.toContain(name);
   // Outward writes and sends are an ability behind the doorway and the operator's grant, never a blanket denial.
   expect(TOOLS_BRIEFING).toContain('network writes and outside sends via the doorway\'s four tests on operator grant');
