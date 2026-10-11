@@ -1,5 +1,5 @@
 import { expect, it } from 'vitest';
-import { appendFileSync, mkdtempSync, realpathSync, rmSync, statSync } from 'node:fs';
+import { appendFileSync, mkdtempSync, realpathSync, readFileSync, rmSync, statSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { spawn } from 'node:child_process';
@@ -8,6 +8,8 @@ import { auditJournal, auditPacket } from './journal-audit.mjs';
 import { OBLIGATION_FLOOR_PACKET_BYTES, createJournalWorker, importChannelItems, openPreviewJournal, probeTurn } from './journal-test-worker.js';
 import { memoryHealthLine } from './self-state.js';
 import { prepareJournalEnvelope } from './journal-envelope.js';
+import type { MediaCustodyResult } from './telegram-media.js';
+import { authenticateTelegramSender, writerRecord } from './intake-principal.js';
 
 const key = new Uint8Array(32).fill(41);
 
@@ -44,35 +46,120 @@ const genesis = { kind: 'genesis' as const, bot: '12345678', chat: '7654321', op
 const update = (id: number, text: string) => ({ update_id: id, message: {
   chat: { id: 7654321, type: 'private' }, from: { id: 7654321 }, text, date: 1790000000 + id * 60 } });
 
-it('checks every ordinary accepted turn with and without a latest packet', async () => {
+it.each([false, true])('checks every ordinary accepted turn with and without a latest packet (forum=%s)', async forum => {
   const root = realpathSync(mkdtempSync(join(tmpdir(), 'preview-audit-turns-')));
   try {
-    const journal = openPreviewJournal(join(root, 'journal.encrypted'), key, genesis);
+    const binding = { ...genesis, ...(forum ? { forum: true as const, chat: '-1007654321' } : {}) };
+    const journal = openPreviewJournal(join(root, 'journal.encrypted'), key, binding);
+    const envelope = (id: number, text: string) => {
+      const raw = update(id, text);
+      return { ...raw, message: { ...raw.message, chat: { id: Number(binding.chat),
+        type: forum ? 'supergroup' : 'private', ...(forum ? { is_forum: true } : {}) } } };
+    };
     const worker = createJournalWorker(journal, { now: () => 1790000000000, stopped: () => false,
       prepareModel: input => JSON.stringify({ messages: [{ role: 'user', content: input.question },
         { role: 'context', content: JSON.stringify({ packet: JSON.parse(input.context) }) }] }),
       model: async () => 'Noted.', send: async () => 1, checkOutbound: () => {} });
-    worker.intake([update(1, 'First ordinary message.')]); await worker.drain();
-    worker.intake([update(2, 'Second ordinary message.')]); await worker.drain();
+    worker.intake([envelope(1, 'First ordinary message.')]); await worker.drain();
+    worker.intake([envelope(2, 'Second ordinary message.')]); await worker.drain();
+    expect(journal.view.order.every(turn => turn.accepted)).toBe(true);
     for (const noPacket of [false, true]) {
       const clean = structuredClone(journal.view);
       if (noPacket) clean.lastPrompt = null;
       expect(auditJournal(clean).findings).toEqual([]);
       expect(auditJournal(clean).items.filter((item: { kind: string }) => item.kind === 'conversation-turn')).toHaveLength(2);
-      const forged = structuredClone(clean);
-      const first = forged.turns.get(forged.order[0]!.id)!;
-      const raw = JSON.parse(first.raw);
-      raw.message.text = 'A different message.';
-      first.raw = JSON.stringify(raw);
-      expect(auditJournal(forged).findings.map((item: { code: string }) => item.code))
-        .toContain('memory-operator-source-absent');
+      for (const field of ['text', 'sender', 'chat', 'type', 'update', ...(forum ? ['forum'] : [])]) {
+        const forged = structuredClone(clean);
+        const first = forged.turns.get(forged.order[0]!.id)!;
+        const raw = JSON.parse(first.raw);
+        if (field === 'text') raw.message.text = 'A different message.';
+        if (field === 'sender') raw.message.from.id++;
+        if (field === 'chat') raw.message.chat.id++;
+        if (field === 'type') raw.message.chat.type = forum ? 'private' : 'supergroup';
+        if (field === 'update') raw.update_id++;
+        if (field === 'forum') delete raw.message.chat.is_forum;
+        first.raw = JSON.stringify(raw);
+        expect(auditJournal(forged).findings.map((item: { code: string }) => item.code), field)
+          .toContain('memory-operator-source-absent');
+      }
     }
     journal.close();
     const replay = openPreviewJournal(join(root, 'journal.encrypted'), key);
     expect(auditJournal(replay.view).findings).toEqual([]);
     replay.close();
+    const audit = await runAgent(['audit', '--root', root]);
+    expect(audit.status, audit.stderr).toBe(0);
+    expect(JSON.parse(audit.stdout).findings).toEqual([]);
   } finally { rmSync(root, { recursive: true, force: true }); }
 });
+
+// These committed envelopes are synthetic Telegram fixtures, not a live-platform claim.
+it.each(['photo', 'voice', 'document'])('audits authenticated %s media and rejects tampering after compacted replay', async kind => {
+  const root = realpathSync(mkdtempSync(join(tmpdir(), 'preview-audit-media-')));
+  const path = join(root, 'journal.encrypted');
+  try {
+    const fixture = JSON.parse(readFileSync(new URL(`./fixtures/telegram-media/${kind}.json`, import.meta.url), 'utf8'));
+    const binding = { ...genesis, bot: '123456789', operator: String(fixture.message.from.id),
+      chat: String(fixture.message.chat.id), forum: true as const, maxBytes: 65536 };
+    let journal = openPreviewJournal(path, key, binding);
+    const outcomes: MediaCustodyResult[] = [{ state: 'stored', reference: 'a'.repeat(64), bytes: 42 },
+      { state: 'unavailable' }, { state: 'failed' }, { state: 'failed', reason: 'admission-refused' },
+      { state: 'file-limit' }, { state: 'store-limit' }, { state: 'malformed' }];
+    let outcome = outcomes[0]!;
+    const worker = createJournalWorker(journal, { now: () => 1790000000000, stopped: () => false,
+      media: { receive: async () => outcome },
+      prepareModel: input => JSON.stringify({ messages: [{ role: 'user', content: input.question },
+        { role: 'context', content: JSON.stringify({ packet: JSON.parse(input.context) }) }] }),
+      model: async () => 'Noted.', send: async () => 1, checkOutbound: () => {} });
+    for (const [index, result] of outcomes.entries()) {
+      outcome = result;
+      worker.intake([{ ...fixture, update_id: fixture.update_id + index }]);
+      // Accepted intake remains auditable before custody completes too.
+      expect(auditJournal(journal.view).findings).toEqual([]);
+      await worker.drain();
+      expect(journal.view.order.at(-1)!.media).toEqual(result);
+      expect(auditJournal(journal.view).findings).toEqual([]);
+    }
+    const checkTampering = () => {
+      for (const field of ['caption', 'name', 'size', 'file', 'sender', 'chat', 'type', 'forum', 'update',
+        'accepted', 'text', 'annotation', 'outcome', 'missing-outcome', 'media-label']) {
+        const forged = structuredClone(journal.view);
+        const turn = forged.turns.get(forged.order[0]!.id)!;
+        const raw = JSON.parse(turn.raw);
+        const media = kind === 'photo' ? raw.message.photo.at(-1) : raw.message[kind];
+        if (field === 'caption') raw.message.caption = 'Invented caption.';
+        if (field === 'name') media.file_name = 'invented.bin';
+        if (field === 'size') media.file_size++;
+        if (field === 'file') media.file_id = 'different-file';
+        if (field === 'sender') raw.message.from.id++;
+        if (field === 'chat') raw.message.chat.id++;
+        if (field === 'type') raw.message.chat.type = 'private';
+        if (field === 'forum') delete raw.message.chat.is_forum;
+        if (field === 'update') raw.update_id++;
+        if (field === 'accepted') turn.accepted = false;
+        if (field === 'text') turn.text = 'Invented media description.';
+        if (field === 'annotation') turn.text += '\n[Media custody: invented success]';
+        if (field === 'outcome') turn.media = { state: 'failed' };
+        if (field === 'missing-outcome') delete turn.media;
+        if (field === 'media-label') { delete raw.message[kind]; raw.message.text = turn.text; }
+        turn.raw = JSON.stringify(raw);
+        // Rebind metadata changes so these neighbors exercise content derivation itself.
+        if (['caption', 'name', 'size'].includes(field))
+          turn.writer = writerRecord(authenticateTelegramSender(raw, 'production', turn.at)!);
+        expect(auditJournal(forged).findings.map(item => item.code), field)
+          .toContain(field === 'accepted' ? 'history-coverage' : 'memory-operator-source-absent');
+      }
+    };
+    checkTampering();
+    journal.compact(); journal.close(); journal = openPreviewJournal(path, key);
+    expect(auditJournal(journal.view).findings).toEqual([]);
+    checkTampering();
+    journal.close();
+    const cli = await runAgent(['audit', '--root', root]);
+    expect(cli.status, cli.stderr).toBe(0);
+    expect(JSON.parse(cli.stdout).findings).toEqual([]);
+  } finally { rmSync(root, { recursive: true, force: true }); }
+}, AGENT_WATCHDOG_MS + 30_000);
 
 it('keeps a desk canary out of expected packet history while an ordinary omission still fails', async () => {
   const root = realpathSync(mkdtempSync(join(tmpdir(), 'preview-audit-canary-')));

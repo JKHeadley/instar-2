@@ -25,7 +25,7 @@ it('records every declared agreement at launch, then detects a run log that disa
   expect((await harness.runLive(2)).status).toBe(0);
   // First launch: no earlier exit to compare, so that one is honestly unmeasured (null), never "agree".
   // The snapshot comparison replays the durable journal bytes read-only and compares them with the live projection.
-  expect(verdicts(harness)).toEqual({ 'memory-provenance': true, 'unfinished-at-exit': null, 'serving-runner': true, 'snapshot-replay': true });
+  expect(verdicts(harness)).toEqual({ 'memory-provenance': true, 'unfinished-at-exit': null, 'serving-runner': true, 'snapshot-replay': true, 'media-custody': true });
   const runs = join(harness.liveRoot, 'runs.jsonl');
   const exit = readRuns(runs).launches.at(-1);
   expect(exit.frontier).toMatch(/^[a-f0-9]{64}$/);
@@ -56,7 +56,7 @@ it('the Telegram status reply carries ownership and the store-check verdict', as
   expect((await harness.runLive(2)).status).toBe(0);
   const sent = harness.calls().filter(call => call.kind === 'send').map(call => call.text).join('\n');
   expect(sent).toMatch(/Serving: this runner on .+ owns this conversation .+; 0 duplicate launch\(es\) refused on this machine\./);
-  expect(sent).toMatch(/Store checks: \d of 4 agree/);
+  expect(sent).toMatch(/Store checks: \d of 5 agree/);
 }, 90000);
 
 it('unfinished-at-exit is measured only at the exit\'s own frontier: completing that work later is unmeasurable, not a disagreement', async () => {
@@ -144,3 +144,12 @@ it('desk recipe: the offline check-agreements runs the comparison on a COPY at a
     expect(harness.calls()).toHaveLength(calls);
   } finally { rmSync(scratch, { recursive: true, force: true }); }
 }, 90000);
+
+it('media-custody is true for intact custody, false for loss, and unknown without a local reader', () => {
+  const media = check('media-custody');
+  expect(media({ view: { order: [] } }).agree).toBe(true);
+  const view = { order: [{ media: { state: 'stored', reference: 'a'.repeat(64), bytes: 3 } }] };
+  expect(media({ view }).agree).toBeNull();
+  expect(media({ view, verifyMedia: () => true }).agree).toBeNull(); // Legacy custody has no retained claim fingerprint.
+  expect(media({ view, verifyMedia: () => false }).agree).toBe(false);
+});

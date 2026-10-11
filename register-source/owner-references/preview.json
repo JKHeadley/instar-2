@@ -39,7 +39,7 @@
       "stage": "build",
       "artifact": {
         "path": "tests/preview/journal-requested-action.test.ts",
-        "hash": "sha256:dbcd5d71f7a1ac3c2b6f215079ba828e4b27ba8f671002699bdadf9fce1ca241"
+        "hash": "sha256:7557400031dceafae36c1901d3313081882c0acff1e250a47f82b50047208ca6"
       }
     },
     {
@@ -47,7 +47,7 @@
       "stage": "build",
       "artifact": {
         "path": "tests/preview/journal-obligations.test.ts",
-        "hash": "sha256:9a58456d5ed10e556dd21494e93d1eec25046e0ffa9c7cd5b20e3280a5ca6e8f"
+        "hash": "sha256:fcc50399ff37c5609d182a063df16b236e555dacb367797f674896afc0a30754"
       }
     },
     {
@@ -63,7 +63,7 @@
       "stage": "build",
       "artifact": {
         "path": "tests/preview/reply-check.test.ts",
-        "hash": "sha256:b7b20fd0aac968d416b0371f37b186b5f7913619b40803aa2f428d95da790d86"
+        "hash": "sha256:922b11c77c0d314dce68cd00da609bbba94ba81e7c1547b563fc6d72c714c89b"
       }
     },
     {
@@ -120,6 +120,14 @@
       "artifact": {
         "path": "tests/preview/journal-agent-resources.test.ts",
         "hash": "sha256:393406b4c5d3f7c4219d13b9b125b01d944bb87f2e196cb972bb1d132244693a"
+      }
+    },
+    {
+      "id": "PREVIEW-MEDIA-CUSTODY",
+      "stage": "build",
+      "artifact": {
+        "path": "tests/preview/telegram-media.test.ts",
+        "hash": "sha256:92647658654142bcbf8719a691be82715e17d6a5ae78826bf716baa87708bb88"
       }
     }
   ],

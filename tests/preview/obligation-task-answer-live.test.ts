@@ -17,6 +17,7 @@ import { decisionWithinFloor } from './model-call-boundary.js';
 import { conclusionText, parseModelJson } from './model-json.js';
 import { readAnswer } from './answer-reading.js';
 import { REPLY_RULES } from './reply-check.js';
+import { prepareJournalEnvelope } from './journal-envelope.js';
 
 type Call = { root: string; call: string; recordedOutcome: string; output: string };
 const fixture = JSON.parse(readFileSync(new URL('./fixtures/obligation-step-outputs-live-2026-10-04.json', import.meta.url), 'utf8')) as { calls: Call[] };
@@ -106,10 +107,11 @@ type Review = { quote: string; reviewed: string[] };
 const reviewPort = (review: Review) => ({ elapsedMs: () => 0, summaryReview: async () => ({ verdict: 'pass' as const, latencyMs: 1 }),
   jev: async (text: string, questions?: Record<string, unknown>) => ({ latencyMs: 1, value: { model: 'jev-1.13.0',
     answers: Object.fromEntries(Object.keys(questions ?? REPLY_RULES).map(rule => [rule, { type: 'noul', noul: rule === 'defers_work' && text.includes('Follow-up on') ? 0.9 : 0.02 }])) } }),
-  escalate: async (text: string) => (review.reviewed.push(text), { verdict: 'violation' as const, ruleIds: ['defers_work' as const], confidence: null, latencyMs: 1,
+  escalate: async (text: string) => (review.reviewed.push(text), text.includes(review.quote) ? { verdict: 'violation' as const, ruleIds: ['defers_work' as const], confidence: null, latencyMs: 1,
     reason: `defers_work: The follow-up promises "${review.quote}" (future work) instead of delivering the answer.`,
     findings: [{ rule: 'defers_work' as const, verdict: 'violation' as const,
-      reason: `The follow-up promises "${review.quote}" (future work) instead of delivering the answer.` }] }) });
+      reason: `The follow-up promises "${review.quote}" (future work) instead of delivering the answer.` }] }
+    : { verdict: 'pass' as const, ruleIds: [], confidence: null, latencyMs: 1 }) });
 function world(root: string, steps: Call[], task = true, review?: Review) {
   const journal = openPreviewJournal(join(root, 'journal.encrypted'), key, { kind: 'genesis', bot: '8989505249', chat: '7812716706',
     operator: '7812716706', grant: 'grant:preview', configurationDigest: 'sha256:offline', expires: 9999999999999,
@@ -117,7 +119,7 @@ function world(root: string, steps: Call[], task = true, review?: Review) {
   const clock = { now: T0 }, sent: string[] = [], queue = [...steps];
   let answers = 0;
   const worker = createJournalWorker(journal, { now: () => clock.now, stopped: () => false, timeZone: 'America/Los_Angeles',
-    prepareModel: input => input.context,
+    prepareModel: input => review ? prepareJournalEnvelope(input, 'claude-sonnet-5', 'grant:preview', clock.now) : input.context,
     model: async input => {
       if (input.id.startsWith('obligation:')) {
         // The launcher's model port: a refused output is a completed call with no answer, exactly as invokeSubscription returns it.
@@ -186,8 +188,10 @@ it('an acknowledgment that only promises the answer later is not completion: the
     await w.say('hi');
     // The review named the deferral; only that sentence is removed, so the report is not carried whole and settles nothing.
     const sent = w.sent.at(-1)!;
-    expect(review.reviewed).toHaveLength(1);
+    expect(review.reviewed).toHaveLength(2);
     expect(review.reviewed[0]).toContain(quote);
+    expect(review.reviewed[1]).not.toContain(quote);
+    expect(w.journal.view.order.at(-1)!.revisionReview).toMatchObject({ verdict: 'pass' });
     expect(sent).not.toContain(quote);
     expect(w.journal.view.obligationWork[key]!.report).toBeUndefined();
     expect(w.journal.view.obligationWork[key]!.withheld!.text).toContain(quote);

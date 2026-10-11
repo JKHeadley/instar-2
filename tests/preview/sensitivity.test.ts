@@ -278,6 +278,7 @@ describe('P14-NF-77: a shared audience is released only on a completed review (u
         },
         escalate: async (_text, _id, _prompt, rules) => {
           escalations.push([...(rules ?? [])]);
+          if (rules?.includes('incoherent_remainder')) return { verdict: 'pass', ruleIds: [], confidence: null, latencyMs: 0 };
           if (review === 'throw') throw new Error('preview: reply review unavailable');
           if (review === 'pass') return { verdict: 'pass', ruleIds: [], confidence: null, latencyMs: 0 };
           const reason = `The private detail is revealed: "${options.quote ?? answer}"`;

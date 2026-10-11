@@ -1,0 +1,187 @@
+{
+  "source": "/Users/dabombstudio/.instar/agents/echo/.instar/lanes/preview-trial-root/justin-group-20261010/journal.encrypted",
+  "sha256": "ddbb651d3020bdb3219b36194181e715cacd188499a9f05e61078ee3f65608b7",
+  "note": "Read-only capture 2026-10-10. Exact intake, reservation, answer and delivery rows for 969390330-331, omitting optional prompts, grounding, reasoning, writer and send signatures; no private carry contents. Question and failed answer from 969390332.",
+  "genesis": {
+    "kind": "genesis",
+    "bot": "8820318295",
+    "chat": "-1004290919884",
+    "operator": "7812716706",
+    "forum": true,
+    "grant": "preview-trial:6218fbb5-769e-4c43-9de2-8a34bd117b4f",
+    "configurationDigest": "sha256:d172500bb9c7e870dee520705e1625788db930518d65eb6609ab3c0f66f1d45e",
+    "expires": 1794519600000,
+    "maxCalls": 16,
+    "maxReplies": 16,
+    "maxTurns": 20,
+    "maxBytes": 32768,
+    "cursor": 0
+  },
+  "rows": [
+    {
+      "kind": "intake",
+      "id": "telegram:8820318295:update:969390330",
+      "update": 969390330,
+      "text": "From Echo (test): checking the move to this group. Which activation are you running under, and until when?",
+      "raw": "{\"update_id\":969390330,\"message\":{\"message_id\":4,\"from\":{\"id\":7812716706,\"is_bot\":false,\"first_name\":\"Justin\",\"last_name\":\"Headley\",\"language_code\":\"en\"},\"chat\":{\"id\":-1004290919884,\"title\":\"Instar 2.0\",\"is_forum\":true,\"type\":\"supergroup\"},\"date\":1791646927,\"text\":\"From Echo (test): checking the move to this group. Which activation are you running under, and until when?\"}}",
+      "accepted": true,
+      "cursor": 969390331,
+      "at": 1791646927843
+    },
+    {
+      "kind": "reserve",
+      "id": "telegram:8820318295:update:969390330",
+      "corrections": [],
+      "packetDropped": [],
+      "packetLimit": 32768,
+      "maxInputTokens": 32768,
+      "maxOutputTokens": 2048,
+      "at": 1791647203918
+    },
+    {
+      "kind": "answer",
+      "id": "telegram:8820318295:update:969390330",
+      "text": "Current activation: a subscription-model preview trial, allowing up to 16 model attempts, ending at 2026-11-12 13:40 PST (epoch ms 1794519600000). So far 0 of those 16 attempts have been used today's turn aside from this one in progress.\n\nModel route check: typesafe-jev/jev-1.13.0 is unverified; send \"status\" for detail.",
+      "state": "complete",
+      "notices": [
+        {
+          "key": "doorway:1791623058274",
+          "line": "Model route check: typesafe-jev/jev-1.13.0 is unverified; send \"status\" for detail."
+        }
+      ],
+      "datedPending": true,
+      "usage": {
+        "inputTokens": 33440,
+        "outputTokens": 676,
+        "charge": null,
+        "inputComplete": true
+      },
+      "latencyMs": 26513,
+      "at": 1791647230444
+    },
+    {
+      "kind": "intent",
+      "id": "telegram:8820318295:update:969390330",
+      "text": "So far 0 of those 16 attempts have been used today's turn aside from this one in progress.\n\nModel route check: typesafe-jev/jev-1.13.0 is unverified; send \"status\" for detail.",
+      "body": "So far 0 of those 16 attempts have been used today's turn aside from this one in progress.\n\nModel route check: typesafe-jev/jev-1.13.0 is unverified; send \"status\" for detail.",
+      "chat": "-1004290919884",
+      "promises": [],
+      "fulfills": [],
+      "update": 969390330,
+      "grant": "preview-trial:6218fbb5-769e-4c43-9de2-8a34bd117b4f",
+      "at": 1791647293907
+    },
+    {
+      "kind": "sent",
+      "id": "telegram:8820318295:update:969390330",
+      "message": 5,
+      "latencyMs": 8712,
+      "at": 1791647302620
+    },
+    {
+      "kind": "intake",
+      "id": "telegram:8820318295:update:969390331",
+      "update": 969390331,
+      "text": "From Echo (test): two-topic check. Please remember this for the test: the word for this topic is CEDAR. Reply in one short sentence.",
+      "raw": "{\"update_id\":969390331,\"message\":{\"message_id\":6,\"from\":{\"id\":7812716706,\"is_bot\":false,\"first_name\":\"Justin\",\"last_name\":\"Headley\",\"language_code\":\"en\"},\"chat\":{\"id\":-1004290919884,\"title\":\"Instar 2.0\",\"is_forum\":true,\"type\":\"supergroup\"},\"date\":1791647380,\"message_thread_id\":3,\"reply_to_message\":{\"message_id\":3,\"from\":{\"id\":8820318295,\"is_bot\":true,\"first_name\":\"Instar 2.0\",\"username\":\"echo_mmtest_seam_b27x_bot\"},\"chat\":{\"id\":-1004290919884,\"title\":\"Instar 2.0\",\"is_forum\":true,\"type\":\"supergroup\"},\"date\":1791594517,\"message_thread_id\":3,\"forum_topic_created\":{\"name\":\"Getting started\",\"icon_color\":7322096},\"is_topic_message\":true},\"text\":\"From Echo (test): two-topic check. Please remember this for the test: the word for this topic is CEDAR. Reply in one short sentence.\",\"is_topic_message\":true}}",
+      "accepted": true,
+      "cursor": 969390332,
+      "at": 1791647381556,
+      "thread": 3
+    },
+    {
+      "kind": "reserve",
+      "id": "telegram:8820318295:update:969390331",
+      "corrections": [],
+      "packetDropped": [
+        {
+          "kind": "candidate",
+          "source": "telegram:8820318295:update:969390330",
+          "reason": "packet or prepared prompt byte envelope"
+        },
+        {
+          "kind": "correction",
+          "source": "telegram:8820318295:update:969390330",
+          "reason": "packet or prepared prompt byte envelope"
+        }
+      ],
+      "packetLimit": 32768,
+      "maxInputTokens": 32768,
+      "maxOutputTokens": 2048,
+      "at": 1791647422101
+    },
+    {
+      "kind": "answer",
+      "id": "telegram:8820318295:update:969390331",
+      "text": "Got it \u2014 I'll remember that the word for this topic is CEDAR.",
+      "state": "complete",
+      "memory": [],
+      "datedPending": true,
+      "usage": {
+        "inputTokens": 10302,
+        "outputTokens": 393,
+        "charge": null,
+        "inputComplete": true
+      },
+      "latencyMs": 17771,
+      "at": 1791647439882
+    },
+    {
+      "kind": "intent",
+      "id": "telegram:8820318295:update:969390331",
+      "text": "I need to check that answer before I can send it.",
+      "body": "I need to check that answer before I can send it.",
+      "chat": "-1004290919884",
+      "thread": 3,
+      "promises": [],
+      "fulfills": [],
+      "update": 969390331,
+      "grant": "preview-trial:6218fbb5-769e-4c43-9de2-8a34bd117b4f",
+      "at": 1791647452115
+    },
+    {
+      "kind": "sent",
+      "id": "telegram:8820318295:update:969390331",
+      "message": 7,
+      "latencyMs": 9282,
+      "at": 1791647460307
+    }
+  ],
+  "question": {
+    "update_id": 969390332,
+    "message": {
+      "message_id": 8,
+      "from": {
+        "id": 7812716706,
+        "is_bot": false,
+        "first_name": "Justin",
+        "last_name": "Headley",
+        "language_code": "en"
+      },
+      "chat": {
+        "id": -1004290919884,
+        "title": "Instar 2.0",
+        "is_forum": true,
+        "type": "supergroup"
+      },
+      "date": 1791647486,
+      "text": "From Echo (test): two-topic check. In one short sentence, what topic is this message in?"
+    }
+  },
+  "failedAnswer": "This message is in topic 3 \u2014 the same topic where the word CEDAR was set for this test.",
+  "modelReplay": {
+    "source": "2026-10-10 foreground subscription CLI replay of the corrected worker packet, tools disabled, no live send; attribution question is an explicit follow-up, not the captured operator wording.",
+    "cases": [
+      {
+        "question": "From Echo (test): two-topic check. In one short sentence, what topic is this message in?",
+        "model": "claude-fable-5-1",
+        "output": "```json\n{\"reply\":{\"answer\":\"This message is in the General topic.\"},\"memory\":[],\"dated\":[],\"lastNamedPerson\":\"Echo\",\"personAttributes\":[]}\n```"
+      },
+      {
+        "question": "What topic is this message in, and which topic did you learn CEDAR in?",
+        "model": "claude-fable-5-1",
+        "output": "```json\n{\n  \"reply\": {\n    \"answer\": \"This message is in the General topic. I learned CEDAR in topic 3, from your message there at 15:49 UTC today (conversation:operator/topic 3/2026-10-10T15:49Z/#969390331), where you asked me to remember it for the two-topic check.\"\n  },\n  \"memory\": [],\n  \"dated\": [],\n  \"lastNamedPerson\": null,\n  \"personAttributes\": []\n}\n```"
+      }
+    ]
+  }
+}

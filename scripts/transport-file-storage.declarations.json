@@ -19,5 +19,35 @@
       32
     ],
     "holds": []
+  },
+  {
+    "type": "Declaration",
+    "schemaVersion": 1,
+    "status": "live",
+    "holds": [],
+    "id": "media-claims.createTransportFileStorage",
+    "kind": "stores",
+    "standards": [
+      7,
+      32,
+      60,
+      113,
+      33
+    ],
+    "requiredFacts": {
+      "growth": "unbounded",
+      "holdsAgentMemory": "yes",
+      "machineScope": {
+        "kind": "machine-local",
+        "reason": "Per-source signed Six facts retain the bounded media request and one-use claim beside local encrypted media. Conversation ownership fences dispatch; intake and outcome use existing journal replication. No cross-machine media-claim replication or independent key custody is claimed."
+      },
+      "agreesWith": [
+        {
+          "store": "preview.journal.openPreviewJournal",
+          "invariant": "Before the first physical request the journal retains the exact source-bound consumed claim prefix fingerprint. The hourly media-custody agreement and check-agreements consumer detect missing or altered claim files, including failed or interrupted downloads. Older stored outcomes lacking a fingerprint are unmeasurable, never agreement.",
+          "check": "PREVIEW-MEDIA-CUSTODY"
+        }
+      ]
+    }
   }
 ]

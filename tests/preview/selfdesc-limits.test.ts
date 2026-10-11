@@ -98,14 +98,14 @@ it('on the tools route the review packet is route-true, and the same two sides h
     expect(packet.governingConstraints, input).toEqual(governingConstraints(true));
     expect(packet.obligationDecision, input).toBe(OBLIGATION_DECISION_TOOLS);
     expect(packet.declaredObligations.toolAttempts, input).toEqual({ meaning: TOOL_ATTEMPTS_MEANING, calls: [] });
-    expect(packet.sources.find(source => source.id === 'capability-note')!.text, input).toContain('no MCP server, so no logged-in account access'); // Historical wording; new replay covers the replacement.
-    // Plan #491 and #510 changed only the answer-slot wording of the review question after these were recorded (the flat
-    // answer protocol, then one verdict field per rule); the output-budget repair also bounds reasoning.
-    // Normalize only those recorded protocol differences; every rule, guide and packet line stays exact.
+    expect(packet.sources.find(source => source.id === 'capability-note')!.text, input).toContain('no MCP server, so no logged-in account access'); // Historical wording; self-knowledge replay covers current wording.
+    // Plan #491 and #510 changed the answer-slot wording after capture; the October 10 budget repair then shortened
+    // requested reasons and bounded the whole response. Translate those exact historical instructions only:
+    // every rule, guide and packet line must still match. reply-review-budget.test.ts replays the new budget's real call.
     const content = envelopeOf(input).messages[0]!.content;
     if (input.startsWith('review-r2-')) expect(content
-      .replace(/Return inside conclusion\.value exactly one line for every listed rule and no other rule, each of the form rule_id: PASS \| short reason or rule_id: VIOLATION \| short reason, with each reason under (\d+) characters; put any longer reasoning in reason\.value\./u,
-        'Give every listed rule, and no other rule, one verdict "PASS | short reason" or "VIOLATION | short reason", with each reason under $1 characters. Keep reasoning to at most two short sentences (400 characters); do not repeat the per-rule findings there. The complete response, including reasoning and all verdicts, must fit within 1500 tokens, leaving headroom under the provider output cap.')
+      .replace('Return inside conclusion.value exactly one line for every listed rule and no other rule, each of the form rule_id: PASS | short reason or rule_id: VIOLATION | short reason, with each reason under 300 characters; put any longer reasoning in reason.value.',
+        'Give every listed rule, and no other rule, one verdict "PASS | short reason" or "VIOLATION | short reason", with each reason under 160 characters. Keep reasoning under 400 characters and the entire JSON response under 4000 characters so every verdict fits the existing output allowance. Allocate the response to the verdicts, without repeating the rules or context.')
       .replace('A reason that finds no breach belongs on a PASS line. No other text.', `A reason that finds no breach belongs on a PASS verdict. ${taskFields('{rule_id: its verdict, one field for each listed rule, named by that rule id}')}`), input).toBe(replyReviewQuestion(flagged));
     else expect(content, input).not.toContain('in no broader terms');
   }

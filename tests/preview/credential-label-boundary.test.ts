@@ -54,6 +54,7 @@ const key = new Uint8Array(32).fill(13);
 interface Run {
   answer: string;
   review?: { verdict: 'pass' | 'violation'; ruleIds: ReplyRule[]; reason?: string; findings?: ReplyFinding[] };
+  remainderReview?: Run['review'] | 'unavailable';
   jevScores?: Record<string, number>;
   /** Hold the test secret in a real preview-vault SecretRef. */
   holdSecret?: boolean;
@@ -73,7 +74,7 @@ async function replay(options: Run) {
   const genesis = { kind: 'genesis' as const, bot: '12345678', chat: '7654321', operator: '7654321', grant: 'grant:preview',
     configurationDigest: 'sha256:offline', expires: 9999999999999, maxCalls: 9, maxReplies: 3, maxTurns: 3, maxBytes: 32768, cursor: 0 };
   const clock = { now: T.answeredAt }, sends: string[] = [], jevTexts: string[] = [], reviseTexts: string[] = [], reviewTexts: string[] = [];
-  const reviewPackets: { credentialRegister?: RecordedCredentialFact[]; candidateReply: string }[] = [];
+  const reviewPackets: { credentialRegister?: RecordedCredentialFact[]; candidateReply: string; withheldClaims?: string[] }[] = [];
   const calls = { jev: 0, review: 0, revision: 0 };
   const custody = createSecretCustody(root, key, () => clock.now);
   const heldValue = options.heldValue ?? (options.holdSecret ? TEST_SECRET : undefined);
@@ -102,12 +103,14 @@ async function replay(options: Run) {
         return { value: { model: 'jev-1.13.0', usage: { input_tokens: T.jev.usage.inputTokens, output_tokens: T.jev.usage.outputTokens },
           answers: Object.fromEntries(Object.entries(options.jevScores ?? T.jev.scores).map(([rule, noul]) => [rule, { type: 'noul', noul }])) } as unknown,
         latencyMs: T.jev.latencyMs }; },
-      escalate: async (text: string, _id: string, originalPrompt: string, rules: readonly ReplyRule[]) => {
+      escalate: async (text: string, _id: string, originalPrompt: string, rules: readonly ReplyRule[], _deadline: number, operation?: string) => {
         calls.review++; reviewTexts.push(text);
         // The review context exactly as the launcher builds it, with the register's entries as recorded facts (plan #451).
         reviewPackets.push(JSON.parse(replyReviewContext(originalPrompt, text, rules, undefined, publicCredentialRegister(R.register, held, clock.now))));
         // Default: the recorded reviewer's PASS on this same line (715673353); the recorded VIOLATION is a test option.
-        const review = options.review ?? { verdict: 'pass' as const, ruleIds: [], findings: [recorded.neighbour.credentialFinding] };
+        const review = (operation === 'revision' ? options.remainderReview : undefined)
+          ?? options.review ?? { verdict: 'pass' as const, ruleIds: [], findings: [recorded.neighbour.credentialFinding] };
+        if (review === 'unavailable') throw Error('remainder review unavailable');
         return { verdict: review.verdict, ruleIds: review.ruleIds, confidence: null, latencyMs: T.review.latencyMs,
           ...(review.reason === undefined ? {} : { reason: review.reason }), ...(review.findings === undefined ? {} : { findings: review.findings }),
           usage: { inputTokens: T.review.usage.inputTokens, outputTokens: T.review.usage.outputTokens, charge: null } }; },
@@ -201,16 +204,25 @@ it('the other side: a renewal reminder the register does not record is never vou
 
 // Review round 4 (Astra): a claim-scoped finding quotes the sentence the reviewer read, and that sentence must be the
 // one removed from the send. With nothing masked, the quotation matches the reply, so the rejected claim never sends.
-it('the other side: a deferral naming a record label is removed from the send, and the answer survives', async () => {
+it.each(['pass', 'violation', 'unavailable'] as const)('a deferral naming a record label is removed; the remainder review returns %s', async verdict => {
   const promise = 'I will renew preview-activation tomorrow.';
   const reason = `The reply promises "${promise}" but no recorded loop tracks it.`;
-  const { sends, reviewTexts } = await replay({ answer: `The byte count is 25. ${promise}`,
+  const { sends, reviewTexts, reviewPackets, turn } = await replay({ answer: `The byte count is 25. ${promise}`,
     jevScores: { ...T.jev.scores, defers_work: 0.6 },
+    remainderReview: verdict === 'unavailable' ? verdict : { verdict,
+      ruleIds: verdict === 'pass' ? [] : ['incoherent_remainder'] },
     review: { verdict: 'violation', ruleIds: ['defers_work'], reason: `defers_work: ${reason}`,
       findings: [{ rule: 'credential', verdict: 'pass', reason: 'no secret.' }, { rule: 'defers_work', verdict: 'violation', reason }] } });
   expect(reviewTexts[0]).toContain(promise);
+  expect(reviewTexts).toHaveLength(2);
+  expect(reviewTexts[1]).toContain('The byte count is 25');
+  expect(reviewTexts[1]).not.toContain(promise);
+  expect(reviewPackets[1]!.withheldClaims).toEqual([promise]);
+  expect(reviewPackets[1]!.candidateReply).toBe(reviewTexts[1]);
+  expect(turn.revisionReview?.verdict).toBe(verdict);
   expect(sends).toHaveLength(1);
-  expect(sends[0]).toContain('The byte count is 25');
+  if (verdict === 'pass') expect(sends[0]).toContain('The byte count is 25');
+  else expect(sends).toEqual([HOLDING_REPLY]);
   expect(sends[0]).not.toContain('I will renew');
 });
 

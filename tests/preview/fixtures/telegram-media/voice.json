@@ -1,0 +1,28 @@
+{
+  "_fixture": "synthesized from Telegram Bot API docs (not recorded); observer #207",
+  "update_id": 715709002,
+  "message": {
+    "message_id": 9002,
+    "from": {
+      "id": 7812716706,
+      "is_bot": false,
+      "first_name": "Justin"
+    },
+    "chat": {
+      "id": -1004367556355,
+      "title": "Instar 2.0 test",
+      "type": "supergroup",
+      "is_forum": true
+    },
+    "date": 1791625200,
+    "message_thread_id": 3,
+    "is_topic_message": true,
+    "voice": {
+      "file_id": "AwACAgEAAxkBAAIC-voice",
+      "file_unique_id": "AgADvoice",
+      "duration": 4,
+      "mime_type": "audio/ogg",
+      "file_size": 11520
+    }
+  }
+}

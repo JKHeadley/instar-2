@@ -4,6 +4,7 @@ import { boundThread, journalAudience, journalConversation, matchesBoundChat, va
  * individually authenticated so replay reads the file once at boot; hot turns
  * append one frame and update only the in-memory projection. */
 import { createCipheriv, createDecipheriv, createHash, randomBytes } from 'node:crypto';
+import { telegramInboundMedia, type TelegramInboundMedia, mediaCustodyText, type MediaCustodyResult } from './telegram-media.js';
 import { brotliCompressSync, brotliDecompressSync, constants as zlibConstants } from 'node:zlib';
 import { closeSync, constants, existsSync, fsyncSync, mkdirSync, openSync, readFileSync, readSync, writeSync, ftruncateSync, statSync, lstatSync, realpathSync, renameSync, unlinkSync } from 'node:fs';
 import { dirname, resolve } from 'node:path';
@@ -18,7 +19,7 @@ import { buildWorkIndex, detectOverlaps, workForTopic, type SessionActivity } fr
 import { MAX_RAISED_SUBSCRIPTION_PROMPT_BYTES, SUBSCRIPTION_CONVERSATION_SYSTEM_PROMPT, SUBSCRIPTION_MAX_OUTPUT_TOKENS, SUBSCRIPTION_PREVIEW_EXPIRY } from '../../src/assembly/production-provider.js';
 import { hasClaim, replaceClaim, supersedesCorrection } from './claim-match.mjs';
 import { checkReply as checkCoherenceOf, correctionNote, releaseFindings, COHERENCE_FINDING_LIMIT, type CoherenceFinding } from './coherence-check.js';
-import { checkReply, reviewReply, repeatsOperatorOnly, HOLDING_REPLY, jevRequestBody, JEV_RESPONSE_MAX_BYTES, REPLY_CHECK_BUDGET_MS, REPLY_CHECK_BUDGET_REASON, LINK_SHAPE_REASON, linkShapeRules, bareTopicReferences, topicNameReason, BARE_TOPIC_OBJECTION, noDecisions, validDispositions, jevConfidentCredential, concealSecretMaterial, secretMaterialIn, CLAIM_SCOPED_RULES, namedClaimsIn, exciseNamedClaims, substantiveReply, sharedAudience, AUDIENCE_RULES, type ApprovalFacts } from './reply-check.js';
+import { checkReply, reviewReply, repeatsOperatorOnly, HOLDING_REPLY, jevRequestBody, JEV_RESPONSE_MAX_BYTES, REPLY_CHECK_BUDGET_MS, REPLY_CHECK_BUDGET_REASON, LINK_SHAPE_REASON, linkShapeRules, bareTopicReferences, topicNameReason, BARE_TOPIC_OBJECTION, noDecisions, validDispositions, jevConfidentCredential, concealSecretMaterial, secretMaterialIn, CLAIM_SCOPED_RULES, namedClaimsIn, exciseNamedClaims, substantiveReply, replyRemainderPrompt, sharedAudience, AUDIENCE_RULES, type ApprovalFacts } from './reply-check.js';
 import { latestRecurringDay, nextRecurringDay, parseDatedItem, restatedDatePhrase, dueState, selectDatedItems, withinNext48Hours, localParts, type DatedItem } from './dated-memory.js';
 import { isStatusCommand, isStopCommand, statusAnswer, STOP_CONFIRM_TEXT } from './status-command.js';
 import { AGENT_PROMISE_LIMIT, fulfillableCommitment, fulfillmentProposals, fulfillmentSupported, legacyFulfillsReminder, promiseProposals, recordedPromises, type AgentPromise, type FulfillmentProposal, type PromiseProposal } from './agent-commitment.js';
@@ -328,8 +329,8 @@ const validWithheld = (value: unknown): boolean => {
 /** A candidate kept back by a mandatory floor after its one bounded correction did not clear it: the holding notice
  * was sent in its place, and the agent's answer to each objection is recorded here (Rules 4, 41, 86). */
 export interface ReplyHeld { objections: string[]; reason?: string; dispositions: ObjectionDisposition[]; responseSkipped?: ResponseSkipped;
-  /** Present when the claim-scoped floor ran and nothing substantive survived the removal: the named claim WAS
-   * the whole answer, so the notice stands in for no surviving content (plan #215). */
+  /** Present when the claim-scoped floor ran and no coherent remainder was established after removal:
+   * the full-context review rejected it or could not complete within the existing allowance. */
   withheld?: ClaimWithheld }
 export type ResponseSkipped = 'deadline' | 'call cap';
 const RESPONSE_SKIPPED: readonly unknown[] = ['deadline', 'call cap'];
@@ -975,7 +976,7 @@ export const KNOWN_FRAME_KINDS: ReadonlySet<string> = new Set(['group-carry', 'r
   'approval-decision', 'approval-request', 'call-outcome', 'cap-report', 'caps', 'channel-item',
   'channel-source-cursor', 'channel-source-error', 'coherence', 'expiry', 'format-retry', 'genesis',
   'held-notice-intent', 'held-notice-sent', 'hold', 'import', 'index-reserve', 'intake', 'intent',
-  'legacy-call', 'legacy-reply', 'limited-intent', 'limited-sent', 'lookup', 'meaning-index',
+  'legacy-call', 'legacy-reply', 'limited-intent', 'limited-sent', 'lookup', 'meaning-index', 'media-claim', 'media-custody',
   'memory-undecided', 'minimal-outage', 'model-call', 'model-uncertain', 'notice', 'obligation-result',
   'obligation-start', 'operator-result-intent', 'operator-result-sent', 'operator-review',
   'operator-review-closed', 'operator-yes', 'reminder-grant', 'reminder-intent', 'reminder-sent',
@@ -990,6 +991,9 @@ export const KNOWN_FRAME_KINDS: ReadonlySet<string> = new Set(['group-carry', 'r
   'summary-reserve', 'summary-review-reserve', 'summary-uncertain', 'tool-turn', 'waiting']);
 
 export type JournalRecord =
+  // Non-additive: an older writer must not discard the no-repeat expectation.
+  | { kind: 'media-claim'; id: string; digest: string; at: number }
+  | { kind: 'media-custody'; id: string; result: MediaCustodyResult; at: number }
   | { kind: 'genesis'; bot: string; chat: string; operator: string; forum?: true; grant: string; configurationDigest: string; expires: number; maxCalls: number; maxReplies: number; maxTurns: number; maxBytes: number; cursor: number; importSource?: string; importCursor?: number;
     /** Rules 8, 92: this root's own open-loop revisit interval, fixed for its life. Absent keeps
      * `LOOP_REVISIT_MS`, so every root created before this field behaves exactly as it did. */
@@ -1095,7 +1099,7 @@ export type JournalRecord =
      * #104): admitted by the same checks as an answer's blocker, only when the answer admitted none. */
     blocker?: ProposedBlocker; usage?: ModelUsage; at: number }
   /** One bounded held-class review of the revised text, inside the same call cap; no result is UNKNOWN, never repeated. */
-  | { kind: 'reply-revision-review-reserve'; id: string; maxInputTokens?: number; maxOutputTokens?: number; at: number }
+  | { kind: 'reply-revision-review-reserve'; id: string; remainder?: string; maxInputTokens?: number; maxOutputTokens?: number; at: number }
   | { kind: 'reply-revision-review'; id: string; verdict: 'pass' | 'violation' | 'unavailable'; ruleIds: ReplyRule[]; reason?: string;
     findings?: ReplyFinding[]; usage?: ModelUsage; at: number }
   /** One bounded re-ask after a format miss (Rule 116): records the refused first call and reserves the second against the same cap. */
@@ -1279,6 +1283,9 @@ export type IntakeCustody = { state: 'stored'; arrival: string; capture: string;
 /** One later message of a reply split across several: its plain text, its Telegram body, and its own signed provenance. */
 export interface ReplyPart { text: string; body: string; provenance: OutboundProvenance }
 export interface Turn { id: string; update: number; text: string; raw: string; accepted: boolean; at: number; thread?: number; editOf?: string; replaces?: string; custody?: IntakeCustody; answer?: string;
+  media?: MediaCustodyResult;
+  /** Expected causal prefix, retained before the first media request. */
+  mediaClaim?: string;
   /** Part Thirteen §9: the scoped-tool calls of every attempt of this turn's answer, in order (bounded), read by its reply review. */
   toolAttempts?: ToolAttempt[];
   /** The later messages of a reply split across several (part 2 onward, in order), with each one's dispatch start and receipt. */
@@ -1302,7 +1309,9 @@ export interface Turn { id: string; update: number; text: string; raw: string; a
   revisionReserved?: true; revisionReservedAt?: number; revisionObjections?: string[];
   revision?: { state: 'complete' | 'rejected' | 'uncertain' | 'failed'; text?: string; dispositions?: ObjectionDisposition[]; blocker?: ProposedBlocker };
   release?: ReplyRelease; heldReview?: ReplyHeld;
-  revisionReviewReserved?: true; revisionReview?: { verdict: 'pass' | 'violation' | 'unavailable'; ruleIds: ReplyRule[]; reason?: string; findings?: ReplyFinding[] };
+  revisionReviewReserved?: true;
+  /** Exact claim-trimmed candidate using the existing revision-review operation. */
+  revisionReviewRemainder?: string; revisionReview?: { verdict: 'pass' | 'violation' | 'unavailable'; ruleIds: ReplyRule[]; reason?: string; findings?: ReplyFinding[] };
   /** Admitted by the minimal reserve past the ordinary turn allowance. */
   reserve?: true;
   /** The limited answer covering this message (`lead` names the turn that carries the send). */
@@ -1546,8 +1555,8 @@ const credentialHeldClass = (turn: Turn, candidateDigest: string): boolean =>
 const refusedObligation = (turn: Turn): boolean =>
   Boolean(turn.answerRejected?.loops || turn.answerRejected?.blocker || turn.answerRejected?.rechecks);
 /** Content-free status: what the claim-scoped floor did (plan #215). `trimmed` counts answers sent with the named
- * sentences removed, `sentencesRemoved` those sentences, `heldWithNothingLeft` the answers that were ENTIRELY the
- * named claim (notice sent), and `unlocatedClaims` the named claims no sentence carried, which released the answer
+ * sentences removed, `sentencesRemoved` those sentences, `heldWithNothingLeft` the answers with no established coherent
+ * remainder after removal (notice sent), and `unlocatedClaims` the named claims no sentence carried, which released the answer
  * unchanged. A rising `unlocatedClaims` means reviewers are not quoting their claims, not that the floor is idle. */
 export function claimScopedWithholds(view: JournalView): { trimmed: number; sentencesRemoved: number;
   heldWithNothingLeft: number; unlocatedClaims: number; byRule: Partial<Record<ReplyRule, number>> } {
@@ -3564,6 +3573,28 @@ function project(view: JournalView, row: JournalRecord, system?: SystemCheck, ad
     if (view.stepCheckBusiness && row.accepted) view.stepChecks.set(`intake:${row.id}`, {});
     return;
   }
+  if (row.kind === 'media-claim') {
+    const turn = view.turns.get(row.id);
+    if (!turn?.accepted || turn.mediaClaim || turn.media || turn.reserved || turn.answer !== undefined
+      || !/^[a-f0-9]{64}$/u.test(row.digest)) throw Error('preview journal: media claim refused');
+    const update = JSON.parse(turn.raw) as TelegramUpdate;
+    if (!telegramInboundMedia(update.edited_message ?? update.message)) throw Error('preview journal: media source missing');
+    turn.mediaClaim = row.digest;
+    return;
+  }
+  if (row.kind === 'media-custody') {
+    const turn = view.turns.get(row.id), result = row.result;
+    if (!turn?.accepted || turn.media || turn.reserved || turn.answer !== undefined
+      || !result || !['stored', 'unavailable', 'failed', 'file-limit', 'store-limit', 'malformed'].includes(result.state)
+      || result.state === 'stored' && (!/^[a-f0-9]{64}$/u.test(result.reference)
+        || !Number.isSafeInteger(result.bytes) || result.bytes < 0 || result.bytes > 8 * 1024 * 1024))
+      throw Error('preview journal: media custody refused');
+    const update = JSON.parse(turn.raw) as TelegramUpdate;
+    if (!telegramInboundMedia(update.edited_message ?? update.message)) throw Error('preview journal: media source missing');
+    turn.media = result;
+    turn.text += `\n[Media custody: ${mediaCustodyText(result)}]`;
+    return;
+  }
   if (row.kind === 'group-carry') {
     const scope = row.memory.scope;
     if (view.groupCarry || view.genesis.forum !== true || scope.chat !== view.genesis.chat
@@ -4186,11 +4217,14 @@ function project(view: JournalView, row: JournalRecord, system?: SystemCheck, ad
     return;
   }
   if (row.kind === 'reply-revision-review-reserve') {
-    if (turn.revision?.state !== 'complete' || turn.revisionReviewReserved || turn.intent !== undefined
+    if ((row.remainder === undefined ? turn.revision?.state !== 'complete'
+      : typeof row.remainder !== 'string' || !row.remainder.trim() || row.remainder.length > 32000) || turn.revisionReviewReserved || turn.intent !== undefined
       || view.calls >= view.limits.maxCalls) throw Error('preview journal: revision review reservation order or cap');
     reserveTokens(view, `revision-review:${row.id}`, 'replyCheck', row.maxInputTokens ?? view.limits.maxBytes,
       row.maxOutputTokens ?? subscriptionOutputMaximum);
-    turn.revisionReviewReserved = true; view.calls++; return;
+    turn.revisionReviewReserved = true;
+    if (row.remainder !== undefined) turn.revisionReviewRemainder = row.remainder;
+    view.calls++; return;
   }
   if (row.kind === 'reply-revision-review') {
     if (!turn.revisionReviewReserved || turn.revisionReview !== undefined || turn.intent !== undefined
@@ -4939,7 +4973,13 @@ export function admittedUpdate(genesis: JournalView['genesis'], update: Telegram
     && principal.id === String(message?.from?.id) && principalBoundToUpdate(principal, update)
     && principal.provenance.adapter === TELEGRAM_ADAPTER[genesis.origin ?? 'production']
     && (thread === undefined || Number.isSafeInteger(thread) && thread > 0);
-  const text = typeof message?.text === 'string' ? message.text
+  const media = telegramInboundMedia(message);
+  const limitation = media?.kind === 'photo' ? 'This harness has no image-input path; I cannot see the photo.'
+    : media?.kind === 'voice' || media?.kind === 'audio' ? 'No local transcription path is installed; I cannot listen to this audio yet.'
+      : 'The document contents have not been read.';
+  const text = media ? `[Received ${media.kind === 'voice' ? 'voice note' : media.kind}: name ${JSON.stringify(media.name)}, size ${media.size === null ? 'unknown' : `${media.size} bytes`}. ${limitation}]`
+    + (typeof message?.caption === 'string' && message.caption.trim() ? `\nCaption: ${message.caption}` : '')
+    : typeof message?.text === 'string' ? message.text
     : typeof message?.caption === 'string' && message.caption.trim() ? `${message.caption}\n${UNREADABLE_OPERATOR_MESSAGE}`
       : UNREADABLE_OPERATOR_MESSAGE;
   return { id: previewTurnId(genesis.bot, update.update_id), accepted, text: accepted ? text : '',
@@ -4963,7 +5003,8 @@ export function topicNames(view: JournalView): ReadonlyMap<number, string> {
     if (!turn.raw.includes('"forum_topic_')) continue;
     let message: (TelegramMessage & { forum_topic_created?: { name?: unknown }; forum_topic_edited?: { name?: unknown } }) | undefined;
     try { const update = JSON.parse(turn.raw) as TelegramUpdate; message = update.message ?? update.edited_message; } catch { continue; }
-    const thread = boundThread(view.genesis, message?.message_thread_id), raw = message?.forum_topic_created?.name ?? message?.forum_topic_edited?.name;
+    const thread = view.genesis.forum && (message?.message_thread_id === undefined || message.message_thread_id === 1) ? 1
+      : boundThread(view.genesis, message?.message_thread_id), raw = message?.forum_topic_created?.name ?? message?.forum_topic_edited?.name;
     if (!matchesBoundChat(view.genesis, message?.chat)
       || !Number.isSafeInteger(thread) || thread! <= 0 || typeof raw !== 'string') continue;
     const name = Array.from(raw.replace(/[\p{Cc}\p{Cf}]+/gu, ' ').replace(/\s+/gu, ' ').trim()).slice(0, TOPIC_NAME_MAX).join('');
@@ -5211,6 +5252,8 @@ export interface PreviewPorts {
   retrospectiveEvidence?(): RetroSiblingEvidence;
   /** Rule 100: vault-first custody of the credentials in a verified operator message, before it is recorded. */
   secrets?: { custody(input: { text: string; raw: string; source: string }): { text: string; raw: string; custody?: IntakeCustody } };
+  /** Host-only bounded encrypted custody, after durable intake and before model preparation. */
+  media?: { receive(source: string, media: TelegramInboundMedia): Promise<MediaCustodyResult> };
   boundary?(stage: string): void;
   /** Optional semantic stage of the recall owner (`composeRecall`). Ordinary conversation reserves
    * no helper spend (Part 21 §7), so a charging port is refused as over budget; none is bound live. */
@@ -5223,9 +5266,11 @@ export function createJournalWorker(journal: ReturnType<typeof openPreviewJourna
   // Every host of this worker inherits the floor, not only the shipped CLI. A snapshot without
   // its current disclosure resolver is readable for audit but cannot leave through a model or send.
   const original = ports;
+  let operatorOnlyVerified = false;
   const disclosure = async () => {
     if (!journal.view.groupCarry) return true;
-    try { return await original.groupDisclosure?.() === true; } catch { return false; }
+    try { operatorOnlyVerified = await original.groupDisclosure?.() === true; } catch { operatorOnlyVerified = false; }
+    return operatorOnlyVerified;
   };
   const guarded = <A extends unknown[], R>(method: (...args: A) => Promise<R>) => async (...args: A): Promise<R> => {
     if (journal.view.groupCarry && !await disclosure()) throw Error('group carry: disclosure authority or audience refused');
@@ -5618,15 +5663,23 @@ export function createJournalWorker(journal: ReturnType<typeof openPreviewJourna
   /** Recall scores the answer itself: a generated Rule 110 disclosure (its date and turn number) is not what the turn said. */
   const recallReply = (turn: Turn) => replyBody(turn)?.replace(/^PREVIEW — /u, '');
   const dated = (turn: Turn) => { const at = sentAt(turn); return at === null ? 'date unknown' : isoMinute(at); };
+  const packetConversation = (thread: number | undefined) => journal.view.genesis.forum && thread === undefined
+    ? topicNames(journal.view).has(1) ? conversationName(1, topicNames(journal.view)) : 'General'
+    : conversationName(thread, topicNames(journal.view));
   const turnLabel = (turn: Turn) =>
-    `conversation:${fromOperator(turn) ? 'operator' : 'other sender'}/${conversationName(turn.thread, topicNames(journal.view))}/${dated(turn)}/#${turn.update}`;
+    `conversation:${fromOperator(turn) ? 'operator' : 'other sender'}/${packetConversation(turn.thread)}/${dated(turn)}/#${turn.update}`;
+  // Shared forum facts retain the same source identity used by history and recall. Private bytes stay unchanged.
+  const forumSource = (id: string) => {
+    const source = journal.view.genesis.forum ? journal.view.turns.get(id) : undefined;
+    return source ? { conversation: packetConversation(source.thread), sourceLabel: turnLabel(source) } : {};
+  };
   const channelLabel = (item: ChannelItem) =>
     `import:${item.source}/${cleanMetadata(item.conversation ?? 'unknown conversation', item).replace(/\s+/gu, ' ').slice(0, 40)}/${isoMinute(item.at)}/${createHash('sha256').update(channelKey(item)).digest('hex').slice(0, 12)}`;
   const summaryLabel = (summary: Extract<JournalRecord, {kind:'summary'}>) =>
     `summary:all conversations/${isoMinute(summary.at)}/through #${summary.through}`;
   const memoryLabel = (change: MemoryChange) => {
     const trigger = journal.view.turns.get(change.trigger)!;
-    return `correction:operator/${conversationName(trigger.thread, topicNames(journal.view))}/${dated(trigger)}/#${trigger.update}`;
+    return `correction:operator/${packetConversation(trigger.thread)}/${dated(trigger)}/#${trigger.update}`;
   };
   /** Rules 11, 96: the active facts a summary keeps by source. The summary writer keeps each exact factual
    * clause in memoryItems and tells the model not to repeat them in its prose, so prose alone is not the facts.
@@ -6087,7 +6140,18 @@ export function createJournalWorker(journal: ReturnType<typeof openPreviewJourna
   };
   const projectedReplyPrompt = (prompt: string | undefined) => {
     if (prompt === undefined) return undefined;
-    try { return projectModelEvidence(prompt, journal.view.memory); }
+    try {
+      const projected = projectModelEvidence(prompt, journal.view.memory);
+      if (journal.view.genesis.forum !== true) return projected;
+      const envelope = JSON.parse(projected) as { messages: { role: string; content: string }[] };
+      const context = envelope.messages.find(message => message.role === 'context');
+      if (context) {
+        const value = JSON.parse(context.content);
+        if (value.packet?.audience) value.packet.audience.operatorOnlyVerified = operatorOnlyVerified;
+        context.content = JSON.stringify(value);
+      }
+      return JSON.stringify(envelope);
+    }
     catch { return undefined; } // The reviewer cannot consume malformed legacy evidence.
   };
   const supersededCorrection = (change: MemoryChange) => journal.view.memory
@@ -6229,7 +6293,7 @@ export function createJournalWorker(journal: ReturnType<typeof openPreviewJourna
     if (packet && !includeRecorded) return { update: target.update, reply: replyFor(target), recorded: null,
       missing: 'The recorded packet did not fit this bounded reply context.' };
     return { guidance: 'This is one candidate reply. Judge whether it matches the question. This redacted view of its recorded packet shows inputs available to the model, not which ones it actually relied on. If the target or packet is missing, say so; do not infer a reason from current history.',
-      update: target.update, conversation: conversationName(target.thread, topicNames(journal.view)), reply: replyFor(target),
+      update: target.update, conversation: packetConversation(target.thread), reply: replyFor(target),
       delivery: outcome(target), ...(target.replyChecks?.length ? { replyCheck: target.replyChecks.at(-1) } : {}),
       ...(packet && includeRecorded && !superseded ? { recorded: safeProvenance(Object.fromEntries(
         ['now', 'sources', 'historyMode', 'summary', 'memory', 'history', 'recalled', 'people', 'commitments', 'channelMemory', 'corrections']
@@ -6416,7 +6480,7 @@ export function createJournalWorker(journal: ReturnType<typeof openPreviewJourna
         && (!memoryTriggers.has(item.id) || journal.view.memory.some(change => change.source === item.id
           || change.trigger === item.id && change.historical)))
         .map(item => ({ id: item.id, text: item.text, at: sentAt(item) ?? 0, source: `turn ${item.update}`,
-          date: dated(item), conversation: conversationName(item.thread, topicNames(journal.view)) })),
+          date: dated(item), conversation: packetConversation(item.thread) })),
       ...[...journal.view.channelItems.values()].filter(item => item.at < turn.at)
         .map(item => ({ id: channelMemoryId(item), text: item.text, at: item.at,
           source: `${item.source} ${publicMemoryId(channelMemoryId(item))} (export)`, date: isoMinute(item.at),
@@ -6537,7 +6601,7 @@ export function createJournalWorker(journal: ReturnType<typeof openPreviewJourna
     const undecidedEdits = undecidedAll.slice(-PREVIEW_UNDECIDED_LIMIT).map(item => ({ ...item,
       ...(item.previous === undefined ? {} : { previous: item.previous.slice(0, 600) }), current: item.current.slice(0, 600) }));
     const moreUndecidedEdits = undecidedAll.length - undecidedEdits.length;
-    const elsewhere = (item: Turn) => item.thread === current && !labelAll && !saidRange ? {} : { conversation: conversationName(item.thread, topicNames(journal.view)), date: dated(item) };
+    const elsewhere = (item: Turn) => item.thread === current && !labelAll && !saidRange ? {} : { conversation: packetConversation(item.thread), date: dated(item) };
     const history = earlier.map(item => ({ id: item.id, sourceKind: sourceKindOf(item), sourceLabel: turnLabel(item), ...elsewhere(item), ...(item.editOf ? { editedTurn: item.editOf } : {}), ...(fromOperator(item) ? {} : { from: speakerOf(item) }),
       user: sizeRefused(item) ? '[Message saved verbatim but too long for the preview context; ask the operator for shorter labelled parts.]'
         : clean(redact(item.text).text, true, item.id),
@@ -6561,7 +6625,7 @@ export function createJournalWorker(journal: ReturnType<typeof openPreviewJourna
       ...(turn ? { source: turn.id } : { source: item!.source }),
       from: turn ? speakerOf(turn) : `${cleanMetadata(item!.from, item)} (export sender metadata, unverified)`,
       date: turn ? dated(turn) : isoMinute(item!.at),
-      ...(turn ? (turn.thread === current ? {} : { conversation: conversationName(turn.thread, topicNames(journal.view)) })
+      ...(turn ? (turn.thread === current ? {} : { conversation: packetConversation(turn.thread) })
         : { account: cleanMetadata(item!.account, item),
           ...(item!.conversation === undefined ? {} : { conversation: cleanMetadata(item!.conversation, item) }) }),
       message: turn ? clean(redact(turn.text).text, true, turn.id)
@@ -6596,7 +6660,7 @@ export function createJournalWorker(journal: ReturnType<typeof openPreviewJourna
     }
     const commitments = [...promised.values()].sort((a, b) => a.turn.update - b.turn.update || (a.side === 'message' ? -1 : 1))
       .map(({ turn, side, items }) => ({ source: turn.id, sourceKind: side === 'message' ? sourceKindOf(turn) : 'inferred-by-summary' as MemorySourceKind, sourceLabel: turnLabel(turn), from: side === 'message' ? speakerOf(turn) : 'you, in your own earlier reply', date: dated(turn), age: age(turn),
-        ...(turn.thread === current ? {} : { conversation: conversationName(turn.thread, topicNames(journal.view)) }),
+        ...(turn.thread === current ? {} : { conversation: packetConversation(turn.thread) }),
         ...(side === 'message' ? { message: clean(redact(turn.text).text, true, turn.id) }
           : { reply: replyFor(turn), answering: clean(redact(turn.text).text, true, turn.id), delivery: outcome(turn) }),
         items: items.map(item => {
@@ -6615,7 +6679,7 @@ export function createJournalWorker(journal: ReturnType<typeof openPreviewJourna
             ...(note.sources?.length ? { sources: note.sources.map(source => {
             const original = journal.view.turns.get(source.source)!;
             return { sourceLabel: turnLabel(original), from: note.in === 'message' ? speakerOf(original) : 'you, in your own earlier reply',
-              date: dated(original), ...(original.thread === current ? {} : { conversation: conversationName(original.thread, topicNames(journal.view)) }),
+              date: dated(original), ...(original.thread === current ? {} : { conversation: packetConversation(original.thread) }),
               ...(note.in === 'message' ? { message: clean(redact(original.text).text, true, original.id) }
                 : { reply: replyFor(original), delivery: outcome(original) }), quote: clean(source.quote, true, original.id) };
           }) } : {}) };
@@ -6624,7 +6688,7 @@ export function createJournalWorker(journal: ReturnType<typeof openPreviewJourna
       [entry.turn.id, ...entry.items.flatMap(item => journal.view.commitments[item.id]?.sources?.map(source => source.source) ?? [])])]);
     const recall = summary || saidRange ? recalled.filter(item => (saidRange || !cited.has(item.id)) && !superseded.has(item.id)).sort((a, b) => a.update - b.update).map(item => ({ id: item.id, sourceKind: sourceKindOf(item), sourceLabel: turnLabel(item), date: dated(item),
 
-      ...(item.thread === current ? {} : { conversation: conversationName(item.thread, topicNames(journal.view)) }),
+      ...(item.thread === current ? {} : { conversation: packetConversation(item.thread) }),
       ...(item.editOf ? { editedTurn: item.editOf } : {}),
       ...(fromOperator(item) ? {} : { from: speakerOf(item) }),
       user: sizeRefused(item) ? '[Message saved verbatim but too long for the preview context; ask the operator for shorter labelled parts]'
@@ -6637,7 +6701,7 @@ export function createJournalWorker(journal: ReturnType<typeof openPreviewJourna
     const corrections = flagged.filter(item => !journal.view.memory.some(change => change.mode !== 'prefer' &&
       (change.source === item.id || change.replies?.includes(item.id)))).map(item => ({ source: item.id, sourceLabel: turnLabel(item), update: item.update, date: dated(item),
 
-      ...(item.thread === current ? {} : { conversation: conversationName(item.thread, topicNames(journal.view)) }),
+      ...(item.thread === current ? {} : { conversation: packetConversation(item.thread) }),
       findings: correctionNote(item.checked ?? []).map(finding => ({ ...finding,
         possibleProblem: clean(finding.possibleProblem, true, item.id), inYourReply: clean(finding.inYourReply, true, item.id) })) }));
     const channelMemory = channels.map(item => ({ sourceLabel: channelLabel(item), sourceKind: 'channel-import' as MemorySourceKind, source: item.source, account: cleanMetadata(item.account, item),
@@ -6649,7 +6713,7 @@ export function createJournalWorker(journal: ReturnType<typeof openPreviewJourna
       ...(item.conversation === undefined ? {} : { conversation: cleanMetadata(item.conversation, item) }),
       quote: clean(redact(item.text).text, true) }));
     const openQuestions = questions.map(note => { const source = journal.view.turns.get(note.source)!;
-      return { id: note.source, date: dated(source), ...(source.thread === current ? {} : { conversation: conversationName(source.thread, topicNames(journal.view)) }),
+      return { id: note.source, date: dated(source), ...(source.thread === current ? {} : { conversation: packetConversation(source.thread) }),
         from: speakerOf(source), question: clean(redact(note.quote).text, true), reason: note.reason }; });
     const crossed = [...earlier, ...(summary ? recalled : [])].some(item => item.thread !== current);
     const activeDated = journal.view.dated.filter(item => !journal.view.memory.some(change =>
@@ -6658,19 +6722,19 @@ export function createJournalWorker(journal: ReturnType<typeof openPreviewJourna
       && clean(item.quote, true, item.source) === item.quote);
     const selectedDated = datedSelection(activeDated, question?.text ?? '', ports.now(),
       ports.timeZone ?? 'America/Los_Angeles');
-    const due = selectedDated.items.map(item => ({ ...item,
+    const due = selectedDated.items.map(item => ({ ...item, ...forumSource(item.source),
       quote: redact(item.quote).text, when: redact(item.when).text }));
     const pendingDates = journal.view.order.filter(item => remembered(item) && item.update <= through && item.datedPending
       && !journal.view.memory.some(change => change.mode !== 'prefer' && change.in !== 'reply' && change.source === item.id));
     const datedPending = pendingDates.slice(0, 3)
-      .map(item => ({ update: item.update, message: clean(redact(item.text).text, true, item.id).slice(0, 500) }));
+      .map(item => ({ update: item.update, ...forumSource(item.id), message: clean(redact(item.text).text, true, item.id).slice(0, 500) }));
     const previous = awayFor && journal.view.order.filter(item => remembered(item) && fromOperator(item) && item.update < awayFor.update).at(-1);
     const previousMessage = previous ? clean(redact(previous.text).text, true, previous.id) : undefined;
     const selectedName = previous?.lastNamedPerson;
     const lastNamedPerson = selectedName && previousMessage?.includes(selectedName)
       && clean(redact(selectedName).text, true, previous.id) === selectedName
       ? { name: selectedName, from: speakerOf(previous), date: dated(previous),
-        ...(previous.thread === current ? {} : { conversation: conversationName(previous.thread, topicNames(journal.view)) }),
+        ...(previous.thread === current ? {} : { conversation: packetConversation(previous.thread) }),
         message: previousMessage } : undefined;
     const preferences = preferenceState();
     const reference = awayFor === undefined ? undefined : referenceFor(awayFor);
@@ -6777,7 +6841,7 @@ export function createJournalWorker(journal: ReturnType<typeof openPreviewJourna
         + (reference ? ' replyTo identifies an earlier Telegram message. Use retained journal text only; unavailable means do not infer its content from the embedded reply quote.' : '')
         + (undecidedEdits.length ? ' undecidedEdits records revisions and operator corrections whose fact change could not be judged. Use the current revision or correction and treat any conflicting prior claim as uncertain. moreUndecidedEdits counts older unresolved items omitted by the bound; an earlier claim they may concern is uncertain too.' : '')
         + (journal.view.genesis.forum === true
-          ? ' History and recalled items name their original topic in this group. Replies are visible to the group, not just the operator. Do not disclose private sources to this audience.'
+          ? ' audience.conversation is the topic of the current message and reply. Shared memory items name their source topic in conversation or sourceLabel; a remembered fact does not change the current topic. Use facts across topics and say where you learned them. Replies are visible to packet.audience. Only when operatorOnlyVerified is true may you use the operator’s own private information as in their private chat; protect third-party confidences and secrets.'
           : labelAll ? ' Every history item names the conversation of this private chat it was said in, with its date.'
           : crossed ? ' Items with a conversation field were said by the same operator in another conversation of this private chat, named there with its date; the operator is the only audience of every conversation, so they are your shared memory and may be used here.' : ''),
       ...(operatorRequest ? { operatorRequest } : {}), ...(otherOperatorRequest ? { otherOperatorRequest } : {}),
@@ -6785,9 +6849,9 @@ export function createJournalWorker(journal: ReturnType<typeof openPreviewJourna
         quote: clean(redact(item.quote).text, true), due: `${reminderDue(item)} ${item.zone}`,
         ...(item.recurrence ? { recurrence: item.recurrence, time: item.time, zone: item.zone, stop: 'Ask to cancel this request.' } : {}) })) } : {}),
       audience: { surface: journalAudience(journal.view.genesis), chat: journal.view.genesis.chat,
-        ...(journal.view.genesis.forum === true ? { conversationId: journalConversation(journal.view.genesis, current), recipients: 'configured forum group' } : {}),
+        ...(journal.view.genesis.forum === true ? { conversationId: journalConversation(journal.view.genesis, current), recipients: 'configured forum group', operatorOnlyVerified } : {}),
         operator: journal.view.genesis.operator, ...(operatorName(journal.view) === undefined ? {} : { operatorName: operatorName(journal.view) }),
-        ...(current === undefined && !crossed ? {} : { conversation: conversationName(current, topicNames(journal.view)) }) },
+        ...(current === undefined && !crossed && !journal.view.genesis.forum ? {} : { conversation: packetConversation(current) }) },
       ...(suppliedSources === undefined ? {} : { sources: suppliedSources }),
       ...(reference ? { replyTo: reference } : {}),
       ...(summary ? { historyMode: 'summary-plus-recent', summary: { sourceKind: 'inferred-by-summary' as MemorySourceKind, sourceLabel: summaryLabel(summary), through: summary.through, text: clean(redact(summary.text).text, true, summary.through),
@@ -6878,9 +6942,9 @@ export function createJournalWorker(journal: ReturnType<typeof openPreviewJourna
       summary: latestSummary?.text ?? '',
       candidates: older.map(item => ({ text: `${clean(item.text, true, item.id)} ${replyFor(item)}`, at: sentAt(item) ?? 0 })) });
     const recentAnswer = older.map(item => item.intent !== undefined && item.noticeClass === undefined).lastIndexOf(true);
-    const candidates = [...new Set([...(recentAnswer < 0 ? [] : [recentAnswer]), ...ranked])].slice(0, 5).map(index => ({ id: older[index]!.id, sourceLabel: turnLabel(older[index]!), sourceKind: 'operator-stated' as MemorySourceKind,
+    const candidates = [...new Set([...(recentAnswer < 0 ? [] : [recentAnswer]), ...ranked])].slice(0, 5).map(index => ({ id: older[index]!.id, ...forumSource(older[index]!.id), sourceLabel: turnLabel(older[index]!), sourceKind: 'operator-stated' as MemorySourceKind,
       message: clean(redact(older[index]!.text).text, true, older[index]!.id).slice(0, 1000), reply: replyFor(older[index]!).slice(0, 1000) }));
-    const preferenceCandidates = activePreferences().map(item => ({ id: item.source, sourceKind: 'operator-stated' as MemorySourceKind,
+    const preferenceCandidates = activePreferences().map(item => ({ id: item.source, ...forumSource(item.source), sourceKind: 'operator-stated' as MemorySourceKind,
       message: redact(item.quote).text.slice(0, 1000), reply: '' }));
     const saidOlder = older.map(item => ({ text: clean(item.text, true, item.id),
       at: journal.view.memory.some(change => change.mode === 'forget' && change.source === item.id) ? 0 : sentAt(item) ?? 0 }));
@@ -7470,6 +7534,17 @@ export function createJournalWorker(journal: ReturnType<typeof openPreviewJourna
           // Leave a shared-budget slot for a full-context review if Jev cannot pass.
           if (journal.view.calls >= journal.view.limits.maxCalls - (ports.replyCheck ? 1 : 0)) {
             journal.append({kind:'hold',id:turn.id,reason:'call cap',at:ports.now()}); continue;
+          }
+          if (!turn.media) {
+            const update = JSON.parse(turn.raw) as TelegramUpdate;
+            const media = telegramInboundMedia(update.edited_message ?? update.message);
+            if (media) {
+              let result: MediaCustodyResult;
+              try { result = ports.media ? await ports.media.receive(turn.id, media) : { state: 'unavailable' }; }
+              catch { result = { state: 'failed' }; }
+              gate();
+              journal.append({ kind: 'media-custody', id: turn.id, result, at: ports.now() });
+            }
           }
           let selected = await prepareRecall(() => preparedFor(turn));
           if ('reason' in selected) {
@@ -8321,6 +8396,29 @@ export function createJournalWorker(journal: ReturnType<typeof openPreviewJourna
                   revised = candidate;
               }
             }
+            // Claim excision changes the answer's meaning. Reuse the one revision-review slot to judge
+            // the exact remainder with full context; never infer coherence from nonempty text. If that slot
+            // already reviewed a different rewrite, keep the holding notice rather than reuse its verdict.
+            let withheld: ClaimWithheld | undefined, scoped: string | undefined, nothingLeft = false;
+            if (revised === undefined && (!turn.revisionReviewReserved || turn.revisionReviewRemainder !== undefined) && holding && !audienceUnreviewed && !credentialHeldClass(turn, candidateDigest)) {
+              const named = reviewHoldingFindings(turn, candidateDigest);
+              const stripped = (actionHeader === undefined ? reply : reply.slice(actionHeader.length + 1))
+                .replace(/^PREVIEW(?=$|[\s:—])(?:\s*[:—])?\s*/u, '');
+              const body = continuity && stripped.startsWith(continuity.disclosure)
+                ? stripped.slice(continuity.disclosure.length).trimStart() : stripped;
+              const claims = named.findings.flatMap(finding => namedClaimsIn(finding.reason, body));
+              const cut = exciseNamedClaims(body, claims);
+              withheld = { rules: named.rules, removed: cut.removed, unlocated: cut.unlocated };
+              if (cut.removed.length) {
+                nothingLeft = true; // Held until the full-context reviewer clears this exact remainder.
+                const candidate = actionHeader === undefined ? disclosed(cut.text) : `${actionHeader}\n${cut.text}`;
+                if ((turn.revisionReviewRemainder === undefined || turn.revisionReviewRemainder === candidate)
+                  && substantiveReply(cut.text) && !redact(candidate).count && !secretMaterialIn(candidate, heldValues) && fits(candidate)) {
+                  scoped = candidate; revised = candidate;
+                  objection = named.findings.filter(finding => namedClaimsIn(finding.reason, body).length).map(finding => finding.reason).join(' ');
+                } else nothingLeft = true;
+              }
+            }
             // Rules 6, 8: the revised text is a new candidate. It carries only the original answer's admitted
             // declarations (filtered against its text at the intent), so it is selected only when one bounded
             // contextual review of exactly this text, with that declared record, clears the held classes. No
@@ -8330,11 +8428,12 @@ export function createJournalWorker(journal: ReturnType<typeof openPreviewJourna
             if (revised !== undefined) {
               if (!turn.revisionReviewReserved && journal.view.calls < journal.view.limits.maxCalls && inTime()) {
                 gate();
-                journal.append({ kind: 'reply-revision-review-reserve', id: turn.id,
+                journal.append({ kind: 'reply-revision-review-reserve', id: turn.id, ...(scoped === undefined ? {} : { remainder: scoped }),
                   maxInputTokens: journal.view.limits.maxBytes, maxOutputTokens: subscriptionOutputMaximum, at: ports.now() });
                 let result: { verdict: 'pass' | 'violation' | 'unavailable'; ruleIds: ReplyRule[]; reason?: string; findings?: ReplyFinding[]; usage?: ModelUsage };
                 try {
-                  const reviewed = await ports.replyCheck.escalate(revised, turn.id, originalPrompt, revisionReviewRules(originalPrompt),
+                  const reviewed = await ports.replyCheck.escalate(revised, turn.id, scoped !== undefined && originalPrompt !== undefined
+                    ? replyRemainderPrompt(originalPrompt, withheld!.removed) : originalPrompt, [...revisionReviewRules(originalPrompt), ...(scoped === undefined ? [] : ['incoherent_remainder' as const])],
                     loopDeadline, 'revision');
                   result = { verdict: reviewed.verdict === 'pass' ? 'pass' : 'violation',
                     ruleIds: Array.isArray(reviewed.ruleIds) ? reviewed.ruleIds.filter(rule => typeof rule === 'string') : [],
@@ -8346,32 +8445,9 @@ export function createJournalWorker(journal: ReturnType<typeof openPreviewJourna
               }
               const check = turn.revisionReview;
               if (!(check?.verdict === 'pass' || check?.verdict === 'violation'
-                && !check.ruleIds.some(rule => REVIEW_HOLDING_RULES.includes(rule)))) revised = undefined;
-            }
-            // THE CLAIM-SCOPED FLOOR (plan #215; Rules 2, 4, 42, 77, 86, 95): a gate withholds only what it
-            // NAMED. The two credential floors keep the whole-reply notice, because what they name is the reply's
-            // fitness to leave at all. A full-context objection on an untracked deferral or an unevidenced
-            // cannot-do claim names CONTENT, and its reason quotes that claim, so the sentences carrying the claim
-            // are removed from the reviewed candidate and the rest of the answer is sent. Nothing is paraphrased,
-            // rewritten or added, and no further call is made: this is deterministic enforcement of the recorded
-            // judgment, not a second judgment. What was removed, and any named claim no sentence carried, is
-            // recorded with the send and counted, so neither a withholding nor a pass is silent.
-            let withheld: ClaimWithheld | undefined, scoped: string | undefined, nothingLeft = false;
-            if (revised === undefined && holding && !audienceUnreviewed && !credentialHeldClass(turn, candidateDigest)) {
-              const named = reviewHoldingFindings(turn, candidateDigest);
-              const stripped = (actionHeader === undefined ? reply : reply.slice(actionHeader.length + 1))
-                .replace(/^PREVIEW(?=$|[\s:—])(?:\s*[:—])?\s*/u, '');
-              const body = continuity && stripped.startsWith(continuity.disclosure)
-                ? stripped.slice(continuity.disclosure.length).trimStart() : stripped;
-              const claims = named.findings.flatMap(finding => namedClaimsIn(finding.reason, body));
-              const cut = exciseNamedClaims(body, claims);
-              withheld = { rules: named.rules, removed: cut.removed, unlocated: cut.unlocated };
-              if (cut.removed.length) {
-                const candidate = actionHeader === undefined ? disclosed(cut.text) : `${actionHeader}\n${cut.text}`;
-                if (substantiveReply(cut.text) && !redact(candidate).count && !secretMaterialIn(candidate, heldValues) && fits(candidate)) {
-                  scoped = candidate;
-                  objection = named.findings.filter(finding => namedClaimsIn(finding.reason, body).length).map(finding => finding.reason).join(' ');
-                } else nothingLeft = true;
+                && !check.ruleIds.some(rule => REVIEW_HOLDING_RULES.includes(rule) || scoped !== undefined && rule === 'incoherent_remainder'))) revised = undefined;
+              if (scoped !== undefined) {
+                scoped = revised; revised = undefined;
               }
             }
             const dispositions = turn.revision?.dispositions && validDispositions(turn.revision.dispositions, objections)
@@ -9461,9 +9537,9 @@ export function createJournalWorker(journal: ReturnType<typeof openPreviewJourna
         const recentAnswer = older.map(item => item.intent !== undefined && item.noticeClass === undefined).lastIndexOf(true);
         const memoryCandidates = [...(journal.view.groupCarry ? groupCarryPacket(journal.view.groupCarry, trigger?.text ?? '', ports.now(), journal.view.limits.maxBytes, journal.view).entries
           .filter(item => item.kind === 'recall' || item.kind === 'preference' || item.kind === 'correction')
-          .map(item => ({ id: item.source, sourceKind: 'operator-stated' as MemorySourceKind, message: item.text, reply: '' })) : []), ...(replaced ? [{ id: replaced.id, sourceKind: 'operator-stated' as MemorySourceKind, message: redact(replaced.text).text,
-          reply: replyFor(replaced) }] : []), ...activePreferences().map(item => ({ id: item.source, sourceKind: 'operator-stated' as MemorySourceKind, message: redact(item.quote).text, reply: '' })),
-          ...[...new Set([...(recentAnswer < 0 ? [] : [recentAnswer]), ...ranked])].slice(0, 5).map(index => ({ id: older[index]!.id, sourceKind: 'operator-stated' as MemorySourceKind, message: clean(redact(older[index]!.text).text, true, older[index]!.id),
+          .map(item => ({ id: item.source, sourceKind: 'operator-stated' as MemorySourceKind, message: item.text, reply: '' })) : []), ...(replaced ? [{ id: replaced.id, ...forumSource(replaced.id), sourceKind: 'operator-stated' as MemorySourceKind, message: redact(replaced.text).text,
+          reply: replyFor(replaced) }] : []), ...activePreferences().map(item => ({ id: item.source, ...forumSource(item.source), sourceKind: 'operator-stated' as MemorySourceKind, message: redact(item.quote).text, reply: '' })),
+          ...[...new Set([...(recentAnswer < 0 ? [] : [recentAnswer]), ...ranked])].slice(0, 5).map(index => ({ id: older[index]!.id, ...forumSource(older[index]!.id), sourceKind: 'operator-stated' as MemorySourceKind, message: clean(redact(older[index]!.text).text, true, older[index]!.id),
           reply: replyFor(older[index]!) })).filter(item => item.id !== replaced?.id), ...(trigger ? channelCandidates(trigger, summaryFor(trigger.update)?.text) : [])];
         const unanswered = overCapRetry ? [] : unreviewedQuestions(through).slice(0, PREVIEW_QUESTION_LIMIT);
         // A briefing-free fallback is reached only when no packet that carries the sources was chosen.

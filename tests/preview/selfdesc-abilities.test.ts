@@ -39,8 +39,8 @@ it('keeps historical K11a results and replaces the old description with current 
   const note = capabilityBriefing(path => readFileSync(resolve(process.cwd(), path), 'utf8'),
     { providerAttempts: 1000, expiresAt: 1791232800000, tools: true, mcp: 0 }).text;
   const replays = JSON.parse(read('k11a-replays.json')) as { note: string; runs: { kind: string; input: string; verdict: string; reply: string }[] };
-  // Captured model results stay historical. Forum routing widens only the declared
-  // conversation and recurring-request capabilities; tool, account, custody and authority wording stays exact.
+  // Captured model results stay historical. The current note describes self-knowledge and the merged
+  // forum/media abilities in user language; recorded packet and verdict bytes remain unchanged.
   const current = JSON.parse(read('k11a-agentready-replays.json')) as { note: string; system: string;
     runs: { kind: string; input: Envelope; raw: string; reply: string; judge: { verdict: string; rubric: string } }[] };
   const oldConversation = '- preview-conversation: answers the operator in their private Telegram chat and topics, one reply per admitted message.';
@@ -50,6 +50,8 @@ it('keeps historical K11a results and replaces the old description with current 
   expect(note).toContain('I can keep reminders and repeating tasks');
   expect(current.note).not.toBe(note);
   expect(note).toContain('Instar 2.0');
+  expect(note).toContain('I save photos, audio and files securely with text descriptions');
+  expect(note).toContain('fetch-inbound-media');
   expect(note).not.toMatch(/\b(?:Claude|Codex|GPT(?:-\w+)?|Opus|Sonnet|Gemini|Haiku)\b/iu);
   expect(current.system).not.toBe(SUBSCRIPTION_TOOLS_SYSTEM_PROMPT);
   expect(SUBSCRIPTION_TOOLS_SYSTEM_PROMPT).toContain('You are an Instar 2.0 agent');

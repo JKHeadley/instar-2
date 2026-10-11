@@ -38,8 +38,10 @@ describe('P14-NF-70: the family is the one reply review, never a second gate', (
   });
   it('the context questions are never asked of Jev, and ride every contextual review that runs', () => {
     for (const rule of CONTEXT_RULES) expect(Object.hasOwn(jevQuestions, rule)).toBe(false);
-    // The sensitivity member's audience question is never asked of Jev either (sensitivity.test.ts).
-    expect(Object.keys(jevQuestions)).toHaveLength(Object.keys(REPLY_RULES).length - CONTEXT_RULES.length - 1);
+    // Audience and remainder coherence need full context; neither is asked of Jev.
+    expect(Object.keys(jevQuestions)).toHaveLength(Object.keys(REPLY_RULES).length - CONTEXT_RULES.length - 2);
+    expect(Object.hasOwn(jevQuestions, 'incoherent_remainder')).toBe(false);
+    expect(guidanceReviewRules(['incoherent_remainder'])).toEqual([...CONTEXT_RULES]);
     expect(guidanceReviewRules(['defers_work'])).toEqual(['defers_work', 'self_state_claim', 'breaks_preference']);
     expect(guidanceReviewRules(['self_state_claim'])).toEqual(['self_state_claim', 'breaks_preference']);
     expect(replyReviewQuestion(guidanceReviewRules(['credential']))).toContain('packet.declaredObligations is what the runner admitted');

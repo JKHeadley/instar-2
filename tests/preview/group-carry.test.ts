@@ -279,3 +279,31 @@ it('recovers a held real recorded answer (proof-room update 715672480) without c
   expect(calls).toBe(1); expect(sends).toHaveLength(1); expect(sends[0]).toContain(recorded.text);
   resumed.close();
 });
+
+it('replays all recorded model shapes through carried recall after the disclosure checkpoint recovers', async () => {
+  const captured = JSON.parse(readFileSync(new URL('./fixtures/retrospective-duty-followup-train-1-2026-10-08.json',
+    import.meta.url), 'utf8')) as { otherShapes: { kind: string; id: string; raw: string }[] };
+  expect(captured.otherShapes.map(shape => shape.id)).toEqual(['summary:715672480', '715672483', '715672482',
+    '969389570', '969389923', 'telegram:8994258214:update:715672479', 'telegram:8994258214:update:715672550']);
+  for (const shape of captured.otherShapes) {
+    const w = await world();
+    appendGroupCarry(w.destination, w.source, scope, permission(), true, now, () => false); w.source.close();
+    let allowed = false, calls = 0;
+    const sends: string[] = [];
+    const worker = createJournalWorker(w.destination, { now: () => now + 1000, stopped: () => false,
+      groupDisclosure: async () => allowed,
+      model: async input => {
+        calls++;
+        expect(JSON.parse(input.context).predecessorMemory.entries.length, shape.id).toBeGreaterThan(0);
+        return shape.kind === 'summary-uncertain' ? JSON.parse(shape.raw) as { state: 'uncertain' } : shape.raw;
+      },
+      send: async input => { sends.push(input.expectedText); return sends.length; }, checkOutbound: () => {} });
+    worker.intake([update(2, 'What meeting place do you remember?', true)]); await worker.drain();
+    expect(calls, shape.id).toBe(0); expect(sends, shape.id).toEqual([]);
+    expect(w.destination.view.order[0]!.held, shape.id).toBe('group disclosure refused');
+    allowed = true; await worker.drain();
+    expect(calls, shape.id).toBe(1);
+    expect(sends.every(text => text.trim().length > 0), shape.id).toBe(true);
+    w.destination.close();
+  }
+});

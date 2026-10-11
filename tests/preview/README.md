@@ -8,10 +8,11 @@ The prefix is present before HTML rendering, digesting, and Eight preparation. T
 
 ## Capabilities
 
-The journal runner's capability briefing is generated from these lines and the feature declarations in `journal.declarations.json`; see `generated/capabilities.json`. Add a line here and a declaration there together, or the register build fails. Each line is the one-line briefing text; its indented `Details:` line keeps the full description, which the briefing does not carry.
+The journal runner's capability briefing is generated from these lines and the feature declarations beside the shipped sources; see `generated/capabilities.json`. Add a line here and a declaration there together, or the register build fails. Each line is the one-line briefing text; its indented `Details:` line keeps the full description, which the briefing does not carry.
 
-- `preview-conversation`: I keep track across topics and answer you where you asked.
-  Details: only the verified operator is admitted; a forum journal serves all topics of one configured group, including General, with topic-specific recent history and harness sessions. Unknown send outcomes are never resent.
+- `fetch-inbound-media`: saves inbound Telegram files with bounded effect admission; refused downloads retain the original message.
+- `preview-conversation`: I keep track across topics and answer you where you asked; I save photos, audio and files securely with text descriptions.
+  Details: only the verified operator is admitted; a forum journal serves all topics of one configured group, including General, with topic-specific recent history and harness sessions. Forum packets identify the current topic (General, its recorded name, or topic number); shared facts carry their source topic so the agent can attribute them across topics. Private-chat packets retain their existing format. Unknown send outcomes are never resent.
 - `preview-durable-memory`: I remember what matters across all our conversations; tell me if I have something wrong, or ask me to forget it.
   Details: keeps accepted messages, summaries and validated memory changes in one encrypted local journal that survives restarts and spans the trial's topics; the operator can ask to correct or forget a recorded fact, later replies withhold the old claim, and the original audit record stays in the journal. It is not production or other-agent memory.
 - `preview-status-command`: I can tell you how I am doing from my current records.
@@ -83,6 +84,15 @@ command takes both roots' existing exclusive single-machine writers, so it refus
 runner is live; park the private root (stop it) first.
 This command does not create or infer an approval. An activation grant alone cannot authorize it.
 
+Every model/review/send boundary still checks current disclosure authority and actual membership.
+Answer and review packets identify a currently verified operator-and-bot-only audience, which may
+receive the operator's own private information. Other members or unavailable membership evidence
+keep the existing disclosure hold; third-party confidences and credential protections remain intact.
+Claim removal uses the existing bounded revision review to judge the exact remainder against the
+question and the removed claims. Without a coherent cleared remainder, the content-free holding
+notice is sent. The reserved remainder and its verdict survive restart; an uncertain review is never
+repeated. A review slot already spent on another rewrite cannot clear a different remainder.
+
 The existing sealed `PreviewActivationAuthority` record must contain a `groupDisclosureGrants`
 entry with `id`, `grantor` (operator ID), `grantee: "echo-desk"`, the exact operator `words`, their
 authenticated `source` message reference, matching `issuedAt`, optional `expiresAt`, and:
@@ -110,6 +120,9 @@ Telegram reads must establish a forum with exactly two members: the named human 
 named agent bot, with no public username or linked chat admitting a wider audience.
 Unknown membership, another member, expiry, revocation or mismatched scope refuses
 the copy. Keep the same authority and operator-record paths on subsequent `run` invocations.
+The initial carry binds the physical destination root. Serving a moved or copied encrypted journal
+keeps that original lineage scope; it does not require a new grant for the filesystem path.
+Replay verifies the same bot, operator and group, and conversation ownership still admits one runner.
 Model/review calls and group sends recheck authority and membership; Telegram does not provide an
 atomic membership-and-send operation, so a membership change after its last response remains a race.
 Local zero-charge semantic rerankers remain available, including on carried roots. A host binding
@@ -4057,3 +4070,60 @@ that label. Internal registry names, identity references and journal notice keys
 stay unchanged, so existing sent or uncertain reminders remain spent on restart.
 No journal rewrite is needed. A custom label still passes the existing public-label
 secret checks before it is included in model facts.
+
+### Inbound media custody
+
+The journal launcher accepts the bound operator's Telegram photos, voice/audio and
+files as ordinary turns, with kind, name, reported byte size and caption. The
+original update is encrypted and flushed before the cursor advances or download
+starts. The existing answer worker downloads after admission, before preparing its
+model packet. A `media-custody` journal row records the outcome on that same turn;
+it never creates a second sender event or a separate reply.
+
+`media-admission.ts` registers `fetch-inbound-media` with the existing four-test
+boundary, using the installed conversation grant only for its verified inbound
+file. Current effect policy may narrow that authority. The exact source, file
+digest, bot account, topic, Telegram target, custodian, limits and policy decision
+are durable before Six reserves, claims and consumes the fetch. Both HTTP requests
+recheck current source, policy, owner, stop and lifetime. The host credential is
+read only after admission and its bot id must match the admitted account. Missing
+admission, policy loss or revocation performs no further network request and leaves
+an honest outcome for the existing answer. No extra queue or paid provider is added.
+
+Signed request and claim facts live under `root/media-claims/<source-hash>` and are
+never pruned. The preview composition uses its existing fixture signing identity,
+like `six-host-resources.ts`; it does not certify independent physical key custody.
+A crash before complete encrypted bytes exist leaves an uncertain one-use claim;
+a restart preserves that evidence and reports refusal rather than fetching again.
+
+`telegram-media.ts` uses the existing durable-write primitive to retain encrypted
+bytes under `root/media`, addressed by a hash of the original turn identity. Names
+from Telegram never become paths. Downloads allow only the fixed Telegram origin,
+refuse redirects and unsafe returned paths, stream at most 8 MiB, and have a
+20-second deadline covering both metadata and file. A single worker owns the store;
+it reserves worst-case encrypted space before downloading against a 96 MiB ceiling.
+Capacity refusal retains existing files and the original intake. Nothing is pruned.
+Download, size and storage failures become plain statements in the answer packet.
+The runner holds the key and bot credential; file contents and provider URLs never
+reach model input. Caption and name text still pass ordinary secret custody/redaction.
+
+This launcher currently submits text to its harnesses and has no installed local
+transcription route. Each photo or audio turn explicitly states that it cannot be
+seen or listened to; documents are saved but not read. No transcription provider or
+additional model call is introduced. The same spend cap, stop, audience and reply
+uniqueness checks still hold. A stopped or displaced owner aborts its download.
+
+Media bytes are deliberately machine-local encrypted custody, not replicated
+journal payloads. Replicated journal rows retain the original reference and result;
+The media store is declared beside its existing durable-write primitive. The existing
+hourly `media-custody` store agreement and `status.media.missing` check each stored reference on the current machine and reports
+missing or corrupt custody. A crash after storing a file but before the result row
+reuses the exact encrypted file without another fetch. A crash before a complete
+file exists leaves the captured turn pending. After a recorded failure there is no
+automatic retry storm. Rollback must keep roots with `media-custody` rows on a reader
+that understands them; never discard those rows or ciphertext to downgrade.
+
+The photo, voice and document fixtures in `fixtures/telegram-media` were supplied by
+the desk under observer #207, synthesized from Telegram's API documentation, and are
+labelled as such. They are not recorded platform evidence. A live Telegram media
+proof and macOS confinement verification belong to the desk's gate host.
