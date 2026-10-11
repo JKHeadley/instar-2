@@ -22,6 +22,8 @@ Decision: verification-versus-signoff | retain the existing critical/significant
 Decision: onboarding-policy | align P-05 and P-06 in the same change because their fixed starting restrictions and removed-rule reference otherwise contradict one-conversation role grants. | reported=/Users/dabombstudio/.instar/agents/echo/.instar/lanes/docs-amend-1010-PROGRESS.md
 Decision: publication-pins | regenerate the existing register publication anchor, hash literal and derived artifacts; these bind the documentation bytes and confer no runtime authority. No build logic changes. | reported=/Users/dabombstudio/.instar/agents/echo/.instar/lanes/docs-amend-1010-PROGRESS.md
 
+Decision: historical-replay | publish shape-only derived documents using the prior publication source timestamp 1790777313000 because current-time replay refuses the unchanged rungraph-core graduation deadline. Report the real-clock check as failing; never infer runtime authority or readiness from historical replay. | reported=/Users/dabombstudio/.instar/agents/echo/.instar/lanes/docs-amend-1010-PROGRESS.md
+
 ## Closing block
 
 simplestRobustRoute: This is the simplest robust route: insert the exact approved text, update existing consumers and history, and replay the existing register. Add no runtime mechanism or new gate; retain independently enforced safeguards and verification while removing extra sign-off interpretations.

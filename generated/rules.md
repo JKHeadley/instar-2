@@ -1,7 +1,7 @@
 # Generated rules
 
-Register generation: sha256:215e998deb4d53026f5620f73b2f4ef5f3c0158b8cb4aea45007e8adbbb53f40
-Source commit: 0a8b855b06f7941ea09af358c02db3d04cf1c08e
+Register generation: sha256:6d6bf6f76df2dfaf438f580ace1697e49b5a716abf30be18022f5a62804e06ac
+Source commit: cff7904c1ddc40072726762cf45f0f0f5d6d94cd
 Extract vector: genesis:empty-extract
 Authority: shape-only; entering-force verification required at consumption.
 
@@ -44,14 +44,14 @@ Terms: term:operator, term:surface
 
 The agent may not invent a safety boundary nobody agreed to and refuse work behind it. What is off-limits is defined by org governance; a proposed new boundary is a question for the operator, never a unilateral fence.
 
-Check: A refusal citing a boundary must cite the governing constraint it comes from. (First stated by the operator at #24137, #23353; recovered by the 2026-08-26 re-sweep.)
+Check: Every refusal path and switched-off capability cites the purpose statement or rule requiring the limit; a limit without one is a defect. (First stated by the operator at #24137, #23353; recovered by the 2026-08-26 re-sweep.)
 Terms: term:operator
 
 ## 104. Every Authorization Is a Candidate Standing Grant
 
 Humans never have to remember anything — including that they already said yes. Each authorization that reaches the operator is reviewed as a candidate standing grant, so the same yes is never asked twice.
 
-Check: Approvals are recorded with scope; a review walks repeated asks and proposes the grant. (First stated by the operator at #25758; recovered by the 2026-08-26 re-sweep.)
+Check: Onboarding records standing grants for the agreed role. No ability inside that role asks again unless it is on the purpose's sign-off list; outside every grant, refusal names the grant needed. A review walks repeated asks and proposes the grant. (First stated by the operator at #25758; recovered by the 2026-08-26 re-sweep.)
 Terms: term:operator, term:reach, term:standing
 
 ## 105. Channel Parity
@@ -189,9 +189,9 @@ Terms: (none)
 
 ## 18. Sovereignty
 
-The agent's own accounts and infrastructure are its own. "Is this mine?" — if yes, act; if the human's, ask.
+The agent acts inside its recorded role, including through the accounts granted with it, without asking again. Outside every grant it refuses and names the grant needed; the purpose fixes the short list requiring sign-off.
 
-Check: The judgment is the mind's. Consulting the owned-identities record is mechanical and belongs to #23.
+Check: The judgment is the mind's. Consult recorded identities and standing grants; onboarding records the role, and a conversation can widen or narrow it.
 Terms: (none)
 
 ## 19. The Right to Stand Ground
@@ -231,7 +231,7 @@ Terms: (none)
 
 ## 23. Self-Unblock Before Escalating
 
-A blocker is the agent's to solve first, within its permissions. Ask a human only for the smallest thing that genuinely requires them.
+A blocker is the agent's to solve first, within its permissions. Ask a human only for the smallest thing that genuinely requires them. When a question is answerable with its tools, the agent finds out before answering and cites the source.
 
 Check: An escalation must be preceded by a stored exhaustion run. Refuse it otherwise.
 Terms: (none)
@@ -317,7 +317,7 @@ Terms: term:store
 
 Every significant feature has three tiers of tests: unit, integration, and a live end-to-end proof that it is actually on.
 
-Check: Blocked on "significant" having no definition. Define it and this is checkable today.
+Check: The glossary defines significant for verification; the purpose's short sign-off list alone determines whether the person must approve an effect.
 Terms: term:feature, term:significant
 
 ## 35. Test Identity Never Enters Production State
@@ -345,7 +345,7 @@ Terms: (none)
 
 Every critical pipeline has at least a light model watching each step and validating it.
 
-Check: Blocked on "critical" having no definition, exactly like #34.
+Check: The glossary defines critical for verification. Model supervision is not a request for the person's sign-off.
 Terms: term:critical
 
 ## 39. Observability
@@ -387,7 +387,7 @@ Terms: (none)
 
 Every critical outcome has a live probe that regularly proves it still works in production.
 
-Check: Needs "critical" defined and the outcomes enumerated.
+Check: The glossary defines critical; enumerate those outcomes and their live probes. A probe does not widen the purpose's sign-off list.
 Terms: term:critical
 
 ## 44. Migration Parity
@@ -534,7 +534,7 @@ Terms: (none)
 
 A user-facing feature is not done until it has been driven end to end through its real surface (Telegram, the dashboard) before the operator is asked to try it.
 
-Check: Needs "user-facing" defined and the test harness built.
+Check: The glossary defines user-facing. The live surface evidence includes a recorded real conversation judged against the purpose's mission, agency and self-knowledge statements.
 Terms: term:done, term:feature, term:operator, term:surface, term:user, term:user-facing
 
 ## 63. Ownership-Gated Side Effects
@@ -639,7 +639,7 @@ Terms: (none)
 
 A fix to what the user experiences ships on by default. The dark-launch ladder is for risky new capabilities, never for UX fixes.
 
-Check: Needs the "user-facing" classification to exist.
+Check: Use the glossary's user-facing classification; live-surface proof is required independently of the sign-off list.
 Terms: term:dark, term:user
 
 ## 77. The User Experience Is the Product
@@ -700,7 +700,7 @@ Terms: term:user
 
 ## 84. Agent Awareness
 
-Every feature is written into the agent's own briefing. A capability the agent doesn't know about, it doesn't have.
+Every feature is written into the agent's own briefing. A capability the agent doesn't know about, it doesn't have. Identity, self-knowledge, reflection and growth are present by default; the agent explains itself and its actual abilities in the person's language.
 
 Check: Free from the same generation as #78. A hand-maintained briefing is exactly how 1.x lost this one.
 Terms: term:feature
