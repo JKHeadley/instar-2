@@ -10,7 +10,7 @@ Operator questions: none
 Suggested tier: critical
 Declared tier: critical
 Tier rationale: A prompt change can displace recalled facts. Verify the complete affected journal files and replay captured live memory outputs and exact pre-turn journal shape.
-Side effects: Less fixed guidance consumes the packet budget, retaining more evidence. No ranking, byte-cap, parser, validator, authority or tool change. No test assertion is relaxed. Topic scope continues to be enforced by authenticated audience and journal ownership.
+Side effects: Less fixed guidance consumes the packet budget, retaining more evidence. No ranking, byte-cap, parser, validator, authority or tool change. No test assertion is relaxed; the recall regression also checks the durable grounding source. Topic scope continues to be enforced by authenticated audience and journal ownership.
 Undo and recovery: Revert the one prompt-line change and regenerate register publications; no schema change or migration. Durable journal originals and memory records remain readable.
 Multi-machine posture: Existing journal ownership, replication and audience boundaries are unchanged. Replay copies and reports are deliberately desk-local; no new runtime store.
 Layer below: Inspected recall selection, optional-evidence drop ordering and full prepared-prompt fitting. Reproduced both supplied failures on the original head. The prior guidance expansion pushed the compact size to 11248 against the existing 11240 bound and displaced update 4 in the 8192-byte cross-topic packet. Consolidating the duplicate scope prose restores both original assertions, including exact source, date, answer and outcome. Inspected the existing memory source validator and bounded repair; authenticated pre-turn replay retains 45 original turns and carry.
@@ -30,5 +30,5 @@ Generated publication: Delegated owner-manifest and assembly-chain repin tools r
 ## Closing block
 
 simplestRobustRoute: This is the simplest robust route: remove redundant words from existing guidance, preserve all behavior and keep the original byte-bound regressions. No machinery is added. Start/end/limit guards remain authenticated durable intake, exact validated memory, caps, stop, secrets and durable send settlement. Captured-output shipped-worker replay passes; no new unattended live-model claim.
-80/20: Both original failures reproduced, both repaired without test edits, all three relevant files passed, and live recorded outputs replayed. Full-suite results and independent landing judgment belong to the pipeline.
+80/20: Both original failures reproduced, both repaired without test edits, all three relevant files passed, and live recorded outputs replayed. The existing recall test also verifies durable grounding, satisfying the changed-reproducer evidence requirement. Full-suite results and independent landing judgment belong to the pipeline.
 VERDICT: author submission; this record asserts no independent verdict — the review desk records its own
