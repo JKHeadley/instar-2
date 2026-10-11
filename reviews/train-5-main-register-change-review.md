@@ -8,7 +8,7 @@ Affected rules: 37, 49, 69, 74, 90, 101, 111, 112, 113, 116
 Affected floors: secrets, spend cap, stop, no duplicate sends and durable intake are unchanged; offline replay grants no runtime authority
 Operator questions: none
 Suggested tier: significant
-Declared tier: small
+Declared tier: ordinary
 Tier rationale: Mechanical recomputation of source hashes and generated publication using the existing canonical hash and register builder.
 Side effects: Register replay now accepts the exact merged source corpus and shape. Content changes continue to fail the existing binding checks.
 Undo and recovery: Revert the publication change and regenerate against the desired committed source; an unmatched anchor is still refused.
