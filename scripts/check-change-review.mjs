@@ -137,7 +137,10 @@ function changeScope() {
       .filter(tip => !isAncestor('HEAD', tip));
   const commits = git('rev-list', 'HEAD', '--not', ...new Set(excluded));
   if (!commits) return new Set();
-  const paths = execFileSync('git', ['diff-tree', '--stdin', '--root', '-m', '-r', '--no-commit-id',
+  // A merge introduces its difference from the destination, not the destination's
+  // already-reviewed history relative to the incoming branch. Incoming edits and
+  // conflict resolutions still appear; each unlanded non-merge commit is scanned too.
+  const paths = execFileSync('git', ['diff-tree', '--stdin', '--root', '--diff-merges=first-parent', '-r', '--no-commit-id',
     '--name-only', '--no-renames', '--diff-filter=AM', '-z'],
   { input: commits + '\n', encoding: 'utf8', maxBuffer: 256 * 1024 * 1024, stdio: ['pipe', 'pipe', 'pipe'] });
   return new Set(paths.split('\0').filter(Boolean));
