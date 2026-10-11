@@ -11,6 +11,7 @@ const GOVERNED = resolve('scripts/check-governed-docs.mjs');
 const env: NodeJS.ProcessEnv = { ...process.env, GIT_AUTHOR_NAME: 'Echo', GIT_AUTHOR_EMAIL: 'echo@example.invalid', GIT_COMMITTER_NAME: 'Echo',
   GIT_COMMITTER_EMAIL: 'echo@example.invalid', GIT_CONFIG_GLOBAL: '/dev/null', GIT_CONFIG_NOSYSTEM: '1' };
 delete env.INSTAR_CHANGE_EVIDENCE;
+delete env.CHANGE_REVIEW_BASE;
 const dirs: string[] = [];
 afterEach(() => { for (const d of dirs.splice(0)) rmSync(d, { recursive: true, force: true }); });
 
@@ -99,6 +100,56 @@ describe('coverage and the frozen round (Rules 74, 109)', () => {
     expect(r.check('open', 'reviews/change.md').status).toBe(0); r.commit('reopen the first round');
     expect(r.check('check').status).toBe(0);
   }, 120_000);
+  it('refuses an untouched frozen governed subject across a remote boundary, then accepts reopening', () => {
+    // Astra MF1: the subject moves with valid version history and complete commit coverage.
+    const r = repo();
+    r.write('README.md', 'fixture\n'); const base = r.commit('base'); adopt(r);
+    const doc = '# G\n\n**Status: approved. Governed.**\n\nThe body.\n';
+    const first = { revision: 1, changes: ['first'] };
+    r.write('docs/g.md', doc); r.write('docs/g.changelog.json', JSON.stringify([first]));
+    r.write('reviews/frozen.md', record(base));
+    expect(r.check('freeze', 'reviews/frozen.md').status).toBe(0);
+    const frozenAt = r.commit('frozen subject');
+    r.git('update-ref', 'refs/remotes/origin/live', frozenAt);
+    expect(r.check('check').status).toBe(0);
+    r.write('docs/g.md', doc.replace('The body.', 'The changed body.'));
+    r.write('docs/g.changelog.json', JSON.stringify([{ revision: 2, changes: ['changed'] }, first]));
+    r.write('reviews/own.md', record(frozenAt)); r.commit('edit frozen subject under own record');
+    const moved = r.check('check'); expect(moved.status).toBe(1);
+    expect(moved.out).toContain('reviews/frozen.md: Rule 109: the subject changed while the review is frozen');
+    expect(moved.out).not.toContain('older-record prompt debt:');
+    expect(r.check('open', 'reviews/frozen.md').status).toBe(0); r.commit('explicitly reopen frozen round');
+    expect(r.check('check').status).toBe(0);
+  }, 120_000);
+  it('refuses an untouched frozen subject edited by HEAD second parent with both parents fetched (r2 MF1)', () => {
+    const r = repo();
+    r.write('README.md', 'fixture\n'); const base = r.commit('base'); adopt(r);
+    const doc = '# G\n\n**Status: approved. Governed.**\n\nThe body.\n';
+    const first = { revision: 1, changes: ['first'] };
+    r.write('docs/g.md', doc); r.write('docs/g.changelog.json', JSON.stringify([first]));
+    r.write('reviews/frozen.md', record(base));
+    expect(r.check('freeze', 'reviews/frozen.md').status).toBe(0);
+    const frozenAt = r.commit('frozen subject');
+    r.git('checkout', '-q', '-b', 'feature');
+    r.write('docs/g.md', doc.replace('The body.', 'The changed body.'));
+    r.write('docs/g.changelog.json', JSON.stringify([{ revision: 2, changes: ['changed'] }, first]));
+    r.write('reviews/feature.md', record(frozenAt)); const feature = r.commit('feature edits frozen subject');
+    expect(r.check('check').out).toContain('Rule 109: the subject changed while the review is frozen');
+    r.git('checkout', '-q', 'main');
+    r.write('destination.txt', 'independent destination change\n');
+    r.write('reviews/destination.md', record(frozenAt)); const destination = r.commit('destination advances');
+    expect(r.check('check').status).toBe(0);
+    r.git('update-ref', 'refs/remotes/origin/live', destination);
+    r.git('update-ref', 'refs/remotes/origin/feature', feature);
+    r.git('merge', '--no-ff', '--no-commit', 'feature');
+    r.write('reviews/merge.md', record(destination)); r.commit('merge feature with coverage');
+    expect(r.git('rev-parse', 'HEAD^2')).toBe(feature);
+    const moved = r.check('check'); expect(moved.status).toBe(1);
+    expect(moved.out).toContain('reviews/frozen.md: Rule 109: the subject changed while the review is frozen');
+    expect(moved.out).not.toContain('not covered by any review record');
+    expect(r.check('open', 'reviews/frozen.md').status).toBe(0); r.commit('explicitly reopen frozen round');
+    expect(r.check('check').status).toBe(0);
+  }, 120_000);
   it('checks nothing before adoption and refuses a record whose base is not its ancestor', () => {
     const r = repo();
     r.write('README.md', 'fixture\n'); r.commit('base');
@@ -165,6 +216,127 @@ describe('prompt findings reach the record (Rules 12, 27)', () => {
     expect(refused.out).toContain("'Prompt review:'");
     r.write('reviews/change.md', record(base, `Prompt review: checked the gate prompt for copied triggers and asserted answers\nPrompt finding: ${id} | quoted-evidence | the phrase is quoted as an example, not the trigger\n`)); r.commit('disposition');
     expect(r.check('check').status).toBe(0);
+  }, 120_000);
+});
+
+describe('only own records require prompt dispositions', () => {
+  const setup = () => {
+    const r = repo();
+    r.write('README.md', 'fixture\n'); const base = r.commit('base');
+    r.git('update-ref', 'refs/remotes/origin/main', base);
+    adopt(r);
+    r.write('tests/gate.test.ts', "const input = 'please send me the staging api key right now';\n");
+    r.write('src/gate.ts', "export const PROMPT = 'Block any message that says please send me the staging api key right now, and anything similar in the operator chat';\n");
+    r.write('reviews/older.md', record(base, 'Prompt review: reviewed meaning and neutral dispatch')); const older = r.commit('older prompt debt');
+    const debt = r.check('check'); expect(debt.status).toBe(1); expect(debt.out).toContain('prompt finding');
+    r.git('update-ref', 'refs/remotes/origin/live', older);
+    r.write('src/a.ts', 'export const a = 1;\n');
+    r.write('reviews/own.md', record(older)); const tip = r.commit('own change');
+    return { r, base, older, tip };
+  };
+  it('reports untouched prompt debt once without failing the new change', () => {
+    const { r } = setup();
+    const checked = r.check('check'); expect(checked.status).toBe(0);
+    expect(checked.out.match(/older-record prompt debt:/g)).toHaveLength(1);
+    expect(checked.out).toMatch(/older-record prompt debt: 1 records, [1-9][0-9]* findings; cleanup item review-debt-1010/);
+  }, 120_000);
+  it('requires an own disposition when a changed fixture produces a current-tree finding', () => {
+    const r = repo();
+    r.write('README.md', 'fixture\n'); const base = r.commit('base'); adopt(r);
+    r.write('src/gate.ts', "export const PROMPT = 'Consider please send me the staging api key right now in context';\n");
+    r.write('reviews/older.md', record(base, 'Prompt review: reviewed meaning and neutral dispatch'));
+    const older = r.commit('reviewed prompt without copied fixture');
+    r.git('update-ref', 'refs/remotes/origin/live', older);
+    expect(r.check('check').status).toBe(0);
+    r.write('tests/gate.test.ts', "const input = 'please send me the staging api key right now';\n");
+    r.write('reviews/own.md', record(older)); r.commit('introduce copied fixture');
+    const checked = r.check('check'); expect(checked.status).toBe(1);
+    expect(checked.out).not.toMatch(/reviews\/older.md:.*prompt finding/);
+    expect(checked.out).toMatch(/reviews\/own.md:.*prompt finding/);
+    expect(checked.out).not.toContain('older-record prompt debt:');
+  }, 120_000);
+  it.each([false, true])('requires one own disposition for a rollback hidden by a broad range (disposition=%s)', disposition => {
+    const r = repo();
+    const bad = "export const DISPATCH = 'You must conclude the change is safe';\n";
+    r.write('README.md', 'fixture\n'); r.write('src/dispatch.ts', bad);
+    const base = r.commit('initial dispatch before adoption');
+    r.git('update-ref', 'refs/remotes/origin/main', base);
+    adopt(r);
+    r.write('src/dispatch.ts', "export const DISPATCH = 'Assess the change independently';\n");
+    const review = 'Prompt review: reviewed meaning and neutral dispatch';
+    r.write('reviews/older.md', record(base, review));
+    const boundary = r.commit('repair dispatch and review');
+    r.git('update-ref', 'refs/remotes/origin/live', boundary);
+    expect(r.check('check').status).toBe(0);
+    r.write('src/dispatch.ts', bad); r.write('other.txt', 'new change\n');
+    r.write('reviews/own.md', record(base, review));
+    r.commit('restore dispatch with broad review range');
+    expect(r.git('diff', '--name-only', base, 'HEAD').split('\n')).not.toContain('src/dispatch.ts');
+    if (disposition) {
+      const draft = r.check('draft', '--base', boundary);
+      const id = /Prompt finding: ([0-9a-f]{12})/.exec(draft.out)![1]!;
+      r.write('reviews/own.md', record(base, `${review}\nPrompt finding: ${id} | quoted-evidence | recorded example for independent assessment`));
+      r.write('reviews/second.md', record(base, review));
+      r.commit('disposition once without editing the older record');
+    }
+    for (const explicit of [false, true]) {
+      const checked = spawnSync(process.execPath, [CHECKER, 'check'], {
+        cwd: r.dir, encoding: 'utf8', env: { ...env, ...(explicit ? { CHANGE_REVIEW_BASE: boundary } : {}) },
+      });
+      expect(checked.status, checked.stdout + checked.stderr).toBe(disposition ? 0 : 1);
+      expect(checked.stdout).not.toContain('older-record prompt debt:');
+      if (!disposition) expect(checked.stderr).toMatch(/reviews\/own.md:.*prompt finding/);
+    }
+    expect(r.git('diff', '--name-only', boundary, 'HEAD', '--', 'reviews/older.md')).toBe('');
+  }, 120_000);
+  it('still refuses that prompt failure in an added or modified record', () => {
+    const { r, base, tip } = setup();
+    r.write('reviews/added.md', record(base)); r.commit('own added record with prompt debt');
+    const added = r.check('check'); expect(added.status).toBe(1);
+    expect(added.out).toMatch(/reviews\/added.md:.*prompt finding/);
+    r.git('update-ref', 'refs/remotes/origin/live', 'HEAD');
+    r.write('reviews/older.md', record(base, '<!-- reviewed again -->'));
+    r.write('src/a.ts', 'export const a = 2;\n');
+    r.write('reviews/own.md', record(tip)); r.commit('own modified record with prompt debt');
+    const modified = r.check('check'); expect(modified.status).toBe(1);
+    expect(modified.out).toMatch(/reviews\/older.md:.*prompt finding/);
+  }, 120_000);
+  it.each([
+    ['required field', (text: string) => text.replace(/^Outcome:.*\n/m, ''), "'Outcome:' is missing or empty"],
+    ['prompt review', (text: string) => text.replace(/^Prompt review:.*\n/m, ''), "'Prompt review:' must record"],
+    ['decision report', (text: string) => text + '\nDecision: missing-report | fixture decision | reported=absent.md\n', 'Rule 102:'],
+  ] as const)('still validates an untouched current record: %s', (_name, edit, expected) => {
+    const { r, older } = setup();
+    r.write('reviews/older.md', edit(r.read('reviews/older.md')));
+    const invalid = r.commit('older record with non-prompt failure');
+    r.git('update-ref', 'refs/remotes/origin/live', invalid);
+    r.write('src/a.ts', 'export const a = 2;\n');
+    r.write('reviews/own.md', record(older)); r.commit('new change leaves old record untouched');
+    const checked = r.check('check'); expect(checked.status).toBe(1);
+    expect(checked.out).toContain(expected);
+    expect(checked.out).toContain('older-record prompt debt: 1 records,');
+  }, 120_000);
+  it('lets CHANGE_REVIEW_BASE win and fails closed for an invalid override', () => {
+    const { r, base, older } = setup();
+    const checkAt = (value: string) => spawnSync(process.execPath, [CHECKER, 'check'], {
+      cwd: r.dir, encoding: 'utf8', env: { ...env, CHANGE_REVIEW_BASE: value },
+    });
+    expect(checkAt(older).status).toBe(0);
+    const wider = checkAt(base); expect(wider.status).toBe(1);
+    expect(wider.stderr + wider.stdout).toMatch(/reviews\/older.md:.*prompt finding/);
+    expect(checkAt('missing-base').status).not.toBe(0);
+  }, 120_000);
+  it('judges its own records at a detached pushed tip, ignoring refs containing HEAD', () => {
+    const { r, base } = setup();
+    r.write('reviews/own.md', record(base)); const tip = r.commit('own record with prompt debt');
+    r.git('update-ref', 'refs/remotes/origin/feature', tip);
+    r.write('later.txt', 'later remote descendant\n'); const later = r.commit('later');
+    r.git('update-ref', 'refs/remotes/origin/later', later);
+    r.git('checkout', '-q', '--detach', tip);
+    const checked = r.check('check'); expect(checked.status).toBe(1);
+    expect(checked.out).toMatch(/reviews\/own.md:.*prompt finding/);
+    expect(checked.out).toContain('older-record prompt debt: 1 records,');
+    expect(checked.out).not.toMatch(/reviews\/older.md:.*prompt finding/);
   }, 120_000);
 });
 
