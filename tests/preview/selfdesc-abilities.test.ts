@@ -51,7 +51,7 @@ it('keeps historical K11a results and replaces the old description with current 
   expect(current.note).not.toBe(note);
   expect(note).toContain('Instar 2.0');
   expect(note).toContain('I save photos, audio and files securely with text descriptions');
-  expect(note).toContain('fetch-inbound-media');
+  expect(note).toContain('refused downloads retain the original message');
   expect(note).not.toMatch(/\b(?:Claude|Codex|GPT(?:-\w+)?|Opus|Sonnet|Gemini|Haiku)\b/iu);
   expect(current.system).not.toBe(SUBSCRIPTION_TOOLS_SYSTEM_PROMPT);
   expect(SUBSCRIPTION_TOOLS_SYSTEM_PROMPT).toContain('You are an Instar 2.0 agent');

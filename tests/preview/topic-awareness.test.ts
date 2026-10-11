@@ -3,6 +3,7 @@ import { mkdtempSync, readFileSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { createHash } from 'node:crypto';
+import { SELF_DESCRIPTION_GUIDANCE } from './briefing.js';
 import { createJournalWorker, openPreviewJournal, type JournalRecord } from './journal-test-worker.js';
 
 const capture = JSON.parse(readFileSync(new URL('./fixtures/topic-awareness-live-2026-10-10.json', import.meta.url), 'utf8')) as {
@@ -105,13 +106,23 @@ it('labels resolved dates, recalled turns and preference candidates with their o
   } finally { journal.close(); }
 });
 
-it('keeps the private-chat packet byte-identical to afa6be39 for the same recorded turns', async () => {
+it('keeps the private-chat packet identical to afa6be39 except the merged self-description guidance', async () => {
   const journal = seed(true);
   try {
     const { context, value } = await packet(journal, undefined, true);
     expect(value.audience.conversation).toBeUndefined();
     expect(value.datedPending.every((item: object) => !('conversation' in item) && !('sourceLabel' in item))).toBe(true);
-    expect(createHash('sha256').update(context).digest('hex')).toBe('4f9861f1b198353ff376439dfdfdeb783be92d17167ca2b056d34613f4a04736');
+    // Self-knowledge intentionally updates this field on both routes. Normalize only those exact
+    // changes; the historical hash still catches any unrelated private-chat packet drift.
+    expect(value.capability).toContain(`${SELF_DESCRIPTION_GUIDANCE} Summary precedes history.`);
+    expect(value.capability).not.toContain('audience.conversation is the topic');
+    value.capability = value.capability
+      .replace(`${SELF_DESCRIPTION_GUIDANCE} Summary precedes history.`,
+        'Your capabilities are the capability-note source. Summary covers earlier turns; history has later turns.')
+      .replace('I don\'t recall that detail', 'I don\'t know from this journal');
+    const historical = JSON.stringify(value);
+    expect(historical).not.toBe(context);
+    expect(createHash('sha256').update(historical).digest('hex')).toBe('4f9861f1b198353ff376439dfdfdeb783be92d17167ca2b056d34613f4a04736');
   } finally { journal.close(); }
 });
 

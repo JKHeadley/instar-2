@@ -10,7 +10,7 @@ Operator questions: none
 Suggested tier: critical
 Declared tier: critical
 Tier rationale: Ordinary integration includes live model-facing review and media/topic paths.
-Side effects: Current review uses the train’s recorded 160-character reason request and 4000-character total request, retaining the 600-character parser bound. Capability briefing combines user-language identity and media awareness. Generated publication is renewed.
+Side effects: Current review uses the train’s recorded 160-character reason request and 4000-character total request, retaining the 600-character parser bound. Capability briefing combines user-language identity and media awareness. Generated publication is renewed. Historical private-chat hash normalizes only the self-knowledge field changes; every other byte remains checked against the original baseline.
 Undo and recovery: Revert this ordinary merge with first parent and regenerate register in new commits; both histories and capture bytes remain available.
 Multi-machine posture: No new state or ownership mechanism; each runner retains current journal ownership, standing and encrypted local intake. Repository evidence is machine-local.
 Layer below: Inspected both parents, historical prompt hashes, media effect admission, durable journal replay, group disclosure/remainder review and owner-reference pin generation. Preserve already-versioned branch design documentation where the older train would restore stale prose.
@@ -34,5 +34,5 @@ Deferral: tests/preview/reply-check.declarations.json:13 | not-a-deferral=Retain
 ## Closing block
 
 simplestRobustRoute: Ordinary merge, existing desk repin and register replay, plus targeted capture compatibility repairs. This is the simplest robust route; no new runtime machinery. Current standing/admission guard starts; durable delivered/held records guard outcomes; provider, stop and intake limits remain. No new unattended deployment claim.
-80/20: Run typecheck and bounded targeted files only; cheap gates must pass after the final commit. Full suite and independent acceptance remain the pipeline’s job.
+80/20: Typecheck, architecture and initial lint/review checks pass; targeted capture and journal tests are run in bounded one-worker chunks; cheap gates must pass after the final commit. Full suite and independent acceptance remain the pipeline’s job.
 VERDICT: author submission; independent landing review pending
