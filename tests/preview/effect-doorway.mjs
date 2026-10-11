@@ -5,7 +5,7 @@
 // it remains P-08's fixed provider/Telegram/Slack set; replicated operations must
 // pass the existing effect owner's exact durable-prefix check before dispatch.
 export const SIGN_OFF_TESTS = Object.freeze(['resources', 'irreversibleOutsideRole', 'publicInPersonName', 'widensAuthority', 'policySensitive']);
-const SIGN_OFF_WORDS = Object.freeze({
+export const SIGN_OFF_WORDS = Object.freeze({
   resources: 'it may commit money or a resource above the level the person named',
   irreversibleOutsideRole: 'it cannot be undone and falls outside the recorded role',
   publicInPersonName: 'it speaks publicly in the person’s name',

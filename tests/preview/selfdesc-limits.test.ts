@@ -3,7 +3,7 @@ import { readFileSync } from 'node:fs';
 import { resolve } from 'node:path';
 import { CLAIM_SCOPED_RULES, DECLARED_OBLIGATIONS_GUIDE, exciseNamedClaims, namedClaimsIn, parseReplyReviewVerdict, quotedSpans,
   replyReviewQuestion, substantiveReply, type ReplyRule } from './reply-check.js';
-import { SOURCE_PINS, sourcePacket, TOOLS_BRIEFING, TOOLS_LIMITS, toolsBriefing } from './briefing.js';
+import { SOURCE_PINS, sourcePacket, CAPABILITY_SENTENCE_LABEL, capabilitySentence, TOOLS_LIMITS, toolsBriefing } from './briefing.js';
 import { taskFields } from './answer-reading.js';
 import { governingConstraints, OBLIGATION_DECISION_TOOLS, previewCapabilities, TOOL_ATTEMPTS_MEANING } from './journal.js';
 
@@ -73,7 +73,7 @@ it('the guide distinguishes describing a listed limit from declining asked work,
   expect(sources.find(source => source.id === 'capability-note')!.text).toContain('Nothing unlisted is available: no tools, browsing');
   const tools = sourcePacket(path => readFileSync(resolve(process.cwd(), path), 'utf8'), SOURCE_PINS,
     { providerAttempts: 1, expiresAt: 1, tools: true }).sources.find(source => source.id === 'capability-note')!.text;
-  expect(tools).toContain(`- ${TOOLS_BRIEFING}`);
+  expect(tools).toContain(CAPABILITY_SENTENCE_LABEL + capabilitySentence({ tools: true }));
   expect(tools).toContain(TOOLS_LIMITS);
 });
 

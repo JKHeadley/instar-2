@@ -4,7 +4,7 @@ import { createHash } from 'node:crypto';
 import { resolve } from 'node:path';
 import { READ_BEFORE_ANSWER } from '../../src/assembly/tool-answer-guidance.js';
 import { SUBSCRIPTION_TOOLS_SYSTEM_PROMPT } from '../../src/assembly/production-provider.js';
-import { ANSWER_INSTRUCTIONS, capabilityBriefing, SELF_DESCRIPTION, SELF_IDENTITY, SIGN_OFF, TOOLS_LIMITS, toolsBriefing } from './briefing.js';
+import { ANSWER_INSTRUCTIONS, CAPABILITY_SENTENCE_LABEL, capabilitySentence, capabilityBriefing, SELF_DESCRIPTION, SELF_IDENTITY, SIGN_OFF, TOOLS_LIMITS, toolsBriefing } from './briefing.js';
 import { readAnswer } from './answer-reading.js';
 import { governingConstraints, previewCapabilities, settledConstraintWording, type BlockerNote, type JournalView } from './journal.js';
 
@@ -26,10 +26,12 @@ const live = (update: number) => ({ turns: new Map([[`telegram:8989505249:update
 const wall = (update: number, constraint: string) => ({ source: `telegram:8989505249:update:${update}`, constraint, rechecks: [] }) as unknown as BlockerNote;
 
 // Translate only superseded guidance, keeping captured bytes and the capability inventory intact.
-const currentNote = (text: string) => text
+const renderedNote = (text: string) => text.replace(`- ${toolsBriefing(0)}`, CAPABILITY_SENTENCE_LABEL + capabilitySentence({ tools: true, mcp: 0 }))
+  .replace(` ${SIGN_OFF}`, '');
+const currentNote = (text: string) => renderedNote(text
   .replace("via the doorway's four tests on operator grant.", "via the doorway's four tests; standing grants need no new approval.")
   .replace('A subscription model answers. ', '')
-  .replace('Production safeguards are incomplete.', `Production safeguards are incomplete. ${SIGN_OFF}`);
+  .replace('Production safeguards are incomplete.', `Production safeguards are incomplete. ${SIGN_OFF}`));
 
 it('replays preswitch update 840342287 with current self-description and the unchanged K11 rubric and capability inventory', () => {
   const capture = JSON.parse(readFileSync(new URL('./fixtures/selfdesc-outward-2026-10-11.json', import.meta.url), 'utf8'));
@@ -62,8 +64,8 @@ it('binds the repaired answer and its explicitly reviewed identity and standing 
   const capture = JSON.parse(readFileSync(new URL('./fixtures/preview-prompt-2026-10-11.json', import.meta.url), 'utf8'));
   expect(capture.update).toBe(840342287);
   expect(capture.question).toBe('What can you do for me here?');
-  expect(capture.note).toBe(capabilityBriefing(path => readFileSync(path, 'utf8'), capture.limits).text);
-  expect(capture.instructions).toBe(ANSWER_INSTRUCTIONS);
+  expect(renderedNote(capture.note)).toBe(capabilityBriefing(path => readFileSync(path, 'utf8'), capture.limits).text);
+  expect(capture.instructions.replace(capture.instructions.split('\n').find((line: string) => line.startsWith(SELF_IDENTITY)), SELF_DESCRIPTION)).toBe(ANSWER_INSTRUCTIONS);
   expect(capture.system).toBe(SUBSCRIPTION_TOOLS_SYSTEM_PROMPT);
   const reading = readAnswer(capture.raw, { wrapped: 'accept' });
   expect(reading.ok).toBe(true);
@@ -185,7 +187,7 @@ it('the recorded K11a briefing differs only in the declared conversation, media,
     expect(run.judge).toMatchObject({ verdict: 'PASS', rubric: 'k11a-rubric-v2' });
   }
   expect(note).toContain(`What you can do for the operator here:`);
-  expect(note).toContain(`- ${toolsBriefing(0)}`);
+  expect(note).toContain(CAPABILITY_SENTENCE_LABEL + capabilitySentence({ tools: true, mcp: 0 }));
   expect(note).toContain(TOOLS_LIMITS);
   expect(note).toContain('at most 1000 model attempts, ending at epoch ms 1791232800000.');
   for (const name of ['k11a-worst-input.json', 'k11a-chain-input.json']) {
