@@ -189,7 +189,7 @@ it('reports a failing doorway check once per verdict episode, and never a route 
   expect(doorwayNotices(fresh, T0 + 1)).toEqual([]);
   const stale = standingDoorwayCheck(verified, T0 + DOORWAY_FRESH_MS + 1);
   expect(doorwayNotices(stale, T0 + DOORWAY_FRESH_MS + 1)).toEqual([{ key: `doorway:${T0 + DOORWAY_FRESH_MS + 1}`,
-    line: 'Model route check: preview-subscription/m1 is stale; send "status" for detail.' }]);
+    line: 'Model route check: preview-subscription/m1 is stale.' }]);
   // The check recorded stale, but this answer's exchange re-verified the route: nothing to report.
   const reverified = observeExchange(stale, 'preview-subscription', 'm1', { ok: true, reportedModels: ['m1'], evidence: 'offline' },
     T0 + DOORWAY_FRESH_MS + 2);

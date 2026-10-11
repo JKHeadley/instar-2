@@ -50,6 +50,13 @@ export function toolsBriefing(mcp?: number) {
 }
 export const TOOLS_BRIEFING = toolsBriefing();
 export const TOOLS_LIMITS = 'Limits: a sent credential is vaulted on arrival (you see its SecretRef), not tool-readable.';
+/** Rules 18, 84, 103, 104: authority conditions describe how an ability is used,
+ * not a blanket inability or a fresh approval requirement for work already granted. */
+export const SELF_DESCRIPTION = 'You are Instar: AI with lasting memory and values. '
+  + 'Explain yourself plainly, without harness, model or test-stage names. '
+  + 'Include listed outward actions among your abilities, with their grant conditions. '
+  + 'Inside your granted role act without asking again; outside it refuse and name the needed grant, not an inability. '
+  + 'Doorway checks need no new in-role approval. This note replaces prior self-descriptions.';
 export function capabilityBriefing(readSource: (path: string) => string,
   limits: { providerAttempts: number; expiresAt: number; tools?: boolean; mcp?: number }, launcher = CAPABILITY_LAUNCHER) {
   // Rule 116: retain the actual limits when correcting the installation's identity. The
@@ -70,7 +77,7 @@ export function capabilityBriefing(readSource: (path: string) => string,
       generation = data.generation; commit = data.commit; features = listed as BriefedFeature[];
     }
   } catch { features = undefined; }
-  if (!features) return { text: 'This is Instar in the operator\'s direct Telegram chat and its topics. '
+  if (!features) return { text: SELF_DESCRIPTION + ' '
     + 'The generated capability briefing is unavailable in this deployment, so your capabilities cannot be listed here; say so plainly if asked, and do not guess. '
     + (limits.tools ? `You have ${tools} ${TOOLS_LIMITS} ` : 'You have no tools and cannot act outside this chat. ') + trial, generation, commit };
   const item = (f: BriefedFeature) => `- ${f.id}: ${f.text}`;
@@ -79,7 +86,7 @@ export function capabilityBriefing(readSource: (path: string) => string,
   return { generation, commit, text: [
     // cint-L27: the header's "one-line summaries from this installation's register; current state in the status
     // reply" went to pay for the lookup sentence; the register-tooling and status-command lines below state both.
-    'This is Instar in the operator\'s direct Telegram chat and its topics.',
+    SELF_DESCRIPTION,
     'What you can do for the operator here:', ...available.filter(f => f.userFacing).map(item), ...limits.tools ? [`- ${tools}`] : [],
     'Internal machinery running under you:', ...available.filter(f => !f.userFacing).map(item),
     ...off.length ? [`In the code but switched off here, so not available: ${off.map(f => f.id).join(', ')}.`] : [],
@@ -211,7 +218,7 @@ export const ANSWER_PROTOCOL = [
   'If packet.meaningIndexCoverage.disposition is "degraded", some summarized messages are findable only by their exact words: not finding something is never evidence it was not said.',
 ].join('\n');
 /** Standing answer instructions, identical before and after compaction (Rule 47). */
-export const ANSWER_INSTRUCTIONS = `${MIND_INSTRUCTIONS}\n${ANSWER_PROTOCOL}`;
+export const ANSWER_INSTRUCTIONS = `${MIND_INSTRUCTIONS}\n${SELF_DESCRIPTION}\n${ANSWER_PROTOCOL}`;
 
 /** Offered only while the runner can perform a conversation-memory lookup. */
 export const MEMORY_LOOKUP_INSTRUCTIONS = 'If packet.memoryLookup is "offered" and the question needs a remembered conversation detail the packet does not show, do not answer that it is missing or unknown yet: '

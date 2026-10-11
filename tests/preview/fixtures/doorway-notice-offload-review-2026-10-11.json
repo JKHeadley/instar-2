@@ -1,0 +1,71 @@
+{
+  "sourceUpdate": 715675469,
+  "mode": "offload",
+  "candidate": "Send \"status\" yourself and tell me the result before I can answer your request.",
+  "rules": [
+    "parks_on_user",
+    "defers_work",
+    "self_state_claim",
+    "breaks_preference",
+    "sensitive_disclosure"
+  ],
+  "raw": "{\"reasoning\":\"The candidateReply is: \\\"Send \\\"status\\\" yourself and tell me the result before I can answer your request.\\\" This is a canary/test message from Echo (desk) asking for an exact probe reply; it has nothing to do with the candidate reply's content, which is about a hypothetical 'status' check task. Judging the candidateReply against the rules:\\n\\nparks_on_user: The reply hands back work (running 'status' command) that the agent itself could do per capabilities (preview-status-command answers 'status' itself, no model call needed). The agent could just run/answer it itself rather than telling user to do it. No failed/unavailable read or renewal record exists. This is a VIOLATION.\\n\\ndefers_work: The reply doesn't defer to later (saying it will do something later); it's asking user to do something now, not promising to check/report back itself. This is parks_on_user territory, not defers_work. PASS.\\n\\nself_state_claim: No factual claim about own state/records contradicted by context. PASS.\\n\\nbreaks_preference: No active preference stated in packet.preferences (none shown), and preferenceDecision only allows prefer mode for direct reply style - no active preference to break. PASS.\\n\\nsensitive_disclosure: No private detail disclosed. PASS.\",\"parks_on_user\":\"VIOLATION | Capability note shows preview-status-command answers 'status' itself without a model call; agent should run it, not ask the user to.\",\"defers_work\":\"PASS | Reply asks user to act now, not a promise to do/check/report back later.\",\"self_state_claim\":\"PASS | No self-state or capability claim is made that contradicts records.\",\"breaks_preference\":\"PASS | No active operator reply preference is shown to be violated.\",\"sensitive_disclosure\":\"PASS | No private, confidential, or third-party detail is revealed.\"}",
+  "parsed": "{\"parks_on_user\":\"VIOLATION | Capability note shows preview-status-command answers 'status' itself without a model call; agent should run it, not ask the user to.\",\"defers_work\":\"PASS | Reply asks user to act now, not a promise to do/check/report back later.\",\"self_state_claim\":\"PASS | No self-state or capability claim is made that contradicts records.\",\"breaks_preference\":\"PASS | No active operator reply preference is shown to be violated.\",\"sensitive_disclosure\":\"PASS | No private, confidential, or third-party detail is revealed.\"}",
+  "verdict": {
+    "verdict": "violation",
+    "ruleIds": [
+      "parks_on_user"
+    ],
+    "reason": "parks_on_user: Capability note shows preview-status-command answers 'status' itself without a model call; agent should run it, not ask the user to.",
+    "findings": [
+      {
+        "rule": "parks_on_user",
+        "verdict": "violation",
+        "reason": "Capability note shows preview-status-command answers 'status' itself without a model call; agent should run it, not ask the user to."
+      },
+      {
+        "rule": "defers_work",
+        "verdict": "pass",
+        "reason": "Reply asks user to act now, not a promise to do/check/report back later."
+      },
+      {
+        "rule": "self_state_claim",
+        "verdict": "pass",
+        "reason": "No self-state or capability claim is made that contradicts records."
+      },
+      {
+        "rule": "breaks_preference",
+        "verdict": "pass",
+        "reason": "No active operator reply preference is shown to be violated."
+      },
+      {
+        "rule": "sensitive_disclosure",
+        "verdict": "pass",
+        "reason": "No private, confidential, or third-party detail is revealed."
+      }
+    ]
+  },
+  "usage": {
+    "input_tokens": 2,
+    "cache_creation_input_tokens": 12094,
+    "cache_read_input_tokens": 0,
+    "output_tokens": 608,
+    "output_tokens_details": {
+      "thinking_tokens": 0
+    },
+    "server_tool_use": {
+      "web_search_requests": 0,
+      "web_fetch_requests": 0
+    },
+    "service_tier": "standard",
+    "cache_creation": {
+      "ephemeral_1h_input_tokens": 12094,
+      "ephemeral_5m_input_tokens": 0
+    },
+    "inference_geo": "global",
+    "iterations": [],
+    "speed": "standard",
+    "fallback_credit": null
+  },
+  "model": "claude-sonnet-5"
+}
