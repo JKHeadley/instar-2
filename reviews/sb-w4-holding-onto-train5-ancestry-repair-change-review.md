@@ -14,8 +14,9 @@ Side effects: The branch now includes PR 154 approved purpose, rule, glossary, p
 Undo and recovery: Preserve history. If this merge is faulty, repair its merge resolution and regenerate from the corrected commit. Reverting the merge with its first parent restores the prior branch but also restores the stale-main proof failure; it is not a deployable fix.
 Multi-machine posture: Git ancestry and generated publication travel together on every checkout. No distributed runtime state, ownership, leases or effects change; local test evidence remains bound to its own checkout.
 Layer below: Read the complete purpose and rules including approved main amendments. Inspected firstLanding, p15AdditivityBaseline, the gate report including measurement collection failure, both git parents, merged bootstrap anchor and canonical hash, register generation and original main amendment review.
-Bug class: integration
-Bug evidence: reproducer=gate 41294d2f saved report: all 14 failed assertions and measurement collection error name main fc0e3c20 absent from HEAD. After merge, all 14 pass; 28 additional focused tests pass, including the real stale-main refusal and both first-landing applicability neighbors. Typecheck and build pass.
+Bug class: none
+Bug evidence: none
+Verification evidence: gate 41294d2f saved report: all 14 failed assertions and measurement collection error name main fc0e3c20 absent from HEAD. After merge, all 14 pass; 28 additional focused tests pass, including the real stale-main refusal and both first-landing applicability neighbors. Typecheck and build pass. This is repository ancestry reconciliation with existing regression checks; no implementation bug or new reproducer is introduced.
 Hook bypass: none
 Convergence: none
 <!-- Rule 102: record each mid-run engineering decision as a line: Decision: <id> | <what was decided, and why> | reported=<report that names the id> -->
