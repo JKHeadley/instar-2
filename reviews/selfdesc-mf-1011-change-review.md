@@ -53,6 +53,8 @@ Inherited limits remain exactly as the Astra integration review records: histori
 
 Verification: Initial targeted run passed 276/280; four stale byte/policy assertions were repaired. Follow-up passed 142/143; the remaining new assertion incorrectly treated the retained internal Decision subject as identity, and was narrowed to the introduction while still forbidding any shared operator name. Native/floor tests passed 16/16; final packet floors, recorded-shape replay, K11 binding, activation positive/negative controls and both harness policies pass. Final check outputs are recorded in the absolute PROGRESS file.
 
+Generation: Regenerated through scripts/build-register.mjs --replay from source commit 6733dad94cfefe1a15224861473f4893528fffb1: sha256:3777eec0afc0b4bf55408afd3d1a83cb5e288b7e1544cc7b03b0458d94aab99e, 289 entries/116 Rules, shape-only authority. Owner rehash and grounding-inventory repin each changed zero pins. Capability inventory is byte-identical apart from commit/generation provenance. Architecture, lint and register:check pass with zero wiring issues; inherited static-proof residual remains. Typecheck passes.
+
 ## Closing block
 
 simplestRobustRoute: This is the simplest route: repair existing identity/authority guidance and exact evidence tests, retaining every ability and existing safeguard. No new runtime machinery. Start guards are assigned head and immutable captured history; end guards are exact-input replay, targeted tests and source checks. Secret, spend, stop, duplicate-send and intake floors remain enforced. No unattended deployment claim.
