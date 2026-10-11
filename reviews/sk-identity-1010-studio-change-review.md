@@ -10,6 +10,7 @@ Operator questions: none
 Suggested tier: significant
 Declared tier: significant
 Tier rationale: evidence and declaration repair for the existing model-facing identity unit; no additional runtime or prompt wording change.
+Register follow-up: the fixture repair changed the dated-memory evidence hash; refresh that owner pin before replaying generated output from the latest committed sources. The first successful replay remains evidence for 8cd9dff1 only.
 Side effects: summary pressure keeps the 32,768-byte cap and all dispatch/recovery assertions with a 2,000-repeat question; dated revision uses the supported live context limit and retains exact reply and mention-marker assertions. The native declaration certifies the current 253-file composition and the owner manifest binds current production-provider bytes; regenerated register output carries those facts.
 Undo and recovery: revert these metadata commits and regenerate the register from the reverted declarations; do not claim current conformance from the older digest. No runtime state migration or activation.
 Multi-machine posture: shared declaration and register metadata; native proof is for the declared Darwin runtime. No new machine-local product state or ownership changes.
