@@ -31,7 +31,7 @@
       "stage": "build",
       "artifact": {
         "path": "tests/preview/journal-dated-memory.test.ts",
-        "hash": "sha256:981184b838adf39e182433b3aa3b0e1aac1f9481a111791eeb40e25de18bba4f"
+        "hash": "sha256:ca915ab4749d27d4a6f2f013c2dc281c8e2f0c0936a5e9c68d4b19ee54e661ad"
       }
     },
     {
