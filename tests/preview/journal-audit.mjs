@@ -3,7 +3,8 @@ import { createHash } from 'node:crypto';
 import { isoMinute } from '../../src/recall/ground.js';
 import { statedFacts } from './memory-sentinel.js';
 import { hasClaim, replaceClaim, supersedesCorrection } from './claim-match.mjs';
-import { activePersonMerges, admittedUpdate, before, groundingHistory, isJournalUpdate } from './journal.js';
+import { activePersonMerges, admittedUpdate, before, groundingHistory, isJournalUpdate, projectMemoryClause } from './journal.js';
+import { validCarriedMemory } from './group-carry.js';
 import { matchesBoundChat } from './forum-routing.js';
 import { authenticateTelegramSender, writerBoundToRaw } from './intake-principal.js';
 import { mediaCustodyText, telegramInboundMedia } from './telegram-media.js';
@@ -34,7 +35,7 @@ export function requestedActionSources(view, turn) {
 // Audit the exact packet saved with the last model reservation. This file reads
 // the existing projection; it creates no memory store or model/effect path.
 export function auditPacket(view, turn, packet, memoryCount = view.memory.length,
-  summaryCount = view.summaries.length, closedCount = view.closed.size) {
+  summaryCount = view.summaries.length, closedCount = view.closed.size, callKind = 'answer') {
   const items = [], findings = [];
   const fault = (code, at) => findings.push({ code, at });
   const add = (kind, at, chain) => items.push({ kind, at, chain });
@@ -141,7 +142,8 @@ export function auditPacket(view, turn, packet, memoryCount = view.memory.length
   // The same selection the packet was built from: a desk probe or an edit's replaced original is never expected.
   // The reachability floor may also have set aside the oldest turns; when it did, the packet must SAY so and the
   // disclosed count must be exactly what is missing (Rules 2, 9). An undisclosed gap is a history-coverage fault.
-  const carried = groundingHistory(view, before(turn.update), summary?.through, { thread: turn.thread });
+  const carried = groundingHistory(view, before(turn.update), summary?.through,
+    callKind === 'summary' ? undefined : { thread: turn.thread });
   const setAside = isJournalUpdate(packet.historySetAside?.through) ? packet.historySetAside.through : -1;
   const expected = carried.filter(item => item.update > setAside).map(item => item.id);
   const history = list(packet.history, 'history');
@@ -245,6 +247,12 @@ export function auditPacket(view, turn, packet, memoryCount = view.memory.length
     else if (activePreferences.delete(key) && change.mode === 'correct') activePreferences.set(
       JSON.stringify([change.trigger, change.replacement]), { source: change.trigger, quote: change.replacement });
   }
+  // Carry sources are authenticated lineage, not destination intake. Match the reservation's
+  // correction/forget projection without reranking a historical selection against today's clock.
+  const predecessorCandidates = view.groupCarry && validCarriedMemory(view.groupCarry)
+    ? view.groupCarry.entries.filter(item => ['recall', 'preference', 'correction'].includes(item.kind))
+      .map(item => ({ ...item, text: projectMemoryClause({ ...view, memory: activeChanges }, item.text, item.source) }))
+      .filter(item => item.text.trim()) : [];
   for (const [n, item] of list(packet.memoryCandidates, 'memoryCandidates').entries()) {
     const at = `memoryCandidates[${n}]`;
     if ((item?.id?.startsWith?.('channel:') || item?.id?.startsWith?.('channel-ref:'))) {
@@ -254,6 +262,12 @@ export function auditPacket(view, turn, packet, memoryCount = view.memory.length
         fault('candidate-text-source', at);
       if (found && item.reply !== '') fault('candidate-reply-source', at);
       if (found) add('memory-candidate', at, [{ kind: 'channel-import', source: found.source, ref: channelRef(item.id) }]);
+    } else if (!view.turns.has(item?.id) && predecessorCandidates.some(entry => entry.source === item?.id)) {
+      if (!predecessorCandidates.some(entry => entry.source === item.id && entry.text === item.message))
+        fault('candidate-text-source', at);
+      if (item.reply !== '') fault('candidate-reply-source', at);
+      add('memory-candidate', at, [{ kind: 'carried-source', id: item.id },
+        { kind: 'carry-snapshot', ref: view.groupCarry.digest }]);
     } else {
       const found = source(item?.id, at);
       const preference = found && [...activePreferences.values()].some(active => active.source === found.id
@@ -349,7 +363,7 @@ export function auditJournal(view) {
   }
   catch { return { update: latest.kind === 'summary' ? latest.through : turn.update, modelCall: latest.kind,
     items: memory.items, findings: [...memory.findings, { code: 'recorded-prompt-unreadable', at: 'prompt' }] }; }
-  const report = auditPacket(view, turn, packet, latest.memoryCount, latest.summaryCount, latest.closedCount);
+  const report = auditPacket(view, turn, packet, latest.memoryCount, latest.summaryCount, latest.closedCount, latest.kind);
   if (latest.kind === 'answer') {
     if (question !== redact(turn.text).text) report.findings.push({ code: 'current-turn-source', at: 'question' });
     report.items.unshift({ kind: 'current-turn', at: 'question',
