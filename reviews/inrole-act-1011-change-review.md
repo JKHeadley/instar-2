@@ -1,6 +1,6 @@
 # Change review — ordinary memory acknowledgement and bounded packet preparation
 
-Subject base: 4ba07c4a67650e9c394273b460890f9f6bf037e7
+Subject base: 141e51e0513dea6f544112967fb1af104c7ffa3b
 Review state: open
 Reviewed content: none
 Outcome: An ordinary fact-to-remember request is acknowledged using its already durable intake record, without a second save request. Synchronous packet fitting takes one snapshot of tool standing instead of repeatedly resolving authority for every byte-fit variant. The snapshot ends before model dispatch.
@@ -19,12 +19,16 @@ Bug evidence: reproducer=tests/preview/inrole-memory-live.test.ts; live=tests/pr
 Hook bypass: none; core.hooksPath unset, shared hooks directory inspected and contains only sample hooks; plain commits only.
 Convergence: none
 Prompt review: The only changed model guidance is memoryDecision: an accepted operator message already exists in the durable journal; an empty mutation list is not an unsaved message. No parser or sign-off floor changes. Real claude-sonnet-5 outputs on recorded live inputs 715675444 and 715675448 are captured with system and envelope hashes and replayed through the current answer reader and worker. The saved statement survives encrypted reopen and appears in the next recall packet. The public-post neighbour still requires explicit authority. The first current-protocol replay wrongly inferred the statement's owner and offered a correction; its desk evidence is retained, and the final wording preserves attribution. Existing recorded summary, uncertain/undecided Jev, reply-review and empty/delivered reply shapes are replayed by act-first, summary-cascade-stall, summary-overcap-cascade and answer-flat-live tests. This is a real-model recorded-input replay, not a new Telegram delivery on this branch.
-Decision: durable-original-is-memory | Keep the existing durable intake as the save mechanism; the memory array is a correction/forget/style ledger, so adding a second fact-write protocol would duplicate state and misdiagnose the empty array | reported=/Users/dabombstudio/.instar/agents/echo/.instar/lanes/inrole-act-1011-PROGRESS.md
-Decision: synchronous-preparation-snapshot | Scope one tool-standing read to the existing synchronous preparation callback, restoring the live reader in finally. This removes repeated full operator-log parses from byte fitting without caching authority at dispatch | reported=/Users/dabombstudio/.instar/agents/echo/.instar/lanes/inrole-act-1011-PROGRESS.md
-Decision: stall-evidence-limit | The original processes were already killed and no stack sample was retained. The recorded packet reproduces 120 preparations and 133 host authority reads, and one read parses a 135 MB operator log. This identifies a real synchronous amplification defect consistent with the unresponsive runner, but does not prove it was the sole cause of the exact historical 422-second interval | reported=/Users/dabombstudio/.instar/agents/echo/.instar/lanes/inrole-act-1011-PROGRESS.md
+Decision: durable-original-is-memory | Keep the existing durable intake as the save mechanism; the memory array is a correction/forget/style ledger, so adding a second fact-write protocol would duplicate state and misdiagnose the empty array | reported=/Users/dabombstudio/.instar/agents/echo/.instar/lanes/onlive-1011-PROGRESS.md
+Decision: synchronous-preparation-snapshot | Scope one tool-standing read to the existing synchronous preparation callback, restoring the live reader in finally. This removes repeated full operator-log parses from byte fitting without caching authority at dispatch | reported=/Users/dabombstudio/.instar/agents/echo/.instar/lanes/onlive-1011-PROGRESS.md
+Decision: stall-evidence-limit | The original processes were already killed and no stack sample was retained. The recorded packet reproduces 120 preparations and 133 host authority reads, and one read parses a 135 MB operator log. This identifies a real synchronous amplification defect consistent with the unresponsive runner, but does not prove it was the sole cause of the exact historical 422-second interval | reported=/Users/dabombstudio/.instar/agents/echo/.instar/lanes/onlive-1011-PROGRESS.md
 Prompt finding: 849db3a6296a | protocol-literal | unchanged fixed memory-inventory response, already dispositioned in prior journal reviews
 Prompt finding: bd01de21286a | protocol-literal | unchanged capability-guidance protocol wording, already dispositioned in prior journal reviews
 Prompt finding: fb5fa7e706c8 | protocol-literal | unchanged capability-guidance protocol wording, already dispositioned in prior journal reviews
+
+Decision: onlive-inrole-isolation | Cherry-pick only 9505c85f onto live 141e51e0. The memory guidance and synchronous standing snapshot apply without importing holding-notice or harness-login changes. Preserve recorded bytes and rerun the unit tests on live. | reported=/Users/dabombstudio/.instar/agents/echo/.instar/lanes/onlive-1011-PROGRESS.md
+
+Port provenance: Original source-unit evidence and Studio checks above are historical claims of that unit. This branch is a separate live-base port. Its current WSL results are recorded in onlive-1011; no live-journal read, fresh model capture, production delivery or independent convergence is claimed here. The original fixture bytes remain unchanged. Review base is the exact authorized live SHA.
 
 ## Closing block
 
