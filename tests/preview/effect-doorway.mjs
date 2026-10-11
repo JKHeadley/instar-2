@@ -57,7 +57,7 @@ const effectId = value => text(value, 64) && /^[a-z]+:[a-z0-9:-]+$/u.test(value)
 export function decodeEffectPolicy(value) {
   const fail = why => { throw Error(`effect policy: ${why}`); };
   if (!value || typeof value !== 'object' || Array.isArray(value)) fail('not an object');
-  const known = ['type', 'resourceLevelUsd', 'policySensitive', 'registered', 'grants', 'role'];
+  const known = ['type', 'resourceLevelUsd', 'policySensitive', 'registered', 'grants', 'role', 'onboarding'];
   for (const key of Object.keys(value)) if (!known.includes(key)) fail(`unknown field ${key}`);
   if (value.type !== 'PreviewEffectPolicy') fail('type');
   if (!level(value.resourceLevelUsd)) fail('resourceLevelUsd');
@@ -85,8 +85,21 @@ export function decodeEffectPolicy(value) {
     || !strings(value.role.accounts) || !strings(value.role.channels) || !text(value.role.trust, 1024))) fail('role');
   const role = value.role === undefined ? {} : { role: Object.freeze({ description: value.role.description,
     accounts: Object.freeze([...value.role.accounts]), channels: Object.freeze([...value.role.channels]), trust: value.role.trust }) };
+  // Onboarding records choices, not an activation or a per-operation dollar grant.
+  // The installed cap/activation owner must consume the monthly choice before paid use.
+  let onboarding = {};
+  if (value.onboarding !== undefined) {
+    const o = value.onboarding;
+    if (!o || Object.keys(o).sort().join(',') !== 'agentId,custodian,defaults,monthlySpendingLimitUsd,source'
+      || !text(o.agentId, 128) || !text(o.source) || !text(o.custodian)
+      || !level(o.monthlySpendingLimitUsd) || !Number.isSafeInteger(Math.round(o.monthlySpendingLimitUsd * 100))
+      || Math.round(o.monthlySpendingLimitUsd * 100) / 100 !== o.monthlySpendingLimitUsd
+      || !o.defaults || Object.keys(o.defaults).sort().join(',') !== 'growth,identity,reflection,selfKnowledge'
+      || Object.values(o.defaults).some(enabled => enabled !== true)) fail('onboarding');
+    onboarding = { onboarding: Object.freeze({ ...o, defaults: Object.freeze({ ...o.defaults }) }) };
+  }
   const policy = { type: 'PreviewEffectPolicy', resourceLevelUsd: value.resourceLevelUsd,
-    policySensitive: Object.freeze([...value.policySensitive]), registered, grants: Object.freeze(grants), ...role };
+    policySensitive: Object.freeze([...value.policySensitive]), registered, grants: Object.freeze(grants), ...role, ...onboarding };
   // Recompute on every decode: editing grants/limits cannot retain a stale registration verdict.
   // Expiring grants are rechecked at use, so this record is registration-time classification only.
   policy.registered = Object.freeze(registered.map(entry => {
