@@ -7,9 +7,9 @@ Outcome: The model quotes the tools/outbound paragraph rendered from the current
 Affected rules: Purpose self-knowledge/sign-off; 10, 12, 18, 25, 36, 47, 49, 58, 70, 74, 78, 84, 101, 103, 104, 111, 113, 116
 Affected floors: secrets — unchanged custody/checks; spend cap — unchanged; stop — unchanged; no duplicate sends — unchanged durable send fence; durable intake — unchanged journal
 Operator questions: none
-Suggested tier: significant
+Suggested tier: critical
 Declared tier: significant
-Tier rationale: Model-facing capability wording and offline acceptance judgment; authority and effect admission remain unchanged.
+Tier rationale: Model-facing capability wording and offline acceptance judgment; generated pins raise the suggested tier, but authority and effect admission remain unchanged.
 Side effects: Prompt bytes and record provenance change. The exact paragraph increases capability detail while shorter instructions remove duplication; the existing context floor is verified without raising limits. Historical fixture bytes and v2 judge caches stay readable. New notes require valid source and sentence digests and exact quotation.
 Undo and recovery: Revert source commits and regenerate register output; restore the documented K11 backup if rolling back the desk change. No durable schema, installation or policy activation changes.
 Multi-machine posture: Shared deterministic wording across machines; no store, ownership or replication change. Desk evidence and judge cache retain their existing machine-local posture.
@@ -26,7 +26,14 @@ Prompt finding: 6af48f94b789 | protocol-literal | Existing capability/tool proto
 Prompt finding: 95e349aaf4ac | protocol-literal | Existing capability/tool protocol echoed by historical evidence, not a runtime meaning classifier — fixture-phrase tests/preview/briefing.ts <- tests/preview/selfdesc-abilities.test.ts: "via the doorway's four tests; standing grants need no new approval."
 Prompt finding: b00ed403060a | protocol-literal | Existing capability/tool protocol echoed by historical evidence, not a runtime meaning classifier — fixture-phrase src/assembly/production-provider.ts <- tests/preview/selfdesc-abilities.test.ts: "checked when made. workspace work and public reads are already allowed. register"
 
-Subject (6 paths): tests/preview/README.md, tests/preview/briefing.ts, tests/preview/capability-briefing.test.ts, tests/preview/effect-doorway.mjs, tests/preview/selfdesc-abilities.test.ts, tests/preview/selfdesc-limits.test.ts
+
+Evidence: Five final offline inference replays (recorded update 840342287, runs 5–9) quote the rendered paragraph verbatim; all five uncached k11a-rubric-v3-rendered judgments PASS. tests/preview/fixtures/capsentence-2026-10-11.json retains the actual inputs, raw outputs and digest-bound verdicts. The real update 840342355 restriction excerpt and an invented vault-reading ability remain in free prose and both FAIL despite the valid rendered line. Earlier exploratory artifacts, including punctuation drift and date guesses, are retained in the absolute PROGRESS evidence directory.
+
+Recorded shapes: group-carry replays summary 715672480, uncertain summary 715672483, Jev uncertain 715672482, Jev undecided 969389570, reply review 969389923, delivered reply 715672479 and empty bubble 715672550. Each worker call now asserts the newly rendered paragraph; disclosure refusal and nonempty-send neighbors remain enforced.
+
+Desk files: /Users/dabombstudio/.instar/agents/echo/.instar/lanes/pipeline/live-proof/K11-judge.mjs and K11-judge.test.mjs are intentionally uncommitted under the charter. The old judge is backed up as K11-judge.mjs.capsentence-1011.bak. The PROGRESS record lists final SHA-256s and verification. v2 records retain their rubric/cache keys; v3 validates source/paragraph digests before judging the remainder. Missing evidence is UNTESTED, malformed quotation FAIL; this is an offline acceptance check, not a runtime delivery block.
+
+Verification: Targeted required suite and direct neighbors: 10 files, 93 tests pass; final wording/context/real-shape subset: 4 files, 40 tests pass; standing-trust neighbors: 4 files, 23 tests pass. Explicit new-path real-shape replay: 17 tests pass. Final evidence tests, tsc, architecture, lint, register and change-review outputs are recorded in the absolute capsentence-1011-PROGRESS.md. No full suite, Telegram message or live installation change.
 
 ## Closing block
 

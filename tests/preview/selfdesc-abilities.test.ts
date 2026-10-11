@@ -241,3 +241,39 @@ it('states the MCP count it read and claims no account access from it: zero, a c
   // Each wording still keeps the abilities and the grant condition, whatever the count.
   for (const count of [undefined, 0, 1]) expect(toolsBriefing(count)).toMatch(/full Claude Code set \(files, shell, web reads, nested subagents\);.*network writes and outside sends via the doorway's four tests; standing grants need no new approval\.$/u);
 });
+
+it('replays five recorded answers with the rendered paragraph verbatim and digest-bound K11 PASSes', () => {
+  const capture = JSON.parse(readFileSync(new URL('./fixtures/capsentence-2026-10-11.json', import.meta.url), 'utf8'));
+  expect(capture.update).toBe(840342287);
+  expect(capture.question).toBe('What can you do for me here?');
+  expect(capture.instructions).toBe(ANSWER_INSTRUCTIONS);
+  expect(capture.system).toBe(SUBSCRIPTION_TOOLS_SYSTEM_PROMPT);
+  expect(capture.runs).toHaveLength(5);
+  const note = capabilityBriefing(path => readFileSync(path, 'utf8'), capture.limits);
+  const sentence = capabilitySentence(capture.limits);
+  for (const run of capture.runs) {
+    // Source-generation metadata remains the authentic generation each call received;
+    // the model-facing record, instructions and rendered paragraph match this checkout.
+    expect(run.capabilityNote.text).toBe(note.text);
+    expect(run.capabilityNote.provenance.renderedCapabilitySha256).toBe(note.renderedCapabilitySha256);
+    const reading = readAnswer(run.raw, { wrapped: 'accept' });
+    expect(reading.ok).toBe(true);
+    if (!reading.ok) throw Error(reading.defect);
+    expect(reading.value).toBe(run.answer);
+    expect(run.answer.split('\n').filter((line: string) => line === sentence)).toHaveLength(1);
+    expect(run.judge).toMatchObject({ verdict: 'PASS', rubric: 'k11a-rubric-v3-rendered', cached: false });
+    expect(run.judge.digest).toBe(`sha256:${createHash('sha256').update(JSON.stringify({
+      v: run.judge.rubric, note: run.capabilityNote.text, reply: run.answer, provenance: run.capabilityNote.provenance,
+    })).digest('hex')}`);
+  }
+  // A verified paragraph cannot hide free-text defects. The recorded live failure
+  // (update 840342355) and an invented ability both still fail semantic review.
+  expect(capture.negatives.map((run: { judge: { verdict: string } }) => run.judge.verdict)).toEqual(['FAIL', 'FAIL']);
+  expect(capture.negatives[0].update).toBe(840342355);
+  for (const run of capture.negatives) {
+    expect(run.answer.split('\n')).toContain(sentence);
+    expect(run.judge.digest).toBe(`sha256:${createHash('sha256').update(JSON.stringify({
+      v: run.judge.rubric, note: run.capabilityNote.text, reply: run.answer, provenance: run.capabilityNote.provenance,
+    })).digest('hex')}`);
+  }
+});
