@@ -442,6 +442,21 @@ export function subscriptionToolSettings(turn: SubscriptionToolTurn, home: strin
 export const SUBSCRIPTION_THINKING_ENV = Object.freeze({ MAX_THINKING_TOKENS: '0' });
 export type SubscriptionFraming = 'preview-decision-system-v2' | typeof SUBSCRIPTION_CONVERSATION_FRAMING
   | typeof SUBSCRIPTION_TOOLS_FRAMING | typeof SUBSCRIPTION_NATIVE_FRAMING;
+/** The immutable physical model command. A host may initialize this fresh process
+ * before a turn arrives; only the existing admitted route may supply its stdin. */
+export function subscriptionModelCommand(profile: Readonly<{ executable: string; home: string; configDirectory: string;
+  workingDirectory: string }>, model: string, framing: SubscriptionFraming, turn?: SubscriptionToolTurn) {
+  const { policy } = subscriptionPolicyFor(model, framing);
+  return Object.freeze({ executable: profile.executable,
+    args: turn ? [...policy.args, ...(turn.mcp ? ['--mcp-config', turn.mcp.config] : []),
+      '--settings', subscriptionToolSettings(turn, profile.home), ...subscriptionSessionArgs(turn.session)] : policy.args,
+    cwd: turn?.workspace ?? profile.workingDirectory,
+    env: Object.freeze({ PATH: policy.path, HOME: profile.home, CLAUDE_CONFIG_DIR: profile.configDirectory,
+      CLAUDE_CODE_MAX_RETRIES: '0', CLAUDE_CODE_MAX_OUTPUT_TOKENS: String(policy.maxTokens),
+      CLAUDE_CODE_DISABLE_NONESSENTIAL_TRAFFIC: '1', ...SUBSCRIPTION_THINKING_ENV,
+      ...(turn ? { CLAUDE_CODE_TMPDIR: turn.scratch, ...SUBSCRIPTION_TOOL_SESSION_ENV } : {}) }),
+    timeout: policy.timeout, maxBytes: policy.maxRawTerminalBytes });
+}
 /** Exact policy and system prompt for a framing; the historical v2 default is unchanged. */
 export function subscriptionPolicyFor(model: string, framing: SubscriptionFraming = 'preview-decision-system-v2') {
   ensure(framing === 'preview-decision-system-v2' || framing === SUBSCRIPTION_CONVERSATION_FRAMING
@@ -524,8 +539,7 @@ export function createClaudeCodeSubscriptionRoute(input:
     const promptBytes = config.raisedPromptBytes ?? policy.maxPromptBytes;
     const tools = framing === SUBSCRIPTION_TOOLS_FRAMING;
     ensure(tools === (config.toolTurn !== undefined), 'subscription tool turn and framing differ');
-    const toolSettings = config.toolTurn ? subscriptionToolSettings(config.toolTurn, profile.home) : null;
-    const sessionArgs = config.toolTurn ? subscriptionSessionArgs(config.toolTurn.session) : [];
+    const modelCommand = subscriptionModelCommand(profile, config.model, framing, config.toolTurn);
     if (config.toolTurn) ensure(config.io.realpath(config.toolTurn.workspace) === config.toolTurn.workspace
       && config.io.realpath(config.toolTurn.scratch) === config.toolTurn.scratch
       && config.io.realpath(config.toolTurn.stateDirectory) === config.toolTurn.stateDirectory,
@@ -582,10 +596,7 @@ export function createClaudeCodeSubscriptionRoute(input:
         // fragment as the answer (update 715674603 began mid-string, 2250 output tokens; 715674595 began "Finishing
         // the thought:", 2686), counted malformed. The total admitted is unchanged: the frame check below still
         // refuses more than policy.maxTokens. A single-call policy's bound is 2048, so its cap is unchanged.
-        const env = Object.freeze({ PATH: policy.path, HOME: profile.home, CLAUDE_CONFIG_DIR: profile.configDirectory,
-          CLAUDE_CODE_MAX_RETRIES: '0', CLAUDE_CODE_MAX_OUTPUT_TOKENS: String(policy.maxTokens),
-          CLAUDE_CODE_DISABLE_NONESSENTIAL_TRAFFIC: '1', ...SUBSCRIPTION_THINKING_ENV,
-          ...(config.toolTurn ? { CLAUDE_CODE_TMPDIR: config.toolTurn.scratch, ...SUBSCRIPTION_TOOL_SESSION_ENV } : {}) });
+        const env = modelCommand.env;
         const command = async (args: readonly string[], stdin: string, timeout: number, maxBytes: number,
           allowFailureFrame = false) => {
           await new Promise<void>(resolve => setImmediate(resolve));
@@ -614,9 +625,7 @@ export function createClaudeCodeSubscriptionRoute(input:
           config.io.descriptorLogin === true),
           'subscription authentication status refused');
 
-        const modelArgs = toolSettings === null ? policy.args : [...policy.args,
-          ...(config.toolTurn?.mcp ? ['--mcp-config', config.toolTurn.mcp.config] : []), '--settings', toolSettings, ...sessionArgs];
-        const returned = await command(modelArgs, bytes, bounds.timeout, policy.maxRawTerminalBytes, true);
+        const returned = await command(modelCommand.args, bytes, bounds.timeout, policy.maxRawTerminalBytes, true);
         const frame = JSON.parse(returned.text);
         const integer = (v: unknown) => typeof v === 'number' && Number.isSafeInteger(v) && v >= 0;
         if (frame && typeof frame === 'object' && !Array.isArray(frame) && frame.type === 'result'
@@ -778,6 +787,8 @@ export interface SubscriptionDoorway {
    * own turn limit), and whether the hook confines the shell itself (when the harness's own sandbox is not used). */
   readonly toolTurn: Readonly<{ system: string; maxCalls: number; harness: string | null; confinedShell: boolean }> | null;
   policyFor(model: string, framing: string): SubscriptionPolicyBounds;
+  /** Optional fresh-process preparation; no prompt, admission or model dispatch. */
+  prestartCommand?(profile: ProviderSubscriptionProfileRef, model: string, turn: SubscriptionToolTurn): ReturnType<typeof subscriptionModelCommand>;
   /** Rule 56: this doorway's own activation check — its CLI version, model shape, sign-in source and
    * invocation policy digest. A client never validates an activation for a doorway it did not ask. */
   validateActivation(record: SubscriptionActivationRecord, profile: ProviderSubscriptionProfileRef,
@@ -821,6 +832,8 @@ export const SUBSCRIPTION_DOORWAYS: Readonly<Record<string, SubscriptionDoorway>
       harness: null, confinedShell: false }),
     policyFor: (model: string, framing: string): SubscriptionPolicyBounds =>
       subscriptionPolicyFor(model, asSubscriptionFraming(framing)).policy,
+    prestartCommand: (profile: ProviderSubscriptionProfileRef, model: string, turn: SubscriptionToolTurn) =>
+      subscriptionModelCommand(profile, model, SUBSCRIPTION_TOOLS_FRAMING, turn),
     validateActivation: (record: SubscriptionActivationRecord, profile: ProviderSubscriptionProfileRef,
       model: string, now: number, framing: string, journalEnd?: number) =>
       validateSubscriptionActivation(record, profile, model, now, asSubscriptionFraming(framing), journalEnd),

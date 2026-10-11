@@ -7,6 +7,7 @@ import { join, resolve, relative, isAbsolute } from 'node:path';
 import { homedir, userInfo } from 'node:os';
 import { fileURLToPath } from 'node:url';
 import { hostResources, limitedFileArgv } from './resource-owner.mjs';
+import { prestartProvider } from './provider-prestart.mjs';
 
 /** The transport child's own bounds: per-process handles, and user-ID process headroom. */
 const TRANSPORT_LIMITS = Object.freeze({ handleCount: 256, processCount: 4 });
@@ -247,7 +248,7 @@ function subscriptionServerPolicy(configDirectory) {
  * launcher applying exactly the command's environment. The login and any MCP configuration file reach the harness only
  * through the launcher's hand-off (harnessCommand), never as a file its user can open. The resource owner still
  * launches, bounds and reclaims it (the launcher ends its tree). */
-export function createSubscriptionProviderIO({ repository, stopped, work = 'answer', runAs = null }) {
+export function createSubscriptionProviderIO({ repository, stopped, work = 'answer', runAs = null, prestarted = null }) {
   const outside = (path, root) => { const suffix = relative(root, path);
     return suffix.startsWith('../') || suffix === '..' || isAbsolute(suffix); };
   const digest = value => `sha256:${createHash('sha256').update(JSON.stringify(value)).digest('hex')}`;
@@ -343,10 +344,30 @@ export function createSubscriptionProviderIO({ repository, stopped, work = 'answ
       return admitted;
     } catch { return null; }
   };
-  const execute = async input => runAs ? productionProviderIO.execute({ ...input, ...harnessCommand(input, runAs), stopped }, work)
-    : productionProviderIO.execute({ ...input, stopped }, work);
+  const physical = input => runAs ? { ...input, ...harnessCommand(input, runAs), stopped } : { ...input, stopped };
+  const execute = async input => {
+    const command = physical(input);
+    if (input.stdin.length && prestarted) {
+      const result = prestarted.consume(command);
+      if (result !== null) return result;
+      await prestarted.close();
+    }
+    return productionProviderIO.execute(command, work);
+  };
+  const prestart = input => {
+    const command = physical({ ...input, stdin: '' });
+    const initial = command.stdin;
+    const worker = prestartProvider(command, { initialInput: initial });
+    return Object.freeze({
+      consume(next) {
+        if (!next.stdin.startsWith(initial)) return null;
+        return worker.consume({ ...next, stdin: next.stdin.slice(initial.length) });
+      },
+      close: () => worker.close(),
+    });
+  };
   return Object.freeze({ ...productionProviderIO, inspectSubscriptionProfile, managedHooksDisabled, codexAuthMode, admittedToolCalls,
-    ...(runAs ? { descriptorLogin: true } : {}), execute });
+    ...(runAs ? { descriptorLogin: true } : {}), execute, prestart });
 }
 /** One harness command as the harness user (see createSubscriptionProviderIO). The environment travels as launcher
  * arguments, so sudo needs no SETENV and its own environment is only a plain PATH. What the harness user must never be able

@@ -15,7 +15,7 @@ import { checkListen, createReadOnlyDashboard, pinCheckAt, serveReadOnly } from 
 import { openProductionStorage } from '../../src/assembly/production-storage.js';
 import { DEFAULT_SUBSCRIPTION_DOORWAY, subscriptionDoorway,
   SUBSCRIPTION_PREVIEW_EXPIRY, SUBSCRIPTION_TOOLS_SYSTEM_PROMPT } from '../../src/assembly/production-provider.js';
-import { attachEgress, attachSessionVolume, networkToolReads, readRootMcp, reconcileToolTurns, runToolTurn, toolPacketFits, toolStatusLines, toolTurnEligible, TOOL_NOTICE_MAX_BYTES,
+import { attachEgress, attachSessionVolume, networkToolReads, prepareNextToolTurn, readRootMcp, reconcileToolTurns, runToolTurn, toolPacketFits, toolStatusLines, toolTurnEligible, TOOL_NOTICE_MAX_BYTES,
   TOOLS_DEFAULT_ACTIVATION, createHeldSecrets, custodyHeldSources, heldSpan, heldVerdict } from './tool-turn.mjs';
 import { prepareSessionAdmission, sessionAdmissionCommand, SESSION_ADMISSION_KEPT } from './session-admission.mjs';
 import { createAdmissionGate, createToolEffectOwner } from './admission-gate.mjs';
@@ -1403,7 +1403,7 @@ async function main() {
   // before the loop continues, so neither a relaunch nor a crash resets it.
   let failedPolls = 0, conflictedPolls = 0;
   let identityVerified = false, routeHealthy = true, active = null, toolsActive = () => false, toolsRecord = null, toolsResolution = null, toolsOff = null,
-    sessionWork = null, gate = null;
+    sessionWork = null, gate = null, nextToolPrestart = null, toolCleanupVerified = false;
   /** Each delegated session step's shell network checkpoint, by claim: closed with the step's claim and at shutdown. */
   const stepEgress = new Map();
   // Part Twelve: the effect doorway's operator policy, re-read at every tool turn so a withdrawn or broken file grants
@@ -1836,7 +1836,10 @@ async function main() {
       return { state: 'complete', value, ...(reason.trim() ? { reason } : {}), usage: result.usage };
     };
     // Part Thirteen §9 (docs/17-harness-adapters): an eligible answer or work step runs as one scoped-tool turn (tool-turn.mjs runToolTurn).
-    const invokeTools = async (prepared, id) => (await runToolTurn({ journal, root, id, prepared,
+    const invokeTools = async (prepared, id) => {
+      const pending = nextToolPrestart;
+      const prestart = pending ? await pending : null;
+      const turnOptions = { journal, root, id, prepared,
       promptLimit: toolPromptLimit(), mcp: readRootMcp(root),
       // Rule 100: an MCP server's SecretRef is opened from this root's custody vault and handed to that server alone.
       resolveSecret: name => createSecretCustody(root, key(), wallNow).resolve(secretRef(name)),
@@ -1857,7 +1860,26 @@ async function main() {
         const answer = mediaNotice => invokeSubscription(withWorkspaceNotice(prepared, [notice, mediaNotice].filter(Boolean).join('\n')), id, undefined, undefined, toolTurn);
         return invokeMediaTurn(id, toolTurn, currentMedia, answer,
           (bytes, source) => protectMediaBytes(bytes, source, custody, heldSecrets));
-      } })).result;
+      } };
+      let outcome;
+      try { outcome = await runToolTurn({ ...turnOptions, prestart }); }
+      finally { await prestart?.close(); nextToolPrestart = null; }
+      if (doorway.prestartCommand && toolCleanupVerified && outcome.result?.state === 'complete' && !turnOptions.stopped()) {
+        // Yield the answer first. Preparation belongs to the next fresh process, and
+        // shutdown and the next turn both join this one bounded preparation task.
+        nextToolPrestart = new Promise(resolve => setImmediate(resolve)).then(() => prepareNextToolTurn(turnOptions, scope => {
+          modelRoute('prestart', scope); // Current artifact, profile, activation and confinement checks, without submission.
+          return createSubscriptionProviderIO({ repository: process.cwd(), runAs: runAsOf(harness),
+            stopped: () => turnOptions.stopped() || !active() || !ownerHeld(), work: 'maintenance' })
+            .prestart(doorway.prestartCommand(profile, options.model, scope));
+        })).catch(error => ({
+          // Preparation normally returns null after verified disposal. A rejected
+          // cleanup stays latched: a later answer cannot lose it and launch a sibling.
+          take: async () => { throw error; }, close: async () => { throw error; },
+        }));
+      }
+      return outcome.result;
+    };
     const proofLines = () => {
       if (!proofLaunch) return [];
       const unavailable = proofStoreFailed ? ['Proofs: the durable proof log cannot be written right now; nothing new counts as proven until it can.'] : [];
@@ -2663,12 +2685,14 @@ async function main() {
       const work = operation.startsWith('summary:') ? 'maintenance' : operation.endsWith(':reply-review') ? 'review' : 'answer';
       // A tool turn also ends on the journal's latched /stop and on tool-activation withdrawal: the resource
       // owner polls this every 25 ms and SIGKILLs the launch's own process group by its exact pid.
-      const launchIO = createSubscriptionProviderIO({ repository: process.cwd(), runAs: runAsOf(harness),
+      const launchIO = createSubscriptionProviderIO({ repository: process.cwd(), runAs: runAsOf(harness), prestarted: toolTurn?.prestarted ?? null,
         stopped: () => workerStop.value || existsSync(stopPath) || !active()
           || (toolTurn !== undefined && (journal.view.stop !== null || !toolsActive())), work });
       const physicalIO = { ...launchIO, execute: async input => {
         if (typeof input.stdin === 'string' && input.stdin.length > 0) modelLaunch.started();
         const result = await launchIO.execute(input);
+        if (toolTurn && typeof input.stdin === 'string' && input.stdin.length > 0)
+          toolCleanupVerified = result.resources?.cleanup === 'verified';
         // Only the model command is the exchange: it alone carries the prepared prompt on stdin; the
         // version and auth preflights send none and print no result frame.
         if (typeof input.stdin === 'string' && input.stdin.length > 0)
@@ -2725,6 +2749,7 @@ async function main() {
       }
     } finally {
       // A delegated session never outlives the launch that owns it.
+      try { await (await nextToolPrestart)?.close(); } catch { /* the resource owner's durable ledger retains unresolved cleanup */ }
       try { sessionWork?.port.stop(); } catch { /* the driver's next boot sweep and stop authority find it */ }
       if (gate) { gate.closeAll(); await gate.stop(); }
       for (const proxy of stepEgress.values()) await proxy.close();

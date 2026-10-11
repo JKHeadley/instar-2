@@ -12,7 +12,7 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { afterEach, expect, it } from 'vitest';
 import { canonical, decode } from '../../src/index.js';
-import { createClaudeCodeSubscriptionRoute, subscriptionConversationPolicy, subscriptionToolsPolicy, SUBSCRIPTION_CONVERSATION_FRAMING,
+import { createClaudeCodeSubscriptionRoute, subscriptionConversationPolicy, subscriptionModelCommand, subscriptionToolsPolicy, SUBSCRIPTION_CONVERSATION_FRAMING,
   SUBSCRIPTION_PREVIEW_EXPIRY, SUBSCRIPTION_TOOLS_FRAMING } from '../../src/assembly/production-provider.js';
 import type { SubscriptionActivationRecord } from '../../src/assembly/production-provider.js';
 import type { ProviderSubscriptionProfile } from '../../src/assembly/provider-credential-custodian.js';
@@ -58,7 +58,9 @@ else { const t=readFileSync(${JSON.stringify(frame)},'utf8'); process.stdout.wri
     loginProfileIdentity: '', managedConfigurationDigest: '' };
   const profile: ProviderSubscriptionProfile = Object.freeze({ ...seed, ...physical.inspectSubscriptionProfile(seed) });
   const model = 'claude-sonnet-5', ctx = { ...f.ctx.decode, register: { ...f.ctx.decode.register, entries: [...f.ctx.decode.register.entries, 'preview'] } };
-  const route = (framing: typeof SUBSCRIPTION_TOOLS_FRAMING | typeof SUBSCRIPTION_CONVERSATION_FRAMING) => {
+  const scope = { scratch, workspace, stateDirectory, deniedRoots: [root], hook: { node: process.execPath, script: HOOK } };
+  let warmUses = 0;
+  const route = (framing: typeof SUBSCRIPTION_TOOLS_FRAMING | typeof SUBSCRIPTION_CONVERSATION_FRAMING, routeIO = io) => {
     const policy = framing === SUBSCRIPTION_TOOLS_FRAMING ? subscriptionToolsPolicy(model) : subscriptionConversationPolicy(model);
     const activation: SubscriptionActivationRecord = { type: 'SubscriptionActivationRecord', schemaVersion: 1, reference: profile.activationReference,
       waiver: 'replay', p11: 'replay', reviewedHead: 'replay', trial: 'replay', baseConfigurationDigest: hash('replay'), profileDigest: hash(profile),
@@ -68,7 +70,7 @@ else { const t=readFileSync(${JSON.stringify(frame)},'utf8'); process.stdout.wri
       subscriptionLimit: 'unobservable', subscriptionLimitReason: 'offline replay only', acceptedResiduals: ['replay'], expiresAt: SUBSCRIPTION_PREVIEW_EXPIRY };
     return { policy, route: value(createClaudeCodeSubscriptionRoute({ provider: 'anthropic', model, route: 'preview-subscription', disclosure: 'replay',
       credential: value(decode('SecretRef', { type: 'SecretRef', schemaVersion: 1, vault: 'preview', name: profile.reference }, ctx)),
-      context: { ...ctx, site: f.c.site, preserved: f.c.preserved }, profile, resolveProfile: () => profile, activation, io, now: () => 1000,
+      context: { ...ctx, site: f.c.site, preserved: f.c.preserved }, profile, resolveProfile: () => profile, activation, io: routeIO, now: () => 1000,
       active: () => true, framing, ...(framing === SUBSCRIPTION_TOOLS_FRAMING ? { toolTurn: { scratch, workspace, stateDirectory, deniedRoots: [root],
         hook: { node: process.execPath, script: HOOK } } } : {}),
       adapterEvidenceContract: { reference: profile.activationReference, version: hash(profile), parserReference: 'claude-code-json-result', parserVersion: '1',
@@ -76,19 +78,50 @@ else { const t=readFileSync(${JSON.stringify(frame)},'utf8'); process.stdout.wri
         sourceEvidence: ['replay'], terminalEvidence: 'replay', terminalReasonField: 'subtype', successfulFinalReplyReasons: ['success'],
         strength: 'observation' as const, maxMetadataBytes: 8192, maxRawTerminalBytes: 65536, maxCaptureBytes: 1048576 } })) };
   };
-  const invoke = async (framing: Parameters<typeof route>[0], raw: string) => {
+  const invoke = async (framing: Parameters<typeof route>[0], raw: string, warm = false) => {
     writeFileSync(frame, raw);
-    const { policy, route: r } = route(framing);
-    return r.invoke('{"replay":true}', { operation: 'replay', deadline: 10_000_000, timeout: 20000, maxOutputBytes: policy.maxOutputBytes,
-      maxTokens: policy.maxTokens, maxCharge: 0, automaticRetries: 0 });
+    const parked = warm ? physical.prestart(subscriptionModelCommand(profile, model, framing,
+      framing === SUBSCRIPTION_TOOLS_FRAMING ? scope : undefined)) : null;
+    const routeIO = parked ? { ...createSubscriptionProviderIO({ repository: process.cwd(), stopped: () => false,
+      prestarted: { consume: (input: unknown) => { const result = parked.consume(input); if (result !== null) warmUses++; return result; },
+        close: () => parked.close() } }), managedHooksDisabled: () => false } : io;
+    const { policy, route: r } = route(framing, routeIO);
+    try { return await r.invoke('{"replay":true}', { operation: 'replay', deadline: 10_000_000, timeout: 20000, maxOutputBytes: policy.maxOutputBytes,
+      maxTokens: policy.maxTokens, maxCharge: 0, automaticRetries: 0 }); }
+    finally { await parked?.close(); }
   };
-  return { invoke };
+  return { invoke, warmUses: () => warmUses };
 }
 const answerOf = (bytes: string | null | undefined) => {
   if (!bytes) return null;
   const parsed = parseModelJson(bytes, { wrapped: 'accept' });
   return parsed.ok ? conclusionText((parsed.value as { conclusion: { value: unknown } }).conclusion.value as never) : 'malformed';
 };
+
+it('carries recorded summary, Jev, review and answer shapes unchanged through fresh pre-started processes', async () => {
+  const route = routeFixture();
+  const fixture = (name: string) => JSON.parse(readFileSync(join(__dirname, 'fixtures', `${name}.json`), 'utf8'));
+  const cascade = fixture('proofroom-summary-cascade-stall-2026-09-30');
+  const declarations = fixture('live-declarations-2026-09-28');
+  // The recorded bytes are unchanged. Only their CLI transport envelope is synthetic,
+  // as it is in the existing cross-framing replay below. Jev itself is a separate route.
+  const outputs = [...cascade.writer.map((row: { raw: string }) => row.raw),
+    ...cascade.jevFaithfulness.map((row: { raw: string }) => row.raw),
+    ...declarations.current.reviews, ...declarations.current.answers];
+  for (const output of outputs) {
+    const raw = JSON.stringify({ type: 'result', subtype: 'success', is_error: false, result: output, num_turns: 1,
+      session_id: 'recorded-shape-replay', usage: { input_tokens: 5, output_tokens: 400,
+        cache_creation_input_tokens: 0, cache_read_input_tokens: 0 } });
+    const cold = await route.invoke(SUBSCRIPTION_TOOLS_FRAMING, raw);
+    const warm = await route.invoke(SUBSCRIPTION_TOOLS_FRAMING, raw, true);
+    expect([warm.state, warm.bytes, warm.usage]).toEqual([cold.state, cold.bytes, cold.usage]);
+  }
+  // Lost terminal evidence is still uncertain: no invented successful frame.
+  const cold = await route.invoke(SUBSCRIPTION_TOOLS_FRAMING, '');
+  const warm = await route.invoke(SUBSCRIPTION_TOOLS_FRAMING, '', true);
+  expect([cold.state, warm.state]).toEqual(['uncertain', 'uncertain']);
+  expect(route.warmUses()).toBe(outputs.length + 1);
+});
 
 it('replays the five live tool turns: hook decisions, trace pairing, and the recorded answers through the tools route', async () => {
   const route = routeFixture();

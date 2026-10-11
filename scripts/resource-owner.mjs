@@ -728,7 +728,15 @@ export function createResourceOwner(initialCeilings = RESOURCE_CEILINGS) {
       // force-settles itself and its cleanup then ends every member it can reach. A helper inside the
       // launch is never the owner's only way to finish.
       child.on('exit', (code, signal) => { if (!settled) settleTimer = setTimeout(() => finalize(code, signal, true), EXIT_SETTLE_MS); });
-      child.stdin.end(input.stdin, 'utf8');
+      if (input.deferredInput) {
+        // A fresh speculative worker may initialize, but receives no task until its caller
+        // has rechecked authority and durably admitted that task. It is still this owner's
+        // bounded launch, including while idle. A launcher hand-off is separate from the task.
+        if (input.initialInput) child.stdin.write(input.initialInput, 'utf8');
+        input.deferredInput.then(bytes => {
+          if (!settled && !limited && !input.stopped?.()) child.stdin.end(bytes, 'utf8');
+        }, () => fail(null));
+      } else child.stdin.end(input.stdin, 'utf8');
     });
   }
   /** Observation-only recovery (docs/18 §§8, 14): a row is examined against its owner and every
