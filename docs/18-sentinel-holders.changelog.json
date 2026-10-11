@@ -1,5 +1,24 @@
 [
   {
+    "revision": 3,
+    "date": "2026-10-10",
+    "status": "draft",
+    "cause": {
+      "kind": "conversation",
+      "note": "Justin, docs-align-1010: align design parts with PR #154; final-head code-owner approval pending."
+    },
+    "changes": [
+      {
+        "what": "Remove per-kind recovery approval and inherited ships-dark defaults for supported role-covered recovery; preserve continuity, ownership, resource and no-repeat floors.",
+        "why": "The purpose requires role-covered capabilities by default and reserves sign-off for its fixed list.",
+        "commits": [
+          "fc0e3c20"
+        ],
+        "ref": "docs/00-the-purpose.md; reviews/docs-align-1010-change-review.md"
+      }
+    ]
+  },
+  {
     "revision": 2,
     "date": "2026-09-28",
     "status": "approved",
