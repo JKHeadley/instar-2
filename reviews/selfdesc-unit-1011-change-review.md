@@ -37,7 +37,7 @@ Fixture sizing: The imminent-date revision fixture now gives its two short turns
 
 Pin completeness: Refresh the dated-memory fixture's owner-reference hash as well as the journal-agent fixture's hash; both are registered artifacts. Regenerate derived source metadata from that committed owner manifest.
 
-Final generation: ba22ddba155b1c9e2e75caacad11fd55d7c316579dbaaf20de7a9f3ab463c765 from source 88fc1e1693b46bcb402b0235f60226d19b416651; 289 entries, 116 rules, 34 terms, shape-only authority. Capability inventory remains unchanged.
+Original unit generation: ba22ddba155b1c9e2e75caacad11fd55d7c316579dbaaf20de7a9f3ab463c765 from source 88fc1e1693b46bcb402b0235f60226d19b416651; 289 entries, 116 rules, 34 terms, shape-only authority. Capability inventory remains unchanged.
 
 ## MUST-FIX 1 — explicit self-description assessment
 
@@ -69,6 +69,8 @@ Deferral: tests/preview/fixtures/selfdesc-unit-2026-10-11.json:24 | not-a-deferr
 Deferral: tests/preview/fixtures/selfdesc-unit-negative-2026-10-11.json:13 | not-a-deferral=Retained raw historical or replayed model output, not a new commitment.
 
 Deferral: tests/preview/fixtures/selfdesc-unit-negative-2026-10-11.json:14 | not-a-deferral=Retained raw historical or replayed model output, not a new commitment.
+
+Repair generation: 97136540a10e5efd25fc410c4e9a6bfdfb965caa6efa8f4e83424dde636d35b8 from source commit 0b5f4725ff75a9a200f9b89a132e545f1b6205ac. The generated capability inventory is byte-for-byte unchanged after excluding provenance; owner rehash and desk repin changed no owner or inventory pins.
 
 ## Closing block
 
