@@ -1,6 +1,6 @@
 # Change review — held replies integrated onto the live group-carry build
 
-Subject base: afa6be392876eb17c2789651090fa90b83a81f92
+Subject base: e7f0bf6f5167230f635d40901b0824cfd5439f97
 Review state: open
 Reviewed content: none
 Outcome: Carry the reviewed w4-holding-onto-train5 unit at d0c04734fbd04156f7e2c44b0cfbfb41734af31e onto the exact live group-carry head through one ordinary fast-forward merge. Retain bounded typed pre-dispatch retry, reviewed held-answer delivery or an honest final notice, current audience verification, coherent remainder review and optional same-topic reply anchoring. Refresh the register through the existing desk chain; no integration-authored runtime change.
@@ -34,11 +34,14 @@ Deferral: tests/preview/obligation-task-answer-live.test.ts:113 | not-a-deferral
 
 ## Closing block
 
-simplestRobustRoute: This is the simplest robust route: one ordinary fast-forward of the reviewed unit, existing desk generation tools and targeted checks. No new machinery. Existing current-disclosure, durable reservation, stop, cap and ownership checks are start and limit guards; contextual review and one signed durable send are end-state guards. Typed pre-dispatch proof prevents retrying charged UNKNOWN work. This submission claims offline integration evidence, not new unattended live completion.
-80/20: Verify changed tests, direct source consumers and required machine checks; the pipeline owns full-suite and independent landing review. Preserve red and unavailable evidence explicitly. No full suite, load burner or background test is required.
-VERDICT: author submission; independent landing verdict belongs to the pipeline
 
 Prompt finding: 034c5250da92 | quoted-evidence | The self-description test quotes shipped standing-trust guidance to translate a historical capture; it does not inject a fixture-specific judgment into a prompt.
 Prompt finding: 45e37ea2e9e9 | quoted-evidence | Existing standing-grant guidance is quoted by the self-description historical translation; current source wording is preserved.
 Prompt finding: 6af48f94b789 | quoted-evidence | Existing one-machine effect boundary and truthful refusal guidance are quoted by the historical self-description replay; no new phrase gate.
 Prompt finding: b00ed403060a | quoted-evidence | Full standing-trust paragraph is the existing shipped text used by the historical self-description translation; it changes no expected model verdict.
+
+Adoption scope: This historical record is adopted onto live e7f0bf6f5167230f635d40901b0824cfd5439f97 for sb-audience-classifier-1011. Its original Subject base: afa6be392876eb17c2789651090fa90b83a81f92 and original reviewed range remain byte-for-byte in commit bbd0c3ae. The retained narrative and decisions describe historical unit work; the current integration scope and validation are reviews/sb-audience-classifier-1011-change-review.md. No old approval or convergence is claimed for this new head.
+
+simplestRobustRoute: This is the simplest robust route: one ordinary fast-forward of the reviewed unit, existing desk generation tools and targeted checks. No new machinery. Existing current-disclosure, durable reservation, stop, cap and ownership checks are start and limit guards; contextual review and one signed durable send are end-state guards. Typed pre-dispatch proof prevents retrying charged UNKNOWN work. This submission claims offline integration evidence, not new unattended live completion.
+80/20: Verify changed tests, direct source consumers and required machine checks; the pipeline owns full-suite and independent landing review. Preserve red and unavailable evidence explicitly. No full suite, load burner or background test is required.
+VERDICT: author submission; independent landing verdict belongs to the pipeline

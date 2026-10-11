@@ -1,6 +1,6 @@
 # Change review — reconcile approved main through PR 158
 
-Subject base: c1e290e1f264470bdd081778ce16ef7e693118f0
+Subject base: e7f0bf6f5167230f635d40901b0824cfd5439f97
 Review state: open
 Reviewed content: none
 Outcome: Merge approved main c1e290e1 with ordinary history-preserving merge; retain both changelog histories, align the briefed constitution through the landed Rule 18 fix, and regenerate the merged register. Repair stale ancestry at its source without runtime machinery.
@@ -338,11 +338,14 @@ Subject: Main-relative merge reconciliation; source changes introduced in this r
 
 ## Closing block
 
-simplestRobustRoute: This is the simplest robust route: ordinary main merge, preserve both histories, derive pins from actual bytes, and regenerate with existing tools. Start guard is current-main ancestry; end guards are focused baseline proofs and final cheap checks; limits are the existing five safety floors and unchanged agent ability. No new runtime mechanism or autonomous-completion claim.
-80/20: All 14 saved failing assertions pass in focused replay. Four focused files pass 19 tests including first-landing positive and refusal controls, measurement E2E, declaration additivity and constitutional briefing integrity. Build, typecheck and governed-document checks pass. The saved unsuccessful full report stays unmodified; a fresh full gate is the pipeline responsibility.
-VERDICT: author submission; this record asserts no independent verdict — the review desk records its own
 
 Prompt finding: 034c5250da92 | quoted-evidence | The self-description test quotes shipped standing-trust guidance to translate a historical capture; it does not inject a fixture-specific judgment into a prompt.
 Prompt finding: 45e37ea2e9e9 | quoted-evidence | Existing standing-grant guidance is quoted by the self-description historical translation; current source wording is preserved.
 Prompt finding: 6af48f94b789 | quoted-evidence | Existing one-machine effect boundary and truthful refusal guidance are quoted by the historical self-description replay; no new phrase gate.
 Prompt finding: b00ed403060a | quoted-evidence | Full standing-trust paragraph is the existing shipped text used by the historical self-description translation; it changes no expected model verdict.
+
+Adoption scope: This historical record is adopted onto live e7f0bf6f5167230f635d40901b0824cfd5439f97 for sb-audience-classifier-1011. Its original Subject base: c1e290e1f264470bdd081778ce16ef7e693118f0 and original reviewed range remain byte-for-byte in commit bbd0c3ae. The retained narrative and decisions describe historical unit work; the current integration scope and validation are reviews/sb-audience-classifier-1011-change-review.md. No old approval or convergence is claimed for this new head.
+
+simplestRobustRoute: This is the simplest robust route: ordinary main merge, preserve both histories, derive pins from actual bytes, and regenerate with existing tools. Start guard is current-main ancestry; end guards are focused baseline proofs and final cheap checks; limits are the existing five safety floors and unchanged agent ability. No new runtime mechanism or autonomous-completion claim.
+80/20: All 14 saved failing assertions pass in focused replay. Four focused files pass 19 tests including first-landing positive and refusal controls, measurement E2E, declaration additivity and constitutional briefing integrity. Build, typecheck and governed-document checks pass. The saved unsuccessful full report stays unmodified; a fresh full gate is the pipeline responsibility.
+VERDICT: author submission; this record asserts no independent verdict — the review desk records its own
