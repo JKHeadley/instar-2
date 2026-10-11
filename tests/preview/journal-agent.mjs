@@ -2488,7 +2488,6 @@ async function main() {
     // Two machines: ordinary work (model calls, replies, reminders) starts only while the other machine holds the
     // whole journal, so nothing is spent or prepared on local durability while the peer is away. Input is still read.
     const lane = createOrdinaryLane({ elapsed: clock.elapsed, peerCurrent: () => shared === null || shared.peerCurrent(), after: summarizeLater });
-    const ordinary = run => { lane.submit(run); };
     // A message past every bound waits at Telegram; later presses behind it are re-read after this pause.
     const waitHeld = async () => {
       const until = clock.elapsed() + 3000;
@@ -2520,9 +2519,12 @@ async function main() {
     // The sentinels tick only when that job is admitted, and their requested steps run inside it after the drain.
     // Plan #548: it is offered once per cycle AND throughout every poll backoff (pollFailure), so it never waits on
     // the Telegram connection or on an inbound message; only delivery of its result does.
-    const workCycle = () => {
+    const workCycle = (requested = false) => {
       if (journal.view.stop || !ownerHeld() || !activationMatchesJournal(journal.view, activation)) return;
-      sentinelCycle(lane, { tick: sentinelTick, requested: sentinelSteps, drain: () => worker.drain(),
+      sentinelCycle(lane, { tick: sentinelTick, requested: sentinelSteps, drain: async () => {
+        await worker.drain();
+        if (requested) await worker.sendRequested();
+      },
         after: async () => {
           try { await worker.workObligations(); } catch { /* a stop or expiry ends the step; its start stays durable */ }
         } });
@@ -2621,7 +2623,10 @@ async function main() {
       // Reminders go out only after a successful poll returned nothing new and no ordinary drain is
       // running: every operator message already waiting (a cancellation included) has been read and
       // settled first. A failed poll, a backlog or a cap leaves them pending.
-      ordinary(() => batch.length === 0 ? worker.sendRequested() : worker.drain());
+      // Every admitted job drains ordinary intake first. A pre-poll job may finish during
+      // the poll: admitting only reminders here could win every cycle and starve both
+      // accepted operator turns and due obligations indefinitely (including session work).
+      workCycle(batch.length === 0);
       reportCap();
       // Rule 55: while the other machine is away the unsettled updates return at once; re-read after the same pause.
       if (worker.intakeHeld() || shared && batch.length === 0 && updates.result.length > 0) await waitHeld();

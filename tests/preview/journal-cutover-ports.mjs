@@ -22,7 +22,8 @@ export function createProductionTelegramIO() {
   if (!directory) throw Error('cutover fixture world absent');
   const marker = join(directory, 'long-poll-overlap');
   const log = row => appendFileSync(join(directory, 'telegram.jsonl'), `${JSON.stringify(row)}\n`);
-  return { invoke(input) {
+  let polls = 0;
+  const port = { invoke(input) {
     if (input.method === 'getMe') return { kind: 'identity', identity: { id: 8820318295 } };
     if (input.method === 'getUpdates') {
       if (process.env.INSTAR_PREVIEW_CUTOVER_ROLE === 'canary') {
@@ -48,14 +49,30 @@ export function createProductionTelegramIO() {
       log({ kind: 'poll', outcome: 'accepted', role: process.env.INSTAR_PREVIEW_CUTOVER_ROLE ?? 'live', offset: input.body.offset });
       const updates = JSON.parse(readFileSync(join(directory, 'updates.json'), 'utf8'))
         .filter(row => row.update_id >= input.body.offset).slice(0, input.body.limit);
-      return { kind: 'response', status: 200, bytes: JSON.stringify({ ok: true, result: updates }) };
+      polls++;
+      return { kind: 'response', status: 200, bytes: JSON.stringify({ ok: true,
+        result: polls < Number(process.env.INSTAR_PREVIEW_CUTOVER_UPDATES_AFTER_POLL ?? 0) ? [] : updates }) };
     }
     if (input.method === 'sendMessage') {
-      log({ kind: 'send', role: process.env.INSTAR_PREVIEW_CUTOVER_ROLE, text: input.body.text });
+      log({ kind: 'send', role: process.env.INSTAR_PREVIEW_CUTOVER_ROLE, text: input.body.text,
+        thread: input.body.message_thread_id });
       return { kind: 'response', status: 200, bytes: JSON.stringify({ ok: true, result: {
         message_id: 42, chat: { id: Number(input.body.chat_id) },
+        ...(input.body.message_thread_id === undefined ? {} : { message_thread_id: input.body.message_thread_id }),
         text: input.body.text.replaceAll('&lt;', '<').replaceAll('&gt;', '>').replaceAll('&amp;', '&') } }) };
     }
     throw Error('cutover fixture unexpected Telegram method');
   } };
+  if (process.env.INSTAR_PREVIEW_CUTOVER_POLL_DELAY_MS) port.poll = async input => {
+    await new Promise(resolve => setTimeout(resolve, Number(process.env.INSTAR_PREVIEW_CUTOVER_POLL_DELAY_MS)));
+    if (process.env.INSTAR_PREVIEW_CUTOVER_DRAIN_INTERLEAVE && polls !== 1) {
+      // Let the prior audience read finish during the poll; the second poll alone delivers
+      // while that read is pending. No CPU load: this is the live pre/post-poll lane race.
+      for (let tries = 0; existsSync(join(directory, 'audience-busy')) && tries < 1000; tries++)
+        await new Promise(resolve => setTimeout(resolve, 1));
+      await new Promise(resolve => setTimeout(resolve, 1));
+    }
+    return port.invoke(input);
+  };
+  return port;
 }
