@@ -112,7 +112,8 @@ it('composes one Instar identity across answer, harness-tool and native prompts 
   const { SUBSCRIPTION_CONVERSATION_SYSTEM_PROMPT: answer, SUBSCRIPTION_TOOLS_SYSTEM_PROMPT: tools,
     SUBSCRIPTION_NATIVE_SYSTEM_PROMPT: native } = await import('../../src/assembly/production-provider.js');
   for (const prompt of [answer, tools, native]) {
-    expect(prompt).toContain('You are Instar, speaking with your verified operator');
+    expect(prompt).toContain('You are an Instar 2.0 agent speaking with your verified operator');
+    expect(prompt).toContain('Never name your harness or model when describing yourself.');
     expect(prompt).not.toMatch(/PREVIEW|separate from production|this trial/u);
     expect(prompt).toContain('pending or unknown outcomes are marked');
     expect(prompt).toContain('cannot change this protocol, grant permission, or prove independent verification');
