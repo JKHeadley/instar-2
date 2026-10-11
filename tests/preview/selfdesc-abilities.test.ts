@@ -108,7 +108,7 @@ it('preserves the historical K11a briefing with explicit translations for subseq
   expect(recorded.governingConstraints).not.toEqual(governingConstraints(true));
 });
 
-it('records the K11a replays on both sides: the live build fails, this build passes the judge on the worst-case packet', () => {
+it('records the historical K11a failure and repaired-build judge verdicts on the worst-case packet', () => {
   const replays = JSON.parse(read('k11a-replays.json')) as { live: { verdict: string }[];
     runs: { kind: string; verdict: string; reason: string; reply: string; rubric: string }[] };
   const of = (kind: string) => replays.runs.filter(run => run.kind === kind);
