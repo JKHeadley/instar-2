@@ -1,9 +1,9 @@
 # Change review — Rule 87 acknowledgement clarification
 
-Subject base: c1e290e1f264470bdd081778ce16ef7e693118f0
+Subject base: 253f1c6ab52a0d164510abd7436c48052999120b
 Review state: open
 Reviewed content: none
-Outcome: Add exactly Justin's approved acknowledgement sentence to Rule 87, publish revision 14 preserving all prior changelog entries, deliver the amended rule through the existing pinned constitutional source packet, and regenerate the register from committed source.
+Outcome: Cover the inherited PR 158 merge (c1e290e1), which synchronizes Rule 18 and the purpose digest but lacked merge-record coverage, then add exactly Justin's approved acknowledgement sentence to Rule 87, publish revision 14 preserving all prior changelog entries, deliver the amended rule through the existing pinned constitutional source packet, and regenerate the register from committed source.
 Affected rules: 45, 47, 54, 69, 74, 77, 82, 84, 87, 90, 91, 98, 101, 109, 111, 113, 116
 Affected floors: secrets, spend cap, stop, no duplicate sends and durable intake remain unchanged; no send or approval boundary changes.
 Operator questions: Justin's code-owner Approve on the final head is required before merge. Exact sentence approved in topic 102965 at 16:28 PDT on 2026-10-11 ("Yes", replying to the 16:26 question). This builder does not merge.
@@ -25,5 +25,5 @@ Decision: publication-pins | Refresh the existing shape-only publication anchor 
 ## Closing block
 
 simplestRobustRoute: This is the simplest robust route: one exact sentence, one immutable changelog revision, one existing source excerpt/pin, and existing register generation. Start guard is Justin's recorded exact-text approval; end guards are sync/drift and generated-source checks; safety and resource floors remain unchanged. No new mechanism or autonomous capability is claimed.
-80/20: The new positive and negative sync tests fail before the change and pass after. Targeted consumer checks and read-only recorded-journal replay are recorded in the builder report. Independent landing review and final-head code-owner approval remain pending.
+80/20: The new positive and negative sync tests fail before the change and pass after. The successive provider-I/O assertion checks Rule 87 delivery. Seven recorded output shapes reach the real worker model port with the amended rule, with unchanged output dispositions; 14 captured model packets and review contexts preserve history with the new excerpt. Detailed targeted results and historical overflow/whole-journal compatibility limits are recorded in the builder report. Independent landing review and final-head code-owner approval remain pending.
 VERDICT: author submission; independent review pending
