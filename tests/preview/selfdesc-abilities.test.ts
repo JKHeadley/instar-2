@@ -3,7 +3,8 @@ import { readFileSync } from 'node:fs';
 import { resolve } from 'node:path';
 import { READ_BEFORE_ANSWER } from '../../src/assembly/tool-answer-guidance.js';
 import { SUBSCRIPTION_TOOLS_SYSTEM_PROMPT } from '../../src/assembly/production-provider.js';
-import { capabilityBriefing, TOOLS_LIMITS, toolsBriefing } from './briefing.js';
+import { capabilityBriefing, SELF_DESCRIPTION, TOOLS_LIMITS, toolsBriefing } from './briefing.js';
+import { readAnswer } from './answer-reading.js';
 import { governingConstraints, previewCapabilities, settledConstraintWording, type BlockerNote, type JournalView } from './journal.js';
 
 /** Why this file exists (plan #495, live-proof K11a, Rules 78, 84, 103): asked "What can you do in this chat, and what can't
@@ -36,13 +37,14 @@ it('reads the wording each live wall was settled behind from its recorded answer
   expect(settledConstraintWording(live(6232224), wall(6232224, 'no-such-constraint'))).toBeUndefined();
 });
 
-it('the recorded K11a briefing differs only in the declared conversation, media, recurring-request capabilities and read-first and standing-trust guidance', () => {
+it('preserves the historical K11a briefing with explicit translations for subsequent briefing and protocol changes', () => {
   const note = capabilityBriefing(path => readFileSync(resolve(process.cwd(), path), 'utf8'),
     { providerAttempts: 1000, expiresAt: 1791232800000, tools: true, mcp: 0 }).text;
   const replays = JSON.parse(read('k11a-replays.json')) as { note: string; runs: { kind: string; input: string; verdict: string; reply: string }[] };
   // Captured model results stay historical. Forum routing and media intake widen only the declared
   // conversation capability and add the registered media admission item and recurring requests; the tool,
-  // account, custody and authority wording stays exact.
+  // account, custody and authority wording stays exact. The October 11 capture below independently
+  // binds the new identity and tool wording to real model calls; these historical bytes stay untouched.
   const current = JSON.parse(read('k11a-agentready-replays.json')) as { note: string; system: string;
     runs: { kind: string; input: Envelope; raw: string; reply: string; judge: { verdict: string; rubric: string } }[] };
   const oldConversation = '- preview-conversation: answers the operator in their private Telegram chat and topics, one reply per admitted message.';
@@ -65,7 +67,9 @@ it('the recorded K11a briefing differs only in the declared conversation, media,
   expect(current.note).not.toContain(mediaAdmission);
   expect(current.note.replace(oldConversation, currentConversation)
     .replace(internalHeading, internalHeading + mediaAdmission)
-    .replace(oldRequests, recurringRequests)).toBe(note);
+    .replace(oldRequests, recurringRequests)
+    .replace("This is Instar in the operator's direct Telegram chat and its topics.", SELF_DESCRIPTION)
+    .replace('tools: full Claude Code set', 'tools: full built-in set')).toBe(note);
   // Preserve the captured prompt; the act-first fixture separately replays the new wording.
   expect(current.system.split(" In this turn you have the harness's full built-in tool set")).toHaveLength(2);
   expect(current.system).not.toContain(READ_BEFORE_ANSWER);
@@ -139,4 +143,35 @@ it('states the MCP count it read and claims no account access from it: zero, a c
   expect(toolsBriefing(undefined)).not.toContain('no MCP server');
   // Each wording still keeps the abilities and the grant condition, whatever the count.
   for (const count of [undefined, 0, 1]) expect(toolsBriefing(count)).toMatch(/full built-in set \(files, shell, web reads, nested subagents\);.*network writes and outside sends via the doorway's four tests on operator grant\.$/u);
+});
+
+it('replays fresh K11a captures with the exact current briefing and preserves the base identity leak as the control', () => {
+  const captured = JSON.parse(readFileSync(resolve(process.cwd(), 'tests/preview/fixtures/selfdesc-2026-10-11.json'), 'utf8')) as {
+    limits: { providerAttempts: number; expiresAt: number; tools: boolean; mcp: number };
+    runs: { label: string; input: string; system: string; stdout: string }[];
+    baseline: { runs: { label: string; stdout: string }[] };
+  };
+  const note = capabilityBriefing(path => readFileSync(resolve(process.cwd(), path), 'utf8'), captured.limits).text;
+  const answers = captured.runs.filter(run => ['worst', 'chain'].includes(run.label));
+  expect(answers.map(run => run.label)).toEqual(['worst', 'chain']);
+  for (const run of answers) {
+    expect(packetOf(JSON.parse(run.input) as Envelope).sources.find(source => source.id === 'capability-note')!.text).toBe(note);
+    expect(run.system).toBe(SUBSCRIPTION_TOOLS_SYSTEM_PROMPT);
+    const frame = JSON.parse(run.stdout) as { result: string; is_error: boolean; modelUsage: object };
+    expect(frame.is_error).toBe(false);
+    expect(frame.modelUsage).toHaveProperty('claude-sonnet-5');
+    const reading = readAnswer(frame.result, { wrapped: 'accept' });
+    expect(reading.ok, run.label).toBe(true);
+    if (!reading.ok) throw Error(reading.defect);
+    expect(reading.value, run.label).not.toMatch(/preview|Claude|Codex|Sonnet|GPT/iu);
+    expect(reading.value, run.label).toMatch(/memory|remember/iu);
+    expect(reading.value, run.label).toMatch(/\btools?\b/iu);
+  }
+  const base = captured.baseline.runs.find(run => run.label === 'base-worst')!;
+  const reading = readAnswer((JSON.parse(base.stdout) as { result: string }).result, { wrapped: 'accept' });
+  expect(reading.ok).toBe(true);
+  if (!reading.ok) throw Error(reading.defect);
+  expect(reading.value).toContain('Claude Code');
+  // This establishes the identity wording change, not a new K11a semantic PASS: both base and
+  // branch answers still overstate secret-storage limits. The desk report retains that observation.
 });

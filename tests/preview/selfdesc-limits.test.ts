@@ -3,8 +3,9 @@ import { readFileSync } from 'node:fs';
 import { resolve } from 'node:path';
 import { CLAIM_SCOPED_RULES, DECLARED_OBLIGATIONS_GUIDE, exciseNamedClaims, namedClaimsIn, parseReplyReviewVerdict, quotedSpans,
   replyReviewQuestion, substantiveReply, type ReplyRule } from './reply-check.js';
-import { SOURCE_PINS, sourcePacket, TOOLS_BRIEFING, TOOLS_LIMITS, toolsBriefing } from './briefing.js';
-import { taskFields } from './answer-reading.js';
+import { capabilityBriefing, SOURCE_PINS, sourcePacket, TOOLS_BRIEFING, TOOLS_LIMITS, toolsBriefing } from './briefing.js';
+import { readAnswer, taskFields } from './answer-reading.js';
+import { SUBSCRIPTION_CONVERSATION_SYSTEM_PROMPT } from '../../src/assembly/production-provider.js';
 import { governingConstraints, OBLIGATION_DECISION_TOOLS, previewCapabilities, TOOL_ATTEMPTS_MEANING } from './journal.js';
 
 /** Why this file exists (plan #370, live-proof K11a, Rules 78 and 84): asked "What can you do in this chat, and what
@@ -41,6 +42,46 @@ it('the answer model writes the limits half from the recorded packet, with and w
     expect(reply, name).toContain('tools');
     expect(reply, name).toContain('brows');
   }
+});
+
+it('replays fresh current-note reviews on the description/decline boundary and retains the base broad-limit false clear', () => {
+  type Capture = { label: string; input: string; system: string; stdout: string };
+  const captured = JSON.parse(readFileSync(resolve(process.cwd(), 'tests/preview/fixtures/selfdesc-2026-10-11.json'), 'utf8')) as {
+    limits: { providerAttempts: number; expiresAt: number; tools: boolean; mcp: number };
+    runs: Capture[]; baseline: { runs: Capture[] };
+  };
+  const note = capabilityBriefing(path => readFileSync(resolve(process.cwd(), path), 'utf8'), captured.limits).text;
+  const verdict = (run: Capture) => {
+    const frame = JSON.parse(run.stdout) as { result: string; is_error: boolean; modelUsage: object };
+    expect(frame.is_error, run.label).toBe(false);
+    expect(frame.modelUsage, run.label).toHaveProperty('claude-sonnet-5');
+    const reading = readAnswer(frame.result, { wrapped: 'refuse', object: true });
+    expect(reading.ok, run.label).toBe(true);
+    if (!reading.ok) throw Error(reading.defect);
+    return parseReplyReviewVerdict(reading.value, flagged);
+  };
+  const reviews = captured.runs.filter(run => run.label.startsWith('review-'));
+  expect(reviews.map(run => run.label)).toEqual(['review-describe', 'review-decline', 'review-r2-broad',
+    'review-r2-neighbour', 'review-r2-decline']);
+  for (const run of reviews) {
+    const envelope = JSON.parse(run.input) as { messages: { role: string; content: string }[] };
+    const { packet } = JSON.parse(envelope.messages.find(message => message.role === 'context')!.content) as {
+      packet: { sources: { id: string; text: string }[] };
+    };
+    expect(packet.sources.find(source => source.id === 'capability-note')!.text, run.label).toBe(note);
+    expect(envelope.messages[0]!.content, run.label).toBe(replyReviewQuestion(flagged));
+    expect(run.system, run.label).toBe(SUBSCRIPTION_CONVERSATION_SYSTEM_PROMPT);
+    const parsed = verdict(run);
+    if (run.label.includes('decline')) {
+      expect(parsed.verdict, run.label).toBe('violation');
+      for (const rule of ['claims_blocked', 'unrecorded_blocker'])
+        expect(parsed.findings!.find(finding => finding.rule === rule)!.verdict, run.label).toBe('violation');
+    } else if (run.label === 'review-r2-neighbour') expect(parsed.verdict).toBe('pass');
+  }
+  // Observed defect, NOT acceptance of the broad claim: both current and base-note real calls
+  // falsely pass it. Keep that evidence distinct from the historical violation captures above.
+  expect(verdict(reviews.find(run => run.label === 'review-r2-broad')!).verdict).toBe('pass');
+  expect(verdict(captured.baseline.runs.find(run => run.label === 'base-review-r2-broad')!).verdict).toBe('pass');
 });
 
 it('the old guide flags the limits sentence; the new guide passes it, so nothing is cut (recorded real reviews)', () => {
@@ -98,7 +139,9 @@ it('on the tools route the review packet is route-true, and the same two sides h
     expect(packet.governingConstraints, input).toEqual(governingConstraints(true));
     expect(packet.obligationDecision, input).toBe(OBLIGATION_DECISION_TOOLS);
     expect(packet.declaredObligations.toolAttempts, input).toEqual({ meaning: TOOL_ATTEMPTS_MEANING, calls: [] });
-    expect(packet.sources.find(source => source.id === 'capability-note')!.text, input).toContain(`- ${toolsBriefing(0)}`);
+    // Historical wording is preserved; fresh October 11 review calls below bind the current note.
+    expect(packet.sources.find(source => source.id === 'capability-note')!.text
+      .replace('tools: full Claude Code set', 'tools: full built-in set'), input).toContain(`- ${toolsBriefing(0)}`);
     // Plan #491 and #510 changed the answer-slot wording after capture; the October 10 budget repair then shortened
     // requested reasons and bounded the whole response. Translate those exact historical instructions only:
     // every rule, guide and packet line must still match. reply-review-budget.test.ts replays the new budget's real call.

@@ -9,6 +9,8 @@
  * cases.json: [{ "label", "rows" (decoded journal rows, JSONL), "id" (turn id), "attempt": "reserve" | "format-retry" }], or a
  * runner task: { "label", "rows", "call" (model-call id), "rewrite": [[recorded wording, this branch's wording], ...] }, replayed
  * from the recorded model-call input through the conversation system prompt (no tools), read with the role's wrap policy.
+ * A newly prepared envelope can instead use { "label", "input" (file), "framing": "tools" | "conversation" }.
+ * This mode captures the submitted input and system prompt alongside verbatim stdout; it does not invent journal rows.
  * Env: FLAT_LIVE_MODEL (default claude-sonnet-5, the recorded model); FLAT_CLAUDE_BIN (default /usr/local/bin/claude).
  * Every verbatim model output is written to <out-dir>. One call per case.
  */
@@ -70,6 +72,23 @@ const rulesOf = question => Object.keys(JSON.parse(/rules on its own: (\{.*?\})\
 
 const report = [];
 for (const item of JSON.parse(readFileSync(casesPath, 'utf8'))) {
+  if (item.input) {
+    if (!['tools', 'conversation'].includes(item.framing)) throw Error('direct capture requires an explicit framing');
+    const prompt = readFileSync(item.input, 'utf8');
+    const system = item.framing === 'tools' ? SUBSCRIPTION_TOOLS_SYSTEM_PROMPT : SUBSCRIPTION_CONVERSATION_SYSTEM_PROMPT;
+    writeFileSync(join(outDir, `${item.label}-input.json`), prompt);
+    writeFileSync(join(outDir, `${item.label}-system.txt`), system);
+    const { stdout, stderr } = await run(prompt, system);
+    writeFileSync(join(outDir, `${item.label}-stdout.json`), stdout);
+    writeFileSync(join(outDir, `${item.label}-stderr.txt`), stderr);
+    const frame = JSON.parse(stdout), raw = String(frame.result ?? '');
+    const reading = readAnswer(raw, { wrapped: item.framing === 'tools' ? 'accept' : 'refuse', object: true });
+    const entry = { label: item.label, framing: item.framing, outputTokens: frame.usage?.output_tokens ?? null,
+      ok: reading.ok, ...(reading.ok ? { value: reading.value } : { defect: reading.defect }) };
+    report.push(entry);
+    process.stdout.write(`${JSON.stringify(entry)}\n`);
+    continue;
+  }
   const rows = readFileSync(item.rows, 'utf8').trim().split('\n').map(line => JSON.parse(line));
   if (item.call) {
     const task = taskOf(rows, item);
