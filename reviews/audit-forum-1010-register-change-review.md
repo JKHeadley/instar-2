@@ -7,8 +7,8 @@ Outcome: Refresh the existing shape-only register publication against the commit
 Affected rules: 37, 49, 69, 74, 101, 102, 111, 112, 113, 116
 Affected floors: secrets, spend cap, stop, no duplicate sends and durable intake remain unchanged; generated replay metadata grants no runtime authority
 Operator questions: none
-Suggested tier: patch
-Declared tier: patch
+Suggested tier: ordinary
+Declared tier: ordinary
 Tier rationale: Mechanical generated publication; all seven changes are exact source-commit and generation substitutions.
 Side effects: Generated identities bind source c4da8cdd69adb4e9c5edfd03020da1cb613a4bed. No owner declaration, policy, rule, authority or runtime behavior changes.
 Undo and recovery: Revert the source repair if needed and regenerate the register through the existing command; preserve journal originals and UNKNOWN effects.
