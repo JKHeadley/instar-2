@@ -35,6 +35,10 @@ Desk files: /Users/dabombstudio/.instar/agents/echo/.instar/lanes/pipeline/live-
 
 Verification: Targeted required suite and direct neighbors: 10 files, 93 tests pass; final wording/context/real-shape subset: 4 files, 40 tests pass; standing-trust neighbors: 4 files, 23 tests pass. Explicit new-path real-shape replay: 17 tests pass. Final evidence tests, tsc, architecture, lint, register and change-review outputs are recorded in the absolute capsentence-1011-PROGRESS.md. No full suite, Telegram message or live installation change.
 
+Deferral: tests/preview/fixtures/capsentence-2026-10-11.json:14 | not-a-deferral=Immutable historical answer text from recorded update 840342286, describing follow-through; no builder work is deferred.
+Deferral: tests/preview/fixtures/capsentence-2026-10-11.json:113 | not-a-deferral=Immutable recorded inference output for update 840342287, run 8; follow-through is a stated capability, not a builder deferral.
+Deferral: tests/preview/fixtures/capsentence-2026-10-11.json:114 | not-a-deferral=The parsed answer from that same recorded inference, preserved verbatim for replay; no builder work is deferred.
+
 ## Closing block
 
 simplestRobustRoute: This is the simplest robust route: reuse the capability note, its existing provenance and the effect doorway definitions; verify exact evidence with code and free prose by model judgment. No store or runtime blocking path. Start guard is the assigned base; end guards are current rendered-line replays, digest negative neighbors, targeted tests and register checks. No deployment or unattended live-surface claim.
