@@ -110,7 +110,7 @@ it.each(recorded.otherShapes)('saved fact survives real $kind output shape from 
     const worker = createJournalWorker(w.journal, { ...w.ports, model: async input => {
       expect(input.context).toContain('"mode":"remembered"');
       expect(input.context).toContain(quote);
-      return row.kind === 'summary-uncertain' ? { state: 'uncertain' as const } : row.raw;
+      return row.kind === 'summary-uncertain' ? JSON.parse(row.raw) : row.raw;
     } });
     worker.intake([raw(2, 'what is the desk test word?')]); await worker.drain();
     expect(w.journal.view.memory).toMatchObject([{ mode: 'remember', quote }]);
