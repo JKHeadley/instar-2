@@ -15,6 +15,11 @@ revalidate Part One standing on every chunk. Local packages are decoded and
 hashed before any code can execute. Growth breaches coalesce into one owned
 episode and close only on a complete measured exit workload.
 
+`tool-answer-guidance.ts` supplies the shared read-before-answer instruction for
+Claude, Codex and native tool turns: acquire missing information through existing
+authorized reads, cite it, and report actual failed attempts. It changes no tool
+authority or resource limit; text-only turns retain their no-tools instruction.
+
 ## Bounded grounding packet (R5, `production-context-sampler.ts`)
 
 Evidence tier: offline ahead unit. It is not exported from the barrel or wired into

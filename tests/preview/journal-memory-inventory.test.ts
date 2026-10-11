@@ -4,6 +4,7 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { createJournalWorker, openPreviewJournal } from './journal.js';
 import { withoutCorrectedHistory } from './journal-test-worker.js';
+import { SUBSCRIPTION_CONVERSATION_SYSTEM_PROMPT } from '../../src/assembly/production-provider.js';
 import { prepareJournalEnvelope } from './journal-envelope.js';
 
 const key = new Uint8Array(32).fill(31);
@@ -138,39 +139,41 @@ it('does not expose forgotten content encoded in imported metadata or candidate 
 it('drains an accepted memory question when the ordinary envelope fits but even empty inventory does not', async () => {
   const directory = root();
   try {
-    // cbuild-2: the prepared envelope now carries the mind-held instructions and answer protocol, and the
-    // packet the always-offered summary decision, moving the window (measured pass 13400-13600, fail 13200 and 13800).
-    // Build 5 adds the ordinary envelope's ~70-byte verified writer binding (Rule 29). cint-23 re-measured the
-    // composed window: pass 13470-13850, fail 13460 and 13900. cint-23-occam removed the always-offered summary
-    // decision and generalized the capability line; re-measured in 10-byte steps: pass 13080-13490, fail 13070 and 13500.
-    // cint-L2 with the live repair's capabilities key merged: re-measured in 10-byte steps: pass 13810-14220,
-    // fail 13800 and 14230.
-    // cint-L3: build 1's generated capability source removes 471 bytes from the capability field against
-    // cint-L2's text; the window moves to pass 13339-13749 (cint-5 alone measured the same shift, 452 bytes, as 8650 → 8200).
-    // w3-memcorr: the answer guidance now states the exact memory item shape (Rule 7, live K13b); re-measured in
-    // 10-byte steps: pass 14170-14570, fail 14160 and 14580.
-    // w3-longchat: the answer protocol's compaction and meaning-coverage sentences grew by 55 bytes (Rules 11, 110);
-    // re-measured in 10-byte steps: pass 14240-14640, fail 14230 and 14650.
-    // w3-recallrank: the answer protocol's one lookup sentence grew the envelope by 284 bytes (Rule 11);
-    // re-measured in 10-byte steps: pass 14520-14930, fail 14510 and 14940.
-    // cint-L27: merged with w3-reminderwords and the three trims that pay for the lookup sentence; re-measured in
-    // 10-byte steps: pass 14310-14710, fail 14300 and 14720.
-    const g = { ...genesis, maxBytes: 14510 }; // midway in the shifted window between the two bounds
-    const journal = openPreviewJournal(join(directory, 'journal.encrypted'), key, g);
+    const journal = openPreviewJournal(join(directory, 'journal.encrypted'), key, genesis);
     const question = 'What do you know about me? Context: '.padEnd(2500, 'x');
-    const full = workerFor(journal).probe(question);
-    if ('reason' in full) throw Error(full.reason);
-    expect(JSON.parse(full.context).inventory).toMatchObject({ total: 0, shown: 0 });
-    expect(() => prepareJournalEnvelope({ question, context: full.context, id: 'telegram:12345678:update:1' },
-      'claude-opus-5-5', g.grant, 1790000000000, g.maxBytes)).toThrow('overflow');
+    // Measure the real fitter's variants instead of pinning a byte window to old prompt wording.
+    // This read-only probe rejects each candidate so it visits both sides without spending a call.
+    const sizes = { inventory: [] as number[], ordinary: [] as number[] };
+    const measure = createJournalWorker(journal, { now: () => 1790000000000, stopped: () => false,
+      prepareModel: input => {
+        const prepared = prepareJournalEnvelope(input, 'claude-opus-5-5', genesis.grant, 1790000000000, 32768);
+        const bytes = Buffer.byteLength(prepared) + Buffer.byteLength(SUBSCRIPTION_CONVERSATION_SYSTEM_PROMPT);
+        sizes[JSON.parse(input.context).inventory ? 'inventory' : 'ordinary'].push(bytes);
+        throw Error('fixture: measure every candidate');
+      }, model: async () => { throw Error('read-only probe must not call the model'); },
+      send: async () => { throw Error('read-only probe must not send'); }, checkOutbound: () => {} });
+    measure.probe(question);
+    expect(sizes.inventory.length).toBeGreaterThan(0);
+    expect(sizes.ordinary.length).toBeGreaterThan(0);
+    const ordinaryBytes = Math.min(...sizes.ordinary), inventoryBytes = Math.min(...sizes.inventory);
+    expect(ordinaryBytes).toBeLessThan(inventoryBytes);
+    const maxPromptBytes = Math.floor((ordinaryBytes + inventoryBytes) / 2);
+    expect(journal.view.calls).toBe(0);
+    const rejectedInventory: number[] = [];
     const contexts: string[] = [], sent: number[] = [];
     const worker = createJournalWorker(journal, { now: () => 1790000000000, stopped: () => false,
-      prepareModel: input => { const prepared = prepareJournalEnvelope(input,
-        'claude-opus-5-5', g.grant, 1790000000000, g.maxBytes);
+      prepareModel: input => {
+        if (JSON.parse(input.context).inventory) {
+          const bytes = prepareJournalEnvelope(input, 'claude-opus-5-5', genesis.grant, 1790000000000, 32768);
+          rejectedInventory.push(Buffer.byteLength(bytes) + Buffer.byteLength(SUBSCRIPTION_CONVERSATION_SYSTEM_PROMPT));
+        }
+        const prepared = prepareJournalEnvelope(input, 'claude-opus-5-5', genesis.grant, 1790000000000, maxPromptBytes);
         contexts.push(input.context); return prepared; },
       model: async () => 'Understood.', send: async () => { sent.push(1); return 1; }, checkOutbound: () => {} });
     worker.intake([update(1, question)]);
     await worker.drain();
+    expect(rejectedInventory.length).toBeGreaterThan(0);
+    expect(Math.min(...rejectedInventory)).toBeGreaterThan(maxPromptBytes);
     expect(contexts).toHaveLength(1);
     expect(JSON.parse(contexts[0]!).inventory).toBeUndefined();
     expect(JSON.parse(contexts[0]!).capability).not.toContain('inventory is a bounded');
