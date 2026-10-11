@@ -20,11 +20,11 @@ Entries are numbered P-01 onward. "Default" is what ships. "Per deployment" stat
 
 **Value — P-04 chat steering exposure.** Default: steering approved work from a chat channel is allowed only after the operator records and accepts the exposure that a compromised chat token would create. Per deployment: the acceptance record, or refusal, is the operator's.
 
-## Outward exposure (serves: nothing outward by default)
+## Role and outward exposure (serves: a role is granted once, at onboarding)
 
-**Value — P-05 personal-account grants.** Default: use of a person's own messaging account starts as a reply-only grant naming the account, recipients, channel and actions; starting new conversations is a separately named capability. Per deployment: the grant text.
+**Value — P-05 personal-account grants.** Default: the onboarding conversation records the accounts, recipients, channels and actions agreed for the role, including starting conversations when that is part of the role. Inside those grants the agent acts without asking again, subject to the purpose's short sign-off list. Per deployment: the person chooses the starting trust and may widen or narrow the recorded role in conversation.
 
-**Value — P-06 public ingress.** Default: no installation exposes an inbound conversation endpoint to the internet; an operator who does records the public surface, the custodian, the capture-before-acknowledgement guarantee and the recovery obligation. Per deployment: the ingress record.
+**Value — P-06 public ingress.** Default: public ingress is included when agreed as part of the role at onboarding; the standing grant records the public surface, the custodian, the capture-before-acknowledgement guarantee and the recovery obligation. An endpoint outside every grant is refused. Per deployment: the ingress record within the person's chosen role.
 
 **Value — P-07 process observation.** Default: beyond the three required watchers, only the stuck-session watcher and the idle-session cleanup may read the full process inventory, each for its registered recovery decision. Per deployment: adding a reader is an explicit widening the operator records.
 

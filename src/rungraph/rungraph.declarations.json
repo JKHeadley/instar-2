@@ -5,7 +5,7 @@
     "id": "rungraph-core",
     "kind": "features",
     "status": "dark",
-    "requiredFacts": { "metrics": ["rungraph.fact-count", "rungraph.pending-count", "rungraph.fold-ms", "rungraph.conflict-count"], "gate": { "test": "P5-NF-54", "deadline": 1893456000000 } },
+    "requiredFacts": { "metrics": ["rungraph.fact-count", "rungraph.pending-count", "rungraph.fold-ms", "rungraph.conflict-count"], "gate": { "test": "P5-NF-54", "deadline": 1792886400000 } },
     "profile": {
       "type": "Profile", "schemaVersion": 1, "consequence": "control", "reversibility": "costly",
       "reach": "user", "surface": "chat", "repeats": { "kind": "bounded", "by": "rungraph.bound" }
