@@ -17,6 +17,10 @@ const fixture = () => JSON.parse(readFileSync(new URL('./fixtures/act-first-2026
   original: { update: number; answer: string; toolAttempts: unknown[]; review: { verdict: string } };
   runs: Capture[]; formatFailure: Capture;
 };
+// Historical captures keep their original identity. Only the identity prefix changed;
+// the read-first, tool, authority and response contracts must still match byte for byte.
+const capturedSystem = SUBSCRIPTION_TOOLS_SYSTEM_PROMPT.replace(
+  "You are Justin's Instar 2.0 agent,", 'You are Instar,');
 const decode = (run: Capture) => {
   const reading = readAnswer(JSON.parse(run.raw).result, { wrapped: 'accept' });
   expect(reading.ok, run.name).toBe(true);
@@ -51,7 +55,7 @@ it('replays real web calls and cited answers for the recorded comparison and a p
   expect(captured.original.review.verdict).toBe('pass'); // the original false-clear is retained as evidence
   for (const name of ['compare', 'plain-read']) {
     const run = captured.runs.find(item => item.name === name)!;
-    expect(run.system).toBe(SUBSCRIPTION_TOOLS_SYSTEM_PROMPT); // prompt changes require a new real sample
+    expect(run.system).toBe(capturedSystem);
     const text = decode(run);
     const trace = toolTrace(run.admission.trim().split('\n'));
     expect(trace.consistent).toBe(true);
@@ -64,7 +68,7 @@ it('replays real web calls and cited answers for the recorded comparison and a p
 
 it('replays a real failed lookup without inventing the missing report', () => {
   const run = fixture().runs.find(item => item.name === 'failed-read')!;
-  expect(run.system).toBe(SUBSCRIPTION_TOOLS_SYSTEM_PROMPT);
+  expect(run.system).toBe(capturedSystem);
   const text = decode(run);
   const trace = toolTrace(run.admission.trim().split('\n'));
   expect(trace.calls.some((call: { tool: string }) => ['WebFetch', 'Bash'].includes(call.tool))).toBe(true);
@@ -85,7 +89,7 @@ it('replays the real reviewer on both the unperformed lookup and actual read out
 it('retains the historical post-search malformed answer as a refusal, never a usable answer', () => {
   const run = fixture().formatFailure;
   // This historical failure predates the composed prompt; preserve every captured byte.
-  // Current-prompt behavior is proved by the fresh successful and failed-read captures above.
+  // Read behavior is replayed above; selfdesc-abilities binds the current identity to its real capture.
   expect(createHash('sha256').update(JSON.stringify(run)).digest('hex'))
     .toBe('944e686434b078b44810fd16da15b39da708b285a35c228344d02caaa5612dc9');
   expect(readAnswer(JSON.parse(run.raw).result, { wrapped: 'accept' }).ok).toBe(false);

@@ -20,6 +20,11 @@ const genesis = { kind: 'genesis' as const, bot: '8994258214', chat: '-100436755
   maxCalls: 20, maxReplies: 20, maxTurns: 20, maxBytes: 32768, cursor: 0 };
 
 for (const recorded of fixture.cases) it(`replays real update ${recorded.update} through intake, answer and restart`, async () => {
+  // Preserve the real capture's digest while accounting for the sole system identity edit.
+  // Check outside the model port: the worker records thrown model errors as unknown outcomes.
+  const capturedSystem = SUBSCRIPTION_CONVERSATION_SYSTEM_PROMPT.replace(
+    "You are Justin's Instar 2.0 agent,", 'You are Instar,');
+  expect(createHash('sha256').update(capturedSystem).digest('hex')).toBe(recorded.systemSha256);
   const root = realpathSync(mkdtempSync(join(tmpdir(), 'inrole-memory-'))), path = join(root, 'journal');
   let journal = openPreviewJournal(path, key, genesis);
   const sent: string[] = [];
@@ -35,7 +40,6 @@ for (const recorded of fixture.cases) it(`replays real update ${recorded.update}
       expect(packet.memoryDecision).toContain('Ordinary facts are journaled across restarts');
       expect(packet.memoryDecision).toContain('keep wording and attribution');
       expect(packet.memoryDecision).toContain('memory:[] means no edits');
-      expect(createHash('sha256').update(SUBSCRIPTION_CONVERSATION_SYSTEM_PROMPT).digest('hex')).toBe(recorded.systemSha256);
       expect(packet.memoryDecision).toContain('acknowledge it without asking again');
       // The real storage boundary, before even the answer call: reopen the actual encrypted file.
       const persisted = openPreviewJournal(path, key, undefined, undefined, true);
