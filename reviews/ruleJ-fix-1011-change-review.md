@@ -1,6 +1,6 @@
 # Change review — self-host CLI durable stop and idle lifetime proof
 
-Subject base: ba91e2bd
+Subject base: ba91e2bd0f959f401c71b0bbfcad37f3cd6c5068
 Review state: open
 Reviewed content: none
 Outcome: A durably stopped self-host CLI reports stopped: true before reading provider inputs or constructing its doorway, retains exit 1, and records its stopped phase. The launcher-death fixture waits on a bounded timer instead of spinning.
@@ -18,7 +18,7 @@ Bug class: integration
 Bug evidence: reproducer=tests/preview/self-host-cli-profile.test.ts
 Hook bypass: none
 Convergence: none
-Verification: Actual CLI clear/latched tests pass, including repeated latched runs with absent activation/profile files and no owner/release creation. Existing recorded real self-host answer-shape tests pass. Native contract initially identified the stale composition declaration; certification is refreshed and the contract rerun. Complete targeted and isolated live evidence is in the absolute lanes/ruleJ-fix-1011-PROGRESS.md record; no full suite is run on the Studio.
+Verification: All five CLI/profile tests pass, including repeated latched runs with absent activation/profile files and no owner/release creation. All seven recorded real self-host answer-shape tests pass. The native contract initially identified the stale composition declaration; certification is refreshed and all ten contract tests now pass. Architecture and lint pass with no issues. Complete targeted and isolated live evidence is in the absolute lanes/ruleJ-fix-1011-PROGRESS.md record; no full suite is run on the Studio.
 
 simplestRobustRoute: check the existing durable latch before provider construction and reuse the existing report output, then prove clear and latched CLI states. Use the existing confinement wall deadline over an idle timer. No added service or decision mechanism. Start guards remain the activation, grant and durable stop; end guards are installed/probed packages and no provider attempt after stop. Isolated unattended shipped-path results are recorded in PROGRESS.
 VERDICT: author submission; independent review pending
