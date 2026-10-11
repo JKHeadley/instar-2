@@ -4,7 +4,7 @@ Subject base: fc4f10ff6f6198cb5a663c7d99e6ecff6c8a5af9
 Review state: open
 Reviewed content: none
 Outcome: keep immediate dispatch while preventing a minimal group collected before an awaited send from claiming a stop already owned by ordinary recovery.
-Affected rules: 1, 4, 14, 15, 26, 37, 42, 46, 49, 63, 70, 74, 77, 95, 101, 111, 112, 113, 116
+Affected rules: 1, 4, 14, 15, 26, 37, 42, 46, 49, 63, 69, 70, 74, 77, 95, 101, 111, 112, 113, 116
 Affected floors: secrets — existing outbound checks and provenance remain; spend cap — existing reservations and caps remain; stop — current gates, latch and exclusive claim remain; no duplicate sends — durable intent validation and UNKNOWN fences remain; durable intake — journal custody before wake remains
 Operator questions: none
 Suggested tier: critical
@@ -23,7 +23,8 @@ Prompt finding: 849db3a6296a | protocol-literal | unchanged fixed empty-memory s
 Prompt finding: bd01de21286a | protocol-literal | unchanged sourceLabel output-field instruction; unrelated to scheduling
 Prompt finding: fb5fa7e706c8 | protocol-literal | unchanged recall-grounding instruction; unrelated to scheduling
 
-Subject (2 paths): tests/preview/dispatch-now.test.ts, tests/preview/journal.ts
+Subject: tests/preview/dispatch-now.test.ts, tests/preview/journal.ts, register-source/owner-references/preview.json; generated register replay follows this source pin refresh.
+Register maintenance: the delegated desk rehash refreshed the stale reply-check.test.ts owner pin inherited from this unit. The chain repin reported no inventory changes. Pins are generated, never hand-edited.
 
 ## Closing block
 
