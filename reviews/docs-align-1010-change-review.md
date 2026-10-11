@@ -23,7 +23,7 @@ Decision: signoff-versus-floors | Quote the purpose's five-condition list and ke
 Decision: useful-defaults | Remove extra empty-host-list and repeated in-role approval choices; bind harness capability limits to named rules and require identity, sourced lookup and real-use acceptance. Apply the same rule to imported messaging defaults and automatic recovery, retaining explicit opt-outs and uncertainty holds. | reported=/Users/dabombstudio/.instar/agents/echo/.instar/lanes/docs-align-1010-PROGRESS.md
 Decision: publication-pins | Refresh only existing derived publication hashes and generated outputs through the repository build and desk repin helpers; no build logic or runtime implementation changes. | reported=/Users/dabombstudio/.instar/agents/echo/.instar/lanes/docs-align-1010-PROGRESS.md
 
-Decision: historical-replay | The real-clock register build reports the unchanged rungraph-core graduation deadline as overdue. Regenerate shape-only publication at the existing source timestamp, record real-clock failure separately, and infer no readiness or runtime authority from replay. | reported=/Users/dabombstudio/.instar/agents/echo/.instar/lanes/docs-align-1010-PROGRESS.md
+Decision: historical-replay | The real-clock register build reports the unchanged rungraph-core graduation deadline as overdue. Regenerate shape-only publication at 1790777313000 (the historical replay clock already used for PR #154), record real-clock failure separately, and infer no readiness or runtime authority from replay. | reported=/Users/dabombstudio/.instar/agents/echo/.instar/lanes/docs-align-1010-PROGRESS.md
 
 ## Closing block
 
