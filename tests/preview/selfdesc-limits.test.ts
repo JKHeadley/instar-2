@@ -1,7 +1,7 @@
 import { expect, it } from 'vitest';
 import { readFileSync } from 'node:fs';
 import { resolve } from 'node:path';
-import { CLAIM_SCOPED_RULES, DECLARED_OBLIGATIONS_GUIDE, REPLY_REVIEW_REASONING_CHARS, exciseNamedClaims, namedClaimsIn, parseReplyReviewVerdict, quotedSpans,
+import { CLAIM_SCOPED_RULES, DECLARED_OBLIGATIONS_GUIDE, exciseNamedClaims, namedClaimsIn, parseReplyReviewVerdict, quotedSpans,
   replyReviewQuestion, substantiveReply, type ReplyRule } from './reply-check.js';
 import { SOURCE_PINS, sourcePacket, TOOLS_BRIEFING, TOOLS_LIMITS, toolsBriefing } from './briefing.js';
 import { taskFields } from './answer-reading.js';

@@ -142,7 +142,7 @@ it('the shipped callSubscription boundary removes pre-dispatch retry proof after
     // Execute the actual launcher boundary with only its physical dispatch and clock injected.
     const call = runInNewContext(`(() => { ${launcher.slice(start, end)} return callSubscription; })()`, {
       requireGroupDisclosure: async () => { if (before) refuse(); }, ModelDisclosureRefused,
-      wallNow: () => 1, assertLiveJudgment: () => {}, shared: null,
+      selectLogin: () => null, loginPool: null, wallNow: () => 1, assertLiveJudgment: () => {}, shared: null,
       modelRoute: () => ({ invoke: async () => { invoked++; refuse(); } }), performance: { now: () => 0 },
       journal: { view: { turns: new Map() } }, required: () => 'TEST-model', options: {},
       recordModelCall: (row: unknown) => recordedCalls.push(row),

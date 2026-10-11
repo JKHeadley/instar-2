@@ -5,15 +5,18 @@ import { join } from 'node:path';
 import { createJournalWorker, openPreviewJournal } from './journal-test-worker.js';
 import { prepareJournalEnvelope } from './journal-envelope.js';
 import { readAnswer, taskFields } from './answer-reading.js';
-import { GROUP_REVIEW_FINAL_NOTICE, REVIEW_FORMAT_REMINDER, interpretJev,
+import { GROUP_REVIEW_FINAL_NOTICE, REPLY_RULES, REVIEW_FORMAT_REMINDER, interpretJev,
   parseReplyReviewVerdict, replyReviewContext, replyReviewQuestion, type ReplyRule } from './reply-check.js';
 import { interpretSummaryReview } from './summary-check.js';
 
 const fixture = JSON.parse(readFileSync(new URL('./fixtures/reply-review-budget-2026-10-10.json', import.meta.url), 'utf8'));
 const rules: ReplyRule[] = fixture.rules;
-// Preserve this head's real recorded output; only translate its superseded budget instructions.
-// The unchanged train-6 question has its own exact captured-prompt test in reply-review-budget.test.ts.
+// Keep the captured bytes historical. Train-6 already replaced two rule descriptions;
+// act-first.test.ts requires exact current real reviewer captures, including those rules.
+const historicalRules = JSON.parse(fixture.replay.question.split('on its own: ')[1].split('}. For raw_path')[0] + '}');
 const retainedQuestion = fixture.replay.question
+  .replace(JSON.stringify(historicalRules.parks_on_user), JSON.stringify(REPLY_RULES.parks_on_user))
+  .replace(JSON.stringify(historicalRules.sensitive_disclosure), JSON.stringify(REPLY_RULES.sensitive_disclosure))
   .replace('with each reason under 300 characters; keep reasoning concise within its separate budget.',
     'with each reason under 160 characters. Keep reasoning under 400 characters and the entire JSON response under 4000 characters so every verdict fits the existing output allowance. Allocate the response to the verdicts, without repeating the rules or context.')
   .replace(taskFields('{rule_id: its verdict, one field for each listed rule, named by that rule id}', 400),

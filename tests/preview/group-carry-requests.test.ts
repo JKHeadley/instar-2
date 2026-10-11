@@ -325,10 +325,10 @@ it.each([['model', false], ['subscription', false], ['send', false], ['model', t
   const recorded = (JSON.parse(readFileSync(new URL('./fixtures/proofroom-summary-cascade-stall-2026-09-30.json', import.meta.url), 'utf8')) as { rows: JournalRecord[] })
     .rows.find((row): row is Extract<JournalRecord, { kind: 'answer' }> => row.kind === 'answer' && row.id.endsWith(':715672480'))!;
   const subscription = Function('journal', 'requireGroupDisclosure', 'ModelDisclosureRefused', 'assertLiveJudgment', 'shared',
-    'modelRoute', 'performance', 'required', 'options', 'recordModelCall', 'wallNow', `return (async ${subscriptionCode});`)(
+    'modelRoute', 'performance', 'required', 'options', 'recordModelCall', 'wallNow', 'selectLogin', 'loginPool', `return (async ${subscriptionCode});`)(
     journalProxy, requireAt('subscription'), ModelDisclosureRefused, () => {}, null,
     () => ({ invoke: async () => { modelLaunch.started(); providerCalls++; return { state: 'complete', bytes: recorded.text }; } }),
-    { now: () => 0 }, () => 'fixture', {}, () => {}, () => friday9);
+    { now: () => 0 }, () => 'fixture', {}, () => {}, () => friday9, () => null, null);
   const model = Function('journal', 'requireGroupDisclosure', 'toolsActive', 'toolTurnEligible', 'invokeTools', 'invokeSubscription', 'recordedUsage', 'ModelDisclosureRefused', 'modelLaunch', `return (${modelFunction});`)(
     journalProxy, requireAt('model'), () => false, () => false, () => { throw Error('unused'); },
     async (prepared: string, id: string) => { const result = await subscription('answer', prepared, id, { deadline: friday9 + 1000 }); return { state: result.state, value: result.bytes }; },

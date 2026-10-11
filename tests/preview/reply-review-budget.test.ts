@@ -7,7 +7,7 @@ import fixture from './fixtures/forum-review-budget-2026-10-10.json' with { type
 import { subscriptionConversationPolicy } from '../../src/assembly/production-provider.js';
 import { readAnswer } from './answer-reading.js';
 import { createJournalWorker, openPreviewJournal } from './journal-test-worker.js';
-import { GROUP_REVIEW_FINAL_NOTICE, HOLDING_REPLY, parseReplyReviewVerdict, replyReviewQuestion } from './reply-check.js';
+import { GROUP_REVIEW_FINAL_NOTICE, HOLDING_REPLY, REPLY_RULES, parseReplyReviewVerdict, replyReviewQuestion } from './reply-check.js';
 
 const rules = ['parks_on_user', 'defers_work', 'self_state_claim', 'breaks_preference', 'sensitive_disclosure'] as const;
 const original = JSON.parse(fixture.original.input);
@@ -21,7 +21,14 @@ it('replays the actual over-cap forum review and its real bounded-prompt replace
   expect(fixture.original.usage.outputTokens).toBeGreaterThan(limit);
   expect(fixture.recorded.intent.text).toBe(HOLDING_REPLY);
   const prepared = structuredClone(original);
-  prepared.messages.find((m: { role: string }) => m.role === 'user').content = replyReviewQuestion(rules);
+  // This budget capture predates train-6's reviewed act-first and audience rules.
+  // Reconstruct its historical request for the original hash; current real question/output
+  // equality remains enforced by act-first.test.ts. No captured bytes are rewritten.
+  const historicalQuestion = original.messages.find((m: { role: string }) => m.role === 'user').content;
+  const historicalRules = JSON.parse(historicalQuestion.split('on its own: ')[1].split('}. For raw_path')[0] + '}');
+  prepared.messages.find((m: { role: string }) => m.role === 'user').content = replyReviewQuestion(rules)
+    .replace(JSON.stringify(REPLY_RULES.parks_on_user), JSON.stringify(historicalRules.parks_on_user))
+    .replace(JSON.stringify(REPLY_RULES.sensitive_disclosure), JSON.stringify(historicalRules.sensitive_disclosure));
   expect(createHash('sha256').update(JSON.stringify(prepared)).digest('hex')).toBe(fixture.replay.inputSha256);
   expect(fixture.replay).toMatchObject({ code: 0, subtype: 'success', is_error: false });
   expect(fixture.replay.usage.output_tokens).toBeLessThanOrEqual(limit);
