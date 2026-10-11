@@ -89,7 +89,30 @@ it('the launcher offers intake before its minimal await, after durable peer sync
   const wake = intake.indexOf('if (batch.length > 0) workCycle(false, true)');
   expect(wake).toBeGreaterThan(intake.indexOf('await shared.sync()'));
   expect(wake).toBeGreaterThan(intake.indexOf('worker.readAhead()'));
-  expect(wake).toBeLessThan(intake.indexOf('await untilStopped(() => worker.minimal()'));
+  expect(wake).toBeGreaterThan(intake.indexOf('const minimalStep = untilStopped(() => worker.minimal(), ended)'));
+  expect(wake).toBeLessThan(intake.indexOf('await minimalStep'));
   expect(source).toContain('!signalled && !workerStop.value && !existsSync(stopPath) && !journal.view.stop');
   expect(source).toContain('ownerHeld() && activationMatchesJournal(journal.view, activation)');
+});
+
+it('immediate dispatch and the minimal path do not duplicate a stop confirmation', async () => {
+  const root = realpathSync(mkdtempSync(join(tmpdir(), 'dispatch-now-stop-')));
+  const journal = openPreviewJournal(join(root, 'journal.encrypted'), key, { kind: 'genesis', bot: '12345678', chat: '7654321',
+    operator: '7654321', grant: 'grant:preview', configurationDigest: 'sha256:offline', expires: 9999999999999,
+    maxCalls: 10, maxReplies: 10, maxTurns: 10, maxBytes: 32768, cursor: 0 });
+  let sends = 0;
+  const worker = createJournalWorker(journal, { now: () => 1000, stopped: () => false,
+    model: async () => { throw Error('stop must not call the answer model'); }, checkOutbound: () => {},
+    replyCheck: { elapsedMs: () => 1000, jev: async () => ({ value: scores, latencyMs: 0 }),
+      escalate: async () => { throw Error('unexpected escalation'); } },
+    send: async () => { sends++; return sends; } });
+  const lane = createOrdinaryLane({ elapsed: () => 1000, peerCurrent: () => true, after: () => {} });
+  try {
+    worker.intake([{ ...update(1), message: { ...update(1).message, text: '/stop' } }]);
+    const minimalStep = worker.minimal();
+    lane.submit(() => worker.drain(), true);
+    await minimalStep;
+    await lane.settle();
+    expect(sends).toBe(1);
+  } finally { await lane.settle(); journal.close(); rmSync(root, { recursive: true, force: true }); }
 });

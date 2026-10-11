@@ -2540,10 +2540,12 @@ async function main() {
       // A full held page was preserved and passed: read the rest of the backlog now, so an exact /stop
       // behind it latches before any further processing (Rule 4; bounded by the waiting store).
       if (worker.readAhead() && batch.length >= pollLimit) continue;
-      // Durable intake is ready now. Offer its ordinary drain before the minimal path's awaits;
-      // a busy lane retains one wake and drains it as soon as the current job finishes, without a poll tick.
+      // Start the minimal path's synchronous stop handling before ordinary work can claim a stop turn.
+      // Do not await its longer work before offering the durable intake: a busy lane retains one wake
+      // and drains it as soon as the current job finishes, without a poll tick.
+      const minimalStep = untilStopped(() => worker.minimal(), ended);
       if (batch.length > 0) workCycle(false, true);
-      if (!await untilStopped(() => worker.minimal(), ended)) break;
+      if (!await minimalStep) break;
       if (journal.view.stop) break;
       if (renewedAway()) break;
       // Reminders go out only after a successful poll returned nothing new and no ordinary drain is
