@@ -7,7 +7,7 @@ import { performance } from 'node:perf_hooks';
 import { auditJournal, auditPacket } from './journal-audit.mjs';
 import { OBLIGATION_FLOOR_PACKET_BYTES, createJournalWorker, importChannelItems, openPreviewJournal, probeTurn } from './journal-test-worker.js';
 import { appendGroupCarry } from './group-carry.js';
-import { now as carryNow, permissionFor, scope as carryScope } from './group-carry-fixture.js';
+import { now as carryNow, permissionFor, scope, scope as carryScope } from './group-carry-fixture.js';
 import type { JournalRecord } from './journal.js';
 import { memoryHealthLine } from './self-state.js';
 import { prepareJournalEnvelope } from './journal-envelope.js';
@@ -809,4 +809,123 @@ it('audits a request, its scheduler-written due turn and the next answer clean, 
     expect(auditJournal(replay.view).findings).toEqual([]);
     replay.close();
   } finally { rmSync(root, { recursive: true, force: true }); }
+});
+
+it.each([false, true])('audits all summary topics and keeps answers topic-local after compaction (forum=%s)', async forum => {
+  const root = realpathSync(mkdtempSync(join(tmpdir(), 'preview-audit-summary-topics-')));
+  const path = join(root, 'journal.encrypted');
+  let journal = openPreviewJournal(path, key, { ...genesis, maxBytes: 32768,
+    ...(forum ? { forum: true as const, chat: scope.chat } : {}) });
+  try {
+    const worker = createJournalWorker(journal, { now: () => carryNow, stopped: () => false,
+      prepareModel: input => JSON.stringify({ messages: [{ role: 'user', content: input.question },
+        { role: 'context', content: JSON.stringify({ packet: JSON.parse(input.context) }) }] }),
+      model: async input => input.id.startsWith('summary:')
+        ? JSON.stringify({ summary: 'Sam likes tea. Lee likes coffee.', people: [], commitments: [], closed: [] }) : 'Noted.',
+      send: async () => 1, checkOutbound: () => {} });
+    for (const [id, text, thread] of [[1, 'Sam likes tea.', 3], [2, 'Lee likes coffee.', 4],
+      [3, 'What does Sam like?', 3]] as const) {
+      const raw = update(id, text);
+      worker.intake([{ ...raw, message: { ...raw.message, ...(forum ? {
+        chat: { id: Number(scope.chat), type: 'supergroup', is_forum: true }, message_thread_id: thread } : {}) } }]);
+      await worker.drain();
+    }
+    const packet = () => JSON.parse(JSON.parse(journal.view.lastPrompt!.prompt!).messages
+      .find((m: { role: string }) => m.role === 'context').content).packet;
+    expect(journal.view.lastPrompt!.kind).toBe('answer');
+    expect(auditJournal(journal.view).findings).toEqual([]);
+    expect(packet().history.map((item: { id: string }) => item.id))
+      .toEqual(journal.view.order.slice(0, forum ? 1 : 2).map(turn => turn.id));
+    if (forum) {
+      const foreign = structuredClone(packet()); foreign.history.push({ id: journal.view.order[1]!.id });
+      expect(auditPacket(journal.view, journal.view.order[2]!, foreign).findings.map(item => item.code))
+        .toContain('history-coverage');
+    }
+    await worker.summarizeIfNeeded(true);
+    expect(journal.view.lastPrompt!.kind).toBe('summary');
+    const check = () => {
+      expect(auditJournal(journal.view).findings).toEqual([]);
+      expect(packet().history.map((item: { id: string }) => item.id)).toEqual(journal.view.order.map(turn => turn.id));
+      for (const alteration of ['missing', 'id', 'text', 'reply']) {
+        const forged = structuredClone(journal.view), envelope = JSON.parse(forged.lastPrompt!.prompt!);
+        const context = envelope.messages.find((m: { role: string }) => m.role === 'context');
+        const parsed = JSON.parse(context.content);
+        if (alteration === 'missing') parsed.packet.history.shift();
+        if (alteration === 'id') parsed.packet.history[0].id = 'absent';
+        if (alteration === 'text') parsed.packet.history[0].user = 'Altered source.';
+        if (alteration === 'reply') parsed.packet.history[0].answer = 'Altered reply.';
+        context.content = JSON.stringify(parsed); forged.lastPrompt!.prompt = JSON.stringify(envelope);
+        expect(auditJournal(forged).findings.map(item => item.code), alteration).toContain(
+          alteration === 'missing' ? 'history-coverage' : alteration === 'id' ? 'source-turn-absent'
+            : alteration === 'text' ? 'history-text-source' : 'reply-text-source');
+      }
+    };
+    check(); journal.compact(); journal.close(); journal = openPreviewJournal(path, key); check();
+    journal.close();
+    const cli = await runAgent(['audit', '--root', root]);
+    expect(cli.status, cli.stderr).toBe(0); expect(JSON.parse(cli.stdout).findings).toEqual([]);
+  } finally { journal.close(); rmSync(root, { recursive: true, force: true }); }
+}, AGENT_WATCHDOG_MS + 30_000);
+
+it('traces carried summary candidates through authenticated, projected lineage before and after compaction', async () => {
+  const root = realpathSync(mkdtempSync(join(tmpdir(), 'preview-audit-carried-')));
+  const source = openPreviewJournal(join(root, 'source.encrypted'), key, genesis);
+  const path = join(root, 'journal.encrypted');
+  let journal = openPreviewJournal(path, key, { ...genesis, forum: true, chat: scope.chat, maxBytes: 32768 });
+  try {
+    const previous = createJournalWorker(source, { now: () => carryNow - 1000, stopped: () => false,
+      model: async () => 'Noted.', send: async () => 1, checkOutbound: () => {} });
+    previous.intake([update(1, 'Sam likes tea.')]); await previous.drain();
+    appendGroupCarry(journal, source, scope, permissionFor(scope), true, carryNow, () => false);
+    const sourceId = source.view.order[0]!.id;
+    expect(journal.view.turns.has(sourceId)).toBe(false);
+    const worker = createJournalWorker(journal, { now: () => carryNow + 1000, stopped: () => false,
+      groupDisclosure: async () => true,
+      prepareModel: input => JSON.stringify({ messages: [{ role: 'user', content: input.question },
+        { role: 'context', content: JSON.stringify({ packet: JSON.parse(input.context) }) }] }),
+      model: async input => input.id.startsWith('summary:')
+        ? JSON.stringify({ summary: 'Sam likes tea.', people: [], commitments: [], closed: [] }) : 'Noted.',
+      send: async () => 1, checkOutbound: () => {} });
+    const raw = update(2, 'What does Sam like?');
+    worker.intake([{ ...raw, message: { ...raw.message,
+      chat: { id: Number(scope.chat), type: 'supergroup', is_forum: true }, message_thread_id: 3 } }]);
+    await worker.drain(); await worker.summarizeIfNeeded(true);
+    const check = () => {
+      expect(journal.view.lastPrompt!.kind).toBe('summary');
+      expect(auditJournal(journal.view).findings).toEqual([]);
+      expect(auditJournal(journal.view).items).toContainEqual(expect.objectContaining({ kind: 'memory-candidate',
+        chain: [{ kind: 'carried-source', id: sourceId, ref: journal.view.groupCarry!.digest }] }));
+      for (const alteration of ['id', 'text', 'reply', 'missing-carry', 'changed-carry', 'wrong-kind']) {
+        const forged = structuredClone(journal.view), envelope = JSON.parse(forged.lastPrompt!.prompt!);
+        const context = envelope.messages.find((m: { role: string }) => m.role === 'context');
+        const parsed = JSON.parse(context.content), item = parsed.packet.memoryCandidates
+          .find((candidate: { id: string }) => candidate.id === sourceId);
+        expect(item).toEqual(expect.objectContaining({ message: 'Sam likes tea.', reply: '' }));
+        if (alteration === 'id') item.id = 'absent';
+        if (alteration === 'text') item.message = 'Sam likes coffee.';
+        if (alteration === 'reply') item.reply = 'Invented predecessor reply.';
+        if (alteration === 'missing-carry') delete forged.groupCarry;
+        if (alteration === 'changed-carry') forged.groupCarry!.entries[0]!.text = 'Changed snapshot.';
+        if (alteration === 'wrong-kind') item.id = 'summary:1';
+        context.content = JSON.stringify(parsed); forged.lastPrompt!.prompt = JSON.stringify(envelope);
+        expect(auditJournal(forged).findings.map(finding => finding.code), alteration).toContain(
+          alteration === 'text' ? 'candidate-text-source' : alteration === 'reply' ? 'candidate-reply-source' : 'source-turn-absent');
+      }
+      // The same immutable snapshot is served through the reservation's correction/forget state.
+      for (const mode of ['correct', 'forget'] as const) {
+        const view = structuredClone(journal.view), turn = view.order[0]!;
+        view.memory.push({ mode, source: sourceId, trigger: turn.id, quote: 'Sam likes tea.',
+          ...(mode === 'correct' ? { replacement: 'Sam likes coffee.' } : {}) });
+        const packet = { historyMode: 'complete', history: [], memoryCandidates: [
+          { id: sourceId, message: '[withheld: operator correction or forgetting]', reply: '' }] };
+        const audit = (memoryCount: number) => auditPacket(view, { ...turn, update: 3 }, packet, memoryCount);
+        expect(audit(1).findings.filter(item => item.at.startsWith('memoryCandidates'))).toEqual([]);
+        expect(audit(0).findings.map(item => item.code)).toContain('candidate-text-source');
+        packet.memoryCandidates[0]!.message = 'Sam likes tea.';
+        expect(audit(0).findings.filter(item => item.at.startsWith('memoryCandidates'))).toEqual([]);
+        expect(audit(1).findings.map(item => item.code)).toContain('candidate-text-source');
+      }
+    };
+    check(); journal.compact(); journal.close(); journal = openPreviewJournal(path, key); check();
+  } finally { source.close(); journal.close(); rmSync(root, { recursive: true, force: true }); }
 });

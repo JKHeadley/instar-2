@@ -258,6 +258,8 @@ export function auditPacket(view, turn, packet, memoryCount = view.memory.length
     else if (activePreferences.delete(key) && change.mode === 'correct') activePreferences.set(
       JSON.stringify([change.trigger, change.replacement]), { source: change.trigger, quote: change.replacement });
   }
+  // Carry sources are authenticated lineage, not destination intake. Match the reservation's
+  // correction/forget projection without reranking a historical selection against today's clock.
   for (const [n, item] of list(packet.memoryCandidates, 'memoryCandidates').entries()) {
     const at = `memoryCandidates[${n}]`;
     if ((item?.id?.startsWith?.('channel:') || item?.id?.startsWith?.('channel-ref:'))) {

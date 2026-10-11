@@ -526,3 +526,16 @@ it('accepts a descriptor login only from a host that declares the hand-off, and 
   expect(claudeSubscriptionStatusAccepted(claudeAi, profile)).toBe(true);
   expect(claudeSubscriptionStatusAccepted(claudeAi, profile, true)).toBe(false);
 });
+
+it.each(['capture', 'session-incident'])('preserves the zero-token capacity refusal from the physical CLI (%s)', async kind => {
+  const captured = readFileSync(new URL('../fixtures/provider-failure/claude-limit-result.json', import.meta.url), 'utf8');
+  // Exact weekly capture, plus the operator-recorded session wording in that captured envelope.
+  const terminal = kind === 'capture' ? captured : JSON.stringify({ ...JSON.parse(captured),
+    result: "You've hit your session limit · resets 6pm (America/Los_Angeles)" });
+  const f = fixture({ terminal });
+  const route = value(createClaudeCodeSubscriptionRoute(f.input));
+  const result = await route.invoke('{"exact":"question"}', f.bounds);
+  expect(result).toMatchObject({ state: 'rejected', bytes: null, failure: { failureClass: 'limit',
+    resetHint: kind === 'capture' ? null : '6:00pm' }, usage: { inputTokens: 0, inputComplete: true, outputTokens: 0, charge: null } });
+  expect(f.commands()).toHaveLength(3); // Version/auth and one launched model attempt.
+});

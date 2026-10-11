@@ -19,7 +19,7 @@ import { join } from 'node:path';
 import { createHash } from 'node:crypto';
 import { continuityDisclosure, continuitySpoken, createJournalWorker, INDEX_ATTEMPT_LIMIT, INDEX_BACKLOG_LIMIT,
   LOOKUP_DONE_GUIDANCE, meaningIndexStatus, openPreviewJournal, type ContinuityAccount } from './journal.js';
-import { ANSWER_INSTRUCTIONS } from './briefing.js';
+import { ANSWER_INSTRUCTIONS, MEMORY_LOOKUP_INSTRUCTIONS } from './briefing.js';
 
 const key = new Uint8Array(32).fill(54), at = 1790000000000;
 const genesis = (maxBytes = 1024 * 1024) => ({ kind: 'genesis' as const, bot: '12345678', chat: '7654321', operator: '7654321',
@@ -166,7 +166,7 @@ describe('Rule 11: a message the indexer skipped is retried and named, never sil
     // cint-L27: the "say your search is incomplete" sentence went to pay for w3-recallrank's lookup sentence. Where
     // the gap matters the answer now searches once instead, and a search that finds nothing must say it is not
     // proof (LOOKUP_DONE_GUIDANCE; real answers recorded in lanes/cint-L27-PROGRESS.md).
-    expect(ANSWER_INSTRUCTIONS).toContain('do not answer that it is missing or unknown yet');
+    expect(MEMORY_LOOKUP_INSTRUCTIONS).toContain('do not answer that it is missing or unknown yet');
     expect(LOOKUP_DONE_GUIDANCE).toContain('which is not proof it was never said');
     // And the disclosure sentence is the application's to add, only when one is owed.
     expect(ANSWER_INSTRUCTIONS).toContain('adds a fixed sentence disclosing that when one is owed; never write it yourself');

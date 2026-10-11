@@ -172,7 +172,8 @@ it('a checkpointed route sends consequential tools and delegations to its checkp
   expect(call('webrun', mixed, { networkReads: true, effectPolicy: granted })).toMatchObject({ decision: 'allow', kind: 'network',
     doorway: { disposition: 'granted', grant: 'g-1.1.1.1', tests: { policySensitive: true } } });
   expect(admitToolCallEffect('webrun', mixed, { effectPolicy: granted }, 0)).toMatchObject({ admitted: true, consequential: true,
-    target: '8.8.8.8, 1.1.1.1', tests: { policySensitive: true, scope: false } });
+    target: '8.8.8.8, 1.1.1.1', tests: { policySensitive: true, scope: false },
+    signOff: { policySensitive: true }, durability: { irreversible: false, demand: 'local-durable' } });
   expect(admitToolCallEffect('webrun', mixed, { effectPolicy: sensitive }, 0)).toMatchObject({ admitted: false, target: '1.1.1.1' });
   expect(admitToolCallEffect('webrun', { open: [mixed.open[0]!] }, { effectPolicy: sensitive }, 0)).toMatchObject({ admitted: true, consequential: false });
   expect(admitToolCallEffect('webrun', { open: [mixed.open[0]!, { ref_id: 'https://9.9.9.9/' }] }, { effectPolicy: sensitive }, 0))
@@ -624,7 +625,7 @@ it('the checkpoint admits reads (GET, HEAD, a proven git fetch) and sends every 
     const decided = admitEgress({ method, path, host: 'example.com', headers, gitFetch }, ops, 0);
     expect(decided).toMatchObject({ decision: 'deny', kind: 'network-write' });
     // Unregistered, a network write is classified at its worst on all four tests (L43's doorway), so it is refused.
-    expect(decided.reason).toMatch(/effect doorway refused tool:network-write \(example\.com\): it is consequential because it cannot be undone/u);
+    expect(decided.reason).toMatch(/effect doorway refused tool:network-write \(example\.com\): durability/u);
   }
   // An override naming a read leaves a read a read.
   expect(admitEgress({ method: 'GET', path: '/x', headers: { 'X-HTTP-Method-Override': 'GET' } }, ops, 0)).toMatchObject({ decision: 'allow' });
@@ -640,7 +641,7 @@ it('the checkpoint admits reads (GET, HEAD, a proven git fetch) and sends every 
     registered: [{ effect: 'tool:network-write', target: 'httpbin.org', consequence: 'data', reversibility: 'reversible', reach: 'world', costUsd: 0,
       source: 'telegram:102965:121996' }], grants: [grant] } };
   expect(admitEgress({ method: 'POST', path: '/post', host: 'httpbin.org' }, writable, 0)).toMatchObject({ decision: 'allow', kind: 'network-write',
-    reason: expect.stringContaining('tool:network-write is ordinary (none of the four consequential-effect tests holds); admitted') });
+    reason: expect.stringContaining('tool:network-write is ordinary; admitted under its recorded role and installed durability path') });
   expect(admitEgress({ method: 'POST', path: '/post', host: 'example.com' }, writable, 0)).toMatchObject({ decision: 'deny', kind: 'network-write' });
   expect(admitEgress({ method: 'POST', path: '/post', host: 'httpbin.org' }, writable, 100)).toMatchObject({ decision: 'deny', kind: 'network-write' });
   // A shell read of a host the policy marks policy-sensitive meets the doorway exactly as a WebFetch of it does: refused

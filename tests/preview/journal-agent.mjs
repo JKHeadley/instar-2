@@ -32,7 +32,7 @@ import { SOURCE_PINS, sourcePacket, deskStatusSource, readDeskStatus, verifyMind
 import { admitPreviewHarness, PREVIEW_JOURNAL_HARNESS, PREVIEW_JOURNAL_STALL_COVERAGE } from './stall-coverage.js';
 import { UNRECORDED, briefingDigestOf, codeDigestOf, installedCodeOf, installationRows, installationStatusLines, installedUpdateFrom,
   staleAgainst, updateDelivery, updatePacketItem } from './installation.js';
-import { bindPreviewBlockingSites, projectionDigest, summaryStoppedAt, loopRevisitMs, LOOP_REVISIT_MIN_MS, LOOP_REVISIT_MAX_MS, SUMMARY_REASON_CHARS, GROUP_DISCLOSURE_HOLD_NOTICE, ModelDisclosureRefused } from './journal.js';
+import { bindPreviewBlockingSites, projectionDigest, summaryStoppedAt, loopRevisitMs, LOOP_REVISIT_MIN_MS, LOOP_REVISIT_MAX_MS, SUMMARY_REASON_CHARS, GROUP_DISCLOSURE_HOLD_NOTICE, ModelDisclosureRefused, createModelLaunchBoundary, capacityAlerts } from './journal.js';
 import { openPreviewJournal as openJournal, createJournalWorker, raiseJournalCaps, renewJournalExpiry, activationMatchesJournal, activePersonMerges, openQuestionCandidates, projectMemoryText, unansweredCue, reportJournalCap, unknownCallCounts, pendingUnknownCalls, replyTimings, reviewUnavailableReleases, claimScopedWithholds, MINIMAL_RESERVE, reserveTurnsUsed, reserveRepliesUsed, openRequests, actionWithdrawn, reminderDue, operatorRequestsReport, retrospectiveCases, openBlockers, openDirectives, declaredObligations, sendOutcomeCounts, sendOutcomeOf, unsentLabel, replyTarget, replyOutcomeOf, partialReplyLabel, reminderOutcome, envelopeWriter, PREVIEW_LIVE_LIMITS, unservableContextReason, PREVIEW_JOURNAL_COMPACT_BYTES, activeMemoryConflicts, TOO_LONG_INPUT_NOTICE, TOO_LONG_REPLY_NOTICE , probeTurn, operatorWriter, isJournalUpdate, retractRefusal, retractRendering, retractCarrier, retractedTurn, liveSummaries, continuityFrontier, withinOperatorHours, OPERATOR_HOURS, withFormatReminder, concurrentWorkItem, latestOwnedLaunch, ownedProcessOf, meaningIndexStatus, LIMITED_ANSWER_OPERATION, MISSING_INSTALLATION_POLICY } from './journal.js';
 import { createPreviewClock } from './clock.js';
 import { appendRun, heldNotices, heldRepliesToday, memoryHealthLine, readRuns, restartHandoff, selfState, selfStateBrief, selfStateSource, zoneFormatter } from './self-state.js';
@@ -1003,6 +1003,7 @@ async function main() {
       capReports: [...view.view.capReports],
 
       modelFailureClasses: Object.fromEntries(view.view.failureClasses),
+      capacityAlerts: capacityAlerts(view.view),
       modelJsonShapes: readShapes(shapesPath),
       modelResultStates: Object.fromEntries(view.view.providerStates),
       callOutcomeCounts: Object.fromEntries(view.view.callOutcomeCounts),
@@ -1713,6 +1714,7 @@ async function main() {
     // Rules 41, 57 and 75: the ONLY two places this launcher reaches a model. Each call's exact
     // input, output, actual route, outcome, latency and usage (or its written exception) is
     // durably journaled before any caller reads the result; an unregistered judgment refuses.
+    const modelLaunch = createModelLaunchBoundary();
     const recordModelCall = entry => journal.append(modelCallRecord({ ...entry, at: wallNow() }));
     // replicated(1): a provider call is an irreversible act too. On two machines its reservation row (already in the
     // journal) is acknowledged by the other machine before the call launches; until then the call waits. It ends
@@ -1788,7 +1790,10 @@ async function main() {
         ...(result.usage ? { usage: recordedUsage(result.usage) } : {}), at: wallNow() });
 
       if (result.state === 'uncertain') return { state: 'uncertain', usage: result.usage };
-      if (result.state === 'rejected') return { state: 'rejected', failureClass: 'rejected', usage: result.usage };
+      if (result.state === 'rejected') return { state: 'rejected', failureClass: 'rejected', usage: result.usage,
+        ...(result.failure?.failureClass === 'limit' && result.usage?.inputTokens === 0 && result.usage.inputComplete === true
+          && result.usage.outputTokens === 0 && result.usage.charge === null
+          ? { capacity: { resetHint: result.failure.resetHint, resetAt: result.failure.resetAt } } : {}) };
       if (result.state !== 'complete') throw Error('preview: model outcome unknown');
       if (!result.bytes) return { state: 'complete', failureClass: 'empty', usage: result.usage };
       const role = roleOf(id);
@@ -1954,7 +1959,7 @@ async function main() {
         if (typeof prepared !== 'string') throw Error('preview: prepared model input absent');
         const callsBefore = journal.view.modelCalls.total;
         let result;
-        try { result = toolsActive() && toolTurnEligible(id) ? await invokeTools(prepared, id) : await invokeSubscription(prepared, id); }
+        try { result = await modelLaunch.run(() => toolsActive() && toolTurnEligible(id) ? invokeTools(prepared, id) : invokeSubscription(prepared, id)); }
         catch (error) {
           // A resumed tool turn may already have invoked a provider before a later disclosure refusal.
           if (error instanceof ModelDisclosureRefused && journal.view.modelCalls.total !== callsBefore)
@@ -2454,7 +2459,10 @@ async function main() {
     // breaker and end the run for the host supervisor (Rules 15, 55; Eleven §5's ordinary-worker cut).
     // Two machines: ordinary work (model calls, replies, reminders) starts only while the other machine holds the
     // whole journal, so nothing is spent or prepared on local durability while the peer is away. Input is still read.
-    const lane = createOrdinaryLane({ elapsed: clock.elapsed, peerCurrent: () => shared === null || shared.peerCurrent(), after: summarizeLater });
+    const lane = createOrdinaryLane({ elapsed: clock.elapsed,
+      peerCurrent: () => !signalled && !workerStop.value && !existsSync(stopPath) && !journal.view.stop
+        && ownerHeld() && activationMatchesJournal(journal.view, activation) && (shared === null || shared.peerCurrent()),
+      after: summarizeLater });
     // A message past every bound waits at Telegram; later presses behind it are re-read after this pause.
     const waitHeld = async () => {
       const until = clock.elapsed() + 3000;
@@ -2486,15 +2494,16 @@ async function main() {
     // The sentinels tick only when that job is admitted, and their requested steps run inside it after the drain.
     // Plan #548: it is offered once per cycle AND throughout every poll backoff (pollFailure), so it never waits on
     // the Telegram connection or on an inbound message; only delivery of its result does.
-    const workCycle = (requested = false) => {
+    const workCycle = (requested = false, wake = false) => {
       if (journal.view.stop || !ownerHeld() || !activationMatchesJournal(journal.view, activation)) return;
       sentinelCycle(lane, { tick: sentinelTick, requested: sentinelSteps, drain: async () => {
+        if (journal.view.stop || !ownerHeld() || !activationMatchesJournal(journal.view, activation)) return;
         await worker.drain();
         if (requested) await worker.sendRequested();
       },
         after: async () => {
           try { await worker.workObligations(); } catch { /* a stop or expiry ends the step; its start stays durable */ }
-        } });
+        } }, wake);
     };
     // Plan #548, the desk's live check only: with --telegram-cut-file, while that file holds a future epoch-ms every
     // poll fails as an unreachable connection without a network call. Never passed to the operator's runner.
@@ -2584,7 +2593,12 @@ async function main() {
       // A full held page was preserved and passed: read the rest of the backlog now, so an exact /stop
       // behind it latches before any further processing (Rule 4; bounded by the waiting store).
       if (worker.readAhead() && batch.length >= pollLimit) continue;
-      if (!await untilStopped(() => worker.minimal(), ended)) break;
+      // Start the minimal path's synchronous stop handling before ordinary work can claim a stop turn.
+      // Do not await its longer work before offering the durable intake: a busy lane retains one wake
+      // and drains it as soon as the current job finishes, without a poll tick.
+      const minimalStep = untilStopped(() => worker.minimal(), ended);
+      if (batch.length > 0) workCycle(false, true);
+      if (!await minimalStep) break;
       if (journal.view.stop) break;
       if (renewedAway()) break;
       // Reminders go out only after a successful poll returned nothing new and no ordinary drain is
@@ -2634,6 +2648,7 @@ async function main() {
         stopped: () => workerStop.value || existsSync(stopPath) || !active()
           || (toolTurn !== undefined && (journal.view.stop !== null || !toolsActive())), work });
       const physicalIO = { ...launchIO, execute: async input => {
+        if (typeof input.stdin === 'string' && input.stdin.length > 0) modelLaunch.started();
         const result = await launchIO.execute(input);
         // Only the model command is the exchange: it alone carries the prepared prompt on stdin; the
         // version and auth preflights send none and print no result frame.

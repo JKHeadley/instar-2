@@ -13,10 +13,11 @@ export const subscriptionDoorway = id => {
   return { ...SUBSCRIPTION_DOORWAYS[id], create: input => createClaudeCodeSubscriptionRoute(input) };
 };
 
-export const createClaudeCodeSubscriptionRoute = () => {
+export const createClaudeCodeSubscriptionRoute = ({ io }) => {
   if (process.env.INSTAR_PREVIEW_SIMULATE_MODEL_FAILURE !== '1'
     && process.env.INSTAR_PREVIEW_SIMULATE_UNKNOWN_ANSWER !== '1') throw Error('model probe not enabled');
   return { kind: 'Success', value: { invoke: async prepared => {
+    await io.execute({ stdin: prepared });
     const question = JSON.parse(prepared).messages[0].content;
     if (!question.startsWith('Judge this proposed reply'))
       return { state: process.env.INSTAR_PREVIEW_SIMULATE_UNKNOWN_ANSWER === '1' ? 'uncertain' : 'rejected',

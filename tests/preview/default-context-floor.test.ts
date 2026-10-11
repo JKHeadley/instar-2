@@ -130,7 +130,8 @@ it('keeps the always-sent prompt parts inside what the measured floor allows, wi
   expect(PREVIEW_FIXED_PROMPT_BYTES).toBeLessThanOrEqual(floor - replyReviewReserveFor(floor));
   // The reserve is sized from what the review really needs, so the review of THIS turn -- with a candidate
   // reply at the send path's own bound -- fits in the room the reserve sets aside. Keep measuring
-  // both envelopes: the current delta is 6270, so the older 5132 measurement is not room we can
+  // both envelopes: the composed train-6 delta is 6624 after shortening the review guidance, so
+  // the older 5132 measurement is not room we can
   // reassign. The unchanged reserve is 4096 reply-bound bytes plus 2540 review-only bytes.
   expect(measured.reviewTotal).not.toBeNull();
   expect(measured.reviewTotal! - measured.answerTotal!).toBeLessThanOrEqual(replyReviewReserveFor(floor));
@@ -274,8 +275,8 @@ it('keeps a tool turn\'s always-sent parts inside the same measured floor (Part 
   // whose tool sentence names "reasoning" instead of "reason.value" (-3); 1474 with plan #510's sentence that the account
   // email the harness itself injects is the subscription login, never the operator (+187); 1544 at sb-w4-selfdesc,
   // whose sentence says a network write goes to the effect doorway and a consequential effect runs once the operator
-  // registers and grants it (+70 on the 1474 live wording).
-  expect(growth).toBe(1544);
+  // registers and grants it (+70); read-first adds 1202 and standing-trust guidance adds 21.
+  expect(growth).toBe(2767);
   // The packet names what the call really has (review round 1, finding 5): the text-only route keeps the no-tools read and
   // its "attempted nothing" guidance; the tool route says the tools are listed (in the note's tools item) and that only its recorded calls ran.
   expect(plain.packet?.capabilities?.externalTools).toBe('none');

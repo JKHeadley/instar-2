@@ -14,8 +14,9 @@ import { mkdtempSync, realpathSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { ANSWER_FORMAT_REMINDER, LOOKUP_DONE_GUIDANCE, LOOKUP_NOT_FOUND_REPLY, LOOKUP_OFFERED, LOOKUP_UNAVAILABLE_REPLY,
-  LOOKUP_UNSETTLED_REPLY, LOOKUP_WORDS_LIMIT, lookupWords, openPreviewJournal, type PreviewPorts } from './journal.js';
-import { ANSWER_PROTOCOL } from './briefing.js';
+  LOOKUP_UNSETTLED_REPLY, LOOKUP_WORDS_LIMIT, lookupWords, openPreviewJournal, ModelNotStarted, MODEL_NOT_STARTED_HOLD, MODEL_CAPACITY_HOLD, capacityAlerts, type PreviewPorts } from './journal.js';
+import { previewTestContext, admittedDependencies } from './journal-test-worker.js';
+import { ANSWER_PROTOCOL, MEMORY_LOOKUP_INSTRUCTIONS } from './briefing.js';
 import { conclusionText, parseModelJson } from './model-json.js';
 import { REPLY_RULES } from './reply-check.js';
 import { at, fact, fixture, key, neutral, question, room, sourceId, update } from './recall-rank-room.js';
@@ -207,7 +208,7 @@ describe('Rule 11: the lookup\'s bounds and floors', () => {
   const reply = 'The code is 2958.';
 
   it('delivers the instruction once, in the trusted answer protocol, and only a marker in the packet', async () => {
-    expect(ANSWER_PROTOCOL).toContain('If packet.memoryLookup is "offered"');
+    expect(MEMORY_LOOKUP_INSTRUCTIONS).toContain('If packet.memoryLookup is "offered"');
     const r = await turn({ answers: [reply] });
     try { expect(r.inputs[0]!.packet.memoryLookup).toBe('offered'); } finally { r.close(); }
   });
@@ -434,4 +435,25 @@ describe('Rule 11: the lookup\'s bounds and floors', () => {
       journal.close();
     } finally { rmSync(dir, { recursive: true, force: true }); }
   });
+});
+
+it.each(['capacity', 'not-started'] as const)('routes %s after a recorded lookup request through the shared honest-failure handler', async outcome => {
+  let calls = 0;
+  const r = await turn({ answers: [], ports: { minimal: { context: previewTestContext, dependencies: admittedDependencies }, model: async () => {
+    if (++calls === 1) return { state: 'complete', text: decoded(recorded('P4').calls[0]!.raw),
+      usage: { inputTokens: 20, outputTokens: 10, inputComplete: true, charge: null } };
+    if (outcome === 'not-started') throw new ModelNotStarted();
+    return { state: 'rejected', failureClass: 'capacity', capacity: { resetHint: '6:00pm', resetAt: null },
+      usage: { inputTokens: 0, outputTokens: 0, inputComplete: true, charge: null } };
+  } } });
+  try {
+    expect(r.drainError).toBeUndefined(); expect(calls).toBe(2); expect(r.asked.lookup).toBeDefined();
+    expect(r.spent()).toBe(outcome === 'capacity' ? 2 : 1);
+    expect(r.asked.held).toBe(outcome === 'capacity' ? MODEL_CAPACITY_HOLD : MODEL_NOT_STARTED_HOLD);
+    expect(r.sent).toHaveLength(1);
+    expect(r.sent[0]).toContain(outcome === 'capacity' ? 'after 6pm' : "couldn't start my model");
+    expect(capacityAlerts(r.journal.view)).toHaveLength(outcome === 'capacity' ? 1 : 0);
+    expect(r.journal.view.tokenCalls.filter(call => call.kind === 'answer').slice(-2))
+      .toMatchObject([{ input: 20, output: 10 }, { input: 0, output: 0 }]);
+  } finally { r.close(); }
 });
