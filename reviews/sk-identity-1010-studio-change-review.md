@@ -7,7 +7,7 @@ Outcome: repair two fixture-size assumptions crossed by the longer identity inst
 Affected rules: 1, 4, 12, 26, 27, 34, 36, 37, 49, 58, 69, 70, 74, 90, 101, 102, 105, 107, 111, 112, 113, 115, 116.
 Affected floors: secrets, spend cap, stop, no duplicate sends and durable intake retain their existing runtime enforcement; the full native contract covers successful dispatch, stop, refused and uncertain calls with retained charges and no retry.
 Operator questions: none
-Suggested tier: significant
+Suggested tier: critical
 Declared tier: significant
 Tier rationale: evidence and declaration repair for the existing model-facing identity unit; no additional runtime or prompt wording change.
 Register follow-up: the fixture repair changed the dated-memory evidence hash; refresh that owner pin before replaying generated output from the latest committed sources. The first successful replay remains evidence for 8cd9dff1 only.
@@ -16,7 +16,7 @@ Undo and recovery: revert these metadata commits and regenerate the register fro
 Multi-machine posture: shared declaration and register metadata; native proof is for the declared Darwin runtime. No new machine-local product state or ownership changes.
 Layer below: inspected compositionClosure/compositionDigest/currentRuntime, the native adapter's matching predicate, the contract's declaration equality assertion, owner manifests, desk rehash/repin scripts and PR #156 checker scope. The conformance candidate excludes its own declaration from the hashed closure.
 Bug class: integration
-Bug evidence: reproducer=/Users/dabombstudio/.instar/agents/echo/.instar/lanes/sk-identity-1010-studio-evidence/runtime.log
+Bug evidence: reproducer=tests/preview/journal-commitments.test.ts
 Hook bypass: none; core.hooksPath unset and common hooks directory sample-only, checked on Studio.
 Convergence: none
 Decision: studio-conformance | compute an uncertified declaration candidate in a detached scratch tree using repository helpers; copy it to the primary tree only after the unchanged full native contract passes | reported=/Users/dabombstudio/.instar/agents/echo/.instar/lanes/sk-identity-1010-studio-PROGRESS.md
