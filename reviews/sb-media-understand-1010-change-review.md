@@ -18,7 +18,7 @@ Bug class: none
 Bug evidence: none
 Hook bypass: none (core.hooksPath unset and actual hooks directory contains only .sample files; ordinary merge and plain commit).
 Convergence: none
-Decision: media-understand-unit | Carry ae6a3df1 and its reviewed implementation unchanged; the dispatch reports its Astra YES at that exact head. The unit report records real confined image/voice/unreadable outputs and pipeline checkpoint repairs, not fresh Telegram acceptance. | reported=/Users/dabombstudio/.instar/agents/echo/.instar/lanes/media-understand-1010-PROGRESS.md
+Decision: media-existing-confinement | Carry ae6a3df1 and its reviewed implementation unchanged; the dispatch reports its Astra YES at that exact head. The unit report records real confined image/voice/unreadable outputs and pipeline checkpoint repairs, not fresh Telegram acceptance. | reported=/Users/dabombstudio/.instar/agents/echo/.instar/lanes/media-understand-1010-PROGRESS.md
 Decision: sb-media-merge | Ordinary merge fast-forwarded from exact live f34d2b94; no conflicts and no docs/changelog resolution. | reported=/Users/dabombstudio/.instar/agents/echo/.instar/lanes/sb-media-understand-1010-PROGRESS.md
 Decision: sb-media-desk | Repin, TypeScript build, owner rehash and register replay follow cint-L37 exactly, using merged landed ae6a3df1. | reported=/Users/dabombstudio/.instar/agents/echo/.instar/lanes/sb-media-understand-1010-PROGRESS.md
 Decision: sb-media-targeted | Foreground nice -n 10 one-worker chunks; driver owns full suite. One nested macOS scratch-volume case inadvertently ran and passed; the macOS-only live capture is skipped. | reported=/Users/dabombstudio/.instar/agents/echo/.instar/lanes/sb-media-understand-1010-PROGRESS.md
