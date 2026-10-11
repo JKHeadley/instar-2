@@ -28,5 +28,5 @@ The closure-registration historical byte assertion explicitly permits only the n
 ## Closing block
 
 simplestRobustRoute: use the existing finite graduation gate, ancestry review record and register generator; no new checker, runtime mechanism or historical rewrite is required.
-80/20: targeted register and rungraph tests check publication and refusals; architecture, typecheck, lint and real-clock register replay provide the repository evidence, with the Studio-only report-path check explicitly reported separately.
+80/20: all six register E2E tests, 47 installation-contract tests, nine scope/governance tests and the repaired additivity test pass. Architecture, typecheck, lint and real-clock register replay pass. The publication consumes committed source 8f04f876a181bdb5505ab132115b3319d2488664; the Studio-only report-path check remains explicitly reported separately.
 VERDICT: author submission; independent landing review remains required
