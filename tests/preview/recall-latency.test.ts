@@ -1,5 +1,5 @@
 import { expect, it } from 'vitest';
-import { mkdtempSync, realpathSync, rmSync } from 'node:fs';
+import { mkdtempSync, readFileSync, realpathSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { performance } from 'node:perf_hooks';
@@ -136,6 +136,13 @@ it('profiles full turns at 2000 turns with every memory source', async () => {
     const search = historical.memorySearch as { items: { source: string }[] };
     expect(search.items.map(item => item.source)).toEqual(['turn 2000', 'turn 1999', 'turn 1998']);
     search.items = search.items.slice(0, 2);
+    // train-8: only memoryDecision wording changed. Restore its pre-acknowledgement text
+    // from the immutable live capture; the historical hashes still check every other byte.
+    const capture = JSON.parse(readFileSync(new URL('./fixtures/inrole-memory-live-2026-10-11.json', import.meta.url), 'utf8'));
+    const recordedGuide = capture.cases[0].memoryDecision as string;
+    expect(historical.memoryDecision).toContain('Ordinary facts are journaled across restarts');
+    historical.memoryDecision = 'Return memory:[] unless the verified operator corrects, forgets or sets reply style. '
+      + recordedGuide.slice(recordedGuide.indexOf('Each memory item'));
     const historicalText = JSON.stringify(historical);
     const withoutLookup = JSON.parse(historicalText) as Record<string, unknown>;
     expect(withoutLookup.memoryLookup).toBe('offered');

@@ -28,7 +28,7 @@ import { encoded } from '../../src/assembly/boundary.js';
 import { decodeEffectPolicy, DEFAULT_EFFECT_POLICY, effectDoorwayStatusLines, refusedEffectNotices, currentEffectPolicy } from './effect-doorway.mjs';
 import { redact } from '../../src/recall/redact.js';
 import { durablePreviewWrite } from './durable-write.js';
-import { prepareJournalEnvelope, withWorkspaceNotice } from './journal-envelope.js';
+import { prepareJournalEnvelope, toolPreparation, withWorkspaceNotice } from './journal-envelope.js';
 import { operatorEchoSent, statusAnswer } from './status-command.js';
 import { SOURCE_PINS, sourcePacket, deskStatusSource, readDeskStatus, verifyMindRules, ANSWER_INSTRUCTIONS } from './briefing.js';
 import { admitPreviewHarness, PREVIEW_JOURNAL_HARNESS, PREVIEW_JOURNAL_STALL_COVERAGE } from './stall-coverage.js';
@@ -1725,6 +1725,7 @@ async function main() {
     // Part Thirteen §9 (docs/17-harness-adapters): the tool route's room is the larger of the packet limit and its policy's prompt bound.
     const toolPromptLimit = () => Math.max(journal.view.limits.maxBytes,
       doorway.policyFor(required(options, 'model'), doorway.toolsFraming ?? doorway.conversationFraming).maxPromptBytes);
+    const preparation = toolPreparation(() => toolsActive());
     const modelEnvelope = input => {
       // Local transcripts pass the same held-secret/redaction boundary as text intake.
       // Only the exact accepted source gets this attachment, never a summary/reviewer id.
@@ -1732,7 +1733,7 @@ async function main() {
       const bytes = prepareJournalEnvelope(input, required(options, 'model'), g.grant, wallNow(), journal.view.limits.maxBytes);
       // A tool turn's longer system prompt must fit that room too; an overflow here makes the packet ladder yield, as
       // for the text-only prompt, instead of leaving the turn to fall back to a text-only answer.
-      if (toolsActive() && identityRefusal === null && toolTurnEligible(input.id)
+      if (preparation.active() && identityRefusal === null && toolTurnEligible(input.id)
         && Buffer.byteLength(bytes) + Buffer.byteLength(doorway.toolTurn?.system ?? SUBSCRIPTION_TOOLS_SYSTEM_PROMPT) + TOOL_NOTICE_MAX_BYTES > toolPromptLimit())
         throw Error('preview: complete prompt overflow');
       return bytes;
@@ -1950,11 +1951,12 @@ async function main() {
       groupDisclosure: async () => { await requireGroupDisclosure(journal.view); return true; },
       presenceNotes: sentinelFamilies.has('presence'),
       sources: turnSources(root, options, journal.view, () => runs, () => launchedAt ?? undefined,
-        () => journal.view.order.some(turn => turn.reserved && !reservedAtLaunch.has(turn.id)) ? null : handoff, () => toolsActive()),
+        () => journal.view.order.some(turn => turn.reserved && !reservedAtLaunch.has(turn.id)) ? null : handoff, preparation.active),
       prepareModel: modelEnvelope,
+      preparePacket: preparation.run,
       // Part Thirteen §9: the packet names the tools exactly when the model call will run on the tool route. The packet
       // is built before the answer's `reserve` or the work's `obligation-start` counts its base call, so that call is added here.
-      toolRoute: id => toolsActive() && identityRefusal === null && toolTurnEligible(id) && toolPacketFits(journal.view),
+      toolRoute: id => preparation.active() && identityRefusal === null && toolTurnEligible(id) && toolPacketFits(journal.view),
       // Only scheduled obligation work is delegated; an operator answer is never handed to a session.
       // The session route is taken only while its grant holds and the call allowance can hold the
       // step's whole reserved liability on top of the obligation's own start.
