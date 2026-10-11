@@ -23,7 +23,9 @@ Decision: onboard1-1011-D2 | Publish immutable synced input checkpoints with no-
 Decision: onboard1-1011-D3 | Record monthly dollars separately from per-effect ceilings, keep identity/self-knowledge/reflection/growth on and preserve original onboarding metadata through later trust edits | reported=/Users/dabombstudio/.instar/agents/echo/.instar/lanes/onboard1-1011-PROGRESS.md
 Prompt review: No model prompts, model output parsers or model acceptance decisions change. Terminal questions are explicit structured fields. Existing captured-model negative authority replays run in trust-setup.test.ts; the new feature's end-to-end evidence is a real spawned terminal command, not a mocked model or CLI.
 
-Subject (9 paths): bin/instar2.mjs, docs/standing-trust-setup.md, package-lock.json, package.json, scripts/onboarding-state.mjs, scripts/onboarding.mjs, tests/preview/effect-doorway.mjs, tests/preview/onboarding.test.ts, tests/preview/trust-setup.mjs
+Subject (16 paths): generated/capabilities.json, generated/capabilities.md, generated/coverage.md, generated/glossary.md, generated/register.json, generated/rules.md, generated/source.json, bin/instar2.mjs, docs/standing-trust-setup.md, package-lock.json, package.json, scripts/onboarding-state.mjs, scripts/onboarding.mjs, tests/preview/effect-doorway.mjs, tests/preview/onboarding.test.ts, tests/preview/trust-setup.mjs
+
+Verification: 86 targeted tests passed across six files, including all eight new onboarding tests. Typecheck and architecture passed. Register replay is regenerated from the pushed implementation commit; it carries shape-only authority and grants no runtime standing. The downloaded desk rehash/repin tools made no owner-manifest or grounding-inventory changes.
 
 ## Closing block
 
