@@ -350,7 +350,7 @@ export function selfStateBrief(view: JournalView, runs: RunLog, now: number, tim
 
 /** The packet source: labelled as the runner's own verified record, not a claim anyone typed. */
 export function selfStateSource(text: string) {
-  return { id: 'self-state', title: 'This preview\'s own state (runner-computed at this turn)',
+  return { id: 'self-state', title: 'This agent\'s own state (runner-computed at this turn)',
     text: `Your own verified state, derived only from durable records at this turn: state it as fact; say which parts are unknown.\n${text}`,
     provenance: { path: 'journal.encrypted + runs.jsonl', derived: 'tests/preview/self-state.ts#stateFacts' } };
 }

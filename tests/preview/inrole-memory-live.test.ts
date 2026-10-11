@@ -20,6 +20,11 @@ const genesis = { kind: 'genesis' as const, bot: '8994258214', chat: '-100436755
   maxCalls: 20, maxReplies: 20, maxTurns: 20, maxBytes: 32768, cursor: 0 };
 
 for (const recorded of fixture.cases) it(`replays real update ${recorded.update} through intake, answer and restart`, async () => {
+  // Preserve the real capture's digest while accounting for the sole system identity edit.
+  // Check outside the model port: the worker records thrown model errors as unknown outcomes.
+  const capturedSystem = SUBSCRIPTION_CONVERSATION_SYSTEM_PROMPT.replace(
+    "You are an Instar 2.0 agent,", 'You are Instar,');
+  expect(createHash('sha256').update(capturedSystem).digest('hex')).toBe(recorded.systemSha256);
   const root = realpathSync(mkdtempSync(join(tmpdir(), 'inrole-memory-'))), path = join(root, 'journal');
   let journal = openPreviewJournal(path, key, genesis);
   const sent: string[] = [];
@@ -31,11 +36,10 @@ for (const recorded of fixture.cases) it(`replays real update ${recorded.update}
     prepareModel: input => prepareJournalEnvelope(input, 'claude-sonnet-5', genesis.grant, now, genesis.maxBytes),
     model: async input => {
       const packet = JSON.parse(input.context) as { memoryDecision: string };
-      // Recorded output stays immutable; replay it against the new explicit fact guidance.
+      // Replay immutable outputs with current remember guidance and the identity checked above.
       expect(packet.memoryDecision).toContain('Conversation is journaled');
       expect(packet.memoryDecision).toContain('Keep attribution');
       expect(packet.memoryDecision).toContain('Otherwise memory:[]');
-      expect(createHash('sha256').update(SUBSCRIPTION_CONVERSATION_SYSTEM_PROMPT).digest('hex')).toBe(recorded.systemSha256);
       expect(packet.memoryDecision).toContain('mode:"remember"');
       // The real storage boundary, before even the answer call: reopen the actual encrypted file.
       const persisted = openPreviewJournal(path, key, undefined, undefined, true);

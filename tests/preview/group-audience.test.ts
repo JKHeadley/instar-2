@@ -7,7 +7,7 @@ import { prepareJournalEnvelope } from './journal-envelope.js';
 import { appendGroupCarry } from './group-carry.js';
 import { verifyGroupAudience } from './group-disclosure.js';
 import { key, scope, now, permissionFor, membership } from './group-carry-fixture.js';
-import { HOLDING_REPLY, parseReplyReviewVerdict, type ReplyRule } from './reply-check.js';
+import { GROUP_REVIEW_FINAL_NOTICE, HOLDING_REPLY, parseReplyReviewVerdict, type ReplyRule } from './reply-check.js';
 import { readAnswer } from './answer-reading.js';
 
 const fixture = JSON.parse(readFileSync(new URL('./fixtures/group-audience-live-2026-10-10.json', import.meta.url), 'utf8')) as {
@@ -34,13 +34,24 @@ it('real reviewer on update 969390330: own information passes verified membershi
   expect(verdict('coherent')).toMatchObject({ verdict: 'pass' });
 });
 
-for (const audience of ['verified', 'other-member', 'unverified', 'changed-before-review'] as const) {
-  it(`worker uses current membership, never a stored group label: ${audience}`, async () => {
+for (const memorySource of ['carry', 'remember'] as const) for (const audience of ['verified', 'other-member', 'unverified', 'changed-before-review'] as const) {
+  it(`worker uses current membership, never a stored group label: ${audience}, ${memorySource}`, async () => {
     const root = mkdtempSync(join(tmpdir(), 'group-audience-')); dirs.push(root);
     const source = openPreviewJournal(join(root, 'source'), key, genesis);
     const journal = openPreviewJournal(join(root, 'group'), key, { ...genesis, chat: scope.chat, forum: true });
-    appendGroupCarry(journal, source, scope, permissionFor(scope), true, now, () => false);
+    if (memorySource === 'carry') appendGroupCarry(journal, source, scope, permissionFor(scope), true, now, () => false);
     source.close();
+    if (memorySource === 'remember') {
+      const seed = createJournalWorker(journal, { now: () => now, stopped: () => false, groupDisclosure: async () => true,
+        prepareModel: input => prepareJournalEnvelope(input, 'claude-sonnet-5', genesis.grant, now),
+        model: async input => JSON.stringify({ reply: 'Saved.', memory: [{ mode: 'remember', source: input.id, quote: 'my preferred colour is green' }] }),
+        checkOutbound: () => {}, send: async () => 1 });
+      seed.intake([{ update_id: 1, message: { message_id: 10, chat: { id: Number(scope.chat), type: 'supergroup', is_forum: true },
+        from: { id: Number(scope.operator) }, text: 'Remember my preferred colour is green' } }]);
+      await seed.drain();
+      expect(journal.view.memory).toMatchObject([{ mode: 'remember' }]);
+      expect(journal.view.groupCarry).toBeUndefined();
+    }
     let changed = false, models = 0, reviews = 0;
     const sends: string[] = [], audiences: boolean[] = [];
     const checkAudience = (prompt: string) => {
@@ -61,14 +72,14 @@ for (const audience of ['verified', 'other-member', 'unverified', 'changed-befor
         escalate: async (_text, _id, prompt) => { reviews++; checkAudience(prompt!);
           return { ...verdict('operator-only'), confidence: null, latencyMs: 1 }; } },
     });
-    worker.intake([{ update_id: 1, message: { message_id: 1, chat: { id: Number(scope.chat), type: 'supergroup', is_forum: true },
+    worker.intake([{ update_id: 2, message: { message_id: 1, chat: { id: Number(scope.chat), type: 'supergroup', is_forum: true },
       from: { id: Number(scope.operator) }, text: fixture.recorded.text } }]);
     await worker.drain();
     if (audience === 'verified') {
       expect(sends).toEqual([fixture.recorded.answer]); expect(models).toBe(1); expect(reviews).toBe(1);
       expect(audiences).toEqual([true, true]);
     } else {
-      expect(sends).toEqual([]); expect(reviews).toBe(0);
+      expect(sends).toEqual(audience === 'changed-before-review' ? [GROUP_REVIEW_FINAL_NOTICE] : []); expect(reviews).toBe(0);
       expect(models).toBe(audience === 'changed-before-review' ? 1 : 0);
     }
     journal.close();

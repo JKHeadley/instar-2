@@ -645,9 +645,9 @@ it('keeps an imminent item eligible when an objected reply is revised without it
   try {
     let now = start, rejectOnce = true;
     const sends: string[] = [];
-    // cint-2: cbuild-2's ~4 KB instruction message and cbuild-4's guide ride every prepared answer; measured fit:
-    // 17408 overflows, 18432 fits (was 12000).
-    const journal = openPreviewJournal(path, key, { ...genesis, maxBytes: 20480 });
+    // Keep both short turns in view beside the standing instructions. This case
+    // isolates revision of an upcoming notice; compaction has its own boundary tests.
+    const journal = openPreviewJournal(path, key, { ...genesis, maxBytes: 22528 });
     const worker = createJournalWorker(journal, { now: () => now, stopped: () => false, timeZone: 'America/Los_Angeles',
       prepareModel: input => prepareJournalEnvelope(input, 'claude-sonnet-4-5', 'grant:preview', now),
       model: async (input: { question: string }) => JSON.stringify({ reply: 'Okay.', memory: [],

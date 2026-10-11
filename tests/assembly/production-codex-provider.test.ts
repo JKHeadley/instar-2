@@ -508,3 +508,10 @@ it('answers a Codex tool turn only when every tool item has an admitted call in 
   expect(withActivation(hash(stale))).toBe('Refused');
   expect(createCodexSubscriptionRoute(f.input({ toolTurn })).kind).toBe('Refused');
 });
+
+it('uses generic Instar identity on both Codex routes', () => {
+  for (const prompt of [CODEX_CONVERSATION_SYSTEM_PROMPT, CODEX_TOOLS_SYSTEM_PROMPT]) {
+    expect(prompt).toMatch(/^You are an Instar 2\.0 agent/u);
+    expect(prompt).not.toMatch(/Justin|preview/iu);
+  }
+});

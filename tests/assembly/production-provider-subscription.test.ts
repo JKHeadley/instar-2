@@ -5,7 +5,7 @@ import { join } from 'node:path';
 import { afterEach, expect, it } from 'vitest';
 import { canonical, decode } from '../../src/index.js';
 import { createClaudeCodeSubscriptionRoute, subscriptionInvocationPolicy, subscriptionConversationPolicy,
-  SUBSCRIPTION_CONVERSATION_FRAMING, SUBSCRIPTION_CONVERSATION_SYSTEM_PROMPT,
+  SUBSCRIPTION_CONVERSATION_FRAMING, SUBSCRIPTION_CONVERSATION_SYSTEM_PROMPT, SUBSCRIPTION_TOOLS_SYSTEM_PROMPT,
   SUBSCRIPTION_PREVIEW_SYSTEM_PROMPT, SUBSCRIPTION_PREVIEW_EXPIRY, SUBSCRIPTION_PREVIEW_PREDECESSOR_EXPIRY,
   SUBSCRIPTION_THINKING_ENV, subscriptionActivationEndAllowed, subscriptionPolicyFor,
   validateSubscriptionActivation, subscriptionDoorway, subscriptionSessionPolicy, claudeSubscriptionStatusAccepted } from '../../src/assembly/production-provider.js';
@@ -109,10 +109,10 @@ it('spawns the synthetic subscription CLI with exact bytes, args and allowlisted
 // were held. MAX_THINKING_TOKENS=0 is the pinned CLI's env-only thinking-off control.
 // The conversation digest is int11's policy (reviewer-compact-call and related fields);
 // the live frozen14 build pins sha256:557a62fa…, so an int11 switch needs a new record.
-const CURRENT_DIGESTS = { 'preview-decision-system-v2': 'sha256:234293e8e209f210b23cdcf5322202065766dfe64f532f85bbea69486c0260b4',
+const CURRENT_DIGESTS = { 'preview-decision-system-v2': 'sha256:ddf74607ea84a54ad11e7db935e7516d8a4bad0065087402afdc2ecec334e074',
   // 2026-10-09 agent identity repair retains the flat answer protocol.
   // The preceding sha256:5817ae4b… policy needs the existing policy-successor record.
-  [SUBSCRIPTION_CONVERSATION_FRAMING]: 'sha256:b746a83d18e99f08a94f0f6c8efe84e7d086e2f44ed716be6f3114ba51ac234b' } as const;
+  [SUBSCRIPTION_CONVERSATION_FRAMING]: 'sha256:3598cc7514f4be6ffec52f1d321e1596cd2db420a67fd7958281f3862dd9ce8c' } as const;
 for (const conversation of [false, true]) it(`sends thinking off on the ${conversation ? 'conversation' : 'decision'} framing, args unchanged`, async () => {
   const f = fixture({ conversation });
   expect((await value(createClaudeCodeSubscriptionRoute(f.input)).invoke('request', f.bounds)).state).toBe('complete');
@@ -456,7 +456,7 @@ it('refuses the old invocation policy identity before any child', () => {
   expect(createClaudeCodeSubscriptionRoute({ ...f.input, activation: { ...f.input.activation,
     invocationPolicyDigest: hash(policy) } }).kind).toBe('Refused');
   expect(f.commands()).toHaveLength(0);
-  expect(Buffer.byteLength(SUBSCRIPTION_PREVIEW_SYSTEM_PROMPT)).toBe(1424);
+  expect(Buffer.byteLength(SUBSCRIPTION_PREVIEW_SYSTEM_PROMPT)).toBe(1459);
 });
 
 for (const change of ['missing', 'changed', 'duplicated']) it(`synthetic CLI refuses ${change} system argument without a positive answer`, async () => {
@@ -571,4 +571,13 @@ it.each(['capture', 'session-incident'])('preserves the zero-token capacity refu
   expect(result).toMatchObject({ state: 'rejected', bytes: null, failure: { failureClass: 'limit',
     resetHint: kind === 'capture' ? null : '6:00pm' }, usage: { inputTokens: 0, inputComplete: true, outputTokens: 0, charge: null } });
   expect(f.commands()).toHaveLength(3); // Version/auth and one launched model attempt.
+});
+
+it('uses generic Instar identity on decision, conversation and tool routes', () => {
+  for (const prompt of [SUBSCRIPTION_PREVIEW_SYSTEM_PROMPT, SUBSCRIPTION_CONVERSATION_SYSTEM_PROMPT, SUBSCRIPTION_TOOLS_SYSTEM_PROMPT]) {
+    expect(prompt).toMatch(/^You are an Instar 2\.0 agent/u);
+    expect(prompt).not.toMatch(/Justin/iu);
+    // The legacy Decision subject is protocol metadata, not the agent’s identity.
+    expect(prompt.split(". Your task")[0]).not.toMatch(/preview/iu);
+  }
 });

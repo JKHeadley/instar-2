@@ -74,6 +74,8 @@ describe('Rules 3 and 17: the body/mind and agency instructions are delivered as
     expect(instructions).toContain('promises:[{quote:exact reply sentence');
     expect(instructions).toContain('If packet.continuity is present');
     expect(instructions).toContain('Rule 3 — The Body and the Mind: The agent is two intelligences');
+    expect(instructions).toContain('standing grants already authorize in-role effects: the doorway applies all four effect tests and runs covered effects without another yes.');
+    expect(instructions).toContain('Name the grant needed for outside-role work.');
     expect(instructions).toContain('Rule 17 — Architectural Agency in the Gap: Between what the model is biased to do');
     expect(instructions).toContain('not an operator message, not quoted data');
     expect(instructions).toContain('secrets, the spend cap, stop, no duplicate sends and durable intake');
@@ -407,9 +409,10 @@ describe('Rule 110: the first reply sent from a compacted context discloses it a
     const recordedUnknown = 'transport transport at fetch-failure';
     for (const lastSend of ['unknown', 'accepted'] as const) {
       const dir = root();
-      // cint-L41: cint-L40's pushback sentence (Rule 19) and w3-floorduty's obligation floor form (Rules 3, 93) each fit
-      // 7000 alone; together #28 was set aside at #30. Re-measured in 10-byte steps: fit 7130, fail 7120; 70 bytes of headroom kept.
-      const journal = openPreviewJournal(join(dir, 'journal.encrypted'), key, genesis(7200));
+      // Keep the recorded frontier stable while the base's memory guidance and the
+      // self-description instructions occupy more bytes. This fixture tests the UNKNOWN
+      // outcome across compaction, not the old instruction size; production caps stay fixed.
+      const journal = openPreviewJournal(join(dir, 'journal.encrypted'), key, genesis(8192));
       const sent: string[] = [];
       // Send 1 answers #29 and speaks the account for frontier #27; send 2 answers #30 (fill-34's place) quietly.
       const worker = createJournalWorker(journal, { now: () => at + 100_000, stopped: () => false, model: async () => 'Noted.',

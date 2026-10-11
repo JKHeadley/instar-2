@@ -39,14 +39,15 @@ export function credentialNotices(due: readonly DueReminder[], now: number): Rep
 
 /** A failing standing check (Rule 56) is one notice per verdict episode, keyed by when the verdict
  * began. It is offered only while the live verdict still fails, so a route this very answer just
- * re-verified is never reported stale. */
+ * re-verified is never reported stale. Report the known state directly: asking the reader
+ * to fetch details made the reply review hold an otherwise complete answer (live update 715675469). */
 export function doorwayNotices(map: DoorwayMap | null, now: number): ReplyNotice[] {
   if (!map?.check || map.check.fresh) return [];
   const failing = doorwayFreshness(map, now).models.filter(model => !model.fresh);
   if (!failing.length) return [];
   return [{ key: `doorway:${map.check.since}`,
     line: `Model route check: ${failing.slice(0, 3).map(model => `${model.doorway}/${model.model} is ${model.state}`).join('; ')}`
-      + `${failing.length > 3 ? ` (+${failing.length - 3} more)` : ''}; send "status" for detail.` }];
+      + `${failing.length > 3 ? ` (+${failing.length - 3} more)` : ''}.` }];
 }
 
 /** Candidates a new answer may carry, credentials first. A key is spent when a reply that says its line

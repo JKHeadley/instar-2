@@ -3,7 +3,7 @@
 import { expect, it } from 'vitest';
 import { execFileSync } from 'node:child_process';
 import { readFileSync } from 'node:fs';
-import { CAPABILITY_BRIEFING_PATH, CAPABILITY_LAUNCHER, capabilityBriefing, sourcePacket, SOURCE_PINS, SOURCE_EXCERPTS } from './briefing.js';
+import { CAPABILITY_BRIEFING_PATH, CAPABILITY_LAUNCHER, capabilityBriefing, sourcePacket, SOURCE_PINS, SOURCE_EXCERPTS, SELF_IDENTITY, SIGN_OFF } from './briefing.js';
 
 type Feature = { id: string; status: string; availability: string; userFacing: boolean; text: string | null };
 const generated = JSON.parse(readFileSync(CAPABILITY_BRIEFING_PATH, 'utf8')) as { generation: string; commit: string; launchers: Record<string, Feature[]> };
@@ -107,13 +107,16 @@ it('briefs the installation identity with and without the generated register, pr
   for (const tools of [false, true]) for (const available of [false, true]) {
     const read = available ? (path: string) => readFileSync(path, 'utf8') : () => { throw Error('absent'); };
     const { text } = capabilityBriefing(read, { ...limits, tools });
-    expect(text).toContain("This is Instar in the operator's direct Telegram chat and its topics.");
-    expect(text).not.toMatch(/PREVIEW trial|This trial|Instar 2\.0/u);
+    expect(text).toContain(SELF_IDENTITY);
+    expect(text).toContain(SIGN_OFF);
+    expect(text).toContain("You are an Instar 2.0 agent");
+    expect(text).not.toMatch(/PREVIEW trial|This trial|Justin/u);
     expect(text).toContain(`at most ${limits.providerAttempts} model attempts, ending at epoch ms ${limits.expiresAt}`);
     expect(text).toContain('Charges, and unconfirmed calls or deliveries, are recorded unknown.');
     expect(text).toContain('Production safeguards are incomplete.');
     if (tools) {
       expect(text).not.toContain('You have no tools');
+      expect(text).toContain('standing grants need no new approval');
       expect(text).toContain("doorway\'s four tests");
     } else expect(text).toMatch(/no tools/u);
     expect(text.includes('capability briefing is unavailable')).toBe(!available);
