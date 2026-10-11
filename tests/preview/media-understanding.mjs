@@ -1,7 +1,8 @@
 // Host-only bridge from authenticated encrypted custody to one confined turn.
 // Machine-local (Rules 32/113); the journal remains the intake and reply authority.
-import { chmodSync, mkdtempSync, readdirSync, rmSync, writeFileSync } from 'node:fs';
+import { chmodSync, mkdtempSync, readFileSync, readdirSync, rmSync, writeFileSync } from 'node:fs';
 import { extname, join } from 'node:path';
+import { bindBlockingSite } from '../../src/register/governance.js';
 import { concealSecretMaterial } from './reply-check.js';
 
 export const MEDIA_UNREADABLE = 'The received file could not be read here. Say so honestly; do not invent its contents.';
@@ -15,6 +16,10 @@ export function voiceNotice(saved) {
  * derivative crosses into the harness. Latin-1 is a reversible byte view for binary
  * attachments; UTF-8 documents retain their original encoding and non-ASCII text. */
 export function protectMediaBytes(bytes, source, custody, heldSecrets) {
+  bindBlockingSite(JSON.parse(readFileSync(new URL('./media-understanding.declarations.json', import.meta.url), 'utf8')),
+    'preview.media-understanding.protectMediaBytes', [
+      { decidesAlone: 'ruled-three', decidesAloneBasis: 'live-secret-leaving', failDirection: 'closed' },
+    ]);
   const utf8 = bytes.toString('utf8');
   const encoding = Buffer.from(utf8, 'utf8').equals(bytes) ? 'utf8' : 'latin1';
   const text = bytes.toString(encoding);
