@@ -4,7 +4,7 @@ import { performance } from 'node:perf_hooks';
 import { mkdtempSync, realpathSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
-import { createJournalWorker, openPreviewJournal } from './journal-test-worker.js';
+import { PREVIEW_LIVE_LIMITS, createJournalWorker, openPreviewJournal } from './journal-test-worker.js';
 import { JEV_MODEL, REPLY_RULES } from './reply-check.js';
 import { prepareJournalEnvelope } from './journal-envelope.js';
 import { SOURCE_PINS, sourcePacket } from './briefing.js';
@@ -645,9 +645,8 @@ it('keeps an imminent item eligible when an objected reply is revised without it
   try {
     let now = start, rejectOnce = true;
     const sends: string[] = [];
-    // cint-2: cbuild-2's ~4 KB instruction message and cbuild-4's guide ride every prepared answer; measured fit:
-    // 17408 overflows, 18432 fits (was 12000).
-    const journal = openPreviewJournal(path, key, { ...genesis, maxBytes: 20480 });
+    // Exercise revision at the supported live bound; a smaller packet can legitimately add a compaction disclosure.
+    const journal = openPreviewJournal(path, key, { ...genesis, maxBytes: PREVIEW_LIVE_LIMITS.contextBytes });
     const worker = createJournalWorker(journal, { now: () => now, stopped: () => false, timeZone: 'America/Los_Angeles',
       prepareModel: input => prepareJournalEnvelope(input, 'claude-sonnet-4-5', 'grant:preview', now),
       model: async (input: { question: string }) => JSON.stringify({ reply: 'Okay.', memory: [],

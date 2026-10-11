@@ -444,8 +444,8 @@ it('drops optional open commitments until the complete summary envelope fits and
       model: async input => { calls.push({ id: input.id, context: input.context });
         return input.id.startsWith('summary:') ? 'The thirty items remain open; later discussion covered the garden.' : 'ok'; },
       send: async () => 3, checkOutbound: () => {} });
-    // Sized below the live bound less the always-offered decisions and the mind-held instructions.
-    worker.intake([update(3, `Please answer this long question: ${'question '.repeat(2200)}`)]);
+    // Leave room for the current identity instructions while keeping the full history over the bound.
+    worker.intake([update(3, `Please answer this long question: ${'question '.repeat(2000)}`)]);
     await worker.drain();
     const summaryCall = calls.find(call => call.id === 'summary:2');
     expect(summaryCall).toBeDefined();
