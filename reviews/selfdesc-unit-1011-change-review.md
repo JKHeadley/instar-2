@@ -42,3 +42,5 @@ Verification: Final wording keeps the tool-route fixed packet at 22910 bytes wit
 Fixture sizing: The imminent-date revision fixture now gives its two short turns 22528 bytes, keeping the test about notice revision instead of incidental compaction disclosure after added standing instructions. Production limits and every revision/eligibility assertion remain unchanged. Commitment fixtures likewise retain forced summary and trimming while leaving their intended evidence room.
 
 Pin completeness: Refresh the dated-memory fixture's owner-reference hash as well as the journal-agent fixture's hash; both are registered artifacts. Regenerate derived source metadata from that committed owner manifest.
+
+Final generation: ba22ddba155b1c9e2e75caacad11fd55d7c316579dbaaf20de7a9f3ab463c765 from source 88fc1e1693b46bcb402b0235f60226d19b416651; 289 entries, 116 rules, 34 terms, shape-only authority. Capability inventory remains unchanged.
