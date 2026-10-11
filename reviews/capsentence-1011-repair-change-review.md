@@ -18,7 +18,7 @@ Bug class: integration
 Bug evidence: reproducer=tests/preview/tool-turn.test.ts; additional reproductions in journal-obligations.test.ts and journal-boundaries.test.ts
 Hook bypass: none; core.hooksPath unset and common hooks directory inspected (samples only)
 Convergence: none
-Decision: R1 | Update assertion consumers of the rendered note and exact Rule 18; restoring obsolete duplicated instructions would change a working protocol. | reported=/Users/dabombstudio/.instar/agents/echo/.instar/lanes/capsentence-1011-repair-PROGRESS.md
+Decision: R01 | Update assertion consumers of the rendered note and exact Rule 18; restoring obsolete duplicated instructions would change a working protocol. | reported=/Users/dabombstudio/.instar/agents/echo/.instar/lanes/capsentence-1011-repair-PROGRESS.md
 
 Subject (4 paths): register-source/owner-references/preview.json, tests/preview/journal-boundaries.test.ts, tests/preview/journal-obligations.test.ts, tests/preview/tool-turn.test.ts
 
