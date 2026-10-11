@@ -936,7 +936,7 @@ export async function runToolTurn(options) {
   // from the journal through the same admission path, with a fresh whole-turn reservation.
   // Unknown usage, partial work and stops never permit replay. A short allowance keeps
   // the original rejection instead of degrading the requested work to a text-only call.
-  if (!recoveringResume && plan?.resume && result?.state === 'rejected'
+  if (!recoveringResume && plan?.resume && result?.state === 'rejected' && !result.capacity
     && result.usage?.inputComplete === true && result.usage.inputTokens === 0 && result.usage.outputTokens === 0
     && trace.calls.length === 0 && trace.children.length === 0 && !stopped() && toolTurnFits(journal.view, 1)) {
     return runToolTurn({ ...options, recoveringResume: true });
