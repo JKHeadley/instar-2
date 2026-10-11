@@ -4,6 +4,10 @@ _Generated from `03-the-glossary.changelog.json` by `scripts/render-changelog.mj
 The document itself reads as a first version; every change to it is recorded here, newest first,
 each linked to the git change that made it (rule 91).
 
+## Revision 10 · 2026-10-10 · draft — Justin, docs-align-1010: align design parts with the constitution amendments merged in PR #154; final-head code-owner approval pending.
+
+- **Distinguish verification coverage from acceptance; require recorded real conversation evidence rather than a rule score.** — The governing purpose fixes agency, identity, onboarding, sign-off and acceptance; design prose must not impose incompatible defaults or claim readiness from verification alone. _(`fc0e3c20`, docs/00-the-purpose.md; docs/01-the-rules.md; reviews/docs-align-1010-change-review.md)_
+
 ## Revision 9 · 2026-10-10 · draft — Justin, topic 102965, 2026-10-10 17:23 PDT: "Yes, I like this ... I approve the changes"; constitution-amendments-approved-2026-10-10.md, observer #239; final-head GitHub approval and merge pending.
 
 - **Define consequential and ordinary by the purpose’s five sign-off conditions; retain critical and significant as verification profiles and remove the claim that irreversibility or external reach alone demands sign-off.** — The five-field profile describes verification risk and lacks current role, spending level and sensitive-matter designations; sign-off needs those actual facts. This documentation amendment changes no executable profile formula. _(Justin, topic 102965, 2026-10-10 17:23 PDT: "Yes, I like this ... I approve the changes"; constitution-amendments-approved-2026-10-10.md, observer #239; final-head GitHub approval and merge pending.)_

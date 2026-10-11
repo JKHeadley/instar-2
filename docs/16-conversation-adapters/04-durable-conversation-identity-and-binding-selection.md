@@ -68,12 +68,7 @@ stores a numeric conversation id move in the same migration. This consumer set i
 `PromiseBeacon`, its server composition, conversation lookup surfaces, and durable commitment or
 follow-through records carrying a topic id.
 
-That migration preserves PromiseBeacon's separate outer output gate. Missing or false
-`userOutputEnabled` keeps both conversation output and Attention output silent, including summaries
-already queued before migration. Only explicit `userOutputEnabled === true` permits pending beacon
-work to enter the normal effect path. P12-NF-49/52 exercise opted-out and opted-in pending work so
-importing a queue cannot silently enable notices. This policy is independent of the old delivery
-funnel's dark or dry posture. The 1.x files retire as an authority only after every reference
-resolves or has an owned inert disposition and no unresolved legacy send can reach a provider.
+The migration resolves pending beacon work against current role grants and any recorded opt-out.
+The [purpose](../00-the-purpose.md#the-purpose) states: “Inside its role the agent acts without asking again.” An explicit user disable remains a directive until superseded; an absent legacy `userOutputEnabled` flag is neither a new grant nor an extra approval requirement. Role-covered action-needed or result output enters the normal effect path without another prompt unless a purpose sign-off condition applies. Missing standing refuses with the grant needed; uncertain pending sends are never replayed. P12-NF-49/52 exercise a preserved opt-out, an uncovered action and a covered ordinary result without another opt-in. Rules 52, 53 and 87 still bound and route notifications. The 1.x files retire as an authority only after every reference resolves or has an owned inert disposition and no unresolved legacy send can reach a provider.
 
 ---
