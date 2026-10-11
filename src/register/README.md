@@ -4,5 +4,5 @@ Generates the register of governed things from code-adjacent declarations (`*.de
 
 ## Capabilities
 
-- `register-tooling`: generates the register, rule book, glossary and this briefing from the declarations in code.
+- `register-tooling`: My description of what I can do comes from the features installed here.
   Details: generates the register, rule book, glossary and this capability briefing from the declarations in code, and fails the build on an undeclared store, undocumented module, dangling rule reference or unused declared boundary.

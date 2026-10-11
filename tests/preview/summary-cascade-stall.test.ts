@@ -65,6 +65,7 @@ function world(writer: Step[], forum = false) {
       // not just an empty fixture context. Both governed excerpts still reach the call.
       const sources = (JSON.parse(input.context) as { sources: { id: string; text: string }[] }).sources;
       expect(sources.map(source => source.id)).toEqual(['purpose:purpose', 'purpose:coherency', 'capability-note', 'self-state']);
+      expect(sources.find(source => source.id === 'capability-note')!.text).toContain('I am an Instar 2.0 agent');
       expect(sources.at(-1)!.text).toContain('Activation: your activation; ends');
       if (!input.id.startsWith('summary:')) return 'Noted.';
       throughs.push(Number(input.id.slice(8))); log.push('summary');

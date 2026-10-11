@@ -238,15 +238,15 @@ it('still serves the live recorded answers after the guidance rewording', async 
   expect(MEMORY_ITEM_SHAPE).toContain('for prefer, preferenceSource');
   expect(first.datedDecision).toContain('{mode:"prefer",source:current turn id,quote:exact preference clause}');
   expect(first.preferenceSource).toBeDefined();
-  expect(first.capability).toContain('capability-note source');
+  expect(first.capability).toContain('capability-note');
   // The reworded capability guidance no longer repeats what the note states, which is the trimmed path.
   expect(first.capability).not.toContain('generated from the register');
   // And the capability question's packet still carries the note with its generated items, the no-tools
   // sentence the live blocker avenues quote as evidence, and the trial budget line.
   const second = JSON.parse(run.answerPackets[1]!) as { sources: { id: string; text: string }[] };
   const note = second.sources.find(item => item.id === 'capability-note')!;
-  expect(note.text).toContain('- preview-conversation: ');
-  expect(note.text).toContain('Nothing unlisted is available: no tools');
+  expect(note.text).toContain('I keep track across topics');
+  expect(note.text).toContain('you can turn these tools on');
   expect(note.text).toContain('This installation allows at most');
 }, 120_000);
 

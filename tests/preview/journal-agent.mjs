@@ -402,7 +402,7 @@ const turnSources = (root, options, view, runs, current = () => undefined, hando
   // tool turn reads them; unknown when the configuration is unreadable). Each distinct briefing is built once.
   const packets = new Map();
   const packetFor = (tools, mcp) => {
-    const key = `${String(tools)}:${String(mcp)}`;
+    const key = JSON.stringify([tools, mcp, view.limits.maxCalls, view.expires]);
     if (!packets.has(key)) packets.set(key, sourcePacket(path => readFileSync(resolve(process.cwd(), path), 'utf8'), SOURCE_PINS,
       { providerAttempts: view.limits.maxCalls, expiresAt: view.expires, tools, ...(tools && mcp !== undefined ? { mcp } : {}) }).sources);
     return packets.get(key);
@@ -413,7 +413,7 @@ const turnSources = (root, options, view, runs, current = () => undefined, hando
   const deskStatusPath = resolve(options['desk-status'] ?? join(root, 'desk-status.md'));
   return turn => {
     const now = wallNow(), log = runs();
-    const tools = Boolean(toolsOn()), sources = packetFor(tools, tools ? mcpCount() : undefined);
+    const tools = Boolean(toolsOn(turn)), sources = packetFor(tools, tools ? mcpCount() : undefined);
     const desk = deskStatusSource(readDeskStatus(deskStatusPath), now, deskStatusPath);
     const note = handoff();
     return [...sources, disciplineSource(view), selfStateSource(selfStateBrief(view, log, now, timeZoneOf(options), current())), desk, ...(note ? [note] : [])];
@@ -1860,7 +1860,8 @@ async function main() {
       groupDisclosure: async () => { await requireGroupDisclosure(journal.view); return true; },
       presenceNotes: sentinelFamilies.has('presence'),
       sources: turnSources(root, options, journal.view, () => runs, () => launchedAt ?? undefined,
-        () => journal.view.order.some(turn => turn.reserved && !reservedAtLaunch.has(turn.id)) ? null : handoff, () => toolsActive()),
+        () => journal.view.order.some(turn => turn.reserved && !reservedAtLaunch.has(turn.id)) ? null : handoff,
+        turn => toolsActive() && identityRefusal === null && (!turn || toolTurnEligible(turn.id)) && toolPacketFits(journal.view)),
       prepareModel: modelEnvelope,
       // Part Thirteen §9: the packet names the tools exactly when the model call will run on the tool route. The packet
       // is built before the answer's `reserve` or the work's `obligation-start` counts its base call, so that call is added here.

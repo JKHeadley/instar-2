@@ -13,8 +13,8 @@ const limits = { providerAttempts: 16, expiresAt: 1791232800000 };
 it('delivers every available generated feature, names switched-off ones, and omits unloaded ones', () => {
   const note = sourcePacket(path => readFileSync(path, 'utf8'), SOURCE_PINS, limits).sources.find(s => s.id === 'capability-note')!;
   expect(note.provenance).toMatchObject({ path: CAPABILITY_BRIEFING_PATH, launcher: CAPABILITY_LAUNCHER, generation: generated.generation, commit: generated.commit });
-  for (const f of briefed.filter(f => f.availability === 'available')) expect(note.text).toContain(`- ${f.id}: ${f.text}`);
-  for (const f of briefed.filter(f => f.availability === 'switched-off')) expect(note.text).toMatch(new RegExp(`switched off here[^\\n]*\\b${f.id}\\b`));
+  for (const f of briefed.filter(f => f.availability === 'available')) expect(note.text).toContain(`- ${f.text}`);
+  for (const f of briefed.filter(f => f.availability === 'switched-off')) expect(note.text.split('Other options off here')[1]).toContain(f.text);
   for (const f of briefed.filter(f => f.availability === 'not-loaded')) expect(note.text).not.toContain(f.id);
   expect(note.text).toContain(`at most ${limits.providerAttempts} model attempts`);
   expect(briefed.filter(f => f.availability === 'available' && f.userFacing).map(f => f.id)).toEqual(expect.arrayContaining([
@@ -80,7 +80,7 @@ it('the read-only inspection path shows the generated capability note and its re
     const out = inspect('--text', 'What can you do?', '--model', 'claude-sonnet-5');
     for (const note of [out.last.capabilityNote, out.next.capabilityNote]) {
       expect(note.provenance).toMatchObject({ path: CAPABILITY_BRIEFING_PATH, launcher: CAPABILITY_LAUNCHER, generation: source.generation, commit: generated.commit });
-      expect(note.text).toContain('- preview-requested-actions: ');
+      expect(note.text).toContain('I can keep reminders and repeating tasks');
     }
   } finally { rmSync(root, { recursive: true, force: true }); }
 }, 60_000);
@@ -107,15 +107,15 @@ it('briefs the installation identity with and without the generated register, pr
   for (const tools of [false, true]) for (const available of [false, true]) {
     const read = available ? (path: string) => readFileSync(path, 'utf8') : () => { throw Error('absent'); };
     const { text } = capabilityBriefing(read, { ...limits, tools });
-    expect(text).toContain("This is Instar in the operator's direct Telegram chat and its topics.");
-    expect(text).not.toMatch(/PREVIEW trial|This trial|Instar 2\.0/u);
+    expect(text).toContain('I am an Instar 2.0 agent');
+    expect(text).not.toMatch(/PREVIEW trial|This trial/u);
     expect(text).toContain(`at most ${limits.providerAttempts} model attempts, ending at epoch ms ${limits.expiresAt}`);
     expect(text).toContain('Charges, and unconfirmed calls or deliveries, are recorded unknown.');
     expect(text).toContain('Production safeguards are incomplete.');
     if (tools) {
       expect(text).not.toContain('You have no tools');
-      expect(text).toContain("doorway\'s four tests");
-    } else expect(text).toMatch(/no tools/u);
+      expect(text).toContain('I act within the access you have already given me');
+    } else expect(text).toContain('you can turn these tools on');
     expect(text.includes('capability briefing is unavailable')).toBe(!available);
   }
 });

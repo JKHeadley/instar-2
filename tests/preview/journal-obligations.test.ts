@@ -17,7 +17,7 @@ import { SUBSCRIPTION_TOOL_LIMITS } from '../../src/assembly/production-provider
 // @ts-expect-error Plain JavaScript.
 import { toolTrace } from './tool-admission.mjs';
 import { loopHealth, loopStatusLines, BACKLOG_AGE_LIMIT_MS } from './obligations.js';
-import { SOURCE_PINS, sourcePacket, TOOLS_BRIEFING, TOOLS_LIMITS } from './briefing.js';
+import { SOURCE_PINS, sourcePacket, SELF_DESCRIPTION_GUIDANCE, TOOLS_BRIEFING, TOOLS_LIMITS } from './briefing.js';
 import { statusReply } from './status-command.js';
 import { DECLARED_OBLIGATIONS_GUIDE, HOLDING_REPLY, REPLY_RULES, replySegments, replyReviewContext, replyReviewQuestion, type ObjectionDisposition, type ReplyRule } from './reply-check.js';
 import { prepareJournalEnvelope } from './journal-envelope.js';
@@ -293,11 +293,9 @@ it('offers a settled wall to the answer only while the constraint wording it res
       if ('reason' in probe) throw Error(probe.reason);
       const shown = (JSON.parse(probe.context) as { blockers?: { claim: string }[] }).blockers ?? [];
       expect(shown.map(item => item.claim), `settled ${settledOn}, asked ${askedOn}`).toEqual(offered ? [CLAIM] : []);
-      // On the tool route the self-description is held to the note's items and limits; the text-only note already closes
-      // with "Nothing unlisted is available", so its guidance is unchanged.
-      expect((JSON.parse(probe.context) as { capability: string }).capability.startsWith(askedOn
-        ? 'Your capabilities are the capability-note source; describing yourself, give only its items and limits. Summary'
-        : 'Your capabilities are the capability-note source. Summary')).toBe(true);
+      // Both routes describe the abilities in their current note in user language.
+      expect((JSON.parse(probe.context) as { capability: string }).capability)
+        .toContain(SELF_DESCRIPTION_GUIDANCE);
       // Must-fix 2's two sides, on the one packet that carries both the commitments guidance and the route's capability
       // read. The commitment is open, so its guidance is in this packet; what the packet says about tools is said once,
       // by the route-specific read, and no second sentence contradicts it. On the tool route the read is 'listed'; on the
@@ -1014,7 +1012,7 @@ it('a tool-bearing work step carries the capability note its pointers name: the 
   // off while a delegated session still has tools), and none.
   for (const [label, supplied, expected] of [
     ['tool note', noteOf(true), noteOf(true).text],
-    ['text-only note', noteOf(false), `You have ${TOOLS_BRIEFING} ${TOOLS_LIMITS}`],
+    ['text-only note', noteOf(false), `${TOOLS_BRIEFING} ${TOOLS_LIMITS}`],
   ] as const) {
     const root = origin();
     try {
@@ -1058,7 +1056,7 @@ it('tells scheduled work and the reply review what the call actually had: no too
         .toBe(tools ? 'listed tools only' : 'no external tools or accounts');
       // Review round 1, finding 2: the tool route's entries point at the note ("listed", "see Limits"), so the tool step
       // carries it; with no note supplied, the note's own tools item and limits, the MCP count unknown, never guessed.
-      if (tools) expect(contexts[0]!.sources).toEqual([{ id: 'capability-note', text: `You have ${TOOLS_BRIEFING} ${TOOLS_LIMITS}` }]);
+      if (tools) expect(contexts[0]!.sources).toEqual([{ id: 'capability-note', text: `${TOOLS_BRIEFING} ${TOOLS_LIMITS}` }]);
       else expect(contexts[0]).not.toHaveProperty('sources');
       if (tools) {
         expect(w.workQuestions[0]).not.toContain('you have no external tools');

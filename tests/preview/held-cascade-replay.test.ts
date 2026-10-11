@@ -1,5 +1,6 @@
 import { expect, it } from 'vitest';
-import { mkdtempSync, realpathSync, rmSync } from 'node:fs';
+import { SOURCE_PINS, sourcePacket } from './briefing.js';
+import { mkdtempSync, readFileSync, realpathSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { openPreviewJournal, createJournalWorker } from './journal.js';
@@ -29,8 +30,12 @@ async function flow(options: Flow) {
     configurationDigest: 'sha256:offline', expires: 9999999999999, maxCalls: 6, maxReplies: 3, maxTurns: 3, maxBytes: 32768, cursor: 0 };
   const calls = { jev: 0, review: 0 }, sends: string[] = [], clock = { now: 1790817641423 };
   const ports = (fresh: boolean) => ({ now: () => clock.now, stopped: () => false,
+    sources: () => sourcePacket(path => readFileSync(path, 'utf8'), SOURCE_PINS, { providerAttempts: genesis.maxCalls, expiresAt: genesis.expires }).sources,
     prepareModel: (input: Parameters<typeof prepareJournalEnvelope>[0]) => prepareJournalEnvelope(input, 'claude-sonnet-5', 'grant:preview', clock.now),
-    model: async () => { if (!fresh) throw Error('model repeated'); return options.answer; },
+    model: async (input: { context: string }) => {
+      if (!fresh) throw Error('model repeated');
+      expect(JSON.parse(input.context).sources.find((s: { id: string }) => s.id === 'capability-note').text).toContain('I am an Instar 2.0 agent');
+      return options.answer; },
     checkOutbound: () => {},
     ...(options.held ? { heldSecrets: () => options.held ?? [] } : {}),
     replyCheck: { elapsedMs: () => 0,
