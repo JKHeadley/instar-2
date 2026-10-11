@@ -1,4 +1,4 @@
-import { existsSync, mkdirSync, mkdtempSync, readFileSync, realpathSync, rmSync, writeFileSync } from 'node:fs';
+import { existsSync, mkdirSync, mkdtempSync, readFileSync, readdirSync, realpathSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { createServer } from 'node:http';
@@ -7,7 +7,7 @@ import { openPreviewJournal } from './journal.js';
 import { SINGLE_MACHINE_PROFILE } from './activation-authority.js';
 import { subscriptionModelCommand, SUBSCRIPTION_TOOLS_FRAMING } from '../../src/assembly/production-provider.js';
 // @ts-expect-error Physical runner JavaScript.
-import { prepareNextToolTurn, runToolTurn, reconcileToolTurns } from './tool-turn.mjs';
+import { prepareNextToolTurn, runToolTurn, reconcileToolTurns, toolTurnSlug, pruneToolTurns } from './tool-turn.mjs';
 // @ts-expect-error Physical host JavaScript.
 import { createResourceOwner, RESOURCE_CEILINGS } from '../../scripts/resource-owner.mjs';
 // @ts-expect-error Physical host JavaScript.
@@ -57,6 +57,57 @@ it('prepares before the next update exists, then uses its fresh state under the 
     expect(await warm.take(f.options)).toBeNull();
   } finally { await warm.close(); }
   expect(f.unmounts()).toBe(1);
+});
+
+const recorded = JSON.parse(readFileSync(join(__dirname, 'fixtures/tool-turn/preswitch-warm-2026-10-11.json'), 'utf8'));
+for (const warm of [false, true]) for (const fails of [false, true])
+  it(`publishes the recorded update's admission evidence under its operation key: warm=${warm}, fails=${fails}`, async () => {
+    const f = fixture(), options = { ...f.options, id: recorded.claim.id,
+      egress: async ({ stateDirectory }: { stateDirectory: string }) => ({ port: 12345, close: async () => {
+        writeFileSync(join(stateDirectory, 'closed.txt'), 'closed at original path');
+      } }) };
+    const parked = warm ? await prepareNextToolTurn(options, () => f.provider) : null;
+    const base = join(f.root, 'tool-turns'), slug = toolTurnSlug(options.id, 0), directory = join(base, slug);
+    let state = '';
+    try {
+      const result = runToolTurn({ ...options, prestart: parked,
+        invoke: async (scope: { stateDirectory: string }) => {
+          state = scope.stateDirectory;
+          expect(existsSync(directory)).toBe(!warm);
+          writeFileSync(join(state, 'admission.jsonl'), recorded.admission);
+          // The network checkpoint still writes its original path during execution.
+          writeFileSync(join(base, warm ? 'next-0' : slug, 'private', 'checkpoint.txt'), 'record');
+          if (fails) throw Error('interrupted answer');
+          return { state: 'complete', value: 'answer' };
+        } });
+      if (fails) await expect(result).rejects.toThrow('interrupted answer');
+      else expect((await result).result.state).toBe('complete');
+      // Same lookup used by Group T: operation digest followed by the attempt.
+      expect(readdirSync(base).filter(name => name.startsWith(slug.slice(0, 17)))).toEqual([slug]);
+      expect(existsSync(join(base, 'next-0'))).toBe(false);
+      expect(realpathSync(join(directory, 'state'))).toBe(state);
+      expect(readFileSync(join(directory, 'state/admission.jsonl'), 'utf8')).toBe(recorded.admission);
+      expect(readFileSync(join(directory, 'private/checkpoint.txt'), 'utf8')).toBe('record');
+      expect(readFileSync(join(directory, 'private/closed.txt'), 'utf8')).toBe('closed at original path');
+      expect(f.journal.view.toolTurns?.open).toEqual([]);
+      expect(pruneToolTurns(f.root, 0, () => true, new Set(), join(f.root, 'harness'))).toEqual({ removed: 1, failed: 0 });
+      expect(existsSync(state)).toBe(false);
+    } finally { await parked?.close(); }
+  });
+
+it('preserves both records and the open reservation if the operation evidence path is occupied', async () => {
+  const f = fixture(), parked = await prepareNextToolTurn(f.options, () => f.provider);
+  const directory = join(f.root, 'tool-turns', toolTurnSlug(f.options.id, 0));
+  try {
+    await expect(runToolTurn({ ...f.options, prestart: parked, invoke: async (scope: { stateDirectory: string }) => {
+      writeFileSync(join(scope.stateDirectory, 'admission.jsonl'), recorded.admission);
+      mkdirSync(directory); writeFileSync(join(directory, 'existing'), 'keep');
+      return { state: 'complete' };
+    } })).rejects.toThrow('tool turn evidence already exists');
+    expect(readFileSync(join(directory, 'existing'), 'utf8')).toBe('keep');
+    expect(readFileSync(join(f.root, 'tool-turns/next-0/state/admission.jsonl'), 'utf8')).toBe(recorded.admission);
+    expect(f.journal.view.toolTurns?.open).toContain(`${f.options.id}#0`);
+  } finally { await parked.close(); }
 });
 
 for (const change of [
@@ -192,10 +243,21 @@ it('recovers only a claimed speculative directory, preserving the actual operati
     expect(recover()).toEqual([]); // no operation may inherit unclaimed speculative evidence
     writeFileSync(join(taken.turn.directory, 'claim.json'), 'null');
     expect(recover()).toEqual([]);
+    for (const claim of [{ id: 'another update', attempt: 0 }, { id: f.options.id, attempt: 1 }]) {
+      writeFileSync(join(taken.turn.directory, 'claim.json'), JSON.stringify(claim));
+      expect(recover()).toEqual([]);
+    }
     taken.admit();
-    writeFileSync(join(taken.turn.stateDirectory, 'admission.jsonl'), '');
-    expect(recover()).toEqual([`${f.options.id}#0`]);
-    // This test interrupted before runToolTurn could take cleanup ownership.
+    writeFileSync(join(taken.turn.stateDirectory, 'admission.jsonl'), recorded.admission);
+    // Recovery runs only after the old process/checkpoints are gone.
     await taken.checkpoint.close(); await taken.closeSecrets();
+    expect(() => reconcileToolTurns({ root: f.root, journal: { ...f.journal, append: () => { throw Error('journal unavailable'); } },
+      redactText: (text: string) => text, now: () => 2 })).toThrow('journal unavailable');
+    const directory = join(f.root, 'tool-turns', toolTurnSlug(f.options.id, 0));
+    expect(readFileSync(join(directory, 'state/admission.jsonl'), 'utf8')).toBe(recorded.admission);
+    expect(existsSync(taken.turn.directory)).toBe(false);
+    // A crash after publication but before the trace append uses the ordinary path.
+    expect(recover()).toEqual([`${f.options.id}#0`]);
+    expect(recover()).toEqual([]);
   } finally { await warm.close(); }
 });

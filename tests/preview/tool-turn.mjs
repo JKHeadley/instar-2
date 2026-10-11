@@ -154,6 +154,17 @@ export const CLAUDE_TOOL_ADMISSION = Object.freeze({ maxCalls: SUBSCRIPTION_TOOL
 /** A turn directory's name: its operation's digest and its attempt (the journal's `id#attempt` key, filesystem-safe). */
 export const toolTurnSlug = (operation, attempt) => `${createHash('sha256').update(operation, 'utf8').digest('hex').slice(0, 16)}-${String(attempt)}`;
 
+// Publish completed speculative evidence under the same operation key as a cold turn.
+// Only the runner directory moves: the hook's state link keeps its original target.
+// Call after the checkpoint closes, since its private record uses the old directory.
+function publishToolTurn(directory, root, id, attempt) {
+  const target = join(realpathSync(root), TOOL_TURNS_DIRECTORY, toolTurnSlug(id, attempt));
+  if (directory === target) return directory;
+  if (existsSync(target)) throw Error('preview: tool turn evidence already exists');
+  renameSync(directory, target);
+  return target;
+}
+
 /** Allocates a turn: a fresh `<root>/tool-turns/<digest>-<attempt>/state` and the hook's config, and mounts the volume
  * holding `ws` and `tmp`, all 0700 (`scratch(dir, name)` mounts it; tests may pass a stand-in). `volume` is the
  * conversation's workspace ({directory, name} from `conversationWorkspace`), whose files persist across turns; absent,
@@ -762,8 +773,10 @@ export function reconcileToolTurns({ journal, root, redactText, now }) {
     try { config = JSON.parse(readFileSync(join(stateDirectory, 'config.json'), 'utf8')); } catch { continue; }
     const authority = typeof config?.authority === 'string' && config.authority ? config.authority : 'unrecorded';
     const own = join(directory, TOOL_TURN_PRIVATE);
-    journal.append(traceRow({ id, attempt, trace: readToolTrace(stateDirectory), egress: readEgressRecord(existsSync(own) ? own : stateDirectory), authority,
-      ended: 'unknown', redactText, workspace: null, at: now() }));
+    const row = traceRow({ id, attempt, trace: readToolTrace(stateDirectory), egress: readEgressRecord(existsSync(own) ? own : stateDirectory), authority,
+      ended: 'unknown', redactText, workspace: null, at: now() });
+    if (directory !== original) publishToolTurn(directory, root, id, attempt);
+    journal.append(row);
     closed.push(key);
   }
   return closed;
@@ -992,6 +1005,7 @@ export async function runToolTurn(options) {
   if (turn) scrubAdmissionRecord(turn.stateDirectory, served, redactText);
   const trace = turn ? readToolTrace(turn.stateDirectory) : { calls: [], children: [], consistent: true };
   const egressRecord = turn && checkpoint ? readEgressRecord(turn.privateDirectory) : null;
+  if (warmed) turn.directory = publishToolTurn(turn.directory, root, id, attempt);
   const ended = stopped() ? 'cancelled' : 'unknown';
   // A kept session continues only from a turn that ended cleanly; a stop, a withdrawal, a failure or an unproven tool
   // run ends it now (its transcript removed), so nothing it saw outlives the turn that saw it.
