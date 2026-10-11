@@ -24,6 +24,8 @@ Prompt review: No prompt edits. Model parser replay includes both exact captured
 Deferral: tests/preview/fixtures/canary9-review-2026-10-11.json:64 | not-a-deferral=Immutable captured reviewer output discusses whether the probe defers work; it creates no commitment.
 Deferral: tests/preview/fixtures/canary9-review-2026-10-11.json:69 | not-a-deferral=Immutable captured reviewer retry discusses whether the probe defers work; it creates no commitment.
 
+Publication: Refresh the existing preview fixture owner hash and regenerate register outputs from the committed source; these are derived evidence, not new authority.
+
 Subject: tests/preview/reply-check.ts, tests/preview/journal-agent.mjs, tests/preview/reply-check.test.ts, tests/preview/canary-review-replay.test.ts, tests/preview/fixtures/canary9-review-2026-10-11.json
 
 ## Closing block
