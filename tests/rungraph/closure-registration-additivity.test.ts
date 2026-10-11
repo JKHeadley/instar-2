@@ -8,12 +8,14 @@ import { governanceFixture } from './governance-fixture.js';
 import { setup, value, refused } from './fixtures.js';
 
 // Baseline re-pinned to the reviewed installation (hold arrays only) per astra-enforce-contracts-ruling.md.
-it('P5-SEAM-RC-R9-F3-ADMISSION-BINDINGS P5-SEAM-RC-R10-F3-ADDITIVE-REGISTRATION keeps the reviewed installation byte-identical and gates only additive operations', () => {
+it('P5-SEAM-RC-R9-F3-ADMISSION-BINDINGS P5-SEAM-RC-R10-F3-ADDITIVE-REGISTRATION keeps the reviewed installation except named metadata updates and gates only additive operations', () => {
   const original = readFileSync('src/rungraph/rungraph.declarations.json', 'utf8');
-  // Byte-identical to the reviewed installation except one governance-only line: cbuild-1 added
-  // Rule 39 to rungraph-core's `standards` (governed-by). No gate, rung, record or holds claim changed.
+  // Byte-identical except the named governance metadata updates: cbuild-1 added Rule 39,
+  // and repo-checks-1010 renewed the dark-feature deadline while production liveProof is absent.
+  // The gate test, dark status, rungs, records and holds claims remain byte-identical.
   const reviewed = execFileSync('git', ['show', '330097eecca10780d7109146f60732b95556fb35:src/rungraph/rungraph.declarations.json'], { encoding: 'utf8' });
-  expect(original).toBe(reviewed.replace('"standards": [26, 31, 33, 34, 63, 68, 69, 96],', '"standards": [26, 31, 33, 34, 39, 63, 68, 69, 96],'));
+  expect(original).toBe(reviewed.replace('"standards": [26, 31, 33, 34, 63, 68, 69, 96],', '"standards": [26, 31, 33, 34, 39, 63, 68, 69, 96],')
+    .replace('"deadline": 1791158400000', '"deadline": 1792886400000'));
   expect(original).not.toBe(reviewed);
 
   const legacy = setup();

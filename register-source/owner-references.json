@@ -15,7 +15,7 @@
       "stage": "build",
       "artifact": {
         "path": "tests/rungraph/closure-registration-additivity.test.ts",
-        "hash": "sha256:60d45097ed34dfc12200c825c43d55c11c640c06528b5fada1d84d2787d23b2e"
+        "hash": "sha256:a9ed355990313e8ee127d0595332180fd0f33582d3e9bcded4009ad26940545a"
       }
     },
     {
@@ -42,7 +42,7 @@
       "execution": "ci",
       "artifact": {
         "path": "tests/rungraph/scope.test.ts",
-        "hash": "sha256:ebcce1398cf494240c3e82a0f3acc53aee2192b28d15dacb9cc4fac7c8ce7713"
+        "hash": "sha256:ae13a32c5aa6b11cf501e365a2fef67761f63a55ae83ffb2a7193439dd350605"
       }
     },
     {
@@ -51,7 +51,7 @@
       "execution": "ci",
       "artifact": {
         "path": "tests/rungraph/scope.test.ts",
-        "hash": "sha256:ebcce1398cf494240c3e82a0f3acc53aee2192b28d15dacb9cc4fac7c8ce7713"
+        "hash": "sha256:ae13a32c5aa6b11cf501e365a2fef67761f63a55ae83ffb2a7193439dd350605"
       }
     }
   ],
