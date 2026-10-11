@@ -339,7 +339,10 @@ export interface SubscriptionToolTurn {
   /** The root's MCP servers for this turn: their launch configuration, written inside the admission state directory
    * (a credential appears there only as a SecretRef the runner resolves and hands to that server's launcher, never as a
    * value), and their names. Absent: no MCP server. */
-  readonly mcp?: Readonly<{ config: string; servers: readonly string[] }>;
+  readonly mcp?: Readonly<{ config: string; servers: readonly string[];
+    /** The same credential-free launch records written to config, after vault launcher wrapping. */
+    launch?: Readonly<Record<string, Readonly<{ command: string; args?: readonly string[];
+      env?: Readonly<Record<string, string>>; cwd?: string }>>> }>;
   /** The conversation's kept harness session (MF5): `resume` continues the runner's recorded session id, otherwise the id
    * starts a new one. A cache subordinate to the journal: the runner binds, rotates and deletes it. Absent: nothing is kept
    * (`--no-session-persistence`). */

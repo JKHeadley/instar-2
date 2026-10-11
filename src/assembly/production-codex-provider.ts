@@ -115,7 +115,24 @@ export function codexToolHookArgs(turn: SubscriptionToolTurn): readonly string[]
   const gate = modelGateLaunch('codex-cli', turn.gate);
   const hook = (mode: 'pre' | 'post') => `[{matcher='*',hooks=[{type='command',command='${turn.hook.node} ${turn.hook.script} ${mode} `
     + `${turn.stateDirectory}',timeout=${Math.ceil(CODEX_TOOL_LIMITS.timeout / 1000)}}]}]`;
-  return ['-c', `hooks.PreToolUse=${hook('pre')}`, '-c', `hooks.PostToolUse=${hook('post')}`, ...gate.args, '-C', turn.workspace, '-'];
+  // Codex consumes TOML overrides, not Claude's JSON file. Pass the exact prepared launch records;
+  // vault references have already become the existing socket-backed launcher, never secret values.
+  // Per-invocation overrides leave the login home untouched, so removal applies on the next turn.
+  const mcp: string[] = [];
+  if (turn.mcp) {
+    const { servers, launch } = turn.mcp;
+    ensure(launch !== undefined && servers.length > 0 && Object.keys(launch).length === servers.length
+      && servers.every(name => /^[A-Za-z0-9_-]{1,64}$/u.test(name) && Object.hasOwn(launch, name)),
+    'codex tool turn: prepared MCP launch configuration required');
+    for (const name of servers) {
+      const server = launch![name]!;
+      const fields = [`command=${JSON.stringify(server.command)}`, `args=${JSON.stringify(server.args ?? [])}`];
+      if (server.cwd !== undefined) fields.push(`cwd=${JSON.stringify(server.cwd)}`);
+      fields.push(`env={${Object.entries(server.env ?? {}).map(([key, value]) => `${JSON.stringify(key)}=${JSON.stringify(value)}`).join(',')}}`);
+      mcp.push('-c', `mcp_servers.${name}={${fields.join(',')}}`);
+    }
+  }
+  return ['-c', `hooks.PreToolUse=${hook('pre')}`, '-c', `hooks.PostToolUse=${hook('post')}`, ...gate.args, ...mcp, '-C', turn.workspace, '-'];
 }
 /** The exact arguments and bounds of one Codex answer turn. `system` is a policy field, not an
  * argument, because `codex exec` has no system-prompt flag: the instructions are prepended to

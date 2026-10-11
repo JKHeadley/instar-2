@@ -1,5 +1,5 @@
 import { expect, it, afterEach } from 'vitest';
-import { mkdtempSync, readFileSync, rmSync } from 'node:fs';
+import { mkdirSync, mkdtempSync, readFileSync, realpathSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 // @ts-expect-error Shared installer and runner JavaScript.
@@ -7,7 +7,8 @@ import { configureTrust, setupTrustPolicy, setupMcp } from './trust-setup.mjs';
 // @ts-expect-error Shared runner JavaScript.
 import { admitEffect, TOOL_EFFECT_DEFAULTS } from './effect-doorway.mjs';
 // @ts-expect-error Shared runner JavaScript.
-import { readRootMcp } from './tool-turn.mjs';
+import { prepareToolTurn, readRootMcp, TOOL_MCP_LAUNCHER } from './tool-turn.mjs';
+import { codexToolHookArgs } from '../../src/assembly/production-codex-provider.js';
 const roots: string[] = [];
 afterEach(() => roots.splice(0).forEach(root => rmSync(root, { recursive: true, force: true })));
 const root = () => { const r = mkdtempSync(join(tmpdir(), 'trust-')); roots.push(r); return r; };
@@ -95,4 +96,40 @@ it('tighten and revoke preserve existing policy-sensitive read restrictions', ()
   expect(admitEgress(input, { effectPolicy: load(r), operations: [] }, 0).decision).toBe('deny');
   configureTrust(r, 'revoke');
   expect(admitEgress(input, { effectPolicy: load(r), operations: [] }, 0).decision).toBe('deny');
+});
+
+it('setup MCP launches reach the real Codex configuration consumer and revoke removes them', () => {
+  const r = realpathSync(root()), req = request();
+  req.mcp.mcpServers.drafts.command = '/operator-installed/draft-server';
+  configureTrust(r, 'setup', req);
+  // A fresh isolated login home: no model call, network request, or installed server is needed.
+  const home = join(r, 'codex-home'); mkdirSync(home);
+  const scratch = (turn: string) => { const path = join(turn, 'scratch'); mkdirSync(path); return path; };
+  const gate = `http://127.0.0.1:4100/${'a'.repeat(32)}/tool-turn-0123456789abcdef-0`;
+  const prepare = (attempt: number) => prepareToolTurn({ root: r, operation: 'telegram:1:update:9', attempt,
+    operations: [], mcp: readRootMcp(r), scratch, gate });
+  const turn = prepare(0);
+  const args = codexToolHookArgs({ ...turn, deniedRoots: [], gate });
+  const overrides = args.filter(arg => arg.startsWith('mcp_servers.'));
+  expect(overrides).toHaveLength(1);
+  expect(turn.mcp.launch).toEqual(JSON.parse(readFileSync(turn.mcp.config, 'utf8')).mcpServers);
+  const list = (values: string[]) => {
+    const result = spawnSync('codex', ['mcp', 'list', '--json', ...values.flatMap(value => ['-c', value])],
+      { env: { ...process.env, CODEX_HOME: home }, cwd: home, encoding: 'utf8', timeout: 15000 });
+    expect(result.status, result.stderr).toBe(0);
+    return JSON.parse(result.stdout) as { name: string; transport: { command: string; args: string[] } }[];
+  };
+  const servers = list(overrides);
+  expect(servers).toHaveLength(1);
+  expect(servers[0]?.name).toBe('drafts');
+  expect(servers[0]?.transport.command).toBe(process.execPath);
+  expect(servers[0]?.transport.args).toEqual([TOOL_MCP_LAUNCHER, turn.socket.path, 'drafts', turn.mcp.nonces.drafts,
+    '/operator-installed/draft-server']);
+  expect(JSON.stringify(servers)).not.toContain('draft-token');
+  expect(args.some(arg => arg.startsWith('hooks.PreToolUse='))).toBe(true);
+  expect(() => codexToolHookArgs({ ...turn, deniedRoots: [], gate, mcp: { config: turn.mcp.config, servers: ['drafts'] } }))
+    .toThrow('prepared MCP launch configuration required');
+  configureTrust(r, 'revoke');
+  const next = codexToolHookArgs({ ...prepare(1), deniedRoots: [], gate });
+  expect(list(next.filter(arg => arg.startsWith('mcp_servers.')))).toEqual([]);
 });

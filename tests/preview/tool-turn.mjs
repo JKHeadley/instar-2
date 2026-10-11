@@ -226,7 +226,7 @@ export function prepareToolTurn({ root, operation, attempt, operations, effectPo
     }));
     const config = join(privateDirectory, 'mcp.json');
     writeFileSync(config, JSON.stringify({ mcpServers: launch }), { mode: 0o600 });
-    mcpTurn = { config, servers, ...(Object.keys(nonces).length ? { nonces } : {}) };
+    mcpTurn = { config, servers, launch, ...(Object.keys(nonces).length ? { nonces } : {}) };
   }
   // Only now may the harness enter its state: it reads the runner's config, adds its own files, and replaces none.
   if (opened) opened.open([join(stateDirectory, 'config.json')]);

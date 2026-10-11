@@ -447,7 +447,7 @@ it('reads the root\'s MCP configuration: absent is none, malformed refuses, a li
   const mcp = readRootMcp(root);
   expect(mcp).toMatchObject({ servers: config.mcpServers, reads: config.reads, secrets: { dummy: {} }, digest: expect.stringMatching(/^sha256:/u) });
   const turn = prepareToolTurn({ root, operation: 'telegram:1:update:9', attempt: 0, operations: [], mcp, scratch: plainScratch });
-  expect(turn.mcp).toEqual({ config: join(turn.stateDirectory, 'mcp.json'), servers: ['dummy'] });
+  expect(turn.mcp).toEqual({ config: join(turn.stateDirectory, 'mcp.json'), servers: ['dummy'], launch: config.mcpServers });
   expect(lstatSync(turn.mcp.config).mode & 0o777).toBe(0o600);
   expect(JSON.parse(readFileSync(turn.mcp.config, 'utf8'))).toEqual({ mcpServers: config.mcpServers });
   expect(JSON.parse(readFileSync(join(turn.stateDirectory, 'config.json'), 'utf8')).mcpReads).toEqual(['mcp__dummy__lookup']);
