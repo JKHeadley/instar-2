@@ -235,7 +235,7 @@ it('still serves the live recorded answers after the guidance rewording', async 
   const first = JSON.parse(run.answerPackets[0]!) as { memoryDecision?: string; preferenceSource?: string;
     datedDecision?: string; capability?: string };
   expect(first.memoryDecision).toContain(MEMORY_ITEM_SHAPE);
-  expect(MEMORY_ITEM_SHAPE).toContain('for prefer, preferenceSource');
+  expect(MEMORY_ITEM_SHAPE).toContain('prefer/remember: preferenceSource');
   expect(first.datedDecision).toContain('{mode:"prefer",source:current turn id,quote:exact preference clause}');
   expect(first.preferenceSource).toBeDefined();
   expect(first.capability).toContain('capability-note source');
