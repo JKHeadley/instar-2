@@ -36,7 +36,7 @@
       "criticality": "Recognized credentials enter existing host custody before model-visible file creation; held secret material is concealed, and unavailable custody refuses the derivative before exposure.",
       "failDirection": "closed",
       "preservesInput": "The source-bound encrypted original remains in inbound media custody and the journal; only the temporary derivative is withheld, with an ordinary unreadable notice.",
-      "inspectedBy": "tests/preview/media-understanding.test.ts"
+      "inspectedBy": "PREVIEW-MEDIA-PROTECTION"
     },
     "profile": {
       "type": "Profile",
