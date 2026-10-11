@@ -27,6 +27,15 @@ Register maintenance: Ran delegated owner-manifest rehash and desk repin chain; 
 
 Evidence: Typecheck/build pass; setup 8, Codex adapter 18, tool-turn 15 and native contract 9 tests pass (50 total, foreground nice -n 10, one worker). Eight saved-report contract checkers pass; p5/assembly require current-revision process/assertion evidence and p11 requires the new setup file absent from the parent report. The new file passes targeted. Full gate remains pipeline-owned; no current full-run result is asserted.
 
+Studio review scope: The post-push PR #156 check includes this earlier record in the same trust branch. Record the historical-comparison dispositions and the existing journal dispositions for the expanded subject; no runtime source change.
+Prompt finding: 849db3a6296a | quoted-evidence | Existing memory-reply and recall prompt wording is untouched; journal change is only effect-decision validation.
+Prompt finding: bd01de21286a | quoted-evidence | Existing memory-reply and recall prompt wording is untouched; journal change is only effect-decision validation.
+Prompt finding: fb5fa7e706c8 | quoted-evidence | Existing memory-reply and recall prompt wording is untouched; journal change is only effect-decision validation.
+Prompt finding: 034c5250da92 | quoted-evidence | The self-description regression explicitly quotes the shipped standing-trust passage to compare with historical K11a system bytes; no prompt was derived from fixture trigger text and no historical verdict is claimed for the new prompt.
+Prompt finding: 45e37ea2e9e9 | quoted-evidence | The self-description regression explicitly quotes the shipped standing-trust passage to compare with historical K11a system bytes; no prompt was derived from fixture trigger text and no historical verdict is claimed for the new prompt.
+Prompt finding: 6af48f94b789 | quoted-evidence | The self-description regression explicitly quotes the shipped standing-trust passage to compare with historical K11a system bytes; no prompt was derived from fixture trigger text and no historical verdict is claimed for the new prompt.
+Prompt finding: b00ed403060a | quoted-evidence | The self-description regression explicitly quotes the shipped standing-trust passage to compare with historical K11a system bytes; no prompt was derived from fixture trigger text and no historical verdict is claimed for the new prompt.
+
 ## Closing block
 
 simplestRobustRoute: This is the simplest robust route: pass the exact prepared vault-wrapped launches to the existing Codex TOML configuration mechanism. It prevents the observed silent loss of setup servers without new IO in core, registry, authority classifier, or live model call. Existing admission and model budget hooks remain start/limit guards; actual CLI consumption/removal and native contract verify end state.

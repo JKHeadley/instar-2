@@ -30,6 +30,8 @@ Prompt finding: b00ed403060a | quoted-evidence | The self-description regression
 
 Verification: Initial 12-file Studio run had 191 passes and two stale-expectation failures. Both files pass 10/10 on base 9d8089a6. After repair, eight targeted files pass 76/76 including all changed tests, final effect-doorway, provider-tools and real recorded-shape authority replay. No remaining base failure or runtime repair was needed.
 
+Post-push check: Default remote reachability brings the earlier w4-trust-default-repair record into this branch scope. Its four historical-comparison findings and three existing journal findings are dispositioned consistently with c3; unrelated older records remain untouched.
+
 simplestRobustRoute: Reuse the requested desk rehash, repin and register replay, then targeted tests on branch and base; this is the simplest robust route and adds no runtime machinery. Start guard is a clean supplied head, end guards are exact committed evidence and required checks, and scope guards preserve all existing safety and durability floors. No autonomous product-completion claim.
 80/20: Investigate only named failures and their causes, leaving older prompt-record debt to review-debt-1010.
 VERDICT: author submission, independent desk review required
