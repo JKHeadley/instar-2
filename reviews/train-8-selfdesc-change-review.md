@@ -26,6 +26,8 @@ Prompt finding: 45e37ea2e9e9 | protocol-literal | unchanged provider grant proto
 Prompt finding: 6af48f94b789 | protocol-literal | unchanged one-machine provider protocol preserved by historical comparison
 Prompt finding: b00ed403060a | protocol-literal | unchanged provider grant protocol preserved by historical comparison
 
+Verification: Stable-source targeted run passed 280 tests (20 existing opt-in live cases skipped), across 29 changed/direct-importer files, with --maxWorkers 1 and nice -n 10. Current typecheck, build, architecture and change-review checks passed. Original preswitch update 840342287 remains K11 FAIL point 2; the final real-model replay passes the identical k11a-rubric-v2 against the original note. Both verdict digests are checked in the replay test. Register regenerated through build-register --replay at exact source c3d8313e5277b7e341defb07e3551bf89d863f07: 289 entries, 116 rules, 34 terms, shape-only authority; seven derived files update source metadata, with capability inventory equality explicitly checked. Full suite and live deployment are not claimed.
+
 ## Closing block
 
 simplestRobustRoute: This is the simplest robust route: reuse the existing shared briefing and trusted instruction channel to distinguish authority from ability, leaving the capability inventory and effect doorway intact. No new gate, parser, service or runtime model call. Start guards remain verified durable intake and source pins; end evidence is targeted boundary tests and recorded real-model replay; all resource and effect floors remain unchanged. No autonomous deployed-completion claim is made.
