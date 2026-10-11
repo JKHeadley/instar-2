@@ -255,7 +255,8 @@ it('keeps an older due agent promise visible when the ten-item packet limit is r
 it('surfaces a fresh promise made after the latest summary', async () => {
   const root = origin();
   try {
-    const w = world(root, { maxBytes: 6500, answer: question => question === 'Promise'
+    // Leave room for the base's in-role memory guidance alongside the fresh promise.
+    const w = world(root, { maxBytes: 8192, answer: question => question === 'Promise'
       ? 'I’ll check the report tomorrow.' : 'Okay.' });
     let id = 1;
     for (; !w.journal.view.summaries.length && id < 60; id++) await w.say(id, filler(id));
@@ -444,8 +445,9 @@ it('drops optional open commitments until the complete summary envelope fits and
       model: async input => { calls.push({ id: input.id, context: input.context });
         return input.id.startsWith('summary:') ? 'The thirty items remain open; later discussion covered the garden.' : 'ok'; },
       send: async () => 3, checkOutbound: () => {} });
-    // Sized below the live bound less the always-offered decisions and the mind-held instructions.
-    worker.intake([update(3, `Please answer this long question: ${'question '.repeat(2200)}`)]);
+    // Keep the long question below the live bound after the expanded standing instructions.
+    // The thirty optional commitments still overflow, so the summary must trim them.
+    worker.intake([update(3, `Please answer this long question: ${'question '.repeat(2000)}`)]);
     await worker.drain();
     const summaryCall = calls.find(call => call.id === 'summary:2');
     expect(summaryCall).toBeDefined();

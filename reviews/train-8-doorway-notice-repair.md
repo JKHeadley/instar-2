@@ -1,8 +1,9 @@
 # Change review — report route state without offloading reply work
 
-Subject base: fd0a80e2dab68e9fd5c5d5b33ce2b7dc13468177
+Subject base: db78988f1e562b8099698ab7950e42b8002843a9
 Review state: open
 Reviewed content: none
+Port provenance: Four authorized picks onto inrole-act-live; this record retains original train-8 evidence. Current branch-specific evidence and decisions are in selfdesc-unit-1011-change-review.md.
 Outcome: The doorway notice states its known model-route status without telling the operator to fetch details. The real full-context reviewer accepts the repaired candidate from answer-check update 715675469. The role-aware self-description remains intact.
 Affected rules: 1, 4, 8, 36, 37, 41, 42, 49, 56, 58, 70, 74, 77, 84, 86, 101, 103, 104, 111, 112, 113, 116
 Affected floors: secrets — all outbound secret checks unchanged; spend cap — call reservations unchanged; stop — existing stop unchanged; no duplicate sends — journal intent and notice episode keys unchanged, restart replay sends once; durable intake — original messages and held candidates remain recorded
@@ -27,6 +28,9 @@ Verification: Targeted notice/replay tests pass 13/13; existing topic-awareness 
 
 Generated pins: Desk owner-manifest rehash and repin-chain scripts reported zero changed owner/inventory pins. build-register --replay --commit a18ac87c9df13bec2d49ae42447f0e821918f474 regenerated all seven generated files from committed source; only the generation, source commit and credential-reminders source digest change.
 Deferral: generated/register.json:1 | not-a-deferral=Generated register contains existing governed descriptions, not a new work promise.
+
+Deferral: tests/preview/fixtures/selfdesc-unit-2026-10-11.json:13 | not-a-deferral=Immutable captured model output, not a new promise.
+Deferral: tests/preview/fixtures/selfdesc-unit-2026-10-11.json:14 | not-a-deferral=Immutable captured model output, not a new promise.
 
 ## Closing block
 

@@ -1,9 +1,11 @@
 import { expect, it } from 'vitest';
 import { readFileSync } from 'node:fs';
+import { createHash } from 'node:crypto';
 import { resolve } from 'node:path';
 import { READ_BEFORE_ANSWER } from '../../src/assembly/tool-answer-guidance.js';
 import { SUBSCRIPTION_TOOLS_SYSTEM_PROMPT } from '../../src/assembly/production-provider.js';
-import { capabilityBriefing, TOOLS_LIMITS, toolsBriefing } from './briefing.js';
+import { ANSWER_INSTRUCTIONS, capabilityBriefing, SELF_DESCRIPTION, TOOLS_LIMITS, toolsBriefing } from './briefing.js';
+import { readAnswer } from './answer-reading.js';
 import { governingConstraints, previewCapabilities, settledConstraintWording, type BlockerNote, type JournalView } from './journal.js';
 
 /** Why this file exists (plan #495, live-proof K11a, Rules 78, 84, 103): asked "What can you do in this chat, and what can't
@@ -27,10 +29,12 @@ it('replays preswitch update 840342287 with current self-description and the unc
   const capture = JSON.parse(readFileSync(new URL('./fixtures/selfdesc-outward-2026-10-11.json', import.meta.url), 'utf8'));
   expect(capture.update).toBe(840342287);
   const note = capabilityBriefing(path => readFileSync(path, 'utf8'), capture.limits).text;
-  expect(capture.replayNote).toBe(note);
-  expect(capture.replayInstructions).toBe(ANSWER_INSTRUCTIONS);
+  // This base retains its harness-specific tool label; no tool or authority changed.
+  const restoreBaseToolLabel = (text: string) => text.replace('tools: full built-in set', 'tools: full Claude Code set');
+  expect(restoreBaseToolLabel(capture.replayNote).replace(capture.replayNote.split('\n')[0], SELF_DESCRIPTION)).toBe(note);
+  expect(capture.replayInstructions.replace(capture.replayNote.split('\n')[0], SELF_DESCRIPTION)).toBe(ANSWER_INSTRUCTIONS);
   // Only the identity/guidance line moves; every listed capability and real limit stays byte-identical.
-  expect(capture.originalNote.split('\n').slice(1)).toEqual(note.split('\n').slice(1));
+  expect(restoreBaseToolLabel(capture.originalNote).split('\n').slice(1)).toEqual(note.split('\n').slice(1));
   const frame = JSON.parse(capture.replayStdout);
   expect(frame.is_error).toBe(false);
   const reading = readAnswer(frame.result, { wrapped: 'accept' });
@@ -46,6 +50,23 @@ it('replays preswitch update 840342287 with current self-description and the unc
   }
   expect(capture.originalJudge.verdict).toBe('FAIL');
   expect(capture.replayJudge.verdict).toBe('PASS');
+});
+
+it('binds the new capability answer and K11 PASS to this head’s exact model-facing inputs', () => {
+  const capture = JSON.parse(readFileSync(new URL('./fixtures/selfdesc-unit-2026-10-11.json', import.meta.url), 'utf8'));
+  expect(capture.update).toBe(840342287);
+  expect(capture.question).toBe('What can you do for me here?');
+  expect(capture.note).toBe(capabilityBriefing(path => readFileSync(path, 'utf8'), capture.limits).text);
+  expect(capture.instructions).toBe(ANSWER_INSTRUCTIONS);
+  expect(capture.system).toBe(SUBSCRIPTION_TOOLS_SYSTEM_PROMPT);
+  const reading = readAnswer(capture.raw, { wrapped: 'accept' });
+  expect(reading.ok).toBe(true);
+  if (!reading.ok) throw Error(reading.defect);
+  expect(reading.value).toBe(capture.answer);
+  expect(capture.judge).toMatchObject({ verdict: 'PASS', rubric: 'k11a-rubric-v2' });
+  expect(capture.judge.digest).toBe(`sha256:${createHash('sha256').update(JSON.stringify({
+    v: capture.judge.rubric, note: capture.note, reply: reading.value,
+  })).digest('hex')}`);
 });
 
 it('reads the wording each live wall was settled behind from its recorded answer packet, and finds it superseded', () => {
@@ -90,7 +111,8 @@ it('the recorded K11a briefing differs only in the declared conversation, media,
   expect(current.note).not.toContain(mediaAdmission);
   expect(current.note.replace(oldConversation, currentConversation)
     .replace(internalHeading, internalHeading + mediaAdmission)
-    .replace(oldRequests, recurringRequests)).toBe(note);
+    .replace(oldRequests, recurringRequests)
+    .replace("This is Instar in the operator's direct Telegram chat and its topics.", SELF_DESCRIPTION)).toBe(note);
   // Preserve the captured prompt; the act-first fixture separately replays the new wording.
   expect(current.system.split(" In this turn you have the harness's full built-in tool set")).toHaveLength(2);
   expect(current.system).not.toContain(READ_BEFORE_ANSWER);

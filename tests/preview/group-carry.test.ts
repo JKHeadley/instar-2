@@ -120,7 +120,7 @@ it('names carried sources in memory guidance only for a carried root; a root wit
   const uncarried = createJournalWorker(w.source, { now: () => now - 1000, stopped: () => false,
     model: async input => { plain = input.context; return 'Noted.'; }, send: async () => 11, checkOutbound: () => {} });
   uncarried.intake([update(2, 'Where do we meet?')]); await uncarried.drain();
-  expect(decision(plain)).toContain(`style. ${MEMORY_ITEM_SHAPE} For an earlier answer`);
+  expect(decision(plain)).toContain(`not an unsaved message. ${MEMORY_ITEM_SHAPE} For an earlier answer`);
   expect(plain).not.toContain(CARRIED_MEMORY_ITEM_SOURCE); expect(plain).not.toContain('predecessorMemory');
   appendGroupCarry(w.destination, w.source, scope, permission(), true, now, () => false);
   let carried = '';
@@ -128,7 +128,7 @@ it('names carried sources in memory guidance only for a carried root; a root wit
     groupDisclosure: async () => true, model: async input => { carried = input.context; return 'The arboretum.'; },
     send: async () => 1, checkOutbound: () => {} });
   worker.intake([update(2, 'Where do we meet?', true)]); await worker.drain();
-  expect(decision(carried)).toContain(`style. ${MEMORY_ITEM_SHAPE} ${CARRIED_MEMORY_ITEM_SOURCE} For an earlier answer`);
+  expect(decision(carried)).toContain(`not an unsaved message. ${MEMORY_ITEM_SHAPE} ${CARRIED_MEMORY_ITEM_SOURCE} For an earlier answer`);
   w.destination.close(); w.source.close();
 });
 
@@ -298,7 +298,10 @@ it('replays all recorded model shapes through carried recall after the disclosur
       groupDisclosure: async () => allowed,
       model: async input => {
         calls++;
-        expect(JSON.parse(input.context).predecessorMemory.entries.length, shape.id).toBeGreaterThan(0);
+        const packet = JSON.parse(input.context);
+        expect(packet.predecessorMemory.entries.length, shape.id).toBeGreaterThan(0);
+        expect(packet.sources.find((source: { id: string }) => source.id === 'capability-note').text, shape.id)
+          .toContain(SELF_DESCRIPTION);
         return shape.kind === 'summary-uncertain' ? JSON.parse(shape.raw) as { state: 'uncertain' } : shape.raw;
       },
       send: async input => { sends.push(input.expectedText); return sends.length; }, checkOutbound: () => {} });

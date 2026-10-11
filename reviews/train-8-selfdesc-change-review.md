@@ -1,8 +1,9 @@
 # Change review — train-8 accurate outward-action self-description
 
-Subject base: a66c39f69eb1ca3db6813cdd53fe92d32f6d35de
+Subject base: db78988f1e562b8099698ab7950e42b8002843a9
 Review state: open
 Reviewed content: none
+Port provenance: Four authorized picks onto inrole-act-live; this record retains original train-8 evidence. Current branch-specific evidence and decisions are in selfdesc-unit-1011-change-review.md.
 Outcome: Self-description includes listed outward actions as abilities under the granted role. Missing grants are described as authority conditions, with the needed grant named, rather than blanket inability or a new approval on every action. The existing shared capability rendering and trusted answer instructions deliver the same guidance.
 Affected rules: Purpose identity/self-knowledge, limits name their source, role granted at onboarding; 18, 34, 36, 47, 49, 70, 74, 78, 84, 101, 103, 104, 111, 113, 116
 Affected floors: secrets — custody and enforcement unchanged; spend cap — attempts and expiry unchanged; stop — enforcement unchanged; no duplicate sends — delivery state unchanged; durable intake — journal and causal records unchanged
@@ -27,6 +28,11 @@ Prompt finding: 6af48f94b789 | protocol-literal | unchanged one-machine provider
 Prompt finding: b00ed403060a | protocol-literal | unchanged provider grant protocol preserved by historical comparison
 
 Verification: Stable-source targeted run passed 280 tests (20 existing opt-in live cases skipped), across 29 changed/direct-importer files, with --maxWorkers 1 and nice -n 10. Current typecheck, build, architecture and change-review checks passed. Original preswitch update 840342287 remains K11 FAIL point 2; the final real-model replay passes the identical k11a-rubric-v2 against the original note. Both verdict digests are checked in the replay test. Register regenerated through build-register --replay at exact source c3d8313e5277b7e341defb07e3551bf89d863f07: 289 entries, 116 rules, 34 terms, shape-only authority; seven derived files update source metadata, with capability inventory equality explicitly checked. Full suite and live deployment are not claimed.
+
+Deferral: tests/preview/fixtures/doorway-notice-held-2026-10-11.json:95 | not-a-deferral=Immutable captured review output, not a new promise.
+Deferral: tests/preview/fixtures/doorway-notice-offload-review-2026-10-11.json:12 | not-a-deferral=Immutable captured review output, not a new promise.
+Deferral: tests/preview/fixtures/selfdesc-unit-2026-10-11.json:13 | not-a-deferral=Immutable captured model output, not a new promise.
+Deferral: tests/preview/fixtures/selfdesc-unit-2026-10-11.json:14 | not-a-deferral=Immutable captured model output, not a new promise.
 
 ## Closing block
 

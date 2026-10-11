@@ -111,7 +111,14 @@ it('keeps the private-chat packet byte-identical to afa6be39 for the same record
     const { context, value } = await packet(journal, undefined, true);
     expect(value.audience.conversation).toBeUndefined();
     expect(value.datedPending.every((item: object) => !('conversation' in item) && !('sourceLabel' in item))).toBe(true);
-    expect(createHash('sha256').update(context).digest('hex')).toBe('4f9861f1b198353ff376439dfdfdeb783be92d17167ca2b056d34613f4a04736');
+    // The base's in-role memory guidance changed after afa6be39. Restore only that
+    // exact prefix for this historical digest; all other packet bytes remain pinned.
+    const currentPrefix = "This verified operator message is already saved in the durable conversation journal and remains available after restart. A request to remember an ordinary in-role fact is fulfilled by that record: acknowledge it without asking again. Preserve the statement's wording and attribution rather than inventing an owner for the fact. Return memory:[] unless the verified operator corrects, forgets or sets reply style; an empty memory list means no such change, not an unsaved message.";
+    const originalPrefix = 'Return memory:[] unless the verified operator corrects, forgets or sets reply style.';
+    expect(value.memoryDecision.startsWith(currentPrefix)).toBe(true);
+    expect(context.split(currentPrefix)).toHaveLength(2);
+    expect(createHash('sha256').update(context.replace(currentPrefix, originalPrefix)).digest('hex'))
+      .toBe('4f9861f1b198353ff376439dfdfdeb783be92d17167ca2b056d34613f4a04736');
   } finally { journal.close(); }
 });
 
