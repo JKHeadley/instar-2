@@ -39,7 +39,7 @@ const SISTER = 'Actually, my sister\'s name is Ana, not Anna';
 /** The recorded fault itself, read off the delivered bytes. */
 it('records what the live build answered the operator, and what it left unfired', () => {
   // The withdrawal was answered with the fixed memory-undecided notice, asking for a resend.
-  expect(recorded('ra3').reply).toContain(MEMORY_UNDECIDED_REPLY);
+  expect(recorded('ra3').reply).toContain("I couldn't record that memory change. Please send it again.");
   // The summary frontier stopped one update short of the withdrawal, whose span failed malformed.
   expect(fixture.summaryAtRa3.summaryThrough).toBe(recorded('ra2').update);
   expect(fixture.summaryAtRa3.lastSummaryFailure).toEqual({ through: recorded('ra3').update, reason: 'malformed' });
@@ -148,7 +148,7 @@ it('cancels the one request the withdrawal names, and the other still fires at i
     expect(w.sent.at(-1)!).toContain(`Cancelled request: "${FEEDER}".`);
     // The fixed notice the live build sent instead is gone.
     expect(w.sent.at(-1)!).not.toContain(MEMORY_UNDECIDED_REPLY);
-    expect(recorded('ra3').reply).toContain(MEMORY_UNDECIDED_REPLY);
+    expect(recorded('ra3').reply).toContain("I couldn't record that memory change. Please send it again.");
     // At 6:50 the plumber request fires once; the cancelled one never does.
     clock.now = DUE_650;
     await w.worker.drain(); await w.worker.sendRequested(); await w.worker.sendRequested();
