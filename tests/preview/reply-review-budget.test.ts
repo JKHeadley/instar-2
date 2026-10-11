@@ -26,10 +26,10 @@ it('replays the historical over-cap forum review and its real bounded-prompt rep
   // act-first.test.ts binds fresh real reviewer captures to that current wording.
   prepared.messages.find((m: { role: string }) => m.role === 'user').content = fixture.replay.question;
   expect(createHash('sha256').update(JSON.stringify(prepared)).digest('hex')).toBe(fixture.replay.inputSha256);
-  const budgetStart = 'Give every listed rule, and no other rule,';
-  expect(fixture.replay.question).toContain(budgetStart);
-  expect(replyReviewQuestion(rules).split(budgetStart).slice(1))
-    .toEqual(fixture.replay.question.split(budgetStart).slice(1));
+  const rulesEnd = '}. For raw_path,';
+  expect(fixture.replay.question.split(rulesEnd)).toHaveLength(2);
+  expect(replyReviewQuestion(rules).split(rulesEnd).slice(1))
+    .toEqual(fixture.replay.question.split(rulesEnd).slice(1));
   expect(fixture.replay).toMatchObject({ code: 0, subtype: 'success', is_error: false });
   expect(fixture.replay.usage.output_tokens).toBeLessThanOrEqual(limit);
   const read = readAnswer(fixture.replay.output);
