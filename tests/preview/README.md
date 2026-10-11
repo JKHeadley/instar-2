@@ -4170,14 +4170,35 @@ refuse redirects and unsafe returned paths, stream at most 8 MiB, and have a
 it reserves worst-case encrypted space before downloading against a 96 MiB ceiling.
 Capacity refusal retains existing files and the original intake. Nothing is pruned.
 Download, size and storage failures become plain statements in the answer packet.
-The runner holds the key and bot credential; file contents and provider URLs never
-reach model input. Caption and name text still pass ordinary secret custody/redaction.
+The runner holds the key and bot credential. Images and documents are decrypted only
+into a generated owner-only path in the harness turn's confined temporary area.
+The turn packet tells the model to read that file and to report unreadable content
+honestly. The file is removed when the model call returns or throws. Media turns
+use `--no-session-persistence` so the harness cannot retain image contents in a
+kept conversation transcript. Prior interrupted copies are removed on reuse.
 
-This launcher currently submits text to its harnesses and has no installed local
-transcription route. Each photo or audio turn explicitly states that it cannot be
-seen or listened to; documents are saved but not read. No transcription provider or
-additional model call is introduced. The same spend cap, stop, audience and reply
-uniqueness checks still hold. A stopped or displaced owner aborts its download.
+Voice/audio is transcribed once at intake using local whisper.cpp and ffmpeg;
+no paid transcription provider or extra conversation model call is introduced.
+`npm run install:media` is the idempotent installation/update step for each host:
+it installs missing executables through Homebrew (macOS or Linux) and verifies a
+pinned SHA-256 multilingual base model. Homebrew is required when executables are
+missing. Install this before starting either new or existing roots. The same
+per-user installation serves all roots on that machine. Conversation startup
+never downloads software or models; missing executables/model leave an honest
+transcription-unavailable notice while preserving the original file.
+
+The encrypted media object records the transcription attempt before execution,
+then its result. The local transcript is also attached to the original encrypted
+journal turn, so reply review, summaries and later recall see the same words.
+Restart never repeats an attempted transcription. A failed or
+interrupted attempt retains audio and reports the missing transcript. Local decode
+accepts at most five minutes, one CPU thread, 30 seconds decode and 90 seconds
+inference, and at most 16 KiB transcript output. Stops kill only the exact active
+child PID. Temporary decoded audio is private and removed on completion. Recognized
+credentials enter existing secret custody before any transcript reaches the model;
+transcript text receives the same held-secret/redaction pass as conversation text.
+The answer packet labels its source “voice note, transcribed locally.” Existing
+spend, stop, audience, reply review and reply uniqueness checks still hold.
 
 Media bytes are deliberately machine-local encrypted custody, not replicated
 journal payloads. Replicated journal rows retain the original reference and result;
@@ -4193,3 +4214,12 @@ The photo, voice and document fixtures in `fixtures/telegram-media` were supplie
 the desk under observer #207, synthesized from Telegram's API documentation, and are
 labelled as such. They are not recorded platform evidence. A live Telegram media
 proof and macOS confinement verification belong to the desk's gate host.
+
+Media attachment exposure holds Rules 4/86/100 at the host boundary: source-bound
+originals remain encrypted in media custody, recognized document credentials enter
+the existing vault before a temporary copy is created, and held secret material is
+redacted from that copy. Clean bytes retain their encoding. Missing custody or held
+credential state yields the ordinary unreadable attachment notice with tools enabled.
+Local ffmpeg and whisper-cli launches use the shared host resource owner as maintenance
+work, including Six allocation, answer reserve, tree census, stop and bounded output/time.
+Both run in the same private per-transcription directory, removed after completion.

@@ -1,3 +1,4 @@
+import { clearTurnMedia } from './media-understanding.mjs';
 // Runner side of a tool turn (Part Thirteen §9 in docs/17-harness-adapters, the preview tool rule): the conversation's
 // persistent workspace on its own fixed-size volume under the root's `workspaces` directory, the conversation's kept
 // harness session (a cache subordinate to the journal, MF5), the per-turn hook state directory, the trace read back after
@@ -191,6 +192,7 @@ export function prepareToolTurn({ root, operation, attempt, operations, effectPo
   rmSync(join(mounted, 'home'), { recursive: true, force: true });
   for (const name of ['ws', 'tmp', 'home']) { mkdirSync(join(mounted, name), { recursive: true, mode: 0o700 }); chmodSync(join(mounted, name), 0o700); }
   const workspace = realpathSync(join(mounted, 'ws')), tmp = realpathSync(join(mounted, 'tmp')), home = realpathSync(join(mounted, 'home'));
+  clearTurnMedia(tmp); // An interrupted media turn must not reveal its file to the next turn.
   const stateDirectory = realpathSync(join(turn, 'state'));
   const privateDirectory = harness ? realpathSync(join(turn, TOOL_TURN_PRIVATE)) : stateDirectory;
   const servers = mcp ? Object.keys(mcp.servers) : [];

@@ -392,10 +392,14 @@ export function createCodexSubscriptionRoute(input:
           allowFailureFrame = false, cwd = profile.workingDirectory) => {
           await new Promise<void>(resolve => resolve());
           check();
-          ensure(Number.isSafeInteger(bounds.deadline) && config.now() + timeout <= bounds.deadline,
+          // Current authority/profile checks can be slow. Compute the model's remaining time
+          // AFTER them, at dispatch; a timeout chosen before check() can already be stale.
+          const now = config.now();
+          const commandTimeout = stdin.length > 0 ? Math.min(timeout, bounds.deadline - now - 100) : timeout;
+          ensure(Number.isSafeInteger(bounds.deadline) && commandTimeout > 0 && now + commandTimeout <= bounds.deadline,
             'codex owner deadline has insufficient command time');
           const result = await config.io.execute({ executable: profile.executable, args,
-            cwd, env, stdin, timeout, maxBytes });
+            cwd, env, stdin, timeout: commandTimeout, maxBytes });
           lastFailure = classifyProviderFailure({ ...result, now: config.now(), localClockResetAt: config.io.localClockResetAt,
             calendarResetAt: config.io.calendarResetAt });
           ensure(!result.limited && (result.code === 0 || (allowFailureFrame && Number.isSafeInteger(result.code)
@@ -410,9 +414,8 @@ export function createCodexSubscriptionRoute(input:
         // Exit 0 only: the CLI's own statement is on stderr (see the constant above), and the kind
         // of sign-in was already established by the auth-mode observation in `check`.
         await command(['login', 'status'], '', 15000, 4096);
-        const modelTimeout = Math.min(bounds.timeout, bounds.deadline - config.now() - 100);
-        ensure(modelTimeout > 0, 'codex owner deadline exhausted before model command');
-        const returned = await command(modelArgs, `${system}\n\n${bytes}`, modelTimeout, policy.maxRawTerminalBytes, true,
+
+        const returned = await command(modelArgs, `${system}\n\n${bytes}`, bounds.timeout, policy.maxRawTerminalBytes, true,
           toolTurn ? toolTurn.workspace : profile.workingDirectory);
         const frames = parseCodexEventStream(returned.text, tools ? CODEX_TOOL_ITEM_TYPES : CODEX_ADMITTED_ITEM_TYPES);
         // Every tool item (shell, patch, web search, MCP, subagent) must have an admitted call behind it: a tool that ran past the hook (a hook

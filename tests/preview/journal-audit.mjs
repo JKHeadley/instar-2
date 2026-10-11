@@ -9,6 +9,16 @@ import { matchesBoundChat } from './forum-routing.js';
 import { authenticateTelegramSender, writerBoundToRaw } from './intake-principal.js';
 import { mediaCustodyText, telegramInboundMedia } from './telegram-media.js';
 
+// The encrypted journal authenticates this snapshot; its digest and destination binding
+// preserve predecessor provenance without pretending its entries were destination intake.
+const carriedEntries = view => {
+  const memory = view.groupCarry, g = view.genesis;
+  return memory && g.forum === true && memory.scope.chat === g.chat
+    && memory.scope.operator === g.operator && memory.scope.bot === g.bot && validCarriedMemory(memory)
+    ? memory.entries.filter(item => ['recall', 'preference', 'correction'].includes(item.kind)) : [];
+};
+const carryLink = (view, id) => ({ kind: 'carried-source', id, ref: view.groupCarry.digest });
+
 const RUNNER_SPEAKER = 'the runner, carrying out a request the operator made earlier (no operator authority)';
 /** A due turn is written by the verified scheduler, never by the operator (Rule 29). It traces to the
  * operator turns that requested it: each recorded request names an earlier accepted operator turn that
@@ -89,6 +99,8 @@ export function auditPacket(view, turn, packet, memoryCount = view.memory.length
       : value && typeof value === 'object' ? Object.values(value).flatMap(strings) : [];
   const activeChanges = view.memory.slice(0, memoryCount)
     .filter(change => (view.turns.get(change.trigger)?.update ?? Infinity) < turn.update);
+  const predecessor = carriedEntries(view);
+  const projection = { ...view, memory: activeChanges };
   const recordedSummaries = view.summaries.slice(0, summaryCount);
   const closedAtReservation = new Set([...view.closed.keys()].slice(0, closedCount));
   const preferenceKeys = new Set(activeChanges.filter(change => change.mode === 'prefer')
@@ -142,8 +154,7 @@ export function auditPacket(view, turn, packet, memoryCount = view.memory.length
   // The same selection the packet was built from: a desk probe or an edit's replaced original is never expected.
   // The reachability floor may also have set aside the oldest turns; when it did, the packet must SAY so and the
   // disclosed count must be exactly what is missing (Rules 2, 9). An undisclosed gap is a history-coverage fault.
-  const carried = groundingHistory(view, before(turn.update), summary?.through,
-    callKind === 'summary' ? undefined : { thread: turn.thread });
+  const carried = groundingHistory(view, before(turn.update), summary?.through, callKind === 'summary' ? undefined : { thread: turn.thread });
   const setAside = isJournalUpdate(packet.historySetAside?.through) ? packet.historySetAside.through : -1;
   const expected = carried.filter(item => item.update > setAside).map(item => item.id);
   const history = list(packet.history, 'history');
@@ -249,10 +260,6 @@ export function auditPacket(view, turn, packet, memoryCount = view.memory.length
   }
   // Carry sources are authenticated lineage, not destination intake. Match the reservation's
   // correction/forget projection without reranking a historical selection against today's clock.
-  const predecessorCandidates = view.groupCarry && validCarriedMemory(view.groupCarry)
-    ? view.groupCarry.entries.filter(item => ['recall', 'preference', 'correction'].includes(item.kind))
-      .map(item => ({ ...item, text: projectMemoryClause({ ...view, memory: activeChanges }, item.text, item.source) }))
-      .filter(item => item.text.trim()) : [];
   for (const [n, item] of list(packet.memoryCandidates, 'memoryCandidates').entries()) {
     const at = `memoryCandidates[${n}]`;
     if ((item?.id?.startsWith?.('channel:') || item?.id?.startsWith?.('channel-ref:'))) {
@@ -262,12 +269,12 @@ export function auditPacket(view, turn, packet, memoryCount = view.memory.length
         fault('candidate-text-source', at);
       if (found && item.reply !== '') fault('candidate-reply-source', at);
       if (found) add('memory-candidate', at, [{ kind: 'channel-import', source: found.source, ref: channelRef(item.id) }]);
-    } else if (!view.turns.has(item?.id) && predecessorCandidates.some(entry => entry.source === item?.id)) {
-      if (!predecessorCandidates.some(entry => entry.source === item.id && entry.text === item.message))
+    } else if (predecessor.some(entry => entry.source === item?.id)) {
+      const matches = predecessor.filter(entry => entry.source === item.id);
+      if (!matches.some(entry => item.message === projectMemoryClause(projection, entry.text, entry.source)))
         fault('candidate-text-source', at);
       if (item.reply !== '') fault('candidate-reply-source', at);
-      add('memory-candidate', at, [{ kind: 'carried-source', id: item.id },
-        { kind: 'carry-snapshot', ref: view.groupCarry.digest }]);
+      add('memory-candidate', at, [carryLink(view, item.id)]);
     } else {
       const found = source(item?.id, at);
       const preference = found && [...activePreferences.values()].some(active => active.source === found.id
@@ -300,11 +307,12 @@ export function auditPacket(view, turn, packet, memoryCount = view.memory.length
       const trigger = view.turns.get(change.trigger);
       if (!trigger?.accepted) fault('memory-trigger-absent', at);
       if (change.source.startsWith('channel:')) channel(change.source, at);
-      else source(change.source, at);
+      else if (!predecessor.some(entry => entry.source === change.source)) source(change.source, at);
       if (item.mode !== (change.mode === 'forget' ? 'forgotten' : 'corrected')) fault('memory-mode', at);
       if (item.replacement !== (change.mode === 'correct' ? clean(change.replacement ?? '') : undefined))
         fault('memory-replacement-source', at);
-      add(item.mode, at, [{ kind: change.source.startsWith('channel:') ? 'channel-import' : 'source-turn',
+      add(item.mode, at, [predecessor.some(entry => entry.source === change.source) ? carryLink(view, change.source)
+        : { kind: change.source.startsWith('channel:') ? 'channel-import' : 'source-turn',
         ...(change.source.startsWith('channel:') ? { ref: channelRef(change.source) } : { id: change.source }) },
         { kind: 'operator-correction', id: change.trigger, update: trigger?.update ?? null }]);
     }
@@ -388,8 +396,10 @@ export function auditActiveMemory(view) {
     try {
       const parsed = admittedUpdate(view.genesis, raw,
         authenticateTelegramSender(raw, view.genesis.origin ?? 'production', turn.at));
-      return parsed.accepted && turn.text === parsed.text
-        + (turn.media === undefined ? '' : `\n[Media custody: ${mediaCustodyText(turn.media)}]`);
+      const legacy = admittedUpdate(view.genesis, raw,
+        authenticateTelegramSender(raw, view.genesis.origin ?? 'production', turn.at), true);
+      const suffix = turn.media === undefined ? '' : `\n[Media custody: ${mediaCustodyText(turn.media)}]`;
+      return parsed.accepted && [parsed.text, legacy.text].some(text => turn.text === text + suffix);
     } catch { return false; }
   };
   const operator = (id, at) => {
@@ -433,8 +443,9 @@ export function auditActiveMemory(view) {
     }
     return { kind: 'approved-import', ref: `sha256:${createHash('sha256').update(id).digest('hex')}` };
   };
+  const predecessor = carriedEntries(view);
   const origin = (id, at) => typeof id === 'string' && id.startsWith('channel:')
-    ? imported(id, at) : operator(id, at);
+    ? imported(id, at) : predecessor.some(entry => entry.source === id) ? carryLink(view, id) : operator(id, at);
   const active = (source, quote) => !view.memory.some(change => change.mode !== 'prefer'
     && change.source === source && (quote.includes(change.quote) || change.quote.includes(quote)));
   for (const [id, item] of view.channelItems) {
@@ -478,8 +489,9 @@ export function auditActiveMemory(view) {
   for (const [n, change] of view.memory.entries()) {
     const at = `memory-change[${n}]`, source = origin(change.source, at), trigger = operator(change.trigger, at);
     const importedItem = change.source.startsWith('channel:') ? view.channelItems.get(change.source.slice(8)) : undefined;
-    const original = importedItem ? importedItem.text.trim()
-      : view.turns.get(change.source)?.text;
+    const carried = predecessor.filter(entry => entry.source === change.source);
+    const originals = importedItem ? [importedItem.text.trim()]
+      : carried.length ? carried.map(entry => entry.text) : [view.turns.get(change.source)?.text ?? ''];
     const replyLinks = (change.replies ?? []).map(id => {
       const link = operator(id, at), reply = view.turns.get(id);
       if (!link || !reply?.intent || !trigger || reply.update >= trigger.update)
@@ -510,8 +522,8 @@ export function auditActiveMemory(view) {
       if (!summary) fault('memory-summary-passage-absent', at);
       return summary && { kind: 'summary', through: summary.through };
     }).filter(Boolean);
-    if (!source || !trigger || typeof change.quote !== 'string' || !redact(original ?? '').text.includes(change.quote)
-      || change.mode !== 'prefer' && (change.source.startsWith('channel:')
+    if (!source || !trigger || typeof change.quote !== 'string' || !originals.some(original => redact(original).text.includes(change.quote))
+      || change.mode !== 'prefer' && !carried.length && (change.source.startsWith('channel:')
         ? view.channelItems.get(change.source.slice(8)).at >= view.turns.get(change.trigger).at
         : view.turns.get(change.source).update >= view.turns.get(change.trigger).update)
       || change.mode === 'correct' && (!change.replacement

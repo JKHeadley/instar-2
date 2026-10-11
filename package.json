@@ -20,6 +20,7 @@
   },
   "scripts": {
     "typecheck": "tsc --noEmit",
+    "install:media": "node scripts/install-local-media.mjs",
     "build": "tsc -p tsconfig.build.json",
     "test": "vitest run",
     "test:affected": "node scripts/affected-tests.mjs",

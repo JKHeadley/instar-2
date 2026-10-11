@@ -1,5 +1,5 @@
 // Host custody for the journal launcher. Original intake is already durable;
-// downloaded bytes never enter a worker, plaintext file, log, or model prompt.
+// bytes stay encrypted except for a source-bound local transcription or confined turn read.
 import { createCipheriv, createDecipheriv, createHash, randomBytes } from 'node:crypto';
 import { existsSync, readdirSync, readFileSync, statSync } from 'node:fs';
 import { join } from 'node:path';
@@ -54,12 +54,13 @@ export function journalMediaSource(view: {
 export const MEDIA_MAX_BYTES = MEDIA_OPERATION.maxBytes;
 export const MEDIA_STORE_MAX_BYTES = MEDIA_OPERATION.storeBytes;
 export type MediaCustodyResult =
-  | { state: 'stored'; reference: string; bytes: number }
+  | { state: 'stored'; reference: string; bytes: number; transcript?: string }
   | { state: 'unavailable' | 'failed' | 'file-limit' | 'store-limit' | 'malformed'; reason?: 'admission-refused' };
 
 export function mediaCustodyText(result: MediaCustodyResult): string {
   switch (result.state) {
-    case 'stored': return `The file was saved in encrypted custody (${result.bytes} bytes). Its contents have not been read.`;
+    case 'stored': return `The file was saved in encrypted custody (${result.bytes} bytes). `
+      + (result.transcript !== undefined ? `Voice note, transcribed locally (may contain recognition errors):\n${result.transcript}` : 'Its contents have not been read.');
     case 'file-limit': return 'The file was not downloaded: it exceeds the 8 MiB per-file limit. The original message is retained.';
     case 'store-limit': return 'The file was not downloaded: the encrypted media store is full. The original message is retained.';
     case 'malformed': return 'The file could not be downloaded because its file metadata is malformed. The original message is retained.';
@@ -74,6 +75,7 @@ export function mediaCustodyText(result: MediaCustodyResult): string {
  * streaming and lifetime, no retries. The bot credential stays in the host closure. */
 export function createTelegramMediaCustody(root: string, key: Uint8Array, ports: {
   token(): string; stopped(): boolean; fetch?: typeof fetch; admission?: MediaAdmission;
+  transcribe?(bytes: Buffer, source: string): Promise<string>;
 }) {
   if (key.byteLength !== 32) throw Error('media: key refused');
   const directory = join(root, 'media'), request = ports.fetch ?? fetch;
@@ -82,23 +84,38 @@ export function createTelegramMediaCustody(root: string, key: Uint8Array, ports:
     if (!/^[a-f0-9]{64}$/u.test(reference)) throw Error('media: reference refused');
     return join(directory, `${reference}.sealed`);
   };
-  const read = (reference: string): { source: string; fileId: string; bytes: Buffer } => {
+  type Saved = { source: string; fileId: string; bytes: Buffer; transcription?: { state: 'pending' | 'failed' | 'complete'; text?: string } };
+  const read = (reference: string): Saved => {
     const path = pathFor(reference);
     if (statSync(path).size > MEDIA_MAX_BYTES * 2) throw Error('media: stored size refused');
     const sealed = JSON.parse(readFileSync(path, 'utf8')) as { iv: string; tag: string; data: string };
     const cipher = createDecipheriv('aes-256-gcm', key, Buffer.from(sealed.iv, 'base64'));
     cipher.setAAD(Buffer.from(`telegram-media:${reference}`)); cipher.setAuthTag(Buffer.from(sealed.tag, 'base64'));
     const saved = JSON.parse(Buffer.concat([cipher.update(Buffer.from(sealed.data, 'base64')), cipher.final()]).toString('utf8')) as {
-      source: string; fileId: string; bytes: string };
+      source: string; fileId: string; bytes: string; transcription?: Saved['transcription'] };
     const bytes = Buffer.from(saved.bytes, 'base64');
     if (bytes.length > MEDIA_MAX_BYTES) throw Error('media: stored size refused');
-    return { source: saved.source, fileId: saved.fileId, bytes };
+    return { source: saved.source, fileId: saved.fileId, bytes, ...(saved.transcription ? { transcription: saved.transcription } : {}) };
+  };
+  const write = (reference: string, saved: Saved) => {
+    const iv = randomBytes(12), cipher = createCipheriv('aes-256-gcm', key, iv);
+    cipher.setAAD(Buffer.from(`telegram-media:${reference}`));
+    const data = Buffer.concat([cipher.update(JSON.stringify({ ...saved, bytes: saved.bytes.toString('base64') })), cipher.final()]);
+    durablePreviewWrite(pathFor(reference), { iv: iv.toString('base64'), tag: cipher.getAuthTag().toString('base64'), data: data.toString('base64') });
+  };
+  // Never let a reference or a supplied filename grant access to another turn's media.
+  const open = (source: string, media: TelegramInboundMedia, result: MediaCustodyResult): Saved => {
+    if (ports.stopped() || result.state !== 'stored' || result.reference !== referenceFor(source)) throw Error('media: unavailable');
+    const saved = read(result.reference);
+    if (saved.source !== source || saved.fileId !== media.fileId || saved.bytes.length !== result.bytes) throw Error('media: source mismatch');
+    return saved;
   };
   const verify = (result: MediaCustodyResult): boolean => {
     if (result.state !== 'stored') return false;
-    try { return read(result.reference).bytes.length === result.bytes; } catch { return false; }
+    try { const saved = read(result.reference); return saved.bytes.length === result.bytes
+      && (result.transcript === undefined || saved.transcription?.state === 'complete' && saved.transcription.text === result.transcript); } catch { return false; }
   };
-  const receive = async (source: string, media: TelegramInboundMedia): Promise<MediaCustodyResult> => {
+  const download = async (source: string, media: TelegramInboundMedia): Promise<MediaCustodyResult> => {
     if (ports.stopped()) throw Error('media: stopped');
     if (media.fileId === null) return { state: 'malformed' };
     if (media.size !== null && media.size > MEDIA_MAX_BYTES) return { state: 'file-limit' };
@@ -159,10 +176,7 @@ export function createTelegramMediaCustody(root: string, key: Uint8Array, ports:
       if (file.file_size !== undefined && bytes.length !== file.file_size
         || media.size !== null && bytes.length !== media.size) throw Error('media: incomplete file');
       check();
-      const iv = randomBytes(12), cipher = createCipheriv('aes-256-gcm', key, iv);
-      cipher.setAAD(Buffer.from(`telegram-media:${reference}`));
-      const data = Buffer.concat([cipher.update(JSON.stringify({ source, fileId: media.fileId, bytes: bytes.toString('base64') })), cipher.final()]);
-      durablePreviewWrite(pathFor(reference), { iv: iv.toString('base64'), tag: cipher.getAuthTag().toString('base64'), data: data.toString('base64') });
+      write(reference, { source, fileId: media.fileId, bytes });
       if (!read(reference).bytes.equals(bytes)) throw Error('media: readback differs');
       return { state: 'stored', reference, bytes: bytes.length };
     } catch {
@@ -170,5 +184,26 @@ export function createTelegramMediaCustody(root: string, key: Uint8Array, ports:
       return { state: 'failed', ...(refused ? { reason: 'admission-refused' as const } : {}) };
     } finally { clearTimeout(timer); clearInterval(stopTimer); }
   };
-  return Object.freeze({ receive, verify });
+  const receive = async (source: string, media: TelegramInboundMedia): Promise<MediaCustodyResult> => {
+    const result = await download(source, media);
+    if (result.state !== 'stored' || !['voice', 'audio'].includes(media.kind)) return result;
+    const saved = open(source, media, result);
+    // Persist the attempt before invoking a process. A crash preserves the original and
+    // an honest incomplete transcript, never another automatic transcription attempt.
+    if (saved.transcription) return saved.transcription.state === 'complete' && saved.transcription.text
+      ? { ...result, transcript: saved.transcription.text } : result;
+    // Atomic replacement briefly holds old and new ciphertext. Keep that overlap
+    // inside the same store ceiling; original audio remains available when full.
+    const used = readdirSync(directory).reduce((sum, name) => sum + statSync(join(directory, name)).size, 0);
+    if (used + statSync(pathFor(result.reference)).size + 65536 > MEDIA_STORE_MAX_BYTES) return result;
+    write(result.reference, { ...saved, transcription: { state: 'pending' } });
+    let transcription: NonNullable<Saved['transcription']> = { state: 'failed' };
+    try {
+      const text = (await ports.transcribe?.(saved.bytes, source))?.trim();
+      if (!ports.stopped() && text && Buffer.byteLength(text) <= 16384) transcription = { state: 'complete', text };
+    } catch { /* original bytes remain readable; no provider diagnostic enters the packet */ }
+    write(result.reference, { ...saved, transcription });
+    return transcription.state === 'complete' && transcription.text ? { ...result, transcript: transcription.text } : result;
+  };
+  return Object.freeze({ receive, verify, open });
 }

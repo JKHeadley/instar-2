@@ -79,7 +79,9 @@ import { liveMeasurement, measuredTimings, renderMeasured, resourceCompare, reso
 import { doorwayFreshness, installDoorways, observeExchange, readDoorwayMap, standingDoorwayCheck, subscriptionExchange, usageReconciliation, writeDoorwayMap } from './doorway-map.js';
 import { credentialDisplayLabel } from './credential-display.js';
 import { createSecretCustody, dueCredentialReminders, reminderSchedule } from './secret-custody.js';
-import { createTelegramMediaCustody, journalMediaSource } from './telegram-media.js';
+import { createTelegramMediaCustody, journalMediaSource, telegramInboundMedia } from './telegram-media.js';
+import { createLocalTranscriber } from '../../scripts/local-transcriber.mjs';
+import { prepareMediaInput, invokeMediaTurn, protectMediaBytes } from './media-understanding.mjs';
 import { createMediaAdmission } from './media-admission.js';
 import { credentialNotices, doorwayNotices, dueWithDelivery } from './credential-reminders.js';
 import { journalCapacity, packetCapacity } from './capacity-outcome.js';
@@ -1631,7 +1633,21 @@ async function main() {
       source: (source, media) => journalMediaSource(journal.view, source, media),
       claimed: id => journal.view.turns.get(id)?.mediaClaim !== undefined,
       retainClaim: (id, digest) => journal.append({ kind: 'media-claim', id, digest, at: wallNow() }) });
-    const mediaCustody = createTelegramMediaCustody(root, key(), { token, stopped: mediaStopped, admission: mediaAdmission });
+    const voiceTemporary = join(root, 'media-work');
+    const localTranscribe = createLocalTranscriber({ stopped: mediaStopped, temporary: voiceTemporary });
+    const mediaCustody = createTelegramMediaCustody(root, key(), { token, stopped: mediaStopped, admission: mediaAdmission,
+      transcribe: async (bytes, source) => {
+        const text = await localTranscribe(bytes);
+        const protectedText = custody.custody({ text, raw: JSON.stringify({ text }), source });
+        if (protectedText.custody?.state === 'failed') throw Error('voice credential custody unavailable');
+        return protectedText.text;
+      } });
+    const currentMedia = id => {
+      const turn = journal.view.turns.get(id);
+      if (!turn?.accepted || !turn.media) return null;
+      const raw = JSON.parse(turn.raw), media = telegramInboundMedia(raw.edited_message ?? raw.message);
+      return media ? { media, saved: mediaCustody.open(id, media, turn.media), attached: turn.media.transcript !== undefined } : null;
+    };
     // Plan #442 (Rules 4, 86, 100): the secret values this runner holds, for the exact floor on every reply and send and
     // (plan #507) every outward tool request: host custody, the preview vault, the root's MCP credentials (served to a
     // turn's servers) and, with a harness user, its login from the runner's custody and any login Claude Code wrote into
@@ -1702,11 +1718,16 @@ async function main() {
       process.exitCode = 3;
       return;
     }
+    // Only the conversation owner cleans plaintext left by an interrupted local decoder.
+    rmSync(voiceTemporary, { recursive: true, force: true });
     serviceBeat(true, 'claimed');
     // Part Thirteen §9 (docs/17-harness-adapters): the tool route's room is the larger of the packet limit and its policy's prompt bound.
     const toolPromptLimit = () => Math.max(journal.view.limits.maxBytes,
       doorway.policyFor(required(options, 'model'), doorway.toolsFraming ?? doorway.conversationFraming).maxPromptBytes);
     const modelEnvelope = input => {
+      // Local transcripts pass the same held-secret/redaction boundary as text intake.
+      // Only the exact accepted source gets this attachment, never a summary/reviewer id.
+      input = prepareMediaInput(input, currentMedia, text => redact(concealSecretMaterial(text, heldSecretValues())).text);
       const bytes = prepareJournalEnvelope(input, required(options, 'model'), g.grant, wallNow(), journal.view.limits.maxBytes);
       // A tool turn's longer system prompt must fit that room too; an overflow here makes the packet ladder yield, as
       // for the text-only prompt, instead of leaving the turn to fall back to a text-only answer.
@@ -1843,7 +1864,7 @@ async function main() {
       // projects directory) is a cache bound to this authority, harness and model and to the journal's current facts.
       conversation: journalWorkConversation(journal.view, id),
       // The kept session is Claude Code's (its projects directory); a checkpointed harness keeps none.
-      session: doorway.toolTurn?.harness ? null : { store: join(profile.configDirectory, 'projects'), harness: `${profile.version} ${required(options, 'model')}` },
+      session: doorway.toolTurn?.harness || journal.view.turns.get(id)?.media ? null : { store: join(profile.configDirectory, 'projects'), harness: `${profile.version} ${required(options, 'model')}` },
       stopped: () => workerStop.value || existsSync(stopPath) || journal.view.stop !== null || !toolsActive(),
       deniedRoots: [realpathSync(root), profile.home, profile.configDirectory, profile.workingDirectory],
       ...admissionConfig(), now: wallNow, redactText: text => redact(concealSecretMaterial(text, heldSecretValues())).text, gate, owner: ownerMachine,
@@ -1851,7 +1872,11 @@ async function main() {
       ...(doorway.toolTurn ? { system: doorway.toolTurn.system, admission: doorway.toolTurn } : {}),
       fallback: async () => ({ result: await invokeSubscription(prepared, id, undefined, undefined, undefined, selected) }),
       // Rules 33, 84: the workspace notice (files that may still disagree with memory, or a lost workspace) rides the packet.
-      invoke: (toolTurn, notice) => invokeSubscription(withWorkspaceNotice(prepared, notice), id, undefined, undefined, toolTurn, selected) })).result;
+      invoke: async (toolTurn, notice) => {
+        const answer = mediaNotice => invokeSubscription(withWorkspaceNotice(prepared, [notice, mediaNotice].filter(Boolean).join('\n')), id, undefined, undefined, toolTurn, selected);
+        return invokeMediaTurn(id, toolTurn, currentMedia, answer,
+          (bytes, source) => protectMediaBytes(bytes, source, custody, heldSecrets));
+      } })).result;
     };
     const proofLines = () => {
       if (!proofLaunch) return [];

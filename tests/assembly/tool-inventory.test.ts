@@ -24,6 +24,10 @@ it('admits a registered tool with scoped parameters and refuses anything wider (
   refused(admitToolProposal({ operation: 'unit-test', params: ['../../etc/passwd.test.ts'] }, [], f.c), 'outside its scope');
   refused(admitToolProposal({ operation: 'unit-test', params: ['--reporter=../x.test.ts'] }, [], f.c), 'outside its scope');
   refused(admitToolProposal({ operation: 'typecheck', params: ['--listFiles'] }, [], f.c), 'no parameters');
+  expect(value(admitToolProposal({ operation: 'install-media', params: [] }, ['local-install'], f.c)).run)
+    .toEqual({ kind: 'process', credentials: [], paths: [], argv: ['node', 'scripts/install-local-media.mjs'] });
+  refused(admitToolProposal({ operation: 'install-media', params: [] }, [], f.c), 'requires local-install');
+  refused(admitToolProposal({ operation: 'install-media', params: ['--directory', '/tmp/media'] }, ['local-install'], f.c), 'no parameters');
   // The split-report merge reads repository-relative half reports only: an absolute path names no
   // scoped run path, so it would escape every physical scope check.
   expect(value(admitToolProposal({ operation: 'split-report-checks', params: ['reports/a.json', 'b.json'] }, [], f.c)).run)

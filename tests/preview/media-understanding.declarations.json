@@ -1,0 +1,61 @@
+[
+  {
+    "type": "Declaration",
+    "schemaVersion": 1,
+    "id": "preview.media-understanding.withMediaFile",
+    "kind": "stores",
+    "status": "live",
+    "requiredFacts": {
+      "growth": "deletes",
+      "holdsAgentMemory": "no",
+      "machineScope": {
+        "kind": "machine-local",
+        "reason": "Rules 32/113: one current turn's temporary protected attachment on its local confined volume, not agent memory. Authenticated encrypted media remains authoritative; credential custody and held-secret concealment precede this derivative. Generated private files are removed after the turn or before the next turn opens. The existing media and volume bounds apply. Nothing is copied to another machine."
+      },
+      "agreesWith": []
+    },
+    "standards": [
+      7,
+      32,
+      60,
+      100,
+      113
+    ],
+    "holds": []
+  },
+  {
+    "type": "Declaration",
+    "schemaVersion": 1,
+    "id": "preview.media-understanding.protectMediaBytes",
+    "kind": "blocking sites",
+    "status": "live",
+    "requiredFacts": {
+      "authority": "block",
+      "decidesAlone": "ruled-three",
+      "decidesAloneBasis": "live-secret-leaving",
+      "criticality": "Recognized credentials enter existing host custody before model-visible file creation; held secret material is concealed, and unavailable custody refuses the derivative before exposure.",
+      "failDirection": "closed",
+      "preservesInput": "The source-bound encrypted original remains in inbound media custody and the journal; only the temporary derivative is withheld, with an ordinary unreadable notice.",
+      "inspectedBy": "PREVIEW-MEDIA-PROTECTION"
+    },
+    "profile": {
+      "type": "Profile",
+      "schemaVersion": 1,
+      "consequence": "data",
+      "reversibility": "irreversible",
+      "reach": "world",
+      "surface": "none",
+      "repeats": {
+        "kind": "no"
+      }
+    },
+    "standards": [
+      4,
+      66,
+      86,
+      95,
+      100
+    ],
+    "holds": []
+  }
+]

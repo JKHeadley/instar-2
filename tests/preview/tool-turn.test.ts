@@ -76,6 +76,13 @@ it('allocates a private, empty workspace and a separate admission state per turn
   expect(turn.hook).toEqual({ node: process.execPath, script: TOOL_HOOK_SCRIPT });
   // The same attempt is never reused: a repeat allocation refuses rather than sharing a workspace.
   expect(() => prepareToolTurn({ root, operation: 'telegram:1:update:2', attempt: 0, operations: [], scratch: plainScratch })).toThrow();
+  // Simulate a prior turn killed before its finally: the next preparation must
+  // remove its decrypted media even when the next message is text-only.
+  mkdirSync(join(turn.tmp, 'inbound-media-interrupted'), { mode: 0o700 });
+  writeFileSync(join(turn.tmp, 'inbound-media-interrupted', 'attachment.jpg'), 'private prior image');
+  const next = prepareToolTurn({ root, operation: 'telegram:1:update:99', attempt: 99, operations: [], scratch: () => turn.scratch });
+  expect(readdirSync(next.tmp)).not.toContain('inbound-media-interrupted');
+  rmSync(next.directory, { recursive: true, force: true });
   writeFileSync(join(turn.workspace, 'note.txt'), 'hello reuse');
   expect(workspaceBytes(turn.workspace)).toBe(11);
   expect(readToolTrace(turn.stateDirectory)).toMatchObject({ calls: [], consistent: true });
