@@ -3,11 +3,10 @@ import { copyFileSync, mkdtempSync, readFileSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { runInNewContext } from 'node:vm';
-import { appendGroupCarry } from './group-carry.js';
 import { createJournalWorker, openPreviewJournal, replyTimings, type PreviewPorts } from './journal-test-worker.js';
 import { GROUP_MEMBERSHIP_FINAL_NOTICE, GROUP_REVIEW_FINAL_NOTICE, ModelDisclosureRefused,
   type ReplyCheckResult } from './reply-check.js';
-import { now, key, scope, membership, permissionFor } from './group-carry-fixture.js';
+import { now, key, scope, membership } from './group-carry-fixture.js';
 // @ts-expect-error Shipped host port is JavaScript, like production-boot-io.mjs.
 import { groupMembershipReader, requireGroupDisclosureFor } from './group-membership-io.mjs';
 
@@ -24,11 +23,10 @@ const genesis = { kind: 'genesis' as const, bot: scope.bot, chat: scope.chat, op
 async function scenario(mode: 'transient' | 'persistent' | 'changed' | 'charged' | 'stop' | 'deadline' | 'crash' | 'format') {
   const dir = mkdtempSync(join(tmpdir(), 'group-review-retry-'));
   const path = join(dir, 'journal.encrypted'), crashed = join(dir, 'crashed.encrypted');
-  const { forum: _forum, ...privateGenesis } = genesis;
-  const source = openPreviewJournal(join(dir, 'source.encrypted'), key, { ...privateGenesis, chat: scope.operator });
   const journal = openPreviewJournal(path, key, genesis);
-  appendGroupCarry(journal, source, scope, permissionFor(scope), true, now, () => false);
-  source.close();
+  // Controlled unverified-group neighbor: no carry establishes operator-only standing.
+  // The host disclosure checkpoint below still exercises the real membership reader.
+  // A carried operator-only group now ends at this Jev pass (audience-classifier.test.ts).
   let clock = now + 1000, stopped = false, reviews = 0, providerCalls = 0, failing = false, checks = 0;
   const waits: number[] = [], sent: Parameters<PreviewPorts['send']>[0][] = [];
   const read = groupMembershipReader({ poll: async ({ method, body }: { method: string; body: Record<string, string> }) => {
@@ -117,7 +115,7 @@ async function scenario(mode: 'transient' | 'persistent' | 'changed' | 'charged'
 }
 
 it.each(['transient', 'persistent', 'changed', 'charged', 'stop', 'deadline', 'crash', 'format'] as const)(
-  'live CEDAR shape: %s failure uses the existing release/send path and preserves every floor', async mode => { await scenario(mode); });
+  'live CEDAR reply on an unverified group: %s failure uses the existing release/send path and preserves every floor', async mode => { await scenario(mode); });
 
 it('typed pre-dispatch proof cannot be confused with a provider error carrying the same words', async () => {
   const { reviewReply } = await import('./reply-check.js');
