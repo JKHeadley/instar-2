@@ -24,3 +24,5 @@ Prompt review: No model prompt or parser edits in this repair. Existing real-sha
 simplestRobustRoute: Reuse the requested desk rehash, repin and register replay, then targeted tests on branch and base; this is the simplest robust route and adds no runtime machinery. Start guard is a clean supplied head, end guards are exact committed evidence and required checks, and scope guards preserve all existing safety and durability floors. No autonomous product-completion claim.
 80/20: Investigate only named failures and their causes, leaving older prompt-record debt to review-debt-1010.
 VERDICT: author submission, independent desk review required
+
+Register evidence: Desk owner-manifest rehash and inventory repin both completed with zero changed pins. Replay at 28b1492335f0403a573de69c22a38231d73b43d9 generated 282 entries, 116 rules and 34 terms, with shape-only authority; no acceptance or conformance fact was invented.
