@@ -96,11 +96,12 @@ it.each([false, true])('checks every ordinary accepted turn with and without a l
 });
 
 // These committed envelopes are synthetic Telegram fixtures, not a live-platform claim.
-it.each(['photo', 'voice', 'document'])('audits authenticated %s media and rejects tampering after compacted replay', async kind => {
+it.each(['photo', 'voice', 'audio', 'document'])('audits authenticated %s media and rejects tampering after compacted replay', async kind => {
   const root = realpathSync(mkdtempSync(join(tmpdir(), 'preview-audit-media-')));
   const path = join(root, 'journal.encrypted');
   try {
-    const fixture = JSON.parse(readFileSync(new URL(`./fixtures/telegram-media/${kind}.json`, import.meta.url), 'utf8'));
+    const fixture = JSON.parse(readFileSync(new URL(`./fixtures/telegram-media/${kind === 'audio' ? 'voice' : kind}.json`, import.meta.url), 'utf8'));
+    if (kind === 'audio') { fixture.message.audio = fixture.message.voice; delete fixture.message.voice; }
     const binding = { ...genesis, bot: '123456789', operator: String(fixture.message.from.id),
       chat: String(fixture.message.chat.id), forum: true as const, maxBytes: 65536 };
     let journal = openPreviewJournal(path, key, binding);
@@ -124,7 +125,7 @@ it.each(['photo', 'voice', 'document'])('audits authenticated %s media and rejec
     }
     const checkTampering = () => {
       for (const field of ['caption', 'name', 'size', 'file', 'sender', 'chat', 'type', 'forum', 'update',
-        'accepted', 'text', 'annotation', 'outcome', 'missing-outcome', 'media-label']) {
+        'accepted', 'text', 'annotation', 'outcome', 'custody-bytes', 'missing-outcome', 'media-label']) {
         const forged = structuredClone(journal.view);
         const turn = forged.turns.get(forged.order[0]!.id)!;
         const raw = JSON.parse(turn.raw);
@@ -141,6 +142,7 @@ it.each(['photo', 'voice', 'document'])('audits authenticated %s media and rejec
         if (field === 'accepted') turn.accepted = false;
         if (field === 'text') turn.text = 'Invented media description.';
         if (field === 'annotation') turn.text += '\n[Media custody: invented success]';
+        if (field === 'custody-bytes') turn.media = { state: 'stored', reference: 'a'.repeat(64), bytes: 43 };
         if (field === 'outcome') turn.media = { state: 'failed' };
         if (field === 'missing-outcome') delete turn.media;
         if (field === 'media-label') { delete raw.message[kind]; raw.message.text = turn.text; }

@@ -7,7 +7,7 @@ import fixture from './fixtures/forum-review-budget-2026-10-10.json' with { type
 import { subscriptionConversationPolicy } from '../../src/assembly/production-provider.js';
 import { readAnswer } from './answer-reading.js';
 import { createJournalWorker, openPreviewJournal } from './journal-test-worker.js';
-import { HOLDING_REPLY, parseReplyReviewVerdict, replyReviewQuestion } from './reply-check.js';
+import { GROUP_REVIEW_FINAL_NOTICE, HOLDING_REPLY, REPLY_RULES, parseReplyReviewVerdict, replyReviewQuestion } from './reply-check.js';
 
 const rules = ['parks_on_user', 'defers_work', 'self_state_claim', 'breaks_preference', 'sensitive_disclosure'] as const;
 const original = JSON.parse(fixture.original.input);
@@ -22,9 +22,14 @@ it('replays the historical over-cap forum review and its real bounded-prompt rep
   expect(fixture.recorded.intent.text).toBe(HOLDING_REPLY);
   expect(createHash('sha256').update(fixture.original.input).digest('hex')).toBe(fixture.original.inputSha256);
   const prepared = structuredClone(original);
-  // Preserve the captured request: parks_on_user has since gained act-first guidance.
-  // act-first.test.ts binds fresh real reviewer captures to that current wording.
-  prepared.messages.find((m: { role: string }) => m.role === 'user').content = fixture.replay.question;
+  // This budget capture predates train-6's reviewed act-first and audience rules.
+  // Reconstruct its historical request for the original hash; current real question/output
+  // equality remains enforced by act-first.test.ts. No captured bytes are rewritten.
+  const historicalQuestion = original.messages.find((m: { role: string }) => m.role === 'user').content;
+  const historicalRules = JSON.parse(historicalQuestion.split('on its own: ')[1].split('}. For raw_path')[0] + '}');
+  prepared.messages.find((m: { role: string }) => m.role === 'user').content = replyReviewQuestion(rules)
+    .replace(JSON.stringify(REPLY_RULES.parks_on_user), JSON.stringify(historicalRules.parks_on_user))
+    .replace(JSON.stringify(REPLY_RULES.sensitive_disclosure), JSON.stringify(historicalRules.sensitive_disclosure));
   expect(createHash('sha256').update(JSON.stringify(prepared)).digest('hex')).toBe(fixture.replay.inputSha256);
   const rulesEnd = '}. For raw_path,';
   expect(fixture.replay.question.split(rulesEnd)).toHaveLength(2);
@@ -42,7 +47,7 @@ it('replays the historical over-cap forum review and its real bounded-prompt rep
   expect(review.findings?.some(f => f.reason.length > 160)).toBe(true);
 });
 
-it.each(['complete', 'uncertain'] as const)('the real forum candidate %s review sends once or stays held, including restart', async state => {
+it.each(['complete', 'uncertain'] as const)('the real forum candidate %s review sends one answer or final notice, including restart', async state => {
   const root = mkdtempSync(join(tmpdir(), 'review-budget-')); roots.push(root);
   const path = join(root, 'journal'), key = new Uint8Array(32).fill(41);
   const genesis = { kind: 'genesis' as const, bot: '8994258214', chat: packet.audience.chat,
@@ -70,7 +75,7 @@ it.each(['complete', 'uncertain'] as const)('the real forum candidate %s review 
     chat: { id: Number(genesis.chat), type: 'supergroup', is_forum: true },
     from: { id: Number(genesis.operator) }, text: packet.operatorMessage } }]);
   await worker.drain();
-  expect(sent).toEqual([state === 'complete' ? packet.candidateReply : HOLDING_REPLY]);
+  expect(sent).toEqual([state === 'complete' ? packet.candidateReply : GROUP_REVIEW_FINAL_NOTICE]);
   expect(journal.view.order[0]?.answer).toBe(packet.candidateReply);
   expect(journal.view.calls).toBe(2);
   journal.close();

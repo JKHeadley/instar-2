@@ -1,3 +1,5 @@
+import { isGroupReviewFinalNotice, GROUP_MEMBERSHIP_FINAL_NOTICE, GROUP_REVIEW_FINAL_NOTICE } from './reply-check.js';
+import { classifyTelegramSend } from './telegram-send-outcome.mjs';
 // Execution ownership of the operator's open dated requests moves from the private root to the group root exactly
 // once (Rules 52, 57, 93): the predecessor records the transfer first and never fires them again, including when it
 // is resumed for rollback; the group fires each once, can withdraw it, and holds it while disclosure fails.
@@ -275,8 +277,39 @@ it('forgetting carried request text cannot silently cancel the owned request', a
 const host = readFileSync(new URL('./journal-agent.mjs', import.meta.url), 'utf8');
 const modelCode = host.split('      model: async ({ id, prepared }) => {')[1]!.split('\n      summaryCheck:')[0]!;
 const modelFunction = 'async ({ id, prepared }) => {' + modelCode.trimEnd().replace(/,$/, '');
-const sendCode = host.split('      send: async ({ text, expectedText, chat, thread, replyMarkup, target, provenance, admit }) => {')[1]!.split('\n    if (existsSync(stopPath))')[0]!;
-const sendFunction = 'async ({ text, expectedText, chat, thread, replyMarkup, target, provenance, admit }) => {' + sendCode.slice(0, sendCode.lastIndexOf(' });'));
+const sendCode = host.split('      send: async ({ text, expectedText, chat, thread, replyTo, replyMarkup, target, provenance, admit }) => {')[1]!.split('\n    if (existsSync(stopPath))')[0]!;
+const sendFunction = 'async ({ text, expectedText, chat, thread, replyTo, replyMarkup, target, provenance, admit }) => {' + sendCode.slice(0, sendCode.lastIndexOf(' });'));
+
+it.each([true, false])('shipped send delivers answers and terminal notices when original exists: %s', async originalExists => {
+  for (const text of ['A reviewed answer.', GROUP_MEMBERSHIP_FINAL_NOTICE, GROUP_REVIEW_FINAL_NOTICE]) {
+    let admitted = 0, networkSends = 0;
+    const outcomes: string[] = [];
+    const send = Function('journal', 'workerStop', 'existsSync', 'stopPath', 'wallNow', 'ownerHeld', 'shared',
+      'GROUP_DISCLOSURE_HOLD_NOTICE', 'isGroupReviewFinalNotice', 'requireGroupDisclosure', 'physical', 'secretRef',
+      'token', 'classifyTelegramSend', 'g', `return (${sendFunction});`)(
+      { verifyOutbound: () => true, view: { expires: friday9 + 1000, stop: false } },
+      { value: false }, () => false, '/test/stop', () => friday9, () => true,
+      { admit: async () => { expect(admitted).toBe(1); return null; },
+        outcome: async (_target: string, kind: string) => { outcomes.push(kind); } },
+      GROUP_DISCLOSURE_HOLD_NOTICE, isGroupReviewFinalNotice, async () => {},
+      { invoke: ({ body }: { body: { chat_id: string; text: string; message_thread_id: number;
+        reply_parameters: { message_id: number; allow_sending_without_reply?: boolean } } }) => {
+        expect(admitted).toBe(1); networkSends++;
+        expect(body.chat_id).toBe(scope.chat); expect(body.message_thread_id).toBe(3);
+        expect(body.reply_parameters.message_id).toBe(6);
+        // Constructed Telegram API-contract response, not a live capture: a missing original
+        // rejects without the optional-anchor flag. The real classifier consumes this response.
+        if (!originalExists && body.reply_parameters.allow_sending_without_reply !== true)
+          return { kind: 'response', status: 400, bytes: JSON.stringify({ ok: false,
+            description: 'Bad Request: message to be replied not found' }) };
+        return { kind: 'response', status: 200, bytes: JSON.stringify({ ok: true, result: {
+          chat: { id: Number(body.chat_id) }, text: body.text, message_thread_id: body.message_thread_id, message_id: 7 } }) };
+      } }, (x: string) => x, () => 'TEST', classifyTelegramSend, { forum: true });
+    expect(await send({ text, expectedText: text, chat: scope.chat, thread: 3, replyTo: 6,
+      target: 'TEST-reply', provenance: {}, admit: () => { admitted++; } })).toEqual({ kind: 'accepted', message: 7 });
+    expect(networkSends).toBe(1); expect(admitted).toBe(1); expect(outcomes).toEqual(['accepted']);
+  }
+});
 
 it.each([['model', false], ['subscription', false], ['send', false], ['model', true], ['subscription', true], ['send', true]] as const)('exact shipped %s boundary recovers recorded answer after disclosure loss (authorized control: %s)', async (boundary, initiallyAdmitted) => {
   const w = await world();
@@ -286,27 +319,27 @@ it.each([['model', false], ['subscription', false], ['send', false], ['model', t
   const modelLaunch = createModelLaunchBoundary();
   let restored = initiallyAdmitted, providerCalls = 0, networkSends = 0;
   const requireAt = (which: string) => async () => {
-    if (!restored && boundary === which) throw Error('group carry: disclosure grant or operator-only audience refused');
+    if (!restored && boundary === which) throw new ModelDisclosureRefused('group-membership-changed');
   };
   const subscriptionCode = host.split('    const callSubscription = async ')[1]!.split('    const callJev =')[0]!.trim().replace(/;$/, '');
   const recorded = (JSON.parse(readFileSync(new URL('./fixtures/proofroom-summary-cascade-stall-2026-09-30.json', import.meta.url), 'utf8')) as { rows: JournalRecord[] })
     .rows.find((row): row is Extract<JournalRecord, { kind: 'answer' }> => row.kind === 'answer' && row.id.endsWith(':715672480'))!;
   const subscription = Function('journal', 'requireGroupDisclosure', 'ModelDisclosureRefused', 'assertLiveJudgment', 'shared',
-    'modelRoute', 'performance', 'required', 'options', 'recordModelCall', `return (async ${subscriptionCode});`)(
+    'modelRoute', 'performance', 'required', 'options', 'recordModelCall', 'wallNow', 'selectLogin', 'loginPool', `return (async ${subscriptionCode});`)(
     journalProxy, requireAt('subscription'), ModelDisclosureRefused, () => {}, null,
     () => ({ invoke: async () => { modelLaunch.started(); providerCalls++; return { state: 'complete', bytes: recorded.text }; } }),
-    { now: () => 0 }, () => 'fixture', {}, () => {});
+    { now: () => 0 }, () => 'fixture', {}, () => {}, () => friday9, () => null, null);
   const model = Function('journal', 'requireGroupDisclosure', 'toolsActive', 'toolTurnEligible', 'invokeTools', 'invokeSubscription', 'recordedUsage', 'ModelDisclosureRefused', 'modelLaunch', `return (${modelFunction});`)(
     journalProxy, requireAt('model'), () => false, () => false, () => { throw Error('unused'); },
-    async (prepared: string, id: string) => { const result = await subscription('answer', prepared, id, {}); return { state: result.state, value: result.bytes }; },
+    async (prepared: string, id: string) => { const result = await subscription('answer', prepared, id, { deadline: friday9 + 1000 }); return { state: result.state, value: result.bytes }; },
     (x: unknown) => x, ModelDisclosureRefused, modelLaunch);
   let claims = 0;
   const shared = { admit: async () => {
     expect(activeJournal.view.order.find(t => t.requestedAction)?.intent).toBeDefined(); claims++; return null;
   }, outcome: async () => {} };
-  const send = Function('journal', 'workerStop', 'existsSync', 'stopPath', 'wallNow', 'ownerHeld', 'shared', 'GROUP_DISCLOSURE_HOLD_NOTICE', 'requireGroupDisclosure', 'physical', 'secretRef', 'token', 'classifyTelegramSend', 'g', `return (${sendFunction});`)(
+  const send = Function('journal', 'workerStop', 'existsSync', 'stopPath', 'wallNow', 'ownerHeld', 'shared', 'GROUP_DISCLOSURE_HOLD_NOTICE', 'isGroupReviewFinalNotice', 'requireGroupDisclosure', 'physical', 'secretRef', 'token', 'classifyTelegramSend', 'g', `return (${sendFunction});`)(
     journalProxy, { value: false }, () => false, '/test/stop', () => friday9, () => true, shared,
-    GROUP_DISCLOSURE_HOLD_NOTICE, requireAt('send'), { invoke: () => { expect(claims).toBe(1); networkSends++; return {}; } },
+    GROUP_DISCLOSURE_HOLD_NOTICE, isGroupReviewFinalNotice, requireAt('send'), { invoke: () => { expect(claims).toBe(1); networkSends++; return {}; } },
     (x: string) => x, () => 'TEST', () => ({ kind: 'accepted', message: 1 }), w.destination.view.genesis);
   const bindings = { now: () => friday9, stopped: () => false, timeZone: 'America/Los_Angeles',
     ...(host.includes('      sendAdmits: true,') ? { sendAdmits: true as const } : {}), checkOutbound: () => {}, groupDisclosure: async () => true, prepareModel: (input: Input) => JSON.stringify({ messages: [{ role: 'context', content: input.context }, { role: 'user', content: input.question }] }), model, send };

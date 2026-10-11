@@ -136,6 +136,16 @@ describe('D01 fixed confined-child failure stages', () => {
     expect(observed.counts.reads).toBe(mode.startsWith('fetch-') ? 0 : 1);
   });
 
+  test.each([429, 500, 503])('getMe preserves transient status %s without provider text', status => {
+    const observed = run(`transient-identity-${status}`, 'getMe');
+    expect(observed.child.status).toBe(0);
+    expect(observed.reply).toEqual({ kind: 'response', status, bytes: '{"ok":false}' });
+    expect(observed.counts).toEqual({ fetches: 1, reads: 1, redirect: 'manual' });
+    expect(observed.child.stdout).not.toContain(observed.secret);
+    expect(observed.child.stdout).not.toContain('untrusted.invalid');
+    expect(observed.child.stderr).toBe('');
+  });
+
   test('sealed write and reread failures emit only sealed-capture', () => {
     const writeFailure = run('ordinary', 'getMe', directory => rmSync(directory, { recursive: true, force: true }));
     const bytes = JSON.stringify({ ok: true, result: { id: 818181, is_bot: true,
