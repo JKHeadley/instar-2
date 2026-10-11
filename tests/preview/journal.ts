@@ -5280,6 +5280,8 @@ export interface PreviewPorts {
   prepareModel?(input: { question: string; context: string; id: string; writer?: SessionWriter }): string;
   /** Part Thirteen §9: whether the model call for `id` runs on the scoped-tool route; its packet then names the tools. */
   toolRoute?(id: string): boolean;
+  /** Host snapshot for synchronous packet fitting only, never model dispatch or an awaited recall. */
+  preparePacket?<T>(prepare: () => T): T;
   /** Rules 60, 114 (Part fifteen §5): whether the work step for `id` runs as a delegated SESSION —
    * a full harness session the runner launches, observes and collects a result from — instead of one
    * bounded model call. The runner answers true only when it has a session work port that is
@@ -5408,18 +5410,19 @@ export function createJournalWorker(journal: ReturnType<typeof openPreviewJourna
       throw Error('external recall awaits disclosure admission');
     } };
   const prepareRecall = async <T>(prepare: () => T): Promise<T> => {
-    if (!original.recallReranker?.external) return prepare();
+    const run = () => ports.preparePacket ? ports.preparePacket(prepare) : prepare();
+    if (!original.recallReranker?.external) return run();
     const batch = new Map<string, { query: string; candidates: readonly string[]; result?: Reranked }>();
     rerankBatch = batch;
     try {
-      prepare();
+      run();
       for (const item of [...batch.values()]) {
         if (!await disclosure()) break;
         gate();
         try { item.result = await original.recallReranker.rerank(item.query, item.candidates); }
         catch { /* The owner reports a failed semantic stage; the packet retains its other recall. */ }
       }
-      return prepare();
+      return run();
     } finally { rerankBatch = undefined; }
   };
 
@@ -7282,7 +7285,7 @@ export function createJournalWorker(journal: ReturnType<typeof openPreviewJourna
             found: lookup.found.filter(item => datedBase.includes(JSON.stringify(item.id))).length, note: LOOKUP_DONE_GUIDANCE } }
             : compact && summary && lookupOffered ? { memoryLookup: LOOKUP_OFFERED } : {}),
           // Update mode and new conflicts can only cite an offered candidate or contradiction, so their guidance rides with those.
-          ...(fromOperator(turn) ? { memoryDecision: `Return memory:[] unless the verified operator corrects, forgets or sets reply style. ${MEMORY_ITEM_SHAPE}${journal.view.groupCarry ? ` ${CARRIED_MEMORY_ITEM_SOURCE}` : ''} For an earlier answer use in:"reply" with its exact old reply clause and keep the question. `
+          ...(fromOperator(turn) ? { memoryDecision: `This verified operator message is already saved in the durable conversation journal and remains available after restart. A request to remember an ordinary in-role fact is fulfilled by that record: acknowledge it without asking again. Preserve the statement's wording and attribution rather than inventing an owner for the fact. Return memory:[] unless the verified operator corrects, forgets or sets reply style; an empty memory list means no such change, not an unsaved message. ${MEMORY_ITEM_SHAPE}${journal.view.groupCarry ? ` ${CARRIED_MEMORY_ITEM_SOURCE}` : ''} For an earlier answer use in:"reply" with its exact old reply clause and keep the question. `
             + (offered.length || (JSON.parse(datedBase) as { contradictions?: unknown[] }).contradictions?.length ? 'A newer operator statement of the same fact without correction words uses mode:"update", an exact old clause from an offered operator memoryCandidate or contradiction (hints only) and the exact new clause from this turn; the old dated value stays retrievable. ' : '')
             + 'Unknown target: memoryDisposition:"unresolved". Undo only via undoDecision.', preferenceSource: turn.id,
             ...(failureOffer ? { memoryFailureDecision: MEMORY_FAILURE_DECISION, searchedTurn: failureOffer.id } : {}),
