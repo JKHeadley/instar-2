@@ -2,8 +2,8 @@ import { expect, it } from 'vitest';
 import { mkdtempSync, readFileSync, realpathSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
-import { createJournalWorker, openPreviewJournal, replyTimings } from './journal-test-worker.js';
-import { createOrdinaryLane, sentinelCycle } from './live-sentinels.js';
+import { createJournalWorker, openPreviewJournal, replyTimings, raiseJournalCaps } from './journal-test-worker.js';
+import { createOrdinaryLane, sentinelCycle, untilStopped } from './live-sentinels.js';
 import { REPLY_RULES } from './reply-check.js';
 
 const key = new Uint8Array(32).fill(43);
@@ -115,4 +115,65 @@ it('immediate dispatch and the minimal path do not duplicate a stop confirmation
     await lane.settle();
     expect(sends).toBe(1);
   } finally { await lane.settle(); journal.close(); rmSync(root, { recursive: true, force: true }); }
+});
+
+// Reviewer reproduction: an earlier slow group lets recovery claim the later stop.
+it.each([false, true])('slow minimal reply with recovering ordinary lane, immediate=%s', async immediate => {
+  const root = realpathSync(mkdtempSync(join(tmpdir(), 'astra-dispatch-race-')));
+  const journal = openPreviewJournal(join(root, 'journal'), new Uint8Array(32).fill(43), {
+    kind: 'genesis', bot: '12345678', chat: '7654321', operator: '7654321', grant: 'grant:preview',
+    configurationDigest: 'sha256:offline', expires: 9999999999999, maxCalls: 10, maxReplies: 10, maxTurns: 10, maxBytes: 32768, cursor: 0,
+  });
+  let lost = true, release!: () => void, sends = 0;
+  const slow = new Promise<void>(r => { release = r; });
+  const worker = createJournalWorker(journal, { now: () => 1000, stopped: () => false, checkOutbound: () => {},
+    sources: () => { if (lost) throw Error('ordinary worker lost'); return []; },
+    model: async () => 'Here is the answer.',
+    replyCheck: { elapsedMs: () => 1000, jev: async () => ({ value: { model: 'jev-1.13.0',
+      answers: Object.fromEntries(Object.keys(REPLY_RULES).map(id => [id, { type: 'noul', noul: 0.01 }])) }, latencyMs: 0 }),
+      escalate: async () => { throw Error('unexpected escalation'); } },
+    send: async () => { const id = ++sends; if (id === 1) await slow; return id; },
+  });
+  try {
+    const update = (id: number, text: string) => ({ update_id: id, message: { chat: { id: 7654321, type: 'private' }, from: { id: 7654321 }, text } });
+    worker.intake([update(1, 'Please answer the question.')]);
+    await expect(worker.drain()).rejects.toThrow('ordinary worker lost');
+    lost = false; worker.intake([update(2, '/stop')]);
+    const lane = createOrdinaryLane({ elapsed: () => 1000, peerCurrent: () => true, after: () => {} });
+    const minimal = untilStopped(() => worker.minimal(), () => false);
+    const outcome = minimal.then(() => null, error => String(error));
+    if (immediate) { lane.submit(() => worker.drain(), true); await lane.settle(); }
+    release();
+    expect(await outcome).toBe(null);
+    await worker.minimal();
+    const stop = journal.view.order[1]!;
+    expect(stop.intent !== undefined).toBe(immediate);
+    expect(stop.limited !== undefined).toBe(!immediate);
+    expect(sends).toBe(immediate ? 3 : 2);
+    if (!immediate) await worker.drain();
+  } finally { release(); journal.close(); rmSync(root, { recursive: true, force: true }); }
+});
+
+it.each([false, true])('rechecks recipients after preparing a limited request, recovered=%s', async recovered => {
+  const root = realpathSync(mkdtempSync(join(tmpdir(), 'dispatch-now-request-')));
+  const journal = openPreviewJournal(join(root, 'journal'), key, { kind: 'genesis', bot: '12345678', chat: '7654321',
+    operator: '7654321', grant: 'grant:preview', configurationDigest: 'sha256:offline', expires: 9999999999999,
+    maxCalls: 10, maxReplies: 10, maxTurns: 1, maxBytes: 32768, cursor: 0 });
+  let sends = 0;
+  const worker = createJournalWorker(journal, { now: () => 1000, stopped: () => false, checkOutbound: () => {},
+    model: async () => 'Here is the answer.',
+    replyCheck: { elapsedMs: () => 1000, jev: async () => ({ value: scores, latencyMs: 0 }),
+      escalate: async () => { throw Error('unexpected escalation'); } },
+    send: async () => ++sends });
+  try {
+    worker.intake([update(1), update(2)]);
+    const minimal = worker.minimal();
+    // Request preparation yields even without an installed approval service.
+    if (recovered) raiseJournalCaps(journal, { maxCalls: 10, maxReplies: 10, maxTurns: 2, authority: 'test raise', at: 1000 });
+    await minimal;
+    expect(journal.view.order[1]!.limited !== undefined).toBe(!recovered);
+    expect(sends).toBe(recovered ? 0 : 1);
+    await worker.drain();
+    expect(sends).toBe(2);
+  } finally { journal.close(); rmSync(root, { recursive: true, force: true }); }
 });

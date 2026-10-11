@@ -8851,6 +8851,9 @@ export function createJournalWorker(journal: ReturnType<typeof openPreviewJourna
     }
     for (const group of groups.values()) {
       gate();
+      // An earlier group's send can yield to ordinary recovery, including its exclusive stop claim.
+      group.turns = group.turns.filter(turn => limitedReason(turn) === group.reason);
+      if (!group.turns.length) continue;
       // A stop confirmation is bounded by the reserve turn that carried it, not by the answer budget.
       if (!group.stop && reserveRepliesUsed(journal.view, ports.now()) >= MINIMAL_RESERVE.replies) continue;
       const lead = group.turns[0]!, base = approvalBase(journal.view);
@@ -8869,6 +8872,9 @@ export function createJournalWorker(journal: ReturnType<typeof openPreviewJourna
         : group.reason === 'worker' || openApproval(journal.view, 'raise-caps', ports.now()) ? undefined : issueRaise(lead, group.reason);
       const link = approval?.challenge ? approvalLink(approval.challenge) : null;
       const yesRequest = group.stop || approval !== undefined || group.reason === 'worker' ? undefined : await limitedOperatorRequest(lead, group.reason);
+      // Request preparation can also yield. Leave a changed group for the next minimal pass
+      // to rebuild rather than commit stale recipients.
+      if (group.turns.some(turn => limitedReason(turn) !== group.reason)) continue;
       const text = group.stop ? STOP_CONFIRM_TEXT : `${limitedAnswerText(journal.view, group.reason, group.turns.length)}${approval
         && group.reason !== 'worker' ? `\n\n${approvalRequestText(journal.view, group.reason)} ${link ? RAISE_LINK_HINT : RAISE_SURFACE_HINT}` : ''}${
         yesRequest ? `\n\n${yesRequest.text}` : ''}`;
