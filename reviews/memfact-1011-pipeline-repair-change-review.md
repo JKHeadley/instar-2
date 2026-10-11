@@ -14,8 +14,8 @@ Side effects: The seven generated projections now identify the committed memory 
 Undo and recovery: Revert this generated-output commit together with the associated source change or regenerate against the chosen committed source revision. Reverting generated metadata alone deliberately restores the stale-pin failure; retain the checking boundary.
 Multi-machine posture: The regenerated artifacts are repository state shared by every checkout; no new machine-local runtime state, ownership rule or replication dependency. Verification logs are deliberately machine-local desk evidence.
 Layer below: Inspected check-register-wiring source-commit comparison, build-register replay, owner reference manifests and production grounding inventory; the delegated rehash and repin tools report zero stale hashes. The failure was generated/register.json naming e35efd06 instead of the already committed memory source.
-Bug class: integration
-Bug evidence: reproducer=scripts/check-register-wiring.mjs
+Bug class: none
+Bug evidence: none; generated publication only. The existing wiring checker reproduced the stale graph; the memory implementation and its reproducer remain covered by reviews/memfact-1011-change-review.md.
 Hook bypass: none; core.hooksPath is unset and the common hooks directory contains sample files only.
 Convergence: none
 Deferral: generated/register.json:1 | not-a-deferral=Unchanged generated prerequisite descriptions; regeneration changes only generation and source commit metadata.
