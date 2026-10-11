@@ -23,6 +23,31 @@ const live = (update: number) => ({ turns: new Map([[`telegram:8989505249:update
   { prompt: read(`recorded-prompt-${update}.json`) }]]) }) as unknown as JournalView;
 const wall = (update: number, constraint: string) => ({ source: `telegram:8989505249:update:${update}`, constraint, rechecks: [] }) as unknown as BlockerNote;
 
+it('replays preswitch update 840342287 with current self-description and the unchanged K11 rubric and capability inventory', () => {
+  const capture = JSON.parse(readFileSync(new URL('./fixtures/selfdesc-outward-2026-10-11.json', import.meta.url), 'utf8'));
+  expect(capture.update).toBe(840342287);
+  const note = capabilityBriefing(path => readFileSync(path, 'utf8'), capture.limits).text;
+  expect(capture.replayNote).toBe(note);
+  expect(capture.replayInstructions).toBe(ANSWER_INSTRUCTIONS);
+  // Only the identity/guidance line moves; every listed capability and real limit stays byte-identical.
+  expect(capture.originalNote.split('\n').slice(1)).toEqual(note.split('\n').slice(1));
+  const frame = JSON.parse(capture.replayStdout);
+  expect(frame.is_error).toBe(false);
+  const reading = readAnswer(frame.result, { wrapped: 'accept' });
+  expect(reading.ok).toBe(true);
+  if (!reading.ok) throw Error(reading.defect);
+  expect(reading.value).toMatch(/grant/u);
+  // Bind both model judgments to the same original note, not to an easier rewritten rubric or inventory.
+  for (const [judge, reply] of [[capture.originalJudge, capture.originalReply], [capture.replayJudge, reading.value]]) {
+    expect(judge.rubric).toBe('k11a-rubric-v2');
+    expect(judge.digest).toBe(`sha256:${createHash('sha256').update(JSON.stringify({
+      v: judge.rubric, note: capture.originalNote, reply,
+    })).digest('hex')}`);
+  }
+  expect(capture.originalJudge.verdict).toBe('FAIL');
+  expect(capture.replayJudge.verdict).toBe('PASS');
+});
+
 it('reads the wording each live wall was settled behind from its recorded answer packet, and finds it superseded', () => {
   // The two walls the live k1 packet carried: the bank-address refusal (no-tools) and the vault refusal (secret-custody).
   expect(settledConstraintWording(live(6232224), wall(6232224, 'no-tools'))).toBe('listed tools; no account writes');
