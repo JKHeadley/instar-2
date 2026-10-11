@@ -15,11 +15,12 @@ const packet = JSON.parse(original.messages.find((m: { role: string }) => m.role
 const roots: string[] = [];
 afterEach(() => { for (const root of roots.splice(0)) rmSync(root, { recursive: true, force: true }); });
 
-it('replays the actual over-cap forum review and its real bounded-prompt replacement under the same provider allowance', () => {
+it('replays the historical over-cap forum review and its real bounded-prompt replacement under the same provider allowance', () => {
   const limit = subscriptionConversationPolicy('claude-sonnet-5').maxTokens;
   expect(fixture.original).toMatchObject({ outcome: 'uncertain', output: null, usage: { outputTokens: 2136 } });
   expect(fixture.original.usage.outputTokens).toBeGreaterThan(limit);
   expect(fixture.recorded.intent.text).toBe(HOLDING_REPLY);
+  expect(createHash('sha256').update(fixture.original.input).digest('hex')).toBe(fixture.original.inputSha256);
   const prepared = structuredClone(original);
   // This budget capture predates train-6's reviewed act-first and audience rules.
   // Reconstruct its historical request for the original hash; current real question/output
@@ -30,6 +31,10 @@ it('replays the actual over-cap forum review and its real bounded-prompt replace
     .replace(JSON.stringify(REPLY_RULES.parks_on_user), JSON.stringify(historicalRules.parks_on_user))
     .replace(JSON.stringify(REPLY_RULES.sensitive_disclosure), JSON.stringify(historicalRules.sensitive_disclosure));
   expect(createHash('sha256').update(JSON.stringify(prepared)).digest('hex')).toBe(fixture.replay.inputSha256);
+  const rulesEnd = '}. For raw_path,';
+  expect(fixture.replay.question.split(rulesEnd)).toHaveLength(2);
+  expect(replyReviewQuestion(rules).split(rulesEnd).slice(1))
+    .toEqual(fixture.replay.question.split(rulesEnd).slice(1));
   expect(fixture.replay).toMatchObject({ code: 0, subtype: 'success', is_error: false });
   expect(fixture.replay.usage.output_tokens).toBeLessThanOrEqual(limit);
   const read = readAnswer(fixture.replay.output);
