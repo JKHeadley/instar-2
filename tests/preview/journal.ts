@@ -1716,8 +1716,14 @@ const restoredHistoricalChange = (change: MemoryChange, changes: readonly Memory
 // The worker's history projection and conflict activity share this one projection.
 export const projectMemoryClause = (view: JournalView, value: string, source?: string | number) => {
   const lineage = memoryPreferenceState(view).lineage;
-  return view.memory.filter(change => {
+  return view.memory.filter((change, index) => {
     if (change.mode === 'prefer' || change.mode === 'remember') return false;
+    // Rule 93: a later explicit save supersedes retirement for its own source only.
+    // Earlier copies and unsourced derived text stay retired; replay uses ledger order,
+    // not wall time (several authenticated turns can have the same timestamp).
+    if (typeof source === 'string' && view.memory.slice(index + 1).some(later => later.mode === 'remember'
+      && later.source === source && later.quote === change.quote
+      && (view.turns.get(later.trigger)?.update ?? -1) > (view.turns.get(change.trigger)?.update ?? Infinity))) return false;
     // An update without correction words keeps its old value only on the old source.
     if (change.historical && typeof source === 'string') return source === change.source;
     if (restoredHistoricalChange(change, view.memory)) return false;
@@ -6693,7 +6699,7 @@ export function createJournalWorker(journal: ReturnType<typeof openPreviewJourna
     inventory?: { total: number; items: { kind: string; source: string; date: string; text?: string; from?: string; status?: string }[] }, search?: ReturnType<typeof searchFor>,
     contradictions: ReturnType<typeof contradictionFor> = [], questions: readonly OpenQuestion[] = [], question?: Turn, includeRecorded = true,
     saidRange?: { from: string; to: string; matched: number },
-    selectedAttributes: readonly PersonAttribute[] = []) => {
+    selectedAttributes: readonly PersonAttribute[] = [], selectedFacts: readonly MemoryChange[] = []) => {
     const summary = compact ? summaryFor(through) : undefined;
     const summaryItems = summary ? summaryFacts(summary) : [];
     const superseded = new Set(journal.view.order.filter(item => item.accepted && item.editOf && item.update <= through)
@@ -6980,6 +6986,7 @@ export function createJournalWorker(journal: ReturnType<typeof openPreviewJourna
       ...(journal.view.memory.length ? { memory: journal.view.memory.flatMap((change, index):
         Array<{ sourceKind: MemorySourceKind; mode: string; source: string; sourceLabel: string; trigger: string; reason?: string; replacement?: string }> => {
         if (change.mode === 'remember') {
+          if (!selectedFacts.includes(change)) return [];
           const text = clean(redact(change.quote).text, true, change.source);
           return text === change.quote ? [{ sourceKind: 'operator-stated', mode: 'remembered', source: change.source,
             sourceLabel: memoryLabel(change), trigger: change.trigger, replacement: text }] : [];
@@ -7069,7 +7076,8 @@ export function createJournalWorker(journal: ReturnType<typeof openPreviewJourna
     const recentAnswer = older.map(item => item.intent !== undefined && item.noticeClass === undefined).lastIndexOf(true);
     const candidates = [...new Set([...(recentAnswer < 0 ? [] : [recentAnswer]), ...ranked])].slice(0, 5).map(index => ({ id: older[index]!.id, ...forumSource(older[index]!.id), sourceLabel: turnLabel(older[index]!), sourceKind: 'operator-stated' as MemorySourceKind,
       message: clean(redact(older[index]!.text).text, true, older[index]!.id).slice(0, 1000), reply: replyFor(older[index]!).slice(0, 1000) }));
-    const preferenceCandidates = [...activePreferences(), ...activeFacts()].map(item => ({ id: item.source, ...forumSource(item.source), sourceKind: 'operator-stated' as MemorySourceKind,
+    const facts = activeFacts();
+    const preferenceCandidates = activePreferences().map(item => ({ id: item.source, ...forumSource(item.source), sourceKind: 'operator-stated' as MemorySourceKind,
       message: redact(item.quote).text.slice(0, 1000), reply: '' }));
     const saidOlder = older.map(item => ({ text: clean(item.text, true, item.id),
       at: journal.view.memory.some(change => change.mode === 'forget' && change.source === item.id) ? 0 : sentAt(item) ?? 0 }));
@@ -7207,7 +7215,7 @@ export function createJournalWorker(journal: ReturnType<typeof openPreviewJourna
             - Number(!!a.note.agentPromise && topicTerms(a.note.quote).some(term => asked.has(term)))
           || b.turn!.update - a.turn!.update).slice(0, PREVIEW_COMMITMENT_LIMIT)
         .sort((a, b) => a.turn!.update - b.turn!.update || a.id - b.id);
-      type Optional = { kind: 'commitment' | 'dated' | 'correction' | 'person' | 'attribute' | 'recent' | 'candidate';
+      type Optional = { kind: 'commitment' | 'dated' | 'correction' | 'person' | 'attribute' | 'recent' | 'candidate' | 'fact';
         key: string; signal: string; rank: number; match: number; recent: number; index: number };
       const optional: Optional[] = [];
       const askedTerms = new Set(terms(turn.text));
@@ -7248,6 +7256,8 @@ export function createJournalWorker(journal: ReturnType<typeof openPreviewJourna
         match: 0, recent: index, index }));
       candidateChannels.forEach((item, index) => optional.push({ kind: 'candidate', key: publicMemoryId(channelMemoryId(item)), signal: publicMemoryId(channelMemoryId(item)), rank: 5,
         match: 0, recent: item.at, index: candidates.length + index }));
+      facts.forEach((item, index) => optional.push({ kind: 'fact', key: item.source, signal: item.source, rank: 4,
+        match: matches(item.quote), recent: journal.view.turns.get(item.source)?.update ?? 0, index }));
       // Within an existing tier, unreferenced evidence yields first.
       const value = (item: Optional) => Number(questionTies.has(item.signal)) * 2 + Number(referenced.has(item.signal));
       const dropOrder = optional.sort((a, b) => b.rank - a.rank || value(a) - value(b) || a.match - b.match
@@ -7260,6 +7270,7 @@ export function createJournalWorker(journal: ReturnType<typeof openPreviewJourna
           reason: 'verbatim history yielded last to the byte envelope; the journal keeps these turns and recall reaches them' }];
       for (let step = 0; step <= dropOrder.length; step++) {
         const has = (kind: Optional['kind'], index: number) => optional.some(item => kept.has(item) && item.kind === kind && item.index === index);
+        const selectedFacts = facts.filter((_, index) => has('fact', index));
         const flagged = pending.filter((_, index) => has('correction', index));
         const selectedRecall = recalled.filter((_, index) => has('dated', index) || has('recent', index));
         const selectedChannels = channels.filter((_, index) => has('dated', recalled.length + index) || has('recent', recalled.length + index));
@@ -7276,8 +7287,9 @@ export function createJournalWorker(journal: ReturnType<typeof openPreviewJourna
               turn.thread, false, flagged, selectedChannels, fromOperator(turn), turn, selectedInventory, selectedSearch,
               contradictions.slice(0, contradictionCount), questions.slice(0, questionCount), turn, includeRecorded,
               said ? { from: said.from, to: said.to, matched: said.matched } : undefined,
-              attributes.filter((_, index) => has('attribute', index)));
-        const offered = [...preferenceCandidates, ...candidates.filter((_, index) => has('candidate', index)), ...candidateChannels.filter((_, index) =>
+              attributes.filter((_, index) => has('attribute', index)), selectedFacts);
+        const offered = [...preferenceCandidates, ...selectedFacts.map(item => ({ id: item.source, ...forumSource(item.source),
+          sourceKind: 'operator-stated' as MemorySourceKind, message: redact(item.quote).text.slice(0, 1000), reply: '' })), ...candidates.filter((_, index) => has('candidate', index)), ...candidateChannels.filter((_, index) =>
           has('candidate', candidates.length + index)).map(item => ({
           id: publicMemoryId(channelMemoryId(item)), sourceKind: 'channel-import' as MemorySourceKind, source: 'channel-import',
           message: clean(redact(item.text).text, true).trim().slice(0, 1000), reply: '' }))];
@@ -7369,7 +7381,7 @@ export function createJournalWorker(journal: ReturnType<typeof openPreviewJourna
               people: [...new Set(shownPeople.map(item => item.source))], commitments: shownOpen.map(item => item.id),
               channelItems: selectedChannels.map(channelMemoryId), corrections: flagged.map(item => item.id),
               memoryChanges: journal.view.memory.flatMap((change, index) => change.mode === 'prefer'
-                || change.mode === 'remember' && clean(redact(change.quote).text, true, change.source) !== change.quote
+                || change.mode === 'remember' && !selectedFacts.includes(change)
                 || preferenceState().lineage.has(JSON.stringify([change.source, change.quote]))
                 || change.mode === 'correct' && supersededCorrection(change)
                 ? [] : [index]), memoryCandidates: packet.memoryCandidates?.map(item => item.id) ?? [] };

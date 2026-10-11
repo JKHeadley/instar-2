@@ -103,20 +103,21 @@ it.each(['unverified-author', 'other-chat', 'invented-quote', 'wrong-source', 's
 // An empty historical context is not evidence of an empty Telegram delivery.
 const recorded = JSON.parse(readFileSync(new URL('./fixtures/retrospective-duty-followup-train-1-2026-10-08.json', import.meta.url), 'utf8')) as {
   otherShapes: { kind: string; id: string; raw: string }[] };
-it.each(recorded.otherShapes)('saved fact survives real $kind output shape from $id', async row => {
+it.each(recorded.otherShapes.flatMap(row => [false, true].map(resaved => ({ ...row, resaved }))))('saved fact survives real $kind output shape from $id (resaved=$resaved)', async row => {
   const w = world();
   try {
     await w.turn(1, `remember ${quote}`, 3); w.reopen();
+    if (row.resaved) { await w.turn(2, 'forget the desk test word'); await w.turn(3, `remember ${quote}`, 3); w.reopen(); }
     const worker = createJournalWorker(w.journal, { ...w.ports, model: async input => {
       expect(input.context).toContain('"mode":"remembered"');
       expect(input.context).toContain(quote);
       return row.kind === 'summary-uncertain' ? JSON.parse(row.raw) : row.raw;
     } });
-    worker.intake([raw(2, 'what is the desk test word?')]); await worker.drain();
-    expect(w.journal.view.memory).toMatchObject([{ mode: 'remember', quote }]);
-    expect(w.journal.view.memory).toHaveLength(1);
+    worker.intake([raw(4, 'what is the desk test word?')]); await worker.drain();
+    expect(w.journal.view.memory.at(-1)).toMatchObject({ mode: 'remember', quote });
+    expect(w.journal.view.memory).toHaveLength(row.resaved ? 3 : 1);
     expect(w.sends.every(text => text.trim().length > 0)).toBe(true);
-    w.reopen(); await w.turn(3, 'what is the desk test word?'); expect(w.sends.at(-1)).toBe(quote);
+    w.reopen(); await w.turn(5, 'what is the desk test word?'); expect(w.sends.at(-1)).toBe(quote);
   } finally { w.journal.close(); }
 });
 
@@ -161,4 +162,58 @@ it('forgetting a repeated saved fact removes it from the list as well as recall'
     expect(w.sends.at(-1)).not.toContain('lantern-4817');
     expect(w.packets.at(-1)).not.toContain('lantern-4817');
   } finally { w.journal.close(); }
+});
+
+it('review: an explicit save after forgetting is recalled', async () => {
+ const w=world(); try {
+  await w.turn(1, `remember ${quote}`, 3);
+  await w.turn(2, 'forget the desk test word');
+  await w.turn(3, `remember ${quote}`, 3);
+  expect(w.sends.at(-1)).toBe('Saved the requested fact.');
+  await w.turn(4, 'what is the desk test word?');
+  expect(w.sends.at(-1)).toBe(quote);
+  const oldSource = w.journal.view.order[0]!.id, newSource = w.journal.view.order[2]!.id;
+  expect(projectMemoryClause(w.journal.view, quote, oldSource)).not.toBe(quote);
+  expect(projectMemoryClause(w.journal.view, quote, newSource)).toBe(quote);
+  expect(w.journal.view.memory.map(item => item.mode)).toEqual(['remember', 'forget', 'remember']);
+  expect(memoryReport(w.journal.view)).toContain('lantern');
+  const packet = JSON.parse(w.packets.at(-1)!);
+  expect(packet.memory.filter((item: { mode: string }) => item.mode === 'remembered')).toHaveLength(1);
+  expect(auditPacket(w.journal.view, w.journal.view.order.at(-1)!, packet).findings).toEqual([]);
+  expect(auditPacket(w.journal.view, w.journal.view.order.at(-1)!, { ...packet, unsourced: quote }).findings)
+    .toContainEqual({ code: 'forgotten-reachable', at: 'memory-change[1]' });
+  expect(auditPacket(w.journal.view, w.journal.view.order.at(-1)!, { ...packet, recalled: [{ id: oldSource, user: quote }] }).findings)
+    .toContainEqual({ code: 'forgotten-reachable', at: 'memory-change[1]' });
+  w.reopen();
+  await w.turn(5, 'what do you remember?'); expect(w.sends.at(-1)).toContain(quote);
+  await w.turn(6, 'forget the desk test word');
+  await w.turn(7, 'what is the desk test word?'); expect(w.sends.at(-1)).toBe('No saved fact.');
+  expect(memoryReport(w.journal.view)).not.toContain('lantern');
+ } finally {w.journal.close();}
+});
+it('review: seventeenth short fact fits the unchanged packet budget', async () => {
+ const w=world(); try {
+  const worker=createJournalWorker(w.journal,{...w.ports, model:async input=>{
+   if(input.id.startsWith('summary:')) return JSON.stringify({summary:'The operator saved facts.',people:[],memory:[]});
+   const packet = JSON.parse(input.context);
+   expect(Buffer.byteLength(input.context)).toBeLessThanOrEqual(32768);
+   const turn = w.journal.view.turns.get(input.id)!;
+   expect(turn.grounding!.memoryChanges).toHaveLength(packet.memory?.length ?? 0);
+   expect(auditPacket(w.journal.view, turn, packet).findings).toEqual([]);
+   if(input.question === 'what do you remember?') return JSON.stringify({reply:'Listing.',memory:[],memoryList:true});
+   if(input.question.startsWith('remember ')) return JSON.stringify({reply:'Noted.',memory:[{mode:'remember',source:input.id,quote:input.question.slice(9)}]});
+   return JSON.stringify({reply:'Hello there.',memory:[]});
+  }});
+  for(let i=1;i<=17;i++) {
+   worker.intake([raw(i, `remember fact number ${i} has the following value: ${'abcdefghij '.repeat(30)}`,3)]);
+   await worker.drain();
+  }
+  console.log(JSON.stringify({facts:w.journal.view.memory.length,lastIntakeBytes:Buffer.byteLength(w.journal.view.order.at(-1)!.text),lastReply:w.sends.at(-1),maxBytes:w.journal.view.limits.maxBytes,calls:w.journal.view.calls}));
+  expect(w.journal.view.memory.filter(x=>x.mode==='remember')).toHaveLength(17);
+  expect(w.sends.at(-1)).toBe('Saved the requested fact.');
+  expect(w.journal.view.order.some(turn => turn.packetDropped?.some(item => item.kind === 'fact'))).toBe(true);
+  worker.intake([raw(18, 'what do you remember?', 1)]); await worker.drain();
+  expect(w.sends.at(-1)).toContain('fact number 1 ');
+  expect(memoryReport(w.journal.view)).toContain('fact number 17 ');
+ } finally {w.journal.close();}
 });

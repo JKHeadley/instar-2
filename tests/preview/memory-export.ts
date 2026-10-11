@@ -41,7 +41,7 @@ export function memoryReport(view: ExportView): string {
   }) });
   sections.push({ title: 'Saved facts', rows: actions.filter(item => item.mode === 'remember'
     && projectMemoryClause(view, item.quote, item.source) === item.quote).map(item =>
-    `- ${safe(item.quote)}; source: ${source(item.source)}`) });
+    `- ${safe(item.quote, false)}; source: ${source(item.source)}`) });
   const corrections = actions.filter((item, index) => item.mode === 'correct' && item.replacement
     && !actions.slice(index + 1).some(later => (later.mode === 'correct' || later.mode === 'forget') && later.source === item.trigger
       && (later.quote.includes(item.replacement!) || item.replacement!.includes(later.quote))));
