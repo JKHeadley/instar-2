@@ -18,7 +18,9 @@ Bug class: none
 Bug evidence: none
 Hook bypass: none
 Convergence: none
-Decision: dispatch-main-merge | Preserve main's approved documents, bounded deadline and conversion anchor while retaining the branch's stop basis and shared-history repair; combine test expectations and regenerate pins with the existing desk tools. | reported=/Users/dabombstudio/.instar/agents/echo/.instar/lanes/sb-w4-dispatch-now-repair-PROGRESS.md
+Decision: dispatch-main-merge | Preserve main's approved documents, bounded deadline and merged conversion anchor while retaining the branch's stop basis and shared-history repair; combine test expectations and regenerate pins with the existing desk tools. | reported=/Users/dabombstudio/.instar/agents/echo/.instar/lanes/sb-w4-dispatch-now-repair-PROGRESS.md
+
+Publication repair: The merged anchor preserves this branch's newer schema hash and main's amended document hashes. The main-only literal cannot bind that combination. Recompute only the literal through canonical hashing after verifying the anchor against the committed shape and document corpus; no hand-edited hash or authority change.
 
 ## Closing block
 
