@@ -30,6 +30,7 @@ tests/preview/self-host-tools.test.ts
 tests/preview/self-host.test.ts
 tests/preview/session-admission.test.ts
 tests/preview/session-volume.test.ts
+tests/preview/stage2-recovery.test.ts # Physical async launcher cases require the host resource-limited synthetic CLI launch.
 tests/preview/tool-paths.test.ts
 tests/preview/tool-turn.test.ts # Physical resource-owner child launch uses /bin/sh ulimit -u; WSL dash refuses before PID creation.
 tests/preview/tools-default.test.ts # Real journal launcher requires host transport and harness startup.
