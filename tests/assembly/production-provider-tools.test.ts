@@ -96,9 +96,9 @@ it('tells the model it has the whole tool set and how each call is bounded, and 
   // Plan #510: the tool route runs without --safe-mode, so Claude Code injects its own account email; the prompt says that
   // login is never the operator (+187, live cint-L50 "Luna"). The bound stays: the tool sentence is still one paragraph.
   // sb-w4-selfdesc: w4-selfdesc's effect-doorway wording lands on top of that +187, so the 1500 bound (not the unit's
-  // 1400, which predates +187) is the live one; default-context-floor measures the exact growth.
+  // 1400, which predates +187) plus 1202 bytes of read guidance and tool framing is the live one; default-context-floor measures the exact growth.
   expect(SUBSCRIPTION_TOOLS_SYSTEM_PROMPT).toContain('is the subscription login running you, never the operator');
-  expect(SUBSCRIPTION_TOOLS_SYSTEM_PROMPT.length - SUBSCRIPTION_CONVERSATION_SYSTEM_PROMPT.length).toBeLessThan(1600);
+  expect(SUBSCRIPTION_TOOLS_SYSTEM_PROMPT.length - SUBSCRIPTION_CONVERSATION_SYSTEM_PROMPT.length).toBeLessThan(2800);
 });
 
 it('writes settings that refuse every read from the root down except the scratch volume and the runtime, writes outside the volume, network and unix sockets, with the mandatory hook on both events', () => {

@@ -15,7 +15,7 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { ANSWER_FORMAT_REMINDER, LOOKUP_DONE_GUIDANCE, LOOKUP_NOT_FOUND_REPLY, LOOKUP_OFFERED, LOOKUP_UNAVAILABLE_REPLY,
   LOOKUP_UNSETTLED_REPLY, LOOKUP_WORDS_LIMIT, lookupWords, openPreviewJournal, type PreviewPorts } from './journal.js';
-import { ANSWER_PROTOCOL } from './briefing.js';
+import { MEMORY_LOOKUP_INSTRUCTIONS } from './briefing.js';
 import { conclusionText, parseModelJson } from './model-json.js';
 import { REPLY_RULES } from './reply-check.js';
 import { at, fact, fixture, key, neutral, question, room, sourceId, update } from './recall-rank-room.js';
@@ -207,7 +207,7 @@ describe('Rule 11: the lookup\'s bounds and floors', () => {
   const reply = 'The code is 2958.';
 
   it('delivers the instruction once, in the trusted answer protocol, and only a marker in the packet', async () => {
-    expect(ANSWER_PROTOCOL).toContain('If packet.memoryLookup is "offered"');
+    expect(MEMORY_LOOKUP_INSTRUCTIONS).toContain('If packet.memoryLookup is "offered"');
     const r = await turn({ answers: [reply] });
     try { expect(r.inputs[0]!.packet.memoryLookup).toBe('offered'); } finally { r.close(); }
   });
