@@ -6,7 +6,7 @@ import { performance } from 'node:perf_hooks';
 import { spawnSync } from 'node:child_process';
 import { OBLIGATION_FLOOR_PACKET_BYTES, createJournalWorker, openPreviewJournal } from './journal-test-worker.js';
 import { prepareJournalEnvelope } from './journal-envelope.js';
-import { ANSWER_INSTRUCTIONS, MIND_RULES, SOURCE_PINS, deskStatusSource, readDeskStatus, sourcePacket } from './briefing.js';
+import { ANSWER_INSTRUCTIONS, MEMORY_LOOKUP_INSTRUCTIONS, MIND_RULES, SOURCE_PINS, deskStatusSource, readDeskStatus, sourcePacket } from './briefing.js';
 import { readRuns, selfState, selfStateSource } from './self-state.js';
 
 const key = new Uint8Array(32).fill(11);
@@ -563,19 +563,21 @@ it('the live script reaches compaction and the question carries the open commitm
     expect(last.instructions.rules).toEqual(MIND_RULES.map(([rule]) => rule));
     expect(last.commitments.flatMap((entry: { items: { quote: string }[] }) => entry.items.map(item => item.quote)))
       .toEqual([LOCKER, DENTIST, PROMISE]);
-    // Rule 47: at prepared provider input, the persistent instruction set and persistent
-    // sources are identical at the first turn and after compaction; current state may change.
+    // Rule 47: persistent instructions and sources survive compaction. The memory-lookup
+    // protocol joins them only when the compacted packet actually offers that capability.
     const parts = (bytes: string) => {
       const messages = (JSON.parse(bytes) as { messages: { role: string; content: string }[] }).messages;
       const packet = (JSON.parse(messages.find(item => item.role === 'context')!.content) as {
-        packet: { historyMode: string; sources: { id: string; title: string; text: string; provenance: unknown }[] } }).packet;
+        packet: { historyMode: string; memoryLookup?: string; sources: { id: string; title: string; text: string; provenance: unknown }[] } }).packet;
       return { instructions: messages.find(item => item.role === 'instructions')?.content, packet };
     };
     const start = parts(prepared[0]!), after = parts(prepared.at(-1)!);
     expect(start.packet.historyMode).toBe('complete');
     expect(after.packet.historyMode).toBe('summary-plus-recent');
     expect(start.instructions).toBe(ANSWER_INSTRUCTIONS);
-    expect(after.instructions).toBe(start.instructions);
+    expect(start.packet.memoryLookup).toBeUndefined();
+    expect(after.packet.memoryLookup).toBe('offered');
+    expect(after.instructions).toBe(`${start.instructions}\n${MEMORY_LOOKUP_INSTRUCTIONS}`);
     const lasting = (packet: typeof start.packet) => packet.sources.filter(item => item.id.startsWith('purpose:') || item.id === 'capability-note');
     expect(lasting(start.packet).map(item => item.id)).toEqual(['purpose:purpose', 'purpose:coherency', 'capability-note']);
     expect(lasting(after.packet)).toEqual(lasting(start.packet));

@@ -1,6 +1,7 @@
 import { expect, it } from 'vitest';
 import { readFileSync } from 'node:fs';
 import { resolve } from 'node:path';
+import { READ_BEFORE_ANSWER } from '../../src/assembly/tool-answer-guidance.js';
 import { SUBSCRIPTION_TOOLS_SYSTEM_PROMPT } from '../../src/assembly/production-provider.js';
 import { capabilityBriefing, TOOLS_LIMITS, toolsBriefing } from './briefing.js';
 import { governingConstraints, previewCapabilities, settledConstraintWording, type BlockerNote, type JournalView } from './journal.js';
@@ -35,7 +36,7 @@ it('reads the wording each live wall was settled behind from its recorded answer
   expect(settledConstraintWording(live(6232224), wall(6232224, 'no-such-constraint'))).toBeUndefined();
 });
 
-it('the recorded K11a briefing differs only in the declared audience and recurring-request capabilities', () => {
+it('the recorded K11a briefing differs only in the declared audience, recurring requests and read-first guidance', () => {
   const note = capabilityBriefing(path => readFileSync(resolve(process.cwd(), path), 'utf8'),
     { providerAttempts: 1000, expiresAt: 1791232800000, tools: true, mcp: 0 }).text;
   const replays = JSON.parse(read('k11a-replays.json')) as { note: string; runs: { kind: string; input: string; verdict: string; reply: string }[] };
@@ -51,7 +52,16 @@ it('the recorded K11a briefing differs only in the declared audience and recurri
   expect(current.note.split(oldRequests)).toHaveLength(2);
   expect(note).toContain(recurringRequests);
   expect(current.note.replace(oldConversation, forumConversation).replace(oldRequests, recurringRequests)).toBe(note);
-  expect(current.system).toBe(SUBSCRIPTION_TOOLS_SYSTEM_PROMPT);
+  // Preserve the captured prompt; the act-first fixture separately replays the new wording.
+  const toolBoundary = " In this turn you have the harness's full built-in tool set";
+  expect(current.system.split(toolBoundary)).toHaveLength(2);
+  expect(current.system).not.toContain(READ_BEFORE_ANSWER);
+  const answerBoundary = 'Respond with one flat JSON object';
+  expect(current.system.split(answerBoundary)).toHaveLength(2);
+  expect(current.system.replace(toolBoundary, ` ${READ_BEFORE_ANSWER}${toolBoundary.trimStart()}`)
+    .replace(answerBoundary, 'First complete needed reads through the actual harness tool interface; '
+      + 'the JSON format below applies only to your final answer. ' + answerBoundary))
+    .toBe(SUBSCRIPTION_TOOLS_SYSTEM_PROMPT);
   expect(current.runs.map(run => run.kind)).toEqual(['worst', 'chain']);
   for (const run of current.runs) {
     const packet = packetOf(run.input);
