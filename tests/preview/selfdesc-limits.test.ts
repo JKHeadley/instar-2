@@ -3,7 +3,7 @@ import { readFileSync } from 'node:fs';
 import { resolve } from 'node:path';
 import { CLAIM_SCOPED_RULES, DECLARED_OBLIGATIONS_GUIDE, exciseNamedClaims, namedClaimsIn, parseReplyReviewVerdict, quotedSpans,
   replyReviewQuestion, substantiveReply, type ReplyRule } from './reply-check.js';
-import { capabilityBriefing, SOURCE_PINS, sourcePacket, TOOLS_BRIEFING, TOOLS_LIMITS, toolsBriefing } from './briefing.js';
+import { capabilityBriefing, SELF_DESCRIPTION, SOURCE_PINS, sourcePacket, TOOLS_BRIEFING, TOOLS_LIMITS, toolsBriefing } from './briefing.js';
 import { readAnswer, taskFields } from './answer-reading.js';
 import { SUBSCRIPTION_CONVERSATION_SYSTEM_PROMPT } from '../../src/assembly/production-provider.js';
 import { governingConstraints, OBLIGATION_DECISION_TOOLS, previewCapabilities, TOOL_ATTEMPTS_MEANING } from './journal.js';
@@ -44,7 +44,7 @@ it('the answer model writes the limits half from the recorded packet, with and w
   }
 });
 
-it('replays fresh current-note reviews on the description/decline boundary and retains the base broad-limit false clear', () => {
+it('replays sk-slice reviews with the later grant-description instruction translated and retains the base broad-limit false clear', () => {
   type Capture = { label: string; input: string; system: string; stdout: string };
   const captured = JSON.parse(readFileSync(resolve(process.cwd(), 'tests/preview/fixtures/selfdesc-2026-10-11.json'), 'utf8')) as {
     limits: { providerAttempts: number; expiresAt: number; tools: boolean; mcp: number };
@@ -68,7 +68,10 @@ it('replays fresh current-note reviews on the description/decline boundary and r
     const { packet } = JSON.parse(envelope.messages.find(message => message.role === 'context')!.content) as {
       packet: { sources: { id: string; text: string }[] };
     };
-    expect(packet.sources.find(source => source.id === 'capability-note')!.text, run.label).toBe(note);
+    const recordedNote = packet.sources.find(source => source.id === 'capability-note')!.text;
+    const recordedIdentity = 'You are an Instar agent: AI with lasting memory and values. Explain yourself in everyday words; name Instar, not your harness, model or test stage.';
+    expect(recordedNote.split(recordedIdentity), run.label).toHaveLength(2);
+    expect(recordedNote.replace(recordedIdentity, SELF_DESCRIPTION), run.label).toBe(note);
     expect(envelope.messages[0]!.content, run.label).toBe(replyReviewQuestion(flagged));
     expect(run.system, run.label).toBe(SUBSCRIPTION_CONVERSATION_SYSTEM_PROMPT);
     const parsed = verdict(run);

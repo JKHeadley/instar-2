@@ -111,6 +111,10 @@ it('briefs the installation identity with and without the generated register, pr
     expect(SELF_DESCRIPTION).toContain('AI with lasting memory and values');
     expect(SELF_DESCRIPTION).toContain('everyday words');
     expect(SELF_DESCRIPTION).toContain('name Instar, not your harness, model or test stage');
+    expect(SELF_DESCRIPTION).toContain('Include listed outward actions among your abilities, with their grant conditions.');
+    expect(SELF_DESCRIPTION).toContain('Inside your granted role act without asking again');
+    expect(SELF_DESCRIPTION).toContain('outside it refuse and name the needed grant, not an inability');
+    expect(SELF_DESCRIPTION).toContain('Doorway checks do not mean every action needs fresh approval.');
     expect(SELF_DESCRIPTION).not.toMatch(/preview/iu);
     expect(text).not.toMatch(/Claude|Codex|GPT|Opus|Gemini/iu);
     expect(text).not.toMatch(/PREVIEW trial|This trial|Instar 2\.0/u);

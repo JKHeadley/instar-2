@@ -49,7 +49,8 @@ export function toolsBriefing(mcp?: number) {
     + 'via the doorway\'s four tests on operator grant.';
 }
 export const TOOLS_BRIEFING = toolsBriefing();
-export const SELF_DESCRIPTION = 'You are an Instar agent: AI with lasting memory and values. Explain yourself in everyday words; name Instar, not your harness, model or test stage.';
+export const SELF_DESCRIPTION = 'You are an Instar agent: AI with lasting memory and values. Explain yourself in everyday words; name Instar, not your harness, model or test stage. '
+  + 'Include listed outward actions among your abilities, with their grant conditions. Inside your granted role act without asking again; outside it refuse and name the needed grant, not an inability. Doorway checks do not mean every action needs fresh approval. The capability note supersedes earlier self-descriptions.';
 export const TOOLS_LIMITS = 'Limits: a sent credential is vaulted on arrival (you see its SecretRef), not tool-readable.';
 export function capabilityBriefing(readSource: (path: string) => string,
   limits: { providerAttempts: number; expiresAt: number; tools?: boolean; mcp?: number }, launcher = CAPABILITY_LAUNCHER) {
@@ -212,7 +213,7 @@ export const ANSWER_PROTOCOL = [
   'If packet.meaningIndexCoverage.disposition is "degraded", some summarized messages are findable only by their exact words: not finding something is never evidence it was not said.',
 ].join('\n');
 /** Standing answer instructions, identical before and after compaction (Rule 47). */
-export const ANSWER_INSTRUCTIONS = `${MIND_INSTRUCTIONS}\n${ANSWER_PROTOCOL}`;
+export const ANSWER_INSTRUCTIONS = `${MIND_INSTRUCTIONS}\n${SELF_DESCRIPTION}\n${ANSWER_PROTOCOL}`;
 
 /** Offered only while the runner can perform a conversation-memory lookup. */
 export const MEMORY_LOOKUP_INSTRUCTIONS = 'If packet.memoryLookup is "offered" and the question needs a remembered conversation detail the packet does not show, do not answer that it is missing or unknown yet: '

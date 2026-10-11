@@ -3,7 +3,8 @@ import { readFileSync } from 'node:fs';
 import { resolve } from 'node:path';
 import { READ_BEFORE_ANSWER } from '../../src/assembly/tool-answer-guidance.js';
 import { SUBSCRIPTION_TOOLS_SYSTEM_PROMPT } from '../../src/assembly/production-provider.js';
-import { capabilityBriefing, SELF_DESCRIPTION, TOOLS_LIMITS, toolsBriefing } from './briefing.js';
+import { ANSWER_INSTRUCTIONS, capabilityBriefing, SELF_DESCRIPTION, TOOLS_LIMITS, toolsBriefing } from './briefing.js';
+import { createHash } from 'node:crypto';
 import { readAnswer } from './answer-reading.js';
 import { governingConstraints, previewCapabilities, settledConstraintWording, type BlockerNote, type JournalView } from './journal.js';
 
@@ -23,6 +24,31 @@ const packetOf = (envelope: Envelope) => (JSON.parse(envelope.messages.find(item
 const live = (update: number) => ({ turns: new Map([[`telegram:8989505249:update:${update}`,
   { prompt: read(`recorded-prompt-${update}.json`) }]]) }) as unknown as JournalView;
 const wall = (update: number, constraint: string) => ({ source: `telegram:8989505249:update:${update}`, constraint, rechecks: [] }) as unknown as BlockerNote;
+
+it('replays preswitch update 840342287 with current self-description and the unchanged K11 rubric and capability inventory', () => {
+  const capture = JSON.parse(readFileSync(new URL('./fixtures/selfdesc-outward-2026-10-11.json', import.meta.url), 'utf8'));
+  expect(capture.update).toBe(840342287);
+  const note = capabilityBriefing(path => readFileSync(path, 'utf8'), capture.limits).text;
+  expect(capture.replayNote).toBe(note);
+  expect(capture.replayInstructions).toBe(ANSWER_INSTRUCTIONS);
+  // Only the identity/guidance line moves; every listed capability and real limit stays byte-identical.
+  expect(capture.originalNote.split('\n').slice(1)).toEqual(note.split('\n').slice(1));
+  const frame = JSON.parse(capture.replayStdout);
+  expect(frame.is_error).toBe(false);
+  const reading = readAnswer(frame.result, { wrapped: 'accept' });
+  expect(reading.ok).toBe(true);
+  if (!reading.ok) throw Error(reading.defect);
+  expect(reading.value).toMatch(/grant/u);
+  // Bind both model judgments to the same original note, not to an easier rewritten rubric or inventory.
+  for (const [judge, reply] of [[capture.originalJudge, capture.originalReply], [capture.replayJudge, reading.value]]) {
+    expect(judge.rubric).toBe('k11a-rubric-v2');
+    expect(judge.digest).toBe(`sha256:${createHash('sha256').update(JSON.stringify({
+      v: judge.rubric, note: capture.originalNote, reply,
+    })).digest('hex')}`);
+  }
+  expect(capture.originalJudge.verdict).toBe('FAIL');
+  expect(capture.replayJudge.verdict).toBe('PASS');
+});
 
 it('reads the wording each live wall was settled behind from its recorded answer packet, and finds it superseded', () => {
   // The two walls the live k1 packet carried: the bank-address refusal (no-tools) and the vault refusal (secret-custody).
@@ -145,7 +171,7 @@ it('states the MCP count it read and claims no account access from it: zero, a c
   for (const count of [undefined, 0, 1]) expect(toolsBriefing(count)).toMatch(/full built-in set \(files, shell, web reads, nested subagents\);.*network writes and outside sends via the doorway's four tests on operator grant\.$/u);
 });
 
-it('replays fresh K11a captures with the exact current briefing and preserves the base identity leak as the control', () => {
+it('preserves the sk-slice K11a capture with only the subsequent grant-description instruction translated', () => {
   const captured = JSON.parse(readFileSync(resolve(process.cwd(), 'tests/preview/fixtures/selfdesc-2026-10-11.json'), 'utf8')) as {
     limits: { providerAttempts: number; expiresAt: number; tools: boolean; mcp: number };
     runs: { label: string; input: string; system: string; stdout: string }[];
@@ -155,7 +181,10 @@ it('replays fresh K11a captures with the exact current briefing and preserves th
   const answers = captured.runs.filter(run => ['worst', 'chain'].includes(run.label));
   expect(answers.map(run => run.label)).toEqual(['worst', 'chain']);
   for (const run of answers) {
-    expect(packetOf(JSON.parse(run.input) as Envelope).sources.find(source => source.id === 'capability-note')!.text).toBe(note);
+    const recordedNote = packetOf(JSON.parse(run.input) as Envelope).sources.find(source => source.id === 'capability-note')!.text;
+    const recordedIdentity = 'You are an Instar agent: AI with lasting memory and values. Explain yourself in everyday words; name Instar, not your harness, model or test stage.';
+    expect(recordedNote.split(recordedIdentity)).toHaveLength(2);
+    expect(recordedNote.replace(recordedIdentity, SELF_DESCRIPTION)).toBe(note);
     expect(run.system).toBe(SUBSCRIPTION_TOOLS_SYSTEM_PROMPT);
     const frame = JSON.parse(run.stdout) as { result: string; is_error: boolean; modelUsage: object };
     expect(frame.is_error).toBe(false);

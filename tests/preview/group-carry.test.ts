@@ -6,6 +6,7 @@ import { appendGroupCarry, buildCarriedMemory, groupCarryPacket, validCarriedMem
 import { createJournalWorker, openPreviewJournal, openRequests, CARRIED_MEMORY_ITEM_SOURCE, MEMORY_ITEM_SHAPE, type JournalRecord } from './journal-test-worker.js';
 import { resolveGroupDisclosure, verifyGroupAudience } from './group-disclosure.js';
 import { now, key, sealKey, scope, records, authority, membership, permissionFor } from './group-carry-fixture.js';
+import { SELF_DESCRIPTION, SOURCE_PINS, sourcePacket } from './briefing.js';
 
 const dirs: string[] = [];
 afterEach(() => { for (const dir of dirs.splice(0)) rmSync(dir, { recursive: true, force: true }); });
@@ -281,6 +282,8 @@ it('recovers a held real recorded answer (proof-room update 715672480) without c
 });
 
 it('replays all recorded model shapes through carried recall after the disclosure checkpoint recovers', async () => {
+  const sources = sourcePacket(path => readFileSync(path, 'utf8'), SOURCE_PINS,
+    { providerAttempts: 100, expiresAt: now + 86400000, tools: true, mcp: 0 }).sources;
   const captured = JSON.parse(readFileSync(new URL('./fixtures/retrospective-duty-followup-train-1-2026-10-08.json',
     import.meta.url), 'utf8')) as { otherShapes: { kind: string; id: string; raw: string }[] };
   expect(captured.otherShapes.map(shape => shape.id)).toEqual(['summary:715672480', '715672483', '715672482',
@@ -291,10 +294,13 @@ it('replays all recorded model shapes through carried recall after the disclosur
     let allowed = false, calls = 0;
     const sends: string[] = [];
     const worker = createJournalWorker(w.destination, { now: () => now + 1000, stopped: () => false,
+      sources,
       groupDisclosure: async () => allowed,
       model: async input => {
         calls++;
         const packet = JSON.parse(input.context);
+        expect(packet.sources.find((source: { id: string }) => source.id === 'capability-note').text, shape.id)
+          .toContain(SELF_DESCRIPTION);
         expect(packet.predecessorMemory.entries.length, shape.id).toBeGreaterThan(0);
         expect(packet.memoryDecision, shape.id).toContain('Ordinary facts are journaled across restarts');
         expect(packet.memoryDecision, shape.id).toContain(MEMORY_ITEM_SHAPE);
