@@ -8360,6 +8360,9 @@ export function createJournalWorker(journal: ReturnType<typeof openPreviewJourna
           const last = turn.replyChecks?.at(-1);
           const previous = last?.candidateDigest === candidateDigest
             || last?.candidateDigest === undefined && !mentioned.length ? last : undefined;
+          // Review routing consumes current standing, never the membership snapshot used for the answer.
+          // A failed read clears operatorOnlyVerified and retains the shared-audience path.
+          if (journal.view.groupCarry) await disclosure();
           const reviewPrompt = projectedReplyPrompt(turn.prompt) ?? (turn.noticeClass === 'too-long-input'
             ? JSON.stringify({ messages: [
               { role: 'user', content: '[operator message saved verbatim but omitted from this review because it exceeds the context bound]' },

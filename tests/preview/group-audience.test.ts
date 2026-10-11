@@ -15,6 +15,10 @@ const fixture = JSON.parse(readFileSync(new URL('./fixtures/group-audience-live-
     revision: NonNullable<Turn['revision']>; revisionReview: NonNullable<Turn['revisionReview']>; delivered: string };
   samples: { name: string; candidate: string; rules: ReplyRule[]; raw: string }[];
 };
+// A recorded unsure Jev result keeps these review-boundary probes on the contextual path.
+const uncertainScores = (JSON.parse(readFileSync(new URL('./fixtures/audience-classifier-2026-10-11.json', import.meta.url), 'utf8')) as {
+  turns: { update: number; replyChecks: NonNullable<Turn['replyChecks']> }[];
+}).turns.find(turn => turn.update === 715675441)!.replyChecks[0]!.scores!;
 const sample = (name: string) => fixture.samples.find(s => s.name === name)!;
 const verdict = (name: string) => {
   const s = sample(name), read = readAnswer(s.raw, { wrapped: 'refuse' });
@@ -60,7 +64,7 @@ for (const audience of ['verified', 'other-member', 'unverified', 'changed-befor
       checkOutbound: () => {}, send: async input => { sends.push(input.expectedText); return sends.length; },
       replyCheck: { elapsedMs: () => 0,
         waitForRetry: async ms => { waits.push(ms); changed = false; },
-        jev: async () => ({ value: { model: 'jev-1.13.0', answers: Object.fromEntries(Object.entries(fixture.recorded.checks[0]!.scores!)
+        jev: async () => ({ value: { model: 'jev-1.13.0', answers: Object.fromEntries(Object.entries(uncertainScores)
           .map(([rule, noul]) => [rule, { type: 'noul', noul }])) }, latencyMs: 0 }),
         escalate: async (_text, _id, prompt) => { reviews++; checkAudience(prompt!); changed = audience === 'changed-before-send';
           return { ...verdict('operator-only'), confidence: null, latencyMs: 1 }; } },
@@ -70,7 +74,9 @@ for (const audience of ['verified', 'other-member', 'unverified', 'changed-befor
     await worker.drain();
     if (audience === 'verified' || audience === 'transient-before-review') {
       expect(sends).toEqual([fixture.recorded.answer]); expect(models).toBe(1); expect(reviews).toBe(1);
-      expect(audiences).toEqual([true, true]);
+      // An unavailable membership read at route selection keeps the shared path for this check,
+      // even if the bounded pre-dispatch retry subsequently restores disclosure.
+      expect(audiences).toEqual([true, audience !== 'transient-before-review']);
     } else {
       expect(sends).toEqual(audience === 'changed-before-review' ? [GROUP_PERMISSION_FINAL_NOTICE] : []);
       expect(sends).not.toContain(fixture.recorded.answer);

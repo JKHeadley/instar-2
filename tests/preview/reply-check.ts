@@ -42,9 +42,10 @@ export type ReplyRule = keyof typeof REPLY_RULES;
 export const AUDIENCE_RULES = Object.freeze(['sensitive_disclosure'] as const);
 export type AudienceRule = typeof AUDIENCE_RULES[number];
 const isAudienceRule = (id: ReplyRule): id is AudienceRule => (AUDIENCE_RULES as readonly ReplyRule[]).includes(id);
-/** The one audience that is the verified operator alone: the operator's bound private chat. */
+/** The operator's bound private chat is intrinsically operator-only. */
 export const OPERATOR_PRIVATE_SURFACE = 'telegram-private-chat';
-/** True when the answer packet behind a reply names an audience other than the verified operator's own private chat.
+/** True unless the packet names the bound private chat or a group topic with CURRENT verified operator-only standing.
+ * The journal refreshes this standing through its disclosure resolver before review and rechecks before send.
  * The audience is read from the packet the reply was grounded on (the one every outbound surface must name), never
  * from the reply's words. A prompt with no readable audience cannot be reviewed at all (replyReviewContext refuses
  * it), so it keeps the existing route. */
@@ -55,7 +56,9 @@ export function sharedAudience(originalPrompt: string | undefined): boolean {
     const context = messages?.find(message => message.role === 'context')?.content;
     const audience = typeof context === 'string' ? (JSON.parse(context) as { packet?: { audience?: unknown } }).packet?.audience : undefined;
     if (!audience || typeof audience !== 'object') return false;
-    return (audience as { surface?: unknown }).surface !== OPERATOR_PRIVATE_SURFACE;
+    const current = audience as { surface?: unknown; operatorOnlyVerified?: unknown };
+    return current.surface !== OPERATOR_PRIVATE_SURFACE
+      && !(current.surface === 'telegram-group-topic' && current.operatorOnlyVerified === true);
   } catch { return false; }
 }
 /** The guidance family's context questions (Part 18 §16, docs/18-sentinel-holders): claim verification and preference
