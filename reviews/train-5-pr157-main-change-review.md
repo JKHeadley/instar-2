@@ -3,7 +3,7 @@
 Subject base: 253f1c6ab52a0d164510abd7436c48052999120b
 Review state: open
 Reviewed content: none
-Outcome: Repair the PR #157 main integration against landed main 253f1c6a. Preserve all main history bytes and prepend every branch-only version, renumbering effect 9→10, assembly 21–24→22–25, harness 1–22→3–24, sentinel 3–7→4–8 and recall 5–6→7–8. Merge mind-rule18-sync and regenerate publication from the combined source.
+Outcome: Repair the PR #157 main integration against landed main 253f1c6a. Preserve all main history bytes and prepend every branch-only version, renumbering effect 9→10, assembly 21–24→22–25, harness 1–22→3–24, sentinel 3–7→4–8 and recall 5–6→7–8. Merge mind-rule18-sync and regenerate publication from the combined source. This record also covers main's PR #158 merge c1e290e1, which merges that same approved sync onto 253f1c6a, and its content-identical integration into train-5 at b03297eb. The integration's primary review remains train-5-pr158-main-change-review.md, based on landed c1e290e1; the historical coverage here includes that landed merge itself, which is excluded by a record based on it.
 Affected rules: 18, 37, 47, 49, 69, 74, 84, 90, 91, 101, 102, 111, 112, 113, 116
 Affected floors: secrets, spend cap, stop, no duplicate sends and durable intake retain the carried runtime enforcement; the history repair grants no authority
 Operator questions: none
