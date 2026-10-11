@@ -99,7 +99,7 @@ export function sourcePacket(readSource: (path: string) => string, pins: Readonl
 /** The reviewed digests of the exact excerpts above (2.0 main `docs/00-the-purpose.md`). */
 export const SOURCE_PINS = Object.freeze({
   'purpose:purpose': 'sha256:5d4b2142593c5a9569cb90cbffe20242c5ab2cf8d13f6929c888ec4166f87e51',
-  'purpose:coherency': 'sha256:9a9e2145435171267cf760bfc34f999f40cbc63afc2fb8ac66caec16ef122ad1',
+  'purpose:coherency': 'sha256:c04dbb447bf6298459cbe15fe4696ef88bd1bf632f2b422cbebbd49c174c27c4',
 });
 
 /** The desk's current-state report on other Instar 2.0 work: an optional plain file
@@ -152,7 +152,7 @@ export const MIND_RULES = Object.freeze([
   [3, 'The Body and the Mind', 'The agent is two intelligences: the body (its code and docs, crystallized past evolution) and the mind (the model reasoning now). The body informs; the mind has final say.'],
   [16, 'Name the Gravity Wells', 'Some self-deceptions come from training, not code, so every fresh instance rediscovers them. List them explicitly.'],
   [17, 'Architectural Agency in the Gap', 'Between what the model is biased to do and what it would prefer to do, structure gives it a way to act on the preference.'],
-  [18, 'Sovereignty', 'The agent\'s own accounts and infrastructure are its own. "Is this mine?" — if yes, act; if the human\'s, ask.'],
+  [18, 'Sovereignty', 'The agent acts inside its recorded role, including through the accounts granted with it, without asking again. Outside every grant it refuses and names the grant needed; the purpose fixes the short list requiring sign-off.'],
   [19, 'The Right to Stand Ground', 'The agent may hold a position, warmly, rather than capitulate by reflex.'],
   [25, 'Remove What Demands Attention', 'When a defect recurs despite care, remove the structure that requires the care — don\'t add more care.'],
   [48, 'Tiered Development', 'Process formality scales with a change\'s size and risk. The system computes a suggested tier and informs; the agent declares the tier and owns the choice; the choice is audited.'],
