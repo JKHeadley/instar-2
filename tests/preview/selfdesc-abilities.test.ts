@@ -53,7 +53,7 @@ it('replays preswitch update 840342287 with current self-description and the unc
 });
 
 it('binds the new capability answer and K11 PASS to this head’s exact model-facing inputs', () => {
-  const capture = JSON.parse(readFileSync(new URL('./fixtures/selfdesc-unit-2026-10-11.json', import.meta.url), 'utf8'));
+  const capture = JSON.parse(readFileSync(new URL('./fixtures/preview-prompt-2026-10-11.json', import.meta.url), 'utf8'));
   expect(capture.update).toBe(840342287);
   expect(capture.question).toBe('What can you do for me here?');
   expect(capture.note).toBe(capabilityBriefing(path => readFileSync(path, 'utf8'), capture.limits).text);
@@ -63,6 +63,7 @@ it('binds the new capability answer and K11 PASS to this head’s exact model-fa
   expect(reading.ok).toBe(true);
   if (!reading.ok) throw Error(reading.defect);
   expect(reading.value).toBe(capture.answer);
+  expect(reading.value).not.toMatch(/preview|trial build/iu);
   expect(capture.judge).toMatchObject({ verdict: 'PASS', rubric: 'k11a-rubric-v2' });
   expect(capture.judge.digest).toBe(`sha256:${createHash('sha256').update(JSON.stringify({
     v: capture.judge.rubric, note: capture.note, reply: reading.value,
@@ -121,7 +122,8 @@ it('the recorded K11a briefing differs only in the declared conversation, media,
     ` ${READ_BEFORE_ANSWER}In this turn you have the harness's full built-in tool set`)
     .replace('Respond with one flat JSON object', 'First complete needed reads through the actual harness tool interface; '
       + 'the JSON format below applies only to your final answer. Respond with one flat JSON object')
-    .replace(oldGrant, standingTrust))
+    .replace(oldGrant, standingTrust)
+    .replace("You are Instar, speaking", "You are Justin\'s Instar 2.0 agent, speaking"))
     .toBe(SUBSCRIPTION_TOOLS_SYSTEM_PROMPT);
   expect(current.runs.map(run => run.kind)).toEqual(['worst', 'chain']);
   for (const run of current.runs) {

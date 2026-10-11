@@ -108,11 +108,12 @@ it('briefs the installation identity with and without the generated register, pr
     const read = available ? (path: string) => readFileSync(path, 'utf8') : () => { throw Error('absent'); };
     const { text } = capabilityBriefing(read, { ...limits, tools });
     expect(text).toContain(SELF_DESCRIPTION);
+    expect(text).toContain("You are Justin's Instar 2.0 agent");
     expect(text).toContain('Include listed outward actions among your abilities, with their grant conditions.');
     expect(text).toContain('Inside your granted role act without asking again');
     expect(text).toContain('outside it refuse and name the needed grant, not an inability');
     expect(text).toContain('Doorway checks need no new in-role approval.');
-    expect(text).not.toMatch(/PREVIEW trial|This trial|Instar 2\.0/u);
+    expect(text).not.toMatch(/PREVIEW trial|This trial/u);
     expect(text).toContain(`at most ${limits.providerAttempts} model attempts, ending at epoch ms ${limits.expiresAt}`);
     expect(text).toContain('Charges, and unconfirmed calls or deliveries, are recorded unknown.');
     expect(text).toContain('Production safeguards are incomplete.');

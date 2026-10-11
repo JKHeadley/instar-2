@@ -109,10 +109,10 @@ it('spawns the synthetic subscription CLI with exact bytes, args and allowlisted
 // were held. MAX_THINKING_TOKENS=0 is the pinned CLI's env-only thinking-off control.
 // The conversation digest is int11's policy (reviewer-compact-call and related fields);
 // the live frozen14 build pins sha256:557a62fa…, so an int11 switch needs a new record.
-const CURRENT_DIGESTS = { 'preview-decision-system-v2': 'sha256:234293e8e209f210b23cdcf5322202065766dfe64f532f85bbea69486c0260b4',
+const CURRENT_DIGESTS = { 'preview-decision-system-v2': 'sha256:aa84b7b0d3fde23f71698ef7e848ea3f346d0d1c1c6902380c81efba060ae510',
   // 2026-10-09 agent identity repair retains the flat answer protocol.
   // The preceding sha256:5817ae4b… policy needs the existing policy-successor record.
-  [SUBSCRIPTION_CONVERSATION_FRAMING]: 'sha256:b746a83d18e99f08a94f0f6c8efe84e7d086e2f44ed716be6f3114ba51ac234b' } as const;
+  [SUBSCRIPTION_CONVERSATION_FRAMING]: 'sha256:347d824e8864b07d11126d9be84118929a9f704532162b7dc5cf15c4721febf4' } as const;
 for (const conversation of [false, true]) it(`sends thinking off on the ${conversation ? 'conversation' : 'decision'} framing, args unchanged`, async () => {
   const f = fixture({ conversation });
   expect((await value(createClaudeCodeSubscriptionRoute(f.input)).invoke('request', f.bounds)).state).toBe('complete');
@@ -456,7 +456,7 @@ it('refuses the old invocation policy identity before any child', () => {
   expect(createClaudeCodeSubscriptionRoute({ ...f.input, activation: { ...f.input.activation,
     invocationPolicyDigest: hash(policy) } }).kind).toBe('Refused');
   expect(f.commands()).toHaveLength(0);
-  expect(Buffer.byteLength(SUBSCRIPTION_PREVIEW_SYSTEM_PROMPT)).toBe(1424);
+  expect(Buffer.byteLength(SUBSCRIPTION_PREVIEW_SYSTEM_PROMPT)).toBe(1465);
 });
 
 for (const change of ['missing', 'changed', 'duplicated']) it(`synthetic CLI refuses ${change} system argument without a positive answer`, async () => {
