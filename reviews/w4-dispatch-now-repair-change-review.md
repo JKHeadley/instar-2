@@ -23,8 +23,8 @@ Prompt finding: 849db3a6296a | protocol-literal | unchanged fixed empty-memory s
 Prompt finding: bd01de21286a | protocol-literal | unchanged sourceLabel output-field instruction; unrelated to scheduling
 Prompt finding: fb5fa7e706c8 | protocol-literal | unchanged recall-grounding instruction; unrelated to scheduling
 
-Subject: tests/preview/dispatch-now.test.ts, tests/preview/journal.ts, register-source/owner-references/preview.json; generated register replay follows this source pin refresh.
-Register maintenance: the delegated desk rehash refreshed the stale reply-check.test.ts owner pin inherited from this unit. The chain repin reported no inventory changes. Pins are generated, never hand-edited.
+Subject: tests/preview/dispatch-now.test.ts, tests/preview/journal.ts, register-source/owner-references/preview.json; generated/capabilities.json, generated/capabilities.md, generated/coverage.md, generated/glossary.md, generated/register.json, generated/rules.md, generated/source.json.
+Register maintenance: the delegated desk rehash refreshed the stale reply-check.test.ts owner pin inherited from this unit. The chain repin reported no inventory changes. Pins are generated, never hand-edited. Register replay at 5f1ce3d8f4ccf053a4f6887c1825ccd14a4f729b refreshes only source lineage, generation and digest metadata.
 
 ## Closing block
 
