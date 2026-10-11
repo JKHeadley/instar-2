@@ -1,0 +1,38 @@
+# Change review — merge live media build into audience classifier
+
+Subject base: e615b9e7d43f18a5948c3baaa24ad2561679db78
+Review state: open
+Reviewed content: none
+Outcome: Merge live build 141e51e0513dea6f544112967fb1af104c7ffa3b into the audience classifier branch, preserving selected runtime routing and media understanding.
+Affected rules: 1, 4, 14, 26, 28, 30, 34, 36, 37, 45, 49, 70, 74, 90, 91, 101, 103, 111, 112, 113, 115, 116.
+Affected floors: secrets — custody and redaction preserved; spend cap — existing reservations preserved; stop — doorway and worker checks preserved; no duplicate sends — durable intent and unknown outcomes preserved; durable intake — authenticated journal retained.
+Operator questions: none
+Suggested tier: critical
+Declared tier: critical
+Tier rationale: Combines live model/media and durable audit paths; recorded replay and targeted contract tests exercise both decisions and their negative neighbors.
+Side effects: Provider media instructions, local transcription and native tool inventory arrive from the live parent. Conflict resolution forwards the selected runtime into the media answer callback and shares current/legacy media text between intake and audit. Regenerated composition and register pins bind the combined bytes.
+Undo and recovery: Revert the merge by a reviewed commit and regenerate metadata; retain all durable journals and never replay an uncertain send. No live deployment or journal mutation is performed.
+Multi-machine posture: Source and fixtures travel through git. Existing ownership, replicated durability and single-machine closed operation set remain unchanged. Conformance is tested on Darwin only.
+Layer below: Read both constitutional documents in full; inspected both merge parents, selected runtime closure, media preparation, admittedUpdate and auditActiveMemory legacy matching. Checked composition closure and existing register generators, and actual hook configuration/directory.
+Bug class: none
+Bug evidence: none
+Hook bypass: none
+Convergence: none
+Prompt review: The live parent supplies media instructions unchanged. Replay tests exercise captured summary 715672480, uncertain summary 715672483, Jev undecided 715672482 and unsure 969389570, reply review 969389923, delivered reply 715672479 and empty context 715672550, alongside captured audience updates and real confined media output. No fresh paid call or live send is claimed.
+Prompt finding: 034c5250da92 | quoted-evidence | Tests quote shipped prompt instructions to verify their delivery, without making fixture answers semantic triggers — fixture-phrase src/assembly/production-provider.ts <- tests/preview/selfdesc-abilities.test.ts: "run without another yes. the operator can tighten or revoke trust through setup-"
+Prompt finding: 450c79237a95 | quoted-evidence | Tests quote shipped prompt instructions to verify their delivery, without making fixture answers semantic triggers — fixture-phrase src/assembly/production-provider.ts <- tests/preview/journal-people.test.ts: "if two active memory items match the question but disagree, or refer to differen"
+Prompt finding: 45e37ea2e9e9 | quoted-evidence | Tests quote shipped prompt instructions to verify their delivery, without making fixture answers semantic triggers — fixture-phrase src/assembly/production-provider.ts <- tests/preview/selfdesc-abilities.test.ts: "checked when made. workspace work and public reads are already allowed. register"
+Prompt finding: 6af48f94b789 | quoted-evidence | Tests quote shipped prompt instructions to verify their delivery, without making fixture answers semantic triggers — fixture-phrase src/assembly/production-provider.ts <- tests/preview/selfdesc-abilities.test.ts: "sends remain outside the one-machine closed set. the effect doorway reports any "
+Prompt finding: 849db3a6296a | quoted-evidence | Tests quote shipped prompt instructions to verify their delivery, without making fixture answers semantic triggers — fixture-phrase tests/preview/journal.ts <- tests/preview/journal-memory-list.test.ts: "i have no active saved memory items"
+Prompt finding: b00ed403060a | quoted-evidence | Tests quote shipped prompt instructions to verify their delivery, without making fixture answers semantic triggers — fixture-phrase src/assembly/production-provider.ts <- tests/preview/selfdesc-abilities.test.ts: "checked when made. workspace work and public reads are already allowed. register"
+Prompt finding: bd01de21286a | quoted-evidence | Tests quote shipped prompt instructions to verify their delivery, without making fixture answers semantic triggers — fixture-phrase tests/preview/journal.ts <- tests/preview/hallucinated-memory-rate.test.ts: "cite sourcelabel for supported remembered facts."
+Prompt finding: fb5fa7e706c8 | quoted-evidence | Tests quote shipped prompt instructions to verify their delivery, without making fixture answers semantic triggers — fixture-phrase tests/preview/journal.ts <- tests/preview/hallucinated-memory-rate.test.ts: "for a question about what the operator said"
+Deferral: generated/register.json:1 | not-a-deferral=Generated register quotes governed text; this repair defers no work.
+
+Subject (43 paths): generated/capabilities.json, generated/capabilities.md, generated/coverage.md, generated/glossary.md, generated/register.json, generated/rules.md, generated/source.json, package.json, register-source/owner-references/preview.json, scripts/install-local-media.mjs, scripts/local-transcriber.declarations.json, scripts/local-transcriber.mjs, src/assembly/harness.declarations.json, src/assembly/production-codex-provider.ts, src/assembly/production-provider.ts, src/assembly/tool-inventory.ts, tests/assembly/production-codex-provider.test.ts, tests/assembly/production-provider-subscription.test.ts, tests/assembly/tool-inventory.test.ts, tests/preview/README.md, tests/preview/fixtures/media-understanding/README.md, tests/preview/fixtures/media-understanding/meeting.ogg, tests/preview/fixtures/media-understanding/recorded/image.json, tests/preview/fixtures/media-understanding/recorded/unreadable.json, tests/preview/fixtures/media-understanding/recorded/voice.json, tests/preview/fixtures/media-understanding/shapes.jpg, tests/preview/fixtures/media-understanding/shapes.png, tests/preview/held-cascade-replay.test.ts, tests/preview/journal-agent.mjs, tests/preview/journal-audit.mjs, tests/preview/journal-audit.test.ts, tests/preview/journal.ts, tests/preview/media-understanding-live.test.ts, tests/preview/media-understanding.declarations.json, tests/preview/media-understanding.mjs, tests/preview/media-understanding.test.ts, tests/preview/minimal-responder.test.ts, tests/preview/summary-cascade-stall.test.ts, tests/preview/telegram-media.test.ts, tests/preview/telegram-media.ts, tests/preview/tool-turn.mjs, tests/preview/tool-turn.test.ts, tests/register/live-rule-four-admissions.test.ts
+
+## Closing block
+
+simplestRobustRoute: This is the simplest robust route: an ordinary merge, one shared intake text function accepting the existing legacy flag, and the existing media callback with selected runtime retained. No new service, store or capability restriction. Start guard is fetched ancestry; end guards are targeted tests, recorded replay, metadata regeneration and cheap gates; all named safety floors remain at existing checkpoints.
+80/20: Run only affected test files and immediate conformance dependencies in foreground with nice 10 and one worker, plus typecheck/build and mandatory cheap gates. The pipeline supplies the fresh full-suite report; no independent convergence claim.
+VERDICT: author submission; this record asserts no independent verdict — the review desk records its own
