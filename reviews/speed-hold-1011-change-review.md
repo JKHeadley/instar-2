@@ -23,6 +23,9 @@ Decision: parallel-audience-reads | Keep all six observations and every fresh pr
 Decision: preserve-review-routing | Live arithmetic's two review stages total 19.757 s versus 15.329 s for the answer. Harness startup is not separately recorded; do not claim it dominates. Review routing remains the desk's on-hold item. No review is skipped or narrowed. | reported=/Users/dabombstudio/.instar/agents/echo/.instar/lanes/speed-hold-1011-PROGRESS.md
 Decision: no-holding-change | Update 969390382 never attempted an early holding line; Rule 87 and the task exclude building one. Its absence and memory update 969390379's invalid citation are separate from repeated audience reads. | reported=/Users/dabombstudio/.instar/agents/echo/.instar/lanes/speed-hold-1011-PROGRESS.md
 
+Decision: publish-source-pin | Regenerate the existing shape-only register from committed source f92979e2b4df4a990745a77cfb3b44d7cc28243e so final lint and register:check bind these exact sources. No authority declaration changes. | reported=/Users/dabombstudio/.instar/agents/echo/.instar/lanes/speed-hold-1011-PROGRESS.md
+Deferral: generated/register.json:1 | not-a-deferral=Mechanical replay preserves existing declaration descriptions; no new deferred work.
+
 ## Closing block
 
 simplestRobustRoute: This is the simplest robust route within the measured scope: overlap independent existing reads without skipping any evidence or review. A fixed four-read batch prevents cumulative serial network delay; allSettled prevents orphan reads after a failed sibling. Start guard is valid scope and initial member count; end guards are exact chat/bot/member evidence and final count; existing resource, grant, stop and dispatch checks remain. No new machinery is needed beyond the bounded batch. Copied-root replay uses recorded answers and verdicts, never paid calls or Telegram sends; no deployed or under-15-second claim is made.
