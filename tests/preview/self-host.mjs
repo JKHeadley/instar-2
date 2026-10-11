@@ -175,6 +175,12 @@ const GRANTS = new Set(['local-install', 'operator-storage-key']);
 const operatorCredential = reference => reference === 'preview-storage-key' && process.env.INSTAR_SECRET_PREVIEW_STORAGE_KEY
   ? { env: 'INSTAR_SECRET_PREVIEW_STORAGE_KEY', value: process.env.INSTAR_SECRET_PREVIEW_STORAGE_KEY } : null;
 
+const reportResult = report => {
+  process.stdout.write(`${JSON.stringify({ ...report, tools: report.tools?.map(item => ({ tool: item.tool, code: item.code ?? null,
+    refused: item.refused ?? null, observation: item.observation ?? null })) })}\n`);
+  if (!report.passed) process.exitCode = 1;
+};
+
 const main = async () => {
   const [command, ...rest] = process.argv.slice(2), options = {};
   for (let i = 0; i < rest.length; i += 2) {
@@ -190,6 +196,10 @@ const main = async () => {
   if (grants.some(grant => !GRANTS.has(grant))) throw Error('self-host: unknown grant');
   const scopeRoots = (options['scope-roots'] ?? root).split(':').map(path => resolve(path));
   const model = options.model, stopped = stoppedAt(root);
+  if (stopped()) {
+    appendDurable(join(root, 'self-host.jsonl'), { phase: 'stopped', round: 1, at: Date.now() });
+    return reportResult({ passed: false, stopped: true, rounds: 0, recovered: [] });
+  }
   const { createSubscriptionProviderIO } = await import('../../scripts/production-boot-io.mjs');
   const activation = JSON.parse(readFileSync(options['activation-record'], 'utf8'));
   const profile = loadLoginProfile(options['login-profile']);
@@ -197,9 +207,7 @@ const main = async () => {
     profile, activation, model, stopped });
   const report = await selfHost({ task: options.task, provider, repo: process.cwd(), root, grants, context: SELF_HOST_CONTEXT,
     scopes: { roots: scopeRoots }, resolveCredential: operatorCredential });
-  process.stdout.write(`${JSON.stringify({ ...report, tools: report.tools?.map(item => ({ tool: item.tool, code: item.code ?? null,
-    refused: item.refused ?? null, observation: item.observation ?? null })) })}\n`);
-  if (!report.passed) process.exitCode = 1;
+  reportResult(report);
 };
 if (process.argv[1] && resolve(process.argv[1]) === resolve(new URL(import.meta.url).pathname)) {
   try { await main(); } catch (error) { process.stderr.write(`self-host refused: ${redact(String(error?.message ?? error)).text}\n`); process.exitCode = 1; }

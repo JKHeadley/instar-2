@@ -15,12 +15,13 @@
 // with a minimal recorded plan; the fourth is the t2boundary side, driving the CLI's own whole dispatch composition
 // (its real question and prompt) and asserting both neighbours inside one case.
 import { expect, it } from 'vitest';
-import { mkdtempSync, readFileSync, realpathSync, rmSync, writeFileSync } from 'node:fs';
+import { mkdtempSync, readFileSync, realpathSync, rmSync, writeFileSync, existsSync } from 'node:fs';
+import { spawnSync } from 'node:child_process';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { SELF_HOST_QUESTION, doorwayProvider, loadLoginProfile, selfHostPrompt } from './self-host.mjs';
 import { dispatchOwnedProvider } from './self-host-owners.ts';
-import { stoppedAt } from './self-host-harness.mjs';
+import { readDurable, stoppedAt } from './self-host-harness.mjs';
 import { DOORWAY_CONFORMANCE } from './doorway-conformance.js';
 import { successiveWorld } from './successive-fixture.js';
 
@@ -32,6 +33,40 @@ const profileFile = root => {
   writeFileSync(path, `${JSON.stringify(DOORWAY_CONFORMANCE[DOORWAY].profile, null, 2)}\n`);
   return path;
 };
+
+it('the actual CLI reports a durable stop before loading provider inputs and still validates them when clear', () => {
+  const root = temp();
+  const cli = args => spawnSync(process.execPath, ['--no-warnings', '--loader', './scripts/slice-ts-loader.mjs',
+    'tests/preview/self-host.mjs', ...args], { cwd: process.cwd(), encoding: 'utf8', timeout: 30000 });
+  try {
+    const activation = join(root, 'activation.json'), profile = profileFile(root);
+    writeFileSync(activation, '{}\n');
+    const args = ['run', '--task', 'Build word-count.', '--root', root, '--activation-record', activation,
+      '--login-profile', profile, '--model', world.model];
+    const clear = cli(args);
+    expect(clear.error).toBeUndefined();
+    expect(clear.status).toBe(1);
+    expect(clear.stdout).toBe('');
+    expect(clear.stderr).toContain('subscription activation');
+    expect(existsSync(join(root, 'owners'))).toBe(false);
+    const stop = cli(['stop', '--root', root]);
+    expect(stop.error).toBeUndefined();
+    expect(stop.status).toBe(0);
+    expect(stoppedAt(root)()).toBe(true);
+    // Missing files prove that the stopped branch does not even load provider credentials or activation.
+    rmSync(activation); rmSync(profile);
+    for (let run = 0; run < 2; run++) {
+      const stopped = cli(args);
+      expect(stopped.error).toBeUndefined();
+      expect(stopped.status).toBe(1);
+      expect(stopped.stderr).toBe('');
+      expect(JSON.parse(stopped.stdout)).toEqual({ passed: false, stopped: true, rounds: 0, recovered: [] });
+      expect(existsSync(join(root, 'owners'))).toBe(false);
+      expect(existsSync(join(root, 'release'))).toBe(false);
+    }
+    expect(readDurable(join(root, 'self-host.jsonl')).map(row => row.phase)).toEqual(['stopped', 'stopped']);
+  } finally { rmSync(root, { recursive: true, force: true }); }
+}, 120000);
 const plan = { files: [{ path: 'a.mjs', content: 'export const a = 1;\n' }], tools: [],
   package: { namespace: 'agent.a', version: '1.0.0' } };
 const recordedAnswer = JSON.stringify({ type: 'Decision', schemaVersion: 1, id: 'cli-profile',

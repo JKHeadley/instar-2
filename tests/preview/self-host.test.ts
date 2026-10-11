@@ -268,7 +268,7 @@ it('a confined child ends at its own deadline after its launcher is killed, and 
 import { SELF_HOST_CONTEXT } from ${JSON.stringify(join(process.cwd(), 'tests/preview/self-host.mjs'))};
 const root = ${JSON.stringify(root)};
 const harness = createSelfHostHarness({ root, context: SELF_HOST_CONTEXT, stopped: stoppedAt(root), now: () => Date.now(), log: openRecordLog(root, SELF_HOST_CONTEXT), wallMs: 5000 });
-const directory = harness.stageWork([{ path: 'hang.test.mjs', bytes: "import { test } from 'node:test';\\ntest('hangs', () => { for (;;) {} });\\n" }]);
+const directory = harness.stageWork([{ path: 'hang.test.mjs', bytes: "import { test } from 'node:test';\\ntest('hangs', async () => { await new Promise(done => setTimeout(done, 60000)); });\\n" }]);
 await harness.run({ mode: 'confined', kind: 'test', tool: 'package-test', work: 'w', directory, files: ['hang.test.mjs'] });`;
   const launcher = spawn(process.execPath, ['--no-warnings', '--loader', './scripts/slice-ts-loader.mjs', '--input-type=module', '-e', script],
     { cwd: process.cwd(), stdio: ['ignore', 'ignore', 'pipe'] });
@@ -283,7 +283,7 @@ await harness.run({ mode: 'confined', kind: 'test', tool: 'package-test', work: 
     const pid = Number(launched.sourceEvidence[0].slice('spawned:'.length)), alive = () => { try { process.kill(pid, 0); return true; } catch { return false; } };
     launcher.kill('SIGKILL');
     await new Promise(done => launcher.on('close', done));
-    expect(alive()).toBe(true); // the executor is gone; the confined child is still there, spinning in its generated test
+    expect(alive()).toBe(true); // the executor is gone; the confined child is still waiting in its generated test
     const since = Date.now();
     while (alive() && Date.now() - since < 15000) await new Promise(done => setTimeout(done, 100));
     expect(alive()).toBe(false); // ended by its own wall bound (5 s), with no launcher left to enforce anything
