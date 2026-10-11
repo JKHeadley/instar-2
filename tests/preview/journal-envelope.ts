@@ -48,3 +48,18 @@ export function withWorkspaceNotice(bytes: string, notice: string): string {
   context.content = encoded({ ...value, packet: { ...value.packet, workspace: notice } }).bytes;
   return encoded(envelope).bytes;
 }
+
+/** Packet fitting is synchronous and may try hundreds of variants. Read tool standing once
+ * for that preparation only; dispatch and every call outside it still read current authority.
+ * A snapshot never crosses an await, and even a failed preparation restores the live reader. */
+export function toolPreparation(active: () => boolean) {
+  let snapshot: boolean | undefined;
+  return {
+    active: () => snapshot ?? active(),
+    run: <T>(prepare: () => T): T => {
+      const previous = snapshot;
+      snapshot = active();
+      try { return prepare(); } finally { snapshot = previous; }
+    },
+  };
+}
