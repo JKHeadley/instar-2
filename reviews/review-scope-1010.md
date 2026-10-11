@@ -18,7 +18,7 @@ Bug class: none
 Bug evidence: none
 Hook bypass: none
 Convergence: none
-Decision: review-scope-1010-D1 | Use per-commit diff-tree paths rather than a net tree diff so a touched then reverted record still receives validation. | reported=/Users/dabombstudio/.instar/agents/echo/.instar/lanes/review-scope-1010-r3-PROGRESS.md
+Decision: review-scope-1010-D1 | Use per-commit diff-tree paths rather than a net tree diff so a touched then reverted record still receives validation. | reported=/Users/dabombstudio/.instar/agents/echo/.instar/lanes/review-scope-1010-r4-PROGRESS.md
 
 Subject (2 paths): scripts/check-change-review.mjs, tests/register/change-review-git.test.ts
 

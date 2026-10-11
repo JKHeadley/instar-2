@@ -18,8 +18,8 @@ Side effects: Removes base-tip comparison and broad error demotion; frozen conte
 Layer below: Main check current-record selection, validateRecord error categories, Git per-commit diff-tree and remote reachability; the two Astra NO reports and their frozen-subject reproductions.
 Bug class: integration
 Bug evidence: reproducer=tests/register/change-review-git.test.ts
-Decision: review-scope-1010-r3-D1 | Restore main's current-record selection and single validation pass; demote only missing or invalid Prompt finding dispositions on untouched records, never other validation errors. No base-tip or second prompt scan. | reported=/Users/dabombstudio/.instar/agents/echo/.instar/lanes/review-scope-1010-r3-PROGRESS.md
-Decision: review-scope-1010-r3-D2 | Preserve per-commit own-record selection including merge-parent diffs and touched-then-reverted paths; ignore remote tips containing HEAD and retain CHANGE_REVIEW_BASE precedence. | reported=/Users/dabombstudio/.instar/agents/echo/.instar/lanes/review-scope-1010-r3-PROGRESS.md
+Decision: review-scope-1010-r3-D1 | Restore main's current-record selection and single validation pass; demote only missing or invalid Prompt finding dispositions on untouched records, never other validation errors. No base-tip or second prompt scan. | reported=/Users/dabombstudio/.instar/agents/echo/.instar/lanes/review-scope-1010-r4-PROGRESS.md
+Decision: review-scope-1010-r3-D2 | Preserve per-commit own-record selection including merge-parent diffs and touched-then-reverted paths; ignore remote tips containing HEAD and retain CHANGE_REVIEW_BASE precedence. | reported=/Users/dabombstudio/.instar/agents/echo/.instar/lanes/review-scope-1010-r4-PROGRESS.md
 
 ## Closing block
 

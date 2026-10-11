@@ -18,7 +18,7 @@ Side effects: Brings main's approved constitution alignment, register publicatio
 Layer below: Both merge parents; reviews/docs-amend-1010-change-review.md, reviews/repo-checks-1010-change-review.md and reviews/repo-checks-1010-r2-change-review.md; governed version validation and existing register checks.
 Bug class: none
 Bug evidence: none
-Decision: review-scope-1010-r3-merge-D1 | Use the pre-merge branch head as Subject base so existing coverage includes main's PR #155 merge and the integration commit, without suppressing Rule 74. | reported=/Users/dabombstudio/.instar/agents/echo/.instar/lanes/review-scope-1010-r3-PROGRESS.md
+Decision: review-scope-1010-r3-merge-D1 | Use the pre-merge branch head as Subject base so existing coverage includes main's PR #155 merge and the integration commit, without suppressing Rule 74. | reported=/Users/dabombstudio/.instar/agents/echo/.instar/lanes/review-scope-1010-r4-PROGRESS.md
 Deferral: generated/conversion.json:1 | not-a-deferral=derived main publication; no authored work postponed
 Deferral: generated/register.json:1 | not-a-deferral=derived main publication; no authored work postponed
 

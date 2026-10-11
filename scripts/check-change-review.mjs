@@ -10,7 +10,7 @@
 //     range): required fields, frozen content, prompt/dispatch findings, deferrals, skips and
 //     governed-document versions (Rule 90: a changed governed document adds a new changelog
 //     version and keeps every earlier one byte-identical; any landing commit it names exists).
-//     Only prompt dispositions on records untouched by this change are counted as debt.
+//     Only unrelated prompt dispositions on records untouched by this change count as debt.
 //     CHANGE_REVIEW_BASE overrides the remote-reachability boundary for own commits.
 //
 // Authoring:
@@ -138,9 +138,9 @@ function changeScope() {
   const commits = git('rev-list', 'HEAD', '--not', ...new Set(excluded));
   if (!commits) return new Set();
   const paths = execFileSync('git', ['diff-tree', '--stdin', '--root', '-m', '-r', '--no-commit-id',
-    '--name-only', '--no-renames', '--diff-filter=AM', '-z', '--', 'reviews/'],
+    '--name-only', '--no-renames', '--diff-filter=AM', '-z'],
   { input: commits + '\n', encoding: 'utf8', maxBuffer: 256 * 1024 * 1024, stdio: ['pipe', 'pipe', 'pipe'] });
-  return new Set(paths.split('\0').filter(p => p.endsWith('.md')));
+  return new Set(paths.split('\0').filter(Boolean));
 }
 
 function check({ quiet = false } = {}) {
@@ -159,27 +159,42 @@ function check({ quiet = false } = {}) {
   const changed = changeScope();
   let debtRecords = 0; let debtFindings = 0;
   const scan = current.length ? promptScan() : { findings: [], promptSources: [] };
+  const touchedFindings = scan.findings.filter(f => changed.has(f.promptFile) || (f.fixtureFile && changed.has(f.fixtureFile)));
+  const dispositioned = new Set(); const pending = new Map();
   for (const r of current.filter(x => x.valid)) {
     if (!r.subject.length) { errors.push(`Rule 74: ${r.path} reviews an empty subject`); continue; }
     const hits = addedLineHits(addedLines(r.base, r.last));
     // Rule 109: a frozen record is compared with the candidate's content, whichever record
     // covers the later commits; only an explicit reopen of THIS record voids its round.
     const ctx = { subject: r.subject, digest: digestAt('HEAD', r.subject),
-      promptFindings: scan.findings.filter(f => r.subject.includes(f.promptFile) || (f.fixtureFile && r.subject.includes(f.fixtureFile))),
+      promptFindings: scan.findings.filter(f => r.subject.includes(f.promptFile) || (f.fixtureFile && r.subject.includes(f.fixtureFile))
+        || (changed.has(r.path) && touchedFindings.includes(f))),
       promptSourcesChanged: r.subject.filter(p => scan.promptSources.includes(p)),
       deferrals: hits.deferrals, skips: hits.skips, exists: p => tryGit('cat-file', '-e', `${r.last}:${p}`) !== null,
       read: p => tryGit('show', `${r.last}:${p}`),
       resolvesEvidence: p => tryGit('cat-file', '-e', `${r.last}:${p}`) !== null || (isAbsolute(p) && existsSync(p) && statSync(p).isFile()),
       readEvidence: p => (isAbsolute(p) ? (existsSync(p) && statSync(p).isFile() ? readFileSync(p, 'utf8') : null) : tryGit('show', `${r.last}:${p}`)) };
     const v = validateRecord(r.record, ctx);
-    // Only missing/invalid prompt dispositions are older-record debt. Every other
-    // validation (including frozen content and Prompt review) keeps its existing bar.
-    const promptDebt = changed.has(r.path) ? [] : v.errors.filter(e => e.startsWith('Rules 12/27: prompt finding ') && e.includes("needs 'Prompt finding:"));
-    if (promptDebt.length) { debtRecords++; debtFindings += promptDebt.length; }
-    errors.push(...v.errors.filter(e => !promptDebt.includes(e)).map(e => `${r.path}: ${e}`),
-      ...governedVersionErrors(r).map(e => `${r.path}: ${e}`));
+    // A touched prompt/fixture owes one valid own disposition, even when a broad
+    // record range cancels the edit. Reuse this validation; never edit older records.
+    if (changed.has(r.path)) for (const f of touchedFindings) {
+      if (!v.errors.some(e => e.startsWith(`Rules 12/27: prompt finding ${f.id} `))) dispositioned.add(f.id);
+    }
+    let recordDebt = 0;
+    for (const e of v.errors) {
+      const missing = /^Rules 12\/27: prompt finding ([0-9a-f]{12}) .*needs 'Prompt finding:/.exec(e);
+      if (missing && touchedFindings.some(f => f.id === missing[1])) {
+        // Prefer the own record's diagnostic; an older record cannot discharge it.
+        if (!pending.has(missing[1]) || (changed.has(r.path) && !changed.has(pending.get(missing[1]).path)))
+          pending.set(missing[1], { path: r.path, error: e });
+      } else if (missing && !changed.has(r.path)) recordDebt++;
+      else errors.push(`${r.path}: ${e}`);
+    }
+    if (recordDebt) { debtRecords++; debtFindings += recordDebt; }
+    errors.push(...governedVersionErrors(r).map(e => `${r.path}: ${e}`));
     notes.push(...v.notes.map(n => `${r.path}: ${n}`));
   }
+  for (const [id, { path, error }] of pending) if (!dispositioned.has(id)) errors.push(`${path}: ${error}`);
   if (!quiet) {
     if (debtRecords) console.log(`note: older-record prompt debt: ${debtRecords} records, ${debtFindings} findings; cleanup item review-debt-1010`);
     for (const n of notes) console.log(`note: ${n}`);
