@@ -2,15 +2,12 @@ import { execFileSync } from 'node:child_process';
 import { readFileSync } from 'node:fs';
 import { resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
+import { firstLanding } from './first-landing.mjs';
 
 const inheritedScopeTest = 'tests/harness-adapters/contract-map.test.ts';
 
 export function p15AdditivityBaseline(mainRef = 'main', headRef = 'HEAD', root = process.cwd()) {
-  const git = args => execFileSync('git', ['-C', root, ...args], { encoding: 'utf8' }).trim();
-  const mainTip = git(['rev-parse', mainRef]);
-  const mergeBase = git(['merge-base', headRef, mainRef]);
-  if (mergeBase !== mainTip)
-    throw new Error(`P15 additivity: stale baseline ${mergeBase}; current ${mainRef} tip is ${mainTip} and is not contained in ${headRef}`);
+  const { mainTip, mergeBase } = firstLanding(root, ['src/scheduled/index.ts'], mainRef, headRef);
   const tree = execFileSync('git', ['-C', root, 'ls-tree', '-r', '-z', mergeBase, '--', 'src', 'tests']);
   const files = tree.toString('utf8').split('\0').filter(Boolean).map(entry => {
     const match = /^(\d+) blob ([0-9a-f]{40})\t(.+)$/.exec(entry);

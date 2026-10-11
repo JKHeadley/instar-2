@@ -61,12 +61,13 @@ it('P15 round-seventeen F1 refuses duplicate, missing and extra identities at bo
     'explicit-single-row-audit/coverage').not.toThrow();
 });
 
-it('P15 round-seventeen F2 proves the complete current-main population including Part Sixteen A1', () => {
+it('P15 round-seventeen F2 proves the complete shared-main population including Part Sixteen A1', () => {
   const baseline = p15AdditivityBaseline();
   const mainTip = execFileSync('git', ['rev-parse', 'main'], { encoding: 'utf8' }).trim();
-  const mainFiles = execFileSync('git', ['ls-tree', '-r', '--name-only', mainTip, '--', 'src', 'tests'],
+  const mergeBase = execFileSync('git', ['merge-base', 'main', 'HEAD'], { encoding: 'utf8' }).trim();
+  const mainFiles = execFileSync('git', ['ls-tree', '-r', '--name-only', mergeBase, '--', 'src', 'tests'],
     { encoding: 'utf8' }).trim().split('\n');
-  expect(baseline).toMatchObject({ mainTip, mergeBase: mainTip });
+  expect(baseline).toMatchObject({ mainTip, mergeBase });
   expect(baseline.files.map((row: { file: string }) => row.file)).toEqual(mainFiles);
   expect(baseline.files.map((row: { file: string }) => row.file)).toEqual(expect.arrayContaining([
     'src/measurement/index.ts',
@@ -76,7 +77,7 @@ it('P15 round-seventeen F2 proves the complete current-main population including
   expect(checkP15Additivity({ success: true })).toMatchObject({
     applicable: false,
     mainTip,
-    mergeBase: mainTip,
+    mergeBase,
     sourceCount: mainFiles.filter(file => file.startsWith('src/')).length,
     testFixtureCount: mainFiles.filter(file => file.startsWith('tests/')).length,
   });
@@ -128,7 +129,16 @@ it('P15 round-seventeen F2 compares first landing, then reports inapplicability 
     expect(() => checkP15Additivity({ success: false }, 'main', 'HEAD', root))
       .toThrow(/successful actual test run/);
     expect(() => p15AdditivityBaseline('main', 'stale', root))
-      .toThrow(/stale baseline .* current main tip .* is not contained in stale/);
+      .toThrow(/first landing: stale main baseline/);
+    const shared = git('rev-parse', 'main');
+    git('switch', 'main');
+    writeFileSync(join(root, 'src', 'main-only.ts'), 'export const mainOnly = true;\n');
+    git('add', '.'); git('commit', '-m', 'advance main after scheduled landing');
+    git('switch', 'later-edit');
+    const diverged = checkP15Additivity({ success: true }, 'main', 'HEAD', root);
+    expect(diverged).toMatchObject({ applicable: false, mainTip: git('rev-parse', 'main'), mergeBase: shared });
+    expect(diverged.files.map((row: { file: string }) => row.file)).not.toContain('src/main-only.ts');
+    expect(() => p15AdditivityBaseline('main', 'stale', root)).toThrow(/first landing: stale main baseline/);
   } finally {
     rmSync(root, { recursive: true, force: true });
   }

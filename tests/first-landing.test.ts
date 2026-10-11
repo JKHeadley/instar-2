@@ -46,6 +46,18 @@ it('each unit uses its own baseline implementation evidence, including later sea
       .toBe(false);
     expect(() => firstLanding(root, ['src/scheduled/index.ts'], 'missing-main')).toThrow();
     expect(() => firstLanding(root, ['src/scheduled/index.ts'], 'main', 'unlanded')).toThrow(/stale/);
+
+    const shared = git('rev-parse', 'main');
+    git('switch', 'main');
+    put('src/new-unit.ts', 'landed only on advanced main\n');
+    git('add', '.'); git('commit', '-m', 'advance main independently');
+    git('switch', 'later');
+    for (const unit of units) expect(firstLanding(root, [unit])).toEqual({
+      mainTip: git('rev-parse', 'main'), mergeBase: shared, applicable: false,
+    });
+    expect(() => firstLanding(root, ['src/new-unit.ts'])).toThrow(/stale/);
+    expect(() => firstLanding(root, ['src/scheduled/index.ts', 'src/new-unit.ts'])).toThrow(/stale/);
+    expect(() => firstLanding(root, ['src/absent.ts'])).toThrow(/stale/);
   } finally {
     rmSync(root, { recursive: true, force: true });
   }
