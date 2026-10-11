@@ -476,7 +476,8 @@ it('replays answer, Jev, fallback and send times into status percentiles', async
     journal.close();
     const replay = openPreviewJournal(path, key, undefined, undefined, true);
     expect(replyTimings(replay.view)).toEqual({ budgetMs: REPLY_CHECK_BUDGET_MS,
-      perReply: [{ update: 1, answerMs: 100, jevMs: 200, fallbackMs: 300, sendMs: 400 }],
+      perReply: [{ update: 1, intakeAt: 1000, turnStartAt: 1000, answerAt: 1100, checkDoneAt: 1600, sentAt: 2000,
+        answerMs: 100, jevMs: 200, fallbackMs: 300, sendMs: 400 }],
       answer: { count: 1, p50Ms: 100, p95Ms: 100 }, jev: { count: 1, p50Ms: 200, p95Ms: 200 },
       fallback: { count: 1, p50Ms: 300, p95Ms: 300 }, send: { count: 1, p50Ms: 400, p95Ms: 400 } });
     replay.close();
