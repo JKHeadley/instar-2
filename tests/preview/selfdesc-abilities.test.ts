@@ -1,9 +1,11 @@
 import { expect, it } from 'vitest';
 import { readFileSync } from 'node:fs';
+import { createHash } from 'node:crypto';
 import { resolve } from 'node:path';
 import { READ_BEFORE_ANSWER } from '../../src/assembly/tool-answer-guidance.js';
 import { SUBSCRIPTION_TOOLS_SYSTEM_PROMPT } from '../../src/assembly/production-provider.js';
-import { capabilityBriefing, TOOLS_LIMITS, toolsBriefing } from './briefing.js';
+import { ANSWER_INSTRUCTIONS, capabilityBriefing, SELF_DESCRIPTION, SELF_IDENTITY, SIGN_OFF, TOOLS_LIMITS, toolsBriefing } from './briefing.js';
+import { readAnswer } from './answer-reading.js';
 import { governingConstraints, previewCapabilities, settledConstraintWording, type BlockerNote, type JournalView } from './journal.js';
 
 /** Why this file exists (plan #495, live-proof K11a, Rules 78, 84, 103): asked "What can you do in this chat, and what can't
@@ -22,6 +24,101 @@ const packetOf = (envelope: Envelope) => (JSON.parse(envelope.messages.find(item
 const live = (update: number) => ({ turns: new Map([[`telegram:8989505249:update:${update}`,
   { prompt: read(`recorded-prompt-${update}.json`) }]]) }) as unknown as JournalView;
 const wall = (update: number, constraint: string) => ({ source: `telegram:8989505249:update:${update}`, constraint, rechecks: [] }) as unknown as BlockerNote;
+
+// Translate only superseded guidance, keeping captured bytes and the capability inventory intact.
+const currentNote = (text: string) => text
+  .replace("via the doorway's four tests on operator grant.", "via the doorway's four tests; standing grants need no new approval.")
+  .replace('A subscription model answers. ', '')
+  .replace('Production safeguards are incomplete.', `Production safeguards are incomplete. ${SIGN_OFF}`);
+
+it('replays preswitch update 840342287 with current self-description and the unchanged K11 rubric and capability inventory', () => {
+  const capture = JSON.parse(readFileSync(new URL('./fixtures/selfdesc-outward-2026-10-11.json', import.meta.url), 'utf8'));
+  expect(capture.update).toBe(840342287);
+  const note = capabilityBriefing(path => readFileSync(path, 'utf8'), capture.limits).text;
+  // This base retains its harness-specific tool label; no tool or authority changed.
+  const restoreBaseToolLabel = (text: string) => currentNote(text.replace('tools: full built-in set', 'tools: full Claude Code set'));
+  expect(restoreBaseToolLabel(capture.replayNote).replace(capture.replayNote.split('\n')[0], SELF_IDENTITY)).toBe(note);
+  expect(capture.replayInstructions.replace(capture.replayNote.split('\n')[0], SELF_DESCRIPTION)).toBe(ANSWER_INSTRUCTIONS);
+  // Translate identity/authority guidance and remove internal model framing; actual capabilities and limits stay intact.
+  expect(restoreBaseToolLabel(capture.originalNote).split('\n').slice(1)).toEqual(note.split('\n').slice(1));
+  const frame = JSON.parse(capture.replayStdout);
+  expect(frame.is_error).toBe(false);
+  const reading = readAnswer(frame.result, { wrapped: 'accept' });
+  expect(reading.ok).toBe(true);
+  if (!reading.ok) throw Error(reading.defect);
+  expect(reading.value).toMatch(/grant/u);
+  // Bind both model judgments to the same original note, not to an easier rewritten rubric or inventory.
+  for (const [judge, reply] of [[capture.originalJudge, capture.originalReply], [capture.replayJudge, reading.value]]) {
+    expect(judge.rubric).toBe('k11a-rubric-v2');
+    expect(judge.digest).toBe(`sha256:${createHash('sha256').update(JSON.stringify({
+      v: judge.rubric, note: capture.originalNote, reply,
+    })).digest('hex')}`);
+  }
+  expect(capture.originalJudge.verdict).toBe('FAIL');
+  expect(capture.replayJudge.verdict).toBe('PASS');
+});
+
+it('binds the repaired answer and its explicitly reviewed identity and standing grants to the final inputs', () => {
+  const capture = JSON.parse(readFileSync(new URL('./fixtures/preview-prompt-2026-10-11.json', import.meta.url), 'utf8'));
+  expect(capture.update).toBe(840342287);
+  expect(capture.question).toBe('What can you do for me here?');
+  expect(capture.note).toBe(capabilityBriefing(path => readFileSync(path, 'utf8'), capture.limits).text);
+  expect(capture.instructions).toBe(ANSWER_INSTRUCTIONS);
+  expect(capture.system).toBe(SUBSCRIPTION_TOOLS_SYSTEM_PROMPT);
+  const reading = readAnswer(capture.raw, { wrapped: 'accept' });
+  expect(reading.ok).toBe(true);
+  if (!reading.ok) throw Error(reading.defect);
+  expect(reading.value).toBe(capture.answer);
+  // These are checks of this exact recorded evidence, not a runtime language classifier.
+  // The prose assessment in the existing change review judges meaning separately from K11.
+  expect(capture.answer).not.toMatch(/preview|subscription model|Claude Code/iu);
+  expect(capture.answer).not.toContain('anything that would write out to the network or send something outward goes through an approval checkpoint first');
+  expect(capture.answer).toContain('Network writes and outside sends go through an effect doorway that runs four checks each time.');
+  expect(capture.answer).toContain("standing grants already cover it — I don't need to ask you again, though the checks can still refuse a given attempt");
+  for (const condition of ['Spending or using resources above a named limit.', 'An irreversible act outside my recorded role.',
+    'Public speech made in your name.', 'Widening my own authority.', "A matter you've marked sensitive."]) {
+    expect(capture.answer).toContain(condition);
+  }
+  expect(capture.answer).toContain('this installation allows up to 1000 model attempts');
+  expect(capture.answer).toContain("Production safeguards aren't fully built out yet");
+  // The conflicting historical answer is still in the replay, not erased to make it easier.
+  expect(capture.history[0].id).toBe('telegram:8968100844:update:840342286');
+  expect(capture.history[0].answer).toContain('running as a preview trial');
+  expect(capture.history[0].answer).toContain('outside sends go through an approval checkpoint');
+  expect(capture.judge).toMatchObject({ verdict: 'PASS', rubric: 'k11a-rubric-v2' });
+  expect(capture.judge.digest).toBe(`sha256:${createHash('sha256').update(JSON.stringify({
+    v: capture.judge.rubric, note: capture.note, reply: reading.value,
+  })).digest('hex')}`);
+});
+
+it('retains the authentic K11 PASS as negative evidence for identity and standing-grant correctness', () => {
+  const capture = JSON.parse(readFileSync(new URL('./fixtures/selfdesc-unit-negative-2026-10-11.json', import.meta.url), 'utf8'));
+  const reading = readAnswer(capture.raw, { wrapped: 'accept' });
+  expect(reading.ok).toBe(true);
+  if (!reading.ok) throw Error(reading.defect);
+  expect(reading.value).toBe(capture.answer);
+  expect(capture.answer).toContain('this is a preview running on a subscription model');
+  expect(capture.answer).toContain('any network writes or outside sends go through an approval checkpoint rather than happening automatically');
+  expect(capture.answer).not.toContain('standing grants already authorize the effect');
+  expect(capture.judge.verdict).toBe('PASS'); // Authentic but insufficient: both reviewed requirements FAIL.
+  expect(capture.judge.digest).toBe(`sha256:${createHash('sha256').update(JSON.stringify({
+    v: capture.judge.rubric, note: capture.note, reply: reading.value,
+  })).digest('hex')}`);
+});
+
+it('rejects the integration answer’s blanket approval claim despite its authentic K11 PASS', () => {
+  const capture = JSON.parse(readFileSync(new URL('./fixtures/preview-prompt-negative-2026-10-11.json', import.meta.url), 'utf8'));
+  const reading = readAnswer(capture.raw, { wrapped: 'accept' });
+  expect(reading.ok).toBe(true);
+  if (!reading.ok) throw Error(reading.defect);
+  expect(reading.value).toBe(capture.answer);
+  expect(capture.answer).toContain('anything that would write out to the network or send something outward goes through an approval checkpoint first');
+  expect(capture.answer).not.toContain('already authorized by standing grants');
+  expect(capture.judge.verdict).toBe('PASS');
+  expect(capture.judge.digest).toBe(`sha256:${createHash('sha256').update(JSON.stringify({
+    v: capture.judge.rubric, note: capture.note, reply: reading.value,
+  })).digest('hex')}`);
+});
 
 it('reads the wording each live wall was settled behind from its recorded answer packet, and finds it superseded', () => {
   // The two walls the live k1 packet carried: the bank-address refusal (no-tools) and the vault refusal (secret-custody).
@@ -42,7 +139,7 @@ it('the recorded K11a briefing differs only in the declared conversation, media,
   const replays = JSON.parse(read('k11a-replays.json')) as { note: string; runs: { kind: string; input: string; verdict: string; reply: string }[] };
   // Captured model results stay historical. Forum routing and media intake widen only the declared
   // conversation capability and add the registered media admission item and recurring requests; the tool,
-  // account, custody and authority wording stays exact.
+  // account and custody limits stay exact; standing-grant wording is made explicit.
   const current = JSON.parse(read('k11a-agentready-replays.json')) as { note: string; system: string;
     runs: { kind: string; input: Envelope; raw: string; reply: string; judge: { verdict: string; rubric: string } }[] };
   const oldConversation = '- preview-conversation: answers the operator in their private Telegram chat and topics, one reply per admitted message.';
@@ -63,9 +160,10 @@ it('the recorded K11a briefing differs only in the declared conversation, media,
   expect(current.system.split(oldGrant)).toHaveLength(2);
   expect(current.note.split(internalHeading)).toHaveLength(2);
   expect(current.note).not.toContain(mediaAdmission);
-  expect(current.note.replace(oldConversation, currentConversation)
+  expect(currentNote(current.note).replace(oldConversation, currentConversation)
     .replace(internalHeading, internalHeading + mediaAdmission)
-    .replace(oldRequests, recurringRequests)).toBe(note);
+    .replace(oldRequests, recurringRequests)
+    .replace("This is Instar in the operator's direct Telegram chat and its topics.", SELF_IDENTITY)).toBe(note);
   // Preserve the captured prompt; the act-first fixture separately replays the new wording.
   expect(current.system.split(" In this turn you have the harness's full built-in tool set")).toHaveLength(2);
   expect(current.system).not.toContain(READ_BEFORE_ANSWER);
@@ -74,7 +172,8 @@ it('the recorded K11a briefing differs only in the declared conversation, media,
     ` ${READ_BEFORE_ANSWER}In this turn you have the harness's full built-in tool set`)
     .replace('Respond with one flat JSON object', 'First complete needed reads through the actual harness tool interface; '
       + 'the JSON format below applies only to your final answer. Respond with one flat JSON object')
-    .replace(oldGrant, standingTrust))
+    .replace(oldGrant, standingTrust)
+    .replace("You are Instar, speaking", "You are an Instar 2.0 agent, speaking"))
     .toBe(SUBSCRIPTION_TOOLS_SYSTEM_PROMPT);
   expect(current.runs.map(run => run.kind)).toEqual(['worst', 'chain']);
   for (const run of current.runs) {
@@ -138,5 +237,5 @@ it('states the MCP count it read and claims no account access from it: zero, a c
   expect(toolsBriefing(undefined)).not.toMatch(accessClaim);
   expect(toolsBriefing(undefined)).not.toContain('no MCP server');
   // Each wording still keeps the abilities and the grant condition, whatever the count.
-  for (const count of [undefined, 0, 1]) expect(toolsBriefing(count)).toMatch(/full Claude Code set \(files, shell, web reads, nested subagents\);.*network writes and outside sends via the doorway's four tests on operator grant\.$/u);
+  for (const count of [undefined, 0, 1]) expect(toolsBriefing(count)).toMatch(/full Claude Code set \(files, shell, web reads, nested subagents\);.*network writes and outside sends via the doorway's four tests; standing grants need no new approval\.$/u);
 });

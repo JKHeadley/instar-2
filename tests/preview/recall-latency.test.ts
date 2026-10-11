@@ -140,7 +140,7 @@ it('profiles full turns at 2000 turns with every memory source', async () => {
     // from the immutable live capture; the historical hashes still check every other byte.
     const capture = JSON.parse(readFileSync(new URL('./fixtures/inrole-memory-live-2026-10-11.json', import.meta.url), 'utf8'));
     const recordedGuide = capture.cases[0].memoryDecision as string;
-    expect(historical.memoryDecision).toContain('Ordinary facts are journaled across restarts');
+    expect(historical.memoryDecision).toContain('mode:"remember"');
     historical.memoryDecision = 'Return memory:[] unless the verified operator corrects, forgets or sets reply style. '
       + recordedGuide.slice(recordedGuide.indexOf('Each memory item'));
     const historicalText = JSON.stringify(historical);

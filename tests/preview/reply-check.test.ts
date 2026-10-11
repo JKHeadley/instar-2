@@ -1020,14 +1020,14 @@ it('gives review the original audience, sources, history and operator message', 
 
 // OR1 (ruling 2 section C): independent contextual results, one agent response per objection, a shared
 // deadline and honest records (Rules 4, 41, 57, 58, 86, 95, 108).
-it('reads one contextual finding per selected rule, refuses a dropped or added rule, and keeps the legacy line finding-free', () => {
+it('reads one contextual finding per selected rule, refuses a dropped or unknown rule, and keeps the legacy line finding-free', () => {
   const both: ReplyRule[] = ['raw_path', 'defers_work'];
   expect(parseReplyReviewVerdict('raw_path: PASS | The operator asked for this exact path.\ndefers_work: VIOLATION | Promises a later check with no loop.', both))
     .toEqual({ verdict: 'violation', ruleIds: ['defers_work'], reason: 'defers_work: Promises a later check with no loop.',
       findings: [{ rule: 'raw_path', verdict: 'pass', reason: 'The operator asked for this exact path.' },
         { rule: 'defers_work', verdict: 'violation', reason: 'Promises a later check with no loop.' }] });
   expect(parseReplyReviewVerdict('defers_work: PASS | Tracked.\nraw_path: PASS | Requested.', both)).toMatchObject({ verdict: 'pass', ruleIds: [] });
-  for (const value of ['raw_path: PASS | fine', 'raw_path: PASS | a\ndefers_work: PASS | b\ncredential: PASS | c',
+  for (const value of ['raw_path: PASS | fine', 'raw_path: PASS | a\ndefers_work: PASS | b\nunknown_rule: PASS | c',
     'raw_path: PASS | a\nraw_path: VIOLATION | b', 'raw_path: MAYBE | a\ndefers_work: PASS | b', 'raw_path: PASS | a\nextra text'])
     expect(() => parseReplyReviewVerdict(value, both), value).toThrow('malformed');
   // A new live review (rules selected) must answer per rule: a combined line drops the other rules' results.

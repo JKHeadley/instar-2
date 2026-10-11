@@ -94,9 +94,6 @@ export function auditPacket(view, turn, packet, memoryCount = view.memory.length
   };
   const body = value => JSON.stringify(value ?? {});
   const channelRef = id => `sha256:${createHash('sha256').update(id).digest('hex')}`;
-  const strings = value => typeof value === 'string' ? [value]
-    : Array.isArray(value) ? value.flatMap(strings)
-      : value && typeof value === 'object' ? Object.values(value).flatMap(strings) : [];
   const activeChanges = view.memory.slice(0, memoryCount)
     .filter(change => (view.turns.get(change.trigger)?.update ?? Infinity) < turn.update);
   const predecessor = carriedEntries(view);
@@ -105,21 +102,21 @@ export function auditPacket(view, turn, packet, memoryCount = view.memory.length
   const closedAtReservation = new Set([...view.closed.keys()].slice(0, closedCount));
   const preferenceKeys = new Set(activeChanges.filter(change => change.mode === 'prefer')
     .map(change => JSON.stringify([change.source, change.quote])));
-  const clean = value => activeChanges.filter(change => change.mode !== 'prefer'
+  const clean = (value, source) => source !== undefined ? projectMemoryClause(projection, redact(value).text, source) : activeChanges.filter(change => (change.mode === 'correct' || change.mode === 'forget')
     && !preferenceKeys.has(JSON.stringify([change.source, change.quote]))).reduce((text, change) => {
     let next = replaceClaim(text, change.quote, '[withheld: operator correction or forgetting]');
     for (const passage of change.summaryPassages ?? [])
       next = replaceClaim(next, passage, '[withheld: operator correction or forgetting]');
     return next;
   }, redact(value).text);
-  const metadata = (value, imported) => imported && activeChanges.some(change => change.mode !== 'prefer'
+  const metadata = (value, imported) => imported && activeChanges.some(change => (change.mode === 'correct' || change.mode === 'forget')
     && change.source === `channel:${JSON.stringify([imported.source, imported.account, imported.id])}`)
     ? '[withheld: operator correction or forgetting]' : clean(value);
   const replyFor = found => {
     const sent = found.intent?.replace(/^PREVIEW — /u, '');
     if (found.noticeClass) return clean(sent ?? '');
     // A validated correction's own acknowledgement names the old clause, so it is withheld whole.
-    if (activeChanges.some(change => change.mode !== 'prefer' && (change.source === found.id || change.replies?.includes(found.id))
+    if (activeChanges.some(change => (change.mode === 'correct' || change.mode === 'forget') && (change.source === found.id || change.replies?.includes(found.id))
       || change.mode === 'correct' && change.trigger === found.id))
       return '[withheld: operator correction or forgetting]';
     return clean(sent ?? '');
@@ -164,7 +161,7 @@ export function auditPacket(view, turn, packet, memoryCount = view.memory.length
   for (const [n, item] of history.entries()) {
     const at = `history[${n}]`, found = source(item?.id, at);
     if (found) {
-      if (item.user !== clean(found.text)) fault('history-text-source', at);
+      if (item.user !== clean(found.text, found.id)) fault('history-text-source', at);
       checkReply(item, found, at);
       if (item.date !== undefined && item.date !== dated(found)) fault('history-date-source', at);
       if (item.from !== undefined && item.from !== speaker(found)
@@ -175,7 +172,7 @@ export function auditPacket(view, turn, packet, memoryCount = view.memory.length
   for (const [n, item] of list(packet.recalled, 'recalled').entries()) {
     const at = `recalled[${n}]`, found = source(item?.id, at);
     if (found) {
-      if (item.user !== clean(found.text)) fault('recalled-text-source', at);
+      if (item.user !== clean(found.text, found.id)) fault('recalled-text-source', at);
       checkReply(item, found, at);
       if (item.date !== dated(found)) fault('recalled-date-source', at);
       add('recalled-turn', at, [{ kind: 'source-turn', id: found.id, update: found.update },
@@ -202,7 +199,7 @@ export function auditPacket(view, turn, packet, memoryCount = view.memory.length
     }
     const found = source(item?.source, at);
     if (found && item.from !== speaker(found)) fault('people-attribution', at);
-    if (found && item.message !== clean(found.text)) fault('people-message-source', at);
+    if (found && item.message !== clean(found.text, found.id)) fault('people-message-source', at);
     if (found && item.date !== dated(found)) fault('people-date-source', at);
     const mentions = list(item?.mentions, `${at}.mentions`);
     if (!mentions.length) fault('people-note-absent', at);
@@ -219,8 +216,8 @@ export function auditPacket(view, turn, packet, memoryCount = view.memory.length
     if (found && item.from !== (item.reply === undefined ? speaker(found) : 'you, in your own earlier reply'))
       fault('commitment-attribution', at);
     if (found && item.date !== dated(found)) fault('commitment-date-source', at);
-    if (found && item.message !== undefined && item.message !== clean(found.text)) fault('commitment-message-source', at);
-    if (found && item.reply !== undefined && (item.reply !== replyFor(found) || item.answering !== clean(found.text)))
+    if (found && item.message !== undefined && item.message !== clean(found.text, found.id)) fault('commitment-message-source', at);
+    if (found && item.reply !== undefined && (item.reply !== replyFor(found) || item.answering !== clean(found.text, found.id)))
       fault('commitment-reply-source', at);
     for (const [m, note] of list(item?.items, `${at}.items`).entries()) {
       const place = `${at}.items[${m}]`, stored = view.commitments[note?.id];
@@ -277,10 +274,11 @@ export function auditPacket(view, turn, packet, memoryCount = view.memory.length
       add('memory-candidate', at, [carryLink(view, item.id)]);
     } else {
       const found = source(item?.id, at);
-      const preference = found && [...activePreferences.values()].some(active => active.source === found.id
+      const preference = found && [...activePreferences.values(), ...activeChanges.filter(change => change.mode === 'remember'
+        && projectMemoryClause(projection, change.quote, change.source) === change.quote)].some(active => active.source === found.id
         && (active.quote === item.message || redact(active.quote).text.slice(0, 1000) === item.message)
         && (found.text.includes(active.quote) || redact(found.text).text.includes(active.quote)));
-      if (found && item.message !== clean(found.text).slice(0, 1000) && item.message !== clean(found.text) && !preference)
+      if (found && item.message !== clean(found.text, found.id).slice(0, 1000) && item.message !== clean(found.text, found.id) && !preference)
         fault('candidate-text-source', at);
       if (found && item.reply !== replyFor(found).slice(0, 1000)
         && item.reply !== replyFor(found) && !(preference && item.reply === ''))
@@ -308,8 +306,8 @@ export function auditPacket(view, turn, packet, memoryCount = view.memory.length
       if (!trigger?.accepted) fault('memory-trigger-absent', at);
       if (change.source.startsWith('channel:')) channel(change.source, at);
       else if (!predecessor.some(entry => entry.source === change.source)) source(change.source, at);
-      if (item.mode !== (change.mode === 'forget' ? 'forgotten' : 'corrected')) fault('memory-mode', at);
-      if (item.replacement !== (change.mode === 'correct' ? clean(change.replacement ?? '') : undefined))
+      if (item.mode !== (change.mode === 'remember' ? 'remembered' : change.mode === 'forget' ? 'forgotten' : change.historical ? 'updated' : 'corrected')) fault('memory-mode', at);
+      if (item.replacement !== (change.mode === 'remember' ? clean(change.quote, change.source) : change.mode === 'correct' ? clean(change.replacement ?? '') : undefined))
         fault('memory-replacement-source', at);
       add(item.mode, at, [predecessor.some(entry => entry.source === change.source) ? carryLink(view, change.source)
         : { kind: change.source.startsWith('channel:') ? 'channel-import' : 'source-turn',
@@ -332,15 +330,22 @@ export function auditPacket(view, turn, packet, memoryCount = view.memory.length
   }
   // Exact clauses are the only claim identity the preview records. Scan the
   // whole memory packet, including candidates and notes, without emitting text.
-  const offered = strings(packet);
+  // A later authenticated save permits only its own sourced fields. Older copies and
+  // unattributed text still fail the retired-clause scan.
+  const sourceId = value => view.order.find(turn => value === `turn ${turn.update}`)?.id ?? value;
+  const offered = (value, source) => typeof value === 'string' ? [{ value, source }]
+    : Array.isArray(value) ? value.flatMap(item => offered(item, source))
+      : value && typeof value === 'object' ? Object.values(value).flatMap(item => offered(item, value.id ?? sourceId(value.source) ?? view.order.find(turn => turn.update === value.update)?.id ?? source)) : [];
+  const offeredFields = offered(packet);
   const packetMemory = list(packet.memory, 'memory');
   for (const [n, change] of activeChanges.entries()) {
     const trigger = view.turns.get(change.trigger);
-    if (!trigger || trigger.update >= turn.update || change.mode === 'prefer') continue;
+    if (!trigger || trigger.update >= turn.update || change.mode === 'prefer' || change.mode === 'remember') continue;
     const superseded = activeChanges.slice(n + 1).some(next => supersedesCorrection(change, next));
     if (!superseded && !packetMemory.some(item => item?.source === publicSource(change.source) && item?.trigger === change.trigger))
       fault('memory-change-unrepresented', `memory-change[${n}]`);
-    if (offered.some(value => hasClaim(value, change.quote)))
+    if (offeredFields.some(({ value, source }) => hasClaim(value, change.quote)
+      && projectMemoryClause(projection, change.quote, source) !== change.quote))
       fault(change.mode === 'forget' ? 'forgotten-reachable' : 'superseded-current', `memory-change[${n}]`);
   }
   for (const [n, note] of view.people.entries()) {
@@ -446,7 +451,7 @@ export function auditActiveMemory(view) {
   const predecessor = carriedEntries(view);
   const origin = (id, at) => typeof id === 'string' && id.startsWith('channel:')
     ? imported(id, at) : predecessor.some(entry => entry.source === id) ? carryLink(view, id) : operator(id, at);
-  const active = (source, quote) => !view.memory.some(change => change.mode !== 'prefer'
+  const active = (source, quote) => !view.memory.some(change => (change.mode === 'correct' || change.mode === 'forget')
     && change.source === source && (quote.includes(change.quote) || change.quote.includes(quote)));
   for (const [id, item] of view.channelItems) {
     const at = `stored-import[${items.length}]`, link = imported(`channel:${id}`, at);
@@ -523,14 +528,14 @@ export function auditActiveMemory(view) {
       return summary && { kind: 'summary', through: summary.through };
     }).filter(Boolean);
     if (!source || !trigger || typeof change.quote !== 'string' || !originals.some(original => redact(original).text.includes(change.quote))
-      || change.mode !== 'prefer' && !carried.length && (change.source.startsWith('channel:')
+      || (change.mode === 'correct' || change.mode === 'forget') && !carried.length && (change.source.startsWith('channel:')
         ? view.channelItems.get(change.source.slice(8)).at >= view.turns.get(change.trigger).at
         : view.turns.get(change.source).update >= view.turns.get(change.trigger).update)
       || change.mode === 'correct' && (!change.replacement
         || !redact(view.turns.get(change.trigger).text).text.includes(change.replacement))
-      || change.mode === 'prefer' && change.trigger !== change.source)
+      || (change.mode === 'prefer' || change.mode === 'remember') && change.trigger !== change.source)
       fault('memory-change-unattributed', at);
-    else add(change.mode === 'prefer' ? 'preference' : change.mode === 'forget' ? 'forgetting' : 'correction', at,
+    else add(change.mode === 'remember' ? 'fact' : change.mode === 'prefer' ? 'preference' : change.mode === 'forget' ? 'forgetting' : 'correction', at,
       [source, trigger, ...replyLinks, ...passageLinks]);
   }
   for (const [n, item] of view.dated.entries()) {

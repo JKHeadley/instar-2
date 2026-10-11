@@ -132,6 +132,12 @@ export function repeatsOperatorOnly(reply: string, operatorMessages: readonly st
   });
 }
 
+export const REVIEW_INTERRUPTED_REASON = 'review interrupted; provider outcome unknown';
+export const GROUP_REVIEW_FINAL_NOTICE = "I couldn't complete the review this group reply needs, so I didn't send my answer. Please resend your message.";
+/** This exact content-free notice reveals none of the held answer. */
+export const isGroupReviewFinalNotice = (text: string, expected: string): boolean =>
+  text === expected && text === GROUP_REVIEW_FINAL_NOTICE;
+
 export const HOLDING_REPLY = 'I need to check that answer before I can send it.';
 /** Every rule an unselected review judges on the operator's own chat; the audience question is added only by selection. */
 const rules = (Object.keys(REPLY_RULES) as ReplyRule[]).filter(id => !isAudienceRule(id) && id !== 'incoherent_remainder');
@@ -268,8 +274,9 @@ function unwrappedVerdict(text: string): string {
 }
 /** The verdict lives inside the route's required Decision envelope: one exact line per selected rule
  * (`rule_id: PASS | reason`), so each rule keeps its own conclusion and reason. With `selected` (a new
- * live review), only the per-rule form is accepted and its lines must name exactly those rules: a
- * reviewer can neither drop a question nor add one, and a combined line is a format miss. Without
+ * live review), every selected rule must be present. Extra known findings are retained, including
+ * violations: a broader completed review is not unavailable. Unknown, duplicate, malformed or missing
+ * findings still refuse, and a combined line is a format miss. Without
  * `selected` (historical records), the earlier combined line (`PASS | reason` / `VIOLATION:ids | reason`)
  * is still read, honestly: it carries no findings, because one shared reason is not an independent result. */
 export function parseReplyReviewVerdict(value: string, selected?: readonly ReplyRule[]): { verdict: 'pass' | 'violation';
@@ -291,8 +298,8 @@ export function parseReplyReviewVerdict(value: string, selected?: readonly Reply
       || findings.some(finding => finding.rule === match[1])) throw Error(REVIEW_MALFORMED);
     findings.push({ rule: match[1] as ReplyRule, verdict: match[2] === 'PASS' ? 'pass' : 'violation', reason: match[3]!.trim() });
   }
-  if (!findings.length || selected !== undefined && (findings.length !== selected.length
-    || findings.some(finding => !selected.includes(finding.rule)))) throw Error(REVIEW_MALFORMED);
+  if (!findings.length || selected?.some(rule => !findings.some(finding => finding.rule === rule)))
+    throw Error(REVIEW_MALFORMED);
   const violations = findings.filter(finding => finding.verdict === 'violation');
   const shown = violations.length ? violations : findings;
   const joined = shown.map(finding => `${finding.rule}: ${finding.reason}`).join('; ');

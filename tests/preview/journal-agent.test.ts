@@ -10,10 +10,13 @@ import { openPreviewJournal } from './journal.js';
 // The launcher runs on the real clock against a fixed fixture expiry, so a due credential reminder or a
 // failing doorway check (Rules 8, 56, 100) may ride an answer as its own line. The answer itself stays exact,
 // and nothing else may be appended.
-const NOTICE_LINE = /^(?:Reminder: the credential "[^"]+" \([^)]+\) expires in [^.]+\. Smallest step for you: .+|Model route check: .+; send "status" for detail\.)$/u;
+const NOTICE_LINE = /^(?:Reminder: the credential "[^"]+" \([^)]+\) expires in [^.]+\. Smallest step for you: .+|Model route check: .+\.)$/u;
 const answerOf = (text: string) => {
   const [answer, ...notices] = text.split('\n\n');
-  for (const notice of notices) expect(notice).toMatch(NOTICE_LINE);
+  for (const notice of notices) {
+    expect(notice).toMatch(NOTICE_LINE);
+    if (notice.startsWith('Model route check:')) expect(notice).not.toContain('send "status"');
+  }
   return answer;
 };
 

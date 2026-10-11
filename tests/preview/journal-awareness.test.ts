@@ -59,7 +59,7 @@ it('puts a current, labelled desk report into every turn packet within the conte
       expect(Buffer.byteLength(input.context)).toBeLessThanOrEqual(genesis.maxBytes);
       expect(typeof input.prepared).toBe('string'); // prepareJournalEnvelope throws past the prompt bound
       expect(desk(input.context).provenance.status).toBe('current');
-      expect(desk(input.context).text).toContain('Preview clock now: 2026-09-21T');
+      expect(desk(input.context).text).toContain('Agent clock now: 2026-09-21T');
       // The capability list itself is the generated capability-note source (Rules 78, 84); the packet field points at it.
       expect(JSON.parse(input.context).capability).toContain('capability-note source');
       const note = (JSON.parse(input.context).sources as { id: string; text: string }[]).find(s => s.id === 'capability-note')!.text;
