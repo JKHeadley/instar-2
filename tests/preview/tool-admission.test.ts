@@ -172,7 +172,8 @@ it('a checkpointed route sends consequential tools and delegations to its checkp
   expect(call('webrun', mixed, { networkReads: true, effectPolicy: granted })).toMatchObject({ decision: 'allow', kind: 'network',
     doorway: { disposition: 'granted', grant: 'g-1.1.1.1', tests: { policySensitive: true } } });
   expect(admitToolCallEffect('webrun', mixed, { effectPolicy: granted }, 0)).toMatchObject({ admitted: true, consequential: true,
-    target: '8.8.8.8, 1.1.1.1', tests: { policySensitive: true, scope: false } });
+    target: '8.8.8.8, 1.1.1.1', tests: { policySensitive: true, scope: false },
+    signOff: { policySensitive: true }, durability: { irreversible: false, demand: 'local-durable' } });
   expect(admitToolCallEffect('webrun', mixed, { effectPolicy: sensitive }, 0)).toMatchObject({ admitted: false, target: '1.1.1.1' });
   expect(admitToolCallEffect('webrun', { open: [mixed.open[0]!] }, { effectPolicy: sensitive }, 0)).toMatchObject({ admitted: true, consequential: false });
   expect(admitToolCallEffect('webrun', { open: [mixed.open[0]!, { ref_id: 'https://9.9.9.9/' }] }, { effectPolicy: sensitive }, 0))

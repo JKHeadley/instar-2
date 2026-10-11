@@ -11,8 +11,7 @@
 //   subagent budget, started by the turn or by another subagent, recorded as a Rule 114 edge; an MCP tool the root's
 //   configuration lists as a read; the harness's own bookkeeping (tool search, listing agents or schedules, rendering
 //   findings, stopping its own background task); a worktree inside the workspace.
-// - Consequential (the effect doorway, effect-doorway.mjs, which admits or refuses it by the purpose's four
-//   consequential-effect tests under the turn's effect policy; with no policy nothing outward is granted, so each refuses):
+// - Consequential (the effect doorway, effect-doorway.mjs, which admits or refuses it by the purpose's role, five sign-off conditions and durability rules under the turn's effect policy; with no policy nothing outward is granted, so each refuses):
 //   an MCP tool not listed as a read (acting in a third-party account), an unsandboxed shell, a Monitor command (not shown to run inside the sandbox, which is what keeps
 //   a command away from the admission state and the network; Bash in the background is the sandboxed way to watch a
 //   command), sending outside the conversation, a scheduled or remote trigger, a design sync to a third-party account.
@@ -34,7 +33,7 @@
 //   that kind, and its consequential tools go to the effect doorway as above.
 import { dirname, join, sep } from 'node:path';
 import { isIP } from 'node:net';
-import { admitEffect, decodeEffectPolicy, DEFAULT_EFFECT_POLICY, toolEffectProposal, UNAVAILABLE_EFFECT_POLICY } from './effect-doorway.mjs';
+import { admitEffect, decodeEffectPolicy, DEFAULT_EFFECT_POLICY, SIGN_OFF_TESTS, toolEffectProposal, UNAVAILABLE_EFFECT_POLICY } from './effect-doorway.mjs';
 
 const SHELL_SAFE_PATH = /^\/[A-Za-z0-9_./@-]+$/u;
 /** Prepended to every admitted shell command. Claude Code 2.1.280 exports its own messaging inbox
@@ -245,8 +244,12 @@ export function admitToolCallEffect(tool, input, config, now) {
   if (held.length === 0) return { ...verdicts[0], target: verdicts.map(verdict => verdict.target).join(', ').slice(0, 256),
     reason: verdicts.map(verdict => verdict.reason).join('; ') };
   const grants = [...new Set(held.map(verdict => verdict.grant).filter(Boolean))];
+  const classified = verdicts.filter(verdict => verdict.signOff);
+  const signOff = Object.fromEntries(SIGN_OFF_TESTS.map(test => [test, classified.some(verdict => verdict.signOff[test])]));
+  const durability = classified.find(verdict => verdict.durability?.irreversible)?.durability ?? classified[0]?.durability;
   return { effect: held[0].effect, target: verdicts.map(verdict => verdict.target).join(', ').slice(0, 256),
     tests: Object.fromEntries(Object.keys(held[0].tests).map(test => [test, verdicts.some(verdict => verdict.tests?.[test] === true)])),
+    ...(classified.length ? { signOff, signOffRequired: SIGN_OFF_TESTS.some(test => signOff[test]), durability } : {}),
     consequential: true, admitted: true, disposition: held.some(verdict => verdict.disposition === 'granted') ? 'granted' : held[0].disposition,
     ...(grants.length ? { grant: grants.join(', ') } : {}), reason: verdicts.map(verdict => verdict.reason).join('; ') };
 }

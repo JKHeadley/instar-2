@@ -28,6 +28,10 @@ Prompt finding: fb5fa7e706c8 | quoted-evidence | Existing memory-reply and recal
 
 Subject (11 paths): docs/standing-trust-setup.md, scripts/setup-standing-trust.mjs, tests/preview/effect-doorway.mjs, tests/preview/effect-doorway.test.ts, tests/preview/egress-proxy.test.ts, tests/preview/journal.ts, tests/preview/tool-admission.mjs, tests/preview/tool-admission.test.ts, tests/preview/trust-setup.mjs, tests/preview/trust-setup.test.ts, tests/preview/trust-signoff.test.ts
 
+Additional validation: The new public-in-person-name-only refusal is accepted by the actual journal despite all legacy risk flags being false; malformed sign-off data refuses. User-visible refusal notices name the governing rule as well as the remedy. Multi-target tool calls preserve the union of sign-off conditions and the strongest durability classification. Final targeted results are recorded in the report.
+
+Host evidence limit: Final architecture scan reports R105: the Darwin native-harness conformance digest no longer covers the changed composition (sha256:3f1fecd8c2ba99332ea2bb05523475a0a208b33dcecdbc67244ca38c7655a5e9). Its macOS-only native contract must be run by the desk; no unsupported conformance hash is substituted. Source pins also need desk regeneration. This submission is not READY while R105 remains.
+
 ## Closing block
 
 simplestRobustRoute: This is the simplest robust route: extend existing policy registration, installer and doorway instead of adding a grant store or approval engine. Keep legacy risk flags because removing them would allow irreversible retries to gain new identities. Store independent sign-off/durability facts so a durability refusal cannot be mistaken for missing consent. Existing grant, stop, cap and durable-prefix gates are the start/limit guards; real hook replay and P8 fixture dispatch verify the end state. Installer CLI consumption is tested unattended; no live conversational onboarding or external email-delivery claim.

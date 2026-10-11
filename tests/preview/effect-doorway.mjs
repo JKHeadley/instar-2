@@ -210,10 +210,14 @@ export function toolEffectProposal(tool, input) {
 /** A plain sentence for each refused effect of an answer's tool turns, carried below the answer by the runner so the
  * refusal is reported even when the model's own words omit it. Keyed per turn, attempt and call. */
 export const EFFECT_NOTICE_MAX_CHARS = 600;
+const REFUSAL_WORDS = Object.freeze({
+  durability: 'the purpose’s irreversible-durability rule requires an installed durable operation',
+  role: 'the purpose’s onboarding rule requires a grant for this operation',
+  'sign-off': 'the purpose’s fixed sign-off list requires the person’s approval' });
 export function refusedEffectNotices(decisions, turn) {
   return decisions.filter(item => item.disposition === 'refused' && (turn === undefined || item.turn === turn)).map(item => {
     const line = `Effect doorway: a ${item.effect} step${item.target ? ` (${item.target})` : ''} was refused, because `
-      + `${item.refusedFor?.length ? item.refusedFor.join('; ') : CONSEQUENTIAL_TESTS.filter(test => item.tests[test]).map(test => TEST_WORDS[test]).join('; ')}. `
+      + `${item.refusedFor?.length ? item.refusedFor.map(reason => REFUSAL_WORDS[reason]).join('; ') : CONSEQUENTIAL_TESTS.filter(test => item.tests[test]).map(test => TEST_WORDS[test]).join('; ')}. `
       + `What would admit it: ${item.admits ?? 'a recorded operator grant naming it'}.`;
     return { key: `effect:${item.turn}#${String(item.attempt)}:${String(item.n)}`,
       line: line.length > EFFECT_NOTICE_MAX_CHARS ? `${line.slice(0, EFFECT_NOTICE_MAX_CHARS - 1)}…` : line };

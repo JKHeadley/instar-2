@@ -263,7 +263,7 @@ it('one tool turn on a scratch root: an ordinary write is admitted with no doorw
   // The refusal rides below this answer as one notice the journal accepts, and only on this turn's answer.
   const notices = refusedEffectNotices(refused.view.effectDoorway!.recent, id);
   expect(notices).toHaveLength(1);
-  expect(notices[0].line).toMatch(/^Effect doorway: a tool:unsandboxed step was refused, because durability; role; sign-off/u);
+  expect(notices[0].line).toMatch(/^Effect doorway: a tool:unsandboxed step was refused, because the purpose’s irreversible-durability rule/u);
   expect(notices[0].line).toMatch(/What would admit it: a second enrolled machine/u);
   expect(validAnswerNotices([notices[0]], `answer\n\n${notices[0].line}`)).toBe(true);
   expect(openReplyNotices([], notices, id)).toHaveLength(1);
@@ -348,4 +348,27 @@ it('a long answer is shortened to keep its own refused effect in the one send (P
   expect(sent).toHaveLength(2);
   expect(sent[1]).not.toContain('Effect doorway');
   expect(sent[1]).not.toContain('…');
+});
+
+it('records a public-in-person-name refusal with no legacy risk flag, and rejects a malformed new classification', () => {
+  const root = dir('effect-signoff-record-');
+  const journal = openPreviewJournal(join(root, 'journal.encrypted'), new Uint8Array(32).fill(8), { kind: 'genesis',
+    bot: '12345678', chat: '7654321', operator: '7654321', grant: 'grant:preview', configurationDigest: 'sha256:offline',
+    expires: 9_999_999_999_999, maxCalls: 20, maxReplies: 10, maxTurns: 10, maxBytes: 32768, cursor: 0 });
+  const id = 'telegram:12345678:update:901';
+  const verdict = admitEffect({ effect: 'tool:mcp', target: 'mcp__public__edit' }, policy({ registered: [{
+    effect: 'tool:mcp', target: 'mcp__public__edit', consequence: 'data', reversibility: 'reversible', reach: 'world',
+    costUsd: 0, publicInPersonName: true, source: 'operator:role' }], grants: [grant({ effect: 'tool:mcp' })] }));
+  expect(held(verdict)).toEqual([]);
+  expect(verdict).toMatchObject({ admitted: false, refusedFor: ['sign-off'], signOff: { publicInPersonName: true } });
+  journal.append({ kind: 'tool-turn', phase: 'reserved', id, attempt: 0, calls: 1, at: 1000 } as never);
+  const row = { kind: 'tool-turn', phase: 'trace', id, attempt: 0, consistent: true, workspaceBytes: 0, at: 1001,
+    calls: [{ n: 1, tool: 'mcp__public__edit', input: '{}', decision: 'deny', reason: verdict.reason, result: null,
+      doorway: { effect: verdict.effect, target: verdict.target, tests: verdict.tests, disposition: verdict.disposition,
+        signOff: verdict.signOff, durability: verdict.durability, refusedFor: verdict.refusedFor, admits: verdict.admits } }] };
+  expect(() => journal.append({ ...row, calls: [{ ...row.calls[0], doorway: { ...row.calls[0]!.doorway, signOff: null } }] } as never))
+    .toThrow(/effect doorway decision/u);
+  expect(() => journal.append(row as never)).not.toThrow();
+  expect(journal.view.effectDoorway!.recent[0]).toMatchObject({ signOff: { publicInPersonName: true },
+    durability: { irreversible: false }, refusedFor: ['sign-off'] });
 });
