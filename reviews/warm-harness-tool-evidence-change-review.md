@@ -19,7 +19,7 @@ Bug evidence: reproducer=tests/preview/tool-prestart.test.ts
 Hook bypass: none; checked core.hooksPath (unset) and the resolved common hooks directory (sample files only)
 Convergence: none
 Prompt review: No prompt, model-output parser or accept/escalate/refuse judgment changed. The new fixture contains exact admission bytes and the claim from proofroom3-ps-20261011-121754/tool-turns/next-6, update 840342333. No model output is synthesized as tool evidence.
-Decision: evidence-path | Restore the established per-operation layout at completion instead of changing every reader or creating another index; the harness paths stay stable while active | reported=warm-harness-live-repair-PROGRESS.md
+Decision: evidence-path | Restore the established per-operation layout at completion instead of changing every reader or creating another index; the harness paths stay stable while active | reported=reviews/warm-harness-tool-evidence-change-review.md
 
 ## Closing block
 
