@@ -608,10 +608,10 @@ it('delivers upcoming-date behavior in the prepared packet and source briefing',
     const sources = sourcePacket(path => readFileSync(path, 'utf8'), SOURCE_PINS,
       { providerAttempts: 30, expiresAt: genesis.expires });
     const note = sources.sources.find(source => source.id === 'capability-note')?.text;
-    // The closing boundary limits self-started messages to the listed later-time answers (70a93418).
-    expect(note).toContain('no message you start yourself beyond the listed answers to later-time requests');
+    // Current availability remains explicit beside the generated date capability.
+    expect(note).toContain('Web research, file and document work, and running commands and tasks are off here');
     // The briefing carries the one-line feature text; the full description (including restart memory) is the README Details line.
-    expect(note).toContain('- preview-upcoming-date-mention: a saved date within 48 hours can get one short mention in the next reply.');
+    expect(note).toContain('- I can mention an important date coming up in the next two days.');
     journal.close();
   } finally { rmSync(root, { recursive: true, force: true }); }
 });
