@@ -26,6 +26,8 @@ Decision: sb-self-knowledge-tests | run targeted foreground checks with one work
 Prompt review: no additional integration prompt changes. Carried system instructions define plain-language self-knowledge and preserve model judgment; fixture phrases describe identity or protocol rather than deciding a verdict. No delegation prompt added. Real-shape replay provenance and results are in the PROGRESS record.
 Prompt finding: 0c09afcfe18c | quoted-evidence | constitutional purpose quoted by the capability note; test asserts that source, not a phrase that triggers a judgment.
 Prompt finding: 3bb96951f29d | quoted-evidence | purpose explanation about memory and promises, tested as generated identity content, not an accept/refuse trigger.
+Prompt finding: 557114b4e497 | quoted-evidence | plain identity description asserted at model input in the self-knowledge replay; it is not an exact-match accept/refuse trigger.
+Prompt finding: e2d2f84aa62a | quoted-evidence | continuity explanation asserted as briefing content; no judgment depends on matching this fixture phrase.
 Prompt finding: 450c79237a95 | protocol-literal | existing instruction for ambiguous memory questions, unchanged by the unit; fixture checks the instruction reaches the model.
 Prompt finding: 4dc54feaf016 | protocol-literal | plain-language uncertainty response replacing an internal term; fixture verifies packet compatibility, not a fixed judgment trigger.
 Prompt finding: 849db3a6296a | protocol-literal | existing empty-memory reply literal, unchanged by the unit.
