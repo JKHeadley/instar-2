@@ -15,14 +15,21 @@ const packet = JSON.parse(original.messages.find((m: { role: string }) => m.role
 const roots: string[] = [];
 afterEach(() => { for (const root of roots.splice(0)) rmSync(root, { recursive: true, force: true }); });
 
-it('replays the actual over-cap forum review and its real bounded-prompt replacement under the same provider allowance', () => {
+it('replays the historical over-cap forum review and its real bounded-prompt replacement under the same provider allowance', () => {
   const limit = subscriptionConversationPolicy('claude-sonnet-5').maxTokens;
   expect(fixture.original).toMatchObject({ outcome: 'uncertain', output: null, usage: { outputTokens: 2136 } });
   expect(fixture.original.usage.outputTokens).toBeGreaterThan(limit);
   expect(fixture.recorded.intent.text).toBe(HOLDING_REPLY);
+  expect(createHash('sha256').update(fixture.original.input).digest('hex')).toBe(fixture.original.inputSha256);
   const prepared = structuredClone(original);
-  prepared.messages.find((m: { role: string }) => m.role === 'user').content = replyReviewQuestion(rules);
+  // Preserve the captured request: parks_on_user has since gained act-first guidance.
+  // act-first.test.ts binds fresh real reviewer captures to that current wording.
+  prepared.messages.find((m: { role: string }) => m.role === 'user').content = fixture.replay.question;
   expect(createHash('sha256').update(JSON.stringify(prepared)).digest('hex')).toBe(fixture.replay.inputSha256);
+  const budgetStart = 'Give every listed rule, and no other rule,';
+  expect(fixture.replay.question).toContain(budgetStart);
+  expect(replyReviewQuestion(rules).split(budgetStart).slice(1))
+    .toEqual(fixture.replay.question.split(budgetStart).slice(1));
   expect(fixture.replay).toMatchObject({ code: 0, subtype: 'success', is_error: false });
   expect(fixture.replay.usage.output_tokens).toBeLessThanOrEqual(limit);
   const read = readAnswer(fixture.replay.output);
