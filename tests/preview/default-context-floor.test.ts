@@ -50,7 +50,7 @@ async function firstTurn(maxBytes: number, tools = false, fixedGrowth = 0) {
       modifiedAt: now };
     const sources = () => [...briefing, disciplineSource(journal.view),
       selfStateSource(selfStateBrief(journal.view, runs as never, now, 'UTC', now - 60_000)),
-      deskStatusSource(desk, now, DESK_PATH)];
+      deskStatusSource(desk, now, DESK_PATH)!];
     let answer: { context: string; prepared: string } | undefined;
     let summary: { context: string; prepared: string } | undefined;
     const worker = createJournalWorker(journal, { now: () => now, stopped: () => false, sources,

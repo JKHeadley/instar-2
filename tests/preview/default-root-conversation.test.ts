@@ -88,7 +88,7 @@ async function conversation(maxBytes: number, texts: readonly string[],
     const sources = () => live ? [...briefing, disciplineSource(journal.view), ...live.runtimeSources] as typeof briefing
       : [...briefing, disciplineSource(journal.view),
         selfStateSource(selfStateBrief(journal.view, runs as never, now, 'UTC', now - 60_000)),
-        deskStatusSource(desk, now, DESK_PATH)];
+        deskStatusSource(desk, now, DESK_PATH)!];
     const answerPackets: string[] = [], answerSizes: number[] = [], summarySizes: number[] = [];
     const answerModel = live?.model ?? 'claude-opus-5-5';
     const prepareModel = (input: { question: string; context: string; id: string }) =>

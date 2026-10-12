@@ -27,7 +27,7 @@ it('bounds the read when the report grows between stat and read', () => {
     expect(file?.text ?? '').not.toContain('y');
     expect((file?.text ?? '').length).toBeLessThanOrEqual(DESK_STATUS_MAX_BYTES);
     const source = deskStatusSource(file, file?.modifiedAt ?? 0, path);
-    expect(source.provenance.status).toBe('oversize');
-    expect(source.text).toContain('was not included');
+    expect(source!.provenance.status).toBe('oversize');
+    expect(source!.text).toContain('was not included');
   } finally { fs.rmSync(root, { recursive: true, force: true }); }
 });

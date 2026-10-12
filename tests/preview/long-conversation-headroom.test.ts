@@ -17,7 +17,7 @@ const update = (n: number) => ({ update_id: n, message: { chat: { id: 7654321, t
 const briefing = sourcePacket(path => readFileSync(path, 'utf8'), SOURCE_PINS,
   { providerAttempts: 160, expiresAt: 9_999_999_999_999 }).sources;
 const desk = deskStatusSource({ text: `# Instar 2.0 desk report\n${'Preview work remains a supervised private chat trial with a reviewed activation.\n'.repeat(48)}`,
-  modifiedAt: now }, now, '/offline/desk-status.md');
+  modifiedAt: now }, now, '/offline/desk-status.md')!;
 const sources = [...briefing, { id: 'self-state', title: 'Preview self state',
   text: 'The runner is active under the existing capped trial. Its journal is the memory for this private chat.',
   provenance: { path: 'journal projection' } }, desk];
