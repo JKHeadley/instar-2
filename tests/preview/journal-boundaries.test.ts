@@ -76,7 +76,7 @@ describe('Rules 3 and 17: the body/mind and agency instructions are delivered as
     expect(instructions).toContain('Rule 3 — The Body and the Mind: The agent is two intelligences');
     expect(instructions).toContain('The agent acts inside its recorded role, including through the accounts granted with it, without asking again.');
     expect(instructions).toContain('Outside every grant it refuses and names the grant needed; the purpose fixes the short list requiring sign-off.');
-    expect(instructions).toContain('quote the note’s tools/outbound sentence verbatim as its own paragraph without its label.');
+    expect(instructions).toContain('copy the note’s tools/outbound sentence verbatim as a paragraph with no label or quotes.');
     expect(instructions).toContain('No free-text limits or missing-status asides, even true ones.');
     expect(instructions).toContain('Quote all limits from the record verbatim; preserve timestamps.');
     expect(instructions).toContain('Rule 17 — Architectural Agency in the Gap: Between what the model is biased to do');
