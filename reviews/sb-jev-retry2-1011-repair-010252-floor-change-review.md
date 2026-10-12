@@ -27,7 +27,9 @@ Prompt finding: 6af48f94b789 | protocol-literal | Existing identity, standing-gr
 Prompt finding: 95e349aaf4ac | protocol-literal | Existing identity, standing-grant or tool protocol is asserted against the recorded note, never used as an intent classifier — fixture-phrase tests/preview/briefing.ts <- tests/preview/selfdesc-abilities.test.ts: "via the doorway's four tests; standing grants need no new approval."
 Prompt finding: b00ed403060a | protocol-literal | Existing identity, standing-grant or tool protocol is asserted against the recorded note, never used as an intent classifier — fixture-phrase src/assembly/production-provider.ts <- tests/preview/selfdesc-abilities.test.ts: "checked when made. workspace work and public reads are already allowed. register"
 
-Subject (9 paths): tests/preview/briefing.ts, tests/preview/capability-briefing.test.ts, tests/preview/default-root-conversation.test.ts, tests/preview/journal-awareness.test.ts, tests/preview/reminder-words.test.ts, tests/preview/selfdesc-abilities.test.ts, tests/preview/tool-turn.test.ts, tests/preview/journal-dated-memory.test.ts, register-source/owner-references/preview.json
+Subject (16 paths): tests/preview/briefing.ts, tests/preview/capability-briefing.test.ts, tests/preview/default-root-conversation.test.ts, tests/preview/journal-awareness.test.ts, tests/preview/reminder-words.test.ts, tests/preview/selfdesc-abilities.test.ts, tests/preview/tool-turn.test.ts, tests/preview/journal-dated-memory.test.ts, register-source/owner-references/preview.json, generated/capabilities.json, generated/capabilities.md, generated/coverage.md, generated/glossary.md, generated/register.json, generated/rules.md, generated/source.json
+
+Publication: Replayed the existing generator from committed source 90c3cd8177a4f1d25fd4b2ddac5db4b57ca3fd33 after refreshing its single preview owner pin; generation sha256:d1ef3e9550d6dd9160780a731450d2d76bcef9cb07352694738123efa7ce0b2d. No feature descriptions changed.
 
 ## Closing block
 
