@@ -1792,10 +1792,10 @@ async function main() {
         if (shared !== null && !await peerHolds()) throw Error('preview: Jev unavailable');
       };
       const replyCheck = judgment === 'jev-reply-check';
-      // Other Jev consumers retain their existing post-admission timeout; only replies get the short whole-call bound.
+      // Other Jev consumers retain their existing post-admission timeout; only replies get the bounded admission-and-provider retry allowance.
       if (!replyCheck) await admit();
       const start = performance.now();
-      const signal = AbortSignal.timeout(Math.max(1, Math.min(2000, Math.floor(timeoutMs))));
+      const signal = AbortSignal.timeout(Math.max(1, Math.min(replyCheck ? 2500 : 2000, Math.floor(timeoutMs))));
       const failure = cause => Object.assign(Error('preview: Jev unavailable'), { jevCause: cause });
       let onAbort;
       const timeout = new Promise((_, reject) => {
