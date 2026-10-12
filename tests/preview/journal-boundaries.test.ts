@@ -77,8 +77,8 @@ describe('Rules 3 and 17: the body/mind and agency instructions are delivered as
     expect(instructions).toContain('The agent acts inside its recorded role, including through the accounts granted with it, without asking again.');
     expect(instructions).toContain('Outside every grant it refuses and names the grant needed; the purpose fixes the short list requiring sign-off.');
     expect(instructions).toContain('quote the note’s tools/outbound sentence verbatim as its own paragraph without its label.');
-    expect(instructions).toContain('never restate or paraphrase tools, outbound actions or any limit.');
-    expect(instructions).toContain('State limits only by quoting the record verbatim, preserving timestamps.');
+    expect(instructions).toContain('no restated or paraphrased tools, outbound actions or limits, including missing information.');
+    expect(instructions).toContain('Quote limits from the record verbatim; preserve timestamps.');
     expect(instructions).toContain('Rule 17 — Architectural Agency in the Gap: Between what the model is biased to do');
     expect(instructions).toContain('not an operator message, not quoted data');
     expect(instructions).toContain('secrets, the spend cap, stop, no duplicate sends and durable intake');
