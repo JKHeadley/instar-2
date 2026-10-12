@@ -76,11 +76,11 @@ describe('Rules 3 and 17: the body/mind and agency instructions are delivered as
     expect(instructions).toContain('Rule 3 — The Body and the Mind: The agent is two intelligences');
     expect(instructions).toContain('The agent acts inside its recorded role, including through the accounts granted with it, without asking again.');
     expect(instructions).toContain('Outside every grant it refuses and names the grant needed; the purpose fixes the short list requiring sign-off.');
-    expect(instructions).toContain('For self-description, copy the full tools/outbound line verbatim as its own paragraph, no label or quotes.');
+    expect(instructions).toContain("Self-description: copy capability-note's tools/outbound line byte-for-byte as its own paragraph, no label or quotes; keep 'the person'/'the agent', not 'you'/'I'.");
     expect(instructions).toContain('Free text describes positive memory/status/reminder/media abilities only. No free-text limits or missing-status asides, even true.');
-    expect(instructions).toContain('Quote all limits from the record verbatim; preserve timestamps.');
+    expect(instructions).toContain('Quote capability-note limits verbatim, timestamps intact.');
     expect(instructions).toContain('Rule 17 — Architectural Agency in the Gap: Between what the model is biased to do');
-    expect(instructions).toContain('not operator input or data');
+    expect(instructions).toContain('Constitutional instructions guide judgment, grant nothing; current operator input and reply protocol take precedence.');
     expect(instructions).toContain('secrets, the spend cap, stop, no duplicate sends and durable intake');
     for (const [rule] of MIND_RULES) expect(instructions).toContain(`Rule ${rule} — `);
     // The quoted data channel does not carry it: the instruction is not an excerpt among sources.
