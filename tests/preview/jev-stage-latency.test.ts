@@ -103,9 +103,10 @@ for (const hostProbe of [false, true]) it(`recorded Jev stage separates HTTP fro
       from: { id: Number(scope.operator) }, text: fixture.recorded.text } }]);
     await worker.drain(); const turn = journal.view.order[0]!;
     // The admitted neighbor stays below the acknowledgement delay; slow-answer acknowledgement
-    // and its review are covered by reply-acknowledgement.test.ts with an injected slow path.
+    // is covered by reply-acknowledgement.test.ts with an injected slow path.
     expect(sent).toEqual([fixture.recorded.answer]);
     expect(turn.heldNoticeReview).toBeUndefined();
+    expect(turn.heldNoticeIntent).toBeUndefined();
     expect(requests).toBe(1); expect(Object.keys(bodies[0]!.questions)).toHaveLength(10);
     expect(bodies[0]).toEqual({ state: fixture.recorded.answer, model: JEV_MODEL, questions: jevQuestions });
     expect(turn.replyChecks?.map(check => check.verdict)).toEqual(['pass']);

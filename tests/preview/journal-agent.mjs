@@ -2152,7 +2152,7 @@ async function main() {
       // Rules 42 and 89: the physical send consumes the journal's signed intent and returns a
       // closed accepted / refused / unknown outcome; nothing dispatched is ever a refusal.
       sendAdmits: true,
-      send: async ({ text, expectedText, chat, thread, replyTo, replyMarkup, target, provenance, admit }) => {
+      send: async ({ text, expectedText, chat, thread, replyTo, replyMarkup, target, provenance, admit, current }) => {
         if (!journal.verifyOutbound(provenance, { target, chat, ...(thread === undefined ? {} : { thread }), body: text }))
           return { kind: 'refused', reason: 'outbound provenance unsigned' };
         if (workerStop.value || existsSync(stopPath) || wallNow() >= journal.view.expires || journal.view.stop)
@@ -2167,16 +2167,19 @@ async function main() {
           catch { return { kind: 'refused', reason: 'group disclosure grant or audience refused before dispatch' }; }
         if (workerStop.value || existsSync(stopPath) || !ownerHeld() || journal.view.stop || wallNow() >= journal.view.expires)
           return { kind: 'refused', reason: 'stopped during audience check' };
+        if (current && !current()) return { kind: 'refused', reason: 'acknowledgement cancelled' };
         admit?.(); // Durable intent only after disclosure; replication below includes it.
         if (shared) {
           // replicated(1): the journal through this send's signed intent is on the other machine, and the one
           // dispatch-claim for this target is taken, immediately before the physical send. Until then it waits.
           const refused = await shared.admit(target, () => workerStop.value || existsSync(stopPath) || wallNow() >= journal.view.expires || journal.view.stop
-            ? 'stopped before dispatch' : !ownerHeld() ? 'conversation ownership lost before dispatch' : null);
+            ? 'stopped before dispatch' : !ownerHeld() ? 'conversation ownership lost before dispatch'
+              : current && !current() ? 'acknowledgement cancelled' : null);
           if (refused !== null) return refused;
         }
         if (workerStop.value || existsSync(stopPath) || !ownerHeld() || journal.view.stop || wallNow() >= journal.view.expires)
           return { kind: 'refused', reason: 'stopped before physical dispatch' };
+        if (current && !current()) return { kind: 'refused', reason: 'acknowledgement cancelled' };
         let outcome = { kind: 'unknown', reason: 'send port failed' };
         try {
           const reply = physical.invoke({ token: secretRef('telegram-bot-token'), method: 'sendMessage',

@@ -277,8 +277,8 @@ it('forgetting carried request text cannot silently cancel the owned request', a
 const host = readFileSync(new URL('./journal-agent.mjs', import.meta.url), 'utf8');
 const modelCode = host.split('      model: async ({ id, prepared }) => {')[1]!.split('\n      summaryCheck:')[0]!;
 const modelFunction = 'async ({ id, prepared }) => {' + modelCode.trimEnd().replace(/,$/, '');
-const sendCode = host.split('      send: async ({ text, expectedText, chat, thread, replyTo, replyMarkup, target, provenance, admit }) => {')[1]!.split('\n    if (existsSync(stopPath))')[0]!;
-const sendFunction = 'async ({ text, expectedText, chat, thread, replyTo, replyMarkup, target, provenance, admit }) => {' + sendCode.slice(0, sendCode.lastIndexOf(' });'));
+const sendCode = host.split('      send: async ({ text, expectedText, chat, thread, replyTo, replyMarkup, target, provenance, admit, current }) => {')[1]!.split('\n    if (existsSync(stopPath))')[0]!;
+const sendFunction = 'async ({ text, expectedText, chat, thread, replyTo, replyMarkup, target, provenance, admit, current }) => {' + sendCode.slice(0, sendCode.lastIndexOf(' });'));
 
 it.each([true, false])('shipped send delivers answers and terminal notices when original exists: %s', async originalExists => {
   for (const text of ['A reviewed answer.', GROUP_REVIEW_FINAL_NOTICE]) {
