@@ -42,13 +42,13 @@ Publication chain: inventory repin changed zero pins; owner rehash refreshed 15 
 
 Register source: 00cbaebe011dbb21881a30fab67df622411163b0; replay generation sha256:e7f928a39cde9a5190e266bbf85ff08e3940f95e27f77400a2b580e9675e33d9 (289 entries, 116 rules).
 
-Decision: train-12-botid | Retain verified ordinary merge 480a7bae of d54b62be on 4b125fec; fixture bot identity and test-root isolation. Evidence: lanes/botid-1011-PROGRESS.md. | reported=/Users/dabombstudio/.instar/agents/echo/.instar/lanes/train-12b-PROGRESS.md
-Decision: train-12-train11 | Retain verified ordinary merge aceeb193 of dd77f572; preserve onboarding and memory-fact behavior and floor repair. Evidence: lanes/train-11-PROGRESS.md. | reported=/Users/dabombstudio/.instar/agents/echo/.instar/lanes/train-12b-PROGRESS.md
-Decision: train-12-capsentence2 | Complete the in-progress ordinary merge of 1c010c55; retain its tests and immutable fixture with explicit historical prose adaptation. Evidence: lanes/capsentence2-1011-PROGRESS.md. | reported=/Users/dabombstudio/.instar/agents/echo/.instar/lanes/train-12b-PROGRESS.md
-Decision: train-12-desk-resolution | Apply the 2026-10-12 desk decision in lanes/fanout/train-12b-prompt.txt: capsentence2 three requirements win in meaning, compact the instruction without editing the floor guard. | reported=/Users/dabombstudio/.instar/agents/echo/.instar/lanes/train-12b-PROGRESS.md
-Decision: train-12-publication | Regenerate owner hashes and publications using the cint-L37 desk chain; never hand-merge generated contents. | reported=/Users/dabombstudio/.instar/agents/echo/.instar/lanes/train-12b-PROGRESS.md
+Decision: train-12-botid | Retain verified ordinary merge 480a7bae of d54b62be on 4b125fec; fixture bot identity and test-root isolation. Evidence: lanes/botid-1011-PROGRESS.md. | reported=/Users/dabombstudio/.instar/agents/echo/.instar/lanes/train-12-repair-053214-PROGRESS.md
+Decision: train-12-train11 | Retain verified ordinary merge aceeb193 of dd77f572; preserve onboarding and memory-fact behavior and floor repair. Evidence: lanes/train-11-PROGRESS.md. | reported=/Users/dabombstudio/.instar/agents/echo/.instar/lanes/train-12-repair-053214-PROGRESS.md
+Decision: train-12-capsentence2 | Complete the in-progress ordinary merge of 1c010c55; retain its tests and immutable fixture with explicit historical prose adaptation. Evidence: lanes/capsentence2-1011-PROGRESS.md. | reported=/Users/dabombstudio/.instar/agents/echo/.instar/lanes/train-12-repair-053214-PROGRESS.md
+Decision: train-12-desk-resolution | Apply the 2026-10-12 desk decision in lanes/fanout/train-12b-prompt.txt: capsentence2 three requirements win in meaning, compact the instruction without editing the floor guard. | reported=/Users/dabombstudio/.instar/agents/echo/.instar/lanes/train-12-repair-053214-PROGRESS.md
+Decision: train-12-publication | Regenerate owner hashes and publications using the cint-L37 desk chain; never hand-merge generated contents. | reported=/Users/dabombstudio/.instar/agents/echo/.instar/lanes/train-12-repair-053214-PROGRESS.md
 
-Decision: train-12-replay-consumer | Adapt act-first historical reviewer-question equality through the six exact prose shortenings already approved in train-11 00641ee8; retain rule bytes and all captured verdicts. | reported=/Users/dabombstudio/.instar/agents/echo/.instar/lanes/train-12b-PROGRESS.md
+Decision: train-12-replay-consumer | Adapt act-first historical reviewer-question equality through the six exact prose shortenings already approved in train-11 00641ee8; retain rule bytes and all captured verdicts. | reported=/Users/dabombstudio/.instar/agents/echo/.instar/lanes/train-12-repair-053214-PROGRESS.md
 
 Additional consumer: tests/preview/act-first.test.ts keeps the original capture immutable and translates only six historical explanatory clauses; all other question bytes must match. No fresh model quality claim.
 
