@@ -63,8 +63,8 @@ Prompt finding: feadb66b8ad1 | quoted-evidence | The replay translates one exact
 
 Repair scope: Correct the six report locators without changing the decisions, runtime, captures or gate implementation. The existing review record covers these metadata-only commits; the checker excludes reviews/ from a standalone subject.
 Decision: train-12-repair-053214-report | Point the six existing decisions to the prescribed desk-copied repair report and preserve their content and ids. | reported=/Users/dabombstudio/.instar/agents/echo/.instar/lanes/train-12-repair-053214-PROGRESS.md
-Prompt finding: 42faf877ba82 | quoted-evidence | The existing act-first replay locates the fixed agent briefing header to compare historical question bytes; it does not classify user meaning or prescribe a model verdict.
-Prompt finding: b1bb3946362d | quoted-evidence | The existing act-first replay locates the fixed agent briefing header to compare historical question bytes; it does not classify user meaning or prescribe a model verdict.
+Prompt finding: 42faf877ba82 | quoted-evidence | The existing act-first replay translates the exact historical agent briefing header before comparing recorded question bytes; it does not classify user meaning or prescribe a model verdict.
+Prompt finding: b1bb3946362d | quoted-evidence | The existing act-first replay translates the exact historical agent briefing header before comparing recorded question bytes; it does not classify user meaning or prescribe a model verdict.
 Repair simplestRobustRoute: Correct report locators and use the existing Rule 102 report consumer; no added machinery or changed safety floor. The desk copies the local handoff to the prescribed Studio destination. Positive report and absent-report/missing-id controls exercise the consumer.
 
 ## Closing block
