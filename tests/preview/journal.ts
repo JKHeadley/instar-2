@@ -7686,7 +7686,9 @@ export function createJournalWorker(journal: ReturnType<typeof openPreviewJourna
   };
   const startAcknowledgement = (turn: Turn) => {
     if (acknowledgementTimers.has(turn) || !fromOperator(turn) || turn.requestedAction || turn.editOf
-      || turn.reserved || turn.answer !== undefined || turn.intent !== undefined || outsideAllowance(journal.view, turn)) return;
+      || ((turn.reserved || turn.answer !== undefined) && turn.modelState !== 'complete')
+      || turn.intent !== undefined || outsideAllowance(journal.view, turn)) return;
+    // A durable complete answer can still await review after restart; only final dispatch ends its acknowledgement window.
     const after = ports.acknowledgementTimer ?? ((ms: number, run: () => void) => {
       const timer = setTimeout(run, ms); timer.unref(); return () => clearTimeout(timer);
     });

@@ -169,6 +169,44 @@ it('reopens two durable queued inputs and reconstructs both timers before the fi
 });
 
 
+it.each([false, true])('saved answer remains acknowledgement-eligible during slow review, restart=%s', async restart => {
+  const sample = captured.cases[1]!;
+  vi.useFakeTimers(); vi.setSystemTime(sample.at);
+  const root = mkdtempSync(join(tmpdir(), 'ack-saved-answer-')), path = join(root, 'journal.encrypted');
+  const key = new Uint8Array(32).fill(71);
+  let journal = openPreviewJournal(path, key, {
+    kind: 'genesis', bot: '8820318295', chat: '-1004290919884', operator: '7812716706', forum: true,
+    grant: 'grant:preview', configurationDigest: 'sha256:offline', expires: sample.at + 86400000,
+    maxCalls: 20, maxReplies: 10, maxTurns: 10, maxBytes: 262144, cursor: 0 });
+  const sent: string[] = [];
+  const ports: PreviewPorts = { now: () => Date.now(), stopped: () => false, groupDisclosure: async () => true,
+    model: async () => { throw Error('saved answer must not call the model again'); }, checkOutbound: () => {},
+    send: async input => { sent.push(input.expectedText); return 100 + sent.length; },
+    replyCheck: { elapsedMs: () => Date.now(), jev: async () => { throw Error('review service unavailable'); },
+      escalate: async () => { await wait(12000); return { verdict: 'pass', ruleIds: [], confidence: 1, latencyMs: 12000 }; } } };
+  try {
+    let worker = createJournalWorker(journal, ports); worker.intake([sample.raw]);
+    const turn = journal.view.order[0]!;
+    journal.append({ kind: 'reserve', id: turn.id, at: sample.at });
+    await vi.advanceTimersByTimeAsync(1000);
+    journal.append({ kind: 'answer', id: turn.id, text: sample.reply, state: 'complete', at: Date.now() });
+    if (restart) {
+      journal.close(); vi.clearAllTimers(); vi.setSystemTime(sample.at + 1000);
+      journal = openPreviewJournal(path, key); worker = createJournalWorker(journal, ports);
+    }
+    const drain = worker.drain();
+    await vi.advanceTimersByTimeAsync(8999); expect(sent).toEqual([]);
+    await vi.advanceTimersByTimeAsync(1); expect(sent).toEqual([REPLY_ACKNOWLEDGEMENT]);
+    expect(journal.view.order[0]?.intent).toBeUndefined();
+    await vi.advanceTimersByTimeAsync(10000); await drain;
+    expect(sent).toEqual([REPLY_ACKNOWLEDGEMENT, sample.reply]);
+    journal.close(); journal = openPreviewJournal(path, key);
+    await createJournalWorker(journal, ports).drain();
+    expect(sent).toEqual([REPLY_ACKNOWLEDGEMENT, sample.reply]);
+  } finally { journal.close(); rmSync(root, { recursive: true, force: true }); }
+});
+
+
 it('keeps the timer through the recorded P4 memory lookup until its second answer is usable', async () => {
   const fixture = JSON.parse(readFileSync(new URL('./fixtures/proofroom2-recallrank-2026-10-02.json', import.meta.url), 'utf8')) as {
     lookupSamples: { samples: { label: string; calls: { raw: string }[] }[] } };
