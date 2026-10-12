@@ -7,7 +7,7 @@ import { spawnSync } from 'node:child_process';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { createHash } from 'node:crypto';
-import { continuityDisclosure, createJournalWorker, MODEL_FAILURE_REPLY, OBLIGATION_FLOOR_PACKET_BYTES as FLOOR_GUIDE, openPreviewJournal, withDisclosure } from './journal.js';
+import { continuityDisclosure, createJournalWorker, MEMORY_UNDECIDED_REPLY, MODEL_FAILURE_REPLY, OBLIGATION_FLOOR_PACKET_BYTES as FLOOR_GUIDE, openPreviewJournal, withDisclosure } from './journal.js';
 import { HOLDING_REPLY } from './reply-check.js';
 import { prepareJournalEnvelope } from './journal-envelope.js';
 import { ANSWER_INSTRUCTIONS, MIND_RULES, verifyMindRules } from './briefing.js';
@@ -518,6 +518,50 @@ describe('Rule 110: the first reply sent from a compacted context discloses it a
         reference: 'model failure notice delivered (empty) as Telegram message 30, not an answer' });
       reopened.close();
     } finally { rmSync(dir, { recursive: true, force: true }); }
+  });
+
+  // Preserve the delivered bytes from proof-room update 715672853 across the notice wording upgrade.
+  const capturedMemory = JSON.parse(readFileSync(new URL('./fixtures/proofroom-memory-misfire-715672853-2026-09-30.json', import.meta.url), 'utf8')) as {
+    turns: { update: number; recordedSent: string }[];
+  };
+  it.each([
+    ['historical memory failure', capturedMemory.turns.find(turn => turn.update === 715672853)!.recordedSent, true],
+    ['current memory failure', `PREVIEW — ${MEMORY_UNDECIDED_REPLY}`, true],
+    ['successful answer', capturedMemory.turns.find(turn => turn.update === 715672779)!.recordedSent, false],
+  ] as const)('accounts for a delivered %s after reopening the encrypted journal', async (_label, text, failed) => {
+    const dir = root(), path = join(dir, 'journal.encrypted');
+    let journal = openPreviewJournal(path, key, genesis(7000));
+    try {
+      seedAnswered(journal, garden.slice(0, 29));
+      seed(journal, ['Please remember my favourite tree is cedar.']);
+      const id = 'telegram:12345678:update:30';
+      journal.append({ kind: 'reserve', id, at });
+      journal.append({ kind: 'answer', id, text: 'Noted.', state: 'complete', ...(failed ? { memoryPending: true } : {}), at });
+      if (failed) journal.append({ kind: 'memory-undecided', id, reason: 'summary-uncertain', at });
+      journal.append({ kind: 'intent', id, text, chat: '7654321', update: 30, grant: 'grant:preview', at });
+      journal.append({ kind: 'sent', id, message: 30, at });
+      summarize(journal, 29, 'Twenty-nine garden updates.');
+      journal.close();
+      journal = openPreviewJournal(path, key);
+      const sent: string[] = [];
+      const worker = createJournalWorker(journal, { now: () => at + 100_000, stopped: () => false,
+        model: async () => 'Hi!', checkOutbound: () => {},
+        send: async input => { sent.push(input.expectedText); return 101; } });
+      expect(probe(worker, 'Hello again').continuity).toEqual({ through: 29, lastInbound: id, state: failed ? 'pending' : 'addressed' });
+      worker.intake([update(31, 'Hello again')]); await worker.drain();
+      expect(sent).toHaveLength(1);
+      if (failed) {
+        expect(sent[0]).toContain('is still open (memory-not-recorded notice delivered as Telegram message 30, not an answer).');
+        expect(sent[0]).not.toContain('was answered');
+        expect(journal.view.turns.get(id)).toMatchObject({ memoryPending: true, memoryUndecided: true });
+        expect(journal.view.memory).toHaveLength(0);
+      } else expect(sent[0]).toContain('was answered.');
+      journal.close();
+      journal = openPreviewJournal(path, key);
+      expect(journal.view.turns.get('telegram:12345678:update:31')!.continuity).toMatchObject({
+        prePauseInbound: id, disposition: failed ? 'pending' : 'addressed',
+        reference: failed ? 'memory-not-recorded notice delivered as Telegram message 30, not an answer' : 'Telegram message 30' });
+    } finally { journal.close(); rmSync(dir, { recursive: true, force: true }); }
   });
 
   it('replay refuses an account whose disclosure is not the sent text', () => {

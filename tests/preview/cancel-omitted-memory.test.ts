@@ -56,7 +56,7 @@ it('records the live decision that was right, and the reply and reminders that w
   expect(fixture.answerRowAtRa3.text).toBe(ANSWER.reply);
   expect(fixture.answerRowAtRa3.memoryPending).toBe(true);
   // The fixed notice was put up for review, and what survived the review's withhold reached the operator.
-  expect(fixture.reviewCandidateAtRa3.replace(/^PREVIEW — /u, '').startsWith(MEMORY_UNDECIDED_REPLY)).toBe(true);
+  expect(fixture.reviewCandidateAtRa3.replace(/^PREVIEW — /u, '').startsWith("I couldn't record that memory change. Please send it again.")).toBe(true);
   expect(recorded('ra3').reply.startsWith('PREVIEW — Please send it again.')).toBe(true);
   expect(fixture.intentAtRa3).toBe(recorded('ra3').reply);
   // Nothing was cancelled; both requests fired at 10:34.
