@@ -5,7 +5,7 @@
  * This file: the floors (a turn in progress, the stop, a machine without history, half-declared flags).
  * D1(a): a reply waits until the other machine acknowledged its record; it is never sent on local durability. */
 import { expect, it } from 'vitest';
-import { existsSync, readFileSync } from 'node:fs';
+import { existsSync, readFileSync, statSync } from 'node:fs';
 import { join } from 'node:path';
 import { cutoverHarness } from './journal-cutover-harness.mjs';
 import { REPLY_ACKNOWLEDGEMENT } from './journal.js';
@@ -65,6 +65,13 @@ it('the stop floor on two machines: a stop latched on one machine leaves the oth
   const acknowledgements = sendsBefore.filter(send => send.text === REPLY_ACKNOWLEDGEMENT);
   expect(acknowledgements.length).toBeLessThanOrEqual(1);
   expect(acknowledgements.every(send => send.replyTo === 101 && send.role === 'studio')).toBe(true);
+  // Stop after the completed exchange is on both machines, including send receipts.
+  // Otherwise takeover can legitimately resume the unfinished first turn instead of reading the next one.
+  await until('the owner recorded the receipts', async () => (await t.status('studio')).sendOutcomes.accepted === sendsBefore.length);
+  await until('the standby holds the completed exchange', () => {
+    const copy = JSON.parse(readFileSync(join(t.rootOf('laptop'), 'replica', 'copy-state.json'), 'utf8'));
+    return copy.size === statSync(join(t.rootOf('studio'), 'journal.encrypted')).size;
+  });
 
   // The operator's stop on the owner machine (the existing stop command, on that root).
   expect((await t.harness.commandOn(t.rootOf('studio'), 'stop')).status).toBe(0);

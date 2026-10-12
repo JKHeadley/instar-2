@@ -19,8 +19,9 @@ Bug evidence: reproducer=tests/preview/two-machine-floors.test.ts
 Hook bypass: none; core.hooksPath is unset and the common hooks directory contains sample hooks only.
 Convergence: none
 Decision: d1c3-stop-intent-counter | Reuse the neighboring test's intent-aware count and wait for the blocked second acknowledgement, while checking physical sends and paid calls separately; preserve runtime safeguards and acknowledgement ability. | reported=/Users/dabombstudio/.instar/agents/echo/.instar/lanes/sb-d1c3-1012-repair-071706-PROGRESS.md
+Decision: d1c3-stop-completed-exchange | Use the neighboring takeover test's receipt and replica-size checks before stopping the owner, so a slow initial answer cannot leave an unfinished exchange for the survivor to resume. | reported=/Users/dabombstudio/.instar/agents/echo/.instar/lanes/sb-d1c3-1012-repair-071706-PROGRESS.md
 Prompt review: No model-facing change. This repair changes only integration assertions; it does not change model inputs, output parsing or accept/escalate/refuse decisions.
-Evidence: The bounded Studio failure reports replies=2 with one physical send. Targeted foreground tests exercise peer loss and recovery, operator stop and relaunch, absent history, and invalid versus valid machine posture. Final command outputs are recorded in the repair report; no full-run report is fabricated.
+Evidence: The bounded Studio failure reports replies=2 with one physical send. Targeted foreground tests exercise peer loss and recovery, operator stop and relaunch, absent history, and invalid versus valid machine posture. An injected nine-second model delay exposed the incomplete initial-exchange setup; waiting for replicated receipts makes that slow-path stop test pass with its first acknowledgement delivered and its second held. Final command outputs are recorded in the repair report; no full-run report is fabricated.
 
 ## Closing block
 
