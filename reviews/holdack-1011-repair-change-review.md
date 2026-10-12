@@ -27,6 +27,8 @@ Decision: count-acknowledgement-separately | Assert its exact occurrence and dur
 
 Verification: Three originally failing files passed all 85 tests; strengthened conversation regression and captured-shape replay passed all 11 conversation tests. The targeted existing priority sweep and eight acknowledgement replays passed. Typecheck passed before the final test-only additions; final checks are recorded in the absolute desk progress record. The supplied gate JSON is absent; contract checkers report missing results, and the pipeline owns the full suite. No full suite or load test was run here.
 
+Publication: The delegated desk-rehash-owner-manifests tool refreshed one canonical fixture hash in register-source/owner-references/preview.json. desk-repin-chain ran and found no grounding-inventory bytes to change. No hand-edited pins.
+
 ## Closing block
 
 simplestRobustRoute: This is the simplest robust route: reorder two existing packet signals and correct tests that conflated acknowledgements with answers. It prevents self-reinforcing irrelevant context without adding machinery. Start is an admitted turn with bounded evidence, end is its grounded reply, and existing byte/call/send/stop/secret/ownership guards remain. The real recorded shapes exercise the worker offline; no new live deployment or autonomous-completion claim.
