@@ -28,3 +28,5 @@ simplestRobustRoute: This is the simplest robust route: update the exact asserti
 VERDICT: author submission; this record asserts no independent verdict
 
 Publication preparation: The delegated rehash script refreshed three preview owner-reference hashes; the delegated repin chain refreshed zero inventory entries. Compilation and build passed. Targeted portable regression runs passed (146 tests across seven files, plus the status, dated-memory and carried-request files); independent notice-floor checks also passed. The two topic-launcher cases refuse during unchanged WSL startup before reaching the repaired assertions; Studio must execute that surface.
+
+Publication evidence: The existing replay generator published source commit 23b62fdb56ec49ad417bed56deab62060f90ac88 as generation sha256:4520aa11eb33f9636dd426a45f1adba63d6d97100934e9ab0d6ba200203d720d. Ten portable affected files passed 214 tests in the final per-file runs; the separate send-unknown-notice suite passed all ten tests. Typecheck and build exited 0.
