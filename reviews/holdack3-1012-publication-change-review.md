@@ -7,8 +7,8 @@ Outcome: Owner-reference pins and generated register describe the committed ackn
 Affected rules: Rules 5/37/49/69/74/90/111/113/116.
 Affected floors: secrets — no credential changes; spend cap — no runtime effect; stop — no runtime effect; no duplicate sends — no runtime effect; durable intake — no runtime effect.
 Operator questions: none
-Suggested tier: mechanical
-Declared tier: mechanical
+Suggested tier: ordinary
+Declared tier: ordinary
 Tier rationale: Recomputed content hashes and generated publication from committed source; no authority expansion.
 Side effects: Two owner artifact hashes change; generated register and briefing publication follow the source commit. No runtime policy changes.
 Undo and recovery: Regenerate from the chosen reverted source rather than editing pins by hand.
