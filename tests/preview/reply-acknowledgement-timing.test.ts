@@ -14,7 +14,7 @@ const captured = JSON.parse(readFileSync(new URL('./fixtures/reply-acknowledgeme
 const wait = (ms: number) => new Promise<void>(resolve => setTimeout(resolve, ms));
 afterEach(() => vi.useRealTimers());
 
-for (const sample of captured.cases.slice(0, 3)) it(`real recorded timing ${sample.update}: fixed ack starts at ten seconds, never after answer readiness`, async () => {
+for (const sample of captured.cases.slice(0, 3)) it(`real recorded timing ${sample.update}: fixed ack starts at ten seconds, never after final send dispatch`, async () => {
   vi.useFakeTimers(); vi.setSystemTime(sample.at);
   const root = mkdtempSync(join(tmpdir(), 'ack-timing-'));
   const journal = openPreviewJournal(join(root, 'journal.encrypted'), new Uint8Array(32).fill(71), {
@@ -98,7 +98,7 @@ it('picks up recorded second input and acknowledges it while the first turn stil
   } finally { journal.close(); rmSync(root, { recursive: true, force: true }); }
 });
 
-it.each([1000, 20000])('keeps acknowledgement through a format continuation lasting %s ms, then cancels before review', async continuationMs => {
+it.each([1000, 20000])('keeps acknowledgement through a format continuation lasting %s ms, including review', async continuationMs => {
   const sample = captured.cases[1]!;
   vi.useFakeTimers(); vi.setSystemTime(sample.at);
   const root = mkdtempSync(join(tmpdir(), 'ack-continuation-'));
@@ -125,11 +125,11 @@ it.each([1000, 20000])('keeps acknowledgement through a format continuation last
     const worker = createJournalWorker(journal, ports); worker.intake([sample.raw]); const drain = worker.drain();
     await vi.advanceTimersByTimeAsync(10000);
     expect(calls).toBe(2);
-    expect(sent).toEqual(continuationMs > 10000 ? [REPLY_ACKNOWLEDGEMENT] : []);
+    expect(sent).toEqual([REPLY_ACKNOWLEDGEMENT]);
     expect(reviewing).toBe(continuationMs < 10000);
     if (continuationMs > 10000) expect(journal.view.order[0]?.answer).toBeUndefined();
     await vi.advanceTimersByTimeAsync(40000); await drain;
-    expect(sent).toEqual(continuationMs > 10000 ? [REPLY_ACKNOWLEDGEMENT, sample.reply] : [sample.reply]);
+    expect(sent).toEqual([REPLY_ACKNOWLEDGEMENT, sample.reply]);
   } finally { journal.close(); rmSync(root, { recursive: true, force: true }); }
 });
 
@@ -196,7 +196,15 @@ it('keeps the timer through the recorded P4 memory lookup until its second answe
 });
 
 // Replay the captured answer/reviewer bytes with the observer #311 timing boundary injected.
-it.each([9300, 10500, 20000])('answer back at %s ms suppresses only acknowledgements that have not started', async answerMs => {
+// Reported timings are from holdack5-1012-brief.txt, updates 969390429 and 969390426.
+// Answer/reviewer bytes below are the committed 969390408 capture, not invented captures of those turns.
+it.each([
+  { label: '969390429: ready 9.6s, review/revision, delivered 36.2s', answerMs: 9600, reviewMs: 26600, sendMs: 0 },
+  { label: '969390426: ready 7s, fallback review, delivered 18.3s', answerMs: 7000, reviewMs: 11300, sendMs: 0 },
+  { label: 'delivered at 8.2s', answerMs: 7000, reviewMs: 1200, sendMs: 0 },
+  { label: 'dispatched at 9.9s, delivered after timer', answerMs: 7000, reviewMs: 2900, sendMs: 8300 },
+  ...[9300, 10500, 20000].map(answerMs => ({ label: `ready at ${answerMs}ms`, answerMs, reviewMs: 2700, sendMs: 0 })),
+])('$label: acknowledgement depends on final dispatch', async ({ answerMs, reviewMs, sendMs }) => {
   const sample = captured.cases[1]!;
   vi.useFakeTimers(); vi.setSystemTime(sample.at);
   const root = mkdtempSync(join(tmpdir(), 'ack-ten-second-'));
@@ -211,23 +219,32 @@ it.each([9300, 10500, 20000])('answer back at %s ms suppresses only acknowledgem
       const parsed = readAnswer(sample.answer, { wrapped: 'refuse' });
       if (!parsed.ok) throw Error('recorded output invalid'); return parsed.value; },
     checkOutbound: () => {},
-    send: async input => { sent.push({ text: input.expectedText, at: Date.now() - sample.at, replyTo: input.replyTo }); return sent.length + 100; },
+    send: async input => { if (input.expectedText !== REPLY_ACKNOWLEDGEMENT && sendMs > 0) await wait(sendMs);
+      sent.push({ text: input.expectedText, at: Date.now() - sample.at, replyTo: input.replyTo }); return sent.length + 100; },
     replyCheck: { elapsedMs: () => Date.now(),
-      jev: async () => { await wait(2700); return { value: { model: 'jev-1.13.0',
-        answers: Object.fromEntries(Object.entries(sample.checks[0]!.scores).map(([rule, noul]) => [rule, { type: 'noul', noul }])) }, latencyMs: 2700 }; },
+      jev: async () => { await wait(reviewMs); return { value: { model: 'jev-1.13.0',
+        answers: Object.fromEntries(Object.entries(sample.checks[0]!.scores).map(([rule, noul]) => [rule, { type: 'noul', noul }])) }, latencyMs: reviewMs }; },
       escalate: async () => { throw Error('unexpected escalation'); } } };
   try {
     const worker = createJournalWorker(journal, ports); worker.intake([sample.raw]); const drain = worker.drain();
-    await vi.advanceTimersByTimeAsync(9999); expect(sent).toEqual([]);
+    await vi.advanceTimersByTimeAsync(9999);
+    expect(sent.filter(row => row.text === REPLY_ACKNOWLEDGEMENT)).toEqual([]);
+    if (answerMs + reviewMs < 10000) expect(journal.view.order[0]?.intent).toBeDefined();
     if (answerMs === 9300) {
       expect(journal.view.order[0]?.answer).toBeDefined();
       expect(journal.view.order[0]?.sent).toBeUndefined();
     }
     await vi.advanceTimersByTimeAsync(1);
     const ack = { text: REPLY_ACKNOWLEDGEMENT, at: 10000, replyTo: sample.raw.message!.message_id };
-    expect(sent).toEqual(answerMs > 10000 ? [ack] : []);
+    expect(sent.filter(row => row.text === REPLY_ACKNOWLEDGEMENT)).toEqual(answerMs + reviewMs >= 10000 ? [ack] : []);
     await vi.advanceTimersByTimeAsync(30000); await drain; await worker.minimal();
-    const reply = { text: sample.reply, at: answerMs + 2700, replyTo: sample.raw.message!.message_id };
-    expect(sent).toEqual(answerMs > 10000 ? [ack, reply] : [reply]);
+    const reply = { text: sample.reply, at: answerMs + reviewMs + sendMs, replyTo: sample.raw.message!.message_id };
+    expect(sent).toEqual(answerMs + reviewMs >= 10000 ? [ack, reply] : [reply]);
+    // New intents admitted after answer readiness remain readable and never resend on restart.
+    const count = sent.length;
+    journal.compact(); journal.close();
+    const reopened = openPreviewJournal(join(root, 'journal.encrypted'), new Uint8Array(32).fill(71));
+    try { await createJournalWorker(reopened, ports).drain(); expect(sent).toHaveLength(count); }
+    finally { reopened.close(); }
   } finally { journal.close(); rmSync(root, { recursive: true, force: true }); }
 });

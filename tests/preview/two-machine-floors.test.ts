@@ -36,18 +36,20 @@ it('the peer is lost in the middle of a turn: the next model call and the send b
   expect((await t.view()).claims).toBe(0);
   expect(studio.child.exitCode).toBe(null);
   const back = t.start('laptop');
-  // The answer was ready before eight seconds. Waiting for replication/review must not produce a late acknowledgement.
+  // Answer readiness does not end the wait: the ten-second acknowledgement also waits for
+  // replication, then precedes the answer once the peer and reply review recover.
   await until('the turn finishes', () => answers().length > 0, 90000);
-  expect(acknowledgements()).toHaveLength(0);
+  expect(acknowledgements()).toHaveLength(1);
   expect(answers()).toHaveLength(1);
   expect(t.sends().every(call => call.role === 'studio')).toBe(true);
   expect(modelCalls().length).toBeGreaterThan(1);
   expect(modelCalls().every(call => call.role === 'studio')).toBe(true);
   await pause(6000);
-  expect(acknowledgements()).toHaveLength(0);
+  expect(acknowledgements()).toHaveLength(1);
   expect(answers()).toHaveLength(1);
-  expect(t.sends()).toHaveLength(1);
-  await until('nothing is left unresolved', async () => { const view = await t.view(); return view.claims === 1 && view.unresolved.length === 0; });
+  expect(t.sends()).toHaveLength(2);
+  expect(t.sends()[0].text).toBe(REPLY_ACKNOWLEDGEMENT);
+  await until('nothing is left unresolved', async () => { const view = await t.view(); return view.claims === 2 && view.unresolved.length === 0; });
   await t.stop(back); await t.stop(studio);
 }, 240000);
 
