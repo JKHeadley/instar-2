@@ -58,6 +58,21 @@ export function sharedAudience(originalPrompt: string | undefined): boolean {
     return (audience as { surface?: unknown }).surface !== OPERATOR_PRIVATE_SURFACE;
   } catch { return false; }
 }
+/** 26 September Jev-default direction (observer #282), Rules 28/57/77/116: a confident
+ * pass ends review for a group topic only when the worker's current standing/membership
+ * projection verifies the operator alone. This changes routing, not sharedAudience:
+ * unsure replies and revisions still get the group's sensitivity question. */
+export function confidentReplyNeedsReview(originalPrompt: string | undefined): boolean {
+  if (!sharedAudience(originalPrompt)) return false;
+  try {
+    const messages = (JSON.parse(originalPrompt!) as { messages: { role?: unknown; content?: unknown }[] }).messages;
+    const context = messages.find(message => message.role === 'context')?.content;
+    const audience = typeof context === 'string'
+      ? (JSON.parse(context) as { packet?: { audience?: { surface?: unknown; operatorOnlyVerified?: unknown } } }).packet?.audience
+      : undefined;
+    return audience?.surface !== 'telegram-group-topic' || audience.operatorOnlyVerified !== true;
+  } catch { return true; }
+}
 /** The guidance family's context questions (Part 18 §16, docs/18-sentinel-holders): claim verification and preference
  * learning are judged against the journal's own records, which Jev never sees (it reads only the reply text). So
  * they are never asked of Jev and are added to every contextual review that runs, in the same batched call: no
@@ -142,6 +157,10 @@ export const HOLDING_REPLY = 'I need to check that answer before I can send it.'
 /** Every rule an unselected review judges on the operator's own chat; the audience question is added only by selection. */
 const rules = (Object.keys(REPLY_RULES) as ReplyRule[]).filter(id => !isAudienceRule(id) && id !== 'incoherent_remainder');
 const jevRules = rules.filter((id): id is JevRule => !isContextRule(id));
+/** Recovery must prove all ten questions passed too: an older pass without complete
+ * scores cannot grant the operator-group exception (Rules 26/41/57). */
+export const jevConfidentPass = (check: ReplyCheckResult): boolean => check.path === 'jev' && check.verdict === 'pass'
+  && jevRules.every(rule => { const score = check.scores?.[rule]; return typeof score === 'number' && score >= 0 && score < 0.5; });
 const positiveLine: Record<JevRule, number> = { raw_path: 0.85, cli_command: 0.85,
   config_key: 0.85, credential: 0.70, api_endpoint: 0.85, quits_on_self: 0.70,
   claims_blocked: 0.85, parks_on_user: 0.85, defers_work: 0.85, unrecorded_blocker: 0.85 };
@@ -375,9 +394,9 @@ export async function checkReply(text: string, id: string, ports: ReplyCheckPort
     ...(expired(ports) ? { reason: REPLY_CHECK_BUDGET_REASON } : {}) }; }
   ports.record(report ? { ...first, approvalReport: report } : first);
   if (expired(ports)) return { outcome: 'unavailable', path: 'jev' };
-  // Jev cannot see who is reading, so its pass ends the check only on the operator's own chat; for any other audience
-  // the full-context review still judges the questions Jev never sees (the context and audience questions).
-  if (first.verdict === 'pass') return sharedAudience(originalPrompt)
+  // A verified operator-only audience uses the confidence cascade; other groups still
+  // need the full-context audience judgment even when all ten Jev questions pass.
+  if (first.verdict === 'pass') return confidentReplyNeedsReview(originalPrompt)
     ? reviewReply(text, id, ports, [...AUDIENCE_RULES], originalPrompt) : { outcome: 'pass', path: 'jev' };
   return reviewReply(text, id, ports, first.ruleIds, originalPrompt);
 }
