@@ -56,16 +56,27 @@ export async function verifyGroupAudience(scope: GroupCarryScope, read: Membersh
   try {
     if (!/^[1-9][0-9]*$/u.test(scope.operator) || !/^[1-9][0-9]*$/u.test(scope.bot)
       || scope.operator === scope.bot || !/^-[1-9][0-9]*$/u.test(scope.chat)) return false;
-    const chat = object(result(await read('getChat', { chat_id: scope.chat })));
+    if (result(await read('getChatMemberCount', { chat_id: scope.chat })) !== 2) return false;
+    // Four independent read-only observations share one round, bounded by both count reads.
+    // Settle every request before returning even on failure: no orphan reads at the next dispatch.
+    const evidence = await Promise.allSettled([
+      async () => read('getChat', { chat_id: scope.chat }),
+      async () => read('getMe', {}),
+      async () => read('getChatMember', { chat_id: scope.chat, user_id: scope.operator }),
+      async () => read('getChatMember', { chat_id: scope.chat, user_id: scope.bot }),
+    ].map(probe => probe()));
+    if (evidence.some(item => item.status === 'rejected')) return false;
+    const [chatResult, meResult, operatorResult, botResult] = evidence.map(item =>
+      item.status === 'fulfilled' ? result(item.value) : undefined);
+    const chat = object(chatResult);
     if (String(chat.id) !== scope.chat || chat.type !== 'supergroup' || chat.is_forum !== true) return false;
     // Two joined members is not a private audience when non-members can browse a public or linked chat.
     if (chat.username !== undefined || chat.linked_chat_id !== undefined
       || chat.active_usernames !== undefined && (!Array.isArray(chat.active_usernames) || chat.active_usernames.length > 0)) return false;
-    const me = object(result(await read('getMe', {})));
+    const me = object(meResult);
     if (String(me.id) !== scope.bot || me.is_bot !== true) return false;
-    if (result(await read('getChatMemberCount', { chat_id: scope.chat })) !== 2) return false;
-    for (const [id, bot] of [[scope.operator, false], [scope.bot, true]] as const) {
-      const member = object(result(await read('getChatMember', { chat_id: scope.chat, user_id: id })));
+    for (const [id, bot, observed] of [[scope.operator, false, operatorResult], [scope.bot, true, botResult]] as const) {
+      const member = object(observed);
       const user = object(member.user);
       if (String(user.id) !== id || user.is_bot !== bot || !['creator', 'administrator', 'member'].includes(String(member.status))) return false;
     }
