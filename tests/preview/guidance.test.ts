@@ -164,7 +164,7 @@ describe('P14-NF-73/75: real reviewer outputs on recorded answer packets, this b
         escalate: async (reply, _id, original, rules) => {
           const context = JSON.parse(replyReviewContext(original!, reply, rules));
           expect(context.sources.map((source: { id: string }) => source.id))
-            .toEqual(['purpose:purpose', 'purpose:coherency', 'capability-note']);
+            .toEqual(['purpose:purpose', 'purpose:coherency', 'rules:87', 'capability-note']);
           expect(context.candidateReply).toBe(candidate);
           reviewed = true;
           return { ...parsed(sample), confidence: null, latencyMs: 1 };
@@ -187,7 +187,7 @@ describe('P14-NF-73/75: real reviewer outputs on recorded answer packets, this b
       'claude-sonnet-5', 'grant:offline-replay', 1790762566638);
       const context = JSON.parse(replyReviewContext(prompt, row.raw));
       expect(context.sources.map((source: { id: string }) => source.id))
-        .toEqual(['purpose:purpose', 'purpose:coherency', 'capability-note']);
+        .toEqual(['purpose:purpose', 'purpose:coherency', 'rules:87', 'capability-note']);
       expect(context.candidateReply).toBe(row.raw);
       expect(substantiveReply(context.candidateReply)).toBe(row.kind === 'delivered-reply');
     }
