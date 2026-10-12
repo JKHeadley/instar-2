@@ -40,6 +40,8 @@ Subject (38 paths): bin/instar2.mjs, docs/standing-trust-setup.md, package-lock.
 
 Publication chain: inventory repin changed zero pins; owner rehash refreshed 15 part-nine pins and one preview pin. Seven generated publications are replayed from the committed merged source.
 
+Register source: 00cbaebe011dbb21881a30fab67df622411163b0; replay generation sha256:e7f928a39cde9a5190e266bbf85ff08e3940f95e27f77400a2b580e9675e33d9 (289 entries, 116 rules).
+
 ## Closing block
 
 simplestRobustRoute: This is the simplest robust route: continue the two verified ordinary merges, resolve the one desk-authorized prompt conflict by shortening its wording, and reuse desk generation. No added machinery or budget expansion. Start guards are exact heads and immutable captures; end guards are targeted tests, the unchanged floor and register checks. Existing safety floors remain. No autonomous deployment claim.
