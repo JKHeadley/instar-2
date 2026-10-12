@@ -35,6 +35,8 @@ it('omits the missing optional source in the shipped composer and preserves ever
   try {
     const sources = turnSources(root, {}, journal.view, () => ({ launches: [], exits: [] }));
     expect(JSON.stringify(sources())).not.toMatch(/desk|report from/i);
+    expect(JSON.stringify(turnSources(root, { 'tools-activation': 'offline' }, journal.view,
+      () => ({ launches: [], exits: [] }))())).not.toMatch(/desk|report from/i);
     const path = join(root, 'desk-status.md');
     for (const text of ['', 'Lane A: building.', 'x'.repeat(briefing.DESK_STATUS_MAX_BYTES + 1)]) {
       writeFileSync(path, text);
@@ -88,8 +90,8 @@ it.each(captures.otherShapes)('renders the product question without desk instruc
       const before = JSON.stringify({ ...JSON.parse(input.context),
         sources: [...packet.sources, incident.legacyMissingSource.source] });
       const priorEnvelope = prepareJournalEnvelope({ ...input, context: before }, 'claude-offline-exact-1', genesis.grant, now);
-      console.log('userwords bytes saved: packet', Buffer.byteLength(before) - Buffer.byteLength(input.context),
-        'prepared envelope', Buffer.byteLength(priorEnvelope) - Buffer.byteLength(String(input.prepared)));
+      expect(Buffer.byteLength(before) - Buffer.byteLength(input.context)).toBe(504);
+      expect(Buffer.byteLength(priorEnvelope) - Buffer.byteLength(String(input.prepared))).toBe(444);
     }
     expect(sends.every(text => text.trim().length > 0)).toBe(true);
   } finally { journal.close(); rmSync(root, { recursive: true, force: true }); }

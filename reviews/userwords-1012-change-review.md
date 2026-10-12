@@ -28,6 +28,8 @@ Verification: Targeted tests and final gate results are recorded in the remote r
 
 Recorded shapes: tests/preview/fixtures/retrospective-duty-followup-train-1-2026-10-08.json preserves summary-writer summary:715672480, summary-uncertain 715672483, Jev undecided 715672482, Jev unsure 969389570, reply-review 969389923, delivered reply telegram:8994258214:update:715672479 and empty reply in recorded context telegram:8994258214:update:715672550. Their provenance names the proof-room and guidance journal captures. The empty row is not represented as proof of an empty Telegram delivery. No live root or serving login is accessed.
 
+Source metadata: Regenerated the seven generated register outputs from source commit 96f127d76238f66129c5e3a9fa040cc74aba7650. Only generation and commit metadata change; capability entries are unchanged. The desk owner-manifest rehash and grounding repin each reported zero pins changed.
+
 ## Closing block
 
 simplestRobustRoute: This is the simplest route: omit absent optional data in the existing source composer, retain present data unchanged, and add no runtime mechanism or instruction. Start and end are the same per-turn composition; all five existing floors and byte limits remain. No autonomous completion or live deployment claim is made.
