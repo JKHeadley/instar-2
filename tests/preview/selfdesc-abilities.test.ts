@@ -246,7 +246,8 @@ it('replays five recorded answers with the rendered paragraph verbatim and diges
   const capture = JSON.parse(readFileSync(new URL('./fixtures/capsentence-2026-10-11.json', import.meta.url), 'utf8'));
   expect(capture.update).toBe(840342287);
   expect(capture.question).toBe('What can you do for me here?');
-  expect(capture.instructions).toBe(ANSWER_INSTRUCTIONS);
+  // Preserve the prior instruction as historical evidence; only its self-description clause was superseded.
+  expect(capture.instructions.replace(capture.instructions.split('\n').find((line: string) => line.startsWith(SELF_IDENTITY)), SELF_DESCRIPTION)).toBe(ANSWER_INSTRUCTIONS);
   expect(capture.system).toBe(SUBSCRIPTION_TOOLS_SYSTEM_PROMPT);
   expect(capture.runs).toHaveLength(5);
   const note = capabilityBriefing(path => readFileSync(path, 'utf8'), capture.limits);

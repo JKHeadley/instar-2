@@ -9,7 +9,9 @@ The prefix is present before HTML rendering, digesting, and Eight preparation. T
 The capability note renders the tools/outbound paragraph from the current tool grant,
 MCP state and effect doorway checks. Self-descriptions quote it verbatim; its digest in
 existing source provenance lets K11 verify that paragraph before judging the remaining
-prose by meaning. This adds no authority, store or outbound path.
+prose by meaning. Free text describes other abilities; all limits stay in verbatim record
+quotations, including when another source reports unavailable information. This adds no
+authority, store or outbound path.
 
 ## Capabilities
 
