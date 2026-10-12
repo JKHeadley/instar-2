@@ -1,6 +1,6 @@
 #!/usr/bin/env node
 import { recordPhaseTiming } from './phase-timing.js';
-import { isGroupReviewFinalNotice } from './reply-check.js';
+import { admitJev, JEV_ADMISSION_MS, isGroupReviewFinalNotice } from './reply-check.js';
 import { loadHarnessLogins, createHarnessLoginPool, observeHarnessSessionLimit, harnessPoolPreviouslyLaunched } from './harness-login-pool.mjs';
 import { groupMembershipReader } from './group-membership-io.mjs';
 import { appendGroupCarry } from './group-carry.js';
@@ -1785,15 +1785,27 @@ async function main() {
       loginPool?.observe(selected, result);
       return result;
     };
-    const callJev = async (judgment, state, questions, timeoutMs = 2000, occurrence) => {
+    const callJev = async (judgment, state, questions, timeoutMs = 2000, occurrence, admission) => {
       const admit = async () => {
         await requireGroupDisclosure(journal.view);
         assertLiveJudgment(judgment, 'typesafe-jev');
         if (shared !== null && !await peerHolds()) throw Error('preview: Jev unavailable');
       };
       const replyCheck = judgment === 'jev-reply-check';
-      // Other Jev consumers retain their existing post-admission timeout; only replies get the bounded admission-and-provider retry allowance.
+      // Admission is separately bounded across the worker and host checkpoints.
       if (!replyCheck) await admit();
+      else {
+        const began = performance.now(); let accepted = false;
+        try {
+          await admitJev(admit, admission ?? { admissionMs: JEV_ADMISSION_MS }, () => performance.now(), wallNow);
+          accepted = true;
+        } finally {
+          recordPhaseTiming(row => journal.append(row), occurrence ?? judgment, 'jev-admission',
+            { accepted, elapsedMs: Math.max(0, Math.round(performance.now() - began)) }, wallNow());
+        }
+        if (admission?.deadlineAt !== undefined) timeoutMs = Math.min(timeoutMs, admission.deadlineAt - wallNow());
+        if (timeoutMs <= 0) throw Object.assign(Error('preview: Jev unavailable'), { jevCause: 'timeout' });
+      }
       const start = performance.now();
       const signal = AbortSignal.timeout(Math.max(1, Math.min(replyCheck ? 2500 : 2000, Math.floor(timeoutMs))));
       const failure = cause => Object.assign(Error('preview: Jev unavailable'), { jevCause: cause });
@@ -1803,7 +1815,6 @@ async function main() {
         signal.addEventListener('abort', onAbort, { once: true });
       });
       const exchange = async () => {
-        if (replyCheck) await admit();
         // Admission may complete after our caller timed out. It must never dispatch a late request.
         if (signal.aborted) throw failure('timeout');
         const body = JSON.stringify({ state, model: JEV_MODEL, questions });
@@ -1835,7 +1846,11 @@ async function main() {
         return { value, latencyMs };
       };
       try { return await Promise.race([exchange(), timeout]); }
-      finally { signal.removeEventListener('abort', onAbort); }
+      finally {
+        signal.removeEventListener('abort', onAbort);
+        if (replyCheck) recordPhaseTiming(row => journal.append(row), occurrence ?? judgment, 'jev',
+          { elapsedMs: Math.max(0, Math.round(performance.now() - start)) }, wallNow());
+      }
     };
     // model-call-boundary:end
     /** A refused review verdict's defect, kept only until that review's one format re-ask reads it (content-free protocol text). */
@@ -2052,8 +2067,8 @@ async function main() {
       summaryCheck: async evidence => (await callJev('jev-summary-faithfulness', evidence, SUMMARY_FAITHFULNESS_QUESTION)).value,
       replyCheck: {
         elapsedMs: () => performance.now(),
-        jev: (text, questions = jevQuestions, timeoutMs, occurrence) => callJev(questions === SUMMARY_QUESTION ? 'jev-summary-integrity' : 'jev-reply-check',
-          text, questions, timeoutMs, occurrence),
+        jev: (text, questions = jevQuestions, timeoutMs, occurrence, admission) => callJev(questions === SUMMARY_QUESTION ? 'jev-summary-integrity' : 'jev-reply-check',
+          text, questions, timeoutMs, occurrence, admission),
         escalate: async (text, id, originalPrompt, reviewRules, deadlineAt, operation, formatRetry) => {
 
           const start = performance.now();

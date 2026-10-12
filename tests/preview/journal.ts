@@ -1,3 +1,4 @@
+import { admitJev, JEV_ADMISSION_MS } from './reply-check.js';
 import { checkPhaseTiming, recordPhaseTiming, type PhaseTiming } from './phase-timing.js';
 import { groupCarryPacket, validCarriedMemory, type CarriedMemory } from './group-carry.js';
 import { boundThread, journalAudience, journalConversation, matchesBoundChat, validateChatBinding } from './forum-routing.js';
@@ -5500,26 +5501,21 @@ export function createJournalWorker(journal: ReturnType<typeof openPreviewJourna
     if (privateMemory() && !await disclosure()) throw Error('group carry: disclosure authority or audience refused');
     return method(...args);
   };
-  const guardedJev: ReplyCheckPorts['jev'] = async (text, questions, timeoutMs, occurrence) => {
+  const guardedJev: ReplyCheckPorts['jev'] = async (text, questions, timeoutMs, occurrence, admission) => {
     const replyCheck = original.replyCheck!;
-    // Summary callers retain their existing admission behavior. Reply attempts carry a
-    // budget that starts before this outer disclosure checkpoint (Rules 55/60/77).
     if (timeoutMs === undefined) return guarded(replyCheck.jev)(text, questions, timeoutMs, occurrence);
     const began = replyCheck.elapsedMs();
-    const timeout = () => Object.assign(Error('preview: Jev unavailable'), { jevCause: 'timeout' });
-    if (timeoutMs <= 0) throw timeout();
-    let timer: ReturnType<typeof setTimeout> | undefined;
+    let accepted = false, remaining;
     try {
-      // Race only admission: a late resolution has no continuation that can dispatch.
-      const admitted = await Promise.race([
-        privateMemory() ? disclosure() : Promise.resolve(true),
-        new Promise<never>((_resolve, reject) => { timer = setTimeout(() => reject(timeout()), timeoutMs); }),
-      ]);
-      if (!admitted) throw Error('group carry: disclosure authority or audience refused');
-    } finally { clearTimeout(timer); }
-    const remaining = Math.floor(timeoutMs - (replyCheck.elapsedMs() - began));
-    if (remaining <= 0) throw timeout();
-    return replyCheck.jev(text, questions, remaining, occurrence);
+      remaining = await admitJev(async () => {
+        if (privateMemory() && !await disclosure()) throw Error('group carry: disclosure authority or audience refused');
+      }, admission ?? { admissionMs: JEV_ADMISSION_MS }, replyCheck.elapsedMs, original.now);
+      accepted = true;
+    } finally {
+      recordPhaseTiming(journal.append, occurrence ?? 'jev-reply-check', 'jev-disclosure',
+        { accepted, elapsedMs: Math.max(0, Math.round(replyCheck.elapsedMs() - began)) }, original.now());
+    }
+    return replyCheck.jev(text, questions, timeoutMs, occurrence, remaining);
   };
   ports = { ...original, model: guarded(original.model),
     // The fixed content-free hold notice is the one outbound a refused disclosure admits: it names no private item.

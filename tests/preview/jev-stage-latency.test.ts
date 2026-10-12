@@ -11,8 +11,9 @@ import { appendGroupCarry } from './group-carry.js';
 import { verifyGroupAudience } from './group-disclosure.js';
 import { key, scope, now, permissionFor, membership } from './group-carry-fixture.js';
 import { JEV_MODEL, jevQuestions, parseJevResponse, parseReplyReviewVerdict,
-  type ReplyRule, type ReplyCheckPorts } from './reply-check.js';
+  admitJev, JEV_ADMISSION_MS, type JevAdmissionBudget, type ReplyRule, type ReplyCheckPorts } from './reply-check.js';
 import { assertLiveJudgment, modelCallRecord } from './model-call-boundary.js';
+import { recordPhaseTiming } from './phase-timing.js';
 import { readAnswer } from './answer-reading.js';
 
 const fixture = JSON.parse(readFileSync(new URL('./fixtures/group-audience-live-2026-10-10.json', import.meta.url), 'utf8')) as {
@@ -66,6 +67,7 @@ for (const hostProbe of [false, true]) it(`recorded Jev stage separates HTTP fro
   const callJev = runInNewContext(clientBody, {
     requireGroupDisclosure: async () => { if (hostProbe && !await audience()) throw Error('audience refused'); },
     journal, assertLiveJudgment, shared: null, JEV_MODEL, parseJevResponse, AbortSignal,
+    admitJev, JEV_ADMISSION_MS, recordPhaseTiming, wallNow: () => clock,
     performance: { now: () => clock },
     sha256: (body: string) => createHash('sha256').update(body).digest('hex'),
     typesafeKey: () => 'TEST-offline-only', observeJev: () => {},
@@ -79,7 +81,7 @@ for (const hostProbe of [false, true]) it(`recorded Jev stage separates HTTP fro
         clock += captured.latencyMs; return text;
       } };
     },
-  }) as (judgment: string, text: string, questions: object, timeout?: number, occurrence?: string) => ReturnType<ReplyCheckPorts['jev']>;
+  }) as (judgment: string, text: string, questions: object, timeout?: number, occurrence?: string, admission?: JevAdmissionBudget) => ReturnType<ReplyCheckPorts['jev']>;
   const append = journal.append.bind(journal);
   journal.append = row => { const begin = performance.now(); const result = append(row);
     if (row.kind === 'reply-jev-reserve') reservationWallMs += performance.now() - begin;
@@ -89,8 +91,8 @@ for (const hostProbe of [false, true]) it(`recorded Jev stage separates HTTP fro
     model: async () => fixture.recorded.answer,
     checkOutbound: () => {}, send: async (input: { expectedText: string }) => { sent.push(input.expectedText); return sent.length; },
     replyCheck: { elapsedMs: () => clock,
-      jev: async (text: string, questions = jevQuestions, timeout?: number, occurrence?: string) => {
-        const begin = performance.now(); const result = await callJev('jev-reply-check', text, questions, timeout, occurrence);
+      jev: async (text: string, questions = jevQuestions, timeout?: number, occurrence?: string, admission?: JevAdmissionBudget) => {
+        const begin = performance.now(); const result = await callJev('jev-reply-check', text, questions, timeout, occurrence, admission);
         clientWallMs += performance.now() - begin; return result;
       },
       escalate: async () => ({ ...verdict, confidence: null, latencyMs: 0 }),
@@ -119,7 +121,12 @@ for (const hostProbe of [false, true]) it(`recorded Jev stage separates HTTP fro
       injectedProviderMs: captured.latencyMs, probes, reads, peak, requests, httpWallMs,
       clientWallMs, reservationWallMs, clock: `${readMs} ms/read; recorded 164 ms provider; other local work zero`,
       wall: 'local loopback HTTP and local journal; not live TypeSafe or Studio timings' }));
-    journal.close(); journal = openPreviewJournal(path, key);
+    const phases = journal.view.phaseTimings!.filter(row => row.id === turn.id);
+    expect(phases.map(row => [row.phase, row.measurements.elapsedMs])).toEqual([
+      ['jev-disclosure', rounds * readMs], ['jev-admission', hostProbe ? rounds * readMs : 0], ['jev', captured.latencyMs],
+    ]);
+    journal.compact(); journal.close(); journal = openPreviewJournal(path, key);
+    expect(journal.view.phaseTimings!.filter(row => row.id === turn.id)).toEqual(phases);
     await createJournalWorker(journal, ports).drain();
     expect(sent).toHaveLength(1); expect(requests).toBe(1);
   } finally {
