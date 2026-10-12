@@ -8504,7 +8504,7 @@ export function createJournalWorker(journal: ReturnType<typeof openPreviewJourna
           if (fitsOneMessage(candidate)) { labels.push(label); mentioned.push(item); }
         }
         if (labels.length) reply += ` Upcoming: ${labels.join('; ')}.`;
-        let mentionedKeys = mentioned.map(datedKey), heldBack = false;
+        let mentionedKeys = mentioned.map(datedKey), heldBack = false, resultsOnly = false;
         let release: ReplyRelease | undefined, held: ReplyHeld | undefined;
         /** The review objection that removed or rewrote text this reply would otherwise have sent (Rules 8, 22, 46). */
         let objection: string | undefined;
@@ -8776,9 +8776,25 @@ export function createJournalWorker(journal: ReturnType<typeof openPreviewJourna
               ? turn.revision.dispositions : noDecisions(objections);
             const skipped: ResponseSkipped | undefined = decision === 'violation' && revisable && ports.replyCheck.revise && originalPrompt !== undefined
               && !turn.revisionReserved ? !inTime() ? 'deadline' : journal.view.calls >= journal.view.limits.maxCalls ? 'call cap' : undefined : undefined;
-            const note = reason ?? (decision === 'unavailable' || inTime() ? undefined : REPLY_CHECK_BUDGET_REASON);
+            let note = reason ?? (decision === 'unavailable' || inTime() ? undefined : REPLY_CHECK_BUDGET_REASON);
+            // D1c: an empty list left by excision must not delay unrelated finished work. Only the
+            // runner's bound lines that survived excision may leave; the rejected remainder never does.
+            // No new review/call allowance: retain both verdicts and use the ordinary outbound floors.
+            const resultRemainder = turn.revisionReviewRemainder;
+            const checkedRemainder = turn.revisionReview;
+            const deliverableResults = holding && !audienceShared && fromOperator(turn) && !credentialShape
+              && !credentialHeldClass(turn, candidateDigest) && withheld?.removed.length && nothingLeft
+              && resultRemainder !== undefined && checkedRemainder?.verdict === 'violation'
+              && checkedRemainder.ruleIds.length === 1 && checkedRemainder.ruleIds[0] === 'incoherent_remainder'
+              ? resultLines.filter(line => resultRemainder.includes(line)) : [];
             if (revised !== undefined) { reply = revised; mentionedKeys = []; objection = reason ?? objections.join(', '); }
             else if (scoped !== undefined) { reply = scoped; mentionedKeys = []; }
+            else if (deliverableResults.length) {
+              const body = deliverableResults.join('').trimStart();
+              reply = actionHeader === undefined ? disclosed(body) : `${actionHeader}\n${body}`;
+              mentionedKeys = []; resultsOnly = true;
+              note = `${note ?? objections.join(', ')}; rejected incoherent remainder withheld; only bound runner results sent`;
+            }
             else if (audienceUnreviewed || holding && (nothingLeft || withheld === undefined)) {
               // An unavailable group review is terminal; promise no later check.
               // No action header or continuity text may ride this content-free notice.
@@ -8822,7 +8838,7 @@ export function createJournalWorker(journal: ReturnType<typeof openPreviewJourna
         const reviewedDigest = createHash('sha256').update(reply).digest('hex');
         // Rules 79, 82: the operator action this answer proposed rides the reply as one fixed line: the exact request
         // (approved only by the operator's explicit yes) or why it cannot be proposed. Never on a held or notice reply.
-        const offer = heldBack || reply === HOLDING_REPLY || turn.answer === undefined ? undefined : await operatorOffer(turn, ports.now());
+        const offer = heldBack || resultsOnly || reply === HOLDING_REPLY || turn.answer === undefined ? undefined : await operatorOffer(turn, ports.now());
         // What follows here (the request line and the disclosure) stays whole in the last message of a split reply.
         const answerEnd = reply.trimEnd().length;
         if (offer) reply = `${reply.trimEnd()}\n\n${offer.text}`;
