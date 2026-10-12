@@ -143,7 +143,8 @@ it('refuses work it cannot admit before its deadline without launching it', { ti
   await owner.attach({});
   const busy = owner.execute(input(root, hold), 'answer');
   const refused = await owner.execute(input(root, mark, [marker], 300), 'maintenance');
-  expect(refused).toEqual({ code: null, limited: true, localLimit: 'capacity', stdout: '', stdoutBytes: new Uint8Array() });
+  expect(refused).toEqual({ code: null, signal: null, cancellationReason: null,
+    limited: true, localLimit: 'capacity', stdout: '', stdoutBytes: new Uint8Array() });
   expect(existsSync(marker)).toBe(false);
   await busy;
   // With capacity free again the same work is admitted and runs.
