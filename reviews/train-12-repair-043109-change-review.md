@@ -22,12 +22,12 @@ Convergence: none
 
 Subject: tests/preview/reply-check.test.ts, tests/preview/reply-review-budget.test.ts, register-source/owner-references/preview.json, generated/capabilities.json, generated/capabilities.md, generated/coverage.md, generated/glossary.md, generated/register.json, generated/rules.md, generated/source.json
 
+Decision: train-12-repair-043109-replay | Reuse the six exact train-11 prose translations already present in act-first, keeping recorded inputs and outputs immutable and runtime behavior unchanged. | reported=/Users/dabombstudio/.instar/agents/echo/.instar/lanes/train-12-repair-043109-PROGRESS.md
+
+Publication: Delegated desk rehash updated one owner source pin; inventory repin updated zero. build-register replay regenerated seven publications from f6064b942fc3831b3d835a31f7bda779f65179b1, generation sha256:2cd0e15a95fa82695855b55daa807fd220764dbfc9e1a336db1a08e7b9333d2f.
+
 ## Closing block
 
 simplestRobustRoute: This is the simplest robust route: update one stale literal and reuse the already-approved six exact historical prose translations in the second affected consumer. No new runtime machinery, prompt change, budget expansion or weakening of safety floors. Start guard: original capture hashes; end guards: exact comparison and targeted tests; limits: existing provider output allowance and restart no-repeat checks. No new autonomous-capability claim.
 80/20: Run targeted foreground replay and required cheap/READY checks; the Studio owns the full-suite and live gate.
 VERDICT: author submission; this record asserts no independent verdict — the review desk records its own
-
-Decision: train-12-repair-043109-replay | Reuse the six exact train-11 prose translations already present in act-first, keeping recorded inputs and outputs immutable and runtime behavior unchanged. | reported=/Users/dabombstudio/.instar/agents/echo/.instar/lanes/train-12-repair-043109-PROGRESS.md
-
-Publication: Delegated desk rehash updated one owner source pin; inventory repin updated zero. build-register replay regenerated seven publications from f6064b942fc3831b3d835a31f7bda779f65179b1, generation sha256:2cd0e15a95fa82695855b55daa807fd220764dbfc9e1a336db1a08e7b9333d2f.
