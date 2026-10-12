@@ -37,10 +37,10 @@ it.each([{ late: 0, audience: 5700 }, { late: 5700, audience: 0 }])(
       expect(sent).toEqual([REPLY_ACKNOWLEDGEMENT, '42']);
       const rows = journal.view.phaseTimings!;
       expect(rows.find(r => r.phase === 'acknowledgement')?.measurements).toEqual({
-        scheduledDueAt: at + 8000, callbackEnteredAt: at + 8000 + late, timerCallback: true });
+        scheduledDueAt: at + 10000, callbackEnteredAt: at + 10000 + late, timerCallback: true });
       const ack = rows.find(r => r.phase === 'send' && r.id.startsWith('held-notice:'))!;
-      expect(ack.measurements).toMatchObject({ sendEnteredAt: at + 8000 + late,
-        audienceAdmittedAt: at + 13700, transportBegunAt: at + 13700, transportReturnedAt: at + 14500,
+      expect(ack.measurements).toMatchObject({ sendEnteredAt: at + 10000 + late,
+        audienceAdmittedAt: at + 15700, transportBegunAt: at + 15700, transportReturnedAt: at + 16500,
         attempt: 1, provedNotSentAttempts: 0 });
       expect(rows.find(r => r.phase === 'send' && r.id.startsWith('reply:'))?.measurements).toMatchObject({
         audienceAdmittedAt: at + 30000 + audience, transportBegunAt: at + 30000 + audience,

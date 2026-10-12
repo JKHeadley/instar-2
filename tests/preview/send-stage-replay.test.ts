@@ -91,7 +91,7 @@ it.each(['accepted', 'joined-before-send', 'stopped-during-probe', 'unknown-send
     await vi.runAllTimersAsync(); await draining;
     const turn = journal.view.order[0]!;
     expect(models).toBe(1); expect(reviews).toBe(0); expect(turn.replyChecks?.map(check => check.path)).toEqual(['jev']);
-    expect(acknowledgements).toEqual([REPLY_ACKNOWLEDGEMENT]); // the deliberately slow answer leaves time for one acknowledgement
+    expect(acknowledgements).toEqual([]); // answer completed before the ten-second acknowledgement deadline
     expect(active).toBe(0); expect(turn.text).toBe(captured.recorded.text);
     if (outcome === 'accepted') {
       console.log(JSON.stringify({ stage: 'send', update: captured.recorded.update, sendMs: turn.sendMs,

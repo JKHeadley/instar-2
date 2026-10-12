@@ -62,8 +62,7 @@ const currentInstructions = (text: string) => {
 const compactRecordedNote = (text: string) => text
   .replace(/^- (?!tools:)[a-z][a-z0-9.-]*: /gmu, '- ')
   .replace('What you can do for the operator here:', 'Capabilities:')
-  .replace('Internal machinery running under you:', 'Internal:')
-  ;
+  .replace('Internal machinery running under you:', 'Internal:');
 
 it('replays preswitch update 840342287 with current self-description and the unchanged K11 rubric and capability inventory', () => {
   const capture = JSON.parse(readFileSync(new URL('./fixtures/selfdesc-outward-2026-10-11.json', import.meta.url), 'utf8'));
@@ -194,7 +193,7 @@ it('the recorded K11a briefing differs only in the declared conversation, media,
   expect(current.system.split(oldGrant)).toHaveLength(2);
   expect(current.note.split(internalHeading)).toHaveLength(2);
   expect(current.note).not.toContain(mediaAdmission);
-  expect(compactRecordedNote(currentNote(current.note).replace(oldConversation, currentConversation)
+  expect(currentNote(current.note.replace(oldConversation, currentConversation)
     .replace(internalHeading, internalHeading + mediaAdmission)
     .replace(oldRequests, recurringRequests)
     .replace("This is Instar in the operator's direct Telegram chat and its topics.", SELF_IDENTITY))).toBe(note);
@@ -288,7 +287,7 @@ it('replays five recorded answers with the rendered paragraph verbatim and diges
     // Source-generation metadata remains the authentic generation each call received;
     // the capability record and rendered paragraph match this checkout; the five
     // historical instruction prose lines are translated explicitly above.
-    expect(run.capabilityNote.text).toBe(note.text);
+    expect(currentChannelNote(run.capabilityNote.text)).toBe(note.text);
     expect(run.capabilityNote.provenance.renderedCapabilitySha256).toBe(note.renderedCapabilitySha256);
     const reading = readAnswer(run.raw, { wrapped: 'accept' });
     expect(reading.ok).toBe(true);
@@ -326,7 +325,7 @@ it('binds every unchanged-question capability replay and its PASS or FAIL judgme
   for (const run of capture.runs) {
     expect(run.userMessage).toEqual(capture.recordedUserMessage);
     expect(run.inputSha256).toMatch(/^[a-f0-9]{64}$/u);
-    expect(run.capabilityNote.text).toBe(note.text);
+    expect(currentChannelNote(run.capabilityNote.text)).toBe(note.text);
     expect(run.capabilityNote.provenance.renderedCapabilitySha256).toBe(note.renderedCapabilitySha256);
     const reading = readAnswer(run.raw, { wrapped: 'accept' });
     expect(reading.ok).toBe(true);

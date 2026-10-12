@@ -85,7 +85,7 @@ it.each(captures.otherShapes)('renders the product question without desk instruc
     const packet = JSON.parse(input.context) as { sources: { id: string; text: string }[] };
     expect(packet.sources.find(s => s.id === 'capability-note')?.text).toContain(briefing.SELF_IDENTITY);
     expect(packet.sources.find(s => s.id === 'purpose:purpose')?.text).toContain('Make coherence something an AI cannot lose');
-    expect(packet.sources.find(s => s.id === 'capability-note')?.text).toContain('What you can do for the operator here:');
+    expect(packet.sources.find(s => s.id === 'capability-note')?.text).toContain('Capabilities:');
     if (shape.kind === 'delivered-reply') {
       const before = JSON.stringify({ ...JSON.parse(input.context),
         sources: [...packet.sources, incident.legacyMissingSource.source] });

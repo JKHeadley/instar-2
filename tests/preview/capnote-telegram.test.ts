@@ -24,7 +24,7 @@ it('replays the three reported Telegram answers with a note that distinguishes t
   expect(note).toContain('Code switched off here: rungraph-core, slack-conversation-adapter, slack-ordinary-reply, ' + clarification);
   // No capability has been promoted to available, and sends still require the doorway.
   expect(note).not.toContain('- telegram-conversation-adapter:');
-  expect(note).toContain("network writes and outside sends via the doorway's four tests");
+  expect(note).toContain("Network writes and outside sends go through the effect doorway's four checks");
   const root = realpathSync(mkdtempSync(join(tmpdir(), 'capnote-telegram-')));
   const now = 1790000060000;
   const journal = openPreviewJournal(join(root, 'journal.encrypted'), new Uint8Array(32).fill(23), {
