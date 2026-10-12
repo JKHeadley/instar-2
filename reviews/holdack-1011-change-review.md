@@ -26,7 +26,7 @@ Decision: reuse-held-send | The existing durable held intent and receipt fence t
 Decision: separate-review-reservation | Reuse contextual review under a separate bounded reservation to preserve final-answer review and accounting. | reported=/Users/dabombstudio/.instar/agents/echo/.instar/lanes/holdack-1011-PROGRESS.md
 Decision: existing-poll-clock | Use the current host poll step and injected worker time, including tool lookups. No new timer or scheduler. | reported=/Users/dabombstudio/.instar/agents/echo/.instar/lanes/holdack-1011-PROGRESS.md
 
-Verification: The compact-packet regression now asserts the real 34000-byte envelope bound including 2870 framing bytes and summary retention, replacing an obsolete <11240 packet-size snapshot (current 11248). Targeted foreground tests and all final gate outputs are recorded in the absolute desk PROGRESS file. Full suite and independent landing review are pipeline-owned.
+Verification: The registered PREVIEW-HOST-RESOURCE-FUNNEL fixture hash is refreshed using canonical() after its new slow/fast launcher proof. The compact-packet regression now asserts the real 34000-byte envelope bound including 2870 framing bytes and summary retention, replacing an obsolete <11240 packet-size snapshot (current 11248). Targeted foreground tests and all final gate outputs are recorded in the absolute desk PROGRESS file. Full suite and independent landing review are pipeline-owned.
 
 ## Closing block
 
