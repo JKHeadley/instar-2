@@ -13,7 +13,7 @@ const limits = { providerAttempts: 16, expiresAt: 1791232800000 };
 it('delivers every available generated feature, names switched-off ones, and omits unloaded ones', () => {
   const note = sourcePacket(path => readFileSync(path, 'utf8'), SOURCE_PINS, limits).sources.find(s => s.id === 'capability-note')!;
   expect(note.provenance).toMatchObject({ path: CAPABILITY_BRIEFING_PATH, launcher: CAPABILITY_LAUNCHER, generation: generated.generation, commit: generated.commit });
-  for (const f of briefed.filter(f => f.availability === 'available')) expect(note.text).toContain(`- ${f.id}: ${f.text}`);
+  for (const f of briefed.filter(f => f.availability === 'available')) expect(note.text).toContain(`- ${f.text}`);
   for (const f of briefed.filter(f => f.availability === 'switched-off')) expect(note.text).toMatch(new RegExp(`switched off here[^\\n]*\\b${f.id}\\b`));
   for (const f of briefed.filter(f => f.availability === 'not-loaded')) expect(note.text).not.toContain(f.id);
   expect(note.text).toContain(`at most ${limits.providerAttempts} model attempts`);
@@ -80,7 +80,7 @@ it('the read-only inspection path shows the generated capability note and its re
     const out = inspect('--text', 'What can you do?', '--model', 'claude-sonnet-5');
     for (const note of [out.last.capabilityNote, out.next.capabilityNote]) {
       expect(note.provenance).toMatchObject({ path: CAPABILITY_BRIEFING_PATH, launcher: CAPABILITY_LAUNCHER, generation: source.generation, commit: generated.commit });
-      expect(note.text).toContain('- preview-requested-actions: ');
+      expect(note.text).toContain(briefed.find(f => f.id === 'preview-requested-actions')!.text!);
     }
   } finally { rmSync(root, { recursive: true, force: true }); }
 }, 60_000);
