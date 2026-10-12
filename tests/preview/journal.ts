@@ -7299,9 +7299,10 @@ export function createJournalWorker(journal: ReturnType<typeof openPreviewJourna
         match: 0, recent: item.at, index: candidates.length + index }));
       facts.forEach((item, index) => optional.push({ kind: 'fact', key: item.source, signal: item.source, rank: 4,
         match: matches(item.quote), recent: journal.view.turns.get(item.source)?.update ?? 0, index }));
-      // Within an existing tier, unreferenced evidence yields first.
+      // Within a tier, current-question matches lead; earlier exposure only breaks ties.
+      // Otherwise unrelated sources keep reinforcing themselves and evict a newly asked-for fact.
       const value = (item: Optional) => Number(questionTies.has(item.signal)) * 2 + Number(referenced.has(item.signal));
-      const dropOrder = optional.sort((a, b) => b.rank - a.rank || value(a) - value(b) || a.match - b.match
+      const dropOrder = optional.sort((a, b) => b.rank - a.rank || a.match - b.match || value(a) - value(b)
         || a.recent - b.recent || a.key.localeCompare(b.key));
       // Rule 2 / Rule 9: the floor leaves a proof artifact on the reply itself. `reserve` keeps `packetDropped`
       // durably, so "how did this answer come to be prepared without those turns" is answerable after a restart.
