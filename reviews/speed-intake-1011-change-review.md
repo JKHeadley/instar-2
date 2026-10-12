@@ -21,10 +21,12 @@ Convergence: none
 Decision: bounded-audience-observation | Reuse one scope-bound success for ten seconds from probe start, without sliding expiry or caching failures, and coalesce pending reads. The explicit cache direction permits this engineering default; least revelation and Rules 4/28/95 retain every predicate and current grant check. | reported=/Users/dabombstudio/.instar/agents/echo/.instar/lanes/speed-intake-1011-PROGRESS.md
 Decision: invalidate-before-intake | Observe the full Telegram batch including duplicates before intake; membership/service updates invalidate cached and pending evidence. Subscribe to chat_member and my_chat_member. | reported=/Users/dabombstudio/.instar/agents/echo/.instar/lanes/speed-intake-1011-PROGRESS.md
 Decision: fixture-latency-scope | Measure the recorded group question through the real worker with injected read latency; distinguish cold and warm. Studio performs live-root replay as instructed. | reported=/Users/dabombstudio/.instar/agents/echo/.instar/lanes/speed-intake-1011-PROGRESS.md
+Decision: publish-audience-cache-pin | Regenerate the existing shape-only publication from committed source 8229154e8a3e4f10a164caac25e40f503999c221; runtime authority and declarations remain unchanged. | reported=/Users/dabombstudio/.instar/agents/echo/.instar/lanes/speed-intake-1011-PROGRESS.md
+Deferral: generated/register.json:1 | not-a-deferral=Existing declaration text republished unchanged; the cache adds no deferred work.
 Prompt review: Prompt text, model parsers, review selection and verdict semantics are unchanged. Recorded group update 969390330 and seven recorded memory/review/reply shapes exercise the new cache, including wider-audience refusal and recovery.
 Verification: The 1000ms/read replay measures intake-to-reserve 12000ms before, 6000ms cold, 0ms warm, with six checkpoints, two reviews and one reply each. Reopening does not repeat the send. Six targeted files pass 73 tests. Three copied-runner launch cases refuse under WSL and are reported for the Studio gate. Typecheck and architecture pass. Final evidence is in the remote unit report.
 
-Subject (5 paths): tests/preview/group-disclosure.ts, tests/preview/journal-agent.mjs, tests/preview/group-audience-cache.test.ts, tests/preview/group-carry.test.ts, tests/preview/group-membership-io.test.ts
+Subject (12 paths): tests/preview/group-disclosure.ts, tests/preview/journal-agent.mjs, tests/preview/group-audience-cache.test.ts, tests/preview/group-carry.test.ts, tests/preview/group-membership-io.test.ts, generated/capabilities.json, generated/capabilities.md, generated/coverage.md, generated/glossary.md, generated/register.json, generated/rules.md, generated/source.json
 
 ## Closing block
 
