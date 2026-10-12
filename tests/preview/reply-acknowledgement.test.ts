@@ -1,4 +1,6 @@
 import { expect, it } from 'vitest';
+import { createCipheriv, randomBytes } from 'node:crypto';
+import { appendFileSync } from 'node:fs';
 import { mkdtempSync, realpathSync, rmSync, readFileSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
@@ -39,7 +41,7 @@ for (const receipt of [10, null]) it(`slow active reply sends one fixed acknowle
   const f = fixture({ receipt });
   try {
     f.worker.intake([update()]); const drain = f.worker.drain(); await f.entered.promise;
-    f.advance(7999); await f.worker.minimal(); expect(f.sent).toHaveLength(0);
+    f.advance(9999); await f.worker.minimal(); expect(f.sent).toHaveLength(0);
     f.advance(1); await Promise.all([f.worker.minimal(), f.worker.minimal()]);
     expect(f.sent.map(row => row.expectedText)).toEqual([REPLY_ACKNOWLEDGEMENT]);
     expect(f.sent[0]).toMatchObject({ kind: 'reply', disposition: 'result', replyTo: 101 });
@@ -64,7 +66,7 @@ it.each([false, true])('fast reply sends no acknowledgement (tool route=%s)', as
 it('a tool-enabled answer acknowledges only once it is slow', async () => {
   const f = fixture({ tool: true });
   try { f.worker.intake([update()]); const drain = f.worker.drain(); await f.entered.promise;
-    expect(f.sent).toHaveLength(0); f.advance(8000); await f.worker.minimal();
+    expect(f.sent).toHaveLength(0); f.advance(10000); await f.worker.minimal();
     expect(f.sent.map(row => row.expectedText)).toEqual([REPLY_ACKNOWLEDGEMENT]);
     f.answer.resolve('Found it.'); await drain; expect(f.sent).toHaveLength(2);
   } finally { f.close(); }
@@ -74,7 +76,7 @@ for (const options of [{ replies: 1 }])
   it(`keeps acknowledgement within allowance floors: ${JSON.stringify(options)}`, async () => {
     const f = fixture(options);
     try { f.worker.intake([update()]); const drain = f.worker.drain(); await f.entered.promise;
-      f.advance(8000); await f.worker.minimal(); f.answer.resolve('Done.'); await drain;
+      f.advance(10000); await f.worker.minimal(); f.answer.resolve('Done.'); await drain;
       expect(f.sent.map(row => row.expectedText)).toEqual(['Done.']);
     } finally { f.close(); }
   });
@@ -92,7 +94,7 @@ it('intake and confirmed stop remain live while acknowledgement disclosure is pe
   const worker = createJournalWorker(f.journal, f.ports);
   try {
     worker.intake([update()]); const drain = worker.drain().catch(error => error); await f.entered.promise;
-    hold = true; f.advance(8000); await worker.minimal(); await checking.promise;
+    hold = true; f.advance(10000); await worker.minimal(); await checking.promise;
     worker.intake([update(2)]);
     expect(f.journal.view.order.some(turn => turn.update === 2)).toBe(true);
     worker.stop('operator'); disclosure.resolve(true);
@@ -107,7 +109,7 @@ it('a detached acknowledgement failure stays observable by the ordinary drain', 
   const worker = createJournalWorker(f.journal, f.ports);
   try {
     worker.intake([update()]); const drain = worker.drain(); await f.entered.promise;
-    f.advance(8000); await worker.minimal(); await new Promise<void>(done => setImmediate(done));
+    f.advance(10000); await worker.minimal(); await new Promise<void>(done => setImmediate(done));
     await worker.minimal();
     f.answer.resolve('Done.'); await expect(drain).rejects.toThrow('acknowledgement boundary failed');
     expect(f.sent).toHaveLength(0);
@@ -133,7 +135,7 @@ it('a final answer waits for an in-flight acknowledgement send', async () => {
   const originalSend = f.ports.send;
   f.ports.send = async input => { if (input.expectedText === REPLY_ACKNOWLEDGEMENT) { sending.resolve(); await send.promise; } return originalSend(input); };
   const worker = createJournalWorker(f.journal, f.ports);
-  try { worker.intake([update()]); const drain = worker.drain(); await f.entered.promise; f.advance(8000);
+  try { worker.intake([update()]); const drain = worker.drain(); await f.entered.promise; f.advance(10000);
     const tick = worker.minimal(); await sending.promise; f.answer.resolve('Done.');
     await Promise.resolve(); expect(f.journal.view.order[0]?.intent).toBeUndefined();
     send.resolve(10); await Promise.all([tick, drain]);
@@ -150,7 +152,7 @@ for (const shape of shapes.otherShapes) it(`acknowledges once while replaying re
     return shape.kind === 'summary-uncertain' ? JSON.parse(shape.raw) as { state: 'uncertain' } : shape.raw; };
   const worker = createJournalWorker(f.journal, f.ports);
   try { worker.intake([update()]); const drain = worker.drain(); await f.entered.promise;
-    f.advance(8000); await worker.minimal(); await new Promise<void>(done => setImmediate(done));
+    f.advance(10000); await worker.minimal(); await new Promise<void>(done => setImmediate(done));
     expect(f.sent.map(row => row.expectedText)).toEqual([REPLY_ACKNOWLEDGEMENT]);
     f.answer.resolve('release recorded output'); await drain;
     expect(f.sent.filter(row => row.expectedText === REPLY_ACKNOWLEDGEMENT)).toHaveLength(1);
@@ -171,7 +173,7 @@ it('replays live lookup 969390382 with its recorded answer, Jev and contextual r
   let worker: ReturnType<typeof createJournalWorker>;
   const ports: PreviewPorts = { now: () => now, stopped: () => false, groupDisclosure: async () => true,
     prepareModel: input => prepareJournalEnvelope(input, 'claude-sonnet-5', genesis.grant, now, genesis.maxBytes),
-    model: async () => { now += 8000; await worker.minimal(); const parsed = readAnswer(captured.answer, { wrapped: 'refuse' });
+    model: async () => { now += 10000; await worker.minimal(); const parsed = readAnswer(captured.answer, { wrapped: 'refuse' });
       if (!parsed.ok) throw Error('recorded answer did not parse'); return parsed.value; },
     checkOutbound: () => {}, send: async input => { sent.push(input); return sent.length + 100; },
     replyCheck: { elapsedMs: () => now,
@@ -196,7 +198,7 @@ it('agent-initiated due work gets no acknowledgement even with a slow tool route
   f.ports.now = () => now; f.ports.replyCheck!.elapsedMs = () => now;
   let worker: ReturnType<typeof createJournalWorker>;
   f.ports.model = async () => { if (!due) return sample.request.output;
-    now += 8000; await worker.minimal(); return JSON.stringify({ reply: 'Time for your reminder.', memory: [] }); };
+    now += 10000; await worker.minimal(); return JSON.stringify({ reply: 'Time for your reminder.', memory: [] }); };
   worker = createJournalWorker(f.journal, f.ports);
   try { worker.intake([{ ...update(sample.request.update), message: { ...update().message, date: Math.floor(sample.request.at / 1000), text: sample.request.text } }]);
     await worker.drain(); f.sent.length = 0; f.reviews.length = 0; due = true; now = Date.parse(sample.due) + 1000;
@@ -210,7 +212,7 @@ it('agent-initiated due work gets no acknowledgement even with a slow tool route
 for (const receipt of [10, null]) it(`a crash after acknowledgement intent and before final answer cannot resend it (${receipt})`, async () => {
   const f = fixture({ receipt });
   try { f.worker.intake([update()]); const drain = f.worker.drain(); await f.entered.promise;
-    f.advance(8000); await f.worker.minimal();
+    f.advance(10000); await f.worker.minimal();
     // minimal no longer waits for dispatch; take the crash copy after its receipt has settled.
     await new Promise<void>(done => setImmediate(done));
     expect(f.journal.view.order[0]?.heldNoticeIntent).toBeDefined();
@@ -231,7 +233,7 @@ it('a fixed acknowledgement needs neither review availability nor a paid-call sl
   f.ports.replyCheck!.escalate = async () => { throw Error('review unavailable'); };
   const worker = createJournalWorker(f.journal, f.ports);
   try { worker.intake([update()]); const drain = worker.drain(); await f.entered.promise;
-    f.advance(8000); await worker.minimal(); await worker.minimal();
+    f.advance(10000); await worker.minimal(); await worker.minimal();
     expect(f.journal.view.order[0]?.heldNoticeReview).toBeUndefined();
     expect(unknownCallKeys(f.journal.view).reviews).toHaveLength(0);
     f.answer.resolve('Done.'); await drain;
@@ -251,9 +253,40 @@ it('cancels an acknowledgement when the answer arrives during its disclosure che
   };
   const worker = createJournalWorker(f.journal, f.ports);
   try { worker.intake([update()]); const drain = worker.drain(); await f.entered.promise;
-    hold = true; f.advance(8000); await worker.minimal(); await checking.promise;
+    hold = true; f.advance(10000); await worker.minimal(); await checking.promise;
     f.answer.resolve('Done.'); await new Promise<void>(done => setImmediate(done));
     hold = false; disclosure.resolve(true); await drain;
     expect(f.sent.map(row => row.expectedText)).toEqual(['Done.']);
+  } finally { f.close(); }
+});
+
+for (const age of [7999, 8000, 9300, 9999, 10000]) it(`new acknowledgement admission versus historical replay at ${age} ms`, async () => {
+  const f = fixture();
+  try {
+    f.worker.intake([update()]); const turn = f.journal.view.order[0]!;
+    const text = REPLY_ACKNOWLEDGEMENT, target = `held-notice:${turn.id}`;
+    const row = { kind: 'held-notice-intent' as const, id: turn.id, text, chat: genesis.chat, update: turn.update,
+      grant: genesis.grant, acknowledgement: true as const,
+      provenance: f.journal.signOutbound('infrastructure', { target, chat: genesis.chat, body: text }), at: turn.at + age };
+    if (age >= 10000) f.journal.append(row);
+    else {
+      expect(() => f.journal.append(row)).toThrow('fixed acknowledgement no longer due');
+      // Encode an old-build frame directly: new admission must not be used to manufacture historical acceptance.
+      f.journal.close();
+      const offset = readFileSync(f.path).length, nonce = randomBytes(12), cipher = createCipheriv('aes-256-gcm', key, nonce);
+      cipher.setAAD(Buffer.from(`preview-journal:${offset}`));
+      const body = Buffer.concat([cipher.update(JSON.stringify(row)), cipher.final()]);
+      const bytes = Buffer.concat([nonce, cipher.getAuthTag(), body]), length = Buffer.alloc(4);
+      length.writeUInt32BE(bytes.length); appendFileSync(f.path, Buffer.concat([length, bytes]));
+    }
+    f.journal.close();
+    if (age < 8000) expect(() => openPreviewJournal(f.path, key)).toThrow('fixed acknowledgement no longer due');
+    else {
+      const reopened = openPreviewJournal(f.path, key);
+      try { expect(reopened.view.order[0]?.heldNoticeIntent).toBe(text);
+        await createJournalWorker(reopened, { ...f.ports, model: async () => 'Done.' }).drain();
+        expect(f.sent.filter(row => row.expectedText === REPLY_ACKNOWLEDGEMENT)).toHaveLength(0);
+      } finally { reopened.close(); }
+    }
   } finally { f.close(); }
 });

@@ -4232,12 +4232,13 @@ Both run in the same private per-transcription directory, removed after completi
 ## Slow-reply acknowledgement
 
 Durable intake arms one cancellable timer per accepted operator message, independently of the
-serial answer worker. Its deadline uses the message's intake time. At eight
+serial answer worker. Its deadline uses the message's intake time. At ten
 seconds it may send the fixed, reviewed-once sentence “Checking that now.” in reply to that exact
 message. It contains no answer, private fact, request for user action or claim of completed work.
 Rule 87 and the rule book's retrospective-review principle admit this fixed template without a
 per-send model review; Part 12 §9's deterministic secret, disclosure, authority, stop, ownership,
-allowance and durable-send checks still apply. The answer cancels the timer when ready. Dispatch
+allowance and durable-send checks still apply. An answer already recorded suppresses the acknowledgement, even while review or delivery is pending.
+The answer cancels the timer when ready. Dispatch
 rechecks cancellation after asynchronous audience or replication admission. Once a transport has
 started, delivery cannot be recalled; the final answer waits for that in-flight send to settle.
 
