@@ -128,7 +128,7 @@ export function sourcePacket(readSource: (path: string) => string, pins: Readonl
       commit: briefing.commit, excerptSha256: sha256(briefing.text) } });
   return Object.freeze({ version: SUCCESSIVE_CONTEXT_VERSION, sources });
 }
-/** The reviewed digests of the exact excerpts above (2.0 main `docs/00-the-purpose.md`). */
+/** The reviewed digests of the exact constitutional excerpts above. */
 export const SOURCE_PINS = Object.freeze({
   'rules:87': 'sha256:6e5a4dee91950b48f37923ad59d17cab575a34a6fc504dfee4202f27b5ab3187',
   'purpose:purpose': 'sha256:5d4b2142593c5a9569cb90cbffe20242c5ab2cf8d13f6929c888ec4166f87e51',
