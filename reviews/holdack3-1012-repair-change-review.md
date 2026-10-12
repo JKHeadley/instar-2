@@ -18,12 +18,14 @@ Bug class: integration
 Bug evidence: reproducer=tests/preview/reply-acknowledgement-timing.test.ts
 Hook bypass: none; core.hooksPath unset and common hooks directory inspected, samples only.
 Convergence: none
-Decision: repair-timer-boundaries | Reuse the existing timer and dispatch mechanism, with cancellation after settled continuations and reconstruction before drain awaits; no added worker or paid call. | reported=holdack3-1012-repair-PROGRESS.md
-Decision: host-fixture-time | Inject wall time and one-shot acknowledgement timers through fixture modules; keep actual monotonic resource deadlines and host operations, and allow a 90-second process ceiling separate from the eight-second behaviour assertion. The reviewed 30-second timeout must fail explicitly, never count as completion. | reported=holdack3-1012-repair-PROGRESS.md
+Decision: repair-timer-boundaries | Reuse the existing timer and dispatch mechanism, with cancellation after settled continuations and reconstruction before drain awaits; no added worker or paid call. | reported=/Users/dabombstudio/.instar/agents/echo/.instar/lanes/holdack3-1012-repair-PROGRESS.md
+Decision: host-fixture-time | Inject wall time and one-shot acknowledgement timers through fixture modules; keep actual monotonic resource deadlines and host operations, and allow a 90-second process ceiling separate from the eight-second behaviour assertion. The reviewed 30-second timeout must fail explicitly, never count as completion. | reported=/Users/dabombstudio/.instar/agents/echo/.instar/lanes/holdack3-1012-repair-PROGRESS.md
 Prompt review: No prompt, parser or model judgment changes. Replay exact recorded answer/Jev shapes 969390407–410, lookup requests P4 and completed P1 answer from proofroom2-recallrank-2026-10-02.json, and the existing seven summary/uncertain/undecided/review/delivered/empty shapes in reply-acknowledgement.test.ts through the scheduling path.
 Prompt finding: 849db3a6296a | protocol-literal | Unchanged answer protocol; repair changes only timer lifecycle — fixture-phrase tests/preview/journal.ts <- tests/preview/journal-memory-list.test.ts: "i have no active saved memory items"
 Prompt finding: bd01de21286a | protocol-literal | Unchanged answer protocol; repair changes only timer lifecycle — fixture-phrase tests/preview/journal.ts <- tests/preview/hallucinated-memory-rate.test.ts: "cite sourcelabel for supported remembered facts."
 Prompt finding: fb5fa7e706c8 | protocol-literal | Unchanged answer protocol; repair changes only timer lifecycle — fixture-phrase tests/preview/journal.ts <- tests/preview/hallucinated-memory-rate.test.ts: "for a question about what the operator said"
+
+Deferral: generated/register.json:1 | not-a-deferral=Existing register entries serialized by the generator, no new deferred work.
 
 Evidence: Targeted acknowledgement, timing and actual host files: 33/33 passing. Host fast 4.697s and slow 4.911s; no subprocess error or signal, both final replies, all original custody/resource assertions retained. Typecheck and explicit architecture pass. No full-suite or fresh live deployment claim. The supplied gate saved-results path is absent; contract checkers must use the pipeline's next full report.
 
