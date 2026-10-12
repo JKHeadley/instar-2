@@ -27,6 +27,8 @@ Deferral: tests/preview/briefing.ts:217 | not-a-deferral=The instruction precede
 
 Subject (4 paths): tests/preview/briefing.ts, tests/preview/guidance.test.ts, tests/preview/journal.ts, tests/preview/summary-cascade-stall.test.ts
 
+Register replay: regenerated seven generated/ publications at source commit 89fca85326d2fc73677e28d755b451366edfa0be; reviewed the generation/source-only diff and retained all declaration counts.
+
 ## Closing block
 
 simplestRobustRoute: This is the simplest robust route: remove redundant explanatory words and update three stale source-list assertions. No cap expansion, capability restriction, new machinery or quarantine. Existing intake, prompt-fit, effect and resource checkpoints stay in force; no new autonomous capability is claimed.
