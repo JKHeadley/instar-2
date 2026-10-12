@@ -5,7 +5,7 @@ import { createServer } from 'node:http';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { runInNewContext } from 'node:vm';
-import { openPreviewJournal, createJournalWorker, type Turn } from './journal.js';
+import { openPreviewJournal, createJournalWorker, REPLY_ACKNOWLEDGEMENT, type Turn } from './journal.js';
 import { prepareJournalEnvelope } from './journal-envelope.js';
 import { appendGroupCarry } from './group-carry.js';
 import { verifyGroupAudience } from './group-disclosure.js';
@@ -101,13 +101,14 @@ for (const hostProbe of [false, true]) it(`recorded Jev stage separates HTTP fro
       chat: { id: Number(scope.chat), type: 'supergroup', is_forum: true },
       from: { id: Number(scope.operator) }, text: fixture.recorded.text } }]);
     await worker.drain(); const turn = journal.view.order[0]!;
-    expect(sent).toEqual([fixture.recorded.answer]);
+    expect(sent).toEqual([REPLY_ACKNOWLEDGEMENT, fixture.recorded.answer]);
+    expect(turn.heldNoticeReview?.verdict).toBe('pass');
     expect(requests).toBe(1); expect(Object.keys(bodies[0]!.questions)).toHaveLength(10);
     expect(bodies[0]).toEqual({ state: fixture.recorded.answer, model: JEV_MODEL, questions: jevQuestions });
-    expect(turn.replyChecks?.map(check => check.verdict)).toEqual(['pass', 'pass']);
+    expect(turn.replyChecks?.map(check => check.verdict)).toEqual(['pass']);
     expect(turn.replyChecks![0]!.scores).toEqual(captured.scores);
     expect(turn.replyChecks![0]!.usage).toEqual(captured.usage);
-    const stageMs = turn.reviewReservedAt! - turn.jevReservedAt!;
+    const stageMs = turn.checkDoneAt! - turn.jevReservedAt!;
     expect(stageMs).toBe(rounds * 1000 * (hostProbe ? 2 : 1) + captured.latencyMs);
     expect(reads).toBe(probes * 6); expect(active).toBe(0);
     console.log(JSON.stringify({ update: fixture.recorded.update, hostProbe, stageMs,
@@ -116,7 +117,7 @@ for (const hostProbe of [false, true]) it(`recorded Jev stage separates HTTP fro
       wall: 'local loopback HTTP and local journal; not live TypeSafe or Studio timings' }));
     journal.close(); journal = openPreviewJournal(path, key);
     await createJournalWorker(journal, ports).drain();
-    expect(sent).toHaveLength(1); expect(requests).toBe(1);
+    expect(sent).toHaveLength(2); expect(requests).toBe(1);
   } finally {
     journal.close(); await new Promise<void>(resolve => server.close(() => resolve()));
     rmSync(root, { recursive: true, force: true });

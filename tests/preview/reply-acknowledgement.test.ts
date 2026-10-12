@@ -153,7 +153,8 @@ it('replays live lookup 969390382 with its recorded answer, Jev and contextual r
   try { worker = createJournalWorker(journal, ports); worker.intake([captured.raw]); await worker.drain();
     expect(sent.map(row => row.expectedText)).toEqual([REPLY_ACKNOWLEDGEMENT, captured.reply]);
     expect(sent.map(row => row.replyTo)).toEqual([105, 105]);
-    expect(journal.view.order[0]?.replyChecks).toHaveLength(2);
+    expect(journal.view.order[0]?.replyChecks?.map(check => check.path)).toEqual(['jev']);
+    expect(journal.view.order[0]?.heldNoticeReview?.verdict).toBe('pass');
     journal.compact(); journal.close(); const reopened = openPreviewJournal(path, key);
     try { await createJournalWorker(reopened, ports).drain(); expect(sent).toHaveLength(2); } finally { reopened.close(); }
   } finally { journal.close(); rmSync(root, { recursive: true, force: true }); }

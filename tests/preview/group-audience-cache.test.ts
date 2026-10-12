@@ -4,7 +4,7 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { createGroupAudienceCache, verifyGroupAudience } from './group-disclosure.js';
 import { membership, scope, now, key, permissionFor } from './group-carry-fixture.js';
-import { openPreviewJournal, createJournalWorker, type Turn } from './journal.js';
+import { openPreviewJournal, createJournalWorker, REPLY_ACKNOWLEDGEMENT, type Turn } from './journal.js';
 import { appendGroupCarry } from './group-carry.js';
 import { prepareJournalEnvelope } from './journal-envelope.js';
 import { readAnswer } from './answer-reading.js';
@@ -78,7 +78,7 @@ const fixture = JSON.parse(readFileSync(new URL('./fixtures/group-audience-live-
   samples: { name: string; rules: ReplyRule[]; raw: string }[];
 };
 
-it('replays recorded group question through durable intake, reserve, two reviews and one send: cold and warm', async () => {
+it('replays recorded group question through durable intake, reserve, confident review and one final send: cold and warm', async () => {
   const measurements = [];
   for (const mode of ['before', 'cold', 'warm'] as const) {
     const root = mkdtempSync(join(tmpdir(), 'intake-cache-replay-'));
@@ -121,16 +121,19 @@ it('replays recorded group question through durable intake, reserve, two reviews
       expect(journal.view.order).toHaveLength(1); // durable intake precedes any membership read
       await worker.drain();
       const intakeMs = journal.view.order[0]!.reservedAt! - started;
-      expect(sends).toEqual([fixture.recorded.answer]); expect(reviews).toBe(2);
+      const acknowledgement = mode === 'before' ? [REPLY_ACKNOWLEDGEMENT] : [];
+      expect(sends).toEqual([...acknowledgement, fixture.recorded.answer]);
+      expect(reviews).toBe(mode === 'before' ? 2 : 1);
+      expect(journal.view.order[0]!.replyChecks?.map(check => check.path)).toEqual(['jev']);
       measurements.push({ mode, intakeMs, reads, probes });
       journal.close(); journal = openPreviewJournal(path, key);
-      await make().drain(); expect(sends).toHaveLength(1);
+      await make().drain(); expect(sends).toHaveLength(mode === 'before' ? 2 : 1);
     } finally { journal.close(); source.close(); rmSync(root, { recursive: true, force: true }); }
   }
   console.log('intake membership replay (injected 1000ms/read)', measurements);
   expect(measurements).toEqual([
-    { mode: 'before', intakeMs: 12000, reads: 36, probes: 6 },
-    { mode: 'cold', intakeMs: 6000, reads: 6, probes: 6 },
-    { mode: 'warm', intakeMs: 0, reads: 0, probes: 6 },
+    { mode: 'before', intakeMs: 12000, reads: 42, probes: 7 },
+    { mode: 'cold', intakeMs: 6000, reads: 6, probes: 5 },
+    { mode: 'warm', intakeMs: 0, reads: 0, probes: 5 },
   ]);
 });
