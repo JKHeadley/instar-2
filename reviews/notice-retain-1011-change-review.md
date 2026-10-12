@@ -26,7 +26,7 @@ Prompt finding: 849db3a6296a | protocol-literal | Existing unchanged memory-inve
 Prompt finding: bd01de21286a | protocol-literal | Existing unchanged source-label instruction and grounding assertion.
 Prompt finding: fb5fa7e706c8 | protocol-literal | Existing unchanged semantic memory retrieval instruction.
 Deferral: generated/register.json:1 | not-a-deferral=Existing prerequisite descriptions are republished unchanged; no implementation is postponed.
-Generated publication: Regenerated with the existing replay generator from committed source; exact final source and generation are recorded in PROGRESS.
+Generated publication: Existing replay generator, source 460a2dcc399ca090f718ec6c1d0b743d0fe0609b, generation sha256:d657fc31c523e71d93ef82d1b68e109d450767234a816156dd798a604082fb24.
 Verification: Targeted diagnostic, journal, lost-answer, physical resource and native contract results, plus typecheck, architecture, lint, register and pinned-set results are recorded in the absolute desk progress report. Full suite and independent landing review remain pipeline-owned. No live runner or Telegram send.
 
 ## Closing block
