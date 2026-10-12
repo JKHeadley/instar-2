@@ -3,7 +3,7 @@ import { isGroupReviewFinalNotice } from './reply-check.js';
 import { loadHarnessLogins, createHarnessLoginPool, observeHarnessSessionLimit, harnessPoolPreviouslyLaunched } from './harness-login-pool.mjs';
 import { groupMembershipReader } from './group-membership-io.mjs';
 import { appendGroupCarry } from './group-carry.js';
-import { resolveGroupDisclosure, verifyGroupAudience } from './group-disclosure.js';
+import { resolveGroupDisclosure, verifyGroupAudience, createGroupAudienceCache } from './group-disclosure.js';
 import { journalConversation, journalWorkConversation, validateChatBinding } from './forum-routing.js';
 // Small, machine-local preview launcher. Only this file owns process, clock and
 // physical ports. The worker owns all durable conversation/effect transitions.
@@ -1255,6 +1255,7 @@ async function main() {
       username: required(options, 'bot-username').replace(/^@/, ''),
     });
   };
+  const groupAudience = createGroupAudienceCache(clock.elapsed, membershipReadFor);
   const groupPermission = scope => {
     try {
       // Bind the initial carry to its physical destination. Serving authenticates the immutable
@@ -1270,7 +1271,7 @@ async function main() {
   const requireGroupDisclosure = async view => {
     if (!view.groupCarry) return;
     const scope = view.groupCarry.scope;
-    if (groupPermission(scope).kind !== 'resolved' || !await verifyGroupAudience(scope, membershipReadFor(scope))
+    if (groupPermission(scope).kind !== 'resolved' || !await groupAudience.verify(scope)
       || groupPermission(scope).kind !== 'resolved') throw Error('group carry: disclosure grant or operator-only audience refused');
   };
   if (command === 'carry-group') {
@@ -1952,7 +1953,7 @@ async function main() {
         if (journal.view.groupCarry) { await requireGroupDisclosure(journal.view); return true; }
         const scope = { sourceRoot: root, destinationRoot: root, chat: journal.view.genesis.chat,
           operator: journal.view.genesis.operator, bot: journal.view.genesis.bot };
-        return verifyGroupAudience(scope, membershipReadFor(scope));
+        return groupAudience.verify(scope);
       },
       presenceNotes: sentinelFamilies.has('presence'),
       sources: turnSources(root, options, journal.view, () => runs, () => launchedAt ?? undefined,
@@ -2667,7 +2668,7 @@ async function main() {
         // Two machines: Telegram is asked from the SHARED settled cursor, so it keeps every update the other machine lacks.
         body: { offset: shared ? shared.cursor : journal.view.cursor, limit: pollLimit,
           timeout: number(options['max-poll-seconds'] ?? '5', 'max-poll-seconds', 1, 5),
-          allowed_updates: ['message', 'edited_message', 'callback_query'] },
+          allowed_updates: ['message', 'edited_message', 'callback_query', 'chat_member', 'my_chat_member'] },
         timeoutMs: 12000 }, token()); }
       catch { if (!await pollFailure(false, true)) break; continue; }
       await new Promise(done => setImmediate(done));
@@ -2681,6 +2682,7 @@ async function main() {
       let updates;
       try { updates = JSON.parse(result.bytes); } catch { if (!await pollFailure(false)) break; continue; }
       if (updates.ok !== true || !Array.isArray(updates.result)) { if (!await pollFailure(false)) break; continue; }
+      groupAudience.observe(updates.result);
       // A successful poll is the restoration evidence that closes the episode, recorded before it is relied on.
       if (failedPolls || conflictedPolls) appendRun(runsPath, { v: 1, launch: launchedAt, poll: 'restored', at: wallNow() });
       if (failedPolls || conflictedPolls) serviceBeat(!journal.view.stop && wallNow() < journal.view.expires, 'poll restored');

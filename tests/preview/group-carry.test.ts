@@ -4,7 +4,7 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { appendGroupCarry, buildCarriedMemory, groupCarryPacket, validCarriedMemory } from './group-carry.js';
 import { createJournalWorker, openPreviewJournal, openRequests, CARRIED_MEMORY_ITEM_SOURCE, MEMORY_ITEM_SHAPE, type JournalRecord } from './journal-test-worker.js';
-import { resolveGroupDisclosure, verifyGroupAudience } from './group-disclosure.js';
+import { resolveGroupDisclosure, verifyGroupAudience, createGroupAudienceCache } from './group-disclosure.js';
 import { now, key, sealKey, scope, records, authority, membership, permissionFor } from './group-carry-fixture.js';
 import { prepareJournalEnvelope } from './journal-envelope.js';
 import { SELF_DESCRIPTION, SELF_IDENTITY, SOURCE_PINS, sourcePacket } from './briefing.js';
@@ -292,11 +292,15 @@ it('replays all recorded model shapes through carried recall after the disclosur
   for (const shape of captured.otherShapes) {
     const w = await world();
     appendGroupCarry(w.destination, w.source, scope, permission(), true, now, () => false); w.source.close();
-    let allowed = false, calls = 0, replayed = false;
+    let allowed = false, calls = 0, replayed = false, membershipReads = 0;
+    const read = membership((method, _body, value) => method === 'getChatMemberCount' && !allowed ? 3 : value);
+    const audience = createGroupAudienceCache(() => now, () => async (method, body) => {
+      membershipReads++; return read(method, body);
+    });
     const sends: string[] = [];
     const worker = createJournalWorker(w.destination, { now: () => now + 1000, stopped: () => false,
       sources,
-      groupDisclosure: async () => allowed,
+      groupDisclosure: () => audience.verify(scope),
       prepareModel: input => prepareJournalEnvelope(input, 'claude-sonnet-5', genesis.grant, now, genesis.maxBytes),
       model: async input => {
         calls++;
@@ -317,7 +321,10 @@ it('replays all recorded model shapes through carried recall after the disclosur
     worker.intake([update(2, 'What meeting place do you remember?', true)]); await worker.drain();
     expect(calls, shape.id).toBe(0); expect(sends, shape.id).toEqual([]);
     expect(w.destination.view.order[0]!.held, shape.id).toBe('group disclosure refused');
-    allowed = true; await worker.drain();
+    allowed = true; audience.observe([{ chat_member: {} }]);
+    const beforeReads = membershipReads;
+    await worker.drain();
+    expect(membershipReads - beforeReads, shape.id).toBe(6);
     expect(calls, shape.id).toBe(1);
     expect(replayed, shape.id).toBe(true);
     expect(sends.every(text => text.trim().length > 0), shape.id).toBe(true);
