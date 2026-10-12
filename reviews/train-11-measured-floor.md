@@ -23,9 +23,11 @@ Prompt review: No prompt prose or model-output decision changes. Recorded summar
 Prompt finding: 849db3a6296a | quoted-evidence | Existing unchanged recall protocol text is quoted by its regression fixture; no semantic outcome is hardcoded — fixture-phrase tests/preview/journal.ts <- tests/preview/journal-memory-list.test.ts: "i have no active saved memory items"
 Prompt finding: e8708c7fea24 | quoted-evidence | Existing unchanged recall protocol text is quoted by its regression fixture; no semantic outcome is hardcoded — fixture-phrase tests/preview/journal.ts <- tests/preview/hallucinated-memory-rate.test.ts: "cite sourcelabel; disclose unknown sources."
 
-Subject (2 paths): tests/preview/default-context-floor.test.ts, tests/preview/journal.ts
+Subject (9 paths): generated/capabilities.json, generated/capabilities.md, generated/coverage.md, generated/glossary.md, generated/register.json, generated/rules.md, generated/source.json, tests/preview/default-context-floor.test.ts, tests/preview/journal.ts
 
 Replay evidence: /Users/dabombstudio/.instar/agents/echo/.instar/lanes/train-11-measured-floor-replay.json (14 minimum/default comparisons using seven captured shapes; immutable fixture and per-output hashes recorded).
+
+Verification: 21/21 targeted tests pass across default-context-floor, default-root-conversation and canary-review-replay. TypeScript/build pass. Desk owner-manifest rehash and chain repin found zero changed pins. Regenerated seven publications from source commit 3876d8feab2fe6a7a7013891ded6f5269fd4c472, retaining 289 entries, 116 rules and 34 terms.
 
 ## Closing block
 
