@@ -1,4 +1,5 @@
 #!/usr/bin/env node
+import { recordPhaseTiming } from './phase-timing.js';
 import { isGroupReviewFinalNotice } from './reply-check.js';
 import { loadHarnessLogins, createHarnessLoginPool, observeHarnessSessionLimit, harnessPoolPreviouslyLaunched } from './harness-login-pool.mjs';
 import { groupMembershipReader } from './group-membership-io.mjs';
@@ -1028,6 +1029,7 @@ async function main() {
       capacityAlerts: capacityAlerts(view.view),
       modelJsonShapes: readShapes(shapesPath),
       modelResultStates: Object.fromEntries(view.view.providerStates),
+      phaseTimings: view.view.phaseTimings ?? [],
       callOutcomeCounts: Object.fromEntries(view.view.callOutcomeCounts),
       lastCallOutcomes: view.view.callOutcomes.map(({ id, role, outcome, at }) => ({ id, role, ...outcome, at })),
       unknownSends: sendOutcomeCounts(view.view).unknown,
@@ -1268,11 +1270,17 @@ async function main() {
         operatorRecords(options['operator-records']), authoritySealKey(key()));
     } catch { return { kind: 'refused', reason: 'group disclosure authority unavailable' }; }
   };
+  const observeAudience = async check => {
+    const started = clock.elapsed(); let cacheHit, accepted = false;
+    try { accepted = await check(hit => { cacheHit = hit; }); return accepted; }
+    finally { if (journal) recordPhaseTiming(row => journal.append(row), 'group-disclosure', 'audience',
+      { ...(cacheHit === undefined ? {} : { cacheHit }), accepted, elapsedMs: Math.max(0, Math.round(clock.elapsed() - started)) }, wallNow()); }
+  };
   const requireGroupDisclosure = async view => {
     if (!view.groupCarry) return;
     const scope = view.groupCarry.scope;
-    if (groupPermission(scope).kind !== 'resolved' || !await groupAudience.verify(scope)
-      || groupPermission(scope).kind !== 'resolved') throw Error('group carry: disclosure grant or operator-only audience refused');
+    if (!await observeAudience(async observe => groupPermission(scope).kind === 'resolved'
+      && await groupAudience.verify(scope, observe) && groupPermission(scope).kind === 'resolved')) throw Error('group carry: disclosure grant or operator-only audience refused');
   };
   if (command === 'carry-group') {
     let destination, source, sourceStorage;
@@ -1953,7 +1961,7 @@ async function main() {
         if (journal.view.groupCarry) { await requireGroupDisclosure(journal.view); return true; }
         const scope = { sourceRoot: root, destinationRoot: root, chat: journal.view.genesis.chat,
           operator: journal.view.genesis.operator, bot: journal.view.genesis.bot };
-        return groupAudience.verify(scope);
+        return observeAudience(observe => groupAudience.verify(scope, observe));
       },
       presenceNotes: sentinelFamilies.has('presence'),
       sources: turnSources(root, options, journal.view, () => runs, () => launchedAt ?? undefined,
@@ -2131,7 +2139,7 @@ async function main() {
       // Rules 42 and 89: the physical send consumes the journal's signed intent and returns a
       // closed accepted / refused / unknown outcome; nothing dispatched is ever a refusal.
       sendAdmits: true,
-      send: async ({ text, expectedText, chat, thread, replyTo, replyMarkup, target, provenance, admit, current }) => {
+      send: async ({ text, expectedText, chat, thread, replyTo, replyMarkup, target, provenance, admit, current, observeSendPhase }) => {
         if (!journal.verifyOutbound(provenance, { target, chat, ...(thread === undefined ? {} : { thread }), body: text }))
           return { kind: 'refused', reason: 'outbound provenance unsigned' };
         if (workerStop.value || existsSync(stopPath) || wallNow() >= journal.view.expires || journal.view.stop)
@@ -2147,6 +2155,7 @@ async function main() {
         if (workerStop.value || existsSync(stopPath) || !ownerHeld() || journal.view.stop || wallNow() >= journal.view.expires)
           return { kind: 'refused', reason: 'stopped during audience check' };
         if (current && !current()) return { kind: 'refused', reason: 'acknowledgement cancelled' };
+        observeSendPhase?.('audienceAdmittedAt');
         admit?.(); // Durable intent only after disclosure; replication below includes it.
         if (shared) {
           // replicated(1): the journal through this send's signed intent is on the other machine, and the one
@@ -2161,11 +2170,14 @@ async function main() {
         if (current && !current()) return { kind: 'refused', reason: 'acknowledgement cancelled' };
         let outcome = { kind: 'unknown', reason: 'send port failed' };
         try {
-          const reply = physical.invoke({ token: secretRef('telegram-bot-token'), method: 'sendMessage',
+          observeSendPhase?.('transportBegunAt');
+          let reply;
+          try { reply = physical.invoke({ token: secretRef('telegram-bot-token'), method: 'sendMessage',
             body: { chat_id: chat, text, parse_mode: 'HTML', ...(thread === undefined ? {} : { message_thread_id: thread }),
               ...(replyTo === undefined ? {} : { reply_parameters: { message_id: replyTo, allow_sending_without_reply: true } }),
               ...(replyMarkup === undefined ? {} : { reply_markup: replyMarkup }) },
-            timeoutMs: 30000 }, token());
+            timeoutMs: 30000 }, token()); }
+          finally { observeSendPhase?.('transportReturnedAt'); }
           outcome = classifyTelegramSend(reply, { chat, expectedText, forum: g.forum === true, ...(thread === undefined ? {} : { thread }) });
           return outcome;
         } finally { if (shared) await shared.outcome(target, outcome.kind); }

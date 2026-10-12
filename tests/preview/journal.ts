@@ -1,3 +1,4 @@
+import { checkPhaseTiming, recordPhaseTiming, type PhaseTiming } from './phase-timing.js';
 import { groupCarryPacket, validCarriedMemory, type CarriedMemory } from './group-carry.js';
 import { boundThread, journalAudience, journalConversation, matchesBoundChat, validateChatBinding } from './forum-routing.js';
 /** The machine-local preview's only conversation and effect ledger. Records are
@@ -1014,7 +1015,7 @@ export function proposedConceptTerms(value: unknown): string[] | undefined {
  * ahead (refused). Rollback was one-way until this existed: on 2026-10-04 00:03 an older build refused a
  * root a newer build had used, with `preview journal: orphan effect`, so switching back would have cost
  * the operator's conversation. */
-export const JOURNAL_GENERATION = 3;
+export const JOURNAL_GENERATION = 4;
 /** A frame a NEWER build added, declared on the frame itself so a reader one build back needs no table of
  * the future. `generation` is the writer's JOURNAL_GENERATION when the kind was introduced; `additive`
  * asserts that a reader which skips this frame still holds a correct, if less complete, projection — the
@@ -1027,7 +1028,7 @@ export type ForwardDeclaration = { generation: number; additive: true };
  * "a kind I never heard of" as "an effect whose turn is gone" and refuse the whole root. A kind added to
  * JournalRecord and not added here fails tests/preview/journal-rollback-window.test.ts; adding it here is
  * the reminder to bump JOURNAL_GENERATION and give it a ForwardDeclaration. */
-export const KNOWN_FRAME_KINDS: ReadonlySet<string> = new Set(['group-carry', 'request-transfer', 'action-due', 'answer', 'answer-replace',
+export const KNOWN_FRAME_KINDS: ReadonlySet<string> = new Set(['phase-timing', 'group-carry', 'request-transfer', 'action-due', 'answer', 'answer-replace',
   'approval-decision', 'approval-request', 'call-outcome', 'cap-report', 'caps', 'channel-item',
   'channel-source-cursor', 'channel-source-error', 'coherence', 'expiry', 'format-retry', 'genesis',
   'held-notice-intent', 'held-notice-sent', 'held-notice-review-reserve', 'held-notice-review', 'hold', 'import', 'index-reserve', 'intake', 'intent',
@@ -1046,6 +1047,7 @@ export const KNOWN_FRAME_KINDS: ReadonlySet<string> = new Set(['group-carry', 'r
   'summary-reserve', 'summary-review-reserve', 'summary-uncertain', 'tool-turn', 'waiting']);
 
 export type JournalRecord =
+  | PhaseTiming
   // Non-additive: an older writer must not discard the no-repeat expectation.
   | { kind: 'media-claim'; id: string; digest: string; at: number }
   | { kind: 'media-custody'; id: string; result: MediaCustodyResult; at: number }
@@ -1456,6 +1458,7 @@ export interface JournalView { genesis: Extract<JournalRecord, {kind:'genesis'}>
   indexOffered: string[]; indexConcepts: SummaryConcept[]; indexOpen: { key: string; sources: string[] } | null; indexUnknown: string[];
   summaries: Extract<JournalRecord, {kind:'summary'}>[]; summaryReservations: Map<number, number>; // frontier -> durable reservation time
   summaryRequired: Set<number>; summaryFailures: Map<number, number>; failureClasses: Map<ModelFailureClass, number>; providerStates: Map<string, number>;
+  phaseTimings?: PhaseTiming[];
   callOutcomes: Extract<JournalRecord, {kind:'call-outcome'}>[]; callOutcomeCounts: Map<string, number>;
   summaryCandidates: Map<number, string>; summaryChecks: Map<number, SummaryCheckResult[]>; summaryFaithfulness: Map<number, SummaryFaithfulness>; summaryReviews: Set<number>;
   summaryCheckCounts: { pass: number; violation: number; unsure: number; unavailable: number }; lastSummaryCheck: SummaryCheckResult | null;
@@ -3532,6 +3535,12 @@ function project(view: JournalView, row: JournalRecord, system?: SystemCheck, ad
   // generic read (`'state' in row`, `'failureClass' in row`) can fold a newer build's frame into this
   // build's counts and silently move the projection digest the two builds compare.
   if (!KNOWN_FRAME_KINDS.has(row.kind)) { admitForwardFrame(view, row); return; }
+  if (row.kind === 'phase-timing') {
+    checkPhaseTiming(row);
+    const recent = view.phaseTimings ??= [];
+    recent.push(row); if (recent.length > 100) recent.shift();
+    return;
+  }
   if (row.kind === 'hold') {
     for (let index = view.awayEvents.length - 1; index >= 0; index--) {
       const event = view.awayEvents[index]!;
@@ -5346,7 +5355,8 @@ export interface PreviewPorts {
    * is the journal's signature over exactly `target`, `chat`, `thread` and `text`. */
   send(input: { text: string; expectedText: string; chat: string; thread?: number; replyTo?: number; update: number;
     kind?: OutboundKind; disposition?: OutboundDisposition; replyMarkup?: unknown;
-    target?: string; provenance?: OutboundProvenance; admit?: () => void; current?: () => boolean }): Promise<number | null | SendOutcome>;
+    target?: string; provenance?: OutboundProvenance; admit?: () => void; current?: () => boolean;
+    observeSendPhase?: (phase: 'audienceAdmittedAt' | 'transportBegunAt' | 'transportReturnedAt') => void }): Promise<number | null | SendOutcome>;
   /** The host calls input.admit after its last disclosure read, before replication/dispatch. */
   sendAdmits?: true;
   checkOutbound(text: string): void;
@@ -5488,8 +5498,12 @@ export function createJournalWorker(journal: ReturnType<typeof openPreviewJourna
   const dispatch = async (target: string, provenance: OutboundProvenance | undefined,
     input: { text: string; expectedText: string; chat: string; thread?: number; update: number;
       kind?: OutboundKind; disposition?: OutboundDisposition; replyMarkup?: unknown; current?: () => boolean }, admitted?: () => void): Promise<SettledSendOutcome> => {
+    const measurements: Record<string, number | boolean> = { sendEnteredAt: ports.now(), provedNotSentAttempts: 0 };
+    const observeSendPhase = (phase: 'audienceAdmittedAt' | 'transportBegunAt' | 'transportReturnedAt') => { measurements[phase] = ports.now(); };
+    const record = () => recordPhaseTiming(journal.append, target, 'send', measurements, ports.now());
+    try {
     let prepared = admitted === undefined;
-    const admit = () => { if (!prepared) { gate(); if (input.current && !input.current()) throw Error('acknowledgement cancelled'); admitted!(); prepared = true; } };
+    const admit = () => { if (!prepared) { gate(); if (input.current && !input.current()) throw Error('acknowledgement cancelled'); observeSendPhase('audienceAdmittedAt'); admitted!(); prepared = true; } };
     if (admitted) {
       if (!isGroupReviewFinalNotice(input.text, input.expectedText) && !await disclosure()) return { kind: 'refused', reason: GROUP_DISCLOSURE_HOLD };
       if (input.current && !input.current()) return { kind: 'refused', reason: 'acknowledgement cancelled' };
@@ -5506,9 +5520,15 @@ export function createJournalWorker(journal: ReturnType<typeof openPreviewJourna
     if (!journal.verifyOutbound(provenance, subject)) attempted = { kind: 'refused', reason: 'outbound provenance unsigned' };
     else for (let attempt = 0; attempt < NOT_SENT_ATTEMPTS; attempt++) {
       if (input.current && !input.current()) { attempted = { kind: 'refused', reason: 'acknowledgement cancelled' }; break; }
-      try { attempted = settleSendOutcome(await (admitted ? original.send : ports.send)({ ...input, ...(replyTo === null ? {} : { replyTo }), target, provenance: provenance!, ...(admitted && original.sendAdmits ? { admit } : {}) })); }
-      catch { attempted = { kind: 'unknown', reason: 'send port failed' }; }
+      measurements.attempt = attempt + 1;
+      try {
+        if (!original.sendAdmits) observeSendPhase('transportBegunAt');
+        attempted = settleSendOutcome(await (admitted ? original.send : ports.send)({ ...input, ...(replyTo === null ? {} : { replyTo }), target, provenance: provenance!, observeSendPhase, ...(admitted && original.sendAdmits ? { admit } : {}) }));
+      } catch { attempted = { kind: 'unknown', reason: 'send port failed' }; }
+      finally { if (!original.sendAdmits) observeSendPhase('transportReturnedAt'); }
       if (attempted.kind !== 'not-sent') break;
+      measurements.provedNotSentAttempts = attempt + 1;
+      if (attempt + 1 < NOT_SENT_ATTEMPTS) { record(); delete measurements.transportBegunAt; delete measurements.transportReturnedAt; }
     }
     // No intent means the host refused before admission. The caller keeps the saved answer in its durable hold.
     if (!prepared) return { kind: 'refused', reason: GROUP_DISCLOSURE_HOLD };
@@ -5519,6 +5539,7 @@ export function createJournalWorker(journal: ReturnType<typeof openPreviewJourna
       catch { /* the intent stays UNKNOWN without its reason */ }
     }
     return outcome;
+    } finally { record(); }
   };
   const elapsedMs = () => ports.replyCheck?.elapsedMs() ?? ports.now();
   const duration = (start: number) => Math.max(0, Math.round(elapsedMs() - start));
@@ -7544,7 +7565,7 @@ export function createJournalWorker(journal: ReturnType<typeof openPreviewJourna
   };
   /** Rule 87: one fixed, reviewed-once acknowledgement while the answer is being made.
    * No per-send model review. Existing disclosure, secret, stop and durable send checks still apply. */
-  const acknowledgeReply = (turn: Turn): Promise<void> => {
+  const acknowledgeReply = (turn: Turn, callbackEnteredAt?: number): Promise<void> => {
     const inFlight = acknowledgementsInFlight.get(turn);
     if (inFlight) return inFlight;
     if (halted()) return Promise.resolve();
@@ -7557,6 +7578,9 @@ export function createJournalWorker(journal: ReturnType<typeof openPreviewJourna
       || ports.now() - turn.at < REPLY_ACKNOWLEDGEMENT_AFTER_MS
       || journal.view.replies >= journal.view.limits.maxReplies - 1) return Promise.resolve();
     const run = async () => {
+      recordPhaseTiming(journal.append, `held-notice:${turn.id}`, 'acknowledgement', {
+        scheduledDueAt: turn.at + REPLY_ACKNOWLEDGEMENT_AFTER_MS, timerCallback: callbackEnteredAt !== undefined,
+        ...(callbackEnteredAt === undefined ? {} : { callbackEnteredAt }) }, ports.now());
       const text = REPLY_ACKNOWLEDGEMENT;
       ports.checkOutbound(text);
       const chat = journal.view.genesis.chat, thread = turn.thread === undefined ? {} : { thread: turn.thread };
@@ -7582,7 +7606,7 @@ export function createJournalWorker(journal: ReturnType<typeof openPreviewJourna
       const timer = setTimeout(run, ms); timer.unref(); return () => clearTimeout(timer);
     });
     acknowledgementTimers.set(turn, after(Math.max(0, turn.at + REPLY_ACKNOWLEDGEMENT_AFTER_MS - ports.now()),
-      () => { void acknowledgeReply(turn).catch(() => {}); }));
+      () => { const entered = ports.now(); void acknowledgeReply(turn, entered).catch(() => {}); }));
   };
   /** Rules 2, 87, 88: a disclosure hold past the self-heal window is told once, content-free, per notice window; the
    * held turns are named only by this fixed text. Its intent precedes dispatch and an UNKNOWN is never repeated. */

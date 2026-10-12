@@ -1,3 +1,4 @@
+import { recordPhaseTiming } from './phase-timing.js';
 /** Physical limits a launch can end at: its elapsed and output bounds, and the
  * host resource owner's memory/process/CPU/aggregate ceilings and admission. */
 export const RESOURCE_LIMITS = Object.freeze(['timeout', 'size', 'memory', 'processes', 'cpu', 'aggregate', 'capacity']);
@@ -53,7 +54,15 @@ export function observedSubscriptionIO(physicalIO, policy, operation, append,
   return { ...physicalIO, execute: async command => {
     // Preflights carry no input; model commands carry the prepared packet. Tool
     // settings, MCP and session arguments extend the policy's base arguments.
-    if (typeof command.stdin !== 'string' || command.stdin.length === 0) return physicalIO.execute(command);
+    if (typeof command.stdin !== 'string' || command.stdin.length === 0) {
+      const phase = JSON.stringify(command.args) === '["--version"]' ? 'version'
+        : JSON.stringify(command.args) === '["auth","status","--json"]' ? 'auth' : null;
+      const start = clock.elapsed(); let failed = false;
+      try { return await physicalIO.execute(command); }
+      catch (error) { failed = true; throw error; }
+      finally { if (phase) recordPhaseTiming(append, operation, phase,
+        { elapsedMs: Math.max(0, Math.round(clock.elapsed() - start)), failed }, clock.at()); }
+    }
     const start = clock.elapsed();
     let result, failed = false;
     try { result = await physicalIO.execute(command); }

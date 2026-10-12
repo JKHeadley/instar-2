@@ -34,7 +34,7 @@ it('distinguishes a parsed 2048-token over-cap result from a 120-second local ti
   expect(JSON.stringify(over)).not.toContain('provider text');
 });
 
-it('durably records each physical model result before returning, without recording preflight commands', async () => {
+it('durably records each physical model result before returning, with separate content-free preflight timings', async () => {
   const rows = [], policy = { args: ['--safe-mode', '--print'], maxTokens: 2048, maxOutputBytes: 16384 };
   const commands = [], physicalIO = { execute: async command => { commands.push(command.args);
     if (command.args[0] === '--version') return physical('2.1.280 (Claude Code)');
@@ -44,7 +44,9 @@ it('durably records each physical model result before returning, without recordi
     { elapsed: () => (elapsed += 5), at: () => 123 });
   await io.execute({ args: ['--version'], stdin: '', timeout: 5000 });
   await io.execute({ args: ['auth', 'status', '--json'], stdin: '', timeout: 5000 });
-  expect(rows).toHaveLength(0);
+  expect(rows).toMatchObject([{ kind: 'phase-timing', phase: 'version', measurements: { elapsedMs: 5, failed: false } },
+    { kind: 'phase-timing', phase: 'auth', measurements: { elapsedMs: 5, failed: false } }]);
+  rows.length = 0;
   const result = await io.execute({ args: policy.args, stdin: 'prompt', timeout: 120000 });
   expect(result.stdout).toContain('provider text');
   expect(rows).toMatchObject([{ kind: 'call-outcome', role: 'summary', id: 'summary:2', at: 123,
