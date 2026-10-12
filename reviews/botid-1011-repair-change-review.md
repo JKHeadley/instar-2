@@ -15,7 +15,7 @@ Undo and recovery: Revert the repair commits and the merge with the branch paren
 Multi-machine posture: Repository changes travel identically with git. Test logs and copied gate evidence are machine-local. No ownership or replication behavior changes.
 Layer below: Inspected sourcePacket, verifyMindRules, source excerpt provenance, successiveWorld identity, startup launcher proof, bootstrap shape/anchor comparison, canonical owner-reference hashing, first-landing baseline ancestry and the contract checkers' rooted proof binding. Both constitutional documents equal approved main; its history entries are retained unchanged.
 Bug class: integration
-Bug evidence: reproducer=tests/preview/constitution-briefing-sync.test.ts
+Bug evidence: reproducer=tests/preview/summary-cascade-stall.test.ts
 Hook bypass: none; core.hooksPath unset and common hooks directory contains sample files only.
 Convergence: none
 Decision: merge-main | Preserve both committed histories, main's constitutional text and Rule 87 excerpt, and branch packet compaction/offline identity. Regenerate derived pins with existing tools. | reported=/Users/dabombstudio/.instar/agents/echo/.instar/lanes/botid-1011-repair-PROGRESS.md
