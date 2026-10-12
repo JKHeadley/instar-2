@@ -95,7 +95,7 @@ it.each(['accepted', 'joined-before-send', 'stopped-during-probe', 'unknown-send
       console.log(JSON.stringify({ stage: 'send', update: captured.recorded.update, sendMs: turn.sendMs,
         audienceMs: Date.now() - sendProbeStart - 100, transportMs: 100, probes, reads, sendProbeReads, peak }));
       expect(failure).toBeUndefined(); expect(sends).toEqual([captured.recorded.answer]);
-      expect(turn.sendMs).toBe(3100); expect(sendProbeReads).toBe(6); expect(peak).toBe(5); // the cancelled acknowledgement probe briefly overlaps the answer probe
+      expect(turn.sendMs).toBe(3100); expect(sendProbeReads).toBe(6); expect(peak).toBe(4); // the answer is ready before the ten-second acknowledgement deadline
     } else if (outcome === 'unknown-send') {
       expect(sends).toEqual([captured.recorded.answer]); expect(turn.intent).toBe(captured.recorded.answer);
       expect(turn.sent).toBeUndefined();

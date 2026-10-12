@@ -386,7 +386,7 @@ export const replyBody = (turn: { intent?: string; continuity?: ContinuityAccoun
 /** The reply with the disclosure as its first sentence; strip the marker on older replies. */
 export const withDisclosure = (reply: string, disclosure: string) =>
   `${disclosure} ${reply.replace(/^PREVIEW — /u, '')}`;
-export const REPLY_ACKNOWLEDGEMENT_AFTER_MS = 8_000;
+export const REPLY_ACKNOWLEDGEMENT_AFTER_MS = 10_000;
 /** Reviewed once: content-free, no result, promise, private fact or claim of completed work. */
 export const REPLY_ACKNOWLEDGEMENT = 'Checking that now.';
 const LEGACY_REPLY_ACKNOWLEDGEMENT = "I'm working on your reply.";
@@ -4202,8 +4202,10 @@ function project(view: JournalView, row: JournalRecord, system?: SystemCheck, ad
     const legacyText = /^(?:PREVIEW — )?I'm holding my answer to your message from [0-2][0-9]:[0-5][0-9]; it will follow or I'll tell you why$/u.test(row.text);
     const countedText = new RegExp(`^(?:PREVIEW — )?I'm holding ${heldCount} ${heldCount === 1 ? 'answer' : 'answers'}, including your message from [0-2][0-9]:[0-5][0-9]; it will follow or I'll tell you why$`, 'u').test(row.text);
     const acknowledgement = row.acknowledgement === true;
+    // Previously admitted fixed acknowledgements used an eight-second deadline; preserve their durable history.
+    const acknowledgementAfter = admission === 'replay' ? 8_000 : REPLY_ACKNOWLEDGEMENT_AFTER_MS;
     if (acknowledgement && row.text === REPLY_ACKNOWLEDGEMENT && (turn.answer !== undefined
-      || row.at < turn.at + REPLY_ACKNOWLEDGEMENT_AFTER_MS || view.replies >= view.limits.maxReplies - 1))
+      || row.at < turn.at + acknowledgementAfter || view.replies >= view.limits.maxReplies - 1))
       throw Error('preview journal: fixed acknowledgement no longer due');
     if (acknowledgement && (!operatorWriter(view, turn, true) || turn.requestedAction || turn.editOf
       || !(row.text === REPLY_ACKNOWLEDGEMENT || row.text === LEGACY_REPLY_ACKNOWLEDGEMENT
