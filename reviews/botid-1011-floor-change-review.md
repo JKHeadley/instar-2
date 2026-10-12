@@ -33,8 +33,6 @@ Prompt finding: b00ed403060a | protocol-literal | Test assertions quote the ship
 Prompt finding: bb308e74c659 | protocol-literal | Test assertions quote the shipped capability or authority instruction to detect omission; these are instructions, not phrases a model gate matches against a user reply — fixture-phrase tests/preview/briefing.ts <- tests/preview/selfdesc-abilities.test.ts: "name the grant needed for outside-role work."
 
 
-Verification: Final targeted run passes all 56 tests across default-context-floor, journal-boundaries, selfdesc-abilities and journal-commitments, including inspection and compaction. Earlier seven-file replay run passed 79 tests with one existing optional authenticated recapture skip; all recorded replays ran. Typecheck, build and architecture pass. Canonical desk rehash/repin required zero pin changes; register publication is replayed from 0ccf5b2a. Archived contract checks use original gate artifacts; final cheap checks and pinned-text READY tests are recorded in the absolute desk progress file. No fresh full-suite or fresh model-verdict claim is made.
-
 ## Closing block
 
 simplestRobustRoute: This is the simplest robust route: compact redundant prose in the existing briefing; leave the approved caps, fitting ladder, capability list and effect doorway intact. No machinery is added. Start guards are pinned source verification and existing grant/cap checks; end guard is the complete real envelope fitting alongside review room; the one-byte overflow test proves the limit. No new unattended product-completion claim is made.
