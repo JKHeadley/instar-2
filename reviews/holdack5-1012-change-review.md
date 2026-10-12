@@ -25,10 +25,10 @@ Prompt review: No model-facing prompt, parsing or accept/escalate/refuse criteri
 Prompt finding: 849db3a6296a | protocol-literal | Existing answer protocol literal unchanged; not a new semantic classification.
 Prompt finding: e8708c7fea24 | quoted-evidence | Existing regression removes a recall instruction as a negative control; no prompt changes here.
 
+Deferral: generated/register.json:1 | not-a-deferral=Existing governed text emitted by the register generator; no deferred work.
+
 ## Closing block
 
 simplestRobustRoute: This is the simplest robust route: remove the premature readiness cutoffs and reuse the existing dispatch cancellation and in-flight join. The journal already refuses acknowledgements after a final intent. Keep the ten-second timer, audience/secret/stop/cap guards and historical replay. No new machinery or unattended production completion claim.
 80/20: Fail-before/pass-after timing replay and targeted direct-import checks, compiler and required architecture/register gates. No full suite, load generation or live messaging. Studio-only checks are named for the desk.
 VERDICT: author submission; this record asserts no independent verdict — the review desk records its own
-
-Deferral: generated/register.json:1 | not-a-deferral=Existing governed text emitted by the register generator; no deferred work.
