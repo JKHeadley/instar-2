@@ -296,7 +296,7 @@ export const MEMORY_ITEM_SHAPE = 'Memory item: {"mode":"correct"|"forget"|"updat
  * carry keeps MEMORY_ITEM_SHAPE byte for byte. */
 export const CARRIED_MEMORY_ITEM_SOURCE = 'A source may also be a source from predecessorMemory.entries, quoting that carried entry text word for word.';
 export const MEMORY_UNDECIDED_REPLY = 'Your message is retained, but I could not validate and save the requested memory change.';
-export const UNKNOWN_ANSWER_NOTICE = 'I lost my answer to that message. Please send it again.';
+export const UNKNOWN_ANSWER_NOTICE = 'The answer-writing step did not complete. Your request and this incomplete attempt remain in the conversation record.';
 export const TOO_LONG_INPUT_NOTICE = 'Your message was saved, but I could not fit it with the needed context. Please send a shorter message or labelled parts.';
 export const TOO_LONG_REPLY_NOTICE = 'I produced an answer, but it was too long for one Telegram reply. I did not send part of it. Please ask for a shorter answer.';
 /** The one withholding floor on a reply's content (Rule 4): text SHAPED like a credential.
@@ -6486,7 +6486,7 @@ export function createJournalWorker(journal: ReturnType<typeof openPreviewJourna
     }).slice(0, 2);
   };
   // The label follows the text actually intended: review can replace the notice with a holding reply.
-  const lostNotice = (item: Turn) => item.noticeClass !== undefined && sentText(item) === UNKNOWN_ANSWER_NOTICE;
+  const lostNotice = (item: Turn) => item.noticeClass !== undefined && [UNKNOWN_ANSWER_NOTICE, 'I lost my answer to that message. Please send it again.'].includes(sentText(item) ?? '');
   const modelFailure = (item: Turn) => item.answer === MODEL_FAILURE_REPLY
     && (item.failureClass !== undefined || item.modelState === 'rejected');
   const sizeRefused = (item: Turn) => item.noticeClass === 'too-long-input';

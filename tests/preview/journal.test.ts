@@ -484,7 +484,7 @@ it('sends the loss notice despite a review objection and labels it truthfully in
         context = input.context; return 'second answer';
       },
       replyCheck: { jev: async () => { throw Error('Jev unavailable'); },
-        escalate: async input => input.endsWith('Please send it again.')
+        escalate: async input => input === UNKNOWN_ANSWER_NOTICE
           ? { verdict: 'violation', ruleIds: ['parks_on_user'], confidence: 1, latencyMs: 0 }
           : { verdict: 'pass', ruleIds: [], confidence: 1, latencyMs: 0 },
         elapsedMs: () => 0 },
@@ -493,7 +493,7 @@ it('sends the loss notice despite a review objection and labels it truthfully in
     worker.intake([update(2)]); await worker.drain();
     const history = JSON.parse(context).history;
     expect(history[0]).toMatchObject({ user: 'question 1', answer: null,
-      notice: 'I lost my answer to that message. Please send it again.',
+      notice: UNKNOWN_ANSWER_NOTICE,
       outcome: 'loss notice delivered; model UNKNOWN' });
     expect(journal.view.order[0]?.release).toMatchObject({ review: 'violation', objections: ['parks_on_user'] });
     journal.close();
