@@ -34,6 +34,8 @@ Decision: capsentence-render-revision | Resolve revised text from the persisted 
 
 Evidence: Full 12:24 delivered reply, capability-note provenance and K11 FAIL for update 715675677 are retained verbatim in tests/preview/fixtures/capsentence-render-2026-10-12.json. The regression failed on the unchanged base and passes through answer, review and send after the repair. Repeated drain sends once. The old train-12 instruction mapping changes only the self-description line, retaining captured bytes.
 
+Publication: The supplied desk repin/owner-rehash scripts found zero stale artifact pins. Regenerated the seven register publications in replay mode from source commit 88675ffb44470cc3bb094d5f0bdb94593e9dad14 after lint identified the newly imported renderer in the wiring roster. Capability wording is unchanged; publication provenance and the source graph advance.
+
 ## Closing block
 
 simplestRobustRoute: This is the simplest robust route: an explicit marker resolved from the existing hashed capability note at the answer and revision boundaries. No extra model call, gate, authority path or state. Whole-record legacy forms are needed because the old prompt explicitly requested the person/agent wording that caused update 715675677. Start: a supplied source note whose excerpt and sentence digests match. End: rendered candidate reviewed and sent once. Limit: missing references or invalid notes remain untouched; arbitrary prose is not classified. Shipped-path offline journal replay is recorded, not a new live delivery claim.
