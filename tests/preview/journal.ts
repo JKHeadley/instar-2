@@ -8735,7 +8735,7 @@ export function createJournalWorker(journal: ReturnType<typeof openPreviewJourna
               const body = deliverableResults.join('').trimStart();
               reply = actionHeader === undefined ? disclosed(body) : `${actionHeader}\n${body}`;
               mentionedKeys = []; resultsOnly = true;
-              note = `${note ?? objections.join(', ')}; rejected incoherent remainder withheld; only bound runner results sent`;
+              note = `${note ?? objections.join(', ')}; rejected incoherent remainder withheld; only bound runner results selected for delivery`;
             }
             else if (audienceUnreviewed || holding && (nothingLeft || withheld === undefined)) {
               // An unavailable group review is terminal; promise no later check.

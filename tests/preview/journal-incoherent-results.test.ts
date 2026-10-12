@@ -95,7 +95,7 @@ for (const mode of ['result', 'recorded-finding', 'none', 'credential', 'result-
         expect(turn.revision?.dispositions?.[0]?.decision).toBe('accept');
         expect(turn.revisionReview).toMatchObject({ verdict: 'violation', ruleIds: ['incoherent_remainder'] });
         expect(turn.release).toMatchObject({ review: 'violation', revised: false,
-          reason: expect.stringContaining('rejected incoherent remainder withheld') });
+          reason: expect.stringContaining('only bound runner results selected for delivery') });
         expect(turn.answerReports).toEqual(['commitment:0']);
         if (mode === 'result' || mode === 'recorded-finding') {
           expect(loopHealth(journal.view, clock.now).awaitingDelivery).toBe(0);
