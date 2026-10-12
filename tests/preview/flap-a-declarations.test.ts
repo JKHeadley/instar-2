@@ -6,7 +6,7 @@ import { mkdtempSync, readFileSync, realpathSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { readAnswer } from './answer-reading.js';
-import { createJournalWorker, openPreviewJournal } from './journal-test-worker.js';
+import { createJournalWorker, openPreviewJournal, UNKNOWN_SEND_NOTICE } from './journal-test-worker.js';
 
 const fixture = JSON.parse(readFileSync(new URL('./fixtures/flap-a-declarations-2026-10-04.json', import.meta.url), 'utf8')) as {
   rows: { row: { kind: string; id: string; text?: string; output?: string; outcome?: string; at: number } }[] };
@@ -138,9 +138,21 @@ it('a malformed promise gets one repair opportunity, while a valid recorded prom
 
 it('a repaired fulfillment whose send stays unknown never closes the promise or duplicates the send', async () => {
   const r = await run(715674119, output(6232374), { seed: true, sendUnknown: true });
-  try { expect(r.inputs).toHaveLength(2); expect(r.sent).toHaveLength(2); expect(r.journal.view.closed.has(0)).toBe(false);
+  try { expect(r.inputs).toHaveLength(2);
+    expect(r.sent).toEqual([r.journal.view.order[0]!.intent, r.turn.intent, UNKNOWN_SEND_NOTICE]);
+    expect(r.journal.view.closed.has(0)).toBe(false);
+    expect(r.turn.deliveryNotice?.text).toBe(UNKNOWN_SEND_NOTICE);
     const reopened = r.reopen();
-    try { expect(reopened.view.closed.has(0)).toBe(false); expect(reopened.view.order.at(-1)?.sent).toBeUndefined(); }
+    let repeated = 0;
+    try {
+      await createJournalWorker(reopened, { now: () => row(715674119, 'intake').at, stopped: () => false,
+        model: async () => { repeated++; throw Error('model repeated'); }, checkOutbound: () => {},
+        send: async () => { repeated++; throw Error('answer or notice repeated'); } }).drain();
+      expect(repeated).toBe(0);
+      expect(reopened.view.closed.has(0)).toBe(false);
+      expect(reopened.view.order.at(-1)?.sent).toBeUndefined();
+      expect(reopened.view.order.at(-1)?.deliveryNotice?.sent).toBeUndefined();
+    }
     finally { reopened.close(); }
   } finally { r.close(); }
 });

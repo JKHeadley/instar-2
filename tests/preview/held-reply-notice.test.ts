@@ -3,7 +3,7 @@ import { mkdtempSync, realpathSync, rmSync, readFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { spawnSync } from 'node:child_process';
-import { createJournalWorker, HELD_NOTICE_AFTER_MS, HELD_NOTICE_WINDOW_MS, openPreviewJournal, raiseJournalCaps, reportJournalCap } from './journal-test-worker.js';
+import { createJournalWorker, HELD_NOTICE_AFTER_MS, HELD_NOTICE_WINDOW_MS, openPreviewJournal, raiseJournalCaps, reportJournalCap, UNKNOWN_SEND_NOTICE } from './journal-test-worker.js';
 
 const key = new Uint8Array(32).fill(7);
 const root = () => realpathSync(mkdtempSync(join(tmpdir(), 'held-reply-notice-')));
@@ -165,16 +165,19 @@ it('fences an uncertain limited answer and later releases the capped answer once
 });
 
 for (const [noticeReceipt, answerReceipt, unknownSends] of [
-  [null, null, 2], [null, 15, 1], [12, 15, 0],
+  [null, null, 3], [null, 15, 1], [12, 15, 0],
 ] as const) {
   it(`keeps notice ${String(noticeReceipt)} and answer ${String(answerReceipt)} outcomes distinct in status, history, and recall`, async () => {
     const dir = root(), path = join(dir, 'journal.encrypted');
     try {
       const journal = openPreviewJournal(path, key, genesis(1));
       let now = 1_000;
+      const sent: { target: string | undefined; text: string }[] = [];
       const worker = createJournalWorker(journal, { now: () => now, stopped: () => false,
         model: async () => { throw Error('model repeated'); }, checkOutbound: () => {},
-        send: async input => input.expectedText.includes("I can't answer yet") ? noticeReceipt : answerReceipt });
+        send: async input => {
+          sent.push({ target: input.target, text: input.expectedText });
+          return input.expectedText.includes("I can't answer yet") ? noticeReceipt : answerReceipt; } });
       worker.intake([update(1)]);
       const id = journal.view.order[0]!.id;
       journal.append({ kind: 'reserve', id, at: now });
@@ -184,6 +187,10 @@ for (const [noticeReceipt, answerReceipt, unknownSends] of [
       await worker.drain();
       raiseJournalCaps(journal, { maxCalls: 3, maxReplies: 3, maxTurns: 3, authority: 'test operator', at: now + 1 });
       await worker.drain();
+      expect(sent.filter(item => item.target === `reply:${id}`)).toEqual([{ target: `reply:${id}`, text: 'answer' }]);
+      expect(sent.filter(item => item.target === `delivery-notice:${id}`)).toEqual(answerReceipt === null
+        ? [{ target: `delivery-notice:${id}`, text: UNKNOWN_SEND_NOTICE }] : []);
+      expect(sent).toHaveLength(answerReceipt === null ? 3 : 2);
       journal.close();
 
       const status = spawnSync(process.execPath, ['--no-warnings', '--loader', './scripts/slice-ts-loader.mjs',
@@ -202,6 +209,7 @@ for (const [noticeReceipt, answerReceipt, unknownSends] of [
       try {
         const resumed = createJournalWorker(reopened, { now: () => now + 2, stopped: () => false,
           model: async () => { throw Error('model repeated'); }, checkOutbound: () => {}, send: async () => { throw Error('send repeated'); } });
+        expect(reopened.view.order[0]?.deliveryNotice !== undefined).toBe(answerReceipt === null);
         const expected = { limitedAnswer: true,
           limitedAnswerOutcome: `limited answer (calls allowance) ${noticeReceipt === null ? 'delivery UNKNOWN' : 'Telegram API accepted'}`,
           answer: 'answer', outcome: answerReceipt === null ? 'delivery UNKNOWN' : 'Telegram API accepted' };
