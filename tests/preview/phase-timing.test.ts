@@ -2,7 +2,7 @@ import { afterEach, expect, it, vi } from 'vitest';
 import { mkdtempSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
-import { createJournalWorker, openPreviewJournal, REPLY_ACKNOWLEDGEMENT, type PreviewPorts } from './journal-test-worker.js';
+import { createJournalWorker, openPreviewJournal, REPLY_ACKNOWLEDGEMENT, UNKNOWN_SEND_NOTICE, type PreviewPorts } from './journal-test-worker.js';
 import { checkPhaseTiming, recordPhaseTiming } from './phase-timing.js';
 import { createGroupAudienceCache } from './group-disclosure.js';
 import { membership, scope } from './group-carry-fixture.js';
@@ -54,16 +54,25 @@ it.each([{ late: 0, audience: 5700 }, { late: 5700, audience: 0 }])(
 it.each(['unknown', 'not-sent'] as const)('records %s without widening the send retry rule', async kind => {
   const root = mkdtempSync(join(tmpdir(), 'phase-outcome-'));
   const journal = openPreviewJournal(join(root, 'journal.encrypted'), key, genesis);
-  let attempts = 0;
+  const sent: { target: string | undefined; text: string }[] = [];
   try {
     const worker = createJournalWorker(journal, { now: () => at, stopped: () => false, checkOutbound: () => {},
-      model: async () => '42', send: async () => { attempts++; return { kind, reason: 'injected outcome' }; } });
+      model: async () => '42', send: async input => {
+        sent.push({ target: input.target, text: input.expectedText });
+        return { kind, reason: 'injected outcome' };
+      } });
     worker.intake([raw]); await worker.drain(); await worker.drain();
-    expect(attempts).toBe(kind === 'unknown' ? 1 : 2);
+    const turn = journal.view.order[0]!;
+    const answer = { target: `reply:${turn.id}`, text: '42' };
+    const notice = { target: `delivery-notice:${turn.id}`, text: UNKNOWN_SEND_NOTICE };
+    expect(sent).toEqual(kind === 'unknown' ? [answer, notice] : [answer, answer]);
     const rows = journal.view.phaseTimings!.filter(row => row.phase === 'send');
-    expect(rows).toHaveLength(attempts);
-    expect(rows[0]!.measurements.attempt).toBe(1);
-    expect(rows.at(-1)!.measurements.provedNotSentAttempts).toBe(kind === 'unknown' ? 0 : 2);
+    expect(rows.map(row => ({ target: row.id, attempt: row.measurements.attempt,
+      provedNotSentAttempts: row.measurements.provedNotSentAttempts }))).toEqual(kind === 'unknown'
+      ? [{ target: answer.target, attempt: 1, provedNotSentAttempts: 0 },
+        { target: notice.target, attempt: 1, provedNotSentAttempts: 0 }]
+      : [{ target: answer.target, attempt: 1, provedNotSentAttempts: 1 },
+        { target: answer.target, attempt: 2, provedNotSentAttempts: 2 }]);
   } finally { journal.close(); rmSync(root, { recursive: true, force: true }); }
 });
 
