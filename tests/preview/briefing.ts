@@ -88,13 +88,18 @@ export function capabilityBriefing(readSource: (path: string) => string,
   const item = (f: BriefedFeature) => `- ${f.id}: ${f.text}`;
   const available = features.filter(f => f.availability === 'available');
   const off = features.filter(f => f.availability === 'switched-off');
+  // The journal launcher has its own Telegram bot path; the dark core adapter is
+  // a different implementation. Its status must not deny the channel serving this chat.
+  const journalChat = launcher === CAPABILITY_LAUNCHER && available.some(f => f.id === 'preview-conversation');
+  const offName = (f: BriefedFeature) => f.id === 'telegram-conversation-adapter' && journalChat
+    ? `${f.id} (separate core adapter; this chat uses the Telegram bot)` : f.id;
   return { generation, commit, text: [
     // cint-L27: the header's "one-line summaries from this installation's register; current state in the status
     // reply" went to pay for the lookup sentence; the register-tooling and status-command lines below state both.
     SELF_IDENTITY,
     'What you can do for the operator here:', ...available.filter(f => f.userFacing).map(item), ...limits.tools ? [`- ${tools}`] : [],
     'Internal machinery running under you:', ...available.filter(f => !f.userFacing).map(item),
-    ...off.length ? [`In the code but switched off here, so not available: ${off.map(f => f.id).join(', ')}.`] : [],
+    ...off.length ? [`Code switched off here: ${off.map(offName).join(', ')}.`] : [],
     // Live 2026-10-02 (room two, build e26a8c1b): this line used to end "and no scheduled work, nudges or other
     // unprompted messages", which denies `preview-requested-actions` listed two lines above it. The reply to
     // "Remind me today at 1:25 am" opened "I can't actually do this one - I have no scheduler" and then carried

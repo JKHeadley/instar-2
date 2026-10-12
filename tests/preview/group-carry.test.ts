@@ -311,6 +311,8 @@ it('replays all recorded model shapes through carried recall after the disclosur
         expect(packet.memoryDecision, shape.id).toContain(MEMORY_ITEM_SHAPE);
         expect(packet.sources.find((source: { id: string }) => source.id === 'capability-note').text, shape.id)
           .toContain(SELF_IDENTITY);
+        expect(packet.sources.find((source: { id: string }) => source.id === 'capability-note').text, shape.id)
+          .toContain('telegram-conversation-adapter (separate core adapter; this chat uses the Telegram bot)');
         const envelope = JSON.parse(String(input.prepared));
         expect(envelope.messages.find((message: { role: string }) => message.role === 'instructions').content, shape.id)
           .toContain(SELF_DESCRIPTION);
