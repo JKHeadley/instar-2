@@ -359,7 +359,7 @@ Skip: tests/preview/session-admission.test.ts:284 | scope=Existing physical sand
 Skip: tests/preview/session-admission.test.ts:322 | scope=Existing physical sandbox availability condition; no skip added by this merge.
 Skip: tests/preview/yes-batch-live.test.ts:375 | scope=Existing explicitly gated live capture or authenticated provider exercise; ordinary recorded replay remains enabled. No skip added by this merge.
 Skip: tests/preview/yes-window.test.ts:222 | scope=Existing explicitly gated live capture or authenticated provider exercise; ordinary recorded replay remains enabled. No skip added by this merge.
-Verification: Foreground baseline tests pass: 15 files, 84 tests, no skips. Typecheck/build and governed-document checks pass. Final targeted replay, pinned-text tests, lint, register, review and contract check results are recorded in the absolute desk progress file. Saved gate evidence is historical and never relabeled as current-head full-suite evidence.
+Verification: All 19 commitment tests pass after including rule sources in the compaction proof. Recorded summary and reply replay tests pass, including uncertain/undecided and empty candidate shapes; one optional live journal recapture is explicitly skipped while its archived replays run. Register replay is refreshed at 5c88f3f9. Foreground baseline tests pass: 15 files, 84 tests, no skips. Typecheck/build and governed-document checks pass. Final targeted replay, pinned-text tests, lint, register, review and contract check results are recorded in the absolute desk progress file. Saved gate evidence is historical and never relabeled as current-head full-suite evidence.
 
 ## Closing block
 
