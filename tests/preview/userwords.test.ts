@@ -62,7 +62,7 @@ it.each(captures.otherShapes)('renders the product question without desk instruc
   const root = mkdtempSync(join(tmpdir(), 'userwords-replay-'));
   const journal = openPreviewJournal(join(root, 'journal.encrypted'), key, genesis);
   let calls = 0;
-  let seen: { question: string; context: string; prepared?: string } | undefined;
+  let seen: Parameters<typeof prepareJournalEnvelope>[0] & { prepared?: string } | undefined;
   const sends: string[] = [];
   try {
     const sources = turnSources(root, {}, journal.view, () => ({ launches: [], exits: [] }));
