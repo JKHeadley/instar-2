@@ -38,6 +38,14 @@ Deferral: generated/register.json:1 | not-a-deferral=Generated governance text i
 Deferral: tests/preview/selfdesc-abilities.test.ts:41 | not-a-deferral=Immutable historical instruction priority wording is translated to the current instruction, not deferred work.
 Publication: Deterministic register replay from source b4d4dacb45e2808e0b812589e2e747536785aca7; no inventory, authority or guard change. Suggested tier becomes critical due to generated paths; declared significant reflects the instruction repair plus mechanical provenance.
 
+Deferral: tests/preview/fixtures/train-12-capability-2026-10-12.json:44 | not-a-deferral=Immutable recorded model reasoning, not builder work deferred.
+Deferral: tests/preview/fixtures/train-12-capability-2026-10-12.json:384 | not-a-deferral=Immutable recorded model reasoning, not builder work deferred.
+Residue: train-12-malformed-answer-key | medium | Fixed-sample run 75 writes a leading-space answer key; the unchanged worker emits the JSON object and K11 FAILs. This separate protocol defect is retained for desk judgment; no independent acceptance or universal formatting claim.
+
+Final model evidence: Ten new inferences 70–79 on the exact capsentence2 update 840342414 envelope, without replacement: rendered K11 9 PASS / 1 FAIL. Extra exact train-12 update 715675606 replay 64 PASS. Original live paraphrase and intermediate live replay 50 FAIL remain in the committed fixture. The old helper wrongly judged valid JSON reply run 73 before the worker extracted its reply; its original FAIL is preserved beside the shipped-worker PASS. Run 75 remains FAIL after worker replay; no field normalization or product parser change. Full input equality, rendered results, judgments and free-text review reside in absolute lanes/train-12-fix-0745-evidence; final inputs differ only in instructions and capability-note, never question/history. Eight pinned-test files / 102 tests passed before push; the final pushed head is checked again as required. The exact floor guard and all constitutional rule text remain unchanged.
+
+Residue: train-12-internal-labels | low | Runs 76 and 78 retain preview-* feature labels despite omit-label guidance; K11 passes their meaning. Author submits this presentation residue without claiming independent acceptance.
+
 ## Closing block
 
 simplestRobustRoute: Repair the existing instruction and reuse the unchanged rendered record and K11 judge. This is the simplest robust route; no new runtime machinery. Start with recorded failure and original envelope; end with fixed-sample inference evidence, unchanged-floor tests and source pins. Safety floors unchanged; no deployed acceptance claim.
