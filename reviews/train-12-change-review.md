@@ -42,13 +42,14 @@ Publication chain: inventory repin changed zero pins; owner rehash refreshed 15 
 
 Register source: 00cbaebe011dbb21881a30fab67df622411163b0; replay generation sha256:e7f928a39cde9a5190e266bbf85ff08e3940f95e27f77400a2b580e9675e33d9 (289 entries, 116 rules).
 
-## Closing block
-
-simplestRobustRoute: This is the simplest robust route: continue the two verified ordinary merges, resolve the one desk-authorized prompt conflict by shortening its wording, and reuse desk generation. No added machinery or budget expansion. Start guards are exact heads and immutable captures; end guards are targeted tests, the unchanged floor and register checks. Existing safety floors remain. No autonomous deployment claim.
-80/20: Targeted foreground checks and recorded-shape replays; the desk owns live deployment, independent judgment and the full-suite gate.
 Decision: train-12-botid | Retain verified ordinary merge 480a7bae of d54b62be on 4b125fec; fixture bot identity and test-root isolation. Evidence: lanes/botid-1011-PROGRESS.md. | reported=/Users/dabombstudio/.instar/agents/echo/.instar/lanes/train-12b-PROGRESS.md
 Decision: train-12-train11 | Retain verified ordinary merge aceeb193 of dd77f572; preserve onboarding and memory-fact behavior and floor repair. Evidence: lanes/train-11-PROGRESS.md. | reported=/Users/dabombstudio/.instar/agents/echo/.instar/lanes/train-12b-PROGRESS.md
 Decision: train-12-capsentence2 | Complete the in-progress ordinary merge of 1c010c55; retain its tests and immutable fixture with explicit historical prose adaptation. Evidence: lanes/capsentence2-1011-PROGRESS.md. | reported=/Users/dabombstudio/.instar/agents/echo/.instar/lanes/train-12b-PROGRESS.md
 Decision: train-12-desk-resolution | Apply the 2026-10-12 desk decision in lanes/fanout/train-12b-prompt.txt: capsentence2 three requirements win in meaning, compact the instruction without editing the floor guard. | reported=/Users/dabombstudio/.instar/agents/echo/.instar/lanes/train-12b-PROGRESS.md
 Decision: train-12-publication | Regenerate owner hashes and publications using the cint-L37 desk chain; never hand-merge generated contents. | reported=/Users/dabombstudio/.instar/agents/echo/.instar/lanes/train-12b-PROGRESS.md
+
+## Closing block
+
+simplestRobustRoute: This is the simplest robust route: continue the two verified ordinary merges, resolve the one desk-authorized prompt conflict by shortening its wording, and reuse desk generation. No added machinery or budget expansion. Start guards are exact heads and immutable captures; end guards are targeted tests, the unchanged floor and register checks. Existing safety floors remain. No autonomous deployment claim.
+80/20: Targeted foreground checks and recorded-shape replays; the desk owns live deployment, independent judgment and the full-suite gate.
 VERDICT: author submission; this record asserts no independent verdict — the review desk records its own

@@ -18,6 +18,7 @@ Bug class: integration
 Bug evidence: reproducer=tests/preview/default-context-floor.test.ts; train-11 baseline review delta 6746 exceeds 6636 and summary 23073 exceeds 22959. After: delta 6590 (46 spare), summary 22916 (43 spare), answer unchanged at 22657. All four requested files pass, 39 tests with the existing manual capture skipped.
 Hook bypass: none
 Convergence: none
+Prompt review: The merged review/summary repair shortens explanatory prose and removes duplicate correction guidance. It adds no fixture-trigger phrase or keyword classifier and supplies no expected verdict to the reviewer. Existing rule text, uncertainty handling and output protocol are preserved; the recorded replay evidence below exercises both accepted and uncertain outputs.
 
 Cause: Comparing exact holdack2-1011 and train-11 envelopes finds no added review-only packet text or review question. Commit 89fca853 shortened answer-only instructions by 376 serialized bytes, raising the delta from 6370 to 6746. Summary growth is the af287b72 capability sentence and digest (+306), less 89fca853 recall compaction (-98): 22865 + 208 = 23073.
 
