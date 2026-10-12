@@ -36,6 +36,12 @@ Deferral: tests/preview/fixtures/capsentence2-2026-10-11.json:559 | not-a-deferr
 
 Register: Regenerated from exact source commit a5a5510fc03835633e3586580e01263f10bad792 in replay mode; seven generated provenance files change, with no capability text or authority change. Owner manifests required no refresh.
 
+Prompt finding: 849db3a6296a | protocol-literal | Unchanged fixed memory-inventory response, not an intent classifier. Carried with the accepted memory integration; unchanged by this repair.
+Prompt finding: bd01de21286a | protocol-literal | Unchanged source-label instruction asserted by the existing grounding test. Carried with the accepted memory integration; unchanged by this repair.
+Prompt finding: fb5fa7e706c8 | protocol-literal | Unchanged semantic retrieval instruction asserted by the existing grounding test. Carried with the accepted memory integration; unchanged by this repair.
+Deferral: tests/preview/fixtures/capsentence2-2026-10-11.json:166 | not-a-deferral=Immutable captured model reasoning describes the conversation sequence; no builder work is deferred.
+Deferral: tests/preview/fixtures/capsentence2-2026-10-11.json:486 | not-a-deferral=Immutable captured model reasoning describes the conversation sequence; no builder work is deferred.
+
 ## Closing block
 
 simplestRobustRoute: This is the simplest robust route: clarify the existing instruction, reuse the current rendered record and K11, add no runtime checker or authority path. Start at assigned train-11; end with ten fresh recorded-context replays, pinned tests and gates. No deployment claim.
