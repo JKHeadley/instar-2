@@ -20,7 +20,7 @@ Hook bypass: none
 Convergence: none
 <!-- Rule 102: record each mid-run engineering decision as a line: Decision: <id> | <what was decided, and why> | reported=<report that names the id> -->
 
-Subject (2 paths): tests/preview/reply-check.test.ts, tests/preview/reply-review-budget.test.ts
+Subject: tests/preview/reply-check.test.ts, tests/preview/reply-review-budget.test.ts, register-source/owner-references/preview.json, generated/capabilities.json, generated/capabilities.md, generated/coverage.md, generated/glossary.md, generated/register.json, generated/rules.md, generated/source.json
 
 ## Closing block
 
@@ -29,3 +29,5 @@ simplestRobustRoute: This is the simplest robust route: update one stale literal
 VERDICT: author submission; this record asserts no independent verdict — the review desk records its own
 
 Decision: train-12-repair-043109-replay | Reuse the six exact train-11 prose translations already present in act-first, keeping recorded inputs and outputs immutable and runtime behavior unchanged. | reported=/Users/dabombstudio/.instar/agents/echo/.instar/lanes/train-12-repair-043109-PROGRESS.md
+
+Publication: Delegated desk rehash updated one owner source pin; inventory repin updated zero. build-register replay regenerated seven publications from f6064b942fc3831b3d835a31f7bda779f65179b1, generation sha256:2cd0e15a95fa82695855b55daa807fd220764dbfc9e1a336db1a08e7b9333d2f.
