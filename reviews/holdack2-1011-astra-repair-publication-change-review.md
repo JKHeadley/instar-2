@@ -18,7 +18,7 @@ Bug class: none
 Bug evidence: none
 Hook bypass: none
 Convergence: none
-Deferral: generated/register.json:1 | commitment=<ref> or not-a-deferral=<reason>
+Deferral: generated/register.json:1 | not-a-deferral=Existing declaration text mechanically republished from committed source; no implementation postponed by this change.
 
 Subject (7 paths): generated/capabilities.json, generated/capabilities.md, generated/coverage.md, generated/glossary.md, generated/register.json, generated/rules.md, generated/source.json
 
