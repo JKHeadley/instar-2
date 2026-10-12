@@ -27,7 +27,7 @@ Prompt finding: 6af48f94b789 | protocol-literal | Historical capture retains the
 Prompt finding: 95e349aaf4ac | protocol-literal | Historical capture retains the existing capability protocol; no meaning classifier — fixture-phrase tests/preview/briefing.ts <- tests/preview/selfdesc-abilities.test.ts: "via the doorway's four tests; standing grants need no new approval."
 Prompt finding: b00ed403060a | protocol-literal | Historical capture retains the existing capability protocol; no meaning classifier — fixture-phrase src/assembly/production-provider.ts <- tests/preview/selfdesc-abilities.test.ts: "checked when made. workspace work and public reads are already allowed. register"
 
-Evidence: Verification artifacts are recorded in the absolute lanes/capsentence2-1011-PROGRESS.md. The first exploratory answer retained a missing-status aside. Clarified that missing information also stays out of free text, and compressed the instruction after a context-floor failure; all six floor tests then passed at unchanged bounds. Final ten-answer evidence and checks follow.
+Evidence: Verification artifacts are recorded in the absolute lanes/capsentence2-1011-PROGRESS.md. The first exploratory answer retained a missing-status aside. Clarified that missing information also stays out of free text, and compressed the instruction after a context-floor failure; all six floor tests then passed at unchanged bounds. Exploratory replay 2 still added a missing-status limit; replay 3 obeyed the explicit no-asides rule. Removed redundant identity wording to fit that rule within the unchanged budget; 26 context and instruction-boundary tests pass. Final ten-answer evidence and checks follow.
 
 ## Closing block
 

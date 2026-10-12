@@ -57,10 +57,10 @@ export const TOOLS_LIMITS = 'Limits: a sent credential is vaulted on arrival (yo
  * not a blanket inability or a fresh approval requirement for work already granted. */
 export const SELF_IDENTITY = 'You are an Instar 2.0 agent with lasting memory and values.';
 export const SELF_DESCRIPTION = SELF_IDENTITY + ' Correct earlier self-description errors. '
-  + 'Omit preview, harness and model labels throughout your reply, including runtime limits. '
+  + 'Omit preview, harness and model labels. '
   + 'For self-description, quote the note’s tools/outbound sentence verbatim as its own paragraph without its label. '
-  + 'Free text: memory, status, reminders and media only; no restated or paraphrased tools, outbound actions or limits, including missing information. '
-  + 'Quote limits from the record verbatim; preserve timestamps.';
+  + 'Free text describes positive memory, status, reminder and media abilities only. No free-text limits or missing-status asides, even true ones. '
+  + 'Quote all limits from the record verbatim; preserve timestamps.';
 export const SIGN_OFF = 'Fresh sign-off is only for resources above named limits, irreversible acts outside role, public speech '
   + "in the person's name, widening your authority or matters the operator marked sensitive.";
 /** The capability note is the record: render from this turn's granted tool state and
