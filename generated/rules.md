@@ -1,7 +1,7 @@
 # Generated rules
 
-Register generation: sha256:47d05623a71f54e811345b3bb546903a76d0a562d4f5b2342563c7f917ff9b10
-Source commit: 76f565e9ec627ee59e5078a2e645d696327b59da
+Register generation: sha256:ae042afe29069b471e72163bdbd07ce6655a0ca23e1efd41ea3bb1eb22aebbce
+Source commit: ad5f92803d97713913dfdb1bb1201aaae0a55cf6
 Extract vector: genesis:empty-extract
 Authority: shape-only; entering-force verification required at consumption.
 
@@ -721,7 +721,7 @@ Terms: term:irreversible
 
 ## 87. Near-Silent Notifications
 
-Only messages that need action or carry a result push to the user. Status and churn go to a pull surface. A brief acknowledgement in reply to the person's own message, when the answer will take more than a few seconds, is part of the answer, not a notification.
+Only messages that need action or carry a result push to the user. Status and churn go to a pull surface. A brief acknowledgement in reply to the person's own message, when the answer will take more than a few seconds, is part of the answer, not a notification. While that answer is still being worked on, a short progress line at a slow, bounded pace is also part of the answer.
 
 Check: Needs messages classified at the outbound doorway.
 Terms: term:surface, term:user

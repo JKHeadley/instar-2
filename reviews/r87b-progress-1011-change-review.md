@@ -26,5 +26,5 @@ Decision: review-base-coverage | Cover the inherited PR 160 merge from its first
 ## Closing block
 
 simplestRobustRoute: This is the simplest robust route: one exact sentence, one immutable changelog revision, one existing source digest and existing register generation. Start guard is Justin's recorded exact-text approval; end guards are sync/drift and generated-source checks; safety and resource floors remain unchanged. No new mechanism or autonomous capability is claimed.
-80/20: Targeted constitutional sync, provider-context delivery, generated publication and real captured-shape replay evidence will be recorded in the builder report; independent landing review and final-head code-owner approval remain pending.
+80/20: Exact sentence/history checks, four positive/negative constitutional sync tests, typecheck, architecture, lint, register replay and change-review pass. Fourteen recorded answer/review contexts carry the new sentence with preserved history; seven captured output shapes reach the worker model port with unchanged output dispositions versus PR 160. Historical overflow and empty-candidate provenance limits, plus targeted consumer and final-head READY gate results, are recorded in the builder report. Independent landing review and final-head code-owner approval remain pending.
 VERDICT: author submission; independent review pending
