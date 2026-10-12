@@ -30,7 +30,7 @@ async function turns(texts: string[], between: (index: number, status: string) =
     sources: () => {
       const report = deskStatusSource(readDeskStatus(status), NOW, status);
       const runs = { launches: [], unreadable: 0 };
-      return [...purpose, selfStateSource(selfStateBrief(journal.view, runs, NOW, 'UTC')), report];
+      return [...purpose, selfStateSource(selfStateBrief(journal.view, runs, NOW, 'UTC')), ...(report ? [report] : [])];
     },
     prepareModel: input => prepareJournalEnvelope(input, model, genesis.grant, NOW),
     model: async input => { seen.push(input); return 'ok'; }, send: async () => 1, checkOutbound: () => {} });
@@ -84,25 +84,24 @@ it('puts a current, labelled desk report into every turn packet within the conte
   } finally { rmSync(world.root, { recursive: true, force: true }); }
 });
 
-it('labels a missing, stale or oversize report plainly and never invents status', async () => {
+it('omits a missing report and preserves stale and oversize labels', async () => {
   const base = { now: NOW, path: '/desk/desk-status.md' };
   const missing = deskStatusSource(readDeskStatus('/nonexistent/desk-status.md'), base.now, base.path);
-  expect(missing.provenance.status).toBe('missing');
-  expect(missing.text).toContain('No desk report is available. The status of other Instar 2.0 work is unknown');
+  expect(missing).toBeNull();
   const stale = deskStatusSource({ text: 'Lane A: building.', modifiedAt: NOW - DESK_STATUS_MAX_AGE_MS - 3_600_000 }, base.now, base.path);
-  expect(stale.provenance.status).toBe('stale');
-  expect(stale.text).toContain('STALE: last updated');
-  expect(stale.text).toContain('25 hours ago');
+  expect(stale!.provenance.status).toBe('stale');
+  expect(stale!.text).toContain('STALE: last updated');
+  expect(stale!.text).toContain('25 hours ago');
   const fresh = deskStatusSource({ text: 'Lane A: building.', modifiedAt: NOW - DESK_STATUS_MAX_AGE_MS + 60_000 }, base.now, base.path);
-  expect(fresh.provenance.status).toBe('current');
-  expect(fresh.text).not.toContain('STALE');
+  expect(fresh!.provenance.status).toBe('current');
+  expect(fresh!.text).not.toContain('STALE');
   const root = realpathSync(mkdtempSync(join(tmpdir(), 'preview-awareness-')));
   try {
     const big = join(root, 'desk-status.md');
     writeFileSync(big, 'x'.repeat(DESK_STATUS_MAX_BYTES + 1));
     const oversize = deskStatusSource(readDeskStatus(big), NOW, big);
-    expect(oversize.provenance.status).toBe('oversize');
-    expect(oversize.text).not.toContain('xxxx');
+    expect(oversize!.provenance.status).toBe('oversize');
+    expect(oversize!.text).not.toContain('xxxx');
     expect(readDeskStatus(root)).toBeNull(); // a directory is not a report
   } finally { rmSync(root, { recursive: true, force: true }); }
 });
@@ -120,7 +119,7 @@ it('keeps briefing text as quoted data: it never becomes the operator message, a
     const worker = createJournalWorker(journal, { now: () => NOW, stopped: () => false,
       sources: () => {
         const report = deskStatusSource(readDeskStatus(status), NOW, status);
-        return [...purpose, report];
+        return [...purpose, ...(report ? [report] : [])];
       },
       prepareModel: input => prepareJournalEnvelope(input, model, genesis.grant, NOW),
       model: async input => { seen.push(input); return 'ok'; }, send: async () => 1, checkOutbound: () => {} });
@@ -163,7 +162,10 @@ it('cuts a long desk report under byte pressure before any history yields, and k
     const journal = openPreviewJournal(join(root, 'journal.encrypted'), key, { ...genesis, maxBytes });
     const seen: { context: string }[] = [];
     const worker = createJournalWorker(journal, { now: () => NOW, stopped: () => false,
-      sources: () => [...purpose, deskStatusSource(readDeskStatus(status), NOW, status)],
+      sources: () => {
+        const report = deskStatusSource(readDeskStatus(status), NOW, status);
+        return [...purpose, ...(report ? [report] : [])];
+      },
       model: async input => { seen.push(input); return 'ok'; }, send: async () => 1, checkOutbound: () => {} });
     try {
       for (const [index, text] of ['first question', 'second question', 'third question'].entries()) {

@@ -442,7 +442,7 @@ const turnSources = (root, options, view, runs, current = () => undefined, hando
     const tools = Boolean(toolsOn()), sources = packetFor(tools, tools ? mcpCount() : undefined);
     const desk = deskStatusSource(readDeskStatus(deskStatusPath), now, deskStatusPath);
     const note = handoff();
-    return [...sources, disciplineSource(view), selfStateSource(selfStateBrief(view, log, now, timeZoneOf(options), current())), desk, ...(note ? [note] : [])];
+    return [...sources, disciplineSource(view), selfStateSource(selfStateBrief(view, log, now, timeZoneOf(options), current())), ...(desk ? [desk] : []), ...(note ? [note] : [])];
   };
 };
 /** The installed runner, read from this checkout: repository paths only, never outside it. */

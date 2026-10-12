@@ -36,7 +36,7 @@ it('the live script reaches recall: the real question\'s persisted prompt is sum
       sources: () => {
         const now = Date.now(), runs = readRuns(join(root, 'runs.jsonl'));
         const desk = deskStatusSource(readDeskStatus(join(root, 'desk-status.md')), now, join(root, 'desk-status.md'));
-        return [...sources, selfStateSource(selfState(journal.view, runs, now, 'UTC')), desk];
+        return [...sources, selfStateSource(selfState(journal.view, runs, now, 'UTC')), ...(desk ? [desk] : [])];
       },
       prepareModel: input => prepareJournalEnvelope(input, model, g.grant, Date.now()),
       model: async ({ id, context }) => {

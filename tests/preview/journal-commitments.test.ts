@@ -528,7 +528,7 @@ it('the live script reaches compaction and the question carries the open commitm
       sources: () => {
         const now = Date.now(), runs = readRuns(join(root, 'runs.jsonl'));
         const desk = deskStatusSource(readDeskStatus(join(root, 'desk-status.md')), now, join(root, 'desk-status.md'));
-        return [...sources, selfStateSource(selfState(journal.view, runs, now, 'UTC')), desk];
+        return [...sources, selfStateSource(selfState(journal.view, runs, now, 'UTC')), ...(desk ? [desk] : [])];
       },
       prepareModel: input => { const bytes = prepareJournalEnvelope(input, model, g.grant, Date.now());
         if (!input.id.startsWith('summary:')) prepared.push(bytes); return bytes; },
