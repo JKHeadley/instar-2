@@ -85,10 +85,10 @@ it('the read-only inspection path shows the generated capability note and its re
   } finally { rmSync(root, { recursive: true, force: true }); }
 }, 60_000);
 
-it('keeps the purpose and pillars verbatim and refuses either changed excerpt after the fixed-text trim', () => {
+it('keeps the purpose, pillars and approved Rule 87 verbatim and refuses each changed excerpt', () => {
   const read = (path: string) => readFileSync(path, 'utf8');
   const sources = sourcePacket(read, SOURCE_PINS, limits).sources;
-  expect(sources.map(source => source.id)).toEqual(['purpose:purpose', 'purpose:coherency', 'capability-note']);
+  expect(sources.map(source => source.id)).toEqual(['purpose:purpose', 'purpose:coherency', 'rules:87', 'capability-note']);
   for (const excerpt of SOURCE_EXCERPTS) {
     const source = sources.find(item => item.id === excerpt.id)!;
     const document = read(excerpt.path);

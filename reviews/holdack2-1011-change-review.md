@@ -10,7 +10,7 @@ Operator questions: none
 Suggested tier: critical
 Declared tier: critical
 Tier rationale: Restores reviewed acknowledgement dispatch and durable journal state alongside the approved constitutional clarification.
-Side effects: Slow replies again reserve one acknowledgement review/send. Compact briefing retains the speed work and adds the exact approved Rule 87 excerpt. Existing final-send and review routes remain.
+Side effects: Slow replies again reserve one acknowledgement review/send. Compact briefing retains the speed work and adds the exact approved Rule 87 excerpt; both successive and capability-briefing source-list assertions require the added excerpt, and mutation controls reject drift. Existing final-send and review routes remain.
 Undo and recovery: Revert this restoration and regenerate publications; a rollback removing holdack journal kinds must not open a holdack-written root. No live root or rollout changed here.
 Multi-machine posture: Existing ownership, signed dispatch, replication and unknown-outcome recovery fences remain; acknowledgement uses existing durable journal state. Timer/cache/evidence are deliberately machine-local.
 Layer below: Inspected first-parent revert, speed composition, merged constitutional source/pins, host acknowledgement callback, journal intent/review/receipt, audience cache, final review and archived replay harness.
