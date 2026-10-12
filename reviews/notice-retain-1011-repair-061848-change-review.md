@@ -20,6 +20,8 @@ Hook bypass: none; core.hooksPath unset; common hooks directory contains sample 
 Convergence: none
 Decision: notice-retain-clip-validator | Use the same redactor as journal validation after pre-scrub and clipping, replacing only an invalid excerpt with a bounded omission marker. This directly prevents the demonstrated lost-result failure without changing validation or swallowing append errors. | reported=/Users/dabombstudio/.instar/agents/echo/.instar/lanes/notice-retain-1011-repair-061848-PROGRESS.md
 Prompt review: No prompt, model output parser, verdict or review threshold changes. The existing diagnostic suite replays recorded physical outcome 969390396 without inventing its absent evidence and a captured Claude Code result. Synthetic boundary controls explicitly do not purport to be historical events.
+Deferral: generated/register.json:1 | not-a-deferral=Existing prerequisite descriptions are republished unchanged; no implementation is postponed.
+Generated publication: Replay generator source e4654470becf8fecf1180c28bd92d6265889a2d5; generation sha256:f0cd9faa29833e205ca942cf013971fbd1e396e9a0c56e6b61235f10db447901. Desk owner-manifest rehash and support-chain repin ran with zero changed pins.
 Verification: Both new stdout/stderr regression cases failed with call outcome malformed before the fix and passed afterward. Each exercises all 20 partial marker cuts, the intact marker neighbor and ordinary clipped text through real journal append and reopen. Existing diagnostic and journal-loop-fire tests pass. Portable gate results and the unrelated WSL host-launcher refusal are recorded in the local report for desk copying.
 
 ## Closing block
