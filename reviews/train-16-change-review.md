@@ -25,6 +25,8 @@ Decision: train-16-A | Preserve both independent behaviors in journal.ts; keep t
 Decision: train-16-publication | Keep the base generated publications only as temporary merge inputs, then regenerate through the supplied repin/build/rehash/build-register replay chain. Preserve base docs and all changelog history. Source: /Users/dabombstudio/.instar/agents/echo/.instar/lanes/fanout/train-16-prompt.txt. | reported=/Users/dabombstudio/.instar/agents/echo/.instar/lanes/train-16-PROGRESS.md
 Decision: train-16-C | Leave native/macOS R105 conformance and inaccessible Studio report/evidence paths to the Studio gate; run portable required checks here and disclose each host-dependent exclusion or failure. Source: /Users/dabombstudio/.instar/agents/echo/.instar/lanes/fanout/train-16-prompt.txt. | reported=/Users/dabombstudio/.instar/agents/echo/.instar/lanes/train-16-PROGRESS.md
 
+Publication: Seven outputs regenerated from df300cdb1f425ecfa7908ec26503ee9d474d9721, generation sha256:cab7085453776756d2c9835a277b6b328b8845a1e4ef9191e835a72339a4a9fa; desk repin and owner rehash changed zero pins. Context guard remains 22959 bytes.
+
 Prompt review: Preserve the supplied renderer instruction and timing changes without a new prompt/parser. Replay the committed real capability answer, cold admissions, uncertain summary outputs, undecided/unsure Jev, reply review and delivered/empty-context shapes. Recorded empty context is not proof of an empty Telegram bubble. No live send or unattended deployment is claimed.
 
 Prompt finding: e8708c7fea24 | quoted-evidence | Unchanged recall instruction; the hallucination regression locates it for a negative control, and no fixture answer drives runtime classification.
