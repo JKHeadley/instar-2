@@ -59,6 +59,14 @@ Prompt finding: b288d6ef1604 | quoted-evidence | The replay translates one exact
 Prompt finding: e769ca9dd959 | quoted-evidence | The replay translates one exact historical reviewer-instruction clause to the already-reviewed train-11 wording; it is a provenance comparison, never a fixture-trigger rule or expected model verdict.
 Prompt finding: feadb66b8ad1 | quoted-evidence | The replay translates one exact historical reviewer-instruction clause to the already-reviewed train-11 wording; it is a provenance comparison, never a fixture-trigger rule or expected model verdict.
 
+## Pipeline report repair 053214
+
+Repair scope: Correct the six report locators without changing the decisions, runtime, captures or gate implementation. The existing review record covers these metadata-only commits; the checker excludes reviews/ from a standalone subject.
+Decision: train-12-repair-053214-report | Point the six existing decisions to the prescribed desk-copied repair report and preserve their content and ids. | reported=/Users/dabombstudio/.instar/agents/echo/.instar/lanes/train-12-repair-053214-PROGRESS.md
+Prompt finding: 42faf877ba82 | quoted-evidence | The existing act-first replay locates the fixed agent briefing header to compare historical question bytes; it does not classify user meaning or prescribe a model verdict.
+Prompt finding: b1bb3946362d | quoted-evidence | The existing act-first replay locates the fixed agent briefing header to compare historical question bytes; it does not classify user meaning or prescribe a model verdict.
+Repair simplestRobustRoute: Correct report locators and use the existing Rule 102 report consumer; no added machinery or changed safety floor. The desk copies the local handoff to the prescribed Studio destination. Positive report and absent-report/missing-id controls exercise the consumer.
+
 ## Closing block
 
 simplestRobustRoute: This is the simplest robust route: continue the two verified ordinary merges, resolve the one desk-authorized prompt conflict by shortening its wording, and reuse desk generation. No added machinery or budget expansion. Start guards are exact heads and immutable captures; end guards are targeted tests, the unchanged floor and register checks. Existing safety floors remain. No autonomous deployment claim.
