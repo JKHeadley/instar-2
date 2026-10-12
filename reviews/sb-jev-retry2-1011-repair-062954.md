@@ -19,6 +19,7 @@ Bug evidence: reproducer=tests/preview/jev-stage-latency.test.ts
 Hook bypass: none; core.hooksPath unset and common hooks directory contains only samples.
 Convergence: none
 Decision: jev-repair-live-merge | Preserve live acknowledgement runtime and branch Jev retries with ordinary merge; keep both fast-answer assertions and regenerate all generated conflicts. | reported=/Users/dabombstudio/.instar/agents/echo/.instar/lanes/sb-jev-retry2-1011-repair-062954-PROGRESS.md
+Decision: jev-repair-slow-send | Preserve the branch deliberate slow-answer replay and expect its single completed acknowledgement; the live timer now finishes admission before final answer review. Keep all final-send boundary and restart assertions. | reported=/Users/dabombstudio/.instar/agents/echo/.instar/lanes/sb-jev-retry2-1011-repair-062954-PROGRESS.md
 Prompt review: No new model instruction authored. Live build removes per-send fixed acknowledgement review. Existing real recorded shapes and timing cases are replayed through the merged worker; inherited memory guidance remains unchanged.
 Prompt finding: 849db3a6296a | protocol-literal | Existing unchanged memory reply or source-citation instruction, inherited from reviewed branches.
 Prompt finding: bd01de21286a | protocol-literal | Existing unchanged memory reply or source-citation instruction, inherited from reviewed branches.

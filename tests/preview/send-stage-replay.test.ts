@@ -91,13 +91,13 @@ it.each(['accepted', 'joined-before-send', 'stopped-during-probe', 'unknown-send
     await vi.runAllTimersAsync(); await draining;
     const turn = journal.view.order[0]!;
     expect(models).toBe(1); expect(reviews).toBe(0); expect(turn.replyChecks?.map(check => check.path)).toEqual(['jev']);
-    expect(acknowledgements).toEqual([]); // cancelled when the answer wins its disclosure race
+    expect(acknowledgements).toEqual([REPLY_ACKNOWLEDGEMENT]); // the deliberately slow answer leaves time for one acknowledgement
     expect(active).toBe(0); expect(turn.text).toBe(captured.recorded.text);
     if (outcome === 'accepted') {
       console.log(JSON.stringify({ stage: 'send', update: captured.recorded.update, sendMs: turn.sendMs,
         audienceMs: Date.now() - sendProbeStart - 100, transportMs: 100, probes, reads, sendProbeReads, peak }));
       expect(failure).toBeUndefined(); expect(sends).toEqual([captured.recorded.answer]);
-      expect(turn.sendMs).toBe(3100); expect(sendProbeReads).toBe(6); expect(peak).toBe(5); // the cancelled acknowledgement probe briefly overlaps the answer probe
+      expect(turn.sendMs).toBe(3100); expect(sendProbeReads).toBe(6); expect(peak).toBe(4); // acknowledgement admission finishes before the final answer probe
     } else if (outcome === 'unknown-send') {
       expect(sends).toEqual([captured.recorded.answer]); expect(turn.intent).toBe(captured.recorded.answer);
       expect(turn.sent).toBeUndefined();
