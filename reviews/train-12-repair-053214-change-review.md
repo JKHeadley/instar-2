@@ -5,7 +5,7 @@ Review state: open
 Reviewed content: none
 Outcome: Make the six train-12 decisions resolve to the desk-copied repair report that names each decision.
 Affected rules: 49, 74, 101, 102, 111, 112, 113, 116; purpose Rule 3 evidence.
-Affected floors: secrets — ; spend cap — ; stop — ; no duplicate sends — ; durable intake — 
+Affected floors: secrets — unchanged; spend cap — unchanged; stop — unchanged; no duplicate sends — unchanged; durable intake — unchanged
 Operator questions: none
 Suggested tier: ordinary
 Declared tier: ordinary
