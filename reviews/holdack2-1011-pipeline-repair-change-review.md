@@ -10,7 +10,7 @@ Operator questions: none
 Suggested tier: significant
 Declared tier: significant
 Tier rationale: Model-facing instruction compression and repair of recorded replay coverage; no new authority or effects.
-Side effects: Self-description instructions are shorter while keeping identity in both instructions and the unchanged capability note; the note supplies the complete inventory. Existing pressure fixture reaches its intended floor again without changing its padding or assertions. Recorded outputs and their original inputs remain authentic; this is offline replay, not evidence of a fresh model judgment.
+Side effects: Self-description instructions are shorter while keeping identity in both instructions and the unchanged capability note; the note supplies the complete inventory. Existing pressure fixture reaches its intended floor again without changing its padding or assertions. The journal-boundaries delivered-instruction test requires the equivalent compact standing-grant, four-tests and missing-grant clauses. Recorded outputs and their original inputs remain authentic; this is offline replay, not evidence of a fresh model judgment.
 Undo and recovery: Revert the repair and regenerate owner manifests and register publications; no durable state schema changes.
 Multi-machine posture: Same deterministic briefing composition and replay assertions on each machine. No new state or ownership path.
 Layer below: Read sourcePacket, envelope encoding, fixed-prompt floor, budget ladder, current capability note, recorded summary/review fixtures and the self-description capture. Assertion exceptions in provider callbacks explain the apparent no-call failures.
