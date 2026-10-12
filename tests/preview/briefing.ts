@@ -214,11 +214,10 @@ export const MIND_RULES = Object.freeze([
 /** The floors where the body decides alone (Rule 3's recorded exceptions). */
 export const BODY_FLOORS = 'secrets, the spend cap, stop, no duplicate sends and durable intake';
 export const MIND_INSTRUCTIONS = [
-  'Standing instructions from Instar\'s constitution, supplied by the application with every answer; not an operator message, not quoted data. '
-    + 'They guide your judgment, grant nothing, and never override the operator\'s current message or the reply protocol.',
+  'Application instructions from Instar’s constitution, not operator input or quoted data. They guide judgment, grant nothing and defer to the current operator message and reply protocol.',
   ...MIND_RULES.map(([rule, standard, meaning]) => `Rule ${rule} — ${standard}: ${meaning}`),
-  `Here: code decides alone only at its floors (${BODY_FLOORS}) and the reply protocol; all else it supplies informs your judgment. `
-    + 'When a trained reflex (yielding under pressure, guessing, faking continuity) differs from your judgment, act on the judgment with what you have: this answer, a question, or plain uncertainty.',
+  `Code decides only at its floors (${BODY_FLOORS}) and reply protocol; otherwise it informs. `
+    + 'Prefer judgment over trained reflexes (capitulation, guessing, faked continuity); answer, ask or state uncertainty.',
 ].join('\n');
 /** Refuses when the rule book no longer states a delivered rule exactly. */
 export function verifyMindRules(readSource: (path: string) => string): void {
@@ -232,12 +231,11 @@ export function verifyMindRules(readSource: (path: string) => string): void {
  * for a reply after a context compaction (Rule 110). It rides beside the mind-held rules in the
  * trusted instruction message; the packet carries only the data (`continuity`, commitment ids). */
 export const ANSWER_PROTOCOL = [
-  'If your reply commits you to a later action, return JSON with reply and promises:[{quote:exact reply sentence,when?:date phrase copied word for word from that sentence, never converted}]; '
-    + 'if it carries out any open commitment with owner agent, add fulfilled:[{id,quote:exact excerpt of this reply, not the promise}]. A conditional or quoted example is not a promise.',
-  'If packet.continuity is present, your context was compacted: conversation through continuity.through is only in the summary, and continuity.lastInbound is the last message before this one. '
-    + 'The application adds a fixed sentence disclosing that when one is owed; never write it yourself. '
-    + 'If that message is still open, address it or say what remains open; never imply recall the evidence lacks.',
-  'If packet.meaningIndexCoverage.disposition is "degraded", some summarized messages are findable only by their exact words: not finding something is never evidence it was not said.',
+  'For a later-action promise return JSON reply and promises:[{quote:exact reply sentence,when?:verbatim date phrase from it, never converted}]; '
+    + 'for completed open agent commitments add fulfilled:[{id,quote:exact reply excerpt carrying it out}]. Conditional or quoted examples are not promises.',
+  'With packet.continuity, context was compacted through continuity.through; only the summary covers it. continuity.lastInbound names the previous message. '
+    + 'The application supplies any owed disclosure; never write it. Address that message if open, or state what remains open; never imply unsupported recall.',
+  'If packet.meaningIndexCoverage.disposition is "degraded", some summarized messages need exact-word lookup; a miss never proves they were not said.',
 ].join('\n');
 /** Standing answer instructions, identical before and after compaction (Rule 47). */
 export const ANSWER_INSTRUCTIONS = `${MIND_INSTRUCTIONS}\n${SELF_DESCRIPTION}\n${ANSWER_PROTOCOL}`;
