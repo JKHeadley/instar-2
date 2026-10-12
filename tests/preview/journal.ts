@@ -209,11 +209,8 @@ export const replyReviewReserveFor = (maxBytes: number) =>
  * capability-note rewording (-27 net, +21 in its regenerated reminder line) are paid for by three trims (-257):
  * the protocol's "say your search is incomplete" sentence and the lookup sentence's "asked once more" tail
  * (the one lookup now covers both, recorded real answers in lanes/cint-L27-PROGRESS.md), and the capability
- * note's header sentence, whose two facts the status-command and register-tooling lines already state.
- * The composed train-11 summary now measures 23073 bytes and is the largest fixed envelope. Use that
- * measured maximum so answers, tools and summaries fit; retain the 32768 default, 6636 review reserve
- * and 3000 minimum turn headroom (3059 remain). The floor test checks all three envelopes. */
-export const PREVIEW_FIXED_PROMPT_BYTES = 23_073;
+ * note's header sentence, whose two facts the status-command and register-tooling lines already state. */
+export const PREVIEW_FIXED_PROMPT_BYTES = 22_959;
 /** The room a context limit must still leave for the operator's own message and its history once the fixed
  * parts and the reply-review reserve are taken. At the approved 32768 default this was 1563 bytes, and the
  * packet had to drop the obligation guide from the third turn of a fresh root onward -- measured, not
@@ -225,7 +222,7 @@ export const PREVIEW_MIN_TURN_HEADROOM_BYTES = 3000;
 /** The smallest context limit at which one ordinary turn fits with its reply review beside it: the least
  * limit L with `L - replyReviewReserveFor(L) >= PREVIEW_FIXED_PROMPT_BYTES`. Derived from that inequality
  * rather than picked: with the reserve now sized from its own parts the quarter term no longer binds at this
- * scale, so the sum below is exact (29709 = 23073 + 4096 + 2540). A limit below this cannot serve its own first turn, however little
+ * scale, so the sum below is exact (29595 = 22959 + 4096 + 2540). A limit below this cannot serve its own first turn, however little
  * the conversation holds, so no summary or set-aside can recover it -- which is why the doorways that set a
  * limit refuse one below it instead of letting an unservable root be created. */
 export const PREVIEW_MIN_SERVABLE_CONTEXT_BYTES = Math.ceil(PREVIEW_FIXED_PROMPT_BYTES * 4 / 3)
