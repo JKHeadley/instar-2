@@ -18,7 +18,7 @@ const server = createServer((request, response) => {
     const wait = process.argv[5] === 'long-poll' && method === 'getUpdates' && pending.length === 0
       ? Math.min(Number(body.timeout) || 0, 5) * 1000 : 0;
     setTimeout(() => response.end(JSON.stringify({ ok: true, result: method === 'getMe'
-      ? { id: 8820318295, is_bot: true, username: 'echo_mmtest_seam_b27x_bot' }
+      ? { id: 12345678, is_bot: true, username: 'echo_mmtest_seam_b27x_bot' }
       : method === 'getUpdates' ? pending.slice(0,body.limit)
         : { message_id: messageId++, chat: { id: Number(body.chat_id) },
           ...(body.message_thread_id === undefined || process.argv[4] === 'drop-thread' ? {} : { message_thread_id: body.message_thread_id, is_topic_message: true }),

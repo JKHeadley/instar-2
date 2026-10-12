@@ -19,7 +19,8 @@ import { authoritySealKey, sealAuthorityRecord } from './activation-authority.js
 
 export const OPERATOR = 7812716706;
 const START = 1790000000000;
-const base = Object.freeze({ machine: 'preview-test-machine', botId: '8820318295', botUsername: '@echo_mmtest_seam_b27x_bot',
+// Offline bot identity also used by the cutover token and fake Telegram endpoints; never use a live bot here.
+const base = Object.freeze({ machine: 'preview-test-machine', botId: '12345678', botUsername: '@echo_mmtest_seam_b27x_bot',
   operatorSenderId: String(OPERATOR), chatId: String(OPERATOR), chatKind: 'private', forum: false, messageThreadId: null,
   maxPollSeconds: 1, maxBatchItems: 8, maxContextTurns: 8, maxContextBytes: 65536 });
 const stateConfiguration = (root: string) => ({ ...base, root, expiresAt: SUBSCRIPTION_PREVIEW_EXPIRY, replyLimit: 6,
@@ -205,7 +206,7 @@ export function successiveWorld(directory = realpathSync(mkdtempSync(join(tmpdir
   const compose = (options: any = {}) => {
     const outerState = state();
     return createSuccessiveComposition({ configuration: { ...base, root }, state: outerState, root,
-      storageKey: OFFLINE_STORAGE_KEY, resolveSecret: () => '8820318295:synthetic_recorded_test_only_value',
+      storageKey: OFFLINE_STORAGE_KEY, resolveSecret: () => '12345678:synthetic_recorded_test_only_value',
       telegramIO: () => options.telegramIO?.(telegramIO) ?? telegramIO, provider: {
         activation: options.activation ?? activation(outerState.read()), profile: options.profile ?? offlineProfile, model,
         io: options.providerIO?.(io) ?? io,
