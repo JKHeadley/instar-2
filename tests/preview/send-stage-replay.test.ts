@@ -2,7 +2,7 @@ import { afterEach, expect, it, vi } from 'vitest';
 import { mkdtempSync, readFileSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
-import { createJournalWorker, openPreviewJournal, type JournalRecord, type Turn } from './journal.js';
+import { createJournalWorker, openPreviewJournal, REPLY_ACKNOWLEDGEMENT, type JournalRecord, type Turn } from './journal.js';
 import { appendGroupCarry } from './group-carry.js';
 import { verifyGroupAudience } from './group-disclosure.js';
 import { key, now, scope, permissionFor } from './group-carry-fixture.js';
@@ -38,7 +38,7 @@ it.each(['accepted', 'joined-before-send', 'stopped-during-probe', 'unknown-send
     source.close();
     let afterReview = false, stopped = false, active = 0, peak = 0, probes = 0, reads = 0, models = 0, reviews = 0;
     let sendProbeReads = 0, sendProbeStart = 0;
-    const sends: string[] = [];
+    const sends: string[] = [], acknowledgements: string[] = [];
     const ports = {
       now: () => Date.now(), stopped: () => stopped,
       groupDisclosure: async () => {
@@ -60,6 +60,9 @@ it.each(['accepted', 'joined-before-send', 'stopped-during-probe', 'unknown-send
       model: async () => { models++; return captured.recorded.answer; },
       checkOutbound: () => {},
       send: async (input: { expectedText: string }) => {
+        if (input.expectedText === REPLY_ACKNOWLEDGEMENT) {
+          acknowledgements.push(input.expectedText); return 2;
+        }
         expect(journal.view.order[0]!.intent).toBe(captured.recorded.answer);
         sends.push(input.expectedText);
         await new Promise(resolve => setTimeout(resolve, 100));
@@ -85,7 +88,8 @@ it.each(['accepted', 'joined-before-send', 'stopped-during-probe', 'unknown-send
     const draining = worker.drain().catch(error => { failure = error; });
     await vi.runAllTimersAsync(); await draining;
     const turn = journal.view.order[0]!;
-    expect(models).toBe(1); expect(reviews).toBe(0); expect(turn.replyChecks?.map(check => check.path)).toEqual(['jev']);
+    expect(models).toBe(1); expect(reviews).toBe(1); expect(turn.replyChecks?.map(check => check.path)).toEqual(['jev']);
+    expect(acknowledgements).toEqual([REPLY_ACKNOWLEDGEMENT]);
     expect(active).toBe(0); expect(turn.text).toBe(captured.recorded.text);
     if (outcome === 'accepted') {
       console.log(JSON.stringify({ stage: 'send', update: captured.recorded.update, sendMs: turn.sendMs,

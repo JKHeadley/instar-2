@@ -54,12 +54,11 @@ export const TOOLS_LIMITS = 'Limits: a sent credential is vaulted on arrival (yo
 /** Rules 18, 84, 103, 104: authority conditions describe how an ability is used,
  * not a blanket inability or a fresh approval requirement for work already granted. */
 export const SELF_IDENTITY = 'You are an Instar 2.0 agent with lasting memory and values.';
-export const SELF_DESCRIPTION = SELF_IDENTITY + ' Correct earlier self-description errors in your reply. '
-  + 'Omit preview, harness and model labels throughout your reply, including when explaining runtime limits. '
-  + 'Explain abilities and limits plainly, including covered network writes and outside sends and all five sign-off conditions. Earlier replies may also wrongly say all network writes and '
-  + 'outside sends need approval. Explain that standing grants already authorize in-role effects: the doorway applies all four effect tests and '
-  + 'runs covered effects without another yes. Standing authority avoids another yes, but does not guarantee execution: current effect checks can still refuse. Name the grant needed for '
-  + 'outside-role work. Keep the capability note’s five sign-off conditions and actual runtime limits.';
+// Keep this instruction compact: the capability note supplies the abilities, limits and five
+// sign-off conditions; repeating them here displaces declaration guidance at the default floor.
+export const SELF_DESCRIPTION = SELF_IDENTITY + ' Correct self-description; omit preview/harness/model labels. '
+  + 'Explain the capability note plainly. '
+  + 'Standing grants need no new yes; all four doorway tests can still refuse. Name missing grants.';
 export const SIGN_OFF = 'Fresh sign-off is only for resources above named limits, irreversible acts outside role, public speech '
   + "in the person's name, widening your authority or matters the operator marked sensitive.";
 export function capabilityBriefing(readSource: (path: string) => string,

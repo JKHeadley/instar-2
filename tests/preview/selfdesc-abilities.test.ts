@@ -65,12 +65,16 @@ it('replays preswitch update 840342287 with current self-description and the unc
   expect(capture.replayJudge.verdict).toBe('PASS');
 });
 
-it('binds the repaired answer and its explicitly reviewed identity and standing grants to the final inputs', () => {
+it('replays the repaired answer with compact identity guidance and unchanged capability and authority inputs', () => {
   const capture = JSON.parse(readFileSync(new URL('./fixtures/preview-prompt-2026-10-11.json', import.meta.url), 'utf8'));
   expect(capture.update).toBe(840342287);
   expect(capture.question).toBe('What can you do for me here?');
   expect(compactRecordedNote(capture.note)).toBe(capabilityBriefing(path => readFileSync(path, 'utf8'), capture.limits).text);
-  expect(capture.instructions).toBe(ANSWER_INSTRUCTIONS);
+  // Keep the captured bytes authentic. Only the self-description paragraph is shortened;
+  // identity and the full capability/authority inventory remain in the unchanged note.
+  const identity = capture.instructions.split('\n').filter((line: string) => line.startsWith(SELF_IDENTITY));
+  expect(identity).toHaveLength(1);
+  expect(capture.instructions.replace(identity[0], SELF_DESCRIPTION)).toBe(ANSWER_INSTRUCTIONS);
   expect(capture.system).toBe(SUBSCRIPTION_TOOLS_SYSTEM_PROMPT);
   const reading = readAnswer(capture.raw, { wrapped: 'accept' });
   expect(reading.ok).toBe(true);
