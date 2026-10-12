@@ -4226,8 +4226,7 @@ function project(view: JournalView, row: JournalRecord, system?: SystemCheck, ad
     const acknowledgement = row.acknowledgement === true;
     // Previously admitted fixed acknowledgements used an eight-second deadline; preserve their durable history.
     const acknowledgementAfter = admission === 'replay' ? 8_000 : REPLY_ACKNOWLEDGEMENT_AFTER_MS;
-    if (acknowledgement && row.text === REPLY_ACKNOWLEDGEMENT && (turn.answer !== undefined
-      || row.at < turn.at + acknowledgementAfter || view.replies >= view.limits.maxReplies - 1))
+    if (acknowledgement && row.text === REPLY_ACKNOWLEDGEMENT && (row.at < turn.at + acknowledgementAfter || view.replies >= view.limits.maxReplies - 1))
       throw Error('preview journal: fixed acknowledgement no longer due');
     if (acknowledgement && (!operatorWriter(view, turn, true) || turn.requestedAction || turn.editOf
       || !(row.text === REPLY_ACKNOWLEDGEMENT || row.text === LEGACY_REPLY_ACKNOWLEDGEMENT
@@ -5541,7 +5540,7 @@ export function createJournalWorker(journal: ReturnType<typeof openPreviewJourna
   // Bounded by admitted turn slots. Intake arms these independently of the serial answer worker.
   const acknowledgementTimers = new Map<Turn, () => void>();
   const acknowledgementsInFlight = new Map<Turn, Promise<void>>();
-  const answerReady = (turn: Turn) => { acknowledgementTimers.get(turn)?.(); acknowledgementTimers.delete(turn); };
+  const cancelAcknowledgement = (turn: Turn) => { acknowledgementTimers.get(turn)?.(); acknowledgementTimers.delete(turn); };
   let working = false, workingSince = 0, ordinaryFailedSince: number | null = null;
   /** Every live send consumes its durable signed intent; a refusal or unknown outcome is recorded, never
    * retried. The one exception is the transport's own proof that it never made the network call: nothing
@@ -7623,7 +7622,7 @@ export function createJournalWorker(journal: ReturnType<typeof openPreviewJourna
     const inFlight = acknowledgementsInFlight.get(turn);
     if (inFlight) return inFlight;
     if (halted()) return Promise.resolve();
-    const current = () => acknowledgementTimers.has(turn) && !halted() && turn.answer === undefined && turn.intent === undefined
+    const current = () => acknowledgementTimers.has(turn) && !halted() && turn.intent === undefined
       && turn.held === undefined && turn.limited === undefined
       && (turn.heldNoticeIntent !== undefined || journal.view.replies < journal.view.limits.maxReplies - 1);
     if (!fromOperator(turn) || turn.requestedAction || turn.editOf || !current()
@@ -8101,8 +8100,6 @@ export function createJournalWorker(journal: ReturnType<typeof openPreviewJourna
               answer = typeof answer === 'string' ? reply : 'text' in answer ? { ...answer, text: reply } : answer;
             }
           }
-          // Only the settled answer ends the wait: format repair, timeout replacement and lookup may still call the model.
-          answerReady(turn);
           const answerMs = duration(answerStarted);
           if (typeof answer !== 'string' && 'state' in answer && answer.state === 'uncertain') {
             journal.append({ kind: 'model-uncertain', id: turn.id, state: 'uncertain',
@@ -8570,7 +8567,6 @@ export function createJournalWorker(journal: ReturnType<typeof openPreviewJourna
         };
         const { rules: linkRules, reason: linkReason } = usableRefs(reply);
 
-        answerReady(turn);
         if (ports.replyCheck) {
           const reviewed = turn.replyChecks?.at(-1);
           if (turn.reviewReserved && reviewed?.path === 'subscription' && (reviewed.verdict === 'pass' || reviewed.verdict === 'violation')
@@ -8945,8 +8941,10 @@ export function createJournalWorker(journal: ReturnType<typeof openPreviewJourna
         try { ports.checkOutbound(encodeReply(reply)); if (split.length > 1) for (const part of split) ports.checkOutbound(encodeReply(part)); }
         catch { journal.append({ kind: 'hold', id: turn.id, reason: 'outbound secret refused', at: ports.now() }); continue; }
         const thread = turn.thread === undefined ? {} : { thread: turn.thread };
+        // Review is complete: dispatch owns the reply now. Cancel an unadmitted acknowledgement,
+        // but wait for an already dispatched one so it can never arrive after the answer.
+        cancelAcknowledgement(turn);
         await acknowledgementsInFlight.get(turn);
-        answerReady(turn);
         const intentAt = ports.now();
         const stopBase = approvalBase(journal.view);
         const approval: ApprovalRequest | undefined = isStopCommand(turn.text) && reply.includes(STOP_CONFIRM_TEXT) && journal.view.stop === null
@@ -9001,7 +8999,7 @@ export function createJournalWorker(journal: ReturnType<typeof openPreviewJourna
     } finally {
       try { await Promise.all(acknowledgementsInFlight.values()); } finally {
         acknowledgementsInFlight.clear();
-        for (const turn of acknowledgementTimers.keys()) answerReady(turn);
+        for (const turn of acknowledgementTimers.keys()) cancelAcknowledgement(turn);
         working = false;
       }
     }
