@@ -51,7 +51,7 @@ export type MembershipRead = (method: 'getChat' | 'getChatMemberCount' | 'getCha
 const result = (value: unknown) => { const r = object(value); if (r.ok !== true) throw Error('membership unavailable'); return r.result; };
 /** Two members, both identified: a count alone or an administrator list cannot establish the audience.
  * Read count at both ends to reject an observed join during the probe. Unknown/restricted/left refuses.
- * Telegram offers no atomic membership-and-send transaction; the runner probes again at each dispatch. */
+ * Telegram offers no atomic membership-and-send transaction; the runner rechecks bounded evidence at each dispatch. */
 export async function verifyGroupAudience(scope: GroupCarryScope, read: MembershipRead): Promise<boolean> {
   try {
     if (!/^[1-9][0-9]*$/u.test(scope.operator) || !/^[1-9][0-9]*$/u.test(scope.bot)
@@ -71,4 +71,56 @@ export async function verifyGroupAudience(scope: GroupCarryScope, read: Membersh
     }
     return result(await read('getChatMemberCount', { chat_id: scope.chat })) === 2;
   } catch { return false; }
+}
+
+/** Runner-local observation, never a grant. One scope and at most ten seconds from probe START;
+ * no sliding expiry, persisted evidence or stale-on-error fallback (Rules 28, 32, 60, 95).
+ * In-flight invalidation refuses its waiter as well as preventing a later cache hit. */
+export function createGroupAudienceCache(now: () => number, readFor: (scope: GroupCarryScope) => MembershipRead) {
+  type Entry = { key: string; started: number; result: Promise<boolean> };
+  let entry: Entry | undefined;
+  const invalidate = () => { entry = undefined; };
+  const current = (item: Entry) => {
+    const age = now() - item.started;
+    return entry === item && Number.isFinite(age) && age >= 0 && age < 10_000;
+  };
+  return {
+    invalidate,
+    /** Process the complete polled batch before filtering duplicates or waking the worker.
+     * Service messages can change membership or exposure; unknown service shapes invalidate too. */
+    observe(updates: readonly unknown[]) {
+      for (const raw of updates) {
+        const update = object(raw);
+        if (update.chat_member !== undefined || update.my_chat_member !== undefined) { invalidate(); return; }
+        for (const field of ['message', 'edited_message']) {
+          const message = object(update[field]);
+          if (update[field] !== undefined && (typeof message.text !== 'string'
+            || message.new_chat_members !== undefined || message.left_chat_member !== undefined
+            || message.migrate_to_chat_id !== undefined || message.migrate_from_chat_id !== undefined)) {
+            invalidate(); return;
+          }
+        }
+      }
+    },
+    async verify(scope: GroupCarryScope): Promise<boolean> {
+      const key = JSON.stringify([scope.sourceRoot, scope.destinationRoot, scope.chat, scope.operator, scope.bot]);
+      if (entry?.key === key && current(entry)) {
+        const hit = entry;
+        return await hit.result && current(hit);
+      }
+      const snapshot = { ...scope };
+      const item: Entry = { key, started: now(), result: Promise.resolve(false) };
+      entry = item;
+      item.result = (async () => {
+        // Defer so the entry is installed before an injected reader can invalidate it.
+        await Promise.resolve();
+        let verified = false;
+        try { verified = await verifyGroupAudience(snapshot, readFor(snapshot)); } catch { /* unknown refuses */ }
+        const accepted = verified && current(item);
+        if (!accepted && entry === item) invalidate();
+        return accepted;
+      })();
+      return item.result;
+    },
+  };
 }

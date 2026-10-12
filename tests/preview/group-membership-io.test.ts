@@ -4,7 +4,7 @@ import { createServer } from 'node:http';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { execFile } from 'node:child_process';
-import { verifyGroupAudience } from './group-disclosure.js';
+import { verifyGroupAudience, createGroupAudienceCache } from './group-disclosure.js';
 import { scope } from './group-carry-fixture.js';
 // @ts-expect-error The physical host port is JavaScript, like production-boot-io.mjs.
 import { groupMembershipReader } from './group-membership-io.mjs';
@@ -44,7 +44,14 @@ it('uses the real read-only Telegram bridge over HTTP and refuses extras, unknow
   try {
     expect(await verifyGroupAudience(scope, read)).toBe(true);
     expect(methods).toEqual(['getChat', 'getMe', 'getChatMemberCount', 'getChatMember', 'getChatMember', 'getChatMemberCount']);
-    count = 3; expect(await verifyGroupAudience(scope, read)).toBe(false);
+    const cache = createGroupAudienceCache(() => 0, () => read);
+    expect(await cache.verify(scope)).toBe(true);
+    const warmed = methods.length;
+    expect(await cache.verify(scope)).toBe(true); expect(methods).toHaveLength(warmed);
+    count = 3; cache.observe([{ chat_member: { chat: { id: Number(scope.chat) } } }]);
+    expect(await cache.verify(scope)).toBe(false);
+    expect(methods.length).toBeGreaterThan(warmed);
+    expect(await verifyGroupAudience(scope, read)).toBe(false);
     count = 2; known = false; expect(await verifyGroupAudience(scope, read)).toBe(false);
     const before = methods.length; await expect(read('sendMessage', {})).rejects.toThrow(/read method/u);
     expect(methods).toHaveLength(before);
