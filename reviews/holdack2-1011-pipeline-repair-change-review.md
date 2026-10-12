@@ -27,6 +27,8 @@ Prompt finding: 95e349aaf4ac | protocol-literal | Existing tool inventory and ef
 Prompt finding: b00ed403060a | protocol-literal | Existing tool inventory and effect-doorway instruction wording is asserted by the replay to prevent capability drift; it is not a classifier for user meaning.
 
 
+Verification: 54 targeted tests pass (one existing opt-in capture skipped); recorded declaration-pressure replay passes at 25939 bytes on the first tail turn. Typecheck, build and architecture pass. Desk rehash and repin report zero changed manifest/inventory pins. Register publications regenerated from e79e0a35aa9131af8c96f2f58dbaefb6c81fa317, generation sha256:262950abfe928c74c031d1428e8ff9ef3e3fd45b2ba4cc6fdf66e6bf626d6186. Final gate outputs and missing saved-report limitation are in /Users/dabombstudio/.instar/agents/echo/.instar/lanes/holdack2-1011-repair-PROGRESS.md.
+
 ## Closing block
 
 simplestRobustRoute: This is the simplest robust route: shorten repeated instruction prose and update exact source expectations. No new mechanism, larger budget, removed ability or quarantine. Existing source-hash checks guard entry, the unchanged budget and one-byte boundary tests guard fit, and existing effect checks guard dispatch. Recorded unattended replay establishes packet delivery and parsing, not a live rollout claim.
