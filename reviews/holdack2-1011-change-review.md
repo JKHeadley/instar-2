@@ -24,7 +24,7 @@ Prompt finding: bd01de21286a | protocol-literal | Existing source label instruct
 Prompt finding: fb5fa7e706c8 | protocol-literal | Existing semantic memory retrieval instruction and grounding assertion.
 
 Decision: merge-approved-rule | Keep compact speed briefing and add the approved Rule 87 excerpt and pin. | reported=/Users/dabombstudio/.instar/agents/echo/.instar/lanes/holdack2-1011-PROGRESS.md
-Decision: restore-exact-revert | Reverse 17d11d0b, retain historical review record and canary repair; runtime files match composed 82e3aa6f. | reported=/Users/dabombstudio/.instar/agents/echo/.instar/lanes/holdack2-1011-PROGRESS.md
+Decision: restore-exact-revert | Reverse behavior from 17d11d0b and retain the canary repair; runtime files match composed 82e3aa6f. Earlier holdack reviews remain in Git history rather than being resurrected with widened subject ranges. | reported=/Users/dabombstudio/.instar/agents/echo/.instar/lanes/holdack2-1011-PROGRESS.md
 Decision: regenerate-once | Publish the final committed source and canonical merged anchor once. | reported=/Users/dabombstudio/.instar/agents/echo/.instar/lanes/holdack2-1011-PROGRESS.md
 Decision: isolated-replay | Reuse archived authenticated prefixes with recorded durations and captured sends. | reported=/Users/dabombstudio/.instar/agents/echo/.instar/lanes/holdack2-1011-PROGRESS.md
 Deferral: generated/register.json:1 | not-a-deferral=Existing declaration text republished from restored source, not postponed implementation.
