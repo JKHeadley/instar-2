@@ -144,6 +144,8 @@ it('recalls a topic fact beyond the envelope into the main chat after summaries,
     expect(packet.audience.conversation).toBe('main chat');
     expect(packet.recalled).toContainEqual(expect.objectContaining({ id: 'telegram:12345678:update:4', date: '2026-09-21T14:17Z', conversation: 'topic 7', user: fact,
       answer: 'noted', outcome: 'Telegram API accepted' }));
+    // The saved grounding must prove the same cross-topic source survived packet fitting.
+    expect(view.turns.get('telegram:12345678:update:88')?.grounding?.recalled).toContain('telegram:12345678:update:4');
     expect(Buffer.byteLength(asked!)).toBeLessThanOrEqual(8192);
     const p95 = (values: number[]) => values.slice().sort((a, b) => a - b)[Math.ceil(values.length * .95) - 1]!;
     // Rule 37 repair (docs/defects/full-suite-load-timeouts.md): growth compares the median of the first and last
