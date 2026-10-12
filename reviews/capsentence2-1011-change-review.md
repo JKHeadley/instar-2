@@ -7,9 +7,9 @@ Outcome: Capability answers quote the rendered tools/outbound record and keep ev
 Affected rules: Purpose self-knowledge and sourced limits; 10, 12, 18, 36, 47, 49, 58, 70, 74, 78, 84, 101, 103, 104, 111, 113, 116
 Affected floors: secrets — unchanged; spend cap — unchanged; stop — unchanged; no duplicate sends — unchanged; durable intake — unchanged
 Operator questions: none
-Suggested tier: significant
+Suggested tier: critical
 Declared tier: significant
-Tier rationale: Model-facing instruction correction; no change to capabilities or admission.
+Tier rationale: Model-facing instruction correction; generated provenance raises the suggested tier, but no capability or admission behavior changes.
 Side effects: Capability descriptions suppress paraphrased limits including unavailable-information asides; exact record quotations retain real limits. Context budget is checked without changing its bound. Historical outputs remain immutable.
 Undo and recovery: Revert this change and regenerate register pins. No schema or installation migration.
 Multi-machine posture: Shared deterministic instructions on every machine; no new product state, ownership or replication change. Desk evidence remains machine-local.
@@ -33,6 +33,8 @@ Deferral: tests/preview/fixtures/capsentence2-2026-10-11.json:28 | not-a-deferra
 Deferral: tests/preview/fixtures/capsentence2-2026-10-11.json:323 | not-a-deferral=Immutable recorded model output describes the capabilities question as a follow-up to its preceding identity question; no builder work is deferred.
 Deferral: tests/preview/fixtures/capsentence2-2026-10-11.json:382 | not-a-deferral=Immutable recorded model output describes the capabilities question as a follow-up to its preceding identity question; no builder work is deferred.
 Deferral: tests/preview/fixtures/capsentence2-2026-10-11.json:559 | not-a-deferral=Immutable recorded model output describes the capabilities question as a follow-up to its preceding identity question; no builder work is deferred.
+
+Register: Regenerated from exact source commit a5a5510fc03835633e3586580e01263f10bad792 in replay mode; seven generated provenance files change, with no capability text or authority change. Owner manifests required no refresh.
 
 ## Closing block
 
