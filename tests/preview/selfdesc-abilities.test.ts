@@ -26,7 +26,7 @@ const live = (update: number) => ({ turns: new Map([[`telegram:8989505249:update
 const wall = (update: number, constraint: string) => ({ source: `telegram:8989505249:update:${update}`, constraint, rechecks: [] }) as unknown as BlockerNote;
 
 // Translate only superseded guidance, keeping captured bytes and the capability inventory intact.
-const currentChannelNote = (text: string) => text
+const currentChannelNote = (text: string) => compactRecordedNote(text)
   .replace('In the code but switched off here, so not available:', 'Code switched off here:')
   .replace('telegram-conversation-adapter.', 'telegram-conversation-adapter (separate core adapter; this chat uses the Telegram bot).');
 const currentNote = (text: string) => currentChannelNote(text)
@@ -34,12 +34,19 @@ const currentNote = (text: string) => currentChannelNote(text)
   .replace('A subscription model answers. ', '')
   .replace('Production safeguards are incomplete.', `Production safeguards are incomplete. ${SIGN_OFF}`);
 
+// Adapt only presentation: captured model outputs, capability descriptions and limits remain exact.
+const compactRecordedNote = (text: string) => text
+  .replace(/^- (?!tools:)[a-z][a-z0-9.-]*: /gmu, '- ')
+  .replace('What you can do for the operator here:', 'Capabilities:')
+  .replace('Internal machinery running under you:', 'Internal:')
+  ;
+
 it('replays preswitch update 840342287 with current self-description and the unchanged K11 rubric and capability inventory', () => {
   const capture = JSON.parse(readFileSync(new URL('./fixtures/selfdesc-outward-2026-10-11.json', import.meta.url), 'utf8'));
   expect(capture.update).toBe(840342287);
   const note = capabilityBriefing(path => readFileSync(path, 'utf8'), capture.limits).text;
   // This base retains its harness-specific tool label; no tool or authority changed.
-  const restoreBaseToolLabel = (text: string) => currentNote(text.replace('tools: full built-in set', 'tools: full Claude Code set'));
+  const restoreBaseToolLabel = (text: string) => compactRecordedNote(currentNote(text.replace('tools: full built-in set', 'tools: full Claude Code set')));
   expect(restoreBaseToolLabel(capture.replayNote).replace(capture.replayNote.split('\n')[0], SELF_IDENTITY)).toBe(note);
   expect(capture.replayInstructions.replace(capture.replayNote.split('\n')[0], SELF_DESCRIPTION)).toBe(ANSWER_INSTRUCTIONS);
   // Translate identity/authority guidance and remove internal model framing; actual capabilities and limits stay intact.
@@ -157,7 +164,7 @@ it('the recorded K11a briefing differs only in the declared conversation, media,
   const oldRequests = '- preview-requested-actions: an explicit request for a settled later day and time (a reminder) is answered once at that time, with no new operator message.';
   const recurringRequests = '- preview-requested-actions: an explicit later-time request is answered once at that time, or daily or weekdays until cancelled, with no new operator message.';
   expect(current.note.split(oldRequests)).toHaveLength(2);
-  expect(note).toContain(recurringRequests);
+  expect(note).toContain(compactRecordedNote(recurringRequests));
   const oldGrant = 'checked when made: consequential effects (sending outside this conversation, writing to the network or a third-party account, '
     + 'spending, changing safeguards) go through the effect doorway: one runs once the operator registers and grants it, otherwise it '
     + 'is refused and the refusal names its reason; say so plainly when one is refused. ';
@@ -167,10 +174,10 @@ it('the recorded K11a briefing differs only in the declared conversation, media,
   expect(current.system.split(oldGrant)).toHaveLength(2);
   expect(current.note.split(internalHeading)).toHaveLength(2);
   expect(current.note).not.toContain(mediaAdmission);
-  expect(currentNote(current.note).replace(oldConversation, currentConversation)
+  expect(compactRecordedNote(currentNote(current.note).replace(oldConversation, currentConversation)
     .replace(internalHeading, internalHeading + mediaAdmission)
     .replace(oldRequests, recurringRequests)
-    .replace("This is Instar in the operator's direct Telegram chat and its topics.", SELF_IDENTITY)).toBe(note);
+    .replace("This is Instar in the operator's direct Telegram chat and its topics.", SELF_IDENTITY))).toBe(note);
   // Preserve the captured prompt; the act-first fixture separately replays the new wording.
   expect(current.system.split(" In this turn you have the harness's full built-in tool set")).toHaveLength(2);
   expect(current.system).not.toContain(READ_BEFORE_ANSWER);
@@ -191,7 +198,7 @@ it('the recorded K11a briefing differs only in the declared conversation, media,
     expect(JSON.parse(run.raw).answer).toBe(run.reply);
     expect(run.judge).toMatchObject({ verdict: 'PASS', rubric: 'k11a-rubric-v2' });
   }
-  expect(note).toContain(`What you can do for the operator here:`);
+  expect(note).toContain(`Capabilities:`);
   expect(note).toContain(`- ${toolsBriefing(0)}`);
   expect(note).toContain(TOOLS_LIMITS);
   expect(note).toContain('at most 1000 model attempts, ending at epoch ms 1791232800000.');

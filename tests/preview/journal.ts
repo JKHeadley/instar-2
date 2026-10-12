@@ -1145,7 +1145,7 @@ export type JournalRecord =
     covers?: string[]; acknowledgement?: true; provenance?: OutboundProvenance; at: number }
   | { kind: 'held-notice-sent'; id: string; message: number; at: number }
 
-  | { kind: 'reply-jev-reserve'; id: string; maxInputTokens?: number; maxOutputTokens?: number; at: number }
+  | { kind: 'reply-jev-reserve'; id: string; retry?: true; maxInputTokens?: number; maxOutputTokens?: number; at: number }
   | { kind: 'reply-review-reserve'; id: string; candidate: string; prompt?: string; promptSha256?: string; mentionedDates?: string[]; maxInputTokens?: number; maxOutputTokens?: number; at: number }
   | { kind: 'reply-review-state'; id: string; state: 'complete' | 'rejected' | 'uncertain'; diagnostics?: ReplyReviewDiagnostics; usage?: ModelUsage; at: number }
   /** One bounded revision of an objected draft, inside the existing call cap; no result is UNKNOWN, never repeated. */
@@ -1364,7 +1364,7 @@ export interface Turn { id: string; update: number; text: string; raw: string; a
 
   heldNoticeReviewReserved?: true; heldNoticeReview?: ReplyCheckResult;
   wasHeld?: true; heldNoticeCoveredBy?: string; closedQuestions?: string[]; checked?: CoherenceFinding[]; checkFailed?: true; unlabeledRecall?: boolean;
-  replyChecks?: ReplyCheckResult[]; jevReserved?: boolean; jevReservedAt?: number; reviewReserved?: boolean; reviewReservedAt?: number; reviewState?: 'complete' | 'rejected' | 'uncertain'; answerRetried?: true; answerReplaced?: true; lookup?: { words: string[]; found: string[] }; reviewRetried?: true; reviewDiagnostics?: ReplyReviewDiagnostics;
+  replyChecks?: ReplyCheckResult[]; jevReserved?: boolean; jevRetried?: true; jevReservedAt?: number; reviewReserved?: boolean; reviewReservedAt?: number; reviewState?: 'complete' | 'rejected' | 'uncertain'; answerRetried?: true; answerReplaced?: true; lookup?: { words: string[]; found: string[] }; reviewRetried?: true; reviewDiagnostics?: ReplyReviewDiagnostics;
   answerMs?: number; sendMs?: number; answerReason?: string; answerCorrection?: string; correctionDeferred?: true;
   /** Stage boundaries projected from durable frames; absent evidence stays unknown. */
   answerAt?: number; checkDoneAt?: number;
@@ -2702,8 +2702,11 @@ export function unknownCallKeys(view: JournalView) {
     // A revised-text review stays UNKNOWN until it records a conclusive verdict.
     ...view.order.filter(turn => turn.revisionReviewReserved && turn.revisionReview?.verdict !== 'pass'
       && turn.revisionReview?.verdict !== 'violation').map(turn => `revision-review:${turn.id}`)];
-  const jev = view.order.filter(turn => turn.jevReserved && !turn.replyChecks?.some(check => check.path === 'jev' && check.verdict !== 'unavailable'))
-    .map(turn => `jev:${turn.id}`);
+  const jev = view.order.flatMap(turn => {
+    const checks = turn.replyChecks?.filter(check => check.path === 'jev') ?? [];
+    return [...(turn.jevReserved && (!checks[0] || checks[0].verdict === 'unavailable') ? [`jev:${turn.id}`] : []),
+      ...(turn.jevRetried && (!checks[1] || checks[1].verdict === 'unavailable') ? [`jev-retry:${turn.id}`] : [])];
+  });
   // Index-only calls: every superseded reservation plus the one still awaiting its result. Each is named by its
   // own unique reservation key, so a write-off still matches after a later batch supersedes it.
   const index = [...view.indexUnknown, ...(view.indexOpen === null ? [] : [view.indexOpen.key])];
@@ -4297,11 +4300,17 @@ function project(view: JournalView, row: JournalRecord, system?: SystemCheck, ad
     : turn.noticeClass === 'too-long-input' ? TOO_LONG_INPUT_NOTICE : undefined);
 
   if (row.kind === 'reply-jev-reserve') {
-    if (replyCandidate === undefined || turn.jevReserved || turn.intent !== undefined || view.jevChecks >= view.limits.maxReplies)
+    const retryAllowed = row.retry === true && turn.jevReserved && !turn.jevRetried
+      && turn.replyChecks?.filter(check => check.path === 'jev').length === 1
+      && turn.replyChecks.find(check => check.path === 'jev')?.verdict === 'unavailable' && !turn.reviewReserved;
+    if (replyCandidate === undefined || (row.retry ? !retryAllowed : turn.jevReserved)
+      || turn.intent !== undefined || view.jevChecks >= view.limits.maxReplies)
       throw Error('preview journal: Jev reservation order or cap');
-    reserveTokens(view, `jev:${row.id}`, 'replyCheck', row.maxInputTokens ?? view.limits.maxBytes,
+    reserveTokens(view, `${row.retry ? 'jev-retry' : 'jev'}:${row.id}`, 'replyCheck', row.maxInputTokens ?? view.limits.maxBytes,
       row.maxOutputTokens ?? jevOutputMaximum);
-    turn.jevReserved = true; turn.jevReservedAt = row.at; view.jevChecks++; return;
+    if (row.retry) turn.jevRetried = true;
+    else { turn.jevReserved = true; turn.jevReservedAt = row.at; }
+    view.jevChecks++; return;
   }
   if (row.kind === 'reply-review-reserve') {
     if (replyCandidate === undefined || turn.reviewReserved || turn.intent !== undefined) throw Error('preview journal: review reservation order');
@@ -4440,7 +4449,7 @@ function project(view: JournalView, row: JournalRecord, system?: SystemCheck, ad
     if (row.result.path === 'operator-echo' && (turn.jevReserved || turn.reviewReserved || row.result.verdict !== 'pass'))
       throw Error('preview journal: operator echo after a check');
     if (row.result.path === 'jev' && row.result.verdict !== 'unavailable')
-      settleTokens(view, `jev:${row.id}`, row.result.usage, true);
+      settleTokens(view, `${turn.jevRetried ? 'jev-retry' : 'jev'}:${row.id}`, row.result.usage, true);
     if (row.result.path === 'subscription' && row.result.verdict !== 'unavailable' && turn.reviewState !== 'uncertain')
       settleTokens(view, `review:${row.id}`, row.result.usage);
     turn.replyChecks ??= []; turn.replyChecks.push(row.result); turn.checkDoneAt = row.at;
@@ -5444,6 +5453,27 @@ export function createJournalWorker(journal: ReturnType<typeof openPreviewJourna
     if (privateMemory() && !await disclosure()) throw Error('group carry: disclosure authority or audience refused');
     return method(...args);
   };
+  const guardedJev: ReplyCheckPorts['jev'] = async (text, questions, timeoutMs, occurrence) => {
+    const replyCheck = original.replyCheck!;
+    // Summary callers retain their existing admission behavior. Reply attempts carry a
+    // budget that starts before this outer disclosure checkpoint (Rules 55/60/77).
+    if (timeoutMs === undefined) return guarded(replyCheck.jev)(text, questions, timeoutMs, occurrence);
+    const began = replyCheck.elapsedMs();
+    const timeout = () => Object.assign(Error('preview: Jev unavailable'), { jevCause: 'timeout' });
+    if (timeoutMs <= 0) throw timeout();
+    let timer: ReturnType<typeof setTimeout> | undefined;
+    try {
+      // Race only admission: a late resolution has no continuation that can dispatch.
+      const admitted = await Promise.race([
+        privateMemory() ? disclosure() : Promise.resolve(true),
+        new Promise<never>((_resolve, reject) => { timer = setTimeout(() => reject(timeout()), timeoutMs); }),
+      ]);
+      if (!admitted) throw Error('group carry: disclosure authority or audience refused');
+    } finally { clearTimeout(timer); }
+    const remaining = Math.floor(timeoutMs - (replyCheck.elapsedMs() - began));
+    if (remaining <= 0) throw timeout();
+    return replyCheck.jev(text, questions, remaining, occurrence);
+  };
   ports = { ...original, model: guarded(original.model),
     // The fixed content-free hold notice is the one outbound a refused disclosure admits: it names no private item.
     send: async input => !privateMemory() || isGroupReviewFinalNotice(input.text, input.expectedText) || await disclosure() || input.target?.startsWith('held-notice:') === true
@@ -5454,7 +5484,7 @@ export function createJournalWorker(journal: ReturnType<typeof openPreviewJourna
     ...(original.stepCheck ? { stepCheck: { jev: guarded(original.stepCheck.jev) } } : {}),
     ...(original.summaryCheck ? { summaryCheck: guarded(original.summaryCheck) } : {}),
     ...(original.replyCheck ? { replyCheck: { ...original.replyCheck,
-      jev: guarded(original.replyCheck.jev), escalate: guarded(original.replyCheck.escalate),
+      jev: guardedJev, escalate: guarded(original.replyCheck.escalate),
       ...(original.replyCheck.revise ? { revise: guarded(original.replyCheck.revise) } : {}),
       ...(original.replyCheck.summaryReview ? { summaryReview: guarded(original.replyCheck.summaryReview) } : {}) } } : {}) };
 
@@ -8491,7 +8521,7 @@ export function createJournalWorker(journal: ReturnType<typeof openPreviewJourna
           if (fitsOneMessage(candidate)) { labels.push(label); mentioned.push(item); }
         }
         if (labels.length) reply += ` Upcoming: ${labels.join('; ')}.`;
-        let mentionedKeys = mentioned.map(datedKey), heldBack = false;
+        let mentionedKeys = mentioned.map(datedKey), heldBack = false, resultsOnly = false;
         let release: ReplyRelease | undefined, held: ReplyHeld | undefined;
         /** The review objection that removed or rewrote text this reply would otherwise have sent (Rules 8, 22, 46). */
         let objection: string | undefined;
@@ -8573,6 +8603,14 @@ export function createJournalWorker(journal: ReturnType<typeof openPreviewJourna
           } else {
             const checkPorts = { ...ports.replyCheck, now: ports.now,
               deadlineAt: (turn.jevReservedAt ?? ports.now()) + REPLY_CHECK_BUDGET_MS,
+              reserveJevRetry: () => {
+                if (halted() || journal.view.jevChecks >= journal.view.limits.maxReplies) return false;
+                gate();
+                const shared = fromOperator(turn) ? disclosedApproval(journal.view) : undefined;
+                journal.append({ kind: 'reply-jev-reserve', id: turn.id, retry: true,
+                  maxInputTokens: Buffer.byteLength(jevRequestBody(reply, shared && approvalFacts(shared))),
+                  maxOutputTokens: jevOutputMaximum, at: ports.now() });
+                return true; },
               reserveEscalation: (candidate: string, originalPrompt?: string) => {
                 gate();
                 if (journal.view.calls >= journal.view.limits.maxCalls) return false;
@@ -8596,7 +8634,8 @@ export function createJournalWorker(journal: ReturnType<typeof openPreviewJourna
             // released on Jev's text-only pass; the contextual reviewer judges it with the declared record.
             if (refusedObligation(turn) && !turn.jevReserved) checked = await reviewReply(reply, turn.id, checkPorts, [], reviewPrompt);
             else if (turn.jevReserved) {
-              if (!previous) checkPorts.record({ verdict: 'unavailable', ruleIds: [], confidence: null, path: 'jev', latencyMs: 0 });
+              if (!previous || turn.jevRetried && turn.replyChecks?.filter(check => check.path === 'jev').length === 1)
+                checkPorts.record({ verdict: 'unavailable', ruleIds: [], confidence: null, path: 'jev', latencyMs: 0, cause: 'other' });
               // Older durable Jev verdicts omitted uncertain rules when another rule was positive.
               // On recovery, review every rule rather than treating those omitted rules as cleared.
               checked = await reviewReply(reply, turn.id, checkPorts, [], projectedReplyPrompt(turn.prompt));
@@ -8758,9 +8797,25 @@ export function createJournalWorker(journal: ReturnType<typeof openPreviewJourna
               ? turn.revision.dispositions : noDecisions(objections);
             const skipped: ResponseSkipped | undefined = decision === 'violation' && revisable && ports.replyCheck.revise && originalPrompt !== undefined
               && !turn.revisionReserved ? !inTime() ? 'deadline' : journal.view.calls >= journal.view.limits.maxCalls ? 'call cap' : undefined : undefined;
-            const note = reason ?? (decision === 'unavailable' || inTime() ? undefined : REPLY_CHECK_BUDGET_REASON);
+            let note = reason ?? (decision === 'unavailable' || inTime() ? undefined : REPLY_CHECK_BUDGET_REASON);
+            // D1c: an empty list left by excision must not delay unrelated finished work. Only the
+            // runner's bound lines that survived excision may leave; the rejected remainder never does.
+            // No new review/call allowance: retain both verdicts and use the ordinary outbound floors.
+            const resultRemainder = turn.revisionReviewRemainder;
+            const checkedRemainder = turn.revisionReview;
+            const deliverableResults = holding && !audienceShared && fromOperator(turn) && !credentialShape
+              && !credentialHeldClass(turn, candidateDigest) && withheld?.removed.length && nothingLeft
+              && resultRemainder !== undefined && checkedRemainder?.verdict === 'violation'
+              && checkedRemainder.ruleIds.length === 1 && checkedRemainder.ruleIds[0] === 'incoherent_remainder'
+              ? resultLines.filter(line => resultRemainder.includes(line)) : [];
             if (revised !== undefined) { reply = revised; mentionedKeys = []; objection = reason ?? objections.join(', '); }
             else if (scoped !== undefined) { reply = scoped; mentionedKeys = []; }
+            else if (deliverableResults.length) {
+              const body = deliverableResults.join('').trimStart();
+              reply = actionHeader === undefined ? disclosed(body) : `${actionHeader}\n${body}`;
+              mentionedKeys = []; resultsOnly = true;
+              note = `${note ?? objections.join(', ')}; rejected incoherent remainder withheld; only bound runner results sent`;
+            }
             else if (audienceUnreviewed || holding && (nothingLeft || withheld === undefined)) {
               // An unavailable group review is terminal; promise no later check.
               // No action header or continuity text may ride this content-free notice.
@@ -8834,7 +8889,7 @@ export function createJournalWorker(journal: ReturnType<typeof openPreviewJourna
         const reviewedDigest = createHash('sha256').update(reply).digest('hex');
         // Rules 79, 82: the operator action this answer proposed rides the reply as one fixed line: the exact request
         // (approved only by the operator's explicit yes) or why it cannot be proposed. Never on a held or notice reply.
-        const offer = heldBack || reply === HOLDING_REPLY || turn.answer === undefined ? undefined : await operatorOffer(turn, ports.now());
+        const offer = heldBack || resultsOnly || reply === HOLDING_REPLY || turn.answer === undefined ? undefined : await operatorOffer(turn, ports.now());
         // What follows here (the request line and the disclosure) stays whole in the last message of a split reply.
         const answerEnd = reply.trimEnd().length;
         if (offer) reply = `${reply.trimEnd()}\n\n${offer.text}`;

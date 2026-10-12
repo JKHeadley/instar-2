@@ -181,11 +181,11 @@ export const createClaudeCodeSubscriptionRoute = () => ({kind:'Success',value:{i
     expect(JSON.parse(spawnSync(process.execPath,
       ['--no-warnings','--loader','./scripts/slice-ts-loader.mjs','tests/preview/journal-agent.mjs','status','--root',root],
       {cwd:process.cwd(),env:{...process.env,INSTAR_SECRET_PREVIEW_STORAGE_KEY:Buffer.from(OFFLINE_STORAGE_KEY).toString('hex')},
-        encoding:'utf8',timeout:10000}).stdout)).toMatchObject({calls:2,replies:1,unknownCalls:1,
-          unknownCallBreakdown:{answers:0,summaries:0,reviews:0,jev:1,total:1},
-          replyChecks:{unavailable:1},unknownSends:0,
-          // Rules 41/75: every live model call, including the failed Jev check, is recorded at the one boundary.
-          modelCalls:{total:3,byJudgment:{answer:1,'reply-review':1,'jev-reply-check':1},byOutcome:{complete:2,failed:1},usageUnknown:1},
+        encoding:'utf8',timeout:10000}).stdout)).toMatchObject({calls:2,replies:1,unknownCalls:2,
+          unknownCallBreakdown:{answers:0,summaries:0,reviews:0,jev:2,total:2},
+          replyChecks:{unavailable:2},unknownSends:0,
+          // Rules 41/75: the failed Jev attempt and its one bounded retry each retain their own UNKNOWN usage.
+          modelCalls:{total:4,byJudgment:{answer:1,'reply-review':1,'jev-reply-check':2},byOutcome:{complete:2,failed:2},usageUnknown:2},
           // Rules 42/89: the one reply was accepted and signed as the agent's own speech.
           sendOutcomes:{accepted:1,refused:0,unknown:0,speakers:{agent:1,infrastructure:0}},
           // Rules 28/29/35: the one admitted turn was written by the verified operator over the test endpoint.
@@ -268,7 +268,8 @@ export const createClaudeCodeSubscriptionRoute = () => ({kind:'Success',value:{i
     expect(answerOf(sends[1].text)).toBe('Your sister is Wren; you told me in the main chat.');
     expect(JSON.parse(spawnSync(process.execPath,
       ['--no-warnings','--loader','./scripts/slice-ts-loader.mjs','tests/preview/journal-agent.mjs','status','--root',root],
-      {cwd:process.cwd(),env,encoding:'utf8',timeout:10000}).stdout)).toMatchObject({calls:4,replies:2,unknownCalls:2,unknownCallBreakdown:{ jev:2,total:2 },unknownSends:unknown,
+      // Each turn records the unavailable Jev attempt and its retry without repeating the reply send.
+      {cwd:process.cwd(),env,encoding:'utf8',timeout:10000}).stdout)).toMatchObject({calls:4,replies:2,unknownCalls:4,unknownCallBreakdown:{ jev:4,total:4 },unknownSends:unknown,
         lastReplyTiming: { update: mode === 'echo' ? 2 : 1,
           intakeToApiAcceptedMs: expect.any(Number), checkMs: expect.any(Number) },
         coherence:{checked:2,unchecked:0,failed:0}});

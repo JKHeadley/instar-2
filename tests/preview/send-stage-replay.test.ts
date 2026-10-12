@@ -47,7 +47,8 @@ it.each(['accepted', 'joined-before-send', 'stopped-during-probe', 'unknown-send
         return verifyGroupAudience(subject, async (method, body) => {
           reads++; if (afterReview) sendProbeReads++;
           active++; peak = Math.max(peak, active);
-          await new Promise(resolve => setTimeout(resolve, 1000)); active--;
+          // Admission fits the bounded Jev attempt; only the send probe is deliberately slow.
+          await new Promise(resolve => setTimeout(resolve, afterReview ? 1000 : 100)); active--;
           if (afterReview && outcome === 'stopped-during-probe') stopped = true;
           return { ok: true, result: method === 'getChat' ? { id: Number(subject.chat), type: 'supergroup', is_forum: true }
             : method === 'getMe' ? { id: Number(subject.bot), is_bot: true }
@@ -57,7 +58,8 @@ it.each(['accepted', 'joined-before-send', 'stopped-during-probe', 'unknown-send
       },
       prepareModel: (input: Parameters<typeof prepareJournalEnvelope>[0]) =>
         prepareJournalEnvelope(input, 'claude-sonnet-5', memory.genesis.grant, Date.now()),
-      model: async () => { models++; return captured.recorded.answer; },
+      // Trigger the acknowledgement with answer latency, independently of admission latency.
+      model: async () => { models++; await new Promise(resolve => setTimeout(resolve, 8000)); return captured.recorded.answer; },
       checkOutbound: () => {},
       send: async (input: { expectedText: string }) => {
         if (input.expectedText === REPLY_ACKNOWLEDGEMENT) {
@@ -89,7 +91,7 @@ it.each(['accepted', 'joined-before-send', 'stopped-during-probe', 'unknown-send
     await vi.runAllTimersAsync(); await draining;
     const turn = journal.view.order[0]!;
     expect(models).toBe(1); expect(reviews).toBe(0); expect(turn.replyChecks?.map(check => check.path)).toEqual(['jev']);
-    expect(acknowledgements).toEqual([]); // cancelled when the answer wins its disclosure race
+    expect(acknowledgements).toEqual([REPLY_ACKNOWLEDGEMENT]); // the deliberately slow answer leaves time for one acknowledgement
     expect(active).toBe(0); expect(turn.text).toBe(captured.recorded.text);
     if (outcome === 'accepted') {
       console.log(JSON.stringify({ stage: 'send', update: captured.recorded.update, sendMs: turn.sendMs,

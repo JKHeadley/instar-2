@@ -245,7 +245,7 @@ it('still serves the live recorded answers after the guidance rewording', async 
   // sentence the live blocker avenues quote as evidence, and the trial budget line.
   const second = JSON.parse(run.answerPackets[1]!) as { sources: { id: string; text: string }[] };
   const note = second.sources.find(item => item.id === 'capability-note')!;
-  expect(note.text).toContain('- preview-conversation: ');
+  expect(note.text).toContain('- answers the operator in chat/topics;');
   expect(note.text).toContain('Nothing unlisted is available: no tools');
   expect(note.text).toContain('This installation allows at most');
 }, 120_000);
@@ -398,11 +398,11 @@ it('keeps the declaration duty in every packet of a default-size root under byte
   // Every answer packet carried a way to declare: the full guide while it fits, its floor form under pressure.
   const guides = run.answerPackets.map(packet => (JSON.parse(packet) as { obligationDecision?: string }).obligationDecision);
   expect(guides.filter(guide => guide !== OBLIGATION_DECISION && guide !== OBLIGATION_DECISION_FLOOR)).toEqual([]);
-  // The replayed room-one turns ran under the same pressure as live (history set aside). The directive turn is the floor
-  // path: its full guide no longer fits beside the reply-review reserve, so the floor form keeps the duty and the reserve.
+  // The replayed room-one turns run under history pressure. A compact briefing may preserve the full
+  // guide; either form must keep the duty and the same reply-review reserve.
   const replayed = run.answerPackets.slice(-4).map(packet => JSON.parse(packet) as Record<string, unknown>);
   expect(replayed.every(packet => 'historySetAside' in packet)).toBe(true);
-  expect(replayed[0]!.obligationDecision).toBe(OBLIGATION_DECISION_FLOOR);
+  expect([OBLIGATION_DECISION, OBLIGATION_DECISION_FLOOR]).toContain(replayed[0]!.obligationDecision);
   expect(tail[0]!.answerTotal).toBeLessThanOrEqual(limit - replyReviewReserveFor(limit));
   // The longer recorded cannot-do turns still reach the last rung (the reserve yields), and keep a guide there too.
   expect(tail.some(turn => turn.answerTotal > limit - replyReviewReserveFor(limit))).toBe(true);

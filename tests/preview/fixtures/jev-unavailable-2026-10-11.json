@@ -1,0 +1,85 @@
+{
+  "source": "Desk content-free extraction from Justin live journal, supplied verbatim in jev-retry2-1011-prompt.txt. No cause was recorded. Injected failures in replay do not infer the historical cause.",
+  "rows": [
+    {
+      "update": 969390355,
+      "answerMs": 15890,
+      "sendMs": 7499,
+      "jev": [
+        {
+          "verdict": "unavailable",
+          "confidence": null,
+          "path": "jev",
+          "latencyMs": 3812.187082999997
+        }
+      ],
+      "otherChecks": [
+        {
+          "verdict": "pass",
+          "path": "subscription",
+          "latencyMs": 12023
+        }
+      ]
+    },
+    {
+      "update": 969390371,
+      "answerMs": 19077,
+      "sendMs": 7752,
+      "jev": [
+        {
+          "verdict": "unavailable",
+          "confidence": null,
+          "path": "jev",
+          "latencyMs": 4345.267583000008
+        }
+      ],
+      "otherChecks": [
+        {
+          "verdict": "pass",
+          "path": "subscription",
+          "latencyMs": 15317
+        }
+      ]
+    },
+    {
+      "update": 969390389,
+      "answerMs": 20678,
+      "sendMs": 7608,
+      "jev": [
+        {
+          "verdict": "unavailable",
+          "confidence": null,
+          "path": "jev",
+          "latencyMs": 2657.0845839999965
+        }
+      ],
+      "otherChecks": [
+        {
+          "verdict": "pass",
+          "path": "subscription",
+          "latencyMs": 13848
+        }
+      ]
+    },
+    {
+      "update": 969390397,
+      "answerMs": 8341,
+      "sendMs": 2705,
+      "jev": [
+        {
+          "verdict": "unavailable",
+          "confidence": null,
+          "path": "jev",
+          "latencyMs": 3763.2323329999927
+        }
+      ],
+      "otherChecks": [
+        {
+          "verdict": "pass",
+          "path": "subscription",
+          "latencyMs": 10849
+        }
+      ]
+    }
+  ]
+}

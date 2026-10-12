@@ -5,7 +5,7 @@ import { createServer } from 'node:http';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { runInNewContext } from 'node:vm';
-import { openPreviewJournal, createJournalWorker, REPLY_ACKNOWLEDGEMENT, type Turn } from './journal.js';
+import { openPreviewJournal, createJournalWorker, type Turn } from './journal.js';
 import { prepareJournalEnvelope } from './journal-envelope.js';
 import { appendGroupCarry } from './group-carry.js';
 import { verifyGroupAudience } from './group-disclosure.js';
@@ -27,6 +27,7 @@ const end = launcher.indexOf('    // model-call-boundary:end', start);
 if (start < 0 || end < 0) throw Error('shipped Jev boundary absent');
 const clientBody = `${launcher.slice(start, end)}\ncallJev;`;
 const rounds = 3; // Both count reads bracket one bounded round of four identity reads.
+const readMs = 100; // The admitted neighbor fits the reply budget; slow/refused admission is in jev-retry.test.ts.
 
 for (const hostProbe of [false, true]) it(`recorded Jev stage separates HTTP from admission (host probe ${hostProbe})`, async () => {
   const root = mkdtempSync(join(tmpdir(), 'jev-stage-')), path = join(root, 'group');
@@ -54,7 +55,7 @@ for (const hostProbe of [false, true]) it(`recorded Jev stage separates HTTP fro
     probes++;
     return verifyGroupAudience(scope, async (method, body) => {
       reads++; active++; peak = Math.max(peak, active);
-      const due = clock + 1000; await Promise.resolve(); clock = Math.max(clock, due); active--;
+      const due = clock + readMs; await Promise.resolve(); clock = Math.max(clock, due); active--;
       return membership()(method, body);
     });
   };
@@ -101,7 +102,10 @@ for (const hostProbe of [false, true]) it(`recorded Jev stage separates HTTP fro
       chat: { id: Number(scope.chat), type: 'supergroup', is_forum: true },
       from: { id: Number(scope.operator) }, text: fixture.recorded.text } }]);
     await worker.drain(); const turn = journal.view.order[0]!;
-    expect(sent).toEqual([fixture.recorded.answer]); // answer already ready before elapsed review time
+    // The admitted neighbor stays below the acknowledgement delay; slow-answer acknowledgement
+    // is covered by reply-acknowledgement.test.ts with an injected slow path.
+    expect(sent).toEqual([fixture.recorded.answer]);
+    expect(turn.heldNoticeReview).toBeUndefined();
     expect(turn.heldNoticeIntent).toBeUndefined();
     expect(requests).toBe(1); expect(Object.keys(bodies[0]!.questions)).toHaveLength(10);
     expect(bodies[0]).toEqual({ state: fixture.recorded.answer, model: JEV_MODEL, questions: jevQuestions });
@@ -109,11 +113,11 @@ for (const hostProbe of [false, true]) it(`recorded Jev stage separates HTTP fro
     expect(turn.replyChecks![0]!.scores).toEqual(captured.scores);
     expect(turn.replyChecks![0]!.usage).toEqual(captured.usage);
     const stageMs = turn.checkDoneAt! - turn.jevReservedAt!;
-    expect(stageMs).toBe(rounds * 1000 * (hostProbe ? 2 : 1) + captured.latencyMs);
+    expect(stageMs).toBe(rounds * readMs * (hostProbe ? 2 : 1) + captured.latencyMs);
     expect(reads).toBe(probes * 6); expect(active).toBe(0);
     console.log(JSON.stringify({ update: fixture.recorded.update, hostProbe, stageMs,
       injectedProviderMs: captured.latencyMs, probes, reads, peak, requests, httpWallMs,
-      clientWallMs, reservationWallMs, clock: '1000 ms/read; recorded 164 ms provider; other local work zero',
+      clientWallMs, reservationWallMs, clock: `${readMs} ms/read; recorded 164 ms provider; other local work zero`,
       wall: 'local loopback HTTP and local journal; not live TypeSafe or Studio timings' }));
     journal.close(); journal = openPreviewJournal(path, key);
     await createJournalWorker(journal, ports).drain();

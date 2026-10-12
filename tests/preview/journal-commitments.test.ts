@@ -580,8 +580,8 @@ it('the live script reaches compaction and the question carries the open commitm
     expect(start.packet.memoryLookup).toBeUndefined();
     expect(after.packet.memoryLookup).toBe('offered');
     expect(after.instructions).toBe(`${start.instructions}\n${MEMORY_LOOKUP_INSTRUCTIONS}`);
-    const lasting = (packet: typeof start.packet) => packet.sources.filter(item => item.id.startsWith('purpose:') || item.id === 'capability-note');
-    expect(lasting(start.packet).map(item => item.id)).toEqual(['purpose:purpose', 'purpose:coherency', 'capability-note']);
+    const lasting = (packet: typeof start.packet) => packet.sources.filter(item => item.id.startsWith('purpose:') || item.id === 'rules:87' || item.id === 'capability-note');
+    expect(lasting(start.packet).map(item => item.id)).toEqual(['purpose:purpose', 'purpose:coherency', 'rules:87', 'capability-note']);
     expect(lasting(after.packet)).toEqual(lasting(start.packet));
     expect(after.packet.sources.map(item => item.id)).toEqual(expect.arrayContaining(start.packet.sources.map(item => item.id)));
     process.stdout.write(`commitments live script: ${fillers} fillers; turns=${journal.view.order.length}, calls=${journal.view.calls}, summaries=${journal.view.summaries.length}\n`);

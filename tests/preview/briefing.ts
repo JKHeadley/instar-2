@@ -6,13 +6,12 @@ export const SUCCESSIVE_CONTEXT_VERSION = 'successive-context-v1';
 const sha256 = (bytes: string) => `sha256:${createHash('sha256').update(bytes, 'utf8').digest('hex')}`;
 
 /** Exact selected constitutional excerpts. Each is pinned by its SHA-256; a changed
- * excerpt refuses composition instead of silently shipping drift. Naming-history prose is
- * not needed on every answer: the capability note already names Instar. Keep the
- * purpose and pillars verbatim, with their source locations and verified excerpt hashes. */
+ * excerpt refuses composition instead of silently shipping drift. Keep the purpose and
+ * four pillar bullets verbatim; omit their introductory framing, repeated by the bullets. */
 export const SOURCE_EXCERPTS = Object.freeze([
   Object.freeze({ id: 'purpose:purpose', path: 'docs/00-the-purpose.md', start: 'The organizational purpose is unchanged',
     end: '> **Make coherence something an AI cannot lose.**' }),
-  Object.freeze({ id: 'purpose:coherency', path: 'docs/00-the-purpose.md', start: '**Value — coherency is the root,',
+  Object.freeze({ id: 'purpose:coherency', path: 'docs/00-the-purpose.md', start: '- **Coherency** is the ability',
     end: 'Alignment held by memory is not alignment.' }),
   Object.freeze({ id: 'rules:87', path: 'docs/01-the-rules.md', start: '| 87 | Near-Silent Notifications |',
     end: '| Needs messages classified at the outbound doorway. |' }),
@@ -85,7 +84,9 @@ export function capabilityBriefing(readSource: (path: string) => string,
   if (!features) return { text: SELF_IDENTITY + ' '
     + 'The generated capability briefing is unavailable in this deployment, so your capabilities cannot be listed here; say so plainly if asked, and do not guess. '
     + (limits.tools ? `You have ${tools} ${TOOLS_LIMITS} ` : 'You have no tools and cannot act outside this chat. ') + trial, generation, commit };
-  const item = (f: BriefedFeature) => `- ${f.id}: ${f.text}`;
+  // The generated descriptions carry every capability; internal registry IDs are redundant
+  // in the model packet and remain available in its cited generation.
+  const item = (f: BriefedFeature) => `- ${f.text}`;
   const available = features.filter(f => f.availability === 'available');
   const off = features.filter(f => f.availability === 'switched-off');
   // The journal launcher has its own Telegram bot path; the dark core adapter is
@@ -97,8 +98,8 @@ export function capabilityBriefing(readSource: (path: string) => string,
     // cint-L27: the header's "one-line summaries from this installation's register; current state in the status
     // reply" went to pay for the lookup sentence; the register-tooling and status-command lines below state both.
     SELF_IDENTITY,
-    'What you can do for the operator here:', ...available.filter(f => f.userFacing).map(item), ...limits.tools ? [`- ${tools}`] : [],
-    'Internal machinery running under you:', ...available.filter(f => !f.userFacing).map(item),
+    'Capabilities:', ...available.filter(f => f.userFacing).map(item), ...limits.tools ? [`- ${tools}`] : [],
+    'Internal:', ...available.filter(f => !f.userFacing).map(item),
     ...off.length ? [`Code switched off here: ${off.map(offName).join(', ')}.`] : [],
     // Live 2026-10-02 (room two, build e26a8c1b): this line used to end "and no scheduled work, nudges or other
     // unprompted messages", which denies `preview-requested-actions` listed two lines above it. The reply to
@@ -136,7 +137,7 @@ export function sourcePacket(readSource: (path: string) => string, pins: Readonl
 export const SOURCE_PINS = Object.freeze({
   'rules:87': 'sha256:5702b6b29974a4a397a234de77bffdc84eb8f342b22c8048f9bad5c59b4dcc60',
   'purpose:purpose': 'sha256:5d4b2142593c5a9569cb90cbffe20242c5ab2cf8d13f6929c888ec4166f87e51',
-  'purpose:coherency': 'sha256:c04dbb447bf6298459cbe15fe4696ef88bd1bf632f2b422cbebbd49c174c27c4',
+  'purpose:coherency': 'sha256:12d15c3e3892966c31d1630e40989f5802834bc0e8eb67da08cdf612ad4cf3ea',
 });
 
 /** The desk's current-state report on other Instar 2.0 work: an optional plain file
