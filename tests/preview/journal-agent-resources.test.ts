@@ -11,13 +11,15 @@ import { successiveWorld, offlineProfile, OFFLINE_STORAGE_KEY, FIXTURE_DOORWAY, 
 
 const TOKEN = 'ghp_' + 'Z9y8X7w6V5u4T3s2R1q0P9o8';
 
-it.each([false, true])('PREVIEW-HOST-RESOURCE-FUNNEL records resources, custody and fixed slow acknowledgement (slow=%s)', async slow => {
+it.each([0, 8200, 10200])('PREVIEW-HOST-RESOURCE-FUNNEL records resources, custody and fixed slow acknowledgement (elapsed=%sms)', async elapsed => {
+  const acknowledgementDue = elapsed >= 10000;
   const world = successiveWorld(), root = join(world.directory, 'resource-journal');
   const activation = join(world.directory, 'activation.json'), profile = join(world.directory, 'profile.json');
   const log = join(world.directory, 'poll.log'), updates = join(world.directory, 'updates.json');
   const provider = join(world.directory, 'provider.mjs'), loader = join(world.directory, 'loader.mjs');
   const cli = join(world.directory, 'fake-cli.mjs'), prompts = join(world.directory, 'prompts.jsonl');
   const fakeClock = join(world.directory, 'clock.mjs'), workerModule = join(world.directory, 'worker.mjs');
+  // Cover immediate, the former eight-second threshold, and the current ten-second threshold.
   // Wall time and acknowledgement timers are controlled. Resource deadlines retain the real monotonic clock.
   writeFileSync(fakeClock, `import { existsSync, readFileSync, writeFileSync } from 'node:fs';
 const state = ${JSON.stringify(join(world.directory, 'fixture-time'))};
@@ -71,11 +73,11 @@ export const createClaudeCodeSubscriptionRoute = config => ({ kind: 'Success', v
   const check = await config.io.execute({ executable: process.execPath, args: ['--version'],
     cwd: ${JSON.stringify(world.directory)}, env: { PATH: '/usr/bin:/bin' }, stdin: '', timeout: 20000, maxBytes: 1024 });
   if (check.code !== 0 || check.limited) return { state: 'uncertain' };
-  if (${slow} && !advanced && !prepared.includes('Judge this proposed reply')) {
-    advanced = true; advance(8200);
+  if (${elapsed} > 0 && !advanced && !prepared.includes('Judge this proposed reply')) {
+    advanced = true; advance(${elapsed});
     // Keep the answer pending until both real HTTP acknowledgement sends have reached the endpoint.
     const deadline = performance.now() + 30000;
-    while (!existsSync(${JSON.stringify(`${log}.sends`)}) || readFileSync(${JSON.stringify(`${log}.sends`)}, 'utf8').trim().split('\\n').length < 2) {
+    while (${acknowledgementDue} && (!existsSync(${JSON.stringify(`${log}.sends`)}) || readFileSync(${JSON.stringify(`${log}.sends`)}, 'utf8').trim().split('\\n').length < 2)) {
       if (performance.now() >= deadline) throw Error('fixture acknowledgement delivery did not complete');
       await new Promise(resolve => setTimeout(resolve, 10));
     }
@@ -117,9 +119,9 @@ export const createClaudeCodeSubscriptionRoute = config => ({ kind: 'Success', v
     expect(sent).toContain('Noted.');
     expect(sent).not.toContain(TOKEN);
     const sends = readFileSync(`${log}.sends`, 'utf8').trim().split('\n').map(line => JSON.parse(line));
-    expect(sends.filter(row => row.text === 'Checking that now.')).toHaveLength(slow ? 2 : 0);
+    expect(sends.filter(row => row.text === 'Checking that now.')).toHaveLength(acknowledgementDue ? 2 : 0);
     // Both messages arrived together; the second also waited through the slow first turn.
-    expect(new Set(sends.filter(row => row.text === 'Checking that now.').map(row => row.reply_parameters.message_id)).size).toBe(slow ? 2 : 0);
+    expect(new Set(sends.filter(row => row.text === 'Checking that now.').map(row => row.reply_parameters.message_id)).size).toBe(acknowledgementDue ? 2 : 0);
     expect(sends.at(-1).text).toContain('Noted.');
     expect(sends.filter(row => row.text.includes('Noted.')), JSON.stringify(sends)).toHaveLength(2);
     // The model never received the secret; it saw the stored reference instead.
