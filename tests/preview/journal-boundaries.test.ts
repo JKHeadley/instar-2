@@ -1,3 +1,4 @@
+import { UNKNOWN_SEND_NOTICE } from './journal.js';
 /** Constitutional build 2: memory and instructions survive every conversation boundary.
  * Rules 3, 10, 11, 17, 47, 96 and 110, each proved at the prepared provider input or the
  * journal record the live worker writes. The model and Telegram are stubs. */
@@ -419,7 +420,7 @@ describe('Rule 110: the first reply sent from a compacted context discloses it a
       const sent: string[] = [];
       // Send 1 answers #29 and speaks the account for frontier #27; send 2 answers #30 (fill-34's place) quietly.
       const worker = createJournalWorker(journal, { now: () => at + 100_000, stopped: () => false, model: async () => 'Noted.',
-        checkOutbound: () => {}, send: async input => { sent.push(input.expectedText);
+        checkOutbound: () => {}, send: async input => { if (input.expectedText === UNKNOWN_SEND_NOTICE) return 999; sent.push(input.expectedText);
           return sent.length === 2 && lastSend === 'unknown' ? { kind: 'unknown' as const, reason: recordedUnknown } : sent.length + 100; } });
       try {
         seedAnswered(journal, garden.slice(0, 28));
@@ -436,11 +437,12 @@ describe('Rule 110: the first reply sent from a compacted context discloses it a
         expect(account.prePauseInbound).toBe('telegram:12345678:update:30');
         if (lastSend === 'unknown') {
           expect(before.sent).toBeUndefined();
+          expect(before.deliveryNotice?.sent).toBe(999);
           expect(journal.view.sendOutcomes.at(-1)).toMatchObject({ outcome: 'unknown', reason: recordedUnknown });
           // Still-open is material, so it is spoken (live fill-35 opened with this sentence).
           expect(account).toMatchObject({ disposition: 'pending', reference: 'my reply to it was prepared but its delivery is unconfirmed' });
           expect(account.spoken).not.toBe(false);
-          // The UNKNOWN send is never replayed: three sends in all, and the third carries the account.
+          // The UNKNOWN answer is never replayed: three answer attempts plus one separate loss notice.
           expect(sent).toHaveLength(3);
           expect(sent[2]).toContain('is still open (my reply to it was prepared but its delivery is unconfirmed).');
         } else {
@@ -477,11 +479,13 @@ describe('Rule 110: the first reply sent from a compacted context discloses it a
       summarize(journal, 29, 'Twenty-nine garden updates.');
       const sent: string[] = [];
       const ports = { now: () => at + 100_000, stopped: () => false, model: async () => 'Hi!', checkOutbound: () => {},
-        send: async (input: { expectedText: string }) => { sent.push(input.expectedText); return sent.length === 1 ? null : sent.length + 100; } };
+        send: async (input: { expectedText: string }) => { if (input.expectedText === UNKNOWN_SEND_NOTICE) return 999;
+          sent.push(input.expectedText); return sent.length === 1 ? null : sent.length + 100; } };
       let worker = createJournalWorker(journal, ports);
       worker.intake([update(31, 'Hello again')]); await worker.drain();
       const first = journal.view.turns.get('telegram:12345678:update:31')!;
       expect(first.sent).toBeUndefined();
+      expect(first.deliveryNotice?.sent).toBe(999);
       expect(first.continuity?.prePauseInbound).toBe('telegram:12345678:update:30');
       journal.close();
       journal = openPreviewJournal(path, key);

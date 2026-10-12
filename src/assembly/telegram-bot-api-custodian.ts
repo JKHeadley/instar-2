@@ -49,6 +49,7 @@ export type TelegramBridgeReply = Readonly<{
   kind: 'identity'; status: 200; identity: TelegramIdentityProjection; capture: TelegramSealedCaptureReceipt;
 }> | Readonly<{
   kind: 'uncertain'; limitation: 'timeout' | 'transport'; stage?: TelegramBridgeFailureStage; sent?: false;
+  transportPhase?: 'connect-no-write';
   transportErrors?: readonly Readonly<{ code: TransportCode; syscall?: TransportSyscall }>[];
 }>;
 export function telegramBridgeReplyFromExecution(input: Readonly<{
@@ -81,7 +82,10 @@ export function telegramBridgeReplyFromExecution(input: Readonly<{
             ? { syscall: error.syscall as TransportSyscall } : {}) })) : [];
       return { kind: 'uncertain', limitation,
         ...(reply.stage === undefined ? {} : { stage: reply.stage as TelegramBridgeFailureStage }),
-        ...(reply.stage === 'fetch-failure' && reply.sent === false ? { sent: false as const } : {}),
+        ...((reply.stage === 'fetch-failure' || reply.stage === 'fetch-timeout' && reply.transportPhase === 'connect-no-write')
+          && reply.sent === false ? { sent: false as const } : {}),
+        ...((reply.stage === 'fetch-failure' || reply.stage === 'fetch-timeout')
+          && reply.sent === false && reply.transportPhase === 'connect-no-write' ? { transportPhase: 'connect-no-write' as const } : {}),
         ...(transportErrors.length ? { transportErrors } : {}) };
     }
   } catch { /* A child protocol failure has no public diagnostic payload. */ }
