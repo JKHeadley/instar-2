@@ -8,6 +8,7 @@ import { expect, it } from 'vitest';
 import { existsSync, readFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { cutoverHarness } from './journal-cutover-harness.mjs';
+import { REPLY_ACKNOWLEDGEMENT } from './journal.js';
 import { readRuns } from './self-state.js';
 import { offlineProfile, successiveWorld } from './successive-fixture.js';
 import { message, pause, started, twoMachines, until } from './two-machine-world.js';
@@ -57,8 +58,13 @@ it('the stop floor on two machines: a stop latched on one machine leaves the oth
   const laptop = t.start('laptop');
   await until('the second machine stands by', () => laptop.output.stderr.includes('standby: held by studio'));
   t.harness.setUpdates([message(t.world, 1, 'What is the marker? Juniper.')]);
-  await until('the first reply', () => t.sends().length === 1);
+  await until('the first answer', () => t.sends().some(send => send.text.split('\n\n')[0] === 'Juniper is the marker.'));
   await until('the shared cursor passes it', async () => (await t.view()).cursor === 2);
+  const sendsBefore = t.sends();
+  expect(sendsBefore.filter(send => send.text !== REPLY_ACKNOWLEDGEMENT)).toHaveLength(1);
+  const acknowledgements = sendsBefore.filter(send => send.text === REPLY_ACKNOWLEDGEMENT);
+  expect(acknowledgements.length).toBeLessThanOrEqual(1);
+  expect(acknowledgements.every(send => send.replyTo === 101 && send.role === 'studio')).toBe(true);
 
   // The operator's stop on the owner machine (the existing stop command, on that root).
   expect((await t.harness.commandOn(t.rootOf('studio'), 'stop')).status).toBe(0);
@@ -70,15 +76,23 @@ it('the stop floor on two machines: a stop latched on one machine leaves the oth
   const calls = (await t.status('laptop')).calls;
   t.harness.setUpdates([message(t.world, 1, 'What is the marker? Juniper.'), message(t.world, 2, 'And again: what is the marker? Juniper.')]);
   await until('it reads the message', async () => (await t.status('laptop')).turns === 2);
+  expect(t.sends()).toEqual(sendsBefore);
+  expect((await t.status('laptop')).calls).toBe(calls);
   // A relaunch of the stopped machine (a supervisor, a person) does not make it a peer again: it ends at once, polling nothing.
   const relaunched = t.start('studio');
   expect(await relaunched.exited).toMatchObject({ status: 0 });
   expect(relaunched.output.stderr).not.toContain('standby');
   expect(readRuns(join(t.rootOf('studio'), 'runs.jsonl')).launches.at(-1)).toMatchObject({ reason: 'operator stop latched', revival: 'inhibited' });
-  await pause(5000);
-  expect(t.sends()).toHaveLength(1);
-  expect(await t.status('laptop')).toMatchObject({ turns: 2, replies: 1, calls, sharedHistory: { replication: { peerCurrent: false } } });
-  expect((await t.view()).claims).toBe(1);
+  // Replies counts durable intents, including the acknowledgement that cannot be replicated.
+  // Wait for that timer's actual effect so both sides of its boundary are exercised on every host.
+  await until('the second acknowledgement is recorded without a peer', async () =>
+    (await t.status('laptop')).heldNotices.some(notice => notice.update === 2));
+  const held = await t.status('laptop');
+  expect(held.heldNotices.filter(notice => notice.update === 2)).toEqual([{ update: 2, state: 'UNKNOWN' }]);
+  expect(t.sends()).toEqual(sendsBefore);
+  expect(held).toMatchObject({ turns: 2, replies: 1 + held.heldNotices.length, calls,
+    sharedHistory: { replication: { peerCurrent: false } } });
+  expect((await t.view()).claims).toBe(sendsBefore.length);
   await t.stop(laptop);
 }, 180000);
 
