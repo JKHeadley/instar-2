@@ -2,7 +2,7 @@ import { expect, it } from 'vitest';
 import { mkdtempSync, realpathSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
-import { createJournalWorker, openPreviewJournal } from './journal-test-worker.js';
+import { UNKNOWN_SEND_NOTICE, createJournalWorker, openPreviewJournal } from './journal-test-worker.js';
 import { prepareJournalEnvelope } from './journal-envelope.js';
 import { loopHealth } from './obligations.js';
 import { HOLDING_REPLY, type ReplyRule } from './reply-check.js';
@@ -91,7 +91,12 @@ for (const mode of ['result', 'recorded-finding', 'none', 'credential', 'result-
       if (mode === 'result' || mode === 'recorded-finding' || mode === 'unknown-send') {
         expect(reviews).toHaveLength(1);
         expect(reviews[0]).toContain('Next steps:');
-        expect(replies).toEqual([line.trimStart()]);
+        expect(replies).toEqual(mode === 'unknown-send' ? [line.trimStart(), UNKNOWN_SEND_NOTICE] : [line.trimStart()]);
+        if (mode === 'unknown-send') {
+          expect(turn.sent).toBeUndefined();
+          expect(turn.deliveryNotice?.text).toBe(UNKNOWN_SEND_NOTICE);
+          expect(turn.deliveryNotice?.sent).toBeUndefined();
+        }
         expect(turn.revision?.dispositions?.[0]?.decision).toBe('accept');
         expect(turn.revisionReview).toMatchObject({ verdict: 'violation', ruleIds: ['incoherent_remainder'] });
         expect(turn.release).toMatchObject({ review: 'violation', revised: false,

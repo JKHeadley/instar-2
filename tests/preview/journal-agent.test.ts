@@ -5,7 +5,7 @@ import { existsSync, readFileSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { pathToFileURL } from 'node:url';
 import { successiveWorld, offlineProfile, OFFLINE_STORAGE_KEY, FIXTURE_DOORWAY, PER_RULE_PASS } from './successive-fixture.js';
-import { openPreviewJournal } from './journal.js';
+import { openPreviewJournal, UNKNOWN_SEND_NOTICE } from './journal.js';
 
 // The launcher runs on the real clock against a fixed fixture expiry, so a due credential reminder or a
 // failing doorway check (Rules 8, 56, 100) may ride an answer as its own line. The answer itself stays exact,
@@ -262,14 +262,16 @@ export const createClaudeCodeSubscriptionRoute = () => ({kind:'Success',value:{i
       {cwd:process.cwd(),encoding:'utf8',timeout:20000,env});
     expect(run.status,run.stderr).toBe(0);
     const sends = readFileSync(`${log}.sends`,'utf8').trim().split('\n').map(line => JSON.parse(line));
-    expect(sends).toHaveLength(2);
+    expect(sends).toHaveLength(2 + Number(unknown));
+    if (unknown) expect(sends[2]).toMatchObject({ chat_id: world.configuration.chatId,
+      message_thread_id: 7, text: UNKNOWN_SEND_NOTICE });
     expect(sends[0].message_thread_id).toBeUndefined();
     expect(sends[1]).toMatchObject({chat_id:world.configuration.chatId,message_thread_id:7});
     expect(answerOf(sends[1].text)).toBe('Your sister is Wren; you told me in the main chat.');
     expect(JSON.parse(spawnSync(process.execPath,
       ['--no-warnings','--loader','./scripts/slice-ts-loader.mjs','tests/preview/journal-agent.mjs','status','--root',root],
       // Each turn records the unavailable Jev attempt and its retry without repeating the reply send.
-      {cwd:process.cwd(),env,encoding:'utf8',timeout:10000}).stdout)).toMatchObject({calls:4,replies:2,unknownCalls:4,unknownCallBreakdown:{ jev:4,total:4 },unknownSends:unknown,
+      {cwd:process.cwd(),env,encoding:'utf8',timeout:10000}).stdout)).toMatchObject({calls:4,replies:2 + Number(unknown),unknownCalls:4,unknownCallBreakdown:{ jev:4,total:4 },unknownSends:2 * Number(unknown),
         lastReplyTiming: { update: mode === 'echo' ? 2 : 1,
           intakeToApiAcceptedMs: expect.any(Number), checkMs: expect.any(Number) },
         coherence:{checked:2,unchecked:0,failed:0}});

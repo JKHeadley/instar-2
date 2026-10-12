@@ -3,7 +3,7 @@ import { existsSync, mkdtempSync, readFileSync, realpathSync, rmSync } from 'nod
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { spawnSync } from 'node:child_process';
-import { openPreviewJournal, openQuestionCandidates, REPLY_ACKNOWLEDGEMENT } from './journal.js';
+import { openPreviewJournal, openQuestionCandidates, REPLY_ACKNOWLEDGEMENT, UNKNOWN_SEND_NOTICE } from './journal.js';
 
 const child = 'tests/preview/journal-summary-crash-child.mjs';
 const key = new Uint8Array(32).fill(7);
@@ -100,7 +100,9 @@ it.each(cuts)('recovers from %s', cut => {
     // Recovery's injected clock jumps 100 seconds, but its answer is immediate. The timer is cancelled;
     // elapsed age alone must never cause an acknowledgement after the recovered answer is ready.
     expect(sends.filter(item => item.text === REPLY_ACKNOWLEDGEMENT), cut).toEqual([]);
-    const answers = sends.filter(item => item.text !== REPLY_ACKNOWLEDGEMENT);
+    const notices = sends.filter(item => item.text === UNKNOWN_SEND_NOTICE);
+    expect(notices, cut).toEqual(uncertainSend ? [{ update: 2, text: UNKNOWN_SEND_NOTICE }] : []);
+    const answers = sends.filter(item => item.text !== REPLY_ACKNOWLEDGEMENT && item.text !== UNKNOWN_SEND_NOTICE);
     if (!uncertainSend) expect(answers.filter(item => item.update === 2), cut).toEqual([
       { update: 2, text: 'From your note: Maya has the ORCHID key 731.' },
     ]);
@@ -123,6 +125,7 @@ it.each(cuts)('recovers from %s', cut => {
         expect(openQuestionCandidates(view).some(item => item.source === view.order[1]?.id), cut).toBe(false);
       } else {
         expect(view.order[1]?.sent, cut).toBeUndefined();
+        expect(view.order[1]?.deliveryNotice?.sent, cut).toBeDefined();
         expect(view.order[1]?.held || view.order[1]?.intent, cut).toBeTruthy();
       }
       expect([...view.summaryReservations.keys()].every(through => through < 2), cut).toBe(true);

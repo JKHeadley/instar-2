@@ -2,7 +2,7 @@ import { expect, it } from 'vitest';
 import { mkdtempSync, readFileSync, realpathSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
-import { createJournalWorker, openPreviewJournal, raiseJournalCaps } from './journal-test-worker.js';
+import { UNKNOWN_SEND_NOTICE, createJournalWorker, openPreviewJournal, raiseJournalCaps } from './journal-test-worker.js';
 import { fitStatusLines, isStatusCommand, STATUS_ANSWER_BUDGET, STATUS_PENDING_LISTED, statusAnswer, statusReply } from './status-command.js';
 import { encodeReply, fitsOneMessage, TELEGRAM_MESSAGE_LIMIT } from './reply-parts.js';
 import { JEV_MODEL, jevQuestions, replyReviewContext } from './reply-check.js';
@@ -214,19 +214,24 @@ it('never repeats a status send whose Telegram result is unknown after restart',
   const root = path(), file = join(root, 'journal.encrypted');
   let journal = openPreviewJournal(file, key, genesis);
   let sends = 0;
+  const texts: string[] = [];
   const worker = () => createJournalWorker(journal, { now: () => at, stopped: () => false,
     model: async () => { throw Error('status must not generate'); },
-    send: async () => { sends++; return sends === 1 ? null : 42; }, checkOutbound: () => {} });
+    send: async input => { texts.push(input.expectedText); sends++; return sends === 1 ? null : 42; }, checkOutbound: () => {} });
   try {
     worker().intake([update(1, 'status')]); await worker().drain();
     expect(journal.view.order[0]?.intent).toContain('Turns today: 1.');
     expect(journal.view.order[0]?.sent).toBeUndefined();
     journal.close(); journal = openPreviewJournal(file, key);
     const resumed = worker(); resumed.intake([update(1, 'status'), update(2, 'status')]); await resumed.drain();
-    expect(sends).toBe(2);
+    expect(sends).toBe(3);
+    expect(texts.filter(text => text === UNKNOWN_SEND_NOTICE)).toEqual([UNKNOWN_SEND_NOTICE]);
+    expect(texts.filter(text => text.includes('Turns today:'))).toHaveLength(2);
+    expect(journal.view.order[0]?.deliveryNotice?.sent).toBe(42);
     expect(journal.view.order[0]?.sent).toBeUndefined();
     expect(journal.view.order[1]?.sent).toBe(42);
-    expect(journal.view.replies).toBe(2);
+    expect(journal.view.replies).toBe(3);
+    await resumed.drain(); expect(sends).toBe(3);
   } finally { journal.close(); rmSync(root, { recursive: true, force: true }); }
 });
 

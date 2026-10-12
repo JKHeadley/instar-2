@@ -9,7 +9,7 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { createHash } from 'node:crypto';
 import { appendGroupCarry, validCarriedMemory } from './group-carry.js';
-import { createJournalWorker, GROUP_DISCLOSURE_HOLD, GROUP_DISCLOSURE_HOLD_NOTICE, openPreviewJournal, openRequests, ModelDisclosureRefused, createModelLaunchBoundary, type JournalRecord } from './journal-test-worker.js';
+import { UNKNOWN_SEND_NOTICE, createJournalWorker, GROUP_DISCLOSURE_HOLD, GROUP_DISCLOSURE_HOLD_NOTICE, openPreviewJournal, openRequests, ModelDisclosureRefused, createModelLaunchBoundary, type JournalRecord } from './journal-test-worker.js';
 import { key, scope, permissionFor } from './group-carry-fixture.js';
 
 const dirs: string[] = [];
@@ -246,15 +246,18 @@ it.each(['model', 'send'] as const)('does not repeat a genuinely uncertain %s af
   const group = { now: friday9, due: 0, sent: [] as { text: string }[] };
   const base = ports(group, true);
   let models = 0, sends = 0;
+  const texts: string[] = [];
   const bound = { ...base, model: async (input: Input) => {
     models++; if (boundary === 'model') throw Error('provider outcome unknown'); return base.model(input);
-  }, send: async () => { sends++; throw Error('transport outcome unknown'); } };
+  }, send: async (input: { expectedText: string }) => { texts.push(input.expectedText); sends++; throw Error('transport outcome unknown'); } };
   const worker = createJournalWorker(w.destination, bound);
   await worker.sendRequested(); await worker.sendRequested();
   w.destination.compact(); w.destination.close();
   const resumed = openPreviewJournal(w.target, key);
   await createJournalWorker(resumed, bound).sendRequested();
-  expect(models).toBe(1); expect(sends).toBe(boundary === 'send' ? 1 : 0);
+  expect(models).toBe(1); expect(sends).toBe(boundary === 'send' ? 2 : 0);
+  expect(texts.filter(text => text === UNKNOWN_SEND_NOTICE)).toEqual(boundary === 'send' ? [UNKNOWN_SEND_NOTICE] : []);
+  expect(texts.filter(text => text !== UNKNOWN_SEND_NOTICE)).toHaveLength(boundary === 'send' ? 1 : 0);
   resumed.close();
 });
 

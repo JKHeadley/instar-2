@@ -4,7 +4,7 @@ import { performance } from 'node:perf_hooks';
 import { mkdtempSync, realpathSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
-import { createJournalWorker, openPreviewJournal } from './journal-test-worker.js';
+import { UNKNOWN_SEND_NOTICE, createJournalWorker, openPreviewJournal } from './journal-test-worker.js';
 import { JEV_MODEL, REPLY_RULES } from './reply-check.js';
 import { prepareJournalEnvelope } from './journal-envelope.js';
 import { SOURCE_PINS, sourcePacket } from './briefing.js';
@@ -625,7 +625,9 @@ it('does not repeat an imminent item after an UNKNOWN send intent', async () => 
       model: async (input: { question: string }) => JSON.stringify({ reply: 'Okay.', memory: [],
         dated: input.question.includes('Invoice due')
           ? [{ quote: 'Invoice due Oct 3 at 8 am.', when: 'Oct 3 at 8 am' }] : [] }),
-      send: async () => { sends++; return sends === 2 ? null : sends; }, checkOutbound: () => {} };
+      send: async (input: { expectedText: string }) => {
+        sends++; if (sends === 3) expect(input.expectedText).toBe(UNKNOWN_SEND_NOTICE);
+        return sends === 2 ? null : sends; }, checkOutbound: () => {} };
     let worker = createJournalWorker(journal, ports);
     worker.intake([update(1, 'Invoice due Oct 3 at 8 am.')]); await worker.drain();
     now = Date.UTC(2026, 9, 1, 15);
@@ -634,8 +636,11 @@ it('does not repeat an imminent item after an UNKNOWN send intent', async () => 
     expect(journal.view.order[1]?.sent).toBeUndefined();
     journal.close(); journal = openPreviewJournal(path, key); worker = createJournalWorker(journal, ports);
     worker.intake([update(3, 'More')]); await worker.drain();
-    expect(sends).toBe(3);
+    expect(sends).toBe(4); // three answers and one separate delivery notice
+    expect(journal.view.order[1]?.deliveryNotice?.sent).toBe(3);
+    expect(journal.view.order[1]?.sent).toBeUndefined();
     expect(journal.view.order[2]?.intent).not.toContain('Upcoming:');
+    await worker.drain(); expect(sends).toBe(4);
     journal.close();
   } finally { rmSync(root, { recursive: true, force: true }); }
 });

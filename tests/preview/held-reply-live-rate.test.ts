@@ -2,7 +2,7 @@ import { expect, it } from 'vitest';
 import { mkdtempSync, readFileSync, realpathSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
-import { createJournalWorker, MODEL_FAILURE_REPLY, openPreviewJournal, UNKNOWN_ANSWER_NOTICE } from './journal-test-worker.js';
+import { UNKNOWN_SEND_NOTICE, createJournalWorker, MODEL_FAILURE_REPLY, openPreviewJournal, UNKNOWN_ANSWER_NOTICE } from './journal-test-worker.js';
 import { prepareJournalEnvelope } from './journal-envelope.js';
 import { REPLY_RULES } from './reply-check.js';
 
@@ -107,11 +107,12 @@ it('keeps the captured one uncertain send fenced after journal replay', async ()
   try {
     const journal = openPreviewJournal(path, key, genesis());
     let sends = 0;
+    const texts: string[] = [];
     const worker = createJournalWorker(journal, { now: () => 1_790_510_000_000, stopped: () => false,
       model: async () => 'safe ordinary reply', checkOutbound: () => {},
       replyCheck: { elapsedMs: () => 100, jev: async () => ({ value: scores(false), latencyMs: 15 }),
         escalate: async () => { throw Error('unexpected review'); } },
-      send: async () => { sends++; return null; } });
+      send: async input => { texts.push(input.expectedText); sends++; return null; } });
     // The status capture counts one UNKNOWN send but does not attribute it to an update.
     worker.intake([update(969389590, 'offline ordinary turn for unattributed send')]);
     await worker.drain(); journal.close();
@@ -123,8 +124,11 @@ it('keeps the captured one uncertain send fenced after journal replay', async ()
       send: async () => { sends++; return 8; } });
     await resumed.drain();
     expect(captured.unknownSendCount).toBe(1);
+    expect(texts).toEqual(['safe ordinary reply', UNKNOWN_SEND_NOTICE]);
+    expect(reopened.view.order[0]?.deliveryNotice?.text).toBe(UNKNOWN_SEND_NOTICE);
+    expect(reopened.view.order[0]?.deliveryNotice?.sent).toBeUndefined();
     expect({ sends, replies: reopened.view.replies, intent: reopened.view.order[0]?.intent,
-      sent: reopened.view.order[0]?.sent }).toEqual({ sends: 1, replies: 1,
+      sent: reopened.view.order[0]?.sent }).toEqual({ sends: 2, replies: 2,
         intent: 'safe ordinary reply', sent: undefined });
     reopened.close();
   } finally { rmSync(dir, { recursive: true, force: true }); }

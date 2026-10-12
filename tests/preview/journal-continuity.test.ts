@@ -3,7 +3,7 @@ import { existsSync, mkdtempSync, readFileSync, realpathSync, rmSync } from 'nod
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { spawnSync } from 'node:child_process';
-import { openPreviewJournal } from './journal.js';
+import { openPreviewJournal, UNKNOWN_SEND_NOTICE } from './journal.js';
 
 const child = 'tests/preview/journal-continuity-child.mjs';
 const lines = (root: string, name: string) => {
@@ -42,7 +42,10 @@ it.each(boundaries)('restarts after %s without duplicate sends or lost memory', 
       const resumed = run(root, 'none', 'probe');
       expect(resumed.status, `${cut}: ${resumed.stderr}`).toBe(0);
       const sends = lines(root, 'sends.log').map(line => JSON.parse(line) as { update: number; text: string });
-      expect(new Set(sends.map(send => send.update)).size, cut).toBe(sends.length);
+      const answers = sends.filter(send => send.text !== UNKNOWN_SEND_NOTICE);
+      const notices = sends.filter(send => send.text === UNKNOWN_SEND_NOTICE);
+      expect(new Set(answers.map(send => send.update)).size, cut).toBe(answers.length);
+      expect(new Set(notices.map(send => send.update)).size, cut).toBe(notices.length);
       expect(sends.filter(send => send.update === 4), cut).toEqual([
         { update: 4, text: 'Silver otter 731' },
       ]);
@@ -52,12 +55,15 @@ it.each(boundaries)('restarts after %s without duplicate sends or lost memory', 
       if (uninvokedTurn) expect(calls, cut).not.toContain(`telegram:12345678:update:${uninvokedTurn[1]}`);
       if (cut === 'after:summary-reserve:1') expect(calls, cut).not.toContain('summary:1');
       const unsentTurn = /^after:intent:(\d+)$/u.exec(cut);
-      if (unsentTurn) expect(sends.some(send => send.update === Number(unsentTurn[1])), cut).toBe(false);
+      if (unsentTurn) expect(answers.some(send => send.update === Number(unsentTurn[1])), cut).toBe(false);
       const journal = openPreviewJournal(join(root, 'journal.encrypted'), new Uint8Array(32).fill(7));
       try {
         expect(journal.view.order.map(turn => turn.update), cut).toEqual([1, 2, 3, 4]);
         expect(journal.view.cursor, cut).toBe(5);
-        expect(journal.view.replies, cut).toBe(sends.length + journal.view.order.filter(turn => turn.intent && !sends.some(send => send.update === turn.update)).length);
+        expect(journal.view.replies, cut).toBe(sends.length + journal.view.order.filter(turn => turn.intent && !answers.some(send => send.update === turn.update)).length);
+        const unknown = journal.view.order.filter(turn => turn.intent !== undefined && turn.sent === undefined);
+        expect(notices.map(send => send.update), cut).toEqual(unknown.map(turn => turn.update));
+        expect(unknown.every(turn => turn.deliveryNotice?.sent !== undefined), cut).toBe(true);
         expect(journal.view.summaryReservations.size, cut).toBeLessThanOrEqual(1);
         expect(journal.view.order[3]?.answer, cut).toBe('Silver otter 731');
         expect(journal.view.order[3]?.sent, cut).toBeDefined();

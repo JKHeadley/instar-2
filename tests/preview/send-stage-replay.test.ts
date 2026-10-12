@@ -2,7 +2,7 @@ import { afterEach, expect, it, vi } from 'vitest';
 import { mkdtempSync, readFileSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
-import { createJournalWorker, openPreviewJournal, REPLY_ACKNOWLEDGEMENT, type JournalRecord, type Turn } from './journal.js';
+import { UNKNOWN_SEND_NOTICE, createJournalWorker, openPreviewJournal, REPLY_ACKNOWLEDGEMENT, type JournalRecord, type Turn } from './journal.js';
 import { appendGroupCarry } from './group-carry.js';
 import { verifyGroupAudience } from './group-disclosure.js';
 import { key, now, scope, permissionFor } from './group-carry-fixture.js';
@@ -99,7 +99,10 @@ it.each(['accepted', 'joined-before-send', 'stopped-during-probe', 'unknown-send
       expect(failure).toBeUndefined(); expect(sends).toEqual([captured.recorded.answer]);
       expect(turn.sendMs).toBe(3100); expect(sendProbeReads).toBe(6); expect(peak).toBe(4); // the answer is ready before the ten-second acknowledgement deadline
     } else if (outcome === 'unknown-send') {
-      expect(sends).toEqual([captured.recorded.answer]); expect(turn.intent).toBe(captured.recorded.answer);
+      expect(sends).toEqual([captured.recorded.answer, UNKNOWN_SEND_NOTICE]);
+      expect(turn.deliveryNotice?.text).toBe(UNKNOWN_SEND_NOTICE);
+      expect(turn.deliveryNotice?.sent).toBeUndefined();
+      expect(turn.intent).toBe(captured.recorded.answer);
       expect(turn.sent).toBeUndefined();
     } else {
       expect(sends).toEqual([]); expect(turn.intent).toBeUndefined();
@@ -111,6 +114,7 @@ it.each(['accepted', 'joined-before-send', 'stopped-during-probe', 'unknown-send
       const reopened = openPreviewJournal(path, key);
       const replay = createJournalWorker(reopened, ports).drain();
       await vi.runAllTimersAsync(); await replay;
-      expect(sends).toHaveLength(1); expect(models).toBe(1); reopened.close();
+      expect(sends).toEqual(outcome === 'unknown-send'
+        ? [captured.recorded.answer, UNKNOWN_SEND_NOTICE] : [captured.recorded.answer]); expect(models).toBe(1); reopened.close();
     }
   });
