@@ -55,7 +55,7 @@ export function createProductionTelegramIO() {
     }
     if (input.method === 'sendMessage') {
       log({ kind: 'send', role: process.env.INSTAR_PREVIEW_CUTOVER_ROLE, text: input.body.text,
-        thread: input.body.message_thread_id });
+        thread: input.body.message_thread_id, replyTo: input.body.reply_parameters?.message_id });
       return { kind: 'response', status: 200, bytes: JSON.stringify({ ok: true, result: {
         message_id: 42, chat: { id: Number(input.body.chat_id) },
         ...(input.body.message_thread_id === undefined ? {} : { message_thread_id: input.body.message_thread_id }),

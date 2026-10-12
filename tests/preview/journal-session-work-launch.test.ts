@@ -18,7 +18,7 @@ import { appendGroupCarry } from './group-carry.js';
 import { authoritySealKey, sealAuthorityRecord } from './activation-authority.js';
 import { resolveGroupDisclosure } from './group-disclosure.js';
 import { pathToFileURL } from 'node:url';
-import { createJournalWorker, MINIMAL_WORKER_WAIT_MS } from './journal-test-worker.js';
+import { createJournalWorker, MINIMAL_WORKER_WAIT_MS, REPLY_ACKNOWLEDGEMENT, REPLY_ACKNOWLEDGEMENT_AFTER_MS } from './journal-test-worker.js';
 
 const grantAt = (directory: string, record: Record<string, unknown>) => {
   mkdirSync(directory, { recursive: true });
@@ -167,7 +167,7 @@ it('the activated runner delegates a due obligation and answers ordinary intake 
   expect(harness.calls().filter((row: { kind: string }) => row.kind === 'send')).toHaveLength(1);
 }, 120_000);
 
-it('the existing minimal path sends one holding reply in the topic during a long turn, then the result', async () => {
+it('the minimal poll sends one acknowledgement at eight seconds in the topic, no later holding reply, then the result', async () => {
   const world = successiveWorld(), answer = world.activation();
   const journal = openPreviewJournal(join(world.directory, 'holding.encrypted'), OFFLINE_STORAGE_KEY, {
     kind: 'genesis', bot: world.configuration.botId, chat: '-1001234', forum: true,
@@ -182,11 +182,12 @@ it('the existing minimal path sends one holding reply in the topic during a long
     message_thread_id: 3, from: { id: Number(world.configuration.operatorSenderId) }, text: 'Compare the plans.' } }]);
   const draining = worker.drain();
   await new Promise(resolve => setImmediate(resolve));
-  now += MINIMAL_WORKER_WAIT_MS - 1; await worker.minimal(); expect(sends).toHaveLength(0);
+  now += REPLY_ACKNOWLEDGEMENT_AFTER_MS - 1; await worker.minimal(); expect(sends).toHaveLength(0);
   now++; await worker.minimal(); await worker.minimal();
   expect(sends).toHaveLength(1);
   expect(sends[0]).toMatchObject({ thread: 3 });
-  expect(sends[0]!.text).toContain('saved it');
+  expect(sends[0]!.text).toBe(REPLY_ACKNOWLEDGEMENT);
+  now += MINIMAL_WORKER_WAIT_MS; await worker.minimal(); expect(sends).toHaveLength(1);
   finish('The comparison is ready.'); await draining;
   expect(sends).toHaveLength(2); expect(sends[1]).toMatchObject({ thread: 3 });
   journal.close();

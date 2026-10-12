@@ -97,11 +97,9 @@ it.each(cuts)('recovers from %s', cut => {
       && points.indexOf(cut) <= points.indexOf('journal:before:reply-check:3');
     const uncertainSend = points.indexOf(cut) >= points.indexOf('journal:after:intent:2')
       && points.indexOf(cut) < points.indexOf('journal:after:sent:2');
-    // Recovery advances the injected clock by 100 seconds. A turn not yet answering when
-    // killed now gets one reviewed acknowledgement before its answer; neither may repeat.
-    const acknowledges = points.indexOf(cut) <= points.indexOf('journal:compact:after-reopen:1');
-    expect(sends.filter(item => item.text === REPLY_ACKNOWLEDGEMENT), cut).toEqual(acknowledges
-      ? [{ update: 2, text: REPLY_ACKNOWLEDGEMENT }] : []);
+    // Recovery's injected clock jumps 100 seconds, but its answer is immediate. The timer is cancelled;
+    // elapsed age alone must never cause an acknowledgement after the recovered answer is ready.
+    expect(sends.filter(item => item.text === REPLY_ACKNOWLEDGEMENT), cut).toEqual([]);
     const answers = sends.filter(item => item.text !== REPLY_ACKNOWLEDGEMENT);
     if (!uncertainSend) expect(answers.filter(item => item.update === 2), cut).toEqual([
       { update: 2, text: 'From your note: Maya has the ORCHID key 731.' },
@@ -115,7 +113,7 @@ it.each(cuts)('recovers from %s', cut => {
       expect(new Set(frontiers).size, cut).toBe(frontiers.length);
       expect(view.order.map(item => item.update), cut).toEqual([1, 2]);
       expect(view.order[1]?.accepted, cut).toBe(true);
-      expect(view.order[1]?.heldNoticeSent, cut).toBe(acknowledges ? 2 : undefined);
+      expect(view.order[1]?.heldNoticeSent, cut).toBeUndefined();
       if (!uncertainSend) {
         expect(frontiers.at(-1), cut).toBe(2);
         expect(view.summaries.at(-1)?.text, cut).toBe(baselineMemory);

@@ -3,7 +3,7 @@ import { mkdtempSync, readFileSync, realpathSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { createJournalWorker, openPreviewJournal, raiseJournalCaps, MINIMAL_RESERVE, MINIMAL_POLL_LIMIT, UNLINKED_EDIT_FLAG,
-  UNREADABLE_OPERATOR_MESSAGE, limitedAnswerText, PREVIEW_LIVE_GATES, admittedDependencies, MINIMAL_WORKER_WAIT_MS,
+  UNREADABLE_OPERATOR_MESSAGE, limitedAnswerText, PREVIEW_LIVE_GATES, admittedDependencies, MINIMAL_WORKER_WAIT_MS, REPLY_ACKNOWLEDGEMENT, REPLY_ACKNOWLEDGEMENT_AFTER_MS,
   independentSurface, STOP_PAGE_BUTTON, STOP_CHALLENGE_MS, MINIMAL_WAITING_UPDATES, LIMITED_ANSWER_OPERATION,
   MISSING_INSTALLATION_POLICY } from './journal-test-worker.js';
 import { STOP_CONFIRM_TEXT } from './status-command.js';
@@ -354,23 +354,28 @@ it('a blocked ordinary model below every cap cannot strand a stop: the minimal p
   second.close();
 }));
 
-it('a below-cap message waiting on a blocked worker gets one limited answer after the wait bound, never before', () => withRoot(async path => {
+it.each([1, 60])('a blocked worker acknowledges once per message or uses the limited reserve when only %s replies remain', maxReplies => withRoot(async path => {
   let clock = 1000;
   const sends: Marked[] = [];
-  const journal = openPreviewJournal(path, key, genesis({ maxTurns: 60, maxCalls: 60, maxReplies: 60 }));
+  const journal = openPreviewJournal(path, key, genesis({ maxTurns: 60, maxCalls: 60, maxReplies }));
   const worker = createJournalWorker(journal, { now: () => clock, stopped: () => false, checkOutbound: () => {},
     model: () => new Promise<string>(() => {}), send: marked(sends) });
   worker.intake([message(1, 'hello')]);
   void worker.drain();
   await new Promise(done => setImmediate(done));
   worker.intake([message(2, 'are you there?')]);
-  clock += MINIMAL_WORKER_WAIT_MS - 1;
+  clock += REPLY_ACKNOWLEDGEMENT_AFTER_MS - 1;
+  await worker.minimal(); expect(sends).toHaveLength(0);
+  clock += 1; await worker.minimal(); await worker.minimal();
+  const acknowledgements = maxReplies === 1 ? [] : [REPLY_ACKNOWLEDGEMENT, REPLY_ACKNOWLEDGEMENT];
+  expect(sends.map(item => item.text)).toEqual(acknowledgements);
+  clock += MINIMAL_WORKER_WAIT_MS - REPLY_ACKNOWLEDGEMENT_AFTER_MS - 1;
   await worker.minimal();
-  expect(sends).toHaveLength(0);
+  expect(sends.map(item => item.text)).toEqual(acknowledgements);
   clock += 1;
   await worker.minimal(); await worker.minimal();
-  expect(sends).toHaveLength(1);
-  expect(sends[0]!.text).toBe(limitedAnswerText(journal.view, 'worker', 2));
+  expect(sends.map(item => item.text)).toEqual(maxReplies === 1
+    ? [limitedAnswerText(journal.view, 'worker', 2)] : acknowledgements);
   // No raise is offered: the ordinary worker, not an allowance, is what is missing.
   expect(sends[0]!.markup).toBeUndefined();
   expect(journal.view.order.some(turn => turn.approval)).toBe(false);
