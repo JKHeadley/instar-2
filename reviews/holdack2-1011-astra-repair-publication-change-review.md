@@ -8,7 +8,7 @@ Affected rules: Rules 5/49/69/74/78/84/90/101/111/113/116.
 Affected floors: secrets — unchanged; spend cap — unchanged; stop — unchanged; no duplicate sends — unchanged; durable intake — unchanged. Publication-only change.
 Operator questions: none
 Suggested tier: critical
-Declared tier: local
+Declared tier: ordinary
 Tier rationale: Mechanical publication of the reviewed source commit; no runtime changes.
 Side effects: Generation and source wiring pin now name the repaired worker. Capability content remains unchanged.
 Undo and recovery: Regenerate publications from the desired committed source; never hand-edit a pin.

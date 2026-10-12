@@ -15,7 +15,7 @@ Undo and recovery: Revert this repair and regenerate publications; no journal sc
 Multi-machine posture: Scheduling is deliberately process-local; existing durable reservations, ownership, audience admission, replication and UNKNOWN fences remain unchanged.
 Layer below: Inspected host pre-poll and post-intake waits, acknowledgeReply reservation and dispatch, drain final-send ordering, limited stop confirmation and callback intake. Reran the reviewer controlled worker reproducer and its host-wiring assertion.
 Bug class: integration
-Bug evidence: reproducer=tests/preview/reply-acknowledgement.test.ts controlled unresolved review: red before fix, green after; independent original probe copied to /Users/dabombstudio/.instar/agents/echo/.instar/lanes/holdack2-1011-repair-checks/minimal-progress.mjs exits 0 with minimalFinished and nextPollStarted true before review release.
+Bug evidence: reproducer=tests/preview/reply-acknowledgement.test.ts
 Hook bypass: none; checked core.hooksPath (unset) and common hooks directory (sample files only).
 Convergence: none
 Decision: retain-rejection | Keep the same failed promise until the drain observes it; minimal only observes rejection without blocking intake. | reported=/Users/dabombstudio/.instar/agents/echo/.instar/lanes/holdack2-1011-repair-PROGRESS.md

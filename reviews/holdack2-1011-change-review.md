@@ -23,6 +23,13 @@ Prompt finding: 849db3a6296a | protocol-literal | Existing fixed memory inventor
 Prompt finding: bd01de21286a | protocol-literal | Existing source label instruction and grounding assertion.
 Prompt finding: fb5fa7e706c8 | protocol-literal | Existing semantic memory retrieval instruction and grounding assertion.
 
+Prompt finding: 034c5250da92 | protocol-literal | Existing capability and standing-grant briefing text pinned by self-description fixtures; no semantic keyword gate or new prompt content in this scheduling repair.
+Prompt finding: 45e37ea2e9e9 | protocol-literal | Existing capability and standing-grant briefing text pinned by self-description fixtures; no semantic keyword gate or new prompt content in this scheduling repair.
+Prompt finding: 4b98dc2a1b9f | protocol-literal | Existing capability and standing-grant briefing text pinned by self-description fixtures; no semantic keyword gate or new prompt content in this scheduling repair.
+Prompt finding: 6af48f94b789 | protocol-literal | Existing capability and standing-grant briefing text pinned by self-description fixtures; no semantic keyword gate or new prompt content in this scheduling repair.
+Prompt finding: 95e349aaf4ac | protocol-literal | Existing capability and standing-grant briefing text pinned by self-description fixtures; no semantic keyword gate or new prompt content in this scheduling repair.
+Prompt finding: b00ed403060a | protocol-literal | Existing capability and standing-grant briefing text pinned by self-description fixtures; no semantic keyword gate or new prompt content in this scheduling repair.
+
 Decision: merge-approved-rule | Keep compact speed briefing and add the approved Rule 87 excerpt and pin. | reported=/Users/dabombstudio/.instar/agents/echo/.instar/lanes/holdack2-1011-PROGRESS.md
 Decision: restore-exact-revert | Reverse behavior from 17d11d0b and retain the canary repair; runtime files match composed 82e3aa6f. Earlier holdack reviews remain in Git history rather than being resurrected with widened subject ranges. | reported=/Users/dabombstudio/.instar/agents/echo/.instar/lanes/holdack2-1011-PROGRESS.md
 Decision: regenerate-once | Publish the final committed source and canonical merged anchor once. | reported=/Users/dabombstudio/.instar/agents/echo/.instar/lanes/holdack2-1011-PROGRESS.md
