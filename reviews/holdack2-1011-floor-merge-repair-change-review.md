@@ -24,6 +24,9 @@ Prompt finding: 95e349aaf4ac | protocol-literal | The unchanged four-test and st
 
 Verification: Branch reconciliation by floorfix-1011 reverts the alternative floor repair and applies holdack2 e6e1a781 with its SELF_DESCRIPTION conflict resolved toward holdack2. Existing literal-text consumers are aligned with that same paragraph; captured outputs and judgments remain authentic. The exact foreground commands, results and update IDs are recorded in /Users/dabombstudio/.instar/agents/echo/.instar/lanes/floorfix-1011-PROGRESS.md. This record makes no fresh model-judgment or live deployment claim.
 
+Publication coverage: 8f68e86f regenerates the seven generated publications for the cherry-picked source; lint and register checks pass. This review includes that publication and the literal-text consumer alignment.
+Verification result: All four requested files pass, 39 tests passed and one existing opt-in capture skipped. Explicit architecture, lint and register checks pass.
+
 ## Closing block
 
 simplestRobustRoute: This is the simplest robust route: shorten a repeated instruction list while leaving the complete capability note, constitutional excerpts and budget guards intact. No new mechanism or larger cap. Exact source hashes guard entry; unchanged floor and one-byte boundary tests guard fit; existing effect checkpoints guard consequences. Offline recorded replay establishes composition and parsing, not a new live deployment claim.
