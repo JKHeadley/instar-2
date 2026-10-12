@@ -42,7 +42,9 @@ function boundedExcerpt(raw, scrub, limit) {
   catch { clean = '[provider excerpt unavailable: secret scrub failed]'; }
   let excerpt = Buffer.from(clean).subarray(0, limit).toString('utf8');
   while (Buffer.byteLength(excerpt) > limit) excerpt = excerpt.slice(0, -1);
-  return excerpt;
+  // Clipping can split a redaction marker into text the journal rejects as a credential.
+  // Omit only that diagnostic excerpt; never let evidence capture discard a completed call.
+  return redact(excerpt).count > 0 ? '[provider excerpt omitted: redaction boundary]' : excerpt;
 }
 
 /** The content-free resource facts of one owned launch: which bounds held hard (and on which subject),

@@ -258,3 +258,46 @@ it('replays update 969390396 without inventing its missing signal or raw bytes',
   const cancelled = subscriptionCallOutcome(physical('', { code: null, signal: 'SIGKILL', limited: true, cancellationReason: 'stopped' }), 1, 1, 1, 1);
   expect(external.diagnostic).not.toEqual(cancelled.diagnostic);
 });
+
+// Synthetic boundary controls from the unit review; not a claim about the live incident.
+it.each(['stdout', 'stderr'])('preserves successful results through journal append at %s redaction boundaries', async stream => {
+  const limit = stream === 'stderr' ? 1024 : 4096;
+  const root = realpathSync(mkdtempSync(join(tmpdir(), 'preview-excerpt-boundary-')));
+  const path = join(root, 'journal.encrypted'), key = new Uint8Array(32).fill(7);
+  const journal = openPreviewJournal(path, key, { kind: 'genesis', bot: '12345678', chat: '7654321',
+    operator: '7654321', grant: 'grant:preview', configurationDigest: 'sha256:offline', expires: 9999999999999,
+    maxCalls: 100, maxReplies: 100, maxTurns: 100, maxBytes: 32768, cursor: 0 });
+  try {
+    // Every cut in the marker, its intact neighbor, and ordinary text at the reported cut.
+    const mark = 'password: [redacted credential]';
+    const cases = [
+      ...Array.from({ length: 21 }, (_, index) => ({ padding: limit - mark.length + index,
+        text: 'password: example-diagnostic-value', secret: true })),
+      { padding: limit - 21, text: 'ordinary diagnostic value', secret: false },
+    ];
+    for (const [index, sample] of cases.entries()) {
+      const id = `telegram:12345678:update:${index + 1}`;
+      journal.append({ kind: 'intake', id, update: index + 1, text: 'question', raw: 'question',
+        accepted: true, cursor: index + 2, at: 1000 });
+      journal.append({ kind: 'reserve', id, at: 1001 });
+      const raw = ' '.repeat(sample.padding) + sample.text;
+      const result = physical(frame(2), stream === 'stderr' ? { rawError: raw } : { rawOutput: raw });
+      const io = observedSubscriptionIO({ execute: async () => result },
+        { maxTokens: 2048, maxOutputBytes: 16384 }, id, row => journal.append(row),
+        { elapsed: () => 7, at: () => 1002 });
+      expect(await io.execute({ stdin: 'prompt' })).toBe(result);
+      const outcome = journal.view.callOutcomes.at(-1).outcome;
+      expect(outcome).toMatchObject({ exitCode: 0, localLimit: null, type: 'result', subtype: 'success', isError: false });
+      const excerpt = stream === 'stderr' ? outcome.diagnostic.rawErrorExcerpt : outcome.diagnostic.rawOutputExcerpt;
+      expect(Buffer.byteLength(excerpt)).toBeLessThanOrEqual(limit);
+      expect(redact(excerpt).count).toBe(0);
+      expect(excerpt).not.toContain('example-diagnostic-value');
+      if (!sample.secret) expect(excerpt).toBe(raw.slice(0, limit));
+      if (index === 0) expect(excerpt).toBe(' '.repeat(sample.padding) + mark);
+    }
+    journal.close();
+    const reopened = openPreviewJournal(path, key, undefined, undefined, true);
+    expect(reopened.view.callOutcomeCounts.get('total')).toBe(cases.length);
+    reopened.close();
+  } finally { journal.close(); rmSync(root, { recursive: true, force: true }); }
+});
