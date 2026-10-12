@@ -10,7 +10,7 @@ Operator questions: none
 Suggested tier: critical
 Declared tier: critical
 Tier rationale: Merge includes model briefing and generated constitutional publication. No new policy is authored; approved main wording is exact.
-Side effects: The branch compact packet now quotes the additional bounded progress sentence. The existing launcher fixture uses main historical clock and expired negative control. Publication identifies merged source. Earlier train changes keep their existing reviews and evidence.
+Side effects: The branch compact packet now quotes the additional bounded progress sentence. The existing launcher fixture uses main historical clock and expired negative control. Publication identifies merged source 21eb607ece8f95635bea04edee44e0e3d6040430. Earlier train changes keep their existing reviews and evidence.
 Undo and recovery: Revert this merge with its first parent and regenerate the publication; retain append-only governed history. No live deployment or journal migration is performed.
 Multi-machine posture: Shared repository content is identical on every machine. Build products and disposable test journals are machine-local; ownership and transport behavior are unchanged by the merge.
 Layer below: Read both governing documents in full, both parent diffs, sourcePacket and its consumers, main proof clock repair, bootstrap anchor canonical derivation, owner reference rehash and grounding repin scripts. Existing train review records cover inherited changes.
@@ -365,5 +365,5 @@ Subject: merged main against train-11; full inherited range and exact paths are 
 ## Closing block
 
 simplestRobustRoute: This is the simplest robust route: ordinary merge, preserve both inputs, derive conflicting pins from merged bytes and use existing tests. Start guard: recorded operator direction and landed main. End guards: targeted tests, document checks, architecture, wiring, register and review checks. Named floors unchanged; no new autonomous capability or completion claim.
-80/20: Targeted verification and cheap gates are recorded in the shared train-11 repair PROGRESS. The pipeline owns the full suite; this submission makes no independent convergence claim.
+80/20: TypeScript and authenticated-journal context plus seven captured output replays pass. Targeted verification and cheap gates are recorded in the shared train-11 repair PROGRESS. The pipeline owns the full suite; this submission makes no independent convergence claim.
 VERDICT: author submission; this record asserts no independent verdict — the review desk records its own
