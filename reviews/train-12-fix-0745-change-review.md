@@ -30,6 +30,14 @@ Decision: train-12-send-diagnosis | No latency code change: update 715675607 com
 
 Evidence development: The earlier ten-run batch 40–49 passed on the capsentence2 envelope, but exact live-context replays 50/60/61 failed on history’s altered pronouns. Run 62 fixed those nouns but added quotation wrappers and status counters. These failures remain in desk evidence. The final instruction preserves current record nouns, a bare paragraph, and capability-note-only limits; the final fixed batch is 70–79 with exact live update 715675606 replayed separately. No runtime postprocessor or semantic keyword gate was added.
 
+Prompt finding: 034c5250da92 | quoted-evidence | Historical capability wording is compared as provenance, never a semantic classifier — fixture-phrase src/assembly/production-provider.ts <- tests/preview/selfdesc-abilities.test.ts: "run without another yes. the operator can tighten or revoke trust through setup-"
+Prompt finding: 45e37ea2e9e9 | quoted-evidence | Historical capability wording is compared as provenance, never a semantic classifier — fixture-phrase src/assembly/production-provider.ts <- tests/preview/selfdesc-abilities.test.ts: "checked when made. workspace work and public reads are already allowed. register"
+Prompt finding: 6af48f94b789 | quoted-evidence | Historical capability wording is compared as provenance, never a semantic classifier — fixture-phrase src/assembly/production-provider.ts <- tests/preview/selfdesc-abilities.test.ts: "sends remain outside the one-machine closed set. the effect doorway reports any "
+Prompt finding: b00ed403060a | quoted-evidence | Historical capability wording is compared as provenance, never a semantic classifier — fixture-phrase src/assembly/production-provider.ts <- tests/preview/selfdesc-abilities.test.ts: "checked when made. workspace work and public reads are already allowed. register"
+Deferral: generated/register.json:1 | not-a-deferral=Generated governance text includes priority and history wording; no builder work is deferred.
+Deferral: tests/preview/selfdesc-abilities.test.ts:41 | not-a-deferral=Immutable historical instruction priority wording is translated to the current instruction, not deferred work.
+Publication: Deterministic register replay from source b4d4dacb45e2808e0b812589e2e747536785aca7; no inventory, authority or guard change. Suggested tier becomes critical due to generated paths; declared significant reflects the instruction repair plus mechanical provenance.
+
 ## Closing block
 
 simplestRobustRoute: Repair the existing instruction and reuse the unchanged rendered record and K11 judge. This is the simplest robust route; no new runtime machinery. Start with recorded failure and original envelope; end with fixed-sample inference evidence, unchanged-floor tests and source pins. Safety floors unchanged; no deployed acceptance claim.
