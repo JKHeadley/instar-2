@@ -10,7 +10,7 @@ import { join } from 'node:path';
 import { createJournalWorker, openPreviewJournal, openBlockers, openDirectives, settledConstraintWording, currentBlockers, declaredObligations, dueObligationWork, obligationSchedule,
   LOOP_REVISIT_MS, BLOCKER_RECHECK_MAX_MS, DIRECTIVE_SHARE, OBLIGATION_WORK_QUESTION, OBLIGATION_WORK_QUESTION_TOOLS, previewCapabilities,
   TOOL_ATTEMPTS_MEANING, TOOL_ATTEMPTS_PARTIAL_MEANING, TOOL_ATTEMPTS_REVIEWED, governingConstraints, OBLIGATION_DECISION,
-  OBLIGATION_FLOOR_PACKET_BYTES, OBLIGATION_DECISION_TOOLS } from './journal-test-worker.js';
+  OBLIGATION_FLOOR_PACKET_BYTES, OBLIGATION_DECISION_TOOLS, REPLY_ACKNOWLEDGEMENT } from './journal-test-worker.js';
 // @ts-expect-error The runner side stays plain JavaScript.
 import { runToolTurn, toolPacketFits, toolTurnFits } from './tool-turn.mjs';
 import { SUBSCRIPTION_TOOL_LIMITS } from '../../src/assembly/production-provider.js';
@@ -883,7 +883,10 @@ it('judges a restated can\'t-do answer against the limit it already settled, and
       const before = w.reviews.length;
       await w.say(DMV_ASK, () => { if (between === 'queued-due') w.clock.now = due + 60_000; });
       const turn = w.journal.view.order.find(item => item.text === DMV_ASK)!;
-      expect(w.reviews.length, label).toBe(before + (sends ? 1 : 2));
+      const newReviews = w.reviews.slice(before);
+      const acknowledgements = newReviews.filter(review => review.candidateReply === REPLY_ACKNOWLEDGEMENT);
+      expect(acknowledgements.length, label).toBe(between === 'queued-due' ? 1 : 0);
+      expect(newReviews.length - acknowledgements.length, label).toBe(sends ? 1 : 2);
       expect(turn.answerBlocker, label).toBeUndefined();
       // Live 969389730: the writer relied on a settled record of a different action (looking up a bill, not paying it).
       if (between === 'none' || between === 'queued-fresh') expect(w.contexts.get(DMV_ASK), label).toContain('A settled blocker covers only its own claim');
