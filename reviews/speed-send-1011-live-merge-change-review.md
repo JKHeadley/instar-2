@@ -1,19 +1,19 @@
-# Change review — Merge live memory notice compatibility into send optimization
+# Change review — Publish send sources and merge live memory notice compatibility
 
-Subject base: 8962d0d01d916ad0f2c55e52559115dc81951d61
+Subject base: 6979b9994f4efe25759b5fb5fee9f47e8d8a5124
 Review state: open
 Reviewed content: none
-Outcome: Preserve the send-stage audience-read overlap while bringing in live historical memory-failure continuity compatibility through an ordinary merge.
+Outcome: Cover the original send-source publication and merged publication, and preserve the send-stage audience-read overlap while bringing in live historical memory-failure continuity compatibility through an ordinary merge.
 Affected rules: Purpose least revelation, irreversible-act durable cause and retained ability; Rules 1, 4, 26, 28, 34, 36, 37, 49, 70, 74, 95, 101, 110, 111, 112, 113, 116.
 Affected floors: secrets — existing disclosure checks; spend cap — existing reservations; stop — existing pre-effect checks; no duplicate sends — existing durable intents; durable intake — existing encrypted journal. All preserved.
 Operator questions: none
 Suggested tier: critical
 Declared tier: critical
 Tier rationale: Merges model-visible continuity classification and send-boundary scheduling; validate captured journal cases and adjacent refusals.
-Side effects: Both authored source changes are retained without modification. Only generated publication conflicts require regeneration from the combined committed sources. Historical failure notices remain pending while ordinary successful answers remain addressed; audience observations retain bounded overlap and every existing predicate.
-Undo and recovery: Revert the merge with first parent as mainline and regenerate publications; no journal migration or deletion. Original captured history remains intact.
+Side effects: Both authored source changes are retained without modification. The original 8962d0d0 commit publishes the send optimization source; the follow-up publishes both sources from their merge. Only generated publication conflicts require regeneration from the combined committed sources. Historical failure notices remain pending while ordinary successful answers remain addressed; audience observations retain bounded overlap and every existing predicate.
+Undo and recovery: Revert the runtime merge with first parent as mainline and regenerate publications from the restored source; revert publication commits only together with their source change; no journal migration or deletion. Original captured history remains intact.
 Multi-machine posture: Each conversation owner retains fresh audience admission and the same classification of historical durable evidence across restart. No ownership, replication, grant or new state changes.
-Layer below: Inspected continuityFor, durable intent/sent records, existing historical notice regression, fresh group-disclosure verification and the send-stage captured replay. Both branches share the same journal baseline; their source edits are disjoint. Generated conflict hunks are commit/generation identifiers, which must be regenerated rather than combined manually.
+Layer below: Inspected continuityFor, durable intent/sent records, existing historical notice regression, fresh group-disclosure verification and the send-stage captured replay. Both branches share the same journal baseline; their source edits are disjoint. Generated conflict hunks are commit/generation identifiers, which must be regenerated rather than combined manually. Inspected 8962d0d0: its seven generated files only update commit/generation references to 6979b999, with no declaration or authority edits; it had lacked a covering review record. The regenerated artifacts now bind dd71ab28 and both source changes.
 Bug class: none
 Bug evidence: none
 Hook bypass: none
@@ -24,7 +24,9 @@ Prompt finding: 849db3a6296a | protocol-literal | Unchanged exact memory-invento
 Prompt finding: bd01de21286a | protocol-literal | Unchanged source-label grounding instruction.
 Prompt finding: fb5fa7e706c8 | protocol-literal | Unchanged semantic retrieval instruction.
 
-Subject (2 paths): tests/preview/journal-boundaries.test.ts, tests/preview/journal.ts
+Verification: Lockfile-version typecheck and build pass; 91 targeted recorded-shape, audience and send tests pass. Lint and register:check pass on merged publications. Review-check evidence identified the uncovered original publication commit; extending this record to its parent covers that publication and the ordinary merge without altering source bytes. Final check outcomes and absent saved gate report are recorded in the desk repair progress file.
+
+Subject (9 paths): generated/capabilities.json, generated/capabilities.md, generated/coverage.md, generated/glossary.md, generated/register.json, generated/rules.md, generated/source.json, tests/preview/journal-boundaries.test.ts, tests/preview/journal.ts
 
 ## Closing block
 
