@@ -30,6 +30,10 @@ Prompt finding: 849db3a6296a | protocol-literal | Existing fixed inventory reply
 Prompt finding: bd01de21286a | protocol-literal | Existing source-label instruction, unchanged by this unit.
 Prompt finding: fb5fa7e706c8 | protocol-literal | Existing semantic retrieval instruction, unchanged by this unit.
 
+Verification: Focused final run passes 4 files / 49 tests (shadow observer, model-call boundary, spend cap and rollback). Typecheck and build pass. The direct-import set and pinned-text checks are recorded in the machine-local handoff. Architecture reports the Darwin native-harness composition certification stale because model-call-boundary.ts belongs to that composition; no certification is forged. The expected Rule 102 missing Studio report path is named in the handoff.
+
+Generated publication: The repository replay generator ran from source commit 5100a5915fd54ca2596533b091f9d7bf3a205e9a, generation sha256:6b38cd6c1a3a46921894e6638befe1e552053bb00e1c7744a2e440ac76deecb4. Seven generated publication files change source/generation pins only. Downloaded desk owner-manifest rehash and inventory-chain scripts found no stale owner/inventory pins.
+
 ## Closing block
 
 simplestRobustRoute: This is the simplest robust route: one observer beside the already fitted packet, using the existing renderer, recall pool, model boundary and journal. A bounded selection helper prevents exceeding the actual item/byte budget; two typed reservation/settlement rows prevent unaccounted or repeated calls after interruption; the content-free result permits comparison without exporting originals. Required context and every safety/authority floor stay with their existing owners. Start guards are the reserved actual packet, call capacity, stop and disclosure. End state is a recorded comparison or unavailable, never a changed answer packet. Limits are 50 candidates, bounded evidence, one attempt per provider and the host's deadlines. The unattended repository-journal replay completes with identical packets; no live-provider or production graduation claim is made.
