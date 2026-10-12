@@ -76,8 +76,8 @@ for (const memorySource of ['carry', 'remember'] as const) for (const audience o
       from: { id: Number(scope.operator) }, text: fixture.recorded.text } }]);
     await worker.drain();
     if (audience === 'verified') {
-      expect(sends).toEqual([fixture.recorded.answer]); expect(models).toBe(1); expect(reviews).toBe(1);
-      expect(audiences).toEqual([true, true]);
+      expect(sends).toEqual([fixture.recorded.answer]); expect(models).toBe(1); expect(reviews).toBe(0);
+      expect(audiences).toEqual([true]);
     } else {
       expect(sends).toEqual(audience === 'changed-before-review' ? [GROUP_REVIEW_FINAL_NOTICE] : []); expect(reviews).toBe(0);
       expect(models).toBe(audience === 'changed-before-review' ? 1 : 0);
