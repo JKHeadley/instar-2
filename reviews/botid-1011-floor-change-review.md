@@ -14,8 +14,8 @@ Side effects: Instruction bytes decrease while the complete governingConstraints
 Undo and recovery: Revert the repair commits and regenerate register outputs with existing tools. That restores the reproducible floor overflow and is not a runtime workaround; no journal migration or credential change is involved.
 Multi-machine posture: Deterministic shared briefing text on each machine; no new state, replication or ownership behavior.
 Layer below: Read both constitutional documents; inspected packet-fitting ladder, prepareJournalEnvelope, reply-review reserve, generated capability source, inspection rule-number parser and archived model outputs. All rule meanings and source excerpts remain exact and checked.
-Bug class: integration
-Bug evidence: reproducer=tests/preview/default-context-floor.test.ts
+Bug class: live-path
+Bug evidence: All four reported failures reproduced on 588b189d. Original full plain packet was 23394 bytes against 22959 allowed. After compaction the unchanged six floor tests pass, including full default desk report, tool context, exact fit and one extra byte forcing the existing degraded shape. Evidence logs in absolute desk lanes/botid-1011-floor-*.log.
 Hook bypass: none
 Convergence: none
 <!-- Rule 102: record each mid-run engineering decision as a line: Decision: <id> | <what was decided, and why> | reported=<report that names the id> -->
