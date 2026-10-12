@@ -7650,6 +7650,8 @@ export function createJournalWorker(journal: ReturnType<typeof openPreviewJourna
     if (working) throw Error('preview journal: second worker refused');
     working = true; workingSince = ports.now();
     try {
+      // Rebuild every pending intake timer before serial answer work can await the first turn.
+      for (const turn of journal.view.order) startAcknowledgement(turn);
       // One fresh read per pass decides which turns may proceed; the model and send ports still re-read their own.
       const audienceHolds = await disclosure();
       completeApprovals();
@@ -7870,7 +7872,6 @@ export function createJournalWorker(journal: ReturnType<typeof openPreviewJourna
           };
           let answer = await attempt({ question, context, id: turn.id,
             ...(prepared === undefined ? {} : { prepared }) });
-          answerReady(turn);
           if (answer === false) continue;
           // Rule 116: a real model sometimes answers in prose instead of the required Decision. Ask the same turn
           // once more with a runner-authored format reminder in the packet (never in the operator's message),
@@ -8022,6 +8023,8 @@ export function createJournalWorker(journal: ReturnType<typeof openPreviewJourna
               answer = typeof answer === 'string' ? reply : 'text' in answer ? { ...answer, text: reply } : answer;
             }
           }
+          // Only the settled answer ends the wait: format repair, timeout replacement and lookup may still call the model.
+          answerReady(turn);
           const answerMs = duration(answerStarted);
           if (typeof answer !== 'string' && 'state' in answer && answer.state === 'uncertain') {
             journal.append({ kind: 'model-uncertain', id: turn.id, state: 'uncertain',

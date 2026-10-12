@@ -4,6 +4,7 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { createJournalWorker, openPreviewJournal, REPLY_ACKNOWLEDGEMENT, type PreviewPorts } from './journal-test-worker.js';
 import { readAnswer } from './answer-reading.js';
+import { at as roomAt, room, question, update as roomUpdate } from './recall-rank-room.js';
 import { prepareJournalEnvelope } from './journal-envelope.js';
 
 const captured = JSON.parse(readFileSync(new URL('./fixtures/reply-acknowledgement-live-2026-10-12.json', import.meta.url), 'utf8')) as {
@@ -94,5 +95,102 @@ it('picks up recorded second input and acknowledges it while the first turn stil
     expect(answering).toEqual([first.update, second.update]); expect(peak).toBe(1);
     expect(events.filter(row => row.text === REPLY_ACKNOWLEDGEMENT)).toHaveLength(2);
     expect(events.filter(row => row.text !== REPLY_ACKNOWLEDGEMENT).map(row => row.text)).toEqual([first.reply, second.reply]);
+  } finally { journal.close(); rmSync(root, { recursive: true, force: true }); }
+});
+
+it.each([1000, 20000])('keeps acknowledgement through a format continuation lasting %s ms, then cancels before review', async continuationMs => {
+  const sample = captured.cases[1]!;
+  vi.useFakeTimers(); vi.setSystemTime(sample.at);
+  const root = mkdtempSync(join(tmpdir(), 'ack-continuation-'));
+  const journal = openPreviewJournal(join(root, 'journal.encrypted'), new Uint8Array(32).fill(71), {
+    kind: 'genesis', bot: '8820318295', chat: '-1004290919884', operator: '7812716706', forum: true,
+    grant: 'grant:preview', configurationDigest: 'sha256:offline', expires: sample.at + 86400000,
+    maxCalls: 20, maxReplies: 10, maxTurns: 10, maxBytes: 262144, cursor: 0 });
+  const sent: string[] = [];
+  let calls = 0, reviewing = false;
+  const ports: PreviewPorts = { now: () => Date.now(), stopped: () => false, groupDisclosure: async () => true,
+    prepareModel: input => prepareJournalEnvelope(input, 'claude-sonnet-5', journal.view.genesis.grant, Date.now(), 262144),
+    model: async () => {
+      calls++;
+      if (calls === 1) { await wait(1000); return { state: 'complete', failureClass: 'malformed' }; }
+      await wait(continuationMs);
+      const parsed = readAnswer(sample.answer, { wrapped: 'refuse' }); if (!parsed.ok) throw Error('recorded output invalid'); return parsed.value;
+    },
+    checkOutbound: () => {}, send: async input => { sent.push(input.expectedText); return 100 + sent.length; },
+    replyCheck: { elapsedMs: () => Date.now(),
+      jev: async () => { reviewing = true; await wait(12000); return { value: { model: 'jev-1.13.0',
+        answers: Object.fromEntries(Object.entries(sample.checks[0]!.scores).map(([rule, noul]) => [rule, { type: 'noul', noul }])) }, latencyMs: 12000 }; },
+      escalate: async () => { throw Error('unexpected escalation'); } } };
+  try {
+    const worker = createJournalWorker(journal, ports); worker.intake([sample.raw]); const drain = worker.drain();
+    await vi.advanceTimersByTimeAsync(10000);
+    expect(calls).toBe(2);
+    expect(sent).toEqual(continuationMs > 8000 ? [REPLY_ACKNOWLEDGEMENT] : []);
+    expect(reviewing).toBe(continuationMs < 8000);
+    if (continuationMs > 8000) expect(journal.view.order[0]?.answer).toBeUndefined();
+    await vi.advanceTimersByTimeAsync(40000); await drain;
+    expect(sent).toEqual(continuationMs > 8000 ? [REPLY_ACKNOWLEDGEMENT, sample.reply] : [sample.reply]);
+  } finally { journal.close(); rmSync(root, { recursive: true, force: true }); }
+});
+
+it('reopens two durable queued inputs and reconstructs both timers before the first serial answer', async () => {
+  const samples = captured.cases.slice(2);
+  const at = samples[0]!.at;
+  vi.useFakeTimers(); vi.setSystemTime(at);
+  const root = mkdtempSync(join(tmpdir(), 'ack-restart-')), path = join(root, 'journal.encrypted'), key = new Uint8Array(32).fill(71);
+  let journal = openPreviewJournal(path, key, {
+    kind: 'genesis', bot: '8820318295', chat: '-1004290919884', operator: '7812716706', forum: true,
+    grant: 'grant:preview', configurationDigest: 'sha256:offline', expires: at + 86400000,
+    maxCalls: 20, maxReplies: 10, maxTurns: 10, maxBytes: 262144, cursor: 0 });
+  const sent: { update: number; text: string }[] = [], answering: number[] = [];
+  const ports: PreviewPorts = { now: () => Date.now(), stopped: () => false, groupDisclosure: async () => true,
+    model: async input => {
+      const sample = samples.find(item => input.id.endsWith(String(item.update)))!; answering.push(sample.update);
+      await wait(20000);
+      const parsed = readAnswer(sample.answer, { wrapped: 'refuse' }); if (!parsed.ok) throw Error('recorded output invalid'); return parsed.value;
+    }, checkOutbound: () => {}, send: async input => { sent.push({ update: input.update, text: input.expectedText }); return 100 + sent.length; } };
+  try {
+    createJournalWorker(journal, ports).intake(samples.map(sample => sample.raw));
+    expect(journal.view.order.every(turn => turn.accepted && !turn.reserved)).toBe(true);
+    journal.close(); vi.clearAllTimers(); // process loss discards local timers, not durable intake
+    journal = openPreviewJournal(path, key);
+    const worker = createJournalWorker(journal, ports), drain = worker.drain();
+    await vi.advanceTimersByTimeAsync(10000);
+    expect(sent).toEqual(samples.map(sample => ({ update: sample.update, text: REPLY_ACKNOWLEDGEMENT })));
+    expect(answering).toEqual([samples[0]!.update]);
+    expect(journal.view.order[1]?.reserved).toBe(false);
+    await vi.advanceTimersByTimeAsync(40000); await drain;
+    expect(answering).toEqual(samples.map(sample => sample.update));
+    expect(sent.filter(row => row.text !== REPLY_ACKNOWLEDGEMENT).map(row => row.text)).toEqual(samples.map(sample => sample.reply));
+    journal.close(); journal = openPreviewJournal(path, key);
+    await createJournalWorker(journal, ports).drain();
+    expect(sent).toHaveLength(4); // accepted acknowledgement intents and answers never repeat
+  } finally { journal.close(); rmSync(root, { recursive: true, force: true }); }
+});
+
+
+it('keeps the timer through the recorded P4 memory lookup until its second answer is usable', async () => {
+  const fixture = JSON.parse(readFileSync(new URL('./fixtures/proofroom2-recallrank-2026-10-02.json', import.meta.url), 'utf8')) as {
+    lookupSamples: { samples: { label: string; calls: { raw: string }[] }[] } };
+  const sample = fixture.lookupSamples.samples.find(item => item.label === 'P4')!;
+  vi.useFakeTimers(); vi.setSystemTime(roomAt + 7_000_000);
+  const root = mkdtempSync(join(tmpdir(), 'ack-lookup-')), sent: string[] = [];
+  let calls = 0;
+  const { journal } = room(join(root, 'journal.encrypted'), 'B');
+  const worker = createJournalWorker(journal, { now: () => Date.now(), stopped: () => false,
+    checkOutbound: () => {}, send: async input => { sent.push(input.expectedText); return sent.length; },
+    model: async () => {
+      const index = calls++;
+      await wait(index === 0 ? 1000 : 20000);
+      const parsed = readAnswer(index === 0 ? sample.calls[0]!.raw : fixture.lookupSamples.samples.find(item => item.label === 'P1')!.calls[1]!.raw, { wrapped: 'refuse' });
+      if (!parsed.ok) throw Error('recorded lookup output invalid'); return parsed.value;
+    } });
+  try {
+    worker.intake([roomUpdate(question.update, question.message)]); const drain = worker.drain();
+    await vi.advanceTimersByTimeAsync(10000);
+    expect(calls).toBe(2); expect(journal.view.order.at(-1)?.lookup).toBeDefined();
+    expect(journal.view.order.at(-1)?.answer).toBeUndefined(); expect(sent).toEqual([REPLY_ACKNOWLEDGEMENT]);
+    await vi.advanceTimersByTimeAsync(30000); await drain;
+    expect(sent).toHaveLength(2); expect(sent[1]).toContain('2958'); expect(calls).toBe(2);
   } finally { journal.close(); rmSync(root, { recursive: true, force: true }); }
 });
