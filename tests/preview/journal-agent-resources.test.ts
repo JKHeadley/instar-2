@@ -11,7 +11,7 @@ import { successiveWorld, offlineProfile, OFFLINE_STORAGE_KEY, FIXTURE_DOORWAY, 
 
 const TOKEN = 'ghp_' + 'Z9y8X7w6V5u4T3s2R1q0P9o8';
 
-it.each([false, true])('PREVIEW-HOST-RESOURCE-FUNNEL records resources, custody and reviewed slow acknowledgement (slow=%s)', async slow => {
+it.each([false, true])('PREVIEW-HOST-RESOURCE-FUNNEL records resources, custody and fixed slow acknowledgement (slow=%s)', async slow => {
   const world = successiveWorld(), root = join(world.directory, 'resource-journal');
   const activation = join(world.directory, 'activation.json'), profile = join(world.directory, 'profile.json');
   const log = join(world.directory, 'poll.log'), updates = join(world.directory, 'updates.json');
@@ -20,7 +20,7 @@ it.each([false, true])('PREVIEW-HOST-RESOURCE-FUNNEL records resources, custody 
   const slowMarker = join(world.directory, 'slow-marker'), fakeClock = join(world.directory, 'clock.mjs');
   writeFileSync(fakeClock, `import { existsSync } from 'node:fs';
 import { createPreviewClock as realClock } from ${JSON.stringify(pathToFileURL(join(process.cwd(), 'tests/preview/clock.ts')).href)};
-export const createPreviewClock = (wall, elapsed) => realClock(() => wall() + (existsSync(${JSON.stringify(slowMarker)}) ? 8000 : 0), elapsed);
+export const createPreviewClock = (wall, elapsed) => realClock(wall, elapsed);
 `);
   writeFileSync(activation, JSON.stringify(world.activation()));
   writeFileSync(profile, JSON.stringify(offlineProfile));
@@ -48,7 +48,7 @@ process.stdout.write(JSON.stringify({ type: 'result', is_error: false, result: J
   validateSubscriptionActivation, SUBSCRIPTION_TOOLS_FRAMING, SUBSCRIPTION_TOOLS_SYSTEM_PROMPT,
   subscriptionToolsPolicy } from ${JSON.stringify(pathToFileURL(join(process.cwd(), 'src/assembly/production-provider.ts')).href)};
 ${FIXTURE_DOORWAY}
-import { writeFileSync } from 'node:fs';
+import { existsSync, writeFileSync } from 'node:fs';
 export const createClaudeCodeSubscriptionRoute = config => ({ kind: 'Success', value: { invoke: async prepared => {
   const r = await config.io.execute({ executable: process.execPath, args: [${JSON.stringify(cli)}, ${JSON.stringify(prompts)}, config.model],
     cwd: ${JSON.stringify(world.directory)}, env: { PATH: '/usr/bin:/bin' }, stdin: prepared, timeout: 20000, maxBytes: 1048576 });
@@ -58,7 +58,10 @@ export const createClaudeCodeSubscriptionRoute = config => ({ kind: 'Success', v
   const check = await config.io.execute({ executable: process.execPath, args: ['--version'],
     cwd: ${JSON.stringify(world.directory)}, env: { PATH: '/usr/bin:/bin' }, stdin: '', timeout: 20000, maxBytes: 1024 });
   if (check.code !== 0 || check.limited) return { state: 'uncertain' };
-  if (${slow} && !prepared.includes('Judge this proposed reply')) writeFileSync(${JSON.stringify(slowMarker)}, 'elapsed');
+  if (${slow} && !existsSync(${JSON.stringify(slowMarker)}) && !prepared.includes('Judge this proposed reply')) {
+    await new Promise(resolve => setTimeout(resolve, 8200));
+    writeFileSync(${JSON.stringify(slowMarker)}, 'elapsed');
+  }
   return { state: 'complete', bytes: JSON.parse(r.stdout).result, usage: { inputTokens: 1, outputTokens: 1 } };
 } } });
 `);
@@ -92,7 +95,9 @@ export const createClaudeCodeSubscriptionRoute = config => ({ kind: 'Success', v
     expect(sent).toContain('Noted.');
     expect(sent).not.toContain(TOKEN);
     const sends = readFileSync(`${log}.sends`, 'utf8').trim().split('\n').map(line => JSON.parse(line));
-    expect(sends.filter(row => row.text === "I'm working on your reply.")).toHaveLength(slow ? 1 : 0);
+    expect(sends.filter(row => row.text === 'Checking that now.')).toHaveLength(slow ? 2 : 0);
+    // Both messages arrived together; the second also waited through the slow first turn.
+    expect(new Set(sends.filter(row => row.text === 'Checking that now.').map(row => row.reply_parameters.message_id)).size).toBe(slow ? 2 : 0);
     expect(sends.at(-1).text).toContain('Noted.');
     // The model never received the secret; it saw the stored reference instead.
     const seen = readFileSync(prompts, 'utf8');
@@ -107,7 +112,7 @@ export const createClaudeCodeSubscriptionRoute = config => ({ kind: 'Success', v
       inherited: { state: 'observed', effectivePerLaunch: { handleCount: expect.any(Number) } },
       counters: { admitted: seen.trim().split('\n').length * 2, refusedCapacity: 0 } }); // each actual call launches its model command and no-prompt check; shutdown can retain an unlaunched reservation
     expect(status.calls).toBeGreaterThanOrEqual(seen.trim().split('\n').length);
-    if (slow) expect(seen).toContain("I'm working on your reply.");
+    expect(seen).not.toContain('Checking that now.'); // fixed template never reaches a model review
     expect(status.resources.counters.admitted).toBeGreaterThanOrEqual(2);
     // Each launch's bounds are declared by what the host holds, and its facts are durable in the journal.
     expect(status.resources.enforcement).toEqual({ cpuPerProcess: 'hard', handlesPerProcess: 'hard', memory: 'sampled', treeCpu: 'sampled',

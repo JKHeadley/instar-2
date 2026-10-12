@@ -1,0 +1,281 @@
+{
+  "source": "Read-only authenticated journal capture: preview-trial-root/justin-group-20261010, live build 4b125fec, 2026-10-12; synthetic timing scheduler replays exact recorded outputs, never calls a model or Telegram.",
+  "cases": [
+    {
+      "update": 969390407,
+      "at": 1791794820327,
+      "raw": {
+        "update_id": 969390407,
+        "message": {
+          "message_id": 157,
+          "from": {
+            "id": 7812716706,
+            "is_bot": false,
+            "first_name": "Justin",
+            "last_name": "Headley",
+            "language_code": "en"
+          },
+          "chat": {
+            "id": -1004290919884,
+            "title": "Instar 2.0",
+            "is_forum": true,
+            "type": "supergroup"
+          },
+          "date": 1791794820,
+          "message_thread_id": 3,
+          "reply_to_message": {
+            "message_id": 3,
+            "from": {
+              "id": 8820318295,
+              "is_bot": true,
+              "first_name": "Instar 2.0",
+              "username": "echo_mmtest_seam_b27x_bot"
+            },
+            "chat": {
+              "id": -1004290919884,
+              "title": "Instar 2.0",
+              "is_forum": true,
+              "type": "supergroup"
+            },
+            "date": 1791594517,
+            "message_thread_id": 3,
+            "forum_topic_created": {
+              "name": "Getting started",
+              "icon_color": 7322096
+            },
+            "is_topic_message": true
+          },
+          "text": "From Echo (the desk), automated check after an update, nothing here to remember or act on: please look up tomorrow's sunrise time in Seattle and say where you found it.",
+          "is_topic_message": true
+        }
+      },
+      "answer": "{\"reasoning\":\"This is a routine, automated check from Echo (the desk) framed as 'nothing here to remember or act on' — it asks for a specific public fact (tomorrow's sunrise time in Seattle) plus provenance. I ran two tool calls: WebFetch on sunrise-sunset.org/us/seattle-wa (produced 7:25:33 am PDT for Oct 13, 2026) and WebSearch for 'sunrise Seattle October 13 2026' (produced corroborating results from timeanddate.com and other aggregated sources converging on ~7:24-7:26 AM). Today is 2026-10-12, so tomorrow is 2026-10-13, consistent with both sources. I'll report the precise figure from the direct read and note corroboration with sources, matching the pattern of prior accepted replies in history for this same recurring check. No memory, dated, or promise fields apply here — this is a one-off factual lookup labeled as nothing to remember or act on, and my reply doesn't commit me to any future action.\",\"answer\":\"Sunrise in Seattle, WA tomorrow (Tuesday, Oct 13, 2026) is at 7:25:33 am PDT — from a direct read of sunrise-sunset.org's Seattle page just now. A web search I ran alongside it corroborates this closely: timeanddate.com and other sources converge on roughly 7:24–7:26 AM PDT for the same date.\\n\\nSources:\\n- https://sunrise-sunset.org/us/seattle-wa\\n- https://www.timeanddate.com/sun/usa/seattle?month=10\"}",
+      "reply": "Sunrise in Seattle, WA tomorrow (Tuesday, Oct 13, 2026) is at 7:25:33 am PDT — from a direct read of sunrise-sunset.org's Seattle page just now. A web search I ran alongside it corroborates this closely: timeanddate.com and other sources converge on roughly 7:24–7:26 AM PDT for the same date.\n\nSources:\n- https://sunrise-sunset.org/us/seattle-wa\n- https://www.timeanddate.com/sun/usa/seattle?month=10",
+      "checks": [
+        {
+          "verdict": "pass",
+          "ruleIds": [],
+          "confidence": 0.81,
+          "path": "jev",
+          "latencyMs": 237,
+          "scores": {
+            "raw_path": 0.01,
+            "cli_command": 0.04,
+            "config_key": 0.01,
+            "credential": 0.02,
+            "api_endpoint": 0.03,
+            "quits_on_self": 0.02,
+            "claims_blocked": 0.02,
+            "parks_on_user": 0.19,
+            "defers_work": 0.03,
+            "unrecorded_blocker": 0.02
+          },
+          "usage": {
+            "inputTokens": 817,
+            "outputTokens": 184,
+            "charge": null
+          },
+          "candidateDigest": "bb396b7c8d768665110c8bc53d6161e6be1cca37ea59cae48bf4353e33d51368"
+        }
+      ],
+      "timing": {
+        "reserve": 268,
+        "answerReady": 21933,
+        "answerDuration": 21653,
+        "review": 272,
+        "send": 772,
+        "ackReview": 10312,
+        "ackSent": 26860
+      }
+    },
+    {
+      "update": 969390408,
+      "at": 1791794871374,
+      "raw": {
+        "update_id": 969390408,
+        "message": {
+          "message_id": 160,
+          "from": {
+            "id": 7812716706,
+            "is_bot": false,
+            "first_name": "Justin",
+            "last_name": "Headley",
+            "language_code": "en"
+          },
+          "chat": {
+            "id": -1004290919884,
+            "title": "Instar 2.0",
+            "is_forum": true,
+            "type": "supergroup"
+          },
+          "date": 1791794871,
+          "text": "From Echo (the desk), automated check after an update, nothing here to remember or act on: what is 23 times 3?"
+        }
+      },
+      "answer": "{\"reasoning\":\"Simple arithmetic: 23 × 3 = 69. This is a straightforward timing check with no memory implications - it's explicitly flagged 'nothing here to remember or act on'. No tools needed for basic multiplication.\",\"answer\":\"23 × 3 = 69.\"}",
+      "reply": "23 × 3 = 69.",
+      "checks": [
+        {
+          "verdict": "pass",
+          "ruleIds": [],
+          "confidence": 0.8200000000000001,
+          "path": "jev",
+          "latencyMs": 218,
+          "scores": {
+            "raw_path": 0.01,
+            "cli_command": 0.1,
+            "config_key": 0.05,
+            "credential": 0.02,
+            "api_endpoint": 0.01,
+            "quits_on_self": 0.03,
+            "claims_blocked": 0.02,
+            "parks_on_user": 0.18,
+            "defers_work": 0.03,
+            "unrecorded_blocker": 0.02
+          },
+          "usage": {
+            "inputTokens": 698,
+            "outputTokens": 184,
+            "charge": null
+          },
+          "candidateDigest": "0f4443624c4b2a433e5c37941d7b9d0f0f650b8b6a93549e04db599f50673db2"
+        }
+      ],
+      "timing": {
+        "reserve": 247,
+        "answerReady": 6441,
+        "answerDuration": 6182,
+        "review": 2129,
+        "send": 756,
+        "ackReview": null,
+        "ackSent": null
+      }
+    },
+    {
+      "update": 969390409,
+      "at": 1791794902465,
+      "raw": {
+        "update_id": 969390409,
+        "message": {
+          "message_id": 162,
+          "from": {
+            "id": 7812716706,
+            "is_bot": false,
+            "first_name": "Justin",
+            "last_name": "Headley",
+            "language_code": "en"
+          },
+          "chat": {
+            "id": -1004290919884,
+            "title": "Instar 2.0",
+            "is_forum": true,
+            "type": "supergroup"
+          },
+          "date": 1791794902,
+          "text": "From Echo (the desk), automated check after an update, nothing here to remember or act on: please look up tomorrow's sunset time in Portland, Oregon and say where you found it."
+        }
+      },
+      "answer": "{\"reasoning\":\"I directly read sunrise-sunset.org's Portland page via WebFetch, which gave 6:28:20 pm PDT for tomorrow (Tuesday, Oct 13, 2026). A WebSearch corroborated this closely with other sources converging around 6:28-6:30 PM PDT for the same date. Both tool calls (WebFetch #1 and WebSearch #2) ran in this turn and produced these values. This is an automated check flagged 'nothing here to remember or act on' by the operator, so no memory/dated/directive fields apply - just answer directly with the looked-up fact and sources.\",\"answer\":\"Sunset in Portland, Oregon tomorrow (Tuesday, Oct 13, 2026) is at 6:28:20 PM PDT — from a direct read of sunrise-sunset.org's Portland page just now. A web search I ran alongside it corroborates this closely, with other sources converging on roughly 6:28–6:30 PM PDT for the same date.\\n\\nSources:\\n- https://sunrise-sunset.org/us/portland-or\\n- https://www.timeanddate.com/sun/usa/portland-or\"}",
+      "reply": "Sunset in Portland, Oregon tomorrow (Tuesday, Oct 13, 2026) is at 6:28:20 PM PDT — from a direct read of sunrise-sunset.org's Portland page just now. A web search I ran alongside it corroborates this closely, with other sources converging on roughly 6:28–6:30 PM PDT for the same date.\n\nSources:\n- https://sunrise-sunset.org/us/portland-or\n- https://www.timeanddate.com/sun/usa/portland-or",
+      "checks": [
+        {
+          "verdict": "pass",
+          "ruleIds": [],
+          "confidence": 0.8200000000000001,
+          "path": "jev",
+          "latencyMs": 255,
+          "scores": {
+            "raw_path": 0.01,
+            "cli_command": 0.04,
+            "config_key": 0.01,
+            "credential": 0.02,
+            "api_endpoint": 0.03,
+            "quits_on_self": 0.03,
+            "claims_blocked": 0.02,
+            "parks_on_user": 0.18,
+            "defers_work": 0.03,
+            "unrecorded_blocker": 0.02
+          },
+          "usage": {
+            "inputTokens": 811,
+            "outputTokens": 184,
+            "charge": null
+          },
+          "candidateDigest": "e16536e52946bf52bb553bb445cf8b54499a98837934b9195f25bd3e3309bbe1"
+        }
+      ],
+      "timing": {
+        "reserve": 100,
+        "answerReady": 20422,
+        "answerDuration": 20311,
+        "review": 288,
+        "send": 814,
+        "ackReview": 14546,
+        "ackSent": 29220
+      }
+    },
+    {
+      "update": 969390410,
+      "at": 1791794912498,
+      "raw": {
+        "update_id": 969390410,
+        "message": {
+          "message_id": 163,
+          "from": {
+            "id": 7812716706,
+            "is_bot": false,
+            "first_name": "Justin",
+            "last_name": "Headley",
+            "language_code": "en"
+          },
+          "chat": {
+            "id": -1004290919884,
+            "title": "Instar 2.0",
+            "is_forum": true,
+            "type": "supergroup"
+          },
+          "date": 1791794912,
+          "text": "From Echo (the desk), automated check, second message sent right after the first: what is 12 plus 30?"
+        }
+      },
+      "answer": "{\"reasoning\":\"This is from Echo (the desk), an automated check, flagged explicitly as nothing to remember or act on. It's a simple arithmetic question: 12 + 30 = 42. No tool calls needed, no ambiguity, no memory items to save, no directives or promises created. This is a straightforward computational answer like the prior timing checks in history (e.g., 13+29=42, 100-37=63). No dated events, no memory candidates to act on, no open loops created by a plain arithmetic reply.\",\"answer\":\"12 + 30 = 42.\"}",
+      "reply": "12 + 30 = 42.",
+      "checks": [
+        {
+          "verdict": "pass",
+          "ruleIds": [],
+          "confidence": 0.84,
+          "path": "jev",
+          "latencyMs": 183,
+          "scores": {
+            "raw_path": 0.01,
+            "cli_command": 0.07,
+            "config_key": 0.04,
+            "credential": 0.02,
+            "api_endpoint": 0.01,
+            "quits_on_self": 0.04,
+            "claims_blocked": 0.02,
+            "parks_on_user": 0.16,
+            "defers_work": 0.04,
+            "unrecorded_blocker": 0.02
+          },
+          "usage": {
+            "inputTokens": 699,
+            "outputTokens": 184,
+            "charge": null
+          },
+          "candidateDigest": "4b83d4a5096974c3b88ffa7a6771b1844f4f6e53edb0d7f71b16db661622e6f7"
+        }
+      ],
+      "timing": {
+        "reserve": 20552,
+        "answerReady": 40905,
+        "answerDuration": 7190,
+        "review": 216,
+        "send": 2600,
+        "ackReview": 10466,
+        "ackSent": 33707
+      }
+    }
+  ]
+}

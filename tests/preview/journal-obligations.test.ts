@@ -885,7 +885,7 @@ it('judges a restated can\'t-do answer against the limit it already settled, and
       const turn = w.journal.view.order.find(item => item.text === DMV_ASK)!;
       const newReviews = w.reviews.slice(before);
       const acknowledgements = newReviews.filter(review => review.candidateReply === REPLY_ACKNOWLEDGEMENT);
-      expect(acknowledgements.length, label).toBe(between === 'queued-due' ? 1 : 0);
+      expect(acknowledgements.length, label).toBe(0); // fixed acknowledgement never consumes a model review
       expect(newReviews.length - acknowledgements.length, label).toBe(sends ? 1 : 2);
       expect(turn.answerBlocker, label).toBeUndefined();
       // Live 969389730: the writer relied on a settled record of a different action (looking up a bill, not paying it).

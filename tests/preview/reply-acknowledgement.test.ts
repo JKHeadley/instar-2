@@ -7,7 +7,6 @@ import { createJournalWorker, openPreviewJournal, REPLY_ACKNOWLEDGEMENT, unknown
 import { readAnswer } from './answer-reading.js';
 import { prepareJournalEnvelope } from './journal-envelope.js';
 import { jevQuestions } from './reply-check.js';
-import { STOP_CONFIRM_TEXT } from './status-command.js';
 
 const key = new Uint8Array(32).fill(71);
 const genesis = { kind: 'genesis' as const, bot: '12345678', chat: '7654321', operator: '7654321',
@@ -36,7 +35,7 @@ function fixture(options: { tool?: boolean; receipt?: number | null; verdict?: '
     stop: () => { stopped = true; }, close: () => { journal.close(); rmSync(root, { recursive: true, force: true }); } };
 }
 
-for (const receipt of [10, null]) it(`slow active reply sends one reviewed acknowledgement then answer; restart fences receipt ${receipt}`, async () => {
+for (const receipt of [10, null]) it(`slow active reply sends one fixed acknowledgement then answer; restart fences receipt ${receipt}`, async () => {
   const f = fixture({ receipt });
   try {
     f.worker.intake([update()]); const drain = f.worker.drain(); await f.entered.promise;
@@ -44,7 +43,7 @@ for (const receipt of [10, null]) it(`slow active reply sends one reviewed ackno
     f.advance(1); await Promise.all([f.worker.minimal(), f.worker.minimal()]);
     expect(f.sent.map(row => row.expectedText)).toEqual([REPLY_ACKNOWLEDGEMENT]);
     expect(f.sent[0]).toMatchObject({ kind: 'reply', disposition: 'result', replyTo: 101 });
-    expect(f.reviews).toEqual(['acknowledgement']);
+    expect(f.reviews).toEqual([]);
     f.advance(9000); await f.worker.minimal(); expect(f.sent).toHaveLength(1);
     f.answer.resolve('Here is the answer.'); await drain;
     expect(f.sent.map(row => row.expectedText)).toEqual([REPLY_ACKNOWLEDGEMENT, 'Here is the answer.']);
@@ -71,8 +70,8 @@ it('a tool-enabled answer acknowledges only once it is slow', async () => {
   } finally { f.close(); }
 });
 
-for (const options of [{ verdict: 'violation' as const }, { cap: 2 }, { replies: 1 }])
-  it(`keeps acknowledgement within review and allowance floors: ${JSON.stringify(options)}`, async () => {
+for (const options of [{ replies: 1 }])
+  it(`keeps acknowledgement within allowance floors: ${JSON.stringify(options)}`, async () => {
     const f = fixture(options);
     try { f.worker.intake([update()]); const drain = f.worker.drain(); await f.entered.promise;
       f.advance(8000); await f.worker.minimal(); f.answer.resolve('Done.'); await drain;
@@ -80,35 +79,25 @@ for (const options of [{ verdict: 'violation' as const }, { cap: 2 }, { replies:
     } finally { f.close(); }
   });
 
-it('polls subsequent input and confirms a Telegram stop before acknowledgement review completes', async () => {
-  const f = fixture(), reviewing = pendingResult<void>();
-  const review = pendingResult<Awaited<ReturnType<NonNullable<PreviewPorts['replyCheck']>['escalate']>>>();
-  f.ports.replyCheck!.escalate = async () => { reviewing.resolve(); return review.promise; };
+it('intake and confirmed stop remain live while acknowledgement disclosure is pending', async () => {
+  const f = fixture(), checking = pendingResult<void>(), disclosure = pendingResult<boolean>();
+  let hold = false;
+  const originalSend = f.ports.send;
+  f.ports.sendAdmits = true;
+  f.ports.send = async input => {
+    if (hold) { checking.resolve(); await disclosure.promise; }
+    if (input.current && !input.current()) return { kind: 'refused', reason: 'acknowledgement cancelled' };
+    input.admit?.(); return originalSend(input);
+  };
   const worker = createJournalWorker(f.journal, f.ports);
-  let nextPollStarted = false;
   try {
     worker.intake([update()]); const drain = worker.drain().catch(error => error); await f.entered.promise;
-    f.advance(8000);
-    // Match the host's pre-poll and post-intake awaits; an unresolved review must hold neither.
-    const cycle = (async () => {
-      await worker.minimal(); nextPollStarted = true;
-      worker.intake([update(2), { ...update(3), message: { ...update(3).message, text: '/stop' } }]);
-      await worker.minimal();
-      const stop = f.sent.find(row => row.expectedText === STOP_CONFIRM_TEXT);
-      const markup = stop?.replyMarkup as { inline_keyboard: { callback_data: string }[][] };
-      worker.intake([{ update_id: 4, callback_query: { id: 'stop-4', from: { id: 7654321 },
-        data: markup.inline_keyboard[0]![0]!.callback_data,
-        message: { message_id: 900, chat: { id: 7654321, type: 'private' } } } }]);
-    })();
-    await reviewing.promise; await new Promise<void>(done => setImmediate(done));
-    const pending = { nextPollStarted, inputConsumed: f.journal.view.order.some(turn => turn.update === 2),
-      stopped: f.journal.view.stop, reviews: f.journal.view.order[0]?.heldNoticeReview,
-      acknowledgements: f.sent.filter(row => row.expectedText === REPLY_ACKNOWLEDGEMENT).length };
-    review.resolve({ verdict: 'pass', ruleIds: [], confidence: 1, latencyMs: 0 }); await cycle;
+    hold = true; f.advance(8000); await worker.minimal(); await checking.promise;
+    worker.intake([update(2)]);
+    expect(f.journal.view.order.some(turn => turn.update === 2)).toBe(true);
+    worker.stop('operator'); disclosure.resolve(true);
     f.answer.resolve('Done.'); expect(await drain).toMatchObject({ message: 'preview stopped' });
-    expect(pending).toEqual({ nextPollStarted: true, inputConsumed: true, stopped: 'operator',
-      reviews: undefined, acknowledgements: 0 });
-    expect(f.sent.map(row => row.expectedText)).toEqual([STOP_CONFIRM_TEXT]);
+    expect(f.sent).toHaveLength(0);
   } finally { f.close(); }
 });
 
@@ -166,7 +155,7 @@ for (const shape of shapes.otherShapes) it(`acknowledges once while replaying re
     f.answer.resolve('release recorded output'); await drain;
     expect(f.sent.filter(row => row.expectedText === REPLY_ACKNOWLEDGEMENT)).toHaveLength(1);
     expect(f.sent.every(row => row.expectedText.trim().length > 0)).toBe(true);
-    expect(f.journal.view.order[0]?.heldNoticeReview?.verdict).toBe('pass');
+    expect(f.journal.view.order[0]?.heldNoticeReview).toBeUndefined();
     await worker.drain(); expect(f.sent.filter(row => row.expectedText === REPLY_ACKNOWLEDGEMENT)).toHaveLength(1);
   } finally { f.close(); }
 });
@@ -193,7 +182,7 @@ it('replays live lookup 969390382 with its recorded answer, Jev and contextual r
     expect(sent.map(row => row.expectedText)).toEqual([REPLY_ACKNOWLEDGEMENT, captured.reply]);
     expect(sent.map(row => row.replyTo)).toEqual([105, 105]);
     expect(journal.view.order[0]?.replyChecks?.map(check => check.path)).toEqual(['jev']);
-    expect(journal.view.order[0]?.heldNoticeReview?.verdict).toBe('pass');
+    expect(journal.view.order[0]?.heldNoticeReview).toBeUndefined();
     journal.compact(); journal.close(); const reopened = openPreviewJournal(path, key);
     try { await createJournalWorker(reopened, ports).drain(); expect(sent).toHaveLength(2); } finally { reopened.close(); }
   } finally { journal.close(); rmSync(root, { recursive: true, force: true }); }
@@ -237,15 +226,34 @@ for (const receipt of [10, null]) it(`a crash after acknowledgement intent and b
   } finally { f.close(); }
 });
 
-it('an unavailable acknowledgement review is recorded once and does not suppress the final answer', async () => {
-  const f = fixture();
+it('a fixed acknowledgement needs neither review availability nor a paid-call slot', async () => {
+  const f = fixture({ cap: 2 });
   f.ports.replyCheck!.escalate = async () => { throw Error('review unavailable'); };
   const worker = createJournalWorker(f.journal, f.ports);
   try { worker.intake([update()]); const drain = worker.drain(); await f.entered.promise;
     f.advance(8000); await worker.minimal(); await worker.minimal();
-    expect(f.journal.view.order[0]?.heldNoticeReview?.verdict).toBe('unavailable');
-    expect(unknownCallKeys(f.journal.view).reviews).toHaveLength(1);
+    expect(f.journal.view.order[0]?.heldNoticeReview).toBeUndefined();
+    expect(unknownCallKeys(f.journal.view).reviews).toHaveLength(0);
     f.answer.resolve('Done.'); await drain;
+    expect(f.sent.map(row => row.expectedText)).toEqual([REPLY_ACKNOWLEDGEMENT, 'Done.']);
+  } finally { f.close(); }
+});
+
+it('cancels an acknowledgement when the answer arrives during its disclosure check', async () => {
+  const f = fixture(), checking = pendingResult<void>(), disclosure = pendingResult<boolean>();
+  let hold = false;
+  const originalSend = f.ports.send;
+  f.ports.sendAdmits = true;
+  f.ports.send = async input => {
+    if (hold) { checking.resolve(); await disclosure.promise; }
+    if (input.current && !input.current()) return { kind: 'refused', reason: 'acknowledgement cancelled' };
+    input.admit?.(); return originalSend(input);
+  };
+  const worker = createJournalWorker(f.journal, f.ports);
+  try { worker.intake([update()]); const drain = worker.drain(); await f.entered.promise;
+    hold = true; f.advance(8000); await worker.minimal(); await checking.promise;
+    f.answer.resolve('Done.'); await new Promise<void>(done => setImmediate(done));
+    hold = false; disclosure.resolve(true); await drain;
     expect(f.sent.map(row => row.expectedText)).toEqual(['Done.']);
   } finally { f.close(); }
 });
