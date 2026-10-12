@@ -26,6 +26,8 @@ Prompt finding: fb5fa7e706c8 | protocol-literal | Existing unchanged memory repl
 
 Subject (19 paths): register-source/owner-references/preview.json, tests/preview/README.md, tests/preview/fixtures/reply-acknowledgement-live-2026-10-12.json, tests/preview/group-audience-cache.test.ts, tests/preview/group-carry-requests.test.ts, tests/preview/jev-stage-latency.test.ts, tests/preview/journal-agent-resources.test.ts, tests/preview/journal-agent.mjs, tests/preview/journal-cutover-ports.mjs, tests/preview/journal-obligations.test.ts, tests/preview/journal-session-work-launch.test.ts, tests/preview/journal-summary-crash.test.ts, tests/preview/journal.ts, tests/preview/minimal-responder.test.ts, tests/preview/reply-acknowledgement-timing.test.ts, tests/preview/reply-acknowledgement.test.ts, tests/preview/send-stage-replay.test.ts, tests/preview/two-machine-floors.test.ts, tests/preview/two-machine-runner.test.ts
 
+Publication: Existing register builder replayed merged source 38c9aee806879846f06d547b92fbeac7dc6f48cc; all seven generated conflicts are now regenerated. Desk rehash and repin found no stale pins.
+
 ## Closing block
 
 simplestRobustRoute: This is the simplest robust route: ordinary merge, retain both compatible assertions, and regenerate publication through existing desk tools. No new machinery. Start guards remain durable intake, disclosure and ownership; limits remain reply caps and bounded retries; end guards remain current eligibility and durable send custody. Recorded replays are verification, not a new live deployment claim.
