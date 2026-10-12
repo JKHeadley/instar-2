@@ -123,6 +123,12 @@ it('keeps private-chat packet bytes from afa6be39 apart from the reviewed memory
     const historical = JSON.parse(context);
     historical.memoryDecision = 'Return memory:[] unless the verified operator corrects, forgets or sets reply style. '
       + guide.slice(guide.indexOf('Each memory item'));
+    // Restore only the reviewed recall-prose trim, keeping the historical hash
+    // and every unrelated packet byte fixed. The current instruction still binds exact evidence.
+    expect(historical.capability).toContain('For recall, state a remembered detail only when the offered journal evidence supports that exact detail');
+    historical.capability = historical.capability.replace(
+      /Summary covers earlier turns;.*?Cite sourceLabel; disclose unknown sources\./u,
+      "Summary covers earlier turns; history has later turns. For a question about what the operator said, state a remembered detail only when the offered journal evidence supports that exact detail, not a similar name, event or date, a summary inference, your earlier reply or the question's premise; otherwise say \"I don't know from this journal\", never that the operator did not say it. Cite sourceLabel for supported remembered facts. Say when the source is unknown.");
     expect(createHash('sha256').update(JSON.stringify(historical)).digest('hex')).toBe('4f9861f1b198353ff376439dfdfdeb783be92d17167ca2b056d34613f4a04736');
   } finally { journal.close(); }
 });

@@ -25,13 +25,15 @@ Prompt finding: 849db3a6296a | quoted-evidence | Existing self-description or me
 Prompt finding: 95e349aaf4ac | quoted-evidence | Existing self-description or memory-list protocol wording is quoted by regression tests; this repair introduces no fixed semantic answer — fixture-phrase tests/preview/briefing.ts <- tests/preview/selfdesc-abilities.test.ts: "via the doorway's four tests; standing grants need no new approval."
 Deferral: tests/preview/briefing.ts:217 | not-a-deferral=The instruction precedence verb is defer, not a postponement of builder work.
 
-Subject (4 paths): tests/preview/briefing.ts, tests/preview/guidance.test.ts, tests/preview/journal.ts, tests/preview/summary-cascade-stall.test.ts
+Subject (15 paths): generated/capabilities.json, generated/capabilities.md, generated/coverage.md, generated/glossary.md, generated/register.json, generated/rules.md, generated/source.json, tests/preview/briefing.ts, tests/preview/guidance.test.ts, tests/preview/hallucinated-memory-rate.test.ts, tests/preview/journal-boundaries.test.ts, tests/preview/journal-channel-memory.test.ts, tests/preview/journal.ts, tests/preview/summary-cascade-stall.test.ts, tests/preview/topic-awareness.test.ts
 
 Register replay: regenerated seven generated/ publications at source commit 89fca85326d2fc73677e28d755b451366edfa0be; reviewed the generation/source-only diff and retained all declaration counts.
 
 Recall consumers: updated the negative-control phrase locator and source-label assertion for the shortened guidance; five tests across hallucinated-memory-rate.test.ts and journal-channel-memory.test.ts pass.
 
 Prompt finding: e8708c7fea24 | quoted-evidence | The regression test locates and removes the current recall instruction to exercise its negative control; the runtime prose is not derived from a semantic fixture answer.
+
+Pinned instruction consumers: journal-boundaries now checks the compact compaction/provenance wording; topic-awareness restores only the reviewed recall prose for its historical packet comparison, preserving the original digest. Both files pass all 34 tests.
 
 ## Closing block
 

@@ -72,13 +72,13 @@ describe('Rules 3 and 17: the body/mind and agency instructions are delivered as
     const instructions = prepared.messages[2]!.content;
     expect(instructions).toBe(ANSWER_INSTRUCTIONS);
     expect(instructions).toContain('promises:[{quote:exact reply sentence');
-    expect(instructions).toContain('If packet.continuity is present');
+    expect(instructions).toContain('With packet.continuity, context was compacted through continuity.through');
     expect(instructions).toContain('Rule 3 — The Body and the Mind: The agent is two intelligences');
     expect(instructions).toContain('The agent acts inside its recorded role, including through the accounts granted with it, without asking again.');
     expect(instructions).toContain('Outside every grant it refuses and names the grant needed; the purpose fixes the short list requiring sign-off.');
     expect(instructions).toContain('quote the note’s tools/outbound sentence verbatim as its own paragraph without its label; do not restate it.');
     expect(instructions).toContain('Rule 17 — Architectural Agency in the Gap: Between what the model is biased to do');
-    expect(instructions).toContain('not an operator message, not quoted data');
+    expect(instructions).toContain('not operator input or quoted data');
     expect(instructions).toContain('secrets, the spend cap, stop, no duplicate sends and durable intake');
     for (const [rule] of MIND_RULES) expect(instructions).toContain(`Rule ${rule} — `);
     // The quoted data channel does not carry it: the instruction is not an excerpt among sources.
