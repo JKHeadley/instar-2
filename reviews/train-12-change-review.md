@@ -48,6 +48,10 @@ Decision: train-12-capsentence2 | Complete the in-progress ordinary merge of 1c0
 Decision: train-12-desk-resolution | Apply the 2026-10-12 desk decision in lanes/fanout/train-12b-prompt.txt: capsentence2 three requirements win in meaning, compact the instruction without editing the floor guard. | reported=/Users/dabombstudio/.instar/agents/echo/.instar/lanes/train-12b-PROGRESS.md
 Decision: train-12-publication | Regenerate owner hashes and publications using the cint-L37 desk chain; never hand-merge generated contents. | reported=/Users/dabombstudio/.instar/agents/echo/.instar/lanes/train-12b-PROGRESS.md
 
+Decision: train-12-replay-consumer | Adapt act-first historical reviewer-question equality through the six exact prose shortenings already approved in train-11 00641ee8; retain rule bytes and all captured verdicts. | reported=/Users/dabombstudio/.instar/agents/echo/.instar/lanes/train-12b-PROGRESS.md
+
+Additional consumer: tests/preview/act-first.test.ts keeps the original capture immutable and translates only six historical explanatory clauses; all other question bytes must match. No fresh model quality claim.
+
 ## Closing block
 
 simplestRobustRoute: This is the simplest robust route: continue the two verified ordinary merges, resolve the one desk-authorized prompt conflict by shortening its wording, and reuse desk generation. No added machinery or budget expansion. Start guards are exact heads and immutable captures; end guards are targeted tests, the unchanged floor and register checks. Existing safety floors remain. No autonomous deployment claim.

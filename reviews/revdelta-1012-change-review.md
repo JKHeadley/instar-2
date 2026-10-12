@@ -26,6 +26,9 @@ Repair: Shorten review question prose by 156 bytes without changing rule text, e
 
 Recorded replay: guidance-live-2026-10-03.json supplies reviewer outputs for 969389923, 969389925, 969389883, 969390016 and 969389926. Current review envelopes carry those candidates. retrospective-duty-followup-train-1-2026-10-08.json supplies delivered 715672479 and empty-context 715672550 bytes. proofroom-summary-cascade-stall-2026-09-30.json supplies writer 715672484, uncertain results 715672492/496/497, Jev 0.38 undecided and stronger-review output. defaultroot-proofroom2-rule40-2026-10-02.json supplies unsure Jev scores and full reviews through the live-shaped conversation. These establish path execution with recorded outputs, not a fresh live model quality judgment.
 
+Deferral: tests/preview/fixtures/capsentence2-2026-10-11.json:166 | not-a-deferral=Immutable captured model reasoning, not deferred builder work.
+Deferral: tests/preview/fixtures/capsentence2-2026-10-11.json:486 | not-a-deferral=Immutable captured model reasoning, not deferred builder work.
+
 simplestRobustRoute: Shorten existing unpinned prose and remove one exact semantic duplicate; retain all facts, existing machinery and limits. The existing floor test enforces maintenance margin, and existing recorded replays prove delivery of the changed questions. No new mechanism or autonomous capability is introduced.
 80/20: Measured red-to-green boundary evidence and recorded replays support desk review; no independent convergence claim.
 VERDICT: author submission; the review desk records its independent verdict.
