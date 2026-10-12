@@ -15,7 +15,7 @@ Undo and recovery: Revert the source repair and regenerate the register; histori
 Multi-machine posture: Stateless prompt composition is identical on each machine. Temporary offline replay journals and diagnostic logs are machine-local; no replication, ownership or transport changes.
 Layer below: Checked sourcePacket excerpt hashing, ANSWER_INSTRUCTIONS delivery, packetFor recall instructions, packet fitting and review reserve, replay callbacks and real recorded outputs. Both constitutional documents read in full.
 Bug class: integration
-Bug evidence: reproducer=tests/preview/default-context-floor.test.ts and default-root-conversation.test.ts plus guidance.test.ts and summary-cascade-stall.test.ts; Before: 13 failures in four named files. After: those four files pass 39 tests, with only the existing manual capture test skipped. Exact floor and one-byte-over boundary both pass, including the tool route. Recorded default-root directive and blocker paths fire.
+Bug evidence: reproducer=tests/preview/guidance.test.ts; Before: 13 failures in four named files. After: those four files pass 39 tests, with only the existing manual capture test skipped. Exact floor and one-byte-over boundary both pass, including the tool route. Recorded default-root directive and blocker paths fire.
 Hook bypass: none
 Convergence: none
 <!-- Rule 102: record each mid-run engineering decision as a line: Decision: <id> | <what was decided, and why> | reported=<report that names the id> -->
