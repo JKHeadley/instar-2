@@ -1,5 +1,21 @@
 [
   {
+    "revision": 14,
+    "date": "2026-10-11",
+    "status": "draft",
+    "cause": {
+      "kind": "conversation",
+      "note": "Justin, topic 102965, 2026-10-11 16:28 PDT: \"Yes\", replying to the observer’s 16:26 question quoting the exact clarification; final-head GitHub code-owner approval and merge pending."
+    },
+    "changes": [
+      {
+        "what": "Add to Rule 87: A brief acknowledgement in reply to the person's own message, when the answer will take more than a few seconds, is part of the answer, not a notification.",
+        "why": "A brief reply acknowledging the person’s own message belongs to the answer when answering takes more than a few seconds. The existing status and churn restriction remains.",
+        "ref": "Justin, topic 102965, 2026-10-11 16:28 PDT: \"Yes\", replying to the observer’s 16:26 question quoting the exact clarification; final-head GitHub code-owner approval and merge pending."
+      }
+    ]
+  },
+  {
     "revision": 13,
     "date": "2026-10-10",
     "status": "draft",
