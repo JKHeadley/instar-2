@@ -28,6 +28,8 @@ Decision: existing-poll-clock | Use the current host poll step and injected work
 
 Verification: The registered PREVIEW-HOST-RESOURCE-FUNNEL fixture hash is refreshed using canonical() after its new slow/fast launcher proof. The compact-packet regression now asserts the real 34000-byte envelope bound including 2870 framing bytes and summary retention, replacing an obsolete <11240 packet-size snapshot (current 11248). Targeted foreground tests and all final gate outputs are recorded in the absolute desk PROGRESS file. Full suite and independent landing review are pipeline-owned.
 
+Generated publication: Register replay from committed source edd0ea50ac46398d3459d7bd7605f6a2ffb2534c produces generation sha256:e183260d09c0ec6324360d60826dcc1e16ca8212d21fda033f596f2a126129bc. Seven publication files are regenerated from source; no manual publication edit.
+
 ## Closing block
 
 simplestRobustRoute: This is the simplest robust route through existing holding, review and dispatch. Separate review state prevents the credible failure of using an acknowledgement verdict to approve the full answer or repeating a paid check after restart. Start guards are active verified-person intake and elapsed time; end guards preserve ordering and exact review; limits are one attempt, ordinary caps, secrets, stop, ownership and durable dispatch. Copied-root recorded-output replay and the offline launcher demonstrate execution; no fresh live Telegram or model completion claim.
