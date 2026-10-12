@@ -24,6 +24,9 @@ Prompt finding: 849db3a6296a | protocol-literal | Unchanged exact memory-invento
 Prompt finding: bd01de21286a | protocol-literal | Unchanged source-label grounding instruction.
 Prompt finding: fb5fa7e706c8 | protocol-literal | Unchanged semantic retrieval instruction.
 
+Verification: journal-boundaries (23), journal-memory-save-live (17) and topic-awareness (11) passed before the assertion-only repair. journal-conversations (11), journal (70), journal-packet-pressure-value (1), journal-summary-crash (39) and two-machine-floors (4) then passed together: 125/125 tests. Compiler and build passed. The merged worker consumes the recorded 969390379 save and writer/uncertain/Jev/review/delivered/empty-context cases with their original update IDs; historical notice 715672853 stays pending and successful reply 715672779 stays addressed. The unchanged saved full report still carries the old peer-loss failure; contract checkers stop at that failed-report prerequisite, not at a new source finding. The pipeline owns the fresh full run.
+Generated publication: Delegated manifest/assembly repin tools ran and reported zero pin changes. Regenerated all seven publications from merged source ec842fcec000f2ed17b51b4ff9cd8b2b032a09a2, generation sha256:d9278890c3a11b2ab47b9e68f00eb5bfb4a6decebb8b2e6bdf621d550b28aaf6. No pin was hand-edited.
+
 ## Closing block
 
 simplestRobustRoute: This is the simplest robust route: ordinary merge, keep both independent assertions and adjust only the packet-drop expectation invalidated by shorter live guidance; regenerate conflicting derived publication data. No additional machinery or capability restriction. Start, end and limit guards remain authenticated durable intake, truthful outcomes, bounded calls, stop, secrets and durable owned sends. Existing recorded cases exercise the merged worker unattended offline; no fresh autonomous live completion is claimed.
