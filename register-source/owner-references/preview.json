@@ -47,7 +47,7 @@
       "stage": "build",
       "artifact": {
         "path": "tests/preview/journal-obligations.test.ts",
-        "hash": "sha256:56c3c7d284a31ce52765854b147a9327e88557ebeff68df3b58fbe35d0bdc231"
+        "hash": "sha256:a2758636e201eb75642c59e71d571d13dc1833950d6b7aefac3a978a71d22caa"
       }
     },
     {
