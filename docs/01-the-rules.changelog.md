@@ -4,6 +4,10 @@ _Generated from `01-the-rules.changelog.json` by `scripts/render-changelog.mjs` 
 The document itself reads as a first version; every change to it is recorded here, newest first,
 each linked to the git change that made it (rule 91).
 
+## Revision 15 · 2026-10-11 · draft — Justin, topic 102965, 2026-10-11 21:53 PDT: "yes"; final-head GitHub code-owner approval and merge pending.
+
+- **Add to Rule 87: While that answer is still being worked on, a short progress line at a slow, bounded pace is also part of the answer.** — A short progress line at a slow, bounded pace belongs to the answer while the person's request is still being worked on. Preserve the acknowledgement sentence and the existing status and churn restriction. _(Justin, topic 102965, 2026-10-11 21:53 PDT: "yes"; final-head GitHub code-owner approval and merge pending.)_
+
 ## Revision 14 · 2026-10-11 · draft — Justin, topic 102965, 2026-10-11 16:28 PDT: "Yes", replying to the observer’s 16:26 question quoting the exact clarification; final-head GitHub code-owner approval and merge pending.
 
 - **Add to Rule 87: A brief acknowledgement in reply to the person's own message, when the answer will take more than a few seconds, is part of the answer, not a notification.** — A brief reply acknowledging the person’s own message belongs to the answer when answering takes more than a few seconds. The existing status and churn restriction remains. _(Justin, topic 102965, 2026-10-11 16:28 PDT: "Yes", replying to the observer’s 16:26 question quoting the exact clarification; final-head GitHub code-owner approval and merge pending.)_
