@@ -634,14 +634,24 @@ export function createResourceOwner(initialCeilings = RESOURCE_CEILINGS) {
         child = spawn('/bin/sh', limitedArgv({ executable: input.executable, args: input.args, handles, cpuSeconds,
           processLimit: limitValue, env: input.env, gated: true }), {
           cwd: input.cwd, env: { ...input.env, __CF_USER_TEXT_ENCODING: undefined, NODE_V8_COVERAGE: undefined },
-          shell: false, detached: true, stdio: ['pipe', 'pipe', 'ignore', 'pipe'] });
+          shell: false, detached: true, stdio: ['pipe', 'pipe', 'pipe', 'pipe'] });
       } catch {
         closeAllocation(`never-launched:${lease.id}`);
-        resolve({ code: null, limited: true, localLimit: null, stdout: '', stdoutBytes: new Uint8Array() }); return;
+        resolve({ code: null, signal: null, cancellationReason: 'spawn-error', limited: true, localLimit: null, stdout: '', stdoutBytes: new Uint8Array() }); return;
       }
       lease.pid = child.pid ?? null;
-      let chunks = [], size = 0, limited = false, localLimit = null, gateOpened = false;
-      const fail = reason => { if (limited) return; limited = true; localLimit = reason; chunks = [];
+      let chunks = [], size = 0, limited = false, localLimit = null, cancellationReason = null, gateOpened = false;
+      let rawOutput = '', stderr = Buffer.alloc(0), stderrTruncated = false;
+      child.stderr.on('data', chunk => {
+        const room = 8192 - stderr.length;
+        if (chunk.length > room) stderrTruncated = true;
+        if (room > 0) stderr = Buffer.concat([stderr, chunk.subarray(0, room)]);
+      });
+      // A byte-truncated secret cannot be reliably scrubbed against its full held value.
+      const rawError = () => stderrTruncated ? '[stderr exceeded capture bound; excerpt omitted]' : stderr.toString('utf8');
+      const retainOutput = () => { if (chunks.length) rawOutput = Buffer.concat(chunks).toString('utf8'); };
+      const fail = (reason, cancellation = null) => { if (limited) return;
+        retainOutput(); limited = true; localLimit = reason; cancellationReason = cancellation; chunks = [];
         if (child.pid) try { process.kill(-child.pid, 'SIGKILL'); } catch { /* A group may be gone or unavailable. */ }
         try { child.kill('SIGKILL'); } catch { /* Timer and stop callbacks must never throw. */ }
       };
@@ -666,18 +676,20 @@ export function createResourceOwner(initialCeilings = RESOURCE_CEILINGS) {
         }
         if (limited) return;
         lease.running = true;
-        try { gate.end('go\n'); gateOpened = true; } catch { fail(null); }
+        try { gate.end('go\n'); gateOpened = true; } catch { fail(null, 'gate-error'); }
       };
       const gateTimer = setTimeout(() => { if (!lease.running) fail('capacity'); }, GATE_TIMEOUT_MS);
       void openGate().catch(() => fail('capacity'));
       const timer = setTimeout(() => fail('timeout'), input.timeout);
-      const stopTimer = input.stopped ? setInterval(() => { if (input.stopped()) fail(null); }, 25) : undefined;
+      const stopTimer = input.stopped ? setInterval(() => { if (input.stopped()) fail(null, 'stopped'); }, 25) : undefined;
       let settleTimer, settled = false;
-      child.on('error', () => { clearTimeout(timer); clearTimeout(gateTimer); clearInterval(stopTimer); clearTimeout(settleTimer); resolve({ code: null, limited: true, localLimit: null, stdout: '', stdoutBytes: new Uint8Array() }); });
-      child.stdin.on('error', () => fail(null));
+      child.on('error', () => { clearTimeout(timer); clearTimeout(gateTimer); clearInterval(stopTimer); clearTimeout(settleTimer); retainOutput(); resolve({ code: null, signal: null, cancellationReason: 'spawn-error', rawOutput, rawError: rawError(), limited: true, localLimit: null, stdout: '', stdoutBytes: new Uint8Array() }); });
+      child.stdin.on('error', () => fail(null, 'stdin-error'));
       child.stdout.on('data', chunk => {
         size += chunk.length;
-        if (size > input.maxBytes) fail('size'); else if (!limited) chunks.push(chunk);
+        if (!limited && size > input.maxBytes) {
+          fail('size'); rawOutput = '[stdout exceeded capture bound; excerpt omitted]';
+        } else if (!limited) chunks.push(chunk);
       });
       const finalize = (code, signal, stdoutHeld) => {
         if (settled) return;
@@ -685,10 +697,10 @@ export function createResourceOwner(initialCeilings = RESOURCE_CEILINGS) {
         clearTimeout(timer); clearTimeout(gateTimer); clearInterval(stopTimer); clearTimeout(settleTimer);
         lease.running = false;
         // The stdout stream never ended; drop it so the owner holds no half-open read of a leaked descendant.
-        if (stdoutHeld) try { child.stdout.destroy(); } catch { /* already gone */ }
-        if (lease.limit) { limited = true; localLimit = lease.limit; chunks = []; }
+        if (stdoutHeld) try { child.stdout.destroy(); child.stderr.destroy(); } catch { /* already gone */ }
+        if (lease.limit) { retainOutput(); limited = true; localLimit = lease.limit; chunks = []; }
         else if (signal === 'SIGXCPU' && !limited) {
-          limited = true; localLimit = 'cpu'; chunks = [];
+          retainOutput(); limited = true; localLimit = 'cpu'; chunks = [];
           counters.killed.cpu = (counters.killed.cpu ?? 0) + 1;
           record({ kind: 'limit-kill', work: lease.work, reason: 'cpu' });
         }
@@ -715,7 +727,7 @@ export function createResourceOwner(initialCeilings = RESOURCE_CEILINGS) {
             allocation: lease.allocation ? { set: lease.allocation.set, operation: lease.allocation.operation,
               state: lease.allocation.closed ? 'returned' : 'reserved', settlement: lease.allocation.closed ?? null } : null };
           lastLaunch = { work: lease.work, at: ports.now(), ...resources };
-          resolve({ code, limited, localLimit, stdout: stdoutBytes.toString('utf8'), stdoutBytes: new Uint8Array(stdoutBytes), resources });
+          resolve({ code, signal, limited, localLimit, cancellationReason, rawOutput: rawOutput || stdoutBytes.toString('utf8'), rawError: rawError(), stdout: stdoutBytes.toString('utf8'), stdoutBytes: new Uint8Array(stdoutBytes), resources });
         };
         if (lease.pid) cleanupTree(lease).then(done, () => done({ leaked: 0, unresolved: true }));
         else done({ leaked: 0, unresolved: false });
@@ -874,9 +886,13 @@ export function createResourceOwner(initialCeilings = RESOURCE_CEILINGS) {
       return snapshot();
     },
     async execute(input, work = 'answer') {
-      if (input.stopped?.()) return { code: null, limited: true, localLimit: null, stdout: '', stdoutBytes: new Uint8Array() };
+      if (input.stopped?.()) return { code: null, signal: null, cancellationReason: 'stopped', limited: true, localLimit: null, stdout: '', stdoutBytes: new Uint8Array() };
       const lease = await admit(work, input.timeout, input.stopped);
-      if (!lease) return { code: null, limited: true, localLimit: input.stopped?.() ? null : 'capacity', stdout: '', stdoutBytes: new Uint8Array() };
+      if (!lease) {
+        const stopped = Boolean(input.stopped?.());
+        return { code: null, signal: null, cancellationReason: stopped ? 'stopped' : null, limited: true,
+          localLimit: stopped ? null : 'capacity', stdout: '', stdoutBytes: new Uint8Array() };
+      }
       try { return await run(input, lease, await processLimit()); }
       finally { counters.completed++; release(lease); }
     },

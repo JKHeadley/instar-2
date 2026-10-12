@@ -97,9 +97,9 @@ describe('fault 1: a recall the local timeout interrupted is answered, not lost 
     expect(timedOutLate.promptBytes).toBeGreaterThan(firstLate.promptBytes as number);
     expect(live.lostAfterLookup.malformedAfter).toEqual(live.lostAfterLookup.malformedBefore);
     expect(live.lostAfterLookup.recalledIds).toContain(`telegram:8989505249:update:${live.lostAfterLookup.factUpdate}`);
-    expect(live.lostAfterLookup.delivered).toBe(`PREVIEW — ${UNKNOWN_ANSWER_NOTICE}`);
+    expect(live.lostAfterLookup.delivered).toBe('PREVIEW — I lost my answer to that message. Please send it again.');
     expect(timedOutA.localLimit).toBe('timeout');
-    expect(live.lostFirstCall.delivered).toBe(`PREVIEW — ${UNKNOWN_ANSWER_NOTICE}`);
+    expect(live.lostFirstCall.delivered).toBe('PREVIEW — I lost my answer to that message. Please send it again.');
   });
 
   it('replaces the timed-out lookup call once, on the same lookup packet, and sends the answer', async () => {

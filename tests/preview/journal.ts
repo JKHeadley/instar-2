@@ -296,7 +296,7 @@ export const MEMORY_ITEM_SHAPE = 'Memory item: {"mode":"correct"|"forget"|"updat
  * carry keeps MEMORY_ITEM_SHAPE byte for byte. */
 export const CARRIED_MEMORY_ITEM_SOURCE = 'A source may also be a source from predecessorMemory.entries, quoting that carried entry text word for word.';
 export const MEMORY_UNDECIDED_REPLY = 'Your message is retained, but I could not validate and save the requested memory change.';
-export const UNKNOWN_ANSWER_NOTICE = 'I lost my answer to that message. Please send it again.';
+export const UNKNOWN_ANSWER_NOTICE = 'The answer-writing step did not complete. Your request and this incomplete attempt remain in the conversation record.';
 export const TOO_LONG_INPUT_NOTICE = 'Your message was saved, but I could not fit it with the needed context. Please send a shorter message or labelled parts.';
 export const TOO_LONG_REPLY_NOTICE = 'I produced an answer, but it was too long for one Telegram reply. I did not send part of it. Please ask for a shorter answer.';
 /** The one withholding floor on a reply's content (Rule 4): text SHAPED like a credential.
@@ -727,7 +727,9 @@ const timedOutCall = (view: JournalView, id: string): boolean => {
 };
 export interface CallOutcome { exitCode: number | null; localLimit: 'timeout' | 'size' | 'output-cap' | 'memory' | 'processes' | 'cpu' | 'aggregate' | 'capacity' | null;
   elapsedMs: number; type: 'result' | 'other' | null; subtype: 'success' | 'error_max_turns' | 'error_during_execution' | 'error_max_budget_usd' | 'other' | null;
-  isError: boolean | null; outputTokens: number | null; promptBytes: number; resources?: LaunchResources }
+  isError: boolean | null; outputTokens: number | null; promptBytes: number; resources?: LaunchResources;
+  /** Optional for older rows. Kept in the encrypted journal, omitted from public status. */
+  diagnostic?: { signal: string | null; cancellationReason: string | null; limited: boolean; rawOutputExcerpt: string; rawErrorExcerpt?: string } }
 /** Rules 60/61: content-free resource facts of the owned launch behind a call (optional; older rows carry none). */
 export interface LaunchResources { enforcement: Record<'cpuPerProcess' | 'handlesPerProcess' | 'processGrowth' | 'treeHandles' | 'memory' | 'treeCpu', 'hard' | 'sampled' | 'unavailable' | 'unsupported'>;
   /** The kernel process limit actually held, with its subject (a user ID, never the launched tree). */
@@ -2912,6 +2914,14 @@ function validateCallOutcome(view: JournalView, row: Extract<JournalRecord, { ki
     || ![null, 'result', 'other'].includes(o.type)
     || ![null, 'success', 'error_max_turns', 'error_during_execution', 'error_max_budget_usd', 'other'].includes(o.subtype)
     || ![null, true, false].includes(o.isError)
+    || o.diagnostic !== undefined && (!o.diagnostic
+      || ![null, 'stopped', 'stdin-error', 'gate-error', 'spawn-error', 'physical-error'].includes(o.diagnostic.cancellationReason)
+      || o.diagnostic.signal !== null && (typeof o.diagnostic.signal !== 'string' || !/^SIG[A-Z0-9]{1,16}$/u.test(o.diagnostic.signal))
+      || typeof o.diagnostic.limited !== 'boolean' || typeof o.diagnostic.rawOutputExcerpt !== 'string'
+      || Buffer.byteLength(o.diagnostic.rawOutputExcerpt) > 4096 || redact(o.diagnostic.rawOutputExcerpt).count > 0
+      || o.diagnostic.rawErrorExcerpt !== undefined && (typeof o.diagnostic.rawErrorExcerpt !== 'string'
+        || Buffer.byteLength(o.diagnostic.rawErrorExcerpt) > 1024 || redact(o.diagnostic.rawErrorExcerpt).count > 0
+        || Buffer.byteLength(o.diagnostic.rawOutputExcerpt) + Buffer.byteLength(o.diagnostic.rawErrorExcerpt) > 4096))
     || o.resources !== undefined && !validLaunchResources(o.resources)) throw Error('preview journal: call outcome malformed');
 }
 function validLaunchResources(r: LaunchResources): boolean {
@@ -6527,7 +6537,7 @@ export function createJournalWorker(journal: ReturnType<typeof openPreviewJourna
     }).slice(0, 2);
   };
   // The label follows the text actually intended: review can replace the notice with a holding reply.
-  const lostNotice = (item: Turn) => item.noticeClass !== undefined && sentText(item) === UNKNOWN_ANSWER_NOTICE;
+  const lostNotice = (item: Turn) => item.noticeClass !== undefined && [UNKNOWN_ANSWER_NOTICE, 'I lost my answer to that message. Please send it again.'].includes(sentText(item) ?? '');
   const modelFailure = (item: Turn) => item.answer === MODEL_FAILURE_REPLY
     && (item.failureClass !== undefined || item.modelState === 'rejected');
   const sizeRefused = (item: Turn) => item.noticeClass === 'too-long-input';
