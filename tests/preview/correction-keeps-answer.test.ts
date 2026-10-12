@@ -12,9 +12,9 @@ const scores = (flag = false) => ({ model: 'jev-1.13.0', answers: Object.fromEnt
   Object.keys(REPLY_RULES).filter(rule => rule !== 'incoherent_remainder')
     .map(rule => [rule, { type: 'noul', noul: flag && rule === 'raw_path' ? 0.91 : 0.01 }])) });
 
-async function replay(options: { correction?: string; pending?: boolean; verdict?: 'pass' | 'violation' | 'unavailable'; cap?: number; crash?: boolean; reviseAnswer?: boolean }) {
+async function replay(options: { correction?: string; pending?: boolean; verdict?: 'pass' | 'violation' | 'unavailable'; cap?: number; crash?: boolean; reviseAnswer?: boolean; slowReview?: boolean; answer?: string }) {
   const root = realpathSync(mkdtempSync(join(tmpdir(), 'correction-answer-'))), path = join(root, 'journal.encrypted');
-  let crash = options.crash === true;
+  let crash = options.crash === true, now = 1000;
   const journal = openPreviewJournal(path, key, { kind: 'genesis', bot: '12345678', chat: '7654321', operator: '7654321',
     grant: 'grant:preview', configurationDigest: 'sha256:offline', expires: 9999999999999,
     maxCalls: options.cap ?? 12, maxReplies: 4, maxTurns: 4, maxBytes: 65536, cursor: 0 }, stage => {
@@ -23,12 +23,12 @@ async function replay(options: { correction?: string; pending?: boolean; verdict
   const sends: string[] = [], packets: string[] = [], reviews: string[] = [];
   const update = (id: number, text: string) => ({ update_id: id, message: { chat: { id: 7654321, type: 'private' as const }, from: { id: 7654321 }, text } });
   const ports = {
-    now: () => 1000, stopped: () => false,
+    now: () => now, stopped: () => false,
     prepareModel: (input: Parameters<typeof prepareJournalEnvelope>[0]) => prepareJournalEnvelope(input, 'claude-sonnet-4-5', 'grant:preview', 1000),
     model: async (input: { context: string }) => {
       packets.push(input.context);
       return packets.length === 1 && options.pending !== false ? capture.previous.text
-        : JSON.stringify({ reply: '51.', ...(options.correction === undefined ? {} : { correction: options.correction }), memory: [] });
+        : JSON.stringify({ reply: options.answer ?? '51.', ...(options.correction === undefined ? {} : { correction: options.correction }), memory: [] });
     },
     checkOutbound: () => {}, send: async (input: { expectedText: string }) => { sends.push(input.expectedText); return sends.length; },
     replyCheck: {
@@ -38,6 +38,7 @@ async function replay(options: { correction?: string; pending?: boolean; verdict
         if (operation !== 'revision') return packets.length === 2 && options.cap !== undefined
           ? { verdict: 'pass' as const, ruleIds: [], confidence: null, latencyMs: 1 } : { ...capture.previous.review, latencyMs: 1 };
         reviews.push(text);
+        if (options.slowReview) now = _deadline! + 1;
         if (options.reviseAnswer) {
           expect(rules).toContain('incoherent_remainder');
           return { verdict: 'violation' as const, ruleIds: ['incoherent_remainder' as const], confidence: null, latencyMs: 1 };
@@ -129,6 +130,7 @@ it('does not expose a secret in an optional correction or spend a review on it',
 it('bounds the addition without truncating or rewriting its claim', () => {
   expect(boundedCorrection('One sentence.')).toBe('One sentence.');
   expect(boundedCorrection('One sentence. Another sentence.')).toBeUndefined();
+  expect(boundedCorrection('x'.repeat(240))).toBe('x'.repeat(240));
   expect(boundedCorrection('x'.repeat(241))).toBeUndefined();
   expect(boundedCorrection('')).toBeUndefined();
 });
@@ -139,5 +141,21 @@ it('reviews the captured correction-only rewrite for answer loss and keeps the o
   expect(result.sent).toBe('51.');
   expect(result.turn.revision?.text).toBe(capture.current.deliveredCorrection);
   expect(result.turn.revisionReview?.ruleIds).toContain('incoherent_remainder');
+  expect(result.turn.correctionDeferred).toBe(true);
+});
+
+it('an injected slow review cannot append a correction after the shared deadline', async () => {
+  const result = await replay({ correction: 'My earlier citation should have stayed in plain language.', slowReview: true });
+  expect(result.turn.revisionReview?.verdict).toBe('pass');
+  expect(result.sent).toBe('51.');
+  expect(result.turn.correctionDeferred).toBe(true);
+});
+
+it('an addition cannot force the answer into a second outbound message', async () => {
+  const answer = `51. ${'x'.repeat(4080)}`;
+  const result = await replay({ answer, correction: 'My earlier citation should have stayed in plain language.' });
+  expect(result.sent).toBe(answer);
+  expect(result.sends).toHaveLength(2);
+  expect(result.reviews).toEqual([]);
   expect(result.turn.correctionDeferred).toBe(true);
 });

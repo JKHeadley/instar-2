@@ -31,5 +31,5 @@ Prompt finding: fb5fa7e706c8 | protocol-literal | Unchanged journal grounding gu
 ## Closing block
 
 simplestRobustRoute: This is the simplest robust route through the existing answer, optional output fields, journal and bounded review. Prompt-only advice already said to answer fully yet the recorded delivery lost the answer. Separating the optional correction prevents its failure from taking the answer with it; the existing coherence review rejects a correction-only rewrite. There is no new model route, retry, timer or send. The start guard is grounded correction provenance; the end state is one admitted answer with either a reviewed addition or durable pending sources; limits are the existing cap/deadline plus a bounded one-sentence addition. No unattended live deployment is claimed.
-80/20: Use the recorded case, positive and negative neighbors, restart/UNKNOWN/cap/secret cases, direct-import tests and required machine gates. Platform-bound proofs remain the Studio desk's responsibility.
+80/20: Use the recorded case, positive and negative neighbors, restart/UNKNOWN/cap/secret/deadline/message-size cases, direct-import tests and required machine gates. Platform-bound proofs remain the Studio desk's responsibility.
 VERDICT: author submission; this record asserts no independent verdict — the review desk records its own
