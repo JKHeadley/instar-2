@@ -25,6 +25,8 @@ Prompt review: No prompt or model-facing behavior changes. Only numerical assert
 
 Subject: tests/preview/journal-agent.test.ts; register-source/owner-references/preview.json; generated/ (register replay).
 
+Verification: Typecheck and build pass; architecture passes. The 24 existing Jev retry tests pass. WSL launcher tests refuse startup before the changed assertions; report them for Studio verification. Register publication regenerated from 290dd8ec with the delegated scripts.
+
 ## Closing block
 
 simplestRobustRoute: This is the simplest robust route: update stale consumer assertions to the existing one-retry contract, with no new machinery. The existing start, deadline, cap and stop guards and exact single-send checks stay in force. This test repair makes no autonomous live-completion claim.
