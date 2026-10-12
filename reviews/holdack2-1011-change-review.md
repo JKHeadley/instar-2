@@ -27,7 +27,8 @@ Decision: merge-approved-rule | Keep compact speed briefing and add the approved
 Decision: restore-exact-revert | Reverse 17d11d0b, retain historical review record and canary repair; runtime files match composed 82e3aa6f. | reported=/Users/dabombstudio/.instar/agents/echo/.instar/lanes/holdack2-1011-PROGRESS.md
 Decision: regenerate-once | Publish the final committed source and canonical merged anchor once. | reported=/Users/dabombstudio/.instar/agents/echo/.instar/lanes/holdack2-1011-PROGRESS.md
 Decision: isolated-replay | Reuse archived authenticated prefixes with recorded durations and captured sends. | reported=/Users/dabombstudio/.instar/agents/echo/.instar/lanes/holdack2-1011-PROGRESS.md
-Verification: Required targeted tests, archived replay and final publication checks are recorded in /Users/dabombstudio/.instar/agents/echo/.instar/lanes/holdack2-1011-PROGRESS.md.
+Deferral: generated/register.json:1 | not-a-deferral=Existing declaration text republished from restored source, not postponed implementation.
+Verification: Initial 48 tests, typecheck, build and architecture pass. Archived replay: plain question 8.032 s with no ack; slow lookup one ack, exact final reply and no resend, with recorded timings and captured sends. Publications generated once from bd0ec5918f060f22cde32e1fc9477044c56f949e (sha256:b12131e45e1961aa7582de9b5a0d30f327112bd1b26e9a46f2070f499b852cba). Remaining targeted tests and final publication checks are recorded in /Users/dabombstudio/.instar/agents/echo/.instar/lanes/holdack2-1011-PROGRESS.md.
 
 ## Closing block
 
