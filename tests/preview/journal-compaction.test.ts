@@ -138,8 +138,9 @@ it('reopens a verified snapshot with pending effects and appends after replaceme
       model:async()=>{calls++;return 'new';},send:async input=>{sentUpdates.push(input.update);return 42;},checkOutbound:()=>{}});
     worker.intake([JSON.parse(raw(2))]);
     await worker.drain();
-    // The UNKNOWN model call is not repeated; its fixed lost-answer notice may send once.
-    expect(calls).toBe(0); expect(sentUpdates).toEqual([4]);
+    // Neither UNKNOWN operation repeats; the incomplete-model and lost-delivery notices each send once.
+    expect(calls).toBe(0); expect(sentUpdates).toEqual([4, 2]);
+    expect(replay.view.order[1]?.deliveryNotice?.sent).toBe(42);
     expect(replay.view.order).toHaveLength(4);
     expect(replay.view.order[1]?.sent).toBeUndefined();
     expect(replay.view.order[3]?.answer).toBeUndefined();

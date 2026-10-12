@@ -73,7 +73,8 @@ it('carries a topic fact to the main chat across a restart, never repeats a rede
     expect(JSON.parse(second.seen[0]!.context).history[0]).toMatchObject({ conversation: 'topic 7',
       user: 'The boat is moored at berth K4.', outcome: 'delivery UNKNOWN' });
     expect(second.journal.view.calls).toBe(2);
-    expect(second.journal.view.replies).toBe(2);
+    expect(second.journal.view.replies).toBe(3); // two answers and one separate delivery notice
+    expect(second.journal.view.order[0]?.deliveryNotice).toBeDefined();
     second.journal.close();
   } finally { rmSync(root, { recursive: true, force: true }); }
 });

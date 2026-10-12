@@ -263,13 +263,14 @@ it('keeps an unknown question send fenced and ignores an unaccepted answer', asy
     expect(journal.view.conflicts[0]?.asked).toBe(true);
     expect(journal.view.order[1]?.intent).toContain('Which is right?');
     expect(journal.view.order[1]?.sent).toBeUndefined();
+    expect(journal.view.order[1]?.deliveryNotice?.sent).toBe(3);
     journal.close();
     journal = openPreviewJournal(path, key); worker = createJournalWorker(journal, ports);
     await worker.drain();
-    expect(sends).toBe(2);
+    expect(sends).toBe(3); // one separate loss notice; the question is never resent
     worker.intake([update(3, 'The first one is right.', 999)]); await worker.drain();
     expect(journal.view.conflicts[0]?.answeredBy).toBeUndefined();
-    expect(sends).toBe(2);
+    expect(sends).toBe(3); // one separate loss notice; the question is never resent
     journal.close();
   } finally { rmSync(root, { recursive: true, force: true }); }
 });

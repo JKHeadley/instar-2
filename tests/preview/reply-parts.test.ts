@@ -188,13 +188,13 @@ describe('the worker sends a long answer as several messages, in order, once eac
       w.worker.intake([update(1, 'Explain.')]); await w.worker.drain();
       const turn = w.journal.view.order[0]!;
       expect(turn.replyParts!.length).toBeGreaterThanOrEqual(2);
-      expect(w.sent.map(item => item.target.split(':')[0])).toEqual(['reply', 'reply-part']);
+      expect(w.sent.map(item => item.target.split(':')[0])).toEqual(['reply', 'reply-part', 'delivery-notice']);
       w.refuse(() => null);
       await w.worker.drain();
       w.journal.close();
       const reopened = world(() => long, w.file);
       try { await reopened.worker.drain(); expect(reopened.sent).toEqual([]); } finally { reopened.journal.close(); }
-      expect(sendOutcomeCounts(openPreviewJournal(w.file, key, undefined, undefined, true).view)).toMatchObject({ accepted: 1, unknown: 1 });
+      expect(sendOutcomeCounts(openPreviewJournal(w.file, key, undefined, undefined, true).view)).toMatchObject({ accepted: 2, unknown: 1 });
     } finally { w.done(); }
   });
 
@@ -218,8 +218,8 @@ describe('the worker sends a long answer as several messages, in order, once eac
         expect(resumed.journal.view.order[0]!.replyParts![0]).toMatchObject({ started: true });
         expect(resumed.journal.view.order[0]!.replyParts![0]!.sent).toBeUndefined();
         await resumed.worker.drain();
-        expect(resumed.sent).toEqual([]);
-        expect(sendOutcomeCounts(resumed.journal.view)).toMatchObject({ accepted: 1, unknown: 1 });
+        expect(resumed.sent.map(item => item.target.split(':')[0])).toEqual(['delivery-notice']);
+        expect(sendOutcomeCounts(resumed.journal.view)).toMatchObject({ accepted: 2, unknown: 1 });
       } finally { resumed.journal.close(); }
     } finally { crashed.done(); }
   });
@@ -379,7 +379,7 @@ describe('a split reply reads as answered only when every message carrying it wa
         expect(state).toContain('Part 2 of 2 of my reply');
         expect(state).toContain(verdict === 'refused' ? 'was refused and not delivered' : 'delivery is UNKNOWN');
         expect(delivered(w.journal.view)).toContain('0 so far');
-        expect(sendOutcomeCounts(w.journal.view)).toMatchObject({ accepted: 1, [verdict]: 1 });
+        expect(sendOutcomeCounts(w.journal.view)).toMatchObject({ accepted: verdict === 'unknown' ? 2 : 1, [verdict]: 1 });
         w.worker.intake([update(2, 'Thanks.')]); await w.worker.drain();
         // The history the mind reads names the partial delivery, not "Telegram API accepted", and nothing is re-sent.
         const history = contexts[1]!;
