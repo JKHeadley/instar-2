@@ -24,6 +24,8 @@ Prompt review: No final prompt, notice, model-output parser or accept/escalate/r
 Prompt finding: 849db3a6296a | protocol-literal | Existing unchanged memory-inventory response, not a new semantic classifier.
 Prompt finding: bd01de21286a | protocol-literal | Existing unchanged source-label instruction and grounding assertion.
 Prompt finding: fb5fa7e706c8 | protocol-literal | Existing unchanged semantic memory retrieval instruction.
+Deferral: generated/register.json:1 | not-a-deferral=Existing prerequisite descriptions are republished unchanged; no implementation is postponed.
+Generated publication: Existing replay generator run from source commit ea49c0b9a7c0e73f6876d75d428e0bb55f1c0c60, generation sha256:5565b5b01447bd3a9dff8ecf2317c5f391a2dc36598fa5fe083917855f83469d.
 Verification: Targeted diagnostic, journal, lost-answer, physical resource and native contract results, plus typecheck, architecture, lint, register and pinned-set results are recorded in the absolute desk progress report. Full suite and independent landing review remain pipeline-owned. No live runner or Telegram send.
 
 ## Closing block
