@@ -20,7 +20,7 @@ Hook bypass: none; core.hooksPath checked unset, common hooks directory contains
 Convergence: none
 Decision: sb-holdack4-repair-fixture-threshold | Keep the shipped ten-second behavior and repair its stale consumer fixture with explicit 0ms, 8200ms and 10200ms cases. Retain the real launcher, resource funnel, journal and HTTP sends. | reported=/Users/dabombstudio/.instar/agents/echo/.instar/lanes/sb-holdack4-1012-repair-090654-PROGRESS.md
 
-Decision: sb-holdack4-repair-publication | Refresh the test owner reference with the authorized desk tool and replay the register after committing; do not hand-edit pins. | reported=/Users/dabombstudio/.instar/agents/echo/.instar/lanes/sb-holdack4-1012-repair-090654-PROGRESS.md
+Decision: sb-holdack4-repair-publication | Refresh the test owner reference with the authorized desk tool and replay the register from source commit 54606eb75a1320e5254f55d3e875cc8ff07da5dd; do not hand-edit pins. | reported=/Users/dabombstudio/.instar/agents/echo/.instar/lanes/sb-holdack4-1012-repair-090654-PROGRESS.md
 
 ## Closing block
 
