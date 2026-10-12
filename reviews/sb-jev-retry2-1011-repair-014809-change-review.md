@@ -35,6 +35,8 @@ Prompt finding: fb5fa7e706c8 | protocol-literal | Existing capability, authority
 
 Subject (24 paths): docs/defects/stale-main-baseline-additivity.md, register-source/owner-references/preview.json, tests/preview/briefing.ts, tests/preview/call-diagnostics.mjs, tests/preview/call-diagnostics.test.ts, tests/preview/capability-briefing.test.ts, tests/preview/default-context-floor.test.ts, tests/preview/fixtures/reply-acknowledgement-live-2026-10-11.json, tests/preview/group-audience-cache.test.ts, tests/preview/jev-stage-latency.test.ts, tests/preview/journal-agent-resources.test.ts, tests/preview/journal-agent.mjs, tests/preview/journal-boundaries.test.ts, tests/preview/journal-conversations.test.ts, tests/preview/journal-obligations.test.ts, tests/preview/journal-packet-pressure-value.test.ts, tests/preview/journal-summary-crash.test.ts, tests/preview/journal.test.ts, tests/preview/journal.ts, tests/preview/reply-acknowledgement.test.ts, tests/preview/reply-check.ts, tests/preview/selfdesc-abilities.test.ts, tests/preview/send-stage-replay.test.ts, tests/preview/two-machine-floors.test.ts
 
+Verification: Typecheck, build and architecture check pass. Targeted replay and final publication checks are recorded in the local repair report; no full-suite or live acceptance is asserted.
+
 ## Closing block
 
 simplestRobustRoute: This is the simplest robust route: an ordinary merge with narrow conflict resolution and the existing delegated publication tools. No new runtime machinery. Existing admission, secret, stop, spend and durable-intent guards remain the start and limit guards; reviewed verdict and recorded send outcome remain end guards. Offline replay is not a claim of unattended live acceptance.
