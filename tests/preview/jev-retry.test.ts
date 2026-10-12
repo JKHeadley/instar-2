@@ -172,6 +172,8 @@ it.each(['cap', 'stop', 'crash'] as const)('preserves the %s floor at the retry 
       await createJournalWorker(journal, ports).drain();
       expect(calls).toBe(1); expect(reviews).toBe(1); expect(sends).toBe(1);
       expect(unknownCallKeys(journal.view).jev).toHaveLength(2);
+      expect(journal.view.order[0]?.replyChecks?.filter(row => row.path === 'jev')).toHaveLength(2);
+      expect(journal.view.order[0]?.replyChecks?.[1]?.cause).toBe('other');
       expect(() => journal.append({ kind: 'reply-jev-reserve', id: journal.view.order[0]!.id, retry: true, at: 1000 }))
         .toThrow('Jev reservation order or cap');
     }

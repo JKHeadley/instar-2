@@ -8496,7 +8496,8 @@ export function createJournalWorker(journal: ReturnType<typeof openPreviewJourna
             // released on Jev's text-only pass; the contextual reviewer judges it with the declared record.
             if (refusedObligation(turn) && !turn.jevReserved) checked = await reviewReply(reply, turn.id, checkPorts, [], reviewPrompt);
             else if (turn.jevReserved) {
-              if (!previous) checkPorts.record({ verdict: 'unavailable', ruleIds: [], confidence: null, path: 'jev', latencyMs: 0, cause: 'other' });
+              if (!previous || turn.jevRetried && turn.replyChecks?.filter(check => check.path === 'jev').length === 1)
+                checkPorts.record({ verdict: 'unavailable', ruleIds: [], confidence: null, path: 'jev', latencyMs: 0, cause: 'other' });
               // Older durable Jev verdicts omitted uncertain rules when another rule was positive.
               // On recovery, review every rule rather than treating those omitted rules as cleared.
               checked = await reviewReply(reply, turn.id, checkPorts, [], projectedReplyPrompt(turn.prompt));
