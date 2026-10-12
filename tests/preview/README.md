@@ -4228,3 +4228,21 @@ credential state yields the ordinary unreadable attachment notice with tools ena
 Local ffmpeg and whisper-cli launches use the shared host resource owner as maintenance
 work, including Six allocation, answer reserve, tree census, stop and bounded output/time.
 Both run in the same private per-transcription directory, removed after completion.
+
+## Slow-reply acknowledgement
+
+Durable intake arms one cancellable timer per accepted operator message, independently of the
+serial answer worker. Its deadline uses the message's intake time. At eight
+seconds it may send the fixed, reviewed-once sentence “Checking that now.” in reply to that exact
+message. It contains no answer, private fact, request for user action or claim of completed work.
+Rule 87 and the rule book's retrospective-review principle admit this fixed template without a
+per-send model review; Part 12 §9's deterministic secret, disclosure, authority, stop, ownership,
+allowance and durable-send checks still apply. The answer cancels the timer when ready. Dispatch
+rechecks cancellation after asynchronous audience or replication admission. Once a transport has
+started, delivery cannot be recalled; the final answer waits for that in-flight send to settle.
+
+The existing held-notice intent and UNKNOWN fence prevent duplicate sends across restart. Earlier
+reviewed acknowledgement records remain readable without changing their text or verdict. Timer
+state is process-local; durable intake and send state remain in the existing replicated journal.
+Recorded timing cases 969390407–969390410 and crash/admission neighbours are exercised by the
+reply-acknowledgement tests. Fully parallel answers are outside this change.

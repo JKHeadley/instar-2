@@ -11,16 +11,27 @@ import { successiveWorld, offlineProfile, OFFLINE_STORAGE_KEY, FIXTURE_DOORWAY, 
 
 const TOKEN = 'ghp_' + 'Z9y8X7w6V5u4T3s2R1q0P9o8';
 
-it.each([false, true])('PREVIEW-HOST-RESOURCE-FUNNEL records resources, custody and reviewed slow acknowledgement (slow=%s)', async slow => {
+it.each([false, true])('PREVIEW-HOST-RESOURCE-FUNNEL records resources, custody and fixed slow acknowledgement (slow=%s)', async slow => {
   const world = successiveWorld(), root = join(world.directory, 'resource-journal');
   const activation = join(world.directory, 'activation.json'), profile = join(world.directory, 'profile.json');
   const log = join(world.directory, 'poll.log'), updates = join(world.directory, 'updates.json');
   const provider = join(world.directory, 'provider.mjs'), loader = join(world.directory, 'loader.mjs');
   const cli = join(world.directory, 'fake-cli.mjs'), prompts = join(world.directory, 'prompts.jsonl');
-  const slowMarker = join(world.directory, 'slow-marker'), fakeClock = join(world.directory, 'clock.mjs');
-  writeFileSync(fakeClock, `import { existsSync } from 'node:fs';
-import { createPreviewClock as realClock } from ${JSON.stringify(pathToFileURL(join(process.cwd(), 'tests/preview/clock.ts')).href)};
-export const createPreviewClock = (wall, elapsed) => realClock(() => wall() + (existsSync(${JSON.stringify(slowMarker)}) ? 8000 : 0), elapsed);
+  const fakeClock = join(world.directory, 'clock.mjs'), workerModule = join(world.directory, 'worker.mjs');
+  // Wall time and acknowledgement timers are controlled. Resource deadlines retain the real monotonic clock.
+  writeFileSync(fakeClock, `import { existsSync, readFileSync, writeFileSync } from 'node:fs';
+const state = ${JSON.stringify(join(world.directory, 'fixture-time'))};
+let now = existsSync(state) ? Number(readFileSync(state, 'utf8')) : Date.now();
+const timers = new Set();
+export const createPreviewClock = (_wall, elapsed) => ({ now: () => now, elapsed,
+  seed: floor => { now = Math.max(now, floor); } });
+export const after = (ms, run) => { const timer = { at: now + ms, run }; timers.add(timer); return () => timers.delete(timer); };
+export const advance = ms => { now += ms; writeFileSync(state, String(now)); for (const timer of [...timers]) if (timer.at <= now) { timers.delete(timer); timer.run(); } };
+`);
+  writeFileSync(workerModule, `export * from ${JSON.stringify(pathToFileURL(join(process.cwd(), 'tests/preview/journal.ts')).href)};
+import { createJournalWorker as realWorker } from ${JSON.stringify(pathToFileURL(join(process.cwd(), 'tests/preview/journal.ts')).href)};
+import { after } from ${JSON.stringify(pathToFileURL(fakeClock).href)};
+export const createJournalWorker = (journal, ports) => realWorker(journal, { ...ports, acknowledgementTimer: after });
 `);
   writeFileSync(activation, JSON.stringify(world.activation()));
   writeFileSync(profile, JSON.stringify(offlineProfile));
@@ -48,7 +59,9 @@ process.stdout.write(JSON.stringify({ type: 'result', is_error: false, result: J
   validateSubscriptionActivation, SUBSCRIPTION_TOOLS_FRAMING, SUBSCRIPTION_TOOLS_SYSTEM_PROMPT,
   subscriptionToolsPolicy } from ${JSON.stringify(pathToFileURL(join(process.cwd(), 'src/assembly/production-provider.ts')).href)};
 ${FIXTURE_DOORWAY}
-import { writeFileSync } from 'node:fs';
+import { existsSync, readFileSync } from 'node:fs';
+import { advance } from ${JSON.stringify(pathToFileURL(fakeClock).href)};
+let advanced = false;
 export const createClaudeCodeSubscriptionRoute = config => ({ kind: 'Success', value: { invoke: async prepared => {
   const r = await config.io.execute({ executable: process.execPath, args: [${JSON.stringify(cli)}, ${JSON.stringify(prompts)}, config.model],
     cwd: ${JSON.stringify(world.directory)}, env: { PATH: '/usr/bin:/bin' }, stdin: prepared, timeout: 20000, maxBytes: 1048576 });
@@ -58,11 +71,21 @@ export const createClaudeCodeSubscriptionRoute = config => ({ kind: 'Success', v
   const check = await config.io.execute({ executable: process.execPath, args: ['--version'],
     cwd: ${JSON.stringify(world.directory)}, env: { PATH: '/usr/bin:/bin' }, stdin: '', timeout: 20000, maxBytes: 1024 });
   if (check.code !== 0 || check.limited) return { state: 'uncertain' };
-  if (${slow} && !prepared.includes('Judge this proposed reply')) writeFileSync(${JSON.stringify(slowMarker)}, 'elapsed');
+  if (${slow} && !advanced && !prepared.includes('Judge this proposed reply')) {
+    advanced = true; advance(8200);
+    // Keep the answer pending until both real HTTP acknowledgement sends have reached the endpoint.
+    const deadline = performance.now() + 30000;
+    while (!existsSync(${JSON.stringify(`${log}.sends`)}) || readFileSync(${JSON.stringify(`${log}.sends`)}, 'utf8').trim().split('\\n').length < 2) {
+      if (performance.now() >= deadline) throw Error('fixture acknowledgement delivery did not complete');
+      await new Promise(resolve => setTimeout(resolve, 10));
+    }
+  }
   return { state: 'complete', bytes: JSON.parse(r.stdout).result, usage: { inputTokens: 1, outputTokens: 1 } };
 } } });
 `);
   writeFileSync(loader, `export async function resolve(specifier, context, next) {
+  if (context.parentURL?.endsWith('/journal-agent.mjs') && specifier === './journal.js')
+    return { url: ${JSON.stringify(pathToFileURL(workerModule).href)}, shortCircuit: true };
   if (context.parentURL?.endsWith('/journal-agent.mjs') && specifier === './clock.js')
     return { url: ${JSON.stringify(pathToFileURL(fakeClock).href)}, shortCircuit: true };
   if (context.parentURL?.endsWith('/journal-agent.mjs') && specifier.endsWith('/production-provider.js'))
@@ -86,28 +109,37 @@ export const createClaudeCodeSubscriptionRoute = config => ({ kind: 'Success', v
       '--configuration-digest', trial.configurationDigest, '--expires-at', String(trial.expiresAt),
       '--tools', 'off', '--activation-record', activation, '--operator-records', join(world.directory, 'operator-records'), '--login-profile', profile, '--model', world.model,
       '--bot-username', world.configuration.botUsername, '--max-cycles', '3', '--max-poll-seconds', '1'],
-    { cwd: process.cwd(), encoding: 'utf8', timeout: 30000, env });
+    { cwd: process.cwd(), encoding: 'utf8', timeout: 90000, env });
+    expect(run.error, run.stderr).toBeUndefined();
+    expect(run.signal, run.stderr).toBeNull();
     expect(run.status, run.stderr).toBe(0);
     const sent = readFileSync(`${log}.sends`, 'utf8');
     expect(sent).toContain('Noted.');
     expect(sent).not.toContain(TOKEN);
     const sends = readFileSync(`${log}.sends`, 'utf8').trim().split('\n').map(line => JSON.parse(line));
-    expect(sends.filter(row => row.text === "I'm working on your reply.")).toHaveLength(slow ? 1 : 0);
+    expect(sends.filter(row => row.text === 'Checking that now.')).toHaveLength(slow ? 2 : 0);
+    // Both messages arrived together; the second also waited through the slow first turn.
+    expect(new Set(sends.filter(row => row.text === 'Checking that now.').map(row => row.reply_parameters.message_id)).size).toBe(slow ? 2 : 0);
     expect(sends.at(-1).text).toContain('Noted.');
+    expect(sends.filter(row => row.text.includes('Noted.')), JSON.stringify(sends)).toHaveLength(2);
     // The model never received the secret; it saw the stored reference instead.
     const seen = readFileSync(prompts, 'utf8');
     expect(seen.length).toBeGreaterThan(0);
     expect(seen).not.toContain(TOKEN);
     expect(seen).toMatch(/credential stored before use: SecretRef preview\/chat-github-token-[a-f0-9]{16}/u);
-    const status = JSON.parse(spawnSync(process.execPath,
+    const statusRun = spawnSync(process.execPath,
       ['--no-warnings', '--loader', './scripts/slice-ts-loader.mjs', '--loader', loader, 'tests/preview/journal-agent.mjs', 'status', '--root', root],
-      { cwd: process.cwd(), env, encoding: 'utf8', timeout: 10000 }).stdout);
+      { cwd: process.cwd(), env, encoding: 'utf8', timeout: 30000 });
+    expect(statusRun.error, statusRun.stderr).toBeUndefined();
+    expect(statusRun.signal, statusRun.stderr).toBeNull();
+    expect(statusRun.status, statusRun.stderr).toBe(0);
+    const status = JSON.parse(statusRun.stdout);
     // Rules 60/61: every launch was admitted by the one owner and none is left running.
     expect(status.resources).toMatchObject({ version: 1, active: [], waiting: [],
       inherited: { state: 'observed', effectivePerLaunch: { handleCount: expect.any(Number) } },
       counters: { admitted: seen.trim().split('\n').length * 2, refusedCapacity: 0 } }); // each actual call launches its model command and no-prompt check; shutdown can retain an unlaunched reservation
     expect(status.calls).toBeGreaterThanOrEqual(seen.trim().split('\n').length);
-    if (slow) expect(seen).toContain("I'm working on your reply.");
+    expect(seen).not.toContain('Checking that now.'); // fixed template never reaches a model review
     expect(status.resources.counters.admitted).toBeGreaterThanOrEqual(2);
     // Each launch's bounds are declared by what the host holds, and its facts are durable in the journal.
     expect(status.resources.enforcement).toEqual({ cpuPerProcess: 'hard', handlesPerProcess: 'hard', memory: 'sampled', treeCpu: 'sampled',
@@ -154,4 +186,4 @@ export const createClaudeCodeSubscriptionRoute = config => ({ kind: 'Success', v
     expect(status.journalCapacity).toEqual({ outcome: 'success', capacity: 'none' });
     expect(status.reconciliation).toMatchObject({ reservedCalls: status.calls, charge: { state: 'UNKNOWN', settled: null, released: null } });
   } finally { endpoint.kill('SIGTERM'); }
-}, 45000);
+}, 130000);
