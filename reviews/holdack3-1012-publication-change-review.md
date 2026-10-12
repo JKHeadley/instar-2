@@ -20,10 +20,10 @@ Hook bypass: none
 Convergence: none
 Prompt review: No new model prompt, parser or semantic judgment. Generated capability content derives from committed sources.
 
+Publication evidence: generated from d5baa0a5663f21fb52c3d1531ad59db4d7afcf56; generation sha256:0117abcd3a747bd2605603fab0672c6cb202bc64aed6ee69e697a59de439f487, replay shape-only authority, 289 entries / 116 rules. Generator reported 48 glossary warnings and 108 authority prerequisites, unchanged publication limits.
+
 ## Closing block
 
 simplestRobustRoute: Use the existing desk hash tools and register generator; no manual pin edits, extra machinery or runtime authority. Source, register and pinned tests verify the same publication.
 80/20: Compiler/build, architecture/lint, register check, change review and mandatory pinned test list; pipeline owns full-suite evidence.
 VERDICT: author submission; this record asserts no independent verdict — the review desk records its own
-
-Publication evidence: generated from d5baa0a5663f21fb52c3d1531ad59db4d7afcf56; generation sha256:0117abcd3a747bd2605603fab0672c6cb202bc64aed6ee69e697a59de439f487, replay shape-only authority, 289 entries / 116 rules. Generator reported 48 glossary warnings and 108 authority prerequisites, unchanged publication limits.
