@@ -1036,7 +1036,7 @@ it('reads one contextual finding per selected rule, refuses a dropped or unknown
   // A historical combined line is still read, but carries no per-rule findings: one shared reason is not an independent result.
   expect(parseReplyReviewVerdict('VIOLATION:raw_path | shows a path')).toMatchObject({ verdict: 'violation', ruleIds: ['raw_path'] });
   expect(parseReplyReviewVerdict('VIOLATION:raw_path | shows a path').findings).toBeUndefined();
-  expect(replyReviewQuestion(both)).toContain('Give every listed rule, and no other rule, one verdict');
+  expect(replyReviewQuestion(both)).toContain('Give each listed rule, and no others, one verdict');
 });
 
 it('reads the agent response per objection: accept, reject with a reason, otherwise no decision', () => {
