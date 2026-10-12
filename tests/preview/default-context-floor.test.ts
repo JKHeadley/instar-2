@@ -4,7 +4,7 @@ import { tmpdir } from 'node:os';
 import { join, resolve } from 'node:path';
 import { pathToFileURL } from 'node:url';
 import { spawnSync } from 'node:child_process';
-import { SOURCE_PINS, deskStatusSource, sourcePacket } from './briefing.js';
+import { MIND_RULES, SOURCE_PINS, deskStatusSource, sourcePacket } from './briefing.js';
 import { disciplineSource } from './retrospective.js';
 import { readRuns, selfStateBrief, selfStateSource } from './self-state.js';
 import { prepareJournalEnvelope } from './journal-envelope.js';
@@ -94,6 +94,8 @@ async function firstTurn(maxBytes: number, tools = false, fixedGrowth = 0) {
       { sources?: { id: string; text: string }[] }).sources ?? []).find(item => item.id === 'desk-status')?.text ?? '';
     const result = { sent: turn.sent !== undefined, held: turn.held, notice: turn.noticeClass,
       answerTotal: total(answer), summaryTotal: total(summary), reviewTotal,
+      instructions: answer === undefined ? null : (JSON.parse(answer.prepared) as
+        { messages: { role: string; content: string }[] }).messages.find(message => message.role === 'instructions')?.content,
       deskCut: deskText.includes('[cut for space'),
       keys: answer === undefined ? [] : Object.keys(JSON.parse(answer.context) as object),
       packet: answer === undefined ? null : JSON.parse(answer.context) as { capabilities?: { externalTools?: string };
@@ -115,6 +117,10 @@ it('keeps the always-sent prompt parts inside what the measured floor allows, wi
   expect(measured.notice).toBeUndefined();
   expect(measured.answerTotal).not.toBeNull();
   expect(measured.deskCut).toBe(true);
+  // Compact display labels must never remove a constitutional instruction to buy room.
+  for (const [rule, , meaning] of MIND_RULES)
+    expect(measured.instructions).toContain(`Rule ${rule} — ${meaning}`);
+  expect(measured.packet?.obligationDecision).toBe(OBLIGATION_DECISION);
   // Nothing the ladder can drop was dropped: the briefing, the decision guidance and the
   // concurrent-work row are all still there, so this is the whole always-sent shape.
   for (const required of ['sources', 'obligationDecision', 'governingConstraints', 'capabilities',
