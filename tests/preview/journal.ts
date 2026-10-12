@@ -5731,7 +5731,9 @@ export function createJournalWorker(journal: ReturnType<typeof openPreviewJourna
     // loss, holding or size notice leaves the message open with its real outcome (Rule 26).
     const notice = before.sent === undefined ? undefined : knownNonAnswer(before) ? outcome(before)
       : replyBody(before)?.replace(/^PREVIEW — /u, '') === TOO_LONG_REPLY_NOTICE ? 'too-long reply notice delivered'
-        : replyBody(before)?.replace(/^PREVIEW — /u, '') === MEMORY_UNDECIDED_REPLY ? 'memory-not-recorded notice delivered'
+        // Rules 26/110: journals retain the exact failure notice delivered before the wording upgrade.
+        : [MEMORY_UNDECIDED_REPLY, "I couldn't record that memory change. Please send it again."]
+          .includes(replyBody(before)?.replace(/^PREVIEW — /u, '') ?? '') ? 'memory-not-recorded notice delivered'
           : replyBody(before)?.replace(/^PREVIEW — /u, '') === HOLDING_REPLY ? 'holding reply delivered' : undefined;
     const [disposition, reference]: [ContinuityAccount['disposition'], string] = edit ? ['superseded', `your edit #${edit.update}`]
       : notice !== undefined ? ['pending', `${notice} as Telegram message ${before.sent}, not an answer`]
