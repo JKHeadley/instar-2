@@ -1029,7 +1029,7 @@ async function main() {
       modelJsonShapes: readShapes(shapesPath),
       modelResultStates: Object.fromEntries(view.view.providerStates),
       callOutcomeCounts: Object.fromEntries(view.view.callOutcomeCounts),
-      lastCallOutcomes: view.view.callOutcomes.map(({ id, role, outcome, at }) => ({ id, role, ...outcome, at })),
+      lastCallOutcomes: view.view.callOutcomes.map(({ id, role, outcome: { diagnostic: _privateDiagnostic, ...outcome }, at }) => ({ id, role, ...outcome, at })),
       unknownSends: sendOutcomeCounts(view.view).unknown,
       sendOutcomes: sendOutcomeCounts(view.view),
       modelCalls: view.view.modelCalls,
@@ -2770,7 +2770,8 @@ async function main() {
         return result;
       } };
       const io = observedSubscriptionIO(physicalIO, policy, operation, row => journal.append(row),
-        { elapsed: () => performance.now(), at: wallNow });
+        { elapsed: () => performance.now(), at: wallNow },
+        text => redact(concealSecretMaterial(text, heldSecretValues())).text);
       return take(doorway.create({ context, credential: secretRef(profile.reference), profile,
         resolveProfile: () => profile, provider: doorway.provider, model: options.model, route: 'preview-subscription',
         disclosure: 'Subscription preview; charge UNKNOWN', activation: toolTurn ? selectedTools : selectedActivation,

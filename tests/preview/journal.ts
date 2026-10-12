@@ -723,7 +723,9 @@ const timedOutCall = (view: JournalView, id: string): boolean => {
 };
 export interface CallOutcome { exitCode: number | null; localLimit: 'timeout' | 'size' | 'output-cap' | 'memory' | 'processes' | 'cpu' | 'aggregate' | 'capacity' | null;
   elapsedMs: number; type: 'result' | 'other' | null; subtype: 'success' | 'error_max_turns' | 'error_during_execution' | 'error_max_budget_usd' | 'other' | null;
-  isError: boolean | null; outputTokens: number | null; promptBytes: number; resources?: LaunchResources }
+  isError: boolean | null; outputTokens: number | null; promptBytes: number; resources?: LaunchResources;
+  /** Optional for older rows. Kept in the encrypted journal, omitted from public status. */
+  diagnostic?: { signal: string | null; cancellationReason: string | null; limited: boolean; rawOutputExcerpt: string; rawErrorExcerpt?: string } }
 /** Rules 60/61: content-free resource facts of the owned launch behind a call (optional; older rows carry none). */
 export interface LaunchResources { enforcement: Record<'cpuPerProcess' | 'handlesPerProcess' | 'processGrowth' | 'treeHandles' | 'memory' | 'treeCpu', 'hard' | 'sampled' | 'unavailable' | 'unsupported'>;
   /** The kernel process limit actually held, with its subject (a user ID, never the launched tree). */
@@ -2900,6 +2902,14 @@ function validateCallOutcome(view: JournalView, row: Extract<JournalRecord, { ki
     || ![null, 'result', 'other'].includes(o.type)
     || ![null, 'success', 'error_max_turns', 'error_during_execution', 'error_max_budget_usd', 'other'].includes(o.subtype)
     || ![null, true, false].includes(o.isError)
+    || o.diagnostic !== undefined && (!o.diagnostic
+      || ![null, 'stopped', 'stdin-error', 'gate-error', 'spawn-error', 'physical-error'].includes(o.diagnostic.cancellationReason)
+      || o.diagnostic.signal !== null && (typeof o.diagnostic.signal !== 'string' || !/^SIG[A-Z0-9]{1,16}$/u.test(o.diagnostic.signal))
+      || typeof o.diagnostic.limited !== 'boolean' || typeof o.diagnostic.rawOutputExcerpt !== 'string'
+      || Buffer.byteLength(o.diagnostic.rawOutputExcerpt) > 4096 || redact(o.diagnostic.rawOutputExcerpt).count > 0
+      || o.diagnostic.rawErrorExcerpt !== undefined && (typeof o.diagnostic.rawErrorExcerpt !== 'string'
+        || Buffer.byteLength(o.diagnostic.rawErrorExcerpt) > 1024 || redact(o.diagnostic.rawErrorExcerpt).count > 0
+        || Buffer.byteLength(o.diagnostic.rawOutputExcerpt) + Buffer.byteLength(o.diagnostic.rawErrorExcerpt) > 4096))
     || o.resources !== undefined && !validLaunchResources(o.resources)) throw Error('preview journal: call outcome malformed');
 }
 function validLaunchResources(r: LaunchResources): boolean {

@@ -1,0 +1,51 @@
+{
+  "provenance": {
+    "update": 969390396,
+    "source": "strict read-only live journal projection, lookup-uncertain-1011-evidence/exact-target-rows.json",
+    "captured": "2026-10-11",
+    "limitations": "The old journal retained no signal, cancellation reason or raw provider stdout; none is reconstructed here."
+  },
+  "physicalOutcome": {
+    "exitCode": null,
+    "localLimit": null,
+    "elapsedMs": 13931,
+    "type": null,
+    "subtype": null,
+    "isError": null,
+    "outputTokens": null,
+    "promptBytes": 62536,
+    "resources": {
+      "enforcement": {
+        "cpuPerProcess": "hard",
+        "handlesPerProcess": "hard",
+        "processGrowth": "sampled",
+        "treeHandles": "unsupported",
+        "memory": "sampled",
+        "treeCpu": "sampled"
+      },
+      "uidProcesses": {
+        "state": "hard",
+        "subject": "uid:501",
+        "limit": 617
+      },
+      "admission": {
+        "work": "answer",
+        "concurrent": 1,
+        "waitedMs": 161
+      },
+      "peakMemoryBytes": 317652992,
+      "peakProcesses": 3,
+      "treeCpuMilliseconds": 550,
+      "census": "complete",
+      "leakedDescendants": 0,
+      "cleanup": "verified",
+      "membership": "working-area-joined",
+      "allocation": {
+        "set": "allocation:sha256:cbb6a60443bbff5a168210aa28530fce14d5dfe9fd11534c8586c01c41a94ca4",
+        "state": "returned"
+      }
+    }
+  },
+  "modelOutcome": "uncertain",
+  "modelOutput": null
+}

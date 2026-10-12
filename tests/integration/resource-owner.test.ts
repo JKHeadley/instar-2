@@ -874,3 +874,24 @@ it('retries an unknown cleanup census inside its bounded wait, instead of ending
   expect(blind.result.resources).toMatchObject({ cleanup: 'unresolved', allocation: { state: 'reserved' } });
   expect(blind.rows).toHaveLength(1);
 });
+
+// Exact self-PID termination, no load generator or serving process.
+it('retains signal and bounded raw stderr while preserving the provider stdout contract', { timeout: 30000 }, async () => {
+  const root = dir();
+  const interrupted = script(root, 'diagnostic-interrupted.mjs', `process.stdout.write('partial result');
+process.stderr.write('provider interrupted\\n'); setTimeout(() => process.kill(process.pid, 'SIGTERM'), 100);`);
+  const successful = script(root, 'diagnostic-success.mjs', `process.stdout.write('complete'); process.stderr.write('warning');`);
+  const owner = createResourceOwner(ceilings());
+  await owner.attach({});
+  const signal = await owner.execute(input(root, interrupted), 'answer');
+  expect(signal).toMatchObject({ code: null, signal: 'SIGTERM', limited: false, localLimit: null,
+    cancellationReason: null, stdout: 'partial result', rawOutput: 'partial result', rawError: 'provider interrupted\n' });
+  const complete = await owner.execute(input(root, successful), 'answer');
+  expect(complete).toMatchObject({ code: 0, signal: null, limited: false, cancellationReason: null,
+    stdout: 'complete', rawOutput: 'complete', rawError: 'warning' });
+  const oversized = script(root, 'diagnostic-stderr-bound.mjs', `process.stderr.write('x'.repeat(9000)); process.stdout.write('ok');`);
+  expect(await owner.execute(input(root, oversized), 'answer')).toMatchObject({ code: 0, stdout: 'ok',
+    rawError: '[stderr exceeded capture bound; excerpt omitted]' });
+  const stopped = await owner.execute({ ...input(root, successful), stopped: () => true }, 'answer');
+  expect(stopped).toMatchObject({ code: null, signal: null, cancellationReason: 'stopped', stdout: '' });
+});
