@@ -363,7 +363,10 @@ export function jevUnavailableCause(error: unknown): JevUnavailableCause {
   return value?.name === 'TimeoutError' || value?.name === 'AbortError' ? 'timeout' : 'other';
 }
 export const JEV_REPLY_ATTEMPT_MS = 850;
-export const JEV_REPLY_BUDGET_MS = 1800;
+// A cold live-group audience probe took 1.8–1.9 s before any Jev dispatch (969390426/427).
+// Keep the fast first attempt; let the one retry finish admission plus the ~250 ms exchange.
+export const JEV_REPLY_RETRY_MS = 2500;
+export const JEV_REPLY_BUDGET_MS = 3500;
 
 export interface ReplyCheckPorts {
   /** `occurrence` is the journal turn the call serves, recorded beside its content-derived id (Rule 58). */
@@ -400,11 +403,11 @@ export async function checkReply(text: string, id: string, ports: ReplyCheckPort
     return { outcome: 'unavailable', path: 'holding' };
   }
   let report: ApprovalReport | undefined = approval && { request: approval.request, answer: 'unreadable' };
-  const attempt = async (): Promise<ReplyCheckResult> => {
+  const attempt = async (allowance: number): Promise<ReplyCheckResult> => {
     const began = ports.elapsedMs();
     let received = false;
     try {
-      const remaining = Math.min(JEV_REPLY_ATTEMPT_MS, JEV_REPLY_BUDGET_MS - (began - started),
+      const remaining = Math.min(allowance, JEV_REPLY_BUDGET_MS - (began - started),
         ports.deadlineAt === undefined || !ports.now ? Infinity : ports.deadlineAt - ports.now());
       if (remaining <= 0) return { ...budgetResult('jev', [], 0), cause: 'timeout' };
       const answer = await ports.jev(text, approval ? approvalQuestions(approval) : undefined, Math.max(1, Math.floor(remaining)), id);
@@ -419,12 +422,12 @@ export async function checkReply(text: string, id: string, ports: ReplyCheckPort
         ...(expired(ports) ? { reason: REPLY_CHECK_BUDGET_REASON } : {}) };
     }
   };
-  first = await attempt();
+  first = await attempt(JEV_REPLY_ATTEMPT_MS);
   ports.record(report ? { ...first, approvalReport: report } : first);
   // One new, reserved attempt. An unknown first call remains charged; recovery never repeats either call.
   if (first.verdict === 'unavailable' && !expired(ports)
     && ports.elapsedMs() - started < JEV_REPLY_BUDGET_MS && ports.reserveJevRetry?.()) {
-    first = await attempt();
+    first = await attempt(JEV_REPLY_RETRY_MS);
     ports.record(report ? { ...first, approvalReport: report } : first);
   }
   if (expired(ports)) return { outcome: 'unavailable', path: 'jev' };

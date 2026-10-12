@@ -57,15 +57,15 @@ it.each(['timeout', 'http-503', 'network', 'parse', 'other'] as const)('records 
       reserveEscalation: () => true, record: row => rows.push(row),
       escalate: async () => { reviews++; return { verdict: 'pass', ruleIds: [], confidence: null, latencyMs: 0 }; },
     });
-    await vi.advanceTimersByTimeAsync(1800);
+    await vi.advanceTimersByTimeAsync(JEV_REPLY_BUDGET_MS);
     expect(await pending).toEqual({ outcome: 'pass', path: rescue ? 'jev' : 'subscription' });
     expect(calls).toBe(2); expect(reservations).toBe(1); expect(reviews).toBe(rescue ? 0 : 1);
-    expect(transport.timeouts).toEqual([850, 850]);
+    expect(transport.timeouts).toEqual([850, 2500]);
     const failed = rows.filter(row => row.verdict === 'unavailable');
     expect(failed).toHaveLength(rescue ? 1 : 2);
     expect(failed.every(row => row.cause === cause)).toBe(true);
     expect(JSON.stringify(rows)).not.toContain('secret');
-    expect(rows.filter(row => row.path === 'jev').reduce((sum, row) => sum + row.latencyMs, 0)).toBeLessThan(2000);
+    expect(rows.filter(row => row.path === 'jev').reduce((sum, row) => sum + row.latencyMs, 0)).toBeLessThan(JEV_REPLY_BUDGET_MS);
   }
 });
 
@@ -122,15 +122,15 @@ it.each([0, 400, 1500, Infinity])('includes a %s ms worker disclosure wait in th
     await vi.advanceTimersByTimeAsync(JEV_REPLY_BUDGET_MS); await pending;
     const turn = journal.view.order[0]!;
     expect(fallbackAt - turn.jevReservedAt!).toBeLessThanOrEqual(JEV_REPLY_BUDGET_MS);
-    expect(dispatched).toHaveLength(delay < 850 ? 2 : 0);
-    expect(transport.timeouts).toEqual(delay === 0 ? [850, 850] : delay === 400 ? [450, 450] : []);
+    expect(dispatched).toHaveLength(delay < 850 ? 2 : delay === 1500 ? 1 : 0);
+    expect(transport.timeouts).toEqual(delay === 0 ? [850, 2500] : delay === 400 ? [450, 2100] : delay === 1500 ? [1000] : []);
     expect(turn.replyChecks?.filter(row => row.path === 'jev').map(row => row.cause))
-      .toEqual(delay === 0 ? ['http-503', 'http-503'] : ['timeout', 'timeout']);
+      .toEqual(delay === 0 ? ['http-503', 'http-503'] : delay === 1500 ? ['timeout', 'http-503'] : ['timeout', 'timeout']);
     expect(unknownCallKeys(journal.view).jev).toEqual([`jev:${turn.id}`, `jev-retry:${turn.id}`]);
     expect(sends).toBe(1);
     // Releasing either timed-out admission must not enter the client, even after send.
     releases.forEach(release => release()); await vi.advanceTimersByTimeAsync(5000);
-    expect(dispatched).toHaveLength(delay < 850 ? 2 : 0);
+    expect(dispatched).toHaveLength(delay < 850 ? 2 : delay === 1500 ? 1 : 0);
     await worker.drain(); expect(sends).toBe(1);
   } finally { journal.close(); rmSync(root, { recursive: true, force: true }); }
 });
@@ -260,4 +260,57 @@ it('keeps summary admission outside its original provider timeout and adds no re
   expect(calls).toBe(0); expect(transport.timeouts).toEqual([]);
   release(); await pending;
   expect(calls).toBe(1); expect(transport.timeouts).toEqual([2000]);
+});
+
+const admissionReplay = JSON.parse(readFileSync(new URL('./fixtures/jev-admission-2026-10-12.json', import.meta.url), 'utf8')) as {
+  cases: { update: number; answer: string; checks: ReplyCheckResult[];
+    admissions: { elapsedMs: number; accepted: boolean }[] }[]; pass: unknown;
+};
+it.each(admissionReplay.cases)('rescues recorded $update admission delay without skipping the audience check', async sample => {
+  vi.useFakeTimers();
+  for (const admitted of [true, false]) {
+    let admission = 0, calls = 0, reviews = 0;
+    const rows: ReplyCheckResult[] = [];
+    const transport = client(async (_url, init) => {
+      calls++;
+      expect(JSON.parse(String(init.body))).toEqual({ state: sample.answer, model: JEV_MODEL, questions: jevQuestions });
+      await new Promise(resolve => setTimeout(resolve, 247));
+      return new Response(JSON.stringify(admissionReplay.pass));
+    }, {
+      performance: { now: () => Date.now() },
+      requireGroupDisclosure: async () => {
+        const observed = sample.admissions[admission++]!;
+        await new Promise(resolve => setTimeout(resolve, observed.elapsedMs));
+        if (!observed.accepted || !admitted) throw Error('group carry: disclosure authority or audience refused');
+      },
+    });
+    const pending = checkReply(sample.answer, `recorded:${sample.update}`, {
+      ...transport, elapsedMs: () => Date.now(), reserveJevRetry: () => true,
+      reserveEscalation: () => true, record: row => rows.push(row),
+      escalate: async () => { reviews++; return { verdict: 'pass', ruleIds: [], confidence: null, latencyMs: 0 }; },
+    });
+    await vi.advanceTimersByTimeAsync(JEV_REPLY_BUDGET_MS);
+    expect(await pending).toEqual({ outcome: 'pass', path: admitted ? 'jev' : 'subscription' });
+    expect(calls).toBe(admitted ? 1 : 0);
+    expect(reviews).toBe(admitted ? 0 : 1);
+    expect(rows[0]?.cause).toBe(sample.checks[0]!.cause);
+    // The first timed-out admission cannot dispatch after it eventually settles.
+    await vi.advanceTimersByTimeAsync(5000);
+    expect(calls).toBe(admitted ? 1 : 0);
+  }
+});
+
+it.each([undefined, 3200])('clips retry to remaining Jev budget and turn deadline %s', async deadlineAt => {
+  let clock = 0, calls = 0;
+  const timeouts: (number | undefined)[] = [];
+  await checkReply('reply', 'budget', {
+    now: () => clock, elapsedMs: () => clock, ...(deadlineAt === undefined ? {} : { deadlineAt }),
+    jev: async (_text, _questions, timeout) => {
+      timeouts.push(timeout);
+      if (++calls === 1) { clock = 3000; throw { name: 'TimeoutError' }; }
+      return { value: admissionReplay.pass, latencyMs: 1 };
+    }, reserveJevRetry: () => true, reserveEscalation: () => true, record: () => {},
+    escalate: async () => ({ verdict: 'pass', ruleIds: [], confidence: null, latencyMs: 0 }),
+  });
+  expect(timeouts).toEqual([850, deadlineAt === undefined ? 500 : 200]);
 });
