@@ -73,9 +73,12 @@ it('answers two naturally polled turns with prior history and sources at provide
     answer: 'Instar exists to make coherence something an AI cannot lose.',
     outcome: 'answer accepted; Telegram accepted the reply' }]);
   const sources = second.context.packet.sources;
-  expect(sources.map(source => source.id)).toEqual(['purpose:purpose', 'purpose:coherency', 'capability-note']);
+  expect(sources.map(source => source.id)).toEqual(['purpose:purpose', 'purpose:coherency', 'rules:87', 'capability-note']);
   expect(sources[0].text).toContain('Make coherence something an AI cannot lose.');
   expect(sources[0].provenance).toMatchObject({ path: 'docs/00-the-purpose.md', excerptSha256: SOURCE_PINS['purpose:purpose'] });
+  expect(sources[2].provenance).toMatchObject({ path: 'docs/01-the-rules.md', excerptSha256: SOURCE_PINS['rules:87'] });
+  expect(sources[2].text).toContain("A brief acknowledgement in reply to the person's own message, when the answer will take more than a few seconds, is part of the answer, not a notification.");
+  expect(sources[2].text).toContain('While that answer is still being worked on, a short progress line at a slow, bounded pace is also part of the answer.');
   expect(second.context.packet.now.epochMs).toBeGreaterThan(0);
   expect(second.context.packet.audience.participants).toEqual([`telegram:v1:user:${OPERATOR}`]);
   expect(world.sends().map(send => send.body.text)).toEqual([
